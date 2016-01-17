@@ -19,7 +19,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 // The following types are defined for the userspace of this library:
 
-struct Server;  // used internally. no public data exposed.
+typedef struct Server* server_pt;  // used internally. no public data exposed.
 struct ServerSettings;
 struct Protocol;
 
