@@ -13,6 +13,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <signal.h>
 #include <unistd.h>
 #include <execinfo.h>
+#include <fcntl.h>
 
 ////////////////////
 // types used
@@ -86,12 +87,13 @@ static void* thread_loop(struct Async* async) {
 #endif
   if (async->init_thread)
     async->init_thread(async, async->arg);
-  while (read(async->in, &task, sizeof(struct Task)) > 0) {
+  int in = async->in;  // no fear of async from being freed before...
+  while (read(in, &task, sizeof(struct Task)) > 0) {
     if (!task.task)
       break;
     task.task(task.arg);
   }
-  close(async->in);
+  close(in);
   return 0;
 }
 
@@ -102,7 +104,8 @@ static void* thread_sentinal(struct Async* async) {
   // signal(int, void (*)(int))
   pthread_t active_thread;
   void* thread_error = (void*)on_signal;
-  while (thread_error) {
+  int in = async->in;
+  while (thread_error && (fcntl(in, F_GETFL) >= 0)) {
     pthread_create(&active_thread, NULL, (void* (*)(void*))thread_loop, async);
     pthread_join(active_thread, &thread_error);
     if (thread_error) {
