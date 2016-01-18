@@ -27,6 +27,7 @@ Feel free to copy, use and enjoy according to the license provided.
 // signal management
 static void register_server(struct Server* server);
 static void on_signal(int sig);
+static void stop_one(struct Server* server);
 
 // socket binding and server limits
 static int bind_server_socket(struct Server*);
@@ -75,16 +76,19 @@ struct Server {
   /// maps all connection's idle cycle count values. use idle[fd] to get/set
   /// the count.
   unsigned char* idle;
-  /// the server socket
-  int srvfd;
-  /// socket capacity
-  long capacity;
-  /// the original process pid
-  pid_t root_pid;
-  /// the last timeout review
-  time_t last_to;
   // a buffer map.
   void** buffer_map;
+  // old Signal handlers
+  void (*old_sigint)(int);
+  void (*old_sigterm)(int);
+  // socket capacity
+  long capacity;
+  /// the last timeout review
+  time_t last_to;
+  /// the server socket
+  int srvfd;
+  /// the original process pid
+  pid_t root_pid;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -430,8 +434,8 @@ static int server_listen(struct ServerSettings settings) {
   }
 
   // register signals
-  signal(SIGINT, on_signal);
-  signal(SIGTERM, on_signal);
+  server.old_sigint = signal(SIGINT, on_signal);
+  server.old_sigterm = signal(SIGTERM, on_signal);
 
   // register server for signals
   register_server(&server);
@@ -469,8 +473,11 @@ static int server_listen(struct ServerSettings settings) {
     fflush(NULL);
     exit(0);
   }
-  signal(SIGINT, SIG_DFL);
-  signal(SIGTERM, SIG_DFL);
+  signal(SIGINT, server.old_sigint);
+  signal(SIGTERM, server.old_sigterm);
+
+  // remove server from registry, it it's still there...
+  stop_one(&server);
 
   return 0;
 }
@@ -785,7 +792,7 @@ static void stop_one(struct Server* server) {
   pthread_mutex_lock(&global_lock);
   struct ServerSet* set = global_servers_set;
   struct ServerSet* prev = NULL;
-  while (set->server != server) {
+  while (set && set->server != server) {
     prev = set;
     set = set->next;
   }
