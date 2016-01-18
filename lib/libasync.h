@@ -20,8 +20,12 @@ extern const struct AsyncAPI {
   // returns a pointer to a new Async struct object.
   //
   // **threads** (int) is the number of worker threads to be spawned.
-  // **on_thread_init** (func) is a callback that each thread will call when it
-  // is first initialized.
+  //
+  // **on_thread_init** (func)(async_p, void*) is a callback that each new
+  // working thread will call when it is first initialized.
+  //
+  // **arg** (void *) a pointer with datat that will be passed tp the init
+  // callback.
   //
   // Forking the thread pool results in undefined behavior (create after `fork`)
   // although it's fairly likely that only the main process will handle tasks.
@@ -32,7 +36,9 @@ extern const struct AsyncAPI {
   // Threads that crash are re-spawned by a "watch-dog" (sentinal) thread.
   //
   // returns NULL on failure.
-  async_p (*new)(int threads, void (*on_thread_init)(async_p self));
+  async_p (*new)(int threads,
+                 void (*on_thread_init)(async_p async, void* arg),
+                 void* arg);
   // Asyn.run(async, task, arg) sends tasks to the asynchronous event queue.
   int (*run)(async_p self, void (*task)(void*), void* arg);
   // Async.finish(async) will gracefully close down the async object,

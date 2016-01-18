@@ -12,37 +12,49 @@ Anyway, Along the way I wrote:
 
  `libasync` threads are guarded by "sentinel" threads, so that segmentation faults and errors in any given task won't break the system apart. This was meant to give a basic layer of protection to any server implementation, but I would recommend that it be removed for any other uses (it's a matter or changing one line of code).
 
- Using `libasync` is super simple and would look something like this (the NULL allows for an initialization callback, ignore it for now):
+ Using `libasync` is super simple and would look something like this:
 
  ```
+ #include "libasync.h"
+ #include <stdio.h>
+ // this optional function will just print a message when a new thread starts
+ void on_new_thread(async_p async, void* arg) {
+   printf("%s", (char*)arg);
+ }
+
  // an example task
- void say_hi(void * arg)
- {
-   printf("Hi!");
+ void say_hi(void* arg) {
+   printf("Hi!\n");
  }
  // This one will fail with safe kernels...
  // On windows you might get a blue screen...
- void evil_code(void * arg)
- {
-   char * rewrite = arg;
-   while(1) {
+ void evil_code(void* arg) {
+   char* rewrite = arg;
+   while (1) {
      rewrite[0] = '0';
+     rewrite++;
    }
  }
 
- // an example usage     
- int main(void)
- {
-   // create the thread pool
-   async_p async = Async.new(8, NULL); // 8 threads
+ // an example usage
+ int main(void) {
+   // this message will be printed by each new thread.
+   char msg[] = "*** A new thread is born :-)\n";
+   // create the thread pool with 8 threads.
+   // the callback is optional (we can pass NULL)
+   async_p async = Async.new(8, on_new_thread, msg);
    // send a task
    Async.run(async, say_hi, NULL);
    // an evil task will demonstrate the sentinel at work.
    Async.run(async, evil_code, NULL);
    // wait for all tasks to finish, closing the threads, clearing the memory.
-   Async.finish(async)
+   Async.finish(async);
  }
  ```
+
+ Notice that the last line of output should be our "new thread is born" message, as a new worker thread replaces the one that `evil_code` caused to crash.
+
+ \* Don't run this code on machines with no runtime memory protection (i.e. some windows machines)... our `evil_code` example is somewhat evil.
 
 ## [`libreact`](/lib/libreact.h) - KQueue/EPoll abstraction.
 

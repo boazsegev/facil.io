@@ -72,6 +72,8 @@ struct ServerSettings {
   void (*on_tick)(struct Server* server);
   // called if an event loop cycled with no pending events.
   void (*on_idle)(struct Server* server);
+  // called each time a new worker thread is spawned (within the new thread).
+  void (*on_init_thread)(struct Server* server);
   // sets the amount of threads to be created for the server's thread-pool.
   // Defaults to 1 - all `on_data`/`on_message` callbacks are deffered to a
   // single working thread, protecting the reactor from blocking code.
@@ -102,6 +104,10 @@ extern const struct ServerClass {
   int (*listen)(struct ServerSettings);
   // returns the computed capacity for any server instance on the system.
   long (*capacity)(void);
+  // stops a specific server, closing any open connections.
+  void (*stop)(struct Server* server);
+  // stops any and all server instances, closing any open connections.
+  void (*stop_all)(void);
   // allows direct access to the reactor object. use with care.
   struct ReactorSettings* (*reactor)(struct Server* server);
   // allows direct access to the reactor object. use with care.

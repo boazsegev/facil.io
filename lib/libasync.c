@@ -27,7 +27,9 @@ struct Async {
   /// The write only part of the pipe used to push tasks.
   int out;
   /// a callback used whenever a new thread a spawned.
-  void (*init_thread)(struct Async*);
+  void (*init_thread)(struct Async*, void*);
+  /// a pointer for the callback.
+  void* arg;
 };
 
 // A task structure.
@@ -83,7 +85,7 @@ static void* thread_loop(struct Async* async) {
   signal(SIGXFSZ, on_signal);
 #endif
   if (async->init_thread)
-    async->init_thread(async);
+    async->init_thread(async, async->arg);
   while (read(async->in, &task, sizeof(struct Task)) > 0) {
     if (!task.task)
       break;
@@ -115,7 +117,8 @@ static void* thread_sentinal(struct Async* async) {
 
 // creates a new aync object
 static struct Async* async_new(int threads,
-                               void (*on_init)(struct Async* self)) {
+                               void (*on_init)(struct Async* self, void* arg),
+                               void* arg) {
   if (threads <= 0)
     return NULL;
   // create the tasking pipe.
@@ -124,8 +127,7 @@ static struct Async* async_new(int threads,
     return NULL;
 
   // allocate the memory
-  size_t memory_required =
-      sizeof(struct Async) + (sizeof(pthread_t) * threads);
+  size_t memory_required = sizeof(struct Async) + (sizeof(pthread_t) * threads);
   struct Async* async = malloc(memory_required);
   if (!async) {
     close(io[0]);
@@ -138,6 +140,7 @@ static struct Async* async_new(int threads,
   async->thread_pool = (void*)(async + 1);
   async->in = io[0];
   async->out = io[1];
+  async->arg = arg;
   // create the thread pool
   for (int i = 0; i < threads; i++) {
     if ((pthread_create(async->thread_pool + i, NULL,

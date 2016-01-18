@@ -338,6 +338,12 @@ static void on_idle(struct ReactorSettings* reactor) {
     _server_(reactor)->settings->on_idle(_server_(reactor));
 }
 
+// called when a new thread is spawned
+void on_init_thread(async_p async, void* server) {
+  if (((struct Server*)server)->settings->on_init_thread)
+    ((struct Server*)server)->settings->on_init_thread((struct Server*)server);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // The Server's main function
 
@@ -416,7 +422,7 @@ static int server_listen(struct ServerSettings settings) {
     }
   }
   if (settings.threads > 0) {
-    server.async = Async.new(settings.threads, NULL);
+    server.async = Async.new(settings.threads, on_init_thread, &server);
     if (server.async < 0) {
       close(srvfd);
       return -1;
@@ -728,34 +734,7 @@ static void buffer_close(struct Server* server, int sockfd) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// The actual Server API access setup
-// The following allows access to helper functions and defines a namespace
-// for the API in this library.
-const struct ServerClass Server = {
-    .capacity = calculate_file_limit,
-    .listen = server_listen,
-    .touch = touch,
-    .is_busy = is_busy,
-    .reactor = reactor,
-    .settings = server_settings,
-    .get_protocol = get_protocol,
-    .set_protocol = set_protocol,
-    .get_udata = get_udata,
-    .set_udata = set_udata,
-    .run_async = run_async,
-    .run_after = run_after,
-    .run_every = run_every,
-    .read = read_data,
-    .write = buffer_write,
-    .write_move = buffer_move,
-    .close = buffer_close,
-    .count = count,
-    .each = each,
-    .fd_task = fd_task,
-};
-
-////////////////////////////////////////////////////////////////////////////////
-// signal managment
+// stopping and signal managment
 
 // types and global data
 struct ServerSet {
@@ -783,7 +762,6 @@ static void register_server(struct Server* server) {
 
 // handles signals
 static void on_signal(int sig) {
-  pthread_mutex_lock(&global_lock);
   struct ServerSet* set = global_servers_set;
   if (!set) {
     signal(sig, SIG_DFL);
@@ -799,8 +777,73 @@ static void on_signal(int sig) {
     free(prev);
   }
   global_servers_set = NULL;
+}
+
+// stops a specific server
+static void stop_one(struct Server* server) {
+  server->reactor.stop((struct ReactorSettings*)server);
+  pthread_mutex_lock(&global_lock);
+  struct ServerSet* set = global_servers_set;
+  struct ServerSet* prev = NULL;
+  while (set->server != server) {
+    prev = set;
+    set = set->next;
+  }
+  if (set) {
+    if (prev)
+      prev->next = set->next;
+    if (set == global_servers_set)
+      global_servers_set = set->next;
+    free(set);
+  }
   pthread_mutex_unlock(&global_lock);
 }
+// stops all the servers.
+static void stop_all(void) {
+  pthread_mutex_lock(&global_lock);
+  struct ServerSet* set = global_servers_set;
+  if (!set) {
+    pthread_mutex_unlock(&global_lock);
+    return;
+  }
+  while (set) {
+    set->server->reactor.stop(&(set->server->reactor));
+    global_servers_set = set;
+    set = set->next;
+    free(global_servers_set);
+  }
+  global_servers_set = NULL;
+  pthread_mutex_unlock(&global_lock);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// The actual Server API access setup
+// The following allows access to helper functions and defines a namespace
+// for the API in this library.
+const struct ServerClass Server = {
+    .capacity = calculate_file_limit,
+    .listen = server_listen,
+    .stop = stop_one,
+    .stop_all = stop_all,
+    .touch = touch,
+    .is_busy = is_busy,
+    .reactor = reactor,
+    .settings = server_settings,
+    .get_protocol = get_protocol,
+    .set_protocol = set_protocol,
+    .get_udata = get_udata,
+    .set_udata = set_udata,
+    .run_async = run_async,
+    .run_after = run_after,
+    .run_every = run_every,
+    .read = read_data,
+    .write = buffer_write,
+    .write_move = buffer_move,
+    .close = buffer_close,
+    .count = count,
+    .each = each,
+    .fd_task = fd_task,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // socket helpers

@@ -1,4 +1,2 @@
 
-lib/tryme
-
-*.o
+tmp/*
