@@ -609,7 +609,7 @@ static int fd_task(struct Server* server,
         return -1;
       *msg = (struct ConnTask){
           .server = server, .task = task, .arg = arg, .fd = sockfd};
-      Async.run(server->async, (void (*)(void*))perform_each_task, task);
+      Async.run(server->async, (void (*)(void*))perform_each_task, msg);
     } else {
       task(server, sockfd, arg);
     }
@@ -682,7 +682,8 @@ static ssize_t buffer_send(struct Server* server,
                            int sockfd,
                            void* data,
                            size_t len,
-                           int move) {
+                           char move,
+                           char urgent) {
   ssize_t snt = -1;
   // reset timeout
   server->idle[sockfd] = 0;
@@ -711,8 +712,11 @@ static ssize_t buffer_send(struct Server* server,
       return snt;
     }
   }
-  if (move ? Buffer.write_move(server->buffer_map[sockfd], data, len)
-           : Buffer.write(server->buffer_map[sockfd], data, len)) {
+
+  if (move ? (urgent ? Buffer.write_move_next : Buffer.write_move)(
+                 server->buffer_map[sockfd], data, len)
+           : (urgent ? Buffer.write_move_next : Buffer.write_move)(
+                 server->buffer_map[sockfd], data, len)) {
     Buffer.flush(server->buffer_map[sockfd], sockfd);
     return 0;
   }
@@ -725,13 +729,25 @@ static ssize_t buffer_write(struct Server* server,
                             int sockfd,
                             void* data,
                             size_t len) {
-  return buffer_send(server, sockfd, data, len, 0);
+  return buffer_send(server, sockfd, data, len, 0, 0);
+}
+static ssize_t buffer_write_urgent(struct Server* server,
+                                   int sockfd,
+                                   void* data,
+                                   size_t len) {
+  return buffer_send(server, sockfd, data, len, 0, 1);
 }
 static ssize_t buffer_move(struct Server* server,
                            int sockfd,
                            void* data,
                            size_t len) {
-  return buffer_send(server, sockfd, data, len, 1);
+  return buffer_send(server, sockfd, data, len, 1, 0);
+}
+static ssize_t buffer_write_urgent_move(struct Server* server,
+                                        int sockfd,
+                                        void* data,
+                                        size_t len) {
+  return buffer_send(server, sockfd, data, len, 1, 1);
 }
 
 static void buffer_close(struct Server* server, int sockfd) {
@@ -846,6 +862,8 @@ const struct ServerClass Server = {
     .read = read_data,
     .write = buffer_write,
     .write_move = buffer_move,
+    .write_urgent = buffer_write_urgent,
+    .write_move_urgent = buffer_write_urgent_move,
     .close = buffer_close,
     .count = count,
     .each = each,

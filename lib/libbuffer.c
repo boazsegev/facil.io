@@ -107,15 +107,23 @@ static size_t buffer_copy(struct Buffer* buffer, void* data, size_t length) {
   return length;
 }
 
-// takes data, copies it, and places it at the front of the buffer
-static size_t buffer_next(struct Buffer* buffer, void* data, size_t length) {
+// urgen buffer logic
+static size_t buffer_next_logic(struct Buffer* buffer,
+                                void* data,
+                                size_t length,
+                                char copy) {
   if (!is_buffer(buffer))
     return 0;
-  struct Packet* np = malloc(sizeof(struct Packet) + length);
+  struct Packet* np = (copy ? malloc(sizeof(struct Packet) + length)
+                            : malloc(sizeof(struct Packet)));
   if (!np)
     return 0;
-  np->data = np + sizeof(struct Packet);
-  memcpy(np->data, data, length);
+  if (copy) {
+    np->data = np + sizeof(struct Packet);
+    memcpy(np->data, data, length);
+  } else {
+    np->data = data;
+  }
   np->length = length;
 
   pthread_mutex_lock(&buffer->lock);
@@ -126,6 +134,18 @@ static size_t buffer_next(struct Buffer* buffer, void* data, size_t length) {
   (*pos) = np;
   pthread_mutex_unlock(&buffer->lock);
   return length;
+}
+
+// takes data, copies it, and places it at the front of the buffer
+static size_t buffer_next(struct Buffer* buffer, void* data, size_t length) {
+  return buffer_next_logic(buffer, data, length, 1);
+}
+
+// takes data, and places it at the front of the buffer
+static size_t buffer_move_next(struct Buffer* buffer,
+                               void* data,
+                               size_t length) {
+  return buffer_next_logic(buffer, data, length, 0);
 }
 
 static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
@@ -197,6 +217,7 @@ const struct BufferClass Buffer = {
     .write = (size_t (*)(void*, void*, size_t))buffer_copy,
     .write_move = (size_t (*)(void*, void*, size_t))buffer_move,
     .write_next = (size_t (*)(void*, void*, size_t))buffer_next,
+    .write_move_next = (size_t (*)(void*, void*, size_t))buffer_move_next,
     .flush = (ssize_t (*)(void*, int))buffer_flush,
     .close_when_done = (void (*)(void*, int))buffer_close_w_d,
     .pending = (size_t (*)(void*))buffer_pending,

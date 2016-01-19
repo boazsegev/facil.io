@@ -207,16 +207,33 @@ extern const struct ServerClass {
                         int sockfd,
                         void* data,
                         size_t len);
-  // Writes data to the socket, managing an asyncronous buffer if needed.
+  // Copies & writes data to the socket, managing an asyncronous buffer if
+  // needed.
   //
-  // The memory is always freed once the data was written.
+  // Copy is only performed if a buffer is needed.
   //
-  // returns 0 on success. success means that the data is in a buffer waiting to
-  // be written. If the socket is closed at this point, the buffer will be
-  // destroyed (never sent).
+  // If a buffer with a number of packets exists (multiple `write` calls),
+  // the data will be pushed forward as the next packet (so as not to divide)
+  // existing packets.
+  ssize_t (*write_urgent)(struct Server* server,
+                          int sockfd,
+                          void* data,
+                          size_t len);
+  // Writes data to the socket, managing an asyncronous buffer if
+  // needed.
   //
-  // on error, returns either -1 (closed socket or socket error) or the number
-  // of bytes actually sent (unable to initialize a buffer).
+  // Copy is only performed if a buffer is needed.
+  //
+  // If a buffer with a number of packets exists (multiple `write` calls),
+  // the data will be pushed forward as the next packet (so as not to divide)
+  // existing packets.
+  ssize_t (*write_move_urgent)(struct Server* server,
+                               int sockfd,
+                               void* data,
+                               size_t len);
+  // closes the connection. If any data is waiting to be written, close will
+  // return immediately and the connection will only be closed once all the data
+  // was sent.
   void (*close)(struct Server* server, int sockfd);
 } Server;
 

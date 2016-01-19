@@ -55,6 +55,7 @@ extern const struct BufferClass {
   size_t (*write)(void* buffer, void* data, size_t length);
   size_t (*write_move)(void* buffer, void* data, size_t length);
   size_t (*write_next)(void* buffer, void* data, size_t length);
+  size_t (*write_move_next)(void* buffer, void* data, size_t length);
   void (*close_when_done)(void* buffer, int fd);
   size_t (*pending)(void* buffer);
 } Buffer;
