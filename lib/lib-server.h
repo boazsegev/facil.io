@@ -154,7 +154,7 @@ extern const struct ServerClass {
   // timer to the reactor. The task will NOT repeat. Returns -1 on error or the
   // new file descriptor on succeess.
   int (*run_after)(struct Server* self,
-                   long miliseconds,
+                   long milliseconds,
                    void (*task)(void*),
                    void* arg);
   // Creates a system timer (at the cost of 1 file descriptor) and pushes the
@@ -162,7 +162,7 @@ extern const struct ServerClass {
   // `repetitions` is set to 0, task will repeat forever. Returns -1 on error
   // or the new file descriptor on succeess.
   int (*run_every)(struct Server* self,
-                   long miliseconds,
+                   long milliseconds,
                    int repetitions,
                    void (*task)(void*),
                    void* arg);

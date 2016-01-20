@@ -93,7 +93,7 @@ struct Server {
 
 ////////////////////////////////////////////////////////////////////////////////
 // timer helpers
-
+static char* timer_protocol_name = "timer";
 // a timer protocol, will be allocated for each timer.
 struct TimerProtocol {
   // must be first for pointer compatability
@@ -143,7 +143,7 @@ static struct TimerProtocol* TimerProtocol(void* task,
 
   *tp = (struct TimerProtocol){.parent.on_data = tp_perform_on_data,
                                .parent.on_close = tp_perform_on_close,
-                               .parent.service = "timer",
+                               .parent.service = timer_protocol_name,
                                .task = task,
                                .arg = arg,
                                .repeat = repetitions - 1};
@@ -516,9 +516,13 @@ static void* set_udata(struct Server* server, int sockfd, void* udata) {
 static long count(struct Server* server, char* service) {
   int c = 0;
   for (long i = 0; i < server->capacity; i++) {
-    if (server->protocol_map[i] &&
-        (!service || (server->protocol_map[i]->service &&
-                      !strcmp(service, server->protocol_map[i]->service))))
+    if (server->protocol_map[i]  // there is a protocol
+        && (                     // one of the following must apply
+               !service          // there's no service name required
+               ||                // or
+               (server->protocol_map[i]->service &&  // there is a name that
+                !strcmp(service, server->protocol_map[i]->service))  // matches
+               ))
       c++;
   }
   return c;
@@ -580,9 +584,13 @@ static long each(struct Server* server,
   int c = 0;
   struct ConnTask* msg;
   for (long i = 0; i < server->capacity; i++) {
-    if (server->protocol_map[i] &&
-        (!service || (server->protocol_map[i]->service &&
-                      !strcmp(service, server->protocol_map[i]->service)))) {
+    if (server->protocol_map[i]  // there is a protocol
+        && (                     // one of the following must apply
+               !service          // there's no service name required
+               ||                // or
+               (server->protocol_map[i]->service &&  // there is a name that
+                !strcmp(service, server->protocol_map[i]->service))  // matches
+               )) {
       c++;
       if (server->async) {
         if (!(msg = malloc(sizeof(struct ConnTask))))
@@ -628,7 +636,7 @@ static int run_async(struct Server* self, void (*task)(void*), void* arg) {
 
 // run a timer, one single time
 static int run_every(struct Server* self,
-                     long miliseconds,
+                     long milliseconds,
                      int repetitions,
                      void (*task)(void*),
                      void* arg) {
@@ -640,7 +648,7 @@ static int run_every(struct Server* self,
   // set protocol for new fd (timer protocol)
   self->protocol_map[tfd] =
       (struct Protocol*)TimerProtocol(task, arg, repetitions);
-  if (self->reactor.add_as_timer(&self->reactor, tfd, miliseconds) < 0) {
+  if (self->reactor.add_as_timer(&self->reactor, tfd, milliseconds) < 0) {
     close(tfd);
     self->protocol_map[tfd]->on_close(self, tfd);
     self->protocol_map[tfd] = 0;
@@ -651,10 +659,10 @@ static int run_every(struct Server* self,
 
 // run a timer, one single time
 static int run_after(struct Server* self,
-                     long miliseconds,
+                     long milliseconds,
                      void (*task)(void*),
                      void* arg) {
-  return run_every(self, miliseconds, 0, task, arg);
+  return run_every(self, milliseconds, 1, task, arg);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
