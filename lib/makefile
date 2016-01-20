@@ -6,7 +6,8 @@ INCLUDE= /usr/local/include,./include,./lib
 CFLAGS=-Wall -g -O3 -I$(INCLUDE)
 BINDIR=./../tmp
 BUILDDIR=./../tmp
-SRC=.
+# SRC = $(shell find . -name *.c)
+SRC = .
 BIN=$(BINDIR)/$(NAME)
 OBJS=$(addsuffix .o, $(addprefix $(BUILDDIR)/, $(notdir $(basename $(wildcard $(SRC)/*.c)))))
 #-lm

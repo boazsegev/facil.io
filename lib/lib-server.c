@@ -486,7 +486,7 @@ static int server_listen(struct ServerSettings settings) {
 // The Server API (helper methods and API container)
 
 ////////////////////////////////////////////////////////////////////////////////
-// general helper functions
+// Connection data and protocol management
 
 // get protocol for connection
 static struct Protocol* get_protocol(struct Server* server, int sockfd) {
@@ -547,6 +547,20 @@ static struct ReactorSettings* reactor(struct Server* server) {
 // return the settings used to initiate the server
 static struct ServerSettings* server_settings(struct Server* server) {
   return server->settings;
+}
+
+// connects an existing connection (fd) to the Server's callback system.
+static int server_connect(struct Server* self,
+                          int fd,
+                          struct Protocol* protocol) {
+  // if the connection is already owned by the server - ignore.
+  if (self->protocol_map[fd] == protocol)
+    return 0;
+  // make sure the fd recycled is clean
+  on_close(&self->reactor, fd);
+  // set protocol for new fd (timer protocol)
+  self->protocol_map[fd] = protocol;
+  return self->reactor.add(&self->reactor, fd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -857,6 +871,7 @@ const struct ServerClass Server = {
     .stop = stop_one,
     .stop_all = stop_all,
     .touch = touch,
+    .connect = server_connect,
     .is_busy = is_busy,
     .reactor = reactor,
     .settings = server_settings,
