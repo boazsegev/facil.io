@@ -564,9 +564,15 @@ static int server_connect(struct Server* self,
     return 0;
   // make sure the fd recycled is clean
   on_close(&self->reactor, fd);
-  // set protocol for new fd (timer protocol)
+  // set protocol for new fd
   self->protocol_map[fd] = protocol;
-  return self->reactor.add(&self->reactor, fd);
+  // add the fd to the reactor
+  if (self->reactor.add(&self->reactor, fd) < 0)
+    return -1;
+  // remember to call on_open
+  if (protocol->on_open)
+    protocol->on_open(self, fd);
+  return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
