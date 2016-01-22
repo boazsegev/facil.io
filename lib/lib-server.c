@@ -534,6 +534,12 @@ static long count(struct Server* server, char* service) {
 static void touch(struct Server* self, int sockfd) {
   self->idle[sockfd] = 0;
 }
+// sets the timeout limit for the specified connectionl, in seconds.
+static void set_timeout(struct Server* server,
+                        int sockfd,
+                        unsigned char timeout) {
+  server->tout[sockfd] = timeout;
+}
 // returns true if the connection is performing a critical task.
 static unsigned char is_busy(struct Server* self, int sockfd) {
   return self->busy[sockfd];
@@ -871,6 +877,7 @@ const struct ServerClass Server = {
     .stop = stop_one,
     .stop_all = stop_all,
     .touch = touch,
+    .set_timeout = set_timeout,
     .connect = server_connect,
     .is_busy = is_busy,
     .reactor = reactor,

@@ -176,6 +176,9 @@ extern const struct ServerClass {
 
   /// "touches" a socket, reseting it's timeout counter.
   void (*touch)(struct Server* server, int sockfd);
+  // sets the timeout limit for the specified connectionl, in seconds, up to
+  // 255 seconds (the maximum allowed timeout count).
+  void (*set_timeout)(struct Server* server, int sockfd, unsigned char timeout);
   // returns true if the a specific connection's protected callback is running
   //
   // protected callbacks include only the `on_message` callback and tasks
