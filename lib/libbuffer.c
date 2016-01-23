@@ -128,7 +128,12 @@ static size_t buffer_next_logic(struct Buffer* buffer,
 
   pthread_mutex_lock(&buffer->lock);
   struct Packet** pos = &buffer->packet;
-  if (buffer->sent && buffer->packet)
+  // if the next packet's length is 0, it is a file packet.
+  // file packets insert packets before themselves... so we must wait.
+  if (buffer->packet->next && !buffer->packet->next->length)
+    pos = &buffer->packet->next->next;
+  // never interrupt a packet in the middle.
+  else if (buffer->sent && buffer->packet)
     pos = &buffer->packet->next;
   np->next = (*pos)->next;
   (*pos) = np;
@@ -152,14 +157,25 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
   if (!is_buffer(buffer))
     return -1;
   pthread_mutex_lock(&buffer->lock);
+  // no packets to send
   if (!buffer->packet) {
     pthread_mutex_unlock(&buffer->lock);
     return 0;
   }
+  // a NULL packet (data is NULL) means: "Close the connection"
   if (!buffer->packet->data) {
     pthread_mutex_unlock(&buffer->lock);
     close(fd);
     return 0;
+  }
+  // a Packet with data but no length is a FILE * to be sent
+  if (!buffer->packet->length) {
+    // read X bytes
+    // pack data in packet
+    // insert packet **before** this one
+    // if EOF, remove this packet.
+    // clear mutex.
+    // restart `flash` (goto beginning)
   }
   ssize_t sent = write(fd, buffer->packet->data + buffer->sent,
                        buffer->packet->length - buffer->sent);
@@ -200,7 +216,12 @@ size_t buffer_pending(struct Buffer* buffer) {
   pthread_mutex_lock(&buffer->lock);
   p = buffer->packet;
   while (p) {
-    len += p->length;
+    if (p->data && p->length)
+      len += p->length;
+    else if (p->data)
+      NULL;  // if it's a file - can we check it's size?
+    else
+      break;  // no need to move beyond a close connection packet.
     p = p->next;
   }
   len -= buffer->sent;
