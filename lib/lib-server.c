@@ -725,14 +725,14 @@ static ssize_t buffer_send(struct Server* server,
   if (!server->buffer_map[sockfd]) {
     ssize_t snt = send(sockfd, data, len, 0);
     if (snt < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
-      if (move)
+      if (move && data)
         free(data);
       close(sockfd);
       return -1;
     }
     // no need for a buffer.
     if (snt == len) {
-      if (move)
+      if (move && data)
         free(data);
       return 0;
     }
@@ -741,7 +741,7 @@ static ssize_t buffer_send(struct Server* server,
       fprintf(stderr,
               "Couldn't initiate a buffer object for conection no. %d\n",
               sockfd);
-      if (move)
+      if (move && data)
         free(data);
       return snt;
     }
@@ -749,7 +749,7 @@ static ssize_t buffer_send(struct Server* server,
 
   if (move ? (urgent ? Buffer.write_move_next : Buffer.write_move)(
                  server->buffer_map[sockfd], data, len)
-           : (urgent ? Buffer.write_move_next : Buffer.write_move)(
+           : (urgent ? Buffer.write_move : Buffer.write)(
                  server->buffer_map[sockfd], data, len)) {
     Buffer.flush(server->buffer_map[sockfd], sockfd);
     return 0;
