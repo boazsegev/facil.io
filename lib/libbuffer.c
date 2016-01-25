@@ -8,6 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <errno.h>
 ///////////////////
 // The buffer class ID
@@ -21,6 +22,15 @@ struct Packet {
   void* data;
 };
 
+static void free_packet(struct Packet* packet) {
+  if (packet->data) {
+    if (packet->length)
+      free(packet->data);
+    else
+      fclose(packet->data);
+  }
+  free(packet);
+}
 ///////////////////
 // The buffer structor
 struct Buffer {
@@ -49,7 +59,7 @@ static inline void* new_buffer(size_t offset) {
   struct Buffer* buffer = malloc(sizeof(struct Buffer));
   if (!buffer)
     return 0;
-  *buffer = (struct Buffer){.lock = PTHREAD_MUTEX_INITIALIZER,
+  *buffer = (struct Buffer){//.lock = PTHREAD_MUTEX_INITIALIZER,
                             .id = &BufferClassID,
                             .sent = offset,
                             .packet = NULL};
@@ -63,10 +73,10 @@ static inline void* new_buffer(size_t offset) {
 static inline void destroy_buffer(struct Buffer* buffer) {
   if (is_buffer(buffer)) {
     pthread_mutex_lock(&buffer->lock);
-    void* to_free = NULL;
+    struct Packet* to_free = NULL;
     while ((to_free = buffer->packet)) {
       buffer->packet = buffer->packet->next;
-      free(to_free);
+      free_packet(to_free);
     }
     pthread_mutex_unlock(&buffer->lock);
     pthread_mutex_destroy(&buffer->lock);
@@ -96,12 +106,16 @@ static size_t buffer_move(struct Buffer* buffer, void* data, size_t length) {
 
 // takes data, copies it and pushes it into the buffer
 static size_t buffer_copy(struct Buffer* buffer, void* data, size_t length) {
-  void* cpy = malloc(length);
-  if (!cpy)
-    return 0;
-  memcpy(cpy, data, length);
+  void* cpy = NULL;
+  if (data) {
+    cpy = malloc(length);
+    if (!cpy)
+      return 0;
+    memcpy(cpy, data, length);
+  }
   if (!buffer_move(buffer, cpy, length)) {
-    free(cpy);
+    if (cpy)
+      free(cpy);
     return 0;
   }
   return length;
@@ -156,6 +170,7 @@ static size_t buffer_move_next(struct Buffer* buffer,
 static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
   if (!is_buffer(buffer))
     return -1;
+  struct Packet* to_free;
   pthread_mutex_lock(&buffer->lock);
   // no packets to send
   if (!buffer->packet) {
@@ -164,8 +179,11 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
   }
   // a NULL packet (data is NULL) means: "Close the connection"
   if (!buffer->packet->data) {
+    to_free = buffer->packet;
+    buffer->packet = buffer->packet->next;
     pthread_mutex_unlock(&buffer->lock);
     close(fd);
+    free_packet(to_free);
     return 0;
   }
   // a Packet with data but no length is a FILE * to be sent
@@ -186,16 +204,16 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
     buffer->sent += sent;
   }
   if (buffer->sent >= buffer->packet->length) {
-    struct Packet* to_free = buffer->packet;
+    to_free = buffer->packet;
     buffer->sent = 0;
     buffer->packet = buffer->packet->next;
-    free(to_free->data);
-    free(to_free);
+    free_packet(to_free);
+    // a NULL packet (data is NULL) means: "Close the connection"
     if (buffer->packet && !buffer->packet->data) {
       close(fd);
       to_free = buffer->packet;
       buffer->packet = buffer->packet->next;
-      free(to_free);
+      free_packet(to_free);
     }
   }
   pthread_mutex_unlock(&buffer->lock);
@@ -205,7 +223,10 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
 static void buffer_close_w_d(struct Buffer* buffer, int fd) {
   if (!is_buffer(buffer))
     return;
-  buffer_move(buffer, NULL, fd);
+  if (!buffer->packet)
+    close(fd);
+  else
+    buffer_move(buffer, NULL, fd);
 }
 
 size_t buffer_pending(struct Buffer* buffer) {
