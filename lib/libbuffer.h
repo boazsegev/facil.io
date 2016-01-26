@@ -51,6 +51,7 @@ To send data from a Buffer to a socket / pipe (file descriptor) use:
 extern const struct BufferClass {
   void* (*new)(size_t offset);
   void (*destroy)(void* buffer);
+  void (*clear)(void* buffer);
   ssize_t (*flush)(void* buffer, int fd);
   size_t (*write)(void* buffer, void* data, size_t length);
   size_t (*write_move)(void* buffer, void* data, size_t length);

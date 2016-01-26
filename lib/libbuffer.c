@@ -33,7 +33,7 @@ static void free_packet(struct Packet* packet) {
 }
 ///////////////////
 // The buffer structor
-struct Buffer {
+struct Buffer {  // 88 bytes pet buffer
   void* id;
   // a data locker.
   pthread_mutex_t lock;
@@ -70,7 +70,9 @@ static inline void* new_buffer(size_t offset) {
   }
   return buffer;
 }
-static inline void destroy_buffer(struct Buffer* buffer) {
+
+// clears all the buffer data
+static inline void clear_buffer(struct Buffer* buffer) {
   if (is_buffer(buffer)) {
     pthread_mutex_lock(&buffer->lock);
     struct Packet* to_free = NULL;
@@ -79,6 +81,13 @@ static inline void destroy_buffer(struct Buffer* buffer) {
       free_packet(to_free);
     }
     pthread_mutex_unlock(&buffer->lock);
+  }
+}
+
+// destroys the buffer
+static inline void destroy_buffer(struct Buffer* buffer) {
+  if (is_buffer(buffer)) {
+    clear_buffer(buffer);
     pthread_mutex_destroy(&buffer->lock);
     free(buffer);
   }
@@ -192,7 +201,7 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
     // pack data in packet
     // insert packet **before** this one
     // if EOF, remove this packet.
-    // clear mutex.
+    // clear mutex?
     // restart `flash` (goto beginning)
   }
   ssize_t sent = write(fd, buffer->packet->data + buffer->sent,
