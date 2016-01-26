@@ -208,8 +208,7 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
                        buffer->packet->length - buffer->sent);
   if (sent < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
     close(fd);
-  }
-  if (sent > 0) {
+  } else if (sent > 0) {
     buffer->sent += sent;
   }
   if (buffer->sent >= buffer->packet->length) {

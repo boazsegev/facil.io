@@ -233,8 +233,8 @@ static void on_close(struct ReactorSettings* reactor, int fd) {
   _server_(reactor)->tout[fd] = 0;
   // we can keep the buffer on standby for the connection... but we won't
   if (_server_(reactor)->buffer_map[fd]) {
-    Buffer.destroy(_server_(reactor)->buffer_map[fd]);
-    _server_(reactor)->buffer_map[fd] = 0;
+    Buffer.clear(_server_(reactor)->buffer_map[fd]);
+    // _server_(reactor)->buffer_map[fd] = 0;
   }
 }
 
@@ -413,8 +413,8 @@ static int server_listen(struct ServerSettings settings) {
     busy[i] = 0;
     tout[i] = 0;
     idle[i] = 0;
-    buffer_map[i] = 0;
-    // buffer_map[i] = Buffer.new(0);
+    // buffer_map[i] = 0;
+    buffer_map[i] = Buffer.new(0);
   }
 
   // setup concurrency
@@ -480,6 +480,9 @@ static int server_listen(struct ServerSettings settings) {
 
   // remove server from registry, it it's still there...
   stop_one(&server);
+  for (int i = 0; i < calculate_file_limit(); i++) {
+    Buffer.destroy(buffer_map[i]);
+  }
 
   return 0;
 }
@@ -723,32 +726,33 @@ static ssize_t buffer_send(struct Server* server,
   ssize_t snt = -1;
   // reset timeout
   server->idle[sockfd] = 0;
-  // try to avoid the buffer if we can... - is this safe (too many assumptions)?
-  if (!server->buffer_map[sockfd]) {
-    ssize_t snt = send(sockfd, data, len, 0);
-    // sending failed with a socket error
-    if (snt < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
-      if (move && data)
-        free(data);
-      close(sockfd);
-      return -1;
-    }
-    // no need for a buffer.
-    if (snt == len) {
-      if (move && data)
-        free(data);
-      return 0;
-    }
-    server->buffer_map[sockfd] = Buffer.new(snt > 0 ? snt : 0);
-    if (!server->buffer_map[sockfd]) {
-      fprintf(stderr,
-              "Couldn't initiate a buffer object for conection no. %d\n",
-              sockfd);
-      if (move && data)
-        free(data);
-      return snt;
-    }
-  }
+  // // try to avoid the buffer if we can... - is this safe (too many
+  // assumptions)?
+  // if (!server->buffer_map[sockfd]) {
+  //   ssize_t snt = send(sockfd, data, len, 0);
+  //   // sending failed with a socket error
+  //   if (snt < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
+  //     if (move && data)
+  //       free(data);
+  //     close(sockfd);
+  //     return -1;
+  //   }
+  //   // no need for a buffer.
+  //   if (snt == len) {
+  //     if (move && data)
+  //       free(data);
+  //     return 0;
+  //   }
+  //   server->buffer_map[sockfd] = Buffer.new(snt > 0 ? snt : 0);
+  //   if (!server->buffer_map[sockfd]) {
+  //     fprintf(stderr,
+  //             "Couldn't initiate a buffer object for conection no. %d\n",
+  //             sockfd);
+  //     if (move && data)
+  //       free(data);
+  //     return snt;
+  //   }
+  // }
 
   if ((move ? (urgent ? Buffer.write_move_next : Buffer.write_move)
             : (urgent ? Buffer.write_next : Buffer.write))(
