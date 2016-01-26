@@ -747,10 +747,9 @@ static ssize_t buffer_send(struct Server* server,
     }
   }
 
-  if (move ? (urgent ? Buffer.write_move_next : Buffer.write_move)(
-                 server->buffer_map[sockfd], data, len)
-           : (urgent ? Buffer.write_move : Buffer.write)(
-                 server->buffer_map[sockfd], data, len)) {
+  if ((move ? (urgent ? Buffer.write_move_next : Buffer.write_move)
+            : (urgent ? Buffer.write_next : Buffer.write))(
+          server->buffer_map[sockfd], data, len)) {
     Buffer.flush(server->buffer_map[sockfd], sockfd);
     return 0;
   }
