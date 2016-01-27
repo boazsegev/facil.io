@@ -264,6 +264,7 @@ size_t buffer_pending(struct Buffer* buffer) {
 const struct BufferClass Buffer = {
     .new = new_buffer,
     .destroy = (void (*)(void*))destroy_buffer,
+    .clear = (void (*)(void*))clear_buffer,
     .write = (size_t (*)(void*, void*, size_t))buffer_copy,
     .write_move = (size_t (*)(void*, void*, size_t))buffer_move,
     .write_next = (size_t (*)(void*, void*, size_t))buffer_next,
