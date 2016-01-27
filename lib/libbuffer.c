@@ -8,7 +8,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <stdio.h>
 #include <errno.h>
 ///////////////////
 // The buffer class ID
@@ -185,6 +184,7 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
     return -1;
   struct Packet* to_free;
   pthread_mutex_lock(&buffer->lock);
+start_flush:
   // no packets to send
   if (!buffer->packet) {
     pthread_mutex_unlock(&buffer->lock);
@@ -201,12 +201,40 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
   }
   // a Packet with data but no length is a FILE * to be sent
   if (!buffer->packet->length) {
-    // read X bytes
-    // pack data in packet
-    // insert packet **before** this one
-    // if EOF, remove this packet.
-    // clear mutex?
-    // restart `flash` (goto beginning)
+    // allocate buffer of 65,536 Bytes
+    struct Packet* np = malloc(sizeof(struct Packet));
+    if (!np)
+      goto skip_file;
+    np->data = malloc(65536);
+    if (!np->data) {
+      free(np);
+      goto skip_file;
+    }
+    size_t read_len = fread(np->data, 1, 65536, (FILE*)buffer->packet->data);
+    if (read_len <= 0) {
+      free(np->data);
+      free(np);
+      goto skip_file;
+    }
+    np->length = read_len;
+    // insert the new packet (np) before the file packet and switch references
+    np->next = buffer->packet;
+    buffer->packet = np;
+    if (feof((FILE*)buffer->packet->next->data)) {
+      // we have reached the end of the file...
+      // np will now hold the file packet
+      np = buffer->packet->next;
+      // we remove the file packet from the chain
+      buffer->packet->next = np->next;
+      // we free the file packet
+      free_packet(np);
+    }
+    goto start_flush;
+  skip_file:
+    np = buffer->packet;
+    buffer->packet = buffer->packet->next;
+    free_packet(np);
+    goto start_flush;
   }
   ssize_t sent = write(fd, buffer->packet->data + buffer->sent,
                        buffer->packet->length - buffer->sent);
@@ -230,6 +258,12 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
   }
   pthread_mutex_unlock(&buffer->lock);
   return sent;
+}
+
+static void buffer_sendfile(struct Buffer* buffer, FILE* file) {
+  if (!is_buffer(buffer))
+    return;
+  buffer_move(buffer, file, 0);
 }
 
 static void buffer_close_w_d(struct Buffer* buffer, int fd) {
@@ -269,6 +303,7 @@ const struct BufferClass Buffer = {
     .new = new_buffer,
     .destroy = (void (*)(void*))destroy_buffer,
     .clear = (void (*)(void*))clear_buffer,
+    .sendfile = (void (*)(void*, FILE*))buffer_sendfile,
     .write = (size_t (*)(void*, void*, size_t))buffer_copy,
     .write_move = (size_t (*)(void*, void*, size_t))buffer_move,
     .write_next = (size_t (*)(void*, void*, size_t))buffer_next,

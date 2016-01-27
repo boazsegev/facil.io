@@ -8,6 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define LIB_BUFFER_H
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <sys/types.h>
 
 /************************************************/ /**
@@ -53,6 +54,7 @@ extern const struct BufferClass {
   void (*destroy)(void* buffer);
   void (*clear)(void* buffer);
   ssize_t (*flush)(void* buffer, int fd);
+  void (*sendfile)(void* buffer, FILE* file);
   size_t (*write)(void* buffer, void* data, size_t length);
   size_t (*write_move)(void* buffer, void* data, size_t length);
   size_t (*write_next)(void* buffer, void* data, size_t length);
