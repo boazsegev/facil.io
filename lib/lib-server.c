@@ -753,7 +753,6 @@ static ssize_t buffer_send(struct Server* server,
   //     return snt;
   //   }
   // }
-
   if ((move ? (urgent ? Buffer.write_move_next : Buffer.write_move)
             : (urgent ? Buffer.write_next : Buffer.write))(
           server->buffer_map[sockfd], data, len) == len) {
