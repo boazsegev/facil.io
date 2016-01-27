@@ -116,7 +116,7 @@ static size_t buffer_move(struct Buffer* buffer, void* data, size_t length) {
 // takes data, copies it and pushes it into the buffer
 static size_t buffer_copy(struct Buffer* buffer, void* data, size_t length) {
   void* cpy = NULL;
-  if (data) {
+  if (data && length) {
     cpy = malloc(length);
     if (!cpy)
       return 0;
@@ -137,12 +137,16 @@ static size_t buffer_next_logic(struct Buffer* buffer,
                                 char copy) {
   if (!is_buffer(buffer))
     return 0;
-  struct Packet* np = (copy ? malloc(sizeof(struct Packet) + length)
-                            : malloc(sizeof(struct Packet)));
+  struct Packet* np = malloc(sizeof(struct Packet));
   if (!np)
     return 0;
+
   if (copy) {
-    np->data = np + sizeof(struct Packet);
+    np->data = malloc(length);
+    if (!np->data) {
+      free(np);
+      return 0;
+    }
     memcpy(np->data, data, length);
   } else {
     np->data = data;

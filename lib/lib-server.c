@@ -758,7 +758,7 @@ static ssize_t buffer_send(struct Server* server,
             : (urgent ? Buffer.write_next : Buffer.write))(
           server->buffer_map[sockfd], data, len) == len) {
     Buffer.flush(server->buffer_map[sockfd], sockfd);
-    return len;
+    return 0;
   }
   fprintf(stderr, "couldn't write to the buffer on address %p...\n",
           server->buffer_map[sockfd]);
