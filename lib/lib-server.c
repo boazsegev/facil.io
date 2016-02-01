@@ -583,6 +583,27 @@ static int server_connect(struct Server* self,
 ////////////////////////////////////////////////////////////////////////////////
 // Connection tasks (implementing `each`)
 
+// perform a blocking task on each connection
+static long each_block(struct Server* server,
+                       char* service,
+                       void (*task)(struct Server* server, int fd, void* arg),
+                       void* arg) {
+  int c = 0;
+  for (long i = 0; i < server->capacity; i++) {
+    if (server->protocol_map[i]  // there is a protocol
+        && (                     // one of the following must apply
+               !service          // there's no service name required
+               ||                // or
+               (server->protocol_map[i]->service &&  // there is a name that
+                !strcmp(service, server->protocol_map[i]->service))  // matches
+               )) {
+      c++;
+      task(server, i, arg);
+    }
+  }
+  return c;
+}
+
 // perform a task on each existing connection for a specific protocol
 // the data-type for async messages
 struct ConnTask {
@@ -607,51 +628,41 @@ static void perform_each_task(struct ConnTask* task) {
   Async.run(task->server->async, (void (*)(void*))perform_each_task, task);
   return;
 }
+
+// schedules a task for async performance
+void make_a_task_async(struct Server* server, int fd, void* arg) {
+  if (server->async) {
+    struct ConnTask* task = malloc(sizeof(struct ConnTask));
+    if (!task)
+      return;
+    memcpy(task, arg, sizeof(struct ConnTask));
+    task->fd = fd;
+    Async.run(server->async, (void (*)(void*))perform_each_task, task);
+  } else {
+    struct ConnTask* task = arg;
+    task->task(server, fd, task->arg);
+  }
+}
 // the message scheduler (async) / performer (single-thread)
 static long each(struct Server* server,
                  char* service,
                  void (*task)(struct Server* server, int fd, void* arg),
                  void* arg) {
-  int c = 0;
-  struct ConnTask* msg;
-  for (long i = 0; i < server->capacity; i++) {
-    if (server->protocol_map[i]  // there is a protocol
-        && (                     // one of the following must apply
-               !service          // there's no service name required
-               ||                // or
-               (server->protocol_map[i]->service &&  // there is a name that
-                !strcmp(service, server->protocol_map[i]->service))  // matches
-               )) {
-      c++;
-      if (server->async) {
-        if (!(msg = malloc(sizeof(struct ConnTask))))
-          return -1;
-        *msg = (struct ConnTask){
-            .server = server, .task = task, .arg = arg, .fd = i};
-        Async.run(server->async, (void (*)(void*))perform_each_task, task);
-      } else {
-        task(server, i, arg);
-      }
-    }
-  }
-  return c;
+  struct ConnTask msg = {
+      .server = server, .task = task, .arg = arg,
+  };
+  return each_block(server, service, make_a_task_async, &msg);
 }
 
 static int fd_task(struct Server* server,
                    int sockfd,
                    void (*task)(struct Server* server, int fd, void* arg),
                    void* arg) {
-  struct ConnTask* msg;
   if (server->protocol_map[sockfd]) {
-    if (server->async) {
-      if (!(msg = malloc(sizeof(struct ConnTask))))
-        return -1;
-      *msg = (struct ConnTask){
-          .server = server, .task = task, .arg = arg, .fd = sockfd};
-      Async.run(server->async, (void (*)(void*))perform_each_task, msg);
-    } else {
-      task(server, sockfd, arg);
-    }
+    struct ConnTask msg = {
+        .server = server, .task = task, .arg = arg,
+    };
+    make_a_task_async(server, sockfd, &msg);
     return 0;
   }
   return -1;
@@ -908,6 +919,7 @@ const struct ServerClass Server = {
     .close = buffer_close,
     .count = count,
     .each = each,
+    .each_block = each_block,
     .fd_task = fd_task,
 };
 

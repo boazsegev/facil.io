@@ -143,6 +143,12 @@ extern const struct ServerClass {
                char* service,
                void (*task)(struct Server* server, int fd, void* arg),
                void* arg);
+  // schedules a specific task to run for each connection, in a blocking manner.
+  // a NULL service identifier == all connections (all protocols).
+  long (*each_block)(struct Server* server,
+                     char* service,
+                     void (*task)(struct Server* server, int fd, void* arg),
+                     void* arg);
   // schedules a specific task to run asyncronously for a specific connection.
   // a NULL service identifier == all connections (all protocols).
   //
