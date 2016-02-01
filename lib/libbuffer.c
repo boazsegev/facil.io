@@ -156,12 +156,15 @@ static size_t buffer_next_logic(struct Buffer* buffer,
   struct Packet** pos = &buffer->packet;
   // if the next packet's length is 0, it is a file packet.
   // file packets insert packets before themselves... so we must wait.
-  if (buffer->packet->next && !buffer->packet->next->length)
+  if (buffer->packet && buffer->packet->next && !buffer->packet->next->length)
     pos = &buffer->packet->next->next;
   // never interrupt a packet in the middle.
   else if (buffer->sent && buffer->packet)
     pos = &buffer->packet->next;
-  np->next = (*pos)->next;
+  if (*pos)
+    np->next = (*pos)->next;
+  else
+    np->next = 0;
   (*pos) = np;
   pthread_mutex_unlock(&buffer->lock);
   return length;
