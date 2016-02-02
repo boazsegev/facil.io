@@ -247,6 +247,18 @@ extern const struct ServerClass {
                                int sockfd,
                                void* data,
                                size_t len);
+  // Copies & writes data to the socket, managing an asyncronous buffer if
+  // needed.
+  //
+  // Copy is only performed if a buffer is needed.
+  //
+  // returns 0 on success. success means that the data is in a buffer waiting to
+  // be written. If the socket is closed at this point, the buffer will be
+  // destroyed (never sent).
+  //
+  // on error, returns either -1 (closed socket or socket error) or the number
+  // of bytes actually sent (unable to initialize a buffer).
+  int (*sendfile)(struct Server* server, int sockfd, FILE* file);
   // closes the connection. If any data is waiting to be written, close will
   // return immediately and the connection will only be closed once all the data
   // was sent.

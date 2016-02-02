@@ -263,10 +263,10 @@ start_flush:
   return sent;
 }
 
-static void buffer_sendfile(struct Buffer* buffer, FILE* file) {
+static int buffer_sendfile(struct Buffer* buffer, FILE* file) {
   if (!is_buffer(buffer))
-    return;
-  buffer_move(buffer, file, 0);
+    return -1;
+  return buffer_move(buffer, file, 0);
 }
 
 static void buffer_close_w_d(struct Buffer* buffer, int fd) {
@@ -306,7 +306,7 @@ const struct BufferClass Buffer = {
     .new = new_buffer,
     .destroy = (void (*)(void*))destroy_buffer,
     .clear = (void (*)(void*))clear_buffer,
-    .sendfile = (void (*)(void*, FILE*))buffer_sendfile,
+    .sendfile = (int (*)(void*, FILE*))buffer_sendfile,
     .write = (size_t (*)(void*, void*, size_t))buffer_copy,
     .write_move = (size_t (*)(void*, void*, size_t))buffer_move,
     .write_next = (size_t (*)(void*, void*, size_t))buffer_next,

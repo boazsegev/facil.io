@@ -735,11 +735,11 @@ static ssize_t buffer_send(struct Server* server,
                            size_t len,
                            char move,
                            char urgent) {
-  ssize_t snt = -1;
   // reset timeout
   server->idle[sockfd] = 0;
   // // try to avoid the buffer if we can... - is this safe (too many
   // assumptions)?
+  // ssize_t snt = -1;
   // if (!server->buffer_map[sockfd]) {
   //   ssize_t snt = send(sockfd, data, len, 0);
   //   // sending failed with a socket error
@@ -765,6 +765,11 @@ static ssize_t buffer_send(struct Server* server,
   //     return snt;
   //   }
   // }
+
+  // // creating a buffer now might expose us to race conditions
+  // if (!server->buffer_map[sockfd]) server->buffer_map[sockfd] =
+  // Buffer.new(0);
+
   if ((move ? (urgent ? Buffer.write_move_next : Buffer.write_move)
             : (urgent ? Buffer.write_next : Buffer.write))(
           server->buffer_map[sockfd], data, len) == len) {
@@ -773,7 +778,7 @@ static ssize_t buffer_send(struct Server* server,
   }
   fprintf(stderr, "couldn't write to the buffer on address %p...\n",
           server->buffer_map[sockfd]);
-  return snt;
+  return -1;
 }
 
 static ssize_t buffer_write(struct Server* server,
@@ -799,6 +804,10 @@ static ssize_t buffer_write_urgent_move(struct Server* server,
                                         void* data,
                                         size_t len) {
   return buffer_send(server, sockfd, data, len, 1, 1);
+}
+
+static int buffer_sendfile(struct Server* server, int sockfd, FILE* file) {
+  return Buffer.sendfile(server->buffer_map[sockfd], file);
 }
 
 static void buffer_close(struct Server* server, int sockfd) {
@@ -917,6 +926,7 @@ const struct ServerClass Server = {
     .write_move = buffer_move,
     .write_urgent = buffer_write_urgent,
     .write_move_urgent = buffer_write_urgent_move,
+    .sendfile = buffer_sendfile,
     .close = buffer_close,
     .count = count,
     .each = each,
