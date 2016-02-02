@@ -413,6 +413,7 @@ static int server_listen(struct ServerSettings settings) {
     busy[i] = 0;
     tout[i] = 0;
     idle[i] = 0;
+    udata_map[i] = 0;
     // buffer_map[i] = 0;
     buffer_map[i] = Buffer.new(0);
   }
