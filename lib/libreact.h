@@ -9,6 +9,10 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #define LIBREACT_VERSION 0.1.0
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <sys/time.h>
 #include <sys/types.h>
 

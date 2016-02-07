@@ -222,7 +222,7 @@ int reactor_start(struct ReactorSettings* reactor) {
   }
   if (reactor->event_per_cycle <= 0) {
     int* changer = (int*)&reactor->event_per_cycle;
-    *changer = 64;
+    *changer = 128;
   }
   if (reactor->last <= 0) {
     int* changer = (int*)&reactor->last;
