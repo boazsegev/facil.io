@@ -170,6 +170,10 @@ extern const struct ServerClass {
   /** Creates a system timer (at the cost of 1 file descriptor) and pushes the
   timer to the reactor. The task will NOT repeat. Returns -1 on error or the
   new file descriptor on succeess.
+
+  NOTICE: Do NOT create timers from within the on_close callback, as this might
+  block resources from being properly freed (if the timer and the on_close
+  object share the same fd number).
   */
   int (*run_after)(struct Server* self,
                    long milliseconds,
@@ -179,6 +183,10 @@ extern const struct ServerClass {
   timer to the reactor. The task will repeat `repetitions` times. if
   `repetitions` is set to 0, task will repeat forever. Returns -1 on error
   or the new file descriptor on succeess.
+
+  NOTICE: Do NOT create timers from within the on_close callback, as this might
+  block resources from being properly freed (if the timer and the on_close
+  object share the same fd number).
   */
   int (*run_every)(struct Server* self,
                    long milliseconds,
@@ -281,6 +289,7 @@ extern const struct ServerClass {
   This method will block until all the data in the buffer is sent before
   releasing control of the socket. */
   int (*hijack)(struct Server* server, int sockfd);
+  // TODO: implement `attach` (un-hijack)
 } Server;
 
 #endif

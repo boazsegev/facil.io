@@ -151,7 +151,7 @@ static struct TimerProtocol* TimerProtocol(void* task,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// The busy flag is used to make sure that a single connection dosn't perform
+// The busy flag is used to make sure that a single connection doesn't perform
 // two "critical" tasks at the same time. Critical tasks are defined as the
 // `on_message` callback and any user task requested by `each` or `fd_task`.
 
@@ -223,17 +223,27 @@ static void on_shutdown(struct ReactorSettings* reactor, int fd) {
 // called when a file descriptor was closed (either locally or by the other
 // party, when it's a socket or a pipe).
 static void on_close(struct ReactorSettings* reactor, int fd) {
+  // file descriptors can be added from external threads (i.e. creating timers),
+  // this could cause race conditions and data corruption,
+  // (i.e., when on_close is releasing memory).
+  static pthread_mutex_t locker = PTHREAD_MUTEX_INITIALIZER;
+  int lck = 0;
+  if ((lck = pthread_mutex_trylock(&locker))) {
+    if (lck != EAGAIN)
+      return;
+    pthread_mutex_lock(&locker);
+  }
   if (_protocol_(reactor, fd)) {
     if (_protocol_(reactor, fd)->on_close)
       _protocol_(reactor, fd)->on_close(_server_(reactor), fd);
     _protocol_(reactor, fd) = 0;
     _server_(reactor)->tout[fd] = 0;
-  }
-  // we can keep the buffer on standby for the connection... but we won't
-  if (_server_(reactor)->buffer_map[fd]) {
-    Buffer.clear(_server_(reactor)->buffer_map[fd]);
+    // we keep the buffer on standby for the nex connection...
+    if (_server_(reactor)->buffer_map[fd])
+      Buffer.clear(_server_(reactor)->buffer_map[fd]);
     // _server_(reactor)->buffer_map[fd] = 0;
   }
+  pthread_mutex_unlock(&locker);
 }
 
 static void async_on_data(struct Server** p_server) {
@@ -691,8 +701,7 @@ static int run_every(struct Server* self,
       (struct Protocol*)TimerProtocol(task, arg, repetitions);
   if (self->reactor.add_as_timer(&self->reactor, tfd, milliseconds) < 0) {
     close(tfd);
-    self->protocol_map[tfd]->on_close(self, tfd);
-    self->protocol_map[tfd] = 0;
+    // on_close will be called by the server to free the resources - don't race
     return -1;
   };
   return 0;
