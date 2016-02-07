@@ -720,10 +720,10 @@ static ssize_t read_data(int fd, void* buffer, size_t max_len) {
     return read;
   } else {
     if (read && (errno & (EWOULDBLOCK | EAGAIN)))
-      return -1;
+      return 0;
   }
   close(fd);
-  return 0;
+  return -1;
 }
 
 // sends data to the socket, managing an async-write buffer if needed
