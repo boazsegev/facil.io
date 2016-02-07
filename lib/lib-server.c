@@ -215,11 +215,9 @@ static void manage_timeout(struct ReactorSettings* reactor) {
 
 /// called for any open file descriptors when the reactor is shutting down.
 static void on_shutdown(struct ReactorSettings* reactor, int fd) {
-  // call all callbacks for active connections.
-  for (long i = 0; i <= reactor->last; i++) {
-    if (_protocol_(reactor, i) && _protocol_(reactor, i)->on_shutdown)
-      _protocol_(reactor, i)->on_shutdown(_server_(reactor), i);
-  }
+  // call the callback for the mentioned active(?) connection.
+  if (_protocol_(reactor, fd) && _protocol_(reactor, fd)->on_shutdown)
+    _protocol_(reactor, fd)->on_shutdown(_server_(reactor), fd);
 }
 
 // called when a file descriptor was closed (either locally or by the other
@@ -816,6 +814,20 @@ static void buffer_close(struct Server* server, int sockfd) {
       : close(sockfd);
 }
 
+static int server_hijack(struct Server* server, int sockfd) {
+  if (server->buffer_map[sockfd]) {
+    // make sure to finish sending all the data, as no more `on_ready` events
+    // will occur
+    while (!Buffer.empty(server->buffer_map[sockfd]) &&
+           Buffer.flush(server->buffer_map[sockfd], sockfd) >= 0)
+      ;
+    Buffer.clear(server->buffer_map[sockfd]);
+  }
+  server->protocol_map[sockfd] = NULL;
+  server->tout[sockfd] = 0;
+  return server->reactor.hijack(&server->reactor, sockfd);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // stopping and signal managment
 
@@ -928,6 +940,7 @@ const struct ServerClass Server = {
     .write_move_urgent = buffer_write_urgent_move,
     .sendfile = buffer_sendfile,
     .close = buffer_close,
+    .hijack = server_hijack,
     .count = count,
     .each = each,
     .each_block = each_block,

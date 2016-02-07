@@ -129,7 +129,7 @@ static size_t buffer_copy(struct Buffer* buffer, void* data, size_t length) {
   return length;
 }
 
-// urgen buffer logic
+// urgent buffer logic
 static size_t buffer_next_logic(struct Buffer* buffer,
                                 void* data,
                                 size_t length,
@@ -186,6 +186,7 @@ static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
   if (!is_buffer(buffer))
     return -1;
   struct Packet* to_free;
+  ssize_t sent = 0;
   pthread_mutex_lock(&buffer->lock);
 start_flush:
   // no packets to send
@@ -195,12 +196,8 @@ start_flush:
   }
   // a NULL packet (data is NULL) means: "Close the connection"
   if (!buffer->packet->data) {
-    to_free = buffer->packet;
-    buffer->packet = buffer->packet->next;
-    pthread_mutex_unlock(&buffer->lock);
     close(fd);
-    free_packet(to_free);
-    return 0;
+    goto clear_buffer;
   }
   // a Packet with data but no length is a FILE * to be sent
   if (!buffer->packet->length) {
@@ -239,10 +236,11 @@ start_flush:
     free_packet(np);
     goto start_flush;
   }
-  ssize_t sent = write(fd, buffer->packet->data + buffer->sent,
-                       buffer->packet->length - buffer->sent);
+  sent = write(fd, buffer->packet->data + buffer->sent,
+               buffer->packet->length - buffer->sent);
   if (sent < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
     close(fd);
+    goto clear_buffer;
   } else if (sent > 0) {
     buffer->sent += sent;
   }
@@ -254,10 +252,16 @@ start_flush:
     // a NULL packet (data is NULL) means: "Close the connection"
     if (buffer->packet && !buffer->packet->data) {
       close(fd);
-      to_free = buffer->packet;
-      buffer->packet = buffer->packet->next;
-      free_packet(to_free);
+      goto clear_buffer;
     }
+  }
+  pthread_mutex_unlock(&buffer->lock);
+  return sent;
+clear_buffer:
+  while (buffer->packet) {
+    to_free = buffer->packet;
+    buffer->packet = buffer->packet->next;
+    free_packet(to_free);
   }
   pthread_mutex_unlock(&buffer->lock);
   return sent;
@@ -277,7 +281,8 @@ static void buffer_close_w_d(struct Buffer* buffer, int fd) {
   else
     buffer_move(buffer, NULL, fd);
 }
-
+/** returns the sizes of all the pending data packets, excluding files (yet to
+ * be implemented). */
 size_t buffer_pending(struct Buffer* buffer) {
   if (!is_buffer(buffer))
     return 0;
@@ -289,7 +294,7 @@ size_t buffer_pending(struct Buffer* buffer) {
     if (p->data && p->length)
       len += p->length;
     else if (p->data)
-      NULL;  // if it's a file - can we check it's size?
+      len += 1;  // if it's a file - can we check it's size? expensive?
     else
       break;  // no need to move beyond a close connection packet.
     p = p->next;
@@ -297,6 +302,13 @@ size_t buffer_pending(struct Buffer* buffer) {
   len -= buffer->sent;
   pthread_mutex_unlock(&buffer->lock);
   return len;
+}
+
+/** returns true (1) if the buffer is empty, otherwise returns false (0). */
+char buffer_empty(struct Buffer* buffer) {
+  if (!is_buffer(buffer))
+    return 1;
+  return buffer->packet == NULL;
 }
 
 ///////////////////
@@ -314,4 +326,5 @@ const struct BufferClass Buffer = {
     .flush = (ssize_t (*)(void*, int))buffer_flush,
     .close_when_done = (void (*)(void*, int))buffer_close_w_d,
     .pending = (size_t (*)(void*))buffer_pending,
+    .empty = (char (*)(void*))buffer_empty,
 };

@@ -95,47 +95,48 @@ struct ServerSettings {
 // The Server API
 // and helper functions
 
-// The following allows access to helper functions and defines a namespace
-// for
-// the API in this library.
+/** The main `Server` variable allows access to helper functions and defines a
+namespace
+for the API in this library. */
 extern const struct ServerClass {
-  // listens to a server with the following server settings (which MUST include
-  // a default protocol).
+  /** listens to a server with the following server settings (which MUST include
+  a default protocol). */
   int (*listen)(struct ServerSettings);
-  // returns the computed capacity for any server instance on the system.
+  /// returns the computed capacity for any server instance on the system.
   long (*capacity)(void);
-  // stops a specific server, closing any open connections.
+  /// stops a specific server, closing any open connections.
   void (*stop)(struct Server* server);
-  // stops any and all server instances, closing any open connections.
+  /// stops any and all server instances, closing any open connections.
   void (*stop_all)(void);
-  // allows direct access to the reactor object. use with care.
+  /// allows direct access to the reactor object. use with care.
   struct ReactorSettings* (*reactor)(struct Server* server);
-  // allows direct access to the reactor object. use with care.
+  /// allows direct access to the reactor object. use with care.
   struct ServerSettings* (*settings)(struct Server* server);
-  // retrives the active protocol object for the requested file descriptor.
+  /// retrives the active protocol object for the requested file descriptor.
   struct Protocol* (*get_protocol)(struct Server* server, int sockfd);
-  // sets the active protocol object for the requested file descriptor.
+  /// sets the active protocol object for the requested file descriptor.
   void (*set_protocol)(struct Server* server,
                        int sockfd,
                        struct Protocol* new_protocol);
-  // retrives an opaque pointer set by `set_udata` and associated with the
-  // connection.
-  //
-  // since no new connections are expected on fd == 0..2, it's possible to store
-  // global data in these locations.
+  /** retrives an opaque pointer set by `set_udata` and associated with the
+  connection.
+
+  since no new connections are expected on fd == 0..2, it's possible to store
+  global data in these locations. */
   void* (*get_udata)(struct Server* server, int sockfd);
-  // sets the opaque pointer to be associated with the connection. returns the
-  // old pointer, if any.
+  /** sets the opaque pointer to be associated with the connection. returns the
+  old pointer, if any. */
   void* (*set_udata)(struct Server* server, int sockfd, void* udata);
-  // Connects an existing connection (fd) with the server's reactor and protocol
-  // management system, so that the server can be used also to manage connection
-  // based resources asynchronously (i.e. database resources etc').
-  //
-  // since no new connections are expected on fd == 0..2, it's possible to store
-  // global data in these locations.
+  /** Connects an existing connection (fd) with the server's reactor and
+  protocol management system, so that the server can be used also to manage
+  connection based resources asynchronously (i.e. database resources etc').
+
+  since no new connections are expected on fd == 0..2, it's possible to store
+  global data in these locations.
+  */
   int (*connect)(struct Server* server, int sockfd, struct Protocol* protocol);
-  // counts the number of connections for the specified protocol (NULL = all
-  // protocols).
+  /** counts the number of connections for the specified protocol (NULL = all
+  protocols). */
   long (*count)(struct Server* server, char* service);
   // schedules a specific task to run asyncronously for each connection.
   // a NULL service identifier == all connections (all protocols).
@@ -143,37 +144,42 @@ extern const struct ServerClass {
                char* service,
                void (*task)(struct Server* server, int fd, void* arg),
                void* arg);
-  // schedules a specific task to run for each connection, in a blocking manner.
-  // a NULL service identifier == all connections (all protocols).
+  /** schedules a specific task to run for each connection, in a blocking
+  manner. a NULL service identifier == all connections (all protocols).
+  */
   long (*each_block)(struct Server* server,
                      char* service,
                      void (*task)(struct Server* server, int fd, void* arg),
                      void* arg);
-  // schedules a specific task to run asyncronously for a specific connection.
-  // a NULL service identifier == all connections (all protocols).
-  //
-  // returns -1 on failure, 0 on success (success being scheduling or performing
-  // the task).
+  /** schedules a specific task to run asyncronously for a specific connection.
+  a NULL service identifier == all connections (all protocols).
+
+  returns -1 on failure, 0 on success (success being scheduling or performing
+  the task).
+  */
   int (*fd_task)(struct Server* server,
                  int sockfd,
                  void (*task)(struct Server* server, int fd, void* arg),
                  void* arg);
-  // Runs an asynchronous task, IF threading is enabled (set the
-  // `threads` to 1 (the default) or greater). Returns -1 on error or 0
-  // on
-  // succeess.
+  /** Runs an asynchronous task, IF threading is enabled (set the
+  `threads` to 1 (the default) or greater). Returns -1 on error or 0
+  on
+  succeess.
+  */
   int (*run_async)(struct Server* self, void (*task)(void*), void* arg);
-  // Creates a system timer (at the cost of 1 file descriptor) and pushes the
-  // timer to the reactor. The task will NOT repeat. Returns -1 on error or the
-  // new file descriptor on succeess.
+  /** Creates a system timer (at the cost of 1 file descriptor) and pushes the
+  timer to the reactor. The task will NOT repeat. Returns -1 on error or the
+  new file descriptor on succeess.
+  */
   int (*run_after)(struct Server* self,
                    long milliseconds,
                    void (*task)(void*),
                    void* arg);
-  // Creates a system timer (at the cost of 1 file descriptor) and pushes the
-  // timer to the reactor. The task will repeat `repetitions` times. if
-  // `repetitions` is set to 0, task will repeat forever. Returns -1 on error
-  // or the new file descriptor on succeess.
+  /** Creates a system timer (at the cost of 1 file descriptor) and pushes the
+  timer to the reactor. The task will repeat `repetitions` times. if
+  `repetitions` is set to 0, task will repeat forever. Returns -1 on error
+  or the new file descriptor on succeess.
+  */
   int (*run_every)(struct Server* self,
                    long milliseconds,
                    int repetitions,
@@ -182,87 +188,99 @@ extern const struct ServerClass {
 
   /// "touches" a socket, reseting it's timeout counter.
   void (*touch)(struct Server* server, int sockfd);
-  // sets the timeout limit for the specified connectionl, in seconds, up to
-  // 255 seconds (the maximum allowed timeout count).
+  /** sets the timeout limit for the specified connectionl, in seconds, up to
+  255 seconds (the maximum allowed timeout count). */
   void (*set_timeout)(struct Server* server, int sockfd, unsigned char timeout);
-  // returns true if the a specific connection's protected callback is running
-  //
-  // protected callbacks include only the `on_message` callback and tasks
-  // forwarded to the connection using the `each` function.
+  /** returns true if the a specific connection's protected callback is running
+
+  protected callbacks include only the `on_message` callback and tasks
+  forwarded to the connection using the `each` function.
+  */
   unsigned char (*is_busy)(struct Server* server, int sockfd);
 
-  // reads up to `max_len` of data from a socket. the data is stored in the
-  // `buffer` and the number of bytes received is returned. Returns -1 if no
-  // data was available. Returns 0 if an error was raised and the connection
-  // was closed.
+  /** reads up to `max_len` of data from a socket. the data is stored in the
+  `buffer` and the number of bytes received is returned. Returns -1 if no
+  data was available. Returns 0 if an error was raised and the connection
+  was closed. */
   ssize_t (*read)(int sockfd, void* buffer, size_t max_len);
 
-  // Copies & writes data to the socket, managing an asyncronous buffer if
-  // needed.
-  //
-  // Copy is only performed if a buffer is needed.
-  //
-  // returns 0 on success. success means that the data is in a buffer waiting to
-  // be written. If the socket is closed at this point, the buffer will be
-  // destroyed (never sent).
-  //
-  // on error, returns either -1 (closed socket or socket error) or the number
-  // of bytes actually sent (unable to initialize a buffer).
+  /** Copies & writes data to the socket, managing an asyncronous buffer if
+  needed.
+
+  Copy is only performed if a buffer is needed.
+
+  returns 0 on success. success means that the data is in a buffer waiting to
+  be written. If the socket is closed at this point, the buffer will be
+  destroyed (never sent).
+
+  on error, returns either -1 (closed socket or socket error) or the number
+  of bytes actually sent (unable to initialize a buffer).
+  */
   ssize_t (*write)(struct Server* server, int sockfd, void* data, size_t len);
-  // Writes data to the socket, managing an asyncronous buffer if needed.
-  //
-  // The memory is always freed once the data was written.
-  //
-  // returns 0 on success. success means that the data is in a buffer waiting to
-  // be written. If the socket is closed at this point, the buffer will be
-  // destroyed (never sent).
-  //
-  // on error, returns either -1 (closed socket or socket error) or the number
-  // of bytes actually sent (unable to initialize a buffer).
+  /** Writes data to the socket, managing an asyncronous buffer if needed.
+
+  The memory is always freed once the data was written.
+
+  returns 0 on success. success means that the data is in a buffer waiting to
+  be written. If the socket is closed at this point, the buffer will be
+  destroyed (never sent).
+
+  on error, returns either -1 (closed socket or socket error) or the number
+  of bytes actually sent (unable to initialize a buffer).
+  */
   ssize_t (*write_move)(struct Server* server,
                         int sockfd,
                         void* data,
                         size_t len);
-  // Copies & writes data to the socket, managing an asyncronous buffer if
-  // needed.
-  //
-  // Copy is only performed if a buffer is needed.
-  //
-  // If a buffer with a number of packets exists (multiple `write` calls),
-  // the data will be pushed forward as the next packet (so as not to divide)
-  // existing packets.
+  /** Copies & writes data to the socket, managing an asyncronous buffer if
+  needed.
+
+  Copy is only performed if a buffer is needed.
+
+  If a buffer with a number of packets exists (multiple `write` calls),
+  the data will be pushed forward as the next packet (so as not to divide)
+  existing packets.
+  */
   ssize_t (*write_urgent)(struct Server* server,
                           int sockfd,
                           void* data,
                           size_t len);
-  // Writes data to the socket, managing an asyncronous buffer if
-  // needed.
-  //
-  // Copy is only performed if a buffer is needed.
-  //
-  // If a buffer with a number of packets exists (multiple `write` calls),
-  // the data will be pushed forward as the next packet (so as not to divide)
-  // existing packets.
+  /** Writes data to the socket, managing an asyncronous buffer if
+  needed.
+
+  Copy is only performed if a buffer is needed.
+
+  If a buffer with a number of packets exists (multiple `write` calls),
+  the data will be pushed forward as the next packet (so as not to divide)
+  existing packets.
+  */
   ssize_t (*write_move_urgent)(struct Server* server,
                                int sockfd,
                                void* data,
                                size_t len);
-  // Copies & writes data to the socket, managing an asyncronous buffer if
-  // needed.
-  //
-  // Copy is only performed if a buffer is needed.
-  //
-  // returns 0 on success. success means that the data is in a buffer waiting to
-  // be written. If the socket is closed at this point, the buffer will be
-  // destroyed (never sent).
-  //
-  // on error, returns either -1 (closed socket or socket error) or the number
-  // of bytes actually sent (unable to initialize a buffer).
+  /** Copies & writes data to the socket, managing an asyncronous buffer if
+  needed.
+
+  Copy is only performed if a buffer is needed.
+
+  returns 0 on success. success means that the data is in a buffer waiting to
+  be written. If the socket is closed at this point, the buffer will be
+  destroyed (never sent).
+
+  on error, returns either -1 (closed socket or socket error) or the number
+  of bytes actually sent (unable to initialize a buffer).
+  */
   int (*sendfile)(struct Server* server, int sockfd, FILE* file);
-  // closes the connection. If any data is waiting to be written, close will
-  // return immediately and the connection will only be closed once all the data
-  // was sent.
+  /** closes the connection. If any data is waiting to be written, close will
+  return immediately and the connection will only be closed once all the data
+  was sent. */
   void (*close)(struct Server* server, int sockfd);
+  /** Hijack a socket (file descriptor) from the server, clearing up it's
+  resources. The control of hte socket is totally relinquished.
+
+  This method will block until all the data in the buffer is sent before
+  releasing control of the socket. */
+  int (*hijack)(struct Server* server, int sockfd);
 } Server;
 
 #endif
