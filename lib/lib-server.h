@@ -99,6 +99,8 @@ struct ServerSettings {
 namespace
 for the API in this library. */
 extern const struct ServerClass {
+  /** returns the originating process pid */
+  pid_t (*root_pid)(struct Server* server);
   /** listens to a server with the following server settings (which MUST include
   a default protocol). */
   int (*listen)(struct ServerSettings);

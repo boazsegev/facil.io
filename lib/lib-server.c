@@ -928,6 +928,10 @@ static void stop_all(void) {
   pthread_mutex_unlock(&global_lock);
 }
 
+// returns the server's root pid
+pid_t root_pid(struct Server* server) {
+  return server->root_pid;
+}
 ////////////////////////////////////////////////////////////////////////////////
 // The actual Server API access setup
 // The following allows access to helper functions and defines a namespace
@@ -962,6 +966,7 @@ const struct ServerClass Server = {
     .each = each,
     .each_block = each_block,
     .fd_task = fd_task,
+    .root_pid = root_pid,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
