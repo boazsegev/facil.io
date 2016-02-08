@@ -285,6 +285,14 @@ static void on_data(struct ReactorSettings* reactor, int fd) {
       set_non_blocking_socket(client);
 // perror("accept reg called");
 #endif
+      // handle server overload
+      if (client >= reactor->last - 1) {
+        if (_server_(reactor)->settings->busy_msg)
+          write(client, _server_(reactor)->settings->busy_msg,
+                strlen(_server_(reactor)->settings->busy_msg));
+        close(client);
+        continue;
+      }
       // close the prior protocol stream, if needed
       on_close(reactor, client);
       // setup protocol
