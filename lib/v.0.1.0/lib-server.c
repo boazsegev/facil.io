@@ -151,7 +151,7 @@ static struct TimerProtocol* TimerProtocol(void* task,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// The busy flag is used to make sure that a single connection dosn't perform
+// The busy flag is used to make sure that a single connection doesn't perform
 // two "critical" tasks at the same time. Critical tasks are defined as the
 // `on_message` callback and any user task requested by `each` or `fd_task`.
 
@@ -215,27 +215,35 @@ static void manage_timeout(struct ReactorSettings* reactor) {
 
 /// called for any open file descriptors when the reactor is shutting down.
 static void on_shutdown(struct ReactorSettings* reactor, int fd) {
-  // call all callbacks for active connections.
-  for (long i = 0; i <= reactor->last; i++) {
-    if (_protocol_(reactor, i) && _protocol_(reactor, i)->on_shutdown)
-      _protocol_(reactor, i)->on_shutdown(_server_(reactor), i);
-  }
+  // call the callback for the mentioned active(?) connection.
+  if (_protocol_(reactor, fd) && _protocol_(reactor, fd)->on_shutdown)
+    _protocol_(reactor, fd)->on_shutdown(_server_(reactor), fd);
 }
 
 // called when a file descriptor was closed (either locally or by the other
 // party, when it's a socket or a pipe).
 static void on_close(struct ReactorSettings* reactor, int fd) {
-  if (!_protocol_(reactor, fd))
-    return;
-  if (_protocol_(reactor, fd)->on_close)
-    _protocol_(reactor, fd)->on_close(_server_(reactor), fd);
-  _protocol_(reactor, fd) = 0;
-  _server_(reactor)->tout[fd] = 0;
-  // we can keep the buffer on standby for the connection... but we won't
-  if (_server_(reactor)->buffer_map[fd]) {
-    Buffer.destroy(_server_(reactor)->buffer_map[fd]);
-    _server_(reactor)->buffer_map[fd] = 0;
+  // file descriptors can be added from external threads (i.e. creating timers),
+  // this could cause race conditions and data corruption,
+  // (i.e., when on_close is releasing memory).
+  static pthread_mutex_t locker = PTHREAD_MUTEX_INITIALIZER;
+  int lck = 0;
+  if ((lck = pthread_mutex_trylock(&locker))) {
+    if (lck != EAGAIN)
+      return;
+    pthread_mutex_lock(&locker);
   }
+  if (_protocol_(reactor, fd)) {
+    if (_protocol_(reactor, fd)->on_close)
+      _protocol_(reactor, fd)->on_close(_server_(reactor), fd);
+    _protocol_(reactor, fd) = 0;
+    _server_(reactor)->tout[fd] = 0;
+    // we keep the buffer on standby for the nex connection...
+    if (_server_(reactor)->buffer_map[fd])
+      Buffer.clear(_server_(reactor)->buffer_map[fd]);
+    // _server_(reactor)->buffer_map[fd] = 0;
+  }
+  pthread_mutex_unlock(&locker);
 }
 
 static void async_on_data(struct Server** p_server) {
@@ -277,6 +285,14 @@ static void on_data(struct ReactorSettings* reactor, int fd) {
       set_non_blocking_socket(client);
 // perror("accept reg called");
 #endif
+      // handle server overload
+      if (client >= reactor->last - 1) {
+        if (_server_(reactor)->settings->busy_msg)
+          write(client, _server_(reactor)->settings->busy_msg,
+                strlen(_server_(reactor)->settings->busy_msg));
+        close(client);
+        continue;
+      }
       // close the prior protocol stream, if needed
       on_close(reactor, client);
       // setup protocol
@@ -410,10 +426,12 @@ static int server_listen(struct ServerSettings settings) {
   for (int i = 0; i < calculate_file_limit(); i++) {
     protocol_map[i] = 0;
     server_map[i] = &server;
-    buffer_map[i] = 0;
     busy[i] = 0;
     tout[i] = 0;
     idle[i] = 0;
+    udata_map[i] = 0;
+    // buffer_map[i] = 0;
+    buffer_map[i] = Buffer.new(0);
   }
 
   // setup concurrency
@@ -479,6 +497,9 @@ static int server_listen(struct ServerSettings settings) {
 
   // remove server from registry, it it's still there...
   stop_one(&server);
+  for (int i = 0; i < calculate_file_limit(); i++) {
+    Buffer.destroy(buffer_map[i]);
+  }
 
   return 0;
 }
@@ -488,6 +509,31 @@ static int server_listen(struct ServerSettings settings) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Connection data and protocol management
+
+static int server_attach(struct Server* server,
+                         int fd,
+                         struct Protocol* protocol) {
+  if (server->capacity <= fd)
+    return -1;
+  on_close(&server->reactor, fd);
+  server->protocol_map[fd] = protocol;
+  server->reactor.add(&server->reactor, fd);
+  return 0;
+}
+
+static int server_hijack(struct Server* server, int sockfd) {
+  if (server->buffer_map[sockfd]) {
+    // make sure to finish sending all the data, as no more `on_ready` events
+    // will occur
+    while (!Buffer.empty(server->buffer_map[sockfd]) &&
+           Buffer.flush(server->buffer_map[sockfd], sockfd) >= 0)
+      ;
+    Buffer.clear(server->buffer_map[sockfd]);
+  }
+  server->protocol_map[sockfd] = NULL;
+  server->tout[sockfd] = 0;
+  return server->reactor.hijack(&server->reactor, sockfd);
+}
 
 // get protocol for connection
 static struct Protocol* get_protocol(struct Server* server, int sockfd) {
@@ -579,6 +625,27 @@ static int server_connect(struct Server* self,
 ////////////////////////////////////////////////////////////////////////////////
 // Connection tasks (implementing `each`)
 
+// perform a blocking task on each connection
+static long each_block(struct Server* server,
+                       char* service,
+                       void (*task)(struct Server* server, int fd, void* arg),
+                       void* arg) {
+  int c = 0;
+  for (long i = 0; i < server->capacity; i++) {
+    if (server->protocol_map[i]  // there is a protocol
+        && (                     // one of the following must apply
+               !service          // there's no service name required
+               ||                // or
+               (server->protocol_map[i]->service &&  // there is a name that
+                !strcmp(service, server->protocol_map[i]->service))  // matches
+               )) {
+      c++;
+      task(server, i, arg);
+    }
+  }
+  return c;
+}
+
 // perform a task on each existing connection for a specific protocol
 // the data-type for async messages
 struct ConnTask {
@@ -603,51 +670,41 @@ static void perform_each_task(struct ConnTask* task) {
   Async.run(task->server->async, (void (*)(void*))perform_each_task, task);
   return;
 }
+
+// schedules a task for async performance
+void make_a_task_async(struct Server* server, int fd, void* arg) {
+  if (server->async) {
+    struct ConnTask* task = malloc(sizeof(struct ConnTask));
+    if (!task)
+      return;
+    memcpy(task, arg, sizeof(struct ConnTask));
+    task->fd = fd;
+    Async.run(server->async, (void (*)(void*))perform_each_task, task);
+  } else {
+    struct ConnTask* task = arg;
+    task->task(server, fd, task->arg);
+  }
+}
 // the message scheduler (async) / performer (single-thread)
 static long each(struct Server* server,
                  char* service,
                  void (*task)(struct Server* server, int fd, void* arg),
                  void* arg) {
-  int c = 0;
-  struct ConnTask* msg;
-  for (long i = 0; i < server->capacity; i++) {
-    if (server->protocol_map[i]  // there is a protocol
-        && (                     // one of the following must apply
-               !service          // there's no service name required
-               ||                // or
-               (server->protocol_map[i]->service &&  // there is a name that
-                !strcmp(service, server->protocol_map[i]->service))  // matches
-               )) {
-      c++;
-      if (server->async) {
-        if (!(msg = malloc(sizeof(struct ConnTask))))
-          return -1;
-        *msg = (struct ConnTask){
-            .server = server, .task = task, .arg = arg, .fd = i};
-        Async.run(server->async, (void (*)(void*))perform_each_task, task);
-      } else {
-        task(server, i, arg);
-      }
-    }
-  }
-  return c;
+  struct ConnTask msg = {
+      .server = server, .task = task, .arg = arg,
+  };
+  return each_block(server, service, make_a_task_async, &msg);
 }
 
 static int fd_task(struct Server* server,
                    int sockfd,
                    void (*task)(struct Server* server, int fd, void* arg),
                    void* arg) {
-  struct ConnTask* msg;
   if (server->protocol_map[sockfd]) {
-    if (server->async) {
-      if (!(msg = malloc(sizeof(struct ConnTask))))
-        return -1;
-      *msg = (struct ConnTask){
-          .server = server, .task = task, .arg = arg, .fd = sockfd};
-      Async.run(server->async, (void (*)(void*))perform_each_task, msg);
-    } else {
-      task(server, sockfd, arg);
-    }
+    struct ConnTask msg = {
+        .server = server, .task = task, .arg = arg,
+    };
+    make_a_task_async(server, sockfd, &msg);
     return 0;
   }
   return -1;
@@ -677,8 +734,7 @@ static int run_every(struct Server* self,
       (struct Protocol*)TimerProtocol(task, arg, repetitions);
   if (self->reactor.add_as_timer(&self->reactor, tfd, milliseconds) < 0) {
     close(tfd);
-    self->protocol_map[tfd]->on_close(self, tfd);
-    self->protocol_map[tfd] = 0;
+    // on_close will be called by the server to free the resources - don't race
     return -1;
   };
   return 0;
@@ -706,10 +762,10 @@ static ssize_t read_data(int fd, void* buffer, size_t max_len) {
     return read;
   } else {
     if (read && (errno & (EWOULDBLOCK | EAGAIN)))
-      return -1;
+      return 0;
   }
   close(fd);
-  return 0;
+  return -1;
 }
 
 // sends data to the socket, managing an async-write buffer if needed
@@ -719,45 +775,50 @@ static ssize_t buffer_send(struct Server* server,
                            size_t len,
                            char move,
                            char urgent) {
-  ssize_t snt = -1;
   // reset timeout
   server->idle[sockfd] = 0;
-  // try to avoid the buffer if we can... - is this safe?
-  if (!server->buffer_map[sockfd]) {
-    ssize_t snt = send(sockfd, data, len, 0);
-    // sending failed with a socket error
-    if (snt < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
-      if (move && data)
-        free(data);
-      close(sockfd);
-      return -1;
-    }
-    // no need for a buffer.
-    if (snt == len) {
-      if (move && data)
-        free(data);
-      return 0;
-    }
-    server->buffer_map[sockfd] = Buffer.new(snt > 0 ? snt : 0);
-    if (!server->buffer_map[sockfd]) {
-      fprintf(stderr,
-              "Couldn't initiate a buffer object for conection no. %d\n",
-              sockfd);
-      if (move && data)
-        free(data);
-      return snt;
-    }
-  }
+  // // try to avoid the buffer if we can... - is this safe (too many
+  // assumptions)?
+  // ssize_t snt = -1;
+  // if (!server->buffer_map[sockfd]) {
+  //   ssize_t snt = send(sockfd, data, len, 0);
+  //   // sending failed with a socket error
+  //   if (snt < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
+  //     if (move && data)
+  //       free(data);
+  //     close(sockfd);
+  //     return -1;
+  //   }
+  //   // no need for a buffer.
+  //   if (snt == len) {
+  //     if (move && data)
+  //       free(data);
+  //     return 0;
+  //   }
+  //   server->buffer_map[sockfd] = Buffer.new(snt > 0 ? snt : 0);
+  //   if (!server->buffer_map[sockfd]) {
+  //     fprintf(stderr,
+  //             "Couldn't initiate a buffer object for conection no. %d\n",
+  //             sockfd);
+  //     if (move && data)
+  //       free(data);
+  //     return snt;
+  //   }
+  // }
+
+  // // creating a buffer now might expose us to race conditions
+  // if (!server->buffer_map[sockfd]) server->buffer_map[sockfd] =
+  // Buffer.new(0);
 
   if ((move ? (urgent ? Buffer.write_move_next : Buffer.write_move)
             : (urgent ? Buffer.write_next : Buffer.write))(
-          server->buffer_map[sockfd], data, len)) {
+          server->buffer_map[sockfd], data, len) == len) {
     Buffer.flush(server->buffer_map[sockfd], sockfd);
     return 0;
   }
   fprintf(stderr, "couldn't write to the buffer on address %p...\n",
           server->buffer_map[sockfd]);
-  return snt;
+  return -1;
 }
 
 static ssize_t buffer_write(struct Server* server,
@@ -783,6 +844,10 @@ static ssize_t buffer_write_urgent_move(struct Server* server,
                                         void* data,
                                         size_t len) {
   return buffer_send(server, sockfd, data, len, 1, 1);
+}
+
+static int buffer_sendfile(struct Server* server, int sockfd, FILE* file) {
+  return Buffer.sendfile(server->buffer_map[sockfd], file);
 }
 
 static void buffer_close(struct Server* server, int sockfd) {
@@ -874,6 +939,10 @@ static void stop_all(void) {
   pthread_mutex_unlock(&global_lock);
 }
 
+// returns the server's root pid
+pid_t root_pid(struct Server* server) {
+  return server->root_pid;
+}
 ////////////////////////////////////////////////////////////////////////////////
 // The actual Server API access setup
 // The following allows access to helper functions and defines a namespace
@@ -901,10 +970,15 @@ const struct ServerClass Server = {
     .write_move = buffer_move,
     .write_urgent = buffer_write_urgent,
     .write_move_urgent = buffer_write_urgent_move,
+    .sendfile = buffer_sendfile,
     .close = buffer_close,
+    .hijack = server_hijack,
+    .attach = server_connect,
     .count = count,
     .each = each,
+    .each_block = each_block,
     .fd_task = fd_task,
+    .root_pid = root_pid,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1055,6 +1129,8 @@ static long calculate_file_limit(void) {
   // (http://www.metabrew.com/article/a-million-user-comet-application-with-mochiweb-part-3)
   // 10,000 connections == 16*1024*10000 == +- 160Mb? seems a tight fit...
   // i.e. the Http request buffer is 8Kb... maybe 24Kb is a better minimum?
+  // Some per connection heap allocated data (i.e. 88 bytes per user-land
+  // buffer) also matters.
   getrlimit(RLIMIT_DATA, &rlim);
   if (flim > rlim.rlim_cur / (24 * 1024)) {
     printf(

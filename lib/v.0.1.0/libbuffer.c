@@ -239,7 +239,8 @@ start_flush:
   sent = write(fd, buffer->packet->data + buffer->sent,
                buffer->packet->length - buffer->sent);
   if (sent < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
-    return -1;
+    close(fd);
+    goto clear_buffer;
   } else if (sent > 0) {
     buffer->sent += sent;
   }

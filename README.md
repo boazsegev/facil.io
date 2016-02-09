@@ -64,7 +64,7 @@ When using [`libevent`](http://libevent.org) or [`libev`](http://software.schmor
 
 Since I mentioned `libevent` or `libev`, I should point out that even a simple inspection shows that these are amazing and well tested libraries (how did they make those nice benchmark graphs?!)... but I hated their API (or documentation).
 
-It seems to me, that since both `libevent` and `libev` are so general targeted, they end up having too many options and functions... I, on the other hand, am a fan of well designed abstractions, even at the price of control. I mean, you're writing a server that should handle 100K concurrent connections - do you really need to manage the socket polling timeouts ("ticks")?! Are you really expecting more than a second to pass with no events?
+It seems to me, that since both `libevent` and `libev` are so all-encompassing, they end up having too many options and functions... I, on the other hand, am a fan of well designed abstractions, even at the price of control. I mean, you're writing a server that should handle 100K concurrent connections - do you really need to manage the socket polling timeouts ("ticks")?! Are you really expecting more than a second to pass with no events?
 
 P.S.
 
@@ -88,7 +88,7 @@ Writing server code is fun... but in limited and controlled amounts... after all
 
 `lib-server` is aimed at writing unix based (linux/BSD) servers. It uses `libreact` as the reactor, `libasync` to handle some tasks (the `on_data` callback will be performed asynchronously) and `libbuffer` for easily writing data asynchronously.
 
-`lib-server` might not be optimized to your liking, but it's all working great for me. Besides, it's less than 1000 lines of heavily commented code, easy to edit and tweak. To offer some comparison, `ev.c` from `libev` has ~5000 lines (and there's no server just yet)...
+`lib-server` might not be optimized to your liking, but it's all working great for me. Besides, it's code is heavily commented code, easy to edit and tweak. To offer some comparison, `ev.c` from `libev` has ~5000 lines (and there's no server just yet, while `libreact` is less then 400 lines)...
 
 Using `lib-server` is super simple to use. It's based on Protocol structure and callbacks, so that we can dynamically change protocols and support stuff like HTTP upgrade requests. Here's a simple example:
 

@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIBASYNC_H
 #define LIBASYNC_H
 
-#define LIBASYNC_VERSION 0.1.2
+#define LIBASYNC_VERSION 0.1.0
 
 // defines the type async_p (async pointer).
 // the structure is defined to contain the thread pool's internal data as well
