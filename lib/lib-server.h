@@ -13,6 +13,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "libreact.h"
 #include "libasync.h"
 #include "libbuffer.h"
+#include <unistd.h>
 
 /////////////////
 // General info

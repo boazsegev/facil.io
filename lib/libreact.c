@@ -192,7 +192,7 @@ static struct timespec _reactor_timeout = {
 
 #define _CRAETE_QUEUE_ kqueue()
 #define _EVENT_TYPE_ struct kevent
-#define _EVENTS_ ((_EVENT_TYPE_*)reactor->private.events)
+#define _EVENTS_ ((_EVENT_TYPE_*)(reactor->private.events))
 #define _WAIT_FOR_EVENTS_                                                    \
   kevent(reactor->private.reactor_fd, NULL, 0, _EVENTS_, REACTOR_MAX_EVENTS, \
          &_reactor_timeout);
@@ -283,9 +283,6 @@ int reactor_review(struct Reactor* reactor) {
 
   // set the last tick
   time(&reactor->last_tick);
-  // will be used to get the actual events in the
-  // current queue cycle
-  int active_count = 0;
 
   // // review locally closed connections (do we do this?)
   // int close_events = 0;
@@ -297,8 +294,9 @@ int reactor_review(struct Reactor* reactor) {
   //     }
   //   }
   // }
+
   // wait for events and handle them
-  active_count = _WAIT_FOR_EVENTS_;
+  int active_count = _WAIT_FOR_EVENTS_;
   if (active_count > 0) {
     for (int i = 0; i < active_count; i++) {
       if (_EVENTERROR_(i)) {
@@ -317,7 +315,7 @@ int reactor_review(struct Reactor* reactor) {
       }
     }  // end for loop
   } else if (active_count < 0) {
-    // perror("closing reactor");
+    // perror("Please close the reactor, it's dying...");
     return -1;
   }
   return active_count;  // + close_events;

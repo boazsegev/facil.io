@@ -44,6 +44,116 @@ Here are the supported events and their callbacks:
       - Reactor Exit (`on_shutdown` callback - will be called before the file
 descriptor is closed and an `on_close` callback is fired).
 
+Here's a quick example for an HTTP hellow world (no HTTP parsing required)...
+most of the code is the damn socket binding...:
+
+      #include "libreact.h"
+      // we're writing a small server, many included files...
+      #include <sys/socket.h>
+      #include <sys/types.h>
+      #include <netdb.h>
+      #include <string.h>
+      #include <fcntl.h>
+      #include <stdio.h>
+      #include <unistd.h>
+      #include <signal.h>
+      #include <errno.h>
+
+      // this will accept connections, it will be a simple HTTP hello world.
+      // (with keep alive)
+      void on_data(struct Reactor* reactor, int fd);
+
+      // to make it simple, we'll have a global object for 1024 connections.
+      struct Reactor r = {.on_data = on_data, .maxfd = 1024};
+      int srvfd;
+      // this will handle the exit signal (^C).
+      void on_sigint(int sig);
+
+      int main(int argc, char const* argv[]) {
+        printf("starting up an http hello world example on port 3000\n");
+        // setup the exit signal
+        signal(SIGINT, on_sigint);
+
+        // create a server socket... this will take a moment...
+        char* port = "3000";
+        // setup the address
+        struct addrinfo hints;
+        struct addrinfo* servinfo;        // will point to the results
+        memset(&hints, 0, sizeof hints);  // make sure the struct is empty
+        hints.ai_family = AF_UNSPEC;      // don't care IPv4 or IPv6
+        hints.ai_socktype = SOCK_STREAM;  // TCP stream sockets
+        hints.ai_flags = AI_PASSIVE;      // fill in my IP for me
+        if (getaddrinfo(NULL, port, &hints, &servinfo)) {
+          perror("addr err");
+          return -1;
+        }
+        // get the file descriptor
+        srvfd =
+            socket(servinfo->ai_family, servinfo->ai_socktype,
+                                        servinfo->ai_protocol);
+        if (srvfd <= 0) {
+          perror("addr err");
+          return -1;
+        }
+        // avoid the "address taken"
+        {
+          int optval = 1;
+          setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+        }
+        // bind the address to the socket
+        if (bind(srvfd, servinfo->ai_addr, servinfo->ai_addrlen) < 0) {
+          perror("bind err");
+          return -1;
+        }
+        // make sure the socket is non-blocking
+        static int flags;
+        if (-1 == (flags = fcntl(srvfd, F_GETFL, 0)))
+          flags = 0;
+        fcntl(srvfd, F_SETFL, flags | O_NONBLOCK);
+        // listen in
+        listen(srvfd, SOMAXCONN);
+        if (errno)
+          perror("starting. last error was");
+
+        // now that everything is ready, call the reactor library...
+        reactor_init(&r);
+        reactor_add(&r, srvfd);
+
+        while (reactor_review(&r) >= 0)
+          ;
+
+        if (errno)
+          perror("\nFinished. last error was");
+      }
+
+      void on_data(struct Reactor* reactor, int fd) {
+        if (fd == srvfd) {
+          // yes, this is our listening socket...
+          int client = 0;
+          unsigned int len = 0;
+          while ((client = accept(fd, NULL, &len)) > 0) {
+            reactor_add(&r, client);
+          }  // reactor is edge triggered, we need to clear the cache.
+        } else {
+          char buff[8094];
+          ssize_t len;
+          static char response[] =
+              "HTTP/1.1 200 OK\r\n"
+              "Content-Length: 12\r\n"
+              "Connection: keep-alive\r\n"
+              "Keep-Alive: timeout=2\r\n"
+              "\r\n"
+              "Hello World!\r\n";
+
+          if ((len = recv(fd, buff, 8094, 0)) > 0) {
+            len = write(fd, response, strlen(response));
+          }
+        }
+      }
+      void on_sigint(int sig) {
+        // stop the reactor
+        reactor_stop(&r);
+      }
  */
 struct Reactor {
   // File Descriptor Callbacks

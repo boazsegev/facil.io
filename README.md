@@ -4,7 +4,9 @@ After years in [Ruby land](https://www.ruby-lang.org/en/) I decided to learn [Ru
 
 So I decided to brush up my C programming skills. My purpose is to, eventually, implement my Ruby [Iodine](https://github.com/boazsegev/iodine) project (an alternative to [EventMachine](https://github.com/eventmachine/eventmachine), which is a wonderful library with what I feel to be a horrid API) in C, making it both faster and allowing it to support way more concurrent connections.
 
-Anyway, Along the way I wrote:
+Anyway, Along the way I wrote*:
+
+\* v.0.1 is more stable, v. 0.2.0 is still under development and should be considered experimental.
 
 ## [`libasync`](/lib/libasync.h) - A native POSIX (`pthread`) thread pool.
 
