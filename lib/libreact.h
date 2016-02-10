@@ -156,36 +156,45 @@ most of the code is the damn socket binding...:
       }
  */
 struct Reactor {
-  // File Descriptor Callbacks
+  /* File Descriptor Callbacks */
 
-  /// called when the file descriptor has incoming data. This is edge triggered
-  /// and will not be called again unless all the previous data was consumed.
+  /**
+  Called when the file descriptor has incoming data. This is edge triggered
+  and will not be called again unless all the previous data was consumed.
+  */
   void (*on_data)(struct Reactor* reactor, int fd);
-  /// called when the file descriptor is ready to send data (outgoing).
+  /**
+  Called when the file descriptor is ready to send data (outgoing).
+  */
   void (*on_ready)(struct Reactor* reactor, int fd);
-  /// called for any open file descriptors when the reactor is shutting down.
+  /**
+  Called for any open file descriptors when the reactor is shutting down.
+  */
   void (*on_shutdown)(struct Reactor* reactor, int fd);
-  /// called when a file descriptor was closed REMOTELY. `on_close` will NOT get
-  /// called when a connection is closed locally, unless using `reactor_close`
-  /// function.
+  /**
+  Called when a file descriptor was closed REMOTELY. `on_close` will NOT get
+  called when a connection is closed locally, unless using `reactor_close`
+  function.
+  */
   void (*on_close)(struct Reactor* reactor, int fd);
 
-  // global data and settings
+  /* global data and settings */
 
-  // the time (seconds since epoch) of the last "tick" (event cycle)
+  /** the time (seconds since epoch) of the last "tick" (event cycle) */
   time_t last_tick;
-  /// the maximum value for a file descriptor that the reactor will be required
-  /// to handle (the capacity -1).
+  /** REQUIRED: the maximum value for a file descriptor that the reactor will be
+  required
+  to handle (the capacity -1). */
   int maxfd;
 
-  // this data is set by the system, dont alter this data
+  /** this data is set by the system, dont alter this data */
   struct {
-    /// The file descriptor designated by kqueue / epoll - do NOT touch!.
+    /** The file descriptor designated by kqueue / epoll - do NOT touch!. */
     int reactor_fd;
-    /// a map for all the active file descriptors that were added to the
-    /// reactor - do NOT edit!
+    /** a map for all the active file descriptors that were added to the
+    reactor - do NOT edit! */
     char* map;
-    /// the reactor's events array - do NOT touch!
+    /** the reactor's events array - do NOT touch! */
     void* events;
   } private;
 };
