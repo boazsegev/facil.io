@@ -22,7 +22,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 #include <string.h>
 
-// an inner helper function that removes and adds events
+/* an inner helper function that removes and adds events */
+
+/* KQueue */
 #ifdef EV_SET
 #define ADD_FD EV_ADD | EV_ENABLE | EV_CLEAR
 #define RM_FD EV_DELETE
@@ -41,12 +43,8 @@ static inline int _reactor_set_fd_polling_(int queue,
     EV_SET(chevent + 1, fd, EVFILT_WRITE, action, 0, 0, 0);
     return kevent(queue, chevent, 2, NULL, 0, NULL);
   }
-  // EV_SET(&chevent, fd, (milliseconds ? EVFILT_TIMER : EVFILT_READ), action,
-  // 0,
-  //        milliseconds, 0);
 }
-/////////////////////
-// EPoll
+/* EPoll */
 #elif defined(EPOLLIN)
 #define ADD_FD EPOLL_CTL_ADD
 #define RM_FD EPOLL_CTL_DEL
@@ -69,8 +67,7 @@ static inline int _reactor_set_fd_polling_(int queue,
   }
   return epoll_ctl(queue, action, fd, &chevent);
 }
-////////////////////////
-// no epoll, no kqueue - this aint no server platform!
+/* no epoll, no kqueue - this aint no server platform! */
 #else
 static inline int _reactor_set_fd_poling_(int queue, int fd, int flags) {
   return -1;
@@ -87,9 +84,10 @@ Returns -1 on error, otherwise return value is system dependent.
 int reactor_add(struct Reactor* reactor, int fd) {
   assert(reactor->private.reactor_fd);
   assert(reactor->maxfd >= fd);
-  // don't make sure that the `on_close` callback was called,
-  // as it's likely that the caller already mapped a new object to the fd.
-  // this would be the clien't responsability.
+  /*
+  the `on_close` callback was likely called already by the user, before calling
+  this, and a new handler was probably assigned (or mapped) to the fd.
+  */
   reactor->private.map[fd] = 1;
   return _reactor_set_fd_polling_(reactor->private.reactor_fd, fd, ADD_FD, 0);
 }
@@ -116,9 +114,6 @@ the reactor, it isn't an error.
 int reactor_remove(struct Reactor* reactor, int fd) {
   assert(reactor->private.reactor_fd);
   assert(reactor->maxfd >= fd);
-  // don't make sure that the `on_close` callback was called,
-  // as it's likely that the caller already mapped a new object to the fd.
-  // this would be the clien't responsability.
   reactor->private.map[fd] = 0;
   return _reactor_set_fd_polling_(reactor->private.reactor_fd, fd, RM_FD, 0);
 }
@@ -136,7 +131,7 @@ void reactor_close(struct Reactor* reactor, int fd) {
     pthread_mutex_unlock(&locker);
     if (reactor->on_close)
       reactor->on_close(reactor, fd);
-    // this is automatic on epoll... what about kqueue?
+    /* this is automatic on epoll... what about kqueue? */
     _reactor_set_fd_polling_(reactor->private.reactor_fd, fd, RM_FD, 0);
   }
   pthread_mutex_unlock(&locker);
@@ -150,7 +145,8 @@ This method promises that the timer will be repeated when running on epoll. This
 method is redundent on kqueue.
 */
 void reactor_reset_timer(int fd) {
-#ifdef EPOLLIN   // KQueue
+/* EPoll only */
+#ifdef EPOLLIN
   char data[8];  // void * is 8 byte long
   if (read(fd, &data, 8) < 0)
     data[0] = 0;
@@ -166,26 +162,28 @@ an `fileno(tmpfile())` (with error handling) and on Linux it will call
 Returns -1 on error, otherwise returns the file descriptor.
 */
 int reactor_make_timer(void) {
-#ifdef EV_SET  // KQueue
+#ifdef EV_SET /* KQueue */
   FILE* tmp = tmpfile();
   return tmp ? fileno(tmp) : -1;
-#elif defined(EPOLLIN)  // EPoll
+#elif defined(EPOLLIN) /* EPoll */
   return timerfd_create(CLOCK_MONOTONIC, O_NONBLOCK);
-#else                   // no epoll, no kqueue - this aint no serverplatform!
+#else                  /* Brrr... */
 #error(no epoll, no kqueue - this aint no server platform! ... this library requires either kqueue or epoll to be available.)
-  return -1;  // until we learn more about the implementation
+  return -1;
 #endif
 }
 
-// undefine the macro helpers we're not using anymore
+/* undefine the macro helpers we're not using anymore */
 #undef ADD_FD
 #undef RM_FD
 #undef ADD_TM
 
-///////////////////
-// define some macros to help us write a cleaner main function.
-#ifdef EV_SET  // KQueue
+/*
+define some macros to help us write a cleaner main function.
+*/
+#ifdef EV_SET /* KQueue */
 
+/* global timout value for the reactors */
 static struct timespec _reactor_timeout = {
     .tv_sec = (REACTOR_TICK / 1000),
     .tv_nsec = ((REACTOR_TICK % 1000) * 1000000)};
@@ -203,7 +201,7 @@ static struct timespec _reactor_timeout = {
   (_EVENTS_[(_ev_)].filter == EVFILT_READ || \
    _EVENTS_[(_ev_)].filter == EVFILT_TIMER)
 
-#elif defined(EPOLLIN)  // EPoll
+#elif defined(EPOLLIN) /* EPoll */
 
 static int _reactor_timeout = REACTOR_TICK;
 
@@ -219,11 +217,14 @@ static int _reactor_timeout = REACTOR_TICK;
 #define _EVENTREADY_(_ev_) (_EVENTS_[(_ev_)].events & EPOLLOUT)
 #define _EVENTDATA_(_ev_) (_EVENTS_[(_ev_)].events & EPOLLIN)
 
-#else  // no epoll, no kqueue - this aint no server platform!
+#else /* no epoll, no kqueue - this aint no server platform! */
 #error(no epoll, no kqueue - this aint no server platform! ... this library
 requires either kqueue or epoll to be available.)
 #endif
 
+/**
+internally used, clears the reactors resouces.
+*/
 static void reactor_destroy(struct Reactor* reactor) {
   if (reactor->private.map)
     free(reactor->private.map);
@@ -284,18 +285,19 @@ int reactor_review(struct Reactor* reactor) {
   // set the last tick
   time(&reactor->last_tick);
 
-  // // review locally closed connections (do we do this?)
-  // int close_events = 0;
-  // for (int i = 3; i <= reactor->maxfd; i++) {
-  //   if (reactor->private.map[i]) {
-  //     if (fcntl(i, F_GETFL) < 0 && errno == EBADF) {
-  //       close_events++;
-  //       reactor_close(reactor, i);
-  //     }
-  //   }
-  // }
+  /* *** review locally closed connections (do we do this?) ***
+  int close_events = 0;
+  for (int i = 3; i <= reactor->maxfd; i++) {
+    if (reactor->private.map[i]) {
+      if (fcntl(i, F_GETFL) < 0 && errno == EBADF) {
+        close_events++;
+        reactor_close(reactor, i);
+      }
+    }
+  }
+  */
 
-  // wait for events and handle them
+  /* wait for events and handle them */
   int active_count = _WAIT_FOR_EVENTS_;
   if (active_count > 0) {
     for (int i = 0; i < active_count; i++) {
