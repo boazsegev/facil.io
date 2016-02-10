@@ -57,7 +57,7 @@ extern const struct BufferClass {
   Creates a new buffer object, reserving memory for the core data and creating a
   mutex.
 
-  The buffer object should require ~88 bytes (system dependent), including the
+  The buffer object should require ~96 bytes (system dependent), including the
   mutex object.
   */
   void* (*new)(size_t offset);
