@@ -861,6 +861,8 @@ If any data is waiting to be written, close will
 return immediately and the connection will only be closed once all the data
 was sent. */
 static void srv_close(struct Server* server, int sockfd) {
+  if (!server->protocol_map[sockfd])
+    return;
   if (Buffer.empty(server->buffer_map[sockfd])) {
     reactor_close((struct Reactor*)server, sockfd);
   } else
