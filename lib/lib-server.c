@@ -938,6 +938,9 @@ static ssize_t srv_write(struct Server* server,
                          int sockfd,
                          void* data,
                          size_t len) {
+  // make sure the socket is alive
+  if (!server->protocol_map[sockfd])
+    return -1;
   // reset timeout
   server->idle[sockfd] = 0;
   // send data
@@ -954,6 +957,9 @@ static ssize_t srv_write_move(struct Server* server,
                               int sockfd,
                               void* data,
                               size_t len) {
+  // make sure the socket is alive
+  if (!server->protocol_map[sockfd])
+    return -1;
   // reset timeout
   server->idle[sockfd] = 0;
   // send data
@@ -974,6 +980,9 @@ static ssize_t srv_write_urgent(struct Server* server,
                                 int sockfd,
                                 void* data,
                                 size_t len) {
+  // make sure the socket is alive
+  if (!server->protocol_map[sockfd])
+    return -1;
   // reset timeout
   server->idle[sockfd] = 0;
   // send data
@@ -996,6 +1005,9 @@ static ssize_t srv_write_move_urgent(struct Server* server,
                                      int sockfd,
                                      void* data,
                                      size_t len) {
+  // make sure the socket is alive
+  if (!server->protocol_map[sockfd])
+    return -1;
   // reset timeout
   server->idle[sockfd] = 0;
   // send data
@@ -1011,6 +1023,9 @@ The file will be buffered to the socket chunk by chunk, so that memory
 consumption is capped at ~ 64Kb.
 */
 static ssize_t srv_sendfile(struct Server* server, int sockfd, FILE* file) {
+  // make sure the socket is alive
+  if (!server->protocol_map[sockfd])
+    return -1;
   // reset timeout
   server->idle[sockfd] = 0;
   // send data
