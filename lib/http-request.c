@@ -5,6 +5,7 @@
 #include <stdio.h>
 // we declare because we need them... implementation comes later.
 static struct HttpRequest* request_new(struct Server* server, int sockfd);
+static void request_clear(struct HttpRequest* self);
 static void request_destroy(struct HttpRequest* self);
 static void request_first(struct HttpRequest* self);
 static int request_next(struct HttpRequest* self);
@@ -15,6 +16,8 @@ static char* request_value(struct HttpRequest* self);
 const struct HttpRequestClass HttpRequest = {
     // retures an new heap allocated request object
     .new = request_new,
+    // releases the resources used by a request object and keeps it's memory.
+    .clear = request_clear,
     // releases the resources used by a request object and frees it's memory.
     .destroy = request_destroy,
 
@@ -59,6 +62,27 @@ static void request_destroy(struct HttpRequest* self) {
   free(self);
 }
 
+// resetting the request
+static void request_clear(struct HttpRequest* self) {
+  if (!self || !self->server)
+    return;
+  if (self->body_file)
+    fclose(self->body_file);
+  self->method = 0;
+  self->path = 0;
+  self->query = 0;
+  self->version = 0;
+  self->host = 0;
+  self->content_length = 0;
+  self->content_type = 0;
+  self->upgrade = 0;
+  self->body_str = 0;
+  self->body_file = 0;
+  self->private.header_hash = 0;
+  self->private.pos = 0;
+  self->private.max = 0;
+  self->private.bd_rcved = 0;
+}
 // implement the following request handlers:
 
 static void request_first(struct HttpRequest* self) {

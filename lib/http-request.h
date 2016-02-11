@@ -25,6 +25,9 @@ to make API calls, such as iterating through headers.
 extern const struct HttpRequestClass {
   /** retures an new heap allocated request object */
   struct HttpRequest* (*new)(struct Server* server, int sockfd);
+  /** releases the resources used by a request object but keep's it's core
+   * memory. */
+  void (*clear)(struct HttpRequest* request);
   /** releases the resources used by a request object and frees it's memory. */
   void (*destroy)(struct HttpRequest* request);
 
@@ -95,7 +98,7 @@ struct HttpRequest {
   char* body_str;
   /** points a tmpfile with the body of the request (the body was larger). */
   FILE* body_file;
-  struct _Request_Private_Data {
+  struct {
     /** points to the header's hash */
     char* header_hash;
     /** iteration position */

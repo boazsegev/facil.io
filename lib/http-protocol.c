@@ -308,12 +308,17 @@ restart:
     char buff[HTTP_HEAD_MAX_SIZE];
     int t = 0;
     while ((len = Server.read(sockfd, buff, HTTP_HEAD_MAX_SIZE)) > 0) {
-      if ((t = fwrite(buff, 1, len, request->body_file)) < len) {
+      pos = len;
+      if (request->content_length - request->private.bd_rcved < pos) {
+        pos = request->content_length - request->private.bd_rcved;
+      }
+      if ((t = fwrite(buff, 1, pos, request->body_file)) < pos) {
         perror("Tmpfile Err");
         goto internal_error;
       }
-      request->private.bd_rcved += len;
+      request->private.bd_rcved += pos;
     }
+
     if (request->private.bd_rcved >= request->content_length) {
       rewind(request->body_file);
       goto finish;
@@ -333,9 +338,11 @@ restart:
     request->private.pos = pos;
     return;
   }
-
   // adjust length for buffer size positioing (so that len == max pos - 1).
   len += pos;
+
+// review the data
+parse:
 
   // check if the request is new
   if (!pos) {
@@ -416,7 +423,7 @@ restart:
     }
   }
 
-  // check if the the request was fully sent
+  // check if the the request was fully sent (the trailing \r\n is available)
   if (pos >= len - 1) {
     // break it up...
     goto restart;
@@ -432,6 +439,7 @@ finish_headers:
       (request->content_type &&
        !request->content_length))  // convert dynamically to Mb?
     goto bad_request;
+  // zero out the last two "\r\n" before any message body
   buff[pos++] = 0;
   buff[pos++] = 0;
 
@@ -448,6 +456,8 @@ finish_headers:
     request->body_str = buff + pos;
     // setup a NULL terminator?
     request->body_str[request->content_length] = 0;
+    // advance the buffer pos
+    pos += request->content_length;
     // finish up
     goto finish;
   } else {
@@ -489,16 +499,35 @@ finish:
     protocol->on_request(request);
   }
 
-  // // if there's more data, read it and recycle the request
-  // len = Server.read(sockfd, buff, HTTP_HEAD_MAX_SIZE);
-  // if (len > 0) {
-  //   if (request->body_file)
-  //     fclose(request->body_file);
-  //   request->private.pos = 0;
-  //   pos = 0;
-  //   Server.set_udata(server, sockfd, request);
-  //   goto restart;
-  // }
+  if (Server.get_udata(server, sockfd)) {
+    // someone else already started using this connection...
+    goto cleanup_after_finish;
+  }
+  if (pos < len) {
+    // if we have more data in the pipe, clear the request, move the buffer data
+    // and return to the beginning of the parsing.
+    HttpRequest.clear(request);
+    // move the data left in the buffer to the beginning of the buffer.
+    for (size_t i = 0; i < len - pos; i++) {
+      request->buffer[i] = request->buffer[pos + i];
+    }
+    len = len - pos;
+    pos = 0;
+    Server.set_udata(server, sockfd, request);
+    goto parse;
+  }
+  if (len == HTTP_HEAD_MAX_SIZE) {
+    // we might not have read all the data in the network socket.
+    // since we're edge triggered, we should continue reading.
+    len = Server.read(sockfd, buff, HTTP_HEAD_MAX_SIZE);
+    if (len > 0) {
+      HttpRequest.clear(request);
+      Server.set_udata(server, sockfd, request);
+      goto parse;
+    }
+  }
+
+cleanup_after_finish:
 
   // we need to destroy the request ourselves, because we disconnected the
   // request from the server's udata.
