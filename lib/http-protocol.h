@@ -35,13 +35,14 @@ struct HttpProtocol HttpProtocol(void);
 The HttpProtocol implements a very basic and raw protocol layer over Http,
 leaving much of the work for the implementation.
 
-Some helpers are provided for request management (see the Request struct) and
+Some helpers are provided for request management (see the HttpRequest struct)
+and
 some minor error handling is provided as well...
 
 The Http response is left for independent implementation. The request object
 contains a reference to the socket's file descriptor waiting for the response.
 
-A single connection cannot run two The `on_request` callbacks asynchronously.
+A single connection cannot run two `on_request` callbacks asynchronously.
  */
 
 /** This holds the Http protocol, it's settings and callbacks, such as maximum

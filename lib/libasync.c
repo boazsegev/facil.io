@@ -87,7 +87,7 @@ static void* thread_loop(struct Async* async) {
 #endif
   if (async->init_thread)
     async->init_thread(async, async->arg);
-  int in = async->in;  // no fear of async from being freed before...
+  int in = async->in;  // keep a copy of the pipe's address on the stack
   while (read(in, &task, sizeof(struct Task)) > 0) {
     if (!task.task)
       break;

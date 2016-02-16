@@ -11,6 +11,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 
 /////////////////
 // functions used by the Http protocol, internally
@@ -178,70 +180,86 @@ static int http_sendfile(struct HttpRequest* req) {
           fclose(file);
           return 0;
         }
-        len = asprintf(
-            &ext, http_range_response, (mime ? "Content-Type: " : ""),
-            (mime ? mime : ""), (mime ? "\r\n" : ""), len,
-            Day2Str[t_now.tm_wday], t_now.tm_mday, Mon2Str[t_now.tm_mon],
-            t_now.tm_year + 1900, t_now.tm_hour, t_now.tm_min, t_now.tm_sec,
-            Day2Str[t_file.tm_wday], t_file.tm_mday, Mon2Str[t_file.tm_mon],
-            t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min, t_file.tm_sec,
-            start, finish - 1, file_data.st_size);
+        len = snprintf(
+            req->buffer, HTTP_HEAD_MAX_SIZE, http_range_response,
+            (mime ? "Content-Type: " : ""), (mime ? mime : ""),
+            (mime ? "\r\n" : ""), len, Day2Str[t_now.tm_wday], t_now.tm_mday,
+            Mon2Str[t_now.tm_mon], t_now.tm_year + 1900, t_now.tm_hour,
+            t_now.tm_min, t_now.tm_sec, Day2Str[t_file.tm_wday], t_file.tm_mday,
+            Mon2Str[t_file.tm_mon], t_file.tm_year + 1900, t_file.tm_hour,
+            t_file.tm_min, t_file.tm_sec, start, finish - 1, file_data.st_size);
         // review the string
-        if (!len || !ext) {
+        if (!len) {
           fclose(file);
           return 0;
         }
         // send the headers and the data (moving the pointers to the buffer)
-        Server.write_move(req->server, req->sockfd, ext, len);
+        Server.write(req->server, req->sockfd, req->buffer, len);
         Server.write_move(req->server, req->sockfd, data, finish - start);
         return 1;
       } else {
         // going to the EOF (big chunk or EOL requested) - send as file
         finish = file_data.st_size - 1;
         fseek(file, start, SEEK_SET);
-        len = asprintf(
-            &ext, http_range_response, (mime ? "Content-Type: " : ""),
-            (mime ? mime : ""), (mime ? "\r\n" : ""), file_data.st_size - start,
+        // len = asprintf(
+        //     &ext, http_range_response, (mime ? "Content-Type: " : ""),
+        //     (mime ? mime : ""), (mime ? "\r\n" : ""), file_data.st_size -
+        //     start,
+        //     Day2Str[t_now.tm_wday], t_now.tm_mday, Mon2Str[t_now.tm_mon],
+        //     t_now.tm_year + 1900, t_now.tm_hour, t_now.tm_min, t_now.tm_sec,
+        //     Day2Str[t_file.tm_wday], t_file.tm_mday, Mon2Str[t_file.tm_mon],
+        //     t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min,
+        //     t_file.tm_sec,
+        //     start, finish, file_data.st_size);
+        // // send the headers and the file
+        // Server.write_move(req->server, req->sockfd, ext, len);
+
+        len = snprintf(
+            req->buffer, HTTP_HEAD_MAX_SIZE, http_range_response,
+            (mime ? "Content-Type: " : ""), (mime ? mime : ""),
+            (mime ? "\r\n" : ""), file_data.st_size - start,
             Day2Str[t_now.tm_wday], t_now.tm_mday, Mon2Str[t_now.tm_mon],
             t_now.tm_year + 1900, t_now.tm_hour, t_now.tm_min, t_now.tm_sec,
             Day2Str[t_file.tm_wday], t_file.tm_mday, Mon2Str[t_file.tm_mon],
             t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min, t_file.tm_sec,
             start, finish, file_data.st_size);
         // send the headers and the file
-        Server.write_move(req->server, req->sockfd, ext, len);
+        Server.write(req->server, req->sockfd, req->buffer, len);
         Server.sendfile(req->server, req->sockfd, file);
         return 1;
       }
     }
   invalid_range:
     if (mime)
-      len = asprintf(
-          &ext, http_file_response, mime, file_data.st_size,
-          Day2Str[t_now.tm_wday], t_now.tm_mday, Mon2Str[t_now.tm_mon],
-          t_now.tm_year + 1900, t_now.tm_hour, t_now.tm_min, t_now.tm_sec,
-          Day2Str[t_file.tm_wday], t_file.tm_mday, Mon2Str[t_file.tm_mon],
-          t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min, t_file.tm_sec);
+      len = snprintf(req->buffer, HTTP_HEAD_MAX_SIZE, http_file_response, mime,
+                     file_data.st_size, Day2Str[t_now.tm_wday], t_now.tm_mday,
+                     Mon2Str[t_now.tm_mon], t_now.tm_year + 1900, t_now.tm_hour,
+                     t_now.tm_min, t_now.tm_sec, Day2Str[t_file.tm_wday],
+                     t_file.tm_mday, Mon2Str[t_file.tm_mon],
+                     t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min,
+                     t_file.tm_sec);
     else
-      len = asprintf(
-          &ext, http_file_response_no_mime, file_data.st_size,
-          Day2Str[t_now.tm_wday], t_now.tm_mday, Mon2Str[t_now.tm_mon],
-          t_now.tm_year + 1900, t_now.tm_hour, t_now.tm_min, t_now.tm_sec,
-          Day2Str[t_file.tm_wday], t_file.tm_mday, Mon2Str[t_file.tm_mon],
-          t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min, t_file.tm_sec);
+      len = snprintf(
+          req->buffer, HTTP_HEAD_MAX_SIZE, http_file_response_no_mime,
+          file_data.st_size, Day2Str[t_now.tm_wday], t_now.tm_mday,
+          Mon2Str[t_now.tm_mon], t_now.tm_year + 1900, t_now.tm_hour,
+          t_now.tm_min, t_now.tm_sec, Day2Str[t_file.tm_wday], t_file.tm_mday,
+          Mon2Str[t_file.tm_mon], t_file.tm_year + 1900, t_file.tm_hour,
+          t_file.tm_min, t_file.tm_sec);
 
     // review the string
-    if (!len || !ext) {
+    if (!len) {
       fclose(file);
       return 0;
     }
 
     // send headers
-    Server.write_move(req->server, req->sockfd, ext, len);
+    Server.write(req->server, req->sockfd, req->buffer, len);
     // send file, unless the request method is "HEAD"
     if (strcmp("HEAD", req->method))
       Server.sendfile(req->server, req->sockfd, file);
-    // // The file will be closed by the buffer.
-    // DONT fclose(file);
+    else  // The file will be closed by the buffer if it's sent, otherwise...
+      fclose(file);
 
     // DEBUG - print headers
     // HttpRequest.first(req);
