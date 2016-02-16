@@ -6,8 +6,6 @@ So I decided to brush up my C programming skills. My purpose is to, eventually, 
 
 Anyway, Along the way I wrote*:
 
-\* v.0.1 is more stable, v. 0.2.0 is still under development and should be considered experimental.
-
 ## [`libasync`](/lib/libasync.h) - A native POSIX (`pthread`) thread pool.
 
  `libasync` uses pipes instead of mutexes, making it both super simple and moving a lot of the context switching optimizations to the kernel layer (which I assume to be well enough optimized).
@@ -141,6 +139,49 @@ int main(void) {
 
 // easy :-)
 ```
+
+## [`http-protocol`](https://github.com/boazsegev/c-server-tools/blob/master/lib/http-protocol.c) - a protocol for the web
+
+All these libraries are used in a Ruby server I'm writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" according to the `lib-server`'s protocol specs.
+
+The code is just a few mega-functions (I know, it needs refactoring) that parse the HTTP request byte by byte and forward it to an `on_request` callback (using an HTTPRequest struct). There's also a built-in static file service and a default on_requests that basically echoes the HTTP request as a response.
+
+Here's a "Hello World" HTTP server (with static file services, if you want them).
+
+```c
+#include "http-protocol.h"
+
+void on_request(struct HttpRequest* req) {
+  // a simple "Hello World"
+  static char hello[] =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Length: 12\r\n"
+      "Connection: keep-alive\r\n"
+      "Keep-Alive: timeout = 1\r\n"
+      "\r\n"
+      "Hello World\r\n";
+  Server.write(req->server, req->sockfd, hello, sizeof(hello));
+}
+
+void on_request()
+int main() {
+  struct HttpProtocol protocol = HttpProtocol();
+  protocol.on_request = on_request;
+  protocol.public_folder = "www";
+  // We'll use the macro start_server, because our settings are simple.
+  // (this will call Server.listen(&settings) with the settings we provide)
+  start_server(.protocol = (struct Protocol*)(&protocol), .timeout = 1,
+               .threads = 8);
+}
+```
+
+## A note about versions
+
+v.0.1.0 is uses the main thread for the reactor pattern and optionally creates worker threads for the actual tasks (see the server settings).
+
+v.0.2.0 runs the reactor within the worker thread pool, which helps multi-process concurrency by preventing the reactor from accepting new connections when all the working threads are busy.
+
+This also means that using a single working thread with v.0.2.0 is totally single threaded as far as thread safety is concerned (even pings and closure callbacks will be called in order).
 
 ---
 
