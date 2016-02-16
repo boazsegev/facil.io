@@ -4,7 +4,7 @@ After years in [Ruby land](https://www.ruby-lang.org/en/) I decided to learn [Ru
 
 So I decided to brush up my C programming skills. My purpose is to, eventually, implement my Ruby [Iodine](https://github.com/boazsegev/iodine) project (an alternative to [EventMachine](https://github.com/eventmachine/eventmachine), which is a wonderful library with what I feel to be a horrid API) in C, making it both faster and allowing it to support way more concurrent connections.
 
-Anyway, Along the way I wrote*:
+Anyway, Along the way I wrote:
 
 ## [`libasync`](/lib/libasync.h) - A native POSIX (`pthread`) thread pool.
 
@@ -60,7 +60,7 @@ Anyway, Along the way I wrote*:
 
 It's true, some server programs still use `select` and `poll`... but they really shouldn't be (don't get me started).
 
-When using [`libevent`](http://libevent.org) or [`libev`](http://software.schmorp.de/pkg/libev.html) you could end up falling back on `select` if you're not careful. `libreact`, on the other hand, will simply refuse to compile if neither kqueue nor epoll are available (windows Overlapping IO support would be interesting to write, I guess).
+When using [`libevent`](http://libevent.org) or [`libev`](http://software.schmorp.de/pkg/libev.html) you could end up falling back on `select` if you're not careful. `libreact`, on the other hand, will simply refuse to compile if neither kqueue nor epoll are available (windows Overlapping IO support would be interesting to write, I guess, but I don't have Windows).
 
 Since I mentioned `libevent` or `libev`, I should point out that even a simple inspection shows that these are amazing and well tested libraries (how did they make those nice benchmark graphs?!)... but I hated their API (or documentation).
 
@@ -76,7 +76,7 @@ It is well known that `send` and `write` don't really send or write everything y
 
 Too often we write `send(fd, buffer, len)` and the computer responds with "`len`? noway... too much... how about 2Kb?"...
 
-Hence, a user-land based buffer that keeps track of what was actually sent is required.
+Hence, a user-land based buffer that keeps track of what was actually sent is required (either that or have your thread wait for the network connection and slow down the whole server application).
 
 `libbuffer` is both "packet" based and zero-copy oriented (although, if you prefer, it will copy the data). In other words, `libbuffer` is a bin-tree wrapper with some comfortable helpers.
 
@@ -174,6 +174,8 @@ int main() {
                .threads = 8);
 }
 ```
+
+Using this library requires all the `http-` prefixed files (`http-mime-types`, `http-request`, `http-status`).
 
 ## A note about versions
 
