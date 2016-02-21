@@ -44,6 +44,17 @@ void on_request(struct HttpRequest* req) {
   Server.write(req->server, req->sockfd, hello, sizeof(hello));
 }
 
+// print client count
+void p_count(server_pt srv) {
+  int c = Server.count(srv, NULL);
+  printf("%d Clients connected\n", c);
+}
+
+// testing timers
+void on_init(server_pt srv) {
+  Server.run_every(srv, 1000, 0, (void (*)(void*))p_count, srv);
+}
+
 // running the server
 int main(void) {
   // We'll create the echo protocol object.
@@ -56,5 +67,5 @@ int main(void) {
   // We'll use the macro start_server, because our settings are simple.
   // (this will call Server.listen(&settings) with the settings we provide)
   start_server(.protocol = (struct Protocol*)(&protocol), .timeout = 1,
-               .threads = 8);
+               .threads = 1, .on_init = on_init);
 }

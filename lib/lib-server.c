@@ -415,6 +415,8 @@ static void tp_perform_on_data(struct Server* self, int fd) {
     // perform the task
     if (task)
       task(arg);
+    // reset the timer
+    reactor_reset_timer(fd);
     // close the file descriptor
     if (timer->repeat < 0)
       return;
@@ -846,6 +848,7 @@ static int srv_attach(server_pt server, int sockfd, struct Protocol* protocol) {
   // register the client - start it off as busy, protocol still initializing
   // we don't need the mutex, because it's all fresh
   server->busy[sockfd] = 1;
+  // attach the socket to the reactor
   if (reactor_add((struct Reactor*)server, sockfd) < 0) {
     clear_conn_data(server, sockfd);
     return -1;
@@ -1173,14 +1176,21 @@ static int run_every(struct Server* self,
     return -1;
   struct Protocol* timer_protocol =
       (struct Protocol*)TimerProtocol(task, arg, repetitions);
-  if (srv_attach(self, tfd, timer_protocol))
-    ;
-  // make sure the fd recycled is clean
-  on_close((struct Reactor*)self, tfd);
-  // set protocol for new fd (timer protocol)
-  self->protocol_map[tfd] =
-      (struct Protocol*)TimerProtocol(task, arg, repetitions);
+  if (srv_attach(self, tfd, timer_protocol)) {
+    free(timer_protocol);
+    return -1;
+  }
+  // remove the default timeout (timers shouldn't timeout)
+  self->tout[tfd] = 0;
+
+  // srv_attach connected the fd as a regular socket - remove it and reconnect
+  // as a timer
+  reactor_remove((struct Reactor*)self, tfd);
   if (reactor_add_timer((struct Reactor*)self, tfd, milliseconds) < 0) {
+    perror("Closing timer");
+    printf("Timer %d closing for server with sock %d, epoll %d, map data: %d\n",
+           tfd, self->srvfd, self->reactor.private.reactor_fd,
+           self->reactor.private.map[tfd]);
     // close(tfd);
     // on_close might be called by the server to free the resources - we
     // shouldn't race... but we are making some changes...
