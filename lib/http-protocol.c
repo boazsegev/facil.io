@@ -275,7 +275,16 @@ static int http_sendfile(struct HttpRequest* req) {
 
 // implement on_close to close the FILE * for the body (if exists).
 static void http_on_close(struct Server* server, int sockfd) {
-  HttpRequest.destroy(Server.set_udata(server, sockfd, NULL));
+  struct HttpRequest* request = Server.set_udata(server, sockfd, NULL);
+  if (request) {
+    // clear the request data.
+    HttpRequest.clear(request);
+    // store the request in the object pool.
+    ObjectPool.push(
+        ((struct HttpProtocol*)(Server.get_protocol(server, sockfd)))
+            ->request_pool,
+        request);
+  }
 }
 // implement on_data to parse incoming requests.
 static void http_on_data(struct Server* server, int sockfd) {
@@ -314,7 +323,9 @@ static void http_on_data(struct Server* server, int sockfd) {
   struct HttpRequest* request = Server.get_udata(server, sockfd);
   if (!request) {
     Server.set_udata(server, sockfd,
-                     (request = HttpRequest.new(server, sockfd)));
+                     (request = ObjectPool.pop(protocol->request_pool)));
+    request->server = server;
+    request->sockfd = sockfd;
   }
   char* buff = request->buffer;
   int pos = request->private.pos;
@@ -370,8 +381,12 @@ parse:
     while (pos < (len - 1) && buff[pos] != ' ')
       pos++;
     buff[pos++] = 0;
-    if (pos > len - 3)
-      goto bad_request;
+    if (pos > len - 3) {
+      if (len >= HTTP_HEAD_MAX_SIZE - 32)
+        goto too_big;
+      else
+        goto bad_request;
+    }
     request->path = &buff[pos];
     // get query and version
     while (pos < (len - 1) && buff[pos] != ' ' && buff[pos] != '?')
@@ -383,8 +398,12 @@ parse:
         pos++;
     }
     buff[pos++] = 0;
-    if (pos + 5 > len)
-      goto bad_request;
+    if (pos + 5 > len) {
+      if (len >= HTTP_HEAD_MAX_SIZE - 32)
+        goto too_big;
+      else
+        goto bad_request;
+    }
     request->version = buff + pos;
     if (buff[pos] != 'H' || buff[pos + 1] != 'T' || buff[pos + 2] != 'T' ||
         buff[pos + 3] != 'P')
@@ -393,7 +412,12 @@ parse:
     while (pos < len - 2 && buff[pos] != '\r')
       pos++;
     if (pos > len - 2)  // must have 2 EOL markers before a header
-      goto bad_request;
+    {
+      if (len >= HTTP_HEAD_MAX_SIZE - 32)
+        goto too_big;
+      else
+        goto bad_request;
+    }
     buff[pos++] = 0;
     buff[pos++] = 0;
 
@@ -412,7 +436,12 @@ parse:
       pos++;
     }
     if (pos >= len - 1)  // must have at least 2 eol markers + data
-      goto bad_request;
+    {
+      if (len >= HTTP_HEAD_MAX_SIZE - 32)
+        goto too_big;
+      else
+        goto bad_request;
+    }
     buff[pos++] = 0;
     if (buff[pos] == ' ')  // space after colon?
       buff[pos++] = 0;
@@ -421,7 +450,12 @@ parse:
     while (pos + 1 < len && buff[pos] != '\r')
       pos++;
     if (pos >= len - 1)  // must have at least 2 eol markers...
-      goto bad_request;
+    {
+      if (len >= HTTP_HEAD_MAX_SIZE - 32)
+        goto too_big;
+      else
+        goto bad_request;
+    }
     buff[pos++] = 0;
     buff[pos++] = 0;
     if (!strcmp(tmp1, "HOST")) {
@@ -453,9 +487,7 @@ finish_headers:
   request->private.max = pos - request->private.max;
 
   // check for required `host` header and body content length (not chuncked)
-  if (!request->host ||
-      (request->content_type &&
-       !request->content_length))  // convert dynamically to Mb?
+  if (!request->host || (request->content_type && !request->content_length))
     goto bad_request;
   // zero out the last two "\r\n" before any message body
   buff[pos++] = 0;
@@ -549,7 +581,8 @@ cleanup_after_finish:
 
   // we need to destroy the request ourselves, because we disconnected the
   // request from the server's udata.
-  HttpRequest.destroy(request);
+  HttpRequest.clear(request);
+  ObjectPool.push(protocol->request_pool, request);
   return;
 
 options:
@@ -669,14 +702,29 @@ void http_default_on_request(struct HttpRequest* req) {
 ////////////////
 // public API
 
-/// returns a stack allocated, core-initialized, Http Protocol object.
-struct HttpProtocol HttpProtocol(void) {
-  return (struct HttpProtocol){
-      .parent.service = "http",
-      .parent.on_data = http_on_data,
-      .parent.on_close = http_on_close,
-      .maximum_body_size = 32,
-      .on_request = http_default_on_request,
-      .public_folder = NULL,
-  };
+static char http_service_name[] = "http";
+/** returns a new, initialized, Http Protocol object. */
+struct HttpProtocol* HttpProtocol_new(void) {
+  struct HttpProtocol* http = malloc(sizeof(struct HttpProtocol));
+  memset(http, 0, sizeof(struct HttpProtocol));
+  http->parent.service = http_service_name;
+  http->parent.on_data = http_on_data;
+  http->parent.on_close = http_on_close;
+  http->maximum_body_size = 32;
+  http->on_request = http_default_on_request;
+  http->public_folder = NULL;
+  // void* (*create)(void),  void (*destroy)(void* object), int size
+  http->request_pool =
+      ObjectPool.new_dynamic((void* (*)(void))HttpRequest.new,
+                             (void (*)(void*))HttpRequest.destroy, 32);
+  return http;
 }
+void HttpProtocol_destroy(struct HttpProtocol* http) {
+  ObjectPool.destroy(http->request_pool);
+  free(http);
+}
+
+struct ___HttpProtocol_CLASS___ HttpProtocol = {
+    .new = HttpProtocol_new,
+    .destroy = HttpProtocol_destroy,
+};

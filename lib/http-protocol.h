@@ -8,6 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define HTTP_PROTOCOL_H
 #include "lib-server.h"
 #include "http-request.h"
+#include "http-objpool.h"
 #include <stdio.h>
 
 #ifndef HTTP_HEAD_MAX_SIZE
@@ -28,8 +29,13 @@ automatically released at the end of the block (function/if block.etc').
 */
 struct HttpProtocol;
 
-/** returns a stack allocated, core-initialized, Http Protocol object. */
-struct HttpProtocol HttpProtocol(void);
+extern struct ___HttpProtocol_CLASS___ {
+  /** returns a new, initialized, Http Protocol object. */
+  struct HttpProtocol* (*new)(void);
+  /** destroys an existing HttpProtocol object, releasing it's memory and
+  resources. */
+  void (*destroy)(struct HttpProtocol*);
+} HttpProtocol;
 
 /************************************************/ /**
 The HttpProtocol implements a very basic and raw protocol layer over Http,
@@ -63,6 +69,8 @@ struct HttpProtocol {
   layer server and simply serve files.
   */
   char* public_folder;
+  /** an internal request pool, to avoid malloc */
+  object_pool request_pool;
 };
 
 #endif /* HTTP_PROTOCOL_H */

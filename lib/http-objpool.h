@@ -20,9 +20,8 @@ void* (*destroy)(void* object):: a callback that destroys an object.
 void* arg:: a pointer that will be passed to the `create` callback.
 size:: the (initial) number of items in the pool.
   */
-  void* (*new_dynamic)(void* (*create)(void* arg),
+  void* (*new_dynamic)(void* (*create)(void),
                        void (*destroy)(void* object),
-                       void* arg,
                        int size);
   /**
 Initialize a new ObjectPool that blocks and waits when there aren't any
@@ -33,9 +32,8 @@ void* (*destroy)(void* object):: a callback that destroys an object.
 void* arg:: a pointer that will be passed to the `create` callback.
 size:: the (initial) number of items in the pool.
   */
-  void* (*new_blocking)(void* (*create)(void* arg),
+  void* (*new_blocking)(void* (*create)(void),
                         void (*destroy)(void* object),
-                        void* arg,
                         int size);
   /**
 Destroys the pool object and any items in the pool.

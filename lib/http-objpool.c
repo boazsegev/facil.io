@@ -22,9 +22,8 @@ struct ObjectPool {
   pthread_mutex_t lock;
   struct ObjectContainer* objects;
   struct ObjectContainer* containers;
-  void* (*create)(void* arg);
+  void* (*create)(void);
   void (*destroy)(void* object);
-  void* arg;
   int is_waiting;
   int wait_in;
   int wait_out;
@@ -63,7 +62,7 @@ static void* pop(object_pool pool) {
     } else {
       // this is a dynamic object pool - create a new object.
       pthread_mutex_unlock(&pool->lock);
-      return pool->create(pool->arg);
+      return pool->create();
     }
   }
   return 0;
@@ -100,9 +99,8 @@ void* (*destroy)(void* object):: a callback that destroys an object.
 void* arg:: a pointer that will be passed to the `create` callback.
 size:: the (initial) number of items in the pool.
 */
-static void* new_dynamic(void* (*create)(void* arg),
+static void* new_dynamic(void* (*create)(void),
                          void (*destroy)(void* object),
-                         void* arg,
                          int size) {
   if (!create)
     return NULL;
@@ -111,14 +109,13 @@ static void* new_dynamic(void* (*create)(void* arg),
   pool->objects = NULL;
   pool->containers = NULL;
   pool->create = create;
-  pool->arg = arg;
   pool->destroy = destroy;
   if (!destroy)
     pool->destroy = free;
   pthread_mutex_init(&pool->lock, NULL);
   // create initial pool
   while (size--)
-    push(pool, create(arg));
+    push(pool, create());
   // return the pool object
   return pool;
 }
@@ -131,9 +128,8 @@ void* (*destroy)(void* object):: a callback that destroys an object.
 void* arg:: a pointer that will be passed to the `create` callback.
 size:: the (initial) number of items in the pool.
 */
-static void* new_blocking(void* (*create)(void* arg),
+static void* new_blocking(void* (*create)(void),
                           void (*destroy)(void* object),
-                          void* arg,
                           int size) {
   if (!create)
     return NULL;
@@ -147,13 +143,12 @@ static void* new_blocking(void* (*create)(void* arg),
   pool->objects = NULL;
   pool->containers = NULL;
   pool->create = create;
-  pool->arg = arg;
   pool->destroy = destroy;
   if (!destroy)
     pool->destroy = free;
   // create initial pool
   while (size--)
-    push(pool, create(arg));
+    push(pool, create());
   // return the pool object
   return pool;
 }

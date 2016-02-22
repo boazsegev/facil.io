@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 // we declare because we need them... implementation comes later.
-static struct HttpRequest* request_new(struct Server* server, int sockfd);
+static struct HttpRequest* request_new(void);
 static void request_clear(struct HttpRequest* self);
 static void request_destroy(struct HttpRequest* self);
 static void request_first(struct HttpRequest* self);
@@ -42,13 +42,8 @@ const struct HttpRequestClass HttpRequest = {
 // The Request object implementation
 
 // The constructor
-static struct HttpRequest* request_new(struct Server* server, int sockfd) {
-  struct HttpRequest* req = malloc(sizeof(struct HttpRequest));
-  *req = (struct HttpRequest){
-      .sockfd = sockfd,  // set the sockets fd
-      .server = server,  // set the server
-      .body_file = 0     // everything else should be zeroed out by the compiler
-  };
+static struct HttpRequest* request_new(void) {
+  struct HttpRequest* req = calloc(sizeof(struct HttpRequest), 1);
   return req;
 }
 

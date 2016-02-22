@@ -20,8 +20,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
-// #include <signal.h>
-// #include <errno.h>
+#include <signal.h>
+#include <errno.h>
 
 void (*org_on_request)(struct HttpRequest* req);
 void on_request(struct HttpRequest* req) {
@@ -59,13 +59,14 @@ void on_init(server_pt srv) {
 int main(void) {
   // We'll create the echo protocol object.
   // We'll use the server's default `on_request` callback (echo).
-  struct HttpProtocol protocol = HttpProtocol();
-  org_on_request = protocol.on_request;
-  protocol.on_request = on_request;
-  protocol.public_folder = "/Users/2Be/Documents/Scratch";
+  struct HttpProtocol* protocol = HttpProtocol.new();
+  org_on_request = protocol->on_request;
+  protocol->on_request = on_request;
+  protocol->public_folder = "/Users/2Be/Documents/Scratch";
   // struct Protocol protocol = {.on_data = on_data, .on_close = on_close};
   // We'll use the macro start_server, because our settings are simple.
   // (this will call Server.listen(&settings) with the settings we provide)
-  start_server(.protocol = (struct Protocol*)(&protocol), .timeout = 1,
-               .threads = 1, .on_init = on_init);
+  start_server(.protocol = (struct Protocol*)(protocol), .timeout = 1,
+               .threads = 16, .on_init = on_init);
+  HttpProtocol.destroy(protocol);
 }
