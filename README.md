@@ -165,17 +165,18 @@ void on_request(struct HttpRequest* req) {
 
 void on_request()
 int main() {
-  struct HttpProtocol protocol = HttpProtocol();
+  struct HttpProtocol * protocol = HttpProtocol.new();
   protocol.on_request = on_request;
   protocol.public_folder = "www";
   // We'll use the macro start_server, because our settings are simple.
   // (this will call Server.listen(&settings) with the settings we provide)
-  start_server(.protocol = (struct Protocol*)(&protocol), .timeout = 1,
+  start_server(.protocol = (struct Protocol*)(protocol), .timeout = 1,
                .threads = 8);
+  HttpProtocol.destroy(protocol);
 }
 ```
 
-Using this library requires all the `http-` prefixed files (`http-mime-types`, `http-request`, `http-status`).
+Using this library requires all the `http-` prefixed files (`http-mime-types`, `http-request`, `http-status`, `http-objpool`).
 
 ## A note about versions
 
