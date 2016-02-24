@@ -21,6 +21,51 @@ struct Packet {
   void* data;
 };
 
+///////////////////
+// The global packet container pool
+static struct {
+  int count;
+  struct Packet* pool;
+} ContainerPool = {0, 0};
+
+static pthread_mutex_t container_pool_locker = PTHREAD_MUTEX_INITIALIZER;
+
+static void register_buffer(void) {
+  pthread_mutex_lock(&container_pool_locker);
+  ContainerPool.count++;
+  pthread_mutex_unlock(&container_pool_locker);
+}
+
+static void unregister_buffer(void) {
+  pthread_mutex_lock(&container_pool_locker);
+  ContainerPool.count--;
+  if (!ContainerPool.count) {
+    struct Packet* to_free;
+    while ((to_free = ContainerPool.pool)) {
+      ContainerPool.pool = to_free->next;
+      free(to_free);
+    }
+  }
+  pthread_mutex_unlock(&container_pool_locker);
+}
+
+static struct Packet* get_packet(void) {
+  struct Packet* packet;
+  pthread_mutex_lock(&container_pool_locker);
+  packet = ContainerPool.pool;
+  if (packet)
+    ContainerPool.pool = packet->next;
+  else
+    packet = malloc(sizeof(struct Packet));
+  pthread_mutex_unlock(&container_pool_locker);
+  if (!packet)
+    return 0;
+  packet->data = NULL;
+  packet->next = 0;
+  packet->length = 0;
+  return packet;
+}
+
 static void free_packet(struct Packet* packet) {
   if (packet->data) {
     if (packet->length)
@@ -28,7 +73,10 @@ static void free_packet(struct Packet* packet) {
     else
       fclose(packet->data);
   }
-  free(packet);
+  pthread_mutex_lock(&container_pool_locker);
+  packet->next = ContainerPool.pool;
+  ContainerPool.pool = packet;
+  pthread_mutex_unlock(&container_pool_locker);
 }
 ///////////////////
 // The buffer structor
@@ -67,6 +115,7 @@ static inline void* new_buffer(size_t offset) {
     free(buffer);
     return 0;
   }
+  register_buffer();
   return buffer;
 }
 
@@ -89,6 +138,7 @@ static inline void destroy_buffer(struct Buffer* buffer) {
     clear_buffer(buffer);
     pthread_mutex_destroy(&buffer->lock);
     free(buffer);
+    unregister_buffer();
   }
 }
 
@@ -96,7 +146,7 @@ static inline void destroy_buffer(struct Buffer* buffer) {
 static size_t buffer_move(struct Buffer* buffer, void* data, size_t length) {
   if (!is_buffer(buffer))
     return 0;
-  struct Packet* np = malloc(sizeof(struct Packet));
+  struct Packet* np = get_packet();
   if (!np)
     return 0;
   np->data = data;
@@ -136,7 +186,7 @@ static size_t buffer_next_logic(struct Buffer* buffer,
                                 char copy) {
   if (!is_buffer(buffer))
     return 0;
-  struct Packet* np = malloc(sizeof(struct Packet));
+  struct Packet* np = get_packet();
   if (!np)
     return 0;
 
@@ -202,18 +252,18 @@ start_flush:
   // a Packet with data but no length is a FILE * to be sent
   if (!buffer->packet->length) {
     // allocate buffer of 65,536 Bytes
-    struct Packet* np = malloc(sizeof(struct Packet));
+    struct Packet* np = get_packet();
     if (!np)
       goto skip_file;
     np->data = malloc(65536);
     if (!np->data) {
-      free(np);
+      free_packet(np);
       goto skip_file;
     }
     size_t read_len = fread(np->data, 1, 65536, (FILE*)buffer->packet->data);
     if (read_len <= 0) {
       free(np->data);
-      free(np);
+      free_packet(np);
       goto skip_file;
     }
     np->length = read_len;
