@@ -7,6 +7,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIB_BUFFER_H
 #define LIB_BUFFER_H
 
+// v. 0.1.3 is more copy friendly, requiring more memory and allowing for a
+// packet pool with minimal malloc on copy.
+#define LIB_BUFFER_VERSION 0.1.3
+
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
