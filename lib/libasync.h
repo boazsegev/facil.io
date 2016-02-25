@@ -39,7 +39,11 @@ extern const struct AsyncAPI {
   async_p (*new)(int threads,
                  void (*on_thread_init)(async_p async, void* arg),
                  void* arg);
-  /** Asyn.run(async, task, arg) sends tasks to the asynchronous event queue. */
+  /**
+  Asyn.run(async, task, arg) sends tasks to the asynchronous event queue.
+
+  Returns -1 or 0 on error, otherwise returns a positive number (success).
+ */
   int (*run)(async_p self, void (*task)(void*), void* arg);
   /** Async.signal(async) will gracefully signal the async object to finish up.
    */

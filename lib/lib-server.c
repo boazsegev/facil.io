@@ -8,6 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 // lib server is based off and requires the following libraries:
 #include "lib-server.h"
 
+// #include <ssl.h>
 // sys includes
 #include <stdlib.h>
 #include <stdio.h>
@@ -626,8 +627,10 @@ static void async_on_data(server_pt* p_server) {
     (*p_server)->busy[sockfd] = 0;
     return;
   }
-  // we didn't get the handle, reschedule.
-  Async.run((*p_server)->async, (void (*)(void*))async_on_data, p_server);
+  // we didn't get the handle, reschedule - but only if the connection is still
+  // open.
+  if ((*p_server)->protocol_map[sockfd])
+    Async.run((*p_server)->async, (void (*)(void*))async_on_data, p_server);
 }
 
 static void on_data(struct Reactor* reactor, int fd) {
@@ -679,7 +682,12 @@ static void srv_cycle_core(server_pt server) {
     // double en = (float)clock()/CLOCKS_PER_SEC;
     // printf("timeout review took %f milliseconds\n", (en-st)*1000);
   }
-  Async.run(server->async, (void (*)(void*))srv_cycle_core, server);
+  if (Async.run(server->async, (void (*)(void*))srv_cycle_core, server) <= 0) {
+    perror(
+        "FATAL ERROR:"
+        "couldn't schedule the server's reactor in the task queue");
+    exit(1);
+  }
 }
 
 /** listens to a server with the following server settings (which MUST include
@@ -729,12 +737,15 @@ static int srv_listen(struct ServerSettings settings) {
       .reactor.on_shutdown = on_shutdown,
       .reactor.on_close = on_close,
   };
-  // bind the server's socket
-  int srvfd = bind_server_socket(&srv);
-  // if we didn't get a socket, quit now.
-  if (srvfd < 0)
-    return -1;
-  srv.srvfd = srvfd;
+  // bind the server's socket - if relevent
+  int srvfd = 0;
+  if (settings.port > 0) {
+    srvfd = bind_server_socket(&srv);
+    // if we didn't get a socket, quit now.
+    if (srvfd < 0)
+      return -1;
+    srv.srvfd = srvfd;
+  }
 
   // zero out data...
   for (int i = 0; i < capacity; i++) {
@@ -760,7 +771,8 @@ static int srv_listen(struct ServerSettings settings) {
   }
   srv.async = Async.new(settings.threads, NULL, &srv);
   if (srv.async < 0) {
-    close(srvfd);
+    if (srvfd)
+      close(srvfd);
     return -1;
   }
 
@@ -772,13 +784,20 @@ static int srv_listen(struct ServerSettings settings) {
   register_server(&srv);
 
   // let'm know...
-  printf("(%d) Listening on port %s (max sockets: %lu, ~%d used)\n", getpid(),
-         srv.settings->port, srv.capacity, srv.srvfd + 2);
+  if (srvfd)
+    printf("(%d) Listening on port %s (max sockets: %lu, ~%d used)\n", getpid(),
+           srv.settings->port, srv.capacity, srv.srvfd + 2);
+  else
+    printf(
+        "(%d) Started a non-listening network service"
+        "(max sockets: %lu ~ at least 6 are in system use)\n",
+        getpid(), srv.capacity);
 
   // initialize reactor
   reactor_init(&srv.reactor);
   // bind server data to reactor loop
-  reactor_add(&srv.reactor, srv.srvfd);
+  if (srvfd)
+    reactor_add(&srv.reactor, srv.srvfd);
 
   // call the on_init callback
   if (settings.on_init) {
@@ -804,7 +823,6 @@ static int srv_listen(struct ServerSettings settings) {
         perror("waiting for child process had failed");
     }
   }
-  close(srvfd);  // already performed by the reactor...? Yap, but just in case.
 
   if (settings.on_finish)
     settings.on_finish(&srv);
@@ -1053,8 +1071,9 @@ static void perform_each_task(struct ConnTask* task) {
     free(task);
     return;
   }
-  // reschedule
-  Async.run(task->server->async, (void (*)(void*))perform_each_task, task);
+  // reschedule - but only if the connection is still open
+  if (task->server->protocol_map[task->fd])
+    Async.run(task->server->async, (void (*)(void*))perform_each_task, task);
   return;
 }
 
@@ -1096,7 +1115,7 @@ static int each_block(struct Server* server,
   int c = 0;
   if (service) {
     for (int i = 0; i < server->capacity; i++) {
-      if (server->protocol_map[i] &&
+      if (server->protocol_map[i] && server->protocol_map[i]->service &&
           (server->protocol_map[i]->service == service ||
            !strcmp(server->protocol_map[i]->service, service))) {
         task(server, i, arg);
