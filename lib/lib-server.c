@@ -682,7 +682,8 @@ static void srv_cycle_core(server_pt server) {
     // double en = (float)clock()/CLOCKS_PER_SEC;
     // printf("timeout review took %f milliseconds\n", (en-st)*1000);
   }
-  if (Async.run(server->async, (void (*)(void*))srv_cycle_core, server) <= 0) {
+  if (server->run &&
+      Async.run(server->async, (void (*)(void*))srv_cycle_core, server)) {
     perror(
         "FATAL ERROR:"
         "couldn't schedule the server's reactor in the task queue");
@@ -805,6 +806,7 @@ static int srv_listen(struct ServerSettings settings) {
   }
 
   // initiate the core's cycle
+  srv.run = 1;
   Async.run(srv.async, (void (*)(void*))srv_cycle_core, &srv);
   Async.wait(srv.async);
   // cleanup
@@ -1258,9 +1260,9 @@ static void srv_stop(server_pt srv) {
       }
       set = set->next;
     }
-  // TODO: stop the server
-  Async.signal(srv->async);
+  // stop the server
   srv->run = 0;
+  Async.signal(srv->async);
   pthread_mutex_unlock(&global_lock);
 }
 // deregisters and stops all servers
