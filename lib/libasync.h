@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIBASYNC_H
 #define LIBASYNC_H
 
-#define LIBASYNC_VERSION 0.1.2
+#define LIBASYNC_VERSION 0.2.0
 
 // defines the type async_p (async pointer).
 // the structure is defined to contain the thread pool's internal data as well
@@ -42,7 +42,7 @@ extern const struct AsyncAPI {
   /**
   Asyn.run(async, task, arg) sends tasks to the asynchronous event queue.
 
-  Returns -1 or 0 on error, otherwise returns a positive number (success).
+  Returns -1 on error, otherwise returns 0.
  */
   int (*run)(async_p self, void (*task)(void*), void* arg);
   /** Async.signal(async) will gracefully signal the async object to finish up.

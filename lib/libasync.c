@@ -19,8 +19,6 @@ Feel free to copy, use and enjoy according to the license provided.
 // types used
 
 struct Async {
-  /// an array to `pthread_t` objects `count` long.
-  pthread_t* thread_pool;
   /// the number of threads in the array.
   int count;
   /// The read only part of the pipe used to push tasks.
@@ -31,6 +29,8 @@ struct Async {
   void (*init_thread)(struct Async*, void*);
   /// a pointer for the callback.
   void* arg;
+  /// an array to `pthread_t` objects `count` long.
+  pthread_t thread_pool[];
 };
 
 // A task structure.
@@ -116,6 +116,15 @@ static void* thread_sentinal(struct Async* async) {
 }
 
 /////////////////////
+// a single task performance, for busy waiting
+static void perform_single_task(async_p async) {
+  struct Task task = {};
+  if (read(async->in, &task, sizeof(struct Task)) > 0)
+    task.task(task.arg);
+  else
+    perror("Async library failing to catch overflow");
+}
+/////////////////////
 // the functions
 
 // creates a new aync object
@@ -137,13 +146,20 @@ static struct Async* async_new(int threads,
     close(io[1]);
     return NULL;
   }
+
   // setup the struct data
   async->count = threads;
   async->init_thread = on_init;
-  async->thread_pool = (void*)(async + 1);
   async->in = io[0];
   async->out = io[1];
   async->arg = arg;
+
+  // make sure write isn't blocking, otherwise we might deadlock.
+  fcntl(async->out, F_SETFL, O_NONBLOCK);
+  // disable SIGPIPE isn't required, as the main thread isn't likely to make
+  // this mistake... but still...
+  signal(SIGPIPE, SIG_IGN);
+
   // create the thread pool
   for (int i = 0; i < threads; i++) {
     if ((pthread_create(async->thread_pool + i, NULL,
@@ -164,13 +180,41 @@ static int async_run(struct Async* self, void (*task)(void*), void* arg) {
   if (!(task && self))
     return -1;
   struct Task package = {.task = task, .arg = arg};
-  return write(self->out, &package, sizeof(struct Task));
+  int written;
+  // "busy" wait for the task buffer to complete tasks by performing tasks in
+  // the buffer.
+  while ((written = write(self->out, &package, sizeof(struct Task))) !=
+         sizeof(struct Task)) {
+    if (written > 0) {
+      // this is fatal to the Async engine, as a partial write will now mess up
+      // all the task-data!  --- This shouldn't be possible because it's all
+      // powers of 2. (buffer size is power of 2 and struct size is power of 2).
+      fprintf(
+          stderr,
+          "FATAL: Async queue corruption, cannot continue processing data.\n");
+      exit(2);
+    }
+    // closed pipe, return error
+    if (!(errno & (EAGAIN | EWOULDBLOCK)))
+      return -1;
+    // perform a task from the queue, to actively wait - this could cause the
+    // stack to grow... (could be recursive).
+    perform_single_task(self);
+  }
+  return 0;
 }
 
 static void async_signal(struct Async* self) {
   struct Task package = {.task = 0, .arg = 0};
-  if (write(self->out, &package, sizeof(struct Task)))
-    ;
+  while (write(self->out, &package, sizeof(struct Task)) !=
+         sizeof(struct Task)) {
+    // closed pipe, return error
+    if (!(errno & (EAGAIN | EWOULDBLOCK)))
+      return;
+    // perform a task from the queue, to actively wait - this could cause the
+    // stack to grow... (could be recursive).
+    perform_single_task(self);
+  }
 }
 static void async_wait(struct Async* self) {
   for (int i = 0; i < self->count; i++) {
