@@ -89,10 +89,12 @@ static void* thread_loop(struct Async* async) {
 #endif
   if (async->init_thread)
     async->init_thread(async, async->arg);
-  int in = async->in;  // keep a copy of the pipe's address on the stack
+  int in = async->in;    // keep a copy of the pipe's address on the stack
+  int out = async->out;  // keep a copy of the pipe's address on the stack
   while (read(in, &task, sizeof(struct Task)) > 0) {
     if (!task.task) {
       close(in);
+      close(out);
       break;
     }
     task.task(task.arg);
@@ -130,6 +132,7 @@ static int perform_single_task(async_p async) {
   if (read(async->in, &task, sizeof(struct Task)) > 0) {
     if (!task.task) {
       close(async->in);
+      close(async->out);
       return 0;
     }
     pthread_mutex_unlock(&async->locker);
@@ -219,7 +222,21 @@ static int extend_queue(async_p async, struct Task* task) {
   async->out = async->out - data->io.out;
   // write the task to the new queue - otherwise, our thread might quit before
   // it starts.
-  write(async->out, task, sizeof(struct Task));
+  if (write(async->out, task, sizeof(struct Task)) <= 0) {
+    // failed to write the new task... can this happen?
+
+    // swap the two writers back
+    async->out = async->out + data->io.out;
+    data->io.out = async->out - data->io.out;
+    async->out = async->out - data->io.out;
+    // close
+    close(data->io.in);
+    close(data->io.out);
+    // free
+    free(data);
+    // inform about the error
+    return -1;
+  }
   // create a thread that listens to the new queue and pushes it to the old
   // queue
   pthread_t thr;
@@ -338,6 +355,8 @@ static void async_signal(struct Async* self) {
   pthread_mutex_lock(&self->locker);
   while (write(self->out, &package, sizeof(struct Task)) !=
          sizeof(struct Task)) {
+    if (!extend_queue(self, &package))
+      break;
     // closed pipe, return error
     if (perform_single_task(self))
       break;
