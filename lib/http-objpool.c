@@ -43,14 +43,17 @@ static void* pop(object_pool pool) {
   void* object = NULL;
   struct ObjectContainer* c = pool->objects;
   if (c) {
-    // we have an object.
+    // we have an availavle object.
+    object = c->object;
+    // step the objects pool forward
     pool->objects = c->next;
+    // move the object's container to the container pool
     c->next = pool->containers;
     pool->containers = c;
-    object = c->object;
+    // unlock
     pthread_mutex_unlock(&pool->lock);
+    // return the object
     return object;
-
   } else {
     if (pool->wait_in) {
       // this is a blocking object pool - update waiting count
