@@ -314,7 +314,6 @@ static int async_run(struct Async* self, void (*task)(void*), void* arg) {
   pthread_mutex_lock(&self->locker);
   while ((written = write(self->out, &package, sizeof(struct Task))) !=
          sizeof(struct Task)) {
-    fprintf(stderr, "entered error zone\n");
     if (written > 0) {
       // this is fatal to the Async engine, as a partial write will now mess up
       // all the task-data!  --- This shouldn't be possible because it's all
