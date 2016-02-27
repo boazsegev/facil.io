@@ -80,20 +80,31 @@ void on_new_thread(async_p async, void* arg) {
 
 // an example task
 void say_hi(void* arg) {
-  printf("Hi!\n");
+  int static i = 0;
+  fprintf(stderr, "Hi! %d\n", i++);
 }
 
 // an example task
-void schedule_tasks(void* arg) {
+void schedule_tasks2(void* arg) {
+  fprintf(stderr, "SCHEDULE TASKS START AGAIN\n");
   async_p async = arg;
-  for (size_t i = 0; i < (64 * 1024); i++) {
+  for (size_t i = 0; i < (8 * 1024); i++) {
     Async.run(async, say_hi, NULL);
-    Async.run(async, say_hi, NULL);
-    printf("wrote task\n");
+    printf("wrote task %lu\n", i);
   }
   Async.signal(async);
   printf("signal finish\n");
 }
+void schedule_tasks(void* arg) {
+  fprintf(stderr, "SCHEDULE TASKS START\n");
+  async_p async = arg;
+  for (size_t i = 0; i < (8 * 1024); i++) {
+    Async.run(async, say_hi, NULL);
+    printf("wrote task %lu\n", i);
+  }
+  Async.run(async, schedule_tasks2, async);
+}
+
 // This one will fail with safe kernels...
 // On windows you might get a blue screen...
 void evil_code(void* arg) {
