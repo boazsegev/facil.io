@@ -89,11 +89,12 @@ static void* thread_loop(struct Async* async) {
     async->init_thread(async, async->arg);
   int in = async->in;  // keep a copy of the pipe's address on the stack
   while (read(in, &task, sizeof(struct Task)) > 0) {
-    if (!task.task)
+    if (!task.task) {
+      close(in);
       break;
+    }
     task.task(task.arg);
   }
-  close(in);
   return 0;
 }
 
@@ -117,12 +118,17 @@ static void* thread_sentinal(struct Async* async) {
 
 /////////////////////
 // a single task performance, for busy waiting
-static void perform_single_task(async_p async) {
+static int perform_single_task(async_p async) {
   struct Task task = {};
-  if (read(async->in, &task, sizeof(struct Task)) > 0)
+  if (read(async->in, &task, sizeof(struct Task)) > 0) {
+    if (!task.task) {
+      close(async->in);
+      return 0;
+    }
     task.task(task.arg);
-  else
-    perror("Async library failing to catch overflow");
+    return 0;
+  } else
+    return -1;
 }
 /////////////////////
 // the functions
@@ -194,12 +200,9 @@ static int async_run(struct Async* self, void (*task)(void*), void* arg) {
           "FATAL: Async queue corruption, cannot continue processing data.\n");
       exit(2);
     }
-    // closed pipe, return error
-    if (!(errno & (EAGAIN | EWOULDBLOCK)))
+    // closed pipe or other error, return error
+    if (perform_single_task(self))
       return -1;
-    // perform a task from the queue, to actively wait - this could cause the
-    // stack to grow... (could be recursive).
-    perform_single_task(self);
   }
   return 0;
 }
@@ -209,11 +212,8 @@ static void async_signal(struct Async* self) {
   while (write(self->out, &package, sizeof(struct Task)) !=
          sizeof(struct Task)) {
     // closed pipe, return error
-    if (!(errno & (EAGAIN | EWOULDBLOCK)))
+    if (perform_single_task(self))
       return;
-    // perform a task from the queue, to actively wait - this could cause the
-    // stack to grow... (could be recursive).
-    perform_single_task(self);
   }
 }
 static void async_wait(struct Async* self) {
