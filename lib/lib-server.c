@@ -771,7 +771,7 @@ static int srv_listen(struct ServerSettings settings) {
     }
   }
   srv.async = Async.new(settings.threads, NULL, &srv);
-  if (srv.async < 0) {
+  if (srv.async <= 0) {
     if (srvfd)
       close(srvfd);
     return -1;
