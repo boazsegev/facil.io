@@ -19,8 +19,10 @@ Feel free to copy, use and enjoy according to the license provided.
 struct Server;
 
 /**
-This is the interface for the HttpRequest object. Use the `HttpRequest` object
-to make API calls, such as iterating through headers.
+This is the interface for the HttpRequest object.
+
+Use the `HttpRequest` object to make API calls, such as iterating through
+headers.
 */
 extern const struct HttpRequestClass {
   /** retures an new heap allocated request object */
