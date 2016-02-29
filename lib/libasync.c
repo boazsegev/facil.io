@@ -156,6 +156,8 @@ static void* extended_queue_thread(void* _data) {
   struct ExtQueueData* data = _data;
   struct Task task;
   int i;
+  // make sure to ignore broken pipes
+  signal(SIGPIPE, SIG_IGN);
   // get the core out pipe flags (blocking state not important)
   i = fcntl(data->async->out, F_GETFL, NULL);
   // change the original queue writer object to a blocking state
