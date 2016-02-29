@@ -123,6 +123,8 @@ static void* thread_sentinal(struct Async* async) {
 /////////////////////
 // a single task performance, for busy waiting
 static int perform_single_task(async_p async) {
+  if (!async || fcntl(async->in, F_GETFL, NULL) == -1)
+    return -1;
   fprintf(stderr,
           "Warning: event queue overloaded!\n"
           "Perfoming out of band tasks, failure could occure.\n"
@@ -160,6 +162,8 @@ static void* extended_queue_thread(void* _data) {
   signal(SIGPIPE, SIG_IGN);
   // get the core out pipe flags (blocking state not important)
   i = fcntl(data->async->out, F_GETFL, NULL);
+  if (i < 0)
+    return (void*)-1;
   // change the original queue writer object to a blocking state
   fcntl(data->io.out, F_SETFL, i & (~O_NONBLOCK));
   // make sure the reader doesn't block
@@ -205,7 +209,7 @@ static void* extended_queue_thread(void* _data) {
 static int extend_queue(async_p async, struct Task* task) {
   // create the data carrier
   struct ExtQueueData* data = malloc(sizeof(struct ExtQueueData));
-  if (!data)
+  if (!data || !async || (fcntl(async->in, F_GETFL) < 0))  // closed queue
     return -1;
   // create the extra pipes
   if (pipe(&data->io.in)) {
@@ -345,8 +349,10 @@ static int async_run(struct Async* self, void (*task)(void*), void* arg) {
     if (!extend_queue(self, &package))
       break;
     // closed pipe or other error, return error
-    if (perform_single_task(self))
+    if (perform_single_task(self)) {
+      pthread_mutex_unlock(&self->locker);
       return -1;
+    }
   }
   pthread_mutex_unlock(&self->locker);
   return 0;
