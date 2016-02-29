@@ -622,6 +622,7 @@ static void async_on_data(server_pt* p_server) {
     struct Protocol* protocol = (*p_server)->protocol_map[sockfd];
     if (!protocol || !protocol->on_data)
       return;
+    (*p_server)->idle[sockfd] = 0;
     protocol->on_data((*p_server), sockfd);
     // release the handle
     (*p_server)->busy[sockfd] = 0;
@@ -658,7 +659,7 @@ static void srv_cycle_core(server_pt server) {
   } else if (delta == 0 && server->settings->on_idle) {
     server->settings->on_idle(server);
   }
-  // TODO: timeout + local close management
+  // timeout + local close management
   if (server->last_to != _reactor_(server)->last_tick) {
     // We use the delta with fuzzy logic (only after the first second)
     int delta = _reactor_(server)->last_tick - server->last_to;
