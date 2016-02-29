@@ -323,6 +323,7 @@ start_flush:
   sent = write(fd, buffer->packet->data + buffer->sent,
                buffer->packet->length - buffer->sent);
   if (sent < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
+    pthread_mutex_unlock(&buffer->lock);
     return -1;
   } else if (sent > 0) {
     buffer->sent += sent;
