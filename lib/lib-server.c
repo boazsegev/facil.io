@@ -30,20 +30,20 @@ static int bind_server_socket(struct Server*);
 static int set_non_blocking_socket(int fd);
 static long srv_capacity(void);
 
-// async data sending buffer and helpers
-struct Buffer {
-  struct Buffer* next;
-  int fd;
-  void* data;
-  int len;
-  int sent;
-  unsigned notification : 1;
-  unsigned moved : 1;
-  unsigned final : 1;
-  unsigned urgent : 1;
-  unsigned destroy : 4;
-  unsigned rsv : 3;
-};
+// // async data sending buffer and helpers
+// struct Buffer {
+//   struct Buffer* next;
+//   int fd;
+//   void* data;
+//   int len;
+//   int sent;
+//   unsigned notification : 1;
+//   unsigned moved : 1;
+//   unsigned final : 1;
+//   unsigned urgent : 1;
+//   unsigned destroy : 4;
+//   unsigned rsv : 3;
+// };
 
 ////////////////////////////////////////////////////////////////////////////////
 // The server data object container
@@ -358,7 +358,6 @@ void make_a_task_async(struct Server* server, int fd, void* arg);
 // The following allows access to helper functions and defines a namespace
 // for the API in this library.
 const struct ServerAPI Server = {
-    .root_pid = root_pid,                        //
     .reactor = srv_reactor,                      //
     .settings = srv_settings,                    //
     .capacity = srv_capacity,                    //
@@ -388,6 +387,7 @@ const struct ServerAPI Server = {
     .run_async = run_async,                      //
     .run_after = run_after,                      //
     .run_every = run_every,                      //
+    .root_pid = root_pid,                        //
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -810,6 +810,7 @@ static int srv_listen(struct ServerSettings settings) {
   srv.run = 1;
   Async.run(srv.async, (void (*)(void*))srv_cycle_core, &srv);
   Async.wait(srv.async);
+  fprintf(stderr, "server done\n");
   // cleanup
   reactor_stop(&srv.reactor);
 
@@ -837,8 +838,6 @@ static int srv_listen(struct ServerSettings settings) {
   signal(SIGINT, srv.old_sigint);
   signal(SIGTERM, srv.old_sigterm);
 
-  // remove server from registry, it it's still there...
-  srv_stop(&srv);
   // destroy the buffers.
   for (int i = 0; i < srv_capacity(); i++) {
     Buffer.destroy(buffer_map[i]);
@@ -1252,21 +1251,29 @@ static void srv_stop(server_pt srv) {
   if (global_servers_set && global_servers_set->server == srv) {
     global_servers_set = global_servers_set->next;
     free(tmp);
+    goto sig_srv;
   } else
     while (set) {
       if (set->next && set->next->server == srv) {
         tmp = set->next;
         set->next = set->next->next;
         free(tmp);
+        goto sig_srv;
       }
       set = set->next;
     }
-  // set the stop server flag.
-  srv->run = 0;
-  // close the listening socket, preventing new connections from coming in.
-  if (srv->srvfd)
-    reactor_close((struct Reactor*)srv, srv->srvfd);
-  Async.signal(srv->async);
+  // the server wasn't in the registry - we shouldn't stop it again...
+  srv = NULL;
+// send a signal to the server, if it was in the registry
+sig_srv:
+  if (srv) {
+    // close the listening socket, preventing new connections from coming in.
+    reactor_add((struct Reactor*)srv, srv->srvfd);
+    // set the stop server flag.
+    srv->run = 0;
+    // signal the async object to finish
+    Async.signal(srv->async);
+  }
   pthread_mutex_unlock(&global_lock);
 }
 // deregisters and stops all servers
