@@ -6,57 +6,72 @@ So I decided to brush up my C programming skills. My purpose is to, eventually, 
 
 Anyway, Along the way I wrote:
 
-## [`libasync`](/lib/libasync.h) - A native POSIX (`pthread`) thread pool.
+## [`libasync`](lib/libasync.h) - A native POSIX (`pthread`) thread pool.
 
- `libasync` uses pipes instead of mutexes, making it both super simple and moving a lot of the context switching optimizations to the kernel layer (which I assume to be well enough optimized).
+ `libasync` is a simple thread pool that uses POSIX threads.
 
- `libasync` threads are guarded by "sentinel" threads, so that segmentation faults and errors in any given task won't break the system apart. This was meant to give a basic layer of protection to any server implementation, but I would recommend that it be removed for any other uses (it's a matter or changing one line of code).
+ It uses a combination of a pipe (for wakeup signals) and mutexes (for managing the task queue). I found it more performant then using conditional variables and more portable then using signals (which required more control over the process then an external library should require).
+
+ `libasync` threads can be guarded by "sentinel" threads (it's a simple flag to be set in the prior to compiling the code), so that segmentation faults and errors in any given task won't break the system apart.
+
+ This was meant to give a basic layer of protection to any server implementation, but I would recommend that it be removed for any other uses (it's a matter or changing one line of code).
 
  Using `libasync` is super simple and would look something like this:
 
- ```
- #include "libasync.h"
- #include <stdio.h>
- // this optional function will just print a message when a new thread starts
- void on_new_thread(async_p async, void* arg) {
-   printf("%s", (char*)arg);
- }
+ ```c
+#include "libasync.h"
+#include <stdio.h>
+#include <pthread.h>
 
- // an example task
- void say_hi(void* arg) {
-   printf("Hi!\n");
- }
- // This one will fail with safe kernels...
- // On windows you might get a blue screen...
- void evil_code(void* arg) {
-   char* rewrite = arg;
-   while (1) {
-     rewrite[0] = '0';
-     rewrite++;
-   }
- }
+// an example task
+void say_hi(void* arg) {
+ printf("Hi from thread %p!\n", pthread_self());
+}
 
- // an example usage
- int main(void) {
-   // this message will be printed by each new thread.
-   char msg[] = "*** A new thread is born :-)\n";
-   // create the thread pool with 8 threads.
-   // the callback is optional (we can pass NULL)
-   async_p async = Async.new(8, on_new_thread, msg);
-   // send a task
-   Async.run(async, say_hi, NULL);
-   // an evil task will demonstrate the sentinel at work.
-   Async.run(async, evil_code, NULL);
-   // wait for all tasks to finish, closing the threads, clearing the memory.
-   Async.finish(async);
- }
+// an example usage
+int main(void) {
+ // create the thread pool with 8 threads.
+ async_p async = Async.new(8);
+ // send a task
+ Async.run(async, say_hi, NULL);
+ // wait for all tasks to finish, closing the threads, clearing the memory.
+ Async.finish(async);
+}
  ```
 
- Notice that the last line of output should be our "new thread is born" message, as a new worker thread replaces the one that `evil_code` caused to crash.
+Here's the sentinel at work\*:
+
+ ```c
+// define this flag somewhere global, perhaps as a compiler directive.
+#define ASYNC_USE_SENTINEL 1
+
+#include "libasync.h"
+#include <stdio.h>
+
+// This one will fail with safe kernels...
+// On windows you might get a blue screen...
+void evil_code(void* arg) {
+ char* rewrite = arg;
+ while (1) {
+   rewrite[0] = '0';
+   rewrite++;
+ }
+}
+
+// an example usage
+int main(void) {
+ // create the thread pool with 8 threads.
+ async_p async = Async.new(8);
+ // an evil task will demonstrate the sentinel at work.
+ Async.run(async, evil_code, NULL);
+ // wait for all tasks to finish, closing the threads, clearing the memory.
+ Async.finish(async);
+}
+ ```
 
  \* Don't run this code on machines with no runtime memory protection (i.e. some windows machines)... our `evil_code` example is somewhat evil.
 
-## [`libreact`](/lib/libreact.h) - KQueue/EPoll abstraction.
+## [`libreact`](lib/libreact.h) - KQueue/EPoll abstraction.
 
 It's true, some server programs still use `select` and `poll`... but they really shouldn't be (don't get me started).
 
@@ -70,7 +85,7 @@ P.S.
 
 What I would love to write, but I need to learn more before I do so, is a signal based reactor that will be work with all POSIX compilers, using [`sigaction`](http://www.gnu.org/software/libc/manual/html_node/Signal-Actions.html#Signal-Actions) and message pipes... but I want to improve on my site-reading skills first (I'm a musician at heart).
 
-## [`libbuffer`](/lib/libbuffer.h) - a network buffer manager.
+## [`libbuffer`](lib/libbuffer.h) - a network buffer manager.
 
 It is well known that `send` and `write` don't really send or write everything you ask of them. They do, sometimes, if it's not too much of a bother, but slow network connections (and the advantages of non-blocking IO) often cause them to just return early, with partially sent messages...
 
@@ -82,7 +97,7 @@ Hence, a user-land based buffer that keeps track of what was actually sent is re
 
 `libbuffer` is super friendly, you can even ask it to close the connection once all the data was sent, if you want it to.
 
-## [`lib-server`](/lib/lib-server.h) - a server building library.
+## [`lib-server`](lib/lib-server.h) - a server building library.
 
 Writing server code is fun... but in limited and controlled amounts... after all, much of it simple code being repeated endlessly, connecting one piece of code with a different piece of code.
 
@@ -92,7 +107,7 @@ Writing server code is fun... but in limited and controlled amounts... after all
 
 Using `lib-server` is super simple to use. It's based on Protocol structure and callbacks, so that we can dynamically change protocols and support stuff like HTTP upgrade requests. Here's a simple example:
 
-```
+```c
 #include "lib-server.h"
 #include <stdio.h>
 #include <string.h>
@@ -140,7 +155,7 @@ int main(void) {
 // easy :-)
 ```
 
-## [`http-protocol`](https://github.com/boazsegev/c-server-tools/blob/master/lib/http-protocol.c) - a protocol for the web
+## [`http-protocol`](lib/http-protocol.c) - a protocol for the web
 
 All these libraries are used in a Ruby server I'm writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" according to the `lib-server`'s protocol specs.
 
@@ -180,11 +195,13 @@ Using this library requires all the `http-` prefixed files (`http-mime-types`, `
 
 ## A note about versions
 
-v.0.1.0 is uses the main thread for the reactor pattern and optionally creates worker threads for the actual tasks (see the server settings).
+v.0.1.0 is uses the main thread for the reactor pattern and optionally creates worker threads for the actual tasks (see the server settings). It's Async library used pipes for the actual queue data and no new tasks would be accepted to perform once a close signal was sent.
 
 v.0.2.0 runs the reactor within the worker thread pool, which helps multi-process concurrency by preventing the reactor from accepting new connections when all the working threads are busy.
 
 This also means that using a single working thread with v.0.2.0 is totally single threaded as far as thread safety is concerned (even pings and closure callbacks will be called in order).
+
+It's Async library uses a binary tree for a queue, so that new tasks can be added even after the stop signal was accepted (notice that if existing tasks keep creating new tasks, the async object will never stop, even if some of the worker threads die).
 
 ---
 

@@ -1,5 +1,5 @@
 /*
-copyright: Boaz segev, 2015
+copyright: Boaz segev, 2016
 license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -101,15 +101,15 @@ static void free_packet(struct Packet* packet) {
   pthread_mutex_unlock(&container_pool_locker);
 }
 ///////////////////
-// The buffer structor
-struct Buffer {  // 88 bytes pet buffer
+// The buffer structure
+struct Buffer {
   void* id;
-  // a data locker.
-  pthread_mutex_t lock;
   // pointer to the actual data.
   struct Packet* packet;
   // the amount of data sent from the first packet
   size_t sent;
+  // a data locker.
+  pthread_mutex_t lock;
 };
 
 ///////////////////

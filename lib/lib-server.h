@@ -1,5 +1,5 @@
 /*
-copyright: Boaz segev, 2015
+copyright: Boaz segev, 2016
 license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIB_SERVER_H
 #define LIB_SERVER_H
 
-#define LIB_SERVER_VERSION 0.2.0
+#define LIB_SERVER_VERSION "0.2.0"
 
 // lib server is based off and requires the following libraries:
 #include "libreact.h"

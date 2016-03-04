@@ -1,5 +1,5 @@
 /*
-copyright: Boaz segev, 2015
+copyright: Boaz segev, 2016
 license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIBREACT_H
 #define LIBREACT_H
 
-#define LIBREACT_VERSION 0.2.0
+#define LIBREACT_VERSION "0.2.0"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE

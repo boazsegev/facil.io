@@ -1,5 +1,5 @@
 /*
-copyright: Boaz segev, 2015
+copyright: Boaz segev, 2016
 license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -771,7 +771,7 @@ static int srv_listen(struct ServerSettings settings) {
         pids[i] = fork();
     }
   }
-  srv.async = Async.new(settings.threads, NULL, &srv);
+  srv.async = Async.new(settings.threads);
   if (srv.async <= 0) {
     if (srvfd)
       close(srvfd);
@@ -1261,8 +1261,11 @@ static void srv_stop(server_pt srv) {
       }
       set = set->next;
     }
-  // stop the server
+  // set the stop server flag.
   srv->run = 0;
+  // close the listening socket, preventing new connections from coming in.
+  if (srv->srvfd)
+    reactor_close((struct Reactor*)srv, srv->srvfd);
   Async.signal(srv->async);
   pthread_mutex_unlock(&global_lock);
 }

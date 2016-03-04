@@ -1,69 +1,87 @@
 /*
-copyright: Boaz segev, 2015
+copyright: Boaz segev, 2016
 license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef LIBASYNC_H
-#define LIBASYNC_H
+#ifndef LIB_ASYNC_2_H
+#define LIB_ASYNC_2_H
 
-#define LIBASYNC_VERSION 0.2.0
+#define LIB_ASYNC_VERSION "0.2.0"
 
-// defines the type async_p (async pointer).
-// the structure is defined to contain the thread pool's internal data as well
-// as provide type safety.
 typedef struct Async* async_p;
 
-// The Async global variable contains the public API offered by the library.
-extern const struct AsyncAPI {
-  // the Async.new(threads, on_init_thread) creates a thread pool and
-  // returns a pointer to a new Async struct object.
-  //
-  // **threads** (int) is the number of worker threads to be spawned.
-  //
-  // **on_thread_init** (func)(async_p, void*) is a callback that each new
-  // working thread will call when it is first initialized.
-  //
-  // **arg** (void *) a pointer with datat that will be passed tp the init
-  // callback.
-  //
-  // Forking the thread pool results in undefined behavior (create after `fork`)
-  // although it's fairly likely that only the main process will handle tasks.
-  // This is due to the fact that the thread pool uses pipes instead of mutexes.
-  //
-  // More than one pool can be created.
-  //
-  // Threads that crash are re-spawned by a "watch-dog" (sentinal) thread.
-  //
-  // returns NULL on failure.
-  async_p (*new)(int threads,
-                 void (*on_thread_init)(async_p async, void* arg),
-                 void* arg);
+extern struct __ASYNC_API__ {
   /**
-  Asyn.run(async, task, arg) sends tasks to the asynchronous event queue.
+Creates a new Async object (a thread pool) and returns a pointer using the
+`aync_p` (Async Pointer) type.
 
-  Returns -1 on error, otherwise returns 0.
- */
-  int (*run)(async_p self, void (*task)(void*), void* arg);
-  /** Async.signal(async) will gracefully signal the async object to finish up.
-   */
-  void (*signal)(async_p self);
-  /** Async.wait(async) will wait for the async object to, without sending a
-  signal. */
-  void (*wait)(async_p self);
-  /** Async.finish(async) will gracefully close down the async object,
-  completing any scheduled tasks and freeing any related resources.
+Requires the number of new threads to be initialized. Use:
 
-  This function will wait for all scheduled tasks to complete before it
-  returns.
+    async_p async = Async.new(8);
 
-  This is equivilent to calling: `Async.signal(async); Async.wait(async);`
   */
-  void (*finish)(async_p self);
-  // Async.kill(async) will destroy the async object, freeing all memory and
-  // destroying the queue. Some background tasks might run to completion, but
-  // not all.
-  void (*kill)(async_p self);
+  async_p (*new)(int threads);
+
+  /**
+Signals an Async object to finish up.
+
+The threads in the thread pool will continue perfoming all the tasks in the
+queue until the queue is empty. Once the queue is empty, the threads will exit.
+If new tasks are created after the signal, they will be added to the queue and
+processed until the last thread is done. Once the last thread exists, future
+tasks won't be processed.
+
+Use:
+
+    Async.signal(async);
+
+  */
+  void (*signal)(async_p);
+
+  /**
+Waits for an Async object to finish up (joins all the threads in the thread
+pool).
+
+This function will wait forever or until a signal is received and all the tasks
+in the queue have been processed.
+
+Use:
+
+    Async.wait(async);
+
+  */
+  void (*wait)(async_p);
+
+  /**
+Schedules a task to be performed by an Async thread pool group.
+
+The Task should be a function such as `void task(void *arg)`.
+
+Use:
+
+    void task(void * arg) { printf("%s", arg); }
+
+    char arg[] = "Demo Task";
+
+    Async.run(async, task, arg);
+
+  */
+  int (*run)(async_p async, void (*task)(void*), void* arg);
+
+  /**
+Both signals for an Async object to finish up and waits for it to finish. This
+is akin to calling both `signal` and `wait` in succession:
+
+    Async.signal(async);
+    Async.wait(async);
+
+Use:
+
+    Async.finish(async);
+
+  */
+  void (*finish)(async_p);
 } Async;
 
-#endif /* end of include guard: LIBASYNC_H */
+#endif

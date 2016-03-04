@@ -1,5 +1,5 @@
 /*
-copyright: Boaz segev, 2015
+copyright: Boaz segev, 2016
 license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -9,7 +9,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 // v. 0.1.3 is more copy friendly, requiring more memory and allowing for a
 // packet pool with minimal malloc on copy.
-#define LIB_BUFFER_VERSION 0.1.3
+#define LIB_BUFFER_VERSION "0.1.3"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
