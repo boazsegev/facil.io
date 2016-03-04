@@ -133,6 +133,8 @@ void reactor_close(struct Reactor* reactor, int fd) {
       reactor->on_close(reactor, fd);
     /* this is automatic on epoll... what about kqueue? */
     _reactor_set_fd_polling_(reactor->private.reactor_fd, fd, RM_FD, 0);
+    /* don't unlock twice */
+    return;
   }
   pthread_mutex_unlock(&locker);
 }
