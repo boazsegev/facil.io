@@ -45,6 +45,7 @@ static int http_sendfile(struct HttpRequest* req) {
       "Content-Length: %lu\r\n"
       "Date: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
       "Last-Modified: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
+      "Cache-Control: public, max-age=3600\r\n"
       "\r\n";
 
   static char* http_file_response =
@@ -56,6 +57,7 @@ static int http_sendfile(struct HttpRequest* req) {
       "Content-Length: %lu\r\n"
       "Date: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
       "Last-Modified: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
+      "Cache-Control: public, max-age=3600\r\n"
       "\r\n";
 
   FILE* file;
@@ -148,6 +150,7 @@ static int http_sendfile(struct HttpRequest* req) {
           "Last-Modified: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
           "Accept-Ranges: bytes\r\n"
           "Content-Range: bytes %lu-%lu/%lu\r\n"
+          "Cache-Control: public, max-age=3600\r\n"
           "\r\n";
       size_t start = 0, finish = 0;
       ext = ext + 6;
