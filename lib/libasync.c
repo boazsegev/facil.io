@@ -28,6 +28,9 @@ static void* worker_thread_cycle(void* async);
 // disable)
 static void* sentinal_thread(void* async);
 
+// signaling to finish
+static void async_signal(async_p async);
+
 // the destructor
 static void async_destroy(async_p queue);
 
