@@ -145,9 +145,9 @@ static unsigned char is_busy(struct Server* server, int sockfd);
 /// retrives the active protocol object for the requested file descriptor.
 static struct Protocol* get_protocol(struct Server* server, int sockfd);
 /// sets the active protocol object for the requested file descriptor.
-static void set_protocol(struct Server* server,
-                         int sockfd,
-                         struct Protocol* new_protocol);
+static int set_protocol(struct Server* server,
+                        int sockfd,
+                        struct Protocol* new_protocol);
 /** retrives an opaque pointer set by `set_udata` and associated with the
 connection.
 
@@ -357,7 +357,7 @@ void make_a_task_async(struct Server* server, int fd, void* arg);
 // The actual Server API access setup
 // The following allows access to helper functions and defines a namespace
 // for the API in this library.
-const struct ServerAPI Server = {
+const struct ___Server__API____ Server = {
     .reactor = srv_reactor,                      //
     .settings = srv_settings,                    //
     .capacity = srv_capacity,                    //
@@ -486,10 +486,13 @@ static struct Protocol* get_protocol(struct Server* server, int sockfd) {
   return server->protocol_map[sockfd];
 }
 /// sets the active protocol object for the requested file descriptor.
-static void set_protocol(struct Server* server,
-                         int sockfd,
-                         struct Protocol* new_protocol) {
+static int set_protocol(struct Server* server,
+                        int sockfd,
+                        struct Protocol* new_protocol) {
+  if (!server->protocol_map[sockfd])
+    return -1;
   server->protocol_map[sockfd] = new_protocol;
+  return 0;
 }
 /** retrives an opaque pointer set by `set_udata` and associated with the
 connection.
@@ -869,7 +872,7 @@ static int srv_attach(server_pt server, int sockfd, struct Protocol* protocol) {
   if (sockfd >= server->capacity)
     return -1;
   // setup protocol
-  set_protocol(server, sockfd, protocol);
+  server->protocol_map[sockfd] = protocol;  // set_protocol() should fail;
   // setup timeouts
   server->tout[sockfd] = server->settings->timeout;
   server->idle[sockfd] = 0;
