@@ -761,6 +761,17 @@ static int srv_listen(struct ServerSettings settings) {
     buffer_map[i] = Buffer.new(0);
   }
 
+  // register signals - do this before concurrency, so that they are inherited.
+  struct sigaction old_term, old_int, old_pipe, new_int, new_pipe;
+  sigemptyset(&new_int.sa_mask);
+  sigemptyset(&new_pipe.sa_mask);
+  new_pipe.sa_flags = new_int.sa_flags = 0;
+  new_pipe.sa_handler = SIG_IGN;
+  new_int.sa_handler = on_signal;
+  sigaction(SIGINT, &new_int, &old_int);
+  sigaction(SIGTERM, &new_int, &old_term);
+  sigaction(SIGPIPE, &new_pipe, &old_pipe);
+
   // setup concurrency
   srv.root_pid = getpid();
   pid_t pids[settings.processes > 0 ? settings.processes : 0];
@@ -777,10 +788,6 @@ static int srv_listen(struct ServerSettings settings) {
       close(srvfd);
     return -1;
   }
-
-  // register signals
-  srv.old_sigint = signal(SIGINT, on_signal);
-  srv.old_sigterm = signal(SIGTERM, on_signal);
 
   // register server for signals
   register_server(&srv);
@@ -835,8 +842,10 @@ static int srv_listen(struct ServerSettings settings) {
     fflush(NULL);
     exit(0);
   }
-  signal(SIGINT, srv.old_sigint);
-  signal(SIGTERM, srv.old_sigterm);
+  // restore signal state
+  sigaction(SIGINT, &old_int, NULL);
+  sigaction(SIGTERM, &old_term, NULL);
+  sigaction(SIGPIPE, &old_pipe, NULL);
 
   // destroy the buffers.
   for (int i = 0; i < srv_capacity(); i++) {
