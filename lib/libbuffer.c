@@ -9,9 +9,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
-///////////////////
-// The buffer class ID
-static const void* BufferClassID;
 
 ///////////////////
 // The pre-allocated memory per packet
@@ -24,7 +21,7 @@ static const void* BufferClassID;
 ///////////////////
 // The packets
 struct Packet {
-  size_t length;
+  ssize_t length;
   struct Packet* next;
   void* data;
   char mem[BUFFER_PACKET_SIZE];
@@ -116,9 +113,9 @@ struct Buffer {
 // helpers
 
 static inline int is_buffer(struct Buffer* object) {
-  // if (object->id != &BufferClassID)
+  // if (object->id != is_buffer)
   //   printf("ERROR, Buffer received a non buffer object\n");
-  return object->id == &BufferClassID;
+  return object->id == is_buffer;
 }
 
 ///////////////////
@@ -129,7 +126,7 @@ static inline void* new_buffer(size_t offset) {
   if (!buffer)
     return 0;
   *buffer = (struct Buffer){//.lock = PTHREAD_MUTEX_INITIALIZER,
-                            .id = &BufferClassID,
+                            .id = is_buffer,
                             .sent = offset,
                             .packet = NULL};
 
@@ -197,6 +194,14 @@ static inline size_t buffer_move_logic(struct Buffer* buffer,
                                        char urgent) {
   if (!is_buffer(buffer))
     return 0;
+  if (!length || !data) {
+    fprintf(
+        stderr,
+        "Buffer: Canot move data because either length (%lu) or data (%p) are "
+        "invalid\n",
+        length, data);
+    return 0;
+  }
   struct Packet* np = get_packet();
   if (!np)
     return 0;
@@ -222,6 +227,14 @@ static size_t buffer_copy_logic(struct Buffer* buffer,
                                 void* data,
                                 size_t length,
                                 char urgent) {
+  if (!length || !data) {
+    fprintf(
+        stderr,
+        "Buffer: Canot copy data because either length (%lu) or data (%p) are "
+        "invalid\n",
+        length, data);
+    return 0;
+  }
   size_t to_copy = length;
   struct Packet* np = get_packet();
   if (!np) {
@@ -274,11 +287,13 @@ static size_t buffer_copy_next(struct Buffer* buffer,
   return buffer_copy_logic(buffer, data, length, 1);
 }
 
+// Flushes the buffer (writes as much as it can)...
+// This is where a lot of the action takes place :-)
 static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
   if (!is_buffer(buffer))
     return -1;
-  struct Packet* to_free;
   ssize_t sent = 0;
+  struct Packet* packet;
   pthread_mutex_lock(&buffer->lock);
 start_flush:
   // no packets to send
@@ -286,43 +301,48 @@ start_flush:
     pthread_mutex_unlock(&buffer->lock);
     return 0;
   }
-  // a Packet with data but no length is a FILE * to be sent
+  // packet is a file
   if (!buffer->packet->length) {
-    // prevent interruptions
+    // make sure file sending isn't interrupted.
     buffer->packet->metadata.can_interrupt = 0;
-    // allocate buffer of 65,536 Bytes
-    struct Packet* np = get_packet();
-    if (!np)
-      goto skip_file;
-    size_t read_len =
-        fread(np->mem, 1, BUFFER_PACKET_SIZE, (FILE*)buffer->packet->data);
-    if (read_len <= 0) {
-      free_packet(np);
-      goto skip_file;
+    // grab a packet from the pool
+    packet = get_packet();
+    // read the data
+    packet->length =
+        fread(packet->data, 1, BUFFER_PACKET_SIZE, buffer->packet->data);
+    // read less? done sending file
+    if (packet->length < BUFFER_PACKET_SIZE) {
+      if (packet->length <= 0) {  // no more data...
+        // return the packet we got from the pool.
+        free_packet(packet);
+        // move the buffer one step forward.
+        packet = buffer->packet;
+        buffer->packet = buffer->packet->next;
+        free_packet(packet);
+        packet = NULL;
+      } else {  // this will be the last the file will offer.
+        // set the next packet.
+        packet->next = buffer->packet->next;
+        // free the file packet.
+        free_packet(buffer->packet);
+        // set the data packet as the buffer's packet.
+        buffer->packet = packet;
+      }
+    } else {
+      // set the next packet.
+      packet->next = buffer->packet;
+      // set the data packet as the buffer's packet, the file packet is next.
+      buffer->packet = packet;
     }
-    np->length = read_len;
-    // insert the new packet (np) before the file packet and switch references
-    np->next = buffer->packet;
-    buffer->packet = np;
-    if (feof((FILE*)buffer->packet->next->data)) {
-      // we have reached the end of the file...
-      // np will now hold the file packet
-      np = buffer->packet->next;
-      // we remove the file packet from the chain
-      buffer->packet->next = np->next;
-      // we free the file packet
-      free_packet(np);
-    }
-    goto start_flush;
-  skip_file:
-    np = buffer->packet;
-    buffer->packet = buffer->packet->next;
-    free_packet(np);
+    // make sure the sent property is reset.
+    buffer->sent = 0;
+    // restart the flush
     goto start_flush;
   }
+  // the packet, at this point, is always a data packet. send the data.
   sent = write(fd, buffer->packet->data + buffer->sent,
                buffer->packet->length - buffer->sent);
-  if (sent < 0 && !(errno & (EWOULDBLOCK | EAGAIN))) {
+  if (sent < 0 && !(errno & (EWOULDBLOCK | EAGAIN | EINTR))) {
     pthread_mutex_unlock(&buffer->lock);
     return -1;
   } else if (sent > 0) {
@@ -332,22 +352,14 @@ start_flush:
     // review the close connection flag means: "Close the connection"
     if (buffer->packet->metadata.close_after) {
       close(fd);
-      goto clear_buffer;
+      // buffer clearing should be performed by the Buffer's owner.
     }
-    to_free = buffer->packet;
+    packet = buffer->packet;
     buffer->sent = 0;
     buffer->packet = buffer->packet->next;
-    free_packet(to_free);
+    free_packet(packet);
   }
-  pthread_mutex_unlock(&buffer->lock);
-  return sent;
-clear_buffer:
-  while (buffer->packet) {
-    to_free = buffer->packet;
-    buffer->packet = buffer->packet->next;
-    free_packet(to_free);
-  }
-  pthread_mutex_unlock(&buffer->lock);
+  pthread_mutex_unlock(&(buffer->lock));
   return sent;
 }
 
