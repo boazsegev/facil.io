@@ -279,7 +279,7 @@ static int http_sendfile(struct HttpRequest* req) {
 // implement on_close to close the FILE * for the body (if exists).
 static void http_on_close(struct Server* server, int sockfd) {
   struct HttpRequest* request = Server.set_udata(server, sockfd, NULL);
-  if (request) {
+  if (HttpRequest.is_request(request)) {
     // clear the request data.
     HttpRequest.clear(request);
     // store the request in the object pool.
@@ -324,6 +324,10 @@ static void http_on_data(struct Server* server, int sockfd) {
     return;
   }
   struct HttpRequest* request = Server.get_udata(server, sockfd);
+  if (request && !HttpRequest.is_request(request)) {
+    // someone else is using the connection and/or storage, we can't continue.
+    return;
+  }
   if (!request) {
     Server.set_udata(server, sockfd,
                      (request = ObjectPool.pop(protocol->request_pool)));

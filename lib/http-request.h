@@ -19,10 +19,8 @@ Feel free to copy, use and enjoy according to the license provided.
 struct Server;
 
 /**
-This is the interface for the HttpRequest object.
-
-Use the `HttpRequest` object to make API calls, such as iterating through
-headers.
+This is the interface for the HttpRequest object. Use the `HttpRequest` object
+to make API calls, such as iterating through headers.
 */
 extern const struct HttpRequestClass {
   /** retures an new heap allocated request object */
@@ -32,6 +30,8 @@ extern const struct HttpRequestClass {
   void (*clear)(struct HttpRequest* request);
   /** releases the resources used by a request object and frees it's memory. */
   void (*destroy)(struct HttpRequest* request);
+  /** validates that the object is indeed a request object */
+  int (*is_request)(struct HttpRequest* self);
 
   /* Header handling */
 
@@ -70,10 +70,10 @@ a destructor. i.e.:
        struct Request* request = Request.destroy(&http, sockfd);
 */
 struct HttpRequest {
-  /** The sucket waiting on the response */
-  int sockfd;
   /** The server initiating that forwarded the request. */
   struct Server* server;
+  /** The sucket waiting on the response */
+  int sockfd;
   /** buffers the head of the request (not the body) */
   char buffer[HTTP_HEAD_MAX_SIZE];
   /**
@@ -101,6 +101,8 @@ struct HttpRequest {
   /** points a tmpfile with the body of the request (the body was larger). */
   FILE* body_file;
   struct {
+    /** points to the Upgrade header, if any. */
+    void* is_request;
     /** points to the header's hash */
     char* header_hash;
     /** iteration position */
