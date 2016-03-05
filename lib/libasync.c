@@ -15,6 +15,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <pthread.h>
 #include <fcntl.h>
 #include <sched.h>
+#include <stdatomic.h>
 
 /******************************************************************************
 Forward declarations - used for functions that might be needed before they are
