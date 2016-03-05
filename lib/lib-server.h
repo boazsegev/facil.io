@@ -9,108 +9,125 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #define LIB_SERVER_VERSION "0.2.0"
 
-// lib server is based off and requires the following libraries:
+/* lib server is based off and requires the following libraries: */
 #include "libreact.h"
 #include "libasync.h"
 #include "libbuffer.h"
 #include <unistd.h>
 
-/////////////////
-// General info
+/**************************************************************************/ /**
+* General info
+*/
 
-// The following types are defined for the userspace of this library:
+/* The following types are defined for the userspace of this library: */
 
-struct Server;                     // used internally. no public data exposed.
-typedef struct Server* server_pt;  // used internally. no public data exposed.
-struct ServerSettings;
-struct Protocol;
+struct Server;                    /** used internally. no public data exposed */
+typedef struct Server* server_pt; /** a pointer to a server object */
+struct ServerSettings;            /** sets up the server's behavior */
+struct Protocol;                  /** controls connection events */
 
-// The start_server(...) macro is a shortcut that allows to easily create a
-// ServerSettings structure and start the server.
+/**
+The start_server(...) macro is a shortcut that allows to easily create a
+ServerSettings structure and start the server.
+*/
 #define start_server(...) Server.listen((struct ServerSettings){__VA_ARGS__})
 
-/////////////////
-// The Protocol
+/**************************************************************************/ /**
+* The Protocol
 
-// the Protocol struct defines the callbacks used for the connection and sets
-// the behaviour for the connection's protocol.
+the Protocol struct defines the callbacks used for the connection and sets the
+behaviour for the connection's protocol.
+*/
 struct Protocol {
-  // a string to identify the protocol's service (i.e. "http").
+  /** a string to identify the protocol's service (i.e. "http"). */
   char* service;
-  // called when a connection is opened
+  /** called when a connection is opened */
   void (*on_open)(struct Server*, int sockfd);
-  // called when a data is available
+  /** called when a data is available */
   void (*on_data)(struct Server*, int sockfd);
-  // called when the socket is ready to be written to.
+  /** called when the socket is ready to be written to. */
   void (*on_ready)(struct Server*, int sockfd);
-  // called when the server is shutting down, but before closing the connection.
+  /** called when the server is shutting down,
+   * but before closing the connection. */
   void (*on_shutdown)(struct Server*, int sockfd);
-  // called when the connection was closed
+  /** called when the connection was closed */
   void (*on_close)(struct Server*, int sockfd);
-  // called when the connection's timeout was reached
+  /** called when the connection's timeout was reached */
   void (*ping)(struct Server*, int sockfd);
 };
 
-/////////////////
-// The Server Settings
+/**************************************************************************/ /**
+* The Server Settings
 
-// these settings will be used to setup server behaviour. missing settings will
-// be filled in with default values. only the `protocol` setting, which sets the
-// default protocol, is required.
+These settings will be used to setup server behaviour. missing settings will be
+filled in with default values. only the `protocol` setting, which sets the
+default protocol, is required.
+*/
 struct ServerSettings {
-  // the default protocol.
+  /** the default protocol. */
   struct Protocol* protocol;
-  // the port to listen to. defaults to 3000.
+  /** the port to listen to. defaults to 3000. */
   char* port;
-  // the address to bind to. defaults to NULL (all localhost addresses)
+  /** the address to bind to. defaults to NULL (all localhost addresses) */
   char* address;
-  // called when the server starts, allowing for further initialization, such
-  // as timed event scheduling.
-  // this will be called seperately for every process.
+  /** called when the server starts, allowing for further initialization, such
+  as timed event scheduling.
+  this will be called seperately for every process. */
   void (*on_init)(struct Server* server);
-  // called when the server is done, to clean up any leftovers.
+  /** called when the server is done, to clean up any leftovers. */
   void (*on_finish)(struct Server* server);
-  // called whenever an event loop had cycled (a "tick").
+  /** called whenever an event loop had cycled (a "tick"). */
   void (*on_tick)(struct Server* server);
-  // called if an event loop cycled with no pending events.
+  /** called if an event loop cycled with no pending events. */
   void (*on_idle)(struct Server* server);
-  // called each time a new worker thread is spawned (within the new thread).
+  /** called each time a new worker thread is spawned (within the new thread).
+   */
   void (*on_init_thread)(struct Server* server);
-  // a NULL terminated string for when the server is busy (defaults to NULL - a
-  // simple disconnection with no message).
+  /** a NULL terminated string for when the server is busy (defaults to NULL, a
+   * simple disconnection with no message). */
   char* busy_msg;
-  // opaque user data.
+  /** opaque user data. **/
   void* udata;
-  // sets the amount of threads to be created for the server's thread-pool.
-  // Defaults to 1 - all `on_data`/`on_message` callbacks are deffered to a
-  // single working thread, protecting the reactor from blocking code.
-  // Use a negative value (-1) to disable the creation of any working threads.
+  /**
+  ets the amount of threads to be created for the server's thread-pool.
+  Defaults to 1 - the reactor and all callbacks will work using a single working
+  thread, allowing for an evented single threaded design.
+  */
   int threads;
-  // sets the amount of processes to be used (processes will be forked).
-  // Defaults to 1 working processes (no forking).
+  /** sets the amount of processes to be used (processes will be forked).
+  Defaults to 1 working processes (no forking). */
   int processes;
-  // sets the timeout for new connections. defaults to 5 seconds.
+  /** sets the timeout for new connections. defaults to 5 seconds. */
   unsigned char timeout;
 };
 
-/////////////////
-// The Server API
-// and helper functions
-extern const struct ServerAPI {
-  ////////////////////////////////////////////////////////////////////////////////
-  // Server settings and objects
+/**************************************************************************/ /**
+* The Server API
+* (and helper functions)
+
+The API and helper functions described here are accessed using the `Server`
+object. i.e:
+
+    Server.listen(struct ServerSettings { ... });
+
+*/
+extern const struct ___Server__API____ {
+  /****************************************************************************
+  * Server settings and objects
+  */
 
   /** returns the originating process pid */
   pid_t (*root_pid)(struct Server* server);
-  /// allows direct access to the reactor object. use with care.
+  /** allows direct access to the reactor object. use with care. */
   struct Reactor* (*reactor)(struct Server* server);
-  /// allows direct access to the server's original settings. use with care.
+  /** allows direct access to the server's original settings. use with care. */
   struct ServerSettings* (*settings)(struct Server* server);
-  /// returns the computed capacity for any server instance on the system.
+  /** returns the computed capacity for any server instance on the system. */
   long (*capacity)(void);
 
-  ////////////////////////////////////////////////////////////////////////////////
-  // Server actions
+  /****************************************************************************
+  * Server actions
+  */
 
   /**
   listens to a server with the following server settings (which MUST include
@@ -120,13 +137,14 @@ extern const struct ServerAPI {
   though a `srv_stop` function or when a SIGINT/SIGTERM is received).
   */
   int (*listen)(struct ServerSettings);
-  /// stops a specific server, closing any open connections.
+  /** stops a specific server, closing any open connections. */
   void (*stop)(struct Server* server);
-  /// stops any and all server instances, closing any open connections.
+  /** stops any and all server instances, closing any open connections. */
   void (*stop_all)(void);
 
-  ////////////////////////////////////////////////////////////////////////////////
-  // Socket settings and data
+  /****************************************************************************
+  * Socket settings and data
+  */
 
   /** Returns true if a specific connection's protected callback is running.
 
@@ -134,12 +152,16 @@ extern const struct ServerAPI {
   to the connection using the `td_task` or `each` functions.
   */
   unsigned char (*is_busy)(struct Server* server, int sockfd);
-  /// retrives the active protocol object for the requested file descriptor.
+  /** Retrives the active protocol object for the requested file descriptor. */
   struct Protocol* (*get_protocol)(struct Server* server, int sockfd);
-  /// sets the active protocol object for the requested file descriptor.
-  void (*set_protocol)(struct Server* server,
-                       int sockfd,
-                       struct Protocol* new_protocol);
+  /**
+  Sets the active protocol object for the requested file descriptor.
+
+  Returns -1 on error (i.e. connection closed), otherwise returns 0.
+  */
+  int (*set_protocol)(struct Server* server,
+                      int sockfd,
+                      struct Protocol* new_protocol);
   /** retrives an opaque pointer set by `set_udata` and associated with the
   connection.
 
@@ -153,8 +175,9 @@ extern const struct ServerAPI {
   255 seconds (the maximum allowed timeout count). */
   void (*set_timeout)(struct Server* server, int sockfd, unsigned char timeout);
 
-  ////////////////////////////////////////////////////////////////////////////////
-  // Socket actions
+  /****************************************************************************
+  * Socket actions
+  */
 
   /** Attaches an existing connection (fd) to the server's reactor and protocol
   management system, so that the server can be used also to manage connection
@@ -179,8 +202,9 @@ extern const struct ServerAPI {
   /// "touches" a socket, reseting it's timeout counter.
   void (*touch)(struct Server* server, int sockfd);
 
-  ////////////////////////////////////////////////////////////////////////////////
-  // Read and Write
+  /****************************************************************************
+  * Read and Write
+  */
 
   /** Reads up to `max_len` of data from a socket. the data is stored in the
   `buffer` and the number of bytes received is returned.
@@ -254,8 +278,9 @@ extern const struct ServerAPI {
   */
   ssize_t (*sendfile)(struct Server* server, int sockfd, FILE* file);
 
-  ////////////////////////////////////////////////////////////////////////////////
-  // Tasks + Async
+  /****************************************************************************
+  * Tasks + Async
+  */
 
   /** Schedules a specific task to run asyncronously for each connection.
   a NULL service identifier == all connections (all protocols). */
