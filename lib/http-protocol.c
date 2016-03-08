@@ -278,7 +278,7 @@ static int http_sendfile(struct HttpRequest* req) {
 
 // implement on_close to close the FILE * for the body (if exists).
 static void http_on_close(struct Server* server, int sockfd) {
-  struct HttpRequest* request = Server.set_udata(server, sockfd, NULL);
+  struct HttpRequest* request = Server.get_udata(server, sockfd);
   if (HttpRequest.is_request(request)) {
     // clear the request data.
     HttpRequest.clear(request);
