@@ -54,8 +54,10 @@ struct Server {
   struct ServerSettings* settings;
   // a pointer to the thread pool object (libasync).
   struct Async* async;
+  // a mutex for server data integrity
+  pthread_mutex_t lock;
   // maps each connection to it's protocol.
-  struct Protocol** protocol_map;
+  struct Protocol* volatile* protocol_map;
   // Used to send the server data + sockfd number to any worker threads.
   // pointer offset calculations are used to calculate the sockfd.
   struct Server** server_map;
@@ -64,7 +66,7 @@ struct Server {
   /// maps a connection's "busy" flag, preventing the same connection from
   /// running `on_data` on two threads. use busy[fd] to get the status of the
   /// flag.
-  char* busy;
+  volatile char* busy;
   /// maps all connection's timeout values. use tout[fd] to get/set the
   /// timeout.
   unsigned char* tout;
@@ -73,9 +75,6 @@ struct Server {
   unsigned char* idle;
   // a buffer map.
   void** buffer_map;
-  // old Signal handlers
-  void (*old_sigint)(int);
-  void (*old_sigterm)(int);
   // socket capacity
   long capacity;
   /// the last timeout review
@@ -85,7 +84,7 @@ struct Server {
   /// the original process pid
   pid_t root_pid;
   /// the flag that tells the server to stop
-  char run;
+  volatile char run;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -489,9 +488,29 @@ static struct Protocol* get_protocol(struct Server* server, int sockfd) {
 static int set_protocol(struct Server* server,
                         int sockfd,
                         struct Protocol* new_protocol) {
-  if (!server->protocol_map[sockfd])
+  // before bothering with the mutex, make sure we have a valid connection.
+  if (!server->protocol_map[sockfd]) {
+    // fprintf(stderr,
+    //         "ERROR: Cannot set a protocol for a disconnected socket.\n");
     return -1;
+  }
+  // on_close and set_protocol should never conflict.
+  // we should also prevent the same thread from deadlocking
+  // (i.e., when on_close tries to update the protocol)
+  if (pthread_mutex_trylock(&(server->lock)))
+    return -1;
+  // review the connection's validity again (in proteceted state)
+  if (!server->protocol_map[sockfd]) {
+    pthread_mutex_unlock(&(server->lock));
+    // fprintf(stderr,
+    //         "ERROR: Cannot set a protocol for a disconnected socket.\n");
+    return -1;
+  }
+  // set the new protocol
   server->protocol_map[sockfd] = new_protocol;
+  // release the lock
+  pthread_mutex_unlock(&(server->lock));
+  // return 0 (no error)
   return 0;
 }
 /** retrives an opaque pointer set by `set_udata` and associated with the
@@ -506,7 +525,9 @@ static void* get_udata(struct Server* server, int sockfd) {
 old pointer, if any. */
 static void* set_udata(struct Server* server, int sockfd, void* udata) {
   void* old = server->udata_map[sockfd];
+  // pthread_mutex_lock(&(server->lock));
   server->udata_map[sockfd] = udata;
+  // pthread_mutex_unlock(&(server->lock));
   return old;
 }
 /** Sets the timeout limit for the specified connectionl, in seconds, up to
@@ -529,8 +550,8 @@ static void clear_conn_data(server_pt server, int fd) {
   server->busy[fd] = 0;
   server->tout[fd] = 0;
   server->idle[fd] = 0;
-  Buffer.clear(server->buffer_map[fd]);
   server->udata_map[fd] = NULL;
+  Buffer.clear(server->buffer_map[fd]);
 }
 // on_ready, handles async buffer sends
 static void on_ready(struct Reactor* reactor, int fd) {
@@ -555,19 +576,20 @@ static void on_close(struct Reactor* reactor, int fd) {
   // file descriptors can be added from external threads (i.e. creating timers),
   // this could cause race conditions and data corruption,
   // (i.e., when on_close is releasing memory).
-  static pthread_mutex_t locker = PTHREAD_MUTEX_INITIALIZER;
   int lck = 0;
-  if ((lck = pthread_mutex_trylock(&locker))) {
+  // this should preven the same thread from calling on_close recursively
+  // (i.e., when using the Server.attach)
+  if ((lck = pthread_mutex_trylock(&(_server_(reactor)->lock)))) {
     if (lck != EAGAIN)
       return;
-    pthread_mutex_lock(&locker);
+    pthread_mutex_lock(&(_server_(reactor)->lock));
   }
   if (_protocol_(reactor, fd)) {
     if (_protocol_(reactor, fd)->on_close)
       _protocol_(reactor, fd)->on_close(_server_(reactor), fd);
     clear_conn_data(_server_(reactor), fd);
   }
-  pthread_mutex_unlock(&locker);
+  pthread_mutex_unlock(&(_server_(reactor)->lock));
 }
 
 // The busy flag is used to make sure that a single connection doesn't perform
@@ -717,10 +739,10 @@ static int srv_listen(struct ServerSettings settings) {
   // We can use the stack for the server's core memory.
   long capacity = srv_capacity();
   void* udata_map[capacity];
-  struct Protocol* protocol_map[capacity];
+  struct Protocol* volatile protocol_map[capacity];
   struct Server* server_map[capacity];
   void* buffer_map[capacity];
-  char busy[capacity];
+  volatile char busy[capacity];
   unsigned char tout[capacity];
   unsigned char idle[capacity];
   // populate the Server structure with the data
@@ -742,6 +764,10 @@ static int srv_listen(struct ServerSettings settings) {
       .reactor.on_shutdown = on_shutdown,
       .reactor.on_close = on_close,
   };
+  // initialize the server data mutex
+  if (pthread_mutex_init(&srv.lock, NULL)) {
+    return -1;
+  }
   // bind the server's socket - if relevent
   int srvfd = 0;
   if (settings.port > 0) {
@@ -785,6 +811,7 @@ static int srv_listen(struct ServerSettings settings) {
         pids[i] = fork();
     }
   }
+  // once we forked, we can initiate a thread pool for each process
   srv.async = Async.new(settings.threads);
   if (srv.async <= 0) {
     if (srvfd)
@@ -855,6 +882,9 @@ static int srv_listen(struct ServerSettings settings) {
     Buffer.destroy(buffer_map[i]);
   }
 
+  // destroy the mutex
+  pthread_mutex_destroy(&srv.lock);
+
   return 0;
 }
 
@@ -872,7 +902,7 @@ static int srv_attach(server_pt server, int sockfd, struct Protocol* protocol) {
   if (sockfd >= server->capacity)
     return -1;
   // setup protocol
-  server->protocol_map[sockfd] = protocol;  // set_protocol() should fail;
+  server->protocol_map[sockfd] = protocol;  // set_protocol() would cost more
   // setup timeouts
   server->tout[sockfd] = server->settings->timeout;
   server->idle[sockfd] = 0;
