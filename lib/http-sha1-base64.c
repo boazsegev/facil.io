@@ -208,7 +208,7 @@ static unsigned base64_decodes[] = {
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     0,  0,  0,  0,  0,  62, 0,  0,  0,  63, 52, 53, 54, 55, 56, 57, 58, 59, 60,
-    0,  0,  0,  0,  64, 0,  0,  0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
+    61, 0,  0,  0,  0,  0,  0,  0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 0,  0,  0,  0,
     0,  0,  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
     43, 44, 45, 46, 47, 48, 49, 50, 51, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
@@ -332,20 +332,22 @@ int base64_decode(char* target, char* encoded, int base64_len) {
   while (base64_len >= 4) {
     base64_len -= 4;  // make sure we don't loop forever.
     // copying the data allows us to write destructively to the same buffer
-    section.byte1.data = base64_decodes[(unsigned char)*(encoded++)];
-    section.byte1.tail = base64_decodes[(unsigned char)(*encoded)];
-    section.byte2.head = base64_decodes[(unsigned char)(*encoded)] >> 2;
+    section.byte1.data = base64_decodes[(unsigned char)(*encoded)];
     encoded++;
-    section.byte2.tail = base64_decodes[(unsigned char)(*encoded)];
-    section.byte3.head = base64_decodes[(unsigned char)(*encoded)] >> 4;
-    section.byte3.data = base64_decodes[(unsigned char)*(++encoded)];
+    section.byte1.tail = (base64_decodes[(unsigned char)(*encoded)] >> 4);
+    section.byte2.head = base64_decodes[(unsigned char)(*encoded)];
+    encoded++;
+    section.byte2.tail = (base64_decodes[(unsigned char)(*encoded)] >> 2);
+    section.byte3.head = base64_decodes[(unsigned char)(*encoded)];
+    encoded++;
+    section.byte3.data = base64_decodes[(unsigned char)(*encoded)];
+    encoded++;
     // write to the target buffer
     *(target++) = section.bytes[0];
     *(target++) = section.bytes[1];
     *(target++) = section.bytes[2];
     // count written bytes
-    written += (section.bytes[0] != 0) + (section.bytes[1] != 0) +
-               (section.bytes[2] != 0);
+    written += section.bytes[2] ? 3 : section.bytes[1] ? 2 : 1;
   }
   // deal with the "tail" of the encoded stream
   if (base64_len) {
@@ -356,24 +358,24 @@ int base64_decode(char* target, char* encoded, int base64_len) {
     // byte 1 + 2 (2 might be padding)
     section.byte1.data = base64_decodes[(unsigned char)*(encoded++)];
     if (--base64_len) {
-      section.byte1.tail = base64_decodes[(unsigned char)(*encoded)];
-      section.byte2.head = base64_decodes[(unsigned char)(*encoded)] >> 2;
+      section.byte1.tail = base64_decodes[(unsigned char)(*encoded)] >> 4;
+      section.byte2.head = base64_decodes[(unsigned char)(*encoded)];
       encoded++;
       if (--base64_len) {
-        section.byte2.tail = base64_decodes[(unsigned char)(*encoded)];
-        section.byte3.head = base64_decodes[(unsigned char)(*encoded)] >> 4;
+        section.byte2.tail = base64_decodes[(unsigned char)(*encoded)] >> 4;
+        section.byte3.head = base64_decodes[(unsigned char)(*encoded)];
         // --base64_len;  // will always be 0 at this point (or it was 4)
       }
     }
     // write to the target buffer
     *(target++) = section.bytes[0];
-    if (section.bytes[1])
+    if (section.bytes[1] || section.bytes[2])
       *(target++) = section.bytes[1];
     if (section.bytes[2])
       *(target++) = section.bytes[2];
     // count written bytes
-    written += (section.bytes[0] != 0) + (section.bytes[1] != 0) +
-               (section.bytes[2] != 0);
+    written += section.bytes[2] ? 3 : section.bytes[1] ? 2 : 1;
   }
+  *target = 0;
   return written;
 }
