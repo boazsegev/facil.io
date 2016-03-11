@@ -228,7 +228,7 @@ extern const struct ___Server__API____ {
   be written. If the socket is forced to close at this point, the buffer will be
   destroyed (never sent).
 
-  On error, returns -1 otherwise returns the number of bytes in `len`.
+  On error, returns -1. Returns 0 on success
   */
   ssize_t (*write)(struct Server* server, int sockfd, void* data, size_t len);
   /** Writes data to the socket, moving the data's pointer directly to the
@@ -236,7 +236,7 @@ extern const struct ___Server__API____ {
 
   Once the data was written, `free` will be called to free the data's memory.
 
-  On error, returns -1 otherwise returns the number of bytes already sent.
+  On error, returns -1. Returns 0 on success
   */
   ssize_t (*write_move)(struct Server* server,
                         int sockfd,
@@ -251,7 +251,7 @@ extern const struct ___Server__API____ {
   any data packages (data written using `write` will not be interrupted in the
   middle).
 
-  On error, returns -1 otherwise returns the number of bytes already sent.
+  On error, returns -1. Returns 0 on success
   */
   ssize_t (*write_urgent)(struct Server* server,
                           int sockfd,
@@ -269,7 +269,7 @@ extern const struct ___Server__API____ {
   any data packages (data written using `write` will not be interrupted in the
   middle).
 
-  On error, returns -1 otherwise returns the number of bytes already sent.
+  On error, returns -1. Returns 0 on success
   */
   ssize_t (*write_move_urgent)(struct Server* server,
                                int sockfd,

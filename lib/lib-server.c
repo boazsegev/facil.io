@@ -1018,7 +1018,9 @@ static ssize_t srv_write(struct Server* server,
   server->idle[sockfd] = 0;
   // send data
   Buffer.write(server->buffer_map[sockfd], data, len);
-  return Buffer.flush(server->buffer_map[sockfd], sockfd);
+  if (Buffer.flush(server->buffer_map[sockfd], sockfd) < 0)
+    return -1;
+  return 0;
 }
 /** Writes data to the socket, moving the data's pointer directly to the buffer.
 
@@ -1037,7 +1039,9 @@ static ssize_t srv_write_move(struct Server* server,
   server->idle[sockfd] = 0;
   // send data
   Buffer.write_move(server->buffer_map[sockfd], data, len);
-  return Buffer.flush(server->buffer_map[sockfd], sockfd);
+  if (Buffer.flush(server->buffer_map[sockfd], sockfd) < 0)
+    return -1;
+  return 0;
 }
 /** Copies & writes data to the socket, managing an asyncronous buffer.
 
@@ -1060,7 +1064,9 @@ static ssize_t srv_write_urgent(struct Server* server,
   server->idle[sockfd] = 0;
   // send data
   Buffer.write_next(server->buffer_map[sockfd], data, len);
-  return Buffer.flush(server->buffer_map[sockfd], sockfd);
+  if (Buffer.flush(server->buffer_map[sockfd], sockfd) < 0)
+    return -1;
+  return 0;
 }
 /** Writes data to the socket, moving the data's pointer directly to the buffer.
 
@@ -1085,7 +1091,9 @@ static ssize_t srv_write_move_urgent(struct Server* server,
   server->idle[sockfd] = 0;
   // send data
   Buffer.write_move_next(server->buffer_map[sockfd], data, len);
-  return Buffer.flush(server->buffer_map[sockfd], sockfd);
+  if (Buffer.flush(server->buffer_map[sockfd], sockfd) < 0)
+    return -1;
+  return 0;
 }
 /**
 Sends a whole file as if it were a single atomic packet.
@@ -1103,7 +1111,9 @@ static ssize_t srv_sendfile(struct Server* server, int sockfd, FILE* file) {
   server->idle[sockfd] = 0;
   // send data
   Buffer.sendfile(server->buffer_map[sockfd], file);
-  return Buffer.flush(server->buffer_map[sockfd], sockfd);
+  if (Buffer.flush(server->buffer_map[sockfd], sockfd) < 0)
+    return -1;
+  return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
