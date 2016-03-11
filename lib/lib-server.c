@@ -284,7 +284,8 @@ a NULL service identifier == all connections (all protocols). */
 static int each(struct Server* server,
                 char* service,
                 void (*task)(struct Server* server, int fd, void* arg),
-                void* arg);
+                void* arg,
+                void (*fallback)(struct Server* server, int fd, void* arg));
 /** Schedules a specific task to run for each connection. The tasks will be
  * performed sequencially, in a blocking manner. The method will only return
  * once all the tasks were completed. A NULL service identifier == all
@@ -302,7 +303,8 @@ the task).
 static int fd_task(struct Server* server,
                    int sockfd,
                    void (*task)(struct Server* server, int fd, void* arg),
-                   void* arg);
+                   void* arg,
+                   void (*fallback)(struct Server* server, int fd, void* arg));
 /** Runs an asynchronous task, IF threading is enabled (set the
 `threads` to 1 (the default) or greater).
 
@@ -347,6 +349,7 @@ struct ConnTask {
   int fd;
   void (*task)(struct Server* server, int fd, void* arg);
   void* arg;
+  void (*fallback)(struct Server* server, int fd, void* arg);
 };
 // the async handler
 static void perform_each_task(struct ConnTask* task);
@@ -597,6 +600,9 @@ static void on_close(struct Reactor* reactor, int fd) {
 // `on_message` callback and any user task requested by `each` or `fd_task`.
 static int set_to_busy(struct Server* server, int sockfd) {
   static pthread_mutex_t locker = PTHREAD_MUTEX_INITIALIZER;
+
+  if (!server->protocol_map[sockfd])
+    return 0;
   pthread_mutex_lock(&locker);
   if (server->busy[sockfd] == 1) {
     pthread_mutex_unlock(&locker);
@@ -1106,7 +1112,8 @@ static ssize_t srv_sendfile(struct Server* server, int sockfd, FILE* file) {
 // the async handler
 static void perform_each_task(struct ConnTask* task) {
   // is it okay to perform the task?
-  if (set_to_busy(task->server, task->fd)) {
+  if (task->server->protocol_map[task->fd] &&
+      set_to_busy(task->server, task->fd)) {
     // perform the task
     task->task(task->server, task->fd, task->arg);
     // release the busy flag
@@ -1118,6 +1125,8 @@ static void perform_each_task(struct ConnTask* task) {
   // reschedule - but only if the connection is still open
   if (task->server->protocol_map[task->fd])
     Async.run(task->server->async, (void (*)(void*))perform_each_task, task);
+  else if (task->fallback)  // check for fallback, call if requested
+    task->fallback(task->server, task->fd, task->arg);
   return;
 }
 
@@ -1141,9 +1150,10 @@ a NULL service identifier == all connections (all protocols). */
 static int each(struct Server* server,
                 char* service,
                 void (*task)(struct Server* server, int fd, void* arg),
-                void* arg) {
+                void* arg,
+                void (*fallback)(struct Server* server, int fd, void* arg)) {
   struct ConnTask msg = {
-      .server = server, .task = task, .arg = arg,
+      .server = server, .task = task, .arg = arg, .fallback = fallback,
   };
   return each_block(server, service, make_a_task_async, &msg);
 }
@@ -1185,11 +1195,11 @@ the task).
 static int fd_task(struct Server* server,
                    int sockfd,
                    void (*task)(struct Server* server, int fd, void* arg),
-                   void* arg) {
+                   void* arg,
+                   void (*fallback)(struct Server* server, int fd, void* arg)) {
   if (server->protocol_map[sockfd]) {
     struct ConnTask msg = {
-        .server = server, .task = task, .arg = arg,
-    };
+        .server = server, .task = task, .arg = arg, .fallback = fallback};
     make_a_task_async(server, sockfd, &msg);
     return 0;
   }

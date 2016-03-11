@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIB_SERVER_H
 #define LIB_SERVER_H
 
-#define LIB_SERVER_VERSION "0.2.0"
+#define LIB_SERVER_VERSION "0.2.1"
 
 /* lib server is based off and requires the following libraries: */
 #include "libreact.h"
@@ -116,13 +116,20 @@ extern const struct ___Server__API____ {
   * Server settings and objects
   */
 
-  /** returns the originating process pid */
+  /** Returns the originating process pid */
   pid_t (*root_pid)(struct Server* server);
-  /** allows direct access to the reactor object. use with care. */
+  /** Allows direct access to the reactor object. use with care. */
   struct Reactor* (*reactor)(struct Server* server);
-  /** allows direct access to the server's original settings. use with care. */
+  /** Allows direct access to the server's original settings. use with care. */
   struct ServerSettings* (*settings)(struct Server* server);
-  /** returns the computed capacity for any server instance on the system. */
+  /**
+  Returns the adjusted capacity for any server instance on the system.
+
+  The capacity is calculating by attempting to increase the system's open file
+  limit to the maximum allowed, and then marginizing the result with respect to
+  possible memory limits and possible need for file descriptors for response
+  processing.
+  */
   long (*capacity)(void);
 
   /****************************************************************************
@@ -130,7 +137,7 @@ extern const struct ___Server__API____ {
   */
 
   /**
-  listens to a server with the following server settings (which MUST include
+  Listens to a server with the following server settings (which MUST include
   a default protocol).
 
   This method blocks the current thread until the server is stopped (either
@@ -282,16 +289,30 @@ extern const struct ___Server__API____ {
   * Tasks + Async
   */
 
-  /** Schedules a specific task to run asyncronously for each connection.
-  a NULL service identifier == all connections (all protocols). */
+  /**
+  Schedules a specific task to run asyncronously for each connection.
+  a NULL service identifier == all connections (all protocols).
+
+  If a connection was terminated before performing their sceduled tasks, the
+  `fallback` task will be performed instead.
+
+  It is recommended to perform any resource cleanup within the fallback function
+  and call the fallback function from within the main task, but other designes
+  are valid as well.
+  */
   int (*each)(struct Server* server,
               char* service,
               void (*task)(struct Server* server, int fd, void* arg),
-              void* arg);
+              void* arg,
+              void (*fallback)(struct Server* server, int fd, void* arg));
   /** Schedules a specific task to run for each connection. The tasks will be
    * performed sequencially, in a blocking manner. The method will only return
    * once all the tasks were completed. A NULL service identifier == all
    * connections (all protocols).
+   *
+   * The task, although performed <b>on</b> each connection, will be performed
+   * within the calling connection's lock, so be careful as for possible race
+   * conditions.
   */
   int (*each_block)(struct Server* server,
                     char* service,
@@ -299,13 +320,20 @@ extern const struct ___Server__API____ {
                     void* arg);
   /** Schedules a specific task to run asyncronously for a specific connection.
 
-  returns -1 on failure, 0 on success (success being scheduling or performing
-  the task).
+  returns -1 on failure, 0 on success (success being scheduling the task).
+
+  If a connection was terminated before performing their sceduled tasks, the
+  `fallback` task will be performed instead.
+
+  It is recommended to perform any resource cleanup within the fallback function
+  and call the fallback function from within the main task, but other designes
+  are valid as well.
   */
   int (*fd_task)(struct Server* server,
                  int sockfd,
                  void (*task)(struct Server* server, int fd, void* arg),
-                 void* arg);
+                 void* arg,
+                 void (*fallback)(struct Server* server, int fd, void* arg));
   /** Runs an asynchronous task, IF threading is enabled (set the
   `threads` to 1 (the default) or greater).
 
