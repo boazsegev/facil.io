@@ -10,23 +10,39 @@ SHA-1 encoding
 the `sha1` type will contain all the sha1 data, managing it's encoding. If it's
 stack allocated, no freeing will be required.
 */
-typedef struct sha1info sha1;
+typedef struct {
+  union {
+    uint32_t i[80];
+    unsigned char str[64];
+  } buffer;
+  union {
+    uint64_t i;
+    unsigned char str[8];
+  } msg_length;
+  union {
+    uint32_t i[5];
+    char str[21];
+  } digest;
+  unsigned buffer_pos : 6;
+  unsigned initialized : 1;
+  unsigned finalized : 1;
+} sha1_s;
 /**
 Initialize or reset the `sha1` object. This must be performed before hashing
 data using sha1.
 */
-void sha1_init(sha1*);
+void sha1_init(sha1_s*);
 /**
 Writes data to the sha1 buffer.
 */
-int sha1_write(sha1* s, const char* data, size_t len);
+int sha1_write(sha1_s* s, const char* data, size_t len);
 /**
 Finalizes the SHA1 hash, returning the Hashed data.
 
 `sha1_result` can be called for the same object multiple times, but the
 finalization will only be performed the first time this function is called.
 */
-char* sha1_result(sha1* s);
+char* sha1_result(sha1_s* s);
 
 /*******************************************************************************
 Base64 encoding

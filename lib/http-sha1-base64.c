@@ -20,33 +20,13 @@ SHA-1 encoding
 */
 
 /**
-This struct holds all the data required for the encoding.
-**/
-struct sha1info {
-  union {
-    uint32_t i[80];
-    unsigned char str[64];
-  } buffer;
-  union {
-    uint64_t i;
-    unsigned char str[8];
-  } msg_length;
-  union {
-    uint32_t i[5];
-    char str[21];
-  } digest;
-  unsigned buffer_pos : 6;
-  unsigned initialized : 1;
-  unsigned finalized : 1;
-};
-/**
 Bit rotation, inlined.
 */
 #define left_rotate(i, bits) (((i) << (bits)) | ((i) >> (32 - (bits))))
 /**
 Initialize/reset the SHA-1 object.
 */
-void sha1_init(sha1* s) {
+void sha1_init(sha1_s* s) {
   s->digest.i[0] = 0x67452301;
   s->digest.i[1] = 0xefcdab89;
   s->digest.i[2] = 0x98badcfe;
@@ -61,7 +41,7 @@ void sha1_init(sha1* s) {
 /**
 Process the buffer once full.
 */
-static void sha1_process_buffer(sha1* s) {
+static void sha1_process_buffer(sha1_s* s) {
   uint32_t a = s->digest.i[0];
   uint32_t b = s->digest.i[1];
   uint32_t c = s->digest.i[2];
@@ -101,7 +81,7 @@ static void sha1_process_buffer(sha1* s) {
 /**
 Add a single byte to the buffer and check the buffer's status.
 */
-static int sha1_add_byte(sha1* s, unsigned char byte) {
+static int sha1_add_byte(sha1_s* s, unsigned char byte) {
 // add a byte to the buffer, consider network byte order .
 #ifdef __BIG_ENDIAN__
   s->buffer.str[s->buffer_pos] = byte;
@@ -122,7 +102,7 @@ static int sha1_add_byte(sha1* s, unsigned char byte) {
 /**
 Write data to the buffer.
 */
-int sha1_write(sha1* s, const char* data, size_t len) {
+int sha1_write(sha1_s* s, const char* data, size_t len) {
   if (!s || s->finalized)
     return -1;
   if (!s->initialized)
@@ -137,7 +117,7 @@ int sha1_write(sha1* s, const char* data, size_t len) {
 /**
 Finalize the SHA-1 object and return the resulting hash.
 */
-char* sha1_result(sha1* s) {
+char* sha1_result(sha1_s* s) {
   // finalize the data if itw asn't finalized before
   if (!s->finalized) {
     // set the finalized flag
@@ -187,9 +167,9 @@ char* sha1_result(sha1* s) {
     }
 #endif
   }
-  // fprintf(stderr, "result requested, in hex, is %x%x%x%x%x\n",
-  //         s->digest.i[0], s->digest.i[1], s->digest.i[2],
-  //         s->digest.i[3], s->digest.i[4]);
+  // fprintf(stderr, "result requested, in hex, is %.8x%.8x%.8x%.8x%.8x\n",
+  //         s->digest.i[0], s->digest.i[1], s->digest.i[2], s->digest.i[3],
+  //         s->digest.i[4]);
   return s->digest.str;
 }
 
