@@ -1,3 +1,9 @@
+/*
+copyright: Boaz segev, 2016
+license: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #define _GNU_SOURCE
 #include "http-protocol.h"
 #include "http-mime-types.h"
@@ -136,7 +142,7 @@ static int http_sendfile(struct HttpRequest* req) {
     // we now need to write some headers... we can recycle the ext pointer
     // for
     // the data
-    if (HttpRequest.find(req, "RANGE") && ((ext = HttpRequest.value(req))) &&
+    if (HttpRequest.find(req, "range") && ((ext = HttpRequest.value(req))) &&
         (ext[0] | 32) == 'b' && (ext[1] | 32) == 'y' && (ext[2] | 32) == 't' &&
         (ext[3] | 32) == 'e' && (ext[4] | 32) == 's' && (ext[5] | 32) == '=') {
       // ext holds the first range, starting on index 6 i.e. RANGE: bytes=0-1
@@ -259,7 +265,7 @@ static int http_sendfile(struct HttpRequest* req) {
     // send headers
     Server.write(req->server, req->sockfd, req->buffer, len);
     // send file, unless the request method is "HEAD"
-    if (strcmp("HEAD", req->method))
+    if (strcasecmp("HEAD", req->method))
       Server.sendfile(req->server, req->sockfd, file);
     else  // The file will be closed by the buffer if it's sent, otherwise...
       fclose(file);
@@ -438,8 +444,8 @@ parse:
     tmp1 = buff + pos;
     while (pos < len && buff[pos] != ':') {
       if (buff[pos] >= 'a' && buff[pos] <= 'z')
-        buff[pos] = buff[pos] & 223;  // uppercase the header field.
-      // buff[pos] = buff[pos] | 32;    // lowercase is nice, but less common.
+        buff[pos] = buff[pos] & 223;  // uppercase is Ruby style.
+      // buff[pos] = buff[pos] | 32;    // lowercase is Node.js style.
       pos++;
     }
     if (pos >= len - 1)  // must have at least 2 eol markers + data
@@ -465,7 +471,7 @@ parse:
     }
     buff[pos++] = 0;
     buff[pos++] = 0;
-    if (!strcmp(tmp1, "HOST")) {
+    if (!strcasecmp(tmp1, "host")) {
       request->host = tmp2;
       // lowercase of hosts, to support case agnostic dns resolution
       while (*tmp2 && (*tmp2) != ':') {
@@ -473,11 +479,11 @@ parse:
           *tmp2 = *tmp2 | 32;
         tmp2++;
       }
-    } else if (!strcmp(tmp1, "CONTENT-TYPE")) {
+    } else if (!strcasecmp(tmp1, "content-type")) {
       request->content_type = tmp2;
-    } else if (!strcmp(tmp1, "CONTENT-LENGTH")) {
+    } else if (!strcasecmp(tmp1, "content-length")) {
       request->content_length = atoi(tmp2);
-    } else if (!strcmp(tmp1, "UPGRADE")) {
+    } else if (!strcasecmp(tmp1, "upgrade")) {
       request->upgrade = tmp2;
     }
   }
@@ -537,7 +543,7 @@ finish_headers:
 finish:
 
   // answer the OPTIONS method, if exists
-  if (!strcmp(request->method, "OPTIONS"))
+  if (!strcasecmp(request->method, "OPTIONS"))
     goto options;
 
   // reset inner "pos"

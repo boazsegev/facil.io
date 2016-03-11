@@ -51,6 +51,10 @@ Returns an object (or pushes a new object) to the pool, making it available for
 future `ObjectPool.pop` calls.
   */
   void (*push)(object_pool, void* object);
+  /**
+  Returns the (approximate) number of objects available the pool.
+  */
+  int (*count)(object_pool pool);
 } ObjectPool;
 
 #endif /* end of include guard: HTTP_OBJECT_POOL_H */

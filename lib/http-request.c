@@ -112,7 +112,7 @@ static int request_next(struct HttpRequest* self) {
 static int request_find(struct HttpRequest* self, char* const name) {
   self->private.pos = 0;
   do {
-    if (!strcmp(self->private.header_hash + self->private.pos, name))
+    if (!strcasecmp(self->private.header_hash + self->private.pos, name))
       return 1;
   } while (request_next(self));
   return 0;

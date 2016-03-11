@@ -1,5 +1,5 @@
 /*
-copyright: Boaz segev, 2015
+copyright: Boaz segev, 2016
 license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -8,6 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define HTTP_PROTOCOL_H
 #include "lib-server.h"
 #include "http-request.h"
+#include "http-response.h"
 #include "http-objpool.h"
 #include <stdio.h>
 
