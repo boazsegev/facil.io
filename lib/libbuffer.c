@@ -416,7 +416,7 @@ size_t buffer_pending(struct Buffer* buffer) {
 }
 
 /** returns true (1) if the buffer is empty, otherwise returns false (0). */
-char buffer_empty(struct Buffer* buffer) {
+char buffer_is_empty(struct Buffer* buffer) {
   if (!is_buffer(buffer))
     return 1;
   return buffer->packet == NULL;
@@ -436,6 +436,5 @@ const struct BufferClass Buffer = {
     .write_move_next = (size_t (*)(void*, void*, size_t))buffer_move_next,
     .flush = (ssize_t (*)(void*, int))buffer_flush,
     .close_when_done = (void (*)(void*, int))buffer_close_w_d,
-    .pending = (size_t (*)(void*))buffer_pending,
-    .empty = (char (*)(void*))buffer_empty,
+    .is_empty = (char (*)(void*))buffer_is_empty,
 };

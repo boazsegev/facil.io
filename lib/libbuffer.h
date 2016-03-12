@@ -119,12 +119,7 @@ extern const struct BufferClass {
   Marks the connection to closes once the current buffer data was sent.
   */
   void (*close_when_done)(void* buffer, int fd);
-  /**
-  returns the sizes of all the pending data packets, excluding files (yet to
-  be implemented).
-  */
-  size_t (*pending)(void* buffer);
   /** returns true (1) if the buffer is empty, otherwise returns false (0). */
-  char (*empty)(void* buffer);
+  char (*is_empty)(void* buffer);
 } Buffer;
 #endif
