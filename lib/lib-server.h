@@ -165,12 +165,12 @@ struct ServerSettings {
 /**************************************************************************/ /**
 * The Server API
 * (and helper functions)
-
-The API and helper functions described here are accessed using the global
-`Server` object. i.e:
-
-    Server.listen(struct ServerSettings { ... });
-
+*
+* - the API and helper functions described here are accessed using the global
+* `Server` object. i.e:
+*
+*      Server.listen(struct ServerSettings { ... });
+*
 */
 extern const struct Server__API____ {
   /****************************************************************************
