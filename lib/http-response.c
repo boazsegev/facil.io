@@ -2,6 +2,8 @@
 
 #include <string.h>
 #include <time.h>
+#include <stdarg.h>
+
 /******************************************************************************
 Function declerations.
 */
@@ -58,6 +60,19 @@ static int write_header(struct HttpResponse*,
                         const char* value,
                         size_t value_len);
 
+/**
+Prints a string directly to the header's buffer, appending the header
+seperator (the new line marker '\r\n' should NOT be printed to the headers
+buffer).
+
+Limited error check is performed.
+
+If the header buffer is full or the headers were already sent (new headers
+cannot be sent), the function will return -1.
+
+On success, the function returns 0.
+*/
+int response_printf(struct HttpResponse*, const char* format, ...);
 /**
 Sends the headers (if they weren't previously sent).
 
@@ -117,6 +132,7 @@ struct ___HttpResponse_class___ HttpResponse = {
     .status_str = status_str,
     .write_header_cstr = write_header_cstr,
     .write_header = write_header,
+    .printf = response_printf,
     .send = send_response,
     .write_body = write_body,
     .write_body_move = write_body_move,
@@ -141,7 +157,7 @@ API implementation.
 /**
 The padding for the status line (62 + 2 for the extra \r\n after the headers).
 */
-#define HTTP_HEADER_START 61
+#define HTTP_HEADER_START 80
 
 /**
 Destroys the response object pool.
@@ -193,9 +209,10 @@ static void reset(struct HttpResponse* response, struct HttpRequest* request) {
   response->content_length = 0;
   response->status = 200;
   response->metadata.headers_sent = 0;
-  response->metadata.headers_length = 0;
+  response->metadata.headers_pos = response->header_buffer + HTTP_HEADER_START;
   response->metadata.fd = request->sockfd;
   response->metadata.server = request->server;
+  response->date = Server.reactor(response->metadata.server)->last_tick;
 }
 /** Gets a response status, as a string */
 static char* status_str(struct HttpResponse* response) {
@@ -231,7 +248,8 @@ static int write_header(struct HttpResponse* response,
   // check for space in the buffer
   size_t header_len = strlen(header);
   if (response->metadata.headers_sent ||
-      (header_len + value_len + 4 + response->metadata.headers_length >=
+      (header_len + value_len + 4 +
+           (response->metadata.headers_pos - response->header_buffer) >=
        HTTP_HEAD_MAX_SIZE))
     return -1;
   // review special headers
@@ -241,27 +259,49 @@ static int write_header(struct HttpResponse* response,
     response->metadata.connection_written = 1;
   }
   // write the header name to the buffer
-  while (header_len--)
-    response->header_buffer[HTTP_HEADER_START +
-                            response->metadata.headers_length++] = *(header++);
+  memcpy(response->metadata.headers_pos, header, header_len);
+  response->metadata.headers_pos += header_len;
   // write the header to value seperator (`: `)
-  response
-      ->header_buffer[HTTP_HEADER_START + response->metadata.headers_length++] =
-      ':';
-  response
-      ->header_buffer[HTTP_HEADER_START + response->metadata.headers_length++] =
-      ' ';
+  *(response->metadata.headers_pos++) = ':';
+  *(response->metadata.headers_pos++) = ' ';
+
   // write the header's value to the buffer
-  while (value_len--)
-    response->header_buffer[HTTP_HEADER_START +
-                            response->metadata.headers_length++] = *(value++);
+  memcpy(response->metadata.headers_pos, value, value_len);
+  response->metadata.headers_pos += value_len;
   // write the header seperator (`\r\n`)
-  response
-      ->header_buffer[HTTP_HEADER_START + response->metadata.headers_length++] =
-      '\r';
-  response
-      ->header_buffer[HTTP_HEADER_START + response->metadata.headers_length++] =
-      '\n';
+  *(response->metadata.headers_pos++) = '\r';
+  *(response->metadata.headers_pos++) = '\n';
+
+  return 0;
+}
+
+/**
+Prints a string directly to the header's buffer, appending the header
+seperator (the new line marker '\r\n' should NOT be printed to the headers
+buffer).
+
+If the header buffer is full or the headers were already sent (new headers
+cannot be sent), the function will return -1.
+
+On success, the function returns 0.
+*/
+int response_printf(struct HttpResponse* response, const char* format, ...) {
+  if (response->metadata.headers_sent)
+    return -1;
+  size_t max_len = HTTP_HEAD_MAX_SIZE -
+                   (response->metadata.headers_pos - response->header_buffer);
+  va_list args;
+  va_start(args, format);
+  int written =
+      vsnprintf(response->metadata.headers_pos, max_len, format, args);
+  va_end(args);
+  if (written > max_len)
+    return -1;
+  // update the writing position
+  response->metadata.headers_pos += written;
+  // write the header seperator (`\r\n`)
+  *(response->metadata.headers_pos++) = '\r';
+  *(response->metadata.headers_pos++) = '\n';
   return 0;
 }
 
@@ -277,61 +317,65 @@ static int send_response(struct HttpResponse* response) {
   char* status = HttpStatus.to_s(response->status);
   if (!status)
     return -1;
+
   // write the content length header, if relevant
-  if (response->content_length && response->content_length <= 2147483648 &&
-      response->metadata.headers_length <= (HTTP_HEAD_MAX_SIZE - 48)) {
-    response->metadata.headers_length +=
-        sprintf(response->header_buffer + HTTP_HEADER_START +
-                    response->metadata.headers_length,
-                "Content-Length: %lu\r\n", response->content_length);
+  if (response->content_length) {
+    memcpy(response->metadata.headers_pos, "Content-Length: ", 16);
+    response->metadata.headers_pos += 16;
+    response->metadata.headers_pos += sprintf(response->metadata.headers_pos,
+                                              "%lu", response->content_length);
+    // write the header seperator (`\r\n`)
+    *(response->metadata.headers_pos++) = '\r';
+    *(response->metadata.headers_pos++) = '\n';
   }
   // write the date, if missing
-  if (!response->metadata.date_written &&
-      response->metadata.headers_length <= (HTTP_HEAD_MAX_SIZE - 48)) {
+  if (!response->metadata.date_written) {
     struct tm t;
-    gmtime_r(&Server.reactor(response->metadata.server)->last_tick, &t);
-    response->metadata.headers_length +=
-        strftime(response->header_buffer + HTTP_HEADER_START +
-                     response->metadata.headers_length,
-                 HTTP_HEAD_MAX_SIZE - response->metadata.headers_length,
-                 "Date: %a, %d %b %Y %H:%M:%S GMT\r\n", &t);
+    gmtime_r(&response->date, &t);
+    // response->metadata.headers_pos +=
+    //     strftime(response->metadata.headers_pos, 100,
+    //              "Date: %a, %d %b %Y %H:%M:%S GMT\r\n", &t);
+    memcpy(response->metadata.headers_pos, "Date: ", 6);
+    response->metadata.headers_pos += 6;
+    response->metadata.headers_pos += strftime(
+        response->metadata.headers_pos, 100, "%a, %d %b %Y %H:%M:%S", &t);
+    memcpy(response->metadata.headers_pos, " GMT\r\n", 6);
+    response->metadata.headers_pos += 6;
   }
   // write the keep-alive (connection) header, if missing
-  if (!response->metadata.connection_written &&
-      response->metadata.headers_length <= (HTTP_HEAD_MAX_SIZE - 47)) {
-    response->metadata.headers_length +=
-        sprintf(response->header_buffer + HTTP_HEADER_START +
-                    response->metadata.headers_length,
-                "Connection: keep-alive\r\n"
-                "Keep-Alive: timeout=2\r\n");
+  if (!response->metadata.connection_written) {
+    memcpy(response->metadata.headers_pos,
+           "Connection: keep-alive\r\n"
+           "Keep-Alive: timeout=2\r\n",
+           47);
+    response->metadata.headers_pos += 47;
   }
 
   // write the headers completion marker (empty line - `\r\n`)
-  response
-      ->header_buffer[HTTP_HEADER_START + response->metadata.headers_length++] =
-      '\r';
-  response
-      ->header_buffer[HTTP_HEADER_START + response->metadata.headers_length++] =
-      '\n';
+  *(response->metadata.headers_pos++) = '\r';
+  *(response->metadata.headers_pos++) = '\n';
 
   // write the status string is "HTTP/1.1 xxx <...>\r\n" length == 15 +
   // strlen(status)
   int start = HTTP_HEADER_START - (15 + strlen(status));
-  if (start < 0) {
-    fprintf(stderr, "Status string pre-buffer mis-callculated. fix library\n");
-    return -1;
-  }
   sprintf(response->header_buffer + start, "HTTP/1.1 %d %s\r", response->status,
           status);
   // we need to seperate the writing because sprintf prints a NULL terminator.
   response->header_buffer[HTTP_HEADER_START - 1] = '\n';
   // mark headers as sent
   response->metadata.headers_sent = 1;
+  // // debug
+  // for (int i = start; i < response->metadata.headers_length +
+  // HTTP_HEADER_START;
+  //      i++) {
+  //   fprintf(stderr, "* %d: %x (%.6s)\n", i, response->header_buffer[i],
+  //           response->header_buffer + i);
+  // }
   // write data to network
   return Server.write(
       response->metadata.server, response->metadata.fd,
       response->header_buffer + start,
-      response->metadata.headers_length + HTTP_HEADER_START - start);
+      (response->metadata.headers_pos - response->header_buffer) - start);
 };
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
