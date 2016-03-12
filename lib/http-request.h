@@ -59,20 +59,25 @@ extern const struct HttpRequestClass {
 /**
 The Request object allows easy access to the request's raw data and body.
 See the details of the structure for all the helper methods provided, such as
-header itteration. The struct must be obtained using a
-contructor. i.e.:
+header itteration.
 
-       struct Request* request = Request.new(&http, sockfd);
+Memory management automated and provided by the HttpProtocol, but it is good to
+be aware that the struct must be obtained using a contructor. i.e.:
 
-the `struct Request` objects live on the heap and thery should be freed using
-a destructor. i.e.:
+       struct HttpRequest* request = HttpRequest.new(&http, sockfd);
 
-       struct Request* request = Request.destroy(&http, sockfd);
+Also, the `struct HttpRequest` objects live on the heap and thery should be
+freed using a destructor. i.e.:
+
+       struct HttpRequest* request = HttpRequest.destroy(&http, sockfd);
+
+Again, both allocation and destruction are managed by the HttpProtocol and
+shouldn't be performed by the developer (unless fixing a bug in the library).
 */
 struct HttpRequest {
   /** The server initiating that forwarded the request. */
   struct Server* server;
-  /** The sucket waiting on the response */
+  /** The socket waiting on the response */
   int sockfd;
   /** buffers the head of the request (not the body) */
   char buffer[HTTP_HEAD_MAX_SIZE];
