@@ -55,10 +55,10 @@ doesn't contain a NULL terminating byte.
 If the headers were already sent, new headers cannot be sent and the function
 will return -1. On success, the function returns 0.
 */
-static int write_header(struct HttpResponse*,
-                        const char* header,
-                        const char* value,
-                        size_t value_len);
+static int write_header_data(struct HttpResponse*,
+                             const char* header,
+                             const char* value,
+                             size_t value_len);
 
 /**
 Prints a string directly to the header's buffer, appending the header
@@ -130,8 +130,8 @@ struct ___HttpResponse_class___ HttpResponse = {
     .pool_limit = 64,
     .reset = reset,
     .status_str = status_str,
-    .write_header_cstr = write_header_cstr,
-    .write_header = write_header,
+    .write_header = write_header_data,
+    .write_header2 = write_header_cstr,
     .printf = response_printf,
     .send = send_response,
     .write_body = write_body,
@@ -231,7 +231,7 @@ will return -1. On success, the function returns 0.
 static int write_header_cstr(struct HttpResponse* response,
                              const char* header,
                              const char* value) {
-  return write_header(response, header, value, strlen(value));
+  return write_header_data(response, header, value, strlen(value));
 }
 /**
 Writes a header to the response. This function writes only the requested
@@ -241,10 +241,10 @@ doesn't contain a NULL terminating byte.
 If the headers were already sent, new headers cannot be sent and the function
 will return -1. On success, the function returns 0.
 */
-static int write_header(struct HttpResponse* response,
-                        const char* header,
-                        const char* value,
-                        size_t value_len) {
+static int write_header_data(struct HttpResponse* response,
+                             const char* header,
+                             const char* value,
+                             size_t value_len) {
   // check for space in the buffer
   size_t header_len = strlen(header);
   if (response->metadata.headers_sent ||

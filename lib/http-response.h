@@ -227,6 +227,20 @@ struct ___HttpResponse_class___ {
   /** Gets a response status, as a string */
   char* (*status_str)(struct HttpResponse*);
   /**
+  Writes a header to the response. This function writes only the requested
+  number of bytes from the header value and can be used even when the header
+  value doesn't contain a NULL terminating byte.
+
+  If the header buffer is full or the headers were already sent (new headers
+  cannot be sent), the function will return -1.
+
+  On success, the function returns 0.
+  */
+  int (*write_header)(struct HttpResponse*,
+                      const char* header,
+                      const char* value,
+                      size_t value_len);
+  /**
   Writes a header to the response.
 
   This is equivelent to writing:
@@ -239,24 +253,9 @@ struct ___HttpResponse_class___ {
 
        On success, the function returns 0.
   */
-  int (*write_header_cstr)(struct HttpResponse*,
-                           const char* header,
-                           const char* value);
-  /**
-  Writes a header to the response. This function writes only the requested
-  number of bytes from the header value and should be used when the header value
-  doesn't contain a NULL terminating byte.
-
-  If the header buffer is full or the headers were already sent (new headers
-  cannot be sent), the function will return -1.
-
-  On success, the function returns 0.
-  */
-  int (*write_header)(struct HttpResponse*,
-                      const char* header,
-                      const char* value,
-                      size_t value_len);
-
+  int (*write_header2)(struct HttpResponse*,
+                       const char* header,
+                       const char* value);
   /**
   Prints a string directly to the header's buffer, appending the header
   seperator (the new line marker '\r\n' should NOT be printed to the headers
