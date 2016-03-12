@@ -61,6 +61,31 @@ static int write_header_data(struct HttpResponse*,
                              size_t value_len);
 
 /**
+Set / Delete a cookie using this helper function.
+
+To set a cookie, use (in this example, a session cookie):
+
+    HttpResponse.set_cookie(response, (struct HttpCookie){
+            .name = "my_cookie",
+            .value = "data" });
+
+To delete a cookie, use:
+
+    HttpResponse.set_cookie(response, (struct HttpCookie){
+            .name = "my_cookie",
+            .value = NULL });
+
+This function writes a cookie header to the response. Only the requested
+number of bytes from the cookie value and name are written (if none are
+provided, a terminating NULL byte is assumed).
+
+If the header buffer is full or the headers were already sent (new headers
+cannot be sent), the function will return -1.
+
+On success, the function returns 0.
+*/
+static int set_cookie(struct HttpResponse*, struct HttpCookie);
+/**
 Prints a string directly to the header's buffer, appending the header
 seperator (the new line marker '\r\n' should NOT be printed to the headers
 buffer).
@@ -132,6 +157,7 @@ struct HttpResponseClass HttpResponse = {
     .status_str = status_str,
     .write_header = write_header_data,
     .write_header2 = write_header_cstr,
+    .set_cookie = set_cookie,
     .printf = response_printf,
     .send = send_response,
     .write_body = write_body,
@@ -274,7 +300,100 @@ static int write_header_data(struct HttpResponse* response,
 
   return 0;
 }
+/**
+Set / Delete a cookie using this helper function.
+*/
+static int set_cookie(struct HttpResponse* response, struct HttpCookie cookie) {
+  if (!cookie.name)
+    return -1;  // must have a cookie name.
+  // check cookie name's length
+  if (!cookie.name_len)
+    cookie.name_len = strlen(cookie.name);
+  // check cookie name
+  for (size_t i = 0; i < cookie.name_len; i++) {
+    if (cookie.name[i] < '!' || cookie.name[i] > '~' || cookie.name[i] == '=' ||
+        cookie.name[i] == ' ' || cookie.name[i] == ',' ||
+        cookie.name[i] == ';') {
+      fprintf(stderr,
+              "Invalid cookie name - cannot set a cookie's name to: %.*s\n",
+              (int)cookie.name_len, cookie.name);
+      return -1;
+    }
+  }
 
+  if (cookie.value) {  // review the value.
+    // check cookie value's length
+    if (!cookie.value_len)
+      cookie.value_len = strlen(cookie.value);
+    // check cookie value
+    for (size_t i = 0; i < cookie.value_len; i++) {
+      if (cookie.value[i] < '!' || cookie.value[i] > '~' ||
+          cookie.value[i] == ' ' || cookie.value[i] == ',' ||
+          cookie.value[i] == ';') {
+        fprintf(stderr, "Invalid cookie value - cannot set a cookie to: %.*s\n",
+                (int)cookie.value_len, cookie.value);
+        return -1;
+      }
+    }
+  } else {
+    cookie.value_len = 0;
+    cookie.max_age = -1;
+  }
+  if (cookie.path) {
+  } else
+    cookie.path_len = 0;
+  if (cookie.domain) {
+  } else
+    cookie.domain_len = 0;
+  if (cookie.name_len + cookie.value_len + cookie.path_len + cookie.domain_len +
+          (response->metadata.headers_pos - response->header_buffer) + 96 >
+      HTTP_HEAD_MAX_SIZE)
+    return -1;  // headers too big (added 96 for keywords, header names etc').
+  // write the header's name to the buffer
+  memcpy(response->metadata.headers_pos, "Set-Cookie: ", 12);
+  response->metadata.headers_pos += 12;
+  // write the cookie name to the buffer
+  memcpy(response->metadata.headers_pos, cookie.name, cookie.name_len);
+  response->metadata.headers_pos += cookie.name_len;
+  // seperate name from value
+  *(response->metadata.headers_pos++) = '=';
+  if (cookie.value) {
+    // write the cookie value to the buffer
+    memcpy(response->metadata.headers_pos, cookie.value, cookie.value_len);
+    response->metadata.headers_pos += cookie.value_len;
+  }
+  // complete value data
+  *(response->metadata.headers_pos++) = ';';
+  if (cookie.max_age) {
+    response->metadata.headers_pos +=
+        sprintf(response->metadata.headers_pos, "Max-Age=%d;", cookie.max_age);
+  }
+  if (cookie.domain) {
+    memcpy(response->metadata.headers_pos, "domain=", 7);
+    response->metadata.headers_pos += 7;
+    memcpy(response->metadata.headers_pos, cookie.domain, cookie.domain_len);
+    response->metadata.headers_pos += cookie.domain_len;
+    *(response->metadata.headers_pos++) = ';';
+  }
+  if (cookie.path) {
+    memcpy(response->metadata.headers_pos, "path=", 5);
+    response->metadata.headers_pos += 5;
+    memcpy(response->metadata.headers_pos, cookie.path, cookie.path_len);
+    response->metadata.headers_pos += cookie.path_len;
+    *(response->metadata.headers_pos++) = ';';
+  }
+  if (cookie.http_only) {
+    memcpy(response->metadata.headers_pos, "HttpOnly;", 9);
+    response->metadata.headers_pos += 9;
+  }
+  if (cookie.secure) {
+    memcpy(response->metadata.headers_pos, "secure;", 7);
+    response->metadata.headers_pos += 7;
+  }
+  *(response->metadata.headers_pos++) = '\r';
+  *(response->metadata.headers_pos++) = '\n';
+  return 0;
+}
 /**
 Prints a string directly to the header's buffer, appending the header
 seperator (the new line marker '\r\n' should NOT be printed to the headers

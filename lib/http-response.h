@@ -98,6 +98,42 @@ struct HttpResponse {
 };
 
 /**
+The struct HttpCookie is a helper for seting cookie data.
+
+This struct is used together with the `HttpResponse.set_cookie`. i.e.:
+
+      HttpResponse.set_cookie(response, (struct HttpResponse){
+        .name = "my_cookie",
+        .value = "data"
+      })
+
+*/
+struct HttpCookie {
+  /** The cookie's name (key). */
+  char* name;
+  /** The cookie's value (leave blank to delete cookie). */
+  char* value;
+  /** The cookie's domain (optional). */
+  char* domain;
+  /** The cookie's path (optional). */
+  char* path;
+  /** The cookie name's size in bytes or a terminating NULL will be assumed.*/
+  size_t name_len;
+  /** The cookie value's size in bytes or a terminating NULL will be assumed.*/
+  size_t value_len;
+  /** The cookie domain's size in bytes or a terminating NULL will be assumed.*/
+  size_t domain_len;
+  /** The cookie path's size in bytes or a terminating NULL will be assumed.*/
+  size_t path_len;
+  /** Max Age (how long should the cookie persist), in seconds (0 == session).*/
+  int max_age;
+  /** Limit cookie to secure connections.*/
+  unsigned secure : 1;
+  /** Limit cookie to HTTP (intended to prevent javascript access/hijacking).*/
+  unsigned http_only : 1;
+};
+
+/**
 The HttpResponse library
 ========================
 
@@ -256,6 +292,35 @@ struct HttpResponseClass {
   int (*write_header2)(struct HttpResponse*,
                        const char* header,
                        const char* value);
+  /**
+  Set / Delete a cookie using this helper function.
+
+  To set a cookie, use (in this example, a session cookie):
+
+      HttpResponse.set_cookie(response, (struct HttpCookie){
+              .name = "my_cookie",
+              .value = "data" });
+
+  To delete a cookie, use:
+
+      HttpResponse.set_cookie(response, (struct HttpCookie){
+              .name = "my_cookie",
+              .value = NULL });
+
+  This function writes a cookie header to the response. Only the requested
+  number of bytes from the cookie value and name are written (if none are
+  provided, a terminating NULL byte is assumed).
+
+  Both the name and the value of the cookie are checked for validity (legal
+  characters), but other properties aren't reviewed (domain/path) - please make
+  sure to use only valid data, as HTTP imposes restrictions on these things.
+
+  If the header buffer is full or the headers were already sent (new headers
+  cannot be sent), the function will return -1.
+
+  On success, the function returns 0.
+  */
+  int (*set_cookie)(struct HttpResponse*, struct HttpCookie);
   /**
   Prints a string directly to the header's buffer, appending the header
   seperator (the new line marker '\r\n' should NOT be printed to the headers
