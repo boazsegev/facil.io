@@ -7,9 +7,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef HTTP_COLLECTED_H
 #define HTTP_COLLECTED_H
 
-/**
+/** \file http.h
 This header file simply collects all the http libraries required to start an
 HTTP server and defines simple marcros to start an HTTP server using lib-server.
+
+The file also introduces the `start_http_server` macro.
 */
 #include "lib-server.h"
 #include "http-response.h"
@@ -34,7 +36,7 @@ are any valid `struct ServerSettings` fields.
 i.e. use:
 
     void on_request(struct HttpRequest request) {
-      // ...
+      ; // ...
     }
 
     int main()
@@ -47,19 +49,22 @@ To get a more detailed startup and setup customization, add an initialization
 callback. i.e.:
 
     void on_request(struct HttpRequest request) {
-      // ...
+      ; // ...
     }
     void on_startup(server_pt srv) {
       struct HttpProtocol * http =
                         (struct HttpProtocol*)Server.settings(srv)->protocol;
       http->maximum_body_size = 100; // 100 Mb POST data limit.
-      // ...
+      ; // ...
     }
 
     int main()
     {
       char * public_folder = NULL
-      start_http_server(on_request, public_folder, .threads = 16);
+      start_http_server(on_request,
+                        public_folder,
+                        .threads = 16,
+                        .on_init = on_startup);
     }
 */
 

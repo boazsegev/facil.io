@@ -2,6 +2,10 @@
 #define HTTP_SHA1_BASE64_H
 #include <stdlib.h>
 
+/** \file
+This file contains basic helpers for Base64 encoding/decoding and SHA-1 hashing.
+ */
+
 /*******************************************************************************
 SHA-1 encoding
 */
@@ -87,20 +91,18 @@ place the decoded data into the target byte buffer (target).
 
 The target buffer MUST have enough room for the expected data.
 
-A NULL byte will NOT be appended to the target buffer. The function will return
+A NULL byte will be appended to the target buffer. The function will return
 the number of bytes written to the target buffer.
 
 If the target buffer is NULL, the encoded string will be destructively edited
-and the decoded data will be placed in the original string. In this specific
-case, a NULL byte will be appended to the decoded data.
+and the decoded data will be placed in the original string's buffer.
 
 Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
 the raw data's length isn't devisable by 3. Hence, the target buffer should be,
-at least, `base64_len/4*3` long.
+at least, `base64_len/4*3 + 3` long.
 
-Returns the number of bytes actually written to the target buffer
-(excluding a NULL terminator, which is only written if the target buffer is the
-same as the data buffer).
+Returns the number of bytes actually written to the target buffer (excluding the
+NULL terminator byte).
 */
 int base64_decode(char* target, char* encoded, int base64_len);
 

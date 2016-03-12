@@ -10,7 +10,12 @@ Feel free to copy, use and enjoy according to the license provided.
 #define LIB_ASYNC_VERSION "0.2.0"
 
 typedef struct Async* async_p;
+/**
+The Async global object allows us access to the Async thread pool API. i.e.:
 
+    async_p async = Async.new(4); // 4 worker threads
+    Async.finish(async); // signal and wait, then the object self-destructs.
+*/
 extern struct __ASYNC_API__ {
   /**
 Creates a new Async object (a thread pool) and returns a pointer using the

@@ -17,6 +17,65 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "libreact.h"
 #include "libasync.h"
 
+/** \file
+## Lib-Server - a dynamic protocol server library
+
+lib-server builds off the struct Reactor introduced in lib-react.h and manages
+everything that makes a server run, including the thread pool (using lib-async),
+rocess forking, accepting new connections, setting up the initial protocol for
+new connections, user space socket writing buffers (using `lib-buffer.h`), etc'.
+
+It's awesome :-)
+
+The lib-server API is accessed using the global `Server` object, which is only
+global member of the struct ___Server__API____.
+
+Use:
+
+    #include "lib-server.h"
+    #include <stdio.h>
+    #include <string.h>
+
+    ; // we don't have to, but printing stuff is nice...
+    void on_open(server_pt server, int sockfd) {
+      printf("A connection was accepted on socket #%d.\n", sockfd);
+    }
+    ; // server_pt is just a nicely typed pointer,
+    void on_close(server_pt server, int sockfd) {
+      printf("Socket #%d is now disconnected.\n", sockfd);
+    }
+
+    ; // a simple echo... this is the main callback
+    void on_data(server_pt server, int sockfd) {
+      char buff[1024]; // We'll assign a reading buffer on the stack
+      ssize_t incoming = 0;
+      ; // Read everything, this is edge triggered, `on_data` won't be called
+      ; // again until all the data was read.
+      while ((incoming = Server.read(server, sockfd, buff, 1024)) > 0) {
+        ; // since the data is stack allocated, we'll write a copy
+        ; // optionally, we could avoid a copy using Server.write_move
+        Server.write(server, sockfd, buff, incoming);
+        if (!memcmp(buff, "bye", 3)) {
+          ; // closes the connection automatically AFTER the buffer was sent.
+          Server.close(server, sockfd);
+        }
+      }
+    }
+
+    ; // running the server
+    int main(void) {
+      ; // We'll create the echo protocol object as the server's default
+      struct Protocol protocol = {.on_open = on_open,
+                                  .on_close = on_close,
+                                  .on_data = on_data,
+                                  .service = "echo"};
+      ; // We'll use the macro start_server, because our settings are simple.
+      ; // (this will call Server.listen(settings) with our settings)
+      start_server(.protocol = &protocol, .timeout = 10, .threads = 8);
+    }
+
+*/
+
 /**************************************************************************/ /**
 * General info
 */
@@ -30,7 +89,7 @@ struct Protocol;                  /** controls connection events */
 
 /**
 The start_server(...) macro is a shortcut that allows to easily create a
-ServerSettings structure and start the server.
+ServerSettings structure and start the server is a simple manner.
 */
 #define start_server(...) Server.listen((struct ServerSettings){__VA_ARGS__})
 

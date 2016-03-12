@@ -148,7 +148,7 @@ int main(void) {
                               .on_data = on_data,
                               .service = "echo"};
   // We'll use the macro start_server, because our settings are simple.
-  // (this will call Server.listen(&settings) with the settings we provide)
+  // (this will call Server.listen(settings) with the settings we provide)
   start_server(.protocol = &protocol, .timeout = 10, .threads = 8);
 }
 
