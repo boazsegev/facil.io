@@ -7,8 +7,19 @@ SHA-1 encoding
 */
 
 /**
-the `sha1` type will contain all the sha1 data, managing it's encoding. If it's
+Simple SHA-1 hashing.
+
+The `sha1_s` type will contain all the sha1 data, managing it's encoding. If
+it's
 stack allocated, no freeing will be required.
+
+Use, for example:
+
+    #include "http-sha1-base64.h"
+    sha1_s sha1;
+    sha1_init(&sha1);
+    sha1_write(&sha1, "The quick brown fox jumps over the lazy dog", 43);
+    char *hashed_result = sha1_result(&sha1);
 */
 typedef struct {
   union {
