@@ -830,13 +830,16 @@ static int srv_listen(struct ServerSettings settings) {
 
   // let'm know...
   if (srvfd)
-    printf("(%d) Listening on port %s (max sockets: %lu, ~%d used)\n", getpid(),
-           srv.settings->port, srv.capacity, srv.srvfd + 2);
+    printf(
+        "(pid %d x %d threads) Listening on port %s (max sockets: %lu, ~%d "
+        "used)\n",
+        getpid(), srv.settings->threads, srv.settings->port, srv.capacity,
+        srv.srvfd + 2);
   else
     printf(
-        "(%d) Started a non-listening network service"
+        "(pid %d x %d threads) Started a non-listening network service"
         "(max sockets: %lu ~ at least 6 are in system use)\n",
-        getpid(), srv.capacity);
+        getpid(), srv.settings->threads, srv.capacity);
 
   // initialize reactor
   reactor_init(&srv.reactor);
@@ -934,7 +937,7 @@ was sent. */
 static void srv_close(struct Server* server, int sockfd) {
   if (!server->protocol_map[sockfd])
     return;
-  if (Buffer.empty(server->buffer_map[sockfd])) {
+  if (Buffer.is_empty(server->buffer_map[sockfd])) {
     reactor_close((struct Reactor*)server, sockfd);
   } else
     Buffer.close_when_done(server->buffer_map[sockfd], sockfd);
@@ -948,7 +951,7 @@ static int srv_hijack(struct Server* server, int sockfd) {
   if (!server->protocol_map[sockfd])
     return -1;
   reactor_remove((struct Reactor*)server, sockfd);
-  while (!Buffer.empty(server->buffer_map[sockfd]) &&
+  while (!Buffer.is_empty(server->buffer_map[sockfd]) &&
          Buffer.flush(server->buffer_map[sockfd], sockfd) >= 0)
     ;
   clear_conn_data(server, sockfd);
