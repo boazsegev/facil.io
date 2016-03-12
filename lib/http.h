@@ -44,18 +44,21 @@ i.e. use:
     }
 */
 
-#define start_http_server(on_request_callback, http_public_folder, ...)        \
-  do {                                                                         \
-    struct HttpProtocol* protocol = HttpProtocol.new();                        \
-    if ((on_request_callback))                                                 \
-      protocol->on_request = (on_request_callback);                            \
-    if ((http_public_folder))                                                  \
-      protocol->public_folder = (http_public_folder);                          \
-    HttpResponse.create_pool();                                                \
-    Server.listen((struct ServerSettings){                                     \
-        .timeout = 5, __VA_ARGS__, .protocol = (struct Protocol*)(protocol)}); \
-    HttpResponse.destroy_pool();                                               \
-    HttpProtocol.destroy(protocol);                                            \
+#define start_http_server(on_request_callback, http_public_folder, ...)     \
+  do {                                                                      \
+    struct HttpProtocol* protocol = HttpProtocol.new();                     \
+    if ((on_request_callback))                                              \
+      protocol->on_request = (on_request_callback);                         \
+    if ((http_public_folder))                                               \
+      protocol->public_folder = (http_public_folder);                       \
+    HttpResponse.create_pool();                                             \
+    Server.listen((struct ServerSettings){                                  \
+        .timeout = 5,                                                       \
+        .busy_msg = "HTTP/1.1 503 Service Unavailable\r\n\r\nServer Busy.", \
+        __VA_ARGS__,                                                        \
+        .protocol = (struct Protocol*)(protocol)});                         \
+    HttpResponse.destroy_pool();                                            \
+    HttpProtocol.destroy(protocol);                                         \
   } while (0);
 
 #endif /* HTTP_COLLECTED_H */
