@@ -1016,4 +1016,4 @@ static char* mime_find(char* ext) {
   }
   return 0;
 }
-struct _____HTTP__MIME_____ MimeType = {.find = mime_find};
+struct MimeType_API____ MimeType = {.find = mime_find};

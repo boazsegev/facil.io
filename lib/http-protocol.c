@@ -740,7 +740,7 @@ void HttpProtocol_destroy(struct HttpProtocol* http) {
   free(http);
 }
 
-struct ___HttpProtocol_CLASS___ HttpProtocol = {
+struct HttpProtocolClass HttpProtocol = {
     .new = HttpProtocol_new,
     .destroy = HttpProtocol_destroy,
 };

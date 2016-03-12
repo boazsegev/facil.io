@@ -122,7 +122,7 @@ static void close_response(struct HttpResponse*);
 /******************************************************************************
 The API gateway
 */
-struct ___HttpResponse_class___ HttpResponse = {
+struct HttpResponseClass HttpResponse = {
     .destroy_pool = destroy_pool,
     .create_pool = create_pool,
     .new = new_response,

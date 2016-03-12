@@ -193,7 +193,7 @@ function.
 Network issues and response properties might influence the order of performant
 solutions.
 */
-struct ___HttpResponse_class___ {
+struct HttpResponseClass {
   /**
   Destroys the response object pool. This function ISN'T thread-safe.
   */

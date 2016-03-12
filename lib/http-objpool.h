@@ -11,7 +11,27 @@ Feel free to copy, use and enjoy according to the license provided.
 
 typedef struct ObjectPool* object_pool;
 
-extern struct __Object_Pool_API__ {
+/**
+ObjectPool is a helper library for creating dynamic object pools for objects
+that don't naturally form a list. It's used for pooling HttpRequest and
+HttpResponse objects.
+
+Use using the global ObjectPool object.
+
+i.e.
+
+    void * make_object(void) {malloc(100);}
+    void free_object(void * obj) {free(obj);}
+
+    int main() {
+      object_pool p = ObjectPool.new_dynamic(make_object, free_object, 0);
+      void * obj = ObjectPool.pop(p); // get an object
+      ObjectPool.push(obj); // store it back in the pool (careful)
+      obj = NULL;
+      ObjectPool.destroy(p); // destroy the pool
+    }
+*/
+extern struct ObjectPool_API__ {
   /**
 Initialize a new ObjectPool that grows when there aren't available objects.
 

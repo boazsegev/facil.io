@@ -372,7 +372,7 @@ void make_a_task_async(struct Server* server, int fd, void* arg);
 // The actual Server API access setup
 // The following allows access to helper functions and defines a namespace
 // for the API in this library.
-const struct ___Server__API____ Server = {
+const struct Server__API____ Server = {
     .reactor = srv_reactor,                      //
     .settings = srv_settings,                    //
     .capacity = srv_capacity,                    //

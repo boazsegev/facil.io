@@ -408,7 +408,7 @@ static async_p async_new(int threads) {
 API gateway
 */
 
-struct __ASYNC_API__ Async = {
+struct Async_API___ Async = {
     .new = async_new,
     .signal = async_signal,
     .wait = async_wait,

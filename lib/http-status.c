@@ -83,4 +83,4 @@ static char* to_s(int status) {
   }
   return 0;
 }
-struct _____HTTP__STATUS_____ HttpStatus = {.to_s = to_s};
+struct HttpStatus_API____ HttpStatus = {.to_s = to_s};

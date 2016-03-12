@@ -12,6 +12,6 @@ to a String. i.e.:
 
     HttpStatus.to_s(200); // "OK"
 */
-extern struct _____HTTP__STATUS_____ { char* (*to_s)(int status); } HttpStatus;
+extern struct HttpStatus_API____ { char* (*to_s)(int status); } HttpStatus;
 
 #endif /* HTTP_PROTOCOL_H */

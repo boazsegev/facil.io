@@ -21,16 +21,16 @@ Feel free to copy, use and enjoy according to the license provided.
 
 /**
 A Procotol suited for Http/1.x servers. The struct must be obtained using a
-contructor. i.e.:
+contructor and released using a destructor. i.e.:
 
-       struct HttpProtocol http = HttpProtocol();
+       struct HttpProtocol * http = HttpProtocol.new();
+       ; // run server using protocol
+       HttpProtocol.destroy(http);
 
-the `struct HttpProtocol` objects live on the stack and their memory is
-automatically released at the end of the block (function/if block.etc').
 */
 struct HttpProtocol;
 
-extern struct ___HttpProtocol_CLASS___ {
+extern struct HttpProtocolClass {
   /** returns a new, initialized, Http Protocol object. */
   struct HttpProtocol* (*new)(void);
   /** destroys an existing HttpProtocol object, releasing it's memory and
@@ -38,7 +38,7 @@ extern struct ___HttpProtocol_CLASS___ {
   void (*destroy)(struct HttpProtocol*);
 } HttpProtocol;
 
-/************************************************/ /**
+/************************************************/ /** \file
 The HttpProtocol implements a very basic and raw protocol layer over Http,
 leaving much of the work for the implementation.
 

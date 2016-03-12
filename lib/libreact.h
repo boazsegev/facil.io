@@ -28,7 +28,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #error This library currently supports only Unix based systems (i.e. Linux and BSD)
 #endif
 
-/*****************************/ /**
+/*****************************/ /** \file
  This small library implements a reactor pattern using callbacks.
 
 Here are the supported events and their callbacks:
@@ -160,6 +160,10 @@ most of the code is the damn socket binding...:
         reactor_stop(&r);
       }
  */
+
+/**
+The Reactor struct holds the reactor's core data and settings.
+*/
 struct Reactor {
   /* File Descriptor Callbacks */
 

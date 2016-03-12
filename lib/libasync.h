@@ -22,7 +22,20 @@ Please note, this library isn't fork-friendly) - fork **before** you create the
 thread pool. In general, mixing `fork` with multi-threading isn't safe nor
 trivial - always fork before multi-threading.
 */
-extern struct __ASYNC_API__ {
+
+/**
+This is an easy to use thread pool library.
+
+The Async global object allows us access to the Async thread pool API. i.e.:
+
+    async_p async = Async.new(4); // 4 worker threads
+    Async.finish(async); // signal and wait, then the object self-destructs.
+
+Please note, this library isn't fork-friendly) - fork **before** you create the
+thread pool. In general, mixing `fork` with multi-threading isn't safe nor
+trivial - always fork before multi-threading.
+*/
+extern struct Async_API___ {
   /**
 Creates a new Async object (a thread pool) and returns a pointer using the
 `aync_p` (Async Pointer) type.
