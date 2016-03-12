@@ -443,9 +443,12 @@ parse:
   while (pos < len && buff[pos] != '\r') {
     tmp1 = buff + pos;
     while (pos < len && buff[pos] != ':') {
+      // uppercase is Ruby style.
       if (buff[pos] >= 'a' && buff[pos] <= 'z')
-        buff[pos] = buff[pos] & 223;  // uppercase is Ruby style.
-      // buff[pos] = buff[pos] | 32;    // lowercase is Node.js style.
+        buff[pos] = buff[pos] & 223;
+      // // lowercase is Node.js style.
+      // if (buff[pos] >= 'A' && buff[pos] <= 'Z')
+      //   buff[pos] = buff[pos] | 32;
       pos++;
     }
     if (pos >= len - 1)  // must have at least 2 eol markers + data
