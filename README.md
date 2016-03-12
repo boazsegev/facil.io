@@ -129,7 +129,7 @@ void on_data(server_pt server, int sockfd) {
   ssize_t incoming = 0;
   // Read everything, this is edge triggered, `on_data` won't be called
   // again until all the data was read.
-  while ((incoming = Server.read(sockfd, buff, 1024)) > 0) {
+  while ((incoming = Server.read(server, sockfd, buff, 1024)) > 0) {
     // since the data is stack allocated, we'll write a copy
     // otherwise, we'd avoid a copy using Server.write_move
     Server.write(server, sockfd, buff, incoming);

@@ -42,6 +42,25 @@ i.e. use:
       char * public_folder = NULL
       start_http_server(on_request, public_folder, .threads = 16);
     }
+
+To get a more detailed startup and setup customization, add an initialization
+callback. i.e.:
+
+    void on_request(struct HttpRequest request) {
+      // ...
+    }
+    void on_startup(server_pt srv) {
+      struct HttpProtocol * http =
+                        (struct HttpProtocol*)Server.settings(srv)->protocol;
+      http->maximum_body_size = 100; // 100 Mb POST data limit.
+      // ...
+    }
+
+    int main()
+    {
+      char * public_folder = NULL
+      start_http_server(on_request, public_folder, .threads = 16);
+    }
 */
 
 #define start_http_server(on_request_callback, http_public_folder, ...)     \

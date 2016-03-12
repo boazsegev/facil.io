@@ -7,6 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 // lib server is based off and requires the following libraries:
 #include "lib-server.h"
+#include "libbuffer.h"
 
 // #include <ssl.h>
 // sys includes
@@ -63,6 +64,8 @@ struct Server {
   struct Server** server_map;
   // maps each udata with it's associated connection fd.
   void** udata_map;
+  // reading hook maps
+  ssize_t (**reading_hooks)(server_pt srv, int fd, void* buffer, size_t size);
   /// maps a connection's "busy" flag, preventing the same connection from
   /// running `on_data` on two threads. use busy[fd] to get the status of the
   /// flag.
@@ -193,6 +196,16 @@ static void srv_touch(struct Server* server, int sockfd);
 ////////////////////////////////////////////////////////////////////////////////
 // Read and Write
 
+/**
+Sets up the read/write hooks, allowing for transport layer extensions (i.e.
+SSL/TLS) or monitoring extensions.
+*/
+void rw_hooks(
+    server_pt srv,
+    int sockfd,
+    ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len),
+    ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size));
+
 /** Reads up to `max_len` of data from a socket. the data is stored in the
 `buffer` and the number of bytes received is returned.
 
@@ -201,7 +214,7 @@ Returns -1 if an error was raised and the connection was closed.
 Returns the number of bytes written to the buffer. Returns 0 if no data was
 available.
 */
-static ssize_t srv_read(int sockfd, void* buffer, size_t max_len);
+static ssize_t srv_read(server_pt srv, int fd, void* buffer, size_t max_len);
 /** Copies & writes data to the socket, managing an asyncronous buffer.
 
 returns 0 on success. success means that the data is in a buffer waiting to
@@ -377,6 +390,7 @@ const struct ___Server__API____ Server = {
     .hijack = srv_hijack,                        //
     .count = srv_count,                          //
     .touch = srv_touch,                          //
+    .rw_hooks = rw_hooks,                        //
     .read = srv_read,                            //
     .write = srv_write,                          //
     .write_move = srv_write_move,                //
@@ -554,6 +568,7 @@ static void clear_conn_data(server_pt server, int fd) {
   server->tout[fd] = 0;
   server->idle[fd] = 0;
   server->udata_map[fd] = NULL;
+  server->reading_hooks[fd] = NULL;
   Buffer.clear(server->buffer_map[fd]);
 }
 // on_ready, handles async buffer sends
@@ -751,6 +766,9 @@ static int srv_listen(struct ServerSettings settings) {
   volatile char busy[capacity];
   unsigned char tout[capacity];
   unsigned char idle[capacity];
+  ssize_t (*reading_hooks[capacity])(server_pt srv, int fd, void* buffer,
+                                     size_t size);
+
   // populate the Server structure with the data
   struct Server srv = {
       // initialize the server object
@@ -761,6 +779,7 @@ static int srv_listen(struct ServerSettings settings) {
       .udata_map = udata_map,
       .server_map = server_map,
       .buffer_map = buffer_map,
+      .reading_hooks = reading_hooks,
       .busy = busy,
       .tout = tout,
       .idle = idle,
@@ -793,7 +812,7 @@ static int srv_listen(struct ServerSettings settings) {
     idle[i] = 0;
     udata_map[i] = 0;
     // buffer_map[i] = 0;
-    buffer_map[i] = Buffer.new(0);
+    buffer_map[i] = Buffer.new(&srv);
   }
 
   // register signals - do this before concurrency, so that they are inherited.
@@ -985,6 +1004,19 @@ static void srv_touch(struct Server* server, int sockfd) {
 ////////////////////////////////////////////////////////////////////////////////
 // Read and Write
 
+/**
+Sets up the read/write hooks, allowing for transport layer extensions (i.e.
+SSL/TLS) or monitoring extensions.
+*/
+void rw_hooks(
+    server_pt srv,
+    int sockfd,
+    ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len),
+    ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size)) {
+  srv->reading_hooks[sockfd] = reading_hook;
+  Buffer.set_whook(srv->buffer_map[sockfd], writing_hook);
+}
+
 /** Reads up to `max_len` of data from a socket. the data is stored in the
 `buffer` and the number of bytes received is returned.
 
@@ -993,7 +1025,10 @@ Returns -1 if an error was raised and the connection was closed.
 Returns the number of bytes written to the buffer. Returns 0 if no data was
 available.
 */
-static ssize_t srv_read(int fd, void* buffer, size_t max_len) {
+static ssize_t srv_read(server_pt srv, int fd, void* buffer, size_t max_len) {
+  if (srv->reading_hooks[fd])  // check for reading hook
+    return srv->reading_hooks[fd](srv, fd, buffer, max_len);
+
   ssize_t read = 0;
   if ((read = recv(fd, buffer, max_len, 0)) > 0) {
     // return data
@@ -1002,8 +1037,6 @@ static ssize_t srv_read(int fd, void* buffer, size_t max_len) {
     if (read && (errno & (EWOULDBLOCK | EAGAIN)))
       return 0;
   }
-  // We don't need this:
-  // close(fd);
   return -1;
 }
 /** Copies & writes data to the socket, managing an asyncronous buffer.

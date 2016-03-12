@@ -349,7 +349,7 @@ restart:
   if (request->body_file) {
     char buff[HTTP_HEAD_MAX_SIZE];
     int t = 0;
-    while ((len = Server.read(sockfd, buff, HTTP_HEAD_MAX_SIZE)) > 0) {
+    while ((len = Server.read(server, sockfd, buff, HTTP_HEAD_MAX_SIZE)) > 0) {
       pos = len;
       if (request->content_length - request->private.bd_rcved < pos) {
         pos = request->content_length - request->private.bd_rcved;
@@ -373,7 +373,7 @@ restart:
     goto too_big;
 
   // read from the buffer
-  len = Server.read(sockfd, buff + pos, HTTP_HEAD_MAX_SIZE - pos);
+  len = Server.read(server, sockfd, buff + pos, HTTP_HEAD_MAX_SIZE - pos);
   if (len <= 0) {
     // buffer is empty, but more data is underway or error
     // anyway, don't cleanup - let `on_close` do it's job
@@ -585,7 +585,7 @@ finish:
   if (len == HTTP_HEAD_MAX_SIZE) {
     // we might not have read all the data in the network socket.
     // since we're edge triggered, we should continue reading.
-    len = Server.read(sockfd, buff, HTTP_HEAD_MAX_SIZE);
+    len = Server.read(server, sockfd, buff, HTTP_HEAD_MAX_SIZE);
     if (len > 0) {
       HttpRequest.clear(request);
       Server.set_udata(server, sockfd, request);

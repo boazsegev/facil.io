@@ -61,7 +61,9 @@ struct HttpProtocol {
 
   This must be the first declaration to allow pointer casting inheritance. */
   struct Protocol parent;
-  /** sets the maximum size for a body, in Mb (Mega-Bytes). */
+  /**
+  Sets the maximum size for a body, in Mb (Mega-Bytes). Defaults to 32 Mb.
+   */
   int maximum_body_size;
   /** the callback to be performed when requests come in. */
   void (*on_request)(struct HttpRequest* request);

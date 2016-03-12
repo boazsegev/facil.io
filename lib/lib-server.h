@@ -9,11 +9,13 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #define LIB_SERVER_VERSION "0.2.1"
 
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 /* lib server is based off and requires the following libraries: */
 #include "libreact.h"
 #include "libasync.h"
-#include "libbuffer.h"
-#include <unistd.h>
 
 /**************************************************************************/ /**
 * General info
@@ -213,6 +215,77 @@ extern const struct ___Server__API____ {
   * Read and Write
   */
 
+  /**
+  Sets up the read/write hooks, allowing for transport layer extensions (i.e.
+  SSL/TLS) or monitoring extensions.
+
+  These hooks are only relevent when reading or writing from the socket using
+  the server functions (i.e. `Server.read` and `Server.write`).
+
+  These hooks are attached to the specified socket and they are cleared
+  automatically once the connection is closed.
+
+  **Writing hook**
+
+  A writing hook will be used instead of the `write` function to send data to
+  the socket. This allows this buffer to be used for special protocol extension
+  or transport layers, such as SSL/TLS.
+
+  A writing hook is a function that takes in a pointer to the server (the
+  buffer's owner), the socket to which writing should be performed (fd), a
+  pointer to the data to be written and the length of the data to be written:
+
+  A writing hook should return the number of bytes actually sent from the data
+  buffer (not the number of bytes sent through the socket, but the number of
+  bytes that can be marked as sent).
+
+  A writing hook should return -1 if the data couldn't be sent and processing
+  should be stop (the connection was lost or suffered a fatal error).
+
+  A writing hook should return 0 if no data was sent, but the connection should
+  remain open or no fatal error occured.
+
+  i.e.:
+
+      ssize_t writing_hook(server_pt srv, int fd, void* data, size_t len) {
+        int sent = write(fd, data, len);
+        if (sent < 0 && (errno & (EWOULDBLOCK | EAGAIN | EINTR)))
+          sent = 0;
+        return sent;
+      }
+
+  **Reading hook**
+
+  The reading hook, similar to the writing hook, should behave the same as
+  `read` and accepts the same arguments as the `writing_hook`, except the
+  `length` argument should reffer to the size of the buffer (or the amount of
+  data to be read, if less then the size of the buffer).
+
+  The return values are the same as the writing hook's return values, except
+  the number of bytes returned refers to the number of bytes written to the
+  buffer.
+
+  i.e.
+
+  ssize_t reading_hook(server_pt srv, int fd, void* buffer, size_t size) {
+    ssize_t read = 0;
+    if ((read = recv(fd, buffer, max_len, 0)) > 0) {
+      return read;
+    } else {
+      if (read && (errno & (EWOULDBLOCK | EAGAIN)))
+        return 0;
+    }
+    return -1;
+  }
+
+  */
+  void (*rw_hooks)(
+      server_pt srv,
+      int sockfd,
+      ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len),
+      ssize_t (
+          *reading_hook)(server_pt srv, int fd, void* buffer, size_t size));
+
   /** Reads up to `max_len` of data from a socket. the data is stored in the
   `buffer` and the number of bytes received is returned.
 
@@ -221,7 +294,7 @@ extern const struct ___Server__API____ {
   Returns the number of bytes written to the buffer. Returns 0 if no data was
   available.
   */
-  ssize_t (*read)(int sockfd, void* buffer, size_t max_len);
+  ssize_t (*read)(server_pt srv, int sockfd, void* buffer, size_t max_len);
   /** Copies & writes data to the socket, managing an asyncronous buffer.
 
   returns 0 on success. success means that the data is in a buffer waiting to
@@ -230,7 +303,7 @@ extern const struct ___Server__API____ {
 
   On error, returns -1. Returns 0 on success
   */
-  ssize_t (*write)(struct Server* server, int sockfd, void* data, size_t len);
+  ssize_t (*write)(server_pt srv, int sockfd, void* data, size_t len);
   /** Writes data to the socket, moving the data's pointer directly to the
   buffer.
 
@@ -238,10 +311,7 @@ extern const struct ___Server__API____ {
 
   On error, returns -1. Returns 0 on success
   */
-  ssize_t (*write_move)(struct Server* server,
-                        int sockfd,
-                        void* data,
-                        size_t len);
+  ssize_t (*write_move)(server_pt srv, int sockfd, void* data, size_t len);
   /** Copies & writes data to the socket, managing an asyncronous buffer.
 
   Each call to a `write` function considers it's data atomic (a single package).
@@ -253,10 +323,7 @@ extern const struct ___Server__API____ {
 
   On error, returns -1. Returns 0 on success
   */
-  ssize_t (*write_urgent)(struct Server* server,
-                          int sockfd,
-                          void* data,
-                          size_t len);
+  ssize_t (*write_urgent)(server_pt srv, int sockfd, void* data, size_t len);
   /** Writes data to the socket, moving the data's pointer directly to the
   buffer.
 
@@ -271,7 +338,7 @@ extern const struct ___Server__API____ {
 
   On error, returns -1. Returns 0 on success
   */
-  ssize_t (*write_move_urgent)(struct Server* server,
+  ssize_t (*write_move_urgent)(server_pt srv,
                                int sockfd,
                                void* data,
                                size_t len);
@@ -283,7 +350,7 @@ extern const struct ___Server__API____ {
   The file will be buffered to the socket chunk by chunk, so that memory
   consumption is capped at ~ 64Kb.
   */
-  ssize_t (*sendfile)(struct Server* server, int sockfd, FILE* file);
+  ssize_t (*sendfile)(server_pt srv, int sockfd, FILE* file);
 
   /****************************************************************************
   * Tasks + Async
