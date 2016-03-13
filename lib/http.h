@@ -71,7 +71,7 @@ callback. i.e.:
 #define start_http_server(on_request_callback, http_public_folder, ...)     \
   do {                                                                      \
     struct HttpProtocol* protocol = HttpProtocol.new();                     \
-    if ((on_request_callback))                                              \
+    if ((NULL != (void*)on_request_callback))                               \
       protocol->on_request = (on_request_callback);                         \
     if ((http_public_folder))                                               \
       protocol->public_folder = (http_public_folder);                       \
