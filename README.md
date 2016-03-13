@@ -6,7 +6,7 @@ So I decided to brush up my C programming skills... like an old man tinkering wi
 
 Anyway, Along the way I wrote:
 
-## [`libasync`](lib/libasync.h) - A native POSIX (`pthread`) thread pool.
+## [`libasync`](src/libasync.h) - A native POSIX (`pthread`) thread pool.
 
  `libasync` is a simple thread pool that uses POSIX threads (and could be easily ported).
 
@@ -39,7 +39,7 @@ int main(void) {
 }
  ```
 
-## [`libreact`](lib/libreact.h) - KQueue/EPoll abstraction.
+## [`libreact`](src/libreact.h) - KQueue/EPoll abstraction.
 
 It's true, some server programs still use `select` and `poll`... but they really shouldn't be (don't get me started).
 
@@ -55,7 +55,7 @@ P.S.
 
 What I would love to write, but I need to learn more before I do so, is a signal based reactor that will be work with all POSIX compilers, using [`sigaction`](http://www.gnu.org/software/libc/manual/html_node/Signal-Actions.html#Signal-Actions) and message pipes... but I want to improve on my site-reading skills first (I'm a musician at heart).
 
-## [`lib-server`](lib/lib-server.h) - a server building library.
+## [`lib-server`](src/lib-server.h) - a server building library.
 
 Writing server code is fun... but in limited and controlled amounts... after all, much of it simple code being repeated endlessly, connecting one piece of code with a different piece of code.
 
@@ -114,7 +114,7 @@ int main(void) {
 ```
 Using this library requires all the minor libraries written for to support it: `libasync`, `libbuffer` (which you can use separately with minor changes) and `libreact`.
 
-## [`http`](lib/http.h) - a protocol for the web
+## [`http`](src/http/http.h) - a protocol for the web
 
 All these libraries were used in a Ruby server I was re-writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" in C, following to the `lib-server`'s protocol specs.
 
@@ -125,6 +125,7 @@ The HTTP protocol provides a built-in static file service and allows us to limit
 Here's a "Hello World" HTTP server (with a stub to add static file services).
 
 ```c
+// update the tryme.c file to use the existing folder structure and makefile
 #include "http.h"
 
 void on_request(struct HttpRequest request) {
@@ -152,3 +153,11 @@ That's it for now. I might work on these more later, but I'm super excited to be
 Sure, why not. If you can add Solaris or Windows support to `libreact`, that could mean `lib-server` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties).
 
 If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
+
+---
+
+## A note about "safe" languages (C vs. Rust, Javascript vs. Elm)
+
+they keep telling me that a "safe" language will make me a better programmer, but I keep thinking that a language is made "safe" so it can be used by bad programmers.
+
+Leave me my freedom and my debugger and keep your safety away from me.
