@@ -9,6 +9,10 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #define LIB_SERVER_VERSION "0.2.1"
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
