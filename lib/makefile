@@ -2,14 +2,14 @@ NAME=tryme
 CC=@gcc
 DB=@lldb
 LIBS= -pthread -lssl -lcrypto
-INCLUDE= /usr/local/include,./include,./lib
-CFLAGS=-Wall -g -O3 -I$(INCLUDE)
+INCLUDE=/usr/local/include http ./
+CFLAGS=-Wall -g -O3 $(addprefix -I, $(INCLUDE))
 BINDIR=./../tmp
 BUILDDIR=./../tmp
 # SRC = $(shell find . -name *.c)
 SRC = .
 BIN=$(BINDIR)/$(NAME)
-OBJS=$(addsuffix .o, $(addprefix $(BUILDDIR)/, $(notdir $(basename $(wildcard $(SRC)/*.c)))))
+OBJS=$(addsuffix .o, $(addprefix $(BUILDDIR)/, $(notdir $(basename $(wildcard $(SRC)/*.c))))) $(addsuffix .o, $(addprefix $(BUILDDIR)/http/, $(notdir $(basename $(wildcard $(SRC)/http/*.c)))))
 #-lm
 
 $(NAME): build
@@ -20,13 +20,10 @@ build: $(OBJS)
 $(BUILDDIR)/%.o: $(SRC)/%.c # $(SRC)/%.h
 	$(CC) -o $@ -c $^ $(CFLAGS)
 
-clean_build:
-	-@rm $(BUILDDIR)/*.o
-
-clean_bin:
-	-@rm $(BIN)
-
-clean: clean_build clean_bin
+clean:
+	-@rm -R $(BUILDDIR)
+	-@mkdir $(BUILDDIR)
+	-@mkdir $(BUILDDIR)/http
 
 execute:
 	@$(BIN)
