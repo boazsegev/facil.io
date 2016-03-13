@@ -166,9 +166,9 @@ char* sha1_result(sha1_s* s) {
     //     }
     // #endif
   }
-  fprintf(stderr, "result requested, in hex, is %.8x%.8x%.8x%.8x%.8x\n",
-          s->digest.i[0], s->digest.i[1], s->digest.i[2], s->digest.i[3],
-          s->digest.i[4]);
+  // fprintf(stderr, "result requested, in hex, is %.8x%.8x%.8x%.8x%.8x\n",
+  //         s->digest.i[0], s->digest.i[1], s->digest.i[2], s->digest.i[3],
+  //         s->digest.i[4]);
   return s->digest.str;
 }
 
