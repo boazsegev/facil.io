@@ -157,10 +157,10 @@ char* sha1_result(sha1_s* s) {
     unsigned char t;
     for (int i = 0; i < 5; i++) {
       // reverse byte order for each uint32 "word".
-      t = s->digest.str[i * 4];
+      t = s->digest.str[i * 4];  // switch first and last bytes
       s->digest.str[i * 4] = s->digest.str[(i * 4) + 3];
       s->digest.str[(i * 4) + 3] = t;
-      t = s->digest.str[(i * 4) + 1];
+      t = s->digest.str[(i * 4) + 1];  // switch median bytes
       s->digest.str[(i * 4) + 1] = s->digest.str[(i * 4) + 2];
       s->digest.str[(i * 4) + 2] = t;
     }
