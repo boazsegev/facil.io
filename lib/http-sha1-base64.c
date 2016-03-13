@@ -152,23 +152,23 @@ char* sha1_result(sha1_s* s) {
     sha1_add_byte(s, s->msg_length.str[0]);
 #endif
 
-#ifndef __BIG_ENDIAN__
-    // change back to little endian, if needed.
-    unsigned char i, t;
-    for (i = 0; i < 5; i++) {
-      t = s->digest.str[i * 5];
-      // reverse byte order for each uint32 "word".
-      s->digest.str[i * 5] = s->digest.str[i * 5 + 1];
-      s->digest.str[i * 5] = s->digest.str[i * 5 + 2];
-      s->digest.str[i * 5] = s->digest.str[i * 5 + 3];
-      s->digest.str[i * 5] = s->digest.str[i * 5 + 4];
-      s->digest.str[i * 5] = t;
-    }
-#endif
+    // #ifndef __BIG_ENDIAN__
+    //     // change back to little endian, if needed? - seems it isn't required
+    //     unsigned char t;
+    //     for (int i = 0; i < 5; i++) {
+    //       // reverse byte order for each uint32 "word".
+    //       t = s->digest.str[i * 4];
+    //       s->digest.str[i * 4] = s->digest.str[(i * 4) + 3];
+    //       s->digest.str[(i * 4) + 3] = t;
+    //       t = s->digest.str[(i * 4) + 1];
+    //       s->digest.str[(i * 4) + 1] = s->digest.str[(i * 4) + 2];
+    //       s->digest.str[(i * 4) + 2] = t;
+    //     }
+    // #endif
   }
-  // fprintf(stderr, "result requested, in hex, is %.8x%.8x%.8x%.8x%.8x\n",
-  //         s->digest.i[0], s->digest.i[1], s->digest.i[2], s->digest.i[3],
-  //         s->digest.i[4]);
+  fprintf(stderr, "result requested, in hex, is %.8x%.8x%.8x%.8x%.8x\n",
+          s->digest.i[0], s->digest.i[1], s->digest.i[2], s->digest.i[3],
+          s->digest.i[4]);
   return s->digest.str;
 }
 
