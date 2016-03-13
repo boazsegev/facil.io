@@ -70,7 +70,8 @@ static void* pop(object_pool pool) {
       pool->is_waiting++;
       pthread_mutex_unlock(&pool->lock);
       // time to block
-      read(pool->wait_out, &(c), 1);
+      if (read(pool->wait_out, &(c), 1))
+        ;
       return pop(pool);
     } else {
       // reset the object count
@@ -101,7 +102,8 @@ static void push(object_pool pool, void* object) {
   pool->object_count++;
   // send a signal if someone is waiting
   if (pool->is_waiting) {
-    write(pool->wait_in, &c, 1);
+    if (write(pool->wait_in, &c, 1))
+      ;
     pool->is_waiting--;
   }
   pthread_mutex_unlock(&pool->lock);

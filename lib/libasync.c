@@ -273,7 +273,8 @@ Use:
 static void async_signal(async_p async) {
   async->flags.run = 0;
   // send `async->count` number of wakeup signales (data content is irrelevant)
-  write(async->pipe.out, async, async->count);
+  if (write(async->pipe.out, async, async->count))
+    ;
 }
 
 /**
@@ -292,8 +293,8 @@ static void async_wait(async_p async) {
   if (!async)
     return;
   // wake threads (just in case) by sending `async->count` number of wakeups
-  if (async->pipe.out)
-    write(async->pipe.out, async, async->count);
+  if (async->pipe.out && write(async->pipe.out, async, async->count))
+    ;
   // join threads.
   for (size_t i = 0; i < async->count; i++) {
     join_thread(async->threads[i]);
