@@ -1,7 +1,7 @@
 NAME=tryme
 CC=@gcc
 DB=@lldb
-LIBS= -pthread
+LIBS= -pthread -lssl -lcrypto
 INCLUDE= /usr/local/include,./include,./lib
 CFLAGS=-Wall -g -O3 -I$(INCLUDE)
 BINDIR=./../tmp

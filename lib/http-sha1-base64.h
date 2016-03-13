@@ -1,6 +1,7 @@
 #ifndef HTTP_SHA1_BASE64_H
 #define HTTP_SHA1_BASE64_H
 #include <stdlib.h>
+#include <stdint.h>
 
 /** \file
 This file contains basic helpers for Base64 encoding/decoding and SHA-1 hashing.

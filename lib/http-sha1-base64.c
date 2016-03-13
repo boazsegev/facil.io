@@ -4,7 +4,6 @@
 Setup
 */
 
-#include <stdint.h>
 #include <stdio.h>
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
