@@ -1,4 +1,4 @@
-# Server Tools for C
+# Server Writing Tools for C
 
 After years in [Ruby land](https://www.ruby-lang.org/en/) I decided to learn [Rust](https://www.rust-lang.org), only to re-discover that I actually quite enjoy writing in C and that C's reputation as "unsafe" or "hard" is undeserved and hides C's power.
 
@@ -57,9 +57,9 @@ To use this library you only need the `libreact.h` and `libreact.c` files.
 
 Writing server code is fun... but in limited and controlled amounts... after all, much of it simple code being repeated endlessly, connecting one piece of code with a different piece of code.
 
-`lib-server` is aimed at writing unix based (linux/BSD) servers. It uses `libreact` as the reactor, `libasync` to handle some tasks (the `on_data` callback will be performed asynchronously) and `libbuffer` for easily writing data asynchronously.
+`lib-server` is aimed at writing unix based (linux/BSD) servers application (network services), such as web applications. It uses `libreact` as the reactor, `libasync` to handle tasks and `libbuffer` for a user lever network buffer and writing data asynchronously.
 
-`lib-server` might not be optimized to your liking, but it's all working great for me. Besides, it's code is heavily commented code, easy to edit and tweak. To offer some comparison, `ev.c` from `libev` has ~5000 lines (and there's no server just yet, while `libreact` is less then 400 lines)...
+`lib-server` might not be optimized to your liking, but it's all working great for me. Besides, it's code is heavily commented code, easy to edit and tweak. To offer some comparison, `ev.c` from `libev` has ~5000 lines, while `libreact` is less then 400 lines (~260 lines of actual code)...
 
 Using `lib-server` is super simple to use. It's based on Protocol structure and callbacks, so that we can dynamically change protocols and support stuff like HTTP upgrade requests. Here's a simple example:
 
@@ -115,11 +115,11 @@ Using this library requires all the minor libraries written to support it: `liba
 
 ## [`http`](src/http/http.h) - a protocol for the web
 
-All these libraries were used in a Ruby server I was re-writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" in C, following to the `lib-server`'s protocol specs.
+All these libraries were used in a Ruby server I'm re-writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" in C, following to the `lib-server`'s protocol specs.
 
-The code is just a few mega-functions (I know, it needs refactoring) and helper settings. The HTTP parser destructively edits the received headers and forwards an `struct HttpRequest` object to the `on_request` callback. This minimizes data copying and speeds up the process.
+The code is just a few mega-functions (I know, it needs refactoring) and helper settings. The HTTP parser destructively edits the received headers and forwards a `struct HttpRequest` object to the `on_request` callback. This minimizes data copying and speeds up the process.
 
-The HTTP protocol provides a built-in static file service and allows us to limit incoming request's upload sizes, to protect server resources. The headers size limit is hard-set during compile time (it's 8KB, which is also the limit on some proxies), securing the server from bloated data DoS attacks.
+The HTTP protocol provides a built-in static file service and allows us to limit incoming request data sizes in order to protect server resources. The header size limit is hard-set during compile time (it's 8KB, which is also the limit on some proxies), securing the server from bloated data DoS attacks. The incoming data size limit is dynamic.
 
 Here's a "Hello World" HTTP server (with a stub to add static file services).
 
@@ -157,6 +157,6 @@ If you encounter any issues, open an issue (or, even better, a pull request with
 
 ## A note about "safe" languages (C vs. Rust, Javascript vs. Elm)
 
-they keep telling me that a "safe" language will make me a better programmer, but I keep thinking that a language is made "safe" so it can be used by bad programmers.
+they keep telling me that a "safe" language will make me a better programmer, but I keep thinking that a language is made "safe" so it can be used by bad programmers (are we child-proofing our programming languages?).
 
 Leave me my freedom and my debugger and keep your safety away from me.
