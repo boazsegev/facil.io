@@ -1,6 +1,6 @@
-# Source files
+# Folder Hierarchy 
 
-This folder contains the main source files for the Server Writing Tools (for C) project.
+This folder (`./src`) contains the main source files for the Server Writing Tools (for C) project.
 
 The `makefile` is designed for writing a new project and not for building a dynamic or static library. It simply compiles all the files in the source folders and links them.
 
