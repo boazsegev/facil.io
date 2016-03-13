@@ -1,29 +1,40 @@
 NAME=tryme
 CC=@gcc
 DB=@lldb
-LIBS= -pthread -lssl -lcrypto
-INCLUDE=/usr/local/include http ./
-CFLAGS=-Wall -g -O3 $(addprefix -I, $(INCLUDE))
-BINDIR=./../tmp
-BUILDDIR=./../tmp
-# SRC = $(shell find . -name *.c)
-SRC = .
-BIN=$(BINDIR)/$(NAME)
-OBJS=$(addsuffix .o, $(addprefix $(BUILDDIR)/, $(notdir $(basename $(wildcard $(SRC)/*.c))))) $(addsuffix .o, $(addprefix $(BUILDDIR)/http/, $(notdir $(basename $(wildcard $(SRC)/http/*.c)))))
-#-lm
+LIBS=-pthread -lssl -lcrypto
+INCLUDE=/usr/local/include
+OUT_ROOT=../tmp
+SRC_ROOT=.
+SRC_SUBFOLDERS=http
+
+#auto computed values
+BIN=$(OUT_ROOT)/$(NAME)
+SRCDIR= $(SRC_ROOT) $(foreach dir, $(SRC_SUBFOLDERS), $(addsuffix /,$(basename $(SRC_ROOT)))$(dir))
+SRC = $(foreach dir, $(SRCDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c))
+BUILDTREE=$(foreach dir, $(SRCDIR), $(addsuffix /, $(basename $(OUT_ROOT)))$(basename $(dir)))
+OBJS= $(foreach source, $(SRC), $(addprefix $(OUT_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+
+# the C flags
+CFLAGS=-Wall -g -O3 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
+
+
+list:
+	@echo SRCDIR: $(SRCDIR)
+	@echo SRC: $(SRC)
+	@echo OBJS: $(OBJS)
+	@echo BUILDTREE: $(BUILDTREE)
 
 $(NAME): build
 
 build: $(OBJS)
 	$(CC) -o $(BIN) $^ $(CFLAGS) $(LIBS)
 
-$(BUILDDIR)/%.o: $(SRC)/%.c # $(SRC)/%.h
+$(OUT_ROOT)/%.o: $(SRC_ROOT)/%.c # $(SRC)/%.h
 	$(CC) -o $@ -c $^ $(CFLAGS)
 
 clean:
-	-@rm -R $(BUILDDIR)
-	-@mkdir $(BUILDDIR)
-	-@mkdir $(BUILDDIR)/http
+	-@rm -R $(OUT_ROOT)
+	-@mkdir -p $(BUILDTREE)
 
 execute:
 	@$(BIN)
