@@ -39,21 +39,19 @@ int main(void) {
 }
  ```
 
+To use this library you only need the `libasync.h` and `libasync.c` files.
+
 ## [`libreact`](src/libreact.h) - KQueue/EPoll abstraction.
 
 It's true, some server programs still use `select` and `poll`... but they really shouldn't be (don't get me started).
 
 When using [`libevent`](http://libevent.org) or [`libev`](http://software.schmorp.de/pkg/libev.html) you could end up falling back on `select` if you're not careful. `libreact`, on the other hand, will simply refuse to compile if neither kqueue nor epoll are available (windows Overlapping IO support would be interesting to write, I guess, but I don't have Windows).
 
-Since I mentioned `libevent` or `libev`, I should point out that even a simple inspection shows that these are amazing and well tested libraries (how did they make those nice benchmark graphs?!)... but I hated their API (or documentation).
+Since I mentioned `libevent` and `libev`, I should point out that even a simple inspection shows that these are amazing and well tested libraries (how did they make those nice benchmark graphs?!)... but I hated their API (or documentation).
 
-It seems to me, that since both `libevent` and `libev` are so all-encompassing, they end up having too many options and functions... I, on the other hand, am a fan of well designed abstractions, even at the price of control. I mean, you're writing a server that should handle 100K concurrent connections - do you really need to manage the socket polling timeouts ("ticks")?! Are you really expecting more than a second to pass with no events?
+It seems to me, that since both `libevent` and `libev` are so all-encompassing, they end up having too many options and functions... I, on the other hand, am a fan of well designed abstractions, even at the price of control. I mean, you're writing a server that should handle 100K+ concurrent connections - do you really need to manage the socket polling timeouts ("ticks")?! Are you really expecting more than a second to pass with no events?
 
 To use this library you only need the `libreact.h` and `libreact.c` files.
-
-P.S.
-
-What I would love to write, but I need to learn more before I do so, is a signal based reactor that will be work with all POSIX compilers, using [`sigaction`](http://www.gnu.org/software/libc/manual/html_node/Signal-Actions.html#Signal-Actions) and message pipes... but I want to improve on my site-reading skills first (I'm a musician at heart).
 
 ## [`lib-server`](src/lib-server.h) - a server building library.
 
@@ -112,7 +110,8 @@ int main(void) {
 
 // easy :-)
 ```
-Using this library requires all the minor libraries written for to support it: `libasync`, `libbuffer` (which you can use separately with minor changes) and `libreact`.
+
+Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with minor changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files.
 
 ## [`http`](src/http/http.h) - a protocol for the web
 
@@ -142,7 +141,7 @@ int main()
 }
 ```
 
-Using this library requires all the `http-` prefixed files (`http-mime-types`, `http-request`, `http-status`, `http-objpool`, etc') as well as `lib-server` and all the files it requires.
+Using this library requires all the `http-` prefixed files (`http-mime-types`, `http-request`, `http-status`, `http-objpool`, etc') as well as `lib-server` and all the files it requires. This files are in a separate folder and the makefile in this project supports subfolders. You might want to place all the files in the same folder if you use these source files in a different project.
 
 ---
 
