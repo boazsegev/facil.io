@@ -17,13 +17,6 @@ OBJS= $(foreach source, $(SRC), $(addprefix $(OUT_ROOT)/, $(addsuffix .o, $(base
 # the C flags
 CFLAGS=-Wall -g -O3 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
 
-
-list:
-	@echo SRCDIR: $(SRCDIR)
-	@echo SRC: $(SRC)
-	@echo OBJS: $(OBJS)
-	@echo BUILDTREE: $(BUILDTREE)
-
 $(NAME): build
 
 build: $(OBJS)
