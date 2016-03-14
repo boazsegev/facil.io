@@ -10,10 +10,12 @@ Feel free to copy, use and enjoy according to the license provided.
 /* Only available if we have OpenSSL */
 #ifdef SSL_VERIFY_PEER
 
+#define PRINT_MESSAGES 1
 /* We have OpenSSL - let's do this :-) */
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -67,8 +69,9 @@ Protocol and Server callbacks
 */
 
 static ssize_t writing_hook(server_pt srv, int fd, void* data, size_t len) {
-  fprintf(stderr, "Sending in the clear (%ld bytes): %.*s\n", len, (int)len,
-          data);
+  if (PRINT_MESSAGES)
+    fprintf(stderr, "Sending in the clear (%ld bytes): %.*s\n", len, (int)len,
+            data);
   int sent = write(fd, data, len);
   if (sent < 0 && (errno & (EWOULDBLOCK | EAGAIN | EINTR)))
     sent = 0;
@@ -78,8 +81,9 @@ static ssize_t writing_hook(server_pt srv, int fd, void* data, size_t len) {
 static ssize_t reading_hook(server_pt srv, int fd, void* buffer, size_t size) {
   ssize_t read = 0;
   if ((read = recv(fd, buffer, size, 0)) > 0) {
-    fprintf(stderr, "Got clear text (%ld bytes): %.*s\n", read, (int)read,
-            buffer);
+    if (PRINT_MESSAGES)
+      fprintf(stderr, "Got clear text (%ld bytes): %.*s\n", read, (int)read,
+              buffer);
     return read;
   } else {
     if (read && (errno & (EWOULDBLOCK | EAGAIN)))
@@ -89,13 +93,16 @@ static ssize_t reading_hook(server_pt srv, int fd, void* buffer, size_t size) {
 }
 
 static void on_open(server_pt srv, int fd) {
-  fprintf(stderr, "A new TLS connection? sorry, not implemented\n");
+  if (PRINT_MESSAGES)
+    fprintf(stderr, "A new TLS connection? sorry, not implemented\n");
 }
 static void on_close(server_pt srv, int fd) {
-  fprintf(stderr, "SSL/TLS handshake failed.\n");
+  if (PRINT_MESSAGES)
+    fprintf(stderr, "SSL/TLS handshake failed.\n");
 }
 static void on_data(server_pt srv, int fd) {
-  fprintf(stderr, "TLS connections aren't implemented, updating protocol.\n");
+  if (PRINT_MESSAGES)
+    fprintf(stderr, "TLS connections aren't implemented, updating protocol.\n");
   struct TLSProtocol* tls = tls_protocol(srv);
   if (!tls)
     return;
@@ -103,7 +110,9 @@ static void on_data(server_pt srv, int fd) {
   Server.rw_hooks(srv, fd, reading_hook, writing_hook);
   // give the connection control to the original protocol
   if (Server.set_protocol(srv, fd, tls->original_protocol)) {
-    fprintf(stderr, "SSL/TLS ERROR: cannot set the connection's protocol\n");
+    if (PRINT_MESSAGES)
+      fprintf(stderr, "SSL/TLS ERROR: cannot set the connection's protocol\n");
+    return;
   };
   // set the correct timeout
   Server.set_timeout(srv, fd, tls->timeout);
@@ -116,9 +125,10 @@ static void on_data(server_pt srv, int fd) {
 static void on_ready(server_pt srv, int fd) {
   // Should we continue the OpenSSL `accept` here? ... it requires writing as
   // well as reading...
-  fprintf(stderr,
-          "SSL/TLS handshake should continue? only if it isn't running in "
-          "parallel...\n");
+  if (PRINT_MESSAGES)
+    fprintf(stderr,
+            "SSL/TLS handshake should continue? only if it isn't running in "
+            "parallel...\n");
 }
 
 static void on_finish(server_pt srv) {
@@ -135,12 +145,34 @@ static void on_finish(server_pt srv) {
 }
 
 /*******************************************************************************
+Global initialization
+*/
+static void global_library_init() {
+  volatile static char initialized = 0;
+  if (initialized)
+    return;
+  // this isn't a mutex, but it's a good enough solution for the unlikely
+  // chance of a race condition.
+  for (size_t i = 0; i < 8; i++) {
+    if (initialized >> i)
+      return;
+    initialized |= (1 << i);
+  }
+  if (PRINT_MESSAGES)
+    fprintf(stderr, "Initializing TLS library.\n");
+  // call the initialization functions
+  SSL_library_init();  // or OPENSSL_init_ssl() in version 1.1.0
+  // OpenSSL_add_all_algorithms(); // - do we need this?
+}
+
+/*******************************************************************************
 Function implementation
 */
 
 /** Used to initialize the TLS/SSL hooks from within the on_init callback. */
 static void init_server(server_pt srv) {
-  fprintf(stderr, "Initializing TLS layer.\n");
+  if (PRINT_MESSAGES)
+    fprintf(stderr, "Initializing TLS layer.\n");
   struct ServerSettings* settings = Server.settings(srv);
   settings->on_init = NULL;
   update_settings(settings);
@@ -156,16 +188,18 @@ static void init_server(server_pt srv) {
 static void update_settings(struct ServerSettings* settings) {
   if (settings->on_init == init_server)  // settings already updated.
     return;
+  // initialize the library
+  global_library_init();
   // create a new TLSProtocol object and initialize the data
   struct TLSProtocol* tls = malloc(sizeof(*tls));
   if (!tls) {
-    perror("Cannot allocate memory!");
+    perror("Cannot allocate memory");
     exit(1);  // we do not fail quitely.
   }
   tls->data = calloc(Server.capacity(), sizeof(*(tls->data)));
   if (!tls->data) {
     free(tls);
-    perror("Cannot allocate memory!");
+    perror("Cannot allocate memory");
     exit(1);  // we do not fail quitely.
   }
   // initialize the TLSProtocol data.

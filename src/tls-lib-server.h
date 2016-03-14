@@ -23,11 +23,13 @@ The choice for a default quite failure was chosen so that this extension could
 be stored in the project folder even when not in use.
 */
 
-/* for testing */
-// #define SSL_VERIFY_PEER 1
+/* set to 1 to use OpenSSL or 0 to compine without encryption */
+#define USE_TLS_LIB_SERVER 1
 
-#ifdef SSL_VERIFY_PEER
+#if USE_TLS_LIB_SERVER >= 1
 /* We have OpenSSL - let's do this :-) */
+#include <openssl/crypto.h>
+#include <openssl/ssl.h>
 #include "lib-server.h"
 
 /**
@@ -65,11 +67,6 @@ struct TLSServer_API___ {
 /* TLS-Lib-Server: Not implememnted */
 #warning TLS-Lib-Server: Not implememnted.
 
-/* End OpenSSL available section */
-#elif defined(REQUIRE_TLS)
-#warning Open SSL header data wasn't found - to use TLS-Lib-Server, include the ssl.h header before the tls-lib-server.h header.
-#else
-#warning Open SSL header data wasn't found - to use TLS-Lib-Server, include the ssl.h header before the tls-lib-server.h header.
-#endif /* SSL_VERIFY_PEER */
+#endif /* USE_TLS_LIB_SERVER */
 
 #endif /* TLS_LIB_SERVER */
