@@ -1031,6 +1031,8 @@ static ssize_t srv_read(server_pt srv, int fd, void* buffer, size_t max_len) {
 
   ssize_t read = 0;
   if ((read = recv(fd, buffer, max_len, 0)) > 0) {
+    // reset timeout
+    srv->idle[fd] = 0;
     // return data
     return read;
   } else {
