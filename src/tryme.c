@@ -30,6 +30,7 @@ void on_request(struct HttpRequest* request) {
 Lib Server "Hello World" (Http)
 */
 #include "lib-server.h"
+#include "tls-lib-server.h"
 
 void on_data(server_pt srv, int fd) {
   static char reply[] =
@@ -46,12 +47,18 @@ void on_data(server_pt srv, int fd) {
   }
 }
 
+void on_init(server_pt srv) {
+  // TLSServer.init_server(srv);
+}
+
 int main(int argc, char const* argv[]) {
   if (USE_HTTP_PROTOCOL) {
-    start_http_server(on_request, NULL, .threads = THREAD_COUNT);
+    start_http_server(on_request, NULL, .threads = THREAD_COUNT,
+                      .on_init = on_init);
   } else {
     struct Protocol protocol = {.on_data = on_data};
-    start_server(.protocol = &protocol, .timeout = 2, .threads = THREAD_COUNT);
+    start_server(.protocol = &protocol, .timeout = 2, .on_init = on_init,
+                 .threads = THREAD_COUNT);
   }
   return 0;
 }
