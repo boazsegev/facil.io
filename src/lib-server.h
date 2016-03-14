@@ -332,7 +332,7 @@ extern const struct Server__API____ {
 
   ssize_t reading_hook(server_pt srv, int fd, void* buffer, size_t size) {
     ssize_t read = 0;
-    if ((read = recv(fd, buffer, max_len, 0)) > 0) {
+    if ((read = recv(fd, buffer, size, 0)) > 0) {
       return read;
     } else {
       if (read && (errno & (EWOULDBLOCK | EAGAIN)))
@@ -345,9 +345,8 @@ extern const struct Server__API____ {
   void (*rw_hooks)(
       server_pt srv,
       int sockfd,
-      ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len),
-      ssize_t (
-          *reading_hook)(server_pt srv, int fd, void* buffer, size_t size));
+      ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size),
+      ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len));
 
   /** Reads up to `max_len` of data from a socket. the data is stored in the
   `buffer` and the number of bytes received is returned.

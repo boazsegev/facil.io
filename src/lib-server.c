@@ -203,8 +203,8 @@ SSL/TLS) or monitoring extensions.
 void rw_hooks(
     server_pt srv,
     int sockfd,
-    ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len),
-    ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size));
+    ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size),
+    ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len));
 
 /** Reads up to `max_len` of data from a socket. the data is stored in the
 `buffer` and the number of bytes received is returned.
@@ -1011,8 +1011,8 @@ SSL/TLS) or monitoring extensions.
 void rw_hooks(
     server_pt srv,
     int sockfd,
-    ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len),
-    ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size)) {
+    ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size),
+    ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len)) {
   srv->reading_hooks[sockfd] = reading_hook;
   Buffer.set_whook(srv->buffer_map[sockfd], writing_hook);
 }
