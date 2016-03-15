@@ -1,4 +1,4 @@
-#include "http-sha1-base64.h"
+#include "mini-crypt.h"
 
 /*******************************************************************************
 Setup
@@ -14,18 +14,60 @@ Setup
 #endif
 #endif
 
+/*****************************************************************************
+Local functions used in the API.
+*/
+
+/* SHA-1 */
+static void sha1_init(sha1_s* s);
+static int sha1_write(sha1_s* s, const char* data, size_t len);
+static char* sha1_result(sha1_s* s);
+
+/* Base64 */
+static int base64_encode(char* target, const char* data, int len);
+static int base64_decode(char* target, char* encoded, int base64_len);
+
+/*****************************************************************************
+The API gateway
+*/
+struct MiniCrypt__API___ MiniCrypt = {
+    /* SHA-1 */
+    .sha1_init = sha1_init,
+    .sha1_write = sha1_write,
+    .sha1_result = sha1_result,
+
+    /* Base64 */
+    .base64_encode = base64_encode,
+    .base64_decode = base64_decode,
+
+};
+
+/*****************************************************************************
+Useful Macros
+*/
+
+/** 32Bit left rotation, inlined. */
+#define left_rotate32(i, bits) (((i) << (bits)) | ((i) >> (32 - (bits))))
+/** 32Bit right rotation, inlined. */
+#define right_rotate32(i, bits) (((i) >> (bits)) | ((i) << (32 - (bits))))
+/** 64Bit left rotation, inlined. */
+#define left_rotate64(i, bits) (((i) << (bits)) | ((i) >> (64 - (bits))))
+/** 64Bit right rotation, inlined. */
+#define right_rotate64(i, bits) (((i) >> (bits)) | ((i) << (64 - (bits))))
+/** unknown size element - left rotation, inlined. */
+#define left_rotate(i, bits) (((i) << (bits)) | ((i) >> (sizeof((i)) - (bits))))
+/** unknown size element - right rotation, inlined. */
+#define right_rotate(i, bits) \
+  (((i) >> (bits)) | ((i) << (sizeof((i)) - (bits))))
+
 /*******************************************************************************
-SHA-1 encoding
+SHA-1 hashing
 */
 
 /**
-Bit rotation, inlined.
-*/
-#define left_rotate(i, bits) (((i) << (bits)) | ((i) >> (32 - (bits))))
-/**
 Initialize/reset the SHA-1 object.
 */
-void sha1_init(sha1_s* s) {
+static void sha1_init(sha1_s* s) {
   s->digest.i[0] = 0x67452301;
   s->digest.i[1] = 0xefcdab89;
   s->digest.i[2] = 0x98badcfe;
@@ -52,7 +94,7 @@ static void sha1_process_buffer(sha1_s* s) {
       // update the word value
       t = s->buffer.i[i - 3] ^ s->buffer.i[i - 8] ^ s->buffer.i[i - 14] ^
           s->buffer.i[i - 16];
-      s->buffer.i[i] = left_rotate(t, 1);
+      s->buffer.i[i] = left_rotate32(t, 1);
     }
 
     if (i < 20) {
@@ -64,10 +106,10 @@ static void sha1_process_buffer(sha1_s* s) {
     } else {
       t = (b ^ c ^ d) + 0xCA62C1D6;
     }
-    t += left_rotate(a, 5) + e + s->buffer.i[i];
+    t += left_rotate32(a, 5) + e + s->buffer.i[i];
     e = d;
     d = c;
-    c = left_rotate(b, 30);
+    c = left_rotate32(b, 30);
     b = a;
     a = t;
   }
@@ -101,7 +143,7 @@ static int sha1_add_byte(sha1_s* s, unsigned char byte) {
 /**
 Write data to the buffer.
 */
-int sha1_write(sha1_s* s, const char* data, size_t len) {
+static int sha1_write(sha1_s* s, const char* data, size_t len) {
   if (!s || s->finalized)
     return -1;
   if (!s->initialized)
@@ -116,7 +158,7 @@ int sha1_write(sha1_s* s, const char* data, size_t len) {
 /**
 Finalize the SHA-1 object and return the resulting hash.
 */
-char* sha1_result(sha1_s* s) {
+static char* sha1_result(sha1_s* s) {
   // finalize the data if itw asn't finalized before
   if (!s->finalized) {
     // set the finalized flag
@@ -155,14 +197,14 @@ char* sha1_result(sha1_s* s) {
 #ifndef __BIG_ENDIAN__
     // change back to little endian, if needed? - seems it isn't required
     unsigned char t;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 20; i += 4) {
       // reverse byte order for each uint32 "word".
-      t = s->digest.str[i * 4];  // switch first and last bytes
-      s->digest.str[i * 4] = s->digest.str[(i * 4) + 3];
-      s->digest.str[(i * 4) + 3] = t;
-      t = s->digest.str[(i * 4) + 1];  // switch median bytes
-      s->digest.str[(i * 4) + 1] = s->digest.str[(i * 4) + 2];
-      s->digest.str[(i * 4) + 2] = t;
+      t = s->digest.str[i];  // switch first and last bytes
+      s->digest.str[i] = s->digest.str[i + 3];
+      s->digest.str[i + 3] = t;
+      t = s->digest.str[i + 1];  // switch median bytes
+      s->digest.str[i + 1] = s->digest.str[i + 2];
+      s->digest.str[i + 2] = t;
     }
 #endif
   }
@@ -174,7 +216,15 @@ char* sha1_result(sha1_s* s) {
 }
 
 /*******************************************************************************
-Base64
+SHA-2 TODO
+*/
+
+/*******************************************************************************
+SHA-3 TODO
+*/
+
+/*******************************************************************************
+Base64 encoding/decoding
 */
 
 /** the base64 encoding array */
@@ -241,7 +291,7 @@ the Base64 required padding and excluding a NULL terminator).
 
 A NULL terminator char is NOT written to the target buffer.
 */
-int base64_encode(char* target, const char* data, int len) {
+static int base64_encode(char* target, const char* data, int len) {
   int written = 0;
   // // optional implementation: allow a non writing, length computation.
   // if (!target)
@@ -298,7 +348,7 @@ at least, `base64_len/4*3 + 3` long.
 Returns the number of bytes actually written to the target buffer (excluding the
 NULL terminator byte).
 */
-int base64_decode(char* target, char* encoded, int base64_len) {
+static int base64_decode(char* target, char* encoded, int base64_len) {
   if (base64_len <= 0)
     return -1;
   if (!target)
