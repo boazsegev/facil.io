@@ -291,8 +291,8 @@ extern const struct Server__API____ {
   **Writing hook**
 
   A writing hook will be used instead of the `write` function to send data to
-  the socket. This allows this buffer to be used for special protocol extension
-  or transport layers, such as SSL/TLS.
+  the socket. This allows uses the buffer for special protocol extension or
+  transport layers, such as SSL/TLS instead of buffering data to the network.
 
   A writing hook is a function that takes in a pointer to the server (the
   buffer's owner), the socket to which writing should be performed (fd), a
@@ -307,6 +307,11 @@ extern const struct Server__API____ {
 
   A writing hook should return 0 if no data was sent, but the connection should
   remain open or no fatal error occured.
+
+  A writing hook MUST write data to the network, or it will not be called again
+  until new data becomes available through `Server.write` (meanning, it might
+  never get called again). Returning a positive value without writing data to
+  the network will NOT cause the writing hook to be called again.
 
   i.e.:
 
