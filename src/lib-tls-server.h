@@ -23,7 +23,7 @@ The choice for a default quite failure was chosen so that this extension could
 be stored in the project folder even when not in use.
 */
 
-/* set to 1 to use OpenSSL or 0 to compine without encryption */
+/* set to 1 to use OpenSSL or 0 to compile without encryption */
 #define USE_TLS_LIB_SERVER 1
 
 #if USE_TLS_LIB_SERVER >= 1

@@ -5,7 +5,7 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 
-#include "tls-lib-server.h"
+#include "lib-tls-server.h"
 
 /* Only available if we have OpenSSL */
 #ifdef SSL_VERIFY_PEER

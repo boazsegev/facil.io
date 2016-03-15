@@ -10,12 +10,15 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdint.h>
 
 /** \file
-This file contains these basic cryptographic functions:
+The MiniCrypt library supplies the following, basic, cryptographic functions:
 
-- Base64 encoding/decoding
 - SHA-1 hashing (considered less secure, use SHA-2/SHA-3 instead).
 - SHA-2 (coming soon)
 - SHA-3 (on the wish list)
+
+Non cryptographic, but related, algorithms also supported are:
+
+- Base64 encoding/decoding (non cryptographic, but often used in relation).
 
 The following is a list of Hashing and Encryption methods that should be avoided
 and (unless required for some of my projects, such as for websockets), will NOT
