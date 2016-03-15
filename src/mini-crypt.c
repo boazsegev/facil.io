@@ -195,7 +195,7 @@ static char* sha1_result(sha1_s* s) {
 #endif
 
 #ifndef __BIG_ENDIAN__
-    // change back to little endian, if needed? - seems it isn't required
+    // change back to little endian
     unsigned char t;
     for (int i = 0; i < 20; i += 4) {
       // reverse byte order for each uint32 "word".
@@ -275,21 +275,17 @@ union Base64Parser {
 This will encode a byte array (data) of a specified length (len) and
 place
 the encoded data into the target byte buffer (target). The target buffer
-MUST
-have enough room for the expected data.
+MUST have enough room for the expected data, including a terminating NULL byte.
 
-Base64 encoding always requires 4 bytes for each 3 bytes. Padding is
-added if
+Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
 the raw data's length isn't devisable by 3.
 
-Always assume the target buffer should have room enough for (len*4/3 + 4)
-bytes.
+Always assume the target buffer should have room enough for (len*4/3 + 5) bytes.
 
 Returns the number of bytes actually written to the target buffer
-(including
-the Base64 required padding and excluding a NULL terminator).
+(including the Base64 required padding and excluding the NULL terminator).
 
-A NULL terminator char is NOT written to the target buffer.
+A NULL terminator char is written to the target buffer.
 */
 static int base64_encode(char* target, const char* data, int len) {
   int written = 0;
@@ -319,13 +315,17 @@ static int base64_encode(char* target, const char* data, int len) {
         base64_encodes[(section->byte1.tail << 4) | (section->byte2.head)];
     target[2] = base64_encodes[section->byte2.tail << 2];
     target[3] = '=';
+    target += 4;
+    written += 4;
   } else if (len == 1) {
     target[0] = base64_encodes[section->byte1.data];
     target[1] = base64_encodes[section->byte1.tail << 4];
     target[2] = '=';
     target[3] = '=';
+    target += 4;
+    written += 4;
   }
-  written += 4;
+  target[0] = 0;  // NULL terminator
   return written;
 }
 
