@@ -126,7 +126,7 @@ API Gateway (the MiniCrypt global object)
 
 extern struct MiniCrypt__API___ {
   /*****************************************************************************
-  SHA-1 encoding
+  SHA-1 hashing
   */
 
   /**
@@ -145,6 +145,38 @@ extern struct MiniCrypt__API___ {
   finalization will only be performed the first time this function is called.
   */
   char* (*sha1_result)(sha1_s* s);
+
+  /*****************************************************************************
+  SHA-2 hashing
+  */
+
+  /**
+  Initialize/reset the SHA-2 object.
+
+  SHA-2 is actually a family of functions with different variants. When
+  initializing the SHA-2 container, you must select the variant you intend to
+  apply. The following are valid options (see the sha2_variant enum):
+
+  - SHA_512 (== 0)
+  - SHA_384
+  - SHA_512_224
+  - SHA_512_256
+  - SHA_256
+  - SHA_224
+
+  */
+  void (*sha2_init)(sha2_s* s, sha2_variant variant);
+  /**
+  Writes data to the SHA-2 buffer.
+  */
+  int (*sha2_write)(sha2_s* s, const char* data, size_t len);
+  /**
+  Finalizes the SHA-2 hash, returning the Hashed data.
+
+  `sha2_result` can be called for the same object multiple times, but the
+  finalization will only be performed the first time this function is called.
+  */
+  char* (*sha2_result)(sha2_s* s);
 
   /*****************************************************************************
   Base64 encoding

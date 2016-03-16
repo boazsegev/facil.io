@@ -41,10 +41,10 @@ struct MiniCrypt__API___ MiniCrypt = {
     .sha1_write = sha1_write,
     .sha1_result = sha1_result,
 
-    // /* SHA-2 */
-    // .sha2_init = sha2_init,
-    // .sha2_write = sha2_write,
-    // .sha2_result = sha2_result,
+    /* SHA-2 */
+    .sha2_init = sha2_init,
+    .sha2_write = sha2_write,
+    .sha2_result = sha2_result,
 
     /* Base64 */
     .base64_encode = base64_encode,
@@ -276,6 +276,29 @@ static uint64_t sha2_512_words[] = {
     0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a,
     0x5fcb6fab3ad6faec, 0x6c44198c4a475817};
 
+/* Specific Macros for the SHA-2 processing */
+
+#define Ch(x, y, z) (((x) & (y)) ^ ((~(x)) & z))
+#define Maj(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+
+#define Eps0_32(x) \
+  (right_rotate32((x), 2) ^ right_rotate32((x), 13) ^ right_rotate32((x), 22))
+#define Eps1_32(x) \
+  (right_rotate32((x), 6) ^ right_rotate32((x), 11) ^ right_rotate32((x), 25))
+#define Omg0_32(x) \
+  (right_rotate32((x), 7) ^ right_rotate32((x), 18) ^ (((x) >> 3)))
+#define Omg1_32(x) \
+  (right_rotate32((x), 17) ^ right_rotate32((x), 19) ^ (((x) >> 10)))
+
+#define Eps0_64(x) \
+  (right_rotate64((x), 28) ^ right_rotate64((x), 34) ^ right_rotate64((x), 39))
+#define Eps1_64(x) \
+  (right_rotate64((x), 14) ^ right_rotate64((x), 18) ^ right_rotate64((x), 41))
+#define Omg0_64(x) \
+  (right_rotate64((x), 1) ^ right_rotate64((x), 8) ^ (((x) >> 7)))
+#define Omg1_64(x) \
+  (right_rotate64((x), 19) ^ right_rotate64((x), 61) ^ (((x) >> 6)))
+
 /**
 Initialize/reset the SHA-2 object.
 
@@ -366,11 +389,78 @@ Process the buffer once full.
 */
 static void sha2_process_buffer(sha2_s* s) {
   if (s->type_512) {
-    // TODO process values for the 64bit words
-    sha2_512_words[0] = s->buffer.i64[0];  // don't do this
+    // process values for the 64bit words
+    uint64_t a = s->digest.i64[0];
+    uint64_t b = s->digest.i64[1];
+    uint64_t c = s->digest.i64[2];
+    uint64_t d = s->digest.i64[3];
+    uint64_t e = s->digest.i64[4];
+    uint64_t f = s->digest.i64[5];
+    uint64_t g = s->digest.i64[6];
+    uint64_t h = s->digest.i64[7];
+    uint64_t t1, t2, w[80];
+    for (int i = 0; i < 80; i++) {
+      if (i < 16) {
+        w[i] = s->buffer.i64[i];
+      } else {
+        w[i] = Omg1_64(w[i - 2]) + w[i - 7] + Omg0_64(w[i - 15]) + w[i - 16];
+      }
+      t1 = h + Eps1_64(e) + Ch(e, f, g) + sha2_512_words[i] + w[i];
+      t2 = Eps0_64(a) + Maj(a, b, c);
+      h = g;
+      g = f;
+      f = e;
+      e = d + t1;
+      d = c;
+      c = b;
+      b = a;
+      a = t1 + t2;
+    }
+    s->digest.i64[0] += a;
+    s->digest.i64[1] += b;
+    s->digest.i64[2] += c;
+    s->digest.i64[3] += d;
+    s->digest.i64[4] += e;
+    s->digest.i64[5] += f;
+    s->digest.i64[6] += g;
+    s->digest.i64[7] += h;
+
   } else {
-    // TODO process values for the 32bit words
-    sha2_256_words[0] ^= s->buffer.i32[0];  // don't do this
+    // process values for the 32bit words
+    uint32_t a = s->digest.i32[0];
+    uint32_t b = s->digest.i32[1];
+    uint32_t c = s->digest.i32[2];
+    uint32_t d = s->digest.i32[3];
+    uint32_t e = s->digest.i32[4];
+    uint32_t f = s->digest.i32[5];
+    uint32_t g = s->digest.i32[6];
+    uint32_t h = s->digest.i32[7];
+    uint32_t t1, t2, w[64];
+    for (int i = 0; i < 64; i++) {
+      if (i < 16) {
+        w[i] = s->buffer.i32[i];
+      } else {
+        w[i] = Omg1_32(w[i - 2]) + w[i - 7] + Omg0_32(w[i - 15]) + w[i - 16];
+      }
+      t1 = h + Eps1_32(e) + Ch(e, f, g) + sha2_256_words[i] + w[i];
+      t2 = Eps0_32(a) + Maj(a, b, c);
+      h = g;
+      g = f;
+      f = e;
+      e = d + t1;
+      d = c;
+      c = b;
+      b = a;
+      a = t1 + t2;
+    }
+    s->digest.i32[0] += a;
+    s->digest.i32[1] += b;
+    s->digest.i32[2] += c;
+    s->digest.i32[3] += d;
+    s->digest.i32[4] += e;
+    s->digest.i32[5] += f;
+    s->digest.i32[6] += g;
+    s->digest.i32[7] += h;
   }
 }
 
@@ -390,10 +480,12 @@ static int sha2_add_byte(sha2_s* s, unsigned char byte) {
   // update buffer position
   s->buffer_pos++;
   // review chunk (1024/512 bits) processing
-  if (s->buffer_pos == 0 || (s->type_512 && s->buffer_pos == 512)) {
+  if ((!s->type_512 && s->buffer_pos == 64) ||
+      (s->type_512 && s->buffer_pos == 0)) {
     // s->buffer_pos wraps at 127 back to 0, so each 0 is the 1024 bits
     // (128 bytes) chunk marker to be processed.
     sha2_process_buffer(s);
+    s->buffer_pos = 0;
   }
   // returns the buffer's possition
   return s->buffer_pos;
@@ -460,24 +552,26 @@ static char* sha2_result(sha2_s* s) {
     }
 #else
     // add length data, reverse byte order (little endian)
-    sha2_add_byte(s, s->msg_length.str[15]);
-    sha2_add_byte(s, s->msg_length.str[14]);
-    sha2_add_byte(s, s->msg_length.str[13]);
-    sha2_add_byte(s, s->msg_length.str[12]);
-    sha2_add_byte(s, s->msg_length.str[11]);
-    sha2_add_byte(s, s->msg_length.str[10]);
-    sha2_add_byte(s, s->msg_length.str[9]);
-    sha2_add_byte(s, s->msg_length.str[8]);
+    // fprintf(stderr, "The %s bytes are relevant\n",
+    //         (s->msg_length.str[15] ? "last" : "first"));
     if (s->type_512) {
-      sha2_add_byte(s, s->msg_length.str[7]);
-      sha2_add_byte(s, s->msg_length.str[6]);
-      sha2_add_byte(s, s->msg_length.str[5]);
-      sha2_add_byte(s, s->msg_length.str[4]);
-      sha2_add_byte(s, s->msg_length.str[3]);
-      sha2_add_byte(s, s->msg_length.str[2]);
-      sha2_add_byte(s, s->msg_length.str[1]);
-      sha2_add_byte(s, s->msg_length.str[0]);
+      sha2_add_byte(s, s->msg_length.str[15]);
+      sha2_add_byte(s, s->msg_length.str[14]);
+      sha2_add_byte(s, s->msg_length.str[13]);
+      sha2_add_byte(s, s->msg_length.str[12]);
+      sha2_add_byte(s, s->msg_length.str[11]);
+      sha2_add_byte(s, s->msg_length.str[10]);
+      sha2_add_byte(s, s->msg_length.str[9]);
+      sha2_add_byte(s, s->msg_length.str[8]);
     }
+    sha2_add_byte(s, s->msg_length.str[7]);
+    sha2_add_byte(s, s->msg_length.str[6]);
+    sha2_add_byte(s, s->msg_length.str[5]);
+    sha2_add_byte(s, s->msg_length.str[4]);
+    sha2_add_byte(s, s->msg_length.str[3]);
+    sha2_add_byte(s, s->msg_length.str[2]);
+    sha2_add_byte(s, s->msg_length.str[1]);
+    sha2_add_byte(s, s->msg_length.str[0]);
 #endif
 
 #ifndef __BIG_ENDIAN__
@@ -486,8 +580,8 @@ static char* sha2_result(sha2_s* s) {
     if (s->type_512) {
       for (int i = 0; i < 64; i += 8) {
         // reverse byte order for each uint64 "word".
-        for (int j = 0; j < 8; i++) {
-          t = s->digest.str[i + j];  // switch first and last bytes
+        for (int j = 0; j < 4; j++) {
+          t = s->digest.str[i + j];  // switch bytes
           s->digest.str[i + j] = s->digest.str[i + (7 - j)];
           s->digest.str[i + (7 - j)] = t;
         }
@@ -505,8 +599,14 @@ static char* sha2_result(sha2_s* s) {
     }
 #endif
     // set NULL bytes for SHA_224
-    if (s->type == SHA_224)
+    if (s->type == SHA_224 || s->type == SHA_512_224)
       s->digest.str[28] = 0;
+    // set NULL bytes for SHA_256
+    else if (s->type == SHA_512_256)
+      s->digest.str[32] = 0;
+    // set NULL bytes for SHA_384
+    else if (s->type == SHA_384)
+      s->digest.str[48] = 0;
   }
   // fprintf(stderr, "SHA-2 result requested, in hex, is:");
   // for (int i = 0; i < (s->type_512 ? 64 : 32); i++)

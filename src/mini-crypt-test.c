@@ -51,25 +51,112 @@ void test_sha1(void) {
 SHA-2 TODO: testing is just a stub for noew (also, SHA-2 isn't implemented)
 */
 
+static char* sha2_variant_names[] = {
+    "SHA_512", "SHA_512_256", "SHA_512_224", "SHA_384", "SHA_256", "SHA_224",
+};
+
 void test_sha2(void) {
-  // SHA224("")
-  // 0x d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f
-  // SHA256("")
-  // 0x e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-  // SHA384("")
-  // 0x
-  // 38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b
-  // SHA512("")
-  // 0x
-  // cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e
-  // SHA512/224("")
-  // 0x 6ed0dd02806fa89e25de060c19d3ac86cabb87d6a0ddd05c333b84f4
-  // SHA512/256("")
-  // 0x c672b8d1ef56ed28ab87c3622c5114069bdd3ad7b8f9737498d0c01ecef0967a
-  // SHA224("The quick brown fox jumps over the lazy dog")
-  // 0x 730e109bd7a8a32b1cb9d9a09aa2325d2430587ddbc0c38bad911525
-  // SHA224("The quick brown fox jumps over the lazy dog.")
-  // 0x 619cba8e8e05826e9b8c519c0a5c68f4fb653e8a3d8aa04bb2c8cd4c
+  sha2_s s;
+  char* expect = NULL;
+  char* got = NULL;
+  char* str = "";
+  fprintf(stderr, "+ MiniCrypt");
+  // start tests
+  MiniCrypt.sha2_init(&s, SHA_224);
+  MiniCrypt.sha2_write(&s, str, 0);
+  expect =
+      "\xd1\x4a\x02\x8c\x2a\x3a\x2b\xc9\x47\x61\x02\xbb\x28\x82\x34\xc4"
+      "\x15\xa2\xb0\x1f\x82\x8e\xa6\x2a\xc5\xb3\xe4\x2f";
+  got = MiniCrypt.sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  MiniCrypt.sha2_init(&s, SHA_256);
+  MiniCrypt.sha2_write(&s, str, 0);
+  expect =
+      "\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\x27"
+      "\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55";
+  got = MiniCrypt.sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  MiniCrypt.sha2_init(&s, SHA_384);
+  MiniCrypt.sha2_write(&s, str, 0);
+  expect =
+      "\x38\xb0\x60\xa7\x51\xac\x96\x38\x4c\xd9\x32\x7e"
+      "\xb1\xb1\xe3\x6a\x21\xfd\xb7\x11\x14\xbe\x07\x43\x4c\x0c"
+      "\xc7\xbf\x63\xf6\xe1\xda\x27\x4e\xde\xbf\xe7\x6f\x65\xfb"
+      "\xd5\x1a\xd2\xf1\x48\x98\xb9\x5b";
+  got = MiniCrypt.sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  MiniCrypt.sha2_init(&s, SHA_512);
+  MiniCrypt.sha2_write(&s, str, 0);
+  expect =
+      "\xcf\x83\xe1\x35\x7e\xef\xb8\xbd\xf1\x54\x28\x50\xd6\x6d"
+      "\x80\x07\xd6\x20\xe4\x05\x0b\x57\x15\xdc\x83\xf4\xa9\x21"
+      "\xd3\x6c\xe9\xce\x47\xd0\xd1\x3c\x5d\x85\xf2\xb0\xff\x83"
+      "\x18\xd2\x87\x7e\xec\x2f\x63\xb9\x31\xbd\x47\x41\x7a\x81"
+      "\xa5\x38\x32\x7a\xf9\x27\xda\x3e";
+  got = MiniCrypt.sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  MiniCrypt.sha2_init(&s, SHA_512_224);
+  MiniCrypt.sha2_write(&s, str, 0);
+  expect =
+      "\x6e\xd0\xdd\x02\x80\x6f\xa8\x9e\x25\xde\x06\x0c\x19\xd3"
+      "\xac\x86\xca\xbb\x87\xd6\xa0\xdd\xd0\x5c\x33\x3b\x84\xf4";
+  got = MiniCrypt.sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  MiniCrypt.sha2_init(&s, SHA_512_256);
+  MiniCrypt.sha2_write(&s, str, 0);
+  expect =
+      "\xc6\x72\xb8\xd1\xef\x56\xed\x28\xab\x87\xc3\x62\x2c\x51\x14\x06"
+      "\x9b\xdd\x3a\xd7\xb8\xf9\x73\x74\x98\xd0\xc0\x1e\xce\xf0\x96\x7a";
+  got = MiniCrypt.sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  MiniCrypt.sha2_init(&s, SHA_224);
+  str = "The quick brown fox jumps over the lazy dog";
+  MiniCrypt.sha2_write(&s, str, strlen(str));
+  expect =
+      "\x73\x0e\x10\x9b\xd7\xa8\xa3\x2b\x1c\xb9\xd9\xa0\x9a\xa2"
+      "\x32\x5d\x24\x30\x58\x7d\xdb\xc0\xc3\x8b\xad\x91\x15\x25";
+  got = MiniCrypt.sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  MiniCrypt.sha2_init(&s, SHA_512);
+  str = "god is a rotten tomato";
+  MiniCrypt.sha2_write(&s, str, strlen(str));
+  expect =
+      "\x61\x97\x4d\x41\x9f\x77\x45\x21\x09\x4e\x95\xa3\xcb\x4d\xe4\x79"
+      "\x26\x32\x2f\x2b\xe2\x62\x64\x5a\xb4\x5d\x3f\x73\x69\xef\x46\x20"
+      "\xb2\xd3\xce\xda\xa9\xc2\x2c\xac\xe3\xf9\x02\xb2\x20\x5d\x2e\xfd"
+      "\x40\xca\xa0\xc1\x67\xe0\xdc\xdf\x60\x04\x3e\x4e\x76\x87\x82\x74";
+  got = MiniCrypt.sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  fprintf(stderr, " SHA-2 passed.\n");
+  return;
+  goto error;
+error:
+  fprintf(stderr,
+          ":\n--- MiniCrypt SHA-2 Test FAILED!\ntype: "
+          "%s\nstring %s\nexpected: ",
+          sha2_variant_names[s.type], str);
+  while (*expect)
+    fprintf(stderr, "%02x", *(expect++) & 0xFF);
+  fprintf(stderr, "\ngot: ");
+  while (*got)
+    fprintf(stderr, "%02x", *(got++) & 0xFF);
+  fprintf(stderr, "\n");
 }
 
 /*******************************************************************************
@@ -135,5 +222,6 @@ run all tests
 
 void test_minicrypt(void) {
   test_sha1();
+  test_sha2();
   test_base64();
 }
