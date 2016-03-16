@@ -102,7 +102,7 @@ static void sha1_process_buffer(sha1_s* s) {
   uint32_t d = s->digest.i[3];
   uint32_t e = s->digest.i[4];
   uint32_t t;
-  for (int i = 0; i < 80; i++) {
+  for (size_t i = 0; i < 80; i++) {
     if (i >= 16) {
       // update the word value
       t = s->buffer.i[i - 3] ^ s->buffer.i[i - 8] ^ s->buffer.i[i - 14] ^
@@ -210,7 +210,7 @@ static char* sha1_result(sha1_s* s) {
 #ifndef __BIG_ENDIAN__
     // change back to little endian
     unsigned char t;
-    for (int i = 0; i < 20; i += 4) {
+    for (size_t i = 0; i < 20; i += 4) {
       // reverse byte order for each uint32 "word".
       t = s->digest.str[i];  // switch first and last bytes
       s->digest.str[i] = s->digest.str[i + 3];
@@ -222,14 +222,14 @@ static char* sha1_result(sha1_s* s) {
 #endif
   }
   // fprintf(stderr, "result requested, in hex, is:");
-  // for (int i = 0; i < 20; i++)
+  // for (size_t i = 0; i < 20; i++)
   //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
   // fprintf(stderr, "\r\n");
   return s->digest.str;
 }
 
 /*******************************************************************************
-SHA-2 TODO
+SHA-2
 */
 
 /* SHA-224 and SHA-256 constants */
@@ -399,7 +399,7 @@ static void sha2_process_buffer(sha2_s* s) {
     uint64_t g = s->digest.i64[6];
     uint64_t h = s->digest.i64[7];
     uint64_t t1, t2, w[80];
-    for (int i = 0; i < 80; i++) {
+    for (size_t i = 0; i < 80; i++) {
       if (i < 16) {
         w[i] = s->buffer.i64[i];
       } else {
@@ -436,7 +436,7 @@ static void sha2_process_buffer(sha2_s* s) {
     uint32_t g = s->digest.i32[6];
     uint32_t h = s->digest.i32[7];
     uint32_t t1, t2, w[64];
-    for (int i = 0; i < 64; i++) {
+    for (size_t i = 0; i < 64; i++) {
       if (i < 16) {
         w[i] = s->buffer.i32[i];
       } else {
@@ -578,16 +578,16 @@ static char* sha2_result(sha2_s* s) {
     // change back to little endian
     unsigned char t;
     if (s->type_512) {
-      for (int i = 0; i < 64; i += 8) {
+      for (size_t i = 0; i < 64; i += 8) {
         // reverse byte order for each uint64 "word".
-        for (int j = 0; j < 4; j++) {
+        for (size_t j = 0; j < 4; j++) {
           t = s->digest.str[i + j];  // switch bytes
           s->digest.str[i + j] = s->digest.str[i + (7 - j)];
           s->digest.str[i + (7 - j)] = t;
         }
       }
     } else {
-      for (int i = 0; i < 32; i += 4) {
+      for (size_t i = 0; i < 32; i += 4) {
         // reverse byte order for each uint32 "word".
         t = s->digest.str[i];  // switch first and last bytes
         s->digest.str[i] = s->digest.str[i + 3];
@@ -609,7 +609,7 @@ static char* sha2_result(sha2_s* s) {
       s->digest.str[48] = 0;
   }
   // fprintf(stderr, "SHA-2 result requested, in hex, is:");
-  // for (int i = 0; i < (s->type_512 ? 64 : 32); i++)
+  // for (size_t i = 0; i < (s->type_512 ? 64 : 32); i++)
   //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
   // fprintf(stderr, "\r\n");
   return s->digest.str;
