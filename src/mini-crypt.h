@@ -41,14 +41,15 @@ Helper types / structs
 */
 
 /**
-SHA-1 hashing container.
+SHA-1 hashing container - you should ignore the contents of this struct.
 
-The `sha1_s` type will contain all the sha1 data required to perform the hasing,
-managing it's encoding. If it's stack allocated, no freeing will be required.
+The `sha1_s` type will contain all the sha1 data required to perform the
+hashing, managing it's encoding. If it's stack allocated, no freeing will be
+required.
 
 Use, for example:
 
-    #include "http-sha1-base64.h"
+    #include "mini-crypt.h"
     sha1_s sha1;
     MiniCrypt.sha1_init(&sha1);
     MiniCrypt.sha1_write(&sha1,
@@ -89,12 +90,20 @@ typedef enum {
 } sha2_variant;
 
 /**
-SHA-2 hashing container.
+SHA-2 hashing container - you should ignore the contents of this struct.
 
-The `sha1_s` type will contain all the sha2 data required to perform the hasing,
-managing it's encoding. If it's stack allocated, no freeing will be required.
+The `sha2_s` type will contain all the SHA-2 data required to perform the
+hashing, managing it's encoding. If it's stack allocated, no freeing will be
+required.
 
-NOT IMPLEMENTED QUITE YET.
+Use, for example:
+
+    #include "mini-crypt.h"
+    sha2_s sha2;
+    MiniCrypt.sha2_init(&sha2, SHA_512);
+    MiniCrypt.sha2_write(&sha2,
+                  "The quick brown fox jumps over the lazy dog", 43);
+    char *hashed_result = MiniCrypt.sha2_result(&sha2);
 
 */
 typedef struct {
@@ -124,6 +133,20 @@ typedef struct {
 API Gateway (the MiniCrypt global object)
 */
 
+/**
+The MiniCrypt global object (member of the struct MiniCrypt__API___) is the API
+namespace gateway fot the MiniCrypt library.
+
+For example:
+
+    #include "mini-crypt.h"
+    sha2_s sha2;
+    MiniCrypt.sha2_init(&sha2, SHA_512);
+    MiniCrypt.sha2_write(&sha2,
+                  "The quick brown fox jumps over the lazy dog", 43);
+    char *hashed_result = MiniCrypt.sha2_result(&sha2);
+
+*/
 extern struct MiniCrypt__API___ {
   /*****************************************************************************
   SHA-1 hashing
