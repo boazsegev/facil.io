@@ -104,15 +104,16 @@ typedef struct {
     char str[65]; /* added 64+1 for the NULL byte.*/
   } digest;
   union {
+    uint32_t i32[16];
     uint64_t i64[16];
     char str[128];
   } buffer;
+  /* notice: we're counting bits, not bytes. max length: 2^128 bits */
   union {
-    /* notice: we're counting bytes instead of bits. max length: 2^128 bits */
-    uint16_t i;
-    unsigned char str[8];
+    __uint128_t i;
+    char str[16];
   } msg_length;
-  unsigned buffer_pos : 6;
+  unsigned buffer_pos : 7;
   unsigned initialized : 1;
   unsigned finalized : 1;
   sha2_variant type : 3;

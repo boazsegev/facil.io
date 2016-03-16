@@ -23,6 +23,11 @@ static void sha1_init(sha1_s* s);
 static int sha1_write(sha1_s* s, const char* data, size_t len);
 static char* sha1_result(sha1_s* s);
 
+/* SHA-2 */
+static void sha2_init(sha2_s* s, sha2_variant variant);
+static int sha2_write(sha2_s* s, const char* data, size_t len);
+static char* sha2_result(sha2_s* s);
+
 /* Base64 */
 static int base64_encode(char* target, const char* data, int len);
 static int base64_decode(char* target, char* encoded, int base64_len);
@@ -36,11 +41,19 @@ struct MiniCrypt__API___ MiniCrypt = {
     .sha1_write = sha1_write,
     .sha1_result = sha1_result,
 
+    // /* SHA-2 */
+    // .sha2_init = sha2_init,
+    // .sha2_write = sha2_write,
+    // .sha2_result = sha2_result,
+
     /* Base64 */
     .base64_encode = base64_encode,
     .base64_decode = base64_decode,
 
 };
+
+void* _____________unused = sha2_write;
+void* _____________unused2 = sha2_result;
 
 /*****************************************************************************
 Useful Macros
@@ -159,7 +172,7 @@ static int sha1_write(sha1_s* s, const char* data, size_t len) {
 Finalize the SHA-1 object and return the resulting hash.
 */
 static char* sha1_result(sha1_s* s) {
-  // finalize the data if itw asn't finalized before
+  // finalize the data if it wasn't finalized before
   if (!s->finalized) {
     // set the finalized flag
     s->finalized = 1;
@@ -340,8 +353,9 @@ static void sha2_init(sha2_s* s, sha2_variant variant) {
     s->digest.i64[6] = 0x1f83d9abfb41bd6b;
     s->digest.i64[7] = 0x5be0cd19137e2179;
   }
-  s->type = variant;
   s->digest.str[64] = 0;  // allways NULL.
+  s->msg_length.i = 0;
+  s->type = variant;
   s->initialized = 1;
   s->finalized = 0;
   s->buffer_pos = 0;
@@ -356,11 +370,9 @@ static void sha2_process_buffer(sha2_s* s) {
     sha2_512_words[0] = s->buffer.i64[0];  // don't do this
   } else {
     // TODO process values for the 32bit words
-    sha2_256_words[0] ^= s->buffer.i64[0];  // don't do this
+    sha2_256_words[0] ^= s->buffer.i32[0];  // don't do this
   }
 }
-
-static int sha2_write(sha2_s* s, const char* data, size_t len);
 
 /**
 Add a single byte to the buffer and check the buffer's status.
@@ -377,16 +389,14 @@ static int sha2_add_byte(sha2_s* s, unsigned char byte) {
 #endif
   // update buffer position
   s->buffer_pos++;
-  // review chunk (512 bits) processing
-  if (s->buffer_pos == 0) {
-    // s->buffer_pos wraps at 63 back to 0, so each 0 is the 512 bits
-    // (64 bytes) chunk marker to be processed.
+  // review chunk (1024/512 bits) processing
+  if (s->buffer_pos == 0 || (s->type_512 && s->buffer_pos == 512)) {
+    // s->buffer_pos wraps at 127 back to 0, so each 0 is the 1024 bits
+    // (128 bytes) chunk marker to be processed.
     sha2_process_buffer(s);
   }
   // returns the buffer's possition
   return s->buffer_pos;
-  // use a static function to lose warning...
-  sha2_write(s, "temp", 2);
 }
 
 /** Write data to be hashed by the SHA-2 object. */
@@ -395,12 +405,114 @@ static int sha2_write(sha2_s* s, const char* data, size_t len) {
     return -1;
   if (!s->initialized)
     sha2_init(s, SHA_512);
-  // msg length is in bytes, we'll need to convert when padding.
-  s->msg_length.i += len;
+  // msg length is in up to 128 bits long...
+  s->msg_length.i += (__uint128_t)len << 3;
   // add each byte to the sha1 hash's buffer... network byte issues apply
   while (len--)
     sha2_add_byte(s, *(data++));
   return 0;
+}
+
+/**
+Finalize the SHA-1 object and return the resulting hash.
+*/
+static char* sha2_result(sha2_s* s) {
+  // finalize the data if it wasn't finalized before
+  if (!s->finalized) {
+    // set the finalized flag
+    s->finalized = 1;
+
+    // pad the message
+    sha2_add_byte(s, 0x80);  // start padding
+    if (s->type_512) {
+      // add 0 utill we reach the buffer's last 16 bytes (used for length data)
+      while (sha2_add_byte(s, 0) < 112)
+        ;
+    } else {
+      // add 0 utill we reach the buffer's last 8 bytes (used for length data)
+      while (sha2_add_byte(s, 0) < 56)
+        ;
+    }
+// add the total length data (this will cause the buffer to be processed).
+// this must the number in BITS, encoded as a BIG ENDIAN 64 bit number.
+// the 3 in the shifting == x8, translating bytes into bits.
+// every time we add a byte, only the last 8 bits are added.
+#ifdef __BIG_ENDIAN__
+    // add length data, byte by byte.
+    // add length data, byte by byte
+    sha2_add_byte(s, s->msg_length.str[0]);
+    sha2_add_byte(s, s->msg_length.str[1]);
+    sha2_add_byte(s, s->msg_length.str[2]);
+    sha2_add_byte(s, s->msg_length.str[3]);
+    sha2_add_byte(s, s->msg_length.str[4]);
+    sha2_add_byte(s, s->msg_length.str[5]);
+    sha2_add_byte(s, s->msg_length.str[6]);
+    sha2_add_byte(s, s->msg_length.str[7]);
+    if (s->type_512) {
+      sha2_add_byte(s, s->msg_length.str[8]);
+      sha2_add_byte(s, s->msg_length.str[9]);
+      sha2_add_byte(s, s->msg_length.str[10]);
+      sha2_add_byte(s, s->msg_length.str[11]);
+      sha2_add_byte(s, s->msg_length.str[12]);
+      sha2_add_byte(s, s->msg_length.str[13]);
+      sha2_add_byte(s, s->msg_length.str[14]);
+      sha2_add_byte(s, s->msg_length.str[15]);
+    }
+#else
+    // add length data, reverse byte order (little endian)
+    sha2_add_byte(s, s->msg_length.str[15]);
+    sha2_add_byte(s, s->msg_length.str[14]);
+    sha2_add_byte(s, s->msg_length.str[13]);
+    sha2_add_byte(s, s->msg_length.str[12]);
+    sha2_add_byte(s, s->msg_length.str[11]);
+    sha2_add_byte(s, s->msg_length.str[10]);
+    sha2_add_byte(s, s->msg_length.str[9]);
+    sha2_add_byte(s, s->msg_length.str[8]);
+    if (s->type_512) {
+      sha2_add_byte(s, s->msg_length.str[7]);
+      sha2_add_byte(s, s->msg_length.str[6]);
+      sha2_add_byte(s, s->msg_length.str[5]);
+      sha2_add_byte(s, s->msg_length.str[4]);
+      sha2_add_byte(s, s->msg_length.str[3]);
+      sha2_add_byte(s, s->msg_length.str[2]);
+      sha2_add_byte(s, s->msg_length.str[1]);
+      sha2_add_byte(s, s->msg_length.str[0]);
+    }
+#endif
+
+#ifndef __BIG_ENDIAN__
+    // change back to little endian
+    unsigned char t;
+    if (s->type_512) {
+      for (int i = 0; i < 64; i += 8) {
+        // reverse byte order for each uint64 "word".
+        for (int j = 0; j < 8; i++) {
+          t = s->digest.str[i + j];  // switch first and last bytes
+          s->digest.str[i + j] = s->digest.str[i + (7 - j)];
+          s->digest.str[i + (7 - j)] = t;
+        }
+      }
+    } else {
+      for (int i = 0; i < 32; i += 4) {
+        // reverse byte order for each uint32 "word".
+        t = s->digest.str[i];  // switch first and last bytes
+        s->digest.str[i] = s->digest.str[i + 3];
+        s->digest.str[i + 3] = t;
+        t = s->digest.str[i + 1];  // switch median bytes
+        s->digest.str[i + 1] = s->digest.str[i + 2];
+        s->digest.str[i + 2] = t;
+      }
+    }
+#endif
+    // set NULL bytes for SHA_224
+    if (s->type == SHA_224)
+      s->digest.str[28] = 0;
+  }
+  // fprintf(stderr, "SHA-2 result requested, in hex, is:");
+  // for (int i = 0; i < (s->type_512 ? 64 : 32); i++)
+  //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
+  // fprintf(stderr, "\r\n");
+  return s->digest.str;
 }
 
 /*******************************************************************************
