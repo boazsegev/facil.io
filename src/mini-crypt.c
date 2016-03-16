@@ -5,6 +5,7 @@ Setup
 */
 
 #include <stdio.h>
+#include <string.h>
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>
@@ -52,9 +53,6 @@ struct MiniCrypt__API___ MiniCrypt = {
 
 };
 
-void* _____________unused = sha2_write;
-void* _____________unused2 = sha2_result;
-
 /*****************************************************************************
 Useful Macros
 */
@@ -81,16 +79,13 @@ SHA-1 hashing
 Initialize/reset the SHA-1 object.
 */
 static void sha1_init(sha1_s* s) {
+  memset(s, 0, sizeof(*s));
   s->digest.i[0] = 0x67452301;
   s->digest.i[1] = 0xefcdab89;
   s->digest.i[2] = 0x98badcfe;
   s->digest.i[3] = 0x10325476;
   s->digest.i[4] = 0xc3d2e1f0;
-  s->digest.str[20] = 0;  // a NULL byte, if wanted
-  // s->initialized = 1;
-  s->finalized = 0;
-  s->buffer_pos = 0;
-  s->msg_length.i = 0;
+  s->initialized = 1;
 }
 /**
 Process the buffer once full.
@@ -101,14 +96,14 @@ static void sha1_process_buffer(sha1_s* s) {
   uint32_t c = s->digest.i[2];
   uint32_t d = s->digest.i[3];
   uint32_t e = s->digest.i[4];
-  uint32_t t;
+  uint32_t t, w[80];
   for (size_t i = 0; i < 80; i++) {
     if (i >= 16) {
       // update the word value
-      t = s->buffer.i[i - 3] ^ s->buffer.i[i - 8] ^ s->buffer.i[i - 14] ^
-          s->buffer.i[i - 16];
-      s->buffer.i[i] = left_rotate32(t, 1);
-    }
+      t = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+      w[i] = left_rotate32(t, 1);
+    } else
+      w[i] = s->buffer.i[i];
 
     if (i < 20) {
       t = ((b & c) | ((~b) & d)) + 0x5A827999;
@@ -119,7 +114,7 @@ static void sha1_process_buffer(sha1_s* s) {
     } else {
       t = (b ^ c ^ d) + 0xCA62C1D6;
     }
-    t += left_rotate32(a, 5) + e + s->buffer.i[i];
+    t += left_rotate32(a, 5) + e + w[i];
     e = d;
     d = c;
     c = left_rotate32(b, 30);
@@ -143,7 +138,7 @@ static int sha1_add_byte(sha1_s* s, unsigned char byte) {
   s->buffer.str[s->buffer_pos ^ 3] = byte;
 #endif
   // update buffer position
-  s->buffer_pos++;
+  ++s->buffer_pos;
   // review chunk (512 bits) processing
   if (s->buffer_pos == 0) {
     // s->buffer_pos wraps at 63 back to 0, so each 0 is the 512 bits
@@ -299,6 +294,14 @@ static uint64_t sha2_512_words[] = {
 #define Omg1_64(x) \
   (right_rotate64((x), 19) ^ right_rotate64((x), 61) ^ (((x) >> 6)))
 
+#ifdef __BIG_ENDIAN__
+#define sha2_set_byte(p, pos, byte) (p)->buffer.str[(pos)] = byte;
+#else
+#define sha2_set_byte(p, pos, byte) \
+  (p)->buffer.str[(pos) ^ ((p)->type_512 ? 7 : 3)] = byte;
+#endif
+
+#define sha2_set_byte64(byte)
 /**
 Initialize/reset the SHA-2 object.
 
@@ -315,6 +318,7 @@ apply. The following are valid options (see the sha2_variant enum):
 
 */
 static void sha2_init(sha2_s* s, sha2_variant variant) {
+  memset(s, 0, sizeof(*s));
   if (variant == SHA_224) {
     s->type_512 = 0;
     s->digest.i32[0] = 0xc1059ed8;
@@ -348,6 +352,7 @@ static void sha2_init(sha2_s* s, sha2_variant variant) {
     s->digest.i64[6] = 0xdb0c2e0d64f98fa7;
     s->digest.i64[7] = 0x47b5481dbefa4fa4;
   } else if (variant == SHA_512_224) {
+    s->type_512 = 1;
     s->digest.i64[0] = 0x8c3d37c819544da2;
     s->digest.i64[1] = 0x73e1996689dcd4d6;
     s->digest.i64[2] = 0x1dfab7ae32ff9c82;
@@ -357,6 +362,7 @@ static void sha2_init(sha2_s* s, sha2_variant variant) {
     s->digest.i64[6] = 0x3f9d85a86a1d36c8;
     s->digest.i64[7] = 0x1112e6ad91d692a1;
   } else if (variant == SHA_512_256) {
+    s->type_512 = 1;
     s->digest.i64[0] = 0x22312194fc2bf72c;
     s->digest.i64[1] = 0x9f555fa3c84c64c2;
     s->digest.i64[2] = 0x2393b86b6f53b151;
@@ -376,12 +382,8 @@ static void sha2_init(sha2_s* s, sha2_variant variant) {
     s->digest.i64[6] = 0x1f83d9abfb41bd6b;
     s->digest.i64[7] = 0x5be0cd19137e2179;
   }
-  s->digest.str[64] = 0;  // allways NULL.
-  s->msg_length.i = 0;
   s->type = variant;
   s->initialized = 1;
-  s->finalized = 0;
-  s->buffer_pos = 0;
 }
 
 /**
@@ -461,34 +463,9 @@ static void sha2_process_buffer(sha2_s* s) {
     s->digest.i32[5] += f;
     s->digest.i32[6] += g;
     s->digest.i32[7] += h;
-  }
-}
-
-/**
-Add a single byte to the buffer and check the buffer's status.
-*/
-static int sha2_add_byte(sha2_s* s, unsigned char byte) {
-// add a byte to the buffer, consider network byte order .
-#ifdef __BIG_ENDIAN__
-  s->buffer.str[s->buffer_pos] = byte;
-#else
-  if (s->type_512)
-    s->buffer.str[s->buffer_pos ^ 7] = byte;
-  else
-    s->buffer.str[s->buffer_pos ^ 3] = byte;
-#endif
-  // update buffer position
-  s->buffer_pos++;
-  // review chunk (1024/512 bits) processing
-  if ((!s->type_512 && s->buffer_pos == 64) ||
-      (s->type_512 && s->buffer_pos == 0)) {
-    // s->buffer_pos wraps at 127 back to 0, so each 0 is the 1024 bits
-    // (128 bytes) chunk marker to be processed.
-    sha2_process_buffer(s);
+    // reset buffer count
     s->buffer_pos = 0;
   }
-  // returns the buffer's possition
-  return s->buffer_pos;
 }
 
 /** Write data to be hashed by the SHA-2 object. */
@@ -500,8 +477,19 @@ static int sha2_write(sha2_s* s, const char* data, size_t len) {
   // msg length is in up to 128 bits long...
   s->msg_length.i += (__uint128_t)len << 3;
   // add each byte to the sha1 hash's buffer... network byte issues apply
-  while (len--)
-    sha2_add_byte(s, *(data++));
+  while (len--) {
+    // add a byte to the buffer, consider network byte order .
+    sha2_set_byte(s, s->buffer_pos, *(data++));
+    // update buffer position
+    ++s->buffer_pos;
+    // review chunk (1024/512 bits) processing
+    if ((!s->type_512 && s->buffer_pos == 64) ||
+        (s->type_512 && s->buffer_pos == 0)) {
+      // s->buffer_pos wraps at 127 back to 0, so each 0 is the 1024 bits
+      // (128 bytes) chunk marker to be processed.
+      sha2_process_buffer(s);
+    }
+  }
   return 0;
 }
 
@@ -515,16 +503,22 @@ static char* sha2_result(sha2_s* s) {
     s->finalized = 1;
 
     // pad the message
-    sha2_add_byte(s, 0x80);  // start padding
-    if (s->type_512) {
-      // add 0 utill we reach the buffer's last 16 bytes (used for length data)
-      while (sha2_add_byte(s, 0) < 112)
-        ;
-    } else {
-      // add 0 utill we reach the buffer's last 8 bytes (used for length data)
-      while (sha2_add_byte(s, 0) < 56)
-        ;
-    }
+    sha2_set_byte(s, s->buffer_pos++, 0x80);
+    if (s->type_512)
+      while (s->buffer_pos != 112) {
+        if (!s->buffer_pos)
+          sha2_process_buffer(s);
+        sha2_set_byte(s, s->buffer_pos, 0);
+        ++s->buffer_pos;
+      }
+    else
+      while (s->buffer_pos != 56) {
+        if (s->buffer_pos == 64)
+          sha2_process_buffer(s);
+        sha2_set_byte(s, s->buffer_pos, 0);
+        ++s->buffer_pos;
+      }
+
 // add the total length data (this will cause the buffer to be processed).
 // this must the number in BITS, encoded as a BIG ENDIAN 64 bit number.
 // the 3 in the shifting == x8, translating bytes into bits.
@@ -532,47 +526,48 @@ static char* sha2_result(sha2_s* s) {
 #ifdef __BIG_ENDIAN__
     // add length data, byte by byte.
     // add length data, byte by byte
-    sha2_add_byte(s, s->msg_length.str[0]);
-    sha2_add_byte(s, s->msg_length.str[1]);
-    sha2_add_byte(s, s->msg_length.str[2]);
-    sha2_add_byte(s, s->msg_length.str[3]);
-    sha2_add_byte(s, s->msg_length.str[4]);
-    sha2_add_byte(s, s->msg_length.str[5]);
-    sha2_add_byte(s, s->msg_length.str[6]);
-    sha2_add_byte(s, s->msg_length.str[7]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[0]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[1]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[2]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[3]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[4]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[5]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[6]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[7]);
     if (s->type_512) {
-      sha2_add_byte(s, s->msg_length.str[8]);
-      sha2_add_byte(s, s->msg_length.str[9]);
-      sha2_add_byte(s, s->msg_length.str[10]);
-      sha2_add_byte(s, s->msg_length.str[11]);
-      sha2_add_byte(s, s->msg_length.str[12]);
-      sha2_add_byte(s, s->msg_length.str[13]);
-      sha2_add_byte(s, s->msg_length.str[14]);
-      sha2_add_byte(s, s->msg_length.str[15]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[8]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[9]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[10]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[11]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[12]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[13]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[14]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[15]);
     }
 #else
     // add length data, reverse byte order (little endian)
     // fprintf(stderr, "The %s bytes are relevant\n",
     //         (s->msg_length.str[15] ? "last" : "first"));
     if (s->type_512) {
-      sha2_add_byte(s, s->msg_length.str[15]);
-      sha2_add_byte(s, s->msg_length.str[14]);
-      sha2_add_byte(s, s->msg_length.str[13]);
-      sha2_add_byte(s, s->msg_length.str[12]);
-      sha2_add_byte(s, s->msg_length.str[11]);
-      sha2_add_byte(s, s->msg_length.str[10]);
-      sha2_add_byte(s, s->msg_length.str[9]);
-      sha2_add_byte(s, s->msg_length.str[8]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[15]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[14]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[13]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[12]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[11]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[10]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[9]);
+      sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[8]);
     }
-    sha2_add_byte(s, s->msg_length.str[7]);
-    sha2_add_byte(s, s->msg_length.str[6]);
-    sha2_add_byte(s, s->msg_length.str[5]);
-    sha2_add_byte(s, s->msg_length.str[4]);
-    sha2_add_byte(s, s->msg_length.str[3]);
-    sha2_add_byte(s, s->msg_length.str[2]);
-    sha2_add_byte(s, s->msg_length.str[1]);
-    sha2_add_byte(s, s->msg_length.str[0]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[7]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[6]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[5]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[4]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[3]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[2]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[1]);
+    sha2_set_byte(s, s->buffer_pos++, s->msg_length.str[0]);
 #endif
+    sha2_process_buffer(s);
 
 #ifndef __BIG_ENDIAN__
     // change back to little endian

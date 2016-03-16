@@ -217,6 +217,90 @@ void test_base64(void) {
 }
 
 /*******************************************************************************
+Benchmark Vs. OpenSSL (require's OpenSSL) OpenSSL is significantly faster (~X3)
+*/
+// #include "openssl/sha.h"
+// #include <time.h>
+//
+// void benchmark_vs_openssl() {
+//   fprintf(stderr, "===================================\n");
+//   fprintf(stderr, "MiniCrypt SHA-1 struct size: %lu\n", sizeof(sha1_s));
+//   fprintf(stderr, "MiniCrypt SHA-2 struct size: %lu\n", sizeof(sha2_s));
+//   fprintf(stderr, "OpenSSL SHA-1 struct size: %lu\n", sizeof(SHA_CTX));
+//   fprintf(stderr, "OpenSSL SHA-2/256 struct size: %lu\n",
+//   sizeof(SHA256_CTX));
+//   fprintf(stderr, "OpenSSL SHA-2/512 struct size: %lu\n",
+//   sizeof(SHA512_CTX));
+//   fprintf(stderr, "===================================\n");
+//
+//   sha1_s sha1;
+//   sha2_s s;
+//   SHA512_CTX s2;
+//   SHA256_CTX s3;
+//   unsigned char hash[SHA512_DIGEST_LENGTH + 1];
+//   hash[SHA512_DIGEST_LENGTH] = 0;
+//   clock_t start = clock();
+//   for (size_t i = 0; i < 100000; i++) {
+//     MiniCrypt.sha2_init(&s, SHA_512);
+//     MiniCrypt.sha2_write(&s, "The quick brown fox jumps over the lazy dog",
+//     43);
+//     MiniCrypt.sha2_result(&s);
+//   }
+//   fprintf(stderr, "MiniCrypt 100K SHA-2/512: %lf\n",
+//           (double)(clock() - start) / CLOCKS_PER_SEC);
+//
+//   start = clock();
+//   for (size_t i = 0; i < 100000; i++) {
+//     SHA512_Init(&s2);
+//     SHA512_Update(&s2, "The quick brown fox jumps over the lazy dog", 43);
+//     SHA512_Final(hash, &s2);
+//   }
+//   fprintf(stderr, "OpenSSL 100K SHA-2/512: %lf\n",
+//           (double)(clock() - start) / CLOCKS_PER_SEC);
+//
+//   start = clock();
+//   for (size_t i = 0; i < 100000; i++) {
+//     MiniCrypt.sha2_init(&s, SHA_256);
+//     MiniCrypt.sha2_write(&s, "The quick brown fox jumps over the lazy dog",
+//     43);
+//     MiniCrypt.sha2_result(&s);
+//   }
+//   fprintf(stderr, "MiniCrypt 100K SHA-2/256: %lf\n",
+//           (double)(clock() - start) / CLOCKS_PER_SEC);
+//
+//   hash[SHA256_DIGEST_LENGTH] = 0;
+//   start = clock();
+//   for (size_t i = 0; i < 100000; i++) {
+//     SHA256_Init(&s3);
+//     SHA256_Update(&s3, "The quick brown fox jumps over the lazy dog", 43);
+//     SHA256_Final(hash, &s3);
+//   }
+//   fprintf(stderr, "OpenSSL 100K SHA-2/256: %lf\n",
+//           (double)(clock() - start) / CLOCKS_PER_SEC);
+//
+//   start = clock();
+//   for (size_t i = 0; i < 100000; i++) {
+//     MiniCrypt.sha1_init(&sha1);
+//     MiniCrypt.sha1_write(&sha1, "The quick brown fox jumps over the lazy
+//     dog",
+//                          43);
+//     MiniCrypt.sha1_result(&sha1);
+//   }
+//   fprintf(stderr, "MiniCrypt 100K SHA-1: %lf\n",
+//           (double)(clock() - start) / CLOCKS_PER_SEC);
+//
+//   hash[SHA_DIGEST_LENGTH] = 0;
+//   SHA_CTX o_sh1;
+//   start = clock();
+//   for (size_t i = 0; i < 100000; i++) {
+//     SHA1_Init(&o_sh1);
+//     SHA1_Update(&o_sh1, "The quick brown fox jumps over the lazy dog", 43);
+//     SHA1_Final(hash, &o_sh1);
+//   }
+//   fprintf(stderr, "OpenSSL 100K SHA-1: %lf\n",
+//           (double)(clock() - start) / CLOCKS_PER_SEC);
+// }
+/*******************************************************************************
 run all tests
 */
 
