@@ -73,6 +73,52 @@ typedef struct {
   unsigned finalized : 1;
 } sha1_s;
 
+/**
+SHA-2 function variants.
+
+This enum states the different SHA-2 function variants. placing SHA_512 at the
+beginning is meant to set this variant as the default (in case a 0 is passed).
+*/
+typedef enum {
+  SHA_512 = 0,
+  SHA_512_256,
+  SHA_512_224,
+  SHA_384,
+  SHA_256,
+  SHA_224,
+} sha2_variant;
+
+/**
+SHA-2 hashing container.
+
+The `sha1_s` type will contain all the sha2 data required to perform the hasing,
+managing it's encoding. If it's stack allocated, no freeing will be required.
+
+NOT IMPLEMENTED QUITE YET.
+
+*/
+typedef struct {
+  union {
+    uint32_t i32[8];
+    uint64_t i64[8];
+    char str[65]; /* added 64+1 for the NULL byte.*/
+  } digest;
+  union {
+    uint64_t i64[16];
+    char str[128];
+  } buffer;
+  union {
+    /* notice: we're counting bytes instead of bits. max length: 2^128 bits */
+    uint16_t i;
+    unsigned char str[8];
+  } msg_length;
+  unsigned buffer_pos : 6;
+  unsigned initialized : 1;
+  unsigned finalized : 1;
+  sha2_variant type : 3;
+  unsigned type_512 : 1;
+} sha2_s;
+
 /*******************************************************************************
 API Gateway (the MiniCrypt global object)
 */
