@@ -16,6 +16,30 @@ HTTP_HEAD_MAX_SIZE
 The struct HttpResponse type will contain all the data required for handling the
 response.
 
+Example use (excluding error checks):
+
+    void on_request(struct HttpRequest request) {
+      struct HttpResponse* response = HttpResponse.new(req); // (initialize new)
+      HttpResponse.write_header2(response, "X-Data", "my data");
+      HttpResponse.set_cookie(response, (struct HttpResponse){
+        .name = "my_cookie",
+        .value = "data"
+      });
+      HttpResponse.write_body(response, "Hello World!\r\n", 14);
+      HttpResponse.destroy(response); // release/pool resources
+    }
+
+    int main()
+    {
+      char * public_folder = NULL
+      start_http_server(on_request, public_folder, .threads = 16);
+    }
+
+
+To set a response's content length, use `response->content_length` or, if
+sending the body using a single write, it's possible to leave out the
+content-length header (see the `HttpResponse.write_body` for more details).
+
 The response object and it's API are NOT thread-safe (it is assumed that no two
 threads handle the same response at the same time).
 */
@@ -78,7 +102,7 @@ struct HttpResponse {
     */
     unsigned headers_sent : 1;
     /**
-    Reserved for future use.
+    Set to true when the "Date" header is written to the buffer.
     */
     unsigned date_written : 1;
     /**
@@ -88,7 +112,7 @@ struct HttpResponse {
     /**
     Reserved for future use.
     */
-    unsigned rsrv : 4;
+    unsigned rsrv : 3;
     /**
     An opaque user data flag.
     */
@@ -105,7 +129,7 @@ This struct is used together with the `HttpResponse.set_cookie`. i.e.:
       HttpResponse.set_cookie(response, (struct HttpResponse){
         .name = "my_cookie",
         .value = "data"
-      })
+      });
 
 */
 struct HttpCookie {
@@ -158,12 +182,12 @@ To destroy the pool (usually after the server is done), use:
 
 As example flow for the response could be:
 
-     // get an HttpRequest object
+     ; // get an initialized HttpRequest object
      struct HttpRequest * response = HttpResponse.new(request);
-     // ... write headers and body, i.e.
+     ; // ... write headers and body, i.e.
      HttpResponse.write_header_cstr(response, "X-Data", "my data");
      HttpResponse.write_body(response, "Hello World!\r\n", 14);
-     // release the object
+     ; // release the object
      HttpResponse.destroy(response);
 
 
@@ -199,7 +223,7 @@ Performance:
 
 A note about using this library with the HTTP/1 protocol family (if this library
 supports HTTP/2, in the future, the use of the response object will be required,
-as it wouldn't be possible to handle the response manually):
+as it might not be possible to handle the response manually):
 
 Since this library safeguards against certain mistakes and manages an
 internal header buffer, it comes at a performance cost (it adds a layer of data
