@@ -217,7 +217,8 @@ void test_base64(void) {
 }
 
 /*******************************************************************************
-Benchmark Vs. OpenSSL (require's OpenSSL) OpenSSL is significantly faster (~X3)
+Benchmark Vs. OpenSSL (requires OpenSSL) OpenSSL can get significantly faster
+(~x2 to ~x3)
 */
 // #include "openssl/sha.h"
 // #include <time.h>

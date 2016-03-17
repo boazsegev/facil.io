@@ -97,57 +97,151 @@ static void sha1_process_buffer(sha1_s* s) {
   uint32_t d = s->digest.i[3];
   uint32_t e = s->digest.i[4];
   uint32_t t, w[80];
-  for (size_t i = 0; i < 80; i++) {
-    if (i >= 16) {
-      // update the word value
-      t = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
-      w[i] = left_rotate32(t, 1);
-    } else
-      w[i] = s->buffer.i[i];
-
-    if (i < 20) {
-      t = ((b & c) | ((~b) & d)) + 0x5A827999;
-    } else if (i < 40) {
-      t = (b ^ c ^ d) + 0x6ED9EBA1;
-    } else if (i < 60) {
-      t = ((b & (c | d)) | (c & d)) + 0x8F1BBCDC;
-    } else {
-      t = (b ^ c ^ d) + 0xCA62C1D6;
-    }
-    t += left_rotate32(a, 5) + e + w[i];
-    e = d;
-    d = c;
-    c = left_rotate32(b, 30);
-    b = a;
-    a = t;
-  }
+#define sha1_round(num)                                                       \
+  w[num] = s->buffer.i[(num)];                                                \
+  t = left_rotate32(a, 5) + e + w[num] + ((b & c) | ((~b) & d)) + 0x5A827999; \
+  e = d;                                                                      \
+  d = c;                                                                      \
+  c = left_rotate32(b, 30);                                                   \
+  b = a;                                                                      \
+  a = t;
+  sha1_round(0);
+  sha1_round(1);
+  sha1_round(2);
+  sha1_round(3);
+  sha1_round(4);
+  sha1_round(5);
+  sha1_round(6);
+  sha1_round(7);
+  sha1_round(8);
+  sha1_round(9);
+  sha1_round(10);
+  sha1_round(11);
+  sha1_round(12);
+  sha1_round(13);
+  sha1_round(14);
+  sha1_round(15);
+#undef sha1_round
+#define sha1_round(i)                                                       \
+  w[i] = left_rotate32((w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]), 1);   \
+  t = left_rotate32(a, 5) + e + w[i] + ((b & c) | ((~b) & d)) + 0x5A827999; \
+  e = d;                                                                    \
+  d = c;                                                                    \
+  c = left_rotate32(b, 30);                                                 \
+  b = a;                                                                    \
+  a = t;
+  sha1_round(16);
+  sha1_round(17);
+  sha1_round(18);
+  sha1_round(19);
+#undef sha1_round
+#define sha1_round(i)                                                     \
+  w[i] = left_rotate32((w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]), 1); \
+  t = left_rotate32(a, 5) + e + w[i] + (b ^ c ^ d) + 0x6ED9EBA1;          \
+  e = d;                                                                  \
+  d = c;                                                                  \
+  c = left_rotate32(b, 30);                                               \
+  b = a;                                                                  \
+  a = t;
+  sha1_round(20);
+  sha1_round(21);
+  sha1_round(22);
+  sha1_round(23);
+  sha1_round(24);
+  sha1_round(25);
+  sha1_round(26);
+  sha1_round(27);
+  sha1_round(28);
+  sha1_round(29);
+  sha1_round(30);
+  sha1_round(31);
+  sha1_round(32);
+  sha1_round(33);
+  sha1_round(34);
+  sha1_round(35);
+  sha1_round(36);
+  sha1_round(37);
+  sha1_round(38);
+  sha1_round(39);
+#undef sha1_round
+#define sha1_round(i)                                                          \
+  w[i] = left_rotate32((w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]), 1);      \
+  t = left_rotate32(a, 5) + e + w[i] + ((b & (c | d)) | (c & d)) + 0x8F1BBCDC; \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
+  a = t;
+  sha1_round(40);
+  sha1_round(41);
+  sha1_round(42);
+  sha1_round(43);
+  sha1_round(44);
+  sha1_round(45);
+  sha1_round(46);
+  sha1_round(47);
+  sha1_round(48);
+  sha1_round(49);
+  sha1_round(50);
+  sha1_round(51);
+  sha1_round(52);
+  sha1_round(53);
+  sha1_round(54);
+  sha1_round(55);
+  sha1_round(56);
+  sha1_round(57);
+  sha1_round(58);
+  sha1_round(59);
+#undef sha1_round
+#define sha1_round(i)                                                     \
+  w[i] = left_rotate32((w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]), 1); \
+  t = left_rotate32(a, 5) + e + w[i] + (b ^ c ^ d) + 0xCA62C1D6;          \
+  e = d;                                                                  \
+  d = c;                                                                  \
+  c = left_rotate32(b, 30);                                               \
+  b = a;                                                                  \
+  a = t;
+  sha1_round(60);
+  sha1_round(61);
+  sha1_round(62);
+  sha1_round(63);
+  sha1_round(64);
+  sha1_round(65);
+  sha1_round(66);
+  sha1_round(67);
+  sha1_round(68);
+  sha1_round(69);
+  sha1_round(70);
+  sha1_round(71);
+  sha1_round(72);
+  sha1_round(73);
+  sha1_round(74);
+  sha1_round(75);
+  sha1_round(76);
+  sha1_round(77);
+  sha1_round(78);
+  sha1_round(79);
+  // store data
   s->digest.i[4] += e;
   s->digest.i[3] += d;
   s->digest.i[2] += c;
   s->digest.i[1] += b;
   s->digest.i[0] += a;
 }
+
 /**
 Add a single byte to the buffer and check the buffer's status.
 */
-static int sha1_add_byte(sha1_s* s, unsigned char byte) {
-// add a byte to the buffer, consider network byte order .
 #ifdef __BIG_ENDIAN__
-  s->buffer.str[s->buffer_pos] = byte;
+#define sha1_add_byte(s, byte) s->buffer.str[s->buffer_pos++] = byte;
 #else
-  s->buffer.str[s->buffer_pos ^ 3] = byte;
+#define sha1_add_byte(s, byte) s->buffer.str[(s->buffer_pos++) ^ 3] = byte;
 #endif
-  // update buffer position
-  ++s->buffer_pos;
-  // review chunk (512 bits) processing
-  if (s->buffer_pos == 0) {
-    // s->buffer_pos wraps at 63 back to 0, so each 0 is the 512 bits
-    // (64 bytes) chunk marker to be processed.
+
+#define sha1_review_buffer(s) \
+  if (s->buffer_pos == 0)     \
     sha1_process_buffer(s);
-  }
-  // returns the buffer's possition
-  return s->buffer_pos;
-}
+
 /**
 Write data to the buffer.
 */
@@ -159,10 +253,13 @@ static int sha1_write(sha1_s* s, const char* data, size_t len) {
   // msg length is in bits, not bytes.
   s->msg_length.i += (len << 3);
   // add each byte to the sha1 hash's buffer... network byte issues apply
-  while (len--)
+  while (len--) {
     sha1_add_byte(s, *(data++));
+    sha1_review_buffer(s);
+  }
   return 0;
 }
+
 /**
 Finalize the SHA-1 object and return the resulting hash.
 */
@@ -174,8 +271,14 @@ static char* sha1_result(sha1_s* s) {
     // pad the buffer
     sha1_add_byte(s, 0x80);
     // add 0 utill we reach the buffer's last 8 bytes (used for length data)
-    while (sha1_add_byte(s, 0) < 56)
-      ;
+    while (s->buffer_pos > 56) {  // make sure we're not at the buffer's end
+      sha1_add_byte(s, 0);
+    }
+    sha1_review_buffer(s);  // make sure the buffer isn't full
+    while (s->buffer_pos != 56) {
+      sha1_add_byte(s, 0);
+    }
+
 // add the total length data (this will cause the buffer to be processed).
 // this must the number in BITS, encoded as a BIG ENDIAN 64 bit number.
 // the 3 in the shifting == x8, translating bytes into bits.
@@ -201,19 +304,24 @@ static char* sha1_result(sha1_s* s) {
     sha1_add_byte(s, s->msg_length.str[1]);
     sha1_add_byte(s, s->msg_length.str[0]);
 #endif
-
+    sha1_process_buffer(s);
+// change back to little endian
+// reverse byte order for each uint32 "word".
 #ifndef __BIG_ENDIAN__
-    // change back to little endian
     unsigned char t;
-    for (size_t i = 0; i < 20; i += 4) {
-      // reverse byte order for each uint32 "word".
-      t = s->digest.str[i];  // switch first and last bytes
-      s->digest.str[i] = s->digest.str[i + 3];
-      s->digest.str[i + 3] = t;
-      t = s->digest.str[i + 1];  // switch median bytes
-      s->digest.str[i + 1] = s->digest.str[i + 2];
-      s->digest.str[i + 2] = t;
-    }
+#define switch_bytes(i)                                    \
+  t = s->digest.str[(i * 4)];                              \
+  s->digest.str[(i * 4)] = s->digest.str[(i * 4) + 3];     \
+  s->digest.str[(i * 4) + 3] = t;                          \
+  t = s->digest.str[(i * 4) + 1];                          \
+  s->digest.str[(i * 4) + 1] = s->digest.str[(i * 4) + 2]; \
+  s->digest.str[(i * 4) + 2] = t;
+    switch_bytes(0);
+    switch_bytes(1);
+    switch_bytes(2);
+    switch_bytes(3);
+    switch_bytes(4);
+#undef switch_bytes
 #endif
   }
   // fprintf(stderr, "result requested, in hex, is:");
@@ -401,12 +509,23 @@ static void sha2_process_buffer(sha2_s* s) {
     uint64_t g = s->digest.i64[6];
     uint64_t h = s->digest.i64[7];
     uint64_t t1, t2, w[80];
-    for (size_t i = 0; i < 80; i++) {
-      if (i < 16) {
-        w[i] = s->buffer.i64[i];
-      } else {
-        w[i] = Omg1_64(w[i - 2]) + w[i - 7] + Omg0_64(w[i - 15]) + w[i - 16];
-      }
+
+    size_t i = 0;
+    for (; i < 16; i++) {
+      w[i] = s->buffer.i64[i];
+      t1 = h + Eps1_64(e) + Ch(e, f, g) + sha2_512_words[i] + w[i];
+      t2 = Eps0_64(a) + Maj(a, b, c);
+      h = g;
+      g = f;
+      f = e;
+      e = d + t1;
+      d = c;
+      c = b;
+      b = a;
+      a = t1 + t2;
+    }
+    for (; i < 80; i++) {
+      w[i] = Omg1_64(w[i - 2]) + w[i - 7] + Omg0_64(w[i - 15]) + w[i - 16];
       t1 = h + Eps1_64(e) + Ch(e, f, g) + sha2_512_words[i] + w[i];
       t2 = Eps0_64(a) + Maj(a, b, c);
       h = g;
@@ -438,12 +557,22 @@ static void sha2_process_buffer(sha2_s* s) {
     uint32_t g = s->digest.i32[6];
     uint32_t h = s->digest.i32[7];
     uint32_t t1, t2, w[64];
-    for (size_t i = 0; i < 64; i++) {
-      if (i < 16) {
-        w[i] = s->buffer.i32[i];
-      } else {
-        w[i] = Omg1_32(w[i - 2]) + w[i - 7] + Omg0_32(w[i - 15]) + w[i - 16];
-      }
+    size_t i = 0;
+    for (; i < 16; i++) {
+      w[i] = s->buffer.i32[i];
+      t1 = h + Eps1_32(e) + Ch(e, f, g) + sha2_256_words[i] + w[i];
+      t2 = Eps0_32(a) + Maj(a, b, c);
+      h = g;
+      g = f;
+      f = e;
+      e = d + t1;
+      d = c;
+      c = b;
+      b = a;
+      a = t1 + t2;
+    }
+    for (; i < 64; i++) {
+      w[i] = Omg1_32(w[i - 2]) + w[i - 7] + Omg0_32(w[i - 15]) + w[i - 16];
       t1 = h + Eps1_32(e) + Ch(e, f, g) + sha2_256_words[i] + w[i];
       t2 = Eps0_32(a) + Maj(a, b, c);
       h = g;
@@ -502,8 +631,10 @@ static char* sha2_result(sha2_s* s) {
     // set the finalized flag
     s->finalized = 1;
 
-    // pad the message
+    // start padding
     sha2_set_byte(s, s->buffer_pos++, 0x80);
+
+    // pad the message
     if (s->type_512)
       while (s->buffer_pos != 112) {
         if (!s->buffer_pos)
