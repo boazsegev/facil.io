@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIB_SERVER_H
 #define LIB_SERVER_H
 
-#define LIB_SERVER_VERSION "0.2.1"
+#define LIB_SERVER_VERSION "0.2.2"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -427,18 +427,20 @@ extern const struct Server__API____ {
   Schedules a specific task to run asyncronously for each connection.
   a NULL service identifier == all connections (all protocols).
 
-  If a connection was terminated before performing their sceduled tasks, the
-  `fallback` task will be performed instead.
+  The `on_finish` callback will be called once the task is finished. Although
+  `on_finish` will receive the originating fd, data shouldn't be sent back to
+  the original fd, as it might have closed by the time the tasks have all been
+  performed - and worse, it might have been re-used and it might represent a
+  different client!
 
-  It is recommended to perform any resource cleanup within the fallback function
-  and call the fallback function from within the main task, but other designes
-  are valid as well.
+  It is recommended the `on_finish` callback is only used to perform any
+  resource cleanup necessary.
   */
   int (*each)(struct Server* server,
               char* service,
               void (*task)(struct Server* server, int fd, void* arg),
               void* arg,
-              void (*fallback)(struct Server* server, int fd, void* arg));
+              void (*on_finish)(struct Server* server, int fd, void* arg));
   /** Schedules a specific task to run for each connection. The tasks will be
    * performed sequencially, in a blocking manner. The method will only return
    * once all the tasks were completed. A NULL service identifier == all

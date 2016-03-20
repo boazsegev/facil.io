@@ -47,6 +47,30 @@ static long srv_capacity(void);
 // };
 
 ////////////////////////////////////////////////////////////////////////////////
+// Task object containers
+
+// the data-type for async messages
+struct FDTask {
+  struct FDTask* next;
+  struct Server* server;
+  int fd;
+  void (*task)(struct Server* server, int fd, void* arg);
+  void* arg;
+  void (*fallback)(struct Server* server, int fd, void* arg);
+};
+
+// A self handling task structure
+struct GroupTask {
+  struct GroupTask* next;
+  struct Server* server;
+  int fd_origin;
+  void (*task)(struct Server* server, int fd, void* arg);
+  void* arg;
+  void (*on_finished)(struct Server* server, int fd, void* arg);
+  unsigned char fds[];
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // The server data object container
 struct Server {
   // inherit the reactor (must be first in the struct, for pointer conformity).
@@ -76,6 +100,15 @@ struct Server {
   /// maps all connection's idle cycle count values. use idle[fd] to get/set
   /// the count.
   unsigned char* idle;
+  /// a mutex for server data integrity
+  pthread_mutex_t task_lock;
+  /// fd task pool.
+  struct FDTask* fd_task_pool;
+  /// group task pool.
+  struct GroupTask* group_task_pool;
+  /// task(s) pool size
+  size_t fd_task_pool_size;
+  size_t group_task_pool_size;
   // a buffer map.
   void** buffer_map;
   // socket capacity
@@ -354,19 +387,23 @@ static int run_every(struct Server* self,
                      void task(void*),
                      void* arg);
 
-// helpers
+// Global Task helpers
+static inline int perform_single_task(server_pt srv,
+                                      int fd,
+                                      void (*task)(server_pt server,
+                                                   int fd,
+                                                   void* arg),
+                                      void* arg);
+// FDTask helpers
+struct FDTask* new_fd_task(server_pt srv);
+void destroy_fd_task(server_pt srv, struct FDTask* task);
+static void perform_fd_task(struct FDTask* task);
 
-// the data-type for async messages
-struct ConnTask {
-  struct Server* server;
-  int fd;
-  void (*task)(struct Server* server, int fd, void* arg);
-  void* arg;
-  void (*fallback)(struct Server* server, int fd, void* arg);
-};
-// the async handler
-static void perform_each_task(struct ConnTask* task);
-void make_a_task_async(struct Server* server, int fd, void* arg);
+// GroupTask helpers
+struct GroupTask* new_group_task(server_pt srv);
+void destroy_group_task(server_pt srv, struct GroupTask* task);
+static void perform_group_task(struct GroupTask* task);
+void add_to_group_task(struct Server* server, int fd, void* arg);
 
 ////////////////////////////////////////////////////////////////////////////////
 // The actual Server API access setup
@@ -783,6 +820,10 @@ static int srv_listen(struct ServerSettings settings) {
       .busy = busy,
       .tout = tout,
       .idle = idle,
+      .fd_task_pool = NULL,
+      .fd_task_pool_size = 0,
+      .group_task_pool = NULL,
+      .group_task_pool_size = 0,
       .reactor.maxfd = capacity - 1,
       .reactor.on_data = on_data,
       .reactor.on_ready = on_ready,
@@ -793,6 +834,12 @@ static int srv_listen(struct ServerSettings settings) {
   if (pthread_mutex_init(&srv.lock, NULL)) {
     return -1;
   }
+  // initialize the server task pool mutex
+  if (pthread_mutex_init(&srv.task_lock, NULL)) {
+    pthread_mutex_destroy(&srv.lock);
+    return -1;
+  }
+
   // bind the server's socket - if relevent
   int srvfd = 0;
   if (settings.port > 0) {
@@ -909,9 +956,13 @@ static int srv_listen(struct ServerSettings settings) {
   for (int i = 0; i < srv_capacity(); i++) {
     Buffer.destroy(buffer_map[i]);
   }
+  // destroy the task pools
+  destroy_fd_task(&srv, NULL);
+  destroy_group_task(&srv, NULL);
 
-  // destroy the mutex
+  // destroy the mutexes
   pthread_mutex_destroy(&srv.lock);
+  pthread_mutex_destroy(&srv.task_lock);
 
   return 0;
 }
@@ -1157,40 +1208,166 @@ static ssize_t srv_sendfile(struct Server* server, int sockfd, FILE* file) {
 ////////////////////////////////////////////////////////////////////////////////
 // Tasks + Async
 
-// the async handler
-static void perform_each_task(struct ConnTask* task) {
-  // is it okay to perform the task?
-  if (task->server->protocol_map[task->fd] &&
-      set_to_busy(task->server, task->fd)) {
+// Global Task helpers
+static inline int perform_single_task(server_pt srv,
+                                      int fd,
+                                      void (*task)(server_pt server,
+                                                   int fd,
+                                                   void* arg),
+                                      void* arg) {
+  if (set_to_busy(srv, fd)) {
     // perform the task
-    task->task(task->server, task->fd, task->arg);
+    task(srv, fd, arg);
     // release the busy flag
-    task->server->busy[task->fd] = 0;
-    // free the memory
-    free(task);
+    srv->busy[fd] = 0;
+    // return completion flag;
+    return 1;
+  }
+  return 0;
+}
+
+// FDTask helpers
+struct FDTask* new_fd_task(server_pt srv) {
+  struct FDTask* ret = NULL;
+  pthread_mutex_lock(&srv->task_lock);
+  if (srv->fd_task_pool) {
+    ret = srv->fd_task_pool;
+    srv->fd_task_pool = srv->fd_task_pool->next;
+    --srv->fd_task_pool_size;
+    pthread_mutex_unlock(&srv->task_lock);
+    return ret;
+  }
+  pthread_mutex_unlock(&srv->task_lock);
+  ret = malloc(sizeof(*ret));
+  return ret;
+}
+void destroy_fd_task(server_pt srv, struct FDTask* task) {
+  if (task == NULL) {
+    pthread_mutex_lock(&srv->task_lock);
+    struct FDTask* tmp;
+    srv->fd_task_pool_size = 0;
+    while ((tmp = srv->fd_task_pool)) {
+      srv->fd_task_pool = srv->fd_task_pool->next;
+      free(tmp);
+    }
+    pthread_mutex_unlock(&srv->task_lock);
     return;
   }
-  // reschedule - but only if the connection is still open
-  if (task->server->protocol_map[task->fd])
-    Async.run(task->server->async, (void (*)(void*))perform_each_task, task);
-  else if (task->fallback)  // check for fallback, call if requested
-    task->fallback(task->server, task->fd, task->arg);
+  pthread_mutex_lock(&srv->task_lock);
+  if (srv->fd_task_pool_size >= 128) {
+    free(task);
+    pthread_mutex_unlock(&srv->task_lock);
+    return;
+  }
+  task->next = srv->fd_task_pool;
+  srv->fd_task_pool = task;
+  ++srv->fd_task_pool_size;
+  pthread_mutex_unlock(&srv->task_lock);
+}
+static void perform_fd_task(struct FDTask* task) {
+  // is it okay to perform the task?
+  if (task->server->protocol_map[task->fd]) {
+    if (perform_single_task(task->server, task->fd, task->task, task->arg)) {
+      // free the memory
+      destroy_fd_task(task->server, task);
+    } else
+      Async.run(task->server->async, (void (*)(void*))perform_fd_task, task);
+  } else {
+    if (task->fallback)  // check for fallback, call if requested
+      task->fallback(task->server, task->fd, task->arg);
+    // free the memory
+    destroy_fd_task(task->server, task);
+  }
+}
+
+// GroupTask helpers
+struct GroupTask* new_group_task(server_pt srv) {
+  struct GroupTask* ret = NULL;
+  pthread_mutex_lock(&srv->task_lock);
+  if (srv->fd_task_pool) {
+    ret = srv->group_task_pool;
+    srv->group_task_pool = srv->group_task_pool->next;
+    --srv->group_task_pool_size;
+    pthread_mutex_unlock(&srv->task_lock);
+    return ret;
+  }
+  pthread_mutex_unlock(&srv->task_lock);
+  ret = malloc(sizeof(*ret) + (srv_capacity() >> 3) + 1);
+  memset(ret, 0, sizeof(*ret) + (srv_capacity() >> 3) + 1);
+  return ret;
+}
+void destroy_group_task(server_pt srv, struct GroupTask* task) {
+  if (task == NULL) {
+    pthread_mutex_lock(&srv->task_lock);
+    struct FDTask* tmp;
+    srv->group_task_pool_size = 0;
+    while ((tmp = srv->fd_task_pool)) {
+      srv->fd_task_pool = srv->fd_task_pool->next;
+      free(tmp);
+    }
+    pthread_mutex_unlock(&srv->task_lock);
+    return;
+  }
+  pthread_mutex_lock(&srv->task_lock);
+  if (srv->group_task_pool_size >= 64) {
+    free(task);
+    pthread_mutex_unlock(&srv->task_lock);
+    return;
+  }
+  task->next = srv->group_task_pool;
+  srv->group_task_pool = task;
+  ++srv->group_task_pool_size;
+  pthread_mutex_unlock(&srv->task_lock);
+}
+
+static void perform_group_task(struct GroupTask* task) {
+  // the maximum number of bytes to review (each bit == 1 fd);
+  long fds = (srv_capacity() >> 3) + 1;
+  // flag for pending tasks
+  int pending = 0;
+  unsigned int bit;
+  int fd_target;
+  while (fds) {
+    // the byte contains at least one bit marker for a task related fd
+    if (task->fds[fds]) {
+      bit = 0;
+      while (bit < 8) {
+        fd_target = bit + (fds << 3);
+        // is it okay to perform the task?
+        if (task->fds[fds] & (1 << bit)) {
+          if (task->server->protocol_map[fd_target]) {
+            if (perform_single_task(task->server, fd_target, task->task,
+                                    task->arg)) {
+              task->fds[fds] &= ~(1 << bit);
+              goto rescedule;
+            }
+            pending = 1;
+          } else  // closed connection, ignore it and clear it's flag.
+            task->fds[fds] &= ~(1 << bit);
+        }
+        bit++;
+      }
+    }
+    fds--;
+  }
+  if (pending)
+    goto rescedule;
+  // clear the task away...
+  if (task->on_finished) {
+    if (fd_task(task->server, task->fd_origin, task->on_finished, task->arg,
+                task->on_finished))
+      task->on_finished(task->server, task->fd_origin, task->arg);
+  }
+  destroy_group_task(task->server, task);
+  return;
+rescedule:
+  Async.run(task->server->async, (void (*)(void*)) & perform_group_task, task);
   return;
 }
 
-// schedules a task for async performance
-void make_a_task_async(struct Server* server, int fd, void* arg) {
-  if (server->async) {
-    struct ConnTask* task = malloc(sizeof(struct ConnTask));
-    if (!task)
-      return;
-    memcpy(task, arg, sizeof(struct ConnTask));
-    task->fd = fd;
-    Async.run(server->async, (void (*)(void*))perform_each_task, task);
-  } else {
-    struct ConnTask* task = arg;
-    task->task(server, fd, task->arg);
-  }
+void add_to_group_task(struct Server* server, int fd, void* arg) {
+  struct GroupTask* task = arg;
+  task->fds[fd >> 3] |= (1 << (fd & 7));
 }
 
 /** Schedules a specific task to run asyncronously for each connection.
@@ -1199,11 +1376,17 @@ static int each(struct Server* server,
                 char* service,
                 void (*task)(struct Server* server, int fd, void* arg),
                 void* arg,
-                void (*fallback)(struct Server* server, int fd, void* arg)) {
-  struct ConnTask msg = {
-      .server = server, .task = task, .arg = arg, .fallback = fallback,
-  };
-  return each_block(server, service, make_a_task_async, &msg);
+                void (*on_finish)(struct Server* server, int fd, void* arg)) {
+  struct GroupTask* gtask = new_group_task(server);
+  if (!gtask || !task)
+    return -1;
+  gtask->arg = arg;
+  gtask->task = task;
+  gtask->server = server;
+  gtask->on_finished = on_finish;
+  int ret = each_block(server, service, add_to_group_task, gtask);
+  Async.run(server->async, (void (*)(void*)) & perform_group_task, gtask);
+  return ret;
 }
 /** Schedules a specific task to run for each connection. The tasks will be
  * performed sequencially, in a blocking manner. The method will only return
@@ -1221,7 +1404,7 @@ static int each_block(struct Server* server,
           (server->protocol_map[i]->service == service ||
            !strcmp(server->protocol_map[i]->service, service))) {
         task(server, i, arg);
-        c++;
+        ++c;
       }
     }
   } else {
@@ -1229,7 +1412,7 @@ static int each_block(struct Server* server,
       if (server->protocol_map[i] &&
           server->protocol_map[i]->service != timer_protocol_name) {
         task(server, i, arg);
-        c++;
+        ++c;
       }
     }
   }
@@ -1246,9 +1429,12 @@ static int fd_task(struct Server* server,
                    void* arg,
                    void (*fallback)(struct Server* server, int fd, void* arg)) {
   if (server->protocol_map[sockfd]) {
-    struct ConnTask msg = {
+    struct FDTask* msg = new_fd_task(server);
+    if (!msg)
+      return -1;
+    *msg = (struct FDTask){
         .server = server, .task = task, .arg = arg, .fallback = fallback};
-    make_a_task_async(server, sockfd, &msg);
+    Async.run(server->async, (void (*)(void*)) & perform_fd_task, msg);
     return 0;
   }
   return -1;
