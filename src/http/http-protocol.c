@@ -21,6 +21,24 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <arpa/inet.h>
 
 /////////////////
+// Header case (Uppercase vs. Lowercase)
+#ifndef HEADERS_UPPERCASE
+#define HEADERS_UPPERCASE 1
+#endif
+
+#if HEADERS_UPPERCASE == 1
+#define HOST_HEADER "HOST"
+#define CONTENT_TYPE_HEADER "CONTENT-TYPE"
+#define CONTENT_LENGTH_HEADER "CONTENT-LENGTH"
+#define UPGRADE_HEADER "UPGRADE"
+#else
+#define HOST_HEADER "host"
+#define CONTENT_TYPE_HEADER "content-type"
+#define CONTENT_LENGTH_HEADER "content-length"
+#define UPGRADE_HEADER "upgrade"
+#endif
+
+/////////////////
 // functions used by the Http protocol, internally
 
 #define _http_(protocol) ((struct HttpProtocol*)(protocol))
@@ -443,12 +461,15 @@ parse:
   while (pos < len && buff[pos] != '\r') {
     tmp1 = buff + pos;
     while (pos < len && buff[pos] != ':') {
-      // uppercase is Ruby style.
+#if HEADERS_UPPERCASE == 1
+      // uppercase / Ruby style.
       if (buff[pos] >= 'a' && buff[pos] <= 'z')
         buff[pos] = buff[pos] & 223;
-      // // lowercase is Node.js style.
-      // if (buff[pos] >= 'A' && buff[pos] <= 'Z')
-      //   buff[pos] = buff[pos] | 32;
+#else
+      // lowercase / Node.js style.
+      if (buff[pos] >= 'A' && buff[pos] <= 'Z')
+        buff[pos] = buff[pos] | 32;
+#endif
       pos++;
     }
     if (pos >= len - 1)  // must have at least 2 eol markers + data
@@ -474,7 +495,7 @@ parse:
     }
     buff[pos++] = 0;
     buff[pos++] = 0;
-    if (!strcasecmp(tmp1, "host")) {
+    if (!strcmp(tmp1, HOST_HEADER)) {
       request->host = tmp2;
       // lowercase of hosts, to support case agnostic dns resolution
       while (*tmp2 && (*tmp2) != ':') {
@@ -482,11 +503,11 @@ parse:
           *tmp2 = *tmp2 | 32;
         tmp2++;
       }
-    } else if (!strcasecmp(tmp1, "content-type")) {
+    } else if (!strcmp(tmp1, CONTENT_TYPE_HEADER)) {
       request->content_type = tmp2;
-    } else if (!strcasecmp(tmp1, "content-length")) {
+    } else if (!strcmp(tmp1, CONTENT_LENGTH_HEADER)) {
       request->content_length = atoi(tmp2);
-    } else if (!strcasecmp(tmp1, "upgrade")) {
+    } else if (!strcmp(tmp1, UPGRADE_HEADER)) {
       request->upgrade = tmp2;
     }
   }

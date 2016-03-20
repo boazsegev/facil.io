@@ -12,9 +12,12 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "http-objpool.h"
 #include <stdio.h>
 
-#ifndef HTTP_HEAD_MAX_SIZE
+/** Sets the maximum headers buffer size (the headers size limit). */
 #define HTTP_HEAD_MAX_SIZE 8192  // 8*1024
-#endif
+
+/** Sets the header's case (uppercase vs. lowercase). */
+#define HEADERS_UPPERCASE 1
+
 /**
  the following structures are defined herein:
 */
