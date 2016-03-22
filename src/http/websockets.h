@@ -12,7 +12,8 @@ typedef struct Websocket ws_s;
 The Websocket Handler contains all the settings required for new websocket
 connections.
 
-This struct is used for the named agruments in the `websocket_upgrade` macro.
+This struct is used for the named agruments in the `websocket_upgrade`
+macro.
 */
 struct WebsocketSettings {
   /**
@@ -24,7 +25,7 @@ struct WebsocketSettings {
   overwritten once the function exits (it cannot be saved for later, but it can
   be copied).
   */
-  void (*on_message)(ws_s* ws, char* data);
+  void (*on_message)(ws_s* ws, char* data, size_t size, int is_text);
   /**
   The (optional) on_open callback will be called once the websocket connection
   is
@@ -109,6 +110,6 @@ extern struct Websockets_API__ {
                   void (*on_finish)(ws_s* ws_originator, void* arg));
   /**
   */
-} Websockets;
+} Websocket;
 
 #endif
