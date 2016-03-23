@@ -11,41 +11,78 @@
 #define USE_HTTP_PROTOCOL 1
 #define THREAD_COUNT 1
 
-/**************************************
-HttpProtocol (lib-server) "Hello World"
-*/
-#include "http.h"
 #include "websockets.h"
 
-struct ws_data {
-  char* data;
-  size_t size;
-};
+/*****************************
+The Websocket echo implementation
+*/
 
+void ws_open(ws_s* ws) {
+  fprintf(stderr, "Opened a new websocket connection (%p)\n", ws);
+}
+
+void ws_echo(ws_s* ws, char* data, size_t size, int is_text) {
+  // echos the data to the current websocket
+  Websocket.write(ws, data, size, 1);
+}
+
+void ws_shutdown(ws_s* ws) {
+  Websocket.write(ws, "Shutting Down", 13, 1);
+}
+
+void ws_close(ws_s* ws) {
+  fprintf(stderr, "Closed websocket connection (%p)\n", ws);
+}
+
+/*****************************
+The Websocket Broadcast implementation
+*/
+
+/* websocket broadcast data */
+struct ws_data {
+  size_t size;
+  char data[];
+};
+/* free the websocket broadcast data */
 void free_wsdata(ws_s* ws, void* arg) {
   free(arg);
 }
-
-void ws_broadcast(ws_s* ws, void* _data) {
+/* the broadcast "task" performed by `Websocket.each` */
+void ws_get_broadcast(ws_s* ws, void* _data) {
   struct ws_data* data = _data;
   Websocket.write(ws, data->data, data->size, 1);  // echo
 }
+/* The websocket broadcast server's `on_message` callback */
 
-void ws_message(ws_s* ws, char* data, size_t size, int is_text) {
-  // if (!is_text)
-  //   fprintf(stderr, "Error parsing message type - should be text?\n");
-  // else
-  //   fprintf(stderr, "Got Websocket message: %.*s\n", (int)size, data);
-  struct ws_data* msg = malloc(sizeof(*msg));
-  msg->data = data;
+void ws_broadcast(ws_s* ws, char* data, size_t size, int is_text) {
+  // Copy the message to a broadcast data-packet
+  struct ws_data* msg = malloc(sizeof(*msg) + size);
   msg->size = size;
-  Websocket.each(ws, ws_broadcast, msg, free_wsdata);
-  Websocket.write(ws, data, size, 1);  // echo
+  memcpy(msg->data, data, size);
+  // Asynchronously calls `ws_get_broadcast` for each of the websockets
+  // (except this one)
+  // and calls `free_wsdata` once all the broadcasts were perfomed.
+  Websocket.each(ws, ws_get_broadcast, msg, free_wsdata);
+  // echos the data to the current websocket
+  Websocket.write(ws, data, size, 1);
 }
 
+/*****************************
+The HTTP implementation
+*/
+
 void on_request(struct HttpRequest* request) {
-  if (!strcmp(request->path, "/ws")) {
-    websocket_upgrade(.request = request, .on_message = ws_message);
+  if (!strcmp(request->path, "/echo")) {
+    websocket_upgrade(.request = request, .on_message = ws_echo,
+                      .on_open = ws_open, .on_close = ws_close,
+                      .on_shutdown = ws_shutdown);
+    return;
+  }
+  if (!strcmp(request->path, "/broadcast")) {
+    websocket_upgrade(.request = request, .on_message = ws_broadcast,
+                      .on_open = ws_open, .on_close = ws_close,
+                      .on_shutdown = ws_shutdown);
+
     return;
   }
   struct HttpResponse* response = HttpResponse.new(request);
@@ -53,58 +90,70 @@ void on_request(struct HttpRequest* request) {
   HttpResponse.destroy(response);
 }
 
-/**************************************
-Lib Server "Hello World" (Http)
-*/
-#include "lib-server.h"
-#include "lib-tls-server.h"
-
-static void on_data(server_pt srv, int fd) {
-  static char reply[] =
-      "HTTP/1.1 200 OK\r\n"
-      "Content-Length: 12\r\n"
-      "Connection: keep-alive\r\n"
-      "Keep-Alive: timeout=2\r\n"
-      "\r\n"
-      "Hello World!";
-  char buff[1024];
-
-  if (Server.read(srv, fd, buff, 1024)) {
-    Server.write(srv, fd, reply, sizeof(reply));
-  }
-}
-
-/**************************************
-initialization... how about timers?
-*/
-void print_conn(server_pt srv, int fd, void* arg) {
-  printf("- Connection to FD: %d\n", fd);
-}
-void done_printing(server_pt srv, int fd, void* arg) {
-  fprintf(stderr, "******* Total Clients: %lu\n", Server.count(srv, NULL));
-}
-
-void timer_task(server_pt srv) {
-  size_t count = Server.each(srv, 0, NULL, print_conn, NULL, done_printing);
-  fprintf(stderr, "Clients: %lu\n", count);
-}
-void on_init(server_pt srv) {
-  // TLSServer.init_server(srv);
-  Server.run_every(srv, 1000, -1, (void*)timer_task, srv);
-}
-
-/**************************************
-Main function
+/*****************************
+The main function
 */
 
+#define THREAD_COUNT 1
 int main(int argc, char const* argv[]) {
-  if (USE_HTTP_PROTOCOL) {
-    start_http_server(on_request, NULL, .threads = THREAD_COUNT,
-                      .on_init = on_init);
-  } else {
-    struct Protocol protocol = {.on_data = on_data};
-    start_server(.protocol = &protocol, .timeout = 2, .on_init = on_init,
-                 .threads = THREAD_COUNT);
-  }
+  start_http_server(on_request, NULL, .threads = THREAD_COUNT);
   return 0;
 }
+
+//
+//
+// /**************************************
+// Lib Server "Hello World" (Http)
+// */
+// #include "lib-server.h"
+// #include "lib-tls-server.h"
+//
+// static void on_data(server_pt srv, int fd) {
+//   static char reply[] =
+//       "HTTP/1.1 200 OK\r\n"
+//       "Content-Length: 12\r\n"
+//       "Connection: keep-alive\r\n"
+//       "Keep-Alive: timeout=2\r\n"
+//       "\r\n"
+//       "Hello World!";
+//   char buff[1024];
+//
+//   if (Server.read(srv, fd, buff, 1024)) {
+//     Server.write(srv, fd, reply, sizeof(reply));
+//   }
+// }
+//
+// /**************************************
+// initialization... how about timers?
+// */
+// void print_conn(server_pt srv, int fd, void* arg) {
+//   printf("- Connection to FD: %d\n", fd);
+// }
+// void done_printing(server_pt srv, int fd, void* arg) {
+//   fprintf(stderr, "******* Total Clients: %lu\n", Server.count(srv, NULL));
+// }
+//
+// void timer_task(server_pt srv) {
+//   size_t count = Server.each(srv, 0, NULL, print_conn, NULL, done_printing);
+//   fprintf(stderr, "Clients: %lu\n", count);
+// }
+// void on_init(server_pt srv) {
+//   // TLSServer.init_server(srv);
+//   Server.run_every(srv, 1000, -1, (void*)timer_task, srv);
+// }
+//
+// /**************************************
+// Main function
+// */
+//
+// int main(int argc, char const* argv[]) {
+//   if (USE_HTTP_PROTOCOL) {
+//     start_http_server(on_request, NULL, .threads = THREAD_COUNT,
+//                       .on_init = on_init);
+//   } else {
+//     struct Protocol protocol = {.on_data = on_data};
+//     start_server(.protocol = &protocol, .timeout = 2, .on_init = on_init,
+//                  .threads = THREAD_COUNT);
+//   }
+//   return 0;
+// }
