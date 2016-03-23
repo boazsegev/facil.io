@@ -63,10 +63,10 @@ static void* set_udata(ws_s* ws, void* udata);
 /**
 Performs a task on each websocket connection that shares the same process.
 */
-static ssize_t ws_each(ws_s* ws_originator,
-                       void (*task)(ws_s* ws_target, void* arg),
-                       void* arg,
-                       void (*on_finish)(ws_s* ws_originator, void* arg));
+static int ws_each(ws_s* ws_originator,
+                   void (*task)(ws_s* ws_target, void* arg),
+                   void* arg,
+                   void (*on_finish)(ws_s* ws_originator, void* arg));
 
 /*******************************************************************************
 The API container
@@ -627,13 +627,37 @@ cleanup:
 Each
 */
 
+/** A task container. */
+struct WSTask {
+  void (*task)(ws_s*, void*);
+  void (*on_finish)(ws_s*, void*);
+  void* arg;
+};
+/** Performs a task on each websocket connection that shares the same process */
+static void perform_ws_task(server_pt srv, int fd, void* _arg) {
+  struct WSTask* tsk = _arg;
+  tsk->task(ws_protocol(srv, fd), tsk->arg);
+}
+/** clears away a wesbocket task. */
+static void finish_ws_task(server_pt srv, int fd, void* _arg) {
+  struct WSTask* tsk = _arg;
+  if (tsk->on_finish)
+    tsk->on_finish(ws_protocol(srv, fd), tsk->arg);
+  free(tsk);
+}
+
 /**
 Performs a task on each websocket connection that shares the same process.
 */
-static ssize_t ws_each(ws_s* ws_originator,
-                       void (*task)(ws_s* ws_target, void* arg),
-                       void* arg,
-                       void (*on_finish)(ws_s* ws_originator, void* arg)) {
-  return -1;
-  // Server.each(ws_originator->srv, ws_originator->fd, perform_ws_task)
+static int ws_each(ws_s* ws_originator,
+                   void (*task)(ws_s* ws_target, void* arg),
+                   void* arg,
+                   void (*on_finish)(ws_s* ws_originator, void* arg)) {
+  struct WSTask* tsk = malloc(sizeof(*tsk));
+  tsk->arg = arg;
+  tsk->on_finish = on_finish;
+  tsk->task = task;
+  return Server.each(ws_originator->srv, ws_originator->fd,
+                     WEBSOCKET_PROTOCOL_ID_STR, perform_ws_task, tsk,
+                     finish_ws_task);
 }

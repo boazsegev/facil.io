@@ -104,10 +104,10 @@ extern struct Websockets_API__ {
 
   NOT IMPLEMENTED.
    */
-  ssize_t (*each)(ws_s* ws_originator,
-                  void (*task)(ws_s* ws_target, void* arg),
-                  void* arg,
-                  void (*on_finish)(ws_s* ws_originator, void* arg));
+  int (*each)(ws_s* ws_originator,
+              void (*task)(ws_s* ws_target, void* arg),
+              void* arg,
+              void (*on_finish)(ws_s* ws_originator, void* arg));
   /**
   */
 } Websocket;
