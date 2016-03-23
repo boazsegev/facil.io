@@ -732,16 +732,21 @@ static void on_data(struct Reactor* reactor, int fd) {
 
 // calls the reactor's core and checks for timeouts.
 // schedules it's own execution when done.
+// shouldn't be called by more then a single thread at a time (NOT thread safe)
 static void srv_cycle_core(server_pt server) {
+  static size_t idle_performed = 0;
   int delta;  // we also use this for other things, but it's the TOut delta
   // review reactor events
   delta = reactor_review(_reactor_(server));
   if (delta < 0) {
     srv_stop(server);
     return;
-  } else if (delta == 0 && server->settings->on_idle) {
-    server->settings->on_idle(server);
-  }
+  } else if (delta == 0) {
+    if (server->settings->on_idle && idle_performed == 0)
+      server->settings->on_idle(server);
+    idle_performed = 1;
+  } else
+    idle_performed = 0;
   // timeout + local close management
   if (server->last_to != _reactor_(server)->last_tick) {
     // We use the delta with fuzzy logic (only after the first second)
