@@ -1,7 +1,7 @@
 #ifndef WEBSOCKETS_H
 #define WEBSOCKETS_H
 
-#include "http-response.h"
+#include "http.h"
 
 /**
 The Websocket type is an opaque type used by the websocket API to provide

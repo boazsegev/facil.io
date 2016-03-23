@@ -167,19 +167,12 @@ static void ping(server_pt srv, int fd) {
 }
 
 static void on_close(server_pt srv, int fd) {
-  ws_s* ws = ws_protocol(srv, fd);
-  if (!ws)
-    return;
-  if (ws->on_close)
-    ws->on_close(ws);
-  destroy_ws(ws);
+  destroy_ws(ws_protocol(srv, fd));
 }
 
 static void on_shutdown(server_pt srv, int fd) {
   ws_s* ws = ws_protocol(srv, fd);
-  if (!ws)
-    return;
-  if (ws->on_shutdown)
+  if (ws && ws->on_shutdown)
     ws->on_shutdown(ws);
 }
 
@@ -440,6 +433,8 @@ static ws_s* new_websocket() {
 }
 static void destroy_ws(ws_s* ws) {
   if (ws) {
+    if (ws->on_close)
+      ws->on_close(ws);
     free_buffer(ws->buffer);
     free(ws);
   }
@@ -610,9 +605,9 @@ refuse:
   response->status = 400;
 cleanup:
   HttpResponse.send(response);
-  if (response->status == 101) {
-    Server.set_protocol(settings.request->server, settings.request->sockfd,
-                        (void*)ws);
+  if (response->status == 101 &&
+      Server.set_protocol(settings.request->server, settings.request->sockfd,
+                          (void*)ws) == 0) {
     if (settings.on_open)
       settings.on_open(ws);
   } else {
@@ -636,7 +631,10 @@ struct WSTask {
 /** Performs a task on each websocket connection that shares the same process */
 static void perform_ws_task(server_pt srv, int fd, void* _arg) {
   struct WSTask* tsk = _arg;
-  tsk->task(ws_protocol(srv, fd), tsk->arg);
+  struct Protocol* ws = Server.get_protocol(srv, fd);
+  if (ws->service != WEBSOCKET_PROTOCOL_ID_STR)
+    return;
+  tsk->task((ws_s*)(ws), tsk->arg);
 }
 /** clears away a wesbocket task. */
 static void finish_ws_task(server_pt srv, int fd, void* _arg) {
