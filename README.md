@@ -145,6 +145,109 @@ int main()
 
 Using this library requires all the `http-` prefixed files (`http-mime-types`, `http-request`, `http-status`, `http-objpool`, etc') as well as `lib-server` and all the files it requires. This files are in a separate folder and the makefile in this project supports subfolders. You might want to place all the files in the same folder if you use these source files in a different project.
 
+## [`Websocket`](src/http/websockets.h) - for real-time web applications
+
+At some point I decided to move all the network logic from my [Ruby Iodine project](https://github.com/boazsegev/iodine) to C. This was, in no small part, so I could test my code and debug it with more ease (especially since I still test the network aspect using ad-hock code snippets and benchmarking tools).
+
+This was when the `Websockets` library was born. It builds off the `http` server and allows us to either "upgrade" the HTTP protocol to Websockets or continue with an HTTP response.
+
+Building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example:
+
+```c
+// update the tryme.c file to use the existing folder structure and makefile
+#include "websockets.h" // includes the "http.h" header
+
+#include <stdio.h>
+#include <stdlib.h>
+
+/*****************************
+The Websocket echo implementation
+*/
+
+void ws_open(ws_s* ws) {
+  fprintf(stderr, "Opened a new websocket connection (%p)\n", ws);
+}
+
+void ws_echo(ws_s* ws, char* data, size_t size, int is_text) {
+  // echos the data to the current websocket
+  Websocket.write(ws, data, size, 1);
+}
+
+void ws_shutdown(ws_s* ws) {
+  Websocket.write(ws, "Shutting Down", 13, 1);
+}
+
+void ws_close(ws_s* ws) {
+  fprintf(stderr, "Closed websocket connection (%p)\n", ws);
+}
+
+/*****************************
+The Websocket Broadcast implementation
+*/
+
+/* websocket broadcast data */
+struct ws_data {
+  size_t size;
+  char data[];
+};
+/* free the websocket broadcast data */
+void free_wsdata(ws_s* ws, void* arg) {
+  free(arg);
+}
+/* the broadcast "task" performed by `Websocket.each` */
+void ws_get_broadcast(ws_s* ws, void* arg) {
+  struct ws_data* data = arg;
+  Websocket.write(ws, data->data, data->size, 1);  // echo
+}
+/* The websocket broadcast server's `on_message` callback */
+
+void ws_broadcast(ws_s* ws, char* data, size_t size, int is_text) {
+  // Copy the message to a broadcast data-packet
+  struct ws_data* msg = malloc(sizeof(* msg) + size);
+  msg->size = size;
+  memcpy(msg->data, data, size);
+  // Asynchronously calls `ws_get_broadcast` for each of the websockets
+  // (except this one)
+  // and calls `free_wsdata` once all the broadcasts were perfomed.
+  Websocket.each(ws, ws_get_broadcast, msg, free_wsdata);
+  // echos the data to the current websocket
+  Websocket.write(ws, data, size, 1);
+}
+
+/*****************************
+The HTTP implementation
+*/
+
+void on_request(struct HttpRequest* request) {
+  if (!strcmp(request->path, "/echo")) {
+    websocket_upgrade(.request = request, .on_message = ws_echo,
+                      .on_open = ws_open, .on_close = ws_close,
+                      .on_shutdown = ws_shutdown);
+    return;
+  }
+  if (!strcmp(request->path, "/broadcast")) {
+    websocket_upgrade(.request = request, .on_message = ws_broadcast,
+                      .on_open = ws_open, .on_close = ws_close,
+                      .on_shutdown = ws_shutdown);
+
+    return;
+  }
+  struct HttpResponse* response = HttpResponse.new(request);
+  HttpResponse.write_body(response, "Hello World!", 12);
+  HttpResponse.destroy(response);
+}
+
+/*****************************
+The main function
+*/
+
+#define THREAD_COUNT 1
+int main(int argc, char const* argv[]) {
+  start_http_server(on_request, NULL, .threads = THREAD_COUNT);
+  return 0;
+}
+```
+
 ---
 
 That's it for now. I might work on these more later, but I'm super excited to be going back to my music school, Berklee, so I'll probably forget all about computers for a while... but I'll be back tinkering away at some point.
