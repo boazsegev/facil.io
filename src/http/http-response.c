@@ -235,6 +235,8 @@ static void reset(struct HttpResponse* response, struct HttpRequest* request) {
   response->content_length = 0;
   response->status = 200;
   response->metadata.headers_sent = 0;
+  response->metadata.connection_written = 0;
+  response->metadata.date_written = 0;
   response->metadata.headers_pos = response->header_buffer + HTTP_HEADER_START;
   response->metadata.fd = request->sockfd;
   response->metadata.server = request->server;
