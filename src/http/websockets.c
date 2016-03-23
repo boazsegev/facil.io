@@ -84,6 +84,13 @@ struct Websockets_API__ Websocket = {
 };
 
 /*******************************************************************************
+Create/Destroy the websocket object (prototypes)
+*/
+
+static ws_s* new_websocket();
+static void destroy_ws(ws_s* ws);
+
+/*******************************************************************************
 The Websocket object (protocol + parser)
 */
 struct Websocket {
@@ -165,8 +172,15 @@ static void on_close(server_pt srv, int fd) {
     return;
   if (ws->on_close)
     ws->on_close(ws);
-  free_buffer(ws->buffer);
-  free(ws);
+  destroy_ws(ws);
+}
+
+static void on_shutdown(server_pt srv, int fd) {
+  ws_s* ws = ws_protocol(srv, fd);
+  if (!ws)
+    return;
+  if (ws->on_shutdown)
+    ws->on_shutdown(ws);
 }
 
 /* later */
@@ -407,6 +421,31 @@ static void on_data(server_pt server, int sockfd) {
 }
 
 /*******************************************************************************
+Create/Destroy the websocket object
+*/
+
+static ws_s* new_websocket() {
+  // allocate the protocol object (TODO: (maybe) pooling)
+  ws_s* ws = calloc(sizeof(*ws), 1);
+
+  // setup the protocol & protocol callbacks
+  ws->buffer = create_buffer(16384);
+  ws->protocol.ping = ping;
+  ws->protocol.service = WEBSOCKET_PROTOCOL_ID_STR;
+  ws->protocol.on_data = on_data;
+  ws->protocol.on_close = on_close;
+  ws->protocol.on_shutdown = on_shutdown;
+  // return the object
+  return ws;
+}
+static void destroy_ws(ws_s* ws) {
+  if (ws) {
+    free_buffer(ws->buffer);
+    free(ws);
+  }
+}
+
+/*******************************************************************************
 Writing to the Websocket
 */
 
@@ -521,16 +560,11 @@ static void upgrade(struct WebsocketSettings settings) {
     return;  // nothing we can do...
 
   // allocate the protocol object (TODO: (maybe) pooling)
-  ws_s* ws = calloc(sizeof(*ws), 1);
+  ws_s* ws = new_websocket();
   if (!ws)
     goto refuse;
 
-  // setup the protocol & protocol callbacks
-  ws->buffer = create_buffer(16384);
-  ws->protocol.ping = ping;
-  ws->protocol.service = WEBSOCKET_PROTOCOL_ID_STR;
-  ws->protocol.on_data = on_data;
-  ws->protocol.on_close = on_close;
+  // setup the socket-server data
   ws->fd = settings.request->sockfd;
   ws->srv = settings.request->server;
   // Setup ws callbacks
@@ -538,8 +572,6 @@ static void upgrade(struct WebsocketSettings settings) {
   ws->on_open = settings.on_open;
   ws->on_message = settings.on_message;
   ws->on_shutdown = settings.on_shutdown;
-
-  // setup the parser?
 
   char* recv_str;
   // upgrade taking place, make sure the upgrade headers are valid for the
@@ -584,11 +616,7 @@ cleanup:
     if (settings.on_open)
       settings.on_open(ws);
   } else {
-    if (ws) {
-      if (ws->buffer.data)
-        free_buffer(ws->buffer);
-      free(ws);
-    }
+    destroy_ws(ws);
   }
   if (free_response)
     HttpResponse.destroy(response);
