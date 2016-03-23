@@ -328,16 +328,20 @@ static ssize_t srv_sendfile(struct Server* server, int sockfd, FILE* file);
 /** Schedules a specific task to run asyncronously for each connection.
 a NULL service identifier == all connections (all protocols). */
 static int each(struct Server* server,
+                int origin_fd,
                 char* service,
-                void (*task)(struct Server* server, int fd, void* arg),
+                void (*task)(struct Server* server, int target_fd, void* arg),
                 void* arg,
-                void (*fallback)(struct Server* server, int fd, void* arg));
+                void (*on_finish)(struct Server* server,
+                                  int origin_fd,
+                                  void* arg));
 /** Schedules a specific task to run for each connection. The tasks will be
  * performed sequencially, in a blocking manner. The method will only return
  * once all the tasks were completed. A NULL service identifier == all
  * connections (all protocols).
 */
 static int each_block(struct Server* server,
+                      int fd_org,
                       char* service,
                       void (*task)(struct Server* server, int fd, void* arg),
                       void* arg);
@@ -1378,10 +1382,13 @@ void add_to_group_task(struct Server* server, int fd, void* arg) {
 /** Schedules a specific task to run asyncronously for each connection.
 a NULL service identifier == all connections (all protocols). */
 static int each(struct Server* server,
+                int origin_fd,
                 char* service,
-                void (*task)(struct Server* server, int fd, void* arg),
+                void (*task)(struct Server* server, int target_fd, void* arg),
                 void* arg,
-                void (*on_finish)(struct Server* server, int fd, void* arg)) {
+                void (*on_finish)(struct Server* server,
+                                  int origin_fd,
+                                  void* arg)) {
   struct GroupTask* gtask = new_group_task(server);
   if (!gtask || !task)
     return -1;
@@ -1389,7 +1396,8 @@ static int each(struct Server* server,
   gtask->task = task;
   gtask->server = server;
   gtask->on_finished = on_finish;
-  int ret = each_block(server, service, add_to_group_task, gtask);
+  gtask->fd_origin = origin_fd;
+  int ret = each_block(server, origin_fd, service, add_to_group_task, gtask);
   Async.run(server->async, (void (*)(void*)) & perform_group_task, gtask);
   return ret;
 }
@@ -1399,13 +1407,15 @@ static int each(struct Server* server,
  * connections (all protocols).
 */
 static int each_block(struct Server* server,
+                      int fd_org,
                       char* service,
                       void (*task)(struct Server* server, int fd, void* arg),
                       void* arg) {
   int c = 0;
   if (service) {
     for (int i = 0; i < server->capacity; i++) {
-      if (server->protocol_map[i] && server->protocol_map[i]->service &&
+      if (i != fd_org && server->protocol_map[i] &&
+          server->protocol_map[i]->service &&
           (server->protocol_map[i]->service == service ||
            !strcmp(server->protocol_map[i]->service, service))) {
         task(server, i, arg);
@@ -1414,7 +1424,7 @@ static int each_block(struct Server* server,
     }
   } else {
     for (int i = 0; i < server->capacity; i++) {
-      if (server->protocol_map[i] &&
+      if (i != fd_org && server->protocol_map[i] &&
           server->protocol_map[i]->service != timer_protocol_name) {
         task(server, i, arg);
         ++c;
