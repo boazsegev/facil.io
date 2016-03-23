@@ -385,7 +385,9 @@ start_flush:
   if (buffer->sent >= buffer->packet->length) {
     // review the close connection flag means: "Close the connection"
     if (buffer->packet->metadata.close_after) {
+      pthread_mutex_unlock(&(buffer->lock));
       Server.close(buffer->owner, fd);
+      return sent;
       // buffer clearing should be performed by the Buffer's owner.
     }
     packet = buffer->packet;
