@@ -17,11 +17,29 @@ HttpProtocol (lib-server) "Hello World"
 #include "http.h"
 #include "websockets.h"
 
+struct ws_data {
+  char* data;
+  size_t size;
+};
+
+void free_wsdata(ws_s* ws, void* arg) {
+  free(arg);
+}
+
+void ws_broadcast(ws_s* ws, void* _data) {
+  struct ws_data* data = _data;
+  Websocket.write(ws, data->data, data->size, 1);  // echo
+}
+
 void ws_message(ws_s* ws, char* data, size_t size, int is_text) {
-  if (!is_text)
-    fprintf(stderr, "Error parsing message type - should be text?\n");
-  else
-    fprintf(stderr, "Got Websocket message: %.*s\n", (int)size, data);
+  // if (!is_text)
+  //   fprintf(stderr, "Error parsing message type - should be text?\n");
+  // else
+  //   fprintf(stderr, "Got Websocket message: %.*s\n", (int)size, data);
+  struct ws_data* msg = malloc(sizeof(*msg));
+  msg->data = data;
+  msg->size = size;
+  Websocket.each(ws, ws_broadcast, msg, free_wsdata);
   Websocket.write(ws, data, size, 1);  // echo
 }
 
@@ -67,8 +85,8 @@ void done_printing(server_pt srv, int fd, void* arg) {
 }
 
 void timer_task(server_pt srv) {
-  Server.each(srv, NULL, print_conn, NULL, done_printing);
-  fprintf(stderr, "Clients: %lu\n", Server.count(srv, NULL));
+  size_t count = Server.each(srv, 0, NULL, print_conn, NULL, done_printing);
+  fprintf(stderr, "Clients: %lu\n", count);
 }
 void on_init(server_pt srv) {
   // TLSServer.init_server(srv);
