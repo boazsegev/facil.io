@@ -52,7 +52,7 @@ The API functions (declarations)
 /** Upgrades an existing HTTP connection to a Websocket connection. */
 static void upgrade(struct WebsocketSettings settings);
 /** Writes data to the websocket. */
-static int ws_write(ws_s* ws, void* data, size_t size, unsigned char text);
+static int ws_write(ws_s* ws, void* data, size_t size, char text);
 /** Closes a websocket connection. */
 static void ws_close(ws_s* ws);
 /** Returns the opaque user data associated with the websocket. */
@@ -359,7 +359,7 @@ static void on_data(server_pt server, int sockfd) {
           // call the on_message callback
 
           if (ws->on_message)
-            ws->on_message(ws, ws->buffer.data, ws->buffer.size,
+            ws->on_message(ws, ws->buffer.data, ws->length,
                            ws->parser.head2.op_code == 1);
           goto reset_parser;
         }
@@ -398,17 +398,13 @@ static void on_data(server_pt server, int sockfd) {
       // buffer
       ws->parser.pos += ws->parser.data_len;
       // clear the parser
-      *((char*)(&(ws->parser.head))) = 0;
-      *((char*)(&(ws->parser.head2))) = 0;
-      *((char*)(&(ws->parser.sdata))) = 0;
-      *((char*)(&(ws->parser.state))) = 0;
-      // the above is the same as
-      // memset(&(ws->parser.head), 0, 4);
+      *((char*)(&(ws->parser.state))) = *((char*)(&(ws->parser.sdata))) =
+          *((char*)(&(ws->parser.head2))) = *((char*)(&(ws->parser.head))) = 0;
+      // // // the above should be the same as... but it isn't
+      // *((uint32_t*)(&(ws->parser.head))) = 0;
       // set the union size to 0
-      ws->parser.psize.len2 = 0;
-      ws->parser.length = 0;
-      ws->parser.received = 0;
-      ws->length = 0;
+      ws->length = ws->parser.received = ws->parser.length =
+          ws->parser.psize.len2 = ws->parser.data_len = 0;
     }
   }
 }
@@ -520,7 +516,7 @@ static void ws_close(ws_s* ws) {
   return;
 }
 
-static int ws_write(ws_s* ws, void* data, size_t size, unsigned char text) {
+static int ws_write(ws_s* ws, void* data, size_t size, char text) {
   if ((void*)Server.get_protocol(ws->srv, ws->fd) == ws) {
     websocket_write(ws->srv, ws->fd, data, size, text, 1, 1);
     return 0;

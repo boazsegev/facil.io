@@ -96,7 +96,7 @@ extern struct Websockets_API__ {
    * value, if any. */
   void* (*set_udata)(ws_s* ws, void* udata);
   /** Writes data to the websocket. Returns -1 on failure (0 on success). */
-  int (*write)(ws_s* ws, void* data, size_t size, unsigned char text);
+  int (*write)(ws_s* ws, void* data, size_t size, char text);
   /** Closes a websocket connection. */
   void (*close)(ws_s* ws);
   /**
