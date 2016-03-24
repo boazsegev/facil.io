@@ -216,7 +216,6 @@ static void* worker_thread_cycle(void* _async) {
     signal(SIGSEGV, on_err_signal);
     signal(SIGFPE, on_err_signal);
     signal(SIGILL, on_err_signal);
-    signal(SIGPIPE, SIG_IGN);
 #ifdef SIGBUS
     signal(SIGBUS, on_err_signal);
 #endif
@@ -227,6 +226,9 @@ static void* worker_thread_cycle(void* _async) {
     signal(SIGXFSZ, on_err_signal);
 #endif
   }
+
+  // ignore pipe issues
+  signal(SIGPIPE, SIG_IGN);
 
   // setup signal and thread's local-storage async variable.
   struct Async* async = _async;

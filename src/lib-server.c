@@ -1264,8 +1264,8 @@ void destroy_fd_task(server_pt srv, struct FDTask* task) {
   }
   pthread_mutex_lock(&srv->task_lock);
   if (srv->fd_task_pool_size >= 128) {
-    free(task);
     pthread_mutex_unlock(&srv->task_lock);
+    free(task);
     return;
   }
   task->next = srv->fd_task_pool;
@@ -1308,10 +1308,10 @@ struct GroupTask* new_group_task(server_pt srv) {
 void destroy_group_task(server_pt srv, struct GroupTask* task) {
   if (task == NULL) {
     pthread_mutex_lock(&srv->task_lock);
-    struct FDTask* tmp;
+    struct GroupTask* tmp;
     srv->group_task_pool_size = 0;
-    while ((tmp = srv->fd_task_pool)) {
-      srv->fd_task_pool = srv->fd_task_pool->next;
+    while ((tmp = srv->group_task_pool)) {
+      srv->group_task_pool = srv->group_task_pool->next;
       free(tmp);
     }
     pthread_mutex_unlock(&srv->task_lock);
@@ -1319,8 +1319,8 @@ void destroy_group_task(server_pt srv, struct GroupTask* task) {
   }
   pthread_mutex_lock(&srv->task_lock);
   if (srv->group_task_pool_size >= 64) {
-    free(task);
     pthread_mutex_unlock(&srv->task_lock);
+    free(task);
     return;
   }
   task->next = srv->group_task_pool;
