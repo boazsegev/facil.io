@@ -187,7 +187,7 @@ static void websocket_write(server_pt srv,
 
 static void on_data(server_pt server, int sockfd) {
   struct Websocket* ws = ws_protocol(server, sockfd);
-  if (!ws)
+  if (ws == NULL || ws->protocol.service != WEBSOCKET_PROTOCOL_ID_STR)
     return;
   ssize_t len = 0;
   while ((len = Server.read(server, sockfd, ws->parser.tmp_buffer, 1024)) > 0) {
@@ -428,7 +428,7 @@ static ws_s* new_websocket() {
   return ws;
 }
 static void destroy_ws(ws_s* ws) {
-  if (ws) {
+  if (ws && ws->protocol.service == WEBSOCKET_PROTOCOL_ID_STR) {
     if (ws->on_close)
       ws->on_close(ws);
     free_buffer(ws->buffer);
@@ -628,9 +628,8 @@ struct WSTask {
 static void perform_ws_task(server_pt srv, int fd, void* _arg) {
   struct WSTask* tsk = _arg;
   struct Protocol* ws = Server.get_protocol(srv, fd);
-  if (ws->service != WEBSOCKET_PROTOCOL_ID_STR)
-    return;
-  tsk->task((ws_s*)(ws), tsk->arg);
+  if (ws && ws->service == WEBSOCKET_PROTOCOL_ID_STR)
+    tsk->task((ws_s*)(ws), tsk->arg);
 }
 /** clears away a wesbocket task. */
 static void finish_ws_task(server_pt srv, int fd, void* _arg) {
