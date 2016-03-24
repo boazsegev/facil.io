@@ -151,6 +151,8 @@ At some point I decided to move all the network logic from my [Ruby Iodine proje
 
 This was when the `Websockets` library was born. It builds off the `http` server and allows us to either "upgrade" the HTTP protocol to Websockets or continue with an HTTP response.
 
+As I'm rewriting it from the base up (moving the memory management from Ruby to C), it's currently still experimental. I'm tracking down a memory leak related to the websockets, although the tools I use insist there's no leak (so why is the used memory growing, I wonder).
+
 Building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example:
 
 ```c
