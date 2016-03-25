@@ -23,6 +23,7 @@ The file also introduces the `start_http_server` macro.
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
+#include <limits.h>
 
 /**
 This macro allows an easy start for an HTTP server, using the lib-server library
@@ -73,8 +74,16 @@ callback. i.e.:
     struct HttpProtocol* protocol = HttpProtocol.new();                     \
     if ((NULL != (void*)on_request_callback))                               \
       protocol->on_request = (on_request_callback);                         \
-    if ((http_public_folder))                                               \
-      protocol->public_folder = (http_public_folder);                       \
+    char real_public_path[PATH_MAX];                                        \
+    if ((http_public_folder) && (http_public_folder)[0] == '~' &&           \
+        getenv("HOME") && strlen((http_public_folder)) < PATH_MAX) {        \
+      strcpy(real_public_path, getenv("HOME"));                             \
+      strcpy(real_public_path + strlen(real_public_path),                   \
+             (http_public_folder) + 1);                                     \
+      protocol->public_folder = real_public_path;                           \
+    } else if ((http_public_folder))                                        \
+      protocol->public_folder =                                             \
+          realpath((http_public_folder), real_public_path);                 \
     HttpResponse.create_pool();                                             \
     Server.listen((struct ServerSettings){                                  \
         .timeout = 3,                                                       \
@@ -92,8 +101,16 @@ callback. i.e.:
     struct HttpProtocol* protocol = HttpProtocol.new();                     \
     if ((NULL != (void*)on_request_callback))                               \
       protocol->on_request = (on_request_callback);                         \
-    if ((http_public_folder))                                               \
-      protocol->public_folder = (http_public_folder);                       \
+    char real_public_path[PATH_MAX];                                        \
+    if ((http_public_folder) && (http_public_folder)[0] == '~' &&           \
+        getenv("HOME") && strlen((http_public_folder)) < PATH_MAX) {        \
+      strcpy(real_public_path, getenv("HOME"));                             \
+      strcpy(real_public_path + strlen(real_public_path),                   \
+             (http_public_folder) + 1);                                     \
+      protocol->public_folder = real_public_path;                           \
+    } else if ((http_public_folder))                                        \
+      protocol->public_folder =                                             \
+          realpath((http_public_folder), real_public_path);                 \
     HttpResponse.create_pool();                                             \
     struct ServerSettings settings = {                                      \
         .timeout = 3,                                                       \
