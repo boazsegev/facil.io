@@ -22,8 +22,9 @@ void ws_open(ws_s* ws) {
 }
 
 void ws_echo(ws_s* ws, char* data, size_t size, int is_text) {
+  fprintf(stderr, "Got %lu bytes (text: %d): %s\n", size, is_text, data);
   // echos the data to the current websocket
-  Websocket.write(ws, data, size, 1);
+  Websocket.write(ws, data, size, is_text);
 }
 
 void ws_shutdown(ws_s* ws) {
@@ -88,15 +89,23 @@ void on_request(struct HttpRequest* request) {
   struct HttpResponse* response = HttpResponse.new(request);
   HttpResponse.write_body(response, "Hello World!", 12);
   HttpResponse.destroy(response);
+  // static char reply[] =
+  //     "HTTP/1.1 200 OK\r\n"
+  //     "Content-Length: 12\r\n"
+  //     "Connection: keep-alive\r\n"
+  //     "Keep-Alive: timeout=2\r\n"
+  //     "\r\n"
+  //     "Hello World!";
+  //
+  // Server.write(request->server, request->sockfd, reply, sizeof(reply));
 }
 
 /*****************************
 The main function
 */
 
-#define THREAD_COUNT 1
 int main(int argc, char const* argv[]) {
-  start_http_server(on_request, NULL, .threads = THREAD_COUNT);
+  start_http_server(on_request, "~/Documents/Scratch", .threads = THREAD_COUNT);
   return 0;
 }
 

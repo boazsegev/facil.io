@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 /*******************************************************************************
 Buffer management - update to change the way the buffer is handled.

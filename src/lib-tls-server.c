@@ -71,7 +71,7 @@ Protocol and Server callbacks
 static ssize_t writing_hook(server_pt srv, int fd, void* data, size_t len) {
   if (PRINT_MESSAGES)
     fprintf(stderr, "Sending in the clear (%ld bytes): %.*s\n", len, (int)len,
-            data);
+            (char*)data);
   int sent = write(fd, data, len);
   if (sent < 0 && (errno & (EWOULDBLOCK | EAGAIN | EINTR)))
     sent = 0;
@@ -83,7 +83,7 @@ static ssize_t reading_hook(server_pt srv, int fd, void* buffer, size_t size) {
   if ((read = recv(fd, buffer, size, 0)) > 0) {
     if (PRINT_MESSAGES)
       fprintf(stderr, "Got clear text (%ld bytes): %.*s\n", read, (int)read,
-              buffer);
+              (char*)buffer);
     return read;
   } else {
     if (read && (errno & (EWOULDBLOCK | EAGAIN)))
