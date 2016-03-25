@@ -12,6 +12,18 @@
 HTTP_HEAD_MAX_SIZE
 */
 
+/*
+Small enough responses can be sent together with the header, allowing for better
+performance through better socket buffer utilization and minimizing the system
+calls to `write`.
+
+These cannot be more then 56,320 Bytes , as the buffer packets will split
+anything over 64Kb.
+
+Also, this memory will remain in the pool for every pooled response object.
+*/
+#define SMALL_RESPONSE_LIMIT 16384
+
 /**
 The struct HttpResponse type will contain all the data required for handling the
 response.
@@ -69,7 +81,7 @@ struct HttpResponse {
   date, content-length and connection status, that are requireed by some clients
   and aren't always meaningful for a case-by-case consideration.
   */
-  char header_buffer[HTTP_HEAD_MAX_SIZE + 248];
+  char header_buffer[HTTP_HEAD_MAX_SIZE + SMALL_RESPONSE_LIMIT + 248];
   /**
   The response status
   */

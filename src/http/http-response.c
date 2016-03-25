@@ -105,6 +105,10 @@ If the connection was already closed, the function will return -1. On success,
 the function returns 0.
 */
 static int send_response(struct HttpResponse*);
+/* used by `send_response` and others... */
+static char* prep_headers(struct HttpResponse*);
+static int send_headers(struct HttpResponse*, char*);
+
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
@@ -433,22 +437,33 @@ If the connection was already closed, the function will return -1. On success,
 the function returns 0.
 */
 static int send_response(struct HttpResponse* response) {
+  void* start = prep_headers(response);
+  return send_headers(response, start);
+  // // debug
+  // for (int i = start; i < response->metadata.headers_length +
+  // HTTP_HEADER_START;
+  //      i++) {
+  //   fprintf(stderr, "* %d: %x (%.6s)\n", i, response->header_buffer[i],
+  //           response->header_buffer + i);
+  // }
+};
+
+static char* prep_headers(struct HttpResponse* response) {
   if (response->metadata.headers_sent)
-    return -1;
+    return NULL;
   char* status = HttpStatus.to_s(response->status);
   if (!status)
-    return -1;
-
-  // write the content length header, if relevant
-  if (response->content_length) {
-    memcpy(response->metadata.headers_pos, "Content-Length: ", 16);
-    response->metadata.headers_pos += 16;
-    response->metadata.headers_pos += sprintf(response->metadata.headers_pos,
-                                              "%lu", response->content_length);
-    // write the header seperator (`\r\n`)
-    *(response->metadata.headers_pos++) = '\r';
-    *(response->metadata.headers_pos++) = '\n';
-  }
+    return NULL;
+  // write the content length header, Always (even if 0)
+  // if (response->content_length) {
+  memcpy(response->metadata.headers_pos, "Content-Length: ", 16);
+  response->metadata.headers_pos += 16;
+  response->metadata.headers_pos +=
+      sprintf(response->metadata.headers_pos, "%lu", response->content_length);
+  // write the header seperator (`\r\n`)
+  *(response->metadata.headers_pos++) = '\r';
+  *(response->metadata.headers_pos++) = '\n';
+  // }
   // write the date, if missing
   if (!response->metadata.date_written) {
     struct tm t;
@@ -483,21 +498,18 @@ static int send_response(struct HttpResponse* response) {
           status);
   // we need to seperate the writing because sprintf prints a NULL terminator.
   response->header_buffer[HTTP_HEADER_START - 1] = '\n';
+  return response->header_buffer + start;
+}
+static int send_headers(struct HttpResponse* response, char* start) {
+  if (start == NULL)
+    return -1;
   // mark headers as sent
   response->metadata.headers_sent = 1;
-  // // debug
-  // for (int i = start; i < response->metadata.headers_length +
-  // HTTP_HEADER_START;
-  //      i++) {
-  //   fprintf(stderr, "* %d: %x (%.6s)\n", i, response->header_buffer[i],
-  //           response->header_buffer + i);
-  // }
   // write data to network
-  return Server.write(
-      response->metadata.server, response->metadata.fd,
-      response->header_buffer + start,
-      (response->metadata.headers_pos - response->header_buffer) - start);
+  return Server.write(response->metadata.server, response->metadata.fd, start,
+                      response->metadata.headers_pos - start);
 };
+
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
@@ -512,7 +524,19 @@ static int write_body(struct HttpResponse* response,
                       size_t length) {
   if (!response->content_length)
     response->content_length = length;
-  send_response(response);
+  char* start = prep_headers(response);
+  if (start != NULL) {  // we haven't sent the headers yet
+    if ((response->metadata.headers_pos - start + length) <
+        (HTTP_HEAD_MAX_SIZE + SMALL_RESPONSE_LIMIT)) {
+      // we can fit the data inside the response buffer.
+      memcpy(response->metadata.headers_pos, body, length);
+      response->metadata.headers_pos += length;
+      return send_headers(response, start);
+    } else {
+      // we need to send the body seperately.
+      send_headers(response, start);
+    }
+  }
   return Server.write(response->metadata.server, response->metadata.fd,
                       (void*)body, length);
 }
