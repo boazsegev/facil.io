@@ -18,7 +18,9 @@ performance through better socket buffer utilization and minimizing the system
 calls to `write`.
 
 These cannot be more then 56,320 Bytes , as the buffer packets will split
-anything over 64Kb.
+anything over 64Kb, also 24Kb is a reasonable upper limit for the actual
+optimization, so using a higher limit will not really improve performance (this
+is machine dependant).
 
 Also, this memory will remain in the pool for every pooled response object.
 */
