@@ -19,6 +19,8 @@ struct buffer_s create_buffer(size_t size);
 struct buffer_s resize_buffer(struct buffer_s);
 /** releases an existing buffer. */
 void free_buffer(struct buffer_s);
+/** Sets the initial buffer size. (16Kb)*/
+#define WS_INITIAL_BUFFER_SIZE 16384
 
 /*******************************************************************************
 Buffer management - simple implementation...
@@ -26,25 +28,32 @@ Since Websocket connections have a long life expectancy, optimizing this part of
 the code probably wouldn't offer a high performance boost.
 */
 
+// buffer increments by 4,096 Bytes (4Kb)
+#define round_up_buffer_size(size) (((size) >> 12) + 1) << 12
+
 struct buffer_s create_buffer(size_t size) {
   struct buffer_s buff;
-  buff.size = ((size >> 12) + 1) << 12;  // buffer increments by 4096Bytes
+  buff.size = round_up_buffer_size(size);
   buff.data = malloc(buff.size);
   return buff;
 }
 
 struct buffer_s resize_buffer(struct buffer_s buff) {
-  // buffer increments by 4096Bytes
-  buff.size = ((buff.size >> 12) + 1) << 12;
-  buff.data = realloc(buff.data, buff.size);
-  if (!buff.data)
+  buff.size = round_up_buffer_size(buff.size);
+  void* tmp = realloc(buff.data, buff.size);
+  if (!tmp) {
+    free_buffer(buff);
     buff.size = 0;
+  }
+  buff.data = tmp;
   return buff;
 }
 void free_buffer(struct buffer_s buff) {
   if (buff.data)
     free(buff.data);
 }
+
+#undef round_up_buffer_size
 
 /*******************************************************************************
 The API functions (declarations)
@@ -108,6 +117,7 @@ struct Websocket {
   void* udata;
   /** message buffer. */
   struct buffer_s buffer;
+  /** message length (how much of the buffer actually used). */
   size_t length;
   /** parser. */
   struct {
@@ -318,12 +328,9 @@ static void on_data(server_pt server, int sockfd) {
         // review and resize the buffer's capacity - it can only grow.
         if (ws->length + ws->parser.length - ws->parser.received >
             ws->buffer.size) {
-          struct buffer_s buff = resize_buffer(ws->buffer);
-          if (!buff.data) {
+          ws->buffer = resize_buffer(ws->buffer);
+          if (!ws->buffer.data) {
             // no memory.
-            free_buffer(ws->buffer);
-            ws->buffer.data = NULL;
-            ws->buffer.size = 0;
             ws_close(ws);
             return;
           }
@@ -419,7 +426,7 @@ static ws_s* new_websocket() {
   ws_s* ws = calloc(sizeof(*ws), 1);
 
   // setup the protocol & protocol callbacks
-  ws->buffer = create_buffer(16384);
+  ws->buffer = create_buffer(WS_INITIAL_BUFFER_SIZE);
   ws->protocol.ping = ping;
   ws->protocol.service = WEBSOCKET_PROTOCOL_ID_STR;
   ws->protocol.on_data = on_data;
