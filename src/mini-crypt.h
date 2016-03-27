@@ -207,21 +207,17 @@ extern struct MiniCrypt__API___ {
 
   /**
   This will encode a byte array (data) of a specified length (len) and
-  place
-  the encoded data into the target byte buffer (target). The target buffer
-  MUST
-  have enough room for the expected data.
+  place the encoded data into the target byte buffer (target). The target buffer
+  MUST have enough room for the expected data.
 
-  Base64 encoding always requires 4 bytes for each 3 bytes. Padding is
-  added if
+  Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
   the raw data's length isn't devisable by 3.
 
   Always assume the target buffer should have room enough for (len*4/3 + 4)
   bytes.
 
   Returns the number of bytes actually written to the target buffer
-  (including
-  the Base64 required padding and excluding a NULL terminator).
+  (including the Base64 required padding and excluding a NULL terminator).
 
   A NULL terminator char is NOT written to the target buffer.
   */
@@ -241,12 +237,10 @@ extern struct MiniCrypt__API___ {
 
   Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
   the raw data's length isn't devisable by 3. Hence, the target buffer should
-  be,
-  at least, `base64_len/4*3 + 3` long.
+  be, at least, `base64_len/4*3 + 3` long.
 
   Returns the number of bytes actually written to the target buffer (excluding
-  the
-  NULL terminator byte).
+  the NULL terminator byte).
   */
   int (*base64_decode)(char* target, char* encoded, int base64_len);
 
