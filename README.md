@@ -115,6 +115,22 @@ int main(void) {
 
 Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with minor changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files.
 
+### A word about concurrency
+
+It should be notes that network applications always have to keep concurrency in mind. For instance, the connection might be closed by the one machine while the other is still preparing (or writing) it's response.
+
+In addition, `lib-server` allows us to easily setup the network service's concurrency using processes (`fork`ing) and threads, which means that our apps might encounter issues related to concurrency.
+
+This local/server concurrency means that while our `on_data` callback is still running, the `on_close` was called in response to the a disconnection initiated by the remote machine or a network failure.
+
+Hence, `on_data` should avoid using resources that might have been freed by `on_close`. There are many possible solutions for these race-conditions, such as reviewing the connection using the `Server.get_protocol` or setting (or unsetting) a unique identifier whenever a resource is created/freed.
+
+`lib-server` prevents some race conditions from taking place. For example, `on_data`, `fd_task`s and non-blocking `each` tasks will never run concurrently for the same original connection...
+
+...but, should a connection be disrupted (i.e. the connection is disconnected and a new client connects to the same `fd`), these tasks might not know the difference between the old and the new connections (at the time of this writing) and might get performed even though an original exclusive task (for the old connection) might be running in the background...
+
+In other words, assume everything could run concurrently. `lib-server` will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your application.
+
 ## [`http`](src/http/http.h) - a protocol for the web
 
 All these libraries were used in a Ruby server I'm re-writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" in C, following to the `lib-server`'s protocol specs.

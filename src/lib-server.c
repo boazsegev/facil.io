@@ -584,7 +584,10 @@ old pointer, if any. */
 static void* set_udata(struct Server* server, int sockfd, void* udata) {
   void* old = server->udata_map[sockfd];
   // pthread_mutex_lock(&(server->lock));
+  // if (sockfd < 3 || server->protocol_map[sockfd])
   server->udata_map[sockfd] = udata;
+  // else
+  //   old = NULL;
   // pthread_mutex_unlock(&(server->lock));
   return old;
 }

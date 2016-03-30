@@ -145,24 +145,22 @@ struct ServerSettings {
   void (*on_tick)(struct Server* server);
   /** called if an event loop cycled with no pending events. */
   void (*on_idle)(struct Server* server);
-  /** called each time a new worker thread is spawned (within the new thread).
-   */
-  void (*on_init_thread)(struct Server* server);
   /** a NULL terminated string for when the server is busy (defaults to NULL, a
    * simple disconnection with no message). */
   char* busy_msg;
-  /** opaque user data. **/
+  /** Opaque server-global user data. **/
   void* udata;
   /**
-  ets the amount of threads to be created for the server's thread-pool.
+  Sets the amount of threads to be created for the server's thread-pool.
   Defaults to 1 - the reactor and all callbacks will work using a single working
   thread, allowing for an evented single threaded design.
   */
   int threads;
-  /** sets the amount of processes to be used (processes will be forked).
+  /** Sets the amount of processes to be used (processes will be forked).
   Defaults to 1 working processes (no forking). */
   int processes;
-  /** sets the timeout for new connections. defaults to 5 seconds. */
+  /** Sets the timeout for new connections (up to 255 seconds). defaults to 5
+   * seconds. */
   unsigned char timeout;
 };
 
