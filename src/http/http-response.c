@@ -242,7 +242,7 @@ static void reset(struct HttpResponse* response, struct HttpRequest* request) {
   response->metadata.connection_written = 0;
   response->metadata.date_written = 0;
   response->metadata.headers_pos = response->header_buffer + HTTP_HEADER_START;
-  response->metadata.fd = request->sockfd;
+  response->metadata.fd_uuid = request->sockfd;
   response->metadata.server = request->server;
   response->date = Server.reactor(response->metadata.server)->last_tick;
 }
@@ -506,8 +506,8 @@ static int send_headers(struct HttpResponse* response, char* start) {
   // mark headers as sent
   response->metadata.headers_sent = 1;
   // write data to network
-  return Server.write(response->metadata.server, response->metadata.fd, start,
-                      response->metadata.headers_pos - start);
+  return Server.write(response->metadata.server, response->metadata.fd_uuid,
+                      start, response->metadata.headers_pos - start);
 };
 
 /**
@@ -537,7 +537,7 @@ static int write_body(struct HttpResponse* response,
       send_headers(response, start);
     }
   }
-  return Server.write(response->metadata.server, response->metadata.fd,
+  return Server.write(response->metadata.server, response->metadata.fd_uuid,
                       (void*)body, length);
 }
 /**
@@ -556,8 +556,8 @@ static int write_body_move(struct HttpResponse* response,
   if (!response->content_length)
     response->content_length = length;
   send_response(response);
-  return Server.write_move(response->metadata.server, response->metadata.fd,
-                           (void*)body, length);
+  return Server.write_move(response->metadata.server,
+                           response->metadata.fd_uuid, (void*)body, length);
 }
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
@@ -575,11 +575,12 @@ static int sendfile_req(struct HttpResponse* response,
   if (!response->content_length)
     response->content_length = length;
   send_response(response);
-  return Server.sendfile(response->metadata.server, response->metadata.fd, pf);
+  return Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
+                         pf);
 }
 /**
 Closes the connection.
 */
 static void close_response(struct HttpResponse* response) {
-  return Server.close(response->metadata.server, response->metadata.fd);
+  return Server.close(response->metadata.server, response->metadata.fd_uuid);
 }

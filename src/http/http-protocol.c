@@ -301,7 +301,7 @@ static int http_sendfile(struct HttpRequest* req) {
 }
 
 // implement on_close to close the FILE * for the body (if exists).
-static void http_on_close(struct Server* server, int sockfd) {
+static void http_on_close(struct Server* server, uint64_t sockfd) {
   struct HttpRequest* request = Server.get_udata(server, sockfd);
   if (HttpRequest.is_request(request)) {
     // clear the request data.
@@ -314,7 +314,7 @@ static void http_on_close(struct Server* server, int sockfd) {
   }
 }
 // implement on_data to parse incoming requests.
-static void http_on_data(struct Server* server, int sockfd) {
+static void http_on_data(struct Server* server, uint64_t sockfd) {
   // setup static error codes
   static char* options_req =
       "HTTP/1.1 200 OK\r\n"
@@ -624,25 +624,25 @@ cleanup_after_finish:
 
 options:
   // send a bed request response. hang up.
-  send(sockfd, options_req, strlen(options_req), 0);
+  Server.write(server, sockfd, options_req, sizeof(options_req) - 1);
   Server.close(request->server, sockfd);
   return;
 
 bad_request:
   // send a bed request response. hang up.
-  send(sockfd, bad_req, strlen(bad_req), 0);
+  Server.write(server, sockfd, bad_req, sizeof(bad_req) - 1);
   Server.close(request->server, sockfd);
   return;
 
 too_big:
   // send a bed request response. hang up.
-  send(sockfd, too_big_err, strlen(too_big_err), 0);
+  Server.write(server, sockfd, too_big_err, sizeof(too_big_err) - 1);
   Server.close(request->server, sockfd);
   return;
 
 internal_error:
   // send an internal error response. hang up.
-  send(sockfd, intr_err, strlen(intr_err), 0);
+  Server.write(server, sockfd, intr_err, sizeof(intr_err) - 1);
   Server.close(request->server, sockfd);
   return;
 }

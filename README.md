@@ -71,17 +71,17 @@ Using `lib-server` is super simple to use. It's based on Protocol structure and 
 #include <string.h>
 
 // we don't have to, but printing stuff is nice...
-void on_open(server_pt server, int sockfd) {
-  printf("A connection was accepted on socket #%d.\n", sockfd);
+void on_open(server_pt server, uint64_t sockfd) {
+  printf("A connection was accepted on socket UUID #%llu.\n", sockfd);
 }
 // server_pt is just a nicely typed pointer, which is there for type-safty.
 // The Server API is used by calling `Server.api_call` (often with the pointer).
-void on_close(server_pt server, int sockfd) {
-  printf("Socket #%d is now disconnected.\n", sockfd);
+void on_close(server_pt server, uint64_t sockfd) {
+  printf("Socket UUID #%llu is now disconnected.\n", sockfd);
 }
 
 // a simple echo... this is the main callback
-void on_data(server_pt server, int sockfd) {
+void on_data(server_pt server, uint64_t sockfd) {
   // We'll assign a reading buffer on the stack
   char buff[1024];
   ssize_t incoming = 0;
@@ -114,6 +114,16 @@ int main(void) {
 ```
 
 Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with minor changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files.
+
+### Connection Concurrency Limits?
+
+`lib-server`'s design uses the Stack to pre-allocate resources for each potential connection.
+
+At the moment, less then 40 bytes are allocated on the stack for each potential connection.
+
+This means that a server expecting a 100K concurrent connections should make sure to set both the open file limit to 100K and set the Stack memory to be at least 4MB in size (you'll need more, since your code will be using the stack as well).
+
+This design might change in future versions, although it was shown that pre-allocating the memory on the stack improved performance.
 
 ### A word about concurrency
 

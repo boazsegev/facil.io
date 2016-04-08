@@ -106,7 +106,7 @@ struct HttpResponse {
     /**
     The socket's fd, for sending the response.
     */
-    int fd;
+    uint64_t fd_uuid;
     /**
     A pointer to the header's writing position.
     */

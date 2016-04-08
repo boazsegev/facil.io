@@ -92,15 +92,15 @@ static ssize_t reading_hook(server_pt srv, int fd, void* buffer, size_t size) {
   return -1;
 }
 
-static void on_open(server_pt srv, int fd) {
+static void on_open(server_pt srv, uint64_t fd) {
   if (PRINT_MESSAGES)
     fprintf(stderr, "A new TLS connection? sorry, not implemented\n");
 }
-static void on_close(server_pt srv, int fd) {
+static void on_close(server_pt srv, uint64_t fd) {
   if (PRINT_MESSAGES)
     fprintf(stderr, "SSL/TLS handshake failed.\n");
 }
-static void on_data(server_pt srv, int fd) {
+static void on_data(server_pt srv, uint64_t fd) {
   if (PRINT_MESSAGES)
     fprintf(stderr, "TLS connections aren't implemented, updating protocol.\n");
   struct TLSProtocol* tls = tls_protocol(srv);
@@ -122,7 +122,7 @@ static void on_data(server_pt srv, int fd) {
   if (tls->original_protocol->on_data)  // in case there's data to be read.
     tls->original_protocol->on_data(srv, fd);
 }
-static void on_ready(server_pt srv, int fd) {
+static void on_ready(server_pt srv, uint64_t fd) {
   // Should we continue the OpenSSL `accept` here? ... it requires writing as
   // well as reading...
   if (PRINT_MESSAGES)

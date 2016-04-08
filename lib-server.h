@@ -167,7 +167,7 @@ struct ServerSettings {
   int processes;
   /** Sets the timeout for new connections (up to 255 seconds). defaults to 5
    * seconds. */
-  uint8_t timeout;
+  unsigned char timeout;
 };
 
 /**************************************************************************/ /**
@@ -266,11 +266,7 @@ extern const struct Server__API____ {
   Protected callbacks include only the `on_message` callback and tasks forwarded
   to the connection using the `td_task` or `each` functions.
   */
-  uint8_t (*is_busy)(server_pt server, uint64_t connection_id);
-  /** Returns true if the connection's UUID points to a valid connection (valid
-   * meanning `on_close` wasn't called and processed just yet).
-  */
-  uint8_t (*is_open)(server_pt server, uint64_t connection_id);
+  unsigned char (*is_busy)(server_pt server, uint64_t connection_id);
   /** Retrives the active protocol object for the requested file descriptor. */
   struct Protocol* (*get_protocol)(server_pt server, uint64_t connection_id);
   /**
@@ -294,7 +290,7 @@ extern const struct Server__API____ {
   255 seconds (the maximum allowed timeout count). */
   void (*set_timeout)(server_pt server,
                       uint64_t connection_id,
-                      uint8_t timeout);
+                      unsigned char timeout);
 
   /****************************************************************************
   * Socket actions

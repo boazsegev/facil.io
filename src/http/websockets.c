@@ -107,7 +107,7 @@ struct Websocket {
   struct Protocol protocol;
   /** connection data */
   server_pt srv;
-  int fd;
+  uint64_t fd;
   /** callbacks */
   void (*on_message)(ws_s* ws, char* data, size_t size, int is_text);
   void (*on_open)(ws_s* ws);
@@ -148,7 +148,7 @@ struct Websocket {
       unsigned at_mask : 2;
       unsigned has_len : 1;
       unsigned at_len : 3;
-      unsigned rsv : 1;
+      unsigned busy : 1;
     } state;
   } parser;
 };
@@ -171,17 +171,17 @@ The Websocket Protocol implementation
 
 #define ws_protocol(srv, fd) ((struct Websocket*)(Server.get_protocol(srv, fd)))
 
-static void ping(server_pt srv, int fd) {
+static void ping(server_pt srv, uint64_t fd) {
   // struct WebsocketProtocol* ws =
   //     (struct WebsocketProtocol*)Server.get_protocol(server, sockfd);
   Server.write_urgent(srv, fd, "\x89\x00", 2);
 }
 
-static void on_close(server_pt srv, int fd) {
+static void on_close(server_pt srv, uint64_t fd) {
   destroy_ws(ws_protocol(srv, fd));
 }
 
-static void on_shutdown(server_pt srv, int fd) {
+static void on_shutdown(server_pt srv, uint64_t fd) {
   ws_s* ws = ws_protocol(srv, fd);
   if (ws && ws->on_shutdown)
     ws->on_shutdown(ws);
@@ -189,17 +189,18 @@ static void on_shutdown(server_pt srv, int fd) {
 
 /* later */
 static void websocket_write(server_pt srv,
-                            int fd,
+                            uint64_t fd,
                             void* data,
                             size_t len,
                             char text,
                             char first,
                             char last);
 
-static void on_data(server_pt server, int sockfd) {
+static void on_data(server_pt server, uint64_t sockfd) {
   struct Websocket* ws = ws_protocol(server, sockfd);
   if (ws == NULL || ws->protocol.service != WEBSOCKET_PROTOCOL_ID_STR)
     return;
+  ws->parser.state.busy = 1;
   ssize_t len = 0;
   while ((len = Server.read(server, sockfd, ws->parser.tmp_buffer, 1024)) > 0) {
     ws->parser.data_len = 0;
@@ -311,6 +312,7 @@ static void on_data(server_pt server, int sockfd) {
         // TODO enforce masking? we probably should, for security reasons...
         // fprintf(stderr, "WARNING Websockets: got unmasked message!\n");
         // Server.close(server, sockfd);
+        //   ws->parser.state.busy = 0;
         // return;
       }
       // Copy the data to the Ruby buffer - only if it's a user message
@@ -323,6 +325,7 @@ static void on_data(server_pt server, int sockfd) {
           // close connection!
           fprintf(stderr, "ERR Websocket: Payload too big, review limits.\n");
           Server.close(server, sockfd);
+          ws->parser.state.busy = 0;
           return;
         }
         // review and resize the buffer's capacity - it can only grow.
@@ -332,6 +335,7 @@ static void on_data(server_pt server, int sockfd) {
           if (!ws->buffer.data) {
             // no memory.
             ws_close(ws);
+            ws->parser.state.busy = 0;
             return;
           }
         }
@@ -415,6 +419,7 @@ static void on_data(server_pt server, int sockfd) {
           ws->parser.psize.len2 = ws->parser.data_len = 0;
     }
   }
+  ws->parser.state.busy = 0;
 }
 
 /*******************************************************************************
@@ -437,6 +442,11 @@ static ws_s* new_websocket() {
 }
 static void destroy_ws(ws_s* ws) {
   if (ws && ws->protocol.service == WEBSOCKET_PROTOCOL_ID_STR) {
+    if (ws->parser.state.busy) {
+      // in case the `on_data` callback is active, we delay...
+      Server.run_async(ws->srv, (void (*)(void*))destroy_ws, ws);
+      return;
+    }
     if (ws->on_close)
       ws->on_close(ws);
     free_buffer(ws->buffer);
@@ -451,7 +461,7 @@ Writing to the Websocket
 #define WS_MAX_FRAME_SIZE 65532  // should be less then `unsigned short`
 
 static void websocket_write(server_pt srv,
-                            int fd,
+                            uint64_t fd,
                             void* data,
                             size_t len,
                             char text,
@@ -633,14 +643,14 @@ struct WSTask {
   void* arg;
 };
 /** Performs a task on each websocket connection that shares the same process */
-static void perform_ws_task(server_pt srv, int fd, void* _arg) {
+static void perform_ws_task(server_pt srv, uint64_t fd, void* _arg) {
   struct WSTask* tsk = _arg;
   struct Protocol* ws = Server.get_protocol(srv, fd);
   if (ws && ws->service == WEBSOCKET_PROTOCOL_ID_STR)
     tsk->task((ws_s*)(ws), tsk->arg);
 }
 /** clears away a wesbocket task. */
-static void finish_ws_task(server_pt srv, int fd, void* _arg) {
+static void finish_ws_task(server_pt srv, uint64_t fd, void* _arg) {
   struct WSTask* tsk = _arg;
   if (tsk->on_finish)
     tsk->on_finish(ws_protocol(srv, fd), tsk->arg);

@@ -313,7 +313,8 @@ static size_t buffer_copy_next(struct Buffer* buffer,
 
 // Flushes the buffer (writes as much as it can)...
 // This is where a lot of the action takes place :-)
-static ssize_t buffer_flush(struct Buffer* buffer, int fd) {
+static ssize_t buffer_flush(struct Buffer* buffer, uint64_t conn) {
+  int fd = server_uuid_to_fd(conn);
   if (!is_buffer(buffer))
     return -1;
   ssize_t sent = 0;
@@ -386,7 +387,7 @@ start_flush:
     // review the close connection flag means: "Close the connection"
     if (buffer->packet->metadata.close_after) {
       pthread_mutex_unlock(&(buffer->lock));
-      Server.close(buffer->owner, fd);
+      Server.close(buffer->owner, conn);
       return sent;
       // buffer clearing should be performed by the Buffer's owner.
     }

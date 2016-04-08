@@ -108,35 +108,27 @@ struct Server {
 ////////////////////////////////////////////////////////////////////////////////
 // Macros for checking a connection ID is valid or retriving it's data
 
-/** returns the connection's data */
+// returns the connection's data
 #define connection_data(srv, conn) ((srv)->connections[(conn).data.fd])
 
-/** valuates as FALSE (0) if the connection is valid and true if outdated */
-#define validate_connection(srv, conn)                                \
-  ((connection_data((srv), (conn)).counter != (conn).data.counter) && \
-   connection_data((srv), (conn)).protocol)
+// returns FALSE (0) if the connection is valid and true if outdated
+#define validate_connection(srv, conn) \
+  (connection_data((srv), (conn)).counter != (conn).data.counter)
 
-/** returns a value if the connection isn't valid */
+// returns a value if the connection isn't valid
 #define validate_connection_or_return(srv, conn, ret) \
   if (validate_connection((srv), (conn)))             \
     return (ret);
 
 // object accessing helper macros
-
-/** casts the server to the reactor pointer. */
 #define _reactor_(server) ((struct Reactor*)(server))
-/** casts the reactor pointer to a server pointer. */
 #define _server_(reactor) ((server_pt)(reactor))
-/** gets a specific connection data object from the server (reactor). */
 #define _connection_(reactor, fd) (_server_(reactor)->connections[(fd)])
-/** gets a specific protocol from a server's connection. */
 #define _protocol_(reactor, fd) (_connection_((reactor), (fd))).protocol
-/** gets a server connection's UUID. */
 #define _fd_uuid_(reactor, sfd)                                            \
   (((union fd_id){.data.fd = (sfd),                                        \
                   .data.counter = _connection_((reactor), (sfd)).counter}) \
        .uuid)
-/** creates a UUID from an fd and a counter object. */
 #define _fd_counter_uuid_(sfd, count) \
   (((union fd_id){.data.fd = (sfd), .data.counter = count}).uuid)
 
@@ -199,11 +191,7 @@ static void on_signal(int sig);
 Protected callbacks include only the `on_message` callback and tasks forwarded
 to the connection using the `td_task` or `each` functions.
 */
-static uint8_t is_busy(server_pt server, union fd_id cuuid);
-/** Returns true if the connection's UUID points to a valid connection (valid
- * meanning `on_close` wasn't called and processed just yet).
-*/
-static uint8_t is_open(server_pt server, union fd_id cuuid);
+static unsigned char is_busy(server_pt server, union fd_id cuuid);
 /// retrives the active protocol object for the requested file descriptor.
 static struct Protocol* get_protocol(server_pt server, union fd_id cuuid);
 /// sets the active protocol object for the requested file descriptor.
@@ -221,7 +209,9 @@ old pointer, if any. */
 static void* set_udata(server_pt server, union fd_id cuuid, void* udata);
 /** Sets the timeout limit for the specified connectionl, in seconds, up to
 255 seconds (the maximum allowed timeout count). */
-static void set_timeout(server_pt server, union fd_id cuuid, uint8_t timeout);
+static void set_timeout(server_pt server,
+                        union fd_id cuuid,
+                        unsigned char timeout);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Socket actions
@@ -442,66 +432,77 @@ void add_to_group_task(server_pt server, int fd, void* arg);
 // The following allows access to helper functions and defines a namespace
 // for the API in this library.
 const struct Server__API____ Server = {
-    /* accessor and server functions */
-    .reactor = srv_reactor,
-    .settings = srv_settings,
-    .capacity = srv_capacity,
-    .listen = srv_listen,
-    .stop = srv_stop,
-    .stop_all = srv_stop_all,
-    .root_pid = root_pid,
-    /* connection data functions */
-    .is_busy = (uint8_t (*)(server_pt, uint64_t))is_busy,
-    .is_open = (uint8_t (*)(server_pt, uint64_t))is_open,
-    .get_protocol = (struct Protocol * (*)(server_pt, uint64_t))get_protocol,
+    .reactor = srv_reactor,                                      //
+    .settings = srv_settings,                                    //
+    .capacity = srv_capacity,                                    //
+    .listen = srv_listen,                                        //
+    .stop = srv_stop,                                            //
+    .stop_all = srv_stop_all,                                    //
+    .is_busy = (unsigned char (*)(server_pt, uint64_t))is_busy,  //
+    .get_protocol =
+        (struct Protocol * (*)(server_pt, uint64_t))get_protocol,  //
     .set_protocol =
-        (int (*)(server_pt, uint64_t, struct Protocol*))set_protocol,
-    .get_udata = (void* (*)(server_pt, uint64_t))get_udata,
-    .set_udata = (void* (*)(server_pt, uint64_t, void*))set_udata,
-    .set_timeout = (void (*)(server_pt, uint64_t, uint8_t))set_timeout,
-    /* connection managment functions */
-    .attach = srv_attach,
-    .close = (void (*)(server_pt, uint64_t))srv_close,
-    .hijack = (int (*)(server_pt, uint64_t))srv_hijack,
-    .count = srv_count,
-    /* connection activity and read/write functions */
-    .touch = (void (*)(server_pt, uint64_t))srv_touch,
-    .rw_hooks = (void (*)(server_pt,
+        (int (*)(server_pt, uint64_t, struct Protocol*))set_protocol,    //
+    .get_udata = (void* (*)(server_pt, uint64_t))get_udata,              //
+    .set_udata = (void* (*)(server_pt, uint64_t, void*))set_udata,       //
+    .set_timeout = (void (*)(server_pt, uint64_t, uint8_t))set_timeout,  //
+    .attach = srv_attach,                                                //
+    .close = (void (*)(server_pt, uint64_t))srv_close,                   //
+    .hijack = (int (*)(server_pt, uint64_t))srv_hijack,                  //
+    .count = srv_count,                                                  //
+    .touch = (void (*)(server_pt, uint64_t))srv_touch,                   //
+    .rw_hooks =
+        (void (*)(server_pt,
+                  uint64_t,
+                  ssize_t (*)(server_pt, int, void*, size_t),
+                  ssize_t (*)(server_pt, int, void*, size_t)))rw_hooks,  //
+    .read = (ssize_t (*)(server_pt,
+                         uint64_t,
+                         void*,
+                         size_t))srv_read,  //
+    .write = (ssize_t (*)(server_pt,
                           uint64_t,
-                          ssize_t (*)(server_pt, int, void*, size_t),
-                          ssize_t (*)(server_pt, int, void*, size_t)))rw_hooks,
-    .read = (ssize_t (*)(server_pt, uint64_t, void*, size_t))srv_read,
-    .write = (ssize_t (*)(server_pt, uint64_t, void*, size_t))srv_write,
-    .write_move =
-        (ssize_t (*)(server_pt, uint64_t, void*, size_t))srv_write_move,
-    .write_urgent =
-        (ssize_t (*)(server_pt, uint64_t, void*, size_t))srv_write_urgent,
+                          void*,
+                          size_t))srv_write,  //
+    .write_move = (ssize_t (*)(server_pt,
+                               uint64_t,
+                               void*,
+                               size_t))srv_write_move,  //
+    .write_urgent = (ssize_t (*)(server_pt,
+                                 uint64_t,
+                                 void*,
+                                 size_t))srv_write_urgent,  //
     .write_move_urgent = (ssize_t (*)(server_pt,
                                       uint64_t,
                                       void*,
                                       size_t))srv_write_move_urgent,  //
-    .sendfile = (ssize_t (*)(server_pt, uint64_t, FILE*))srv_sendfile,
-    /* connection tasks functions */
+    .sendfile = (ssize_t (*)(server_pt,
+                             uint64_t,
+                             FILE*))srv_sendfile,  //
     .each = (int (*)(server_pt,
                      uint64_t,
                      char*,
                      void (*)(server_pt, uint64_t, void*),
                      void*,
-                     void (*)(server_pt, uint64_t, void*)))each,
+                     void (*)(server_pt,
+                              uint64_t,
+                              void*)))each,  //
     .each_block = (int (*)(server_pt,
                            uint64_t,
                            char*,
                            void (*)(server_pt, uint64_t, void*),
-                           void*))each_block,
+                           void*))each_block,  //
     .fd_task = (int (*)(server_pt,
                         uint64_t,
                         void (*)(server_pt, uint64_t, void*),
                         void*,
-                        void (*)(server_pt, uint64_t, void*)))fd_task,
-    /* global task functions */
-    .run_async = run_async,
-    .run_after = run_after,
-    .run_every = run_every,
+                        void (*)(server_pt,
+                                 uint64_t,
+                                 void*)))fd_task,  //
+    .run_async = run_async,                        //
+    .run_after = run_after,                        //
+    .run_every = run_every,                        //
+    .root_pid = root_pid,                          //
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -593,14 +594,10 @@ the connection is still active
 Protected callbacks include only the `on_message` callback and tasks forwarded
 to the connection using the `td_task` or `each` functions.
 */
-static uint8_t is_busy(server_pt server, union fd_id cuuid) {
+static unsigned char is_busy(server_pt server, union fd_id cuuid) {
   return server->connections[cuuid.data.fd].counter == cuuid.data.counter &&
          server->connections[cuuid.data.fd].busy;
 }
-static uint8_t is_open(server_pt server, union fd_id cuuid) {
-  return validate_connection(server, cuuid);
-}
-
 /// retrives the active protocol object for the requested file descriptor.
 static struct Protocol* get_protocol(server_pt server, union fd_id conn) {
   validate_connection_or_return(server, conn, NULL);

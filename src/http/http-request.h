@@ -78,7 +78,7 @@ struct HttpRequest {
   /** The server initiating that forwarded the request. */
   struct Server* server;
   /** The socket waiting on the response */
-  int sockfd;
+  uint64_t sockfd;
   /** buffers the head of the request (not the body) */
   char buffer[HTTP_HEAD_MAX_SIZE];
   /**
