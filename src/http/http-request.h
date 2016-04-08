@@ -7,6 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #ifndef HTTP_REQUEST_H
 #define HTTP_REQUEST_H

@@ -71,29 +71,29 @@ Using `lib-server` is super simple to use. It's based on Protocol structure and 
 #include <string.h>
 
 // we don't have to, but printing stuff is nice...
-void on_open(server_pt server, uint64_t sockfd) {
-  printf("A connection was accepted on socket UUID #%llu.\n", sockfd);
+void on_open(server_pt server, uint64_t fd_uuid) {
+  printf("A connection was accepted on socket UUID #%llu.\n", fd_uuid);
 }
 // server_pt is just a nicely typed pointer, which is there for type-safty.
 // The Server API is used by calling `Server.api_call` (often with the pointer).
-void on_close(server_pt server, uint64_t sockfd) {
-  printf("Socket UUID #%llu is now disconnected.\n", sockfd);
+void on_close(server_pt server, uint64_t fd_uuid) {
+  printf("Socket UUID #%llu is now disconnected.\n", fd_uuid);
 }
 
 // a simple echo... this is the main callback
-void on_data(server_pt server, uint64_t sockfd) {
+void on_data(server_pt server, uint64_t fd_uuid) {
   // We'll assign a reading buffer on the stack
   char buff[1024];
   ssize_t incoming = 0;
   // Read everything, this is edge triggered, `on_data` won't be called
   // again until all the data was read.
-  while ((incoming = Server.read(server, sockfd, buff, 1024)) > 0) {
+  while ((incoming = Server.read(server, fd_uuid, buff, 1024)) > 0) {
     // since the data is stack allocated, we'll write a copy
     // otherwise, we'd avoid a copy using Server.write_move
-    Server.write(server, sockfd, buff, incoming);
+    Server.write(server, fd_uuid, buff, incoming);
     if (!memcmp(buff, "bye", 3)) {
       // closes the connection automatically AFTER all the buffer was sent.
-      Server.close(server, sockfd);
+      Server.close(server, fd_uuid);
     }
   }
 }

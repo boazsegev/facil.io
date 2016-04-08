@@ -2,11 +2,11 @@
 #define HTTP_RESPONSE_H
 
 /* this library requires the request object and extends it. */
+#include "lib-server.h"
 #include "http-request.h"
 #include "http-objpool.h"
 #include "http-status.h"
 #include "http-mime-types.h"
-#include "lib-server.h"
 
 /* defined in the request header, and used here:
 HTTP_HEAD_MAX_SIZE

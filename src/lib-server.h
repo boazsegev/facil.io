@@ -13,6 +13,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define _GNU_SOURCE
 #endif
 
+#include <stdint.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>

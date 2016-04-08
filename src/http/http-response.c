@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdarg.h>
+#include <unistd.h>
 
 /******************************************************************************
 Function declerations.
