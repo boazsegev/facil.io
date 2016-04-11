@@ -10,7 +10,25 @@ Here's a simple "Hello World" using the Http extensions:
 
 ```c
 // include location may vary according to your makefile and project hierarchy.
-#include "http/http.h"
+#include "http.h"
 
+#define THREAD_COUNT 1
+#define WORKER_COUNT 1
+
+void on_request(struct HttpRequest* request) {
+  struct HttpResponse* response = HttpResponse.new(request);
+  HttpResponse.write_body(response, "Hello World!", 12);
+  HttpResponse.destroy(response);
+}
+
+/*****************************
+The main function
+*/
+int main(int argc, char const* argv[]) {
+  start_http_server(on_request, NULL,
+                    .threads = THREAD_COUNT,
+                    .processes = WORKER_COUNT );
+  return 0;
+}
 
 ```
