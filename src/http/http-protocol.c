@@ -38,6 +38,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #define UPGRADE_HEADER "upgrade"
 #endif
 
+#define HTTP_SEND_RANGE_AS_DATA_LIMIT 131072
+
 /////////////////
 // functions used by the Http protocol, internally
 
@@ -193,7 +195,8 @@ static int http_sendfile(struct HttpRequest* req) {
       }
       if (finish)
         finish++;
-      if (finish && finish >= start && (finish - start) < 65536 &&
+      if (finish && finish >= start &&
+          (finish - start) < HTTP_SEND_RANGE_AS_DATA_LIMIT &&
           finish < file_data.st_size - 1) {
         // it's a small chunk, put it in the buffer and send it as data
         char* data = malloc(finish - start);
@@ -218,6 +221,7 @@ static int http_sendfile(struct HttpRequest* req) {
         // review the string
         if (!len) {
           fclose(file);
+          free(data);
           return 0;
         }
         // send the headers and the data (moving the pointers to the buffer)
@@ -250,6 +254,11 @@ static int http_sendfile(struct HttpRequest* req) {
             Day2Str[t_file.tm_wday], t_file.tm_mday, Mon2Str[t_file.tm_mon],
             t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min, t_file.tm_sec,
             start, finish, file_data.st_size);
+        // review the string
+        if (!len) {
+          fclose(file);
+          return 0;
+        }
         // send the headers and the file
         Server.write(req->server, req->sockfd, req->buffer, len);
         Server.sendfile(req->server, req->sockfd, file);
