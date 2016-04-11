@@ -13,10 +13,10 @@ Feel free to copy, use and enjoy according to the license provided.
 The MiniCrypt library supplies the following, basic, cryptographic functions:
 
 - SHA-1 hashing (considered less secure, use SHA-2/SHA-3 instead).
-- SHA-2 (coming soon)
-- SHA-3 (on the wish list)
+- SHA-2 hashing
+- SHA-3 hashing (on the wish list)
 
-Non cryptographic, but related, algorithms also supported are:
+Non-cryptographic, but related, algorithms also supported are:
 
 - Base64 encoding/decoding (non cryptographic, but often used in relation).
 
