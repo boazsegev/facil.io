@@ -40,7 +40,7 @@ static struct {
   int ref_count;
   int pool_count;
   struct Packet* pool;
-} ContainerPool = {0, 0};
+} ContainerPool = {0};
 
 // the packet pool mutex
 static pthread_mutex_t container_pool_locker = PTHREAD_MUTEX_INITIALIZER;
@@ -74,6 +74,8 @@ static struct Packet* get_packet(void) {
   if (packet) {
     ContainerPool.pool = packet->next;
     ContainerPool.pool_count--;
+    if (ContainerPool.pool_count < 0)  // just in case...?
+      ContainerPool.pool_count = 0;
   } else {
     packet = malloc(sizeof(struct Packet));
   }
@@ -81,7 +83,7 @@ static struct Packet* get_packet(void) {
   if (!packet)
     return 0;
   packet->data = packet->mem;
-  packet->next = 0;
+  packet->next = NULL;
   packet->length = 0;
   *((char*)&packet->metadata) = 0;
   return packet;
@@ -231,8 +233,8 @@ static inline size_t buffer_move_logic(struct Buffer* buffer,
     return 0;
   np->data = data;
   np->length = length;
-  np->next = NULL;
-  *((char*)&np->metadata) = 0;
+  // np->next = NULL; // performed by `get_packet`
+  // *((char*)&np->metadata) = 0; // performed by `get_packet`
   np->metadata.can_interrupt = 1;
   insert_packets_to_buffer(buffer, np, urgent);
   return length;
@@ -382,6 +384,7 @@ start_flush:
     return -1;
   } else if (sent > 0) {
     buffer->sent += sent;
+    Server.touch(buffer->owner, conn);  // only `on_ready` resets idle time.
   }
   if (buffer->sent >= buffer->packet->length) {
     // review the close connection flag means: "Close the connection"
@@ -416,7 +419,7 @@ static void buffer_close_w_d(struct Buffer* buffer, int fd) {
   if (!is_buffer(buffer))
     return;
   if (!buffer->packet) {
-    close(fd);
+    reactor_close((struct Reactor*)buffer->owner, fd);
     return;
   }
   pthread_mutex_lock(&buffer->lock);

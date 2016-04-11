@@ -597,6 +597,8 @@ static uint8_t is_busy(server_pt server, union fd_id cuuid) {
   return server->connections[cuuid.data.fd].counter == cuuid.data.counter &&
          server->connections[cuuid.data.fd].busy;
 }
+/** Returns true if a specific connection is still valid (on_close hadn't
+completed) */
 static uint8_t is_open(server_pt server, union fd_id cuuid) {
   return validate_connection(server, cuuid);
 }
@@ -1177,7 +1179,7 @@ static ssize_t srv_read(server_pt srv,
   if ((read = recv(conn.data.fd, buffer, max_len, 0)) > 0) {
     // reset timeout
     _connection_(srv, conn.data.fd).idle = 0;
-    // return data
+    // return read count
     return read;
   } else {
     if (read && (errno & (EWOULDBLOCK | EAGAIN)))
@@ -1198,7 +1200,7 @@ static ssize_t srv_write(server_pt server,
   _connection_(server, conn.data.fd).idle = 0;
   // send data
   Buffer.write(_connection_(server, conn.data.fd).buffer, data, len);
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.data.fd) < 0)
+  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
     return -1;
   return 0;
 }
@@ -1217,7 +1219,7 @@ static ssize_t srv_write_move(server_pt server,
   _connection_(server, conn.data.fd).idle = 0;
   // send data
   Buffer.write_move(_connection_(server, conn.data.fd).buffer, data, len);
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.data.fd) < 0)
+  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
     return -1;
   return 0;
 }
@@ -1240,7 +1242,7 @@ static ssize_t srv_write_urgent(server_pt server,
   _connection_(server, conn.data.fd).idle = 0;
   // send data
   Buffer.write_next(_connection_(server, conn.data.fd).buffer, data, len);
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.data.fd) < 0)
+  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
     return -1;
   return 0;
 }
@@ -1265,7 +1267,7 @@ static ssize_t srv_write_move_urgent(server_pt server,
   _connection_(server, conn.data.fd).idle = 0;
   // send data
   Buffer.write_move_next(_connection_(server, conn.data.fd).buffer, data, len);
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.data.fd) < 0)
+  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
     return -1;
   return 0;
 }
@@ -1282,8 +1284,9 @@ static ssize_t srv_sendfile(server_pt server, union fd_id conn, FILE* file) {
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
-  Buffer.sendfile(_connection_(server, conn.data.fd).buffer, file);
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.data.fd) < 0)
+  if (Buffer.sendfile(_connection_(server, conn.data.fd).buffer, file))
+    return -1;
+  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
     return -1;
   return 0;
 }

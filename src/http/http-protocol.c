@@ -586,7 +586,7 @@ finish:
     protocol->on_request(request);
   }
 
-  if (Server.get_udata(server, sockfd)) {
+  if (!Server.is_open(server, sockfd)) {
     // someone else already started using this connection...
     goto cleanup_after_finish;
   }
@@ -618,33 +618,35 @@ cleanup_after_finish:
 
   // we need to destroy the request ourselves, because we disconnected the
   // request from the server's udata.
-  HttpRequest.clear(request);
-  ObjectPool.push(protocol->request_pool, request);
-  return;
+  if (HttpRequest.is_request(request)) {
+    HttpRequest.clear(request);
+    ObjectPool.push(protocol->request_pool, request);
+    return;
+  }
 
 options:
   // send a bed request response. hang up.
   Server.write(server, sockfd, options_req, sizeof(options_req) - 1);
   Server.close(request->server, sockfd);
-  return;
+  goto cleanup_after_finish;
 
 bad_request:
   // send a bed request response. hang up.
   Server.write(server, sockfd, bad_req, sizeof(bad_req) - 1);
   Server.close(request->server, sockfd);
-  return;
+  goto cleanup_after_finish;
 
 too_big:
   // send a bed request response. hang up.
   Server.write(server, sockfd, too_big_err, sizeof(too_big_err) - 1);
   Server.close(request->server, sockfd);
-  return;
+  goto cleanup_after_finish;
 
 internal_error:
   // send an internal error response. hang up.
   Server.write(server, sockfd, intr_err, sizeof(intr_err) - 1);
   Server.close(request->server, sockfd);
-  return;
+  goto cleanup_after_finish;
 }
 
 // implement on_data to parse incoming requests.

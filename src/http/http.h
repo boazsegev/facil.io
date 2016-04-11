@@ -25,6 +25,8 @@ The file also introduces the `start_http_server` macro.
 #include <errno.h>
 #include <limits.h>
 
+#define HTTP_DEFAULT_TIMEOUT 5
+
 /**
 This macro allows an easy start for an HTTP server, using the lib-server library
 and the HTTP library helpers.
@@ -68,7 +70,6 @@ callback. i.e.:
                         .on_init = on_startup);
     }
 */
-
 #define start_http_server(on_request_callback, http_public_folder, ...)     \
   do {                                                                      \
     struct HttpProtocol* protocol = HttpProtocol.new();                     \
@@ -86,7 +87,7 @@ callback. i.e.:
           realpath((http_public_folder), real_public_path);                 \
     HttpResponse.create_pool();                                             \
     Server.listen((struct ServerSettings){                                  \
-        .timeout = 3,                                                       \
+        .timeout = HTTP_DEFAULT_TIMEOUT,                                    \
         .busy_msg = "HTTP/1.1 503 Service Unavailable\r\n\r\nServer Busy.", \
         __VA_ARGS__,                                                        \
         .protocol = (struct Protocol*)(protocol)});                         \
@@ -113,7 +114,7 @@ callback. i.e.:
           realpath((http_public_folder), real_public_path);                 \
     HttpResponse.create_pool();                                             \
     struct ServerSettings settings = {                                      \
-        .timeout = 3,                                                       \
+        .timeout = HTTP_DEFAULT_TIMEOUT,                                    \
         .busy_msg = "HTTP/1.1 503 Service Unavailable\r\n\r\nServer Busy.", \
         __VA_ARGS__,                                                        \
         .protocol = (struct Protocol*)(protocol)};                          \
