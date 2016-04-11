@@ -35,7 +35,7 @@ Example use (excluding error checks):
     void on_request(struct HttpRequest request) {
       struct HttpResponse* response = HttpResponse.new(req); // (initialize new)
       HttpResponse.write_header2(response, "X-Data", "my data");
-      HttpResponse.set_cookie(response, (struct HttpResponse){
+      HttpResponse.set_cookie(response, (struct HttpCookie){
         .name = "my_cookie",
         .value = "data"
       });
@@ -140,7 +140,7 @@ The struct HttpCookie is a helper for seting cookie data.
 
 This struct is used together with the `HttpResponse.set_cookie`. i.e.:
 
-      HttpResponse.set_cookie(response, (struct HttpResponse){
+      HttpResponse.set_cookie(response, (struct HttpCookie){
         .name = "my_cookie",
         .value = "data"
       });

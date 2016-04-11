@@ -2,7 +2,7 @@
 
 After years in [Ruby land](https://www.ruby-lang.org/en/) I decided to learn [Rust](https://www.rust-lang.org), only to re-discover that I actually quite enjoy writing in C and that C's reputation as "unsafe" or "hard" is undeserved and hides C's power.
 
-So I decided to brush up my C programming skills... like an old man tinkering with his childhood tube box (radio), I tend to come back to the question of the server reactor design.
+So I decided to brush up my C programming skills... like an old man tinkering with his childhood tube box (an old radio, for you youngsters), I tend to come back to the question of web servers, the reactor pattern and evented programming.
 
 Anyway, Along the way I wrote:
 
@@ -12,9 +12,9 @@ Anyway, Along the way I wrote:
 
  It uses a combination of a pipe (for wakeup signals) and mutexes (for managing the task queue). I found it more performant then using conditional variables and more portable then using signals (which required more control over the process then an external library should require).
 
- `libasync` threads can be guarded by "sentinel" threads (it's a simple flag to be set in the prior to compiling the code), so that segmentation faults and errors in any given task won't break the system apart.
+ `libasync` threads can be guarded by "sentinel" threads (it's a simple flag to be set prior to compiling the library's code), so that segmentation faults and errors in any given task won't break the system apart.
 
- This was meant to give a basic layer of protection to any server implementation, but I would recommend that it be removed for any other uses (it's a matter or changing one line of code).
+ This was meant to give a basic layer of protection to any server implementation, but I would recommend that it be removed for any other uses (it's a matter or changing the definition of `ASYNC_USE_SENTINEL` in `libasync.c`).
 
  Using `libasync` is super simple and would look something like this:
 
@@ -113,29 +113,29 @@ int main(void) {
 // easy :-)
 ```
 
-Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with minor changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files.
+Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with a few changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files.
 
 ### A word about concurrency
 
 It should be notes that network applications always have to keep concurrency in mind. For instance, the connection might be closed by one machine while the other is still preparing (or writing) it's response.
 
-If you will use `lib-server`'s multi-threading mode, this concurrency could affect your code (i.e., `on_close` might be called to release resources still in use by `on_data` which might not have finished processing the data). There are plenty of possible solutions for any race condition, but it is important to note that these race conditions exist.
+If you will use `lib-server`'s multi-threading mode, this concurrency could affect your code (i.e., `on_close` might be called to release resources still in use by `on_data` which might not have finished processing the data). There are plenty of possible solutions for these race conditions, but it is important to note that these race conditions exist.
 
 In addition to multi-threading, `lib-server` allows us to easily setup the network service's concurrency using processes (`fork`ing), which act differently then threads (i.e. memory space isn't shared, so that processes don't share accepted connections).
 
 `lib-server` prevents some race conditions from taking place. For example, `on_data`, `fd_task`s and non-blocking `each` tasks will never run concurrently for the same original connection...
 
-...but, this does not prevent critical callback (such as `on_close` `ping` and `on_shutdown`) from being performed even while a task (such as `on_data`) is running - this is because these critical callback's execution cannot be delayed.
+...but, this does not prevent critical callback (such as `on_close` `ping` and `on_shutdown`) from being performed even while a task (such as `on_data`) is running - this is because the execution for these critical callbacks cannot be delayed.
 
 In other words, assume everything could run concurrently. `lib-server` will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your application.
 
 ## [`http`](src/http/http.h) - a protocol for the web
 
-All these libraries were used in a Ruby server I'm re-writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" in C, following to the `lib-server`'s protocol specs.
+All these libraries are used in a Ruby server I'm re-writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" in C, following to the `lib-server`'s protocol specs.
 
-The code is just a few mega-functions (I know, it needs refactoring) and helper settings. The HTTP parser destructively edits the received headers and forwards a `struct HttpRequest` object to the `on_request` callback. This minimizes data copying and speeds up the process.
+The code is just a few helper settings and mega-functions (I know, refactoring will make it easier to maintain). The HTTP parser destructively edits the received headers and forwards a `struct HttpRequest` object to the `on_request` callback. This minimizes data copying and speeds up the process.
 
-The HTTP protocol provides a built-in static file service and allows us to limit incoming request data sizes in order to protect server resources. The header size limit is hard-set during compile time (it's 8KB, which is also the limit on some proxies), securing the server from bloated data DoS attacks. The incoming data size limit is dynamic.
+The HTTP protocol provides a built-in static file service and allows us to limit incoming request data sizes in order to protect server resources. The header size limit is hard-set during compilation (it's 8KB, which is also the limit on some proxies), securing the server from bloated data DoS attacks. The incoming data size limit is dynamic.
 
 Here's a "Hello World" HTTP server (with a stub to add static file services).
 
@@ -146,6 +146,10 @@ Here's a "Hello World" HTTP server (with a stub to add static file services).
 void on_request(struct HttpRequest request) {
   struct HttpResponse* response = HttpResponse.new(req); // a helper object
   HttpResponse.write_header2(response, "X-Data", "my data");
+  HttpResponse.set_cookie(response, (struct HttpCookie){
+    .name = "my_cookie",
+    .value = "data"
+  });
   HttpResponse.write_body(response, "Hello World!\r\n", 14);
   HttpResponse.destroy(response);
 }
