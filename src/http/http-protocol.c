@@ -226,7 +226,8 @@ static int http_sendfile(struct HttpRequest* req) {
         }
         // send the headers and the data (moving the pointers to the buffer)
         Server.write(req->server, req->sockfd, req->buffer, len);
-        Server.write_move(req->server, req->sockfd, data, finish - start);
+        if (Server.write_move(req->server, req->sockfd, data, finish - start))
+          free(data);
         return 1;
       } else {
         // going to the EOF (big chunk or EOL requested) - send as file
@@ -261,7 +262,8 @@ static int http_sendfile(struct HttpRequest* req) {
         }
         // send the headers and the file
         Server.write(req->server, req->sockfd, req->buffer, len);
-        Server.sendfile(req->server, req->sockfd, file);
+        if (Server.sendfile(req->server, req->sockfd, file))
+          fclose(file);
         return 1;
       }
     }
@@ -292,9 +294,9 @@ static int http_sendfile(struct HttpRequest* req) {
     // send headers
     Server.write(req->server, req->sockfd, req->buffer, len);
     // send file, unless the request method is "HEAD"
-    if (strcasecmp("HEAD", req->method))
-      Server.sendfile(req->server, req->sockfd, file);
-    else  // The file will be closed by the buffer if it's sent, otherwise...
+    if (strcasecmp("HEAD", req->method) == 0 ||
+        Server.sendfile(req->server, req->sockfd, file))
+      // The file will be closed by the buffer if it's sent, otherwise...
       fclose(file);
 
     // DEBUG - print headers
