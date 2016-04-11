@@ -441,7 +441,7 @@ void add_to_group_task(server_pt server, int fd, void* arg);
 // The actual Server API access setup
 // The following allows access to helper functions and defines a namespace
 // for the API in this library.
-const struct Server__API____ Server = {
+const struct Server__API___ Server = {
     /* accessor and server functions */
     .reactor = srv_reactor,
     .settings = srv_settings,

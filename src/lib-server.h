@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIB_SERVER_H
 #define LIB_SERVER_H
 
-#define LIB_SERVER_VERSION "3.0"
+#define LIB_SERVER_VERSION "0.3.0"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -216,7 +216,7 @@ union fd_id {
 *      Server.listen(struct ServerSettings { ... });
 *
 */
-extern const struct Server__API____ {
+extern const struct Server__API___ {
   /****************************************************************************
   * Server settings and objects
   */
