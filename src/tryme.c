@@ -104,7 +104,8 @@ The main function
 */
 
 int main(int argc, char const* argv[]) {
-  start_http_server(on_request, "~/Documents/Scratch", .threads = THREAD_COUNT);
+  start_http_server(on_request, "~/Documents/Scratch", .threads = THREAD_COUNT,
+                    .processes = 1);
   return 0;
 }
 

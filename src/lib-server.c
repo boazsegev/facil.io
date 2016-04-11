@@ -993,7 +993,6 @@ static int srv_listen(struct ServerSettings settings) {
   srv.run = 1;
   Async.run(srv.async, (void (*)(void*))srv_cycle_core, &srv);
   Async.wait(srv.async);
-  fprintf(stderr, "server done\n");
   // cleanup
   reactor_stop(&srv.reactor);
 
@@ -1013,7 +1012,7 @@ static int srv_listen(struct ServerSettings settings) {
 
   if (settings.on_finish)
     settings.on_finish(&srv);
-  printf("\n(%d) Stopped listening for port %s\n", getpid(), settings.port);
+  printf("(pid %d) Stopped listening on port %s\n", getpid(), settings.port);
   if (getpid() != srv.root_pid) {
     fflush(NULL);
     exit(0);
@@ -1638,6 +1637,7 @@ static void on_signal(int sig) {
     raise(sig);
     return;
   }
+  fprintf(stderr, "(pid %d) Exit signal received.\n", getpid());
   srv_stop_all();
 }
 
