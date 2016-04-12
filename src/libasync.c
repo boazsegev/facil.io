@@ -362,6 +362,7 @@ static void async_destroy(async_p async) {
   }
   pthread_mutex_unlock(&async->lock);
   pthread_mutex_destroy(&async->lock);
+  free(async);
 }
 
 /**
