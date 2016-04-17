@@ -201,8 +201,8 @@ static void destroy(object_pool pool) {
 }
 
 struct ObjectPool_API__ ObjectPool = {
-    .new_dynamic = new_dynamic,
-    .new_blocking = new_blocking,
+    .create_dynamic = new_dynamic,
+    .create_blocking = new_blocking,
     .destroy = destroy,
     .push = push,
     .pop = pop,

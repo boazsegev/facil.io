@@ -371,7 +371,7 @@ Creates a new Async object (a thread pool) and returns a pointer using the
 
 Requires the number of new threads to be initialized. Use:
 
-  async_p async = Async.new(8);
+  async_p async = Async.create(8);
 
 */
 static async_p async_new(int threads) {
@@ -413,7 +413,7 @@ API gateway
 */
 
 struct Async_API___ Async = {
-    .new = async_new,
+    .create = async_new,
     .signal = async_signal,
     .wait = async_wait,
     .finish = async_finish,

@@ -26,7 +26,7 @@ Feel free to copy, use and enjoy according to the license provided.
 A Procotol suited for Http/1.x servers. The struct must be obtained using a
 contructor and released using a destructor. i.e.:
 
-       struct HttpProtocol * http = HttpProtocol.new();
+       struct HttpProtocol * http = HttpProtocol.create();
        ; // run server using protocol
        HttpProtocol.destroy(http);
 
@@ -35,7 +35,7 @@ struct HttpProtocol;
 
 extern struct HttpProtocolClass {
   /** returns a new, initialized, Http Protocol object. */
-  struct HttpProtocol* (*new)(void);
+  struct HttpProtocol* (*create)(void);
   /** destroys an existing HttpProtocol object, releasing it's memory and
   resources. */
   void (*destroy)(struct HttpProtocol*);

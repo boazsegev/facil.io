@@ -72,7 +72,7 @@ callback. i.e.:
 */
 #define start_http_server(on_request_callback, http_public_folder, ...)     \
   do {                                                                      \
-    struct HttpProtocol* protocol = HttpProtocol.new();                     \
+    struct HttpProtocol* protocol = HttpProtocol.create();                  \
     if ((NULL != (void*)on_request_callback))                               \
       protocol->on_request = (on_request_callback);                         \
     char real_public_path[PATH_MAX];                                        \
@@ -85,7 +85,7 @@ callback. i.e.:
     } else if ((http_public_folder))                                        \
       protocol->public_folder =                                             \
           realpath((http_public_folder), real_public_path);                 \
-    HttpResponse.create_pool();                                             \
+    HttpResponse.init_pool();                                               \
     Server.listen((struct ServerSettings){                                  \
         .timeout = HTTP_DEFAULT_TIMEOUT,                                    \
         .busy_msg = "HTTP/1.1 503 Service Unavailable\r\n\r\nServer Busy.", \
@@ -99,7 +99,7 @@ callback. i.e.:
 
 #define start_https_server(on_request_callback, http_public_folder, ...)    \
   do {                                                                      \
-    struct HttpProtocol* protocol = HttpProtocol.new();                     \
+    struct HttpProtocol* protocol = HttpProtocol.create();                  \
     if ((NULL != (void*)on_request_callback))                               \
       protocol->on_request = (on_request_callback);                         \
     char real_public_path[PATH_MAX];                                        \
@@ -112,7 +112,7 @@ callback. i.e.:
     } else if ((http_public_folder))                                        \
       protocol->public_folder =                                             \
           realpath((http_public_folder), real_public_path);                 \
-    HttpResponse.create_pool();                                             \
+    HttpResponse.init_pool();                                               \
     struct ServerSettings settings = {                                      \
         .timeout = HTTP_DEFAULT_TIMEOUT,                                    \
         .busy_msg = "HTTP/1.1 503 Service Unavailable\r\n\r\nServer Busy.", \

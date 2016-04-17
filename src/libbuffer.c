@@ -467,7 +467,7 @@ The API Interface
 */
 
 const struct BufferClass Buffer = {
-    .new = new_buffer,
+    .create = new_buffer,
     .destroy = (void (*)(void*))destroy_buffer,
     .clear = (void (*)(void*))clear_buffer,
     .set_whook = (void (*)(void*, ssize_t (*)()))set_whook,

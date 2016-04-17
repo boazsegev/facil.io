@@ -19,7 +19,7 @@ minimal malloc on copy.
 and other extensions could, eventually, be utilized.
 
 */
-#define LIB_BUFFER_VERSION "0.2.0"
+#define LIB_BUFFER_VERSION "0.3.0"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -37,7 +37,7 @@ The buffer is pretty much a wrapper for a binary tree with mutexes.
 
 To Create a Buffer use:
 
-`void * Buffer.new(0)` - the offset sets a pre-sent amount for the first packet.
+`void * Buffer.create(srv)` - srv is a pointer to the server owining the buffer.
 
 To destroy a Buffer use:
 
@@ -76,7 +76,7 @@ extern const struct BufferClass {
   The buffer object should require ~96 bytes (system dependent), including the
   mutex object.
   */
-  void* (*new)(server_pt owner);
+  void* (*create)(server_pt owner);
   /**
   Clears the buffer and destroys the buffer object - releasing it's core memory
   and the mutex associated with the buffer.

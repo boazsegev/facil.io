@@ -25,7 +25,7 @@ to make API calls, such as iterating through headers.
 */
 extern const struct HttpRequestClass {
   /** retures an new heap allocated request object */
-  struct HttpRequest* (*new)(void);
+  struct HttpRequest* (*create)(void);
   /** releases the resources used by a request object but keep's it's core
    * memory. */
   void (*clear)(struct HttpRequest* request);
@@ -65,7 +65,7 @@ header itteration.
 Memory management automated and provided by the HttpProtocol, but it is good to
 be aware that the struct must be obtained using a contructor. i.e.:
 
-       struct HttpRequest* request = HttpRequest.new(&http, sockfd);
+       struct HttpRequest* request = HttpRequest.create(&http, sockfd);
 
 Also, the `struct HttpRequest` objects live on the heap and thery should be
 freed using a destructor. i.e.:

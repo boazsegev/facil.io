@@ -562,7 +562,7 @@ static void upgrade(struct WebsocketSettings settings) {
   struct HttpResponse* response = settings.response;
   int free_response = 0;
   if (!response) {
-    response = HttpResponse.new(settings.request);
+    response = HttpResponse.create(settings.request);
     free_response = 1;
   }
   if (!response)

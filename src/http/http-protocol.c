@@ -765,8 +765,8 @@ struct HttpProtocol* HttpProtocol_new(void) {
   http->public_folder = NULL;
   // void* (*create)(void),  void (*destroy)(void* object), int size
   http->request_pool =
-      ObjectPool.new_dynamic((void* (*)(void))HttpRequest.new,
-                             (void (*)(void*))HttpRequest.destroy, 32);
+      ObjectPool.create_dynamic((void* (*)(void))HttpRequest.create,
+                                (void (*)(void*))HttpRequest.destroy, 32);
   return http;
 }
 void HttpProtocol_destroy(struct HttpProtocol* http) {
@@ -775,6 +775,6 @@ void HttpProtocol_destroy(struct HttpProtocol* http) {
 }
 
 struct HttpProtocolClass HttpProtocol = {
-    .new = HttpProtocol_new,
+    .create = HttpProtocol_new,
     .destroy = HttpProtocol_destroy,
 };

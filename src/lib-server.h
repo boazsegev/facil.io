@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIB_SERVER_H
 #define LIB_SERVER_H
 
-#define LIB_SERVER_VERSION "0.3.0"
+#define LIB_SERVER_VERSION "0.3.1"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE

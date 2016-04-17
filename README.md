@@ -45,9 +45,9 @@ To use this library you only need the `libasync.h` and `libasync.c` files.
 
 It's true, some server programs still use `select` and `poll`... but they really shouldn't be (don't get me started).
 
-When using [`libevent`](http://libevent.org) or [`libev`](http://software.schmorp.de/pkg/libev.html) you could end up falling back on `select` if you're not careful. `libreact`, on the other hand, will simply refuse to compile if neither kqueue nor epoll are available (windows Overlapping IO support would be interesting to write, I guess, but I don't have Windows).
+When using [`libevent`](http://libevent.org) or [`libev`](http://software.schmorp.de/pkg/libev.html) you could end up falling back on `select` if you're not careful. `libreact`, on the other hand, will simply refuse to compile if neither kqueue nor epoll are available...
 
-I should note that this means that Solaris support is currently absent, as Solaris's `evpoll` library has significantly different design requirements (each IO needs to re-register after it's events are handled). This difference makes the abstraction sharing (API) difficult and ineffective.
+I should note that this means that Solaris and Windows support is currently absent, as Solaris's `evpoll` library has significantly different design requirements (each IO needs to re-register after it's events are handled) and Windows is a different beast altogether. This difference makes the abstraction sharing (API) difficult and ineffective.
 
 Since I mentioned `libevent` and `libev`, I should point out that even a simple inspection shows that these are amazing and well tested libraries (how did they make those nice benchmark graphs?!)... but I hated their API (or documentation).
 
@@ -57,13 +57,13 @@ To use this library you only need the `libreact.h` and `libreact.c` files.
 
 ## [`lib-server`](src/lib-server.h) - a server building library.
 
-Writing server code is fun... but in limited and controlled amounts... after all, much of it simple code being repeated endlessly, connecting one piece of code with a different piece of code.
+Writing server code is fun... but in limited and controlled amounts... after all, much of it is simple code being repeated endlessly, connecting one piece of code with a different piece of code.
 
 `lib-server` is aimed at writing unix based (linux/BSD) servers application (network services), such as web applications. It uses `libreact` as the reactor, `libasync` to handle tasks and `libbuffer` for a user lever network buffer and writing data asynchronously.
 
 `lib-server` might not be optimized to your liking, but it's all working great for me. Besides, it's code is heavily commented code, easy to edit and tweak. To offer some comparison, `ev.c` from `libev` has ~5000 lines, while `libreact` is less then 400 lines (~260 lines of actual code)...
 
-Using `lib-server` is super simple. It's based on Protocol structure and callbacks, so that we can dynamically change protocols and support stuff like HTTP upgrade requests. Here's a simple echo server example:
+Using `lib-server` is super simple. It's based on Protocol structure and callbacks, so that we can dynamically change protocols and support stuff like HTTP upgrade requests (i.e. switching from HTTP to Websockets). Here's a simple echo server example:
 
 ```c
 #include "lib-server.h"
@@ -113,7 +113,7 @@ int main(void) {
 // easy :-)
 ```
 
-Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with a few changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files.
+Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with a few changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files. `mini-crypt` and `lib-tls-server` aren't required (nor did I finish writing them).
 
 ### A word about concurrency
 
@@ -161,7 +161,7 @@ int main()
 }
 ```
 
-Using this library requires all the `http-` prefixed files (`http-mime-types`, `http-request`, `http-status`, `http-objpool`, etc') as well as `lib-server` and all the files it requires. This files are in a separate folder and the makefile in this project supports subfolders. You might want to place all the files in the same folder if you use these source files in a different project.
+Using this library requires all the `http-` prefixed files (`http-mime-types`, `http-request`, `http-status`, `http-objpool`, etc') as well as `lib-server` and all the files it requires. The `http` files are in a separate folder and the makefile in this project supports subfolders. You might want to place all the files in the same folder if you use these source files in a different project.
 
 ## [`Websocket`](src/http/websockets.h) - for real-time web applications
 
@@ -169,9 +169,7 @@ At some point I decided to move all the network logic from my [Ruby Iodine proje
 
 This was when the `Websockets` library was born. It builds off the `http` server and allows us to either "upgrade" the HTTP protocol to Websockets or continue with an HTTP response.
 
-As I'm rewriting it from the base up (moving the memory management from Ruby to C), it's currently still experimental. I'm tracking down a memory leak related to the websockets, although the tools I use insist there's no leak (so why is the used memory growing, I wonder).
-
-Building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example:
+Building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example -notice that broadcasting is a resource intensive task, requiring at least O(n) operations, where n == server capacity:
 
 ```c
 // update the tryme.c file to use the existing folder structure and makefile
@@ -270,13 +268,15 @@ int main(int argc, char const* argv[]) {
 
 ---
 
-That's it for now. I might work on these more later, but I'm super excited to be going back to my music school, Berklee, so I'll probably forget all about computers for a while... but I'll be back tinkering away at some point.
+That's it for now. I'm still working on these as well as on `mini-crypt` and SSL/TLS support (adding OpenSSL might be easy if you know the OpenSSL framework, but I think their API is terrible and I'm looking into alternatives).
 
 ## Forking, Contributing and all that Jazz
 
 Sure, why not. If you can add Solaris or Windows support to `libreact`, that could mean `lib-server` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties).
 
 If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
+
+If you want to help me write a new SSL/TLS library or have an SSL/TLS solution you can fit into `lib-server`, hit me up.
 
 ---
 

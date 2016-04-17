@@ -16,7 +16,7 @@ Here's a simple "Hello World" using the Http extensions:
 #define WORKER_COUNT 1
 
 void on_request(struct HttpRequest* request) {
-  struct HttpResponse* response = HttpResponse.new(request);
+  struct HttpResponse* response = HttpResponse.create(request);
   HttpResponse.write_body(response, "Hello World!", 12);
   HttpResponse.destroy(response);
 }

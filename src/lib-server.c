@@ -927,7 +927,7 @@ static int srv_listen(struct ServerSettings settings) {
   for (int i = 0; i < capacity; i++) {
     connections[i].srv = &srv;
     connections[i].fd = i;
-    connections[i].buffer = Buffer.new(&srv);
+    connections[i].buffer = Buffer.create(&srv);
   }
 
   // register signals - do this before concurrency, so that they are inherited.
@@ -952,7 +952,7 @@ static int srv_listen(struct ServerSettings settings) {
     }
   }
   // once we forked, we can initiate a thread pool for each process
-  srv.async = Async.new(settings.threads);
+  srv.async = Async.create(settings.threads);
   if (srv.async <= 0) {
     if (srvfd)
       close(srvfd);

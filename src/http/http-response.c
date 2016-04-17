@@ -154,8 +154,8 @@ The API gateway
 */
 struct HttpResponseClass HttpResponse = {
     .destroy_pool = destroy_pool,
-    .create_pool = create_pool,
-    .new = new_response,
+    .init_pool = create_pool,
+    .create = new_response,
     .destroy = destroy_response,
     .pool_limit = 64,
     .reset = reset,
@@ -202,7 +202,7 @@ Creates the response object pool (unless it already exists).
 */
 static void create_pool(void) {
   if (!response_pool)
-    response_pool = ObjectPool.new_dynamic(malloc_response, free, 4);
+    response_pool = ObjectPool.create_dynamic(malloc_response, free, 4);
 }
 
 /**

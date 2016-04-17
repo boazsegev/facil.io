@@ -93,6 +93,7 @@ most of the code is the damn socket binding...:
                                         servinfo->ai_protocol);
         if (srvfd <= 0) {
           perror("addr err");
+          freeaddrinfo(servinfo);
           return -1;
         }
 
@@ -106,6 +107,7 @@ most of the code is the damn socket binding...:
 
         if (bind(srvfd, servinfo->ai_addr, servinfo->ai_addrlen) < 0) {
           perror("bind err");
+          freeaddrinfo(servinfo);
           return -1;
         }
 
@@ -120,6 +122,8 @@ most of the code is the damn socket binding...:
         listen(srvfd, SOMAXCONN);
         if (errno)
           perror("starting. last error was");
+
+        freeaddrinfo(servinfo); // free the address data memory
 
         ; // now that everything is ready, call the reactor library...
         reactor_init(&r);

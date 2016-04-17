@@ -33,7 +33,7 @@ response.
 Example use (excluding error checks):
 
     void on_request(struct HttpRequest request) {
-      struct HttpResponse* response = HttpResponse.new(req); // (initialize new)
+      struct HttpResponse* response = HttpResponse.create(req); // (initialize)
       HttpResponse.write_header2(response, "X-Data", "my data");
       HttpResponse.set_cookie(response, (struct HttpCookie){
         .name = "my_cookie",
@@ -197,7 +197,7 @@ To destroy the pool (usually after the server is done), use:
 As example flow for the response could be:
 
      ; // get an initialized HttpRequest object
-     struct HttpRequest * response = HttpResponse.new(request);
+     struct HttpRequest * response = HttpResponse.create(request);
      ; // ... write headers and body, i.e.
      HttpResponse.write_header_cstr(response, "X-Data", "my data");
      HttpResponse.write_body(response, "Hello World!\r\n", 14);
@@ -229,7 +229,7 @@ The response does NOT support chuncked encoding.
 
 The following is the response API container, use:
 
-     struct HttpRequest * response = HttpResponse.new(request);
+     struct HttpRequest * response = HttpResponse.create(request);
 
 
 ---
@@ -276,14 +276,14 @@ struct HttpResponseClass {
   Creates the response object pool (unless it already exists). This function
   ISN'T thread-safe.
   */
-  void (*create_pool)(void);
+  void (*init_pool)(void);
   /**
   Creates a new response object or recycles a response object from the response
   pool.
 
   returns NULL on failuer, or a pointer to a valid response object.
   */
-  struct HttpResponse* (*new)(struct HttpRequest*);
+  struct HttpResponse* (*create)(struct HttpRequest*);
   /**
   Destroys the response object or places it in the response pool for recycling.
   */
