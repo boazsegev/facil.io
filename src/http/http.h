@@ -76,11 +76,11 @@ callback. i.e.:
     if ((NULL != (void*)on_request_callback))                               \
       protocol->on_request = (on_request_callback);                         \
     char real_public_path[PATH_MAX];                                        \
-    if ((http_public_folder) && (http_public_folder)[0] == '~' &&           \
+    if ((http_public_folder) && ((char*)http_public_folder)[0] == '~' &&    \
         getenv("HOME") && strlen((http_public_folder)) < PATH_MAX) {        \
       strcpy(real_public_path, getenv("HOME"));                             \
       strcpy(real_public_path + strlen(real_public_path),                   \
-             (http_public_folder) + 1);                                     \
+             ((char*)http_public_folder) + 1);                              \
       protocol->public_folder = real_public_path;                           \
     } else if ((http_public_folder))                                        \
       protocol->public_folder =                                             \
@@ -103,11 +103,11 @@ callback. i.e.:
     if ((NULL != (void*)on_request_callback))                               \
       protocol->on_request = (on_request_callback);                         \
     char real_public_path[PATH_MAX];                                        \
-    if ((http_public_folder) && (http_public_folder)[0] == '~' &&           \
+    if ((http_public_folder) && ((char*)http_public_folder)[0] == '~' &&    \
         getenv("HOME") && strlen((http_public_folder)) < PATH_MAX) {        \
       strcpy(real_public_path, getenv("HOME"));                             \
       strcpy(real_public_path + strlen(real_public_path),                   \
-             (http_public_folder) + 1);                                     \
+             ((char*)http_public_folder) + 1);                              \
       protocol->public_folder = real_public_path;                           \
     } else if ((http_public_folder))                                        \
       protocol->public_folder =                                             \
