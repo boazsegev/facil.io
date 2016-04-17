@@ -1,4 +1,54 @@
-# Server Writing Tools for C
+# Server Writing Tools in C
+
+Writing servers in C is repetitive and often involves copying a the code from [Beej's guide](http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html) and making a mess of things along the way.
+
+Here you will find tools to write HTTP, Websockets and custom network applications with ease and speed, using a comfortable framework for writing network services in C.
+
+You want to write your very own protocol in modern C, maybe an Echo server? Easy. Look at our `lib-server` example code and see what a breeze it is.
+
+You want to write an HTTP and Websocket services in modern C? Easy.
+
+```c
+#include "http.h"
+#include <stdio.h>
+#include <string.h>
+// How many threads do you want to run in your thread pool?
+#define THREAD_COUNT 4
+// Concurrency using processes instead? how many do you want?
+#define PROCESS_COUNT 1
+
+// Our websocket service - echo.
+void ws_echo(ws_s* ws, char* data, size_t size, int is_text) {
+  // echos the data to the current websocket
+  Websocket.write(ws, data, size, is_text);
+}
+
+// our HTTP callback - hello world.
+void on_request(struct HttpRequest* request) {
+  if (request->upgrade) {
+    // "upgrade" to the Websocket protocol, if requested
+    websocket_upgrade(.request = request, .on_message = ws_echo);
+    return;
+  }
+  struct HttpResponse* response = HttpResponse.create(request);
+  HttpResponse.write_body(response, "Hello World!", 12);
+  HttpResponse.destroy(response);
+}
+
+// Our main function will start the HTTP server
+int main(int argc, char const* argv[]) {
+  start_http_server(on_request, NULL,
+             .threads = THREAD_COUNT,
+             .processes = PROCESS_COUNT );
+  return 0;
+}
+
+// easy :-)
+```
+
+I should note that although it's possible to implement SSL/TLS support using `lib-server`'s read-write hooks (`Server.rw_hooks`), I did not write this implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety).
+
+## Background information
 
 After years in [Ruby land](https://www.ruby-lang.org/en/) I decided to learn [Rust](https://www.rust-lang.org), only to re-discover that I actually quite enjoy writing in C and that C's reputation as "unsafe" or "hard" is undeserved and hides C's power.
 
