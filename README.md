@@ -9,7 +9,7 @@ You want to write your very own protocol in modern C, maybe an Echo server? Easy
 You want to write an HTTP and Websocket services in modern C? Easy.
 
 ```c
-#include "http.h"
+#include "websockets.h"
 #include <stdio.h>
 #include <string.h>
 // How many threads do you want to run in your thread pool?
