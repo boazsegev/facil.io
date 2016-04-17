@@ -4,9 +4,9 @@ Writing servers in C is repetitive and often involves copying a the code from [B
 
 Here you will find tools to write HTTP, Websockets and custom network applications with ease and speed, using a comfortable framework for writing network services in C.
 
-You want to write your very own protocol in modern C, maybe an Echo server? Easy. Look at our `lib-server` example code and see what a breeze it is.
+Writing a custom network service in modern C, maybe an Echo server? Easy. Look at our `lib-server` example code and see what a breeze it is.
 
-You want to write an HTTP and Websocket services in modern C? Easy.
+Writing an HTTP and Websocket services in modern C? Easy!
 
 ```c
 #include "websockets.h"
