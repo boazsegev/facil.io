@@ -4,25 +4,19 @@ Writing servers in C is repetitive and often involves copying a the code from [B
 
 Here you will find tools to write HTTP, Websockets and custom network applications with ease and speed, using a comfortable framework for writing network services in C.
 
-Writing a custom network service in modern C, maybe an Echo server? Easy. Look at our `lib-server` example code and see what a breeze it is.
-
 Writing an HTTP and Websocket services in modern C? Easy!
 
 ```c
-#include "websockets.h"
-#include <stdio.h>
-#include <string.h>
-// How many threads do you want to run in your thread pool?
+#include "websockets.h" // auto-includes "http.h"
+// Concurrency using thread? How many threads in the thread pool?
 #define THREAD_COUNT 4
-// Concurrency using processes instead? how many do you want?
+// Concurrency using processes? (more then a single process can be used)
 #define PROCESS_COUNT 1
-
 // Our websocket service - echo.
 void ws_echo(ws_s* ws, char* data, size_t size, int is_text) {
   // echos the data to the current websocket
   Websocket.write(ws, data, size, is_text);
 }
-
 // our HTTP callback - hello world.
 void on_request(struct HttpRequest* request) {
   if (request->upgrade) {
@@ -34,7 +28,6 @@ void on_request(struct HttpRequest* request) {
   HttpResponse.write_body(response, "Hello World!", 12);
   HttpResponse.destroy(response);
 }
-
 // Our main function will start the HTTP server
 int main(int argc, char const* argv[]) {
   start_http_server(on_request, NULL,
@@ -42,8 +35,38 @@ int main(int argc, char const* argv[]) {
              .processes = PROCESS_COUNT );
   return 0;
 }
+```
 
-// easy :-)
+Writing a custom network service in modern C, maybe an Echo server? Easy!
+
+```c
+#include "lib-server.h"
+#include <stdio.h>
+#include <string.h>
+// Concurrency using thread? How many threads in the thread pool?
+#define THREAD_COUNT 4
+// Concurrency using processes? (more then a single process can be used)
+#define PROCESS_COUNT 1
+// a simple echo... this is the main callback
+void on_data(server_pt server, uint64_t fd_uuid) {
+  char buff[1024];
+  ssize_t incoming = 0;
+  while ((incoming = Server.read(server, fd_uuid, buff, 1024)) > 0) {
+    Server.write(server, fd_uuid, buff, incoming); // echo the data.
+    if (!memcmp(buff, "bye", 3)) { // close the connection on keyword "bye"
+      Server.close(server, fd_uuid);
+    }
+  }
+}
+// running the server
+int main(void) {
+  // We'll create the echo protocol object. We'll only use the on_data callback.
+  struct Protocol protocol = {.on_data = on_data,
+                              .service = "echo"};
+  // This macro will call Server.listen(settings) with the settings we provide.
+  start_server(.protocol = &protocol, .timeout = 10,
+               .threads = THREAD_COUNT, .processes = PROCESS_COUNT);
+}
 ```
 
 I should note that although it's possible to implement SSL/TLS support using `lib-server`'s read-write hooks (`Server.rw_hooks`), I did not write this implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety).
