@@ -31,8 +31,9 @@ void on_request(struct HttpRequest* request) {
 // Our main function will start the HTTP server
 int main(int argc, char const* argv[]) {
   start_http_server(on_request, NULL,
-             .threads = THREAD_COUNT,
-             .processes = PROCESS_COUNT );
+              .port = "8080", // default is "3000"
+              .threads = THREAD_COUNT,
+              .processes = PROCESS_COUNT );
   return 0;
 }
 ```
@@ -52,9 +53,9 @@ void on_data(server_pt server, uint64_t fd_uuid) {
   char buff[1024];
   ssize_t incoming = 0;
   while ((incoming = Server.read(server, fd_uuid, buff, 1024)) > 0) {
-    Server.write(server, fd_uuid, buff, incoming); // echo the data.
-    if (!memcmp(buff, "bye", 3)) { // close the connection on keyword "bye"
-      Server.close(server, fd_uuid);
+    Server.write(server, fd_uuid, buff, incoming);  // echo the data.
+    if (!strncasecmp(buff, "bye", 3)) {             // check for keyword "bye"
+      Server.close(server, fd_uuid);  // closes the connection (on keyword)
     }
   }
 }
@@ -64,7 +65,7 @@ int main(void) {
   struct Protocol protocol = {.on_data = on_data,
                               .service = "echo"};
   // This macro will call Server.listen(settings) with the settings we provide.
-  start_server(.protocol = &protocol, .timeout = 10,
+  start_server(.protocol = &protocol, .timeout = 10, .port = "3000",
                .threads = THREAD_COUNT, .processes = PROCESS_COUNT);
 }
 ```
