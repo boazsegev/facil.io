@@ -4,7 +4,11 @@ Writing servers in C is repetitive and often involves copying a the code from [B
 
 Here you will find tools to write HTTP, Websockets and custom network applications with ease and speed, using a comfortable framework for writing network services in C.
 
-Writing an HTTP and Websocket services in modern C? Easy!
+**Writing an HTTP and Websocket services in modern C? Easy!**
+
+Websockets and HTTP are super common, so I wrote an API to support them.
+
+The framework's code is heavily documented and you can use Doxygen to create automated documentation for the API.
 
 ```c
 #include "websockets.h" // auto-includes "http.h"
@@ -38,7 +42,9 @@ int main(int argc, char const* argv[]) {
 }
 ```
 
-Writing a custom network service in modern C, maybe an Echo server? Easy!
+There's an example with cookies and custom headers further on.
+
+**Writing a custom network service in modern C, maybe an Echo server? Easy!**
 
 ```c
 #include "lib-server.h"
@@ -70,7 +76,15 @@ int main(void) {
 }
 ```
 
-I should note that although it's possible to implement SSL/TLS support using `lib-server`'s read-write hooks (`Server.rw_hooks`), I did not write this implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety).
+**SSL/TLS?** - possible, but you'll have to write it in.
+
+Since most web applications (Node.js, Ruby etc') end up running behind load balancers and proxies, it is often that the SSL layer is handled by intermediaries.
+
+But, if you need to expose the application directly to the web, it is possible to implement SSL/TLS support using `lib-server`'s read-write hooks (`Server.rw_hooks`).
+
+I did not write this implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a proxy that manages the SSL/TLS layer).
+
+---
 
 ## Background information
 
@@ -339,6 +353,8 @@ int main(int argc, char const* argv[]) {
   return 0;
 }
 ```
+
+The Websockets implementation uses the `mini-crypt` library for the Base64 encoding and SHA-1 hashing that are part of the protocol's handshake.
 
 ---
 
