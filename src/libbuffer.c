@@ -389,6 +389,10 @@ start_flush:
   if (buffer->sent >= buffer->packet->length) {
     // review the close connection flag means: "Close the connection"
     if (buffer->packet->metadata.close_after) {
+      packet = buffer->packet;
+      buffer->sent = 0;
+      buffer->packet = buffer->packet->next;
+      free_packet(packet);
       pthread_mutex_unlock(&(buffer->lock));
       Server.close(buffer->owner, conn);
       return sent;
@@ -424,8 +428,10 @@ static void buffer_close_w_d(struct Buffer* buffer, int fd) {
   }
   pthread_mutex_lock(&buffer->lock);
   struct Packet* packet = buffer->packet;
-  if (!packet)
+  if (!packet) {
+    reactor_close((struct Reactor*)buffer->owner, fd);
     goto finish;
+  }
   while (packet->next)
     packet = packet->next;
   packet->metadata.close_after = 1;
