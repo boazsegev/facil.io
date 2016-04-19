@@ -7,18 +7,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef LIB_BUFFER_H
 #define LIB_BUFFER_H
 
-/**
-v. 0.2.0 Changes
-
-- more closely connected to the Server library.
-
-- more copy friendly, requiring more memory and allowing for a packet pool with
-minimal malloc on copy.
-
-- Allows for writing hooks to replace the `write` function, so that SSL sockets
-and other extensions could, eventually, be utilized.
-
-*/
 #define LIB_BUFFER_VERSION "0.3.0"
 
 #ifndef _GNU_SOURCE
