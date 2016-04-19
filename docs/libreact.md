@@ -6,7 +6,7 @@ You don't need to read this file if you're looking to utilize `lib-server`.
 
 This file is here as quick reference to anyone interested in maintaining `lib-server` or learning about how it's insides work.
 
-It should be noted that `server_pt` and `struct Reactor *` are both pointers to `struct Reactor` objects, so that a `server_pt` can be used for `libreact`'s API.
+It should be noted that `server_pt` and `struct Reactor *` are both pointers to [`struct Reactor`](#the-reactor-object-struct-reactor-) objects, so that a `server_pt` can be used for `libreact`'s API.
 
 ## The reactor object: `struct Reactor *`
 
