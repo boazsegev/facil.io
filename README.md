@@ -371,11 +371,3 @@ Sure, why not. If you can add Solaris or Windows support to `libreact`, that cou
 If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
 
 If you want to help me write a new SSL/TLS library or have an SSL/TLS solution you can fit into `lib-server`, hit me up.
-
----
-
-## A note about "safe" languages (C vs. Rust, Javascript vs. Elm)
-
-they keep telling me that a "safe" language will make me a better programmer, but I keep thinking that a language is made "safe" so it can be used by bad programmers (are we child-proofing our programming languages?).
-
-Leave me my freedom and my debugger and keep your safety away from me.
