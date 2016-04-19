@@ -92,6 +92,11 @@ extern struct Websockets_API__ {
   void (*upgrade)(struct WebsocketSettings settings);
   /** Returns the opaque user data associated with the websocket. */
   void* (*get_udata)(ws_s* ws);
+  /** Returns the the `server_pt` for the Server object that owns the connection
+   */
+  server_pt (*get_server)(ws_s* ws);
+  /** Returns the the connection's UUID (the Server's connection ID). */
+  uint64_t (*get_uuid)(ws_s* ws);
   /** Sets the opaque user data associated with the websocket. returns the old
    * value, if any. */
   void* (*set_udata)(ws_s* ws, void* udata);

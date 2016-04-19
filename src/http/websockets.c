@@ -67,6 +67,11 @@ static int ws_write(ws_s* ws, void* data, size_t size, char text);
 static void ws_close(ws_s* ws);
 /** Returns the opaque user data associated with the websocket. */
 static void* get_udata(ws_s* ws);
+/** Returns the the `server_pt` for the Server object that owns the connection
+ */
+static server_pt get_server(ws_s* ws);
+/** Returns the the connection's UUID (the Server's connection ID). */
+static uint64_t get_uuid(ws_s* ws);
 /** Sets the opaque user data associated with the websocket. returns the old
  * value, if any. */
 static void* set_udata(ws_s* ws, void* udata);
@@ -91,6 +96,8 @@ struct Websockets_API__ Websocket = {
     .each = ws_each,
     .get_udata = get_udata,
     .set_udata = set_udata,
+    .get_server = get_server,
+    .get_uuid = get_uuid,
 };
 
 /*******************************************************************************
@@ -546,6 +553,18 @@ static int ws_write(ws_s* ws, void* data, size_t size, char text) {
 static void* get_udata(ws_s* ws) {
   return ws->udata;
 }
+
+/** Returns the the `server_pt` for the Server object that owns the connection
+ */
+static server_pt get_server(ws_s* ws) {
+  return ws->srv;
+}
+
+/** Returns the the connection's UUID (the Server's connection ID). */
+static uint64_t get_uuid(ws_s* ws) {
+  return ws->fd;
+}
+
 /** Sets the opaque user data associated with the websocket. returns the old
  * value, if any. */
 static void* set_udata(ws_s* ws, void* udata) {
