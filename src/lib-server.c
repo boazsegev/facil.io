@@ -829,10 +829,14 @@ static void srv_cycle_core(server_pt server) {
         reactor_close(_reactor_(server), i);
       }
       if (_connection_(server, i).tout) {
-        if (_connection_(server, i).tout > _connection_(server, i).idle)
+        if (_connection_(server, i).tout > _connection_(server, i).idle) {
           _connection_(server, i).idle +=
               _connection_(server, i).idle ? delta : 1;
-        else {
+          if (!_connection_(server, i).busy &&
+              _connection_(server, i).tout <= _connection_(server, i).idle)
+            reactor_close(_reactor_(server), i); 
+        }
+	else {
           if (_protocol_(server, i) && _protocol_(server, i)->ping)
             _protocol_(server, i)->ping(server, i);
           else if (!_connection_(server, i).busy ||
