@@ -44,6 +44,10 @@ struct Reactor {
 
 `on_close` - a pointer to a function that will be called when a file descriptor was closed REMOTELY. `on_close` will NOT get called when a connection is closed locally, unless using `reactor_close` function.
 
+**Notice**: the `on_close` callback will be called **only** when the `fd` was closed **remotely** or when it was closed using the [`reactor_close`](#void-reactor_closestruct-reactor-int-fd) function. Both EPoll and KQueue will **not** raise an event for an `fd` that was closed using the native `close` function.
+
+**Notice**: `on_open` is missing by design, as it is expected that any initialization required for the `on_open` event will be performed before attaching the `fd` (socket/timer/pipe) to the reactor using [reactor_add](#int-reactor_addstruct-reactor-int-fd).
+
 ### The Reactor's Data and Settings
 
 `time_t last_tick` - the time (seconds since epoch) of the last "tick" (event cycle).
