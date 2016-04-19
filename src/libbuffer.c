@@ -384,7 +384,7 @@ start_flush:
     return -1;
   } else if (sent > 0) {
     buffer->sent += sent;
-    Server.touch(buffer->owner, conn);  // only `on_ready` resets idle time.
+    // Server.touch(buffer->owner, conn);  // Do we need this?
   }
   if (buffer->sent >= buffer->packet->length) {
     // review the close connection flag means: "Close the connection"

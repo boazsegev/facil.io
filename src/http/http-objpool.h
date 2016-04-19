@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef HTTP_OBJECT_POOL_H
 #define HTTP_OBJECT_POOL_H
 
-#define LIB_OBJECT_POOL_VERSION 0.2.0
+#define LIB_OBJECT_POOL_VERSION "0.2.0"
 
 typedef struct ObjectPool* object_pool;
 

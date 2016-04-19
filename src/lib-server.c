@@ -1170,21 +1170,26 @@ static ssize_t srv_read(server_pt srv,
                         union fd_id conn,
                         void* buffer,
                         size_t max_len) {
-  if (_connection_(srv, conn.data.fd).reading_hook)  // check for reading hook
-    return _connection_(srv, conn.data.fd)
-        .reading_hook(srv, conn.data.fd, buffer, max_len);
-
   ssize_t read = 0;
-  if ((read = recv(conn.data.fd, buffer, max_len, 0)) > 0) {
-    // reset timeout
-    _connection_(srv, conn.data.fd).idle = 0;
-    // return read count
+  if (_connection_(srv, conn.data.fd).reading_hook == NULL) {
+    // no reading hook
+    if ((read = recv(conn.data.fd, buffer, max_len, 0)) > 0) {
+      // reset timeout
+      _connection_(srv, conn.data.fd).idle = 0;
+      // return read count
+      return read;
+    } else {
+      if (read && (errno & (EWOULDBLOCK | EAGAIN)))
+        return 0;
+    }
+    return -1;
+  } else {  // existing reading hook
+    read = _connection_(srv, conn.data.fd)
+               .reading_hook(srv, conn.data.fd, buffer, max_len);
+    if (read > 0)
+      _connection_(srv, conn.data.fd).idle = 0;
     return read;
-  } else {
-    if (read && (errno & (EWOULDBLOCK | EAGAIN)))
-      return 0;
   }
-  return -1;
 }
 /** Copies & writes data to the socket, managing an asyncronous buffer.
 
