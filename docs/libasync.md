@@ -10,7 +10,7 @@ This file is here as quick reference to anyone interested in maintaining `lib-se
 
 The Async API uses a `async_p` object (an opaque pointer), for storing a single thread-pool and it's associated tasks (and task pool).
 
-The Async container object **must** be created using `async_p Async.create(int threads)` and it is automatically destroyed once `void Async.finish(async_p async)` **or** `void Async.wait(async_p async)` had returned.
+The Async container object **must** be created using [`async_p Async.create(int threads)`](#async_p-asynccreateint-threads) and it is automatically destroyed once [`void Async.finish(async_p async)`](#void-asyncfinishasync_p-async) **or** [`void Async.wait(async_p async)`](#void-asyncwaitasync_p-async) had returned.
 
 ## The Async API
 
@@ -72,11 +72,13 @@ async_p async = Async.create(8);
 Async.finish(async);
 ```
 
-### `void Async.run(async_p async, void (*task)(void*), void* arg)`
+### `int Async.run(async_p async, void (*task)(void*), void* arg)`
 
 Schedules a task to be performed by an Async thread pool group.
 
 The Task should be a function such as `void task(void *arg)`.
+
+Returns -1 on error and 0 on success.
 
 Use:
 

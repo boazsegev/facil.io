@@ -4,8 +4,8 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef LIB_ASYNC_2_H
-#define LIB_ASYNC_2_H
+#ifndef LIB_ASYNC_H
+#define LIB_ASYNC_H
 
 #define LIB_ASYNC_VERSION "0.3.0"
 
@@ -108,4 +108,4 @@ Use:
   void (*finish)(async_p);
 } Async;
 
-#endif
+#endif /* LIB_ASYNC_H */
