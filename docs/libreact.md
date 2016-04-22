@@ -60,7 +60,7 @@ struct Reactor {
 
 The following are the functions that control the Reactor.
 
-### `int reactor_init(struct Reactor*)`
+#### `int reactor_init(struct Reactor*)`
 
 Initializes the reactor, making the reactor "live".
 
@@ -68,45 +68,45 @@ Once initialized, the reactor CANNOT be forked, so do not fork the process after
 
 Returns -1 on error, otherwise returns 0.
 
-### `int reactor_review(struct Reactor*)`
+#### `int reactor_review(struct Reactor*)`
 
 Reviews any pending events (up to REACTOR_MAX_EVENTS which limits the number of events that should reviewed each cycle).
 
 Returns -1 on error, otherwise returns the number of events handled by the reactor (0 isn't an error).
 
-### `void reactor_stop(struct Reactor*)`
+#### `void reactor_stop(struct Reactor*)`
 
 Closes the reactor, releasing it's resources (except the actual struct Reactor, which might have been allocated on the stack and should be handled by the caller).
 
-### `int reactor_add(struct Reactor*, int fd)`
+#### `int reactor_add(struct Reactor*, int fd)`
 
 Adds a file descriptor to the reactor, so that callbacks will be called for it's events.
 
 Returns -1 on error, otherwise return value is system dependent and could be safely ignored.
 
-### `int reactor_remove(struct Reactor*, int fd)`
+#### `int reactor_remove(struct Reactor*, int fd)`
 
 Removes a file descriptor from the reactor - further callbacks won't be called.
 
 Returns -1 on error, otherwise return value is system dependent and could be safely ignored. If the file descriptor wasn't owned by the reactor, it isn't an error.
 
-### `void reactor_close(struct Reactor*, int fd)`
+#### `void reactor_close(struct Reactor*, int fd)`
 
 Closes a file descriptor, calling it's callback if it was registered with the reactor.
 
-### `int reactor_add_timer(struct Reactor*, int fd, long milliseconds)`
+#### `int reactor_add_timer(struct Reactor*, int fd, long milliseconds)`
 
 Adds a file descriptor as a timer object.
 
 Returns -1 on error, otherwise return value is system dependent.
 
-### `void reactor_reset_timer(int fd)`
+#### `void reactor_reset_timer(int fd)`
 
 EPoll requires the timer to be "reset" before repeating. Kqueue requires no such thing.
 
 This method promises that the timer will be repeated when running on epoll. This method is redundant on kqueue.
 
-### `int reactor_make_timer(void)`
+#### `int reactor_make_timer(void)`
 
 Creates a timer file descriptor, system dependent.
 

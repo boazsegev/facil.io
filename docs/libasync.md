@@ -16,7 +16,7 @@ The Async container object **must** be created using [`async_p Async.create(int 
 
 The following are the functions used for creating the thread pool, signaling (and waiting) for it's completion and scheduling tasks to be performed.
 
-### `async_p Async.create(int threads)`
+#### `async_p Async.create(int threads)`
 
 Creates a new Async object (a thread pool) and returns a pointer using the `aync_p` (Async Pointer) type.
 
@@ -30,7 +30,7 @@ Use:
 async_p async = Async.create(8);
 ```
 
-### `void Async.signal(async_p async)`
+#### `void Async.signal(async_p async)`
 
 Signals an Async object to finish up.
 
@@ -42,7 +42,7 @@ Use:
 async_p async = Async.create(8);
 ```
 
-### `void Async.wait(async_p async)`
+#### `void Async.wait(async_p async)`
 
 Waits for an Async object to finish up (joins all the threads in the thread
 pool).
@@ -60,7 +60,7 @@ Async.signal(async);
 Async.wait(async);
 ```
 
-### `void Async.finish(async_p async)`
+#### `void Async.finish(async_p async)`
 
 Both signals for an Async object to finish up and waits for it to finish. This is akin to calling both `signal` and `wait` in succession.
 
@@ -72,7 +72,7 @@ async_p async = Async.create(8);
 Async.finish(async);
 ```
 
-### `int Async.run(async_p async, void (*task)(void*), void* arg)`
+#### `int Async.run(async_p async, void (*task)(void*), void* arg)`
 
 Schedules a task to be performed by an Async thread pool group.
 
