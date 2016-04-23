@@ -1394,8 +1394,8 @@ struct GroupTask* new_group_task(server_pt srv) {
     return ret;
   }
   pthread_mutex_unlock(&srv->task_lock);
-  ret = malloc(sizeof(*ret) + (srv_capacity() >> 3) + 1);
-  memset(ret, 0, sizeof(*ret) + (srv_capacity() >> 3) + 1);
+  ret = malloc(sizeof(*ret));
+  memset(ret, 0, sizeof(*ret));
   return ret;
 }
 void destroy_group_task(server_pt srv, struct GroupTask* task) {
@@ -1424,7 +1424,7 @@ void destroy_group_task(server_pt srv, struct GroupTask* task) {
 
 static void perform_group_task(struct GroupTask* task) {
   // the maximum number of bytes to review (each bit == 1 fd);
-  long fd_max = srv_capacity();
+  long fd_max = task->server->capacity;
   // continue cycle
   while (fd_max < task->pos) {
     // the byte contains at least one bit marker for a task related fd
