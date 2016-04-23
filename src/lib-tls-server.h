@@ -65,7 +65,7 @@ struct TLSServer_API___ {
 } TLSServer;
 
 /* TLS-Lib-Server: Not implememnted */
-#warning TLS-Lib-Server: Not implememnted.
+#warning TLS-Lib-Server: TLS Not implememnted.
 
 #endif /* USE_TLS_LIB_SERVER */
 
