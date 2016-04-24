@@ -120,7 +120,7 @@ The following example isn't very interesting, but it's good enough to demonstrat
 
 ```c
 #include "libreact.h"
-; // we're writing a small server, many included files...
+// we're writing a small server, many included files...
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netdb.h>
@@ -131,23 +131,25 @@ The following example isn't very interesting, but it's good enough to demonstrat
 #include <signal.h>
 #include <errno.h>
 
-; // this will accept connections,
-; // it will be a simple HTTP hello world. (with keep alive)
+// this will accept connections,
+// it will be a simple HTTP hello world. (with keep alive)
 void on_data(struct Reactor* reactor, int fd);
 
 struct Reactor r = {.on_data = on_data, .maxfd = 1024};
 int srvfd; // to make it simple, we'll have a global object
 
-; // this will handle the exit signal (^C).
-void on_sigint(int sig);
+// this will handle the exit signal (^C).
+void on_sigint(int sig) {
+  reactor_stop(&r);
+}
 
 int main(int argc, char const* argv[]) {
   printf("starting up an http hello world example on port 3000\n");
-  ; // setup the exit signal
+  // setup the exit signal
   signal(SIGINT, on_sigint);
-  ; // create a server socket... this will take a moment...
+  // create a server socket... this will take a moment...
   char* port = "3000";
-  ; // setup the address
+  // setup the address
   struct addrinfo hints;
   struct addrinfo* servinfo;        // will point to the results
   memset(&hints, 0, sizeof hints);  // make sure the struct is empty
@@ -175,7 +177,7 @@ int main(int argc, char const* argv[]) {
               sizeof(optval));
   }
 
-  ; // bind the address to the socket
+  // bind the address to the socket
 
   if (bind(srvfd, servinfo->ai_addr, servinfo->ai_addrlen) < 0) {
     perror("bind err");
@@ -183,21 +185,21 @@ int main(int argc, char const* argv[]) {
     return -1;
   }
 
-  ; // make sure the socket is non-blocking
+  // make sure the socket is non-blocking
 
   static int flags;
   if (-1 == (flags = fcntl(srvfd, F_GETFL, 0)))
     flags = 0;
   fcntl(srvfd, F_SETFL, flags | O_NONBLOCK);
 
-  ; // listen in
+  // listen in
   listen(srvfd, SOMAXCONN);
   if (errno)
     perror("starting. last error was");
 
   freeaddrinfo(servinfo); // free the address data memory
 
-  ; // now that everything is ready, call the reactor library...
+  // now that everything is ready, call the reactor library...
   reactor_init(&r);
   reactor_add(&r, srvfd);
 
@@ -230,9 +232,5 @@ void on_data(struct Reactor* reactor, int fd) {
       len = write(fd, response, strlen(response));
     }
   }
-}
-
-void on_sigint(int sig) { // stop the reactor
-  reactor_stop(&r);
 }
 ```
