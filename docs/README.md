@@ -6,7 +6,7 @@ However, experience shows that a quick reference guide is immensely helpful and 
 
 The documentation in this folder includes:
 
-* The main [`lib-server` API documentation](lib-server.md) (coming soon).
+* The main [`lib-server` API documentation](lib-server.md).
 
     This documents the main framework's API and should be used when writing custom protocols. This API is (mostly) redundant when using the `http` or `websockets` protocol extensions to this framework.
 
@@ -32,6 +32,6 @@ The documentation in this folder includes:
 
     * [`libasync`](./libasync.md) - The thread pool and task management core functionality.
 
-    * [`libbuffer`](./libbuffer.md) - User-land buffer for network asynchronous data writing.
+    * [`libbuffer`](./libbuffer.md) - User-land buffer for network asynchronous data writing (coming soon).
 
-    * [`mini-crypt`](./mini-crypt.md) - Cryptography and Base64 encoding helpers (used during the `websockets` handshake).
+    * [`mini-crypt`](./mini-crypt.md) - Cryptography and Base64 encoding helpers (used during the `websockets` handshake)  (coming soon).
