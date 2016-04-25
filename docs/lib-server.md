@@ -32,7 +32,7 @@ The Server framework's API is comprised of a few building blocks, each should be
 
     * [Connection settings data and management functions](#connection-settings-data-and-management)
 
-    * [IO Read/Write functions](reading-and-writing-data)
+    * [IO Read/Write functions](#reading-and-writing-data)
 
     * [Connection related asynchronous task helpers](#connection-related-asynchronous-tasks)
 
