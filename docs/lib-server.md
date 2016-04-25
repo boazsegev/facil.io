@@ -2,15 +2,15 @@
 
 Writing servers in C, although fun, is repetitive and often involves copying a the code from [Beej's guide](http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html) and making a mess of some of the implementation details along the way.
 
-`lib-server` is aimed at writing unix based (linux/BSD) servers application (network services), such as micro-services and web applications.
+`lib-server` is aimed at writing unix based (linux/BSD) server application (network services), such as micro-services and web applications.
 
 `lib-server` might not be optimized to your liking, but it's all working great for me. Besides, it's code is heavily commented code, easy to edit and tweak. To offer some comparison, `ev.c` from `libev` has ~5000 lines, while `libreact` is less then 400 lines (~260 lines of actual code)...
 
-Using `lib-server` is super simple. It's based on Protocol structure and callbacks, so that we can dynamically change protocols and support stuff like HTTP upgrade requests (i.e. switching from HTTP to Websockets). Here's a simple echo server example:
+Using `lib-server` is super simple. It's based on Protocol structure and callbacks, so that we can dynamically change protocols and support stuff like HTTP upgrade requests (i.e. switching from HTTP to Websockets).
 
-Under the hood, `lib-server` uses `libreact` as the reactor, `libasync` to handle tasks and `libbuffer` for a user level network buffer and writing data asynchronously.
+Under the hood, `lib-server` uses [`libreact`](./libreact.md) as the reactor, [`libasync`](./libasync.md) to handle tasks and `libbuffer` for a user level network buffer and writing data asynchronously.
 
-It should be noted that `server_pt` and `struct Reactor *` can both be used as pointers to a `struct Reactor` object, so that a `server_pt` can be used for [`libreact`'s API](./libreact.md).
+It should be noted that `server_pt` and `struct Reactor *` can both be used as pointers to a `struct Reactor` object, so that a `server_pt` can be used for  [`libreact`'s API](./libreact.md) by simply casting the pointer to a `struct Reactor *`.
 
 ## The Server Framework's Building blocks
 
