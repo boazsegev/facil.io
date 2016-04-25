@@ -2,6 +2,8 @@
 
 The Async library, `libasync` is a Thread Pool and Task management abstraction and is part of`lib-server`'s core.
 
+`libasync` requires only the following two files from this repository: [`src/libasync.h`](../src/libasync.h) and [`src/libasync.c`]((../src/libasync.c)).
+
 You don't need to read this file if you're looking to utilize `lib-server`.
 
 This file is here as quick reference to anyone interested in maintaining `lib-server` or learning about how it's insides work.
