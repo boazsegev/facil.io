@@ -12,6 +12,32 @@ Under the hood, `lib-server` uses `libreact` as the reactor, `libasync` to handl
 
 It should be noted that `server_pt` and `struct Reactor *` can both be used as pointers to a `struct Reactor` object, so that a `server_pt` can be used for [`libreact`'s API](./libreact.md).
 
+## The Server Framework's Building blocks
+
+The Server framework's API is comprised of a few building blocks, each should be understood in order to make use of the Server Framework:
+
+* [The Server Object](#the-server-object-server_pt) is a pointer used by the API to reference the server data. Almost every API function requires this object as it's first argument.
+
+* [Server Settings](#the-server-settings-struct-serversettings) are controlled using a `struct ServerSettings` which allows up to control certain global aspects of the server's implementation (i.e. set the Protocol for new incoming connections).
+
+* [The Communication Protocol](#the-communication-protocol-struct-protocol) controls how an application responds to connection related events (i.e. the `on_close` event called when a connection is closed). Protocol objects can be global (the default protocol is always global) or connection specific. Protocols can be switched mid-stream - i.e. `on_open` can be used to create a new protocol object and set it up as a connection's protocol.
+
+* [The Server's API itself](#the-server-api) is a collection of functions that use these building blocks to help you implement the actual application logic. This includes:
+
+    * [Server start up and global state functions](#server-start-up-and-global-state).
+
+    * [Global asynchronous task helpers](#asynchronous-tasks)
+
+    * [Connection state management functions](#connection-state)
+
+    * [Connection settings data and management functions](#connection-settings-data-and-management)
+
+    * [IO Read/Write functions](reading-and-writing-data)
+
+    * [Connection related asynchronous task helpers](#connection-related-asynchronous-tasks)
+
+At the end of this document you will find a [quick example](#a-quick-example) for a simple echo server.
+
 ## The Server object: `server_pt`
 
 The Server API hinges on the `server_pt` data type (which is a pointer to a `struct Server`). This data type is used both for storing the Server's settings (i.e. callback pointers) and information about the state of the server.
@@ -141,13 +167,22 @@ void on_open(server_pt, uint64_t connection_id) {
   p->counter++;
 }
 //...
+int main() {
+  struct MyProtocol my_pr = { .parent.on_open = on_open,
+                              // other settings
+                            };
+  //...
+  start_server(.protocol = &my_pr);
+}
 ```
 
-A more complex example can be found in the Websockets extension, where a protocol object is assigned to each connection and both the memory release and the connection's data management has a more complex and detailed implementation.
+A more complex example can be found in the code for the Websockets extension, where a protocol object is assigned to each connection and both the memory release and the connection's data management demonstrate a more complex and detailed implementation.
 
 ## The Server API
 
-(incomplete - coming soon)
+The Server framework API is designed to be intuitive... but much like all good intentions, reality poses requirements that introduce a learning curve.
+
+The following is designed as a short API reference to ease this learning curve.
 
 ### Server start up and global state
 
