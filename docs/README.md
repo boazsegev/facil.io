@@ -6,7 +6,7 @@ However, experience shows that a quick reference guide is immensely helpful and 
 
 The documentation in this folder includes:
 
-* The main [`lib-server` API documentation](server.md) (coming soon).
+* The main [`lib-server` API documentation](lib-server.md) (coming soon).
 
     This documents the main framework's API and should be used when writing custom protocols. This API is (mostly) redundant when using the `http` or `websockets` protocol extensions to this framework.
 
