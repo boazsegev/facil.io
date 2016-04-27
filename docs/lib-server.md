@@ -8,7 +8,11 @@ Writing servers in C, although fun, is repetitive and often involves copying a t
 
 Using `lib-server` is super simple. It's based on Protocol structure and callbacks, so that we can dynamically change protocols and support stuff like HTTP upgrade requests (i.e. switching from HTTP to Websockets).
 
+## Under The Hood
+
 Under the hood, `lib-server` uses [`libreact`](./libreact.md) as the reactor, [`libasync`](./libasync.md) to handle tasks and `libbuffer` for a user level network buffer and writing data asynchronously.
+
+`lib-server` requires the following files from this repository: [`src/libasync.h`](../src/libasync.h), [`src/libasync.c`](../src/libasync.c), [`src/libreact.h`](../src/libreact.h), [`src/libreact.c`](../src/libreact.c), [`src/libbuffer.h`](../src/libbuffer.h) and [`src/libbuffer.c`]((../src/libbuffer.c)).
 
 It should be noted that `server_pt` and `struct Reactor *` can both be used as pointers to a `struct Reactor` object, so that a `server_pt` can be used for  [`libreact`'s API](./libreact.md) by simply casting the pointer to a `struct Reactor *`.
 

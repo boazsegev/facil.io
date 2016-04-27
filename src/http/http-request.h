@@ -24,7 +24,7 @@ This is the interface for the HttpRequest object. Use the `HttpRequest` object
 to make API calls, such as iterating through headers.
 */
 extern const struct HttpRequestClass {
-  /** retures an new heap allocated request object */
+  /** returns an new heap allocated request object */
   struct HttpRequest* (*create)(void);
   /** releases the resources used by a request object but keep's it's core
    * memory. */
@@ -44,15 +44,15 @@ extern const struct HttpRequestClass {
   */
   int (*next)(struct HttpRequest* self);
   /**
-  Finds a specific header matching the requested string.
-  all headers are lower-case, so the string should be lower case.
+  Finds a specific header matching the requested string. The search is case
+  insensitive.
 
   Returns 0 if the header couldn't be found.
   */
   int (*find)(struct HttpRequest* self, char* const name);
-  /** returns the name of the current header in the itteration cycle. */
+  /** returns the name of the current header in the iteration cycle. */
   char* (*name)(struct HttpRequest* self);
-  /** returns the value of the current header in the itteration cycle. */
+  /** returns the value of the current header in the iteration cycle. */
   char* (*value)(struct HttpRequest* self);
 
 } HttpRequest;
@@ -86,7 +86,7 @@ struct HttpRequest {
   points to the HTTP method name's location within the buffer (actually,
   position 0). */
   char* method;
-  /** The portion of the request URL that follows the ?, if any. */
+  /** The portion of the request URL that comes before the '?', if any. */
   char* path;
   /** The portion of the request URL that follows the ?, if any. */
   char* query;

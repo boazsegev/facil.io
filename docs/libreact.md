@@ -2,7 +2,7 @@
 
 The Reactor library, `libreact` is a KQueue/EPoll abstraction and is part of`lib-server`'s core.
 
-`libreact` requires only the following two files from this repository: [`src/libreact.h`](../src/libreact.h) and [`src/libreact.c`]((../src/libreact.c)).
+`libreact` requires only the following two files from this repository: [`src/libreact.h`](../src/libreact.h) and [`src/libreact.c`](../src/libreact.c).
 
 You don't need to read this file if you're looking to utilize `lib-server`.
 

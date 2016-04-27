@@ -6,7 +6,7 @@ The folder hierarchy in this project is for maintenance convenience only and pro
 
 ## Demo code
 
-Here's a simple "Hello World" using the Http extensions:
+Here's a simple "Hello World" using the HTTP extension:
 
 ```c
 // include location may vary according to your makefile and project hierarchy.
