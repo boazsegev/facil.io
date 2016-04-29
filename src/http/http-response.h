@@ -77,6 +77,15 @@ struct HttpResponse {
   */
   time_t date;
   /**
+  The HTTP date for the response (in seconds since epoche).
+
+  Defaults to now (approximately, not exactly, uses cached data).
+
+  The date will be automatically formatted to match the HTTP protocol
+  specifications. It is better to avoid setting the "Date" header manualy.
+  */
+  time_t last_modified;
+  /**
   The actual header buffer - do not edit directly.
 
   The extra 248 bytes are for the status line and variable headers, such as the
@@ -409,6 +418,15 @@ struct HttpResponseClass {
   the function returns 0.
   */
   int (*sendfile)(struct HttpResponse*, FILE* pf, size_t length);
+  /**
+  Sends the complete file referenced by the `file_path` string.
+
+  This function requires that the headers weren't previously sent and that the
+  file exists.
+
+  On failure, the function will return -1. On success, the function returns 0.
+  */
+  int (*sendfile2)(struct HttpResponse*, char* file_path);
   /**
   Closes the connection.
   */

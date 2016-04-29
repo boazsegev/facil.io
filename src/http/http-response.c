@@ -4,6 +4,8 @@
 #include <time.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 /******************************************************************************
 Function declerations.
@@ -145,6 +147,15 @@ the function returns 0.
 */
 static int sendfile_req(struct HttpResponse*, FILE* pf, size_t length);
 /**
+Sends the complete file referenced by the `file_path` string.
+
+This function requires that the headers weren't previously sent and that the
+file exists.
+
+On failure, the function will return -1. On success, the function returns 0.
+*/
+static int sendfile_path(struct HttpResponse* response, char* file_path);
+/**
 Closes the connection.
 */
 static void close_response(struct HttpResponse*);
@@ -168,6 +179,7 @@ struct HttpResponseClass HttpResponse = {
     .write_body = write_body,
     .write_body_move = write_body_move,
     .sendfile = sendfile_req,
+    .sendfile2 = sendfile_path,
     .close = close_response,
 };
 
@@ -245,7 +257,8 @@ static void reset(struct HttpResponse* response, struct HttpRequest* request) {
   response->metadata.headers_pos = response->header_buffer + HTTP_HEADER_START;
   response->metadata.fd_uuid = request->sockfd;
   response->metadata.server = request->server;
-  response->date = Server.reactor(response->metadata.server)->last_tick;
+  response->last_modified = response->date =
+      Server.reactor(response->metadata.server)->last_tick;
 }
 /** Gets a response status, as a string */
 static char* status_str(struct HttpResponse* response) {
@@ -286,7 +299,7 @@ static int write_header_data(struct HttpResponse* response,
        HTTP_HEAD_MAX_SIZE))
     return -1;
   // review special headers
-  if (!strcasecmp("Date", header)) {
+  if (!strcasecmp("Date", header) || !strcasecmp("Last-Modified", header)) {
     response->metadata.date_written = 1;
   } else if (!strcasecmp("Connection", header)) {
     response->metadata.connection_written = 1;
@@ -467,13 +480,27 @@ static char* prep_headers(struct HttpResponse* response) {
   // }
   // write the date, if missing
   if (!response->metadata.date_written) {
+    if (response->date < response->last_modified)
+      response->date = response->last_modified;
     struct tm t;
+    // date header
     gmtime_r(&response->date, &t);
     // response->metadata.headers_pos +=
     //     strftime(response->metadata.headers_pos, 100,
     //              "Date: %a, %d %b %Y %H:%M:%S GMT\r\n", &t);
     memcpy(response->metadata.headers_pos, "Date: ", 6);
     response->metadata.headers_pos += 6;
+    response->metadata.headers_pos += strftime(
+        response->metadata.headers_pos, 100, "%a, %d %b %Y %H:%M:%S", &t);
+    memcpy(response->metadata.headers_pos, " GMT\r\n", 6);
+    response->metadata.headers_pos += 6;
+    // last-modified header
+    gmtime_r(&response->last_modified, &t);
+    // response->metadata.headers_pos +=
+    //     strftime(response->metadata.headers_pos, 100,
+    //              "Last-Modified: %a, %d %b %Y %H:%M:%S GMT\r\n", &t);
+    memcpy(response->metadata.headers_pos, "Last-Modified: ", 15);
+    response->metadata.headers_pos += 15;
     response->metadata.headers_pos += strftime(
         response->metadata.headers_pos, 100, "%a, %d %b %Y %H:%M:%S", &t);
     memcpy(response->metadata.headers_pos, " GMT\r\n", 6);
@@ -564,8 +591,8 @@ static int write_body_move(struct HttpResponse* response,
 Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
 
-The server's outgoing buffer will take ownership of the body and free it's
-memory using `free` once the data was sent.
+The server's outgoing buffer will take ownership of the file and close it using
+`close` once the data was sent.
 
 If the connection was already closed, the function will return -1. On success,
 the function returns 0.
@@ -575,6 +602,34 @@ static int sendfile_req(struct HttpResponse* response,
                         size_t length) {
   if (!response->content_length)
     response->content_length = length;
+  send_response(response);
+  return Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
+                         pf);
+}
+/**
+Sends the complete file referenced by the `file_path` string.
+
+This function requires that the headers weren't previously sent and that the
+file exists.
+
+On failure, the function will return -1. On success, the function returns 0.
+*/
+static int sendfile_path(struct HttpResponse* response, char* file_path) {
+  if (response->metadata.headers_sent) {
+    return -1;
+  }
+
+  FILE* pf;
+  struct stat f_data;
+  if (stat(file_path, &f_data)) {
+    return -1;
+  }
+  pf = fopen(file_path, "rb");
+  if (!pf) {
+    return -1;
+  }
+  response->content_length = f_data.st_size;
+  response->last_modified = f_data.st_mtime;
   send_response(response);
   return Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
                          pf);
