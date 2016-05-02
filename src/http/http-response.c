@@ -631,8 +631,12 @@ static int sendfile_path(struct HttpResponse* response, char* file_path) {
   response->content_length = f_data.st_size;
   response->last_modified = f_data.st_mtime;
   send_response(response);
-  return Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
-                         pf);
+  if (Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
+                      pf)) {
+    fclose(pf);
+    return -1;
+  }
+  return 0;
 }
 /**
 Closes the connection.
