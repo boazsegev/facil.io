@@ -328,7 +328,7 @@ struct HttpResponseClass {
 
   This is equivelent to writing:
 
-       HttpResponse.write_header(* response, header, value, strlen(value));
+       HttpResponse.write_header(response, header, value, strlen(value));
 
        If the header buffer is full or the headers were already sent (new
   headers
@@ -411,8 +411,8 @@ struct HttpResponseClass {
   Sends the headers (if they weren't previously sent) and writes the data to the
   underlying socket.
 
-  The server's outgoing buffer will take ownership of the body and free it's
-  memory using `free` once the data was sent.
+  The server's outgoing buffer will take ownership of the file and close it
+  using `close` once the data was sent.
 
   If the connection was already closed, the function will return -1. On success,
   the function returns 0.
