@@ -397,6 +397,7 @@ Once the file was sent, the `FILE *` will be closed using `fclose`.
 The file will be buffered to the socket chunk by chunk, so that memory
 consumption is capped at ~ 64Kb.
 
+On error, returns -1. Returns 0 on success
 
 #### `void Server.rw_hooks(server_pt, uint64_t, *, *)` (see detailed description)
 
