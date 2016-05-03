@@ -347,7 +347,7 @@ start_flush:
         buffer->packet = buffer->packet->next;
         free_packet(packet);
         packet = NULL;
-      } else {  // this will be the last the file will offer.
+      } else {  // this will be the last the file packet for this file.
         // set the next packet.
         packet->next = buffer->packet->next;
         // free the file packet.

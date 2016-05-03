@@ -1,6 +1,6 @@
 # The Reactor Library - KQueue/EPoll abstraction
 
-The Reactor library, `libreact` is a KQueue/EPoll abstraction and is part of`lib-server`'s core.
+The Reactor library, `libreact` is a KQueue/EPoll abstraction and is part of [`lib-server`'s](./lib-server.md) core.
 
 `libreact` requires only the following two files from this repository: [`src/libreact.h`](../src/libreact.h) and [`src/libreact.c`](../src/libreact.c).
 
