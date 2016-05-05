@@ -98,7 +98,7 @@ So I decided to brush up my C programming skills... like an old man tinkering wi
 
 Anyway, Along the way I wrote:
 
-## [`libasync`](src/libasync.h) - A native POSIX (`pthread`) thread pool.
+## [`libasync`](docs/libasync.md) - A native POSIX (`pthread`) thread pool.
 
  `libasync` is a simple thread pool that uses POSIX threads (and could be easily ported).
 
@@ -133,7 +133,7 @@ int main(void) {
 
 To use this library you only need the `libasync.h` and `libasync.c` files.
 
-## [`libreact`](src/libreact.h) - KQueue/EPoll abstraction.
+## [`libreact`](docs/libreact.md) - KQueue/EPoll abstraction.
 
 It's true, some server programs still use `select` and `poll`... but they really shouldn't be (don't get me started).
 
@@ -147,7 +147,7 @@ It seems to me, that since both `libevent` and `libev` are so all-encompassing, 
 
 To use this library you only need the `libreact.h` and `libreact.c` files.
 
-## [`lib-server`](src/lib-server.h) - a server building library.
+## [`lib-server`](docs/lib-server.md) - a server building library.
 
 Writing server code is fun... but in limited and controlled amounts... after all, much of it is simple code being repeated endlessly, connecting one piece of code with a different piece of code.
 
@@ -221,7 +221,7 @@ In addition to multi-threading, `lib-server` allows us to easily setup the netwo
 
 In other words, assume everything could run concurrently. `lib-server` will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your application.
 
-## [`http`](src/http/http.h) - a protocol for the web
+## [`http`](docs/http.md) - a protocol for the web
 
 All these libraries are used in a Ruby server I'm re-writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" in C, following to the `lib-server`'s protocol specs.
 
