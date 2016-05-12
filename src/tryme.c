@@ -7,8 +7,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
-#define THREAD_COUNT 1
+#define THREAD_COUNT 4
 
 #include "websockets.h"
 
@@ -85,8 +87,18 @@ void on_request(struct HttpRequest* request) {
 
     return;
   }
-  struct HttpResponse* response = HttpResponse.new(request);
-  HttpResponse.write_body(response, "Hello World!", 12);
+  struct HttpResponse* response = HttpResponse.create(request);
+
+  if (!strcmp(request->path, "/img")) {
+    if (HttpResponse.sendfile2(response,
+                               "/Users/2Be/Documents/Scratch/Bo.jpg")) {
+      response->status = 403;
+      HttpResponse.write_body(response, "Missing File!", 13);
+      goto cleanup;
+    }
+  } else
+    HttpResponse.write_body(response, "Hello World!", 12);
+cleanup:
   HttpResponse.destroy(response);
   // static char reply[] =
   //     "HTTP/1.1 200 OK\r\n"
@@ -97,6 +109,17 @@ void on_request(struct HttpRequest* request) {
   //     "Hello World!";
   //
   // Server.write(request->server, request->sockfd, reply, sizeof(reply));
+}
+
+void on_request_f(struct HttpRequest* request) {
+  static char reply[] =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Length: 12\r\n"
+      "Connection: keep-alive\r\n"
+      "Keep-Alive: timeout=2\r\n"
+      "\r\n"
+      "Hello World!";
+  Server.write(request->server, request->sockfd, reply, sizeof(reply));
 }
 
 /*****************************

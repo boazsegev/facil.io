@@ -1426,7 +1426,7 @@ static void perform_group_task(struct GroupTask* task) {
   // the maximum number of bytes to review (each bit == 1 fd);
   long fd_max = task->server->capacity;
   // continue cycle
-  while (fd_max < task->pos) {
+  while (task->pos < fd_max) {
     // the byte contains at least one bit marker for a task related fd
 
     // is it okay to perform the task?
@@ -1436,7 +1436,7 @@ static void perform_group_task(struct GroupTask* task) {
       if (perform_single_task(task->server, task->pos, task->task, task->arg))
         task->pos++;
       goto rescedule;
-    } else  // closed connection, ignore it and clear it's flag.
+    } else  // closed/same connection, ignore it.
       task->pos++;
   }
   // clear the task away...
