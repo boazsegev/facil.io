@@ -13,12 +13,18 @@ struct buffer_s {
   size_t size;
 };
 
+#pragma weak create_ws_buffer
 /** returns a buffer_s struct, with a buffer (at least) `size` long. */
-struct buffer_s create_buffer(size_t size);
+struct buffer_s create_ws_buffer(size_t size);
+
+#pragma weak resize_ws_buffer
 /** returns a buffer_s struct, with a buffer (at least) `size` long. */
-struct buffer_s resize_buffer(struct buffer_s);
+struct buffer_s resize_ws_buffer(struct buffer_s);
+
+#pragma weak free_ws_buffer
 /** releases an existing buffer. */
-void free_buffer(struct buffer_s);
+void free_ws_buffer(struct buffer_s);
+
 /** Sets the initial buffer size. (16Kb)*/
 #define WS_INITIAL_BUFFER_SIZE 16384
 
@@ -31,24 +37,24 @@ the code probably wouldn't offer a high performance boost.
 // buffer increments by 4,096 Bytes (4Kb)
 #define round_up_buffer_size(size) (((size) >> 12) + 1) << 12
 
-struct buffer_s create_buffer(size_t size) {
+struct buffer_s create_ws_buffer(size_t size) {
   struct buffer_s buff;
   buff.size = round_up_buffer_size(size);
   buff.data = malloc(buff.size);
   return buff;
 }
 
-struct buffer_s resize_buffer(struct buffer_s buff) {
+struct buffer_s resize_ws_buffer(struct buffer_s buff) {
   buff.size = round_up_buffer_size(buff.size);
   void* tmp = realloc(buff.data, buff.size);
   if (!tmp) {
-    free_buffer(buff);
+    free_ws_buffer(buff);
     buff.size = 0;
   }
   buff.data = tmp;
   return buff;
 }
-void free_buffer(struct buffer_s buff) {
+void free_ws_buffer(struct buffer_s buff) {
   if (buff.data)
     free(buff.data);
 }
@@ -338,7 +344,7 @@ static void on_data(server_pt server, uint64_t sockfd) {
         // review and resize the buffer's capacity - it can only grow.
         if (ws->length + ws->parser.length - ws->parser.received >
             ws->buffer.size) {
-          ws->buffer = resize_buffer(ws->buffer);
+          ws->buffer = resize_ws_buffer(ws->buffer);
           if (!ws->buffer.data) {
             // no memory.
             ws_close(ws);
@@ -438,7 +444,7 @@ static ws_s* new_websocket() {
   ws_s* ws = calloc(sizeof(*ws), 1);
 
   // setup the protocol & protocol callbacks
-  ws->buffer = create_buffer(WS_INITIAL_BUFFER_SIZE);
+  ws->buffer = create_ws_buffer(WS_INITIAL_BUFFER_SIZE);
   ws->protocol.ping = ping;
   ws->protocol.service = WEBSOCKET_PROTOCOL_ID_STR;
   ws->protocol.on_data = on_data;
@@ -456,7 +462,7 @@ static void destroy_ws(ws_s* ws) {
     }
     if (ws->on_close)
       ws->on_close(ws);
-    free_buffer(ws->buffer);
+    free_ws_buffer(ws->buffer);
     free(ws);
   }
 }
