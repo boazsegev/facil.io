@@ -289,7 +289,8 @@ extern const struct Server__API___ {
   global data in these locations. */
   void* (*get_udata)(server_pt server, uint64_t connection_id);
   /** Sets the opaque pointer to be associated with the connection. returns the
-  old pointer, if any. */
+  old pointer, if any. Check that the data was actually set using
+  `Server.get_udata`*/
   void* (*set_udata)(server_pt server, uint64_t connection_id, void* udata);
   /** Sets the timeout limit for the specified connectionl, in seconds, up to
   255 seconds (the maximum allowed timeout count). */

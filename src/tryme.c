@@ -74,6 +74,7 @@ The HTTP implementation
 */
 
 void on_request(struct HttpRequest* request) {
+  Server.set_udata(request->server, request->sockfd, (void*)request->sockfd);
   if (!strcmp(request->path, "/echo")) {
     websocket_upgrade(.request = request, .on_message = ws_echo,
                       .on_open = ws_open, .on_close = ws_close,
@@ -100,15 +101,12 @@ void on_request(struct HttpRequest* request) {
     HttpResponse.write_body(response, "Hello World!", 12);
 cleanup:
   HttpResponse.destroy(response);
-  // static char reply[] =
-  //     "HTTP/1.1 200 OK\r\n"
-  //     "Content-Length: 12\r\n"
-  //     "Connection: keep-alive\r\n"
-  //     "Keep-Alive: timeout=2\r\n"
-  //     "\r\n"
-  //     "Hello World!";
-  //
-  // Server.write(request->server, request->sockfd, reply, sizeof(reply));
+
+  fprintf(stderr, "udata %llu = %llu\n", request->sockfd,
+          (uint64_t)Server.get_udata(request->server, request->sockfd));
+  Server.set_udata(request->server, request->sockfd, NULL);
+  fprintf(stderr, "udata 0 = %d\n", (int)Server.get_udata(request->server, 0));
+  fprintf(stderr, "protocol 0 = %p\n", Server.get_protocol(request->server, 0));
 }
 
 void on_request_f(struct HttpRequest* request) {
@@ -122,13 +120,17 @@ void on_request_f(struct HttpRequest* request) {
   Server.write(request->server, request->sockfd, reply, sizeof(reply));
 }
 
+void on_init(server_pt srv) {
+  Server.set_udata(srv, 0, (void*)7777);
+}
+
 /*****************************
 The main function
 */
 
 int main(int argc, char const* argv[]) {
   start_http_server(on_request, "~/Documents/Scratch", .threads = THREAD_COUNT,
-                    .processes = 1);
+                    .processes = 1, .on_init = on_init);
   return 0;
 }
 

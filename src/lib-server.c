@@ -113,12 +113,13 @@ struct Server {
 
 /** valuates as FALSE (0) if the connection is valid and true if outdated */
 #define validate_connection(srv, conn)                                \
-  ((connection_data((srv), (conn)).counter != (conn).data.counter) && \
-   connection_data((srv), (conn)).protocol)
+  ((connection_data((srv), (conn)).counter != (conn).data.counter) || \
+   (connection_data((srv), (conn)).counter &&                         \
+    (connection_data((srv), (conn)).protocol == NULL)))
 
 /** returns a value if the connection isn't valid */
-#define validate_connection_or_return(srv, conn, ret) \
-  if (validate_connection((srv), (conn)))             \
+#define is_open_connection_or_return(srv, conn, ret) \
+  if (validate_connection((srv), (conn)))            \
     return (ret);
 
 // object accessing helper macros
@@ -600,27 +601,26 @@ static uint8_t is_busy(server_pt server, union fd_id cuuid) {
 /** Returns true if a specific connection is still valid (on_close hadn't
 completed) */
 static uint8_t is_open(server_pt server, union fd_id cuuid) {
-  return validate_connection(server, cuuid);
+  return !validate_connection(server, cuuid);
 }
 
 /// retrives the active protocol object for the requested file descriptor.
 static struct Protocol* get_protocol(server_pt server, union fd_id conn) {
-  validate_connection_or_return(server, conn, NULL);
+  is_open_connection_or_return(server, conn, NULL);
   return server->connections[conn.data.fd].protocol;
 }
 /// sets the active protocol object for the requested file descriptor.
 static int set_protocol(server_pt server,
                         union fd_id conn,
                         struct Protocol* new_protocol) {
-  validate_connection_or_return(server, conn, -1);
+  is_open_connection_or_return(server, conn, -1);
   // on_close and set_protocol should never conflict.
   // we should also prevent the same thread from deadlocking
   // (i.e., when on_close tries to update the protocol)
   if (pthread_mutex_trylock(&(server->lock)))
     return -1;
   // review the connection's validity again (in proteceted state)
-  if (validate_connection(server, conn) ||
-      !server->connections[conn.data.fd].protocol) {
+  if (validate_connection(server, conn)) {
     pthread_mutex_unlock(&(server->lock));
     // fprintf(stderr,
     //         "ERROR: Cannot set a protocol for a disconnected socket.\n");
@@ -639,17 +639,19 @@ connection.
 since no new connections are expected on fd == 0..2, it's possible to store
 global data in these locations. */
 static void* get_udata(server_pt server, union fd_id conn) {
-  validate_connection_or_return(server, conn, NULL);
+  if (validate_connection(server, conn))
+    return NULL;
   return server->connections[conn.data.fd].udata;
 }
 /** Sets the opaque pointer to be associated with the connection. returns the
 old pointer, if any.
 
-Returns NULL both on error (i.e. closed connection or old connection ID) and
+Returns NULL both on error (i.e. old connection ID) and
 sucess (no previous value). Check that the value was set using `get_udata`.
 */
 static void* set_udata(server_pt server, union fd_id conn, void* udata) {
-  validate_connection_or_return(server, conn, NULL);
+  if (validate_connection(server, conn))
+    return NULL;
   pthread_mutex_lock(&(server->lock));
   if (validate_connection(server, conn)) {
     pthread_mutex_unlock(&(server->lock));
@@ -1057,6 +1059,8 @@ static int srv_attach_core(server_pt server,
   if (_protocol_(server, sockfd)) {
     on_close((struct Reactor*)server, sockfd);
   }
+  // udata can be set and received for closed connections
+  clear_conn_data(server, sockfd);
   // setup protocol
   _protocol_(server, sockfd) = protocol;  // set_protocol() would cost more
   // setup timeouts
@@ -1103,8 +1107,7 @@ resources. The control of the socket is totally relinquished.
 This method will block until all the data in the buffer is sent before
 releasing control of the socket. */
 static int srv_hijack(server_pt server, union fd_id conn) {
-  if (validate_connection(server, conn) || !_protocol_(server, conn.data.fd))
-    return -1;
+  is_open_connection_or_return(server, conn, -1);
   reactor_remove((struct Reactor*)server, conn.data.fd);
   while (!Buffer.is_empty(_connection_(server, conn.data.fd).buffer) &&
          Buffer.flush(_connection_(server, conn.data.fd).buffer,
@@ -1199,7 +1202,7 @@ static ssize_t srv_write(server_pt server,
                          union fd_id conn,
                          void* data,
                          size_t len) {
-  validate_connection_or_return(server, conn, -1);
+  is_open_connection_or_return(server, conn, -1);
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
@@ -1218,7 +1221,7 @@ static ssize_t srv_write_move(server_pt server,
                               union fd_id conn,
                               void* data,
                               size_t len) {
-  validate_connection_or_return(server, conn, -1);
+  is_open_connection_or_return(server, conn, -1);
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
@@ -1241,7 +1244,7 @@ static ssize_t srv_write_urgent(server_pt server,
                                 union fd_id conn,
                                 void* data,
                                 size_t len) {
-  validate_connection_or_return(server, conn, -1);
+  is_open_connection_or_return(server, conn, -1);
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
@@ -1266,7 +1269,7 @@ static ssize_t srv_write_move_urgent(server_pt server,
                                      union fd_id conn,
                                      void* data,
                                      size_t len) {
-  validate_connection_or_return(server, conn, -1);
+  is_open_connection_or_return(server, conn, -1);
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
@@ -1284,7 +1287,7 @@ The file will be buffered to the socket chunk by chunk, so that memory
 consumption is capped at ~ 64Kb.
 */
 static ssize_t srv_sendfile(server_pt server, union fd_id conn, FILE* file) {
-  validate_connection_or_return(server, conn, -1);
+  is_open_connection_or_return(server, conn, -1);
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
@@ -1315,7 +1318,7 @@ static inline int perform_single_task(server_pt srv,
                                                    uint64_t connection_id,
                                                    void* arg),
                                       void* arg) {
-  validate_connection_or_return(srv, ((union fd_id)connection_id), 0);
+  is_open_connection_or_return(srv, ((union fd_id)connection_id), 0);
   if (set_to_busy(srv, ((union fd_id)connection_id).data.fd)) {
     // perform the task
     task(srv, connection_id, arg);
@@ -1507,19 +1510,17 @@ static int fd_task(server_pt server,
                    void (*fallback)(server_pt server,
                                     uint64_t conn,
                                     void* arg)) {
-  if (validate_connection(server, conn)) {
-    struct FDTask* msg = new_fd_task(server);
-    if (!msg)
-      return -1;
-    *msg = (struct FDTask){.conn_id = conn,
-                           .server = server,
-                           .task = task,
-                           .arg = arg,
-                           .fallback = fallback};
-    Async.run(server->async, (void (*)(void*)) & perform_fd_task, msg);
-    return 0;
-  }
-  return -1;
+  is_open_connection_or_return(server, conn, -1);
+  struct FDTask* msg = new_fd_task(server);
+  if (!msg)
+    return -1;
+  *msg = (struct FDTask){.conn_id = conn,
+                         .server = server,
+                         .task = task,
+                         .arg = arg,
+                         .fallback = fallback};
+  Async.run(server->async, (void (*)(void*)) & perform_fd_task, msg);
+  return 0;
 }
 /** Runs an asynchronous task, IF threading is enabled (set the
 `threads` to 1 (the default) or greater).

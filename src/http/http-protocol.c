@@ -612,6 +612,9 @@ finish:
     len = len - pos;
     pos = 0;
     Server.set_udata(server, sockfd, request);
+    if (Server.get_udata(server, sockfd) != request) {
+      goto cleanup_after_finish;
+    }
     goto parse;
   }
   if (len == HTTP_HEAD_MAX_SIZE) {
