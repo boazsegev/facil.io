@@ -285,15 +285,36 @@ The function's prototype looks like so:
 ```c
 int HttpResponse.write_header(struct HttpResponse*,
                               const char* header,
+                              size_t header_len,
                               const char* value,
                               size_t value_len);
 ```
 
-Writes a header to the response. This function writes only the requested number of bytes from the header value and can be used even when the header value doesn't contain a NULL terminating byte.
+Writes a header to the response. This function writes only the requested number of bytes from the header name and value. It can be used even when the header's name or value don't contain a NULL terminating byte.
 
 On error, i.e., if the header buffer is full or the headers were already sent (new headers cannot be sent), the function will return -1.
 
 On success, the function returns 0.
+
+#### `int HttpResponse.write_header1( ... )`
+
+The function's prototype looks like so:
+
+```c
+int HttpResponse.write_header1(struct HttpResponse*,
+                              const char* header,
+                              const char* value,
+                              size_t value_len);
+```
+
+Writes a header to the response.
+
+This is equivalent to writing:
+
+```c
+HttpResponse.write_header(response, header, strlen(header), value, value_len);
+```
+
 
 #### `int HttpResponse.write_header2( ... )`
 
@@ -310,7 +331,7 @@ Writes a header to the response.
 This is equivalent to writing:
 
 ```c
-HttpResponse.write_header(response, header, value, strlen(value));
+HttpResponse.write_header(response, header, strlen(header), value, strlen(value));
 ```
 
 If the header buffer is full or the headers were already sent (new
