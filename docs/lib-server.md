@@ -332,6 +332,8 @@ Since no new connections are expected on fd == 0..2, it's possible to store glob
 
 Sets the opaque pointer to be associated with the connection. Returns the old pointer, if any.
 
+Since the function always returns NULL when initially setting data and otherwise might fail (i.e. invalid connection ID), `Server.get_udata` should be used to check that the data was actually set.
+
 #### `void Server.set_timeout(server_pt server, uint64_t connection_id, uint8_t timeout)`
 
 Sets the timeout limit for the specified connection, in seconds, up to 255 seconds (the maximum allowed timeout count).
