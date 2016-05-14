@@ -496,16 +496,16 @@ static char* prep_headers(struct HttpResponse* response) {
   char* status = HttpStatus.to_s(response->status);
   if (!status)
     return NULL;
-  // write the content length header, Always (even if 0)
-  // if (response->content_length) {
-  memcpy(response->metadata.headers_pos, "Content-Length: ", 16);
-  response->metadata.headers_pos += 16;
-  response->metadata.headers_pos +=
-      sprintf(response->metadata.headers_pos, "%lu", response->content_length);
-  // write the header seperator (`\r\n`)
-  *(response->metadata.headers_pos++) = '\r';
-  *(response->metadata.headers_pos++) = '\n';
-  // }
+  // write the content length header, unless forced not to (<0)
+  if (!(response->content_length < 0)) {
+    memcpy(response->metadata.headers_pos, "Content-Length: ", 16);
+    response->metadata.headers_pos += 16;
+    response->metadata.headers_pos += sprintf(response->metadata.headers_pos,
+                                              "%lu", response->content_length);
+    // write the header seperator (`\r\n`)
+    *(response->metadata.headers_pos++) = '\r';
+    *(response->metadata.headers_pos++) = '\n';
+  }
   // write the date, if missing
   if (!response->metadata.date_written) {
     if (response->date < response->last_modified)

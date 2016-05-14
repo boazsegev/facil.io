@@ -204,11 +204,11 @@ This is the main object's structure:
 
 ```c
 struct HttpResponse {
-  size_t content_length; // The body's response length (if any).
+  int status; // The response's status.
+  ssize_t content_length; // The body's response length (if any). set to -1 to ignore.
   time_t date; // The HTTP date for the response (in seconds since epoche). Defaults to now.
   time_t last_modified; // The HTTP caching date for the response. Defaults to now.
   char header_buffer[]; // for internal use (The actual header data).
-  int status; // The response's status.
   struct {} metadata; // for internal use.
 };
 ```
@@ -241,6 +241,8 @@ The HttpResponse data should be quite self explanatory, so for brevity's sake on
 That said, it should be noted:
 
 To set a response's content length, use `response->content_length` or, if sending the body using a single `write`, it's possible to leave out the content-length header (see `HttpResponse.write_body` for more details).
+
+Set the `response->content_length` to `-1` to circumvent the `HttpResponse` object's "Content-Length" header handling.
 
 The same goes for setting the response's date or caching time-stamp (Last-Modified).
 

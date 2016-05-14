@@ -65,8 +65,11 @@ struct HttpResponse {
   `HttpResponse.write_body` (and friends) will set the length to the length
   being written (which might be less then the total data sent, if the sending is
   fragmented).
+
+  Set the value to -1 to force the HttpResponse not to write nor automate the
+  `Content-Length` header.
   */
-  size_t content_length;
+  ssize_t content_length;
   /**
   The HTTP date for the response (in seconds since epoche).
 
