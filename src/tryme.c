@@ -89,16 +89,7 @@ void on_request(struct HttpRequest* request) {
     return;
   }
   struct HttpResponse* response = HttpResponse.create(request);
-
-  if (!strcmp(request->path, "/img")) {
-    if (HttpResponse.sendfile2(response,
-                               "/Users/2Be/Documents/Scratch/Bo.jpg")) {
-      response->status = 403;
-      HttpResponse.write_body(response, "Missing File!", 13);
-      goto cleanup;
-    }
-  } else
-    HttpResponse.write_body(response, "Hello World!", 12);
+  HttpResponse.write_body(response, "Hello World!", 12);
 cleanup:
   HttpResponse.destroy(response);
 

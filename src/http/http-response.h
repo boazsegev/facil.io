@@ -136,9 +136,13 @@ struct HttpResponse {
     */
     unsigned connection_written : 1;
     /**
+    Set to true when the "Content-Length" header is written to the buffer.
+    */
+    unsigned connection_len_written : 1;
+    /**
     Reserved for future use.
     */
-    unsigned rsrv : 3;
+    unsigned rsrv : 2;
     /**
     An opaque user data flag.
     */

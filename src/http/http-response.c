@@ -267,6 +267,7 @@ static void reset(struct HttpResponse* response, struct HttpRequest* request) {
   response->status = 200;
   response->metadata.headers_sent = 0;
   response->metadata.connection_written = 0;
+  response->metadata.connection_len_written = 0;
   response->metadata.date_written = 0;
   response->metadata.headers_pos = response->header_buffer + HTTP_HEADER_START;
   response->metadata.fd_uuid = request->sockfd;
@@ -331,6 +332,8 @@ static int write_header_data2(struct HttpResponse* response,
     response->metadata.date_written = 1;
   } else if (!strcasecmp("Connection", header)) {
     response->metadata.connection_written = 1;
+  } else if (!strcasecmp("Content-Length", header)) {
+    response->metadata.connection_len_written = 1;
   }
   // write the header name to the buffer
   memcpy(response->metadata.headers_pos, header, header_len);
@@ -497,7 +500,8 @@ static char* prep_headers(struct HttpResponse* response) {
   if (!status)
     return NULL;
   // write the content length header, unless forced not to (<0)
-  if (!(response->content_length < 0)) {
+  if (response->metadata.connection_len_written == 0 &&
+      !(response->content_length < 0)) {
     memcpy(response->metadata.headers_pos, "Content-Length: ", 16);
     response->metadata.headers_pos += 16;
     response->metadata.headers_pos += sprintf(response->metadata.headers_pos,
