@@ -311,8 +311,9 @@ extern struct HttpResponseClass {
   char* (*status_str)(struct HttpResponse*);
   /**
   Writes a header to the response. This function writes only the requested
-  number of bytes from the header value and can be used even when the header
-  value doesn't contain a NULL terminating byte.
+  number of bytes from the header name and the requested number of bytes from
+  the header value. It can be used even when the header name and value don't
+  contain NULL terminating bytes.
 
   If the header buffer is full or the headers were already sent (new headers
   cannot be sent), the function will return -1.
@@ -321,8 +322,23 @@ extern struct HttpResponseClass {
   */
   int (*write_header)(struct HttpResponse*,
                       const char* header,
+                      size_t header_len,
                       const char* value,
                       size_t value_len);
+  /**
+  Writes a header to the response. This function writes only the requested
+  number of bytes from the header value and can be used even when the header
+  value doesn't contain a NULL terminating byte.
+
+  If the header buffer is full or the headers were already sent (new headers
+  cannot be sent), the function will return -1.
+
+  On success, the function returns 0.
+  */
+  int (*write_header1)(struct HttpResponse*,
+                       const char* header,
+                       const char* value,
+                       size_t value_len);
   /**
   Writes a header to the response.
 

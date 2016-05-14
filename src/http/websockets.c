@@ -605,9 +605,9 @@ static void upgrade(struct WebsocketSettings settings) {
   // upgrade taking place, make sure the upgrade headers are valid for the
   // response.
   response->status = 101;
-  HttpResponse.write_header(response, "Connection", "upgrade", 7);
-  HttpResponse.write_header(response, "Upgrade", "websocket", 9);
-  HttpResponse.write_header(response, "sec-websocket-version", "13", 2);
+  HttpResponse.write_header(response, "Connection", 10, "upgrade", 7);
+  HttpResponse.write_header(response, "Upgrade", 7, "websocket", 9);
+  HttpResponse.write_header(response, "sec-websocket-version", 21, "13", 2);
   // websocket extentions (none)
   // the accept Base64 Hash - we need to compute this one and set it
   if (!HttpRequest.find(settings.request, "SEC-WEBSOCKET-KEY"))
@@ -628,8 +628,8 @@ static void upgrade(struct WebsocketSettings settings) {
   int len =
       MiniCrypt.base64_encode(websockets_key, MiniCrypt.sha1_result(&sha1), 20);
   // set the string's length and encoding
-  HttpResponse.write_header(response, "Sec-WebSocket-Accept", websockets_key,
-                            len);
+  HttpResponse.write_header(response, "Sec-WebSocket-Accept", 20,
+                            websockets_key, len);
 
   goto cleanup;
 refuse:

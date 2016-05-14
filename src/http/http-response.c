@@ -58,10 +58,23 @@ doesn't contain a NULL terminating byte.
 If the headers were already sent, new headers cannot be sent and the function
 will return -1. On success, the function returns 0.
 */
-static int write_header_data(struct HttpResponse*,
-                             const char* header,
-                             const char* value,
-                             size_t value_len);
+static int write_header_data1(struct HttpResponse*,
+                              const char* header,
+                              const char* value,
+                              size_t value_len);
+/**
+Writes a header to the response. This function writes only the requested
+number of bytes from the header value and should be used when the header value
+doesn't contain a NULL terminating byte.
+
+If the headers were already sent, new headers cannot be sent and the function
+will return -1. On success, the function returns 0.
+*/
+static int write_header_data2(struct HttpResponse*,
+                              const char* header,
+                              size_t header_len,
+                              const char* value,
+                              size_t value_len);
 
 /**
 Set / Delete a cookie using this helper function.
@@ -171,7 +184,8 @@ struct HttpResponseClass HttpResponse = {
     .pool_limit = 64,
     .reset = reset,
     .status_str = status_str,
-    .write_header = write_header_data,
+    .write_header = write_header_data2,
+    .write_header1 = write_header_data1,
     .write_header2 = write_header_cstr,
     .set_cookie = set_cookie,
     .printf = response_printf,
@@ -277,7 +291,8 @@ will return -1. On success, the function returns 0.
 static int write_header_cstr(struct HttpResponse* response,
                              const char* header,
                              const char* value) {
-  return write_header_data(response, header, value, strlen(value));
+  return write_header_data2(response, header, strlen(header), value,
+                            strlen(value));
 }
 /**
 Writes a header to the response. This function writes only the requested
@@ -287,12 +302,25 @@ doesn't contain a NULL terminating byte.
 If the headers were already sent, new headers cannot be sent and the function
 will return -1. On success, the function returns 0.
 */
-static int write_header_data(struct HttpResponse* response,
-                             const char* header,
-                             const char* value,
-                             size_t value_len) {
-  // check for space in the buffer
-  size_t header_len = strlen(header);
+static int write_header_data1(struct HttpResponse* response,
+                              const char* header,
+                              const char* value,
+                              size_t value_len) {
+  return write_header_data2(response, header, strlen(header), value, value_len);
+}
+/**
+Writes a header to the response. This function writes only the requested
+number of bytes from the header value and should be used when the header value
+doesn't contain a NULL terminating byte.
+
+If the headers were already sent, new headers cannot be sent and the function
+will return -1. On success, the function returns 0.
+*/
+static int write_header_data2(struct HttpResponse* response,
+                              const char* header,
+                              size_t header_len,
+                              const char* value,
+                              size_t value_len) {
   if (response->metadata.headers_sent ||
       (header_len + value_len + 4 +
            (response->metadata.headers_pos - response->header_buffer) >=
