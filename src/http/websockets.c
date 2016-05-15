@@ -11,6 +11,10 @@ Buffer management - update to change the way the buffer is handled.
 struct buffer_s {
   void* data;
   size_t size;
+  /** This can be used to store extra information about the buffer when
+   * overriding the `create_ws_buffer` functions to implement a custom buffer.
+   * Alternatively, this extra field can be removed. */
+  void* extra;
 };
 
 #pragma weak create_ws_buffer
@@ -647,6 +651,8 @@ cleanup:
   if (response->status == 101 &&
       Server.set_protocol(settings.request->server, settings.request->sockfd,
                           (void*)ws) == 0) {
+    Server.set_timeout(settings.request->server, settings.request->sockfd,
+                       Websocket.timeout);
     if (settings.on_open)
       settings.on_open(ws);
   } else {

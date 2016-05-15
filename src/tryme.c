@@ -90,7 +90,6 @@ void on_request(struct HttpRequest* request) {
   }
   struct HttpResponse* response = HttpResponse.create(request);
   HttpResponse.write_body(response, "Hello World!", 12);
-cleanup:
   HttpResponse.destroy(response);
 
   fprintf(stderr, "udata %llu = %llu\n", request->sockfd,

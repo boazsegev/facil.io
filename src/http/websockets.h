@@ -62,9 +62,9 @@ struct WebsocketSettings {
  * allows the use of named arguments, using the WebsocketSettings struct
  * members. i.e.:
  *
- *     on_message(ws_s * ws, char * data) {
+ *     on_message(ws_s * ws, char * data, size_t size, int is_text) {
  *        ; // ... this is the websocket on_message callback
- *        Websocket.write(ws, data); // a simple echo example
+ *        Websocket.write(ws, data, size, is_text); // a simple echo example
  *     }
  *
  *     on_request(struct HttpRequest* request) {
@@ -106,8 +106,6 @@ extern struct Websockets_API__ {
   void (*close)(ws_s* ws);
   /**
   Performs a task on each websocket connection that shares the same process.
-
-  NOT IMPLEMENTED.
    */
   int (*each)(ws_s* ws_originator,
               void (*task)(ws_s* ws_target, void* arg),
