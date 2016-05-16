@@ -111,6 +111,10 @@ extern struct Websockets_API__ {
               void (*task)(ws_s* ws_target, void* arg),
               void* arg,
               void (*on_finish)(ws_s* ws_originator, void* arg));
+  /**
+  Counts the number of websocket connections.
+  */
+  long (*count)(ws_s* ws);
 } Websocket;
 
 #endif

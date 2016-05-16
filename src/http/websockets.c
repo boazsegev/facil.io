@@ -11,23 +11,19 @@ Buffer management - update to change the way the buffer is handled.
 struct buffer_s {
   void* data;
   size_t size;
-  /** This can be used to store extra information about the buffer when
-   * overriding the `create_ws_buffer` functions to implement a custom buffer.
-   * Alternatively, this extra field can be removed. */
-  void* extra;
 };
 
 #pragma weak create_ws_buffer
 /** returns a buffer_s struct, with a buffer (at least) `size` long. */
-struct buffer_s create_ws_buffer(size_t size);
+struct buffer_s create_ws_buffer(ws_s* owner);
 
 #pragma weak resize_ws_buffer
 /** returns a buffer_s struct, with a buffer (at least) `size` long. */
-struct buffer_s resize_ws_buffer(struct buffer_s);
+struct buffer_s resize_ws_buffer(ws_s* owner, struct buffer_s);
 
 #pragma weak free_ws_buffer
 /** releases an existing buffer. */
-void free_ws_buffer(struct buffer_s);
+void free_ws_buffer(ws_s* owner, struct buffer_s);
 
 /** Sets the initial buffer size. (16Kb)*/
 #define WS_INITIAL_BUFFER_SIZE 16384
@@ -41,24 +37,24 @@ the code probably wouldn't offer a high performance boost.
 // buffer increments by 4,096 Bytes (4Kb)
 #define round_up_buffer_size(size) (((size) >> 12) + 1) << 12
 
-struct buffer_s create_ws_buffer(size_t size) {
+struct buffer_s create_ws_buffer(ws_s* owner) {
   struct buffer_s buff;
-  buff.size = round_up_buffer_size(size);
+  buff.size = round_up_buffer_size(WS_INITIAL_BUFFER_SIZE);
   buff.data = malloc(buff.size);
   return buff;
 }
 
-struct buffer_s resize_ws_buffer(struct buffer_s buff) {
+struct buffer_s resize_ws_buffer(ws_s* owner, struct buffer_s buff) {
   buff.size = round_up_buffer_size(buff.size);
   void* tmp = realloc(buff.data, buff.size);
   if (!tmp) {
-    free_ws_buffer(buff);
+    free_ws_buffer(owner, buff);
     buff.size = 0;
   }
   buff.data = tmp;
   return buff;
 }
-void free_ws_buffer(struct buffer_s buff) {
+void free_ws_buffer(ws_s* owner, struct buffer_s buff) {
   if (buff.data)
     free(buff.data);
 }
@@ -92,7 +88,10 @@ static int ws_each(ws_s* ws_originator,
                    void (*task)(ws_s* ws_target, void* arg),
                    void* arg,
                    void (*on_finish)(ws_s* ws_originator, void* arg));
-
+/**
+Counts the number of websocket connections.
+*/
+static long ws_count(ws_s* ws);
 /*******************************************************************************
 The API container
 */
@@ -104,6 +103,7 @@ struct Websockets_API__ Websocket = {
     .write = ws_write,
     .close = ws_close,
     .each = ws_each,
+    .count = ws_count,
     .get_udata = get_udata,
     .set_udata = set_udata,
     .get_server = get_server,
@@ -166,6 +166,7 @@ struct Websocket {
       unsigned has_len : 1;
       unsigned at_len : 3;
       unsigned busy : 1;
+      unsigned client : 1;
     } state;
   } parser;
 };
@@ -348,7 +349,7 @@ static void on_data(server_pt server, uint64_t sockfd) {
         // review and resize the buffer's capacity - it can only grow.
         if (ws->length + ws->parser.length - ws->parser.received >
             ws->buffer.size) {
-          ws->buffer = resize_ws_buffer(ws->buffer);
+          ws->buffer = resize_ws_buffer(ws, ws->buffer);
           if (!ws->buffer.data) {
             // no memory.
             ws_close(ws);
@@ -448,7 +449,6 @@ static ws_s* new_websocket() {
   ws_s* ws = calloc(sizeof(*ws), 1);
 
   // setup the protocol & protocol callbacks
-  ws->buffer = create_ws_buffer(WS_INITIAL_BUFFER_SIZE);
   ws->protocol.ping = ping;
   ws->protocol.service = WEBSOCKET_PROTOCOL_ID_STR;
   ws->protocol.on_data = on_data;
@@ -466,7 +466,7 @@ static void destroy_ws(ws_s* ws) {
     }
     if (ws->on_close)
       ws->on_close(ws);
-    free_ws_buffer(ws->buffer);
+    free_ws_buffer(ws, ws->buffer);
     free(ws);
   }
 }
@@ -481,7 +481,7 @@ static void websocket_write(server_pt srv,
                             uint64_t fd,
                             void* data,
                             size_t len,
-                            char text,
+                            char text, /* TODO: add client masking */
                             char first,
                             char last) {
   if (len < 126) {
@@ -610,6 +610,8 @@ static void upgrade(struct WebsocketSettings settings) {
   ws->on_open = settings.on_open;
   ws->on_message = settings.on_message;
   ws->on_shutdown = settings.on_shutdown;
+  // setup any user data
+  ws->udata = settings.udata;
 
   char* recv_str;
   // upgrade taking place, make sure the upgrade headers are valid for the
@@ -632,7 +634,6 @@ static void upgrade(struct WebsocketSettings settings) {
   MiniCrypt.sha1_init(&sha1);
   MiniCrypt.sha1_write(&sha1, recv_str, strlen(recv_str));
   MiniCrypt.sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
-  // create a ruby stribg to contain the data
   // base encode the data
   char websockets_key[32];
   int len =
@@ -651,6 +652,9 @@ cleanup:
   if (response->status == 101 &&
       Server.set_protocol(settings.request->server, settings.request->sockfd,
                           (void*)ws) == 0) {
+    // we have an active websocket connection - prep the connection buffer
+    ws->buffer = create_ws_buffer(ws);
+    // update the timeout
     Server.set_timeout(settings.request->server, settings.request->sockfd,
                        Websocket.timeout);
     if (settings.on_open)
@@ -702,4 +706,10 @@ static int ws_each(ws_s* ws_originator,
   return Server.each(ws_originator->srv, ws_originator->fd,
                      WEBSOCKET_PROTOCOL_ID_STR, perform_ws_task, tsk,
                      finish_ws_task);
+}
+/**
+Counts the number of websocket connections.
+*/
+static long ws_count(ws_s* ws) {
+  return Server.count(ws->srv, WEBSOCKET_PROTOCOL_ID_STR);
 }
