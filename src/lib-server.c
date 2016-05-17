@@ -133,7 +133,7 @@ struct Server {
 /** gets a specific protocol from a server's connection. */
 #define _protocol_(reactor, fd) (_connection_((reactor), (fd))).protocol
 /** gets a server connection's UUID. */
-#define _fd_uuid_(reactor, sfd)                                            \
+#define _fd2uuid_(reactor, sfd)                                            \
   (((union fd_id){.data.fd = (sfd),                                        \
                   .data.counter = _connection_((reactor), (sfd)).counter}) \
        .uuid)
@@ -685,11 +685,11 @@ static void clear_conn_data(server_pt server, int fd) {
 // on_ready, handles async buffer sends
 static void on_ready(struct Reactor* reactor, int fd) {
   if (Buffer.flush(_server_(reactor)->connections[fd].buffer,
-                   _fd_uuid_(reactor, fd)) > 0)
+                   _fd2uuid_(reactor, fd)) > 0)
     _server_(reactor)->connections[fd].idle = 0;
   if (_protocol_(reactor, fd) && _protocol_(reactor, fd)->on_ready)
     _protocol_(reactor, fd)
-        ->on_ready(_server_(reactor), _fd_uuid_(reactor, fd));
+        ->on_ready(_server_(reactor), _fd2uuid_(reactor, fd));
 }
 
 /// called for any open file descriptors when the reactor is shutting down.
@@ -697,7 +697,7 @@ static void on_shutdown(struct Reactor* reactor, int fd) {
   // call the callback for the mentioned active(?) connection.
   if (_protocol_(reactor, fd) && _protocol_(reactor, fd)->on_shutdown)
     _protocol_(reactor, fd)
-        ->on_shutdown(_server_(reactor), _fd_uuid_(reactor, fd));
+        ->on_shutdown(_server_(reactor), _fd2uuid_(reactor, fd));
 }
 
 // called when a file descriptor was closed (either locally or by the other
@@ -719,7 +719,7 @@ static void on_close(struct Reactor* reactor, int fd) {
   if (_protocol_(reactor, fd)) {
     if (_protocol_(reactor, fd)->on_close)
       _protocol_(reactor, fd)
-          ->on_close(_server_(reactor), _fd_uuid_(reactor, fd));
+          ->on_close(_server_(reactor), _fd2uuid_(reactor, fd));
     clear_conn_data(_server_(reactor), fd);
   }
   pthread_mutex_unlock(&(_server_(reactor)->lock));
@@ -1079,7 +1079,7 @@ static int srv_attach_core(server_pt server,
   }
   // call on_open
   if (protocol->on_open)
-    protocol->on_open(server, _fd_uuid_(server, sockfd));
+    protocol->on_open(server, _fd2uuid_(server, sockfd));
   _connection_(server, sockfd).busy = 0;
   return 0;
 }
@@ -1392,7 +1392,7 @@ struct GroupTask* new_group_task(server_pt srv) {
   if (srv->group_task_pool) {
     ret = srv->group_task_pool;
     srv->group_task_pool = srv->group_task_pool->next;
-    --srv->group_task_pool_size;
+    --(srv->group_task_pool_size);
     pthread_mutex_unlock(&srv->task_lock);
     memset(ret, 0, sizeof(*ret));
     return ret;
@@ -1421,14 +1421,14 @@ void destroy_group_task(server_pt srv, struct GroupTask* task) {
   }
   task->next = srv->group_task_pool;
   srv->group_task_pool = task;
-  ++srv->group_task_pool_size;
+  ++(srv->group_task_pool_size);
   pthread_mutex_unlock(&srv->task_lock);
 }
 
 static void perform_group_task(struct GroupTask* task) {
-  // the maximum number of bytes to review (each bit == 1 fd);
+  // the maximum number of connections to review
   long fd_max = task->server->capacity;
-  // continue cycle
+  // continue cycle from the point where it was left off
   while (task->pos < fd_max) {
     // the byte contains at least one bit marker for a task related fd
 
@@ -1436,7 +1436,7 @@ static void perform_group_task(struct GroupTask* task) {
     if (task->pos != server_uuid_to_fd(task->conn_origin) &&
         check_if_connection_fits_service(task->server, task->pos,
                                          task->service)) {
-      if (perform_single_task(task->server, _fd_uuid_(task->server, task->pos),
+      if (perform_single_task(task->server, _fd2uuid_(task->server, task->pos),
                               task->task, task->arg))
         task->pos++;
       goto rescedule;
@@ -1447,11 +1447,6 @@ static void perform_group_task(struct GroupTask* task) {
   if (task->on_finished) {
     fd_task(task->server, (union fd_id)task->conn_origin, task->on_finished,
             task->arg, task->on_finished);
-    // task->on_finished(task->server, task->conn_origin, task->arg);
-    // if (fd_task(task->server, (union fd_id)task->conn_origin,
-    // task->on_finished,
-    //             task->arg, task->on_finished))
-    //   task->on_finished(task->server, task->conn_origin, task->arg);
   }
   destroy_group_task(task->server, task);
   return;
