@@ -1319,11 +1319,11 @@ static inline int perform_single_task(server_pt srv,
                                                    void* arg),
                                       void* arg) {
   is_open_connection_or_return(srv, ((union fd_id)connection_id), 0);
-  if (set_to_busy(srv, ((union fd_id)connection_id).data.fd)) {
+  if (set_to_busy(srv, server_uuid_to_fd(connection_id))) {
     // perform the task
     task(srv, connection_id, arg);
     // release the busy flag
-    _connection_(srv, connection_id).busy = 0;
+    _connection_(srv, server_uuid_to_fd(connection_id)).busy = 0;
     // return completion flag;
     return 1;
   }
@@ -1394,11 +1394,11 @@ struct GroupTask* new_group_task(server_pt srv) {
     srv->group_task_pool = srv->group_task_pool->next;
     --srv->group_task_pool_size;
     pthread_mutex_unlock(&srv->task_lock);
+    memset(ret, 0, sizeof(*ret));
     return ret;
   }
   pthread_mutex_unlock(&srv->task_lock);
-  ret = malloc(sizeof(*ret));
-  memset(ret, 0, sizeof(*ret));
+  ret = calloc(sizeof(*ret), 1);
   return ret;
 }
 void destroy_group_task(server_pt srv, struct GroupTask* task) {
@@ -1436,7 +1436,8 @@ static void perform_group_task(struct GroupTask* task) {
     if (task->pos != server_uuid_to_fd(task->conn_origin) &&
         check_if_connection_fits_service(task->server, task->pos,
                                          task->service)) {
-      if (perform_single_task(task->server, task->pos, task->task, task->arg))
+      if (perform_single_task(task->server, _fd_uuid_(task->server, task->pos),
+                              task->task, task->arg))
         task->pos++;
       goto rescedule;
     } else  // closed/same connection, ignore it.
@@ -1444,9 +1445,13 @@ static void perform_group_task(struct GroupTask* task) {
   }
   // clear the task away...
   if (task->on_finished) {
-    if (fd_task(task->server, (union fd_id)task->conn_origin, task->on_finished,
-                task->arg, task->on_finished))
-      task->on_finished(task->server, task->conn_origin, task->arg);
+    fd_task(task->server, (union fd_id)task->conn_origin, task->on_finished,
+            task->arg, task->on_finished);
+    // task->on_finished(task->server, task->conn_origin, task->arg);
+    // if (fd_task(task->server, (union fd_id)task->conn_origin,
+    // task->on_finished,
+    //             task->arg, task->on_finished))
+    //   task->on_finished(task->server, task->conn_origin, task->arg);
   }
   destroy_group_task(task->server, task);
   return;
