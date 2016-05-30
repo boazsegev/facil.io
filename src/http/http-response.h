@@ -140,9 +140,13 @@ struct HttpResponse {
     */
     unsigned connection_len_written : 1;
     /**
+    Set to true in order to close the connection once the response was sent.
+    */
+    unsigned should_close : 1;
+    /**
     Reserved for future use.
     */
-    unsigned rsrv : 2;
+    unsigned rsrv : 1;
     /**
     An opaque user data flag.
     */

@@ -100,6 +100,8 @@ struct HttpRequest {
   char* content_type;
   /** points to the Upgrade header, if any. */
   char* upgrade;
+  /** points to the Connection header, if any. */
+  char* connection;
   /**
   points the body of the request, if the body fitted within the buffer.
   otherwise, NULL. */

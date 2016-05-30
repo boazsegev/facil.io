@@ -1,3 +1,77 @@
+// #include <errno.h>
+// #include "libreact.h"
+// #include "libsock.h"
+// // old packet struct
+// struct Packet_old {
+//   ssize_t length;
+//   struct Packet* next;
+//   void* data;
+//   char mem[BUFFER_PACKET_SIZE];
+//   struct {
+//     unsigned can_interrupt : 1;
+//     unsigned close_after : 1;
+//     unsigned rsrv : 6;
+//   } metadata;
+// };
+// // The buffer structure
+// struct Buffer {
+//   void* id;
+//   // pointer to the actual data.
+//   struct Packet_old* packet;
+//   // the amount of data sent from the first packet.
+//   size_t sent;
+//   // a mutex preventing buffer corruption.
+//   pthread_mutex_t lock;
+//   // a writing hook, allowing for SSL sockets or other extensions.
+//   ssize_t (*writing_hook)(void* srv, int fd, void* data, size_t len);
+//   // the buffer's owner
+//   void* owner;
+// };
+//
+// int srv = 0;
+//
+// void on_data(struct Reactor* r, int fd) {
+//   if (fd == srv) {
+//     while (sock_accept(r, fd) > 0)
+//       ;
+//     fprintf(stderr, "Accepted a new connection from srv %d\n", fd);
+//     return;
+//   }
+//   char buff[1024];
+//   ssize_t i = 0;
+//   while ((i = sock_read(fd, buff, 1024)) > 0) {
+//     if (buff[0] == '!')
+//       fprintf(stderr, "goodbye %d\n", fd), sock_write(fd, buff, i),
+//           sock_close(r, fd);
+//     else
+//       sock_write(fd, buff, i);
+//     fprintf(stderr, "sending echo back\n");
+//   }
+// }
+//
+// int main(int argc, char const* argv[]) {
+//   fprintf(stderr,
+//           "buffer old size per connection: %lu bytes (i.e. %lu bytes for "
+//           "10,000 connections).\n",
+//           sizeof(struct Buffer), sizeof(struct Buffer) * 10000);
+//   fprintf(stderr, "old packet size %lu vs. new packet size %lu (bytes)\n",
+//           sizeof(struct Packet_old), sizeof(struct Packet));
+//
+//   init_socklib(sock_max_capacity());
+//   if ((srv = sock_listen(NULL, "3000")) < 0)
+//     perror("caanot initiate server socket"), exit(9);
+//   errno = 0;
+//   struct Reactor reactor = {.on_data = on_data, .maxfd =
+//   sock_max_capacity()};
+//   if (reactor_init(&reactor))
+//     perror("cannot initiate reactor"), exit(1);
+//   reactor_add(&reactor, srv);
+//   while (reactor_review(&reactor) >= 0)
+//     ;
+//   reactor_stop(&reactor);
+//   return 0;
+// }
+
 /////////////////////////////
 // paste your favorite example code here, and run:
 //
@@ -10,7 +84,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
-#define THREAD_COUNT 4
+#define THREAD_COUNT 1
 
 #include "websockets.h"
 
@@ -74,7 +148,6 @@ The HTTP implementation
 */
 
 void on_request(struct HttpRequest* request) {
-  Server.set_udata(request->server, request->sockfd, (void*)request->sockfd);
   if (!strcmp(request->path, "/echo")) {
     websocket_upgrade(.request = request, .on_message = ws_echo,
                       .on_open = ws_open, .on_close = ws_close,
@@ -91,12 +164,6 @@ void on_request(struct HttpRequest* request) {
   struct HttpResponse* response = HttpResponse.create(request);
   HttpResponse.write_body(response, "Hello World!", 12);
   HttpResponse.destroy(response);
-
-  fprintf(stderr, "udata %llu = %llu\n", request->sockfd,
-          (uint64_t)Server.get_udata(request->server, request->sockfd));
-  Server.set_udata(request->server, request->sockfd, NULL);
-  fprintf(stderr, "udata 0 = %d\n", (int)Server.get_udata(request->server, 0));
-  fprintf(stderr, "protocol 0 = %p\n", Server.get_protocol(request->server, 0));
 }
 
 void on_request_f(struct HttpRequest* request) {
@@ -123,12 +190,12 @@ int main(int argc, char const* argv[]) {
                     .processes = 1, .on_init = on_init);
   return 0;
 }
-
+//
 // /**************************************
 // Lib Server "Hello World" (Http)
 // */
 // #include "lib-server.h"
-// #include "lib-tls-server.h"
+// // #include "lib-tls-server.h"
 //
 // static void on_data(server_pt srv, uint64_t fd) {
 //   static char reply[] =
@@ -141,6 +208,7 @@ int main(int argc, char const* argv[]) {
 //   char buff[1024];
 //
 //   if (Server.read(srv, fd, buff, 1024)) {
+//     // write(server_uuid_to_fd(fd), reply, sizeof(reply));
 //     Server.write(srv, fd, reply, sizeof(reply));
 //   }
 // }
@@ -161,7 +229,7 @@ int main(int argc, char const* argv[]) {
 // }
 // void on_init(server_pt srv) {
 //   // TLSServer.init_server(srv);
-//   Server.run_every(srv, 1000, -1, (void*)timer_task, srv);
+//   // Server.run_every(srv, 1000, -1, (void*)timer_task, srv);
 // }
 //
 // /**************************************

@@ -4,10 +4,8 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef LIB_SERVER_H
-#define LIB_SERVER_H
-
-#define LIB_SERVER_VERSION "0.3.1"
+#ifndef LIB_SERVER
+#define LIB_SERVER "0.3.2"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -331,81 +329,6 @@ extern const struct Server__API___ {
   /****************************************************************************
   * Read and Write
   */
-
-  /**
-  Sets up the read/write hooks, allowing for transport layer extensions (i.e.
-  SSL/TLS) or monitoring extensions.
-
-  These hooks are only relevent when reading or writing from the socket using
-  the server functions (i.e. `Server.read` and `Server.write`).
-
-  These hooks are attached to the specified socket and they are cleared
-  automatically once the connection is closed.
-
-  **Writing hook**
-
-  A writing hook will be used instead of the `write` function to send data to
-  the socket. This allows uses the buffer for special protocol extension or
-  transport layers, such as SSL/TLS instead of buffering data to the network.
-
-  A writing hook is a function that takes in a pointer to the server (the
-  buffer's owner), the socket to which writing should be performed (fd), a
-  pointer to the data to be written and the length of the data to be written:
-
-  A writing hook should return the number of bytes actually sent from the data
-  buffer (not the number of bytes sent through the socket, but the number of
-  bytes that can be marked as sent).
-
-  A writing hook should return -1 if the data couldn't be sent and processing
-  should be stop (the connection was lost or suffered a fatal error).
-
-  A writing hook should return 0 if no data was sent, but the connection should
-  remain open or no fatal error occured.
-
-  A writing hook MUST write data to the network, or it will not be called again
-  until new data becomes available through `Server.write` (meanning, it might
-  never get called again). Returning a positive value without writing data to
-  the network will NOT cause the writing hook to be called again.
-
-  i.e.:
-
-      ssize_t writing_hook(server_pt srv, int fd, void* data, size_t len) {
-        int sent = write(fd, data, len);
-        if (sent < 0 && (errno & (EWOULDBLOCK | EAGAIN | EINTR)))
-          sent = 0;
-        return sent;
-      }
-
-  **Reading hook**
-
-  The reading hook, similar to the writing hook, should behave the same as
-  `read` and accepts the same arguments as the `writing_hook`, except the
-  `length` argument should reffer to the size of the buffer (or the amount of
-  data to be read, if less then the size of the buffer).
-
-  The return values are the same as the writing hook's return values, except
-  the number of bytes returned refers to the number of bytes written to the
-  buffer.
-
-  i.e.
-
-  ssize_t reading_hook(server_pt srv, int fd, void* buffer, size_t size) {
-    ssize_t read = 0;
-    if ((read = recv(fd, buffer, size, 0)) > 0) {
-      return read;
-    } else {
-      if (read && (errno & (EWOULDBLOCK | EAGAIN)))
-        return 0;
-    }
-    return -1;
-  }
-
-  */
-  void (*rw_hooks)(
-      server_pt srv,
-      uint64_t sockfd,
-      ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size),
-      ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len));
 
   /** Reads up to `max_len` of data from a socket. the data is stored in the
   `buffer` and the number of bytes received is returned.

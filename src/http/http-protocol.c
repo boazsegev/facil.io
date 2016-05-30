@@ -31,11 +31,13 @@ Feel free to copy, use and enjoy according to the license provided.
 #define CONTENT_TYPE_HEADER "CONTENT-TYPE"
 #define CONTENT_LENGTH_HEADER "CONTENT-LENGTH"
 #define UPGRADE_HEADER "UPGRADE"
+#define CONNECTION_HEADER "CONNECTION"
 #else
 #define HOST_HEADER "host"
 #define CONTENT_TYPE_HEADER "content-type"
 #define CONTENT_LENGTH_HEADER "content-length"
 #define UPGRADE_HEADER "upgrade"
+#define CONNECTION_HEADER "connection"
 #endif
 
 #define HTTP_SEND_RANGE_AS_DATA_LIMIT 131072
@@ -506,7 +508,20 @@ parse:
     }
     buff[pos++] = 0;
     buff[pos++] = 0;
-    if (!strcmp(tmp1, HOST_HEADER)) {
+#if HEADERS_UPPERCASE == 1
+    if (tmp1[0] == 'C')
+#else
+    if (tmp1[0] == 'c')
+#endif
+    {
+      if (!strcmp(tmp1, CONTENT_TYPE_HEADER)) {
+        request->content_type = tmp2;
+      } else if (!strcmp(tmp1, CONTENT_LENGTH_HEADER)) {
+        request->content_length = atoi(tmp2);
+      } else if (!strcmp(tmp1, CONNECTION_HEADER)) {
+        request->connection = tmp2;
+      }
+    } else if (!strcmp(tmp1, HOST_HEADER)) {
       request->host = tmp2;
       // lowercase of hosts, to support case agnostic dns resolution
       while (*tmp2 && (*tmp2) != ':') {
@@ -514,10 +529,6 @@ parse:
           *tmp2 = *tmp2 | 32;
         tmp2++;
       }
-    } else if (!strcmp(tmp1, CONTENT_TYPE_HEADER)) {
-      request->content_type = tmp2;
-    } else if (!strcmp(tmp1, CONTENT_LENGTH_HEADER)) {
-      request->content_length = atoi(tmp2);
     } else if (!strcmp(tmp1, UPGRADE_HEADER)) {
       request->upgrade = tmp2;
     }

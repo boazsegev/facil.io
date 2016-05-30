@@ -4,10 +4,8 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef LIBREACT_H
-#define LIBREACT_H
-
-#define LIBREACT_VERSION "0.2.0"
+#ifndef LIBREACT
+#define LIBREACT "0.2.1"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -275,4 +273,4 @@ Returns -1 on error, otherwise returns the file descriptor.
 */
 int reactor_make_timer(void);
 
-#endif /* end of include guard: LIBREACT_H */
+#endif /* end of include guard: LIBREACT */

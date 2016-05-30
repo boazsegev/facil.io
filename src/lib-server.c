@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 // lib server is based off and requires the following libraries:
 #include "lib-server.h"
-#include "libbuffer.h"
+#include "libsock.h"
 
 // #include <ssl.h>
 // sys includes
@@ -26,18 +26,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <errno.h>
 
 ////////////////////////////////////////////////////////////////////////////////
-// socket binding and server limits helpers
-static int bind_server_socket(server_pt);
-static int set_non_blocking_socket(int fd);
-static long srv_capacity(void);
-
-////////////////////////////////////////////////////////////////////////////////
 // The data associated with each connection
 struct ConnectionData {
   server_pt srv;
   struct Protocol* protocol;
-  ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size);
-  void* buffer;
   void* udata;
   int fd;
   volatile uint32_t counter;
@@ -158,8 +150,6 @@ static pid_t root_pid(server_pt server);
 static struct Reactor* srv_reactor(server_pt server);
 /// allows direct access to the server's original settings. use with care.
 static struct ServerSettings* srv_settings(server_pt server);
-/// returns the computed capacity for any server instance on the system.
-static long srv_capacity(void);
 
 /**
 Returns the file descriptor belonging to the connection's UUID, if
@@ -446,7 +436,7 @@ const struct Server__API___ Server = {
     /* accessor and server functions */
     .reactor = srv_reactor,
     .settings = srv_settings,
-    .capacity = srv_capacity,
+    .capacity = sock_max_capacity,
     .listen = srv_listen,
     .stop = srv_stop,
     .stop_all = srv_stop_all,
@@ -467,10 +457,6 @@ const struct Server__API___ Server = {
     .count = srv_count,
     /* connection activity and read/write functions */
     .touch = (void (*)(server_pt, uint64_t))srv_touch,
-    .rw_hooks = (void (*)(server_pt,
-                          uint64_t,
-                          ssize_t (*)(server_pt, int, void*, size_t),
-                          ssize_t (*)(server_pt, int, void*, size_t)))rw_hooks,
     .read = (ssize_t (*)(server_pt, uint64_t, void*, size_t))srv_read,
     .write = (ssize_t (*)(server_pt, uint64_t, void*, size_t))srv_write,
     .write_move =
@@ -673,20 +659,16 @@ static void set_timeout(server_pt server, union fd_id conn, uint8_t timeout) {
 
 // clears a connection's data
 static void clear_conn_data(server_pt server, int fd) {
-  Buffer.clear(server->connections[fd].buffer);
   server->connections[fd].counter++;
   server->connections[fd].idle = 0;
   server->connections[fd].protocol = NULL;
-  server->connections[fd].reading_hook = NULL;
   server->connections[fd].tout = 0;
   server->connections[fd].udata = NULL;
   server->connections[fd].busy = 0;
 }
 // on_ready, handles async buffer sends
 static void on_ready(struct Reactor* reactor, int fd) {
-  if (Buffer.flush(_server_(reactor)->connections[fd].buffer,
-                   _fd2uuid_(reactor, fd)) > 0)
-    _server_(reactor)->connections[fd].idle = 0;
+  _server_(reactor)->connections[fd].idle = 0;
   if (_protocol_(reactor, fd) && _protocol_(reactor, fd)->on_ready)
     _protocol_(reactor, fd)
         ->on_ready(_server_(reactor), _fd2uuid_(reactor, fd));
@@ -745,21 +727,13 @@ static int set_to_busy(server_pt server, int sockfd) {
 
 // accepts new connections
 static void accept_async(server_pt server) {
-  static socklen_t cl_addrlen = 0;
   int client = 1;
   while (1) {
-#ifdef SOCK_NONBLOCK
-    client = accept4(server->srvfd, NULL, &cl_addrlen, SOCK_NONBLOCK);
+    client = sock_accept(NULL, server->srvfd);
     if (client <= 0)
       return;
-#else
-    client = accept(server->srvfd, NULL, &cl_addrlen);
-    if (client <= 0)
-      return;
-    set_non_blocking_socket(client);
-#endif
     // handle server overload
-    if (client >= _reactor_(server)->maxfd) {
+    if (client >= _reactor_(server)->maxfd - 8) {
       if (server->settings->busy_msg)
         if (write(client, server->settings->busy_msg,
                   strlen(server->settings->busy_msg)) < 0)
@@ -877,7 +851,7 @@ static int srv_listen(struct ServerSettings settings) {
     settings.processes = 1;
 
   // V.3 Avoids using the Stack, allowing userspace to use the memory
-  long capacity = srv_capacity();
+  long capacity = sock_max_capacity();
   struct ConnectionData* connections = calloc(sizeof(*connections), capacity);
   if (!connections)
     return -1;
@@ -913,8 +887,8 @@ static int srv_listen(struct ServerSettings settings) {
 
   // bind the server's socket - if relevent
   int srvfd = 0;
-  if (settings.port > 0) {
-    srvfd = bind_server_socket(&srv);
+  if (settings.port != NULL) {
+    srvfd = sock_listen(settings.address, settings.port);
     // if we didn't get a socket, quit now.
     if (srvfd < 0) {
       pthread_mutex_destroy(&srv.task_lock);
@@ -926,10 +900,10 @@ static int srv_listen(struct ServerSettings settings) {
   }
 
   // initialize connection data...
+  init_socklib(capacity);
   for (int i = 0; i < capacity; i++) {
     connections[i].srv = &srv;
     connections[i].fd = i;
-    connections[i].buffer = Buffer.create(&srv);
   }
 
   // register signals - do this before concurrency, so that they are inherited.
@@ -1024,11 +998,6 @@ static int srv_listen(struct ServerSettings settings) {
   sigaction(SIGTERM, &old_term, NULL);
   sigaction(SIGPIPE, &old_pipe, NULL);
 
-  // destroy the buffers.
-  for (int i = 0; i < capacity; i++) {
-    Buffer.destroy(connections[i].buffer);
-    connections[i].buffer = NULL;
-  }
   // destroy the task pools
   destroy_fd_task(&srv, NULL);
   destroy_group_task(&srv, NULL);
@@ -1073,7 +1042,7 @@ static int srv_attach_core(server_pt server,
   if (((milliseconds > 0) && (reactor_add_timer((struct Reactor*)server, sockfd,
                                                 milliseconds) < 0)) ||
       ((milliseconds <= 0) &&
-       (reactor_add((struct Reactor*)server, sockfd) < 0))) {
+       (sock_attach((struct Reactor*)server, sockfd) < 0))) {
     clear_conn_data(server, sockfd);
     return -1;
   }
@@ -1095,11 +1064,7 @@ was sent. */
 static void srv_close(server_pt server, union fd_id conn) {
   if (validate_connection(server, conn) || !_protocol_(server, conn.data.fd))
     return;
-  if (Buffer.is_empty(_connection_(server, conn.data.fd).buffer)) {
-    reactor_close((struct Reactor*)server, conn.data.fd);
-  } else
-    Buffer.close_when_done(_connection_(server, conn.data.fd).buffer,
-                           conn.data.fd);
+  sock_close((struct Reactor*)server, conn.data.fd);
 }
 /** Hijack a socket (file descriptor) from the server, clearing up it's
 resources. The control of the socket is totally relinquished.
@@ -1109,9 +1074,7 @@ releasing control of the socket. */
 static int srv_hijack(server_pt server, union fd_id conn) {
   is_open_connection_or_return(server, conn, -1);
   reactor_remove((struct Reactor*)server, conn.data.fd);
-  while (!Buffer.is_empty(_connection_(server, conn.data.fd).buffer) &&
-         Buffer.flush(_connection_(server, conn.data.fd).buffer,
-                      conn.data.fd) >= 0)
+  while (sock_flush(conn.data.fd) > 0)
     ;
   clear_conn_data(server, conn.data.fd);
   return 0;
@@ -1146,21 +1109,6 @@ static void srv_touch(server_pt server, union fd_id conn) {
 ////////////////////////////////////////////////////////////////////////////////
 // Read and Write
 
-/**
-Sets up the read/write hooks, allowing for transport layer extensions (i.e.
-SSL/TLS) or monitoring extensions.
-*/
-void rw_hooks(
-    server_pt srv,
-    union fd_id conn,
-    ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size),
-    ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len)) {
-  if (validate_connection(srv, conn))
-    return;
-  _connection_(srv, conn.data.fd).reading_hook = reading_hook;
-  Buffer.set_whook(_connection_(srv, conn.data.fd).buffer, writing_hook);
-}
-
 /** Reads up to `max_len` of data from a socket. the data is stored in the
 `buffer` and the number of bytes received is returned.
 
@@ -1174,25 +1122,16 @@ static ssize_t srv_read(server_pt srv,
                         void* buffer,
                         size_t max_len) {
   ssize_t read = 0;
-  if (_connection_(srv, conn.data.fd).reading_hook == NULL) {
-    // no reading hook
-    if ((read = recv(conn.data.fd, buffer, max_len, 0)) > 0) {
-      // reset timeout
-      _connection_(srv, conn.data.fd).idle = 0;
-      // return read count
-      return read;
-    } else {
-      if (read && (errno & (EWOULDBLOCK | EAGAIN)))
-        return 0;
-    }
-    return -1;
-  } else {  // existing reading hook
-    read = _connection_(srv, conn.data.fd)
-               .reading_hook(srv, conn.data.fd, buffer, max_len);
-    if (read > 0)
-      _connection_(srv, conn.data.fd).idle = 0;
+  if ((read = recv(conn.data.fd, buffer, max_len, 0)) > 0) {
+    // reset timeout
+    _connection_(srv, conn.data.fd).idle = 0;
+    // return read count
     return read;
+  } else {
+    if (read && (errno & (EWOULDBLOCK | EAGAIN)))
+      return 0;
   }
+  return read;
 }
 /** Copies & writes data to the socket, managing an asyncronous buffer.
 
@@ -1206,8 +1145,7 @@ static ssize_t srv_write(server_pt server,
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
-  Buffer.write(_connection_(server, conn.data.fd).buffer, data, len);
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
+  if (sock_write2(.fd = conn.data.fd, .buffer = data, .length = len))
     return -1;
   return 0;
 }
@@ -1225,8 +1163,7 @@ static ssize_t srv_write_move(server_pt server,
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
-  Buffer.write_move(_connection_(server, conn.data.fd).buffer, data, len);
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
+  if (sock_write2(.fd = conn.data.fd, .buffer = data, .length = len, .move = 1))
     return -1;
   return 0;
 }
@@ -1248,8 +1185,9 @@ static ssize_t srv_write_urgent(server_pt server,
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
-  Buffer.write_next(_connection_(server, conn.data.fd).buffer, data, len);
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
+  // send data
+  if (sock_write2(.fd = conn.data.fd, .buffer = data, .length = len,
+                  .urgent = 1))
     return -1;
   return 0;
 }
@@ -1273,8 +1211,9 @@ static ssize_t srv_write_move_urgent(server_pt server,
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
-  Buffer.write_move_next(_connection_(server, conn.data.fd).buffer, data, len);
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
+  // send data
+  if (sock_write2(.fd = conn.data.fd, .buffer = data, .length = len, .move = 1,
+                  .urgent = 1))
     return -1;
   return 0;
 }
@@ -1291,9 +1230,7 @@ static ssize_t srv_sendfile(server_pt server, union fd_id conn, FILE* file) {
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
-  if (Buffer.sendfile(_connection_(server, conn.data.fd).buffer, file))
-    return -1;
-  if (Buffer.flush(_connection_(server, conn.data.fd).buffer, conn.uuid) < 0)
+  if (sock_write2(.fd = conn.data.fd, .buffer = file, .file = 1))
     return -1;
   return 0;
 }
@@ -1645,174 +1582,4 @@ static void on_signal(int sig) {
   }
   fprintf(stderr, "(pid %d) Exit signal received.\n", getpid());
   srv_stop_all();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// socket helpers
-
-// sets a socket to non blocking state
-static inline int set_non_blocking_socket(int fd)  // Thanks to Bjorn Reese
-{
-/* If they have O_NONBLOCK, use the Posix way to do it */
-#if defined(O_NONBLOCK)
-  /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
-  static int flags;
-  if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
-    flags = 0;
-  // printf("flags initial value was %d\n", flags);
-  return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-#else
-  /* Otherwise, use the old way of doing it */
-  static int flags = 1;
-  return ioctl(fd, FIOBIO, &flags);
-#endif
-}
-
-// helper functions used in the context of this file
-static int bind_server_socket(server_pt self) {
-  int srvfd;
-  // setup the address
-  struct addrinfo hints;
-  struct addrinfo* servinfo;        // will point to the results
-  memset(&hints, 0, sizeof hints);  // make sure the struct is empty
-  hints.ai_family = AF_UNSPEC;      // don't care IPv4 or IPv6
-  hints.ai_socktype = SOCK_STREAM;  // TCP stream sockets
-  hints.ai_flags = AI_PASSIVE;      // fill in my IP for me
-  if (getaddrinfo(self->settings->address, self->settings->port, &hints,
-                  &servinfo)) {
-    perror("addr err");
-    return -1;
-  }
-  // get the file descriptor
-  srvfd =
-      socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
-  if (srvfd <= 0) {
-    perror("socket err");
-    freeaddrinfo(servinfo);
-    return -1;
-  }
-  // make sure the socket is non-blocking
-  if (set_non_blocking_socket(srvfd) < 0) {
-    perror("couldn't set socket as non blocking! ");
-    freeaddrinfo(servinfo);
-    close(srvfd);
-    return -1;
-  }
-  // avoid the "address taken"
-  {
-    int optval = 1;
-    setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-  }
-  // bind the address to the socket
-  {
-    int bound = 0;
-    for (struct addrinfo* p = servinfo; p != NULL; p = p->ai_next) {
-      if (!bind(srvfd, p->ai_addr, p->ai_addrlen))
-        bound = 1;
-    }
-
-    if (!bound) {
-      perror("bind err");
-      freeaddrinfo(servinfo);
-      close(srvfd);
-      return -1;
-    }
-  }
-  freeaddrinfo(servinfo);
-  // listen in
-  if (listen(srvfd, SOMAXCONN) < 0) {
-    perror("couldn't start listening");
-    close(srvfd);
-    return -1;
-  }
-  return srvfd;
-}
-
-////////////////
-// file limit helper
-static long srv_capacity(void) {
-  // get current limits
-  static long flim = 0;
-  if (flim)
-    return flim;
-#ifdef _SC_OPEN_MAX
-  flim = sysconf(_SC_OPEN_MAX) - 1;
-#elif defined(OPEN_MAX)
-  flim = OPEN_MAX - 1;
-#endif
-  // try to maximize limits - collect max and set to max
-  struct rlimit rlim;
-  getrlimit(RLIMIT_NOFILE, &rlim);
-  // printf("Meximum open files are %llu out of %llu\n", rlim.rlim_cur,
-  //        rlim.rlim_max);
-  rlim.rlim_cur = rlim.rlim_max;
-  setrlimit(RLIMIT_NOFILE, &rlim);
-  getrlimit(RLIMIT_NOFILE, &rlim);
-  // printf("Meximum open files are %llu out of %llu\n", rlim.rlim_cur,
-  //        rlim.rlim_max);
-  // if the current limit is higher than it was, update
-  if (flim < rlim.rlim_cur)
-    flim = rlim.rlim_cur;
-  // review stack memory limits - don't use more than half...?
-  // use 1 byte (char) for busy_map;
-  // use 1 byte (char) for idle_map;
-  // use 1 byte (char) for tout_map;
-  // use 8 byte (void *) for protocol_map;
-  // use 8 byte (void *) for server_map;
-  // ------
-  // total of 19 (assume 20) bytes per connection.
-  //
-  // assume a 2Kb stack allocation (per connection) for
-  // network IO buffer and request management...?
-  // (this would be almost wrong to assume, as buffer might be larger)
-  // -------
-  // 2068 Byte
-  // round up to page size?
-  // 4096
-  //
-  getrlimit(RLIMIT_STACK, &rlim);
-  if (flim * 4096 > rlim.rlim_cur && flim * 4096 < rlim.rlim_max) {
-    rlim.rlim_cur = flim * 4096;
-    setrlimit(RLIMIT_STACK, &rlim);
-    getrlimit(RLIMIT_STACK, &rlim);
-  }
-  if (flim > rlim.rlim_cur / 4096) {
-    // printf("The current maximum file limit (%d) if reduced due to stack
-    // memory "
-    //        "limits(%d)\n",
-    //        flim, (int)(rlim.rlim_cur / 2068));
-    flim = rlim.rlim_cur / 4096;
-  } else {
-    // printf(
-    //     "The current maximum file limit (%d) is supported by the stack
-    //     memory
-    //     "
-    //     "limits(%d)\n",
-    //     flim, (int)(rlim.rlim_cur / 2068));
-  }
-
-  // how many Kb per connection? assume 8Kb for kernel? x2 (16Kb).
-  // (http://www.metabrew.com/article/a-million-user-comet-application-with-mochiweb-part-3)
-  // 10,000 connections == 16*1024*10000 == +- 160Mb? seems a tight fit...
-  // i.e. the Http request buffer is 8Kb... maybe 24Kb is a better minimum?
-  // Some per connection heap allocated data (i.e. 88 bytes per user-land
-  // buffer) also matters.
-  getrlimit(RLIMIT_DATA, &rlim);
-  if (flim > rlim.rlim_cur / (24 * 1024)) {
-    printf(
-        "The current maximum file limit (%ld) if reduced due to system "
-        "memory "
-        "limits(%ld)\n",
-        flim, (long)(rlim.rlim_cur / (24 * 1024)));
-    flim = rlim.rlim_cur / (24 * 1024);
-  } else {
-    // printf(
-    //     "The current maximum file limit (%d) is supported by the stack
-    //     memory
-    //     "
-    //     "limits(%d)\n",
-    //     flim, (int)(rlim.rlim_cur / 2068));
-  }
-  // return what we have
-  return flim;
 }

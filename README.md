@@ -84,9 +84,13 @@ int main(void) {
 
 Since most web applications (Node.js, Ruby etc') end up running behind load balancers and proxies, it is often that the SSL layer is handled by intermediaries.
 
-But, if you need to expose the application directly to the web, it is possible to implement SSL/TLS support using `lib-server`'s read-write hooks (`Server.rw_hooks`).
+But, if you need to expose the application directly to the web, it is possible to implement SSL/TLS support using `libsock`'s Transport Layer Callbacks (TLC).
 
-I did not write this implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a proxy that manages the SSL/TLS layer).
+Since `lib-server` utilizes `libsock` for socket communication (leveraging it's user-land buffer and other features), any TLC added to the TLC stack will be utilized for the specified connection.
+
+Using `lib-server`'s read-write hooks (`Server.rw_hooks`) is now deprecated, as `libsock`'s TLC API is accessible for any connection by using `server_uuid_to_fd` to convert a connection's UUID to it's source `fd`.
+
+I did not write a TLS implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a load-balancer/proxy that manages the SSL/TLS layer).
 
 ---
 
@@ -146,6 +150,12 @@ Since I mentioned `libevent` and `libev`, I should point out that even a simple 
 It seems to me, that since both `libevent` and `libev` are so all-encompassing, they end up having too many options and functions... I, on the other hand, am a fan of well designed abstractions, even at the price of control. I mean, you're writing a server that should handle 100K+ (or 1M+) concurrent connections - do you really need to manage the socket polling timeouts ("ticks")?! Are you really expecting more than a second to pass with no events?
 
 To use this library you only need the `libreact.h` and `libreact.c` files.
+
+## [`libsock`](docs/libsock.md) - Non-Blocking socket abstraction with `lib-react` support.
+
+Non-Blocking sockets have a lot of common code that needs to be handled, such as a user level buffer (for all the data that didn't get sent when the socket was busy), delayed disconnection (don't delay before sending all the data),
+
+`lib-react` handles Unix sockets,
 
 ## [`lib-server`](docs/lib-server.md) - a server building library.
 

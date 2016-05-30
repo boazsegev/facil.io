@@ -4,8 +4,8 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef HTTP_SHA1_BASE64_H
-#define HTTP_SHA1_BASE64_H
+#ifndef MINI_CRYPT
+#define MINI_CRYPT "0.1.0"
 #include <stdlib.h>
 #include <stdint.h>
 

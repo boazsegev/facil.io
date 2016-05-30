@@ -4,10 +4,8 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef LIB_ASYNC_H
-#define LIB_ASYNC_H
-
-#define LIB_ASYNC_VERSION "0.3.0"
+#ifndef LIB_ASYNC
+#define LIB_ASYNC "0.3.0"
 
 typedef struct Async* async_p;
 /** \file
@@ -108,4 +106,4 @@ Use:
   void (*finish)(async_p);
 } Async;
 
-#endif /* LIB_ASYNC_H */
+#endif /* LIB_ASYNC */

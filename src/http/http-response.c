@@ -252,6 +252,8 @@ Destroys the response object or places it in the response pool for recycling.
 static void destroy_response(struct HttpResponse* response) {
   if (response->metadata.classUUID != new_response)
     return;
+  if (response->metadata.should_close)
+    close_response(response);
   if (!response_pool ||
       (ObjectPool.count(response_pool) >= HttpResponse.pool_limit))
     free(response);
@@ -274,6 +276,23 @@ static void reset(struct HttpResponse* response, struct HttpRequest* request) {
   response->metadata.server = request->server;
   response->last_modified = response->date =
       Server.reactor(response->metadata.server)->last_tick;
+  response->metadata.should_close =
+      (request && request->connection &&
+       (strcasecmp(request->connection, "close") == 0));
+  // response->metadata.should_close = (request && request->connection &&
+  //                                    ((request->connection[0] | 32) == 'c')
+  //                                    &&
+  //                                    ((request->connection[1] | 32) == 'l'));
+  // response->metadata.should_close = (request && request->connection &&
+  //                                    ((request->connection[0] | 32) == 'c'));
+
+  // check the first four bytes for "clos"(e), little endian and network endian
+  // response->metadata.should_close =
+  //     (request && request->connection &&
+  //      (((*((uint32_t*)request->connection) | 538976288UL) == 1936682083UL)
+  //      ||
+  //       ((*((uint32_t*)request->connection) | 538976288UL) ==
+  //       1668050803UL)));
 }
 /** Gets a response status, as a string */
 static char* status_str(struct HttpResponse* response) {
@@ -540,11 +559,16 @@ static char* prep_headers(struct HttpResponse* response) {
   }
   // write the keep-alive (connection) header, if missing
   if (!response->metadata.connection_written) {
-    memcpy(response->metadata.headers_pos,
-           "Connection: keep-alive\r\n"
-           "Keep-Alive: timeout=2\r\n",
-           47);
-    response->metadata.headers_pos += 47;
+    if (response->metadata.should_close) {
+      memcpy(response->metadata.headers_pos, "Connection: close\r\n", 19);
+      response->metadata.headers_pos += 19;
+    } else {
+      memcpy(response->metadata.headers_pos,
+             "Connection: keep-alive\r\n"
+             "Keep-Alive: timeout=2\r\n",
+             47);
+      response->metadata.headers_pos += 47;
+    }
   }
 
   // write the headers completion marker (empty line - `\r\n`)

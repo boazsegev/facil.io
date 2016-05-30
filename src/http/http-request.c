@@ -67,20 +67,7 @@ static void request_clear(struct HttpRequest* self) {
     return;
   if (self->body_file)
     fclose(self->body_file);
-  self->method = 0;
-  self->path = 0;
-  self->query = 0;
-  self->version = 0;
-  self->host = 0;
-  self->content_length = 0;
-  self->content_type = 0;
-  self->upgrade = 0;
-  self->body_str = 0;
-  self->body_file = NULL;
-  self->private.header_hash = 0;
-  self->private.pos = 0;
-  self->private.max = 0;
-  self->private.bd_rcved = 0;
+  *self = (struct HttpRequest){.private.is_request = request_is_request};
 }
 
 // validating a request object

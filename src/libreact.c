@@ -75,6 +75,22 @@ static inline int _reactor_set_fd_poling_(int queue, int fd, int flags) {
 #error(no epoll, no kqueue - this aint no server platform! ... this library requires either kqueue or epoll to be available.)
 #endif
 
+/* *****************************************************************************
+Integrate the `libsock` library if exists.
+*/
+// struct Reactor; // in the libreact_socket.h file
+#pragma weak sock_flush
+inline ssize_t sock_flush(int fd) {
+  return 0;
+}
+
+#pragma weak sock_clear
+void sock_clear(int fd){};
+
+/* *****************************************************************************
+The main libreact API.
+*/
+
 /**
 Adds a file descriptor to the reactor, so that callbacks will be called for it's
 events.
@@ -83,7 +99,8 @@ Returns -1 on error, otherwise return value is system dependent.
 */
 int reactor_add(struct Reactor* reactor, int fd) {
   assert(reactor->private.reactor_fd);
-  assert(reactor->maxfd >= fd);
+  if (reactor->maxfd < fd)
+    return -1;
   /*
   the `on_close` callback was likely called already by the user, before calling
   this, and a new handler was probably assigned (or mapped) to the fd.
@@ -131,6 +148,7 @@ void reactor_close(struct Reactor* reactor, int fd) {
     pthread_mutex_unlock(&locker);
     if (reactor->on_close)
       reactor->on_close(reactor, fd);
+    sock_clear(fd);
     /* this is automatic on epoll... what about kqueue? */
     _reactor_set_fd_polling_(reactor->private.reactor_fd, fd, RM_FD, 0);
     /* don't unlock twice */
@@ -275,6 +293,10 @@ void reactor_stop(struct Reactor* reactor) {
   reactor_destroy(reactor);
 }
 
+/* *****************************************************************************
+The main Reactor Review function
+*/
+
 /**
 Reviews any pending events (up to REACTOR_MAX_EVENTS)
 
@@ -308,9 +330,13 @@ int reactor_review(struct Reactor* reactor) {
         reactor_close(reactor, _GETFD_(i));
       } else {
         // no error, then it's an active event(s)
-        if (_EVENTREADY_(i) && reactor->on_ready) {
-          // printf("on_ready for %d\n", _GETFD_(i));
-          reactor->on_ready(reactor, _GETFD_(i));
+        if (_EVENTREADY_(i)) {
+          if (sock_flush(_GETFD_(i)) < 0) {
+            reactor_close(reactor, _GETFD_(i));
+          } else if (reactor->on_ready) {
+            // printf("on_ready for %d\n", _GETFD_(i));
+            reactor->on_ready(reactor, _GETFD_(i));
+          }
         }
         if (_EVENTDATA_(i) && reactor->on_data) {
           // printf("on_data %d\n", _GETFD_(i));
