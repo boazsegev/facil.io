@@ -153,9 +153,9 @@ To use this library you only need the `libreact.h` and `libreact.c` files.
 
 ## [`libsock`](docs/libsock.md) - Non-Blocking socket abstraction with `lib-react` support.
 
-Non-Blocking sockets have a lot of common code that needs to be handled, such as a user level buffer (for all the data that didn't get sent when the socket was busy), delayed disconnection (don't delay before sending all the data),
+Non-Blocking sockets have a lot of common code that needs to be handled, such as a user level buffer (for all the data that didn't get sent when the socket was busy), delayed disconnection (don't delay before sending all the data) etc'.
 
-`lib-react` handles Unix sockets,
+Read through this library's documentation to learn more about using this thread-safe library that provides user level writing buffer and seamless integration with `libreact`. 
 
 ## [`lib-server`](docs/lib-server.md) - a server building library.
 
