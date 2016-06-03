@@ -21,6 +21,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <netdb.h>
+// #include <sys/types.h>
+// #include <sys/socket.h>
+// #include <sys/resource.h>
 
 /* an inner helper function that removes and adds events */
 
@@ -143,6 +147,7 @@ void reactor_close(struct Reactor* reactor, int fd) {
   static pthread_mutex_t locker = PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_lock(&locker);
   if (reactor->private.map[fd]) {
+    shutdown(fd, SHUT_RDWR);
     close(fd);
     reactor->private.map[fd] = 0;
     pthread_mutex_unlock(&locker);

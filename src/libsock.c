@@ -581,13 +581,15 @@ re_flush:
     }
     if (fd_map[fd].packet)
       goto re_flush;
+    else if (fd_map[fd].close)
+      goto close_unlock;
     else
       goto finish;
   }
   sent = write(fd, fd_map[fd].packet->buffer + fd_map[fd].sent,
                fd_map[fd].packet->length - fd_map[fd].sent);
   if (sent == 0) {
-    ;
+    ;  // nothing to do.
   } else if (sent > 0) {
     fd_map[fd].sent += sent;
     if (fd_map[fd].sent >= fd_map[fd].packet->length) {
@@ -655,8 +657,10 @@ void sock_force_close(struct Reactor* reactor, int fd) {
     reactor = fd_map[fd].owner;
   if (reactor)
     reactor_close(reactor, fd);
-  else
+  else {
+    shutdown(fd, SHUT_RDWR);
     close(fd);
+  }
   sock_clear(fd);
 }
 
