@@ -7,6 +7,7 @@ Setup
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <ctype.h>
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>
@@ -35,6 +36,7 @@ static int base64_encode(char* target, const char* data, int len);
 static int base64_decode(char* target, char* encoded, int base64_len);
 
 /* Hex */
+static int is_hex(const char* string, size_t length);
 static int str2hex(char* target, const char* string, size_t length);
 static int hex2str(char* target, char* hex, size_t length);
 
@@ -66,6 +68,7 @@ struct MiniCrypt__API___ MiniCrypt = {
     .base64_decode = base64_decode,
 
     /* Hex */
+    .is_hex = is_hex,
     .str2hex = str2hex,
     .hex2str = hex2str,
 
@@ -966,6 +969,25 @@ Hex Conversion
 #define i2hex(hi) (((hi) < 10) ? ('0' + (hi)) : ('a' + (hi)-10))
 
 /**
+Returns 1 if the string is HEX encoded (no non-valid hex values). Returns 0 if
+it isn't.
+
+White-Space is considered non-valid for this implementation.
+*/
+static int is_hex(const char* string, size_t length) {
+  // for (size_t i = 0; i < length; i++) {
+  //   if (isxdigit(string[i]) == 0)
+  //     return 0;
+  char c;
+  for (size_t i = 0; i < length; i++) {
+    c = string[i];
+    if (c < '0' || c > 'z' ||
+        !((c >= 'a') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')))
+      return 0;
+  }
+  return 1;
+}
+/**
 This will convert the string (byte stream) to a Hex string. This is not
 cryptography, just conversion for pretty print.
 
@@ -1009,9 +1031,13 @@ the NULL terminator byte).
 static int hex2str(char* target, char* hex, size_t length) {
   if (!target)
     target = hex;
-  for (size_t i = 0; i < length; i += 2) {
+  size_t i = 0;
+  for (; i + 1 < length; i += 2) {
     target[i >> 1] = (hex2i(hex[i]) << 4) | hex2i(hex[i + 1]);
   }
+  if (i < length)
+    target[i >> 1] = hex2i(hex[i + 1]);
+
   target[(length / 2) + 1] = 0;
   return length / 2;
 }

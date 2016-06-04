@@ -250,11 +250,17 @@ extern struct MiniCrypt__API___ {
   */
 
   /**
+  Returns 1 if the string is HEX encoded (no non-valid hex values). Returns 0 if
+  it isn't.
+  */
+  int (*is_hex)(const char* string, size_t length);
+  /**
   This will convert the string (byte stream) to a Hex string. This is not
   cryptography, just conversion for pretty print.
 
   The target buffer MUST have enough room for the expected data. The expected
-  data is double the length of the string + 1 byte for the NULL terminator byte.
+  data is double the length of the string + 1 byte for the NULL terminator
+  byte.
 
   A NULL byte will be appended to the target buffer. The function will return
   the number of bytes written to the target buffer.
@@ -275,7 +281,8 @@ extern struct MiniCrypt__API___ {
   A NULL byte will be appended to the target buffer. The function will return
   the number of bytes written to the target buffer.
 
-  If the target buffer is NULL, the encoded string will be destructively edited
+  If the target buffer is NULL, the encoded string will be destructively
+  edited
   and the decoded data will be placed in the original string's buffer.
 
   Returns the number of bytes actually written to the target buffer (excluding
@@ -296,14 +303,14 @@ extern struct MiniCrypt__API___ {
                     size_t key_length);
 
   /**
-  Allocates memory and dumps the whole file into the memory allocated. Remember
+  Allocates memory and dumps the whole file into the memory allocated.
+  Remember
   to call `free` when done.
 
   Returns the number of bytes allocated. On error, returns 0 and sets the
   container pointer to NULL.
   */
   ssize_t (*fdump)(char** container, const char* file_path, size_t size_limit);
-
 } MiniCrypt;
 
 /* end include gate */
