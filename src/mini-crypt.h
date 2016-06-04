@@ -6,6 +6,7 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef MINI_CRYPT
 #define MINI_CRYPT "0.1.0"
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 
@@ -243,6 +244,65 @@ extern struct MiniCrypt__API___ {
   the NULL terminator byte).
   */
   int (*base64_decode)(char* target, char* encoded, int base64_len);
+
+  /*****************************************************************************
+  Hex Conversion
+  */
+
+  /**
+  This will convert the string (byte stream) to a Hex string. This is not
+  cryptography, just conversion for pretty print.
+
+  The target buffer MUST have enough room for the expected data. The expected
+  data is double the length of the string + 1 byte for the NULL terminator byte.
+
+  A NULL byte will be appended to the target buffer. The function will return
+  the number of bytes written to the target buffer.
+
+  Returns the number of bytes actually written to the target buffer (excluding
+  the NULL terminator byte).
+  */
+  int (*str2hex)(char* target, const char* string, size_t length);
+
+  /**
+  This will convert a Hex string to a byte string. This is not cryptography,
+  just conversion for pretty print.
+
+  The target buffer MUST have enough room for the expected data. The expected
+  data is half the length of the Hex string + 1 byte for the NULL terminator
+  byte.
+
+  A NULL byte will be appended to the target buffer. The function will return
+  the number of bytes written to the target buffer.
+
+  If the target buffer is NULL, the encoded string will be destructively edited
+  and the decoded data will be placed in the original string's buffer.
+
+  Returns the number of bytes actually written to the target buffer (excluding
+  the NULL terminator byte).
+  */
+  int (*hex2str)(char* target, char* hex, size_t length);
+
+  /*****************************************************************************
+  Other helper functions
+  */
+
+  /**
+  Encrypts a string using a repeating XOR key. Weak encryption, avoid using.
+  */
+  void (*xor_cycle)(char* string,
+                    size_t length,
+                    const char* key,
+                    size_t key_length);
+
+  /**
+  Allocates memory and dumps the whole file into the memory allocated. Remember
+  to call `free` when done.
+
+  Returns the number of bytes allocated. On error, returns 0 and sets the
+  container pointer to NULL.
+  */
+  ssize_t (*fdump)(char** container, const char* file_path, size_t size_limit);
 
 } MiniCrypt;
 

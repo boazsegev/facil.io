@@ -6,6 +6,7 @@ Setup
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>
@@ -33,6 +34,19 @@ static char* sha2_result(sha2_s* s);
 static int base64_encode(char* target, const char* data, int len);
 static int base64_decode(char* target, char* encoded, int base64_len);
 
+/* Hex */
+static int str2hex(char* target, const char* string, size_t length);
+static int hex2str(char* target, char* hex, size_t length);
+
+/* misc */
+static ssize_t fdump(char** container,
+                     const char* file_path,
+                     size_t size_limit);
+static void xor_cycle(char* string,
+                      size_t length,
+                      const char* key,
+                      size_t key_length);
+
 /*****************************************************************************
 The API gateway
 */
@@ -50,6 +64,14 @@ struct MiniCrypt__API___ MiniCrypt = {
     /* Base64 */
     .base64_encode = base64_encode,
     .base64_decode = base64_decode,
+
+    /* Hex */
+    .str2hex = str2hex,
+    .hex2str = hex2str,
+
+    /* Misc */
+    .fdump = fdump,
+    .xor_cycle = xor_cycle,
 
 };
 
@@ -932,4 +954,118 @@ static int base64_decode(char* target, char* encoded, int base64_len) {
   }
   *target = 0;
   return written;
+}
+
+/*****************************************************************************
+Hex Conversion
+*/
+
+#define hex2i(h) \
+  (((h) >= '0' && (h) <= '9') ? ((h) - '0') : (((h) | 32) - 'a' + 10))
+
+#define i2hex(hi) (((hi) < 10) ? ('0' + (hi)) : ('a' + (hi)-10))
+
+/**
+This will convert the string (byte stream) to a Hex string. This is not
+cryptography, just conversion for pretty print.
+
+The target buffer MUST have enough room for the expected data. The expected
+data is double the length of the string + 1 byte for the NULL terminator byte.
+
+A NULL byte will be appended to the target buffer. The function will return
+the number of bytes written to the target buffer.
+
+Returns the number of bytes actually written to the target buffer (excluding
+the NULL terminator byte).
+*/
+static int str2hex(char* target, const char* string, size_t length) {
+  if (!target)
+    return -1;
+  for (size_t i = 0; i < length; i++) {
+    target[(i * 2)] = i2hex(string[i] >> 4);
+    target[(i * 2) + 1] = i2hex(string[i] & 0x0F);
+  }
+  target[length * 2 + 1] = 0;
+  return length * 2;
+}
+
+/**
+This will convert a Hex string to a byte string. This is not cryptography,
+just conversion for pretty print.
+
+The target buffer MUST have enough room for the expected data. The expected
+data is half the length of the Hex string + 1 byte for the NULL terminator
+byte.
+
+A NULL byte will be appended to the target buffer. The function will return
+the number of bytes written to the target buffer.
+
+If the target buffer is NULL, the encoded string will be destructively edited
+and the decoded data will be placed in the original string's buffer.
+
+Returns the number of bytes actually written to the target buffer (excluding
+the NULL terminator byte).
+*/
+static int hex2str(char* target, char* hex, size_t length) {
+  if (!target)
+    target = hex;
+  for (size_t i = 0; i < length; i += 2) {
+    target[i >> 1] = (hex2i(hex[i]) << 4) | hex2i(hex[i + 1]);
+  }
+  target[(length / 2) + 1] = 0;
+  return length / 2;
+}
+
+#undef hex2i
+#undef i2hex
+
+/*****************************************************************************
+Misc Helpers
+*/
+
+/**
+Allocates memory and dumps the whole file into the memory allocated. Remember
+to call `free` when done.
+*/
+static ssize_t fdump(char** container,
+                     const char* file_path,
+                     size_t size_limit) {
+  struct stat f_data;
+  FILE* file = NULL;
+  *container = NULL;
+  if (stat(file_path, &f_data))
+    goto error;
+  if (size_limit == 0 || f_data.st_size < size_limit)
+    size_limit = f_data.st_size;
+  *container = malloc(size_limit);
+  if (!*container)
+    goto error;
+  file = fopen(file_path, "rb");
+  if (!file)
+    goto error;
+  if (fread(*container, 1, size_limit, file) < size_limit)
+    goto error;
+  fclose(file);
+  return size_limit;
+error:
+  if (*container)
+    free(*container), (*container = NULL);
+  if (file)
+    fclose(file);
+  return 0;
+}
+
+/**
+Encrypts a string using a repeating XOR key. Weak encryption, avoid using.
+*/
+static void xor_cycle(char* string,
+                      size_t length,
+                      const char* key,
+                      size_t key_length) {
+  size_t pos = 0;
+  for (size_t i = 0; i < length; i++, pos++) {
+    if (pos == key_length)
+      pos = 0;
+    string[i] ^= key[pos];
+  }
 }
