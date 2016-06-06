@@ -41,14 +41,12 @@ static int str2hex(char* target, const char* string, size_t length);
 static int hex2str(char* target, char* hex, size_t length);
 
 /* misc */
-static ssize_t fdump(char** container,
-                     const char* file_path,
-                     size_t size_limit);
-static void xor_cycle(char* string,
-                      size_t length,
-                      const char* key,
-                      size_t key_length);
+static fdump_s* fdump(const char* file_path, size_t size_limit);
 
+static int xor_crypt(xor_key_s* key,
+                     void* target,
+                     const void* source,
+                     size_t length);
 /*****************************************************************************
 The API gateway
 */
@@ -74,8 +72,7 @@ struct MiniCrypt__API___ MiniCrypt = {
 
     /* Misc */
     .fdump = fdump,
-    .xor_cycle = xor_cycle,
-
+    .xor_crypt = xor_crypt,
 };
 
 /*****************************************************************************
@@ -966,7 +963,7 @@ Hex Conversion
 #define hex2i(h) \
   (((h) >= '0' && (h) <= '9') ? ((h) - '0') : (((h) | 32) - 'a' + 10))
 
-#define i2hex(hi) (((hi) < 10) ? ('0' + (hi)) : ('a' + (hi)-10))
+#define i2hex(hi) (((hi) < 10) ? ('0' + (hi)) : ('A' + ((hi)-10)))
 
 /**
 Returns 1 if the string is HEX encoded (no non-valid hex values). Returns 0 if
@@ -981,8 +978,9 @@ static int is_hex(const char* string, size_t length) {
   char c;
   for (size_t i = 0; i < length; i++) {
     c = string[i];
-    if (c < '0' || c > 'z' ||
-        !((c >= 'a') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')))
+    if ((!isspace(c)) &&
+        (c < '0' || c > 'z' ||
+         !((c >= 'a') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))))
       return 0;
   }
   return 1;
@@ -1003,12 +1001,15 @@ the NULL terminator byte).
 static int str2hex(char* target, const char* string, size_t length) {
   if (!target)
     return -1;
-  for (size_t i = 0; i < length; i++) {
-    target[(i * 2)] = i2hex(string[i] >> 4);
-    target[(i * 2) + 1] = i2hex(string[i] & 0x0F);
+  size_t i = length;
+  target[(length << 1) + 1] = 0;
+  // go in reverse, so that target could be same as string.
+  while (i) {
+    --i;
+    target[(i << 1) + 1] = i2hex(string[i] & 0x0F);
+    target[(i << 1)] = i2hex(((uint8_t*)string)[i] >> 4);
   }
-  target[length * 2 + 1] = 0;
-  return length * 2;
+  return (length << 1);
 }
 
 /**
@@ -1032,14 +1033,23 @@ static int hex2str(char* target, char* hex, size_t length) {
   if (!target)
     target = hex;
   size_t i = 0;
-  for (; i + 1 < length; i += 2) {
-    target[i >> 1] = (hex2i(hex[i]) << 4) | hex2i(hex[i + 1]);
+  size_t written = 0;
+  while (i + 1 < length) {
+    if (isspace(hex[i])) {
+      ++i;
+      continue;
+    }
+    target[written] = (hex2i(hex[i]) << 4) | hex2i(hex[i + 1]);
+    ++written;
+    i += 2;
   }
-  if (i < length)
-    target[i >> 1] = hex2i(hex[i + 1]);
+  if (i < length && !isspace(hex[i])) {
+    target[written] = hex2i(hex[i + 1]);
+    ++written;
+  }
 
-  target[(length / 2) + 1] = 0;
-  return length / 2;
+  target[written] = 0;
+  return written;
 }
 
 #undef hex2i
@@ -1053,45 +1063,102 @@ Misc Helpers
 Allocates memory and dumps the whole file into the memory allocated. Remember
 to call `free` when done.
 */
-static ssize_t fdump(char** container,
-                     const char* file_path,
-                     size_t size_limit) {
+static fdump_s* fdump(const char* file_path, size_t size_limit) {
   struct stat f_data;
   FILE* file = NULL;
-  *container = NULL;
+  fdump_s* container = NULL;
   if (stat(file_path, &f_data))
     goto error;
   if (size_limit == 0 || f_data.st_size < size_limit)
     size_limit = f_data.st_size;
-  *container = malloc(size_limit);
-  if (!*container)
+  container = malloc(size_limit + sizeof(fdump_s));
+  container->length = size_limit;
+  if (!container)
     goto error;
   file = fopen(file_path, "rb");
   if (!file)
     goto error;
-  if (fread(*container, 1, size_limit, file) < size_limit)
+  if (fread(container->data, 1, size_limit, file) < size_limit)
     goto error;
   fclose(file);
-  return size_limit;
+  return container;
 error:
-  if (*container)
-    free(*container), (*container = NULL);
+  if (container)
+    free(container), (container = NULL);
   if (file)
     fclose(file);
   return 0;
 }
 
 /**
-Encrypts a string using a repeating XOR key. Weak encryption, avoid using.
+Uses an XOR key `xor_key_s` to encrypt / decrypt the data provided.
+
+Encryption/decryption can be destructive (the target and the source can point
+to the same object).
+
+The key's `on_cycle` callback option should be utilized to er-calculate the
+key every cycle. Otherwise, XOR encryption should be avoided.
 */
-static void xor_cycle(char* string,
-                      size_t length,
-                      const char* key,
-                      size_t key_length) {
-  size_t pos = 0;
-  for (size_t i = 0; i < length; i++, pos++) {
-    if (pos == key_length)
-      pos = 0;
-    string[i] ^= key[pos];
+static int xor_crypt(xor_key_s* key,
+                     void* target,
+                     const void* source,
+                     size_t length) {
+  if (!source || !key)
+    return -1;
+  if (!length)
+    return 0;
+  if (!target)
+    target = (void*)source;
+  if (key->on_cycle) {
+    /* loop to provide vector initialization when needed. */
+    while (key->position >= key->length) {
+      if (key->on_cycle(key))
+        return -1;
+      key->position -= key->length;
+    }
+  } else if (key->position >= key->length)
+    key->position = 0; /* no callback? no need for vector alterations. */
+  size_t i = 0;
+
+  /* start decryption */
+  while (length > i) {
+    while ((key->length - key->position >= 8)    // we have 8 bytes for key.
+           && ((i + 8) <= length)                // we have 8 bytes for stream.
+           && (((size_t)(target + i)) & 7) == 0  // target memory is aligned.
+           && (((size_t)(source + i)) & 7) == 0  // source memory is aligned.
+           && (((size_t)(key->key + key->position)) & 7) == 0  // key aligned.
+           ) {
+      // fprintf(stderr, "XOR optimization used i= %lu, key pos = %lu.\n", i,
+      //         key->position);
+      *((uint64_t*)(target + i)) =
+          *((uint64_t*)(source + i)) ^ *((uint64_t*)(key->key + key->position));
+      key->position += 8;
+      i += 8;
+      if (key->position < key->length)
+        continue;
+      if (key->on_cycle && key->on_cycle(key))
+        return -1;
+      key->position = 0;
+    }
+
+    // fprintf(stderr,
+    //         "-- i= %lu, key pos = %lu, target %lu, source %lu , key %lu .\n",
+    //         i,
+    //         key->position, (((size_t)(target + i)) & 7),
+    //         (((size_t)(source + i)) & 7), (((size_t)(key->key + i)) & 7));
+
+    if (i < length) {
+      // fprintf(stderr, "XOR single byte.\n");
+      *((uint8_t*)(target + i)) =
+          *((uint8_t*)(source + i)) ^ *((uint8_t*)(key->key + key->position));
+      ++i;
+      ++key->position;
+      if (key->position == key->length) {
+        if (key->on_cycle && key->on_cycle(key))
+          return -1;
+        key->position = 0;
+      }
+    }
   }
+  return 0;
 }
