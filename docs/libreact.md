@@ -116,7 +116,7 @@ Returns -1 on error, otherwise returns the file descriptor.
 
 ## A Quick Example
 
-The following example isn't very interesting, but it's good enough to demonstrate the API:
+The following example, an Echo server, isn't very interesting - but it's good enough to demonstrate the API:
 
 ```c
 #include "libreact.h"
@@ -135,8 +135,9 @@ The following example isn't very interesting, but it's good enough to demonstrat
 // it will be a simple HTTP hello world. (with keep alive)
 void on_data(struct Reactor* reactor, int fd);
 
-struct Reactor r = {.on_data = on_data, .maxfd = 1024};
-int srvfd; // to make it simple, we'll have a global object
+// to make it simple, we'll have global objects
+struct Reactor r = {.on_data = on_data, .maxfd = 1024}; // the reactor
+int srvfd; // the server listening socket
 
 // this will handle the exit signal (^C).
 void on_sigint(int sig) {
