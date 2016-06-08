@@ -169,91 +169,85 @@ On error, -1 will be returned. Otherwise returns 0. All the bytes are transferre
 
 Translates as: `ssize_t sock_write2_fn(struct SockWriteOpt options)`
 
+These are the basic options (named arguments) available:
+
+```c
 struct SockWriteOpt {
-  /** The fd for sending data. */
+  /* The fd for sending data. */
   int fd;
-  /** The data to be sent. This can be either a byte stream or a file pointer
+  /* The data to be sent. This can be either a byte stream or a file pointer
    * (`FILE *`). */
   const void* buffer;
-  /** The length (size) of the buffer. irrelevant for file pointers. */
+  /* The length (size) of the buffer. irrelevant for file pointers. */
   size_t length;
-  /** The user land buffer will recieve ownership of the buffer (forced as
+  /* The user land buffer will receive ownership of the buffer (forced as
    * TRUE
    * when `file` is set). */
   unsigned move : 1;
-  /** for internal use */
+  /* The packet will be sent as soon as possible. */
   unsigned urgent : 1;
-  /** The buffer points to a file pointer: `FILE *`  */
+  /* The buffer points to a file pointer: `FILE *`  */
   unsigned file : 1;
-  /** for internal use */
-  unsigned merge : 1;
+  /* for internal use */
+  unsigned rsv : 1;
+  /**/
 };
-/**
+```
 `sock_write2_fn` is the actual function behind the macro `sock_write2`.
-*/
 
-/**
 `sock_write2` is similar to `sock_write`, except special properties can be set.
 
-The number of bytes written to the internal buffer will be returned (should be
-all the data). On error, -1 will be returned.
-*/
-#define sock_write2(...) sock_write2_fn((struct SockWriteOpt){__VA_ARGS__})
-/**
-`sock_flush` writes the data in the internal buffer to the file descriptor fd
-and closes the fd once it's marked for closure (and all the data was sent).
+On error, -1 will be returned. Otherwise returns 0. All the bytes are transferred to the socket's user level buffer.
 
-The number of bytes actually written to the fd will be returned. 0 will be
-returned when no data is written and -1 will be returned on an error  or when
-the connection is closed.
+#### `ssize_t sock_flush(int fd)`
 
-**Please Note**: when using `libreact`, the `sock_flush` will be called
-automatically when the socket is ready.
-*/
-ssize_t sock_flush(int fd);
-/**
-`sock_close` marks the connection for disconnection once all the data was
-sent.
+`sock_flush` writes the data in the internal buffer to the file descriptor fd and closes the fd once it's marked for closure (and all the data was sent).
+
+The number of bytes actually written to the fd will be returned. 0 will be returned when no data is written and -1 will be returned on an error or when the connection is closed.
+
+**Please Note**: when using `libreact`, the `sock_flush` will be called automatically when the socket is ready.
+
+#### `void sock_close(struct Reactor* reactor, int fd)`
+
+`sock_close` marks the connection for disconnection once all the data was sent.
+
 The actual disconnection will be managed by the `sock_flush` function.
 
 `sock_flash` will automatically be called.
 
-If a reactor pointer is provied, the reactor API will be used and the
-`on_close` callback should be called once the socket is closed.
-*/
-void sock_close(struct Reactor* reactor, int fd);
-/**
+If a reactor pointer is provided, the reactor API will be used and the `on_close` callback should be called once the socket is closed.
+
+#### `void sock_force_close(struct Reactor* reactor, int fd)`
+
 `sock_force_close` closes the connection immediately, without adhering to any
 protocol restrictions and without sending any remaining data in the connection
 buffer.
 
-If a reactor pointer is provied, the reactor API will be used and the
-`on_close` callback should be called as expected.
-*/
-void sock_force_close(struct Reactor* reactor, int fd);
+If a reactor pointer is provided, the reactor API will be used and the `on_close` callback should be called as expected.
 
 ### Direct user level buffer API.
 
-/** Each user land buffer packet's pre-alocated memory size (17Kb)*/
-#ifndef BUFFER_PACKET_SIZE
+The user land buffer is constructed from pre-allocated Packet objects, each containing BUFFER_PACKET_SIZE (~17Kb) memory size dedicated for message data.
+
+```c
 #define BUFFER_PACKET_SIZE (1024 * 17)
-#endif
-/** File data is sent a chunk at a time. This is a chunk size.
+```
 
-16Kb allows for 1Kb of protocol specific padding, in case of a transport layer.
-*/
-#ifndef BUFFER_FILE_READ_SIZE
+File data is sent a chunk at a time.
+
+Chunks are defined as less then a whole packet, this is in consideration for possible TLC requirements.
+
+```c
 #define BUFFER_FILE_READ_SIZE (1024 * 16)
-#endif
+```
 
-/**
-Buffer packets - can be used for directly writing individual or multiple
-packets to the buffer instead of using the `sock_write(2)` helpers.
+Buffer packets - can be used for directly writing individual or multiple packets to the buffer instead of using the `sock_write(2)` helper functions / macros.
 
-See `sock_checkout_packet` and `sock_send_packet` for more information.
+Unused Packets that were checked out using the `sock_checkout_packet` function, should never be freed using `free` and should always use the `sock_free_packet` function.
 
-Unused Packets can be freed using `free`.
-*/
+The data structure for a Packet object provides detailed data about the packet's state and properties.
+
+```c
 struct Packet {
   ssize_t length;
   void* buffer;
@@ -277,37 +271,33 @@ struct Packet {
     unsigned urgent : 1;
     /** Reserved for future use. */
     unsigned rsrv : 4;
+    /**/
   } metadata;
 };
+```
 
-/**
-Checks out a `struct Packet` from the packet pool, transfering the ownership
-of
-the memory to the calling function. returns NULL if the pool was empty and
-memory allocation had failed.
-*/
-struct Packet* sock_checkout_packet(void);
-/**
-Attches a packet to a socket's output buffer and calls `sock_flush` for the
-socket. If an error occurs, the packet's memory will **not** be released.
+#### `struct Packet* sock_checkout_packet(void)`
 
-Returns -1 (and the ownership of the packet) on error. Returns 0 (and takes
-ownership of the Packet) on success.
-*/
-ssize_t sock_send_packet(int fd, struct Packet* packet);
+Checks out a `struct Packet` from the packet pool, transferring the ownership of the memory to the calling function. returns NULL if both the pool was empty and memory allocation had failed.
 
-/**
-Use `sock_free_packet` to free unused packets that were checked-out using
-`sock_checkout_packet`.
+#### `ssize_t sock_send_packet(int fd, struct Packet* packet)`
 
-It's also possible to use `free`, but then the Packet pooling and resource
-management (freeing any external memory attached or closing any `FILE` pointers)
-will be ignored for that packet.
-*/
-void sock_free_packet(struct Packet* packet);
+Attaches a packet to a socket's output buffer and calls `sock_flush` for the
+socket.
+
+The packet's memory is **always** handled by the `sock_send_packet` function (even on error).
+
+Returns -1 on error. Returns 0 on success.
+
+#### `void sock_free_packet(struct Packet* packet)`
+
+Use `sock_free_packet` to free unused packets that were checked-out using `sock_checkout_packet`.
+
+NEVER use `free`, for any packet checked out using the pool management function `sock_checkout_packet`.
 
 ### TLC - Transport Layer Callbacks.
 
+incomplete documentation.
 
 ## A Quick Example
 
