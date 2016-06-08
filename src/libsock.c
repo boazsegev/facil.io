@@ -21,6 +21,8 @@ sockets and some helper functions.
 #include <sys/socket.h>
 #include <sys/resource.h>
 #include <netdb.h>
+#include <stdatomic.h>
+
 /* *****************************************************************************
 Avoid including the "libreact.h" file, the following is all we need.
 */
@@ -58,27 +60,21 @@ User land Buffer
 
 // The global packet container pool
 static struct {
-  int pool_count;
-  struct Packet* pool;
-} ContainerPool = {0};
-
-// the packet pool mutex
-static pthread_mutex_t container_pool_locker = PTHREAD_MUTEX_INITIALIZER;
+  struct Packet* _Atomic pool;
+  struct Packet* initialized;
+} ContainerPool = {NULL};
 
 // grab a packet from the pool
 struct Packet* sock_checkout_packet(void) {
-  struct Packet* packet;
-  pthread_mutex_lock(&container_pool_locker);
-  packet = ContainerPool.pool;
-  if (packet) {
-    ContainerPool.pool = packet->metadata.next;
-    ContainerPool.pool_count--;
-    if (ContainerPool.pool_count < 0)  // just in case...?
-      ContainerPool.pool_count = 0;
-  } else {
+  struct Packet* packet = atomic_load(&ContainerPool.pool);
+  while (packet) {
+    if (atomic_compare_exchange_weak(&ContainerPool.pool, &packet,
+                                     packet->metadata.next))
+      break;
+  }
+  if (packet == NULL) {
     packet = malloc(sizeof(struct Packet));
   }
-  pthread_mutex_unlock(&container_pool_locker);
   if (!packet)
     return NULL;
   packet->buffer = packet->internal_memory;
@@ -96,29 +92,30 @@ void sock_free_packet(struct Packet* packet) {
       free(next->buffer);
     next = next->metadata.next;
   }
-  pthread_mutex_lock(&container_pool_locker);
-  while (packet) {
-    next = packet->metadata.next;
-    if (ContainerPool.pool_count <= BUFFER_MAX_PACKET_POOL) {
-      packet->metadata.next = ContainerPool.pool;
-      ContainerPool.pool = packet;
-      ContainerPool.pool_count++;
-    } else
+  if (ContainerPool.initialized) {
+    while (packet) {
+      next = packet->metadata.next;
+      if (packet >= ContainerPool.initialized &&
+          packet < (ContainerPool.initialized +
+                    (sizeof(struct Packet) * BUFFER_MAX_PACKET_POOL))) {
+        packet->metadata.next = atomic_load(&ContainerPool.pool);
+        for (;;) {
+          if (atomic_compare_exchange_weak(&ContainerPool.pool,
+                                           &packet->metadata.next, packet))
+            break;
+        }
+      } else {
+        free(packet);
+      }
+      packet = next;
+    }
+  } else {
+    while (packet) {
+      next = packet->metadata.next;
       free(packet);
-    packet = next;
+      packet = next;
+    }
   }
-  pthread_mutex_unlock(&container_pool_locker);
-}
-
-// unregister a buffer in the pool
-static void destroy_packet_pool(void) {
-  pthread_mutex_lock(&container_pool_locker);
-  struct Packet* to_free;
-  while ((to_free = ContainerPool.pool)) {
-    ContainerPool.pool = to_free->metadata.next;
-    free(to_free);
-  }
-  pthread_mutex_unlock(&container_pool_locker);
 }
 
 /* *****************************************************************************
@@ -165,12 +162,30 @@ static void destroy_all_fd_data(void) {
     free(fd_map);
     fd_map = NULL;
   }
-  destroy_packet_pool();
+  if (ContainerPool.initialized) {
+    ContainerPool.pool = NULL;
+    free(ContainerPool.initialized);
+    ContainerPool.initialized = NULL;
+  }
+}
+
+static void init_pool_data(void) {
+  ContainerPool.initialized =
+      calloc(sizeof(struct Packet), BUFFER_MAX_PACKET_POOL);
+  for (size_t i = 0; i < (BUFFER_MAX_PACKET_POOL - 1); i++) {
+    // By filling up the packet pool, we avoid memory fragmentation (unless
+    // packets are freed).
+    ContainerPool.initialized[i].metadata.next =
+        &ContainerPool.initialized[i + 1];
+  }
+  ContainerPool.pool = ContainerPool.initialized;
 }
 
 int8_t init_socklib(size_t max) {
   if (!fd_map)
     atexit(destroy_all_fd_data);
+  if (ContainerPool.initialized == NULL)
+    init_pool_data();
   struct FDData* n_map = calloc(sizeof(*n_map), max);
   if (!n_map)
     return -1;

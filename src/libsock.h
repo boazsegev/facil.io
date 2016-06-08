@@ -5,7 +5,7 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIBSOCK
-#define LIBSOCK "0.0.1"
+#define LIBSOCK "0.0.2"
 
 /** \file
 The libsock is a non-blocking socket helper library, using a user level buffer,
@@ -74,6 +74,8 @@ int sock_accept(struct Reactor* owner, int server_fd);
 client connection to the address requested.
 
 Returns the new file descriptor fd. Retruns -1 on error.
+
+NOT IMPLEMENTED (yet)
 */
 int sock_connect(struct Reactor* owner, char* address, char* port);
 
@@ -162,16 +164,16 @@ struct SockWriteOpt {
   const void* buffer;
   /** The length (size) of the buffer. irrelevant for file pointers. */
   size_t length;
-  /** The user land buffer will recieve ownership of the buffer (forced as
+  /** The user land buffer will receive ownership of the buffer (forced as
    * TRUE
    * when `file` is set). */
   unsigned move : 1;
-  /** for internal use */
+  /** The packet will be sent as soon as possible. */
   unsigned urgent : 1;
   /** The buffer points to a file pointer: `FILE *`  */
   unsigned file : 1;
   /** for internal use */
-  unsigned merge : 1;
+  unsigned rsv : 1;
 };
 /**
 `sock_write2_fn` is the actual function behind the macro `sock_write2`.
@@ -180,8 +182,8 @@ ssize_t sock_write2_fn(struct SockWriteOpt options);
 /**
 `sock_write2` is similar to `sock_write`, except special properties can be set.
 
-The number of bytes written to the internal buffer will be returned (should be
-all the data). On error, -1 will be returned.
+On error, -1 will be returned. Otherwise returns 0. All the bytes are
+transferred to the socket's user level buffer.
 */
 #define sock_write2(...) sock_write2_fn((struct SockWriteOpt){__VA_ARGS__})
 /**
@@ -236,12 +238,14 @@ This API allows
 #endif
 
 /**
-Buffer packets - can be used for directly writing individual or multiple
-packets to the buffer instead of using the `sock_write(2)` helpers.
+Buffer packets - can be used for directly writing individual or multiple packets
+to the buffer instead of using the `sock_write(2)` helper functions / macros.
 
 See `sock_checkout_packet` and `sock_send_packet` for more information.
 
-Unused Packets can be freed using `free`.
+Unused Packets that were checked out using the `sock_checkout_packet` function,
+should never be freed using `free` and should always use the `sock_free_packet`
+function.
 */
 struct Packet {
   ssize_t length;
@@ -277,11 +281,13 @@ memory allocation had failed.
 */
 struct Packet* sock_checkout_packet(void);
 /**
-Attches a packet to a socket's output buffer and calls `sock_flush` for the
-socket. If an error occurs, the packet's memory will **not** be released.
+Attaches a packet to a socket's output buffer and calls `sock_flush` for the
+socket.
 
-Returns -1 (and the ownership of the packet) on error. Returns 0 (and takes
-ownership of the Packet) on success.
+The packet's memory is **always** handled by the `sock_send_packet` function
+(even on error).
+
+Returns -1 on error. Returns 0 on success.
 */
 ssize_t sock_send_packet(int fd, struct Packet* packet);
 
@@ -289,9 +295,8 @@ ssize_t sock_send_packet(int fd, struct Packet* packet);
 Use `sock_free_packet` to free unused packets that were checked-out using
 `sock_checkout_packet`.
 
-It's also possible to use `free`, but then the Packet pooling and resource
-management (freeing any external memory attached or closing any `FILE` pointers)
-will be ignored for that packet.
+NEVER use `free`, for any packet checked out using the pool management function
+`sock_checkout_packet`.
 */
 void sock_free_packet(struct Packet* packet);
 

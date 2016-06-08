@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <stdatomic.h>
 
 /******************************************************************************
 Function declerations.
@@ -201,10 +202,34 @@ struct HttpResponseClass HttpResponse = {
 The response object pool.
 */
 
-static object_pool response_pool;
+#ifndef RESPONSE_POOL_SIZE
+#define RESPONSE_POOL_SIZE 32
+#endif
 
-void* malloc_response() {
-  return malloc(sizeof(struct HttpResponse));
+struct HttpResponsePool {
+  struct HttpResponse response;
+  struct HttpResponsePool* next;
+};
+// The global packet container pool
+static struct {
+  struct HttpResponsePool* _Atomic pool;
+  struct HttpResponsePool* initialized;
+} ContainerPool = {NULL};
+
+static atomic_flag pool_initialized;
+
+static void create_response_pool(void) {
+  while (atomic_flag_test_and_set(&pool_initialized)) {
+  }
+  if (ContainerPool.initialized == NULL) {
+    ContainerPool.initialized =
+        calloc(RESPONSE_POOL_SIZE, sizeof(struct HttpResponsePool));
+    for (size_t i = 0; i < RESPONSE_POOL_SIZE - 1; i++) {
+      ContainerPool.initialized[i].next = &ContainerPool.initialized[i + 1];
+    }
+    ContainerPool.pool = ContainerPool.initialized;
+  }
+  atomic_flag_clear(&pool_initialized);
 }
 
 /******************************************************************************
@@ -220,15 +245,17 @@ The padding for the status line (62 + 2 for the extra \r\n after the headers).
 Destroys the response object pool.
 */
 static void destroy_pool(void) {
-  ObjectPool.destroy(response_pool);
-  response_pool = NULL;
+  void* m = ContainerPool.initialized;
+  ContainerPool.initialized = NULL;
+  atomic_store(&ContainerPool.pool, NULL);
+  if (m)
+    free(m);
 }
 /**
 Creates the response object pool (unless it already exists).
 */
 static void create_pool(void) {
-  if (!response_pool)
-    response_pool = ObjectPool.create_dynamic(malloc_response, free, 4);
+  create_response_pool();
 }
 
 /**
@@ -238,13 +265,22 @@ pool.
 returns NULL on failuer, or a pointer to a valid response object.
 */
 static struct HttpResponse* new_response(struct HttpRequest* request) {
-  struct HttpResponse* response =
-      response_pool ? ObjectPool.pop(response_pool) : malloc_response();
-  if (!response)
+  if (ContainerPool.initialized == NULL)
+    create_response_pool();
+  struct HttpResponsePool* res = atomic_load(&ContainerPool.pool);
+  while (res) {
+    if (atomic_compare_exchange_weak(&ContainerPool.pool, &res, res->next))
+      break;
+  }
+  if (!res)
+    res = calloc(sizeof(struct HttpResponse), 1);
+  if (!res)
     return NULL;
-  response->metadata.classUUID = new_response;
-  reset(response, request);
-  return response;
+
+  res->response.metadata.classUUID = new_response;
+
+  reset((struct HttpResponse*)res, request);
+  return (struct HttpResponse*)res;
 }
 /**
 Destroys the response object or places it in the response pool for recycling.
@@ -254,11 +290,23 @@ static void destroy_response(struct HttpResponse* response) {
     return;
   if (response->metadata.should_close)
     close_response(response);
-  if (!response_pool ||
-      (ObjectPool.count(response_pool) >= HttpResponse.pool_limit))
+
+  if (ContainerPool.initialized == NULL ||
+      ((struct HttpResponsePool*)response) < ContainerPool.initialized ||
+      ((struct HttpResponsePool*)response) >
+          (ContainerPool.initialized +
+           (sizeof(struct HttpResponsePool) * RESPONSE_POOL_SIZE))) {
     free(response);
-  else
-    ObjectPool.push(response_pool, response);
+  } else {
+    ((struct HttpResponsePool*)response)->next =
+        atomic_load(&ContainerPool.pool);
+    for (;;) {
+      if (atomic_compare_exchange_weak(
+              &ContainerPool.pool, &((struct HttpResponsePool*)response)->next,
+              ((struct HttpResponsePool*)response)))
+        break;
+    }
+  }
 }
 /**
 Clears the HttpResponse object, linking it with an HttpRequest object (which

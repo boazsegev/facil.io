@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdatomic.h>
 // we declare because we need them... implementation comes later.
 static struct HttpRequest* request_new(void);
 static void request_clear(struct HttpRequest* self);
@@ -42,13 +43,54 @@ const struct HttpRequestClass HttpRequest = {
 };
 
 ////////////////
+// The Request object pool implementation
+
+#ifndef REQUEST_POOL_SIZE
+#define REQUEST_POOL_SIZE 32
+#endif
+
+struct HttpRequestPool {
+  struct HttpRequest request;
+  struct HttpRequestPool* next;
+};
+// The global packet container pool
+static struct {
+  struct HttpRequestPool* _Atomic pool;
+  struct HttpRequestPool* initialized;
+} ContainerPool = {NULL};
+
+static atomic_flag pool_initialized;
+
+static void create_request_pool(void) {
+  while (atomic_flag_test_and_set(&pool_initialized)) {
+  }
+  if (ContainerPool.initialized == NULL) {
+    ContainerPool.initialized =
+        calloc(REQUEST_POOL_SIZE, sizeof(struct HttpRequestPool));
+    for (size_t i = 0; i < REQUEST_POOL_SIZE - 1; i++) {
+      ContainerPool.initialized[i].next = &ContainerPool.initialized[i + 1];
+    }
+    ContainerPool.pool = ContainerPool.initialized;
+  }
+  atomic_flag_clear(&pool_initialized);
+}
+
+////////////////
 // The Request object implementation
 
 // The constructor
 static struct HttpRequest* request_new(void) {
-  struct HttpRequest* req = calloc(sizeof(struct HttpRequest), 1);
-  req->private.is_request = request_is_request;
-  return req;
+  if (ContainerPool.initialized == NULL)
+    create_request_pool();
+  struct HttpRequestPool* req = atomic_load(&ContainerPool.pool);
+  while (req) {
+    if (atomic_compare_exchange_weak(&ContainerPool.pool, &req, req->next))
+      break;
+  }
+  if (!req)
+    req = calloc(sizeof(struct HttpRequest), 1);
+  req->request.private.is_request = request_is_request;
+  return (struct HttpRequest*)req;
 }
 
 // the destructor
@@ -58,7 +100,21 @@ static void request_destroy(struct HttpRequest* self) {
   if (self->body_file)
     fclose(self->body_file);
   self->server = 0;
-  free(self);
+  if (ContainerPool.initialized == NULL ||
+      ((struct HttpRequestPool*)self) < ContainerPool.initialized ||
+      ((struct HttpRequestPool*)self) >
+          (ContainerPool.initialized +
+           (sizeof(struct HttpRequestPool) * REQUEST_POOL_SIZE))) {
+    free(self);
+  } else {
+    ((struct HttpRequestPool*)self)->next = atomic_load(&ContainerPool.pool);
+    for (;;) {
+      if (atomic_compare_exchange_weak(&ContainerPool.pool,
+                                       &((struct HttpRequestPool*)self)->next,
+                                       ((struct HttpRequestPool*)self)))
+        break;
+    }
+  }
 }
 
 // resetting the request

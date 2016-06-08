@@ -4,7 +4,6 @@
 /* this library requires the request object and extends it. */
 #include "lib-server.h"
 #include "http-request.h"
-#include "http-objpool.h"
 #include "http-status.h"
 #include "http-mime-types.h"
 
