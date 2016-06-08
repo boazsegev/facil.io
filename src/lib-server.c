@@ -24,6 +24,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <fcntl.h>
 #include <pthread.h>
 #include <errno.h>
+#include <stdatomic.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 // The data associated with each connection
@@ -35,7 +36,7 @@ struct ConnectionData {
   volatile uint32_t counter;
   unsigned tout : 8;
   unsigned idle : 8;
-  volatile unsigned busy : 1;
+  atomic_bool busy;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,7 +120,7 @@ struct Server {
 /** casts the server to the reactor pointer. */
 #define _reactor_(server) ((struct Reactor*)(server))
 /** casts the reactor pointer to a server pointer. */
-#define _server_(reactor) ((server_pt)(reactor))
+#define _server_(reactor) ((struct Server*)(reactor))
 /** gets a specific connection data object from the server (reactor). */
 #define _connection_(reactor, fd) (_server_(reactor)->connections[(fd)])
 /** gets a specific protocol from a server's connection. */
@@ -242,16 +243,6 @@ static void srv_touch(server_pt server, union fd_id cuuid);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Read and Write
-
-/**
-Sets up the read/write hooks, allowing for transport layer extensions (i.e.
-SSL/TLS) or monitoring extensions.
-*/
-void rw_hooks(
-    server_pt srv,
-    union fd_id cuuid,
-    ssize_t (*reading_hook)(server_pt srv, int fd, void* buffer, size_t size),
-    ssize_t (*writing_hook)(server_pt srv, int fd, void* data, size_t len));
 
 /** Reads up to `max_len` of data from a socket. the data is stored in the
 `buffer` and the number of bytes received is returned.
@@ -582,7 +573,7 @@ to the connection using the `td_task` or `each` functions.
 */
 static uint8_t is_busy(server_pt server, union fd_id cuuid) {
   return server->connections[cuuid.data.fd].counter == cuuid.data.counter &&
-         server->connections[cuuid.data.fd].busy;
+         atomic_load(&server->connections[cuuid.data.fd].busy);
 }
 /** Returns true if a specific connection is still valid (on_close hadn't
 completed) */
@@ -603,11 +594,11 @@ static int set_protocol(server_pt server,
   // on_close and set_protocol should never conflict.
   // we should also prevent the same thread from deadlocking
   // (i.e., when on_close tries to update the protocol)
-  if (pthread_mutex_trylock(&(server->lock)))
+  if (pthread_mutex_trylock(&(((struct Server*)server)->lock)))
     return -1;
   // review the connection's validity again (in proteceted state)
   if (validate_connection(server, conn)) {
-    pthread_mutex_unlock(&(server->lock));
+    pthread_mutex_unlock(&(((struct Server*)server)->lock));
     // fprintf(stderr,
     //         "ERROR: Cannot set a protocol for a disconnected socket.\n");
     return -1;
@@ -615,7 +606,7 @@ static int set_protocol(server_pt server,
   // set the new protocol
   server->connections[conn.data.fd].protocol = new_protocol;
   // release the lock
-  pthread_mutex_unlock(&(server->lock));
+  pthread_mutex_unlock(&(((struct Server*)server)->lock));
   // return 0 (no error)
   return 0;
 }
@@ -638,14 +629,14 @@ sucess (no previous value). Check that the value was set using `get_udata`.
 static void* set_udata(server_pt server, union fd_id conn, void* udata) {
   if (validate_connection(server, conn))
     return NULL;
-  pthread_mutex_lock(&(server->lock));
+  pthread_mutex_lock(&(((struct Server*)server)->lock));
   if (validate_connection(server, conn)) {
-    pthread_mutex_unlock(&(server->lock));
+    pthread_mutex_unlock(&(((struct Server*)server)->lock));
     return NULL;
   }
   void* old = connection_data(server, conn).udata;
   connection_data(server, conn).udata = udata;
-  pthread_mutex_unlock(&(server->lock));
+  pthread_mutex_unlock(&(((struct Server*)server)->lock));
   return old;
 }
 /** Sets the timeout limit for the specified connectionl, in seconds, up to
@@ -664,7 +655,7 @@ static void clear_conn_data(server_pt server, int fd) {
   server->connections[fd].protocol = NULL;
   server->connections[fd].tout = 0;
   server->connections[fd].udata = NULL;
-  server->connections[fd].busy = 0;
+  atomic_store(&server->connections[fd].busy, 0);
 }
 // on_ready, handles async buffer sends
 static void on_ready(struct Reactor* reactor, int fd) {
@@ -711,18 +702,11 @@ static void on_close(struct Reactor* reactor, int fd) {
 // two "critical" tasks at the same time. Critical tasks are defined as the
 // `on_message` callback and any user task requested by `each` or `fd_task`.
 static int set_to_busy(server_pt server, int sockfd) {
-  static pthread_mutex_t locker = PTHREAD_MUTEX_INITIALIZER;
-
   if (!_protocol_(server, sockfd))
     return 0;
-  pthread_mutex_lock(&locker);
-  if (_connection_(server, sockfd).busy == 1) {
-    pthread_mutex_unlock(&locker);
-    return 0;
-  }
-  _connection_(server, sockfd).busy = 1;
-  pthread_mutex_unlock(&locker);
-  return 1;
+  _Bool old_value = 0;
+  return atomic_compare_exchange_strong(&_connection_(server, sockfd).busy,
+                                        &old_value, 0);
 }
 
 // accepts new connections
@@ -752,18 +736,18 @@ static void async_on_data(struct ConnectionData* conn) {
   if (!conn || !conn->protocol || !conn->protocol->on_data)
     return;
   // if we get the handle, perform the task
+  uint32_t counter = conn->counter;
   if (set_to_busy(conn->srv, conn->fd)) {
     conn->idle = 0;
     conn->protocol->on_data(conn->srv,
                             _fd_counter_uuid_(conn->fd, conn->counter));
-    // release the handle
-    conn->busy = 0;
+    // release the handle (if the connection is still valid)
+    if (counter == conn->counter)
+      atomic_store(&conn->busy, 0);
     return;
   }
-  // we didn't get the handle, reschedule - but only if the connection is still
-  // open.
-  if (conn->protocol)
-    Async.run(conn->srv->async, (void (*)(void*))async_on_data, conn);
+  // we didn't get the handle, reschedule.
+  Async.run(conn->srv->async, (void (*)(void*))async_on_data, conn);
 }
 
 static void on_data(struct Reactor* reactor, int fd) {
@@ -811,19 +795,20 @@ static void srv_cycle_core(server_pt server) {
         else {
           if (_protocol_(server, i) && _protocol_(server, i)->ping)
             _protocol_(server, i)->ping(server, i);
-          else if (!_connection_(server, i).busy ||
+          else if (!atomic_load(&_connection_(server, i).busy) ||
                    _connection_(server, i).idle == 255)
             reactor_close(_reactor_(server), i);
         }
       }
     }
     // ready for next call.
-    server->last_to = _reactor_(server)->last_tick;
+    ((struct Server*)server)->last_to = _reactor_(server)->last_tick;
     // double en = (float)clock()/CLOCKS_PER_SEC;
     // printf("timeout review took %f milliseconds\n", (en-st)*1000);
   }
   if (server->run &&
-      Async.run(server->async, (void (*)(void*))srv_cycle_core, server)) {
+      Async.run(server->async, (void (*)(void*))srv_cycle_core,
+                (void*)server)) {
     perror(
         "FATAL ERROR:"
         "couldn't schedule the server's reactor in the task queue");
@@ -904,6 +889,7 @@ static int srv_listen(struct ServerSettings settings) {
   for (int i = 0; i < capacity; i++) {
     connections[i].srv = &srv;
     connections[i].fd = i;
+    atomic_init(&connections[i].busy, 0);
   }
 
   // register signals - do this before concurrency, so that they are inherited.
@@ -1037,7 +1023,7 @@ static int srv_attach_core(server_pt server,
   _connection_(server, sockfd).idle = 0;
   // register the client - start it off as busy, protocol still initializing
   // we don't need the mutex, because it's all fresh
-  _connection_(server, sockfd).busy = 1;
+  atomic_store(&_connection_(server, sockfd).busy, 1);
   // attach the socket to the reactor
   if (((milliseconds > 0) && (reactor_add_timer((struct Reactor*)server, sockfd,
                                                 milliseconds) < 0)) ||
@@ -1049,7 +1035,7 @@ static int srv_attach_core(server_pt server,
   // call on_open
   if (protocol->on_open)
     protocol->on_open(server, _fd2uuid_(server, sockfd));
-  _connection_(server, sockfd).busy = 0;
+  atomic_store(&_connection_(server, sockfd).busy, 0);
   return 0;
 }
 static int srv_attach(server_pt server, int sockfd, struct Protocol* protocol) {
@@ -1260,7 +1246,8 @@ static inline int perform_single_task(server_pt srv,
     // perform the task
     task(srv, connection_id, arg);
     // release the busy flag
-    _connection_(srv, server_uuid_to_fd(connection_id)).busy = 0;
+    is_open_connection_or_return(srv, ((union fd_id)connection_id), 1);
+    atomic_store(&_connection_(srv, server_uuid_to_fd(connection_id)).busy, 0);
     // return completion flag;
     return 1;
   }
@@ -1270,40 +1257,40 @@ static inline int perform_single_task(server_pt srv,
 // FDTask helpers
 struct FDTask* new_fd_task(server_pt srv) {
   struct FDTask* ret = NULL;
-  pthread_mutex_lock(&srv->task_lock);
+  pthread_mutex_lock(&((struct Server*)srv)->task_lock);
   if (srv->fd_task_pool) {
     ret = srv->fd_task_pool;
-    srv->fd_task_pool = srv->fd_task_pool->next;
-    --srv->fd_task_pool_size;
-    pthread_mutex_unlock(&srv->task_lock);
+    ((struct Server*)srv)->fd_task_pool = srv->fd_task_pool->next;
+    --(((struct Server*)srv)->fd_task_pool_size);
+    pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
     return ret;
   }
-  pthread_mutex_unlock(&srv->task_lock);
+  pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
   ret = malloc(sizeof(*ret));
   return ret;
 }
 void destroy_fd_task(server_pt srv, struct FDTask* task) {
   if (task == NULL) {
-    pthread_mutex_lock(&srv->task_lock);
+    pthread_mutex_lock(&((struct Server*)srv)->task_lock);
     struct FDTask* tmp;
-    srv->fd_task_pool_size = 0;
+    ((struct Server*)srv)->fd_task_pool_size = 0;
     while ((tmp = srv->fd_task_pool)) {
-      srv->fd_task_pool = srv->fd_task_pool->next;
+      ((struct Server*)srv)->fd_task_pool = srv->fd_task_pool->next;
       free(tmp);
     }
-    pthread_mutex_unlock(&srv->task_lock);
+    pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
     return;
   }
-  pthread_mutex_lock(&srv->task_lock);
+  pthread_mutex_lock(&((struct Server*)srv)->task_lock);
   if (srv->fd_task_pool_size >= 128) {
-    pthread_mutex_unlock(&srv->task_lock);
+    pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
     free(task);
     return;
   }
   task->next = srv->fd_task_pool;
-  srv->fd_task_pool = task;
-  ++srv->fd_task_pool_size;
-  pthread_mutex_unlock(&srv->task_lock);
+  ((struct Server*)srv)->fd_task_pool = task;
+  ++(((struct Server*)srv)->fd_task_pool_size);
+  pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
 }
 static void perform_fd_task(struct FDTask* task) {
   // is it okay to perform the task?
@@ -1325,41 +1312,41 @@ static void perform_fd_task(struct FDTask* task) {
 // GroupTask helpers
 struct GroupTask* new_group_task(server_pt srv) {
   struct GroupTask* ret = NULL;
-  pthread_mutex_lock(&srv->task_lock);
+  pthread_mutex_lock(&((struct Server*)srv)->task_lock);
   if (srv->group_task_pool) {
     ret = srv->group_task_pool;
-    srv->group_task_pool = srv->group_task_pool->next;
-    --(srv->group_task_pool_size);
-    pthread_mutex_unlock(&srv->task_lock);
+    ((struct Server*)srv)->group_task_pool = srv->group_task_pool->next;
+    --(((struct Server*)srv)->group_task_pool_size);
+    pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
     memset(ret, 0, sizeof(*ret));
     return ret;
   }
-  pthread_mutex_unlock(&srv->task_lock);
+  pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
   ret = calloc(sizeof(*ret), 1);
   return ret;
 }
 void destroy_group_task(server_pt srv, struct GroupTask* task) {
   if (task == NULL) {
-    pthread_mutex_lock(&srv->task_lock);
+    pthread_mutex_lock(&((struct Server*)srv)->task_lock);
     struct GroupTask* tmp;
-    srv->group_task_pool_size = 0;
+    ((struct Server*)srv)->group_task_pool_size = 0;
     while ((tmp = srv->group_task_pool)) {
-      srv->group_task_pool = srv->group_task_pool->next;
+      ((struct Server*)srv)->group_task_pool = srv->group_task_pool->next;
       free(tmp);
     }
-    pthread_mutex_unlock(&srv->task_lock);
+    pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
     return;
   }
-  pthread_mutex_lock(&srv->task_lock);
+  pthread_mutex_lock(&((struct Server*)srv)->task_lock);
   if (srv->group_task_pool_size >= 64) {
-    pthread_mutex_unlock(&srv->task_lock);
+    pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
     free(task);
     return;
   }
   task->next = srv->group_task_pool;
-  srv->group_task_pool = task;
-  ++(srv->group_task_pool_size);
-  pthread_mutex_unlock(&srv->task_lock);
+  ((struct Server*)srv)->group_task_pool = task;
+  ++(((struct Server*)srv)->group_task_pool_size);
+  pthread_mutex_unlock(&((struct Server*)srv)->task_lock);
 }
 
 static void perform_group_task(struct GroupTask* task) {
@@ -1561,7 +1548,7 @@ sig_srv:
     // close the listening socket, preventing new connections from coming in.
     reactor_add((struct Reactor*)srv, srv->srvfd);
     // set the stop server flag.
-    srv->run = 0;
+    ((struct Server*)srv)->run = 0;
     // signal the async object to finish
     Async.signal(srv->async);
   }

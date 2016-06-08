@@ -85,10 +85,10 @@ Use:
 
 /* The following types are defined for the userspace of this library: */
 
-struct Server;                    /** used internally. no public data exposed */
-typedef struct Server* server_pt; /** a pointer to a server object */
-struct ServerSettings;            /** sets up the server's behavior */
-struct Protocol;                  /** controls connection events */
+struct Server; /** used internally. no public data exposed */
+typedef const struct Server* server_pt; /** a pointer to a server object */
+struct ServerSettings;                  /** sets up the server's behavior */
+struct Protocol;                        /** controls connection events */
 
 /**
 The start_server(...) macro is a shortcut that allows to easily create a
