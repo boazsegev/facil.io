@@ -9,7 +9,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "lib-server.h"
 #include "http-request.h"
 #include "http-response.h"
-#include "http-objpool.h"
 #include <stdio.h>
 
 /** Sets the maximum headers buffer size (the headers size limit). */
@@ -75,8 +74,6 @@ struct HttpProtocol {
   layer server and simply serve files.
   */
   char* public_folder;
-  /** an internal request pool, to avoid malloc */
-  object_pool request_pool;
 };
 
 #endif /* HTTP_PROTOCOL_H */
