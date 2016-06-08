@@ -314,20 +314,15 @@ static int http_sendfile(struct HttpRequest* req) {
 }
 
 // implement on_close to close the FILE * for the body (if exists).
-static void http_on_close(struct Server* server, uint64_t sockfd) {
+static void http_on_close(server_pt server, uint64_t sockfd) {
   struct HttpRequest* request = Server.get_udata(server, sockfd);
   if (HttpRequest.is_request(request)) {
     // clear the request data.
-    HttpRequest.clear(request);
-    // store the request in the object pool.
-    ObjectPool.push(
-        ((struct HttpProtocol*)(Server.get_protocol(server, sockfd)))
-            ->request_pool,
-        request);
+    HttpRequest.destroy(request);
   }
 }
 // implement on_data to parse incoming requests.
-static void http_on_data(struct Server* server, uint64_t sockfd) {
+static void http_on_data(const struct Server* server, uint64_t sockfd) {
   // setup static error codes
   static char* options_req =
       "HTTP/1.1 200 OK\r\n"
@@ -366,8 +361,7 @@ static void http_on_data(struct Server* server, uint64_t sockfd) {
     return;
   }
   if (!request) {
-    Server.set_udata(server, sockfd,
-                     (request = ObjectPool.pop(protocol->request_pool)));
+    Server.set_udata(server, sockfd, (request = HttpRequest.create()));
     request->server = server;
     request->sockfd = sockfd;
   }
@@ -644,8 +638,7 @@ cleanup_after_finish:
   // we need to destroy the request ourselves, because we disconnected the
   // request from the server's udata.
   if (HttpRequest.is_request(request)) {
-    HttpRequest.clear(request);
-    ObjectPool.push(protocol->request_pool, request);
+    HttpRequest.destroy(request);
     return;
   }
 
@@ -777,14 +770,9 @@ struct HttpProtocol* HttpProtocol_new(void) {
   http->maximum_body_size = 32;
   http->on_request = http_default_on_request;
   http->public_folder = NULL;
-  // void* (*create)(void),  void (*destroy)(void* object), int size
-  http->request_pool =
-      ObjectPool.create_dynamic((void* (*)(void))HttpRequest.create,
-                                (void (*)(void*))HttpRequest.destroy, 32);
   return http;
 }
 void HttpProtocol_destroy(struct HttpProtocol* http) {
-  ObjectPool.destroy(http->request_pool);
   free(http);
 }
 
