@@ -8,6 +8,7 @@ Setup
 #include <string.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <limits.h>
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>
@@ -1062,11 +1063,28 @@ Misc Helpers
 /**
 Allocates memory and dumps the whole file into the memory allocated. Remember
 to call `free` when done.
+
+This function has some Unix specific properties that resolve links and user
+folder referencing.
 */
 static fdump_s* fdump(const char* file_path, size_t size_limit) {
   struct stat f_data;
   FILE* file = NULL;
   fdump_s* container = NULL;
+  size_t file_path_len;
+  if (file_path == NULL || (file_path_len = strlen(file_path)) == 0 ||
+      file_path_len > PATH_MAX)
+    return NULL;
+
+  char real_public_path[PATH_MAX + 1];
+  real_public_path[PATH_MAX] = 0;
+  if (file_path[0] == '~' && getenv("HOME") && file_path_len <= PATH_MAX) {
+    strcpy(real_public_path, getenv("HOME"));
+    memcpy(real_public_path + strlen(real_public_path), file_path + 1,
+           file_path_len);
+    file_path = real_public_path;
+  }
+
   if (stat(file_path, &f_data))
     goto error;
   if (size_limit == 0 || f_data.st_size < size_limit)

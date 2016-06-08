@@ -364,6 +364,9 @@ extern struct MiniCrypt__API___ {
 
   Returns the number of bytes allocated. On error, returns 0 and sets the
   container pointer to NULL.
+
+  This function has some Unix specific properties that resolve links and user
+  folder referencing.
   */
   fdump_s* (*fdump)(const char* file_path, size_t size_limit);
 } MiniCrypt;
