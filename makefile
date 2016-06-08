@@ -3,9 +3,9 @@ CC=@gcc
 DB=@lldb
 LIBS=-pthread -lssl -lcrypto
 INCLUDE=/usr/local/include
-OUT_ROOT=../tmp
+OUT_ROOT=./tmp
 SRC_ROOT=.
-SRC_SUBFOLDERS=http
+SRC_SUBFOLDERS=src src/http
 
 #auto computed values
 BIN=$(OUT_ROOT)/$(NAME)
@@ -22,7 +22,7 @@ $(NAME): build
 build: $(OBJS)
 	$(CC) -o $(BIN) $^ $(CFLAGS) $(LIBS)
 
-$(OUT_ROOT)/%.o: $(SRC_ROOT)/%.c # $(SRC)/%.h
+$(OUT_ROOT)/%.o: %.c # $(SRC)/%.h
 	$(CC) -o $@ -c $^ $(CFLAGS)
 
 clean:
