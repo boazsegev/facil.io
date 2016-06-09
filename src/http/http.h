@@ -85,6 +85,8 @@ callback. i.e.:
     } else if ((http_public_folder))                                        \
       protocol->public_folder =                                             \
           realpath((http_public_folder), real_public_path);                 \
+    protocol->public_folder_length = strlen(protocol->public_folder);       \
+    HttpRequest.destroy(HttpRequest.create());                              \
     HttpResponse.init_pool();                                               \
     Server.listen((struct ServerSettings){                                  \
         .timeout = HTTP_DEFAULT_TIMEOUT,                                    \
@@ -112,6 +114,8 @@ callback. i.e.:
     } else if ((http_public_folder))                                        \
       protocol->public_folder =                                             \
           realpath((http_public_folder), real_public_path);                 \
+    protocol->public_folder_length = strlen(protocol->public_folder);       \
+    HttpRequest.destroy(HttpRequest.create());                              \
     HttpResponse.init_pool();                                               \
     struct ServerSettings settings = {                                      \
         .timeout = HTTP_DEFAULT_TIMEOUT,                                    \

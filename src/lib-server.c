@@ -102,13 +102,15 @@ struct Server {
 // Macros for checking a connection ID is valid or retriving it's data
 
 /** returns the connection's data */
-#define connection_data(srv, conn) ((srv)->connections[(conn).data.fd])
+#define connection_data(srv, conn) \
+  ((srv)->connections[((union fd_id)(conn)).data.fd])
 
 /** valuates as FALSE (0) if the connection is valid and true if outdated */
-#define validate_connection(srv, conn)                                \
-  ((connection_data((srv), (conn)).counter != (conn).data.counter) || \
-   (connection_data((srv), (conn)).counter &&                         \
-    (connection_data((srv), (conn)).protocol == NULL)))
+#define validate_connection(srv, conn)                       \
+  ((connection_data((srv), ((union fd_id)(conn))).counter != \
+    ((union fd_id)(conn)).data.counter) ||                   \
+   (connection_data((srv), ((union fd_id)(conn))).counter && \
+    (connection_data((srv), ((union fd_id)(conn))).protocol == NULL)))
 
 /** returns a value if the connection isn't valid */
 #define is_open_connection_or_return(srv, conn, ret) \
@@ -329,6 +331,21 @@ The file will be buffered to the socket chunk by chunk, so that memory
 consumption is capped at ~ 64Kb.
 */
 static ssize_t srv_sendfile(server_pt server, union fd_id cuuid, FILE* file);
+/** Submits a `libsock` packet to the `libsock` socket buffer. See `libsock`
+for more details.
+
+returns 0 on success. success means that the data is in a buffer waiting to
+be written. If the socket is forced to close at this point, the buffer will be
+destroyed (never sent).
+
+On error, returns -1. Returns 0 on success
+
+Packet memory is always managed by the server (on error, it will be correctly
+freed).
+*/
+static ssize_t srv_send_packet(server_pt srv,
+                               uint64_t connection_id,
+                               struct Packet* packet);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Tasks + Async
@@ -459,6 +476,7 @@ const struct Server__API___ Server = {
                                       void*,
                                       size_t))srv_write_move_urgent,  //
     .sendfile = (ssize_t (*)(server_pt, uint64_t, FILE*))srv_sendfile,
+    .send_packet = srv_send_packet,
     /* connection tasks functions */
     .each = (int (*)(server_pt,
                      uint64_t,
@@ -1145,7 +1163,11 @@ static ssize_t srv_write_move(server_pt server,
                               union fd_id conn,
                               void* data,
                               size_t len) {
-  is_open_connection_or_return(server, conn, -1);
+  if (validate_connection(server, conn)) {
+    if (data)
+      free(data);
+    return -1;
+  }
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
@@ -1193,7 +1215,11 @@ static ssize_t srv_write_move_urgent(server_pt server,
                                      union fd_id conn,
                                      void* data,
                                      size_t len) {
-  is_open_connection_or_return(server, conn, -1);
+  if (validate_connection(server, conn)) {
+    if (data)
+      free(data);
+    return -1;
+  }
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
@@ -1212,13 +1238,28 @@ The file will be buffered to the socket chunk by chunk, so that memory
 consumption is capped at ~ 64Kb.
 */
 static ssize_t srv_sendfile(server_pt server, union fd_id conn, FILE* file) {
-  is_open_connection_or_return(server, conn, -1);
+  if (validate_connection(server, conn)) {
+    if (file)
+      fclose(file);
+    return -1;
+  }
   // reset timeout
   _connection_(server, conn.data.fd).idle = 0;
   // send data
-  if (sock_write2(.fd = conn.data.fd, .buffer = file, .file = 1))
+  return sock_write2(.fd = conn.data.fd, .buffer = file, .file = 1);
+}
+
+/**
+Sends a packet.
+*/
+static ssize_t srv_send_packet(server_pt srv,
+                               uint64_t connection_id,
+                               struct Packet* packet) {
+  if (validate_connection(srv, (union fd_id)connection_id)) {
+    sock_free_packet(packet);
     return -1;
-  return 0;
+  }
+  return sock_send_packet(((union fd_id)connection_id).data.fd, packet);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

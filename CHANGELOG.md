@@ -30,6 +30,8 @@ Changes I plan to make in future versions:
 
 * Remove / fix server task container pooling (`FDTask` and `GroupTask` pools).
 
+* Move `libsock`, `lib-server` and `http` away from `FILE *` and into `fd` data for file sending, possibly for leveraging the OS [`sendfile`](http://linux.die.net/man/2/sendfile) optimization (need to resolve issues with offset and possible file duplications as well as the [linux](http://linux.die.net/man/2/sendfile) vs. [bsd](https://www.freebsd.org/cgi/man.cgi?query=sendfile&sektion=2) implementations).
+
 ## A note about version numbers
 
 I attempt to follow semantic versioning, except that the libraries are still under development, so version numbers get updated only when a significant change occurs.
@@ -54,6 +56,8 @@ Baseline (changes not logged before this point in time).
 
 ### V. 0.0.2
 
+* fixed situations in which the `send_packet` might not close a file (if the packet buffer references a `FILE`) before returning an error.
+
 * The use of `sock_free_packet` is now required for any unused Packet object pointers checked out using `sock_checkout_packet`.
 
     This requirement allows the pool management to minimize memory fragmentation for long running processes.
@@ -76,6 +80,8 @@ Baseline (changes not logged before this point in time).
 
 ### V. 0.3.3
 
+* fixed situations in which the `sendfile` might not close the file before returning an error.
+
 * There was a chance that the `on_data` callback might return after the connection was disconnected and a new connection was established for the same `fd`. This could have caused the `busy` flag to be cleared even if the new connection was actually busy. This potential issue had been fixed by checking the connection against the UUID counter before clearing the `busy` flag.
 
 * reminder: The `Server.rw_hooks` feature is deprecated. Use `libsock`'s TLC (Transport Layer Callbacks) features instead.
@@ -91,6 +97,14 @@ Baseline (changes not logged before this point in time).
 Baseline (changes not logged before this point in time).
 
 ## HTTP Protocol
+
+### Date 20160609
+
+* Rewrote the HttpResponse implementation to leverage `libsock`'s direct user-land buffer packet injection, minimizing user land data-copying.
+
+* rewrote the HTTP `sendfile` handling for public folder settings.
+
+* Fixed an issue related to the new pooling scheme, where old data would persist in some pooled request objects.
 
 ### Date 20160608
 

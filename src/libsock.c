@@ -51,11 +51,11 @@ User land Buffer
 
 // packet sizes
 #ifndef BUFFER_MAX_PACKET_POOL
-#define BUFFER_MAX_PACKET_POOL 127
+#define BUFFER_MAX_PACKET_POOL 128
 #endif
 
 #ifndef DEBUG_SOCKLIB
-#define DEBUG_SOCKLIB 1
+#define DEBUG_SOCKLIB 0
 #endif
 
 // The global packet container pool
@@ -202,10 +202,18 @@ int8_t init_socklib(size_t max) {
   }
   fdmax = max;
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-  fprintf(stderr,
-          "Initialized fd_map for %lu elements, each one %lu bytes, overall: "
-          "%lu bytes.\n",
-          max, sizeof(*n_map), sizeof(*n_map) * max);
+  if (DEBUG_SOCKLIB)
+    fprintf(stderr,
+            "Initialized fd_map for %lu elements, each one %lu bytes,"
+            "overall: %lu bytes.\n"
+            "Initialized packet pool for %d elements, each one %lu bytes,"
+            "overall: %lu bytes.\n"
+            "Total: %lu bytes\n\n",
+            max, sizeof(*n_map), sizeof(*n_map) * max, BUFFER_MAX_PACKET_POOL,
+            sizeof(struct Packet),
+            sizeof(struct Packet) * BUFFER_MAX_PACKET_POOL,
+            (sizeof(struct Packet) * BUFFER_MAX_PACKET_POOL) +
+                (sizeof(*n_map) * max));
 #endif
   return 0;
 }
@@ -465,8 +473,11 @@ ssize_t sock_write2_fn(struct SockWriteOpt options) {
   if (!options.length && !options.file)
     options.length = strlen(options.buffer);
   struct Packet* packet = sock_checkout_packet();
-  if (!packet)
+  if (!packet) {
+    if (options.file)
+      fclose((void*)options.buffer);
     return -1;
+  }
   packet->metadata.can_interrupt = 1;
   packet->metadata.urgent = options.urgent;
   if (options.file) {
@@ -518,6 +529,18 @@ ssize_t sock_send_packet(int fd, struct Packet* packet) {
     sock_free_packet(packet);
     return -1;
   }
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+  fprintf(stderr,
+          "sending packet with length %lu\n"
+          "(first char == %c(%d), last char == %c(%d))\n"
+          "%.*s\n============\n",
+          packet->length, ((char*)packet->buffer)[0],
+          ((char*)packet->buffer)[0],
+          ((char*)packet->buffer)[packet->length - 1],
+          ((char*)packet->buffer)[packet->length - 1], (int)packet->length,
+          packet->buffer);
+#endif
+
   // applys the move logic for either urgent or non urgent packets
   pthread_mutex_lock(&fd_map[(fd)].lock);
   struct Packet *tail, **pos = &(fd_map[fd].packet);

@@ -81,8 +81,6 @@ struct HttpRequest {
   server_pt server;
   /** The socket waiting on the response */
   uint64_t sockfd;
-  /** buffers the head of the request (not the body) */
-  char buffer[HTTP_HEAD_MAX_SIZE];
   /**
   points to the HTTP method name's location within the buffer (actually,
   position 0). */
@@ -121,6 +119,8 @@ struct HttpRequest {
     /** body size count (for parser validation) */
     unsigned int bd_rcved;
   } private;
+  /** buffers the head of the request (not the body) */
+  char buffer[HTTP_HEAD_MAX_SIZE];
 };
 
 #endif /* HTTP_PROTOCOL_H */

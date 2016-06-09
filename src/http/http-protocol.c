@@ -55,50 +55,26 @@ Feel free to copy, use and enjoy according to the license provided.
 #define is_num(c) ((c) >= '0' && (c) <= '9')
 #define num_val(c) ((c)-48)
 
-static char* Day2Str[] = {"Sun",  // the week starts on Sunday.
-                          "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-
-static char* Mon2Str[] = {"Jan",  // the year starts on January.
-                          "Feb", "Mar", "Apr", "May", "Jun", "Jul",
-                          "Aug", "Sep", "Oct", "Nov", "Dec"};
-
 // reviewes the request and attempts to answer with a static file.
 // returns 0 if no file was found, otherwise returns 1.
 static int http_sendfile(struct HttpRequest* req) {
-  static char* http_file_response_no_mime =
-      "HTTP/1.1 200 OK\r\n"
-      "Connection: keep-alive\r\n"
-      "Keep-Alive: timeout=1\r\n"
-      "Accept-Ranges: none\r\n"
-      "Content-Length: %lu\r\n"
-      "Date: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
-      "Last-Modified: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
-      "Cache-Control: public, max-age=3600\r\n"
-      "\r\n";
-
-  static char* http_file_response =
-      "HTTP/1.1 200 OK\r\n"
-      "Connection: keep-alive\r\n"
-      "Keep-Alive: timeout=1\r\n"
-      "Accept-Ranges: none\r\n"
-      "Content-Type: %s\r\n"
-      "Content-Length: %lu\r\n"
-      "Date: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
-      "Last-Modified: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
-      "Cache-Control: public, max-age=3600\r\n"
-      "\r\n";
-
-  FILE* file;
-  char* mime = NULL;
-  char* ext = NULL;
-  struct stat file_data = {};
-
   // collect the protocol path and the request's path length and data
   struct HttpProtocol* protocol =
       (struct HttpProtocol*)Server.get_protocol(req->server, req->sockfd);
   if (!protocol)
     return 1;
-  size_t len = strlen(protocol->public_folder);
+  if (protocol->public_folder == NULL)
+    return 0;
+  if (protocol->public_folder_length == 0)
+    protocol->public_folder_length = strlen(protocol->public_folder);
+
+  FILE* file;
+  char* mime = NULL;
+  char* ext = NULL;
+  struct stat file_data = {};
+  // fprintf(stderr, "\n\noriginal request path: %s\n", req->path);
+
+  size_t len = protocol->public_folder_length;
   // create and initialize the filename, including decoding the path
   char fname[strlen(req->path) + len + 1];
   memcpy(fname, protocol->public_folder, len);
@@ -138,6 +114,8 @@ static int http_sendfile(struct HttpRequest* req) {
     if (fname[i++] == '/' && fname[i++] == '.' && fname[i++] == '.')
       return 0;
   }
+  // fprintf(stderr, "file name: %s\noriginal request path: %s\n", fname,
+  //         req->path);
 
   // get file data (prevent folder access and get modification date)
   if (stat(fname, &file_data))
@@ -145,172 +123,135 @@ static int http_sendfile(struct HttpRequest* req) {
   // check that we have a file and not something else
   if (!S_ISREG(file_data.st_mode) && !S_ISLNK(file_data.st_mode))
     return 0;
-  // fprintf(stderr, "looking for file: %s\n", fname);
-  if ((file = fopen(fname, "rb"))) {
-    // we will recycle len for the headers size and other things we want
-    len = 0;
 
-    // get the mime type (we have an ext pointer and the string isn't empty)
-    if (ext && ext[1]) {
-      mime = MimeType.find(ext + 1);
-    }
-
-    // Get a date data
-    struct tm t_file;
-    gmtime_r(&file_data.st_mtime, &t_file);
-    struct tm t_now;
-    gmtime_r(&Server.reactor(req->server)->last_tick, &t_now);
-
-    // we now need to write some headers... we can recycle the ext pointer
-    // for
-    // the data
-    if (HttpRequest.find(req, "range") && ((ext = HttpRequest.value(req))) &&
-        (ext[0] | 32) == 'b' && (ext[1] | 32) == 'y' && (ext[2] | 32) == 't' &&
-        (ext[3] | 32) == 'e' && (ext[4] | 32) == 's' && (ext[5] | 32) == '=') {
-      // ext holds the first range, starting on index 6 i.e. RANGE: bytes=0-1
-      static char* http_range_response =
-          "HTTP/1.1 206 Partial content\r\n"
-          "Connection: keep-alive\r\n"
-          "Keep-Alive: timeout=1\r\n"
-          "%s%s%s"
-          "Content-Length: %lu\r\n"
-          "Date: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
-          "Last-Modified: %s, %d %s %04d %02d:%02d:%02d GMT\r\n"
-          "Accept-Ranges: bytes\r\n"
-          "Content-Range: bytes %lu-%lu/%lu\r\n"
-          "Cache-Control: public, max-age=3600\r\n"
-          "\r\n";
-      size_t start = 0, finish = 0;
-      ext = ext + 6;
-      while (is_num(*ext)) {
-        start = start * 10;
-        start += num_val(*ext);
-        ext++;
-      }
-      if (start >= file_data.st_size - 1)
-        goto invalid_range;
-      ext++;
-      while (is_num(*ext)) {
-        finish = finish * 10;
-        finish += num_val(*ext);
-        ext++;
-      }
-      if (finish)
-        finish++;
-      if (finish && finish >= start &&
-          (finish - start) < HTTP_SEND_RANGE_AS_DATA_LIMIT &&
-          finish < file_data.st_size - 1) {
-        // it's a small chunk, put it in the buffer and send it as data
-        char* data = malloc(finish - start);
-        if (!data) {
-          fclose(file);
-          return 0;
-        }
-        len = fread(data, 1, finish - start, file);
-        if (len <= 0) {
-          free(data);
-          fclose(file);
-          return 0;
-        }
-        len = snprintf(
-            req->buffer, HTTP_HEAD_MAX_SIZE, http_range_response,
-            (mime ? "Content-Type: " : ""), (mime ? mime : ""),
-            (mime ? "\r\n" : ""), len, Day2Str[t_now.tm_wday], t_now.tm_mday,
-            Mon2Str[t_now.tm_mon], t_now.tm_year + 1900, t_now.tm_hour,
-            t_now.tm_min, t_now.tm_sec, Day2Str[t_file.tm_wday], t_file.tm_mday,
-            Mon2Str[t_file.tm_mon], t_file.tm_year + 1900, t_file.tm_hour,
-            t_file.tm_min, t_file.tm_sec, start, finish - 1, file_data.st_size);
-        // review the string
-        if (!len) {
-          fclose(file);
-          free(data);
-          return 0;
-        }
-        // send the headers and the data (moving the pointers to the buffer)
-        Server.write(req->server, req->sockfd, req->buffer, len);
-        if (Server.write_move(req->server, req->sockfd, data, finish - start))
-          free(data);
-        return 1;
-      } else {
-        // going to the EOF (big chunk or EOL requested) - send as file
-        finish = file_data.st_size - 1;
-        fseek(file, start, SEEK_SET);
-        // len = asprintf(
-        //     &ext, http_range_response, (mime ? "Content-Type: " : ""),
-        //     (mime ? mime : ""), (mime ? "\r\n" : ""), file_data.st_size -
-        //     start,
-        //     Day2Str[t_now.tm_wday], t_now.tm_mday, Mon2Str[t_now.tm_mon],
-        //     t_now.tm_year + 1900, t_now.tm_hour, t_now.tm_min, t_now.tm_sec,
-        //     Day2Str[t_file.tm_wday], t_file.tm_mday, Mon2Str[t_file.tm_mon],
-        //     t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min,
-        //     t_file.tm_sec,
-        //     start, finish, file_data.st_size);
-        // // send the headers and the file
-        // Server.write_move(req->server, req->sockfd, ext, len);
-
-        len = snprintf(
-            req->buffer, HTTP_HEAD_MAX_SIZE, http_range_response,
-            (mime ? "Content-Type: " : ""), (mime ? mime : ""),
-            (mime ? "\r\n" : ""), file_data.st_size - start,
-            Day2Str[t_now.tm_wday], t_now.tm_mday, Mon2Str[t_now.tm_mon],
-            t_now.tm_year + 1900, t_now.tm_hour, t_now.tm_min, t_now.tm_sec,
-            Day2Str[t_file.tm_wday], t_file.tm_mday, Mon2Str[t_file.tm_mon],
-            t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min, t_file.tm_sec,
-            start, finish, file_data.st_size);
-        // review the string
-        if (!len) {
-          fclose(file);
-          return 0;
-        }
-        // send the headers and the file
-        Server.write(req->server, req->sockfd, req->buffer, len);
-        if (Server.sendfile(req->server, req->sockfd, file))
-          fclose(file);
-        return 1;
-      }
-    }
-  invalid_range:
-    if (mime)
-      len = snprintf(req->buffer, HTTP_HEAD_MAX_SIZE, http_file_response, mime,
-                     file_data.st_size, Day2Str[t_now.tm_wday], t_now.tm_mday,
-                     Mon2Str[t_now.tm_mon], t_now.tm_year + 1900, t_now.tm_hour,
-                     t_now.tm_min, t_now.tm_sec, Day2Str[t_file.tm_wday],
-                     t_file.tm_mday, Mon2Str[t_file.tm_mon],
-                     t_file.tm_year + 1900, t_file.tm_hour, t_file.tm_min,
-                     t_file.tm_sec);
-    else
-      len = snprintf(
-          req->buffer, HTTP_HEAD_MAX_SIZE, http_file_response_no_mime,
-          file_data.st_size, Day2Str[t_now.tm_wday], t_now.tm_mday,
-          Mon2Str[t_now.tm_mon], t_now.tm_year + 1900, t_now.tm_hour,
-          t_now.tm_min, t_now.tm_sec, Day2Str[t_file.tm_wday], t_file.tm_mday,
-          Mon2Str[t_file.tm_mon], t_file.tm_year + 1900, t_file.tm_hour,
-          t_file.tm_min, t_file.tm_sec);
-
-    // review the string
-    if (!len) {
-      fclose(file);
-      return 0;
-    }
-
-    // send headers
-    Server.write(req->server, req->sockfd, req->buffer, len);
-    // send file, unless the request method is "HEAD"
-    if (strcasecmp("HEAD", req->method) == 0 ||
-        Server.sendfile(req->server, req->sockfd, file))
-      // The file will be closed by the buffer if it's sent, otherwise...
-      fclose(file);
-
-    // DEBUG - print headers
-    // HttpRequest.first(req);
-    // do {
-    //   fprintf(stderr, "%s: %s\n", HttpRequest.name(req),
-    //           HttpRequest.value(req));
-    // } while (HttpRequest.next(req));
-
+  // Okay - we have data - time to make a response.
+  struct HttpResponse* response = HttpResponse.create(req);
+  if (!response) {
+    Server.close(req->server, req->sockfd);
     return 1;
   }
-  return 0;
+  if ((file = fopen(fname, "rb")) == NULL)
+    goto internal_error;
+
+  // get the mime type (we have an ext pointer and the string isn't empty)
+  if (ext && ext[1]) {
+    mime = MimeType.find(ext + 1);
+    if (mime) {
+      HttpResponse.write_header(response, "Content-Type", 12, mime,
+                                strlen(mime));
+    }
+  }
+
+  // Set a date data
+  response->last_modified = file_data.st_mtime;
+
+  // Range handling
+  if (HttpRequest.find(req, "range") && ((ext = HttpRequest.value(req))) &&
+      (ext[0] | 32) == 'b' && (ext[1] | 32) == 'y' && (ext[2] | 32) == 't' &&
+      (ext[3] | 32) == 'e' && (ext[4] | 32) == 's' && (ext[5] | 32) == '=') {
+    // ext holds the first range, starting on index 6 i.e. RANGE: bytes=0-1
+    // "HTTP/1.1 206 Partial content\r\n"
+    // "Accept-Ranges: bytes\r\n"
+    // "Content-Range: bytes %lu-%lu/%lu\r\n"
+    // fprintf(stderr, "Got a range request %s\n", ext);
+    size_t start = 0, finish = 0;
+    ext = ext + 6;
+    while (is_num(*ext)) {
+      start = start * 10;
+      start += num_val(*ext);
+      ext++;
+    }
+    // fprintf(stderr, "Start: %lu / %lld\n", start, file_data.st_size);
+    if (start >= file_data.st_size - 1)
+      goto invalid_range;
+    ext++;
+    while (is_num(*ext)) {
+      finish = finish * 10;
+      finish += num_val(*ext);
+      ext++;
+    }
+    if (finish)
+      finish++;
+    // fprintf(stderr, "finish: %lu / %lld\n", finish, file_data.st_size);
+    if (finish && finish >= start &&
+        (finish - start) < HTTP_SEND_RANGE_AS_DATA_LIMIT &&
+        finish < file_data.st_size - 1) {
+      // it's a "small" chunk, put it in the buffer and send it as data
+      // fprintf(stderr, "handling no-file chunk\n");
+      char* data = malloc(finish - start);
+      if (!data) {
+        goto bad_request;
+      }
+      len = fread(data, 1, finish - start, file);
+      if (len <= 0) {
+        free(data);
+        goto bad_request;
+      }
+      fclose(file);
+      file = NULL;
+      response->status = 206;
+      HttpResponse.write_header(response, "Accept-Ranges", 13, "bytes", 5);
+      HttpResponse.write_header(response, "Cache-Control", 13,
+                                "public, max-age=3600", 20);
+      if (HttpResponse.printf(response, "Content-Range: bytes %lu-%lu/%lld",
+                              start, start + len - 1, file_data.st_size)) {
+        HttpResponse.reset(response, req);
+        goto internal_error;
+      }
+      HttpResponse.write_body_move(response, data, len);
+      HttpResponse.destroy(response);
+      return 1;
+    } else {
+      // going to the EOF (big chunk or EOL requested) - send as file
+      finish = file_data.st_size - 1;
+      fseek(file, start, SEEK_SET);
+      if (HttpResponse.printf(response, "Content-Range: bytes %lu-%lu/%lu",
+                              start, finish, file_data.st_size)) {
+        HttpResponse.reset(response, req);
+        goto internal_error;
+      }
+      response->status = 206;
+      HttpResponse.write_header(response, "Cache-Control", 13,
+                                "public, max-age=3600", 20);
+      HttpResponse.write_header(response, "Accept-Ranges", 13, "bytes", 5);
+      HttpResponse.sendfile(response, file, file_data.st_size - start);
+      HttpResponse.destroy(response);
+      return 1;
+    }
+  }
+
+invalid_range:
+  HttpResponse.write_header(response, "Accept-Ranges", 13, "none", 4);
+  // set caching
+  HttpResponse.write_header(response, "Cache-Control", 13,
+                            "public, max-age=3600", 20);
+
+  // send data
+  if (strcasecmp("HEAD", req->method) == 0) {
+    HttpResponse.send(response);
+    fclose(file);
+  } else
+    HttpResponse.sendfile(response, file, file_data.st_size);
+  HttpResponse.destroy(response);
+
+  return 1;
+
+internal_error:
+  if (file)
+    fclose(file);
+  response->status = 500;
+  response->metadata.should_close = 1;
+  HttpResponse.write_body(response, "Internal error (F01)", 20);
+  HttpResponse.destroy(response);
+  return 1;
+bad_request:
+  if (file)
+    fclose(file);
+  response->status = 400;
+  response->metadata.should_close = 1;
+  HttpResponse.write_body(response, "Bad Request.", 12);
+  HttpResponse.destroy(response);
+  return 1;
 }
 
 // implement on_close to close the FILE * for the body (if exists).
@@ -597,7 +538,7 @@ finish:
   Server.set_udata(server, sockfd, NULL);
 
   // perform callback if a file wasn't sent.
-  if ((!protocol->public_folder || !http_sendfile(request)) &&
+  if ((protocol->public_folder == NULL || http_sendfile(request) == 0) &&
       protocol->on_request) {
     protocol->on_request(request);
   }

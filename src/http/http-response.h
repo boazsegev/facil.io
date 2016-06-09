@@ -7,24 +7,6 @@
 #include "http-status.h"
 #include "http-mime-types.h"
 
-/* defined in the request header, and used here:
-HTTP_HEAD_MAX_SIZE
-*/
-
-/*
-Small enough responses can be sent together with the header, allowing for better
-performance through better socket buffer utilization and minimizing the system
-calls to `write`.
-
-These cannot be more then 56,320 Bytes , as the buffer packets will split
-anything over 64Kb, also 24Kb is a reasonable upper limit for the actual
-optimization, so using a higher limit will not really improve performance (this
-is machine dependant).
-
-Also, this memory will remain in the pool for every pooled response object.
-*/
-#define SMALL_RESPONSE_LIMIT 16384
-
 /**
 The struct HttpResponse type will contain all the data required for handling the
 response.
@@ -88,14 +70,6 @@ struct HttpResponse {
   */
   time_t last_modified;
   /**
-  The actual header buffer - do not edit directly.
-
-  The extra 248 bytes are for the status line and variable headers, such as the
-  date, content-length and connection status, that are requireed by some clients
-  and aren't always meaningful for a case-by-case consideration.
-  */
-  char header_buffer[HTTP_HEAD_MAX_SIZE + SMALL_RESPONSE_LIMIT + 248];
-  /**
   The response status
   */
   int status;
@@ -110,6 +84,10 @@ struct HttpResponse {
     before storing the object in the pool or freeing the object's memory).
     */
     void* classUUID;
+    /**
+    A `libsock` buffer packet used for header data (to avoid double copy).
+    */
+    struct Packet* packet;
     /**
     The server through which the response will be sent.
     */

@@ -74,6 +74,10 @@ struct HttpProtocol {
   layer server and simply serve files.
   */
   char* public_folder;
+  /**
+  The length of the public_folder string.
+  */
+  size_t public_folder_length;
 };
 
 #endif /* HTTP_PROTOCOL_H */

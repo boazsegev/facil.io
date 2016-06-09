@@ -87,8 +87,11 @@ static struct HttpRequest* request_new(void) {
     if (atomic_compare_exchange_weak(&ContainerPool.pool, &req, req->next))
       break;
   }
-  if (!req)
+  if (!req) {
     req = calloc(sizeof(struct HttpRequest), 1);
+  } else {
+    memset(req, 0, sizeof(struct HttpRequest) - HTTP_HEAD_MAX_SIZE);
+  }
   req->request.private.is_request = request_is_request;
   return (struct HttpRequest*)req;
 }

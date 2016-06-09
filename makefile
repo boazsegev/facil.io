@@ -1,4 +1,4 @@
-NAME=tryme
+NAME=demo
 CC=@gcc
 DB=@lldb
 LIBS=-pthread -lssl -lcrypto

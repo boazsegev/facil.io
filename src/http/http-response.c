@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <stdatomic.h>
+#include "libsock.h"
 
 /******************************************************************************
 Function declerations.
@@ -123,8 +124,8 @@ the function returns 0.
 */
 static int send_response(struct HttpResponse*);
 /* used by `send_response` and others... */
-static char* prep_headers(struct HttpResponse*);
-static int send_headers(struct HttpResponse*, char*);
+static struct Packet* prep_headers(struct HttpResponse* response);
+static int send_headers(struct HttpResponse*, struct Packet*);
 
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
@@ -277,8 +278,6 @@ static struct HttpResponse* new_response(struct HttpRequest* request) {
   if (!res)
     return NULL;
 
-  res->response.metadata.classUUID = new_response;
-
   reset((struct HttpResponse*)res, request);
   return (struct HttpResponse*)res;
 }
@@ -290,6 +289,10 @@ static void destroy_response(struct HttpResponse* response) {
     return;
   if (response->metadata.should_close)
     close_response(response);
+  if (response->metadata.packet) {
+    sock_free_packet(response->metadata.packet);
+    response->metadata.packet = NULL;
+  }
 
   if (ContainerPool.initialized == NULL ||
       ((struct HttpResponsePool*)response) < ContainerPool.initialized ||
@@ -313,20 +316,23 @@ Clears the HttpResponse object, linking it with an HttpRequest object (which
 will be used to set the server's pointer and socket fd).
 */
 static void reset(struct HttpResponse* response, struct HttpRequest* request) {
-  response->content_length = 0;
-  response->status = 200;
-  response->metadata.headers_sent = 0;
-  response->metadata.connection_written = 0;
-  response->metadata.connection_len_written = 0;
-  response->metadata.date_written = 0;
-  response->metadata.headers_pos = response->header_buffer + HTTP_HEADER_START;
-  response->metadata.fd_uuid = request->sockfd;
-  response->metadata.server = request->server;
-  response->last_modified = response->date =
-      Server.reactor(response->metadata.server)->last_tick;
-  response->metadata.should_close =
-      (request && request->connection &&
-       (strcasecmp(request->connection, "close") == 0));
+  time_t date = Server.reactor(request->server)->last_tick;
+  *response = (struct HttpResponse){
+      .metadata.classUUID = new_response,
+      .status = 200,
+      .metadata.fd_uuid = request->sockfd,
+      .metadata.server = request->server,
+      .last_modified = date,
+      .date = date,
+      .metadata.should_close =
+          (request && request->connection &&
+           (strcasecmp(request->connection, "close") == 0)),
+      .metadata.packet = response->metadata.packet};
+  if (response->metadata.packet == NULL)
+    response->metadata.packet = sock_checkout_packet();
+  response->metadata.headers_pos =
+      response->metadata.packet->buffer + HTTP_HEADER_START;
+
   // response->metadata.should_close = (request && request->connection &&
   //                                    ((request->connection[0] | 32) == 'c')
   //                                    &&
@@ -391,7 +397,8 @@ static int write_header_data2(struct HttpResponse* response,
                               size_t value_len) {
   if (response->metadata.headers_sent ||
       (header_len + value_len + 4 +
-           (response->metadata.headers_pos - response->header_buffer) >=
+           (response->metadata.headers_pos -
+            (char*)response->metadata.packet->buffer) >=
        HTTP_HEAD_MAX_SIZE))
     return -1;
   // review special headers
@@ -464,7 +471,9 @@ static int set_cookie(struct HttpResponse* response, struct HttpCookie cookie) {
   } else
     cookie.domain_len = 0;
   if (cookie.name_len + cookie.value_len + cookie.path_len + cookie.domain_len +
-          (response->metadata.headers_pos - response->header_buffer) + 96 >
+          (response->metadata.headers_pos -
+           (char*)response->metadata.packet->buffer) +
+          96 >
       HTTP_HEAD_MAX_SIZE)
     return -1;  // headers too big (added 96 for keywords, header names etc').
   // write the header's name to the buffer
@@ -525,8 +534,9 @@ On success, the function returns 0.
 int response_printf(struct HttpResponse* response, const char* format, ...) {
   if (response->metadata.headers_sent)
     return -1;
-  size_t max_len = HTTP_HEAD_MAX_SIZE -
-                   (response->metadata.headers_pos - response->header_buffer);
+  size_t max_len =
+      HTTP_HEAD_MAX_SIZE - (response->metadata.headers_pos -
+                            (char*)response->metadata.packet->buffer);
   va_list args;
   va_start(args, format);
   int written =
@@ -560,8 +570,10 @@ static int send_response(struct HttpResponse* response) {
   // }
 };
 
-static char* prep_headers(struct HttpResponse* response) {
-  if (response->metadata.headers_sent)
+static struct Packet* prep_headers(struct HttpResponse* response) {
+  struct Packet* headers;
+  if (response->metadata.headers_sent ||
+      (headers = response->metadata.packet) == NULL)
     return NULL;
   char* status = HttpStatus.to_s(response->status);
   if (!status)
@@ -626,20 +638,23 @@ static char* prep_headers(struct HttpResponse* response) {
   // write the status string is "HTTP/1.1 xxx <...>\r\n" length == 15 +
   // strlen(status)
   int start = HTTP_HEADER_START - (15 + strlen(status));
-  sprintf(response->header_buffer + start, "HTTP/1.1 %d %s\r", response->status,
+  sprintf((char*)headers->buffer + start, "HTTP/1.1 %d %s\r", response->status,
           status);
   // we need to seperate the writing because sprintf prints a NULL terminator.
-  response->header_buffer[HTTP_HEADER_START - 1] = '\n';
-  return response->header_buffer + start;
+  ((char*)headers->buffer)[HTTP_HEADER_START - 1] = '\n';
+  headers->buffer = (char*)headers->buffer + start;
+  headers->length = response->metadata.headers_pos - (char*)headers->buffer;
+  return headers;
 }
-static int send_headers(struct HttpResponse* response, char* start) {
-  if (start == NULL)
+static int send_headers(struct HttpResponse* response, struct Packet* packet) {
+  if (packet == NULL)
     return -1;
   // mark headers as sent
   response->metadata.headers_sent = 1;
+  response->metadata.packet = NULL;
   // write data to network
-  return Server.write(response->metadata.server, response->metadata.fd_uuid,
-                      start, response->metadata.headers_pos - start);
+  return Server.send_packet(response->metadata.server,
+                            response->metadata.fd_uuid, packet);
 };
 
 /**
@@ -656,17 +671,18 @@ static int write_body(struct HttpResponse* response,
                       size_t length) {
   if (!response->content_length)
     response->content_length = length;
-  char* start = prep_headers(response);
-  if (start != NULL) {  // we haven't sent the headers yet
-    if ((response->metadata.headers_pos - start + length) <
-        (HTTP_HEAD_MAX_SIZE + SMALL_RESPONSE_LIMIT)) {
+  struct Packet* headers = prep_headers(response);
+  if (headers != NULL) {  // we haven't sent the headers yet
+    if ((response->metadata.headers_pos - (char*)headers->buffer + length) <
+        (BUFFER_PACKET_SIZE - 1024)) {
       // we can fit the data inside the response buffer.
       memcpy(response->metadata.headers_pos, body, length);
       response->metadata.headers_pos += length;
-      return send_headers(response, start);
+      headers->length += length;
+      return send_headers(response, headers);
     } else {
       // we need to send the body seperately.
-      send_headers(response, start);
+      send_headers(response, headers);
     }
   }
   return Server.write(response->metadata.server, response->metadata.fd_uuid,
@@ -687,7 +703,21 @@ static int write_body_move(struct HttpResponse* response,
                            size_t length) {
   if (!response->content_length)
     response->content_length = length;
-  send_response(response);
+  struct Packet* headers = prep_headers(response);
+  if (headers != NULL) {  // we haven't sent the headers yet
+    if ((response->metadata.headers_pos - (char*)headers->buffer + length) <
+        (BUFFER_PACKET_SIZE - 1024)) {
+      // we can fit the data inside the response buffer.
+      memcpy(response->metadata.headers_pos, body, length);
+      response->metadata.headers_pos += length;
+      headers->length += length;
+      free((void*)body);
+      return send_headers(response, headers);
+    } else {
+      // we need to send the body seperately.
+      send_headers(response, headers);
+    }
+  }
   return Server.write_move(response->metadata.server,
                            response->metadata.fd_uuid, (void*)body, length);
 }
@@ -706,7 +736,10 @@ static int sendfile_req(struct HttpResponse* response,
                         size_t length) {
   if (!response->content_length)
     response->content_length = length;
-  send_response(response);
+  if (response->metadata.packet && send_response(response)) {
+    fclose(pf);
+    return -1;
+  }
   return Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
                          pf);
 }
