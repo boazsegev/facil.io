@@ -21,7 +21,7 @@ sockets and some helper functions.
 #include <sys/socket.h>
 #include <sys/resource.h>
 #include <netdb.h>
-#include <stdatomic.h>
+#include <stdatomic.h>  // http://en.cppreference.com/w/c/atomic
 
 /* *****************************************************************************
 Avoid including the "libreact.h" file, the following is all we need.
