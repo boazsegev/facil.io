@@ -82,10 +82,11 @@ callback. i.e.:
       strcpy(real_public_path + strlen(real_public_path),                   \
              ((char*)http_public_folder) + 1);                              \
       protocol->public_folder = real_public_path;                           \
-    } else if ((http_public_folder))                                        \
+    } else if ((http_public_folder)) {                                      \
       protocol->public_folder =                                             \
           realpath((http_public_folder), real_public_path);                 \
-    protocol->public_folder_length = strlen(protocol->public_folder);       \
+      protocol->public_folder_length = strlen(protocol->public_folder);     \
+    }                                                                       \
     HttpRequest.destroy(HttpRequest.create());                              \
     HttpResponse.init_pool();                                               \
     Server.listen((struct ServerSettings){                                  \
@@ -111,10 +112,11 @@ callback. i.e.:
       strcpy(real_public_path + strlen(real_public_path),                   \
              ((char*)http_public_folder) + 1);                              \
       protocol->public_folder = real_public_path;                           \
-    } else if ((http_public_folder))                                        \
+    } else if ((http_public_folder)) {                                      \
       protocol->public_folder =                                             \
           realpath((http_public_folder), real_public_path);                 \
-    protocol->public_folder_length = strlen(protocol->public_folder);       \
+      protocol->public_folder_length = strlen(protocol->public_folder);     \
+    }                                                                       \
     HttpRequest.destroy(HttpRequest.create());                              \
     HttpResponse.init_pool();                                               \
     struct ServerSettings settings = {                                      \
