@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 
 #define THREAD_COUNT 1
+#define PROCESS_COUNT 1
 
 #include "websockets.h"
 #include "mini-crypt.h"
@@ -94,6 +95,7 @@ void on_request(struct HttpRequest* request) {
       response->status = 500;
       HttpResponse.write_body(response, "File dump failed!", 17);
       HttpResponse.destroy(response);
+      return;
     }
     struct HttpResponse* response = HttpResponse.create(request);
     HttpResponse.write_body(response, body->data, body->length);
@@ -130,6 +132,6 @@ The main function
 
 int main(int argc, char const* argv[]) {
   start_http_server(on_request, "~/Documents/Scratch", .threads = THREAD_COUNT,
-                    .processes = 1, .on_init = on_init);
+                    .processes = PROCESS_COUNT, .on_init = on_init);
   return 0;
 }
