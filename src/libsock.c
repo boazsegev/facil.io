@@ -38,7 +38,7 @@ void reactor_close(struct Reactor* resactor, int fd) {}
 /* *****************************************************************************
 TLC helpers
 */
-inline static int send_packet_to_tlc(int fd, struct Packet* packet);
+inline static int send_packet_to_tlc(int fd, sock_packet_s* packet);
 
 inline static int read_through_tlc(int fd,
                                    void* buffer,
@@ -54,37 +54,40 @@ User land Buffer
 #define BUFFER_MAX_PACKET_POOL 128
 #endif
 
+#ifndef BUFFER_PACKET_REAL_SIZE
+#define BUFFER_PACKET_REAL_SIZE \
+  ((sizeof(sock_packet_s) * 2) + BUFFER_PACKET_SIZE)
+#endif
+
 #ifndef DEBUG_SOCKLIB
 #define DEBUG_SOCKLIB 0
 #endif
 
 // The global packet container pool
 static struct {
-  struct Packet* _Atomic pool;
-  struct Packet* initialized;
+  sock_packet_s* _Atomic pool;
+  sock_packet_s* initialized;
 } ContainerPool = {NULL};
 
 // grab a packet from the pool
-struct Packet* sock_checkout_packet(void) {
-  struct Packet* packet = atomic_load(&ContainerPool.pool);
+sock_packet_s* sock_checkout_packet(void) {
+  sock_packet_s* packet = atomic_load(&ContainerPool.pool);
   while (packet) {
     if (atomic_compare_exchange_weak(&ContainerPool.pool, &packet,
                                      packet->metadata.next))
       break;
   }
   if (packet == NULL) {
-    packet = malloc(sizeof(struct Packet));
+    packet = malloc(BUFFER_PACKET_REAL_SIZE);
   }
   if (!packet)
     return NULL;
-  packet->buffer = packet->internal_memory;
-  packet->length = 0;
-  packet->metadata = (struct PacketMetadata){};
+  *packet = (sock_packet_s){.buffer = packet + 1};
   return packet;
 }
 // return a packet to the pool, or free it (when the pool is full).
-void sock_free_packet(struct Packet* packet) {
-  struct Packet* next = packet;
+void sock_free_packet(sock_packet_s* packet) {
+  sock_packet_s* next = packet;
   while (next) {
     if (next->metadata.is_file)
       fclose(next->buffer);
@@ -97,7 +100,7 @@ void sock_free_packet(struct Packet* packet) {
       next = packet->metadata.next;
       if (packet >= ContainerPool.initialized &&
           packet < (ContainerPool.initialized +
-                    (sizeof(struct Packet) * BUFFER_MAX_PACKET_POOL))) {
+                    (sizeof(sock_packet_s) * BUFFER_MAX_PACKET_POOL))) {
         packet->metadata.next = atomic_load(&ContainerPool.pool);
         for (;;) {
           if (atomic_compare_exchange_weak(&ContainerPool.pool,
@@ -126,7 +129,7 @@ Socket related data and internal helpers
  * do NOT edit! */
 static struct FDData {
   pthread_mutex_t lock;
-  struct Packet* packet;
+  sock_packet_s* packet;
   struct Reactor* owner;
   struct sockTLC* tlc;
   uint16_t sent;
@@ -171,12 +174,14 @@ static void destroy_all_fd_data(void) {
 
 static void init_pool_data(void) {
   ContainerPool.initialized =
-      calloc(sizeof(struct Packet), BUFFER_MAX_PACKET_POOL);
+      calloc(BUFFER_PACKET_REAL_SIZE, BUFFER_MAX_PACKET_POOL);
+  void* initaddr = ContainerPool.initialized;
   for (size_t i = 0; i < (BUFFER_MAX_PACKET_POOL - 1); i++) {
     // By filling up the packet pool, we avoid memory fragmentation (unless
     // packets are freed).
-    ContainerPool.initialized[i].metadata.next =
-        &ContainerPool.initialized[i + 1];
+    initaddr += BUFFER_PACKET_REAL_SIZE;
+    ((sock_packet_s*)initaddr)->metadata.next =
+        (initaddr + BUFFER_PACKET_REAL_SIZE);
   }
   ContainerPool.pool = ContainerPool.initialized;
 }
@@ -210,9 +215,9 @@ int8_t init_socklib(size_t max) {
             "overall: %lu bytes.\n"
             "Total: %lu bytes\n\n",
             max, sizeof(*n_map), sizeof(*n_map) * max, BUFFER_MAX_PACKET_POOL,
-            sizeof(struct Packet),
-            sizeof(struct Packet) * BUFFER_MAX_PACKET_POOL,
-            (sizeof(struct Packet) * BUFFER_MAX_PACKET_POOL) +
+            sizeof(sock_packet_s),
+            sizeof(sock_packet_s) * BUFFER_MAX_PACKET_POOL,
+            (sizeof(sock_packet_s) * BUFFER_MAX_PACKET_POOL) +
                 (sizeof(*n_map) * max));
 #endif
   return 0;
@@ -472,7 +477,7 @@ ssize_t sock_write2_fn(struct SockWriteOpt options) {
   require_conn(options.fd);
   if (!options.length && !options.file)
     options.length = strlen(options.buffer);
-  struct Packet* packet = sock_checkout_packet();
+  sock_packet_s* packet = sock_checkout_packet();
   if (!packet) {
     if (options.file)
       fclose((void*)options.buffer);
@@ -491,23 +496,34 @@ ssize_t sock_write2_fn(struct SockWriteOpt options) {
       packet->metadata.external = 1;
       return sock_send_packet(options.fd, packet);
     } else {
-      struct Packet* last_packet = packet;
-      while (options.length > BUFFER_PACKET_SIZE) {
-        memcpy(last_packet->buffer, options.buffer, BUFFER_PACKET_SIZE);
-        last_packet->length = BUFFER_PACKET_SIZE;
-        options.length -= BUFFER_PACKET_SIZE;
-        last_packet->metadata.next = sock_checkout_packet();
-        if (last_packet->metadata.next) {
-          last_packet = last_packet->metadata.next;
-          continue;
-        } else {
-          sock_free_packet(packet);
-          return -1;
+      if (options.length <= BUFFER_PACKET_SIZE) {
+        memcpy(packet->buffer, options.buffer, options.length);
+        packet->length = options.length;
+        return sock_send_packet(options.fd, packet);
+      } else {
+        sock_packet_s* last_packet = packet;
+        size_t counter = 0;
+        while (options.length > BUFFER_PACKET_SIZE) {
+          memcpy(last_packet->buffer,
+                 options.buffer + (counter * BUFFER_PACKET_SIZE),
+                 BUFFER_PACKET_SIZE);
+          last_packet->length = BUFFER_PACKET_SIZE;
+          options.length -= BUFFER_PACKET_SIZE;
+          ++counter;
+          last_packet->metadata.next = sock_checkout_packet();
+          if (last_packet->metadata.next) {
+            last_packet = last_packet->metadata.next;
+            continue;
+          } else {
+            sock_free_packet(packet);
+            return -1;
+          }
         }
+        memcpy(last_packet->buffer,
+               options.buffer + (counter * BUFFER_PACKET_SIZE), options.length);
+        last_packet->length = options.length;
+        return sock_send_packet(options.fd, packet);
       }
-      memcpy(last_packet->buffer, options.buffer, options.length);
-      last_packet->length = options.length;
-      return sock_send_packet(options.fd, packet);
     }
   }
   // how did we get here?
@@ -524,7 +540,7 @@ memory will be automatically released (or returned to the pool).
 Returns -1 on error. Returns 0 on success. **Always** retains ownership of the
 packet's memory and it's resources.
 */
-ssize_t sock_send_packet(int fd, struct Packet* packet) {
+ssize_t sock_send_packet(int fd, sock_packet_s* packet) {
   if (fd >= fdmax || !fd_map[(fd)].open || send_packet_to_tlc(fd, packet)) {
     sock_free_packet(packet);
     return -1;
@@ -543,7 +559,7 @@ ssize_t sock_send_packet(int fd, struct Packet* packet) {
 
   // applys the move logic for either urgent or non urgent packets
   pthread_mutex_lock(&fd_map[(fd)].lock);
-  struct Packet *tail, **pos = &(fd_map[fd].packet);
+  sock_packet_s *tail, **pos = &(fd_map[fd].packet);
   if (packet->metadata.urgent) {
     while (*pos && (!(*pos)->metadata.next ||
                     !(*pos)->metadata.next->metadata.can_interrupt)) {
@@ -593,9 +609,8 @@ re_flush:
     goto finish;  // what if the socket was flushed before we got here?
   fd_map[fd].packet->metadata.can_interrupt = 0;
   if (fd_map[fd].packet->metadata.is_file) {
-    struct Packet* packet = sock_checkout_packet();
-    if (!packet)
-      goto error;
+    sock_packet_s* packet = fd_map[fd].packet + 1;
+    *packet = (sock_packet_s){.buffer = packet + 1, .metadata.nested = 1};
     packet->length = fread(packet->buffer, 1, BUFFER_FILE_READ_SIZE,
                            fd_map[fd].packet->buffer);
     if (packet->length == BUFFER_FILE_READ_SIZE) {
@@ -609,11 +624,11 @@ re_flush:
           goto close_unlock;
         packet->metadata.next = fd_map[fd].packet->metadata.next;
         fd_map[fd].packet->metadata.next = NULL;
-        sock_free_packet(fd_map[fd].packet);
         fd_map[fd].packet = packet;
       } else {
-        packet->metadata.next = fd_map[fd].packet;
-        fd_map[fd].packet = fd_map[fd].packet->metadata.next;
+        packet = fd_map[fd].packet;
+        packet->metadata.next = NULL;
+        fd_map[fd].packet = packet->metadata.next;
         sock_free_packet(packet);
       }
     }
@@ -631,10 +646,11 @@ re_flush:
   } else if (sent > 0) {
     fd_map[fd].sent += sent;
     if (fd_map[fd].sent >= fd_map[fd].packet->length) {
-      struct Packet* packet = fd_map[fd].packet;
+      sock_packet_s* packet = fd_map[fd].packet;
       fd_map[fd].packet = fd_map[fd].packet->metadata.next;
       packet->metadata.next = NULL;
-      sock_free_packet(packet);
+      if (packet->metadata.nested == 0 || ((--packet) != fd_map[fd].packet))
+        sock_free_packet(packet);
       fd_map[fd].sent = 0;
       if (fd_map[fd].packet == NULL && fd_map[fd].close)
         goto close_unlock;
@@ -730,7 +746,7 @@ int sock_tlc_add(int fd, struct sockTLC* tlc) {
   return 0;
 }
 
-inline static int send_packet_to_tlc(int fd, struct Packet* packet) {
+inline static int send_packet_to_tlc(int fd, sock_packet_s* packet) {
   struct sockTLC* tlc = fd_map[fd].tlc;
   while (tlc) {
     if (tlc->wrap && tlc->wrap(fd, packet, tlc->udata))

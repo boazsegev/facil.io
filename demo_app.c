@@ -13,6 +13,7 @@
 #define THREAD_COUNT 1
 
 #include "websockets.h"
+#include "mini-crypt.h"
 
 /*****************************
 The Websocket echo implementation
@@ -79,29 +80,41 @@ void on_request(struct HttpRequest* request) {
                       .on_open = ws_open, .on_close = ws_close,
                       .on_shutdown = ws_shutdown);
     return;
-  }
-  if (!strcmp(request->path, "/broadcast")) {
+  } else if (!strcmp(request->path, "/broadcast")) {
     websocket_upgrade(.request = request, .on_message = ws_broadcast,
                       .on_open = ws_open, .on_close = ws_close,
                       .on_shutdown = ws_shutdown);
 
     return;
+  } else if (!strcmp(request->path, "/dump")) {
+    // test big data write
+    fdump_s* body = MiniCrypt.fdump("~/Documents/Scratch/bo.jpg", 0);
+    if (!body) {
+      struct HttpResponse* response = HttpResponse.create(request);
+      response->status = 500;
+      HttpResponse.write_body(response, "File dump failed!", 17);
+      HttpResponse.destroy(response);
+    }
+    struct HttpResponse* response = HttpResponse.create(request);
+    HttpResponse.write_body(response, body->data, body->length);
+    HttpResponse.destroy(response);
+    free(body);
   }
   struct HttpResponse* response = HttpResponse.create(request);
   HttpResponse.write_body(response, "Hello World!", 12);
   HttpResponse.destroy(response);
 }
 
-void on_request_f(struct HttpRequest* request) {
-  static char reply[] =
-      "HTTP/1.1 200 OK\r\n"
-      "Content-Length: 12\r\n"
-      "Connection: keep-alive\r\n"
-      "Keep-Alive: timeout=2\r\n"
-      "\r\n"
-      "Hello World!";
-  Server.write(request->server, request->sockfd, reply, sizeof(reply));
-}
+// void on_request_f(struct HttpRequest* request) {
+//   static char reply[] =
+//       "HTTP/1.1 200 OK\r\n"
+//       "Content-Length: 12\r\n"
+//       "Connection: keep-alive\r\n"
+//       "Keep-Alive: timeout=2\r\n"
+//       "\r\n"
+//       "Hello World!";
+//   Server.write(request->server, request->sockfd, reply, sizeof(reply));
+// }
 
 void on_init(server_pt srv) {
   fprintf(

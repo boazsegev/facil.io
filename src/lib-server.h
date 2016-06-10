@@ -424,7 +424,7 @@ extern const struct Server__API___ {
   */
   ssize_t (*send_packet)(server_pt srv,
                          uint64_t connection_id,
-                         struct Packet* packet);
+                         sock_packet_s* packet);
 
   /****************************************************************************
   * Tasks + Async

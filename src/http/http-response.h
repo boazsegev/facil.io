@@ -87,7 +87,7 @@ struct HttpResponse {
     /**
     A `libsock` buffer packet used for header data (to avoid double copy).
     */
-    struct Packet* packet;
+    sock_packet_s* packet;
     /**
     The server through which the response will be sent.
     */

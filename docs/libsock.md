@@ -233,30 +233,20 @@ The user land buffer is constructed from pre-allocated Packet objects, each cont
 #define BUFFER_PACKET_SIZE (1024 * 17)
 ```
 
-File data is sent a chunk at a time.
-
-Chunks are defined as less then a whole packet, this is in consideration for possible TLC requirements.
-
-```c
-#define BUFFER_FILE_READ_SIZE (1024 * 16)
-```
-
 Buffer packets - can be used for directly writing individual or multiple packets to the buffer instead of using the `sock_write(2)` helper functions / macros.
 
 Unused Packets that were checked out using the `sock_checkout_packet` function, should never be freed using `free` and should always use the `sock_free_packet` function.
 
-The data structure for a Packet object provides detailed data about the packet's state and properties.
+The data structure for a packet object provides detailed data about the packet's state and properties.
 
 ```c
-struct Packet {
+typedef struct sock_packet_s {
   ssize_t length;
   void* buffer;
-  /** pre allocated memory. */
-  char internal_memory[BUFFER_PACKET_SIZE];
   /** Metadata about the packet. */
-  struct PacketMetadata {
+  struct {
     /** allows the linking of a number of packets together. */
-    struct Packet* next;
+    struct sock_packet_s* next;
     /** sets whether a packet can be inserted before this packet without
      * interrupting the communication flow. */
     unsigned can_interrupt : 1;
@@ -273,14 +263,15 @@ struct Packet {
     unsigned rsrv : 4;
     /**/
   } metadata;
+} sock_packet_s;
 };
 ```
 
-#### `struct Packet* sock_checkout_packet(void)`
+#### `sock_packet_s* sock_checkout_packet(void)`
 
-Checks out a `struct Packet` from the packet pool, transferring the ownership of the memory to the calling function. returns NULL if both the pool was empty and memory allocation had failed.
+Checks out a `sock_packet_s` from the packet pool, transferring the ownership of the memory to the calling function. returns NULL if both the pool was empty and memory allocation had failed.
 
-#### `ssize_t sock_send_packet(int fd, struct Packet* packet)`
+#### `ssize_t sock_send_packet(int fd, sock_packet_s* packet)`
 
 Attaches a packet to a socket's output buffer and calls `sock_flush` for the
 socket.
@@ -289,7 +280,7 @@ The packet's memory is **always** handled by the `sock_send_packet` function (ev
 
 Returns -1 on error. Returns 0 on success.
 
-#### `void sock_free_packet(struct Packet* packet)`
+#### `void sock_free_packet(sock_packet_s* packet)`
 
 Use `sock_free_packet` to free unused packets that were checked-out using `sock_checkout_packet`.
 

@@ -54,6 +54,14 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Sock (development incomplete)
 
+### V. 0.0.3
+
+* Changed `struct Packet` to a typedef `sock_packet_s`.
+
+* fixed and issue where using `sock_write(2)` for big data chunks would cause errors when copying the data to the user buffer.
+
+    it should be noted, for performance reasons, that it is better to send big data using external pointers (especially if the data is cashed) using the `sock_send_packet` function - for cached data, do not set the `packet->external` flag, so the data isn't freed after it was sent.
+
 ### V. 0.0.2
 
 * fixed situations in which the `send_packet` might not close a file (if the packet buffer references a `FILE`) before returning an error.

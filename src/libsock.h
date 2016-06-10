@@ -5,7 +5,7 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIBSOCK
-#define LIBSOCK "0.0.2"
+#define LIBSOCK "0.0.3"
 
 /** \file
 The libsock is a non-blocking socket helper library, using a user level buffer,
@@ -229,12 +229,8 @@ This API allows
 #ifndef BUFFER_PACKET_SIZE
 #define BUFFER_PACKET_SIZE (1024 * 17)
 #endif
-/** File data is sent a chunk at a time. This is a chunk size.
-
-16Kb allows for 1Kb of protocol specific padding, in case of a transport layer.
-*/
 #ifndef BUFFER_FILE_READ_SIZE
-#define BUFFER_FILE_READ_SIZE (1024 * 16)
+#define BUFFER_FILE_READ_SIZE (BUFFER_PACKET_SIZE - 1024)
 #endif
 
 /**
@@ -247,15 +243,13 @@ Unused Packets that were checked out using the `sock_checkout_packet` function,
 should never be freed using `free` and should always use the `sock_free_packet`
 function.
 */
-struct Packet {
+typedef struct sock_packet_s {
   ssize_t length;
   void* buffer;
-  /** pre allocated memory. */
-  char internal_memory[BUFFER_PACKET_SIZE];
   /** Metadata about the packet. */
-  struct PacketMetadata {
+  struct {
     /** allows the linking of a number of packets together. */
-    struct Packet* next;
+    struct sock_packet_s* next;
     /** sets whether a packet can be inserted before this packet without
      * interrupting the communication flow. */
     unsigned can_interrupt : 1;
@@ -268,18 +262,27 @@ struct Packet {
     /** sets whether this packet (or packet chain) should be inserted in before
      * the first `can_interrupt` packet, or at the end of the queu. */
     unsigned urgent : 1;
+    /** Reserved for internal use - (memory shifting flag)*/
+    unsigned nested : 1;
     /** Reserved for future use. */
-    unsigned rsrv : 4;
+    unsigned rsrv : 3;
   } metadata;
-};
+} sock_packet_s;
 
 /**
-Checks out a `struct Packet` from the packet pool, transfering the ownership
-of
-the memory to the calling function. returns NULL if the pool was empty and
+Checks out a `sock_packet_s` from the packet pool, transfering the
+ownership
+of the memory to the calling function. returns NULL if the pool was empty and
 memory allocation had failed.
+
+Every checked out buffer packet comes with an attached buffer of
+BUFFER_PACKET_SIZE bytes. This buffer is accessible using the `packet->buffer`
+pointer (which can be safely overwritten to point to an external buffer).
+
+This attached buffer is safely and automatically freed or returned to the memory
+pool once `sock_send_packet` or `sock_free_packet` are called.
 */
-struct Packet* sock_checkout_packet(void);
+sock_packet_s* sock_checkout_packet(void);
 /**
 Attaches a packet to a socket's output buffer and calls `sock_flush` for the
 socket.
@@ -289,7 +292,7 @@ The packet's memory is **always** handled by the `sock_send_packet` function
 
 Returns -1 on error. Returns 0 on success.
 */
-ssize_t sock_send_packet(int fd, struct Packet* packet);
+ssize_t sock_send_packet(int fd, sock_packet_s* packet);
 
 /**
 Use `sock_free_packet` to free unused packets that were checked-out using
@@ -298,7 +301,7 @@ Use `sock_free_packet` to free unused packets that were checked-out using
 NEVER use `free`, for any packet checked out using the pool management function
 `sock_checkout_packet`.
 */
-void sock_free_packet(struct Packet* packet);
+void sock_free_packet(sock_packet_s* packet);
 
 /* *****************************************************************************
 TLC - Transport Layer Callbacks.
@@ -314,7 +317,7 @@ struct sockTLC {
   void* udata;
   /** TLC encoding function. Should return 0 on success and -1 on error. Should
    * edit the Packet directly.*/
-  int (*wrap)(int fd, struct Packet* packet, void* udata);
+  int (*wrap)(int fd, sock_packet_s* packet, void* udata);
   /** TLC decoding function. Should return 0 on success and -1 on error. Should
    * edit the buffer and the buffer length directly.*/
   int (*unwrap)(int fd,

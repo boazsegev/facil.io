@@ -124,8 +124,8 @@ the function returns 0.
 */
 static int send_response(struct HttpResponse*);
 /* used by `send_response` and others... */
-static struct Packet* prep_headers(struct HttpResponse* response);
-static int send_headers(struct HttpResponse*, struct Packet*);
+static sock_packet_s* prep_headers(struct HttpResponse* response);
+static int send_headers(struct HttpResponse*, sock_packet_s*);
 
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
@@ -570,8 +570,8 @@ static int send_response(struct HttpResponse* response) {
   // }
 };
 
-static struct Packet* prep_headers(struct HttpResponse* response) {
-  struct Packet* headers;
+static sock_packet_s* prep_headers(struct HttpResponse* response) {
+  sock_packet_s* headers;
   if (response->metadata.headers_sent ||
       (headers = response->metadata.packet) == NULL)
     return NULL;
@@ -646,7 +646,7 @@ static struct Packet* prep_headers(struct HttpResponse* response) {
   headers->length = response->metadata.headers_pos - (char*)headers->buffer;
   return headers;
 }
-static int send_headers(struct HttpResponse* response, struct Packet* packet) {
+static int send_headers(struct HttpResponse* response, sock_packet_s* packet) {
   if (packet == NULL)
     return -1;
   // mark headers as sent
@@ -671,7 +671,7 @@ static int write_body(struct HttpResponse* response,
                       size_t length) {
   if (!response->content_length)
     response->content_length = length;
-  struct Packet* headers = prep_headers(response);
+  sock_packet_s* headers = prep_headers(response);
   if (headers != NULL) {  // we haven't sent the headers yet
     if ((response->metadata.headers_pos - (char*)headers->buffer + length) <
         (BUFFER_PACKET_SIZE - 1024)) {
@@ -703,7 +703,7 @@ static int write_body_move(struct HttpResponse* response,
                            size_t length) {
   if (!response->content_length)
     response->content_length = length;
-  struct Packet* headers = prep_headers(response);
+  sock_packet_s* headers = prep_headers(response);
   if (headers != NULL) {  // we haven't sent the headers yet
     if ((response->metadata.headers_pos - (char*)headers->buffer + length) <
         (BUFFER_PACKET_SIZE - 1024)) {

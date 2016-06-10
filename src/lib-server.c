@@ -345,7 +345,7 @@ freed).
 */
 static ssize_t srv_send_packet(server_pt srv,
                                uint64_t connection_id,
-                               struct Packet* packet);
+                               sock_packet_s* packet);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Tasks + Async
@@ -1254,7 +1254,7 @@ Sends a packet.
 */
 static ssize_t srv_send_packet(server_pt srv,
                                uint64_t connection_id,
-                               struct Packet* packet) {
+                               sock_packet_s* packet) {
   if (validate_connection(srv, (union fd_id)connection_id)) {
     sock_free_packet(packet);
     return -1;
