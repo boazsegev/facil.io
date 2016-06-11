@@ -191,16 +191,17 @@ static void on_err_signal(int sig) {
   size = backtrace(array, 22);
   strings = backtrace_symbols(array, size);
   perror("\nERROR");
-  fprintf(
-      stderr,
-      "Async: task in thread pool raised an error (%d-%s). Backtrace (%zd):\n",
-      errno, sig == SIGSEGV
-                 ? "SIGSEGV"
-                 : sig == SIGFPE ? "SIGFPE" : sig == SIGILL
-                                                  ? "SIGILL"
-                                                  : sig == SIGPIPE ? "SIGPIPE"
-                                                                   : "unknown",
-      size);
+  fprintf(stderr,
+          "Async: task in thread pool raised an error %d-%s (%d). Backtrace "
+          "(%zd):\n",
+          errno,
+          sig == SIGSEGV ? "SIGSEGV" : sig == SIGFPE
+                                           ? "SIGFPE"
+                                           : sig == SIGILL
+                                                 ? "SIGILL"
+                                                 : sig == SIGPIPE ? "SIGPIPE"
+                                                                  : "unknown",
+          sig, size);
   for (i = 2; i < size; i++)
     fprintf(stderr, "%s\n", strings[i]);
   free(strings);
@@ -229,6 +230,7 @@ static void* worker_thread_cycle(void* _async) {
 
   // ignore pipe issues
   signal(SIGPIPE, SIG_IGN);
+  signal(SIGCHLD, SIG_IGN);
 
   // setup signal and thread's local-storage async variable.
   struct Async* async = _async;

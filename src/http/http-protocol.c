@@ -41,7 +41,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define CONNECTION_HEADER "connection"
 #endif
 
-#define HTTP_SEND_RANGE_AS_DATA_LIMIT 131072
+#define HTTP_SEND_RANGE_AS_DATA_LIMIT (1024 * 32)
 
 /////////////////
 // functions used by the Http protocol, internally
@@ -175,8 +175,7 @@ static int http_sendfile(struct HttpRequest* req) {
       finish++;
     // fprintf(stderr, "finish: %lu / %lld\n", finish, file_data.st_size);
     if (finish && finish >= start &&
-        (finish - start) < HTTP_SEND_RANGE_AS_DATA_LIMIT &&
-        finish < file_data.st_size - 1) {
+        (finish - start) < HTTP_SEND_RANGE_AS_DATA_LIMIT) {
       // it's a "small" chunk, put it in the buffer and send it as data
       // fprintf(stderr, "handling no-file chunk\n");
       char* data = malloc(finish - start);
@@ -223,6 +222,7 @@ static int http_sendfile(struct HttpRequest* req) {
   }
 
 invalid_range:
+  lseek(file, 0, SEEK_SET);
   HttpResponse.write_header(response, "Accept-Ranges", 13, "none", 4);
   // set caching
   HttpResponse.write_header(response, "Cache-Control", 13,

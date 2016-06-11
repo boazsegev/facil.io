@@ -84,7 +84,7 @@ Integrate the `libsock` library if exists.
 */
 // struct Reactor; // in the libreact_socket.h file
 #pragma weak sock_flush
-inline ssize_t sock_flush(int fd) {
+ssize_t sock_flush(int fd) {
   return 0;
 }
 
@@ -336,10 +336,11 @@ int reactor_review(struct Reactor* reactor) {
       } else {
         // no error, then it's an active event(s)
         if (_EVENTREADY_(i)) {
-          if (sock_flush(_GETFD_(i)) < 0) {
+          // printf("on_ready for %d\n", (int)_GETFD_(i));
+          if (sock_flush((int)_GETFD_(i)) < 0) {
             reactor_close(reactor, _GETFD_(i));
           } else if (reactor->on_ready) {
-            // printf("on_ready for %d\n", _GETFD_(i));
+            // printf("on_ready callback for %d\n", _GETFD_(i));
             reactor->on_ready(reactor, _GETFD_(i));
           }
         }

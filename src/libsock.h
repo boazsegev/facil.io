@@ -27,7 +27,8 @@ User land buffer settings for every packet's pre-alocated memory size (17Kb)
 This information is also useful when implementing read / write hooks.
 */
 #ifndef BUFFER_PACKET_SIZE
-#define BUFFER_PACKET_SIZE (1024 * 64)
+#define BUFFER_PACKET_SIZE \
+  (1024 * 32) /* When using sendfile, consider lowering this value */
 #endif
 #ifndef BUFFER_FILE_READ_SIZE
 #define BUFFER_FILE_READ_SIZE BUFFER_PACKET_SIZE
@@ -207,8 +208,7 @@ transferred to the socket's user level buffer.
 `sock_flush` writes the data in the internal buffer to the file descriptor fd
 and closes the fd once it's marked for closure (and all the data was sent).
 
-The number of bytes actually written to the fd will be returned. 0 will be
-returned when no data is written and -1 will be returned on an error  or when
+0 will be returned on success and -1 will be returned on an error or when
 the connection is closed.
 
 **Please Note**: when using `libreact`, the `sock_flush` will be called

@@ -917,19 +917,22 @@ static int srv_listen(struct ServerSettings settings) {
   }
 
   // register signals - do this before concurrency, so that they are inherited.
-  struct sigaction old_term, old_int, old_pipe, new_int, new_pipe;
+  struct sigaction old_term, old_int, old_pipe, new_int, new_pipe, new_chld,
+      old_chld;
   sigemptyset(&new_int.sa_mask);
   sigemptyset(&new_pipe.sa_mask);
-  new_pipe.sa_flags = new_int.sa_flags = 0;
+  new_chld.sa_flags = new_pipe.sa_flags = new_int.sa_flags = 0;
   new_pipe.sa_handler = SIG_IGN;
   new_int.sa_handler = on_signal;
+  new_chld.sa_handler = SIG_IGN;
   sigaction(SIGINT, &new_int, &old_int);
   sigaction(SIGTERM, &new_int, &old_term);
   sigaction(SIGPIPE, &new_pipe, &old_pipe);
+  sigaction(SIGPIPE, &new_chld, &old_chld);
 
   // setup concurrency
   srv.root_pid = getpid();
-  pid_t pids[settings.processes > 0 ? settings.processes : 0];
+  pid_t pids[settings.processes > 0 ? settings.processes : 1];
   if (settings.processes > 1) {
     pids[0] = 0;
     for (int i = 1; i < settings.processes; i++) {
@@ -992,7 +995,7 @@ static int srv_listen(struct ServerSettings settings) {
       sts = 0;
       // printf("waiting for pid %d\n", pids[i]);
       if (waitpid(pids[i], &sts, 0) != pids[i])
-        perror("waiting for child process had failed");
+        ;
     }
   }
 
@@ -1007,6 +1010,7 @@ static int srv_listen(struct ServerSettings settings) {
   sigaction(SIGINT, &old_int, NULL);
   sigaction(SIGTERM, &old_term, NULL);
   sigaction(SIGPIPE, &old_pipe, NULL);
+  sigaction(SIGCHLD, &old_chld, NULL);
 
   // destroy the task pools
   destroy_fd_task(&srv, NULL);

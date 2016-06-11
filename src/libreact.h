@@ -5,7 +5,7 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIBREACT
-#define LIBREACT "0.2.1"
+#define LIBREACT "0.2.2"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -24,6 +24,15 @@ Feel free to copy, use and enjoy according to the license provided.
 #if !defined(__unix__) && !defined(__linux__) && !defined(__APPLE__) && \
     !defined(__CYGWIN__)
 #error This library currently supports only Unix based systems (i.e. Linux and BSD)
+#endif
+
+/* until linux supports KQueue, which might not happen... */
+#if !defined(__linux__) && !defined(__CYGWIN__)
+#define reactor_epoll 1
+#define reactor_kqueue 0
+#else
+#define reactor_epoll 0
+#define reactor_kqueue 1
 #endif
 
 /*****************************/ /** \file

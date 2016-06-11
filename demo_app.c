@@ -133,7 +133,7 @@ The main function
 */
 
 int main(int argc, char const* argv[]) {
-  start_http_server(on_request, "~/Documents/Scratch", .threads = THREAD_COUNT,
+  start_http_server(on_request, "~", .threads = THREAD_COUNT,
                     .processes = PROCESS_COUNT, .on_init = on_init);
   return 0;
 }

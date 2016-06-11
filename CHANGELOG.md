@@ -48,6 +48,10 @@ API breaking changes always cause version bumps (could be a tiny version bump fo
 
 ## Lib-React
 
+### V. 0.2.2
+
+* Fixed support for `libsock`, where the `sock_flush` wasn't automatically called due to inline function optimizations used by the compiler (and my errant code).
+
 ### V. 0.2.1
 
 Baseline (changes not logged before this point in time).
@@ -55,6 +59,10 @@ Baseline (changes not logged before this point in time).
 ## Lib-Sock (development incomplete)
 
 ### V. 0.0.4
+
+* Fix for epoll's on_ready not being sent (sock flush must raise the EAGAIN error, or the on_ready event will not get called). Kqueue is better since the `on_ready` refers to the buffer being clear instead of available (less events to copy the same amount of data, as each data write is optimal when enough data is available to be written).
+
+* optional implementation of sendfile for Apple, BSD and Linux (BSD **not** tested).
 
 * Misc. optimizations. i.e. Buffer packet size now increased to 64Kb, to fit Linux buffer allocation.
 

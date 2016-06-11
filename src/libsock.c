@@ -22,13 +22,25 @@ sockets and some helper functions.
 #include <sys/resource.h>
 #include <netdb.h>
 #include <stdatomic.h>  // http://en.cppreference.com/w/c/atomic
+#include <sys/uio.h>
 
 #ifndef DEBUG_SOCKLIB
 #define DEBUG_SOCKLIB 0
 #endif
 
 #ifndef USE_SENDFILE
+
+#if defined(__linux__) /* linux sendfile works, but isn't implemented  */
+#include <sys/sendfile.h>
+#define USE_SENDFILE 1
+#elif defined(__unix__) /* BSD sendfile should work, but isn't implemented */
 #define USE_SENDFILE 0
+#elif defined(__APPLE__) /* Apple sendfile was broken and probably still is */
+#define USE_SENDFILE 1
+#else /* sendfile might not be available - always set to 0 */
+#define USE_SENDFILE 0
+#endif
+
 #endif
 
 /* *****************************************************************************
@@ -527,7 +539,13 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
   return -1;
 }
 
-/* Helper function for speed optimizations */
+/*
+Helper function for speed optimizations
+
+We MUST continue sending data until all the data was sent OR we gen an EAGAIN |
+EWOULDBLOCK error - otherwise the `on_ready` event will never get called and our
+`sock_flush` function son't get called.
+*/
 inline static ssize_t sock_flush_in_lock(int fd) {
   struct FDData* sfd = fd_map + fd;
   sock_packet_s* packet;
@@ -543,11 +561,106 @@ re_flush:
   }
   packet->metadata.can_interrupt = 0;
 
-  if (USE_SENDFILE) {
-    if (packet->metadata.is_fd)
-      ;
-    else if (packet->metadata.is_file)
-      ;
+  if (USE_SENDFILE && packet->metadata.is_fd && sfd->rw_hooks == NULL) {
+#if defined(__linux__) /* linux sendfile API */
+    sent = sendfile64(fd, (int)((ssize_t)packet->buffer), NULL,
+                      packet->length - sfd->sent);
+
+    if (sent == 0) {
+      sfd->packet = packet->metadata.next;
+      packet->metadata.next = NULL;
+      sock_free_packet(packet);
+      sfd->sent = 0;
+      goto re_flush;
+    } else if (sent < 0) {
+      if (errno & (EAGAIN | EWOULDBLOCK))
+        return 0;
+      else {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+        perror("linux sendfile error");
+#endif
+        return -1;
+      }
+    }
+    sfd->sent += sent;
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+    fprintf(stderr, "(%d) Linux sendfile %ld / %u bytes from %lu total.\n", fd,
+            sent, sfd->sent, packet->length);
+#endif
+    // fprintf(stderr, "Linux sendfile sent %ld/%u from %lu\n", sent, sfd->sent,
+    //         packet->length);
+    if (sfd->sent >= packet->length) {
+      sfd->packet = packet->metadata.next;
+      packet->metadata.next = NULL;
+      sock_free_packet(packet);
+      sfd->sent = 0;
+      goto re_flush;
+    }
+    return 0;
+
+#elif defined(__unix__) /* BSD API */
+    int sendfile(int fd, int s, off_t offset, size_t nbytes,
+                 struct sf_hdtr* hdtr, off_t* sbytes, int flags);
+    off_t act_sent = packet->length - sfd->sent;
+    off_t pos_start = lseek((int)((ssize_t)packet->buffer), 0, SEEK_CUR);
+    if (sendfile((int)((ssize_t)packet->buffer), fd, pos_start,
+                 (size_t)act_sent, NULL, &act_sent, 0)) {
+      if ((errno & (EAGAIN | EWOULDBLOCK)) && act_sent == 0)
+        return 0;
+      else if ((errno & (EAGAIN | EWOULDBLOCK)) == 0)
+        return -1;
+    }
+    if (act_sent == 0) {
+      sfd->packet = packet->metadata.next;
+      packet->metadata.next = NULL;
+      sock_free_packet(packet);
+      sfd->sent = 0;
+      goto re_flush;
+    }
+    pos_start += act_sent;
+    sfd->sent += act_sent;
+    if (sfd->sent >= packet->length) {
+      sfd->packet = packet->metadata.next;
+      packet->metadata.next = NULL;
+      sfd->sent = 0;
+      sock_free_packet(packet);
+      goto re_flush;
+    }
+    lseek((int)((ssize_t)packet->buffer), pos_start, SEEK_SET);
+    goto re_flush;
+
+#elif defined(__APPLE__) /* Apple API */
+    off_t act_sent = packet->length - sfd->sent;
+    off_t pos_start = lseek((int)((ssize_t)packet->buffer), 0, SEEK_CUR);
+    if (sendfile((int)((ssize_t)packet->buffer), fd, pos_start, &act_sent, NULL,
+                 0)) {
+      if ((errno & (EAGAIN | EWOULDBLOCK)) && act_sent == 0)
+        return 0;
+      else if ((errno & (EAGAIN | EWOULDBLOCK)) == 0)
+        return -1;
+    }
+    if (act_sent == 0) {
+      sfd->packet = packet->metadata.next;
+      packet->metadata.next = NULL;
+      sock_free_packet(packet);
+      sfd->sent = 0;
+      goto re_flush;
+    }
+    pos_start += act_sent;
+    sfd->sent += act_sent;
+    if (sfd->sent >= packet->length) {
+      sfd->packet = packet->metadata.next;
+      packet->metadata.next = NULL;
+      sock_free_packet(packet);
+      sfd->sent = 0;
+      goto re_flush;
+    }
+    lseek((int)((ssize_t)packet->buffer), pos_start, SEEK_SET);
+    goto re_flush;
+#else /* sendfile might not be available - always set to 0 */
+  };
+  if (0) {
+#endif
   } else if (packet->metadata.is_fd || packet->metadata.is_file) {
     // how much data are we expecting to send...?
     ssize_t i_exp = (BUFFER_FILE_READ_SIZE > packet->length)
@@ -570,6 +683,7 @@ re_flush:
         sfd->packet = packet->metadata.next;
         packet->metadata.next = NULL;
         sock_free_packet(packet);
+        sfd->sent = 0;
         goto re_flush;
       } else {
         packet->metadata.internal_flag = 1;
@@ -586,25 +700,33 @@ re_flush:
     fprintf(stderr, "(%d) Sent file %ld / %ld bytes from %lu total.\n", fd,
             sent, i_exp, packet->length);
 #endif
+
     // review result and update packet data
     if (sent == 0) {
       return 0;  // nothing to do.
     } else if (sent > 0) {
       // we finished sending the amount of data we wanted to send.
       if (sfd->sent + sent >= i_exp) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+        fprintf(stderr, "(%d) rotating file buffer (marking for read).\n", fd);
+#endif
         packet->metadata.internal_flag = 0;
         sfd->sent = 0;
         packet->length -= i_exp;
         if (packet->length == 0) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+          fprintf(stderr, "(%d) Finished sending file.\n", fd);
+#endif
           sfd->packet = packet->metadata.next;
           packet->metadata.next = NULL;
           sock_free_packet(packet);
         }
       }
-      return sent;
-    } else if (errno & (EAGAIN | EWOULDBLOCK))
+      // return 0;
+      goto re_flush;
+    } else if (errno & (EAGAIN | EWOULDBLOCK)) {
       return 0;
-    else
+    } else
       return -1;
   }
   // send data packets
@@ -632,7 +754,8 @@ re_flush:
       if (sfd->packet == NULL && sfd->close)
         return -1;
     }
-    return sent;
+    // return 0;
+    goto re_flush;
   } else if (sent == 0) {
     return 0;  // nothing to do.
   } else if (errno & (EAGAIN | EWOULDBLOCK)) {
@@ -643,7 +766,7 @@ re_flush:
     return 0;
   } else
     return -1;
-  return sent;
+  return 0;
 }
 
 /**
@@ -729,17 +852,21 @@ ssize_t sock_flush(int fd) {
     return -1;
   struct FDData* sfd = fd_map + fd;
   if (sfd->packet == NULL) {
-    if (sfd->close)
+    if (sfd->close) {
       goto close_socket;
+    }
     return 0;
   }
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+  fprintf(stderr, "\n=========\n(%d) sock_flush called.\n", fd);
+#endif
   ssize_t sent;
   pthread_mutex_lock(&sfd->lock);
   sent = sock_flush_in_lock(fd);
   pthread_mutex_unlock(&sfd->lock);
   if (sent < 0 && sfd->open)
     goto close_socket;
-  return sent;
+  return 0;
 close_socket:
   if (sfd->owner)
     reactor_close(sfd->owner, fd);
