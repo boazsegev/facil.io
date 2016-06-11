@@ -5,7 +5,7 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIBSOCK
-#define LIBSOCK "0.0.3"
+#define LIBSOCK "0.0.4"
 
 /** \file
 The libsock is a non-blocking socket helper library, using a user level buffer,
@@ -20,6 +20,21 @@ This library is great when using it alongside `libreact`.
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+
+/* *****************************************************************************
+User land buffer settings for every packet's pre-alocated memory size (17Kb)
+
+This information is also useful when implementing read / write hooks.
+*/
+#ifndef BUFFER_PACKET_SIZE
+#define BUFFER_PACKET_SIZE (1024 * 64)
+#endif
+#ifndef BUFFER_FILE_READ_SIZE
+#define BUFFER_FILE_READ_SIZE BUFFER_PACKET_SIZE
+#endif
+#ifndef BUFFER_MAX_PACKET_POOL
+#define BUFFER_MAX_PACKET_POOL 64
+#endif
 
 /* *****************************************************************************
 Avoide including the "libreact.h" file, the following is all we need.
@@ -128,15 +143,14 @@ int sock_status(int fd);
 
 /**
 `sock_read` attempts to read up to count bytes from file descriptor fd into
-the
-buffer starting at buf.
+the buffer starting at buf.
 
 It's behavior should conform to the native `read` implementations, except some
 data might be available in the `fd`'s buffer while it is not available to be
 read using sock_read (i.e., when using a transport layer, such as TLS).
 
-Also, some internal buffering will be used in cases where the transport layer
-data available is larger then the data requested.
+On failure, `sock_read` will automatically marks the socket to be closed the
+next time `sock_flush` is called and return -1.
 */
 ssize_t sock_read(int fd, void* buf, size_t count);
 
@@ -156,7 +170,7 @@ actually calls `sock_write2`.
 #define sock_write(sockfd, buf, count) \
   sock_write2(.fd = (sockfd), .buffer = (buf), .length = (count))
 
-struct SockWriteOpt {
+typedef struct {
   /** The fd for sending data. */
   int fd;
   /** The data to be sent. This can be either a byte strteam or a file pointer
@@ -172,20 +186,23 @@ struct SockWriteOpt {
   unsigned urgent : 1;
   /** The buffer points to a file pointer: `FILE *`  */
   unsigned file : 1;
+  /** The buffer contains the value of a file descriptor int - casting, not
+   * pointing, i.e.: `.buffer = (void*)fd;` */
+  unsigned is_fd : 1;
   /** for internal use */
   unsigned rsv : 1;
-};
+} sock_write_info_s;
 /**
 `sock_write2_fn` is the actual function behind the macro `sock_write2`.
 */
-ssize_t sock_write2_fn(struct SockWriteOpt options);
+ssize_t sock_write2_fn(sock_write_info_s options);
 /**
 `sock_write2` is similar to `sock_write`, except special properties can be set.
 
 On error, -1 will be returned. Otherwise returns 0. All the bytes are
 transferred to the socket's user level buffer.
 */
-#define sock_write2(...) sock_write2_fn((struct SockWriteOpt){__VA_ARGS__})
+#define sock_write2(...) sock_write2_fn((sock_write_info_s){__VA_ARGS__})
 /**
 `sock_flush` writes the data in the internal buffer to the file descriptor fd
 and closes the fd once it's marked for closure (and all the data was sent).
@@ -221,17 +238,7 @@ void sock_force_close(struct Reactor* reactor, int fd);
 
 /* *****************************************************************************
 Direct user level buffer API.
-
-This API allows
 */
-
-/** Each user land buffer packet's pre-alocated memory size (17Kb)*/
-#ifndef BUFFER_PACKET_SIZE
-#define BUFFER_PACKET_SIZE (1024 * 17)
-#endif
-#ifndef BUFFER_FILE_READ_SIZE
-#define BUFFER_FILE_READ_SIZE (BUFFER_PACKET_SIZE - 1024)
-#endif
 
 /**
 Buffer packets - can be used for directly writing individual or multiple packets
@@ -253,6 +260,9 @@ typedef struct sock_packet_s {
     /** sets whether a packet can be inserted before this packet without
      * interrupting the communication flow. */
     unsigned can_interrupt : 1;
+    /** sets whether a packet's buffer contains a file descriptor - casting, not
+     * pointing, i.e.: `packet->buffer = (void*)fd;` */
+    unsigned is_fd : 1;
     /** sets whether a packet's buffer is of type `FILE *`. */
     unsigned is_file : 1;
     /** sets whether a packet's buffer is pre-allocated (references the
@@ -263,9 +273,9 @@ typedef struct sock_packet_s {
      * the first `can_interrupt` packet, or at the end of the queu. */
     unsigned urgent : 1;
     /** Reserved for internal use - (memory shifting flag)*/
-    unsigned nested : 1;
+    unsigned internal_flag : 1;
     /** Reserved for future use. */
-    unsigned rsrv : 3;
+    unsigned rsrv : 2;
   } metadata;
 } sock_packet_s;
 
@@ -304,49 +314,41 @@ NEVER use `free`, for any packet checked out using the pool management function
 void sock_free_packet(sock_packet_s* packet);
 
 /* *****************************************************************************
-TLC - Transport Layer Callbacks.
+TLC - Transport Layer Callback.
 
 Experimental
 */
 
-/** This struct is used for setting Transport Layer data and hirarchy */
-struct sockTLC {
-  /** the next (lower level) Transport Layer encoder/decoder object. */
-  struct sockTLC* next;
-  /** opaque user data. */
-  void* udata;
-  /** TLC encoding function. Should return 0 on success and -1 on error. Should
-   * edit the Packet directly.*/
-  int (*wrap)(int fd, sock_packet_s* packet, void* udata);
-  /** TLC decoding function. Should return 0 on success and -1 on error. Should
-   * edit the buffer and the buffer length directly.*/
-  int (*unwrap)(int fd,
-                void* buffer,
-                ssize_t* len,
-                const size_t max_len,
-                void* udata);
+/**
+This struct is used for setting a Transport Layer Callback that will replace
+the `sock_write2` and `sock_read` implementations for the requested socket.
+ */
+typedef struct sock_rw_hook_s {
+  /** Implement reading from a file descriptor. Should behave like the file
+   * system `read` call, including the setup or errno to EAGAIN / EWOULDBLOCK.*/
+  ssize_t (*read)(int fd, void* buf, size_t count);
+  /** Implement writing to a file descriptor. Should behave like the file system
+   * `write` call.*/
+  ssize_t (*write)(int fd, const void* buf, size_t count);
   /** The `on_clear` callback is called when the socket data is cleared, ideally
-   * when the connection is closed, allowing for dynamic sockTLC memory
+   * when the connection is closed, allowing for dynamic sock_tlc_s memory
    * management.
    *
    * The `on_clear` callback is called within the socket's lock (mutex),
    * providing a small measure of thread safety. This means that `sock_API`
    * shouldn't be called from within this function (at least not in regards to
    * the specific `fd`). */
-  void (*on_clear)(int fd, struct sockTLC* tlc);
-};
+  void (*on_clear)(int fd, struct sock_rw_hook_s* rw_hook);
+} sock_rw_hook_s;
 
 /* *****************************************************************************
 TLC implementation
 */
 
 /** Gets a socket TLC chain. */
-struct sockTLC* sock_tlc_get(int fd);
+struct sock_rw_hook_s* sock_rw_hook_get(int fd);
 
 /** Sets a socket TLC chain. */
-int sock_tlc_set(int fd, struct sockTLC* tlc);
-
-/** Adds a TLC to the socket's TLC chain. */
-int sock_tlc_add(int fd, struct sockTLC* tlc);
+int sock_rw_hook_set(int fd, struct sock_rw_hook_s* tlc);
 
 #endif /* LIBSOCK */

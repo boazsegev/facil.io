@@ -54,6 +54,16 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Sock (development incomplete)
 
+### V. 0.0.4
+
+* Misc. optimizations. i.e. Buffer packet size now increased to 64Kb, to fit Linux buffer allocation.
+
+* File sending now supports file descriptors.
+
+* TLC support replaced with a simplified read/write hook.
+
+* Changed `struct SockWriteOpt` to a typedef `sock_write_info_s`.
+
 ### V. 0.0.3
 
 * Changed `struct Packet` to a typedef `sock_packet_s`.
@@ -86,6 +96,10 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Server
 
+### V. 0.3.4
+
+* Updated `sendfile` to only accept file descriptors (not `FILE *`). This is an optimization requirement.
+
 ### V. 0.3.3
 
 * fixed situations in which the `sendfile` might not close the file before returning an error.
@@ -105,6 +119,14 @@ Baseline (changes not logged before this point in time).
 Baseline (changes not logged before this point in time).
 
 ## HTTP Protocol
+
+### Date 20160612
+
+* HTTP protocol and HttpResponse `sendfile` and `HttpResponse.sendfile` fixes and optimizations. Now file sending uses file descriptors instead of `FILE *`, avoiding the memory allocations related to `FILE *` data.
+
+* HttpResponse copy optimizes the first header buffer packet to copy as much of the body as possible into the buffer packet, right after the headers.
+
+* Optimized mime type search for static file service.
 
 ### Date 20160609
 

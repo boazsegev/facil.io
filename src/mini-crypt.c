@@ -4,11 +4,14 @@
 Setup
 */
 
-#include <stdio.h>
+#include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <ctype.h>
 #include <limits.h>
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <unistd.h>
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>
@@ -1069,7 +1072,7 @@ folder referencing.
 */
 static fdump_s* fdump(const char* file_path, size_t size_limit) {
   struct stat f_data;
-  FILE* file = NULL;
+  int file = -1;
   fdump_s* container = NULL;
   size_t file_path_len;
   if (file_path == NULL || (file_path_len = strlen(file_path)) == 0 ||
@@ -1093,18 +1096,18 @@ static fdump_s* fdump(const char* file_path, size_t size_limit) {
   container->length = size_limit;
   if (!container)
     goto error;
-  file = fopen(file_path, "rb");
-  if (!file)
+  file = open(file_path, O_RDONLY);
+  if (file < 0)
     goto error;
-  if (fread(container->data, 1, size_limit, file) < size_limit)
+  if (read(file, container->data, size_limit) < size_limit)
     goto error;
-  fclose(file);
+  close(file);
   return container;
 error:
   if (container)
     free(container), (container = NULL);
-  if (file)
-    fclose(file);
+  if (file >= 0)
+    close(file);
   return 0;
 }
 

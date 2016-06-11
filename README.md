@@ -84,11 +84,11 @@ int main(void) {
 
 Since most web applications (Node.js, Ruby etc') end up running behind load balancers and proxies, it is often that the SSL layer is handled by intermediaries.
 
-But, if you need to expose the application directly to the web, it is possible to implement SSL/TLS support using `libsock`'s Transport Layer Callbacks (TLC).
+But, if you need to expose the application directly to the web, it is possible to implement SSL/TLS support using `libsock`'s read/write hooks.
 
-Since `lib-server` utilizes `libsock` for socket communication (leveraging it's user-land buffer and other features), any TLC added to the TLC stack will be utilized for the specified connection.
+Since `lib-server` utilizes `libsock` for socket communication (leveraging it's user-land buffer and other features), any RW hooks assigned be utilized for the specified connection.
 
-Using `lib-server`'s read-write hooks (`Server.rw_hooks`) is now deprecated, as `libsock`'s TLC API is accessible for any connection by using `server_uuid_to_fd` to convert a connection's UUID to it's source `fd`.
+Using `lib-server`'s read-write hooks (`Server.rw_hooks`) is now deprecated in favor of direct access to `libsock`'s API using `server_uuid_to_fd` to convert a connection's UUID to it's source `fd`.
 
 I did not write a TLS implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a load-balancer/proxy that manages the SSL/TLS layer).
 
@@ -155,7 +155,7 @@ To use this library you only need the `libreact.h` and `libreact.c` files.
 
 Non-Blocking sockets have a lot of common code that needs to be handled, such as a user level buffer (for all the data that didn't get sent when the socket was busy), delayed disconnection (don't delay before sending all the data) etc'.
 
-Read through this library's documentation to learn more about using this thread-safe library that provides user level writing buffer and seamless integration with `libreact`. 
+Read through this library's documentation to learn more about using this thread-safe library that provides user level writing buffer and seamless integration with `libreact`.
 
 ## [`lib-server`](docs/lib-server.md) - a server building library.
 

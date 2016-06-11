@@ -6,6 +6,11 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef MINI_CRYPT
 #define MINI_CRYPT "0.1.1"
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

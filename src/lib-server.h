@@ -5,7 +5,7 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIB_SERVER
-#define LIB_SERVER "0.3.2"
+#define LIB_SERVER "0.3.3"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -400,16 +400,20 @@ extern const struct Server__API___ {
                                void* data,
                                size_t len);
   /**
-  Sends a whole file as if it were a single atomic packet.
+  Sends data from a file as if it were a single atomic packet (sends up to
+  length bytes or until EOF is reached).
 
-  Once the file was sent, the `FILE *` will be closed using `fclose`.
+  Once the file was sent, the `source_fd` will be closed using `close`.
 
   The file will be buffered to the socket chunk by chunk, so that memory
-  consumption is capped at ~ 64Kb.
+  consumption is capped.
 
   Returns -1 and closes the file on error. Returns 0 on success.
   */
-  ssize_t (*sendfile)(server_pt srv, uint64_t connection_id, FILE* file);
+  ssize_t (*sendfile)(server_pt srv,
+                      uint64_t connection_id,
+                      int source_fd,
+                      size_t length);
   /** Submits a `libsock` packet to the `libsock` socket buffer. See `libsock`
   for more details.
 

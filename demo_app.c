@@ -76,6 +76,7 @@ The HTTP implementation
 */
 
 void on_request(struct HttpRequest* request) {
+  // fprintf(stderr, "\n\n*** Request for %s\n", request->path);
   if (!strcmp(request->path, "/echo")) {
     websocket_upgrade(.request = request, .on_message = ws_echo,
                       .on_open = ws_open, .on_close = ws_close,
@@ -101,6 +102,7 @@ void on_request(struct HttpRequest* request) {
     HttpResponse.write_body(response, body->data, body->length);
     HttpResponse.destroy(response);
     free(body);
+    return;
   }
   struct HttpResponse* response = HttpResponse.create(request);
   HttpResponse.write_body(response, "Hello World!", 12);

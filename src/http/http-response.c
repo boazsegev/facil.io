@@ -115,7 +115,7 @@ cannot be sent), the function will return -1.
 
 On success, the function returns 0.
 */
-int response_printf(struct HttpResponse*, const char* format, ...);
+static int response_printf(struct HttpResponse*, const char* format, ...);
 /**
 Sends the headers (if they weren't previously sent).
 
@@ -151,17 +151,6 @@ static int write_body_move(struct HttpResponse*,
                            const char* body,
                            size_t length);
 /**
-Sends the headers (if they weren't previously sent) and writes the data to the
-underlying socket.
-
-The server's outgoing buffer will take ownership of the body and free it's
-memory using `free` once the data was sent.
-
-If the connection was already closed, the function will return -1. On success,
-the function returns 0.
-*/
-static int sendfile_req(struct HttpResponse*, FILE* pf, size_t length);
-/**
 Sends the complete file referenced by the `file_path` string.
 
 This function requires that the headers weren't previously sent and that the
@@ -170,6 +159,19 @@ file exists.
 On failure, the function will return -1. On success, the function returns 0.
 */
 static int sendfile_path(struct HttpResponse* response, char* file_path);
+/**
+Sends the headers (if they weren't previously sent) and writes the data to the
+underlying socket.
+
+The server's outgoing buffer will take ownership of the file descriptor and
+close it using `close` once the data was sent.
+
+If the connection was already closed, the function will return -1. On success,
+the function returns 0.
+*/
+static int req_sendfile(struct HttpResponse* response,
+                        int source_fd,
+                        size_t length);
 /**
 Closes the connection.
 */
@@ -194,7 +196,7 @@ struct HttpResponseClass HttpResponse = {
     .send = send_response,
     .write_body = write_body,
     .write_body_move = write_body_move,
-    .sendfile = sendfile_req,
+    .sendfile = req_sendfile,
     .sendfile2 = sendfile_path,
     .close = close_response,
 };
@@ -531,7 +533,9 @@ cannot be sent), the function will return -1.
 
 On success, the function returns 0.
 */
-int response_printf(struct HttpResponse* response, const char* format, ...) {
+static int response_printf(struct HttpResponse* response,
+                           const char* format,
+                           ...) {
   if (response->metadata.headers_sent)
     return -1;
   size_t max_len =
@@ -673,17 +677,27 @@ static int write_body(struct HttpResponse* response,
     response->content_length = length;
   sock_packet_s* headers = prep_headers(response);
   if (headers != NULL) {  // we haven't sent the headers yet
-    if ((response->metadata.headers_pos - (char*)headers->buffer + length) <
-        (BUFFER_PACKET_SIZE - 1024)) {
-      // we can fit the data inside the response buffer.
-      memcpy(response->metadata.headers_pos, body, length);
-      response->metadata.headers_pos += length;
-      headers->length += length;
-      return send_headers(response, headers);
-    } else {
-      // we need to send the body seperately.
-      send_headers(response, headers);
+    ssize_t i_read =
+        ((BUFFER_PACKET_SIZE - HTTP_HEADER_START) - headers->length);
+    if (i_read > 1024) {
+      // we can fit at least some of the data inside the response buffer.
+      if (i_read > length) {
+        i_read = length;
+        // we can fit the data inside the response buffer.
+        memcpy(response->metadata.headers_pos, body, i_read);
+        response->metadata.headers_pos += i_read;
+        headers->length += i_read;
+        return send_headers(response, headers);
+      }
+      memcpy(response->metadata.headers_pos, body, i_read);
+      response->metadata.headers_pos += i_read;
+      headers->length += i_read;
+      length -= i_read;
+      body += i_read;
     }
+    // we need to send the (rest of the) body seperately.
+    if (send_headers(response, headers))
+      return -1;
   }
   return Server.write(response->metadata.server, response->metadata.fd_uuid,
                       (void*)body, length);
@@ -705,8 +719,7 @@ static int write_body_move(struct HttpResponse* response,
     response->content_length = length;
   sock_packet_s* headers = prep_headers(response);
   if (headers != NULL) {  // we haven't sent the headers yet
-    if ((response->metadata.headers_pos - (char*)headers->buffer + length) <
-        (BUFFER_PACKET_SIZE - 1024)) {
+    if ((headers->length + length) < (BUFFER_PACKET_SIZE - HTTP_HEADER_START)) {
       // we can fit the data inside the response buffer.
       memcpy(response->metadata.headers_pos, body, length);
       response->metadata.headers_pos += length;
@@ -722,28 +735,6 @@ static int write_body_move(struct HttpResponse* response,
                            response->metadata.fd_uuid, (void*)body, length);
 }
 /**
-Sends the headers (if they weren't previously sent) and writes the data to the
-underlying socket.
-
-The server's outgoing buffer will take ownership of the file and close it using
-`close` once the data was sent.
-
-If the connection was already closed, the function will return -1. On success,
-the function returns 0.
-*/
-static int sendfile_req(struct HttpResponse* response,
-                        FILE* pf,
-                        size_t length) {
-  if (!response->content_length)
-    response->content_length = length;
-  if (response->metadata.packet && send_response(response)) {
-    fclose(pf);
-    return -1;
-  }
-  return Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
-                         pf);
-}
-/**
 Sends the complete file referenced by the `file_path` string.
 
 This function requires that the headers weren't previously sent and that the
@@ -756,25 +747,63 @@ static int sendfile_path(struct HttpResponse* response, char* file_path) {
     return -1;
   }
 
-  FILE* pf;
+  int f_fd;
   struct stat f_data;
   if (stat(file_path, &f_data)) {
     return -1;
   }
-  pf = fopen(file_path, "rb");
-  if (!pf) {
+  f_fd = open(file_path, O_RDONLY);
+  if (f_fd == -1) {
     return -1;
   }
-  response->content_length = f_data.st_size;
   response->last_modified = f_data.st_mtime;
-  send_response(response);
-  if (Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
-                      pf)) {
-    fclose(pf);
-    return -1;
-  }
-  return 0;
+  return req_sendfile(response, f_fd, f_data.st_size);
 }
+/**
+Sends the headers (if they weren't previously sent) and writes the data to the
+underlying socket.
+
+The server's outgoing buffer will take ownership of the file descriptor and
+close it using `close` once the data was sent.
+
+If the connection was already closed, the function will return -1. On success,
+the function returns 0.
+*/
+static int req_sendfile(struct HttpResponse* response,
+                        int source_fd,
+                        size_t length) {
+  if (!response->content_length)
+    response->content_length = length;
+
+  sock_packet_s* headers = prep_headers(response);
+
+  if (headers != NULL) {  // we haven't sent the headers yet
+    if (headers->length < (BUFFER_PACKET_SIZE - HTTP_HEADER_START)) {
+      // we can fit at least some of the data inside the response buffer.
+      ssize_t i_read =
+          read(source_fd, response->metadata.headers_pos,
+               ((BUFFER_PACKET_SIZE - HTTP_HEADER_START) - headers->length));
+      if (i_read > 0) {
+        if (i_read >= length) {
+          headers->length += length;
+          close(source_fd);
+          return send_headers(response, headers);
+        } else {
+          headers->length += i_read;
+          length -= i_read;
+        }
+      }
+    }
+    // we need to send the rest seperately.
+    if (send_headers(response, headers)) {
+      close(source_fd);
+      return -1;
+    }
+  }
+  return Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
+                         source_fd, length);
+}
+
 /**
 Closes the connection.
 */

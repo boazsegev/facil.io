@@ -416,12 +416,12 @@ extern struct HttpResponseClass {
   underlying socket.
 
   The server's outgoing buffer will take ownership of the file and close it
-  using `close` once the data was sent.
+  using `fclose` once the data was sent.
 
   If the connection was already closed, the function will return -1. On success,
   the function returns 0.
   */
-  int (*sendfile)(struct HttpResponse*, FILE* pf, size_t length);
+  int (*sendfile)(struct HttpResponse*, int source_fd, size_t length);
   /**
   Sends the complete file referenced by the `file_path` string.
 

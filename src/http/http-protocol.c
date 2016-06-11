@@ -19,6 +19,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdio.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 /////////////////
 // Header case (Uppercase vs. Lowercase)
@@ -68,7 +69,7 @@ static int http_sendfile(struct HttpRequest* req) {
   if (protocol->public_folder_length == 0)
     protocol->public_folder_length = strlen(protocol->public_folder);
 
-  FILE* file;
+  int file = -1;
   char* mime = NULL;
   char* ext = NULL;
   struct stat file_data = {};
@@ -130,7 +131,7 @@ static int http_sendfile(struct HttpRequest* req) {
     Server.close(req->server, req->sockfd);
     return 1;
   }
-  if ((file = fopen(fname, "rb")) == NULL)
+  if ((file = open(fname, O_RDONLY)) < 0)
     goto internal_error;
 
   // get the mime type (we have an ext pointer and the string isn't empty)
@@ -182,13 +183,13 @@ static int http_sendfile(struct HttpRequest* req) {
       if (!data) {
         goto bad_request;
       }
-      len = fread(data, 1, finish - start, file);
+      len = read(file, data, finish - start);
       if (len <= 0) {
         free(data);
         goto bad_request;
       }
-      fclose(file);
-      file = NULL;
+      close(file);
+      file = -1;
       response->status = 206;
       HttpResponse.write_header(response, "Accept-Ranges", 13, "bytes", 5);
       HttpResponse.write_header(response, "Cache-Control", 13,
@@ -203,8 +204,9 @@ static int http_sendfile(struct HttpRequest* req) {
       return 1;
     } else {
       // going to the EOF (big chunk or EOL requested) - send as file
-      finish = file_data.st_size - 1;
-      fseek(file, start, SEEK_SET);
+      if (finish >= file_data.st_size)
+        finish = file_data.st_size - 1;
+      lseek(file, start, SEEK_SET);
       if (HttpResponse.printf(response, "Content-Range: bytes %lu-%lu/%lu",
                               start, finish, file_data.st_size)) {
         HttpResponse.reset(response, req);
@@ -229,7 +231,7 @@ invalid_range:
   // send data
   if (strcasecmp("HEAD", req->method) == 0) {
     HttpResponse.send(response);
-    fclose(file);
+    close(file);
   } else
     HttpResponse.sendfile(response, file, file_data.st_size);
   HttpResponse.destroy(response);
@@ -237,16 +239,16 @@ invalid_range:
   return 1;
 
 internal_error:
-  if (file)
-    fclose(file);
+  if (file >= 0)
+    close(file);
   response->status = 500;
   response->metadata.should_close = 1;
   HttpResponse.write_body(response, "Internal error (F01)", 20);
   HttpResponse.destroy(response);
   return 1;
 bad_request:
-  if (file)
-    fclose(file);
+  if (file >= 0)
+    close(file);
   response->status = 400;
   response->metadata.should_close = 1;
   HttpResponse.write_body(response, "Bad Request.", 12);
@@ -578,33 +580,34 @@ cleanup_after_finish:
 
   // we need to destroy the request ourselves, because we disconnected the
   // request from the server's udata.
-  if (HttpRequest.is_request(request)) {
+  if (request && HttpRequest.is_request(request)) {
     HttpRequest.destroy(request);
     return;
   }
+  return;
 
 options:
   // send a bed request response. hang up.
   Server.write(server, sockfd, options_req, sizeof(options_req) - 1);
-  Server.close(request->server, sockfd);
+  Server.close(server, sockfd);
   goto cleanup_after_finish;
 
 bad_request:
   // send a bed request response. hang up.
   Server.write(server, sockfd, bad_req, sizeof(bad_req) - 1);
-  Server.close(request->server, sockfd);
+  Server.close(server, sockfd);
   goto cleanup_after_finish;
 
 too_big:
   // send a bed request response. hang up.
   Server.write(server, sockfd, too_big_err, sizeof(too_big_err) - 1);
-  Server.close(request->server, sockfd);
+  Server.close(server, sockfd);
   goto cleanup_after_finish;
 
 internal_error:
   // send an internal error response. hang up.
   Server.write(server, sockfd, intr_err, sizeof(intr_err) - 1);
-  Server.close(request->server, sockfd);
+  Server.close(server, sockfd);
   goto cleanup_after_finish;
 }
 

@@ -323,14 +323,20 @@ static ssize_t srv_write_move_urgent(server_pt server,
                                      void* data,
                                      size_t len);
 /**
-Sends a whole file as if it were a single atomic packet.
+Sends data from a file as if it were a single atomic packet (sends up to
+length bytes or until EOF is reached).
 
-Once the file was sent, the `FILE *` will be closed using `fclose`.
+Once the file was sent, the `source_fd` will be closed using `close`.
 
 The file will be buffered to the socket chunk by chunk, so that memory
-consumption is capped at ~ 64Kb.
+consumption is capped.
+
+Returns -1 and closes the file on error. Returns 0 on success.
 */
-static ssize_t srv_sendfile(server_pt server, union fd_id cuuid, FILE* file);
+static ssize_t srv_sendfile(server_pt server,
+                            uint64_t conn,
+                            int source_fd,
+                            size_t length);
 /** Submits a `libsock` packet to the `libsock` socket buffer. See `libsock`
 for more details.
 
@@ -475,7 +481,7 @@ const struct Server__API___ Server = {
                                       uint64_t,
                                       void*,
                                       size_t))srv_write_move_urgent,  //
-    .sendfile = (ssize_t (*)(server_pt, uint64_t, FILE*))srv_sendfile,
+    .sendfile = srv_sendfile,
     .send_packet = srv_send_packet,
     /* connection tasks functions */
     .each = (int (*)(server_pt,
@@ -1230,23 +1236,31 @@ static ssize_t srv_write_move_urgent(server_pt server,
   return 0;
 }
 /**
-Sends a whole file as if it were a single atomic packet.
+Sends data from a file as if it were a single atomic packet (sends up to
+length bytes or until EOF is reached).
 
-Once the file was sent, the `FILE *` will be closed using `fclose`.
+Once the file was sent, the `source_fd` will be closed using `close`.
 
 The file will be buffered to the socket chunk by chunk, so that memory
-consumption is capped at ~ 64Kb.
+consumption is capped.
+
+Returns -1 and closes the file on error. Returns 0 on success.
 */
-static ssize_t srv_sendfile(server_pt server, union fd_id conn, FILE* file) {
+static ssize_t srv_sendfile(server_pt server,
+                            uint64_t conn,
+                            int source_fd,
+                            size_t length) {
   if (validate_connection(server, conn)) {
-    if (file)
-      fclose(file);
+    if (source_fd)
+      close(source_fd);
     return -1;
   }
   // reset timeout
-  _connection_(server, conn.data.fd).idle = 0;
+  _connection_(server, ((union fd_id)conn).data.fd).idle = 0;
   // send data
-  return sock_write2(.fd = conn.data.fd, .buffer = file, .file = 1);
+  return sock_write2(.fd = ((union fd_id)conn).data.fd,
+                     .buffer = ((void*)((ssize_t)source_fd)), .is_fd = 1,
+                     .length = length);
 }
 
 /**
