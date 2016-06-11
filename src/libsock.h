@@ -320,9 +320,8 @@ Experimental
 */
 
 /**
-This struct is used for setting a Transport Layer Callback that will replace
-the `sock_write2` and `sock_read` implementations for the requested socket.
- */
+The following struct is used for setting a the read/write hooks that will
+replace the default system calls to `recv` and `write`. */
 typedef struct sock_rw_hook_s {
   /** Implement reading from a file descriptor. Should behave like the file
    * system `read` call, including the setup or errno to EAGAIN / EWOULDBLOCK.*/
@@ -331,7 +330,7 @@ typedef struct sock_rw_hook_s {
    * `write` call.*/
   ssize_t (*write)(int fd, const void* buf, size_t count);
   /** The `on_clear` callback is called when the socket data is cleared, ideally
-   * when the connection is closed, allowing for dynamic sock_tlc_s memory
+   * when the connection is closed, allowing for dynamic sock_rw_hook_s memory
    * management.
    *
    * The `on_clear` callback is called within the socket's lock (mutex),
@@ -342,13 +341,13 @@ typedef struct sock_rw_hook_s {
 } sock_rw_hook_s;
 
 /* *****************************************************************************
-TLC implementation
+RW hooks implementation
 */
 
-/** Gets a socket TLC chain. */
+/** Gets a socket hook state (a pointer to the struct). */
 struct sock_rw_hook_s* sock_rw_hook_get(int fd);
 
-/** Sets a socket TLC chain. */
-int sock_rw_hook_set(int fd, struct sock_rw_hook_s* tlc);
+/** Sets a socket hook state (a pointer to the struct). */
+int sock_rw_hook_set(int fd, struct sock_rw_hook_s* rw_hooks);
 
 #endif /* LIBSOCK */

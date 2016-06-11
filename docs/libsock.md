@@ -7,7 +7,7 @@ This library is great when using it alongside `libreact`, since `libreact` will 
 
 `libsock` requires only the following two files from this repository: [`src/libsock.h`](../src/libsock.h) and [`src/libsock.c`](../src/libsock.c).
 
-If you're looking to utilize `lib-server` the only helpful section in this file is the section regarding Transport Layer Callbacks (TLC) that can be used to implement TLS or other intermediary protocols.
+If you're looking to utilize `lib-server` the only helpful section in this file is the section regarding the Read / Write Hooks that can be used to implement TLS or other intermediary protocols.
 
 ## The Socket object
 
@@ -28,6 +28,8 @@ For maximum capacity, it is recommended that you call:
 init_socklib( sock_max_capacity() );
 ```
 
+This call will actually attempt to extend the limits of the running process to the maximum limits allowed by the OS.
+
 ## The `libsock` API
 
 The `libsock` API can be divided into a few different categories:
@@ -40,7 +42,7 @@ The `libsock` API can be divided into a few different categories:
 
 - Direct user level buffer API.
 
-- Transport Layer Callbacks (TLC).
+- Read/Write Hooks.
 
 It should be noted that the library was built with convenience and safety in mind, so it incurs a performance cost related to these safety and convenience features (i.e. mutex locking protects the user-land buffer at the cost of performance).
 
@@ -65,9 +67,9 @@ extended to the allowed "hard" limit.
 
 #### `int sock_listen(char* address, char* port)`
 
-Opens a listenning non-blocking socket. Return's the socket's file descriptor.
+Opens a listening non-blocking socket. Return's the socket's file descriptor.
 
-Returns -1 on error or the listenning socket's `fd` on sucess.
+Returns -1 on error or the listening socket's `fd` on success.
 
 ### Accepting connections and opening new sockets
 
@@ -84,7 +86,7 @@ descriptor.
 `sock_connect` is similar to `sock_accept` but should be used to initiate a
 client connection to the address requested.
 
-Returns the new file descriptor fd. Retruns -1 on error.
+Returns the new file descriptor fd. Returns -1 on error.
 
 #### `int sock_open(struct Reactor* owner, int fd)`
 
@@ -135,7 +137,7 @@ The macro `sock_is_closed(fd)` translates to `(sock_status((fd)) < 0)`
 
 ### Sending and receiving data
 
-Reading and writing data to a socket, using the `libsock` API, allows easy access to a user level buffer and file streaming capabilities, as well as Transport Layer Callbacks (TLC) chains that simplify the task of implementing layered protocols (i.e. TLS).
+Reading and writing data to a socket, using the `libsock` API, allows easy access to a user level buffer and file streaming capabilities, as well as read write hooks that simplify the task of implementing layered protocols (i.e. TLS).
 
 #### `ssize_t sock_read(int fd, void* buf, size_t count)`
 
@@ -167,32 +169,36 @@ On error, -1 will be returned. Otherwise returns 0. All the bytes are transferre
 
 #### `ssize_t sock_write2(...)`
 
-Translates as: `ssize_t sock_write2_fn(struct SockWriteOpt options)`
+Translates as: `ssize_t sock_write2_fn(sock_write_info_s options)`
 
 These are the basic options (named arguments) available:
 
 ```c
-struct SockWriteOpt {
-  /* The fd for sending data. */
+typedef struct {
+  /** The fd for sending data. */
   int fd;
-  /* The data to be sent. This can be either a byte stream or a file pointer
+  /** The data to be sent. This can be either a byte strteam or a file pointer
    * (`FILE *`). */
   const void* buffer;
-  /* The length (size) of the buffer. irrelevant for file pointers. */
+  /** The length (size) of the buffer. irrelevant for file pointers. */
   size_t length;
-  /* The user land buffer will receive ownership of the buffer (forced as
+  /** The user land buffer will receive ownership of the buffer (forced as
    * TRUE
    * when `file` is set). */
   unsigned move : 1;
-  /* The packet will be sent as soon as possible. */
+  /** The packet will be sent as soon as possible. */
   unsigned urgent : 1;
-  /* The buffer points to a file pointer: `FILE *`  */
+  /** The buffer points to a file pointer: `FILE *`  */
   unsigned file : 1;
-  /* for internal use */
+  /** The buffer contains the value of a file descriptor int - casting, not
+   * pointing, i.e.: `.buffer = (void*)fd;` */
+  unsigned is_fd : 1;
+  /** for internal use */
   unsigned rsv : 1;
   /**/
-};
+} sock_write_info_s;
 ```
+
 `sock_write2_fn` is the actual function behind the macro `sock_write2`.
 
 `sock_write2` is similar to `sock_write`, except special properties can be set.
@@ -230,7 +236,7 @@ If a reactor pointer is provided, the reactor API will be used and the `on_close
 The user land buffer is constructed from pre-allocated Packet objects, each containing BUFFER_PACKET_SIZE (~17Kb) memory size dedicated for message data.
 
 ```c
-#define BUFFER_PACKET_SIZE (1024 * 17)
+#define BUFFER_PACKET_SIZE (1024 * 32)
 ```
 
 Buffer packets - can be used for directly writing individual or multiple packets to the buffer instead of using the `sock_write(2)` helper functions / macros.
@@ -250,6 +256,9 @@ typedef struct sock_packet_s {
     /** sets whether a packet can be inserted before this packet without
      * interrupting the communication flow. */
     unsigned can_interrupt : 1;
+    /** sets whether a packet's buffer contains a file descriptor - casting, not
+     * pointing, i.e.: `packet->buffer = (void*)fd;` */
+    unsigned is_fd : 1;
     /** sets whether a packet's buffer is of type `FILE *`. */
     unsigned is_file : 1;
     /** sets whether a packet's buffer is pre-allocated (references the
@@ -259,8 +268,10 @@ typedef struct sock_packet_s {
     /** sets whether this packet (or packet chain) should be inserted in before
      * the first `can_interrupt` packet, or at the end of the queu. */
     unsigned urgent : 1;
+    /** Reserved for internal use - (memory shifting flag)*/
+    unsigned internal_flag : 1;
     /** Reserved for future use. */
-    unsigned rsrv : 4;
+    unsigned rsrv : 2;
     /**/
   } metadata;
 } sock_packet_s;
@@ -276,19 +287,49 @@ Checks out a `sock_packet_s` from the packet pool, transferring the ownership of
 Attaches a packet to a socket's output buffer and calls `sock_flush` for the
 socket.
 
-The packet's memory is **always** handled by the `sock_send_packet` function (even on error).
+The packet's memory is **always** handled by the `sock_send_packet` function (even on error). If the memory isn't part of the packet pool, it will be released using `free` after closing any files and freeing any memory associated with the packet.
 
 Returns -1 on error. Returns 0 on success.
 
 #### `void sock_free_packet(sock_packet_s* packet)`
 
-Use `sock_free_packet` to free unused packets that were checked-out using `sock_checkout_packet`.
+Use `sock_free_packet` to free unused packets (including packet chains) that were checked-out using `sock_checkout_packet`.
 
 NEVER use `free`, for any packet checked out using the pool management function `sock_checkout_packet`.
 
-### TLC - Transport Layer Callbacks.
+Passing a single packet will free also any packet it references (the `next` packet is also freed).
 
-incomplete documentation.
+### RW Hooks.
+
+The following struct is used for setting a the read/write hooks that will replace the default system calls to `recv` and `write`.
+
+```c
+typedef struct sock_rw_hook_s {
+  /** Implement reading from a file descriptor. Should behave like the file
+   * system `read` call, including the setup or errno to EAGAIN / EWOULDBLOCK.*/
+  ssize_t (*read)(int fd, void* buf, size_t count);
+  /** Implement writing to a file descriptor. Should behave like the file system
+   * `write` call.*/
+  ssize_t (*write)(int fd, const void* buf, size_t count);
+  /** The `on_clear` callback is called when the socket data is cleared, ideally
+   * when the connection is closed, allowing for dynamic sock_rw_hook_s memory
+   * management.
+   *
+   * The `on_clear` callback is called within the socket's lock (mutex),
+   * providing a small measure of thread safety. This means that `sock_API`
+   * shouldn't be called from within this function (at least not in regards to
+   * the specific `fd`). */
+  void (*on_clear)(int fd, struct sock_rw_hook_s* rw_hook);
+} sock_rw_hook_s;
+```
+
+#### `struct sock_rw_hook_s* sock_rw_hook_get(int fd)`
+
+Gets a socket hook state (a pointer to the struct).
+
+#### `int sock_rw_hook_set(int fd, struct sock_rw_hook_s* rw_hooks)`
+
+Sets a socket hook state (a pointer to the struct).
 
 ## A Quick Example
 
