@@ -91,11 +91,13 @@ sock_packet_s* sock_checkout_packet(void) {
 void sock_free_packet(sock_packet_s* packet) {
   sock_packet_s* next = packet;
   while (next) {
-    if (next->metadata.is_fd)
-      close((int)((ssize_t)next->buffer));
-    else if (next->metadata.is_file)
-      fclose(next->buffer);
-    else if (next->metadata.external)
+    if (next->metadata.is_fd) {
+      if (next->metadata.keep_open == 0)
+        close((int)((ssize_t)next->buffer));
+    } else if (next->metadata.is_file) {
+      if (next->metadata.keep_open == 0)
+        fclose(next->buffer);
+    } else if (next->metadata.external)
       free(next->buffer);
     next = next->metadata.next;
   }
@@ -563,44 +565,42 @@ re_flush:
 
   if (USE_SENDFILE && packet->metadata.is_fd && sfd->rw_hooks == NULL) {
 #if defined(__linux__) /* linux sendfile API */
-    sent = sendfile64(fd, (int)((ssize_t)packet->buffer), NULL,
-                      packet->length - sfd->sent);
+    for (;;) {
+      sent = sendfile64(fd, (int)((ssize_t)packet->buffer), NULL,
+                        packet->length - sfd->sent);
 
-    if (sent == 0) {
-      sfd->packet = packet->metadata.next;
-      packet->metadata.next = NULL;
-      sock_free_packet(packet);
-      sfd->sent = 0;
-      goto re_flush;
-    } else if (sent < 0) {
-      if (errno & (EAGAIN | EWOULDBLOCK))
-        return 0;
-      else {
+      if (sent == 0) {
+        sfd->packet = packet->metadata.next;
+        packet->metadata.next = NULL;
+        sock_free_packet(packet);
+        sfd->sent = 0;
+        goto re_flush;
+      } else if (sent < 0) {
+        if (errno & (EAGAIN | EWOULDBLOCK))
+          return 0;
+        else if (errno & EINTR)
+          continue;
+        else {
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-        perror("linux sendfile error");
+          perror("linux sendfile error");
 #endif
-        return -1;
+          return -1;
+        }
+      }
+      sfd->sent += sent;
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+      fprintf(stderr, "(%d) Linux sendfile %ld / %u bytes from %lu total.\n",
+              fd, sent, sfd->sent, packet->length);
+#endif
+      if (sfd->sent >= packet->length) {
+        sfd->packet = packet->metadata.next;
+        packet->metadata.next = NULL;
+        sock_free_packet(packet);
+        sfd->sent = 0;
+        goto re_flush;
       }
     }
-    sfd->sent += sent;
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-    fprintf(stderr, "(%d) Linux sendfile %ld / %u bytes from %lu total.\n", fd,
-            sent, sfd->sent, packet->length);
-#endif
-    // fprintf(stderr, "Linux sendfile sent %ld/%u from %lu\n", sent, sfd->sent,
-    //         packet->length);
-    if (sfd->sent >= packet->length) {
-      sfd->packet = packet->metadata.next;
-      packet->metadata.next = NULL;
-      sock_free_packet(packet);
-      sfd->sent = 0;
-      goto re_flush;
-    }
-    return 0;
-
 #elif defined(__unix__) /* BSD API */
-    int sendfile(int fd, int s, off_t offset, size_t nbytes,
-                 struct sf_hdtr* hdtr, off_t* sbytes, int flags);
     off_t act_sent = packet->length - sfd->sent;
     off_t pos_start = lseek((int)((ssize_t)packet->buffer), 0, SEEK_CUR);
     if (sendfile((int)((ssize_t)packet->buffer), fd, pos_start,
@@ -630,142 +630,159 @@ re_flush:
     goto re_flush;
 
 #elif defined(__APPLE__) /* Apple API */
-    off_t act_sent = packet->length - sfd->sent;
-    off_t pos_start = lseek((int)((ssize_t)packet->buffer), 0, SEEK_CUR);
-    if (sendfile((int)((ssize_t)packet->buffer), fd, pos_start, &act_sent, NULL,
-                 0)) {
-      if ((errno & (EAGAIN | EWOULDBLOCK)) && act_sent == 0)
-        return 0;
-      else if ((errno & (EAGAIN | EWOULDBLOCK)) == 0)
-        return -1;
+    for (;;) {
+      off_t act_sent = packet->length - sfd->sent;
+      off_t pos_start = lseek((int)((ssize_t)packet->buffer), 0, SEEK_CUR);
+      if (sendfile((int)((ssize_t)packet->buffer), fd, pos_start, &act_sent,
+                   NULL, 0)) {
+        if ((errno & (EAGAIN | EWOULDBLOCK)) && act_sent == 0)
+          return 0;
+        else if (errno & EINTR)
+          continue;
+        else {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+          perror("Apple sendfile error");
+#endif
+          return -1;
+        }
+      }
+      if (act_sent == 0) {
+        sfd->packet = packet->metadata.next;
+        packet->metadata.next = NULL;
+        sock_free_packet(packet);
+        sfd->sent = 0;
+        goto re_flush;
+      }
+      pos_start += act_sent;
+      sfd->sent += act_sent;
+      if (sfd->sent >= packet->length) {
+        sfd->packet = packet->metadata.next;
+        packet->metadata.next = NULL;
+        sock_free_packet(packet);
+        sfd->sent = 0;
+        goto re_flush;
+      }
+      lseek((int)((ssize_t)packet->buffer), pos_start, SEEK_SET);
     }
-    if (act_sent == 0) {
-      sfd->packet = packet->metadata.next;
-      packet->metadata.next = NULL;
-      sock_free_packet(packet);
-      sfd->sent = 0;
-      goto re_flush;
-    }
-    pos_start += act_sent;
-    sfd->sent += act_sent;
-    if (sfd->sent >= packet->length) {
-      sfd->packet = packet->metadata.next;
-      packet->metadata.next = NULL;
-      sock_free_packet(packet);
-      sfd->sent = 0;
-      goto re_flush;
-    }
-    lseek((int)((ssize_t)packet->buffer), pos_start, SEEK_SET);
-    goto re_flush;
+
 #else /* sendfile might not be available - always set to 0 */
   };
   if (0) {
 #endif
   } else if (packet->metadata.is_fd || packet->metadata.is_file) {
     // how much data are we expecting to send...?
-    ssize_t i_exp = (BUFFER_FILE_READ_SIZE > packet->length)
-                        ? packet->length
-                        : BUFFER_FILE_READ_SIZE;
+    for (;;) {
+      ssize_t i_exp = (BUFFER_FILE_READ_SIZE > packet->length)
+                          ? packet->length
+                          : BUFFER_FILE_READ_SIZE;
 
-    // flag telling us if the file was read into the internal buffer
-    if (packet->metadata.internal_flag == 0) {
-      ssize_t i_read;
-      if (packet->metadata.is_fd)
-        i_read = read((int)((ssize_t)packet->buffer), packet + 1, i_exp);
-      else
-        i_read = fread(packet + 1, 1, i_exp, packet->buffer);
+      // flag telling us if the file was read into the internal buffer
+      if (packet->metadata.internal_flag == 0) {
+        ssize_t i_read;
+        if (packet->metadata.is_fd)
+          i_read = read((int)((ssize_t)packet->buffer), packet + 1, i_exp);
+        else
+          i_read = fread(packet + 1, 1, i_exp, packet->buffer);
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-      fprintf(stderr, "(%d) Read %ld from a file packet, preparing to send.\n",
-              fd, i_read);
+        fprintf(stderr,
+                "(%d) Read %ld from a file packet, preparing to send.\n", fd,
+                i_read);
+#endif
+        if (i_read <= 0) {
+          sfd->packet = packet->metadata.next;
+          packet->metadata.next = NULL;
+          sock_free_packet(packet);
+          sfd->sent = 0;
+          goto re_flush;
+        } else {
+          packet->metadata.internal_flag = 1;
+        }
+      }
+
+      // send the data
+      if (sfd->rw_hooks && sfd->rw_hooks->write)
+        sent = sfd->rw_hooks->write(fd, (((void*)(packet + 1)) + sfd->sent),
+                                    i_exp - sfd->sent);
+      else
+        sent =
+            write(fd, (((void*)(packet + 1)) + sfd->sent), i_exp - sfd->sent);
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+      fprintf(stderr, "(%d) Sent file %ld / %ld bytes from %lu total.\n", fd,
+              sent, i_exp, packet->length);
 #endif
 
-      if (i_read <= 0) {
+      // review result and update packet data
+      if (sent == 0) {
+        return 0;  // nothing to do?
+      } else if (sent > 0) {
+        // did we finished sending the amount of data we wanted to send?
+        if (sfd->sent + sent >= i_exp) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+          fprintf(stderr, "(%d) rotating file buffer (marking for read).\n",
+                  fd);
+#endif
+          packet->metadata.internal_flag = 0;
+          sfd->sent = 0;
+          packet->length -= i_exp;
+          if (packet->length == 0) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+            fprintf(stderr, "(%d) Finished sending file.\n", fd);
+#endif
+            sfd->packet = packet->metadata.next;
+            packet->metadata.next = NULL;
+            sock_free_packet(packet);
+            goto re_flush;
+          }
+        }
+        // return 0;
+      } else if (errno & (EAGAIN | EWOULDBLOCK)) {
+        return 0;
+      } else if (errno & EINTR)
+        continue;
+      else
+        return -1;
+    }
+  }
+  // send data packets
+  for (;;) {
+    if (sfd->rw_hooks && sfd->rw_hooks->write)
+      sent = sfd->rw_hooks->write(fd, packet->buffer + sfd->sent,
+                                  packet->length - sfd->sent);
+    else
+      sent = write(fd, packet->buffer + sfd->sent, packet->length - sfd->sent);
+
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+    fprintf(stderr, "(%d) Sent data %ld / %ld bytes from %lu total.\n", fd,
+            sent, packet->length - sfd->sent, packet->length);
+#endif
+    // handle results
+    if (sent > 0) {
+      sfd->sent += sent;
+      if (sfd->sent >= packet->length) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+        fprintf(stderr, "(%d) rotating data buffer packet.\n", fd);
+#endif
         sfd->packet = packet->metadata.next;
         packet->metadata.next = NULL;
         sock_free_packet(packet);
         sfd->sent = 0;
-        goto re_flush;
-      } else {
-        packet->metadata.internal_flag = 1;
+        if (sfd->packet == NULL && sfd->close)
+          return -1;
       }
-    }
-
-    // send the data
-    if (sfd->rw_hooks && sfd->rw_hooks->write)
-      sent = sfd->rw_hooks->write(fd, (((void*)(packet + 1)) + sfd->sent),
-                                  i_exp - sfd->sent);
-    else
-      sent = write(fd, (((void*)(packet + 1)) + sfd->sent), i_exp - sfd->sent);
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-    fprintf(stderr, "(%d) Sent file %ld / %ld bytes from %lu total.\n", fd,
-            sent, i_exp, packet->length);
-#endif
-
-    // review result and update packet data
-    if (sent == 0) {
-      return 0;  // nothing to do.
-    } else if (sent > 0) {
-      // we finished sending the amount of data we wanted to send.
-      if (sfd->sent + sent >= i_exp) {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-        fprintf(stderr, "(%d) rotating file buffer (marking for read).\n", fd);
-#endif
-        packet->metadata.internal_flag = 0;
-        sfd->sent = 0;
-        packet->length -= i_exp;
-        if (packet->length == 0) {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-          fprintf(stderr, "(%d) Finished sending file.\n", fd);
-#endif
-          sfd->packet = packet->metadata.next;
-          packet->metadata.next = NULL;
-          sock_free_packet(packet);
-        }
-      }
-      // return 0;
       goto re_flush;
+    } else if (sent == 0) {
+      return 0;  // nothing to do.
     } else if (errno & (EAGAIN | EWOULDBLOCK)) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+      fprintf(stderr, "(%d) Sending data error -1 is okay (avoid blocking).\n",
+              fd);
+#endif
       return 0;
-    } else
+    } else if (errno & EINTR)
+      continue;
+    else
       return -1;
   }
-  // send data packets
-  if (sfd->rw_hooks && sfd->rw_hooks->write)
-    sent = sfd->rw_hooks->write(fd, packet->buffer + sfd->sent,
-                                packet->length - sfd->sent);
-  else
-    sent = write(fd, packet->buffer + sfd->sent, packet->length - sfd->sent);
-
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-  fprintf(stderr, "(%d) Sent data %ld / %ld bytes from %lu total.\n", fd, sent,
-          packet->length - sfd->sent, packet->length);
-#endif
-  // handle results
-  if (sent > 0) {
-    sfd->sent += sent;
-    if (sfd->sent >= packet->length) {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-      fprintf(stderr, "(%d) rotating data buffer packet.\n", fd);
-#endif
-      sfd->packet = packet->metadata.next;
-      packet->metadata.next = NULL;
-      sock_free_packet(packet);
-      sfd->sent = 0;
-      if (sfd->packet == NULL && sfd->close)
-        return -1;
-    }
-    // return 0;
-    goto re_flush;
-  } else if (sent == 0) {
-    return 0;  // nothing to do.
-  } else if (errno & (EAGAIN | EWOULDBLOCK)) {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-    fprintf(stderr, "(%d) Sending data error -1 is okay (avoid blocking).\n",
-            fd);
-#endif
-    return 0;
-  } else
-    return -1;
   return 0;
 }
 

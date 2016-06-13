@@ -265,6 +265,9 @@ typedef struct sock_packet_s {
     unsigned is_fd : 1;
     /** sets whether a packet's buffer is of type `FILE *`. */
     unsigned is_file : 1;
+    /** Keeps the `FILE *` or fd open - avoids automatically closing the file.
+     */
+    unsigned keep_open : 1;
     /** sets whether a packet's buffer is pre-allocated (references the
      * `internal_memory`) or whether the data is allocated using `malloc` and
      * should be freed. */
@@ -275,7 +278,8 @@ typedef struct sock_packet_s {
     /** Reserved for internal use - (memory shifting flag)*/
     unsigned internal_flag : 1;
     /** Reserved for future use. */
-    unsigned rsrv : 2;
+    unsigned rsrv : 1;
+    /**/
   } metadata;
 } sock_packet_s;
 
