@@ -635,11 +635,13 @@ re_flush:
       off_t pos_start = lseek((int)((ssize_t)packet->buffer), 0, SEEK_CUR);
       if (sendfile((int)((ssize_t)packet->buffer), fd, pos_start, &act_sent,
                    NULL, 0)) {
-        if ((errno & (EAGAIN | EWOULDBLOCK)) && act_sent == 0)
-          return 0;
-        else if (errno & EINTR)
-          continue;
-        else {
+        if (errno & (EAGAIN | EWOULDBLOCK)) {
+          if (act_sent == 0)
+            return 0;
+        } else if (errno & EINTR) {
+          if (act_sent == 0)
+            continue;
+        } else {
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
           perror("Apple sendfile error");
 #endif
