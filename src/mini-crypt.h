@@ -183,8 +183,10 @@ API Gateway (the MiniCrypt global object)
 
 /**
 The MiniCrypt global object (member of the struct MiniCrypt__API___) is the
-API
-namespace gateway fot the MiniCrypt library.
+API namespace gateway fot the MiniCrypt library.
+
+The MiniCrypt library supplies basic cryptographic functions and helper
+functions. It shouldn't be used for actual data security.
 
 For example:
 
