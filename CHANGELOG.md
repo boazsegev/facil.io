@@ -24,13 +24,9 @@ Changes I plan to make in future versions:
 
 * I plan to change the pool (request pool, packet pool, etc') implementations for the different libraries, so as to minimize any possible memory fragmentation that occur when `malloc` and `free` are used.
 
-     Once I'm done, I'll deprecate the `objpool` library.
-
-* Review code for use of Atomic types when Mutex use is avoidable (especially `libsock`, `lib-server` and `libasync`).
+* Review code for use of Atomic types when Mutex use is avoidable (especially `libsock`, `lib-server` and `libasync`). Perfomance testing should be performed to check for performance differences.
 
 * Remove / fix server task container pooling (`FDTask` and `GroupTask` pools).
-
-* Move `libsock`, `lib-server` and `http` away from `FILE *` and into `fd` data for file sending, possibly for leveraging the OS [`sendfile`](http://linux.die.net/man/2/sendfile) optimization (need to resolve issues with offset and possible file duplications as well as the [linux](http://linux.die.net/man/2/sendfile) vs. [bsd](https://www.freebsd.org/cgi/man.cgi?query=sendfile&sektion=2) implementations).
 
 ## A note about version numbers
 
@@ -102,6 +98,8 @@ Baseline (changes not logged before this point in time).
 
 ### V. 0.3.0
 
+* `libasync`'s task pool optimizations and limits were added to minimize memory fragmentation issues for long running processes.
+
 Baseline (changes not logged before this point in time).
 
 ## Lib-Server
@@ -126,9 +124,15 @@ Baseline (changes not logged before this point in time).
 
 ### V. 0.1.1
 
+* added a "dirty" (and somewhat faster then libc) `gmtime` implementation that ignores localization.
+
 Baseline (changes not logged before this point in time).
 
 ## HTTP Protocol
+
+### Date 20160616
+
+* HttpResponse date handling now utilizes a faster (and dirtier) solution then the standard libc `gmtime_r` and `strftime` solutions.
 
 ### Date 20160612
 

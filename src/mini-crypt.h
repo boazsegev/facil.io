@@ -14,6 +14,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <time.h>
 
 /** \file
 The MiniCrypt library supplies the following, basic, cryptographic functions:
@@ -338,7 +339,7 @@ extern struct MiniCrypt__API___ {
   int (*hex2str)(char* target, char* hex, size_t length);
 
   /* ***************************************************************************
-  Other helper functions
+  XOR encryption
   */
 
   /**
@@ -362,6 +363,10 @@ extern struct MiniCrypt__API___ {
                    const void* source,
                    size_t length);
 
+  /* ***************************************************************************
+  Other helper functions
+  */
+
   /**
   Allocates memory and dumps the whole file into the memory allocated.
   Remember
@@ -374,6 +379,14 @@ extern struct MiniCrypt__API___ {
   folder referencing.
   */
   fdump_s* (*fdump)(const char* file_path, size_t size_limit);
+  /**
+  A faster (yet less localized) alternative to `gmtime_r`.
+
+  See the libc `gmtime_r` documentation for details.
+
+  Falls back to `gmtime_r` for dates before epoch.
+  */
+  struct tm* (*gmtime)(const time_t* timer, struct tm* tmbuf);
 } MiniCrypt;
 
 /* end include gate */

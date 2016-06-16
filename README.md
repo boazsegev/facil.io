@@ -263,7 +263,7 @@ int main()
 }
 ```
 
-Using this library requires all the `http-` prefixed files (`http-mime-types`, `http-request`, `http-status`, `http-objpool`, etc') as well as `lib-server` and all the files it requires. The `http` files are in a separate folder and the makefile in this project supports subfolders. You might want to place all the files in the same folder if you use these source files in a different project.
+Using this library requires all the files in the `src` folder for this repository, including the subfolder `http`. The `http` files are in a separate folder and the makefile in this project supports subfolders. You might want to place all the files in the same folder if you use these source files in a different project.
 
 ## [`Websocket`](src/http/websockets.h) - for real-time web applications
 
@@ -271,7 +271,7 @@ At some point I decided to move all the network logic from my [Ruby Iodine proje
 
 This was when the `Websockets` library was born. It builds off the `http` server and allows us to either "upgrade" the HTTP protocol to Websockets or continue with an HTTP response.
 
-Building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example -notice that broadcasting is a resource intensive task, requiring at least O(n) operations, where n == server capacity:
+Building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example - notice that broadcasting is a resource intensive task, requiring at least O(n) operations, where n == server capacity:
 
 ```c
 // update the tryme.c file to use the existing folder structure and makefile
@@ -368,7 +368,7 @@ int main(int argc, char const* argv[]) {
 }
 ```
 
-The Websockets implementation uses the `mini-crypt` library for the Base64 encoding and SHA-1 hashing that are part of the protocol's handshake.
+The Websockets implementation uses the `mini-crypt` library for the Base64 encoding and SHA-1 hashing that are part of the protocol's handshake. If you're using OpenSSL, you might want to rewrite this part and use the OpenSSL implementation (it should be faster, as it's written in assembly instead of C).
 
 ---
 

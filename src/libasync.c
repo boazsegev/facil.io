@@ -45,6 +45,10 @@ Portability - used to help port this to different frameworks (i.e. Ruby).
 #define ASYNC_USE_SENTINEL 0
 #endif
 
+#ifndef ASYNC_TASK_POOL_SIZE
+#define ASYNC_TASK_POOL_SIZE 170
+#endif
+
 static void* join_thread(THREAD_TYPE thr) {
   void* ret;
   pthread_join(thr, &ret);
@@ -62,23 +66,30 @@ Data Types
 */
 
 /**
-A task node
+A task
 */
-struct AsyncTask {
-  struct AsyncTask* next;
+typedef struct {
   void (*task)(void*);
   void* arg;
-};
+} task_s;
+
+/**
+A task node
+*/
+typedef struct async_task_ns {
+  task_s task;
+  struct async_task_ns* next;
+} async_task_ns;
 
 /**
 The Async struct
 */
 struct Async {
   /** the task queue - MUST be first in the struct*/
-  pthread_mutex_t lock;              // a mutex for data integrity.
-  struct AsyncTask* volatile tasks;  // active tasks
-  struct AsyncTask* volatile pool;   // a task node pool
-  struct AsyncTask** volatile pos;   // the position for new tasks.
+  pthread_mutex_t lock;                  // a mutex for data integrity.
+  async_task_ns* volatile tasks;         // active tasks
+  async_task_ns* volatile _Atomic pool;  // a task node pool
+  async_task_ns** volatile pos;          // the position for new tasks.
   /** The pipe used for thread wakeup */
   struct {
     /** read incoming data (opaque data), used for wakeup */
@@ -95,6 +106,8 @@ struct Async {
     /** reserved for future use */
     unsigned rsrv : 7;
   } flags;
+  /** the task pool */
+  async_task_ns task_pool_mem[ASYNC_TASK_POOL_SIZE];
   /** the thread pool */
   THREAD_TYPE threads[];
 };
@@ -118,25 +131,22 @@ Use:
 
 */
 static int async_run(async_p async, void (*task)(void*), void* arg) {
-  struct AsyncTask* c;  // c == container, this will store the task
+  async_task_ns* c;  // c == container, this will store the task
 
   if (!async || !task)
     return -1;
-  pthread_mutex_lock(&(async->lock));
   // get a container from the pool of grab a new container.
-  if (async->pool) {
-    c = async->pool;
-    async->pool = async->pool->next;
-  } else {
-    c = malloc(sizeof(*c));
-    if (!c) {
-      pthread_mutex_unlock(&async->lock);
-      return -1;
-    }
+  if ((c = atomic_load(&async->pool))) {
+    while (!atomic_compare_exchange_weak(&async->pool, &c, c->next))
+      ;
   }
-  c->next = NULL;
-  c->task = task;
-  c->arg = arg;
+  if (c == NULL)
+    c = malloc(sizeof(*c));
+  if (!c) {
+    return -1;
+  }
+  *c = (async_task_ns){.task.task = task, .task.arg = arg, .next = NULL};
+  pthread_mutex_lock(&(async->lock));
   if (async->tasks) {
     *(async->pos) = c;
   } else {
@@ -147,7 +157,7 @@ static int async_run(async_p async, void (*task)(void*), void* arg) {
   // wake up any sleeping threads
   // any activated threads will ask to require the mutex as soon as we write...
   // we need to unlock before we write, or we'll have excess context switches.
-  if (write(async->pipe.out, c->task, 1))
+  if (write(async->pipe.out, c, 1))
     ;
   return 0;
 }
@@ -156,24 +166,31 @@ static int async_run(async_p async, void (*task)(void*), void* arg) {
 Performs all the existing tasks in the queue.
 */
 static void perform_tasks(async_p async) {
-  struct AsyncTask* c = NULL;  // c == container, this will store the task
+  async_task_ns* c = NULL;  // c == container, this will store the task
+  task_s task;
   do {
     // grab a task from the queue.
     pthread_mutex_lock(&(async->lock));
-    // move the old task container to the pool.
-    if (c) {
-      c->next = async->pool;
-      async->pool = c;
-    }
     c = async->tasks;
     if (c) {
       // move the queue forward.
       async->tasks = async->tasks->next;
+      task = c->task;
     }
     pthread_mutex_unlock(&(async->lock));
-    // perform the task
-    if (c)
-      c->task(c->arg);
+    if (c) {
+      task = c->task;
+      // pool management
+      if (c >= async->task_pool_mem &&
+          c < async->task_pool_mem + ASYNC_TASK_POOL_SIZE) {
+        // move the old task container to the pool.
+        while (!atomic_compare_exchange_weak(&async->pool, &c->next, c))
+          ;
+      } else
+        free(c);
+      // perform the task
+      task.task(task.arg);
+    }
   } while (c);
 }
 
@@ -336,23 +353,27 @@ Destroys the Async object, releasing it's memory.
 */
 static void async_destroy(async_p async) {
   pthread_mutex_lock(&async->lock);
-  struct AsyncTask* to_free;
-  struct AsyncTask* pos;
+  async_task_ns* to_free;
+  async_task_ns* pos;
   async->pos = NULL;
   // free all tasks
   pos = async->tasks;
   while ((to_free = pos)) {
     pos = pos->next;
-    free(to_free);
+    if (to_free >= async->task_pool_mem + ASYNC_TASK_POOL_SIZE ||
+        to_free < async->task_pool_mem)
+      free(to_free);
   }
   async->tasks = NULL;
-  // free task pool
-  pos = async->pool;
+  // free task pool - not really needed
+  pos = atomic_load(&async->pool);
   while ((to_free = pos)) {
     pos = pos->next;
-    free(to_free);
+    if (to_free >= async->task_pool_mem + ASYNC_TASK_POOL_SIZE ||
+        to_free < async->task_pool_mem)
+      free(to_free);
   }
-  async->pool = NULL;
+  atomic_store(&async->pool, NULL);
   // close pipe
   if (async->pipe.in) {
     close(async->pipe.in);
@@ -407,6 +428,11 @@ static async_p async_new(int threads) {
       return NULL;
     };
   }
+  // initiaite a task pool
+  for (size_t i = 0; i < ASYNC_TASK_POOL_SIZE - 1; i++) {
+    async->task_pool_mem[i].next = async->task_pool_mem + i + 1;
+  }
+  atomic_store(&async->pool, async->task_pool_mem);
   return async;
 }
 

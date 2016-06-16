@@ -8,6 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define LIB_ASYNC "0.3.0"
 
 typedef struct Async* async_p;
+
 /** \file
 This is an easy to use thread pool library.
 

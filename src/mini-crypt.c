@@ -44,13 +44,24 @@ static int is_hex(const char* string, size_t length);
 static int str2hex(char* target, const char* string, size_t length);
 static int hex2str(char* target, char* hex, size_t length);
 
-/* misc */
-static fdump_s* fdump(const char* file_path, size_t size_limit);
-
+/* XOR */
 static int xor_crypt(xor_key_s* key,
                      void* target,
                      const void* source,
                      size_t length);
+
+/* misc */
+static fdump_s* fdump(const char* file_path, size_t size_limit);
+
+/**
+A faster (yet less localized) alternative to `gmtime_r`.
+
+See the libc `gmtime_r` documentation for details.
+
+Falls back to `gmtime_r` for dates before epoch.
+*/
+static struct tm* gmtime_alt(const time_t* timer, struct tm* tmbuf);
+
 /*****************************************************************************
 The API gateway
 */
@@ -74,9 +85,12 @@ struct MiniCrypt__API___ MiniCrypt = {
     .str2hex = str2hex,
     .hex2str = hex2str,
 
+    /* XOR */
+    .xor_crypt = xor_crypt,
+
     /* Misc */
     .fdump = fdump,
-    .xor_crypt = xor_crypt,
+    .gmtime = gmtime_alt,
 };
 
 /*****************************************************************************
@@ -1060,56 +1074,8 @@ static int hex2str(char* target, char* hex, size_t length) {
 #undef i2hex
 
 /*****************************************************************************
-Misc Helpers
+XOR
 */
-
-/**
-Allocates memory and dumps the whole file into the memory allocated. Remember
-to call `free` when done.
-
-This function has some Unix specific properties that resolve links and user
-folder referencing.
-*/
-static fdump_s* fdump(const char* file_path, size_t size_limit) {
-  struct stat f_data;
-  int file = -1;
-  fdump_s* container = NULL;
-  size_t file_path_len;
-  if (file_path == NULL || (file_path_len = strlen(file_path)) == 0 ||
-      file_path_len > PATH_MAX)
-    return NULL;
-
-  char real_public_path[PATH_MAX + 1];
-  real_public_path[PATH_MAX] = 0;
-  if (file_path[0] == '~' && getenv("HOME") && file_path_len <= PATH_MAX) {
-    strcpy(real_public_path, getenv("HOME"));
-    memcpy(real_public_path + strlen(real_public_path), file_path + 1,
-           file_path_len);
-    file_path = real_public_path;
-  }
-
-  if (stat(file_path, &f_data))
-    goto error;
-  if (size_limit == 0 || f_data.st_size < size_limit)
-    size_limit = f_data.st_size;
-  container = malloc(size_limit + sizeof(fdump_s));
-  container->length = size_limit;
-  if (!container)
-    goto error;
-  file = open(file_path, O_RDONLY);
-  if (file < 0)
-    goto error;
-  if (read(file, container->data, size_limit) < size_limit)
-    goto error;
-  close(file);
-  return container;
-error:
-  if (container)
-    free(container), (container = NULL);
-  if (file >= 0)
-    close(file);
-  return 0;
-}
 
 /**
 Uses an XOR key `xor_key_s` to encrypt / decrypt the data provided.
@@ -1163,7 +1129,8 @@ static int xor_crypt(xor_key_s* key,
     }
 
     // fprintf(stderr,
-    //         "-- i= %lu, key pos = %lu, target %lu, source %lu , key %lu .\n",
+    //         "-- i= %lu, key pos = %lu, target %lu, source %lu , key %lu
+    //         .\n",
     //         i,
     //         key->position, (((size_t)(target + i)) & 7),
     //         (((size_t)(source + i)) & 7), (((size_t)(key->key + i)) & 7));
@@ -1182,4 +1149,161 @@ static int xor_crypt(xor_key_s* key,
     }
   }
   return 0;
+}
+
+/*****************************************************************************
+Misc Helpers
+*/
+
+/**
+Allocates memory and dumps the whole file into the memory allocated. Remember
+to call `free` when done.
+
+This function has some Unix specific properties that resolve links and user
+folder referencing.
+*/
+static fdump_s* fdump(const char* file_path, size_t size_limit) {
+  struct stat f_data;
+  int file = -1;
+  fdump_s* container = NULL;
+  size_t file_path_len;
+  if (file_path == NULL || (file_path_len = strlen(file_path)) == 0 ||
+      file_path_len > PATH_MAX)
+    return NULL;
+
+  char real_public_path[PATH_MAX + 1];
+  real_public_path[PATH_MAX] = 0;
+  if (file_path[0] == '~' && getenv("HOME") && file_path_len <= PATH_MAX) {
+    strcpy(real_public_path, getenv("HOME"));
+    memcpy(real_public_path + strlen(real_public_path), file_path + 1,
+           file_path_len);
+    file_path = real_public_path;
+  }
+
+  if (stat(file_path, &f_data))
+    goto error;
+  if (size_limit == 0 || f_data.st_size < size_limit)
+    size_limit = f_data.st_size;
+  container = malloc(size_limit + sizeof(fdump_s));
+  container->length = size_limit;
+  if (!container)
+    goto error;
+  file = open(file_path, O_RDONLY);
+  if (file < 0)
+    goto error;
+  if (read(file, container->data, size_limit) < size_limit)
+    goto error;
+  close(file);
+  return container;
+error:
+  if (container)
+    free(container), (container = NULL);
+  if (file >= 0)
+    close(file);
+  return 0;
+}
+
+/**
+A faster (yet less localized) alternative to `gmtime_r`.
+
+See the libc `gmtime_r` documentation for details.
+
+Falls back to `gmtime_r` for dates before epoch.
+*/
+static struct tm* gmtime_alt(const time_t* timer, struct tm* tmbuf) {
+  // static char* DAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  // static char * Months = {  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  // "Jul",
+  // "Aug", "Sep", "Oct", "Nov", "Dec"};
+  static uint8_t month_len[] = {
+      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  // nonleap year
+      31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31   // leap year
+  };
+  if (*timer < 0)
+    return gmtime_r(timer, tmbuf);
+  ssize_t tmp;
+  tmbuf->tm_gmtoff = 0;
+  tmbuf->tm_zone = "UTC";
+  tmbuf->tm_isdst = 0;
+  tmbuf->tm_year = 70;  // tm_year == The number of years since 1900
+  tmbuf->tm_mon = 0;
+  // for seconds up to weekdays, we build up, as small values clean up larger
+  // values.
+  tmp = ((ssize_t)*timer);
+  tmbuf->tm_sec = tmp % 60;
+  tmp = tmp / 60;
+  tmbuf->tm_min = tmp % 60;
+  tmp = tmp / 60;
+  tmbuf->tm_hour = tmp % 24;
+  tmp = tmp / 24;
+  // day of epoch was a thursday. Add + 3 so sunday == 0...
+  tmbuf->tm_wday = (tmp + 3) % 7;
+// tmp == number of days since epoch
+#define DAYS_PER_400_YEARS ((400 * 365) + 97)
+  while (tmp >= DAYS_PER_400_YEARS) {
+    tmbuf->tm_year += 400;
+    tmp -= DAYS_PER_400_YEARS;
+  }
+#undef DAYS_PER_400_YEARS
+#define DAYS_PER_100_YEARS ((100 * 365) + 24)
+  while (tmp >= DAYS_PER_100_YEARS) {
+    tmbuf->tm_year += 100;
+    tmp -= DAYS_PER_100_YEARS;
+    if (((tmbuf->tm_year / 100) & 3) ==
+        0)  // leap century divisable by 400 => add leap
+      --tmp;
+  }
+#undef DAYS_PER_100_YEARS
+#define DAYS_PER_32_YEARS ((32 * 365) + 8)
+  while (tmp >= DAYS_PER_32_YEARS) {
+    tmbuf->tm_year += 32;
+    tmp -= DAYS_PER_32_YEARS;
+  }
+#undef DAYS_PER_32_YEARS
+#define DAYS_PER_8_YEARS ((8 * 365) + 2)
+  while (tmp >= DAYS_PER_8_YEARS) {
+    tmbuf->tm_year += 8;
+    tmp -= DAYS_PER_8_YEARS;
+  }
+#undef DAYS_PER_8_YEARS
+#define DAYS_PER_4_YEARS ((4 * 365) + 1)
+  while (tmp >= DAYS_PER_4_YEARS) {
+    tmbuf->tm_year += 4;
+    tmp -= DAYS_PER_4_YEARS;
+  }
+#undef DAYS_PER_4_YEARS
+  while (tmp >= 365) {
+    tmbuf->tm_year += 1;
+    tmp -= 365;
+    if ((tmbuf->tm_year & 3) == 0) {  // leap year
+      if (tmp > 0) {
+        --tmp;
+        continue;
+      } else {
+        tmp += 365;
+        --tmbuf->tm_year;
+        break;
+      }
+    }
+  }
+  tmbuf->tm_yday = tmp;
+  if ((tmbuf->tm_year & 3) == 1) {
+    // regular year
+    for (size_t i = 0; i < 12; i++) {
+      if (tmp < month_len[i])
+        break;
+      tmp -= month_len[i];
+      ++tmbuf->tm_mon;
+    }
+  } else {
+    // leap year
+    for (size_t i = 12; i < 24; i++) {
+      if (tmp < month_len[i])
+        break;
+      tmp -= month_len[i];
+      ++tmbuf->tm_mon;
+    }
+  }
+  tmbuf->tm_mday = tmp;
+  return tmbuf;
 }
