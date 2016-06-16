@@ -16,7 +16,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdint.h>
 #include <time.h>
 
-/** \file
+/**      \file
 The MiniCrypt library supplies the following, basic, cryptographic functions:
 
 - SHA-1 hashing (considered less secure, use SHA-2/SHA-3 instead).
