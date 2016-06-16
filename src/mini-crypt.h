@@ -5,16 +5,6 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef MINI_CRYPT
-#define MINI_CRYPT "0.1.1"
-
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <time.h>
 
 /**      \file
 The MiniCrypt library supplies the following, basic, cryptographic functions:
@@ -42,6 +32,16 @@ All functions will be available under the MiniCrypt global object, i.e.:
 
 
 */
+#define MINI_CRYPT "0.1.1"
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <time.h>
 
 /* *****************************************************************************
 Helper types / structs
