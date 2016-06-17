@@ -216,6 +216,11 @@ automatically when the socket is ready.
 */
 ssize_t sock_flush(int fd);
 /**
+`sock_flush_strong` performs the same action as `sock_flush` but returns only
+after all the data was sent. This is an "active" wait, polling isn't performed.
+*/
+void sock_flush_strong(int fd);
+/**
 `sock_close` marks the connection for disconnection once all the data was
 sent.
 The actual disconnection will be managed by the `sock_flush` function.

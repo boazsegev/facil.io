@@ -28,6 +28,10 @@ sockets and some helper functions.
 #define DEBUG_SOCKLIB 0
 #endif
 
+#ifndef ALLOW_DYN_PACKET_ALLOC
+#define ALLOW_DYN_PACKET_ALLOC 1
+#endif
+
 #ifndef USE_SENDFILE
 
 #if defined(__linux__) /* linux sendfile works, but isn't implemented  */
@@ -36,7 +40,7 @@ sockets and some helper functions.
 #elif defined(__unix__) /* BSD sendfile should work, but isn't implemented */
 #define USE_SENDFILE 0
 #elif defined(__APPLE__) /* Apple sendfile was broken and probably still is */
-#define USE_SENDFILE 1
+#define USE_SENDFILE 0
 #else /* sendfile might not be available - always set to 0 */
 #define USE_SENDFILE 0
 #endif
@@ -54,6 +58,32 @@ int reactor_add(struct Reactor* reactor, int fd) {
 }
 #pragma weak reactor_close
 void reactor_close(struct Reactor* resactor, int fd) {}
+
+/* *****************************************************************************
+Library Global Variables and Data Structure
+*/
+
+/** a map for all the active file descriptors that were added to any reactor -
+ * do NOT edit! */
+static struct FDData {
+  pthread_mutex_t lock;
+  sock_packet_s* packet;
+  struct Reactor* owner;
+  sock_rw_hook_s* rw_hooks;
+  uint32_t sent;
+  unsigned open : 1;
+  unsigned client : 1;
+  unsigned close : 1;
+  unsigned rsv : 5;
+}* fd_map = NULL;
+
+/** the size (or maximum value -1) of the fd map */
+static size_t fdmax = 0;
+
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+/** For development use, no deep testing */
+void libsock_test(void);
+#endif
 
 /* *****************************************************************************
 User land Buffer
@@ -74,6 +104,11 @@ static struct {
 // grab a packet from the pool
 sock_packet_s* sock_checkout_packet(void) {
   sock_packet_s* packet = atomic_load(&ContainerPool.pool);
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+  fprintf(stderr, "Packet being checked out (pool = %p).\n", packet);
+#endif
+
+#if defined(ALLOW_DYN_PACKET_ALLOC) && ALLOW_DYN_PACKET_ALLOC == 1
   while (packet) {
     if (atomic_compare_exchange_weak(&ContainerPool.pool, &packet,
                                      packet->metadata.next))
@@ -82,6 +117,27 @@ sock_packet_s* sock_checkout_packet(void) {
   if (packet == NULL) {
     packet = malloc(BUFFER_PACKET_REAL_SIZE);
   }
+#else
+  for (size_t i = 0; i < 4; i++) {
+    while (packet) {
+      if (atomic_compare_exchange_weak(&ContainerPool.pool, &packet,
+                                       packet->metadata.next))
+        goto review;
+    }
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+    fprintf(stderr, "Flushing within sock_checkout_packet (packet = %p).\n",
+            packet);
+#endif
+    for (size_t i = 0; i < fdmax; i++) {
+      if (fd_map[i].packet == NULL)
+        continue;
+      sock_flush(i);
+    }
+    packet = atomic_load(&ContainerPool.pool);
+  }
+review:
+#endif
+
   if (!packet)
     return NULL;
   *packet = (sock_packet_s){.buffer = packet + 1, .metadata.next = NULL};
@@ -106,7 +162,7 @@ void sock_free_packet(sock_packet_s* packet) {
       next = packet->metadata.next;
       if (packet >= ContainerPool.initialized &&
           packet < (ContainerPool.initialized +
-                    (sizeof(sock_packet_s) * BUFFER_MAX_PACKET_POOL))) {
+                    (BUFFER_PACKET_REAL_SIZE * BUFFER_MAX_PACKET_POOL))) {
         packet->metadata.next = atomic_load(&ContainerPool.pool);
         for (;;) {
           if (atomic_compare_exchange_weak(&ContainerPool.pool,
@@ -131,29 +187,14 @@ void sock_free_packet(sock_packet_s* packet) {
 Socket related data and internal helpers
 */
 
-/** a map for all the active file descriptors that were added to any reactor -
- * do NOT edit! */
-static struct FDData {
-  pthread_mutex_t lock;
-  sock_packet_s* packet;
-  struct Reactor* owner;
-  sock_rw_hook_s* rw_hooks;
-  uint32_t sent;
-  unsigned open : 1;
-  unsigned client : 1;
-  unsigned close : 1;
-  unsigned rsv : 5;
-}* fd_map = NULL;
-
-static size_t fdmax = 0;
-
 void sock_clear(int fd) {
   if (!fd_map || fdmax <= fd)
     return;
   struct FDData* sfd = fd_map + fd;
   pthread_mutex_lock(&sfd->lock);
-  if (sfd->packet)
+  if (sfd->packet) {
     sock_free_packet(sfd->packet);
+  }
   if (sfd->rw_hooks && sfd->rw_hooks->on_clear)
     sfd->rw_hooks->on_clear(fd, sfd->rw_hooks);
   *sfd = (struct FDData){.lock = sfd->lock};
@@ -161,6 +202,9 @@ void sock_clear(int fd) {
 }
 
 static void destroy_all_fd_data(void) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+  fprintf(stderr, "\nDestroying all libsock data\n");
+#endif
   if (fd_map) {
     while (fdmax--) {  // include 0 in countdown
       sock_clear(fdmax);
@@ -183,9 +227,9 @@ static void init_pool_data(void) {
   for (size_t i = 0; i < (BUFFER_MAX_PACKET_POOL - 1); i++) {
     // By filling up the packet pool, we avoid memory fragmentation (unless
     // packets are freed).
-    initaddr += BUFFER_PACKET_REAL_SIZE;
     ((sock_packet_s*)initaddr)->metadata.next =
         (initaddr + BUFFER_PACKET_REAL_SIZE);
+    initaddr += BUFFER_PACKET_REAL_SIZE;
   }
   ContainerPool.pool = ContainerPool.initialized;
 }
@@ -211,18 +255,18 @@ int8_t init_socklib(size_t max) {
   }
   fdmax = max;
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-  if (DEBUG_SOCKLIB)
-    fprintf(stderr,
-            "\nInitialized fd_map for %lu elements, each one %lu bytes.\n"
-            "overall: %lu bytes.\n"
-            "Initialized packet pool for %d elements, each one %lu bytes.\n"
-            "overall: %lu bytes.\n"
-            "=== Total: %lu bytes\n==========\n\n",
-            max, sizeof(*fd_map), sizeof(*fd_map) * max, BUFFER_MAX_PACKET_POOL,
-            BUFFER_PACKET_REAL_SIZE,
-            BUFFER_PACKET_REAL_SIZE * BUFFER_MAX_PACKET_POOL,
-            (BUFFER_PACKET_REAL_SIZE * BUFFER_MAX_PACKET_POOL) +
-                (sizeof(*fd_map) * max));
+  libsock_test();
+  fprintf(stderr,
+          "\nInitialized fd_map for %lu elements, each one %lu bytes.\n"
+          "overall: %lu bytes.\n"
+          "Initialized packet pool for %d elements, each one %lu bytes.\n"
+          "overall: %lu bytes.\n"
+          "=== Total: %lu bytes\n==========\n\n",
+          max, sizeof(*fd_map), sizeof(*fd_map) * max, BUFFER_MAX_PACKET_POOL,
+          BUFFER_PACKET_REAL_SIZE,
+          BUFFER_PACKET_REAL_SIZE * BUFFER_MAX_PACKET_POOL,
+          (BUFFER_PACKET_REAL_SIZE * BUFFER_MAX_PACKET_POOL) +
+              (sizeof(*fd_map) * max));
 #endif
   return 0;
 }
@@ -718,7 +762,8 @@ re_flush:
         return 0;  // nothing to do?
       } else if (sent > 0) {
         // did we finished sending the amount of data we wanted to send?
-        if (sfd->sent + sent >= i_exp) {
+        sfd->sent += sent;
+        if (sfd->sent >= i_exp) {
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
           fprintf(stderr, "(%d) rotating file buffer (marking for read).\n",
                   fd);
@@ -895,6 +940,39 @@ close_socket:
   return -1;
 }
 /**
+`sock_flush_strong` performs the same action as `sock_flush` but returns only
+after all the data was sent. This is an "active" wait, polling isn't performed.
+*/
+void sock_flush_strong(int fd) {
+  if (fd >= fdmax || fd_map[fd].open == 0)
+    return;
+  struct FDData* sfd = fd_map + fd;
+  if (sfd->packet == NULL) {
+    if (sfd->close) {
+      goto close_socket;
+    }
+    return;
+  }
+  pthread_mutex_lock(&sfd->lock);
+  ssize_t ret;
+  while (sfd->packet) {
+    if ((ret = sock_flush_in_lock(fd)) == 0)
+      sched_yield();
+    else if (ret < 0) {
+      pthread_mutex_unlock(&sfd->lock);
+      goto close_socket;
+    }
+  }
+  pthread_mutex_unlock(&sfd->lock);
+close_socket:
+  if (sfd->owner)
+    reactor_close(sfd->owner, fd);
+  else
+    close(fd);
+  sock_clear(fd);
+  return;
+}
+/**
 `sock_close` marks the connection for disconnection once all the data was
 sent.
 The actual disconnection will be managed by the `sock_flush` function.
@@ -957,3 +1035,33 @@ int sock_rw_hook_set(int fd, struct sock_rw_hook_s* rw_hook) {
   fd_map[fd].rw_hooks = rw_hook;
   return 0;
 }
+
+/* *****************************************************************************
+Minor tests
+*/
+
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+void libsock_test(void) {
+  sock_packet_s *p, *pl;
+  fprintf(stderr, "Testing packet pool ");
+  for (size_t i = 0; i < BUFFER_MAX_PACKET_POOL * 4; i++) {
+    pl = p = sock_checkout_packet();
+    while (ContainerPool.pool) {
+      pl->metadata.next = sock_checkout_packet();
+      pl = pl->metadata.next;
+    }
+    sock_free_packet(p);
+  }
+  size_t count = 1;
+  pl = p = sock_checkout_packet();
+  while (ContainerPool.pool) {
+    ++count;
+    pl->metadata.next = sock_checkout_packet();
+    pl = pl->metadata.next;
+  }
+  sock_free_packet(p);
+  fprintf(stderr, " - %s (%lu/%d)\n",
+          (count == BUFFER_MAX_PACKET_POOL) ? "Pass" : "Fail", count,
+          BUFFER_MAX_PACKET_POOL);
+}
+#endif

@@ -56,6 +56,8 @@ Baseline (changes not logged before this point in time).
 
 ### V. 0.0.4
 
+* Fixed issues with non-system `sendfile` and with underused packet pool memory.
+
 * Added the `.metadata.keep_open` flag, to allow file caching... however, keep in mind that the file offset for read/write is the file's `lseek` position and sending the same file to different sockets will create race conditions related to the file `lseek` position.
 
 * Fix for epoll's on_ready not being sent (sock flush must raise the EAGAIN error, or the on_ready event will not get called). Kqueue is better since the `on_ready` refers to the buffer being clear instead of available (less events to copy the same amount of data, as each data write is optimal when enough data is available to be written).
