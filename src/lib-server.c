@@ -1088,8 +1088,7 @@ releasing control of the socket. */
 static int srv_hijack(server_pt server, union fd_id conn) {
   is_open_connection_or_return(server, conn, -1);
   reactor_remove((struct Reactor*)server, conn.data.fd);
-  while (sock_flush(conn.data.fd) > 0)
-    ;
+  sock_flush_strong(conn.data.fd);
   clear_conn_data(server, conn.data.fd);
   return 0;
 }

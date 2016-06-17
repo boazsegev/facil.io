@@ -24,6 +24,8 @@ Changes I plan to make in future versions:
 
 * I plan to change the pool (request pool, packet pool, etc') implementations for the different libraries, so as to minimize any possible memory fragmentation that occur when `malloc` and `free` are used.
 
+* `libsock`'s dynamic packet allocation should be possible to disable, meaning that user buffer would be limited in scope and calls to `sock_write(2)` will busy-hang until packets become available... there's a re-write in the future for this one.
+
 * Review code for use of Atomic types when Mutex use is avoidable (especially `libsock`, `lib-server` and `libasync`). Perfomance testing should be performed to check for performance differences.
 
 * Remove / fix server task container pooling (`FDTask` and `GroupTask` pools).

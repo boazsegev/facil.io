@@ -973,6 +973,17 @@ close_socket:
   return;
 }
 /**
+Calls `sock_flush` for any sockets that are currently using the user-land
+buffer, giving a chance for packets to be freed.
+*/
+void sock_flush_all(void) {
+  for (size_t i = 0; i < fdmax; i++) {
+    if (fd_map[i].packet == NULL)
+      continue;
+    sock_flush(i);
+  }
+}
+/**
 `sock_close` marks the connection for disconnection once all the data was
 sent.
 The actual disconnection will be managed by the `sock_flush` function.
