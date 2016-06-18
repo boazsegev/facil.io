@@ -36,7 +36,7 @@ sockets and some helper functions.
 #elif defined(__unix__) /* BSD sendfile should work, but isn't implemented */
 #define USE_SENDFILE 0
 #elif defined(__APPLE__) /* Apple sendfile was broken and probably still is */
-#define USE_SENDFILE 1
+#define USE_SENDFILE 0
 #else /* sendfile might not be available - always set to 0 */
 #define USE_SENDFILE 0
 #endif
@@ -506,8 +506,8 @@ inline static void sock_flush_unsafe(int fd) {
       /* USE_SENDFILE ? */
       if (USE_SENDFILE && sfd->rw_hooks == NULL) {
 #if defined(__linux__) /* linux sendfile API */
-        sent = sendfile64(fd, (int)((ssize_t)packet->buffer), NULL,
-                          packet->length - sfd->sent);
+        sent = sendfile64(fd, (int)((ssize_t)packet->buffer),
+                          &packet->metadata.offset, packet->length - sfd->sent);
 
         if (sent == 0) {
           sfd->packet = packet->metadata.next;
