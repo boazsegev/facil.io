@@ -336,6 +336,7 @@ Returns -1 and closes the file on error. Returns 0 on success.
 static ssize_t srv_sendfile(server_pt server,
                             uint64_t conn,
                             int source_fd,
+                            off_t offset,
                             size_t length);
 /** Submits a `libsock` packet to the `libsock` socket buffer. See `libsock`
 for more details.
@@ -1252,6 +1253,7 @@ Returns -1 and closes the file on error. Returns 0 on success.
 static ssize_t srv_sendfile(server_pt server,
                             uint64_t conn,
                             int source_fd,
+                            off_t offset,
                             size_t length) {
   if (validate_connection(server, conn)) {
     if (source_fd)
@@ -1261,7 +1263,7 @@ static ssize_t srv_sendfile(server_pt server,
   // reset timeout
   _connection_(server, ((union fd_id)conn).data.fd).idle = 0;
   // send data
-  return sock_write2(.fd = ((union fd_id)conn).data.fd,
+  return sock_write2(.fd = ((union fd_id)conn).data.fd, .offset = offset,
                      .buffer = ((void*)((ssize_t)source_fd)), .is_fd = 1,
                      .length = length);
 }

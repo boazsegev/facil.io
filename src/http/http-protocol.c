@@ -171,58 +171,24 @@ static int http_sendfile(struct HttpRequest* req) {
       finish += num_val(*ext);
       ext++;
     }
-    if (finish)
-      finish++;
-    // fprintf(stderr, "finish: %lu / %lld\n", finish, file_data.st_size);
-    if (finish && finish >= start &&
-        (finish - start) < HTTP_SEND_RANGE_AS_DATA_LIMIT) {
-      // it's a "small" chunk, put it in the buffer and send it as data
-      // fprintf(stderr, "handling no-file chunk\n");
-      char* data = malloc(finish - start);
-      if (!data) {
-        goto bad_request;
-      }
-      len = read(file, data, finish - start);
-      if (len <= 0) {
-        free(data);
-        goto bad_request;
-      }
-      close(file);
-      file = -1;
-      response->status = 206;
-      HttpResponse.write_header(response, "Accept-Ranges", 13, "bytes", 5);
-      HttpResponse.write_header(response, "Cache-Control", 13,
-                                "public, max-age=3600", 20);
-      if (HttpResponse.printf(response, "Content-Range: bytes %lu-%lu/%lld",
-                              start, start + len - 1, file_data.st_size)) {
-        HttpResponse.reset(response, req);
-        goto internal_error;
-      }
-      HttpResponse.write_body_move(response, data, len);
-      HttpResponse.destroy(response);
-      return 1;
-    } else {
-      // going to the EOF (big chunk or EOL requested) - send as file
-      if (finish >= file_data.st_size)
-        finish = file_data.st_size - 1;
-      lseek(file, start, SEEK_SET);
-      if (HttpResponse.printf(response, "Content-Range: bytes %lu-%lu/%lu",
-                              start, finish, file_data.st_size)) {
-        HttpResponse.reset(response, req);
-        goto internal_error;
-      }
-      response->status = 206;
-      HttpResponse.write_header(response, "Cache-Control", 13,
-                                "public, max-age=3600", 20);
-      HttpResponse.write_header(response, "Accept-Ranges", 13, "bytes", 5);
-      HttpResponse.sendfile(response, file, file_data.st_size - start);
-      HttpResponse.destroy(response);
-      return 1;
+    // going to the EOF (big chunk or EOL requested) - send as file
+    if (finish >= file_data.st_size)
+      finish = file_data.st_size;
+    if (HttpResponse.printf(response, "Content-Range: bytes %lu-%lu/%lu", start,
+                            finish, file_data.st_size)) {
+      HttpResponse.reset(response, req);
+      goto internal_error;
     }
+    response->status = 206;
+    HttpResponse.write_header(response, "Cache-Control", 13,
+                              "public, max-age=3600", 20);
+    HttpResponse.write_header(response, "Accept-Ranges", 13, "bytes", 5);
+    HttpResponse.sendfile(response, file, start, finish - start + 1);
+    HttpResponse.destroy(response);
+    return 1;
   }
 
 invalid_range:
-  lseek(file, 0, SEEK_SET);
   HttpResponse.write_header(response, "Accept-Ranges", 13, "none", 4);
   // set caching
   HttpResponse.write_header(response, "Cache-Control", 13,
@@ -233,7 +199,7 @@ invalid_range:
     HttpResponse.send(response);
     close(file);
   } else
-    HttpResponse.sendfile(response, file, file_data.st_size);
+    HttpResponse.sendfile(response, file, 0, file_data.st_size);
   HttpResponse.destroy(response);
 
   return 1;
@@ -246,14 +212,14 @@ internal_error:
   HttpResponse.write_body(response, "Internal error (F01)", 20);
   HttpResponse.destroy(response);
   return 1;
-bad_request:
-  if (file >= 0)
-    close(file);
-  response->status = 400;
-  response->metadata.should_close = 1;
-  HttpResponse.write_body(response, "Bad Request.", 12);
-  HttpResponse.destroy(response);
-  return 1;
+  // bad_request:
+  //   if (file >= 0)
+  //     close(file);
+  //   response->status = 400;
+  //   response->metadata.should_close = 1;
+  //   HttpResponse.write_body(response, "Bad Request.", 12);
+  //   HttpResponse.destroy(response);
+  //   return 1;
 }
 
 // implement on_close to close the FILE * for the body (if exists).

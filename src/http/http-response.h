@@ -421,7 +421,10 @@ extern struct HttpResponseClass {
   If the connection was already closed, the function will return -1. On success,
   the function returns 0.
   */
-  int (*sendfile)(struct HttpResponse*, int source_fd, size_t length);
+  int (*sendfile)(struct HttpResponse*,
+                  int source_fd,
+                  off_t offset,
+                  size_t length);
   /**
   Sends the complete file referenced by the `file_path` string.
 

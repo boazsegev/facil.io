@@ -56,6 +56,12 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Sock (development incomplete)
 
+### V. 0.0.5
+
+* Rewrote the whole library to allow for a fixed user-land buffer limit. This means that instead of having buffer packets automatically allocated when more memory is required, the `sock_write(2)` function will hang and flush any pending socket buffers until packets become available.
+
+* File sending is now offset based, so `fseek` data is ignored. This means that it would be possible to cache open `fd` files and send the same file descriptor to multiple clients.
+
 ### V. 0.0.4
 
 * Fixed issues with non-system `sendfile` and with underused packet pool memory.
@@ -108,6 +114,10 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Server
 
+### V. 0.3.5
+
+* File sending is now offset based, so `fseek` data is ignored. This means that it would be possible to cache open `fd` files and send the same file descriptor to multiple clients.
+
 ### V. 0.3.4
 
 * Updated `sendfile` to only accept file descriptors (not `FILE *`). This is an optimization requirement.
@@ -133,6 +143,8 @@ Baseline (changes not logged before this point in time).
 Baseline (changes not logged before this point in time).
 
 ## HTTP Protocol
+
+* Updated for new `lib-server` and `libsock`.
 
 ### Date 20160616
 

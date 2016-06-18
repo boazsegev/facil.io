@@ -28,10 +28,6 @@ sockets and some helper functions.
 #define DEBUG_SOCKLIB 0
 #endif
 
-#ifndef ALLOW_DYN_PACKET_ALLOC
-#define ALLOW_DYN_PACKET_ALLOC 1
-#endif
-
 #ifndef USE_SENDFILE
 
 #if defined(__linux__) /* linux sendfile works, but isn't implemented  */
@@ -40,7 +36,7 @@ sockets and some helper functions.
 #elif defined(__unix__) /* BSD sendfile should work, but isn't implemented */
 #define USE_SENDFILE 0
 #elif defined(__APPLE__) /* Apple sendfile was broken and probably still is */
-#define USE_SENDFILE 0
+#define USE_SENDFILE 1
 #else /* sendfile might not be available - always set to 0 */
 #define USE_SENDFILE 0
 #endif
@@ -58,232 +54,6 @@ int reactor_add(struct Reactor* reactor, int fd) {
 }
 #pragma weak reactor_close
 void reactor_close(struct Reactor* resactor, int fd) {}
-
-/* *****************************************************************************
-Library Global Variables and Data Structure
-*/
-
-/** a map for all the active file descriptors that were added to any reactor -
- * do NOT edit! */
-static struct FDData {
-  pthread_mutex_t lock;
-  sock_packet_s* packet;
-  struct Reactor* owner;
-  sock_rw_hook_s* rw_hooks;
-  uint32_t sent;
-  unsigned open : 1;
-  unsigned client : 1;
-  unsigned close : 1;
-  unsigned rsv : 5;
-}* fd_map = NULL;
-
-/** the size (or maximum value -1) of the fd map */
-static size_t fdmax = 0;
-
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-/** For development use, no deep testing */
-void libsock_test(void);
-#endif
-
-/* *****************************************************************************
-User land Buffer
-*/
-
-// packet sizes
-#ifndef BUFFER_PACKET_REAL_SIZE
-#define BUFFER_PACKET_REAL_SIZE \
-  ((sizeof(sock_packet_s) * 1) + BUFFER_PACKET_SIZE)
-#endif
-
-// The global packet container pool
-static struct {
-  sock_packet_s* _Atomic pool;
-  sock_packet_s* initialized;
-} ContainerPool = {NULL};
-
-// grab a packet from the pool
-sock_packet_s* sock_checkout_packet(void) {
-  sock_packet_s* packet = atomic_load(&ContainerPool.pool);
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-  fprintf(stderr, "Packet being checked out (pool = %p).\n", packet);
-#endif
-
-#if defined(ALLOW_DYN_PACKET_ALLOC) && ALLOW_DYN_PACKET_ALLOC == 1
-  while (packet) {
-    if (atomic_compare_exchange_weak(&ContainerPool.pool, &packet,
-                                     packet->metadata.next))
-      break;
-  }
-  if (packet == NULL) {
-    packet = malloc(BUFFER_PACKET_REAL_SIZE);
-  }
-#else
-  for (size_t i = 0; i < 4; i++) {
-    while (packet) {
-      if (atomic_compare_exchange_weak(&ContainerPool.pool, &packet,
-                                       packet->metadata.next))
-        goto review;
-    }
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-    fprintf(stderr, "Flushing within sock_checkout_packet (packet = %p).\n",
-            packet);
-#endif
-    for (size_t i = 0; i < fdmax; i++) {
-      if (fd_map[i].packet == NULL)
-        continue;
-      sock_flush(i);
-    }
-    packet = atomic_load(&ContainerPool.pool);
-  }
-review:
-#endif
-
-  if (!packet)
-    return NULL;
-  *packet = (sock_packet_s){.buffer = packet + 1, .metadata.next = NULL};
-  return packet;
-}
-// return a packet to the pool, or free it (when the pool is full).
-void sock_free_packet(sock_packet_s* packet) {
-  sock_packet_s* next = packet;
-  while (next) {
-    if (next->metadata.is_fd) {
-      if (next->metadata.keep_open == 0)
-        close((int)((ssize_t)next->buffer));
-    } else if (next->metadata.is_file) {
-      if (next->metadata.keep_open == 0)
-        fclose(next->buffer);
-    } else if (next->metadata.external)
-      free(next->buffer);
-    next = next->metadata.next;
-  }
-  if (ContainerPool.initialized) {
-    while (packet) {
-      next = packet->metadata.next;
-      if (packet >= ContainerPool.initialized &&
-          packet < (ContainerPool.initialized +
-                    (BUFFER_PACKET_REAL_SIZE * BUFFER_MAX_PACKET_POOL))) {
-        packet->metadata.next = atomic_load(&ContainerPool.pool);
-        for (;;) {
-          if (atomic_compare_exchange_weak(&ContainerPool.pool,
-                                           &packet->metadata.next, packet))
-            break;
-        }
-      } else {
-        free(packet);
-      }
-      packet = next;
-    }
-  } else {
-    while (packet) {
-      next = packet->metadata.next;
-      free(packet);
-      packet = next;
-    }
-  }
-}
-
-/* *****************************************************************************
-Socket related data and internal helpers
-*/
-
-void sock_clear(int fd) {
-  if (!fd_map || fdmax <= fd)
-    return;
-  struct FDData* sfd = fd_map + fd;
-  pthread_mutex_lock(&sfd->lock);
-  if (sfd->packet) {
-    sock_free_packet(sfd->packet);
-  }
-  if (sfd->rw_hooks && sfd->rw_hooks->on_clear)
-    sfd->rw_hooks->on_clear(fd, sfd->rw_hooks);
-  *sfd = (struct FDData){.lock = sfd->lock};
-  pthread_mutex_unlock(&sfd->lock);
-}
-
-static void destroy_all_fd_data(void) {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-  fprintf(stderr, "\nDestroying all libsock data\n");
-#endif
-  if (fd_map) {
-    while (fdmax--) {  // include 0 in countdown
-      sock_clear(fdmax);
-      pthread_mutex_destroy(&fd_map[fdmax].lock);
-    }
-    free(fd_map);
-    fd_map = NULL;
-  }
-  if (ContainerPool.initialized) {
-    ContainerPool.pool = NULL;
-    free(ContainerPool.initialized);
-    ContainerPool.initialized = NULL;
-  }
-}
-
-static void init_pool_data(void) {
-  ContainerPool.initialized =
-      calloc(BUFFER_PACKET_REAL_SIZE, BUFFER_MAX_PACKET_POOL);
-  void* initaddr = ContainerPool.initialized;
-  for (size_t i = 0; i < (BUFFER_MAX_PACKET_POOL - 1); i++) {
-    // By filling up the packet pool, we avoid memory fragmentation (unless
-    // packets are freed).
-    ((sock_packet_s*)initaddr)->metadata.next =
-        (initaddr + BUFFER_PACKET_REAL_SIZE);
-    initaddr += BUFFER_PACKET_REAL_SIZE;
-  }
-  ContainerPool.pool = ContainerPool.initialized;
-}
-
-int8_t init_socklib(size_t max) {
-  if (!fd_map)
-    atexit(destroy_all_fd_data);
-  if (ContainerPool.initialized == NULL)
-    init_pool_data();
-  struct FDData* n_map = calloc(sizeof(*n_map), max);
-  if (!n_map)
-    return -1;
-  if (fd_map) {
-    memcpy(n_map, fd_map, sizeof(*n_map) * fdmax);
-  }
-  fd_map = n_map;
-  while (fdmax < max) {
-    if (pthread_mutex_init(&fd_map[fdmax++].lock, NULL)) {
-      perror("init_socklib Couldn't initialize a mutex!");
-      fdmax--;
-      exit(1);
-    }
-  }
-  fdmax = max;
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-  libsock_test();
-  fprintf(stderr,
-          "\nInitialized fd_map for %lu elements, each one %lu bytes.\n"
-          "overall: %lu bytes.\n"
-          "Initialized packet pool for %d elements, each one %lu bytes.\n"
-          "overall: %lu bytes.\n"
-          "=== Total: %lu bytes\n==========\n\n",
-          max, sizeof(*fd_map), sizeof(*fd_map) * max, BUFFER_MAX_PACKET_POOL,
-          BUFFER_PACKET_REAL_SIZE,
-          BUFFER_PACKET_REAL_SIZE * BUFFER_MAX_PACKET_POOL,
-          (BUFFER_PACKET_REAL_SIZE * BUFFER_MAX_PACKET_POOL) +
-              (sizeof(*fd_map) * max));
-#endif
-  return 0;
-}
-
-#define require_mem(fd)                                         \
-  do {                                                          \
-    if ((fd) >= fdmax && init_socklib((fd))) {                  \
-      perror("Couldn't allocate memory for fd_map (sock_API)"); \
-      exit(1);                                                  \
-    }                                                           \
-  } while (0);
-
-#define require_conn(fd)                         \
-  do {                                           \
-    if ((fd) >= fdmax || fd_map[(fd)].open == 0) \
-      return -1;                                 \
-  } while (0);
 
 /* *****************************************************************************
 Machine wide and Helper API
@@ -319,7 +89,7 @@ ssize_t sock_max_capacity(void) {
   if (flim < rlim.rlim_cur)
     flim = rlim.rlim_cur;
   // return what we have
-  return flim;
+  return flim + 1;
 }
 
 /**
@@ -401,7 +171,222 @@ int sock_listen(char* address, char* port) {
 }
 
 /* *****************************************************************************
-Normal (raw) socket operation API
+Library Global Variables and Data Structure
+*/
+
+typedef struct fd_info_s fd_info_s;
+
+struct fd_info_s {
+  pthread_mutex_t lock;
+  sock_packet_s* packet;
+  struct Reactor* owner;
+  sock_rw_hook_s* rw_hooks;
+  uint32_t sent;
+  unsigned open : 1;
+  unsigned client : 1;
+  unsigned close : 1;
+  unsigned rsv : 5;
+};
+
+fd_info_s* fd_info = NULL;
+size_t fd_capacity = 0;
+
+struct {
+  sock_packet_s* _Atomic pool;
+  sock_packet_s* allocated;
+} buffer_pool;
+
+#define validate_mem(fd) ((fd) >= fd_capacity)
+#define validate_connection(fd) (validate_mem(fd) || fd_info[(fd)].open == 0)
+
+/* *****************************************************************************
+User land Buffer
+*/
+
+// packet sizes
+#ifndef BUFFER_PACKET_REAL_SIZE
+#define BUFFER_PACKET_REAL_SIZE \
+  ((sizeof(sock_packet_s) * 1) + BUFFER_PACKET_SIZE)
+#endif
+
+/**
+Checks out a `sock_packet_s` from the packet pool, transfering the
+ownership
+of the memory to the calling function. returns NULL if the pool was empty and
+memory allocation had failed.
+
+Every checked out buffer packet comes with an attached buffer of
+BUFFER_PACKET_SIZE bytes. This buffer is accessible using the `packet->buffer`
+pointer (which can be safely overwritten to point to an external buffer).
+
+This attached buffer is safely and automatically freed or returned to the memory
+pool once `sock_send_packet` or `sock_free_packet` are called.
+*/
+sock_packet_s* sock_checkout_packet(void) {
+  sock_packet_s* packet = atomic_load(&buffer_pool.pool);
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+  fprintf(stderr, "Packet being checked out (pool = %p).\n", packet);
+#endif
+  while (packet &&
+         atomic_compare_exchange_weak(&buffer_pool.pool, &packet,
+                                      packet->metadata.next) == 0)
+    ;
+#if defined(BUFFER_ALLOW_MALLOC) && BUFFER_ALLOW_MALLOC == 1
+  if (packet == NULL)
+    packet = malloc(BUFFER_PACKET_REAL_SIZE);
+#endif
+  if (packet) {
+    *packet = (sock_packet_s){
+        .buffer = packet + 1,
+    };
+  }
+  return packet;
+}
+
+/**
+Use `sock_free_packet` to free unused packets that were checked-out using
+`sock_checkout_packet`.
+
+NEVER use `free`, for any packet checked out using the pool management function
+`sock_checkout_packet`.
+*/
+void sock_free_packet(sock_packet_s* packet) {
+  sock_packet_s* next = packet;
+  if (next) {
+    for (;;) {
+      if (next->metadata.is_fd) {
+        if (next->metadata.keep_open == 0)
+          close((int)((ssize_t)next->buffer));
+      } else if (next->metadata.external)
+        free(next->buffer);
+      if (next->metadata.next == NULL)
+        break;
+      next = next->metadata.next;
+    }
+  }
+#if defined(BUFFER_ALLOW_MALLOC) && BUFFER_ALLOW_MALLOC == 1
+  while (packet) {
+    next = packet->metadata.next;
+    if (packet >= buffer_pool.allocated &&
+        packet < (buffer_pool.allocated +
+                  (BUFFER_PACKET_REAL_SIZE * BUFFER_PACKET_POOL))) {
+      packet->metadata.next = atomic_load(&buffer_pool.pool);
+      while (!atomic_compare_exchange_weak(&buffer_pool.pool,
+                                           &packet->metadata.next, packet))
+        ;
+    } else {
+      free(packet);
+    }
+    packet = next;
+  }
+#else
+  next->metadata.next = atomic_load(&buffer_pool.pool);
+  while (!atomic_compare_exchange_weak(&buffer_pool.pool, &next->metadata.next,
+                                       packet))
+    ;
+#endif
+}
+
+/* *****************************************************************************
+Socket State
+*/
+
+/**
+Clears a socket state data and buffer.
+*/
+void sock_clear(int fd) {
+  if (validate_mem(fd))
+    return;
+  fd_info_s* sfd = fd_info + fd;
+  pthread_mutex_lock(&sfd->lock);
+
+  if (sfd->packet) {
+    sock_free_packet(sfd->packet);
+  }
+  if (sfd->rw_hooks && sfd->rw_hooks->on_clear)
+    sfd->rw_hooks->on_clear(fd, sfd->rw_hooks);
+  *sfd = (fd_info_s){.lock = sfd->lock};
+
+  pthread_mutex_unlock(&sfd->lock);
+}
+
+/* *****************************************************************************
+Library Initialization
+*/
+
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+/** For development use, no deep testing */
+void libsock_test(void);
+#endif
+
+static void destroy_lib_data(void) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+  fprintf(stderr, "\nDestroying all libsock data\n");
+#endif
+  if (fd_info) {
+    while (fd_capacity--) {  // include 0 in countdown
+      sock_clear(fd_capacity);
+      pthread_mutex_destroy(&fd_info[fd_capacity].lock);
+    }
+    free(fd_info);
+    fd_info = NULL;
+  }
+  if (buffer_pool.allocated) {
+    buffer_pool.pool = NULL;
+    free(buffer_pool.allocated);
+    buffer_pool.allocated = NULL;
+  }
+}
+
+static void single_time_init(void) {
+  if (buffer_pool.allocated)
+    return;
+  void* buff_mem = buffer_pool.allocated =
+      calloc(BUFFER_PACKET_REAL_SIZE, BUFFER_PACKET_POOL);
+  for (size_t i = 0; i < BUFFER_PACKET_POOL - 1; i++) {
+    ((sock_packet_s*)buff_mem)->metadata.next =
+        buff_mem + BUFFER_PACKET_REAL_SIZE;
+    buff_mem += BUFFER_PACKET_REAL_SIZE;
+  }
+  atomic_store(&buffer_pool.pool, buffer_pool.allocated);
+  atexit(destroy_lib_data);
+}
+
+int8_t init_socklib(size_t capacity) {
+  if (capacity <= fd_capacity)
+    return 0;
+  single_time_init();
+  fd_info_s* new_data = calloc(sizeof(fd_info_s), capacity);
+  if (!new_data)
+    return -1;
+  if (fd_info) {
+    memcpy(new_data, fd_info, sizeof(fd_info_s) * fd_capacity);
+    free(fd_info);
+  }
+  fd_info = new_data;
+  for (size_t i = fd_capacity; i < capacity; i++) {
+    pthread_mutex_init(&fd_info[i].lock, NULL);
+  }
+  fd_capacity = capacity;
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+  libsock_test();
+  fprintf(stderr,
+          "\nInitialized fd_info for %lu elements, each one %lu bytes.\n"
+          "overall: %lu bytes.\n"
+          "Initialized packet pool for %d elements, each one %lu bytes.\n"
+          "overall: %lu bytes.\n"
+          "=== Total: %lu bytes\n==========\n\n",
+          fd_capacity, sizeof(*fd_info), sizeof(*fd_info) * fd_capacity,
+          BUFFER_PACKET_POOL, BUFFER_PACKET_REAL_SIZE,
+          BUFFER_PACKET_REAL_SIZE * BUFFER_PACKET_POOL,
+          (BUFFER_PACKET_REAL_SIZE * BUFFER_PACKET_POOL) +
+              (sizeof(*fd_info) * fd_capacity));
+#endif
+  return 0;
+}
+
+/* *****************************************************************************
+Core socket operation API
 */
 
 /**
@@ -453,12 +438,13 @@ reactor.
 Retruns -1 on error and 0 on success.
 */
 int sock_open(struct Reactor* owner, int fd) {
-  require_mem(fd);
+  if (validate_mem(fd))
+    return -1;
   // attach the new client socket to the reactor.
   if (owner && reactor_add(owner, fd) < 0) {
     return -1;
   }
-  struct FDData* sfd = fd_map + fd;
+  fd_info_s* sfd = fd_info + fd;
   if (sfd->open) {  // remove old connection buffer and data.
     sock_clear(fd);
   }
@@ -480,18 +466,317 @@ before attaching a socket to a reactor.
 Retruns -1 on error and 0 on success.
 */
 int sock_attach(struct Reactor* owner, int fd) {
-  require_conn(fd);
-  fd_map[fd].owner = owner;
+  if (validate_connection(fd))
+    return -1;
+  fd_info[fd].owner = owner;
   return (reactor_add(owner, fd) < 0);
 }
 
 /** Returns the state of the socket, similar to calling `fcntl(fd, F_GETFL)`.
  * Returns -1 if the connection is closed. */
 int sock_status(int fd) {
-  if (fd < fdmax && fd_map[fd].open)
-    return fcntl(fd, F_GETFL);
+  if (validate_connection(fd))
+    return -1;
+  return fcntl(fd, F_GETFL);
+}
+
+/* *****************************************************************************
+Socket Buffer Management - not MT safe
+*/
+
+/* flushes but doesn't close the socket. flags fd for close on error. */
+inline static void sock_flush_unsafe(int fd) {
+  fd_info_s* sfd = fd_info + fd;
+  sock_packet_s* packet;
+  ssize_t sent;
+  for (;;) {
+    if ((packet = sfd->packet) == NULL)
+      return;
+    packet->metadata.can_interrupt = 0;
+
+    if (packet->metadata.is_fd) {
+/* File (fd) Packets */
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+      fprintf(stderr,
+              "(%d) flushing a file packet with %u/%lu (%lu). start at: %lld\n",
+              fd, sfd->sent, packet->length, packet->length - sfd->sent,
+              packet->metadata.offset);
+#endif
+
+      /* USE_SENDFILE ? */
+      if (USE_SENDFILE && sfd->rw_hooks == NULL) {
+#if defined(__linux__) /* linux sendfile API */
+        sent = sendfile64(fd, (int)((ssize_t)packet->buffer), NULL,
+                          packet->length - sfd->sent);
+
+        if (sent == 0) {
+          sfd->packet = packet->metadata.next;
+          packet->metadata.next = NULL;
+          sock_free_packet(packet);
+          sfd->sent = 0;
+        } else if (sent < 0) {
+          if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+          } else if (errno == EINTR) {
+            continue;
+          } else {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+            perror("Linux sendfile failed");
+#endif
+            sfd->close = 1;
+            sock_free_packet(sfd->packet);
+            sfd->packet = NULL;
+            return;
+          }
+        }
+        sfd->sent += sent;
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+        fprintf(stderr, "(%d) Linux sendfile %ld / %u bytes from %lu total.\n",
+                fd, sent, sfd->sent, packet->length);
+#endif
+        if (sfd->sent >= packet->length) {
+          sfd->packet = packet->metadata.next;
+          packet->metadata.next = NULL;
+          sock_free_packet(packet);
+          sfd->sent = 0;
+          continue;
+        }
+#elif defined(__APPLE__) || defined(__unix__) /* BSD / Apple API */
+        off_t act_sent = packet->length - sfd->sent;
+#if defined(__APPLE__)
+        if (sendfile((int)((ssize_t)packet->buffer), fd,
+                     packet->metadata.offset, &act_sent, NULL, 0) < 0 &&
+            act_sent == 0) {
+#else
+        if (sendfile((int)((ssize_t)packet->buffer), fd,
+                     packet->metadata.offset, (size_t)act_sent, NULL, &act_sent,
+                     0) < 0 &&
+            act_sent == 0) {
+#endif
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+          perror("Apple/BSD sendfile errno");
+#endif
+          if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+          } else if (errno == EINTR) {
+            continue;
+          } else {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+            perror("Apple/BSD sendfile failed");
+#endif
+            sfd->close = 1;
+            sock_free_packet(sfd->packet);
+            sfd->packet = NULL;
+            return;
+          }
+        }
+        if (act_sent == 0) {
+          sfd->packet = packet->metadata.next;
+          packet->metadata.next = NULL;
+          sock_free_packet(packet);
+          sfd->sent = 0;
+          continue;
+        }
+        packet->metadata.offset += act_sent;
+        sfd->sent += act_sent;
+        if (sfd->sent >= packet->length) {
+          sfd->packet = packet->metadata.next;
+          packet->metadata.next = NULL;
+          sock_free_packet(packet);
+          sfd->sent = 0;
+          continue;
+        }
+
+#else /* sendfile might not be available - always set to 0 */
+      };
+      if (0) {
+#endif
+      } else {
+        // how much data are we expecting to send...?
+        ssize_t i_exp = (BUFFER_FILE_READ_SIZE > packet->length)
+                            ? packet->length
+                            : BUFFER_FILE_READ_SIZE;
+
+        // flag telling us if the file was read into the internal buffer
+        if (packet->metadata.internal_flag == 0) {
+          ssize_t i_read;
+          i_read = pread((int)((ssize_t)packet->buffer), packet + 1, i_exp,
+                         packet->metadata.offset);
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+          fprintf(stderr,
+                  "(%d) Read %ld from a file packet, preparing to send.\n", fd,
+                  i_read);
+#endif
+          if (i_read <= 0) {
+            sfd->packet = packet->metadata.next;
+            packet->metadata.next = NULL;
+            sock_free_packet(packet);
+            sfd->sent = 0;
+            continue;
+          } else {
+            packet->metadata.offset += i_read;
+            packet->metadata.internal_flag = 1;
+          }
+        }
+
+        // send the data
+        if (sfd->rw_hooks && sfd->rw_hooks->write)
+          sent = sfd->rw_hooks->write(fd, (((void*)(packet + 1)) + sfd->sent),
+                                      i_exp - sfd->sent);
+        else
+          sent =
+              write(fd, (((void*)(packet + 1)) + sfd->sent), i_exp - sfd->sent);
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+        fprintf(stderr, "(%d) Sent file %ld / %ld bytes from %lu total.\n", fd,
+                sent, i_exp, packet->length);
+#endif
+
+        // review result and update packet data
+        if (sent == 0) {
+          return;  // nothing to do?
+        } else if (sent > 0) {
+          // did we finished sending the amount of data we wanted to send?
+          sfd->sent += sent;
+          if (sfd->sent >= i_exp) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+            fprintf(stderr, "(%d) rotating file buffer (marking for read).\n",
+                    fd);
+#endif
+            packet->metadata.internal_flag = 0;
+            sfd->sent = 0;
+            packet->length -= i_exp;
+            if (packet->length == 0) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+              fprintf(stderr, "(%d) Finished sending file.\n", fd);
+#endif
+              sfd->packet = packet->metadata.next;
+              packet->metadata.next = NULL;
+              sock_free_packet(packet);
+              continue;
+            }
+          }
+          // return 0;
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+          return;
+        } else if (errno == EINTR) {
+          continue;
+        } else {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+          perror("send failed");
+#endif
+          sfd->close = 1;
+          sock_free_packet(sfd->packet);
+          sfd->packet = NULL;
+          return;
+        }
+      }
+    } else {
+      /* Data Packets */
+
+      /* send data */
+      if (sfd->rw_hooks && sfd->rw_hooks->write)
+        sent = sfd->rw_hooks->write(fd, packet->buffer + sfd->sent,
+                                    packet->length - sfd->sent);
+      else
+        sent =
+            write(fd, packet->buffer + sfd->sent, packet->length - sfd->sent);
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+      fprintf(stderr, "(%d) Sent data %ld / %ld bytes from %lu total.\n", fd,
+              sent, packet->length - sfd->sent, packet->length);
+#endif
+
+      /* review and update sent state */
+      if (sent > 0) {
+        sfd->sent += sent;
+        if (sfd->sent >= packet->length) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+          fprintf(stderr, "(%d) rotating data buffer packet.\n", fd);
+#endif
+          sfd->packet = packet->metadata.next;
+          packet->metadata.next = NULL;
+          sock_free_packet(packet);
+          sfd->sent = 0;
+        }
+        continue;
+      } else if (sent == 0) {
+        return;  // nothing to do?
+      } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        return;
+      } else if (errno == EINTR) {
+        continue;
+      } else {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+        perror("send failed");
+#endif
+        sfd->close = 1;
+        sock_free_packet(sfd->packet);
+        sfd->packet = NULL;
+        return;
+      }
+    }
+  }
+}
+
+/* places a packet in the socket's buffer */
+inline static ssize_t sock_send_packet_unsafe(int fd, sock_packet_s* packet) {
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+  if (packet->metadata.is_fd)
+    fprintf(stderr, "(%d) sending a file packet with length %u/%lu\n", fd,
+            fd_info[fd].sent, packet->length);
+  else
+    fprintf(stderr,
+            "(%d) sending packet with length %lu\n"
+            "(first char == %c(%d), last char == %c(%d))\n"
+            "%.*s\n============\n",
+            fd, packet->length, ((char*)packet->buffer)[0],
+            ((char*)packet->buffer)[0],
+            ((char*)packet->buffer)[packet->length - 1],
+            ((char*)packet->buffer)[packet->length - 1], (int)packet->length,
+            (char*)packet->buffer);
+#endif
+
+  fd_info_s* sfd = fd_info + fd;
+  if (sfd->packet == NULL) {
+    sfd->packet = packet;
+    sock_flush_unsafe(fd);
+    return 0;
+
+  } else if (packet->metadata.urgent == 0) {
+    sock_packet_s* pos = sfd->packet;
+    while (pos->metadata.next)
+      pos = pos->metadata.next;
+    pos->metadata.next = packet;
+    sock_flush_unsafe(fd);
+    return 0;
+
+  } else {
+    sock_packet_s* pos = sfd->packet;
+    if (pos->metadata.can_interrupt) {
+      sfd->packet = packet;
+      while (packet->metadata.next)
+        packet = packet->metadata.next;
+      packet->metadata.next = pos;
+    } else {
+      while (pos->metadata.next &&
+             pos->metadata.next->metadata.can_interrupt == 0)
+        pos = pos->metadata.next;
+      sock_packet_s* tail = pos->metadata.next;
+      pos->metadata.next = packet;
+      if (tail) {
+        while (packet->metadata.next)
+          packet = packet->metadata.next;
+        packet->metadata.next = tail;
+      }
+    }
+    sock_flush_unsafe(fd);
+    return 0;
+  }
   return -1;
 }
+
+/* *****************************************************************************
+Read/Write socket operation API
+*/
 
 /**
 `sock_read` attempts to read up to count bytes from file descriptor fd into the
@@ -505,19 +790,20 @@ Also, some internal buffering will be used in cases where the transport layer
 data available is larger then the data requested.
 */
 ssize_t sock_read(int fd, void* buf, size_t count) {
-  require_conn(fd);
+  if (validate_connection(fd))
+    return -1;
   ssize_t i_read;
-  struct FDData* fd_d = fd_map + fd;
-  if (fd_d->rw_hooks && fd_d->rw_hooks->read)
-    i_read = fd_d->rw_hooks->read(fd, buf, count);
+  fd_info_s* sfd = fd_info + fd;
+  if (sfd->rw_hooks && sfd->rw_hooks->read)
+    i_read = sfd->rw_hooks->read(fd, buf, count);
   else
     i_read = recv(fd, buf, count, 0);
 
   if (i_read > 0)
     return i_read;
-  if (i_read && (errno & (EWOULDBLOCK | EAGAIN)))
+  if (i_read && (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR))
     return 0;
-  fd_d->close = 1;
+  sfd->close = 1;
   return -1;
 }
 
@@ -527,22 +813,25 @@ ssize_t sock_read(int fd, void* buf, size_t count) {
 ssize_t sock_write2_fn(sock_write_info_s options) {
   if (!options.fd || !options.buffer)
     return -1;
-  require_conn(options.fd);
-  if (!options.length && !options.file)
-    options.length = strlen(options.buffer);
-  sock_packet_s* packet = sock_checkout_packet();
-  if (!packet) {
-    if (options.file)
-      fclose((void*)options.buffer);
+  if (validate_connection(options.fd))
     return -1;
+  if (!options.length && !options.is_fd)
+    options.length = strlen(options.buffer);
+  if (options.length == 0)
+    return -1;
+
+  sock_packet_s* packet = sock_checkout_packet();
+  while (packet == NULL) {
+    sock_flush_all();
+    packet = sock_checkout_packet();
   }
   packet->metadata.can_interrupt = 1;
   packet->metadata.urgent = options.urgent;
-  if (options.file || options.is_fd) {
+  if (options.is_fd) {
     packet->buffer = (void*)options.buffer;
     packet->length = options.length;
-    packet->metadata.is_file = options.file;
     packet->metadata.is_fd = options.is_fd;
+    packet->metadata.offset = options.offset;
     return sock_send_packet(options.fd, packet);
   } else {
     if (options.move) {
@@ -556,6 +845,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
         packet->length = options.length;
         return sock_send_packet(options.fd, packet);
       } else {
+        pthread_mutex_lock(&fd_info[options.fd].lock);
         sock_packet_s* last_packet = packet;
         size_t counter = 0;
         while (options.length > BUFFER_PACKET_SIZE) {
@@ -570,267 +860,32 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
             last_packet = last_packet->metadata.next;
             continue;
           } else {
-            sock_free_packet(packet);
-            return -1;
+            packet->metadata.can_interrupt = ~options.urgent;
+            if (sock_send_packet_unsafe(options.fd, packet))
+              goto multi_send_error;
+            while (packet == NULL) {
+              sock_flush_all();
+              packet = sock_checkout_packet();
+            }
+            packet->metadata.urgent = options.urgent;
+            last_packet = packet;
           }
         }
         memcpy(last_packet->buffer,
                options.buffer + (counter * BUFFER_PACKET_SIZE), options.length);
         last_packet->length = options.length;
-        return sock_send_packet(options.fd, packet);
+        if (sock_send_packet_unsafe(options.fd, packet))
+          goto multi_send_error;
+        pthread_mutex_unlock(&fd_info[options.fd].lock);
+        return 0;
+      multi_send_error:
+        pthread_mutex_unlock(&fd_info[options.fd].lock);
+        return -1;
       }
     }
   }
   // how did we get here?
   return -1;
-}
-
-/*
-Helper function for speed optimizations
-
-We MUST continue sending data until all the data was sent OR we gen an EAGAIN |
-EWOULDBLOCK error - otherwise the `on_ready` event will never get called and our
-`sock_flush` function son't get called.
-*/
-inline static ssize_t sock_flush_in_lock(int fd) {
-  struct FDData* sfd = fd_map + fd;
-  sock_packet_s* packet;
-
-  ssize_t sent;
-re_flush:
-  sent = 0;
-  packet = sfd->packet;
-  if (!packet) {
-    if (sfd->close)
-      return -1;
-    return 0;
-  }
-  packet->metadata.can_interrupt = 0;
-
-  if (USE_SENDFILE && packet->metadata.is_fd && sfd->rw_hooks == NULL) {
-#if defined(__linux__) /* linux sendfile API */
-    for (;;) {
-      sent = sendfile64(fd, (int)((ssize_t)packet->buffer), NULL,
-                        packet->length - sfd->sent);
-
-      if (sent == 0) {
-        sfd->packet = packet->metadata.next;
-        packet->metadata.next = NULL;
-        sock_free_packet(packet);
-        sfd->sent = 0;
-        goto re_flush;
-      } else if (sent < 0) {
-        if (errno & (EAGAIN | EWOULDBLOCK))
-          return 0;
-        else if (errno & EINTR)
-          continue;
-        else {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-          perror("linux sendfile error");
-#endif
-          return -1;
-        }
-      }
-      sfd->sent += sent;
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-      fprintf(stderr, "(%d) Linux sendfile %ld / %u bytes from %lu total.\n",
-              fd, sent, sfd->sent, packet->length);
-#endif
-      if (sfd->sent >= packet->length) {
-        sfd->packet = packet->metadata.next;
-        packet->metadata.next = NULL;
-        sock_free_packet(packet);
-        sfd->sent = 0;
-        goto re_flush;
-      }
-    }
-#elif defined(__unix__) /* BSD API */
-    off_t act_sent = packet->length - sfd->sent;
-    off_t pos_start = lseek((int)((ssize_t)packet->buffer), 0, SEEK_CUR);
-    if (sendfile((int)((ssize_t)packet->buffer), fd, pos_start,
-                 (size_t)act_sent, NULL, &act_sent, 0)) {
-      if ((errno & (EAGAIN | EWOULDBLOCK)) && act_sent == 0)
-        return 0;
-      else if ((errno & (EAGAIN | EWOULDBLOCK)) == 0)
-        return -1;
-    }
-    if (act_sent == 0) {
-      sfd->packet = packet->metadata.next;
-      packet->metadata.next = NULL;
-      sock_free_packet(packet);
-      sfd->sent = 0;
-      goto re_flush;
-    }
-    pos_start += act_sent;
-    sfd->sent += act_sent;
-    if (sfd->sent >= packet->length) {
-      sfd->packet = packet->metadata.next;
-      packet->metadata.next = NULL;
-      sfd->sent = 0;
-      sock_free_packet(packet);
-      goto re_flush;
-    }
-    lseek((int)((ssize_t)packet->buffer), pos_start, SEEK_SET);
-    goto re_flush;
-
-#elif defined(__APPLE__) /* Apple API */
-    for (;;) {
-      off_t act_sent = packet->length - sfd->sent;
-      off_t pos_start = lseek((int)((ssize_t)packet->buffer), 0, SEEK_CUR);
-      if (sendfile((int)((ssize_t)packet->buffer), fd, pos_start, &act_sent,
-                   NULL, 0)) {
-        if (errno & (EAGAIN | EWOULDBLOCK)) {
-          if (act_sent == 0)
-            return 0;
-        } else if (errno & EINTR) {
-          if (act_sent == 0)
-            continue;
-        } else {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-          perror("Apple sendfile error");
-#endif
-          return -1;
-        }
-      }
-      if (act_sent == 0) {
-        sfd->packet = packet->metadata.next;
-        packet->metadata.next = NULL;
-        sock_free_packet(packet);
-        sfd->sent = 0;
-        goto re_flush;
-      }
-      pos_start += act_sent;
-      sfd->sent += act_sent;
-      if (sfd->sent >= packet->length) {
-        sfd->packet = packet->metadata.next;
-        packet->metadata.next = NULL;
-        sock_free_packet(packet);
-        sfd->sent = 0;
-        goto re_flush;
-      }
-      lseek((int)((ssize_t)packet->buffer), pos_start, SEEK_SET);
-    }
-
-#else /* sendfile might not be available - always set to 0 */
-  };
-  if (0) {
-#endif
-  } else if (packet->metadata.is_fd || packet->metadata.is_file) {
-    // how much data are we expecting to send...?
-    for (;;) {
-      ssize_t i_exp = (BUFFER_FILE_READ_SIZE > packet->length)
-                          ? packet->length
-                          : BUFFER_FILE_READ_SIZE;
-
-      // flag telling us if the file was read into the internal buffer
-      if (packet->metadata.internal_flag == 0) {
-        ssize_t i_read;
-        if (packet->metadata.is_fd)
-          i_read = read((int)((ssize_t)packet->buffer), packet + 1, i_exp);
-        else
-          i_read = fread(packet + 1, 1, i_exp, packet->buffer);
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-        fprintf(stderr,
-                "(%d) Read %ld from a file packet, preparing to send.\n", fd,
-                i_read);
-#endif
-        if (i_read <= 0) {
-          sfd->packet = packet->metadata.next;
-          packet->metadata.next = NULL;
-          sock_free_packet(packet);
-          sfd->sent = 0;
-          goto re_flush;
-        } else {
-          packet->metadata.internal_flag = 1;
-        }
-      }
-
-      // send the data
-      if (sfd->rw_hooks && sfd->rw_hooks->write)
-        sent = sfd->rw_hooks->write(fd, (((void*)(packet + 1)) + sfd->sent),
-                                    i_exp - sfd->sent);
-      else
-        sent =
-            write(fd, (((void*)(packet + 1)) + sfd->sent), i_exp - sfd->sent);
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-      fprintf(stderr, "(%d) Sent file %ld / %ld bytes from %lu total.\n", fd,
-              sent, i_exp, packet->length);
-#endif
-
-      // review result and update packet data
-      if (sent == 0) {
-        return 0;  // nothing to do?
-      } else if (sent > 0) {
-        // did we finished sending the amount of data we wanted to send?
-        sfd->sent += sent;
-        if (sfd->sent >= i_exp) {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-          fprintf(stderr, "(%d) rotating file buffer (marking for read).\n",
-                  fd);
-#endif
-          packet->metadata.internal_flag = 0;
-          sfd->sent = 0;
-          packet->length -= i_exp;
-          if (packet->length == 0) {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-            fprintf(stderr, "(%d) Finished sending file.\n", fd);
-#endif
-            sfd->packet = packet->metadata.next;
-            packet->metadata.next = NULL;
-            sock_free_packet(packet);
-            goto re_flush;
-          }
-        }
-        // return 0;
-      } else if (errno & (EAGAIN | EWOULDBLOCK)) {
-        return 0;
-      } else if (errno & EINTR)
-        continue;
-      else
-        return -1;
-    }
-  }
-  // send data packets
-  for (;;) {
-    if (sfd->rw_hooks && sfd->rw_hooks->write)
-      sent = sfd->rw_hooks->write(fd, packet->buffer + sfd->sent,
-                                  packet->length - sfd->sent);
-    else
-      sent = write(fd, packet->buffer + sfd->sent, packet->length - sfd->sent);
-
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-    fprintf(stderr, "(%d) Sent data %ld / %ld bytes from %lu total.\n", fd,
-            sent, packet->length - sfd->sent, packet->length);
-#endif
-    // handle results
-    if (sent > 0) {
-      sfd->sent += sent;
-      if (sfd->sent >= packet->length) {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-        fprintf(stderr, "(%d) rotating data buffer packet.\n", fd);
-#endif
-        sfd->packet = packet->metadata.next;
-        packet->metadata.next = NULL;
-        sock_free_packet(packet);
-        sfd->sent = 0;
-        if (sfd->packet == NULL && sfd->close)
-          return -1;
-      }
-      goto re_flush;
-    } else if (sent == 0) {
-      return 0;  // nothing to do.
-    } else if (errno & (EAGAIN | EWOULDBLOCK)) {
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-      fprintf(stderr, "(%d) Sending data error -1 is okay (avoid blocking).\n",
-              fd);
-#endif
-      return 0;
-    } else if (errno & EINTR)
-      continue;
-    else
-      return -1;
-  }
-  return 0;
 }
 
 /**
@@ -845,51 +900,15 @@ Returns -1 on error. Returns 0 on success. **Always** retains ownership of the
 packet's memory and it's resources.
 */
 ssize_t sock_send_packet(int fd, sock_packet_s* packet) {
-  if (fd >= fdmax || !fd_map[(fd)].open || packet->length == 0) {
+  if (validate_connection(fd) || packet->length == 0) {
     sock_free_packet(packet);
     return -1;
   }
-  struct FDData* sfd = fd_map + fd;
-#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-  if (packet->metadata.is_fd || packet->metadata.is_file)
-    fprintf(stderr, "(%d) sending a file packet with length %lu\n", fd,
-            packet->length);
-  else
-    fprintf(stderr,
-            "(%d) sending packet with length %lu\n"
-            "(first char == %c(%d), last char == %c(%d))\n"
-            "%.*s\n============\n",
-            fd, packet->length, ((char*)packet->buffer)[0],
-            ((char*)packet->buffer)[0],
-            ((char*)packet->buffer)[packet->length - 1],
-            ((char*)packet->buffer)[packet->length - 1], (int)packet->length,
-            (char*)packet->buffer);
-#endif
-
-  // applys the move logic for either urgent or non urgent packets
-  pthread_mutex_lock(&fd_map[(fd)].lock);
-  sock_packet_s *tail, **pos = &(fd_map[fd].packet);
-  if (packet->metadata.urgent) {
-    while (*pos && (!(*pos)->metadata.next ||
-                    !(*pos)->metadata.next->metadata.can_interrupt)) {
-      pos = &((*pos)->metadata.next);
-    }
-  } else {
-    while (*pos) {
-      pos = &((*pos)->metadata.next);
-    }
-  }
-  tail = (*pos);
-  *pos = packet;
-  if (tail) {
-    pos = &(packet->metadata.next);
-    while (*pos)
-      pos = &((*pos)->metadata.next);
-    *pos = tail;
-  }
-  ssize_t sent = sock_flush_in_lock(fd);
+  fd_info_s* sfd = fd_info + fd;
+  pthread_mutex_lock(&sfd->lock);
+  sock_send_packet_unsafe(fd, packet);
   pthread_mutex_unlock(&sfd->lock);
-  if (sent < 0 && sfd->open)
+  if (sfd->packet == NULL && sfd->close)
     goto close_socket;
   return 0;
 close_socket:
@@ -912,9 +931,11 @@ if the connection was closed.
 The connection is closed automatically if an error occured (and if open).
 */
 ssize_t sock_flush(int fd) {
-  if (fd >= fdmax || fd_map[fd].open == 0)
+  if (validate_connection(fd)) {
+    sock_clear(fd);
     return -1;
-  struct FDData* sfd = fd_map + fd;
+  }
+  fd_info_s* sfd = fd_info + fd;
   if (sfd->packet == NULL) {
     if (sfd->close) {
       goto close_socket;
@@ -924,11 +945,10 @@ ssize_t sock_flush(int fd) {
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
   fprintf(stderr, "\n=========\n(%d) sock_flush called.\n", fd);
 #endif
-  ssize_t sent;
   pthread_mutex_lock(&sfd->lock);
-  sent = sock_flush_in_lock(fd);
+  sock_flush_unsafe(fd);
   pthread_mutex_unlock(&sfd->lock);
-  if (sent < 0 && sfd->open)
+  if (sfd->packet == NULL && sfd->close)
     goto close_socket;
   return 0;
 close_socket:
@@ -944,45 +964,24 @@ close_socket:
 after all the data was sent. This is an "active" wait, polling isn't performed.
 */
 void sock_flush_strong(int fd) {
-  if (fd >= fdmax || fd_map[fd].open == 0)
-    return;
-  struct FDData* sfd = fd_map + fd;
-  if (sfd->packet == NULL) {
-    if (sfd->close) {
-      goto close_socket;
-    }
-    return;
-  }
-  pthread_mutex_lock(&sfd->lock);
-  ssize_t ret;
-  while (sfd->packet) {
-    if ((ret = sock_flush_in_lock(fd)) == 0)
-      sched_yield();
-    else if (ret < 0) {
-      pthread_mutex_unlock(&sfd->lock);
-      goto close_socket;
-    }
-  }
-  pthread_mutex_unlock(&sfd->lock);
-close_socket:
-  if (sfd->owner)
-    reactor_close(sfd->owner, fd);
-  else
-    close(fd);
-  sock_clear(fd);
+  fd_info_s* sfd = fd_info + fd;
+  while (validate_connection(fd) == 0 && sock_flush(fd) == 0 && sfd->packet)
+    sched_yield();
   return;
 }
+
 /**
-Calls `sock_flush` for any sockets that are currently using the user-land
-buffer, giving a chance for packets to be freed.
+Calls `sock_flush` for each file descriptor that's buffer isn't empty.
 */
 void sock_flush_all(void) {
-  for (size_t i = 0; i < fdmax; i++) {
-    if (fd_map[i].packet == NULL)
+  register fd_info_s* fds = fd_info;
+  for (size_t i = 0; i < fd_capacity; i++) {
+    if (fds[i].packet == NULL)
       continue;
     sock_flush(i);
   }
 }
+
 /**
 `sock_close` marks the connection for disconnection once all the data was
 sent.
@@ -995,12 +994,10 @@ If a reactor pointer is provied, the reactor API will be used and the
 callback should be called.
 */
 void sock_close(struct Reactor* reactor, int fd) {
-  require_mem(fd);
-  struct FDData* sfd = fd_map + fd;
-  if (!sfd->open)
+  if (validate_connection(fd))
     return;
-  sfd->owner = reactor;
-  sfd->close = 1;
+  fd_info[fd].owner = reactor;
+  fd_info[fd].close = 1;
   sock_flush(fd);
 }
 /**
@@ -1013,12 +1010,10 @@ If a reactor pointer is provied, the reactor API will be used and the
 callback should be called.
 */
 void sock_force_close(struct Reactor* reactor, int fd) {
-  require_mem(fd);
-  struct FDData* sfd = fd_map + fd;
-  if (!sfd->open)
+  if (validate_connection(fd))
     return;
   if (!reactor)
-    reactor = sfd->owner;
+    reactor = fd_info[fd].owner;
   if (reactor)
     reactor_close(reactor, fd);
   else {
@@ -1034,16 +1029,16 @@ RW Hooks implementation
 
 /** Gets a socket RW hooks. */
 struct sock_rw_hook_s* sock_rw_hook_get(int fd) {
-  if (fd >= fdmax || fd_map[fd].open == 0)
+  if (validate_connection(fd))
     return NULL;
-  return fd_map[fd].rw_hooks;
+  return fd_info[fd].rw_hooks;
 }
 
 /** Sets a socket RW hook. */
 int sock_rw_hook_set(int fd, struct sock_rw_hook_s* rw_hook) {
-  if (fd >= fdmax || fd_map[fd].open == 0)
+  if (validate_connection(fd))
     return -1;
-  fd_map[fd].rw_hooks = rw_hook;
+  fd_info[fd].rw_hooks = rw_hook;
   return 0;
 }
 
@@ -1055,9 +1050,9 @@ Minor tests
 void libsock_test(void) {
   sock_packet_s *p, *pl;
   fprintf(stderr, "Testing packet pool ");
-  for (size_t i = 0; i < BUFFER_MAX_PACKET_POOL * 4; i++) {
+  for (size_t i = 0; i < BUFFER_PACKET_POOL * 4; i++) {
     pl = p = sock_checkout_packet();
-    while (ContainerPool.pool) {
+    while (buffer_pool.pool) {
       pl->metadata.next = sock_checkout_packet();
       pl = pl->metadata.next;
     }
@@ -1065,14 +1060,14 @@ void libsock_test(void) {
   }
   size_t count = 1;
   pl = p = sock_checkout_packet();
-  while (ContainerPool.pool) {
+  while (buffer_pool.pool) {
     ++count;
     pl->metadata.next = sock_checkout_packet();
     pl = pl->metadata.next;
   }
   sock_free_packet(p);
   fprintf(stderr, " - %s (%lu/%d)\n",
-          (count == BUFFER_MAX_PACKET_POOL) ? "Pass" : "Fail", count,
-          BUFFER_MAX_PACKET_POOL);
+          (count == BUFFER_PACKET_POOL) ? "Pass" : "Fail", count,
+          BUFFER_PACKET_POOL);
 }
 #endif

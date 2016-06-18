@@ -172,6 +172,7 @@ the function returns 0.
 */
 static int req_sendfile(struct HttpResponse* response,
                         int source_fd,
+                        off_t offset,
                         size_t length);
 /**
 Closes the connection.
@@ -338,8 +339,14 @@ static void reset(struct HttpResponse* response, struct HttpRequest* request) {
           (request && request->connection &&
            (strcasecmp(request->connection, "close") == 0)),
       .metadata.packet = response->metadata.packet};
-  if (response->metadata.packet == NULL)
+  while (response->metadata.packet == NULL) {
     response->metadata.packet = sock_checkout_packet();
+    if (response->metadata.packet == NULL) {
+      // fprintf(stderr, "==== Response cycle\n");
+      sock_flush_all();
+      sched_yield();
+    }
+  }
   response->metadata.headers_pos =
       response->metadata.packet->buffer + HTTP_HEADER_START;
 
@@ -809,7 +816,7 @@ static int sendfile_path(struct HttpResponse* response, char* file_path) {
     return -1;
   }
   response->last_modified = f_data.st_mtime;
-  return req_sendfile(response, f_fd, f_data.st_size);
+  return req_sendfile(response, f_fd, f_data.st_size, 0);
 }
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
@@ -823,6 +830,7 @@ the function returns 0.
 */
 static int req_sendfile(struct HttpResponse* response,
                         int source_fd,
+                        off_t offset,
                         size_t length) {
   if (!response->content_length)
     response->content_length = length;
@@ -832,9 +840,9 @@ static int req_sendfile(struct HttpResponse* response,
   if (headers != NULL) {  // we haven't sent the headers yet
     if (headers->length < (BUFFER_PACKET_SIZE - HTTP_HEADER_START)) {
       // we can fit at least some of the data inside the response buffer.
-      ssize_t i_read =
-          read(source_fd, response->metadata.headers_pos,
-               ((BUFFER_PACKET_SIZE - HTTP_HEADER_START) - headers->length));
+      ssize_t i_read = pread(
+          source_fd, response->metadata.headers_pos,
+          ((BUFFER_PACKET_SIZE - HTTP_HEADER_START) - headers->length), offset);
       if (i_read > 0) {
         if (i_read >= length) {
           headers->length += length;
@@ -843,6 +851,7 @@ static int req_sendfile(struct HttpResponse* response,
         } else {
           headers->length += i_read;
           length -= i_read;
+          offset += i_read;
         }
       }
     }
@@ -853,7 +862,7 @@ static int req_sendfile(struct HttpResponse* response,
     }
   }
   return Server.sendfile(response->metadata.server, response->metadata.fd_uuid,
-                         source_fd, length);
+                         source_fd, offset, length);
 }
 
 /**

@@ -5,7 +5,7 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIB_SERVER
-#define LIB_SERVER "0.3.3"
+#define LIB_SERVER "0.3.4"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -406,13 +406,18 @@ extern const struct Server__API___ {
   Once the file was sent, the `source_fd` will be closed using `close`.
 
   The file will be buffered to the socket chunk by chunk, so that memory
-  consumption is capped.
+  consumption is capped. The system's `sendfile` might be used if conditions
+  permit.
+
+  `offset` dictates the starting point for te data to be sent and length sets
+  the maximum amount of data to be sent.
 
   Returns -1 and closes the file on error. Returns 0 on success.
   */
   ssize_t (*sendfile)(server_pt srv,
                       uint64_t connection_id,
                       int source_fd,
+                      off_t offset,
                       size_t length);
   /** Submits a `libsock` packet to the `libsock` socket buffer. See `libsock`
   for more details.
