@@ -360,18 +360,24 @@ static void async_destroy(async_p async) {
   pos = async->tasks;
   while ((to_free = pos)) {
     pos = pos->next;
-    if (to_free >= async->task_pool_mem + ASYNC_TASK_POOL_SIZE ||
-        to_free < async->task_pool_mem)
+    if (to_free >= async->task_pool_mem &&
+        to_free < async->task_pool_mem + ASYNC_TASK_POOL_SIZE) {
+      //
+    } else {
       free(to_free);
+    }
   }
   async->tasks = NULL;
   // free task pool - not really needed
   pos = atomic_load(&async->pool);
   while ((to_free = pos)) {
     pos = pos->next;
-    if (to_free >= async->task_pool_mem + ASYNC_TASK_POOL_SIZE ||
-        to_free < async->task_pool_mem)
+    if (to_free >= async->task_pool_mem &&
+        to_free < async->task_pool_mem + ASYNC_TASK_POOL_SIZE) {
+      //
+    } else {
       free(to_free);
+    }
   }
   atomic_store(&async->pool, NULL);
   // close pipe
