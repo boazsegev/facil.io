@@ -957,16 +957,12 @@ static int srv_listen(struct ServerSettings settings) {
 
   // let'm know...
   if (srvfd)
-    fprintf(stderr,
-            "(pid %d x %d threads) Listening on port %s (max sockets: %lu, ~%d "
-            "used)\n",
-            getpid(), srv.settings->threads, srv.settings->port, srv.capacity,
-            srv.srvfd + 2);
+    fprintf(
+        stderr, "* pid %d: (%d threads) Listening on port %s. fd limit: ~%lu\n",
+        getpid(), srv.settings->threads, srv.settings->port, srv.capacity - 1);
   else
-    fprintf(stderr,
-            "(pid %d x %d threads) Started a non-listening network service"
-            "(max sockets: %lu ~ at least 6 are in system use)\n",
-            getpid(), srv.settings->threads, srv.capacity);
+    fprintf(stderr, "* pid %d: (%d threads) network service. fd limit: ~%lu\n",
+            getpid(), srv.settings->threads, srv.capacity - 1);
 
   // initialize reactor
   reactor_init(&srv.reactor);
@@ -1002,7 +998,7 @@ static int srv_listen(struct ServerSettings settings) {
 
   if (settings.on_finish)
     settings.on_finish(&srv);
-  fprintf(stderr, "(pid %d) Stopped listening on port %s\n", getpid(),
+  fprintf(stderr, "* pid %d: Stopped listening on port %s\n", getpid(),
           settings.port);
   if (getpid() != srv.root_pid) {
     fflush(NULL);
@@ -1628,6 +1624,6 @@ static void on_signal(int sig) {
     raise(sig);
     return;
   }
-  fprintf(stderr, "(pid %d) Exit signal received.\n", getpid());
+  fprintf(stderr, "* pid %d: Exit signal received.\n", getpid());
   srv_stop_all();
 }
