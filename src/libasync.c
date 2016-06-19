@@ -436,8 +436,11 @@ static async_p async_new(int threads) {
   }
   // initiaite a task pool
   for (size_t i = 0; i < ASYNC_TASK_POOL_SIZE - 1; i++) {
-    async->task_pool_mem[i].next = async->task_pool_mem + i + 1;
+    async->task_pool_mem[i] =
+        (async_task_ns){.next = async->task_pool_mem + i + 1};
   }
+  async->task_pool_mem[ASYNC_TASK_POOL_SIZE - 1] =
+      (async_task_ns){.next = NULL};
   atomic_store(&async->pool, async->task_pool_mem);
   return async;
 }
