@@ -649,7 +649,8 @@ static sock_packet_s* prep_headers(struct HttpResponse* response) {
     return NULL;
   // write the content length header, unless forced not to (<0)
   if (response->metadata.connection_len_written == 0 &&
-      !(response->content_length < 0)) {
+      !(response->content_length < 0) && response->status >= 200 &&
+      response->status != 204 && response->status != 304) {
     memcpy(response->metadata.headers_pos, "Content-Length: ", 16);
     response->metadata.headers_pos += 16;
     response->metadata.headers_pos += sprintf(response->metadata.headers_pos,
