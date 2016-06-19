@@ -274,6 +274,9 @@ void sock_free_packet(sock_packet_s* packet) {
       while (!atomic_compare_exchange_weak(&buffer_pool.pool,
                                            &packet->metadata.next, packet))
         ;
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+      fprintf(stderr, "Packet checked in (pool = %p).\n", packet);
+#endif
     } else {
       free(packet);
     }
@@ -284,6 +287,10 @@ void sock_free_packet(sock_packet_s* packet) {
   while (!atomic_compare_exchange_weak(&buffer_pool.pool, &next->metadata.next,
                                        packet))
     ;
+#if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+  fprintf(stderr, "Packet checked in (pool = %p).\n", packet);
+#endif
+
 #endif
 }
 
