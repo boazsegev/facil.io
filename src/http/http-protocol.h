@@ -78,6 +78,12 @@ struct HttpProtocol {
   The length of the public_folder string.
   */
   size_t public_folder_length;
+  /**
+  Logging flag - set to TRUE to log static file requests.
+
+  Dynamic request logging is always the dynamic application's responsibility.
+  */
+  unsigned log_static : 1;
 };
 
 #endif /* HTTP_PROTOCOL_H */

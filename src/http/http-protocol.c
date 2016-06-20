@@ -131,6 +131,8 @@ static int http_sendfile(struct HttpRequest* req) {
     Server.close(req->server, req->sockfd);
     return 1;
   }
+  if (protocol->log_static)
+    HttpResponse.log_start(response);
   if ((file = open(fname, O_RDONLY)) < 0)
     goto internal_error;
 
@@ -200,6 +202,8 @@ invalid_range:
     close(file);
   } else
     HttpResponse.sendfile(response, file, 0, file_data.st_size);
+  if (protocol->log_static)
+    HttpResponse.log_finish(req, response);
   HttpResponse.destroy(response);
 
   return 1;
@@ -210,6 +214,8 @@ internal_error:
   response->status = 500;
   response->metadata.should_close = 1;
   HttpResponse.write_body(response, "Internal error (F01)", 20);
+  if (protocol->log_static)
+    HttpResponse.log_finish(req, response);
   HttpResponse.destroy(response);
   return 1;
   // bad_request:

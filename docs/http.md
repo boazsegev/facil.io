@@ -28,7 +28,7 @@ struct HttpProtocol {
   int maximum_body_size; // maximum message body size in MegaBytes.
   void (* on_request)(struct HttpRequest* request); // the `on_request` callback.
   char* public_folder; // (optional) the root folder for sending static files.
-  object_pool request_pool; // for internal use
+  unsigned log_static : 1; //  Logging flag - set to TRUE to log static file requests.
 };
 ```
 
@@ -93,6 +93,7 @@ int main(int argc, char const* argv[]) {
   // set any settings
   http->maximum_body_size = 100;
   http->public_folder = "/www";
+  http->log_static = 1;
   // using the HttpResponse pool improves performance when using HttpResponse.
   HttpResponse.init_pool();
   // start the server

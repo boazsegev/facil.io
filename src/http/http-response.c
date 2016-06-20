@@ -6,7 +6,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <stdatomic.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <arpa/inet.h>
 #include "libsock.h"
 #include "mini-crypt.h"
 
@@ -728,9 +732,7 @@ static int send_headers(struct HttpResponse* response, sock_packet_s* packet) {
   // mark headers as sent
   response->metadata.headers_sent = 1;
   response->metadata.packet = NULL;
-  response->metadata.headers_pos =
-      (char*)((size_t)response->metadata.headers_pos) -
-      ((size_t)packet->buffer);
+  response->metadata.headers_pos = (char*)packet->length;
   // write data to network
   return Server.send_packet(response->metadata.server,
                             response->metadata.fd_uuid, packet);
@@ -910,21 +912,28 @@ static void log_finish(struct HttpRequest* request,
                        (CLOCKS_PER_SEC / 1000))
                     : 0;
   struct tm tm;
+  struct sockaddr_in addrinfo;
+  socklen_t addrlen = sizeof(addrinfo);
   MiniCrypt.gmtime(&((struct Reactor*)request->server)->last_tick, &tm);
+  int got_add = getpeername(server_uuid_to_fd(request->sockfd),
+                            (struct sockaddr*)&addrinfo, &addrlen);
+
   if (response->metadata.logged)
     fprintf(stderr,
-            "[address] - - [%d/%s/%d:%d:%d:%d GMT]"
+            "%s - - [%d/%.*s/%d:%02d:%02d:%02d GMT] "
             "\"%s %s %s\" "
-            "%d %lu %lu ms\n",
-            tm.tm_mday, MONTH_NAMES[tm.tm_mon], tm.tm_year, tm.tm_hour,
-            tm.tm_min, tm.tm_sec, request->method, request->path,
+            "%d %'lu %'lu ms\n",
+            (got_add ? ("[unknown]") : (inet_ntoa(addrinfo.sin_addr))),
+            tm.tm_mday, 3, MONTH_NAMES[tm.tm_mon], tm.tm_year + 1900,
+            tm.tm_hour, tm.tm_min, tm.tm_sec, request->method, request->path,
             request->version, response->status, bytes_sent, mili);
   else
     fprintf(stderr,
-            "[address] - - [%d/%s/%d:%d:%d:%d GMT]"
+            "%s - - [%d/%.*s/%d:%02d:%02d:%02d GMT] "
             "\"%s %s %s\" "
-            "%d %lu\n",
-            tm.tm_mday, MONTH_NAMES[tm.tm_mon], tm.tm_year, tm.tm_hour,
-            tm.tm_min, tm.tm_sec, request->method, request->path,
+            "%d %'lu\n",
+            (got_add ? ("[unknown]") : (inet_ntoa(addrinfo.sin_addr))),
+            tm.tm_mday, 3, MONTH_NAMES[tm.tm_mon], tm.tm_year + 1900,
+            tm.tm_hour, tm.tm_min, tm.tm_sec, request->method, request->path,
             request->version, response->status, bytes_sent);
 }
