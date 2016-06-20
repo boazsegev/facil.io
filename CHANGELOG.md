@@ -18,33 +18,33 @@ Although the libraries in this repo are designed to work together, they are also
 
 * [Websocket extension (`mini-crypt`)](#websocket_extension) - Websocket Protocol for the basic HTTP implementation provided.
 
-## General notes and future plans
+## General notes and _future_ plans
 
 Changes I plan to make in future versions:
 
-* `libsock` should (probably) share memory across process forks, to prevent race conditions between the writing buffer.
+* Implement a `Server.connect` for client connections and a Websocket client implementation.
+
+* Implement Websocket writing using `libsock` packets instead of `malloc`.
+
+* `libsock` should (probably) share memory across process forks, to prevent race when writing to the system buffer... but...
 
     This is a low priority, as it's not often that file descriptors (except the listening socket) will be shared across processes. Such a sharing would require that more memory is shared, to allow a connection state to persist across concurrent process operations.
-
-* I plan to change the pool (request pool, packet pool, etc') implementations for the different libraries, so as to minimize any possible memory fragmentation that occur when `malloc` and `free` are used.
-
-* Review code for use of Atomic types when Mutex use is avoidable (especially `libsock`, `lib-server` and `libasync`). Perfomance testing should be performed to check for performance differences.
 
 * Remove / fix server task container pooling (`FDTask` and `GroupTask` pools).
 
 ## A note about version numbers
 
-I attempt to follow semantic versioning, except that the libraries are still under development, so version numbers get updated only when a significant change occurs.
+I attempt to follow semantic versioning, except that the libraries are still under pre-release development, so version numbers get updated only when a significant change occurs or API breaks.
 
-Libraries with versions less then 0.1.0 have missing features (i.e. `libsock` is missing the `connect` implementation and `mini-crypt` is missing almost everything except what little published functions it offers).
+Libraries with versions less then 0.1.0 have missing features (i.e. `mini-crypt` is missing almost everything except what little published functions it offers).
 
-Minor bug fixes, implementation optimizations and short git push corrections (I pushed bad code and fixed it in the same day or two) might not prompt a change in version numbers (not even the really minor ones).
-
-Significant issue fixes cause the tiny version to bump.
+Minor bug fixes, implementation optimizations etc' might not prompt a change in version numbers (not even the really minor ones).
 
 API breaking changes always cause version bumps (could be a tiny version bump for tiny API changes).
 
-... In other words, since these libraries are still being developed, test before adopting any updates.
+Git commits aren't automatically tested yet and they might introduce new issues or break existing code (I use Git also for backup purposes)...
+
+... In other words, since these libraries are still in early development, test before adopting any updates.
 
 ## Lib-React
 
@@ -112,6 +112,8 @@ Baseline (changes not logged before this point in time).
 
 ### V. 0.3.0
 
+* Fixed task pool initialization to zero-out data that might cause segmentation faults.
+
 * `libasync`'s task pool optimizations and limits were added to minimize memory fragmentation issues for long running processes.
 
 Baseline (changes not logged before this point in time).
@@ -120,7 +122,7 @@ Baseline (changes not logged before this point in time).
 
 ### V. 0.3.5
 
-* File sending is now offset based, so `fseek` data is ignored. This means that it would be possible to cache open `fd` files and send the same file descriptor to multiple clients.
+* File sending is now offset based, so `lseek` data is ignored. This means that it should be possible to cache open `fd` files and send the same file descriptor to multiple clients.
 
 ### V. 0.3.4
 
@@ -147,6 +149,14 @@ Baseline (changes not logged before this point in time).
 Baseline (changes not logged before this point in time).
 
 ## HTTP Protocol
+
+### Date 20160620
+
+* Added basic logging support.
+
+* Added automatic `Content-Length` header constraints when setting status code to 1xx, 204 or 304.
+
+* Nicer messages on startup.
 
 * Updated for new `lib-server` and `libsock`.
 
