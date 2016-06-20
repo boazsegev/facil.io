@@ -22,9 +22,11 @@ Although the libraries in this repo are designed to work together, they are also
 
 Changes I plan to make in future versions:
 
-* I plan to change the pool (request pool, packet pool, etc') implementations for the different libraries, so as to minimize any possible memory fragmentation that occur when `malloc` and `free` are used.
+* `libsock` should (probably) share memory across process forks, to prevent race conditions between the writing buffer.
 
-* `libsock`'s dynamic packet allocation should be possible to disable, meaning that user buffer would be limited in scope and calls to `sock_write(2)` will busy-hang until packets become available... there's a re-write in the future for this one.
+    This is a low priority, as it's not often that file descriptors (except the listening socket) will be shared across processes. Such a sharing would require that more memory is shared, to allow a connection state to persist across concurrent process operations.
+
+* I plan to change the pool (request pool, packet pool, etc') implementations for the different libraries, so as to minimize any possible memory fragmentation that occur when `malloc` and `free` are used.
 
 * Review code for use of Atomic types when Mutex use is avoidable (especially `libsock`, `lib-server` and `libasync`). Perfomance testing should be performed to check for performance differences.
 
@@ -57,6 +59,8 @@ Baseline (changes not logged before this point in time).
 ## Lib-Sock (development incomplete)
 
 ### V. 0.0.5
+
+* Added the client implementation (`sock_connect`).
 
 * Rewrote the whole library to allow for a fixed user-land buffer limit. This means that instead of having buffer packets automatically allocated when more memory is required, the `sock_write(2)` function will hang and flush any pending socket buffers until packets become available.
 
