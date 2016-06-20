@@ -112,7 +112,7 @@ inline int sock_set_non_block(int fd)  // Thanks to Bjorn Reese
 #endif
 }
 
-int sock_listen(char* address, char* port) {
+int sock_listen(const char* address, const char* port) {
   int srvfd;
   // setup the address
   struct addrinfo hints;
@@ -432,7 +432,46 @@ client connection to the address requested.
 Returns the new file descriptor fd. Retruns -1 on error.
 */
 int sock_connect(struct Reactor* owner, char* address, char* port) {
-  return -1;
+  int fd;
+  // setup the address
+  struct addrinfo hints;
+  struct addrinfo* addrinfo;        // will point to the results
+  memset(&hints, 0, sizeof hints);  // make sure the struct is empty
+  hints.ai_family = AF_UNSPEC;      // don't care IPv4 or IPv6
+  hints.ai_socktype = SOCK_STREAM;  // TCP stream sockets
+  hints.ai_flags = AI_PASSIVE;      // fill in my IP for me
+  if (getaddrinfo(address, port, &hints, &addrinfo)) {
+    perror("addr err");
+    return -1;
+  }
+  // get the file descriptor
+  fd =
+      socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
+  if (fd <= 0) {
+    freeaddrinfo(addrinfo);
+    perror("socket err");
+    return -1;
+  }
+  if (validate_mem(fd)) {
+    freeaddrinfo(addrinfo);
+    perror("socket err");
+    return -1;
+  }
+  // make sure the socket is non-blocking
+  if (sock_set_non_block(fd) < 0) {
+    perror("couldn't set socket as non blocking! ");
+    freeaddrinfo(addrinfo);
+    close(fd);
+    return -1;
+  }
+  if ((connect(fd, addrinfo->ai_addr, addrinfo->ai_addrlen) < 0 &&
+       errno != EINPROGRESS) ||
+      sock_open(owner, fd) < 0) {
+    close(fd);
+    fd = -1;
+  }
+  freeaddrinfo(addrinfo);
+  return fd;
 }
 
 /**
@@ -522,7 +561,7 @@ inline static void sock_flush_unsafe(int fd) {
           sock_free_packet(packet);
           sfd->sent = 0;
         } else if (sent < 0) {
-          if (errno == EAGAIN || errno == EWOULDBLOCK) {
+          if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOTCONN) {
             return;
           } else if (errno == EINTR) {
             continue;
@@ -563,7 +602,7 @@ inline static void sock_flush_unsafe(int fd) {
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
           perror("Apple/BSD sendfile errno");
 #endif
-          if (errno == EAGAIN || errno == EWOULDBLOCK) {
+          if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOTCONN) {
             return;
           } else if (errno == EINTR) {
             continue;
@@ -663,7 +702,8 @@ inline static void sock_flush_unsafe(int fd) {
             }
           }
           // return 0;
-        } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK ||
+                   errno == ENOTCONN) {
           return;
         } else if (errno == EINTR) {
           continue;
@@ -707,7 +747,7 @@ inline static void sock_flush_unsafe(int fd) {
         continue;
       } else if (sent == 0) {
         return;  // nothing to do?
-      } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      } else if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOTCONN) {
         return;
       } else if (errno == EINTR) {
         continue;
@@ -1057,7 +1097,7 @@ Minor tests
 void libsock_test(void) {
   sock_packet_s *p, *pl;
   fprintf(stderr, "Testing packet pool ");
-  for (size_t i = 0; i < BUFFER_PACKET_POOL * 4; i++) {
+  for (size_t i = 0; i < BUFFER_PACKET_POOL * 2; i++) {
     pl = p = sock_checkout_packet();
     while (buffer_pool.pool) {
       pl->metadata.next = sock_checkout_packet();

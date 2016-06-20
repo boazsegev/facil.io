@@ -9,10 +9,11 @@ Feel free to copy, use and enjoy according to the license provided.
 
 /** \file
 The libsock is a non-blocking socket helper library, using a user level buffer,
-non-blocking
-sockets and some helper functions.
+non-blocking sockets and some helper functions.
 
 This library is great when using it alongside `libreact`.
+
+The library is designed to be thread safe, but not fork safe.
 */
 
 #include <stdint.h>
@@ -71,7 +72,7 @@ Opens a listenning non-blocking socket. Return's the socket's file descriptor.
 
 Returns -1 on error.
 */
-int sock_listen(char* address, char* port);
+int sock_listen(const char* address, const char* port);
 
 /* *****************************************************************************
 The main sock_API.
@@ -94,7 +95,14 @@ client connection to the address requested.
 
 Returns the new file descriptor fd. Retruns -1 on error.
 
-NOT IMPLEMENTED (yet)
+NOTICE:
+
+This function is non-blocking, meanning that the connection probably
+wasn't established by the time the function returns (this prevents the function
+from hanging while waiting for a network timeout).
+
+Use select, poll or epoll to review the connection state before attempting to
+write to the socket.
 */
 int sock_connect(struct Reactor* owner, char* address, char* port);
 
