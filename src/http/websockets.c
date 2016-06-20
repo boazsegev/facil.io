@@ -212,7 +212,8 @@ static void websocket_write(server_pt srv,
                             size_t len,
                             char text,
                             char first,
-                            char last);
+                            char last,
+                            char client);
 
 static void on_data(server_pt server, uint64_t sockfd) {
   struct Websocket* ws = ws_protocol(server, sockfd);
@@ -326,12 +327,12 @@ static void on_data(server_pt server, uint64_t sockfd) {
           ws->parser.tmp_buffer[i + ws->parser.pos] ^=
               ws->parser.mask[ws->parser.state.at_mask++];
         }
-      } else {
-        // TODO enforce masking? we probably should, for security reasons...
-        // fprintf(stderr, "WARNING Websockets: got unmasked message!\n");
-        // Server.close(server, sockfd);
-        //   ws->parser.state.busy = 0;
-        // return;
+      } else if (ws->parser.state.client == 0) {
+        // enforce masking unless acting as client, also for security reasons...
+        fprintf(stderr, "ERROR Websockets: unmasked frame, disconnecting.\n");
+        Server.close(server, sockfd);
+        ws->parser.state.busy = 0;
+        return;
       }
       // Copy the data to the Ruby buffer - only if it's a user message
       // RubyCaller.call_c(copy_data_to_buffer_in_gvl, ws);
@@ -341,7 +342,7 @@ static void on_data(server_pt server, uint64_t sockfd) {
         // check message size limit
         if (Websocket.max_msg_size < ws->length + ws->parser.data_len) {
           // close connection!
-          fprintf(stderr, "ERR Websocket: Payload too big, review limits.\n");
+          fprintf(stderr, "ERROR Websocket: Payload too big, review limits.\n");
           Server.close(server, sockfd);
           ws->parser.state.busy = 0;
           return;
@@ -402,7 +403,7 @@ static void on_data(server_pt server, uint64_t sockfd) {
         /* ping */
         // write Pong - including ping data...
         websocket_write(server, sockfd, ws->parser.tmp_buffer + ws->parser.pos,
-                        ws->parser.data_len, 10, 1, 1);
+                        ws->parser.data_len, 10, 1, 1, ws->parser.state.client);
         if (ws->parser.head2.op_code == ws->parser.head.op_code)
           goto reset_parser;
       } else if (ws->parser.head.op_code == 10) {
@@ -483,7 +484,8 @@ static void websocket_write(server_pt srv,
                             size_t len,
                             char text, /* TODO: add client masking */
                             char first,
-                            char last) {
+                            char last,
+                            char client) {
   if (len < 126) {
     struct {
       unsigned op_code : 4;
@@ -496,10 +498,10 @@ static void websocket_write(server_pt srv,
     } head = {.op_code = (first ? (!text ? 2 : text) : 0),
               .fin = last,
               .size = len,
-              .masked = 0};
-    char buff[len + 2];
+              .masked = client};
+    char buff[len + (client ? 6 : 2)];
     memcpy(buff, &head, 2);
-    memcpy(buff + 2, data, len);
+    memcpy(buff + (client ? 6 : 2), data, len);
     Server.write(srv, fd, buff, len + 2);
   } else if (len <= WS_MAX_FRAME_SIZE) {
     /* head is 4 bytes */
@@ -519,25 +521,25 @@ static void websocket_write(server_pt srv,
               .length = htons(len)};
     if (len >> 15) {  // if len is larger then 32,767 Bytes.
       /* head MUST be 4 bytes */
-      void* buff = malloc(len + 4);
+      void* buff = malloc(len + (client ? 8 : 4));
       memcpy(buff, &head, 4);
-      memcpy(buff + 4, data, len);
+      memcpy(buff + (client ? 8 : 4), data, len);
       Server.write_move(srv, fd, buff, len + 4);
     } else {
       /* head MUST be 4 bytes */
-      char buff[len + 4];
+      char buff[len + (client ? 8 : 4)];
       memcpy(buff, &head, 4);
-      memcpy(buff + 4, data, len);
+      memcpy(buff + (client ? 8 : 4), data, len);
       Server.write(srv, fd, buff, len + 4);
     }
   } else {
     /* frame fragmentation is better for large data then large frames */
     while (len > WS_MAX_FRAME_SIZE) {
-      websocket_write(srv, fd, data, WS_MAX_FRAME_SIZE, text, first, 0);
+      websocket_write(srv, fd, data, WS_MAX_FRAME_SIZE, text, first, 0, client);
       data += WS_MAX_FRAME_SIZE;
       first = 0;
     }
-    websocket_write(srv, fd, data, len, text, first, 1);
+    websocket_write(srv, fd, data, len, text, first, 1, client);
   }
   return;
 }
@@ -553,7 +555,8 @@ static void ws_close(ws_s* ws) {
 
 static int ws_write(ws_s* ws, void* data, size_t size, char text) {
   if ((void*)Server.get_protocol(ws->srv, ws->fd) == ws) {
-    websocket_write(ws->srv, ws->fd, data, size, text, 1, 1);
+    websocket_write(ws->srv, ws->fd, data, size, text, 1, 1,
+                    ws->parser.state.client);
     return 0;
   }
   return -1;
