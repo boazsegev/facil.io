@@ -97,6 +97,10 @@ struct HttpResponse {
     */
     uint64_t fd_uuid;
     /**
+    The CPU clock, used when logging.
+    */
+    clock_t clock_start;
+    /**
     A pointer to the header's writing position.
     */
     char* headers_pos;
@@ -120,6 +124,10 @@ struct HttpResponse {
     Set to true in order to close the connection once the response was sent.
     */
     unsigned should_close : 1;
+    /**
+    Reserved for future use.
+    */
+    unsigned logged : 1;
     /**
     Reserved for future use.
     */
@@ -438,6 +446,15 @@ extern struct HttpResponseClass {
   Closes the connection.
   */
   void (*close)(struct HttpResponse*);
+  /**
+  Starts counting miliseconds for log results.
+  */
+  void (*log_start)(struct HttpResponse* response);
+  /**
+  prints out the log to stderr.
+  */
+  void (*log_finish)(struct HttpRequest* request,
+                     struct HttpResponse* response);
 } HttpResponse;
 
 /* end include guard */
