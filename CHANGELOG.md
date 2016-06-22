@@ -26,10 +26,6 @@ Changes I plan to make in future versions:
 
 * Implement Websocket writing using `libsock` packets instead of `malloc`.
 
-* `libsock` should (probably) share memory across process forks, to prevent race when writing to the system buffer... but...
-
-    This is a low priority, as it's not often that file descriptors (except the listening socket) will be shared across processes. Such a sharing would require that more memory is shared, to allow a connection state to persist across concurrent process operations.
-
 * Remove / fix server task container pooling (`FDTask` and `GroupTask` pools).
 
 ## A note about version numbers
@@ -57,6 +53,12 @@ Git commits aren't automatically tested yet and they might introduce new issues 
 Baseline (changes not logged before this point in time).
 
 ## Lib-Sock (development incomplete)
+
+### V. 0.0.6
+
+* `libsock` experienced minor API changes, specifically to the `init_socklib` function (which now accepts 0 arguments).
+
+* The `rw_hooks` now support a `flush` callback for hooks that keep an internal buffer. Implementing the `flush` callback will allow these callbacks to prevent a pre-mature closure of the socket stream and ensure that all the data will be sent.
 
 ### V. 0.0.5
 

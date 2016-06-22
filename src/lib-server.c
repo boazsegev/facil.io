@@ -860,6 +860,8 @@ static int srv_listen(struct ServerSettings settings) {
   if (!settings.processes || settings.processes <= 0)
     settings.processes = 1;
 
+  // Initialize the libsock
+  init_socklib();
   // V.3 Avoids using the Stack, allowing userspace to use the memory
   long capacity = sock_max_capacity();
   struct ConnectionData* connections = calloc(sizeof(*connections), capacity);
@@ -910,7 +912,6 @@ static int srv_listen(struct ServerSettings settings) {
   }
 
   // initialize connection data...
-  init_socklib(capacity);
   for (int i = 0; i < capacity; i++) {
     connections[i].srv = &srv;
     connections[i].fd = i;
