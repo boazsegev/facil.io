@@ -30,17 +30,22 @@ extern struct {
 
 ### The `max_msg_size` global property
 
-Websocket messages don't have a practical limitation on their size. Much like HTTP uploads, this could expose Websocket services to DoS attacks that upload large amounts of data to cause resource starvation.
+Websocket messages don't have a practical limitation on their size, much like HTTP uploads. This could expose Websocket services to DoS attacks that upload large amounts of data and cause resource starvation.
 
-The `max_msg_size` allows us to set a practical (and dynamic) limit on incoming Websocket messages.
+The `max_msg_size` allows us to set a practical global (and dynamic) limit on incoming Websocket messages.
 
-To set a limit, set `max_msg_size` to the maximum number of Bytes allowed per message. The default value is ~250KB (262144).
+To set a limit, set `max_msg_size` to the maximum number of Bytes allowed per message.
+
+The default limit value is ~256KB (`Websocket.max_msg_size = 262144`).
 
 Use:
 
-`
+```c
 Websocket.max_msg_size = 1024*1024*2 // ~2Mb
-`
+
+```
+
+Please note that this limit is the limit per message. It is easy to stream a 200Gb file to the server by using fragmentation, i.e. uploading 128Kb at a time and having the server merge the pieces of the data together after they were received (perhaps saving them to a temporary file). This approach of using fragmentation is safer and it allows easier recovery from disconnections (by sending only the missing data).
 
 ### The `timeout` semi-global property
 
