@@ -79,7 +79,7 @@ The Websocket API is available through this global `Websocket` object.
 */
 extern struct Websockets_API__ {
   /**
-  Sets the (global) maximum websocket message size/buffer per client.
+  Sets the (global) maximum websocket message size/buffer (in bytes) per client.
   */
   int max_msg_size;
   /**
@@ -101,11 +101,12 @@ extern struct Websockets_API__ {
    * value, if any. */
   void* (*set_udata)(ws_s* ws, void* udata);
   /** Writes data to the websocket. Returns -1 on failure (0 on success). */
-  int (*write)(ws_s* ws, void* data, size_t size, char text);
+  int (*write)(ws_s* ws, void* data, size_t size, char is_text);
   /** Closes a websocket connection. */
   void (*close)(ws_s* ws);
   /**
-  Performs a task on each websocket connection that shares the same process.
+  Performs a task on each websocket connection that shares the same process
+  (except the originating `ws_s` connection).
    */
   int (*each)(ws_s* ws_originator,
               void (*task)(ws_s* ws_target, void* arg),
