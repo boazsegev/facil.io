@@ -5,7 +5,7 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIBSOCK
-#define LIBSOCK "0.0.5"
+#define LIBSOCK "0.0.6"
 
 /** \file
 The libsock is a non-blocking socket helper library, using a user level buffer,
@@ -36,9 +36,6 @@ This information is also useful when implementing read / write hooks.
 #endif
 #ifndef BUFFER_PACKET_POOL
 #define BUFFER_PACKET_POOL 248 /* hard limit unless BUFFER_ALLOW_MALLOC */
-#endif
-#ifndef BUFFER_ALLOW_MALLOC
-#define BUFFER_ALLOW_MALLOC 0
 #endif
 
 /* *****************************************************************************
@@ -78,9 +75,12 @@ int sock_listen(const char* address, const char* port);
 The main sock_API.
 */
 
-/** Optional: initializes the library up to a `max_fd` value for a file
- * descriptor. */
-int8_t init_socklib(size_t max_fd);
+/**
+Initializes the library.
+
+Call this function before calling any `libsock` functions.
+*/
+int8_t init_socklib(void);
 
 /**
 `sock_accept` accepts a new socket connection from the listening socket
@@ -355,6 +355,14 @@ typedef struct sock_rw_hook_s {
   /** Implement writing to a file descriptor. Should behave like the file system
    * `write` call.*/
   ssize_t (*write)(int fd, const void* buf, size_t count);
+  /** When implemented, this function will be called to flush any data remaining
+  in the internal buffer.
+  The function should return the number of bytes remaining in the internal
+  buffer (0 is a valid response) on -1 (on error).
+  It is important thet the `flush` function write to the underlying fd until the
+  writing operation returns -1 with EWOULDBLOCK or all the data was written.
+  */
+  ssize_t (*flush)(int fd);
   /** The `on_clear` callback is called when the socket data is cleared, ideally
    * when the connection is closed, allowing for dynamic sock_rw_hook_s memory
    * management.

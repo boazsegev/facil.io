@@ -4,6 +4,8 @@ The Reactor library, `libreact` is a KQueue/EPoll abstraction and is part of [`l
 
 `libreact` requires only the following two files from this repository: [`src/libreact.h`](../src/libreact.h) and [`src/libreact.c`](../src/libreact.c).
 
+It should be noted that exactly like `epoll` and `kqueue`, `libreact` might produce unexpected results if forked after initialized, since this will cause the `epoll`/`kqueue` data to be shared across processes, even while these processes probably will not have access to the same file descriptor (i.e. `fd` 90 on one process might reference file "A" while on a different process the same `fd` (90) might reference file "B").
+
 You don't need to read this file if you're looking to utilize `lib-server`.
 
 This file is here as quick reference to anyone interested in maintaining `lib-server` or learning about how it's insides work.

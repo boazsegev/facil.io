@@ -20,6 +20,8 @@ sockets and some helper functions.
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/resource.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <netdb.h>
 #include <stdatomic.h>  // http://en.cppreference.com/w/c/atomic
 #include <sys/uio.h>
@@ -41,6 +43,22 @@ sockets and some helper functions.
 #define USE_SENDFILE 0
 #endif
 
+#endif
+
+#ifndef BUFFER_ALLOW_MALLOC
+/**
+Setting the `BUFFER_ALLOW_MALLOC` to 1 will allod dynamic buffer packet
+allocation.
+
+In some cases (not all), this might improve performance of prevent buffer packet
+starvation (depends how you use the library).
+
+However, this will cause `malloc` (instead of `mmap`) to be used, so that socket
+information and buffer state won't be shared among processes... which might case
+issues when using `fork`.
+
+*/
+#define BUFFER_ALLOW_MALLOC 0
 #endif
 
 /* *****************************************************************************
@@ -71,9 +89,9 @@ ssize_t sock_max_capacity(void) {
   if (flim)
     return flim;
 #ifdef _SC_OPEN_MAX
-  flim = sysconf(_SC_OPEN_MAX) - 1;
+  flim = sysconf(_SC_OPEN_MAX);
 #elif defined(OPEN_MAX)
-  flim = OPEN_MAX - 1;
+  flim = OPEN_MAX;
 #endif
   // try to maximize limits - collect max and set to max
   struct rlimit rlim;
@@ -89,7 +107,7 @@ ssize_t sock_max_capacity(void) {
   if (flim < rlim.rlim_cur)
     flim = rlim.rlim_cur;
   // return what we have
-  return flim + 1;
+  return flim;
 }
 
 /**
@@ -122,20 +140,20 @@ int sock_listen(const char* address, const char* port) {
   hints.ai_socktype = SOCK_STREAM;  // TCP stream sockets
   hints.ai_flags = AI_PASSIVE;      // fill in my IP for me
   if (getaddrinfo(address, port, &hints, &servinfo)) {
-    perror("addr err");
+    // perror("addr err");
     return -1;
   }
   // get the file descriptor
   srvfd =
       socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
   if (srvfd <= 0) {
-    perror("socket err");
+    // perror("socket err");
     freeaddrinfo(servinfo);
     return -1;
   }
   // make sure the socket is non-blocking
   if (sock_set_non_block(srvfd) < 0) {
-    perror("couldn't set socket as non blocking! ");
+    // perror("couldn't set socket as non blocking! ");
     freeaddrinfo(servinfo);
     close(srvfd);
     return -1;
@@ -154,7 +172,7 @@ int sock_listen(const char* address, const char* port) {
     }
 
     if (!bound) {
-      perror("bind err");
+      // perror("bind err");
       freeaddrinfo(servinfo);
       close(srvfd);
       return -1;
@@ -163,7 +181,7 @@ int sock_listen(const char* address, const char* port) {
   freeaddrinfo(servinfo);
   // listen in
   if (listen(srvfd, SOMAXCONN) < 0) {
-    perror("couldn't start listening");
+    // perror("couldn't start listening");
     close(srvfd);
     return -1;
   }
@@ -178,9 +196,11 @@ typedef struct fd_info_s fd_info_s;
 
 struct fd_info_s {
   pthread_mutex_t lock;
+  struct sockaddr addr;
   sock_packet_s* packet;
   struct Reactor* owner;
   sock_rw_hook_s* rw_hooks;
+  socklen_t addrlen;
   uint32_t sent;
   unsigned open : 1;
   unsigned client : 1;
@@ -330,51 +350,64 @@ static void destroy_lib_data(void) {
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
   fprintf(stderr, "\nDestroying all libsock data\n");
 #endif
+  buffer_pool.pool = NULL;
+  buffer_pool.allocated = NULL;
   if (fd_info) {
     while (fd_capacity--) {  // include 0 in countdown
       sock_clear(fd_capacity);
       pthread_mutex_destroy(&fd_info[fd_capacity].lock);
     }
+#if defined(BUFFER_ALLOW_MALLOC) && BUFFER_ALLOW_MALLOC == 1
     free(fd_info);
+#else
+    munmap(fd_info, (BUFFER_PACKET_REAL_SIZE * BUFFER_PACKET_POOL) +
+                        (sizeof(fd_info_s) * fd_capacity));
+#endif
     fd_info = NULL;
-  }
-  if (buffer_pool.allocated) {
-    buffer_pool.pool = NULL;
-    free(buffer_pool.allocated);
-    buffer_pool.allocated = NULL;
   }
 }
 
-static void single_time_init(void) {
-  if (buffer_pool.allocated)
-    return;
-  void* buff_mem = buffer_pool.allocated =
-      calloc(BUFFER_PACKET_REAL_SIZE, BUFFER_PACKET_POOL);
+int8_t init_socklib(void) {
+  if (fd_capacity)
+    return (fd_info == NULL) ? -1 : 0;
+  fd_capacity = sock_max_capacity();
+  size_t fd_map_mem_size = sizeof(fd_info_s) * fd_capacity;
+  size_t buffer_mem_size = BUFFER_PACKET_REAL_SIZE * BUFFER_PACKET_POOL;
+  void* buff_mem;
+// pthread_mutexattr_t mtx_attr;
+#if defined(BUFFER_ALLOW_MALLOC) && BUFFER_ALLOW_MALLOC == 1
+  buff_mem = malloc(fd_map_mem_size + buffer_mem_size);
+// pthread_mutexattr_init(&mtx_attr);
+#else
+  buff_mem = mmap(NULL, fd_map_mem_size + buffer_mem_size,
+                  PROT_READ | PROT_WRITE | PROT_EXEC,
+                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  // MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+  if (buff_mem == MAP_FAILED || buff_mem == NULL) {
+    return -1;
+  }
+// pthread_mutexattr_init(&mtx_attr);
+// pthread_mutexattr_setpshared(&mtx_attr, PTHREAD_PROCESS_SHARED);
+#endif
+  // assign memory addresses.
+  fd_info = buff_mem;
+  buff_mem += fd_map_mem_size;
+  buffer_pool.allocated = buff_mem;
+  // initialize packet buffer
   for (size_t i = 0; i < BUFFER_PACKET_POOL - 1; i++) {
-    ((sock_packet_s*)buff_mem)->metadata.next =
-        buff_mem + BUFFER_PACKET_REAL_SIZE;
+    *((sock_packet_s*)buff_mem) =
+        (sock_packet_s){.metadata.next = buff_mem + BUFFER_PACKET_REAL_SIZE};
     buff_mem += BUFFER_PACKET_REAL_SIZE;
   }
   atomic_store(&buffer_pool.pool, buffer_pool.allocated);
-  atexit(destroy_lib_data);
-}
 
-int8_t init_socklib(size_t capacity) {
-  if (capacity <= fd_capacity)
-    return 0;
-  single_time_init();
-  fd_info_s* new_data = calloc(sizeof(fd_info_s), capacity);
-  if (!new_data)
-    return -1;
-  if (fd_info) {
-    memcpy(new_data, fd_info, sizeof(fd_info_s) * fd_capacity);
-    free(fd_info);
-  }
-  fd_info = new_data;
-  for (size_t i = fd_capacity; i < capacity; i++) {
+  for (size_t i = 0; i < fd_capacity; i++) {
+    fd_info[i] = (fd_info_s){};
     pthread_mutex_init(&fd_info[i].lock, NULL);
+    // pthread_mutex_init(&fd_info[i].lock, &mtx_attr);
   }
-  fd_capacity = capacity;
+  // pthread_mutexattr_destroy(&mtx_attr);
+  atexit(destroy_lib_data);
 #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
   libsock_test();
   fprintf(stderr,
@@ -441,7 +474,6 @@ int sock_connect(struct Reactor* owner, char* address, char* port) {
   hints.ai_socktype = SOCK_STREAM;  // TCP stream sockets
   hints.ai_flags = AI_PASSIVE;      // fill in my IP for me
   if (getaddrinfo(address, port, &hints, &addrinfo)) {
-    perror("addr err");
     return -1;
   }
   // get the file descriptor
@@ -449,17 +481,14 @@ int sock_connect(struct Reactor* owner, char* address, char* port) {
       socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
   if (fd <= 0) {
     freeaddrinfo(addrinfo);
-    perror("socket err");
     return -1;
   }
   if (validate_mem(fd)) {
     freeaddrinfo(addrinfo);
-    perror("socket err");
     return -1;
   }
   // make sure the socket is non-blocking
   if (sock_set_non_block(fd) < 0) {
-    perror("couldn't set socket as non blocking! ");
     freeaddrinfo(addrinfo);
     close(fd);
     return -1;
@@ -984,6 +1013,14 @@ ssize_t sock_flush(int fd) {
   }
   fd_info_s* sfd = fd_info + fd;
   if (sfd->packet == NULL) {
+    // make sure the rw_hook finished sending all it's data.
+    if (sfd->rw_hooks && sfd->rw_hooks->flush) {
+      ssize_t val;
+      if ((val = sfd->rw_hooks->flush(fd)) > 0)
+        return 0;
+      if ((val = sfd->rw_hooks->flush(fd)) < 0)
+        sfd->close = 1;
+    }
     if (sfd->close) {
       goto close_socket;
     }
