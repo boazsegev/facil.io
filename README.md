@@ -90,7 +90,7 @@ But, if you need to expose the application directly to the web, it is possible t
 
 Since `lib-server` utilizes `libsock` for socket communication (leveraging it's user-land buffer and other features), any RW hooks assigned be utilized for the specified connection.
 
-Using `lib-server`'s read-write hooks (`Server.rw_hooks`) is now deprecated in favor of direct access to `libsock`'s API using `server_uuid_to_fd` to convert a connection's UUID to it's source `fd`.
+Using `libsock`'s read-write hooks (`sock_rw_hook_set`) is allows us to use an underlaying TLS/SSL library to send data securely. Use `server_uuid_to_fd` to convert a connection's UUID to it's source `fd`.
 
 I did not write a TLS implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a load-balancer/proxy that manages the SSL/TLS layer).
 

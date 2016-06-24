@@ -36,7 +36,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 
 /*****************************/ /** \file
- This small library implements a reactor pattern using callbacks.
+This small library implements a reactor pattern using callbacks.
 
 Here are the supported events and their callbacks:
 
