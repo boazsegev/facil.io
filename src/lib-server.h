@@ -153,7 +153,7 @@ struct ServerSettings {
   void (*on_idle)(server_pt server);
   /** a NULL terminated string for when the server is busy (defaults to NULL, a
    * simple disconnection with no message). */
-  char* busy_msg;
+  const char* busy_msg;
   /** Opaque server-global user data. **/
   void* udata;
   /**

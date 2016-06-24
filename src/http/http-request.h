@@ -118,7 +118,7 @@ struct HttpRequest {
     unsigned int max;
     /** body size count (for parser validation) */
     unsigned int bd_rcved;
-  } private;
+  } internal;
   /** buffers the head of the request (not the body) */
   char buffer[HTTP_HEAD_MAX_SIZE];
 };

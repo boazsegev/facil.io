@@ -281,7 +281,7 @@ static void http_on_data(const struct Server* server, uint64_t sockfd) {
     request->sockfd = sockfd;
   }
   char* buff = request->buffer;
-  int pos = request->private.pos;
+  int pos = request->internal.pos;
 
 restart:
 
@@ -291,17 +291,17 @@ restart:
     int t = 0;
     while ((len = Server.read(server, sockfd, buff, HTTP_HEAD_MAX_SIZE)) > 0) {
       pos = len;
-      if (request->content_length - request->private.bd_rcved < pos) {
-        pos = request->content_length - request->private.bd_rcved;
+      if (request->content_length - request->internal.bd_rcved < pos) {
+        pos = request->content_length - request->internal.bd_rcved;
       }
       if ((t = fwrite(buff, 1, pos, request->body_file)) < pos) {
         perror("Tmpfile Err");
         goto internal_error;
       }
-      request->private.bd_rcved += pos;
+      request->internal.bd_rcved += pos;
     }
 
-    if (request->private.bd_rcved >= request->content_length) {
+    if (request->internal.bd_rcved >= request->content_length) {
       rewind(request->body_file);
       goto finish;
     }
@@ -317,7 +317,7 @@ restart:
   if (len <= 0) {
     // buffer is empty, but more data is underway or error
     // anyway, don't cleanup - let `on_close` do it's job
-    request->private.pos = pos;
+    request->internal.pos = pos;
     return;
   }
   // adjust length for buffer size positioing (so that len == max pos - 1).
@@ -374,8 +374,8 @@ parse:
     buff[pos++] = 0;
     buff[pos++] = 0;
 
-    request->private.header_hash = buff + pos;
-    request->private.max = pos;
+    request->internal.header_hash = buff + pos;
+    request->internal.max = pos;
   }
   if (len == 2 && buff[pos] == '\r' && buff[pos + 1] == '\n')
     goto finish_headers;
@@ -452,7 +452,7 @@ parse:
 finish_headers:
 
   // set the safety endpoint
-  request->private.max = pos - request->private.max;
+  request->internal.max = pos - request->internal.max;
 
   // check for required `host` header and body content length (not chuncked)
   if (!request->host || (request->content_type && !request->content_length))
@@ -489,7 +489,7 @@ finish_headers:
         goto internal_error;
     }
     // add data count to marker
-    request->private.bd_rcved = len - pos;
+    request->internal.bd_rcved = len - pos;
     // notifications are edge based. If there's still data in the stream, we
     // need to read it.
     goto restart;
@@ -502,7 +502,7 @@ finish:
     goto options;
 
   // reset inner "pos"
-  request->private.pos = 0;
+  request->internal.pos = 0;
 
   // disconnect the request object from the server storage
   // this prevents on_close from clearing the memory while on_request is still

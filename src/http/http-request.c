@@ -92,7 +92,7 @@ static struct HttpRequest* request_new(void) {
   } else {
     memset(req, 0, sizeof(struct HttpRequest) - HTTP_HEAD_MAX_SIZE);
   }
-  req->request.private.is_request = request_is_request;
+  req->request.internal.is_request = request_is_request;
   return (struct HttpRequest*)req;
 }
 
@@ -126,59 +126,59 @@ static void request_clear(struct HttpRequest* self) {
     return;
   if (self->body_file)
     fclose(self->body_file);
-  *self = (struct HttpRequest){.private.is_request = request_is_request};
+  *self = (struct HttpRequest){.internal.is_request = request_is_request};
 }
 
 // validating a request object
 static int request_is_request(struct HttpRequest* self) {
-  return (self && (self->private.is_request == request_is_request));
+  return (self && (self->internal.is_request == request_is_request));
 }
 
 // implement the following request handlers:
 
 static void request_first(struct HttpRequest* self) {
-  self->private.pos = 0;
+  self->internal.pos = 0;
 };
 static int request_next(struct HttpRequest* self) {
   // repeat the following 2 times, as it's a name + value pair
   for (int i = 0; i < 2; i++) {
     // move over characters
-    while (self->private.pos < self->private.max &&
-           self->private.header_hash[self->private.pos])
-      self->private.pos++;
+    while (self->internal.pos < self->internal.max &&
+           self->internal.header_hash[self->internal.pos])
+      self->internal.pos++;
     // move over NULL
-    while (self->private.pos < self->private.max &&
-           !self->private.header_hash[self->private.pos])
-      self->private.pos++;
+    while (self->internal.pos < self->internal.max &&
+           !self->internal.header_hash[self->internal.pos])
+      self->internal.pos++;
   }
-  if (self->private.pos == self->private.max)
+  if (self->internal.pos == self->internal.max)
     return 0;
   return 1;
 }
 static int request_find(struct HttpRequest* self, char* const name) {
-  self->private.pos = 0;
+  self->internal.pos = 0;
   do {
-    if (!strcasecmp(self->private.header_hash + self->private.pos, name))
+    if (!strcasecmp(self->internal.header_hash + self->internal.pos, name))
       return 1;
   } while (request_next(self));
   return 0;
 }
 static char* request_name(struct HttpRequest* self) {
-  if (!self->private.header_hash[self->private.pos])
+  if (!self->internal.header_hash[self->internal.pos])
     return NULL;
-  return self->private.header_hash + self->private.pos;
+  return self->internal.header_hash + self->internal.pos;
 };
 static char* request_value(struct HttpRequest* self) {
-  if (!self->private.header_hash[self->private.pos])
+  if (!self->internal.header_hash[self->internal.pos])
     return NULL;
-  int pos = self->private.pos;
+  int pos = self->internal.pos;
   // move over characters
-  while (pos < self->private.max && self->private.header_hash[pos])
+  while (pos < self->internal.max && self->internal.header_hash[pos])
     pos++;
   // move over NULL
-  while (pos < self->private.max && !self->private.header_hash[pos])
+  while (pos < self->internal.max && !self->internal.header_hash[pos])
     pos++;
-  if (self->private.pos == self->private.max)
+  if (self->internal.pos == self->internal.max)
     return 0;
-  return self->private.header_hash + pos;
+  return self->internal.header_hash + pos;
 };
