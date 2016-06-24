@@ -102,15 +102,16 @@ events.
 Returns -1 on error, otherwise return value is system dependent.
 */
 int reactor_add(struct Reactor* reactor, int fd) {
-  assert(reactor->private.reactor_fd);
+  assert(reactor->internal_data.reactor_fd);
   if (reactor->maxfd < fd)
     return -1;
   /*
   the `on_close` callback was likely called already by the user, before calling
   this, and a new handler was probably assigned (or mapped) to the fd.
   */
-  reactor->private.map[fd] = 1;
-  return _reactor_set_fd_polling_(reactor->private.reactor_fd, fd, ADD_FD, 0);
+  reactor->internal_data.map[fd] = 1;
+  return _reactor_set_fd_polling_(reactor->internal_data.reactor_fd, fd, ADD_FD,
+                                  0);
 }
 /**
 Adds a file descriptor as a timer object.
@@ -118,10 +119,10 @@ Adds a file descriptor as a timer object.
 Returns -1 on error, otherwise return value is system dependent.
 */
 int reactor_add_timer(struct Reactor* reactor, int fd, long milliseconds) {
-  assert(reactor->private.reactor_fd);
+  assert(reactor->internal_data.reactor_fd);
   assert(reactor->maxfd >= fd);
-  reactor->private.map[fd] = 1;
-  return _reactor_set_fd_polling_(reactor->private.reactor_fd, fd, ADD_TM,
+  reactor->internal_data.map[fd] = 1;
+  return _reactor_set_fd_polling_(reactor->internal_data.reactor_fd, fd, ADD_TM,
                                   milliseconds);
 }
 
@@ -133,10 +134,11 @@ descriptor wasn't owned by
 the reactor, it isn't an error.
 */
 int reactor_remove(struct Reactor* reactor, int fd) {
-  assert(reactor->private.reactor_fd);
+  assert(reactor->internal_data.reactor_fd);
   assert(reactor->maxfd >= fd);
-  reactor->private.map[fd] = 0;
-  return _reactor_set_fd_polling_(reactor->private.reactor_fd, fd, RM_FD, 0);
+  reactor->internal_data.map[fd] = 0;
+  return _reactor_set_fd_polling_(reactor->internal_data.reactor_fd, fd, RM_FD,
+                                  0);
 }
 /**
 Closes a file descriptor, calling it's callback if it was registered with the
@@ -146,16 +148,16 @@ void reactor_close(struct Reactor* reactor, int fd) {
   assert(reactor->maxfd >= fd);
   static pthread_mutex_t locker = PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_lock(&locker);
-  if (reactor->private.map[fd]) {
+  if (reactor->internal_data.map[fd]) {
     shutdown(fd, SHUT_RDWR);
     close(fd);
-    reactor->private.map[fd] = 0;
+    reactor->internal_data.map[fd] = 0;
     pthread_mutex_unlock(&locker);
     if (reactor->on_close)
       reactor->on_close(reactor, fd);
     sock_clear(fd);
     /* this is automatic on epoll... what about kqueue? */
-    _reactor_set_fd_polling_(reactor->private.reactor_fd, fd, RM_FD, 0);
+    _reactor_set_fd_polling_(reactor->internal_data.reactor_fd, fd, RM_FD, 0);
     /* don't unlock twice */
     return;
   }
@@ -215,10 +217,10 @@ static struct timespec _reactor_timeout = {
 
 #define _CRAETE_QUEUE_ kqueue()
 #define _EVENT_TYPE_ struct kevent
-#define _EVENTS_ ((_EVENT_TYPE_*)(reactor->private.events))
-#define _WAIT_FOR_EVENTS_                                                    \
-  kevent(reactor->private.reactor_fd, NULL, 0, _EVENTS_, REACTOR_MAX_EVENTS, \
-         &_reactor_timeout);
+#define _EVENTS_ ((_EVENT_TYPE_*)(reactor->internal_data.events))
+#define _WAIT_FOR_EVENTS_                                      \
+  kevent(reactor->internal_data.reactor_fd, NULL, 0, _EVENTS_, \
+         REACTOR_MAX_EVENTS, &_reactor_timeout);
 #define _GETFD_(_ev_) _EVENTS_[(_ev_)].ident
 #define _EVENTERROR_(_ev_) (_EVENTS_[(_ev_)].flags & (EV_EOF | EV_ERROR))
 #define _EVENTREADY_(_ev_) (_EVENTS_[(_ev_)].filter == EVFILT_WRITE)
@@ -232,10 +234,10 @@ static int _reactor_timeout = REACTOR_TICK;
 
 #define _CRAETE_QUEUE_ epoll_create1(0)
 #define _EVENT_TYPE_ struct epoll_event
-#define _EVENTS_ ((_EVENT_TYPE_*)reactor->private.events)
+#define _EVENTS_ ((_EVENT_TYPE_*)reactor->internal_data.events)
 #define _QUEUE_READY_FLAG_ EPOLLOUT
-#define _WAIT_FOR_EVENTS_                                               \
-  epoll_wait(reactor->private.reactor_fd, _EVENTS_, REACTOR_MAX_EVENTS, \
+#define _WAIT_FOR_EVENTS_                                                     \
+  epoll_wait(reactor->internal_data.reactor_fd, _EVENTS_, REACTOR_MAX_EVENTS, \
              _reactor_timeout)
 #define _GETFD_(_ev_) _EVENTS_[(_ev_)].data.fd
 #define _EVENTERROR_(_ev_) (_EVENTS_[(_ev_)].events & (~(EPOLLIN | EPOLLOUT)))
@@ -251,15 +253,15 @@ requires either kqueue or epoll to be available.)
 internally used, clears the reactors resouces.
 */
 static void reactor_destroy(struct Reactor* reactor) {
-  if (reactor->private.map)
-    free(reactor->private.map);
-  if (reactor->private.events)
-    free(reactor->private.events);
-  if (reactor->private.reactor_fd)
-    close(reactor->private.reactor_fd);
-  reactor->private.map = NULL;
-  reactor->private.events = NULL;
-  reactor->private.reactor_fd = 0;
+  if (reactor->internal_data.map)
+    free(reactor->internal_data.map);
+  if (reactor->internal_data.events)
+    free(reactor->internal_data.events);
+  if (reactor->internal_data.reactor_fd)
+    close(reactor->internal_data.reactor_fd);
+  reactor->internal_data.map = NULL;
+  reactor->internal_data.events = NULL;
+  reactor->internal_data.reactor_fd = 0;
 }
 /**
 Initializes the reactor, making the reactor "live".
@@ -269,11 +271,12 @@ Returns -1 on error, otherwise returns 0.
 int reactor_init(struct Reactor* reactor) {
   if (reactor->maxfd <= 0)
     return -1;
-  reactor->private.reactor_fd = _CRAETE_QUEUE_;
-  reactor->private.map = calloc(1, reactor->maxfd + 1);
-  reactor->private.events = calloc(sizeof(_EVENT_TYPE_), REACTOR_MAX_EVENTS);
-  if (!reactor->private.reactor_fd || !reactor->private.map ||
-      !reactor->private.events) {
+  reactor->internal_data.reactor_fd = _CRAETE_QUEUE_;
+  reactor->internal_data.map = calloc(1, reactor->maxfd + 1);
+  reactor->internal_data.events =
+      calloc(sizeof(_EVENT_TYPE_), REACTOR_MAX_EVENTS);
+  if (!reactor->internal_data.reactor_fd || !reactor->internal_data.map ||
+      !reactor->internal_data.events) {
     reactor_destroy(reactor);
     return -1;
   }
@@ -286,10 +289,10 @@ which might have been allocated on the stack and should be handled by the
 caller).
 */
 void reactor_stop(struct Reactor* reactor) {
-  if (!reactor->private.map || !reactor->private.reactor_fd)
+  if (!reactor->internal_data.map || !reactor->internal_data.reactor_fd)
     return;
   for (int i = 0; i <= reactor->maxfd; i++) {
-    if (reactor->private.map[i]) {
+    if (reactor->internal_data.map[i]) {
       if (reactor->on_shutdown)
         reactor->on_shutdown(reactor, i);
       reactor_close(reactor, i);
@@ -308,7 +311,7 @@ Reviews any pending events (up to REACTOR_MAX_EVENTS)
 Returns -1 on error, otherwise returns 0.
 */
 int reactor_review(struct Reactor* reactor) {
-  if (!reactor->private.reactor_fd)
+  if (!reactor->internal_data.reactor_fd)
     return -1;
 
   // set the last tick
@@ -317,7 +320,7 @@ int reactor_review(struct Reactor* reactor) {
   /* *** review locally closed connections (do we do this?) ***
   int close_events = 0;
   for (int i = 3; i <= reactor->maxfd; i++) {
-    if (reactor->private.map[i]) {
+    if (reactor->internal_data.map[i]) {
       if (fcntl(i, F_GETFL) < 0 && errno == EBADF) {
         close_events++;
         reactor_close(reactor, i);

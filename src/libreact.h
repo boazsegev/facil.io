@@ -216,7 +216,7 @@ struct Reactor {
     char* map;
     /** the reactor's events array - do NOT touch! */
     void* events;
-  } private;
+  } internal_data;
 };
 
 /**
