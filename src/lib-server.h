@@ -138,9 +138,9 @@ struct ServerSettings {
   /** the default protocol. */
   struct Protocol* protocol;
   /** the port to listen to. defaults to 3000. */
-  char* port;
+  const char* port;
   /** the address to bind to. defaults to NULL (all localhost addresses) */
-  char* address;
+  const char* address;
   /** called when the server starts, allowing for further initialization, such
   as timed event scheduling.
   this will be called seperately for every process. */
