@@ -1,5 +1,5 @@
 tmp/*
 experimental
 html/
-files/
+public_www/
 Dockerfile

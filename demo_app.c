@@ -5,16 +5,16 @@
 //
 // The *.o files are the binary saved in the tmp folder.
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-
 #define THREAD_COUNT 1
 #define PROCESS_COUNT 1
 
 #include "websockets.h"
 #include "mini-crypt.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 /*****************************
 The Websocket echo implementation
@@ -121,6 +121,7 @@ void on_request(struct HttpRequest* request) {
 // }
 
 void on_init(server_pt srv) {
+  ((struct HttpProtocol*)Server.settings(srv)->protocol)->log_static = 1;
   fprintf(
       stderr,
       "\nDemo HTTP server up and running.\n"
@@ -133,7 +134,7 @@ The main function
 */
 
 int main(int argc, char const* argv[]) {
-  start_http_server(on_request, "~", .threads = THREAD_COUNT,
+  start_http_server(on_request, "./public_www", .threads = THREAD_COUNT,
                     .processes = PROCESS_COUNT, .on_init = on_init);
   return 0;
 }
