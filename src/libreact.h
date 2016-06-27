@@ -219,6 +219,10 @@ struct Reactor {
   } internal_data;
 };
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 /**
 Initializes the reactor, making the reactor "live".
 
@@ -281,5 +285,9 @@ Creates a timer file descriptor, system dependent.
 Returns -1 on error, otherwise returns the file descriptor.
 */
 int reactor_make_timer(void);
+
+#if defined(__cplusplus)
+} /* extern "C" */
+#endif
 
 #endif /* end of include guard: LIBREACT */

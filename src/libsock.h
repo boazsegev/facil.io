@@ -44,6 +44,13 @@ Avoide including the "libreact.h" file, the following is all we need.
 struct Reactor;
 
 /* *****************************************************************************
+C++ extern
+*/
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+/* *****************************************************************************
 Process wide and helper sock_API.
 */
 
@@ -383,5 +390,12 @@ struct sock_rw_hook_s* sock_rw_hook_get(int fd);
 
 /** Sets a socket hook state (a pointer to the struct). */
 int sock_rw_hook_set(int fd, struct sock_rw_hook_s* rw_hooks);
+
+/* *****************************************************************************
+C++ extern
+*/
+#if defined(__cplusplus)
+}
+#endif
 
 #endif /* LIBSOCK */

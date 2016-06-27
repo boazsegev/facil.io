@@ -958,12 +958,12 @@ static int srv_listen(struct ServerSettings settings) {
 
   // let'm know...
   if (srvfd)
-    fprintf(
-        stderr, "* pid %d: (%d threads) Listening on port %s. fd limit: ~%lu\n",
-        getpid(), srv.settings->threads, srv.settings->port, srv.capacity - 1);
+    fprintf(stderr,
+            "* pid %d: (%d threads) Listening on port %s. fd limit: ~%lu\n",
+            getpid(), srv.settings->threads, srv.settings->port, srv.capacity);
   else
     fprintf(stderr, "* pid %d: (%d threads) network service. fd limit: ~%lu\n",
-            getpid(), srv.settings->threads, srv.capacity - 1);
+            getpid(), srv.settings->threads, srv.capacity);
 
   // initialize reactor
   reactor_init(&srv.reactor);

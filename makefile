@@ -17,8 +17,8 @@ OBJS= $(foreach source, $(SRC), $(addprefix $(OUT_ROOT)/, $(addsuffix .o, $(base
 CCL = $(CC)
 
 # the C flags
-CFLAGS=-Wall -g -std=c11 -O3 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
-CPPFLAGS= -Wall -std=c++11 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
+CFLAGS=-Wall -g -O3 -std=c11 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
+CPPFLAGS= -Wall -O3 -std=c++11 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
 
 $(NAME): build
 
