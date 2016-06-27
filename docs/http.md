@@ -153,6 +153,10 @@ The data should be quite self explanatory, so for brevity's sake only the API wi
 
 Although there is no common use case for a thread-safe HttpRequest handling, it should be noted that the HttpRequest API and objects are **not** thread-safe, meaning no more then a single thread should handle an HttpRequest using this API. The HttpRequest can always be copied or safeguarded by the specific implementation.
 
+#### `ssize_t HttpRequest.decode_url(char* dest, const char* src, size_t)`
+
+Decodes a URL encoded string.
+
 #### `void HttpRequest.first(struct HttpRequest* request)`
 
 Restarts header iteration. The iteration cycle isn't thread-safe.

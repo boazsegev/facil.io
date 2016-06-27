@@ -152,6 +152,12 @@ Baseline (changes not logged before this point in time).
 
 ## HTTP Protocol
 
+### Date 20160626
+
+* Fixed logging for static file range requests.
+
+* Moved URL decoding logic to the `HttpRequest` object.
+
 ### Date 20160620
 
 * Added basic logging support.

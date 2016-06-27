@@ -77,42 +77,25 @@ static int http_sendfile(struct HttpRequest* req) {
 
   size_t len = protocol->public_folder_length;
   // create and initialize the filename, including decoding the path
-  char fname[strlen(req->path) + len + 1];
+  ssize_t tmp = strlen(req->path);
+  char fname[tmp + len + 1];
   memcpy(fname, protocol->public_folder, len);
-  // if the ast character is a '/', step back.
+  // if the last character is a '/', step back.
   if (fname[len - 1] == '/' || fname[len - 1] == '\\')
     len--;
-  // decode and review the request->path data
-  int i = 0;
-  while (req->path[i]) {
-    if (req->path[i] == '+')  // decode space
-      fname[len] = ' ';
-    else if (req->path[i] == '%') {
-      // decode hex value
-      if (is_hex(req->path[i + 1]) && is_hex(req->path[i + 2])) {
-        // this is a percent encoded value.
-        fname[len] =
-            (hex_val(req->path[i + 1]) * 16) + hex_val(req->path[i + 2]);
-        i += 2;
-      } else {
-        // there was an error in the URL encoding... what to do? ignore?
-        return 0;
-      }
-    } else
-      fname[len] = req->path[i];
-    len++;
-    i++;
-  }
-  fname[len] = 0;
-  i = 0;
+  tmp = HttpRequest.decode_url(fname + len, req->path, tmp);
+  if (tmp < 0)
+    return 0;
+  len += tmp;
 
   // scan path string for double dots (security - prevent path manipulation)
   // set the extention point value, while were doing so.
-  while (fname[i]) {
-    if (fname[i] == '.')
-      ext = fname + i;
+  tmp = 0;
+  while (fname[tmp]) {
+    if (fname[tmp] == '.')
+      ext = fname + tmp;
     // return false if we found a "/.." in our string.
-    if (fname[i++] == '/' && fname[i++] == '.' && fname[i++] == '.')
+    if (fname[tmp++] == '/' && fname[tmp++] == '.' && fname[tmp++] == '.')
       return 0;
   }
   // fprintf(stderr, "file name: %s\noriginal request path: %s\n", fname,
@@ -186,6 +169,8 @@ static int http_sendfile(struct HttpRequest* req) {
                               "public, max-age=3600", 20);
     HttpResponse.write_header(response, "Accept-Ranges", 13, "bytes", 5);
     HttpResponse.sendfile(response, file, start, finish - start + 1);
+    if (protocol->log_static)
+      HttpResponse.log_finish(req, response);
     HttpResponse.destroy(response);
     return 1;
   }

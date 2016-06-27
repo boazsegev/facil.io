@@ -25,6 +25,8 @@ This is the interface for the HttpRequest object. Use the `HttpRequest` object
 to make API calls, such as iterating through headers.
 */
 extern const struct HttpRequestClass {
+  /* Object management */
+
   /** returns an new heap allocated request object */
   struct HttpRequest* (*create)(void);
   /** releases the resources used by a request object but keep's it's core
@@ -34,6 +36,10 @@ extern const struct HttpRequestClass {
   void (*destroy)(struct HttpRequest* request);
   /** validates that the object is indeed a request object */
   int (*is_request)(struct HttpRequest* self);
+
+  /* URL decoding */
+  /** Decodes a URL encoded string */
+  ssize_t (*decode_url)(char* dest, const char* url_encoded, size_t length);
 
   /* Header handling */
 

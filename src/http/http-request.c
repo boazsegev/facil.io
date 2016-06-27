@@ -14,6 +14,7 @@ static int request_find(struct HttpRequest* self, char* const name);
 static char* request_name(struct HttpRequest* self);
 static char* request_value(struct HttpRequest* self);
 static int request_is_request(struct HttpRequest* self);
+static ssize_t decode_url(char* dest, const char* url_data, size_t length);
 
 const struct HttpRequestClass HttpRequest = {
     // retures an new heap allocated request object
@@ -24,6 +25,9 @@ const struct HttpRequestClass HttpRequest = {
     .destroy = request_destroy,
     // validated that this is a request object
     .is_request = request_is_request,
+
+    // URL decoding
+    .decode_url = decode_url,
 
     // Header handling
 
@@ -182,3 +186,33 @@ static char* request_value(struct HttpRequest* self) {
     return 0;
   return self->internal.header_hash + pos;
 };
+
+/* *****************************************************************************
+*/
+
+#define is_hex(c)                                              \
+  (((c) >= '0' && (c) <= '9') || ((c) >= 'a' && (c) <= 'f') || \
+   ((c) >= 'A' && c <= 'F'))
+#define hex_val(c) (((c) >= '0' && (c) <= '9') ? ((c)-48) : (((c) | 32) - 87))
+
+static ssize_t decode_url(char* dest, const char* url_data, size_t length) {
+  char* pos = dest;
+  for (size_t i = 0; i < length; i++) {
+    if (url_data[i] == '+')  // decode space
+      *(pos++) = ' ';
+    else if (url_data[i] == '%') {
+      // decode hex value
+      if (is_hex(url_data[i + 1]) && is_hex(url_data[i + 2])) {
+        // this is a percent encoded value.
+        *(pos++) = (hex_val(url_data[i + 1]) * 16) + hex_val(url_data[i + 2]);
+        i += 2;
+      } else {
+        // there was an error in the URL encoding... what to do? ignore?
+        return -1;
+      }
+    } else
+      *(pos++) = url_data[i];
+  }
+  *pos = 0;
+  return pos - dest;
+}
