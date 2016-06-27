@@ -15,6 +15,7 @@ static char* request_name(struct HttpRequest* self);
 static char* request_value(struct HttpRequest* self);
 static int request_is_request(struct HttpRequest* self);
 static ssize_t decode_url(char* dest, const char* url_data, size_t length);
+static ssize_t decode_url_unsafe(char* dest, const char* url_data);
 
 const struct HttpRequestClass HttpRequest = {
     // retures an new heap allocated request object
@@ -28,6 +29,7 @@ const struct HttpRequestClass HttpRequest = {
 
     // URL decoding
     .decode_url = decode_url,
+    .decode_url_unsafe = decode_url_unsafe,
 
     // Header handling
 
@@ -203,6 +205,24 @@ static ssize_t decode_url(char* dest, const char* url_data, size_t length) {
   char* pos = dest;
   const char* end = url_data + length;
   while (url_data < end) {
+    if (*url_data == '+') {
+      // decode space
+      *(pos++) = ' ';
+      ++url_data;
+    } else if (*url_data == '%') {
+      // decode hex value
+      // this is a percent encoded value.
+      *(pos++) = (hex_val(url_data[1]) << 4) | hex_val(url_data[2]);
+      url_data += 3;
+    } else
+      *(pos++) = *(url_data++);
+  }
+  *pos = 0;
+  return pos - dest;
+}
+static ssize_t decode_url_unsafe(char* dest, const char* url_data) {
+  char* pos = dest;
+  while (*url_data) {
     if (*url_data == '+') {
       // decode space
       *(pos++) = ' ';

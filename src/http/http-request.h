@@ -40,6 +40,7 @@ extern const struct HttpRequestClass {
   /* URL decoding */
   /** Decodes a URL encoded string */
   ssize_t (*decode_url)(char* dest, const char* url_encoded, size_t length);
+  ssize_t (*decode_url_unsafe)(char* dest, const char* url_encoded);
 
   /* Header handling */
 
