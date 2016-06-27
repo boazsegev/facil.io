@@ -204,7 +204,7 @@ static ssize_t decode_url(char* dest, const char* url_data, size_t length) {
       // decode hex value
       if (is_hex(url_data[i + 1]) && is_hex(url_data[i + 2])) {
         // this is a percent encoded value.
-        *(pos++) = (hex_val(url_data[i + 1]) * 16) + hex_val(url_data[i + 2]);
+        *(pos++) = (hex_val(url_data[i + 1]) << 4) | hex_val(url_data[i + 2]);
         i += 2;
       } else {
         // there was an error in the URL encoding... what to do? ignore?
