@@ -190,29 +190,32 @@ static char* request_value(struct HttpRequest* self) {
 /* *****************************************************************************
 */
 
-#define is_hex(c)                                              \
-  (((c) >= '0' && (c) <= '9') || ((c) >= 'a' && (c) <= 'f') || \
-   ((c) >= 'A' && c <= 'F'))
-#define hex_val(c) (((c) >= '0' && (c) <= '9') ? ((c)-48) : (((c) | 32) - 87))
-
+/* Credit to Jonathan Leffler for the idea */
+#define hex_val(c)                                                        \
+  (((c) >= '0' && (c) <= '9') ? ((c)-48) : (((c) >= 'a' && (c) <= 'f') || \
+                                            ((c) >= 'A' && (c) <= 'F'))   \
+                                               ? (((c) | 32) - 87)        \
+                                               : ({                       \
+                                                   return -1;             \
+                                                   0;                     \
+                                                 }))
 static ssize_t decode_url(char* dest, const char* url_data, size_t length) {
   char* pos = dest;
-  for (size_t i = 0; i < length; i++) {
-    if (url_data[i] == '+')  // decode space
+  const char* end = url_data + length;
+  while (url_data < end) {
+    if (*url_data == '+') {
+      // decode space
       *(pos++) = ' ';
-    else if (url_data[i] == '%') {
+      ++url_data;
+    } else if (*url_data == '%') {
       // decode hex value
-      if (is_hex(url_data[i + 1]) && is_hex(url_data[i + 2])) {
-        // this is a percent encoded value.
-        *(pos++) = (hex_val(url_data[i + 1]) << 4) | hex_val(url_data[i + 2]);
-        i += 2;
-      } else {
-        // there was an error in the URL encoding... what to do? ignore?
-        return -1;
-      }
+      // this is a percent encoded value.
+      *(pos++) = (hex_val(url_data[1]) << 4) | hex_val(url_data[2]);
+      url_data += 3;
     } else
-      *(pos++) = url_data[i];
+      *(pos++) = *(url_data++);
   }
   *pos = 0;
   return pos - dest;
 }
+#undef hex_val
