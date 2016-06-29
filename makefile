@@ -1,39 +1,46 @@
 NAME=demo
+
+OUT_ROOT=./tmp
+TMP_ROOT=./tmp
+SRC_ROOT=.
+
+SRC_EXTRA_FOLDERS=src src/http
+
+LIBS=-pthread -lssl -lcrypto
+INCLUDE=/usr/local/include
+
 CC=@gcc
 CPP=@g++
 DB=@lldb
-LIBS=-pthread -lssl -lcrypto
-INCLUDE=/usr/local/include
-OUT_ROOT=./tmp
-SRC_ROOT=.
-SRC_SUBFOLDERS=src src/http
+OPTIMIZATION=O3
 
 #auto computed values
 BIN=$(OUT_ROOT)/$(NAME)
-SRCDIR= $(SRC_ROOT) $(foreach dir, $(SRC_SUBFOLDERS), $(addsuffix /,$(basename $(SRC_ROOT)))$(dir))
+SRCDIR= $(SRC_ROOT) $(foreach dir, $(SRC_EXTRA_FOLDERS), $(addsuffix /,$(basename $(SRC_ROOT)))$(dir))
 SRC = $(foreach dir, $(SRCDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
-BUILDTREE=$(foreach dir, $(SRCDIR), $(addsuffix /, $(basename $(OUT_ROOT)))$(basename $(dir)))
-OBJS= $(foreach source, $(SRC), $(addprefix $(OUT_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+BUILDTREE=$(foreach dir, $(SRCDIR), $(addsuffix /, $(basename $(TMP_ROOT)))$(basename $(dir)))
+OBJS= $(foreach source, $(SRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 CCL = $(CC)
 
 # the C flags
-CFLAGS=-Wall -g -O3 -std=c11 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
-CPPFLAGS= -Wall -O3 -std=c++11 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
+CFLAGS=-Wall -g -$(OPTIMIZATION) -std=c11 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
+CPPFLAGS= -Wall -$(OPTIMIZATION) -std=c++11 $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
 
 $(NAME): build
 
 build: $(OBJS)
-	$(CCL) -o $(BIN) $^ -O3 $(LIBS)
+	$(CCL) -o $(BIN) $^ -$(OPTIMIZATION) $(LIBS)
 
-$(OUT_ROOT)/%.o: %.c # $(SRC)/%.h
+$(TMP_ROOT)/%.o: %.c
 	$(CC) -o $@ -c $^ $(CFLAGS)
 
-$(OUT_ROOT)/%.o: %.cpp # $(SRC)/%.h
+$(TMP_ROOT)/%.o: %.cpp
 	$(CPP) -o $@ -c $^ $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 
 clean:
-	-@rm -R $(OUT_ROOT)
+	-@rm $(BIN)
+	-@rm -R $(TMP_ROOT)
 	-@mkdir -p $(BUILDTREE)
 
 execute:
