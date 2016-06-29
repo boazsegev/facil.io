@@ -152,6 +152,8 @@ Baseline (changes not logged before this point in time).
 
 ## HTTP Protocol
 
+* Fixed pipelining... I think.
+
 ### Date 20160626
 
 * Fixed logging for static file range requests.

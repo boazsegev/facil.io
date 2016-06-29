@@ -55,14 +55,17 @@ const struct HttpRequestClass HttpRequest = {
 #define REQUEST_POOL_SIZE 32
 #endif
 
-struct HttpRequestPool {
-  struct HttpRequest request;
-  struct HttpRequestPool* next;
-};
+#ifndef REQUEST_STRUCT_SIZE
+#define REQUEST_STRUCT_SIZE (sizeof(struct HttpRequest) + HTTP_HEAD_MAX_SIZE)
+#endif
+// struct HttpRequestPool {
+//   struct HttpRequest request;
+//   struct HttpRequestPool* next;
+// };
 // The global packet container pool
 static struct {
-  struct HttpRequestPool* _Atomic pool;
-  struct HttpRequestPool* initialized;
+  struct HttpRequest* _Atomic pool;
+  struct HttpRequest* initialized;
 } ContainerPool = {NULL};
 
 static atomic_flag pool_initialized;
@@ -71,12 +74,13 @@ static void create_request_pool(void) {
   while (atomic_flag_test_and_set(&pool_initialized)) {
   }
   if (ContainerPool.initialized == NULL) {
-    ContainerPool.initialized =
-        calloc(REQUEST_POOL_SIZE, sizeof(struct HttpRequestPool));
+    ContainerPool.initialized = calloc(REQUEST_POOL_SIZE, REQUEST_STRUCT_SIZE);
+    void* loc = ContainerPool.initialized;
     for (size_t i = 0; i < REQUEST_POOL_SIZE - 1; i++) {
-      ContainerPool.initialized[i].next = &ContainerPool.initialized[i + 1];
+      ((struct HttpRequest*)(loc + (REQUEST_STRUCT_SIZE * i)))->internal.next =
+          ((struct HttpRequest*)(loc + (REQUEST_STRUCT_SIZE * (i + 1))));
     }
-    ContainerPool.pool = ContainerPool.initialized;
+    atomic_store(&ContainerPool.pool, ContainerPool.initialized);
   }
   atomic_flag_clear(&pool_initialized);
 }
@@ -88,18 +92,17 @@ static void create_request_pool(void) {
 static struct HttpRequest* request_new(void) {
   if (ContainerPool.initialized == NULL)
     create_request_pool();
-  struct HttpRequestPool* req = atomic_load(&ContainerPool.pool);
+  struct HttpRequest* req = atomic_load(&ContainerPool.pool);
   while (req) {
-    if (atomic_compare_exchange_weak(&ContainerPool.pool, &req, req->next))
+    if (atomic_compare_exchange_weak(&ContainerPool.pool, &req,
+                                     req->internal.next))
       break;
   }
   if (!req) {
-    req = calloc(sizeof(struct HttpRequest), 1);
-  } else {
-    memset(req, 0, sizeof(struct HttpRequest) - HTTP_HEAD_MAX_SIZE);
+    req = malloc(REQUEST_STRUCT_SIZE);
   }
-  req->request.internal.is_request = request_is_request;
-  return (struct HttpRequest*)req;
+  *req = (struct HttpRequest){.internal.is_request = request_is_request};
+  return req;
 }
 
 // the destructor
@@ -110,17 +113,17 @@ static void request_destroy(struct HttpRequest* self) {
     fclose(self->body_file);
   self->server = 0;
   if (ContainerPool.initialized == NULL ||
-      ((struct HttpRequestPool*)self) < ContainerPool.initialized ||
-      ((struct HttpRequestPool*)self) >
+      ((struct HttpRequest*)self) < ContainerPool.initialized ||
+      ((struct HttpRequest*)self) >
           (ContainerPool.initialized +
-           (sizeof(struct HttpRequestPool) * REQUEST_POOL_SIZE))) {
+           (REQUEST_STRUCT_SIZE * REQUEST_POOL_SIZE))) {
     free(self);
   } else {
-    ((struct HttpRequestPool*)self)->next = atomic_load(&ContainerPool.pool);
+    ((struct HttpRequest*)self)->internal.next =
+        atomic_load(&ContainerPool.pool);
     for (;;) {
       if (atomic_compare_exchange_weak(&ContainerPool.pool,
-                                       &((struct HttpRequestPool*)self)->next,
-                                       ((struct HttpRequestPool*)self)))
+                                       &self->internal.next, self))
         break;
     }
   }

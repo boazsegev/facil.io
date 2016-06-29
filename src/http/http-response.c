@@ -905,7 +905,7 @@ prints out the log to stderr.
 */
 static void log_finish(struct HttpRequest* request,
                        struct HttpResponse* response) {
-  size_t bytes_sent = (size_t)response->metadata.headers_pos;
+  uintptr_t bytes_sent = (uintptr_t)response->metadata.headers_pos;
 
   size_t mili = response->metadata.logged
                     ? ((clock() - response->metadata.clock_start) /

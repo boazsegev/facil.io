@@ -125,9 +125,11 @@ struct HttpRequest {
     unsigned int max;
     /** body size count (for parser validation) */
     unsigned int bd_rcved;
+    /** points to the next request in the pool, when the request is stored */
+    struct HttpRequest* next;
   } internal;
   /** buffers the head of the request (not the body) */
-  char buffer[HTTP_HEAD_MAX_SIZE];
+  char buffer[];
 };
 
 #endif /* HTTP_PROTOCOL_H */

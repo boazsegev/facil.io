@@ -506,6 +506,9 @@ finish:
     // someone else already started using this connection...
     goto cleanup_after_finish;
   }
+
+  // pipeline?
+
   if (pos < len) {
     // if we have more data in the pipe, clear the request, move the buffer data
     // and return to the beginning of the parsing.
@@ -516,6 +519,9 @@ finish:
     }
     len = len - pos;
     pos = 0;
+    request->internal.pos = len;
+    request->server = server;
+    request->sockfd = sockfd;
     Server.set_udata(server, sockfd, request);
     if (Server.get_udata(server, sockfd) != request) {
       goto cleanup_after_finish;
@@ -671,6 +677,9 @@ struct HttpProtocol* HttpProtocol_new(void) {
   http->maximum_body_size = 32;
   http->on_request = http_default_on_request;
   http->public_folder = NULL;
+  struct HttpRequest* req = HttpRequest.create();
+  if (req)
+    HttpRequest.destroy(req);
   return http;
 }
 void HttpProtocol_destroy(struct HttpProtocol* http) {
