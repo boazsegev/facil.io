@@ -1109,11 +1109,11 @@ static int xor_crypt(xor_key_s* key,
 
   /* start decryption */
   while (length > i) {
-    while ((key->length - key->position >= 8)    // we have 8 bytes for key.
-           && ((i + 8) <= length)                // we have 8 bytes for stream.
-           && (((size_t)(target + i)) & 7) == 0  // target memory is aligned.
-           && (((size_t)(source + i)) & 7) == 0  // source memory is aligned.
-           && (((size_t)(key->key + key->position)) & 7) == 0  // key aligned.
+    while ((key->length - key->position >= 8)  // we have 8 bytes for key.
+           && ((i + 8) <= length)              // we have 8 bytes for stream.
+           && (((uintptr_t)(target + i)) & 7) == 0  // target memory is aligned.
+           && (((uintptr_t)(source + i)) & 7) == 0  // source memory is aligned.
+           && (((uintptr_t)(key->key + key->position)) & 7) == 0  // key aligned
            ) {
       // fprintf(stderr, "XOR optimization used i= %lu, key pos = %lu.\n", i,
       //         key->position);
@@ -1132,8 +1132,9 @@ static int xor_crypt(xor_key_s* key,
     //         "-- i= %lu, key pos = %lu, target %lu, source %lu , key %lu
     //         .\n",
     //         i,
-    //         key->position, (((size_t)(target + i)) & 7),
-    //         (((size_t)(source + i)) & 7), (((size_t)(key->key + i)) & 7));
+    //         key->position, (((uintptr_t)(target + i)) & 7),
+    //         (((uintptr_t)(source + i)) & 7),
+    //          (((uintptr_t)(key->key + i)) & 7));
 
     if (i < length) {
       // fprintf(stderr, "XOR single byte.\n");
