@@ -217,7 +217,7 @@ int main(void) {
 // easy :-)
 ```
 
-Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with a few changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files. `mini-crypt` and `lib-tls-server` aren't required (nor did I finish writing them).
+Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with a few changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files. `minicrypt` and `lib-tls-server` aren't required (nor did I finish writing them).
 
 ### A word about concurrency
 
@@ -370,11 +370,11 @@ int main(int argc, char const* argv[]) {
 }
 ```
 
-The Websockets implementation uses the `mini-crypt` library for the Base64 encoding and SHA-1 hashing that are part of the protocol's handshake. If you're using OpenSSL, you might want to rewrite this part and use the OpenSSL implementation (it should be faster, as it's written in assembly instead of C).
+The Websockets implementation uses the `minicrypt` library for the Base64 encoding and SHA-1 hashing that are part of the protocol's handshake. If you're using OpenSSL, you might want to rewrite this part and use the OpenSSL implementation (OpenSSL's implementation should be faster, as it's written in assembly instead of C and more brain-power was invested in optimizing it).
 
 ---
 
-That's it for now. I'm still working on these as well as on `mini-crypt` and SSL/TLS support (adding OpenSSL might be easy if you know the OpenSSL framework, but I think their API is terrible and I'm looking into alternatives).
+That's it for now. I'm still working on these as well as on `minicrypt` and SSL/TLS support (adding OpenSSL might be easy if you know the OpenSSL framework, but I think their API is terrible and I'm looking into alternatives).
 
 ## Forking, Contributing and all that Jazz
 
