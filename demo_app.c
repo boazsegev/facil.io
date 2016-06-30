@@ -9,7 +9,7 @@
 #define PROCESS_COUNT 1
 
 #include "websockets.h"
-#include "mini-crypt.h"
+#include "minicrypt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -90,7 +90,7 @@ void on_request(struct HttpRequest* request) {
     return;
   } else if (!strcmp(request->path, "/dump")) {
     // test big data write
-    fdump_s* body = MiniCrypt.fdump("~/Documents/Scratch/bo.jpg", 0);
+    fdump_s* body = minicrypt_fdump("~/Documents/Scratch/bo.jpg", 0);
     if (!body) {
       struct HttpResponse* response = HttpResponse.create(request);
       response->status = 500;

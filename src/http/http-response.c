@@ -12,7 +12,7 @@
 #include <netinet/ip.h>
 #include <arpa/inet.h>
 #include "libsock.h"
-#include "mini-crypt.h"
+#include "minicrypt.h"
 
 /******************************************************************************
 Function declerations.
@@ -679,7 +679,7 @@ static sock_packet_s* prep_headers(struct HttpResponse* response) {
       response->date = response->last_modified;
     struct tm t;
     // date header
-    MiniCrypt.gmtime(&response->date, &t);
+    minicrypt_gmtime(&response->date, &t);
     memcpy(response->metadata.headers_pos, "Date: ", 6);
     response->metadata.headers_pos += 6;
     response->metadata.headers_pos +=
@@ -687,7 +687,7 @@ static sock_packet_s* prep_headers(struct HttpResponse* response) {
     *(response->metadata.headers_pos++) = '\r';
     *(response->metadata.headers_pos++) = '\n';
     // last-modified header
-    MiniCrypt.gmtime(&response->last_modified, &t);
+    minicrypt_gmtime(&response->last_modified, &t);
     memcpy(response->metadata.headers_pos, "Last-Modified: ", 15);
     response->metadata.headers_pos += 15;
     response->metadata.headers_pos +=
@@ -914,7 +914,7 @@ static void log_finish(struct HttpRequest* request,
   struct tm tm;
   struct sockaddr_in addrinfo;
   socklen_t addrlen = sizeof(addrinfo);
-  MiniCrypt.gmtime(&((struct Reactor*)request->server)->last_tick, &tm);
+  minicrypt_gmtime(&((struct Reactor*)request->server)->last_tick, &tm);
   int got_add = getpeername(server_uuid_to_fd(request->sockfd),
                             (struct sockaddr*)&addrinfo, &addrlen);
 

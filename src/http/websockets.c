@@ -1,5 +1,5 @@
 #include "websockets.h"
-#include "mini-crypt.h"
+#include "minicrypt.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -634,13 +634,13 @@ static void upgrade(struct WebsocketSettings settings) {
   ;
   // use the SHA1 methods provided to concat the client string and hash
   sha1_s sha1;
-  MiniCrypt.sha1_init(&sha1);
-  MiniCrypt.sha1_write(&sha1, recv_str, strlen(recv_str));
-  MiniCrypt.sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
+  minicrypt_sha1_init(&sha1);
+  minicrypt_sha1_write(&sha1, recv_str, strlen(recv_str));
+  minicrypt_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
   // base encode the data
   char websockets_key[32];
   int len =
-      MiniCrypt.base64_encode(websockets_key, MiniCrypt.sha1_result(&sha1), 20);
+      minicrypt_base64_encode(websockets_key, minicrypt_sha1_result(&sha1), 20);
   // set the string's length and encoding
   HttpResponse.write_header(response, "Sec-WebSocket-Accept", 20,
                             websockets_key, len);

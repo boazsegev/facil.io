@@ -1,9 +1,10 @@
-#include "mini-crypt.h"
+#include "minicrypt.h"
 
 /*******************************************************************************
 Setup
 */
 
+#include <x86intrin.h>
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -12,6 +13,7 @@ Setup
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>
@@ -20,78 +22,6 @@ Setup
 #define __BIG_ENDIAN__
 #endif
 #endif
-
-/*****************************************************************************
-Local functions used in the API.
-*/
-
-/* SHA-1 */
-static void sha1_init(sha1_s* s);
-static int sha1_write(sha1_s* s, const char* data, size_t len);
-static char* sha1_result(sha1_s* s);
-
-/* SHA-2 */
-static void sha2_init(sha2_s* s, sha2_variant variant);
-static int sha2_write(sha2_s* s, const char* data, size_t len);
-static char* sha2_result(sha2_s* s);
-
-/* Base64 */
-static int base64_encode(char* target, const char* data, int len);
-static int base64_decode(char* target, char* encoded, int base64_len);
-
-/* Hex */
-static int is_hex(const char* string, size_t length);
-static int str2hex(char* target, const char* string, size_t length);
-static int hex2str(char* target, char* hex, size_t length);
-
-/* XOR */
-static int xor_crypt(xor_key_s* key,
-                     void* target,
-                     const void* source,
-                     size_t length);
-
-/* misc */
-static fdump_s* fdump(const char* file_path, size_t size_limit);
-
-/**
-A faster (yet less localized) alternative to `gmtime_r`.
-
-See the libc `gmtime_r` documentation for details.
-
-Falls back to `gmtime_r` for dates before epoch.
-*/
-static struct tm* gmtime_alt(const time_t* timer, struct tm* tmbuf);
-
-/*****************************************************************************
-The API gateway
-*/
-struct MiniCrypt__API___ MiniCrypt = {
-    /* SHA-1 */
-    .sha1_init = sha1_init,
-    .sha1_write = sha1_write,
-    .sha1_result = sha1_result,
-
-    /* SHA-2 */
-    .sha2_init = sha2_init,
-    .sha2_write = sha2_write,
-    .sha2_result = sha2_result,
-
-    /* Base64 */
-    .base64_encode = base64_encode,
-    .base64_decode = base64_decode,
-
-    /* Hex */
-    .is_hex = is_hex,
-    .str2hex = str2hex,
-    .hex2str = hex2str,
-
-    /* XOR */
-    .xor_crypt = xor_crypt,
-
-    /* Misc */
-    .fdump = fdump,
-    .gmtime = gmtime_alt,
-};
 
 /*****************************************************************************
 Useful Macros
@@ -111,14 +41,15 @@ Useful Macros
 #define right_rotate(i, bits) \
   (((i) >> (bits)) | ((i) << (sizeof((i)) - (bits))))
 
-/*******************************************************************************
+/* ***************************************************************************
 SHA-1 hashing
 */
 
 /**
-Initialize/reset the SHA-1 object.
+Initialize or reset the `sha1` object. This must be performed before hashing
+data using sha1.
 */
-static void sha1_init(sha1_s* s) {
+void minicrypt_sha1_init(sha1_s* s) {
   memset(s, 0, sizeof(*s));
   s->digest.i[0] = 0x67452301;
   s->digest.i[1] = 0xefcdab89;
@@ -127,6 +58,7 @@ static void sha1_init(sha1_s* s) {
   s->digest.i[4] = 0xc3d2e1f0;
   s->initialized = 1;
 }
+
 /**
 Process the buffer once full.
 */
@@ -283,13 +215,13 @@ Add a single byte to the buffer and check the buffer's status.
     sha1_process_buffer(s);
 
 /**
-Write data to the buffer.
+Writes data to the sha1 buffer.
 */
-static int sha1_write(sha1_s* s, const char* data, size_t len) {
+int minicrypt_sha1_write(sha1_s* s, const char* data, size_t len) {
   if (!s || s->finalized)
     return -1;
   if (!s->initialized)
-    sha1_init(s);
+    minicrypt_sha1_init(s);
   // msg length is in bits, not bytes.
   s->msg_length.i += (len << 3);
   // add each byte to the sha1 hash's buffer... network byte issues apply
@@ -299,11 +231,13 @@ static int sha1_write(sha1_s* s, const char* data, size_t len) {
   }
   return 0;
 }
-
 /**
-Finalize the SHA-1 object and return the resulting hash.
+Finalizes the SHA1 hash, returning the Hashed data.
+
+`sha1_result` can be called for the same object multiple times, but the
+finalization will only be performed the first time this function is called.
 */
-static char* sha1_result(sha1_s* s) {
+char* minicrypt_sha1_result(sha1_s* s) {
   // finalize the data if it wasn't finalized before
   if (!s->finalized) {
     // set the finalized flag
@@ -368,11 +302,12 @@ static char* sha1_result(sha1_s* s) {
   // for (size_t i = 0; i < 20; i++)
   //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
   // fprintf(stderr, "\r\n");
-  return s->digest.str;
+  return (char*)s->digest.str;
 }
 
-/*******************************************************************************
-SHA-2
+#undef sha1_review_buffer
+/* ***************************************************************************
+SHA-2 hashing
 */
 
 /* SHA-224 and SHA-256 constants */
@@ -465,7 +400,7 @@ apply. The following are valid options (see the sha2_variant enum):
 - SHA_224
 
 */
-static void sha2_init(sha2_s* s, sha2_variant variant) {
+void minicrypt_sha2_init(sha2_s* s, sha2_variant variant) {
   memset(s, 0, sizeof(*s));
   if (variant == SHA_224) {
     s->type_512 = 0;
@@ -637,18 +572,20 @@ static void sha2_process_buffer(sha2_s* s) {
   }
 }
 
-/** Write data to be hashed by the SHA-2 object. */
-static int sha2_write(sha2_s* s, const char* data, size_t len) {
+/**
+Writes data to the SHA-2 buffer.
+*/
+int minicrypt_sha2_write(sha2_s* s, const void* data, size_t len) {
   if (!s || s->finalized)
     return -1;
   if (!s->initialized)
-    sha2_init(s, SHA_512);
+    minicrypt_sha2_init(s, SHA_512);
   // msg length is in up to 128 bits long...
   s->msg_length.i += (__uint128_t)len << 3;
   // add each byte to the sha1 hash's buffer... network byte issues apply
   while (len--) {
     // add a byte to the buffer, consider network byte order .
-    sha2_set_byte(s, s->buffer_pos, *(data++));
+    sha2_set_byte(s, s->buffer_pos, *((uint8_t*)(data++)));
     // update buffer position
     ++s->buffer_pos;
     // review chunk (1024/512 bits) processing
@@ -663,9 +600,12 @@ static int sha2_write(sha2_s* s, const char* data, size_t len) {
 }
 
 /**
-Finalize the SHA-1 object and return the resulting hash.
+Finalizes the SHA-2 hash, returning the Hashed data.
+
+`sha2_result` can be called for the same object multiple times, but the
+finalization will only be performed the first time this function is called.
 */
-static char* sha2_result(sha2_s* s) {
+char* minicrypt_sha2_result(sha2_s* s) {
   // finalize the data if it wasn't finalized before
   if (!s->finalized) {
     // set the finalized flag
@@ -778,15 +718,11 @@ static char* sha2_result(sha2_s* s) {
   // for (size_t i = 0; i < (s->type_512 ? 64 : 32); i++)
   //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
   // fprintf(stderr, "\r\n");
-  return s->digest.str;
+  return (char*)s->digest.str;
 }
 
-/*******************************************************************************
-SHA-3 TODO
-*/
-
-/*******************************************************************************
-Base64 encoding/decoding
+/* ***************************************************************************
+Base64 encoding
 */
 
 /** the base64 encoding array */
@@ -815,7 +751,7 @@ static unsigned base64_decodes[] = {
 /**
 a union used for Base64 parsing
 */
-union Base64Parser {
+union base64_parser_u {
   struct {
     unsigned tail : 2;
     unsigned data : 6;
@@ -835,29 +771,27 @@ union Base64Parser {
 
 /**
 This will encode a byte array (data) of a specified length (len) and
-place
-the encoded data into the target byte buffer (target). The target buffer
-MUST have enough room for the expected data, including a terminating NULL
-byte.
+place the encoded data into the target byte buffer (target). The target buffer
+MUST have enough room for the expected data.
 
 Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
 the raw data's length isn't devisable by 3.
 
-Always assume the target buffer should have room enough for (len*4/3 + 5)
+Always assume the target buffer should have room enough for (len*4/3 + 4)
 bytes.
 
 Returns the number of bytes actually written to the target buffer
-(including the Base64 required padding and excluding the NULL terminator).
+(including the Base64 required padding and excluding a NULL terminator).
 
-A NULL terminator char is written to the target buffer.
+A NULL terminator char is NOT written to the target buffer.
 */
-static int base64_encode(char* target, const char* data, int len) {
+int minicrypt_base64_encode(char* target, const char* data, int len) {
   int written = 0;
   // // optional implementation: allow a non writing, length computation.
   // if (!target)
   //   return (len % 3) ? (((len + 3) / 3) * 4) : (len / 3);
   // use a union to avoid padding issues.
-  union Base64Parser* section;
+  union base64_parser_u* section;
   while (len >= 3) {
     section = (void*)data;
     target[0] = base64_encodes[section->byte1.data];
@@ -907,19 +841,17 @@ and the decoded data will be placed in the original string's buffer.
 
 Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
 the raw data's length isn't devisable by 3. Hence, the target buffer should
-be,
-at least, `base64_len/4*3 + 3` long.
+be, at least, `base64_len/4*3 + 3` long.
 
 Returns the number of bytes actually written to the target buffer (excluding
-the
-NULL terminator byte).
+the NULL terminator byte).
 */
-static int base64_decode(char* target, char* encoded, int base64_len) {
+int minicrypt_base64_decode(char* target, char* encoded, int base64_len) {
   if (base64_len <= 0)
     return -1;
   if (!target)
     target = encoded;
-  union Base64Parser section;
+  union base64_parser_u section;
   int written = 0;
   // base64_encodes
   // a struct that will be used to read the data.
@@ -974,22 +906,30 @@ static int base64_decode(char* target, char* encoded, int base64_len) {
   return written;
 }
 
-/*****************************************************************************
+/* ***************************************************************************
 Hex Conversion
 */
 
-#define hex2i(h) \
-  (((h) >= '0' && (h) <= '9') ? ((h) - '0') : (((h) | 32) - 'a' + 10))
+// #define hex2i(h) \
+//   (((h) >= '0' && (h) <= '9') ? ((h) - '0') : (((h) | 32) - 'a' + 10))
 
 #define i2hex(hi) (((hi) < 10) ? ('0' + (hi)) : ('A' + ((hi)-10)))
+
+/* Credit to Jonathan Leffler for the idea */
+#define hex2i(c)                                                          \
+  (((c) >= '0' && (c) <= '9') ? ((c)-48) : (((c) >= 'a' && (c) <= 'f') || \
+                                            ((c) >= 'A' && (c) <= 'F'))   \
+                                               ? (((c) | 32) - 87)        \
+                                               : ({                       \
+                                                   return -1;             \
+                                                   0;                     \
+                                                 }))
 
 /**
 Returns 1 if the string is HEX encoded (no non-valid hex values). Returns 0 if
 it isn't.
-
-White-Space is considered non-valid for this implementation.
 */
-static int is_hex(const char* string, size_t length) {
+int minicrypt_is_hex(const char* string, size_t length) {
   // for (size_t i = 0; i < length; i++) {
   //   if (isxdigit(string[i]) == 0)
   //     return 0;
@@ -1008,7 +948,8 @@ This will convert the string (byte stream) to a Hex string. This is not
 cryptography, just conversion for pretty print.
 
 The target buffer MUST have enough room for the expected data. The expected
-data is double the length of the string + 1 byte for the NULL terminator byte.
+data is double the length of the string + 1 byte for the NULL terminator
+byte.
 
 A NULL byte will be appended to the target buffer. The function will return
 the number of bytes written to the target buffer.
@@ -1016,7 +957,7 @@ the number of bytes written to the target buffer.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-static int str2hex(char* target, const char* string, size_t length) {
+int minicrypt_str2hex(char* target, const char* string, size_t length) {
   if (!target)
     return -1;
   size_t i = length;
@@ -1041,13 +982,14 @@ byte.
 A NULL byte will be appended to the target buffer. The function will return
 the number of bytes written to the target buffer.
 
-If the target buffer is NULL, the encoded string will be destructively edited
+If the target buffer is NULL, the encoded string will be destructively
+edited
 and the decoded data will be placed in the original string's buffer.
 
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-static int hex2str(char* target, char* hex, size_t length) {
+int minicrypt_hex2str(char* target, char* hex, size_t length) {
   if (!target)
     target = hex;
   size_t i = 0;
@@ -1073,8 +1015,8 @@ static int hex2str(char* target, char* hex, size_t length) {
 #undef hex2i
 #undef i2hex
 
-/*****************************************************************************
-XOR
+/* ***************************************************************************
+XOR encryption
 */
 
 /**
@@ -1085,11 +1027,18 @@ to the same object).
 
 The key's `on_cycle` callback option should be utilized to er-calculate the
 key every cycle. Otherwise, XOR encryption should be avoided.
+
+A more secure encryption would be easier to implement using seperate
+`xor_key_s` objects for encryption and decription.
+
+If `target` is NULL, the source will be used as the target (destructive mode).
+
+Returns -1 on error and 0 on success.
 */
-static int xor_crypt(xor_key_s* key,
-                     void* target,
-                     const void* source,
-                     size_t length) {
+int minicrypt_xor_crypt(xor_key_s* key,
+                        void* target,
+                        const void* source,
+                        size_t length) {
   if (!source || !key)
     return -1;
   if (!length)
@@ -1113,7 +1062,7 @@ static int xor_crypt(xor_key_s* key,
            && ((i + 8) <= length)              // we have 8 bytes for stream.
            && (((uintptr_t)(target + i)) & 7) == 0  // target memory is aligned.
            && (((uintptr_t)(source + i)) & 7) == 0  // source memory is aligned.
-           && (((uintptr_t)(key->key + key->position)) & 7) == 0  // key aligned
+           && ((uintptr_t)(key->key + key->position) & 7) == 0  // key aligned.
            ) {
       // fprintf(stderr, "XOR optimization used i= %lu, key pos = %lu.\n", i,
       //         key->position);
@@ -1127,14 +1076,6 @@ static int xor_crypt(xor_key_s* key,
         return -1;
       key->position = 0;
     }
-
-    // fprintf(stderr,
-    //         "-- i= %lu, key pos = %lu, target %lu, source %lu , key %lu
-    //         .\n",
-    //         i,
-    //         key->position, (((uintptr_t)(target + i)) & 7),
-    //         (((uintptr_t)(source + i)) & 7),
-    //          (((uintptr_t)(key->key + i)) & 7));
 
     if (i < length) {
       // fprintf(stderr, "XOR single byte.\n");
@@ -1152,18 +1093,368 @@ static int xor_crypt(xor_key_s* key,
   return 0;
 }
 
-/*****************************************************************************
-Misc Helpers
+/**
+Similar to the minicrypt_xor_crypt except with a fixed key size of 128bits.
+*/
+int minicrypt_xor128_crypt(uint64_t* key,
+                           void* target,
+                           const void* source,
+                           size_t length,
+                           int (*on_cycle)(uint64_t* key)) {
+  length = length & 31;
+  uint8_t pos = 0;
+  for (size_t i = 0; i < (length >> 3); i++) {
+    ((uint64_t*)target)[0] = ((uint64_t*)source)[0] ^ key[pos++];
+    target += 8;
+    source += 8;
+    if (pos < 2)
+      continue;
+    if (on_cycle && on_cycle(key))
+      return -1;
+    pos = 0;
+  }
+  length = length & 7;
+  for (size_t i = 0; i < length; i++) {
+    ((uint64_t*)target)[i] = ((uint64_t*)source)[i] ^ key[pos];
+  }
+  return 0;
+}
+/**
+Similar to the minicrypt_xor_crypt except with a fixed key size of 192bits.
+*/
+int minicrypt_xor192_crypt(uint64_t* key,
+                           void* target,
+                           const void* source,
+                           size_t length,
+                           int (*on_cycle)(uint64_t* key)) {
+  length = length & 31;
+  uint8_t pos = 0;
+  for (size_t i = 0; i < (length >> 3); i++) {
+    ((uint64_t*)target)[0] = ((uint64_t*)source)[0] ^ key[pos++];
+    target += 8;
+    source += 8;
+    if (pos < 3)
+      continue;
+    if (on_cycle && on_cycle(key))
+      return -1;
+    pos = 0;
+  }
+  length = length & 7;
+  for (size_t i = 0; i < length; i++) {
+    ((uint64_t*)target)[i] = ((uint64_t*)source)[i] ^ key[pos];
+  }
+  return 0;
+}
+/**
+Similar to the minicrypt_xor_crypt except with a fixed key size of 256bits.
+*/
+int minicrypt_xor256_crypt(uint64_t* key,
+                           void* target,
+                           const void* source,
+                           size_t length,
+                           int (*on_cycle)(uint64_t* key)) {
+  for (size_t i = 0; i < (length >> 5); i++) {
+    ((uint64_t*)target)[0] = ((uint64_t*)source)[0] ^ key[0];
+    ((uint64_t*)target)[1] = ((uint64_t*)source)[1] ^ key[1];
+    ((uint64_t*)target)[2] = ((uint64_t*)source)[2] ^ key[2];
+    ((uint64_t*)target)[3] = ((uint64_t*)source)[3] ^ key[3];
+    target += 32;
+    source += 32;
+    if (on_cycle && on_cycle(key))
+      return -1;
+  }
+  length = length & 31;
+  uint8_t pos = 0;
+  for (size_t i = 0; i < (length >> 3); i++) {
+    ((uint64_t*)target)[0] = ((uint64_t*)source)[0] ^ key[pos++];
+    target += 8;
+    source += 8;
+  }
+  length = length & 7;
+  for (size_t i = 0; i < length; i++) {
+    ((uint64_t*)target)[i] = ((uint64_t*)source)[i] ^ key[pos];
+  }
+  return 0;
+}
+
+/* ***************************************************************************
+Weak Crypt.
+
+The weak-crypt algorithm shouldn't be used for sensitive data, it's a weak
+encryption used for basic data packing.
+
+The weak-crypt algorithm basicly uses a cyclic XOR evolving 256 bit key the is
+computed as the SHA256 of a "secret".
+
+The key evolution uses a random 256 bit word that is stored within the
+encrypted
+stream (this imposes a possible security weakness) as well as the encrypted
+stream's own data.
+
+The encrypted stream data isn't byte-shifted during encryption, which is
+another
+weakness in this algorythm.
+
+Another issue is that the length of the encrypted data isn't masked. In fact,
+if
+it is known that the data was encypted using The weak-crypt algorithm, it's
+easy
+to deduce the data length.
+
+The total data length produced by the weak-crypt algorithm is:
+
+     raw encrypted data length = plaintext-length + 32 bytes + 32 bytes
+
+*/
+
+#ifndef MC_WEAK_CRYPT_KEY1_CYCLES
+#define MC_WEAK_CRYPT_KEY1_CYCLES 1
+#endif
+#ifndef MC_WEAK_CRYPT_KEY2_CYCLES
+#define MC_WEAK_CRYPT_KEY2_CYCLES 3
+#endif
+static int weak_enc_on_cycle(uint64_t* _key) {
+  weak_crypt_s* key = (weak_crypt_s*)_key;
+  if (key->source_len - 32 >= (32 * key->count)) {
+    for (size_t i = 0; i < 4; i++) {
+      key->iv.words[(i + key->count + 1) & 3] ^=
+          ((uint64_t*)((uint8_t*)key->source + (32 * key->count)))[i];
+    }
+  } else {
+    for (size_t i = 0; i < key->source_len - (32 * key->count); i++) {
+      key->iv.bytes[(i + ((key->count + 1) * 4)) & 31] ^=
+          ((uint8_t*)key->source)[i + (32 * key->count)];
+    }
+  }
+  key->count++;
+  return 0;
+}
+
+#define MINI_CRYPT_WEAK_HEAD_LEN (32 + 32)
+
+size_t minicrypt_weak_crypt_fn(weak_crypt_s options) {
+  if (!(options.dest + options.source_len <= options.source ||
+        options.dest >= options.source + options.source_len))
+    return -1;
+  options.count = 0;
+  sha2_s sha2;
+  bits256_u key1, key2;
+  // compute key1
+  minicrypt_sha2_init(&sha2, SHA_256);
+  for (size_t i = 0; i < MC_WEAK_CRYPT_KEY1_CYCLES; i++) {
+    minicrypt_sha2_write(&sha2, (void*)options.secret, options.secret_len);
+  }
+  memcpy(key1.bytes, minicrypt_sha2_result(&sha2), 32);
+  // compute key2
+  minicrypt_sha2_init(&sha2, SHA_256);
+  for (size_t i = 0; i < MC_WEAK_CRYPT_KEY1_CYCLES; i++) {
+    minicrypt_sha2_write(&sha2, (void*)options.secret, options.secret_len);
+    minicrypt_sha2_write(&sha2, (void*)options.iv.bytes, 32);
+  }
+  memcpy(key2.bytes, minicrypt_sha2_result(&sha2), 32);
+  // write IV to stream
+  memcpy(options.dest, options.iv.bytes, 32);
+  // store key2 in the `iv` variable, for easy implementation
+  options.iv = key2;
+  // encrypt data
+  minicrypt_xor256_crypt(options.iv.words,
+                         options.dest + MINI_CRYPT_WEAK_HEAD_LEN,
+                         options.source, options.source_len, weak_enc_on_cycle);
+  // mask cipher text using key1 before computing MAC
+  minicrypt_xor256_crypt(key1.words, options.dest + MINI_CRYPT_WEAK_HEAD_LEN,
+                         options.dest + MINI_CRYPT_WEAK_HEAD_LEN,
+                         options.source_len, NULL);
+  // compute hash
+  minicrypt_sha2_init(&sha2, SHA_256);
+  minicrypt_sha2_write(&sha2, options.dest + MINI_CRYPT_WEAK_HEAD_LEN,
+                       options.source_len);
+  // store MAC hash
+  memcpy(options.dest + 32, minicrypt_sha2_result(&sha2), 32);
+  // fprintf(stderr, "MAC hash: %.*s\n", 32, options.dest + 32);
+  // unmask ciphertext using key1
+  minicrypt_xor256_crypt(key1.words, options.dest + MINI_CRYPT_WEAK_HEAD_LEN,
+                         options.dest + MINI_CRYPT_WEAK_HEAD_LEN,
+                         options.source_len, NULL);
+  // mask ciphertext's first 32 bytes using the MAC hash data
+  minicrypt_xor256_crypt(
+      options.dest + 32, options.dest + MINI_CRYPT_WEAK_HEAD_LEN,
+      options.dest + MINI_CRYPT_WEAK_HEAD_LEN,
+      (options.source_len > 32) ? 32 : options.source_len, NULL);
+
+  // mask MAC hash using key2
+  minicrypt_xor256_crypt(key2.words, options.dest + 32, options.dest + 32, 32,
+                         NULL);
+  return options.source_len + MINI_CRYPT_WEAK_HEAD_LEN;
+}
+
+ssize_t minicrypt_weak_decrypt_fn(weak_crypt_s options) {
+  if (options.source_len <= MINI_CRYPT_WEAK_HEAD_LEN ||
+      (!(options.dest + options.source_len <= options.source ||
+         options.dest >= options.source + options.source_len)))
+    return -1;
+  sha2_s sha2;
+  bits256_u key1, key2;
+  // compute key1
+  minicrypt_sha2_init(&sha2, SHA_256);
+  for (size_t i = 0; i < MC_WEAK_CRYPT_KEY1_CYCLES; i++) {
+    minicrypt_sha2_write(&sha2, (void*)options.secret, options.secret_len);
+  }
+  memcpy(key1.bytes, minicrypt_sha2_result(&sha2), 32);
+  // get the iv
+  memcpy(options.iv.bytes, options.source, 32);
+  // compute key2
+  minicrypt_sha2_init(&sha2, SHA_256);
+  for (size_t i = 0; i < MC_WEAK_CRYPT_KEY1_CYCLES; i++) {
+    minicrypt_sha2_write(&sha2, (void*)options.secret, options.secret_len);
+    minicrypt_sha2_write(&sha2, (void*)options.iv.bytes, 32);
+  }
+  memcpy(key2.bytes, minicrypt_sha2_result(&sha2), 32);
+  // store key2 in the `iv` for simplicity of implementation
+  options.iv = key2;
+  // Get the MAC data while unmasking it using key2
+  bits256_u mac_exp_val;
+  for (size_t i = 0; i < 4; i++) {
+    mac_exp_val.words[i] = ((uint64_t*)(options.source))[i + 4] ^ key2.words[i];
+  }
+  // rotate source and dest values for easy implementation + move after header.
+  {
+    options.source_len -= MINI_CRYPT_WEAK_HEAD_LEN;
+    void* tmp = options.source + MINI_CRYPT_WEAK_HEAD_LEN;
+    options.source = options.dest;
+    options.dest = tmp;
+  }
+  // unmask ciphertext's first 32 bytes using the expected MAC hash data
+  minicrypt_xor256_crypt(mac_exp_val.words, options.dest, options.dest,
+                         (options.source_len > 32) ? 32 : options.source_len,
+                         NULL);
+  // mask cipher text using key1 before computing MAC
+  minicrypt_xor256_crypt(key1.words, options.dest, options.dest,
+                         options.source_len, NULL);
+  // compute hash
+  minicrypt_sha2_init(&sha2, SHA_256);
+  minicrypt_sha2_write(&sha2, options.dest, options.source_len);
+  // review MAC hash
+  if (memcmp(minicrypt_sha2_result(&sha2), mac_exp_val.bytes, 32)) {
+    fprintf(stderr, "SHA2 for encrypted data doesn't match\n");
+    fprintf(stderr,
+            "SHA2 expect: %.*s\n"
+            "SHA2 found: %.*s\n",
+            32, (char*)mac_exp_val.bytes, 32, minicrypt_sha2_result(&sha2));
+    return -1;
+  };
+  // unmask ciphertext
+  minicrypt_xor256_crypt(key1.words, options.dest, options.dest,
+                         options.source_len, NULL);
+  // decrypt data
+  minicrypt_xor256_crypt(options.iv.words, options.source, options.dest,
+                         options.source_len, weak_enc_on_cycle);
+  // check if the function was meant to be destructive
+  if (options.dest + options.source_len <= options.source ||
+      options.dest >= options.source + options.source_len) {
+    // re-mask ciphertext's first 32 bytes using the expected MAC hash data
+    minicrypt_xor256_crypt(mac_exp_val.words, options.dest, options.dest,
+                           (options.source_len > 32) ? 32 : options.source_len,
+                           NULL);
+  } else {
+    fprintf(stderr, "desctructive decryption\n");
+  }
+  return options.source_len;
+}
+
+#undef MC_WEAK_CRYPT_KEY1_CYCLES
+#undef MC_WEAK_CRYPT_KEY2_CYCLES
+/* ***************************************************************************
+AES GCM - AES is only implemented in GCM mode, as it seems to be the superior
+mode of choice at the moment (mid 2016).
+*/
+
+typedef union {
+  uint64_t dwords[2];
+  uint32_t words[4];
+  uint8_t matrix[4][4];
+  uint8_t stream[16];
+} aes128_state_u;
+
+typedef struct {
+  /** The key string data */
+  uint8_t key[32];
+  /** initialization vector, up to 96 bits */
+  struct {
+    /** static. part of the handshake, not sent with TLS packet, can be
+     * global... maybe a function pointer...?
+     */
+    uint32_t salt;
+    /** sent with TLS packet. MUST be unique for each packet (global counter?)
+     */
+    uint64_t explicit;
+  } nonce;
+  /** 128 bit mode vs. 256 bit mode */
+  uint16_t bits;
+  /** tag_len can be 128, 120, 112, 104, or 96 */
+  uint8_t tag_len;
+} aes_key_s;
+
+// static inline GHASH128(bits128_u block) {}
+
+/* ***************************************************************************
+Random ... (why is this not a system call?)
+*/
+
+/* rand generator management */
+static int _rand_fd_ = -1;
+static void close_rand_fd(void) {
+  if (_rand_fd_ >= 0)
+    close(_rand_fd_);
+  _rand_fd_ = -1;
+}
+static void init_rand_fd(void) {
+  if (_rand_fd_ < 0) {
+    while ((_rand_fd_ = open("/dev/urandom", O_RDONLY)) == -1)
+      sched_yield();
+  }
+  atexit(close_rand_fd);
+}
+/* rand function template */
+#define MAKE_RAND_FUNC(type, func_name)             \
+  type func_name(void) {                            \
+    if (_rand_fd_ < 0)                              \
+      init_rand_fd();                               \
+    type ret;                                       \
+    while (read(_rand_fd_, &ret, sizeof(type)) < 0) \
+      sched_yield();                                \
+    return ret;                                     \
+  }
+/* rand functions */
+MAKE_RAND_FUNC(uint32_t, minicrypt_rand32);
+MAKE_RAND_FUNC(uint64_t, minicrypt_rand64);
+MAKE_RAND_FUNC(bits128_u, minicrypt_rand128);
+MAKE_RAND_FUNC(bits256_u, minicrypt_rand256);
+/* clear template */
+#undef MAKE_RAND_FUNC
+
+void minicrypt_rand_bytes(void* target, size_t length) {
+  if (_rand_fd_ < 0)
+    init_rand_fd();
+  while (read(_rand_fd_, target, length) < 0)
+    sched_yield();
+}
+
+/* ***************************************************************************
+Other helper functions
 */
 
 /**
-Allocates memory and dumps the whole file into the memory allocated. Remember
-to call `free` when done.
+Allocates memory and dumps the whole file into the memory allocated.
+
+Remember to call `free` when done.
+
+Returns the number of bytes allocated. On error, returns 0 and sets the
+container pointer to NULL.
 
 This function has some Unix specific properties that resolve links and user
 folder referencing.
 */
-static fdump_s* fdump(const char* file_path, size_t size_limit) {
+fdump_s* minicrypt_fdump(const char* file_path, size_t size_limit) {
   struct stat f_data;
   int file = -1;
   fdump_s* container = NULL;
@@ -1211,7 +1502,7 @@ See the libc `gmtime_r` documentation for details.
 
 Falls back to `gmtime_r` for dates before epoch.
 */
-static struct tm* gmtime_alt(const time_t* timer, struct tm* tmbuf) {
+struct tm* minicrypt_gmtime(const time_t* timer, struct tm* tmbuf) {
   // static char* DAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
   // static char * Months = {  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   // "Jul",
