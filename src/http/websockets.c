@@ -87,7 +87,6 @@ struct Websocket {
   intptr_t fd;
   /** callbacks */
   void (*on_message)(ws_s* ws, char* data, size_t size, uint8_t is_text);
-  void (*on_open)(ws_s* ws);
   void (*on_shutdown)(ws_s* ws);
   void (*on_close)(ws_s* ws);
   /** Opaque user data. */
@@ -155,6 +154,11 @@ static void ws_ping(intptr_t fd, protocol_s* _ws) {
 
 static void on_close(protocol_s* _ws) {
   destroy_ws((ws_s*)_ws);
+}
+
+static void on_open(intptr_t fd, protocol_s* _ws, void* callback) {
+  if (callback && _ws)
+    ((void (*)(void*))callback)(_ws);
 }
 
 static void on_shutdown(intptr_t fd, protocol_s* _ws) {
@@ -525,7 +529,6 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   ws->fd = response->metadata.request->metadata.fd;
   // Setup ws callbacks
   ws->on_close = settings.on_close;
-  ws->on_open = settings.on_open;
   ws->on_message = settings.on_message;
   ws->on_shutdown = settings.on_shutdown;
 
@@ -597,7 +600,7 @@ cleanup:
     server_set_timeout(ws->fd, settings.timeout);
     // call the on_open callback
     if (settings.on_open)
-      settings.on_open(ws);
+      server_task(ws->fd, on_open, settings.on_open, NULL);
     return 0;
   }
   destroy_ws(ws);

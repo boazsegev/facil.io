@@ -84,7 +84,6 @@ These macros help prevent code changes when changing the data struct.
 #define protocol_is_busy(protocol) (((protocol_s*)(protocol))->_state_ & 1)
 #define protocol_unset_busy(protocol) (((protocol_s*)(protocol))->_state_ &= ~1)
 #define protocol_set_busy(protocol) (((protocol_s*)(protocol))->_state_ |= 1)
-#define fd_unset_busy(fd) (protocol_fd(fd)->_state_ &= ~1)
 
 #define fd_is_busy(fd) \
   (fd_data(fd).protocol && (fd_data(fd).protocol->_state_ & 1))
@@ -213,10 +212,8 @@ void reactor_on_data_async(void* _fduuid) {
   // fire event
   if (protocol && protocol->on_data)
     protocol->on_data(fduuid, protocol);
-  // clear busy flag
+  // clear the original busy flag
   protocol_unset_busy(protocol);
-  // if a new protocol now owns the connection, make it available as well
-  fd_unset_busy(sock_uuid2fd(fduuid));
   return;
 no_lock:
   // fprintf(stderr, "no lock for %p\n", _fduuid);
@@ -627,7 +624,6 @@ ssize_t server_switch_protocol(intptr_t fd, protocol_s* new_protocol) {
   if (new_protocol == NULL || valid_uuid(fd) == 0)
     return -1;
   protocol_s* old_protocol;
-  protocol_set_busy(new_protocol);
   lock_uuid(fd);
   old_protocol = uuid_data(fd).protocol;
   uuid_data(fd).protocol = new_protocol;
@@ -765,11 +761,10 @@ static void perform_single_task(void* task) {
     if (uuid_is_busy(p2task(task).target) == 0) {
       uuid_set_busy(p2task(task).target);
       protocol_s* protocol = protocol_uuid(p2task(task).target);
+      // clear the original busy flag
       unlock_uuid(p2task(task).target);
       p2task(task).task(p2task(task).target, protocol, p2task(task).arg);
       task_free(task);
-      // if a new protocol now owns the connection, make it available as well
-      fd_unset_busy(sock_uuid2fd(p2task(task).target));
       return;
     }
     unlock_uuid(p2task(task).target);
@@ -801,10 +796,8 @@ static void perform_each_task(void* task) {
         // it wasn't busy, we can act now.
         if (is_busy == 0) {
           p2task(task).task(uuid, protocol, p2task(task).arg);
+          // ckear the original busy flag
           protocol_unset_busy(protocol);
-          // if a new protocol now owns the connection, make it available as
-          // well
-          fd_unset_busy(p2task(task).target);
           ++p2task(task).target;
           continue;
         }
