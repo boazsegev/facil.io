@@ -157,7 +157,7 @@ static void on_close(protocol_s* _ws) {
 }
 
 static void on_open(intptr_t fd, protocol_s* _ws, void* callback) {
-  if (callback && _ws)
+  if (callback && _ws && _ws->service == WEBSOCKET_ID_STR)
     ((void (*)(void*))callback)(_ws);
 }
 
