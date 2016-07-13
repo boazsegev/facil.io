@@ -76,8 +76,15 @@ These macros help prevent code changes when changing the data struct.
 
 #define clear_uuid(uuid) clear_fd_data(server_data.fds + sock_uuid2fd(uuid))
 
+#define protocol_fd(fd) (server_data.fds[(fd)].protocol)
+#define protocol_uuid(uuid) protocol_fd(sock_uuid2fd(uuid))
+
+#define fduuid_get(ifd) (server_data.fds[(ifd)].uuid)
+
 #define protocol_is_busy(protocol) (((protocol_s*)(protocol))->_state_ & 1)
 #define protocol_unset_busy(protocol) (((protocol_s*)(protocol))->_state_ &= ~1)
+#define protocol_set_busy(protocol) (((protocol_s*)(protocol))->_state_ |= 1)
+#define fd_unset_busy(fd) (protocol_fd(fd)->_state_ &= ~1)
 
 #define fd_is_busy(fd) \
   (fd_data(fd).protocol && (fd_data(fd).protocol->_state_ & 1))
@@ -90,11 +97,6 @@ These macros help prevent code changes when changing the data struct.
 #define try_lock_uuid(uuid) try_lock_fd(server_data.fds + sock_uuid2fd(uuid))
 #define lock_uuid(uuid) lock_fd(server_data.fds + sock_uuid2fd(uuid))
 #define unlock_uuid(uuid) unlock_fd(server_data.fds + sock_uuid2fd(uuid))
-
-#define protocol_fd(fd) (server_data.fds[(fd)].protocol)
-#define protocol_uuid(uuid) protocol_fd(sock_uuid2fd(uuid))
-
-#define fduuid_get(ifd) (server_data.fds[(ifd)].uuid)
 
 // run through any open sockets and call the shutdown handler
 static inline void server_on_shutdown(void) {
@@ -213,6 +215,8 @@ void reactor_on_data_async(void* _fduuid) {
     protocol->on_data(fduuid, protocol);
   // clear busy flag
   protocol_unset_busy(protocol);
+  // if a new protocol now owns the connection, make it available as well
+  fd_unset_busy(sock_uuid2fd(fduuid));
   return;
 no_lock:
   // fprintf(stderr, "no lock for %p\n", _fduuid);
@@ -614,14 +618,22 @@ time_t server_last_tick(void) {
 /**
 Sets a new active protocol object for the requested file descriptor.
 
+This also schedules the old protocol's `on_close` callback to run, making sure
+all resources are released.
+
 Returns -1 on error (i.e. connection closed), otherwise returns 0.
 */
-ssize_t server_set_protocol(intptr_t fd, protocol_s* new_protocol) {
+ssize_t server_switch_protocol(intptr_t fd, protocol_s* new_protocol) {
   if (new_protocol == NULL || valid_uuid(fd) == 0)
     return -1;
+  protocol_s* old_protocol;
+  protocol_set_busy(new_protocol);
   lock_uuid(fd);
+  old_protocol = uuid_data(fd).protocol;
   uuid_data(fd).protocol = new_protocol;
   unlock_uuid(fd);
+  if (old_protocol && old_protocol->on_close)
+    reactor_on_close_async(old_protocol);
   return 0;
 }
 /**
@@ -755,8 +767,9 @@ static void perform_single_task(void* task) {
       protocol_s* protocol = protocol_uuid(p2task(task).target);
       unlock_uuid(p2task(task).target);
       p2task(task).task(p2task(task).target, protocol, p2task(task).arg);
-      protocol_unset_busy(protocol);
       task_free(task);
+      // if a new protocol now owns the connection, make it available as well
+      fd_unset_busy(sock_uuid2fd(p2task(task).target));
       return;
     }
     unlock_uuid(p2task(task).target);
@@ -789,6 +802,9 @@ static void perform_each_task(void* task) {
         if (is_busy == 0) {
           p2task(task).task(uuid, protocol, p2task(task).arg);
           protocol_unset_busy(protocol);
+          // if a new protocol now owns the connection, make it available as
+          // well
+          fd_unset_busy(p2task(task).target);
           ++p2task(task).target;
           continue;
         }

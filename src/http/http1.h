@@ -41,7 +41,9 @@ protocol_s* http1_alloc(intptr_t fd, http_settings_s* settings);
 Listens for incoming HTTP/1.1 connections on the specified posrt and address,
 implementing the requested settings.
 */
-int http1_listen(char* port, char* address, http_settings_s settings);
+int http1_listen(const char* port,
+                 const char* address,
+                 http_settings_s settings);
 
 #define http1_listen(port, address, ...) \
   http1_listen((port), (address), (http_settings_s){__VA_ARGS__})

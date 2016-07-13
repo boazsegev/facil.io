@@ -108,6 +108,7 @@ inline static void http1_free(http1_protocol_s* http) {
     pool_push(http);
   } else
     free(http);
+  fprintf(stderr, "HTTP1 protocol resources released\n");
 }
 
 protocol_s* http1_alloc(intptr_t fd, http_settings_s* settings) {
@@ -315,7 +316,9 @@ static void http1_on_finish(http_settings_s* settings) {
     free(settings);
 }
 
-int http1_listen(char* port, char* address, http_settings_s settings) {
+int http1_listen(const char* port,
+                 const char* address,
+                 http_settings_s settings) {
   if (settings.on_request == NULL) {
     fprintf(
         stderr,

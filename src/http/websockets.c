@@ -590,14 +590,12 @@ cleanup:
   http_response_finish(response);
   if (response->status == 101) {
     // update the protocol object, cleanning up the old one
-    protocol_s* old = server_get_protocol(ws->fd);
-    if (old->on_close)
-      old->on_close(old);
-    server_set_protocol(ws->fd, (void*)ws);
+    server_switch_protocol(ws->fd, (void*)ws);
     // we have an active websocket connection - prep the connection buffer
     ws->buffer = create_ws_buffer(ws);
     // update the timeout
     server_set_timeout(ws->fd, settings.timeout);
+    // call the on_open callback
     if (settings.on_open)
       settings.on_open(ws);
     return 0;

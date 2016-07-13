@@ -219,9 +219,9 @@ struct ServerServiceSettings {
    * the connection's protocol. */
   protocol_s* (*on_open)(intptr_t fduuid, void* udata);
   /** The network service / port. Defaults to "3000". */
-  char* port;
+  const char* port;
   /** The socket binding address. Defaults to the recommended NULL. */
-  char* address;
+  const char* address;
   /** Opaque user data. */
   void* udata;
   /**
@@ -320,9 +320,12 @@ protocol_s* server_get_protocol(intptr_t uuid);
 /**
 Sets a new active protocol object for the requested file descriptor.
 
+This also schedules the old protocol's `on_close` callback to run, making sure
+all resources are released.
+
 Returns -1 on error (i.e. connection closed), otherwise returns 0.
 */
-ssize_t server_set_protocol(intptr_t uuid, protocol_s* new_protocol);
+ssize_t server_switch_protocol(intptr_t fd, protocol_s* new_protocol);
 /**
 Sets a connection's timeout.
 

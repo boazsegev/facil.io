@@ -18,7 +18,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define REACTOR_MAX_EVENTS 64
 #endif
 #ifndef REACTOR_TICK
-#define REACTOR_TICK 1000
+#define REACTOR_TICK 512 /** in milliseconsd */
 #endif
 
 #include <stdint.h>
