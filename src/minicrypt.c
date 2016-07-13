@@ -4,7 +4,6 @@
 Setup
 */
 
-#include <x86intrin.h>
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -12,6 +11,7 @@ Setup
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/uio.h>
+#include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
 
@@ -28,18 +28,66 @@ Useful Macros
 */
 
 /** 32Bit left rotation, inlined. */
-#define left_rotate32(i, bits) (((i) << (bits)) | ((i) >> (32 - (bits))))
+#define left_rotate32(i, bits) \
+  (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> (32 - (bits))))
 /** 32Bit right rotation, inlined. */
-#define right_rotate32(i, bits) (((i) >> (bits)) | ((i) << (32 - (bits))))
+#define right_rotate32(i, bits) \
+  (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << (32 - (bits))))
 /** 64Bit left rotation, inlined. */
-#define left_rotate64(i, bits) (((i) << (bits)) | ((i) >> (64 - (bits))))
+#define left_rotate64(i, bits) \
+  (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
 /** 64Bit right rotation, inlined. */
-#define right_rotate64(i, bits) (((i) >> (bits)) | ((i) << (64 - (bits))))
+#define right_rotate64(i, bits) \
+  (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << (64 - (bits))))
 /** unknown size element - left rotation, inlined. */
 #define left_rotate(i, bits) (((i) << (bits)) | ((i) >> (sizeof((i)) - (bits))))
 /** unknown size element - right rotation, inlined. */
 #define right_rotate(i, bits) \
   (((i) >> (bits)) | ((i) << (sizeof((i)) - (bits))))
+/** inplace byte swap 16 bit integer */
+#define bswap16(i)                                   \
+  do {                                               \
+    (i) = (((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8); \
+  } while (0);
+/** inplace byte swap 32 bit integer */
+#define bswap32(i)                                              \
+  do {                                                          \
+    (i) = (((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |        \
+          (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24); \
+  } while (0);
+/** inplace byte swap 64 bit integer */
+#define bswap64(i)                                                         \
+  do {                                                                     \
+    (i) = (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                \
+          (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |         \
+          (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) | \
+          (((i)&0xFF000000000000ULL) >> 40) |                              \
+          (((i)&0xFF00000000000000ULL) >> 56);                             \
+  } while (0);
+
+/* ***************************************************************************
+Machine specific changes
+*/
+// #ifdef __linux__
+// #undef bswap16
+// #undef bswap32
+// #undef bswap64
+// #include <machine/bswap.h>
+// #endif
+#ifdef HAVE_X86Intrin
+// #undef bswap16
+/*
+#undef bswap32
+#define bswap32(i) \
+  { __asm__("bswap %k0" : "+r"(i) :); }
+*/
+#undef bswap64
+#define bswap64(i) \
+  { __asm__("bswapq %0" : "+r"(i) :); }
+
+// shadow sched_yield as _mm_pause for spinwait
+#define sched_yield() _mm_pause()
+#endif
 
 /* ***************************************************************************
 SHA-1 hashing
@@ -282,20 +330,11 @@ char* minicrypt_sha1_result(sha1_s* s) {
 // change back to little endian
 // reverse byte order for each uint32 "word".
 #ifndef __BIG_ENDIAN__
-    unsigned char t;
-#define switch_bytes(i)                                    \
-  t = s->digest.str[(i * 4)];                              \
-  s->digest.str[(i * 4)] = s->digest.str[(i * 4) + 3];     \
-  s->digest.str[(i * 4) + 3] = t;                          \
-  t = s->digest.str[(i * 4) + 1];                          \
-  s->digest.str[(i * 4) + 1] = s->digest.str[(i * 4) + 2]; \
-  s->digest.str[(i * 4) + 2] = t;
-    switch_bytes(0);
-    switch_bytes(1);
-    switch_bytes(2);
-    switch_bytes(3);
-    switch_bytes(4);
-#undef switch_bytes
+    bswap32(s->digest.i[0]);
+    bswap32(s->digest.i[1]);
+    bswap32(s->digest.i[2]);
+    bswap32(s->digest.i[3]);
+    bswap32(s->digest.i[4]);
 #endif
   }
   // fprintf(stderr, "result requested, in hex, is:");
@@ -682,26 +721,28 @@ char* minicrypt_sha2_result(sha2_s* s) {
 
 #ifndef __BIG_ENDIAN__
     // change back to little endian
-    unsigned char t;
     if (s->type_512) {
-      for (size_t i = 0; i < 64; i += 8) {
-        // reverse byte order for each uint64 "word".
-        for (size_t j = 0; j < 4; j++) {
-          t = s->digest.str[i + j];  // switch bytes
-          s->digest.str[i + j] = s->digest.str[i + (7 - j)];
-          s->digest.str[i + (7 - j)] = t;
-        }
-      }
+      bswap64(s->digest.i64[0]);
+      bswap64(s->digest.i64[1]);
+      bswap64(s->digest.i64[2]);
+      bswap64(s->digest.i64[3]);
+      bswap64(s->digest.i64[4]);
+      bswap64(s->digest.i64[5]);
+      bswap64(s->digest.i64[6]);
+      bswap64(s->digest.i64[7]);
     } else {
-      for (size_t i = 0; i < 32; i += 4) {
-        // reverse byte order for each uint32 "word".
-        t = s->digest.str[i];  // switch first and last bytes
-        s->digest.str[i] = s->digest.str[i + 3];
-        s->digest.str[i + 3] = t;
-        t = s->digest.str[i + 1];  // switch median bytes
-        s->digest.str[i + 1] = s->digest.str[i + 2];
-        s->digest.str[i + 2] = t;
-      }
+      bswap32(s->digest.i32[0]);
+      bswap32(s->digest.i32[1]);
+      bswap32(s->digest.i32[2]);
+      bswap32(s->digest.i32[3]);
+      bswap32(s->digest.i32[4]);
+      bswap32(s->digest.i32[5]);
+      bswap32(s->digest.i32[6]);
+      bswap32(s->digest.i32[7]);
+      // bswap32(s->digest.i32[8]);
+      // bswap32(s->digest.i32[9]);
+      // bswap32(s->digest.i32[10]);
+      // bswap32(s->digest.i32[11]);
     }
 #endif
     // set NULL bytes for SHA_224
@@ -910,8 +951,10 @@ int minicrypt_base64_decode(char* target, char* encoded, int base64_len) {
 Hex Conversion
 */
 
-// #define hex2i(h) \
-//   (((h) >= '0' && (h) <= '9') ? ((h) - '0') : (((h) | 32) - 'a' + 10))
+/*
+#define hex2i(h) \
+  (((h) >= '0' && (h) <= '9') ? ((h) - '0') : (((h) | 32) - 'a' + 10))
+*/
 
 #define i2hex(hi) (((hi) < 10) ? ('0' + (hi)) : ('A' + ((hi)-10)))
 
@@ -1178,6 +1221,39 @@ int minicrypt_xor256_crypt(uint64_t* key,
 }
 
 /* ***************************************************************************
+AES GCM - AES is only implemented in GCM mode, as it seems to be the superior
+mode of choice at the moment (mid 2016).
+*/
+
+typedef union {
+  uint64_t dwords[2];
+  uint32_t words[4];
+  uint8_t matrix[4][4];
+  uint8_t stream[16];
+} aes128_state_u;
+
+typedef struct {
+  /** The key string data */
+  uint8_t key[32];
+  /** initialization vector, up to 96 bits */
+  struct {
+    /** static. part of the handshake, not sent with TLS packet, can be
+     * global... maybe a function pointer...?
+     */
+    uint32_t salt;
+    /** sent with TLS packet. MUST be unique for each packet (global counter?)
+     */
+    uint64_t explicit;
+  } nonce;
+  /** 128 bit mode vs. 256 bit mode */
+  uint16_t bits;
+  /** tag_len can be 128, 120, 112, 104, or 96 */
+  uint8_t tag_len;
+} aes_key_s;
+
+// static inline GHASH128(bits128_u block) {}
+
+/* ***************************************************************************
 Random ... (why is this not a system call?)
 */
 
@@ -1190,8 +1266,12 @@ static void close_rand_fd(void) {
 }
 static void init_rand_fd(void) {
   if (_rand_fd_ < 0) {
-    while ((_rand_fd_ = open("/dev/urandom", O_RDONLY)) == -1)
+    while ((_rand_fd_ = open("/dev/urandom", O_RDONLY)) == -1) {
+      if (errno == ENXIO)
+        perror("minicrypt fatal error, caanot initiate random generator"),
+            exit(-1);
       sched_yield();
+    }
   }
   atexit(close_rand_fd);
 }

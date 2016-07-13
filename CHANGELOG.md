@@ -10,13 +10,13 @@ Although the libraries in this repo are designed to work together, they are also
 
 * [Lib-Async (`libasync`)](#lib-async) - The thread pool and tasking library.
 
-* [Lib-Server (`lib-server`)](#lib-server) - The server writing library.
+* [Lib-Server (`libserver`)](#lib-server) - The server writing library.
 
-* [MiniCrypt (`mini-crypt`)](#minicrypt) - Common simple crypto library (development incomplete).
+* [MiniCrypt (`minicrypt`)](#minicrypt) - Common simple crypto library (development incomplete).
 
-* [HTTP Protocol (`http`)](#http_protocol) - including HttpRequest, HttpResponse etc'.
+* [HTTP Protocol (`http`)](#http_protocol) - including request and response helpers, etc'.
 
-* [Websocket extension (`mini-crypt`)](#websocket_extension) - Websocket Protocol for the basic HTTP implementation provided.
+* [Websocket extension (`websockets`)](#websocket_extension) - Websocket Protocol for the basic HTTP implementation provided.
 
 ## General notes and _future_ plans
 
@@ -44,6 +44,20 @@ Git commits aren't automatically tested yet and they might introduce new issues 
 
 ## Lib-React
 
+### V. 0.3.0
+
+* Rewrite from core. The code is (I think) better organized.
+
+*  Different API.
+
+* The reactor is now stateless instead of an object. All state data (except the reactor's ID, which remains static throughout during it's existence), is managed by the OS implementation (`kqueue`/`epoll`).
+
+* Callbacks are statically linked instead of dynamically assigned.
+
+* Better integration with `libsock`.
+
+* (optional) Handles `libsock`'s UUID instead of direct file descriptors, preventing file descriptor collisions.
+
 ### V. 0.2.2
 
 * Fixed support for `libsock`, where the `sock_flush` wasn't automatically called due to inline function optimizations used by the compiler (and my errant code).
@@ -53,6 +67,16 @@ Git commits aren't automatically tested yet and they might introduce new issues 
 Baseline (changes not logged before this point in time).
 
 ## Lib-Sock (development incomplete)
+
+### V. 0.1.0
+
+* Huge rewrite. Different API.
+
+* Uses connection UUIDs instead of direct file descriptors, preventing file descriptor collisions. Note that the UUIDs aren't random and cannot be used to identify the connections across machines or processes.
+
+* No global lock, spin-lock oriented design.
+
+* Better (optional) integration with `libreact`.
 
 ### V. 0.0.6
 
@@ -112,6 +136,14 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Async
 
+### V. 0.4.0
+
+* I rewrote (almost) everything.
+
+* `libasync` now behaves as a global state machine. No more `async_p` objects.
+
+* Uses (by default) `nanosleep` instead of pipes (you can revert back to pipes by setting a simple flag). This, so far, seems to provide better performance (at the expense of a slightly increased CPU load).
+
 ### V. 0.3.0
 
 * Fixed task pool initialization to zero-out data that might cause segmentation faults.
@@ -122,7 +154,23 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Server
 
+### V. 0.4.0
+
+* Rewrite from core. The code is more concise with less duplications.
+
+* Different API.
+
+* The server is now a global state machine instead of an object.
+
+* Better integration with `libsock`.
+
+* Handles `libsock`'s UUID instead of direct file descriptors, preventing file descriptor collisions and preventing long running tasks from writing to the wrong client (i.e., if file descriptor 6 got disconnected and someone else connected and receive file descriptor 6 to identify the socket).
+
+* Better concurrency protection and protocol cleanup `on_close`. Now, deferred tasks (`server_task` / `server_each`), the `on_data` callback and even the `on_close` callback all run within a connection's "lock" (busy flag), limiting concurrency for a single connection to the `on_ready` and `ping` callbacks. No it is safe to free the protocol's memory during an `on_close` callback, as it is (almost) guarantied that no running tasks are using that memory (this assumes that `ping` and `on_ready` don't use any data placed protocol's memory).
+
 ### V. 0.3.5
+
+* Moved the global server lock (the one protecting global server data integrity) from a mutex to a spin-lock. Considering API design changes that might allow avoiding a lock.
 
 * File sending is now offset based, so `lseek` data is ignored. This means that it should be possible to cache open `fd` files and send the same file descriptor to multiple clients.
 

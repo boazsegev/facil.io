@@ -1,138 +1,124 @@
-/*
-copyright: Boaz segev, 2016
-license: MIT
 
-Feel free to copy, use and enjoy according to the license provided.
+#ifndef HTTP_H
+#define HTTP_H
+
+/* *****************************************************************************
+Core include files
 */
-#ifndef HTTP_COLLECTED_H
-#define HTTP_COLLECTED_H
-
-/** \file http.h
-This header file simply collects all the http libraries required to start an
-HTTP server and defines simple marcros to start an HTTP server using lib-server.
-
-The file also introduces the `start_http_server` macro.
+#include "libserver.h"
+#include "http_request.h"
+#include "http_response.h"
+#include <time.h>
+/* *****************************************************************************
+Hard Coded Settings
 */
-#include "lib-server.h"
-#include "http-response.h"
-#include "http-protocol.h"
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <errno.h>
-#include <limits.h>
+/** When a new connection is accepted, it will be immediately declined with a
+ * 503 service unavailable (server busy) response unless the following number of
+ * file descriptors is available.*/
+#ifndef HTTP_BUSY_UNLESS_HAS_FDS
+#define HTTP_BUSY_UNLESS_HAS_FDS 64
+#endif
 
-#define HTTP_DEFAULT_TIMEOUT 5
+/* *****************************************************************************
+HTTP settings / core data structure
+*/
+
+/** Manages protocol settings for the HTTP protocol */
+typedef struct {
+  /**
+  The maximum size of an HTTP request's body (when posting data).
+
+  Defaults to ~ 50Mb.
+  */
+  size_t max_body_size;
+  /** the callback to be performed when requests come in. */
+  void (*on_request)(http_request_s* request);
+  /**
+  A public folder for file transfers - allows to circumvent any application
+  layer server and simply serve files.
+  */
+  char* public_folder;
+  /**
+  The length of the public_folder string.
+  */
+  size_t public_folder_length;
+  /**
+  Logging flag - set to TRUE to log static file requests.
+
+  Dynamic request logging is always the dynamic application's responsibility.
+  */
+  uint8_t log_static;
+  /** An HTTP connection timeout. For HTTP/1.1 this defaults to ~5 seconds.*/
+  uint8_t timeout;
+  /**
+  internal flag for library use.
+  */
+  uint8_t private_metaflags;
+} http_settings_s;
+
+/* *****************************************************************************
+HTTP Helper functions that might be used globally
+*/
 
 /**
-This macro allows an easy start for an HTTP server, using the lib-server library
-and the HTTP library helpers.
+A faster (yet less localized) alternative to `gmtime_r`.
 
-The macro accepts variable arguments. The first two (required) arguments are the
-on_request callback for the HTTP protocol and an optional (can be NULL) public
-folder for serving static files. The rest of the optional (variable) arguments
-are any valid `struct ServerSettings` fields.
+See the libc `gmtime_r` documentation for details.
 
-i.e. use:
-
-    void on_request(struct HttpRequest request) {
-      ; // ...
-    }
-
-    int main()
-    {
-      char * public_folder = NULL
-      start_http_server(on_request, public_folder, .threads = 16);
-    }
-
-To get a more detailed startup and setup customization, add an initialization
-callback. i.e.:
-
-    void on_request(struct HttpRequest request) {
-      ; // ...
-    }
-    void on_startup(server_pt srv) {
-      struct HttpProtocol * http =
-                        (struct HttpProtocol*)Server.settings(srv)->protocol;
-      http->maximum_body_size = 100; // 100 Mb POST data limit.
-      ; // ...
-    }
-
-    int main()
-    {
-      char * public_folder = NULL
-      start_http_server(on_request,
-                        public_folder,
-                        .threads = 16,
-                        .on_init = on_startup);
-    }
+Falls back to `gmtime_r` for dates before epoch.
 */
-#define start_http_server(on_request_callback, http_public_folder, ...)     \
-  do {                                                                      \
-    struct HttpProtocol* protocol = HttpProtocol.create();                  \
-    if ((NULL != (void*)on_request_callback))                               \
-      protocol->on_request = (on_request_callback);                         \
-    char real_public_path[PATH_MAX];                                        \
-    if ((http_public_folder) && ((char*)http_public_folder)[0] == '~' &&    \
-        getenv("HOME") && strlen((http_public_folder)) < PATH_MAX) {        \
-      strcpy(real_public_path, getenv("HOME"));                             \
-      strcpy(real_public_path + strlen(real_public_path),                   \
-             ((char*)http_public_folder) + 1);                              \
-      protocol->public_folder = real_public_path;                           \
-    } else if ((http_public_folder)) {                                      \
-      protocol->public_folder =                                             \
-          realpath((http_public_folder), real_public_path);                 \
-      protocol->public_folder_length = strlen(protocol->public_folder);     \
-    }                                                                       \
-    HttpRequest.destroy(HttpRequest.create());                              \
-    HttpResponse.init_pool();                                               \
-    Server.listen((struct ServerSettings){                                  \
-        .timeout = HTTP_DEFAULT_TIMEOUT,                                    \
-        .busy_msg = "HTTP/1.1 503 Service Unavailable\r\n\r\nServer Busy.", \
-        __VA_ARGS__,                                                        \
-        .protocol = (struct Protocol*)(protocol)});                         \
-    HttpResponse.destroy_pool();                                            \
-    HttpProtocol.destroy(protocol);                                         \
-  } while (0);
+struct tm* http_gmtime(const time_t* timer, struct tm* tmbuf);
 
-#ifdef SSL_VERIFY_PEER
+/**
+Writes an HTTP date string to the `target` buffer.
 
-#define start_https_server(on_request_callback, http_public_folder, ...)    \
-  do {                                                                      \
-    struct HttpProtocol* protocol = HttpProtocol.create();                  \
-    if ((NULL != (void*)on_request_callback))                               \
-      protocol->on_request = (on_request_callback);                         \
-    char real_public_path[PATH_MAX];                                        \
-    if ((http_public_folder) && ((char*)http_public_folder)[0] == '~' &&    \
-        getenv("HOME") && strlen((http_public_folder)) < PATH_MAX) {        \
-      strcpy(real_public_path, getenv("HOME"));                             \
-      strcpy(real_public_path + strlen(real_public_path),                   \
-             ((char*)http_public_folder) + 1);                              \
-      protocol->public_folder = real_public_path;                           \
-    } else if ((http_public_folder)) {                                      \
-      protocol->public_folder =                                             \
-          realpath((http_public_folder), real_public_path);                 \
-      protocol->public_folder_length = strlen(protocol->public_folder);     \
-    }                                                                       \
-    HttpRequest.destroy(HttpRequest.create());                              \
-    HttpResponse.init_pool();                                               \
-    struct ServerSettings settings = {                                      \
-        .timeout = HTTP_DEFAULT_TIMEOUT,                                    \
-        .busy_msg = "HTTP/1.1 503 Service Unavailable\r\n\r\nServer Busy.", \
-        __VA_ARGS__,                                                        \
-        .protocol = (struct Protocol*)(protocol)};                          \
-  };                                                                        \
-  TLSServer.update_settings(&settings);                                     \
-  Server.listen(settings);                                                  \
-  HttpResponse.destroy_pool();                                              \
-  HttpProtocol.destroy(protocol);                                           \
-  }                                                                         \
-  while (0)                                                                 \
-    ;
+This requires _____ bytes of space to be available at the target buffer.
 
-#endif /* SSL_VERIFY_PEER */
+Returns the number of bytes actually written.
+*/
+size_t http_date2str(char* target, struct tm* tmbuf);
 
-#endif /* HTTP_COLLECTED_H */
+/**
+A fast, inline alternative to `sprintf(dest, "%lu", num)`.
+
+Writes an **unsigned** number to a buffer, as a string. This is an unsafe
+functions that assumes the buffer will have at least 21 bytes and isn't NULL.
+
+A NULL terminating byte is written.
+
+Returns the number of bytes actually written (excluding the NULL byte).
+*/
+inline size_t http_ul2a(char* dest, size_t num) {
+  uint8_t digits = 1;
+  size_t tmp = num;
+  while ((tmp /= 10))
+    ++digits;
+
+  dest += digits;
+  *(dest--) = 0;
+  for (size_t i = 0; i < digits; i++) {
+    num = num - (10 * (tmp = (num / 10)));
+    *(dest--) = '0' + num;
+    num = tmp;
+  }
+  return digits;
+}
+
+/** Decodes a URL encoded string, no buffer overflow protection. */
+ssize_t http_decode_url_unsafe(char* dest, const char* url_data);
+
+/** Decodes a URL encoded string. */
+ssize_t http_decode_url(char* dest, const char* url_data, size_t length);
+
+/* *****************************************************************************
+HTTP versions (they depend on the settings / core data structure)
+*/
+
+#include "http1.h"
+
+/* *****************************************************************************
+HTTP listening helpers
+*/
+
+#endif

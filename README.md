@@ -13,36 +13,43 @@ Websockets and HTTP are super common, so `lib-server` comes with HTTP and Websoc
 The framework's code is heavily documented and you can use Doxygen to create automated documentation for the API.
 
 ```c
-#include "websockets.h" // auto-includes "http.h"
+#include "websockets.h"  // auto-includes "http.h"
 // Concurrency using thread? How many threads in the thread pool?
-#define THREAD_COUNT 4
+#define THREADS 16
 // Concurrency using processes? (more then a single process can be used)
-#define PROCESS_COUNT 1
+#define PROCESSES 1
+// Print HTTP logs
+#define LOGGING 1
 // Our websocket service - echo.
-void ws_echo(ws_s* ws, char* data, size_t size, int is_text) {
+void ws_echo(ws_s* ws, char* data, size_t size, uint8_t is_text) {
   // echos the data to the current websocket
-  Websocket.write(ws, data, size, is_text);
+  websocket_write(ws, data, size, is_text);
+}
+// Our websocket service - echo.
+void ws_shutdown(ws_s* ws) {
+  // sends a small message before shutting down
+  websocket_write(ws, "Server Going Away...", 20, 1);
 }
 // our HTTP callback - hello world.
-void on_request(struct HttpRequest* request) {
+void on_request(http_request_s* request) {
+  http_response_s response = http_response_init(request);
+  if (LOGGING)
+     http_response_log_start(&response);
   if (request->upgrade) {
     // "upgrade" to the Websocket protocol, if requested
-    websocket_upgrade(.request = request, .on_message = ws_echo);
+    websocket_upgrade(.response = &response, .on_message = ws_echo,
+                      .on_shutdown = ws_shutdown);
     return;
   }
-  struct HttpResponse* response = HttpResponse.create(request);
-  HttpResponse.write_body(response, "Hello World!", 12);
-  HttpResponse.destroy(response);
+  http_response_write_body(&response, "Hello World!", 12);
+  http_response_finish(&response);
 }
 // Our main function will start the HTTP server
 int main(int argc, char const* argv[]) {
-  start_http_server(on_request, NULL,
-              .port = "8080", // default is "3000"
-              .threads = THREAD_COUNT,
-              .processes = PROCESS_COUNT );
+  http1_listen("3000", NULL, .on_request = on_request, .log_static = LOGGING);
+  server_run(.threads = THREADS, .processes = PROCESSES);
   return 0;
-}
-```
+}```
 
 There's an example with cookies and custom headers further on.
 
@@ -53,32 +60,46 @@ Here's a quick example for an echo server using the `lib-server` framework's API
 There's an example with a few more details further on.
 
 ```c
-#include "lib-server.h"
+#include "libserver.h"
 #include <stdio.h>
 #include <string.h>
+
 // Concurrency using thread? How many threads in the thread pool?
 #define THREAD_COUNT 4
 // Concurrency using processes? (more then a single process can be used)
 #define PROCESS_COUNT 1
 // a simple echo... this is the main callback
-void on_data(server_pt server, uint64_t fd_uuid) {
-  char buff[1024];
+void on_data(intptr_t fd_uuid, protocol_s* protocol) {
+  char buff[1024] = ">> ";
   ssize_t incoming = 0;
-  while ((incoming = Server.read(server, fd_uuid, buff, 1024)) > 0) {
-    Server.write(server, fd_uuid, buff, incoming);  // echo the data.
-    if (!strncasecmp(buff, "bye", 3)) {             // check for keyword "bye"
-      Server.close(server, fd_uuid);  // closes the connection (on keyword)
+  while ((incoming = sock_read(fd_uuid, buff + 3, 1021)) > 0) {
+    sock_write(fd_uuid, buff, incoming + 3);  // echo the data.
+    if (!strncasecmp(buff + 3, "bye", 3)) {   // check for keyword "bye"
+      sock_close(fd_uuid);  // closes the connection (on keyword)
     }
   }
 }
+
+void ping(intptr_t fd_uuid, protocol_s* protocol) {
+  // A sock_write failure will close the connection.
+  sock_write(fd_uuid, "-- Are you there?\n", 18);
+}
+// This callback will be called for new connections.
+protocol_s* on_open_echo(intptr_t fd, void* udata) {
+  // usually protocols are implemented as dynamic objects, but a static one
+  // is good enough for an echo service.
+  static protocol_s echo_protocol = {
+      .on_data = on_data, .ping = ping, .service = "echo"};
+  // We can setup a ping to be sent every 10 seconds.
+  server_set_timeout(fd, 10);
+  return &echo_protocol;
+}
 // running the server
 int main(void) {
-  // We'll create the echo protocol object. We'll only use the on_data callback.
-  struct Protocol protocol = {.on_data = on_data,
-                              .service = "echo"};
+  // We'll listen on port 3000 for icoming echo connection.
+  server_listen(.port = "3000", .on_open = on_open_echo, .udata = NULL);
   // This macro will call Server.listen(settings) with the settings we provide.
-  start_server(.protocol = &protocol, .timeout = 10, .port = "3000",
-               .threads = THREAD_COUNT, .processes = PROCESS_COUNT);
+  server_run(.threads = THREAD_COUNT, .processes = PROCESS_COUNT);
 }
 ```
 
@@ -88,9 +109,9 @@ Since most web applications (Node.js, Ruby etc') end up running behind load bala
 
 But, if you need to expose the application directly to the web, it is possible to implement SSL/TLS support using `libsock`'s read/write hooks.
 
-Since `lib-server` utilizes `libsock` for socket communication (leveraging it's user-land buffer and other features), any RW hooks assigned be utilized for the specified connection.
+Since `libserver` utilizes `libsock` for socket communication (leveraging it's user-land buffer and other features), any RW hooks assigned be utilized for the specified connection.
 
-Using `libsock`'s read-write hooks (`sock_rw_hook_set`) is allows us to use an underlaying TLS/SSL library to send data securely. Use `server_uuid_to_fd` to convert a connection's UUID to it's source `fd`.
+Using `libsock`'s read-write hooks (`sock_rw_hook_set`) allows us to use an underlaying TLS/SSL library to send data securely. Use `sock_uuid2fd` to convert a connection's UUID to it's system assigned `fd`.
 
 I did not write a TLS implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a load-balancer/proxy that manages the SSL/TLS layer).
 
@@ -129,11 +150,11 @@ void say_hi(void* arg) {
 // an example usage
 int main(void) {
  // create the thread pool with 8 threads.
- async_p async = Async.new(8);
+ async_start(8);
  // send a task
- Async.run(async, say_hi, NULL);
+ async_run(say_hi, NULL);
  // wait for all tasks to finish, closing the threads, clearing the memory.
- Async.finish(async);
+ async_finish();
 }
  ```
 
@@ -155,113 +176,73 @@ To use this library you only need the `libreact.h` and `libreact.c` files.
 
 ## [`libsock`](docs/libsock.md) - Non-Blocking socket abstraction with `lib-react` support.
 
-Non-Blocking sockets have a lot of common code that needs to be handled, such as a user level buffer (for all the data that didn't get sent when the socket was busy), delayed disconnection (don't delay before sending all the data) etc'.
+Non-Blocking sockets have a lot of common code that needs to be handled, such as a user level buffer (for all the data that didn't get sent when the socket was busy), delayed disconnection (don't close before sending all the data), file descriptor collision protection (preventing data intended for an old client from being sent to a new client) etc'.
 
 Read through this library's documentation to learn more about using this thread-safe library that provides user level writing buffer and seamless integration with `libreact`.
 
-## [`lib-server`](docs/lib-server.md) - a server building library.
+## [`libserver`](docs/libserver.md) - a server building library.
 
 Writing server code is fun... but in limited and controlled amounts... after all, much of it is simple code being repeated endlessly, connecting one piece of code with a different piece of code.
 
-`lib-server` is aimed at writing unix based (linux/BSD) servers application (network services), such as web applications. It uses `libreact` as the reactor, `libasync` to handle tasks and `libbuffer` for a user lever network buffer and writing data asynchronously.
+`libserver` is aimed at writing unix based (linux/BSD) servers application (network services), such as web applications. It uses `libreact` as the reactor, `libasync` to handle tasks and `libbuffer` for a user lever network buffer and writing data asynchronously.
 
-`lib-server` might not be optimized to your liking, but it's all working great for me. Besides, it's code is heavily commented code, easy to edit and tweak. To offer some comparison, `ev.c` from `libev` has ~5000 lines, while `libreact` is less then 400 lines (~260 lines of actual code)...
+`libserver` was designed to strike a good performance balance (memory, speed etc') while maintaining security (`fd` collision protection etc'). system calls that might not work on some OS versions were disabled (you can enable `sendfile` for mac using a single flag in `libsock.c`) and the thread pool, which has no consumer producer distinction, uses `nanosleep` instead of semaphores or mutexes (this actually performs better).
 
-Using `lib-server` is super simple. It's based on Protocol structure and callbacks, so that we can dynamically change protocols and support stuff like HTTP upgrade requests (i.e. switching from HTTP to Websockets). Here's a simple echo server example:
+Many of these can be changed using a simple flag and the code should be commented enough for any required changes to be easily manageable. To offer some comparison, last time I counted, `ev.c` from `libev` had ~5000 lines, while `libreact` was less then 700 lines (~280 lines of actual code, everything else is comments).
 
-```c
-#include "lib-server.h"
-#include <stdio.h>
-#include <string.h>
+Using `libserver` is super simple.
 
-// we don't have to, but printing stuff is nice...
-void on_open(server_pt server, uint64_t fd_uuid) {
-  printf("A connection was accepted on socket UUID #%llu.\n", fd_uuid);
-}
-// server_pt is just a nicely typed pointer, which is there for type-safty.
-// The Server API is used by calling `Server.api_call` (often with the pointer).
-void on_close(server_pt server, uint64_t fd_uuid) {
-  printf("Socket UUID #%llu is now disconnected.\n", fd_uuid);
-}
+It's based on Protocol structure and callbacks, allowing for many different listening sockets and network services (protocols) to be active concurrently. We can easily and dynamically change protocols mid-stream, supporting stuff like HTTP upgrade requests (i.e. switching from HTTP to Websockets).
 
-// a simple echo... this is the main callback
-void on_data(server_pt server, uint64_t fd_uuid) {
-  // We'll assign a reading buffer on the stack
-  char buff[1024];
-  ssize_t incoming = 0;
-  // Read everything, this is edge triggered, `on_data` won't be called
-  // again until all the data was read.
-  while ((incoming = Server.read(server, fd_uuid, buff, 1024)) > 0) {
-    // since the data is stack allocated, we'll write a copy
-    // otherwise, we'd avoid a copy using Server.write_move
-    Server.write(server, fd_uuid, buff, incoming);
-    if (!memcmp(buff, "bye", 3)) {
-      // closes the connection automatically AFTER all the buffer was sent.
-      Server.close(server, fd_uuid);
-    }
-  }
-}
+There was a simple echo server example at the beginning of this README.
 
-// running the server
-int main(void) {
-  // We'll create the echo protocol object. It will be the server's default
-  struct Protocol protocol = {.on_open = on_open,
-                              .on_close = on_close,
-                              .on_data = on_data,
-                              .service = "echo"};
-  // We'll use the macro start_server, because our settings are simple.
-  // (this will call Server.listen(settings) with the settings we provide)
-  start_server(.protocol = &protocol, .timeout = 10, .threads = 8);
-}
-
-// easy :-)
-```
-
-Using this library requires all the minor libraries written to support it: `libasync`, `libbuffer` (which you can use separately with a few changes) and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files. `minicrypt` and `lib-tls-server` aren't required (nor did I finish writing them).
+Using this library requires all the minor libraries written to support it: `libasync`, `libsock` and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files. `minicrypt` isn't required (nor did I finish writing it).
 
 ### A word about concurrency
 
 It should be notes that network applications always have to keep concurrency in mind. For instance, the connection might be closed by one machine while the other is still preparing (or writing) it's response.
 
-If you will use `lib-server`'s multi-threading mode, this concurrency could affect your code (i.e., `on_close` might be called to release resources still in use by `on_data` which might not have finished processing the data). There are plenty of possible solutions for these race conditions, but it is important to note that these race conditions exist.
+Worst, while the response is being prepared, a new client might connect to the system with the newly available (same) file descriptor, so the finalized response might get sent to the wrong client!
 
-In addition to multi-threading, `lib-server` allows us to easily setup the network service's concurrency using processes (`fork`ing), which act differently then threads (i.e. memory space isn't shared, so that processes don't share accepted connections).
+`libsock` and `libserver` protect us from such scenarios.
 
-`lib-server` prevents some race conditions from taking place. For example, `on_data`, `fd_task`s and non-blocking `each` tasks will never run concurrently for the same original connection...
+If you will use `libserver`'s multi-threading mode, it's concurrency will be limited to the `on_ready`, `ping` and `on_shutdown` callbacks. These callbacks should avoid using/setting any protocol specific information, or collisions might ensue.
 
-...but, this does not prevent critical callback (such as `on_close` `ping` and `on_shutdown`) from being performed even while a task (such as `on_data`) is running - this is because the execution for these critical callbacks cannot be delayed.
+All other callbacks (`on_data`, `on_close` and any server tasks initiated with `server_each` or `server_task`) will be performed sequentially for each connection, protecting a connection's data from corruption. While two concurrent connections might perform tasks at the same time, no single connection will perform more then one task at a time (unless you ask it to do su, using `async_run`).
 
-In other words, assume everything could run concurrently. `lib-server` will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your application.
+In addition to multi-threading, `libserver` allows us to easily setup the network service's concurrency using processes (`fork`ing), which act differently then threads (i.e. memory space isn't shared, so that processes don't share accepted connections).
+
+For best results, assume everything could run concurrently. `libserver` will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your application.
 
 ## [`http`](docs/http.md) - a protocol for the web
 
-All these libraries are used in a Ruby server I'm re-writing, which has native websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP "protocol" in C, following to the `lib-server`'s protocol specs.
+All these libraries are used in a Ruby server I'm re-writing, which has native Websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP parser in C, and attaching it to the `libserver`'s protocol specs.
 
-The code is just a few helper settings and mega-functions (I know, refactoring will make it easier to maintain). The HTTP parser destructively edits the received headers and forwards a `struct HttpRequest` object to the `on_request` callback. This minimizes data copying and speeds up the process.
+The code is just a few helper settings and mega-functions (I know, refactoring will make it easier to maintain). The HTTP parser destructively edits the received headers and forwards a `http_request_s *` object to the `on_request` callback. This minimizes data copying and speeds up the process.
 
-The HTTP protocol provides a built-in static file service and allows us to limit incoming request data sizes in order to protect server resources. The header size limit is hard-set during compilation (it's 8KB, which is also the limit on some proxies), securing the server from bloated data DoS attacks. The incoming data size limit is dynamic.
+The HTTP protocol provides a built-in static file service and allows us to limit incoming request data sizes in order to protect server resources. The header size limit adjustable, but will be hardcoded during compilation (it's set to 8KB, which is also the limit on some proxies and intermediaries), securing the server from bloated header data DoS attacks. The incoming data size limit is dynamic.
 
 Here's a "Hello World" HTTP server (with a stub to add static file services).
 
 ```c
-// update the tryme.c file to use the existing folder structure and makefile
+// update the demo.c file to use the existing folder structure and makefile
 #include "http.h"
 
-void on_request(struct HttpRequest request) {
-  struct HttpResponse* response = HttpResponse.new(req); // a helper object
-  HttpResponse.write_header2(response, "X-Data", "my data");
-  HttpResponse.set_cookie(response, (struct HttpCookie){
-    .name = "my_cookie",
-    .value = "data"
-  });
-  HttpResponse.write_body(response, "Hello World!\r\n", 14);
-  HttpResponse.destroy(response);
+void on_request(http_request_s* request) {
+  http_response_s response = http_response_init(request);
+  http_response_write_header(&response, .name = "X-Data", .value = "my data");
+  http_response_set_cookie(&response, .name = "my_cookie", .value = "data");
+  http_response_write_body(&response, "Hello World!\r\n", 14);
+  http_response_finish(&response);
 }
 
-int main()
-{
-  char * public_folder = NULL
-  start_http_server(on_request, public_folder, .threads = 16);
+int main() {
+  char* public_folder = NULL;
+  // listen on port 3000, any available network binding (0.0.0.0)
+  http1_listen("3000", NULL, .on_request = on_request,
+               .public_folder = public_folder);
+  // start the server
+  server_run(.threads = 16);
 }
 ```
 

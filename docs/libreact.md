@@ -1,110 +1,84 @@
 # The Reactor Library - KQueue/EPoll abstraction
 
-The Reactor library, `libreact` is a KQueue/EPoll abstraction and is part of [`lib-server`'s](./lib-server.md) core.
+The Reactor library, `libreact` is a KQueue/EPoll abstraction and is part of [`libserver`'s](./libserver.md) core.
 
 `libreact` requires only the following two files from this repository: [`src/libreact.h`](../src/libreact.h) and [`src/libreact.c`](../src/libreact.c).
 
-It should be noted that exactly like `epoll` and `kqueue`, `libreact` might produce unexpected results if forked after initialized, since this will cause the `epoll`/`kqueue` data to be shared across processes, even while these processes probably will not have access to the same file descriptor (i.e. `fd` 90 on one process might reference file "A" while on a different process the same `fd` (90) might reference file "B").
+It should be noted that exactly like `epoll` and `kqueue`, `libreact` might produce unexpected results if forked after initialized, since this will cause the `epoll`/`kqueue` data to be shared across processes, even though these processes will not have access to new file descriptors (i.e. `fd` 90 on one process might reference file "A" while on a different process the same `fd` (90) might reference file "B").
 
-You don't need to read this file if you're looking to utilize `lib-server`.
+`libreact` adopts `libsock`'s use of `intptr_t` type system for `fd` UUIDs. However, depending on the system's byte order of with very minor adjustments to the `libreact.h` file, the library could be used seamlessly with regular file descriptors.
 
-This file is here as quick reference to anyone interested in maintaining `lib-server` or learning about how it's insides work.
+This documentation isn't relevant for `libserver` users. `libserver` implements `libreact` callbacks and `libreact` cannot be used without removing `libserver` from the project.
 
-It should be noted that `server_pt` and `struct Reactor *` are both pointers to [`struct Reactor`](#the-reactor-object-struct-reactor-) objects, so that a `server_pt` can be used for `libreact`'s API.
+This file is here as quick reference to anyone interested in maintaining `libserver` or learning about how it's insides work.
 
-## The reactor object: `struct Reactor *`
+## Event Callbacks
 
-The reactor API hinges on the `struct Reactor` object, which is used both for storing the event callback settings and information about the state of the reactor (open connections, etc').
+Event callbacks are defined during the linking stage and are hardwired once compilation is complete.
 
-The reactor object should be considered partially opaque and some of it's content should be ignored.
+`void reactor_on_data(intptr_t)` - called when the file descriptor has incoming data. This is edge triggered and will not be called again unless all the previous data was consumed.
 
-This is the reactor object:
+`void reactor_on_ready(intptr_t)` - called when the file descriptor is ready to send data (outgoing). `sock_flush` is called automatically and there is no need to call `sock_flush` when implementing this callback.
 
-```c
-struct Reactor {
-  void (*on_data)(struct Reactor* reactor, int fd);
-  void (*on_ready)(struct Reactor* reactor, int fd);
-  void (*on_shutdown)(struct Reactor* reactor, int fd);
-  void (*on_close)(struct Reactor* reactor, int fd);
+`void reactor_on_shutdown(intptr_t)` - called for any open file descriptors when the reactor is shutting down.
 
-  time_t last_tick;
-  int maxfd; // REQUIRED
+`void reactor_on_close(intptr_t)` - called when a file descriptor was closed REMOTELY. `on_close` will NOT get called when a connection is closed locally, unless using `libsock` or the `reactor_close` function.
 
-  struct {
-    int reactor_fd;
-    char* map;
-    void* events;
-  } private;
-};
-```
+**Notice**: Both EPoll and KQueue will **not** raise an event for an `fd` that was closed using the native `close` function, so unless using `libsock` or calling `reactor_close`, the `reactor_on_close` callback will only be called for remote events.
 
-### Event Callbacks
-
-`on_data` - a pointer to a function that will be called when the file descriptor has incoming data. This is edge triggered and will not be called again unless all the previous data was consumed.
-
-`on_ready` - a pointer to a function that will be called when the file descriptor is ready to send data (outgoing).
-
-`on_shutdown` - a pointer to a function that will be called for any open file descriptors when the reactor is shutting down.
-
-`on_close` - a pointer to a function that will be called when a file descriptor was closed REMOTELY. `on_close` will NOT get called when a connection is closed locally, unless using `reactor_close` function.
-
-**Notice**: the `on_close` callback will be called **only** when the `fd` was closed **remotely** or when it was closed using the [`reactor_close`](#void-reactor_closestruct-reactor-int-fd) function. Both EPoll and KQueue will **not** raise an event for an `fd` that was closed using the native `close` function.
-
-**Notice**: `on_open` is missing by design, as it is expected that any initialization required for the `on_open` event will be performed before attaching the `fd` (socket/timer/pipe) to the reactor using [reactor_add](#int-reactor_addstruct-reactor-int-fd).
-
-### The Reactor's Data and Settings
-
-`time_t last_tick` - the time (seconds since epoch) of the last "tick" (event cycle).
-
-`int maxfd` - REQUIRED: the maximum value for a file descriptor that the reactor will be required to handle (the capacity -1).
-
-`struct private` - for internal use (read code for more information).
+**Notice**: The `on_open` event is missing by design, as it is expected that any initialization required for the `on_open` event will be performed before attaching the `intptr_t fd` (socket/timer/pipe) to the reactor using [reactor_add]().
 
 ## The Reactor API
 
 The following are the functions that control the Reactor.
 
-#### `int reactor_init(struct Reactor*)`
+#### `ssize_t reactor_init(void)`
 
-Initializes the reactor, making the reactor "live".
+Initializes the processes reactor object.
 
-Once initialized, the reactor CANNOT be forked, so do not fork the process after calling `reactor_init`, or data corruption will be experienced.
+Reactor objects are a per-process object. Avoid forking a process with an active reactor, as some unexpected results might occur.
 
 Returns -1 on error, otherwise returns 0.
 
-#### `int reactor_review(struct Reactor*)`
+#### `int reactor_review(void)`
 
 Reviews any pending events (up to REACTOR_MAX_EVENTS which limits the number of events that should reviewed each cycle).
 
 Returns -1 on error, otherwise returns the number of events handled by the reactor (0 isn't an error).
 
-#### `void reactor_stop(struct Reactor*)`
+#### `void reactor_stop(void)`
 
 Closes the reactor, releasing it's resources (except the actual struct Reactor, which might have been allocated on the stack and should be handled by the caller).
 
-#### `int reactor_add(struct Reactor*, int fd)`
+#### `int reactor_add(intptr_t uuid)`
 
 Adds a file descriptor to the reactor, so that callbacks will be called for it's events.
 
 Returns -1 on error, otherwise return value is system dependent and could be safely ignored.
 
-#### `int reactor_remove(struct Reactor*, int fd)`
-
-Removes a file descriptor from the reactor - further callbacks won't be called.
-
-Returns -1 on error, otherwise return value is system dependent and could be safely ignored. If the file descriptor wasn't owned by the reactor, it isn't an error.
-
-#### `void reactor_close(struct Reactor*, int fd)`
-
-Closes a file descriptor, calling it's callback if it was registered with the reactor.
-
-#### `int reactor_add_timer(struct Reactor*, int fd, long milliseconds)`
+#### `int reactor_add_timer(intptr_t uuid, long milliseconds)`
 
 Adds a file descriptor as a timer object.
 
 Returns -1 on error, otherwise return value is system dependent.
 
-#### `void reactor_reset_timer(int fd)`
+#### `int reactor_remove(intptr_t uuid)`
+
+Removes a file descriptor from the reactor - further callbacks for this file descriptor won't be called.
+
+Returns -1 on error, otherwise return value is system dependent and could be safely ignored. If the file descriptor wasn't owned by the reactor, it isn't an error.
+
+#### `int reactor_remove_timer(intptr_t uuid)`
+
+Removes a timer file descriptor from the reactor - further callbacks for this file descriptor's timer events won't be called.
+
+Returns -1 on error, otherwise return value is system dependent. If the file descriptor wasn't owned by the reactor, it isn't an error.
+
+#### `void reactor_close(intptr_t uuid)`
+
+Closes a file descriptor, calling the `reactor_on_close` callback.
+
+#### `void reactor_reset_timer(intptr_t uuid)`
 
 EPoll requires the timer to be "reset" before repeating. Kqueue requires no such thing.
 
@@ -121,119 +95,60 @@ Returns -1 on error, otherwise returns the file descriptor.
 The following example, an Echo server, isn't very interesting - but it's good enough to demonstrate the API:
 
 ```c
-#include "libreact.h"
-// we're writing a small server, many included files...
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <netdb.h>
-#include <string.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <signal.h>
-#include <errno.h>
+#include "libsock.h"   // easy socket functions, also allows integration.
+#include "libreact.h"  // the reactor library
 
-// this will accept connections,
-// it will be a simple HTTP hello world. (with keep alive)
-void on_data(struct Reactor* reactor, int fd);
+// a global server socket
+int srvfd = -1;
+// a global running flag
+int run = 1;
 
-// to make it simple, we'll have global objects
-struct Reactor r = {.on_data = on_data, .maxfd = 1024}; // the reactor
-int srvfd; // the server listening socket
-
-// this will handle the exit signal (^C).
-void on_sigint(int sig) {
-  reactor_stop(&r);
-}
-
-int main(int argc, char const* argv[]) {
-  printf("starting up an http hello world example on port 3000\n");
-  // setup the exit signal
-  signal(SIGINT, on_sigint);
-  // create a server socket... this will take a moment...
-  char* port = "3000";
-  // setup the address
-  struct addrinfo hints;
-  struct addrinfo* servinfo;        // will point to the results
-  memset(&hints, 0, sizeof hints);  // make sure the struct is empty
-  hints.ai_family = AF_UNSPEC;      // don't care IPv4 or IPv6
-  hints.ai_socktype = SOCK_STREAM;  // TCP stream sockets
-  hints.ai_flags = AI_PASSIVE;      // fill in my IP for me
-
-  if (getaddrinfo(NULL, port, &hints, &servinfo)) {
-    perror("addr err");
-    return -1;
-  }
-
-  srvfd =   // get the file descriptor
-      socket(servinfo->ai_family, servinfo->ai_socktype,
-                                  servinfo->ai_protocol);
-  if (srvfd <= 0) {
-    perror("addr err");
-    freeaddrinfo(servinfo);
-    return -1;
-  }
-
-  { // avoid the "address taken"
-    int optval = 1;
-    setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &optval,
-              sizeof(optval));
-  }
-
-  // bind the address to the socket
-
-  if (bind(srvfd, servinfo->ai_addr, servinfo->ai_addrlen) < 0) {
-    perror("bind err");
-    freeaddrinfo(servinfo);
-    return -1;
-  }
-
-  // make sure the socket is non-blocking
-
-  static int flags;
-  if (-1 == (flags = fcntl(srvfd, F_GETFL, 0)))
-    flags = 0;
-  fcntl(srvfd, F_SETFL, flags | O_NONBLOCK);
-
-  // listen in
-  listen(srvfd, SOMAXCONN);
-  if (errno)
-    perror("starting. last error was");
-
-  freeaddrinfo(servinfo); // free the address data memory
-
-  // now that everything is ready, call the reactor library...
-  reactor_init(&r);
-  reactor_add(&r, srvfd);
-
-  while (reactor_review(&r) >= 0)
-    ;
-
-  if (errno)
-    perror("\nFinished. last error was");
-}
-
-void on_data(struct Reactor* reactor, int fd) {
-  if (fd == srvfd) { // yes, this is our listening socket...
-    int client = 0;
-    unsigned int len = 0;
-    while ((client = accept(fd, NULL, &len)) > 0) {
-      reactor_add(&r, client);
-    }  // reactor is edge triggered, we need to clear the cache.
-  } else {
-    char buff[8094];
-    ssize_t len;
-    static char response[] =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Length: 12\r\n"
-        "Connection: keep-alive\r\n"
-        "Keep-Alive: timeout=2\r\n"
-        "\r\n"
-        "Hello World!\r\n";
-
-    if ((len = recv(fd, buff, 8094, 0)) > 0) {
-      len = write(fd, response, strlen(response));
+// create the callback. This callback will be global and hardcoded,
+// so there are no runtime function pointer resolutions.
+void reactor_on_data(int fd) {
+  if (fd == srvfd) {
+    int new_client;
+    // accept connections.
+    while ((new_client = sock_accept(fd)) > 0) {
+      fprintf(stderr, "Accepted new connetion\n");
+      reactor_add(new_client);
     }
+    fprintf(stderr, "No more clients... (or error)?\n");
+  } else {
+    fprintf(stderr, "Handling incoming data.\n");
+    // handle data
+    char data[1024];
+    ssize_t len;
+    while ((len = sock_read(fd, data, 1024)) > 0)
+      sock_write(fd,
+                 "HTTP/1.1 200 OK\r\n"
+                 "Content-Length: 12\r\n"
+                 "Connection: keep-alive\r\n"
+                 "Keep-Alive: 1;timeout=5\r\n"
+                 "\r\n"
+                 "Hello World!",
+                 100);
   }
+}
+
+void reactor_on_close(int fd) {
+  fprintf(stderr, "%d closed the connection.\n", fd);
+}
+
+void stop_signal(int sig) {
+  run = 0;
+  signal(sig, SIG_DFL);
+}
+int main() {
+  srvfd = sock_listen(NULL, "3000");
+  signal(SIGINT, stop_signal);
+  signal(SIGTERM, stop_signal);
+  sock_lib_init();
+  reactor_init();
+  reactor_add(srvfd);
+  fprintf(stderr, "Starting reactor loop\n");
+  while (run && reactor_review() >= 0)
+    ;
+  fprintf(stderr, "\nGoodbye.\n");
 }
 ```

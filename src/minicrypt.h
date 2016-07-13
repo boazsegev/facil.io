@@ -44,12 +44,56 @@ All functions will be available using the prefix `minicrypt_`, i.e.:
 #include <stdint.h>
 #include <time.h>
 
+/* include intrinsics if supported */
+#ifdef __has_include
+#if __has_include(<x86intrin.h>)
+#include <x86intrin.h>
+#define HAVE_X86Intrin
+/*
+see: https://software.intel.com/en-us/node/513411
+and: https://software.intel.com/sites/landingpage/IntrinsicsGuide/
+*/
+#endif
+#endif
+
 /* *****************************************************************************
 C++ extern
 */
 #if defined(__cplusplus)
 extern "C" {
 #endif
+
+/* ***************************************************************************
+Random stuff... (why is this not a system call?)
+*/
+
+typedef union {
+#ifdef HAVE_X86Intrin
+  __m128i mm;
+#endif
+  uint8_t bytes[16];
+  uint32_t words_small[4];
+  uint64_t words[2];
+} bits128_u;
+
+typedef union {
+#ifdef HAVE_X86Intrin
+  __m256i mm;
+#endif
+  uint8_t bytes[32];
+  uint32_t ints[8];
+  uint64_t words[4];
+} bits256_u;
+
+uint32_t minicrypt_rand32(void);
+
+uint64_t minicrypt_rand64(void);
+
+bits128_u minicrypt_rand128(void);
+
+bits256_u minicrypt_rand256(void);
+
+void minicrypt_rand_bytes(void* target, size_t length);
 
 /* ***************************************************************************
 SHA-1 hashing
@@ -66,20 +110,20 @@ Use, for example:
 
     #include "mini-crypt.h"
     sha1_s sha1;
-    minicrypt_sha1_init(&sha1);
-    minicrypt_sha1_write(&sha1,
+    MiniCrypt.sha1_init(&sha1);
+    MiniCrypt.sha1_write(&sha1,
                   "The quick brown fox jumps over the lazy dog", 43);
-    char *hashed_result = minicrypt_sha1_result(&sha1);
+    char *hashed_result = MiniCrypt.sha1_result(&sha1);
 */
 typedef struct {
-  union {
-    uint32_t i[80];
-    unsigned char str[64];
-  } buffer;
   union {
     uint64_t i;
     unsigned char str[8];
   } msg_length;
+  union {
+    uint32_t i[80];
+    unsigned char str[64];
+  } buffer;
   union {
     uint32_t i[5];
     unsigned char str[21];
@@ -136,18 +180,23 @@ Use, for example:
 
     #include "mini-crypt.h"
     sha2_s sha2;
-    minicrypt_sha2_init(&sha2, SHA_512);
-    minicrypt_sha2_write(&sha2,
+    MiniCrypt.sha2_init(&sha2, SHA_512);
+    MiniCrypt.sha2_write(&sha2,
                   "The quick brown fox jumps over the lazy dog", 43);
-    char *hashed_result = minicrypt_sha2_result(&sha2);
+    char *hashed_result = MiniCrypt.sha2_result(&sha2);
 
 */
 typedef struct {
   union {
-    uint32_t i32[8];
+    uint32_t i32[16];
     uint64_t i64[8];
     uint8_t str[65]; /* added 64+1 for the NULL byte.*/
   } digest;
+  unsigned buffer_pos : 7;
+  unsigned initialized : 1;
+  unsigned finalized : 1;
+  sha2_variant type : 3;
+  unsigned type_512 : 1;
   union {
     uint32_t i32[16];
     uint64_t i64[16];
@@ -158,11 +207,6 @@ typedef struct {
     __uint128_t i;
     uint8_t str[16];
   } msg_length;
-  unsigned buffer_pos : 7;
-  unsigned initialized : 1;
-  unsigned finalized : 1;
-  sha2_variant type : 3;
-  unsigned type_512 : 1;
 } sha2_s;
 
 /**
@@ -290,7 +334,7 @@ typedef struct xor_key_s xor_key_s;
 The `xor_key_s` type is a struct containing XOR key data. This will be used
 for
 all the encryption/decription functions that use XOR key data, such as the
-`minicrypt_xor_crypt` function.
+`MiniCrypt.xor_crypt` function.
 */
 struct xor_key_s {
   /** A pointer to a string containing the key. */
@@ -319,7 +363,7 @@ The `xor_key_128bit_s` type is a struct containing an XOR key data. This will be
 used
 for
 all the encryption/decription functions that use XOR key data, such as the
-`minicrypt_xor_crypt` function.
+`MiniCrypt.xor_crypt` function.
 */
 struct xor_key_128bit_s {
   /** A pointer to a string containing the key. */
@@ -381,48 +425,6 @@ int minicrypt_xor256_crypt(uint64_t* key,
                            int (*on_cycle)(uint64_t* key));
 
 /* ***************************************************************************
-Random stuff... (why is this not a system call?)
-*/
-
-typedef union {
-  uint8_t bytes[16];
-  uint8_t matrix[4][4];
-  uint32_t ints[4];
-  uint64_t words[2];
-} bits128_u;
-
-typedef union {
-  uint8_t bytes[32];
-  uint8_t matrix[4][8];
-  uint32_t ints[8];
-  uint64_t words[4];
-} bits256_u;
-
-#define XOR128(a, b)                                       \
-  do {                                                     \
-    ((bits128_u)(a)).words[0] ^ ((bits128_u)(b)).words[0]; \
-    ((bits128_u)(a)).words[1] ^ ((bits128_u)(b)).words[1]; \
-  } while (0);
-
-#define XOR256(a, b)                                       \
-  do {                                                     \
-    ((bits256_u)(a)).words[0] ^ ((bits256_u)(b)).words[0]; \
-    ((bits256_u)(a)).words[1] ^ ((bits256_u)(b)).words[1]; \
-    ((bits256_u)(a)).words[2] ^ ((bits256_u)(b)).words[2]; \
-    ((bits256_u)(a)).words[3] ^ ((bits256_u)(b)).words[3]; \
-  } while (0);
-
-uint32_t minicrypt_rand32(void);
-
-uint64_t minicrypt_rand64(void);
-
-bits128_u minicrypt_rand128(void);
-
-bits256_u minicrypt_rand256(void);
-
-void minicrypt_rand_bytes(void* target, size_t length);
-
-/* ***************************************************************************
 Other helper functions
 
 i.e. file content dumping and GMT time alternative to
@@ -433,7 +435,7 @@ i.e. file content dumping and GMT time alternative to
 File dump data.
 
 This struct (or, a pointer to this struct) is returned
-by the `minicrypt_fdump`
+by the `MiniCrypt.fdump`
 function on success.
 
 To free the pointer returned, simply call `free`.

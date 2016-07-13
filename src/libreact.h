@@ -4,8 +4,11 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef LIBREACT
-#define LIBREACT "0.2.2"
+#ifndef LIB_REACT
+#define LIB_REACT "0.3.0"
+#define LIB_REACT_VERSION_MAJOR 0
+#define LIB_REACT_VERSION_MINOR 3
+#define LIB_REACT_VERSION_PATCH 0
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -18,6 +21,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #define REACTOR_TICK 1000
 #endif
 
+#include <stdint.h>
+#include <unistd.h>
 #include <sys/time.h>
 #include <sys/types.h>
 
@@ -35,6 +40,34 @@ Feel free to copy, use and enjoy according to the license provided.
 #define reactor_kqueue 1
 #endif
 
+/* *****************************************************************************
+A simple, predictable UUID for file-descriptors, for collision prevention
+
+It's protected against duplicate definition (i.e., when including `libsock.h`)
+*/
+#ifndef FD_UUID_TYPE_DEFINED
+#define FD_UUID_TYPE_DEFINED
+/** fduuid_u is used to identify a specific connection, helping to manage file
+ * descriptor collisions (when a new connection receives an old connection's
+ * file descriptor), especially when the `on_close` event is fired after an
+ * `accept` was called and the old file descriptor was already recycled.
+ *
+ * This requires that sizeof(int) < sizeof(uintptr_t) or sizeof(int)*8 >= 32
+ */
+typedef union {
+  intptr_t uuid;
+  struct {
+    int fd : (sizeof(int) < sizeof(intptr_t) ? (sizeof(int) * 8) : 24);
+    unsigned counter : (sizeof(int) < sizeof(intptr_t)
+                            ? ((sizeof(intptr_t) - sizeof(int)) * 8)
+                            : ((sizeof(intptr_t) * 8) - 24));
+  } data;
+} fduuid_u;
+
+#define FDUUID_FAIL(uuid) (uuid == -1)
+#define sock_uuid2fd(uuid) ((fduuid_u)(uuid)).data.fd
+#endif
+
 /*****************************/ /** \file
 This small library implements a reactor pattern using callbacks.
 
@@ -42,235 +75,148 @@ Here are the supported events and their callbacks:
 
 - File Descriptor events:
 
-    - Ready to Read (`on_data` callback).
+    - Ready to Read (`reactor_on_data` callback).
 
-    - Ready to Write (`on_ready` callback).
+    - Ready to Write (`reactor_on_ready` callback).
 
-    - Closed (`on_close` callback).
+    - Closed (`reactor_on_close` callback).
 
-    - Reactor Exit (`on_shutdown` callback - will be called before the file
-descriptor is closed and an `on_close` callback is fired).
+Here's a quick example for an HTTP hello world (no HTTP parsing required)...:
 
-Here's a quick example for an HTTP hellow world (no HTTP parsing required)...
-most of the code is the damn socket binding...:
+    #include "libsock.h"   // easy socket functions, also allows integration.
+    #include "libreact.h"  // the reactor library
 
-      #include "libreact.h"
-      ; // we're writing a small server, many included files...
-      #include <sys/socket.h>
-      #include <sys/types.h>
-      #include <netdb.h>
-      #include <string.h>
-      #include <fcntl.h>
-      #include <stdio.h>
-      #include <unistd.h>
-      #include <signal.h>
-      #include <errno.h>
+    // a global server socket
+    int srvfd = -1;
+    // a global running flag
+    int run = 1;
 
-      ; // this will accept connections,
-      ; // it will be a simple HTTP hello world. (with keep alive)
-      void on_data(struct Reactor* reactor, int fd);
-
-      struct Reactor r = {.on_data = on_data, .maxfd = 1024};
-      int srvfd; // to make it simple, we'll have a global object
-
-      ; // this will handle the exit signal (^C).
-      void on_sigint(int sig);
-
-      int main(int argc, char const* argv[]) {
-        printf("starting up an http hello world example on port 3000\n");
-        ; // setup the exit signal
-        signal(SIGINT, on_sigint);
-        ; // create a server socket... this will take a moment...
-        char* port = "3000";
-        ; // setup the address
-        struct addrinfo hints;
-        struct addrinfo* servinfo;        // will point to the results
-        memset(&hints, 0, sizeof hints);  // make sure the struct is empty
-        hints.ai_family = AF_UNSPEC;      // don't care IPv4 or IPv6
-        hints.ai_socktype = SOCK_STREAM;  // TCP stream sockets
-        hints.ai_flags = AI_PASSIVE;      // fill in my IP for me
-
-        if (getaddrinfo(NULL, port, &hints, &servinfo)) {
-          perror("addr err");
-          return -1;
+    // create the callback. This callback will be global and hardcoded,
+    // so there are no runtime function pointer resolutions.
+    void reactor_on_data(int fd) {
+      if (fd == srvfd) {
+        int new_client;
+        // accept connections.
+        while ((new_client = sock_accept(fd)) > 0) {
+          fprintf(stderr, "Accepted new connetion\n");
+          reactor_add(new_client);
         }
-
-        srvfd =   // get the file descriptor
-            socket(servinfo->ai_family, servinfo->ai_socktype,
-                                        servinfo->ai_protocol);
-        if (srvfd <= 0) {
-          perror("addr err");
-          freeaddrinfo(servinfo);
-          return -1;
-        }
-
-        { // avoid the "address taken"
-          int optval = 1;
-          setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &optval,
-                    sizeof(optval));
-        }
-
-        ; // bind the address to the socket
-
-        if (bind(srvfd, servinfo->ai_addr, servinfo->ai_addrlen) < 0) {
-          perror("bind err");
-          freeaddrinfo(servinfo);
-          return -1;
-        }
-
-        ; // make sure the socket is non-blocking
-
-        static int flags;
-        if (-1 == (flags = fcntl(srvfd, F_GETFL, 0)))
-          flags = 0;
-        fcntl(srvfd, F_SETFL, flags | O_NONBLOCK);
-
-        ; // listen in
-        listen(srvfd, SOMAXCONN);
-        if (errno)
-          perror("starting. last error was");
-
-        freeaddrinfo(servinfo); // free the address data memory
-
-        ; // now that everything is ready, call the reactor library...
-        reactor_init(&r);
-        reactor_add(&r, srvfd);
-
-        while (reactor_review(&r) >= 0)
-          ;
-
-        if (errno)
-          perror("\nFinished. last error was");
+        fprintf(stderr, "No more clients... (or error)?\n");
+      } else {
+        fprintf(stderr, "Handling incoming data.\n");
+        // handle data
+        char data[1024];
+        ssize_t len;
+        while ((len = sock_read(fd, data, 1024)) > 0)
+          sock_write(fd,
+                     "HTTP/1.1 200 OK\r\n"
+                     "Content-Length: 12\r\n"
+                     "Connection: keep-alive\r\n"
+                     "Keep-Alive: 1;timeout=5\r\n"
+                     "\r\n"
+                     "Hello World!",
+                     100);
       }
+    }
 
-      void on_data(struct Reactor* reactor, int fd) {
-        if (fd == srvfd) { // yes, this is our listening socket...
-          int client = 0;
-          unsigned int len = 0;
-          while ((client = accept(fd, NULL, &len)) > 0) {
-            reactor_add(&r, client);
-          }  // reactor is edge triggered, we need to clear the cache.
-        } else {
-          char buff[8094];
-          ssize_t len;
-          static char response[] =
-              "HTTP/1.1 200 OK\r\n"
-              "Content-Length: 12\r\n"
-              "Connection: keep-alive\r\n"
-              "Keep-Alive: timeout=2\r\n"
-              "\r\n"
-              "Hello World!\r\n";
+    void reactor_on_close(int fd) {
+      fprintf(stderr, "%d closed the connection.\n", fd);
+    }
 
-          if ((len = recv(fd, buff, 8094, 0)) > 0) {
-            len = write(fd, response, strlen(response));
-          }
-        }
-      }
+    void stop_signal(int sig) {
+      run = 0;
+      signal(sig, SIG_DFL);
+    }
+    int main() {
+      srvfd = sock_listen(NULL, "3000");
+      signal(SIGINT, stop_signal);
+      signal(SIGTERM, stop_signal);
+      sock_lib_init();
+      reactor_init();
+      reactor_add(srvfd);
+      fprintf(stderr, "Starting reactor loop\n");
+      while (run && reactor_review() >= 0)
+        ;
+      fprintf(stderr, "\nGoodbye.\n");
+    }
 
-      void on_sigint(int sig) { // stop the reactor
-        reactor_stop(&r);
-      }
- */
-
-/**
-The Reactor struct holds the reactor's core data and settings.
 */
-struct Reactor {
-  /* File Descriptor Callbacks */
 
-  /**
-  Called when the file descriptor has incoming data. This is edge triggered
-  and will not be called again unless all the previous data was consumed.
-  */
-  void (*on_data)(struct Reactor* reactor, int fd);
-  /**
-  Called when the file descriptor is ready to send data (outgoing).
-  */
-  void (*on_ready)(struct Reactor* reactor, int fd);
-  /**
-  Called for any open file descriptors when the reactor is shutting down.
-  */
-  void (*on_shutdown)(struct Reactor* reactor, int fd);
-  /**
-  Called when a file descriptor was closed REMOTELY. `on_close` will NOT get
-  called when a connection is closed locally, unless using `reactor_close`
-  function.
-  */
-  void (*on_close)(struct Reactor* reactor, int fd);
-
-  /* global data and settings */
-
-  /** the time (seconds since epoch) of the last "tick" (event cycle) */
-  time_t last_tick;
-  /** REQUIRED: the maximum value for a file descriptor that the reactor will be
-  required
-  to handle (the capacity -1). */
-  int maxfd;
-
-  /** this data is set by the system, dont alter this data */
-  struct {
-    /** The file descriptor designated by kqueue / epoll - do NOT touch!. */
-    int reactor_fd;
-    /** a map for all the active file descriptors that were added to the
-    reactor - do NOT edit! */
-    char* map;
-    /** the reactor's events array - do NOT touch! */
-    void* events;
-  } internal_data;
-};
-
-#if defined(__cplusplus)
-extern "C" {
-#endif
+/* *****************************************************************************
+Initialization and global workflow.
+*/
 
 /**
-Initializes the reactor, making the reactor "live".
+Initializes the processes reactor object.
 
-once initialized, the reactor CANNOT be forked, so do not fork the process after
-calling `reactor_init`, or data corruption will be experienced.
+Reactor objects are a per-process object. Avoid forking a process with an active
+reactor, as some unexpected results might occur.
 
 Returns -1 on error, otherwise returns 0.
 */
-int reactor_init(struct Reactor*);
+ssize_t reactor_init();
 /**
-Reviews any pending events (up to REACTOR_MAX_EVENTS)
+Reviews any pending events (up to REACTOR_MAX_EVENTS) and calls any callbacks.
 
 Returns -1 on error, otherwise returns the number of events handled by the
 reactor.
 */
-int reactor_review(struct Reactor*);
+int reactor_review();
 /**
-Closes the reactor, releasing it's resources (except the actual struct Reactor,
-which might have been allocated on the stack and should be handled by the
-caller).
+Closes the reactor, releasing it's resources.
 */
-void reactor_stop(struct Reactor*);
+void reactor_stop();
+
+/* *****************************************************************************
+Adding and removing normal file descriptors.
+*/
+
 /**
 Adds a file descriptor to the reactor, so that callbacks will be called for it's
 events.
 
 Returns -1 on error, otherwise return value is system dependent.
 */
-int reactor_add(struct Reactor*, int fd);
+int reactor_add(intptr_t uuid);
+
 /**
-Removes a file descriptor from the reactor - further callbacks won't be called.
+Adds a timer file descriptor, so that callbacks will be called for it's events.
+
+Returns -1 on error, otherwise return value is system dependent.
+*/
+int reactor_add_timer(intptr_t uuid, long milliseconds);
+/**
+Removes a file descriptor from the reactor - further callbacks for this file
+descriptor won't be called.
 
 Returns -1 on error, otherwise return value is system dependent. If the file
-descriptor wasn't owned by
-the reactor, it isn't an error.
+descriptor wasn't owned by the reactor, it isn't an error.
 */
-int reactor_remove(struct Reactor*, int fd);
+int reactor_remove(intptr_t uuid);
+/**
+Removes a timer file descriptor from the reactor - further callbacks for this
+file descriptor's timer events won't be called.
+
+Returns -1 on error, otherwise return value is system dependent. If the file
+descriptor wasn't owned by the reactor, it isn't an error.
+*/
+int reactor_remove_timer(intptr_t uuid);
 /**
 Closes a file descriptor, calling it's callback if it was registered with the
 reactor.
 */
-void reactor_close(struct Reactor*, int fd);
+void reactor_close(intptr_t uuid);
+
+/* *****************************************************************************
+Timers.
+*/
+
 /**
 Adds a file descriptor as a timer object.
 
 Returns -1 on error, otherwise return value is system dependent.
 */
-int reactor_add_timer(struct Reactor*, int fd, long milliseconds);
+int reactor_add_timer(intptr_t uuid, long milliseconds);
 /**
 epoll requires the timer to be "reset" before repeating. Kqueue requires no such
 thing.
@@ -278,16 +224,21 @@ thing.
 This method promises that the timer will be repeated when running on epoll. This
 method is redundent on kqueue.
 */
-void reactor_reset_timer(int fd);
+void reactor_reset_timer(intptr_t uuid);
 /**
 Creates a timer file descriptor, system dependent.
 
-Returns -1 on error, otherwise returns the file descriptor.
+Returns -1 on error, or a valid fd on success (not an fd UUID, as these are
+controlled by `libsock` and `libreact` can be used independently as well).
 */
-int reactor_make_timer(void);
+intptr_t reactor_make_timer();
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 #if defined(__cplusplus)
 } /* extern "C" */
 #endif
 
-#endif /* end of include guard: LIBREACT */
+#endif /* end of include guard: LIB_REACT */

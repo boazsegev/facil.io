@@ -5,106 +5,114 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIB_ASYNC
-#define LIB_ASYNC "0.3.0"
+#define LIB_ASYNC "0.4.0"
+#define LIB_ASYNC_VERSION_MAJOR 0
+#define LIB_ASYNC_VERSION_MINOR 4
+#define LIB_ASYNC_VERSION_PATCH 0
 
-typedef struct Async* async_p;
+#include <stdlib.h>
+#include <stdio.h>
+
+#ifndef ASYNC_TEST_INC
+#define ASYNC_TEST_INC 1
+// prints out testing and benchmarking data
+void async_test_library_speed(void);
+#endif
 
 /** \file
-This is an easy to use thread pool library.
+This is an easy to use **global** thread pool library. Once the thread pool was
+initiated it makes running tasks very simple. i.e.:
 
-The Async global object allows us access to the Async thread pool API. i.e.:
+    async_start(4); // 4 worker threads
+    async_run(task, arg);
+    async_finish(); // waits for tasks and releases threads.
 
-    async_p async = Async.create(4); // 4 worker threads
-    Async.finish(async); // signal and wait, then the object self-destructs.
-
-Please note, this library isn't fork-friendly) - fork **before** you create the
+Please note, this library isn't fork-friendly - fork **before** you create the
 thread pool. In general, mixing `fork` with multi-threading isn't safe nor
 trivial - always fork before multi-threading.
 */
 
 /**
-This is an easy to use thread pool library.
+Starts running the global thread pool. Use:
 
-The Async global object allows us access to the Async thread pool API. i.e.:
+  async_start(8, 0);
 
-    async_p async = Async.create(4); // 4 worker threads
-    Async.finish(async); // signal and wait, then the object self-destructs.
+The `use_sentinal` variable protects threads from crashing and produces error
+reports. It isn't effective against all errors, but it should protect against
+some.
 
-Please note, this library isn't fork-friendly) - fork **before** you create the
-thread pool. In general, mixing `fork` with multi-threading isn't safe nor
-trivial - always fork before multi-threading.
 */
-extern struct Async_API___ {
-  /**
-Creates a new Async object (a thread pool) and returns a pointer using the
-`aync_p` (Async Pointer) type.
+ssize_t async_start(size_t threads);
 
-Requires the number of new threads to be initialized. Use:
+/**
+Use `async_join` instead.
 
-    async_p async = Async.create(8);
-
-  */
-  async_p (*create)(int threads);
-
-  /**
-Signals an Async object to finish up.
-
-The threads in the thread pool will continue perfoming all the tasks in the
-queue until the queue is empty. Once the queue is empty, the threads will exit.
-If new tasks are created after the signal, they will be added to the queue and
-processed until the last thread is done. Once the last thread exists, future
-tasks won't be processed.
+Performs tasks until the task queue is empty. An empty task queue does NOT mean
+all the tasks have completed, since some other threads might be running tasks
+that have yet to complete (and these tasks might schedule new tasks as well).
 
 Use:
 
-    Async.signal(async);
+  async_perform();
 
-  */
-  void (*signal)(async_p);
+*/
+void async_perform();
 
-  /**
-Waits for an Async object to finish up (joins all the threads in the thread
-pool).
+/**
+Waits for all the present tasks to complete and threads to exist.
 
-This function will wait forever or until a signal is received and all the tasks
-in the queue have been processed.
+The function won't return unless `async_signal` is called to signal the threads
+to stop waiting for new tasks.
+
+After this function returns, the thread pool will remain active, waiting for new
+tasts.
+
+Unline finish (that uses `join`) this is an **active** wait where the waiting
+thread acts as a working thread and performs any pending tasks and then
+spinlocks until the active thread count drops to 0.
 
 Use:
 
-    Async.wait(async);
+  async_join();
 
-  */
-  void (*wait)(async_p);
+*/
+void async_join();
 
-  /**
-Schedules a task to be performed by an Async thread pool group.
+/**
+Signals all the threads to finish up and stop waiting for new tasks.
+
+Use:
+
+  async_join();
+
+*/
+void async_signal();
+
+/**
+Schedules a task to be performed by the thread pool.
 
 The Task should be a function such as `void task(void *arg)`.
 
 Use:
 
-    void task(void * arg) { printf("%s", arg); }
+  void task(void * arg) { printf("%s", arg); }
 
-    char arg[] = "Demo Task";
+  char arg[] = "Demo Task";
 
-    Async.run(async, task, arg);
+  async_run(task, arg);
 
-  */
-  int (*run)(async_p async, void (*task)(void*), void* arg);
+*/
+int async_run(void (*task)(void*), void* arg);
 
-  /**
-Both signals for an Async object to finish up and waits for it to finish. This
-is akin to calling both `signal` and `wait` in succession:
+/**
+Same as:
 
-    Async.signal(async);
-    Async.wait(async);
-
-Use:
-
-    Async.finish(async);
-
-  */
-  void (*finish)(async_p);
-} Async;
+`async_signal(); async_wait();`
+*/
+#define async_finish() \
+  {                    \
+    async_signal();    \
+    async_join();      \
+  }
 
 #endif /* LIB_ASYNC */

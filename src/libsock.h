@@ -4,8 +4,11 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef LIBSOCK
-#define LIBSOCK "0.0.6"
+#ifndef LIB_SOCK
+#define LIB_SOCK "0.1.0"
+#define LIB_SOCK_VERSION_MAJOR 0
+#define LIB_SOCK_VERSION_MINOR 1
+#define LIB_SOCK_VERSION_PATCH 0
 
 /** \file
 The libsock is a non-blocking socket helper library, using a user level buffer,
@@ -21,6 +24,7 @@ The library is designed to be thread safe, but not fork safe.
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <sys/types.h>
 
 /* *****************************************************************************
 User land buffer settings for every packet's pre-alocated memory size (17Kb)
@@ -39,9 +43,31 @@ This information is also useful when implementing read / write hooks.
 #endif
 
 /* *****************************************************************************
-Avoide including the "libreact.h" file, the following is all we need.
+A simple, predictable UUID for file-descriptors, for collision prevention
 */
-struct Reactor;
+
+#ifndef FD_UUID_TYPE_DEFINED
+#define FD_UUID_TYPE_DEFINED
+/** fduuid_u is used to identify a specific connection, helping to manage file
+ * descriptor collisions (when a new connection receives an old connection's
+ * file descriptor), especially when the `on_close` event is fired after an
+ * `accept` was called and the old file descriptor was already recycled.
+ *
+ * This requires that sizeof(int) < sizeof(uintptr_t) or sizeof(int)*8 >= 32
+ */
+typedef union {
+  intptr_t uuid;
+  struct {
+    int fd : (sizeof(int) < sizeof(intptr_t) ? (sizeof(int) * 8) : 24);
+    unsigned counter : (sizeof(int) < sizeof(intptr_t)
+                            ? ((sizeof(intptr_t) - sizeof(int)) * 8)
+                            : ((sizeof(intptr_t) * 8) - 24));
+  } data;
+} fduuid_u;
+
+#define FDUUID_FAIL(uuid) (uuid == -1)
+#define sock_uuid2fd(uuid) ((fduuid_u)(uuid)).data.fd
+#endif
 
 /* *****************************************************************************
 C++ extern
@@ -72,11 +98,20 @@ extended to the allowed "hard" limit.
 ssize_t sock_max_capacity(void);
 
 /**
-Opens a listenning non-blocking socket. Return's the socket's file descriptor.
+Opens a listening non-blocking socket. Return's the socket's UUID.
 
-Returns -1 on error.
+Returns -1 on error. Returns a valid socket (non-random) UUID.
+
+UUIDs with values less then -1 are valid values, depending on the system's
+byte-ordering.
+
+Socket UUIDs are predictable and shouldn't be used outside the local system.
+They protect against connection mixups on concurrent systems (i.e. when saving
+client data for "broadcasting" or when an old client task is preparing a
+response in the background while a disconnection and a new connection occur on
+the same `fd`).
 */
-int sock_listen(const char* address, const char* port);
+intptr_t sock_listen(const char* address, const char* port);
 
 /* *****************************************************************************
 The main sock_API.
@@ -87,112 +122,119 @@ Initializes the library.
 
 Call this function before calling any `libsock` functions.
 */
-int8_t init_socklib(void);
+int8_t sock_lib_init(void);
 
 /**
 `sock_accept` accepts a new socket connection from the listening socket
 `server_fd`, allowing the use of `sock_` functions with this new file
 descriptor.
+
+When using `libreact`, remember to call `int reactor_add(intptr_t uuid);` to
+listen for events.
+
+Returns -1 on error. Returns a valid socket (non-random) UUID.
+
+Socket UUIDs are predictable and shouldn't be used outside the local system.
+They protect against connection mixups on concurrent systems (i.e. when saving
+client data for "broadcasting" or when an old client task is preparing a
+response in the background while a disconnection and a new connection occur on
+the same `fd`).
 */
-int sock_accept(struct Reactor* owner, int server_fd);
+intptr_t sock_accept(intptr_t srv_uuid);
 
 /**
 `sock_connect` is similar to `sock_accept` but should be used to initiate a
 client connection to the address requested.
 
-Returns the new file descriptor fd. Retruns -1 on error.
+Returns -1 on error. Returns a valid socket (non-random) UUID.
+
+Socket UUIDs are predictable and shouldn't be used outside the local system.
+They protect against connection mixups on concurrent systems (i.e. when saving
+client data for "broadcasting" or when an old client task is preparing a
+response in the background while a disconnection and a new connection occur on
+the same `fd`).
+
+When using `libreact`, remember to call `int reactor_add(intptr_t uuid);` to
+listen for events.
 
 NOTICE:
 
-This function is non-blocking, meanning that the connection probably
-wasn't established by the time the function returns (this prevents the function
-from hanging while waiting for a network timeout).
+This function is non-blocking, meaning that the connection probably wasn't
+established by the time the function returns (this prevents the function from
+hanging while waiting for a network timeout).
 
-Use select, poll or epoll to review the connection state before attempting to
-write to the socket.
+Use select, poll, `libreact` or other solutions to review the connection state
+before attempting to write to the socket.
 */
-int sock_connect(struct Reactor* owner, char* address, char* port);
+intptr_t sock_connect(char* address, char* port);
 
 /**
-`sock_open` takes an existing file decriptor `fd` and initializes it's status as
-open and available for `sock_API` calls.
+`sock_open` takes an existing file descriptor `fd` and initializes it's status
+as open and available for `sock_API` calls, returning a valid UUID.
 
 This will reinitialize the data (user buffer etc') for the file descriptor
-provided.
+provided, calling the `reactor_on_close` callback if the `fd` was previously
+marked as used.
 
-If a reactor pointer `owner` is provided, the `fd` will be attached to the
-reactor.
+When using `libreact`, remember to call `int reactor_add(intptr_t uuid);` to
+listen for events.
 
-Returns -1 on error and 0 on success.
+Returns -1 on error. Returns a valid socket (non-random) UUID.
+
+Socket UUIDs are predictable and shouldn't be used outside the local system.
+They protect against connection mixups on concurrent systems (i.e. when saving
+client data for "broadcasting" or when an old client task is preparing a
+response in the background while a disconnection and a new connection occur on
+the same `fd`).
 */
-int sock_open(struct Reactor* owner, int fd);
+intptr_t sock_open(int fd);
 
 /**
-`sock_attach` sets the reactor owner for a socket and attaches the socket to the
-reactor.
+Returns 1 if the uuid refers to a valid and open, socket.
 
-Use this function when the socket was already opened with no reactor association
-and it's data (buffer etc') is already initialized.
-
-This is useful for a delayed attachment, where some more testing is required
-before attaching a socket to a reactor.
-
-Returns -1 on error and 0 on success.
+Returns 0 if not.
 */
-int sock_attach(struct Reactor* owner, int fd);
+int sock_isvalid(intptr_t uuid);
 
 /**
-Clears a socket state data and buffer and sets it's state to "disconnected".
+`sock_fd2uuid` takes an existing file decriptor `fd` and returns it's active
+`uuid`.
 
-Use this function after the socket was closed remotely or without using the
-`sock_API`.
+If the file descriptor is marked as closed (wasn't opened / registered with
+`libsock`) the function returns -1;
 
-This function does **not** effect the state of the socket at the reactor. Call
-`reactor_add` / `reactor_close` / `reactor_remove` for those purposes.
+If the file descriptor was closed remotely (or not using `libsock`), a false
+positive would be returned. However, use of this uuid will result in the
+fd being closed.
 
-If the socket is owned by the reactor, it is unnecessary to call this function
-for remote close events or after a `reactor_close` call.
+Returns -1 on error. Returns a valid socket (non-random) UUID.
 */
-void sock_clear(int fd);
-
-/** Returns the state of the socket, similar to calling `fcntl(fd, F_GETFL)`.
- * Returns -1 if the connection is closed. */
-int sock_status(int fd);
-#define sock_is_closed(fd) (sock_status((fd)) < 0)
+intptr_t sock_fd2uuid(int fd);
 
 /**
-`sock_read` attempts to read up to count bytes from file descriptor fd into
-the buffer starting at buf.
+"Touches" a socket connection. This is a place holder for an optional callback
+for systems that apply timeout reviews. `libsock` supplies a default
+implementation (that does nothing) is cases where a callback wasn't defined.
+*/
+void sock_touch(intptr_t uuid);
+
+/**
+`sock_read` attempts to read up to count bytes from the socket into the buffer
+starting at buf.
 
 It's behavior should conform to the native `read` implementations, except some
-data might be available in the `fd`'s buffer while it is not available to be
+data might be available in the kernel's buffer while it is not available to be
 read using sock_read (i.e., when using a transport layer, such as TLS).
 
-On failure, `sock_read` will automatically marks the socket to be closed the
-next time `sock_flush` is called and return -1.
+Also, some internal buffering will might be used in cases where the transport
+layer data available is larger then the data requested.
 */
-ssize_t sock_read(int fd, void* buf, size_t count);
-
-/**
-`sock_write` writes up to count bytes from the buffer pointed buf to the
-buffer associated with the file descriptor fd.
-
-The data isn't neccessarily written to the socket and multiple calls to
-`sock_flush` might be required for the data to be actually sent.
-
-On error, -1 will be returned. Otherwise returns 0. All the bytes are
-transferred to the socket's user level buffer.
-
-**Note** this is actually a specific case of `sock_write2` and this macro
-actually calls `sock_write2`.
-*/
-#define sock_write(sockfd, buf, count) \
-  sock_write2(.fd = (sockfd), .buffer = (buf), .length = (count))
+ssize_t sock_read(intptr_t uuid, void* buf, size_t count);
 
 typedef struct {
   /** The fd for sending data. */
-  int fd;
-  /** The data to be sent. This can be either a byte strteam or a file pointer
+  intptr_t fduuid;
+  /** The data to be sent. This can be either a byte stream or a file pointer
    * (`FILE *`). */
   const void* buffer;
   /** The length (size) of the buffer. irrelevant for file pointers. */
@@ -224,28 +266,44 @@ transferred to the socket's user level buffer.
 */
 #define sock_write2(...) sock_write2_fn((sock_write_info_s){__VA_ARGS__})
 /**
-`sock_flush` writes the data in the internal buffer to the file descriptor fd
-and closes the fd once it's marked for closure (and all the data was sent).
+`sock_write` writes up to count bytes from the buffer pointed `buf` to the
+buffer associated with the socket `sockfd`.
 
-0 will be returned on success and -1 will be returned on an error or when
-the connection is closed.
+The data isn't necessarily written to the socket and multiple calls to
+`sock_flush` might be required before all the data is actually sent.
+
+On error, -1 will be returned. Otherwise returns 0. All the bytes are
+transferred to the socket's user level buffer.
+
+**Note** this is actually a specific case of `sock_write2` and this macro
+actually calls `sock_write2`.
+*/
+#define sock_write(uuid, buf, count) \
+  sock_write2(.fduuid = (uuid), .buffer = (buf), .length = (count))
+
+/**
+`sock_flush` writes the data in the internal buffer to the underlying file
+descriptor and closes the underlying fd once it's marked for closure (and all
+the data was sent).
+
+Return value: 0 will be returned on success and -1 will be returned on an error
+or when the connection is closed.
 
 **Please Note**: when using `libreact`, the `sock_flush` will be called
 automatically when the socket is ready.
 */
-ssize_t sock_flush(int fd);
+ssize_t sock_flush(intptr_t uuid);
 /**
 `sock_flush_strong` performs the same action as `sock_flush` but returns only
 after all the data was sent. This is an "active" wait, polling isn't performed.
 */
-void sock_flush_strong(int fd);
+void sock_flush_strong(intptr_t uuid);
 /**
 Calls `sock_flush` for each file descriptor that's buffer isn't empty.
 */
 void sock_flush_all(void);
 /**
-`sock_close` marks the connection for disconnection once all the data was
-sent.
+`sock_close` marks the connection for disconnection once all the data was sent.
 The actual disconnection will be managed by the `sock_flush` function.
 
 `sock_flash` will automatically be called.
@@ -253,7 +311,7 @@ The actual disconnection will be managed by the `sock_flush` function.
 If a reactor pointer is provied, the reactor API will be used and the
 `on_close` callback should be called once the socket is closed.
 */
-void sock_close(struct Reactor* reactor, int fd);
+void sock_close(intptr_t uuid);
 /**
 `sock_force_close` closes the connection immediately, without adhering to any
 protocol restrictions and without sending any remaining data in the connection
@@ -262,7 +320,7 @@ buffer.
 If a reactor pointer is provied, the reactor API will be used and the
 `on_close` callback should be called as expected.
 */
-void sock_force_close(struct Reactor* reactor, int fd);
+void sock_force_close(intptr_t uuid);
 
 /* *****************************************************************************
 Direct user level buffer API.
@@ -307,7 +365,7 @@ typedef struct sock_packet_s {
     /** Reserved for internal use - (memory shifting flag)*/
     unsigned internal_flag : 1;
     /** Reserved for future use. */
-    unsigned rsrv : 1;
+    unsigned rsrv : 2;
     /**/
   } metadata;
 } sock_packet_s;
@@ -335,7 +393,7 @@ The packet's memory is **always** handled by the `sock_send_packet` function
 
 Returns -1 on error. Returns 0 on success.
 */
-ssize_t sock_send_packet(int fd, sock_packet_s* packet);
+ssize_t sock_send_packet(intptr_t uuid, sock_packet_s* packet);
 
 /**
 Use `sock_free_packet` to free unused packets that were checked-out using
@@ -358,18 +416,19 @@ replace the default system calls to `recv` and `write`. */
 typedef struct sock_rw_hook_s {
   /** Implement reading from a file descriptor. Should behave like the file
    * system `read` call, including the setup or errno to EAGAIN / EWOULDBLOCK.*/
-  ssize_t (*read)(int fd, void* buf, size_t count);
+  ssize_t (*read)(intptr_t fduuid, void* buf, size_t count);
   /** Implement writing to a file descriptor. Should behave like the file system
    * `write` call.*/
-  ssize_t (*write)(int fd, const void* buf, size_t count);
+  ssize_t (*write)(intptr_t fduuid, const void* buf, size_t count);
   /** When implemented, this function will be called to flush any data remaining
-  in the internal buffer.
-  The function should return the number of bytes remaining in the internal
-  buffer (0 is a valid response) on -1 (on error).
-  It is important thet the `flush` function write to the underlying fd until the
-  writing operation returns -1 with EWOULDBLOCK or all the data was written.
-  */
-  ssize_t (*flush)(int fd);
+   * in the internal buffer.
+   * The function should return the number of bytes remaining in the internal
+   * buffer (0 is a valid response) on -1 (on error).
+   * It is important thet the `flush` function write to the underlying fd until
+   * the
+   * writing operation returns -1 with EWOULDBLOCK or all the data was written.
+   */
+  ssize_t (*flush)(intptr_t fduuid);
   /** The `on_clear` callback is called when the socket data is cleared, ideally
    * when the connection is closed, allowing for dynamic sock_rw_hook_s memory
    * management.
@@ -378,7 +437,7 @@ typedef struct sock_rw_hook_s {
    * providing a small measure of thread safety. This means that `sock_API`
    * shouldn't be called from within this function (at least not in regards to
    * the specific `fd`). */
-  void (*on_clear)(int fd, struct sock_rw_hook_s* rw_hook);
+  void (*on_clear)(intptr_t fduuid, struct sock_rw_hook_s* rw_hook);
 } sock_rw_hook_s;
 
 /* *****************************************************************************
@@ -386,10 +445,10 @@ RW hooks implementation
 */
 
 /** Gets a socket hook state (a pointer to the struct). */
-struct sock_rw_hook_s* sock_rw_hook_get(int fd);
+struct sock_rw_hook_s* sock_rw_hook_get(intptr_t fduuid);
 
 /** Sets a socket hook state (a pointer to the struct). */
-int sock_rw_hook_set(int fd, struct sock_rw_hook_s* rw_hooks);
+int sock_rw_hook_set(intptr_t fduuid, sock_rw_hook_s* rw_hooks);
 
 /* *****************************************************************************
 C++ extern
@@ -398,4 +457,4 @@ C++ extern
 }
 #endif
 
-#endif /* LIBSOCK */
+#endif /* LIB_SOCK */

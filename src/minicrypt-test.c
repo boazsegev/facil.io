@@ -1,7 +1,12 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "minicrypt.h"
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #ifndef TEST_OPENSSL
 #define TEST_OPENSSL 0
@@ -220,6 +225,23 @@ static void minicrypt_test_base64(void) {
   fprintf(stderr, " Base64 decode passed.\n");
 }
 
+/*******************************************************************************
+Random
+*/
+static void minicrypt_test_random(void) {
+  clock_t start, end;
+  minicrypt_rand256();
+  start = clock();
+  for (size_t i = 0; i < 100000; i++) {
+    minicrypt_rand256();
+  }
+  end = clock();
+  fprintf(stderr,
+          "+ MiniCrypt Random generator available\n+ MiniCrypt 100K X 256bit "
+          "Random %lu CPU clock count\n",
+          end - start);
+}
+
 /* *****************************************************************************
 Hex TODO
 */
@@ -326,6 +348,77 @@ void benchmark_vs_openssl() {
   }
 }
 #endif
+
+/*******************************************************************************
+BSWAP
+*/
+
+#define bswap16(i)                                   \
+  do {                                               \
+    (i) = (((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8); \
+  } while (0);
+/** inplace byte swap 32 bit integer */
+#define bswap32(i)                                              \
+  do {                                                          \
+    (i) = (((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |        \
+          (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24); \
+  } while (0);
+/** inplace byte swap 64 bit integer */
+#define bswap64(i)                                                         \
+  do {                                                                     \
+    (i) = (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                \
+          (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |         \
+          (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) | \
+          (((i)&0xFF000000000000ULL) >> 40) |                              \
+          (((i)&0xFF00000000000000ULL) >> 56);                             \
+  } while (0);
+
+#define bswap32_asm(i) \
+  { __asm__("bswap %k0" : "+r"(i) :); }
+#define bswap64_asm(i) \
+  { __asm__("bswapq %0" : "+r"(i) :); }
+
+void minicrypt_test_bswap(void) {
+  uint32_t i32 = minicrypt_rand32();
+  uint64_t i64 = minicrypt_rand64();
+  clock_t start, end;
+
+  fprintf(stderr, "===================================\n");
+
+  start = clock();
+  for (size_t i = 0; i < 10000000; i++) {
+    __asm__ volatile("" : :);
+    bswap32(i32);
+  }
+  end = clock();
+  fprintf(stderr, "* MiniCrypt bswap32 X 10M: %lu CPU clock count\n",
+          end - start);
+
+  start = clock();
+  for (size_t i = 0; i < 10000000; i++) {
+    __asm__ volatile("" : :);
+    bswap32_asm(i32);
+  }
+  end = clock();
+  fprintf(stderr, "* MiniCrypt bswap32_asm X 10M: %lu CPU clock count\n",
+          end - start);
+  start = clock();
+  for (size_t i = 0; i < 10000000; i++) {
+    __asm__ volatile("" : :);
+    bswap64(i64);
+  }
+  end = clock();
+  fprintf(stderr, "* MiniCrypt bswap64 X 10M: %lu CPU clock count\n",
+          end - start);
+  start = clock();
+  for (size_t i = 0; i < 10000000; i++) {
+    __asm__ volatile("" : :);
+    bswap64_asm(i64);
+  }
+  end = clock();
+  fprintf(stderr, "* MiniCrypt bswap64_asm X 10M: %lu CPU clock count\n",
+          end - start);
+}
 /*******************************************************************************
 run all tests
 */
@@ -334,7 +427,9 @@ void minicrypt_test(void) {
   minicrypt_test_sha1();
   minicrypt_test_sha2();
   minicrypt_test_base64();
+  minicrypt_test_random();
 #if defined(TEST_OPENSSL) && TEST_OPENSSL != 0
   benchmark_vs_openssl();
+  minicrypt_test_bswap();
 #endif
 }
