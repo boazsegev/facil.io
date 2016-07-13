@@ -143,7 +143,7 @@ The Websocket Protocol implementation
 
 #define ws_protocol(fd) ((ws_s*)(server_get_protocol(fd)))
 
-static void ping(intptr_t fd, protocol_s* _ws) {
+static void ws_ping(intptr_t fd, protocol_s* _ws) {
   sock_packet_s* packet;
   while ((packet = sock_checkout_packet()) == NULL)
     sock_flush_all();
@@ -403,7 +403,7 @@ static ws_s* new_websocket() {
   ws_s* ws = calloc(sizeof(*ws), 1);
 
   // setup the protocol & protocol callbacks
-  ws->protocol.ping = ping;
+  ws->protocol.ping = ws_ping;
   ws->protocol.service = WEBSOCKET_ID_STR;
   ws->protocol.on_data = on_data;
   ws->protocol.on_close = on_close;
@@ -508,15 +508,14 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
     settings.max_msg_size = 262144; /** defaults to ~250KB */
   if (settings.timeout == 0)
     settings.timeout = 40; /* defaults to 40 seconds */
-  if (settings.timeout == 0)
-    settings.timeout = 40; /* defaults to 40 seconds */
   // make sure we have a response object.
   http_response_s* response = settings.response;
   if (response == NULL) {
     /* initialize a default upgrade response */
     tmp_response = http_response_init(settings.request);
     response = &tmp_response;
-  }
+  } else
+    settings.request = response->metadata.request;
   // allocate the protocol object (TODO: (maybe) pooling)
   ws_s* ws = new_websocket();
   if (!ws)
@@ -529,17 +528,25 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   ws->on_open = settings.on_open;
   ws->on_message = settings.on_message;
   ws->on_shutdown = settings.on_shutdown;
+
   // setup any user data
   ws->udata = settings.udata;
   // buffer limits
   ws->max_msg_size = settings.max_msg_size;
+  const char* recv_str;
 
-  const char* recv_str = http_request_find_header(response->metadata.request,
-                                                  "SEC-WEBSOCKET-KEY", 17);
+  recv_str =
+      http_request_find_header(settings.request, "sec-websocket-version", 21);
+  if (recv_str == NULL || recv_str[0] != '1' || recv_str[1] != '3')
+    goto refuse;
+
+  recv_str =
+      http_request_find_header(settings.request, "sec-websocket-key", 17);
   if (recv_str == NULL)
     goto refuse;
 
   // websocket extentions (none)
+
   // the accept Base64 Hash - we need to compute this one and set it
   // the client's unique string
   // use the SHA1 methods provided to concat the client string and hash
@@ -552,11 +559,13 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   int len =
       minicrypt_base64_encode(websockets_key, minicrypt_sha1_result(&sha1), 20);
 
+  // websocket extentions (none)
+
   // upgrade taking place, make sure the upgrade headers are valid for the
   // response.
   response->status = 101;
   http_response_write_header(response, .name = "Connection", .name_length = 10,
-                             .value = "upgrade", .value_length = 7);
+                             .value = "Upgrade", .value_length = 7);
   http_response_write_header(response, .name = "Upgrade", .name_length = 7,
                              .value = "websocket", .value_length = 9);
   http_response_write_header(response, .name = "sec-websocket-version",
@@ -566,6 +575,12 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   http_response_write_header(response, .name = "Sec-WebSocket-Accept",
                              .name_length = 20, .value = websockets_key,
                              .value_length = len);
+  // inform about 0 extension support
+  recv_str = http_request_find_header(settings.request,
+                                      "sec-websocket-extensions", 24);
+  // if (recv_str != NULL)
+  //   http_response_write_header(response, .name = "Sec-Websocket-Extensions",
+  //                              .name_length = 24);
 
   goto cleanup;
 refuse:
@@ -573,7 +588,12 @@ refuse:
   response->status = 400;
 cleanup:
   http_response_finish(response);
-  if (response->status == 101 && server_set_protocol(ws->fd, (void*)ws) == 0) {
+  if (response->status == 101) {
+    // update the protocol object, cleanning up the old one
+    protocol_s* old = server_get_protocol(ws->fd);
+    if (old->on_close)
+      old->on_close(old);
+    server_set_protocol(ws->fd, (void*)ws);
     // we have an active websocket connection - prep the connection buffer
     ws->buffer = create_ws_buffer(ws);
     // update the timeout

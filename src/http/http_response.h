@@ -165,7 +165,7 @@ Set the value to -1 to force the HttpResponse not to write nor automate the
     /**
     Set to true when the "Content-Length" header is written to the buffer.
     */
-    unsigned connection_len_written : 1;
+    unsigned content_length_written : 1;
     /**
     Set to true in order to close the connection once the response was sent.
     */

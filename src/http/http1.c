@@ -310,12 +310,18 @@ static void http1_on_init(http_settings_s* settings) {
 }
 static void http1_on_finish(http_settings_s* settings) {
   if (settings->private_metaflags & 1)
-    free(settings->public_folder);
+    free((void*)settings->public_folder);
   if (settings->private_metaflags & 2)
     free(settings);
 }
 
 int http1_listen(char* port, char* address, http_settings_s settings) {
+  if (settings.on_request == NULL) {
+    fprintf(
+        stderr,
+        "ERROR: http1_listen requires the .on_request parameter to be set\n");
+    exit(11);
+  }
   http_settings_s* settings_copy = malloc(sizeof(*settings_copy));
   *settings_copy = settings;
   settings_copy->private_metaflags = 2;

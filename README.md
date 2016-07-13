@@ -13,93 +13,106 @@ Websockets and HTTP are super common, so `lib-server` comes with HTTP and Websoc
 The framework's code is heavily documented and you can use Doxygen to create automated documentation for the API.
 
 ```c
-#include "websockets.h"  // auto-includes "http.h"
-// Concurrency using thread? How many threads in the thread pool?
-#define THREADS 16
-// Concurrency using processes? (more then a single process can be used)
-#define PROCESSES 1
-// Print HTTP logs
-#define LOGGING 1
-// Our websocket service - echo.
+// update the demo.c file to use the existing folder structure and makefile
+#include "websockets.h"  // includes the "http.h" header
+
+#include <stdio.h>
+#include <stdlib.h>
+
+/*****************************
+The Websocket echo implementation
+*/
+
+void ws_open(ws_s* ws) {
+  fprintf(stderr, "Opened a new websocket connection (%p)\n", ws);
+}
+
 void ws_echo(ws_s* ws, char* data, size_t size, uint8_t is_text) {
   // echos the data to the current websocket
-  websocket_write(ws, data, size, is_text);
+  websocket_write(ws, data, size, 1);
 }
-// Our websocket service - echo.
+
 void ws_shutdown(ws_s* ws) {
-  // sends a small message before shutting down
-  websocket_write(ws, "Server Going Away...", 20, 1);
+  websocket_write(ws, "Shutting Down", 13, 1);
 }
-// our HTTP callback - hello world.
+
+void ws_close(ws_s* ws) {
+  fprintf(stderr, "Closed websocket connection (%p)\n", ws);
+}
+
+/* ****************************
+The Websocket Broadcast implementation
+*/
+
+/* websocket broadcast data */
+struct ws_data {
+  size_t size;
+  char data[];
+};
+/* free the websocket broadcast data */
+void free_wsdata(ws_s* ws, void* arg) {
+  free(arg);
+}
+/* the broadcast "task" performed by websocket_each */
+void ws_get_broadcast(ws_s* ws, void* arg) {
+  struct ws_data* data = arg;
+  websocket_write(ws, data->data, data->size, 1);  // echo
+}
+/* The websocket broadcast server's on_message callback */
+
+void ws_broadcast(ws_s* ws, char* data, size_t size, uint8_t is_text) {
+  // Copy the message to a broadcast data-packet
+  struct ws_data* msg = malloc(sizeof(* msg) + size);
+  msg->size = size;
+  memcpy(msg->data, data, size);
+  // Asynchronously calls `ws_get_broadcast` for each of the websockets
+  // (except this one)
+  // and calls `free_wsdata` once all the broadcasts were perfomed.
+  websocket_each(ws, ws_get_broadcast, msg, free_wsdata);
+  // echos the data to the current websocket
+  websocket_write(ws, data, size, 1);
+}
+
+/* ****************************
+The HTTP implementation
+*/
+
 void on_request(http_request_s* request) {
+  // to log we will start a response.
   http_response_s response = http_response_init(request);
-  if (LOGGING)
-     http_response_log_start(&response);
-  if (request->upgrade) {
-    // "upgrade" to the Websocket protocol, if requested
-    websocket_upgrade(.response = &response, .on_message = ws_echo,
-                      .on_shutdown = ws_shutdown);
+  http_response_log_start(&response);
+  // upgrade requests to broadcast will have the following properties:
+  if (request->upgrade && !strcmp(request->path, "/broadcast")) {
+    // Websocket upgrade will use our existing response (never leak responses).
+    websocket_upgrade(.request = request, .on_message = ws_broadcast,
+                      .on_open = ws_open, .on_close = ws_close,
+                      .on_shutdown = ws_shutdown, .response = &response);
+
     return;
   }
+  // other upgrade requests will have the following properties:
+  if (request->upgrade) {
+    websocket_upgrade(.request = request, .on_message = ws_echo,
+                      .on_open = ws_open, .on_close = ws_close, .timeout = 4,
+                      .on_shutdown = ws_shutdown, .response = &response);
+    return;
+  }
+  // HTTP response
   http_response_write_body(&response, "Hello World!", 12);
   http_response_finish(&response);
 }
-// Our main function will start the HTTP server
+
+/*****************************
+The main function
+*/
+
+#define THREAD_COUNT 0
 int main(int argc, char const* argv[]) {
-  http1_listen("3000", NULL, .on_request = on_request, .log_static = LOGGING);
-  server_run(.threads = THREADS, .processes = PROCESSES);
+  const char* public_folder = NULL;
+  http1_listen("3000", NULL, .on_request = on_request,
+               .public_folder = public_folder, .log_static = 1);
+  server_run(.threads = THREAD_COUNT);
   return 0;
-}```
-
-There's an example with cookies and custom headers further on.
-
-**Writing custom network services in C? Easy!**
-
-Here's a quick example for an echo server using the `lib-server` framework's API. We'll only use the `on_data` event (for incoming data) as we don't have any handshake (`on_open`) clean up (`on_close`) or shutdown (`on_shutdown`) events we need to handle.
-
-There's an example with a few more details further on.
-
-```c
-#include "libserver.h"
-#include <stdio.h>
-#include <string.h>
-
-// Concurrency using thread? How many threads in the thread pool?
-#define THREAD_COUNT 4
-// Concurrency using processes? (more then a single process can be used)
-#define PROCESS_COUNT 1
-// a simple echo... this is the main callback
-void on_data(intptr_t fd_uuid, protocol_s* protocol) {
-  char buff[1024] = ">> ";
-  ssize_t incoming = 0;
-  while ((incoming = sock_read(fd_uuid, buff + 3, 1021)) > 0) {
-    sock_write(fd_uuid, buff, incoming + 3);  // echo the data.
-    if (!strncasecmp(buff + 3, "bye", 3)) {   // check for keyword "bye"
-      sock_close(fd_uuid);  // closes the connection (on keyword)
-    }
-  }
-}
-
-void ping(intptr_t fd_uuid, protocol_s* protocol) {
-  // A sock_write failure will close the connection.
-  sock_write(fd_uuid, "-- Are you there?\n", 18);
-}
-// This callback will be called for new connections.
-protocol_s* on_open_echo(intptr_t fd, void* udata) {
-  // usually protocols are implemented as dynamic objects, but a static one
-  // is good enough for an echo service.
-  static protocol_s echo_protocol = {
-      .on_data = on_data, .ping = ping, .service = "echo"};
-  // We can setup a ping to be sent every 10 seconds.
-  server_set_timeout(fd, 10);
-  return &echo_protocol;
-}
-// running the server
-int main(void) {
-  // We'll listen on port 3000 for icoming echo connection.
-  server_listen(.port = "3000", .on_open = on_open_echo, .udata = NULL);
-  // This macro will call Server.listen(settings) with the settings we provide.
-  server_run(.threads = THREAD_COUNT, .processes = PROCESS_COUNT);
 }
 ```
 

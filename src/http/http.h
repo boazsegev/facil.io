@@ -38,7 +38,7 @@ typedef struct {
   A public folder for file transfers - allows to circumvent any application
   layer server and simply serve files.
   */
-  char* public_folder;
+  const char* public_folder;
   /**
   The length of the public_folder string.
   */

@@ -71,7 +71,7 @@ __unused static inline sock_packet_s* h1p_finalize_headers(
   }
 
   // write the content length header, unless forced not to (<0)
-  if (response->metadata.connection_len_written == 0 &&
+  if (response->metadata.content_length_written == 0 &&
       !(response->content_length < 0) && response->status >= 200 &&
       response->status != 204 && response->status != 304) {
     h1p_protected_copy(response, "Content-Length: ", 16);
@@ -162,7 +162,8 @@ __unused static inline int h1p_response_write_header(http_response_s* response,
     return -1;
   *(response->metadata.headers_pos++) = ':';
   *(response->metadata.headers_pos++) = ' ';
-  if (h1p_protected_copy(response, header.value, header.value_length))
+  if (header.value != NULL &&
+      h1p_protected_copy(response, header.value, header.value_length))
     return -1;
   *(response->metadata.headers_pos++) = '\r';
   *(response->metadata.headers_pos++) = '\n';

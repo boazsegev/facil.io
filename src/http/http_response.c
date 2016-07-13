@@ -88,6 +88,20 @@ On success, the function returns 0.
 #undef http_response_write_header
 int http_response_write_header(http_response_s* response,
                                http_headers_s header) {
+  // check if the header is a reserved header
+  if ((header.name_length == 4 || header.name_length == 0) &&
+      strcasecmp(header.name, "date") == 0)
+    response->metadata.date_written = 1;
+  else if ((header.name_length == 10 || header.name_length == 0) &&
+           strcasecmp(header.name, "connection") == 0) {
+    response->metadata.connection_written = 1;
+    if (header.value && header.value[0] == 'c')
+      response->metadata.should_close = 1;
+  } else if ((header.name_length == 14 || header.name_length == 0) &&
+             strcasecmp(header.name, "content-length") == 0)
+    response->metadata.content_length_written = 1;
+
+  // write the header to the protocol
   forward_func(response, response_write_header, response, header);
 }
 #define http_response_write_header(response, ...) \
