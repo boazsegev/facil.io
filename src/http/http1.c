@@ -108,7 +108,6 @@ inline static void http1_free(http1_protocol_s* http) {
     pool_push(http);
   } else
     free(http);
-  fprintf(stderr, "HTTP1 protocol resources released\n");
 }
 
 protocol_s* http1_alloc(intptr_t fd, http_settings_s* settings) {
