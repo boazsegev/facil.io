@@ -40,7 +40,7 @@ Useful macros an helpers
       *(pos++) = 0;   \
   }
 
-static inline uint8_t* seek_to_char(uint8_t* start, uint8_t* end, uint8_t tok) {
+static inline char* seek_to_char(char* start, char* end, char tok) {
   while (start < end) {
     if (*start == tok)
       return start;
@@ -49,7 +49,7 @@ static inline uint8_t* seek_to_char(uint8_t* start, uint8_t* end, uint8_t tok) {
   return NULL;
 }
 
-static inline uint8_t* seek_to_2eol(uint8_t* start, uint8_t* end) {
+static inline char* seek_to_2eol(char* start, char* end) {
   while (start < end) {
     if (*start == '\r' || *start == '\n')
       return start;
@@ -73,8 +73,7 @@ static inline uint8_t* seek_to_2eol(uint8_t* start, uint8_t* end) {
 
 /* reviews the latest header and updates any required data in the request
  * structure. */
-static inline ssize_t review_header_data(http_request_s* request,
-                                         uint8_t* tmp) {
+static inline ssize_t review_header_data(http_request_s* request, char* tmp) {
   //  if (request->headers[request->headers_count].name_length == 4 &&
   //      strncmp(request->headers[request->headers_count].name, HOST, 4) == 0)
   //      {
@@ -192,9 +191,9 @@ ssize_t http1_parse_request_headers(void* buffer,
     return 0;
   if (len == 0)
     return -2;
-  uint8_t* pos = buffer;
-  uint8_t* end = buffer + len;
-  uint8_t *next, *tmp;
+  char* pos = buffer;
+  char* end = buffer + len;
+  char *next, *tmp;
   // collect method and restart parser if already collected
   if (request->method == NULL) {
     // eat empty spaces
@@ -203,7 +202,7 @@ ssize_t http1_parse_request_headers(void* buffer,
     request->method = (char*)pos;
     next = seek_to_char(pos, end, ' ');
     if (next == NULL)
-      return -1;
+      return -1; /* there should be a limit to all fragmentations. */
     request->method_len = (uintptr_t)next - (uintptr_t)pos;
     pos = next;
     *(pos++) = 0;
@@ -243,7 +242,8 @@ ssize_t http1_parse_request_headers(void* buffer,
     CHECK_END();
   }
   // collect headers
-  while (pos < end && *pos && *pos != '\n' && *pos != '\r') { /* NUL as term? */
+  while (pos < end && *pos != '\n' && *pos != '\r' &&
+         *pos != 0) { /* NUL as term? */
     if (request->headers_count >= request->metadata.max_headers)
       return -1;
     next = seek_to_2eol(pos, end);
@@ -286,13 +286,19 @@ ssize_t http1_parse_request_headers(void* buffer,
   }
   // check if the body is contained within the buffer
   EAT_EOL();
-  if (request->content_length && (pos + request->content_length <= end)) {
-    request->body_str = (char*)pos;
-    return (uintptr_t)(pos + request->content_length) - (uintptr_t)buffer;
+  if (request->content_length && (end - pos) >= request->content_length) {
+    request->body_str = (void*)pos;
+    // fprintf(stderr,
+    //         "assigning body to string. content-length %lu, buffer left: "
+    //         "%lu/%lu\n(%lu) %p:%.*s\n",
+    //         request->content_length, end - pos, len, request->content_length,
+    //         request->body_str, (int)request->content_length,
+    //         request->body_str);
+    return (ssize_t)(pos - (char*)buffer) + request->content_length;
   }
 
   // we're done.
-  return pos - (uint8_t*)buffer;
+  return pos - (char*)buffer;
 }
 
 /**

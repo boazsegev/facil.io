@@ -174,12 +174,12 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
         // make sure headers don't overflow
         len = sock_read(uuid, buffer + protocol->buffer_pos,
                         HTTP1_MAX_HEADER_SIZE - protocol->buffer_pos);
+        // update buffer read position.
+        protocol->buffer_pos += len;
       }
       if (len <= 0) {
         return;
       }
-      // update buffer read position.
-      protocol->buffer_pos += len;
       // parse headers
       result =
           http1_parse_request_headers(buffer, protocol->buffer_pos, request);
@@ -204,12 +204,8 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
         }
       } else if (result == -1)  // parser error
         goto parser_error;
-
       // assume incomplete (result == -2), even if wrong, we're right.
-
-      // make sure headers don't overflow
-      if (protocol->buffer_pos >= HTTP1_MAX_HEADER_SIZE)
-        goto too_big;
+      len = 0;
       continue;
     }
     if (request->body_file > 0) {
@@ -222,7 +218,7 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
       result = http1_parse_request_body(buffer, len, request);
       if (result >= 0) {
         // set buffer pos for piplining support
-        protocol->buffer_pos = len;
+        protocol->buffer_pos = result;
         goto handle_request;
       } else if (result == -1)  // parser error
         goto parser_error;
@@ -248,11 +244,12 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
     if (result >= len) {
       len = 0;
     } else {
-      memmove(buffer, buffer + protocol->buffer_pos, len - result);
+      memmove(protocol->buffer, buffer + protocol->buffer_pos, len - result);
       len -= result;
     }
     // restart buffer position
     protocol->buffer_pos = 0;
+    buffer = protocol->buffer;
   }
   // no routes lead here.
   fprintf(stderr,
