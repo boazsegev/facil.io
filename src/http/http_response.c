@@ -20,9 +20,10 @@ Helpers
     h1p_##func(__VA_ARGS__);               \
   }
 
-static char* MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun ",
-                              "Jul ", "Aug ", "Sep ", "Oct ", "Nov ", "Dec "};
-
+// static char* MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun ",
+//                               "Jul ", "Aug ", "Sep ", "Oct ", "Nov ", "Dec
+//                               "};
+//
 #define is_num(c) ((c) >= '0' && (c) <= '9')
 #define num_val(c) ((c)-48)
 
@@ -373,26 +374,84 @@ void http_response_log_finish(http_response_s* response) {
   http_gmtime(&last_tick, &tm);
   int got_add = getpeername(sock_uuid2fd(request->metadata.fd),
                             (struct sockaddr*)&addrinfo, &addrlen);
+#define HTTP_REQUEST_LOG_LIMIT 128
+  char buffer[HTTP_REQUEST_LOG_LIMIT];
+  char* tmp;
+  size_t pos;
+  if (got_add) {
+    tmp = inet_ntoa(addrinfo.sin_addr);
+    pos = strlen(tmp);
+    memcpy(buffer, tmp, pos);
+  } else {
+    memcpy(buffer, "[unknown]", 9);
+    pos = 9;
+  }
+  memcpy(buffer + pos, " - - [", 6);
+  pos += 6;
+  pos += http_date2str(buffer + pos, &tm);
+  buffer[pos++] = ']';
+  buffer[pos++] = ' ';
+  buffer[pos++] = '"';
+  // limit method to 10 chars
+  if (request->method_len <= 10) {
+    memcpy(buffer + pos, request->method, request->method_len);
+    pos += request->method_len;
+  } else {
+    const char* j = request->method;
+    // copy first 7 chars
+    while (j < request->method + 7)
+      buffer[pos++] = *(j++);
+    // add three dots.
+    buffer[pos++] = '.';
+    buffer[pos++] = '.';
+    buffer[pos++] = '.';
+  }
+  buffer[pos++] = ' ';
+  // limit path to 24 chars
+  if (request->path_len <= 24) {
+    memcpy(buffer + pos, request->path, request->path_len);
+    pos += request->path_len;
+  } else {
+    const char* j = request->path;
+    // copy first 7 chars
+    while (j < request->path + 21)
+      buffer[pos++] = *(j++);
+    // add three dots.
+    buffer[pos++] = '.';
+    buffer[pos++] = '.';
+    buffer[pos++] = '.';
+  }
+  buffer[pos++] = ' ';
+  // limit version to 10 chars
+  if (request->path_len <= 10) {
+    memcpy(buffer + pos, request->version, request->version_len);
+    pos += request->version_len;
+  } else {
+    const char* j = request->version;
+    // copy first 7 chars
+    while (j < request->version + 7)
+      buffer[pos++] = *(j++);
+    // add three dots.
+    buffer[pos++] = '.';
+    buffer[pos++] = '.';
+    buffer[pos++] = '.';
+  }
+  buffer[pos++] = '"';
+  buffer[pos++] = ' ';
+  pos += http_ul2a(buffer + pos, response->status > 0 && response->status < 1000
+                                     ? response->status
+                                     : 0);
 
-  if (response->metadata.logged)
-    fprintf(stderr,
-            "%s - - [%d/%.*s/%d:%02d:%02d:%02d GMT] "
-            "\"%s %s %s\" "
-            "%d %'lu %'lu ms\n",
-            (got_add ? ("[unknown]") : (inet_ntoa(addrinfo.sin_addr))),
-            tm.tm_mday, 3, MONTH_NAMES[tm.tm_mon], tm.tm_year + 1900,
-            tm.tm_hour, tm.tm_min, tm.tm_sec, request->method, request->path,
-            request->version, response->status, bytes_sent, mili);
-  else
-    fprintf(stderr,
-            "%s - - [%d/%.*s/%d:%02d:%02d:%02d GMT] "
-            "\"%s %s %s\" "
-            "%d %'lu\n",
-            (got_add ? ("[unknown]") : (inet_ntoa(addrinfo.sin_addr))),
-            tm.tm_mday, 3, MONTH_NAMES[tm.tm_mon], tm.tm_year + 1900,
-            tm.tm_hour, tm.tm_min, tm.tm_sec, request->method, request->path,
-            request->version, response->status, bytes_sent);
+  buffer[pos++] = ' ';
+  pos += http_ul2a(buffer + pos, bytes_sent);
+  if (response->metadata.logged) {
+    pos += http_ul2a(buffer + pos, mili);
+    buffer[pos++] = 'm';
+    buffer[pos++] = 's';
+  }
+  buffer[pos++] = '\n';
   response->metadata.logged = 0;
+  fwrite(buffer, 1, pos, stderr);
 }
 
 /* *****************************************************************************
