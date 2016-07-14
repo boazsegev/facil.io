@@ -41,6 +41,9 @@ typedef struct {
   /** points to the Connection header, if any. */
   const char* connection;
 
+  /** the body's content's length, in bytes (can be 0). */
+  size_t content_length;
+
   /* string lengths */
 
   uint16_t method_len;
@@ -49,9 +52,6 @@ typedef struct {
   uint16_t host_len;
   uint16_t content_type_len;
   uint16_t upgrade_len;
-
-  /** the body's content's length, in bytes (can be 0). */
-  uint16_t content_length;
 
   /** `version_len` is signed, to allow negative values (SPDY/HTTP2 etc). */
   int16_t version_len;
