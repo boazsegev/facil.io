@@ -50,6 +50,7 @@ http_response_s http_response_init(http_request_s* request) {
   time_t date = server_last_tick();
   return (http_response_s){
       .metadata.request = request,
+      .metadata.fd = request->metadata.fd,
       .metadata.packet = packet,
       .status = 200,
       .date = date,

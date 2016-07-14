@@ -135,6 +135,10 @@ Set the value to -1 to force the HttpResponse not to write nor automate the
     */
     http_request_s* request;
     /**
+    The libsock fd UUID.
+    */
+    intptr_t fd;
+    /**
     A `libsock` buffer packet used for header data (to avoid double copy).
     */
     sock_packet_s* packet;

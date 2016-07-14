@@ -144,7 +144,7 @@ static int h1p_send_headers(http_response_s* response, sock_packet_s* packet) {
   response->metadata.packet = NULL;
   response->metadata.headers_pos = (char*)packet->length;
   // write data to network
-  return sock_send_packet(response->metadata.request->metadata.fd, packet);
+  return sock_send_packet(response->metadata.fd, packet);
 };
 
 /* *****************************************************************************
@@ -311,8 +311,7 @@ __unused static inline int h1p_response_write_body(http_response_s* response,
       return -1;
   }
   response->metadata.headers_pos += length;
-  return sock_write(response->metadata.request->metadata.fd, (void*)body,
-                    length);
+  return sock_write(response->metadata.fd, (void*)body, length);
 }
 /**
 Sends the headers (if unsent) and schedules the file to be sent.
@@ -351,8 +350,7 @@ __unused static inline int h1p_response_sendfile(http_response_s* response,
     }
   }
   response->metadata.headers_pos += length;
-  return sock_sendfile(response->metadata.request->metadata.fd, source_fd,
-                       offset, length);
+  return sock_sendfile(response->metadata.fd, source_fd, offset, length);
 }
 
 __unused static inline int h1p_response_finish(http_response_s* response) {
@@ -360,6 +358,10 @@ __unused static inline int h1p_response_finish(http_response_s* response) {
   if (headers) {
     return h1p_send_headers(response, headers);
   }
+  if (response->metadata.should_close) {
+    sock_close(response->metadata.fd);
+  }
+
   return 0;
 }
 
