@@ -445,6 +445,7 @@ void http_response_log_finish(http_response_s* response) {
   buffer[pos++] = ' ';
   pos += http_ul2a(buffer + pos, bytes_sent);
   if (response->metadata.logged) {
+    buffer[pos++] = ' ';
     pos += http_ul2a(buffer + pos, mili);
     buffer[pos++] = 'm';
     buffer[pos++] = 's';
