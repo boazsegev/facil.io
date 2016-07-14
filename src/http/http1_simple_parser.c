@@ -40,8 +40,6 @@ Useful macros an helpers
       *(pos++) = 0;   \
   }
 
-static const uint8_t EOL[2] = "\r\n";
-
 static inline uint8_t* seek_to_char(uint8_t* start, uint8_t* end, uint8_t tok) {
   while (start < end) {
     if (*start == tok)
@@ -50,11 +48,10 @@ static inline uint8_t* seek_to_char(uint8_t* start, uint8_t* end, uint8_t tok) {
   }
   return NULL;
 }
-static inline uint8_t* seek_to_2char(uint8_t* start,
-                                     uint8_t* end,
-                                     const uint8_t tok[2]) {
+
+static inline uint8_t* seek_to_2eol(uint8_t* start, uint8_t* end) {
   while (start < end) {
-    if (start[0] == tok[0] || start[0] == tok[1])
+    if (*start == '\r' || *start == '\n')
       return start;
     ++start;
   }
@@ -236,7 +233,7 @@ ssize_t http1_parse_request_headers(void* buffer,
   }
   // collect version
   if (request->version == NULL) {
-    next = seek_to_2char(pos, end, EOL);
+    next = seek_to_2eol(pos, end);
     if (next == NULL)
       return -2;
     request->version = (char*)pos;
@@ -246,17 +243,15 @@ ssize_t http1_parse_request_headers(void* buffer,
     CHECK_END();
   }
   // collect headers
-  while (pos < end && *pos != '\n' && *pos != '\r') {
+  while (pos < end && *pos && *pos != '\n' && *pos != '\r') { /* NUL as term? */
     if (request->headers_count >= request->metadata.max_headers)
       return -1;
-    next = seek_to_2char(pos, end, EOL);
+    next = seek_to_2eol(pos, end);
     if (next == NULL)
       return -2;
 #if defined(HTTP_HEADERS_LOWERCASE) && HTTP_HEADERS_LOWERCASE == 1
     tmp = pos;
-    while (tmp < next) {
-      if (*tmp == ':')
-        break;
+    while (tmp < next && *tmp != ':') {
       to_lower(*tmp);
       ++tmp;
     }
