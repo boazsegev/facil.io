@@ -764,6 +764,7 @@ static void perform_single_task(void* task) {
       // clear the original busy flag
       unlock_uuid(p2task(task).target);
       p2task(task).task(p2task(task).target, protocol, p2task(task).arg);
+      protocol_unset_busy(protocol);
       task_free(task);
       return;
     }
