@@ -70,30 +70,30 @@ __unused static inline sock_packet_s* h1p_finalize_headers(
     status = http_response_status_str(response->status);
   }
 
-  // write the content length header, unless forced not to (<0)
+  /* write the content length header, unless forced not to (<0) */
   if (response->metadata.content_length_written == 0 &&
       !(response->content_length < 0) && response->status >= 200 &&
       response->status != 204 && response->status != 304) {
     h1p_protected_copy(response, "Content-Length: ", 16);
     response->metadata.headers_pos +=
         http_ul2a(response->metadata.headers_pos, response->content_length);
-    // write the header seperator (`\r\n`)
+    /* write the header seperator (`\r\n`) */
     *(response->metadata.headers_pos++) = '\r';
     *(response->metadata.headers_pos++) = '\n';
   }
-  // write the date, if missing
+  /* write the date, if missing */
   if (!response->metadata.date_written) {
     if (response->date < response->last_modified)
       response->date = response->last_modified;
     struct tm t;
-    // date header
+    /* date header */
     http_gmtime(&response->date, &t);
     h1p_protected_copy(response, "Date: ", 6);
     response->metadata.headers_pos +=
         http_date2str(response->metadata.headers_pos, &t);
     *(response->metadata.headers_pos++) = '\r';
     *(response->metadata.headers_pos++) = '\n';
-    // last-modified header
+    /* last-modified header */
     http_gmtime(&response->last_modified, &t);
     h1p_protected_copy(response, "Last-Modified: ", 15);
     response->metadata.headers_pos +=
@@ -101,7 +101,7 @@ __unused static inline sock_packet_s* h1p_finalize_headers(
     *(response->metadata.headers_pos++) = '\r';
     *(response->metadata.headers_pos++) = '\n';
   }
-  // write the keep-alive (connection) header, if missing
+  /* write the keep-alive (connection) header, if missing */
   if (!response->metadata.connection_written) {
     if (response->metadata.should_close) {
       h1p_protected_copy(response, "Connection: close\r\n", 19);
@@ -112,12 +112,12 @@ __unused static inline sock_packet_s* h1p_finalize_headers(
                          47);
     }
   }
-  // write the headers completion marker (empty line - `\r\n`)
+  /* write the headers completion marker (empty line - `\r\n`) */
   *(response->metadata.headers_pos++) = '\r';
   *(response->metadata.headers_pos++) = '\n';
 
-  // write the status string is "HTTP/1.1 xxx <...>\r\n" length == 15 +
-  // strlen(status)
+  /* write the status string is "HTTP/1.1 xxx <...>\r\n" length == 15 +
+   * strlen(status) */
 
   size_t tmp = strlen(status);
   int start = H1P_HEADER_START - (15 + tmp);
@@ -139,11 +139,11 @@ __unused static inline sock_packet_s* h1p_finalize_headers(
 static int h1p_send_headers(http_response_s* response, sock_packet_s* packet) {
   if (packet == NULL)
     return -1;
-  // mark headers as sent
+  /* mark headers as sent */
   response->metadata.headers_sent = 1;
   response->metadata.packet = NULL;
   response->metadata.headers_pos = (char*)packet->length;
-  // write data to network
+  /* write data to network */
   return sock_send_packet(response->metadata.fd, packet);
 };
 
@@ -287,14 +287,14 @@ __unused static inline int h1p_response_write_body(http_response_s* response,
   if (!response->content_length)
     response->content_length = length;
   sock_packet_s* headers = h1p_finalize_headers(response);
-  if (headers != NULL) {  // we haven't sent the headers yet
+  if (headers != NULL) { /* we haven't sent the headers yet */
     ssize_t i_read =
         ((BUFFER_PACKET_SIZE - H1P_HEADER_START) - headers->length);
     if (i_read > 1024) {
-      // we can fit at least some of the data inside the response buffer.
+      /* we can fit at least some of the data inside the response buffer. */
       if (i_read > length) {
         i_read = length;
-        // we can fit the data inside the response buffer.
+        /* we can fit the data inside the response buffer. */
         memcpy(response->metadata.headers_pos, body, i_read);
         response->metadata.headers_pos += i_read;
         headers->length += i_read;
@@ -306,7 +306,7 @@ __unused static inline int h1p_response_write_body(http_response_s* response,
       length -= i_read;
       body += i_read;
     }
-    // we need to send the (rest of the) body seperately.
+    /* we need to send the (rest of the) body seperately. */
     if (h1p_send_headers(response, headers))
       return -1;
   }
@@ -325,9 +325,9 @@ __unused static inline int h1p_response_sendfile(http_response_s* response,
 
   sock_packet_s* headers = h1p_finalize_headers(response);
 
-  if (headers != NULL) {  // we haven't sent the headers yet
+  if (headers != NULL) { /* we haven't sent the headers yet */
     if (headers->length < (BUFFER_PACKET_SIZE - H1P_HEADER_START)) {
-      // we can fit at least some of the data inside the response buffer.
+      /* we can fit at least some of the data inside the response buffer. */
       ssize_t i_read = pread(
           source_fd, response->metadata.headers_pos,
           ((BUFFER_PACKET_SIZE - H1P_HEADER_START) - headers->length), offset);
@@ -343,7 +343,7 @@ __unused static inline int h1p_response_sendfile(http_response_s* response,
         }
       }
     }
-    // we need to send the rest seperately.
+    /* we need to send the rest seperately. */
     if (h1p_send_headers(response, headers)) {
       close(source_fd);
       return -1;
