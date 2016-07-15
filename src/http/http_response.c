@@ -378,7 +378,7 @@ void http_response_log_finish(http_response_s* response) {
   char buffer[HTTP_REQUEST_LOG_LIMIT];
   char* tmp;
   size_t pos;
-  if (got_add) {
+  if (got_add == 0) {
     tmp = inet_ntoa(addrinfo.sin_addr);
     pos = strlen(tmp);
     memcpy(buffer, tmp, pos);
