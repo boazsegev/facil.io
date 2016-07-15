@@ -65,7 +65,7 @@ The HTTP implementation
 void on_request(http_request_s* request) {
   // to log we will start a response.
   http_response_s response = http_response_init(request);
-  http_response_log_start(&response);
+  // http_response_log_start(&response);
   // upgrade requests to broadcast will have the following properties:
   if (request->upgrade && !strcmp(request->path, "/broadcast")) {
     // Websocket upgrade will use our existing response (never leak responses).
