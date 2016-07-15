@@ -793,7 +793,7 @@ static void perform_each_task(void* task) {
       } else {
         is_busy = uuid_is_busy(uuid);
         if (is_busy == 0)
-          uuid_set_busy(uuid);
+          protocol_set_busy(protocol);
         unlock_uuid(uuid);
         // it wasn't busy, we can act now.
         if (is_busy == 0) {
