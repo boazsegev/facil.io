@@ -757,7 +757,7 @@ static void perform_single_task(void* task) {
     task_free(task);
     return;
   }
-  if (try_lock_uuid(p2task(task).target)) {
+  if (try_lock_uuid(p2task(task).target) == 0) {
     if (uuid_is_busy(p2task(task).target) == 0) {
       uuid_set_busy(p2task(task).target);
       protocol_s* protocol = protocol_uuid(p2task(task).target);
@@ -784,7 +784,7 @@ static void perform_each_task(void* task) {
       ++p2task(task).target;
       continue;
     }
-    if (try_lock_uuid(uuid)) {
+    if (try_lock_uuid(uuid) == 0) {
       protocol = protocol_uuid(uuid);
       if (protocol && protocol->service != p2task(task).service) {
         unlock_uuid(uuid);
