@@ -161,7 +161,7 @@ __unused static inline int h1p_response_write_header(http_response_s* response,
   if (h1p_protected_copy(response, header.name, header.name_length))
     return -1;
   *(response->metadata.headers_pos++) = ':';
-  *(response->metadata.headers_pos++) = ' ';
+  /*  *(response->metadata.headers_pos++) = ' '; // better leave out */
   if (header.value != NULL &&
       h1p_protected_copy(response, header.value, header.value_length))
     return -1;
