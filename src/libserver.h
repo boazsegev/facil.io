@@ -15,6 +15,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 
 /* lib server is based off and requires the following libraries: */
 #include "libreact.h"
@@ -205,8 +206,8 @@ struct Protocol {
   void (*on_close)(protocol_s* protocol);
   /** called when a connection's timeout was reached */
   void (*ping)(intptr_t fduuid, protocol_s* protocol);
-  /** private metadata stored by `libserver`, usualy for object protection */
-  uintptr_t _state_;
+  /** private metadata used for object protection */
+  atomic_bool callback_lock;
 };
 
 /**************************************************************************/ /**

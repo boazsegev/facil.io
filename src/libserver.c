@@ -81,17 +81,12 @@ These macros help prevent code changes when changing the data struct.
 
 #define fduuid_get(ifd) (server_data.fds[(ifd)].uuid)
 
-#define protocol_is_busy(protocol) (((protocol_s*)(protocol))->_state_ & 1)
-#define protocol_unset_busy(protocol) (((protocol_s*)(protocol))->_state_ &= ~1)
-#define protocol_set_busy(protocol) (((protocol_s*)(protocol))->_state_ |= 1)
-
-#define fd_is_busy(fd) \
-  (fd_data(fd).protocol && (fd_data(fd).protocol->_state_ & 1))
-#define uuid_is_busy(uuid) fd_is_busy(sock_uuid2fd(uuid))
-
-#define fd_set_busy(fd) \
-  (fd_data(fd).protocol && (fd_data(fd).protocol->_state_ |= 1))
-#define uuid_set_busy(uuid) fd_set_busy(sock_uuid2fd(uuid))
+#define protocol_is_busy(protocol) \
+  atomic_load(&(((protocol_s*)(protocol))->callback_lock))
+#define protocol_unset_busy(protocol) \
+  atomic_store(&(((protocol_s*)(protocol))->callback_lock), 0)
+#define protocol_set_busy(protocol) \
+  atomic_exchange(&(((protocol_s*)(protocol))->callback_lock), 1)
 
 #define try_lock_uuid(uuid) try_lock_fd(server_data.fds + sock_uuid2fd(uuid))
 #define lock_uuid(uuid) lock_fd(server_data.fds + sock_uuid2fd(uuid))
@@ -169,7 +164,7 @@ The Reactor Callback Implementation
 */
 
 void reactor_on_close_async(void* _pr) {
-  if (protocol_is_busy(_pr) == 0) {
+  if (protocol_set_busy(_pr) == 0) {
     ((protocol_s*)_pr)->on_close(_pr);
     return;
   }
@@ -197,16 +192,14 @@ void reactor_on_data_async(void* _fduuid) {
   // try to lock the socket
   if (try_lock_uuid(fduuid))
     goto no_lock;
-  // check if currently on_data is working
-  if (uuid_is_busy(fduuid)) {
+  // get current state
+  protocol_s* protocol = protocol_uuid(fduuid);
+  // review protocol and get use privilage
+  if (protocol == NULL || protocol_set_busy(protocol)) {
     // fprintf(stderr, "fduuid is busy %p\n", _fduuid);
     unlock_uuid(fduuid);
     goto no_lock;
   }
-  // set working flag
-  uuid_set_busy(fduuid);
-  // get current state
-  protocol_s* protocol = protocol_uuid(fduuid);
   // unlock
   unlock_uuid(fduuid);
   // fire event
@@ -308,7 +301,7 @@ static void listener_on_data(intptr_t uuid, protocol_s* _listener) {
     protocol_uuid(new_client) = listener->on_open(new_client, listener->udata);
     if (protocol_uuid(new_client)) {
       uuid_data(new_client).active = server_data.last_tick;
-      protocol_uuid(new_client)->_state_ = 0;
+      atomic_store(&protocol_uuid(new_client)->callback_lock, 0);
       reactor_add(new_client);
       continue;
     } else {
@@ -459,7 +452,8 @@ static inline void timeout_review(void) {
     if (fd_data(i).active + fd_data(i).timeout < review) {
       if (protocol_fd(i)->ping) {
         protocol_fd(i)->ping(sock_fd2uuid(i), protocol_fd(i));
-      } else if (!fd_is_busy(i) || (review - fd_data(i).active > 300)) {
+      } else if (!protocol_is_busy(protocol_fd(i)) ||
+                 (review - fd_data(i).active > 300)) {
         sock_close(sock_fd2uuid(i));
       }
     }
@@ -758,9 +752,9 @@ static void perform_single_task(void* task) {
     return;
   }
   if (try_lock_uuid(p2task(task).target) == 0) {
-    if (uuid_is_busy(p2task(task).target) == 0) {
-      uuid_set_busy(p2task(task).target);
-      protocol_s* protocol = protocol_uuid(p2task(task).target);
+    // get protocol
+    protocol_s* protocol = protocol_uuid(p2task(task).target);
+    if (protocol_set_busy(protocol) == 0) {
       // clear the original busy flag
       unlock_uuid(p2task(task).target);
       p2task(task).task(p2task(task).target, protocol, p2task(task).arg);
@@ -777,7 +771,6 @@ static void perform_single_task(void* task) {
 static void perform_each_task(void* task) {
   intptr_t uuid;
   protocol_s* protocol;
-  uint8_t is_busy = 0;
   while (p2task(task).target < server_data.capacity) {
     uuid = sock_fd2uuid(p2task(task).target);
     if (uuid == -1 || uuid == p2task(task).origin) {
@@ -786,24 +779,23 @@ static void perform_each_task(void* task) {
     }
     if (try_lock_uuid(uuid) == 0) {
       protocol = protocol_uuid(uuid);
-      if (protocol && protocol->service != p2task(task).service) {
+      if (protocol == NULL || protocol->service != p2task(task).service) {
         unlock_uuid(uuid);
         ++p2task(task).target;
         continue;
-      } else {
-        is_busy = uuid_is_busy(uuid);
-        if (is_busy == 0)
-          protocol_set_busy(protocol);
+      } else if (protocol_set_busy(protocol) == 0) {
+        // unlock uuid
         unlock_uuid(uuid);
-        // it wasn't busy, we can act now.
-        if (is_busy == 0) {
-          p2task(task).task(uuid, protocol, p2task(task).arg);
-          // ckear the original busy flag
-          protocol_unset_busy(protocol);
-          ++p2task(task).target;
-          continue;
-        }
+        // perform task
+        p2task(task).task(uuid, protocol, p2task(task).arg);
+        // clear the busy flag
+        protocol_unset_busy(protocol);
+        // step forward
+        ++p2task(task).target;
+        continue;
       }
+      // it's the right protocol and service, but we couldn't lock the protocol
+      unlock_uuid(uuid);
     }
     async_run(perform_each_task, task);
     return;
@@ -856,7 +848,8 @@ error:
               (sock_isvalid(origin_fd) ? protocol_uuid(origin_fd) : NULL), arg);
 }
 
-/** Schedules a specific task to run asyncronously for a specific connection. */
+/** Schedules a specific task to run asyncronously for a specific connection.
+ */
 void server_task(intptr_t caller_fd,
                  void (*task)(intptr_t fd, protocol_s* protocol, void* arg),
                  void* arg,
