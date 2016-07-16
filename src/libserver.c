@@ -192,7 +192,7 @@ void reactor_on_data_async(void* _fduuid) {
   // try to lock the socket
   if (try_lock_uuid(fduuid))
     goto no_lock;
-  // get current state
+  // get current state (protocol might have changed during this time)
   protocol_s* protocol = protocol_uuid(fduuid);
   // review protocol and get use privilage
   if (protocol == NULL || protocol_set_busy(protocol)) {
