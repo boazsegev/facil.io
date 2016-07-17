@@ -342,7 +342,10 @@ On failure the fduuid_u.data.fd value will be -1.
 */
 intptr_t server_attach(int fd, protocol_s* protocol);
 /** Hijack a socket (file descriptor) from the server, clearing up it's
-resources. The control of the socket is totally relinquished.
+resources and calling the protocol's `on_close` callback (making sure allocated
+resources are freed).
+
+The control of the socket is totally relinquished.
 
 This method will block until all the data in the buffer is sent before
 releasing control of the socket.

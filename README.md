@@ -8,7 +8,7 @@ All the libraries here are provided as source code. Although the more complex li
 
 **Writing HTTP and Websocket services in C? Easy!**
 
-Websockets and HTTP are super common, so `lib-server` comes with HTTP and Websocket extensions, allowing us to easily write HTTP and Websocket services.
+Websockets and HTTP are super common, so `libserver` comes with HTTP and Websocket extensions, allowing us to easily write HTTP and Websocket services.
 
 The framework's code is heavily documented and you can use Doxygen to create automated documentation for the API.
 
@@ -19,7 +19,7 @@ The framework's code is heavily documented and you can use Doxygen to create aut
 #include <stdio.h>
 #include <stdlib.h>
 
-/*****************************
+/* ******************************
 The Websocket echo implementation
 */
 
@@ -40,7 +40,7 @@ void ws_close(ws_s* ws) {
   fprintf(stderr, "Closed websocket connection (%p)\n", ws);
 }
 
-/* ****************************
+/* ***********************************
 The Websocket Broadcast implementation
 */
 
@@ -73,7 +73,7 @@ void ws_broadcast(ws_s* ws, char* data, size_t size, uint8_t is_text) {
   websocket_write(ws, data, size, 1);
 }
 
-/* ****************************
+/* ********************
 The HTTP implementation
 */
 
@@ -102,7 +102,7 @@ void on_request(http_request_s* request) {
   http_response_finish(&response);
 }
 
-/*****************************
+/****************
 The main function
 */
 

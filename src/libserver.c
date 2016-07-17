@@ -121,6 +121,7 @@ static void server_cleanup(void) {
   // free memory
   if (server_data.fds) {
     munmap(server_data.fds, sizeof(fd_data_s) * server_data.capacity);
+    server_data.fds = NULL;
   }
 }
 
@@ -682,10 +683,10 @@ The returned value is the fd for the socket, or -1 on error.
 int server_hijack(intptr_t uuid) {
   if (sock_isvalid(uuid) == 0)
     return -1;
+  reactor_remove(uuid);
   sock_flush_strong(uuid);
   if (sock_isvalid(uuid) == 0)
     return -1;
-  reactor_remove(uuid);
   protocol_s* old_protocol;
   lock_uuid(uuid);
   old_protocol = uuid_data(uuid).protocol;
