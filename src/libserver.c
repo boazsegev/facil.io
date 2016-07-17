@@ -686,6 +686,13 @@ int server_hijack(intptr_t uuid) {
   if (sock_isvalid(uuid) == 0)
     return -1;
   reactor_remove(uuid);
+  protocol_s* old_protocol;
+  lock_uuid(uuid);
+  old_protocol = uuid_data(uuid).protocol;
+  uuid_data(uuid).protocol = NULL;
+  unlock_uuid(uuid);
+  if (old_protocol && old_protocol->on_close)
+    reactor_on_close_async(old_protocol);
   return sock_uuid2fd(uuid);
 }
 /** Counts the number of connections for the specified protocol (NULL = all
