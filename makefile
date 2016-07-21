@@ -7,7 +7,7 @@ TMP_ROOT=./tmp
 # the .c and .cpp source files root folder - subfolders are automatically included
 SRC_ROOT=.
 # any allowed subfolders in the src root
-SRC_SUB_FOLDERS=src src/http
+SRC_SUB_FOLDERS=src src/http src/bscrypt src/bscrypt/bscrypt
 # any librries required (write in full flags)
 LINKER_FLAGS=-lpthread -lssl -lcrypto
 # any include folders, space seperated list

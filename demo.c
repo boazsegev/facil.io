@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "bscrypt.h"
 
 /*****************************
 The Websocket echo implementation
@@ -90,7 +91,6 @@ void on_request(http_request_s* request) {
 /*****************************
 The main function
 */
-
 #define THREAD_COUNT 0
 int main(int argc, char const* argv[]) {
   const char* public_folder = "./public_www";

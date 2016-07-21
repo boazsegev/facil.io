@@ -1,6 +1,6 @@
 #include "libserver.h"
 #include "websockets.h"
-#include "minicrypt.h"
+#include "bscrypt.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -557,13 +557,13 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   // the client's unique string
   // use the SHA1 methods provided to concat the client string and hash
   sha1_s sha1;
-  minicrypt_sha1_init(&sha1);
-  minicrypt_sha1_write(&sha1, recv_str, recv_len);
-  minicrypt_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
+  sha1 = bscrypt_sha1_init();
+  bscrypt_sha1_write(&sha1, recv_str, recv_len);
+  bscrypt_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
   // base encode the data
   char websockets_key[32];
   int len =
-      minicrypt_base64_encode(websockets_key, minicrypt_sha1_result(&sha1), 20);
+      bscrypt_base64_encode(websockets_key, bscrypt_sha1_result(&sha1), 20);
 
   // websocket extentions (none)
 
