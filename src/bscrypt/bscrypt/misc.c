@@ -9,15 +9,17 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #define _GNU_SOURCE
 #endif
 #include "misc.h"
+/* ***************************************************************************
+Other helper functions
+*/
+
+#ifdef HAS_UNIX_FEATURES
 #include <fcntl.h>
 #include <limits.h>
 #include <errno.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-/* ***************************************************************************
-Other helper functions
-*/
 
 /**
 Allocates memory and dumps the whole file into the memory allocated.
@@ -70,6 +72,8 @@ error:
     close(file);
   return 0;
 }
+
+#endif /* HAS_UNIX_FEATURES */
 
 /**
 A faster (yet less localized) alternative to `gmtime_r`.

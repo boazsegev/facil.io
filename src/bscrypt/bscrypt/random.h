@@ -19,14 +19,19 @@ extern "C" {
 Random stuff... (why is this not a system call?)
 */
 
+/** returns 32 random bits. */
 uint32_t bscrypt_rand32(void);
 
+/** returns 64 random bits. */
 uint64_t bscrypt_rand64(void);
 
+/** returns 128 random bits. */
 bits128_u bscrypt_rand128(void);
 
+/** returns 256 random bits. */
 bits256_u bscrypt_rand256(void);
 
+/** returns a variable length string of random bytes. */
 void bscrypt_rand_bytes(void* target, size_t length);
 
 #if defined(BSCRYPT_TEST) && BSCRYPT_TEST == 1

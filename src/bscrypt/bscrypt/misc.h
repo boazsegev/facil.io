@@ -19,9 +19,10 @@ extern "C" {
 /* ***************************************************************************
 Miscellaneous helper functions
 
-i.e. file content dumping and GMT time alternative to
-`gmtime_r`.
+i.e. file content dumping and GMT time alternative to `gmtime_r`.
 */
+
+#ifdef HAS_UNIX_FEATURES
 
 /**
 File dump data.
@@ -52,6 +53,9 @@ resolve links and user
 folder referencing.
 */
 fdump_s* bscrypt_fdump(const char* file_path, size_t size_limit);
+
+#endif /* HAS_UNIX_FEATURES */
+
 /**
 A faster (yet less localized) alternative to
 `gmtime_r`.

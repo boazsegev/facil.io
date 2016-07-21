@@ -9,6 +9,93 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #define _GNU_SOURCE
 #endif
 #include "random.h"
+
+#if defined(USE_ALT_RANDOM) || !defined(HAS_UNIX_FEATURES)
+#include <time.h>
+#include "sha2.h"
+uint32_t bscrypt_rand32(void) {
+  bits256_u pseudo = bscrypt_rand256();
+  return pseudo.ints[3];
+}
+
+uint64_t bscrypt_rand64(void) {
+  bits256_u pseudo = bscrypt_rand256();
+  return pseudo.words[3];
+}
+
+bits128_u bscrypt_rand128(void) {
+  bits256_u pseudo = bscrypt_rand256();
+  bits128_u ret;
+  ret.words[0] = pseudo.words[0];
+  ret.words[1] = pseudo.words[1];
+  return ret;
+}
+
+bits256_u bscrypt_rand256(void) {
+  clock_t cpu_state = clock();
+  time_t the_time;
+  time(&the_time);
+  bits256_u pseudo;
+  sha2_s sha2 = bscrypt_sha2_init(SHA_256);
+  bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
+  bscrypt_sha2_write(&sha2, &the_time, sizeof(the_time));
+  bscrypt_sha2_write(&sha2, &cpu_state - 2, 64); /* whatever's on the stack */
+  bscrypt_sha2_result(&sha2);
+  pseudo.words[0] = sha2.digest.i64[0];
+  pseudo.words[1] = sha2.digest.i64[1];
+  pseudo.words[2] = sha2.digest.i64[2];
+  pseudo.words[3] = sha2.digest.i64[3];
+  return pseudo;
+}
+
+void bscrypt_rand_bytes(void* target, size_t length) {
+  clock_t cpu_state = clock();
+  time_t the_time;
+  time(&the_time);
+  sha2_s sha2 = bscrypt_sha2_init(SHA_512);
+  bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
+  bscrypt_sha2_write(&sha2, &the_time, sizeof(the_time));
+  bscrypt_sha2_write(&sha2, &cpu_state - 2, 64); /* whatever's on the stack */
+  bscrypt_sha2_result(&sha2);
+  while (length > 64) {
+    memcpy(target, sha2.digest.str, 64);
+    length -= 64;
+    target += 64;
+    bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
+    bscrypt_sha2_result(&sha2);
+  }
+  if (length > 32) {
+    memcpy(target, sha2.digest.str, 32);
+    length -= 32;
+    target += 32;
+    bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
+    bscrypt_sha2_result(&sha2);
+  }
+  if (length > 16) {
+    memcpy(target, sha2.digest.str, 16);
+    length -= 16;
+    target += 16;
+    bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
+    bscrypt_sha2_result(&sha2);
+  }
+  if (length > 8) {
+    memcpy(target, sha2.digest.str, 8);
+    length -= 8;
+    target += 8;
+    bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
+    bscrypt_sha2_result(&sha2);
+  }
+  while (length) {
+    *((uint8_t*)target) = sha2.digest.str[length];
+    ++target;
+    --length;
+  }
+}
+
+#else
+/* ***************************************************************************
+Unix Random Engine (use built in machine)
+*/
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
@@ -84,6 +171,7 @@ void bscrypt_rand_bytes(void* target, size_t length) {
   while (read(_rand_fd_, target, length) < 0)
     sched_yield();
 }
+#endif /* Unix Random */
 
 /*******************************************************************************
 Random

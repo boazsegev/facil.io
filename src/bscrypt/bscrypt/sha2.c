@@ -458,11 +458,18 @@ void bscrypt_sha2_write(sha2_s* s, const void* data, size_t len) {
   size_t in_buffer;
   size_t partial;
   if (s->type & 1) { /* 512 type derived */
-
+#if defined(HAS_UINT128)
     in_buffer = s->length.i & 127;
-    partial = 128 - in_buffer;
-
     s->length.i += len;
+#else
+    in_buffer = s->length.words[0] & 127;
+    if (s->length.words[0] + len < s->length.words[0]) {
+      /* we are at wraping around the 64bit limit */
+      s->length.words[1] = (s->length.words[1] << 1) | 1;
+    }
+    s->length.words[0] += len;
+#endif
+    partial = 128 - in_buffer;
 
     if (partial > len) {
       memcpy(s->buffer + in_buffer, data, len);
@@ -520,8 +527,14 @@ finalization will only be performed the first time this function is called.
 */
 char* bscrypt_sha2_result(sha2_s* s) {
   if (s->type & 1) {
-    /* 512 bits derived hashing */
+/* 512 bits derived hashing */
+
+#if defined(HAS_UINT128)
     size_t in_buffer = s->length.i & 127;
+#else
+    size_t in_buffer = s->length.words[0] & 127;
+#endif
+
     if (in_buffer > 111) {
       memcpy(s->buffer + in_buffer, sha2_padding, 128 - in_buffer);
       perform_all_rounds(s, s->buffer);
@@ -531,9 +544,16 @@ char* bscrypt_sha2_result(sha2_s* s) {
     } else {
       s->buffer[111] = sha2_padding[0];
     }
-    /* store the length in BITS - alignment should be promised by struct */
-    /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
+/* store the length in BITS - alignment should be promised by struct */
+/* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
+
+#if defined(HAS_UINT128)
     s->length.i = s->length.i << 3;
+#else
+    s->length.words[1] = (s->length.words[1] << 3) | (s->length.words[0] >> 61);
+    s->length.words[0] = s->length.words[0] << 3;
+#endif
+
 #ifndef __BIG_ENDIAN__
     bswap64(s->length.words[0]);
     bswap64(s->length.words[1]);
@@ -543,8 +563,14 @@ char* bscrypt_sha2_result(sha2_s* s) {
       s->length.words[1] = tmp;
     }
 #endif
+#if defined(HAS_UINT128)
     __uint128_t* len = (__uint128_t*)(s->buffer + 112);
     *len = s->length.i;
+#else
+    uint64_t* len = (uint64_t*)(s->buffer + 112);
+    len[0] = s->length.words[0];
+    len[1] = s->length.words[1];
+#endif
     perform_all_rounds(s, s->buffer);
 
 /* change back to little endian, if required */
