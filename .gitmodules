@@ -1,0 +1,4 @@
+
+[submodule "bscrypt"]
+	path = src/bscrypt
+	url = https://github.com/boazsegev/bscrypt.git

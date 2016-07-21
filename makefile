@@ -11,7 +11,7 @@ SRC_SUB_FOLDERS=src src/http
 # any librries required (write in full flags)
 LINKER_FLAGS=-lpthread -lssl -lcrypto
 # any include folders, space seperated list
-INCLUDE=/usr/local/include
+INCLUDE=/usr/local/include  /usr/local/openssl/include
 # optimization level.
 OPTIMIZATION=O3
 
@@ -93,7 +93,7 @@ clean:
 execute:
 	@$(BIN)
 
-run: | clean build execute
+run: | build execute
 
 db: | clean build
 	$(DB) $(BIN)
