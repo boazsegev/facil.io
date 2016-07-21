@@ -547,6 +547,9 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
       http_request_find_header(settings.request, "sec-websocket-key", 17);
   if (recv_str == NULL)
     goto refuse;
+  size_t recv_len =
+      settings.request->headers[settings.request->metadata.headers_pos]
+          .value_length;
 
   // websocket extentions (none)
 
@@ -555,7 +558,7 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   // use the SHA1 methods provided to concat the client string and hash
   sha1_s sha1;
   minicrypt_sha1_init(&sha1);
-  minicrypt_sha1_write(&sha1, recv_str, strlen(recv_str));
+  minicrypt_sha1_write(&sha1, recv_str, recv_len);
   minicrypt_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
   // base encode the data
   char websockets_key[32];
