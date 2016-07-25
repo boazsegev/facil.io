@@ -191,6 +191,9 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
         if (request->content_length == 0 || request->body_str) {
           goto handle_request;
         }
+        if (request->content_length > protocol->settings->max_body_size) {
+          goto body_to_big;
+        }
         // do we still have more data?
         if (result < len) {
           result =
@@ -258,24 +261,39 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
 parser_error:
   if (request->headers_count == request->metadata.max_headers)
     goto too_big;
-bad_request : {
-  http_response_s response = http_response_init(request);
-  response.status = 400;
-  http_response_write_body(&response, "Bad Request", 11);
-  http_response_finish(&response);
-  sock_close(uuid);
-  protocol->buffer_pos = 0;
-  return;
-}
-too_big : {
-  http_response_s response = http_response_init(request);
-  response.status = 431;
-  http_response_write_body(&response, "Request Header Fields Too Large", 31);
-  http_response_finish(&response);
-  sock_close(uuid);
-  protocol->buffer_pos = 0;
-  return;
-}
+bad_request:
+  /* handle generally bad requests */
+  {
+    http_response_s response = http_response_init(request);
+    response.status = 400;
+    http_response_write_body(&response, "Bad Request", 11);
+    http_response_finish(&response);
+    sock_close(uuid);
+    protocol->buffer_pos = 0;
+    return;
+  }
+too_big:
+  /* handle oversized headers */
+  {
+    http_response_s response = http_response_init(request);
+    response.status = 431;
+    http_response_write_body(&response, "Request Header Fields Too Large", 31);
+    http_response_finish(&response);
+    sock_close(uuid);
+    protocol->buffer_pos = 0;
+    return;
+  body_to_big:
+    /* handle oversized body */
+    {
+      http_response_s response = http_response_init(request);
+      response.status = 413;
+      http_response_write_body(&response, "Payload Too Large", 17);
+      http_response_finish(&response);
+      sock_close(uuid);
+      protocol->buffer_pos = 0;
+      return;
+    }
+  }
 }
 
 /* *****************************************************************************
@@ -287,6 +305,8 @@ HTTP/1.1 listenning API implementation
 static void http1_on_init(http_settings_s* settings) {
   if (settings->timeout == 0)
     settings->timeout = 5;
+  if (settings->max_body_size == 0)
+    settings->max_body_size = HTTP_DEFAULT_BODY_LIMIT;
   if (settings->public_folder) {
     settings->public_folder_length = strlen(settings->public_folder);
     if (settings->public_folder[0] == '~' &&

@@ -20,6 +20,10 @@ Hard Coded Settings
 #define HTTP_BUSY_UNLESS_HAS_FDS 64
 #endif
 
+#ifndef HTTP_DEFAULT_BODY_LIMIT
+#define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
+#endif
+
 /* *****************************************************************************
 HTTP settings / core data structure
 */
