@@ -2,4 +2,3 @@
 -Isrc/http/
 -Isrc/bscrypt
 -Isrc/bscrypt/bscrypt
--I/usr/local/openssl/include

@@ -9,9 +9,9 @@ SRC_ROOT=.
 # any allowed subfolders in the src root
 SRC_SUB_FOLDERS=src src/http src/bscrypt src/bscrypt/bscrypt
 # any librries required (write in full flags)
-LINKER_FLAGS=-lpthread -lssl -lcrypto
+LINKER_FLAGS=-lpthread
 # any include folders, space seperated list
-INCLUDE=/usr/local/include  /usr/local/openssl/include
+INCLUDE=
 # optimization level.
 OPTIMIZATION=O3
 
