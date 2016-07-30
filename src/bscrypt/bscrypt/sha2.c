@@ -1,7 +1,7 @@
 /*
 (un)copyright: Boaz segev, 2016
-license: MIT except for any non-public-domain algorithms, which are subject to
-their own licenses.
+License: Public Domain except for any non-public-domain algorithms, which are
+subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -563,6 +563,7 @@ char* bscrypt_sha2_result(sha2_s* s) {
       s->length.words[1] = tmp;
     }
 #endif
+
 #if defined(HAS_UINT128)
     __uint128_t* len = (__uint128_t*)(s->buffer + 112);
     *len = s->length.i;
@@ -593,6 +594,7 @@ char* bscrypt_sha2_result(sha2_s* s) {
     // set NULL bytes for SHA_384
     else if (s->type == SHA_384)
       s->digest.str[48] = 0;
+    s->digest.str[64] = 0; /* sometimes the optimizer messes the NUL sequence */
     // fprintf(stderr, "result requested, in hex, is:");
     // for (size_t i = 0; i < 20; i++)
     //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
@@ -645,7 +647,7 @@ char* bscrypt_sha2_result(sha2_s* s) {
 /*******************************************************************************
 SHA-2 testing
 */
-#if defined(BSCRYPT_TEST) && BSCRYPT_TEST == 1
+#if defined(DEBUG) && DEBUG == 1
 
 // SHA_512 = 1, SHA_512_256 = 3, SHA_512_224 = 5, SHA_384 = 7, SHA_256 = 2,
 //              SHA_224 = 4,
@@ -656,7 +658,7 @@ static char* sha2_variant_names[] = {
 };
 
 // clang-format off
-#if defined(__has_include) && __has_include(<openssl/sha.h>)
+#if defined(TEST_OPENSSL) && defined(__has_include) && __has_include(<openssl/sha.h>)
 #   include <openssl/sha.h>
 #   define HAS_OPEN_SSL 1
 #endif
@@ -819,11 +821,11 @@ void bscrypt_test_sha2(void) {
 error:
   fprintf(stderr,
           ":\n--- bscrypt SHA-2 Test FAILED!\ntype: "
-          "%s (%d)\nstring %s\nexpected: ",
+          "%s (%d)\nstring %s\nexpected:\n",
           sha2_variant_names[s.type], s.type, str);
   while (*expect)
     fprintf(stderr, "%02x", *(expect++) & 0xFF);
-  fprintf(stderr, "\ngot: ");
+  fprintf(stderr, "\ngot:\n");
   while (*got)
     fprintf(stderr, "%02x", *(got++) & 0xFF);
   fprintf(stderr, "\n");

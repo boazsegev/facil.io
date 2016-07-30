@@ -1,7 +1,7 @@
 /*
 (un)copyright: Boaz segev, 2016
-license: MIT except for any non-public-domain algorithms, which are subject to
-their own licenses.
+License: Public Domain except for any non-public-domain algorithms, which are
+subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -272,11 +272,11 @@ char* bscrypt_sha1_result(sha1_s* s) {
 /*******************************************************************************
 SHA-1 testing
 */
-#if defined(BSCRYPT_TEST) && BSCRYPT_TEST == 1
+#if defined(DEBUG) && DEBUG == 1
 #include <time.h>
 
 // clang-format off
-#if defined(__has_include) && __has_include(<openssl/sha.h>)
+#if defined(TEST_OPENSSL) && defined(__has_include) && __has_include(<openssl/sha.h>)
 #   include <openssl/sha.h>
 #   define HAS_OPEN_SSL 1
 #endif
@@ -337,7 +337,7 @@ void bscrypt_test_sha1(void) {
   for (size_t i = 0; i < 100000; i++) {
     sha1 = bscrypt_sha1_init();
     bscrypt_sha1_write(&sha1, "The quick brown fox jumps over the lazy dog ",
-                         43);
+                       43);
     bscrypt_sha1_result(&sha1);
   }
   fprintf(stderr, "bscrypt 100K SHA-1: %lf\n",

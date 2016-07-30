@@ -1,7 +1,7 @@
 /*
 (un)copyright: Boaz segev, 2016
-license: MIT except for any non-public-domain algorithms, which are subject to
-their own licenses.
+License: Public Domain except for any non-public-domain algorithms, which are
+subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -34,7 +34,7 @@ bits256_u bscrypt_rand256(void);
 /** returns a variable length string of random bytes. */
 void bscrypt_rand_bytes(void* target, size_t length);
 
-#if defined(BSCRYPT_TEST) && BSCRYPT_TEST == 1
+#if defined(DEBUG) && DEBUG == 1
 void bscrypt_test_random(void);
 #endif
 

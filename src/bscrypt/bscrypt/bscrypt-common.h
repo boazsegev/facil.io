@@ -1,7 +1,7 @@
 /*
 (un)copyright: Boaz segev, 2016
-license: MIT except for any non-public-domain algorithms, which are subject to
-their own licenses.
+License: Public Domain except for any non-public-domain algorithms, which are
+subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -54,10 +54,6 @@ and: https://software.intel.com/sites/landingpage/IntrinsicsGuide/
 
 #ifndef __unused
 #define __unused __attribute__((unused))
-#endif
-
-#ifndef BSCRYPT_TEST
-#define BSCRYPT_TEST 1
 #endif
 
 /* *****************************************************************************

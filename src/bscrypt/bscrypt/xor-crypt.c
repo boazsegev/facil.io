@@ -1,7 +1,7 @@
 /*
 (un)copyright: Boaz segev, 2016
-license: MIT except for any non-public-domain algorithms, which are subject to
-their own licenses.
+License: Public Domain except for any non-public-domain algorithms, which are
+subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -81,9 +81,9 @@ If `target` is NULL, the source will be used as the target (destructive mode).
 Returns -1 on error and 0 on success.
 */
 int bscrypt_xor_crypt(xor_key_s* key,
-                        void* target,
-                        const void* source,
-                        size_t length) {
+                      void* target,
+                      const void* source,
+                      size_t length) {
   if (!source || !key)
     return -1;
   if (!length)
@@ -142,10 +142,10 @@ int bscrypt_xor_crypt(xor_key_s* key,
 Similar to the bscrypt_xor_crypt except with a fixed key size of 128bits.
 */
 int bscrypt_xor128_crypt(uint64_t* key,
-                           void* target,
-                           const void* source,
-                           size_t length,
-                           int (*on_cycle)(uint64_t* key)) {
+                         void* target,
+                         const void* source,
+                         size_t length,
+                         int (*on_cycle)(uint64_t* key)) {
   length = length & 31;
   uint8_t pos = 0;
   for (size_t i = 0; i < (length >> 3); i++) {
@@ -168,10 +168,10 @@ int bscrypt_xor128_crypt(uint64_t* key,
 Similar to the bscrypt_xor_crypt except with a fixed key size of 256bits.
 */
 int bscrypt_xor256_crypt(uint64_t* key,
-                           void* target,
-                           const void* source,
-                           size_t length,
-                           int (*on_cycle)(uint64_t* key)) {
+                         void* target,
+                         const void* source,
+                         size_t length,
+                         int (*on_cycle)(uint64_t* key)) {
   for (size_t i = 0; i < (length >> 5); i++) {
     ((uint64_t*)target)[0] = ((uint64_t*)source)[0] ^ key[0];
     ((uint64_t*)target)[1] = ((uint64_t*)source)[1] ^ key[1];
