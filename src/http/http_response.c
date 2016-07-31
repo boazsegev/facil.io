@@ -47,7 +47,7 @@ http_response_s http_response_init(http_request_s* request) {
     sock_flush_all();
     sched_yield();
   }
-  protocol_s* http = server_get_protocol(request->metadata.fd);
+  protocol_s* http = request->metadata.owner;
   time_t date = server_last_tick();
   return (http_response_s){
       .metadata.request = request,
