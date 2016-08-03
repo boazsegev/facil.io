@@ -128,6 +128,7 @@ size_t http_date2str(char* target, struct tm* tmbuf) {
   }
   *(pos++) = ' ';
   *(uint32_t*)pos = *((uint32_t*)MONTH_NAMES[tmbuf->tm_mon]);
+  pos += 4;
   // write year.
   pos += http_ul2a(pos, tmbuf->tm_year + 1900);
   *(pos++) = ' ';
