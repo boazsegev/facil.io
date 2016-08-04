@@ -13,7 +13,7 @@ LINKER_FLAGS=-lpthread
 # any include folders, space seperated list
 INCLUDE=
 # optimization level.
-OPTIMIZATION=O3 -march=native
+OPTIMIZATION=O3 -march=native -DDEBUG
 
 ##############
 ## OS specific data - compiler, assembler etc.

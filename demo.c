@@ -91,8 +91,9 @@ void on_request(http_request_s* request) {
 /*****************************
 The main function
 */
-#define THREAD_COUNT 0
+#define THREAD_COUNT 8
 int main(int argc, char const* argv[]) {
+  http_parser_test();
   const char* public_folder = "./public_www";
   http1_listen("3000", NULL, .on_request = on_request,
                .public_folder = public_folder, .log_static = 1);

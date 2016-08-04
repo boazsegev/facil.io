@@ -194,17 +194,15 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
         if (request->content_length > protocol->settings->max_body_size) {
           goto body_to_big;
         }
-        // do we still have more data?
-        if (result < len) {
-          result =
-              http1_parse_request_body(buffer + result, len - result, request);
-          if (result >= 0) {
-            protocol->buffer_pos += result;
-            goto handle_request;
-          } else if (result == -1)  // parser error
-            goto parser_error;
-          goto parse_body;
-        }
+        // initialize or submit body data
+        result =
+            http1_parse_request_body(buffer + result, len - result, request);
+        if (result >= 0) {
+          protocol->buffer_pos += result;
+          goto handle_request;
+        } else if (result == -1)  // parser error
+          goto parser_error;
+        goto parse_body;
       } else if (result == -1)  // parser error
         goto parser_error;
       // assume incomplete (result == -2), even if wrong, we're right.
@@ -225,6 +223,8 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
         goto handle_request;
       } else if (result == -1)  // parser error
         goto parser_error;
+      if (len < HTTP_BODY_CHUNK_SIZE)  // pause parser for more data
+        return;
       goto parse_body;
     }
     continue;

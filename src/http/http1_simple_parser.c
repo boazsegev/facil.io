@@ -335,6 +335,11 @@ ssize_t http1_parse_request_body(void* buffer,
     uintptr_t* tmp = (uintptr_t*)(&request->metadata.next);
     *tmp = 0;
   }
+  // make sure we have anything to read. This might be an initializing call.
+  if (len == 0)
+    return ((uintptr_t)(request->metadata.next)) >= request->content_length
+               ? 0
+               : (-2);
   // Calculate how much of the buffer should be read.
   ssize_t to_read =
       ((request->content_length - ((uintptr_t)request->metadata.next)) < len)
@@ -344,7 +349,9 @@ ssize_t http1_parse_request_body(void* buffer,
   if (write(request->body_file, buffer, to_read) < to_read)
     return -1;
   // update the `next` field data with the received content length
-  request->metadata.next += to_read;
+  uintptr_t* tmp = (uintptr_t*)(&request->metadata.next);
+  *tmp += to_read;  // request->metadata.next += to_read;
+
   // check the state and return.
   if (((uintptr_t)request->metadata.next) >= request->content_length) {
     lseek(request->body_file, 0, SEEK_SET);
@@ -353,7 +360,7 @@ ssize_t http1_parse_request_body(void* buffer,
   return -2;
 }
 
-#if defined(HTTP_PARSER_TEST) && HTTP_PARSER_TEST == 1
+#if defined(DEBUG) && DEBUG == 1
 
 #include <time.h>
 

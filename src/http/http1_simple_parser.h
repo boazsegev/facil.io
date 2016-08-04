@@ -52,7 +52,7 @@ ssize_t http1_parse_request_body(void* buffer,
                                  size_t len,
                                  http_request_s* request);
 
-#ifdef HTTP_PARSER_TEST
+#if defined(DEBUG) && DEBUG == 1
 void http_parser_test(void);
 #endif
 
