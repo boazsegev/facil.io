@@ -93,10 +93,11 @@ The main function
 */
 #define THREAD_COUNT 8
 int main(int argc, char const* argv[]) {
-  http_parser_test();
+  // http_parser_test();
   const char* public_folder = "./public_www";
-  http1_listen("3000", NULL, .on_request = on_request,
-               .public_folder = public_folder, .log_static = 1);
+  if (http1_listen("3000", NULL, .on_request = on_request,
+                   .public_folder = public_folder, .log_static = 1))
+    perror("Couldn't initiate HTTP service"), exit(1);
   server_run(.threads = THREAD_COUNT);
   return 0;
 }

@@ -231,6 +231,8 @@ For best results, assume everything could run concurrently. `libserver` will do 
 
 All these libraries are used in a Ruby server I'm re-writing, which has native Websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP parser in C, and attaching it to the `libserver`'s protocol specs.
 
+I should note the server I'm writing is mostly for x86 architectures and it uses unaligned memory access to 64bit memory "words". If you're going to use the HTTP parser on a machine that requires aligned memory access, some code would need to be reviewed.
+
 The code is just a few helper settings and mega-functions (I know, refactoring will make it easier to maintain). The HTTP parser destructively edits the received headers and forwards a `http_request_s *` object to the `on_request` callback. This minimizes data copying and speeds up the process.
 
 The HTTP protocol provides a built-in static file service and allows us to limit incoming request data sizes in order to protect server resources. The header size limit adjustable, but will be hardcoded during compilation (it's set to 8KB, which is also the limit on some proxies and intermediaries), securing the server from bloated header data DoS attacks. The incoming data size limit is dynamic.
@@ -267,7 +269,9 @@ At some point I decided to move all the network logic from my [Ruby Iodine proje
 
 This was when the `Websockets` library was born. It builds off the `http` server and allows us to either "upgrade" the HTTP protocol to Websockets or continue with an HTTP response.
 
-Building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example - notice that broadcasting is a resource intensive task, requiring at least O(n) operations, where n == server capacity:
+I should note the the `Websockets` library, similarly to the HTTP parser, uses unaligned memory access to 64bit memory "words". It's good enough for the systems I target, but if you're going to use the library on a machine that requires aligned memory access, some code would need to be reviewed and readjusted.
+
+Using this library, building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example - notice that broadcasting is a resource intensive task, requiring at least O(n) operations, where n == server capacity:
 
 ```c
 // update the tryme.c file to use the existing folder structure and makefile
