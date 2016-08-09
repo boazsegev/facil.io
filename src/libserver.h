@@ -363,29 +363,6 @@ long server_count(char* service);
 * Simpley use `libsock` API for read/write.
 */
 
-/**
-Sends data from a file as if it were a single atomic packet (sends up to
-length bytes or until EOF is reached).
-
-Once the file was sent, the `source_fd` will be closed using `close`.
-
-The file will be buffered to the socket chunk by chunk, so that memory
-consumption is capped. The system's `sendfile` might be used if conditions
-permit.
-
-`offset` dictates the starting point for te data to be sent and length sets
-the maximum amount of data to be sent.
-
-Returns -1 and closes the file on error. Returns 0 on success.
-*/
-__unused static inline ssize_t sock_sendfile(intptr_t uuid,
-                                             int source_fd,
-                                             off_t offset,
-                                             size_t length) {
-  return sock_write2(.fduuid = uuid, .buffer = (void*)((intptr_t)source_fd),
-                     .length = length, .is_fd = 1, .offset = offset);
-}
-
 /****************************************************************************
 * Tasks + Async
 */

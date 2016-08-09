@@ -26,6 +26,10 @@ The library is designed to be thread safe, but not fork safe.
 #include <pthread.h>
 #include <sys/types.h>
 
+#ifndef __unused
+#define __unused __attribute__((unused))
+#endif
+
 /* *****************************************************************************
 User land buffer settings for every packet's pre-alocated memory size (17Kb)
 
@@ -280,6 +284,29 @@ actually calls `sock_write2`.
 */
 #define sock_write(uuid, buf, count) \
   sock_write2(.fduuid = (uuid), .buffer = (buf), .length = (count))
+
+/**
+Sends data from a file as if it were a single atomic packet (sends up to
+length bytes or until EOF is reached).
+
+Once the file was sent, the `source_fd` will be closed using `close`.
+
+The file will be buffered to the socket chunk by chunk, so that memory
+consumption is capped. The system's `sendfile` might be used if conditions
+permit.
+
+`offset` dictates the starting point for te data to be sent and length sets
+the maximum amount of data to be sent.
+
+Returns -1 and closes the file on error. Returns 0 on success.
+*/
+__unused static inline ssize_t sock_sendfile(intptr_t uuid,
+                                             int source_fd,
+                                             off_t offset,
+                                             size_t length) {
+  return sock_write2(.fduuid = uuid, .buffer = (void*)((intptr_t)source_fd),
+                     .length = length, .is_fd = 1, .offset = offset);
+}
 
 /**
 `sock_flush` writes the data in the internal buffer to the underlying file
