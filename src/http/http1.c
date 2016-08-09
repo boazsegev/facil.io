@@ -1,6 +1,9 @@
 #include "http1.h"
 #include "http1_simple_parser.h"
 #include <string.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include "errno.h"
 #include <sys/mman.h>
 #include <stdatomic.h>
@@ -114,10 +117,8 @@ protocol_s* http1_alloc(intptr_t fd, http_settings_s* settings) {
   validate_mem();
   // HTTP/1.1 should send a busy response
   // if there aren't enough available file descriptors.
-  if (sock_uuid2fd(fd) >= (sock_max_capacity() - HTTP_BUSY_UNLESS_HAS_FDS)) {
-    sock_write(fd, "HTTP/1.1 503 Service Unavailable\r\n\r\nServer Busy.", 48);
-    return NULL;
-  }
+  if (sock_max_capacity() - sock_uuid2fd(fd) <= HTTP_BUSY_UNLESS_HAS_FDS)
+    goto is_busy;
   // get an http object from the pool
   http1_protocol_s* http = pool_pop();
   // of malloc one
@@ -150,6 +151,56 @@ protocol_s* http1_alloc(intptr_t fd, http_settings_s* settings) {
   // set the timeout
   server_set_timeout(fd, settings->timeout);
   return (protocol_s*)http;
+
+is_busy:
+  if (settings->public_folder && settings->public_folder_length) {
+    size_t p_len = settings->public_folder_length;
+    struct stat file_data = {};
+    char fname[p_len + 8 + 1];
+    memcpy(fname, settings->public_folder, p_len);
+    if (settings->public_folder[p_len - 1] == '/' ||
+        settings->public_folder[p_len - 1] == '\\')
+      p_len--;
+    memcpy(fname + p_len, "/503.html", 9);
+    p_len += 9;
+    if (stat(fname, &file_data))
+      goto busy_no_file;
+    // check that we have a file and not something else
+    if (!S_ISREG(file_data.st_mode) && !S_ISLNK(file_data.st_mode))
+      goto busy_no_file;
+    int file = open(fname, O_RDONLY);
+    if (file == -1)
+      goto busy_no_file;
+    sock_packet_s* packet;
+    while ((packet = sock_checkout_packet()) == NULL)
+      sched_yield();
+    memcpy(packet->buffer,
+           "HTTP/1.1 503 Service Unavailable\r\n"
+           "Content-Type: text/html\r\n"
+           "Connection: close\r\n"
+           "Content-Length: ",
+           94);
+    p_len = 94 + http_ul2a(packet->buffer + 94, file_data.st_size);
+    memcpy(packet->buffer + p_len, "\r\n\r\n", 4);
+    p_len += 4;
+    if (BUFFER_PACKET_SIZE - p_len > file_data.st_size) {
+      read(file, packet->buffer + p_len, file_data.st_size);
+      close(file);
+      packet->length = p_len + file_data.st_size;
+      sock_send_packet(fd, packet);
+    } else {
+      packet->length = p_len;
+      sock_send_packet(fd, packet);
+      sock_sendfile(fd, file, 0, file_data.st_size);
+    }
+    return NULL;
+  }
+busy_no_file:
+  sock_write(fd,
+             "HTTP/1.1 503 Service Unavailable\r\nContent-Length: "
+             "13\r\n\r\nServer Busy.",
+             68);
+  return NULL;
 }
 
 /* *****************************************************************************
