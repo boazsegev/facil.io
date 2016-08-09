@@ -408,7 +408,7 @@ void http_parser_test(void) {
         request->content_length, 12);
     pok("* Correct body\n", "* WRONG body\n",
         memcmp(request->body_str, "Hello World!", request->content_length), 0);
-    fprintf(stderr, "%.*s\n", request->content_length, request->body_str);
+    fprintf(stderr, "%.*s\n", (int)request->content_length, request->body_str);
 #undef pok
   }
   http_request_clear(request);
@@ -460,7 +460,7 @@ void http_parser_test(void) {
   ret = read(request->body_file, request_text, request->content_length);
   if (ret < 0)
     perror("Couldn't read temporary file");
-  fprintf(stderr, "Body:\n%.*s\n", request->content_length, request_text);
+  fprintf(stderr, "Body:\n%.*s\n", (int)request->content_length, request_text);
 
   http_request_clear(request);
 }
