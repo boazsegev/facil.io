@@ -81,7 +81,7 @@ typedef union {
 } bits128_u;
 
 typedef union {
-#ifdef HAVE_X86Intrin
+#if defined(HAVE_X86Intrin) && defined(__AVX__)
   __m256i mm;
 #endif
 #ifdef HAS_UINT128
