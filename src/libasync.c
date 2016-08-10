@@ -19,18 +19,23 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <pthread.h>
 #include <fcntl.h>
 #include <sched.h>
-#include <stdatomic.h>
 #include <sys/mman.h>
 #include <string.h>
 
-#ifdef __has_include
-#if __has_include(<x86intrin.h>)
+#if ASYNC_USE_SPINLOCK == 1 ||                                 \
+    (!defined(ASYNC_USE_SPINLOCK) && defined(__has_include) && \
+     __has_include(<stdatomic.h>))
+#include <stdatomic.h>
+#undef ASYNC_USE_SPINLOCK
+#define ASYNC_USE_SPINLOCK 1
+#endif
+
+#if defined(__has_include) && __has_include(<x86intrin.h>)
 #include <x86intrin.h>
 #define HAVE_X86Intrin
 #define sched_yield() _mm_pause()
 // see: https://software.intel.com/en-us/node/513411
 // and: https://software.intel.com/sites/landingpage/IntrinsicsGuide/
-#endif
 #endif
 
 /* *****************************************************************************

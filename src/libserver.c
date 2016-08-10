@@ -9,7 +9,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 #include "libserver.h"
 #include <string.h>
-#include <stdatomic.h>
 #include <signal.h>
 #include <pthread.h>
 #include <sys/mman.h>

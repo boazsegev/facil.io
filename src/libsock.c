@@ -23,7 +23,6 @@ sockets and some helper functions.
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <netdb.h>
-#include <stdatomic.h>  // http://en.cppreference.com/w/c/atomic
 #include <sys/uio.h>
 
 #ifndef DEBUG_SOCKLIB
@@ -61,10 +60,14 @@ starvation (depends how you use the library).
 #define BUFFER_ALLOW_MALLOC 0
 #endif
 
-#ifndef FD_USE_SPIN_LOCK
 /**
 Socket `write` / `flush` / `read` contension uses a spinlock instead of a mutex
 */
+#if FD_USE_SPIN_LOCK == 1 ||                                 \
+    (!defined(FD_USE_SPIN_LOCK) && defined(__has_include) && \
+     __has_include(<stdatomic.h>))
+#include <stdatomic.h>
+#undef FD_USE_SPIN_LOCK
 #define FD_USE_SPIN_LOCK 1
 #endif
 
