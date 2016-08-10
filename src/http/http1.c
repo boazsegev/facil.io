@@ -184,7 +184,11 @@ is_busy:
     memcpy(packet->buffer + p_len, "\r\n\r\n", 4);
     p_len += 4;
     if (BUFFER_PACKET_SIZE - p_len > file_data.st_size) {
-      read(file, packet->buffer + p_len, file_data.st_size);
+      if (read(file, packet->buffer + p_len, file_data.st_size) < 0) {
+        close(file);
+        sock_free_packet(packet);
+        goto busy_no_file;
+      }
       close(file);
       packet->length = p_len + file_data.st_size;
       sock_send_packet(fd, packet);
