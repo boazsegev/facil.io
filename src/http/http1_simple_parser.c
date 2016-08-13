@@ -324,7 +324,11 @@ ssize_t http1_parse_request_body(void* buffer,
   if (!request->body_file) {
 // create a temporary file to contain the data.
 #ifdef P_tmpdir
+#if defined(__linux__) /* linux doesn't end with a divider */
+    char template[] = P_tmpdir "/http_request_body_XXXXXXXX";
+#else
     char template[] = P_tmpdir "http_request_body_XXXXXXXX";
+#endif
 #else
     char template[] = "/tmp/http_request_body_XXXXXXXX";
 #endif
