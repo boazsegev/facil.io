@@ -28,6 +28,8 @@ Typically, server applications "react", they read incoming data (known as a requ
 
 The base type to handle the demands of protocols is `protocol_s`. This is no more then a struct with information about the callbacks that should be invoked on network events (incoming data, disconnection etc').
 
+Protocol objects must be unique per connection, and so they are usually dynamically allocated.
+
 ```c
 struct Protocol {
   /**
@@ -97,10 +99,14 @@ static void echo_on_shutdown(intptr_t uuid, protocol_s* prt) {
 
 /* A callback called for new connections */
 static protocol_s* echo_on_open(intptr_t uuid) {
-  static protocol_s echo_proto = {.service = "echo",
-                                  .on_data = echo_on_data,
-                                  .on_shutdown = echo_on_shutdown,
-                                  .ping = echo_ping};
+  /* Protocol objects MUST always be dynamically allocated. */
+  protocol_s * echo_proto = malloc(sizeof( * echo_proto ))
+  * echo_proto = (protocol_s) {.service = "echo",
+                        .on_data = echo_on_data,
+                        .on_shutdown = echo_on_shutdown,
+                        .on_close = free, /* simply free when done */
+                        .ping = echo_ping};
+
   sock_write(uuid, "Echo Service: Welcome\n", 22);
   server_set_timeout(uuid, 10);
   return &echo_proto;
