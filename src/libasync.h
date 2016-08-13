@@ -13,8 +13,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 #include <stdio.h>
 
-#ifndef ASYNC_TEST_INC
-#define ASYNC_TEST_INC 1
+#ifdef DEBUG
 // prints out testing and benchmarking data
 void async_test_library_speed(void);
 #endif

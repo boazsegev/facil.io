@@ -599,7 +599,7 @@ void async_signal() {
 Test
 */
 
-#if ASYNC_TEST_INC == 1
+#ifdef DEBUG
 
 #define ASYNC_SPEED_TEST_THREAD_COUNT 120
 
