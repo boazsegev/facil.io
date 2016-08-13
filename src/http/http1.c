@@ -6,7 +6,6 @@
 #include <sys/stat.h>
 #include "errno.h"
 #include <sys/mman.h>
-#include <stdatomic.h>
 
 /* *****************************************************************************
 HTTP/1.1 data structure
@@ -41,28 +40,26 @@ HTTP/1.1 protocol pooling
 struct {
   void* memory;
   http1_protocol_s* pool;
-  atomic_flag lock;
+  spn_lock_i lock;
 } http1_pool = {0};
 
 inline static http1_protocol_s* pool_pop() {
   http1_protocol_s* prot;
-  while (atomic_flag_test_and_set(&http1_pool.lock))
-    sched_yield();
+  spn_lock(&http1_pool.lock);
   prot = http1_pool.pool;
   if (prot)
     http1_pool.pool = prot->request.metadata.next;
-  atomic_flag_clear(&http1_pool.lock);
+  spn_unlock(&http1_pool.lock);
   return prot;
 }
 
 inline static void pool_push(http1_protocol_s* protocol) {
   if (protocol == NULL)
     return;
-  while (atomic_flag_test_and_set(&http1_pool.lock))
-    sched_yield();
+  spn_lock(&http1_pool.lock);
   protocol->request.metadata.next = http1_pool.pool;
   http1_pool.pool = protocol;
-  atomic_flag_clear(&http1_pool.lock);
+  spn_unlock(&http1_pool.lock);
 }
 
 static void http1_cleanup(void) {

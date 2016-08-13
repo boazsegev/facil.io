@@ -15,12 +15,12 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdatomic.h>
 
 /* lib server is based off and requires the following libraries: */
 #include "libreact.h"
 #include "libasync.h"
 #include "libsock.h"
+#include "spnlock.h"
 
 #ifndef SERVER_PRINT_STATE
 /**
@@ -62,7 +62,7 @@ will count the number of client and messages using the server and demonstrates
 some recommended implementation techniques, such as protocol inheritance.
 
       #include "libserver.h"  // the reactor library
-      #include <stdatomic.h>
+      #include <stdatomic.h> // We'll use atomics to safely count client events
 
       #define THREADS 4
       #define PROCESSES 4
@@ -207,7 +207,7 @@ struct Protocol {
   /** called when a connection's timeout was reached */
   void (*ping)(intptr_t fduuid, protocol_s* protocol);
   /** private metadata used for object protection */
-  atomic_bool callback_lock;
+  spn_lock_i callback_lock;
 };
 
 /**************************************************************************/ /**

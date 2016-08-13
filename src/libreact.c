@@ -13,7 +13,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/epoll.h>
 #endif
 #include <time.h>
-#include <pthread.h>
 #include <assert.h>
 #include <unistd.h>
 #include <fcntl.h>

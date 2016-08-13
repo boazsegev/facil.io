@@ -61,13 +61,9 @@ starvation (depends how you use the library).
 #endif
 
 /**
-Socket `write` / `flush` / `read` contension uses a spinlock instead of a mutex
+Socket `write` / `flush` / `read` contension uses a spinlock instead of a mutex.
 */
-#if FD_USE_SPIN_LOCK == 1 ||                                 \
-    (!defined(FD_USE_SPIN_LOCK) && defined(__has_include) && \
-     __has_include(<stdatomic.h>))
-#include <stdatomic.h>
-#undef FD_USE_SPIN_LOCK
+#ifndef FD_USE_SPIN_LOCK
 #define FD_USE_SPIN_LOCK 1
 #endif
 
@@ -87,6 +83,150 @@ Support timeout setting.
 */
 #pragma weak sock_touch
 void sock_touch(intptr_t uuid) {}
+
+/* *****************************************************************************
+A Simple busy lock implementation ... (spnlock.h) ... copied for portability
+*/
+#ifndef _SPN_LOCK_H
+#define _SPN_LOCK_H
+
+/* allow of the unused flag */
+#ifndef __unused
+#define __unused __attribute__((unused))
+#endif
+
+#include <stdlib.h>
+#include <stdint.h>
+
+/*********
+ * manage the way threads "wait" for the lock to release
+ */
+#if (defined(__unix__) || defined(__APPLE__) || defined(__linux__)) && \
+    defined(__has_include) && __has_include(<time.h>)
+/* nanosleep seems to be the most effective and efficient reschedule */
+#include <time.h>
+#define reschedule_thread()                           \
+  {                                                   \
+    static const struct timespec tm = {.tv_nsec = 1}; \
+    nanosleep(&tm, NULL);                             \
+  }
+
+#else /* no effective rescheduling, just spin... */
+#define reschedule_thread()
+
+#endif
+/* end `reschedule_thread` block*/
+
+/*********
+ * The spin lock core functions (spn_trylock, spn_unlock, is_spn_locked)
+ */
+
+/* prefer C11 standard implementation where available (trust the system) */
+#if defined(__has_include) && __has_include(<stdatomic.h>)
+#include <stdatomic.h>
+typedef atomic_bool spn_lock_i;
+#define SPN_LOCK_INIT ATOMIC_VAR_INIT(0)
+/** returns 1 if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  __asm__ volatile("" ::: "memory");
+  return atomic_exchange(lock, 1);
+}
+/** Releases a lock. */
+__unused static inline void spn_unlock(spn_lock_i* lock) {
+  atomic_store(lock, 0);
+  __asm__ volatile("" ::: "memory");
+}
+/** returns a lock's state (non 0 == Busy). */
+__unused static inline int is_spn_locked(spn_lock_i* lock) {
+  return atomic_load(lock);
+}
+#else
+
+/* Test for compiler builtins */
+
+/* use clang builtins if available - trust the compiler */
+#if defined(__clang__)
+#if defined(__has_builtin) && __has_builtin(__sync_swap)
+/* define the type */
+typedef volatile uint8_t spn_lock_i;
+/** returns 1 if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  return __sync_swap(lock, 1);
+}
+#define SPN_TMP_HAS_BUILTIN 1
+#endif
+/* use gcc builtins if available - trust the compiler */
+#elif defined(__GNUC__) && \
+    (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 4))
+/* define the type */
+typedef volatile uint8_t spn_lock_i;
+/** returns 1 if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  return __sync_fetch_and_or(lock, 1);
+}
+#define SPN_TMP_HAS_BUILTIN 1
+#endif
+
+/* Check if compiler builtins were available, if not, try assembly*/
+#if SPN_TMP_HAS_BUILTIN
+#undef SPN_TMP_HAS_BUILTIN
+
+/* use Intel's asm if on Intel - trust Intel's documentation */
+#elif defined(__amd64__) || defined(__x86_64__) || defined(__x86__) || \
+    defined(__i386__) || defined(__ia64__) || defined(_M_IA64) ||      \
+    defined(__itanium__) || defined(__i386__)
+/* define the type */
+typedef volatile uint8_t spn_lock_i;
+/** returns 1 if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  spn_lock_i tmp;
+  __asm__ volatile("xchgb %0,%1" : "=r"(tmp), "=m"(*lock) : "0"(1) : "memory");
+  return tmp;
+}
+
+/* use SPARC's asm if on SPARC - trust the design */
+#elif defined(__sparc__) || defined(__sparc)
+/* define the type */
+typedef volatile uint8_t spn_lock_i;
+/** returns TRUE (non-zero) if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  spn_lock_i tmp;
+  __asm__ volatile("ldstub    [%1], %0" : "=r"(tmp) : "r"(lock) : "memory");
+  return tmp; /* return 0xFF if the lock was busy, 0 if free */
+}
+
+#else
+/* I don't know how to provide green thread safety on PowerPC or ARM */
+#error "Couldn't implement a spinlock for this system / compiler"
+#endif /* types and atomic exchange */
+/** Initialization value in `free` state. */
+#define SPN_LOCK_INIT 0
+
+/** Releases a lock. */
+__unused static inline void spn_unlock(spn_lock_i* lock) {
+  __asm__ volatile("" ::: "memory");
+  *lock = 0;
+}
+/** returns a lock's state (non 0 == Busy). */
+__unused static inline int is_spn_locked(spn_lock_i* lock) {
+  __asm__ volatile("" ::: "memory");
+  return *lock;
+}
+
+#endif /* has atomics */
+#include <stdio.h>
+/** Busy waits for the lock. */
+__unused static inline void spn_lock(spn_lock_i* lock) {
+  while (spn_trylock(lock)) {
+    reschedule_thread();
+  }
+}
+
+/* *****************************************************************************
+spnlock.h finished
+*/
+#endif
+
 /* *****************************************************************************
 Library Core Data
 */
@@ -100,7 +240,7 @@ typedef struct {
   fduuid_u fduuid;
   uint32_t sent;
 #if defined(FD_USE_SPIN_LOCK) && FD_USE_SPIN_LOCK == 1
-  atomic_flag lock;
+  spn_lock_i lock;
 #endif
   unsigned open : 1;
   unsigned close : 1;
@@ -117,7 +257,7 @@ static struct {
   sock_packet_s* pool;
   sock_packet_s* allocated;
 #if defined(FD_USE_SPIN_LOCK) && FD_USE_SPIN_LOCK == 1
-  atomic_flag lock;
+  spn_lock_i lock;
 #endif
 } buffer_pool;
 
@@ -128,16 +268,10 @@ static struct {
    fd_info[sock_uuid2fd(fd_uuid)].open == 0)
 
 #if defined(FD_USE_SPIN_LOCK) && FD_USE_SPIN_LOCK == 1
-#define lock_fd(ffd)                                 \
-  while (atomic_flag_test_and_set(&((ffd)->lock))) { \
-    sched_yield();                                   \
-  }
-#define unlock_fd(ffd) atomic_flag_clear(&(ffd)->lock)
-#define lock_pool()                                     \
-  while (atomic_flag_test_and_set(&buffer_pool.lock)) { \
-    sched_yield();                                      \
-  }
-#define unlock_pool() atomic_flag_clear(&buffer_pool.lock)
+#define lock_fd(ffd) spn_lock(&((ffd)->lock))
+#define unlock_fd(ffd) spn_unlock(&((ffd)->lock))
+#define lock_pool() spn_lock(&buffer_pool.lock)
+#define unlock_pool() spn_unlock(&buffer_pool.lock)
 
 #else
 #define lock_fd(ffd) pthread_mutex_lock(&(ffd)->lock)
@@ -455,7 +589,7 @@ int8_t sock_lib_init(void) {
   for (size_t i = 0; i < fd_capacity; i++) {
     fd_info[i] = (fd_info_s){0};
 #if defined(FD_USE_SPIN_LOCK) && FD_USE_SPIN_LOCK == 1
-    atomic_flag_clear(&fd_info[i].lock);
+    fd_info[i].lock = SPN_LOCK_INIT;
 #else
     pthread_mutex_init(&fd_info[i].lock, NULL);
 #endif

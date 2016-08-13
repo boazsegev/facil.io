@@ -15,16 +15,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/wait.h>
 #include <errno.h>
 
-#ifdef __has_include
-#if __has_include(<x86intrin.h>)
-#include <x86intrin.h>
-#define HAVE_X86Intrin
-#define sched_yield() _mm_pause()
-// see: https://software.intel.com/en-us/node/513411
-// and: https://software.intel.com/sites/landingpage/IntrinsicsGuide/
-#endif
-#endif
-
 /* *****************************************************************************
 Connection Data
 */
@@ -32,23 +22,19 @@ typedef struct {
   protocol_s* protocol;
   time_t active;
   uint8_t timeout;
-  atomic_bool lock;
+  spn_lock_i lock;
 } fd_data_s;
 
 /*
 These macros mean we won't need to change code if we change the locking system.
 */
 
-#define lock_fd_init(fd) atomic_store(&(fd)->lock, 0)
-#define lock_fd_destroy(fd) atomic_store(&(fd)->lock, 0)
+#define lock_fd_init(fd) (fd)->lock = SPN_LOCK_INIT
+#define lock_fd_destroy(fd) spn_unlock(&((fd)->lock))
 /** returns 0 on success, value on failure */
-#define try_lock_fd(fd) atomic_exchange(&(fd)->lock, 1)
-#define lock_fd(fd)         \
-  {                         \
-    while (try_lock_fd(fd)) \
-      sched_yield();        \
-  }
-#define unlock_fd(fd) atomic_store(&(fd)->lock, 0)
+#define try_lock_fd(fd) spn_trylock(&((fd)->lock))
+#define lock_fd(fd) spn_lock(&((fd)->lock))
+#define unlock_fd(fd) spn_unlock(&((fd)->lock))
 #define clear_fd_data(fd_data) \
   { *(fd_data) = (fd_data_s){.lock = (fd_data)->lock}; }
 
@@ -81,11 +67,11 @@ These macros help prevent code changes when changing the data struct.
 #define fduuid_get(ifd) (server_data.fds[(ifd)].uuid)
 
 #define protocol_is_busy(protocol) \
-  atomic_load(&(((protocol_s*)(protocol))->callback_lock))
+  spn_is_locked(&(((protocol_s*)(protocol))->callback_lock))
 #define protocol_unset_busy(protocol) \
-  atomic_store(&(((protocol_s*)(protocol))->callback_lock), 0)
+  spn_unlock(&(((protocol_s*)(protocol))->callback_lock))
 #define protocol_set_busy(protocol) \
-  atomic_exchange(&(((protocol_s*)(protocol))->callback_lock), 1)
+  spn_trylock(&(((protocol_s*)(protocol))->callback_lock))
 
 #define try_lock_uuid(uuid) try_lock_fd(server_data.fds + sock_uuid2fd(uuid))
 #define lock_uuid(uuid) lock_fd(server_data.fds + sock_uuid2fd(uuid))
@@ -301,7 +287,7 @@ static void listener_on_data(intptr_t uuid, protocol_s* _listener) {
     protocol_uuid(new_client) = listener->on_open(new_client, listener->udata);
     if (protocol_uuid(new_client)) {
       uuid_data(new_client).active = server_data.last_tick;
-      atomic_store(&protocol_uuid(new_client)->callback_lock, 0);
+      protocol_unset_busy(protocol_uuid(new_client));
       reactor_add(new_client);
       continue;
     } else {

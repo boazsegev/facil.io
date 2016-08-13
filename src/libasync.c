@@ -22,22 +22,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/mman.h>
 #include <string.h>
 
-#if ASYNC_USE_SPINLOCK == 1 ||                                 \
-    (!defined(ASYNC_USE_SPINLOCK) && defined(__has_include) && \
-     __has_include(<stdatomic.h>))
-#include <stdatomic.h>
-#undef ASYNC_USE_SPINLOCK
-#define ASYNC_USE_SPINLOCK 1
-#endif
-
-#if defined(__has_include) && __has_include(<x86intrin.h>)
-#include <x86intrin.h>
-#define HAVE_X86Intrin
-#define sched_yield() _mm_pause()
-// see: https://software.intel.com/en-us/node/513411
-// and: https://software.intel.com/sites/landingpage/IntrinsicsGuide/
-#endif
-
 /* *****************************************************************************
 Performance options.
 */
@@ -113,6 +97,149 @@ typedef struct async_task_ns {
   struct async_task_ns* next;
 } async_task_ns;
 
+/* *****************************************************************************
+A Simple busy lock implementation ... (spnlock.h) ... copied for portability
+*/
+#ifndef _SPN_LOCK_H
+#define _SPN_LOCK_H
+
+/* allow of the unused flag */
+#ifndef __unused
+#define __unused __attribute__((unused))
+#endif
+
+#include <stdlib.h>
+#include <stdint.h>
+
+/*********
+ * manage the way threads "wait" for the lock to release
+ */
+#if (defined(__unix__) || defined(__APPLE__) || defined(__linux__)) && \
+    defined(__has_include) && __has_include(<time.h>)
+/* nanosleep seems to be the most effective and efficient reschedule */
+#include <time.h>
+#define reschedule_thread()                           \
+  {                                                   \
+    static const struct timespec tm = {.tv_nsec = 1}; \
+    nanosleep(&tm, NULL);                             \
+  }
+
+#else /* no effective rescheduling, just spin... */
+#define reschedule_thread()
+
+#endif
+/* end `reschedule_thread` block*/
+
+/*********
+ * The spin lock core functions (spn_trylock, spn_unlock, is_spn_locked)
+ */
+
+/* prefer C11 standard implementation where available (trust the system) */
+#if defined(__has_include) && __has_include(<stdatomic.h>)
+#include <stdatomic.h>
+typedef atomic_bool spn_lock_i;
+#define SPN_LOCK_INIT ATOMIC_VAR_INIT(0)
+/** returns 1 if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  __asm__ volatile("" ::: "memory");
+  return atomic_exchange(lock, 1);
+}
+/** Releases a lock. */
+__unused static inline void spn_unlock(spn_lock_i* lock) {
+  atomic_store(lock, 0);
+  __asm__ volatile("" ::: "memory");
+}
+/** returns a lock's state (non 0 == Busy). */
+__unused static inline int is_spn_locked(spn_lock_i* lock) {
+  return atomic_load(lock);
+}
+#else
+
+/* Test for compiler builtins */
+
+/* use clang builtins if available - trust the compiler */
+#if defined(__clang__)
+#if defined(__has_builtin) && __has_builtin(__sync_swap)
+/* define the type */
+typedef volatile uint8_t spn_lock_i;
+/** returns 1 if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  return __sync_swap(lock, 1);
+}
+#define SPN_TMP_HAS_BUILTIN 1
+#endif
+/* use gcc builtins if available - trust the compiler */
+#elif defined(__GNUC__) && \
+    (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 4))
+/* define the type */
+typedef volatile uint8_t spn_lock_i;
+/** returns 1 if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  return __sync_fetch_and_or(lock, 1);
+}
+#define SPN_TMP_HAS_BUILTIN 1
+#endif
+
+/* Check if compiler builtins were available, if not, try assembly*/
+#if SPN_TMP_HAS_BUILTIN
+#undef SPN_TMP_HAS_BUILTIN
+
+/* use Intel's asm if on Intel - trust Intel's documentation */
+#elif defined(__amd64__) || defined(__x86_64__) || defined(__x86__) || \
+    defined(__i386__) || defined(__ia64__) || defined(_M_IA64) ||      \
+    defined(__itanium__) || defined(__i386__)
+/* define the type */
+typedef volatile uint8_t spn_lock_i;
+/** returns 1 if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  spn_lock_i tmp;
+  __asm__ volatile("xchgb %0,%1" : "=r"(tmp), "=m"(*lock) : "0"(1) : "memory");
+  return tmp;
+}
+
+/* use SPARC's asm if on SPARC - trust the design */
+#elif defined(__sparc__) || defined(__sparc)
+/* define the type */
+typedef volatile uint8_t spn_lock_i;
+/** returns TRUE (non-zero) if the lock was busy (TRUE == FAIL). */
+__unused static inline int spn_trylock(spn_lock_i* lock) {
+  spn_lock_i tmp;
+  __asm__ volatile("ldstub    [%1], %0" : "=r"(tmp) : "r"(lock) : "memory");
+  return tmp; /* return 0xFF if the lock was busy, 0 if free */
+}
+
+#else
+/* I don't know how to provide green thread safety on PowerPC or ARM */
+#error "Couldn't implement a spinlock for this system / compiler"
+#endif /* types and atomic exchange */
+/** Initialization value in `free` state. */
+#define SPN_LOCK_INIT 0
+
+/** Releases a lock. */
+__unused static inline void spn_unlock(spn_lock_i* lock) {
+  __asm__ volatile("" ::: "memory");
+  *lock = 0;
+}
+/** returns a lock's state (non 0 == Busy). */
+__unused static inline int is_spn_locked(spn_lock_i* lock) {
+  __asm__ volatile("" ::: "memory");
+  return *lock;
+}
+
+#endif /* has atomics */
+#include <stdio.h>
+/** Busy waits for the lock. */
+__unused static inline void spn_lock(spn_lock_i* lock) {
+  while (spn_trylock(lock)) {
+    reschedule_thread();
+  }
+}
+
+/* *****************************************************************************
+spnlock.h finished
+*/
+#endif
+
 /******************************************************************************
 Core Data
 */
@@ -142,7 +269,7 @@ typedef struct {
 
 #if defined(ASYNC_USE_SPINLOCK) && ASYNC_USE_SPINLOCK == 1  // use spinlock
   /* if using spinlock */
-  atomic_flag lock;
+  spn_lock_i lock;
 #endif
 
   /* state management*/
@@ -161,12 +288,10 @@ Core Data initialization and lock/unlock
 */
 
 #if defined(ASYNC_USE_SPINLOCK) && ASYNC_USE_SPINLOCK == 1  // use spinlock
-#define lock_async_init() (atomic_flag_clear(&(async->lock)), 0)
+#define lock_async_init() (spn_unlock(&(async->lock)), 0)
 #define lock_async_destroy() ;
-#define lock_async()                               \
-  while (atomic_flag_test_and_set(&(async->lock))) \
-    sched_yield();
-#define unlock_async() (atomic_flag_clear(&(async->lock)))
+#define lock_async() spn_lock(&(async->lock))
+#define unlock_async() spn_unlock(&(async->lock))
 
 #else  // Using Mutex
 #define lock_async_init() (pthread_mutex_init(&((async)->lock), NULL))
