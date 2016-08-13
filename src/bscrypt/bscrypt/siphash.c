@@ -4,10 +4,12 @@
 
 // clang-format off
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
-#   if defined(__has_include) && __has_include(<endian.h>)
+#   if defined(__has_include)
+#     if __has_include(<endian.h>)
 #      include <endian.h>
-#   elif defined(__has_include) && __has_include(<sys/endian.h>)
+#     elif __has_include(<sys/endian.h>)
 #      include <sys/endian.h>
+#     endif
 #   endif
 #   if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) && \
                 __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__

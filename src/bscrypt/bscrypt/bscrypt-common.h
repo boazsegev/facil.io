@@ -42,19 +42,25 @@ and: https://software.intel.com/sites/landingpage/IntrinsicsGuide/
 
 #endif
 
+// clang-format off
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
-#if defined(__has_include) && __has_include(<endian.h>)
-#include <endian.h>
-#endif
-#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) && \
-    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define __BIG_ENDIAN__
-#endif
+#   if defined(__has_include)
+#     if __has_include(<endian.h>)
+#      include <endian.h>
+#     elif __has_include(<sys/endian.h>)
+#      include <sys/endian.h>
+#     endif
+#   endif
+#   if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) && \
+                __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#      define __BIG_ENDIAN__
+#   endif
 #endif
 
 #ifndef __unused
-#define __unused __attribute__((unused))
+#   define __unused __attribute__((unused))
 #endif
+// clang-format on
 
 /* *****************************************************************************
 C++ extern
