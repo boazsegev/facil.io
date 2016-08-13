@@ -284,6 +284,7 @@ static struct {
 
 #if defined(FD_USE_SPIN_LOCK) && FD_USE_SPIN_LOCK == 1
 #define lock_fd(ffd) spn_lock(&((ffd)->lock))
+#define islocked_fd(ffd) spn_is_locked(&((ffd)->lock))
 #define unlock_fd(ffd) spn_unlock(&((ffd)->lock))
 #define lock_pool() spn_lock(&buffer_pool.lock)
 #define unlock_pool() spn_unlock(&buffer_pool.lock)
@@ -501,6 +502,30 @@ void sock_free_packet(sock_packet_s* packet) {
   sock_packet_s* next = packet;
   if (packet == NULL)
     return;
+#if defined(BUFFER_ALLOW_MALLOC) && BUFFER_ALLOW_MALLOC == 1
+  while (next) {
+    packet = next;
+    if (next->metadata.is_fd) {
+      if (next->metadata.keep_open == 0)
+        close((int)((ssize_t)next->buffer));
+    } else if (next->metadata.external)
+      free(next->buffer);
+    next = next->metadata.next;
+    if (packet >= buffer_pool.allocated &&
+        packet < (buffer_pool.allocated +
+                  (BUFFER_PACKET_REAL_SIZE * BUFFER_PACKET_POOL))) {
+      lock_pool();
+      packet->metadata.next = buffer_pool.pool;
+      buffer_pool.pool = packet;
+      unlock_pool();
+      // #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
+      //       fprintf(stderr, "Packet checked in (pool = %p).\n", packet);
+      // #endif
+    } else {
+      free(packet);
+    }
+  }
+#else
   for (;;) {
     if (next->metadata.is_fd) {
       if (next->metadata.keep_open == 0)
@@ -508,24 +533,9 @@ void sock_free_packet(sock_packet_s* packet) {
     } else if (next->metadata.external)
       free(next->buffer);
     if (next->metadata.next == NULL)
-      break; /* next now holds the last packet in the chain. */
+      break; /* next will hold the last packet in the chain. */
     next = next->metadata.next;
   }
-#if defined(BUFFER_ALLOW_MALLOC) && BUFFER_ALLOW_MALLOC == 1
-  if (packet >= buffer_pool.allocated &&
-      packet < (buffer_pool.allocated +
-                (BUFFER_PACKET_REAL_SIZE * BUFFER_PACKET_POOL))) {
-    lock_pool();
-    next->metadata.next = buffer_pool.pool;
-    buffer_pool.pool = packet;
-    unlock_pool();
-    // #if defined(DEBUG_SOCKLIB) && DEBUG_SOCKLIB == 1
-    //       fprintf(stderr, "Packet checked in (pool = %p).\n", packet);
-    // #endif
-  } else {
-    free(packet);
-  }
-#else
   lock_pool();
   next->metadata.next = buffer_pool.pool;
   buffer_pool.pool = packet;
@@ -960,7 +970,7 @@ inline static void sock_flush_unsafe(int fd) {
     packet->metadata.can_interrupt = 0;
 
     if (packet->metadata.is_fd == 0) {
-      /* Data Packets are more likely */
+      /* Data Packets are more likely, so their `if` is first */
 
       /* send data */
       if (sfd->rw_hooks && sfd->rw_hooks->write)
@@ -978,7 +988,10 @@ inline static void sock_flush_unsafe(int fd) {
 
       /* review and update sent state */
       if (sent > 0) {
-        ROTATE_PACKETS(sfd, packet, sent, ;);
+        sfd->sent += sent;
+        if (sfd->sent >= packet->length) {
+          FORCE_ROTATE_PACKETS(sfd, packet);
+        }
         continue;
       } else if (sent == 0) {
         return;  // nothing to do?
@@ -1023,12 +1036,15 @@ inline static ssize_t sock_send_packet_unsafe(int fd, sock_packet_s* packet) {
 #endif
 
   fd_info_s* sfd = fd_info + fd;
+
   if (sfd->packet == NULL) {
+    /* no queue, nothing to check */
     sfd->packet = packet;
     sock_flush_unsafe(fd);
     return 0;
 
   } else if (packet->metadata.urgent == 0) {
+    /* not urgent, last in line */
     sock_packet_s* pos = sfd->packet;
     while (pos->metadata.next)
       pos = pos->metadata.next;
@@ -1037,6 +1053,7 @@ inline static ssize_t sock_send_packet_unsafe(int fd, sock_packet_s* packet) {
     return 0;
 
   } else {
+    /* urgent, find a spot we can interrupt */
     sock_packet_s* pos = sfd->packet;
     if (pos->metadata.can_interrupt) {
       sfd->packet = packet;
@@ -1142,6 +1159,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
         return sock_send_packet(options.fduuid, packet);
       } else {
         lock_fd(fd_info + sock_uuid2fd(options.fduuid));
+        fd_info_s* sfd = fd_info + sock_uuid2fd(options.fduuid);
         sock_packet_s* last_packet = packet;
         size_t counter = 0;
         while (options.length > BUFFER_PACKET_SIZE) {
@@ -1157,10 +1175,12 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
             continue;
           } else {
             packet->metadata.can_interrupt = ~options.urgent;
-            if (sock_send_packet_unsafe(sock_uuid2fd(options.fduuid), packet))
+            if (sock_send_packet_unsafe(sock_uuid2fd(options.fduuid), packet) ||
+                (sfd->packet == NULL && sfd->close))
               goto multi_send_error;
             while (packet == NULL) {
               sock_flush_all();
+              sock_flush_unsafe(sock_uuid2fd(options.fduuid));
               packet = sock_checkout_packet();
             }
             packet->metadata.urgent = options.urgent;
@@ -1170,7 +1190,8 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
         memcpy(last_packet->buffer,
                options.buffer + (counter * BUFFER_PACKET_SIZE), options.length);
         last_packet->length = options.length;
-        if (sock_send_packet_unsafe(sock_uuid2fd(options.fduuid), packet))
+        if (sock_send_packet_unsafe(sock_uuid2fd(options.fduuid), packet) ||
+            (sfd->packet == NULL && sfd->close))
           goto multi_send_error;
         unlock_fd(fd_info + sock_uuid2fd(options.fduuid));
         return 0;
@@ -1278,7 +1299,7 @@ Calls `sock_flush` for each file descriptor that's buffer isn't empty.
 void sock_flush_all(void) {
   register fd_info_s* fds = fd_info;
   for (size_t i = 0; i < fd_capacity; i++) {
-    if (fds[i].packet == NULL)
+    if (fds[i].packet == NULL || islocked_fd(fds + i))
       continue;
     sock_flush(fd_info[i].fduuid.uuid);
   }
