@@ -31,7 +31,7 @@ messages regarding the server state (start / finish / listen messages).
 #endif
 
 #if LIB_ASYNC_VERSION_MINOR != 4 || LIB_REACT_VERSION_MINOR != 3 || \
-    LIB_SOCK_VERSION_MINOR != 1
+    LIB_SOCK_VERSION_MINOR != 2
 #warning Lib-Server dependency versions are not in sync. Please review API versions.
 #endif
 
