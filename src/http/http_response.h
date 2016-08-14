@@ -30,7 +30,11 @@ Thread-safety:
 The response object and it's API are NOT thread-safe (it is assumed that no two
 threads handle the same response at the same time).
 
-Initializing and destroying the request object pool is NOT thread-safe.
+Also, the response object will link itself to a libsock buffer packet, so it
+should be created and dispatched during the same event - `sock_packet_s` objects
+shouldn't be held across events or for a period of time... In other words:
+
+**Create the response object only when you are ready to send a response**.
 
 ---
 Misc notes:

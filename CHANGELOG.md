@@ -74,6 +74,8 @@ Baseline (changes not logged before this point in time).
 
    There was an unknown issue with version 0.1.0 that caused large data sending to hang... tracking it proved harder then re-writing the whole logic, which was both easier and allowed for simplifying some of the code for better maintenance.
 
+* `sock_checkout_packet` will now hang until a packet becomes available. Don't check out more then a single packet at a time and don't hold on to checked out packets, or you might find your threads waiting.
+
 ### V. 0.1.0
 
 * Huge rewrite. Different API.

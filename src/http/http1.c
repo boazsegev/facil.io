@@ -70,8 +70,8 @@ static void http1_cleanup(void) {
 }
 
 static void http1_init(void) {
-  pthread_mutex_t inner_lock = PTHREAD_MUTEX_INITIALIZER;
-  pthread_mutex_lock(&inner_lock);
+  static spn_lock_i inner_lock = SPN_LOCK_INIT;
+  spn_lock(&inner_lock);
   if (http1_pool.memory == NULL) {
     // Allocate the memory
     http1_pool.memory =
@@ -90,7 +90,7 @@ static void http1_init(void) {
       pos += HTTP1_PROTOCOL_SIZE;
     }
   }
-  pthread_mutex_unlock(&inner_lock);
+  spn_unlock(&inner_lock);
 }
 
 /** initializes the library if it wasn't already initialized. */
@@ -169,8 +169,7 @@ is_busy:
     if (file == -1)
       goto busy_no_file;
     sock_packet_s* packet;
-    while ((packet = sock_checkout_packet()) == NULL)
-      sched_yield();
+    packet = sock_checkout_packet();
     memcpy(packet->buffer,
            "HTTP/1.1 503 Service Unavailable\r\n"
            "Content-Type: text/html\r\n"
