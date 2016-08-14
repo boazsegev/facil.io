@@ -68,6 +68,12 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Sock (development incomplete)
 
+### V. 0.2.0
+
+* Almost the same API. Notice the following: no initialization required; rw_hooks callbacks aren't protected by a lock (use your own thread protection code).
+
+   There was an unknown issue with version 0.1.0 that caused large data sending to hang... tracking it proved harder then re-writing the whole logic, which was both easier and allowed for simplifying some of the code for better maintenance.
+
 ### V. 0.1.0
 
 * Huge rewrite. Different API.

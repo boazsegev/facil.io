@@ -83,9 +83,64 @@ void on_request(http_request_s* request) {
                       .on_shutdown = ws_shutdown, .response = &response);
     return;
   }
+  // file dumping
+  if (!strcmp(request->path, "/dump.jpg")) {
+    fdump_s* data = bscrypt_fdump("./public_www/bo.jpg", 0);
+    if (data == NULL) {
+      fprintf(stderr, "Couldn't read file\n");
+      http_response_write_body(&response, "Sorry, error!", 13);
+      http_response_finish(&response);
+    }
+    http_response_write_body(&response, data->data, data->length);
+    http_response_finish(&response);
+    return;
+  }
+  if (!strcmp(request->path, "/dump.mov")) {
+    fdump_s* data = bscrypt_fdump("./public_www/rolex.mov", 0);
+    if (data == NULL) {
+      fprintf(stderr, "Couldn't read file\n");
+      http_response_write_body(&response, "Sorry, error!", 13);
+      http_response_finish(&response);
+    }
+    http_response_write_body(&response, data->data, data->length);
+    http_response_finish(&response);
+    return;
+  }
   // HTTP response
   http_response_write_body(&response, "Hello World!", 12);
   http_response_finish(&response);
+}
+
+/*****************************
+Print to screen protocol
+*/
+struct prnt2scrn_protocol_s {
+  protocol_s protocol;
+  intptr_t uuid;
+};
+void on_data(intptr_t uuid, protocol_s* protocol) {
+  uint8_t buffer[1024];
+  ssize_t len;
+  while ((len = sock_read(uuid, buffer, 1024)) > 0) {
+    if (len > 0)
+      fprintf(stderr, "%.*s\n", (int)len, buffer);
+  }
+  fprintf(stderr, "returning from on_data\n");
+  // sock_write(uuid, "HTTP/1.1 100 Continue\r\n\r\n", 25);
+}
+void on_close(protocol_s* protocol) {
+  fprintf(stderr, "Connection closed %p\n",
+          (void*)(((struct prnt2scrn_protocol_s*)protocol)->uuid));
+  free(protocol);
+}
+
+protocol_s* on_open(intptr_t uuid, void* udata) {
+  struct prnt2scrn_protocol_s* prt = malloc(sizeof *prt);
+  *prt = (struct prnt2scrn_protocol_s){
+      .protocol.on_data = on_data, .protocol.on_close = on_close, .uuid = uuid};
+  fprintf(stderr, "New connection %p\n", (void*)uuid);
+  server_set_timeout(uuid, 10);
+  return (void*)prt;
 }
 
 /*****************************
@@ -94,6 +149,7 @@ The main function
 #define THREAD_COUNT 8
 int main(int argc, char const* argv[]) {
   // http_parser_test();
+  server_listen(.port = "4000", .on_open = on_open);
   const char* public_folder = "./public_www";
   if (http1_listen("3000", NULL, .on_request = on_request,
                    .public_folder = public_folder, .log_static = 1))

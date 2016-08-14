@@ -93,7 +93,7 @@ clean:
 execute:
 	@$(BIN)
 
-run: | build execute
+run: | clean build execute
 
 db: | clean build
 	$(DB) $(BIN)

@@ -114,8 +114,6 @@ static void init_server(void) {
   pthread_mutex_t inner_lock = PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_lock(&inner_lock);
   if (server_data.fds == NULL) {
-    // initialize libsock, but NOT libreact (which can't be forked)
-    sock_lib_init();
     server_data.capacity = sock_max_capacity();
     atexit(server_cleanup);
     server_data.fds = mmap(NULL, sizeof(fd_data_s) * server_data.capacity,

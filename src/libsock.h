@@ -5,9 +5,9 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIB_SOCK
-#define LIB_SOCK "0.1.0"
+#define LIB_SOCK "0.2.0"
 #define LIB_SOCK_VERSION_MAJOR 0
-#define LIB_SOCK_VERSION_MINOR 1
+#define LIB_SOCK_VERSION_MINOR 2
 #define LIB_SOCK_VERSION_PATCH 0
 
 /** \file
@@ -23,7 +23,6 @@ The library is designed to be thread safe, but not fork safe.
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>
 #include <sys/types.h>
 
 #ifndef __unused
@@ -101,6 +100,10 @@ extended to the allowed "hard" limit.
 */
 ssize_t sock_max_capacity(void);
 
+/* *****************************************************************************
+The main sock_API.
+*/
+
 /**
 Opens a listening non-blocking socket. Return's the socket's UUID.
 
@@ -116,17 +119,6 @@ response in the background while a disconnection and a new connection occur on
 the same `fd`).
 */
 intptr_t sock_listen(const char* address, const char* port);
-
-/* *****************************************************************************
-The main sock_API.
-*/
-
-/**
-Initializes the library.
-
-Call this function before calling any `libsock` functions.
-*/
-int8_t sock_lib_init(void);
 
 /**
 `sock_accept` accepts a new socket connection from the listening socket
@@ -208,8 +200,8 @@ If the file descriptor is marked as closed (wasn't opened / registered with
 `libsock`) the function returns -1;
 
 If the file descriptor was closed remotely (or not using `libsock`), a false
-positive would be returned. However, use of this uuid will result in the
-fd being closed.
+positive will be possible. This is not an issue, since the use of an invalid fd
+will result in the registry being updated and the fd being closed.
 
 Returns -1 on error. Returns a valid socket (non-random) UUID.
 */
@@ -322,7 +314,7 @@ automatically when the socket is ready.
 ssize_t sock_flush(intptr_t uuid);
 /**
 `sock_flush_strong` performs the same action as `sock_flush` but returns only
-after all the data was sent. This is an "active" wait, polling isn't performed.
+after all the data was sent. This is a "busy" wait, polling isn't performed.
 */
 void sock_flush_strong(intptr_t uuid);
 /**
@@ -334,18 +326,12 @@ void sock_flush_all(void);
 The actual disconnection will be managed by the `sock_flush` function.
 
 `sock_flash` will automatically be called.
-
-If a reactor pointer is provied, the reactor API will be used and the
-`on_close` callback should be called once the socket is closed.
 */
 void sock_close(intptr_t uuid);
 /**
 `sock_force_close` closes the connection immediately, without adhering to any
 protocol restrictions and without sending any remaining data in the connection
 buffer.
-
-If a reactor pointer is provied, the reactor API will be used and the
-`on_close` callback should be called as expected.
 */
 void sock_force_close(intptr_t uuid);
 
@@ -399,9 +385,9 @@ typedef struct sock_packet_s {
 
 /**
 Checks out a `sock_packet_s` from the packet pool, transfering the
-ownership
-of the memory to the calling function. returns NULL if the pool was empty and
-memory allocation had failed.
+ownership of the memory to the calling function. The function will hang until a
+packet becomes available, so never check out more then a single packet at a
+time and remember to free or send the packet.
 
 Every checked out buffer packet comes with an attached buffer of
 BUFFER_PACKET_SIZE bytes. This buffer is accessible using the `packet->buffer`
@@ -460,10 +446,8 @@ typedef struct sock_rw_hook_s {
    * when the connection is closed, allowing for dynamic sock_rw_hook_s memory
    * management.
    *
-   * The `on_clear` callback is called within the socket's lock (mutex),
-   * providing a small measure of thread safety. This means that `sock_API`
-   * shouldn't be called from within this function (at least not in regards to
-   * the specific `fd`). */
+   * The `on_clear` callback should manage is own thread safety mechanism, if
+   * required. */
   void (*on_clear)(intptr_t fduuid, struct sock_rw_hook_s* rw_hook);
 } sock_rw_hook_s;
 
@@ -476,6 +460,13 @@ struct sock_rw_hook_s* sock_rw_hook_get(intptr_t fduuid);
 
 /** Sets a socket hook state (a pointer to the struct). */
 int sock_rw_hook_set(intptr_t fduuid, sock_rw_hook_s* rw_hooks);
+
+/* *****************************************************************************
+test
+*/
+#ifdef DEBUG
+void sock_libtest(void);
+#endif
 
 /* *****************************************************************************
 C++ extern
