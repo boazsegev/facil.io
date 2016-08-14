@@ -4,15 +4,23 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "libsock.h"
+
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netdb.h>
 #include <sys/mman.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 /* *****************************************************************************
 Support `libreact` on_close callback, if exist.
@@ -41,8 +49,10 @@ OS Sendfile settings.
 #include <sys/sendfile.h>
 #define USE_SENDFILE 1
 #elif defined(__unix__) /* BSD sendfile should work, but isn't tested */
+#include <sys/uio.h>
 #define USE_SENDFILE 0
 #elif defined(__APPLE__) /* AIs the pple sendfile still broken? */
+#include <sys/uio.h>
 #define USE_SENDFILE 1
 #else /* sendfile might not be available - always set to 0 */
 #define USE_SENDFILE 0
