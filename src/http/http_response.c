@@ -534,7 +534,7 @@ const char *http_response_status_str(uint16_t status) {
  */
 const char *http_response_ext2mime(const char *ext) {
   static struct {
-    char ext[16];
+    char ext[12];
     char *mime;
   } List[] = {
       {"123", "application/vnd.lotus-1-2-3"},
