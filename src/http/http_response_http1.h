@@ -19,28 +19,27 @@ The padding for the status line (62 + 2 for the extra \r\n after the headers).
 #define H1P_OVERFLOW_PADDING 512
 
 /** checks for overflow */
-#define overflowing(response)                        \
-  (((response)->metadata.headers_pos -               \
-    (char*)((response)->metadata.packet->buffer)) >= \
+#define overflowing(response)                                                  \
+  (((response)->metadata.headers_pos -                                         \
+    (char *)((response)->metadata.packet->buffer)) >=                          \
    (BUFFER_PACKET_SIZE - H1P_OVERFLOW_PADDING))
 
-#define HEADERS_FINISHED(response) \
+#define HEADERS_FINISHED(response)                                             \
   ((response)->metadata.packet == NULL || (response)->metadata.headers_sent)
 
-#define invalid_cookie_char(c)                                         \
-  ((c) < '!' || (c) > '~' || (c) == '=' || (c) == ' ' || (c) == ',' || \
+#define invalid_cookie_char(c)                                                 \
+  ((c) < '!' || (c) > '~' || (c) == '=' || (c) == ' ' || (c) == ',' ||         \
    (c) == ';')
 
-#define h1p_validate_hpos(response)                               \
-  {                                                               \
-    if ((response)->metadata.headers_pos == 0) {                  \
-      (response)->metadata.headers_pos =                          \
-          (response)->metadata.packet->buffer + H1P_HEADER_START; \
-    }                                                             \
+#define h1p_validate_hpos(response)                                            \
+  {                                                                            \
+    if ((response)->metadata.headers_pos == 0) {                               \
+      (response)->metadata.headers_pos =                                       \
+          (response)->metadata.packet->buffer + H1P_HEADER_START;              \
+    }                                                                          \
   }
-static inline int h1p_protected_copy(http_response_s* response,
-                                     const char* data,
-                                     size_t data_len) {
+static inline int h1p_protected_copy(http_response_s *response,
+                                     const char *data, size_t data_len) {
   if (data_len > 0 && data_len < H1P_OVERFLOW_PADDING) {
     memcpy(response->metadata.headers_pos, data, data_len);
     response->metadata.headers_pos += data_len;
@@ -56,15 +55,15 @@ static inline int h1p_protected_copy(http_response_s* response,
 
 /* this function assume the padding in `h1p_protected_copy` saved enough room
  * for the data to be safely written.*/
-__unused static inline sock_packet_s* h1p_finalize_headers(
-    http_response_s* response) {
+__unused static inline sock_packet_s *
+h1p_finalize_headers(http_response_s *response) {
   if (HEADERS_FINISHED(response))
     return NULL;
   h1p_validate_hpos(response);
 
-  sock_packet_s* headers = response->metadata.packet;
+  sock_packet_s *headers = response->metadata.packet;
   response->metadata.packet = NULL;
-  const char* status = http_response_status_str(response->status);
+  const char *status = http_response_status_str(response->status);
   if (!status) {
     response->status = 500;
     status = http_response_status_str(response->status);
@@ -74,7 +73,7 @@ __unused static inline sock_packet_s* h1p_finalize_headers(
   if (response->metadata.content_length_written == 0 &&
       !(response->content_length < 0) && response->status >= 200 &&
       response->status != 204 && response->status != 304) {
-    h1p_protected_copy(response, "Content-Length: ", 16);
+    h1p_protected_copy(response, "Content-Length:", 15);
     response->metadata.headers_pos +=
         http_ul2a(response->metadata.headers_pos, response->content_length);
     /* write the header seperator (`\r\n`) */
@@ -88,14 +87,14 @@ __unused static inline sock_packet_s* h1p_finalize_headers(
     struct tm t;
     /* date header */
     http_gmtime(&response->date, &t);
-    h1p_protected_copy(response, "Date: ", 6);
+    h1p_protected_copy(response, "Date:", 5);
     response->metadata.headers_pos +=
         http_date2str(response->metadata.headers_pos, &t);
     *(response->metadata.headers_pos++) = '\r';
     *(response->metadata.headers_pos++) = '\n';
     /* last-modified header */
     http_gmtime(&response->last_modified, &t);
-    h1p_protected_copy(response, "Last-Modified: ", 15);
+    h1p_protected_copy(response, "Last-Modified:", 14);
     response->metadata.headers_pos +=
         http_date2str(response->metadata.headers_pos, &t);
     *(response->metadata.headers_pos++) = '\r';
@@ -104,12 +103,11 @@ __unused static inline sock_packet_s* h1p_finalize_headers(
   /* write the keep-alive (connection) header, if missing */
   if (!response->metadata.connection_written) {
     if (response->metadata.should_close) {
-      h1p_protected_copy(response, "Connection: close\r\n", 19);
+      h1p_protected_copy(response, "Connection:close\r\n", 18);
     } else {
-      h1p_protected_copy(response,
-                         "Connection: keep-alive\r\n"
-                         "Keep-Alive: timeout=2\r\n",
-                         47);
+      h1p_protected_copy(response, "Connection:keep-alive\r\n"
+                                   "Keep-Alive:timeout=2\r\n",
+                         45);
     }
   }
   /* write the headers completion marker (empty line - `\r\n`) */
@@ -123,26 +121,26 @@ __unused static inline sock_packet_s* h1p_finalize_headers(
   int start = H1P_HEADER_START - (15 + tmp);
   memcpy(headers->buffer + start, "HTTP/1.1 ### ", 13);
   memcpy(headers->buffer + start + 13, status, tmp);
-  ((char*)headers->buffer)[H1P_HEADER_START - 1] = '\n';
-  ((char*)headers->buffer)[H1P_HEADER_START - 2] = '\r';
+  ((char *)headers->buffer)[H1P_HEADER_START - 1] = '\n';
+  ((char *)headers->buffer)[H1P_HEADER_START - 2] = '\r';
   tmp = response->status / 10;
-  *((char*)headers->buffer + start + 11) =
+  *((char *)headers->buffer + start + 11) =
       '0' + (response->status - (10 * tmp));
-  *((char*)headers->buffer + start + 10) = '0' + (tmp - (10 * (tmp / 10)));
-  *((char*)headers->buffer + start + 9) = '0' + (response->status / 100);
+  *((char *)headers->buffer + start + 10) = '0' + (tmp - (10 * (tmp / 10)));
+  *((char *)headers->buffer + start + 9) = '0' + (response->status / 100);
 
-  headers->buffer = (char*)headers->buffer + start;
-  headers->length = response->metadata.headers_pos - (char*)headers->buffer;
+  headers->buffer = (char *)headers->buffer + start;
+  headers->length = response->metadata.headers_pos - (char *)headers->buffer;
   return headers;
 }
 
-static int h1p_send_headers(http_response_s* response, sock_packet_s* packet) {
+static int h1p_send_headers(http_response_s *response, sock_packet_s *packet) {
   if (packet == NULL)
     return -1;
   /* mark headers as sent */
   response->metadata.headers_sent = 1;
   response->metadata.packet = NULL;
-  response->metadata.headers_pos = (char*)packet->length;
+  response->metadata.headers_pos = (char *)packet->length;
   /* write data to network */
   return sock_send_packet(response->metadata.fd, packet);
 };
@@ -151,7 +149,7 @@ static int h1p_send_headers(http_response_s* response, sock_packet_s* packet) {
 Implementation
 ***************************************************************************** */
 
-__unused static inline int h1p_response_write_header(http_response_s* response,
+__unused static inline int h1p_response_write_header(http_response_s *response,
                                                      http_headers_s header) {
   if (HEADERS_FINISHED(response) || header.name == NULL)
     return -1;
@@ -173,7 +171,7 @@ __unused static inline int h1p_response_write_header(http_response_s* response,
 /**
 Set / Delete a cookie using this helper function.
 */
-__unused static int h1p_response_set_cookie(http_response_s* response,
+__unused static int h1p_response_set_cookie(http_response_s *response,
                                             http_cookie_s cookie) {
   if (HEADERS_FINISHED(response) || cookie.name == NULL ||
       overflowing(response))
@@ -181,7 +179,7 @@ __unused static int h1p_response_set_cookie(http_response_s* response,
   h1p_validate_hpos(response);
 
   /* write the header's name to the buffer */
-  if (h1p_protected_copy(response, "Set-Cookie: ", 12))
+  if (h1p_protected_copy(response, "Set-Cookie:", 11))
     return -1;
 
   /* we won't use h1p_protected_copy because we'll be testing the name and value
@@ -281,12 +279,12 @@ __unused static int h1p_response_set_cookie(http_response_s* response,
 /**
 Sends the headers (if unsent) and sends the body.
 */
-__unused static inline int h1p_response_write_body(http_response_s* response,
-                                                   const char* body,
+__unused static inline int h1p_response_write_body(http_response_s *response,
+                                                   const char *body,
                                                    size_t length) {
   if (!response->content_length)
     response->content_length = length;
-  sock_packet_s* headers = h1p_finalize_headers(response);
+  sock_packet_s *headers = h1p_finalize_headers(response);
   if (headers != NULL) { /* we haven't sent the headers yet */
     ssize_t i_read =
         ((BUFFER_PACKET_SIZE - H1P_HEADER_START) - headers->length);
@@ -311,19 +309,18 @@ __unused static inline int h1p_response_write_body(http_response_s* response,
       return -1;
   }
   response->metadata.headers_pos += length;
-  return sock_write(response->metadata.fd, (void*)body, length);
+  return sock_write(response->metadata.fd, (void *)body, length);
 }
 /**
 Sends the headers (if unsent) and schedules the file to be sent.
 */
-__unused static inline int h1p_response_sendfile(http_response_s* response,
-                                                 int source_fd,
-                                                 off_t offset,
+__unused static inline int h1p_response_sendfile(http_response_s *response,
+                                                 int source_fd, off_t offset,
                                                  size_t length) {
   if (!response->content_length)
     response->content_length = length;
 
-  sock_packet_s* headers = h1p_finalize_headers(response);
+  sock_packet_s *headers = h1p_finalize_headers(response);
 
   if (headers != NULL) { /* we haven't sent the headers yet */
     if (headers->length < (BUFFER_PACKET_SIZE - H1P_HEADER_START)) {
@@ -353,8 +350,8 @@ __unused static inline int h1p_response_sendfile(http_response_s* response,
   return sock_sendfile(response->metadata.fd, source_fd, offset, length);
 }
 
-__unused static inline int h1p_response_finish(http_response_s* response) {
-  sock_packet_s* headers = h1p_finalize_headers(response);
+__unused static inline int h1p_response_finish(http_response_s *response) {
+  sock_packet_s *headers = h1p_finalize_headers(response);
   if (headers) {
     return h1p_send_headers(response, headers);
   }
