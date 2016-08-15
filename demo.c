@@ -1,5 +1,5 @@
 // update the demo.c file to use the existing folder structure and makefile
-#include "websockets.h"  // includes the "http.h" header
+#include "websockets.h" // includes the "http.h" header
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,20 +9,18 @@
 The Websocket echo implementation
 */
 
-void ws_open(ws_s* ws) {
+void ws_open(ws_s *ws) {
   fprintf(stderr, "Opened a new websocket connection (%p)\n", ws);
 }
 
-void ws_echo(ws_s* ws, char* data, size_t size, uint8_t is_text) {
+void ws_echo(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   // echos the data to the current websocket
   websocket_write(ws, data, size, 1);
 }
 
-void ws_shutdown(ws_s* ws) {
-  websocket_write(ws, "Shutting Down", 13, 1);
-}
+void ws_shutdown(ws_s *ws) { websocket_write(ws, "Shutting Down", 13, 1); }
 
-void ws_close(ws_s* ws) {
+void ws_close(ws_s *ws) {
   fprintf(stderr, "Closed websocket connection (%p)\n", ws);
 }
 
@@ -36,19 +34,17 @@ struct ws_data {
   char data[];
 };
 /* free the websocket broadcast data */
-void free_wsdata(ws_s* ws, void* arg) {
-  free(arg);
-}
+void free_wsdata(ws_s *ws, void *arg) { free(arg); }
 /* the broadcast "task" performed by `Websocket.each` */
-void ws_get_broadcast(ws_s* ws, void* arg) {
-  struct ws_data* data = arg;
-  websocket_write(ws, data->data, data->size, 1);  // echo
+void ws_get_broadcast(ws_s *ws, void *arg) {
+  struct ws_data *data = arg;
+  websocket_write(ws, data->data, data->size, 1); // echo
 }
 /* The websocket broadcast server's `on_message` callback */
 
-void ws_broadcast(ws_s* ws, char* data, size_t size, uint8_t is_text) {
+void ws_broadcast(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   // Copy the message to a broadcast data-packet
-  struct ws_data* msg = malloc(sizeof(*msg) + size);
+  struct ws_data *msg = malloc(sizeof(*msg) + size);
   msg->size = size;
   memcpy(msg->data, data, size);
   // Asynchronously calls `ws_get_broadcast` for each of the websockets
@@ -63,7 +59,7 @@ void ws_broadcast(ws_s* ws, char* data, size_t size, uint8_t is_text) {
 The HTTP implementation
 */
 
-void on_request(http_request_s* request) {
+void on_request(http_request_s *request) {
   // to log we will start a response.
   http_response_s response = http_response_init(request);
   // http_response_log_start(&response);
@@ -85,7 +81,7 @@ void on_request(http_request_s* request) {
   }
   // file dumping
   if (!strcmp(request->path, "/dump.jpg")) {
-    fdump_s* data = bscrypt_fdump("./public_www/bo.jpg", 0);
+    fdump_s *data = bscrypt_fdump("./public_www/bo.jpg", 0);
     if (data == NULL) {
       fprintf(stderr, "Couldn't read file\n");
       http_response_write_body(&response, "Sorry, error!", 13);
@@ -96,7 +92,7 @@ void on_request(http_request_s* request) {
     return;
   }
   if (!strcmp(request->path, "/dump.mov")) {
-    fdump_s* data = bscrypt_fdump("./public_www/rolex.mov", 0);
+    fdump_s *data = bscrypt_fdump("./public_www/rolex.mov", 0);
     if (data == NULL) {
       fprintf(stderr, "Couldn't read file\n");
       http_response_write_body(&response, "Sorry, error!", 13);
@@ -118,7 +114,7 @@ struct prnt2scrn_protocol_s {
   protocol_s protocol;
   intptr_t uuid;
 };
-void on_data(intptr_t uuid, protocol_s* protocol) {
+void on_data(intptr_t uuid, protocol_s *protocol) {
   uint8_t buffer[1024];
   ssize_t len;
   while ((len = sock_read(uuid, buffer, 1024)) > 0) {
@@ -128,31 +124,55 @@ void on_data(intptr_t uuid, protocol_s* protocol) {
   fprintf(stderr, "returning from on_data\n");
   // sock_write(uuid, "HTTP/1.1 100 Continue\r\n\r\n", 25);
 }
-void on_close(protocol_s* protocol) {
+void on_close(protocol_s *protocol) {
   fprintf(stderr, "Connection closed %p\n",
-          (void*)(((struct prnt2scrn_protocol_s*)protocol)->uuid));
+          (void *)(((struct prnt2scrn_protocol_s *)protocol)->uuid));
   free(protocol);
 }
 
-protocol_s* on_open(intptr_t uuid, void* udata) {
-  struct prnt2scrn_protocol_s* prt = malloc(sizeof *prt);
+protocol_s *on_open(intptr_t uuid, void *udata) {
+  struct prnt2scrn_protocol_s *prt = malloc(sizeof *prt);
   *prt = (struct prnt2scrn_protocol_s){
       .protocol.on_data = on_data, .protocol.on_close = on_close, .uuid = uuid};
-  fprintf(stderr, "New connection %p\n", (void*)uuid);
+  fprintf(stderr, "New connection %p\n", (void *)uuid);
   server_set_timeout(uuid, 10);
-  return (void*)prt;
+  return (void *)prt;
 }
 
+/*****************************
+non-http-dump
+*/
+
+void htpdmp_on_data(intptr_t uuid, protocol_s *protocol) {
+  uint8_t buffer[1024];
+  ssize_t len;
+  while ((len = sock_read(uuid, buffer, 1024)) > 0) {
+    sock_write(uuid, "HTTP/1.1 200 "
+                     "OK\r\nContent-Length:11\r\nConnection:keep-"
+                     "alive\r\n\r\nHello Dump!",
+               72);
+  }
+  // sock_write(uuid, "HTTP/1.1 100 Continue\r\n\r\n", 25);
+}
+
+protocol_s *htpdmp_on_open(intptr_t uuid, void *udata) {
+  protocol_s *prt = malloc(sizeof *prt);
+  *prt = (protocol_s){.on_data = htpdmp_on_data, .on_close = (void *)free};
+  server_set_timeout(uuid, 10);
+  return (void *)prt;
+}
 /*****************************
 The main function
 */
 #define THREAD_COUNT 8
-int main(int argc, char const* argv[]) {
+int main(int argc, char const *argv[]) {
+  // spn_lock_test();
   // http_parser_test();
-  server_listen(.port = "4000", .on_open = on_open);
-  const char* public_folder = "./public_www";
+  // server_listen(.port = "4000", .on_open = on_open);
+  server_listen(.port = "5000", .on_open = htpdmp_on_open);
+  const char *public_folder = "./public_www";
   if (http1_listen("3000", NULL, .on_request = on_request,
-                   .public_folder = public_folder, .log_static = 1))
+                   .public_folder = public_folder, .log_static = 0))
     perror("Couldn't initiate HTTP service"), exit(1);
   server_run(.threads = THREAD_COUNT);
   return 0;
