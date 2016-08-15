@@ -52,9 +52,7 @@ Integrate the `libsock` library if exists.
 */
 
 #pragma weak sock_flush
-ssize_t sock_flush(intptr_t uuid) {
-  return 0;
-}
+ssize_t sock_flush(intptr_t uuid) { return 0; }
 
 #pragma weak sock_close
 void sock_close(intptr_t uuid) {
@@ -87,30 +85,30 @@ KQueue implementation.
 int reactor_add(intptr_t uuid) {
   struct kevent chevent[2];
   EV_SET(chevent, sock_uuid2fd(uuid), EVFILT_READ,
-         EV_ADD | EV_ENABLE | EV_CLEAR, 0, 0, (void*)uuid);
+         EV_ADD | EV_ENABLE | EV_CLEAR, 0, 0, (void *)uuid);
   EV_SET(chevent + 1, sock_uuid2fd(uuid), EVFILT_WRITE,
-         EV_ADD | EV_ENABLE | EV_CLEAR, 0, 0, (void*)uuid);
+         EV_ADD | EV_ENABLE | EV_CLEAR, 0, 0, (void *)uuid);
   return kevent(reactor_fd, chevent, 2, NULL, 0, NULL);
 }
 int reactor_add_timer(intptr_t uuid, long milliseconds) {
   struct kevent chevent;
   EV_SET(&chevent, sock_uuid2fd(uuid), EVFILT_TIMER, EV_ADD | EV_ENABLE, 0,
-         milliseconds, (void*)uuid);
+         milliseconds, (void *)uuid);
   return kevent(reactor_fd, &chevent, 1, NULL, 0, NULL);
 }
 
 int reactor_remove(intptr_t uuid) {
   struct kevent chevent[2];
   EV_SET(chevent, sock_uuid2fd(uuid), EVFILT_READ, EV_DELETE, 0, 0,
-         (void*)uuid);
+         (void *)uuid);
   EV_SET(chevent + 1, sock_uuid2fd(uuid), EVFILT_WRITE, EV_DELETE, 0, 0,
-         (void*)uuid);
+         (void *)uuid);
   return kevent(reactor_fd, chevent, 2, NULL, 0, NULL);
 }
 int reactor_remove_timer(intptr_t uuid) {
   struct kevent chevent;
   EV_SET(&chevent, sock_uuid2fd(uuid), EVFILT_TIMER, EV_DELETE, 0, 0,
-         (void*)uuid);
+         (void *)uuid);
   return kevent(reactor_fd, &chevent, 1, NULL, 0, NULL);
 }
 
@@ -121,14 +119,8 @@ thing.
 This method promises that the timer will be repeated when running on epoll. This
 method is redundent on kqueue.
 */
-void reactor_reset_timer(intptr_t uuid) {
-/* EPoll only */
-#ifdef EPOLLIN
-  char data[8];  // void * is 8 byte long
-  if (read(sock_uuid2fd(uuid), &data, 8) < 0)
-    data[0] = 0;
-#endif
-}
+void reactor_reset_timer(intptr_t uuid) {} /* EPoll only */
+
 /**
 Creates a timer file descriptor, system dependent.
 
@@ -153,15 +145,15 @@ EPoll implementation.
 #elif defined(EPOLLIN)
 
 int reactor_add(intptr_t uuid) {
-  struct epoll_event chevent;
-  chevent.data.ptr = (void*)uuid;
+  struct epoll_event chevent = {0};
+  chevent.data.ptr = (void *)uuid;
   chevent.events =
       EPOLLOUT | EPOLLIN | EPOLLET | EPOLLERR | EPOLLRDHUP | EPOLLHUP;
   return epoll_ctl(reactor_fd, EPOLL_CTL_ADD, sock_uuid2fd(uuid), &chevent);
 }
 int reactor_add_timer(intptr_t uuid, long milliseconds) {
   struct epoll_event chevent;
-  chevent.data.ptr = (void*)uuid;
+  chevent.data.ptr = (void *)uuid;
   chevent.events =
       EPOLLOUT | EPOLLIN | EPOLLET | EPOLLERR | EPOLLRDHUP | EPOLLHUP;
   struct itimerspec new_t_data;
@@ -174,17 +166,17 @@ int reactor_add_timer(intptr_t uuid, long milliseconds) {
 }
 
 int reactor_remove(intptr_t uuid) {
-  struct epoll_event chevent;
-  chevent.data.ptr = (void*)uuid;
-  chevent.events =
-      EPOLLOUT | EPOLLIN | EPOLLET | EPOLLERR | EPOLLRDHUP | EPOLLHUP;
+  struct epoll_event chevent = {0};
+  // chevent.data.ptr = (void *)uuid;
+  // chevent.events =
+  //     EPOLLOUT | EPOLLIN | EPOLLET | EPOLLERR | EPOLLRDHUP | EPOLLHUP;
   return epoll_ctl(reactor_fd, EPOLL_CTL_DEL, sock_uuid2fd(uuid), &chevent);
 }
 int reactor_remove_timer(intptr_t uuid) {
-  struct epoll_event chevent;
-  chevent.data.ptr = (void*)uuid;
-  chevent.events =
-      EPOLLOUT | EPOLLIN | EPOLLET | EPOLLERR | EPOLLRDHUP | EPOLLHUP;
+  struct epoll_event chevent = {0};
+  // chevent.data.ptr = (void *)uuid;
+  // chevent.events =
+  //     EPOLLOUT | EPOLLIN | EPOLLET | EPOLLERR | EPOLLRDHUP | EPOLLHUP;
   return epoll_ctl(reactor_fd, EPOLL_CTL_DEL, sock_uuid2fd(uuid), &chevent);
 }
 
@@ -196,7 +188,7 @@ This method promises that the timer will be repeated when running on epoll. This
 method is redundent on kqueue.
 */
 void reactor_reset_timer(intptr_t uuid) {
-  char data[8];  // void * is 8 byte long
+  char data[8]; // void * is 8 byte long
   if (read(sock_uuid2fd(uuid), &data, 8) < 0)
     data[0] = 0;
 }
@@ -219,19 +211,11 @@ This library requires either kqueue or epoll to be available.
 Please help us be implementing support for your OS.
 */
 #else
-int reactor_add(intptr_t uuid) {
-  return -1;
-}
-int reactor_add_timer(intptr_t uuid, long milliseconds) {
-  return -1;
-}
+int reactor_add(intptr_t uuid) { return -1; }
+int reactor_add_timer(intptr_t uuid, long milliseconds) { return -1; }
 
-int reactor_remove(intptr_t uuid) {
-  return -1;
-}
-int reactor_remove_timer(intptr_t uuid) {
-  return -1;
-}
+int reactor_remove(intptr_t uuid) { return -1; }
+int reactor_remove_timer(intptr_t uuid) { return -1; }
 #error(This library requires either kqueue or epoll to be available. Please help us be implementing support for your OS.)
 #endif
 
@@ -252,29 +236,29 @@ static struct timespec _reactor_timeout = {
 #define _CRAETE_QUEUE_ kqueue()
 #define _EVENT_TYPE_ struct kevent
 // #define _EVENTS_ ((_EVENT_TYPE_*)(reactor->internal_data.events))
-#define _WAIT_FOR_EVENTS_(events) \
+#define _WAIT_FOR_EVENTS_(events)                                              \
   kevent(reactor_fd, NULL, 0, (events), REACTOR_MAX_EVENTS, &_reactor_timeout);
 #define _GET_FDUUID_(events, _ev_) ((intptr_t)((events)[(_ev_)].udata))
-#define _EVENTERROR_(events, _ev_) (events)[(_ev_)].flags&(EV_EOF | EV_ERROR)
+#define _EVENTERROR_(events, _ev_) (events)[(_ev_)].flags &(EV_EOF | EV_ERROR)
 #define _EVENTREADY_(events, _ev_) (events)[(_ev_)].filter == EVFILT_WRITE
-#define _EVENTDATA_(events, _ev_)           \
-  (events)[(_ev_)].filter == EVFILT_READ || \
+#define _EVENTDATA_(events, _ev_)                                              \
+  (events)[(_ev_)].filter == EVFILT_READ ||                                    \
       (events)[(_ev_)].filter == EVFILT_TIMER
 
 /* EPoll */
 #elif defined(EPOLLIN)
-static int _reactor_timeout = REACTOR_TICK;
+static int const _reactor_timeout = REACTOR_TICK;
 #define _CRAETE_QUEUE_ epoll_create1(0)
 #define _EVENT_TYPE_ struct epoll_event
 // #define _EVENTS_ ((_EVENT_TYPE_*)reactor->internal_data.events)
 #define _QUEUE_READY_FLAG_ EPOLLOUT
-#define _WAIT_FOR_EVENTS_(events) \
+#define _WAIT_FOR_EVENTS_(events)                                              \
   epoll_wait(reactor_fd, (events), REACTOR_MAX_EVENTS, _reactor_timeout)
 #define _GET_FDUUID_(events, _ev_) ((intptr_t)((events)[(_ev_)].data.ptr))
-#define _EVENTERROR_(events, _ev_) \
+#define _EVENTERROR_(events, _ev_)                                             \
   ((events)[(_ev_)].events & (~(EPOLLIN | EPOLLOUT)))
-#define _EVENTREADY_(_events, _ev_) (_events)[(_ev_)].events& EPOLLOUT
-#define _EVENTDATA_(_events, _ev_) (_events)[(_ev_)].events& EPOLLIN
+#define _EVENTREADY_(_events, _ev_) (_events)[(_ev_)].events &EPOLLOUT
+#define _EVENTDATA_(_events, _ev_) (_events)[(_ev_)].events &EPOLLIN
 
 #else /* no epoll, no kqueue - this is where support ends */
 #error(This library requires either kqueue or epoll to be available. Please help us be implementing support for your OS.)
@@ -344,7 +328,7 @@ int reactor_review() {
           reactor_on_data(_GET_FDUUID_(events, i));
         }
       }
-    }  // end for loop
+    } // end for loop
   } else if (active_count < 0) {
     // perror("Please close the reactor, it's dying...");
     return -1;
