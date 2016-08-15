@@ -23,7 +23,7 @@ Hex Conversion
 Returns 1 if the string is HEX encoded (no non-valid hex values). Returns 0 if
 it isn't.
 */
-int bscrypt_is_hex(const char* string, size_t length);
+int bscrypt_is_hex(const char *string, size_t length);
 /**
 This will convert the string (byte stream) to a Hex string. This is not
 cryptography, just conversion for pretty print.
@@ -38,7 +38,7 @@ the number of bytes written to the target buffer.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-int bscrypt_str2hex(char* target, const char* string, size_t length);
+int bscrypt_str2hex(char *target, const char *string, size_t length);
 
 /**
 This will convert a Hex string to a byte string. This is not cryptography,
@@ -58,7 +58,7 @@ and the decoded data will be placed in the original string's buffer.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-int bscrypt_hex2str(char* target, char* hex, size_t length);
+int bscrypt_hex2str(char *target, char *hex, size_t length);
 
 /* *****************************************************************************
 C++ extern finish

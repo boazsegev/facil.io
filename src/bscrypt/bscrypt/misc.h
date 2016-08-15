@@ -52,7 +52,7 @@ This function has some Unix specific properties that
 resolve links and user
 folder referencing.
 */
-fdump_s* bscrypt_fdump(const char* file_path, size_t size_limit);
+fdump_s *bscrypt_fdump(const char *file_path, size_t size_limit);
 
 #endif /* HAS_UNIX_FEATURES */
 
@@ -64,7 +64,7 @@ See the libc `gmtime_r` documentation for details.
 
 Falls back to `gmtime_r` for dates before epoch.
 */
-struct tm* bscrypt_gmtime(const time_t* timer, struct tm* tmbuf);
+struct tm *bscrypt_gmtime(const time_t *timer, struct tm *tmbuf);
 
 /* *****************************************************************************
 C++ extern finish

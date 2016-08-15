@@ -23,20 +23,20 @@ Hex Conversion
 #define i2hex(hi) (((hi) < 10) ? ('0' + (hi)) : ('A' + ((hi)-10)))
 
 /* Credit to Jonathan Leffler for the idea */
-#define hex2i(c)                                                          \
-  (((c) >= '0' && (c) <= '9') ? ((c)-48) : (((c) >= 'a' && (c) <= 'f') || \
-                                            ((c) >= 'A' && (c) <= 'F'))   \
-                                               ? (((c) | 32) - 87)        \
-                                               : ({                       \
-                                                   return -1;             \
-                                                   0;                     \
+#define hex2i(c)                                                               \
+  (((c) >= '0' && (c) <= '9') ? ((c)-48) : (((c) >= 'a' && (c) <= 'f') ||      \
+                                            ((c) >= 'A' && (c) <= 'F'))        \
+                                               ? (((c) | 32) - 87)             \
+                                               : ({                            \
+                                                   return -1;                  \
+                                                   0;                          \
                                                  }))
 
 /**
 Returns 1 if the string is HEX encoded (no non-valid hex values). Returns 0 if
 it isn't.
 */
-int bscrypt_is_hex(const char* string, size_t length) {
+int bscrypt_is_hex(const char *string, size_t length) {
   // for (size_t i = 0; i < length; i++) {
   //   if (isxdigit(string[i]) == 0)
   //     return 0;
@@ -64,7 +64,7 @@ the number of bytes written to the target buffer.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-int bscrypt_str2hex(char* target, const char* string, size_t length) {
+int bscrypt_str2hex(char *target, const char *string, size_t length) {
   if (!target)
     return -1;
   size_t i = length;
@@ -73,7 +73,7 @@ int bscrypt_str2hex(char* target, const char* string, size_t length) {
   while (i) {
     --i;
     target[(i << 1) + 1] = i2hex(string[i] & 0x0F);
-    target[(i << 1)] = i2hex(((uint8_t*)string)[i] >> 4);
+    target[(i << 1)] = i2hex(((uint8_t *)string)[i] >> 4);
   }
   return (length << 1);
 }
@@ -96,7 +96,7 @@ and the decoded data will be placed in the original string's buffer.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-int bscrypt_hex2str(char* target, char* hex, size_t length) {
+int bscrypt_hex2str(char *target, char *hex, size_t length) {
   if (!target)
     target = hex;
   size_t i = 0;

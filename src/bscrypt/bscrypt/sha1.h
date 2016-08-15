@@ -52,20 +52,19 @@ sha1_s bscrypt_sha1_init(void);
 /**
 Writes data to the sha1 buffer.
 */
-void bscrypt_sha1_write(sha1_s* s, const void* data, size_t len);
+void bscrypt_sha1_write(sha1_s *s, const void *data, size_t len);
 /**
 Finalizes the SHA1 hash, returning the Hashed data.
 
 `sha1_result` can be called for the same object multiple times, but the
 finalization will only be performed the first time this function is called.
 */
-char* bscrypt_sha1_result(sha1_s* s);
+char *bscrypt_sha1_result(sha1_s *s);
 
 /**
 An SHA1 helper function that performs initialiation, writing and finalizing.
 */
-static inline __unused char* bscrypt_sha1(sha1_s* s,
-                                          const void* data,
+static inline __unused char *bscrypt_sha1(sha1_s *s, const void *data,
                                           size_t len) {
   *s = bscrypt_sha1_init();
   bscrypt_sha1_write(s, data, len);

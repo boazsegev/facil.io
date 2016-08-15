@@ -82,21 +82,20 @@ sha2_s bscrypt_sha2_init(sha2_variant variant);
 /**
 Writes data to the SHA-2 buffer.
 */
-void bscrypt_sha2_write(sha2_s* s, const void* data, size_t len);
+void bscrypt_sha2_write(sha2_s *s, const void *data, size_t len);
 /**
 Finalizes the SHA-2 hash, returning the Hashed data.
 
 `sha2_result` can be called for the same object multiple times, but the
 finalization will only be performed the first time this function is called.
 */
-char* bscrypt_sha2_result(sha2_s* s);
+char *bscrypt_sha2_result(sha2_s *s);
 
 /**
 An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 512 variant.
 */
-static inline __unused char* bscrypt_sha2_512(sha2_s* s,
-                                              const void* data,
+static inline __unused char *bscrypt_sha2_512(sha2_s *s, const void *data,
                                               size_t len) {
   *s = bscrypt_sha2_init(SHA_512);
   bscrypt_sha2_write(s, data, len);
@@ -107,8 +106,7 @@ static inline __unused char* bscrypt_sha2_512(sha2_s* s,
 An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 256 variant.
 */
-static inline __unused char* bscrypt_sha2_256(sha2_s* s,
-                                              const void* data,
+static inline __unused char *bscrypt_sha2_256(sha2_s *s, const void *data,
                                               size_t len) {
   *s = bscrypt_sha2_init(SHA_256);
   bscrypt_sha2_write(s, data, len);
@@ -119,8 +117,7 @@ static inline __unused char* bscrypt_sha2_256(sha2_s* s,
 An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 384 variant.
 */
-static inline __unused char* bscrypt_sha2_384(sha2_s* s,
-                                              const void* data,
+static inline __unused char *bscrypt_sha2_384(sha2_s *s, const void *data,
                                               size_t len) {
   *s = bscrypt_sha2_init(SHA_384);
   bscrypt_sha2_write(s, data, len);

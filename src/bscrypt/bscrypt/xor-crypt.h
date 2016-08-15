@@ -27,7 +27,7 @@ all the encryption/decription functions that use XOR key data, such as the
 */
 struct xor_key_s {
   /** A pointer to a string containing the key. */
-  uint8_t* key;
+  uint8_t *key;
   /** The length of the key string */
   size_t length;
   /**
@@ -43,7 +43,7 @@ struct xor_key_s {
   The function should return 0 on sucess and -1 on failure. Failue will cause
   endryption/decryption to fail.
   */
-  int (*on_cycle)(xor_key_s* key);
+  int (*on_cycle)(xor_key_s *key);
 };
 
 typedef struct xor_key_128bit_s xor_key_128bit_s;
@@ -64,7 +64,7 @@ struct xor_key_128bit_s {
   The function should return 0 on sucess and -1 on failure. Failue will cause
   endryption/decryption to fail.
   */
-  int (*on_cycle)(xor_key_128bit_s* key);
+  int (*on_cycle)(xor_key_128bit_s *key);
 };
 
 /**
@@ -83,27 +83,19 @@ If `target` is NULL, the source will be used as the target (destructive mode).
 
 Returns -1 on error and 0 on success.
 */
-int bscrypt_xor_crypt(xor_key_s* key,
-                      void* target,
-                      const void* source,
+int bscrypt_xor_crypt(xor_key_s *key, void *target, const void *source,
                       size_t length);
 
 /**
 Similar to the bscrypt_xor_crypt except with a fixed key size of 128bits.
 */
-int bscrypt_xor128_crypt(uint64_t* key,
-                         void* target,
-                         const void* source,
-                         size_t length,
-                         int (*on_cycle)(uint64_t* key));
+int bscrypt_xor128_crypt(uint64_t *key, void *target, const void *source,
+                         size_t length, int (*on_cycle)(uint64_t *key));
 /**
 Similar to the bscrypt_xor_crypt except with a fixed key size of 256bits.
 */
-int bscrypt_xor256_crypt(uint64_t* key,
-                         void* target,
-                         const void* source,
-                         size_t length,
-                         int (*on_cycle)(uint64_t* key));
+int bscrypt_xor256_crypt(uint64_t *key, void *target, const void *source,
+                         size_t length, int (*on_cycle)(uint64_t *key));
 
 /* *****************************************************************************
 C++ extern finish

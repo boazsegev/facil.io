@@ -35,7 +35,7 @@ Returns the number of bytes actually written to the target buffer
 
 A NULL terminator char is NOT written to the target buffer.
 */
-int bscrypt_base64_encode(char* target, const char* data, int len);
+int bscrypt_base64_encode(char *target, const char *data, int len);
 
 /**
 This will decode a Base64 encoded string of a specified length (len) and
@@ -56,7 +56,7 @@ be, at least, `base64_len/4*3 + 3` long.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-int bscrypt_base64_decode(char* target, char* encoded, int base64_len);
+int bscrypt_base64_decode(char *target, char *encoded, int base64_len);
 
 #if defined(DEBUG) && DEBUG == 1
 void bscrypt_test_base64(void);

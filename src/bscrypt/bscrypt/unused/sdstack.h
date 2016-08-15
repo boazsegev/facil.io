@@ -32,27 +32,27 @@ of the object.
  * Use this value to initialize an sdstack_s struct object. Remember to freethe
  * stack's memory using `sds_clear`
  */
-#define SDSTACK_INIT \
+#define SDSTACK_INIT                                                           \
   (sdstack_s) { .count = 0, .head = NULL, .pool = NULL }
 
 /* a pointer array block, used internally. */
 typedef struct ___sdstack_node_s {
-  struct ___sdstack_node_s* next;
-  void* pointers[1024];
+  struct ___sdstack_node_s *next;
+  void *pointers[1024];
 } ___sdstack_node_s;
 
 /** The sdstack_s struct is used to store the dynamic stack. */
 typedef struct {
   size_t count;
-  ___sdstack_node_s* head;
-  ___sdstack_node_s* pool;
+  ___sdstack_node_s *head;
+  ___sdstack_node_s *pool;
 } sdstack_s;
 
 /** Pushes an object to the stack. */
-__unused static inline int sds_push(sdstack_s* restrict stack,
-                                    void* restrict pointer) {
+__unused static inline int sds_push(sdstack_s *restrict stack,
+                                    void *restrict pointer) {
   if ((stack->count & 1023) == 0) {
-    ___sdstack_node_s* tmp;
+    ___sdstack_node_s *tmp;
     if (stack->pool == NULL)
       tmp = malloc(sizeof(*tmp));
     else {
@@ -70,13 +70,13 @@ __unused static inline int sds_push(sdstack_s* restrict stack,
 }
 
 /** Pops an object from the stack. */
-__unused static inline void* sds_pop(sdstack_s* restrict stack) {
+__unused static inline void *sds_pop(sdstack_s *restrict stack) {
   if (stack->count == 0)
     return NULL;
   stack->count -= 1;
-  void* ret = stack->head->pointers[stack->count & 1023];
+  void *ret = stack->head->pointers[stack->count & 1023];
   if ((stack->count & 1023) == 0) {
-    ___sdstack_node_s* tmp = stack->head->next;
+    ___sdstack_node_s *tmp = stack->head->next;
     stack->head->next = stack->pool;
     stack->pool = stack->head;
     stack->head = tmp;
@@ -85,20 +85,20 @@ __unused static inline void* sds_pop(sdstack_s* restrict stack) {
 }
 
 /** Returns the object currently on top of the stack. */
-__unused static inline void* sds_peek(sdstack_s* restrict stack) {
+__unused static inline void *sds_peek(sdstack_s *restrict stack) {
   if (stack->head)
     return stack->head->pointers[stack->count & 1023];
   return NULL;
 }
 
 /** Returns true (non 0) if the stack in empty. */
-__unused static inline int sds_is_empty(const sdstack_s* restrict stack) {
+__unused static inline int sds_is_empty(const sdstack_s *restrict stack) {
   return stack->count == 0;
 }
 
 /** Clears the stack data, freeing it's memory. */
-__unused static inline void sds_clear(sdstack_s* restrict stack) {
-  ___sdstack_node_s* tmp;
+__unused static inline void sds_clear(sdstack_s *restrict stack) {
+  ___sdstack_node_s *tmp;
   tmp = stack->head;
   while ((tmp = stack->head)) {
     stack->head = stack->head->next;
@@ -123,7 +123,7 @@ __unused static inline void sds_test(void) {
   clock_t start, end;
   start = clock();
   for (uintptr_t i = 0; i < test_size; i++) {
-    if (sds_push(&stack, (void*)i))
+    if (sds_push(&stack, (void *)i))
       perror("couldn't push to stack"), exit(6);
   }
   end = clock();
@@ -133,40 +133,36 @@ __unused static inline void sds_test(void) {
   // fprintf(stderr, "stack has %lu objects. peek shows %lu\n", stack.count,
   //         (uintptr_t)sds_peek(&stack));
   for (uintptr_t i = 0; i < test_size; i++) {
-    assert(sds_pop(&stack) == (void*)(test_size - 1) - i);
+    assert(sds_pop(&stack) == (void *)(test_size - 1) - i);
   }
   end = clock();
   assert(stack.count == 0);
-  fprintf(stderr,
-          "Emptied the stack form all %lu objects and asserted. "
-          "%lu CPU cycles\n",
+  fprintf(stderr, "Emptied the stack form all %lu objects and asserted. "
+                  "%lu CPU cycles\n",
           test_size, end - start);
   start = clock();
   for (uintptr_t i = 0; i < test_size; i++) {
-    sds_push(&stack, (void*)i);
+    sds_push(&stack, (void *)i);
   }
   end = clock();
-  fprintf(stderr,
-          "Re-Filled the stack with %lu objects. "
-          "%lu CPU cycles\n",
+  fprintf(stderr, "Re-Filled the stack with %lu objects. "
+                  "%lu CPU cycles\n",
           test_size, end - start);
   start = clock();
   for (uintptr_t i = 0; i < test_size; i++) {
     sds_pop(&stack);
   }
   end = clock();
-  fprintf(stderr,
-          "Re-emptied the stack form all %lu objects "
-          "(no assertions). %lu CPU "
-          "cycles\n",
+  fprintf(stderr, "Re-emptied the stack form all %lu objects "
+                  "(no assertions). %lu CPU "
+                  "cycles\n",
           test_size, end - start);
   start = clock();
   sds_clear(&stack);
   end = clock();
-  fprintf(stderr,
-          "Cleared the stacks memory "
-          "(no assertions). %lu CPU "
-          "cycles\n",
+  fprintf(stderr, "Cleared the stacks memory "
+                  "(no assertions). %lu CPU "
+                  "cycles\n",
           end - start);
 }
 

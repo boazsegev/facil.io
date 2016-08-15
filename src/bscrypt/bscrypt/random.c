@@ -48,7 +48,7 @@ bits256_u bscrypt_rand256(void) {
   return pseudo;
 }
 
-void bscrypt_rand_bytes(void* target, size_t length) {
+void bscrypt_rand_bytes(void *target, size_t length) {
   clock_t cpu_state = clock();
   time_t the_time;
   time(&the_time);
@@ -86,7 +86,7 @@ void bscrypt_rand_bytes(void* target, size_t length) {
     bscrypt_sha2_result(&sha2);
   }
   while (length) {
-    *((uint8_t*)target) = sha2.digest.str[length];
+    *((uint8_t *)target) = sha2.digest.str[length];
     ++target;
     --length;
   }
@@ -118,7 +118,7 @@ Machine specific changes
   { __asm__("bswap %k0" : "+r"(i) :); }
 */
 #undef bswap64
-#define bswap64(i) \
+#define bswap64(i)                                                             \
   { __asm__("bswapq %0" : "+r"(i) :); }
 
 // shadow sched_yield as _mm_pause for spinwait
@@ -148,14 +148,14 @@ static void init_rand_fd(void) {
   atexit(close_rand_fd);
 }
 /* rand function template */
-#define MAKE_RAND_FUNC(type, func_name)             \
-  type func_name(void) {                            \
-    if (_rand_fd_ < 0)                              \
-      init_rand_fd();                               \
-    type ret;                                       \
-    while (read(_rand_fd_, &ret, sizeof(type)) < 0) \
-      sched_yield();                                \
-    return ret;                                     \
+#define MAKE_RAND_FUNC(type, func_name)                                        \
+  type func_name(void) {                                                       \
+    if (_rand_fd_ < 0)                                                         \
+      init_rand_fd();                                                          \
+    type ret;                                                                  \
+    while (read(_rand_fd_, &ret, sizeof(type)) < 0)                            \
+      sched_yield();                                                           \
+    return ret;                                                                \
   }
 /* rand functions */
 MAKE_RAND_FUNC(uint32_t, bscrypt_rand32);
@@ -165,7 +165,7 @@ MAKE_RAND_FUNC(bits256_u, bscrypt_rand256);
 /* clear template */
 #undef MAKE_RAND_FUNC
 
-void bscrypt_rand_bytes(void* target, size_t length) {
+void bscrypt_rand_bytes(void *target, size_t length) {
   if (_rand_fd_ < 0)
     init_rand_fd();
   while (read(_rand_fd_, target, length) < 0)

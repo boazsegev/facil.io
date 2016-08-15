@@ -31,17 +31,17 @@ All functions will be available using the prefix `bscrypt_`, i.e.:
 #include "xor-crypt.h"
 
 #if defined(DEBUG) && DEBUG == 1
-#define bscrypt_test()      \
-  {                         \
-    bscrypt_test_sha1();    \
-    bscrypt_test_sha2();    \
-    bscrypt_test_base64();  \
-    bscrypt_test_random();  \
-    bscrypt_test_siphash(); \
+#define bscrypt_test()                                                         \
+  {                                                                            \
+    bscrypt_test_sha1();                                                       \
+    bscrypt_test_sha2();                                                       \
+    bscrypt_test_base64();                                                     \
+    bscrypt_test_random();                                                     \
+    bscrypt_test_siphash();                                                    \
   }
 #else
-#define bscrypt_test() \
-  fprintf(stderr,      \
+#define bscrypt_test()                                                         \
+  fprintf(stderr,                                                              \
           "Debug mode not enabled, define DEBUG as 1 in the compiler.\n");
 #endif
 

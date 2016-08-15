@@ -14,63 +14,63 @@ Useful Macros
 */
 
 /** 32Bit left rotation, inlined. */
-#define left_rotate32(i, bits) \
+#define left_rotate32(i, bits)                                                 \
   (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> (32 - (bits))))
 /** 32Bit right rotation, inlined. */
-#define right_rotate32(i, bits) \
+#define right_rotate32(i, bits)                                                \
   (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << (32 - (bits))))
 /** 64Bit left rotation, inlined. */
-#define left_rotate64(i, bits) \
+#define left_rotate64(i, bits)                                                 \
   (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
 /** 64Bit right rotation, inlined. */
-#define right_rotate64(i, bits) \
+#define right_rotate64(i, bits)                                                \
   (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << (64 - (bits))))
 /** unknown size element - left rotation, inlined. */
 #define left_rotate(i, bits) (((i) << (bits)) | ((i) >> (sizeof((i)) - (bits))))
 /** unknown size element - right rotation, inlined. */
-#define right_rotate(i, bits) \
+#define right_rotate(i, bits)                                                  \
   (((i) >> (bits)) | ((i) << (sizeof((i)) - (bits))))
 /** inplace byte swap 16 bit integer */
-#define bswap16(i)                                   \
-  do {                                               \
-    (i) = (((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8); \
+#define bswap16(i)                                                             \
+  do {                                                                         \
+    (i) = (((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8);                           \
   } while (0);
 /** inplace byte swap 32 bit integer */
-#define bswap32(i)                                              \
-  do {                                                          \
-    (i) = (((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |        \
-          (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24); \
+#define bswap32(i)                                                             \
+  do {                                                                         \
+    (i) = (((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |                       \
+          (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24);                \
   } while (0);
 /** inplace byte swap 64 bit integer */
-#define bswap64(i)                                                         \
-  do {                                                                     \
-    (i) = (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                \
-          (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |         \
-          (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) | \
-          (((i)&0xFF000000000000ULL) >> 40) |                              \
-          (((i)&0xFF00000000000000ULL) >> 56);                             \
+#define bswap64(i)                                                             \
+  do {                                                                         \
+    (i) = (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                    \
+          (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |             \
+          (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |     \
+          (((i)&0xFF000000000000ULL) >> 40) |                                  \
+          (((i)&0xFF00000000000000ULL) >> 56);                                 \
   } while (0);
 /** get the byte swap value of a 128 bit ...??? */
-#define gbswap128(c)                                                         \
-  (((*((__uint128_t*)(c))) & 0xFFULL) << 120) |                              \
-      (((*((__uint128_t*)(c))) & 0xFF00ULL) << 104) |                        \
-      (((*((__uint128_t*)(c))) & 0xFF0000ULL) << 88) |                       \
-      (((*((__uint128_t*)(c))) & 0xFF000000ULL) << 72) |                     \
-      (((*((__uint128_t*)(c))) & 0xFF00000000ULL) << 56) |                   \
-      (((*((__uint128_t*)(c))) & 0xFF0000000000ULL) << 40) |                 \
-      (((*((__uint128_t*)(c))) & 0xFF000000000000ULL) << 24) |               \
-      (((*((__uint128_t*)(c))) & 0xFF00000000000000ULL) << 8) |              \
-      (((*((__uint128_t*)(c))) & 0xFF0000000000000000ULL) >> 8) |            \
-      (((*((__uint128_t*)(c))) & 0xFF000000000000000000ULL) >> 24) |         \
-      (((*((__uint128_t*)(c))) & 0xFF00000000000000000000ULL) >> 40) |       \
-      (((*((__uint128_t*)(c))) & 0xFF0000000000000000000000ULL) >> 56) |     \
-      (((*((__uint128_t*)(c))) & 0xFF000000000000000000000000ULL) >> 72) |   \
-      (((*((__uint128_t*)(c))) & 0xFF00000000000000000000000000ULL) >> 88) | \
-      (((*((__uint128_t*)(c))) & 0xFF0000000000000000000000000000ULL) >> 104)
+#define gbswap128(c)                                                           \
+  (((*((__uint128_t *)(c))) & 0xFFULL) << 120) |                               \
+      (((*((__uint128_t *)(c))) & 0xFF00ULL) << 104) |                         \
+      (((*((__uint128_t *)(c))) & 0xFF0000ULL) << 88) |                        \
+      (((*((__uint128_t *)(c))) & 0xFF000000ULL) << 72) |                      \
+      (((*((__uint128_t *)(c))) & 0xFF00000000ULL) << 56) |                    \
+      (((*((__uint128_t *)(c))) & 0xFF0000000000ULL) << 40) |                  \
+      (((*((__uint128_t *)(c))) & 0xFF000000000000ULL) << 24) |                \
+      (((*((__uint128_t *)(c))) & 0xFF00000000000000ULL) << 8) |               \
+      (((*((__uint128_t *)(c))) & 0xFF0000000000000000ULL) >> 8) |             \
+      (((*((__uint128_t *)(c))) & 0xFF000000000000000000ULL) >> 24) |          \
+      (((*((__uint128_t *)(c))) & 0xFF00000000000000000000ULL) >> 40) |        \
+      (((*((__uint128_t *)(c))) & 0xFF0000000000000000000000ULL) >> 56) |      \
+      (((*((__uint128_t *)(c))) & 0xFF000000000000000000000000ULL) >> 72) |    \
+      (((*((__uint128_t *)(c))) & 0xFF00000000000000000000000000ULL) >> 88) |  \
+      (((*((__uint128_t *)(c))) & 0xFF0000000000000000000000000000ULL) >> 104)
 
 #ifdef HAVE_X86Intrin
 #undef bswap64
-#define bswap64(i) \
+#define bswap64(i)                                                             \
   { __asm__("bswapq %0" : "+r"(i) :); }
 
 // shadow sched_yield as _mm_pause for spinwait
@@ -132,52 +132,52 @@ static uint64_t sha2_512_words[] = {
 #define Ch(x, y, z) (((x) & (y)) ^ ((~(x)) & z))
 #define Maj(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
 
-#define Eps0_32(x) \
+#define Eps0_32(x)                                                             \
   (right_rotate32((x), 2) ^ right_rotate32((x), 13) ^ right_rotate32((x), 22))
-#define Eps1_32(x) \
+#define Eps1_32(x)                                                             \
   (right_rotate32((x), 6) ^ right_rotate32((x), 11) ^ right_rotate32((x), 25))
-#define Omg0_32(x) \
+#define Omg0_32(x)                                                             \
   (right_rotate32((x), 7) ^ right_rotate32((x), 18) ^ (((x) >> 3)))
-#define Omg1_32(x) \
+#define Omg1_32(x)                                                             \
   (right_rotate32((x), 17) ^ right_rotate32((x), 19) ^ (((x) >> 10)))
 
-#define Eps0_64(x) \
+#define Eps0_64(x)                                                             \
   (right_rotate64((x), 28) ^ right_rotate64((x), 34) ^ right_rotate64((x), 39))
-#define Eps1_64(x) \
+#define Eps1_64(x)                                                             \
   (right_rotate64((x), 14) ^ right_rotate64((x), 18) ^ right_rotate64((x), 41))
-#define Omg0_64(x) \
+#define Omg0_64(x)                                                             \
   (right_rotate64((x), 1) ^ right_rotate64((x), 8) ^ (((x) >> 7)))
-#define Omg1_64(x) \
+#define Omg1_64(x)                                                             \
   (right_rotate64((x), 19) ^ right_rotate64((x), 61) ^ (((x) >> 6)))
 
 #ifdef __BIG_ENDIAN__
 /** Converts a 4 byte string to a uint32_t word. careful with alignment! */
-#define str2word32(c) (*((uint32_t*)(c)))
-#define str2word64(c) (*((uint64_t*)(c)))
+#define str2word32(c) (*((uint32_t *)(c)))
+#define str2word64(c) (*((uint64_t *)(c)))
 #else
 /**
 Converts a 4 byte string to a Big Endian uint32_t word. (ignores alignment!)
 */
-#define str2word32(c)                             \
-  (((*((uint32_t*)(c))) & 0xFFUL) << 24) |        \
-      (((*((uint32_t*)(c))) & 0xFF00UL) << 8) |   \
-      (((*((uint32_t*)(c))) & 0xFF0000UL) >> 8) | \
-      (((*((uint32_t*)(c))) & 0xFF000000UL) >> 24)
-#define str2word64(c)                                       \
-  (((*((uint64_t*)(c))) & 0xFFULL) << 56) |                 \
-      (((*((uint64_t*)(c))) & 0xFF00ULL) << 40) |           \
-      (((*((uint64_t*)(c))) & 0xFF0000ULL) << 24) |         \
-      (((*((uint64_t*)(c))) & 0xFF000000ULL) << 8) |        \
-      (((*((uint64_t*)(c))) & 0xFF00000000ULL) >> 8) |      \
-      (((*((uint64_t*)(c))) & 0xFF0000000000ULL) >> 24) |   \
-      (((*((uint64_t*)(c))) & 0xFF000000000000ULL) >> 40) | \
-      (((*((uint64_t*)(c))) & 0xFF00000000000000ULL) >> 56);
+#define str2word32(c)                                                          \
+  (((*((uint32_t *)(c))) & 0xFFUL) << 24) |                                    \
+      (((*((uint32_t *)(c))) & 0xFF00UL) << 8) |                               \
+      (((*((uint32_t *)(c))) & 0xFF0000UL) >> 8) |                             \
+      (((*((uint32_t *)(c))) & 0xFF000000UL) >> 24)
+#define str2word64(c)                                                          \
+  (((*((uint64_t *)(c))) & 0xFFULL) << 56) |                                   \
+      (((*((uint64_t *)(c))) & 0xFF00ULL) << 40) |                             \
+      (((*((uint64_t *)(c))) & 0xFF0000ULL) << 24) |                           \
+      (((*((uint64_t *)(c))) & 0xFF000000ULL) << 8) |                          \
+      (((*((uint64_t *)(c))) & 0xFF00000000ULL) >> 8) |                        \
+      (((*((uint64_t *)(c))) & 0xFF0000000000ULL) >> 24) |                     \
+      (((*((uint64_t *)(c))) & 0xFF000000000000ULL) >> 40) |                   \
+      (((*((uint64_t *)(c))) & 0xFF00000000000000ULL) >> 56);
 #endif
 
 /**
 Process the buffer once full.
 */
-static inline void perform_all_rounds(sha2_s* s, const uint8_t* data) {
+static inline void perform_all_rounds(sha2_s *s, const uint8_t *data) {
   if (s->type & 1) { /* 512 derived type */
     // process values for the 64bit words
     uint64_t a = s->digest.i64[0];
@@ -206,22 +206,22 @@ static inline void perform_all_rounds(sha2_s* s, const uint8_t* data) {
     w[14] = str2word64(data + 112);
     w[15] = str2word64(data + 120);
 
-#define perform_single_round(i)                                 \
-  t1 = h + Eps1_64(e) + Ch(e, f, g) + sha2_512_words[i] + w[i]; \
-  t2 = Eps0_64(a) + Maj(a, b, c);                               \
-  h = g;                                                        \
-  g = f;                                                        \
-  f = e;                                                        \
-  e = d + t1;                                                   \
-  d = c;                                                        \
-  c = b;                                                        \
-  b = a;                                                        \
+#define perform_single_round(i)                                                \
+  t1 = h + Eps1_64(e) + Ch(e, f, g) + sha2_512_words[i] + w[i];                \
+  t2 = Eps0_64(a) + Maj(a, b, c);                                              \
+  h = g;                                                                       \
+  g = f;                                                                       \
+  f = e;                                                                       \
+  e = d + t1;                                                                  \
+  d = c;                                                                       \
+  c = b;                                                                       \
+  b = a;                                                                       \
   a = t1 + t2;
 
-#define perform_4rounds(i)     \
-  perform_single_round(i);     \
-  perform_single_round(i + 1); \
-  perform_single_round(i + 2); \
+#define perform_4rounds(i)                                                     \
+  perform_single_round(i);                                                     \
+  perform_single_round(i + 1);                                                 \
+  perform_single_round(i + 2);                                                 \
   perform_single_round(i + 3);
 
     perform_4rounds(0);
@@ -230,17 +230,17 @@ static inline void perform_all_rounds(sha2_s* s, const uint8_t* data) {
     perform_4rounds(12);
 
 #undef perform_single_round
-#define perform_single_round(i)                                         \
-  w[i] = Omg1_64(w[i - 2]) + w[i - 7] + Omg0_64(w[i - 15]) + w[i - 16]; \
-  t1 = h + Eps1_64(e) + Ch(e, f, g) + sha2_512_words[i] + w[i];         \
-  t2 = Eps0_64(a) + Maj(a, b, c);                                       \
-  h = g;                                                                \
-  g = f;                                                                \
-  f = e;                                                                \
-  e = d + t1;                                                           \
-  d = c;                                                                \
-  c = b;                                                                \
-  b = a;                                                                \
+#define perform_single_round(i)                                                \
+  w[i] = Omg1_64(w[i - 2]) + w[i - 7] + Omg0_64(w[i - 15]) + w[i - 16];        \
+  t1 = h + Eps1_64(e) + Ch(e, f, g) + sha2_512_words[i] + w[i];                \
+  t2 = Eps0_64(a) + Maj(a, b, c);                                              \
+  h = g;                                                                       \
+  g = f;                                                                       \
+  f = e;                                                                       \
+  e = d + t1;                                                                  \
+  d = c;                                                                       \
+  c = b;                                                                       \
+  b = a;                                                                       \
   a = t1 + t2;
 
     perform_4rounds(16);
@@ -299,16 +299,16 @@ static inline void perform_all_rounds(sha2_s* s, const uint8_t* data) {
     w[15] = str2word32(data + 60);
 
 #undef perform_single_round
-#define perform_single_round(i)                                 \
-  t1 = h + Eps1_32(e) + Ch(e, f, g) + sha2_256_words[i] + w[i]; \
-  t2 = Eps0_32(a) + Maj(a, b, c);                               \
-  h = g;                                                        \
-  g = f;                                                        \
-  f = e;                                                        \
-  e = d + t1;                                                   \
-  d = c;                                                        \
-  c = b;                                                        \
-  b = a;                                                        \
+#define perform_single_round(i)                                                \
+  t1 = h + Eps1_32(e) + Ch(e, f, g) + sha2_256_words[i] + w[i];                \
+  t2 = Eps0_32(a) + Maj(a, b, c);                                              \
+  h = g;                                                                       \
+  g = f;                                                                       \
+  f = e;                                                                       \
+  e = d + t1;                                                                  \
+  d = c;                                                                       \
+  c = b;                                                                       \
+  b = a;                                                                       \
   a = t1 + t2;
 
     perform_4rounds(0);
@@ -317,17 +317,17 @@ static inline void perform_all_rounds(sha2_s* s, const uint8_t* data) {
     perform_4rounds(12);
 
 #undef perform_single_round
-#define perform_single_round(i)                                         \
-  w[i] = Omg1_32(w[i - 2]) + w[i - 7] + Omg0_32(w[i - 15]) + w[i - 16]; \
-  t1 = h + Eps1_32(e) + Ch(e, f, g) + sha2_256_words[i] + w[i];         \
-  t2 = Eps0_32(a) + Maj(a, b, c);                                       \
-  h = g;                                                                \
-  g = f;                                                                \
-  f = e;                                                                \
-  e = d + t1;                                                           \
-  d = c;                                                                \
-  c = b;                                                                \
-  b = a;                                                                \
+#define perform_single_round(i)                                                \
+  w[i] = Omg1_32(w[i - 2]) + w[i - 7] + Omg0_32(w[i - 15]) + w[i - 16];        \
+  t1 = h + Eps1_32(e) + Ch(e, f, g) + sha2_256_words[i] + w[i];                \
+  t2 = Eps0_32(a) + Maj(a, b, c);                                              \
+  h = g;                                                                       \
+  g = f;                                                                       \
+  f = e;                                                                       \
+  e = d + t1;                                                                  \
+  d = c;                                                                       \
+  c = b;                                                                       \
+  b = a;                                                                       \
   a = t1 + t2;
 
     perform_4rounds(16);
@@ -454,7 +454,7 @@ sha2_s bscrypt_sha2_init(sha2_variant variant) {
 /**
 Writes data to the SHA-2 buffer.
 */
-void bscrypt_sha2_write(sha2_s* s, const void* data, size_t len) {
+void bscrypt_sha2_write(sha2_s *s, const void *data, size_t len) {
   size_t in_buffer;
   size_t partial;
   if (s->type & 1) { /* 512 type derived */
@@ -525,7 +525,7 @@ Finalizes the SHA-2 hash, returning the Hashed data.
 `sha2_result` can be called for the same object multiple times, but the
 finalization will only be performed the first time this function is called.
 */
-char* bscrypt_sha2_result(sha2_s* s) {
+char *bscrypt_sha2_result(sha2_s *s) {
   if (s->type & 1) {
 /* 512 bits derived hashing */
 
@@ -565,10 +565,10 @@ char* bscrypt_sha2_result(sha2_s* s) {
 #endif
 
 #if defined(HAS_UINT128)
-    __uint128_t* len = (__uint128_t*)(s->buffer + 112);
+    __uint128_t *len = (__uint128_t *)(s->buffer + 112);
     *len = s->length.i;
 #else
-    uint64_t* len = (uint64_t*)(s->buffer + 112);
+    uint64_t *len = (uint64_t *)(s->buffer + 112);
     len[0] = s->length.words[0];
     len[1] = s->length.words[1];
 #endif
@@ -599,7 +599,7 @@ char* bscrypt_sha2_result(sha2_s* s) {
     // for (size_t i = 0; i < 20; i++)
     //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
     // fprintf(stderr, "\r\n");
-    return (char*)s->digest.str;
+    return (char *)s->digest.str;
   }
 
   size_t in_buffer = s->length.words[0] & 63;
@@ -614,7 +614,7 @@ char* bscrypt_sha2_result(sha2_s* s) {
   }
   /* store the length in BITS - alignment should be promised by struct */
   /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
-  uint64_t* len = (uint64_t*)(s->buffer + 56);
+  uint64_t *len = (uint64_t *)(s->buffer + 56);
   *len = s->length.words[0] << 3;
 #ifndef __BIG_ENDIAN__
   bswap64(*len);
@@ -641,7 +641,7 @@ char* bscrypt_sha2_result(sha2_s* s) {
   // for (size_t i = 0; i < (s->type_512 ? 64 : 32); i++)
   //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
   // fprintf(stderr, "\r\n");
-  return (char*)s->digest.str;
+  return (char *)s->digest.str;
 }
 
 /*******************************************************************************
@@ -652,7 +652,7 @@ SHA-2 testing
 // SHA_512 = 1, SHA_512_256 = 3, SHA_512_224 = 5, SHA_384 = 7, SHA_256 = 2,
 //              SHA_224 = 4,
 
-static char* sha2_variant_names[] = {
+static char *sha2_variant_names[] = {
     "unknown", "SHA_512",     "SHA_256", "SHA_512_256",
     "SHA_224", "SHA_512_224", "none",    "SHA_384",
 };
@@ -666,18 +666,17 @@ static char* sha2_variant_names[] = {
 
 void bscrypt_test_sha2(void) {
   sha2_s s;
-  char* expect = NULL;
-  char* got = NULL;
-  char* str = "";
+  char *expect = NULL;
+  char *got = NULL;
+  char *str = "";
   fprintf(stderr, "===================================\n");
   fprintf(stderr, "bscrypt SHA-2 struct size: %lu\n", sizeof(sha2_s));
   fprintf(stderr, "+ bscrypt");
   // start tests
   s = bscrypt_sha2_init(SHA_224);
   bscrypt_sha2_write(&s, str, 0);
-  expect =
-      "\xd1\x4a\x02\x8c\x2a\x3a\x2b\xc9\x47\x61\x02\xbb\x28\x82\x34\xc4"
-      "\x15\xa2\xb0\x1f\x82\x8e\xa6\x2a\xc5\xb3\xe4\x2f";
+  expect = "\xd1\x4a\x02\x8c\x2a\x3a\x2b\xc9\x47\x61\x02\xbb\x28\x82\x34\xc4"
+           "\x15\xa2\xb0\x1f\x82\x8e\xa6\x2a\xc5\xb3\xe4\x2f";
   got = bscrypt_sha2_result(&s);
   if (strcmp(expect, got))
     goto error;
@@ -693,41 +692,37 @@ void bscrypt_test_sha2(void) {
 
   s = bscrypt_sha2_init(SHA_384);
   bscrypt_sha2_write(&s, str, 0);
-  expect =
-      "\x38\xb0\x60\xa7\x51\xac\x96\x38\x4c\xd9\x32\x7e"
-      "\xb1\xb1\xe3\x6a\x21\xfd\xb7\x11\x14\xbe\x07\x43\x4c\x0c"
-      "\xc7\xbf\x63\xf6\xe1\xda\x27\x4e\xde\xbf\xe7\x6f\x65\xfb"
-      "\xd5\x1a\xd2\xf1\x48\x98\xb9\x5b";
+  expect = "\x38\xb0\x60\xa7\x51\xac\x96\x38\x4c\xd9\x32\x7e"
+           "\xb1\xb1\xe3\x6a\x21\xfd\xb7\x11\x14\xbe\x07\x43\x4c\x0c"
+           "\xc7\xbf\x63\xf6\xe1\xda\x27\x4e\xde\xbf\xe7\x6f\x65\xfb"
+           "\xd5\x1a\xd2\xf1\x48\x98\xb9\x5b";
   got = bscrypt_sha2_result(&s);
   if (strcmp(expect, got))
     goto error;
 
   s = bscrypt_sha2_init(SHA_512);
   bscrypt_sha2_write(&s, str, 0);
-  expect =
-      "\xcf\x83\xe1\x35\x7e\xef\xb8\xbd\xf1\x54\x28\x50\xd6\x6d"
-      "\x80\x07\xd6\x20\xe4\x05\x0b\x57\x15\xdc\x83\xf4\xa9\x21"
-      "\xd3\x6c\xe9\xce\x47\xd0\xd1\x3c\x5d\x85\xf2\xb0\xff\x83"
-      "\x18\xd2\x87\x7e\xec\x2f\x63\xb9\x31\xbd\x47\x41\x7a\x81"
-      "\xa5\x38\x32\x7a\xf9\x27\xda\x3e";
+  expect = "\xcf\x83\xe1\x35\x7e\xef\xb8\xbd\xf1\x54\x28\x50\xd6\x6d"
+           "\x80\x07\xd6\x20\xe4\x05\x0b\x57\x15\xdc\x83\xf4\xa9\x21"
+           "\xd3\x6c\xe9\xce\x47\xd0\xd1\x3c\x5d\x85\xf2\xb0\xff\x83"
+           "\x18\xd2\x87\x7e\xec\x2f\x63\xb9\x31\xbd\x47\x41\x7a\x81"
+           "\xa5\x38\x32\x7a\xf9\x27\xda\x3e";
   got = bscrypt_sha2_result(&s);
   if (strcmp(expect, got))
     goto error;
 
   s = bscrypt_sha2_init(SHA_512_224);
   bscrypt_sha2_write(&s, str, 0);
-  expect =
-      "\x6e\xd0\xdd\x02\x80\x6f\xa8\x9e\x25\xde\x06\x0c\x19\xd3"
-      "\xac\x86\xca\xbb\x87\xd6\xa0\xdd\xd0\x5c\x33\x3b\x84\xf4";
+  expect = "\x6e\xd0\xdd\x02\x80\x6f\xa8\x9e\x25\xde\x06\x0c\x19\xd3"
+           "\xac\x86\xca\xbb\x87\xd6\xa0\xdd\xd0\x5c\x33\x3b\x84\xf4";
   got = bscrypt_sha2_result(&s);
   if (strcmp(expect, got))
     goto error;
 
   s = bscrypt_sha2_init(SHA_512_256);
   bscrypt_sha2_write(&s, str, 0);
-  expect =
-      "\xc6\x72\xb8\xd1\xef\x56\xed\x28\xab\x87\xc3\x62\x2c\x51\x14\x06"
-      "\x9b\xdd\x3a\xd7\xb8\xf9\x73\x74\x98\xd0\xc0\x1e\xce\xf0\x96\x7a";
+  expect = "\xc6\x72\xb8\xd1\xef\x56\xed\x28\xab\x87\xc3\x62\x2c\x51\x14\x06"
+           "\x9b\xdd\x3a\xd7\xb8\xf9\x73\x74\x98\xd0\xc0\x1e\xce\xf0\x96\x7a";
   got = bscrypt_sha2_result(&s);
   if (strcmp(expect, got))
     goto error;
@@ -735,11 +730,10 @@ void bscrypt_test_sha2(void) {
   s = bscrypt_sha2_init(SHA_512);
   str = "god is a rotten tomato";
   bscrypt_sha2_write(&s, str, strlen(str));
-  expect =
-      "\x61\x97\x4d\x41\x9f\x77\x45\x21\x09\x4e\x95\xa3\xcb\x4d\xe4\x79"
-      "\x26\x32\x2f\x2b\xe2\x62\x64\x5a\xb4\x5d\x3f\x73\x69\xef\x46\x20"
-      "\xb2\xd3\xce\xda\xa9\xc2\x2c\xac\xe3\xf9\x02\xb2\x20\x5d\x2e\xfd"
-      "\x40\xca\xa0\xc1\x67\xe0\xdc\xdf\x60\x04\x3e\x4e\x76\x87\x82\x74";
+  expect = "\x61\x97\x4d\x41\x9f\x77\x45\x21\x09\x4e\x95\xa3\xcb\x4d\xe4\x79"
+           "\x26\x32\x2f\x2b\xe2\x62\x64\x5a\xb4\x5d\x3f\x73\x69\xef\x46\x20"
+           "\xb2\xd3\xce\xda\xa9\xc2\x2c\xac\xe3\xf9\x02\xb2\x20\x5d\x2e\xfd"
+           "\x40\xca\xa0\xc1\x67\xe0\xdc\xdf\x60\x04\x3e\x4e\x76\x87\x82\x74";
   got = bscrypt_sha2_result(&s);
   if (strcmp(expect, got))
     goto error;
@@ -757,9 +751,8 @@ void bscrypt_test_sha2(void) {
   s = bscrypt_sha2_init(SHA_224);
   str = "The quick brown fox jumps over the lazy dog";
   bscrypt_sha2_write(&s, str, strlen(str));
-  expect =
-      "\x73\x0e\x10\x9b\xd7\xa8\xa3\x2b\x1c\xb9\xd9\xa0\x9a\xa2"
-      "\x32\x5d\x24\x30\x58\x7d\xdb\xc0\xc3\x8b\xad\x91\x15\x25";
+  expect = "\x73\x0e\x10\x9b\xd7\xa8\xa3\x2b\x1c\xb9\xd9\xa0\x9a\xa2"
+           "\x32\x5d\x24\x30\x58\x7d\xdb\xc0\xc3\x8b\xad\x91\x15\x25";
   got = bscrypt_sha2_result(&s);
   if (strcmp(expect, got))
     goto error;
@@ -819,9 +812,8 @@ void bscrypt_test_sha2(void) {
   return;
   goto error;
 error:
-  fprintf(stderr,
-          ":\n--- bscrypt SHA-2 Test FAILED!\ntype: "
-          "%s (%d)\nstring %s\nexpected:\n",
+  fprintf(stderr, ":\n--- bscrypt SHA-2 Test FAILED!\ntype: "
+                  "%s (%d)\nstring %s\nexpected:\n",
           sha2_variant_names[s.type], s.type, str);
   while (*expect)
     fprintf(stderr, "%02x", *(expect++) & 0xFF);

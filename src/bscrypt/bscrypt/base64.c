@@ -74,15 +74,15 @@ Returns the number of bytes actually written to the target buffer
 
 A NULL terminator char is NOT written to the target buffer.
 */
-int bscrypt_base64_encode(char* target, const char* data, int len) {
+int bscrypt_base64_encode(char *target, const char *data, int len) {
   int written = 0;
   // // optional implementation: allow a non writing, length computation.
   // if (!target)
   //   return (len % 3) ? (((len + 3) / 3) * 4) : (len / 3);
   // use a union to avoid padding issues.
-  union base64_parser_u* section;
+  union base64_parser_u *section;
   while (len >= 3) {
-    section = (void*)data;
+    section = (void *)data;
     target[0] = base64_encodes[section->byte1.data];
     target[1] =
         base64_encodes[(section->byte1.tail << 4) | (section->byte2.head)];
@@ -95,7 +95,7 @@ int bscrypt_base64_encode(char* target, const char* data, int len) {
     len -= 3;
     written += 4;
   }
-  section = (void*)data;
+  section = (void *)data;
   if (len == 2) {
     target[0] = base64_encodes[section->byte1.data];
     target[1] =
@@ -112,7 +112,7 @@ int bscrypt_base64_encode(char* target, const char* data, int len) {
     target += 4;
     written += 4;
   }
-  target[0] = 0;  // NULL terminator
+  target[0] = 0; // NULL terminator
   return written;
 }
 
@@ -135,7 +135,7 @@ be, at least, `base64_len/4*3 + 3` long.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-int bscrypt_base64_decode(char* target, char* encoded, int base64_len) {
+int bscrypt_base64_decode(char *target, char *encoded, int base64_len) {
   if (base64_len <= 0)
     return -1;
   if (!target)
@@ -145,7 +145,7 @@ int bscrypt_base64_decode(char* target, char* encoded, int base64_len) {
   // base64_encodes
   // a struct that will be used to read the data.
   while (base64_len >= 4) {
-    base64_len -= 4;  // make sure we don't loop forever.
+    base64_len -= 4; // make sure we don't loop forever.
     // copying the data allows us to write destructively to the same buffer
     section.byte1.data = base64_decodes[(unsigned char)(*encoded)];
     encoded++;
@@ -201,8 +201,8 @@ Base64
 #if defined(DEBUG) && DEBUG == 1
 void bscrypt_test_base64(void) {
   struct {
-    char* str;
-    char* base64;
+    char *str;
+    char *base64;
   } sets[] = {
       // {"Man is distinguished, not only by his reason, but by this singular "
       //  "passion from other animals, which is a lust of the mind, that by a "
@@ -218,7 +218,7 @@ void bscrypt_test_base64(void) {
       {"any carnal pleasure.", "YW55IGNhcm5hbCBwbGVhc3VyZS4="},
       {"any carnal pleasure", "YW55IGNhcm5hbCBwbGVhc3VyZQ=="},
       {"any carnal pleasur", "YW55IGNhcm5hbCBwbGVhc3Vy"},
-      {NULL, NULL}  // Stop
+      {NULL, NULL} // Stop
   };
   int i = 0;
   char buffer[1024];

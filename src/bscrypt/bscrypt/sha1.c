@@ -14,62 +14,62 @@ Useful Macros - Not all of them are used here, but it's a copy-paste convenience
 */
 
 /** 32Bit left rotation, inlined. */
-#define left_rotate32(i, bits) \
+#define left_rotate32(i, bits)                                                 \
   (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> (32 - (bits))))
 /** 32Bit right rotation, inlined. */
-#define right_rotate32(i, bits) \
+#define right_rotate32(i, bits)                                                \
   (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << (32 - (bits))))
 /** 64Bit left rotation, inlined. */
-#define left_rotate64(i, bits) \
+#define left_rotate64(i, bits)                                                 \
   (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
 /** 64Bit right rotation, inlined. */
-#define right_rotate64(i, bits) \
+#define right_rotate64(i, bits)                                                \
   (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << (64 - (bits))))
 /** unknown size element - left rotation, inlined. */
 #define left_rotate(i, bits) (((i) << (bits)) | ((i) >> (sizeof((i)) - (bits))))
 /** unknown size element - right rotation, inlined. */
-#define right_rotate(i, bits) \
+#define right_rotate(i, bits)                                                  \
   (((i) >> (bits)) | ((i) << (sizeof((i)) - (bits))))
 /** inplace byte swap 16 bit integer */
-#define bswap16(i)                                   \
-  do {                                               \
-    (i) = (((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8); \
+#define bswap16(i)                                                             \
+  do {                                                                         \
+    (i) = (((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8);                           \
   } while (0);
 /** inplace byte swap 32 bit integer */
-#define bswap32(i)                                              \
-  do {                                                          \
-    (i) = (((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |        \
-          (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24); \
+#define bswap32(i)                                                             \
+  do {                                                                         \
+    (i) = (((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |                       \
+          (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24);                \
   } while (0);
 /** inplace byte swap 64 bit integer */
-#define bswap64(i)                                                         \
-  do {                                                                     \
-    (i) = (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                \
-          (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |         \
-          (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) | \
-          (((i)&0xFF000000000000ULL) >> 40) |                              \
-          (((i)&0xFF00000000000000ULL) >> 56);                             \
+#define bswap64(i)                                                             \
+  do {                                                                         \
+    (i) = (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                    \
+          (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |             \
+          (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |     \
+          (((i)&0xFF000000000000ULL) >> 40) |                                  \
+          (((i)&0xFF00000000000000ULL) >> 56);                                 \
   } while (0);
 
 const uint8_t sha1_padding[64] = {0x80, 0};
 
 #ifdef __BIG_ENDIAN__
 /** Converts a 4 byte string to a uint32_t word. careful with alignment! */
-#define str2word(c) (*((uint32_t*)(c)))
+#define str2word(c) (*((uint32_t *)(c)))
 #else
 /**
 Converts a 4 byte string to a Big Endian uint32_t word. (ignores alignment!)
 */
-#define str2word(c)                               \
-  (((*((uint32_t*)(c))) & 0xFFUL) << 24) |        \
-      (((*((uint32_t*)(c))) & 0xFF00UL) << 8) |   \
-      (((*((uint32_t*)(c))) & 0xFF0000UL) >> 8) | \
-      (((*((uint32_t*)(c))) & 0xFF000000UL) >> 24)
+#define str2word(c)                                                            \
+  (((*((uint32_t *)(c))) & 0xFFUL) << 24) |                                    \
+      (((*((uint32_t *)(c))) & 0xFF00UL) << 8) |                               \
+      (((*((uint32_t *)(c))) & 0xFF0000UL) >> 8) |                             \
+      (((*((uint32_t *)(c))) & 0xFF000000UL) >> 24)
 #endif
 /**
 Process the buffer once full.
 */
-static inline void perform_all_rounds(sha1_s* s, const uint8_t* buffer) {
+static inline void perform_all_rounds(sha1_s *s, const uint8_t *buffer) {
   /* collect data */
   uint32_t a = s->digest.i[0];
   uint32_t b = s->digest.i[1];
@@ -95,18 +95,18 @@ static inline void perform_all_rounds(sha1_s* s, const uint8_t* buffer) {
   w[14] = str2word(buffer + 56);
   w[15] = str2word(buffer + 60);
 /* perform rounds */
-#define perform_single_round(num)                                             \
-  t = left_rotate32(a, 5) + e + w[num] + ((b & c) | ((~b) & d)) + 0x5A827999; \
-  e = d;                                                                      \
-  d = c;                                                                      \
-  c = left_rotate32(b, 30);                                                   \
-  b = a;                                                                      \
+#define perform_single_round(num)                                              \
+  t = left_rotate32(a, 5) + e + w[num] + ((b & c) | ((~b) & d)) + 0x5A827999;  \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
   a = t;
 
-#define perform_four_rounds(i) \
-  perform_single_round(i);     \
-  perform_single_round(i + 1); \
-  perform_single_round(i + 2); \
+#define perform_four_rounds(i)                                                 \
+  perform_single_round(i);                                                     \
+  perform_single_round(i + 1);                                                 \
+  perform_single_round(i + 2);                                                 \
   perform_single_round(i + 3);
 
   perform_four_rounds(0);
@@ -115,30 +115,30 @@ static inline void perform_all_rounds(sha1_s* s, const uint8_t* buffer) {
   perform_four_rounds(12);
 
 #undef perform_single_round
-#define perform_single_round(i)                                      \
-  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^     \
-                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),   \
-                            1);                                      \
-  t = left_rotate32(a, 5) + e + w[(i)&15] + ((b & c) | ((~b) & d)) + \
-      0x5A827999;                                                    \
-  e = d;                                                             \
-  d = c;                                                             \
-  c = left_rotate32(b, 30);                                          \
-  b = a;                                                             \
+#define perform_single_round(i)                                                \
+  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
+                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
+                            1);                                                \
+  t = left_rotate32(a, 5) + e + w[(i)&15] + ((b & c) | ((~b) & d)) +           \
+      0x5A827999;                                                              \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
   a = t;
 
   perform_four_rounds(16);
 
 #undef perform_single_round
-#define perform_single_round(i)                                       \
-  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^      \
-                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),    \
-                            1);                                       \
-  t = left_rotate32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0x6ED9EBA1; \
-  e = d;                                                              \
-  d = c;                                                              \
-  c = left_rotate32(b, 30);                                           \
-  b = a;                                                              \
+#define perform_single_round(i)                                                \
+  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
+                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
+                            1);                                                \
+  t = left_rotate32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0x6ED9EBA1;          \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
   a = t;
 
   perform_four_rounds(20);
@@ -148,16 +148,16 @@ static inline void perform_all_rounds(sha1_s* s, const uint8_t* buffer) {
   perform_four_rounds(36);
 
 #undef perform_single_round
-#define perform_single_round(i)                                         \
-  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^        \
-                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),      \
-                            1);                                         \
-  t = left_rotate32(a, 5) + e + w[(i)&15] + ((b & (c | d)) | (c & d)) + \
-      0x8F1BBCDC;                                                       \
-  e = d;                                                                \
-  d = c;                                                                \
-  c = left_rotate32(b, 30);                                             \
-  b = a;                                                                \
+#define perform_single_round(i)                                                \
+  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
+                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
+                            1);                                                \
+  t = left_rotate32(a, 5) + e + w[(i)&15] + ((b & (c | d)) | (c & d)) +        \
+      0x8F1BBCDC;                                                              \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
   a = t;
 
   perform_four_rounds(40);
@@ -166,15 +166,15 @@ static inline void perform_all_rounds(sha1_s* s, const uint8_t* buffer) {
   perform_four_rounds(52);
   perform_four_rounds(56);
 #undef perform_single_round
-#define perform_single_round(i)                                       \
-  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^      \
-                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),    \
-                            1);                                       \
-  t = left_rotate32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0xCA62C1D6; \
-  e = d;                                                              \
-  d = c;                                                              \
-  c = left_rotate32(b, 30);                                           \
-  b = a;                                                              \
+#define perform_single_round(i)                                                \
+  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
+                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
+                            1);                                                \
+  t = left_rotate32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0xCA62C1D6;          \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
   a = t;
   perform_four_rounds(60);
   perform_four_rounds(64);
@@ -209,7 +209,7 @@ sha1_s bscrypt_sha1_init(void) {
 /**
 Writes data to the sha1 buffer.
 */
-void bscrypt_sha1_write(sha1_s* s, const void* data, size_t len) {
+void bscrypt_sha1_write(sha1_s *s, const void *data, size_t len) {
   size_t in_buffer = s->length & 63;
   size_t partial = 64 - in_buffer;
   s->length += len;
@@ -234,7 +234,7 @@ void bscrypt_sha1_write(sha1_s* s, const void* data, size_t len) {
   return;
 }
 
-char* bscrypt_sha1_result(sha1_s* s) {
+char *bscrypt_sha1_result(sha1_s *s) {
   size_t in_buffer = s->length & 63;
   if (in_buffer > 55) {
     memcpy(s->buffer + in_buffer, sha1_padding, 64 - in_buffer);
@@ -247,7 +247,7 @@ char* bscrypt_sha1_result(sha1_s* s) {
   }
   /* store the length in BITS - alignment should be promised by struct */
   /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
-  uint64_t* len = (uint64_t*)(s->buffer + 56);
+  uint64_t *len = (uint64_t *)(s->buffer + 56);
   *len = s->length << 3;
 #ifndef __BIG_ENDIAN__
   bswap64(*len);
@@ -266,7 +266,7 @@ char* bscrypt_sha1_result(sha1_s* s) {
   // for (size_t i = 0; i < 20; i++)
   //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
   // fprintf(stderr, "\r\n");
-  return (char*)s->digest.str;
+  return (char *)s->digest.str;
 }
 
 /*******************************************************************************
@@ -284,19 +284,19 @@ SHA-1 testing
 
 void bscrypt_test_sha1(void) {
   struct {
-    char* str;
+    char *str;
     char hash[21];
   } sets[] = {
       {"The quick brown fox jumps over the lazy dog",
        {0x2f, 0xd4, 0xe1, 0xc6, 0x7a, 0x2d, 0x28, 0xfc, 0xed, 0x84, 0x9e, 0xe1,
         0xbb, 0x76, 0xe7, 0x39, 0x1b, 0x93, 0xeb, 0x12,
-        0}},  // a set with a string
+        0}}, // a set with a string
       {"",
        {
            0xda, 0x39, 0xa3, 0xee, 0x5e, 0x6b, 0x4b, 0x0d, 0x32, 0x55, 0xbf,
            0xef, 0x95, 0x60, 0x18, 0x90, 0xaf, 0xd8, 0x07, 0x09,
-       }},         // an empty set
-      {NULL, {0}}  // Stop
+       }},        // an empty set
+      {NULL, {0}} // Stop
   };
   int i = 0;
   sha1_s sha1;
@@ -310,7 +310,7 @@ void bscrypt_test_sha1(void) {
       fprintf(stderr,
               ":\n--- bscrypt SHA-1 Test FAILED!\nstring: %s\nexpected: ",
               sets[i].str);
-      char* p = sets[i].hash;
+      char *p = sets[i].hash;
       while (*p)
         fprintf(stderr, "%02x", *(p++) & 0xFF);
       fprintf(stderr, "\ngot: ");

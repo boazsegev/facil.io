@@ -32,7 +32,7 @@ bits128_u bscrypt_rand128(void);
 bits256_u bscrypt_rand256(void);
 
 /** returns a variable length string of random bytes. */
-void bscrypt_rand_bytes(void* target, size_t length);
+void bscrypt_rand_bytes(void *target, size_t length);
 
 #if defined(DEBUG) && DEBUG == 1
 void bscrypt_test_random(void);
