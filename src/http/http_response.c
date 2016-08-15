@@ -10,14 +10,14 @@
 Helpers
 ***************************************************************************** */
 
-#define forward_func(response, func, ...)  \
-  if ((response)->metadata.version == 1) { \
-    return h1p_##func(__VA_ARGS__);        \
-  } else                                   \
+#define forward_func(response, func, ...)                                      \
+  if ((response)->metadata.version == 1) {                                     \
+    return h1p_##func(__VA_ARGS__);                                            \
+  } else                                                                       \
     return -1;
-#define perform_func(response, func, ...)  \
-  if ((response)->metadata.version == 1) { \
-    h1p_##func(__VA_ARGS__);               \
+#define perform_func(response, func, ...)                                      \
+  if ((response)->metadata.version == 1) {                                     \
+    h1p_##func(__VA_ARGS__);                                                   \
   }
 
 // static char* MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun ",
@@ -41,18 +41,13 @@ completed.
 
 Hangs on failuer (waits for available resources).
 */
-http_response_s http_response_init(http_request_s* request) {
-  sock_packet_s* packet;
-  while ((packet = sock_checkout_packet()) == NULL) {
-    sock_flush_all();
-    sched_yield();
-  }
-  protocol_s* http = request->metadata.owner;
+http_response_s http_response_init(http_request_s *request) {
+  protocol_s *http = request->metadata.owner;
   time_t date = server_last_tick();
   return (http_response_s){
       .metadata.request = request,
       .metadata.fd = request->metadata.fd,
-      .metadata.packet = packet,
+      .metadata.packet = sock_checkout_packet(),
       .status = 200,
       .date = date,
       .last_modified = date,
@@ -60,7 +55,7 @@ http_response_s http_response_init(http_request_s* request) {
       .metadata.should_close =
           (request && request->connection &&
            request->connection_len ==
-               5),  // don't check header value, length is unique enough.
+               5), // don't check header value, length is unique enough.
   };
 }
 /**
@@ -69,7 +64,7 @@ object itself, which might have been allocated on the stack).
 
 This function assumes the response object might have been stack-allocated.
 */
-void http_response_destroy(http_response_s* response) {
+void http_response_destroy(http_response_s *response) {
   if (response->metadata.packet) {
     sock_free_packet(response->metadata.packet);
     response->metadata.packet = NULL;
@@ -88,7 +83,7 @@ cannot be sent), the function will return -1.
 On success, the function returns 0.
 */
 #undef http_response_write_header
-int http_response_write_header(http_response_s* response,
+int http_response_write_header(http_response_s *response,
                                http_headers_s header) {
   // check if the header is a reserved header
   if ((header.name_length == 4 || header.name_length == 0) &&
@@ -106,7 +101,7 @@ int http_response_write_header(http_response_s* response,
   // write the header to the protocol
   forward_func(response, response_write_header, response, header);
 }
-#define http_response_write_header(response, ...) \
+#define http_response_write_header(response, ...)                              \
   http_response_write_header(response, (http_headers_s){__VA_ARGS__})
 
 /**
@@ -138,7 +133,7 @@ cannot be sent), the function will return -1.
 On success, the function returns 0.
 */
 #undef http_response_set_cookie
-int http_response_set_cookie(http_response_s* response, http_cookie_s cookie) {
+int http_response_set_cookie(http_response_s *response, http_cookie_s cookie) {
   forward_func(response, response_set_cookie, response, cookie);
 };
 
@@ -146,7 +141,7 @@ int http_response_set_cookie(http_response_s* response, http_cookie_s cookie) {
 Indicates that any pending data (i.e. unsent headers) should be sent and that no
 more use of the response object will be made.
 */
-void http_response_finish(http_response_s* response) {
+void http_response_finish(http_response_s *response) {
   perform_func(response, response_finish, response);
   if (response->metadata.logged)
     http_response_log_finish(response);
@@ -161,8 +156,7 @@ The body will be copied to the server's outgoing buffer.
 If the connection was already closed, the function will return -1. On success,
 the function returns 0.
 */
-int http_response_write_body(http_response_s* response,
-                             const char* body,
+int http_response_write_body(http_response_s *response, const char *body,
                              size_t length) {
   forward_func(response, response_write_body, response, body, length);
 }
@@ -176,10 +170,8 @@ using `fclose` once the data was sent.
 If the connection was already closed, the function will return -1. On success,
 the function returns 0.
 */
-int http_response_sendfile(http_response_s* response,
-                           int source_fd,
-                           off_t offset,
-                           size_t length) {
+int http_response_sendfile(http_response_s *response, int source_fd,
+                           off_t offset, size_t length) {
   forward_func(response, response_sendfile, response, source_fd, offset,
                length);
 }
@@ -202,14 +194,11 @@ On failure, the function will return -1 (no response will be sent).
 
 On success, the function returns 0.
 */
-int http_response_sendfile2(http_response_s* response,
-                            http_request_s* request,
-                            const char* file_path_safe,
-                            size_t path_safe_len,
-                            const char* file_path_unsafe,
-                            size_t path_unsafe_len,
-                            uint8_t log) {
-  static char* HEAD = "HEAD";
+int http_response_sendfile2(http_response_s *response, http_request_s *request,
+                            const char *file_path_safe, size_t path_safe_len,
+                            const char *file_path_unsafe,
+                            size_t path_unsafe_len, uint8_t log) {
+  static char *HEAD = "HEAD";
   if (request == NULL)
     return -1;
   http_response_s tmp_response;
@@ -220,21 +209,25 @@ int http_response_sendfile2(http_response_s* response,
   if (file_path_unsafe && path_unsafe_len == 0)
     path_unsafe_len = strlen(file_path_unsafe);
 
-  const char* mime = NULL;
-  const char* ext = NULL;
+  const char *mime = NULL;
+  const char *ext = NULL;
   struct stat file_data = {};
   // fprintf(stderr, "\n\noriginal request path: %s\n", req->path);
-  char fname[path_safe_len + path_unsafe_len + 1];
+  char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
   if (file_path_safe)
     memcpy(fname, file_path_safe, path_safe_len);
   // if the last character is a '/', step back.
-  if (fname[path_safe_len - 1] == '/' || fname[path_safe_len - 1] == '\\')
+  if (fname[path_safe_len - 1] == '/')
     path_safe_len--;
   ssize_t tmp =
       http_decode_url(fname + path_safe_len, file_path_unsafe, path_unsafe_len);
   if (tmp < 0)
     return -1;
-  file_path_safe += tmp;
+  path_safe_len += tmp;
+  if (fname[path_safe_len - 1] == '/') {
+    memcpy(fname + path_safe_len, "index.html", 10);
+    fname[path_safe_len += 10] = 0;
+  }
 
   // scan path string for double dots (security - prevent path manipulation)
   // set the extention point value, while were doing so.
@@ -249,8 +242,8 @@ int http_response_sendfile2(http_response_s* response,
   }
   // fprintf(stderr, "file name: %s\noriginal request path: %s\n", fname,
   //         req->path);
-
   // get file data (prevent folder access and get modification date)
+  return -1;
   if (stat(fname, &file_data))
     return -1;
   // check that we have a file and not something else
@@ -264,7 +257,7 @@ int http_response_sendfile2(http_response_s* response,
       http_response_log_start(response);
   }
 
-  if (*((uint32_t*)request->method) == *((uint32_t*)HEAD)) {
+  if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
     forward_func(response, response_finish, response);
   }
 
@@ -317,7 +310,7 @@ int http_response_sendfile2(http_response_s* response,
     if (finish >= file_data.st_size)
       finish = file_data.st_size;
     char buffer[64];
-    char* pos = buffer + 6;
+    char *pos = buffer + 6;
     memcpy(buffer, "bytes ", 6);
     pos += http_ul2a(pos, start);
     *(pos++) = '-';
@@ -351,16 +344,16 @@ invalid_range:
 /**
 Starts counting miliseconds for log results.
 */
-void http_response_log_start(http_response_s* response) {
+void http_response_log_start(http_response_s *response) {
   response->metadata.clock_start = clock();
   response->metadata.logged = 1;
 }
 /**
 prints out the log to stderr.
 */
-void http_response_log_finish(http_response_s* response) {
+void http_response_log_finish(http_response_s *response) {
   // TODO optimize using fwrite
-  http_request_s* request = response->metadata.request;
+  http_request_s *request = response->metadata.request;
   uintptr_t bytes_sent = (uintptr_t)response->metadata.headers_pos;
 
   size_t mili = response->metadata.logged
@@ -373,10 +366,10 @@ void http_response_log_finish(http_response_s* response) {
   time_t last_tick = server_last_tick();
   http_gmtime(&last_tick, &tm);
   int got_add = getpeername(sock_uuid2fd(request->metadata.fd),
-                            (struct sockaddr*)&addrinfo, &addrlen);
+                            (struct sockaddr *)&addrinfo, &addrlen);
 #define HTTP_REQUEST_LOG_LIMIT 128
   char buffer[HTTP_REQUEST_LOG_LIMIT];
-  char* tmp;
+  char *tmp;
   size_t pos;
   if (got_add == 0) {
     tmp = inet_ntoa(addrinfo.sin_addr);
@@ -397,7 +390,7 @@ void http_response_log_finish(http_response_s* response) {
     memcpy(buffer + pos, request->method, request->method_len);
     pos += request->method_len;
   } else {
-    const char* j = request->method;
+    const char *j = request->method;
     // copy first 7 chars
     while (j < request->method + 7)
       buffer[pos++] = *(j++);
@@ -412,7 +405,7 @@ void http_response_log_finish(http_response_s* response) {
     memcpy(buffer + pos, request->path, request->path_len);
     pos += request->path_len;
   } else {
-    const char* j = request->path;
+    const char *j = request->path;
     // copy first 7 chars
     while (j < request->path + 21)
       buffer[pos++] = *(j++);
@@ -427,7 +420,7 @@ void http_response_log_finish(http_response_s* response) {
     memcpy(buffer + pos, request->version, request->version_len);
     pos += request->version_len;
   } else {
-    const char* j = request->version;
+    const char *j = request->version;
     // copy first 7 chars
     while (j < request->version + 7)
       buffer[pos++] = *(j++);
@@ -461,10 +454,10 @@ Hardcded lists / matching
 */
 
 /** Gets a response status, as a string */
-const char* http_response_status_str(uint16_t status) {
+const char *http_response_status_str(uint16_t status) {
   static struct {
     int i_status;
-    char* s_status;
+    char *s_status;
   } List[] = {{200, "OK"},
               {301, "Moved Permanently"},
               {302, "Found"},
@@ -540,10 +533,10 @@ const char* http_response_status_str(uint16_t status) {
 
 /** Gets the mime-type string (C string) associated with the file extension.
  */
-const char* http_response_ext2mime(const char* ext) {
+const char *http_response_ext2mime(const char *ext) {
   static struct {
     char ext[12];
-    char* mime;
+    char *mime;
   } List[] = {
       {"123", "application/vnd.lotus-1-2-3"},
       {"3dml", "text/vnd.in3d.3dml"},
@@ -722,14 +715,12 @@ const char* http_response_ext2mime(const char* ext) {
       {"dna", "application/vnd.dna"},
       {"doc", "application/msword"},
       {"docm", "application/vnd.ms-word.document.macroenabled.12"},
-      {"docx",
-       "application/"
-       "vnd.openxmlformats-officedocument.wordprocessingml.document"},
+      {"docx", "application/"
+               "vnd.openxmlformats-officedocument.wordprocessingml.document"},
       {"dot", "application/msword"},
       {"dotm", "application/vnd.ms-word.template.macroenabled.12"},
-      {"dotx",
-       "application/"
-       "vnd.openxmlformats-officedocument.wordprocessingml.template"},
+      {"dotx", "application/"
+               "vnd.openxmlformats-officedocument.wordprocessingml.template"},
       {"dp", "application/vnd.osgi.dp"},
       {"dpg", "application/vnd.dpgraph"},
       {"dra", "audio/vnd.dra"},
@@ -1154,17 +1145,15 @@ const char* http_response_ext2mime(const char* ext) {
       {"portpkg", "application/vnd.macports.portpkg"},
       {"pot", "application/vnd.ms-powerpoint"},
       {"potm", "application/vnd.ms-powerpoint.template.macroenabled.12"},
-      {"potx",
-       "application/"
-       "vnd.openxmlformats-officedocument.presentationml.template"},
+      {"potx", "application/"
+               "vnd.openxmlformats-officedocument.presentationml.template"},
       {"ppam", "application/vnd.ms-powerpoint.addin.macroenabled.12"},
       {"ppd", "application/vnd.cups-ppd"},
       {"ppm", "image/x-portable-pixmap"},
       {"pps", "application/vnd.ms-powerpoint"},
       {"ppsm", "application/vnd.ms-powerpoint.slideshow.macroenabled.12"},
-      {"ppsx",
-       "application/"
-       "vnd.openxmlformats-officedocument.presentationml.slideshow"},
+      {"ppsx", "application/"
+               "vnd.openxmlformats-officedocument.presentationml.slideshow"},
       {"ppt", "application/vnd.ms-powerpoint"},
       {"pptm", "application/vnd.ms-powerpoint.presentation.macroenabled.12"},
       {"pqa", "application/vnd.palm"},
@@ -1505,9 +1494,8 @@ const char* http_response_ext2mime(const char* ext) {
        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
       {"xlt", "application/vnd.ms-excel"},
       {"xltm", "application/vnd.ms-excel.template.macroenabled.12"},
-      {"xltx",
-       "application/"
-       "vnd.openxmlformats-officedocument.spreadsheetml.template"},
+      {"xltx", "application/"
+               "vnd.openxmlformats-officedocument.spreadsheetml.template"},
       {"xlw", "application/vnd.ms-excel"},
       {"xm", "audio/xm"},
       {"xml", "application/xml"},
@@ -1550,7 +1538,7 @@ const char* http_response_ext2mime(const char* ext) {
   // Copy 8 bytes of the requested extension.
   // (8 byte comparison in enough to avoid collisions)
   uint64_t ext8byte = 0;
-  char* extlow = (void*)(&ext8byte);
+  char *extlow = (void *)(&ext8byte);
   // change the copy to lowercase
   size_t pos = 0;
   while (ext[pos] && pos < 8) {
@@ -1576,9 +1564,9 @@ const char* http_response_ext2mime(const char* ext) {
   else
     pos = 0;
   // check for 8 byte comparison - should be fast on 64 bit systems.
-  uint64_t* lstext;
+  uint64_t *lstext;
   while (List[pos].ext[0]) {
-    lstext = (uint64_t*)List[pos].ext;
+    lstext = (uint64_t *)List[pos].ext;
     if (ext8byte == *lstext)
       return List[pos].mime;
     pos++;
