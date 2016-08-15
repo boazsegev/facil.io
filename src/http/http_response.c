@@ -243,7 +243,6 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   // fprintf(stderr, "file name: %s\noriginal request path: %s\n", fname,
   //         req->path);
   // get file data (prevent folder access and get modification date)
-  return -1;
   if (stat(fname, &file_data))
     return -1;
   // check that we have a file and not something else
