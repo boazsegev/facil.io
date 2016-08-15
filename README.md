@@ -171,7 +171,7 @@ int main(void) {
 }
  ```
 
-To use this library you only need the `libasync.h` and `libasync.c` files.
+To use this library you only need the `spnlock.h`, `libasync.h` and `libasync.c` files.
 
 ## [`libreact`](docs/libreact.md) - KQueue/EPoll abstraction.
 
@@ -192,6 +192,8 @@ To use this library you only need the `libreact.h` and `libreact.c` files.
 Non-Blocking sockets have a lot of common code that needs to be handled, such as a user level buffer (for all the data that didn't get sent when the socket was busy), delayed disconnection (don't close before sending all the data), file descriptor collision protection (preventing data intended for an old client from being sent to a new client) etc'.
 
 Read through this library's documentation to learn more about using this thread-safe library that provides user level writing buffer and seamless integration with `libreact`.
+
+To use this library you only need the `spnlock.h`, `libsock.h` and `libsock.c` files.
 
 ## [`libserver`](docs/libserver.md) - a server building library.
 

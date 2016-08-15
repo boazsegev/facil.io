@@ -12,7 +12,7 @@ This library aims to:
 
 * Provide support for timeout a management callback for server architectures that require the timeout to be reset ("touched") whenever a read/write occurs - this is done by defining an optional `sock_touch(intptr_t uuid)` callback.
 
-`libsock` requires only the following two files from this repository: [`src/libsock.h`](../src/libsock.h) and [`src/libsock.c`](../src/libsock.c).
+`libsock` requires only the following two files from this repository: [`src/spnlock.h`](../src/spnlock.h),  [`src/libsock.h`](../src/libsock.h) and [`src/libsock.c`](../src/libsock.c).
 
 #### The Story Of The Partial `write`
 
