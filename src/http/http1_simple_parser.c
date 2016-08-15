@@ -18,29 +18,29 @@
 Useful macros an helpers
 */
 
-#define a2i(a)                                 \
-  (((a) >= '0' && a <= '9') ? ((a) - '0') : ({ \
-    return -1;                                 \
-    0;                                         \
+#define a2i(a)                                                                 \
+  (((a) >= '0' && a <= '9') ? ((a) - '0') : ({                                 \
+    return -1;                                                                 \
+    0;                                                                         \
   }))
 
-#define CHECK_END()               \
-  {                               \
-    request->metadata.next = pos; \
-    if (pos >= end) {             \
-      return -2;                  \
-    }                             \
+#define CHECK_END()                                                            \
+  {                                                                            \
+    request->metadata.next = pos;                                              \
+    if (pos >= end) {                                                          \
+      return -2;                                                               \
+    }                                                                          \
   }
 
-#define EAT_EOL()                  \
-  {                                \
-    if (*pos == '\r' || *pos == 0) \
-      *(pos++) = 0;                \
-    if (*pos == '\n' || *pos == 0) \
-      *(pos++) = 0;                \
+#define EAT_EOL()                                                              \
+  {                                                                            \
+    if (*pos == '\r' || *pos == 0)                                             \
+      *(pos++) = 0;                                                            \
+    if (*pos == '\n' || *pos == 0)                                             \
+      *(pos++) = 0;                                                            \
   }
 
-static inline char* seek_to_char(char* start, char* end, char tok) {
+static inline char *seek_to_char(char *start, char *end, char tok) {
   while (start < end) {
     if (*start == tok)
       return start;
@@ -48,14 +48,19 @@ static inline char* seek_to_char(char* start, char* end, char tok) {
   }
   return NULL;
 }
+/*
+#define seek_to_char(start, end, tok) memchr(start, tok, (end) - (start))
+*/
 
-static inline char* seek_to_2eol(char* start, char* end) {
-  while (start < end) {
-    if ((*start == '\r' && *(start + 1) == '\n') || *start == '\n')
-      return start;
-    ++start;
-  }
-  return NULL;
+static inline char *seek_to_2eol(char *start, char *end) {
+  char *ret = seek_to_char(start, end, '\n');
+  return ret ? (*(ret - 1) == '\r' ? ret - 1 : ret) : NULL;
+  // while (start < end) {
+  //   if ((*start == '\r' && *(start + 1) == '\n') || *start == '\n')
+  //     return start;
+  //   ++start;
+  // }
+  // return NULL;
 }
 
 #define HOST "host"
@@ -67,13 +72,13 @@ static inline char* seek_to_2eol(char* start, char* end) {
 #if defined(HTTP_HEADERS_LOWERCASE) && HTTP_HEADERS_LOWERCASE == 1
 /* header is lowercase */
 
-#define to_lower(c)             \
-  if ((c) >= 'A' && (c) <= 'Z') \
+#define to_lower(c)                                                            \
+  if ((c) >= 'A' && (c) <= 'Z')                                                \
     (c) |= 32;
 
 /* reviews the latest header and updates any required data in the request
  * structure. */
-static inline ssize_t review_header_data(http_request_s* request, char* tmp) {
+static inline ssize_t review_header_data(http_request_s *request, char *tmp) {
   //  if (request->headers[request->headers_count].name_length == 4 &&
   //      strncmp(request->headers[request->headers_count].name, HOST, 4) == 0)
   //      {
@@ -82,20 +87,21 @@ static inline ssize_t review_header_data(http_request_s* request, char* tmp) {
   //    request->headers[request->headers_count].value_length;
   //  } else
   if (request->headers[request->headers_count].name_length == 4 &&
-      *((uint32_t*)request->headers[request->headers_count].name) ==
-          *((uint32_t*)HOST)) {  // exact match
-    request->host = (void*)tmp;
+      *((uint32_t *)request->headers[request->headers_count].name) ==
+          *((uint32_t *)HOST)) { // exact match
+    request->host = (void *)tmp;
     request->host_len = request->headers[request->headers_count].value_length;
   } else if (request->headers[request->headers_count].name_length == 12 &&
-             *((uint64_t*)(request->headers[request->headers_count].name +
-                           3)) == *((uint64_t*)(CONTENT_TYPE + 3))) {  // almost
-    request->content_type = (void*)tmp;
+             *((uint64_t *)(request->headers[request->headers_count].name +
+                            3)) ==
+                 *((uint64_t *)(CONTENT_TYPE + 3))) { // almost
+    request->content_type = (void *)tmp;
     request->content_type_len =
         request->headers[request->headers_count].value_length;
   } else if (request->headers[request->headers_count].name_length == 14 &&
-             *((uint64_t*)(request->headers[request->headers_count].name +
-                           3)) ==
-                 *((uint64_t*)(CONTENT_LENGTH + 3))) {  // close match
+             *((uint64_t *)(request->headers[request->headers_count].name +
+                            3)) ==
+                 *((uint64_t *)(CONTENT_LENGTH + 3))) { // close match
     // tmp still holds a pointer to the value
     size_t c_len = 0;
     while (*tmp) {
@@ -104,15 +110,15 @@ static inline ssize_t review_header_data(http_request_s* request, char* tmp) {
     };
     request->content_length = c_len;
   } else if (request->headers[request->headers_count].name_length == 7 &&
-             *((uint64_t*)request->headers[request->headers_count].name) ==
-                 *((uint64_t*)UPGRADE)) {  // matches also the NULL character
-    request->upgrade = (void*)tmp;
+             *((uint64_t *)request->headers[request->headers_count].name) ==
+                 *((uint64_t *)UPGRADE)) { // matches also the NULL character
+    request->upgrade = (void *)tmp;
     request->upgrade_len =
         request->headers[request->headers_count].value_length;
   } else if (request->headers[request->headers_count].name_length == 10 &&
-             *((uint64_t*)request->headers[request->headers_count].name) ==
-                 *((uint64_t*)CONNECTION)) {  // a close enough match
-    request->connection = (void*)tmp;
+             *((uint64_t *)request->headers[request->headers_count].name) ==
+                 *((uint64_t *)CONNECTION)) { // a close enough match
+    request->connection = (void *)tmp;
     request->connection_len =
         request->headers[request->headers_count].value_length;
   }
@@ -122,17 +128,17 @@ static inline ssize_t review_header_data(http_request_s* request, char* tmp) {
 #else
 /* unknown header case */
 
-static inline ssize_t review_header_data(http_request_s* request,
-                                         uint8_t* tmp) {
+static inline ssize_t review_header_data(http_request_s *request,
+                                         uint8_t *tmp) {
   if (request->headers[request->headers_count].name_length == 4 &&
       strncasecmp(request->headers[request->headers_count].name, HOST, 4) ==
           0) {
-    request->host = (void*)tmp;
+    request->host = (void *)tmp;
     request->host_len = request->headers[request->headers_count].value_length;
   } else if (request->headers[request->headers_count].name_length == 12 &&
              strncasecmp(request->headers[request->headers_count].name,
                          CONTENT_TYPE, 12) == 0) {
-    request->content_type = (void*)tmp;
+    request->content_type = (void *)tmp;
     request->content_type_len =
         request->headers[request->headers_count].value_length;
   } else if (request->headers[request->headers_count].name_length == 14 &&
@@ -148,13 +154,13 @@ static inline ssize_t review_header_data(http_request_s* request,
   } else if (request->headers[request->headers_count].name_length == 7 &&
              strncasecmp(request->headers[request->headers_count].name, UPGRADE,
                          7) == 0) {
-    request->upgrade = (void*)tmp;
+    request->upgrade = (void *)tmp;
     request->upgrade_len =
         request->headers[request->headers_count].value_length;
   } else if (request->headers[request->headers_count].name_length == 10 &&
              strncasecmp(request->headers[request->headers_count].name,
                          CONNECTION, 10) == 0) {
-    request->connection = (void*)tmp;
+    request->connection = (void *)tmp;
     request->connection_len =
         request->headers[request->headers_count].value_length;
   }
@@ -182,24 +188,23 @@ buffer
 and the same `http_request_s` should be returned to the parsed on the "next
 round", only the `len` argument is expected to grow.
 */
-ssize_t http1_parse_request_headers(void* buffer,
-                                    size_t len,
-                                    http_request_s* request) {
+ssize_t http1_parse_request_headers(void *buffer, size_t len,
+                                    http_request_s *request) {
   if (request == NULL || buffer == NULL || request->metadata.max_headers == 0)
     return -1;
   if (request->body_str || request->body_file > 0)
     return 0;
   if (len == 0)
     return -2;
-  char* pos = buffer;
-  char* end = buffer + len;
+  char *pos = buffer;
+  char *end = buffer + len;
   char *next, *tmp;
   // collect method and restart parser if already collected
   if (request->method == NULL) {
     // eat empty spaces
     while ((*pos == '\n' || *pos == '\r') && pos < end)
       ++pos;
-    request->method = (char*)pos;
+    request->method = (char *)pos;
     next = seek_to_char(pos, end, ' ');
     if (next == NULL)
       return -1; /* there should be a limit to all fragmentations. */
@@ -217,13 +222,13 @@ ssize_t http1_parse_request_headers(void* buffer,
     next = seek_to_char(pos, end, ' ');
     if (next == NULL)
       return -2;
-    request->path = (char*)pos;
+    request->path = (char *)pos;
     request->path_len = next - pos;
     tmp = seek_to_char(pos, next, '?');
     if (tmp) {
       request->path_len = tmp - pos;
       *(tmp++) = 0;
-      request->query = (char*)tmp;
+      request->query = (char *)tmp;
       request->query_len = next - tmp;
     }
     pos = next;
@@ -235,7 +240,7 @@ ssize_t http1_parse_request_headers(void* buffer,
     next = seek_to_2eol(pos, end);
     if (next == NULL)
       return -2;
-    request->version = (char*)pos;
+    request->version = (char *)pos;
     request->version_len = (uintptr_t)next - (uintptr_t)pos;
     pos = next;
     EAT_EOL();
@@ -262,12 +267,12 @@ ssize_t http1_parse_request_headers(void* buffer,
     if (!tmp)
       return -1;
 #endif
-    request->headers[request->headers_count].name = (void*)pos;
+    request->headers[request->headers_count].name = (void *)pos;
     request->headers[request->headers_count].name_length = tmp - pos;
     *(tmp++) = 0;
     if (*tmp == ' ')
       *(tmp++) = 0;
-    request->headers[request->headers_count].value = (char*)tmp;
+    request->headers[request->headers_count].value = (char *)tmp;
     request->headers[request->headers_count].value_length = next - tmp;
     // eat EOL before content-length processing.
     pos = next;
@@ -287,18 +292,18 @@ ssize_t http1_parse_request_headers(void* buffer,
   // check if the body is contained within the buffer
   EAT_EOL();
   if (request->content_length && (end - pos) >= request->content_length) {
-    request->body_str = (void*)pos;
+    request->body_str = (void *)pos;
     // fprintf(stderr,
     //         "assigning body to string. content-length %lu, buffer left: "
     //         "%lu/%lu\n(%lu) %p:%.*s\n",
     //         request->content_length, end - pos, len, request->content_length,
     //         request->body_str, (int)request->content_length,
     //         request->body_str);
-    return (ssize_t)(pos - (char*)buffer) + request->content_length;
+    return (ssize_t)(pos - (char *)buffer) + request->content_length;
   }
 
   // we're done.
-  return pos - (char*)buffer;
+  return pos - (char *)buffer;
 }
 
 /**
@@ -312,9 +317,8 @@ Returns -2 when the request parsing didn't complete.
 Incomplete body parsing doesn't effect the buffer received. It is expected that
 the next "round" will contain fresh data in the `buffer` argument.
 */
-ssize_t http1_parse_request_body(void* buffer,
-                                 size_t len,
-                                 http_request_s* request) {
+ssize_t http1_parse_request_body(void *buffer, size_t len,
+                                 http_request_s *request) {
   if (request == NULL)
     return -1;
   // is body parsing needed?
@@ -336,7 +340,7 @@ ssize_t http1_parse_request_body(void* buffer,
     if (request->body_file == -1)
       return -1;
     // use the `next` field to store parser state.
-    uintptr_t* tmp = (uintptr_t*)(&request->metadata.next);
+    uintptr_t *tmp = (uintptr_t *)(&request->metadata.next);
     *tmp = 0;
   }
   // make sure we have anything to read. This might be an initializing call.
@@ -353,8 +357,8 @@ ssize_t http1_parse_request_body(void* buffer,
   if (write(request->body_file, buffer, to_read) < to_read)
     return -1;
   // update the `next` field data with the received content length
-  uintptr_t* tmp = (uintptr_t*)(&request->metadata.next);
-  *tmp += to_read;  // request->metadata.next += to_read;
+  uintptr_t *tmp = (uintptr_t *)(&request->metadata.next);
+  *tmp += to_read; // request->metadata.next += to_read;
 
   // check the state and return.
   if (((uintptr_t)request->metadata.next) >= request->content_length) {
@@ -369,17 +373,16 @@ ssize_t http1_parse_request_body(void* buffer,
 #include <time.h>
 
 void http_parser_test(void) {
-  char request_text[] =
-      "GET /?a=b HTTP/1.1\r\n"
-      "Host: local\r\n"
-      "Upgrade: websocket\r\n"
-      "Content-Length: 12\r\n"
-      "Connection: close\r\n"
-      "\r\n"
-      "Hello World!\r\n";
+  char request_text[] = "GET /?a=b HTTP/1.1\r\n"
+                        "Host: local\r\n"
+                        "Upgrade: websocket\r\n"
+                        "Content-Length: 12\r\n"
+                        "Connection: close\r\n"
+                        "\r\n"
+                        "Hello World!\r\n";
   size_t request_length = sizeof(request_text) - 1;
   uint8_t request_mem[HTTP_REQUEST_SIZE(24)] = {};
-  http_request_s* request = (void*)request_mem;
+  http_request_s *request = (void *)request_mem;
   *request = (http_request_s){.metadata.max_headers = 24};
   ssize_t ret =
       http1_parse_request_headers(request_text, request_length, request);
@@ -388,8 +391,8 @@ void http_parser_test(void) {
   } else if (ret == -2) {
     fprintf(stderr, "* Parser FAILED -2.\n");
   } else {
-#define pok(true_str, false_str, result, expected)      \
-  (((result) == (expected)) ? fprintf(stderr, true_str) \
+#define pok(true_str, false_str, result, expected)                             \
+  (((result) == (expected)) ? fprintf(stderr, true_str)                        \
                             : fprintf(stderr, false_str))
     pok("* Correct Return\n", "* WRONG Return\n", ret,
         sizeof(request_text) - 3);
@@ -419,28 +422,26 @@ void http_parser_test(void) {
   clock_t start, end;
   start = clock();
   for (size_t i = 0; i < 6000000; i++) {
-    char request_text2[] =
-        "GET /?a=b HTTP/1.1\r\n"
-        "Host: local\r\n"
-        "Upgrade: websocket\r\n"
-        "Content-Length: 12\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "Hello World!\r\n";
+    char request_text2[] = "GET /?a=b HTTP/1.1\r\n"
+                           "Host: local\r\n"
+                           "Upgrade: websocket\r\n"
+                           "Content-Length: 12\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "Hello World!\r\n";
     http1_parse_request_headers(request_text2, request_length, request);
     http_request_clear(request);
   }
   end = clock();
   fprintf(stderr, "7M requests in %lu cycles (%lf ms)\n", end - start,
           (double)(end - start) / (CLOCKS_PER_SEC / 1000));
-  char request_text2[] =
-      "GET /?a=b HTTP/1.1\r\n"
-      "Host: local\r\n"
-      "Upgrade: websocket\r\n"
-      "Content-Length: 12\r\n"
-      "Connection: close\r\n"
-      "\r\n"
-      "Hello World!\r\n";
+  char request_text2[] = "GET /?a=b HTTP/1.1\r\n"
+                         "Host: local\r\n"
+                         "Upgrade: websocket\r\n"
+                         "Content-Length: 12\r\n"
+                         "Connection: close\r\n"
+                         "\r\n"
+                         "Hello World!\r\n";
   fprintf(stderr, "start\n");
   if (http1_parse_request_headers(request_text2, 7, request) != -2)
     fprintf(stderr, "Fragmented Parsing FAILED\n");
