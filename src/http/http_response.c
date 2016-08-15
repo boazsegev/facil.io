@@ -199,7 +199,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
                             const char *file_path_unsafe,
                             size_t path_unsafe_len, uint8_t log) {
   static char *HEAD = "HEAD";
-  if (request == NULL)
+  if (request == NULL || (file_path_safe == NULL && file_path_unsafe == NULL))
     return -1;
   http_response_s tmp_response;
 
@@ -214,40 +214,45 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   struct stat file_data = {};
   // fprintf(stderr, "\n\noriginal request path: %s\n", req->path);
   char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
+  if (fname == NULL)
+    return -1;
   if (file_path_safe)
     memcpy(fname, file_path_safe, path_safe_len);
+  fname[path_safe_len] = 0;
   // if the last character is a '/', step back.
-  if (fname[path_safe_len - 1] == '/')
-    path_safe_len--;
-  ssize_t tmp =
-      http_decode_url(fname + path_safe_len, file_path_unsafe, path_unsafe_len);
-  if (tmp < 0)
-    return -1;
-  path_safe_len += tmp;
-  if (fname[path_safe_len - 1] == '/') {
-    memcpy(fname + path_safe_len, "index.html", 10);
-    fname[path_safe_len += 10] = 0;
-  }
+  if (file_path_unsafe) {
+    if (fname[path_safe_len - 1] == '/')
+      path_safe_len--;
+    ssize_t tmp = http_decode_url(fname + path_safe_len, file_path_unsafe,
+                                  path_unsafe_len);
+    if (tmp < 0)
+      goto no_file;
+    path_safe_len += tmp;
+    if (fname[path_safe_len - 1] == '/') {
+      memcpy(fname + path_safe_len, "index.html", 10);
+      fname[path_safe_len += 10] = 0;
+    }
 
-  // scan path string for double dots (security - prevent path manipulation)
-  // set the extention point value, while were doing so.
-  tmp = 0;
-  while (fname[tmp]) {
-    if (fname[tmp] == '.')
-      ext = fname + tmp;
-    // return false if we found a "/.." or "/" in our string.
-    if (fname[tmp++] == '/' &&
-        ((fname[tmp++] == '.' && fname[tmp++] == '.') || fname[tmp] == '/'))
-      return -1;
+    // scan path string for double dots (security - prevent path manipulation)
+    // set the extention point value, while were doing so.
+    tmp = 0;
+    while (fname[tmp]) {
+      if (fname[tmp] == '.')
+        ext = fname + tmp;
+      // return false if we found a "/.." or "/" in our string.
+      if (fname[tmp++] == '/' &&
+          ((fname[tmp++] == '.' && fname[tmp++] == '.') || fname[tmp] == '/'))
+        goto no_file;
+    }
   }
   // fprintf(stderr, "file name: %s\noriginal request path: %s\n", fname,
   //         req->path);
   // get file data (prevent folder access and get modification date)
   if (stat(fname, &file_data))
-    return -1;
+    goto no_file;
   // check that we have a file and not something else
   if (!S_ISREG(file_data.st_mode) && !S_ISLNK(file_data.st_mode))
-    return -1;
+    goto no_file;
 
   if (response == NULL) {
     response = &tmp_response;
@@ -263,8 +268,11 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   // we have a file, time to handle response details.
   int file = open(fname, O_RDONLY);
   if (file == -1) {
-    return -1;
+    goto no_file;
   }
+  // free the allocated fname memory
+  free(fname);
+  fname = NULL;
 
   // get the mime type (we have an ext pointer and the string isn't empty)
   if (ext && ext[1]) {
@@ -339,6 +347,9 @@ invalid_range:
   if (log)
     http_response_log_finish(response);
   return 0;
+no_file:
+  free(fname);
+  return -1;
 }
 /**
 Starts counting miliseconds for log results.
