@@ -37,7 +37,7 @@ Performance options.
 
 /* use pipe for wakeup if == 0 else, use nanosleep when no tasks. */
 #ifndef ASYNC_NANO_SLEEP
-#define ASYNC_NANO_SLEEP 16777216  // 8388608  // 1048576  // 524288
+#define ASYNC_NANO_SLEEP 16777216 // 8388608  // 1048576  // 524288
 #endif
 
 /* Sentinal thread to respawn crashed threads - limited crash resistance. */
@@ -51,11 +51,11 @@ defined.
 */
 
 // the actual working thread
-static void* worker_thread_cycle(void*);
+static void *worker_thread_cycle(void *);
 
 // A thread sentinal (optional - edit the ASYNC_USE_SENTINEL macro to use or
 // disable)
-static void* sentinal_thread(void*);
+static void *sentinal_thread(void *);
 
 /******************************************************************************
 Portability - used to help port this to different frameworks (i.e. Ruby).
@@ -64,15 +64,14 @@ Portability - used to help port this to different frameworks (i.e. Ruby).
 #ifndef THREAD_TYPE
 #define THREAD_TYPE pthread_t
 
-static void* join_thread(THREAD_TYPE thr) {
-  void* ret;
+static void *join_thread(THREAD_TYPE thr) {
+  void *ret;
   pthread_join(thr, &ret);
   return ret;
 }
 
-static int create_thread(THREAD_TYPE* thr,
-                         void* (*thread_func)(void*),
-                         void* async) {
+static int create_thread(THREAD_TYPE *thr, void *(*thread_func)(void *),
+                         void *async) {
   return pthread_create(thr, NULL, thread_func, async);
 }
 
@@ -85,8 +84,8 @@ Data Types
 A task
 */
 typedef struct {
-  void (*task)(void*);
-  void* arg;
+  void (*task)(void *);
+  void *arg;
 } task_s;
 
 /**
@@ -94,158 +93,15 @@ A task node
 */
 typedef struct async_task_ns {
   task_s task;
-  struct async_task_ns* next;
+  struct async_task_ns *next;
 } async_task_ns;
 
 /* *****************************************************************************
-A Simple busy lock implementation ... (spnlock.h) ... copied for portability
+Use spinlocks "spnlock.h".
+
+For portability, it's possible copy "spnlock.h" directly after this line.
 */
-#ifndef _SPN_LOCK_H
-#define _SPN_LOCK_H
-
-/* allow of the unused flag */
-#ifndef __unused
-#define __unused __attribute__((unused))
-#endif
-
-#include <stdlib.h>
-#include <stdint.h>
-
-/*********
- * manage the way threads "wait" for the lock to release
- */
-#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
-/* nanosleep seems to be the most effective and efficient reschedule */
-#include <time.h>
-#define reschedule_thread()                           \
-  {                                                   \
-    static const struct timespec tm = {.tv_nsec = 1}; \
-    nanosleep(&tm, NULL);                             \
-  }
-
-#else /* no effective rescheduling, just spin... */
-#define reschedule_thread()
-
-#endif
-/* end `reschedule_thread` block*/
-
-/*********
- * The spin lock core functions (spn_trylock, spn_unlock, is_spn_locked)
- */
-
-/* prefer C11 standard implementation where available (trust the system) */
-#if defined(__has_include)
-#if __has_include(<stdatomic.h>)
-#define SPN_TMP_HAS_ATOMICS 1
-#include <stdatomic.h>
-typedef atomic_bool spn_lock_i;
-#define SPN_LOCK_INIT ATOMIC_VAR_INIT(0)
-/** returns 1 if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i* lock) {
-  __asm__ volatile("" ::: "memory");
-  return atomic_exchange(lock, 1);
-}
-/** Releases a lock. */
-__unused static inline void spn_unlock(spn_lock_i* lock) {
-  atomic_store(lock, 0);
-  __asm__ volatile("" ::: "memory");
-}
-/** returns a lock's state (non 0 == Busy). */
-__unused static inline int spn_is_locked(spn_lock_i* lock) {
-  return atomic_load(lock);
-}
-#endif
-#endif
-
-/* Chack if stdatomic was available */
-#ifdef SPN_TMP_HAS_ATOMICS
-#undef SPN_TMP_HAS_ATOMICS
-
-#else
-/* Test for compiler builtins */
-
-/* use clang builtins if available - trust the compiler */
-#if defined(__clang__)
-#if defined(__has_builtin) && __has_builtin(__sync_swap)
-/* define the type */
-typedef volatile uint8_t spn_lock_i;
-/** returns 1 if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i* lock) {
-  return __sync_swap(lock, 1);
-}
-#define SPN_TMP_HAS_BUILTIN 1
-#endif
-/* use gcc builtins if available - trust the compiler */
-#elif defined(__GNUC__) && \
-    (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 4))
-/* define the type */
-typedef volatile uint8_t spn_lock_i;
-/** returns 1 if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i* lock) {
-  return __sync_fetch_and_or(lock, 1);
-}
-#define SPN_TMP_HAS_BUILTIN 1
-#endif
-
-/* Check if compiler builtins were available, if not, try assembly*/
-#if SPN_TMP_HAS_BUILTIN
-#undef SPN_TMP_HAS_BUILTIN
-
-/* use Intel's asm if on Intel - trust Intel's documentation */
-#elif defined(__amd64__) || defined(__x86_64__) || defined(__x86__) || \
-    defined(__i386__) || defined(__ia64__) || defined(_M_IA64) ||      \
-    defined(__itanium__) || defined(__i386__)
-/* define the type */
-typedef volatile uint8_t spn_lock_i;
-/** returns 1 if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i* lock) {
-  spn_lock_i tmp;
-  __asm__ volatile("xchgb %0,%1" : "=r"(tmp), "=m"(*lock) : "0"(1) : "memory");
-  return tmp;
-}
-
-/* use SPARC's asm if on SPARC - trust the design */
-#elif defined(__sparc__) || defined(__sparc)
-/* define the type */
-typedef volatile uint8_t spn_lock_i;
-/** returns TRUE (non-zero) if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i* lock) {
-  spn_lock_i tmp;
-  __asm__ volatile("ldstub    [%1], %0" : "=r"(tmp) : "r"(lock) : "memory");
-  return tmp; /* return 0xFF if the lock was busy, 0 if free */
-}
-
-#else
-/* I don't know how to provide green thread safety on PowerPC or ARM */
-#error "Couldn't implement a spinlock for this system / compiler"
-#endif /* types and atomic exchange */
-/** Initialization value in `free` state. */
-#define SPN_LOCK_INIT 0
-
-/** Releases a lock. */
-__unused static inline void spn_unlock(spn_lock_i* lock) {
-  __asm__ volatile("" ::: "memory");
-  *lock = 0;
-}
-/** returns a lock's state (non 0 == Busy). */
-__unused static inline int spn_is_locked(spn_lock_i* lock) {
-  __asm__ volatile("" ::: "memory");
-  return *lock;
-}
-
-#endif /* has atomics */
-#include <stdio.h>
-/** Busy waits for the lock. */
-__unused static inline void spn_lock(spn_lock_i* lock) {
-  while (spn_trylock(lock)) {
-    reschedule_thread();
-  }
-}
-
-/* *****************************************************************************
-spnlock.h finished
-*/
-#endif
+#include "spnlock.h"
 
 /******************************************************************************
 Core Data
@@ -259,9 +115,9 @@ typedef struct {
 
   /* task management*/
   async_task_ns memory[ASYNC_TASK_POOL_SIZE];
-  async_task_ns* pool;
-  async_task_ns* tasks;
-  async_task_ns** pos;
+  async_task_ns *pool;
+  async_task_ns *tasks;
+  async_task_ns **pos;
 
   /* thread management*/
   size_t thread_count;
@@ -274,7 +130,7 @@ typedef struct {
   } io;
 #endif
 
-#if defined(ASYNC_USE_SPINLOCK) && ASYNC_USE_SPINLOCK == 1  // use spinlock
+#if defined(ASYNC_USE_SPINLOCK) && ASYNC_USE_SPINLOCK == 1 // use spinlock
   /* if using spinlock */
   spn_lock_i lock;
 #endif
@@ -288,19 +144,19 @@ typedef struct {
   THREAD_TYPE threads[];
 } async_data_s;
 
-static async_data_s* async;
+static async_data_s *async;
 
 /******************************************************************************
 Core Data initialization and lock/unlock
 */
 
-#if defined(ASYNC_USE_SPINLOCK) && ASYNC_USE_SPINLOCK == 1  // use spinlock
+#if defined(ASYNC_USE_SPINLOCK) && ASYNC_USE_SPINLOCK == 1 // use spinlock
 #define lock_async_init() (spn_unlock(&(async->lock)), 0)
 #define lock_async_destroy() ;
 #define lock_async() spn_lock(&(async->lock))
 #define unlock_async() spn_unlock(&(async->lock))
 
-#else  // Using Mutex
+#else // Using Mutex
 #define lock_async_init() (pthread_mutex_init(&((async)->lock), NULL))
 #define lock_async_destroy() (pthread_mutex_destroy(&((async)->lock)))
 #define lock_async() (pthread_mutex_lock(&((async)->lock)))
@@ -335,7 +191,7 @@ static inline void async_alloc(size_t threads) {
     return;
   }
 
-#if ASYNC_NANO_SLEEP == 0  // using pipes?
+#if ASYNC_NANO_SLEEP == 0 // using pipes?
   if (pipe(&async->io.in)) {
     async_free();
     return;
@@ -357,7 +213,7 @@ Perfoming tasks
 
 static inline void perform_tasks(void) {
   task_s tsk;
-  async_task_ns* t;
+  async_task_ns *t;
   while (async) {
     lock_async();
     t = async->tasks;
@@ -420,27 +276,26 @@ Worker threads
 // using sentinal)
 // manage thread error signals
 static void on_err_signal(int sig) {
-  void* array[22];
+  void *array[22];
   size_t size;
-  char** strings;
+  char **strings;
   size_t i;
   size = backtrace(array, 22);
   strings = backtrace_symbols(array, size);
   perror("\nERROR");
-  fprintf(stderr,
-          "Async: Error signal received"
-          " - %s (errno %d).\nBacktrace (%zd):\n",
+  fprintf(stderr, "Async: Error signal received"
+                  " - %s (errno %d).\nBacktrace (%zd):\n",
           strsignal(sig), errno, size);
   for (i = 2; i < size; i++)
     fprintf(stderr, "%s\n", strings[i]);
   free(strings);
   fprintf(stderr, "\n");
   // pthread_exit(0); // for testing
-  pthread_exit((void*)on_err_signal);
+  pthread_exit((void *)on_err_signal);
 }
 
 // The worker cycle
-static void* worker_thread_cycle(void* _) {
+static void *worker_thread_cycle(void *_) {
   // register error signals when using a sentinal
   if (ASYNC_USE_SENTINEL) {
     signal(SIGSEGV, on_err_signal);
@@ -470,7 +325,7 @@ static void* worker_thread_cycle(void* _) {
 }
 
 // an optional sentinal
-static void* sentinal_thread(void* _) {
+static void *sentinal_thread(void *_) {
   THREAD_TYPE thr;
   while (async != NULL && async->flags.run == 1 &&
          create_thread(&thr, worker_thread_cycle, _) == 0)
@@ -525,9 +380,7 @@ Use:
   Async.wait(async);
 
 */
-void async_perform() {
-  perform_tasks();
-}
+void async_perform() { perform_tasks(); }
 
 /**
 Schedules a task to be performed by the thread pool.
@@ -544,10 +397,10 @@ Use:
   async_run(task, arg);
 
 */
-int async_run(void (*task)(void*), void* arg) {
+int async_run(void (*task)(void *), void *arg) {
   if (async == NULL)
     return -1;
-  async_task_ns* tsk;
+  async_task_ns *tsk;
   lock_async();
   tsk = async->pool;
   if (tsk) {
@@ -605,29 +458,29 @@ Test
 
 static size_t _Atomic i_count = 0;
 
-static void sample_task(void* _) {
+static void sample_task(void *_) {
   __asm__ volatile("" ::: "memory");
   atomic_fetch_add(&i_count, 1);
 }
 
-static void sched_sample_task(void* _) {
+static void sched_sample_task(void *_) {
   for (size_t i = 0; i < 1024; i++) {
     async_run(sample_task, async);
   }
 }
 
-static void text_task_text(void* _) {
+static void text_task_text(void *_) {
   __asm__ volatile("" ::: "memory");
   fprintf(stderr, "this text should print before async_finish returns\n");
 }
 
-static void text_task(void* _) {
+static void text_task(void *_) {
   sleep(2);
   async_run(text_task_text, _);
 }
 
 #if ASYNC_USE_SENTINEL == 1
-static void evil_task(void* _) {
+static void evil_task(void *_) {
   __asm__ volatile("" ::: "memory");
   fprintf(stderr, "EVIL CODE RUNNING!\n");
   sprintf(NULL,
