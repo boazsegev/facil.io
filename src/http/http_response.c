@@ -355,11 +355,28 @@ no_file:
   free(fname);
   return -1;
 }
+
+#ifdef RUSAGE_SELF
+const static size_t CLOCK_RESOLUTION = 1000; /* in miliseconds */
+static size_t get_clock_mili(void) {
+  struct rusage rusage;
+  getrusage(RUSAGE_SELF, &rusage);
+  return ((rusage.ru_utime.tv_sec + rusage.ru_stime.tv_sec) * 1000000) +
+         (rusage.ru_utime.tv_usec + rusage.ru_stime.tv_usec);
+}
+#elif defined CLOCKS_PER_SEC
+#define get_clock_mili() (size_t) clock()
+#define CLOCK_RESOLUTION (CLOCKS_PER_SEC / 1000)
+#else
+#define get_clock_mili() 0
+#define CLOCK_RESOLUTION 1
+#endif
+
 /**
 Starts counting miliseconds for log results.
 */
 void http_response_log_start(http_response_s *response) {
-  response->metadata.clock_start = clock();
+  response->metadata.clock_start = get_clock_mili();
   response->metadata.logged = 1;
 }
 /**
@@ -371,8 +388,8 @@ void http_response_log_finish(http_response_s *response) {
   uintptr_t bytes_sent = (uintptr_t)response->metadata.headers_pos;
 
   size_t mili = response->metadata.logged
-                    ? ((clock() - response->metadata.clock_start) /
-                       (CLOCKS_PER_SEC / 1000))
+                    ? ((get_clock_mili() - response->metadata.clock_start) /
+                       CLOCK_RESOLUTION)
                     : 0;
   struct tm tm;
   struct sockaddr_in addrinfo;
