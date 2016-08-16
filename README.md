@@ -6,6 +6,8 @@ Here you will find tools to write HTTP, Websockets and custom network applicatio
 
 All the libraries here are provided as source code. Although the more complex libraries (i.e. `lib-server` and it's extensions) require the smaller libraries (i.e. the thread-pool library `libasync`, the socket library `libsock` or the reactor core `libreact`), the smaller libraries can be used independently.
 
+I got to use this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
+
 **Writing HTTP and Websocket services in C? Easy!**
 
 Websockets and HTTP are super common, so `libserver` comes with HTTP and Websocket extensions, allowing us to easily write HTTP and Websocket services.
