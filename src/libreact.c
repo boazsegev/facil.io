@@ -21,9 +21,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 #include <string.h>
 #include <netdb.h>
-// #include <sys/types.h>
-// #include <sys/socket.h>
-// #include <sys/resource.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 /* The (sadly, global) reactor fd */
 static int reactor_fd = -1;
