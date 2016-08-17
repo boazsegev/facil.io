@@ -240,7 +240,7 @@ static inline void perform_tasks(void) {
 }
 
 /******************************************************************************
-Pasuing and resuming threads
+Pausing and resuming threads
 */
 
 static inline void pause_thread() {
