@@ -713,6 +713,14 @@ ssize_t sock_send_packet(intptr_t uuid, sock_packet_s *packet) {
 }
 
 /**
+Returns TRUE (non 0) if there is data waiting to be written to the socket in the
+user-land buffer.
+*/
+_Bool sock_packets_pending(intptr_t uuid) {
+  return uuid2info(uuid).packet != NULL;
+}
+
+/**
 Use `sock_free_packet` to free unused packets that were checked-out using
 `sock_checkout_packet`.
 */

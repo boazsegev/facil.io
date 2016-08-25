@@ -35,7 +35,7 @@ User land buffer settings for every packet's pre-alocated memory size (17Kb)
 This information is also useful when implementing read / write hooks.
 */
 #ifndef BUFFER_PACKET_SIZE
-#define BUFFER_PACKET_SIZE \
+#define BUFFER_PACKET_SIZE                                                     \
   (1024 * 16) /* Use 32 Kb. With sendfile, 16 Kb might be better. */
 #endif
 #ifndef BUFFER_FILE_READ_SIZE
@@ -118,7 +118,7 @@ client data for "broadcasting" or when an old client task is preparing a
 response in the background while a disconnection and a new connection occur on
 the same `fd`).
 */
-intptr_t sock_listen(const char* address, const char* port);
+intptr_t sock_listen(const char *address, const char *port);
 
 /**
 `sock_accept` accepts a new socket connection from the listening socket
@@ -162,7 +162,7 @@ hanging while waiting for a network timeout).
 Use select, poll, `libreact` or other solutions to review the connection state
 before attempting to write to the socket.
 */
-intptr_t sock_connect(char* address, char* port);
+intptr_t sock_connect(char *address, char *port);
 
 /**
 `sock_open` takes an existing file descriptor `fd` and initializes it's status
@@ -225,14 +225,14 @@ read using sock_read (i.e., when using a transport layer, such as TLS).
 Also, some internal buffering will might be used in cases where the transport
 layer data available is larger then the data requested.
 */
-ssize_t sock_read(intptr_t uuid, void* buf, size_t count);
+ssize_t sock_read(intptr_t uuid, void *buf, size_t count);
 
 typedef struct {
   /** The fd for sending data. */
   intptr_t fduuid;
   /** The data to be sent. This can be either a byte stream or a file pointer
    * (`FILE *`). */
-  const void* buffer;
+  const void *buffer;
   /** The length (size) of the buffer. irrelevant for file pointers. */
   size_t length;
   /** Starting point offset, when the buffer is a file
@@ -274,7 +274,7 @@ transferred to the socket's user level buffer.
 **Note** this is actually a specific case of `sock_write2` and this macro
 actually calls `sock_write2`.
 */
-#define sock_write(uuid, buf, count) \
+#define sock_write(uuid, buf, count)                                           \
   sock_write2(.fduuid = (uuid), .buffer = (buf), .length = (count))
 
 /**
@@ -292,11 +292,9 @@ the maximum amount of data to be sent.
 
 Returns -1 and closes the file on error. Returns 0 on success.
 */
-__unused static inline ssize_t sock_sendfile(intptr_t uuid,
-                                             int source_fd,
-                                             off_t offset,
-                                             size_t length) {
-  return sock_write2(.fduuid = uuid, .buffer = (void*)((intptr_t)source_fd),
+__unused static inline ssize_t sock_sendfile(intptr_t uuid, int source_fd,
+                                             off_t offset, size_t length) {
+  return sock_write2(.fduuid = uuid, .buffer = (void *)((intptr_t)source_fd),
                      .length = length, .is_fd = 1, .offset = offset);
 }
 
@@ -351,11 +349,11 @@ function.
 */
 typedef struct sock_packet_s {
   ssize_t length;
-  void* buffer;
+  void *buffer;
   /** Metadata about the packet. */
   struct {
     /** allows the linking of a number of packets together. */
-    struct sock_packet_s* next;
+    struct sock_packet_s *next;
     /** Starting point offset, when the buffer is a file (see
      * `sock_packet_s.metadata.is_fd`). */
     off_t offset;
@@ -396,7 +394,7 @@ pointer (which can be safely overwritten to point to an external buffer).
 This attached buffer is safely and automatically freed or returned to the memory
 pool once `sock_send_packet` or `sock_free_packet` are called.
 */
-sock_packet_s* sock_checkout_packet(void);
+sock_packet_s *sock_checkout_packet(void);
 /**
 Attaches a packet to a socket's output buffer and calls `sock_flush` for the
 socket.
@@ -406,7 +404,13 @@ The packet's memory is **always** handled by the `sock_send_packet` function
 
 Returns -1 on error. Returns 0 on success.
 */
-ssize_t sock_send_packet(intptr_t uuid, sock_packet_s* packet);
+ssize_t sock_send_packet(intptr_t uuid, sock_packet_s *packet);
+
+/**
+Returns TRUE (non 0) if there is data waiting to be written to the socket in the
+user-land buffer.
+*/
+_Bool sock_packets_pending(intptr_t uuid);
 
 /**
 Use `sock_free_packet` to free unused packets that were checked-out using
@@ -415,7 +419,7 @@ Use `sock_free_packet` to free unused packets that were checked-out using
 NEVER use `free`, for any packet checked out using the pool management function
 `sock_checkout_packet`.
 */
-void sock_free_packet(sock_packet_s* packet);
+void sock_free_packet(sock_packet_s *packet);
 
 /* *****************************************************************************
 TLC - Transport Layer Callback.
@@ -429,10 +433,10 @@ replace the default system calls to `recv` and `write`. */
 typedef struct sock_rw_hook_s {
   /** Implement reading from a file descriptor. Should behave like the file
    * system `read` call, including the setup or errno to EAGAIN / EWOULDBLOCK.*/
-  ssize_t (*read)(intptr_t fduuid, void* buf, size_t count);
+  ssize_t (*read)(intptr_t fduuid, void *buf, size_t count);
   /** Implement writing to a file descriptor. Should behave like the file system
    * `write` call.*/
-  ssize_t (*write)(intptr_t fduuid, const void* buf, size_t count);
+  ssize_t (*write)(intptr_t fduuid, const void *buf, size_t count);
   /** When implemented, this function will be called to flush any data remaining
    * in the internal buffer.
    * The function should return the number of bytes remaining in the internal
@@ -448,7 +452,7 @@ typedef struct sock_rw_hook_s {
    *
    * The `on_clear` callback should manage is own thread safety mechanism, if
    * required. */
-  void (*on_clear)(intptr_t fduuid, struct sock_rw_hook_s* rw_hook);
+  void (*on_clear)(intptr_t fduuid, struct sock_rw_hook_s *rw_hook);
 } sock_rw_hook_s;
 
 /* *****************************************************************************
@@ -456,10 +460,10 @@ RW hooks implementation
 */
 
 /** Gets a socket hook state (a pointer to the struct). */
-struct sock_rw_hook_s* sock_rw_hook_get(intptr_t fduuid);
+struct sock_rw_hook_s *sock_rw_hook_get(intptr_t fduuid);
 
 /** Sets a socket hook state (a pointer to the struct). */
-int sock_rw_hook_set(intptr_t fduuid, sock_rw_hook_s* rw_hooks);
+int sock_rw_hook_set(intptr_t fduuid, sock_rw_hook_s *rw_hooks);
 
 /* *****************************************************************************
 test
