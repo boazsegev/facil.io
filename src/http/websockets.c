@@ -8,7 +8,7 @@
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>
-#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) && \
+#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) &&                 \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #define __BIG_ENDIAN__
 #endif
@@ -18,21 +18,21 @@
 Buffer management - update to change the way the buffer is handled.
 */
 struct buffer_s {
-  void* data;
+  void *data;
   size_t size;
 };
 
 #pragma weak create_ws_buffer
 /** returns a buffer_s struct, with a buffer (at least) `size` long. */
-struct buffer_s create_ws_buffer(ws_s* owner);
+struct buffer_s create_ws_buffer(ws_s *owner);
 
 #pragma weak resize_ws_buffer
 /** returns a buffer_s struct, with a buffer (at least) `size` long. */
-struct buffer_s resize_ws_buffer(ws_s* owner, struct buffer_s);
+struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s);
 
 #pragma weak free_ws_buffer
 /** releases an existing buffer. */
-void free_ws_buffer(ws_s* owner, struct buffer_s);
+void free_ws_buffer(ws_s *owner, struct buffer_s);
 
 /** Sets the initial buffer size. (16Kb)*/
 #define WS_INITIAL_BUFFER_SIZE 16384
@@ -46,16 +46,16 @@ the code probably wouldn't offer a high performance boost.
 // buffer increments by 4,096 Bytes (4Kb)
 #define round_up_buffer_size(size) (((size) >> 12) + 1) << 12
 
-struct buffer_s create_ws_buffer(ws_s* owner) {
+struct buffer_s create_ws_buffer(ws_s *owner) {
   struct buffer_s buff;
   buff.size = round_up_buffer_size(WS_INITIAL_BUFFER_SIZE);
   buff.data = malloc(buff.size);
   return buff;
 }
 
-struct buffer_s resize_ws_buffer(ws_s* owner, struct buffer_s buff) {
+struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s buff) {
   buff.size = round_up_buffer_size(buff.size);
-  void* tmp = realloc(buff.data, buff.size);
+  void *tmp = realloc(buff.data, buff.size);
   if (!tmp) {
     free_ws_buffer(owner, buff);
     buff.size = 0;
@@ -63,7 +63,7 @@ struct buffer_s resize_ws_buffer(ws_s* owner, struct buffer_s buff) {
   buff.data = tmp;
   return buff;
 }
-void free_ws_buffer(ws_s* owner, struct buffer_s buff) {
+void free_ws_buffer(ws_s *owner, struct buffer_s buff) {
   if (buff.data)
     free(buff.data);
 }
@@ -74,8 +74,8 @@ void free_ws_buffer(ws_s* owner, struct buffer_s buff) {
 Create/Destroy the websocket object (prototypes)
 */
 
-static ws_s* new_websocket();
-static void destroy_ws(ws_s* ws);
+static ws_s *new_websocket();
+static void destroy_ws(ws_s *ws);
 
 /*******************************************************************************
 The Websocket object (protocol + parser)
@@ -86,11 +86,12 @@ struct Websocket {
   /** connection data */
   intptr_t fd;
   /** callbacks */
-  void (*on_message)(ws_s* ws, char* data, size_t size, uint8_t is_text);
-  void (*on_shutdown)(ws_s* ws);
-  void (*on_close)(ws_s* ws);
+  void (*on_message)(ws_s *ws, char *data, size_t size, uint8_t is_text);
+  void (*on_shutdown)(ws_s *ws);
+  void (*on_ready)(ws_s *ws);
+  void (*on_close)(ws_s *ws);
   /** Opaque user data. */
-  void* udata;
+  void *udata;
   /** The maximum websocket message size */
   size_t max_msg_size;
   /** message buffer. */
@@ -134,16 +135,16 @@ struct Websocket {
 /**
 The Websocket Protocol Identifying String. Used for the `each` function.
 */
-char* WEBSOCKET_ID_STR = "websockets";
+char *WEBSOCKET_ID_STR = "websockets";
 
 /*******************************************************************************
 The Websocket Protocol implementation
 */
 
-#define ws_protocol(fd) ((ws_s*)(server_get_protocol(fd)))
+#define ws_protocol(fd) ((ws_s *)(server_get_protocol(fd)))
 
-static void ws_ping(intptr_t fd, protocol_s* _ws) {
-  sock_packet_s* packet;
+static void ws_ping(intptr_t fd, protocol_s *_ws) {
+  sock_packet_s *packet;
   while ((packet = sock_checkout_packet()) == NULL)
     sock_flush_all();
   *packet = (sock_packet_s){
@@ -152,31 +153,29 @@ static void ws_ping(intptr_t fd, protocol_s* _ws) {
   sock_send_packet(fd, packet);
 }
 
-static void on_close(protocol_s* _ws) {
-  destroy_ws((ws_s*)_ws);
+static void on_close(protocol_s *_ws) { destroy_ws((ws_s *)_ws); }
+
+static void on_ready(intptr_t fduuid, protocol_s *ws) {
+  if (ws && ws->service == WEBSOCKET_ID_STR && ((ws_s *)ws)->on_ready)
+    ((ws_s *)ws)->on_ready((ws_s *)ws);
 }
 
-static void on_open(intptr_t fd, protocol_s* _ws, void* callback) {
-  if (callback && _ws && _ws->service == WEBSOCKET_ID_STR)
-    ((void (*)(void*))callback)(_ws);
+static void on_open(intptr_t fd, protocol_s *ws, void *callback) {
+  if (callback && ws && ws->service == WEBSOCKET_ID_STR)
+    ((void (*)(void *))callback)(ws);
 }
 
-static void on_shutdown(intptr_t fd, protocol_s* _ws) {
-  if (_ws && ((ws_s*)_ws)->on_shutdown)
-    ((ws_s*)_ws)->on_shutdown((ws_s*)_ws);
+static void on_shutdown(intptr_t fd, protocol_s *ws) {
+  if (ws && ((ws_s *)ws)->on_shutdown)
+    ((ws_s *)ws)->on_shutdown((ws_s *)ws);
 }
 
 /* later */
-static void websocket_write_impl(intptr_t fd,
-                                 void* data,
-                                 size_t len,
-                                 char text,
-                                 char first,
-                                 char last,
-                                 char client);
+static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
+                                 char first, char last, char client);
 
-static void on_data(intptr_t sockfd, protocol_s* _ws) {
-#define ws ((ws_s*)_ws)
+static void on_data(intptr_t sockfd, protocol_s *_ws) {
+#define ws ((ws_s *)_ws)
   if (ws == NULL || ws->protocol.service != WEBSOCKET_ID_STR)
     return;
   ssize_t len = 0;
@@ -185,10 +184,10 @@ static void on_data(intptr_t sockfd, protocol_s* _ws) {
     ws->parser.pos = 0;
     while (ws->parser.pos < len) {
       // collect the frame's head
-      if (!(*(char*)(&ws->parser.head))) {
-        *((char*)(&(ws->parser.head))) = ws->parser.tmp_buffer[ws->parser.pos];
+      if (!(*(char *)(&ws->parser.head))) {
+        *((char *)(&(ws->parser.head))) = ws->parser.tmp_buffer[ws->parser.pos];
         // save a copy if it's the first head in a fragmented message
-        if (!(*(char*)(&ws->parser.head2))) {
+        if (!(*(char *)(&ws->parser.head2))) {
           ws->parser.head2 = ws->parser.head;
         }
         // advance
@@ -198,8 +197,9 @@ static void on_data(intptr_t sockfd, protocol_s* _ws) {
       }
 
       // save the mask and size information
-      if (!(*(char*)(&ws->parser.sdata))) {
-        *((char*)(&(ws->parser.sdata))) = ws->parser.tmp_buffer[ws->parser.pos];
+      if (!(*(char *)(&ws->parser.sdata))) {
+        *((char *)(&(ws->parser.sdata))) =
+            ws->parser.tmp_buffer[ws->parser.pos];
         // set length
         ws->parser.state.at_len = ws->parser.sdata.size == 127
                                       ? 7
@@ -341,7 +341,7 @@ static void on_data(intptr_t sockfd, protocol_s* _ws) {
             /* text data */
           } else if (ws->parser.head2.op_code == 2) {
             /* binary data */
-          } else  // not a recognized frame, don't act
+          } else // not a recognized frame, don't act
             goto reset_parser;
           // call the on_message callback
 
@@ -386,8 +386,9 @@ static void on_data(intptr_t sockfd, protocol_s* _ws) {
       // buffer
       ws->parser.pos += ws->parser.data_len;
       // clear the parser
-      *((char*)(&(ws->parser.state))) = *((char*)(&(ws->parser.sdata))) =
-          *((char*)(&(ws->parser.head2))) = *((char*)(&(ws->parser.head))) = 0;
+      *((char *)(&(ws->parser.state))) = *((char *)(&(ws->parser.sdata))) =
+          *((char *)(&(ws->parser.head2))) = *((char *)(&(ws->parser.head))) =
+              0;
       // // // the above should be the same as... but it isn't
       // *((uint32_t*)(&(ws->parser.head))) = 0;
       // set the union size to 0
@@ -402,20 +403,21 @@ static void on_data(intptr_t sockfd, protocol_s* _ws) {
 Create/Destroy the websocket object
 */
 
-static ws_s* new_websocket() {
+static ws_s *new_websocket() {
   // allocate the protocol object (TODO: (maybe) pooling)
-  ws_s* ws = calloc(sizeof(*ws), 1);
+  ws_s *ws = calloc(sizeof(*ws), 1);
 
   // setup the protocol & protocol callbacks
   ws->protocol.ping = ws_ping;
   ws->protocol.service = WEBSOCKET_ID_STR;
   ws->protocol.on_data = on_data;
   ws->protocol.on_close = on_close;
+  ws->protocol.on_ready = on_ready;
   ws->protocol.on_shutdown = on_shutdown;
   // return the object
   return ws;
 }
-static void destroy_ws(ws_s* ws) {
+static void destroy_ws(ws_s *ws) {
   if (ws->on_close)
     ws->on_close(ws);
   free_ws_buffer(ws, ws->buffer);
@@ -426,15 +428,11 @@ static void destroy_ws(ws_s* ws) {
 Writing to the Websocket
 */
 
-#define WS_MAX_FRAME_SIZE 65532  // should be less then `unsigned short`
+#define WS_MAX_FRAME_SIZE 65532 // should be less then `unsigned short`
 
-static void websocket_write_impl(intptr_t fd,
-                                 void* data,
-                                 size_t len,
+static void websocket_write_impl(intptr_t fd, void *data, size_t len,
                                  char text, /* TODO: add client masking */
-                                 char first,
-                                 char last,
-                                 char client) {
+                                 char first, char last, char client) {
   if (len < 126) {
     struct {
       unsigned op_code : 4;
@@ -468,9 +466,9 @@ static void websocket_write_impl(intptr_t fd,
               .size = 126,
               .masked = 0,
               .length = htons(len)};
-    if (len >> 15) {  // if len is larger then 32,767 Bytes.
+    if (len >> 15) { // if len is larger then 32,767 Bytes.
       /* head MUST be 4 bytes */
-      void* buff = malloc(len + (client ? 8 : 4));
+      void *buff = malloc(len + (client ? 8 : 4));
       memcpy(buff, &head, 4);
       memcpy(buff + (client ? 8 : 4), data, len);
       sock_write2(.fduuid = fd, .buffer = buff, .length = len + 4, .move = 1);
@@ -513,7 +511,7 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   if (settings.timeout == 0)
     settings.timeout = 40; /* defaults to 40 seconds */
   // make sure we have a response object.
-  http_response_s* response = settings.response;
+  http_response_s *response = settings.response;
   if (response == NULL) {
     /* initialize a default upgrade response */
     tmp_response = http_response_init(settings.request);
@@ -521,7 +519,7 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   } else
     settings.request = response->metadata.request;
   // allocate the protocol object (TODO: (maybe) pooling)
-  ws_s* ws = new_websocket();
+  ws_s *ws = new_websocket();
   if (!ws)
     goto refuse;
 
@@ -530,13 +528,14 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   // Setup ws callbacks
   ws->on_close = settings.on_close;
   ws->on_message = settings.on_message;
+  ws->on_ready = settings.on_ready;
   ws->on_shutdown = settings.on_shutdown;
 
   // setup any user data
   ws->udata = settings.udata;
   // buffer limits
   ws->max_msg_size = settings.max_msg_size;
-  const char* recv_str;
+  const char *recv_str;
 
   recv_str =
       http_request_find_header(settings.request, "sec-websocket-version", 21);
@@ -596,7 +595,7 @@ cleanup:
   http_response_finish(response);
   if (response->status == 101) {
     // update the protocol object, cleanning up the old one
-    server_switch_protocol(ws->fd, (void*)ws);
+    server_switch_protocol(ws->fd, (void *)ws);
     // we have an active websocket connection - prep the connection buffer
     ws->buffer = create_ws_buffer(ws);
     // update the timeout
@@ -609,26 +608,22 @@ cleanup:
   destroy_ws(ws);
   return -1;
 }
-#define websocket_upgrade(...) \
+#define websocket_upgrade(...)                                                 \
   websocket_upgrade((websocket_settings_s){__VA_ARGS__})
 
 /** Returns the opaque user data associated with the websocket. */
-void* websocket_get_udata(ws_s* ws) {
-  return ws->udata;
-}
+void *websocket_get_udata(ws_s *ws) { return ws->udata; }
 /** Returns the the process specific connection's UUID (see `libsock`). */
-intptr_t websocket_get_fduuid(ws_s* ws) {
-  return ws->fd;
-}
+intptr_t websocket_get_fduuid(ws_s *ws) { return ws->fd; }
 /** Sets the opaque user data associated with the websocket.
  * Returns the old value, if any. */
-void* websocket_set_udata(ws_s* ws, void* udata) {
-  void* old = ws->udata;
+void *websocket_set_udata(ws_s *ws, void *udata) {
+  void *old = ws->udata;
   ws->udata = udata;
   return old;
 }
 /** Writes data to the websocket. Returns -1 on failure (0 on success). */
-int websocket_write(ws_s* ws, void* data, size_t size, uint8_t is_text) {
+int websocket_write(ws_s *ws, void *data, size_t size, uint8_t is_text) {
   if (sock_isvalid(ws->fd)) {
     websocket_write_impl(ws->fd, data, size, is_text, 1, 1,
                          ws->parser.state.client);
@@ -637,8 +632,8 @@ int websocket_write(ws_s* ws, void* data, size_t size, uint8_t is_text) {
   return -1;
 }
 /** Closes a websocket connection. */
-void websocket_close(ws_s* ws) {
-  sock_packet_s* packet;
+void websocket_close(ws_s *ws) {
+  sock_packet_s *packet;
   while ((packet = sock_checkout_packet()) == NULL)
     sock_flush_all();
   *packet = (sock_packet_s){
@@ -652,9 +647,7 @@ void websocket_close(ws_s* ws) {
 /**
 Counts the number of websocket connections.
 */
-size_t websocket_count(ws_s* ws) {
-  return server_count(WEBSOCKET_ID_STR);
-}
+size_t websocket_count(ws_s *ws) { return server_count(WEBSOCKET_ID_STR); }
 
 /*******************************************************************************
 Each Implementation
@@ -662,20 +655,20 @@ Each Implementation
 
 /** A task container. */
 struct WSTask {
-  void (*task)(ws_s*, void*);
-  void (*on_finish)(ws_s*, void*);
-  void* arg;
+  void (*task)(ws_s *, void *);
+  void (*on_finish)(ws_s *, void *);
+  void *arg;
 };
 /** Performs a task on each websocket connection that shares the same process */
-static void perform_ws_task(intptr_t fd, protocol_s* _ws, void* _arg) {
-  struct WSTask* tsk = _arg;
-  tsk->task((ws_s*)(_ws), tsk->arg);
+static void perform_ws_task(intptr_t fd, protocol_s *_ws, void *_arg) {
+  struct WSTask *tsk = _arg;
+  tsk->task((ws_s *)(_ws), tsk->arg);
 }
 /** clears away a wesbocket task. */
-static void finish_ws_task(intptr_t fd, protocol_s* _ws, void* _arg) {
-  struct WSTask* tsk = _arg;
+static void finish_ws_task(intptr_t fd, protocol_s *_ws, void *_arg) {
+  struct WSTask *tsk = _arg;
   if (tsk->on_finish)
-    tsk->on_finish((ws_s*)(_ws), tsk->arg);
+    tsk->on_finish((ws_s *)(_ws), tsk->arg);
   free(tsk);
 }
 
@@ -683,11 +676,10 @@ static void finish_ws_task(intptr_t fd, protocol_s* _ws, void* _arg) {
 Performs a task on each websocket connection that shares the same process
 (except the originating `ws_s` connection which is allowed to be NULL).
  */
-void websocket_each(ws_s* ws_originator,
-                    void (*task)(ws_s* ws_target, void* arg),
-                    void* arg,
-                    void (*on_finish)(ws_s* ws_originator, void* arg)) {
-  struct WSTask* tsk = malloc(sizeof(*tsk));
+void websocket_each(ws_s *ws_originator,
+                    void (*task)(ws_s *ws_target, void *arg), void *arg,
+                    void (*on_finish)(ws_s *ws_originator, void *arg)) {
+  struct WSTask *tsk = malloc(sizeof(*tsk));
   tsk->arg = arg;
   tsk->on_finish = on_finish;
   tsk->task = task;
