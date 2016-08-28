@@ -19,7 +19,7 @@ Feel free to copy, use and enjoy according to the license provided.
 Connection Data
 */
 typedef struct {
-  protocol_s* protocol;
+  protocol_s *protocol;
   time_t active;
   uint8_t timeout;
   spn_lock_i lock;
@@ -35,14 +35,14 @@ These macros mean we won't need to change code if we change the locking system.
 #define try_lock_fd(fd) spn_trylock(&((fd)->lock))
 #define lock_fd(fd) spn_lock(&((fd)->lock))
 #define unlock_fd(fd) spn_unlock(&((fd)->lock))
-#define clear_fd_data(fd_data) \
+#define clear_fd_data(fd_data)                                                 \
   { *(fd_data) = (fd_data_s){.lock = (fd_data)->lock}; }
 
 /* *****************************************************************************
 Server Core Data
 */
 static struct {
-  fd_data_s* fds;
+  fd_data_s *fds;
   time_t last_tick;
   void (*on_idle)(void);
   size_t capacity;
@@ -66,12 +66,12 @@ These macros help prevent code changes when changing the data struct.
 
 #define fduuid_get(ifd) (server_data.fds[(ifd)].uuid)
 
-#define protocol_is_busy(protocol) \
-  spn_is_locked(&(((protocol_s*)(protocol))->callback_lock))
-#define protocol_unset_busy(protocol) \
-  spn_unlock(&(((protocol_s*)(protocol))->callback_lock))
-#define protocol_set_busy(protocol) \
-  spn_trylock(&(((protocol_s*)(protocol))->callback_lock))
+#define protocol_is_busy(protocol)                                             \
+  spn_is_locked(&(((protocol_s *)(protocol))->callback_lock))
+#define protocol_unset_busy(protocol)                                          \
+  spn_unlock(&(((protocol_s *)(protocol))->callback_lock))
+#define protocol_set_busy(protocol)                                            \
+  spn_trylock(&(((protocol_s *)(protocol))->callback_lock))
 
 #define try_lock_uuid(uuid) try_lock_fd(server_data.fds + sock_uuid2fd(uuid))
 #define lock_uuid(uuid) lock_fd(server_data.fds + sock_uuid2fd(uuid))
@@ -128,10 +128,10 @@ static void init_server(void) {
 }
 
 /** initializes the library if it wasn't already initialized. */
-#define validate_mem()           \
-  {                              \
-    if (server_data.fds == NULL) \
-      init_server();             \
+#define validate_mem()                                                         \
+  {                                                                            \
+    if (server_data.fds == NULL)                                               \
+      init_server();                                                           \
   }
 
 /* *****************************************************************************
@@ -147,9 +147,9 @@ void sock_touch(intptr_t uuid) {
 The Reactor Callback Implementation
 */
 
-void reactor_on_close_async(void* _pr) {
+void reactor_on_close_async(void *_pr) {
   if (protocol_set_busy(_pr) == 0) {
-    ((protocol_s*)_pr)->on_close(_pr);
+    ((protocol_s *)_pr)->on_close(_pr);
     return;
   }
   async_run(reactor_on_close_async, _pr);
@@ -159,7 +159,7 @@ void reactor_on_close(intptr_t uuid) {
   if (server_data.fds) {
     // get the currect state
     lock_uuid(uuid);
-    protocol_s* protocol = protocol_uuid(uuid);
+    protocol_s *protocol = protocol_uuid(uuid);
     // clear state
     clear_uuid(uuid);
     unlock_uuid(uuid);
@@ -169,7 +169,7 @@ void reactor_on_close(intptr_t uuid) {
   }
 }
 
-void reactor_on_data_async(void* _fduuid) {
+void reactor_on_data_async(void *_fduuid) {
   intptr_t fduuid = (intptr_t)_fduuid;
   if (!valid_uuid(fduuid) || protocol_uuid(fduuid) == NULL)
     return;
@@ -177,7 +177,7 @@ void reactor_on_data_async(void* _fduuid) {
   if (try_lock_uuid(fduuid))
     goto no_lock;
   // get current state (protocol might have changed during this time)
-  protocol_s* protocol = protocol_uuid(fduuid);
+  protocol_s *protocol = protocol_uuid(fduuid);
   // review protocol and get use privilage
   if (protocol == NULL || protocol_set_busy(protocol)) {
     // fprintf(stderr, "fduuid is busy %p\n", _fduuid);
@@ -199,15 +199,15 @@ no_lock:
 }
 
 void reactor_on_data(intptr_t fd) {
-  async_run(reactor_on_data_async, (void*)fd);
+  async_run(reactor_on_data_async, (void *)fd);
 }
 
 void reactor_on_ready(intptr_t uuid) {
   uuid_data(uuid).active = server_data.last_tick;
   lock_uuid(uuid);
-  protocol_s* protocol = protocol_uuid(uuid);
+  protocol_s *protocol = protocol_uuid(uuid);
   unlock_uuid(uuid);
-  if (protocol && protocol->on_ready)
+  if (protocol && protocol->on_ready && !sock_packets_pending(uuid))
     protocol->on_ready(uuid, protocol);
 }
 
@@ -263,19 +263,19 @@ inline static void listen_for_stop_signal(void) {
 The Listenning Protocol
 */
 
-static const char* listener_protocol_name = "listening protocol __internal__";
+static const char *listener_protocol_name = "listening protocol __internal__";
 
 struct ListenerProtocol {
   protocol_s protocol;
-  protocol_s* (*on_open)(intptr_t uuid, void* udata);
-  void* udata;
-  void (*on_start)(void* udata);
-  void (*on_finish)(void* udata);
+  protocol_s *(*on_open)(intptr_t uuid, void *udata);
+  void *udata;
+  void (*on_start)(void *udata);
+  void (*on_finish)(void *udata);
 };
 
-static void listener_on_data(intptr_t uuid, protocol_s* _listener) {
+static void listener_on_data(intptr_t uuid, protocol_s *_listener) {
   intptr_t new_client;
-  struct ListenerProtocol* listener = (void*)_listener;
+  struct ListenerProtocol *listener = (void *)_listener;
   while ((new_client = sock_accept(uuid)) != -1) {
     // make sure it's a clean slate... although it should be assumed to be.
     lock_uuid(new_client);
@@ -294,20 +294,18 @@ static void listener_on_data(intptr_t uuid, protocol_s* _listener) {
   }
 }
 
-static void free_listenner(void* _li) {
-  free(_li);
-}
+static void free_listenner(void *_li) { free(_li); }
 
-static void listener_on_close(protocol_s* _listener) {
-  if (((struct ListenerProtocol*)_listener)->on_finish)
-    ((struct ListenerProtocol*)_listener)
-        ->on_finish(((struct ListenerProtocol*)_listener)->udata);
+static void listener_on_close(protocol_s *_listener) {
+  if (((struct ListenerProtocol *)_listener)->on_finish)
+    ((struct ListenerProtocol *)_listener)
+        ->on_finish(((struct ListenerProtocol *)_listener)->udata);
   free_listenner(_listener);
 }
 
-static inline struct ListenerProtocol* listener_alloc(
-    struct ServerServiceSettings settings) {
-  struct ListenerProtocol* listener = malloc(sizeof(*listener));
+static inline struct ListenerProtocol *
+listener_alloc(struct ServerServiceSettings settings) {
+  struct ListenerProtocol *listener = malloc(sizeof(*listener));
   if (listener) {
     *listener = (struct ListenerProtocol){
         .protocol.service = listener_protocol_name,
@@ -329,9 +327,9 @@ inline static void listener_on_server_start(void) {
       if (reactor_add(sock_fd2uuid(i)))
         perror("Couldn't register listenning socket"), exit(4);
       // call the on_init callback
-      if (((struct ListenerProtocol*)protocol_fd(i))->on_start)
-        ((struct ListenerProtocol*)protocol_fd(i))
-            ->on_start(((struct ListenerProtocol*)protocol_fd(i))->udata);
+      if (((struct ListenerProtocol *)protocol_fd(i))->on_start)
+        ((struct ListenerProtocol *)protocol_fd(i))
+            ->on_start(((struct ListenerProtocol *)protocol_fd(i))->udata);
     }
   }
 }
@@ -354,16 +352,16 @@ typedef struct {
   protocol_s protocol;
   size_t milliseconds;
   size_t repetitions;
-  void (*task)(void*);
-  void (*on_finish)(void*);
-  void* arg;
+  void (*task)(void *);
+  void (*on_finish)(void *);
+  void *arg;
 } timer_protocol_s;
 
-#define prot2timer(protocol) (*((timer_protocol_s*)(protocol)))
+#define prot2timer(protocol) (*((timer_protocol_s *)(protocol)))
 
-const char* timer_protocol_name = "timer protocol __internal__";
+const char *timer_protocol_name = "timer protocol __internal__";
 
-static void timer_on_data(intptr_t uuid, protocol_s* protocol) {
+static void timer_on_data(intptr_t uuid, protocol_s *protocol) {
   prot2timer(protocol).task(prot2timer(protocol).arg);
   if (prot2timer(protocol).repetitions) {
     prot2timer(protocol).repetitions -= 1;
@@ -376,19 +374,18 @@ static void timer_on_data(intptr_t uuid, protocol_s* protocol) {
   reactor_reset_timer(uuid);
 }
 
-static void timer_on_close(protocol_s* protocol) {
+static void timer_on_close(protocol_s *protocol) {
   // fprintf(stderr, "timer closed\n");
   if (prot2timer(protocol).on_finish)
     prot2timer(protocol).on_finish(prot2timer(protocol).arg);
   free(protocol);
 }
 
-static inline timer_protocol_s* timer_alloc(void (*task)(void*),
-                                            void* arg,
+static inline timer_protocol_s *timer_alloc(void (*task)(void *), void *arg,
                                             size_t milliseconds,
                                             size_t repetitions,
-                                            void (*on_finish)(void*)) {
-  timer_protocol_s* t = malloc(sizeof(*t));
+                                            void (*on_finish)(void *)) {
+  timer_protocol_s *t = malloc(sizeof(*t));
   if (t)
     *t = (timer_protocol_s){
         .protocol.service = timer_protocol_name,
@@ -424,7 +421,7 @@ static inline void timeout_review(void) {
   time(&review);
   for (size_t i = 0; i < server_data.capacity; i++) {
     if (protocol_fd(i) == NULL)
-      continue;  // Protocol objects are required for open connections.
+      continue; // Protocol objects are required for open connections.
     if (fd_data(i).timeout == 0) {
       if (protocol_fd(i) && protocol_fd(i)->service != listener_protocol_name &&
           protocol_fd(i)->service != timer_protocol_name &&
@@ -444,7 +441,7 @@ static inline void timeout_review(void) {
   }
 }
 
-static void server_cycle(void* _) {
+static void server_cycle(void *_) {
   static int8_t perform_idle = 1;
   time(&server_data.last_tick);
   if (server_data.running) {
@@ -489,7 +486,7 @@ int server_listen(struct ServerServiceSettings settings) {
   if (fduuid == -1)
     return -1;
   server_data.fds[sock_uuid2fd(fduuid)].protocol =
-      (void*)listener_alloc(settings);
+      (void *)listener_alloc(settings);
   if (server_data.fds[sock_uuid2fd(fduuid)].protocol == NULL)
     goto error;
   if (server_data.running && reactor_add(fduuid))
@@ -517,19 +514,17 @@ ssize_t server_run(struct ServerSettings settings) {
 
 #if defined(SERVER_PRINT_STATE) && SERVER_PRINT_STATE == 1
   if (settings.threads == 0)
-    fprintf(stderr,
-            "* Running %lu processes"
-            " in single thread mode.\n",
+    fprintf(stderr, "* Running %lu processes"
+                    " in single thread mode.\n",
             settings.processes);
   else
-    fprintf(stderr,
-            "* Running %lu processes"
-            " X %lu threads.\n",
+    fprintf(stderr, "* Running %lu processes"
+                    " X %lu threads.\n",
             settings.processes, settings.threads);
 #endif
 
   pid_t rootpid = getpid();
-  pid_t* children = NULL;
+  pid_t *children = NULL;
   if (settings.processes > 1) {
     children = malloc(sizeof(*children) * settings.processes);
     for (size_t i = 0; i < settings.processes - 1; i++) {
@@ -576,15 +571,11 @@ ssize_t server_run(struct ServerSettings settings) {
   return 0;
 }
 
-void server_stop(void) {
-  server_data.running = 0;
-}
+void server_stop(void) { server_data.running = 0; }
 /**
 Returns the last time the server reviewed any pending IO events.
 */
-time_t server_last_tick(void) {
-  return server_data.last_tick;
-}
+time_t server_last_tick(void) { return server_data.last_tick; }
 
 /* *****************************************************************************
 * Socket actions
@@ -598,10 +589,10 @@ all resources are released.
 
 Returns -1 on error (i.e. connection closed), otherwise returns 0.
 */
-ssize_t server_switch_protocol(intptr_t fd, protocol_s* new_protocol) {
+ssize_t server_switch_protocol(intptr_t fd, protocol_s *new_protocol) {
   if (new_protocol == NULL || valid_uuid(fd) == 0)
     return -1;
-  protocol_s* old_protocol;
+  protocol_s *old_protocol;
   lock_uuid(fd);
   old_protocol = uuid_data(fd).protocol;
   uuid_data(fd).protocol = new_protocol;
@@ -616,10 +607,10 @@ Gets the active protocol object for the requested file descriptor.
 Returns NULL on error (i.e. connection closed), otherwise returns a `protocol_s`
 pointer.
 */
-protocol_s* server_get_protocol(intptr_t uuid) {
+protocol_s *server_get_protocol(intptr_t uuid) {
   if (valid_uuid(uuid) == 0)
     return NULL;
-  protocol_s* protocol;
+  protocol_s *protocol;
   lock_uuid(uuid);
   protocol = uuid_data(uuid).protocol;
   unlock_uuid(uuid);
@@ -644,7 +635,7 @@ based resources asynchronously (i.e. database resources etc').
 
 On failure the fduuid_u.data.fd value will be -1.
 */
-intptr_t server_attach(int fd, protocol_s* protocol) {
+intptr_t server_attach(int fd, protocol_s *protocol) {
   intptr_t uuid = sock_open(fd);
   if (uuid == -1)
     return -1;
@@ -670,7 +661,7 @@ int server_hijack(intptr_t uuid) {
   sock_flush_strong(uuid);
   if (sock_isvalid(uuid) == 0)
     return -1;
-  protocol_s* old_protocol;
+  protocol_s *old_protocol;
   lock_uuid(uuid);
   old_protocol = uuid_data(uuid).protocol;
   uuid_data(uuid).protocol = NULL;
@@ -681,7 +672,7 @@ int server_hijack(intptr_t uuid) {
 }
 /** Counts the number of connections for the specified protocol (NULL = all
 protocols). */
-long server_count(char* service) {
+long server_count(char *service) {
   long count = 0;
   if (service == NULL) {
     for (size_t i = 0; i < server_data.capacity; i++) {
@@ -708,43 +699,41 @@ Task core data
 typedef struct {
   intptr_t origin;
   intptr_t target;
-  const char* service;
-  void (*task)(intptr_t fd, protocol_s* protocol, void* arg);
-  void* on_finish;
-  void* arg;
+  const char *service;
+  void (*task)(intptr_t fd, protocol_s *protocol, void *arg);
+  void *on_finish;
+  void *arg;
 } srv_task_s;
 
 /* Get task from void pointer. */
-#define p2task(task) (*((srv_task_s*)(task)))
+#define p2task(task) (*((srv_task_s *)(task)))
 
 /* Get fallback callback from the task object. */
-#define task2fallback(task) \
-  ((void (*)(intptr_t, void*))(p2task(task).on_finish))
+#define task2fallback(task)                                                    \
+  ((void (*)(intptr_t, void *))(p2task(task).on_finish))
 
 /* Get on_finished callback from the task object. */
-#define task2on_done(task) \
-  ((void (*)(intptr_t, protocol_s*, void*))(p2task(task).on_finish))
+#define task2on_done(task)                                                     \
+  ((void (*)(intptr_t, protocol_s *, void *))(p2task(task).on_finish))
 /* allows for later implementation of a task pool with minimal code updates. */
-static inline srv_task_s* task_alloc(void) {
+static inline srv_task_s *task_alloc(void) {
   return malloc(sizeof(srv_task_s));
 }
 
 /* allows for later implementation of a task pool with minimal code updates. */
-static inline void task_free(srv_task_s* task) {
-  return free(task);
-}
+static inline void task_free(srv_task_s *task) { return free(task); }
 
 /* performs a single connection task. */
-static void perform_single_task(void* task) {
+static void perform_single_task(void *task) {
   if (sock_isvalid(p2task(task).target) == 0) {
-    if (p2task(task).on_finish)  // an invalid connection fallback
+    if (p2task(task).on_finish) // an invalid connection fallback
       task2fallback(task)(p2task(task).origin, p2task(task).arg);
     task_free(task);
     return;
   }
   if (try_lock_uuid(p2task(task).target) == 0) {
     // get protocol
-    protocol_s* protocol = protocol_uuid(p2task(task).target);
+    protocol_s *protocol = protocol_uuid(p2task(task).target);
     if (protocol_set_busy(protocol) == 0) {
       // clear the original busy flag
       unlock_uuid(p2task(task).target);
@@ -759,9 +748,9 @@ static void perform_single_task(void* task) {
 }
 
 /* performs a connection group task. */
-static void perform_each_task(void* task) {
+static void perform_each_task(void *task) {
   intptr_t uuid;
-  protocol_s* protocol;
+  protocol_s *protocol;
   while (p2task(task).target < server_data.capacity) {
     uuid = sock_fd2uuid(p2task(task).target);
     if (uuid == -1 || uuid == p2task(task).origin) {
@@ -791,12 +780,12 @@ static void perform_each_task(void* task) {
     async_run(perform_each_task, task);
     return;
   }
-  if (p2task(task).on_finish) {  // finished group task callback
-    task2on_done(task)(
-        p2task(task).origin,
-        (sock_isvalid(p2task(task).origin) ? protocol_uuid(p2task(task).origin)
-                                           : NULL),
-        p2task(task).arg);
+  if (p2task(task).on_finish) { // finished group task callback
+    task2on_done(task)(p2task(task).origin,
+                       (sock_isvalid(p2task(task).origin)
+                            ? protocol_uuid(p2task(task).origin)
+                            : NULL),
+                       p2task(task).arg);
   }
   task_free(task);
   return;
@@ -810,14 +799,11 @@ API
 Schedules a specific task to run asyncronously for each connection (except the
 origin connection) on a specific protocol.
 */
-void server_each(intptr_t origin_fd,
-                 const char* service,
-                 void (*task)(intptr_t fd, protocol_s* protocol, void* arg),
-                 void* arg,
-                 void (*on_finish)(intptr_t fd,
-                                   protocol_s* protocol,
-                                   void* arg)) {
-  srv_task_s* t = NULL;
+void server_each(intptr_t origin_fd, const char *service,
+                 void (*task)(intptr_t fd, protocol_s *protocol, void *arg),
+                 void *arg, void (*on_finish)(intptr_t fd, protocol_s *protocol,
+                                              void *arg)) {
+  srv_task_s *t = NULL;
   if (service == NULL || task == NULL)
     goto error;
   t = task_alloc();
@@ -842,10 +828,9 @@ error:
 /** Schedules a specific task to run asyncronously for a specific connection.
  */
 void server_task(intptr_t caller_fd,
-                 void (*task)(intptr_t fd, protocol_s* protocol, void* arg),
-                 void* arg,
-                 void (*fallback)(intptr_t fd, void* arg)) {
-  srv_task_s* t = NULL;
+                 void (*task)(intptr_t fd, protocol_s *protocol, void *arg),
+                 void *arg, void (*fallback)(intptr_t fd, void *arg)) {
+  srv_task_s *t = NULL;
   if (task == NULL)
     goto error;
   t = task_alloc();
@@ -872,15 +857,13 @@ timer to the reactor. The task will repeat `repetitions` times. if
 `repetitions` is set to 0, task will repeat forever. Returns -1 on error
 or the new file descriptor on succeess.
 */
-int server_run_every(size_t milliseconds,
-                     size_t repetitions,
-                     void (*task)(void*),
-                     void* arg,
-                     void (*on_finish)(void*)) {
+int server_run_every(size_t milliseconds, size_t repetitions,
+                     void (*task)(void *), void *arg,
+                     void (*on_finish)(void *)) {
   validate_mem();
   if (task == NULL)
     return -1;
-  timer_protocol_s* protocol = NULL;
+  timer_protocol_s *protocol = NULL;
   intptr_t uuid = -1;
   int fd = reactor_make_timer();
   if (fd == -1) {
@@ -894,7 +877,7 @@ int server_run_every(size_t milliseconds,
   protocol = timer_alloc(task, arg, milliseconds, repetitions, on_finish);
   if (protocol == NULL)
     goto error;
-  protocol_fd(fd) = (protocol_s*)protocol;
+  protocol_fd(fd) = (protocol_s *)protocol;
   if (server_data.running && reactor_add_timer(uuid, milliseconds))
     goto error;
   return 0;
@@ -906,7 +889,7 @@ error:
 
   if (protocol != NULL) {
     protocol_fd(fd) = NULL;
-    timer_on_close((protocol_s*)protocol);
+    timer_on_close((protocol_s *)protocol);
   }
   return -1;
 }
