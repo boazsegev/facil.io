@@ -4,15 +4,15 @@ Writing servers in C is repetitive and often involves copying a the code from [B
 
 Here you will find tools to write HTTP, Websockets and custom network applications with ease and speed, using a comfortable framework for writing network services in C.
 
-All the libraries here are provided as source code. Although the more complex libraries (i.e. `lib-server` and it's extensions) require the smaller libraries (i.e. the thread-pool library `libasync`, the socket library `libsock` or the reactor core `libreact`), the smaller libraries can be used independently.
+All the libraries here are provided as source code. Many of the libraries can be used as stand-alone modules. The more complex libraries (i.e. `lib-server` and it's extensions) require the smaller libraries (i.e. the thread-pool library `libasync`, the socket library `libsock` and the reactor core `libreact`).
 
-I got to use this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
+I got to use this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment). This library is used to implement the [Ruby Iodine server](https://github.com/boazsegev/iodine).
 
 **Writing HTTP and Websocket services in C? Easy!**
 
 Websockets and HTTP are super common, so `libserver` comes with HTTP and Websocket extensions, allowing us to easily write HTTP and Websocket services.
 
-The framework's code is heavily documented and you can use Doxygen to create automated documentation for the API.
+The framework's code is heavily documented using comments. You can use Doxygen to create automated documentation for the API.
 
 ```c
 // update the demo.c file to use the existing folder structure and makefile
