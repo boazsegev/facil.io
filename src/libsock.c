@@ -717,7 +717,7 @@ Returns TRUE (non 0) if there is data waiting to be written to the socket in the
 user-land buffer.
 */
 _Bool sock_packets_pending(intptr_t uuid) {
-  return uuid2info(uuid).packet != NULL;
+  return fd_info && uuid2info(uuid).packet != NULL;
 }
 
 /**
