@@ -485,6 +485,7 @@ static void websocket_write_impl(intptr_t fd, void *data, size_t len,
       websocket_write_impl(fd, data, WS_MAX_FRAME_SIZE, text, first, 0, client);
       data += WS_MAX_FRAME_SIZE;
       first = 0;
+      len -= WS_MAX_FRAME_SIZE;
     }
     websocket_write_impl(fd, data, len, text, first, 1, client);
   }

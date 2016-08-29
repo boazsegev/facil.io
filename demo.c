@@ -16,6 +16,14 @@ void ws_open(ws_s *ws) {
 void ws_echo(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   // echos the data to the current websocket
   websocket_write(ws, data, size, 1);
+  if (memcmp(data, "bomb me", 7) == 0) {
+    char *msg = malloc(1024 * 1024);
+    for (char *pos = msg; pos < msg + (1024 * 1024 - 1); pos += 4) {
+      memcpy(pos, "bomb", 4);
+    }
+    websocket_write(ws, msg, 1024 * 1024, 1);
+    free(msg);
+  }
 }
 
 void ws_shutdown(ws_s *ws) { websocket_write(ws, "Shutting Down", 13, 1); }
