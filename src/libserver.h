@@ -30,7 +30,7 @@ messages regarding the server state (start / finish / listen messages).
 #define SERVER_PRINT_STATE 1
 #endif
 
-#if LIB_ASYNC_VERSION_MINOR != 4 || LIB_REACT_VERSION_MINOR != 3 || \
+#if LIB_ASYNC_VERSION_MINOR != 4 || LIB_REACT_VERSION_MINOR != 3 ||            \
     LIB_SOCK_VERSION_MINOR != 2
 #warning Lib-Server dependency versions are not in sync. Please review API versions.
 #endif
@@ -194,18 +194,18 @@ struct Protocol {
   * The string should be a global constant, only a pointer comparison will be
   * made (not `strcmp`).
   */
-  const char* service;
+  const char *service;
   /** called when a data is available, but will not run concurrently */
-  void (*on_data)(intptr_t fduuid, protocol_s* protocol);
+  void (*on_data)(intptr_t fduuid, protocol_s *protocol);
   /** called when the socket is ready to be written to. */
-  void (*on_ready)(intptr_t fduuid, protocol_s* protocol);
+  void (*on_ready)(intptr_t fduuid, protocol_s *protocol);
   /** called when the server is shutting down,
    * but before closing the connection. */
-  void (*on_shutdown)(intptr_t fduuid, protocol_s* protocol);
+  void (*on_shutdown)(intptr_t fduuid, protocol_s *protocol);
   /** called when the connection was closed, but will not run concurrently */
-  void (*on_close)(protocol_s* protocol);
+  void (*on_close)(protocol_s *protocol);
   /** called when a connection's timeout was reached */
-  void (*ping)(intptr_t fduuid, protocol_s* protocol);
+  void (*ping)(intptr_t fduuid, protocol_s *protocol);
   /** private metadata used for object protection */
   spn_lock_i callback_lock;
 };
@@ -218,21 +218,21 @@ These settings will be used to setup listenning sockets.
 struct ServerServiceSettings {
   /** Called whenever a new connection is accepted. Should return a pointer to
    * the connection's protocol. */
-  protocol_s* (*on_open)(intptr_t fduuid, void* udata);
+  protocol_s *(*on_open)(intptr_t fduuid, void *udata);
   /** The network service / port. Defaults to "3000". */
-  const char* port;
+  const char *port;
   /** The socket binding address. Defaults to the recommended NULL. */
-  const char* address;
+  const char *address;
   /** Opaque user data. */
-  void* udata;
+  void *udata;
   /**
   * Called when the server starts, allowing for further initialization, such as
   * timed event scheduling.
   *
   * This will be called seperately for every process. */
-  void (*on_start)(void* udata);
+  void (*on_start)(void *udata);
   /** called when the server is done, to clean up any leftovers. */
-  void (*on_finish)(void* udata);
+  void (*on_finish)(void *udata);
 };
 
 /**************************************************************************/ /**
@@ -273,7 +273,31 @@ struct ServerSettings {
 */
 
 /**
-Listens to a server with any of the following server settings:
+Listens to a server with any of the available service settings:
+
+* `.on_open` called whenever a new connection is accepted.
+
+    Should return a pointer to the connection's protocol.
+
+* `.port` the network service / port. Defaults to "3000".
+
+* `.address` the socket binding address. Defaults to the recommended NULL.
+
+* `.udata`opaque user data.
+
+*   `.on_start` called when the server starts, allowing for further
+    initialization, such as timed event scheduling.
+
+    This will be called seperately for every process.
+
+* `.on_finish` called when the server is done, to clean up any leftovers.
+
+*/
+int server_listen(struct ServerServiceSettings);
+#define server_listen(...)                                                     \
+  server_listen((struct ServerServiceSettings){__VA_ARGS__})
+/**
+Runs a server with any of the following server settings:
 
 * `.threads` the number of threads to initiate in the server's thread pool.
 
@@ -292,12 +316,11 @@ initiate a `fork`).
 This method blocks the current thread until the server is stopped when a
 SIGINT/SIGTERM is received.
 
-To kill the server use the `kill` function with a SIGINT.
+To shutdown the server use the `kill` function with a SIGINT.
+
+This function only returns after the server had completed it's shutdown process.
+
 */
-int server_listen(struct ServerServiceSettings);
-#define server_listen(...) \
-  server_listen((struct ServerServiceSettings){__VA_ARGS__})
-/** runs the server, hanging the current process and thread. */
 ssize_t server_run(struct ServerSettings);
 #define server_run(...) server_run((struct ServerSettings){__VA_ARGS__})
 /** Stops the server, shouldn't be called unless int's impossible to send an
@@ -317,7 +340,7 @@ Gets the active protocol object for the requested file descriptor.
 Returns NULL on error (i.e. connection closed), otherwise returns a `protocol_s`
 pointer.
 */
-protocol_s* server_get_protocol(intptr_t uuid);
+protocol_s *server_get_protocol(intptr_t uuid);
 /**
 Sets a new active protocol object for the requested file descriptor.
 
@@ -326,7 +349,7 @@ all resources are released.
 
 Returns -1 on error (i.e. connection closed), otherwise returns 0.
 */
-ssize_t server_switch_protocol(intptr_t fd, protocol_s* new_protocol);
+ssize_t server_switch_protocol(intptr_t fd, protocol_s *new_protocol);
 /**
 Sets a connection's timeout.
 
@@ -340,7 +363,7 @@ based resources asynchronously (i.e. database resources etc').
 
 On failure the fduuid_u.data.fd value will be -1.
 */
-intptr_t server_attach(int fd, protocol_s* protocol);
+intptr_t server_attach(int fd, protocol_s *protocol);
 /** Hijack a socket (file descriptor) from the server, clearing up it's
 resources and calling the protocol's `on_close` callback (making sure allocated
 resources are freed).
@@ -355,7 +378,7 @@ The returned value is the fd for the socket, or -1 on error.
 int server_hijack(intptr_t uuid);
 /** Counts the number of connections for the specified protocol (NULL = all
 protocols). */
-long server_count(char* service);
+long server_count(char *service);
 
 /****************************************************************************
 * Read and Write
@@ -390,13 +413,10 @@ callback.
 It is recommended the `on_finish` callback is only used to perform any
 resource cleanup necessary.
 */
-void server_each(intptr_t origin_uuid,
-                 const char* service,
-                 void (*task)(intptr_t uuid, protocol_s* protocol, void* arg),
-                 void* arg,
-                 void (*on_finish)(intptr_t origin_uuid,
-                                   protocol_s* protocol,
-                                   void* arg));
+void server_each(intptr_t origin_uuid, const char *service,
+                 void (*task)(intptr_t uuid, protocol_s *protocol, void *arg),
+                 void *arg, void (*on_finish)(intptr_t origin_uuid,
+                                              protocol_s *protocol, void *arg));
 /** Schedules a specific task to run asyncronously for a specific connection.
 
 returns -1 on failure, 0 on success (success being scheduling the task).
@@ -409,26 +429,22 @@ and call the fallback function from within the main task, but other designes
 are valid as well.
 */
 void server_task(intptr_t uuid,
-                 void (*task)(intptr_t uuid, protocol_s* protocol, void* arg),
-                 void* arg,
-                 void (*fallback)(intptr_t uuid, void* arg));
+                 void (*task)(intptr_t uuid, protocol_s *protocol, void *arg),
+                 void *arg, void (*fallback)(intptr_t uuid, void *arg));
 /** Creates a system timer (at the cost of 1 file descriptor) and pushes the
 timer to the reactor. The task will repeat `repetitions` times. if
 `repetitions` is set to 0, task will repeat forever. Returns -1 on error
 or the new file descriptor on succeess.
 */
-int server_run_every(size_t milliseconds,
-                     size_t repetitions,
-                     void (*task)(void*),
-                     void* arg,
-                     void (*on_finish)(void*));
+int server_run_every(size_t milliseconds, size_t repetitions,
+                     void (*task)(void *), void *arg,
+                     void (*on_finish)(void *));
 
 /** Creates a system timer (at the cost of 1 file descriptor) and pushes the
 timer to the reactor. The task will NOT repeat. Returns -1 on error or the
 new file descriptor on succeess. */
 __unused static inline int server_run_after(size_t milliseconds,
-                                            void task(void*),
-                                            void* arg) {
+                                            void task(void *), void *arg) {
   return server_run_every(milliseconds, 1, task, arg, NULL);
 }
 
