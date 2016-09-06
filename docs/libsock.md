@@ -228,9 +228,13 @@ Reading and writing data to a socket, using the `libsock` API, allows easy acces
 
 `sock_read` attempts to read up to count bytes from the socket into the buffer starting at buf.
 
-It's behavior should conform to the native `read` implementations, except some data might be available in the kernel's buffer while it is not available to be read using sock_read (i.e., when using a transport layer, such as TLS).
+`sock_read`'s return values are wildly different then the native return values and they aim at making far simpler sense.
 
-Also, some internal buffering will might be used in cases where the transport layer data available is larger then the data requested.
+`sock_read` returns the number of bytes read (0 is a valid return value which simply means that no bytes were read from the buffer).
+
+On a connection error (NOT EAGAIN or EWOULDBLOCK) or signal interrupt, `sock_read` returns -1.
+
+Data might be available in the kernel's buffer while it is not available to be read using `sock_read` (i.e., when using a transport layer, such as TLS).
 
 #### `sock_write(sockfd, buf, count)`
 
@@ -385,6 +389,12 @@ Use `sock_free_packet` to free unused packets (including packet chains) that wer
 NEVER use `free`, for any packet checked out using the pool management function `sock_checkout_packet`.
 
 Passing a single packet will free also any packet it references (the `next` packet is also freed).
+
+#### `_Bool sock_packets_pending(intptr_t uuid)`
+
+Checks if there's data waiting to be written to the socket.
+
+Returns TRUE (non 0) if there is data waiting to be written to the socket in the user-land buffer. Otherwise 0 is returned.
 
 ### RW Hooks.
 
