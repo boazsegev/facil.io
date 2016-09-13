@@ -13,23 +13,23 @@ HTTP/1.1 data structure
 
 typedef struct {
   protocol_s protocol;
-  http_settings_s* settings;
+  http_settings_s *settings;
   char buffer[HTTP1_MAX_HEADER_SIZE];
   size_t buffer_pos;
-  void (*on_request)(http_request_s* request);
+  void (*on_request)(http_request_s *request);
   http_request_s
       request; /* MUST be last, as it has memory extensions for the headers*/
 } http1_protocol_s; /* ~ 8416 bytes for (8 * 1024) buffer size and 64 headers */
 
-#define HTTP1_PROTOCOL_SIZE \
+#define HTTP1_PROTOCOL_SIZE                                                    \
   (sizeof(http1_protocol_s) + HTTP_REQUEST_SIZE(HTTP1_MAX_HEADER_COUNT))
 
-char* HTTP1 = "http1";
+char *HTTP1 = "http1";
 
 /* *****************************************************************************
 HTTP/1.1 callbacks
 */
-static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol);
+static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol);
 
 /* *****************************************************************************
 HTTP/1.1 protocol pooling
@@ -38,13 +38,13 @@ HTTP/1.1 protocol pooling
 #define HTTP1_POOL_MEMORY_SIZE (HTTP1_PROTOCOL_SIZE * HTTP1_POOL_SIZE)
 
 struct {
-  void* memory;
-  http1_protocol_s* pool;
+  void *memory;
+  http1_protocol_s *pool;
   spn_lock_i lock;
 } http1_pool = {0};
 
-inline static http1_protocol_s* pool_pop() {
-  http1_protocol_s* prot;
+inline static http1_protocol_s *pool_pop() {
+  http1_protocol_s *prot;
   spn_lock(&http1_pool.lock);
   prot = http1_pool.pool;
   if (prot)
@@ -53,7 +53,7 @@ inline static http1_protocol_s* pool_pop() {
   return prot;
 }
 
-inline static void pool_push(http1_protocol_s* protocol) {
+inline static void pool_push(http1_protocol_s *protocol) {
   if (protocol == NULL)
     return;
   spn_lock(&http1_pool.lock);
@@ -83,7 +83,7 @@ static void http1_init(void) {
     atexit(http1_cleanup);
 
     // initialize pool
-    void* pos = http1_pool.memory;
+    void *pos = http1_pool.memory;
     while (pos <
            http1_pool.memory + (HTTP1_POOL_MEMORY_SIZE - HTTP1_PROTOCOL_SIZE)) {
       pool_push(pos);
@@ -94,30 +94,30 @@ static void http1_init(void) {
 }
 
 /** initializes the library if it wasn't already initialized. */
-#define validate_mem()             \
-  {                                \
-    if (http1_pool.memory == NULL) \
-      http1_init();                \
+#define validate_mem()                                                         \
+  {                                                                            \
+    if (http1_pool.memory == NULL)                                             \
+      http1_init();                                                            \
   }
 
-inline static void http1_free(http1_protocol_s* http) {
+inline static void http1_free(http1_protocol_s *http) {
   http_request_clear(&http->request);
   validate_mem();
-  if (((void*)http) >= http1_pool.memory &&
-      ((void*)http) <= (http1_pool.memory + HTTP1_POOL_MEMORY_SIZE)) {
+  if (((void *)http) >= http1_pool.memory &&
+      ((void *)http) <= (http1_pool.memory + HTTP1_POOL_MEMORY_SIZE)) {
     pool_push(http);
   } else
     free(http);
 }
 
-protocol_s* http1_alloc(intptr_t fd, http_settings_s* settings) {
+protocol_s *http1_alloc(intptr_t fd, http_settings_s *settings) {
   validate_mem();
   // HTTP/1.1 should send a busy response
   // if there aren't enough available file descriptors.
   if (sock_max_capacity() - sock_uuid2fd(fd) <= HTTP_BUSY_UNLESS_HAS_FDS)
     goto is_busy;
   // get an http object from the pool
-  http1_protocol_s* http = pool_pop();
+  http1_protocol_s *http = pool_pop();
   // of malloc one
   if (http == NULL)
     http = malloc(HTTP1_PROTOCOL_SIZE);
@@ -133,8 +133,8 @@ protocol_s* http1_alloc(intptr_t fd, http_settings_s* settings) {
   // setup protocol callbacks
   http->protocol = (protocol_s){
       .service = HTTP1,
-      .on_data = (void (*)(intptr_t, protocol_s*))http1_on_data,
-      .on_close = (void (*)(protocol_s*))http1_free,
+      .on_data = (void (*)(intptr_t, protocol_s *))http1_on_data,
+      .on_close = (void (*)(protocol_s *))http1_free,
   };
   // setup request data
   http->request = (http_request_s){
@@ -147,7 +147,7 @@ protocol_s* http1_alloc(intptr_t fd, http_settings_s* settings) {
   http->on_request = settings->on_request;
   // set the timeout
   server_set_timeout(fd, settings->timeout);
-  return (protocol_s*)http;
+  return (protocol_s *)http;
 
 is_busy:
   if (settings->public_folder && settings->public_folder_length) {
@@ -168,13 +168,12 @@ is_busy:
     int file = open(fname, O_RDONLY);
     if (file == -1)
       goto busy_no_file;
-    sock_packet_s* packet;
+    sock_packet_s *packet;
     packet = sock_checkout_packet();
-    memcpy(packet->buffer,
-           "HTTP/1.1 503 Service Unavailable\r\n"
-           "Content-Type: text/html\r\n"
-           "Connection: close\r\n"
-           "Content-Length: ",
+    memcpy(packet->buffer, "HTTP/1.1 503 Service Unavailable\r\n"
+                           "Content-Type: text/html\r\n"
+                           "Connection: close\r\n"
+                           "Content-Length: ",
            94);
     p_len = 94 + http_ul2a(packet->buffer + 94, file_data.st_size);
     memcpy(packet->buffer + p_len, "\r\n\r\n", 4);
@@ -196,9 +195,8 @@ is_busy:
     return NULL;
   }
 busy_no_file:
-  sock_write(fd,
-             "HTTP/1.1 503 Service Unavailable\r\nContent-Length: "
-             "13\r\n\r\nServer Busy.",
+  sock_write(fd, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: "
+                 "13\r\n\r\nServer Busy.",
              68);
   return NULL;
 }
@@ -207,15 +205,15 @@ busy_no_file:
 HTTP/1.1 protocol bare-bones implementation
 */
 
-#define HTTP_BODY_CHUNK_SIZE 3072  // 4096
+#define HTTP_BODY_CHUNK_SIZE 3072 // 4096
 
 /* parse and call callback */
-static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
+static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
   ssize_t len = 0;
   ssize_t result;
   char buff[HTTP_BODY_CHUNK_SIZE];
-  char* buffer;
-  http_request_s* request = &protocol->request;
+  char *buffer;
+  http_request_s *request = &protocol->request;
   for (;;) {
     // handle requests with no file data
     if (request->body_file <= 0) {
@@ -235,7 +233,7 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
       result =
           http1_parse_request_headers(buffer, protocol->buffer_pos, request);
       // review result
-      if (result >= 0) {  // headers comeplete
+      if (result >= 0) { // headers comeplete
         // mark buffer position, for HTTP pipelining
         protocol->buffer_pos = result;
         // are we done?
@@ -251,10 +249,10 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
         if (result >= 0) {
           protocol->buffer_pos += result;
           goto handle_request;
-        } else if (result == -1)  // parser error
+        } else if (result == -1) // parser error
           goto parser_error;
         goto parse_body;
-      } else if (result == -1)  // parser error
+      } else if (result == -1) // parser error
         goto parser_error;
       // assume incomplete (result == -2), even if wrong, we're right.
       len = 0;
@@ -272,9 +270,9 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
         // set buffer pos for piplining support
         protocol->buffer_pos = result;
         goto handle_request;
-      } else if (result == -1)  // parser error
+      } else if (result == -1) // parser error
         goto parser_error;
-      if (len < HTTP_BODY_CHUNK_SIZE)  // pause parser for more data
+      if (len < HTTP_BODY_CHUNK_SIZE) // pause parser for more data
         return;
       goto parse_body;
     }
@@ -283,10 +281,10 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
     // review required headers / data
     if (request->host == NULL)
       goto bad_request;
-    http_settings_s* settings = protocol->settings;
+    http_settings_s *settings = protocol->settings;
     // call request callback
     if (protocol && settings &&
-        (protocol->settings->public_folder == NULL ||
+        (settings->public_folder == NULL ||
          http_response_sendfile2(NULL, request, settings->public_folder,
                                  settings->public_folder_length, request->path,
                                  request->path_len, settings->log_static))) {
@@ -308,7 +306,7 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s* protocol) {
   // no routes lead here.
   fprintf(stderr,
           "I am lost on a deserted island, no code can reach me here :-)\n");
-  return;  // How did we get here?
+  return; // How did we get here?
 parser_error:
   if (request->headers_count == request->metadata.max_headers)
     goto too_big;
@@ -353,7 +351,7 @@ HTTP/1.1 listenning API implementation
 
 #undef http1_listen
 
-static void http1_on_init(http_settings_s* settings) {
+static void http1_on_init(http_settings_s *settings) {
   if (settings->timeout == 0)
     settings->timeout = 5;
   if (settings->max_body_size == 0)
@@ -362,29 +360,28 @@ static void http1_on_init(http_settings_s* settings) {
     settings->public_folder_length = strlen(settings->public_folder);
     if (settings->public_folder[0] == '~' &&
         settings->public_folder[1] == '/' && getenv("HOME")) {
-      char* home = getenv("HOME");
+      char *home = getenv("HOME");
       size_t home_len = strlen(home);
-      char* tmp = malloc(settings->public_folder_length + home_len + 1);
+      char *tmp = malloc(settings->public_folder_length + home_len + 1);
       memcpy(tmp, home, home_len);
       if (home[home_len - 1] == '/')
         --home_len;
       memcpy(tmp + home_len, settings->public_folder + 1,
-             settings->public_folder_length);  // copy also the NULL
+             settings->public_folder_length); // copy also the NULL
       settings->public_folder = tmp;
       settings->private_metaflags |= 1;
       settings->public_folder_length = strlen(settings->public_folder);
     }
   }
 }
-static void http1_on_finish(http_settings_s* settings) {
+static void http1_on_finish(http_settings_s *settings) {
   if (settings->private_metaflags & 1)
-    free((void*)settings->public_folder);
+    free((void *)settings->public_folder);
   if (settings->private_metaflags & 2)
     free(settings);
 }
 
-int http1_listen(const char* port,
-                 const char* address,
+int http1_listen(const char *port, const char *address,
                  http_settings_s settings) {
   if (settings.on_request == NULL) {
     fprintf(
@@ -392,11 +389,11 @@ int http1_listen(const char* port,
         "ERROR: http1_listen requires the .on_request parameter to be set\n");
     exit(11);
   }
-  http_settings_s* settings_copy = malloc(sizeof(*settings_copy));
+  http_settings_s *settings_copy = malloc(sizeof(*settings_copy));
   *settings_copy = settings;
   settings_copy->private_metaflags = 2;
   return server_listen(.port = port, .address = address,
-                       .on_start = (void*)http1_on_init,
-                       .on_finish = (void*)http1_on_finish,
-                       .on_open = (void*)http1_alloc, .udata = settings_copy);
+                       .on_start = (void *)http1_on_init,
+                       .on_finish = (void *)http1_on_finish,
+                       .on_open = (void *)http1_alloc, .udata = settings_copy);
 }
