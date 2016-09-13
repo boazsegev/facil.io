@@ -208,51 +208,41 @@ Baseline (changes not logged before this point in time).
 
 ## HTTP Protocol
 
+* Sep. 13, 2016: `ETag` support for the static file server, responding with 304 on valid `If-None-Match`.
+
+* Sep. 13, 2016: Updated `HEAD` request handling for static files.
+
 * Fixed pipelining... I think.
 
-### Date 20160626
+* Jun 26, 2016: Fixed logging for static file range requests.
 
-* Fixed logging for static file range requests.
+* Jun 26, 2016: Moved URL decoding logic to the `HttpRequest` object.
 
-* Moved URL decoding logic to the `HttpRequest` object.
+* Jun 20, 2016: Added basic logging support.
 
-### Date 20160620
+* Jun 20, 2016: Added automatic `Content-Length` header constraints when setting status code to 1xx, 204 or 304.
 
-* Added basic logging support.
+* Jun 20, 2016: Nicer messages on startup.
 
-* Added automatic `Content-Length` header constraints when setting status code to 1xx, 204 or 304.
+* Jun 20, 2016: Updated for new `lib-server` and `libsock`.
 
-* Nicer messages on startup.
+* Jun 16, 2016: HttpResponse date handling now utilizes a faster (and dirtier) solution then the standard libc `gmtime_r` and `strftime` solutions.
 
-* Updated for new `lib-server` and `libsock`.
+* Jun 12, 2016: HTTP protocol and HttpResponse `sendfile` and `HttpResponse.sendfile` fixes and optimizations. Now file sending uses file descriptors instead of `FILE *`, avoiding the memory allocations related to `FILE *` data.
 
-### Date 20160616
+* Jun 12, 2016: HttpResponse copy optimizes the first header buffer packet to copy as much of the body as possible into the buffer packet, right after the headers.
 
-* HttpResponse date handling now utilizes a faster (and dirtier) solution then the standard libc `gmtime_r` and `strftime` solutions.
+* Jun 12, 2016: Optimized mime type search for static file service.
 
-### Date 20160612
+* Jun 9, 2016: Rewrote the HttpResponse implementation to leverage `libsock`'s direct user-land buffer packet injection, minimizing user land data-copying.
 
-* HTTP protocol and HttpResponse `sendfile` and `HttpResponse.sendfile` fixes and optimizations. Now file sending uses file descriptors instead of `FILE *`, avoiding the memory allocations related to `FILE *` data.
+* Jun 9, 2016: rewrote the HTTP `sendfile` handling for public folder settings.
 
-* HttpResponse copy optimizes the first header buffer packet to copy as much of the body as possible into the buffer packet, right after the headers.
+* Jun 9, 2016: Fixed an issue related to the new pooling scheme, where old data would persist in some pooled request objects.
 
-* Optimized mime type search for static file service.
+* Jun 8, 2016: The HttpRequest object is now being pooled within the request library (not the HTTP protocol implementation) using Atomics (less mutex locking) and minimizing memory fragmentation by pre-initializing the buffer on first request (preventing memory allocated after the first request from getting "stuck behind" any of the pool members).
 
-### Date 20160609
-
-* Rewrote the HttpResponse implementation to leverage `libsock`'s direct user-land buffer packet injection, minimizing user land data-copying.
-
-* rewrote the HTTP `sendfile` handling for public folder settings.
-
-* Fixed an issue related to the new pooling scheme, where old data would persist in some pooled request objects.
-
-### Date 20160608
-
-* The HttpRequest object is now being pooled within the request library (not the HTTP protocol implementation) using Atomics (less mutex locking) and minimizing memory fragmentation by pre-initializing the buffer on first request (preventing memory allocated after the first request from getting "stuck behind" any of the pool members).
-
-### Date 20160607
-
-Baseline (changes not logged before this point in time).
+Jun 7, 2016: Baseline (changes not logged before this point in time).
 
 ## Websocket extension
 

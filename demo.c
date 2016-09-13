@@ -180,7 +180,7 @@ int main(int argc, char const *argv[]) {
   server_listen(.port = "5000", .on_open = htpdmp_on_open);
   const char *public_folder = "./public_www";
   if (http1_listen("3000", NULL, .on_request = on_request,
-                   .public_folder = public_folder, .log_static = 0))
+                   .public_folder = public_folder, .log_static = 1))
     perror("Couldn't initiate HTTP service"), exit(1);
   server_run(.threads = THREAD_COUNT);
   return 0;

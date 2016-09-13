@@ -1,4 +1,6 @@
 #include "http.h"
+#include "siphash.h"
+#include "base64.h"
 #include "http_response_http1.h"
 #include <netinet/in.h>
 #include <netinet/ip.h>
@@ -203,6 +205,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
                             const char *file_path_unsafe,
                             size_t path_unsafe_len, uint8_t log) {
   static char *HEAD = "HEAD";
+  char buffer[64]; /* we'll need this a few times along the way */
   if (request == NULL || (file_path_safe == NULL && file_path_unsafe == NULL))
     return -1;
   http_response_s tmp_response;
@@ -265,10 +268,6 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
       http_response_log_start(response);
   }
 
-  if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
-    forward_func(response, response_finish, response);
-  }
-
   // we have a file, time to handle response details.
   int file = open(fname, O_RDONLY);
   if (file == -1) {
@@ -286,11 +285,32 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
                                  .name_length = 12, .value = mime);
     }
   }
+  /* add ETag */
+  *((off_t *)buffer) = file_data.st_size;
+  *((time_t *)(buffer + sizeof(off_t))) = file_data.st_mtime;
+
+  uint64_t sip =
+      siphash24(buffer, sizeof(off_t) + sizeof(time_t), SIPHASH_DEFAULT_KEY);
+  bscrypt_base64_encode(buffer, (void *)&sip, 8);
+  http_response_write_header(response, .name = "ETag", .name_length = 4,
+                             .value = buffer, .value_length = 12);
 
   response->last_modified = file_data.st_mtime;
   http_response_write_header(response, .name = "Cache-Control",
                              .name_length = 13, .value = "public, max-age=3600",
                              .value_length = 20);
+
+  /* check etag */
+  if ((ext = http_request_find_header(request, "if-none-match", 13)) &&
+      memcmp(ext, buffer, 12) == 0) {
+    /* send back 304 */
+    response->status = 304;
+    close(file);
+    perform_func(response, response_finish, response);
+    if (log)
+      http_response_log_finish(response);
+    return 0;
+  }
 
   // Range handling
   if ((ext = http_request_find_header(request, "range", 5)) &&
@@ -320,7 +340,6 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     // going to the EOF (big chunk or EOL requested) - send as file
     if (finish >= file_data.st_size)
       finish = file_data.st_size;
-    char buffer[64];
     char *pos = buffer + 6;
     memcpy(buffer, "bytes ", 6);
     pos += http_ul2a(pos, start);
@@ -336,6 +355,15 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
                                .name_length = 13, .value = "bytes",
                                .value_length = 5);
 
+    if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
+      response->content_length = 0;
+      close(file);
+      perform_func(response, response_finish, response);
+      if (log)
+        http_response_log_finish(response);
+      return 0;
+    }
+
     http_response_sendfile(response, file, start, finish - start + 1);
     if (log)
       http_response_log_finish(response);
@@ -346,6 +374,15 @@ invalid_range:
   http_response_write_header(response, .name = "Accept-Ranges",
                              .name_length = 13, .value = "none",
                              .value_length = 4);
+
+  if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
+    response->content_length = 0;
+    close(file);
+    perform_func(response, response_finish, response);
+    if (log)
+      http_response_log_finish(response);
+    return 0;
+  }
 
   http_response_sendfile(response, file, 0, file_data.st_size);
   if (log)
