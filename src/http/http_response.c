@@ -286,11 +286,9 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     }
   }
   /* add ETag */
-  *((off_t *)buffer) = file_data.st_size;
-  *((time_t *)(buffer + sizeof(off_t))) = file_data.st_mtime;
-
-  uint64_t sip =
-      siphash24(buffer, sizeof(off_t) + sizeof(time_t), SIPHASH_DEFAULT_KEY);
+  uint64_t sip = file_data.st_size;
+  sip ^= file_data.st_mtime;
+  sip = siphash24(&sip, sizeof(uint64_t), SIPHASH_DEFAULT_KEY);
   bscrypt_base64_encode(buffer, (void *)&sip, 8);
   http_response_write_header(response, .name = "ETag", .name_length = 4,
                              .value = buffer, .value_length = 12);
