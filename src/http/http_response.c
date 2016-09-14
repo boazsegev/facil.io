@@ -295,8 +295,8 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
 
   response->last_modified = file_data.st_mtime;
   http_response_write_header(response, .name = "Cache-Control",
-                             .name_length = 13, .value = "public, max-age=3600",
-                             .value_length = 20);
+                             .name_length = 13, .value = "max-age=3600",
+                             .value_length = 12);
 
   /* check etag */
   if ((ext = http_request_find_header(request, "if-none-match", 13)) &&
