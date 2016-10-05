@@ -66,7 +66,15 @@ Git commits aren't automatically tested yet and they might introduce new issues 
 
 Baseline (changes not logged before this point in time).
 
-## Lib-Sock (development incomplete)
+## Lib-Sock
+
+### V. 0.2.1
+
+* Larger user level buffer - increased from ~4Mb to ~16Mb.
+
+* The system call to `write` will be deferred (asynchronous) when using `libasync`. This can be changed by updating the `SOCK_DELAY_WRITE` value in the `libsock.c` file.
+
+    This will not prevent `sock_write` from emulating a blocking state while the user level buffer is full.
 
 ### V. 0.2.0
 

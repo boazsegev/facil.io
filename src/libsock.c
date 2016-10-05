@@ -45,6 +45,12 @@ Support timeout setting.
 void sock_touch(intptr_t uuid) {}
 
 /* *****************************************************************************
+Support event based `write` scheduling.
+*/
+#pragma weak async_run
+int async_run(void (*task)(void *), void *arg) { return -1; }
+
+/* *****************************************************************************
 OS Sendfile settings.
 */
 
@@ -70,6 +76,19 @@ Buffer and socket map memory allocation. Defaults to mmap.
 */
 #ifndef USE_MALLOC
 #define USE_MALLOC 0
+#endif
+
+/* *****************************************************************************
+The system call to `write` (non-blocking) can be defered when using `libasync`.
+
+However, this will not prevent `sock_write` from cycling through the sockets and
+flushing them (block emulation) when both the system and the user level buffers
+are full.
+
+Defaults to 1 (defered).
+*/
+#ifndef SOCK_DELAY_WRITE
+#define SOCK_DELAY_WRITE 1
 #endif
 
 /* *****************************************************************************
@@ -188,7 +207,8 @@ static inline void set_fd(int fd, unsigned int state) {
   };
   // unlock
   spn_unlock(&fd_info[fd].lock);
-  // should be called within the lock? - no function calling within a spinlock.
+  // should be called within the lock? - no function calling within a
+  // spinlock.
   if (old_data.rw_hooks && old_data.rw_hooks->on_clear)
     old_data.rw_hooks->on_clear(old_data.fduuid.uuid, old_data.rw_hooks);
   // clear old data
@@ -463,12 +483,30 @@ static void sock_flush_unsafe(int fd) {
   }
 }
 
+#if SOCK_DELAY_WRITE == 1
+
+static inline void sock_flush_schd(intptr_t uuid) {
+  if (async_run((void *)sock_flush, (void *)uuid) == -1)
+    goto fallback;
+  return;
+fallback:
+  sock_flush_unsafe(sock_uuid2fd(uuid));
+}
+
+#define _write_to_sock() sock_flush_schd(sfd->fduuid.uuid)
+
+#else
+
+#define _write_to_sock() sock_flush_unsafe(fd)
+
+#endif
+
 static inline void sock_send_packet_unsafe(int fd, sock_packet_s *packet) {
   fd_info_s *sfd = fd_info + fd;
   if (sfd->packet == NULL) {
     /* no queue, nothing to check */
     sfd->packet = packet;
-    sock_flush_unsafe(fd);
+    _write_to_sock();
     return;
 
   } else if (packet->metadata.urgent == 0) {
@@ -477,7 +515,7 @@ static inline void sock_send_packet_unsafe(int fd, sock_packet_s *packet) {
     while (pos->metadata.next)
       pos = pos->metadata.next;
     pos->metadata.next = packet;
-    sock_flush_unsafe(fd);
+    _write_to_sock();
     return;
 
   } else {
@@ -494,7 +532,7 @@ static inline void sock_send_packet_unsafe(int fd, sock_packet_s *packet) {
       *pos = tail;
     }
   }
-  sock_flush_unsafe(fd);
+  _write_to_sock();
 }
 
 /* *****************************************************************************
@@ -676,7 +714,8 @@ static inline sock_packet_s *sock_try_checkout_packet(void) {
 
 /**
 Checks out a `sock_packet_s` from the packet pool, transfering the
-ownership of the memory to the calling function. The function will hang until a
+ownership of the memory to the calling function. The function will hang until
+a
 packet becomes available, so never check out more then a single packet at a
 time.
 */
@@ -713,7 +752,8 @@ ssize_t sock_send_packet(intptr_t uuid, sock_packet_s *packet) {
 }
 
 /**
-Returns TRUE (non 0) if there is data waiting to be written to the socket in the
+Returns TRUE (non 0) if there is data waiting to be written to the socket in
+the
 user-land buffer.
 */
 _Bool sock_packets_pending(intptr_t uuid) {
@@ -765,7 +805,8 @@ ssize_t sock_read(intptr_t uuid, void *buf, size_t count) {
   }
   if (i_read == -1 && (ERR_OK || ERR_TRY_AGAIN))
     return 0;
-  // fprintf(stderr, "Read Error for %lu bytes from fd %d (closing))\n", count,
+  // fprintf(stderr, "Read Error for %lu bytes from fd %d (closing))\n",
+  // count,
   //         sock_uuid2fd(uuid));
   sock_close(uuid);
   return -1;
@@ -778,6 +819,8 @@ Flushing
 ssize_t sock_flush(intptr_t uuid) {
   if (!fd_info || !is_valid(uuid))
     return -1;
+  if (uuid2info(uuid).packet == NULL)
+    return 0;
   spn_lock(&uuid2info(uuid).lock);
   sock_flush_unsafe(sock_uuid2fd(uuid));
   spn_unlock(&uuid2info(uuid).lock);
