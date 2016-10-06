@@ -5,7 +5,10 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIB_SERVER
-#define LIB_SERVER "0.4.0"
+#define LIB_SERVER "0.4.1"
+#define LIB_SERVER_VERSION_MAJOR 0
+#define LIB_SERVER_VERSION_MINOR 4
+#define LIB_SERVER_VERSION_PATCH 1
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE

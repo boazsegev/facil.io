@@ -5,10 +5,10 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef LIB_SOCK
-#define LIB_SOCK "0.2.0"
+#define LIB_SOCK "0.2.2"
 #define LIB_SOCK_VERSION_MAJOR 0
 #define LIB_SOCK_VERSION_MINOR 2
-#define LIB_SOCK_VERSION_PATCH 1
+#define LIB_SOCK_VERSION_PATCH 2
 
 /** \file
 The libsock is a non-blocking socket helper library, using a user level buffer,

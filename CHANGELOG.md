@@ -68,6 +68,10 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Sock
 
+### V. 0.2.2
+
+* Fixed an issue introduced in `libsock` 0.2.1, where `sock_close` wouldn't close the socket even when all the data was sent.
+
 ### V. 0.2.1
 
 * Larger user level buffer - increased from ~4Mb to ~16Mb.
@@ -169,6 +173,14 @@ Baseline (changes not logged before this point in time).
 Baseline (changes not logged before this point in time).
 
 ## Lib-Server
+
+### V. 0.4.1
+
+* Minor performance oriented changes.
+
+* Shutdown process should now allow single threaded asynchronous (evented) task scheduling.
+
+* Updating a socket's timeout settings automatically "touches" the socket (resets the timeout count).
 
 ### V. 0.4.0
 

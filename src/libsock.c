@@ -233,6 +233,9 @@ Call this function before calling any `libsock` functions.
 static void destroy_lib_data(void) {
   if (fd_info) {
     while (fd_capacity--) { // include 0 in countdown
+      if (fd_info[fd_capacity].open) {
+        fprintf(stderr, "Socket %lu is marked as open\n", fd_capacity);
+      }
       set_fd(fd_capacity, LIB_SOCK_STATE_CLOSED);
     }
 #if USE_MALLOC == 1
@@ -820,10 +823,11 @@ ssize_t sock_flush(intptr_t uuid) {
   if (!fd_info || !is_valid(uuid))
     return -1;
   if (uuid2info(uuid).packet == NULL)
-    return 0;
+    goto no_packet;
   spn_lock(&uuid2info(uuid).lock);
   sock_flush_unsafe(sock_uuid2fd(uuid));
   spn_unlock(&uuid2info(uuid).lock);
+no_packet:
   if (uuid2info(uuid).close) {
     sock_force_close(uuid);
     return -1;

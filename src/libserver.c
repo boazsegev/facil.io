@@ -80,10 +80,11 @@ These macros help prevent code changes when changing the data struct.
 // run through any open sockets and call the shutdown handler
 static inline void server_on_shutdown(void) {
   if (server_data.fds && server_data.capacity > 0) {
+    intptr_t uuid;
     for (size_t i = 0; i < server_data.capacity; i++) {
       if (server_data.fds[i].protocol == NULL)
         continue;
-      intptr_t uuid = sock_fd2uuid(i);
+      uuid = sock_fd2uuid(i);
       if (uuid != -1) {
         if (server_data.fds[i].protocol->on_shutdown != NULL)
           server_data.fds[i].protocol->on_shutdown(uuid,
@@ -547,11 +548,25 @@ ssize_t server_run(struct ServerSettings settings) {
     async_join();
   else
     async_perform();
+
+  /*
+   * start a single worker thread for shutdown tasks and async close operations
+   */
+  async_start(1);
+
   listener_on_server_shutdown();
   reactor_review();
   server_on_shutdown();
+  /* cycle until no IO events occure. */
+  while (reactor_review() > 0)
+    ;
   if (settings.on_finish)
     settings.on_finish();
+
+  /*
+   * Wait for any unfinished tasks.
+   */
+  async_finish();
 
   if (children) {
     if (rootpid == getpid()) {
@@ -625,6 +640,7 @@ void server_set_timeout(intptr_t fd, uint8_t timeout) {
   if (valid_uuid(fd) == 0)
     return;
   lock_uuid(fd);
+  uuid_data(fd).active = server_data.last_tick;
   uuid_data(fd).timeout = timeout;
   unlock_uuid(fd);
 }
