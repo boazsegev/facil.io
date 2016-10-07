@@ -233,9 +233,9 @@ Call this function before calling any `libsock` functions.
 static void destroy_lib_data(void) {
   if (fd_info) {
     while (fd_capacity--) { // include 0 in countdown
-      if (fd_info[fd_capacity].open) {
-        fprintf(stderr, "Socket %lu is marked as open\n", fd_capacity);
-      }
+      // if (fd_info[fd_capacity].open) {
+      //   fprintf(stderr, "Socket %lu is marked as open\n", fd_capacity);
+      // }
       set_fd(fd_capacity, LIB_SOCK_STATE_CLOSED);
     }
 #if USE_MALLOC == 1
