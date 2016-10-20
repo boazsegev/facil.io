@@ -178,7 +178,12 @@ int main(int argc, char const *argv[]) {
   // http_parser_test();
   // server_listen(.port = "4000", .on_open = on_open);
   server_listen(.port = "5000", .on_open = htpdmp_on_open);
+#if defined(__linux__) // My Linux machine has a slow file system issue.
+  const char *public_folder = NULL; // "./public_www";
+#else
   const char *public_folder = "./public_www";
+#endif
+
   if (http1_listen("3000", NULL, .on_request = on_request,
                    .public_folder = public_folder, .log_static = 1))
     perror("Couldn't initiate HTTP service"), exit(1);
