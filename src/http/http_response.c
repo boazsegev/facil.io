@@ -418,7 +418,6 @@ void http_response_log_start(http_response_s *response) {
 prints out the log to stderr.
 */
 void http_response_log_finish(http_response_s *response) {
-  // TODO optimize using fwrite
   http_request_s *request = response->metadata.request;
   uintptr_t bytes_sent = (uintptr_t)response->metadata.headers_pos;
 
@@ -431,6 +430,9 @@ void http_response_log_finish(http_response_s *response) {
   socklen_t addrlen = sizeof(addrinfo);
   time_t last_tick = server_last_tick();
   http_gmtime(&last_tick, &tm);
+
+  // TODO Guess IP address from headers (forwarded) where possible
+
   int got_add = getpeername(sock_uuid2fd(request->metadata.fd),
                             (struct sockaddr *)&addrinfo, &addrlen);
 #define HTTP_REQUEST_LOG_LIMIT 128
