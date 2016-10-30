@@ -1,16 +1,18 @@
-# Server Writing Tools in C
+# facil.io
 
-Writing servers in C is repetitive and often involves copying a the code from [Beej's guide](http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html) and making a mess of things along the way.
+[facil.io](http://facil.io) is a dedicated Linux / BSD (and macOS) network services library that's based on [Beej's guide](http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html) and [The C10K problem paper](http://www.kegel.com/c10k.html).
 
-Here you will find tools to write HTTP, Websockets and custom network applications with ease and speed, using a comfortable framework for writing network services in C.
+[facil.io](http://facil.io) provides a TCP/IP oriented solution for common network service tasks such as HTTP / Websocket servers, web applications and high performance backend servers.
 
-All the libraries here are provided as source code. Many of the libraries can be used as stand-alone modules. The more complex libraries (i.e. `lib-server` and it's extensions) require the smaller libraries (i.e. the thread-pool library `libasync`, the socket library `libsock` and the reactor core `libreact`).
+[facil.io](http://facil.io) prefers a TCP/IP specialized solution over a generic one (although the source code can be easily applied for UDP and other approaches).
+
+[facil.io](http://facil.io) includes a number of libraries that work together for a common goal. Some of the libraries (i.e. the thread-pool library `libasync`, the socket library `libsock` and the reactor core `libreact`) can be used independently while others are designed to work together using a modular approach.
 
 I got to use this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment). This library is used to implement the [Ruby Iodine server](https://github.com/boazsegev/iodine).
 
 **Writing HTTP and Websocket services in C? Easy!**
 
-Websockets and HTTP are super common, so `libserver` comes with HTTP and Websocket extensions, allowing us to easily write HTTP and Websocket services.
+Websockets and HTTP are super common, so `libserver` comes with HTTP and Websocket extensions, allowing us to easily write HTTP/1.1 and Websocket services.
 
 The framework's code is heavily documented using comments. You can use Doxygen to create automated documentation for the API.
 
@@ -118,6 +120,74 @@ int main(int argc, char const* argv[]) {
 }
 ```
 
+**Simple API (Echo example)**
+
+[facil.io](http://facil.io)'s API is designed for both simplicity and an object oriented approach, using network protocol objects and structs to avoid bloating function arguments and to provide sensible default behavior.
+
+Here's a simple Echo example (test with telnet to port `"3000"`).
+
+```c
+#include "libserver.h"
+
+// Performed whenever there's pending incoming data on the socket
+static void perform_echo(intptr_t uuid, protocol_s * prt) {
+  char buffer[1024] = {'E', 'c', 'h', 'o', ':', ' '};
+  ssize_t len;
+  while ((len = sock_read(uuid, buffer + 6, 1018)) > 0) {
+    sock_write(uuid, buffer, len + 6);
+    if ((buffer[6] | 32) == 'b' && (buffer[7] | 32) == 'y' &&
+        (buffer[8] | 32) == 'e') {
+      sock_write(uuid, "Goodbye.\n", 9);
+      sock_close(uuid); // closes after `write` had completed.
+      return;
+    }
+  }
+}
+// performed whenever "timeout" is reached.
+static void echo_ping(intptr_t uuid, protocol_s * prt) {
+  sock_write(uuid, "Server: Are you there?\n", 23);
+}
+// performed during server shutdown, before closing the socket.
+static void echo_on_shutdown(intptr_t uuid, protocol_s * prt) {
+  sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
+}
+// performed after the socket was closed and the currently running task had completed.
+static void destroy_echo_protocol(protocol_s * echo_proto) {
+  if (echo_proto) // always error check, even if it isn't needed.
+    free(echo_proto);
+  fprintf(stderr, "Freed Echo protocol at %p\n", echo_proto);
+}
+// performed whenever a new connection is accepted.
+static inline protocol_s *create_echo_protocol(intptr_t uuid, void * _ ) {
+  // create a protocol object
+  protocol_s * echo_proto = malloc(sizeof(* echo_proto));
+  // set the callbacks
+  * echo_proto = (protocol_s){
+      .on_data = perform_echo,
+      .on_shutdown = echo_on_shutdown,
+      .ping = echo_ping,
+      .on_close = destroy_echo_protocol,
+  };
+  // write data to the socket and set timeout
+  sock_write(uuid, "Echo Service: Welcome. Say \"bye\" to disconnect.\n", 48);
+  server_set_timeout(uuid, 10);
+  // print log
+  fprintf(stderr, "New Echo connection %p for socket UUID %p\n", echo_proto,
+          (void * )uuid);
+  // return the protocol object to attach it to the socket.
+  return echo_proto;
+}
+// creates and runs the server
+int main(int argc, char const * argv[]) {
+  // listens on port 3000 for echo services.
+  server_listen(.port = "3000", .on_open = create_echo_protocol);
+  // starts and runs the server
+  server_run(.threads = 10);
+  return 0;
+}
+```
+
+
 **SSL/TLS?** - possible, but you'll have to write it in.
 
 Since most web applications (Node.js, Ruby etc') end up running behind load balancers and proxies, it is often that the SSL layer is handled by intermediaries.
@@ -132,90 +202,23 @@ I did not write a TLS implementation since I'm still looking into OpenSSL altern
 
 ---
 
-## Background information
+## The libraries in the repo
 
-After years in [Ruby land](https://www.ruby-lang.org/en/) I decided to learn [Rust](https://www.rust-lang.org), only to re-discover that I actually quite enjoy writing in C and that C's reputation as "unsafe" or "hard" is undeserved and hides C's power.
+[facil.io](http://facil.io) is comprised of the following libraries that can be found in this repository:
 
-So I decided to brush up my C programming skills... like an old man tinkering with his childhood tube box (an old radio, for you youngsters), I tend to come back to the question of web servers, the reactor pattern and evented programming.
+* [`libasync`](docs/libasync.md) - A native POSIX (`pthread`) thread pool.
 
-Anyway, Along the way I wrote:
+* [`libreact`](docs/libreact.md) - KQueue/EPoll abstraction.
 
-## [`libasync`](docs/libasync.md) - A native POSIX (`pthread`) thread pool.
+* [`libsock`](docs/libsock.md) - Non-Blocking socket abstraction with `libreact` support.
 
- `libasync` is a simple thread pool that uses POSIX threads (and could be easily ported).
+* [`libserver`](docs/libserver.md) - a server building library.
 
- It uses a combination of a pipe (for wakeup signals) and mutexes (for managing the task queue). I found it more performant then using conditional variables and more portable then using signals (which required more control over the process then an external library should require).
+* The HTTP/1.1 protocol (for `libserver`).
 
- `libasync` threads can be guarded by "sentinel" threads (it's a simple flag to be set prior to compiling the library's code), so that segmentation faults and errors in any given task won't break the system apart.
+* The Websocket protocol (for `libserver` and HTTP/1.1).
 
- This was meant to give a basic layer of protection to any server implementation, but I would recommend that it be removed for any other uses (it's a matter or changing the definition of `ASYNC_USE_SENTINEL` in `libasync.c`).
-
- Using `libasync` is super simple and would look something like this:
-
- ```c
-#include "libasync.h"
-#include <stdio.h>
-#include <pthread.h>
-
-// an example task
-void say_hi(void* arg) {
- printf("Hi from thread %p!\n", pthread_self());
-}
-
-// an example usage
-int main(void) {
- // create the thread pool with 8 threads.
- async_start(8);
- // send a task
- async_run(say_hi, NULL);
- // wait for all tasks to finish, closing the threads, clearing the memory.
- async_finish();
-}
- ```
-
-To use this library you only need the `spnlock.h`, `libasync.h` and `libasync.c` files.
-
-## [`libreact`](docs/libreact.md) - KQueue/EPoll abstraction.
-
-It's true, some server programs still use `select` and `poll`... but they really shouldn't be (don't get me started).
-
-When using [`libevent`](http://libevent.org) or [`libev`](http://software.schmorp.de/pkg/libev.html) you could end up falling back on `select` if you're not careful. `libreact`, on the other hand, will simply refuse to compile if neither kqueue nor epoll are available...
-
-I should note that this means that Solaris and Windows support is currently absent, as Solaris's `evpoll` library has significantly different design requirements (each IO needs to re-register after it's events are handled) and Windows is a different beast altogether. This difference makes the abstraction sharing (API) difficult and ineffective.
-
-Since I mentioned `libevent` and `libev`, I should point out that even a simple inspection shows that these are amazing and well tested libraries (how did they make those nice benchmark graphs?!)... but I hated their API (or documentation).
-
-It seems to me, that since both `libevent` and `libev` are so all-encompassing, they end up having too many options and functions... I, on the other hand, am a fan of well designed abstractions, even at the price of control. I mean, you're writing a server that should handle 100K+ (or 1M+) concurrent connections - do you really need to manage the socket polling timeouts ("ticks")?! Are you really expecting more than a second to pass with no events?
-
-To use this library you only need the `libreact.h` and `libreact.c` files.
-
-## [`libsock`](docs/libsock.md) - Non-Blocking socket abstraction with `lib-react` support.
-
-Non-Blocking sockets have a lot of common code that needs to be handled, such as a user level buffer (for all the data that didn't get sent when the socket was busy), delayed disconnection (don't close before sending all the data), file descriptor collision protection (preventing data intended for an old client from being sent to a new client) etc'.
-
-Read through this library's documentation to learn more about using this thread-safe library that provides user level writing buffer and seamless integration with `libreact`.
-
-To use this library you only need the `spnlock.h`, `libsock.h` and `libsock.c` files.
-
-## [`libserver`](docs/libserver.md) - a server building library.
-
-Writing server code is fun... but in limited and controlled amounts... after all, much of it is simple code being repeated endlessly, connecting one piece of code with a different piece of code.
-
-`libserver` is aimed at writing unix based (linux/BSD) servers application (network services), such as web applications. It uses `libreact` as the reactor, `libasync` to handle tasks and `libbuffer` for a user lever network buffer and writing data asynchronously.
-
-`libserver` was designed to strike a good performance balance (memory, speed etc') while maintaining security (`fd` collision protection etc'). system calls that might not work on some OS versions were disabled (you can enable `sendfile` for mac using a single flag in `libsock.c`) and the thread pool, which has no consumer producer distinction, uses `nanosleep` instead of semaphores or mutexes (this actually performs better).
-
-Many of these can be changed using a simple flag and the code should be commented enough for any required changes to be easily manageable. To offer some comparison, last time I counted, `ev.c` from `libev` had ~5000 lines, while `libreact` was less then 700 lines (~280 lines of actual code, everything else is comments).
-
-Using `libserver` is super simple.
-
-It's based on Protocol structure and callbacks, allowing for many different listening sockets and network services (protocols) to be active concurrently. We can easily and dynamically change protocols mid-stream, supporting stuff like HTTP upgrade requests (i.e. switching from HTTP to Websockets).
-
-There was a simple echo server example at the beginning of this README.
-
-Using this library requires all the minor libraries written to support it: `libasync`, `libsock` and `libreact`. This means you will need all the `.h` and `.c` files except the HTTP related files. `minicrypt` isn't required (nor did I finish writing it).
-
-### A word about concurrency
+## A word about concurrency
 
 It should be notes that network applications always have to keep concurrency in mind. For instance, the connection might be closed by one machine while the other is still preparing (or writing) it's response.
 
@@ -231,9 +234,11 @@ In addition to multi-threading, `libserver` allows us to easily setup the networ
 
 For best results, assume everything could run concurrently. `libserver` will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your application.
 
+---
+
 ## [`http`](docs/http.md) - a protocol for the web
 
-All these libraries are used in a Ruby server I'm re-writing, which has native Websocket support ([Iodine](https://github.com/boazsegev/iodine)) - but since the HTTP protocol layer doesn't enter "Ruby-land" before the request parsing is complete, I ended up writing a light HTTP parser in C, and attaching it to the `libserver`'s protocol specs.
+All these libraries are used in a Ruby server I'm re-writing, which has native Websocket support ([Iodine](https://github.com/boazsegev/iodine)). Concurrency in Ruby is complicated, so I had the HTTP protocol layer avoid "Ruby-land" until the request parsing is complete, writing a light HTTP parser in C and attaching it to the `libserver`'s protocol specs.
 
 I should note the server I'm writing is mostly for x86 architectures and it uses unaligned memory access to 64bit memory "words". If you're going to use the HTTP parser on a machine that requires aligned memory access, some code would need to be reviewed.
 
@@ -372,11 +377,11 @@ int main(int argc, char const* argv[]) {
 }
 ```
 
-The Websockets implementation uses the `minicrypt` library for the Base64 encoding and SHA-1 hashing that are part of the protocol's handshake. If you're using OpenSSL, you might want to rewrite this part and use the OpenSSL implementation (OpenSSL's implementation should be faster, as it's written in assembly instead of C and more brain-power was invested in optimizing it).
+The Websockets implementation uses the `bscrypt` library for the Base64 encoding and SHA-1 hashing that are part of the protocol's handshake.
 
 ---
 
-That's it for now. I'm still working on these as well as on `minicrypt` and SSL/TLS support (adding OpenSSL might be easy if you know the OpenSSL framework, but I think their API is terrible and I'm looking into alternatives).
+That's it for now. I'm still working on these as well as on `bscrypt` and SSL/TLS support (adding OpenSSL might be easy if you know the OpenSSL framework, but I think their API is terrible and I'm looking into alternatives).
 
 ## Forking, Contributing and all that Jazz
 
@@ -384,4 +389,10 @@ Sure, why not. If you can add Solaris or Windows support to `libreact`, that cou
 
 If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
 
-If you want to help me write a new SSL/TLS library or have an SSL/TLS solution you can fit into `lib-server`, hit me up.
+Hit me up if you want to:
+
+* Help me write HPACK / HTTP2 protocol support.
+
+* Help me design / write a generic HTTP routing helper library for the `http_request_s` struct.
+
+* If you want to help me write a new SSL/TLS library or have an SSL/TLS solution we can fit into `lib-server` (as source code).
