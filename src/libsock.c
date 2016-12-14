@@ -10,17 +10,18 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "libsock.h"
 
-#include <string.h>
-#include <stdio.h>
-#include <time.h>
-#include <fcntl.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <netdb.h>
-#include <sys/types.h>
-#include <sys/socket.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/mman.h>
-#include <sys/time.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <time.h>
 
 /* *****************************************************************************
 Use spinlocks "spnlock.h".
@@ -62,7 +63,7 @@ OS Sendfile settings.
 #elif defined(__unix__) /* BSD sendfile should work, but isn't tested */
 #include <sys/uio.h>
 #define USE_SENDFILE 0
-#elif defined(__APPLE__) /* AIs the pple sendfile still broken? */
+#elif defined(__APPLE__) /* Is the apple sendfile still broken? */
 #include <sys/uio.h>
 #define USE_SENDFILE 1
 #else /* sendfile might not be available - always set to 0 */
@@ -130,11 +131,16 @@ ssize_t sock_max_capacity(void) {
   flim = OPEN_MAX;
 #endif
   // try to maximize limits - collect max and set to max
-  struct rlimit rlim;
+  struct rlimit rlim = {0};
   getrlimit(RLIMIT_NOFILE, &rlim);
-  // printf("Meximum open files are %llu out of %llu\n", rlim.rlim_cur,
-  //        rlim.rlim_max);
+// printf("Meximum open files are %llu out of %llu\n", rlim.rlim_cur,
+//        rlim.rlim_max);
+#if defined(__APPLE__) /* Apple's getrlimit is broken. */
+  rlim.rlim_cur = rlim.rlim_max >= OPEN_MAX ? OPEN_MAX : rlim.rlim_max;
+#else
   rlim.rlim_cur = rlim.rlim_max;
+#endif
+
   setrlimit(RLIMIT_NOFILE, &rlim);
   getrlimit(RLIMIT_NOFILE, &rlim);
   // printf("Meximum open files are %llu out of %llu\n", rlim.rlim_cur,

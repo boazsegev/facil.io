@@ -68,6 +68,10 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Sock
 
+### V. 0.2.3 (next version number)
+
+* Apple's `getrlimit` is broken, causing server capacity limits to be less than they could / should be.
+
 ### V. 0.2.2
 
 * Fixed an issue introduced in `libsock` 0.2.1, where `sock_close` wouldn't close the socket even when all the data was sent.

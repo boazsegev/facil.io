@@ -8,6 +8,5 @@ The main function
 int main(int argc, char const *argv[]) {
   // spn_lock_test();
   // http_parser_test();
-  // server_listen(.port = "4000", .on_open = on_open);
   HTTP_WEBSOCKET_TEST();
 }
