@@ -1,10 +1,10 @@
-#include "libserver.h"
 #include "websockets.h"
 #include "bscrypt.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include "libserver.h"
 #include <arpa/inet.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>
@@ -593,8 +593,12 @@ refuse:
   // set the negative response
   response->status = 400;
 cleanup:
-  http_response_finish(response);
   if (response->status == 101) {
+    // set the protocol lock
+    ws->protocol.callback_lock = SPN_LOCK_INIT;
+    spn_lock(&ws->protocol.callback_lock);
+    // send the response
+    http_response_finish(response);
     // update the protocol object, cleanning up the old one
     server_switch_protocol(ws->fd, (void *)ws);
     // we have an active websocket connection - prep the connection buffer
@@ -604,8 +608,10 @@ cleanup:
     // call the on_open callback
     if (settings.on_open)
       server_task(ws->fd, on_open, settings.on_open, NULL);
+    spn_unlock(&ws->protocol.callback_lock);
     return 0;
   }
+  http_response_finish(response);
   destroy_ws(ws);
   return -1;
 }
