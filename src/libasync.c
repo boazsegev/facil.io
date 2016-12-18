@@ -10,17 +10,17 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "libasync.h"
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <errno.h>
-#include <signal.h>
-#include <unistd.h>
 #include <execinfo.h>
-#include <pthread.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <sched.h>
-#include <sys/mman.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 /* *****************************************************************************
 Performance options.
@@ -456,11 +456,13 @@ Test
 
 #define ASYNC_SPEED_TEST_THREAD_COUNT 120
 
-static size_t _Atomic i_count = 0;
+static spn_lock_i i_lock = SPN_LOCK_INIT;
+static size_t i_count = 0;
 
 static void sample_task(void *_) {
-  __asm__ volatile("" ::: "memory");
-  atomic_fetch_add(&i_count, 1);
+  spn_lock(&i_lock);
+  i_count++;
+  spn_unlock(&i_lock);
 }
 
 static void sched_sample_task(void *_) {
@@ -470,8 +472,9 @@ static void sched_sample_task(void *_) {
 }
 
 static void text_task_text(void *_) {
-  __asm__ volatile("" ::: "memory");
+  spn_lock(&i_lock);
   fprintf(stderr, "this text should print before async_finish returns\n");
+  spn_unlock(&i_lock);
 }
 
 static void text_task(void *_) {
@@ -490,7 +493,9 @@ static void evil_task(void *_) {
 #endif
 
 void async_test_library_speed(void) {
-  atomic_store(&i_count, 0);
+  spn_lock(&i_lock);
+  i_count = 0;
+  spn_unlock(&i_lock);
   time_t start, end;
   fprintf(stderr, "Starting Async testing\n");
   if (async_start(ASYNC_SPEED_TEST_THREAD_COUNT) == 0) {
@@ -505,7 +510,7 @@ void async_test_library_speed(void) {
     async_finish();
     end = clock();
     fprintf(stderr, "Async performance test %lu cycles with i_count = %lu\n",
-            end - start, atomic_load(&i_count));
+            end - start, i_count);
   } else {
     fprintf(stderr, "Async test couldn't be initialized\n");
     exit(-1);

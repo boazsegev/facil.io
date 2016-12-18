@@ -658,9 +658,11 @@ static char *sha2_variant_names[] = {
 };
 
 // clang-format off
-#if defined(TEST_OPENSSL) && defined(__has_include) && __has_include(<openssl/sha.h>)
-#   include <openssl/sha.h>
-#   define HAS_OPEN_SSL 1
+#if defined(TEST_OPENSSL) && defined(__has_include)
+#  if __has_include(<openssl/sha.h>)
+#    include <openssl/sha.h>
+#    define HAS_OPEN_SSL 1
+#  endif
 #endif
 // clang-format on
 
