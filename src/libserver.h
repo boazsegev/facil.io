@@ -15,15 +15,22 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 
 #include <stdint.h>
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 /* lib server is based off and requires the following libraries: */
-#include "libreact.h"
 #include "libasync.h"
+#include "libreact.h"
 #include "libsock.h"
 #include "spnlock.h"
+
+/** Set `SERVER_DELAY_IO` to 1 in order to delay the IO reactor review
+  * until the queue for scheduled tasks and events is empty.
+  */
+#ifndef SERVER_DELAY_IO
+#define SERVER_DELAY_IO 0
+#endif
 
 #ifndef SERVER_PRINT_STATE
 /**

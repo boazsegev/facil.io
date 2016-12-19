@@ -8,12 +8,12 @@ Feel free to copy, use and enjoy according to the license provided.
 #define _GNU_SOURCE
 #endif
 #include "libserver.h"
-#include <string.h>
-#include <signal.h>
+#include <errno.h>
 #include <pthread.h>
+#include <signal.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
-#include <errno.h>
 
 /* *****************************************************************************
 Connection Data
@@ -458,6 +458,9 @@ static void server_cycle(void *_) {
     } else {
       perform_idle = 1;
     }
+#if SERVER_DELAY_IO
+    async_perform();
+#endif
     async_run(server_cycle, NULL);
   }
 }
