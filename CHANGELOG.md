@@ -178,6 +178,14 @@ Baseline (changes not logged before this point in time).
 
 ## Lib-Server
 
+### V. 0.4.2 (next version number)
+
+* Minor performance oriented changes.
+
+* Fixed an issue where Websocket upgrade would allow code execution in parallel with `on_open` (protocol locking was fixed while switching the protocol).
+
+* Added `server_each_unsafe` to iterate over all client connections to perform a task. The `unsafe` part in the name is very important - for example, memory could be deallocated during execution.
+
 ### V. 0.4.1
 
 * Minor performance oriented changes.

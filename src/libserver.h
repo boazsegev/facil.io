@@ -401,9 +401,26 @@ long server_count(char *service);
 */
 
 /**
+Performs a task for each connection except the origin connection, unsafely and
+synchronously.
+
+The task will be performed synchronously (blocking), without waiting for a lock.
+
+The task will be performed unsafely. For example, the protocol object might be
+invalid midway through (or at the beginning) the execution, as there is no
+protection against memory deallocation.
+
+This function should probably be avoided except when implementing publication or
+broadcast algorithms.
+*/
+void server_each_unsafe(intptr_t origin_uuid,
+                        void (*task)(intptr_t origin_uuid, intptr_t target_uuid,
+                                     protocol_s *target_protocol, void *arg),
+                        void *arg);
+
+/**
 Schedules a specific task to run asyncronously for each connection (except the
 origin connection).
-a NULL service identifier == all connections (all protocols).
 
 The task is performed within each target connection's busy "lock", meanning no
 two tasks (or `on_data` events) should be performed at the same time
@@ -414,11 +431,8 @@ The `on_finish` callback will be called once the task is finished and it will
 receive the originating connection's UUID (could be 0). The originating
 connection might have been closed by that time.
 
-The `service` string (pointer) identifier MUST be a constant string object OR
-a string that will persist until the `on_finish` callback is called. In other
-words, either hardcode the string or use `malloc` to allocate it before
-calling `each` and `free` to release the string from within the `on_finish`
-callback.
+The `service` identifier is required. The comparison is pointer value comparison
+and isn't related to the content of the service string.
 
 It is recommended the `on_finish` callback is only used to perform any
 resource cleanup necessary.

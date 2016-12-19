@@ -815,6 +815,28 @@ API
 ******* */
 
 /**
+Performs a task for each connection except the origin connection, unsafely and
+synchronously.
+*/
+void server_each_unsafe(intptr_t origin_uuid,
+                        void (*task)(intptr_t origin_uuid, intptr_t target_uuid,
+                                     protocol_s *target_protocol, void *arg),
+                        void *arg) {
+  intptr_t target;
+  protocol_s *protocol;
+  for (size_t i = 0; i < server_data.capacity; i++) {
+    target = sock_fd2uuid(p2task(task).target);
+    if (target == -1)
+      continue;
+    protocol = protocol_uuid(target);
+    if (protocol == NULL || protocol->service == listener_protocol_name ||
+        protocol->service == timer_protocol_name)
+      continue;
+    task(origin_uuid, target, protocol, arg);
+  }
+}
+
+/**
 Schedules a specific task to run asyncronously for each connection (except the
 origin connection) on a specific protocol.
 */
