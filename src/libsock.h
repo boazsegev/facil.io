@@ -20,10 +20,10 @@ The library is designed to be thread safe, but not fork safe.
 */
 
 #include <stdint.h>
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #ifndef __unused
 #define __unused __attribute__((unused))
