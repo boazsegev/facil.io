@@ -1,7 +1,7 @@
 /* *****************************************************************************
 A Simple busy lock implementation ... (spnlock.h)
 
-Based on a lot of internet reading as well as comperative work (i.e the Linux
+Based on a lot of internet reading as well as comparative work (i.e the Linux
 karnel's code and the more readable Apple's kernel code)
 
 Written by Boaz Segev at 2016. Donated to the public domain for all to enjoy.
@@ -14,8 +14,8 @@ Written by Boaz Segev at 2016. Donated to the public domain for all to enjoy.
 #define __unused __attribute__((unused))
 #endif
 
-#include <stdlib.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 /*********
  * manage the way threads "wait" for the lock to release

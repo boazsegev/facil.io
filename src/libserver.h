@@ -265,12 +265,12 @@ struct ServerSettings {
   /**
   Sets the amount of threads to be created for the server's thread-pool.
   Defaults to 1 - the reactor and all callbacks will work using a single working
-  thread, allowing for an evented single threaded design.
+  thread, allowing for an evented single threaded design. Limited to 1024.
   */
-  size_t threads;
+  unsigned threads : 10;
   /** Sets the amount of processes to be used (processes will be forked).
-  Defaults to 1 working processes (no forking). */
-  size_t processes;
+  Defaults to 1 working processes (no forking), limited to 127.*/
+  unsigned processes : 7;
 };
 
 /* *****************************************************************************

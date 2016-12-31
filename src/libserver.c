@@ -518,12 +518,12 @@ ssize_t server_run(struct ServerSettings settings) {
 
 #if defined(SERVER_PRINT_STATE) && SERVER_PRINT_STATE == 1
   if (settings.threads == 0)
-    fprintf(stderr, "* Running %lu processes"
+    fprintf(stderr, "* Running %u processes"
                     " in single thread mode.\n",
             settings.processes);
   else
-    fprintf(stderr, "* Running %lu processes"
-                    " X %lu threads.\n",
+    fprintf(stderr, "* Running %u processes"
+                    " X %u threads.\n",
             settings.processes, settings.threads);
 #endif
 
