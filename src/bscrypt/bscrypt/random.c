@@ -15,7 +15,6 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #include <time.h>
 
 #ifdef RUSAGE_SELF
-const static size_t CLOCK_RESOLUTION = 1000; /* in miliseconds */
 static size_t get_clock_mili(void) {
   struct rusage rusage;
   getrusage(RUSAGE_SELF, &rusage);
@@ -24,10 +23,9 @@ static size_t get_clock_mili(void) {
 }
 #elif defined CLOCKS_PER_SEC
 #define get_clock_mili() (size_t) clock()
-#define CLOCK_RESOLUTION (CLOCKS_PER_SEC / 1000)
 #else
 #define get_clock_mili() 0
-#define CLOCK_RESOLUTION 1
+#error Random alternative failed to find access to the CPU clock state.
 #endif
 
 uint32_t bscrypt_rand32(void) {
