@@ -13,6 +13,23 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #if defined(USE_ALT_RANDOM) || !defined(HAS_UNIX_FEATURES)
 #include "sha2.h"
 #include <time.h>
+
+#ifdef RUSAGE_SELF
+const static size_t CLOCK_RESOLUTION = 1000; /* in miliseconds */
+static size_t get_clock_mili(void) {
+  struct rusage rusage;
+  getrusage(RUSAGE_SELF, &rusage);
+  return ((rusage.ru_utime.tv_sec + rusage.ru_stime.tv_sec) * 1000000) +
+         (rusage.ru_utime.tv_usec + rusage.ru_stime.tv_usec);
+}
+#elif defined CLOCKS_PER_SEC
+#define get_clock_mili() (size_t) clock()
+#define CLOCK_RESOLUTION (CLOCKS_PER_SEC / 1000)
+#else
+#define get_clock_mili() 0
+#define CLOCK_RESOLUTION 1
+#endif
+
 uint32_t bscrypt_rand32(void) {
   bits256_u pseudo = bscrypt_rand256();
   return pseudo.ints[3];
@@ -32,14 +49,14 @@ bits128_u bscrypt_rand128(void) {
 }
 
 bits256_u bscrypt_rand256(void) {
-  clock_t cpu_state = clock();
+  size_t cpu_state = get_clock_mili();
   time_t the_time;
   time(&the_time);
   bits256_u pseudo;
   sha2_s sha2 = bscrypt_sha2_init(SHA_256);
   bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
   bscrypt_sha2_write(&sha2, &the_time, sizeof(the_time));
-  bscrypt_sha2_write(&sha2, &cpu_state - 2, 64); /* whatever's on the stack */
+  bscrypt_sha2_write(&sha2, ((char *)&cpu_state) - 64, 64); /* the stack */
   bscrypt_sha2_result(&sha2);
   pseudo.words[0] = sha2.digest.i64[0];
   pseudo.words[1] = sha2.digest.i64[1];

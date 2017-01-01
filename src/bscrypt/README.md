@@ -69,10 +69,12 @@ It's about twice as fast, but the (mostly) predictable seed data and the fact th
 
 ## Why did I write this?
 
-I don't know... At first it started because I just needed SHA-1 and Base64 encoding for the Websocket handshake code I was writing... and I just hate using large precompiled libraries with complicated APIs.
+I don't know... At first it started because I just needed SHA-1 and Base64 encoding for the Websocket handshake code I was writing... and I just hate using large precompiled libraries with complicated APIs for small tasks.
 
-Afterwards, I was thinking that if this project will slowly grow to provide a high level API for TLS connections (without support for weak encryptions), I would finally have a library I can use with a simple "copy and paste" of the code.
+Afterwards, I was thinking that if this project will slowly grow to provide a high level API for TLS connections (without support for weak encryptions), I would finally have a library I can use with a simple "copy and paste" of the code...
 
-Yes, I know that linking dynamic libraries makes everything easier... but I'm not sure cryptography should be linked to dynamically (call me paranoid).
+...I believe a TLS library that takes away from the developer's control is a good thing (most of us shouldn't bother learning cryptography just to open a secure connection using TLS).
+
+Yes, I know that linking existing libraries makes everything easier (especially when it comes to maintenance and security updates)... but it seems all the existing libraries have weird issues and require so much study I could probably write a new library for what I need (call me paranoid).
 
 Besides, writing code relaxes me. It's good practice.
