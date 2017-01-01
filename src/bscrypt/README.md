@@ -6,6 +6,7 @@ At the moment, we have:
 
 * SHA-1.
 * SHA-2.
+* SipHash2-4 (unstreamed).
 * Unix crypto-level pseudo-random.
 * Base64 encode/decode (not crypto but useful).
 * Hex encode/decode (not crypto but useful).
@@ -13,6 +14,7 @@ At the moment, we have:
 
 Future plans (optional, feel free to open a PR with any of these features):
 
+* SHA-3.
 * AES GCM / CCM modes encryption/decryption.
 * RSA / DH / DHEC.
 * TLS 1.2 / 1.3 (I'll probably never get this far, but it would be fun to have a library with a simple API for this).
