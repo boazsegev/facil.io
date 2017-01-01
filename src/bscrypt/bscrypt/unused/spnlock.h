@@ -1,9 +1,8 @@
 /*
 Copyright: Boaz segev, 2016-2017
-License: MIT except for any non-public-domain algorithms (none that I'm aware
-of), which might be subject to their own licenses.
+License: MIT
 
-Feel free to copy, use and enjoy in accordance with to the license(s).
+Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef _SPN_LOCK_H
 /* *****************************************************************************
