@@ -4,6 +4,10 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 // clang-format off
 #include "http_response_http1.h"
 // clang-format on
