@@ -6,7 +6,6 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #include "base64.h"
 #include "http.h"
-#include "http_response_http1.h"
 #include "siphash.h"
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -17,6 +16,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+// clang-format off
+#include "http_response_http1.h"
+// clang-format on
 
 /* *****************************************************************************
 Helpers

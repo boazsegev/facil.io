@@ -7,8 +7,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef HTTP1_RESPONSE_FORMATTER
 #define HTTP1_RESPONSE_FORMATTER
 
-#include "http_response.h"
+// clang-format off
 #include "libsock.h"
+#include "http_response.h"
+// clang-format on
 
 #ifndef __unused
 #define __unused __attribute__((unused))

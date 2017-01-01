@@ -10,10 +10,12 @@ Feel free to copy, use and enjoy according to the license provided.
 /* *****************************************************************************
 Core include files
 */
-#include "http_request.h"
-#include "http_response.h"
+// clang-format off
 #include "libserver.h"
 #include <time.h>
+#include "http_request.h"
+#include "http_response.h"
+// clang-format on
 /* *****************************************************************************
 Hard Coded Settings
 */
