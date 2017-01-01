@@ -273,30 +273,6 @@ The code is just a few helper settings and mega-functions (I know, refactoring w
 
 The HTTP protocol provides a built-in static file service and allows us to limit incoming request data sizes in order to protect server resources. The header size limit adjustable, but will be hardcoded during compilation (it's set to 8KB, which is also the limit on some proxies and intermediaries), securing the server from bloated header data DoS attacks. The incoming data size limit is dynamic.
 
-Here's a "Hello World" HTTP server (with a stub to add static file services).
-
-```c
-// update the demo.c file to use the existing folder structure and makefile
-#include "http.h"
-
-void on_request(http_request_s* request) {
-  http_response_s response = http_response_init(request);
-  http_response_write_header(&response, .name = "X-Data", .value = "my data");
-  http_response_set_cookie(&response, .name = "my_cookie", .value = "data");
-  http_response_write_body(&response, "Hello World!\r\n", 14);
-  http_response_finish(&response);
-}
-
-int main() {
-  char* public_folder = NULL;
-  // listen on port 3000, any available network binding (0.0.0.0)
-  http1_listen("3000", NULL, .on_request = on_request,
-               .public_folder = public_folder);
-  // start the server
-  server_run(.threads = 16);
-}
-```
-
 Using this library requires all the files in the `src` folder for this repository, including the subfolder `http`. The `http` files are in a separate folder and the makefile in this project supports subfolders. You might want to place all the files in the same folder if you use these source files in a different project.
 
 ## [`Websocket`](src/http/websockets.h) - for real-time web applications
@@ -307,102 +283,7 @@ This was when the `Websockets` library was born. It builds off the `http` server
 
 I should note the the `Websockets` library, similarly to the HTTP parser, uses unaligned memory access to 64bit memory "words". It's good enough for the systems I target, but if you're going to use the library on a machine that requires aligned memory access, some code would need to be reviewed and readjusted.
 
-Using this library, building a Websocket server in C just got super easy, here's both a Wesockets echo and a Websockets broadcast example - notice that broadcasting is a resource intensive task, requiring at least O(n) operations, where n == server capacity:
-
-```c
-// update the tryme.c file to use the existing folder structure and makefile
-#include "websockets.h" // includes the "http.h" header
-
-#include <stdio.h>
-#include <stdlib.h>
-
-/*****************************
-The Websocket echo implementation
-*/
-
-void ws_open(ws_s* ws) {
-  fprintf(stderr, "Opened a new websocket connection (%p)\n", ws);
-}
-
-void ws_echo(ws_s* ws, char* data, size_t size, int is_text) {
-  // echos the data to the current websocket
-  Websocket.write(ws, data, size, 1);
-}
-
-void ws_shutdown(ws_s* ws) {
-  Websocket.write(ws, "Shutting Down", 13, 1);
-}
-
-void ws_close(ws_s* ws) {
-  fprintf(stderr, "Closed websocket connection (%p)\n", ws);
-}
-
-/*****************************
-The Websocket Broadcast implementation
-*/
-
-/* websocket broadcast data */
-struct ws_data {
-  size_t size;
-  char data[];
-};
-/* free the websocket broadcast data */
-void free_wsdata(ws_s* ws, void* arg) {
-  free(arg);
-}
-/* the broadcast "task" performed by `Websocket.each` */
-void ws_get_broadcast(ws_s* ws, void* arg) {
-  struct ws_data* data = arg;
-  Websocket.write(ws, data->data, data->size, 1);  // echo
-}
-/* The websocket broadcast server's `on_message` callback */
-
-void ws_broadcast(ws_s* ws, char* data, size_t size, int is_text) {
-  // Copy the message to a broadcast data-packet
-  struct ws_data* msg = malloc(sizeof(* msg) + size);
-  msg->size = size;
-  memcpy(msg->data, data, size);
-  // Asynchronously calls `ws_get_broadcast` for each of the websockets
-  // (except this one)
-  // and calls `free_wsdata` once all the broadcasts were perfomed.
-  Websocket.each(ws, ws_get_broadcast, msg, free_wsdata);
-  // echos the data to the current websocket
-  Websocket.write(ws, data, size, 1);
-}
-
-/*****************************
-The HTTP implementation
-*/
-
-void on_request(struct HttpRequest* request) {
-  if (!strcmp(request->path, "/echo")) {
-    websocket_upgrade(.request = request, .on_message = ws_echo,
-                      .on_open = ws_open, .on_close = ws_close,
-                      .on_shutdown = ws_shutdown);
-    return;
-  }
-  if (!strcmp(request->path, "/broadcast")) {
-    websocket_upgrade(.request = request, .on_message = ws_broadcast,
-                      .on_open = ws_open, .on_close = ws_close,
-                      .on_shutdown = ws_shutdown);
-
-    return;
-  }
-  struct HttpResponse* response = HttpResponse.new(request);
-  HttpResponse.write_body(response, "Hello World!", 12);
-  HttpResponse.destroy(response);
-}
-
-/*****************************
-The main function
-*/
-
-#define THREAD_COUNT 1
-int main(int argc, char const* argv[]) {
-  start_http_server(on_request, NULL, .threads = THREAD_COUNT);
-  return 0;
-}
-```
+Using this library, building a Websocket server in C just got super easy, as the example at the top of this page already demonstrated.
 
 The Websockets implementation uses the `bscrypt` library for the Base64 encoding and SHA-1 hashing that are part of the protocol's handshake.
 
