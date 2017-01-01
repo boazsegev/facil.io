@@ -2,3 +2,4 @@
 -Isrc/http/
 -Isrc/bscrypt
 -Isrc/bscrypt/bscrypt
+-DDEBUG
