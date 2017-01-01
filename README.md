@@ -16,6 +16,33 @@ Websockets and HTTP are super common, so `libserver` comes with HTTP and Websock
 
 The framework's code is heavily documented using comments. You can use Doxygen to create automated documentation for the API.
 
+The simlest example, of course, would be the famous "Hello World" application... so easy it's boring (so we add custom headers and cookies):
+
+```c
+#include "http.h"
+
+void on_request(http_request_s* request) {
+  http_response_s response = http_response_init(request);
+  http_response_write_header(&response, .name = "X-Data", .value = "my data");
+  http_response_set_cookie(&response, .name = "my_cookie", .value = "data");
+  http_response_write_body(&response, "Hello World!\r\n", 14);
+  http_response_finish(&response);
+}
+
+int main() {
+  char* public_folder = NULL;
+  // listen on port 3000, any available network binding (0.0.0.0)
+  http1_listen("3000", NULL, .on_request = on_request,
+               .public_folder = public_folder);
+  // start the server
+  server_run(.threads = 16);
+}
+```
+
+But `facil.io` really shines when it comes to Websockets and real-time applications, where the `kqueue`/`epoll` engine gives the framework a high performance running start.
+
+Here's a full-fledge example of a Websocket echo server, a Websocket broadcast server and an HTTP "Hello World" (with an optional static file service) all rolled into one:
+
 ```c
 // update the demo.c file to use the existing folder structure and makefile
 #include "websockets.h"  // includes the "http.h" header
@@ -110,7 +137,7 @@ void on_request(http_request_s* request) {
 The main function
 */
 
-#define THREAD_COUNT 0
+#define THREAD_COUNT 1
 int main(int argc, char const* argv[]) {
   const char* public_folder = NULL;
   http1_listen("3000", NULL, .on_request = on_request,
