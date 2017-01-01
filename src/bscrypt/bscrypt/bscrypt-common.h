@@ -1,7 +1,7 @@
 /*
-(un)copyright: Boaz segev, 2016
-License: Public Domain except for any non-public-domain algorithms, which are
-subject to their own licenses.
+Copyright: Boaz segev, 2016-2017
+License: MIT except for any non-public-domain algorithms (none that I'm aware
+of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -11,9 +11,9 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 Environment - you can safely ignore this part... probably.
 */
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 #include <time.h>
 
@@ -26,7 +26,7 @@ Environment - you can safely ignore this part... probably.
 #ifdef __has_include
 
 /* check for unix support */
-#if __has_include(<unistd.h>)&&__has_include(<pthread.h>)
+#if __has_include(<unistd.h>) && __has_include(<pthread.h>)
 #define HAS_UNIX_FEATURES
 #endif
 

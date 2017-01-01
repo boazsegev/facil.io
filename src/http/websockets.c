@@ -1,3 +1,9 @@
+/*
+copyright: Boaz segev, 2016-2017
+license: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #include "websockets.h"
 #include "bscrypt.h"
 #include "libserver.h"

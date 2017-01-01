@@ -1,6 +1,6 @@
 /*
-copyright: Boaz segev, 2016
-license: MIT
+Copyright: Boaz segev, 2016-2017
+License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
@@ -10,8 +10,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #define LIB_ASYNC_VERSION_MINOR 4
 #define LIB_ASYNC_VERSION_PATCH 0
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #ifdef DEBUG
 // prints out testing and benchmarking data
@@ -101,17 +101,17 @@ Use:
   async_run(task, arg);
 
 */
-int async_run(void (*task)(void*), void* arg);
+int async_run(void (*task)(void *), void *arg);
 
 /**
 Same as:
 
 `async_signal(); async_wait();`
 */
-#define async_finish() \
-  {                    \
-    async_signal();    \
-    async_join();      \
+#define async_finish()                                                         \
+  {                                                                            \
+    async_signal();                                                            \
+    async_join();                                                              \
   }
 
 #endif /* LIB_ASYNC */

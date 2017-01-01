@@ -1,3 +1,10 @@
+/*
+Copyright: Boaz segev, 2016-2017
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
+#ifndef _SPN_LOCK_H
 /* *****************************************************************************
 A Simple busy lock implementation ... (spnlock.h)
 
@@ -6,7 +13,6 @@ karnel's code and the more readable Apple's kernel code)
 
 Written by Boaz Segev at 2016. Donated to the public domain for all to enjoy.
 */
-#ifndef _SPN_LOCK_H
 #define _SPN_LOCK_H
 
 /* allow of the unused flag */

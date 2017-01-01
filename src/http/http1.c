@@ -1,11 +1,17 @@
+/*
+copyright: Boaz segev, 2016-2017
+license: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #include "http1.h"
-#include "http1_simple_parser.h"
-#include <string.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <sys/stat.h>
 #include "errno.h"
+#include "http1_simple_parser.h"
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 
 /* *****************************************************************************
 HTTP/1.1 data structure

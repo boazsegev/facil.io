@@ -1,3 +1,9 @@
+/*
+Copyright: Boaz segev, 2016-2017
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #ifndef HTTP_REQUEST_H
 #define HTTP_REQUEST_H
 
@@ -5,41 +11,41 @@
 #define _GNU_SOURCE
 #endif
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <stdint.h>
-#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #ifndef __unused
 #define __unused __attribute__((unused))
 #endif
 
 typedef struct {
-  const char* name;
-  const char* value;
+  const char *name;
+  const char *value;
   uint16_t name_length;
   uint16_t value_length;
 } http_headers_s;
 
 typedef struct {
   /** points to the HTTP method name. */
-  const char* method;
+  const char *method;
   /** The portion of the request URL that comes before the '?', if any. */
-  const char* path;
+  const char *path;
   /** The string length of the path (editing the path requires update). */
   /** The portion of the request URL that follows the ?, if any. */
-  const char* query;
+  const char *query;
   /** Points to a version string. */
-  const char* version;
+  const char *version;
   /** Points to the body's host header value (a required header). */
-  const char* host;
+  const char *host;
   /** points to the body's content type header, if any. */
-  const char* content_type;
+  const char *content_type;
   /** points to the Upgrade header, if any. */
-  const char* upgrade;
+  const char *upgrade;
   /** points to the Connection header, if any. */
-  const char* connection;
+  const char *connection;
 
   /** the body's content's length, in bytes (can be 0). */
   size_t content_length;
@@ -59,7 +65,7 @@ typedef struct {
   /**
   Points the body of the request, if the body exists and is stored in memory.
   Otherwise, NULL. */
-  const char* body_str;
+  const char *body_str;
   /** points a tmpfile file descriptor containing the body of the request. */
   int body_file;
   /** semi-private information. */
@@ -69,11 +75,11 @@ typedef struct {
     In other times it may contain arbitrary data that can be used by the parser
     or implementation.
     */
-    void* next;
+    void *next;
     /**
     Implementation specific. This, conceptually, holds information about the
     "owner" of this request. */
-    void* owner;
+    void *owner;
     /**
     Implementation specific. This, conceptually, holds the connection that
     "owns" this request, or an implementation identifier. */
@@ -90,7 +96,7 @@ typedef struct {
   http_headers_s headers[];
 } http_request_s;
 
-__unused static inline void http_request_clear(http_request_s* request) {
+__unused static inline void http_request_clear(http_request_s *request) {
   if (request->body_file > 0) /* assumes no tempfile with fd 0 */
     close(request->body_file);
   *request = (http_request_s){
@@ -102,10 +108,9 @@ __unused static inline void http_request_clear(http_request_s* request) {
 
 /** searches for a header in the header array, both reaturnning it's value and
  * setting it's position in the `request->metadata.header_pos` variable.*/
-__unused static inline const char* http_request_find_header(
-    http_request_s* request,
-    const char* header,
-    size_t header_len) {
+__unused static inline const char *
+http_request_find_header(http_request_s *request, const char *header,
+                         size_t header_len) {
   if (header == NULL || request == NULL)
     return NULL;
   if (header_len == 0)
@@ -122,7 +127,7 @@ __unused static inline const char* http_request_find_header(
   return NULL;
 }
 
-#define HTTP_REQUEST_SIZE(header_count) \
+#define HTTP_REQUEST_SIZE(header_count)                                        \
   (sizeof(http_request_s) + ((header_count) * sizeof(http_headers_s)))
 
 #endif

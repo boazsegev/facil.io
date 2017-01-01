@@ -1,3 +1,9 @@
+/*
+copyright: Boaz segev, 2016-2017
+license: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #include "http.h"
 
 /**
@@ -7,14 +13,14 @@ See the libc `gmtime_r` documentation for details.
 
 Falls back to `gmtime_r` for dates before epoch.
 */
-struct tm* http_gmtime(const time_t* timer, struct tm* tmbuf) {
+struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
   // static char* DAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
   // static char * Months = {  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   // "Jul",
   // "Aug", "Sep", "Oct", "Nov", "Dec"};
   static uint8_t month_len[] = {
-      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  // nonleap year
-      31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31   // leap year
+      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, // nonleap year
+      31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31  // leap year
   };
   if (*timer < 0)
     return gmtime_r(timer, tmbuf);
@@ -22,7 +28,7 @@ struct tm* http_gmtime(const time_t* timer, struct tm* tmbuf) {
   tmbuf->tm_gmtoff = 0;
   tmbuf->tm_zone = "UTC";
   tmbuf->tm_isdst = 0;
-  tmbuf->tm_year = 70;  // tm_year == The number of years since 1900
+  tmbuf->tm_year = 70; // tm_year == The number of years since 1900
   tmbuf->tm_mon = 0;
   // for seconds up to weekdays, we build up, as small values clean up larger
   // values.
@@ -47,7 +53,7 @@ struct tm* http_gmtime(const time_t* timer, struct tm* tmbuf) {
     tmbuf->tm_year += 100;
     tmp -= DAYS_PER_100_YEARS;
     if (((tmbuf->tm_year / 100) & 3) ==
-        0)  // leap century divisable by 400 => add leap
+        0) // leap century divisable by 400 => add leap
       --tmp;
   }
 #undef DAYS_PER_100_YEARS
@@ -72,7 +78,7 @@ struct tm* http_gmtime(const time_t* timer, struct tm* tmbuf) {
   while (tmp >= 365) {
     tmbuf->tm_year += 1;
     tmp -= 365;
-    if ((tmbuf->tm_year & 3) == 0) {  // leap year
+    if ((tmbuf->tm_year & 3) == 0) { // leap year
       if (tmp > 0) {
         --tmp;
         continue;
@@ -105,15 +111,15 @@ struct tm* http_gmtime(const time_t* timer, struct tm* tmbuf) {
   return tmbuf;
 }
 
-static char* DAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-static char* MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun ",
+static char *DAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+static char *MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun ",
                               "Jul ", "Aug ", "Sep ", "Oct ", "Nov ", "Dec "};
-static const char* GMT_STR = "GMT";
+static const char *GMT_STR = "GMT";
 
-size_t http_date2str(char* target, struct tm* tmbuf) {
-  char* pos = target;
+size_t http_date2str(char *target, struct tm *tmbuf) {
+  char *pos = target;
   uint16_t tmp;
-  *(uint32_t*)pos = *((uint32_t*)DAY_NAMES[tmbuf->tm_wday]);
+  *(uint32_t *)pos = *((uint32_t *)DAY_NAMES[tmbuf->tm_wday]);
   pos[3] = ',';
   pos[4] = ' ';
   pos += 5;
@@ -127,7 +133,7 @@ size_t http_date2str(char* target, struct tm* tmbuf) {
     pos += 2;
   }
   *(pos++) = ' ';
-  *(uint32_t*)pos = *((uint32_t*)MONTH_NAMES[tmbuf->tm_mon]);
+  *(uint32_t *)pos = *((uint32_t *)MONTH_NAMES[tmbuf->tm_mon]);
   pos += 4;
   // write year.
   pos += http_ul2a(pos, tmbuf->tm_year + 1900);
@@ -145,23 +151,24 @@ size_t http_date2str(char* target, struct tm* tmbuf) {
   pos[7] = '0' + (tmbuf->tm_sec - (tmp * 10));
   pos += 8;
   pos[0] = ' ';
-  *((uint32_t*)(pos + 1)) = *((uint32_t*)GMT_STR);
+  *((uint32_t *)(pos + 1)) = *((uint32_t *)GMT_STR);
   pos += 4;
   return pos - target;
 }
 
 /* Credit to Jonathan Leffler for the idea of a unified conditional */
-#define hex_val(c)                                                        \
-  (((c) >= '0' && (c) <= '9') ? ((c)-48) : (((c) >= 'a' && (c) <= 'f') || \
-                                            ((c) >= 'A' && (c) <= 'F'))   \
-                                               ? (((c) | 32) - 87)        \
-                                               : ({                       \
-                                                   return -1;             \
-                                                   0;                     \
-                                                 }))
-ssize_t http_decode_url(char* dest, const char* url_data, size_t length) {
-  char* pos = dest;
-  const char* end = url_data + length;
+#define hex_val(c)                                                             \
+  (((c) >= '0' && (c) <= '9')                                                  \
+       ? ((c)-48)                                                              \
+       : (((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'))            \
+             ? (((c) | 32) - 87)                                               \
+             : ({                                                              \
+                 return -1;                                                    \
+                 0;                                                            \
+               }))
+ssize_t http_decode_url(char *dest, const char *url_data, size_t length) {
+  char *pos = dest;
+  const char *end = url_data + length;
   while (url_data < end) {
     if (*url_data == '+') {
       // decode space
@@ -179,8 +186,8 @@ ssize_t http_decode_url(char* dest, const char* url_data, size_t length) {
   return pos - dest;
 }
 
-ssize_t http_decode_url_unsafe(char* dest, const char* url_data) {
-  char* pos = dest;
+ssize_t http_decode_url_unsafe(char *dest, const char *url_data) {
+  char *pos = dest;
   while (*url_data) {
     if (*url_data == '+') {
       // decode space

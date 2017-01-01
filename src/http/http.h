@@ -1,13 +1,18 @@
+/*
+copyright: Boaz segev, 2016-2017
+license: MIT
 
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #ifndef HTTP_H
 #define HTTP_H
 
 /* *****************************************************************************
 Core include files
 */
-#include "libserver.h"
 #include "http_request.h"
 #include "http_response.h"
+#include "libserver.h"
 #include <time.h>
 /* *****************************************************************************
 Hard Coded Settings
@@ -37,12 +42,12 @@ typedef struct {
   */
   size_t max_body_size;
   /** the callback to be performed when requests come in. */
-  void (*on_request)(http_request_s* request);
+  void (*on_request)(http_request_s *request);
   /**
   A public folder for file transfers - allows to circumvent any application
   layer server and simply serve files.
   */
-  const char* public_folder;
+  const char *public_folder;
   /**
   The length of the public_folder string.
   */
@@ -72,7 +77,7 @@ See the libc `gmtime_r` documentation for details.
 
 Falls back to `gmtime_r` for dates before epoch.
 */
-struct tm* http_gmtime(const time_t* timer, struct tm* tmbuf);
+struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf);
 
 /**
 Writes an HTTP date string to the `target` buffer.
@@ -81,7 +86,7 @@ This requires _____ bytes of space to be available at the target buffer.
 
 Returns the number of bytes actually written.
 */
-size_t http_date2str(char* target, struct tm* tmbuf);
+size_t http_date2str(char *target, struct tm *tmbuf);
 
 /**
 A fast, inline alternative to `sprintf(dest, "%lu", num)`.
@@ -93,7 +98,7 @@ A NULL terminating byte is written.
 
 Returns the number of bytes actually written (excluding the NULL byte).
 */
-inline size_t http_ul2a(char* dest, size_t num) {
+inline size_t http_ul2a(char *dest, size_t num) {
   uint8_t digits = 1;
   size_t tmp = num;
   while ((tmp /= 10))
@@ -110,10 +115,10 @@ inline size_t http_ul2a(char* dest, size_t num) {
 }
 
 /** Decodes a URL encoded string, no buffer overflow protection. */
-ssize_t http_decode_url_unsafe(char* dest, const char* url_data);
+ssize_t http_decode_url_unsafe(char *dest, const char *url_data);
 
 /** Decodes a URL encoded string. */
-ssize_t http_decode_url(char* dest, const char* url_data, size_t length);
+ssize_t http_decode_url(char *dest, const char *url_data, size_t length);
 
 /* *****************************************************************************
 HTTP versions (they depend on the settings / core data structure)

@@ -1,3 +1,9 @@
+/*
+copyright: Boaz segev, 2016-2017
+license: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #ifndef HTTP1_H
 #define HTTP1_H
 
@@ -26,7 +32,7 @@ Any concurrent HTTP1 connections over this amount will be dynamically allocated.
 #define HTTP1_POOL_SIZE (64) /* should be ~0.5Mb with default values*/
 #endif
 
-extern char* HTTP1;
+extern char *HTTP1;
 
 /**
 Allocates memory for an HTTP/1.1 protocol.
@@ -35,17 +41,16 @@ The protocol self destructs when the `on_close` callback is called.
 
 To free the protocol manually, it's possible to call it's `on_close` callback.
 */
-protocol_s* http1_alloc(intptr_t fd, http_settings_s* settings);
+protocol_s *http1_alloc(intptr_t fd, http_settings_s *settings);
 
 /**
 Listens for incoming HTTP/1.1 connections on the specified posrt and address,
 implementing the requested settings.
 */
-int http1_listen(const char* port,
-                 const char* address,
+int http1_listen(const char *port, const char *address,
                  http_settings_s settings);
 
-#define http1_listen(port, address, ...) \
+#define http1_listen(port, address, ...)                                       \
   http1_listen((port), (address), (http_settings_s){__VA_ARGS__})
 
 #endif

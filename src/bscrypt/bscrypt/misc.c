@@ -1,7 +1,7 @@
 /*
-(un)copyright: Boaz segev, 2016
-License: Public Domain except for any non-public-domain algorithms, which are
-subject to their own licenses.
+Copyright: Boaz segev, 2016-2017
+License: MIT except for any non-public-domain algorithms (none that I'm aware
+of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -14,12 +14,12 @@ Other helper functions
 */
 
 #ifdef HAS_UNIX_FEATURES
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <errno.h>
-#include <unistd.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 /**
 Allocates memory and dumps the whole file into the memory allocated.
@@ -32,10 +32,10 @@ container pointer to NULL.
 This function has some Unix specific properties that resolve links and user
 folder referencing.
 */
-fdump_s* bscrypt_fdump(const char* file_path, size_t size_limit) {
+fdump_s *bscrypt_fdump(const char *file_path, size_t size_limit) {
   struct stat f_data;
   int file = -1;
-  fdump_s* container = NULL;
+  fdump_s *container = NULL;
   size_t file_path_len;
   if (file_path == NULL || (file_path_len = strlen(file_path)) == 0 ||
       file_path_len > PATH_MAX)
@@ -82,14 +82,14 @@ See the libc `gmtime_r` documentation for details.
 
 Falls back to `gmtime_r` for dates before epoch.
 */
-struct tm* bscrypt_gmtime(const time_t* timer, struct tm* tmbuf) {
+struct tm *bscrypt_gmtime(const time_t *timer, struct tm *tmbuf) {
   // static char* DAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
   // static char * Months = {  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   // "Jul",
   // "Aug", "Sep", "Oct", "Nov", "Dec"};
   static uint8_t month_len[] = {
-      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,  // nonleap year
-      31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31   // leap year
+      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, // nonleap year
+      31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31  // leap year
   };
   if (*timer < 0)
     return gmtime_r(timer, tmbuf);
@@ -97,7 +97,7 @@ struct tm* bscrypt_gmtime(const time_t* timer, struct tm* tmbuf) {
   tmbuf->tm_gmtoff = 0;
   tmbuf->tm_zone = "UTC";
   tmbuf->tm_isdst = 0;
-  tmbuf->tm_year = 70;  // tm_year == The number of years since 1900
+  tmbuf->tm_year = 70; // tm_year == The number of years since 1900
   tmbuf->tm_mon = 0;
   // for seconds up to weekdays, we build up, as small values clean up larger
   // values.
@@ -122,7 +122,7 @@ struct tm* bscrypt_gmtime(const time_t* timer, struct tm* tmbuf) {
     tmbuf->tm_year += 100;
     tmp -= DAYS_PER_100_YEARS;
     if (((tmbuf->tm_year / 100) & 3) ==
-        0)  // leap century divisable by 400 => add leap
+        0) // leap century divisable by 400 => add leap
       --tmp;
   }
 #undef DAYS_PER_100_YEARS
@@ -147,7 +147,7 @@ struct tm* bscrypt_gmtime(const time_t* timer, struct tm* tmbuf) {
   while (tmp >= 365) {
     tmbuf->tm_year += 1;
     tmp -= 365;
-    if ((tmbuf->tm_year & 3) == 0) {  // leap year
+    if ((tmbuf->tm_year & 3) == 0) { // leap year
       if (tmp > 0) {
         --tmp;
         continue;

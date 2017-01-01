@@ -1,7 +1,7 @@
 /*
-(un)copyright: Boaz segev, 2016
-License: Public Domain except for any non-public-domain algorithms, which are
-subject to their own licenses.
+Copyright: Boaz segev, 2016-2017
+License: MIT except for any non-public-domain algorithms (none that I'm aware
+of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -10,8 +10,8 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #endif
 
 #include "mempool.h"
-#include <signal.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -26,8 +26,8 @@ A Simple busy lock implementation ... (spnlock.h) Included here to make portable
 #define __unused __attribute__((unused))
 #endif
 
-#include <stdlib.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 /*********
  * manage the way threads "wait" for the lock to release
@@ -171,7 +171,7 @@ The memory pool slices. Overhead 8 bytes, minimum allocation 16 bytes (+ 8).
 #define MEMSLICE_SIZE ((uint32_t)(1UL << 21))
 #define OFFSET_LIMIT (MEMSLICE_SIZE - 1)
 typedef struct slice_s {
-  struct slice_s_offset {/* 64bit alignment also where pointers are 32bits. */
+  struct slice_s_offset { /* 64bit alignment also where pointers are 32bits. */
     uint32_t ahead;
     uint32_t behind;
   } offset;

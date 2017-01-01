@@ -1,6 +1,6 @@
 /*
-copyright: Boaz segev, 2016
-license: MIT
+Copyright: Boaz segev, 2016-2017
+License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
@@ -22,11 +22,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 
 #include <stdint.h>
-#include <unistd.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <unistd.h>
 
-#if !defined(__unix__) && !defined(__linux__) && !defined(__APPLE__) && \
+#if !defined(__unix__) && !defined(__linux__) && !defined(__APPLE__) &&        \
     !defined(__CYGWIN__)
 #error This library currently supports only Unix based systems (i.e. Linux and BSD)
 #endif
@@ -83,8 +83,8 @@ Here are the supported events and their callbacks:
 
 Here's a quick example for an HTTP hello world (no HTTP parsing required)...:
 
-    #include "libsock.h"   // easy socket functions, also allows integration.
     #include "libreact.h"  // the reactor library
+    #include "libsock.h"   // easy socket functions, also allows integration.
 
     // a global server socket
     int srvfd = -1;

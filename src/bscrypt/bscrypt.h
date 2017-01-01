@@ -1,7 +1,7 @@
 /*
-(un)copyright: Boaz segev, 2016
-License: Public Domain except for any non-public-domain algorithms, which are
-subject to their own licenses.
+Copyright: Boaz segev, 2016-2017
+License: MIT except for any non-public-domain algorithms (none that I'm aware
+of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -20,8 +20,8 @@ All functions will be available using the prefix `bscrypt_`, i.e.:
 */
 #define BSCRYPT "0.0.1"
 
-#include "bscrypt-common.h"
 #include "base64.h"
+#include "bscrypt-common.h"
 #include "hex.h"
 #include "misc.h"
 #include "random.h"

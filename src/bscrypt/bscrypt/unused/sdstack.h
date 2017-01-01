@@ -1,13 +1,13 @@
 /*
-(un)copyright: Boaz segev, 2016
-License: Public Domain except for any non-public-domain algorithms, which are
-subject to their own licenses.
+Copyright: Boaz segev, 2016-2017
+License: MIT except for any non-public-domain algorithms (none that I'm aware
+of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
-#include <stdlib.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #ifndef __unused
 #define __unused __attribute__((unused))
 #endif

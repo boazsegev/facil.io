@@ -1,3 +1,9 @@
+/*
+copyright: Boaz segev, 2016-2017
+license: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #ifndef HTTP1_SIMPLE_PARSER_H
 #define HTTP1_SIMPLE_PARSER_H
 #include "http_request.h"
@@ -30,9 +36,8 @@ attempt, only the `len` argument is expected to grow.
 The buffer should be kept intact for the life of the request object, as the
 HTTP/1.1 parser does NOT copy any data.
 */
-ssize_t http1_parse_request_headers(void* buffer,
-                                    size_t len,
-                                    http_request_s* request);
+ssize_t http1_parse_request_headers(void *buffer, size_t len,
+                                    http_request_s *request);
 
 /**
 Parses HTTP request body content (if any).
@@ -48,9 +53,8 @@ recycled).
 It is expected that the next attempt will contain fresh data in the `buffer`
 argument.
 */
-ssize_t http1_parse_request_body(void* buffer,
-                                 size_t len,
-                                 http_request_s* request);
+ssize_t http1_parse_request_body(void *buffer, size_t len,
+                                 http_request_s *request);
 
 #if defined(DEBUG) && DEBUG == 1
 void http_parser_test(void);

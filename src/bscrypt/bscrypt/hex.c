@@ -1,7 +1,7 @@
 /*
-(un)copyright: Boaz segev, 2016
-License: Public Domain except for any non-public-domain algorithms, which are
-subject to their own licenses.
+Copyright: Boaz segev, 2016-2017
+License: MIT except for any non-public-domain algorithms (none that I'm aware
+of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -24,13 +24,14 @@ Hex Conversion
 
 /* Credit to Jonathan Leffler for the idea */
 #define hex2i(c)                                                               \
-  (((c) >= '0' && (c) <= '9') ? ((c)-48) : (((c) >= 'a' && (c) <= 'f') ||      \
-                                            ((c) >= 'A' && (c) <= 'F'))        \
-                                               ? (((c) | 32) - 87)             \
-                                               : ({                            \
-                                                   return -1;                  \
-                                                   0;                          \
-                                                 }))
+  (((c) >= '0' && (c) <= '9')                                                  \
+       ? ((c)-48)                                                              \
+       : (((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'))            \
+             ? (((c) | 32) - 87)                                               \
+             : ({                                                              \
+                 return -1;                                                    \
+                 0;                                                            \
+               }))
 
 /**
 Returns 1 if the string is HEX encoded (no non-valid hex values). Returns 0 if

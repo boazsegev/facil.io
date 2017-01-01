@@ -1,16 +1,22 @@
-#include "http.h"
-#include "siphash.h"
+/*
+Copyright: Boaz segev, 2016-2017
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #include "base64.h"
+#include "http.h"
 #include "http_response_http1.h"
-#include <netinet/in.h>
-#include <netinet/ip.h>
+#include "siphash.h"
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <sys/resource.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <time.h>
-#include <sys/resource.h>
 
 /* *****************************************************************************
 Helpers

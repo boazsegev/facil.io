@@ -1,6 +1,6 @@
 /*
-copyright: Boaz segev, 2016
-license: MIT
+Copyright: Boaz segev, 2016-2017
+License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
@@ -9,20 +9,20 @@ Feel free to copy, use and enjoy according to the license provided.
 #if !defined(__linux__) && !defined(__CYGWIN__)
 #include <sys/event.h>
 #else
-#include <sys/timerfd.h>
 #include <sys/epoll.h>
+#include <sys/timerfd.h>
 #endif
-#include <time.h>
 #include <assert.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <netdb.h>
-#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
 /* The (sadly, global) reactor fd */
 static int reactor_fd = -1;

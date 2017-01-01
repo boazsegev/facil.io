@@ -1,7 +1,7 @@
 /*
-(un)copyright: Boaz segev, 2016
-License: Public Domain except for any non-public-domain algorithms, which are
-subject to their own licenses.
+Copyright: Boaz segev, 2016-2017
+License: MIT except for any non-public-domain algorithms (none that I'm aware
+of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
@@ -11,8 +11,8 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #include "random.h"
 
 #if defined(USE_ALT_RANDOM) || !defined(HAS_UNIX_FEATURES)
-#include <time.h>
 #include "sha2.h"
+#include <time.h>
 uint32_t bscrypt_rand32(void) {
   bits256_u pseudo = bscrypt_rand256();
   return pseudo.ints[3];
@@ -96,10 +96,10 @@ void bscrypt_rand_bytes(void *target, size_t length) {
 /* ***************************************************************************
 Unix Random Engine (use built in machine)
 */
-#include <fcntl.h>
 #include <errno.h>
-#include <unistd.h>
+#include <fcntl.h>
 #include <pthread.h>
+#include <unistd.h>
 
 /* ***************************************************************************
 Machine specific changes
