@@ -75,7 +75,6 @@ static inline int64_t decode_int(uint8_t *buf, size_t len, uint8_t prefix,
     --len;
   }
   if (!len) {
-    fprintf(stderr, "len kill return -1\n");
     return -1;
   }
   result |= ((buf[*pos] & 0x7fU) << bit);
