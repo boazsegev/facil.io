@@ -7,13 +7,15 @@ TMP_ROOT=./tmp
 # the .c and .cpp source files root folder - subfolders are automatically included
 SRC_ROOT=.
 # any allowed subfolders in the src root
-SRC_SUB_FOLDERS=src src/http src/bscrypt src/bscrypt/bscrypt
+SRC_SUB_FOLDERS=src src/http src/http/unused src/bscrypt src/bscrypt/bscrypt
 # any librries required (write in full flags)
 LINKER_FLAGS=-lpthread
 # any include folders, space seperated list
 INCLUDE=
 # optimization level.
 OPTIMIZATION=O3 -march=native -DSERVER_DELAY_IO=1 -DDEBUG
+# Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
+WARNINGS= -Wall -Wextra
 
 ##############
 ## OS specific data - compiler, assembler etc.
@@ -56,8 +58,8 @@ OBJS = $(foreach source, $(SRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(bas
 CCL = $(CC)
 INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
 # the C flags
-CFLAGS=-Wall -g -std=c11 -$(OPTIMIZATION) $(INCLUDE_STR)
-CPPFLAGS= -Wall -std=c++11 -$(OPTIMIZATION) $(INCLUDE_STR)
+CFLAGS= -g -std=c11 $(WARNINGS) -$(OPTIMIZATION) $(INCLUDE_STR)
+CPPFLAGS= -std=c++11 $(WARNINGS) -$(OPTIMIZATION) $(INCLUDE_STR)
 
 $(NAME): build
 
@@ -84,7 +86,7 @@ $(TMP_ROOT)/%.o: %.cpp
 	$(eval CCL = $(CPP))
 endif
 
-
+.PHONY : clean
 clean:
 	-@rm $(BIN)
 	-@rm -R $(TMP_ROOT)
@@ -93,8 +95,10 @@ clean:
 execute:
 	@$(BIN)
 
-run: | clean build execute
+.PHONY : run
+run: | build execute
 
+.PHONY : db
 db: | clean build
 	$(DB) $(BIN)
 

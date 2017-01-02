@@ -33,13 +33,13 @@ __unused static void ws_open(ws_s *ws) {
 __unused static void ws_echo(ws_s *ws, char *data, size_t size,
                              uint8_t is_text) {
   // echos the data to the current websocket
-  websocket_write(ws, data, size, 1);
+  websocket_write(ws, data, size, is_text);
   if (memcmp(data, "bomb me", 7) == 0) {
     char *msg = malloc(1024 * 1024);
     for (char *pos = msg; pos < msg + (1024 * 1024 - 1); pos += 4) {
       memcpy(pos, "bomb", 4);
     }
-    websocket_write(ws, msg, 1024 * 1024, 1);
+    websocket_write(ws, msg, 1024 * 1024, is_text);
     free(msg);
   }
 }
@@ -62,7 +62,10 @@ struct ws_data {
   char data[];
 };
 /* free the websocket broadcast data */
-__unused static void free_wsdata(ws_s *ws, void *arg) { free(arg); }
+__unused static void free_wsdata(ws_s *ws, void *arg) {
+  free(arg);
+  (void)(ws);
+}
 /* the broadcast "task" performed by `Websocket.each` */
 __unused static void ws_get_broadcast(ws_s *ws, void *arg) {
   struct ws_data *data = arg;
@@ -81,7 +84,7 @@ __unused static void ws_broadcast(ws_s *ws, char *data, size_t size,
   // and calls `free_wsdata` once all the broadcasts were perfomed.
   websocket_each(ws, ws_get_broadcast, msg, free_wsdata);
   // echos the data to the current websocket
-  websocket_write(ws, data, size, 1);
+  websocket_write(ws, data, size, is_text);
 }
 
 /*****************************
@@ -148,6 +151,7 @@ struct prnt2scrn_protocol_s {
   intptr_t uuid;
 };
 __unused static void on_data(intptr_t uuid, protocol_s *protocol) {
+  (void)(protocol);
   uint8_t buffer[1024];
   ssize_t len;
   while ((len = sock_read(uuid, buffer, 1024)) > 0) {
@@ -164,6 +168,7 @@ __unused static void on_close(protocol_s *protocol) {
 }
 
 __unused static protocol_s *on_open(intptr_t uuid, void *udata) {
+  (void)(udata);
   struct prnt2scrn_protocol_s *prt = malloc(sizeof *prt);
   *prt = (struct prnt2scrn_protocol_s){
       .protocol.on_data = on_data, .protocol.on_close = on_close, .uuid = uuid};
@@ -177,6 +182,7 @@ non-http-dump
 */
 
 __unused static void htpdmp_on_data(intptr_t uuid, protocol_s *protocol) {
+  (void)(protocol);
   uint8_t buffer[1024];
   ssize_t len;
   while ((len = sock_read(uuid, buffer, 1024)) > 0) {
@@ -189,6 +195,7 @@ __unused static void htpdmp_on_data(intptr_t uuid, protocol_s *protocol) {
 }
 
 __unused static protocol_s *htpdmp_on_open(intptr_t uuid, void *udata) {
+  (void)(udata);
   protocol_s *prt = malloc(sizeof *prt);
   *prt = (protocol_s){.on_data = htpdmp_on_data, .on_close = (void *)free};
   server_set_timeout(uuid, 10);
@@ -202,7 +209,7 @@ Environment details
 #if defined(__linux__) // My Linux machine has a slow file system issue.
 static const char *public_folder = NULL; // "./public_www";
 #else
-static const char *public_folder = "./public_www";
+static const __unused char *public_folder = "./public_www";
 #endif
 
 #ifndef THREAD_COUNT

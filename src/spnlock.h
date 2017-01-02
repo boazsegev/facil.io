@@ -4,7 +4,7 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef _SPN_LOCK_H
+#ifndef SIMPLE_SPN_LOCK_H
 /* *****************************************************************************
 A Simple busy lock implementation ... (spnlock.h)
 
@@ -13,12 +13,8 @@ karnel's code and the more readable Apple's kernel code)
 
 Written by Boaz Segev at 2016. Donated to the public domain for all to enjoy.
 */
-#define _SPN_LOCK_H
-
-/* allow of the unused flag */
-#ifndef __unused
-#define __unused __attribute__((unused))
-#endif
+#define SIMPLE_SPN_LOCK_H
+SIMPLE_SPN_LOCK_H
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -62,19 +58,17 @@ Written by Boaz Segev at 2016. Donated to the public domain for all to enjoy.
 typedef atomic_bool spn_lock_i;
 #define SPN_LOCK_INIT ATOMIC_VAR_INIT(0)
 /** returns 1 if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i *lock) {
+inline int spn_trylock(spn_lock_i *lock) {
   __asm__ volatile("" ::: "memory");
   return atomic_exchange(lock, 1);
 }
 /** Releases a lock. */
-__unused static inline void spn_unlock(spn_lock_i *lock) {
+inline void spn_unlock(spn_lock_i *lock) {
   atomic_store(lock, 0);
   __asm__ volatile("" ::: "memory");
 }
 /** returns a lock's state (non 0 == Busy). */
-__unused static inline int spn_is_locked(spn_lock_i *lock) {
-  return atomic_load(lock);
-}
+inline int spn_is_locked(spn_lock_i *lock) { return atomic_load(lock); }
 #endif
 #endif
 
@@ -91,9 +85,7 @@ __unused static inline int spn_is_locked(spn_lock_i *lock) {
 /* define the type */
 typedef volatile uint8_t spn_lock_i;
 /** returns 1 if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i *lock) {
-  return __sync_swap(lock, 1);
-}
+inline int spn_trylock(spn_lock_i *lock) { return __sync_swap(lock, 1); }
 #define SPN_TMP_HAS_BUILTIN 1
 #endif
 /* use gcc builtins if available - trust the compiler */
@@ -102,7 +94,7 @@ __unused static inline int spn_trylock(spn_lock_i *lock) {
 /* define the type */
 typedef volatile uint8_t spn_lock_i;
 /** returns 1 if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i *lock) {
+inline int spn_trylock(spn_lock_i *lock) {
   return __sync_fetch_and_or(lock, 1);
 }
 #define SPN_TMP_HAS_BUILTIN 1
@@ -119,7 +111,7 @@ __unused static inline int spn_trylock(spn_lock_i *lock) {
 /* define the type */
 typedef volatile uint8_t spn_lock_i;
 /** returns 1 if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i *lock) {
+inline int spn_trylock(spn_lock_i *lock) {
   spn_lock_i tmp;
   __asm__ volatile("xchgb %0,%1" : "=r"(tmp), "=m"(*lock) : "0"(1) : "memory");
   return tmp;
@@ -130,7 +122,7 @@ __unused static inline int spn_trylock(spn_lock_i *lock) {
 /* define the type */
 typedef volatile uint8_t spn_lock_i;
 /** returns TRUE (non-zero) if the lock was busy (TRUE == FAIL). */
-__unused static inline int spn_trylock(spn_lock_i *lock) {
+inline int spn_trylock(spn_lock_i *lock) {
   spn_lock_i tmp;
   __asm__ volatile("ldstub    [%1], %0" : "=r"(tmp) : "r"(lock) : "memory");
   return tmp; /* return 0xFF if the lock was busy, 0 if free */
@@ -144,12 +136,12 @@ __unused static inline int spn_trylock(spn_lock_i *lock) {
 #define SPN_LOCK_INIT 0
 
 /** Releases a lock. */
-__unused static inline void spn_unlock(spn_lock_i *lock) {
+inline void spn_unlock(spn_lock_i *lock) {
   __asm__ volatile("" ::: "memory");
   *lock = 0;
 }
 /** returns a lock's state (non 0 == Busy). */
-__unused static inline int spn_is_locked(spn_lock_i *lock) {
+inline int spn_is_locked(spn_lock_i *lock) {
   __asm__ volatile("" ::: "memory");
   return *lock;
 }
@@ -157,7 +149,7 @@ __unused static inline int spn_is_locked(spn_lock_i *lock) {
 #endif /* has atomics */
 #include <stdio.h>
 /** Busy waits for the lock. */
-__unused static inline void spn_lock(spn_lock_i *lock) {
+inline void spn_lock(spn_lock_i *lock) {
   while (spn_trylock(lock)) {
     reschedule_thread();
   }
@@ -168,17 +160,22 @@ spnlock.h finished
 */
 #endif
 
-#if DEBUG == 1 && !defined(_SPN_LOCK_TEST_REPEAT_COUNT)
+#if DEBUG == 1 && !defined(SPN_LOCK_TEST_REPEAT_COUNT)
 
-#define _SPN_LOCK_TEST_REPEAT_COUNT 10000UL
-#define _SPN_LOCK_TEST_THREAD_COUNT 10000UL
+/* allow of the unused flag */
+#ifndef __unused
+#define __unused __attribute__((unused))
+#endif
+
+#define SPN_LOCK_TEST_REPEAT_COUNT 10000UL
+#define SPN_LOCK_TEST_THREAD_COUNT 10000UL
 #include <pthread.h>
 #include <stdio.h>
 
 __unused static void *test_spn_lock_work(void *arg) {
   static spn_lock_i lck = SPN_LOCK_INIT;
   uint64_t *ip = arg;
-  for (size_t i = 0; i < _SPN_LOCK_TEST_REPEAT_COUNT; i++) {
+  for (size_t i = 0; i < SPN_LOCK_TEST_REPEAT_COUNT; i++) {
     spn_lock(&lck);
     uint64_t j = *ip;
     j++;
@@ -191,7 +188,7 @@ __unused static void *test_spn_lock_work(void *arg) {
 
 __unused static void *test_spn_lock_lockless_work(void *arg) {
   uint64_t *ip = arg;
-  for (size_t i = 0; i < _SPN_LOCK_TEST_REPEAT_COUNT; i++) {
+  for (size_t i = 0; i < SPN_LOCK_TEST_REPEAT_COUNT; i++) {
     uint64_t j = *ip;
     j++;
     __asm__ volatile("" ::: "memory", "cc");
@@ -201,15 +198,15 @@ __unused static void *test_spn_lock_lockless_work(void *arg) {
 }
 
 __unused static void spn_lock_test(void) {
-  time_t start, end;
+  size_t start, end;
   unsigned long num = 0;
-  pthread_t *threads = malloc(_SPN_LOCK_TEST_THREAD_COUNT * sizeof(*threads));
+  pthread_t *threads = malloc(SPN_LOCK_TEST_THREAD_COUNT * sizeof(*threads));
   void *tmp;
   start = clock();
-  for (size_t i = 0; i < _SPN_LOCK_TEST_THREAD_COUNT; i++) {
+  for (size_t i = 0; i < SPN_LOCK_TEST_THREAD_COUNT; i++) {
     pthread_create(threads + i, NULL, test_spn_lock_lockless_work, &num);
   }
-  for (size_t i = 0; i < _SPN_LOCK_TEST_THREAD_COUNT; i++) {
+  for (size_t i = 0; i < SPN_LOCK_TEST_THREAD_COUNT; i++) {
     pthread_join(threads[i], &tmp);
   }
   end = clock();
@@ -219,7 +216,7 @@ __unused static void spn_lock_test(void) {
   num = 0;
 
   start = clock();
-  for (size_t i = 0; i < _SPN_LOCK_TEST_THREAD_COUNT; i++) {
+  for (size_t i = 0; i < SPN_LOCK_TEST_THREAD_COUNT; i++) {
     if (pthread_create(threads + i, NULL, test_spn_lock_work, &num))
       fprintf(stderr,
               "Failed to create thread number %lu... test will fail to run as "
@@ -227,14 +224,14 @@ __unused static void spn_lock_test(void) {
               i);
     ;
   }
-  for (size_t i = 0; i < _SPN_LOCK_TEST_THREAD_COUNT; i++) {
+  for (size_t i = 0; i < SPN_LOCK_TEST_THREAD_COUNT; i++) {
     pthread_join(threads[i], &tmp);
   }
   end = clock();
   free(threads);
   fprintf(stderr, "Locked Num = %lu with %lu CPU cycles.\n", num, end - start);
   fprintf(stderr, "spn_lock test %s\n",
-          num == _SPN_LOCK_TEST_THREAD_COUNT * _SPN_LOCK_TEST_REPEAT_COUNT
+          num == SPN_LOCK_TEST_THREAD_COUNT * SPN_LOCK_TEST_REPEAT_COUNT
               ? "passed."
               : "FAILED!");
 }

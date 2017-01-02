@@ -101,7 +101,7 @@ static void server_cleanup(void) {
   server_on_shutdown();
   // free any lock objects (no need to change code if changing locking systems)
   for (size_t i = 0; i < server_data.capacity - 1; i++) {
-    server_data.fds[i] = (fd_data_s){0};
+    server_data.fds[i] = (fd_data_s){.protocol = NULL};
     lock_fd_destroy(server_data.fds + i);
   }
   // free memory
@@ -121,7 +121,7 @@ static void init_server(void) {
                            PROT_READ | PROT_WRITE | PROT_EXEC,
                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     for (size_t i = 0; i < server_data.capacity - 1; i++) {
-      server_data.fds[i] = (fd_data_s){0};
+      server_data.fds[i] = (fd_data_s){.protocol = NULL};
       lock_fd_init(server_data.fds + i);
     }
   }
@@ -219,6 +219,7 @@ http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.h
 */
 
 void reap_child_handler(int sig) {
+  (void)(sig);
   int old_errno = errno;
   while (waitpid(-1, NULL, WNOHANG) > 0)
     ;
@@ -442,7 +443,8 @@ static inline void timeout_review(void) {
   }
 }
 
-static void server_cycle(void *_) {
+static void server_cycle(void *unused) {
+  (void)(unused);
   static int8_t perform_idle = 1;
   time(&server_data.last_tick);
   if (server_data.running) {
@@ -770,7 +772,7 @@ static void perform_single_task(void *task) {
 static void perform_each_task(void *task) {
   intptr_t uuid;
   protocol_s *protocol;
-  while (p2task(task).target < server_data.capacity) {
+  while (p2task(task).target < (intptr_t)server_data.capacity) {
     uuid = sock_fd2uuid(p2task(task).target);
     if (uuid == -1 || uuid == p2task(task).origin) {
       ++p2task(task).target;

@@ -17,8 +17,9 @@ Feel free to copy, use and enjoy according to the license provided.
 /* *****************************************************************************
 A Simple busy lock implementation ... (spnlock.h) Included here to make portable
 */
-#ifndef _SPN_LOCK_H
-#define _SPN_LOCK_H
+#ifndef SIMPLE_SPN_LOCK_H
+#define SIMPLE_SPN_LOCK_H
+SIMPLE_SPN_LOCK_H
 
 /* allow of the unused flag */
 #ifndef __unused
