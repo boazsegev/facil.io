@@ -250,7 +250,9 @@ static inline void pause_thread() {
     read(async->io.in, &tmp, 1);
   }
 #else
-  struct timespec act, tm = {.tv_sec = 0, .tv_nsec = ASYNC_NANO_SLEEP};
+  struct timespec act,
+      tm = {.tv_sec = 0,
+            .tv_nsec = ASYNC_NANO_SLEEP * (async ? async->thread_count : 1)};
   nanosleep(&tm, &act);
 // sched_yield();
 #endif
@@ -295,7 +297,8 @@ static void on_err_signal(int sig) {
 }
 
 // The worker cycle
-static void *worker_thread_cycle(void *_) {
+static void *worker_thread_cycle(void *unused) {
+  (void)(unused);
   // register error signals when using a sentinal
   if (ASYNC_USE_SENTINEL) {
     signal(SIGSEGV, on_err_signal);
@@ -459,19 +462,22 @@ Test
 static spn_lock_i i_lock = SPN_LOCK_INIT;
 static size_t i_count = 0;
 
-static void sample_task(void *_) {
+static void sample_task(void *unused) {
+  (void)(unused);
   spn_lock(&i_lock);
   i_count++;
   spn_unlock(&i_lock);
 }
 
-static void sched_sample_task(void *_) {
+static void sched_sample_task(void *unused) {
+  (void)(unused);
   for (size_t i = 0; i < 1024; i++) {
     async_run(sample_task, async);
   }
 }
 
-static void text_task_text(void *_) {
+static void text_task_text(void *unused) {
+  (void)(unused);
   spn_lock(&i_lock);
   fprintf(stderr, "this text should print before async_finish returns\n");
   spn_unlock(&i_lock);
