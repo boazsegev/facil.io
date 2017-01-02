@@ -9,7 +9,9 @@ Feel free to copy, use and enjoy according to the license provided.
 // #include "mempool.h"
 #include "spnlock.h"
 #include <assert.h>
+#include <inttypes.h>
 #include <pthread.h>
+#include <stdio.h>
 
 /* *****************************************************************************
 The HPACK context unifies the encoding and decoding contexts.
@@ -49,6 +51,113 @@ static __thread struct {
 Integer encoding / decoding
 */
 
+static inline int64_t decode_int(uint8_t *buf, size_t len, uint8_t prefix,
+                                 size_t *pos) {
+  len -= *pos;
+  if (len > 8)
+    len = 8;
+  uint64_t result = 0;
+  uint64_t bit = 0;
+  uint8_t mask = ((1 << (prefix)) - 1);
+
+  if ((mask & (buf[*pos])) != mask) {
+    result |= (mask & (buf[(*pos)++]));
+    return (int64_t)result;
+  }
+
+  ++(*pos);
+  --len;
+
+  while (len && (buf[*pos] & 128)) {
+    result |= ((buf[*pos] & 0x7fU) << (bit));
+    bit += 7;
+    ++(*pos);
+    --len;
+  }
+  if (!len) {
+    fprintf(stderr, "len kill return -1\n");
+    return -1;
+  }
+  result |= ((buf[*pos] & 0x7fU) << bit);
+  result += mask;
+
+  ++(*pos);
+  return (int64_t)result;
+}
+
+static inline int encode_int(uint64_t i, uint8_t prefix) {
+  uint8_t mask = ((1 << (prefix)) - 1);
+  if (i < mask) {
+    // zero out prefix bits
+    thread_buff.data[thread_buff.len] &= ~mask;
+    // fill in i;
+    thread_buff.data[thread_buff.len] |= i;
+    thread_buff.len += 1;
+    if (thread_buff.len >= HPACK_BUFFER_SIZE)
+      return -1;
+    return 0;
+  }
+
+  thread_buff.data[thread_buff.len] |= mask;
+  ++thread_buff.len;
+  if (thread_buff.len >= HPACK_BUFFER_SIZE)
+    return -1;
+
+  i -= mask;
+
+  while (i >> 7) {
+    thread_buff.data[thread_buff.len] = (1 << 7) | (i & ((1 << 7) - 1));
+    ++thread_buff.len;
+    if (thread_buff.len >= HPACK_BUFFER_SIZE)
+      return -1;
+    i >>= 7;
+  }
+
+  thread_buff.data[thread_buff.len] = i & 0x7fU;
+  ++thread_buff.len;
+  if (thread_buff.len >= HPACK_BUFFER_SIZE)
+    return -1;
+
+  return 0;
+}
+
+#if defined(DEBUG) && DEBUG == 1
+void hpack_test_int_primitive(void) {
+  int64_t result;
+  size_t pos = 0;
+  if ((result = decode_int((uint8_t *)"\x0c", 1, 4, &pos)) != 12)
+    fprintf(stderr, "* HPACK INTEGER DECODER ERROR ex. 0c 12 != %" PRId64 "\n",
+            result);
+
+  pos = 0;
+  if ((result = decode_int((uint8_t *)"\x1f\x9a\x0a", 3, 5, &pos)) != 1337)
+    fprintf(stderr,
+            "* HPACK INTEGER DECODER ERROR ex. \\x1f\\x9a\\x0a 1337 != %" PRId64
+            "\n",
+            result);
+
+  thread_buff.len = 0;
+  for (int64_t i = 1; i < (1 << 21); i <<= 1) {
+    if (encode_int(i, ((i / 7) & 7)))
+      fprintf(stderr, "* HPACK INTEGER ENCODE ERROR 1 ( %" PRId64
+                      ") (prefix == %" PRId64 ")\n",
+              i, ((i / 7) & 7));
+  }
+  pos = 0;
+  for (int64_t i = 1; i < (1 << 21); i <<= 1) {
+    result = decode_int(thread_buff.data, thread_buff.len, ((i / 7) & 7), &pos);
+    if (result < 0)
+      fprintf(stderr, "* HPACK INTEGER DECODE ERROR 1 ( %" PRId64
+                      ") (prefix == %" PRId64 ")\n",
+              i, ((i / 7) & 7));
+    else if (result != i)
+      fprintf(stderr, "* HPACK INTEGER DECODE ERROR 2 expected %" PRId64
+                      " got %" PRId64 " (prefix == %" PRId64 ")\n",
+              i, result, ((i / 7) & 7));
+  }
+  fprintf(stderr, "* HPACK Integer Primitive test complete.\n");
+}
+#endif
 /* *****************************************************************************
 Huffman encoding / decoding
 */
