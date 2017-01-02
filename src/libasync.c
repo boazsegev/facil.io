@@ -37,7 +37,7 @@ Performance options.
 
 /* use pipe for wakeup if == 0 else, use nanosleep when no tasks. */
 #ifndef ASYNC_NANO_SLEEP
-#define ASYNC_NANO_SLEEP 16777216 // 8388608  // 1048576  // 524288
+#define ASYNC_NANO_SLEEP 8388608 // 1048576  // 524288 // 16777216
 #endif
 
 /* Sentinal thread to respawn crashed threads - limited crash resistance. */
