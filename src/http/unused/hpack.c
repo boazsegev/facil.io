@@ -48,6 +48,146 @@ static __thread struct {
 } thread_buff;
 
 /* *****************************************************************************
+Helper Declerations
+*/
+
+static inline int64_t decode_int(uint8_t *buf, size_t len, uint8_t prefix,
+                                 size_t *pos);
+static inline int encode_int(uint64_t i, uint8_t prefix);
+
+static sstring_s *unpack_huffman(void *buf, size_t len);
+static int pack_huffman(void *buf, size_t len);
+
+static inline int pack_string(uint8_t *buf, size_t len, _Bool compress);
+static inline sstring_s *unpack_string(uint8_t *buf, size_t len, size_t *pos);
+
+/* *****************************************************************************
+API Implementation
+*/
+
+/* *****************************************************************************
+Packing Strings
+*/
+
+static inline int pack_string(uint8_t *buf, size_t len, _Bool compress) {
+  if (compress) {
+    thread_buff.data[thread_buff.len] = 128;
+    size_t comp_len = 0;
+    for (size_t i = 0; i < len; i++) {
+      comp_len += huffman_encode_table[buf[i]].bits;
+    }
+    if (comp_len & 7)
+      comp_len += 8;
+    comp_len >>= 3;
+    if (encode_int(comp_len, 7)) {
+      fprintf(stderr, "Error encoding String length\n");
+      return -1;
+    };
+    pack_huffman(buf, len);
+
+  } else {
+    thread_buff.data[thread_buff.len] = 0;
+    if (encode_int(len, 7)) {
+      fprintf(stderr, "Error encoding String length\n");
+      return -1;
+    };
+    if (thread_buff.len + len > HPACK_BUFFER_SIZE)
+      return -1;
+    memcpy(thread_buff.data + thread_buff.len, buf, len);
+    thread_buff.len += len;
+  }
+
+  return 0;
+}
+
+static inline sstring_s *unpack_string(uint8_t *buf, size_t len, size_t *pos) {
+  thread_buff.len = 0;
+  _Bool compressed = buf[*pos] & 128;
+  int64_t l = decode_int(buf, len, 7, pos);
+  if (l < 0)
+    return NULL;
+  len = l;
+  if (compressed) {
+    if (unpack_huffman(buf + (*pos), len) == NULL)
+      return NULL;
+  } else {
+    thread_buff.len = len;
+    memcpy(thread_buff.data, buf + (*pos), len);
+  }
+  *pos += len;
+  return (sstring_s *)(&thread_buff);
+}
+
+#if defined(DEBUG) && DEBUG == 1
+
+void hpack_test_string_packing(void) {
+  size_t pos = 0;
+  if (unpack_string((uint8_t *)"\x0a\x63\x75\x73\x74\x6f\x6d\x2d\x6b\x65\x79",
+                    11, &pos) == NULL) {
+    fprintf(stderr, "* HPACK STRING UNPACKING FAILED(!) for example.\n");
+  } else {
+    if (thread_buff.len != 10)
+      fprintf(stderr, "* HPACK STRING UNPACKING ERROR example len %u != 10.\n",
+              thread_buff.len);
+    if (memcmp(thread_buff.data, "\x63\x75\x73\x74\x6f\x6d\x2d\x6b\x65\x79",
+               10))
+      fprintf(stderr, "* HPACK STRING UNPACKING ERROR example returned: %.*s\n",
+              (int)thread_buff.len, thread_buff.data);
+  }
+
+  pos = 0;
+  if (unpack_string(
+          (uint8_t *)"\x8c\xf1\xe3\xc2\xe5\xf2\x3a\x6b\xa0\xab\x90\xf4\xff", 13,
+          &pos) == NULL) {
+    fprintf(stderr,
+            "* HPACK STRING UNPACKING FAILED(!) for compressed example.\n");
+  } else {
+    if (thread_buff.len != 15)
+      fprintf(
+          stderr,
+          "* HPACK STRING UNPACKING ERROR compressed example len %u != 15.\n",
+          thread_buff.len);
+    if (memcmp(thread_buff.data, "www.example.com", 10))
+      fprintf(
+          stderr,
+          "* HPACK STRING UNPACKING ERROR compressed example returned: %.*s\n",
+          (int)thread_buff.len, thread_buff.data);
+  }
+
+  uint8_t *str1 =
+      (uint8_t *)"This is a string to be packed, either compressed or not.";
+
+  thread_buff.len = 0;
+  size_t i;
+  for (i = 0; i < 128; i++) {
+    if (pack_string(str1, 56, i & 1))
+      fprintf(stderr, "* HPACK STRING PACKING FAIL AT %lu\n", i);
+  }
+  uint16_t len = thread_buff.len;
+  uint8_t buff[len];
+  memcpy(buff, thread_buff.data, len);
+
+  pos = 0;
+  i = 0;
+  while (pos < len) {
+    if (unpack_string(buff, len, &pos) == NULL)
+      fprintf(stderr, "* HPACK STRING UNPACKING FAILED(!) AT %lu\n", i);
+    if (thread_buff.len != 56)
+      fprintf(stderr, "* HPACK STRING UNPACKING ERROR AT %lu - got string "
+                      "length %u instead of 56.\n",
+              i, thread_buff.len);
+    if (memcmp(str1, thread_buff.data, 56))
+      fprintf(stderr, "* HPACK STRING UNPACKING ERROR AT %lu. Got %.*s\n", i,
+              (int)thread_buff.len, thread_buff.data);
+    i++;
+  }
+  fprintf(stderr,
+          "* HPACK String packing test complete. Detected %lu/128 strings\n",
+          i);
+}
+#endif
+
+/* *****************************************************************************
 Integer encoding / decoding
 */
 
@@ -121,6 +261,7 @@ static inline int encode_int(uint64_t i, uint8_t prefix) {
 }
 
 #if defined(DEBUG) && DEBUG == 1
+
 void hpack_test_int_primitive(void) {
   int64_t result;
   size_t pos = 0;
@@ -137,7 +278,7 @@ void hpack_test_int_primitive(void) {
 
   thread_buff.len = 0;
   for (int64_t i = 1; i < (1 << 21); i <<= 1) {
-    if (encode_int(i, ((i / 7) & 7)))
+    if (encode_int((((i + 5) * 7) / 3), ((i / 7) & 7)))
       fprintf(stderr, "* HPACK INTEGER ENCODE ERROR 1 ( %" PRId64
                       ") (prefix == %" PRId64 ")\n",
               i, ((i / 7) & 7));
@@ -149,10 +290,10 @@ void hpack_test_int_primitive(void) {
       fprintf(stderr, "* HPACK INTEGER DECODE ERROR 1 ( %" PRId64
                       ") (prefix == %" PRId64 ")\n",
               i, ((i / 7) & 7));
-    else if (result != i)
+    else if (result != (((i + 5) * 7) / 3))
       fprintf(stderr, "* HPACK INTEGER DECODE ERROR 2 expected %" PRId64
                       " got %" PRId64 " (prefix == %" PRId64 ")\n",
-              i, result, ((i / 7) & 7));
+              (((i + 5) * 7) / 3), result, ((i / 7) & 7));
   }
   fprintf(stderr, "* HPACK Integer Primitive test complete.\n");
 }
@@ -208,7 +349,7 @@ done:
   return (sstring_s *)&thread_buff;
 }
 
-static sstring_s *pack_huffman(void *buf, size_t len) {
+static int pack_huffman(void *buf, size_t len) {
   thread_buff.data[thread_buff.len] = 0;
   uint8_t *pos = buf;
   uint8_t *end = pos + len;
@@ -221,7 +362,7 @@ static sstring_s *pack_huffman(void *buf, size_t len) {
       rem = 8;
       thread_buff.len += 1;
       if (thread_buff.len >= HPACK_BUFFER_SIZE)
-        return NULL;
+        return -1;
     }
     if ((rem & 7) && rem <= bits) {
       thread_buff.data[thread_buff.len] <<= rem;
@@ -230,14 +371,14 @@ static sstring_s *pack_huffman(void *buf, size_t len) {
       rem = 8;
       thread_buff.len += 1;
       if (thread_buff.len >= HPACK_BUFFER_SIZE)
-        return NULL;
+        return -1;
     }
     while (bits >= 8) {
       thread_buff.data[thread_buff.len] = (code >> (bits - 8)) & 0xFF;
       bits -= 8;
       thread_buff.len += 1;
       if (thread_buff.len >= HPACK_BUFFER_SIZE)
-        return NULL;
+        return -1;
     }
     if (bits) {
       thread_buff.data[thread_buff.len] <<= bits;
@@ -253,7 +394,7 @@ static sstring_s *pack_huffman(void *buf, size_t len) {
     thread_buff.data[thread_buff.len] |= ((1 << rem) - 1);
     thread_buff.len += 1;
   }
-  return (sstring_s *)(&thread_buff);
+  return 0;
 }
 
 #if defined(DEBUG) && DEBUG == 1
@@ -276,7 +417,7 @@ void hpack_test_huffman(void) {
 
   thread_buff.len = 0;
   if (pack_huffman("I want to go home... but I have to write tests... woohoo!",
-                   57) == NULL) {
+                   57)) {
     fprintf(stderr, "* HPACK HUFFMAN TEST FAILED packing error (3).\n");
   } else {
     uint8_t str2[thread_buff.len];
