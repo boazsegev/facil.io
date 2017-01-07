@@ -58,17 +58,17 @@ SIMPLE_SPN_LOCK_H
 typedef atomic_bool spn_lock_i;
 #define SPN_LOCK_INIT ATOMIC_VAR_INIT(0)
 /** returns 1 if the lock was busy (TRUE == FAIL). */
-inline int spn_trylock(spn_lock_i *lock) {
+static inline int spn_trylock(spn_lock_i *lock) {
   __asm__ volatile("" ::: "memory");
   return atomic_exchange(lock, 1);
 }
 /** Releases a lock. */
-inline void spn_unlock(spn_lock_i *lock) {
+static inline void spn_unlock(spn_lock_i *lock) {
   atomic_store(lock, 0);
   __asm__ volatile("" ::: "memory");
 }
 /** returns a lock's state (non 0 == Busy). */
-inline int spn_is_locked(spn_lock_i *lock) { return atomic_load(lock); }
+static inline int spn_is_locked(spn_lock_i *lock) { return atomic_load(lock); }
 #endif
 #endif
 
@@ -85,7 +85,7 @@ inline int spn_is_locked(spn_lock_i *lock) { return atomic_load(lock); }
 /* define the type */
 typedef volatile uint8_t spn_lock_i;
 /** returns 1 if the lock was busy (TRUE == FAIL). */
-inline int spn_trylock(spn_lock_i *lock) { return __sync_swap(lock, 1); }
+static inline int spn_trylock(spn_lock_i *lock) { return __sync_swap(lock, 1); }
 #define SPN_TMP_HAS_BUILTIN 1
 #endif
 /* use gcc builtins if available - trust the compiler */
@@ -94,7 +94,7 @@ inline int spn_trylock(spn_lock_i *lock) { return __sync_swap(lock, 1); }
 /* define the type */
 typedef volatile uint8_t spn_lock_i;
 /** returns 1 if the lock was busy (TRUE == FAIL). */
-inline int spn_trylock(spn_lock_i *lock) {
+static inline int spn_trylock(spn_lock_i *lock) {
   return __sync_fetch_and_or(lock, 1);
 }
 #define SPN_TMP_HAS_BUILTIN 1
@@ -111,7 +111,7 @@ inline int spn_trylock(spn_lock_i *lock) {
 /* define the type */
 typedef volatile uint8_t spn_lock_i;
 /** returns 1 if the lock was busy (TRUE == FAIL). */
-inline int spn_trylock(spn_lock_i *lock) {
+static inline int spn_trylock(spn_lock_i *lock) {
   spn_lock_i tmp;
   __asm__ volatile("xchgb %0,%1" : "=r"(tmp), "=m"(*lock) : "0"(1) : "memory");
   return tmp;
@@ -122,7 +122,7 @@ inline int spn_trylock(spn_lock_i *lock) {
 /* define the type */
 typedef volatile uint8_t spn_lock_i;
 /** returns TRUE (non-zero) if the lock was busy (TRUE == FAIL). */
-inline int spn_trylock(spn_lock_i *lock) {
+static inline int spn_trylock(spn_lock_i *lock) {
   spn_lock_i tmp;
   __asm__ volatile("ldstub    [%1], %0" : "=r"(tmp) : "r"(lock) : "memory");
   return tmp; /* return 0xFF if the lock was busy, 0 if free */
@@ -136,12 +136,12 @@ inline int spn_trylock(spn_lock_i *lock) {
 #define SPN_LOCK_INIT 0
 
 /** Releases a lock. */
-inline void spn_unlock(spn_lock_i *lock) {
+static inline void spn_unlock(spn_lock_i *lock) {
   __asm__ volatile("" ::: "memory");
   *lock = 0;
 }
 /** returns a lock's state (non 0 == Busy). */
-inline int spn_is_locked(spn_lock_i *lock) {
+static inline int spn_is_locked(spn_lock_i *lock) {
   __asm__ volatile("" ::: "memory");
   return *lock;
 }
@@ -149,7 +149,7 @@ inline int spn_is_locked(spn_lock_i *lock) {
 #endif /* has atomics */
 #include <stdio.h>
 /** Busy waits for the lock. */
-inline void spn_lock(spn_lock_i *lock) {
+static inline void spn_lock(spn_lock_i *lock) {
   while (spn_trylock(lock)) {
     reschedule_thread();
   }
