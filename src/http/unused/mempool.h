@@ -699,26 +699,26 @@ static __unused void mempool_test(void) {
   fprintf(stderr, "System memory test for ~2Mb\n");
   mempool_speedtest((2 << 20) / MEMTEST_SLICE, malloc, free, realloc);
   fprintf(stderr, "*****************************\n");
-  fprintf(stderr, "System memory test for ~4Mb\n");
-  mempool_speedtest((2 << 21) / MEMTEST_SLICE, malloc, free, realloc);
-  fprintf(stderr, "*****************************\n");
-  fprintf(stderr, "System memory test for ~8Mb\n");
-  mempool_speedtest((2 << 22) / MEMTEST_SLICE, malloc, free, realloc);
-  fprintf(stderr, "*****************************\n");
-  fprintf(stderr, "System memory test for ~16Mb\n");
-  mempool_speedtest((2 << 23) / MEMTEST_SLICE, malloc, free, realloc);
-  fprintf(stderr, "*****************************\n");
   fprintf(stderr, " mempool memory test for ~2Mb\n");
   mempool_speedtest((2 << 20) / MEMTEST_SLICE, mempool_malloc, mempool_free,
                     mempool_realloc);
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, "System memory test for ~4Mb\n");
+  mempool_speedtest((2 << 21) / MEMTEST_SLICE, malloc, free, realloc);
   fprintf(stderr, "*****************************\n");
   fprintf(stderr, " mempool memory test for ~4Mb\n");
   mempool_speedtest((2 << 21) / MEMTEST_SLICE, mempool_malloc, mempool_free,
                     mempool_realloc);
   fprintf(stderr, "*****************************\n");
+  fprintf(stderr, "System memory test for ~8Mb\n");
+  mempool_speedtest((2 << 22) / MEMTEST_SLICE, malloc, free, realloc);
+  fprintf(stderr, "*****************************\n");
   fprintf(stderr, " mempool memory test for ~8Mb\n");
   mempool_speedtest((2 << 22) / MEMTEST_SLICE, mempool_malloc, mempool_free,
                     mempool_realloc);
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, "System memory test for ~16Mb\n");
+  mempool_speedtest((2 << 23) / MEMTEST_SLICE, malloc, free, realloc);
   fprintf(stderr, "*****************************\n");
   fprintf(stderr, " mempool memory test for ~16Mb\n");
   mempool_speedtest((2 << 23) / MEMTEST_SLICE, mempool_malloc, mempool_free,
