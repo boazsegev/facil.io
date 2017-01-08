@@ -7,6 +7,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef MEMPOOL_H
 
 /* *****************************************************************************
+Doesn't work yet - FAILS SOME TESTS
+*/
+
+/* *****************************************************************************
 A simple `mmap` based memory pool - `malloc` alternative.
 
 The issue: objects that have a long life, such as Websocket / HTTP2 connection
@@ -186,10 +190,11 @@ API implementation
 static __unused void *mempool_malloc(size_t size) {
   if (!size)
     return NULL;
-  size += sizeof(struct mempool_reserved_slice_s_offset);
   if (size & 15) {
     size = size + 16 - (size & 15);
   }
+  size += sizeof(struct mempool_reserved_slice_s_offset);
+
   mempool_reserved_slice_s *slice = NULL;
 
   if (size > (MEMPOOL_BLOCK_SIZE - (sizeof(mempool_reserved_slice_s) << 1)))
@@ -387,10 +392,10 @@ error:
 static __unused void *mempool_realloc(void *ptr, size_t size) {
   if (!size)
     return NULL;
-  size += sizeof(struct mempool_reserved_slice_s_offset);
   if (size & 15) {
     size = size + 16 - (size & 15);
   }
+  size += sizeof(struct mempool_reserved_slice_s_offset);
 
   mempool_reserved_slice_s *tmp = NULL, *slice = MEMPOOL_PTR2SLICE(ptr);
 
@@ -483,7 +488,6 @@ Testing
 #if defined(DEBUG) && DEBUG == 1
 
 #define MEMTEST_SLICE 48
-#define MEMTEST_REPEATS (1024 * 2096) /* test ~ 12GB*/
 
 #include <time.h>
 static void mempool_stats(void) {
@@ -501,9 +505,10 @@ static void mempool_stats(void) {
           sizeof(struct mempool_reserved_slice_s_offset));
 }
 
-static void mempool_speedtest(void *(*mlk)(size_t), void (*fr)(void *),
+static void mempool_speedtest(size_t memtest_repeats, void *(*mlk)(size_t),
+                              void (*fr)(void *),
                               void *(*ralc)(void *, size_t)) {
-  void **pntrs = mlk(MEMTEST_REPEATS * sizeof(*pntrs));
+  void **pntrs = mlk(memtest_repeats * sizeof(*pntrs));
   clock_t start, end, mlk_time, fr_time, zr_time;
   mlk_time = 0;
   fr_time = 0;
@@ -512,7 +517,7 @@ static void mempool_speedtest(void *(*mlk)(size_t), void (*fr)(void *),
   clock_gettime(CLOCK_MONOTONIC, &start_test);
 
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i++) {
+  for (size_t i = 0; i < memtest_repeats; i++) {
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
@@ -520,7 +525,7 @@ static void mempool_speedtest(void *(*mlk)(size_t), void (*fr)(void *),
   fprintf(stderr, "* Doing nothing: %lu CPU cycles.\n", mlk_time);
 
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i++) {
+  for (size_t i = 0; i < memtest_repeats; i++) {
     // fprintf(stderr, "malloc %lu\n", i);
     pntrs[i] = mlk(MEMTEST_SLICE);
     *((uint8_t *)pntrs[i]) = 1;
@@ -528,46 +533,46 @@ static void mempool_speedtest(void *(*mlk)(size_t), void (*fr)(void *),
   end = clock();
   mlk_time = end - start;
   fprintf(stderr,
-          "* Allocating %d consecutive blocks %d each: %lu CPU cycles.\n",
-          MEMTEST_REPEATS, MEMTEST_SLICE, mlk_time);
+          "* Allocating %lu consecutive blocks %d each: %lu CPU cycles.\n",
+          memtest_repeats, MEMTEST_SLICE, mlk_time);
 
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i += 2) {
+  for (size_t i = 0; i < memtest_repeats; i += 2) {
     fr(pntrs[i]);
   }
   end = clock();
   fr_time = end - start;
 
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i += 2) {
+  for (size_t i = 0; i < memtest_repeats; i += 2) {
     pntrs[i] = mlk(MEMTEST_SLICE);
   }
   end = clock();
   mlk_time = end - start;
 
   fprintf(stderr,
-          "* Freeing %d Fragmented (single space) blocks %d each: %lu CPU "
+          "* Freeing %lu Fragmented (single space) blocks %d each: %lu CPU "
           "cycles.\n",
-          MEMTEST_REPEATS / 2, MEMTEST_SLICE, fr_time);
+          memtest_repeats / 2, MEMTEST_SLICE, fr_time);
 
-  fprintf(stderr, "* Allocating %d Fragmented (single space) blocks %d "
+  fprintf(stderr, "* Allocating %lu Fragmented (single space) blocks %d "
                   "bytes each: %lu CPU "
                   "cycles.\n",
-          MEMTEST_REPEATS / 2, MEMTEST_SLICE, mlk_time);
+          memtest_repeats / 2, MEMTEST_SLICE, mlk_time);
 
   mlk_time = 0;
   fr_time = 0;
 
   for (size_t xtimes = 0; xtimes < 100; xtimes++) {
     start = clock();
-    for (size_t i = 0; i < MEMTEST_REPEATS; i += 7) {
+    for (size_t i = 0; i < memtest_repeats; i += 7) {
       fr(pntrs[i]);
     }
     end = clock();
     fr_time += end - start;
 
     start = clock();
-    for (size_t i = 0; i < MEMTEST_REPEATS; i += 7) {
+    for (size_t i = 0; i < memtest_repeats; i += 7) {
       pntrs[i] = mlk(MEMTEST_SLICE);
     }
     end = clock();
@@ -575,88 +580,89 @@ static void mempool_speedtest(void *(*mlk)(size_t), void (*fr)(void *),
   }
 
   fprintf(stderr,
-          "* 100X Freeing %d Fragmented (7 spaces) blocks %d each: %lu CPU "
+          "* 100X Freeing %lu Fragmented (7 spaces) blocks %d each: %lu CPU "
           "cycles.\n",
-          MEMTEST_REPEATS / 7, MEMTEST_SLICE, fr_time);
+          memtest_repeats / 7, MEMTEST_SLICE, fr_time);
 
-  fprintf(stderr, "* 100X Allocating %d Fragmented (7 spaces) blocks %d "
+  fprintf(stderr, "* 100X Allocating %lu Fragmented (7 spaces) blocks %d "
                   "bytes each: %lu CPU "
                   "cycles.\n",
-          MEMTEST_REPEATS / 7, MEMTEST_SLICE, mlk_time);
+          memtest_repeats / 7, MEMTEST_SLICE, mlk_time);
 
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i++) {
+  for (size_t i = 0; i < memtest_repeats; i++) {
     memset(pntrs[i], 170, MEMTEST_SLICE);
   }
   end = clock();
   zr_time = end - start;
-  fprintf(stderr, "* Set bits (0b10) for %d consecutive blocks %dB "
+  fprintf(stderr, "* Set bits (0b10) for %lu consecutive blocks %dB "
                   "each: %lu CPU cycles.\n",
-          MEMTEST_REPEATS, MEMTEST_SLICE, zr_time);
+          memtest_repeats, MEMTEST_SLICE, zr_time);
 
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i++) {
+  for (size_t i = 0; i < memtest_repeats; i++) {
     fr(pntrs[i]);
   }
   end = clock();
   fr_time = end - start;
-  fprintf(stderr, "* Freeing %d consecutive blocks %d each: %lu CPU cycles.\n",
-          MEMTEST_REPEATS, MEMTEST_SLICE, fr_time);
+  fprintf(stderr, "* Freeing %lu consecutive blocks %d each: %lu CPU cycles.\n",
+          memtest_repeats, MEMTEST_SLICE, fr_time);
 
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i++) {
+  for (size_t i = 0; i < memtest_repeats; i++) {
     pntrs[i] = mlk(MEMTEST_SLICE);
   }
   end = clock();
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i += 2) {
+  for (size_t i = 0; i < memtest_repeats; i += 2) {
     fr(pntrs[i]);
   }
   end = clock();
   mlk_time = end - start;
   fprintf(stderr,
-          "* Freeing every other block %dB X %d blocks: %lu CPU cycles.\n",
-          MEMTEST_SLICE, MEMTEST_REPEATS >> 1, mlk_time);
+          "* Freeing every other block %dB X %lu blocks: %lu CPU cycles.\n",
+          MEMTEST_SLICE, memtest_repeats >> 1, mlk_time);
 
   start = clock();
-  for (size_t i = 1; i < MEMTEST_REPEATS; i += 2) {
+  for (size_t i = 1; i < memtest_repeats; i += 2) {
     pntrs[i] = ralc(pntrs[i], MEMTEST_SLICE << 1);
     if (pntrs[i] == NULL)
       fprintf(stderr, "REALLOC RETURNED NULL - Memory leaked during test\n");
   }
   end = clock();
   mlk_time = end - start;
-  fprintf(stderr,
-          "* Reallocating every other block %dB X %d blocks: %lu CPU cycles.\n",
-          MEMTEST_SLICE, MEMTEST_REPEATS >> 1, mlk_time);
+  fprintf(
+      stderr,
+      "* Reallocating every other block %dB X %lu blocks: %lu CPU cycles.\n",
+      MEMTEST_SLICE, memtest_repeats >> 1, mlk_time);
 
   start = clock();
-  for (size_t i = 1; i < MEMTEST_REPEATS; i += 2) {
+  for (size_t i = 1; i < memtest_repeats; i += 2) {
     fr(pntrs[i]);
   }
   end = clock();
   mlk_time = end - start;
   fprintf(stderr,
-          "* Freeing every other block %dB X %d blocks: %lu CPU cycles.\n",
-          MEMTEST_SLICE, MEMTEST_REPEATS >> 1, mlk_time);
+          "* Freeing every other block %dB X %lu blocks: %lu CPU cycles.\n",
+          MEMTEST_SLICE, memtest_repeats >> 1, mlk_time);
 
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i++) {
+  for (size_t i = 0; i < memtest_repeats; i++) {
     pntrs[i] = mlk(MEMTEST_SLICE);
   }
   end = clock();
   mlk_time = end - start;
   fprintf(stderr,
-          "* Allocating %d consecutive blocks %d each: %lu CPU cycles.\n",
-          MEMTEST_REPEATS, MEMTEST_SLICE, mlk_time);
+          "* Allocating %lu consecutive blocks %d each: %lu CPU cycles.\n",
+          memtest_repeats, MEMTEST_SLICE, mlk_time);
   start = clock();
-  for (size_t i = 0; i < MEMTEST_REPEATS; i++) {
+  for (size_t i = 0; i < memtest_repeats; i++) {
     fr(pntrs[i]);
   }
   end = clock();
   fr_time = end - start;
-  fprintf(stderr, "* Freeing %d consecutive blocks %d each: %lu CPU cycles.\n",
-          MEMTEST_REPEATS, MEMTEST_SLICE, fr_time);
+  fprintf(stderr, "* Freeing %lu consecutive blocks %d each: %lu CPU cycles.\n",
+          memtest_repeats, MEMTEST_SLICE, fr_time);
   fprintf(stderr, "* Freeing pointer array %p.\n", pntrs);
   fr(pntrs);
 
@@ -672,19 +678,38 @@ static void mempool_speedtest(void *(*mlk)(size_t), void (*fr)(void *),
           msec_for_test / 1000);
 }
 
-#undef MEMTEST_SLICE
-#undef MEMTEST_REPEATS
-
 static __unused void mempool_test(void) {
   fprintf(stderr, "*****************************\n");
   fprintf(stderr, "mempool implementation details:\n");
   mempool_stats();
   fprintf(stderr, "*****************************\n");
-  fprintf(stderr, "System memory test\n");
-  mempool_speedtest(malloc, free, realloc);
+  fprintf(stderr, "System memory test for ~2Mb\n");
+  mempool_speedtest((2 << 20) / MEMTEST_SLICE, malloc, free, realloc);
   fprintf(stderr, "*****************************\n");
-  fprintf(stderr, " mempool memory test\n");
-  mempool_speedtest(mempool_malloc, mempool_free, mempool_realloc);
+  fprintf(stderr, "System memory test for ~4Mb\n");
+  mempool_speedtest((2 << 21) / MEMTEST_SLICE, malloc, free, realloc);
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, "System memory test for ~8Mb\n");
+  mempool_speedtest((2 << 22) / MEMTEST_SLICE, malloc, free, realloc);
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, "System memory test for ~16Mb\n");
+  mempool_speedtest((2 << 23) / MEMTEST_SLICE, malloc, free, realloc);
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, " mempool memory test for ~2Mb\n");
+  mempool_speedtest((2 << 20) / MEMTEST_SLICE, mempool_malloc, mempool_free,
+                    mempool_realloc);
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, " mempool memory test for ~4Mb\n");
+  mempool_speedtest((2 << 21) / MEMTEST_SLICE, mempool_malloc, mempool_free,
+                    mempool_realloc);
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, " mempool memory test for ~8Mb\n");
+  mempool_speedtest((2 << 22) / MEMTEST_SLICE, mempool_malloc, mempool_free,
+                    mempool_realloc);
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, " mempool memory test for ~16Mb\n");
+  mempool_speedtest((2 << 23) / MEMTEST_SLICE, mempool_malloc, mempool_free,
+                    mempool_realloc);
   fprintf(stderr, "*****************************\n");
 
   // fprintf(stderr, "*****************************\n");
@@ -723,6 +748,8 @@ static __unused void mempool_test(void) {
   //   repeat >>= 1;
   // }
 }
+
+#undef MEMTEST_SLICE
 
 #endif
 
