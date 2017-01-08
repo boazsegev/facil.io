@@ -7,10 +7,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef MEMPOOL_H
 
 /* *****************************************************************************
-Doesn't work yet - FAILS SOME TESTS
-*/
-
-/* *****************************************************************************
 A simple `mmap` based memory pool - `malloc` alternative.
 
 The issue: objects that have a long life, such as Websocket / HTTP2 connection
@@ -166,7 +162,7 @@ Memory Block Allocation / Deallocation
       target == NULL;                                                          \
   } while (0);
 
-#define MEMPOOL_DEALLOC_SPECIAL(target, size) munmap((target), (size));
+#define MEMPOOL_DEALLOC_SPECIAL(target, size) munmap((target), (size))
 
 #else
 
@@ -191,7 +187,7 @@ static __unused void *mempool_malloc(size_t size) {
   if (!size)
     return NULL;
   if (size & 15) {
-    size = size + 16 - (size & 15);
+    size = (size & (~16)) + 16;
   }
   size += sizeof(struct mempool_reserved_slice_s_offset);
 
@@ -211,8 +207,11 @@ static __unused void *mempool_malloc(size_t size) {
       slice->prev->next = slice->next;
     else
       mempool_reserved_pool.available = slice->next;
+    slice->next = NULL;
+    slice->prev = NULL;
   } else {
     MEMPOOL_ALLOC_SPECIAL(slice, MEMPOOL_BLOCK_SIZE);
+    // fprintf(stderr, "Allocated Block at %p\n", slice);
     slice->offset.behind = 0;
     slice->offset.ahead =
         MEMPOOL_BLOCK_SIZE - (sizeof(struct mempool_reserved_slice_s_offset));
@@ -293,7 +292,9 @@ static __unused void mempool_free(void *ptr) {
     goto alloc_indi;
   if ((slice->offset.ahead & MEMPOOL_USED_MARKER) != MEMPOOL_USED_MARKER)
     goto error;
+
   slice->offset.ahead &= MEMPOOL_SIZE_MASK;
+
   MEMPOOL_LOCK();
   /* merge slice with upper boundry */
   while ((tmp = (mempool_reserved_slice_s *)(((uintptr_t)slice) +
@@ -332,18 +333,26 @@ static __unused void mempool_free(void *ptr) {
     slice = tmp;
   }
 
-  /* return memory to system? */
+  /* return memory to system, if the block is no longer required. */
   if (MEMPOOL_RETURN_MEM_TO_SYSTEM && mempool_reserved_pool.available &&
       slice->offset.behind == 0 &&
       ((mempool_reserved_slice_s *)(((uintptr_t)slice) + slice->offset.ahead))
               ->offset.ahead == 0) {
     MEMPOOL_UNLOCK();
+    // fprintf(
+    //     stderr, "DEALLOCATED BLOCK %p, size review %u == %lu %s\n", slice,
+    //     slice->offset.ahead,
+    //     MEMPOOL_BLOCK_SIZE - sizeof(struct mempool_reserved_slice_s_offset),
+    //     (slice->offset.ahead ==
+    //      MEMPOOL_BLOCK_SIZE - sizeof(struct mempool_reserved_slice_s_offset))
+    //         ? "passed."
+    //         : "FAILED.");
     MEMPOOL_DEALLOC_SPECIAL(slice, MEMPOOL_BLOCK_SIZE);
-    // fprintf(stderr, "DEALLOCATED BLOCK %p\n", slice);
     return;
   }
 
   /* inform higher neighbor about any updates */
+  // fprintf(stderr, "slice: %p -> %u\n", slice, slice->offset.ahead);
   ((mempool_reserved_slice_s *)(((uintptr_t)slice) + slice->offset.ahead))
       ->offset.behind = slice->offset.ahead;
 
@@ -393,7 +402,7 @@ static __unused void *mempool_realloc(void *ptr, size_t size) {
   if (!size)
     return NULL;
   if (size & 15) {
-    size = size + 16 - (size & 15);
+    size = (size & (~16)) + 16;
   }
   size += sizeof(struct mempool_reserved_slice_s_offset);
 
@@ -424,6 +433,11 @@ static __unused void *mempool_realloc(void *ptr, size_t size) {
     tmp->prev = NULL;
     slice->offset.ahead += tmp->offset.ahead;
   }
+
+  /* inform higher neighbor about any updates */
+  ((mempool_reserved_slice_s *)(((uintptr_t)slice) + slice->offset.ahead))
+      ->offset.behind = slice->offset.ahead;
+
   if ((slice->offset.ahead) > size + sizeof(mempool_reserved_slice_s)) {
     /* cut the slice in two */
     tmp = (mempool_reserved_slice_s *)(((uintptr_t)slice) + size);
@@ -491,12 +505,11 @@ Testing
 
 #include <time.h>
 static void mempool_stats(void) {
-  fprintf(stderr,
-          "* Pool object: %lu bytes\n"
-          "* Alignment: %lu \n"
-          "* Minimal Allocateion Size (including header): %lu\n"
-          "* Minimal Allocation Space (no header): %lu (controls allignment)\n"
-          "* Header size: %lu\n",
+  fprintf(stderr, "* Pool object: %lu bytes\n"
+                  "* Alignment: %lu \n"
+                  "* Minimal Allocation Size (including header): %lu\n"
+                  "* Minimal Allocation Space (no header): %lu\n"
+                  "* Header size: %lu\n",
           sizeof(mempool_reserved_pool),
           sizeof(struct mempool_reserved_slice_s_offset),
           sizeof(mempool_reserved_slice_s),
