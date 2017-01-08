@@ -7,6 +7,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef MEMPOOL_H
 
 /*
+TESTING FAILS!
+
 REALLOC ISN'T IMPLEMENTED YET.
 */
 
@@ -127,8 +129,9 @@ typedef struct mempool_reserved_slice_s {
     uint32_t ahead;
     uint32_t behind;
   } offset;
-  struct mempool_reserved_slice_s
-      *next; /** Used for the free slices linked list. */
+  /** Used for the free slices linked list. */
+  struct mempool_reserved_slice_s *next;
+  struct mempool_reserved_slice_s *prev;
 } mempool_reserved_slice_s;
 
 static struct {
@@ -195,35 +198,37 @@ static __unused void *mempool_malloc(size_t size) {
   if (!size)
     return NULL;
   size += sizeof(struct mempool_reserved_slice_s_offset);
-  if (size & 7) {
-    size = size + 8 - (size & 7);
+  if (size & 15) {
+    size = size + 16 - (size & 15);
   }
-  mempool_reserved_slice_s **pos, *slice = NULL;
+  mempool_reserved_slice_s *slice = NULL;
 
   if (size > (MEMPOOL_BLOCK_SIZE - (sizeof(mempool_reserved_slice_s) << 1)))
     goto alloc_indi;
-  pos = &mempool_reserved_pool.available;
+  slice = mempool_reserved_pool.available;
   MEMPOOL_LOCK();
-  while (*pos && (*pos)->offset.ahead < size)
-    pos = &(*pos)->next;
-  if (*pos) {
-    slice = *pos;
-    *pos = slice->next;
+  while (slice && slice->offset.ahead < size)
+    slice = slice->next;
+  if (slice) {
+    /* remove slice from available memory list */
+    if (slice->next)
+      slice->next->prev = slice->prev;
+    if (slice->prev)
+      slice->prev->next = slice->next;
+    else
+      mempool_reserved_pool.available = slice->next;
   } else {
     MEMPOOL_ALLOC_SPECIAL(slice, MEMPOOL_BLOCK_SIZE);
     slice->offset.behind = 0;
     slice->offset.ahead =
         MEMPOOL_BLOCK_SIZE - (sizeof(struct mempool_reserved_slice_s_offset));
 
-    ((mempool_reserved_slice_s *)(((uintptr_t)(slice)) + MEMPOOL_BLOCK_SIZE -
-                                  (sizeof(
-                                      struct mempool_reserved_slice_s_offset))))
-        ->offset.ahead = 0;
-    ((mempool_reserved_slice_s *)(((uintptr_t)(slice)) + MEMPOOL_BLOCK_SIZE -
-                                  (sizeof(
-                                      struct mempool_reserved_slice_s_offset))))
-        ->offset.behind = slice->offset.ahead;
-    slice->next = NULL;
+    mempool_reserved_slice_s *tmp =
+        (mempool_reserved_slice_s
+             *)(((uintptr_t)(slice)) + MEMPOOL_BLOCK_SIZE -
+                (sizeof(struct mempool_reserved_slice_s_offset)));
+    tmp->offset.ahead = 0;
+    tmp->offset.behind = slice->offset.ahead;
   }
 
   if (!slice) {
@@ -233,23 +238,36 @@ static __unused void *mempool_malloc(size_t size) {
   }
 
   if (slice->offset.ahead > (size + sizeof(mempool_reserved_slice_s))) {
+    /* cut the slice in two */
     mempool_reserved_slice_s *tmp =
         (mempool_reserved_slice_s *)(((uintptr_t)slice) + size);
     tmp->offset.behind = size;
     tmp->offset.ahead = slice->offset.ahead - size;
     slice->offset.ahead = size;
-    pos = &mempool_reserved_pool.available;
-    while (*pos && (*pos)->offset.ahead < tmp->offset.ahead)
+    /* place the new slice in the available memory list */
+    tmp->next = NULL;
+    tmp->prev = NULL;
+    mempool_reserved_slice_s **pos = &mempool_reserved_pool.available;
+    while (*pos && ((*pos)->offset.ahead < tmp->offset.ahead)) {
+      tmp->prev = *pos;
       pos = &(*pos)->next;
-    tmp->next = *pos;
-    *pos = tmp;
+    }
+    if (*pos) {
+      tmp->next = *pos;
+      tmp->next->prev = tmp;
+      *pos = tmp;
+    } else {
+      *pos = tmp;
+    }
   }
 
   MEMPOOL_UNLOCK();
   slice->next = NULL;
+  slice->prev = NULL;
   slice->offset.ahead |= MEMPOOL_USED_MARKER;
   // mempool_reserved_slice_s *tmp =
-  //     (void *)((uintptr_t)slice + (slice->offset.ahead & MEMPOOL_SIZE_MASK));
+  //     (void *)((uintptr_t)slice + (slice->offset.ahead &
+  //     MEMPOOL_SIZE_MASK));
   // fprintf(stderr, "Allocated %lu bytes at: %u <- %p -> %u."
   //                 "next: %u <- %p -> %u\n ",
   //         size, slice->offset.behind, slice,
@@ -265,13 +283,16 @@ alloc_indi:
   }
   return MEMPOOL_SLICE2PTR(slice);
 }
+
 /**
- * Frees the memory, releasing it back to the pool (or, sometimes, the system).
+ * Frees the memory, releasing it back to the pool (or, sometimes, the
+ * system).
  */
 static __unused void mempool_free(void *ptr) {
   if (!ptr)
     return;
   mempool_reserved_slice_s **pos, *slice = MEMPOOL_PTR2SLICE(ptr), *tmp;
+
   if (slice->offset.behind == MEMPOOL_INDI_MARKER)
     goto alloc_indi;
   if ((slice->offset.ahead & MEMPOOL_USED_MARKER) != MEMPOOL_USED_MARKER)
@@ -279,19 +300,20 @@ static __unused void mempool_free(void *ptr) {
   slice->offset.ahead &= MEMPOOL_SIZE_MASK;
   MEMPOOL_LOCK();
   /* merge slice with upper boundry */
-  while ((tmp = (void *)(((uintptr_t)slice) + slice->offset.ahead))
+  while ((tmp = (mempool_reserved_slice_s *)(((uintptr_t)slice) +
+                                             slice->offset.ahead))
              ->offset.ahead &&
          (tmp->offset.ahead & MEMPOOL_USED_MARKER) == 0) {
-    pos = &mempool_reserved_pool.available;
-    while ((*pos) && (*pos) != tmp) {
-      pos = &(*pos)->next;
-    }
-    if (!(*pos)) {
-      // fprintf(stderr, "forward %p -> %u, %p -> %u\n", slice,
-      //         slice->offset.ahead, tmp, tmp->offset.behind);
-      goto error_list;
-    }
-    *pos = tmp->next;
+    /* extract merged slice from list */
+    if (tmp->next)
+      tmp->next->prev = tmp->prev;
+    if (tmp->prev)
+      tmp->prev->next = tmp->next;
+    else
+      mempool_reserved_pool.available = tmp->next;
+
+    tmp->next = NULL;
+    tmp->prev = NULL;
     slice->offset.ahead += tmp->offset.ahead;
   }
   /* merge slice with lower boundry */
@@ -300,28 +322,27 @@ static __unused void mempool_free(void *ptr) {
                                                slice->offset.behind))
                ->offset.ahead) &
           MEMPOOL_USED_MARKER) == 0) {
-    pos = &mempool_reserved_pool.available;
-    while ((*pos) && ((*pos) != tmp)) {
-      pos = (&(*pos)->next);
-    }
-    if (!(*pos)) {
-      // fprintf(stderr, "backwards %p -> %u,  %u <- %p -> %u\n", slice,
-      //         slice->offset.behind, tmp->offset.behind, tmp,
-      //         tmp->offset.ahead);
-      goto error_list;
-    }
-    *pos = tmp->next;
+    /* extract merged slice from list */
+    if (tmp->next)
+      tmp->next->prev = tmp->prev;
+    if (tmp->prev)
+      tmp->prev->next = tmp->next;
+    else
+      mempool_reserved_pool.available = tmp->next;
+
     tmp->next = NULL;
+    tmp->prev = NULL;
     tmp->offset.ahead += slice->offset.ahead;
     slice = tmp;
   }
 
   /* return memory to system? */
   if (mempool_reserved_pool.available && slice->offset.behind == 0 &&
-      ((mempool_reserved_slice_s *)((uintptr_t)slice) + slice->offset.ahead)
+      ((mempool_reserved_slice_s *)(((uintptr_t)slice) + slice->offset.ahead))
               ->offset.ahead == 0) {
+    MEMPOOL_UNLOCK();
     MEMPOOL_DEALLOC_SPECIAL(slice, MEMPOOL_BLOCK_SIZE);
-    fprintf(stderr, "DEALLOCATED BLOCK\n");
+    fprintf(stderr, "DEALLOCATED BLOCK %p\n", slice);
     return;
   }
 
@@ -330,12 +351,21 @@ static __unused void mempool_free(void *ptr) {
       ->offset.behind = slice->offset.ahead;
 
   /* place slice in list */
+  slice->next = NULL;
+  slice->prev = NULL;
   pos = &mempool_reserved_pool.available;
-  while (*pos && (*pos)->offset.ahead < slice->offset.ahead) {
+  while (*pos && ((*pos)->offset.ahead < slice->offset.ahead)) {
+    slice->prev = *pos;
     pos = &(*pos)->next;
   }
-  slice->next = *pos;
-  *pos = slice;
+  if (*pos) {
+    slice->next = *pos;
+    slice->next->prev = slice;
+    *pos = slice;
+  } else {
+    *pos = slice;
+  }
+
   MEMPOOL_UNLOCK();
   return;
 alloc_indi:
@@ -351,26 +381,21 @@ error:
   errno = EFAULT;
   raise(SIGSEGV); /* support longjmp rescue */
   exit(EFAULT);
-error_list:
-  MEMPOOL_UNLOCK();
-  fprintf(stderr, "mempool: memory being freed isn't a member of this memory "
-                  "pool (allocated by a different file?).\n");
-  errno = EFAULT;
-  raise(SIGSEGV); /* support longjmp rescue */
-  exit(EFAULT);
 }
 /**
  * Behaves the same a the systems `realloc`, attempting to resize the memory
- * when possible. On error returns NULL (the old pointer data remains allocated
- * and valid) otherwise returns a new pointer (either equal to the old or after
+ * when possible. On error returns NULL (the old pointer data remains
+ * allocated
+ * and valid) otherwise returns a new pointer (either equal to the old or
+ * after
  * releasing the old one).
  */
 static __unused void *mempool_realloc(void *ptr, size_t size) {
   if (!size)
     return NULL;
   size += sizeof(struct mempool_reserved_slice_s_offset);
-  if (size & 7) {
-    size = size + 8 - (size & 7);
+  if (size & 15) {
+    size = size + 16 - (size & 15);
   }
 
   mempool_reserved_slice_s *slice = MEMPOOL_PTR2SLICE(ptr);
@@ -421,15 +446,16 @@ Testing
 #if defined(DEBUG) && DEBUG == 1
 
 #define MEMTEST_SLICE 48
-#define MEMTEST_REPEATS (1024 * 1024)
+#define MEMTEST_REPEATS (1024 * 128)
 
 #include <time.h>
 static void mempool_stats(void) {
-  fprintf(stderr, "* Pool object: %lu bytes\n"
-                  "* Alignment: %lu (memory border)\n"
-                  "* Minimal Allocateion Size (including header): %lu\n"
-                  "* Minimal Allocation Space (no header): %lu\n"
-                  "* Header size: %lu\n",
+  fprintf(stderr,
+          "* Pool object: %lu bytes\n"
+          "* Alignment: %lu \n"
+          "* Minimal Allocateion Size (including header): %lu\n"
+          "* Minimal Allocation Space (no header): %lu (controls allignment)\n"
+          "* Header size: %lu\n",
           sizeof(mempool_reserved_pool),
           sizeof(struct mempool_reserved_slice_s_offset),
           sizeof(mempool_reserved_slice_s),
@@ -524,7 +550,7 @@ static void mempool_speedtest(void *(*mlk)(size_t), void (*fr)(void *)) {
   }
   end = clock();
   zr_time = end - start;
-  fprintf(stderr, "* Set bits to 0b10 for %d consecutive blocks %d bytes "
+  fprintf(stderr, "* Set bits (0b10) for %d consecutive blocks %dB "
                   "each: %lu CPU cycles.\n",
           MEMTEST_REPEATS, MEMTEST_SLICE, zr_time);
 
