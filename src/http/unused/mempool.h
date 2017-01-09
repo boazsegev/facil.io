@@ -122,8 +122,10 @@ Memory slices, tree and helpers
 
 typedef struct mempool_reserved_slice_s {
   struct mempool_reserved_slice_s_offset { /** offset from this slice */
+    uint32_t reserved1; /* used to make the offset 16 bytes long */
     uint32_t ahead;
     uint32_t behind;
+    uint32_t reserved2; /* used to make the offset 16 bytes long */
   } offset;
   /** Used for the free slices linked list. */
   struct mempool_reserved_slice_s *next;
@@ -237,6 +239,9 @@ static __unused void *mempool_malloc(size_t size) {
     tmp->offset.behind = size;
     tmp->offset.ahead = slice->offset.ahead - size;
     slice->offset.ahead = size;
+    /* inform higher neighbor about any updates */
+    ((mempool_reserved_slice_s *)(((uintptr_t)tmp) + tmp->offset.ahead))
+        ->offset.behind = tmp->offset.ahead;
     /* place the new slice in the available memory list */
     uint16_t limit = MEMPOOL_ORDERING_LIMIT;
     tmp->next = NULL;
@@ -256,10 +261,10 @@ static __unused void *mempool_malloc(size_t size) {
     }
   }
 
+  slice->offset.ahead |= MEMPOOL_USED_MARKER;
   MEMPOOL_UNLOCK();
   slice->next = NULL;
   slice->prev = NULL;
-  slice->offset.ahead |= MEMPOOL_USED_MARKER;
   // mempool_reserved_slice_s *tmp =
   //     (void *)((uintptr_t)slice + (slice->offset.ahead &
   //     MEMPOOL_SIZE_MASK));
@@ -293,9 +298,8 @@ static __unused void mempool_free(void *ptr) {
   if ((slice->offset.ahead & MEMPOOL_USED_MARKER) != MEMPOOL_USED_MARKER)
     goto error;
 
-  slice->offset.ahead &= MEMPOOL_SIZE_MASK;
-
   MEMPOOL_LOCK();
+  slice->offset.ahead &= MEMPOOL_SIZE_MASK;
   /* merge slice with upper boundry */
   while ((tmp = (mempool_reserved_slice_s *)(((uintptr_t)slice) +
                                              slice->offset.ahead))
@@ -315,9 +319,9 @@ static __unused void mempool_free(void *ptr) {
   }
   /* merge slice with lower boundry */
   while (slice->offset.behind &&
-         (((tmp = (mempool_reserved_slice_s *)(((uintptr_t)slice) -
-                                               slice->offset.behind))
-               ->offset.ahead) &
+         ((tmp = (mempool_reserved_slice_s *)(((uintptr_t)slice) -
+                                              slice->offset.behind))
+              ->offset.ahead &
           MEMPOOL_USED_MARKER) == 0) {
     /* extract merged slice from list */
     if (tmp->next)
@@ -330,6 +334,7 @@ static __unused void mempool_free(void *ptr) {
     tmp->next = NULL;
     tmp->prev = NULL;
     tmp->offset.ahead += slice->offset.ahead;
+
     slice = tmp;
   }
 
@@ -444,13 +449,18 @@ static __unused void *mempool_realloc(void *ptr, size_t size) {
     tmp->offset.behind = size;
     tmp->offset.ahead = slice->offset.ahead - size;
     slice->offset.ahead = size;
+    /* inform higher neighbor about any updates */
+    ((mempool_reserved_slice_s *)(((uintptr_t)tmp) + tmp->offset.ahead))
+        ->offset.behind = tmp->offset.ahead;
     /* place the new slice in the available memory list */
     tmp->next = NULL;
     tmp->prev = NULL;
     mempool_reserved_slice_s **pos = &mempool_reserved_pool.available;
-    while (*pos && ((*pos)->offset.ahead < tmp->offset.ahead)) {
+    uint8_t limit = MEMPOOL_ORDERING_LIMIT;
+    while (limit && *pos && ((*pos)->offset.ahead < tmp->offset.ahead)) {
       tmp->prev = *pos;
       pos = &(*pos)->next;
+      --limit;
     }
     if (*pos) {
       tmp->next = *pos;
@@ -459,12 +469,13 @@ static __unused void *mempool_realloc(void *ptr, size_t size) {
     } else {
       *pos = tmp;
     }
-    MEMPOOL_UNLOCK();
+
     slice->offset.ahead |= MEMPOOL_USED_MARKER;
+    MEMPOOL_UNLOCK();
     return ptr;
   }
-  MEMPOOL_UNLOCK();
   slice->offset.ahead |= MEMPOOL_USED_MARKER;
+  MEMPOOL_UNLOCK();
 
   if ((slice->offset.ahead & MEMPOOL_SIZE_MASK) < size) {
     void *new_mem =
@@ -501,7 +512,7 @@ Testing
 
 #if defined(DEBUG) && DEBUG == 1
 
-#define MEMTEST_SLICE 48
+#define MEMTEST_SLICE 32
 
 #include <time.h>
 static void mempool_stats(void) {
@@ -686,9 +697,9 @@ static void mempool_speedtest(size_t memtest_repeats, void *(*mlk)(size_t),
           : (end_test.tv_nsec - start_test.tv_nsec);
   uint64_t sec_for_test = end_test.tv_sec - start_test.tv_sec;
 
-  fprintf(stderr, "Finished test in %llum, %llus .%llu mili.sec.\n",
+  fprintf(stderr, "Finished test in %llum, %llus %llu mili.sec.\n",
           sec_for_test / 60, sec_for_test - (((sec_for_test) / 60) * 60),
-          msec_for_test / 1000);
+          msec_for_test / 1000000);
 }
 
 static __unused void mempool_test(void) {
