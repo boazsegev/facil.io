@@ -736,41 +736,60 @@ static __unused void mempool_test(void) {
                     mempool_realloc);
   fprintf(stderr, "*****************************\n");
 
-  // fprintf(stderr, "*****************************\n");
-  // fprintf(stderr, "Stressing the system\n");
-  // fprintf(stderr, "*****************************\n");
-  // size_t repeat = 1024 * 1024;
-  // size_t unit = 16;
-  // bs_mmpl_ptr pool = test_pool;
-  // while (repeat >= 1024) {
-  //   fprintf(stderr,
-  //           "Stress allocation/deallocation including "
-  //           "1:3 fragmentation:\n * %lu X %lu bytes\n",
-  //           repeat, unit);
-  //   void** ptrs = bs_malloc(pool, repeat * sizeof(void*));
-  //   for (size_t i = 0; i < repeat; i++) {
-  //     ptrs[i] = bs_malloc(pool, unit);
-  //   }
-  //   for (size_t i = 0; i < repeat; i += 3) {
-  //     bs_free(pool, ptrs[i]);
-  //   }
-  //   for (size_t i = 1; i < repeat; i += 3) {
-  //     bs_free(pool, ptrs[i]);
-  //   }
-  //   for (size_t i = 2; i < repeat; i += 3) {
-  //     bs_free(pool, ptrs[i]);
-  //   }
-  //   for (size_t i = 0; i < repeat; i++) {
-  //     ptrs[i] = bs_malloc(pool, unit);
-  //   }
-  //   for (size_t i = 0; i < repeat; i++) {
-  //     bs_free(pool, ptrs[i]);
-  //   }
-  //   bs_free(pool, ptrs);
-  //
-  //   unit <<= 1;
-  //   repeat >>= 1;
-  // }
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, "Stressing the system\n");
+  fprintf(stderr, "*****************************\n");
+  size_t repeat = 1024 * 1024 * 16;
+  size_t unit = 16;
+  struct timespec start_test, end_test;
+  clock_t start, end;
+  fprintf(stderr, "Stress allocation/deallocation using "
+                  "1:5 fragmentation of ~134Mb:\n");
+  while (repeat >= 1024) {
+    fprintf(stderr, " * %lu X %lu bytes", repeat, unit);
+    clock_gettime(CLOCK_MONOTONIC, &start_test);
+    start = clock();
+    void **ptrs = mempool_malloc(repeat * sizeof(void *));
+    for (size_t i = 0; i < repeat; i++) {
+      ptrs[i] = mempool_malloc(unit);
+    }
+    for (size_t i = 0; i < repeat; i += 5) {
+      mempool_free(ptrs[i]);
+    }
+    for (size_t i = 1; i < repeat; i += 5) {
+      mempool_free(ptrs[i]);
+    }
+    for (size_t i = 2; i < repeat; i += 5) {
+      mempool_free(ptrs[i]);
+    }
+    for (size_t i = 3; i < repeat; i += 5) {
+      mempool_free(ptrs[i]);
+    }
+    for (size_t i = 4; i < repeat; i += 5) {
+      mempool_free(ptrs[i]);
+    }
+    for (size_t i = 0; i < repeat; i++) {
+      ptrs[i] = mempool_malloc(unit);
+    }
+    for (size_t i = 0; i < repeat; i++) {
+      mempool_free(ptrs[i]);
+    }
+    mempool_free(ptrs);
+    end = clock();
+    clock_gettime(CLOCK_MONOTONIC, &end_test);
+    uint64_t msec_for_test =
+        (end_test.tv_nsec < start_test.tv_nsec)
+            ? ((end_test.tv_sec -= 1), (start_test.tv_nsec - end_test.tv_nsec))
+            : (end_test.tv_nsec - start_test.tv_nsec);
+    uint64_t sec_for_test = end_test.tv_sec - start_test.tv_sec;
+
+    fprintf(stderr, " %llum, %llus %llu mili.sec. ( %lu CPU)\n",
+            sec_for_test / 60, sec_for_test - (((sec_for_test) / 60) * 60),
+            msec_for_test / 1000000, end - start);
+
+    unit <<= 1;
+    repeat >>= 1;
+  }
 }
 
 #undef MEMTEST_SLICE
