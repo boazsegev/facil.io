@@ -36,7 +36,7 @@ This information is also useful when implementing read / write hooks.
 */
 #ifndef BUFFER_PACKET_SIZE
 #define BUFFER_PACKET_SIZE                                                     \
-  (1024 * 16) /* Use 32 Kb. With sendfile, 16 Kb might be better. */
+  (1024 * 16) /* Use 32 Kb. With sendfile, 16 Kb appears to work better. */
 #endif
 #ifndef BUFFER_FILE_READ_SIZE
 #define BUFFER_FILE_READ_SIZE BUFFER_PACKET_SIZE
