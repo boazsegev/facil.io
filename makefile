@@ -13,7 +13,7 @@ LINKER_FLAGS=-lpthread
 # any include folders, space seperated list
 INCLUDE=
 # optimization level.
-OPTIMIZATION=O3 -march=native -DSERVER_DELAY_IO=1 -DDEBUG
+OPTIMIZATION= -O3 -march=native -DSERVER_DELAY_IO=1 -DDEBUG
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
 WARNINGS= -Wall -Wextra
 
@@ -58,13 +58,13 @@ OBJS = $(foreach source, $(SRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(bas
 CCL = $(CC)
 INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
 # the C flags
-CFLAGS= -g -std=c11 $(WARNINGS) -$(OPTIMIZATION) $(INCLUDE_STR)
-CPPFLAGS= -std=c++11 $(WARNINGS) -$(OPTIMIZATION) $(INCLUDE_STR)
+CFLAGS= -g -std=c11 $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CPPFLAGS= -std=c++11 $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 
 $(NAME): build
 
 build: $(OBJS)
-	$(CCL) -o $(BIN) $^ -$(OPTIMIZATION) $(LINKER_FLAGS)
+	$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	$(DOCUMENTATION)
 
 ifdef DISAMS
