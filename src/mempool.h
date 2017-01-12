@@ -7,16 +7,19 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef MEMPOOL_H
 
 /* *****************************************************************************
-A simple `mmap` based memory pool - `malloc` alternative.
+A simple `mmap` based localized memory pool (localized `malloc` alternative).
 
-The issue: objects that have a long life, such as Websocket / HTTP2 connection
+The memory pool is localized to the same object file (C file). See NOTICE.
+
+The issue: objects that have a long life, such as Websocket / HTTP2 protocol
 objects or server wide strings with reference counts, cause memory fragmentation
 when allocated on the heap alongside objects that have a short life.
 
-This is a common issue when using `malloc` for all allocations.
+This is a common issue when using `malloc` in long running processes for all
+allocations.
 
 This issue effects long running processes (such as servers) while it's effect on
-short lived proccesses are less accute.
+short lived proccesses are less accute and could often be ignored.
 
 To circumvent this issue, a seperate memory allocation method is used for
 long-lived objects.
@@ -24,6 +27,11 @@ long-lived objects.
 This memory pool allocates large blocks of memory (~2Mb at a time), minimizing
 small memory fragmentation by both reserving large memory blocks and seperating
 memory locality between long lived objects and short lived objects.
+
+The memory pool isn't expected to be faster than the system's `malloc`
+(although, sometimes it might perform better). However, selective use of this
+memory pool could improve concurrency (each pool has a seperate lock, unlike
+`malloc`'s system lock') as well as help with memory fragmentation.
 
 ================================================================================
 NOTICE:
@@ -34,7 +42,7 @@ included.
 The memory shoule NEVER be freed from a different file.
 
 However, it's easy to work around this limitation by wrapping the `mempool_`
-functions using a static functions.
+functions using proper `create` / `destroy` functions for any objects.
 
 ================================================================================
 
@@ -73,13 +81,18 @@ static __unused void *mempool_malloc(size_t size);
 static __unused void mempool_free(void *ptr);
 /**
  * Behaves the same a the systems `realloc`, attempting to resize the memory
- * when possible. On error returns NULL (the old pointer data remains allocated
- * and valid) otherwise returns a new pointer (either equal to the old or after
- * releasing the old one).
+ * when possible.
+ *
+ * On error returns NULL (the old pointer data remains allocated and valid)
+ * otherwise returns a new pointer (either equal to the old or after
+ * deallocating the old one).
  */
 static __unused void *mempool_realloc(void *ptr, size_t new_size);
 
 #if defined(DEBUG) && DEBUG == 1
+/** Tests the memory pool, both testing against issues / corruption and testing
+ * it's performance against the system's `malloc`.
+ */
 static __unused void mempool_test(void);
 #endif
 
@@ -397,11 +410,9 @@ error:
 }
 /**
  * Behaves the same a the systems `realloc`, attempting to resize the memory
- * when possible. On error returns NULL (the old pointer data remains
- * allocated
- * and valid) otherwise returns a new pointer (either equal to the old or
- * after
- * releasing the old one).
+ * when possible. On error returns NULL (the old pointer data remains allocated
+ * and valid) otherwise returns a new pointer (either equal to the old or after
+ * deallocating the old one).
  */
 static __unused void *mempool_realloc(void *ptr, size_t size) {
   if (!size)
@@ -507,8 +518,10 @@ error:
 }
 
 /* *****************************************************************************
-Testing
-*/
+********************************************************************************
+TESTING
+********************************************************************************
+***************************************************************************** */
 
 #if defined(DEBUG) && DEBUG == 1
 

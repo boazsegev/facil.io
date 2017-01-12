@@ -7,6 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "websockets.h"
 #include "bscrypt.h"
 #include "libserver.h"
+#include "mempool.h"
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,15 +54,16 @@ the code probably wouldn't offer a high performance boost.
 #define round_up_buffer_size(size) (((size) >> 12) + 1) << 12
 
 struct buffer_s create_ws_buffer(ws_s *owner) {
+  (void)(owner);
   struct buffer_s buff;
   buff.size = round_up_buffer_size(WS_INITIAL_BUFFER_SIZE);
-  buff.data = malloc(buff.size);
+  buff.data = mempool_malloc(buff.size);
   return buff;
 }
 
 struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s buff) {
   buff.size = round_up_buffer_size(buff.size);
-  void *tmp = realloc(buff.data, buff.size);
+  void *tmp = mempool_realloc(buff.data, buff.size);
   if (!tmp) {
     free_ws_buffer(owner, buff);
     buff.size = 0;
@@ -70,8 +72,9 @@ struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s buff) {
   return buff;
 }
 void free_ws_buffer(ws_s *owner, struct buffer_s buff) {
+  (void)(owner);
   if (buff.data)
-    free(buff.data);
+    mempool_free(buff.data);
 }
 
 #undef round_up_buffer_size
@@ -149,7 +152,8 @@ The Websocket Protocol implementation
 
 #define ws_protocol(fd) ((ws_s *)(server_get_protocol(fd)))
 
-static void ws_ping(intptr_t fd, protocol_s *_ws) {
+static void ws_ping(intptr_t fd, protocol_s *ws) {
+  (void)(ws);
   sock_packet_s *packet;
   while ((packet = sock_checkout_packet()) == NULL)
     sock_flush_all();
@@ -162,16 +166,19 @@ static void ws_ping(intptr_t fd, protocol_s *_ws) {
 static void on_close(protocol_s *_ws) { destroy_ws((ws_s *)_ws); }
 
 static void on_ready(intptr_t fduuid, protocol_s *ws) {
+  (void)(fduuid);
   if (ws && ws->service == WEBSOCKET_ID_STR && ((ws_s *)ws)->on_ready)
     ((ws_s *)ws)->on_ready((ws_s *)ws);
 }
 
 static void on_open(intptr_t fd, protocol_s *ws, void *callback) {
+  (void)(fd);
   if (callback && ws && ws->service == WEBSOCKET_ID_STR)
     ((void (*)(void *))callback)(ws);
 }
 
 static void on_shutdown(intptr_t fd, protocol_s *ws) {
+  (void)(fd);
   if (ws && ((ws_s *)ws)->on_shutdown)
     ((ws_s *)ws)->on_shutdown((ws_s *)ws);
 }
@@ -410,8 +417,9 @@ Create/Destroy the websocket object
 */
 
 static ws_s *new_websocket() {
-  // allocate the protocol object (TODO: (maybe) pooling)
-  ws_s *ws = calloc(sizeof(*ws), 1);
+  // allocate the protocol object
+  ws_s *ws = mempool_malloc(sizeof(*ws));
+  memset(ws, 0, sizeof(*ws));
 
   // setup the protocol & protocol callbacks
   ws->protocol.ping = ws_ping;
@@ -427,7 +435,7 @@ static void destroy_ws(ws_s *ws) {
   if (ws->on_close)
     ws->on_close(ws);
   free_ws_buffer(ws, ws->buffer);
-  free(ws);
+  mempool_free(ws);
 }
 
 /*******************************************************************************
@@ -660,7 +668,10 @@ void websocket_close(ws_s *ws) {
 /**
 Counts the number of websocket connections.
 */
-size_t websocket_count(ws_s *ws) { return server_count(WEBSOCKET_ID_STR); }
+size_t websocket_count(ws_s *ws) {
+  (void)(ws);
+  return server_count(WEBSOCKET_ID_STR);
+}
 
 /*******************************************************************************
 Each Implementation
@@ -674,11 +685,13 @@ struct WSTask {
 };
 /** Performs a task on each websocket connection that shares the same process */
 static void perform_ws_task(intptr_t fd, protocol_s *_ws, void *_arg) {
+  (void)(fd);
   struct WSTask *tsk = _arg;
   tsk->task((ws_s *)(_ws), tsk->arg);
 }
 /** clears away a wesbocket task. */
 static void finish_ws_task(intptr_t fd, protocol_s *_ws, void *_arg) {
+  (void)(fd);
   struct WSTask *tsk = _arg;
   if (tsk->on_finish)
     tsk->on_finish((ws_s *)(_ws), tsk->arg);
