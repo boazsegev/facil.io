@@ -41,8 +41,8 @@ struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s);
 /** releases an existing buffer. */
 void free_ws_buffer(ws_s *owner, struct buffer_s);
 
-/** Sets the initial buffer size. (16Kb)*/
-#define WS_INITIAL_BUFFER_SIZE 16384
+/** Sets the initial buffer size. (4Kb)*/
+#define WS_INITIAL_BUFFER_SIZE 4096
 
 /*******************************************************************************
 Buffer management - simple implementation...
