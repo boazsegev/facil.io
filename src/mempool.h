@@ -116,13 +116,10 @@ Memory block allocation
 /* check for unix support */
 # if __has_include(<unistd.h>) && __has_include(<sys/mman.h>)
 #  define HAS_UNIX_FEATURES
+#  include <unistd.h>
 # endif
 #endif
 // clang-format on
-
-#ifdef HAS_UNIX_FEATURES
-#include <sys/mman.h>
-#include <unistd.h>
 
 /* *****************************************************************************
 spnlock.h (can also be embeded instead of included)
@@ -133,13 +130,16 @@ spnlock.h (can also be embeded instead of included)
 Memory slices, tree and helpers
 */
 
+struct mempool_reserved_slice_s_offset { /** offset from this slice */
+  uint32_t reserved1; /* used to make the offset 16 bytes long */
+  uint32_t ahead;
+  uint32_t behind;
+  uint32_t reserved2; /* used to make the offset 16 bytes long */
+};
+
 typedef struct mempool_reserved_slice_s {
-  struct mempool_reserved_slice_s_offset { /** offset from this slice */
-    uint32_t reserved1; /* used to make the offset 16 bytes long */
-    uint32_t ahead;
-    uint32_t behind;
-    uint32_t reserved2; /* used to make the offset 16 bytes long */
-  } offset;
+  /** offset from this slice */
+  struct mempool_reserved_slice_s_offset offset;
   /** Used for the free slices linked list. */
   struct mempool_reserved_slice_s *next;
   struct mempool_reserved_slice_s *prev;
@@ -168,6 +168,8 @@ static struct {
 /* *****************************************************************************
 Memory Block Allocation / Deallocation
 */
+#ifdef HAS_UNIX_FEATURES
+#include <sys/mman.h>
 
 #define MEMPOOL_ALLOC_SPECIAL(target, size)                                    \
   do {                                                                         \
@@ -204,6 +206,7 @@ static __unused void *mempool_malloc(size_t size) {
   if (size & 15) {
     size = (size & (~16)) + 16;
   }
+
   size += sizeof(struct mempool_reserved_slice_s_offset);
 
   mempool_reserved_slice_s *slice = NULL;
