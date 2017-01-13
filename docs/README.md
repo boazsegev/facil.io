@@ -10,17 +10,17 @@ The documentation in this folder includes:
 
     This documents the main library API and should be used when writing custom protocols. This API is (mostly) redundant when using the `http` or `websockets` protocol extensions.
 
-* The [`http` extension API documentation](http.md) (coming soon).
+* The [`http` extension API documentation]() (Please help me write this).
 
     The `http` protocol extension allows quick access to the HTTP protocol necessary for writing web applications.
 
-    Although the `libserver` API is still accessible, the `struct HttpRequest` and `struct HttpResponse` objects and API provide abstractions for the raw HTTP protocol and should be preferred.
+    Although the `libserver` API is still accessible, the `http_request_s` and `http_response_s` objects and API provide abstractions for the raw HTTP protocol and should be preferred.
 
-* The [`websockets` extension API documentation](websockets.md) (coming soon).
+* The [`websockets` extension API documentation]() (Please help me write this).
 
     The `websockets` protocol extension allows quick access to the HTTP and Websockets protocols necessary for writing real-time web applications.
 
-    Although the `libserver` API is still accessible, the `struct HttpRequest` and `struct HttpResponse` objects and API provide abstractions for the raw HTTP protocol and should be preferred.
+    Although the `libserver` API is still accessible, the `http_request_s`, `http_response_s` and `ws_s` objects and API provide abstractions for the raw HTTP and Websocket protocols and should be preferred.
 
 * Core documentation that documents the libraries used internally.
 
@@ -34,4 +34,4 @@ The documentation in this folder includes:
 
     * [`libsock`](./libsock.md) - A sockets library that resolves common issues such as fd collisions and user land buffer.
 
-    * [`minicrypt`](./minicrypt.md) - Cryptography and Base64 encoding helpers (used during the `websockets` handshake) (coming soon).
+    * `mempool` - A localized memory pool. The documentation in the `.h` file is clear enough, no `md` file is provided.
