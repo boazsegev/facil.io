@@ -12,6 +12,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <inttypes.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <unistd.h>
 
 /* *****************************************************************************
 The HPACK context unifies the encoding and decoding contexts.

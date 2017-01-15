@@ -101,8 +101,8 @@ static void server_cleanup(void) {
   server_on_shutdown();
   // free any lock objects (no need to change code if changing locking systems)
   for (size_t i = 0; i < server_data.capacity - 1; i++) {
-    server_data.fds[i] = (fd_data_s){.protocol = NULL};
     lock_fd_destroy(server_data.fds + i);
+    server_data.fds[i] = (fd_data_s){.protocol = NULL};
   }
   // free memory
   if (server_data.fds) {
