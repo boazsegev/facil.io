@@ -366,6 +366,13 @@ Sets a connection's timeout.
 Returns -1 on error (i.e. connection closed), otherwise returns 0.
 */
 void server_set_timeout(intptr_t uuid, uint8_t timeout);
+/**
+Returns a connection's timeout, as a `uint8_t` value.
+
+A value of 0 might mean that no timeout was set OR that the connection inquired
+about was invalid.
+*/
+uint8_t server_get_timeout(intptr_t uuid);
 
 /** Attaches an existing connection (fd) to the server's reactor and protocol
 management system, so that the server can be used also to manage connection

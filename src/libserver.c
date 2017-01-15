@@ -649,6 +649,17 @@ void server_set_timeout(intptr_t fd, uint8_t timeout) {
   uuid_data(fd).timeout = timeout;
   unlock_uuid(fd);
 }
+/**
+Gets a connection's timeout, type of uint8_t.
+
+A value of 0 might mean that no timeout was set OR that the connection inquired
+about was invalid.
+*/
+uint8_t server_get_timeout(intptr_t fd) {
+  if (valid_uuid(fd) == 0)
+    return 0;
+  return uuid_data(fd).timeout;
+}
 
 /** Attaches an existing connection (fd) to the server's reactor and protocol
 management system, so that the server can be used also to manage connection
