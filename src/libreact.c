@@ -34,7 +34,7 @@ Callbacks
 */
 
 #pragma weak reactor_on_close
-void reactor_on_close(intptr_t uuid) {}
+void reactor_on_close(intptr_t uuid) { (void)(uuid); }
 
 #pragma weak reactor_on_data
 void reactor_on_data(intptr_t uuid) {
@@ -44,14 +44,17 @@ void reactor_on_data(intptr_t uuid) {
 }
 
 #pragma weak reactor_on_ready
-void reactor_on_ready(intptr_t uuid) {}
+void reactor_on_ready(intptr_t uuid) { (void)(uuid); }
 
 /* *****************************************************************************
 Integrate the `libsock` library if exists.
 */
 
 #pragma weak sock_flush
-ssize_t sock_flush(intptr_t uuid) { return 0; }
+ssize_t sock_flush(intptr_t uuid) {
+  (void)(uuid);
+  return 0;
+}
 
 #pragma weak sock_close
 void sock_close(intptr_t uuid) {
@@ -118,7 +121,7 @@ thing.
 This method promises that the timer will be repeated when running on epoll. This
 method is redundent on kqueue.
 */
-void reactor_reset_timer(intptr_t uuid) {} /* EPoll only */
+void reactor_reset_timer(intptr_t uuid) { (void)(uuid); } /* EPoll only */
 
 /**
 Creates a timer file descriptor, system dependent.

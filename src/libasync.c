@@ -386,6 +386,11 @@ Use:
 void async_perform() { perform_tasks(); }
 
 /**
+Returns TRUE (not 0) if there are any pending tasks.
+*/
+int async_any(void) { return (async && async->tasks); }
+
+/**
 Schedules a task to be performed by the thread pool.
 
 The Task should be a function such as `void task(void

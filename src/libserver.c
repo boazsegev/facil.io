@@ -279,11 +279,11 @@ static void listener_on_data(intptr_t uuid, protocol_s *_listener) {
   intptr_t new_client;
   struct ListenerProtocol *listener = (void *)_listener;
   while ((new_client = sock_accept(uuid)) != -1) {
-    // make sure it's a clean slate... although it should be assumed to be.
-    lock_uuid(new_client);
-    clear_uuid(new_client);
-    unlock_uuid(new_client);
-    // assume that sock_accept calls reactor_on_close if needed
+    // assume that sock_accept calls  if needed
+    // it's a clean slate in reactor_on_close ...
+    // lock_uuid(new_client);
+    // clear_uuid(new_client);
+    // unlock_uuid(new_client);
     protocol_uuid(new_client) = listener->on_open(new_client, listener->udata);
     if (protocol_uuid(new_client)) {
       uuid_data(new_client).active = server_data.last_tick;
@@ -446,6 +446,14 @@ static inline void timeout_review(void) {
 static void server_cycle(void *unused) {
   (void)(unused);
   static int8_t perform_idle = 1;
+
+#if SERVER_DELAY_IO
+  if (async_any()) {
+    async_run(server_cycle, NULL);
+    return;
+  }
+#endif
+
   time(&server_data.last_tick);
   if (server_data.running) {
     timeout_review();
@@ -460,9 +468,6 @@ static void server_cycle(void *unused) {
     } else {
       perform_idle = 1;
     }
-#if SERVER_DELAY_IO
-    async_perform();
-#endif
     async_run(server_cycle, NULL);
   }
 }
