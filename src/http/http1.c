@@ -184,7 +184,7 @@ is_busy:
     p_len = 94 + http_ul2a(packet->buffer + 94, file_data.st_size);
     memcpy(packet->buffer + p_len, "\r\n\r\n", 4);
     p_len += 4;
-    if (BUFFER_PACKET_SIZE - p_len > file_data.st_size) {
+    if ((off_t)(BUFFER_PACKET_SIZE - p_len) > file_data.st_size) {
       if (read(file, packet->buffer + p_len, file_data.st_size) < 0) {
         close(file);
         sock_free_packet(packet);
