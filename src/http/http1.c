@@ -47,7 +47,7 @@ struct {
   void *memory;
   http1_protocol_s *pool;
   spn_lock_i lock;
-} http1_pool = {0};
+} http1_pool = {.memory = NULL};
 
 inline static http1_protocol_s *pool_pop() {
   http1_protocol_s *prot;

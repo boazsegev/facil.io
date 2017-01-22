@@ -35,21 +35,28 @@ Support `libreact` on_close callback, if exist.
 */
 
 #pragma weak reactor_on_close
-void reactor_on_close(intptr_t uuid) {}
+void reactor_on_close(intptr_t uuid) { (void)(uuid); }
 #pragma weak reactor_remove
-int reactor_remove(intptr_t uuid) { return -1; }
+int reactor_remove(intptr_t uuid) {
+  (void)(uuid);
+  return -1;
+}
 
 /* *****************************************************************************
 Support timeout setting.
 */
 #pragma weak sock_touch
-void sock_touch(intptr_t uuid) {}
+void sock_touch(intptr_t uuid) { (void)(uuid); }
 
 /* *****************************************************************************
 Support event based `write` scheduling.
 */
 #pragma weak async_run
-int async_run(void (*task)(void *), void *arg) { return -1; }
+int async_run(void (*task)(void *), void *arg) {
+  (void)(task);
+  (void)(arg);
+  return -1;
+}
 
 /* *****************************************************************************
 OS Sendfile settings.
@@ -131,7 +138,7 @@ ssize_t sock_max_capacity(void) {
   flim = OPEN_MAX;
 #endif
   // try to maximize limits - collect max and set to max
-  struct rlimit rlim = {0};
+  struct rlimit rlim = {.rlim_max = 0};
   getrlimit(RLIMIT_NOFILE, &rlim);
 // printf("Meximum open files are %llu out of %llu\n", rlim.rlim_cur,
 //        rlim.rlim_max);
@@ -146,7 +153,7 @@ ssize_t sock_max_capacity(void) {
   // printf("Meximum open files are %llu out of %llu\n", rlim.rlim_cur,
   //        rlim.rlim_max);
   // if the current limit is higher than it was, update
-  if (flim < rlim.rlim_cur)
+  if (flim < ((ssize_t)rlim.rlim_cur))
     flim = rlim.rlim_cur;
   // return what we have
   return flim;
