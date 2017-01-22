@@ -27,7 +27,7 @@ Performance options.
 */
 
 #ifndef ASYNC_TASK_POOL_SIZE
-#define ASYNC_TASK_POOL_SIZE 170
+#define ASYNC_TASK_POOL_SIZE 1024
 #endif
 
 /* Spinlock vs. Mutex data protection. */
