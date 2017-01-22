@@ -298,7 +298,7 @@ __unused static inline int h1p_response_write_body(http_response_s *response,
         ((BUFFER_PACKET_SIZE - H1P_HEADER_START) - headers->length);
     if (i_read > 1024) {
       /* we can fit at least some of the data inside the response buffer. */
-      if (i_read > length) {
+      if ((size_t)i_read > length) {
         i_read = length;
         /* we can fit the data inside the response buffer. */
         memcpy(response->metadata.headers_pos, body, i_read);
@@ -337,7 +337,7 @@ __unused static inline int h1p_response_sendfile(http_response_s *response,
           source_fd, response->metadata.headers_pos,
           ((BUFFER_PACKET_SIZE - H1P_HEADER_START) - headers->length), offset);
       if (i_read > 0) {
-        if (i_read >= length) {
+        if ((size_t)i_read >= length) {
           headers->length += length;
           close(source_fd);
           return h1p_send_headers(response, headers);

@@ -341,7 +341,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
       ext++;
     }
     // fprintf(stderr, "Start: %lu / %lld\n", start, file_data.st_size);
-    if (start >= file_data.st_size - 1)
+    if ((off_t)start >= file_data.st_size - 1)
       goto invalid_range;
     ext++;
     while (is_num(*ext)) {
@@ -350,7 +350,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
       ext++;
     }
     // going to the EOF (big chunk or EOL requested) - send as file
-    if (finish >= file_data.st_size)
+    if ((off_t)finish >= file_data.st_size)
       finish = file_data.st_size;
     char *pos = buffer + 6;
     memcpy(buffer, "bytes ", 6);

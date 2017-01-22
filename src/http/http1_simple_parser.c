@@ -297,7 +297,8 @@ ssize_t http1_parse_request_headers(void *buffer, size_t len,
   }
   // check if the body is contained within the buffer
   EAT_EOL();
-  if (request->content_length && (end - pos) >= request->content_length) {
+  if (request->content_length &&
+      (end - pos) >= (ssize_t)request->content_length) {
     request->body_str = (void *)pos;
     // fprintf(stderr,
     //         "assigning body to string. content-length %lu, buffer left: "
