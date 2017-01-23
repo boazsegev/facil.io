@@ -24,11 +24,11 @@ wrk -c400 -d5 -t12 http://localhost:3000/
 
 #include "websockets.h" // includes the "http.h" header
 
-__unused static void free_ws_msg(ws_s *origin, void *msg) {
+ static void free_ws_msg(ws_s *origin, void *msg) {
   (void)(origin);
   free(msg);
 }
-__unused static void broadcast_shootout_msg(ws_s *ws, void *msg) {
+ static void broadcast_shootout_msg(ws_s *ws, void *msg) {
   (void)(ws);
   struct {
     size_t len;
@@ -37,7 +37,7 @@ __unused static void broadcast_shootout_msg(ws_s *ws, void *msg) {
   websocket_write(ws, buff->data, buff->len, 1);
 }
 
-__unused static void broadcast_shootout_msg_bin(ws_s *ws, void *msg) {
+ static void broadcast_shootout_msg_bin(ws_s *ws, void *msg) {
   (void)(ws);
   struct {
     size_t len;
@@ -46,7 +46,7 @@ __unused static void broadcast_shootout_msg_bin(ws_s *ws, void *msg) {
   websocket_write(ws, buff->data, buff->len, 0);
 }
 
-__unused static void ws_shootout(ws_s *ws, char *data, size_t size,
+ static void ws_shootout(ws_s *ws, char *data, size_t size,
                                  uint8_t is_text) {
   (void)(ws);
   (void)(is_text);
@@ -93,7 +93,7 @@ __unused static void ws_shootout(ws_s *ws, char *data, size_t size,
 A simple Hello World HTTP response emulation. Test with:
 ab -n 1000000 -c 200 -k http://127.0.0.1:3000/
 */
-__unused static void http1_websocket_shotout(http_request_s *request) {
+ static void http1_websocket_shotout(http_request_s *request) {
   // to log we will start a response.
   http_response_s response = http_response_init(request);
   // http_response_log_start(&response);

@@ -50,7 +50,7 @@ static void broadcast_on_shutdown(intptr_t uuid, protocol_s* prt) {
   sock_write(uuid, "Broadcast server shutting down\nGoodbye.\n", 50);
 }
 
-__unused static inline protocol_s* broadcast_on_open(intptr_t uuid,
+ static inline protocol_s* broadcast_on_open(intptr_t uuid,
                                                      void* udata) {
   static protocol_s broadcast_proto = {.service = "broadcast",
                                        .on_data = broadcast_on_data,

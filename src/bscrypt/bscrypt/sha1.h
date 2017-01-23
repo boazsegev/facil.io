@@ -64,7 +64,7 @@ char *bscrypt_sha1_result(sha1_s *s);
 /**
 An SHA1 helper function that performs initialiation, writing and finalizing.
 */
-static inline __unused char *bscrypt_sha1(sha1_s *s, const void *data,
+static inline UNUSED_FUNC char *bscrypt_sha1(sha1_s *s, const void *data,
                                           size_t len) {
   *s = bscrypt_sha1_init();
   bscrypt_sha1_write(s, data, len);

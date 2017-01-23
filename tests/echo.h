@@ -24,7 +24,7 @@ static void echo_on_shutdown(intptr_t uuid, protocol_s* prt) {
   sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
 }
 
-__unused static inline protocol_s* echo_on_open(intptr_t uuid, void* _) {
+ static inline protocol_s* echo_on_open(intptr_t uuid, void* _) {
   static protocol_s echo_proto = {.on_data = echo_on_data,
                                   .on_shutdown = echo_on_shutdown,
                                   .ping = echo_ping};

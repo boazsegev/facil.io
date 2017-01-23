@@ -63,8 +63,8 @@ MEMPOOL_H
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef __unused
-#define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#define UNUSED_FUNC __attribute__((unused))
 #endif
 
 /* *****************************************************************************
@@ -74,11 +74,11 @@ API Declerations
 ***************************************************************************** */
 
 /** Allocates memory from the pool. */
-static __unused void *mempool_malloc(size_t size);
+static UNUSED_FUNC void *mempool_malloc(size_t size);
 /**
  * Frees the memory, releasing it back to the pool (or, sometimes, the system).
  */
-static __unused void mempool_free(void *ptr);
+static UNUSED_FUNC void mempool_free(void *ptr);
 /**
  * Behaves the same a the systems `realloc`, attempting to resize the memory
  * when possible.
@@ -87,13 +87,13 @@ static __unused void mempool_free(void *ptr);
  * otherwise returns a new pointer (either equal to the old or after
  * deallocating the old one).
  */
-static __unused void *mempool_realloc(void *ptr, size_t new_size);
+static UNUSED_FUNC void *mempool_realloc(void *ptr, size_t new_size);
 
 #if defined(DEBUG) && DEBUG == 1
 /** Tests the memory pool, both testing against issues / corruption and testing
  * it's performance against the system's `malloc`.
  */
-static __unused void mempool_test(void);
+static UNUSED_FUNC void mempool_test(void);
 #endif
 
 /* *****************************************************************************
@@ -176,7 +176,7 @@ Memory Block Allocation / Deallocation
     target = mmap(NULL, size, PROT_READ | PROT_WRITE | PROT_EXEC,              \
                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);                         \
     if (target == MAP_FAILED)                                                  \
-      target == NULL;                                                          \
+      target = NULL;                                                           \
   } while (0);
 
 #define MEMPOOL_DEALLOC_SPECIAL(target, size) munmap((target), (size))
@@ -200,7 +200,7 @@ Helpers: Memory block slicing and memory pool list maintanence.
 API implementation
 */
 
-static __unused void *mempool_malloc(size_t size) {
+static UNUSED_FUNC void *mempool_malloc(size_t size) {
   if (!size)
     return NULL;
   if (size & 15) {
@@ -304,7 +304,7 @@ alloc_indi:
  * Frees the memory, releasing it back to the pool (or, sometimes, the
  * system).
  */
-static __unused void mempool_free(void *ptr) {
+static UNUSED_FUNC void mempool_free(void *ptr) {
   if (!ptr)
     return;
   mempool_reserved_slice_s **pos, *slice = MEMPOOL_PTR2SLICE(ptr), *tmp;
@@ -417,7 +417,7 @@ error:
  * and valid) otherwise returns a new pointer (either equal to the old or after
  * deallocating the old one).
  */
-static __unused void *mempool_realloc(void *ptr, size_t size) {
+static UNUSED_FUNC void *mempool_realloc(void *ptr, size_t size) {
   if (!size)
     return NULL;
   if (size & 15) {
@@ -531,6 +531,7 @@ TESTING
 #define MEMTEST_SLICE 32
 
 #include <time.h>
+#include <inttypes.h>
 static void mempool_stats(void) {
   fprintf(stderr, "* Pool object: %lu bytes\n"
                   "* Alignment: %lu \n"
@@ -713,12 +714,13 @@ static void mempool_speedtest(size_t memtest_repeats, void *(*mlk)(size_t),
           : (end_test.tv_nsec - start_test.tv_nsec);
   uint64_t sec_for_test = end_test.tv_sec - start_test.tv_sec;
 
-  fprintf(stderr, "Finished test in %llum, %llus %llu mili.sec.\n",
+  fprintf(stderr,
+          "Finished test in %" PRIu64 "m, %" PRIu64 "s %" PRIu64 " mili.sec.\n",
           sec_for_test / 60, sec_for_test - (((sec_for_test) / 60) * 60),
           msec_for_test / 1000000);
 }
 
-static __unused void mempool_test(void) {
+static UNUSED_FUNC void mempool_test(void) {
   fprintf(stderr, "*****************************\n");
   fprintf(stderr, "mempool implementation details:\n");
   mempool_stats();
@@ -799,7 +801,8 @@ static __unused void mempool_test(void) {
             : (end_test.tv_nsec - start_test.tv_nsec);
     uint64_t sec_for_test = end_test.tv_sec - start_test.tv_sec;
 
-    fprintf(stderr, " %llum, %llus %llu mili.sec. ( %lu CPU)\n",
+    fprintf(stderr,
+            " %" PRIu64 "m, %" PRIu64 "s %" PRIu64 " mili.sec. ( %lu CPU)\n",
             sec_for_test / 60, sec_for_test - (((sec_for_test) / 60) * 60),
             msec_for_test / 1000000, end - start);
 

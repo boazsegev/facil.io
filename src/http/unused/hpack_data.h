@@ -11,8 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 /* Allow some inline functions to be created, without requiring their use. */
-#ifndef __unused
-#define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#define UNUSED_FUNC __attribute__((unused))
 #endif
 
 /** The Huffman Encoding table was copied from http://httpwg.org/specs/rfc7541.html#huffman.code
@@ -25,7 +25,7 @@
   *            print_huff();
   *       }
   */
-static const __unused struct {
+static const UNUSED_FUNC struct {
   const uint32_t code;
   const uint8_t bits;
 } huffman_encode_table[] = {
@@ -120,7 +120,7 @@ typedef struct {
 } stack_s;
 
 /** creates a new stack. free the stack using `free`. */
-static inline __unused stack_s *stack_new(void) {
+static inline UNUSED_FUNC stack_s *stack_new(void) {
   stack_s *stack =
       malloc(sizeof(*stack) + (sizeof(void *) * STACK_INITIAL_CAPACITY));
   stack->capacity = STACK_INITIAL_CAPACITY;
@@ -129,24 +129,24 @@ static inline __unused stack_s *stack_new(void) {
 }
 
 /** Returns the newest member of the stack, removing it from the stack. */
-static inline __unused void *stack_pop(stack_s *stack) {
+static inline UNUSED_FUNC void *stack_pop(stack_s *stack) {
   if (stack->length == 0)
     return NULL;
   stack->length -= 1;
   return stack->data[stack->length];
 }
 /** returns the topmost (newest) object of the stack without removing it. */
-static inline __unused void *stack_peek(stack_s *stack) {
+static inline UNUSED_FUNC void *stack_peek(stack_s *stack) {
   return (stack->length ? stack->data[stack->length - 1] : NULL);
 }
 /** returns the number of objects in the stack. */
-static inline __unused size_t stack_count(stack_s *stack) {
+static inline UNUSED_FUNC size_t stack_count(stack_s *stack) {
   return stack->length;
 }
 
 /** Adds a new object to the tsack, reallocating the stack if necessary.
  * Return the new stack pointer. Returns NULL of failure. */
-static inline __unused stack_s *stack_push(stack_s *stack, void *ptr) {
+static inline UNUSED_FUNC stack_s *stack_push(stack_s *stack, void *ptr) {
   if (stack->length == stack->capacity) {
     stack->capacity = stack->capacity << 1;
     stack = realloc(stack, sizeof(*stack) + (sizeof(void *) * stack->capacity));
@@ -164,7 +164,7 @@ static inline __unused stack_s *stack_push(stack_s *stack, void *ptr) {
  */
 
 /** used to print the binary reverse testing */
-static __unused void __print_bin_num(uint32_t num) {
+static UNUSED_FUNC void __print_bin_num(uint32_t num) {
   fprintf(stderr, "0b");
   for (size_t i = 0; i < 32; i++) {
     if (num & (1 << (31 - i)))
@@ -175,7 +175,7 @@ static __unused void __print_bin_num(uint32_t num) {
 }
 
 /** the Huffman Tree printing function */
-static __unused void print_huff(void) {
+static UNUSED_FUNC void print_huff(void) {
   struct huff_node {
     stack_s *children;
     struct huff_node *zero;

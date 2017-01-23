@@ -406,7 +406,7 @@ no_file:
 }
 
 #ifdef RUSAGE_SELF
-const static size_t CLOCK_RESOLUTION = 1000; /* in miliseconds */
+static const size_t CLOCK_RESOLUTION = 1000; /* in miliseconds */
 static size_t get_clock_mili(void) {
   struct rusage rusage;
   getrusage(RUSAGE_SELF, &rusage);

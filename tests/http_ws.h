@@ -6,7 +6,7 @@
 A simple Hello World HTTP response emulation. Test with:
 ab -n 1000000 -c 200 -k http://127.0.0.1:3000/
 */
-__unused static void http1_hello_on_request(http_request_s *request) {
+ static void http1_hello_on_request(http_request_s *request) {
   static char hello_message[] = "HTTP/1.1 200 OK\r\n"
                                 "Content-Length: 12\r\n"
                                 "Connection: keep-alive\r\n"
@@ -26,11 +26,11 @@ __unused static void http1_hello_on_request(http_request_s *request) {
 A Websocket echo implementation
 */
 
-__unused static void ws_open(ws_s *ws) {
+ static void ws_open(ws_s *ws) {
   fprintf(stderr, "Opened a new websocket connection (%p)\n", ws);
 }
 
-__unused static void ws_echo(ws_s *ws, char *data, size_t size,
+ static void ws_echo(ws_s *ws, char *data, size_t size,
                              uint8_t is_text) {
   // echos the data to the current websocket
   websocket_write(ws, data, size, is_text);
@@ -44,11 +44,11 @@ __unused static void ws_echo(ws_s *ws, char *data, size_t size,
   }
 }
 
-__unused static void ws_shutdown(ws_s *ws) {
+ static void ws_shutdown(ws_s *ws) {
   websocket_write(ws, "Shutting Down", 13, 1);
 }
 
-__unused static void ws_close(ws_s *ws) {
+ static void ws_close(ws_s *ws) {
   fprintf(stderr, "Closed websocket connection (%p)\n", ws);
 }
 
@@ -62,18 +62,18 @@ struct ws_data {
   char data[];
 };
 /* free the websocket broadcast data */
-__unused static void free_wsdata(ws_s *ws, void *arg) {
+ static void free_wsdata(ws_s *ws, void *arg) {
   free(arg);
   (void)(ws);
 }
 /* the broadcast "task" performed by `Websocket.each` */
-__unused static void ws_get_broadcast(ws_s *ws, void *arg) {
+ static void ws_get_broadcast(ws_s *ws, void *arg) {
   struct ws_data *data = arg;
   websocket_write(ws, data->data, data->size, 1); // echo
 }
 /* The websocket broadcast server's `on_message` callback */
 
-__unused static void ws_broadcast(ws_s *ws, char *data, size_t size,
+ static void ws_broadcast(ws_s *ws, char *data, size_t size,
                                   uint8_t is_text) {
   // Copy the message to a broadcast data-packet
   struct ws_data *msg = malloc(sizeof(*msg) + size);
@@ -91,7 +91,7 @@ __unused static void ws_broadcast(ws_s *ws, char *data, size_t size,
 The HTTP implementation
 */
 
-__unused static void on_request(http_request_s *request) {
+ static void on_request(http_request_s *request) {
   // to log we will start a response.
   http_response_s response = http_response_init(request);
   // http_response_log_start(&response);
@@ -150,7 +150,7 @@ struct prnt2scrn_protocol_s {
   protocol_s protocol;
   intptr_t uuid;
 };
-__unused static void on_data(intptr_t uuid, protocol_s *protocol) {
+ static void on_data(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
   uint8_t buffer[1024];
   ssize_t len;
@@ -161,13 +161,13 @@ __unused static void on_data(intptr_t uuid, protocol_s *protocol) {
   fprintf(stderr, "returning from on_data\n");
   // sock_write(uuid, "HTTP/1.1 100 Continue\r\n\r\n", 25);
 }
-__unused static void on_close(protocol_s *protocol) {
+ static void on_close(protocol_s *protocol) {
   fprintf(stderr, "Connection closed %p\n",
           (void *)(((struct prnt2scrn_protocol_s *)protocol)->uuid));
   free(protocol);
 }
 
-__unused static protocol_s *on_open(intptr_t uuid, void *udata) {
+ static protocol_s *on_open(intptr_t uuid, void *udata) {
   (void)(udata);
   struct prnt2scrn_protocol_s *prt = malloc(sizeof *prt);
   *prt = (struct prnt2scrn_protocol_s){
@@ -181,7 +181,7 @@ __unused static protocol_s *on_open(intptr_t uuid, void *udata) {
 non-http-dump
 */
 
-__unused static void htpdmp_on_data(intptr_t uuid, protocol_s *protocol) {
+ static void htpdmp_on_data(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
   uint8_t buffer[1024];
   ssize_t len;
@@ -194,7 +194,7 @@ __unused static void htpdmp_on_data(intptr_t uuid, protocol_s *protocol) {
   // sock_write(uuid, "HTTP/1.1 100 Continue\r\n\r\n", 25);
 }
 
-__unused static protocol_s *htpdmp_on_open(intptr_t uuid, void *udata) {
+ static protocol_s *htpdmp_on_open(intptr_t uuid, void *udata) {
   (void)(udata);
   protocol_s *prt = malloc(sizeof *prt);
   *prt = (protocol_s){.on_data = htpdmp_on_data, .on_close = (void *)free};
@@ -209,7 +209,7 @@ Environment details
 #if defined(__linux__) // My Linux machine has a slow file system issue.
 static const char *public_folder = NULL; // "./public_www";
 #else
-static const __unused char *public_folder = "./public_www";
+static const  char *public_folder = "./public_www";
 #endif
 
 #ifndef THREAD_COUNT

@@ -14,7 +14,10 @@ karnel's code and the more readable Apple's kernel code)
 Written by Boaz Segev at 2016. Donated to the public domain for all to enjoy.
 */
 #define SIMPLE_SPN_LOCK_H
-SIMPLE_SPN_LOCK_H
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -163,8 +166,8 @@ spnlock.h finished
 #if DEBUG == 1 && !defined(SPN_LOCK_TEST_REPEAT_COUNT)
 
 /* allow of the unused flag */
-#ifndef __unused
-#define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#define UNUSED_FUNC __attribute__((unused))
 #endif
 
 #define SPN_LOCK_TEST_REPEAT_COUNT 10000UL
@@ -172,7 +175,7 @@ spnlock.h finished
 #include <pthread.h>
 #include <stdio.h>
 
-__unused static void *test_spn_lock_work(void *arg) {
+UNUSED_FUNC static void *test_spn_lock_work(void *arg) {
   static spn_lock_i lck = SPN_LOCK_INIT;
   uint64_t *ip = arg;
   for (size_t i = 0; i < SPN_LOCK_TEST_REPEAT_COUNT; i++) {
@@ -186,7 +189,7 @@ __unused static void *test_spn_lock_work(void *arg) {
   return NULL;
 }
 
-__unused static void *test_spn_lock_lockless_work(void *arg) {
+UNUSED_FUNC static void *test_spn_lock_lockless_work(void *arg) {
   uint64_t *ip = arg;
   for (size_t i = 0; i < SPN_LOCK_TEST_REPEAT_COUNT; i++) {
     uint64_t j = *ip;
@@ -197,7 +200,7 @@ __unused static void *test_spn_lock_lockless_work(void *arg) {
   return NULL;
 }
 
-__unused static void spn_lock_test(void) {
+UNUSED_FUNC static void spn_lock_test(void) {
   size_t start, end;
   unsigned long num = 0;
   pthread_t *threads = malloc(SPN_LOCK_TEST_THREAD_COUNT * sizeof(*threads));

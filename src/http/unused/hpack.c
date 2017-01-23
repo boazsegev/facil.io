@@ -4,6 +4,9 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include "hpack.h"
 #include "hpack_data.h"
 // #include "mempool.h"

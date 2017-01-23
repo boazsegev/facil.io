@@ -24,8 +24,8 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #   endif
 #endif
 
-#ifndef __unused
-#   define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#   define UNUSED_FUNC __attribute__((unused))
 #endif
 // clang-format on
 

@@ -57,8 +57,8 @@ and: https://software.intel.com/sites/landingpage/IntrinsicsGuide/
 #   endif
 #endif
 
-#ifndef __unused
-#   define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#   define UNUSED_FUNC __attribute__((unused))
 #endif
 // clang-format on
 

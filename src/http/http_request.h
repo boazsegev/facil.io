@@ -18,8 +18,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <strings.h>
 #include <unistd.h>
 
-#ifndef __unused
-#define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#define UNUSED_FUNC __attribute__((unused))
 #endif
 
 typedef struct {
@@ -97,7 +97,7 @@ typedef struct {
   http_headers_s headers[];
 } http_request_s;
 
-__unused static inline void http_request_clear(http_request_s *request) {
+UNUSED_FUNC static inline void http_request_clear(http_request_s *request) {
   if (request->body_file > 0) /* assumes no tempfile with fd 0 */
     close(request->body_file);
   *request = (http_request_s){
@@ -109,7 +109,7 @@ __unused static inline void http_request_clear(http_request_s *request) {
 
 /** searches for a header in the header array, both reaturnning it's value and
  * setting it's position in the `request->metadata.header_pos` variable.*/
-__unused static inline const char *
+UNUSED_FUNC static inline const char *
 http_request_find_header(http_request_s *request, const char *header,
                          size_t header_len) {
   if (header == NULL || request == NULL)

@@ -19,7 +19,7 @@ static void nohttp_on_data(intptr_t uuid, protocol_s* prt) {
   }
 }
 
-__unused static protocol_s* nohttp_on_open(intptr_t uuid, void* _) {
+ static protocol_s* nohttp_on_open(intptr_t uuid, void* _) {
   static protocol_s nohttp_proto = {
       .on_data = nohttp_on_data,
   };

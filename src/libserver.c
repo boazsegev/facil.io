@@ -538,7 +538,7 @@ ssize_t server_run(struct ServerSettings settings) {
   pid_t *children = NULL;
   if (settings.processes > 1) {
     children = malloc(sizeof(*children) * settings.processes);
-    for (size_t i = 0; i < settings.processes - 1; i++) {
+    for (size_t i = 0; i < (size_t)(settings.processes - 1); i++) {
       if (fork() == 0)
         break;
     }

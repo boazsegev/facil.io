@@ -16,8 +16,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 #include <string.h>
 /* Allow some inline functions to be created, without requiring their use. */
-#ifndef __unused
-#define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#define UNUSED_FUNC __attribute__((unused))
 #endif
 
 /* *****************************************************************************
@@ -30,7 +30,7 @@ typedef struct {
   char str[];
 } string_s;
 
-static inline __unused string_s *string_new_buf(uint32_t capacity) {
+static inline UNUSED_FUNC string_s *string_new_buf(uint32_t capacity) {
   string_s *str = malloc(sizeof(*str) + capacity);
   if (!str)
     return NULL;
@@ -39,7 +39,7 @@ static inline __unused string_s *string_new_buf(uint32_t capacity) {
   return str;
 }
 
-static inline __unused string_s *string_new_cpy(const void *src, uint32_t len) {
+static inline UNUSED_FUNC string_s *string_new_cpy(const void *src, uint32_t len) {
   string_s *str = malloc(sizeof(*str) + len + 1);
   if (!str)
     return NULL;
@@ -50,11 +50,11 @@ static inline __unused string_s *string_new_cpy(const void *src, uint32_t len) {
   return str;
 }
 
-static inline __unused string_s *string_new_cstr(const void *src) {
+static inline UNUSED_FUNC string_s *string_new_cstr(const void *src) {
   return string_new_cpy(src, strlen(src));
 }
 
-static inline __unused string_s *string_dup(const string_s *src) {
+static inline UNUSED_FUNC string_s *string_dup(const string_s *src) {
   string_s *str = malloc(sizeof(*str) + src->capacity);
   if (!str)
     return NULL;
@@ -68,7 +68,7 @@ static inline __unused string_s *string_dup(const string_s *src) {
  *
  * Returns NULL on failure.
  */
-static inline __unused string_s *string_concat(string_s *dest, const void *src,
+static inline UNUSED_FUNC string_s *string_concat(string_s *dest, const void *src,
                                                uint32_t len) {
   if (dest->capacity <= dest->length + len) {
     dest = realloc(dest, dest->length + len + sizeof(*dest) + 1);
@@ -94,7 +94,7 @@ typedef struct {
 } stack_s;
 
 /** creates a new stack. free the stack using `free`. */
-static inline __unused stack_s *stack_new(void) {
+static inline UNUSED_FUNC stack_s *stack_new(void) {
   stack_s *stack =
       malloc(sizeof(*stack) + (sizeof(void *) * STACK_INITIAL_CAPACITY));
   stack->capacity = STACK_INITIAL_CAPACITY;
@@ -103,24 +103,24 @@ static inline __unused stack_s *stack_new(void) {
 }
 
 /** Returns the newest member of the stack, removing it from the stack. */
-static inline __unused void *stack_pop(stack_s *stack) {
+static inline UNUSED_FUNC void *stack_pop(stack_s *stack) {
   if (stack->length == 0)
     return NULL;
   stack->length -= 1;
   return stack->data[stack->length];
 }
 /** returns the topmost (newest) object of the stack without removing it. */
-static inline __unused void *stack_peek(stack_s *stack) {
+static inline UNUSED_FUNC void *stack_peek(stack_s *stack) {
   return (stack->length ? stack->data[stack->length - 1] : NULL);
 }
 /** returns the number of objects in the stack. */
-static inline __unused size_t stack_count(stack_s *stack) {
+static inline UNUSED_FUNC size_t stack_count(stack_s *stack) {
   return stack->length;
 }
 
 /** Adds a new object to the tsack, reallocating the stack if necessary.
   * Return the new stack pointer. Returns NULL of failure. */
-static inline __unused stack_s *stack_push(stack_s *stack, void *ptr) {
+static inline UNUSED_FUNC stack_s *stack_push(stack_s *stack, void *ptr) {
   if (stack->length == stack->capacity) {
     stack->capacity = stack->capacity << 1;
     stack = realloc(stack, sizeof(*stack) + (sizeof(void *) * stack->capacity));
@@ -137,7 +137,7 @@ static inline __unused stack_s *stack_push(stack_s *stack, void *ptr) {
 #include <assert.h>
 #include <time.h>
 
-__unused static inline void sdstack_test(void) {
+UNUSED_FUNC static inline void sdstack_test(void) {
   const size_t test_size = (1024UL * 1024 * 4);
   stack_s *stack = stack_new();
   clock_t start, end;
@@ -211,7 +211,7 @@ typedef struct {
 } hashmap_s;
 
 /** Allocates a new empty HashMap (hashmap_s) object. */
-static inline __unused hashmap_s *hashmap_new(void) {
+static inline UNUSED_FUNC hashmap_s *hashmap_new(void) {
   hashmap_s *h = malloc(sizeof(*h));
   *h = (hashmap_s){0};
   h->bins = calloc(sizeof(*h->bins), 1);
@@ -220,14 +220,14 @@ static inline __unused hashmap_s *hashmap_new(void) {
 /** Deallocates a HashMap (hashmap_s) object - but DOESN'T deallocate any stored
  * values (use `hashmap_each` and `hashmap_remove` to deallocate any objects).
  */
-static inline __unused void hashmap_destroy(hashmap_s *hashmap) {
+static inline UNUSED_FUNC void hashmap_destroy(hashmap_s *hashmap) {
   free(hashmap->bins);
   free(hashmap);
 }
 
 /** Returns an existing object from the map (if exists). Returns NULL if none
  * found. */
-static inline __unused void *hashmap_get(hashmap_s *hashmap, uint64_t hash) {
+static inline UNUSED_FUNC void *hashmap_get(hashmap_s *hashmap, uint64_t hash) {
   struct ___hashmap_bin *bin;
   bin = hashmap->bins + (hash & hashmap->bin_mask);
   for (size_t i = 0; i < HASHMAP_MAX_MEMBERS_PER_BIN; i++) {
@@ -241,7 +241,7 @@ static inline __unused void *hashmap_get(hashmap_s *hashmap, uint64_t hash) {
 /** Sets a hash value key to a new object in the map.
   * Returns the previous value (if exists) or NULL.
   */
-static __unused void *hashmap_set(hashmap_s *hashmap, uint64_t hash,
+static UNUSED_FUNC void *hashmap_set(hashmap_s *hashmap, uint64_t hash,
                                   void *object) {
   void *old_val;
   struct ___hashmap_bin *bin;
@@ -274,7 +274,7 @@ restart:
 /** Removes and returns an existing object from the map (if exists).
   * Returns NULL if no matching hash key was found.
   */
-static inline __unused void *hashmap_remove(hashmap_s *hashmap, uint64_t hash) {
+static inline UNUSED_FUNC void *hashmap_remove(hashmap_s *hashmap, uint64_t hash) {
   struct ___hashmap_bin *bin;
   void *old_val;
   bin = hashmap->bins + (hash & hashmap->bin_mask);
@@ -294,7 +294,7 @@ static inline __unused void *hashmap_remove(hashmap_s *hashmap, uint64_t hash) {
  * iterations will stop.
  * Returns the number of iterations.
  */
-static inline __unused size_t hashmap_each(hashmap_s *hashmap,
+static inline UNUSED_FUNC size_t hashmap_each(hashmap_s *hashmap,
                                            int (*task)(uint64_t hash,
                                                        void *object)) {
   size_t count = 0;

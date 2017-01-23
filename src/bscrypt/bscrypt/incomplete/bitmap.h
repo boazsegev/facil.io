@@ -9,8 +9,8 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #include <stdio.h>
 #include <stdint.h>
 #include <math.h>
-#ifndef __unused
-#define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#define UNUSED_FUNC __attribute__((unused))
 #endif
 
 /* *****************************************************************************
@@ -40,7 +40,7 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 /* *****************************************************************************
  * Log2 map for 64 bits.
  */
-__unused static int _bm_log2(uint64_t word) {
+UNUSED_FUNC static int _bm_log2(uint64_t word) {
   switch (word) {
   case 0x1ULL:
     return 0;
@@ -196,7 +196,7 @@ __unused static int _bm_log2(uint64_t word) {
  * Returns 1 if the bit is set and 0 if it isn't. Returns -1 if request was out
  * of bounds.
  */
-__unused static int bitmap_is_bit_set(void *bitmap_ptr, size_t offset) {
+UNUSED_FUNC static int bitmap_is_bit_set(void *bitmap_ptr, size_t offset) {
   _bs_bitmap_def_vars_or_return(bitmap_ptr, -1);
   return ((bits[offset >> 6] >> (offset & 63)) & 1UL);
 }
@@ -208,7 +208,7 @@ __unused static int bitmap_is_bit_set(void *bitmap_ptr, size_t offset) {
  *
  * Out of bounds requests fail silently.
  */
-__unused static void bitmap_set_bit(void *bitmap_ptr, size_t offset) {
+UNUSED_FUNC static void bitmap_set_bit(void *bitmap_ptr, size_t offset) {
   _bs_bitmap_def_vars_or_return(bitmap_ptr, ;);
   bits[offset >> 6] |= 1UL << (offset & 63);
 }
@@ -219,7 +219,7 @@ __unused static void bitmap_set_bit(void *bitmap_ptr, size_t offset) {
  *
  * Out of bounds requests fail silently.
  */
-__unused static void bitmap_unset_bit(void *bitmap_ptr, size_t offset) {
+UNUSED_FUNC static void bitmap_unset_bit(void *bitmap_ptr, size_t offset) {
   _bs_bitmap_def_vars_or_return(bitmap_ptr, ;);
   bits[offset >> 6] &= ~(1UL << (offset & 63));
 }
@@ -231,7 +231,7 @@ __unused static void bitmap_unset_bit(void *bitmap_ptr, size_t offset) {
  * If no bits are set (or the offset is out of bounds), the function returns -1.
  *
  */
-__unused static ssize_t bitmap_seek_set(void *bitmap_ptr, size_t offset) {
+UNUSED_FUNC static ssize_t bitmap_seek_set(void *bitmap_ptr, size_t offset) {
   _bs_bitmap_def_vars_or_return(bitmap_ptr, -1);
   uint64_t word;
   uint64_t stop_at = (*lim >> 6) - 1;
@@ -253,7 +253,7 @@ __unused static ssize_t bitmap_seek_set(void *bitmap_ptr, size_t offset) {
  *
  * If no bits are set (or the offset is out of bounds), the function returns -1.
  */
-__unused static ssize_t bitmap_seek_unset(void *bitmap_ptr, size_t offset) {
+UNUSED_FUNC static ssize_t bitmap_seek_unset(void *bitmap_ptr, size_t offset) {
   _bs_bitmap_def_vars_or_return(bitmap_ptr, -1);
   uint64_t word;
   uint64_t stop_at = (*lim >> 6) - 1;
@@ -296,7 +296,7 @@ __unused static ssize_t bitmap_seek_unset(void *bitmap_ptr, size_t offset) {
  * If no bits are set (or the offset is out of bounds), the function returns -1.
  *
  */
-__unused static ssize_t bitmap_total_set(void *bitmap_ptr, size_t offset) {
+UNUSED_FUNC static ssize_t bitmap_total_set(void *bitmap_ptr, size_t offset) {
   _bs_bitmap_def_vars_or_return(bitmap_ptr, -1);
   uint64_t word;
   ssize_t count = 0;
@@ -366,7 +366,7 @@ __unused static ssize_t bitmap_total_set(void *bitmap_ptr, size_t offset) {
  *
  * Out of bounds requests fail silently.
  */
-__unused static void bitmap_set_cluster(void *bitmap_ptr, size_t offset,
+UNUSED_FUNC static void bitmap_set_cluster(void *bitmap_ptr, size_t offset,
                                         size_t length) {
   if (length == 0)
     return;
@@ -406,7 +406,7 @@ __unused static void bitmap_set_cluster(void *bitmap_ptr, size_t offset,
  *
  * Out of bounds requests fail silently.
  */
-__unused static inline void bitmap_unset_cluster(void *bitmap_ptr,
+UNUSED_FUNC static inline void bitmap_unset_cluster(void *bitmap_ptr,
                                                  size_t offset, size_t length) {
   if (length <= 1) {
     bitmap_unset_bit(bitmap_ptr, offset);
@@ -444,7 +444,7 @@ __unused static inline void bitmap_unset_cluster(void *bitmap_ptr,
  * If no bits are set (or the offset is out of bounds), the function returns -1.
  *
  */
-__unused static inline ssize_t
+UNUSED_FUNC static inline ssize_t
 bitmap_seek_empty_cluster(void *bitmap_ptr, size_t offset, size_t length) {
   if (length <= 1)
     return bitmap_seek_unset(bitmap_ptr, offset);
@@ -474,7 +474,7 @@ bitmap_seek_empty_cluster(void *bitmap_ptr, size_t offset, size_t length) {
  * If no bits are set (or the offset is out of bounds), the function returns -1.
  *
  */
-__unused static inline ssize_t
+UNUSED_FUNC static inline ssize_t
 bitmap_seek_set_cluster(void *bitmap_ptr, size_t offset, size_t length) {
   if (length == 1)
     return bitmap_seek_set(bitmap_ptr, offset);
@@ -512,7 +512,7 @@ bitmap_seek_set_cluster(void *bitmap_ptr, size_t offset, size_t length) {
 
 #if defined(DEBUG) && DEBUG == 1
 #include <time.h>
-__unused static void bitmap_test(void) {
+UNUSED_FUNC static void bitmap_test(void) {
   clock_t start, end;
   MakeBitmap(bitmap, 512);
   if (bitmap.bitmap[0] || bitmap.bitmap[1] || bitmap.bitmap[2] ||

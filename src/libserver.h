@@ -45,10 +45,9 @@ messages regarding the server state (start / finish / listen messages).
 #warning Lib-Server dependency versions are not in sync. Please review API versions.
 #endif
 
-#ifndef __unused
-#define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#define UNUSED_FUNC __attribute__((unused))
 #endif
-
 /** \file
 ## LibServer - a dynamic protocol network services library
 
@@ -474,8 +473,8 @@ int server_run_every(size_t milliseconds, size_t repetitions,
 /** Creates a system timer (at the cost of 1 file descriptor) and pushes the
 timer to the reactor. The task will NOT repeat. Returns -1 on error or the
 new file descriptor on succeess. */
-__unused static inline int server_run_after(size_t milliseconds,
-                                            void task(void *), void *arg) {
+UNUSED_FUNC static inline int server_run_after(size_t milliseconds,
+                                               void task(void *), void *arg) {
   return server_run_every(milliseconds, 1, task, arg, NULL);
 }
 

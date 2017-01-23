@@ -25,8 +25,8 @@ The library is designed to be thread safe, but not fork safe.
 #include <sys/types.h>
 #include <unistd.h>
 
-#ifndef __unused
-#define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#define UNUSED_FUNC __attribute__((unused))
 #endif
 
 /* *****************************************************************************
@@ -297,7 +297,7 @@ the maximum amount of data to be sent.
 
 Returns -1 and closes the file on error. Returns 0 on success.
 */
-__unused static inline ssize_t sock_sendfile(intptr_t uuid, int source_fd,
+UNUSED_FUNC static inline ssize_t sock_sendfile(intptr_t uuid, int source_fd,
                                              off_t offset, size_t length) {
   return sock_write2(.fduuid = uuid, .buffer = (void *)((intptr_t)source_fd),
                      .length = length, .is_fd = 1, .offset = offset);

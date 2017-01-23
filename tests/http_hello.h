@@ -6,7 +6,7 @@
 A simple Hello World HTTP response emulation. Test with:
 ab -n 1000000 -c 200 -k http://127.0.0.1:3000/
 */
-__unused static void http1_hello_on_request(http_request_s* request) {
+ static void http1_hello_on_request(http_request_s* request) {
   static char hello_message[] =
       "HTTP/1.1 200 OK\r\n"
       "Content-Length: 12\r\n"

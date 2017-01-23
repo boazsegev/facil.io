@@ -7,8 +7,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#ifndef __unused
-#define __unused __attribute__((unused))
+#ifndef UNUSED_FUNC
+#define UNUSED_FUNC __attribute__((unused))
 #endif
 
 #ifndef SDSTACK_H
@@ -48,7 +48,7 @@ typedef struct {
 } sdstack_s;
 
 /** Pushes an object to the stack. */
-__unused static inline int sds_push(sdstack_s *restrict stack,
+UNUSED_FUNC static inline int sds_push(sdstack_s *restrict stack,
                                     void *restrict pointer) {
   if ((stack->count & 1023) == 0) {
     ___sdstack_node_s *tmp;
@@ -69,7 +69,7 @@ __unused static inline int sds_push(sdstack_s *restrict stack,
 }
 
 /** Pops an object from the stack. */
-__unused static inline void *sds_pop(sdstack_s *restrict stack) {
+UNUSED_FUNC static inline void *sds_pop(sdstack_s *restrict stack) {
   if (stack->count == 0)
     return NULL;
   stack->count -= 1;
@@ -84,19 +84,19 @@ __unused static inline void *sds_pop(sdstack_s *restrict stack) {
 }
 
 /** Returns the object currently on top of the stack. */
-__unused static inline void *sds_peek(sdstack_s *restrict stack) {
+UNUSED_FUNC static inline void *sds_peek(sdstack_s *restrict stack) {
   if (stack->head)
     return stack->head->pointers[stack->count & 1023];
   return NULL;
 }
 
 /** Returns true (non 0) if the stack in empty. */
-__unused static inline int sds_is_empty(const sdstack_s *restrict stack) {
+UNUSED_FUNC static inline int sds_is_empty(const sdstack_s *restrict stack) {
   return stack->count == 0;
 }
 
 /** Clears the stack data, freeing it's memory. */
-__unused static inline void sds_clear(sdstack_s *restrict stack) {
+UNUSED_FUNC static inline void sds_clear(sdstack_s *restrict stack) {
   ___sdstack_node_s *tmp;
   tmp = stack->head;
   while ((tmp = stack->head)) {
@@ -116,7 +116,7 @@ __unused static inline void sds_clear(sdstack_s *restrict stack) {
 #include <assert.h>
 #include <time.h>
 
-__unused static inline void sds_test(void) {
+UNUSED_FUNC static inline void sds_test(void) {
   const size_t test_size = (1024UL * 1024 * 4);
   sdstack_s stack = SDSTACK_INIT;
   clock_t start, end;

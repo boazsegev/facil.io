@@ -351,7 +351,7 @@ static inline int sock_flush_fd_failed(int fd) {
 
 #if defined(__linux__) /* linux sendfile API */
 static inline int sock_flush_os_sendfile(int fd) {
-  size_t sent;
+  ssize_t sent;
   sock_packet_s *packet = fd_info[fd].packet;
   sent =
       sendfile64(fd, (int)((ssize_t)packet->buffer), &packet->metadata.offset,
