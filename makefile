@@ -15,7 +15,7 @@ INCLUDE=
 # optimization level.
 OPTIMIZATION= -O3 -march=native -DSERVER_DELAY_IO=1 -DDEBUG
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
-WARNINGS= -Wall -Wextra
+WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
 
 ##############
 ## OS specific data - compiler, assembler etc.
