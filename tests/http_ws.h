@@ -6,7 +6,7 @@
 A simple Hello World HTTP response emulation. Test with:
 ab -n 1000000 -c 200 -k http://127.0.0.1:3000/
 */
- static void http1_hello_on_request(http_request_s *request) {
+static void http1_hello_on_request(http_request_s *request) {
   static char hello_message[] = "HTTP/1.1 200 OK\r\n"
                                 "Content-Length: 12\r\n"
                                 "Connection: keep-alive\r\n"
@@ -26,30 +26,29 @@ ab -n 1000000 -c 200 -k http://127.0.0.1:3000/
 A Websocket echo implementation
 */
 
- static void ws_open(ws_s *ws) {
-  fprintf(stderr, "Opened a new websocket connection (%p)\n", ws);
+static void ws_open(ws_s *ws) {
+  fprintf(stderr, "Opened a new websocket connection (%p)\n", (void *)ws);
 }
 
- static void ws_echo(ws_s *ws, char *data, size_t size,
-                             uint8_t is_text) {
+static void ws_echo(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   // echos the data to the current websocket
   websocket_write(ws, data, size, is_text);
   if (memcmp(data, "bomb me", 7) == 0) {
     char *msg = malloc(1024 * 1024);
-    for (char *pos = msg; pos < msg + (1024 * 1024 - 1); pos += 4) {
-      memcpy(pos, "bomb", 4);
+    for (char *pos = msg; pos < msg + (1024 * 1024 - 1); pos += 8) {
+      memcpy(pos, "bomb(!) ", 8);
     }
     websocket_write(ws, msg, 1024 * 1024, is_text);
     free(msg);
   }
 }
 
- static void ws_shutdown(ws_s *ws) {
+static void ws_shutdown(ws_s *ws) {
   websocket_write(ws, "Shutting Down", 13, 1);
 }
 
- static void ws_close(ws_s *ws) {
-  fprintf(stderr, "Closed websocket connection (%p)\n", ws);
+static void ws_close(ws_s *ws) {
+  fprintf(stderr, "Closed websocket connection (%p)\n", (void *)ws);
 }
 
 /*****************************
@@ -62,19 +61,18 @@ struct ws_data {
   char data[];
 };
 /* free the websocket broadcast data */
- static void free_wsdata(ws_s *ws, void *arg) {
+static void free_wsdata(ws_s *ws, void *arg) {
   free(arg);
   (void)(ws);
 }
 /* the broadcast "task" performed by `Websocket.each` */
- static void ws_get_broadcast(ws_s *ws, void *arg) {
+static void ws_get_broadcast(ws_s *ws, void *arg) {
   struct ws_data *data = arg;
   websocket_write(ws, data->data, data->size, 1); // echo
 }
 /* The websocket broadcast server's `on_message` callback */
 
- static void ws_broadcast(ws_s *ws, char *data, size_t size,
-                                  uint8_t is_text) {
+static void ws_broadcast(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   // Copy the message to a broadcast data-packet
   struct ws_data *msg = malloc(sizeof(*msg) + size);
   msg->size = size;
@@ -91,7 +89,7 @@ struct ws_data {
 The HTTP implementation
 */
 
- static void on_request(http_request_s *request) {
+static void on_request(http_request_s *request) {
   // to log we will start a response.
   http_response_s response = http_response_init(request);
   // http_response_log_start(&response);
@@ -150,7 +148,7 @@ struct prnt2scrn_protocol_s {
   protocol_s protocol;
   intptr_t uuid;
 };
- static void on_data(intptr_t uuid, protocol_s *protocol) {
+static void on_data(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
   uint8_t buffer[1024];
   ssize_t len;
@@ -161,13 +159,13 @@ struct prnt2scrn_protocol_s {
   fprintf(stderr, "returning from on_data\n");
   // sock_write(uuid, "HTTP/1.1 100 Continue\r\n\r\n", 25);
 }
- static void on_close(protocol_s *protocol) {
+static void on_close(protocol_s *protocol) {
   fprintf(stderr, "Connection closed %p\n",
           (void *)(((struct prnt2scrn_protocol_s *)protocol)->uuid));
   free(protocol);
 }
 
- static protocol_s *on_open(intptr_t uuid, void *udata) {
+static protocol_s *on_open(intptr_t uuid, void *udata) {
   (void)(udata);
   struct prnt2scrn_protocol_s *prt = malloc(sizeof *prt);
   *prt = (struct prnt2scrn_protocol_s){
@@ -181,7 +179,7 @@ struct prnt2scrn_protocol_s {
 non-http-dump
 */
 
- static void htpdmp_on_data(intptr_t uuid, protocol_s *protocol) {
+static void htpdmp_on_data(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
   uint8_t buffer[1024];
   ssize_t len;
@@ -194,10 +192,11 @@ non-http-dump
   // sock_write(uuid, "HTTP/1.1 100 Continue\r\n\r\n", 25);
 }
 
- static protocol_s *htpdmp_on_open(intptr_t uuid, void *udata) {
+static protocol_s *htpdmp_on_open(intptr_t uuid, void *udata) {
   (void)(udata);
   protocol_s *prt = malloc(sizeof *prt);
-  *prt = (protocol_s){.on_data = htpdmp_on_data, .on_close = (void *)free};
+  *prt = (protocol_s){.on_data = htpdmp_on_data,
+                      .on_close = (void (*)(protocol_s *))free};
   server_set_timeout(uuid, 10);
   return (void *)prt;
 }
@@ -209,7 +208,7 @@ Environment details
 #if defined(__linux__) // My Linux machine has a slow file system issue.
 static const char *public_folder = NULL; // "./public_www";
 #else
-static const  char *public_folder = "./public_www";
+static const char *public_folder = "./public_www";
 #endif
 
 #ifndef THREAD_COUNT

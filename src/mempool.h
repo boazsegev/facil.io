@@ -704,7 +704,7 @@ static void mempool_speedtest(size_t memtest_repeats, void *(*mlk)(size_t),
   fr_time = end - start;
   fprintf(stderr, "* Freeing %lu consecutive blocks %d each: %lu CPU cycles.\n",
           memtest_repeats, MEMTEST_SLICE, fr_time);
-  fprintf(stderr, "* Freeing pointer array %p.\n", pntrs);
+  fprintf(stderr, "* Freeing pointer array %p.\n", (void *)pntrs);
   fr(pntrs);
 
   clock_gettime(CLOCK_MONOTONIC, &end_test);
