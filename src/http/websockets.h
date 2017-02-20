@@ -129,6 +129,21 @@ void websocket_each(ws_s *ws_originator,
                     void (*task)(ws_s *ws_target, void *arg), void *arg,
                     void (*on_finish)(ws_s *ws_originator, void *arg));
 /**
+Writes data to each websocket connection that shares the same process
+(except the originating `ws_s` connection which is allowed to be NULL).
+
+If an `if_callback` is provided, the data will be written to the connection only
+if the `if_callback` returns TRUE (a non zero value).
+
+The `as_client` is a boolean value indicating if the data should be masked (sent
+to a server, in client mode) or not. If some data should be sent in client mode
+and other in server mode, consider using the `if_callback` to make sure the data
+is encoded properly.
+ */
+void websocket_write_each(ws_s *ws_originator, void *data, size_t len,
+                          uint8_t is_text, uint8_t as_client,
+                          uint8_t (*if_callback)(ws_s *ws_to, void *arg),
+                          void *arg); /**
 Counts the number of websocket connections.
 */
 size_t websocket_count(ws_s *ws);

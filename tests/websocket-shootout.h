@@ -22,6 +22,10 @@ wrk -c400 -d5 -t12 http://localhost:3000/
 */
 #define WEBSOCKET_SHOOTOUT_H
 
+#ifndef SHOOTOUT_USE_DIRECT_WRITE
+#define SHOOTOUT_USE_DIRECT_WRITE 0
+#endif
+
 #include "websockets.h" // includes the "http.h" header
 
 static void free_ws_msg(ws_s *origin, void *msg) {
@@ -51,33 +55,42 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   (void)(is_text);
   (void)(size);
   if (data[0] == 'b') {
-    struct {
-      size_t len;
-      char data[];
-    } *buff = malloc(size + sizeof(*buff));
-    buff->len = size;
-    memcpy(buff->data, data, size);
-    /* perform broadcast (all except this websocket) */
-    websocket_each(ws, broadcast_shootout_msg_bin, buff, free_ws_msg);
-    /* perform echo */
-    websocket_write(ws, data, size, 0);
+    if (SHOOTOUT_USE_DIRECT_WRITE) {
+      fprintf(stderr, "Direct\n");
+      websocket_write_each(NULL, data, size, 0, 0, NULL, NULL);
+    } else {
+      struct {
+        size_t len;
+        char data[];
+      } *buff = malloc(size + sizeof(*buff));
+      buff->len = size;
+      memcpy(buff->data, data, size);
+      /* perform broadcast (all except this websocket) */
+      websocket_each(ws, broadcast_shootout_msg_bin, buff, free_ws_msg);
+      /* perform echo */
+      websocket_write(ws, data, size, 0);
+    }
     /* send result */
     data[0] = 'r';
     websocket_write(ws, data, size, 0);
   } else if (data[9] == 'b') {
-    struct {
-      size_t len;
-      char data[];
-    } *buff = malloc(size + sizeof(*buff));
-    buff->len = size;
-    memcpy(buff->data, data, size);
-    /* perform broadcast (all except this websocket) */
-    websocket_each(ws, broadcast_shootout_msg, buff, free_ws_msg);
-    /* perform echo */
-    websocket_write(ws, data, size, 1);
+    if (SHOOTOUT_USE_DIRECT_WRITE) {
+      websocket_write_each(NULL, data, size, 0, 0, NULL, NULL);
+    } else {
+      struct {
+        size_t len;
+        char data[];
+      } *buff = malloc(size + sizeof(*buff));
+      buff->len = size;
+      memcpy(buff->data, data, size);
+      /* perform broadcast (all except this websocket) */
+      websocket_each(ws, broadcast_shootout_msg, buff, free_ws_msg);
+      /* perform echo */
+      websocket_write(ws, data, size, 1);
+    }
     /* send result */
     size = size + (25 - 19);
-    buff = malloc(size);
+    void *buff = malloc(size);
     memcpy(buff, "{\"type\":\"broadcastResult\"", 25);
     memcpy((void *)(((uintptr_t)buff) + 25), data + 19, size - 25);
     websocket_write(ws, buff, size, 1);

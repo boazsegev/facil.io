@@ -192,6 +192,8 @@ static void on_shutdown(intptr_t fd, protocol_s *ws) {
 /* later */
 static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
                                  char first, char last, char client);
+static size_t websocket_encode(void *buff, void *data, size_t len, char text,
+                               char first, char last, char client);
 
 /* read data from the socket, parse it and invoke the websocket events. */
 static void on_data(intptr_t sockfd, protocol_s *_ws) {
@@ -490,8 +492,8 @@ static void websocket_mask(void *dest, void *data, size_t len) {
     ((uint8_t *)dest)[i] = ((uint8_t *)data)[i] ^ ((uint8_t *)(&mask))[i & 3];
   }
 }
-static void websocket_encode(void *buff, void *data, size_t len, char text,
-                             char first, char last, char client) {
+static size_t websocket_encode(void *buff, void *data, size_t len, char text,
+                               char first, char last, char client) {
   if (len < 126) {
     struct {
       unsigned op_code : 4;
@@ -510,6 +512,7 @@ static void websocket_encode(void *buff, void *data, size_t len, char text,
       websocket_mask((uint8_t *)buff + 2, data, len);
     else
       memcpy((uint8_t *)buff + 2, data, len);
+    return len + 2 + (client ? 4 : 0);
   } else if (len < (1UL << 16)) {
     /* head is 4 bytes */
     struct {
@@ -531,29 +534,30 @@ static void websocket_encode(void *buff, void *data, size_t len, char text,
       websocket_mask((uint8_t *)buff + 4, data, len);
     else
       memcpy((uint8_t *)buff + 4, data, len);
-  } else {
-    /* Really Long Message  */
-    struct {
-      unsigned op_code : 4;
-      unsigned rsv3 : 1;
-      unsigned rsv2 : 1;
-      unsigned rsv1 : 1;
-      unsigned fin : 1;
-      unsigned size : 7;
-      unsigned masked : 1;
-    } head = {
-        .op_code = (first ? (text ? 1 : 2) : 0),
-        .fin = last,
-        .size = 127,
-        .masked = client,
-    };
-    memcpy(buff, &head, 2);
-    ((size_t *)((uint8_t *)buff + 2))[0] = bswap64(len);
-    if (client)
-      websocket_mask((uint8_t *)buff + 10, data, len);
-    else
-      memcpy((uint8_t *)buff + 10, data, len);
+    return len + 4 + (client ? 4 : 0);
   }
+  /* Really Long Message  */
+  struct {
+    unsigned op_code : 4;
+    unsigned rsv3 : 1;
+    unsigned rsv2 : 1;
+    unsigned rsv1 : 1;
+    unsigned fin : 1;
+    unsigned size : 7;
+    unsigned masked : 1;
+  } head = {
+      .op_code = (first ? (text ? 1 : 2) : 0),
+      .fin = last,
+      .size = 127,
+      .masked = client,
+  };
+  memcpy(buff, &head, 2);
+  ((size_t *)((uint8_t *)buff + 2))[0] = bswap64(len);
+  if (client)
+    websocket_mask((uint8_t *)buff + 10, data, len);
+  else
+    memcpy((uint8_t *)buff + 10, data, len);
+  return len + 10 + (client ? 4 : 0);
 }
 
 static void websocket_write_impl(intptr_t fd, void *data, size_t len,
@@ -561,19 +565,19 @@ static void websocket_write_impl(intptr_t fd, void *data, size_t len,
                                  char first, char last, char client) {
   if (len < 126) {
     char buff[len + (client ? 6 : 2)];
-    websocket_encode(buff, data, len, text, first, last, client);
-    sock_write(fd, buff, len + 2);
+    len = websocket_encode(buff, data, len, text, first, last, client);
+    sock_write(fd, buff, len);
   } else if (len <= WS_MAX_FRAME_SIZE) {
     if (len >= BUFFER_PACKET_SIZE) { // if len is larger then a single packet.
       /* head MUST be 4 bytes */
       void *buff = malloc(len + 4);
-      websocket_encode(buff, data, len, text, first, last, client);
-      sock_write2(.fduuid = fd, .buffer = buff, .length = len + 4, .move = 1);
+      len = websocket_encode(buff, data, len, text, first, last, client);
+      sock_write2(.fduuid = fd, .buffer = buff, .length = len, .move = 1);
     } else {
       sock_packet_s *packet = sock_checkout_packet();
-      websocket_encode(packet->buffer, data, len, text, first, last, client);
-      packet->length = len + 4;
-      // packet->metadata.can_interrupt = 1;
+      packet->length = websocket_encode(packet->buffer, data, len, text, first,
+                                        last, client);
+      packet->metadata.can_interrupt = 1;
       sock_send_packet(fd, packet);
     }
   } else {
@@ -796,4 +800,45 @@ void websocket_each(ws_s *ws_originator,
   tsk->task = task;
   server_each((ws_originator ? ws_originator->fd : -1), WEBSOCKET_ID_STR,
               perform_ws_task, tsk, finish_ws_task);
+}
+/*******************************************************************************
+Multi-Write (direct broadcast) Implementation
+*/
+struct websocket_multi_write {
+  uint8_t (*if_callback)(ws_s *ws_to, void *arg);
+  void *arg;
+  size_t length;
+  uint8_t buffer[];
+};
+
+static void ws_finish_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
+  (void)(fd);
+  (void)(_ws);
+  mempool_free(arg);
+}
+static void ws_check_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
+  struct websocket_multi_write *multi = arg;
+  if (multi->if_callback((void *)_ws, multi->arg))
+    sock_write(fd, multi->buffer, multi->length);
+}
+
+static void ws_direct_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
+  struct websocket_multi_write *multi = arg;
+  (void)(_ws);
+  sock_write(fd, multi->buffer, multi->length);
+}
+
+void websocket_write_each(ws_s *ws_originator, void *data, size_t len,
+                          uint8_t is_text, uint8_t as_client,
+                          uint8_t (*if_callback)(ws_s *ws_to, void *arg),
+                          void *arg) {
+  struct websocket_multi_write *multi =
+      mempool_malloc(len + 14 /* max head size */ + sizeof(*multi));
+  multi->length =
+      websocket_encode(multi->buffer, data, len, is_text, 1, 1, as_client);
+  multi->if_callback = if_callback;
+  multi->arg = arg;
+  server_each((ws_originator ? ws_originator->fd : -1), WEBSOCKET_ID_STR,
+              (if_callback ? ws_check_multi_write : ws_direct_multi_write),
+              multi, ws_finish_multi_write);
 }
