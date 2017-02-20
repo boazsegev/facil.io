@@ -204,7 +204,7 @@ static UNUSED_FUNC void *mempool_malloc(size_t size) {
   if (!size)
     return NULL;
   if (size & 15) {
-    size = (size & (~16)) + 16;
+    size = (size & (~15)) + 16;
   }
 
   size += sizeof(struct mempool_reserved_slice_s_offset);
@@ -213,8 +213,9 @@ static UNUSED_FUNC void *mempool_malloc(size_t size) {
 
   if (size > (MEMPOOL_BLOCK_SIZE - (sizeof(mempool_reserved_slice_s) << 1)))
     goto alloc_indi;
-  slice = mempool_reserved_pool.available;
+
   MEMPOOL_LOCK();
+  slice = mempool_reserved_pool.available;
   while (slice && slice->offset.ahead < size)
     slice = slice->next;
   if (slice) {
@@ -249,6 +250,9 @@ static UNUSED_FUNC void *mempool_malloc(size_t size) {
   }
 
   if (slice->offset.ahead > (size + sizeof(mempool_reserved_slice_s))) {
+    if (slice->offset.ahead & MEMPOOL_USED_MARKER) {
+      fprintf(stderr, "mempool ERROR: allocating an allocated slice!\n");
+    }
     /* cut the slice in two */
     mempool_reserved_slice_s *tmp =
         (mempool_reserved_slice_s *)(((uintptr_t)slice) + size);
@@ -432,9 +436,9 @@ static UNUSED_FUNC void *mempool_realloc(void *ptr, size_t size) {
   if ((slice->offset.ahead & MEMPOOL_USED_MARKER) != MEMPOOL_USED_MARKER)
     goto error;
 
-  slice->offset.ahead &= MEMPOOL_SIZE_MASK;
-
   MEMPOOL_LOCK();
+
+  slice->offset.ahead &= MEMPOOL_SIZE_MASK;
   /* merge slice with upper boundry */
   while ((tmp = (mempool_reserved_slice_s *)(((uintptr_t)slice) +
                                              slice->offset.ahead))
