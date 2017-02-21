@@ -748,7 +748,9 @@ sock_packet_s *sock_checkout_packet(void) {
     if (packet) {
       buffer_pool.pool = packet->metadata.next;
       spn_unlock(&buffer_pool.lock);
-      *packet = (sock_packet_s){.buffer = packet + 1, .metadata.next = NULL};
+      *packet = (sock_packet_s){
+          .buffer = packet + 1, .metadata.next = NULL, .metadata.dealloc = free,
+      };
       return packet;
     }
     spn_unlock(&buffer_pool.lock);
@@ -793,7 +795,7 @@ void sock_free_packet(sock_packet_s *packet) {
       if (next->metadata.keep_open == 0)
         close((int)((ssize_t)next->buffer));
     } else if (next->metadata.external)
-      (next->metadata.dealloc ? next->metadata.dealloc : free)(next->buffer);
+      next->metadata.dealloc(next->buffer);
     if (next->metadata.next == NULL)
       break; /* next will hold the last packet in the chain. */
     next = next->metadata.next;
