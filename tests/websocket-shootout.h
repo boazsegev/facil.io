@@ -56,7 +56,6 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   (void)(size);
   if (data[0] == 'b') {
     if (SHOOTOUT_USE_DIRECT_WRITE) {
-      fprintf(stderr, "Direct\n");
       websocket_write_each(NULL, data, size, 0, 0, NULL, NULL);
     } else {
       struct {

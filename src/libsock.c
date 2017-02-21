@@ -195,7 +195,7 @@ static size_t fd_capacity = 0;
 #define uuid2info(uuid) fd_info[sock_uuid2fd(uuid)]
 #define is_valid(uuid)                                                         \
   (fd_info[sock_uuid2fd(uuid)].fduuid.data.counter ==                          \
-       ((fduuid_u)(uuid)).data.counter &&                                      \
+       ((fduuid_u *)(&uuid))->data.counter &&                                  \
    uuid2info(uuid).open)
 
 static struct {
@@ -254,8 +254,9 @@ static void destroy_lib_data(void) {
 #if USE_MALLOC == 1
     free(fd_info);
 #else
-    munmap(fd_info, (BUFFER_PACKET_REAL_SIZE * BUFFER_PACKET_POOL) +
-                        (sizeof(fd_info_s) * fd_capacity));
+    munmap(fd_info,
+           (BUFFER_PACKET_REAL_SIZE * BUFFER_PACKET_POOL) +
+               (sizeof(fd_info_s) * fd_capacity));
 #endif
   }
   fd_info = NULL;
@@ -300,7 +301,7 @@ static void sock_lib_init(void) {
     spn_unlock(&fd_info[i].lock);
   }
   /* initialize pool */
-  buffer_pool.allocated = buff_mem + fd_map_mem_size;
+  buffer_pool.allocated = (void *)((uintptr_t)buff_mem + fd_map_mem_size);
   buffer_pool.pool = buffer_pool.allocated;
   sock_packet_s *pos = buffer_pool.pool;
   for (size_t i = 0; i < BUFFER_PACKET_POOL - 1; i++) {
@@ -436,10 +437,11 @@ static inline int sock_flush_fd(int fd) {
   // send the data
   if (fd_info[fd].rw_hooks && fd_info[fd].rw_hooks->write)
     sent = fd_info[fd].rw_hooks->write(
-        fd_info[fd].fduuid.uuid, (((void *)(packet + 1)) + fd_info[fd].sent),
+        fd_info[fd].fduuid.uuid,
+        (void *)(((uintptr_t)(packet + 1)) + fd_info[fd].sent),
         i_exp - fd_info[fd].sent);
   else
-    sent = write(fd, (((void *)(packet + 1)) + fd_info[fd].sent),
+    sent = write(fd, (void *)(((uintptr_t)(packet + 1)) + fd_info[fd].sent),
                  i_exp - fd_info[fd].sent);
   // review result and update packet data
   if (sent < 0) {
@@ -463,11 +465,13 @@ static inline int sock_flush_data(int fd) {
   ssize_t sent;
   if (fd_info[fd].rw_hooks && fd_info[fd].rw_hooks->write)
     sent = fd_info[fd].rw_hooks->write(
-        fd_info[fd].fduuid.uuid, fd_info[fd].packet->buffer + fd_info[fd].sent,
+        fd_info[fd].fduuid.uuid,
+        (void *)((uintptr_t)fd_info[fd].packet->buffer + fd_info[fd].sent),
         fd_info[fd].packet->length - fd_info[fd].sent);
   else
-    sent = write(fd, fd_info[fd].packet->buffer + fd_info[fd].sent,
-                 fd_info[fd].packet->length - fd_info[fd].sent);
+    sent = write(
+        fd, (void *)((uintptr_t)fd_info[fd].packet->buffer + fd_info[fd].sent),
+        fd_info[fd].packet->length - fd_info[fd].sent);
   if (sent < 0) {
     if (ERR_OK)
       return -1;
@@ -502,7 +506,7 @@ static void sock_flush_unsafe(int fd) {
 #if SOCK_DELAY_WRITE == 1
 
 static inline void sock_flush_schd(intptr_t uuid) {
-  if (async_run((void *)sock_flush, (void *)uuid) == -1)
+  if (async_run((void (*)(void *))sock_flush, (void *)uuid) == -1)
     goto fallback;
   return;
 fallback:
@@ -789,7 +793,7 @@ void sock_free_packet(sock_packet_s *packet) {
       if (next->metadata.keep_open == 0)
         close((int)((ssize_t)next->buffer));
     } else if (next->metadata.external)
-      free(next->buffer);
+      (next->metadata.dealloc ? next->metadata.dealloc : free)(next->buffer);
     if (next->metadata.next == NULL)
       break; /* next will hold the last packet in the chain. */
     next = next->metadata.next;
@@ -920,7 +924,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
           memcpy(packet->buffer, options.buffer, to_cpy);
           packet->length = to_cpy;
           options.length -= to_cpy;
-          options.buffer += to_cpy;
+          options.buffer = (void *)((uintptr_t)options.buffer + to_cpy);
           sock_send_packet_unsafe(sock_uuid2fd(options.fduuid), packet);
           if (!is_valid(options.fduuid) || uuid2info(options.fduuid).err == 1 ||
               options.length == 0)

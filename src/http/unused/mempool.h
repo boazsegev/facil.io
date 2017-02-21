@@ -230,7 +230,7 @@ static UNUSED_FUNC void *mempool_malloc(size_t size) {
     slice->prev = NULL;
   } else {
     MEMPOOL_ALLOC_SPECIAL(slice, MEMPOOL_BLOCK_SIZE);
-    // fprintf(stderr, "Allocated Block at %p\n", slice);
+    // fprintf(stderr, "Allocated Block at %p\n", (void *)slice);
     slice->offset.behind = 0;
     slice->offset.ahead =
         MEMPOOL_BLOCK_SIZE - (sizeof(struct mempool_reserved_slice_s_offset));
@@ -248,11 +248,11 @@ static UNUSED_FUNC void *mempool_malloc(size_t size) {
     fprintf(stderr, "mempool: no memory\n");
     return NULL;
   }
+  if (slice->offset.ahead & MEMPOOL_USED_MARKER) {
+    fprintf(stderr, "mempool ERROR: allocating an allocated slice!\n");
+  }
 
   if (slice->offset.ahead > (size + sizeof(mempool_reserved_slice_s))) {
-    if (slice->offset.ahead & MEMPOOL_USED_MARKER) {
-      fprintf(stderr, "mempool ERROR: allocating an allocated slice!\n");
-    }
     /* cut the slice in two */
     mempool_reserved_slice_s *tmp =
         (mempool_reserved_slice_s *)(((uintptr_t)slice) + size);
@@ -279,12 +279,16 @@ static UNUSED_FUNC void *mempool_malloc(size_t size) {
     } else {
       *pos = tmp;
     }
+    if (tmp->prev)
+      tmp->prev->next = tmp;
+    else
+      mempool_reserved_pool.available = tmp;
   }
 
   slice->offset.ahead |= MEMPOOL_USED_MARKER;
-  MEMPOOL_UNLOCK();
   slice->next = NULL;
   slice->prev = NULL;
+  MEMPOOL_UNLOCK();
   // mempool_reserved_slice_s *tmp =
   //     (void *)((uintptr_t)slice + (slice->offset.ahead &
   //     MEMPOOL_SIZE_MASK));
@@ -364,17 +368,23 @@ static UNUSED_FUNC void mempool_free(void *ptr) {
       ((mempool_reserved_slice_s *)(((uintptr_t)slice) + slice->offset.ahead))
               ->offset.ahead == 0) {
     MEMPOOL_UNLOCK();
-    // fprintf(
-    //     stderr, "DEALLOCATED BLOCK %p, size review %u == %lu %s\n", slice,
-    //     slice->offset.ahead,
-    //     MEMPOOL_BLOCK_SIZE - sizeof(struct mempool_reserved_slice_s_offset),
-    //     (slice->offset.ahead ==
-    //      MEMPOOL_BLOCK_SIZE - sizeof(struct mempool_reserved_slice_s_offset))
-    //         ? "passed."
-    //         : "FAILED.");
+    /* fprintf(
+        stderr, "DEALLOCATED BLOCK %p, size review %u == %lu %s\n",
+        (void *)slice, slice->offset.ahead,
+        MEMPOOL_BLOCK_SIZE - sizeof(struct mempool_reserved_slice_s_offset),
+        (slice->offset.ahead ==
+         MEMPOOL_BLOCK_SIZE - sizeof(struct mempool_reserved_slice_s_offset))
+            ? "passed."
+            : "FAILED."); */
     MEMPOOL_DEALLOC_SPECIAL(slice, MEMPOOL_BLOCK_SIZE);
     return;
   }
+
+  // if (slice->offset.behind == 0 &&
+  //     ((mempool_reserved_slice_s *)(((uintptr_t)slice) +
+  //     slice->offset.ahead))
+  //             ->offset.ahead == 0)
+  //   fprintf(stderr, "All memory in pool is free\n");
 
   /* inform higher neighbor about any updates */
   // fprintf(stderr, "slice: %p -> %u\n", slice, slice->offset.ahead);
@@ -398,6 +408,10 @@ static UNUSED_FUNC void mempool_free(void *ptr) {
   } else {
     *pos = slice;
   }
+  if (slice->prev)
+    slice->prev->next = slice;
+  else
+    mempool_reserved_pool.available = slice;
 
   MEMPOOL_UNLOCK();
   return;
@@ -405,12 +419,12 @@ alloc_indi:
   MEMPOOL_DEALLOC_SPECIAL(slice, slice->offset.ahead);
   return;
 error:
-  MEMPOOL_UNLOCK();
   if ((slice->offset.ahead & MEMPOOL_USED_MARKER) == 0)
     fprintf(stderr, "mempool: memory being freed is already free.\n");
   else
     fprintf(stderr, "mempool: memory allocation data corrupted. possible "
                     "buffer overflow?\n");
+  MEMPOOL_UNLOCK();
   errno = EFAULT;
   raise(SIGSEGV); /* support longjmp rescue */
   exit(EFAULT);
@@ -487,6 +501,10 @@ static UNUSED_FUNC void *mempool_realloc(void *ptr, size_t size) {
     } else {
       *pos = tmp;
     }
+    if (tmp->prev)
+      tmp->prev->next = tmp;
+    else
+      mempool_reserved_pool.available = tmp;
 
     slice->offset.ahead |= MEMPOOL_USED_MARKER;
     MEMPOOL_UNLOCK();
@@ -536,6 +554,7 @@ TESTING
 
 #include <time.h>
 #include <inttypes.h>
+#include <pthread.h>
 static void mempool_stats(void) {
   fprintf(stderr, "* Pool object: %lu bytes\n"
                   "* Alignment: %lu \n"
@@ -724,10 +743,48 @@ static void mempool_speedtest(size_t memtest_repeats, void *(*mlk)(size_t),
           msec_for_test / 1000000);
 }
 
+static UNUSED_FUNC void *mempool_concurrency_test(void *arg) {
+  void **pt_list = mempool_malloc(sizeof(void *) * 1024);
+  for (size_t i = 0; i < 16384; i++) {
+    fprintf(stderr, "alloc rep %lu\n", i);
+    pt_list[i] = mempool_malloc((uintptr_t)arg);
+  }
+  for (size_t i = 0; i < 16384; i++) {
+    fprintf(stderr, "free rep %lu\n", i);
+    mempool_free(pt_list[i]);
+  }
+  mempool_free(pt_list);
+  return NULL;
+}
+
 static UNUSED_FUNC void mempool_test(void) {
   fprintf(stderr, "*****************************\n");
   fprintf(stderr, "mempool implementation details:\n");
   mempool_stats();
+  fprintf(stderr, "*****************************\n");
+  fprintf(stderr, "Concurrency memory test\n");
+  {
+    pthread_t threads[8];
+    clock_t start, end;
+    start = clock();
+    for (size_t i = 0; i < 8; i++) {
+      mempool_concurrency_test((void *)((16 * i) + MEMTEST_SLICE));
+      fprintf(stderr, "Allocation cycle %lu - done.\n", i + 1);
+    }
+    end = clock();
+    fprintf(stderr, "Non-concurrent allocation finished in %lu CPU cycles\n",
+            end - start);
+    for (size_t i = 0; i < 8; i++) {
+      pthread_create(threads + i, NULL, mempool_concurrency_test,
+                     (void *)((16 * i) + MEMTEST_SLICE));
+    }
+    for (size_t i = 0; i < 8; i++) {
+      pthread_join(threads[i], NULL);
+    }
+    end = clock();
+    fprintf(stderr, "Concurrent allocation finished in %lu CPU cycles\n",
+            end - start);
+  }
   fprintf(stderr, "*****************************\n");
   fprintf(stderr, "System memory test for ~2Mb\n");
   mempool_speedtest((2 << 20) / MEMTEST_SLICE, malloc, free, realloc);

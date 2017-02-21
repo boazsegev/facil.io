@@ -7,7 +7,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "websockets.h"
 #include "bscrypt.h"
 #include "libserver.h"
-#include "mempool.h"
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,13 +56,13 @@ struct buffer_s create_ws_buffer(ws_s *owner) {
   (void)(owner);
   struct buffer_s buff;
   buff.size = round_up_buffer_size(WS_INITIAL_BUFFER_SIZE);
-  buff.data = mempool_malloc(buff.size);
+  buff.data = malloc(buff.size);
   return buff;
 }
 
 struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s buff) {
   buff.size = round_up_buffer_size(buff.size);
-  void *tmp = mempool_realloc(buff.data, buff.size);
+  void *tmp = realloc(buff.data, buff.size);
   if (!tmp) {
     free_ws_buffer(owner, buff);
     buff.size = 0;
@@ -74,7 +73,7 @@ struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s buff) {
 void free_ws_buffer(ws_s *owner, struct buffer_s buff) {
   (void)(owner);
   if (buff.data)
-    mempool_free(buff.data);
+    free(buff.data);
 }
 
 #undef round_up_buffer_size
@@ -425,7 +424,7 @@ Create/Destroy the websocket object
 
 static ws_s *new_websocket() {
   // allocate the protocol object
-  ws_s *ws = mempool_malloc(sizeof(*ws));
+  ws_s *ws = malloc(sizeof(*ws));
   memset(ws, 0, sizeof(*ws));
 
   // setup the protocol & protocol callbacks
@@ -442,7 +441,7 @@ static void destroy_ws(ws_s *ws) {
   if (ws->on_close)
     ws->on_close(ws);
   free_ws_buffer(ws, ws->buffer);
-  mempool_free(ws);
+  free(ws);
 }
 
 /*******************************************************************************
@@ -807,25 +806,54 @@ Multi-Write (direct broadcast) Implementation
 struct websocket_multi_write {
   uint8_t (*if_callback)(ws_s *ws_to, void *arg);
   void *arg;
+  spn_lock_i lock;
+  size_t count;
   size_t length;
   uint8_t buffer[];
 };
 
+static void ws_reduce_or_free_multi_write(void *buff) {
+  struct websocket_multi_write *mw =
+      (void *)((uintptr_t)buff - sizeof(struct websocket_multi_write));
+  spn_lock(&mw->lock);
+  mw->count -= 1;
+  spn_unlock(&mw->lock);
+  if (!mw->count) {
+    free(mw);
+  }
+}
+
 static void ws_finish_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
+  struct websocket_multi_write *multi = arg;
   (void)(fd);
   (void)(_ws);
-  mempool_free(arg);
-}
-static void ws_check_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
-  struct websocket_multi_write *multi = arg;
-  if (multi->if_callback((void *)_ws, multi->arg))
-    sock_write(fd, multi->buffer, multi->length);
+  ws_reduce_or_free_multi_write(multi->buffer);
 }
 
 static void ws_direct_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
   struct websocket_multi_write *multi = arg;
   (void)(_ws);
-  sock_write(fd, multi->buffer, multi->length);
+
+  sock_packet_s *packet = sock_checkout_packet();
+  *packet = (sock_packet_s){
+      .buffer = multi->buffer,
+      .length = multi->length,
+      .metadata.can_interrupt = 1,
+      .metadata.dealloc = ws_reduce_or_free_multi_write,
+      .metadata.external = 1,
+  };
+
+  spn_lock(&multi->lock);
+  multi->count += 1;
+  spn_unlock(&multi->lock);
+
+  sock_send_packet(fd, packet);
+}
+
+static void ws_check_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
+  struct websocket_multi_write *multi = arg;
+  if (multi->if_callback((void *)_ws, multi->arg))
+    ws_direct_multi_write(fd, _ws, arg);
 }
 
 void websocket_write_each(ws_s *ws_originator, void *data, size_t len,
@@ -833,11 +861,13 @@ void websocket_write_each(ws_s *ws_originator, void *data, size_t len,
                           uint8_t (*if_callback)(ws_s *ws_to, void *arg),
                           void *arg) {
   struct websocket_multi_write *multi =
-      mempool_malloc(len + 14 /* max head size */ + sizeof(*multi));
+      malloc(len + 14 /* max head size */ + sizeof(*multi));
   multi->length =
       websocket_encode(multi->buffer, data, len, is_text, 1, 1, as_client);
   multi->if_callback = if_callback;
   multi->arg = arg;
+  multi->lock = SPN_LOCK_INIT;
+  multi->count = 1;
   server_each((ws_originator ? ws_originator->fd : -1), WEBSOCKET_ID_STR,
               (if_callback ? ws_check_multi_write : ws_direct_multi_write),
               multi, ws_finish_multi_write);

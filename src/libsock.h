@@ -69,7 +69,7 @@ typedef union {
 } fduuid_u;
 
 #define FDUUID_FAIL(uuid) (uuid == -1)
-#define sock_uuid2fd(uuid) ((fduuid_u)(uuid)).data.fd
+#define sock_uuid2fd(uuid) ((fduuid_u *)(&uuid))->data.fd
 #endif
 
 /* *****************************************************************************
@@ -362,6 +362,14 @@ typedef struct sock_packet_s {
     /** Starting point offset, when the buffer is a file (see
      * `sock_packet_s.metadata.is_fd`). */
     off_t offset;
+    /** This deallocation callback will be called when the packet is finished
+     * with the buffer.
+     * The deallocation callback will only be called for buffers marked as
+     * `external`.
+     * If no deallocation callback is specified,`free` will be called as a
+     * default deallocation method.
+     */
+    void (*dealloc)(void *buffer);
     /** sets whether a packet can be inserted before this packet without
      * interrupting the communication flow. */
     unsigned can_interrupt : 1;
