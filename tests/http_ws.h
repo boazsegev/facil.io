@@ -105,7 +105,8 @@ static void on_request(http_request_s *request) {
   // other upgrade requests will have the following properties:
   if (request->upgrade) {
     websocket_upgrade(.request = request, .on_message = ws_echo,
-                      .on_open = ws_open, .on_close = ws_close, .timeout = 4,
+                      .max_msg_size = 2097152, .on_open = ws_open,
+                      .on_close = ws_close, .timeout = 10,
                       .on_shutdown = ws_shutdown, .response = &response);
     return;
   }
