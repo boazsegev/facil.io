@@ -136,9 +136,11 @@ If an `if_callback` is provided, the data will be written to the connection only
 if the `if_callback` returns TRUE (a non zero value).
 
 The `as_client` is a boolean value indicating if the data should be masked (sent
-to a server, in client mode) or not. If some data should be sent in client mode
-and other in server mode, consider using the `if_callback` to make sure the data
-is encoded properly.
+to a server, in client mode) or not. The data will only be sent to the
+connections matching the required state (i.e., if `as_client == 1`, the data
+will only be sent to connections where this process behaves as a websocket
+client). If some data should be sent in client mode and other in server mode,
+than the function must be called twice.
  */
 void websocket_write_each(ws_s *ws_originator, void *data, size_t len,
                           uint8_t is_text, uint8_t as_client,

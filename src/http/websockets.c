@@ -821,6 +821,7 @@ struct websocket_multi_write {
   spn_lock_i lock;
   size_t count;
   size_t length;
+  uint8_t as_client;
   uint8_t buffer[];
 };
 
@@ -844,7 +845,8 @@ static void ws_finish_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
 
 static void ws_direct_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
   struct websocket_multi_write *multi = arg;
-  (void)(_ws);
+  if (((ws_s *)(_ws))->parser.client != multi->as_client)
+    return;
 
   sock_packet_s *packet = sock_checkout_packet();
   *packet = (sock_packet_s){
@@ -864,6 +866,8 @@ static void ws_direct_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
 
 static void ws_check_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
   struct websocket_multi_write *multi = arg;
+  if (((ws_s *)(_ws))->parser.client != multi->as_client)
+    return;
   if (multi->if_callback((void *)_ws, multi->arg))
     ws_direct_multi_write(fd, _ws, arg);
 }
@@ -880,6 +884,7 @@ void websocket_write_each(ws_s *ws_originator, void *data, size_t len,
   multi->arg = arg;
   multi->lock = SPN_LOCK_INIT;
   multi->count = 1;
+  multi->as_client = as_client;
   server_each((ws_originator ? ws_originator->fd : -1), WEBSOCKET_ID_STR,
               (if_callback ? ws_check_multi_write : ws_direct_multi_write),
               multi, ws_finish_multi_write);
