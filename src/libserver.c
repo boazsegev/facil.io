@@ -647,8 +647,9 @@ Sets a connection's timeout.
 Returns -1 on error (i.e. connection closed), otherwise returns 0.
 */
 void server_set_timeout(intptr_t fd, uint8_t timeout) {
-  if (valid_uuid(fd) == 0)
+  if (valid_uuid(fd) == 0) {
     return;
+  }
   lock_uuid(fd);
   uuid_data(fd).active = server_data.last_tick;
   uuid_data(fd).timeout = timeout;

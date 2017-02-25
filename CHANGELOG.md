@@ -280,6 +280,10 @@ Jun 7, 2016: Baseline (changes not logged before this point in time).
 
 ## Websocket extension
 
+* Resolved issue #6, Credit to @Filly for exposing the issue.
+
+* Memory pool removed. Might be reinstated after patching it up, but when more tests were added, the memory pool failed them.
+
 * Jan 12, 2017: Memory Performance.
 
      The Websocket connection Protocol now utilizes both a C level memory pool and a local thread storage for temporary data. This helps mitigate possible memory fragmentation issues related to long running processes and long-lived objects.
