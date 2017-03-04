@@ -759,11 +759,11 @@ static inline srv_task_s *task_alloc(void) {
 }
 
 /* allows for later implementation of a task pool with minimal code updates. */
-static inline void task_free(srv_task_s *task) { return free(task); }
+static inline void task_free(srv_task_s *task) { free(task); }
 
 /* performs a single connection task. */
 static void perform_single_task(void *task) {
-  if (sock_isvalid(p2task(task).target) == 0) {
+  if (p2task(task).target < 0 || sock_isvalid(p2task(task).target) == 0) {
     if (p2task(task).on_finish) // an invalid connection fallback
       task2fallback(task)(p2task(task).origin, p2task(task).arg);
     task_free(task);
@@ -872,7 +872,7 @@ void server_each(intptr_t origin_fd, const char *service,
   *t = (srv_task_s){.service = service,
                     .origin = origin_fd,
                     .task = task,
-                    .on_finish = on_finish,
+                    .on_finish = (void *)on_finish,
                     .arg = arg};
   if (async_run(perform_each_task, t))
     goto error;
@@ -896,8 +896,10 @@ void server_task(intptr_t caller_fd,
   t = task_alloc();
   if (t == NULL)
     goto error;
-  *t = (srv_task_s){
-      .target = caller_fd, .task = task, .on_finish = fallback, .arg = arg};
+  *t = (srv_task_s){.target = caller_fd,
+                    .task = task,
+                    .on_finish = (void *)fallback,
+                    .arg = arg};
   if (async_run(perform_single_task, t))
     goto error;
   return;
