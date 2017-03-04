@@ -65,7 +65,7 @@ typedef union {
 } fduuid_u;
 
 #define FDUUID_FAIL(uuid) (uuid == -1)
-#define sock_uuid2fd(uuid) ((fduuid_u)(uuid)).data.fd
+#define sock_uuid2fd(uuid) ((fduuid_u *)(&uuid))->data.fd
 #endif
 
 /*****************************/ /** \file
