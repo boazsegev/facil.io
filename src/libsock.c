@@ -194,7 +194,8 @@ static size_t fd_capacity = 0;
 
 #define uuid2info(uuid) fd_info[sock_uuid2fd(uuid)]
 #define is_valid(uuid)                                                         \
-  (fd_info[sock_uuid2fd(uuid)].fduuid.data.counter ==                          \
+  (sock_uuid2fd(uuid) >= 0 && sock_uuid2fd(uuid) <= (int)fd_capacity &&        \
+   fd_info[sock_uuid2fd(uuid)].fduuid.data.counter ==                          \
        ((fduuid_u *)(&uuid))->data.counter &&                                  \
    uuid2info(uuid).open)
 
