@@ -826,16 +826,16 @@ struct websocket_multi_write {
   /* ... we need to have padding for pointer arithmatics... */
   size_t count;
   size_t length;
-  uint8_t buffer[];
+  uint8_t buffer[]; /* starts on border alignment */
 };
 
-static void ws_defered_on_finish_fb(intptr_t fd, void *arg) {
+static void ws_mw_defered_on_finish_fb(intptr_t fd, void *arg) {
   (void)(fd);
   struct websocket_multi_write *fin = arg;
   fin->on_finished(NULL, fin->arg);
   free(fin);
 }
-static void ws_defered_on_finish(intptr_t fd, protocol_s *ws, void *arg) {
+static void ws_mw_defered_on_finish(intptr_t fd, protocol_s *ws, void *arg) {
   (void)(fd);
   struct websocket_multi_write *fin = arg;
   fin->on_finished((ws->service == WEBSOCKET_ID_STR ? (ws_s *)ws : NULL),
@@ -850,8 +850,8 @@ static void ws_reduce_or_free_multi_write(void *buff) {
   spn_unlock(&mw->lock);
   if (!mw->count) {
     if (mw->on_finished) {
-      server_task(mw->origin, ws_defered_on_finish, mw,
-                  ws_defered_on_finish_fb);
+      server_task(mw->origin, ws_mw_defered_on_finish, mw,
+                  ws_mw_defered_on_finish_fb);
     } else
       free(mw);
   }
