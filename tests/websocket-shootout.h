@@ -19,6 +19,12 @@ ab -n 1000000 -c 2000 -k http://127.0.0.1:3000/
 
 wrk -c400 -d5 -t12 http://localhost:3000/
 
+I also run it for a while using the following Ruby script:
+
+sleep 10 while `websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
+--sample-size 100 --server-type binary --step-size 1000 --limit-percentile 95 \
+--limit-rtt 250ms --initial-clients 1000`.tap {|s| puts s; puts "zzz..."}
+
 */
 #define WEBSOCKET_SHOOTOUT_H
 
@@ -49,7 +55,7 @@ static void broadcast_shootout_msg_bin(ws_s *ws, void *msg) {
   } *buff = msg;
   websocket_write(ws, buff->data, buff->len, 0);
 }
-/*
+
 static uint8_t ws_so_filter_callback(ws_s *ws, void *arg) {
   (void)(arg);
   if (!ws)
@@ -58,9 +64,9 @@ static uint8_t ws_so_filter_callback(ws_s *ws, void *arg) {
 }
 static void ws_so_finished_callback(ws_s *ws, void *arg) {
   (void)(arg);
-  fprintf(stderr, "Finished a broadcast\n");
+  (void)(ws);
+  fwrite(".", 1, 1, stderr);
 }
- */
 
 static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   (void)(ws);
@@ -68,11 +74,9 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   (void)(size);
   if (data[0] == 'b') {
     if (SHOOTOUT_USE_DIRECT_WRITE) {
-      websocket_write_each(.data = data, .length = size
-                           /* ,
-                          .on_finished = ws_so_finished_callback,
-                          .filter = ws_so_filter_callback */
-                           );
+      websocket_write_each(.data = data, .length = size, .is_text = is_text,
+                           .on_finished = ws_so_finished_callback,
+                           .filter = ws_so_filter_callback);
     } else {
       struct {
         size_t len;
@@ -90,7 +94,7 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
     websocket_write(ws, data, size, 0);
   } else if (data[9] == 'b') {
     if (SHOOTOUT_USE_DIRECT_WRITE) {
-      websocket_write_each(.data = data, .length = size);
+      websocket_write_each(.data = data, .length = size, .is_text = is_text);
     } else {
       struct {
         size_t len;
