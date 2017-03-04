@@ -49,6 +49,18 @@ static void broadcast_shootout_msg_bin(ws_s *ws, void *msg) {
   } *buff = msg;
   websocket_write(ws, buff->data, buff->len, 0);
 }
+/*
+static uint8_t ws_so_filter_callback(ws_s *ws, void *arg) {
+  (void)(arg);
+  if (!ws)
+    perror("WTF?! No Websocket during callback!"), exit(1);
+  return 1;
+}
+static void ws_so_finished_callback(ws_s *ws, void *arg) {
+  (void)(arg);
+  fprintf(stderr, "Finished a broadcast\n");
+}
+ */
 
 static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   (void)(ws);
@@ -56,7 +68,11 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
   (void)(size);
   if (data[0] == 'b') {
     if (SHOOTOUT_USE_DIRECT_WRITE) {
-      websocket_write_each(NULL, data, size, 0, 0, NULL, NULL);
+      websocket_write_each(.data = data, .length = size
+                           /* ,
+                          .on_finished = ws_so_finished_callback,
+                          .filter = ws_so_filter_callback */
+                           );
     } else {
       struct {
         size_t len;
@@ -74,7 +90,7 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
     websocket_write(ws, data, size, 0);
   } else if (data[9] == 'b') {
     if (SHOOTOUT_USE_DIRECT_WRITE) {
-      websocket_write_each(NULL, data, size, 0, 0, NULL, NULL);
+      websocket_write_each(.data = data, .length = size);
     } else {
       struct {
         size_t len;

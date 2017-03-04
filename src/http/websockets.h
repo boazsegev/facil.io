@@ -128,24 +128,44 @@ Performs a task on each websocket connection that shares the same process
 void websocket_each(ws_s *ws_originator,
                     void (*task)(ws_s *ws_target, void *arg), void *arg,
                     void (*on_finish)(ws_s *ws_originator, void *arg));
+
+/**
+The Arguments passed to the `websocket_write_each` function / macro are defined
+here, for convinience of calling the function.
+*/
+struct websocket_write_each_args_s {
+  /** The originating websocket client will be excluded from the `write`.
+    * Can be NULL. */
+  ws_s *origin;
+  /** The data to be written to the websocket - required(!) */
+  void *data;
+  /** The length of the data to be written to the websocket - required(!) */
+  size_t length;
+  /** Text mode vs. binary mode. Defaults to binary mode. */
+  uint8_t is_text;
+  /** Set to 1 to send the data to websockets where this application is the
+   * client. Defaults to 0 (the data is sent to all clients where this
+   * application is the server). */
+  uint8_t as_client;
+  /** A filter callback, allowing us to exclude some clients.
+   * Should return 1 to send data and 0 to exclude. */
+  uint8_t (*filter)(ws_s *ws_to, void *arg);
+  /** A callback called once all the data was sent. */
+  void (*on_finished)(ws_s *ws_to, void *arg);
+  /** A user specified argumernt passed to each of the callbacks. */
+  void *arg;
+};
 /**
 Writes data to each websocket connection that shares the same process
 (except the originating `ws_s` connection which is allowed to be NULL).
 
-If an `if_callback` is provided, the data will be written to the connection only
-if the `if_callback` returns TRUE (a non zero value).
-
-The `as_client` is a boolean value indicating if the data should be masked (sent
-to a server, in client mode) or not. The data will only be sent to the
-connections matching the required state (i.e., if `as_client == 1`, the data
-will only be sent to connections where this process behaves as a websocket
-client). If some data should be sent in client mode and other in server mode,
-than the function must be called twice.
+Accepts a sing `struct websocket_write_each_args_s` argument. See the struct
+details for possible arguments.
  */
-void websocket_write_each(ws_s *ws_originator, void *data, size_t len,
-                          uint8_t is_text, uint8_t as_client,
-                          uint8_t (*if_callback)(ws_s *ws_to, void *arg),
-                          void *arg); /**
+void websocket_write_each(struct websocket_write_each_args_s args);
+#define websocket_write_each(...)                                              \
+  websocket_write_each((struct websocket_write_each_args_s){__VA_ARGS__})
+/**
 Counts the number of websocket connections.
 */
 size_t websocket_count(ws_s *ws);

@@ -817,22 +817,43 @@ Multi-Write (direct broadcast) Implementation
 */
 struct websocket_multi_write {
   uint8_t (*if_callback)(ws_s *ws_to, void *arg);
+  void (*on_finished)(ws_s *ws_origin, void *arg);
+  intptr_t origin;
   void *arg;
   spn_lock_i lock;
+  /* ... we need to have padding for pointer arithmatics... */
+  uint8_t as_client;
+  /* ... we need to have padding for pointer arithmatics... */
   size_t count;
   size_t length;
-  uint8_t as_client;
   uint8_t buffer[];
 };
 
+static void ws_defered_on_finish_fb(intptr_t fd, void *arg) {
+  (void)(fd);
+  struct websocket_multi_write *fin = arg;
+  fin->on_finished(NULL, fin->arg);
+  free(fin);
+}
+static void ws_defered_on_finish(intptr_t fd, protocol_s *ws, void *arg) {
+  (void)(fd);
+  struct websocket_multi_write *fin = arg;
+  fin->on_finished((ws->service == WEBSOCKET_ID_STR ? (ws_s *)ws : NULL),
+                   fin->arg);
+  free(fin);
+}
+
 static void ws_reduce_or_free_multi_write(void *buff) {
-  struct websocket_multi_write *mw =
-      (void *)((uintptr_t)buff - sizeof(struct websocket_multi_write));
+  struct websocket_multi_write *mw = (void *)((uintptr_t)buff - sizeof(*mw));
   spn_lock(&mw->lock);
   mw->count -= 1;
   spn_unlock(&mw->lock);
   if (!mw->count) {
-    free(mw);
+    if (mw->on_finished) {
+      server_task(mw->origin, ws_defered_on_finish, mw,
+                  ws_defered_on_finish_fb);
+    } else
+      free(mw);
   }
 }
 
@@ -872,20 +893,24 @@ static void ws_check_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
     ws_direct_multi_write(fd, _ws, arg);
 }
 
-void websocket_write_each(ws_s *ws_originator, void *data, size_t len,
-                          uint8_t is_text, uint8_t as_client,
-                          uint8_t (*if_callback)(ws_s *ws_to, void *arg),
-                          void *arg) {
+#undef websocket_write_each
+void websocket_write_each(struct websocket_write_each_args_s args) {
+  if (!args.data || !args.length)
+    return;
   struct websocket_multi_write *multi =
-      malloc(len + 14 /* max head size */ + sizeof(*multi));
-  multi->length =
-      websocket_encode(multi->buffer, data, len, is_text, 1, 1, as_client);
-  multi->if_callback = if_callback;
-  multi->arg = arg;
+      malloc(args.length + 14 /* max head size */ + sizeof(*multi));
+  if (!multi)
+    return;
+  multi->length = websocket_encode(multi->buffer, args.data, args.length,
+                                   args.is_text, 1, 1, args.as_client);
+  multi->if_callback = args.filter;
+  multi->on_finished = args.on_finished;
+  multi->arg = args.arg;
+  multi->origin = (args.origin ? args.origin->fd : -1);
+  multi->as_client = args.as_client;
   multi->lock = SPN_LOCK_INIT;
   multi->count = 1;
-  multi->as_client = as_client;
-  server_each((ws_originator ? ws_originator->fd : -1), WEBSOCKET_ID_STR,
-              (if_callback ? ws_check_multi_write : ws_direct_multi_write),
+  server_each(multi->origin, WEBSOCKET_ID_STR,
+              (args.filter ? ws_check_multi_write : ws_direct_multi_write),
               multi, ws_finish_multi_write);
 }
