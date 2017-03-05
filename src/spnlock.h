@@ -62,13 +62,13 @@ typedef atomic_bool spn_lock_i;
 #define SPN_LOCK_INIT ATOMIC_VAR_INIT(0)
 /** returns 1 if the lock was busy (TRUE == FAIL). */
 static inline int spn_trylock(spn_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
+  __sync_synchronize();
   return atomic_exchange(lock, 1);
 }
 /** Releases a lock. */
 static inline void spn_unlock(spn_lock_i *lock) {
   atomic_store(lock, 0);
-  __asm__ volatile("" ::: "memory");
+  __sync_synchronize();
 }
 /** returns a lock's state (non 0 == Busy). */
 static inline int spn_is_locked(spn_lock_i *lock) { return atomic_load(lock); }
@@ -98,6 +98,7 @@ static inline int spn_trylock(spn_lock_i *lock) { return __sync_swap(lock, 1); }
 typedef volatile uint8_t spn_lock_i;
 /** returns 1 if the lock was busy (TRUE == FAIL). */
 static inline int spn_trylock(spn_lock_i *lock) {
+  __sync_synchronize();
   return __sync_fetch_and_or(lock, 1);
 }
 #define SPN_TMP_HAS_BUILTIN 1
@@ -116,6 +117,7 @@ typedef volatile uint8_t spn_lock_i;
 /** returns 1 if the lock was busy (TRUE == FAIL). */
 static inline int spn_trylock(spn_lock_i *lock) {
   spn_lock_i tmp;
+  __asm__ volatile("mfence" ::: "memory");
   __asm__ volatile("xchgb %0,%1" : "=r"(tmp), "=m"(*lock) : "0"(1) : "memory");
   return tmp;
 }
