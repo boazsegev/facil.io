@@ -57,8 +57,7 @@ static void broadcast_shootout_msg_bin(ws_s *ws, void *msg) {
 }
 
 static uint8_t ws_so_filter_callback(ws_s *ws, void *arg) {
-  (void)(arg);
-  if (!ws)
+  if (arg || !ws)
     perror("WTF?! No Websocket during callback!"), exit(1);
   return 1;
 }
