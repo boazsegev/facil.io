@@ -442,7 +442,7 @@ void async_join() {
   }
   perform_tasks();
   async_free();
-};
+}
 
 /**
 Waits for existing tasks to complete and releases the thread
@@ -454,7 +454,7 @@ void async_signal() {
     return;
   async->flags.run = 0;
   wake_all_threads();
-};
+}
 
 /******************************************************************************
 Test
