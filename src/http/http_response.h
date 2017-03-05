@@ -109,7 +109,7 @@ If this isn't set manually, the first call to
 being written (which might be less then the total data sent, if the sending is
 fragmented).
 
-Set the value to -1 to force the HttpResponse not to write nor automate the
+Set the value to -1 to force the HttpResponse not to write the
 `Content-Length` header.
 */
   ssize_t content_length;
