@@ -772,7 +772,7 @@ static void perform_single_task(void *task) {
   if (try_lock_uuid(p2task(task).target) == 0) {
     // get protocol
     protocol_s *protocol = protocol_uuid(p2task(task).target);
-    if (protocol_set_busy(protocol) == 0) {
+    if (protocol && protocol_set_busy(protocol) == 0) {
       // clear the original busy flag
       unlock_uuid(p2task(task).target);
       p2task(task).task(p2task(task).target, protocol, p2task(task).arg);
