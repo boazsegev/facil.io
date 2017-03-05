@@ -162,7 +162,7 @@ Writes data to each websocket connection that shares the same process
 Accepts a sing `struct websocket_write_each_args_s` argument. See the struct
 details for possible arguments.
  */
-void websocket_write_each(struct websocket_write_each_args_s args);
+int websocket_write_each(struct websocket_write_each_args_s args);
 #define websocket_write_each(...)                                              \
   websocket_write_each((struct websocket_write_each_args_s){__VA_ARGS__})
 /**

@@ -520,11 +520,12 @@ static size_t websocket_encode(void *buff, void *data, size_t len, char text,
               .size = len,
               .masked = client};
     memcpy(buff, &head, 2);
-    if (client)
+    if (client) {
       websocket_mask((uint8_t *)buff + 2, data, len);
-    else
+      len += 4;
+    } else
       memcpy((uint8_t *)buff + 2, data, len);
-    return len + 2 + (client ? 4 : 0);
+    return len + 2;
   } else if (len < (1UL << 16)) {
     /* head is 4 bytes */
     struct {
@@ -542,11 +543,12 @@ static size_t websocket_encode(void *buff, void *data, size_t len, char text,
               .masked = client,
               .length = htons(len)};
     memcpy(buff, &head, 4);
-    if (client)
+    if (client) {
       websocket_mask((uint8_t *)buff + 4, data, len);
-    else
+      len += 4;
+    } else
       memcpy((uint8_t *)buff + 4, data, len);
-    return len + 4 + (client ? 4 : 0);
+    return len + 4;
   }
   /* Really Long Message  */
   struct {
@@ -565,11 +567,12 @@ static size_t websocket_encode(void *buff, void *data, size_t len, char text,
   };
   memcpy(buff, &head, 2);
   ((size_t *)((uint8_t *)buff + 2))[0] = bswap64(len);
-  if (client)
+  if (client) {
     websocket_mask((uint8_t *)buff + 10, data, len);
-  else
+    len += 4;
+  } else
     memcpy((uint8_t *)buff + 10, data, len);
-  return len + 10 + (client ? 4 : 0);
+  return len + 10;
 }
 
 static void websocket_write_impl(intptr_t fd, void *data, size_t len,
@@ -847,14 +850,15 @@ static void ws_reduce_or_free_multi_write(void *buff) {
   struct websocket_multi_write *mw = (void *)((uintptr_t)buff - sizeof(*mw));
   spn_lock(&mw->lock);
   mw->count -= 1;
-  spn_unlock(&mw->lock);
   if (!mw->count) {
+    spn_unlock(&mw->lock);
     if (mw->on_finished) {
       server_task(mw->origin, ws_mw_defered_on_finish, mw,
                   ws_mw_defered_on_finish_fb);
     } else
       free(mw);
-  }
+  } else
+    spn_unlock(&mw->lock);
 }
 
 static void ws_finish_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
@@ -894,23 +898,27 @@ static void ws_check_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
 }
 
 #undef websocket_write_each
-void websocket_write_each(struct websocket_write_each_args_s args) {
+int websocket_write_each(struct websocket_write_each_args_s args) {
   if (!args.data || !args.length)
-    return;
+    return -1;
   struct websocket_multi_write *multi =
-      malloc(args.length + 14 /* max head size */ + sizeof(*multi));
+      malloc(sizeof(*multi) + args.length + 16 /* max head size + 2 */);
   if (!multi)
-    return;
-  multi->length = websocket_encode(multi->buffer, args.data, args.length,
-                                   args.is_text, 1, 1, args.as_client);
-  multi->if_callback = args.filter;
-  multi->on_finished = args.on_finished;
-  multi->arg = args.arg;
-  multi->origin = (args.origin ? args.origin->fd : -1);
-  multi->as_client = args.as_client;
-  multi->lock = SPN_LOCK_INIT;
-  multi->count = 1;
+    return -1;
+  *multi = (struct websocket_multi_write){
+      .length = websocket_encode(multi->buffer, args.data, args.length,
+                                 args.is_text, 1, 1, args.as_client),
+      .if_callback = args.filter,
+      .on_finished = args.on_finished,
+      .arg = args.arg,
+      .origin = (args.origin ? args.origin->fd : -1),
+      .as_client = args.as_client,
+      .lock = SPN_LOCK_INIT,
+      .count = 1,
+  };
+
   server_each(multi->origin, WEBSOCKET_ID_STR,
               (args.filter ? ws_check_multi_write : ws_direct_multi_write),
               multi, ws_finish_multi_write);
+  return 0;
 }
