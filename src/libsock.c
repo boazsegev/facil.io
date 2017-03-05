@@ -200,7 +200,7 @@ static size_t fd_capacity = 0;
    uuid2info(uuid).open)
 
 static struct {
-  sock_packet_s *pool;
+  sock_packet_s *volatile pool;
   sock_packet_s *allocated;
   spn_lock_i lock;
 } buffer_pool = {.lock = SPN_LOCK_INIT};
