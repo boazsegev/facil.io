@@ -241,8 +241,6 @@ static inline void set_fd(int fd, unsigned int state) {
 
 /**
 Destroys the library data.
-
-Call this function before calling any `libsock` functions.
 */
 static void destroy_lib_data(void) {
   if (fd_info) {
