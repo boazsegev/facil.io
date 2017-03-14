@@ -4,15 +4,15 @@ This library aims to:
 
 * Resolve the file descriptor collision security risk.
 
-* Resolve issues with partial writes and concurrent write operations by implementing a user land buffer.
+* Resolve issues with partial writes and concurrent write operations by implementing a user land buffer and a spinlock.
 
-* Provide `sendfile` alternatives to sending big data stored on the disk - `sendfile` being broken on some system and lacking support for TLS.
+* Provide `sendfile` alternatives when sending big data stored on the disk - `sendfile` being broken on some system and lacking support for TLS.
 
-* Provide a solution to the fact that closing a connection locally (using `close`) will prevent event loops and socket polling systems (`epoll`/`kqueue`) from raising the `on_hup` / `on_close` event. `libsock` provides support for local closure notification - this is done by defining an optional `reactor_on_close(intptr_t uuid)` callback.
+* Provide a solution to the fact that closing a connection locally (using `close`) will prevent event loops and socket polling systems (`epoll`/`kqueue`) from raising the `on_hup` / `on_close` event. `libsock` provides support for local closure notification - this is done by defining an optional `reactor_on_close(intptr_t uuid)` overridable function.
 
 * Provide support for timeout a management callback for server architectures that require the timeout to be reset ("touched") whenever a read/write occurs - this is done by defining an optional `sock_touch(intptr_t uuid)` callback.
 
-`libsock` requires only the following two files from this repository: [`src/spnlock.h`](../src/spnlock.h),  [`src/libsock.h`](../src/libsock.h) and [`src/libsock.c`](../src/libsock.c).
+`libsock` requires only the following three files from this repository: [`src/spnlock.h`](../src/spnlock.h),  [`src/libsock.h`](../src/libsock.h) and [`src/libsock.c`](../src/libsock.c).
 
 #### The Story Of The Partial `write`
 
@@ -22,9 +22,9 @@ For some unknown reason, there is this little tidbit of information for the `wri
 
 It is often missed that the number of bytes actually written might be smaller then the amount we wanted to write.
 
-For this reason, `libsock` implements a user land buffer, so all calls to `sock_write` promise to write the whole of the data (careful) unless a connection issue causes them to fail.
+For this reason, `libsock` implements a user land buffer. All calls to `sock_write` promise to write the whole of the data (careful) unless a connection issue causes them to fail.
 
-The only caveat is for very large amounts of data that exceed the available user land buffer (usually ~4Mb), since `libsock` will hang the thread until the data can be in full written.
+The only caveat is for very large amounts of data that exceed the available user land buffer (which you can change from the default ~16Mib), since `libsock` will keep flushing all the sockets (it won't return from the `sock_write` function call) until the data can be fully written to the user-land buffer.
 
 However, this isn't normally an issue, since files can be sent at practically no cost when using `libsock` and large amounts of data are normally handled by files (temporary or otherwise).
 
@@ -84,13 +84,13 @@ Here is a quick example:
 
 * Bob receives the file descriptor 12 for the new connection and submits a request to the server.
 
-* A request to the bank's database is performed in a non-blocking manner (evented, threaded, whatever you fancy). It will take 20ms.
+* A request to the bank's database is performed in a non-blocking manner (evented, threaded, whatever you fancy). But, due to system stress or design or complexity, it will take a longer time to execute.
 
 * Bob's connection is dropped, and file descriptor 12 is released by the system.
 
 * Alice connects to the server and receives the (now available) file descriptor 12 for the new connection (Alice can even negotiate a valid TLS connection at this point).
 
-* The database response arrives and send the information to the file descriptor.
+* The database response arrives and the information is sent to the file descriptor.
 
 * Alice gets Bob's bank statement.
 
