@@ -57,7 +57,7 @@ what is required for API simplicity, error protection and performance.
 * Dynamic Protocol: meanning a service can change protocols mid-stream. Example
 usecase: Websockets (HTTP Upgrade).
 
-* Network services: meanning multiple listenning network ports, each with it's
+* Network services: meanning multiple listening network ports, each with it's
 own logic.
 
 `libserver` utilizes `libreact`, `libasync` and `libsock` to create a simple
@@ -181,7 +181,7 @@ some recommended implementation techniques, such as protocol inheritance.
 
 // struct Server; /** used internally. no public data exposed */
 struct ServerSettings;        /** sets up the server's behavior */
-struct ServerServiceSettings; /** sets up a listenning socket's behavior */
+struct ServerServiceSettings; /** sets up a listening socket's behavior */
 typedef struct Protocol protocol_s; /** controls connection events */
 
 /**************************************************************************/ /**
@@ -222,7 +222,7 @@ struct Protocol {
 /**************************************************************************/ /**
 * The Service Settings
 
-These settings will be used to setup listenning sockets.
+These settings will be used to setup listening sockets.
 */
 struct ServerServiceSettings {
   /** Called whenever a new connection is accepted. Should return a pointer to

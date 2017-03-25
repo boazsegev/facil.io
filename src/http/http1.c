@@ -352,7 +352,7 @@ too_big:
 }
 
 /* *****************************************************************************
-HTTP/1.1 listenning API implementation
+HTTP/1.1 listening API implementation
 */
 
 #undef http1_listen

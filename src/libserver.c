@@ -262,7 +262,7 @@ inline static void listen_for_stop_signal(void) {
 }
 
 /* *****************************************************************************
-The Listenning Protocol
+The Listening Protocol
 */
 
 static const char *listener_protocol_name = "listening protocol __internal__";
@@ -327,7 +327,7 @@ inline static void listener_on_server_start(void) {
   for (size_t i = 0; i < server_data.capacity; i++) {
     if (protocol_fd(i) && protocol_fd(i)->service == listener_protocol_name) {
       if (reactor_add(sock_fd2uuid(i)))
-        perror("Couldn't register listenning socket"), exit(4);
+        perror("Couldn't register listening socket"), exit(4);
       // call the on_init callback
       if (((struct ListenerProtocol *)protocol_fd(i))->on_start)
         ((struct ListenerProtocol *)protocol_fd(i))
@@ -503,7 +503,7 @@ int server_listen(struct ServerServiceSettings settings) {
   if (server_data.running && reactor_add(fduuid))
     goto error;
 #if defined(SERVER_PRINT_STATE) && SERVER_PRINT_STATE == 1
-  fprintf(stderr, "* Listenning on port %s\n", settings.port);
+  fprintf(stderr, "* Listening on port %s\n", settings.port);
 #endif
   return 0;
 error:
