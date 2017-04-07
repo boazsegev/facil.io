@@ -1,30 +1,32 @@
 # facil.io
 
-[facil.io](http://facil.io) is a dedicated Linux / BSD (and macOS) network services library that's based on [Beej's guide](http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html) and [The C10K problem paper](http://www.kegel.com/c10k.html).
+[facil.io](http://facil.io) is the C implementation for the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine), which pretty much explains what [facil.io](http://facil.io) is all about...
+
+[facil.io](http://facil.io) is a dedicated Linux / BSD (and macOS) network services library written in C. It's evented design is based on [Beej's guide](http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html) and [The C10K problem paper](http://www.kegel.com/c10k.html).
 
 [facil.io](http://facil.io) provides a TCP/IP oriented solution for common network service tasks such as HTTP / Websocket servers, web applications and high performance backend servers.
 
-[facil.io](http://facil.io) prefers a TCP/IP specialized solution over a generic one (although the source code can be easily applied for UDP and other approaches).
+[facil.io](http://facil.io) prefers a TCP/IP specialized solution over a generic one (although it can be easily adopted for UDP and other approaches).
 
 [facil.io](http://facil.io) includes a number of libraries that work together for a common goal. Some of the libraries (i.e. the thread-pool library `libasync`, the socket library `libsock` and the reactor core `libreact`) can be used independently while others are designed to work together using a modular approach.
 
-I got to use this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment). This library is used to implement the [Ruby Iodine server](https://github.com/boazsegev/iodine).
+I got to use this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
 
 **Writing HTTP and Websocket services in C? Easy!**
 
-Websockets and HTTP are super common, so `libserver` comes with HTTP and Websocket extensions, allowing us to easily write HTTP/1.1 and Websocket services.
+Websockets and HTTP are super common, so `facil.io` comes with HTTP and Websocket extensions, allowing us to easily write HTTP/1.1 and Websocket services.
 
 The framework's code is heavily documented using comments. You can use Doxygen to create automated documentation for the API.
 
-The simlest example, of course, would be the famous "Hello World" application... so easy it's boring (so we add custom headers and cookies):
+The simplest example, of course, would be the famous "Hello World" application... this is so easy, it's practically boring (so we add custom headers and cookies):
 
 ```c
 #include "http.h"
 
 void on_request(http_request_s* request) {
   http_response_s response = http_response_init(request);
-  http_response_write_header(&response, .name = "X-Data", .value = "my data");
   http_response_set_cookie(&response, .name = "my_cookie", .value = "data");
+  http_response_write_header(&response, .name = "X-Data", .value = "my data");
   http_response_write_body(&response, "Hello World!\r\n", 14);
   http_response_finish(&response);
 }
