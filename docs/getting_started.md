@@ -1,6 +1,5 @@
 ---
-layout: default
-title: facil.io - Getting Started
+ title: facil.io - Getting Started
 ---
 
 # {{ page.title }}

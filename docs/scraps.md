@@ -1,5 +1,4 @@
 ---
-layout: default
 title: facil.io - scratch pad - leave this alone
 ---
 

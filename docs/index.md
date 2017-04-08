@@ -1,5 +1,4 @@
 ---
-layout: default
 title: facil.io - the C WebApp mini-framework
 ---
 
