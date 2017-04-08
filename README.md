@@ -1,6 +1,6 @@
 # facil.io - the C WebApp mini-framework
 
-[facil.io](http://facil.io) is the C implementation for the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine), which pretty much explains what [facil.io](http://facil.io) is all about...
+[facil.io](http://facil.io) is the C implementation for the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine), which makes it easy to guess what [facil.io](http://facil.io) is all about...
 
 [facil.io](http://facil.io) is a dedicated Linux / BSD (and macOS) network services library written in C. It's evented design is based on [Beej's guide](http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html) and [The C10K problem paper](http://www.kegel.com/c10k.html).
 
