@@ -1,18 +1,19 @@
-# facil.io - the C WebApp mini-framework
+---
+layout: default
+title: facil.io - Getting Started
+---
 
-[facil.io](http://facil.io) is the C implementation for the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine), which pretty much explains what [facil.io](http://facil.io) is all about...
+# {{ page.title }}
 
-[facil.io](http://facil.io) is a dedicated Linux / BSD (and macOS) network services library written in C. It's evented design is based on [Beej's guide](http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html) and [The C10K problem paper](http://www.kegel.com/c10k.html).
+Following is a quick overview and examples for both HTTP/ Websocket WebApps and custom protocol network services.
 
-[facil.io](http://facil.io) provides a TCP/IP oriented solution for common network service tasks such as HTTP / Websocket servers, web applications and high performance backend servers.
+These examples demonstrate how easy and empowering the `facil.io` framework can be.
 
-You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
+## Writing HTTP and Websocket services in C? Easy!
 
-## Three Quick Examples
+Websockets and HTTP are super common, so `facil.io` comes with HTTP and Websocket extensions, allowing us to easily write HTTP/1.1 and Websocket services.
 
-Writing HTTP and Websocket services in C is easy with [facil.io](http://facil.io).
-
-### HTTP/1.1
+The framework's code is heavily documented using comments. You can use Doxygen to create automated documentation for the API.
 
 The simplest example, of course, would be the famous "Hello World" application... this is so easy, it's practically boring (so we add custom headers and cookies):
 
@@ -29,7 +30,7 @@ void on_request(http_request_s* request) {
 
 int main() {
   char* public_folder = NULL;
-  // listen on port 3000, any available network binding (NULL == 0.0.0.0)
+  // listen on port 3000, any available network binding (0.0.0.0)
   http1_listen("3000", NULL, .on_request = on_request,
                .public_folder = public_folder);
   // start the server
@@ -37,9 +38,7 @@ int main() {
 }
 ```
 
-### Websockets
-
-[facil.io](http://facil.io) really shines when it comes to Websockets and real-time applications, where the `kqueue`/`epoll` engine gives the framework a high performance running start.
+But `facil.io` really shines when it comes to Websockets and real-time applications, where the `kqueue`/`epoll` engine gives the framework a high performance running start.
 
 Here's a full-fledge example of a Websocket echo server, a Websocket broadcast server and an HTTP "Hello World" (with an optional static file service) all rolled into one:
 
@@ -147,7 +146,7 @@ int main(int argc, char const* argv[]) {
 }
 ```
 
-### A Custom Protocol (an Echo example)
+## Simple API (Echo example)
 
 [facil.io](http://facil.io)'s API is designed for both simplicity and an object oriented approach, using network protocol objects and structs to avoid bloating function arguments and to provide sensible default behavior.
 
@@ -216,16 +215,32 @@ int main(int argc, char const * argv[]) {
 
 ---
 
-## Forking, Contributing and all that Jazz
+## SSL/TLS?
 
-Sure, why not. If you can add Solaris or Windows support to `libreact`, that could mean `lib-server` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties).
+Although encryption is important, separating the encryption layer from the application layer is often preferred and more effective.
 
-If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
+For example, most web applications (Node.js, Ruby etc') end up running behind load balancers and proxies. The encryption layer is often handled as an intermediary (i.e. an SSL/TLS proxy / tunnel).
 
-Hit me up if you want to:
+However, if you need to expose the application directly to the web or insist on integrating encryption within the app itself, it is possible to implement SSL/TLS support using `libsock`'s read/write hooks.
 
-* Help me write HPACK / HTTP2 protocol support.
+Using `libsock`'s read-write hooks (`sock_rw_hook_set`) allows us to use our choice of TLS/SSL library to send data securely. Use `sock_uuid2fd` to convert a connection's UUID to it's system assigned `fd` when the SSL/TLS library needs the information.
 
-* Help me design / write a generic HTTP routing helper library for the `http_request_s` struct.
+I did not write a TLS implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a load-balancer/proxy that manages the SSL/TLS layer).
 
-* If you want to help me write a new SSL/TLS library or have an SSL/TLS solution we can fit into `lib-server` (as source code).
+---
+
+## A word about concurrency
+
+It should be notes that network applications always have to keep concurrency in mind. For instance, the connection might be closed by one machine while the other is still preparing (or writing) it's response.
+
+Worst, while the response is being prepared, a new client might connect to the system with the newly available (same) file descriptor, so the finalized response might get sent to the wrong client!
+
+`libsock` and `libserver` protect us from such scenarios.
+
+If you will use `libserver`'s multi-threading mode, it's concurrency will be limited to the `on_ready`, `ping` and `on_shutdown` callbacks. These callbacks should avoid using/setting any protocol specific information, or collisions might ensue.
+
+All other callbacks (`on_data`, `on_close` and any server tasks initiated with `server_each` or `server_task`) will be performed sequentially for each connection, protecting a connection's data from corruption. While two concurrent connections might perform tasks at the same time, no single connection will perform more then one task at a time (unless you ask it to do su, using `async_run`).
+
+In addition to multi-threading, `libserver` allows us to easily setup the network service's concurrency using processes (`fork`ing), which act differently then threads (i.e. memory space isn't shared, so that processes don't share accepted connections).
+
+For best results, assume everything could run concurrently. `libserver` will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your application.
