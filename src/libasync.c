@@ -462,7 +462,7 @@ Test
 
 #ifdef DEBUG
 
-#define ASYNC_SPEED_TEST_THREAD_COUNT 120
+#define ASYNC_SPEED_TEST_THREAD_COUNT 128
 
 static spn_lock_i i_lock = SPN_LOCK_INIT;
 static size_t i_count = 0;
