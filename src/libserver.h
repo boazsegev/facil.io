@@ -26,8 +26,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "spnlock.h"
 
 /** Set `SERVER_DELAY_IO` to 1 in order to delay the IO reactor review
-  * until the queue for scheduled tasks and events is empty.
-  */
+ * until the queue for scheduled tasks and events is empty.
+ */
 #ifndef SERVER_DELAY_IO
 #define SERVER_DELAY_IO 0
 #endif
@@ -174,14 +174,14 @@ some recommended implementation techniques, such as protocol inheritance.
 */
 
 /**************************************************************************/ /**
-* General info
-*/
+                                                                              * General info
+                                                                              */
 
 /* The following types are defined for the userspace of this library: */
 
 // struct Server; /** used internally. no public data exposed */
-struct ServerSettings;        /** sets up the server's behavior */
-struct ServerServiceSettings; /** sets up a listening socket's behavior */
+struct ServerSettings;              /** sets up the server's behavior */
+struct ServerServiceSettings;       /** sets up a listening socket's behavior */
 typedef struct Protocol protocol_s; /** controls connection events */
 
 /**************************************************************************/ /**
@@ -198,11 +198,11 @@ to new connections after a file descriptor is "recycled" by the OS.
 */
 struct Protocol {
   /**
-  * A string to identify the protocol's service (i.e. "http").
-  *
-  * The string should be a global constant, only a pointer comparison will be
-  * made (not `strcmp`).
-  */
+   * A string to identify the protocol's service (i.e. "http").
+   *
+   * The string should be a global constant, only a pointer comparison will be
+   * made (not `strcmp`).
+   */
   const char *service;
   /** called when a data is available, but will not run concurrently */
   void (*on_data)(intptr_t fduuid, protocol_s *protocol);
@@ -235,10 +235,10 @@ struct ServerServiceSettings {
   /** Opaque user data. */
   void *udata;
   /**
-  * Called when the server starts, allowing for further initialization, such as
-  * timed event scheduling.
-  *
-  * This will be called seperately for every process. */
+   * Called when the server starts, allowing for further initialization, such as
+   * timed event scheduling.
+   *
+   * This will be called seperately for every process. */
   void (*on_start)(void *udata);
   /** called when the server is done, to clean up any leftovers. */
   void (*on_finish)(void *udata);
@@ -254,10 +254,10 @@ struct ServerSettings {
   /** called if the event loop in cycled with no pending events. */
   void (*on_idle)(void);
   /**
-  * Called when the server starts, allowing for further initialization, such as
-  * timed event scheduling.
-  *
-  * This will be called seperately for every process. */
+   * Called when the server starts, allowing for further initialization, such as
+   * timed event scheduling.
+   *
+   * This will be called seperately for every process. */
   void (*on_init)(void);
   /** called when the server is done, to clean up any leftovers. */
   void (*on_finish)(void);
@@ -272,14 +272,36 @@ struct ServerSettings {
   unsigned processes : 7;
 };
 
-/* *****************************************************************************
-* The Server API
-* (and helper functions)
+/**
+Named arguments for the `server_connect` function, that allows non-blocking
+connections to be established.
 */
+struct ConnectSettings {
+  /** The address of the server we are connecting to. */
+  char *address;
+  /** The port on the server we are connecting to. */
+  char *port;
+  /**
+   * The `on_connect` callback should return a pointer to a protocol object
+   * that will handle any connection related events.
+   */
+  protocol_s *(*on_connect)(intptr_t uuid, void *udata);
+  /**
+   * The `on_fail` is called when a socket fails to connect.
+   */
+  protocol_s *(*on_fail)(void *udata);
+  /** Opaque user data. */
+  void *udata;
+};
 
 /* *****************************************************************************
-* Server actions
-*/
+ * The Server API
+ * (and helper functions)
+ */
+
+/* *****************************************************************************
+ * Server actions
+ */
 
 /**
 Listens to a server with any of the available service settings:
@@ -305,6 +327,29 @@ Listens to a server with any of the available service settings:
 int server_listen(struct ServerServiceSettings);
 #define server_listen(...)                                                     \
   server_listen((struct ServerServiceSettings){__VA_ARGS__})
+
+/**
+Uses the server reactor pattern to run a client connection (in addition or
+instead of the server).
+
+* `.address` should be the address of the server.
+
+* `.port` the server's port.
+
+* `.udata`opaque user data.
+
+* `.on_connect` called once a connection was established.
+
+    Should return a pointer to a `protocol_s` object, to handle connection
+    callbacks.
+
+* `.on_fail` called if a connection failed to establish.
+
+(experimental: untested)
+*/
+intptr_t server_connect(struct ConnectSettings);
+#define server_connect(...)                                                    \
+  server_connect((struct ConnectSettings){__VA_ARGS__})
 /**
 Runs a server with any of the following server settings:
 
@@ -340,8 +385,8 @@ Returns the last time the server reviewed any pending IO events.
 */
 time_t server_last_tick(void);
 /****************************************************************************
-* Socket actions
-*/
+ * Socket actions
+ */
 
 /**
 Gets the active protocol object for the requested file descriptor.
@@ -397,14 +442,14 @@ protocols). */
 long server_count(char *service);
 
 /****************************************************************************
-* Read and Write
-*
-* Simpley use `libsock` API for read/write.
-*/
+ * Read and Write
+ *
+ * Simpley use `libsock` API for read/write.
+ */
 
 /****************************************************************************
-* Tasks + Async
-*/
+ * Tasks + Async
+ */
 
 /**
 Performs a task for each connection except the origin connection, unsafely and
@@ -445,8 +490,9 @@ resource cleanup necessary.
 */
 void server_each(intptr_t origin_uuid, const char *service,
                  void (*task)(intptr_t uuid, protocol_s *protocol, void *arg),
-                 void *arg, void (*on_finish)(intptr_t origin_uuid,
-                                              protocol_s *protocol, void *arg));
+                 void *arg,
+                 void (*on_finish)(intptr_t origin_uuid, protocol_s *protocol,
+                                   void *arg));
 /** Schedules a specific task to run asyncronously for a specific connection.
 
 returns -1 on failure, 0 on success (success being scheduling the task).

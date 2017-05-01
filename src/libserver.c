@@ -344,8 +344,8 @@ inline static void listener_on_server_shutdown(void) {
 }
 
 /* *****************************************************************************
-* The timer protocol
-*/
+ * The timer protocol
+ */
 
 /* *******
 Timer Protocol
@@ -413,6 +413,76 @@ inline static void timer_on_server_start(void) {
 }
 
 /* *****************************************************************************
+Act as client - server_connect + core client / connect Protocol
+*/
+
+static const char *connector_protocol_name = "connect protocol __internal__";
+
+struct ConnectProtocol {
+  protocol_s protocol;
+  protocol_s *(*on_connect)(intptr_t uuid, void *udata);
+  protocol_s *(*on_fail)(void *udata);
+  void *udata;
+  int opened;
+};
+
+static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
+  intptr_t new_client;
+  struct ConnectProtocol *connector = (void *)_connector;
+  connector->opened = 1;
+  if (connector->on_connect) {
+    uuid_data(uuid).active = server_data.last_tick;
+    if (server_switch_protocol(uuid,
+                               connector->on_connect(uuid, connector->udata)))
+      goto error;
+    return;
+  }
+error:
+  sock_close(uuid);
+}
+static void connector_on_data(intptr_t uuid, protocol_s *_connector) {
+  uuid_data(uuid).active = server_data.last_tick;
+  (void)_connector;
+  reactor_on_data(uuid);
+}
+
+static void connector_on_close(protocol_s *_connector) {
+  struct ConnectProtocol *connector = (void *)_connector;
+  if (connector->opened == 0 && connector->on_fail)
+    connector->on_fail(connector->udata);
+  free(connector);
+}
+
+#undef server_connect
+intptr_t server_connect(struct ConnectSettings opt) {
+  struct ConnectProtocol *connector = malloc(sizeof(*connector));
+  *connector = (struct ConnectProtocol){
+      .on_connect = opt.on_connect,
+      .on_fail = opt.on_fail,
+      .udata = opt.udata,
+      .protocol.on_data = connector_on_data,
+      .protocol.on_ready = connector_on_ready,
+      .protocol.on_close = connector_on_close,
+      .opened = 0,
+  };
+  if (!connector)
+    return -1;
+  intptr_t uuid = sock_connect(opt.address, opt.port);
+  if (uuid == -1)
+    return -1;
+  clear_uuid(uuid);
+  uuid_data(uuid).active = server_data.last_tick;
+  protocol_uuid(uuid) = &connector->protocol;
+  if (reactor_add(uuid)) {
+    protocol_uuid(uuid) = NULL;
+    free(connector);
+    sock_close(uuid);
+    return -1;
+  }
+  return uuid;
+}
+
+/* *****************************************************************************
 Reactor cycling and timeout handling
 */
 
@@ -472,13 +542,13 @@ static void server_cycle(void *unused) {
   }
 }
 /* *****************************************************************************
-* The Server API
-* (and helper functions)
-*/
+ * The Server API
+ * (and helper functions)
+ */
 
 /* *****************************************************************************
-* Server actions
-*/
+ * Server actions
+ */
 
 #undef server_listen
 #undef server_run
@@ -525,12 +595,14 @@ ssize_t server_run(struct ServerSettings settings) {
 
 #if defined(SERVER_PRINT_STATE) && SERVER_PRINT_STATE == 1
   if (settings.threads == 0)
-    fprintf(stderr, "* Running %u processes"
-                    " in single thread mode.\n",
+    fprintf(stderr,
+            "* Running %u processes"
+            " in single thread mode.\n",
             settings.processes);
   else
-    fprintf(stderr, "* Running %u processes"
-                    " X %u threads.\n",
+    fprintf(stderr,
+            "* Running %u processes"
+            " X %u threads.\n",
             settings.processes, settings.threads);
 #endif
 
@@ -603,8 +675,8 @@ Returns the last time the server reviewed any pending IO events.
 time_t server_last_tick(void) { return server_data.last_tick; }
 
 /* *****************************************************************************
-* Socket actions
-*/
+ * Socket actions
+ */
 
 /**
 Sets a new active protocol object for the requested file descriptor.
@@ -728,8 +800,8 @@ long server_count(char *service) {
 }
 
 /* *****************************************************************************
-* Connection Tasks (each and deffer tactics implementations)
-*/
+ * Connection Tasks (each and deffer tactics implementations)
+ */
 
 /* *******
 Task core data
@@ -861,8 +933,9 @@ origin connection) on a specific protocol.
 */
 void server_each(intptr_t origin_fd, const char *service,
                  void (*task)(intptr_t fd, protocol_s *protocol, void *arg),
-                 void *arg, void (*on_finish)(intptr_t fd, protocol_s *protocol,
-                                              void *arg)) {
+                 void *arg,
+                 void (*on_finish)(intptr_t fd, protocol_s *protocol,
+                                   void *arg)) {
   srv_task_s *t = NULL;
   if (service == NULL || task == NULL)
     goto error;
@@ -911,8 +984,8 @@ error:
 }
 
 /* *****************************************************************************
-* Timed tasks
-*/
+ * Timed tasks
+ */
 
 /** Creates a system timer (at the cost of 1 file descriptor) and pushes the
 timer to the reactor. The task will repeat `repetitions` times. if
