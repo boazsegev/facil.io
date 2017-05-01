@@ -317,16 +317,12 @@ int reactor_review() {
           if (sock_flush(_GET_FDUUID_(events, i)) < 0) {
             sock_close(_GET_FDUUID_(events, i));
           } else {
-            // printf("on_ready callback for %lu fd(%d)\n",
-            //        _GET_FDUUID_(events, i),
-            //        sock_uuid2fd(_GET_FDUUID_(events, i)));
+            // printf("on_ready callback for %lu\n", _GET_FDUUID_(events, i));
             reactor_on_ready(_GET_FDUUID_(events, i));
           }
         }
         if (_EVENTDATA_(events, i)) {
-          // printf("on_data callback for %lu fd(%d)\n",
-          //        _GET_FDUUID_(events, i),
-          //        sock_uuid2fd(_GET_FDUUID_(events, i)));
+          // printf("on_data callback for %lu\n", _GET_FDUUID_(events, i));
           reactor_on_data(_GET_FDUUID_(events, i));
         }
       }

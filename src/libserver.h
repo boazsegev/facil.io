@@ -289,7 +289,7 @@ struct ConnectSettings {
   /**
    * The `on_fail` is called when a socket fails to connect.
    */
-  protocol_s *(*on_fail)(void *udata);
+  void (*on_fail)(void *udata);
   /** Opaque user data. */
   void *udata;
 };

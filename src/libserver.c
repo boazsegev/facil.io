@@ -36,7 +36,10 @@ These macros mean we won't need to change code if we change the locking system.
 #define lock_fd(fd) spn_lock(&((fd)->lock))
 #define unlock_fd(fd) spn_unlock(&((fd)->lock))
 #define clear_fd_data(fd_data)                                                 \
-  { *(fd_data) = (fd_data_s){.lock = (fd_data)->lock}; }
+  {                                                                            \
+    *(fd_data) =                                                               \
+        (fd_data_s){.lock = (fd_data)->lock, .active = server_data.last_tick}; \
+  }
 
 /* *****************************************************************************
 Server Core Data
@@ -421,20 +424,22 @@ static const char *connector_protocol_name = "connect protocol __internal__";
 struct ConnectProtocol {
   protocol_s protocol;
   protocol_s *(*on_connect)(intptr_t uuid, void *udata);
-  protocol_s *(*on_fail)(void *udata);
+  void (*on_fail)(void *udata);
   void *udata;
   int opened;
 };
 
 static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
-  intptr_t new_client;
   struct ConnectProtocol *connector = (void *)_connector;
   connector->opened = 1;
+  fprintf(stderr, "connector_on_ready called\n");
   if (connector->on_connect) {
     uuid_data(uuid).active = server_data.last_tick;
     if (server_switch_protocol(uuid,
                                connector->on_connect(uuid, connector->udata)))
       goto error;
+    if (uuid_data(uuid).protocol->on_ready)
+      uuid_data(uuid).protocol->on_ready(uuid, uuid_data(uuid).protocol);
     return;
   }
 error:
@@ -455,11 +460,16 @@ static void connector_on_close(protocol_s *_connector) {
 
 #undef server_connect
 intptr_t server_connect(struct ConnectSettings opt) {
+  if (!opt.address || !opt.port || !opt.on_connect)
+    return -1;
+  if (!server_data.last_tick)
+    time(&server_data.last_tick);
   struct ConnectProtocol *connector = malloc(sizeof(*connector));
   *connector = (struct ConnectProtocol){
       .on_connect = opt.on_connect,
       .on_fail = opt.on_fail,
       .udata = opt.udata,
+      .protocol.service = connector_protocol_name,
       .protocol.on_data = connector_on_data,
       .protocol.on_ready = connector_on_ready,
       .protocol.on_close = connector_on_close,
@@ -471,7 +481,6 @@ intptr_t server_connect(struct ConnectSettings opt) {
   if (uuid == -1)
     return -1;
   clear_uuid(uuid);
-  uuid_data(uuid).active = server_data.last_tick;
   protocol_uuid(uuid) = &connector->protocol;
   if (reactor_add(uuid)) {
     protocol_uuid(uuid) = NULL;
@@ -589,6 +598,7 @@ ssize_t server_run(struct ServerSettings settings) {
   reap_children();
   listen_for_stop_signal();
   server_data.running = 1;
+  time(&server_data.last_tick);
   server_data.on_idle = settings.on_idle;
   if (settings.processes == 0)
     settings.processes = 1;
