@@ -27,10 +27,15 @@ typedef volatile unsigned char spn_lock_i;
     static const struct timespec tm = {.tv_nsec = 1};                          \
     nanosleep(&tm, NULL);                                                      \
   }
+#define throttle_thread()                                                      \
+  {                                                                            \
+    static const struct timespec tm = {.tv_nsec = 8388608UL};                  \
+    nanosleep(&tm, NULL);                                                      \
+  }
 
 #else /* no effective rescheduling, just spin... */
 #define reschedule_thread()
-
+#define throttle_thread()
 #endif
 
 #if !defined(__has_builtin)
@@ -101,7 +106,7 @@ API
 /** Defer an execution of a function for later. */
 int defer(void (*func)(void *), void *arg) {
   if (!func)
-    return -1;
+    goto call_error;
   task_node_s *task;
   spn_lock(&deferred.lock);
   if (deferred.pool) {
@@ -128,10 +133,11 @@ int defer(void (*func)(void *), void *arg) {
   return 0;
 error:
   spn_unlock(&deferred.lock);
+call_error:
   return -1;
 }
 
-/** Performs all deferred functions until the queue had been depleated. */
+/** Performs all deferred functions until the queue had been depleted. */
 void defer_perform(void) {
   task_node_s *tmp;
   task_s task;
@@ -160,6 +166,91 @@ restart:
 int defer_has_queue(void) { return deferred.first != NULL; }
 
 /* *****************************************************************************
+Thread Pool Support
+***************************************************************************** */
+
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__) ||           \
+    defined(DEBUG)
+
+#include <pthread.h>
+
+#pragma weak defer_new_thread
+void *defer_new_thread(void *(*thread_func)(void *), void *arg) {
+  pthread_t *thread = malloc(sizeof(*thread));
+  if (thread == NULL || pthread_create(thread, NULL, thread_func, arg))
+    goto error;
+  return thread;
+error:
+  free(thread);
+  return NULL;
+}
+
+#pragma weak defer_new_thread
+int defer_join_thread(void *p_thr) {
+  if (!p_thr)
+    return -1;
+  pthread_join(*(pthread_t *)p_thr, NULL);
+  free(p_thr);
+  return 0;
+}
+
+#else /* No pthreads... BYO thread implementation. */
+
+#pragma weak defer_new_thread
+void *defer_new_thread(void *(*thread_func)(void *), void *arg) {
+  (void)thread_func;
+  size_t o;
+  (void)arg;
+  return NULL;
+}
+#pragma weak defer_new_thread
+int defer_join_thread(void *p_thr) {
+  (void)p_thr;
+  return -1;
+}
+
+#endif /* DEBUG || pthread default */
+
+struct defer_pool {
+  unsigned int flag;
+  unsigned int count;
+  void *threads[];
+};
+static void *defer_worker_thread(void *pool) {
+  while (((pool_pt)pool)->flag) {
+    throttle_thread();
+    defer_perform();
+  };
+  return NULL;
+}
+
+void defer_pool_stop(pool_pt pool) {
+  pool->flag = 0;
+  while (pool->count) {
+    pool->count--;
+    defer_join_thread(pool->threads[pool->count]);
+  }
+}
+
+pool_pt defer_pool_start(unsigned int thread_count) {
+  if (thread_count == 0)
+    return NULL;
+  pool_pt pool = malloc(sizeof(*pool) + (thread_count * sizeof(void *)));
+  if (!pool)
+    return NULL;
+  pool->flag = 1;
+  pool->count = 0;
+  while (pool->count < thread_count &&
+         (pool->threads[pool->count] =
+              defer_new_thread(defer_worker_thread, pool)))
+    pool->count++;
+  if (pool->count == thread_count)
+    return pool;
+  defer_pool_stop(pool);
+  return NULL;
+}
+
+/* *****************************************************************************
 Test
 ***************************************************************************** */
 #ifdef DEBUG
@@ -186,12 +277,10 @@ static void sched_sample_task(void *unused) {
   }
 }
 
-static void *thrd_sched(void *unused) {
+static void thrd_sched(void *unused) {
   for (size_t i = 0; i < (1024 / DEFER_TEST_THREAD_COUNT); i++) {
     sched_sample_task(unused);
   }
-  defer_perform();
-  return NULL;
 }
 
 static void text_task_text(void *unused) {
@@ -226,20 +315,19 @@ void defer_test(void) {
   i_count = 0;
   spn_unlock(&i_lock);
 
-  pthread_t threads[DEFER_TEST_THREAD_COUNT] = {NULL};
   start = clock();
-  for (size_t i = 0; i < DEFER_TEST_THREAD_COUNT; i++) {
-    if (pthread_create(threads + i, NULL, thrd_sched, NULL))
-      perror("thread create error");
-  }
-  for (size_t i = 0; i < DEFER_TEST_THREAD_COUNT; i++) {
-    if (pthread_join(threads[i], NULL))
-      perror("thread join error");
-  }
-  defer_perform();
-  end = clock();
-  fprintf(stderr, "Defer multi-thread: %lu cycles with i_count = %lu\n",
-          end - start, i_count);
+  pool_pt pool = defer_pool_start(DEFER_TEST_THREAD_COUNT);
+  if (pool) {
+    for (size_t i = 0; i < DEFER_TEST_THREAD_COUNT; i++) {
+      defer(thrd_sched, NULL);
+    }
+    defer_pool_stop(pool);
+    end = clock();
+    fprintf(stderr,
+            "Defer multi-thread (%d threads): %lu cycles with i_count = %lu\n",
+            DEFER_TEST_THREAD_COUNT, end - start, i_count);
+  } else
+    fprintf(stderr, "Defer multi-thread: FAILED!\n");
 
   fprintf(stderr, "calling defer_perform.\n");
   defer(text_task, NULL);

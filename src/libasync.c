@@ -285,8 +285,9 @@ static void on_err_signal(int sig) {
   size = backtrace(array, 22);
   strings = backtrace_symbols(array, size);
   perror("\nERROR");
-  fprintf(stderr, "Async: Error signal received"
-                  " - %s (errno %d).\nBacktrace (%zd):\n",
+  fprintf(stderr,
+          "Async: Error signal received"
+          " - %s (errno %d).\nBacktrace (%zd):\n",
           strsignal(sig), errno, size);
   for (i = 2; i < size; i++)
     fprintf(stderr, "%s\n", strings[i]);
@@ -481,6 +482,12 @@ static void sched_sample_task(void *unused) {
   }
 }
 
+static void thrd_sched(void *unused) {
+  for (size_t i = 0; i < (1024 / ASYNC_SPEED_TEST_THREAD_COUNT); i++) {
+    sched_sample_task(unused);
+  }
+}
+
 static void text_task_text(void *unused) {
   (void)(unused);
   spn_lock(&i_lock);
@@ -515,8 +522,8 @@ void async_test_library_speed(void) {
                                                                   : "FAILED"),
             async->thread_count, ASYNC_SPEED_TEST_THREAD_COUNT);
     start = clock();
-    for (size_t i = 0; i < 1024; i++) {
-      async_run(sched_sample_task, async);
+    for (size_t i = 0; i < ASYNC_SPEED_TEST_THREAD_COUNT; i++) {
+      async_run(thrd_sched, NULL);
     }
     async_finish();
     end = clock();
