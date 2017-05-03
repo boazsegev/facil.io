@@ -1,12 +1,5 @@
 #include "defer.h"
 
-#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
-#define _GNU_SOURCE
-#include <time.h>
-#endif /* _GNU_SOURCE */
-
-#include <stdlib.h>
-
 /* *****************************************************************************
 Compile time settings
 ***************************************************************************** */
@@ -18,6 +11,12 @@ Compile time settings
 /* *****************************************************************************
 spinlock / sync for tasks
 ***************************************************************************** */
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#define _GNU_SOURCE
+#include <time.h>
+#endif /* _GNU_SOURCE */
+
+#include <stdlib.h>
 
 /** locks use a single byte */
 typedef volatile unsigned char spn_lock_i;
@@ -335,8 +334,6 @@ void defer_test(void) {
     }
     // defer((void (*)(void *))defer_pool_stop, pool);
     defer_pool_stop(pool);
-    reschedule_thread();
-    fprintf(stderr, "calling wait\n");
     defer_pool_wait(pool);
     end = clock();
     fprintf(stderr,
