@@ -33,8 +33,10 @@ typedef struct defer_pool *pool_pt;
 /** Starts a thread pool that will run deferred tasks in the background. */
 pool_pt defer_pool_start(unsigned int thread_count);
 
-/** Stops a running thread pool, joining threads and finishing all tasks. */
-void defer_pool_stop(pool_pt pool);
+/** Signals a running thread pool to stop. Returns immediately. */
+void defer_pool_signal(pool_pt pool);
+/** Waits for a running thread pool, joining threads and finishing all tasks. */
+void defer_pool_wait(pool_pt pool);
 
 /**
 OVERRIDE THIS to replace the default pthread implementation.

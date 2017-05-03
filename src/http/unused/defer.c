@@ -1,4 +1,10 @@
 #include "defer.h"
+
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#define _GNU_SOURCE
+#include <time.h>
+#endif /* _GNU_SOURCE */
+
 #include <stdlib.h>
 
 /* *****************************************************************************
@@ -16,12 +22,14 @@ spinlock / sync for tasks
 /** locks use a single byte */
 typedef volatile unsigned char spn_lock_i;
 
+/** The initail value of an unlocked spinlock. */
+#define SPN_LOCK_INIT 0
+
 /*********
  * manage the way threads "wait" for the lock to release
  */
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
 /* nanosleep seems to be the most effective and efficient reschedule */
-#include <time.h>
 #define reschedule_thread()                                                    \
   {                                                                            \
     static const struct timespec tm = {.tv_nsec = 1};                          \
@@ -38,21 +46,24 @@ typedef volatile unsigned char spn_lock_i;
 #define throttle_thread()
 #endif
 
-#if !defined(__has_builtin)
+#if !__clang__ && (__GNUC__ > 3)
+#define SPN_LOCK_BUILTIN(...) __sync_fetch_and_or(__VA_ARGS__)
+#elif !defined(__has_builtin)
 #error Required feature check "__has_builtin" missing from this compiler.
-#endif
-
+#else
 #if __has_builtin(__sync_swap)
-/** returns 1 and 0 if the lock was successfully aquired (TRUE == FAIL). */
-static inline int spn_trylock(spn_lock_i *lock) { return __sync_swap(lock, 1); }
+#define SPN_LOCK_BUILTIN(...) __sync_swap(__VA_ARGS__)
 #elif __has_builtin(__sync_fetch_and_or)
-/** returns 1 and 0 if the lock was successfully aquired (TRUE == FAIL). */
-static inline int spn_trylock(spn_lock_i *lock) {
-  return __sync_fetch_and_or(lock, 1);
-}
+#define SPN_LOCK_BUILTIN(...) __sync_fetch_and_or(__VA_ARGS__)
 #else
 #error Required builtin "__sync_swap" or "__sync_fetch_and_or" missing from compiler.
 #endif
+#endif
+
+/** returns 1 and 0 if the lock was successfully aquired (TRUE == FAIL). */
+static inline int spn_trylock(spn_lock_i *lock) {
+  return SPN_LOCK_BUILTIN(lock, 1);
+}
 
 /** Releases a lock. */
 static inline __attribute__((unused)) void spn_unlock(spn_lock_i *lock) {
@@ -171,7 +182,6 @@ Thread Pool Support
 
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__) ||           \
     defined(DEBUG)
-
 #include <pthread.h>
 
 #pragma weak defer_new_thread
@@ -199,7 +209,6 @@ int defer_join_thread(void *p_thr) {
 #pragma weak defer_new_thread
 void *defer_new_thread(void *(*thread_func)(void *), void *arg) {
   (void)thread_func;
-  size_t o;
   (void)arg;
   return NULL;
 }
@@ -216,16 +225,19 @@ struct defer_pool {
   unsigned int count;
   void *threads[];
 };
+
+#include <stdio.h>
 static void *defer_worker_thread(void *pool) {
-  while (((pool_pt)pool)->flag) {
+  do {
     throttle_thread();
     defer_perform();
-  };
+  } while (((pool_pt)pool)->flag);
   return NULL;
 }
 
-void defer_pool_stop(pool_pt pool) {
-  pool->flag = 0;
+void defer_pool_stop(pool_pt pool) { pool->flag = 0; }
+
+void defer_pool_wait(pool_pt pool) {
   while (pool->count) {
     pool->count--;
     defer_join_thread(pool->threads[pool->count]);
@@ -321,7 +333,11 @@ void defer_test(void) {
     for (size_t i = 0; i < DEFER_TEST_THREAD_COUNT; i++) {
       defer(thrd_sched, NULL);
     }
+    // defer((void (*)(void *))defer_pool_stop, pool);
     defer_pool_stop(pool);
+    reschedule_thread();
+    fprintf(stderr, "calling wait\n");
+    defer_pool_wait(pool);
     end = clock();
     fprintf(stderr,
             "Defer multi-thread (%d threads): %lu cycles with i_count = %lu\n",
