@@ -308,12 +308,12 @@ static void text_task(void *_) {
 }
 
 void defer_test(void) {
-  spn_lock(&i_lock);
-  i_count = 0;
-  spn_unlock(&i_lock);
   time_t start, end;
   fprintf(stderr, "Starting defer testing\n");
 
+  spn_lock(&i_lock);
+  i_count = 0;
+  spn_unlock(&i_lock);
   start = clock();
   for (size_t i = 0; i < 1024; i++) {
     defer(sched_sample_task, NULL);
@@ -322,10 +322,10 @@ void defer_test(void) {
   end = clock();
   fprintf(stderr, "Defer single thread: %lu cycles with i_count = %lu\n",
           end - start, i_count);
+
   spn_lock(&i_lock);
   i_count = 0;
   spn_unlock(&i_lock);
-
   start = clock();
   pool_pt pool = defer_pool_start(DEFER_TEST_THREAD_COUNT);
   if (pool) {
@@ -342,10 +342,31 @@ void defer_test(void) {
   } else
     fprintf(stderr, "Defer multi-thread: FAILED!\n");
 
+  spn_lock(&i_lock);
+  i_count = 0;
+  spn_unlock(&i_lock);
+  start = clock();
+  for (size_t i = 0; i < 1024; i++) {
+    defer(sched_sample_task, NULL);
+  }
+  defer_perform();
+  end = clock();
+  fprintf(stderr, "Defer single thread (2): %lu cycles with i_count = %lu\n",
+          end - start, i_count);
+
   fprintf(stderr, "calling defer_perform.\n");
   defer(text_task, NULL);
   defer_perform();
   fprintf(stderr, "defer_perform returned. i_count = %lu\n", i_count);
+  size_t pool_count = 0;
+  task_node_s *pos = deferred.pool;
+  while (pos) {
+    pool_count++;
+    pos = pos->next;
+  }
+  fprintf(stderr, "defer pool count %lu/%d (%s)\n", pool_count,
+          DEFER_QUEUE_BUFFER,
+          pool_count == DEFER_QUEUE_BUFFER ? "pass" : "FAILED");
 }
 
 #endif
