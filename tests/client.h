@@ -32,13 +32,14 @@ protocol_s *on_client_connect(intptr_t uuid, void *udata) {
       .on_data = on_client_data, .on_close = on_client_close,
   };
   fprintf(stderr, "Client connected (%s), sending request\n",
-          udata ? udata : "");
+          udata ? (char *)udata : "");
   sock_write(uuid, "GET / HTTP/1.1\r\nHost: localhost:3000\r\n\r\n", 40);
   return &client;
 }
 
 void on_client_fail(void *udata) {
-  fprintf(stderr, "Client FAILED to connect (%s).\n", udata ? udata : "");
+  fprintf(stderr, "Client FAILED to connect (%s).\n",
+          udata ? (char *)udata : "");
 }
 
 void on_CLIENT_MODE_init(void) {
