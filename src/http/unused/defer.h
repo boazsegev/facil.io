@@ -10,6 +10,9 @@ forked process.
 */
 #define H_DEFER_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 /* *****************************************************************************
 Core API
 ***************************************************************************** */
@@ -60,5 +63,9 @@ allocated memory) and joins the associated thread.
 Return value is ignored.
 */
 int defer_join_thread(void *p_thr);
+
+#ifdef __cplusplus
+} /* closing brace for extern "C" */
+#endif
 
 #endif
