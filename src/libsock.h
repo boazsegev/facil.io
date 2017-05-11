@@ -241,11 +241,10 @@ typedef struct {
   /** The length (size) of the buffer. irrelevant for file pointers. */
   size_t length;
   /** Starting point offset, when the buffer is a file
-  * (see `sock_write_info_s.is_fd`). */
+   * (see `sock_write_info_s.is_fd`). */
   off_t offset;
-  /** The user land buffer will receive ownership of the buffer (forced as
-   * TRUE
-   * when `file` is set). */
+  /** The user land buffer will receive ownership of the buffer
+   * (is always TRUE when `file` is set). */
   unsigned move : 1;
   /** The packet will be sent as soon as possible. */
   unsigned urgent : 1;
