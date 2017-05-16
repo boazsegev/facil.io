@@ -53,22 +53,37 @@ OS Sendfile settings.
 #endif
 
 /* *****************************************************************************
-Support `libreact` on_close callback, if exist.
+Support an on_close callback.
 */
 
-#pragma weak reactor_on_close
-void reactor_on_close(intptr_t uuid) { (void)(uuid); }
-#pragma weak reactor_remove
-int reactor_remove(intptr_t uuid) {
-  (void)(uuid);
-  return -1;
-}
+#pragma weak sock_on_close
+void sock_on_close(intptr_t uuid) { (void)(uuid); }
 
 /* *****************************************************************************
 Support timeout setting.
 */
 #pragma weak sock_touch
 void sock_touch(intptr_t uuid) { (void)(uuid); }
+
+/* *****************************************************************************
+Support `defer``.
+*/
+
+#pragma weak defer
+int defer(void (*func)(void *), void *arg) {
+  func(arg);
+  return 0;
+}
+
+/* *****************************************************************************
+Support `lib_react`.
+*/
+
+#pragma weak reactor_remove
+int reactor_remove(intptr_t uuid) {
+  (void)(uuid);
+  return -1;
+}
 
 /* *****************************************************************************
 User-Land Buffer and Packets
@@ -133,6 +148,7 @@ init:
   }
   packet_pool.mem[BUFFER_PACKET_POOL - 1].metadata.free_func =
       sock_packet_free_none;
+  packet_pool.next = packet_pool.mem + 1;
   spn_unlock(&packet_pool.lock);
   packet = packet_pool.mem;
   packet->metadata =
@@ -192,8 +208,6 @@ struct fd_data_s {
   unsigned open : 1;
   /** indicated that the connection should be closed. */
   unsigned close : 1;
-  /** indicated that the connection experienced an error. */
-  unsigned err : 1;
   /** future flags. */
   unsigned rsv : 5;
   /** data sent from current packet - this is per packet. */
@@ -204,8 +218,9 @@ struct fd_data_s {
   sock_rw_hook_s *rw_hooks;
 };
 
-struct sock_data_s {
+static struct sock_data_s {
   size_t capacity;
+  uint8_t exit_init;
   struct fd_data_s *fds;
 } sock_data_s;
 
@@ -229,6 +244,49 @@ static inline void sock_packet_rotate_unsafe(uintptr_t fd) {
   sock_packet_free(packet);
 }
 
+static void clear_sock_lib(void) { free(sock_data_s.fds); }
+
+static inline int initialize_sock_lib(size_t capacity) {
+  static uint8_t init_exit = 0;
+  if (sock_data_s.capacity >= capacity)
+    return 0;
+  struct fd_data_s *new_collection =
+      realloc(sock_data_s.fds, sizeof(struct fd_data_s) * capacity);
+  if (new_collection) {
+    sock_data_s.fds = new_collection;
+    for (size_t i = sock_data_s.capacity; i < capacity; i++) {
+      fdinfo(i) = (struct fd_data_s){.open = 0,
+                                     .lock = SPN_LOCK_INIT,
+                                     .rw_hooks = &sock_default_hooks,
+                                     .counter = 0};
+    }
+    sock_data_s.capacity = capacity;
+
+#ifdef DEBUG
+    fprintf(stderr,
+            "\nInitialized libsock for %lu sockets, "
+            "each one requires %lu bytes.\n"
+            "overall ovearhead: %lu bytes.\n"
+            "Initialized packet pool for %d elements, "
+            "each one %lu bytes.\n"
+            "overall buffer ovearhead: %lu bytes.\n"
+            "=== Total: %lu bytes ===\n\n",
+            capacity, sizeof(struct fd_data_s),
+            sizeof(struct fd_data_s) * capacity, BUFFER_PACKET_POOL,
+            sizeof(packet_s), sizeof(packet_s) * BUFFER_PACKET_POOL,
+            (sizeof(packet_s) * BUFFER_PACKET_POOL) +
+                (sizeof(struct fd_data_s) * capacity));
+#endif
+
+    if (init_exit)
+      return 0;
+    init_exit = 1;
+    atexit(clear_sock_lib);
+    return 0;
+  }
+  return -1;
+}
+
 static inline int clear_fd(uintptr_t fd, uint8_t is_open) {
   if (sock_data_s.capacity <= fd)
     goto reinitialize;
@@ -247,22 +305,15 @@ clear:
     sock_packet_free(packet);
     packet = old_data.packet;
   }
-  if (old_data.rw_hooks)
-    old_data.rw_hooks->on_clear(((fd << 8) | old_data.counter),
-                                old_data.rw_hooks);
+  old_data.rw_hooks->on_clear(((fd << 8) | old_data.counter),
+                              old_data.rw_hooks);
+  sock_on_close((fd << 8) | old_data.counter);
+  reactor_remove((fd << 8) | old_data.counter);
   return 0;
-reinitialize : {
-  struct fd_data_s *new_collection =
-      realloc(sock_data_s.fds, sizeof(struct fd_data_s) * (fd << 1));
-  if (new_collection) {
-    memset(new_collection + sock_data_s.capacity, 0,
-           ((fd << 1) - sock_data_s.capacity) * sizeof(struct fd_data_s));
-    sock_data_s.capacity = fd << 1;
-    sock_data_s.fds = new_collection;
-  } else
+reinitialize:
+  if (initialize_sock_lib(fd << 1))
     return -1;
   goto clear;
-}
 }
 
 /* *****************************************************************************
@@ -494,6 +545,8 @@ ssize_t sock_max_capacity(void) {
   // if the current limit is higher than it was, update
   if (flim < ((ssize_t)rlim.rlim_cur))
     flim = rlim.rlim_cur;
+  // initialize library to maximum capacity
+  initialize_sock_lib(flim);
   // return what we have
   return flim;
 }
@@ -747,6 +800,7 @@ ssize_t sock_read(intptr_t uuid, void *buf, size_t count) {
   }
   ssize_t ret = fdinfo(sock_uuid2fd(uuid)).rw_hooks->read(uuid, buf, count);
   unlock_fd(sock_uuid2fd(uuid));
+  sock_touch(uuid);
   if (ret > 0)
     return ret;
   if (ret < 0 && (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR ||
@@ -839,7 +893,8 @@ place_packet_in_queue:
   }
   *pos = packet;
   unlock_fd(fd);
-  sock_flush(options.uuid);
+  sock_touch(options.uuid);
+  defer((void (*)(void *))sock_flush, (void *)options.uuid);
   return 0;
 
 error:
@@ -887,7 +942,10 @@ retry:
     goto error;
   }
 finish:
+  if (fdinfo(fd).close && !fdinfo(fd).packet)
+    goto error;
   unlock_fd(fd);
+  sock_touch(uuid);
   return 0;
 error:
   unlock_fd(fd);
@@ -1059,5 +1117,18 @@ void sock_libtest(void) {
     perror("Error with sock_read ");
   fprintf(stderr, "done.\n");
   sock_close(uuid);
+  packet_s *head, *pos;
+  pos = head = packet_pool.next;
+  size_t count = 0;
+  while (pos) {
+    count++;
+    pos = pos->metadata.next;
+  }
+  fprintf(stderr, "Packet pool test %s (%d =? %lu)\n",
+          count == BUFFER_PACKET_POOL ? "PASS" : "FAIL", BUFFER_PACKET_POOL,
+          count);
+  count = sock_max_capacity();
+  printf("Allocated sock capacity %lu X %lu\n", count,
+         sizeof(struct fd_data_s));
 }
 #endif

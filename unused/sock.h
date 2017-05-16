@@ -1,6 +1,11 @@
 #ifndef H_LIBSOCK_H
 #define H_LIBSOCK_H
+/*
+Copyright: Boaz Segev, 2016-2017
+License: MIT
 
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #define LIB_SOCK_VERSION_MAJOR 0
 #define LIB_SOCK_VERSION_MINOR 3
 #define LIB_SOCK_VERSION_PATCH 0
