@@ -5,6 +5,12 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #include "defer.h"
+#include "spnlock.inc"
+
+#include <errno.h>
+#include <signal.h>
+#include <stdio.h>
+#include <unistd.h>
 
 /* *****************************************************************************
 Compile time settings
@@ -13,73 +19,6 @@ Compile time settings
 #ifndef DEFER_QUEUE_BUFFER
 #define DEFER_QUEUE_BUFFER 1024
 #endif
-
-/* *****************************************************************************
-spinlock / sync for tasks
-***************************************************************************** */
-#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
-#define _GNU_SOURCE
-#include <time.h>
-#endif /* _GNU_SOURCE */
-#include <stdlib.h>
-
-/* manage the way threads "wait" for the lock to release */
-#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
-/* nanosleep seems to be the most effective and efficient reschedule */
-#define defer_nanosleep(length)                                                \
-  {                                                                            \
-    static const struct timespec tm = {.tv_nsec = length};                     \
-    nanosleep(&tm, NULL);                                                      \
-  }
-#define reschedule_thread() defer_nanosleep(1)
-#define throttle_thread() defer_nanosleep(8388608UL)
-
-#else /* no effective rescheduling, just spin... */
-#define reschedule_thread()
-#define throttle_thread()
-#endif
-
-/** locks use a single byte */
-typedef volatile unsigned char spn_lock_i;
-/** The initail value of an unlocked spinlock. */
-#define SPN_LOCK_INIT 0
-
-/* Select the correct compiler builtin method. */
-#if defined(__has_builtin)
-#if __has_builtin(__sync_swap)
-#define SPN_LOCK_BUILTIN(...) __sync_swap(__VA_ARGS__)
-#elif __has_builtin(__sync_fetch_and_or)
-#define SPN_LOCK_BUILTIN(...) __sync_fetch_and_or(__VA_ARGS__)
-#else
-#error Required builtin "__sync_swap" or "__sync_fetch_and_or" missing from compiler.
-#endif /* defined(__has_builtin) */
-#elif __GNUC__ > 3
-#define SPN_LOCK_BUILTIN(...) __sync_fetch_and_or(__VA_ARGS__)
-#else
-#error Required builtin "__sync_swap" or "__sync_fetch_and_or" not found.
-#endif
-
-/** returns 1 and 0 if the lock was successfully aquired (TRUE == FAIL). */
-static inline int spn_trylock(spn_lock_i *lock) {
-  return SPN_LOCK_BUILTIN(lock, 1);
-}
-
-/** Releases a lock. */
-static inline __attribute__((unused)) void spn_unlock(spn_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
-  *lock = 0;
-}
-/** returns a lock's state (non 0 == Busy). */
-static inline __attribute__((unused)) int spn_is_locked(spn_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
-  return *lock;
-}
-/** Busy waits for the lock. */
-static inline __attribute__((unused)) void spn_lock(spn_lock_i *lock) {
-  while (spn_trylock(lock)) {
-    reschedule_thread();
-  }
-}
 
 /* *****************************************************************************
 Data Structures
@@ -225,7 +164,6 @@ struct defer_pool {
   void *threads[];
 };
 
-#include <stdio.h>
 static void *defer_worker_thread(void *pool) {
   do {
     throttle_thread();
@@ -236,6 +174,8 @@ static void *defer_worker_thread(void *pool) {
 
 void defer_pool_stop(pool_pt pool) { pool->flag = 0; }
 
+int defer_pool_is_active(pool_pt pool) { return pool->flag; }
+
 void defer_pool_wait(pool_pt pool) {
   while (pool->count) {
     pool->count--;
@@ -243,12 +183,8 @@ void defer_pool_wait(pool_pt pool) {
   }
 }
 
-pool_pt defer_pool_start(unsigned int thread_count) {
-  if (thread_count == 0)
-    return NULL;
-  pool_pt pool = malloc(sizeof(*pool) + (thread_count * sizeof(void *)));
-  if (!pool)
-    return NULL;
+static inline pool_pt defer_pool_initialize(unsigned int thread_count,
+                                            pool_pt pool) {
   pool->flag = 1;
   pool->count = 0;
   while (pool->count < thread_count &&
@@ -260,6 +196,116 @@ pool_pt defer_pool_start(unsigned int thread_count) {
   defer_pool_stop(pool);
   return NULL;
 }
+
+pool_pt defer_pool_start(unsigned int thread_count) {
+  if (thread_count == 0)
+    return NULL;
+  pool_pt pool = malloc(sizeof(*pool) + (thread_count * sizeof(void *)));
+  if (!pool)
+    return NULL;
+  return defer_pool_initialize(thread_count, pool);
+}
+
+/* *****************************************************************************
+Child Process support (`fork`)
+***************************************************************************** */
+
+static pool_pt forked_pool;
+
+static void sig_int_handler(int sig) {
+  if (sig != SIGINT)
+    return;
+  if (!forked_pool)
+    return;
+  defer_pool_stop(forked_pool);
+}
+
+/* *
+Zombie Reaping
+With thanks to Dr Graham D Shaw.
+http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
+*/
+
+void reap_child_handler(int sig) {
+  (void)(sig);
+  int old_errno = errno;
+  while (waitpid(-1, NULL, WNOHANG) > 0)
+    ;
+  errno = old_errno;
+}
+
+inline static void reap_children(void) {
+  struct sigaction sa;
+  sa.sa_handler = reap_child_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+  if (sigaction(SIGCHLD, &sa, 0) == -1) {
+    perror("Child reaping initialization failed");
+    exit(1);
+  }
+}
+
+/**
+ * Forks the process, starts up a thread pool and waits for all tasks to run.
+ * All existing tasks will run in all processes (multiple times).
+ *
+ * Returns 0 on success and -1 on error.
+ */
+int defer_perform_in_fork(unsigned int process_count,
+                          unsigned int thread_count) {
+  struct sigaction act, old;
+  pid_t *pids = NULL;
+  int ret = 0;
+  unsigned int pids_count;
+
+  act.sa_handler = sig_int_handler;
+  sigemptyset(&act.sa_mask);
+  if (sigaction(SIGINT, &act, &old)) {
+    perror("couldn't set signal handler");
+    goto finish;
+  };
+  reap_children();
+
+  if (!process_count)
+    process_count = 1;
+  --process_count;
+  pids = calloc(process_count, sizeof(*pids));
+  if (process_count && !pids)
+    goto finish;
+  for (pids_count = 0; pids_count < process_count; pids_count++) {
+    if (!(pids[pids_count] = fork())) {
+      forked_pool = defer_pool_start(thread_count);
+      defer_pool_wait(forked_pool);
+      defer_perform();
+      exit(0);
+    }
+    if (pids[pids_count] == -1) {
+      ret = -1;
+      goto finish;
+    }
+  }
+  pids_count++;
+  forked_pool = defer_pool_start(thread_count);
+  defer_pool_wait(forked_pool);
+  forked_pool = NULL;
+  defer_perform();
+finish:
+  if (pids) {
+    for (size_t j = 0; j < pids_count; j++) {
+      kill(pids[j], SIGINT);
+    }
+    for (size_t j = 0; j < pids_count; j++) {
+      waitpid(pids[j], NULL, 0);
+    }
+    free(pids);
+  }
+  sigaction(SIGINT, &old, &act);
+  return ret;
+}
+
+/** Returns TRUE (1) if the forked thread pool hadn't been signaled to finish
+ * up. */
+int defer_fork_is_active(void) { return forked_pool && forked_pool->flag; }
 
 /* *****************************************************************************
 Test
@@ -305,6 +351,11 @@ static void text_task(void *_) {
   static const struct timespec tm = {.tv_sec = 2};
   nanosleep(&tm, NULL);
   defer(text_task_text, _);
+}
+
+static void pid_task(void *arg) {
+  fprintf(stderr, "* %d pid is going to sleep... (%s)\n", getpid(),
+          arg ? arg : "unknown");
 }
 
 void defer_test(void) {
@@ -367,6 +418,10 @@ void defer_test(void) {
   fprintf(stderr, "defer pool count %lu/%d (%s)\n", pool_count,
           DEFER_QUEUE_BUFFER,
           pool_count == DEFER_QUEUE_BUFFER ? "pass" : "FAILED");
+  fprintf(stderr, "press ^C to finish PID test\n");
+  defer(pid_task, "pid test");
+  defer_perform_in_fork(1, 1);
+  fprintf(stderr, "\nPID test passed?\n");
 }
 
 #endif

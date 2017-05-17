@@ -41,11 +41,12 @@ typedef struct defer_pool *pool_pt;
 
 /** Starts a thread pool that will run deferred tasks in the background. */
 pool_pt defer_pool_start(unsigned int thread_count);
-
 /** Signals a running thread pool to stop. Returns immediately. */
-void defer_pool_signal(pool_pt pool);
+void defer_pool_stop(pool_pt pool);
 /** Waits for a running thread pool, joining threads and finishing all tasks. */
 void defer_pool_wait(pool_pt pool);
+/** Returns TRUE (1) if the pool is hadn't been signaled to finish up. */
+int defer_pool_is_active(pool_pt pool);
 
 /**
 OVERRIDE THIS to replace the default pthread implementation.
@@ -69,6 +70,29 @@ allocated memory) and joins the associated thread.
 Return value is ignored.
 */
 int defer_join_thread(void *p_thr);
+
+/* *****************************************************************************
+Child Process support (`fork`)
+***************************************************************************** */
+
+/**
+ * Forks the process, starts up a thread pool and waits for all tasks to run.
+ * All existing tasks will run in all processes (multiple times).
+ *
+ * It's possible to synchronize workload across processes by using a pipe (or
+ * pipes) and a self-scheduling event that reads instructions from the pipe.
+ *
+ * This function will use SIGINT to signal all the children processes to finish
+ * up and exit. It will also setup a child process reaper (which will remain
+ * active for the application's lifetime).
+ *
+ * Returns 0 on success and -1 on error.
+ */
+int defer_perform_in_fork(unsigned int process_count,
+                          unsigned int thread_count);
+/** Returns TRUE (1) if the forked thread pool hadn't been signaled to finish
+ * up. */
+int defer_fork_is_active(void);
 
 #ifdef __cplusplus
 } /* closing brace for extern "C" */
