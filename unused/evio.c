@@ -129,18 +129,15 @@ void evio_reset_timer(int timer_fd) {
     data[0] = 0;
 }
 
-static int const facil_evio_timeout = EVIO_TICK;
-
 /**
 Reviews any pending events (up to EVIO_MAX_EVENTS) and calls any callbacks.
  */
-int evio_review(void) {
+int evio_review(const int timeout_millisec) {
   if (evio_fd < 0)
     return -1;
   struct epoll_event events[EVIO_MAX_EVENTS];
   /* wait for events and handle them */
-  int active_count =
-      epoll_wait(evio_fd, events, EVIO_MAX_EVENTS, facil_evio_timeout);
+  int active_count = epoll_wait(evio_fd, events, EVIO_MAX_EVENTS, timeout);
 
   if (active_count > 0) {
     for (int i = 0; i < active_count; i++) {
@@ -218,22 +215,23 @@ intptr_t evio_add_timer(int fd, void *callback_arg,
   return kevent(evio_fd, &chevent, 1, NULL, 0, NULL);
 }
 
-static const struct timespec facil_evio_timeout = {
-    .tv_sec = (EVIO_TICK / 1000), .tv_nsec = ((EVIO_TICK % 1000) * 1000000)};
-
 /** Rearms the timer. Required only by `epoll`.*/
 void evio_reset_timer(int timer_fd) { (void)timer_fd; }
 
 /**
 Reviews any pending events (up to EVIO_MAX_EVENTS) and calls any callbacks.
  */
-int evio_review(void) {
+int evio_review(const int timeout_millisec) {
   if (evio_fd < 0)
     return -1;
   struct kevent events[EVIO_MAX_EVENTS];
+
+  const struct timespec timeout = {.tv_sec = (timeout_millisec / 1024),
+                                   .tv_nsec =
+                                       ((timeout_millisec % 1024) * 1000000)};
   /* wait for events and handle them */
   int active_count =
-      kevent(evio_fd, NULL, 0, events, EVIO_MAX_EVENTS, &facil_evio_timeout);
+      kevent(evio_fd, NULL, 0, events, EVIO_MAX_EVENTS, &timeout);
 
   if (active_count > 0) {
     for (int i = 0; i < active_count; i++) {

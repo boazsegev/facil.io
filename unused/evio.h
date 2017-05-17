@@ -50,9 +50,11 @@ intptr_t evio_create(void);
 /**
 Reviews any pending events (up to EVIO_MAX_EVENTS) and calls any callbacks.
 
+Waits up to `timeout_millisec` for events to occur.
+
 Returns -1 on error, otherwise returns the number of events handled.
 */
-int evio_review(void);
+int evio_review(const int timeout_millisec);
 
 /**
 Closes the `epoll` / `kqueue` object, releasing it's resources.
