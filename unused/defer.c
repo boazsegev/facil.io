@@ -255,10 +255,11 @@ inline static void reap_children(void) {
  * Forks the process, starts up a thread pool and waits for all tasks to run.
  * All existing tasks will run in all processes (multiple times).
  *
- * Returns 0 on success and -1 on error.
+ * Returns 0 on success, -1 on error and a positive number if this is a child
+ * process that was forked.
  */
-int defer_perform_in_fork(unsigned int process_count, unsigned int thread_count,
-                          void (*on_finish)(void *), void *arg) {
+int defer_perform_in_fork(unsigned int process_count,
+                          unsigned int thread_count) {
   struct sigaction act, old;
   pid_t *pids = NULL;
   int ret = 0;
@@ -283,10 +284,8 @@ int defer_perform_in_fork(unsigned int process_count, unsigned int thread_count,
       forked_pool = defer_pool_start(thread_count);
       defer_pool_wait(forked_pool);
       defer_perform();
-      if (on_finish)
-        on_finish(arg);
       defer_perform();
-      exit(0);
+      return 1;
     }
     if (pids[pids_count] == -1) {
       ret = -1;
@@ -429,7 +428,10 @@ void defer_test(void) {
           pool_count == DEFER_QUEUE_BUFFER ? "pass" : "FAILED");
   fprintf(stderr, "press ^C to finish PID test\n");
   defer(pid_task, "pid test");
-  defer_perform_in_fork(4, 64, NULL, NULL);
+  if (defer_perform_in_fork(4, 64) > 0) {
+    fprintf(stderr, "* %d finished\n", getpid());
+    exit(0);
+  };
   fprintf(stderr, "\nPID test passed?\n");
 }
 

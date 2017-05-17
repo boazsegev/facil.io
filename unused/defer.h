@@ -86,13 +86,11 @@ Child Process support (`fork`)
  * up and exit. It will also setup a child process reaper (which will remain
  * active for the application's lifetime).
  *
- * The `on_finish` callback (and it's argument) will be called by the children
- * before they exit.
- *
- * Returns 0 on success and -1 on error.
+ * Returns 0 on success, -1 on error and a positive number if this is a child
+ * process that was forked.
  */
-int defer_perform_in_fork(unsigned int process_count, unsigned int thread_count,
-                          void (*on_finish)(void *), void *arg);
+int defer_perform_in_fork(unsigned int process_count,
+                          unsigned int thread_count);
 /** Returns TRUE (1) if the forked thread pool hadn't been signaled to finish
  * up. */
 int defer_fork_is_active(void);
