@@ -68,6 +68,7 @@ HTTP is nice, but an echo example is classic. Here is a simple "echo" protocol i
 static void echo_on_data(intptr_t uuid, /* The socket */
                           protocol_s* prt /* pointer to the protocol */
                            ) {
+  (void)prt; /* ignore unused argument */
   /* echo buffer */
   char buffer[1024] = {'E', 'c', 'h', 'o', ':', ' '};
   ssize_t len;
@@ -98,9 +99,10 @@ static void echo_on_shutdown(intptr_t uuid, protocol_s* prt) {
 }
 
 /* A callback called for new connections */
-static protocol_s* echo_on_open(intptr_t uuid) {
+static protocol_s *echo_on_open(intptr_t uuid, void *udata) {
+  (void)udata; /*ignore this */
   /* Protocol objects MUST always be dynamically allocated. */
-  protocol_s * echo_proto = malloc(sizeof( * echo_proto ))
+  protocol_s * echo_proto = malloc(sizeof( * echo_proto ));
   * echo_proto = (protocol_s) {.service = "echo",
                         .on_data = echo_on_data,
                         .on_shutdown = echo_on_shutdown,
@@ -109,7 +111,7 @@ static protocol_s* echo_on_open(intptr_t uuid) {
 
   sock_write(uuid, "Echo Service: Welcome\n", 22);
   server_set_timeout(uuid, 10);
-  return &echo_proto;
+  return echo_proto;
 }
 
 int main() {
@@ -117,7 +119,7 @@ int main() {
   if (server_listen(.port = "8888", .on_open = echo_on_open))
     perror("No listening socket available on port 8888"), exit(-1);
   /* Run the server and hang until a stop signal is received. */
-  server_run(.threads = 4, .processes = 1, .on_idle = on_idle);
+  server_run(.threads = 4, .processes = 1);
 }
 /**/
 ```
