@@ -27,24 +27,24 @@ Required facil libraries
 Core object types
 ***************************************************************************** */
 
-typedef struct Protocol protocol_s;
+typedef struct FacilIOProtocol protocol_s;
 /**************************************************************************/ /**
 * The Protocol
 
-The Protocol struct defines the callbacks used for the connection and sets the
-behaviour for the connection's protocol.
+The Protocol struct defines the callbacks used for the connection and sets it's
+behaviour.
 
 For concurrency reasons, a protocol instance SHOULD be unique to each
 connections. Different connections shouldn't share a single protocol object
 (callbacks and data can obviously be shared).
 
-All the callbacks recieve a unique connection ID (a semi UUID) that can be
-converted to the original file descriptor if in need.
+All the callbacks recieve a unique connection ID (a localized UUID) that can be
+converted to the original file descriptor when in need.
 
-This allows the Server API to prevent old connection handles from sending data
+This allows facil.io to prevent old connection handles from sending data
 to new connections after a file descriptor is "recycled" by the OS.
 */
-struct Protocol {
+struct FacilIOProtocol {
   /**
    * A string to identify the protocol's service (i.e. "http").
    *
@@ -73,7 +73,9 @@ struct Protocol {
 These settings will be used to setup listening sockets.
 */
 struct facil_listen_args {
-  /** Called whenever a new connection is accepted. Should return a pointer to
+  /**
+   * Called whenever a new connection is accepted.
+   * Should return a pointer to
    * the connection's protocol. */
   protocol_s *(*on_open)(intptr_t fduuid, void *udata);
   /** The network service / port. Defaults to "3000". */
@@ -88,12 +90,21 @@ struct facil_listen_args {
    *
    * This will be called seperately for every process. */
   void (*on_start)(void *udata);
-  /** called when the server is done, to clean up any leftovers. */
+  /**
+   * Called when the server is done, usable for cleanup.
+   *
+   * This will be called seperately for every process. */
   void (*on_finish)(void *udata);
 };
+
 /** Schedule a network service on a listening socket. */
 int facil_listen(struct facil_listen_args args);
-/** Schedule a network service on a listening socket. */
+
+/**
+ * Schedule a network service on a listening socket.
+ *
+ * See the `struct facil_listen_args` details for any possible named arguments.
+ */
 #define facil_listen(...) facil_listen((struct facil_listen_args){__VA_ARGS__})
 
 /* *****************************************************************************
@@ -101,15 +112,21 @@ Core API
 ***************************************************************************** */
 
 struct facil_run_args {
-  /** The number of threads to run in the thread pool. */
+  /** The number of threads to run in the thread pool. Has "smart" defaults. */
   uint16_t threads;
-  /** The number of processes to utilize. Both 0 and 1 are ignored. */
+  /** The number of processes to run (including this one). "smart" defaults. */
   uint16_t processes;
   /** called if the event loop in cycled with no pending events. */
   void (*on_idle)(void);
   /** called when the server is done, to clean up any leftovers. */
   void (*on_finish)(void);
 };
+/**
+ * Starts the facil.io event loop. This function will return after facil.io is
+ * done (after shutdown).
+ *
+ * See the `struct facil_run_args` details for any possible named arguments.
+ */
 void facil_run(struct facil_run_args args);
 #define facil_run(...) facil_run((struct facil_run_args){__VA_ARGS__})
 /**
