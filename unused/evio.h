@@ -59,6 +59,11 @@ Closes the `epoll` / `kqueue` object, releasing it's resources.
 */
 void evio_close(void);
 
+/**
+returns true if the evio is available for adding or removing file descriptors.
+*/
+int evio_isactive(void);
+
 /* *****************************************************************************
 Adding and removing normal file descriptors.
 */

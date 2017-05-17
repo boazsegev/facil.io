@@ -64,6 +64,11 @@ void evio_close() {
     close(evio_fd);
 }
 
+/**
+returns true if the evio is available for adding or removing file descriptors.
+*/
+int evio_isactive(void) { return evio_fd >= 0; }
+
 /* *****************************************************************************
 Linux `epoll` implementation
 ***************************************************************************** */
