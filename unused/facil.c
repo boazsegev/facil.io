@@ -31,6 +31,7 @@ struct connection_data_s {
 
 struct {
   spn_lock_i global_lock;
+  uint8_t need_review;
   size_t capacity;
   time_t last_cycle;
   struct connection_data_s conn[];
@@ -108,7 +109,7 @@ postpone:
 }
 
 /* *****************************************************************************
-Event Handlers
+Event Handlers (evio)
 ***************************************************************************** */
 void evio_on_ready(void *arg) {
   defer((void (*)(void *))sock_flush, arg);
@@ -136,26 +137,27 @@ void sock_touch(intptr_t uuid) {
 }
 
 /* *****************************************************************************
-Initialization
+Initialization and Cleanup
 ***************************************************************************** */
-static spn_lock_i facil_init_lock = SPN_LOCK_INIT;
+static spn_lock_i facil_libinit_lock = SPN_LOCK_INIT;
+
 static void facil_libcleanup(void) {
   /* free memory */
-  spn_lock(&facil_init_lock);
+  spn_lock(&facil_libinit_lock);
   if (facil_data) {
     munmap(facil_data,
            sizeof(*facil_data) +
                (facil_data->capacity * sizeof(struct connection_data_s)));
     facil_data = NULL;
   }
-  spn_unlock(&facil_init_lock);
+  spn_unlock(&facil_libinit_lock);
 }
 
 static void facil_lib_init(void) {
   size_t capa = sock_max_capacity();
   size_t mem_size =
       sizeof(*facil_data) + (capa * sizeof(struct connection_data_s));
-  spn_lock(&facil_init_lock);
+  spn_lock(&facil_libinit_lock);
   if (facil_data)
     goto finish;
   facil_data = mmap(NULL, mem_size, PROT_READ | PROT_WRITE | PROT_EXEC,
@@ -174,7 +176,7 @@ static void facil_lib_init(void) {
             sizeof(struct connection_data_s), facil_data->capacity, mem_size);
 #endif
 finish:
-  spn_unlock(&facil_init_lock);
+  spn_unlock(&facil_libinit_lock);
   time(&facil_data->last_cycle);
 }
 
@@ -411,43 +413,46 @@ static void print_pid(void *arg) {
 }
 
 static void facil_review_timeout(void *arg) {
-  (void)arg;
-  static time_t review;
   protocol_s *tmp;
-  struct connection_data_s conn;
-  if (review == facil_data->last_cycle)
-    return;
-  for (size_t i = 0; i < facil_data->capacity; i++) {
-    review = facil_data->last_cycle;
-    if (!fd_data(i).protocol)
-      continue;
-    spn_lock(&fd_data(i).lock);
-    conn = fd_data(i);
-    tmp = fd_data(i).protocol;
-    if (tmp)
-      spn_lock(&prt_meta(tmp).sub_lock);
-    spn_unlock(&fd_data(i).lock);
-    if (!tmp) /* we got disconnected while reviewing */
-      continue;
-    if (prt_meta(tmp).lock) {
-      /* busy in `on_data` */
-      spn_unlock(&prt_meta(tmp).sub_lock);
-      continue;
-    }
-    spn_unlock(&prt_meta(tmp).sub_lock);
-    if ((conn.timeout && ((review - conn.active) > conn.timeout)) ||
-        (review - conn.active) >= 300) {
-      /* timeout or enforced timeout */
-      defer(deferred_ping, (void *)sock_fd2uuid(i));
-      continue;
-    }
+  time_t review = facil_data->last_cycle;
+  uintptr_t fd = (uintptr_t)arg;
+
+  uint16_t timeout = fd_data(fd).timeout;
+  if (!timeout)
+    timeout = 300; /* enforced timout settings */
+
+  if (!fd_data(fd).protocol || (fd_data(fd).active + timeout >= review))
+    goto finish;
+  if (spn_trylock(&fd_data(fd).lock))
+    goto reschedule;
+  tmp = fd_data(fd).protocol;
+  if (!tmp || spn_trylock(&prt_meta(tmp).sub_lock)) {
+    spn_unlock(&fd_data(fd).lock);
+    goto finish;
   }
+  spn_unlock(&fd_data(fd).lock);
+  if (prt_meta(tmp).lock)
+    goto unlock;
+  defer(deferred_ping, (void *)sock_fd2uuid(fd));
+unlock:
+  spn_unlock(&prt_meta(tmp).sub_lock);
+finish:
+  do {
+    fd++;
+  } while (!fd_data(fd).protocol && (fd < facil_data->capacity));
+
+  if (facil_data->capacity <= fd) {
+    facil_data->need_review = 1;
+    return;
+  }
+reschedule:
+  defer(facil_review_timeout, (void *)fd);
 }
 
 static void facil_cycle(void *arg) {
   static int idle = 0;
   time(&facil_data->last_cycle);
-  int events = evio_review();
+  int events = evio_review(defer_has_queue() ? 0 : 512);
   if (events < 0)
     goto error;
   if (events > 0) {
@@ -461,7 +466,10 @@ static void facil_cycle(void *arg) {
 finish:
   if (!defer_fork_is_active())
     return;
-  defer(facil_review_timeout, NULL);
+  if (facil_data->need_review) {
+    facil_data->need_review = 0;
+    defer(facil_review_timeout, (void *)0);
+  }
   defer(facil_cycle, arg);
 error:
   (void)1;
@@ -481,6 +489,7 @@ static void facil_init_run(void *arg) {
         evio_add(i, (void *)sock_fd2uuid(i));
     }
   }
+  facil_data->need_review = 1;
   defer(facil_cycle, arg);
 }
 

@@ -50,7 +50,7 @@ static protocol_s *echo_on_open(intptr_t uuid, void *udata) {
       .ping = echo_ping};
 
   sock_write(uuid, "Echo Service: Welcome\n", 22);
-  facil_set_timeout(uuid, 10);
+  facil_set_timeout(uuid, 5);
   return echo_proto;
 }
 
