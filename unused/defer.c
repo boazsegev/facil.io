@@ -19,6 +19,9 @@ Compile time settings
 #ifndef DEFER_QUEUE_BUFFER
 #define DEFER_QUEUE_BUFFER 1024
 #endif
+#ifndef DEFER_THROTTLE
+#define DEFER_THROTTLE 8388608UL
+#endif
 
 /* *****************************************************************************
 Data Structures
@@ -165,8 +168,9 @@ struct defer_pool {
 };
 
 static void *defer_worker_thread(void *pool) {
+  size_t throttle = (((pool_pt)pool)->count & 127) * DEFER_THROTTLE;
   do {
-    throttle_thread();
+    throttle_thread(throttle);
     defer_perform();
   } while (((pool_pt)pool)->flag);
   return NULL;
@@ -191,8 +195,10 @@ static inline pool_pt defer_pool_initialize(unsigned int thread_count,
          (pool->threads[pool->count] =
               defer_new_thread(defer_worker_thread, pool)))
     pool->count++;
-  if (pool->count == thread_count)
+  if (pool->count == thread_count) {
+    SPN_LOCK_THROTTLE = 8388608UL * thread_count;
     return pool;
+  }
   defer_pool_stop(pool);
   return NULL;
 }
@@ -420,7 +426,7 @@ void defer_test(void) {
           pool_count == DEFER_QUEUE_BUFFER ? "pass" : "FAILED");
   fprintf(stderr, "press ^C to finish PID test\n");
   defer(pid_task, "pid test");
-  defer_perform_in_fork(1, 1);
+  defer_perform_in_fork(4, 64);
   fprintf(stderr, "\nPID test passed?\n");
 }
 

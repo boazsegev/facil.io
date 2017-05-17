@@ -9,20 +9,25 @@ spinlock / sync for tasks
 #endif /* _GNU_SOURCE */
 #include <stdlib.h>
 
+/** Sets the value for the thread throttling feature, where available. */
+static size_t SPN_LOCK_THROTTLE = 8388608UL;
+
 /* manage the way threads "wait" for the lock to release */
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
 /* nanosleep seems to be the most effective and efficient reschedule */
-#define defer_nanosleep(length)                                                \
+#define reschedule_thread()                                                    \
   {                                                                            \
-    static const struct timespec tm = {.tv_nsec = length};                     \
+    static const struct timespec tm = {.tv_nsec = 1};                          \
     nanosleep(&tm, NULL);                                                      \
   }
-#define reschedule_thread() defer_nanosleep(1)
-#define throttle_thread() defer_nanosleep(8388608UL)
-
+#define throttle_thread(micosec)                                               \
+  {                                                                            \
+    const struct timespec tm = {.tv_nsec = (micosec)};                         \
+    nanosleep(&tm, NULL);                                                      \
+  }
 #else /* no effective rescheduling, just spin... */
 #define reschedule_thread()
-#define throttle_thread()
+#define throttle_thread(micosec)
 #endif
 
 /** locks use a single byte */
