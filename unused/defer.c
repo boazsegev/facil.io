@@ -257,8 +257,8 @@ inline static void reap_children(void) {
  *
  * Returns 0 on success and -1 on error.
  */
-int defer_perform_in_fork(unsigned int process_count,
-                          unsigned int thread_count) {
+int defer_perform_in_fork(unsigned int process_count, unsigned int thread_count,
+                          void (*on_finish)(void *), void *arg) {
   struct sigaction act, old;
   pid_t *pids = NULL;
   int ret = 0;
@@ -282,6 +282,9 @@ int defer_perform_in_fork(unsigned int process_count,
     if (!(pids[pids_count] = fork())) {
       forked_pool = defer_pool_start(thread_count);
       defer_pool_wait(forked_pool);
+      defer_perform();
+      if (on_finish)
+        on_finish(arg);
       defer_perform();
       exit(0);
     }
@@ -426,7 +429,7 @@ void defer_test(void) {
           pool_count == DEFER_QUEUE_BUFFER ? "pass" : "FAILED");
   fprintf(stderr, "press ^C to finish PID test\n");
   defer(pid_task, "pid test");
-  defer_perform_in_fork(4, 64);
+  defer_perform_in_fork(4, 64, NULL, NULL);
   fprintf(stderr, "\nPID test passed?\n");
 }
 
