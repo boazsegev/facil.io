@@ -260,14 +260,20 @@ inline static void reap_children(void) {
  */
 int defer_perform_in_fork(unsigned int process_count,
                           unsigned int thread_count) {
-  struct sigaction act, old;
+  struct sigaction act, old, old_term;
   pid_t *pids = NULL;
   int ret = 0;
   unsigned int pids_count;
 
   act.sa_handler = sig_int_handler;
   sigemptyset(&act.sa_mask);
+  act.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+
   if (sigaction(SIGINT, &act, &old)) {
+    perror("couldn't set signal handler");
+    goto finish;
+  };
+  if (sigaction(SIGTERM, &act, &old_term)) {
     perror("couldn't set signal handler");
     goto finish;
   };
@@ -308,6 +314,7 @@ finish:
     free(pids);
   }
   sigaction(SIGINT, &old, &act);
+  sigaction(SIGTERM, &old_term, &act);
   return ret;
 }
 

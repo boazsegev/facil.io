@@ -1,66 +1,63 @@
-#include "defer.h"
-#include "evio.h"
-#include "sock.h"
+#include "facil.h"
 void defer_test(void);
 
-// a global server socket
-intptr_t srvfd = -1;
-// a global running flag
-int run = 1;
+#include <errno.h>
 
-// create the callback. This callback will be global and hardcoded,
-// so there are no runtime function pointer resolutions.
-void evio_on_data(void *arg) {
-  intptr_t uuid = (intptr_t)arg;
-  if (uuid == srvfd) {
-    intptr_t new_client;
-    // accept connections.
-    while ((new_client = sock_accept(srvfd)) > 0) {
-      // fprintf(stderr, "Accepted new connetion %lu\n", new_client);
-      if (evio_add(sock_uuid2fd(new_client), (void *)new_client) == -1)
-        perror("evio error");
-    }
-  } else {
-    // fprintf(stderr, "Handling incoming data on %lu.\n", uuid);
-    // handle data
-    char data[1024];
-    ssize_t len;
-    while ((len = sock_read(uuid, data, 1024)) > 0) {
-      // fprintf(stderr, "received %ld of data\n", len);
-      if (sock_write(uuid,
-                     "HTTP/1.1 200 OK\r\n"
-                     "Content-Length: 12\r\n"
-                     "Connection: keep-alive\r\n"
-                     "Keep-Alive: 1;timeout=5\r\n"
-                     "\r\n"
-                     "Hello World!",
-                     100) == -1)
-        perror("sock_write error");
+/* A callback to be called whenever data is available on the socket*/
+static void echo_on_data(intptr_t uuid,  /* The socket */
+                         protocol_s *prt /* pointer to the protocol */
+                         ) {
+  (void)prt; /* ignore unused argument */
+  /* echo buffer */
+  char buffer[1024] = {'E', 'c', 'h', 'o', ':', ' '};
+  ssize_t len;
+  /* Read to the buffer, starting after the "Echo: " */
+  while ((len = sock_read(uuid, buffer + 6, 1018)) > 0) {
+    /* Write back the message */
+    sock_write(uuid, buffer, len + 6);
+    /* Handle goodbye */
+    if ((buffer[6] | 32) == 'b' && (buffer[7] | 32) == 'y' &&
+        (buffer[8] | 32) == 'e') {
+      sock_write(uuid, "Goodbye.\n", 9);
+      sock_close(uuid);
+      return;
     }
   }
 }
 
-void evio_on_close(void *arg) {
-  // fprintf(stderr, "closed the connection for %lu\n", (uintptr_t)arg);
-  sock_force_close((uintptr_t)arg);
+/* A callback called whenever a timeout is reach (more later) */
+static void echo_ping(intptr_t uuid, protocol_s *prt) {
+  /* Read/Write is handled by `libsock` directly. */
+  sock_write(uuid, "Server: Are you there?\n", 23);
 }
 
-void evio_on_ready(void *arg) { sock_flush((intptr_t)arg); }
-
-void stop_signal(int sig) {
-  run = 0;
-  signal(sig, SIG_DFL);
+/* A callback called if the server is shutting down...
+... while the connection is open */
+static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
+  sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
 }
+
+/* A callback called for new connections */
+static protocol_s *echo_on_open(intptr_t uuid, void *udata) {
+  (void)udata; /*ignore this */
+  /* Protocol objects MUST always be dynamically allocated. */
+  protocol_s *echo_proto = malloc(sizeof(*echo_proto));
+  *echo_proto = (protocol_s){
+      .service = "echo",
+      .on_data = echo_on_data,
+      .on_shutdown = echo_on_shutdown,
+      .on_close = (void (*)(protocol_s *))free, /* simply free when done */
+      .ping = echo_ping};
+
+  sock_write(uuid, "Echo Service: Welcome\n", 22);
+  facil_set_timeout(uuid, 10);
+  return echo_proto;
+}
+
 int main() {
-  sock_max_capacity();
-  // sock_libtest();
-  srvfd = sock_listen(NULL, "3000");
-  signal(SIGINT, stop_signal);
-  signal(SIGTERM, stop_signal);
-  evio_create();
-  evio_add(sock_uuid2fd(srvfd), (void *)srvfd);
-  fprintf(stderr, "Starting event loop\n");
-  while (run && evio_review() >= 0)
-    defer_perform();
-  fprintf(stderr, "\nGoodbye.\n");
+  /* Setup a listening socket */
+  if (facil_listen(.port = "8888", .on_open = echo_on_open))
+    perror("No listening socket available on port 8888"), exit(-1);
+  /* Run the server and hang until a stop signal is received. */
+  facil_run(.threads = 4, .processes = 1);
 }

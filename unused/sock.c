@@ -76,11 +76,11 @@ int defer(void (*func)(void *), void *arg) {
 }
 
 /* *****************************************************************************
-Support `lib_react`.
+Support `evio`.
 */
 
-#pragma weak reactor_remove
-int reactor_remove(intptr_t uuid) {
+#pragma weak evio_remove
+int evio_remove(intptr_t uuid) {
   (void)(uuid);
   return -1;
 }
@@ -270,7 +270,7 @@ static inline int initialize_sock_lib(size_t capacity) {
             "Initialized packet pool for %d elements, "
             "each one %lu bytes.\n"
             "overall buffer ovearhead: %lu bytes.\n"
-            "=== Total: %lu bytes ===\n\n",
+            "=== Socket Library Total: %lu bytes ===\n\n",
             capacity, sizeof(struct fd_data_s),
             sizeof(struct fd_data_s) * capacity, BUFFER_PACKET_POOL,
             sizeof(packet_s), sizeof(packet_s) * BUFFER_PACKET_POOL,
@@ -307,8 +307,10 @@ clear:
   }
   old_data.rw_hooks->on_clear(((fd << 8) | old_data.counter),
                               old_data.rw_hooks);
-  sock_on_close((fd << 8) | old_data.counter);
-  reactor_remove((fd << 8) | old_data.counter);
+  if (old_data.open || (old_data.rw_hooks != &sock_default_hooks)) {
+    sock_on_close((fd << 8) | old_data.counter);
+    evio_remove((fd << 8) | old_data.counter);
+  }
   return 0;
 reinitialize:
   if (initialize_sock_lib(fd << 1))
@@ -917,7 +919,7 @@ automatically when the socket is ready.
 */
 ssize_t sock_flush(intptr_t uuid) {
   int fd = sock_uuid2fd(uuid);
-  if (validate_uuid(uuid) || !fdinfo(fd).open || !fdinfo(fd).packet)
+  if (validate_uuid(uuid) || !fdinfo(fd).open)
     return -1;
   ssize_t ret;
   lock_fd(fd);
@@ -941,9 +943,9 @@ retry:
       goto finish;
     goto error;
   }
-finish:
   if (fdinfo(fd).close && !fdinfo(fd).packet)
     goto error;
+finish:
   unlock_fd(fd);
   sock_touch(uuid);
   return 0;
