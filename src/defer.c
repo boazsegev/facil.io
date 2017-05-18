@@ -17,7 +17,7 @@ Compile time settings
 ***************************************************************************** */
 
 #ifndef DEFER_QUEUE_BUFFER
-#define DEFER_QUEUE_BUFFER 1024
+#define DEFER_QUEUE_BUFFER 4096
 #endif
 #ifndef DEFER_THROTTLE
 #define DEFER_THROTTLE 8388608UL
@@ -28,8 +28,9 @@ Data Structures
 ***************************************************************************** */
 
 typedef struct {
-  void (*func)(void *);
-  void *arg;
+  void (*func)(void *, void *);
+  void *arg1;
+  void *arg2;
 } task_s;
 
 typedef struct task_node_s {
@@ -56,7 +57,7 @@ API
 ***************************************************************************** */
 
 /** Defer an execution of a function for later. */
-int defer(void (*func)(void *), void *arg) {
+int defer(void (*func)(void *, void *), void *arg1, void *arg2) {
   if (!func)
     goto call_error;
   task_node_s *task;
@@ -79,7 +80,8 @@ int defer(void (*func)(void *), void *arg) {
   *deferred.last = task;
   deferred.last = &task->next;
   task->task.func = func;
-  task->task.arg = arg;
+  task->task.arg1 = arg1;
+  task->task.arg2 = arg2;
   task->next = NULL;
   spn_unlock(&deferred.lock);
   return 0;
@@ -108,7 +110,7 @@ restart:
       free(tmp);
     }
     spn_unlock(&deferred.lock);
-    task.func(task.arg);
+    task.func(task.arg1, task.arg2);
     goto restart;
   } else
     spn_unlock(&deferred.lock);
@@ -335,40 +337,44 @@ Test
 static spn_lock_i i_lock = 0;
 static size_t i_count = 0;
 
-static void sample_task(void *unused) {
+static void sample_task(void *unused, void *unused2) {
   (void)(unused);
+  (void)(unused2);
   spn_lock(&i_lock);
   i_count++;
   spn_unlock(&i_lock);
 }
 
-static void sched_sample_task(void *unused) {
+static void sched_sample_task(void *unused, void *unused2) {
   (void)(unused);
+  (void)(unused2);
   for (size_t i = 0; i < 1024; i++) {
-    defer(sample_task, NULL);
+    defer(sample_task, NULL, NULL);
   }
 }
 
-static void thrd_sched(void *unused) {
+static void thrd_sched(void *unused, void *unused2) {
   for (size_t i = 0; i < (1024 / DEFER_TEST_THREAD_COUNT); i++) {
-    sched_sample_task(unused);
+    sched_sample_task(unused, unused2);
   }
 }
 
-static void text_task_text(void *unused) {
+static void text_task_text(void *unused, void *unused2) {
   (void)(unused);
+  (void)(unused2);
   spn_lock(&i_lock);
   fprintf(stderr, "this text should print before defer_perform returns\n");
   spn_unlock(&i_lock);
 }
 
-static void text_task(void *_) {
+static void text_task(void *a1, void *a2) {
   static const struct timespec tm = {.tv_sec = 2};
   nanosleep(&tm, NULL);
-  defer(text_task_text, _);
+  defer(text_task_text, a1, a2);
 }
 
-static void pid_task(void *arg) {
+static void pid_task(void *arg, void *unused2) {
+  (void)(unused2);
   fprintf(stderr, "* %d pid is going to sleep... (%s)\n", getpid(),
           arg ? arg : "unknown");
 }
@@ -382,7 +388,7 @@ void defer_test(void) {
   spn_unlock(&i_lock);
   start = clock();
   for (size_t i = 0; i < 1024; i++) {
-    defer(sched_sample_task, NULL);
+    defer(sched_sample_task, NULL, NULL);
   }
   defer_perform();
   end = clock();
@@ -396,7 +402,7 @@ void defer_test(void) {
   pool_pt pool = defer_pool_start(DEFER_TEST_THREAD_COUNT);
   if (pool) {
     for (size_t i = 0; i < DEFER_TEST_THREAD_COUNT; i++) {
-      defer(thrd_sched, NULL);
+      defer(thrd_sched, NULL, NULL);
     }
     // defer((void (*)(void *))defer_pool_stop, pool);
     defer_pool_stop(pool);
@@ -413,7 +419,7 @@ void defer_test(void) {
   spn_unlock(&i_lock);
   start = clock();
   for (size_t i = 0; i < 1024; i++) {
-    defer(sched_sample_task, NULL);
+    defer(sched_sample_task, NULL, NULL);
   }
   defer_perform();
   end = clock();
@@ -421,7 +427,7 @@ void defer_test(void) {
           end - start, i_count);
 
   fprintf(stderr, "calling defer_perform.\n");
-  defer(text_task, NULL);
+  defer(text_task, NULL, NULL);
   defer_perform();
   fprintf(stderr, "defer_perform returned. i_count = %lu\n", i_count);
   size_t pool_count = 0;
@@ -434,12 +440,14 @@ void defer_test(void) {
           DEFER_QUEUE_BUFFER,
           pool_count == DEFER_QUEUE_BUFFER ? "pass" : "FAILED");
   fprintf(stderr, "press ^C to finish PID test\n");
-  defer(pid_task, "pid test");
+  defer(pid_task, "pid test", NULL);
   if (defer_perform_in_fork(4, 64) > 0) {
     fprintf(stderr, "* %d finished\n", getpid());
     exit(0);
   };
-  fprintf(stderr, "\nPID test passed?\n");
+  fprintf(stderr,
+          "   === Defer pool memory footprint %lu X %d = %lu bytes ===\n",
+          sizeof(task_node_s), DEFER_QUEUE_BUFFER, sizeof(tasks_buffer));
 }
 
 #endif

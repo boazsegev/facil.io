@@ -70,11 +70,14 @@ Support `defer``.
 */
 
 #pragma weak defer
-int defer(void (*func)(void *), void *arg) {
-  func(arg);
+int defer(void (*func)(void *, void *), void *arg, void *arg2) {
+  func(arg, arg2);
   return 0;
 }
-
+static void sock_flush_defer(void *arg, void *ignored) {
+  (void)ignored;
+  sock_flush((intptr_t)arg);
+}
 /* *****************************************************************************
 Support `evio`.
 */
@@ -896,7 +899,7 @@ place_packet_in_queue:
   *pos = packet;
   unlock_fd(fd);
   sock_touch(options.uuid);
-  defer((void (*)(void *))sock_flush, (void *)options.uuid);
+  defer(sock_flush_defer, (void *)options.uuid, NULL);
   return 0;
 
 error:

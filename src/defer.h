@@ -24,7 +24,7 @@ Core API
 ***************************************************************************** */
 
 /** Defer an execution of a function for later. Returns -1 on error.*/
-int defer(void (*func)(void *), void *arg);
+int defer(void (*func)(void *, void *), void *arg1, void *arg2);
 
 /** Performs all deferred functions until the queue had been depleted. */
 void defer_perform(void);
