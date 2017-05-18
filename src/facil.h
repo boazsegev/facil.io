@@ -270,6 +270,51 @@ int facil_attach(intptr_t uuid, protocol_s *protocol);
 /** Sets a timeout for a specific connection (if active). */
 void facil_set_timeout(intptr_t uuid, uint8_t timeout);
 
+/* *****************************************************************************
+Helper API
+***************************************************************************** */
+
+/**
+Returns the last time the server reviewed any pending IO events.
+*/
+time_t facil_last_tick(void);
+
+/**
+ * Creates a system timer (at the cost of 1 file descriptor).
+ *
+ * The task will repeat `repetitions` times. If `repetitions` is set to 0, task
+ * will repeat forever.
+ *
+ * Returns -1 on error or the new file descriptor on succeess.
+ */
+int facil_run_every(size_t milliseconds, size_t repetitions,
+                    void (*task)(void *), void *arg, void (*on_finish)(void *));
+
+/**
+ * Schedules a protected connection task. The task will run within the
+ * connection's lock.
+ *
+ * If the connection is closed before the task can run, the
+ * `fallback` task wil be called instead, allowing for resource cleanup.
+ */
+void facil_defer(intptr_t uuid,
+                 void (*task)(intptr_t uuid, protocol_s *, void *arg),
+                 void *arg, void (*fallback)(intptr_t uuid, void *arg));
+
+/**
+ * Schedules a protected connection task for each `service` connection.
+ * The tasks will run within each of the connection's locks.
+ *
+ * Once all the tasks were performed, the `on_complete` callback will be called.
+ */
+void facil_each(intptr_t uuid,
+                void (*task)(intptr_t uuid, protocol_s *, void *arg), void *arg,
+                void (*on_complete)(void *arg));
+
+/* *****************************************************************************
+Lower Level API - for special circumstances, use with care under .
+***************************************************************************** */
+
 enum facil_protocol_lock {
   FIO_PR_LOCK_TASK = 0,
   FIO_PR_LOCK_WRITE = 1,
@@ -308,48 +353,6 @@ protocol_s *facil_protocol_try_lock(intptr_t uuid, enum facil_protocol_lock);
 /** Don't unlock what you don't own... see `facil_protocol_try_lock` for
  * details. */
 void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock);
-
-/* *****************************************************************************
-Helper API
-*****************************************************************************
-*/
-
-/**
-Returns the last time the server reviewed any pending IO events.
-*/
-time_t facil_last_tick(void);
-
-/**
- * Creates a system timer (at the cost of 1 file descriptor).
- *
- * The task will repeat `repetitions` times. If `repetitions` is set to 0, task
- * will repeat forever.
- *
- * Returns -1 on error or the new file descriptor on succeess.
- */
-int facil_run_every(size_t milliseconds, size_t repetitions,
-                    void (*task)(void *), void *arg, void (*on_finish)(void *));
-
-/**
- * Schedules a protected connection task. The task will run within the
- * connection's lock.
- *
- * If the connection is closed before the task can run, the
- * `fallback` task wil be called instead, allowing for resource cleanup.
- */
-void facil_defer(intptr_t uuid,
-                 void (*task)(intptr_t uuid, protocol_s *, void *arg),
-                 void *arg, void (*fallback)(intptr_t uuid, void *arg));
-
-/**
- * Schedules a protected connection task for each `service` connection.
- * The tasks will run within each of the connection's locks.
- *
- * Once all the tasks were performed, the `on_complete` callback will be called.
- */
-void facil_each(intptr_t uuid,
-                void (*task)(intptr_t uuid, protocol_s *, void *arg), void *arg,
-                void (*on_complete)(void *arg));
 
 #ifdef __cplusplus
 } /* extern "C" */
