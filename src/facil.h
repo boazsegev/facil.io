@@ -294,7 +294,7 @@ int facil_run_every(size_t milliseconds, size_t repetitions,
  * Schedules a protected connection task. The task will run within the
  * connection's lock.
  *
- * If the connection is closed before the task can run, the
+ * If an error ocuurs or the connection is closed before the task can run, the
  * `fallback` task wil be called instead, allowing for resource cleanup.
  */
 void facil_defer(intptr_t uuid,
@@ -306,10 +306,12 @@ void facil_defer(intptr_t uuid,
  * The tasks will run within each of the connection's locks.
  *
  * Once all the tasks were performed, the `on_complete` callback will be called.
+ *
+ * Returns -1 on error. `on_complete` is always called (even on error).
  */
-void facil_each(intptr_t uuid,
-                void (*task)(intptr_t uuid, protocol_s *, void *arg), void *arg,
-                void (*on_complete)(void *arg));
+int facil_each(intptr_t origin_uuid, void *service,
+               void (*task)(intptr_t uuid, protocol_s *, void *arg), void *arg,
+               void (*on_complete)(intptr_t origin_uuid, void *arg));
 
 /* *****************************************************************************
 Lower Level API - for special circumstances, use with care under .

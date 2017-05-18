@@ -55,9 +55,21 @@ static protocol_s *echo_on_open(intptr_t uuid, void *udata) {
   facil_set_timeout(uuid, 5);
   return echo_proto;
 }
+#include <string.h>
+static void print_message_to_connection(intptr_t uuid, protocol_s *pr,
+                                        void *msg) {
+  (void)pr;
+  static char *complete = "Connection task complete.\n";
+  sock_write(uuid, msg, strlen(msg));
+  if (msg != complete)
+    facil_defer(uuid, print_message_to_connection, complete, NULL);
+}
 
 static void on_time(void *arg) { fprintf(stderr, "%s\n", arg); }
-static void on_stop(void *arg) { fprintf(stderr, "Timer stopped (%s)\n", arg); }
+static void on_stop(void *arg) {
+  fprintf(stderr, "Timer stopped (%s)\n", arg);
+  facil_each(0, "echo", print_message_to_connection, "Timer complete.\n", NULL);
+}
 
 int main() {
   /* Setup a listening socket */
