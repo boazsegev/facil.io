@@ -17,7 +17,8 @@ Data Structures
 typedef struct ProtocolMetadata {
   spn_lock_i lock;
   spn_lock_i sub_lock;
-  unsigned rsv : 16;
+  spn_lock_i state_lock;
+  unsigned rsv : 8;
 } protocol_metadata_s;
 
 #define prt_meta(prt) (*((protocol_metadata_s *)(&(prt)->rsv)))
@@ -74,23 +75,23 @@ postpone:
   }                                                                            \
   protocol_s *pr = uuid_data(arg).protocol;                                    \
   spn_unlock(&uuid_data(arg).lock);                                            \
-  pr->action((intptr_t)arg, pr);                                               \
+  (action)((intptr_t)arg, pr);                                                 \
   spn_unlock(&prt_meta(pr).lock_name);
 
 static void deferred_on_data(void *arg) {
-  defferred_action(on_data, lock);
+  defferred_action(pr->on_data, lock);
   return;
 postpone:
   defer(deferred_on_data, arg);
 }
 static void deferred_on_ready(void *arg) {
-  defferred_action(on_ready, sub_lock);
+  defferred_action(pr->on_ready, sub_lock);
   return;
 postpone:
   defer(deferred_on_ready, arg);
 }
 static void deferred_on_shutdown(void *arg) {
-  defferred_action(on_shutdown, sub_lock);
+  defferred_action(pr->on_shutdown, sub_lock);
   sock_close((intptr_t)arg);
   return;
 postpone:
@@ -102,7 +103,7 @@ static void deferred_ping(void *arg) {
        (facil_data->last_cycle - uuid_data(arg).active))) {
     return;
   }
-  defferred_action(ping, sub_lock);
+  defferred_action(pr->ping, sub_lock);
   return;
 postpone:
   defer(deferred_ping, arg);
@@ -260,7 +261,7 @@ listener_alloc(struct facil_listen_args settings) {
   return NULL;
 }
 
-inline static void listener_on_server_start(size_t fd) {
+inline static void listener_on_start(size_t fd) {
   intptr_t uuid = sock_fd2uuid(fd);
   if (uuid < 0)
     fprintf(stderr, "ERROR: listening socket dropped?\n"), exit(4);
@@ -301,6 +302,76 @@ int facil_listen(struct facil_listen_args settings) {
 }
 
 /* *****************************************************************************
+Connect (as client)
+***************************************************************************** */
+
+static const char *connector_protocol_name = "connect protocol __internal__";
+
+struct ConnectProtocol {
+  protocol_s protocol;
+  protocol_s *(*on_connect)(intptr_t uuid, void *udata);
+  void (*on_fail)(void *udata);
+  void *udata;
+  int opened;
+};
+
+static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
+  struct ConnectProtocol *connector = (void *)_connector;
+  connector->opened = 1;
+  // fprintf(stderr, "connector_on_ready called\n");
+  if (connector->on_connect) {
+    sock_touch(uuid);
+    if (facil_attach(uuid, connector->on_connect(uuid, connector->udata)) == -1)
+      goto error;
+    uuid_data(uuid).protocol->on_ready(uuid, uuid_data(uuid).protocol);
+    return;
+  }
+error:
+  sock_close(uuid);
+}
+
+static void connector_on_data(intptr_t uuid, protocol_s *connector) {
+  (void)connector;
+  defer(deferred_on_data, (void *)uuid);
+}
+
+static void connector_on_close(protocol_s *pconnector) {
+  struct ConnectProtocol *connector = (void *)pconnector;
+  if (connector->opened == 0 && connector->on_fail)
+    connector->on_fail(connector->udata);
+  free(connector);
+}
+
+#undef facil_connect
+intptr_t facil_connect(struct facil_connect_args opt) {
+  if (!opt.address || !opt.port || !opt.on_connect)
+    return -1;
+  if (!facil_data->last_cycle)
+    time(&facil_data->last_cycle);
+  struct ConnectProtocol *connector = malloc(sizeof(*connector));
+  *connector = (struct ConnectProtocol){
+      .on_connect = opt.on_connect,
+      .on_fail = opt.on_fail,
+      .udata = opt.udata,
+      .protocol.service = connector_protocol_name,
+      .protocol.on_data = connector_on_data,
+      .protocol.on_ready = connector_on_ready,
+      .protocol.on_close = connector_on_close,
+      .opened = 0,
+  };
+  if (!connector)
+    return -1;
+  intptr_t uuid = sock_connect(opt.address, opt.port);
+  if (uuid == -1)
+    return -1;
+  if (facil_attach(uuid, &connector->protocol) == -1) {
+    sock_close(uuid);
+    return -1;
+  }
+  return uuid;
+}
+
+/* *****************************************************************************
 Timers
 ***************************************************************************** */
 
@@ -322,14 +393,14 @@ const char *timer_protocol_name = "timer protocol __facil_internal__";
 
 static void timer_on_data(intptr_t uuid, protocol_s *protocol) {
   prot2timer(protocol).task(prot2timer(protocol).arg);
-  evio_reset_timer(uuid);
-  if (prot2timer(protocol).repetitions) {
-    prot2timer(protocol).repetitions -= 1;
-    if (prot2timer(protocol).repetitions == 0) {
-      evio_remove(sock_uuid2fd(uuid));
-      sock_force_close(sock_fd2uuid(uuid));
-    }
-  }
+  evio_reset_timer(sock_uuid2fd(uuid));
+  if (prot2timer(protocol).repetitions == 0)
+    return;
+  prot2timer(protocol).repetitions -= 1;
+  if (prot2timer(protocol).repetitions)
+    return;
+  evio_remove(sock_uuid2fd(uuid));
+  sock_force_close(uuid);
 }
 
 static void timer_on_close(protocol_s *protocol) {
@@ -359,9 +430,8 @@ static inline timer_protocol_s *timer_alloc(void (*task)(void *), void *arg,
 }
 
 inline static void timer_on_server_start(int fd) {
-  if (evio_add_timer(
-          fd, (void *)sock_fd2uuid(fd),
-          prot2timer(uuid_data(sock_fd2uuid(fd)).protocol).milliseconds))
+  if (evio_add_timer(fd, (void *)sock_fd2uuid(fd),
+                     prot2timer(fd_data(fd).protocol).milliseconds))
     perror("Couldn't register a required timed event."), exit(4);
 }
 
@@ -426,7 +496,7 @@ static void facil_review_timeout(void *arg) {
   if (spn_trylock(&fd_data(fd).lock))
     goto reschedule;
   tmp = fd_data(fd).protocol;
-  if (!tmp || spn_trylock(&prt_meta(tmp).sub_lock)) {
+  if (!tmp || spn_trylock(&prt_meta(tmp).state_lock)) {
     spn_unlock(&fd_data(fd).lock);
     goto finish;
   }
@@ -435,7 +505,7 @@ static void facil_review_timeout(void *arg) {
     goto unlock;
   defer(deferred_ping, (void *)sock_fd2uuid(fd));
 unlock:
-  spn_unlock(&prt_meta(tmp).sub_lock);
+  spn_unlock(&prt_meta(tmp).state_lock);
 finish:
   do {
     fd++;
@@ -482,7 +552,7 @@ static void facil_init_run(void *arg) {
   for (size_t i = 0; i < facil_data->capacity; i++) {
     if (fd_data(i).protocol) {
       if (fd_data(i).protocol->service == listener_protocol_name)
-        listener_on_server_start(i);
+        listener_on_start(i);
       else if (fd_data(i).protocol->service == timer_protocol_name)
         timer_on_server_start(i);
       else

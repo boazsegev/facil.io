@@ -8,6 +8,10 @@ Feel free to copy, use and enjoy according to the license provided.
 /**
 "facil.h" is the main header for the facil.io server platform.
 */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define H_FACIL_H
 
 #ifndef FACIL_PRINT_STATE
@@ -32,7 +36,7 @@ typedef struct FacilIOProtocol protocol_s;
 * The Protocol
 
 The Protocol struct defines the callbacks used for the connection and sets it's
-behaviour.
+behaviour. The Protocol struct is part of facil.io's core design.
 
 For concurrency reasons, a protocol instance SHOULD be unique to each
 connections. Different connections shouldn't share a single protocol object
@@ -68,9 +72,81 @@ struct FacilIOProtocol {
 };
 
 /**************************************************************************/ /**
-* Creating a network Service Settings
+* Listening to Incoming Connections
+
+Listenning to incoming connections is pretty straight forward.
+
+After a new connection is accepted, the `on_open` callback is called. `on_open`
+should allocate the new connection's protocol and retuen it's address.
+
+The protocol's `on_close` callback is expected to handle the cleanup.
 
 These settings will be used to setup listening sockets.
+
+i.e.
+
+```c
+// A callback to be called whenever data is available on the socket
+static void echo_on_data(intptr_t uuid,
+                         protocol_s *prt
+                         ) {
+  (void)prt; // we can ignore the unused argument
+  // echo buffer
+  char buffer[1024] = {'E', 'c', 'h', 'o', ':', ' '};
+  ssize_t len;
+  // Read to the buffer, starting after the "Echo: "
+  while ((len = sock_read(uuid, buffer + 6, 1018)) > 0) {
+    // Write back the message
+    sock_write(uuid, buffer, len + 6);
+    // Handle goodbye
+    if ((buffer[6] | 32) == 'b' && (buffer[7] | 32) == 'y' &&
+        (buffer[8] | 32) == 'e') {
+      sock_write(uuid, "Goodbye.\n", 9);
+      sock_close(uuid);
+      return;
+    }
+  }
+}
+
+// A callback called whenever a timeout is reach
+static void echo_ping(intptr_t uuid, protocol_s *prt) {
+  (void)prt; // we can ignore the unused argument
+  sock_write(uuid, "Server: Are you there?\n", 23);
+}
+
+// A callback called if the server is shutting down...
+// ... while the connection is still open
+static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
+  (void)prt; // we can ignore the unused argument
+  sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
+}
+
+// A callback called for new connections
+static protocol_s *echo_on_open(intptr_t uuid, void *udata) {
+  (void)udata; // ignore this
+  // Protocol objects MUST always be dynamically allocated.
+  protocol_s *echo_proto = malloc(sizeof(*echo_proto));
+  *echo_proto = (protocol_s){
+      .service = "echo",
+      .on_data = echo_on_data,
+      .on_shutdown = echo_on_shutdown,
+      .on_close = (void (*)(protocol_s *))free, // simply free when done
+      .ping = echo_ping};
+
+  sock_write(uuid, "Echo Service: Welcome\n", 22);
+  facil_set_timeout(uuid, 5);
+  return echo_proto;
+}
+
+int main() {
+  // Setup a listening socket
+  if (facil_listen(.port = "8888", .on_open = echo_on_open))
+    perror("No listening socket available on port 8888"), exit(-1);
+  // Run the server and hang until a stop signal is received.
+  facil_run(.threads = 4, .processes = 1);
+}
+
+```
 */
 struct facil_listen_args {
   /**
@@ -106,6 +182,56 @@ int facil_listen(struct facil_listen_args args);
  * See the `struct facil_listen_args` details for any possible named arguments.
  */
 #define facil_listen(...) facil_listen((struct facil_listen_args){__VA_ARGS__})
+
+/* *****************************************************************************
+Connecting to remote servers as a client
+***************************************************************************** */
+
+/**
+Named arguments for the `server_connect` function, that allows non-blocking
+connections to be established.
+*/
+struct facil_connect_args {
+  /** The address of the server we are connecting to. */
+  char *address;
+  /** The port on the server we are connecting to. */
+  char *port;
+  /**
+   * The `on_connect` callback should return a pointer to a protocol object
+   * that will handle any connection related events.
+   */
+  protocol_s *(*on_connect)(intptr_t uuid, void *udata);
+  /**
+   * The `on_fail` is called when a socket fails to connect.
+   */
+  void (*on_fail)(void *udata);
+  /** Opaque user data. */
+  void *udata;
+};
+
+/**
+Creates a client connection (in addition or instead of the server).
+
+See the `struct facil_listen_args` details for any possible named arguments.
+
+* `.address` should be the address of the server.
+
+* `.port` the server's port.
+
+* `.udata`opaque user data.
+
+* `.on_connect` called once a connection was established.
+
+    Should return a pointer to a `protocol_s` object, to handle connection
+    callbacks.
+
+* `.on_fail` called if a connection failed to establish.
+
+(experimental: untested)
+*/
+intptr_t facil_connect(struct facil_connect_args);
+#define facil_connect(...)                                                     \
+  facil_connect((struct facil_connect_args){__VA_ARGS__})
 
 /* *****************************************************************************
 Core API
@@ -164,4 +290,29 @@ time_t facil_last_tick(void);
 int facil_run_every(size_t milliseconds, size_t repetitions,
                     void (*task)(void *), void *arg, void (*on_finish)(void *));
 
+/**
+ * Schedules a protected connection task. The task will run within the
+ * connection's lock.
+ *
+ * If the connection is closed before the task can run, the
+ * `fallback` task wil be called instead, allowing for resource cleanup.
+ */
+void facil_deffer(intptr_t uuid,
+                  void (*task)(intptr_t uuid, protocol_s *, void *arg),
+                  void *arg, void (*fallback)(intptr_t uuid, void *arg));
+
+/**
+ * Schedules a protected connection task for each `service` connection.
+ * The tasks will run within each of the connection's locks.
+ *
+ * Once all the tasks were performed, the `on_complete` callback will be called.
+ */
+void facil_each(intptr_t uuid,
+                void (*task)(intptr_t uuid, protocol_s *, void *arg), void *arg,
+                void (*on_complete)(void *arg));
+
+#ifdef __cplusplus
+} /* extern "C" */
 #endif
+
+#endif /* H_FACIL_H */

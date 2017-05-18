@@ -27,6 +27,7 @@ static void echo_on_data(intptr_t uuid,  /* The socket */
 
 /* A callback called whenever a timeout is reach (more later) */
 static void echo_ping(intptr_t uuid, protocol_s *prt) {
+  (void)prt; /* ignore unused argument */
   /* Read/Write is handled by `libsock` directly. */
   sock_write(uuid, "Server: Are you there?\n", 23);
 }
@@ -34,6 +35,7 @@ static void echo_ping(intptr_t uuid, protocol_s *prt) {
 /* A callback called if the server is shutting down...
 ... while the connection is open */
 static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
+  (void)prt; /* ignore unused argument */
   sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
 }
 
@@ -54,10 +56,15 @@ static protocol_s *echo_on_open(intptr_t uuid, void *udata) {
   return echo_proto;
 }
 
+static void on_time(void *arg) { fprintf(stderr, "%s\n", arg); }
+static void on_stop(void *arg) { fprintf(stderr, "Timer stopped (%s)\n", arg); }
+
 int main() {
   /* Setup a listening socket */
   if (facil_listen(.port = "8888", .on_open = echo_on_open))
     perror("No listening socket available on port 8888"), exit(-1);
+  /* Run a timer. */
+  facil_run_every(2000, 4, on_time, "* Timer...", on_stop);
   /* Run the server and hang until a stop signal is received. */
   facil_run(.threads = 4, .processes = 1);
 }
