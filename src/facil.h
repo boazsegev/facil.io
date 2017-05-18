@@ -270,9 +270,49 @@ int facil_attach(intptr_t uuid, protocol_s *protocol);
 /** Sets a timeout for a specific connection (if active). */
 void facil_set_timeout(intptr_t uuid, uint8_t timeout);
 
+enum facil_protocol_lock {
+  FIO_PR_LOCK_TASK = 0,
+  FIO_PR_LOCK_WRITE = 1,
+  FIO_PR_LOCK_STATE = 2,
+};
+
+/**
+ * This function allows out-of-task access to a connection's `protocol_s` object
+ * by attempting to lock it.
+ *
+ * CAREFUL: mostly, the protocol object will be locked and a pointer will be
+ * sent to the connection event's callback. However, if you need access to the
+ * protocol object from outside a running connection task, you might need to
+ * lock the protocol to prevent it from being closed in the background.
+ *
+ * facil.io uses three different locks:
+ *
+ * * FIO_PR_LOCK_TASK locks the protocol from normal tasks (i.e. `on_data`,
+ * `facil_defer`, `facil_every`).
+ *
+ * * FIO_PR_LOCK_WRITE locks the protocol for high priority `sock_write`
+ * oriented tasks (i.e. `ping`, `on_ready`).
+ *
+ * * FIO_PR_LOCK_STATE locks the protocol for quick operations that need to copy
+ * data from the protoccol's data stracture.
+ *
+ * IMPORTANT: Remember to call `facil_protocol_unlock` using the same lock type.
+ *
+ * Returns NULL on error (lock busy == EWOULDBLOCK, connection invalid == EBADF)
+ * and a pointer to a protocol object on success.
+ *
+ * On error, consider calling `facil_defer` or `defer` instead of busy waiting.
+ * Busy waiting SHOULD be avoided whenever possible.
+ */
+protocol_s *facil_protocol_try_lock(intptr_t uuid, enum facil_protocol_lock);
+/** Don't unlock what you don't own... see `facil_protocol_try_lock` for
+ * details. */
+void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock);
+
 /* *****************************************************************************
 Helper API
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /**
 Returns the last time the server reviewed any pending IO events.
@@ -297,9 +337,9 @@ int facil_run_every(size_t milliseconds, size_t repetitions,
  * If the connection is closed before the task can run, the
  * `fallback` task wil be called instead, allowing for resource cleanup.
  */
-void facil_deffer(intptr_t uuid,
-                  void (*task)(intptr_t uuid, protocol_s *, void *arg),
-                  void *arg, void (*fallback)(intptr_t uuid, void *arg));
+void facil_defer(intptr_t uuid,
+                 void (*task)(intptr_t uuid, protocol_s *, void *arg),
+                 void *arg, void (*fallback)(intptr_t uuid, void *arg));
 
 /**
  * Schedules a protected connection task for each `service` connection.

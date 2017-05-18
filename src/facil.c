@@ -8,6 +8,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "evio.h"
 #include "spnlock.inc"
 
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 
@@ -15,9 +18,7 @@ Feel free to copy, use and enjoy according to the license provided.
 Data Structures
 ***************************************************************************** */
 typedef struct ProtocolMetadata {
-  spn_lock_i lock;
-  spn_lock_i sub_lock;
-  spn_lock_i state_lock;
+  spn_lock_i locks[3];
   unsigned rsv : 8;
 } protocol_metadata_s;
 
@@ -48,6 +49,26 @@ static inline void clear_connection_data_unsafe(intptr_t uuid,
                                                .protocol = protocol,
                                                .lock = uuid_data(uuid).lock};
 }
+/** locks a connection's protocol returns a pointer that need to be unlocked. */
+inline static protocol_s *protocol_try_lock(intptr_t fd,
+                                            enum facil_protocol_lock type) {
+  if (spn_trylock(&fd_data(fd).lock))
+    return NULL;
+  protocol_s *pr = fd_data(fd).protocol;
+  if (!pr) {
+    spn_unlock(&fd_data(fd).lock);
+    return NULL;
+  }
+  if (spn_trylock(&prt_meta(pr).locks[type]))
+    pr = NULL;
+  spn_unlock(&fd_data(fd).lock);
+  return pr;
+}
+/** See `facil_protocol_try_lock` for details. */
+inline static void protocol_unlock(protocol_s *pr,
+                                   enum facil_protocol_lock type) {
+  spn_unlock(&prt_meta(pr).locks[type]);
+}
 
 /* *****************************************************************************
 Deferred event handlers
@@ -62,48 +83,58 @@ postpone:
   defer(deferred_on_close, arg);
 }
 
-#define defferred_action(action, lock_name)                                    \
-  if (spn_trylock(&uuid_data(arg).lock))                                       \
-    goto postpone;                                                             \
-  if (!uuid_data(arg).protocol) {                                              \
-    spn_unlock(&uuid_data(arg).lock);                                          \
-    return;                                                                    \
-  }                                                                            \
-  if (spn_trylock(&uuid_prt_meta(arg).lock_name)) {                            \
-    spn_unlock(&uuid_data(arg).lock);                                          \
-    goto postpone;                                                             \
-  }                                                                            \
-  protocol_s *pr = uuid_data(arg).protocol;                                    \
-  spn_unlock(&uuid_data(arg).lock);                                            \
-  (action)((intptr_t)arg, pr);                                                 \
-  spn_unlock(&prt_meta(pr).lock_name);
-
-static void deferred_on_data(void *arg) {
-  defferred_action(pr->on_data, lock);
-  return;
-postpone:
-  defer(deferred_on_data, arg);
-}
 static void deferred_on_ready(void *arg) {
-  defferred_action(pr->on_ready, sub_lock);
+  if (!uuid_data(arg).protocol)
+    return;
+  protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_WRITE);
+  if (!pr)
+    goto postpone;
+  pr->on_ready((intptr_t)arg, pr);
+  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   return;
 postpone:
   defer(deferred_on_ready, arg);
 }
+
 static void deferred_on_shutdown(void *arg) {
-  defferred_action(pr->on_shutdown, sub_lock);
+  if (!uuid_data(arg).protocol)
+    return;
+  protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_WRITE);
+  if (!pr)
+    goto postpone;
+  pr->on_shutdown((intptr_t)arg, pr);
+  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   sock_close((intptr_t)arg);
   return;
 postpone:
   defer(deferred_on_shutdown, arg);
 }
+
+static void deferred_on_data(void *arg) {
+  if (!uuid_data(arg).protocol)
+    return;
+  protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_TASK);
+  if (!pr)
+    goto postpone;
+  pr->on_data((intptr_t)arg, pr);
+  protocol_unlock(pr, FIO_PR_LOCK_TASK);
+  return;
+postpone:
+  defer(deferred_on_data, arg);
+}
+
 static void deferred_ping(void *arg) {
-  if (uuid_data(arg).timeout &&
-      (uuid_data(arg).timeout >
-       (facil_data->last_cycle - uuid_data(arg).active))) {
+  if (!uuid_data(arg).protocol ||
+      (uuid_data(arg).timeout &&
+       (uuid_data(arg).timeout >
+        (facil_data->last_cycle - uuid_data(arg).active)))) {
     return;
   }
-  defferred_action(pr->ping, sub_lock);
+  protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_WRITE);
+  if (!pr)
+    goto postpone;
+  pr->ping((intptr_t)arg, pr);
+  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   return;
 postpone:
   defer(deferred_ping, arg);
@@ -493,19 +524,15 @@ static void facil_review_timeout(void *arg) {
 
   if (!fd_data(fd).protocol || (fd_data(fd).active + timeout >= review))
     goto finish;
-  if (spn_trylock(&fd_data(fd).lock))
+  tmp = protocol_try_lock(fd, FIO_PR_LOCK_STATE);
+  if (!tmp)
     goto reschedule;
-  tmp = fd_data(fd).protocol;
-  if (!tmp || spn_trylock(&prt_meta(tmp).state_lock)) {
-    spn_unlock(&fd_data(fd).lock);
-    goto finish;
-  }
-  spn_unlock(&fd_data(fd).lock);
-  if (prt_meta(tmp).lock)
+  if (prt_meta(tmp).locks[FIO_PR_LOCK_TASK] ||
+      prt_meta(tmp).locks[FIO_PR_LOCK_WRITE])
     goto unlock;
   defer(deferred_ping, (void *)sock_fd2uuid(fd));
 unlock:
-  spn_unlock(&prt_meta(tmp).state_lock);
+  protocol_unlock(tmp, FIO_PR_LOCK_STATE);
 finish:
   do {
     fd++;
@@ -662,3 +689,22 @@ Misc helpers
 Returns the last time the server reviewed any pending IO events.
 */
 time_t facil_last_tick(void) { return facil_data->last_cycle; }
+
+/**
+ * This function allows out-of-task access to a connection's `protocol_s` object
+ * by attempting to lock it.
+ */
+protocol_s *facil_protocol_try_lock(intptr_t uuid,
+                                    enum facil_protocol_lock type) {
+  if (sock_isvalid(uuid) || !uuid_data(uuid).protocol) {
+    errno = EBADF;
+    return NULL;
+  }
+  return protocol_try_lock(sock_uuid2fd(uuid), type);
+}
+/** See `facil_protocol_try_lock` for details. */
+void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock type) {
+  if (!pr)
+    return;
+  protocol_unlock(pr, type);
+}
