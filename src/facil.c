@@ -691,8 +691,10 @@ int facil_attach(intptr_t uuid, protocol_s *protocol) {
 
 /** Sets a timeout for a specific connection (if active). */
 void facil_set_timeout(intptr_t uuid, uint8_t timeout) {
-  if (sock_isvalid(uuid))
+  if (sock_isvalid(uuid)) {
+    uuid_data(uuid).active = facil_data->last_cycle;
     uuid_data(uuid).timeout = timeout;
+  }
 }
 
 /* *****************************************************************************
@@ -721,6 +723,22 @@ void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock type) {
   if (!pr)
     return;
   protocol_unlock(pr, type);
+}
+/** Counts all the connections of a specific type. */
+size_t facil_count(void *service) {
+  long count = 0;
+  void *tmp;
+  for (size_t i = 0; i < facil_data->capacity; i++) {
+    tmp = NULL;
+    spn_lock(&fd_data(i).lock);
+    if (fd_data(i).protocol && fd_data(i).protocol->service)
+      tmp = (void *)fd_data(i).protocol->service;
+    spn_unlock(&fd_data(i).lock);
+    if (tmp != listener_protocol_name && tmp != timer_protocol_name &&
+        (!service || (tmp == service)))
+      count++;
+  }
+  return count;
 }
 
 /* *****************************************************************************
@@ -805,28 +823,28 @@ reschedule:
 static void schedule_multi_task(void *v_fd, void *v_task) {
   struct task *task = v_task;
   uintptr_t fd = (uintptr_t)v_fd;
-restart:
-  if (!fd_data(fd).protocol)
-    goto finish;
-  if (spn_trylock(&fd_data(fd).lock))
-    goto reschedule;
-  if (!fd_data(fd).protocol || fd_data(fd).protocol->service != task->service) {
+  for (size_t i = 0; i < 64; i++) {
+    if (!fd_data(fd).protocol)
+      goto finish;
+    if (spn_trylock(&fd_data(fd).lock))
+      goto reschedule;
+    if (!fd_data(fd).protocol ||
+        fd_data(fd).protocol->service != task->service) {
+      spn_unlock(&fd_data(fd).lock);
+      goto finish;
+    }
     spn_unlock(&fd_data(fd).lock);
-    goto finish;
+    spn_lock(&task->lock);
+    task->count++;
+    spn_unlock(&task->lock);
+    defer(perform_multi_task, (void *)fd, task);
+  finish:
+    do {
+      fd++;
+    } while (!fd_data(fd).protocol && (fd < facil_data->capacity));
+    if (fd >= facil_data->capacity)
+      goto complete;
   }
-  spn_unlock(&fd_data(fd).lock);
-  spn_lock(&task->lock);
-  task->count++;
-  spn_unlock(&task->lock);
-  defer(perform_multi_task, (void *)fd, task);
-finish:
-  do {
-    fd++;
-  } while (!fd_data(fd).protocol && (fd < facil_data->capacity));
-  if (fd >= facil_data->capacity)
-    goto complete;
-  if (fd - (uintptr_t)v_fd < 64)
-    goto restart;
 reschedule:
   schedule_multi_task((void *)fd, v_task);
   return;

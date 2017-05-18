@@ -279,6 +279,9 @@ Returns the last time the server reviewed any pending IO events.
 */
 time_t facil_last_tick(void);
 
+/** Counts all the connections of a specific type `service`. */
+size_t facil_count(void *service);
+
 /**
  * Creates a system timer (at the cost of 1 file descriptor).
  *
