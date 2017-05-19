@@ -202,8 +202,8 @@ ssize_t http1_parse_request_headers(void *buffer, size_t len,
     return 0;
   if (len == 0)
     return -2;
-  char *pos = buffer;
-  char *end = buffer + len;
+  char *pos = (char *)buffer;
+  char *end = (char *)buffer + len;
   char *next, *tmp;
   // collect method and restart parser if already collected
   if (request->method == NULL) {
@@ -388,7 +388,7 @@ void http_parser_test(void) {
                         "\r\n"
                         "Hello World!\r\n";
   size_t request_length = sizeof(request_text) - 1;
-  uint8_t request_mem[HTTP_REQUEST_SIZE(24)] = {};
+  uint8_t request_mem[HTTP_REQUEST_SIZE(24)] = {0};
   http_request_s *request = (void *)request_mem;
   *request = (http_request_s){.metadata.max_headers = 24};
   ssize_t ret =

@@ -11,7 +11,7 @@ Feel free to copy, use and enjoy according to the license provided.
 Core include files
 */
 // clang-format off
-#include "libserver.h"
+#include "facil.h"
 #include <time.h>
 #include "http_request.h"
 #include "http_response.h"
@@ -30,6 +30,9 @@ Hard Coded Settings
 #ifndef HTTP_DEFAULT_BODY_LIMIT
 #define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
 #endif
+
+/** an HTTP/1.1 vs. HTTP/2 identifier. */
+enum HTTP_VERSION { HTTP_V1 = 0, HTTP_V2 = 1 };
 
 /* *****************************************************************************
 HTTP settings / core data structure
@@ -62,6 +65,11 @@ typedef struct {
   uint8_t log_static;
   /** An HTTP connection timeout. For HTTP/1.1 this defaults to ~5 seconds.*/
   uint8_t timeout;
+  /**
+  The default HTTP version which a new connection will use. At the moment, only
+  version HTTP/1.1 is supported.
+  */
+  uint8_t version;
   /**
   internal flag for library use.
   */
@@ -123,13 +131,26 @@ ssize_t http_decode_url_unsafe(char *dest, const char *url_data);
 ssize_t http_decode_url(char *dest, const char *url_data, size_t length);
 
 /* *****************************************************************************
-HTTP versions (they depend on the settings / core data structure)
-*/
-
-#include "http1.h"
-
-/* *****************************************************************************
 HTTP listening helpers
 */
+
+/**
+Allocates memory for an upgradable HTTP/1.1 protocol.
+
+The protocol self destructs when the `on_close` callback is called.
+*/
+protocol_s *http_on_open(intptr_t fd, http_settings_s *settings);
+
+/**
+Listens for incoming HTTP connections on the specified posrt and address,
+implementing the requested settings.
+
+Since facil.io doesn't support native TLS/SLL
+*/
+int http_listen(const char *port, const char *address,
+                http_settings_s settings);
+
+#define http_listen(port, address, ...)                                        \
+  http_listen((port), (address), (http_settings_s){__VA_ARGS__})
 
 #endif

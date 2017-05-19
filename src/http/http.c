@@ -6,6 +6,29 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #include "http.h"
 
+/* *****************************************************************************
+The global HTTP protocol
+***************************************************************************** */
+
+/**
+Allocates memory for an upgradable HTTP/1.1 protocol.
+
+The protocol self destructs when the `on_close` callback is called.
+*/
+protocol_s *http_on_open(intptr_t fd, http_settings_s *settings);
+
+/**
+Listens for incoming HTTP connections on the specified posrt and address,
+implementing the requested settings.
+*/
+#undef http_listen
+int http_listen(const char *port, const char *address,
+                http_settings_s settings);
+
+/* *****************************************************************************
+HTTP helpers.
+***************************************************************************** */
+
 /**
 A faster (yet less localized) alternative to `gmtime_r`.
 

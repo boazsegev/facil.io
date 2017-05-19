@@ -5,8 +5,9 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #include "http1.h"
-#include "errno.h"
 #include "http1_simple_parser.h"
+#include "spnlock.inc"
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -90,10 +91,10 @@ static void http1_init(void) {
 
     // initialize pool
     void *pos = http1_pool.memory;
-    while (pos <
-           http1_pool.memory + (HTTP1_POOL_MEMORY_SIZE - HTTP1_PROTOCOL_SIZE)) {
+    while (pos < (void *)((uintptr_t)http1_pool.memory +
+                          (HTTP1_POOL_MEMORY_SIZE - HTTP1_PROTOCOL_SIZE))) {
       pool_push(pos);
-      pos += HTTP1_PROTOCOL_SIZE;
+      pos = (void *)((uintptr_t)pos + HTTP1_PROTOCOL_SIZE);
     }
   }
   spn_unlock(&inner_lock);
@@ -110,7 +111,8 @@ inline static void http1_free(http1_protocol_s *http) {
   http_request_clear(&http->request);
   validate_mem();
   if (((void *)http) >= http1_pool.memory &&
-      ((void *)http) <= (http1_pool.memory + HTTP1_POOL_MEMORY_SIZE)) {
+      ((void *)http) <=
+          (void *)((uintptr_t)http1_pool.memory + HTTP1_POOL_MEMORY_SIZE)) {
     pool_push(http);
   } else
     free(http);
@@ -152,13 +154,13 @@ protocol_s *http1_alloc(intptr_t fd, http_settings_s *settings) {
   http->settings = settings;
   http->on_request = settings->on_request;
   // set the timeout
-  server_set_timeout(fd, settings->timeout);
+  facil_set_timeout(fd, settings->timeout);
   return (protocol_s *)http;
 
 is_busy:
   if (settings->public_folder && settings->public_folder_length) {
     size_t p_len = settings->public_folder_length;
-    struct stat file_data = {};
+    struct stat file_data = {.st_mode = 0};
     char fname[p_len + 8 + 1];
     memcpy(fname, settings->public_folder, p_len);
     if (settings->public_folder[p_len - 1] == '/' ||
@@ -174,35 +176,37 @@ is_busy:
     int file = open(fname, O_RDONLY);
     if (file == -1)
       goto busy_no_file;
-    sock_packet_s *packet;
-    packet = sock_checkout_packet();
-    memcpy(packet->buffer, "HTTP/1.1 503 Service Unavailable\r\n"
-                           "Content-Type: text/html\r\n"
-                           "Connection: close\r\n"
-                           "Content-Length: ",
+    sock_buffer_s *buffer;
+    buffer = sock_buffer_checkout();
+    memcpy(buffer->buf,
+           "HTTP/1.1 503 Service Unavailable\r\n"
+           "Content-Type: text/html\r\n"
+           "Connection: close\r\n"
+           "Content-Length: ",
            94);
-    p_len = 94 + http_ul2a(packet->buffer + 94, file_data.st_size);
-    memcpy(packet->buffer + p_len, "\r\n\r\n", 4);
+    p_len = 94 + http_ul2a((char *)buffer->buf + 94, file_data.st_size);
+    memcpy(buffer->buf + p_len, "\r\n\r\n", 4);
     p_len += 4;
     if ((off_t)(BUFFER_PACKET_SIZE - p_len) > file_data.st_size) {
-      if (read(file, packet->buffer + p_len, file_data.st_size) < 0) {
+      if (read(file, buffer->buf + p_len, file_data.st_size) < 0) {
         close(file);
-        sock_free_packet(packet);
+        sock_buffer_free(buffer);
         goto busy_no_file;
       }
       close(file);
-      packet->length = p_len + file_data.st_size;
-      sock_send_packet(fd, packet);
+      buffer->len = p_len + file_data.st_size;
+      sock_buffer_send(fd, buffer);
     } else {
-      packet->length = p_len;
-      sock_send_packet(fd, packet);
+      buffer->len = p_len;
+      sock_buffer_send(fd, buffer);
       sock_sendfile(fd, file, 0, file_data.st_size);
     }
     return NULL;
   }
 busy_no_file:
-  sock_write(fd, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: "
-                 "13\r\n\r\nServer Busy.",
+  sock_write(fd,
+             "HTTP/1.1 503 Service Unavailable\r\nContent-Length: "
+             "13\r\n\r\nServer Busy.",
              68);
   return NULL;
 }
@@ -319,10 +323,10 @@ parser_error:
 bad_request:
   /* handle generally bad requests */
   {
-    http_response_s response = http_response_init(request);
+    http_response_s *response = http_response_create(request);
     response.status = 400;
-    http_response_write_body(&response, "Bad Request", 11);
-    http_response_finish(&response);
+    http_response_write_body(response, "Bad Request", 11);
+    http_response_finish(response);
     sock_close(uuid);
     protocol->buffer_pos = 0;
     return;
@@ -330,17 +334,17 @@ bad_request:
 too_big:
   /* handle oversized headers */
   {
-    http_response_s response = http_response_init(request);
+    http_response_s *response = http_response_create(request);
     response.status = 431;
-    http_response_write_body(&response, "Request Header Fields Too Large", 31);
-    http_response_finish(&response);
+    http_response_write_body(response, "Request Header Fields Too Large", 31);
+    http_response_finish(response);
     sock_close(uuid);
     protocol->buffer_pos = 0;
     return;
   body_to_big:
     /* handle oversized body */
     {
-      http_response_s response = http_response_init(request);
+      http_response_s *response = http_response_create(request);
       response.status = 413;
       http_response_write_body(&response, "Payload Too Large", 17);
       http_response_finish(&response);
@@ -398,8 +402,10 @@ int http1_listen(const char *port, const char *address,
   http_settings_s *settings_copy = malloc(sizeof(*settings_copy));
   *settings_copy = settings;
   settings_copy->private_metaflags = 2;
-  return server_listen(.port = port, .address = address,
-                       .on_start = (void *)http1_on_init,
-                       .on_finish = (void *)http1_on_finish,
-                       .on_open = (void *)http1_alloc, .udata = settings_copy);
+  return facil_listen(.port = port, .address = address,
+                      .on_start = (void (*)(void *))http1_on_init,
+                      .on_finish = (void (*)(void *))http1_on_finish,
+                      .on_open =
+                          (protocol_s * (*)(intptr_t, void *)) http1_alloc,
+                      .udata = settings_copy);
 }

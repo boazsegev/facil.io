@@ -7,14 +7,114 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef HTTP1_RESPONSE_FORMATTER
 #define HTTP1_RESPONSE_FORMATTER
 
-// clang-format off
-#include "libsock.h"
+#include "sock.h"
+/* access the global http_response data */
 #include "http_response.h"
-// clang-format on
 
 #ifndef UNUSED_FUNC
 #define UNUSED_FUNC __attribute__((unused))
 #endif
+
+/* *****************************************************************************
+The Response Object
+***************************************************************************** */
+
+typedef struct {
+  /**
+The body's response length.
+
+If this isn't set manually, the first call to
+`HttpResponse.write_body` (and friends) will set the length to the length
+being written (which might be less then the total data sent, if the sending is
+fragmented).
+
+Set the value to -1 to force the HttpResponse not to write the
+`Content-Length` header.
+*/
+  ssize_t content_length;
+  /**
+  The HTTP date for the response (in seconds since epoche).
+
+  Defaults to now (approximately, not exactly, uses cached data).
+
+  The date will be automatically formatted to match the HTTP protocol
+  specifications. It is better to avoid setting the "Date" header manualy.
+  */
+  time_t date;
+  /**
+  The HTTP date for the response (in seconds since epoche).
+
+  Defaults to now (approximately, not exactly, uses cached data).
+
+  The date will be automatically formatted to match the HTTP protocol
+  specifications. It is better to avoid setting the "Date" header manualy.
+  */
+  time_t last_modified;
+  /**
+  The response status
+  */
+  uint16_t status;
+  /**
+  Metadata about the response's state - don't edit this data (except the opaque
+  data, if needed).
+  */
+  struct {
+    /**
+    The request object to which this response is "responding".
+    */
+    http_request_s *request;
+    /**
+    The libsock fd UUID.
+    */
+    intptr_t fd;
+    /**
+    A `sock_buffer_s` used for header data (to avoid double copy).
+    */
+    sock_buffer_s *buffer;
+    /**
+    A pointer to the header's writing position.
+    */
+    char *headers_pos;
+    /**
+    Internally used by the logging API.
+    */
+    clock_t clock_start;
+    /**
+    HTTP protocol version identifier.
+    */
+    uint8_t version;
+    /**
+    Set to true once the headers were sent.
+    */
+    unsigned headers_sent : 1;
+    /**
+    Set to true when the "Date" header is written to the buffer.
+    */
+    unsigned date_written : 1;
+    /**
+    Set to true when the "Connection" header is written to the buffer.
+    */
+    unsigned connection_written : 1;
+    /**
+    Set to true when the "Content-Length" header is written to the buffer.
+    */
+    unsigned content_length_written : 1;
+    /**
+    Set to true in order to close the connection once the response was sent.
+    */
+    unsigned should_close : 1;
+    /**
+    Internally used by the logging API.
+    */
+    unsigned logged : 1;
+    /**
+    Reserved for future use.
+    */
+    unsigned rsrv : 2;
+
+  } metadata;
+
+} http1_response_s;
 
 /* *****************************************************************************
 Helpers
@@ -29,11 +129,11 @@ The padding for the status line (62 + 2 for the extra \r\n after the headers).
 /** checks for overflow */
 #define overflowing(response)                                                  \
   (((response)->metadata.headers_pos -                                         \
-    (char *)((response)->metadata.packet->buffer)) >=                          \
+    (char *)((response)->metadata.buffer->buf)) >=                             \
    (BUFFER_PACKET_SIZE - H1P_OVERFLOW_PADDING))
 
 #define HEADERS_FINISHED(response)                                             \
-  ((response)->metadata.packet == NULL || (response)->metadata.headers_sent)
+  ((response)->metadata.buffer == NULL || (response)->metadata.headers_sent)
 
 #define invalid_cookie_char(c)                                                 \
   ((c) < '!' || (c) > '~' || (c) == '=' || (c) == ' ' || (c) == ',' ||         \
@@ -43,7 +143,7 @@ The padding for the status line (62 + 2 for the extra \r\n after the headers).
   {                                                                            \
     if ((response)->metadata.headers_pos == 0) {                               \
       (response)->metadata.headers_pos =                                       \
-          (response)->metadata.packet->buffer + H1P_HEADER_START;              \
+          (char *)(response)->metadata.buffer->buf + H1P_HEADER_START;         \
     }                                                                          \
   }
 static inline int h1p_protected_copy(http_response_s *response,
@@ -63,14 +163,14 @@ static inline int h1p_protected_copy(http_response_s *response,
 
 /* this function assume the padding in `h1p_protected_copy` saved enough room
  * for the data to be safely written.*/
-UNUSED_FUNC static inline sock_packet_s *
+UNUSED_FUNC static inline sock_buffer_s *
 h1p_finalize_headers(http_response_s *response) {
   if (HEADERS_FINISHED(response))
     return NULL;
   h1p_validate_hpos(response);
 
-  sock_packet_s *headers = response->metadata.packet;
-  response->metadata.packet = NULL;
+  sock_buffer_s *headers = response->metadata.buffer;
+  response->metadata.buffer = NULL;
   const char *status = http_response_status_str(response->status);
   if (!status) {
     response->status = 500;
@@ -113,8 +213,9 @@ h1p_finalize_headers(http_response_s *response) {
     if (response->metadata.should_close) {
       h1p_protected_copy(response, "Connection:close\r\n", 18);
     } else {
-      h1p_protected_copy(response, "Connection:keep-alive\r\n"
-                                   "Keep-Alive:timeout=2\r\n",
+      h1p_protected_copy(response,
+                         "Connection:keep-alive\r\n"
+                         "Keep-Alive:timeout=2\r\n",
                          45);
     }
   }
@@ -127,38 +228,37 @@ h1p_finalize_headers(http_response_s *response) {
 
   size_t tmp = strlen(status);
   int start = H1P_HEADER_START - (15 + tmp);
-  memcpy(headers->buffer + start, "HTTP/1.1 ### ", 13);
-  memcpy(headers->buffer + start + 13, status, tmp);
-  ((char *)headers->buffer)[H1P_HEADER_START - 1] = '\n';
-  ((char *)headers->buffer)[H1P_HEADER_START - 2] = '\r';
+  memcpy(headers->buf + start, "HTTP/1.1 ### ", 13);
+  memcpy(headers->buf + start + 13, status, tmp);
+  ((char *)headers->buf)[H1P_HEADER_START - 1] = '\n';
+  ((char *)headers->buf)[H1P_HEADER_START - 2] = '\r';
   tmp = response->status / 10;
-  *((char *)headers->buffer + start + 11) =
-      '0' + (response->status - (10 * tmp));
-  *((char *)headers->buffer + start + 10) = '0' + (tmp - (10 * (tmp / 10)));
-  *((char *)headers->buffer + start + 9) = '0' + (response->status / 100);
+  *((char *)headers->buf + start + 11) = '0' + (response->status - (10 * tmp));
+  *((char *)headers->buf + start + 10) = '0' + (tmp - (10 * (tmp / 10)));
+  *((char *)headers->buf + start + 9) = '0' + (response->status / 100);
 
-  headers->buffer = (char *)headers->buffer + start;
-  headers->length = response->metadata.headers_pos - (char *)headers->buffer;
+  headers->buf = (char *)headers->buf + start;
+  headers->len = response->metadata.headers_pos - (char *)headers->buf;
   return headers;
 }
 
-static int h1p_send_headers(http_response_s *response, sock_packet_s *packet) {
-  if (packet == NULL)
+static int h1p_send_headers(http_response_s *response, sock_buffer_s *buffer) {
+  if (buffer == NULL)
     return -1;
   /* mark headers as sent */
   response->metadata.headers_sent = 1;
-  response->metadata.packet = NULL;
-  response->metadata.headers_pos = (char *)packet->length;
+  response->metadata.buffer = NULL;
+  response->metadata.headers_pos = (char *)buffer->len;
   /* write data to network */
-  return sock_send_packet(response->metadata.fd, packet);
-};
+  return sock_buffer_send(response->metadata.fd, buffer);
+}
 
 /* *****************************************************************************
 Implementation
 ***************************************************************************** */
 
-UNUSED_FUNC static inline int h1p_response_write_header(http_response_s *response,
-                                                     http_headers_s header) {
+UNUSED_FUNC static inline int
+h1p_response_write_header(http_response_s *response, http_headers_s header) {
   if (HEADERS_FINISHED(response) || header.name == NULL)
     return -1;
 
@@ -180,7 +280,7 @@ UNUSED_FUNC static inline int h1p_response_write_header(http_response_s *respons
 Set / Delete a cookie using this helper function.
 */
 UNUSED_FUNC static int h1p_response_set_cookie(http_response_s *response,
-                                            http_cookie_s cookie) {
+                                               http_cookie_s cookie) {
   if (HEADERS_FINISHED(response) || cookie.name == NULL ||
       overflowing(response))
     return -1; /* must have a cookie name. */
@@ -288,14 +388,13 @@ UNUSED_FUNC static int h1p_response_set_cookie(http_response_s *response,
 Sends the headers (if unsent) and sends the body.
 */
 UNUSED_FUNC static inline int h1p_response_write_body(http_response_s *response,
-                                                   const char *body,
-                                                   size_t length) {
+                                                      const char *body,
+                                                      size_t length) {
   if (!response->content_length)
     response->content_length = length;
-  sock_packet_s *headers = h1p_finalize_headers(response);
+  sock_buffer_s *headers = h1p_finalize_headers(response);
   if (headers != NULL) { /* we haven't sent the headers yet */
-    ssize_t i_read =
-        ((BUFFER_PACKET_SIZE - H1P_HEADER_START) - headers->length);
+    ssize_t i_read = ((BUFFER_PACKET_SIZE - H1P_HEADER_START) - headers->len);
     if (i_read > 1024) {
       /* we can fit at least some of the data inside the response buffer. */
       if ((size_t)i_read > length) {
@@ -303,12 +402,12 @@ UNUSED_FUNC static inline int h1p_response_write_body(http_response_s *response,
         /* we can fit the data inside the response buffer. */
         memcpy(response->metadata.headers_pos, body, i_read);
         response->metadata.headers_pos += i_read;
-        headers->length += i_read;
+        headers->len += i_read;
         return h1p_send_headers(response, headers);
       }
       memcpy(response->metadata.headers_pos, body, i_read);
       response->metadata.headers_pos += i_read;
-      headers->length += i_read;
+      headers->len += i_read;
       length -= i_read;
       body += i_read;
     }
@@ -323,26 +422,26 @@ UNUSED_FUNC static inline int h1p_response_write_body(http_response_s *response,
 Sends the headers (if unsent) and schedules the file to be sent.
 */
 UNUSED_FUNC static inline int h1p_response_sendfile(http_response_s *response,
-                                                 int source_fd, off_t offset,
-                                                 size_t length) {
+                                                    int source_fd, off_t offset,
+                                                    size_t length) {
   if (!response->content_length)
     response->content_length = length;
 
-  sock_packet_s *headers = h1p_finalize_headers(response);
+  sock_buffer_s *headers = h1p_finalize_headers(response);
 
   if (headers != NULL) { /* we haven't sent the headers yet */
-    if (headers->length < (BUFFER_PACKET_SIZE - H1P_HEADER_START)) {
+    if (headers->len < (BUFFER_PACKET_SIZE - H1P_HEADER_START)) {
       /* we can fit at least some of the data inside the response buffer. */
       ssize_t i_read = pread(
           source_fd, response->metadata.headers_pos,
-          ((BUFFER_PACKET_SIZE - H1P_HEADER_START) - headers->length), offset);
+          ((BUFFER_PACKET_SIZE - H1P_HEADER_START) - headers->len), offset);
       if (i_read > 0) {
         if ((size_t)i_read >= length) {
-          headers->length += length;
+          headers->len += length;
           close(source_fd);
           return h1p_send_headers(response, headers);
         } else {
-          headers->length += i_read;
+          headers->len += i_read;
           length -= i_read;
           offset += i_read;
         }
@@ -359,7 +458,7 @@ UNUSED_FUNC static inline int h1p_response_sendfile(http_response_s *response,
 }
 
 UNUSED_FUNC static inline int h1p_response_finish(http_response_s *response) {
-  sock_packet_s *headers = h1p_finalize_headers(response);
+  sock_buffer_s *headers = h1p_finalize_headers(response);
   if (headers) {
     return h1p_send_headers(response, headers);
   }

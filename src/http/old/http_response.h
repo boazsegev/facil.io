@@ -101,100 +101,44 @@ solutions.
 #include "http_request.h"
 
 typedef struct {
+  uint8_t http_version;
+  uint8_t rsv1;
+  /**
+The response status
+*/
+  uint16_t status;
+  /**
+  The socket UUID for the response.
+  */
+  intptr_t fd;
+  /**
+  The originating.
+  */
+  http_request_s *request;
   /**
 The body's response length.
-
 If this isn't set manually, the first call to
 `HttpResponse.write_body` (and friends) will set the length to the length
 being written (which might be less then the total data sent, if the sending is
 fragmented).
-
 Set the value to -1 to force the HttpResponse not to write the
 `Content-Length` header.
 */
   ssize_t content_length;
   /**
   The HTTP date for the response (in seconds since epoche).
-
   Defaults to now (approximately, not exactly, uses cached data).
-
   The date will be automatically formatted to match the HTTP protocol
   specifications. It is better to avoid setting the "Date" header manualy.
   */
   time_t date;
   /**
   The HTTP date for the response (in seconds since epoche).
-
   Defaults to now (approximately, not exactly, uses cached data).
-
   The date will be automatically formatted to match the HTTP protocol
   specifications. It is better to avoid setting the "Date" header manualy.
   */
   time_t last_modified;
-  /**
-  The response status
-  */
-  uint16_t status;
-  /**
-  Metadata about the response's state - don't edit this data (except the opaque
-  data, if needed).
-  */
-  struct {
-    /**
-    The request object to which this response is "responding".
-    */
-    http_request_s *request;
-    /**
-    The libsock fd UUID.
-    */
-    intptr_t fd;
-    /**
-    A `libsock` buffer packet used for header data (to avoid double copy).
-    */
-    sock_packet_s *packet;
-    /**
-    A pointer to the header's writing position.
-    */
-    char *headers_pos;
-    /**
-    Internally used by the logging API.
-    */
-    clock_t clock_start;
-    /**
-    HTTP protocol version identifier.
-    */
-    uint8_t version;
-    /**
-    Set to true once the headers were sent.
-    */
-    unsigned headers_sent : 1;
-    /**
-    Set to true when the "Date" header is written to the buffer.
-    */
-    unsigned date_written : 1;
-    /**
-    Set to true when the "Connection" header is written to the buffer.
-    */
-    unsigned connection_written : 1;
-    /**
-    Set to true when the "Content-Length" header is written to the buffer.
-    */
-    unsigned content_length_written : 1;
-    /**
-    Set to true in order to close the connection once the response was sent.
-    */
-    unsigned should_close : 1;
-    /**
-    Internally used by the logging API.
-    */
-    unsigned logged : 1;
-    /**
-    Reserved for future use.
-    */
-    unsigned rsrv : 2;
-
-  } metadata;
-
 } http_response_s;
 
 /**
@@ -243,7 +187,7 @@ completed.
 
 Hangs on failuer (waits for available resources).
 */
-http_response_s http_response_init(http_request_s *request);
+http_response_s *http_response_create(http_request_s *request);
 /**
 Releases any resources held by the response object (doesn't release the response
 object itself, which might have been allocated on the stack).

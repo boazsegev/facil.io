@@ -10,7 +10,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "hpack.h"
 #include "hpack_data.h"
 // #include "mempool.h"
-#include "spnlock.h"
+#include "spnlock.inc"
 #include <assert.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -177,8 +177,9 @@ void hpack_test_string_packing(void) {
     if (unpack_string(buff, len, &pos) == NULL)
       fprintf(stderr, "* HPACK STRING UNPACKING FAILED(!) AT %lu\n", i);
     if (thread_buff.len != 56)
-      fprintf(stderr, "* HPACK STRING UNPACKING ERROR AT %lu - got string "
-                      "length %u instead of 56.\n",
+      fprintf(stderr,
+              "* HPACK STRING UNPACKING ERROR AT %lu - got string "
+              "length %u instead of 56.\n",
               i, thread_buff.len);
     if (memcmp(str1, thread_buff.data, 56))
       fprintf(stderr, "* HPACK STRING UNPACKING ERROR AT %lu. Got %.*s\n", i,
@@ -283,20 +284,23 @@ void hpack_test_int_primitive(void) {
   thread_buff.len = 0;
   for (int64_t i = 1; i < (1 << 21); i <<= 1) {
     if (encode_int((((i + 5) * 7) / 3), ((i / 7) & 7)))
-      fprintf(stderr, "* HPACK INTEGER ENCODE ERROR 1 ( %" PRId64
-                      ") (prefix == %" PRId64 ")\n",
+      fprintf(stderr,
+              "* HPACK INTEGER ENCODE ERROR 1 ( %" PRId64
+              ") (prefix == %" PRId64 ")\n",
               i, ((i / 7) & 7));
   }
   pos = 0;
   for (int64_t i = 1; i < (1 << 21); i <<= 1) {
     result = decode_int(thread_buff.data, thread_buff.len, ((i / 7) & 7), &pos);
     if (result < 0)
-      fprintf(stderr, "* HPACK INTEGER DECODE ERROR 1 ( %" PRId64
-                      ") (prefix == %" PRId64 ")\n",
+      fprintf(stderr,
+              "* HPACK INTEGER DECODE ERROR 1 ( %" PRId64
+              ") (prefix == %" PRId64 ")\n",
               i, ((i / 7) & 7));
     else if (result != (((i + 5) * 7) / 3))
-      fprintf(stderr, "* HPACK INTEGER DECODE ERROR 2 expected %" PRId64
-                      " got %" PRId64 " (prefix == %" PRId64 ")\n",
+      fprintf(stderr,
+              "* HPACK INTEGER DECODE ERROR 2 expected %" PRId64 " got %" PRId64
+              " (prefix == %" PRId64 ")\n",
               (((i + 5) * 7) / 3), result, ((i / 7) & 7));
   }
   fprintf(stderr, "* HPACK Integer Primitive test complete.\n");
@@ -432,8 +436,9 @@ void hpack_test_huffman(void) {
                     "I want to go home... but I have to write tests... woohoo!",
                     57) ||
              thread_buff.len != 57)
-      fprintf(stderr, "* HPACK HUFFMAN TEST FAILED result error (3).\n*    Got "
-                      "(%u): %.*s\n",
+      fprintf(stderr,
+              "* HPACK HUFFMAN TEST FAILED result error (3).\n*    Got "
+              "(%u): %.*s\n",
               thread_buff.len, (int)thread_buff.len, thread_buff.data);
   }
   fprintf(stderr, "* HPACK Huffman test finished.\n");

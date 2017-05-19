@@ -135,7 +135,7 @@ here, for convinience of calling the function.
 */
 struct websocket_write_each_args_s {
   /** The originating websocket client will be excluded from the `write`.
-    * Can be NULL. */
+   * Can be NULL. */
   ws_s *origin;
   /** The data to be written to the websocket - required(!) */
   void *data;
@@ -144,14 +144,14 @@ struct websocket_write_each_args_s {
   /** Text mode vs. binary mode. Defaults to binary mode. */
   uint8_t is_text;
   /** Set to 1 to send the data to websockets where this application is the
-   * client. Defaults to 0 (the data is sent to all clients where this
+   * client. Defaults to 0 (the data is sent to all websockets where this
    * application is the server). */
   uint8_t as_client;
   /** A filter callback, allowing us to exclude some clients.
    * Should return 1 to send data and 0 to exclude. */
   uint8_t (*filter)(ws_s *ws_to, void *arg);
   /** A callback called once all the data was sent. */
-  void (*on_finished)(ws_s *ws_to, void *arg);
+  void (*on_finished)(ws_s *origin, void *arg);
   /** A user specified argumernt passed to each of the callbacks. */
   void *arg;
 };

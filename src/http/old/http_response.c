@@ -31,12 +31,12 @@ Helpers
 ***************************************************************************** */
 
 #define forward_func(response, func, ...)                                      \
-  if ((response)->metadata.version == 1) {                                     \
+  if ((response)->http_version == HTTP_V1) {                                   \
     return h1p_##func(__VA_ARGS__);                                            \
   } else                                                                       \
     return -1;
 #define perform_func(response, func, ...)                                      \
-  if ((response)->metadata.version == 1) {                                     \
+  if ((response)->http_version == HTTP_V1) {                                   \
     h1p_##func(__VA_ARGS__);                                                   \
   }
 
@@ -63,11 +63,10 @@ Hangs on failuer (waits for available resources).
 */
 http_response_s http_response_init(http_request_s *request) {
   protocol_s *http = request->metadata.owner;
-  time_t date = server_last_tick();
+  time_t date = facil_last_tick();
   return (http_response_s){
-      .metadata.request = request,
-      .metadata.fd = request->metadata.fd,
-      .metadata.packet = sock_checkout_packet(),
+      .request = request,
+      .fd = request->metadata.fd,
       .status = 200,
       .date = date,
       .last_modified = date,
@@ -85,9 +84,9 @@ object itself, which might have been allocated on the stack).
 This function assumes the response object might have been stack-allocated.
 */
 void http_response_destroy(http_response_s *response) {
-  if (response->metadata.packet) {
-    sock_free_packet(response->metadata.packet);
-    response->metadata.packet = NULL;
+  if (response->metadata.buffer) {
+    sock_buffer_free(response->metadata.buffer);
+    response->metadata.buffer = NULL;
   }
 }
 /**
@@ -155,7 +154,7 @@ On success, the function returns 0.
 #undef http_response_set_cookie
 int http_response_set_cookie(http_response_s *response, http_cookie_s cookie) {
   forward_func(response, response_set_cookie, response, cookie);
-};
+}
 
 /**
 Indicates that any pending data (i.e. unsent headers) should be sent and that no
@@ -232,7 +231,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
 
   const char *mime = NULL;
   const char *ext = NULL;
-  struct stat file_data = {};
+  struct stat file_data = {.st_flags = 0};
   // fprintf(stderr, "\n\noriginal request path: %s\n", req->path);
   char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
   if (fname == NULL)
@@ -442,7 +441,7 @@ void http_response_log_finish(http_response_s *response) {
   struct tm tm;
   struct sockaddr_in addrinfo;
   socklen_t addrlen = sizeof(addrinfo);
-  time_t last_tick = server_last_tick();
+  time_t last_tick = facil_last_tick();
   http_gmtime(&last_tick, &tm);
 
   // TODO Guess IP address from headers (forwarded) where possible

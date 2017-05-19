@@ -7,6 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef HTTP1_SIMPLE_PARSER_H
 #define HTTP1_SIMPLE_PARSER_H
 #include "http_request.h"
+#include <stdio.h>
 
 #ifndef HTTP_HEADERS_LOWERCASE
 /** when defined, HTTP headers will be converted to lowercase and header

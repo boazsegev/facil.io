@@ -3,6 +3,5 @@ experimental
 html/
 public_www/
 Dockerfile
-unused/
 
 .DS_Store
