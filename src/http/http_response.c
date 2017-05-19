@@ -61,6 +61,10 @@ Writing data to the response object
 #define is_num(c) ((c) >= '0' && (c) <= '9')
 #define num_val(c) ((c)-48)
 
+#define invalid_cookie_char(c)                                                 \
+  ((c) < '!' || (c) > '~' || (c) == '=' || (c) == ' ' || (c) == ',' ||         \
+   (c) == ';')
+
 /**
 If the header buffer is full or the headers were already sent (new headers
 cannot be sent), the function will return -1.
@@ -83,8 +87,12 @@ int http_response_write_header_fn(http_response_s *response,
   else if (header.name_len == 14 &&
            !strncasecmp(header.name, "content-length", 14))
     response->content_length_written = 1;
+  else if (header.name_len == 13 &&
+           !strncasecmp(header.name, "Last-Modified", 13))
+    response->date_written = 1;
   else if (header.name_len == 10 && !strncasecmp(header.name, "connection", 10))
     response->connection_written = 1;
+
   return vtable[response->http_version](response, header);
 }
 
@@ -98,6 +106,38 @@ On success, the function returns 0.
 */
 #undef http_response_set_cookie
 int http_response_set_cookie(http_response_s *response, http_cookie_s cookie) {
+  /* validate common requirements. */
+  if (!cookie.name || response->headers_sent)
+    return -1;
+  if (cookie.name_len) {
+    ssize_t tmp = cookie.name_len;
+    do {
+      tmp--;
+      if (!cookie.name[tmp] || invalid_cookie_char(cookie.name[tmp]))
+        return -1;
+    } while (tmp);
+  } else {
+    while (cookie.name[cookie.name_len] &&
+           !invalid_cookie_char(cookie.name[cookie.name_len]))
+      cookie.name_len++;
+    if (cookie.name[cookie.name_len])
+      return -1;
+  }
+  if (cookie.value_len) {
+    ssize_t tmp = cookie.value_len;
+    do {
+      tmp--;
+      if (!cookie.value[tmp] || invalid_cookie_char(cookie.value[tmp]))
+        return -1;
+    } while (tmp);
+  } else {
+    while (cookie.value[cookie.value_len] &&
+           !invalid_cookie_char(cookie.value[cookie.value_len]))
+      cookie.value_len++;
+    if (cookie.value[cookie.value_len])
+      return -1;
+  }
+
   static int (*const vtable[2])(http_response_s *, http_cookie_s) = {
       http1_response_set_cookie /* HTTP_V1 */, NULL /* HTTP_V2 */,
   };
