@@ -47,11 +47,16 @@ void http_response_destroy(http_response_s *response) {
       fallback_http_response_dest /* HTTP_V2 */};
   vtable[response->http_version](response);
 }
+
+void http_response_log_finish(http_response_s *response);
+
 /** Sends the data and destroys the response object.*/
 void http_response_finish(http_response_s *response) {
   static void (*const vtable[2])(http_response_s *) = {
       http1_response_finish /* HTTP_V1 */,
       fallback_http_response_dest /* HTTP_V2 */};
+  if (response->logged)
+    http_response_log_finish(response);
   vtable[response->http_version](response);
 }
 
@@ -109,26 +114,26 @@ int http_response_set_cookie(http_response_s *response, http_cookie_s cookie) {
   /* validate common requirements. */
   if (!cookie.name || response->headers_sent)
     return -1;
+  ssize_t tmp = cookie.name_len;
   if (cookie.name_len) {
-    ssize_t tmp = cookie.name_len;
     do {
       tmp--;
       if (!cookie.name[tmp] || invalid_cookie_char(cookie.name[tmp]))
-        return -1;
+        goto error;
     } while (tmp);
   } else {
     while (cookie.name[cookie.name_len] &&
            !invalid_cookie_char(cookie.name[cookie.name_len]))
       cookie.name_len++;
     if (cookie.name[cookie.name_len])
-      return -1;
+      goto error;
   }
   if (cookie.value_len) {
     ssize_t tmp = cookie.value_len;
     do {
       tmp--;
       if (!cookie.value[tmp] || invalid_cookie_char(cookie.value[tmp]))
-        return -1;
+        goto error;
     } while (tmp);
   } else {
     while (cookie.value[cookie.value_len] &&
@@ -142,6 +147,10 @@ int http_response_set_cookie(http_response_s *response, http_cookie_s cookie) {
       http1_response_set_cookie /* HTTP_V1 */, NULL /* HTTP_V2 */,
   };
   return vtable[response->http_version](response, cookie);
+error:
+  fprintf(stderr, "ERROR: Invalid cookie value cookie value character: %c\n",
+          cookie.value[tmp]);
+  return -1;
 }
 
 /**
@@ -158,6 +167,8 @@ int http_response_write_body(http_response_s *response, const char *body,
   static int (*const vtable[2])(http_response_s *, const char *, size_t) = {
       http1_response_write_body /* HTTP_V1 */, NULL /* HTTP_V2 */,
   };
+  if (!response->content_length)
+    response->content_length = length;
   return vtable[response->http_version](response, body, length);
 }
 
@@ -173,11 +184,14 @@ int http_response_sendfile(http_response_s *response, int source_fd,
   static int (*const vtable[2])(http_response_s *, int, off_t, size_t) = {
       http1_response_sendfile /* HTTP_V1 */, NULL /* HTTP_V2 */,
   };
+  if (!response->content_length)
+    response->content_length = length;
   return vtable[response->http_version](response, source_fd, offset, length);
 }
 /**
-Attempts to send the file requested using an **optional** response object (if no
-response object is pointed to, a temporary response object will be created).
+Attempts to send the file requested using an **optional** response object (if
+no response object is pointed to, a temporary response object will be
+created).
 
 This function will honor Ranged requests by setting the byte range
 appropriately.
@@ -194,7 +208,6 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   char buffer[64]; /* we'll need this a few times along the way */
   if (request == NULL || (file_path_safe == NULL && file_path_unsafe == NULL))
     return -1;
-  http_response_s tmp_response;
 
   if (file_path_safe && path_safe_len == 0)
     path_safe_len = strlen(file_path_safe);
@@ -288,9 +301,9 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     /* send back 304 */
     response->status = 304;
     close(file);
-    http_response_finish(response);
     if (log)
       http_response_log_finish(response);
+    http_response_finish(response);
     return 0;
   }
 
@@ -339,9 +352,9 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
       response->content_length = 0;
       close(file);
-      http_response_finish(response);
       if (log)
         http_response_log_finish(response);
+      http_response_finish(response);
       return 0;
     }
 
@@ -369,6 +382,7 @@ invalid_range:
     http_response_log_finish(response);
   return 0;
 no_file:
+  http_response_destroy(response);
   free(fname);
   return -1;
 }
@@ -404,7 +418,7 @@ prints out the log to stderr.
 */
 void http_response_log_finish(http_response_s *response) {
   http_request_s *request = response->request;
-  uintptr_t bytes_sent = response->bytes_sent;
+  uintptr_t bytes_sent = response->content_length;
 
   size_t mili =
       response->logged
@@ -583,7 +597,8 @@ const char *http_response_status_str(uint16_t status) {
   return NULL;
 }
 
-/** Gets the mime-type string (C string) associated with the file extension. */
+/** Gets the mime-type string (C string) associated with the file extension.
+ */
 const char *http_response_ext2mime(const char *ext) {
   static struct {
     char ext[12];

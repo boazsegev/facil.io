@@ -1,21 +1,18 @@
 #include "facil.h"
-void defer_test(void);
+#include "http.h"
 
-#include <errno.h>
-
-/* A callback to be called whenever data is available on the socket*/
-static void echo_on_data(intptr_t uuid,  /* The socket */
-                         protocol_s *prt /* pointer to the protocol */
-                         ) {
-  (void)prt; /* ignore unused argument */
-  /* echo buffer */
+// A callback to be called whenever data is available on the socket
+static void echo_on_data(intptr_t uuid, protocol_s *prt) {
+  (void)prt; // we can ignore the unused argument
+  // echo buffer
   char buffer[1024] = {'E', 'c', 'h', 'o', ':', ' '};
   ssize_t len;
-  /* Read to the buffer, starting after the "Echo: " */
+  // Read to the buffer, starting after the "Echo: "
   while ((len = sock_read(uuid, buffer + 6, 1018)) > 0) {
-    /* Write back the message */
+    // Write back the message
     sock_write(uuid, buffer, len + 6);
-    /* Handle goodbye */
+    sock_write(uuid, buffer, len + 6);
+    // Handle goodbye
     if ((buffer[6] | 32) == 'b' && (buffer[7] | 32) == 'y' &&
         (buffer[8] | 32) == 'e') {
       sock_write(uuid, "Goodbye.\n", 9);
@@ -25,58 +22,53 @@ static void echo_on_data(intptr_t uuid,  /* The socket */
   }
 }
 
-/* A callback called whenever a timeout is reach (more later) */
+// A callback called whenever a timeout is reach
 static void echo_ping(intptr_t uuid, protocol_s *prt) {
-  (void)prt; /* ignore unused argument */
-  /* Read/Write is handled by `libsock` directly. */
+  (void)prt; // we can ignore the unused argument
   sock_write(uuid, "Server: Are you there?\n", 23);
 }
 
-/* A callback called if the server is shutting down...
-... while the connection is open */
+// A callback called if the server is shutting down...
+// ... while the connection is still open
 static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
-  (void)prt; /* ignore unused argument */
+  (void)prt; // we can ignore the unused argument
   sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
 }
 
-/* A callback called for new connections */
+// A callback called for new connections
 static protocol_s *echo_on_open(intptr_t uuid, void *udata) {
-  (void)udata; /*ignore this */
-  /* Protocol objects MUST always be dynamically allocated. */
+  (void)udata; // ignore this
+  // Protocol objects MUST always be dynamically allocated.
   protocol_s *echo_proto = malloc(sizeof(*echo_proto));
   *echo_proto = (protocol_s){
       .service = "echo",
       .on_data = echo_on_data,
       .on_shutdown = echo_on_shutdown,
-      .on_close = (void (*)(protocol_s *))free, /* simply free when done */
+      .on_close = (void (*)(protocol_s *))free, // simply free when done
       .ping = echo_ping};
 
   sock_write(uuid, "Echo Service: Welcome\n", 22);
   facil_set_timeout(uuid, 5);
   return echo_proto;
 }
-#include <string.h>
-static void print_message_to_connection(intptr_t uuid, protocol_s *pr,
-                                        void *msg) {
-  (void)pr;
-  static char *complete = "Connection task complete.\n";
-  sock_write(uuid, msg, strlen(msg));
-  if (msg != complete)
-    facil_defer(uuid, print_message_to_connection, complete, NULL);
-}
 
-static void on_time(void *arg) { fprintf(stderr, "%s\n", arg); }
-static void on_stop(void *arg) {
-  fprintf(stderr, "Timer stopped (%s)\n", arg);
-  facil_each(0, "echo", print_message_to_connection, "Timer complete.\n", NULL);
-}
+//////////////////////
 
+static void http1_hello_on_request(http_request_s *request) {
+  // fprintf(stderr, "CALLED\n");
+  static char hello_message[] = "HTTP/1.1 200 OK\r\n"
+                                "Content-Length: 12\r\n"
+                                "Connection: keep-alive\r\n"
+                                "Keep-Alive: 1; timeout=5\r\n"
+                                "\r\n"
+                                "Hello World!";
+  sock_write(request->fd, hello_message, sizeof(hello_message) - 1);
+}
 int main() {
-  /* Setup a listening socket */
   if (facil_listen(.port = "8888", .on_open = echo_on_open))
     perror("No listening socket available on port 8888"), exit(-1);
-  /* Run a timer. */
-  facil_run_every(2000, 4, on_time, "* Timer...", on_stop);
+  // .public_folder = ".",
+  http_listen("3000", NULL, .on_request = http1_hello_on_request);
   /* Run the server and hang until a stop signal is received. */
-  facil_run(.threads = 4, .processes = 1);
+  facil_run(.threads = 1, .processes = 1);
 }

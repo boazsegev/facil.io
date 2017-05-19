@@ -63,6 +63,8 @@ int http_listen(const char *port, const char *address,
   settings->private_metaflags = 2;
   if (settings->max_body_size == 0)
     settings->max_body_size = HTTP_DEFAULT_BODY_LIMIT;
+  if (settings->timeout == 0)
+    settings->timeout = 5;
   if (settings->public_folder) {
     settings->public_folder_length = strlen(settings->public_folder);
     if (settings->public_folder[0] == '~' &&
@@ -82,8 +84,8 @@ int http_listen(const char *port, const char *address,
   }
 
   return facil_listen(.port = port, .address = address,
-                      .on_finish = http_get_on_finish_func(settings),
-                      .on_open = on_open_callback, .udata = settings);
+                      .on_finish = http_on_finish, .on_open = on_open_callback,
+                      .udata = settings);
 }
 
 /* *****************************************************************************

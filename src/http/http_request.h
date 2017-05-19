@@ -48,6 +48,7 @@ struct http_request_s {
   uint16_t content_type_len;
   uint16_t upgrade_len;
   uint16_t version_len;
+  uint16_t connection_len;
   uint16_t headers_count;
 };
 

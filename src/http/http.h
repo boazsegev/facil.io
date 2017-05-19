@@ -77,7 +77,7 @@ typedef struct {
   The default HTTP version which a new connection will use. At the moment, only
   version HTTP/1.1 is supported.
   */
-  uint8_t version;
+  enum HTTP_VERSION version;
   /**
   internal flag for library use.
   */

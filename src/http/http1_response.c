@@ -31,8 +31,10 @@ static struct {
 static inline void http1_response_clear(http1_response_s *rs,
                                         http_request_s *request) {
   rs->response = (http_response_s){
-      .http_version = HTTP_V1, .request = request, .fd = request->fd,
-  };
+      .http_version = HTTP_V1,
+      .request = request,
+      .fd = request->fd,
+      .should_close = (request->connection && request->connection_len == 5)};
   rs->buffer_end = rs->buffer_start = H1P_HEADER_START;
   rs->use_count = 1;
   rs->lock = SPN_LOCK_INIT;
@@ -56,6 +58,7 @@ use_malloc:
   http1_response_clear(rs, request);
   return (http_response_s *)rs;
 initialize:
+  http1_response_pool.init = 1;
   for (size_t i = 1; i < (HTTP1_POOL_SIZE - 1); i++) {
     http1_response_pool.pool_mem[i].response.request =
         (void *)(http1_response_pool.pool_mem + (i + 1));
@@ -86,6 +89,7 @@ static void http1_response_deffered_destroy(void *rs_, void *ignr) {
   spn_lock(&http1_response_pool.lock);
   rs->response.request = (void *)http1_response_pool.next;
   http1_response_pool.next = (void *)rs;
+  spn_unlock(&http1_response_pool.lock);
   return;
 use_free:
   free(rs);
@@ -106,6 +110,7 @@ static int h1p_protected_copy(http1_response_s *rs, void *buff, size_t len) {
     return -1;
   memcpy(rs->buffer + rs->buffer_end, buff, len);
   rs->buffer_end += len;
+  return 0;
 }
 
 static void http1_response_finalize_headers(http1_response_s *rs) {
@@ -166,15 +171,16 @@ static void http1_response_finalize_headers(http1_response_s *rs) {
    * strlen(status) */
 
   size_t tmp = strlen(status);
-  int start = H1P_HEADER_START - (15 + tmp);
-  memcpy(rs->buffer + start, "HTTP/1.1 ### ", 13);
-  memcpy(rs->buffer + start + 13, status, tmp);
+  rs->buffer_start = H1P_HEADER_START - (15 + tmp);
+  memcpy(rs->buffer + rs->buffer_start, "HTTP/1.1 ### ", 13);
+  memcpy(rs->buffer + rs->buffer_start + 13, status, tmp);
   rs->buffer[H1P_HEADER_START - 1] = '\n';
   rs->buffer[H1P_HEADER_START - 2] = '\r';
   tmp = rs->response.status / 10;
-  *(rs->buffer + start + 9) = '0' + (tmp / 10);
-  *(rs->buffer + start + 11) = '0' + (rs->response.status - (10 * tmp));
-  *(rs->buffer + start + 10) = '0' + (tmp - (10 * (tmp / 10)));
+  *(rs->buffer + rs->buffer_start + 9) = '0' + (tmp / 10);
+  *(rs->buffer + rs->buffer_start + 11) =
+      '0' + (rs->response.status - (10 * tmp));
+  *(rs->buffer + rs->buffer_start + 10) = '0' + (tmp - (10 * (tmp / 10)));
 }
 
 void http1_response_send_headers(http1_response_s *rs) {
@@ -222,7 +228,6 @@ int http1_response_write_header_fn(http_response_s *rs_, http_header_s header) {
   size_t org_pos = rs->buffer_end;
   if (h1p_protected_copy(rs, (void *)header.name, header.name_len))
     goto error;
-  rs->buffer_end += header.name_len;
   rs->buffer[rs->buffer_end++] = ':';
   if (h1p_protected_copy(rs, (void *)header.data, header.data_len))
     goto error;
@@ -250,7 +255,65 @@ cannot be sent), the function will return -1.
 
 On success, the function returns 0.
 */
-int http1_response_set_cookie(http_response_s *, http_cookie_s);
+int http1_response_set_cookie(http_response_s *rs, http_cookie_s cookie) {
+  http1_response_s *const rs1 = (http1_response_s *)rs;
+  if (rs->headers_sent ||
+      (rs1->buffer_end + cookie.value_len + cookie.name_len >=
+       (HTTP1_MAX_HEADER_SIZE - H1P_OVERFLOW_PADDING)))
+    return -1; /* must have a cookie name. */
+  size_t org_pos = rs1->buffer_end;
+
+  /* write the header's name to the buffer */
+  if (h1p_protected_copy(rs1, "Set-Cookie:", 11))
+    goto error;
+  if (h1p_protected_copy(rs1, cookie.name, cookie.name_len))
+    goto error;
+
+  /* seperate name from value */
+  rs1->buffer[rs1->buffer_end++] = '=';
+  /* write the cookie value, if any */
+  if (cookie.value) {
+    if (h1p_protected_copy(rs1, cookie.value, cookie.value_len))
+      goto error;
+  } else {
+    cookie.max_age = -1;
+  }
+  /* complete value data */
+  rs1->buffer[rs1->buffer_end++] = ';';
+  if (cookie.max_age) {
+    rs1->buffer_end +=
+        sprintf(rs1->buffer + rs1->buffer_end, "Max-Age=%d;", cookie.max_age);
+  }
+  if (cookie.domain) {
+    memcpy(rs1->buffer + rs1->buffer_end, "domain=", 7);
+    rs1->buffer_end += 7;
+    if (h1p_protected_copy(rs1, cookie.domain, cookie.domain_len))
+      return -1;
+    rs1->buffer[rs1->buffer_end++] = ';';
+  }
+  if (cookie.path) {
+    memcpy(rs1->buffer + rs1->buffer_end, "path=", 5);
+    rs1->buffer_end += 5;
+    if (h1p_protected_copy(rs1, cookie.path, cookie.path_len))
+      return -1;
+    rs1->buffer[rs1->buffer_end++] = ';';
+  }
+  if (cookie.http_only) {
+    memcpy(rs1->buffer + rs1->buffer_end, "HttpOnly;", 9);
+    rs1->buffer_end += 9;
+  }
+  if (cookie.secure) {
+    memcpy(rs1->buffer + rs1->buffer_end, "secure;", 7);
+    rs1->buffer_end += 7;
+  }
+  rs1->buffer[rs1->buffer_end++] = '\r';
+  rs1->buffer[rs1->buffer_end++] = '\n';
+  return 0;
+
+error:
+  rs1->buffer_end = org_pos;
+  return -1;
+}
 
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
@@ -273,6 +336,7 @@ int http1_response_write_body(http_response_s *rs, const char *body,
               ? HTTP1_MAX_HEADER_SIZE - rs1->buffer_end
               : length;
     memcpy(rs1->buffer + rs1->buffer_end, body, tmp);
+    rs1->buffer_end += tmp;
     http1_response_send_headers(rs1);
     length -= tmp;
     body += tmp;
@@ -287,10 +351,40 @@ Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
 
 The server's outgoing buffer will take ownership of the file and close it
-using `fclose` once the data was sent.
+using `close` once the data was sent.
 
 If the connection was already closed, the function will return -1. On success,
 the function returns 0.
 */
-int http1_response_sendfile(http_response_s *, int source_fd, off_t offset,
-                            size_t length);
+int http1_response_sendfile(http_response_s *rs, int source_fd, off_t offset,
+                            size_t length) {
+  if (!sock_isvalid(rs->fd) || !length) {
+    close(source_fd);
+    return -1;
+  }
+  http1_response_s *rs1 = (http1_response_s *)rs;
+  ssize_t tmp;
+  if (!rs->headers_sent) {
+    http1_response_finalize_headers(rs1);
+    tmp = (length + rs1->buffer_end >= HTTP1_MAX_HEADER_SIZE)
+              ? HTTP1_MAX_HEADER_SIZE - rs1->buffer_end
+              : length;
+    tmp = pread(source_fd, rs1->buffer + rs1->buffer_end, tmp, offset);
+    if (tmp <= 0) {
+      close(source_fd);
+      return -1;
+    }
+    rs1->buffer_end += tmp;
+    http1_response_send_headers(rs1);
+    length -= tmp;
+    offset += tmp;
+  }
+  if (length)
+    return (sock_write2(.uuid = rs->fd,
+                        .buffer = ((void *)(uintptr_t)source_fd),
+                        .length = length, .offset = offset, .is_fd = 1) >= 0);
+  else
+    close(source_fd);
+
+  return 0;
+}

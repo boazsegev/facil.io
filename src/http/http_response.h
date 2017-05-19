@@ -25,8 +25,6 @@ typedef struct {
   unsigned request_dupped : 1;
   /** The response status */
   uint16_t status;
-  /** A bytes sent counter, used internally for logging. */
-  uintptr_t bytes_sent;
   /** The socket UUID for the response. */
   intptr_t fd;
   /** The originating request. */
@@ -182,10 +180,14 @@ Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
 
 The server's outgoing buffer will take ownership of the file and close it
-using `fclose` once the data was sent.
+using `close` once the data was sent.
 
 If the connection was already closed, the function will return -1. On success,
-the function returns 0.
+the function returns 0. The file is alsways closed by the function.
+
+If should be possible to destroy the response object and send an error response
+if an error is detected. The function will avoid sending any data before it
+knows the likelyhood of error is small enough.
 */
 int http_response_sendfile(http_response_s *, int source_fd, off_t offset,
                            size_t length);
@@ -230,7 +232,5 @@ const char *http_response_ext2mime(const char *ext);
 
 /** Starts counting miliseconds for log results. */
 void http_response_log_start(http_response_s *);
-/** prints out the log to stderr. */
-void http_response_log_finish(http_response_s *);
 
 #endif

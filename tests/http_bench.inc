@@ -3,7 +3,9 @@
 
 /*
 A simple Hello World HTTP response + static file service, for benchmarks.
-ab -n 1000000 -c 200 -k http://127.0.0.1:3000/
+
+ab -n 100000 -c 200 -k http://127.0.0.1:3000/
+wrk -c200 -d4 -t12 http://localhost:3000/
 */
 static void http1_hello_on_request(http_request_s *request) {
   static char hello_message[] = "HTTP/1.1 200 OK\r\n"

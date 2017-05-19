@@ -29,7 +29,7 @@ void http1_request_destroy(http_request_s *request) {
 void http1_request_clear(http_request_s *request) {
   if (request->body_file)
     close(request->body_file);
-  *request = (http_request_s){.http_version = HTTP_V1};
+  *request = (http_request_s){.http_version = HTTP_V1, .fd = request->fd};
   ((http1_request_s *)request)->buffer_pos = 0;
   ((http1_request_s *)request)->header_pos = 0;
 }

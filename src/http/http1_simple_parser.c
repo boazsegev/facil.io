@@ -118,6 +118,7 @@ static inline ssize_t review_header_data(http_request_s *request,
              *((uint64_t *)header->name) ==
                  *((uint64_t *)CONNECTION)) { // a close enough match
     request->connection = (void *)header->data;
+    request->connection_len = header->data_len;
   }
   return 0;
 }
@@ -156,6 +157,7 @@ static inline ssize_t review_header_data(http_request_s *request,
   } else if (header->name_len == 10 &&
              strncasecmp((char *)header->name, CONNECTION, 10) == 0) {
     request->connection = (void *)header->data;
+    request->connection_len = header->data_len;
   }
   return 0;
 }
@@ -375,7 +377,7 @@ ssize_t http1_parse_request_body(void *buffer, size_t len,
 
 #include <time.h>
 
-void http_parser_test(void) {
+void http1_parser_test(void) {
   char request_text[] = "GET /?a=b HTTP/1.1\r\n"
                         "Host: local\r\n"
                         "Upgrade: websocket\r\n"
@@ -430,7 +432,12 @@ void http_parser_test(void) {
                            "Connection: close\r\n"
                            "\r\n"
                            "Hello World!\r\n";
-    http1_parse_request_headers(request_text2, request_length, request, NULL);
+    if (http1_parse_request_headers(request_text2, request_length, request,
+                                    NULL) <= 0 ||
+        (request->upgrade_len != 9)) {
+      fprintf(stderr, "* HTTP/1.1 simple_parser unknown error\n");
+      return;
+    }
     http_request_clear(request);
   }
   end = clock();

@@ -79,7 +79,7 @@ Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
 
 The server's outgoing buffer will take ownership of the file and close it
-using `fclose` once the data was sent.
+using `close` once the data was sent.
 
 If the connection was already closed, the function will return -1. On success,
 the function returns 0.

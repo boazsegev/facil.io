@@ -48,6 +48,7 @@ static void http1_free(http1_protocol_s *pr) {
   spn_lock(&http1_pool.lock);
   pr->next = http1_pool.next;
   http1_pool.next = pr;
+  spn_unlock(&http1_pool.lock);
   return;
 use_free:
   free(pr);
@@ -58,6 +59,8 @@ static inline void http1_set_protocol_data(http1_protocol_s *pr) {
   pr->protocol =
       (protocol_s){.on_data = (void (*)(intptr_t, protocol_s *))http1_on_data,
                    .on_close = (void (*)(protocol_s *))http1_free};
+  pr->request.request = (http_request_s){.fd = 0, .http_version = HTTP_V1};
+  pr->request.header_pos = pr->request.buffer_pos = 0;
 }
 
 static http1_protocol_s *http1_alloc(void) {
@@ -68,18 +71,23 @@ static http1_protocol_s *http1_alloc(void) {
   pr = http1_pool.next;
   http1_pool.next = pr->next;
   spn_unlock(&http1_pool.lock);
+  http1_request_clear(&pr->request.request);
   return pr;
 use_malloc:
   if (http1_pool.init == 0)
     goto initialize;
   spn_unlock(&http1_pool.lock);
+  // fprintf(stderr, "using malloc\n");
   pr = malloc(sizeof(*pr));
+  http1_set_protocol_data(pr);
   return pr;
 initialize:
+  http1_pool.init = 1;
   for (size_t i = 1; i < (HTTP1_POOL_SIZE - 1); i++) {
     http1_set_protocol_data(http1_pool.protocol_mem + i);
     http1_pool.protocol_mem[i].next = http1_pool.protocol_mem + (i + 1);
   }
+  http1_pool.protocol_mem[HTTP1_POOL_SIZE - 1].next = NULL;
   http1_pool.next = http1_pool.protocol_mem + 1;
   spn_unlock(&http1_pool.lock);
   http1_set_protocol_data(http1_pool.protocol_mem);
@@ -152,6 +160,7 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
       continue;
     }
     if (request->request.body_file > 0) {
+      fprintf(stderr, "Body File\n");
     parse_body:
       buffer = buff;
       // request body parsing
@@ -183,6 +192,7 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
              settings->public_folder_length, request->request.path,
              request->request.path_len, settings->log_static))) {
       protocol->on_request(&request->request);
+      // fprintf(stderr, "Called on_request\n");
     }
     size_t old_pos = request->buffer_pos;
     // clear request state
@@ -192,10 +202,11 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
       len = 0;
     } else {
       memmove(request->buffer, buffer + old_pos, len - result);
-      len -= result;
+      request->buffer_pos = (len -= result);
     }
-    // restart buffer position
-    request->buffer_pos = 0;
+    // fprintf(stderr, "data in buffer, %lu long:\n%.*s\n", len, (int)len,
+    //         request->buffer);
+    // make sure to use the correct buffer.
     buffer = request->buffer;
   }
   // no routes lead here.
@@ -250,13 +261,13 @@ Allocates memory for an upgradable HTTP/1.1 protocol.
 The protocol self destructs when the `on_close` callback is called.
 */
 protocol_s *http1_on_open(intptr_t fd, http_settings_s *settings) {
-  if (fd >= (sock_max_capacity() - HTTP_BUSY_UNLESS_HAS_FDS))
+  if (sock_uuid2fd(fd) >= (sock_max_capacity() - HTTP_BUSY_UNLESS_HAS_FDS))
     goto is_busy;
   http1_protocol_s *pr = http1_alloc();
-  http1_request_clear((http_request_s *)&pr->request);
   pr->request.request.fd = fd;
   pr->settings = settings;
   pr->on_request = settings->on_request;
+  facil_set_timeout(fd, pr->settings->timeout);
   return (protocol_s *)pr;
 
 is_busy:
