@@ -9,11 +9,15 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "http.h"
 
 #ifndef HTTP1_MAX_HEADER_SIZE
-/** Sets the maximum allowed size of a requests header section
+/**
+Sets the maximum allowed size of a requests header section
 (all cookies, headers and other data that isn't the request's "body").
 
-Defaults to ~8Kb headers per request */
-#define HTTP1_MAX_HEADER_SIZE (8 * 1024) /* ~ 8kb */
+This value includes the request line itself.
+
+Defaults to ~16Kb headers per request.
+*/
+#define HTTP1_MAX_HEADER_SIZE (16 * 1024) /* ~16kb */
 #endif
 
 #ifndef HTTP1_MAX_HEADER_COUNT
