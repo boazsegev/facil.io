@@ -21,6 +21,8 @@ typedef struct {
   unsigned should_close : 1;
   /** Internally used by the logging API. */
   unsigned logged : 1;
+  /** Set this value to TRUE to indicate the request pointer should be freed. */
+  unsigned request_dupped : 1;
   /** The response status */
   uint16_t status;
   /** A bytes sent counter, used internally for logging. */

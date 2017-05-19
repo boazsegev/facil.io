@@ -1,5 +1,6 @@
 #include "base64.h"
 #include "http.h"
+#include "http1_response.h"
 #include "siphash.h"
 
 #include <arpa/inet.h>
@@ -35,21 +36,21 @@ Initialization
 /** Creates / allocates a protocol version's response object. */
 http_response_s *http_response_create(http_request_s *request) {
   static http_response_s *(*const vtable[2])(http_request_s *) = {
-      fallback_http_response_create /* HTTP_V1 */,
+      http1_response_create /* HTTP_V1 */,
       fallback_http_response_create /* HTTP_V2 */};
   return vtable[request->http_version](request);
 }
 /** Destroys the response object. No data is sent.*/
 void http_response_destroy(http_response_s *response) {
   static void (*const vtable[2])(http_response_s *) = {
-      fallback_http_response_dest /* HTTP_V1 */,
+      http1_response_destroy /* HTTP_V1 */,
       fallback_http_response_dest /* HTTP_V2 */};
   vtable[response->http_version](response);
 }
 /** Sends the data and destroys the response object.*/
 void http_response_finish(http_response_s *response) {
   static void (*const vtable[2])(http_response_s *) = {
-      fallback_http_response_dest /* HTTP_V1 */,
+      http1_response_finish /* HTTP_V1 */,
       fallback_http_response_dest /* HTTP_V2 */};
   vtable[response->http_version](response);
 }
@@ -69,8 +70,21 @@ On success, the function returns 0.
 int http_response_write_header_fn(http_response_s *response,
                                   http_header_s header) {
   static int (*const vtable[2])(http_response_s *, http_header_s) = {
-      NULL /* HTTP_V1 */, NULL /* HTTP_V2 */,
+      http1_response_write_header_fn /* HTTP_V1 */, NULL /* HTTP_V2 */,
   };
+  if (!header.name || response->headers_sent)
+    return -1;
+  if (header.data && !header.data_len)
+    header.data_len = strlen(header.data);
+  if (header.name && !header.name_len)
+    header.name_len = strlen(header.name);
+  if (header.name_len == 4 && !strncasecmp(header.name, "Date", 4))
+    response->date_written = 1;
+  else if (header.name_len == 14 &&
+           !strncasecmp(header.name, "content-length", 14))
+    response->content_length_written = 1;
+  else if (header.name_len == 10 && !strncasecmp(header.name, "connection", 10))
+    response->connection_written = 1;
   return vtable[response->http_version](response, header);
 }
 
@@ -85,7 +99,7 @@ On success, the function returns 0.
 #undef http_response_set_cookie
 int http_response_set_cookie(http_response_s *response, http_cookie_s cookie) {
   static int (*const vtable[2])(http_response_s *, http_cookie_s) = {
-      NULL /* HTTP_V1 */, NULL /* HTTP_V2 */,
+      http1_response_set_cookie /* HTTP_V1 */, NULL /* HTTP_V2 */,
   };
   return vtable[response->http_version](response, cookie);
 }
@@ -102,7 +116,7 @@ the function returns 0.
 int http_response_write_body(http_response_s *response, const char *body,
                              size_t length) {
   static int (*const vtable[2])(http_response_s *, const char *, size_t) = {
-      NULL /* HTTP_V1 */, NULL /* HTTP_V2 */,
+      http1_response_write_body /* HTTP_V1 */, NULL /* HTTP_V2 */,
   };
   return vtable[response->http_version](response, body, length);
 }
@@ -117,7 +131,7 @@ the function returns 0.
 int http_response_sendfile(http_response_s *response, int source_fd,
                            off_t offset, size_t length) {
   static int (*const vtable[2])(http_response_s *, int, off_t, size_t) = {
-      NULL /* HTTP_V1 */, NULL /* HTTP_V2 */,
+      http1_response_sendfile /* HTTP_V1 */, NULL /* HTTP_V2 */,
   };
   return vtable[response->http_version](response, source_fd, offset, length);
 }
