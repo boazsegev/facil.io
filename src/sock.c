@@ -108,12 +108,12 @@ struct {
   packet_s mem[BUFFER_PACKET_POOL];
 } packet_pool;
 
-static void sock_packet_free_none(struct packet_s *packet) { (void)packet; }
+void SOCK_DEALLOC_NOOP(void *arg) { (void)arg; }
 
 static inline void sock_packet_clear(packet_s *packet) {
   packet->metadata.free_func(packet);
-  packet->metadata =
-      (struct packet_metadata_s){.free_func = sock_packet_free_none};
+  packet->metadata = (struct packet_metadata_s){
+      .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   packet->buffer.len = 0;
 }
 
@@ -138,24 +138,26 @@ static inline packet_s *sock_packet_try_grab(void) {
   else if (!packet_pool.init)
     goto init;
   spn_unlock(&packet_pool.lock);
-  packet->metadata =
-      (struct packet_metadata_s){.free_func = sock_packet_free_none};
+  packet->metadata = (struct packet_metadata_s){
+      .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   packet->buffer.len = 0;
   return packet;
 init:
   packet_pool.init = 1;
-  packet_pool.mem[0].metadata.free_func = sock_packet_free_none;
+  packet_pool.mem[0].metadata.free_func =
+      (void (*)(packet_s *))SOCK_DEALLOC_NOOP;
   for (size_t i = 2; i < BUFFER_PACKET_POOL; i++) {
     packet_pool.mem[i - 1].metadata.next = packet_pool.mem + i;
-    packet_pool.mem[i - 1].metadata.free_func = sock_packet_free_none;
+    packet_pool.mem[i - 1].metadata.free_func =
+        (void (*)(packet_s *))SOCK_DEALLOC_NOOP;
   }
   packet_pool.mem[BUFFER_PACKET_POOL - 1].metadata.free_func =
-      sock_packet_free_none;
+      (void (*)(packet_s *))SOCK_DEALLOC_NOOP;
   packet_pool.next = packet_pool.mem + 1;
   spn_unlock(&packet_pool.lock);
   packet = packet_pool.mem;
-  packet->metadata =
-      (struct packet_metadata_s){.free_func = sock_packet_free_none};
+  packet->metadata = (struct packet_metadata_s){
+      .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   packet->buffer.len = 0;
   return packet;
 }
@@ -833,9 +835,9 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
         /* small enough for internal buffer */
         memcpy(packet->buffer.buf, (uint8_t *)options.buffer + options.offset,
                options.length);
-        packet->metadata =
-            (struct packet_metadata_s){.write_func = sock_write_buffer,
-                                       .free_func = sock_packet_free_none};
+        packet->metadata = (struct packet_metadata_s){
+            .write_func = sock_write_buffer,
+            .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
         goto place_packet_in_queue;
       }
       /* too big for the pre-allocated buffer */
@@ -861,7 +863,8 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
             (fdinfo(sock_uuid2fd(options.uuid)).rw_hooks == &sock_default_hooks
                  ? sock_sendfile_from_fd
                  : sock_write_from_fd),
-        .free_func = options.move ? sock_close_from_fd : sock_packet_free_none};
+        .free_func = options.move ? sock_close_from_fd
+                                  : (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   }
 /* place packet in queue */
 place_packet_in_queue:
@@ -1014,7 +1017,8 @@ ssize_t sock_buffer_send(intptr_t uuid, sock_buffer_s *buffer) {
   packet_s **tmp, *packet = (packet_s *)((uintptr_t)(buffer) -
                                          sizeof(struct packet_metadata_s));
   packet->metadata = (struct packet_metadata_s){
-      .write_func = sock_write_buffer, .free_func = sock_packet_free_none};
+      .write_func = sock_write_buffer,
+      .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   int fd = sock_uuid2fd(uuid);
   lock_fd(fd);
   tmp = &fdinfo(fd).packet;

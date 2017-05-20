@@ -10,6 +10,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "facil.h"
 
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -623,6 +624,7 @@ static void facil_cleanup(void *arg) {
 
 #undef facil_run
 void facil_run(struct facil_run_args args) {
+  signal(SIGPIPE, SIG_IGN);
   if (!facil_data)
     facil_lib_init();
   if (!args.on_idle)

@@ -249,6 +249,10 @@ typedef struct {
   /** for internal use */
   unsigned rsv : 1;
 } sock_write_info_s;
+
+void SOCK_DEALLOC_NOOP(void *arg);
+#define SOCK_DEALLOC_NOOP SOCK_DEALLOC_NOOP
+
 /**
 `sock_write2_fn` is the actual function behind the macro `sock_write2`.
 */

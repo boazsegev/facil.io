@@ -172,6 +172,7 @@ struct defer_pool {
 };
 
 static void *defer_worker_thread(void *pool) {
+  signal(SIGPIPE, SIG_IGN);
   size_t throttle = (((pool_pt)pool)->count & 127) * DEFER_THROTTLE;
   do {
     throttle_thread(throttle);
@@ -263,7 +264,7 @@ inline static void reap_children(void) {
  */
 int defer_perform_in_fork(unsigned int process_count,
                           unsigned int thread_count) {
-  struct sigaction act, old, old_term;
+  struct sigaction act, old, old_term, old_pipe;
   pid_t *pids = NULL;
   int ret = 0;
   unsigned int pids_count;
@@ -277,6 +278,11 @@ int defer_perform_in_fork(unsigned int process_count,
     goto finish;
   };
   if (sigaction(SIGTERM, &act, &old_term)) {
+    perror("couldn't set signal handler");
+    goto finish;
+  };
+  act.sa_handler = SIG_IGN;
+  if (sigaction(SIGPIPE, &act, &old_pipe)) {
     perror("couldn't set signal handler");
     goto finish;
   };
@@ -318,6 +324,7 @@ finish:
   }
   sigaction(SIGINT, &old, &act);
   sigaction(SIGTERM, &old_term, &act);
+  sigaction(SIGTERM, &old_pipe, &act);
   return ret;
 }
 

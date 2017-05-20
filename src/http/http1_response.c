@@ -20,6 +20,7 @@ typedef struct {
   size_t buffer_end;
   spn_lock_i lock;
   uint8_t use_count;
+  uint8_t dest_count;
   char buffer[HTTP1_MAX_HEADER_SIZE];
 } http1_response_s;
 
@@ -80,7 +81,7 @@ static void http1_response_deffered_destroy(void *rs_, void *ignr) {
     defer(http1_response_deffered_destroy, rs, NULL);
     return;
   }
-  rs->use_count--;
+  rs->use_count -= 1;
   if (rs->use_count) {
     spn_unlock(&rs->lock);
     return;
@@ -90,8 +91,8 @@ static void http1_response_deffered_destroy(void *rs_, void *ignr) {
     http_request_destroy(rs->response.request);
 
   if ((uintptr_t)rs < (uintptr_t)http1_response_pool.pool_mem ||
-      (uintptr_t)rs >=
-          (uintptr_t)(http1_response_pool.pool_mem + HTTP1_POOL_SIZE))
+      (uintptr_t)rs >
+          (uintptr_t)(http1_response_pool.pool_mem + (HTTP1_POOL_SIZE - 1)))
     goto use_free;
   spn_lock(&http1_response_pool.lock);
   rs->response.request = (void *)http1_response_pool.next;
@@ -105,7 +106,8 @@ use_free:
 
 /** Destroys the response object. No data is sent.*/
 void http1_response_destroy(http_response_s *rs) {
-  defer(http1_response_deffered_destroy, rs, NULL);
+  ((http1_response_s *)rs)->dest_count++;
+  http1_response_deffered_destroy(rs, NULL);
 }
 
 /* *****************************************************************************
@@ -209,7 +211,7 @@ void http1_response_send_headers(http1_response_s *rs) {
 void http1_response_finish(http_response_s *rs) {
   if (!rs->headers_sent)
     http1_response_send_headers((http1_response_s *)rs);
-  defer(http1_response_deffered_destroy, rs, NULL);
+  http1_response_deffered_destroy(rs, NULL);
 }
 
 /* *****************************************************************************
@@ -389,7 +391,7 @@ int http1_response_sendfile(http_response_s *rs, int source_fd, off_t offset,
   }
   if (length)
     return (sock_write2(.uuid = rs->fd, .data_fd = source_fd, .length = length,
-                        .offset = offset, .is_fd = 1) >= 0);
+                        .offset = offset, .is_fd = 1, .move = 1) >= 0);
   else
     close(source_fd);
 
