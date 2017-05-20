@@ -192,19 +192,21 @@ static void http1_response_finalize_headers(http1_response_s *rs) {
   *(rs->buffer + rs->buffer_start + 10) = '0' + (tmp - (10 * (tmp / 10)));
 }
 
-void http1_response_send_headers(http1_response_s *rs) {
+int http1_response_send_headers(http1_response_s *rs) {
   if (!rs->buffer_end)
-    return;
+    return 0;
   http1_response_finalize_headers(rs);
   spn_lock(&rs->lock);
   rs->use_count++;
   spn_unlock(&rs->lock);
-  sock_write2(.uuid = rs->response.fd, .buffer = rs,
-              .offset =
-                  ((uintptr_t)(rs->buffer + rs->buffer_start) - (uintptr_t)rs),
-              .length = rs->buffer_end - rs->buffer_start, .move = 1,
-              .dealloc = (void (*)(void *))http1_response_destroy);
+  if (sock_write2(.uuid = rs->response.fd, .buffer = rs,
+                  .offset = ((uintptr_t)(rs->buffer + rs->buffer_start) -
+                             (uintptr_t)rs),
+                  .length = rs->buffer_end - rs->buffer_start, .move = 1,
+                  .dealloc = (void (*)(void *))http1_response_destroy) < 0)
+    return -1;
   rs->buffer_end = 0;
+  return 0;
 }
 
 /** Sends the data and destroys the response object.*/

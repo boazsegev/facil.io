@@ -125,18 +125,26 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
                         HTTP1_MAX_HEADER_SIZE - request->buffer_pos);
         // update buffer read position.
         request->buffer_pos += len;
+        // if (len > 0) {
+        //   fprintf(stderr, "\n----\nRead from socket, %lu bytes, total
+        //   %lu:\n",
+        //           len, request->buffer_pos);
+        //   for (size_t i = 0; i < request->buffer_pos; i++) {
+        //     fprintf(stderr, "%c", buffer[i] ? buffer[i] : '-');
+        //   }
+        //   fprintf(stderr, "\n");
+        // }
       }
       if (len <= 0) {
         return;
       }
+
       // parse headers
       result =
           http1_parse_request_headers(buffer, request->buffer_pos,
                                       &request->request, http1_on_header_found);
       // review result
       if (result >= 0) { // headers comeplete
-        // mark buffer position, for HTTP pipelining
-        request->buffer_pos = result;
         // are we done?
         if (request->request.content_length == 0 || request->request.body_str) {
           goto handle_request;
@@ -170,8 +178,6 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
         return;
       result = http1_parse_request_body(buffer, len, &request->request);
       if (result >= 0) {
-        // set buffer pos for piplining support
-        request->buffer_pos = result;
         goto handle_request;
       } else if (result == -1) // parser error
         goto parser_error;
@@ -195,18 +201,21 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
       protocol->on_request(&request->request);
       // fprintf(stderr, "Called on_request\n");
     }
-    size_t old_pos = request->buffer_pos;
-    // clear request state
-    http1_request_clear(&request->request);
     // rotate buffer for HTTP pipelining
-    if (result >= len) {
+    if ((ssize_t)request->buffer_pos <= result) {
       len = 0;
+      // fprintf(stderr, "\n----\nAll data consumed.\n");
     } else {
-      memmove(request->buffer, buffer + old_pos, len - result);
-      request->buffer_pos = (len -= result);
+      memmove(request->buffer, buffer + result, request->buffer_pos - result);
+      len = request->buffer_pos - result;
+      // fprintf(stderr, "\n----\ndata after move, %lu long:\n%.*s\n", len,
+      //         (int)len, request->buffer);
     }
     // fprintf(stderr, "data in buffer, %lu long:\n%.*s\n", len, (int)len,
     //         request->buffer);
+    // clear request state
+    http1_request_clear(&request->request);
+    request->buffer_pos = len;
     // make sure to use the correct buffer.
     buffer = request->buffer;
   }

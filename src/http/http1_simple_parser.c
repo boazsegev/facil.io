@@ -50,6 +50,12 @@ Useful macros an helpers
     if (*pos == '\n' || *pos == 0)                                             \
       *(pos++) = 0;                                                            \
   }
+#undef EAT_EOL
+#define EAT_EOL()                                                              \
+  {                                                                            \
+    *(pos++) = 0;                                                              \
+    *(pos++) = 0;                                                              \
+  }
 
 static inline char *seek_to_char(char *start, char *end, char tok) {
   while (start < end) {
@@ -212,16 +218,19 @@ ssize_t http1_parse_request_headers(
     // eat empty spaces
     while ((*pos == '\n' || *pos == '\r') && pos < end)
       ++pos;
+    CHECK_END();
     request->method = (char *)pos;
     next = seek_to_char(pos, end, ' ');
-    if (next == NULL)
-      return -1; /* there should be a limit to all fragmentations. */
+    if (next == NULL) {
+      request->method = NULL;
+      return -2;
+    }
     request->method_len = (uintptr_t)next - (uintptr_t)pos;
     pos = next;
     *(pos++) = 0;
     CHECK_END();
   } else {
-    /* use the `next` pointer to store current position in the buffer */
+    /* use the `udata` pointer to store current position in the buffer */
     pos = request->udata;
     CHECK_END();
   }
@@ -254,14 +263,16 @@ ssize_t http1_parse_request_headers(
     EAT_EOL();
     CHECK_END();
   }
+
   // collect headers
-  while (pos < end && *pos != '\n' && *pos != '\r' &&
-         *pos != 0) { /* NUL as term? */
+  while (pos < end && *pos != 0) { /* NUL as term */
     if (request->headers_count >= HTTP1_MAX_HEADER_COUNT)
       return -1;
     next = seek_to_2eol(pos, end);
     if (next == NULL)
       return -2;
+    if (next == pos) /*headers finished */
+      break;
 #if defined(HTTP_HEADERS_LOWERCASE) && HTTP_HEADERS_LOWERCASE == 1
     tmp = pos;
     while (tmp < next && *tmp != ':') {
@@ -286,19 +297,18 @@ ssize_t http1_parse_request_headers(
     pos = next;
     EAT_EOL();
     // print debug info
-    // fprintf(stderr, "Got header %s (%u): %s (%u)\n",
-    //         header.name,
-    //         header.name_len,
-    //         header.data,
-    //         header.data_len);
+    // fprintf(stderr, "Got header %s (%u): %s (%u)\n", header.name,
+    //         header.name_len, header.data, header.data_len);
     // check special headers and assign value.
     review_header_data(request, &header);
+    request->headers_count += 1;
     on_header_found(request, &header);
     // advance header position
-    request->headers_count += 1;
     CHECK_END();
   }
-  // check if the body is contained within the buffer
+  // Did we break because there's no more data or end of headers?
+  CHECK_END();
+  // "eat" the end of headers line and finish processing.
   EAT_EOL();
   if (request->content_length &&
       (end - pos) >= (ssize_t)request->content_length) {
@@ -311,9 +321,8 @@ ssize_t http1_parse_request_headers(
     //         request->body_str);
     return (ssize_t)(pos - (char *)buffer) + request->content_length;
   }
-
   // we're done.
-  return pos - (char *)buffer;
+  return (ssize_t)(pos - (char *)buffer);
 }
 
 /**

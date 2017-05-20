@@ -24,8 +24,10 @@ static void http1_hello_on_request(http_request_s *request) {
 
 static void http1_hello_on_request(http_request_s *request) {
   http_response_s *rs = http_response_create(request);
-  if (!rs)
-    fprintf(stderr, "WTF?!\n");
+  if (!rs) {
+    perror("ERROR: WTF?! No Memory? ");
+    return;
+  }
   http_response_write_body(rs, "Hello World!", 12);
   http_response_finish(rs);
 }
