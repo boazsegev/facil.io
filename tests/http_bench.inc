@@ -4,7 +4,7 @@
 /*
 A simple Hello World HTTP response + static file service, for benchmarks.
 
-ab -n 100000 -c 200 -k http://127.0.0.1:3000/
+ab -c 200 -t 4 -n 1000000 -k http://127.0.0.1:3000/
 wrk -c200 -d4 -t12 http://localhost:3000/
 */
 
@@ -28,12 +28,14 @@ static void http1_hello_on_request(http_request_s *request) {
     perror("ERROR: WTF?! No Memory? ");
     return;
   }
+  /* http_response_log_start(rs); */
   http_response_write_body(rs, "Hello World!", 12);
   http_response_finish(rs);
 }
 
 void listen2bench(void) {
   http_listen("3000", NULL, .public_folder = "./public_www",
-              .on_request = http1_hello_on_request);
+              .on_request = http1_hello_on_request,
+              /* .log_static = 1 */);
 }
 #endif
