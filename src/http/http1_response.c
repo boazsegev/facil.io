@@ -213,6 +213,8 @@ int http1_response_send_headers(http1_response_s *rs) {
 void http1_response_finish(http_response_s *rs) {
   if (!rs->headers_sent)
     http1_response_send_headers((http1_response_s *)rs);
+  if (rs->should_close)
+    sock_close(rs->fd);
   http1_response_deffered_destroy(rs, NULL);
 }
 

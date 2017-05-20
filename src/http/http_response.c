@@ -52,8 +52,8 @@ void http_response_destroy(http_response_s *response) {
   vtable[response->http_version](response);
 }
 
-void http_response_log_finish(http_response_s *response);
-
+/* we declare it in advance, because we reference it soon. */
+static void http_response_log_finish(http_response_s *response);
 /** Sends the data and destroys the response object.*/
 void http_response_finish(http_response_s *response) {
   static void (*const vtable[2])(http_response_s *) = {
@@ -99,8 +99,12 @@ int http_response_write_header_fn(http_response_s *response,
   else if (header.name_len == 13 &&
            !strncasecmp(header.name, "Last-Modified", 13))
     response->date_written = 1;
-  else if (header.name_len == 10 && !strncasecmp(header.name, "connection", 10))
+  else if (header.name_len == 10 &&
+           !strncasecmp(header.name, "connection", 10)) {
     response->connection_written = 1;
+    if (header.data_len == 5 && !strncasecmp(header.data, "close", 5))
+      response->should_close = 1;
+  }
 
   return vtable[response->http_version](response, header);
 }
@@ -422,7 +426,7 @@ void http_response_log_start(http_response_s *response) {
 /**
 prints out the log to stderr.
 */
-void http_response_log_finish(http_response_s *response) {
+static void http_response_log_finish(http_response_s *response) {
   http_request_s *request = response->request;
   uintptr_t bytes_sent = response->content_length;
 
