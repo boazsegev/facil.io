@@ -133,15 +133,19 @@ static inline packet_s *sock_packet_try_grab(void) {
   packet_s *packet = NULL;
   spn_lock(&packet_pool.lock);
   packet = packet_pool.next;
-  if (packet)
-    packet_pool.next = packet->metadata.next;
-  else if (!packet_pool.init)
-    goto init;
+  if (packet == NULL)
+    goto none_in_pool;
+  packet_pool.next = packet->metadata.next;
   spn_unlock(&packet_pool.lock);
   packet->metadata = (struct packet_metadata_s){
       .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   packet->buffer.len = 0;
   return packet;
+none_in_pool:
+  if (!packet_pool.init)
+    goto init;
+  spn_unlock(&packet_pool.lock);
+  return NULL;
 init:
   packet_pool.init = 1;
   packet_pool.mem[0].metadata.free_func =

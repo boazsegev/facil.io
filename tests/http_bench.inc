@@ -34,7 +34,7 @@ static void http1_hello_on_request(http_request_s *request) {
   http_response_finish(rs);
 }
 
-void listen2bench(void) {
+void listen2bench(const char *port, const char *public_folder) {
   fclose(stderr);
   FILE *log = fopen("./tmp/benchmark.log", "a");
   if (!log) {
@@ -45,7 +45,7 @@ void listen2bench(void) {
     sock_open(fileno(log));
   }
 
-  http_listen("3000", NULL, .public_folder = "./public_www",
+  http_listen(port, NULL, .public_folder = public_folder,
               .on_request = http1_hello_on_request, .log_static = 1);
 }
 #endif

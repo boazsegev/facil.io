@@ -34,6 +34,8 @@ sleep 10 while `websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 
 #include "websockets.h" // includes the "http.h" header
 
+#include <string.h>
+
 static void free_ws_msg(ws_s *origin, void *msg) {
   (void)(origin);
   free(msg);
@@ -125,29 +127,25 @@ ab -n 1000000 -c 200 -k http://127.0.0.1:3000/
 */
 static void http1_websocket_shotout(http_request_s *request) {
   // to log we will start a response.
-  http_response_s response = http_response_init(request);
+  http_response_s *response = http_response_create(request);
   // http_response_log_start(&response);
   // upgrade requests to broadcast will have the following properties:
   if (request->upgrade) {
     // Websocket upgrade will use our existing response (never leak responses).
-    websocket_upgrade(.request = request, .response = &response,
+    websocket_upgrade(.request = request, .response = response,
                       .on_message = ws_shootout);
 
     return;
   }
-  http_response_write_body(&response,
+  http_response_write_body(response,
                            "This is a Websocket-Shootout application!", 41);
-  http_response_finish(&response);
+  http_response_finish(response);
 }
 
-#ifndef THREAD_COUNT
-#define THREAD_COUNT 8
-#endif
-
-#define HTTP_SHOOTOUT_TEST()                                                   \
-  if (http1_listen("3000", NULL, .on_request = http1_websocket_shotout,        \
-                   .log_static = 1))                                           \
-    perror("Couldn't initiate HTTP service"), exit(1);                         \
-  server_run(.threads = THREAD_COUNT);
+static void listen2shootout(const char *port, char is_logging) {
+  if (http_listen(port, NULL, .on_request = http1_websocket_shotout,
+                  .log_static = is_logging))
+    perror("Couldn't initiate Websocket Shootout service"), exit(1);
+}
 
 #endif
