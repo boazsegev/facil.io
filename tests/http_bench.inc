@@ -1,5 +1,6 @@
 #ifndef HTTP_HELLO
 #include "http.h"
+#include "sock.h"
 
 /*
 A simple Hello World HTTP response + static file service, for benchmarks.
@@ -28,14 +29,23 @@ static void http1_hello_on_request(http_request_s *request) {
     perror("ERROR: WTF?! No Memory? ");
     return;
   }
-  /* http_response_log_start(rs); */
+  http_response_log_start(rs);
   http_response_write_body(rs, "Hello World!", 12);
   http_response_finish(rs);
 }
 
 void listen2bench(void) {
+  fclose(stderr);
+  FILE *log = fopen("./tmp/benchmark.log", "a");
+  if (!log) {
+    fprintf(stdout, "* stderr closed and couldn't be opened.\n");
+  } else {
+    fprintf(stdout, "* All logging reports (stderr) routed to a log file at "
+                    "./tmp/benchmark.log\n");
+    sock_open(fileno(log));
+  }
+
   http_listen("3000", NULL, .public_folder = "./public_www",
-              .on_request = http1_hello_on_request,
-              /* .log_static = 1 */);
+              .on_request = http1_hello_on_request, .log_static = 1);
 }
 #endif
