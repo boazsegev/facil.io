@@ -4,6 +4,10 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "evio.h"
 
 #if !defined(__unix__) && !defined(__linux__) && !defined(__APPLE__) &&        \
@@ -76,7 +80,7 @@ Linux `epoll` implementation
 /**
 Creates the `epoll` or `kqueue` object.
 */
-intptr_t evio_create() { return evio_fd = epoll_create1(EPOLL_CLOEXEC) }
+intptr_t evio_create() { return evio_fd = epoll_create1(EPOLL_CLOEXEC); }
 
 /**
 Removes a file descriptor from the polling object.
@@ -100,7 +104,7 @@ int evio_add(int fd, void *callback_arg) {
 /**
 Creates a timer file descriptor, system dependent.
 */
-intptr_t evio_open_timer() {
+intptr_t evio_open_timer(void) {
   return timerfd_create(CLOCK_MONOTONIC, O_NONBLOCK);
 }
 
@@ -137,7 +141,8 @@ int evio_review(const int timeout_millisec) {
     return -1;
   struct epoll_event events[EVIO_MAX_EVENTS];
   /* wait for events and handle them */
-  int active_count = epoll_wait(evio_fd, events, EVIO_MAX_EVENTS, timeout);
+  int active_count =
+      epoll_wait(evio_fd, events, EVIO_MAX_EVENTS, timeout_millisec);
 
   if (active_count > 0) {
     for (int i = 0; i < active_count; i++) {

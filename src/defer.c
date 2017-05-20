@@ -10,6 +10,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 /* *****************************************************************************
@@ -103,7 +105,7 @@ restart:
     if (!deferred.first)
       deferred.last = &deferred.first;
     task = tmp->task;
-    if (tmp <= tasks_buffer + (DEFER_QUEUE_BUFFER - 1) && tmp >= tasks_buffer) {
+    if (tmp >= tasks_buffer && tmp < tasks_buffer + DEFER_QUEUE_BUFFER) {
       tmp->next = deferred.pool;
       deferred.pool = tmp;
     } else {
@@ -198,7 +200,6 @@ static inline pool_pt defer_pool_initialize(unsigned int thread_count,
               defer_new_thread(defer_worker_thread, pool)))
     pool->count++;
   if (pool->count == thread_count) {
-    SPN_LOCK_THROTTLE = 8388608UL * thread_count;
     return pool;
   }
   defer_pool_stop(pool);
@@ -376,7 +377,7 @@ static void text_task(void *a1, void *a2) {
 static void pid_task(void *arg, void *unused2) {
   (void)(unused2);
   fprintf(stderr, "* %d pid is going to sleep... (%s)\n", getpid(),
-          arg ? arg : "unknown");
+          arg ? (char *)arg : "unknown");
 }
 
 void defer_test(void) {

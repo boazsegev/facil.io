@@ -42,7 +42,7 @@ OS Sendfile settings.
 #define USE_SENDFILE 1
 #elif defined(__unix__) /* BSD sendfile should work, but isn't tested */
 #include <sys/uio.h>
-#define USE_SENDFILE 0
+#define USE_SENDFILE 1
 #elif defined(__APPLE__) /* Is the apple sendfile still broken? */
 #include <sys/uio.h>
 #define USE_SENDFILE 1
@@ -398,7 +398,7 @@ static int sock_write_from_fd(int fd, struct packet_s *packet) {
                         ext->offset + fdinfo(fd).sent);
     if (count <= 0)
       goto read_error;
-    count = fdinfo(fd).rw_hooks->write(fd, ext->buffer, count);
+    count = fdinfo(fd).rw_hooks->write(fd2uuid(fd), ext->buffer, count);
   } while (count == BUFFER_FILE_READ_SIZE && packet->buffer.len);
   if (count < 0)
     return -1;
@@ -420,69 +420,54 @@ read_error:
   return -1;
 }
 
-#if USE_SENDFILE == 1 && 0
+#if USE_SENDFILE == 1
 
 #if defined(__linux__) /* linux sendfile API */
-static int sock_sendfile_from_fd(int fd, struct packet_s *packet) {
-  ssize_t sent;
-  sock_packet_s *packet = fd_info[fd].packet;
-  sent =
-      sendfile64(fd, (int)((ssize_t)packet->buffer), &packet->metadata.offset,
-                 packet->length - fd_info[fd].sent);
 
-  if (sent < 0) {
-    if (ERR_OK)
-      return -1;
-    else if (ERR_TRY_AGAIN)
-      return 0;
-    else
-      return sock_flush_fd_failed(fd);
-  }
-  if (sent == 0)
-    fd_info[fd].sent = packet->length;
-  fd_info[fd].sent += sent;
-  return 0;
+static int sock_sendfile_from_fd(int fd, struct packet_s *packet) {
+  struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
+  ssize_t sent;
+  sent = sendfile64(fd, ext->fd, &ext->offset, packet->buffer.len);
+  if (sent < 0)
+    return -1;
+  packet->buffer.len -= sent;
+  if (!packet->buffer.len)
+    sock_packet_rotate_unsafe(fd);
+  return sent;
 }
 
 #elif defined(__APPLE__) || defined(__unix__) /* BSD / Apple API */
 
 static int sock_sendfile_from_fd(int fd, struct packet_s *packet) {
-  off_t act_sent;
-  sock_packet_s *packet = fd_info[fd].packet;
-  act_sent = packet->length - fd_info[fd].sent;
-
+  struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
+  off_t act_sent = 0;
+  ssize_t count = 0;
+  do {
+    fdinfo(fd).sent += act_sent;
+    packet->buffer.len -= act_sent;
+    act_sent = packet->buffer.len;
 #if defined(__APPLE__)
-  if (sendfile((int)((ssize_t)packet->buffer), fd, packet->metadata.offset,
-               &act_sent, NULL, 0) < 0 &&
-      act_sent == 0)
+    count = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent, &act_sent,
+                     NULL, 0);
 #else
-  if (sendfile((int)((ssize_t)packet->buffer), fd, packet->metadata.offset,
-               (size_t)act_sent, NULL, &act_sent, 0) < 0 &&
-      act_sent == 0)
+    count = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent,
+                     (size_t)act_sent, NULL, &act_sent, 0);
 #endif
-  {
-    if (ERR_OK)
-      return -1;
-    else if (ERR_TRY_AGAIN)
-      return 0;
-    else
-      return sock_flush_fd_failed(fd);
-  }
-  if (act_sent == 0) {
-    fd_info[fd].sent = packet->length;
-    return 0;
-  }
-  packet->metadata.offset += act_sent;
-  fd_info[fd].sent += act_sent;
-  return 0;
+  } while (count >= 0 && packet->buffer.len > (size_t)act_sent);
+  if (count < 0)
+    return -1;
+  sock_packet_rotate_unsafe(fd);
+  return act_sent;
 }
-#endif
 
 #else
-
 static int (*sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
     sock_write_from_fd;
 
+#endif
+#else
+static int (*sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
+    sock_write_from_fd;
 #endif
 
 /* *****************************************************************************
@@ -776,7 +761,7 @@ Returns -1 on error. Returns a valid socket (non-random) UUID.
 intptr_t sock_fd2uuid(int fd) {
   return (fd > 0 && sock_data_s.capacity > (size_t)fd &&
           sock_data_s.fds[fd].open)
-             ? fd2uuid(fd)
+             ? (intptr_t)(fd2uuid(fd))
              : -1;
 }
 
@@ -1028,8 +1013,8 @@ ssize_t sock_buffer_send(intptr_t uuid, sock_buffer_s *buffer) {
   }
   packet_s **tmp, *packet = (packet_s *)((uintptr_t)(buffer) -
                                          sizeof(struct packet_metadata_s));
-  packet->metadata =
-      (struct packet_metadata_s){.write_func = sock_write_buffer};
+  packet->metadata = (struct packet_metadata_s){
+      .write_func = sock_write_buffer, .free_func = sock_packet_free_none};
   int fd = sock_uuid2fd(uuid);
   lock_fd(fd);
   tmp = &fdinfo(fd).packet;

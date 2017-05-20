@@ -6,11 +6,11 @@ spinlock / sync for tasks
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
 #define _GNU_SOURCE
 #include <time.h>
-#endif /* _GNU_SOURCE */
+#endif /* __unix__ */
 #include <stdlib.h>
 
 /** Sets the value for the thread throttling feature, where available. */
-static size_t SPN_LOCK_THROTTLE = 8388608UL;
+// static size_t SPN_LOCK_THROTTLE = 8388608UL;
 
 /* manage the way threads "wait" for the lock to release */
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)

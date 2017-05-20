@@ -4,9 +4,10 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "facil.h"
-#include "evio.h"
 #include "spnlock.inc"
+
+#include "evio.h"
+#include "facil.h"
 
 #include <errno.h>
 #include <stdio.h>

@@ -217,10 +217,12 @@ ssize_t sock_read(intptr_t uuid, void *buf, size_t count);
 typedef struct {
   /** The fsocket uuid for sending data. */
   intptr_t uuid;
-  /** The data to be sent. This can be either a byte stream or
-   * a file descriptor (`intptr_t`).
-   */
-  const void *buffer;
+  union {
+    /** The in-memory data to be sent. */
+    const void *buffer;
+    /** The data to be sent, if this is a file. */
+    const intptr_t data_fd;
+  };
   /** This deallocation callback will be called when the packet is finished
    * with the buffer and the `move` or `is_fd` flags are set.
    * If no deallocation callback is specified,`free` of `close` will be called

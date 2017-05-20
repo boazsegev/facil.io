@@ -4,10 +4,14 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#define _GNU_SOURCE
+
 #include "http.h"
 #include "http1.h"
 
 #include <string.h>
+#include <strings.h>
+#include <time.h>
 /* *****************************************************************************
 The global HTTP protocol
 ***************************************************************************** */

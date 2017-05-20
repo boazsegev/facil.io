@@ -4,11 +4,12 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "http1.h"
+#include "spnlock.inc"
+
 #include "http.h"
+#include "http1.h"
 #include "http1_request.h"
 #include "http1_simple_parser.h"
-#include "spnlock.inc"
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -160,7 +161,7 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
       continue;
     }
     if (request->request.body_file > 0) {
-      fprintf(stderr, "Body File\n");
+    // fprintf(stderr, "Body File\n");
     parse_body:
       buffer = buff;
       // request body parsing

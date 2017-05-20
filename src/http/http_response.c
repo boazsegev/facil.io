@@ -9,12 +9,14 @@
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
 /* *****************************************************************************
 Fallbacks
@@ -42,6 +44,8 @@ http_response_s *http_response_create(http_request_s *request) {
 }
 /** Destroys the response object. No data is sent.*/
 void http_response_destroy(http_response_s *response) {
+  if (!response)
+    return;
   static void (*const vtable[2])(http_response_s *) = {
       http1_response_destroy /* HTTP_V1 */,
       fallback_http_response_dest /* HTTP_V2 */};
@@ -217,7 +221,8 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
 
   const char *mime = NULL;
   const char *ext = NULL;
-  struct stat file_data = {.st_flags = 0};
+  int8_t should_free_response = 0;
+  struct stat file_data = {.st_size = 0};
   // fprintf(stderr, "\n\noriginal request path: %s\n", req->path);
   char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
   if (fname == NULL)
@@ -261,6 +266,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     goto no_file;
 
   if (response == NULL) {
+    should_free_response = 1;
     response = http_response_create(request);
     if (log)
       http_response_log_start(response);
@@ -268,12 +274,12 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
 
   // we have a file, time to handle response details.
   int file = open(fname, O_RDONLY);
-  if (file == -1) {
-    goto no_file;
-  }
   // free the allocated fname memory
   free(fname);
   fname = NULL;
+  if (file == -1) {
+    goto no_fd_available;
+  }
 
   // get the mime type (we have an ext pointer and the string isn't empty)
   if (ext && ext[1]) {
@@ -301,8 +307,6 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     /* send back 304 */
     response->status = 304;
     close(file);
-    if (log)
-      http_response_log_finish(response);
     http_response_finish(response);
     return 0;
   }
@@ -352,15 +356,12 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
       response->content_length = 0;
       close(file);
-      if (log)
-        http_response_log_finish(response);
       http_response_finish(response);
       return 0;
     }
 
     http_response_sendfile(response, file, start, finish - start + 1);
-    if (log)
-      http_response_log_finish(response);
+    http_response_finish(response);
     return 0;
   }
 
@@ -372,17 +373,22 @@ invalid_range:
     response->content_length = 0;
     close(file);
     http_response_finish(response);
-    if (log)
-      http_response_log_finish(response);
     return 0;
   }
 
   http_response_sendfile(response, file, 0, file_data.st_size);
-  if (log)
-    http_response_log_finish(response);
+  http_response_finish(response);
   return 0;
+
+no_fd_available:
+  response->status = 503;
+  const char *body = http_response_status_str(503);
+  http_response_write_body(response, body, strlen(body));
+  http_response_finish(response);
+
 no_file:
-  http_response_destroy(response);
+  if (should_free_response && response)
+    http_response_destroy(response);
   free(fname);
   return -1;
 }

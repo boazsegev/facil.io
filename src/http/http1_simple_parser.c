@@ -4,7 +4,10 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#define _GNU_SOURCE
 #include "http1_simple_parser.h"
+#include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 
 #ifdef __has_include
@@ -24,11 +27,13 @@ Feel free to copy, use and enjoy according to the license provided.
 Useful macros an helpers
 */
 
-// #define a2i(a)                                                                 \
-//   (((a) >= '0' && a <= '9') ? ((a) - '0') : ({                                 \
-//     return -1;                                                                 \
-//     0;                                                                         \
-//   }))
+/*
+#define a2i(a)                                                                 \
+  (((a) >= '0' && a <= '9') ? ((a) - '0') : ({                                 \
+    return -1;                                                                 \
+    0;                                                                         \
+  }))
+*/
 
 #define CHECK_END()                                                            \
   {                                                                            \

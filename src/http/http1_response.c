@@ -1,7 +1,9 @@
-#include "http1_response.h"
 #include "spnlock.inc"
 
+#include "http1_response.h"
+
 #include <string.h>
+#include <strings.h>
 /**
 The padding for the status line (62 + 2 for the extra \r\n after the headers).
 */
@@ -34,6 +36,7 @@ static inline void http1_response_clear(http1_response_s *rs,
       .http_version = HTTP_V1,
       .request = request,
       .fd = request->fd,
+      .status = 200,
       .should_close = (request->connection && request->connection_len == 5)};
   rs->buffer_end = rs->buffer_start = H1P_HEADER_START;
   rs->use_count = 1;
@@ -63,6 +66,7 @@ initialize:
     http1_response_pool.pool_mem[i].response.request =
         (void *)(http1_response_pool.pool_mem + (i + 1));
   }
+  http1_response_pool.pool_mem[HTTP1_POOL_SIZE - 1].response.request = NULL;
   http1_response_pool.next = http1_response_pool.pool_mem + 1;
   spn_unlock(&http1_response_pool.lock);
   http1_response_clear(http1_response_pool.pool_mem, request);
@@ -72,7 +76,10 @@ initialize:
 static void http1_response_deffered_destroy(void *rs_, void *ignr) {
   (void)(ignr);
   http1_response_s *rs = rs_;
-  spn_lock(&rs->lock);
+  if (spn_trylock(&rs->lock)) {
+    defer(http1_response_deffered_destroy, rs, NULL);
+    return;
+  }
   rs->use_count--;
   if (rs->use_count) {
     spn_unlock(&rs->lock);
@@ -195,6 +202,7 @@ void http1_response_send_headers(http1_response_s *rs) {
                   ((uintptr_t)(rs->buffer + rs->buffer_start) - (uintptr_t)rs),
               .length = rs->buffer_end - rs->buffer_start, .move = 1,
               .dealloc = (void (*)(void *))http1_response_destroy);
+  rs->buffer_end = 0;
 }
 
 /** Sends the data and destroys the response object.*/
@@ -380,9 +388,8 @@ int http1_response_sendfile(http_response_s *rs, int source_fd, off_t offset,
     offset += tmp;
   }
   if (length)
-    return (sock_write2(.uuid = rs->fd,
-                        .buffer = ((void *)(uintptr_t)source_fd),
-                        .length = length, .offset = offset, .is_fd = 1) >= 0);
+    return (sock_write2(.uuid = rs->fd, .data_fd = source_fd, .length = length,
+                        .offset = offset, .is_fd = 1) >= 0);
   else
     close(source_fd);
 

@@ -5,7 +5,9 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef H_FACIL_EVIO_H
+#include <stdint.h>
 #include <stdlib.h>
+
 /**
 This is an `epoll` / `kqueue` edge triggered wrapper, allowing for portability
 between BSD and Linux polling machanisms as well as routing events to hard-coded

@@ -8,6 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "http1.h"
 
 #include <string.h>
+#include <strings.h>
 
 /* *****************************************************************************
 Initialization
