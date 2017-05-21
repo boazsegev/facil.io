@@ -254,23 +254,52 @@ struct ListenerProtocol {
   void *udata;
   void (*on_start)(void *udata);
   void (*on_finish)(void *udata);
+  const char *port;
 };
 
 static void listener_ping(intptr_t uuid, protocol_s *plistener) {
-  (void)plistener;
+  // fprintf(stderr, "*** Listener Ping Called for %ld\n", sock_uuid2fd(uuid));
   uuid_data(uuid).active = facil_data->last_cycle;
+  return;
+  (void)plistener;
+}
+
+static void listener_deferred_on_open(void *uuid_, void *srv_uuid_) {
+  intptr_t uuid = (intptr_t)uuid_;
+  intptr_t srv_uuid = (intptr_t)srv_uuid_;
+  struct ListenerProtocol *listener =
+      (struct ListenerProtocol *)protocol_try_lock(sock_uuid2fd(srv_uuid),
+                                                   FIO_PR_LOCK_WRITE);
+  if (!listener) {
+    if (errno != EBADF)
+      defer(listener_deferred_on_open, uuid_, srv_uuid_);
+    return;
+  }
+  protocol_s *pr = listener->on_open(uuid, listener->udata);
+  facil_attach(uuid, pr);
+  if (!pr)
+    sock_close(uuid);
+  protocol_unlock((protocol_s *)listener, FIO_PR_LOCK_WRITE);
 }
 
 static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
   intptr_t new_client;
   protocol_s *pr = NULL;
   struct ListenerProtocol *listener = (void *)plistener;
-  while ((new_client = sock_accept(uuid)) != -1) {
-    pr = listener->on_open(new_client, listener->udata);
-    facil_attach(new_client, pr);
-    if (!pr)
-      sock_close(new_client);
+  if ((new_client = sock_accept(uuid)) == -1) {
+    if (errno == ECONNABORTED || errno == ECONNRESET)
+      defer(deferred_on_data, (void *)uuid, NULL);
+    return;
   }
+  defer(listener_deferred_on_open, (void *)new_client, (void *)uuid);
+  defer(deferred_on_data, (void *)uuid, NULL);
+  // // Was, without `deferred_on_data`
+  // pr = listener->on_open(new_client, listener->udata);
+  // facil_attach(new_client, pr);
+  // if (!pr)
+  //   sock_close(new_client);
+  return;
+  (void)plistener;
 }
 
 static void free_listenner(void *li) { free(li); }
@@ -278,6 +307,9 @@ static void free_listenner(void *li) { free(li); }
 static void listener_on_close(protocol_s *plistener) {
   struct ListenerProtocol *listener = (void *)plistener;
   listener->on_finish(listener->udata);
+  if (FACIL_PRINT_STATE)
+    fprintf(stderr, "* (%d) Stopped listening on port %s\n", getpid(),
+            listener->port);
   free_listenner(listener);
 }
 
@@ -298,6 +330,7 @@ listener_alloc(struct facil_listen_args settings) {
         .udata = settings.udata,
         .on_start = settings.on_start,
         .on_finish = settings.on_finish,
+        .port = settings.port,
     };
     return listener;
   }

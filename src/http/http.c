@@ -65,9 +65,9 @@ int http_listen(const char *port, const char *address,
   http_settings_s *settings = malloc(sizeof(*settings));
   *settings = arg_settings;
   settings->private_metaflags = 2;
-  if (settings->max_body_size == 0)
+  if (!settings->max_body_size)
     settings->max_body_size = HTTP_DEFAULT_BODY_LIMIT;
-  if (settings->timeout == 0)
+  if (!settings->timeout)
     settings->timeout = 5;
   if (settings->public_folder) {
     settings->public_folder_length = strlen(settings->public_folder);

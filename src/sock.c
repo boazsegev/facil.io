@@ -75,8 +75,9 @@ int defer(void (*func)(void *, void *), void *arg, void *arg2) {
   return 0;
 }
 static void sock_flush_defer(void *arg, void *ignored) {
-  (void)ignored;
   sock_flush((intptr_t)arg);
+  return;
+  (void)ignored;
 }
 /* *****************************************************************************
 Support `evio`.
@@ -227,21 +228,22 @@ struct fd_data_s {
   sock_rw_hook_s *rw_hooks;
 };
 
-static struct sock_data_s {
+static struct sock_data_store {
   size_t capacity;
   uint8_t exit_init;
   struct fd_data_s *fds;
-} sock_data_s;
+} sock_data_store;
 
-#define fd2uuid(fd) (((uintptr_t)(fd) << 8) | (sock_data_s.fds[(fd)].counter))
-#define fdinfo(fd) sock_data_s.fds[(fd)]
+#define fd2uuid(fd)                                                            \
+  (((uintptr_t)(fd) << 8) | (sock_data_store.fds[(fd)].counter))
+#define fdinfo(fd) sock_data_store.fds[(fd)]
 
-#define lock_fd(fd) spn_lock(&sock_data_s.fds[(fd)].lock)
-#define unlock_fd(fd) spn_unlock(&sock_data_s.fds[(fd)].lock)
+#define lock_fd(fd) spn_lock(&sock_data_store.fds[(fd)].lock)
+#define unlock_fd(fd) spn_unlock(&sock_data_store.fds[(fd)].lock)
 
 static inline int validate_uuid(uintptr_t uuid) {
   uintptr_t fd = sock_uuid2fd(uuid);
-  if (sock_data_s.capacity <= fd || fdinfo(fd).counter != (uuid & 0xFF))
+  if (sock_data_store.capacity <= fd || fdinfo(fd).counter != (uuid & 0xFF))
     return -1;
   return 0;
 }
@@ -253,23 +255,23 @@ static inline void sock_packet_rotate_unsafe(uintptr_t fd) {
   sock_packet_free(packet);
 }
 
-static void clear_sock_lib(void) { free(sock_data_s.fds); }
+static void clear_sock_lib(void) { free(sock_data_store.fds); }
 
 static inline int initialize_sock_lib(size_t capacity) {
   static uint8_t init_exit = 0;
-  if (sock_data_s.capacity >= capacity)
+  if (sock_data_store.capacity >= capacity)
     return 0;
   struct fd_data_s *new_collection =
-      realloc(sock_data_s.fds, sizeof(struct fd_data_s) * capacity);
+      realloc(sock_data_store.fds, sizeof(struct fd_data_s) * capacity);
   if (new_collection) {
-    sock_data_s.fds = new_collection;
-    for (size_t i = sock_data_s.capacity; i < capacity; i++) {
+    sock_data_store.fds = new_collection;
+    for (size_t i = sock_data_store.capacity; i < capacity; i++) {
       fdinfo(i) = (struct fd_data_s){.open = 0,
                                      .lock = SPN_LOCK_INIT,
                                      .rw_hooks = &sock_default_hooks,
                                      .counter = 0};
     }
-    sock_data_s.capacity = capacity;
+    sock_data_store.capacity = capacity;
 
 #ifdef DEBUG
     fprintf(stderr,
@@ -297,16 +299,17 @@ static inline int initialize_sock_lib(size_t capacity) {
 }
 
 static inline int clear_fd(uintptr_t fd, uint8_t is_open) {
-  if (sock_data_s.capacity <= fd)
+  if (sock_data_store.capacity <= fd)
     goto reinitialize;
   packet_s *packet;
 clear:
   spn_lock(&(fdinfo(fd).lock));
   struct fd_data_s old_data = fdinfo(fd);
-  sock_data_s.fds[fd] = (struct fd_data_s){.open = is_open,
-                                           .lock = fdinfo(fd).lock,
-                                           .rw_hooks = &sock_default_hooks,
-                                           .counter = fdinfo(fd).counter + 1};
+  sock_data_store.fds[fd] =
+      (struct fd_data_s){.open = is_open,
+                         .lock = fdinfo(fd).lock,
+                         .rw_hooks = &sock_default_hooks,
+                         .counter = fdinfo(fd).counter + 1};
   spn_unlock(&(fdinfo(fd).lock));
   packet = old_data.packet;
   while (old_data.packet) {
@@ -383,12 +386,12 @@ struct sock_packet_file_data_s {
   uint8_t buffer[];
 };
 
+static void sock_perform_close_fd(intptr_t fd) { close(fd); }
+
 static void sock_close_from_fd(packet_s *packet) {
   struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
   ext->close((void *)ext->fd);
 }
-
-static void sock_mock_close_fd(intptr_t fd) { close(fd); }
 
 static int sock_write_from_fd(int fd, struct packet_s *packet) {
   struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
@@ -654,6 +657,7 @@ intptr_t sock_accept(intptr_t srv_uuid) {
   sock_set_non_block(client);
 #endif
   clear_fd(client, 1);
+  // sock_touch(srv_uuid);
   return fd2uuid(client);
 }
 
@@ -765,8 +769,8 @@ will result in the registry being updated and the fd being closed.
 Returns -1 on error. Returns a valid socket (non-random) UUID.
 */
 intptr_t sock_fd2uuid(int fd) {
-  return (fd > 0 && sock_data_s.capacity > (size_t)fd &&
-          sock_data_s.fds[fd].open)
+  return (fd > 0 && sock_data_store.capacity > (size_t)fd &&
+          sock_data_store.fds[fd].open)
              ? (intptr_t)(fd2uuid(fd))
              : -1;
 }
@@ -817,7 +821,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
     clear_fd(fd, 0);
   // avoid work when an error is expected to occur.
   if (!fdinfo(fd).open || options.offset < 0) {
-    if (options.move == 0 && options.is_fd == 0) {
+    if (options.move == 0) {
       errno = (options.offset < 0) ? ERANGE : EBADF;
       return -1;
     }
@@ -825,7 +829,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
       (options.dealloc ? options.dealloc : free)((void *)options.buffer);
     else
       (options.dealloc ? (void (*)(intptr_t))options.dealloc
-                       : sock_mock_close_fd)((intptr_t)options.buffer);
+                       : sock_perform_close_fd)(options.data_fd);
     errno = (options.offset < 0) ? ERANGE : EBADF;
     return -1;
   }
@@ -859,8 +863,9 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
         .write_func = sock_write_buffer_ext, .free_func = sock_free_buffer_ext};
   } else { /* is file */
     struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
-    ext->fd = (intptr_t)options.buffer;
-    ext->close = options.dealloc ? options.dealloc : (void (*)(void *))close;
+    ext->fd = options.data_fd;
+    ext->close = options.dealloc ? options.dealloc
+                                 : (void (*)(void *))sock_perform_close_fd;
     ext->offset = options.offset;
     packet->metadata = (struct packet_metadata_s){
         .write_func =
@@ -961,7 +966,7 @@ void sock_flush_strong(intptr_t uuid) {
 Calls `sock_flush` for each file descriptor that's buffer isn't empty.
 */
 void sock_flush_all(void) {
-  for (size_t fd = 0; fd < sock_data_s.capacity; fd++) {
+  for (size_t fd = 0; fd < sock_data_store.capacity; fd++) {
     if (!fdinfo(fd).open || !fdinfo(fd).packet)
       continue;
     sock_flush(fd2uuid(fd));

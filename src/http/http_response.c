@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
@@ -17,7 +18,6 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-
 /* *****************************************************************************
 Fallbacks
 ***************************************************************************** */
@@ -228,9 +228,12 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   int8_t should_free_response = 0;
   struct stat file_data = {.st_size = 0};
   // fprintf(stderr, "\n\noriginal request path: %s\n", req->path);
-  char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
-  if (fname == NULL)
+  // char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
+  if ((path_safe_len + path_unsafe_len) >= (PATH_MAX - 1 - 11))
     return -1;
+  char fname[path_safe_len + path_unsafe_len + 1 + 11];
+  // if (fname == NULL)
+  //   return -1;
   if (file_path_safe)
     memcpy(fname, file_path_safe, path_safe_len);
   fname[path_safe_len] = 0;
@@ -279,8 +282,8 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   // we have a file, time to handle response details.
   int file = open(fname, O_RDONLY);
   // free the allocated fname memory
-  free(fname);
-  fname = NULL;
+  // free(fname);
+  // fname = NULL;
   if (file == -1) {
     goto no_fd_available;
   }
@@ -394,7 +397,7 @@ no_fd_available:
 no_file:
   if (should_free_response && response)
     http_response_destroy(response);
-  free(fname);
+  // free(fname);
   return -1;
 }
 /* *****************************************************************************

@@ -72,14 +72,9 @@ int defer(void (*func)(void *, void *), void *arg1, void *arg2) {
     task = malloc(sizeof(task_node_s));
     if (!task)
       goto error;
-  } else {
-    deferred.initialized = 1;
-    task = tasks_buffer;
-    deferred.pool = tasks_buffer + 1;
-    for (size_t i = 2; i < DEFER_QUEUE_BUFFER; i++) {
-      tasks_buffer[i - 1].next = tasks_buffer + i;
-    }
-  }
+  } else
+    goto initialize;
+schedule:
   *deferred.last = task;
   deferred.last = &task->next;
   task->task.func = func;
@@ -90,8 +85,19 @@ int defer(void (*func)(void *, void *), void *arg1, void *arg2) {
   return 0;
 error:
   spn_unlock(&deferred.lock);
+  perror("ERROR CRITICAL: defer can't allocate task");
+  exit(9);
 call_error:
   return -1;
+initialize:
+  deferred.initialized = 1;
+  task = tasks_buffer;
+  deferred.pool = tasks_buffer + 1;
+  for (size_t i = 1; i < (DEFER_QUEUE_BUFFER - 1); i++) {
+    tasks_buffer[i].next = &tasks_buffer[i + 1];
+  }
+  tasks_buffer[DEFER_QUEUE_BUFFER - 1].next = NULL;
+  goto schedule;
 }
 
 /** Performs all deferred functions until the queue had been depleted. */

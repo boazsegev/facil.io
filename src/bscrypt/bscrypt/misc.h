@@ -39,17 +39,15 @@ typedef struct {
 } fdump_s;
 
 /**
-Allocates memory and dumps the whole file into the
-memory allocated.
-Remember
-to call `free` when done.
+Allocates memory and dumps the whole file into the memory allocated.
 
-Returns the number of bytes allocated. On error,
-returns 0 and sets the
-container pointer to NULL.
+!!!: Remember to call `free` when done.
 
-This function has some Unix specific properties that
-resolve links and user
+Returns the number of bytes allocated.
+
+On error, returns 0 and sets the container pointer to NULL.
+
+This function has some Unix specific properties that resolve links and user
 folder referencing.
 */
 fdump_s *bscrypt_fdump(const char *file_path, size_t size_limit);

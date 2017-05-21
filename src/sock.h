@@ -223,12 +223,17 @@ typedef struct {
     /** The data to be sent, if this is a file. */
     const intptr_t data_fd;
   };
-  /** This deallocation callback will be called when the packet is finished
-   * with the buffer and the `move` or `is_fd` flags are set.
-   * If no deallocation callback is specified,`free` of `close` will be called
-   * as a default deallocation / file closure method.
-   */
-  void (*dealloc)(void *buffer);
+  union {
+    /** This deallocation callback will be called when the packet is finished
+     * with the buffer if the `move` flags is set.
+     * If no deallocation callback is `free` will be used.
+     */
+    void (*dealloc)(void *buffer);
+    /** This is an alternative deallocation callback accessor (same memory space
+     * as `dealloc`) for conveniently setting the file `close` callback.
+     */
+    void (*close)(int fd);
+  };
   /** The length (size) of the buffer, or the amount of data to be sent from the
    * file descriptor.
    */
