@@ -312,7 +312,7 @@ void facil_defer(intptr_t uuid,
  *
  * Returns -1 on error. `on_complete` is always called (even on error).
  */
-int facil_each(intptr_t origin_uuid, void *service,
+int facil_each(intptr_t origin_uuid, const void *service,
                void (*task)(intptr_t uuid, protocol_s *, void *arg), void *arg,
                void (*on_complete)(intptr_t origin_uuid, void *arg));
 

@@ -4,8 +4,9 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "defer.h"
 #include "spnlock.inc"
+
+#include "defer.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -130,9 +131,9 @@ Thread Pool Support
 #include <pthread.h>
 
 #pragma weak defer_new_thread
-void *defer_new_thread(void *(*thread_func)(void *), void *arg) {
+void *defer_new_thread(void *(*thread_func)(void *), pool_pt arg) {
   pthread_t *thread = malloc(sizeof(*thread));
-  if (thread == NULL || pthread_create(thread, NULL, thread_func, arg))
+  if (thread == NULL || pthread_create(thread, NULL, thread_func, (void *)arg))
     goto error;
   return thread;
 error:
@@ -140,7 +141,7 @@ error:
   return NULL;
 }
 
-#pragma weak defer_new_thread
+#pragma weak defer_join_thread
 int defer_join_thread(void *p_thr) {
   if (!p_thr)
     return -1;
@@ -157,7 +158,7 @@ void *defer_new_thread(void *(*thread_func)(void *), void *arg) {
   (void)arg;
   return NULL;
 }
-#pragma weak defer_new_thread
+#pragma weak defer_join_thread
 int defer_join_thread(void *p_thr) {
   (void)p_thr;
   return -1;

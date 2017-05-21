@@ -59,7 +59,7 @@ to the allocated memory that identifies the thread.
 
 On error NULL should be returned.
 */
-void *defer_new_thread(void *(*thread_func)(void *), void *arg);
+void *defer_new_thread(void *(*thread_func)(void *), pool_pt pool);
 
 /**
 OVERRIDE THIS to replace the default pthread implementation.

@@ -753,7 +753,7 @@ struct task {
   void (*func)(intptr_t uuid, protocol_s *, void *arg);
   void *arg;
   void (*on_done)(intptr_t uuid, void *arg);
-  void *service;
+  const void *service;
   uint32_t count;
   spn_lock_i lock;
 };
@@ -884,7 +884,7 @@ error:
  *
  * Once all the tasks were performed, the `on_complete` callback will be called.
  */
-int facil_each(intptr_t origin_uuid, void *service,
+int facil_each(intptr_t origin_uuid, const void *service,
                void (*func)(intptr_t uuid, protocol_s *, void *arg), void *arg,
                void (*on_complete)(intptr_t origin_uuid, void *arg)) {
   if (!on_complete)

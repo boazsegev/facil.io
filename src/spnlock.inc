@@ -4,7 +4,9 @@
 spinlock / sync for tasks
 ***************************************************************************** */
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <time.h>
 #endif /* __unix__ */
 #include <stdlib.h>
