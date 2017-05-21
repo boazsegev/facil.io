@@ -1,4 +1,10 @@
-# Server Writing Tools in C - Change Log
+# Historic Change log
+
+The following is a historic change log, from before the `facil_` API.
+
+Updated details about changes to the library will be documented in the [documentation folder](./docs) and [website](http://facil.io).
+
+---
 
 Note: This change log is incomplete. I started it quite late, as interest in the libraries started to warrant better documentation of any changes made.
 

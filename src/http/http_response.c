@@ -87,8 +87,8 @@ int http_response_write_header_fn(http_response_s *response,
   };
   if (!header.name || response->headers_sent)
     return -1;
-  if (header.data && !header.data_len)
-    header.data_len = strlen(header.data);
+  if (header.value && !header.value_len)
+    header.value_len = strlen(header.value);
   if (header.name && !header.name_len)
     header.name_len = strlen(header.name);
   if (header.name_len == 4 && !strncasecmp(header.name, "Date", 4))
@@ -102,7 +102,7 @@ int http_response_write_header_fn(http_response_s *response,
   else if (header.name_len == 10 &&
            !strncasecmp(header.name, "connection", 10)) {
     response->connection_written = 1;
-    if (header.data_len == 5 && !strncasecmp(header.data, "close", 5))
+    if (header.value_len == 5 && !strncasecmp(header.value, "close", 5))
       response->should_close = 1;
   }
 
@@ -290,7 +290,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     mime = http_response_ext2mime(ext + 1);
     if (mime) {
       http_response_write_header(response, .name = "Content-Type",
-                                 .name_len = 12, .data = mime);
+                                 .name_len = 12, .value = mime);
     }
   }
   /* add ETag */
@@ -299,14 +299,14 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   sip = siphash24(&sip, sizeof(uint64_t), SIPHASH_DEFAULT_KEY);
   bscrypt_base64_encode(buffer, (void *)&sip, 8);
   http_response_write_header(response, .name = "ETag", .name_len = 4,
-                             .data = buffer, .data_len = 12);
+                             .value = buffer, .value_len = 12);
 
   response->last_modified = file_data.st_mtime;
   http_response_write_header(response, .name = "Cache-Control", .name_len = 13,
-                             .data = "max-age=3600", .data_len = 12);
+                             .value = "max-age=3600", .value_len = 12);
 
   /* check etag */
-  if ((ext = http_request_header_find(request, "if-none-match", 13).data) &&
+  if ((ext = http_request_header_find(request, "if-none-match", 13).value) &&
       memcmp(ext, buffer, 12) == 0) {
     /* send back 304 */
     response->status = 304;
@@ -316,7 +316,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   }
 
   // Range handling
-  if ((ext = http_request_header_find(request, "range", 5).data) &&
+  if ((ext = http_request_header_find(request, "range", 5).value) &&
       (ext[0] | 32) == 'b' && (ext[1] | 32) == 'y' && (ext[2] | 32) == 't' &&
       (ext[3] | 32) == 'e' && (ext[4] | 32) == 's' && (ext[5] | 32) == '=') {
     // ext holds the first range, starting on index 6 i.e. RANGE: bytes=0-1
@@ -351,11 +351,12 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     *(pos++) = '/';
     pos += http_ul2a(pos, file_data.st_size);
     http_response_write_header(response, .name = "Content-Range",
-                               .name_len = 13, .data = buffer,
-                               .data_len = pos - buffer);
+                               .name_len = 13, .value = buffer,
+                               .value_len = pos - buffer);
     response->status = 206;
     http_response_write_header(response, .name = "Accept-Ranges",
-                               .name_len = 13, .data = "bytes", .data_len = 5);
+                               .name_len = 13, .value = "bytes",
+                               .value_len = 5);
 
     if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
       response->content_length = 0;
@@ -371,7 +372,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
 
 invalid_range:
   http_response_write_header(response, .name = "Accept-Ranges", .name_len = 13,
-                             .data = "none", .data_len = 4);
+                             .value = "none", .value_len = 4);
 
   if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
     response->content_length = 0;

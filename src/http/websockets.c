@@ -650,13 +650,13 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
 
   recv_str =
       http_request_header_find(settings.request, "sec-websocket-version", 21)
-          .data;
+          .value;
   if (recv_str == NULL || recv_str[0] != '1' || recv_str[1] != '3')
     goto refuse;
 
   http_header_s sec_h =
       http_request_header_find(settings.request, "sec-websocket-key", 17);
-  if (sec_h.data == NULL)
+  if (sec_h.value == NULL)
     goto refuse;
 
   // websocket extentions (none)
@@ -666,7 +666,7 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   // use the SHA1 methods provided to concat the client string and hash
   sha1_s sha1;
   sha1 = bscrypt_sha1_init();
-  bscrypt_sha1_write(&sha1, sec_h.data, sec_h.data_len);
+  bscrypt_sha1_write(&sha1, sec_h.value, sec_h.value_len);
   bscrypt_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
   // base encode the data
   char websockets_key[32];
@@ -679,15 +679,15 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   // response.
   response->status = 101;
   http_response_write_header(response, .name = "Connection", .name_len = 10,
-                             .data = "Upgrade", .data_len = 7);
+                             .value = "Upgrade", .value_len = 7);
   http_response_write_header(response, .name = "Upgrade", .name_len = 7,
-                             .data = "websocket", .data_len = 9);
+                             .value = "websocket", .value_len = 9);
   http_response_write_header(response, .name = "sec-websocket-version",
-                             .name_len = 21, .data = "13", .data_len = 2);
+                             .name_len = 21, .value = "13", .value_len = 2);
   // set the string's length and encoding
   http_response_write_header(response, .name = "Sec-WebSocket-Accept",
-                             .name_len = 20, .data = websockets_key,
-                             .data_len = len);
+                             .name_len = 20, .value = websockets_key,
+                             .value_len = len);
   // // inform about 0 extension support
   // sec_h = http_request_header_find(settings.request,
   // "sec-websocket-extensions", 24);

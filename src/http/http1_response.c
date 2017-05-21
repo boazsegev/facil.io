@@ -236,14 +236,14 @@ On success, the function returns 0.
 */
 int http1_response_write_header_fn(http_response_s *rs_, http_header_s header) {
   http1_response_s *rs = (http1_response_s *)rs_;
-  if (rs->buffer_end + header.name_len + header.data_len >=
+  if (rs->buffer_end + header.name_len + header.value_len >=
       HTTP1_MAX_HEADER_SIZE - H1P_OVERFLOW_PADDING - 5)
     return -1;
   size_t org_pos = rs->buffer_end;
   if (h1p_protected_copy(rs, (void *)header.name, header.name_len))
     goto error;
   rs->buffer[rs->buffer_end++] = ':';
-  if (h1p_protected_copy(rs, (void *)header.data, header.data_len))
+  if (h1p_protected_copy(rs, (void *)header.value, header.value_len))
     goto error;
   rs->buffer[rs->buffer_end++] = '\r';
   rs->buffer[rs->buffer_end++] = '\n';

@@ -14,9 +14,15 @@ enum HTTP_VERSION { HTTP_V1 = 0, HTTP_V2 = 1 };
 /** HTTP header information */
 typedef struct {
   const char *name;
-  const char *data;
-  uint16_t name_len;
-  uint16_t data_len;
+  union {
+    const char *data;
+    const char *value;
+  };
+  uint32_t name_len;
+  union {
+    uint32_t data_len;
+    uint32_t value_len;
+  };
 } http_header_s;
 
 /* *****************************************************************************
