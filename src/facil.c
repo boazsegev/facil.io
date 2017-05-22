@@ -33,11 +33,12 @@ struct connection_data_s {
   spn_lock_i lock;
 };
 
-struct {
+static struct facil_data_s {
   spn_lock_i global_lock;
   uint8_t need_review;
   size_t capacity;
   time_t last_cycle;
+  pid_t parent;
   struct connection_data_s conn[];
 } * facil_data;
 
@@ -209,7 +210,7 @@ static void facil_lib_init(void) {
   if (!facil_data)
     perror("ERROR: Couldn't initialize the facil.io library"), exit(0);
   memset(facil_data, 0, mem_size);
-  facil_data->capacity = capa;
+  *facil_data = (struct facil_data_s){.capacity = capa, .parent = getpid()};
   atexit(facil_libcleanup);
 #ifdef DEBUG
   if (FACIL_PRINT_STATE)
@@ -641,7 +642,7 @@ static void facil_init_run(void *arg, void *arg2) {
 }
 
 static void facil_cleanup(void *arg) {
-  if (FACIL_PRINT_STATE)
+  if (FACIL_PRINT_STATE && facil_data->parent == getpid())
     fprintf(stderr, "\n   ---  starting shutdown  ---\n");
   intptr_t uuid;
   for (size_t i = 0; i < facil_data->capacity; i++) {
@@ -654,6 +655,7 @@ static void facil_cleanup(void *arg) {
   facil_cycle(arg, NULL);
   ((struct facil_run_args *)arg)->on_finish();
   defer_perform();
+  fprintf(stderr, "* %d finished.\n", getpid());
 }
 
 #undef facil_run
