@@ -51,7 +51,7 @@ The documentation in this folder includes:
 
 * A [Getting Started Guide](getting_started.md) with example for WebApps utilizing the HTTP / Websocket protocols as well as a custom protocol.
 
-* The core [`libserver` API documentation](libserver.md).
+* The core [`facil.io` API documentation](facil.md).
 
     This documents the main library API and should be used when writing custom protocols. This API is (mostly) redundant when using the `http` or `websockets` protocol extensions.
 
@@ -69,21 +69,21 @@ The documentation in this folder includes:
 
 * Core documentation that documents the libraries used internally.
 
-    The core documentation can be safely ignored by anyone using the `libserver`, `http` or `websockets` frameworks.
+    The core documentation can be safely ignored by anyone using the `facil.io`, `http` or `websockets` frameworks.
 
     The core libraries include (coming soon):
 
-    * [`libreact`](./libreact.md) - The reactor core functionality (EPoll and KQueue abstractions).
+    * [`defer`](./defer.md) - A simple event-loop with the added functionality of a thread pool and `fork`ing support.
 
-    * [`libasync`](./libasync.md) - The thread pool and task management core functionality.
+    * [`sock`](./sock.md) - A sockets library that resolves common issues such as fd collisions and user land buffer.
 
-    * [`libsock`](./libsock.md) - A sockets library that resolves common issues such as fd collisions and user land buffer.
+    * [`evio`](./evio.md) - an edge triggered `kqueue` / `epoll` abstraction / wrapper with an overridable callback design, allowing fast access to these APIs while maintaining portability enhancing ease of use (at the expense of complexity).
 
 ---
 
 ## Forking, Contributing and all that Jazz
 
-Sure, why not. If you can add Solaris or Windows support to `libreact`, that could mean `lib-server` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties).
+Sure, why not. If you can add Solaris or Windows support to `evio`, that could mean `facil.io` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties that implies).
 
 If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
 
