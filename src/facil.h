@@ -270,6 +270,9 @@ int facil_attach(intptr_t uuid, protocol_s *protocol);
 /** Sets a timeout for a specific connection (if active). */
 void facil_set_timeout(intptr_t uuid, uint8_t timeout);
 
+/** Gets a timeout for a specific connection. Returns 0 if none. */
+uint8_t facil_get_timeout(intptr_t uuid);
+
 /* *****************************************************************************
 Helper API
 ***************************************************************************** */

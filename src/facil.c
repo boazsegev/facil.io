@@ -287,6 +287,8 @@ static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
   if ((new_client = sock_accept(uuid)) == -1) {
     if (errno == ECONNABORTED || errno == ECONNRESET)
       defer(deferred_on_data, (void *)uuid, NULL);
+    else if (errno != EWOULDBLOCK)
+      perror("ERROR: socket accept error");
     return;
   }
   defer(listener_deferred_on_open, (void *)new_client, (void *)uuid);
@@ -731,6 +733,9 @@ void facil_set_timeout(intptr_t uuid, uint8_t timeout) {
     uuid_data(uuid).timeout = timeout;
   }
 }
+/** Gets a timeout for a specific connection. Returns 0 if there's no set
+ * timeout or the connection is inactive. */
+uint8_t facil_get_timeout(intptr_t uuid) { return uuid_data(uuid).timeout; }
 
 /* *****************************************************************************
 Misc helpers
