@@ -1,6 +1,9 @@
 #ifndef HTTP_HELLO
+#define HAS_UNIX_FEATURES
 #include "http.h"
-#include "sock.h"
+#include "strings.h"
+
+#include "misc.h"
 
 /*
 A simple Hello World + static file service + heavier memory response for memory
@@ -34,8 +37,7 @@ static void http1_hello_on_request(http_request_s *request) {
   sock_write(request->metadata.fd, hello_message, sizeof(hello_message) - 1);
 }
 */
-#include "misc.h"
-static void http1_hello_stress_request(http_request_s *request) {
+static void http_stress_request(http_request_s *request) {
   http_response_s *rs = http_response_create(request);
   if (!rs) {
     perror("ERROR: WTF?! No Memory? ");
@@ -60,6 +62,6 @@ done:
 
 void listen2stress(const char *port, const char *public_folder) {
   http_listen(port, NULL, .public_folder = public_folder,
-              .on_request = http1_hello_stress_request, .log_static = 0);
+              .on_request = http_stress_request, .log_static = 0);
 }
 #endif

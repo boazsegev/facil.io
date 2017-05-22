@@ -284,8 +284,6 @@ static void listener_deferred_on_open(void *uuid_, void *srv_uuid_) {
 
 static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
   intptr_t new_client;
-  protocol_s *pr = NULL;
-  struct ListenerProtocol *listener = (void *)plistener;
   if ((new_client = sock_accept(uuid)) == -1) {
     if (errno == ECONNABORTED || errno == ECONNRESET)
       defer(deferred_on_data, (void *)uuid, NULL);
@@ -294,7 +292,8 @@ static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
   defer(listener_deferred_on_open, (void *)new_client, (void *)uuid);
   defer(deferred_on_data, (void *)uuid, NULL);
   // // Was, without `deferred_on_data`
-  // pr = listener->on_open(new_client, listener->udata);
+  // struct ListenerProtocol *listener = (void *)plistener;
+  // protocol_s *pr = listener->on_open(new_client, listener->udata);
   // facil_attach(new_client, pr);
   // if (!pr)
   //   sock_close(new_client);
