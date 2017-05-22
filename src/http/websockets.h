@@ -39,8 +39,8 @@ typedef struct {
   void (*on_message)(ws_s *ws, char *data, size_t size, uint8_t is_text);
   /**
   The (optional) on_open callback will be called once the websocket connection
-  is
-  established.
+  is established and before is is registered with `facil`, so no `on_message`
+  events are raised before `on_open` returns.
   */
   void (*on_open)(ws_s *ws);
   /**
@@ -150,7 +150,7 @@ struct websocket_write_each_args_s {
    * Should return 1 to send data and 0 to exclude. */
   uint8_t (*filter)(ws_s *ws_to, void *arg);
   /** A callback called once all the data was sent. */
-  void (*on_finished)(ws_s *ws_to, void *arg);
+  void (*on_finished)(ws_s *ws_origin, void *arg);
   /** A user specified argumernt passed to each of the callbacks. */
   void *arg;
 };

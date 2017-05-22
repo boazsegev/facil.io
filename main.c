@@ -25,8 +25,8 @@ int main() {
   print_error_code(ENOTSOCK);
   print_error_code(EOPNOTSUPP);
 
-  listen2stress("3000", "./public_www");
-  listen2shootout("3030", 1);
+  // listen2stress("3000", "./public_www");
+  listen2shootout("3000", 1);
   /* Run the server and hang until a stop signal is received. */
-  facil_run(.threads = 1, .processes = 1);
+  facil_run(.threads = 16, .processes = 1);
 }

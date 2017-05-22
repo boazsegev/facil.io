@@ -36,7 +36,7 @@ struct connection_data_s {
 static struct facil_data_s {
   spn_lock_i global_lock;
   uint8_t need_review;
-  size_t capacity;
+  ssize_t capacity;
   time_t last_cycle;
   pid_t parent;
   struct connection_data_s conn[];
@@ -54,7 +54,7 @@ static inline void clear_connection_data_unsafe(intptr_t uuid,
 }
 /** locks a connection's protocol returns a pointer that need to be unlocked. */
 inline static protocol_s *protocol_try_lock(intptr_t fd,
-                                            enum facil_protocol_lock type) {
+                                            enum facil_protocol_lock_e type) {
   if (spn_trylock(&fd_data(fd).lock))
     return NULL;
   protocol_s *pr = fd_data(fd).protocol;
@@ -69,7 +69,7 @@ inline static protocol_s *protocol_try_lock(intptr_t fd,
 }
 /** See `facil_protocol_try_lock` for details. */
 inline static void protocol_unlock(protocol_s *pr,
-                                   enum facil_protocol_lock type) {
+                                   enum facil_protocol_lock_e type) {
   spn_unlock(&prt_meta(pr).locks[type]);
 }
 
@@ -199,7 +199,9 @@ static void facil_libcleanup(void) {
 }
 
 static void facil_lib_init(void) {
-  size_t capa = sock_max_capacity();
+  ssize_t capa = sock_max_capacity();
+  if (capa < 0)
+    perror("ERROR: socket capacity unknown / failure"), exit(ENOMEM);
   size_t mem_size =
       sizeof(*facil_data) + (capa * sizeof(struct connection_data_s));
   spn_lock(&facil_libinit_lock);
@@ -565,7 +567,7 @@ static void facil_review_timeout(void *arg, void *ignr) {
   (void)ignr;
   protocol_s *tmp;
   time_t review = facil_data->last_cycle;
-  uintptr_t fd = (uintptr_t)arg;
+  intptr_t fd = (intptr_t)arg;
 
   uint16_t timeout = fd_data(fd).timeout;
   if (!timeout)
@@ -627,7 +629,7 @@ static void facil_init_run(void *arg, void *arg2) {
   (void)arg2;
   evio_create();
   time(&facil_data->last_cycle);
-  for (size_t i = 0; i < facil_data->capacity; i++) {
+  for (intptr_t i = 0; i < facil_data->capacity; i++) {
     if (fd_data(i).protocol) {
       if (fd_data(i).protocol->service == listener_protocol_name)
         listener_on_start(i);
@@ -644,7 +646,7 @@ static void facil_init_run(void *arg, void *arg2) {
 static void facil_cleanup(void *arg) {
   fprintf(stderr, "* %d cleanning up.\n", getpid());
   intptr_t uuid;
-  for (size_t i = 0; i < facil_data->capacity; i++) {
+  for (intptr_t i = 0; i < facil_data->capacity; i++) {
     if (fd_data(i).protocol && (uuid = sock_fd2uuid(i)) >= 0) {
       defer(deferred_on_shutdown, (void *)uuid, NULL);
     }
@@ -755,7 +757,7 @@ time_t facil_last_tick(void) { return facil_data->last_cycle; }
  * by attempting to lock it.
  */
 protocol_s *facil_protocol_try_lock(intptr_t uuid,
-                                    enum facil_protocol_lock type) {
+                                    enum facil_protocol_lock_e type) {
   if (sock_isvalid(uuid) || !uuid_data(uuid).protocol) {
     errno = EBADF;
     return NULL;
@@ -763,7 +765,7 @@ protocol_s *facil_protocol_try_lock(intptr_t uuid,
   return protocol_try_lock(sock_uuid2fd(uuid), type);
 }
 /** See `facil_protocol_try_lock` for details. */
-void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock type) {
+void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock_e type) {
   if (!pr)
     return;
   protocol_unlock(pr, type);
@@ -772,7 +774,7 @@ void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock type) {
 size_t facil_count(void *service) {
   long count = 0;
   void *tmp;
-  for (size_t i = 0; i < facil_data->capacity; i++) {
+  for (intptr_t i = 0; i < facil_data->capacity; i++) {
     tmp = NULL;
     spn_lock(&fd_data(i).lock);
     if (fd_data(i).protocol && fd_data(i).protocol->service)
@@ -796,6 +798,7 @@ struct task {
   void (*on_done)(intptr_t uuid, void *arg);
   const void *service;
   uint32_t count;
+  enum facil_protocol_lock_e task_type;
   spn_lock_i lock;
 };
 
@@ -814,11 +817,11 @@ static void perform_single_task(void *v_uuid, void *v_task) {
   struct task *task = v_task;
   if (!uuid_data(v_uuid).protocol)
     goto fallback;
-  protocol_s *pr = protocol_try_lock(sock_uuid2fd(v_uuid), FIO_PR_LOCK_TASK);
+  protocol_s *pr = protocol_try_lock(sock_uuid2fd(v_uuid), task->task_type);
   if (!pr)
     goto defer;
   task->func((intptr_t)v_uuid, pr, task->arg);
-  protocol_unlock(pr, FIO_PR_LOCK_TASK);
+  protocol_unlock(pr, task->task_type);
   free_facil_task(task);
   return;
 fallback:
@@ -851,29 +854,29 @@ static void perform_multi_task(void *v_fd, void *v_task) {
     return;
   }
   struct task *task = v_task;
-  protocol_s *pr = protocol_try_lock((intptr_t)v_fd, FIO_PR_LOCK_TASK);
+  protocol_s *pr = protocol_try_lock((intptr_t)v_fd, task->task_type);
   if (!pr)
     goto reschedule;
   if (pr->service == task->service)
     task->func(sock_fd2uuid((intptr_t)v_fd), pr, task->arg);
-  protocol_unlock(pr, FIO_PR_LOCK_TASK);
+  protocol_unlock(pr, task->task_type);
   defer(finish_multi_task, v_fd, v_task);
   return;
 reschedule:
-  fprintf(stderr, "rescheduling multi for %p\n", v_fd);
+  // fprintf(stderr, "rescheduling multi for %p\n", v_fd);
   defer(perform_multi_task, v_fd, v_task);
 }
 
 static void schedule_multi_task(void *v_fd, void *v_task) {
   struct task *task = v_task;
-  uintptr_t fd = (uintptr_t)v_fd;
+  intptr_t fd = (intptr_t)v_fd;
   for (size_t i = 0; i < 64; i++) {
     if (!fd_data(fd).protocol)
       goto finish;
     if (spn_trylock(&fd_data(fd).lock))
       goto reschedule;
     if (!fd_data(fd).protocol ||
-        fd_data(fd).protocol->service != task->service) {
+        fd_data(fd).protocol->service != task->service || fd == task->origin) {
       spn_unlock(&fd_data(fd).lock);
       goto finish;
     }
@@ -886,7 +889,7 @@ static void schedule_multi_task(void *v_fd, void *v_task) {
     do {
       fd++;
     } while (!fd_data(fd).protocol && (fd < facil_data->capacity));
-    if (fd >= facil_data->capacity)
+    if (fd >= (intptr_t)facil_data->capacity)
       goto complete;
   }
 reschedule:
@@ -902,21 +905,23 @@ complete:
  * If the connection is closed before the task can run, the
  * `fallback` task wil be called instead, allowing for resource cleanup.
  */
-void facil_defer(intptr_t uuid,
-                 void (*func)(intptr_t uuid, protocol_s *, void *arg),
-                 void *arg, void (*fallback)(intptr_t uuid, void *arg)) {
-  if (!fallback)
-    fallback = mock_on_task_done;
-  if (!func || !uuid_data(uuid).protocol || !sock_isvalid(uuid))
+#undef facil_defer
+void facil_defer(struct facil_defer_args_s args) {
+  if (!args.fallback)
+    args.fallback = mock_on_task_done;
+  if (!args.task_type)
+    args.task_type = FIO_PR_LOCK_TASK;
+  if (!args.task || !uuid_data(args.uuid).protocol || !sock_isvalid(args.uuid))
     goto error;
   struct task *task = alloc_facil_task();
   if (!task)
     goto error;
-  *task = (struct task){.func = func, .arg = arg, .on_done = fallback};
-  defer(perform_single_task, (void *)uuid, task);
+  *task = (struct task){
+      .func = args.task, .arg = args.arg, .on_done = args.fallback};
+  defer(perform_single_task, (void *)args.uuid, task);
   return;
 error:
-  defer((void (*)(void *, void *))fallback, (void *)uuid, arg);
+  defer((void (*)(void *, void *))args.fallback, (void *)args.uuid, args.arg);
 }
 
 /**
@@ -925,25 +930,28 @@ error:
  *
  * Once all the tasks were performed, the `on_complete` callback will be called.
  */
-int facil_each(intptr_t origin_uuid, const void *service,
-               void (*func)(intptr_t uuid, protocol_s *, void *arg), void *arg,
-               void (*on_complete)(intptr_t origin_uuid, void *arg)) {
-  if (!on_complete)
-    on_complete = mock_on_task_done;
-  if (!func)
+#undef facil_each
+int facil_each(struct facil_each_args_s args) {
+  if (!args.on_complete)
+    args.on_complete = mock_on_task_done;
+  if (!args.task_type)
+    args.task_type = FIO_PR_LOCK_TASK;
+  if (!args.task)
     goto error;
   struct task *task = alloc_facil_task();
   if (!task)
     goto error;
-  *task = (struct task){.origin = origin_uuid,
-                        .func = func,
-                        .arg = arg,
-                        .on_done = on_complete,
-                        .service = service,
+  *task = (struct task){.origin = args.origin,
+                        .func = args.task,
+                        .arg = args.arg,
+                        .on_done = args.on_complete,
+                        .service = args.service,
+                        .task_type = args.task_type,
                         .count = 1};
   defer(schedule_multi_task, (void *)0, task);
   return 0;
 error:
-  defer((void (*)(void *, void *))on_complete, (void *)origin_uuid, arg);
+  defer((void (*)(void *, void *))args.on_complete, (void *)args.origin,
+        args.arg);
   return -1;
 }

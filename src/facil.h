@@ -297,15 +297,73 @@ int facil_run_every(size_t milliseconds, size_t repetitions,
                     void (*task)(void *), void *arg, void (*on_finish)(void *));
 
 /**
+ * This is used to lock the protocol againste concurrency collisions and
+ * concurent memory deallocation.
+ *
+ * However, there are three levels of protection that allow non-coliding tasks
+ * to protect the protocol object from being deallocated while in use:
+ *
+ * * `FIO_PR_LOCK_TASK` - a task lock locks might change data owned by the
+ *    protocol object. This task is used for tasks such as `on_data` and
+ *    (usually) `facil_defer`.
+ *
+ * * `FIO_PR_LOCK_WRITE` - a lock that promises only to use static data (data
+ *    that tasks never changes) in order to write to the underlying socket.
+ *    This lock is used for tasks such as `on_ready` and `ping`
+ *
+ * * `FIO_PR_LOCK_STATE` - a lock that promises only to retrive static data
+ *    (data that tasks never changes), performing no actions. This usually
+ *    isn't used for client side code (used internally by facil) and is only
+ *     meant for very short locks.
+ */
+enum facil_protocol_lock_e {
+  FIO_PR_LOCK_TASK = 0,
+  FIO_PR_LOCK_WRITE = 1,
+  FIO_PR_LOCK_STATE = 2,
+};
+
+/** Named arguments for the `facil_defer` function. */
+struct facil_defer_args_s {
+  /** The socket (UUID) that will perform the task. This is required.*/
+  intptr_t uuid;
+  /** The type of task to be performed. Defaults to `FIO_PR_LOCK_TASK` but could
+   * also be seto to `FIO_PR_LOCK_WRITE`. */
+  enum facil_protocol_lock_e task_type;
+  /** The task (function) to be performed. This is required. */
+  void (*task)(intptr_t uuid, protocol_s *, void *arg);
+  /** An opaque user data that will be passed along to the task. */
+  void *arg;
+  /** A fallback task, in case the connection was lost. Good for cleanup. */
+  void (*fallback)(intptr_t uuid, void *arg);
+};
+/**
  * Schedules a protected connection task. The task will run within the
  * connection's lock.
  *
  * If an error ocuurs or the connection is closed before the task can run, the
  * `fallback` task wil be called instead, allowing for resource cleanup.
  */
-void facil_defer(intptr_t uuid,
-                 void (*task)(intptr_t uuid, protocol_s *, void *arg),
-                 void *arg, void (*fallback)(intptr_t uuid, void *arg));
+void facil_defer(struct facil_defer_args_s args);
+#define facil_defer(...) facil_defer((struct facil_defer_args_s){__VA_ARGS__})
+
+/** Named arguments for the `facil_defer` function. */
+struct facil_each_args_s {
+  /** The socket (UUID) that originates the task or -1 if none (0 is a valid
+   * UUID). This socket will be EXCLUDED from performing the task.*/
+  intptr_t origin;
+  /** The target type of protocol that should perform the task. This is
+   * required. */
+  const void *service;
+  /** The type of task to be performed. Defaults to `FIO_PR_LOCK_TASK` but could
+   * also be seto to `FIO_PR_LOCK_WRITE`. */
+  enum facil_protocol_lock_e task_type;
+  /** The task (function) to be performed. This is required. */
+  void (*task)(intptr_t uuid, protocol_s *, void *arg);
+  /** An opaque user data that will be passed along to the task. */
+  void *arg;
+  /** An on_complete callback. Good for cleanup. */
+  void (*on_complete)(intptr_t uuid, void *arg);
+};
 
 /**
  * Schedules a protected connection task for each `service` connection.
@@ -315,19 +373,12 @@ void facil_defer(intptr_t uuid,
  *
  * Returns -1 on error. `on_complete` is always called (even on error).
  */
-int facil_each(intptr_t origin_uuid, const void *service,
-               void (*task)(intptr_t uuid, protocol_s *, void *arg), void *arg,
-               void (*on_complete)(intptr_t origin_uuid, void *arg));
+int facil_each(struct facil_each_args_s args);
+#define facil_each(...) facil_each((struct facil_each_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
 Lower Level API - for special circumstances, use with care under .
 ***************************************************************************** */
-
-enum facil_protocol_lock {
-  FIO_PR_LOCK_TASK = 0,
-  FIO_PR_LOCK_WRITE = 1,
-  FIO_PR_LOCK_STATE = 2,
-};
 
 /**
  * This function allows out-of-task access to a connection's `protocol_s` object
@@ -357,10 +408,10 @@ enum facil_protocol_lock {
  * On error, consider calling `facil_defer` or `defer` instead of busy waiting.
  * Busy waiting SHOULD be avoided whenever possible.
  */
-protocol_s *facil_protocol_try_lock(intptr_t uuid, enum facil_protocol_lock);
+protocol_s *facil_protocol_try_lock(intptr_t uuid, enum facil_protocol_lock_e);
 /** Don't unlock what you don't own... see `facil_protocol_try_lock` for
  * details. */
-void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock);
+void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock_e);
 
 #ifdef __cplusplus
 } /* extern "C" */

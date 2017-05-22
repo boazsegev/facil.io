@@ -36,6 +36,18 @@ sleep 10 while `websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 
 #include <string.h>
 
+static void free_ws_msg_b(ws_s *origin, void *msg) {
+  if (origin) {
+    struct {
+      size_t len;
+      char data[];
+    } *buff = msg;
+    buff->data[0] = 'r';
+    websocket_write(origin, buff->data, buff->len, 0);
+  }
+  free(msg);
+}
+
 static void free_ws_msg(ws_s *origin, void *msg) {
   (void)(origin);
   free(msg);
@@ -78,6 +90,8 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
       websocket_write_each(.data = data, .length = size, .is_text = is_text,
                            .on_finished = ws_so_finished_callback,
                            .filter = ws_so_filter_callback);
+      data[0] = 'r';
+      websocket_write(ws, data, size, 0);
     } else {
       struct {
         size_t len;
@@ -86,13 +100,10 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
       buff->len = size;
       memcpy(buff->data, data, size);
       /* perform broadcast (all except this websocket) */
-      websocket_each(ws, broadcast_shootout_msg_bin, buff, free_ws_msg);
+      websocket_each(ws, broadcast_shootout_msg_bin, buff, free_ws_msg_b);
       /* perform echo */
       websocket_write(ws, data, size, 0);
     }
-    /* send result */
-    data[0] = 'r';
-    websocket_write(ws, data, size, 0);
   } else if (data[9] == 'b') {
     if (SHOOTOUT_USE_DIRECT_WRITE) {
       websocket_write_each(.data = data, .length = size, .is_text = is_text);
