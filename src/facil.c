@@ -642,8 +642,7 @@ static void facil_init_run(void *arg, void *arg2) {
 }
 
 static void facil_cleanup(void *arg) {
-  if (FACIL_PRINT_STATE && facil_data->parent == getpid())
-    fprintf(stderr, "\n   ---  starting shutdown  ---\n");
+  fprintf(stderr, "* %d cleanning up.\n", getpid());
   intptr_t uuid;
   for (size_t i = 0; i < facil_data->capacity; i++) {
     if (fd_data(i).protocol && (uuid = sock_fd2uuid(i)) >= 0) {
@@ -655,7 +654,6 @@ static void facil_cleanup(void *arg) {
   facil_cycle(arg, NULL);
   ((struct facil_run_args *)arg)->on_finish();
   defer_perform();
-  fprintf(stderr, "* %d finished.\n", getpid());
 }
 
 #undef facil_run
@@ -690,6 +688,8 @@ void facil_run(struct facil_run_args args) {
   } else if (frk > 0) {
     exit(0);
   }
+  if (FACIL_PRINT_STATE)
+    fprintf(stderr, "\n   ---  Completed Shutdown  ---\n");
 }
 /* *****************************************************************************
 Setting the protocol
