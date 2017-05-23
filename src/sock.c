@@ -226,6 +226,10 @@ struct fd_data_s {
   packet_s *packet;
   /** RW hooks. */
   sock_rw_hook_s *rw_hooks;
+  /** Peer/listenning address. */
+  struct sockaddr_in6 addrinfo;
+  /** address length. */
+  socklen_t addrlen;
 };
 
 static struct sock_data_store {
@@ -644,19 +648,24 @@ response in the background while a disconnection and a new connection occur on
 the same `fd`).
 */
 intptr_t sock_accept(intptr_t srv_uuid) {
-  static socklen_t cl_addrlen = 0;
+  struct sockaddr_in6 addrinfo;
+  socklen_t addrlen = sizeof(addrinfo);
   int client;
 #ifdef SOCK_NONBLOCK
-  client = accept4(sock_uuid2fd(srv_uuid), NULL, &cl_addrlen, SOCK_NONBLOCK);
+  client = accept4(sock_uuid2fd(srv_uuid), (struct sockaddr *)&addrinfo,
+                   &addrlen, SOCK_NONBLOCK);
   if (client <= 0)
     return -1;
 #else
-  client = accept(sock_uuid2fd(srv_uuid), NULL, &cl_addrlen);
+  client =
+      accept(sock_uuid2fd(srv_uuid), (struct sockaddr *)&addrinfo, &addrlen);
   if (client <= 0)
     return -1;
   sock_set_non_block(client);
 #endif
   clear_fd(client, 1);
+  fdinfo(client).addrinfo = addrinfo;
+  fdinfo(client).addrlen = addrlen;
   // sock_touch(srv_uuid);
   return fd2uuid(client);
 }
@@ -717,8 +726,10 @@ intptr_t sock_connect(char *address, char *port) {
     freeaddrinfo(addrinfo);
     return -1;
   }
-  freeaddrinfo(addrinfo);
   clear_fd(fd, 1);
+  fdinfo(fd).addrinfo = *((struct sockaddr_in6 *)addrinfo->ai_addr);
+  fdinfo(fd).addrlen = addrinfo->ai_addrlen;
+  freeaddrinfo(addrinfo);
   return fd2uuid(fd);
 }
 
@@ -744,6 +755,16 @@ the same `fd`).
 intptr_t sock_open(int fd) {
   clear_fd(fd, 1);
   return fd2uuid(fd);
+}
+
+/** Returns the information available about the socket's peer address. */
+sock_peer_addr_s sock_peer_addr(intptr_t uuid) {
+  if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).addrlen)
+    return (sock_peer_addr_s){.addr = NULL};
+  return (sock_peer_addr_s){
+      .addrlen = fdinfo(sock_uuid2fd(uuid)).addrlen,
+      .addr = (struct sockaddr *)&fdinfo(sock_uuid2fd(uuid)).addrinfo,
+  };
 }
 
 /**

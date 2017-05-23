@@ -172,6 +172,20 @@ Returns 0 if not.
 */
 int sock_isvalid(intptr_t uuid);
 
+/** The return type for the `sock_peer_addr` function. */
+typedef struct {
+  uint32_t addrlen;
+  struct sockaddr *addr;
+} sock_peer_addr_s;
+/** Returns the information available about the socket's peer address.
+ *
+ * If no information is available, the struct will be initialized with zero
+ * (`addr == NULL`).
+ * The information is only available when the socket was accepted using
+ * `sock_accept` or opened using `sock_connect`.
+ */
+sock_peer_addr_s sock_peer_addr(intptr_t uuid);
+
 /**
 `sock_fd2uuid` takes an existing file decriptor `fd` and returns it's active
 `uuid`.
