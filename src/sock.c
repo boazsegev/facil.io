@@ -247,7 +247,8 @@ static struct sock_data_store {
 
 static inline int validate_uuid(uintptr_t uuid) {
   uintptr_t fd = sock_uuid2fd(uuid);
-  if (sock_data_store.capacity <= fd || fdinfo(fd).counter != (uuid & 0xFF))
+  if ((intptr_t)uuid == -1 || sock_data_store.capacity <= fd ||
+      fdinfo(fd).counter != (uuid & 0xFF))
     return -1;
   return 0;
 }

@@ -29,7 +29,7 @@ sleep 10 while `websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 #define WEBSOCKET_SHOOTOUT_H
 
 #ifndef SHOOTOUT_USE_DIRECT_WRITE
-#define SHOOTOUT_USE_DIRECT_WRITE 0
+#define SHOOTOUT_USE_DIRECT_WRITE 1
 #endif
 
 #include "websockets.h" // includes the "http.h" header
@@ -71,7 +71,7 @@ static void broadcast_shootout_msg_bin(ws_s *ws, void *msg) {
 }
 
 static uint8_t ws_so_filter_callback(ws_s *ws, void *arg) {
-  if (arg || !ws)
+  if (arg || !ws || ((protocol_s *)ws)->service != WEBSOCKET_ID_STR)
     perror("WTF?! No Websocket during callback!"), exit(1);
   return 1;
 }

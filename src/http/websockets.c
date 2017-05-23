@@ -887,8 +887,11 @@ int websocket_write_each(struct websocket_write_each_args_s args) {
     return -1;
   struct websocket_multi_write *multi =
       malloc(sizeof(*multi) + args.length + 16 /* max head size + 2 */);
-  if (!multi)
+  if (!multi) {
+    if (args.on_finished)
+      defer((void (*)(void *, void *))args.on_finished, NULL, args.arg);
     return -1;
+  }
   *multi = (struct websocket_multi_write){
       .length = websocket_encode(multi->buffer, args.data, args.length,
                                  args.is_text, 1, 1, args.as_client),
