@@ -447,7 +447,6 @@ static void http_response_log_finish(http_response_s *response) {
 
 #define HTTP_REQUEST_LOG_LIMIT 128
   char buffer[HTTP_REQUEST_LOG_LIMIT];
-  char *tmp;
   size_t pos = 0;
   if (addrinfo.addrlen) {
     if (inet_ntop(

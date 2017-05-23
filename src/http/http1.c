@@ -193,7 +193,7 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
     http_settings_s *settings = protocol->settings;
     // call request callback
     if (protocol && settings &&
-        (settings->public_folder == NULL ||
+        (request->request.upgrade || settings->public_folder == NULL ||
          http_response_sendfile2(
              NULL, &request->request, settings->public_folder,
              settings->public_folder_length, request->request.path,

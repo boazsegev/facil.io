@@ -23,7 +23,7 @@ static void http1_hello_on_request(http_request_s *request) {
 }
 */
 
-static void http1_hello_on_request(http_request_s *request) {
+static void http_hello_on_request(http_request_s *request) {
   http_response_s *rs = http_response_create(request);
   if (!rs) {
     perror("ERROR: WTF?! No Memory? ");
@@ -46,6 +46,6 @@ void listen2bench(const char *port, const char *public_folder) {
   }
 
   http_listen(port, NULL, .public_folder = public_folder,
-              .on_request = http1_hello_on_request, .log_static = 1);
+              .on_request = http_hello_on_request, .log_static = 1);
 }
 #endif

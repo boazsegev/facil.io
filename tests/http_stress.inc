@@ -21,7 +21,6 @@ def cycle
 end
 sleep(10) while cycle
 
-
 */
 
 /*

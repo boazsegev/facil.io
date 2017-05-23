@@ -24,14 +24,18 @@ static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
   sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
 }
 
-static inline protocol_s *echo_on_open(intptr_t uuid, void *_) {
+static inline protocol_s *echo_on_open(intptr_t uuid, void *ignr_) {
   static protocol_s echo_proto = {.on_data = echo_on_data,
                                   .on_shutdown = echo_on_shutdown,
                                   .ping = echo_ping};
   sock_write(uuid, "Echo Service: Welcome\n", 22);
   facil_set_timeout(uuid, 10);
   return &echo_proto;
+  (void)ignr_;
 }
 
-#define ECHO_PROTOCOL echo_on_open
+void listen2echo(const char *port) {
+  facil_listen(.port = port, .on_open = echo_on_open);
+}
+
 #endif

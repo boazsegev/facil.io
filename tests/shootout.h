@@ -100,7 +100,8 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
       buff->len = size;
       memcpy(buff->data, data, size);
       /* perform broadcast (all except this websocket) */
-      websocket_each(ws, broadcast_shootout_msg_bin, buff, free_ws_msg_b);
+      websocket_each(.origin = ws, .task = broadcast_shootout_msg_bin,
+                     .arg = buff, .on_finish = free_ws_msg_b);
       /* perform echo */
       websocket_write(ws, data, size, 0);
     }
@@ -115,7 +116,8 @@ static void ws_shootout(ws_s *ws, char *data, size_t size, uint8_t is_text) {
       buff->len = size;
       memcpy(buff->data, data, size);
       /* perform broadcast (all except this websocket) */
-      websocket_each(ws, broadcast_shootout_msg, buff, free_ws_msg);
+      websocket_each(.origin = ws, .task = broadcast_shootout_msg, .arg = buff,
+                     .on_finish = free_ws_msg);
       /* perform echo */
       websocket_write(ws, data, size, 1);
     }
