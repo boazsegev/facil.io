@@ -57,13 +57,13 @@ Support an on_close callback.
 */
 
 #pragma weak sock_on_close
-void sock_on_close(intptr_t uuid) { (void)(uuid); }
+void __attribute__((weak)) sock_on_close(intptr_t uuid) { (void)(uuid); }
 
 /* *****************************************************************************
 Support timeout setting.
 */
 #pragma weak sock_touch
-void sock_touch(intptr_t uuid) { (void)(uuid); }
+void __attribute__((weak)) sock_touch(intptr_t uuid) { (void)(uuid); }
 
 /* *****************************************************************************
 Support `defer``.

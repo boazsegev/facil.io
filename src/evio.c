@@ -48,13 +48,13 @@ Feel free to copy, use and enjoy according to the license provided.
 Callbacks - weak versions to be overridden.
 ***************************************************************************** */
 #pragma weak evio_on_data
-void evio_on_data(void *arg) { (void)arg; }
+void __attribute__((weak)) evio_on_data(void *arg) { (void)arg; }
 #pragma weak evio_on_ready
-void evio_on_ready(void *arg) { (void)arg; }
+void __attribute__((weak)) evio_on_ready(void *arg) { (void)arg; }
 #pragma weak evio_on_error
-void evio_on_error(void *arg) { (void)arg; }
+void __attribute__((weak)) evio_on_error(void *arg) { (void)arg; }
 #pragma weak evio_on_close
-void evio_on_close(void *arg) { (void)arg; }
+void __attribute__((weak)) evio_on_close(void *arg) { (void)arg; }
 
 /* *****************************************************************************
 Global data and system independant code

@@ -228,7 +228,7 @@ actually closed.
 `sock` supplies a default implementation (that does nothing) is cases where a
 callback wasn't defined.
 */
-void sock_on_close(intptr_t uuid) { (void)(uuid); }
+void sock_on_close(intptr_t uuid);
 
 /**
 `sock_read` attempts to read up to count bytes from the socket into the buffer
