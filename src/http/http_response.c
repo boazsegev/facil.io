@@ -1,151 +1,116 @@
-/*
-Copyright: Boaz segev, 2016-2017
-License: MIT
-
-Feel free to copy, use and enjoy according to the license provided.
-*/
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
-// clang-format off
-#include "http_response_http1.h"
-// clang-format on
-
 #include "base64.h"
 #include "http.h"
+#include "http1_response.h"
 #include "siphash.h"
+
 #include <arpa/inet.h>
+#include <errno.h>
 #include <fcntl.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
+#include <limits.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <string.h>
+#include <strings.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-
 /* *****************************************************************************
-Helpers
+Fallbacks
 ***************************************************************************** */
 
-#define forward_func(response, func, ...)                                      \
-  if ((response)->metadata.version == 1) {                                     \
-    return h1p_##func(__VA_ARGS__);                                            \
-  } else                                                                       \
-    return -1;
-#define perform_func(response, func, ...)                                      \
-  if ((response)->metadata.version == 1) {                                     \
-    h1p_##func(__VA_ARGS__);                                                   \
-  }
+static http_response_s *fallback_http_response_create(http_request_s *request) {
+  (void)request;
+  return NULL;
+}
+static void fallback_http_response_dest(http_response_s *res) {
+  (void)res;
+  return;
+}
 
-// static char* MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun ",
-//                               "Jul ", "Aug ", "Sep ", "Oct ", "Nov ", "Dec
-//                               "};
-//
+/* *****************************************************************************
+Initialization
+***************************************************************************** */
+
+/** Creates / allocates a protocol version's response object. */
+http_response_s *http_response_create(http_request_s *request) {
+  static http_response_s *(*const vtable[2])(http_request_s *) = {
+      http1_response_create /* HTTP_V1 */,
+      fallback_http_response_create /* HTTP_V2 */};
+  return vtable[request->http_version](request);
+}
+/** Destroys the response object. No data is sent.*/
+void http_response_destroy(http_response_s *response) {
+  if (!response)
+    return;
+  static void (*const vtable[2])(http_response_s *) = {
+      http1_response_destroy /* HTTP_V1 */,
+      fallback_http_response_dest /* HTTP_V2 */};
+  vtable[response->http_version](response);
+}
+
+/* we declare it in advance, because we reference it soon. */
+static void http_response_log_finish(http_response_s *response);
+/** Sends the data and destroys the response object.*/
+void http_response_finish(http_response_s *response) {
+  static void (*const vtable[2])(http_response_s *) = {
+      http1_response_finish /* HTTP_V1 */,
+      fallback_http_response_dest /* HTTP_V2 */};
+  if (response->logged)
+    http_response_log_finish(response);
+  vtable[response->http_version](response);
+}
+
+/* *****************************************************************************
+Writing data to the response object
+***************************************************************************** */
 #define is_num(c) ((c) >= '0' && (c) <= '9')
 #define num_val(c) ((c)-48)
 
-/* *****************************************************************************
-API implementation
-***************************************************************************** */
+#define invalid_cookie_char(c)                                                 \
+  ((c) < '!' || (c) > '~' || (c) == '=' || (c) == ' ' || (c) == ',' ||         \
+   (c) == ';')
 
 /**
-Initializes a response object with the request object. This function assumes the
-response object memory is garbage and might have been stack-allocated.
-
-Notice that the `http_request_s` pointer must point at a valid request object
-and that the request object must remain valid until the response had been
-completed.
-
-Hangs on failuer (waits for available resources).
-*/
-http_response_s http_response_init(http_request_s *request) {
-  protocol_s *http = request->metadata.owner;
-  time_t date = server_last_tick();
-  return (http_response_s){
-      .metadata.request = request,
-      .metadata.fd = request->metadata.fd,
-      .metadata.packet = sock_checkout_packet(),
-      .status = 200,
-      .date = date,
-      .last_modified = date,
-      .metadata.version = (http->service == HTTP1 ? 1 : 0),
-      .metadata.should_close =
-          (request && request->connection &&
-           request->connection_len ==
-               5), // don't check header value, length is unique enough.
-  };
-}
-/**
-Releases any resources held by the response object (doesn't release the response
-object itself, which might have been allocated on the stack).
-
-This function assumes the response object might have been stack-allocated.
-*/
-void http_response_destroy(http_response_s *response) {
-  if (response->metadata.packet) {
-    sock_free_packet(response->metadata.packet);
-    response->metadata.packet = NULL;
-  }
-}
-/**
-Writes a header to the response. This function writes only the requested
-number of bytes from the header name and the requested number of bytes from
-the header value. It can be used even when the header name and value don't
-contain NULL terminating bytes by passing the `.name_len` or `.value_len` data
-in the `http_headers_s` structure.
-
 If the header buffer is full or the headers were already sent (new headers
 cannot be sent), the function will return -1.
 
 On success, the function returns 0.
 */
-#undef http_response_write_header
-int http_response_write_header(http_response_s *response,
-                               http_headers_s header) {
-  // check if the header is a reserved header
-  if ((header.name_length == 4 || header.name_length == 0) &&
-      strncasecmp(header.name, "date", 4) == 0)
-    response->metadata.date_written = 1;
-  else if ((header.name_length == 10 || header.name_length == 0) &&
-           strncasecmp(header.name, "connection", 10) == 0) {
-    response->metadata.connection_written = 1;
-    if (header.value && header.value[0] == 'c')
-      response->metadata.should_close = 1;
-  } else if ((header.name_length == 14 || header.name_length == 0) &&
-             strncasecmp(header.name, "content-length", 14) == 0)
-    response->metadata.content_length_written = 1;
+int http_response_write_header_fn(http_response_s *response,
+                                  http_header_s header) {
+  static int (*const vtable[2])(http_response_s *, http_header_s) = {
+      http1_response_write_header_fn /* HTTP_V1 */, NULL /* HTTP_V2 */,
+  };
+  if (!header.name || response->headers_sent)
+    return -1;
+  if (header.value && !header.value_len)
+    header.value_len = strlen(header.value);
+  if (header.name && !header.name_len)
+    header.name_len = strlen(header.name);
+  if (header.name_len == 4 && !strncasecmp(header.name, "Date", 4))
+    response->date_written = 1;
+  else if (header.name_len == 14 &&
+           !strncasecmp(header.name, "content-length", 14))
+    response->content_length_written = 1;
+  else if (header.name_len == 13 &&
+           !strncasecmp(header.name, "Last-Modified", 13))
+    response->date_written = 1;
+  else if (header.name_len == 10 &&
+           !strncasecmp(header.name, "connection", 10)) {
+    response->connection_written = 1;
+    if (header.value_len == 5 && !strncasecmp(header.value, "close", 5))
+      response->should_close = 1;
+  }
 
-  // write the header to the protocol
-  forward_func(response, response_write_header, response, header);
+  return vtable[response->http_version](response, header);
 }
-#define http_response_write_header(response, ...)                              \
-  http_response_write_header(response, (http_headers_s){__VA_ARGS__})
 
 /**
 Set / Delete a cookie using this helper function.
-
-To set a cookie, use (in this example, a session cookie):
-
-    http_response_set_cookie(response,
-            .name = "my_cookie",
-            .value = "data");
-
-To delete a cookie, use:
-
-    http_response_set_cookie(response,
-            .name = "my_cookie",
-            .value = NULL);
-
-This function writes a cookie header to the response. Only the requested
-number of bytes from the cookie value and name are written (if none are
-provided, a terminating NULL byte is assumed).
-
-Both the name and the value of the cookie are checked for validity (legal
-characters), but other properties aren't reviewed (domain/path) - please make
-sure to use only valid data, as HTTP imposes restrictions on these things.
 
 If the header buffer is full or the headers were already sent (new headers
 cannot be sent), the function will return -1.
@@ -154,19 +119,48 @@ On success, the function returns 0.
 */
 #undef http_response_set_cookie
 int http_response_set_cookie(http_response_s *response, http_cookie_s cookie) {
-  forward_func(response, response_set_cookie, response, cookie);
-};
+  /* validate common requirements. */
+  if (!cookie.name || response->headers_sent)
+    return -1;
+  ssize_t tmp = cookie.name_len;
+  if (cookie.name_len) {
+    do {
+      tmp--;
+      if (!cookie.name[tmp] || invalid_cookie_char(cookie.name[tmp]))
+        goto error;
+    } while (tmp);
+  } else {
+    while (cookie.name[cookie.name_len] &&
+           !invalid_cookie_char(cookie.name[cookie.name_len]))
+      cookie.name_len++;
+    if (cookie.name[cookie.name_len])
+      goto error;
+  }
+  if (cookie.value_len) {
+    ssize_t tmp = cookie.value_len;
+    do {
+      tmp--;
+      if (!cookie.value[tmp] || invalid_cookie_char(cookie.value[tmp]))
+        goto error;
+    } while (tmp);
+  } else {
+    while (cookie.value[cookie.value_len] &&
+           !invalid_cookie_char(cookie.value[cookie.value_len]))
+      cookie.value_len++;
+    if (cookie.value[cookie.value_len])
+      return -1;
+  }
 
-/**
-Indicates that any pending data (i.e. unsent headers) should be sent and that no
-more use of the response object will be made.
-*/
-void http_response_finish(http_response_s *response) {
-  perform_func(response, response_finish, response);
-  if (response->metadata.logged)
-    http_response_log_finish(response);
-  http_response_destroy(response);
+  static int (*const vtable[2])(http_response_s *, http_cookie_s) = {
+      http1_response_set_cookie /* HTTP_V1 */, NULL /* HTTP_V2 */,
+  };
+  return vtable[response->http_version](response, cookie);
+error:
+  fprintf(stderr, "ERROR: Invalid cookie value cookie value character: %c\n",
+          cookie.value[tmp]);
+  return -1;
 }
+
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
@@ -178,37 +172,37 @@ the function returns 0.
 */
 int http_response_write_body(http_response_s *response, const char *body,
                              size_t length) {
-  forward_func(response, response_write_body, response, body, length);
+  static int (*const vtable[2])(http_response_s *, const char *, size_t) = {
+      http1_response_write_body /* HTTP_V1 */, NULL /* HTTP_V2 */,
+  };
+  if (!response->content_length)
+    response->content_length = length;
+  return vtable[response->http_version](response, body, length);
 }
+
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
-
-The server's outgoing buffer will take ownership of the file and close it
-using `fclose` once the data was sent.
 
 If the connection was already closed, the function will return -1. On success,
 the function returns 0.
 */
 int http_response_sendfile(http_response_s *response, int source_fd,
                            off_t offset, size_t length) {
-  forward_func(response, response_sendfile, response, source_fd, offset,
-               length);
+  static int (*const vtable[2])(http_response_s *, int, off_t, size_t) = {
+      http1_response_sendfile /* HTTP_V1 */, NULL /* HTTP_V2 */,
+  };
+  if (!response->content_length)
+    response->content_length = length;
+  return vtable[response->http_version](response, source_fd, offset, length);
 }
 /**
-Attempts to send the file requested using an **optional** response object (if no
-response object is pointed to, a temporary response object will be created).
+Attempts to send the file requested using an **optional** response object (if
+no response object is pointed to, a temporary response object will be
+created).
 
-If a `file_path_unsafe` is provided, it will be appended to the `file_path_safe`
-(if any) and URL decoded before attempting to locate and open the file. Any
-insecure path manipulations in the `file_path_unsafe` (i.e. `..` or `//`) will
-cause the function to fail.
-
-`file_path_unsafe` MUST begine with a `/`, or it will be appended to
-`file_path_safe` as part of the last folder's name. if `file_path_safe` ends
-with a `/`, it will be trancated.
-
-If the `log` flag is set, response logging will be performed.
+This function will honor Ranged requests by setting the byte range
+appropriately.
 
 On failure, the function will return -1 (no response will be sent).
 
@@ -222,7 +216,6 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   char buffer[64]; /* we'll need this a few times along the way */
   if (request == NULL || (file_path_safe == NULL && file_path_unsafe == NULL))
     return -1;
-  http_response_s tmp_response;
 
   if (file_path_safe && path_safe_len == 0)
     path_safe_len = strlen(file_path_safe);
@@ -232,11 +225,15 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
 
   const char *mime = NULL;
   const char *ext = NULL;
-  struct stat file_data = {};
+  int8_t should_free_response = 0;
+  struct stat file_data = {.st_size = 0};
   // fprintf(stderr, "\n\noriginal request path: %s\n", req->path);
-  char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
-  if (fname == NULL)
+  // char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
+  if ((path_safe_len + path_unsafe_len) >= (PATH_MAX - 1 - 11))
     return -1;
+  char fname[path_safe_len + path_unsafe_len + 1 + 11];
+  // if (fname == NULL)
+  //   return -1;
   if (file_path_safe)
     memcpy(fname, file_path_safe, path_safe_len);
   fname[path_safe_len] = 0;
@@ -276,27 +273,27 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     goto no_file;
 
   if (response == NULL) {
-    response = &tmp_response;
-    tmp_response = http_response_init(request);
+    should_free_response = 1;
+    response = http_response_create(request);
     if (log)
       http_response_log_start(response);
   }
 
   // we have a file, time to handle response details.
   int file = open(fname, O_RDONLY);
-  if (file == -1) {
-    goto no_file;
-  }
   // free the allocated fname memory
-  free(fname);
-  fname = NULL;
+  // free(fname);
+  // fname = NULL;
+  if (file == -1) {
+    goto no_fd_available;
+  }
 
   // get the mime type (we have an ext pointer and the string isn't empty)
   if (ext && ext[1]) {
     mime = http_response_ext2mime(ext + 1);
     if (mime) {
       http_response_write_header(response, .name = "Content-Type",
-                                 .name_length = 12, .value = mime);
+                                 .name_len = 12, .value = mime);
     }
   }
   /* add ETag */
@@ -304,28 +301,25 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   sip ^= file_data.st_mtime;
   sip = siphash24(&sip, sizeof(uint64_t), SIPHASH_DEFAULT_KEY);
   bscrypt_base64_encode(buffer, (void *)&sip, 8);
-  http_response_write_header(response, .name = "ETag", .name_length = 4,
-                             .value = buffer, .value_length = 12);
+  http_response_write_header(response, .name = "ETag", .name_len = 4,
+                             .value = buffer, .value_len = 12);
 
   response->last_modified = file_data.st_mtime;
-  http_response_write_header(response, .name = "Cache-Control",
-                             .name_length = 13, .value = "max-age=3600",
-                             .value_length = 12);
+  http_response_write_header(response, .name = "Cache-Control", .name_len = 13,
+                             .value = "max-age=3600", .value_len = 12);
 
   /* check etag */
-  if ((ext = http_request_find_header(request, "if-none-match", 13)) &&
+  if ((ext = http_request_header_find(request, "if-none-match", 13).value) &&
       memcmp(ext, buffer, 12) == 0) {
     /* send back 304 */
     response->status = 304;
     close(file);
-    perform_func(response, response_finish, response);
-    if (log)
-      http_response_log_finish(response);
+    http_response_finish(response);
     return 0;
   }
 
   // Range handling
-  if ((ext = http_request_find_header(request, "range", 5)) &&
+  if ((ext = http_request_header_find(request, "range", 5).value) &&
       (ext[0] | 32) == 'b' && (ext[1] | 32) == 'y' && (ext[2] | 32) == 't' &&
       (ext[3] | 32) == 'e' && (ext[4] | 32) == 's' && (ext[5] | 32) == '=') {
     // ext holds the first range, starting on index 6 i.e. RANGE: bytes=0-1
@@ -360,50 +354,55 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     *(pos++) = '/';
     pos += http_ul2a(pos, file_data.st_size);
     http_response_write_header(response, .name = "Content-Range",
-                               .name_length = 13, .value = buffer,
-                               .value_length = pos - buffer);
+                               .name_len = 13, .value = buffer,
+                               .value_len = pos - buffer);
     response->status = 206;
     http_response_write_header(response, .name = "Accept-Ranges",
-                               .name_length = 13, .value = "bytes",
-                               .value_length = 5);
+                               .name_len = 13, .value = "bytes",
+                               .value_len = 5);
 
     if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
       response->content_length = 0;
       close(file);
-      perform_func(response, response_finish, response);
-      if (log)
-        http_response_log_finish(response);
+      http_response_finish(response);
       return 0;
     }
 
     http_response_sendfile(response, file, start, finish - start + 1);
-    if (log)
-      http_response_log_finish(response);
+    http_response_finish(response);
     return 0;
   }
 
 invalid_range:
-  http_response_write_header(response, .name = "Accept-Ranges",
-                             .name_length = 13, .value = "none",
-                             .value_length = 4);
+  http_response_write_header(response, .name = "Accept-Ranges", .name_len = 13,
+                             .value = "none", .value_len = 4);
 
   if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
     response->content_length = 0;
     close(file);
-    perform_func(response, response_finish, response);
-    if (log)
-      http_response_log_finish(response);
+    http_response_finish(response);
     return 0;
   }
 
   http_response_sendfile(response, file, 0, file_data.st_size);
-  if (log)
-    http_response_log_finish(response);
+  http_response_finish(response);
   return 0;
+
+no_fd_available:
+  response->status = 503;
+  const char *body = http_response_status_str(503);
+  http_response_write_body(response, body, strlen(body));
+  http_response_finish(response);
+
 no_file:
-  free(fname);
+  if (should_free_response && response)
+    http_response_destroy(response);
+  // free(fname);
   return -1;
 }
+/* *****************************************************************************
+Logging
+***************************************************************************** */
 
 #ifdef RUSAGE_SELF
 static const size_t CLOCK_RESOLUTION = 1000; /* in miliseconds */
@@ -425,39 +424,41 @@ static size_t get_clock_mili(void) {
 Starts counting miliseconds for log results.
 */
 void http_response_log_start(http_response_s *response) {
-  response->metadata.clock_start = get_clock_mili();
-  response->metadata.logged = 1;
+  response->clock_start = get_clock_mili();
+  response->logged = 1;
 }
 /**
 prints out the log to stderr.
 */
-void http_response_log_finish(http_response_s *response) {
-  http_request_s *request = response->metadata.request;
-  uintptr_t bytes_sent = (uintptr_t)response->metadata.headers_pos;
+static void http_response_log_finish(http_response_s *response) {
+  http_request_s *request = response->request;
+  uintptr_t bytes_sent = response->content_length;
 
-  size_t mili = response->metadata.logged
-                    ? ((get_clock_mili() - response->metadata.clock_start) /
-                       CLOCK_RESOLUTION)
-                    : 0;
+  size_t mili =
+      response->logged
+          ? ((get_clock_mili() - response->clock_start) / CLOCK_RESOLUTION)
+          : 0;
   struct tm tm;
-  struct sockaddr_in addrinfo;
-  socklen_t addrlen = sizeof(addrinfo);
-  time_t last_tick = server_last_tick();
+  time_t last_tick = facil_last_tick();
   http_gmtime(&last_tick, &tm);
 
   // TODO Guess IP address from headers (forwarded) where possible
+  sock_peer_addr_s addrinfo = sock_peer_addr(response->fd);
 
-  int got_add = getpeername(sock_uuid2fd(request->metadata.fd),
-                            (struct sockaddr *)&addrinfo, &addrlen);
 #define HTTP_REQUEST_LOG_LIMIT 128
   char buffer[HTTP_REQUEST_LOG_LIMIT];
-  char *tmp;
-  size_t pos;
-  if (got_add == 0) {
-    tmp = inet_ntoa(addrinfo.sin_addr);
-    pos = strlen(tmp);
-    memcpy(buffer, tmp, pos);
-  } else {
+  size_t pos = 0;
+  if (addrinfo.addrlen) {
+    if (inet_ntop(
+            addrinfo.addr->sa_family,
+            addrinfo.addr->sa_family == AF_INET
+                ? (void *)&((struct sockaddr_in *)addrinfo.addr)->sin_addr
+                : (void *)&((struct sockaddr_in6 *)addrinfo.addr)->sin6_addr,
+            buffer, 128))
+      pos = strlen(buffer);
+    // pos = addrinfo.addr->sa_family == AF_INET ?: fmt_ip6()
+  }
+  if (pos == 0) {
     memcpy(buffer, "[unknown]", 9);
     pos = 9;
   }
@@ -519,19 +520,18 @@ void http_response_log_finish(http_response_s *response) {
 
   buffer[pos++] = ' ';
   pos += http_ul2a(buffer + pos, bytes_sent);
-  if (response->metadata.logged) {
+  if (response->logged) {
     buffer[pos++] = ' ';
     pos += http_ul2a(buffer + pos, mili);
     buffer[pos++] = 'm';
     buffer[pos++] = 's';
   }
   buffer[pos++] = '\n';
-  response->metadata.logged = 0;
+  response->logged = 0;
   fwrite(buffer, 1, pos, stderr);
 }
-
 /* *****************************************************************************
-Hardcded lists / matching
+List matching (status + mime-type)
 *****************************************************************************
 */
 

@@ -19,31 +19,33 @@ The simplest example, of course, would be the famous "Hello World" application..
 ```c
 #include "http.h"
 
+#include "http.h"
+
 void on_request(http_request_s* request) {
-  http_response_s response = http_response_init(request);
-  http_response_set_cookie(&response, .name = "my_cookie", .value = "data");
-  http_response_write_header(&response, .name = "X-Data", .value = "my data");
-  http_response_write_body(&response, "Hello World!\r\n", 14);
-  http_response_finish(&response);
+  http_response_s * response = http_response_create(request);
+  // http_response_log_start(response); // logging ?
+  http_response_set_cookie(response, .name = "my_cookie", .value = "data");
+  http_response_write_header(response, .name = "X-Data", .value = "my data");
+  http_response_write_body(response, "Hello World!\r\n", 14);
+  http_response_finish(response);
 }
 
 int main() {
   char* public_folder = NULL;
-  // listen on port 3000, any available network binding (0.0.0.0)
-  http1_listen("3000", NULL, .on_request = on_request,
-               .public_folder = public_folder);
+  // listen on port 3000, any available network binding (NULL == 0.0.0.0)
+  http_listen("3000", NULL, .on_request = on_request,
+               .public_folder = public_folder, .log_static = 0);
   // start the server
-  server_run(.threads = 16);
+  facil_run(.threads = 4, .processes = 4);
 }
 ```
 
 But `facil.io` really shines when it comes to Websockets and real-time applications, where the `kqueue`/`epoll` engine gives the framework a high performance running start.
 
-Here's a full-fledge example of a Websocket echo server, a Websocket broadcast server and an HTTP "Hello World" (with an optional static file service) all rolled into one:
+Here's a full-fledge example of a Websocket echo server:
 
 ```c
-// update the demo.c file to use the existing folder structure and makefile
-#include "websockets.h"  // includes the "http.h" header
+#include "websockets.h" // includes the "http.h" header
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,83 +54,38 @@ Here's a full-fledge example of a Websocket echo server, a Websocket broadcast s
 The Websocket echo implementation
 */
 
-void ws_open(ws_s* ws) {
-  fprintf(stderr, "Opened a new websocket connection (%p)\n", ws);
+void ws_open(ws_s * ws) {
+  fprintf(stderr, "Opened a new websocket connection (%p)\n", (void * )ws);
 }
 
-void ws_echo(ws_s* ws, char* data, size_t size, uint8_t is_text) {
+void ws_echo(ws_s * ws, char * data, size_t size, uint8_t is_text) {
   // echos the data to the current websocket
-  websocket_write(ws, data, size, 1);
+  websocket_write(ws, data, size, is_text);
 }
 
-void ws_shutdown(ws_s* ws) {
-  websocket_write(ws, "Shutting Down", 13, 1);
-}
+void ws_shutdown(ws_s * ws) { websocket_write(ws, "Shutting Down", 13, 1); }
 
-void ws_close(ws_s* ws) {
-  fprintf(stderr, "Closed websocket connection (%p)\n", ws);
-}
-
-/* ***********************************
-The Websocket Broadcast implementation
-*/
-
-/* websocket broadcast data */
-struct ws_data {
-  size_t size;
-  char data[];
-};
-/* free the websocket broadcast data */
-void free_wsdata(ws_s* ws, void* arg) {
-  free(arg);
-}
-/* the broadcast "task" performed by websocket_each */
-void ws_get_broadcast(ws_s* ws, void* arg) {
-  struct ws_data* data = arg;
-  websocket_write(ws, data->data, data->size, 1);  // echo
-}
-/* The websocket broadcast server's on_message callback */
-
-void ws_broadcast(ws_s* ws, char* data, size_t size, uint8_t is_text) {
-  // Copy the message to a broadcast data-packet
-  struct ws_data* msg = malloc(sizeof(* msg) + size);
-  msg->size = size;
-  memcpy(msg->data, data, size);
-  // Asynchronously calls `ws_get_broadcast` for each of the websockets
-  // (except this one)
-  // and calls `free_wsdata` once all the broadcasts were perfomed.
-  websocket_each(ws, ws_get_broadcast, msg, free_wsdata);
-  // echos the data to the current websocket
-  websocket_write(ws, data, size, 1);
+void ws_close(ws_s * ws) {
+  fprintf(stderr, "Closed websocket connection (%p)\n", (void * )ws);
 }
 
 /* ********************
 The HTTP implementation
 */
 
-void on_request(http_request_s* request) {
-  // to log we will start a response.
-  http_response_s response = http_response_init(request);
-  http_response_log_start(&response);
-  // upgrade requests to broadcast will have the following properties:
-  if (request->upgrade && !strcmp(request->path, "/broadcast")) {
-    // Websocket upgrade will use our existing response (never leak responses).
-    websocket_upgrade(.request = request, .on_message = ws_broadcast,
-                      .on_open = ws_open, .on_close = ws_close,
-                      .on_shutdown = ws_shutdown, .response = &response);
-
-    return;
-  }
-  // other upgrade requests will have the following properties:
+void on_request(http_request_s * request) {
+  http_response_s * response = http_response_create(request);
+  http_response_log_start(response); // logging
+  // websocket upgrade.
   if (request->upgrade) {
     websocket_upgrade(.request = request, .on_message = ws_echo,
-                      .on_open = ws_open, .on_close = ws_close, .timeout = 4,
-                      .on_shutdown = ws_shutdown, .response = &response);
+                      .on_open = ws_open, .on_close = ws_close, .timeout = 40,
+                      .on_shutdown = ws_shutdown, .response = response);
     return;
   }
   // HTTP response
-  http_response_write_body(&response, "Hello World!", 12);
-  http_response_finish(&response);
+  http_response_write_body(response, "Hello World! Why not test me using Websockets\x3f", 46);
+  http_response_finish(response);
 }
 
 /****************
@@ -136,11 +93,11 @@ The main function
 */
 
 #define THREAD_COUNT 1
-int main(int argc, char const* argv[]) {
+int main(void) {
   const char* public_folder = NULL;
-  http1_listen("3000", NULL, .on_request = on_request,
+  http_listen("3000", NULL, .on_request = on_request,
                .public_folder = public_folder, .log_static = 1);
-  server_run(.threads = THREAD_COUNT);
+  facil_run(.threads = THREAD_COUNT);
   return 0;
 }
 ```
@@ -152,10 +109,11 @@ int main(int argc, char const* argv[]) {
 Here's a simple Echo example (test with telnet to port `"3000"`).
 
 ```c
-#include "libserver.h"
+#include "facil.h" // the core library header
 
 // Performed whenever there's pending incoming data on the socket
 static void perform_echo(intptr_t uuid, protocol_s * prt) {
+  (void)prt;
   char buffer[1024] = {'E', 'c', 'h', 'o', ':', ' '};
   ssize_t len;
   while ((len = sock_read(uuid, buffer + 6, 1018)) > 0) {
@@ -170,24 +128,28 @@ static void perform_echo(intptr_t uuid, protocol_s * prt) {
 }
 // performed whenever "timeout" is reached.
 static void echo_ping(intptr_t uuid, protocol_s * prt) {
+  (void)prt;
   sock_write(uuid, "Server: Are you there?\n", 23);
 }
 // performed during server shutdown, before closing the socket.
-static void echo_on_shutdown(intptr_t uuid, protocol_s * prt) {
+static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
+  (void)prt;
   sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
 }
-// performed after the socket was closed and the currently running task had completed.
+// performed after the socket was closed and the currently running task had
+// completed.
 static void destroy_echo_protocol(protocol_s * echo_proto) {
   if (echo_proto) // always error check, even if it isn't needed.
     free(echo_proto);
-  fprintf(stderr, "Freed Echo protocol at %p\n", echo_proto);
+  fprintf(stderr, "Freed Echo protocol at %p\n", (void * )echo_proto);
 }
 // performed whenever a new connection is accepted.
-static inline protocol_s *create_echo_protocol(intptr_t uuid, void * _ ) {
+static inline protocol_s *create_echo_protocol(intptr_t uuid, void *arg) {
   // create a protocol object
-  protocol_s * echo_proto = malloc(sizeof(* echo_proto));
+  protocol_s *echo_proto = malloc(sizeof( * echo_proto));
   // set the callbacks
   * echo_proto = (protocol_s){
+      .service = "echo",
       .on_data = perform_echo,
       .on_shutdown = echo_on_shutdown,
       .ping = echo_ping,
@@ -195,19 +157,20 @@ static inline protocol_s *create_echo_protocol(intptr_t uuid, void * _ ) {
   };
   // write data to the socket and set timeout
   sock_write(uuid, "Echo Service: Welcome. Say \"bye\" to disconnect.\n", 48);
-  server_set_timeout(uuid, 10);
+  facil_set_timeout(uuid, 10);
   // print log
-  fprintf(stderr, "New Echo connection %p for socket UUID %p\n", echo_proto,
-          (void * )uuid);
+  fprintf(stderr, "New Echo connection %p for socket UUID %p\n",
+          (void * )echo_proto, (void * )uuid);
   // return the protocol object to attach it to the socket.
   return echo_proto;
+  (void)arg; // we don't use this
 }
 // creates and runs the server
-int main(int argc, char const * argv[]) {
+int main(void) {
   // listens on port 3000 for echo services.
-  server_listen(.port = "3000", .on_open = create_echo_protocol);
+  facil_listen(.port = "3000", .on_open = create_echo_protocol);
   // starts and runs the server
-  server_run(.threads = 10);
+  facil_run(.threads = 10);
   return 0;
 }
 ```
@@ -218,11 +181,11 @@ int main(int argc, char const * argv[]) {
 
 Although encryption is important, separating the encryption layer from the application layer is often preferred and more effective.
 
-For example, most web applications (Node.js, Ruby etc') end up running behind load balancers and proxies. The encryption layer is often handled as an intermediary (i.e. an SSL/TLS proxy / tunnel).
+For example, most web applications (Node.js, Ruby etc') end up running behind load balancers and proxies. The encryption layer is often handled as an intermediary (i.e. an SSL/TLS proxy / tunnel or even an SSL/TLS load balancer).
 
-However, if you need to expose the application directly to the web or insist on integrating encryption within the app itself, it is possible to implement SSL/TLS support using `libsock`'s read/write hooks.
+However, if you need to expose the application directly to the web or insist on integrating encryption within the app itself, it is possible to implement SSL/TLS support using `sock`'s read/write hooks.
 
-Using `libsock`'s read-write hooks (`sock_rw_hook_set`) allows us to use our choice of TLS/SSL library to send data securely. Use `sock_uuid2fd` to convert a connection's UUID to it's system assigned `fd` when the SSL/TLS library needs the information.
+Using `sock`'s read-write hooks (`sock_rw_hook_set`) allows us to use our choice of TLS/SSL library to send data securely. Use `sock_uuid2fd` to convert a connection's UUID to it's system assigned `fd` when the SSL/TLS library needs the information.
 
 I did not write a TLS implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a load-balancer/proxy that manages the SSL/TLS layer).
 
@@ -232,14 +195,14 @@ I did not write a TLS implementation since I'm still looking into OpenSSL altern
 
 It should be notes that network applications always have to keep concurrency in mind. For instance, the connection might be closed by one machine while the other is still preparing (or writing) it's response.
 
-Worst, while the response is being prepared, a new client might connect to the system with the newly available (same) file descriptor, so the finalized response might get sent to the wrong client!
+Worst, when a slow response is being prepared for a disconnected client (a really slow response, so this isn't common), a new client might connect to the system with the newly available (same) file descriptor, so the finalized response might get sent to the wrong client!
 
-`libsock` and `libserver` protect us from such scenarios.
+the `sock` library and `facil.io` protect us from such scenarios.
 
-If you will use `libserver`'s multi-threading mode, it's concurrency will be limited to the `on_ready`, `ping` and `on_shutdown` callbacks. These callbacks should avoid using/setting any protocol specific information, or collisions might ensue.
+If you will use `facil.io`'s multi-threading mode, it's concurrency will be limited to two types of tasks - writing tasks (`on_ready`, `ping` and `on_shutdown` callbacks) and potentially mutable tasks (i.e. `on_data`, or most tasks scheduled with `facil_defer`).
 
-All other callbacks (`on_data`, `on_close` and any server tasks initiated with `server_each` or `server_task`) will be performed sequentially for each connection, protecting a connection's data from corruption. While two concurrent connections might perform tasks at the same time, no single connection will perform more then one task at a time (unless you ask it to do su, using `async_run`).
+Each task "family" uses it's own lock, so no two tasks can run concurrently for the same connection. This also means that the "writing" tasks should avoid using/setting any protocol specific information that is intended to be mutable, or collisions might ensue.
 
-In addition to multi-threading, `libserver` allows us to easily setup the network service's concurrency using processes (`fork`ing), which act differently then threads (i.e. memory space isn't shared, so that processes don't share accepted connections).
+In addition to multi-threading, `facil.io` allows us to easily setup the network service's concurrency using processes (`fork`ing), which act differently then threads (i.e. memory space isn't shared, so that processes don't share accepted connections).
 
-For best results, assume everything could run concurrently. `libserver` will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your application.
+For best results, assume everything could run concurrently. `facil.io` will do it's best to prevent collisions, but it is a generic library, so it might not know what to expect from your specific application.

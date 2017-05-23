@@ -6,7 +6,9 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef HTTP1_SIMPLE_PARSER_H
 #define HTTP1_SIMPLE_PARSER_H
+#include "http1.h"
 #include "http_request.h"
+#include <stdio.h>
 
 #ifndef HTTP_HEADERS_LOWERCASE
 /** when defined, HTTP headers will be converted to lowercase and header
@@ -35,9 +37,12 @@ attempt, only the `len` argument is expected to grow.
 
 The buffer should be kept intact for the life of the request object, as the
 HTTP/1.1 parser does NOT copy any data.
+
+The `on_header_found` allows the caller to save any header locations and data.
 */
-ssize_t http1_parse_request_headers(void *buffer, size_t len,
-                                    http_request_s *request);
+ssize_t http1_parse_request_headers(
+    void *buffer, size_t len, http_request_s *request,
+    void (*on_header_found)(http_request_s *request, http_header_s *header));
 
 /**
 Parses HTTP request body content (if any).
@@ -57,7 +62,7 @@ ssize_t http1_parse_request_body(void *buffer, size_t len,
                                  http_request_s *request);
 
 #if defined(DEBUG) && DEBUG == 1
-void http_parser_test(void);
+void http1_parser_test(void);
 #endif
 
 #endif

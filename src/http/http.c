@@ -4,7 +4,97 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#define _GNU_SOURCE
+
 #include "http.h"
+#include "http1.h"
+
+#include <string.h>
+#include <strings.h>
+#include <time.h>
+/* *****************************************************************************
+The global HTTP protocol
+***************************************************************************** */
+
+/**
+Return the callback used for creating the correct `settings` HTTP protocol.
+*/
+http_on_open_func http_get_on_open_func(http_settings_s *settings) {
+  static void *route[2] = {(void *)http1_on_open};
+  return (http_on_open_func)route[settings->version];
+}
+/**
+Return the callback used for freeing the HTTP protocol in the `settings`.
+*/
+http_on_finish_func http_get_on_finish_func(http_settings_s *settings) {
+  static void *route[2] = {NULL};
+  return (http_on_finish_func)route[settings->version];
+}
+
+void http_on_finish(void *set) {
+  http_settings_s *settings = set;
+  if (http_get_on_finish_func(set))
+    http_get_on_finish_func(set)(set);
+  if (settings->private_metaflags & 1)
+    free((void *)settings->public_folder);
+  if (settings->private_metaflags & 2)
+    free(settings);
+}
+
+/**
+Listens for incoming HTTP connections on the specified posrt and address,
+implementing the requested settings.
+
+Since facil.io doesn't support native TLS/SLL
+*/
+#undef http_listen
+int http_listen(const char *port, const char *address,
+                http_settings_s arg_settings) {
+  if (arg_settings.on_request == NULL) {
+    fprintf(
+        stderr,
+        "ERROR: http_listen requires the .on_request parameter to be set\n");
+    exit(11);
+  }
+  http_on_open_func on_open_callback = http_get_on_open_func(&arg_settings);
+  if (!on_open_callback) {
+    fprintf(stderr, "ERROR: The requested HTTP protocol version isn't "
+                    "supported at the moment.\n");
+    exit(11);
+  }
+  http_settings_s *settings = malloc(sizeof(*settings));
+  *settings = arg_settings;
+  settings->private_metaflags = 2;
+  if (!settings->max_body_size)
+    settings->max_body_size = HTTP_DEFAULT_BODY_LIMIT;
+  if (!settings->timeout)
+    settings->timeout = 5;
+  if (settings->public_folder) {
+    settings->public_folder_length = strlen(settings->public_folder);
+    if (settings->public_folder[0] == '~' &&
+        settings->public_folder[1] == '/' && getenv("HOME")) {
+      char *home = getenv("HOME");
+      size_t home_len = strlen(home);
+      char *tmp = malloc(settings->public_folder_length + home_len + 1);
+      memcpy(tmp, home, home_len);
+      if (home[home_len - 1] == '/')
+        --home_len;
+      memcpy(tmp + home_len, settings->public_folder + 1,
+             settings->public_folder_length); // copy also the NULL
+      settings->public_folder = tmp;
+      settings->private_metaflags |= 1;
+      settings->public_folder_length = strlen(settings->public_folder);
+    }
+  }
+
+  return facil_listen(.port = port, .address = address,
+                      .on_finish = http_on_finish, .on_open = on_open_callback,
+                      .udata = settings);
+}
+
+/* *****************************************************************************
+HTTP helpers.
+***************************************************************************** */
 
 /**
 A faster (yet less localized) alternative to `gmtime_r`.

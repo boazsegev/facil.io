@@ -42,7 +42,7 @@ OS Sendfile settings.
 #define USE_SENDFILE 1
 #elif defined(__unix__) /* BSD sendfile should work, but isn't tested */
 #include <sys/uio.h>
-#define USE_SENDFILE 0
+#define USE_SENDFILE 1
 #elif defined(__APPLE__) /* Is the apple sendfile still broken? */
 #include <sys/uio.h>
 #define USE_SENDFILE 1
@@ -70,11 +70,15 @@ Support `defer``.
 */
 
 #pragma weak defer
-int defer(void (*func)(void *), void *arg) {
-  func(arg);
+int defer(void (*func)(void *, void *), void *arg, void *arg2) {
+  func(arg, arg2);
   return 0;
 }
-
+static void sock_flush_defer(void *arg, void *ignored) {
+  sock_flush((intptr_t)arg);
+  return;
+  (void)ignored;
+}
 /* *****************************************************************************
 Support `evio`.
 */
@@ -105,12 +109,12 @@ struct {
   packet_s mem[BUFFER_PACKET_POOL];
 } packet_pool;
 
-static void sock_packet_free_none(struct packet_s *packet) { (void)packet; }
+void SOCK_DEALLOC_NOOP(void *arg) { (void)arg; }
 
 static inline void sock_packet_clear(packet_s *packet) {
   packet->metadata.free_func(packet);
-  packet->metadata =
-      (struct packet_metadata_s){.free_func = sock_packet_free_none};
+  packet->metadata = (struct packet_metadata_s){
+      .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   packet->buffer.len = 0;
 }
 
@@ -130,29 +134,35 @@ static inline packet_s *sock_packet_try_grab(void) {
   packet_s *packet = NULL;
   spn_lock(&packet_pool.lock);
   packet = packet_pool.next;
-  if (packet)
-    packet_pool.next = packet->metadata.next;
-  else if (!packet_pool.init)
-    goto init;
+  if (packet == NULL)
+    goto none_in_pool;
+  packet_pool.next = packet->metadata.next;
   spn_unlock(&packet_pool.lock);
-  packet->metadata =
-      (struct packet_metadata_s){.free_func = sock_packet_free_none};
+  packet->metadata = (struct packet_metadata_s){
+      .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   packet->buffer.len = 0;
   return packet;
+none_in_pool:
+  if (!packet_pool.init)
+    goto init;
+  spn_unlock(&packet_pool.lock);
+  return NULL;
 init:
   packet_pool.init = 1;
-  packet_pool.mem[0].metadata.free_func = sock_packet_free_none;
+  packet_pool.mem[0].metadata.free_func =
+      (void (*)(packet_s *))SOCK_DEALLOC_NOOP;
   for (size_t i = 2; i < BUFFER_PACKET_POOL; i++) {
     packet_pool.mem[i - 1].metadata.next = packet_pool.mem + i;
-    packet_pool.mem[i - 1].metadata.free_func = sock_packet_free_none;
+    packet_pool.mem[i - 1].metadata.free_func =
+        (void (*)(packet_s *))SOCK_DEALLOC_NOOP;
   }
   packet_pool.mem[BUFFER_PACKET_POOL - 1].metadata.free_func =
-      sock_packet_free_none;
+      (void (*)(packet_s *))SOCK_DEALLOC_NOOP;
   packet_pool.next = packet_pool.mem + 1;
   spn_unlock(&packet_pool.lock);
   packet = packet_pool.mem;
-  packet->metadata =
-      (struct packet_metadata_s){.free_func = sock_packet_free_none};
+  packet->metadata = (struct packet_metadata_s){
+      .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   packet->buffer.len = 0;
   return packet;
 }
@@ -180,7 +190,7 @@ static ssize_t sock_default_hooks_write(intptr_t uuid, const void *buf,
   return write(sock_uuid2fd(uuid), buf, count);
 }
 
-static void sock_default_hooks_on_clear(intptr_t fduuid,
+static void sock_default_hooks_on_close(intptr_t fduuid,
                                         struct sock_rw_hook_s *rw_hook) {
   (void)rw_hook;
   (void)fduuid;
@@ -194,7 +204,7 @@ sock_rw_hook_s sock_default_hooks = {
     .read = sock_default_hooks_read,
     .write = sock_default_hooks_write,
     .flush = sock_default_hooks_flush,
-    .on_clear = sock_default_hooks_on_clear,
+    .on_close = sock_default_hooks_on_close,
 };
 /* *****************************************************************************
 Socket Data Structures
@@ -216,23 +226,29 @@ struct fd_data_s {
   packet_s *packet;
   /** RW hooks. */
   sock_rw_hook_s *rw_hooks;
+  /** Peer/listenning address. */
+  struct sockaddr_in6 addrinfo;
+  /** address length. */
+  socklen_t addrlen;
 };
 
-static struct sock_data_s {
+static struct sock_data_store {
   size_t capacity;
   uint8_t exit_init;
   struct fd_data_s *fds;
-} sock_data_s;
+} sock_data_store;
 
-#define fd2uuid(fd) (((uintptr_t)(fd) << 8) | (sock_data_s.fds[(fd)].counter))
-#define fdinfo(fd) sock_data_s.fds[(fd)]
+#define fd2uuid(fd)                                                            \
+  (((uintptr_t)(fd) << 8) | (sock_data_store.fds[(fd)].counter))
+#define fdinfo(fd) sock_data_store.fds[(fd)]
 
-#define lock_fd(fd) spn_lock(&sock_data_s.fds[(fd)].lock)
-#define unlock_fd(fd) spn_unlock(&sock_data_s.fds[(fd)].lock)
+#define lock_fd(fd) spn_lock(&sock_data_store.fds[(fd)].lock)
+#define unlock_fd(fd) spn_unlock(&sock_data_store.fds[(fd)].lock)
 
 static inline int validate_uuid(uintptr_t uuid) {
   uintptr_t fd = sock_uuid2fd(uuid);
-  if (sock_data_s.capacity <= fd || fdinfo(fd).counter != (uuid & 0xFF))
+  if ((intptr_t)uuid == -1 || sock_data_store.capacity <= fd ||
+      fdinfo(fd).counter != (uuid & 0xFF))
     return -1;
   return 0;
 }
@@ -244,23 +260,23 @@ static inline void sock_packet_rotate_unsafe(uintptr_t fd) {
   sock_packet_free(packet);
 }
 
-static void clear_sock_lib(void) { free(sock_data_s.fds); }
+static void clear_sock_lib(void) { free(sock_data_store.fds); }
 
 static inline int initialize_sock_lib(size_t capacity) {
   static uint8_t init_exit = 0;
-  if (sock_data_s.capacity >= capacity)
+  if (sock_data_store.capacity >= capacity)
     return 0;
   struct fd_data_s *new_collection =
-      realloc(sock_data_s.fds, sizeof(struct fd_data_s) * capacity);
+      realloc(sock_data_store.fds, sizeof(struct fd_data_s) * capacity);
   if (new_collection) {
-    sock_data_s.fds = new_collection;
-    for (size_t i = sock_data_s.capacity; i < capacity; i++) {
+    sock_data_store.fds = new_collection;
+    for (size_t i = sock_data_store.capacity; i < capacity; i++) {
       fdinfo(i) = (struct fd_data_s){.open = 0,
                                      .lock = SPN_LOCK_INIT,
                                      .rw_hooks = &sock_default_hooks,
                                      .counter = 0};
     }
-    sock_data_s.capacity = capacity;
+    sock_data_store.capacity = capacity;
 
 #ifdef DEBUG
     fprintf(stderr,
@@ -288,16 +304,17 @@ static inline int initialize_sock_lib(size_t capacity) {
 }
 
 static inline int clear_fd(uintptr_t fd, uint8_t is_open) {
-  if (sock_data_s.capacity <= fd)
+  if (sock_data_store.capacity <= fd)
     goto reinitialize;
   packet_s *packet;
 clear:
   spn_lock(&(fdinfo(fd).lock));
   struct fd_data_s old_data = fdinfo(fd);
-  sock_data_s.fds[fd] = (struct fd_data_s){.open = is_open,
-                                           .lock = fdinfo(fd).lock,
-                                           .rw_hooks = &sock_default_hooks,
-                                           .counter = fdinfo(fd).counter + 1};
+  sock_data_store.fds[fd] =
+      (struct fd_data_s){.open = is_open,
+                         .lock = fdinfo(fd).lock,
+                         .rw_hooks = &sock_default_hooks,
+                         .counter = fdinfo(fd).counter + 1};
   spn_unlock(&(fdinfo(fd).lock));
   packet = old_data.packet;
   while (old_data.packet) {
@@ -305,7 +322,7 @@ clear:
     sock_packet_free(packet);
     packet = old_data.packet;
   }
-  old_data.rw_hooks->on_clear(((fd << 8) | old_data.counter),
+  old_data.rw_hooks->on_close(((fd << 8) | old_data.counter),
                               old_data.rw_hooks);
   if (old_data.open || (old_data.rw_hooks != &sock_default_hooks)) {
     sock_on_close((fd << 8) | old_data.counter);
@@ -374,12 +391,12 @@ struct sock_packet_file_data_s {
   uint8_t buffer[];
 };
 
+static void sock_perform_close_fd(intptr_t fd) { close(fd); }
+
 static void sock_close_from_fd(packet_s *packet) {
   struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
   ext->close((void *)ext->fd);
 }
-
-static void sock_mock_close_fd(intptr_t fd) { close(fd); }
 
 static int sock_write_from_fd(int fd, struct packet_s *packet) {
   struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
@@ -395,7 +412,7 @@ static int sock_write_from_fd(int fd, struct packet_s *packet) {
                         ext->offset + fdinfo(fd).sent);
     if (count <= 0)
       goto read_error;
-    count = fdinfo(fd).rw_hooks->write(fd, ext->buffer, count);
+    count = fdinfo(fd).rw_hooks->write(fd2uuid(fd), ext->buffer, count);
   } while (count == BUFFER_FILE_READ_SIZE && packet->buffer.len);
   if (count < 0)
     return -1;
@@ -417,69 +434,54 @@ read_error:
   return -1;
 }
 
-#if USE_SENDFILE == 1 && 0
+#if USE_SENDFILE == 1
 
 #if defined(__linux__) /* linux sendfile API */
-static int sock_sendfile_from_fd(int fd, struct packet_s *packet) {
-  ssize_t sent;
-  sock_packet_s *packet = fd_info[fd].packet;
-  sent =
-      sendfile64(fd, (int)((ssize_t)packet->buffer), &packet->metadata.offset,
-                 packet->length - fd_info[fd].sent);
 
-  if (sent < 0) {
-    if (ERR_OK)
-      return -1;
-    else if (ERR_TRY_AGAIN)
-      return 0;
-    else
-      return sock_flush_fd_failed(fd);
-  }
-  if (sent == 0)
-    fd_info[fd].sent = packet->length;
-  fd_info[fd].sent += sent;
-  return 0;
+static int sock_sendfile_from_fd(int fd, struct packet_s *packet) {
+  struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
+  ssize_t sent;
+  sent = sendfile64(fd, ext->fd, &ext->offset, packet->buffer.len);
+  if (sent < 0)
+    return -1;
+  packet->buffer.len -= sent;
+  if (!packet->buffer.len)
+    sock_packet_rotate_unsafe(fd);
+  return sent;
 }
 
 #elif defined(__APPLE__) || defined(__unix__) /* BSD / Apple API */
 
 static int sock_sendfile_from_fd(int fd, struct packet_s *packet) {
-  off_t act_sent;
-  sock_packet_s *packet = fd_info[fd].packet;
-  act_sent = packet->length - fd_info[fd].sent;
-
+  struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
+  off_t act_sent = 0;
+  ssize_t count = 0;
+  do {
+    fdinfo(fd).sent += act_sent;
+    packet->buffer.len -= act_sent;
+    act_sent = packet->buffer.len;
 #if defined(__APPLE__)
-  if (sendfile((int)((ssize_t)packet->buffer), fd, packet->metadata.offset,
-               &act_sent, NULL, 0) < 0 &&
-      act_sent == 0)
+    count = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent, &act_sent,
+                     NULL, 0);
 #else
-  if (sendfile((int)((ssize_t)packet->buffer), fd, packet->metadata.offset,
-               (size_t)act_sent, NULL, &act_sent, 0) < 0 &&
-      act_sent == 0)
+    count = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent,
+                     (size_t)act_sent, NULL, &act_sent, 0);
 #endif
-  {
-    if (ERR_OK)
-      return -1;
-    else if (ERR_TRY_AGAIN)
-      return 0;
-    else
-      return sock_flush_fd_failed(fd);
-  }
-  if (act_sent == 0) {
-    fd_info[fd].sent = packet->length;
-    return 0;
-  }
-  packet->metadata.offset += act_sent;
-  fd_info[fd].sent += act_sent;
-  return 0;
+  } while (count >= 0 && packet->buffer.len > (size_t)act_sent);
+  if (count < 0)
+    return -1;
+  sock_packet_rotate_unsafe(fd);
+  return act_sent;
 }
-#endif
 
 #else
-
 static int (*sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
     sock_write_from_fd;
 
+#endif
+#else
+static int (*sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
+    sock_write_from_fd;
 #endif
 
 /* *****************************************************************************
@@ -647,19 +649,25 @@ response in the background while a disconnection and a new connection occur on
 the same `fd`).
 */
 intptr_t sock_accept(intptr_t srv_uuid) {
-  static socklen_t cl_addrlen = 0;
+  struct sockaddr_in6 addrinfo;
+  socklen_t addrlen = sizeof(addrinfo);
   int client;
 #ifdef SOCK_NONBLOCK
-  client = accept4(sock_uuid2fd(srv_uuid), NULL, &cl_addrlen, SOCK_NONBLOCK);
+  client = accept4(sock_uuid2fd(srv_uuid), (struct sockaddr *)&addrinfo,
+                   &addrlen, SOCK_NONBLOCK);
   if (client <= 0)
     return -1;
 #else
-  client = accept(sock_uuid2fd(srv_uuid), NULL, &cl_addrlen);
+  client =
+      accept(sock_uuid2fd(srv_uuid), (struct sockaddr *)&addrinfo, &addrlen);
   if (client <= 0)
     return -1;
   sock_set_non_block(client);
 #endif
   clear_fd(client, 1);
+  fdinfo(client).addrinfo = addrinfo;
+  fdinfo(client).addrlen = addrlen;
+  // sock_touch(srv_uuid);
   return fd2uuid(client);
 }
 
@@ -719,8 +727,10 @@ intptr_t sock_connect(char *address, char *port) {
     freeaddrinfo(addrinfo);
     return -1;
   }
-  freeaddrinfo(addrinfo);
   clear_fd(fd, 1);
+  fdinfo(fd).addrinfo = *((struct sockaddr_in6 *)addrinfo->ai_addr);
+  fdinfo(fd).addrlen = addrinfo->ai_addrlen;
+  freeaddrinfo(addrinfo);
   return fd2uuid(fd);
 }
 
@@ -748,6 +758,16 @@ intptr_t sock_open(int fd) {
   return fd2uuid(fd);
 }
 
+/** Returns the information available about the socket's peer address. */
+sock_peer_addr_s sock_peer_addr(intptr_t uuid) {
+  if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).addrlen)
+    return (sock_peer_addr_s){.addr = NULL};
+  return (sock_peer_addr_s){
+      .addrlen = fdinfo(sock_uuid2fd(uuid)).addrlen,
+      .addr = (struct sockaddr *)&fdinfo(sock_uuid2fd(uuid)).addrinfo,
+  };
+}
+
 /**
 Returns 1 if the uuid refers to a valid and open, socket.
 
@@ -771,9 +791,9 @@ will result in the registry being updated and the fd being closed.
 Returns -1 on error. Returns a valid socket (non-random) UUID.
 */
 intptr_t sock_fd2uuid(int fd) {
-  return (fd > 0 && sock_data_s.capacity > (size_t)fd &&
-          sock_data_s.fds[fd].open)
-             ? fd2uuid(fd)
+  return (fd > 0 && sock_data_store.capacity > (size_t)fd &&
+          sock_data_store.fds[fd].open)
+             ? (intptr_t)(fd2uuid(fd))
              : -1;
 }
 
@@ -823,7 +843,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
     clear_fd(fd, 0);
   // avoid work when an error is expected to occur.
   if (!fdinfo(fd).open || options.offset < 0) {
-    if (options.move == 0 && options.is_fd == 0) {
+    if (options.move == 0) {
       errno = (options.offset < 0) ? ERANGE : EBADF;
       return -1;
     }
@@ -831,7 +851,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
       (options.dealloc ? options.dealloc : free)((void *)options.buffer);
     else
       (options.dealloc ? (void (*)(intptr_t))options.dealloc
-                       : sock_mock_close_fd)((intptr_t)options.buffer);
+                       : sock_perform_close_fd)(options.data_fd);
     errno = (options.offset < 0) ? ERANGE : EBADF;
     return -1;
   }
@@ -845,9 +865,9 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
         /* small enough for internal buffer */
         memcpy(packet->buffer.buf, (uint8_t *)options.buffer + options.offset,
                options.length);
-        packet->metadata =
-            (struct packet_metadata_s){.write_func = sock_write_buffer,
-                                       .free_func = sock_packet_free_none};
+        packet->metadata = (struct packet_metadata_s){
+            .write_func = sock_write_buffer,
+            .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
         goto place_packet_in_queue;
       }
       /* too big for the pre-allocated buffer */
@@ -865,15 +885,17 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
         .write_func = sock_write_buffer_ext, .free_func = sock_free_buffer_ext};
   } else { /* is file */
     struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
-    ext->fd = (intptr_t)options.buffer;
-    ext->close = options.dealloc ? options.dealloc : (void (*)(void *))close;
+    ext->fd = options.data_fd;
+    ext->close = options.dealloc ? options.dealloc
+                                 : (void (*)(void *))sock_perform_close_fd;
     ext->offset = options.offset;
     packet->metadata = (struct packet_metadata_s){
         .write_func =
             (fdinfo(sock_uuid2fd(options.uuid)).rw_hooks == &sock_default_hooks
                  ? sock_sendfile_from_fd
                  : sock_write_from_fd),
-        .free_func = options.move ? sock_close_from_fd : sock_packet_free_none};
+        .free_func = options.move ? sock_close_from_fd
+                                  : (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   }
 /* place packet in queue */
 place_packet_in_queue:
@@ -896,7 +918,7 @@ place_packet_in_queue:
   *pos = packet;
   unlock_fd(fd);
   sock_touch(options.uuid);
-  defer((void (*)(void *))sock_flush, (void *)options.uuid);
+  defer(sock_flush_defer, (void *)options.uuid, NULL);
   return 0;
 
 error:
@@ -966,7 +988,7 @@ void sock_flush_strong(intptr_t uuid) {
 Calls `sock_flush` for each file descriptor that's buffer isn't empty.
 */
 void sock_flush_all(void) {
-  for (size_t fd = 0; fd < sock_data_s.capacity; fd++) {
+  for (size_t fd = 0; fd < sock_data_store.capacity; fd++) {
     if (!fdinfo(fd).open || !fdinfo(fd).packet)
       continue;
     sock_flush(fd2uuid(fd));
@@ -1025,8 +1047,9 @@ ssize_t sock_buffer_send(intptr_t uuid, sock_buffer_s *buffer) {
   }
   packet_s **tmp, *packet = (packet_s *)((uintptr_t)(buffer) -
                                          sizeof(struct packet_metadata_s));
-  packet->metadata =
-      (struct packet_metadata_s){.write_func = sock_write_buffer};
+  packet->metadata = (struct packet_metadata_s){
+      .write_func = sock_write_buffer,
+      .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   int fd = sock_uuid2fd(uuid);
   lock_fd(fd);
   tmp = &fdinfo(fd).packet;
@@ -1081,8 +1104,8 @@ int sock_rw_hook_set(intptr_t uuid, sock_rw_hook_s *rw_hooks) {
     rw_hooks->write = sock_default_hooks_write;
   if (!rw_hooks->flush)
     rw_hooks->flush = sock_default_hooks_flush;
-  if (!rw_hooks->on_clear)
-    rw_hooks->on_clear = sock_default_hooks_on_clear;
+  if (!rw_hooks->on_close)
+    rw_hooks->on_close = sock_default_hooks_on_close;
   uuid = sock_uuid2fd(uuid);
   lock_fd(sock_uuid2fd(uuid));
   fdinfo(uuid).rw_hooks = rw_hooks;

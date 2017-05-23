@@ -15,6 +15,9 @@ All deferred execution is shared among the same process and inherited by any
 forked process.
 */
 #define H_DEFER_H
+#define LIB_DEFER_VERSION_MAJOR 0
+#define LIB_DEFER_VERSION_MINOR 1
+#define LIB_DEFER_VERSION_PATCH 0
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,7 +27,7 @@ Core API
 ***************************************************************************** */
 
 /** Defer an execution of a function for later. Returns -1 on error.*/
-int defer(void (*func)(void *), void *arg);
+int defer(void (*func)(void *, void *), void *arg1, void *arg2);
 
 /** Performs all deferred functions until the queue had been depleted. */
 void defer_perform(void);
@@ -59,7 +62,7 @@ to the allocated memory that identifies the thread.
 
 On error NULL should be returned.
 */
-void *defer_new_thread(void *(*thread_func)(void *), void *arg);
+void *defer_new_thread(void *(*thread_func)(void *), pool_pt pool);
 
 /**
 OVERRIDE THIS to replace the default pthread implementation.

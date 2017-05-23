@@ -1,211 +1,78 @@
-/*
-Copyright: Boaz segev, 2016-2017
-License: MIT
+#ifndef H_HTTP_RESPONSE_H
+#define H_HTTP_RESPONSE_H
 
-Feel free to copy, use and enjoy according to the license provided.
-*/
-#ifndef HTTP_RESPONSE
-/**
-The HttpResponse library
-========================
-
-This library helps us to write HTTP valid responses, even when we do not know
-the internals of the HTTP protocol.
-
-The response object allows us to easily update the response status (all
-responses start with the default 200 "OK" status code), write headers and cookie
-data to the header buffer and send the response's body.
-
-The response object also allows us to easily update the body size and send body
-data or open files (which will be automatically closed once sending is done).
-
-As example flow for the response could be:
-
-     ; // get an initialized HttpRequest object
-     struct HttpRequest * response = HttpResponse.create(request);
-     ; // ... write headers and body, i.e.
-     HttpResponse.write_header_cstr(response, "X-Data", "my data");
-     HttpResponse.write_body(response, "Hello World!\r\n", 14);
-     ; // release the object
-     HttpResponse.destroy(response);
-
-
---
-Thread-safety:
-
-The response object and it's API are NOT thread-safe (it is assumed that no two
-threads handle the same response at the same time).
-
-Also, the response object will link itself to a libsock buffer packet, so it
-should be created and dispatched during the same event - `sock_packet_s` objects
-shouldn't be held across events or for a period of time... In other words:
-
-**Create the response object only when you are ready to send a response**.
-
----
-Misc notes:
-The response header's buffer size is limited and too many headers will fail the
-response.
-
-The response object allows us to easily update the response status (all
-responses start with the default 200 "OK" status code), write headers and write
-cookie data to the header buffer.
-
-The response object also allows us to easily update the body size and send body
-data or open files (which will be automatically closed once sending is done).
-
-The response does NOT support chuncked encoding.
-
-The following is the response API container, use:
-
-     struct HttpRequest * response = HttpResponse.create(request);
-
-
----
-Performance:
-
-A note about using this library with the HTTP/1 protocol family (if this library
-supports HTTP/2, in the future, the use of the response object will be required,
-as it might not be possible to handle the response manually):
-
-Since this library safeguards against certain mistakes and manages an
-internal header buffer, it comes at a performance cost (it adds a layer of data
-copying to the headers).
-
-This cost is mitigated by the optional use of a response object pool, so that it
-actually saves us from using `malloc` for the headers - for some cases this is
-faster.
-
-In my performance tests, the greatest issue is this: spliting the headers from
-the body means that the socket's buffer is under-utilized on the first call to
-`send`, while sending the headers. While other operations incure minor costs,
-this is the actual reason for degraded performance when using this library.
-
-The order of performance should be considered as follows:
-
-1. Destructive: Overwriting the request's header buffer with both the response
-headers and the response data (small responses). Sending the data through the
-socket using the `Server.write` function.
-
-2. Using malloc to allocate enough memory for both the response's headers AND
-it's body.  Sending the data through the socket using the `Server.write_move`
-function.
-
-3. Using the HttpResponse object to send the response.
-
-Network issues and response properties might influence the order of performant
-solutions.
-*/
-#define HTTP_RESPONSE
-#include "http.h"
 #include "http_request.h"
+#include <stdio.h>
+#include <time.h>
 
 typedef struct {
-  /**
-The body's response length.
-
-If this isn't set manually, the first call to
-`HttpResponse.write_body` (and friends) will set the length to the length
-being written (which might be less then the total data sent, if the sending is
-fragmented).
-
-Set the value to -1 to force the HttpResponse not to write the
-`Content-Length` header.
-*/
+  /** The protocol version family (HTTP/1.1 / HTTP/2 etc'). */
+  enum HTTP_VERSION http_version;
+  /** Will be set to TRUE (1) once the headers were sent. */
+  unsigned headers_sent : 1;
+  /** Set to true when the "Date" header is written to the buffer. */
+  unsigned date_written : 1;
+  /** Set to true when the "Connection" header is written to the buffer. */
+  unsigned connection_written : 1;
+  /** Set to true when the "Content-Length" header is written to the buffer. */
+  unsigned content_length_written : 1;
+  /** Set to true in order to close the connection once the response was sent.
+   */
+  unsigned should_close : 1;
+  /** Internally used by the logging API. */
+  unsigned logged : 1;
+  /** Set this value to TRUE to indicate the request pointer should be freed. */
+  unsigned request_dupped : 1;
+  /** The response status */
+  uint16_t status;
+  /** The socket UUID for the response. */
+  intptr_t fd;
+  /** The originating request. */
+  http_request_s *request;
+  /** The body's response length.
+   *
+   * If this isn't set manually, the first call to `http_response_write_body`
+   * (and friends) will set the length to the length being written (which might
+   * be less then the total data sent, if the sending is fragmented).
+   *
+   * The value to -1 to prevents `http_response_s` from sending the
+   * `Content-Length` header.
+   */
   ssize_t content_length;
-  /**
-  The HTTP date for the response (in seconds since epoche).
-
-  Defaults to now (approximately, not exactly, uses cached data).
-
-  The date will be automatically formatted to match the HTTP protocol
-  specifications. It is better to avoid setting the "Date" header manualy.
-  */
+  /** The HTTP Date for the response (in seconds since epoche).
+   *
+   * Defaults to now (approximately, not exactly, uses cached time data).
+   *
+   * The date will be automatically formatted to match the HTTP protocol
+   * specifications.
+   *
+   * It is better to avoid setting the "Date" header manualy.
+   */
   time_t date;
-  /**
-  The HTTP date for the response (in seconds since epoche).
-
-  Defaults to now (approximately, not exactly, uses cached data).
-
-  The date will be automatically formatted to match the HTTP protocol
-  specifications. It is better to avoid setting the "Date" header manualy.
-  */
+  /** The HTTP Last-Modified date for the response (in seconds since epoche).
+   *
+   * Defaults to now (approximately, not exactly, uses cached time data).
+   *
+   * The date will be automatically formatted to match the HTTP protocol
+   * specifications.
+   *
+   * It is better to avoid setting the "Last-Modified" header manualy.
+   */
   time_t last_modified;
   /**
-  The response status
+  Internally used by the logging API.
   */
-  uint16_t status;
-  /**
-  Metadata about the response's state - don't edit this data (except the opaque
-  data, if needed).
-  */
-  struct {
-    /**
-    The request object to which this response is "responding".
-    */
-    http_request_s *request;
-    /**
-    The libsock fd UUID.
-    */
-    intptr_t fd;
-    /**
-    A `libsock` buffer packet used for header data (to avoid double copy).
-    */
-    sock_packet_s *packet;
-    /**
-    A pointer to the header's writing position.
-    */
-    char *headers_pos;
-    /**
-    Internally used by the logging API.
-    */
-    clock_t clock_start;
-    /**
-    HTTP protocol version identifier.
-    */
-    uint8_t version;
-    /**
-    Set to true once the headers were sent.
-    */
-    unsigned headers_sent : 1;
-    /**
-    Set to true when the "Date" header is written to the buffer.
-    */
-    unsigned date_written : 1;
-    /**
-    Set to true when the "Connection" header is written to the buffer.
-    */
-    unsigned connection_written : 1;
-    /**
-    Set to true when the "Content-Length" header is written to the buffer.
-    */
-    unsigned content_length_written : 1;
-    /**
-    Set to true in order to close the connection once the response was sent.
-    */
-    unsigned should_close : 1;
-    /**
-    Internally used by the logging API.
-    */
-    unsigned logged : 1;
-    /**
-    Reserved for future use.
-    */
-    unsigned rsrv : 2;
-
-  } metadata;
-
+  clock_t clock_start;
 } http_response_s;
 
 /**
 The struct HttpCookie is a helper for seting cookie data.
 
-This struct is used together with the `HttpResponse.set_cookie`. i.e.:
+This struct is used together with the `http_response_set_cookie`. i.e.:
 
-      HttpResponse.set_cookie(response, (struct HttpCookie){
+      http_response_set_cookie(response,
         .name = "my_cookie",
-        .value = "data"
-      });
+        .value = "data" );
 
 */
 typedef struct {
@@ -233,28 +100,21 @@ typedef struct {
   unsigned http_only : 1;
 } http_cookie_s;
 
-/**
-Initializes a response object with the request object. This function assumes the
-response object memory is garbage and might have been stack-allocated.
+/* *****************************************************************************
+Initialization
+***************************************************************************** */
 
-Notice that the `http_request_s` pointer must point at a valid request object
-and that the request object must remain valid until the response had been
-completed.
+/** Creates / allocates a protocol version's response object. */
+http_response_s *http_response_create(http_request_s *request);
+/** Destroys the response object. No data is sent.*/
+void http_response_destroy(http_response_s *);
+/** Sends the data and destroys the response object.*/
+void http_response_finish(http_response_s *);
 
-Hangs on failuer (waits for available resources).
-*/
-http_response_s http_response_init(http_request_s *request);
-/**
-Releases any resources held by the response object (doesn't release the response
-object itself, which might have been allocated on the stack).
+/* *****************************************************************************
+Writing data to the response object
+***************************************************************************** */
 
-This function assumes the response object might have been stack-allocated.
-*/
-void http_response_destroy(http_response_s *response);
-/** Gets a response status, as a string. */
-const char *http_response_status_str(uint16_t status);
-/** Gets the mime-type string (C string) associated with the file extension. */
-const char *http_response_ext2mime(const char *ext);
 /**
 Writes a header to the response. This function writes only the requested
 number of bytes from the header name and the requested number of bytes from
@@ -267,9 +127,9 @@ cannot be sent), the function will return -1.
 
 On success, the function returns 0.
 */
-int http_response_write_header(http_response_s *, http_headers_s header);
+int http_response_write_header_fn(http_response_s *, http_header_s header);
 #define http_response_write_header(response, ...)                              \
-  http_response_write_header(response, (http_headers_s){__VA_ARGS__})
+  http_response_write_header_fn(response, (http_header_s){__VA_ARGS__})
 
 /**
 Set / Delete a cookie using this helper function.
@@ -304,18 +164,6 @@ int http_response_set_cookie(http_response_s *, http_cookie_s);
   http_response_set_cookie(response, (http_cookie_s){__VA_ARGS__})
 
 /**
-Indicates that any pending data (i.e. unsent headers) should be sent and that no
-more use of the response object will be made. This will also release any
-resources aquired when the response object was initialized, similar to the
-`http_response_destroy` function.
-
-If logging was initiated and hadn't been performed, it will be performed.
-
-If the connection was already closed, the function will return -1. On success,
-the function returns 0.
-*/
-void http_response_finish(http_response_s *);
-/**
 Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
 
@@ -327,33 +175,19 @@ the function returns 0.
 int http_response_write_body(http_response_s *, const char *body,
                              size_t length);
 
-// /**
-// REVIEW: IS THIS APPLICABLE FOR HTTP/2 AS WELL? this must be a unified API.
-//
-// Sends the headers (if they weren't previously sent) and writes the data to
-// the
-// underlying socket.
-//
-// The server's outgoing buffer will take ownership of the body and free it's
-// memory using `free` once the data was sent.
-//
-// If the connection was already closed, the function will return -1. On
-// success,
-// the function returns 0.
-// */
-// int http_response_write_body_move(http_response_s*,
-//                                   const char* body,
-//                                   size_t length);
-
 /**
 Sends the headers (if they weren't previously sent) and writes the data to the
 underlying socket.
 
 The server's outgoing buffer will take ownership of the file and close it
-using `fclose` once the data was sent.
+using `close` once the data was sent.
 
 If the connection was already closed, the function will return -1. On success,
-the function returns 0.
+the function returns 0. The file is alsways closed by the function.
+
+If should be possible to destroy the response object and send an error response
+if an error is detected. The function will avoid sending any data before it
+knows the likelyhood of error is small enough.
 */
 int http_response_sendfile(http_response_s *, int source_fd, off_t offset,
                            size_t length);
@@ -387,13 +221,16 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
                             const char *file_path_safe, size_t path_safe_len,
                             const char *file_path_unsafe,
                             size_t path_unsafe_len, uint8_t log);
-/**
-Starts counting miliseconds for log results.
-*/
+/* *****************************************************************************
+Helpers and common tasks
+***************************************************************************** */
+
+/** Gets a response status, as a string. */
+const char *http_response_status_str(uint16_t status);
+/** Gets the mime-type string (C string) associated with the file extension. */
+const char *http_response_ext2mime(const char *ext);
+
+/** Starts counting miliseconds for log results. */
 void http_response_log_start(http_response_s *);
-/**
-prints out the log to stderr.
-*/
-void http_response_log_finish(http_response_s *);
 
 #endif

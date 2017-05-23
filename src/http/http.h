@@ -6,12 +6,32 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef HTTP_H
 #define HTTP_H
+#define LIB_FACIL_HTTP_VERSION_MAJOR 0
+#define LIB_FACIL_HTTP_VERSION_MINOR 4
+#define LIB_FACIL_HTTP_VERSION_PATCH 0
+#include "facil.h"
+
+/** an HTTP/1.1 vs. HTTP/2 identifier. */
+enum HTTP_VERSION { HTTP_V1 = 0, HTTP_V2 = 1 };
+
+/** HTTP header information */
+typedef struct {
+  const char *name;
+  union {
+    const char *data;
+    const char *value;
+  };
+  uint32_t name_len;
+  union {
+    uint32_t data_len;
+    uint32_t value_len;
+  };
+} http_header_s;
 
 /* *****************************************************************************
 Core include files
 */
 // clang-format off
-#include "libserver.h"
 #include <time.h>
 #include "http_request.h"
 #include "http_response.h"
@@ -32,7 +52,7 @@ Hard Coded Settings
 #endif
 
 /* *****************************************************************************
-HTTP settings / core data structure
+HTTP Core API & data structure
 */
 
 /** Manages protocol settings for the HTTP protocol */
@@ -63,10 +83,38 @@ typedef struct {
   /** An HTTP connection timeout. For HTTP/1.1 this defaults to ~5 seconds.*/
   uint8_t timeout;
   /**
+  The default HTTP version which a new connection will use. At the moment, only
+  version HTTP/1.1 is supported.
+  */
+  enum HTTP_VERSION version;
+  /**
   internal flag for library use.
   */
   uint8_t private_metaflags;
 } http_settings_s;
+
+typedef protocol_s *(*http_on_open_func)(intptr_t, void *);
+typedef void (*http_on_finish_func)(void *);
+/**
+Return the callback used for creating the HTTP protocol in the `settings`.
+*/
+http_on_open_func http_get_on_open_func(http_settings_s *settings);
+/**
+Return the callback used for freeing the HTTP protocol in the `settings`.
+*/
+http_on_finish_func http_get_on_finish_func(http_settings_s *settings);
+
+/**
+Listens for incoming HTTP connections on the specified posrt and address,
+implementing the requested settings.
+
+Since facil.io doesn't support native TLS/SLL
+*/
+int http_listen(const char *port, const char *address,
+                http_settings_s settings);
+
+#define http_listen(port, address, ...)                                        \
+  http_listen((port), (address), (http_settings_s){__VA_ARGS__})
 
 /* *****************************************************************************
 HTTP Helper functions that might be used globally
@@ -121,15 +169,5 @@ ssize_t http_decode_url_unsafe(char *dest, const char *url_data);
 
 /** Decodes a URL encoded string. */
 ssize_t http_decode_url(char *dest, const char *url_data, size_t length);
-
-/* *****************************************************************************
-HTTP versions (they depend on the settings / core data structure)
-*/
-
-#include "http1.h"
-
-/* *****************************************************************************
-HTTP listening helpers
-*/
 
 #endif
