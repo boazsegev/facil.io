@@ -131,7 +131,7 @@ void websocket_close(ws_s *ws);
 /**
 Counts the number of websocket connections.
 */
-size_t websocket_count(ws_s *ws);
+size_t websocket_count(void);
 
 /** The named arguments for `websocket_each` */
 struct websocket_each_args_s {

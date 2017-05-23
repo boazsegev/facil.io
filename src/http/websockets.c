@@ -758,10 +758,7 @@ void websocket_close(ws_s *ws) {
 /**
 Counts the number of websocket connections.
 */
-size_t websocket_count(ws_s *ws) {
-  (void)(ws);
-  return facil_count(WEBSOCKET_ID_STR);
-}
+size_t websocket_count(void) { return facil_count(WEBSOCKET_ID_STR); }
 
 /*******************************************************************************
 Each Implementation
