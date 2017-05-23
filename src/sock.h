@@ -11,12 +11,13 @@ Feel free to copy, use and enjoy according to the license provided.
 #define LIB_SOCK_VERSION_PATCH 0
 
 /** \file
-The libsock is a non-blocking socket helper library, using a user level buffer,
+The `sock.h` is a non-blocking socket helper library, using a user level buffer,
 non-blocking sockets and some helper functions.
 
-This library is great when using it alongside `libreact`.
+This library is great when using it alongside `evio.h`.
 
-The library is designed to be thread safe, but not fork safe.
+The library is designed to be thread safe, but not fork safe (mostly since
+sockets, except listenning sockets, shouldn't be shared among processes).
 */
 
 #include <stdint.h>
@@ -130,8 +131,8 @@ client data for "broadcasting" or when an old client task is preparing a
 response in the background while a disconnection and a new connection occur on
 the same `fd`).
 
-When using `libreact`, remember to call `int reactor_add(intptr_t uuid);` to
-listen for events.
+When using `evio`, remember to call `int evio_add(sock_fd2uuid(uuid),
+(void*)uuid);` to listen for events.
 
 NOTICE:
 
@@ -139,7 +140,7 @@ This function is non-blocking, meaning that the connection probably wasn't
 established by the time the function returns (this prevents the function from
 hanging while waiting for a network timeout).
 
-Use select, poll, `libreact` or other solutions to review the connection state
+Use select, poll, `evio` or other solutions to review the connection state
 before attempting to write to the socket.
 */
 intptr_t sock_connect(char *address, char *port);
@@ -149,11 +150,11 @@ intptr_t sock_connect(char *address, char *port);
 as open and available for `sock_API` calls, returning a valid UUID.
 
 This will reinitialize the data (user buffer etc') for the file descriptor
-provided, calling the `reactor_on_close` callback if the `fd` was previously
+provided, calling the `sock_on_close` callback if the `fd` was previously
 marked as used.
 
-When using `libreact`, remember to call `int reactor_add(intptr_t uuid);` to
-listen for events.
+When using `evio`, remember to call `int evio_add(sock_fd2uuid(uuid),
+(void*)uuid);` to listen for events.
 
 Returns -1 on error. Returns a valid socket (non-random) UUID.
 
@@ -202,11 +203,32 @@ Returns -1 on error. Returns a valid socket (non-random) UUID.
 intptr_t sock_fd2uuid(int fd);
 
 /**
-"Touches" a socket connection. This is a place holder for an optional callback
-for systems that apply timeout reviews. `libsock` supplies a default
-implementation (that does nothing) is cases where a callback wasn't defined.
+OVERRIDABLE:
+
+"Touches" a socket connection.
+
+This is a place holder for an optional callback for systems that apply timeout
+reviews.
+
+`sock` supplies a default implementation (that does nothing) is cases where a
+callback wasn't defined.
 */
 void sock_touch(intptr_t uuid);
+
+/**
+OVERRIDABLE:.
+
+This is a place holder for an optional callback for when the socket is closed
+locally.
+
+Notice that calling `sock_close()` won't close the socket before all the data in
+the buffer is sent. This function will be called only one the connection is
+actually closed.
+
+`sock` supplies a default implementation (that does nothing) is cases where a
+callback wasn't defined.
+*/
+void sock_on_close(intptr_t uuid) { (void)(uuid); }
 
 /**
 `sock_read` attempts to read up to count bytes from the socket into the buffer
@@ -328,9 +350,6 @@ the data was sent).
 
 Return value: 0 will be returned on success and -1 will be returned on an error
 or when the connection is closed.
-
-**Please Note**: when using `libreact`, the `sock_flush` will be called
-automatically when the socket is ready.
 */
 ssize_t sock_flush(intptr_t uuid);
 /**
@@ -437,13 +456,12 @@ typedef struct sock_rw_hook_s {
    * writing operation returns -1 with EWOULDBLOCK or all the data was written.
    */
   ssize_t (*flush)(intptr_t fduuid);
-  /** The `on_clear` callback is called when the socket data is cleared, ideally
-   * when the connection is closed, allowing for dynamic sock_rw_hook_s memory
-   * management.
+  /** The `on_close` callback is called when the socket is closed, allowing for
+   * dynamic sock_rw_hook_s memory management.
    *
-   * The `on_clear` callback should manage is own thread safety mechanism, if
+   * The `on_close` callback should manage is own thread safety mechanism, if
    * required. */
-  void (*on_clear)(intptr_t fduuid, struct sock_rw_hook_s *rw_hook);
+  void (*on_close)(intptr_t fduuid, struct sock_rw_hook_s *rw_hook);
 } sock_rw_hook_s;
 
 /* *****************************************************************************

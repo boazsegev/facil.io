@@ -13,6 +13,9 @@ extern "C" {
 #endif
 
 #define H_FACIL_H
+#define FACIL_VERSION_MAJOR 0
+#define FACIL_VERSION_MINOR 4
+#define FACIL_VERSION_PATCH 0
 
 #ifndef FACIL_PRINT_STATE
 /**

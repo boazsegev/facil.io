@@ -22,6 +22,9 @@ The callbacks supported by thils library:
 
 */
 #define H_FACIL_EVIO_H
+#define LIB_EVIO_VERSION_MAJOR 0
+#define LIB_EVIO_VERSION_MINOR 1
+#define LIB_EVIO_VERSION_PATCH 0
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,26 +1,22 @@
-# The Reactor Library - KQueue/EPoll abstraction
+# The Evented IO Library - KQueue/EPoll abstraction
 
-The Reactor library, `libreact` is a KQueue/EPoll abstraction and is part of [`libserver`'s](./libserver.md) core.
+The `evio.h` library, is a KQueue/EPoll abstraction for edge triggered events and is part of [`facil.io`'s](./facil.md) core.
 
-`libreact` requires only the following two files from this repository: [`src/libreact.h`](../src/libreact.h) and [`src/libreact.c`](../src/libreact.c).
+It should be noted that exactly like `epoll` and `kqueue`, `evio.h` might produce unexpected results if forked after initialized, since this will cause the `epoll`/`kqueue` data to be shared across processes, even though these processes will not have access to new file descriptors (i.e. `fd` 90 on one process might reference file "A" while on a different process the same `fd` (90) might reference file "B").
 
-It should be noted that exactly like `epoll` and `kqueue`, `libreact` might produce unexpected results if forked after initialized, since this will cause the `epoll`/`kqueue` data to be shared across processes, even though these processes will not have access to new file descriptors (i.e. `fd` 90 on one process might reference file "A" while on a different process the same `fd` (90) might reference file "B").
+This documentation isn't relevant for `facil.io` users. `facil.io` implements `evio.h` callbacks and `evio.h` cannot be used without removing `facil.h` anf `facil.c` from the project.
 
-`libreact` adopts `libsock`'s use of `intptr_t` type system for `fd` UUIDs. However, depending on the system's byte order of with very minor adjustments to the `libreact.h` file, the library could be used seamlessly with regular file descriptors.
-
-This documentation isn't relevant for `libserver` users. `libserver` implements `libreact` callbacks and `libreact` cannot be used without removing `libserver` from the project.
-
-This file is here as quick reference to anyone interested in maintaining `libserver` or learning about how it's insides work.
+This file is here as quick reference to anyone interested in maintaining `facil.io` or learning about how it's insides work.
 
 ## Event Callbacks
 
 Event callbacks are defined during the linking stage and are hardwired once compilation is complete.
 
-`void reactor_on_data(intptr_t)` - called when the file descriptor has incoming data. This is edge triggered and will not be called again unless all the previous data was consumed.
+`void evio_on_data(void *);` - called when the file descriptor has incoming data. This is edge triggered and will not be called again unless all the previous data was consumed.
 
-`void reactor_on_ready(intptr_t)` - called when the file descriptor is ready to send data (outgoing). `sock_flush` is called automatically and there is no need to call `sock_flush` when implementing this callback.
+`void evio_on_ready(void *);` - called when the file descriptor is ready to send data (outgoing).
 
-`void reactor_on_shutdown(intptr_t)` - called for any open file descriptors when the reactor is shutting down.
+`void evio_on_error(void *);` - called when a file descriptor raises an error while being polled.
 
 `void reactor_on_close(intptr_t)` - called when a file descriptor was closed REMOTELY. `on_close` will NOT get called when a connection is closed locally, unless using `libsock` or the `reactor_close` function.
 

@@ -190,7 +190,7 @@ static ssize_t sock_default_hooks_write(intptr_t uuid, const void *buf,
   return write(sock_uuid2fd(uuid), buf, count);
 }
 
-static void sock_default_hooks_on_clear(intptr_t fduuid,
+static void sock_default_hooks_on_close(intptr_t fduuid,
                                         struct sock_rw_hook_s *rw_hook) {
   (void)rw_hook;
   (void)fduuid;
@@ -204,7 +204,7 @@ sock_rw_hook_s sock_default_hooks = {
     .read = sock_default_hooks_read,
     .write = sock_default_hooks_write,
     .flush = sock_default_hooks_flush,
-    .on_clear = sock_default_hooks_on_clear,
+    .on_close = sock_default_hooks_on_close,
 };
 /* *****************************************************************************
 Socket Data Structures
@@ -322,7 +322,7 @@ clear:
     sock_packet_free(packet);
     packet = old_data.packet;
   }
-  old_data.rw_hooks->on_clear(((fd << 8) | old_data.counter),
+  old_data.rw_hooks->on_close(((fd << 8) | old_data.counter),
                               old_data.rw_hooks);
   if (old_data.open || (old_data.rw_hooks != &sock_default_hooks)) {
     sock_on_close((fd << 8) | old_data.counter);
@@ -1104,8 +1104,8 @@ int sock_rw_hook_set(intptr_t uuid, sock_rw_hook_s *rw_hooks) {
     rw_hooks->write = sock_default_hooks_write;
   if (!rw_hooks->flush)
     rw_hooks->flush = sock_default_hooks_flush;
-  if (!rw_hooks->on_clear)
-    rw_hooks->on_clear = sock_default_hooks_on_clear;
+  if (!rw_hooks->on_close)
+    rw_hooks->on_close = sock_default_hooks_on_close;
   uuid = sock_uuid2fd(uuid);
   lock_fd(sock_uuid2fd(uuid));
   fdinfo(uuid).rw_hooks = rw_hooks;

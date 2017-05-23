@@ -15,6 +15,9 @@ All deferred execution is shared among the same process and inherited by any
 forked process.
 */
 #define H_DEFER_H
+#define LIB_DEFER_VERSION_MAJOR 0
+#define LIB_DEFER_VERSION_MINOR 1
+#define LIB_DEFER_VERSION_PATCH 0
 
 #ifdef __cplusplus
 extern "C" {

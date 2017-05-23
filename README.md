@@ -1,5 +1,7 @@
 # facil.io - the C WebApp mini-framework
 
+**Notice: `facil.io` has been rewritten from the core. The API was changed to prevent surprising errors, but it's easy to port from he previous version to the current version.**
+
 [facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, as well as support for custom protocols.
 
 [facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.

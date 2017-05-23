@@ -6,6 +6,9 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #ifndef HTTP_H
 #define HTTP_H
+#define LIB_FACIL_HTTP_VERSION_MAJOR 0
+#define LIB_FACIL_HTTP_VERSION_MINOR 4
+#define LIB_FACIL_HTTP_VERSION_PATCH 0
 #include "facil.h"
 
 /** an HTTP/1.1 vs. HTTP/2 identifier. */
