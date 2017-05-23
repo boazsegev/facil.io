@@ -439,24 +439,27 @@ static void http_response_log_finish(http_response_s *response) {
           ? ((get_clock_mili() - response->clock_start) / CLOCK_RESOLUTION)
           : 0;
   struct tm tm;
-  struct sockaddr_in addrinfo;
-  socklen_t addrlen = sizeof(addrinfo);
   time_t last_tick = facil_last_tick();
   http_gmtime(&last_tick, &tm);
 
   // TODO Guess IP address from headers (forwarded) where possible
+  sock_peer_addr_s addrinfo = sock_peer_addr(response->fd);
 
-  int got_add = getpeername(sock_uuid2fd(request->fd),
-                            (struct sockaddr *)&addrinfo, &addrlen);
 #define HTTP_REQUEST_LOG_LIMIT 128
   char buffer[HTTP_REQUEST_LOG_LIMIT];
   char *tmp;
-  size_t pos;
-  if (got_add == 0) {
-    tmp = inet_ntoa(addrinfo.sin_addr);
-    pos = strlen(tmp);
-    memcpy(buffer, tmp, pos);
-  } else {
+  size_t pos = 0;
+  if (addrinfo.addrlen) {
+    if (inet_ntop(
+            addrinfo.addr->sa_family,
+            addrinfo.addr->sa_family == AF_INET
+                ? (void *)&((struct sockaddr_in *)addrinfo.addr)->sin_addr
+                : (void *)&((struct sockaddr_in6 *)addrinfo.addr)->sin6_addr,
+            buffer, 128))
+      pos = strlen(buffer);
+    // pos = addrinfo.addr->sa_family == AF_INET ?: fmt_ip6()
+  }
+  if (pos == 0) {
     memcpy(buffer, "[unknown]", 9);
     pos = 9;
   }
