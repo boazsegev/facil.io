@@ -176,11 +176,11 @@ static void on_ready(intptr_t fduuid, protocol_s *ws) {
     ((ws_s *)ws)->on_ready((ws_s *)ws);
 }
 
-static void on_open(intptr_t fd, protocol_s *ws, void *callback) {
-  (void)(fd);
-  if (callback && ws && ws->service == WEBSOCKET_ID_STR)
-    ((void (*)(void *))callback)(ws);
-}
+// static void on_open(intptr_t fd, protocol_s *ws, void *callback) {
+//   (void)(fd);
+//   if (callback && ws && ws->service == WEBSOCKET_ID_STR)
+//     ((void (*)(void *))callback)(ws);
+// }
 
 static void on_shutdown(intptr_t fd, protocol_s *ws) {
   (void)(fd);
@@ -729,12 +729,12 @@ cleanup:
   websocket_upgrade((websocket_settings_s){__VA_ARGS__})
 
 /** Returns the opaque user data associated with the websocket. */
-void *websocket_get_udata(ws_s *ws) { return ws->udata; }
+void *websocket_udata(ws_s *ws) { return ws->udata; }
 /** Returns the the process specific connection's UUID (see `libsock`). */
-intptr_t websocket_get_fduuid(ws_s *ws) { return ws->fd; }
+intptr_t websocket_uuid(ws_s *ws) { return ws->fd; }
 /** Sets the opaque user data associated with the websocket.
  * Returns the old value, if any. */
-void *websocket_set_udata(ws_s *ws, void *udata) {
+void *websocket_udata_set(ws_s *ws, void *udata) {
   void *old = ws->udata;
   ws->udata = udata;
   return old;
@@ -775,10 +775,10 @@ struct WSTask {
 };
 /** Performs a task on each websocket connection that shares the same process
  */
-static void perform_ws_task(intptr_t fd, protocol_s *_ws, void *_arg) {
+static void perform_ws_task(intptr_t fd, protocol_s *ws_, void *tsk_) {
   (void)(fd);
-  struct WSTask *tsk = _arg;
-  tsk->task((ws_s *)(_ws), tsk->arg);
+  struct WSTask *tsk = tsk_;
+  tsk->task((ws_s *)(ws_), tsk->arg);
 }
 /** clears away a wesbocket task. */
 static void finish_ws_task(intptr_t fd, void *arg) {
@@ -800,14 +800,13 @@ static void finish_ws_task(intptr_t fd, void *arg) {
 Performs a task on each websocket connection that shares the same process
 (except the originating `ws_s` connection which is allowed to be NULL).
  */
-void websocket_each(ws_s *ws_originator,
-                    void (*task)(ws_s *ws_target, void *arg), void *arg,
-                    void (*on_finish)(ws_s *ws_originator, void *arg)) {
+#undef websocket_each
+void websocket_each(struct websocket_each_args_s args) {
   struct WSTask *tsk = malloc(sizeof(*tsk));
-  tsk->arg = arg;
-  tsk->on_finish = on_finish;
-  tsk->task = task;
-  facil_each(.origin = (ws_originator ? ws_originator->fd : -1),
+  tsk->arg = args.arg;
+  tsk->on_finish = args.on_finish;
+  tsk->task = args.task;
+  facil_each(.origin = (args.origin ? args.origin->fd : -1),
              .service = WEBSOCKET_ID_STR, .task = perform_ws_task, .arg = tsk,
              .on_complete = finish_ws_task);
 }

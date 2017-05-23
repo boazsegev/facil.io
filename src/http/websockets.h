@@ -110,23 +110,47 @@ ssize_t websocket_upgrade(websocket_settings_s settings);
   websocket_upgrade((websocket_settings_s){__VA_ARGS__})
 
 /** Returns the opaque user data associated with the websocket. */
-void *websocket_get_udata(ws_s *ws);
-/** Returns the the process specific connection's UUID (see `libsock`). */
-intptr_t websocket_get_fduuid(ws_s *ws);
-/** Sets the opaque user data associated with the websocket.
- * Returns the old value, if any. */
-void *websocket_set_udata(ws_s *ws, void *udata);
+void *websocket_udata(ws_s *ws);
+/**
+Returns the underlying socket UUID.
+
+This is only relevant for collecting the protocol object from outside of
+websocket events, as the socket shouldn't be written to.
+*/
+intptr_t websocket_uuid(ws_s *ws);
+/**
+Sets the opaque user data associated with the websocket.
+
+Returns the old value, if any.
+*/
+void *websocket_udata_set(ws_s *ws, void *udata);
 /** Writes data to the websocket. Returns -1 on failure (0 on success). */
 int websocket_write(ws_s *ws, void *data, size_t size, uint8_t is_text);
 /** Closes a websocket connection. */
 void websocket_close(ws_s *ws);
 /**
+Counts the number of websocket connections.
+*/
+size_t websocket_count(ws_s *ws);
+
+/** The named arguments for `websocket_each` */
+struct websocket_each_args_s {
+  /** The websocket originating the task. It will be excluded for the loop. */
+  ws_s *origin;
+  /** The task (function) to be performed. This is required. */
+  void (*task)(ws_s *ws_target, void *arg);
+  /** User opaque data to be passed along. */
+  void *arg;
+  /** The on_finish callback is always called. Good for cleanup. */
+  void (*on_finish)(ws_s *origin, void *arg);
+};
+/**
 Performs a task on each websocket connection that shares the same process
 (except the originating `ws_s` connection which is allowed to be NULL).
  */
-void websocket_each(ws_s *ws_originator,
-                    void (*task)(ws_s *ws_target, void *arg), void *arg,
-                    void (*on_finish)(ws_s *ws_originator, void *arg));
+void websocket_each(struct websocket_each_args_s args);
+#define websocket_each(...)                                                    \
+  websocket_each((struct websocket_each_args_s){__VA_ARGS__})
 
 /**
 The Arguments passed to the `websocket_write_each` function / macro are defined
@@ -164,9 +188,5 @@ details for possible arguments.
 int websocket_write_each(struct websocket_write_each_args_s args);
 #define websocket_write_each(...)                                              \
   websocket_write_each((struct websocket_write_each_args_s){__VA_ARGS__})
-/**
-Counts the number of websocket connections.
-*/
-size_t websocket_count(ws_s *ws);
 
 #endif
