@@ -4,7 +4,7 @@
 // #include "tests/client.h"
 // #include "tests/http_bench.inc"
 // #include "tests/http_stress.inc"
-// ?#include "tests/shootout.h"
+#include "tests/shootout.h"
 
 #include <errno.h>
 #include <sys/socket.h>
@@ -29,9 +29,9 @@ int main() {
   // print_error_code(EOPNOTSUPP);
 
   // fprintf(stderr, "sock len size: %lu\n", sizeof(socklen_t));
-  listen2http_ws("3000", "./public_www");
+  // listen2http_ws("3000", "./public_www");
   // listen2stress("3030", "./public_www");
-  // listen2shootout("3000", 1);
+  listen2shootout("3000", 1);
   // listen2bench("3000", "./public_www");
   // defer(client_attempt, "3000", "3999");
   /* Run the server and hang until a stop signal is received. */
