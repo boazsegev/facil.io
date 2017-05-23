@@ -436,7 +436,7 @@ prints out the log to stderr.
 */
 static void http_response_log_finish(http_response_s *response) {
   http_request_s *request = response->request;
-  uintptr_t bytes_sent = response->content_length;
+  intptr_t bytes_sent = response->content_length;
 
   size_t mili =
       response->logged
@@ -523,7 +523,12 @@ static void http_response_log_finish(http_response_s *response) {
                                      : 0);
 
   buffer[pos++] = ' ';
-  pos += http_ul2a(buffer + pos, bytes_sent);
+  if (bytes_sent > 0)
+    pos += http_ul2a(buffer + pos, bytes_sent);
+  else {
+    buffer[pos++] = '-';
+    buffer[pos++] = '-';
+  }
   if (response->logged) {
     buffer[pos++] = ' ';
     pos += http_ul2a(buffer + pos, mili);
