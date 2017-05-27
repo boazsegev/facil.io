@@ -141,6 +141,9 @@ ab -n 1000000 -c 200 -k http://127.0.0.1:3000/
 static void http1_websocket_shotout(http_request_s *request) {
   // to log we will start a response.
   http_response_s *response = http_response_create(request);
+  http_response_write_header(response, .name = "Server", .name_len = 6,
+                             .value = "facil.io/0.4.0", .value_len = 14);
+
   // http_response_log_start(&response);
   // upgrade requests to broadcast will have the following properties:
   if (request->upgrade) {
@@ -150,6 +153,9 @@ static void http1_websocket_shotout(http_request_s *request) {
 
     return;
   }
+  http_response_write_header(response, .name = "Content-Type", .name_len = 12,
+                             .value = "text/plain", .value_len = 10);
+
   http_response_write_body(response,
                            "This is a Websocket-Shootout application!", 41);
   http_response_finish(response);

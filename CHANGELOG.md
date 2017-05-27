@@ -1,8 +1,30 @@
+# Change Log
+
+---
+
+### Ver. 0.4.1 (next release)
+
+**Fix**: (HTTP/1.1) fixed the default response `date` (should have been "now", but was initialized to 0 instead).
+
+**Fix**: fixed thread throttling for better energy conservation.
+
+**Fix**: fixed stream response logging.
+
+**Compatibility**: (HTTP/1.1) Automatic `should_close` now checks for HTTP/1.0 clients to determine connection persistence.
+
+**Compatibility**: (HTTP/1.1) Added spaces after header names, since some parsers don't seem to read the RFC.
+
+**Fix/Compatibility**: compiling under Linux had been improved.
+
+---
+
+### Ver. 0.4.0
+
+Updated core and design. New API. Minor possible fixes for HTTP pipelining and parsing.
+
 # Historic Change log
 
 The following is a historic change log, from before the `facil_` API.
-
-Updated details about changes to the library will be documented in the [documentation folder](./docs) and [website](http://facil.io).
 
 ---
 

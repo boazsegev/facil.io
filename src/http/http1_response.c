@@ -38,7 +38,12 @@ static inline void http1_response_clear(http1_response_s *rs,
       .request = request,
       .fd = request->fd,
       .status = 200,
-      .should_close = (request->connection && request->connection_len == 5)};
+      .date = facil_last_tick(),
+      .should_close = (request->connection && request->connection_len == 5) ||
+                      (!request->connection && request->version &&
+                       (request->version_len < 8 ||
+                        (request->version[request->version_len - 1] == '0' &&
+                         request->version[request->version_len - 3] == '1')))};
   rs->buffer_end = rs->buffer_start = H1P_HEADER_START;
   rs->use_count = 1;
   rs->lock = SPN_LOCK_INIT;
@@ -136,7 +141,7 @@ static void http1_response_finalize_headers(http1_response_s *rs) {
   if (rs->response.content_length_written == 0 &&
       !(rs->response.content_length < 0) && rs->response.status >= 200 &&
       rs->response.status != 204 && rs->response.status != 304) {
-    h1p_protected_copy(rs, "Content-Length:", 15);
+    h1p_protected_copy(rs, "Content-Length: ", 16);
     rs->buffer_end +=
         http_ul2a(rs->buffer + rs->buffer_end, rs->response.content_length);
     /* write the header seperator (`\r\n`) */
@@ -145,18 +150,20 @@ static void http1_response_finalize_headers(http1_response_s *rs) {
   }
   /* write the date, if missing */
   if (!rs->response.date_written) {
-    if (rs->response.date < rs->response.last_modified)
+    if (!rs->response.last_modified)
+      rs->response.last_modified = rs->response.date;
+    else if (rs->response.date < rs->response.last_modified)
       rs->response.date = rs->response.last_modified;
     struct tm t;
     /* date header */
     http_gmtime(&rs->response.date, &t);
-    h1p_protected_copy(rs, "Date:", 5);
+    h1p_protected_copy(rs, "Date: ", 6);
     rs->buffer_end += http_date2str(rs->buffer + rs->buffer_end, &t);
     rs->buffer[rs->buffer_end++] = '\r';
     rs->buffer[rs->buffer_end++] = '\n';
     /* last-modified header */
     http_gmtime(&rs->response.last_modified, &t);
-    h1p_protected_copy(rs, "Last-Modified:", 14);
+    h1p_protected_copy(rs, "Last-Modified: ", 15);
     rs->buffer_end += http_date2str(rs->buffer + rs->buffer_end, &t);
     rs->buffer[rs->buffer_end++] = '\r';
     rs->buffer[rs->buffer_end++] = '\n';
@@ -164,12 +171,13 @@ static void http1_response_finalize_headers(http1_response_s *rs) {
   /* write the keep-alive (connection) header, if missing */
   if (!rs->response.connection_written) {
     if (rs->response.should_close) {
-      h1p_protected_copy(rs, "Connection:close\r\n", 18);
+      h1p_protected_copy(rs, "Connection: close\r\n", 19);
     } else {
-      h1p_protected_copy(rs,
-                         "Connection:keep-alive\r\n"
-                         "Keep-Alive:timeout=2\r\n",
-                         45);
+      // h1p_protected_copy(rs,
+      //                    "Connection:keep-alive\r\n"
+      //                    "Keep-Alive:timeout=2\r\n",
+      //                    45);
+      h1p_protected_copy(rs, "Connection: keep-alive\r\n", 24);
     }
   }
   /* write the headers completion marker (empty line - `\r\n`) */
@@ -243,6 +251,7 @@ int http1_response_write_header_fn(http_response_s *rs_, http_header_s header) {
   if (h1p_protected_copy(rs, (void *)header.name, header.name_len))
     goto error;
   rs->buffer[rs->buffer_end++] = ':';
+  rs->buffer[rs->buffer_end++] = ' ';
   if (h1p_protected_copy(rs, (void *)header.value, header.value_len))
     goto error;
   rs->buffer[rs->buffer_end++] = '\r';
@@ -278,7 +287,7 @@ int http1_response_set_cookie(http_response_s *rs, http_cookie_s cookie) {
   size_t org_pos = rs1->buffer_end;
 
   /* write the header's name to the buffer */
-  if (h1p_protected_copy(rs1, "Set-Cookie:", 11))
+  if (h1p_protected_copy(rs1, "Set-Cookie: ", 12))
     goto error;
   if (h1p_protected_copy(rs1, cookie.name, cookie.name_len))
     goto error;

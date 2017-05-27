@@ -10,6 +10,8 @@
 
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
 
+**Notice**: The **master** branch is the development branch. Please select the latest release version by choosing the latest version available as a `tag` in the branch list.
+
 ## Three Quick Examples
 
 Writing HTTP and Websocket services in C is easy with [facil.io](http://facil.io).
