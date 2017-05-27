@@ -2,7 +2,7 @@
 
 ---
 
-### Ver. 0.4.1 (next release)
+### Ver. 0.4.1
 
 **Fix**: (HTTP/1.1) fixed the default response `date` (should have been "now", but was initialized to 0 instead).
 
