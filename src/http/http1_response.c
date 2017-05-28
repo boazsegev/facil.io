@@ -1,3 +1,9 @@
+/*
+Copyright: Boaz Segev, 2016-2017
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #include "spnlock.inc"
 
 #include "http1_response.h"

@@ -1,6 +1,11 @@
 #ifndef H_HTTP_RESPONSE_H
 #define H_HTTP_RESPONSE_H
+/*
+Copyright: Boaz Segev, 2016-2017
+License: MIT
 
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #include "http_request.h"
 #include <stdio.h>
 #include <time.h>
