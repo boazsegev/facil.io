@@ -51,7 +51,7 @@ Useful Macros - Not all of them are used here, but it's a copy-paste convenience
           (((i)&0xFF00000000000000ULL) >> 56);                                 \
   } while (0);
 
-const uint8_t sha1_padding[64] = {0x80, 0};
+static const uint8_t sha1_padding[64] = {0x80, 0};
 
 #ifdef __BIG_ENDIAN__
 /** Converts a 4 byte string to a uint32_t word. careful with alignment! */

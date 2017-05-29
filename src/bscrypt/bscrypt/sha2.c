@@ -81,7 +81,7 @@ Useful Macros
 SHA-2 hashing
 */
 
-const uint8_t sha2_padding[128] = {0x80, 0};
+static const uint8_t sha2_padding[128] = {0x80, 0};
 
 /* SHA-224 and SHA-256 constants */
 static uint32_t sha2_256_words[] = {
@@ -814,8 +814,9 @@ void bscrypt_test_sha2(void) {
   return;
   goto error;
 error:
-  fprintf(stderr, ":\n--- bscrypt SHA-2 Test FAILED!\ntype: "
-                  "%s (%d)\nstring %s\nexpected:\n",
+  fprintf(stderr,
+          ":\n--- bscrypt SHA-2 Test FAILED!\ntype: "
+          "%s (%d)\nstring %s\nexpected:\n",
           sha2_variant_names[s.type], s.type, str);
   while (*expect)
     fprintf(stderr, "%02x", *(expect++) & 0xFF);

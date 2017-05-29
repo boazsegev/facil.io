@@ -273,6 +273,9 @@ inline static void reap_children(void) {
  */
 int defer_perform_in_fork(unsigned int process_count,
                           unsigned int thread_count) {
+  if (forked_pool)
+    return -1; /* we're already running inside an active `fork` */
+
   struct sigaction act, old, old_term, old_pipe;
   pid_t *pids = NULL;
   int ret = 0;

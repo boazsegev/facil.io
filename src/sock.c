@@ -102,7 +102,7 @@ typedef struct packet_s {
   sock_buffer_s buffer;
 } packet_s;
 
-struct {
+static struct {
   packet_s *next;
   spn_lock_i lock;
   uint8_t init;
@@ -200,7 +200,7 @@ static ssize_t sock_default_hooks_flush(intptr_t uuid) {
   return (((void)(uuid)), 0);
 }
 
-sock_rw_hook_s sock_default_hooks = {
+static sock_rw_hook_s sock_default_hooks = {
     .read = sock_default_hooks_read,
     .write = sock_default_hooks_write,
     .flush = sock_default_hooks_flush,

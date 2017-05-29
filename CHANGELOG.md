@@ -2,6 +2,10 @@
 
 ### Ver. 0.4.2 (next release)
 
+**Fix**: (`defer`) return an error if `defer_perform_in_fork` is called from within a running defer-forked process.
+
+**Fix**: (`sock`, `facil`, bscrypt) Add missing `static` keywords.
+
 **Compatibility**: (bscrypt) Add an alternative `HAS_UNIX_FEATURES` test that fits older \*nix compilers.
 
 ---

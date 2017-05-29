@@ -469,7 +469,7 @@ typedef struct {
 
 #define prot2timer(protocol) (*((timer_protocol_s *)(protocol)))
 
-const char *timer_protocol_name = "timer protocol __facil_internal__";
+static const char *timer_protocol_name = "timer protocol __facil_internal__";
 
 static void timer_on_data(intptr_t uuid, protocol_s *protocol) {
   prot2timer(protocol).task(prot2timer(protocol).arg);
