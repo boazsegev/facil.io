@@ -27,7 +27,9 @@ Environment - you can safely ignore this part... probably.
 
 /* check for unix support */
 #if __has_include(<unistd.h>) && __has_include(<pthread.h>)
+#ifndef HAS_UNIX_FEATURES
 #define HAS_UNIX_FEATURES
+#endif
 #endif
 
 /* include intrinsics if supported */
@@ -40,7 +42,12 @@ and: https://software.intel.com/sites/landingpage/IntrinsicsGuide/
 */
 #endif /* __has_include(<x86intrin.h>) */
 
+#elif defined(__unix__) || defined(__linux__) || defined(__APPLE__)
+#ifndef HAS_UNIX_FEATURES
+#define HAS_UNIX_FEATURES
 #endif
+
+#endif /* __has_include */
 
 // clang-format off
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)

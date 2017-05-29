@@ -1,5 +1,9 @@
 # Change Log
 
+### Ver. 0.4.2 (next release)
+
+**Compatibility**: (bscrypt) Add an alternative `HAS_UNIX_FEATURES` test that fits older \*nix compilers.
+
 ---
 
 ### Ver. 0.4.1
