@@ -1046,7 +1046,8 @@ ssize_t sock_buffer_send(intptr_t uuid, sock_buffer_s *buffer) {
     return -1;
   }
   packet_s **tmp, *packet = (packet_s *)((uintptr_t)(buffer) -
-                                         sizeof(struct packet_metadata_s));
+                                         (uintptr_t)(&((packet_s *)0)->buffer));
+  // (packet_s *)((uintptr_t)(buffer) - sizeof(struct packet_metadata_s));
   packet->metadata = (struct packet_metadata_s){
       .write_func = sock_write_buffer,
       .free_func = (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
@@ -1075,7 +1076,8 @@ Use `sock_buffer_free` to free unused buffers that were checked-out using
 */
 void sock_buffer_free(sock_buffer_s *buffer) {
   packet_s *packet =
-      (packet_s *)((uintptr_t)(buffer) - sizeof(struct packet_metadata_s));
+      (packet_s *)((uintptr_t)(buffer) - (uintptr_t)(&((packet_s *)0)->buffer));
+  // (packet_s *)((uintptr_t)(buffer) - sizeof(struct packet_metadata_s));
   sock_packet_free(packet);
 }
 
