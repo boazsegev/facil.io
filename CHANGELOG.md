@@ -2,6 +2,8 @@
 
 ### Ver. 0.4.2 (next release)
 
+**Fix**: (`evio`, `facil`) Closes the `evio` once facil.io finished running, presumably allowing facil.io to be reinitialized and run again.
+
 **Fix**: (`defer`) return an error if `defer_perform_in_fork` is called from within a running defer-forked process.
 
 **Fix**: (`sock`, `facil`, bscrypt) Add missing `static` keywords.

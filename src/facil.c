@@ -656,6 +656,7 @@ static void facil_cleanup(void *arg) {
   facil_cycle(arg, NULL);
   ((struct facil_run_args *)arg)->on_finish();
   defer_perform();
+  evio_close();
 }
 
 #undef facil_run
