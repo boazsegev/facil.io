@@ -7,6 +7,12 @@ A simple Hello World HTTP response + static file service, for benchmarks.
 
 ab -c 200 -t 4 -n 1000000 -k http://127.0.0.1:3000/
 wrk -c200 -d4 -t12 http://localhost:3000/
+
+Or without keep-alive (`ab` complains and fails):
+
+ab -c 200 -t 4 -n 1000000 -r http://127.0.0.1:3000/
+wrk -c200 -d5 -t12 -H"Connection: close" http://localhost:3000/
+
 */
 
 /*
