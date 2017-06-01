@@ -200,7 +200,7 @@ static ssize_t sock_default_hooks_flush(intptr_t uuid) {
   return (((void)(uuid)), 0);
 }
 
-static sock_rw_hook_s sock_default_hooks = {
+const sock_rw_hook_s SOCK_DEFAULT_HOOKS = {
     .read = sock_default_hooks_read,
     .write = sock_default_hooks_write,
     .flush = sock_default_hooks_flush,
@@ -271,10 +271,11 @@ static inline int initialize_sock_lib(size_t capacity) {
   if (new_collection) {
     sock_data_store.fds = new_collection;
     for (size_t i = sock_data_store.capacity; i < capacity; i++) {
-      fdinfo(i) = (struct fd_data_s){.open = 0,
-                                     .lock = SPN_LOCK_INIT,
-                                     .rw_hooks = &sock_default_hooks,
-                                     .counter = 0};
+      fdinfo(i) =
+          (struct fd_data_s){.open = 0,
+                             .lock = SPN_LOCK_INIT,
+                             .rw_hooks = (sock_rw_hook_s *)&SOCK_DEFAULT_HOOKS,
+                             .counter = 0};
     }
     sock_data_store.capacity = capacity;
 
@@ -313,7 +314,7 @@ clear:
   sock_data_store.fds[fd] =
       (struct fd_data_s){.open = is_open,
                          .lock = fdinfo(fd).lock,
-                         .rw_hooks = &sock_default_hooks,
+                         .rw_hooks = (sock_rw_hook_s *)&SOCK_DEFAULT_HOOKS,
                          .counter = fdinfo(fd).counter + 1};
   spn_unlock(&(fdinfo(fd).lock));
   packet = old_data.packet;
@@ -324,7 +325,7 @@ clear:
   }
   old_data.rw_hooks->on_close(((fd << 8) | old_data.counter),
                               old_data.rw_hooks);
-  if (old_data.open || (old_data.rw_hooks != &sock_default_hooks)) {
+  if (old_data.open || (old_data.rw_hooks != &SOCK_DEFAULT_HOOKS)) {
     sock_on_close((fd << 8) | old_data.counter);
     evio_remove((fd << 8) | old_data.counter);
   }
@@ -891,7 +892,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
     ext->offset = options.offset;
     packet->metadata = (struct packet_metadata_s){
         .write_func =
-            (fdinfo(sock_uuid2fd(options.uuid)).rw_hooks == &sock_default_hooks
+            (fdinfo(sock_uuid2fd(options.uuid)).rw_hooks == &SOCK_DEFAULT_HOOKS
                  ? sock_sendfile_from_fd
                  : sock_write_from_fd),
         .free_func = options.move ? sock_close_from_fd
@@ -1091,7 +1092,7 @@ Experimental
 struct sock_rw_hook_s *sock_rw_hook_get(intptr_t uuid) {
   if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).open ||
       ((uuid = sock_uuid2fd(uuid)),
-       fdinfo(uuid).rw_hooks == &sock_default_hooks))
+       fdinfo(uuid).rw_hooks == &SOCK_DEFAULT_HOOKS))
     return NULL;
   return fdinfo(uuid).rw_hooks;
 }
@@ -1109,7 +1110,7 @@ int sock_rw_hook_set(intptr_t uuid, sock_rw_hook_s *rw_hooks) {
   if (!rw_hooks->on_close)
     rw_hooks->on_close = sock_default_hooks_on_close;
   uuid = sock_uuid2fd(uuid);
-  lock_fd(sock_uuid2fd(uuid));
+  lock_fd(uuid);
   fdinfo(uuid).rw_hooks = rw_hooks;
   unlock_fd(uuid);
   return 0;

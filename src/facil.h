@@ -15,7 +15,7 @@ extern "C" {
 #define H_FACIL_H
 #define FACIL_VERSION_MAJOR 0
 #define FACIL_VERSION_MINOR 4
-#define FACIL_VERSION_PATCH 1
+#define FACIL_VERSION_PATCH 2
 
 #ifndef FACIL_PRINT_STATE
 /**
@@ -154,8 +154,8 @@ int main() {
 struct facil_listen_args {
   /**
    * Called whenever a new connection is accepted.
-   * Should return a pointer to
-   * the connection's protocol. */
+   * Should return a pointer to the connection's protocol
+   */
   protocol_s *(*on_open)(intptr_t fduuid, void *udata);
   /** The network service / port. Defaults to "3000". */
   const char *port;
@@ -163,6 +163,14 @@ struct facil_listen_args {
   const char *address;
   /** Opaque user data. */
   void *udata;
+  /** (optional)
+   * Called before `on_open`, allowing Read/Write hook initialization.
+   * Should return a pointer to the new RW hooks or NULL (to use default hooks).
+   *
+   * This allows a seperation between the transport layer (i.e. TLS) and the
+   * protocol (i.e. HTTP).
+   */
+  sock_rw_hook_s *(*set_rw_hooks)(intptr_t fduuid, void *udata);
   /**
    * Called when the server starts, allowing for further initialization, such as
    * timed event scheduling.
@@ -210,6 +218,14 @@ struct facil_connect_args {
   void (*on_fail)(void *udata);
   /** Opaque user data. */
   void *udata;
+  /** (optional)
+   * Called before `on_connect`, allowing Read/Write hook initialization.
+   * Should return a pointer to the new RW hooks or NULL (to use default hooks).
+   *
+   * This allows a seperation between the transport layer (i.e. TLS) and the
+   * protocol (i.e. HTTP).
+   */
+  sock_rw_hook_s *(*set_rw_hooks)(intptr_t fduuid, void *udata);
 };
 
 /**

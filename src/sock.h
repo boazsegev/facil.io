@@ -474,6 +474,9 @@ struct sock_rw_hook_s *sock_rw_hook_get(intptr_t fduuid);
 /** Sets a socket hook state (a pointer to the struct). */
 int sock_rw_hook_set(intptr_t fduuid, sock_rw_hook_s *rw_hooks);
 
+/** The default Read/Write hooks used for system Read/Write */
+extern const sock_rw_hook_s SOCK_DEFAULT_HOOKS;
+
 /* *****************************************************************************
 test
 */

@@ -74,6 +74,11 @@ typedef struct {
   The length of the public_folder string.
   */
   size_t public_folder_length;
+  /** (optional)
+   * Allows a an implementation for the transport layer (i.e. TLS) without
+   * effecting the HTTP protocol.
+   */
+  sock_rw_hook_s *(*set_rw_hooks)(intptr_t fduuid, void *udata);
   /**
   Logging flag - set to TRUE to log static file requests.
 

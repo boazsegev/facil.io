@@ -2,6 +2,10 @@
 
 ### Ver. 0.4.2 (next release)
 
+**Fix**: (`sock`) Fixed the `sock_rw_hook_set` implementation (would lock the wrong `fd`).
+
+**Design**: (`facil`) Separated the Read/Write hooks from the protocol's `on_open` callback by adding a `set_rw_hook` callback, allowing the same protocol to be used either with or without Read/Write hooks (i.e., both HTTP and HTTPS can share the same `on_open` function).
+
 **Fix**: (`evio`, `facil`) Closes the `evio` once facil.io finished running, presumably allowing facil.io to be reinitialized and run again.
 
 **Fix**: (`defer`) return an error if `defer_perform_in_fork` is called from within a running defer-forked process.
