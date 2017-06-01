@@ -281,8 +281,10 @@ static void listener_deferred_on_open(void *uuid_, void *srv_uuid_) {
       (struct ListenerProtocol *)protocol_try_lock(sock_uuid2fd(srv_uuid),
                                                    FIO_PR_LOCK_WRITE);
   if (!listener) {
-    if (errno != EBADF)
+    if (sock_isvalid(uuid) && sock_isvalid(srv_uuid))
       defer(listener_deferred_on_open, uuid_, srv_uuid_);
+    else
+      sock_close(uuid);
     return;
   }
   {
