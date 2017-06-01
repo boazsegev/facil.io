@@ -293,10 +293,10 @@ static void listener_deferred_on_open(void *uuid_, void *srv_uuid_) {
       sock_rw_hook_set(uuid, hooks);
   }
   protocol_s *pr = listener->on_open(uuid, listener->udata);
+  protocol_unlock((protocol_s *)listener, FIO_PR_LOCK_WRITE);
   facil_attach(uuid, pr);
   if (!pr)
     sock_close(uuid);
-  protocol_unlock((protocol_s *)listener, FIO_PR_LOCK_WRITE);
 }
 
 static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
