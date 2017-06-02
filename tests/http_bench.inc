@@ -1,6 +1,12 @@
 #ifndef HTTP_HELLO
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "http.h"
 #include "sock.h"
+
+#include <stdio.h>
 
 /*
 A simple Hello World HTTP response + static file service, for benchmarks.

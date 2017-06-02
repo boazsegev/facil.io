@@ -456,24 +456,56 @@ static int sock_sendfile_from_fd(int fd, struct packet_s *packet) {
 static int sock_sendfile_from_fd(int fd, struct packet_s *packet) {
   struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
   off_t act_sent = 0;
-  ssize_t count = 0;
-  do {
-    fdinfo(fd).sent += act_sent;
-    packet->buffer.len -= act_sent;
+  ssize_t ret = 0;
+  while (packet->buffer.len) {
     act_sent = packet->buffer.len;
 #if defined(__APPLE__)
-    count = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent, &act_sent,
-                     NULL, 0);
+    ret = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent, &act_sent, NULL,
+                   0);
 #else
-    count = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent,
-                     (size_t)act_sent, NULL, &act_sent, 0);
+    ret = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent, (size_t)act_sent,
+                   NULL, &act_sent, 0);
 #endif
-  } while (count >= 0 && packet->buffer.len > (size_t)act_sent);
-  if (count < 0)
-    return -1;
+    if (ret < 0)
+      goto error;
+    fdinfo(fd).sent += act_sent;
+    packet->buffer.len -= act_sent;
+  }
   sock_packet_rotate_unsafe(fd);
   return act_sent;
+error:
+  if (errno == EAGAIN) {
+    fdinfo(fd).sent += act_sent;
+    packet->buffer.len -= act_sent;
+  }
+  return -1;
 }
+
+// static int sock_sendfile_from_fd(int fd, struct packet_s *packet) {
+//   struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
+//   off_t act_sent = 0;
+//   ssize_t count = 0;
+//   do {
+//     fdinfo(fd).sent += act_sent;
+//     packet->buffer.len -= act_sent;
+//     act_sent = packet->buffer.len;
+// #if defined(__APPLE__)
+//     count = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent, &act_sent,
+//                      NULL, 0);
+// #else
+//     count = sendfile(ext->fd, fd, ext->offset + fdinfo(fd).sent,
+//                      (size_t)act_sent, NULL, &act_sent, 0);
+// #endif
+//   } while (count >= 0 && packet->buffer.len > (size_t)act_sent);
+//   if (!act_sent) {
+//     fprintf(stderr, "Rotating after sent == %lu and length == %lu\n",
+//             (size_t)act_sent, packet->buffer.len);
+//     sock_packet_rotate_unsafe(fd);
+//   }
+//   if (count < 0)
+//     return -1;
+//   return act_sent;
+// }
 
 #else
 static int (*sock_sendfile_from_fd)(int fd, struct packet_s *packet) =

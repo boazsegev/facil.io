@@ -1,6 +1,8 @@
 # Change Log
 
-### Ver. 0.4.2 (next release)
+### Ver. 0.4.2
+
+**Fix**: (`sock`) Fixed an issue with the `sendfile` implementation on macOS and BSD, where medium to large files wouldn't be sent correctly.
 
 **Fix**: (`sock`) Fixed the `sock_rw_hook_set` implementation (would lock the wrong `fd`).
 
