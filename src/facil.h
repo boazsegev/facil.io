@@ -163,6 +163,8 @@ struct facil_listen_args {
   const char *address;
   /** Opaque user data. */
   void *udata;
+  /** Opaque user data for `set_rw_hooks`. */
+  void *rw_udata;
   /** (optional)
    * Called before `on_open`, allowing Read/Write hook initialization.
    * Should return a pointer to the new RW hooks or NULL (to use default hooks).
@@ -170,7 +172,7 @@ struct facil_listen_args {
    * This allows a seperation between the transport layer (i.e. TLS) and the
    * protocol (i.e. HTTP).
    */
-  sock_rw_hook_s *(*set_rw_hooks)(intptr_t fduuid, void *udata);
+  sock_rw_hook_s *(*set_rw_hooks)(intptr_t fduuid, void *rw_udata);
   /**
    * Called when the server starts, allowing for further initialization, such as
    * timed event scheduling.
@@ -218,6 +220,8 @@ struct facil_connect_args {
   void (*on_fail)(void *udata);
   /** Opaque user data. */
   void *udata;
+  /** Opaque user data for `set_rw_hooks`. */
+  void *rw_udata;
   /** (optional)
    * Called before `on_connect`, allowing Read/Write hook initialization.
    * Should return a pointer to the new RW hooks or NULL (to use default hooks).

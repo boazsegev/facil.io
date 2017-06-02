@@ -255,6 +255,7 @@ struct ListenerProtocol {
   protocol_s protocol;
   protocol_s *(*on_open)(intptr_t uuid, void *udata);
   void *udata;
+  void *rw_udata;
   sock_rw_hook_s *(*set_rw_hooks)(intptr_t uuid, void *udata);
   void (*on_start)(void *udata);
   void (*on_finish)(void *udata);
@@ -288,7 +289,7 @@ static void listener_deferred_on_open(void *uuid_, void *srv_uuid_) {
     return;
   }
   {
-    sock_rw_hook_s *hooks = listener->set_rw_hooks(uuid, listener->udata);
+    sock_rw_hook_s *hooks = listener->set_rw_hooks(uuid, listener->rw_udata);
     if (hooks)
       sock_rw_hook_set(uuid, hooks);
   }
@@ -351,6 +352,7 @@ listener_alloc(struct facil_listen_args settings) {
         .on_start = settings.on_start,
         .on_finish = settings.on_finish,
         .set_rw_hooks = settings.set_rw_hooks,
+        .rw_udata = settings.rw_udata,
         .port = settings.port,
     };
     return listener;
@@ -410,6 +412,7 @@ struct ConnectProtocol {
   void (*on_fail)(void *udata);
   sock_rw_hook_s *(*set_rw_hooks)(intptr_t uuid, void *udata);
   void *udata;
+  void *rw_udata;
   int opened;
 };
 
@@ -417,7 +420,7 @@ static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
   struct ConnectProtocol *connector = (void *)_connector;
   // fprintf(stderr, "connector_on_ready called\n");
   if (!connector->opened) {
-    sock_rw_hook_s *hooks = connector->set_rw_hooks(uuid, connector->udata);
+    sock_rw_hook_s *hooks = connector->set_rw_hooks(uuid, connector->rw_udata);
     if (hooks)
       sock_rw_hook_set(uuid, hooks);
   }
@@ -461,6 +464,7 @@ intptr_t facil_connect(struct facil_connect_args opt) {
       .protocol.on_ready = connector_on_ready,
       .protocol.on_close = connector_on_close,
       .set_rw_hooks = opt.set_rw_hooks,
+      .rw_udata = opt.rw_udata,
       .opened = 0,
   };
   if (!connector)
