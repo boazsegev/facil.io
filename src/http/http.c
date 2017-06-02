@@ -89,6 +89,7 @@ int http_listen(const char *port, const char *address,
 
   return facil_listen(.port = port, .address = address,
                       .set_rw_hooks = arg_settings.set_rw_hooks,
+                      .rw_udata = arg_settings.rw_udata,
                       .on_finish = http_on_finish, .on_open = on_open_callback,
                       .udata = settings);
 }

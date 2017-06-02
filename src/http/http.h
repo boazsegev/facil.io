@@ -78,7 +78,9 @@ typedef struct {
    * Allows a an implementation for the transport layer (i.e. TLS) without
    * effecting the HTTP protocol.
    */
-  sock_rw_hook_s *(*set_rw_hooks)(intptr_t fduuid, void *udata);
+  sock_rw_hook_s *(*set_rw_hooks)(intptr_t fduuid, void *rw_udata);
+  /** Opaque user data for `set_rw_hooks`. */
+  void *rw_udata;
   /**
   Logging flag - set to TRUE to log static file requests.
 

@@ -1,5 +1,9 @@
 # Change Log
 
+### Ver. 0.4.3
+
+**Update**: (`http`) Updated the `http_listen` to accept the new `sock_rw_hook_set` and `rw_udata` options.
+
 ### Ver. 0.4.2
 
 **Fix**: (`sock`) Fixed an issue with the `sendfile` implementation on macOS and BSD, where medium to large files wouldn't be sent correctly.
