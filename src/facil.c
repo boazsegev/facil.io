@@ -690,6 +690,7 @@ static void facil_cluster_register(void *arg1, void *arg2) {
       .protocol.service = facil_cluster_protocol_id,
       .protocol.on_data = facil_cluster_on_data,
       .protocol.on_close = facil_cluster_on_close,
+      .protocol.ping = listener_ping,
   };
   pr->msg = calloc(1, 1024);
   pr->mem_size = 1024;
