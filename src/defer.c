@@ -264,6 +264,7 @@ inline static void reap_children(void) {
   }
 }
 
+static int defer_fork_pid_id = 0;
 /**
  * Forks the process, starts up a thread pool and waits for all tasks to run.
  * All existing tasks will run in all processes (multiple times).
@@ -308,6 +309,7 @@ int defer_perform_in_fork(unsigned int process_count,
     goto finish;
   for (pids_count = 0; pids_count < process_count; pids_count++) {
     if (!(pids[pids_count] = fork())) {
+      defer_fork_pid_id = pids_count + 1;
       forked_pool = defer_pool_start(thread_count);
       defer_pool_wait(forked_pool);
       defer_perform();
@@ -343,6 +345,9 @@ finish:
 /** Returns TRUE (1) if the forked thread pool hadn't been signaled to finish
  * up. */
 int defer_fork_is_active(void) { return forked_pool && forked_pool->flag; }
+
+/** Returns the process number for the current working proceess. 0 == parent. */
+int defer_fork_pid(void) { return defer_fork_pid_id; }
 
 /* *****************************************************************************
 Test

@@ -400,6 +400,17 @@ int facil_each(struct facil_each_args_s args);
 #define facil_each(...) facil_each((struct facil_each_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
+Cluster specific API - cluster messaging.
+***************************************************************************** */
+
+/** Sets a callback / handler for a message of type `msg_type`. */
+void facil_cluster_set_handler(uint32_t msg_type,
+                               void (*on_message)(void *data, uint32_t len));
+
+/** Sends a message of type `msg_type` to the **other** cluster processes. */
+int facil_cluster_send(uint32_t msg_type, void *data, uint32_t len);
+
+/* *****************************************************************************
 Lower Level API - for special circumstances, use with care under .
 ***************************************************************************** */
 

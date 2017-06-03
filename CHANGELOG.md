@@ -2,6 +2,8 @@
 
 ### Ver. 0.4.3
 
+**Feature**: (`facil`) Experimental cluster mode messaging, allowing messages to be sent to all the cluster workers.
+
 **Update**: (`http`) Updated the `http_listen` to accept the new `sock_rw_hook_set` and `rw_udata` options.
 
 ### Ver. 0.4.2
