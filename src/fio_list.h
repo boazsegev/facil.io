@@ -10,18 +10,22 @@ A simple doubly linked list implementation... Doesn't do much, but does it well.
 */
 #define H_FACIL_IO_LIST_H
 
+/** The data structure for a doubly linked list. */
 typedef struct fio_list_s {
   struct fio_list_s *prev;
   struct fio_list_s *next;
 } fio_list_s;
 
+/** An inline function that initializes a list's head. */
 static inline __attribute__((unused)) void fio_list_init(fio_list_s *list) {
   *list = (fio_list_s){.next = list, .prev = list};
 }
 
+/** A macro that evaluates to an initialized list head. */
 #define FIO_LIST_INIT(name)                                                    \
   (fio_list_s) { .next = &(name), .prev = &(name) }
 
+/** Adds a list reference to the list at the specified position. */
 static inline __attribute__((unused)) void fio_list_add(fio_list_s *pos,
                                                         fio_list_s *item) {
   /* prepare item */
@@ -32,6 +36,7 @@ static inline __attribute__((unused)) void fio_list_add(fio_list_s *pos,
   item->next->prev = item;
 }
 
+/** Removes a list reference from the list. Returns the same reference. */
 static inline __attribute__((unused)) fio_list_s *
 fio_list_remove(fio_list_s *item) {
   item->next->prev = item->prev;
@@ -40,28 +45,40 @@ fio_list_remove(fio_list_s *item) {
   return item;
 }
 
+/** Takes a list pointer and returns a pointer to it's container. */
 #define fio_list_object(type, member, plist)                                   \
   ((type *)((uintptr_t)(plist) - (uintptr_t)(&(((type *)0)->member))))
 
+/** iterates the whole list. */
 #define fio_list_for_each(type, member, var, head)                             \
   for (fio_list_s *pos = (head).next;                                          \
        pos != &(head) && ((var) = fio_list_object(type, member, pos)) &&       \
        (pos = pos->next);)
 
+/** Removes a member from the end of the list. */
 #define fio_list_pop(type, member, head)                                       \
   (((head).prev == &(head))                                                    \
        ? ((type *)(0x0))                                                       \
        : (fio_list_object(type, member, fio_list_remove((head).prev))))
 
+/** Adds a member to the end of the list. */
 #define fio_list_push(type, member, head, pitem)                               \
   fio_list_add((head).prev, &(pitem)->member)
 
+/** Removes a member from the beginning of the list. */
 #define fio_list_shift(type, member, head)                                     \
   (((head).next == &(head))                                                    \
        ? ((type *)(0x0))                                                       \
        : (fio_list_object(type, member, fio_list_remove((head).next))))
 
+/** Adds a member to the beginning of the list. */
 #define fio_list_unshift(type, member, head, pitem)                            \
   fio_list_add((head).next, &(pitem)->member)
+
+/** Tests if the list is empty. */
+#define fio_list_is_empty(head) ((head).next == &(head))
+
+/** Tests if the list is NOT empty. */
+#define fio_list_any(head) ((head).next != &(head))
 
 #endif
