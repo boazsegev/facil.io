@@ -9,6 +9,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "http.h"
 #include "http1.h"
 
+#include <signal.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
@@ -54,13 +55,13 @@ int http_listen(const char *port, const char *address,
     fprintf(
         stderr,
         "ERROR: http_listen requires the .on_request parameter to be set\n");
-    exit(11);
+    kill(0, SIGINT), exit(11);
   }
   http_on_open_func on_open_callback = http_get_on_open_func(&arg_settings);
   if (!on_open_callback) {
     fprintf(stderr, "ERROR: The requested HTTP protocol version isn't "
                     "supported at the moment.\n");
-    exit(11);
+    kill(0, SIGINT), exit(11);
   }
   http_settings_s *settings = malloc(sizeof(*settings));
   *settings = arg_settings;

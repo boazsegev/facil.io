@@ -74,6 +74,14 @@ Return value is ignored.
 */
 int defer_join_thread(void *p_thr);
 
+/**
+OVERRIDE THIS to replace the default pthread implementation.
+
+Throttles or reschedules the current running thread. Default implementation
+simply micro-sleeps.
+*/
+void defer_thread_throttle(unsigned long microsec);
+
 /* *****************************************************************************
 Child Process support (`fork`)
 ***************************************************************************** */

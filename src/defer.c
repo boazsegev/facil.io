@@ -86,7 +86,7 @@ schedule:
 error:
   spn_unlock(&deferred.lock);
   perror("ERROR CRITICAL: defer can't allocate task");
-  exit(9);
+  kill(0, SIGINT), exit(errno);
 call_error:
   return -1;
 initialize:
@@ -156,6 +156,11 @@ int defer_join_thread(void *p_thr) {
   return 0;
 }
 
+#pragma weak defer_thread_throttle
+void defer_thread_throttle(unsigned long microsec) {
+  throttle_thread(microsec);
+}
+
 #else /* No pthreads... BYO thread implementation. */
 
 #pragma weak defer_new_thread
@@ -169,6 +174,9 @@ int defer_join_thread(void *p_thr) {
   (void)p_thr;
   return -1;
 }
+
+#pragma weak defer_thread_throttle
+void defer_thread_throttle(unsigned long microsec) { return; }
 
 #endif /* DEBUG || pthread default */
 
@@ -260,7 +268,7 @@ inline static void reap_children(void) {
   sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
   if (sigaction(SIGCHLD, &sa, 0) == -1) {
     perror("Child reaping initialization failed");
-    exit(1);
+    kill(0, SIGINT), exit(errno);
   }
 }
 

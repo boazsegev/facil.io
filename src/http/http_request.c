@@ -7,6 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "http.h"
 #include "http1_request.h"
 
+#include <signal.h>
 /* *****************************************************************************
 Unsupported function placeholders
 ***************************************************************************** */
@@ -17,7 +18,7 @@ static void fail_destroy(http_request_s *req) {
   (void)req;
   fprintf(stderr, "ERROR: possible memory leak - request to be freed has "
                   "unsupported version.\n");
-  exit(9);
+  kill(0, SIGINT), exit(9);
 }
 
 static http_request_s *fail_dup(http_request_s *req) {
