@@ -287,6 +287,8 @@ void facil_run(struct facil_run_args args);
  * The old protocol's `on_close` will be scheduled, if they both exist.
  *
  * Returns -1 on error and 0 on success.
+ *
+ * On error, the new protocol's `on_close` callback will be called.
  */
 int facil_attach(intptr_t uuid, protocol_s *protocol);
 
