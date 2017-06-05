@@ -1,10 +1,20 @@
 # Change Log
 
-### Ver. 0.4.3
+### Ver. 0.4.3 (next)
 
-**Feature**: (`facil`) Experimental cluster mode messaging, allowing messages to be sent to all the cluster workers.
+**Fix**: Some killer error handling should now signal all the process group to exit.
+
+**Fix**: (`sock`, `websocket`) `sock_buffer_send` wouldn't automatically schedule a socket buffer flush. This caused some websocket messages to stay in the unsent buffer until a new event would push them along. Now flushing is scheduled and messages are send immediately, regardless of size.
+
+**Fix**: (`facil`) `facil_attach` now correctly calls the `on_close` callback in case of error.
+
+**Fix**: (`facil`) `facil_protocol_try_lock` would return false errors, preventing external access to the internal protocol data... this is now fixed.
+
+**Feature**: (`facil`) Experimental cluster mode messaging, allowing messages to be sent to all the cluster workers. A classic use-case would be a localized pub/sub websocket service that doesn't require a backend database for syncing a single machine.
 
 **Update**: (`http`) Updated the `http_listen` to accept the new `sock_rw_hook_set` and `rw_udata` options.
+
+**Update**: (`sock`) Rewrote some of the error handling code. Will it change anything? only if there were issues I didn't know about. It mostly effects errno value availability, I think.
 
 ### Ver. 0.4.2
 
