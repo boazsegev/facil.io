@@ -51,9 +51,9 @@ fio_list_remove(fio_list_s *item) {
 
 /** iterates the whole list. */
 #define fio_list_for_each(type, member, var, head)                             \
-  for (fio_list_s *pos = (head).next;                                          \
-       pos != &(head) && ((var) = fio_list_object(type, member, pos)) &&       \
-       (pos = pos->next);)
+  for (fio_list_s *pos = (head).next->next;                                    \
+       &((var) = fio_list_object(type, member, pos->prev))->member != &(head); \
+       (var) = fio_list_object(type, member, pos), pos = pos->next)
 
 /** Removes a member from the end of the list. */
 #define fio_list_pop(type, member, head)                                       \
