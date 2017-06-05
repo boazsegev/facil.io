@@ -64,8 +64,10 @@ inline static protocol_s *protocol_try_lock(intptr_t fd,
     errno = EBADF;
     return NULL;
   }
-  if (spn_trylock(&prt_meta(pr).locks[type]))
+  if (spn_trylock(&prt_meta(pr).locks[type])) {
+    spn_unlock(&fd_data(fd).lock);
     goto would_block;
+  }
   spn_unlock(&fd_data(fd).lock);
   return pr;
 would_block:
