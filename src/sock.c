@@ -354,7 +354,6 @@ static int sock_write_buffer(int fd, struct packet_s *packet) {
     fdinfo(fd).sent += written;
     if (fdinfo(fd).sent == packet->buffer.len)
       sock_packet_rotate_unsafe(fd);
-    return written;
   }
   return written;
 }
@@ -368,12 +367,8 @@ static int sock_write_buffer_ext(int fd, struct packet_s *packet) {
     fdinfo(fd).sent += written;
     if (fdinfo(fd).sent == packet->buffer.len)
       sock_packet_rotate_unsafe(fd);
-    return written;
   }
-  if (written < 0 && (errno == EWOULDBLOCK || errno == EAGAIN ||
-                      errno == EINTR || errno == ENOTCONN))
-    return 0;
-  return -1;
+  return written;
 }
 
 static void sock_free_buffer_ext(packet_s *packet) {
@@ -415,13 +410,13 @@ static int sock_write_from_fd(int fd, struct packet_s *packet) {
       goto read_error;
     count = fdinfo(fd).rw_hooks->write(fd2uuid(fd), ext->buffer, count);
   } while (count == BUFFER_FILE_READ_SIZE && packet->buffer.len);
-  if (count < 0)
-    return -1;
-  fdinfo(fd).sent += count;
-  packet->buffer.len -= count;
-  if (!packet->buffer.len) {
-    sock_packet_rotate_unsafe(fd);
-    return 1;
+  if (count >= 0) {
+    fdinfo(fd).sent += count;
+    packet->buffer.len -= count;
+    if (!packet->buffer.len) {
+      sock_packet_rotate_unsafe(fd);
+      return 1;
+    }
   }
   return count;
 
@@ -853,17 +848,21 @@ ssize_t sock_read(intptr_t uuid, void *buf, size_t count) {
     errno = EBADF;
     return -1;
   }
-  ssize_t ret = fdinfo(sock_uuid2fd(uuid)).rw_hooks->read(uuid, buf, count);
+  sock_rw_hook_s *rw = fdinfo(sock_uuid2fd(uuid)).rw_hooks;
   unlock_fd(sock_uuid2fd(uuid));
+  if (count == 0)
+    return rw->read(uuid, buf, count);
+  int old_errno = errno;
+  ssize_t ret = rw->read(uuid, buf, count);
   sock_touch(uuid);
   if (ret > 0)
     return ret;
   if (ret < 0 && (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR ||
-                  errno == ENOTCONN))
+                  errno == ENOTCONN)) {
+    errno = old_errno;
     return 0;
-  int old_errno = errno;
+  }
   sock_force_close(uuid);
-  errno = ret ? old_errno : ECONNRESET;
   return -1;
 }
 
@@ -978,23 +977,29 @@ ssize_t sock_flush(intptr_t uuid) {
     return -1;
   ssize_t ret;
   lock_fd(fd);
+  sock_rw_hook_s *rw;
 retry:
-  while ((ret = fdinfo(fd).rw_hooks->flush(fd)) > 0)
+  rw = fdinfo(fd).rw_hooks;
+  unlock_fd(fd);
+  while ((ret = rw->flush(fd)) > 0)
     ;
   if (ret == -1) {
     if (errno == EINTR)
       goto retry;
-    if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOTCONN)
+    if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOTCONN ||
+        errno == ENOSPC)
       goto finish;
     goto error;
   }
+  lock_fd(fd);
   while (fdinfo(fd).packet && (ret = fdinfo(fd).packet->metadata.write_func(
                                    fd, fdinfo(fd).packet)) > 0)
     ;
   if (ret == -1) {
     if (errno == EINTR)
       goto retry;
-    if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOTCONN)
+    if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOTCONN ||
+        errno == ENOSPC)
       goto finish;
     goto error;
   }
@@ -1006,6 +1011,10 @@ finish:
   return 0;
 error:
   unlock_fd(fd);
+  // fprintf(stderr,
+  //         "ERROR: sock `write` failed"
+  //         " for %p with %d\n",
+  //         (void *)uuid, errno);
   sock_force_close(uuid);
   return -1;
 }
@@ -1047,6 +1056,10 @@ buffer.
 void sock_force_close(intptr_t uuid) {
   if (validate_uuid(uuid))
     return;
+  // fprintf(stderr,
+  //         "ERROR: `sock_force_close` called"
+  //         " for %p with errno %d\n",
+  //         (void *)uuid, errno);
   shutdown(sock_uuid2fd(uuid), SHUT_RDWR);
   close(sock_uuid2fd(uuid));
   clear_fd(sock_uuid2fd(uuid), 0);
@@ -1091,6 +1104,7 @@ ssize_t sock_buffer_send(intptr_t uuid, sock_buffer_s *buffer) {
     tmp = &(*tmp)->metadata.next;
   *tmp = packet;
   unlock_fd(fd);
+  defer(sock_flush_defer, (void *)uuid, NULL);
   return 0;
 }
 
