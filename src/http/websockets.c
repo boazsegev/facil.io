@@ -715,8 +715,6 @@ cleanup:
     // call the on_open callback
     if (settings.on_open)
       settings.on_open(ws);
-    // facil_defer(.uuid = ws->fd, .task = on_open,
-    //             .arg = (void *)settings.on_open);
     // update the protocol object, cleanning up the old one
     facil_attach(ws->fd, (protocol_s *)ws);
     return 0;
