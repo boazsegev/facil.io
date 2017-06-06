@@ -1,6 +1,6 @@
 # Change Log
 
-### Ver. 0.4.3 (next)
+### Ver. 0.4.3
 
 **Fix**: Some killer error handling should now signal all the process group to exit.
 
