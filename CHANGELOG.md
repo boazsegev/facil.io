@@ -2,6 +2,8 @@
 
 ### Ver. 0.4.4 (next)
 
+**Fix**: (`facil`) Fixed compiling error on older `gcc` v.4.8.4, discovered on Ubuntu trusty/64.
+
 **Fix**: Fix enhanced CPU cycles introduced in the v.0.4.3 update. Now CPU cycles are lower and thread throttling handles empty queues more effectively.
 
 ### Ver. 0.4.3
