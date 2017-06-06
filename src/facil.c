@@ -602,7 +602,8 @@ static struct {
     intptr_t in;
     intptr_t out;
   } * pipes;
-} facil_cluster_data = {.handlers = FIO_LIST_INIT(facil_cluster_data.handlers),
+} facil_cluster_data = {.handlers.next = &facil_cluster_data.handlers,
+                        .handlers.prev = &facil_cluster_data.handlers,
                         .lock = SPN_LOCK_INIT};
 
 /* internal support for the default pub/sub cluster engin */
