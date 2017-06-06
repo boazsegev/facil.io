@@ -28,8 +28,8 @@ sleep 10 while `websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 */
 #define WEBSOCKET_SHOOTOUT_PUBSUB_H
 
-#include "unused/pubsub.h" // includes the "http.h" header
-#include "websockets.h"    // includes the "http.h" header
+#include "pubsub.h"     // includes the "http.h" header
+#include "websockets.h" // includes the "http.h" header
 
 #include <errno.h>
 #include <string.h>
