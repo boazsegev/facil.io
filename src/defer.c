@@ -23,7 +23,7 @@ Compile time settings
 #define DEFER_QUEUE_BUFFER 4096
 #endif
 #ifndef DEFER_THROTTLE
-#define DEFER_THROTTLE 16384UL
+#define DEFER_THROTTLE 524287UL
 #endif
 
 /* *****************************************************************************
@@ -189,8 +189,8 @@ struct defer_pool {
 static void *defer_worker_thread(void *pool) {
   signal(SIGPIPE, SIG_IGN);
   size_t throttle = (((pool_pt)pool)->count) * DEFER_THROTTLE;
-  if (!throttle || throttle > 524288UL)
-    throttle = 524288UL;
+  if (!throttle || throttle > 1572864UL)
+    throttle = 1572864UL;
   do {
     throttle_thread(throttle);
     defer_perform();

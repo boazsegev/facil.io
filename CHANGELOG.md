@@ -1,5 +1,9 @@
 # Change Log
 
+### Ver. 0.4.4 (next)
+
+**Fix**: Fix enhanced CPU cycles introduced in the v.0.4.3 update. Now CPU cycles are lower and thread throttling handles empty queues more effectively.
+
 ### Ver. 0.4.3
 
 **Fix**: Some killer error handling should now signal all the process group to exit.

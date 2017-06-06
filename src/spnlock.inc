@@ -27,8 +27,8 @@ spinlock / sync for tasks
   }
 #define throttle_thread(micosec)                                               \
   {                                                                            \
-    const struct timespec tm = {.tv_nsec = (micosec) /*(micosec & 0xfffff)*/,  \
-                                .tv_sec = 0 /* (micosec >> 20) */};            \
+    const struct timespec tm = {.tv_nsec = (micosec & 0xfffff),                \
+                                .tv_sec = (micosec >> 20)};                    \
     nanosleep(&tm, NULL);                                                      \
   }
 #else /* no effective rescheduling, just spin... */
