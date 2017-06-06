@@ -605,6 +605,10 @@ static struct {
 } facil_cluster_data = {.handlers = FIO_LIST_INIT(facil_cluster_data.handlers),
                         .lock = SPN_LOCK_INIT};
 
+/* internal support for the default pub/sub cluster engin */
+#pragma weak pubsub_cluster_init
+void pubsub_cluster_init(void) {}
+
 /* message handler */
 typedef struct {
   fio_list_s list;
@@ -753,6 +757,7 @@ static void facil_cluster_init(uint16_t count) {
     facil_attach(facil_cluster_data.pipes[i].in, &stub_protocol);
     facil_attach(facil_cluster_data.pipes[i].out, &stub_protocol);
   }
+  pubsub_cluster_init();
   defer(facil_cluster_register, NULL, NULL);
   return;
 error:
