@@ -205,7 +205,8 @@ static void pubsub_perform_publish(void *msg_, void *ignr) {
   spn_lock(&pubsub_GIL);
   if (msg->pub.use_pattern) {
     fio_list_for_each(channel_s, channels, channel, pubsub_channels) {
-      if (pubsub_match_pattern(msg->pub.channel.name, msg->pub.channel.len,
+      if (channel->engine == msg->pub.engine &&
+          pubsub_match_pattern(msg->pub.channel.name, msg->pub.channel.len,
                                channel->name, channel->len)) {
         fio_list_for_each(client_s, clients, cl, channel->clients) {
           atomic_bump(&msg->ref);
@@ -213,7 +214,8 @@ static void pubsub_perform_publish(void *msg_, void *ignr) {
           defer(pubsub_deliver_msg, cl, msg);
         }
         fio_list_for_each(channel_s, channels, pattern, pubsub_patterns) {
-          if (pubsub_match_pattern(pattern->name, pattern->len, channel->name,
+          if (pattern->engine == msg->pub.engine &&
+              pubsub_match_pattern(pattern->name, pattern->len, channel->name,
                                    channel->len)) {
             fio_list_for_each(client_s, clients, cl, pattern->clients) {
               atomic_bump(&msg->ref);
@@ -226,7 +228,8 @@ static void pubsub_perform_publish(void *msg_, void *ignr) {
     }
   } else {
     fio_list_for_each(channel_s, channels, channel, pubsub_channels) {
-      if (msg->pub.channel.len == channel->len &&
+      if (channel->engine == msg->pub.engine &&
+          msg->pub.channel.len == channel->len &&
           (msg->pub.channel.name == channel->name ||
            !memcmp(msg->pub.channel.name, channel->name, channel->len))) {
         fio_list_for_each(client_s, clients, cl, channel->clients) {
@@ -237,7 +240,8 @@ static void pubsub_perform_publish(void *msg_, void *ignr) {
       }
     }
     fio_list_for_each(channel_s, channels, channel, pubsub_patterns) {
-      if (pubsub_match_pattern(channel->name, channel->len,
+      if (channel->engine == msg->pub.engine &&
+          pubsub_match_pattern(channel->name, channel->len,
                                msg->pub.channel.name, msg->pub.channel.len)) {
         fio_list_for_each(client_s, clients, cl, channel->clients) {
           atomic_bump(&msg->ref);
@@ -351,7 +355,7 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
   client_s *client;
   spn_lock(&pubsub_GIL);
   fio_list_for_each(channel_s, channels, ch, *chlist) {
-    if (ch->len == args.channel.len &&
+    if (ch->engine == args.engine && ch->len == args.channel.len &&
         (ch->name == args.channel.name ||
          !memcmp(ch->name, args.channel.name, args.channel.len)))
       goto found_channel;
