@@ -2,9 +2,14 @@
 
 ### Ver. 0.4.4 (next)
 
+**Fix**: (`pubsub`) Fixed collisions between equal channel names on different engines, so that channels are only considered equal if they share the same name as well as the same engine (rather than only the same name).
+
 **Fix**: (`facil`) Fixed compiling error on older `gcc` v.4.8.4, discovered on Ubuntu trusty/64.
 
 **Fix**: Fix enhanced CPU cycles introduced in the v.0.4.3 update. Now CPU cycles are lower and thread throttling handles empty queues more effectively.
+
+**Feature**: (`http`) The `http_response_sendfile2` function will now test for a `gzip` encoded alternative when the client indicated support for the encoding. To provide a `gzip` alternative file, simply `gzip` the original file and place the `.gz` file in the original file's location.
+
 
 ### Ver. 0.4.3
 
