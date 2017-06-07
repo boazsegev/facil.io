@@ -241,7 +241,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   // char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
   if ((path_safe_len + path_unsafe_len) >= (PATH_MAX - 1 - 11))
     return -1;
-  char fname[path_safe_len + path_unsafe_len + 1 + 11];
+  char fname[path_safe_len + path_unsafe_len + (1 + 11 + 3)];
   // if (fname == NULL)
   //   return -1;
   if (file_path_safe)
@@ -276,8 +276,27 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   // fprintf(stderr, "file name: %s\noriginal request path: %s\n", fname,
   //         req->path);
   // get file data (prevent folder access and get modification date)
-  if (stat(fname, &file_data))
-    goto no_file;
+  {
+    http_header_s accept =
+        http_request_header_find(request, "accept-encoding", 15);
+    if (accept.data && strcasestr(accept.data, "gzip")) {
+      buffer[0] = 1;
+      fname[path_safe_len] = '.';
+      fname[path_safe_len + 1] = 'g';
+      fname[path_safe_len + 2] = 'z';
+      fname[path_safe_len + 3] = 0;
+      if (stat(fname, &file_data)) {
+        buffer[0] = 0;
+        fname[path_safe_len] = 0;
+        if (stat(fname, &file_data))
+          goto no_file;
+      }
+    } else {
+      buffer[0] = 0;
+      if (stat(fname, &file_data))
+        goto no_file;
+    }
+  }
   // check that we have a file and not something else
   if (!S_ISREG(file_data.st_mode) && !S_ISLNK(file_data.st_mode))
     goto no_file;
@@ -288,14 +307,20 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     if (log)
       http_response_log_start(response);
   }
-
   // we have a file, time to handle response details.
   int file = open(fname, O_RDONLY);
+
   // free the allocated fname memory
   // free(fname);
   // fname = NULL;
   if (file == -1) {
     goto no_fd_available;
+  }
+
+  if (buffer[0]) {
+    fname[path_safe_len] = 0;
+    http_response_write_header(response, .name = "Content-Encoding",
+                               .name_len = 16, .value = "gzip", .value_len = 4);
   }
 
   // get the mime type (we have an ext pointer and the string isn't empty)
@@ -307,8 +332,8 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     }
   }
   /* add ETag */
-  uint64_t sip = file_data.st_size;
-  sip ^= file_data.st_mtime;
+  uint64_t sip = (uint64_t)file_data.st_size;
+  sip ^= (uint64_t)file_data.st_mtime;
   sip = siphash24(&sip, sizeof(uint64_t), SIPHASH_DEFAULT_KEY);
   bscrypt_base64_encode(buffer, (void *)&sip, 8);
   http_response_write_header(response, .name = "ETag", .name_len = 4,
