@@ -44,6 +44,17 @@ fio_list_remove(fio_list_s *item) {
   *item = (fio_list_s){.next = item, .prev = item};
   return item;
 }
+/** Switches two list items. */
+static inline __attribute__((unused)) void fio_list_switch(fio_list_s *item1,
+                                                           fio_list_s *item2) {
+  fio_list_s tmp = *item1;
+  *item1 = *item2;
+  *item2 = tmp;
+  item1->next->prev = item1;
+  item1->prev->next = item1;
+  item2->next->prev = item2;
+  item2->prev->next = item2;
+}
 
 /** Takes a list pointer and returns a pointer to it's container. */
 #define fio_list_object(type, member, plist)                                   \
@@ -52,7 +63,9 @@ fio_list_remove(fio_list_s *item) {
 /** iterates the whole list. */
 #define fio_list_for_each(type, member, var, head)                             \
   for (fio_list_s *pos = (head).next->next;                                    \
-       &((var) = fio_list_object(type, member, pos->prev))->member != &(head); \
+       (&((var) = fio_list_object(type, member, pos->prev))->member !=         \
+            &(head) ||                                                         \
+        (var = NULL));                                                         \
        (var) = fio_list_object(type, member, pos), pos = pos->next)
 
 /** Removes a member from the end of the list. */
