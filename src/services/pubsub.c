@@ -50,10 +50,10 @@ static fio_ht_s pubsub_patterns = FIO_HASH_TABLE_STATIC(pubsub_patterns);
 
 spn_lock_i pubsub_GIL = SPN_LOCK_INIT;
 
-inline uint64_t atomic_bump(volatile uint64_t *i) {
+static inline uint64_t atomic_bump(volatile uint64_t *i) {
   return __sync_add_and_fetch(i, 1ULL);
 }
-inline uint64_t atomic_cut(volatile uint64_t *i) {
+static inline uint64_t atomic_cut(volatile uint64_t *i) {
   return __sync_sub_and_fetch(i, 1ULL);
 }
 
