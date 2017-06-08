@@ -4,6 +4,10 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "base64.h"
 #include "http.h"
 #include "http1_response.h"

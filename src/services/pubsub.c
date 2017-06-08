@@ -45,8 +45,9 @@ typedef struct pubsub_sub_s {
   uint32_t ref;
 } client_s;
 
-static fio_ht_s pubsub_channels = FIO_HASH_TABLE_INIT(pubsub_channels);
-static fio_ht_s pubsub_patterns = FIO_HASH_TABLE_INIT(pubsub_patterns);
+static fio_ht_s pubsub_channels = FIO_HASH_TABLE_STATIC(pubsub_channels);
+static fio_ht_s pubsub_patterns = FIO_HASH_TABLE_STATIC(pubsub_patterns);
+
 spn_lock_i pubsub_GIL = SPN_LOCK_INIT;
 
 inline uint64_t atomic_bump(volatile uint64_t *i) {

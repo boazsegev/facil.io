@@ -30,6 +30,10 @@ typedef struct {
 #define FIO_HASH_TABLE_INIT(name)                                              \
   (fio_ht_s) { .items.next = &((name).items), .items.prev = &((name).items) }
 
+/** Used to initialize an empty `fio_ht_s`. */
+#define FIO_HASH_TABLE_STATIC(name)                                            \
+  { .items.next = &((name).items), .items.prev = &((name).items) }
+
 typedef struct {
   fio_list_s items;
   fio_list_s siblings;

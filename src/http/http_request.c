@@ -4,10 +4,16 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "http.h"
 #include "http1_request.h"
 
 #include <signal.h>
+#include <sys/types.h>
+
 /* *****************************************************************************
 Unsupported function placeholders
 ***************************************************************************** */
