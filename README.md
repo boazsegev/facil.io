@@ -1,6 +1,6 @@
 # facil.io - the C WebApp mini-framework
 
-**Notice: `facil.io` has been rewritten from the core. The API was changed to prevent surprising errors, but it's easy to port from he previous version to the current version.**
+**Notice: The *master* branch is the development branch. Please select the latest release version by choosing the latest version available as a `tag` in the branch list.**
 
 [facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, as well as support for custom protocols.
 
@@ -9,8 +9,6 @@
 [facil.io](http://facil.io) provides high performance TCP/IP network services to Linux / BSD (and macOS) by using an evented design and provides an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
 
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
-
-**Notice**: The **master** branch is the development branch. Please select the latest release version by choosing the latest version available as a `tag` in the branch list.
 
 ## Three Quick Examples
 
