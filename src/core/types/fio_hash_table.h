@@ -24,48 +24,63 @@ typedef struct {
   uint64_t count;
   uint64_t bin_count;
   struct fio_list_s *bins;
-} fio_hash_table_s;
+} fio_ht_s;
 
-/** Used to initialize an empty `fio_hash_table_s`. */
+/** Used to initialize an empty `fio_ht_s`. */
 #define FIO_HASH_TABLE_INIT(name)                                              \
-  (fio_hash_table_s) { .items.next = &(name), .items.prev = &(name) }
+  (fio_ht_s) { .items.next = &((name).items), .items.prev = &((name).items) }
 
 typedef struct {
   fio_list_s items;
   fio_list_s siblings;
-  fio_hash_table_s *parent;
+  fio_ht_s *parent;
   uint64_t hash;
-} fio_hash_table_node_s;
+} fio_ht_node_s;
 
 /** Takes a list pointer and returns a pointer to it's container. */
 #define fio_ht_object(type, member, pht)                                       \
   ((type *)((uintptr_t)(pht) - (uintptr_t)(&(((type *)0)->member))))
 
 /** A simple SipHash2/4 function implementation that can be used for hashing. */
-FIO_FUNC uint64_t fio_ht_hash_func(const void *data, size_t len);
-
-/** Adds a new item to the hash table. If a hash collision occurs, the old item
- * is removed and replaced. */
-inline FIO_FUNC fio_hash_table_node_s *fio_ht_add(fio_hash_table_s *table,
-                                                  fio_hash_table_node_s *item);
-
-/** Removes an item to the hash table. */
-inline FIO_FUNC void fio_ht_remove(fio_hash_table_node_s *item);
-
-/** Finds an item in the hash table. */
-inline FIO_FUNC fio_hash_table_node_s *fio_ht_find(fio_hash_table_s *table,
-                                                   uint64_t hash_value);
+FIO_FUNC uint64_t fio_ht_hash(const void *data, size_t len);
 
 /**
- * Re-hashes the hash table. This is usually automatically called.
+ * Adds a new item to the hash table.
+ *
+ * If a hash collision occurs, the old item is replaced and returned.
+ */
+inline FIO_FUNC fio_ht_node_s *fio_ht_add(fio_ht_s *table, fio_ht_node_s *item,
+                                          uint64_t hash_value);
+
+/** Finds an item in the hash table. */
+inline FIO_FUNC fio_ht_node_s *fio_ht_find(fio_ht_s *table,
+                                           uint64_t hash_value);
+/** Removes the item from the hash table. */
+inline FIO_FUNC void fio_ht_remove(fio_ht_node_s *item);
+
+/** Finds, removes and returns the matching item from the hash table. */
+inline FIO_FUNC fio_ht_node_s *fio_ht_pop(fio_ht_s *table, uint64_t hash);
+
+/**
+ * Re-hashes the hash table. This is automatically when growth is required.
  *
  * `bin_count` MUST be a power of 2 or 0 (0,1,2,4,8,16,32,64,128...).
+ *
+ * If `bin_count`, the hash table's memory is released and it will behave like a
+ * list (until an item is added).
  */
-inline FIO_FUNC void fio_ht_rehash(fio_hash_table_s *table, uint64_t bin_count);
+inline FIO_FUNC void fio_ht_rehash(fio_ht_s *table, uint64_t bin_count);
 
 /** iterates through all Hash Table members. */
 #define fio_ht_for_each(type, member, var, table)                              \
   fio_list_for_each(type, member.items, var, (table).items)
+
+/**
+ * Frees any internal memory used by the hash table.
+ *
+ * This soes **NOT** free any items in the table or the table object itself.
+ */
+#define fio_ht_free(table) fio_ht_rehash(table, 0)
 
 /* *****************************************************************************
 Implementations
@@ -73,61 +88,96 @@ Implementations
 
 /** Adds a new item to the hash table. If a hash collision occurs, the old item
  * is removed and replaced. */
-inline FIO_FUNC fio_hash_table_node_s *fio_ht_add(fio_hash_table_s *table,
-                                                  fio_hash_table_node_s *item) {
-  fio_hash_table_node_s *old = NULL;
+inline FIO_FUNC fio_ht_node_s *fio_ht_add(fio_ht_s *table, fio_ht_node_s *item,
+                                          uint64_t hash) {
+  fio_ht_node_s tmp = *item;
+  fio_ht_node_s *old = NULL;
+  /* initialize item */
+  *item = (fio_ht_node_s){
+      .items.next = &item->items,
+      .items.prev = &item->items,
+      .siblings.next = &item->siblings,
+      .siblings.prev = &item->siblings,
+      .parent = table,
+      .hash = hash,
+  };
+
   if (table->bins) {
     /* Behave like a Hash Table. */
-    fio_list_for_each(fio_hash_table_node_s, siblings, old,
-                      table->bins[item->hash & (table->bin_count - 1)]) {
-      if (item == old)
+    fio_list_for_each(fio_ht_node_s, siblings, old,
+                      (table->bins[item->hash & (table->bin_count - 1)])) {
+      if (item == old) {
+        /* what kind of developer will add something that's already inside? */
+        *item = tmp;
         return NULL;
-      if (old->hash == item->hash) {
+      }
+      if (old->hash == hash) {
         /* replace inplace. */
-        old->parent = item->parent;
-        item->parent = table;
+        old->parent = NULL;
         fio_list_switch(&item->items, &old->items);
         fio_list_switch(&item->siblings, &old->siblings);
         return old;
       }
     }
-    /* intialize item list data and add it to the hash table. */
-    *item = (fio_hash_table_node_s){.parent = table, .hash = item->hash};
+    /* add item to the hash table. */
     fio_list_add(table->items.prev, &item->items);
     fio_list_add(table->bins[item->hash & (table->bin_count - 1)].prev,
                  &item->siblings);
     table->count++;
-    if ((table->count) > ((table->bin_count << 1) / 3)) {
+    if (((table->count * 3) >> 1) >= table->bin_count) {
       fio_ht_rehash(table, table->bin_count << 1);
+    }
+    return NULL;
+  }
+  /* Behave like a list. */
+  fio_list_for_each(fio_ht_node_s, items, old, (table->items)) {
+    if (item == old) {
+      /* what kind of developer will add something that's already inside? */
+      *item = tmp;
+      return NULL;
+    }
+    if (old->hash == hash) {
+      /* replace inplace. */
+      old->parent = NULL;
+      fio_list_switch(&item->items, &old->items);
+      return old;
+    }
+  }
+  /* add item to the hash table. */
+  fio_list_add(table->items.prev, &item->items);
+  table->count++;
+  if (table->count > 8)
+    fio_ht_rehash(table, 32);
+  return NULL;
+}
+
+/** Finds an item in the hash table. */
+inline FIO_FUNC fio_ht_node_s *fio_ht_find(fio_ht_s *table,
+                                           uint64_t hash_value) {
+  fio_ht_node_s *item;
+  if (!table)
+    return NULL;
+  if (table->bins) {
+    /* Behave like a Hash Table. */
+    fio_list_for_each(fio_ht_node_s, siblings, item,
+                      table->bins[hash_value & (table->bin_count - 1)]) {
+      if (hash_value == item->hash) {
+        return item;
+      }
     }
   } else {
     /* Behave like a list. */
-    fio_list_for_each(fio_hash_table_node_s, items, old, table->items) {
-      if (item == old)
-        return NULL;
-      if (old->hash == item->hash) {
-        /* replace inplace. */
-        old->parent = item->parent;
-        item->parent = table;
-        fio_list_switch(&item->items, &old->items);
-        return old;
+    fio_list_for_each(fio_ht_node_s, items, item, table->items) {
+      if (hash_value == item->hash) {
+        return item;
       }
     }
-    /* intialize item list data and add it to the hash table's list. */
-    *item = (fio_hash_table_node_s){.siblings.next = &item->siblings,
-                                    .siblings.prev = &item->siblings,
-                                    .parent = table,
-                                    .hash = item->hash};
-    fio_list_add(table->items.prev, &item->items);
-    table->count++;
-    if (table->count > 8)
-      fio_ht_rehash(table, 32);
   }
   return NULL;
 }
 
 /** Removes an item to the hash table. */
-inline FIO_FUNC void fio_ht_remove(fio_hash_table_node_s *item) {
+inline FIO_FUNC void fio_ht_remove(fio_ht_node_s *item) {
   if (!item || !item->parent)
     return;
   if (item->parent->bins) /* Behave like a Hash Table. */
@@ -138,34 +188,17 @@ inline FIO_FUNC void fio_ht_remove(fio_hash_table_node_s *item) {
   item->parent = NULL;
 }
 
-/** Finds an item in the hash table. */
-inline FIO_FUNC fio_hash_table_node_s *fio_ht_find(fio_hash_table_s *table,
-                                                   uint64_t hash_value) {
-  fio_hash_table_node_s *item;
-  if (!table)
+/** Finds, removes and returns the matching item from the hash table. */
+inline FIO_FUNC fio_ht_node_s *fio_ht_pop(fio_ht_s *table, uint64_t hash) {
+  fio_ht_node_s *item = fio_ht_find(table, hash);
+  if (!item)
     return NULL;
-  if (table->bins) {
-    /* Behave like a Hash Table. */
-    fio_list_for_each(fio_hash_table_node_s, siblings, item,
-                      table->bins[hash_value & (table->bin_count - 1)]) {
-      if (hash_value == item->hash) {
-        return item;
-      }
-    }
-  } else {
-    /* Behave like a list. */
-    fio_list_for_each(fio_hash_table_node_s, items, item, table->items) {
-      if (hash_value == item->hash) {
-        return item;
-      }
-    }
-  }
-  return NULL;
+  fio_ht_remove(item);
+  return item;
 }
 
 /** Re-hashes the hash table. This is usually automatically called. */
-inline FIO_FUNC void fio_ht_rehash(fio_hash_table_s *table,
-                                   uint64_t bin_count) {
+inline FIO_FUNC void fio_ht_rehash(fio_ht_s *table, uint64_t bin_count) {
   if (!table)
     return;
   if (!bin_count) {
@@ -175,16 +208,17 @@ inline FIO_FUNC void fio_ht_rehash(fio_hash_table_s *table,
     }
     return;
   }
-  void *mem = realloc(table, bin_count * sizeof(*table->bins));
+  void *mem = realloc(table->bins, bin_count * sizeof(*table->bins));
   if (!mem)
     return;
   table->bin_count = bin_count;
+  table->bins = mem;
   while (bin_count) {
     bin_count--;
     table->bins[bin_count] = FIO_LIST_INIT(table->bins[bin_count]);
   }
-  fio_hash_table_node_s *item;
-  fio_list_for_each(fio_hash_table_node_s, items, item, table->items) {
+  fio_ht_node_s *item;
+  fio_list_for_each(fio_ht_node_s, items, item, table->items) {
     fio_list_add(table->bins[item->hash & (table->bin_count - 1)].prev,
                  &item->siblings);
   }
@@ -196,24 +230,22 @@ The Hash Function
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) &&                 \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-/* the algorithm was designed as little endian */
-/** inplace byte swap 64 bit integer */
+/* the algorithm was designed as little endian... so, byte swap 64 bit. */
 #define sip_local64(i)                                                         \
   (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                            \
       (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                 \
       (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |         \
       (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56)
-
 #else
-/** no need */
+/* no need */
 #define sip_local64(i) (i)
 #endif
 
-/** 64Bit left rotation, inlined. */
+/* 64Bit left rotation, inlined. */
 #define lrot64(i, bits)                                                        \
   (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
 
-FIO_FUNC uint64_t fio_ht_hash_func(const void *data, size_t len) {
+FIO_FUNC uint64_t fio_ht_hash(const void *data, size_t len) {
   /* initialize the 4 words */
   uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL);
   uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL);

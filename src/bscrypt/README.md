@@ -10,7 +10,7 @@ At the moment, we have:
 * Unix crypto-level pseudo-random.
 * Base64 encode/decode (not crypto but useful).
 * Hex encode/decode (not crypto but useful).
-* XOR masking (not crypto but useful)... I'll write this again, **not** crypto (don't use XOR for encrypting stuff).
+* XOR masking (not crypto but useful)... I'll write this again, **not** crypto - don't use XOR for encrypting stuff!
 
 Future plans (optional, feel free to open a PR with any of these features):
 
@@ -28,7 +28,7 @@ The code is heavily documented, but it does assume you know what you're doing (h
 
 Some things, like Base64/Hex encoding assume you allocated enough space (the functions are unsafe) and overlapping memory will cause undefined behavior (although decoding will mostly work when performed in place).
 
-The purpose of the lower level API was to allow higher level APIs to be written, so use with care.
+The purpose of this lower level API was to allow higher level APIs to be written, so use the provided API with care.
 
 Here's a simple SHA-1 computation:
 

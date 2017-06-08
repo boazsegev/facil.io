@@ -8,8 +8,11 @@
 
 **Fix**: Fix enhanced CPU cycles introduced in the v.0.4.3 update. Now CPU cycles are lower and thread throttling handles empty queues more effectively.
 
+**Performance**: (`pubsub`) now uses a hash-table storage for the channels, clients and patterns, making the duplicate review in `pubsub_subscribe` much faster, as well as improving large channel collection performance (nothing I can do about pattern pub/sub, though, as they still need to be matched using iterations, channel by channel and for every channel match).
+
 **Feature**: (`http`) The `http_response_sendfile2` function will now test for a `gzip` encoded alternative when the client indicated support for the encoding. To provide a `gzip` alternative file, simply `gzip` the original file and place the `.gz` file in the original file's location.
 
+**Folder Structure**: Updated the folder structure to reflect source code relation to the library. `core` being required files, `http` relating to `http` etc'.
 
 ### Ver. 0.4.3
 

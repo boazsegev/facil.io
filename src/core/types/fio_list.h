@@ -50,10 +50,14 @@ static inline __attribute__((unused)) void fio_list_switch(fio_list_s *item1,
   fio_list_s tmp = *item1;
   *item1 = *item2;
   *item2 = tmp;
-  item1->next->prev = item1;
-  item1->prev->next = item1;
-  item2->next->prev = item2;
-  item2->prev->next = item2;
+  if (item1->next == item2)
+    item1->next = item1;
+  else
+    item1->next->prev = item1;
+  if (item1->prev == item2)
+    item1->prev = item1;
+  else
+    item1->prev->next = item1;
 }
 
 /** Takes a list pointer and returns a pointer to it's container. */
@@ -64,8 +68,8 @@ static inline __attribute__((unused)) void fio_list_switch(fio_list_s *item1,
 #define fio_list_for_each(type, member, var, head)                             \
   for (fio_list_s *pos = (head).next->next;                                    \
        (&((var) = fio_list_object(type, member, pos->prev))->member !=         \
-            &(head) ||                                                         \
-        (var = NULL));                                                         \
+        &(head)) ||                                                            \
+       ((var) = NULL);                                                         \
        (var) = fio_list_object(type, member, pos), pos = pos->next)
 
 /** Removes a member from the end of the list. */

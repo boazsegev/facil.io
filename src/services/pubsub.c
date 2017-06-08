@@ -7,6 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "spnlock.inc"
 
 #include "facil.h"
+#include "fio_hash_table.h"
 #include "fio_list.h"
 #include "pubsub.h"
 
@@ -27,8 +28,8 @@ typedef struct {
 } msg_s;
 
 typedef struct {
-  fio_list_s clients;
-  fio_list_s channels;
+  fio_ht_s clients;
+  fio_ht_node_s channels;
   const pubsub_engine_s *engine;
   char *name;
   uint32_t len;
@@ -36,7 +37,7 @@ typedef struct {
 } channel_s;
 
 typedef struct pubsub_sub_s {
-  fio_list_s clients;
+  fio_ht_node_s clients;
   void (*on_message)(pubsub_sub_pt s, pubsub_message_s msg, void *udata);
   void *udata;
   channel_s *parent;
@@ -44,8 +45,8 @@ typedef struct pubsub_sub_s {
   uint32_t ref;
 } client_s;
 
-static fio_list_s pubsub_channels = FIO_LIST_INIT(pubsub_channels);
-static fio_list_s pubsub_patterns = FIO_LIST_INIT(pubsub_patterns);
+static fio_ht_s pubsub_channels = FIO_HASH_TABLE_INIT(pubsub_channels);
+static fio_ht_s pubsub_patterns = FIO_HASH_TABLE_INIT(pubsub_patterns);
 spn_lock_i pubsub_GIL = SPN_LOCK_INIT;
 
 inline uint64_t atomic_bump(volatile uint64_t *i) {
@@ -204,20 +205,20 @@ static void pubsub_perform_publish(void *msg_, void *ignr) {
 
   spn_lock(&pubsub_GIL);
   if (msg->pub.use_pattern) {
-    fio_list_for_each(channel_s, channels, channel, pubsub_channels) {
+    fio_ht_for_each(channel_s, channels, channel, pubsub_channels) {
       if (channel->engine == msg->pub.engine &&
           pubsub_match_pattern(msg->pub.channel.name, msg->pub.channel.len,
                                channel->name, channel->len)) {
-        fio_list_for_each(client_s, clients, cl, channel->clients) {
+        fio_ht_for_each(client_s, clients, cl, channel->clients) {
           atomic_bump(&msg->ref);
           atomic_bump(&cl->active);
           defer(pubsub_deliver_msg, cl, msg);
         }
-        fio_list_for_each(channel_s, channels, pattern, pubsub_patterns) {
+        fio_ht_for_each(channel_s, channels, pattern, pubsub_patterns) {
           if (pattern->engine == msg->pub.engine &&
               pubsub_match_pattern(pattern->name, pattern->len, channel->name,
                                    channel->len)) {
-            fio_list_for_each(client_s, clients, cl, pattern->clients) {
+            fio_ht_for_each(client_s, clients, cl, pattern->clients) {
               atomic_bump(&msg->ref);
               atomic_bump(&cl->active);
               defer(pubsub_deliver_msg, cl, msg);
@@ -227,23 +228,23 @@ static void pubsub_perform_publish(void *msg_, void *ignr) {
       }
     }
   } else {
-    fio_list_for_each(channel_s, channels, channel, pubsub_channels) {
-      if (channel->engine == msg->pub.engine &&
-          msg->pub.channel.len == channel->len &&
-          (msg->pub.channel.name == channel->name ||
-           !memcmp(msg->pub.channel.name, channel->name, channel->len))) {
-        fio_list_for_each(client_s, clients, cl, channel->clients) {
-          atomic_bump(&msg->ref);
-          atomic_bump(&cl->active);
-          defer(pubsub_deliver_msg, cl, msg);
-        }
+    channel = (void *)fio_ht_find(
+        &pubsub_channels,
+        (fio_ht_hash(msg->pub.channel.name, msg->pub.channel.len) ^
+         (intptr_t)msg->pub.engine));
+    if (channel) {
+      channel = fio_ht_object(channel_s, channels, channel);
+      fio_ht_for_each(client_s, clients, cl, channel->clients) {
+        atomic_bump(&msg->ref);
+        atomic_bump(&cl->active);
+        defer(pubsub_deliver_msg, cl, msg);
       }
     }
-    fio_list_for_each(channel_s, channels, channel, pubsub_patterns) {
+    fio_ht_for_each(channel_s, channels, channel, pubsub_patterns) {
       if (channel->engine == msg->pub.engine &&
           pubsub_match_pattern(channel->name, channel->len,
                                msg->pub.channel.name, msg->pub.channel.len)) {
-        fio_list_for_each(client_s, clients, cl, channel->clients) {
+        fio_ht_for_each(client_s, clients, cl, channel->clients) {
           atomic_bump(&msg->ref);
           atomic_bump(&cl->active);
           defer(pubsub_deliver_msg, cl, msg);
@@ -350,15 +351,17 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
     args.channel.len = strlen(args.channel.name);
   if (!args.engine)
     args.engine = &PUBSUB_CLUSTER_ENGINE;
-  fio_list_s *chlist = args.use_pattern ? &pubsub_patterns : &pubsub_channels;
+  fio_ht_s *chlist = args.use_pattern ? &pubsub_patterns : &pubsub_channels;
   channel_s *ch;
   client_s *client;
+  uint64_t ch_hash = (fio_ht_hash(args.channel.name, args.channel.len) ^
+                      (uintptr_t)args.engine);
+  uint64_t cl_hash = (fio_ht_hash(&args.on_message, (sizeof(void *) << 1)));
   spn_lock(&pubsub_GIL);
-  fio_list_for_each(channel_s, channels, ch, *chlist) {
-    if (ch->engine == args.engine && ch->len == args.channel.len &&
-        (ch->name == args.channel.name ||
-         !memcmp(ch->name, args.channel.name, args.channel.len)))
-      goto found_channel;
+  ch = (void *)fio_ht_find(chlist, ch_hash);
+  if (ch) {
+    ch = fio_ht_object(channel_s, channels, ch);
+    goto found_channel;
   }
   if (args.engine->subscribe((struct pubsub_subscribe_args){
           .engine = args.engine,
@@ -371,8 +374,7 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
     goto error;
   ch = malloc(sizeof(*ch) + args.channel.len + 1);
   *ch = (channel_s){
-      .channels = FIO_LIST_INIT(ch->channels),
-      .clients = FIO_LIST_INIT(ch->clients),
+      .clients = FIO_HASH_TABLE_INIT(ch->clients),
       .name = (char *)(ch + 1),
       .len = args.channel.len,
       .use_pattern = args.use_pattern,
@@ -380,27 +382,29 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
   };
   memcpy(ch->name, args.channel.name, args.channel.len);
   ch->name[args.channel.len] = 0;
-  fio_list_push(channel_s, channels, *chlist, ch);
+  fio_ht_add(chlist, &ch->channels, ch_hash);
 found_channel:
 
-  fio_list_for_each(client_s, clients, client, ch->clients) {
-    if (client->on_message == args.on_message && client->udata == args.udata)
-      goto found_client;
+  client = (void *)fio_ht_find(&ch->clients, cl_hash);
+  if (client) {
+    client = fio_ht_object(client_s, clients, client);
+    goto found_client;
   }
+
   client = malloc(sizeof(*client));
   if (!client)
     goto error;
   *client = (client_s){
-      FIO_LIST_INIT(client->clients),
       .on_message = args.on_message,
       .udata = args.udata,
       .parent = ch,
       .active = 0,
       .ref = 0,
   };
-  fio_list_push(client_s, clients, ch->clients, client);
+  fio_ht_add(&ch->clients, &client->clients, cl_hash);
 
 found_client:
+
   client->ref++;
   atomic_bump(&client->active);
   spn_unlock(&pubsub_GIL);
@@ -421,14 +425,14 @@ void pubsub_unsubscribe(pubsub_sub_pt client) {
     atomic_cut(&client->active);
     return;
   }
-  fio_list_remove(&client->clients);
-  if (fio_list_any(client->parent->clients)) {
+  fio_ht_remove(&client->clients);
+  if (client->parent->clients.count) {
     spn_unlock(&pubsub_GIL);
     defer(pubsub_free_client, client, NULL);
     return;
   }
   channel_s *ch = client->parent;
-  fio_list_remove(&ch->channels);
+  fio_ht_remove(&ch->channels);
   spn_unlock(&pubsub_GIL);
   defer(pubsub_free_client, client, NULL);
   ch->engine->unsubscribe((struct pubsub_subscribe_args){
@@ -439,6 +443,7 @@ void pubsub_unsubscribe(pubsub_sub_pt client) {
       .udata = (void *)ch->engine,
       .use_pattern = ch->use_pattern,
   });
+  fio_ht_rehash(&ch->clients, 0);
   free(ch);
 }
 
