@@ -22,5 +22,5 @@ int main() {
   // listen2bench("3000", "./public_www");
   // defer(client_attempt, "3000", "3999");
   /* Run the server and hang until a stop signal is received. */
-  facil_run(.threads = 4, .processes = 4);
+  facil_run(.threads = 4, .processes = 1);
 }
