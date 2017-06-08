@@ -2,7 +2,7 @@
 
 ### Ver. 0.4.4 (next)
 
-**Fix**: (`pubsub`) Fixed collisions between equal channel names on different engines, so that channels are only considered equal if they share the same name as well as the same engine (rather than only the same name).
+**Fix**: (`pubsub`) Fixed collisions between equal channel names on different engines, so that channels are only considered equal if they share the same name as well as the same engine (rather than only the same name)... actually, if they share the same channel name SipHash value XOR'd with the engine's memory location.
 
 **Fix**: (`facil`) Fixed compiling error on older `gcc` v.4.8.4, discovered on Ubuntu trusty/64.
 
