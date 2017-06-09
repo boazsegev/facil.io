@@ -268,7 +268,7 @@ typedef struct {
     /** This is an alternative deallocation callback accessor (same memory space
      * as `dealloc`) for conveniently setting the file `close` callback.
      */
-    void (*close)(int fd);
+    void (*close)(intptr_t fd);
   };
   /** The length (size) of the buffer, or the amount of data to be sent from the
    * file descriptor.
@@ -283,10 +283,21 @@ typedef struct {
   unsigned move : 1;
   /** The packet will be sent as soon as possible. */
   unsigned urgent : 1;
-  /** The buffer contains the value of a file descriptor (`int`) - casting, not
-   * pointing, i.e.: `.buffer = (void*)fd;`
+  /**
+   * The buffer contains the value of a file descriptor (`int`). i.e.:
+   *  `.data_fd = fd` or `.buffer = (void*)fd;`
    */
   unsigned is_fd : 1;
+  /**
+   * The buffer **points** to a file descriptor (`int`): `.buffer = (void*)&fd;`
+   *
+   * In the case the `dealloc` function will be called, allowing both closure
+   * and deallocation of the `int` pointer.
+   *
+   * This feature can be used for file reference counting, such as implemented
+   * by the `fio_file_cache` service.
+   */
+  unsigned is_pfd : 1;
   /** for internal use */
   unsigned rsv : 1;
 } sock_write_info_s;
