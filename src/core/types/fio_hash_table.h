@@ -13,6 +13,19 @@ yourself.
 #include <stdint.h>
 #include <stdlib.h>
 
+#ifndef FIO_HT_ACTS_AS_LIST_LIMIT
+/**
+ * This value defines the limit at which the Hash table implementation acts as a
+ * list.
+ *
+ * For performance reasons, it sometimes makes sense to wait with bin allocation
+ * and management until a hash table is big enough. This value will set this
+ * limit.
+ *
+ * Use 0 to always prefer a Hash table lookup.
+ */
+#define FIO_HT_ACTS_AS_LIST_LIMIT 8
+#endif
 /* *****************************************************************************
 Data Types and API
 ***************************************************************************** */
@@ -48,6 +61,9 @@ typedef struct {
 /** A simple SipHash2/4 function implementation that can be used for hashing. */
 FIO_FUNC uint64_t fio_ht_hash(const void *data, size_t len);
 
+/** A simple SipHash2/4 function for when a string's length is unknown. */
+FIO_FUNC uint64_t fio_ht_hash_cstr(const void *data);
+
 /**
  * Adds a new item to the hash table.
  *
@@ -59,8 +75,8 @@ inline FIO_FUNC fio_ht_node_s *fio_ht_add(fio_ht_s *table, fio_ht_node_s *item,
 /** Finds an item in the hash table. */
 inline FIO_FUNC fio_ht_node_s *fio_ht_find(fio_ht_s *table,
                                            uint64_t hash_value);
-/** Removes the item from the hash table. */
-inline FIO_FUNC void fio_ht_remove(fio_ht_node_s *item);
+/** Removes the item from the hash table, returning the removed item. */
+inline FIO_FUNC fio_ht_node_s *fio_ht_remove(fio_ht_node_s *item);
 
 /** Finds, removes and returns the matching item from the hash table. */
 inline FIO_FUNC fio_ht_node_s *fio_ht_pop(fio_ht_s *table, uint64_t hash);
@@ -128,7 +144,7 @@ inline FIO_FUNC fio_ht_node_s *fio_ht_add(fio_ht_s *table, fio_ht_node_s *item,
     fio_list_add(table->bins[item->hash & (table->bin_count - 1)].prev,
                  &item->siblings);
     table->count++;
-    if (((table->count * 3) >> 1) >= table->bin_count) {
+    if (table->count >= ((table->bin_count >> 2) * 3)) {
       fio_ht_rehash(table, table->bin_count << 1);
     }
     return NULL;
@@ -150,7 +166,7 @@ inline FIO_FUNC fio_ht_node_s *fio_ht_add(fio_ht_s *table, fio_ht_node_s *item,
   /* add item to the hash table. */
   fio_list_add(table->items.prev, &item->items);
   table->count++;
-  if (table->count > 8)
+  if (table->count > FIO_HT_ACTS_AS_LIST_LIMIT)
     fio_ht_rehash(table, 32);
   return NULL;
 }
@@ -181,15 +197,22 @@ inline FIO_FUNC fio_ht_node_s *fio_ht_find(fio_ht_s *table,
 }
 
 /** Removes an item to the hash table. */
-inline FIO_FUNC void fio_ht_remove(fio_ht_node_s *item) {
+inline FIO_FUNC fio_ht_node_s *fio_ht_remove(fio_ht_node_s *item) {
   if (!item || !item->parent)
-    return;
+    return item;
   if (item->parent->bins) /* Behave like a Hash Table. */
     fio_list_remove(&item->siblings);
 
   fio_list_remove(&item->items);
   item->parent->count--;
+  /* ** memory shrinkage? not really... ** */
+  /*
+  if (item->parent->bin_count > 1024 &&
+      (item->parent->bin_count >> 3) >= item->parent->count)
+    fio_ht_rehash(item->parent, item->parent->bin_count >> 2);
+  */
   item->parent = NULL;
+  return item;
 }
 
 /** Finds, removes and returns the matching item from the hash table. */
@@ -289,7 +312,7 @@ FIO_FUNC uint64_t fio_ht_hash(const void *data, size_t len) {
   word.i = 0;
   uint8_t *pos = word.str;
   uint8_t *w8 = (void *)w64;
-  switch (len) { // fallthrough is intentional
+  switch (len) { /* fallthrough is intentional */
   case 7:
     pos[6] = w8[6];
   case 6:
@@ -306,7 +329,73 @@ FIO_FUNC uint64_t fio_ht_hash(const void *data, size_t len) {
     pos[0] = w8[0];
   }
   word.str[7] = len_mod;
-  // word.i = sip_local64(word.i);
+
+  /* last round */
+  v3 ^= word.i;
+  hash_map_SipRound;
+  hash_map_SipRound;
+  v0 ^= word.i;
+  /* Finalization */
+  v2 ^= 0xff;
+  /* d iterations of SipRound */
+  hash_map_SipRound;
+  hash_map_SipRound;
+  hash_map_SipRound;
+  hash_map_SipRound;
+  /* XOR it all together */
+  v0 ^= v1 ^ v2 ^ v3;
+#undef hash_map_SipRound
+  return v0;
+}
+
+FIO_FUNC uint64_t fio_ht_hash_cstr(const void *data) {
+  /* initialize the 4 words */
+  uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL);
+  uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL);
+  uint64_t v2 = (0x0706050403020100ULL ^ 0x6c7967656e657261ULL);
+  uint64_t v3 = (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL);
+  const uint64_t *w64 = data;
+  uint8_t len = 0;
+  union {
+    uint64_t i;
+    uint8_t str[8];
+  } word;
+
+#define hash_map_SipRound                                                      \
+  do {                                                                         \
+    v2 += v3;                                                                  \
+    v3 = lrot64(v3, 16) ^ v2;                                                  \
+    v0 += v1;                                                                  \
+    v1 = lrot64(v1, 13) ^ v0;                                                  \
+    v0 = lrot64(v0, 32);                                                       \
+    v2 += v1;                                                                  \
+    v0 += v3;                                                                  \
+    v1 = lrot64(v1, 17) ^ v2;                                                  \
+    v3 = lrot64(v3, 21) ^ v0;                                                  \
+    v2 = lrot64(v2, 32);                                                       \
+  } while (0);
+
+  while ((*w64 & 0xFFULL) && (*w64 & 0xFF00ULL) && (*w64 & 0xFF0000ULL) &&
+         (*w64 & 0xFF000000ULL) && (*w64 & 0xFF00000000ULL) &&
+         (*w64 & 0xFF0000000000ULL) && (*w64 & 0xFF000000000000ULL) &&
+         (*w64 & 0xFF00000000000000ULL)) {
+    word.i = sip_local64(*w64);
+    v3 ^= word.i;
+    /* Sip Rounds */
+    hash_map_SipRound;
+    hash_map_SipRound;
+    v0 ^= word.i;
+    w64 += 1;
+    len += 8;
+  }
+  word.i = 0;
+  uint8_t *pos = word.str;
+  uint8_t *w8 = (void *)w64;
+  while (*w8) {
+    *(pos++) = *(w8++);
+    len++;
+  }
+  word.str[7] = len & 255;
 
   /* last round */
   v3 ^= word.i;

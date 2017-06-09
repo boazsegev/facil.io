@@ -231,7 +231,12 @@ bad_request:
   {
     http_response_s *response = http_response_create(&request->request);
     response->status = 400;
-    http_response_write_body(response, "Bad Request", 11);
+    if (protocol->settings->public_folder &&
+        !http_response_sendfile2(response, &request->request,
+                                 protocol->settings->public_folder,
+                                 protocol->settings->public_folder_length,
+                                 "400.html", 8, protocol->settings->log_static))
+      http_response_write_body(response, "Bad Request", 11);
     http_response_finish(response);
     sock_close(uuid);
     request->buffer_pos = 0;
@@ -242,7 +247,12 @@ too_big:
   {
     http_response_s *response = http_response_create(&request->request);
     response->status = 431;
-    http_response_write_body(response, "Request Header Fields Too Large", 31);
+    if (protocol->settings->public_folder &&
+        !http_response_sendfile2(response, &request->request,
+                                 protocol->settings->public_folder,
+                                 protocol->settings->public_folder_length,
+                                 "431.html", 8, protocol->settings->log_static))
+      http_response_write_body(response, "Request Header Fields Too Large", 31);
     http_response_finish(response);
     sock_close(uuid);
     request->buffer_pos = 0;
@@ -252,7 +262,12 @@ too_big:
     {
       http_response_s *response = http_response_create(&request->request);
       response->status = 413;
-      http_response_write_body(response, "Payload Too Large", 17);
+      if (protocol->settings->public_folder &&
+          !http_response_sendfile2(
+              response, &request->request, protocol->settings->public_folder,
+              protocol->settings->public_folder_length, "413.html", 8,
+              protocol->settings->log_static))
+        http_response_write_body(response, "Payload Too Large", 17);
       http_response_finish(response);
       sock_close(uuid);
       request->buffer_pos = 0;

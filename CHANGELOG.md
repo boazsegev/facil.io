@@ -1,5 +1,11 @@
 # Change Log
 
+### Ver. 0.4.5 (next)
+
+**Feature**: (`http1`) HTTP/1.1 will, in some cases, search for available error files (i.e. "400.html") in the `public_folder` root, allowing for custom error messages.
+
+**Optimize**: (`fio_hash_table`) optimize `fio_ht_s` bin memory allocations.
+
 ### Ver. 0.4.4
 
 **Fix**: (`pubsub`) Fixed collisions between equal channel names on different engines, so that channels are only considered equal if they share the same name as well as the same engine (rather than only the same name)... actually, if they share the same channel name SipHash value XOR'd with the engine's memory location.
