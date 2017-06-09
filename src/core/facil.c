@@ -235,7 +235,7 @@ finish:
 }
 
 /* *****************************************************************************
-Mock Protocol and service Callbacks
+Mock Protocol Callbacks and Service Funcions
 ***************************************************************************** */
 static void mock_on_ev(intptr_t uuid, protocol_s *protocol) {
   (void)uuid;
@@ -249,6 +249,24 @@ static void mock_ping(intptr_t uuid, protocol_s *protocol) {
   sock_force_close(uuid);
 }
 static void mock_idle(void) {}
+
+/* Support for the default pub/sub cluster engine */
+#pragma weak pubsub_cluster_init
+void pubsub_cluster_init(void) {}
+
+/*
+ * Support for the (removed) file caching service.
+ *
+ * It's possible to re-add the service from the `unused` folder.
+ */
+#pragma weak fio_cfd_clear
+void fio_cfd_clear(void) {}
+
+/* perform initialization for external services. */
+static void facil_external_init(void) { pubsub_cluster_init(); }
+
+/* perform cleanup for external services. */
+static void facil_external_cleanup(void) { fio_cfd_clear(); }
 
 /* *****************************************************************************
 The listenning protocol
@@ -606,10 +624,6 @@ static struct {
                         .handlers.prev = &facil_cluster_data.handlers,
                         .lock = SPN_LOCK_INIT};
 
-/* internal support for the default pub/sub cluster engin */
-#pragma weak pubsub_cluster_init
-void pubsub_cluster_init(void) {}
-
 /* message handler */
 typedef struct {
   fio_list_s list;
@@ -758,7 +772,6 @@ static void facil_cluster_init(uint16_t count) {
     facil_attach(facil_cluster_data.pipes[i].in, &stub_protocol);
     facil_attach(facil_cluster_data.pipes[i].out, &stub_protocol);
   }
-  pubsub_cluster_init();
   defer(facil_cluster_register, NULL, NULL);
   return;
 error:
@@ -932,6 +945,7 @@ static void facil_init_run(void *arg, void *arg2) {
     }
   }
   facil_data->need_review = 1;
+  facil_external_init();
   defer(facil_cycle, arg, NULL);
 }
 
@@ -950,6 +964,7 @@ static void facil_cleanup(void *arg) {
   defer_perform();
   evio_close();
   facil_cluster_destroy();
+  facil_external_cleanup();
 }
 
 #undef facil_run
