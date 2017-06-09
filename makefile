@@ -13,7 +13,7 @@ LINKER_FLAGS=-lpthread
 # any include folders, space seperated list
 INCLUDE=
 # optimization level.
-OPTIMIZATION= -O3 -march=native -DSERVER_DELAY_IO=1 -DDEBUG
+OPTIMIZATION= -O3 -march=native -DDEBUG
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
 WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
 
