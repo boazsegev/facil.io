@@ -155,7 +155,7 @@ A NULL terminating byte is written.
 
 Returns the number of bytes actually written (excluding the NULL byte).
 */
-inline size_t http_ul2a(char *dest, size_t num) {
+static inline size_t http_ul2a(char *dest, size_t num) {
   uint8_t digits = 1;
   size_t tmp = num;
   while ((tmp /= 10))
