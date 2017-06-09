@@ -14,14 +14,19 @@ SRC_SUB_PUBLIC_FOLDERS=src/core src/core/types src/services src/http
 SRC_SUB_PRIVATE_FOLDERS=src/bscrypt src/bscrypt/bscrypt src/http/unused
 # any librries required (write in full flags)
 LINKER_FLAGS=-lpthread
-# any include folders, space seperated list
-INCLUDE=
 # optimization level.
-OPTIMIZATION= -O3 -march=native -DDEBUG
+OPTIMIZATION=-O3 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
 WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
+
 # The library details for CMake incorporation. Can be safely removed.
 CMAKE_LIBFILE_NAME=CMakeLists.txt
+
+# any include folders, space seperated list
+INCLUDE=
+
+# any preprocessosr defined flags we want, space seperated list
+FLAGS=DEBUG
 
 ##############
 ## OS specific data - compiler, assembler etc.
@@ -65,12 +70,13 @@ BUILDTREE =$(foreach dir, $(SRCDIR), $(addsuffix /, $(basename $(TMP_ROOT)))$(ba
 # LIB_OBJS = $(foreach source, $(SRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 CCL = $(CC)
 INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
+FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -I, $(flag)))
 SRC = $(SRC_MAIN) $(LIBSRC)
 OBJS = $(foreach source, $(SRC_MAIN) $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 
 # the C flags
-CFLAGS= -g -std=c11 $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
-CPPFLAGS= -std=c++11 $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CFLAGS= -g -std=c11  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CPPFLAGS= -std=c++11 $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 
 $(NAME): build
 
