@@ -15,13 +15,12 @@ struct ht_dict_test_s {
 
 static void test_dict_store(fio_ht_s *dict, char *name, char *data) {
   uint64_t data_len = strlen(data);
-  uint64_t name_len = strlen(name);
   struct ht_dict_test_s *entry = malloc(sizeof(*entry) + data_len + 1);
   if (!entry)
     perror("WTF? can't allocate dictionary entry"), exit(errno);
   memcpy(entry->data, data, data_len + 1);
   entry->len = data_len;
-  entry = (void *)fio_ht_add(dict, &entry->node, fio_ht_hash(name, name_len));
+  entry = (void *)fio_ht_add(dict, &entry->node, fio_ht_hash_cstr(name));
   if (entry) {
     entry = fio_ht_object(struct ht_dict_test_s, node, (void *)(entry));
     fprintf(stderr, "collision node: %p -> %p\n", (void *)entry,
@@ -51,6 +50,19 @@ static void test_fio_types(void) {
   fio_list_s list = FIO_LIST_INIT(list);
   fio_ht_s dict = FIO_HASH_TABLE_INIT(dict);
   fprintf(stderr, "Dictionary test %p\n", (void *)&dict);
+
+  {
+    uint64_t result = fio_ht_hash(
+        "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e", 15);
+    fprintf(stderr, "* fio_ht_hash simple SipHash test %s\n",
+            (result == 0xa129ca6149be45e5ULL) ? "passed" : "FAILED");
+    fprintf(stderr, "* fio_ht_hash and fio_ht_hash_cstr %s\n",
+            (fio_ht_hash("testing if they match", 21) ==
+             fio_ht_hash_cstr("testing if they match"))
+                ? "match"
+                : "FAILED to match!");
+  }
+
   struct ht_dict_test_s *item;
   char tmp[20] = {0};
   for (size_t i = 0; i < 8; i++) {
