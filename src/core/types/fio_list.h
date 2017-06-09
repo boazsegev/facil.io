@@ -47,6 +47,8 @@ fio_list_remove(fio_list_s *item) {
 /** Switches two list items. */
 static inline __attribute__((unused)) void fio_list_switch(fio_list_s *item1,
                                                            fio_list_s *item2) {
+  if (item1 == item2)
+    return;
   fio_list_s tmp = *item1;
   *item1 = *item2;
   *item2 = tmp;
