@@ -36,4 +36,5 @@ target_include_directories(facil.io
   PRIVATE src/bscrypt/bscrypt
   PUBLIC  src/core
   PRIVATE src/core/types
+  PUBLIC  src/services
 )

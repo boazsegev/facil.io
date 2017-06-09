@@ -2,6 +2,17 @@
 
 ### Ver. 0.4.5 (next)
 
+**Feature**: CMake inclusion. Credit to @OwenDelahoy (PR#8).
+
+> To use facil.io in a CMake build you may add it as a submodule to the project's repository.
+>
+>       git submodule add https://github.com/boazsegev/facil.io.git
+
+> Then add the following line the project's `CMakeLists.txt`
+>
+>       add_subdirectory(facil.io)
+
+
 **Feature**: (`http1`) HTTP/1.1 will, in some cases, search for available error files (i.e. "400.html") in the `public_folder` root, allowing for custom error messages.
 
 **Optimize**: (`fio_hash_table`) optimize `fio_ht_s` bin memory allocations.
