@@ -13,19 +13,6 @@ yourself.
 #include <stdint.h>
 #include <stdlib.h>
 
-#ifndef FIO_HT_ACTS_AS_LIST_LIMIT
-/**
- * This value defines the limit at which the Hash table implementation acts as a
- * list.
- *
- * For performance reasons, it sometimes makes sense to wait with bin allocation
- * and management until a hash table is big enough. This value will set this
- * limit.
- *
- * Use 0 to always prefer a Hash table lookup.
- */
-#define FIO_HT_ACTS_AS_LIST_LIMIT 8
-#endif
 /* *****************************************************************************
 Data Types and API
 ***************************************************************************** */
@@ -36,16 +23,17 @@ typedef struct {
   fio_list_s items;
   uint64_t count;
   uint64_t bin_count;
+  uint64_t mask;
   struct fio_list_s *bins;
 } fio_ht_s;
 
 /** Used to initialize an empty `fio_ht_s`. */
 #define FIO_HASH_TABLE_INIT(name)                                              \
-  (fio_ht_s) { .items.next = &((name).items), .items.prev = &((name).items) }
+  (fio_ht_s) { .items = FIO_LIST_INIT_STATIC(name.items) }
 
 /** Used to initialize an empty `fio_ht_s`. */
 #define FIO_HASH_TABLE_STATIC(name)                                            \
-  { .items.next = &((name).items), .items.prev = &((name).items) }
+  { .items = FIO_LIST_INIT_STATIC(name.items) }
 
 typedef struct {
   fio_list_s items;
@@ -54,9 +42,14 @@ typedef struct {
   uint64_t hash;
 } fio_ht_node_s;
 
+#ifndef fio_node2obj
+/** Takes a node pointer (list/hash/dict, etc') and returns it's container. */
+#define fio_node2obj(type, member, ptr)                                        \
+  ((type *)((uintptr_t)(ptr) - (uintptr_t)(&(((type *)0)->member))))
+#endif
+
 /** Takes a list pointer and returns a pointer to it's container. */
-#define fio_ht_object(type, member, pht)                                       \
-  ((type *)((uintptr_t)(pht) - (uintptr_t)(&(((type *)0)->member))))
+#define fio_ht_object(type, member, pht) fio_node2obj(type, member, (pht))
 
 /** A simple SipHash2/4 function implementation that can be used for hashing. */
 FIO_FUNC uint64_t fio_ht_hash(const void *data, size_t len);
@@ -110,87 +103,45 @@ Implementations
  * is removed and replaced. */
 inline FIO_FUNC fio_ht_node_s *fio_ht_add(fio_ht_s *table, fio_ht_node_s *item,
                                           uint64_t hash) {
-  fio_ht_node_s tmp = *item;
-  fio_ht_node_s *old = NULL;
-  /* initialize item */
-  *item = (fio_ht_node_s){
-      .items.next = &item->items,
-      .items.prev = &item->items,
-      .siblings.next = &item->siblings,
-      .siblings.prev = &item->siblings,
-      .parent = table,
-      .hash = hash,
-  };
-
-  if (table->bins) {
-    /* Behave like a Hash Table. */
-    fio_list_for_each(fio_ht_node_s, siblings, old,
-                      (table->bins[item->hash & (table->bin_count - 1)])) {
-      if (item == old) {
-        /* what kind of developer will add something that's already inside? */
-        *item = tmp;
-        return NULL;
-      }
-      if (old->hash == hash) {
-        /* replace inplace. */
-        old->parent = NULL;
-        fio_list_switch(&item->items, &old->items);
-        fio_list_switch(&item->siblings, &old->siblings);
-        return old;
-      }
-    }
-    /* add item to the hash table. */
-    fio_list_add(table->items.prev, &item->items);
-    fio_list_add(table->bins[item->hash & (table->bin_count - 1)].prev,
-                 &item->siblings);
-    table->count++;
-    if (table->count >= ((table->bin_count >> 2) * 3)) {
-      fio_ht_rehash(table, table->bin_count << 1);
-    }
+  fio_ht_node_s *old = fio_ht_find(table, hash);
+  if (old == item)
     return NULL;
-  }
-  /* Behave like a list. */
-  fio_list_for_each(fio_ht_node_s, items, old, (table->items)) {
-    if (item == old) {
-      /* what kind of developer will add something that's already inside? */
-      *item = tmp;
-      return NULL;
-    }
-    if (old->hash == hash) {
-      /* replace inplace. */
-      old->parent = NULL;
-      fio_list_switch(&item->items, &old->items);
-      return old;
-    }
-  }
-  /* add item to the hash table. */
+  /* initialize item */
+  item->parent = table;
+  item->hash = hash;
+  if (old)
+    goto found_old;
   fio_list_add(table->items.prev, &item->items);
   table->count++;
-  if (table->count > FIO_HT_ACTS_AS_LIST_LIMIT)
-    fio_ht_rehash(table, 32);
+  if (table->count >= ((table->bin_count >> 2) * 3)) {
+    fio_ht_rehash(table, (table->bin_count ? (table->bin_count << 1) : 32));
+    return NULL;
+  }
+  fio_list_add(table->bins[item->hash & table->mask].prev, &item->siblings);
   return NULL;
+found_old:
+  /* replace inplace. */
+  *item = *old;
+  old->parent = NULL;
+  old->items = FIO_LIST_INIT(old->items);
+  old->siblings = FIO_LIST_INIT(old->siblings);
+  item->items.prev->next = &item->items;
+  item->items.next->prev = &item->items;
+  item->siblings.prev->next = &item->siblings;
+  item->siblings.next->prev = &item->siblings;
+  return old;
 }
 
 /** Finds an item in the hash table. */
 inline FIO_FUNC fio_ht_node_s *fio_ht_find(fio_ht_s *table,
                                            uint64_t hash_value) {
   fio_ht_node_s *item;
-  if (!table)
+  if (!table || !table->bins)
     return NULL;
-  if (table->bins) {
-    /* Behave like a Hash Table. */
-    fio_list_for_each(fio_ht_node_s, siblings, item,
-                      table->bins[hash_value & (table->bin_count - 1)]) {
-      if (hash_value == item->hash) {
-        return item;
-      }
-    }
-  } else {
-    /* Behave like a list. */
-    fio_list_for_each(fio_ht_node_s, items, item, table->items) {
-      if (hash_value == item->hash) {
-        return item;
-      }
+  fio_list_for_each(fio_ht_node_s, siblings, item,
+                    table->bins[hash_value & (table->mask)]) {
+    if (hash_value == item->hash) {
+      return item;
     }
   }
   return NULL;
@@ -200,9 +151,7 @@ inline FIO_FUNC fio_ht_node_s *fio_ht_find(fio_ht_s *table,
 inline FIO_FUNC fio_ht_node_s *fio_ht_remove(fio_ht_node_s *item) {
   if (!item || !item->parent)
     return item;
-  if (item->parent->bins) /* Behave like a Hash Table. */
-    fio_list_remove(&item->siblings);
-
+  fio_list_remove(&item->siblings);
   fio_list_remove(&item->items);
   item->parent->count--;
   /* ** memory shrinkage? not really... ** */
@@ -240,14 +189,14 @@ inline FIO_FUNC void fio_ht_rehash(fio_ht_s *table, uint64_t bin_count) {
     return;
   table->bin_count = bin_count;
   table->bins = mem;
+  table->mask = bin_count - 1;
   while (bin_count) {
     bin_count--;
     table->bins[bin_count] = FIO_LIST_INIT(table->bins[bin_count]);
   }
   fio_ht_node_s *item;
   fio_list_for_each(fio_ht_node_s, items, item, table->items) {
-    fio_list_add(table->bins[item->hash & (table->bin_count - 1)].prev,
-                 &item->siblings);
+    fio_list_add(table->bins[item->hash & table->mask].prev, &item->siblings);
   }
 }
 

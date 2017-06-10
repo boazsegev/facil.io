@@ -24,6 +24,9 @@ static inline __attribute__((unused)) void fio_list_init(fio_list_s *list) {
 /** A macro that evaluates to an initialized list head. */
 #define FIO_LIST_INIT(name)                                                    \
   (fio_list_s) { .next = &(name), .prev = &(name) }
+/** A macro that evaluates to an initialized list head. */
+#define FIO_LIST_INIT_STATIC(name)                                             \
+  { .next = &(name), .prev = &(name) }
 
 /** Adds a list reference to the list at the specified position. */
 static inline __attribute__((unused)) void fio_list_add(fio_list_s *pos,
@@ -62,9 +65,14 @@ static inline __attribute__((unused)) void fio_list_switch(fio_list_s *item1,
     item1->prev->next = item1;
 }
 
+#ifndef fio_node2obj
+/** Takes a node pointer (list/hash/dict, etc') and returns it's container. */
+#define fio_node2obj(type, member, ptr)                                        \
+  ((type *)((uintptr_t)(ptr) - (uintptr_t)(&(((type *)0)->member))))
+#endif
+
 /** Takes a list pointer and returns a pointer to it's container. */
-#define fio_list_object(type, member, plist)                                   \
-  ((type *)((uintptr_t)(plist) - (uintptr_t)(&(((type *)0)->member))))
+#define fio_list_object(type, member, plist) fio_node2obj(type, member, (plist))
 
 /** iterates the whole list. */
 #define fio_list_for_each(type, member, var, head)                             \

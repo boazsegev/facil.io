@@ -1,6 +1,7 @@
 #ifndef H_LIST_HASH_TESTS_H
 #define H_LIST_HASH_TESTS_H
 
+#include "fio_dict.h"
 #include "fio_hash_table.h"
 
 #include <errno.h>
@@ -45,7 +46,7 @@ static void test_dict_remove(fio_ht_s *dict, char *name) {
   free(entry);
 }
 
-static void test_fio_types(void) {
+static void test_fio_hash_table(void) {
   const size_t TEST_CYCLES = 2000000UL;
   fio_list_s list = FIO_LIST_INIT(list);
   fio_ht_s dict = FIO_HASH_TABLE_INIT(dict);
@@ -71,9 +72,6 @@ static void test_fio_types(void) {
     tmp[6] = 0;
     test_dict_store(&dict, tmp, tmp);
   }
-  if (dict.bins)
-    fprintf(stderr,
-            "ERROR: Hash table has bins when it should act as a list\n");
   if (dict.count != 8)
     fprintf(stderr, "ERROR: Hash table missing objects!\n");
   fio_ht_for_each(struct ht_dict_test_s, node, item, dict)
@@ -116,5 +114,71 @@ static void test_fio_types(void) {
     fprintf(stderr, "ERROR: Hash table should be empty!\n");
   fio_ht_rehash(&dict, 0);
 }
+struct dict_test {
+  fio_dict_s node;
+  char *value;
+};
 
+static void test_fio_dict_task(fio_dict_s *node, void *arg) {
+  char *key = fio_node2obj(struct dict_test, node, node)->value;
+  fprintf(stderr, "*Dictionary test: task  for (%p) %s\n", (void *)node, key);
+  fio_dict_remove(node);
+  node = fio_dict_get(arg, key, 9);
+  if (node)
+    fprintf(stderr,
+            "ERROR (dict): (%p) \"%s\" "
+            "should have been removed\n",
+            (void *)node, fio_node2obj(struct dict_test, node, node)->value);
+}
+
+static void test_fio_dict_small_task(fio_dict_s *node, void *arg) {
+  char *key = fio_node2obj(struct dict_test, node, node)->value;
+  fprintf(stderr, "*Dictionary test: slice (%p) %s %s\n", (void *)node, key,
+          arg ? arg : "");
+}
+
+static void test_fio_dict(void) {
+  fio_dict_s dict = FIO_DICT_INIT;
+  fio_dict_s *tmp;
+  struct dict_test items[5] = {
+      {.value = "channel 1"}, {.value = "channel 2"}, {.value = "Ahannel A"},
+      {.value = "channel 3"}, {.value = "channel 4"},
+  };
+  for (size_t i = 0; i < 5; i++) {
+    tmp = fio_dict_set(&dict, items[i].value, 9, &items[i].node);
+    if (tmp)
+      fprintf(stderr, "* ERROR (dict): an item %p (%s) shouldn't exist\n",
+              (void *)tmp, fio_node2obj(struct dict_test, node, tmp)->value);
+  }
+  fio_dict_each(fio_dict_prefix(&dict, (void *)"chan", 4),
+                test_fio_dict_small_task, NULL);
+  fprintf(stderr, "* Next 7 slices test glob matching.\n");
+  fio_dict_each_match(&dict, "Ahannel A", 9, test_fio_dict_small_task,
+                      "(exact match)");
+  fio_dict_each_match(&dict, "A*A", 3, test_fio_dict_small_task, "(A*A)");
+  fio_dict_each_match(&dict, "Ahannel ?", 9, test_fio_dict_small_task,
+                      "(Ahannel ?)");
+  fio_dict_each_match(&dict, "Ahannel[ ]A", 11, test_fio_dict_small_task,
+                      "(Ahannel[ ]A)");
+  fio_dict_each_match(&dict, "Ahannel [A]", 11, test_fio_dict_small_task,
+                      "(Ahannel [A])");
+  fio_dict_each_match(&dict, "Ahannel[^a-z]A", 14, test_fio_dict_small_task,
+                      "Ahannel[^a-z]A");
+  fio_dict_each_match(&dict, "Ahannel [A-Z]", 13, test_fio_dict_small_task,
+                      "Ahannel [A-Z]");
+  fio_dict_each_match(&dict, "A?a*A", 5, test_fio_dict_small_task, "(A?n*A)");
+  fio_dict_each_match(&dict, "A?a* A", 6, test_fio_dict_small_task, "(A?n* A)");
+  fio_dict_each_match(&dict, "A?a*[^a-z]A", 11, test_fio_dict_small_task,
+                      "(everything)");
+  fio_dict_each(&dict, test_fio_dict_task, &dict);
+  if (!fio_dict_isempty(&dict))
+    fprintf(
+        stderr,
+        "ERROR (dict): Dictionary should be empty, but nodes still exist!\n");
+}
+
+static void test_fio_types(void) {
+  test_fio_hash_table();
+  test_fio_dict();
+}
 #endif
