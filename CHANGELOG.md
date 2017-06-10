@@ -6,7 +6,7 @@
 
 **Changes**: (`facil`) Minor changes to the `fio_cluster_*` API now use signed message types. All negative `msg_type` values are reserved for internal use.
 
-**Changes**: Major folder structure updates make development and support for CMake submodules easier. These changes should also make it easier to push PRs for active projects by simply adding `dev/*` to `.gitignore` (assuming these projects place their development source code in `./dev`).
+**Changes**: Major folder structure updates make development and support for CMake submodules easier. These changes should also make it easier to push PRs for by offering the `dev` folder for any localized testing prior to submitting the PR.
 
 **Feature**: (`pubsub`) channels now use the available `fio_dict_s` (trie) data store. The potential price of the larger data-structure is elevated by it's absolute protection against hash collisions. Also, I hope that since channels are more often searched than created, this should improve performance when searching for channels by both pattern and perfect match. I hope this combination of hash tables (for client lookup) and tries (for channel traversal) will provide the best balance between string matching, pattern matching, iterations and subscription management.
 
