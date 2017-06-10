@@ -5,7 +5,8 @@ public_www/
 Dockerfile
 
 dev/*
-
+!dev/about
+!dev/about/README.md
 .gitignore
 .DS_Store
 .gitmodules
