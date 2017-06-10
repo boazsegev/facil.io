@@ -2,6 +2,14 @@
 
 ### Ver. 0.4.5 (next)
 
+**Broken**: (`pubsub`) pattern matching is recognized as broken for `pubsub_subscribe`. It should now work correctly for `pubsub_publish`. A fix is being devised.
+
+**Changes**: (`facil`) Minor changes to the `fio_cluster_*` API now use signed message types. All negative `msg_type` values are reserved for internal use.
+
+**Changes**: Major folder structure updates make development and support for CMake submodules easier. These changes should also make it easier to push PRs for active projects by simply adding `dev/*` to `.gitignore` (assuming these projects place their development source code in `./dev`).
+
+**Feature**: (`pubsub`) channels now use the available `fio_dict_s` (trie) data store. The potential price of the larger data-structure is elevated by it's absolute protection against hash collisions. Also, I hope that since channels are more often searched than created, this should improve performance when searching for channels by both pattern and perfect match. I hope this combination of hash tables (for client lookup) and tries (for channel traversal) will provide the best balance between string matching, pattern matching, iterations and subscription management.
+
 **Feature**: CMake inclusion. Credit to @OwenDelahoy (PR#8).
 
 > To use facil.io in a CMake build you may add it as a submodule to the project's repository.
@@ -11,7 +19,6 @@
 > Then add the following line the project's `CMakeLists.txt`
 >
 >       add_subdirectory(facil.io)
-
 
 **Feature**: (`http1`) HTTP/1.1 will, in some cases, search for available error files (i.e. "400.html") in the `public_folder` root, allowing for custom error messages.
 
