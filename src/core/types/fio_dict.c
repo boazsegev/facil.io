@@ -221,7 +221,7 @@ void fio_dict_each_match(fio_dict_s *dict, void *pattern, size_t len,
 
   if (!dict || !pattern || !action)
     return;
-  fio_dict_s *child, *head = dict->parent, *to_call = NULL;
+  fio_dict_s *child, *head = dict->parent;
   uint8_t *pos = pattern;
 
   while (len && dict) {
