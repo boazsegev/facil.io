@@ -32,6 +32,9 @@ typedef struct pubsub_engine_s pubsub_engine_s;
 
 /** The information received through a subscription. */
 typedef struct pubsub_message_s {
+  /** The pub/sub engine farwarding this message. */
+  pubsub_engine_s const *engine;
+  /** The pub/sub target channnel. */
   struct {
     char *name;
     uint32_t len;

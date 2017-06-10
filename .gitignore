@@ -4,6 +4,8 @@ html/
 public_www/
 Dockerfile
 
+dev/*
+
 .gitignore
 .DS_Store
 .gitmodules

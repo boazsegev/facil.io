@@ -628,7 +628,7 @@ static struct {
 typedef struct {
   fio_list_s list;
   void (*on_message)(void *data, uint32_t len);
-  uint32_t msg_type;
+  int32_t msg_type;
 } fio_cluster_handler;
 
 /* message sending and protocol. */
@@ -637,7 +637,7 @@ struct facil_cluster_msg_packet {
   spn_lock_i lock;
   struct facil_cluster_msg {
     uint32_t len;
-    uint32_t msg_type;
+    int32_t msg_type;
   } payload;
   uint8_t data[];
 };
@@ -795,7 +795,7 @@ static void facil_cluster_destroy(void) {
   facil_cluster_data.pipes = NULL;
 }
 
-void facil_cluster_set_handler(uint32_t msg_type,
+void facil_cluster_set_handler(int32_t msg_type,
                                void (*on_message)(void *data, uint32_t len)) {
   fio_cluster_handler *hnd;
   spn_lock(&facil_cluster_data.lock);
@@ -823,7 +823,7 @@ static void facil_msg_free(void *msg_) {
   }
   free(msg);
 }
-int facil_cluster_send(uint32_t msg_type, void *data, uint32_t len) {
+int facil_cluster_send(int32_t msg_type, void *data, uint32_t len) {
   if (!defer_fork_is_active()) {
 #ifdef DEBUG
     fprintf(stderr,

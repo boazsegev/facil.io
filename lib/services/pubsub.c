@@ -7,8 +7,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "spnlock.inc"
 
 #include "facil.h"
+#include "fio_dict.h"
 #include "fio_hash_table.h"
-#include "fio_list.h"
 #include "pubsub.h"
 
 #include <errno.h>
@@ -29,10 +29,15 @@ typedef struct {
 
 typedef struct {
   fio_ht_s clients;
-  fio_ht_node_s channels;
   const pubsub_engine_s *engine;
-  char *name;
-  uint32_t len;
+  struct {
+    char *name;
+    uint32_t len;
+  };
+  union {
+    fio_dict_s dict;
+    fio_list_s list;
+  } channels;
   unsigned use_pattern : 1;
 } channel_s;
 
@@ -45,8 +50,8 @@ typedef struct pubsub_sub_s {
   uint32_t ref;
 } client_s;
 
-static fio_ht_s pubsub_channels = FIO_HASH_TABLE_STATIC(pubsub_channels);
-static fio_ht_s pubsub_patterns = FIO_HASH_TABLE_STATIC(pubsub_patterns);
+static fio_dict_s pubsub_channels = FIO_DICT_INIT_STATIC;
+static fio_list_s pubsub_patterns = FIO_LIST_INIT_STATIC(pubsub_patterns);
 
 spn_lock_i pubsub_GIL = SPN_LOCK_INIT;
 
@@ -81,6 +86,7 @@ static void pubsub_deliver_msg(void *client_, void *msg_) {
   msg_s *msg = msg_;
   cl->on_message(cl,
                  (struct pubsub_message_s){
+                     .engine = msg->pub.engine,
                      .channel.name = msg->pub.channel.name,
                      .channel.len = msg->pub.channel.len,
                      .msg.data = msg->pub.msg.data,
@@ -95,163 +101,59 @@ static void pubsub_deliver_msg(void *client_, void *msg_) {
 Pattern Matching
 ***************************************************************************** */
 
-/* returns 1 on match, 0 on non-match */
-static int pubsub_match_pattern(char *pattern, size_t pattern_len, char *name,
-                                size_t name_len) {
-  /* based on the same matching behavior used by Redis
-  https://github.com/antirez/redis/blob/d680eb6dbdf2d2030cb96edfb089be1e2a775ac1/src/util.c#L47
-  */
-  while (pattern_len && name_len) {
-    if (*pattern == '*') {
-      /* eat up all '*' and match whatever */
-      while (*pattern == '*' && pattern_len) {
-        pattern_len--;
-        pattern++;
-      }
-      if (!pattern_len)
-        return 1;
-      /* test the "tail" using recursion for every starting point :-/ */
-      while (name_len) {
-        if (pubsub_match_pattern(pattern, pattern_len, name++, name_len--))
-          return 1;
-      }
-      return 0;
-    }
-    if (*pattern == '[') {
-      int state = 1, match = 0;
-      pattern++;
-      pattern_len--;
-      if (*pattern == '^') {
-        state = 0;
-        pattern++;
-        pattern_len--;
-      }
-      while (*pattern != ']' && !match) {
-        if (*pattern == '\\') {
-          pattern++;
-          pattern_len--;
-        }
-        if (pattern_len < 2)
-          return 0; /* pattern error */
-        if (pattern[1] == '-') {
-          if (pattern_len < 4)
-            return 0; /* pattern error */
-          char end, start = *pattern;
-          pattern += 2;
-          if (*pattern == '\\') {
-            pattern++;
-            pattern_len--;
-          }
-          end = *pattern;
-          if (start > end) {
-            char tmp;
-            tmp = start;
-            start = end;
-            end = tmp;
-          }
-          if (*name >= start && *name <= end)
-            match = 1;
-        } else if (*pattern == *name)
-          match = 1;
-        pattern++;
-        pattern_len--;
-      }
-      /* in case matching was cut short. */
-      while (*pattern != ']' && pattern_len) {
-        pattern++;
-        pattern_len--;
-      }
-      if (match != state)
-        return 0;
-      if (!pattern_len && name_len)
-        return 0;
-      name++;
-      name_len--;
-      pattern++;
-      pattern_len--;
-      continue;
-    } else if (*pattern == '\\' && pattern_len > 1) {
-      pattern++;
-      pattern_len--;
-    }
-    if (*pattern != *name)
-      return 0;
-    pattern++;
-    pattern_len--;
-    name++;
-    name_len--;
-  }
-  if (!name_len) {
-    while (*pattern == '*' && pattern_len) {
-      pattern++;
-      pattern_len--;
-    }
-  }
-  if (!name_len && !pattern_len)
-    return 1;
-  return 0;
-}
+/* TODO: pattern matching using trie dictionary */
 
 /* *****************************************************************************
 Default Engine / Cluster Support
 ***************************************************************************** */
 
 /** Used internally to identify oub/sub cluster messages. */
-#define FACIL_PUBSUB_CLUSTER_MESSAGE_ID ((uint32_t)-5)
+#define FACIL_PUBSUB_CLUSTER_MESSAGE_ID ((int32_t)-1)
 
-static void pubsub_perform_publish(void *msg_, void *ignr) {
+/*
+a `ppublish` / `publish` found this channel as a match...
+Pubblish to clients and test against subscribed patterns.
+*/
+static void pubsub_publish_matched_channel(fio_dict_s *ch_, void *msg_) {
   msg_s *msg = msg_;
-  channel_s *channel, *pattern;
   client_s *cl;
-
-  spn_lock(&pubsub_GIL);
-  if (msg->pub.use_pattern) {
-    fio_ht_for_each(channel_s, channels, channel, pubsub_channels) {
-      if (channel->engine == msg->pub.engine &&
-          pubsub_match_pattern(msg->pub.channel.name, msg->pub.channel.len,
-                               channel->name, channel->len)) {
-        fio_ht_for_each(client_s, clients, cl, channel->clients) {
-          atomic_bump(&msg->ref);
-          atomic_bump(&cl->active);
-          defer(pubsub_deliver_msg, cl, msg);
-        }
-        fio_ht_for_each(channel_s, channels, pattern, pubsub_patterns) {
-          if (pattern->engine == msg->pub.engine &&
-              pubsub_match_pattern(pattern->name, pattern->len, channel->name,
-                                   channel->len)) {
-            fio_ht_for_each(client_s, clients, cl, pattern->clients) {
-              atomic_bump(&msg->ref);
-              atomic_bump(&cl->active);
-              defer(pubsub_deliver_msg, cl, msg);
-            }
-          }
-        }
-      }
-    }
-  } else {
-    channel = (void *)fio_ht_find(
-        &pubsub_channels,
-        (fio_ht_hash(msg->pub.channel.name, msg->pub.channel.len) ^
-         (intptr_t)msg->pub.engine));
-    if (channel) {
-      channel = fio_ht_object(channel_s, channels, channel);
+  channel_s *channel = fio_node2obj(channel_s, channels, ch_);
+  fio_ht_for_each(client_s, clients, cl, channel->clients) {
+    atomic_bump(&msg->ref);
+    atomic_bump(&cl->active);
+    defer(pubsub_deliver_msg, cl, msg);
+  }
+  channel_s *pattern;
+  fio_list_for_each(channel_s, channels.list, pattern, pubsub_patterns) {
+    if (fio_glob_match(channel->name, channel->len, pattern->name,
+                       pattern->len)) {
       fio_ht_for_each(client_s, clients, cl, channel->clients) {
         atomic_bump(&msg->ref);
         atomic_bump(&cl->active);
         defer(pubsub_deliver_msg, cl, msg);
       }
     }
-    fio_ht_for_each(channel_s, channels, channel, pubsub_patterns) {
-      if (channel->engine == msg->pub.engine &&
-          pubsub_match_pattern(channel->name, channel->len,
-                               msg->pub.channel.name, msg->pub.channel.len)) {
-        fio_ht_for_each(client_s, clients, cl, channel->clients) {
-          atomic_bump(&msg->ref);
-          atomic_bump(&cl->active);
-          defer(pubsub_deliver_msg, cl, msg);
-        }
-      }
-    }
+  }
+}
+
+static void pubsub_perform_publish(void *msg_, void *ignr) {
+  msg_s *msg = msg_;
+  fio_dict_s *channel;
+  spn_lock(&pubsub_GIL);
+
+  if (msg->pub.use_pattern) {
+    fio_dict_each_match_glob(fio_dict_prefix(&pubsub_channels,
+                                             (void *)&msg->pub.engine,
+                                             sizeof(void *)),
+                             msg->pub.channel.name, msg->pub.channel.len,
+                             pubsub_publish_matched_channel, msg);
+  } else {
+    channel = (void *)fio_dict_get(fio_dict_prefix(&pubsub_channels,
+                                                   (void *)&msg->pub.engine,
+                                                   sizeof(void *)),
+                                   msg->pub.channel.name, msg->pub.channel.len);
+    if (channel)
+      pubsub_publish_matched_channel(channel, msg);
   }
 
   spn_unlock(&pubsub_GIL);
@@ -350,20 +252,32 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
     return NULL;
   if (args.channel.name && !args.channel.len)
     args.channel.len = strlen(args.channel.name);
+  if (args.channel.len > 1024) {
+    return NULL;
+  }
   if (!args.engine)
     args.engine = &PUBSUB_CLUSTER_ENGINE;
-  fio_ht_s *chlist = args.use_pattern ? &pubsub_patterns : &pubsub_channels;
   channel_s *ch;
   client_s *client;
-  uint64_t ch_hash = (fio_ht_hash(args.channel.name, args.channel.len) ^
-                      (uintptr_t)args.engine);
   uint64_t cl_hash = (fio_ht_hash(&args.on_message, (sizeof(void *) << 1)));
+
   spn_lock(&pubsub_GIL);
-  ch = (void *)fio_ht_find(chlist, ch_hash);
-  if (ch) {
-    ch = fio_ht_object(channel_s, channels, ch);
-    goto found_channel;
+  if (args.use_pattern) {
+    fio_list_for_each(channel_s, channels.list, ch, pubsub_patterns) {
+      if (ch->engine == args.engine && ch->len == args.channel.len &&
+          !memcmp(ch->name, args.channel.name, args.channel.len))
+        goto found_channel;
+    }
+  } else {
+    ch = (void *)fio_dict_get(
+        fio_dict_prefix(&pubsub_channels, (void *)&args.engine, sizeof(void *)),
+        args.channel.name, args.channel.len);
+    if (ch) {
+      ch = fio_node2obj(channel_s, channels, ch);
+      goto found_channel;
+    }
   }
+
   if (args.engine->subscribe((struct pubsub_subscribe_args){
           .engine = args.engine,
           .channel.name = args.channel.name,
@@ -373,7 +287,7 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
           .use_pattern = args.use_pattern,
       }))
     goto error;
-  ch = malloc(sizeof(*ch) + args.channel.len + 1);
+  ch = malloc(sizeof(*ch) + args.channel.len + 1 + sizeof(void *));
   *ch = (channel_s){
       .clients = FIO_HASH_TABLE_INIT(ch->clients),
       .name = (char *)(ch + 1),
@@ -382,8 +296,17 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
       .engine = args.engine,
   };
   memcpy(ch->name, args.channel.name, args.channel.len);
-  ch->name[args.channel.len] = 0;
-  fio_ht_add(chlist, &ch->channels, ch_hash);
+
+  ch->name[args.channel.len + sizeof(void *)] = 0;
+
+  if (args.use_pattern) {
+    fio_list_add(&pubsub_patterns, &ch->channels.list);
+  } else {
+    fio_dict_set(fio_dict_ensure_prefix(&pubsub_channels, (void *)&args.engine,
+                                        sizeof(void *)),
+                 args.channel.name, args.channel.len, &ch->channels.dict);
+  }
+// fprintf(stderr, "Created a new channel for %s\n", args.channel.name);
 found_channel:
 
   client = (void *)fio_ht_find(&ch->clients, cl_hash);
@@ -433,7 +356,11 @@ void pubsub_unsubscribe(pubsub_sub_pt client) {
     return;
   }
   channel_s *ch = client->parent;
-  fio_ht_remove(&ch->channels);
+  if (ch->use_pattern) {
+    fio_list_remove(&ch->channels.list);
+  } else {
+    fio_dict_remove(&ch->channels.dict);
+  }
   spn_unlock(&pubsub_GIL);
   defer(pubsub_free_client, client, NULL);
   ch->engine->unsubscribe((struct pubsub_subscribe_args){

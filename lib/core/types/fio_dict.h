@@ -52,7 +52,7 @@ fio_dict_s *fio_dict_set(fio_dict_s *dict, void *key, size_t key_len,
 fio_dict_s *fio_dict_remove(fio_dict_s *node);
 
 /** Returns a `fio_dict_s *` dictionary (or NULL) of all `prefix` children. */
-fio_dict_s *fio_dict_step(fio_dict_s *dict, uint8_t prefix);
+inline fio_dict_s *fio_dict_step(fio_dict_s *dict, uint8_t prefix);
 
 /** Returns a `fio_dict_s *` dictionary (or NULL) of all `prefix` children. */
 fio_dict_s *fio_dict_prefix(fio_dict_s *dict, void *prefix, size_t len);
@@ -69,10 +69,13 @@ fio_dict_s *fio_dict_ensure_prefix(fio_dict_s *dict, void *prefix, size_t len);
 void fio_dict_each(fio_dict_s *dict,
                    void (*action)(fio_dict_s *node, void *arg), void *arg);
 
-/** Performing an action for each item matching the pattern. */
-void fio_dict_each_match(fio_dict_s *dict, void *pattern, size_t len,
-                         void (*action)(fio_dict_s *node, void *arg),
-                         void *arg);
+/** Performing an action for each item matching the glob pattern. */
+void fio_dict_each_match_glob(fio_dict_s *dict, void *pattern, size_t len,
+                              void (*action)(fio_dict_s *node, void *arg),
+                              void *arg);
+
+/** A binary glob matching helper. */
+int fio_glob_match(void *data, size_t data_len, void *pattern, size_t pat_len);
 
 #define fio_dict_isempty(dict)                                                 \
   (!((dict)->trie[0] || (dict)->trie[1] || (dict)->trie[2] ||                  \

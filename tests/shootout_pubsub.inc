@@ -46,6 +46,7 @@ static void ws_on_pubsub_message(pubsub_sub_pt pubsub, pubsub_message_s msg,
     defer_thread_throttle(1);
     pr = facil_protocol_try_lock((intptr_t)udata, FIO_PR_LOCK_STATE);
   }
+  // fwrite(":", 1, 1, stderr);
   websocket_write((ws_s *)pr, msg.msg.data, msg.msg.len, msg.channel.len == 4);
   facil_protocol_unlock(pr, FIO_PR_LOCK_STATE);
   return;

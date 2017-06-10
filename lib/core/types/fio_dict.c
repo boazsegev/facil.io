@@ -18,13 +18,30 @@ the key "hello1" will cost only 272 bytes... brrr.
 */
 
 /* *****************************************************************************
+Inline variation
+***************************************************************************** */
+
+static inline fio_dict_s *fio_dict_prefix_inline(fio_dict_s *dict,
+                                                 void *prefix_, size_t len) {
+  uint8_t *prefix = prefix_;
+  while (dict && len) {
+    dict = fio_dict_step(dict, *prefix);
+    prefix++;
+    len--;
+  }
+  if (len)
+    return NULL;
+  return dict;
+}
+
+/* *****************************************************************************
 Implementation
 ***************************************************************************** */
 
 /** Returns the `fio_dict_s *` object associated with the key, NULL if none.
  */
 fio_dict_s *fio_dict_get(fio_dict_s *dict, void *key, size_t key_len) {
-  dict = fio_dict_prefix(dict, key, key_len);
+  dict = fio_dict_prefix_inline(dict, key, key_len);
   if (dict && dict->used)
     return dict;
   return NULL;
@@ -38,14 +55,14 @@ fio_dict_s *fio_dict_set(fio_dict_s *dict, void *key, size_t key_len,
   fio_dict_s *old;
   if (!key_len || !dict)
     return NULL;
+  if (!node) {
+    dict = fio_dict_get(dict, key, key_len);
+    fio_dict_remove(dict);
+    return dict;
+  }
   if (key_len > 1) {
     pos += key_len - 1;
-    if (node == NULL) {
-      dict = fio_dict_prefix(dict, key, key_len - 1);
-      if (!dict)
-        return NULL;
-    } else
-      dict = fio_dict_ensure_prefix(dict, key, key_len - 1);
+    dict = fio_dict_ensure_prefix(dict, key, key_len - 1);
   }
   tr = *pos & 0xf;
   if (!dict->trie[tr]) {
@@ -55,21 +72,17 @@ fio_dict_s *fio_dict_set(fio_dict_s *dict, void *key, size_t key_len,
     *dict->trie[tr] = (fio_dict_s){.trie_val = tr, .parent = dict};
   }
   dict = dict->trie[tr];
-  tr = ((*pos) >> 4) & 0xf;
 
+  tr = ((*pos) >> 4) & 0xf;
   if ((old = dict->trie[tr]))
     goto replace_node;
-  /* no need to remove what doesn't exist..*/
-  if (node == NULL)
-    return NULL;
+
   /* no old, but we have a new node we need to initialize and add. */
   *node = (fio_dict_s){.parent = dict, .trie_val = tr, .used = 1};
   dict->trie[tr] = node;
   return NULL;
 
 replace_node:
-  if (node == NULL)
-    goto remove_node;
   /* We have an old node to be replaced with a new one. */
   *node = *old;
   node->used = 1;
@@ -81,9 +94,6 @@ replace_node:
   if (old->used)
     return old;
   return NULL;
-
-remove_node:
-  return fio_dict_remove(old);
 }
 
 /** Returns the old `fio_dict_s *` object associated with the key, if any.*/
@@ -119,7 +129,7 @@ fio_dict_s *fio_dict_remove(fio_dict_s *node) {
 }
 
 /** Returns a `fio_dict_s *` dictionary (or NULL) of all `prefix` children. */
-fio_dict_s *fio_dict_step(fio_dict_s *dict, uint8_t prefix) {
+inline fio_dict_s *fio_dict_step(fio_dict_s *dict, uint8_t prefix) {
   if (!dict)
     return NULL;
   dict = dict->trie[prefix & 0xf];
@@ -130,15 +140,7 @@ fio_dict_s *fio_dict_step(fio_dict_s *dict, uint8_t prefix) {
 
 /** Returns a `fio_dict_s *` dictionary (or NULL) of all `prefix` children. */
 fio_dict_s *fio_dict_prefix(fio_dict_s *dict, void *prefix_, size_t len) {
-  uint8_t *prefix = prefix_;
-  while (dict && len) {
-    dict = fio_dict_step(dict, *prefix);
-    prefix++;
-    len--;
-  }
-  if (len)
-    return NULL;
-  return dict;
+  return fio_dict_prefix_inline(dict, prefix_, len);
 }
 
 /**
@@ -215,9 +217,9 @@ Traverses a dictionary, performing an action for each item.
 based on the same matching behavior used by Redis... hopefully...
 https://github.com/antirez/redis/blob/d680eb6dbdf2d2030cb96edfb089be1e2a775ac1/src/util.c#L47
 */
-void fio_dict_each_match(fio_dict_s *dict, void *pattern, size_t len,
-                         void (*action)(fio_dict_s *node, void *arg),
-                         void *arg) {
+void fio_dict_each_match_glob(fio_dict_s *dict, void *pattern, size_t len,
+                              void (*action)(fio_dict_s *node, void *arg),
+                              void *arg) {
 
   if (!dict || !pattern || !action)
     return;
@@ -250,11 +252,11 @@ void fio_dict_each_match(fio_dict_s *dict, void *pattern, size_t len,
           }
           tr++;
         }
-        fio_dict_each_match(dict, pos, len, action, arg);
+        fio_dict_each_match_glob(dict, pos, len, action, arg);
         tr = dict->trie_val + 1;
         dict = dict->parent;
       }
-      fio_dict_each_match(dict, pos, len, action, arg);
+      fio_dict_each_match_glob(dict, pos, len, action, arg);
       return;
     }
 
@@ -263,8 +265,8 @@ void fio_dict_each_match(fio_dict_s *dict, void *pattern, size_t len,
       len--;
       for (size_t i = 0; i < 256; i++) {
         if (dict->trie[i & 0xf])
-          fio_dict_each_match(dict->trie[i & 0xf]->trie[(i >> 4) & 0xf], pos,
-                              len, action, arg);
+          fio_dict_each_match_glob(dict->trie[i & 0xf]->trie[(i >> 4) & 0xf],
+                                   pos, len, action, arg);
       }
       return;
     }
@@ -323,8 +325,8 @@ void fio_dict_each_match(fio_dict_s *dict, void *pattern, size_t len,
         if (map[i] == state)
           continue;
         if (dict->trie[i & 0xf])
-          fio_dict_each_match(dict->trie[i & 0xf]->trie[(i >> 4) & 0xf], pos,
-                              len, action, arg);
+          fio_dict_each_match_glob(dict->trie[i & 0xf]->trie[(i >> 4) & 0xf],
+                                   pos, len, action, arg);
       }
       return;
     }
@@ -340,4 +342,10 @@ void fio_dict_each_match(fio_dict_s *dict, void *pattern, size_t len,
 
   if (dict && dict->used)
     action(dict, arg);
+}
+
+/** A binary glob matching helper. */
+int fio_glob_match(void *data, size_t data_len, void *pattern, size_t pat_len) {
+
+  return 0;
 }

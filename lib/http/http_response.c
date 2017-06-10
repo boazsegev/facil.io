@@ -46,40 +46,6 @@ static void fallback_http_response_dest(http_response_s *res) {
 }
 
 /* *****************************************************************************
-File-cache service fallback - if the service was removed, fallback to no caching
-***************************************************************************** */
-
-typedef struct fio_cfd_s {
-  struct stat stat;
-  int fd;
-} * fio_cfd_pt;
-
-#define fio_cfd_stat(fio_cfd) (((struct stat *)(fio_cfd))[0])
-#define fio_cfd_fd(fio_cfd) (((int *)((struct stat *)(fio_cfd) + 1))[0])
-
-#pragma weak fio_cfd_open
-fio_cfd_pt fio_cfd_open(const char *file_name, size_t length) {
-  struct stat st;
-  int fd;
-  if (stat(file_name, &st) || (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) ||
-      (fd = open(file_name, O_RDONLY)) == -1)
-    return NULL;
-  fio_cfd_pt item = malloc(sizeof(*item));
-  if (!item)
-    return NULL;
-  *item = (struct fio_cfd_s){.stat = st, .fd = fd};
-  return item;
-  (void)length;
-}
-
-#pragma weak fio_cfd_close_pfd
-void fio_cfd_close_pfd(int *pfd) {
-  fio_cfd_pt item =
-      (fio_cfd_pt)((uintptr_t)(pfd) - (uintptr_t)(&(((fio_cfd_pt)0)->fd)));
-  close(item->fd);
-}
-
-/* *****************************************************************************
 Initialization
 ***************************************************************************** */
 
@@ -245,25 +211,6 @@ int http_response_sendfile(http_response_s *response, int source_fd,
   return vtable[response->http_version](response, source_fd, offset, length);
 }
 /**
-Sends the headers (if they weren't previously sent) and writes the data to the
-underlying socket.
-
-If the connection was already closed, the function will return -1. On success,
-the function returns 0.
-*/
-int http_response_send_cached_file(http_response_s *response, int *pfd,
-                                   void (*pfd_close)(int *), off_t offset,
-                                   size_t length) {
-  static int (*const vtable[2])(http_response_s *, int *, void (*)(int *),
-                                off_t, size_t) = {
-      http1_response_send_cached_file /* HTTP_V1 */, NULL /* HTTP_V2 */,
-  };
-  if (!response->content_length)
-    response->content_length = length;
-  return vtable[response->http_version](response, pfd, pfd_close, offset,
-                                        length);
-}
-/**
 Attempts to send the file requested using an **optional** response object (if
 no response object is pointed to, a temporary response object will be
 created).
@@ -293,7 +240,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   const char *mime = NULL;
   const char *ext = NULL;
   int8_t should_free_response = 0;
-  fio_cfd_pt cfd = NULL;
+  struct stat file_data = {.st_size = 0};
   // fprintf(stderr, "\n\noriginal request path: %s\n", req->path);
   // char *fname = malloc(path_safe_len + path_unsafe_len + 1 + 11);
   if ((path_safe_len + path_unsafe_len) >= (PATH_MAX - 1 - 11))
@@ -342,27 +289,36 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
       fname[path_safe_len + 1] = 'g';
       fname[path_safe_len + 2] = 'z';
       fname[path_safe_len + 3] = 0;
-      cfd = fio_cfd_open(fname, path_safe_len + 3);
-      if (!cfd) {
+      if (stat(fname, &file_data)) {
         buffer[0] = 0;
         fname[path_safe_len] = 0;
-        cfd = fio_cfd_open(fname, path_safe_len + 3);
-        if (!cfd)
+        if (stat(fname, &file_data))
           goto no_file;
       }
     } else {
       buffer[0] = 0;
-      cfd = fio_cfd_open(fname, path_safe_len + 3);
-      if (!cfd)
+      if (stat(fname, &file_data))
         goto no_file;
     }
   }
+  // check that we have a file and not something else
+  if (!S_ISREG(file_data.st_mode) && !S_ISLNK(file_data.st_mode))
+    goto no_file;
 
   if (response == NULL) {
     should_free_response = 1;
     response = http_response_create(request);
     if (log)
       http_response_log_start(response);
+  }
+  // we have a file, time to handle response details.
+  int file = open(fname, O_RDONLY);
+
+  // free the allocated fname memory
+  // free(fname);
+  // fname = NULL;
+  if (file == -1) {
+    goto no_fd_available;
   }
 
   if (buffer[0]) {
@@ -380,14 +336,14 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
     }
   }
   /* add ETag */
-  uint64_t sip = cfd->stat.st_size;
-  sip ^= (uint64_t)cfd->stat.st_mtime;
+  uint64_t sip = (uint64_t)file_data.st_size;
+  sip ^= (uint64_t)file_data.st_mtime;
   sip = siphash24(&sip, sizeof(uint64_t), SIPHASH_DEFAULT_KEY);
   bscrypt_base64_encode(buffer, (void *)&sip, 8);
   http_response_write_header(response, .name = "ETag", .name_len = 4,
                              .value = buffer, .value_len = 12);
 
-  response->last_modified = cfd->stat.st_mtime;
+  response->last_modified = file_data.st_mtime;
   http_response_write_header(response, .name = "Cache-Control", .name_len = 13,
                              .value = "max-age=3600", .value_len = 12);
 
@@ -396,7 +352,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
       memcmp(ext, buffer, 12) == 0) {
     /* send back 304 */
     response->status = 304;
-    fio_cfd_close_pfd(&cfd->fd);
+    close(file);
     http_response_finish(response);
     return 0;
   }
@@ -418,7 +374,7 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
       ext++;
     }
     // fprintf(stderr, "Start: %lu / %lld\n", start, file_data.st_size);
-    if ((off_t)start >= cfd->stat.st_size - 1)
+    if ((off_t)start >= file_data.st_size - 1)
       goto invalid_range;
     ext++;
     while (is_num(*ext)) {
@@ -427,15 +383,15 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
       ext++;
     }
     // going to the EOF (big chunk or EOL requested) - send as file
-    if ((off_t)finish >= cfd->stat.st_size)
-      finish = cfd->stat.st_size;
+    if ((off_t)finish >= file_data.st_size)
+      finish = file_data.st_size;
     char *pos = buffer + 6;
     memcpy(buffer, "bytes ", 6);
     pos += http_ul2a(pos, start);
     *(pos++) = '-';
     pos += http_ul2a(pos, finish);
     *(pos++) = '/';
-    pos += http_ul2a(pos, cfd->stat.st_size);
+    pos += http_ul2a(pos, file_data.st_size);
     http_response_write_header(response, .name = "Content-Range",
                                .name_len = 13, .value = buffer,
                                .value_len = pos - buffer);
@@ -446,13 +402,12 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
 
     if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
       response->content_length = 0;
-      fio_cfd_close_pfd(&cfd->fd);
+      close(file);
       http_response_finish(response);
       return 0;
     }
 
-    http_response_send_cached_file(response, &cfd->fd, fio_cfd_close_pfd, start,
-                                   finish - start + 1);
+    http_response_sendfile(response, file, start, finish - start + 1);
     http_response_finish(response);
     return 0;
   }
@@ -463,23 +418,21 @@ invalid_range:
 
   if (*((uint32_t *)request->method) == *((uint32_t *)HEAD)) {
     response->content_length = 0;
-    fio_cfd_close_pfd(&cfd->fd);
+    close(file);
     http_response_finish(response);
     return 0;
   }
 
-  http_response_send_cached_file(response, &cfd->fd, fio_cfd_close_pfd, 0,
-                                 cfd->stat.st_size);
+  http_response_sendfile(response, file, 0, file_data.st_size);
   http_response_finish(response);
   return 0;
 
-/*
 no_fd_available:
   response->status = 503;
   const char *body = http_response_status_str(503);
   http_response_write_body(response, body, strlen(body));
   http_response_finish(response);
-*/
+
 no_file:
   if (should_free_response && response)
     http_response_destroy(response);
@@ -517,6 +470,9 @@ void http_response_log_start(http_response_s *response) {
 prints out the log to stderr.
 */
 static void http_response_log_finish(http_response_s *response) {
+#define HTTP_REQUEST_LOG_LIMIT 128
+  char buffer[HTTP_REQUEST_LOG_LIMIT];
+
   http_request_s *request = response->request;
   intptr_t bytes_sent = response->content_length;
 
@@ -531,8 +487,6 @@ static void http_response_log_finish(http_response_s *response) {
   // TODO Guess IP address from headers (forwarded) where possible
   sock_peer_addr_s addrinfo = sock_peer_addr(response->fd);
 
-#define HTTP_REQUEST_LOG_LIMIT 128
-  char buffer[HTTP_REQUEST_LOG_LIMIT];
   size_t pos = 0;
   if (addrinfo.addrlen) {
     if (inet_ntop(
@@ -621,7 +575,6 @@ static void http_response_log_finish(http_response_s *response) {
   response->logged = 0;
   fwrite(buffer, 1, pos, stderr);
 }
-
 /* *****************************************************************************
 List matching (status + mime-type)
 *****************************************************************************
@@ -644,8 +597,6 @@ const char *http_response_status_str(uint16_t status) {
               {501, "Not Implemented"},
               {502, "Bad Gateway"},
               {503, "Service Unavailable"},
-              {413, "Payload Too Large"},
-              {414, "URI Too Long"},
               {102, "Processing"},
               {201, "Created"},
               {202, "Accepted"},
@@ -673,6 +624,8 @@ const char *http_response_status_str(uint16_t status) {
               {410, "Gone"},
               {411, "Length Required"},
               {412, "Precondition Failed"},
+              {413, "Payload Too Large"},
+              {414, "URI Too Long"},
               {415, "Unsupported Media Type"},
               {416, "Range Not Satisfiable"},
               {417, "Expectation Failed"},

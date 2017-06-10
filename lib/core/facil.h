@@ -402,7 +402,10 @@ int facil_each(struct facil_each_args_s args);
 #define facil_each(...) facil_each((struct facil_each_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
-Cluster specific API - cluster messaging.
+Cluster specific API - local cluster messaging.
+
+Facil supports message process clustering, so that a multi-process application
+can easily send and receive messages across process boundries.
 ***************************************************************************** */
 
 /**
@@ -411,10 +414,10 @@ Sets a callback / handler for a message of type `msg_type`.
 Callbacks are invoked using an O(n) matching, where `n` is the number of
 registered callbacks.
 
-The `msg_type` value can be any number less than 1,073,741,824. All values
-starting at 1,073,741,824 are reserved for internal use.
+The `msg_type` value can be any positive number up to 2^31-1 (2,147,483,647).
+All values less than 0 are reserved for internal use.
 */
-void facil_cluster_set_handler(uint32_t msg_type,
+void facil_cluster_set_handler(int32_t msg_type,
                                void (*on_message)(void *data, uint32_t len));
 
 /** Sends a message of type `msg_type` to the **other** cluster processes.
@@ -430,7 +433,7 @@ starting at 1,073,741,824 are reserved for internal use.
 Callbacks are invoked using an O(n) matching, where `n` is the number of
 registered callbacks.
 */
-int facil_cluster_send(uint32_t msg_type, void *data, uint32_t len);
+int facil_cluster_send(int32_t msg_type, void *data, uint32_t len);
 
 /* *****************************************************************************
 Lower Level API - for special circumstances, use with care under .

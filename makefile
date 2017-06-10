@@ -5,13 +5,15 @@ OUT_ROOT=./tmp
 # All object files will be placed in this folder
 TMP_ROOT=./tmp
 # The none library .c file(s) (i.e., the one with `int main(void)`.
-SRC_MAIN=main.c
+MAIN_ROOT=./dev
+# any allowed subfolders in the main root
+MAIN_SUBFOLDERS=http
 # the .c and .cpp source files root folder - subfolders are automatically included
-SRC_ROOT=
-# any allowed subfolders in the src root
-SRC_SUB_PUBLIC_FOLDERS=src/core src/core/types src/services src/http
-# privately used subfolders in the src root (this distinction is for CMake)
-SRC_SUB_PRIVATE_FOLDERS=src/bscrypt src/bscrypt/bscrypt src/http/unused
+LIB_ROOT=./lib
+# publicly used subfolders in the lib root
+LIB_PUBLIC_SUBFOLDERS=core core/types services http
+# privately used subfolders in the lib root (this distinction is for CMake)
+LIB_PRIVATE_SUBFOLDERS=bscrypt bscrypt/bscrypt
 # any librries required (write in full flags)
 LINKER_FLAGS=-lpthread
 # optimization level.
@@ -23,7 +25,7 @@ WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
 CMAKE_LIBFILE_NAME=CMakeLists.txt
 
 # any include folders, space seperated list
-INCLUDE=
+INCLUDE= ./
 
 # any preprocessosr defined flags we want, space seperated list
 FLAGS=DEBUG
@@ -60,19 +62,30 @@ else
 
 endif
 
-#auto computed values
+#####################
+# Auto computed values
 BIN = $(OUT_ROOT)/$(NAME)
-PUBSRCDIR = $(SRC_ROOT) $(foreach dir, $(SRC_SUB_PUBLIC_FOLDERS), $(addsuffix /,$(basename $(SRC_ROOT)))$(dir))
-PRIVSRCDIR = $(foreach dir, $(SRC_SUB_PRIVATE_FOLDERS), $(addsuffix /,$(basename $(SRC_ROOT)))$(dir))
-SRCDIR = $(PUBSRCDIR) $(PRIVSRCDIR)
-LIBSRC = $(foreach dir, $(SRCDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
-BUILDTREE =$(foreach dir, $(SRCDIR), $(addsuffix /, $(basename $(TMP_ROOT)))$(basename $(dir)))
-# LIB_OBJS = $(foreach source, $(SRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+
+LIBDIR_PUB = $(LIB_ROOT) $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
+LIBDIR_PRIV = $(foreach dir, $(LIB_PRIVATE_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
+
+LIBDIR = $(LIBDIR_PUB) $(LIBDIR_PRIV)
+LIBSRC = $(foreach dir, $(LIBDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
+
+MAINDIR = $(MAIN_ROOT) $(foreach dir, $(MAIN_SUBFOLDERS), $(addsuffix /,$(basename $(MAIN_ROOT)))$(dir))
+MAINSRC = $(foreach dir, $(MAINDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
+
+FOLDERS = $(LIBDIR) $(MAINDIR)
+SOURCES = $(LIBSRC) $(MAINSRC)
+
+BUILDTREE =$(foreach dir, $(FOLDERS), $(addsuffix /, $(basename $(TMP_ROOT)))$(basename $(dir)))
+
 CCL = $(CC)
-INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(SRCDIR),$(addprefix -I, $(dir)))
+
+INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(FOLDERS),$(addprefix -I, $(dir)))
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -I, $(flag)))
-SRC = $(SRC_MAIN) $(LIBSRC)
-OBJS = $(foreach source, $(SRC_MAIN) $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+
+OBJS = $(foreach source, $(SOURCES), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 
 # the C flags
 CFLAGS= -g -std=c11  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
@@ -141,8 +154,8 @@ cmake:
 	@echo 'add_library(facil.io $${facil.io_SOURCES})' >> $(CMAKE_LIBFILE_NAME)
 	@echo 'target_link_libraries(facil.io PRIVATE Threads::Threads)' >> $(CMAKE_LIBFILE_NAME)
 	@echo 'target_include_directories(facil.io' >> $(CMAKE_LIBFILE_NAME)
-	@$(foreach src,$(PUBSRCDIR),echo '  PUBLIC  $(src)' >> $(CMAKE_LIBFILE_NAME);)
-	@$(foreach src,$(PRIVSRCDIR),echo '  PRIVATE $(src)' >> $(CMAKE_LIBFILE_NAME);)
+	@$(foreach src,$(LIBDIR_PUB),echo '  PUBLIC  $(src)' >> $(CMAKE_LIBFILE_NAME);)
+	@$(foreach src,$(LIBDIR_PRIV),echo '  PRIVATE $(src)' >> $(CMAKE_LIBFILE_NAME);)
 	@echo ')' >> $(CMAKE_LIBFILE_NAME)
 	@echo '' >> $(CMAKE_LIBFILE_NAME)
 
@@ -152,19 +165,21 @@ endif
 vars:
 	@echo "BIN: $(BIN)"
 	@echo ""
-	@echo "PUBSRCDIR: $(PUBSRCDIR)"
+	@echo "LIBDIR_PUB: $(LIBDIR_PUB)"
 	@echo ""
-	@echo "PRIVSRCDIR: $(PRIVSRCDIR)"
+	@echo "LIBDIR_PRIV: $(LIBDIR_PRIV)"
 	@echo ""
-	@echo "SRCDIR: $(SRCDIR)"
+	@echo "MAINDIR: $(MAINDIR)"
+	@echo ""
+	@echo "FOLDERS: $(FOLDERS)"
+	@echo ""
+	@echo "BUILDTREE: $(BUILDTREE)"
 	@echo ""
 	@echo "LIBSRC: $(LIBSRC)"
 	@echo ""
-	@echo "SRC_MAIN: $(SRC_MAIN)"
+	@echo "MAINSRC: $(MAINSRC)"
 	@echo ""
-	@echo "SRC: $(SRC)"
-	@echo ""
-	@echo "BUILDTREE: $(BUILDTREE)"
+	@echo "SOURCES: $(SOURCES)"
 	@echo ""
 	@echo "OBJS: $(OBJS)"
 	@echo ""
