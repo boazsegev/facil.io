@@ -117,17 +117,19 @@ Pubblish to clients and test against subscribed patterns.
 static void pubsub_publish_matched_channel(fio_dict_s *ch_, void *msg_) {
   msg_s *msg = msg_;
   client_s *cl;
-  channel_s *channel = fio_node2obj(channel_s, channels, ch_);
-  fio_ht_for_each(client_s, clients, cl, channel->clients) {
-    atomic_bump(&msg->ref);
-    atomic_bump(&cl->active);
-    defer(pubsub_deliver_msg, cl, msg);
+  if (ch_) {
+    channel_s *channel = fio_node2obj(channel_s, channels, ch_);
+    fio_ht_for_each(client_s, clients, cl, channel->clients) {
+      atomic_bump(&msg->ref);
+      atomic_bump(&cl->active);
+      defer(pubsub_deliver_msg, cl, msg);
+    }
   }
   channel_s *pattern;
   fio_list_for_each(channel_s, channels.list, pattern, pubsub_patterns) {
-    if (fio_glob_match(channel->name, channel->len, pattern->name,
-                       pattern->len)) {
-      fio_ht_for_each(client_s, clients, cl, channel->clients) {
+    if (fio_glob_match(msg->pub.channel.name, msg->pub.channel.len,
+                       pattern->name, pattern->len)) {
+      fio_ht_for_each(client_s, clients, cl, pattern->clients) {
         atomic_bump(&msg->ref);
         atomic_bump(&cl->active);
         defer(pubsub_deliver_msg, cl, msg);
@@ -152,8 +154,7 @@ static void pubsub_perform_publish(void *msg_, void *ignr) {
                                                    (void *)&msg->pub.engine,
                                                    sizeof(void *)),
                                    msg->pub.channel.name, msg->pub.channel.len);
-    if (channel)
-      pubsub_publish_matched_channel(channel, msg);
+    pubsub_publish_matched_channel(channel, msg);
   }
 
   spn_unlock(&pubsub_GIL);
