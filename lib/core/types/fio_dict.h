@@ -18,6 +18,7 @@ the key "hello1" will cost only 272 bytes... brrr.
 */
 #define H_FIO_DICT_H
 
+#include <stdint.h>
 #include <stdlib.h>
 
 typedef struct fio_dict_s {
@@ -52,7 +53,7 @@ fio_dict_s *fio_dict_set(fio_dict_s *dict, void *key, size_t key_len,
 fio_dict_s *fio_dict_remove(fio_dict_s *node);
 
 /** Returns a `fio_dict_s *` dictionary (or NULL) of all `prefix` children. */
-inline fio_dict_s *fio_dict_step(fio_dict_s *dict, uint8_t prefix);
+fio_dict_s *fio_dict_step(fio_dict_s *dict, uint8_t prefix);
 
 /** Returns a `fio_dict_s *` dictionary (or NULL) of all `prefix` children. */
 fio_dict_s *fio_dict_prefix(fio_dict_s *dict, void *prefix, size_t len);
