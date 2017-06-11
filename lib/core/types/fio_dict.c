@@ -351,7 +351,8 @@ int fio_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
    * https://github.com/opnfv/kvmfornfv/blob/master/kernel/lib/glob.c
    *
    * Original Copyright 2015 Open Platform for NFV Project, Inc. and its
-   * contributors Under the MIT license.
+   * contributors
+   * Under the MIT license.
    */
 
   /*
