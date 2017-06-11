@@ -374,6 +374,7 @@ listener_alloc(struct facil_listen_args settings) {
         .udata = settings.udata,
         .on_start = settings.on_start,
         .on_finish = settings.on_finish,
+        .on_finish_rw = settings.on_finish_rw,
         .set_rw_hooks = settings.set_rw_hooks,
         .rw_udata = settings.rw_udata,
     };
