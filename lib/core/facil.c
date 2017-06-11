@@ -475,7 +475,7 @@ static void connector_on_close(protocol_s *pconnector) {
 #undef facil_connect
 intptr_t facil_connect(struct facil_connect_args opt) {
   if (!opt.address || !opt.port || !opt.on_connect)
-    return -1;
+    goto error;
   if (!opt.set_rw_hooks)
     opt.set_rw_hooks = listener_set_rw_hooks;
   if (!facil_data->last_cycle)
@@ -494,15 +494,19 @@ intptr_t facil_connect(struct facil_connect_args opt) {
       .opened = 0,
   };
   if (!connector)
-    return -1;
+    goto error;
   intptr_t uuid = sock_connect(opt.address, opt.port);
   if (uuid == -1)
-    return -1;
+    goto error;
   if (facil_attach(uuid, &connector->protocol) == -1) {
     sock_close(uuid);
     return -1;
   }
   return uuid;
+error:
+  if (opt.on_fail)
+    opt.on_fail(opt.udata);
+  return -1;
 }
 
 /* *****************************************************************************

@@ -74,20 +74,24 @@ typedef struct {
   The length of the public_folder string.
   */
   size_t public_folder_length;
+  /** Opaque user data. */
+  void *udata;
+  /** Opaque user data for the optional `set_rw_hooks`. */
+  void *rw_udata;
+  /** (optional) the callback to be performed when requests come in. */
+  void (*on_finish)(void *udata, void *rw_udata);
   /** (optional)
    * Allows a an implementation for the transport layer (i.e. TLS) without
    * effecting the HTTP protocol.
    */
   sock_rw_hook_s *(*set_rw_hooks)(intptr_t fduuid, void *rw_udata);
-  /** Opaque user data for `set_rw_hooks`. */
-  void *rw_udata;
   /**
   Logging flag - set to TRUE to log static file requests.
 
   Dynamic request logging is always the dynamic application's responsibility.
   */
   uint8_t log_static;
-  /** An HTTP connection timeout. For HTTP/1.1 this defaults to ~5 seconds.*/
+  /** An HTTP/1.x connection timeout. Defaults to ~5 seconds.*/
   uint8_t timeout;
   /**
   The default HTTP version which a new connection will use. At the moment, only

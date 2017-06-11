@@ -55,7 +55,7 @@ typedef struct {
 } protocol_s; ///*
 ```
 
-Protocol object instances should be initiated per connection, since `facil.io` uses a locking mechanism that prevents the same protocol object from running it's callback concurrently.
+Protocol object instances should be initiated per connection, since `facil.io` uses a locking mechanism that prevents the same protocol object from running it's callbacks concurrently.
 
 By reviewing the HTTP and Websocket examples in the facil.io codebase, it's easy to see that easily the `protocol_s` "class" can be extended to add more data / features that might be required. "C" objects can use a typecasting stye of inheritance which comes very handy when implementing network protocols.
 

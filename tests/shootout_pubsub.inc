@@ -36,19 +36,19 @@ sleep 10 while `websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 
 static void ws_on_pubsub_message(pubsub_sub_pt pubsub, pubsub_message_s msg,
                                  void *udata) {
-  protocol_s *pr = facil_protocol_try_lock((intptr_t)udata, FIO_PR_LOCK_STATE);
+  protocol_s *pr = facil_protocol_try_lock((intptr_t)udata, FIO_PR_LOCK_WRITE);
   while (!pr) {
     if (errno == EBADF) {
-      fwrite("X", 1, 1, stderr);
+      // fwrite("X", 1, 1, stderr);
       return;
     }
-    // fwrite("-", 1, 1, stderr);
+    fwrite("-", 1, 1, stderr);
     defer_thread_throttle(1);
-    pr = facil_protocol_try_lock((intptr_t)udata, FIO_PR_LOCK_STATE);
+    pr = facil_protocol_try_lock((intptr_t)udata, FIO_PR_LOCK_WRITE);
   }
   // fwrite(":", 1, 1, stderr);
   websocket_write((ws_s *)pr, msg.msg.data, msg.msg.len, msg.channel.len == 4);
-  facil_protocol_unlock(pr, FIO_PR_LOCK_STATE);
+  facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   return;
   (void)pubsub;
 }
@@ -81,11 +81,11 @@ static void ws_shootout_pubsub(ws_s *ws, char *data, size_t size,
   (void)(size);
   if (data[0] == 'b') {
     pubsub_publish(.channel.name = "binary", .msg.data = data, .msg.len = size);
-    fwrite(".", 1, 1, stderr);
+    // fwrite(".", 1, 1, stderr);
     data[0] = 'r';
     websocket_write(ws, data, size, 0);
   } else if (data[9] == 'b') {
-    fwrite(".", 1, 1, stderr);
+    // fwrite(".", 1, 1, stderr);
     pubsub_publish(.channel.name = "text", .msg.data = data, .msg.len = size);
     /* send result */
     size = size + (25 - 19);

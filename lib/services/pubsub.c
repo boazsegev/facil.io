@@ -260,7 +260,8 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
     args.engine = &PUBSUB_CLUSTER_ENGINE;
   channel_s *ch;
   client_s *client;
-  uint64_t cl_hash = (fio_ht_hash(&args.on_message, (sizeof(void *) << 1)));
+  uint64_t cl_hash = ((uintptr_t)args.on_message << (sizeof(void *) << 1)) ^
+                     (uintptr_t)args.udata;
 
   spn_lock(&pubsub_GIL);
   if (args.use_pattern) {
