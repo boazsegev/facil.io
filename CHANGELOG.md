@@ -6,11 +6,13 @@
 
 **Fix**: (`pubsub`, `fio_dict`) Fixed glob pattern matching... I hope. It seems to work fine, but I'm not sure it the algorithm matches the Redis implementation which is the de-facto standard for channel pattern matching.
 
+**Fix**: (`http`) `http_listen` will now always *copy* the string for the `public_folder`, allowing dynamic strings to be safely used.
+
+**Fix**: (`facil`) `facil_listen` will now always *copy* the string for the `port`, allowing dynamic strings to be safely used when `FACIL_PRINT_STATE` is set.
+
 **Changes**: (`facil`) Minor changes to the `fio_cluster_*` API now use signed message types. All negative `msg_type` values are reserved for internal use.
 
 **Changes**: Major folder structure updates make development and support for CMake submodules easier. These changes should also make it easier to push PRs for by offering the `dev` folder for any localized testing prior to submitting the PR.
-
-**Minor**: (`http`) `http_listen` will now always copy the string for the `public_folder`, allowing temporary strings to be safely handled.
 
 **Feature**: (`http`) `http_listen` now supports an `on_finish` callback.
 
