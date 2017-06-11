@@ -40,10 +40,10 @@ void http_on_finish(void *set) {
   if (settings->on_finish)
     settings->on_finish(settings->udata, settings->rw_udata);
 
-  if (settings->private_metaflags & 1)
+  if (settings->private_metaflags & 2) {
     free((void *)settings->public_folder);
-  if (settings->private_metaflags & 2)
     free(settings);
+  }
 }
 
 /**
@@ -87,8 +87,12 @@ int http_listen(const char *port, const char *address,
       memcpy(tmp + home_len, settings->public_folder + 1,
              settings->public_folder_length); // copy also the NULL
       settings->public_folder = tmp;
-      settings->private_metaflags |= 1;
       settings->public_folder_length = strlen(settings->public_folder);
+    } else {
+      settings->public_folder = malloc(settings->public_folder_length + 1);
+      memcpy((void *)settings->public_folder, arg_settings.public_folder,
+             settings->public_folder_length);
+      ((uint8_t *)settings->public_folder)[settings->public_folder_length] = 0;
     }
   }
 

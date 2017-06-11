@@ -7,11 +7,14 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_HTTP_REQUEST_H
 #define H_HTTP_REQUEST_H
 typedef struct http_request_s http_request_s;
+
 #include "http.h"
 
 struct http_request_s {
   /** the HTTP version, also controlls the `http_request_s` flavor. */
   enum HTTP_VERSION http_version;
+  /** A pointer to the protocol's settings */
+  const http_settings_s *settings;
   /** the HTTP connection identifier. */
   intptr_t fd;
   /** this is an opaque pointer, intended for request pooling / chaining */

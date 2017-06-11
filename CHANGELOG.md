@@ -10,6 +10,8 @@
 
 **Changes**: Major folder structure updates make development and support for CMake submodules easier. These changes should also make it easier to push PRs for by offering the `dev` folder for any localized testing prior to submitting the PR.
 
+**Minor**: (`http`) `http_listen` will now always copy the string for the `public_folder`, allowing temporary strings to be safely handled.
+
 **Feature**: (`http`) `http_listen` now supports an `on_finish` callback.
 
 **Feature**: (`pubsub`) channels now use the available `fio_dict_s` (trie) data store. The potential price of the larger data-structure is elevated by it's absolute protection against hash collisions. Also, I hope that since channels are more often searched than created, this should improve performance when searching for channels by both pattern and perfect match. I hope this combination of hash tables (for client lookup) and tries (for channel traversal) will provide the best balance between string matching, pattern matching, iterations and subscription management.

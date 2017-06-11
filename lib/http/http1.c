@@ -73,6 +73,7 @@ static http1_protocol_s *http1_alloc(void) {
   http1_pool.next = pr->next;
   spn_unlock(&http1_pool.lock);
   http1_request_clear(&pr->request.request);
+  pr->request.request.settings = pr->settings;
   return pr;
 use_malloc:
   if (http1_pool.init == 0)
@@ -191,6 +192,7 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol) {
     if (request->request.host == NULL)
       goto bad_request;
     http_settings_s *settings = protocol->settings;
+    request->request.settings = settings;
     // call request callback
     if (protocol && settings &&
         (request->request.upgrade || settings->public_folder == NULL ||

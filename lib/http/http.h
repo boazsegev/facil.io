@@ -28,6 +28,9 @@ typedef struct {
   };
 } http_header_s;
 
+/** Settings typedef */
+typedef struct http_settings_s http_settings_s;
+
 /* *****************************************************************************
 Core include files
 */
@@ -56,7 +59,7 @@ HTTP Core API & data structure
 */
 
 /** Manages protocol settings for the HTTP protocol */
-typedef struct {
+struct http_settings_s {
   /**
   The maximum size of an HTTP request's body (when posting data).
 
@@ -102,7 +105,7 @@ typedef struct {
   internal flag for library use.
   */
   uint8_t private_metaflags;
-} http_settings_s;
+};
 
 typedef protocol_s *(*http_on_open_func)(intptr_t, void *);
 typedef void (*http_on_finish_func)(void *);
