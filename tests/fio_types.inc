@@ -153,28 +153,51 @@ static void test_fio_dict(void) {
   fio_dict_each(fio_dict_prefix(&dict, (void *)"chan", 4),
                 test_fio_dict_small_task, NULL);
   fprintf(stderr, "* Next 7 slices test glob matching.\n");
-  fio_dict_each_match(&dict, "Ahannel A", 9, test_fio_dict_small_task,
-                      "(exact match)");
-  fio_dict_each_match(&dict, "A*A", 3, test_fio_dict_small_task, "(A*A)");
-  fio_dict_each_match(&dict, "Ahannel ?", 9, test_fio_dict_small_task,
-                      "(Ahannel ?)");
-  fio_dict_each_match(&dict, "Ahannel[ ]A", 11, test_fio_dict_small_task,
-                      "(Ahannel[ ]A)");
-  fio_dict_each_match(&dict, "Ahannel [A]", 11, test_fio_dict_small_task,
-                      "(Ahannel [A])");
-  fio_dict_each_match(&dict, "Ahannel[^a-z]A", 14, test_fio_dict_small_task,
-                      "Ahannel[^a-z]A");
-  fio_dict_each_match(&dict, "Ahannel [A-Z]", 13, test_fio_dict_small_task,
-                      "Ahannel [A-Z]");
-  fio_dict_each_match(&dict, "A?a*A", 5, test_fio_dict_small_task, "(A?n*A)");
-  fio_dict_each_match(&dict, "A?a* A", 6, test_fio_dict_small_task, "(A?n* A)");
-  fio_dict_each_match(&dict, "A?a*[^a-z]A", 11, test_fio_dict_small_task,
-                      "(everything)");
+  fio_dict_each_match_glob(&dict, "Ahannel A", 9, test_fio_dict_small_task,
+                           "(exact match)");
+  fio_dict_each_match_glob(&dict, "A*A", 3, test_fio_dict_small_task, "(A*A)");
+  fio_dict_each_match_glob(&dict, "Ahannel ?", 9, test_fio_dict_small_task,
+                           "(Ahannel ?)");
+  fio_dict_each_match_glob(&dict, "Ahannel[ ]A", 11, test_fio_dict_small_task,
+                           "(Ahannel[ ]A)");
+  fio_dict_each_match_glob(&dict, "Ahannel [A]", 11, test_fio_dict_small_task,
+                           "(Ahannel [A])");
+  fio_dict_each_match_glob(&dict, "Ahannel[^a-z]A", 14,
+                           test_fio_dict_small_task, "(Ahannel[^a-z]A)");
+  fio_dict_each_match_glob(&dict, "Ahannel [A-Z]", 13, test_fio_dict_small_task,
+                           "(Ahannel [A-Z])");
+  fio_dict_each_match_glob(&dict, "A?a*A", 5, test_fio_dict_small_task,
+                           "(A?n*A)");
+  fio_dict_each_match_glob(&dict, "A?a* A", 6, test_fio_dict_small_task,
+                           "(A?n* A)");
+  fio_dict_each_match_glob(&dict, "A?a*[^a-z]A", 11, test_fio_dict_small_task,
+                           "(everything)");
+  fprintf(stderr, "* Next slices test glob matching for: *[0-9].\n");
+  fio_dict_each_match_glob(&dict, "*[1-9]", 6, test_fio_dict_small_task,
+                           "(everything)");
+  fprintf(stderr, "* Match and clear at the same time.\n");
   fio_dict_each(&dict, test_fio_dict_task, &dict);
   if (!fio_dict_isempty(&dict))
     fprintf(
         stderr,
         "ERROR (dict): Dictionary should be empty, but nodes still exist!\n");
+  if (fio_glob_match((uint8_t *)"A String To Match", 17, (uint8_t *)"[A-Z]*",
+                     6))
+    fprintf(stderr, "* Simple glob: [A-Z]*\n");
+  if (fio_glob_match((uint8_t *)"A String To Match", 17, (uint8_t *)"A String*",
+                     9))
+    fprintf(stderr, "* Simple glob: A String*\n");
+  if (fio_glob_match((uint8_t *)"A String To Match", 17,
+                     (uint8_t *)"? Str?ng To Matc?", 17))
+    fprintf(stderr, "* Simple glob: ? Str?ng To Matc?\n");
+  if (fio_glob_match((uint8_t *)"A String To Match", 17,
+                     (uint8_t *)"*ch", 3))
+    fprintf(stderr, "* Simple glob: *ch\n");
+  if (fio_glob_match((uint8_t *)"A String To Match", 17,
+                     (uint8_t *)"[A-Z] String*ch", 15))
+    fprintf(stderr, "* Simple glob matching might be working.\n");
+  else
+    fprintf(stderr, "* Simple glob matching is broken.\n");
 }
 
 static void test_fio_types(void) {

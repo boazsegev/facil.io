@@ -289,7 +289,7 @@ void fio_dict_each_match_glob(fio_dict_s *dict, void *pattern, size_t len,
           len--;
         }
         if (pos[1] == '-') {
-          if (len <= 4) {
+          if (len < 4) {
             return; /* pattern error */
           }
           uint8_t end, start;
@@ -378,14 +378,16 @@ int fio_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
     switch (d) {
     case '?': /* Wildcard: anything goes */
       break;
+
     case '*':       /* Any-length wildcard */
       if (!pat_len) /* Optimize trailing * case */
         return 1;
       back_pat = pattern;
       back_pat_len = pat_len;
       back_str = --data; /* Allow zero-length match */
-      back_str_len = data_len + 1;
+      back_str_len = ++data_len;
       break;
+
     case '[': { /* Character class */
       uint8_t match = 0, inverted = (*pattern == '^');
       uint8_t *cls = pattern + inverted;
@@ -425,16 +427,14 @@ int fio_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
     default: /* Literal character */
       if (c == d)
         break;
-
     backtrack:
       if (!back_pat)
         return 0; /* No point continuing */
       /* Try again from last *, one character later in str. */
       pattern = back_pat;
       data = ++back_str;
-      data_len = back_str_len;
+      data_len = --back_str_len;
       pat_len = back_pat_len;
-      break;
     }
   }
   return !data_len && !pat_len;
