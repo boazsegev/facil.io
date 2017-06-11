@@ -2,8 +2,6 @@
 
 ### Ver. 0.4.5 (next)
 
-**Broken**: (`pubsub`) pattern matching is recognized as broken for `pubsub_subscribe`. It should now work correctly for `pubsub_publish`. A fix is being devised.
-
 **Changes**: (`facil`) Minor changes to the `fio_cluster_*` API now use signed message types. All negative `msg_type` values are reserved for internal use.
 
 **Changes**: Major folder structure updates make development and support for CMake submodules easier. These changes should also make it easier to push PRs for by offering the `dev` folder for any localized testing prior to submitting the PR.

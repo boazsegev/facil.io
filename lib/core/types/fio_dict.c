@@ -344,8 +344,95 @@ void fio_dict_each_match_glob(fio_dict_s *dict, void *pattern, size_t len,
     action(dict, arg);
 }
 
-/** A binary glob matching helper. */
-int fio_glob_match(void *data, size_t data_len, void *pattern, size_t pat_len) {
+/** A binary glob matching helper. Returns 1 on match, otherwise returns 0. */
+int fio_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
+                   size_t pat_len) {
+  /* adapted, with thankfulness, from the code at:
+   * https://github.com/opnfv/kvmfornfv/blob/master/kernel/lib/glob.c
+   *
+   * Original Copyright 2015 Open Platform for NFV Project, Inc. and its
+   * contributors Under the MIT license.
+   */
 
+  /*
+   * Backtrack to previous * on mismatch and retry starting one
+   * character later in the string.  Because * matches all characters
+   * (no exception for /), it can be easily proved that there's
+   * never a need to backtrack multiple levels.
+   */
+  uint8_t *back_pat = NULL, *back_str = data;
+  size_t back_pat_len = 0, back_str_len = data_len;
+
+  /*
+   * Loop over each token (character or class) in pat, matching
+   * it against the remaining unmatched tail of str.  Return false
+   * on mismatch, or true after matching the trailing nul bytes.
+   */
+  while (data_len) {
+    uint8_t c = *data++;
+    uint8_t d = *pattern++;
+    data_len--;
+    pat_len--;
+
+    switch (d) {
+    case '?': /* Wildcard: anything goes */
+      break;
+    case '*':       /* Any-length wildcard */
+      if (!pat_len) /* Optimize trailing * case */
+        return 1;
+      back_pat = pattern;
+      back_pat_len = pat_len;
+      back_str = --data; /* Allow zero-length match */
+      back_str_len = data_len + 1;
+      break;
+    case '[': { /* Character class */
+      uint8_t match = 0, inverted = (*pattern == '^');
+      uint8_t *cls = pattern + inverted;
+      uint8_t a = *cls++;
+
+      /*
+       * Iterate over each span in the character class.
+       * A span is either a single character a, or a
+       * range a-b.  The first span may begin with ']'.
+       */
+      do {
+        uint8_t b = a;
+
+        if (cls[0] == '-' && cls[1] != ']') {
+          b = cls[1];
+
+          cls += 2;
+          if (a > b) {
+            uint8_t tmp = a;
+            a = b;
+            b = tmp;
+          }
+        }
+        match |= (a <= c && c <= b);
+      } while ((a = *cls++) != ']');
+
+      if (match == inverted)
+        goto backtrack;
+      pat_len -= cls - pattern;
+      pattern = cls;
+
+    } break;
+    case '\\':
+      d = *pattern++;
+      pat_len--;
+    /*FALLTHROUGH*/
+    default: /* Literal character */
+      if (c == d)
+        break;
+
+    backtrack:
+      if (!back_pat)
+        return 0; /* No point continuing */
+      /* Try again from last *, one character later in str. */
+      pattern = back_pat;
+      data = ++back_str;
+      break;
+    }
+  }
   return 0;
 }

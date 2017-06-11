@@ -74,8 +74,9 @@ void fio_dict_each_match_glob(fio_dict_s *dict, void *pattern, size_t len,
                               void (*action)(fio_dict_s *node, void *arg),
                               void *arg);
 
-/** A binary glob matching helper. */
-int fio_glob_match(void *data, size_t data_len, void *pattern, size_t pat_len);
+/** A binary glob matching helper. Returns 1 on match, otherwise returns 0. */
+int fio_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
+                   size_t pat_len);
 
 #define fio_dict_isempty(dict)                                                 \
   (!((dict)->trie[0] || (dict)->trie[1] || (dict)->trie[2] ||                  \

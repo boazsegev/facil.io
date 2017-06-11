@@ -192,3 +192,7 @@ Hit me up if you want to:
 * Help me design / write a generic HTTP routing helper library for the `http_request_s` struct.
 
 * If you want to help me write a new SSL/TLS library or have an SSL/TLS solution we can fit into `lib-server` (as source code).
+
+* If you want to help promote the library, that would be great as well. Perhaps publish [benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks)) or share your story.
+
+* Writing documentation into the `facil.io` website would be great. I keep the source code documentation fairly updated, but sometimes I can be a lazy bastard.

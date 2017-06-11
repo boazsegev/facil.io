@@ -127,8 +127,8 @@ static void pubsub_publish_matched_channel(fio_dict_s *ch_, void *msg_) {
   }
   channel_s *pattern;
   fio_list_for_each(channel_s, channels.list, pattern, pubsub_patterns) {
-    if (fio_glob_match(msg->pub.channel.name, msg->pub.channel.len,
-                       pattern->name, pattern->len)) {
+    if (fio_glob_match((uint8_t *)msg->pub.channel.name, msg->pub.channel.len,
+                       (uint8_t *)pattern->name, pattern->len)) {
       fio_ht_for_each(client_s, clients, cl, pattern->clients) {
         atomic_bump(&msg->ref);
         atomic_bump(&cl->active);

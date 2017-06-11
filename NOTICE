@@ -15,3 +15,11 @@ We aren't aware of any patents or patent applications relevant to SipHash. SipHa
 SHA1 and SHA2
 
 SHA1 and SHA2 seem to be in the public domain, developed by NASA.
+
+---
+
+The single string, binary, glob matching helper function `fio_glob_match` was rewritten and adapted from:
+https://github.com/opnfv/kvmfornfv/blob/465249b61b72d33fe1fad8d43da332faef22bec0/kernel/lib/glob.c#L12-L122
+
+Licensed under the MIT license, the original code's copyright is as follows:
+Copyright 2015 Open Platform for NFV Project, Inc. and its contributors
