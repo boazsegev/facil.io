@@ -55,27 +55,20 @@ static fio_list_s pubsub_patterns = FIO_LIST_INIT_STATIC(pubsub_patterns);
 
 spn_lock_i pubsub_GIL = SPN_LOCK_INIT;
 
-static inline uint64_t atomic_bump(volatile uint64_t *i) {
-  return __sync_add_and_fetch(i, 1ULL);
-}
-static inline uint64_t atomic_cut(volatile uint64_t *i) {
-  return __sync_sub_and_fetch(i, 1ULL);
-}
-
 /* *****************************************************************************
 Helpers
 ***************************************************************************** */
 
 static void pubsub_free_client(void *client_, void *ignr) {
   client_s *client = client_;
-  if (!atomic_cut(&client->active))
+  if (!spn_sub(&client->active, 1))
     free(client);
   (void)ignr;
 }
 
 static void pubsub_free_msg(void *msg_, void *ignr) {
   msg_s *msg = msg_;
-  if (!atomic_cut(&msg->ref)) {
+  if (!spn_sub(&msg->ref, 1)) {
     free(msg);
   }
   (void)ignr;
@@ -120,8 +113,8 @@ static void pubsub_publish_matched_channel(fio_dict_s *ch_, void *msg_) {
   if (ch_) {
     channel_s *channel = fio_node2obj(channel_s, channels, ch_);
     fio_ht_for_each(client_s, clients, cl, channel->clients) {
-      atomic_bump(&msg->ref);
-      atomic_bump(&cl->active);
+      spn_add(&msg->ref, 1);
+      spn_add(&cl->active, 1);
       defer(pubsub_deliver_msg, cl, msg);
     }
   }
@@ -130,8 +123,8 @@ static void pubsub_publish_matched_channel(fio_dict_s *ch_, void *msg_) {
     if (fio_glob_match((uint8_t *)msg->pub.channel.name, msg->pub.channel.len,
                        (uint8_t *)pattern->name, pattern->len)) {
       fio_ht_for_each(client_s, clients, cl, pattern->clients) {
-        atomic_bump(&msg->ref);
-        atomic_bump(&cl->active);
+        spn_add(&msg->ref, 1);
+        spn_add(&cl->active, 1);
         defer(pubsub_deliver_msg, cl, msg);
       }
     }
@@ -332,7 +325,7 @@ found_channel:
 found_client:
 
   client->ref++;
-  atomic_bump(&client->active);
+  spn_add(&client->active, 1);
   spn_unlock(&pubsub_GIL);
   return client;
 
@@ -348,7 +341,7 @@ void pubsub_unsubscribe(pubsub_sub_pt client) {
   client->ref--;
   if (client->ref) {
     spn_unlock(&pubsub_GIL);
-    atomic_cut(&client->active);
+    spn_sub(&client->active, 1);
     return;
   }
   fio_ht_remove(&client->clients);
