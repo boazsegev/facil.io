@@ -347,11 +347,11 @@ void fio_dict_each_match_glob(fio_dict_s *dict, void *pattern, size_t len,
 /** A binary glob matching helper. Returns 1 on match, otherwise returns 0. */
 int fio_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
                    size_t pat_len) {
-  /* adapted, with thankfulness, from the code at:
+  /* adapted and rewritten, with thankfulness, from the code at:
    * https://github.com/opnfv/kvmfornfv/blob/master/kernel/lib/glob.c
    *
-   * Original Copyright 2015 Open Platform for NFV Project, Inc. and its
-   * contributors
+   * Original version's copyright:
+   * Copyright 2015 Open Platform for NFV Project, Inc. and its contributors
    * Under the MIT license.
    */
 
@@ -432,8 +432,10 @@ int fio_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
       /* Try again from last *, one character later in str. */
       pattern = back_pat;
       data = ++back_str;
+      data_len = back_str_len;
+      pat_len = back_pat_len;
       break;
     }
   }
-  return 0;
+  return !data_len && !pat_len;
 }
