@@ -284,7 +284,7 @@ struct ListenerProtocol {
   sock_rw_hook_s *(*set_rw_hooks)(intptr_t uuid, void *udata);
   void (*on_start)(void *udata);
   void (*on_finish)(void *udata);
-  const char *port;
+  char port[16];
 };
 
 static sock_rw_hook_s *listener_set_rw_hooks(intptr_t uuid, void *udata) {
@@ -378,8 +378,9 @@ listener_alloc(struct facil_listen_args settings) {
         .on_finish = settings.on_finish,
         .set_rw_hooks = settings.set_rw_hooks,
         .rw_udata = settings.rw_udata,
-        .port = settings.port,
     };
+    size_t tmp = strlen(settings.port);
+    memcpy(listener->port, settings.port, tmp + 1);
     return listener;
   }
   return NULL;
