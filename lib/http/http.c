@@ -38,7 +38,7 @@ void http_on_finish(void *set) {
     http_get_on_finish_func(set)(set);
 
   if (settings->on_finish)
-    settings->on_finish(settings->udata, settings->rw_udata);
+    settings->on_finish(settings->udata);
 
   if (settings->private_metaflags & 2) {
     free((void *)settings->public_folder);
@@ -99,6 +99,7 @@ int http_listen(const char *port, const char *address,
   return facil_listen(.port = port, .address = address,
                       .set_rw_hooks = arg_settings.set_rw_hooks,
                       .rw_udata = arg_settings.rw_udata,
+                      .on_finish_rw = arg_settings.on_finish_rw,
                       .on_finish = http_on_finish, .on_open = on_open_callback,
                       .udata = settings);
 }

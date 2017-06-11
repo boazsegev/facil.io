@@ -282,6 +282,7 @@ struct ListenerProtocol {
   void *udata;
   void *rw_udata;
   sock_rw_hook_s *(*set_rw_hooks)(intptr_t uuid, void *udata);
+  void (*on_finish_rw)(void *rw_udata);
   void (*on_start)(void *udata);
   void (*on_finish)(void *udata);
   char port[16];
@@ -336,12 +337,6 @@ static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
   }
   defer(listener_deferred_on_open, (void *)new_client, (void *)uuid);
   defer(deferred_on_data, (void *)uuid, NULL);
-  // // Was, without `deferred_on_data`
-  // struct ListenerProtocol *listener = (void *)plistener;
-  // protocol_s *pr = listener->on_open(new_client, listener->udata);
-  // facil_attach(new_client, pr);
-  // if (!pr)
-  //   sock_close(new_client);
   return;
   (void)plistener;
 }
@@ -351,6 +346,7 @@ static void free_listenner(void *li) { free(li); }
 static void listener_on_close(protocol_s *plistener) {
   struct ListenerProtocol *listener = (void *)plistener;
   listener->on_finish(listener->udata);
+  listener->on_finish_rw(listener->rw_udata);
   if (FACIL_PRINT_STATE)
     fprintf(stderr, "* (%d) Stopped listening on port %s\n", getpid(),
             listener->port);
@@ -363,6 +359,8 @@ listener_alloc(struct facil_listen_args settings) {
     settings.on_start = (void (*)(void *))mock_on_close;
   if (!settings.on_finish)
     settings.on_finish = (void (*)(void *))mock_on_close;
+  if (!settings.on_finish_rw)
+    settings.on_finish_rw = (void (*)(void *))mock_on_close;
   if (!settings.set_rw_hooks)
     settings.set_rw_hooks = listener_set_rw_hooks;
   struct ListenerProtocol *listener = malloc(sizeof(*listener));

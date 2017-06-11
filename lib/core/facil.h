@@ -184,6 +184,10 @@ struct facil_listen_args {
    *
    * This will be called seperately for every process. */
   void (*on_finish)(void *udata);
+  /**
+   * A cleanup callback for the `rw_udata`.
+   */
+  void (*on_finish_rw)(void *rw_udata);
 };
 
 /** Schedule a network service on a listening socket. */

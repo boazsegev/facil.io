@@ -66,7 +66,7 @@ struct http_settings_s {
   Defaults to ~ 50Mb.
   */
   size_t max_body_size;
-  /** the callback to be performed when requests come in. */
+  /** REQUIRED: the callback to be performed when requests come in. */
   void (*on_request)(http_request_s *request);
   /**
   A public folder for file transfers - allows to circumvent any application
@@ -81,13 +81,17 @@ struct http_settings_s {
   void *udata;
   /** Opaque user data for the optional `set_rw_hooks`. */
   void *rw_udata;
-  /** (optional) the callback to be performed when requests come in. */
-  void (*on_finish)(void *udata, void *rw_udata);
-  /** (optional)
+  /** (optional) the callback to be performed when the HTTP service closes. */
+  void (*on_finish)(void *udata);
+  /**
    * Allows a an implementation for the transport layer (i.e. TLS) without
    * effecting the HTTP protocol.
    */
   sock_rw_hook_s *(*set_rw_hooks)(intptr_t fduuid, void *rw_udata);
+  /**
+   * A cleanup callback for the `rw_udata`.
+   */
+  void (*on_finish_rw)(void *rw_udata);
   /**
   Logging flag - set to TRUE to log static file requests.
 
