@@ -21,6 +21,16 @@ the key "hello1" will cost only 272 bytes... brrr.
 Inline variation
 ***************************************************************************** */
 
+static inline fio_dict_s *fio_dict_step_inline(fio_dict_s *dict,
+                                               uint8_t prefix) {
+  if (!dict)
+    return NULL;
+  dict = dict->trie[prefix & 0xf];
+  if (!dict)
+    return NULL;
+  return dict->trie[(prefix >> 4) & 0xf];
+}
+
 static inline fio_dict_s *fio_dict_prefix_inline(fio_dict_s *dict,
                                                  void *prefix_, size_t len) {
   uint8_t *prefix = prefix_;
@@ -129,15 +139,6 @@ fio_dict_s *fio_dict_remove(fio_dict_s *node) {
 }
 
 /** Returns a `fio_dict_s *` dictionary (or NULL) of all `prefix` children. */
-static inline fio_dict_s *fio_dict_step_inline(fio_dict_s *dict,
-                                               uint8_t prefix) {
-  if (!dict)
-    return NULL;
-  dict = dict->trie[prefix & 0xf];
-  if (!dict)
-    return NULL;
-  return dict->trie[(prefix >> 4) & 0xf];
-}
 fio_dict_s *fio_dict_step(fio_dict_s *dict, uint8_t prefix) {
   return fio_dict_step_inline(dict, prefix);
 }
