@@ -39,10 +39,13 @@ typedef struct pubsub_message_s {
     char *name;
     uint32_t len;
   } channel;
+  /** The pub/sub message. */
   struct {
     char *data;
     uint32_t len;
   } msg;
+  /** indicates that pattern matching was used. */
+  unsigned use_pattern : 1;
 } pubsub_message_s;
 
 /** The arguments used for subscribing to a channel. */
@@ -112,19 +115,40 @@ int pubsub_publish(struct pubsub_publish_args);
 /**
  * Pub/Sub services (engines) MUST provide the listed function pointers.
  *
- * When sending messages using `on_message` callback, engins MUST:
- * 1. Pass NULL as the first argument (the subscription argument).
- * 2. Pass a pointer to `self` (the engine object) as the third argument.
+ * When an engine received a message to publish, they should call the
+ * `pubsub_eng_distribute` function. i.e.:
+ *
+ *       pubsub_engine_distribute(
+ *           .engine = self,
+ *           .channel.name = "channel 1",
+ *           .channel.len = 9,
+ *           .msg.data = "hello",
+ *           .msg.len = 5,
+ *           .push2cluster = self->push2cluster,
+ *           .use_pattern = 0 );
+ *
+ * Engines MUST survive until the pub/sub service is finished using them and
+ * there are no more subscriptions.
  */
 struct pubsub_engine_s {
   /** Should return 0 on success and -1 on failure. */
-  int (*subscribe)(struct pubsub_subscribe_args);
-  /** Return value is ignored - nothing should be returned. */
-  void (*unsubscribe)(struct pubsub_subscribe_args);
+  int (*subscribe)(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
+                   uint8_t use_pattern);
+  /** Return value is ignored. */
+  void (*unsubscribe)(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
+                      uint8_t use_pattern);
   /** Should return 0 on success and -1 on failure. */
-  int (*publish)(struct pubsub_publish_args);
+  int (*publish)(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
+                 const char *msg, size_t msg_len, uint8_t use_pattern);
   /** Set to TRUE (1) if published messages should propegate to the cluster. */
   unsigned push2cluster : 1;
 };
+
+/**
+ * The function used by engines to distribute received messages.
+ */
+void pubsub_engine_distribute(pubsub_message_s msg);
+#define pubsub_engine_distribute(...)                                          \
+  pubsub_engine_distribute((pubsub_message_s){__VA_ARGS__})
 
 #endif /* H_FACIL_PUBSUB_H */

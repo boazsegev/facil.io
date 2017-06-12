@@ -42,7 +42,7 @@ static void ws_on_pubsub_message(pubsub_sub_pt pubsub, pubsub_message_s msg,
       // fwrite("X", 1, 1, stderr);
       return;
     }
-    fwrite("-", 1, 1, stderr);
+    // fwrite("-", 1, 1, stderr);
     defer_thread_throttle(1);
     pr = facil_protocol_try_lock((intptr_t)udata, FIO_PR_LOCK_WRITE);
   }

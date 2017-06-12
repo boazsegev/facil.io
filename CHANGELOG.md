@@ -1,6 +1,8 @@
 # Change Log
 
-### Ver. 0.4.5 (next)
+### Ver. 0.5.0 (next)
+
+**Braking change**: (`pubsub`) The API was changed / updated, making `pubsub_engine_s` objects easier to author. Since this is a breaking change, and following semantic versioning, the minor version is updated. However.
 
 **Fix**: (`facil`) `facil_connect` now correctly calls the `on_fail` callback even on immediate failures (i.e. when the function call was missing a target address and port).
 

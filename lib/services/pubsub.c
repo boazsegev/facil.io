@@ -84,6 +84,7 @@ static void pubsub_deliver_msg(void *client_, void *msg_) {
                      .channel.len = msg->pub.channel.len,
                      .msg.data = msg->pub.msg.data,
                      .msg.len = msg->pub.msg.len,
+                     .use_pattern = msg->pub.use_pattern,
                  },
                  cl->udata);
   pubsub_free_msg(msg, NULL);
@@ -169,6 +170,7 @@ static int pubsub_cluster_publish(struct pubsub_publish_args args) {
     memcpy(pub->channel.name, args.channel.name, args.channel.len);
     pub->channel.name[args.channel.len] = 0;
   }
+  pub->use_pattern = args.use_pattern;
   if (args.push2cluster)
     facil_cluster_send(FACIL_PUBSUB_CLUSTER_MESSAGE_ID, msg,
                        sizeof(*msg) + args.channel.len + args.msg.len + 2);
@@ -204,17 +206,47 @@ void pubsub_cluster_init(void) {
                             pubsub_cluster_handle_publishing);
 }
 
-static int pubsub_cluster_subscribe(struct pubsub_subscribe_args args) {
+static int pubsub_cluster_subscribe(const pubsub_engine_s *eng, const char *ch,
+                                    size_t ch_len, uint8_t use_pattern) {
   return 0;
-  (void)args;
+  (void)ch;
+  (void)ch_len;
+  (void)use_pattern;
+  (void)eng;
 }
 
-static void pubsub_cluster_unsubscribe(struct pubsub_subscribe_args a) {
-  (void)a;
+static void pubsub_cluster_unsubscribe(const pubsub_engine_s *eng,
+                                       const char *ch, size_t ch_len,
+                                       uint8_t use_pattern) {
+  (void)ch;
+  (void)ch_len;
+  (void)use_pattern;
+  (void)eng;
+}
+
+static int pubsub_cluster_eng_publish(const pubsub_engine_s *eng,
+                                      const char *ch, size_t ch_len,
+                                      const char *msg, size_t msg_len,
+                                      uint8_t use_pattern) {
+  pubsub_cluster_publish((struct pubsub_publish_args){
+      .engine = eng,
+      .channel.name = (char *)ch,
+      .channel.len = ch_len,
+      .msg.data = (char *)msg,
+      .msg.len = msg_len,
+      .use_pattern = use_pattern,
+      .push2cluster = eng->push2cluster,
+  });
+  return 0;
 }
 
 static const pubsub_engine_s PUBSUB_CLUSTER_ENGINE = {
-    .publish = pubsub_cluster_publish,
+    .publish = pubsub_cluster_eng_publish,
+    .subscribe = pubsub_cluster_subscribe,
+    .unsubscribe = pubsub_cluster_unsubscribe,
+    .push2cluster = 1};
+static const pubsub_engine_s PUBSUB_LOCAL_ENGINE = {
+    .publish = pubsub_cluster_eng_publish,
     .subscribe = pubsub_cluster_subscribe,
     .unsubscribe = pubsub_cluster_unsubscribe,
 };
@@ -223,17 +255,18 @@ static const pubsub_engine_s PUBSUB_CLUSTER_ENGINE = {
 External Engine Bridge
 ***************************************************************************** */
 
-static void pubsub_engine_bridge(pubsub_sub_pt s, pubsub_message_s msg,
-                                 void *udata) {
+#undef pubsub_engine_distribute
+
+void pubsub_engine_distribute(pubsub_message_s msg) {
   pubsub_cluster_publish((struct pubsub_publish_args){
-      .engine = udata,
+      .engine = msg.engine,
       .channel.name = msg.channel.name,
       .channel.len = msg.channel.len,
       .msg.data = msg.msg.data,
       .msg.len = msg.msg.len,
-      .push2cluster = ((struct pubsub_engine_s *)udata)->push2cluster,
+      .push2cluster = msg.engine->push2cluster,
+      .use_pattern = msg.use_pattern,
   });
-  (void)s;
 }
 
 /* *****************************************************************************
@@ -273,14 +306,8 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
     }
   }
 
-  if (args.engine->subscribe((struct pubsub_subscribe_args){
-          .engine = args.engine,
-          .channel.name = args.channel.name,
-          .channel.len = args.channel.len,
-          .on_message = pubsub_engine_bridge,
-          .udata = (void *)args.engine,
-          .use_pattern = args.use_pattern,
-      }))
+  if (args.engine->subscribe(args.engine, args.channel.name, args.channel.len,
+                             args.use_pattern))
     goto error;
   ch = malloc(sizeof(*ch) + args.channel.len + 1 + sizeof(void *));
   *ch = (channel_s){
@@ -358,14 +385,7 @@ void pubsub_unsubscribe(pubsub_sub_pt client) {
   }
   spn_unlock(&pubsub_GIL);
   defer(pubsub_free_client, client, NULL);
-  ch->engine->unsubscribe((struct pubsub_subscribe_args){
-      .engine = ch->engine,
-      .channel.name = ch->name,
-      .channel.len = ch->len,
-      .on_message = pubsub_engine_bridge,
-      .udata = (void *)ch->engine,
-      .use_pattern = ch->use_pattern,
-  });
+  ch->engine->unsubscribe(ch->engine, ch->name, ch->len, ch->use_pattern);
   fio_ht_rehash(&ch->clients, 0);
   free(ch);
 }
@@ -382,6 +402,9 @@ int pubsub_publish(struct pubsub_publish_args args) {
     args.engine = &PUBSUB_CLUSTER_ENGINE;
     args.push2cluster = 1;
   } else if (args.push2cluster)
-    PUBSUB_CLUSTER_ENGINE.publish(args);
-  return args.engine->publish(args);
+    PUBSUB_CLUSTER_ENGINE.publish(args.engine, args.channel.name,
+                                  args.channel.len, args.msg.data, args.msg.len,
+                                  args.use_pattern);
+  return args.engine->publish(args.engine, args.channel.name, args.channel.len,
+                              args.msg.data, args.msg.len, args.use_pattern);
 }
