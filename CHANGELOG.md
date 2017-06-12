@@ -16,6 +16,8 @@
 
 **Fix**: (`facil`) `facil_last_tick` would crash if called before the library was initialized during socket operations (`facil_listen`, `facil_attach`, etc')...  now `facil_last_tick` falls back to `time()` if nothing happened yet.
 
+**Fix**?: (`http`) When decoding the path or a request, the `+` sign is now left unencoded (correct behavior), trusting in better clients in this great jungle.
+
 **Changes**: (`facil`) Minor changes to the `fio_cluster_*` API now use signed message types. All negative `msg_type` values are reserved for internal use.
 
 **Changes**: Major folder structure updates make development and support for CMake submodules easier. These changes should also make it easier to push PRs for by offering the `dev` folder for any localized testing prior to submitting the PR.
