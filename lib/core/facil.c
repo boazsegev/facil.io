@@ -1067,7 +1067,9 @@ Misc helpers
 /**
 Returns the last time the server reviewed any pending IO events.
 */
-time_t facil_last_tick(void) { return facil_data->last_cycle; }
+time_t facil_last_tick(void) {
+  return facil_data ? facil_data->last_cycle : time(NULL);
+}
 
 /**
  * This function allows out-of-task access to a connection's `protocol_s` object
