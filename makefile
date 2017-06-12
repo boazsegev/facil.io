@@ -24,6 +24,8 @@ WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
 # The library details for CMake incorporation. Can be safely removed.
 CMAKE_LIBFILE_NAME=CMakeLists.txt
 
+# dumps all library files in one place
+DUMP_LIB=./libdump
 # any include folders, space seperated list
 INCLUDE= ./
 
@@ -117,7 +119,7 @@ $(TMP_ROOT)/%.o: %.cpp
 endif
 
 .PHONY : clean
-clean: cmake
+clean: cmake libdump
 	-@rm $(BIN)
 	-@rm -R $(TMP_ROOT)
 	-@mkdir -p $(BUILDTREE)
@@ -127,11 +129,30 @@ execute:
 	@$(BIN)
 
 .PHONY : run
-run: | cmake build execute
+run: | cmake libdump build execute
 
 .PHONY : db
-db: | cmake clean build
+db: | clean build
 	$(DB) $(BIN)
+
+ifndef DUMP_LIB
+.PHONY : libdump
+libdump:
+
+else
+
+.PHONY : libdump
+libdump:
+	-@rm -R $(DUMP_LIB)
+	@mkdir $(DUMP_LIB)
+	@mkdir $(DUMP_LIB)/src
+	@mkdir $(DUMP_LIB)/include
+	@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*)) $(DUMP_LIB)/include
+	@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*)) $(DUMP_LIB)/include
+	@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src
+	@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src
+
+endif
 
 ifndef CMAKE_LIBFILE_NAME
 .PHONY : cmake

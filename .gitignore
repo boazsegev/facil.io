@@ -4,6 +4,8 @@ html/
 public_www/
 Dockerfile
 
+libdump
+
 dev/*
 !dev/about
 !dev/about/README.md
