@@ -47,7 +47,7 @@ Returns -1 on error, otherwise returns a unique value representing the `epoll`
 or `kqueue` object. The returned value can be safely ignored.
 
 NOTE: Once an `epoll` / `kqueue` object was opened, `fork` should be avoided,
-since ALL the events will be shared among the forked proccesses (while not ALL
+since ALL the events will be shared among the forked processes (while not ALL
 the file descriptors are expected to be shared).
 */
 intptr_t evio_create(void);
