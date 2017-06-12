@@ -255,8 +255,8 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   if (file_path_unsafe) {
     if (fname[path_safe_len - 1] == '/')
       path_safe_len--;
-    ssize_t tmp = http_decode_url(fname + path_safe_len, file_path_unsafe,
-                                  path_unsafe_len);
+    ssize_t tmp = http_decode_path(fname + path_safe_len, file_path_unsafe,
+                                   path_unsafe_len);
     if (tmp < 0)
       goto no_file;
     path_safe_len += tmp;

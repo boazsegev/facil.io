@@ -185,7 +185,14 @@ static inline size_t http_ul2a(char *dest, size_t num) {
 /** Decodes a URL encoded string, no buffer overflow protection. */
 ssize_t http_decode_url_unsafe(char *dest, const char *url_data);
 
-/** Decodes a URL encoded string. */
+/** Decodes a URL encoded string (i.e., the "query" part of a request). */
 ssize_t http_decode_url(char *dest, const char *url_data, size_t length);
+
+/** Decodes the "path" part of a request, no buffer overflow protection. */
+ssize_t http_decode_path_unsafe(char *dest, const char *url_data);
+
+/** Decodes the "path" part of an HTTP request, no buffer overflow protection.
+ */
+ssize_t http_decode_path(char *dest, const char *url_data, size_t length);
 
 #endif

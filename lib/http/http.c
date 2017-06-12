@@ -286,7 +286,7 @@ static inline int hex2byte(uint8_t *dest, const uint8_t *source) {
     return -1;
   return 0;
 }
-#undef hex_val_tmp
+
 ssize_t http_decode_url(char *dest, const char *url_data, size_t length) {
   char *pos = dest;
   const char *end = url_data + length;
@@ -329,4 +329,40 @@ ssize_t http_decode_url_unsafe(char *dest, const char *url_data) {
   *pos = 0;
   return pos - dest;
 }
+
+ssize_t http_decode_path(char *dest, const char *url_data, size_t length) {
+  char *pos = dest;
+  const char *end = url_data + length;
+  while (url_data < end) {
+    if (*url_data == '%') {
+      // decode hex value
+      // this is a percent encoded value.
+      if (hex2byte((uint8_t *)pos, (uint8_t *)&url_data[1]))
+        return -1;
+      pos++;
+      url_data += 3;
+    } else
+      *(pos++) = *(url_data++);
+  }
+  *pos = 0;
+  return pos - dest;
+}
+
+ssize_t http_decode_path_unsafe(char *dest, const char *url_data) {
+  char *pos = dest;
+  while (*url_data) {
+    if (*url_data == '%') {
+      // decode hex value
+      // this is a percent encoded value.
+      if (hex2byte((uint8_t *)pos, (uint8_t *)&url_data[1]))
+        return -1;
+      pos++;
+      url_data += 3;
+    } else
+      *(pos++) = *(url_data++);
+  }
+  *pos = 0;
+  return pos - dest;
+}
+
 #undef hex_val
