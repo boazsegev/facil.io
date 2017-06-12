@@ -43,14 +43,18 @@ typedef struct {
 
 typedef struct pubsub_sub_s {
   fio_ht_node_s clients;
-  void (*on_message)(pubsub_sub_pt s, pubsub_message_s msg, void *udata1,
-                     void *udata2);
+  void (*on_message)(pubsub_message_s *msg);
   void *udata1;
   void *udata2;
   channel_s *parent;
   volatile uint64_t active;
   uint32_t ref;
 } client_s;
+
+typedef struct {
+  msg_s *origin;
+  pubsub_message_s msg;
+} msg_container_s;
 
 static fio_dict_s pubsub_channels = FIO_DICT_INIT_STATIC;
 static fio_list_s pubsub_patterns = FIO_LIST_INIT_STATIC(pubsub_patterns);
@@ -79,16 +83,21 @@ static void pubsub_free_msg(void *msg_, void *ignr) {
 static void pubsub_deliver_msg(void *client_, void *msg_) {
   client_s *cl = client_;
   msg_s *msg = msg_;
-  cl->on_message(cl,
-                 (struct pubsub_message_s){
-                     .engine = msg->pub.engine,
-                     .channel.name = msg->pub.channel.name,
-                     .channel.len = msg->pub.channel.len,
-                     .msg.data = msg->pub.msg.data,
-                     .msg.len = msg->pub.msg.len,
-                     .use_pattern = msg->pub.use_pattern,
-                 },
-                 cl->udata1, cl->udata2);
+  msg_container_s clmsg = {
+      .origin = msg,
+      .msg =
+          {
+              .engine = msg->pub.engine,
+              .channel.name = msg->pub.channel.name,
+              .channel.len = msg->pub.channel.len,
+              .msg.data = msg->pub.msg.data,
+              .msg.len = msg->pub.msg.len,
+              .use_pattern = msg->pub.use_pattern,
+              .udata1 = cl->udata1,
+              .udata2 = cl->udata2,
+          },
+  };
+  cl->on_message(&clmsg.msg);
   pubsub_free_msg(msg, NULL);
   pubsub_free_client(cl, NULL);
 }
@@ -267,6 +276,15 @@ void pubsub_engine_distribute(pubsub_message_s msg) {
 }
 
 /* *****************************************************************************
+Hashing
+***************************************************************************** */
+
+#define pubsub_client_hash(p1, p2, p3)                                         \
+  (((((uint64_t)(p1) * ((uint64_t)p2 ^ 0x736f6d6570736575ULL)) >> 5) |         \
+    (((uint64_t)(p1) * ((uint64_t)p2 ^ 0x736f6d6570736575ULL)) << 59)) ^       \
+   ((uint64_t)p3 ^ 0x646f72616e646f6dULL))
+
+/* *****************************************************************************
 API
 ***************************************************************************** */
 
@@ -276,17 +294,15 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
     return NULL;
   if (args.channel.name && !args.channel.len)
     args.channel.len = strlen(args.channel.name);
-  if (args.channel.len > 1024) {
+  if (args.channel.len > FIO_PUBBSUB_MAX_CHANNEL_LEN) {
     return NULL;
   }
   if (!args.engine)
     args.engine = &PUBSUB_CLUSTER_ENGINE;
   channel_s *ch;
   client_s *client;
-  uint64_t cl_hash = (uintptr_t)args.on_message *
-                     ((uintptr_t)args.udata1 ^ 0x736f6d6570736575ULL);
-  cl_hash = ((cl_hash >> 5) | (cl_hash << 59)) *
-            ((uintptr_t)args.udata2 ^ 0x646f72616e646f6dULL);
+  uint64_t cl_hash =
+      pubsub_client_hash(args.on_message, args.udata1, args.udata2);
 
   spn_lock(&pubsub_GIL);
   if (args.use_pattern) {
@@ -357,6 +373,62 @@ found_client:
   return client;
 
 error:
+  spn_unlock(&pubsub_GIL);
+  return NULL;
+}
+
+/**
+ * This helper searches for an existing subscription.
+ * Use with care, NEVER call `pubsub_unsubscribe` more times than you have
+ * called `pubsub_subscribe`, since the subscription handle memory is realesed
+ * onnce the reference count reaches 0.
+ *
+ * Returns a subscription pointer or NULL (none found).
+ */
+#undef pubsub_find_sub
+pubsub_sub_pt pubsub_find_sub(struct pubsub_subscribe_args args) {
+  if (!args.on_message)
+    return NULL;
+  if (args.channel.name && !args.channel.len)
+    args.channel.len = strlen(args.channel.name);
+  if (args.channel.len > FIO_PUBBSUB_MAX_CHANNEL_LEN) {
+    return NULL;
+  }
+  if (!args.engine)
+    args.engine = &PUBSUB_CLUSTER_ENGINE;
+  channel_s *ch;
+  client_s *client;
+  uint64_t cl_hash =
+      pubsub_client_hash(args.on_message, args.udata1, args.udata2);
+
+  spn_lock(&pubsub_GIL);
+  if (args.use_pattern) {
+    fio_list_for_each(channel_s, channels.list, ch, pubsub_patterns) {
+      if (ch->engine == args.engine && ch->len == args.channel.len &&
+          !memcmp(ch->name, args.channel.name, args.channel.len))
+        goto found_channel;
+    }
+  } else {
+    ch = (void *)fio_dict_get(
+        fio_dict_prefix(&pubsub_channels, (void *)&args.engine, sizeof(void *)),
+        args.channel.name, args.channel.len);
+    if (ch) {
+      ch = fio_node2obj(channel_s, channels, ch);
+      goto found_channel;
+    }
+  }
+  goto not_found;
+
+found_channel:
+
+  client = (void *)fio_ht_find(&ch->clients, cl_hash);
+  if (client) {
+    client = fio_ht_object(client_s, clients, client);
+    spn_unlock(&pubsub_GIL);
+    return client;
+  }
+
+not_found:
   spn_unlock(&pubsub_GIL);
   return NULL;
 }

@@ -20,9 +20,9 @@ between all of an application's processes, enhancing overall performance.
 #define H_FACIL_PUBSUB_H
 #include "facil.h"
 
-/** This function will be called by `facil.io` to initialize the default cluster
- * pub/sub engine. */
-void pubsub_cluster_init(void);
+#ifndef FIO_PUBBSUB_MAX_CHANNEL_LEN
+#define FIO_PUBBSUB_MAX_CHANNEL_LEN 1024
+#endif
 
 /** An opaque pointer used to identify a subscription. */
 typedef struct pubsub_sub_s *pubsub_sub_pt;
@@ -30,7 +30,7 @@ typedef struct pubsub_sub_s *pubsub_sub_pt;
 /** A pub/sub engine data structure. See details later on. */
 typedef struct pubsub_engine_s pubsub_engine_s;
 
-/** The information received through a subscription. */
+/** The information a "client" (callback) receives. */
 typedef struct pubsub_message_s {
   /** The pub/sub engine farwarding this message. */
   pubsub_engine_s const *engine;
@@ -46,9 +46,15 @@ typedef struct pubsub_message_s {
   } msg;
   /** indicates that pattern matching was used. */
   unsigned use_pattern : 1;
+  /** The subscription that prompted the message to be routed to the client. */
+  pubsub_sub_pt subscription;
+  /** Client opaque data pointer (from the `subscribe`) function call. */
+  void *udata1;
+  /** Client opaque data pointer (from the `subscribe`) function call. */
+  void *udata2;
 } pubsub_message_s;
 
-/** The arguments used for subscribing to a channel. */
+/** The arguments used for `pubsub_subscribe` or `pubsub_find_sub`. */
 struct pubsub_subscribe_args {
   /** The pub/sub engine to use. NULL defaults to the local cluster engine. */
   pubsub_engine_s const *engine;
@@ -57,9 +63,8 @@ struct pubsub_subscribe_args {
     char *name;
     uint32_t len;
   } channel;
-  /** The on message callback */
-  void (*on_message)(pubsub_sub_pt reg, pubsub_message_s msg, void *udata1,
-                     void *udata2);
+  /** The on message callback. the `*msg` pointer is to a temporary object. */
+  void (*on_message)(pubsub_message_s *msg);
   /** Opaque user data#1 */
   void *udata1;
   /** Opaque user data#2 .. using two allows allocation to be avoided. */
@@ -68,7 +73,7 @@ struct pubsub_subscribe_args {
   unsigned use_pattern : 1;
 };
 
-/** The arguments used to publish to channel. */
+/** The arguments used for `pubsub_publish`. */
 struct pubsub_publish_args {
   /** The pub/sub engine to use. NULL defaults to the local cluster engine. */
   pubsub_engine_s const *engine;
@@ -94,10 +99,23 @@ struct pubsub_publish_args {
 /**
  * Subscribes to a specific channel.
  *
- * Returns 0 on success and -1 on failure.
+ * Returns a subscription pointer or NULL (failure).
  */ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args);
 #define pubsub_subscribe(...)                                                  \
   pubsub_subscribe((struct pubsub_subscribe_args){__VA_ARGS__})
+
+/**
+ * This helper searches for an existing subscription.
+ *
+ * Use with care, NEVER call `pubsub_unsubscribe` more times than you have
+ * called `pubsub_subscribe`, since the subscription handle memory is realesed
+ * onnce the reference count reaches 0.
+ *
+ * Returns a subscription pointer or NULL (none found).
+ */
+pubsub_sub_pt pubsub_find_sub(struct pubsub_subscribe_args);
+#define pubsub_find_sub(...)                                                   \
+  pubsub_find_sub((struct pubsub_subscribe_args){__VA_ARGS__})
 
 /**
  * Unsubscribes from a specific channel.
@@ -149,6 +167,7 @@ struct pubsub_engine_s {
 
 /**
  * The function used by engines to distribute received messages.
+ * The `udata*` and `subscription` fields are ignored.
  */
 void pubsub_engine_distribute(pubsub_message_s msg);
 #define pubsub_engine_distribute(...)                                          \

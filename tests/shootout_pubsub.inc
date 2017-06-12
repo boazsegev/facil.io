@@ -34,9 +34,9 @@ sleep 10 while `websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 #include <errno.h>
 #include <string.h>
 
-static void ws_on_pubsub_message(pubsub_sub_pt pubsub, pubsub_message_s msg,
-                                 void *udata, void *ignr) {
-  protocol_s *pr = facil_protocol_try_lock((intptr_t)udata, FIO_PR_LOCK_WRITE);
+static void ws_on_pubsub_message(pubsub_message_s *msg) {
+  protocol_s *pr =
+      facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
   while (!pr) {
     if (errno == EBADF) {
       // fwrite("X", 1, 1, stderr);
@@ -44,14 +44,13 @@ static void ws_on_pubsub_message(pubsub_sub_pt pubsub, pubsub_message_s msg,
     }
     // fwrite("-", 1, 1, stderr);
     defer_thread_throttle(1);
-    pr = facil_protocol_try_lock((intptr_t)udata, FIO_PR_LOCK_WRITE);
+    pr = facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
   }
   // fwrite(":", 1, 1, stderr);
-  websocket_write((ws_s *)pr, msg.msg.data, msg.msg.len, msg.channel.len == 4);
+  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len,
+                  msg->channel.len == 4);
   facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   return;
-  (void)pubsub;
-  (void)ignr;
 }
 
 static void ws_register(ws_s *ws) {
