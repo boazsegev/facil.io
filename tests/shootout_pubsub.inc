@@ -35,7 +35,7 @@ sleep 10 while `websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 #include <string.h>
 
 static void ws_on_pubsub_message(pubsub_sub_pt pubsub, pubsub_message_s msg,
-                                 void *udata) {
+                                 void *udata, void *ignr) {
   protocol_s *pr = facil_protocol_try_lock((intptr_t)udata, FIO_PR_LOCK_WRITE);
   while (!pr) {
     if (errno == EBADF) {
@@ -51,6 +51,7 @@ static void ws_on_pubsub_message(pubsub_sub_pt pubsub, pubsub_message_s msg,
   facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   return;
   (void)pubsub;
+  (void)ignr;
 }
 
 static void ws_register(ws_s *ws) {
@@ -58,11 +59,11 @@ static void ws_register(ws_s *ws) {
   websocket_udata_set(ws, pubsubs);
   pubsubs[0] = pubsub_subscribe(.on_message = ws_on_pubsub_message,
                                 .channel.name = "text",
-                                .udata = (void *)websocket_uuid(ws));
+                                .udata1 = (void *)websocket_uuid(ws));
 
   pubsubs[1] = pubsub_subscribe(.on_message = ws_on_pubsub_message,
                                 .channel.name = "binary",
-                                .udata = (void *)websocket_uuid(ws));
+                                .udata1 = (void *)websocket_uuid(ws));
 }
 
 static void ws_unregister(ws_s *ws) {

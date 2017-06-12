@@ -43,8 +43,10 @@ typedef struct {
 
 typedef struct pubsub_sub_s {
   fio_ht_node_s clients;
-  void (*on_message)(pubsub_sub_pt s, pubsub_message_s msg, void *udata);
-  void *udata;
+  void (*on_message)(pubsub_sub_pt s, pubsub_message_s msg, void *udata1,
+                     void *udata2);
+  void *udata1;
+  void *udata2;
   channel_s *parent;
   volatile uint64_t active;
   uint32_t ref;
@@ -86,7 +88,7 @@ static void pubsub_deliver_msg(void *client_, void *msg_) {
                      .msg.len = msg->pub.msg.len,
                      .use_pattern = msg->pub.use_pattern,
                  },
-                 cl->udata);
+                 cl->udata1, cl->udata2);
   pubsub_free_msg(msg, NULL);
   pubsub_free_client(cl, NULL);
 }
@@ -245,11 +247,6 @@ static const pubsub_engine_s PUBSUB_CLUSTER_ENGINE = {
     .subscribe = pubsub_cluster_subscribe,
     .unsubscribe = pubsub_cluster_unsubscribe,
     .push2cluster = 1};
-static const pubsub_engine_s PUBSUB_LOCAL_ENGINE = {
-    .publish = pubsub_cluster_eng_publish,
-    .subscribe = pubsub_cluster_subscribe,
-    .unsubscribe = pubsub_cluster_unsubscribe,
-};
 
 /* *****************************************************************************
 External Engine Bridge
@@ -286,8 +283,10 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
     args.engine = &PUBSUB_CLUSTER_ENGINE;
   channel_s *ch;
   client_s *client;
-  uint64_t cl_hash = ((uintptr_t)args.on_message << (sizeof(void *) << 1)) ^
-                     (uintptr_t)args.udata;
+  uint64_t cl_hash = (uintptr_t)args.on_message *
+                     ((uintptr_t)args.udata1 ^ 0x736f6d6570736575ULL);
+  cl_hash = ((cl_hash >> 5) | (cl_hash << 59)) *
+            ((uintptr_t)args.udata2 ^ 0x646f72616e646f6dULL);
 
   spn_lock(&pubsub_GIL);
   if (args.use_pattern) {
@@ -342,7 +341,8 @@ found_channel:
     goto error;
   *client = (client_s){
       .on_message = args.on_message,
-      .udata = args.udata,
+      .udata1 = args.udata1,
+      .udata2 = args.udata2,
       .parent = ch,
       .active = 0,
       .ref = 0,

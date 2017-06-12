@@ -58,9 +58,12 @@ struct pubsub_subscribe_args {
     uint32_t len;
   } channel;
   /** The on message callback */
-  void (*on_message)(pubsub_sub_pt s, pubsub_message_s msg, void *udata);
-  /** Opaque user data */
-  void *udata;
+  void (*on_message)(pubsub_sub_pt reg, pubsub_message_s msg, void *udata1,
+                     void *udata2);
+  /** Opaque user data#1 */
+  void *udata1;
+  /** Opaque user data#2 .. using two allows allocation to be avoided. */
+  void *udata2;
   /** Use pattern matching for channel subscription. */
   unsigned use_pattern : 1;
 };
