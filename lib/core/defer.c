@@ -186,15 +186,17 @@ struct defer_pool {
   void *threads[];
 };
 
-static void *defer_worker_thread(void *pool) {
+static void *defer_worker_thread(void *pool_) {
+  volatile pool_pt pool = pool_;
   signal(SIGPIPE, SIG_IGN);
-  size_t throttle = (((pool_pt)pool)->count) * DEFER_THROTTLE;
+  size_t throttle = (pool->count) * DEFER_THROTTLE;
   if (!throttle || throttle > 1572864UL)
     throttle = 1572864UL;
+  defer_perform();
   do {
     throttle_thread(throttle);
     defer_perform();
-  } while (((pool_pt)pool)->flag);
+  } while (pool->flag);
   return NULL;
 }
 
