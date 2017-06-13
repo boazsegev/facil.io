@@ -6,7 +6,10 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #include "spnlock.inc"
 
+#include "fio_list.h"
+
 #include "bscrypt.h"
+#include "pubsub.h"
 #include "websockets.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -106,6 +109,8 @@ struct Websocket {
   void *udata;
   /** The maximum websocket message size */
   size_t max_msg_size;
+  /** active pub/sub subscriptions */
+  fio_list_s subscriptions;
   /** message buffer. */
   struct buffer_s buffer;
   /** message length (how much of the buffer actually used). */
@@ -155,6 +160,35 @@ static __thread struct {
   int pos;
   char buffer[WEBSOCKET_READ_MAX];
 } read_buffer;
+
+/* *****************************************************************************
+Create/Destroy the websocket subscription objects
+***************************************************************************** */
+
+typedef struct {
+  fio_list_s node;
+  pubsub_sub_pt sub;
+} subscription_s;
+
+static inline subscription_s *create_subscription(ws_s *ws, pubsub_sub_pt sub) {
+  subscription_s *s = malloc(sizeof(*s));
+  s->sub = sub;
+  fio_list_add(&ws->subscriptions, &s->node);
+  return s;
+}
+
+static inline void free_subscription(subscription_s *s) {
+  fio_list_remove(&s->node);
+  free(s);
+}
+
+static inline void clear_subscriptions(ws_s *ws) {
+  subscription_s *s;
+  fio_list_for_each(subscription_s, node, s, ws->subscriptions) {
+    pubsub_unsubscribe(s->sub);
+    free_subscription(s);
+  }
+}
 
 /*******************************************************************************
 The Websocket Protocol implementation
@@ -436,19 +470,19 @@ Create/Destroy the websocket object
 static ws_s *new_websocket() {
   // allocate the protocol object
   ws_s *ws = malloc(sizeof(*ws));
-  memset(ws, 0, sizeof(*ws));
-
-  // setup the protocol & protocol callbacks
-  ws->protocol.ping = ws_ping;
-  ws->protocol.service = WEBSOCKET_ID_STR;
-  ws->protocol.on_data = on_data;
-  ws->protocol.on_close = on_close;
-  ws->protocol.on_ready = on_ready;
-  ws->protocol.on_shutdown = on_shutdown;
-  // return the object
+  *ws = (ws_s){
+      .protocol.service = WEBSOCKET_ID_STR,
+      .protocol.ping = ws_ping,
+      .protocol.on_data = on_data,
+      .protocol.on_close = on_close,
+      .protocol.on_ready = on_ready,
+      .protocol.on_shutdown = on_shutdown,
+      .subscriptions = FIO_LIST_INIT_STATIC(ws->subscriptions),
+  };
   return ws;
 }
 static void destroy_ws(ws_s *ws) {
+  clear_subscriptions(ws);
   if (ws->on_close)
     ws->on_close(ws);
   free_ws_buffer(ws, ws->buffer);
@@ -608,6 +642,203 @@ static void websocket_write_impl(intptr_t fd, void *data, size_t len,
     websocket_write_impl(fd, data, len, text, first, 1, client);
   }
   return;
+}
+
+/* *****************************************************************************
+UTF-8 testing. This part was practically copied from:
+https://stackoverflow.com/a/22135005/4025095
+and
+http://bjoern.hoehrmann.de/utf-8/decoder/dfa
+***************************************************************************** */
+/* Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de> */
+/* See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details. */
+
+#define UTF8_ACCEPT 0
+#define UTF8_REJECT 1
+
+static const uint8_t utf8d[] = {
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0, // 00..1f
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0, // 20..3f
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0, // 40..5f
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0, // 60..7f
+    1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,
+    1,   1,   1,   1,   1,   9,   9,   9,   9,   9,   9,
+    9,   9,   9,   9,   9,   9,   9,   9,   9,   9, // 80..9f
+    7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,
+    7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,
+    7,   7,   7,   7,   7,   7,   7,   7,   7,   7, // a0..bf
+    8,   8,   2,   2,   2,   2,   2,   2,   2,   2,   2,
+    2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,
+    2,   2,   2,   2,   2,   2,   2,   2,   2,   2, // c0..df
+    0xa, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3,
+    0x3, 0x3, 0x4, 0x3, 0x3, // e0..ef
+    0xb, 0x6, 0x6, 0x6, 0x5, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8,
+    0x8, 0x8, 0x8, 0x8, 0x8, // f0..ff
+    0x0, 0x1, 0x2, 0x3, 0x5, 0x8, 0x7, 0x1, 0x1, 0x1, 0x4,
+    0x6, 0x1, 0x1, 0x1, 0x1, // s0..s0
+    1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,
+    1,   1,   1,   1,   1,   1,   0,   1,   1,   1,   1,
+    1,   0,   1,   0,   1,   1,   1,   1,   1,   1, // s1..s2
+    1,   2,   1,   1,   1,   1,   1,   2,   1,   2,   1,
+    1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,
+    1,   2,   1,   1,   1,   1,   1,   1,   1,   1, // s3..s4
+    1,   2,   1,   1,   1,   1,   1,   1,   1,   2,   1,
+    1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,
+    1,   3,   1,   3,   1,   1,   1,   1,   1,   1, // s5..s6
+    1,   3,   1,   1,   1,   1,   1,   3,   1,   3,   1,
+    1,   1,   1,   1,   1,   1,   3,   1,   1,   1,   1,
+    1,   1,   1,   1,   1,   1,   1,   1,   1,   1, // s7..s8
+};
+
+static inline uint32_t validate_utf8(uint8_t *str, size_t len) {
+  uint32_t state = 0;
+  uint32_t type;
+  while (len) {
+    type = utf8d[*str];
+    state = utf8d[256 + state * 16 + type];
+    if (state == UTF8_REJECT)
+      return 0;
+    len--;
+    str++;
+  }
+  return state == 0;
+}
+/* *****************************************************************************
+Subscription handling
+***************************************************************************** */
+
+static void websocket_on_pubsub_message_direct(pubsub_message_s *msg) {
+  protocol_s *pr =
+      facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
+  if (!pr) {
+    if (errno == EBADF)
+      return;
+    pubsub_defer(msg);
+    return;
+  }
+  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len,
+                  msg->msg.len >= (2 << 14)
+                      ? 0
+                      : validate_utf8((uint8_t *)msg->msg.data, msg->msg.len));
+  facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+}
+
+static void websocket_on_pubsub_message_direct_txt(pubsub_message_s *msg) {
+  protocol_s *pr =
+      facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
+  if (!pr) {
+    if (errno == EBADF)
+      return;
+    pubsub_defer(msg);
+    return;
+  }
+  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len, 1);
+  facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+}
+
+static void websocket_on_pubsub_message_direct_bin(pubsub_message_s *msg) {
+  protocol_s *pr =
+      facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
+  if (!pr) {
+    if (errno == EBADF)
+      return;
+    pubsub_defer(msg);
+    return;
+  }
+  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len, 0);
+  facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+}
+
+static void websocket_on_pubsub_message(pubsub_message_s *msg) {
+  protocol_s *pr =
+      facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_TASK);
+  if (!pr) {
+    if (errno == EBADF)
+      return;
+    pubsub_defer(msg);
+    return;
+  }
+
+  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len, 0);
+  facil_protocol_unlock(pr, FIO_PR_LOCK_TASK);
+}
+
+/**
+ * Returns a subscription ID on success and 0 on failure.
+ */
+#undef websocket_subscribe
+uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
+  pubsub_sub_pt sub = pubsub_subscribe(
+          .engine = args.engine,
+          .channel =
+              {
+                  .name = (char *)args.channel.name, .len = args.channel.len,
+              },
+          .on_message =
+              (args.on_message
+                   ? websocket_on_pubsub_message
+                   : args.force_binary
+                         ? websocket_on_pubsub_message_direct_bin
+                         : args.force_text
+                               ? websocket_on_pubsub_message_direct_txt
+                               : websocket_on_pubsub_message_direct),
+          .udata1 = (void *)args.ws->fd, .udata2 = args.udata);
+  if (!sub)
+    return 0;
+  subscription_s *s = create_subscription(args.ws, sub);
+  return (uintptr_t)s;
+}
+
+/**
+ * Returns the existing subscription's ID (if exists) or 0 (no subscription).
+ */
+#undef websocket_find_sub
+uintptr_t websocket_find_sub(struct websocket_subscribe_s args) {
+  pubsub_sub_pt sub = pubsub_find_sub(
+          .engine = args.engine,
+          .channel =
+              {
+                  .name = (char *)args.channel.name, .len = args.channel.len,
+              },
+          .on_message =
+              (args.on_message
+                   ? websocket_on_pubsub_message
+                   : args.force_binary
+                         ? websocket_on_pubsub_message_direct_bin
+                         : args.force_text
+                               ? websocket_on_pubsub_message_direct_txt
+                               : websocket_on_pubsub_message_direct),
+          .udata1 = (void *)args.ws->fd, .udata2 = args.udata);
+  if (!sub)
+    return 0;
+  subscription_s *s;
+  fio_list_for_each(subscription_s, node, s, args.ws->subscriptions) {
+    if (s->sub == sub)
+      return (uintptr_t)s;
+  }
+  return 0;
+}
+
+/**
+ * Unsubscribes from a channel.
+ */
+void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id) {
+  subscription_s *s;
+  fio_list_for_each(subscription_s, node, s, ws->subscriptions) {
+    if (s == (subscription_s *)subscription_id) {
+      pubsub_unsubscribe(s->sub);
+      free_subscription(s);
+      return;
+    }
+  }
 }
 
 /*******************************************************************************

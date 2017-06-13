@@ -34,44 +34,9 @@ sleep 10 while `websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 #include <errno.h>
 #include <string.h>
 
-static void ws_on_pubsub_message(pubsub_message_s *msg) {
-  protocol_s *pr =
-      facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
-  while (!pr) {
-    if (errno == EBADF) {
-      // fwrite("X", 1, 1, stderr);
-      return;
-    }
-    // fwrite("-", 1, 1, stderr);
-    defer_thread_throttle(1);
-    pr = facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
-  }
-  // fwrite(":", 1, 1, stderr);
-  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len,
-                  msg->channel.len == 4);
-  facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
-  return;
-}
-
-static void ws_register(ws_s *ws) {
-  pubsub_sub_pt *pubsubs = malloc(sizeof(*pubsubs) * 2);
-  websocket_udata_set(ws, pubsubs);
-  pubsubs[0] = pubsub_subscribe(.on_message = ws_on_pubsub_message,
-                                .channel.name = "text",
-                                .udata1 = (void *)websocket_uuid(ws));
-
-  pubsubs[1] = pubsub_subscribe(.on_message = ws_on_pubsub_message,
-                                .channel.name = "binary",
-                                .udata1 = (void *)websocket_uuid(ws));
-}
-
-static void ws_unregister(ws_s *ws) {
-  pubsub_sub_pt *pubsubs = websocket_udata(ws);
-  if (pubsubs) {
-    pubsub_unsubscribe(pubsubs[0]);
-    pubsub_unsubscribe(pubsubs[1]);
-    free(pubsubs);
-  }
+static void ws_shootout_pubsub_on_open(ws_s *ws) {
+  websocket_subscribe(ws, .channel.name = "text", .force_text = 1);
+  websocket_subscribe(ws, .channel.name = "binary", .force_binary = 1);
 }
 
 static void ws_shootout_pubsub(ws_s *ws, char *data, size_t size,
@@ -115,7 +80,7 @@ static void http_websocket_shotout_pubsub(http_request_s *request) {
   if (request->upgrade) {
     // Websocket upgrade will use our existing response (never leak responses).
     websocket_upgrade(.request = request, .response = response,
-                      .on_open = ws_register, .on_close = ws_unregister,
+                      .on_open = ws_shootout_pubsub_on_open,
                       .on_message = ws_shootout_pubsub);
 
     return;

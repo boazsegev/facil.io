@@ -95,18 +95,13 @@ static void pubsub_deliver_msg(void *client_, void *msg_) {
               .use_pattern = msg->pub.use_pattern,
               .udata1 = cl->udata1,
               .udata2 = cl->udata2,
+              .subscription = cl,
           },
   };
   cl->on_message(&clmsg.msg);
   pubsub_free_msg(msg, NULL);
   pubsub_free_client(cl, NULL);
 }
-
-/* *****************************************************************************
-Pattern Matching
-***************************************************************************** */
-
-/* TODO: pattern matching using trie dictionary */
 
 /* *****************************************************************************
 Default Engine / Cluster Support
@@ -479,4 +474,17 @@ int pubsub_publish(struct pubsub_publish_args args) {
                                   args.use_pattern);
   return args.engine->publish(args.engine, args.channel.name, args.channel.len,
                               args.msg.data, args.msg.len, args.use_pattern);
+}
+
+/**
+ * defers message hadling if it can't be performed (i.e., resource is busy) or
+ * should be fragmented (allowing large tasks to be broken down).
+ */
+void pubsub_defer(pubsub_message_s *msg_) {
+  if (!msg_)
+    return;
+  msg_container_s *msg = fio_node2obj(msg_container_s, msg, msg_);
+  spn_add(&msg->origin->ref, 1);
+  spn_add(&msg->msg.subscription->active, 1);
+  defer(pubsub_deliver_msg, msg->msg.subscription, msg->origin);
 }

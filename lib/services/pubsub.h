@@ -134,6 +134,23 @@ int pubsub_publish(struct pubsub_publish_args);
   pubsub_publish((struct pubsub_publish_args){__VA_ARGS__})
 
 /**
+ * defers message hadling if it can't be performed (i.e., resource is busy) or
+ * should be fragmented (allowing large tasks to be broken down).
+ *
+ * This should only be called from within the `on_message` callback.
+ *
+ * It's recommended that the `on_message` callback return immediately followin
+ * this function call, as code might run concurrently.
+ *
+ * Uses reference counting for zero copy.
+ *
+ * It's impossible to use a different `on_message` callbck without resorting to
+ * memory allocations... so when in need, manage routing withing the
+ * `on_message` callback.
+ */
+void pubsub_defer(pubsub_message_s *msg);
+
+/**
  * Pub/Sub services (engines) MUST provide the listed function pointers.
  *
  * When an engine received a message to publish, they should call the
