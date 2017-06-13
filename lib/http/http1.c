@@ -112,6 +112,7 @@ static void http1_on_header_found(http_request_s *request,
 
 static void http1_on_data(intptr_t uuid, http1_protocol_s *pr);
 static void http1_on_data_def(intptr_t uuid, protocol_s *pr, void *ignr) {
+  sock_touch(uuid);
   http1_on_data(uuid, (http1_protocol_s *)pr);
   (void)ignr;
 }
