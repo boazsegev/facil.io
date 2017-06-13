@@ -110,6 +110,11 @@ static void http1_on_header_found(http_request_s *request,
   ((http1_request_s *)request)->header_pos += 1;
 }
 
+static void http1_on_data(intptr_t uuid, http1_protocol_s *pr);
+static void http1_on_data_def(intptr_t uuid, protocol_s *pr, void *ignr) {
+  http1_on_data(uuid, (http1_protocol_s *)pr);
+  (void)ignr;
+}
 /* parse and call callback */
 static void http1_on_data(intptr_t uuid, http1_protocol_s *pr) {
   ssize_t result;
@@ -223,7 +228,8 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *pr) {
       /* prevent this connection from hogging the thread by pipelining endless
        * requests.
        */
-      defer((void (*)(void *, void *))http1_on_data, (void *)uuid, pr);
+      facil_defer(.task = http1_on_data_def, .task_type = FIO_PR_LOCK_TASK,
+                  .uuid = uuid);
       return;
     }
   }

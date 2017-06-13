@@ -246,11 +246,18 @@ static int pubsub_cluster_eng_publish(const pubsub_engine_s *eng,
   return 0;
 }
 
-static const pubsub_engine_s PUBSUB_CLUSTER_ENGINE = {
+const pubsub_engine_s PUBSUB_CLUSTER_ENGINE = {
     .publish = pubsub_cluster_eng_publish,
     .subscribe = pubsub_cluster_subscribe,
     .unsubscribe = pubsub_cluster_unsubscribe,
-    .push2cluster = 1};
+    .push2cluster = 1,
+};
+
+const pubsub_engine_s PUBSUB_PROCESS_ENGINE = {
+    .publish = pubsub_cluster_eng_publish,
+    .subscribe = pubsub_cluster_subscribe,
+    .unsubscribe = pubsub_cluster_unsubscribe,
+};
 
 /* *****************************************************************************
 External Engine Bridge

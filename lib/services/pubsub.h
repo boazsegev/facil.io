@@ -182,6 +182,12 @@ struct pubsub_engine_s {
   unsigned push2cluster : 1;
 };
 
+/** The default pub/sub engine. */
+extern const pubsub_engine_s PUBSUB_CLUSTER_ENGINE;
+
+/** An angine that performs pub/sub only within a single process. */
+extern const pubsub_engine_s PUBSUB_PROCESS_ENGINE;
+
 /**
  * The function used by engines to distribute received messages.
  * The `udata*` and `subscription` fields are ignored.

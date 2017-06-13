@@ -115,6 +115,8 @@ struct Websocket {
   struct buffer_s buffer;
   /** message length (how much of the buffer actually used). */
   size_t length;
+  /** for fragmenting the `on_data` parsing and message handling. */
+  size_t resume_from;
   /** parser. */
   struct {
     union {
@@ -228,6 +230,12 @@ static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
 static size_t websocket_encode(void *buff, void *data, size_t len, char text,
                                char first, char last, char client);
 
+static void on_data(intptr_t sockfd, protocol_s *_ws);
+static void on_data_def(intptr_t sockfd, protocol_s *_ws, void *arg) {
+  on_data(sockfd, _ws);
+  (void)arg;
+}
+
 /* read data from the socket, parse it and invoke the websocket events. */
 static void on_data(intptr_t sockfd, protocol_s *_ws) {
 #define ws ((ws_s *)_ws)
@@ -235,8 +243,14 @@ static void on_data(intptr_t sockfd, protocol_s *_ws) {
     return;
   ssize_t len = 0;
   ssize_t data_len = 0;
+  if (ws->resume_from) {
+    len = ws->resume_from;
+    ws->resume_from = 0;
+    goto resume_parsing;
+  }
   while ((len = sock_read(sockfd, read_buffer.buffer, WEBSOCKET_READ_MAX)) >
          0) {
+  resume_parsing:
     data_len = 0;
     read_buffer.pos = 0;
     while (read_buffer.pos < len) {
@@ -458,6 +472,13 @@ static void on_data(intptr_t sockfd, protocol_s *_ws) {
       *((char *)(&(ws->parser.head))) = 0;
       ws->parser.received = ws->parser.length = ws->parser.psize.len2 =
           data_len = 0;
+      if (read_buffer.pos < len) {
+        /* we just finished an on_message callback, let's fragment the event. */
+        ws->resume_from = len;
+        facil_defer(.task = on_data_def, .task_type = FIO_PR_LOCK_TASK,
+                    .uuid = sockfd);
+        return;
+      }
     }
   }
 #undef ws
