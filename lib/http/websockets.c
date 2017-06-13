@@ -244,6 +244,7 @@ static void on_data(intptr_t sockfd, protocol_s *_ws) {
   ssize_t len = 0;
   ssize_t data_len = 0;
   if (ws->resume_from) {
+    sock_touch(sockfd);
     len = ws->resume_from;
     ws->resume_from = 0;
     goto resume_parsing;
