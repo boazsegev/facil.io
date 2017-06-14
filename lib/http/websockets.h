@@ -186,6 +186,8 @@ typedef struct {
     const char *data;
     size_t len;
   } msg;
+  /** Pattern matching was used for channel subscription. */
+  unsigned use_pattern : 1;
   /** user opaque data. */
   void *udata;
 } websocket_pubsub_notification_s;
@@ -213,6 +215,8 @@ struct websocket_subscribe_s {
   void (*on_message)(websocket_pubsub_notification_s notification);
   /** User opaque data, passed along to the notification. */
   void *udata;
+  /** Use pattern matching for channel subscription. */
+  unsigned use_pattern : 1;
   /**
    * When using client forwarding (no `on_message` callback), this indicates if
    * messages should be sent to the client as binary blobs, which is the safest

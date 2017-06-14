@@ -804,6 +804,7 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
               {
                   .name = (char *)args.channel.name, .len = args.channel.len,
               },
+          .use_pattern = args.use_pattern,
           .on_message =
               (args.on_message
                    ? websocket_on_pubsub_message
@@ -830,6 +831,7 @@ uintptr_t websocket_find_sub(struct websocket_subscribe_s args) {
               {
                   .name = (char *)args.channel.name, .len = args.channel.len,
               },
+          .use_pattern = args.use_pattern,
           .on_message =
               (args.on_message
                    ? websocket_on_pubsub_message
