@@ -14,7 +14,7 @@ Copyright refers to the parser, not the protocol.
 /* *****************************************************************************
 Object management
 +
-Parser layer support through a hidden head for objects.
+Sometimes you just need a dirty stack.
 ***************************************************************************** */
 
 static resp_object_s *resp_alloc_obj(enum resp_type_enum type, size_t length) {
@@ -341,18 +341,20 @@ int resp_format(uint8_t *dest, size_t *size, resp_object_s *obj) {
   size_t limit = *size;
   *size = 0;
 #define safe_write_eol()                                                       \
-  if ((*size += 2) <= limit)                                                   \
+  if ((*size += 2) <= limit) {                                                 \
     *dest++ = '\r';                                                            \
-  *dest++ = '\n';
+    *dest++ = '\n';                                                            \
+  }
 #define safe_write1(data)                                                      \
-  if (++(*size) <= limit)                                                      \
-  *dest++ = (data)
+  if (++(*size) <= limit) {                                                    \
+    *dest++ = (data);                                                          \
+  }
 #define safe_write2(data, len)                                                 \
   do {                                                                         \
     *size += (len);                                                            \
     if (*size <= limit) {                                                      \
-      memcpy(dest, (data), len);                                               \
-      dest += len;                                                             \
+      memcpy(dest, (data), (len));                                             \
+      dest += (len);                                                           \
     }                                                                          \
   } while (0)
 #define safe_write_i(i)                                                        \
@@ -360,15 +362,15 @@ int resp_format(uint8_t *dest, size_t *size, resp_object_s *obj) {
     size_t t2 = (i);                                                           \
     if (i < 0) {                                                               \
       safe_write1('-');                                                        \
-      t2 = i * -1;                                                             \
+      t2 = ((i) * -1);                                                         \
     }                                                                          \
-    size_t len = log10((double)(t2)) + 1;                                      \
+    size_t len = (size_t)log10((double)(t2)) + 1;                              \
     *size += (len);                                                            \
     if (*size <= limit) {                                                      \
       size_t t1 = len;                                                         \
       size_t t3 = t2 / 10;                                                     \
       while (t1--) {                                                           \
-        dest[t1] = '0' + (t3 - t2);                                            \
+        dest[t1] = '0' + (t2 - (t3 * 10));                                     \
         t2 = t3;                                                               \
         t3 = t3 / 10;                                                          \
       }                                                                        \
@@ -389,19 +391,20 @@ int resp_format(uint8_t *dest, size_t *size, resp_object_s *obj) {
     case RESP_OK:
       safe_write2("+OK\r\n", 5);
     case RESP_ARRAY:
-      safe_write1('$');
+      safe_write1('*');
       safe_write_i(resp_obj2arr(obj)->len);
       safe_write_eol();
-      resp_obj2arr(obj)->pos = 0;
       {
         resp_array_s *a = resp_obj2arr(obj);
+        a->pos = a->len;
         obj = NULL;
-        while (a->pos < a->len) {
+        while (a->pos) {
+          a->pos--;
           push_obj(a->array[a->pos], obj);
-          a->pos++;
           obj = a->array[a->pos];
         }
       }
+      continue;
       break;
     case RESP_STRING:
       safe_write1('$');
@@ -411,15 +414,20 @@ int resp_format(uint8_t *dest, size_t *size, resp_object_s *obj) {
       safe_write_eol();
       break;
     case RESP_NUMBER:
-      safe_write1('$');
+      safe_write1(':');
       safe_write_i(resp_obj2num(obj)->number);
       safe_write_eol();
       break;
     }
     obj = pop_obj(obj);
   }
-  safe_write1('\x0');
-  return ((*size <= limit) ? 0 : -1);
+  if (*size < limit) {
+    *dest = '0';
+    return 0;
+  }
+  if (*size == limit)
+    return 0;
+  return -1;
 #undef safe_write_eol
 #undef safe_write1
 #undef safe_write2
@@ -429,7 +437,7 @@ int resp_format(uint8_t *dest, size_t *size, resp_object_s *obj) {
 /* *****************************************************************************
 Tests
 ***************************************************************************** */
-#if DEBUG == 1
+#ifdef DEBUG
 #include <inttypes.h>
 #include <stdint.h>
 void resp_test(void) {
@@ -439,11 +447,12 @@ void resp_test(void) {
   uint8_t b_neg_num[] = ":-13\r\n";
   uint8_t b_err[] = "-ERR: or not :-)\r\n";
   uint8_t b_str[] = "$19\r\nthis is a string :)\r\n";
-  uint8_t b_longer[] = "*5\r\n"
+  uint8_t b_longer[] = "*6\r\n"
                        ":1\r\n"
                        ":2\r\n"
                        ":3\r\n"
                        ":4\r\n"
+                       ":-5794\r\n"
                        "$6\r\n"
                        "foobar\r\n";
   resp_parser_pt parser = resp_parser_new();
@@ -532,11 +541,11 @@ void resp_test(void) {
       }
     }
     {
-      uint8_t buff[48];
-      size_t len = 48;
+      uint8_t buff[48] = {0};
+      size_t len = 47;
       resp_format(buff, &len, obj);
       fprintf(stderr,
-              "* In RESP format, it should take %lu bytes like so: %s\n", len,
+              "* In RESP format, it should take %lu bytes like so:\n%s\n", len,
               buff);
     }
     resp_free_object(obj);

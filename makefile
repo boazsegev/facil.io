@@ -1,11 +1,11 @@
 # binary name and location
 NAME=demo
-OUT_ROOT=./tmp
+OUT_ROOT=tmp
 # temporary folder will be cleared out and deleted between fresh builds
 # All object files will be placed in this folder
-TMP_ROOT=./tmp
+TMP_ROOT=tmp
 # The none library .c file(s) (i.e., the one with `int main(void)`.
-MAIN_ROOT=./dev
+MAIN_ROOT=./dev ./lib/redis
 # any allowed subfolders in the main root
 MAIN_SUBFOLDERS=http
 # the .c and .cpp source files root folder - subfolders are automatically included
@@ -25,7 +25,7 @@ WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
 CMAKE_LIBFILE_NAME=CMakeLists.txt
 
 # dumps all library files in one place
-DUMP_LIB=./libdump
+DUMP_LIB=libdump
 # any include folders, space seperated list
 INCLUDE= ./
 
@@ -74,7 +74,7 @@ LIBDIR_PRIV = $(foreach dir, $(LIB_PRIVATE_SUBFOLDERS), $(addsuffix /,$(basename
 LIBDIR = $(LIBDIR_PUB) $(LIBDIR_PRIV)
 LIBSRC = $(foreach dir, $(LIBDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
 
-MAINDIR = $(MAIN_ROOT) $(foreach dir, $(MAIN_SUBFOLDERS), $(addsuffix /,$(basename $(MAIN_ROOT)))$(dir))
+MAINDIR = $(MAIN_ROOT) $(foreach main_root, $(MAIN_ROOT) , $(foreach dir, $(MAIN_SUBFOLDERS), $(addsuffix /,$(basename $(main_root)))$(dir)))
 MAINSRC = $(foreach dir, $(MAINDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.c*))
 
 FOLDERS = $(LIBDIR) $(MAINDIR)
@@ -85,7 +85,7 @@ BUILDTREE =$(foreach dir, $(FOLDERS), $(addsuffix /, $(basename $(TMP_ROOT)))$(b
 CCL = $(CC)
 
 INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(FOLDERS),$(addprefix -I, $(dir)))
-FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -I, $(flag)))
+FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 
 OBJS = $(foreach source, $(SOURCES), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 

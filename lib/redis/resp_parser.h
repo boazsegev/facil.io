@@ -92,7 +92,7 @@ resp_object_s *resp_parser_feed(resp_parser_pt, uint8_t *buffer, size_t *len);
  */
 int resp_format(uint8_t *dest, size_t *size, resp_object_s *obj);
 
-#if DEBUG == 1
+#ifdef DEBUG
 void resp_test(void);
 #endif
 

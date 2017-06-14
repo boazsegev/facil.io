@@ -1,7 +1,8 @@
 -Idev/
 -Ilib/
--Ilib/http/
 -Ilib/core
+-Ilib/http/
+-Ilib/redis
 -Ilib/core/types
 -Ilib/services
 -Ilib/bscrypt
