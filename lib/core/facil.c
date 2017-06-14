@@ -478,9 +478,9 @@ intptr_t facil_connect(struct facil_connect_args opt) {
     goto error;
   if (!opt.set_rw_hooks)
     opt.set_rw_hooks = listener_set_rw_hooks;
-  if (!facil_data->last_cycle)
-    time(&facil_data->last_cycle);
   struct ConnectProtocol *connector = malloc(sizeof(*connector));
+  if (!connector)
+    goto error;
   *connector = (struct ConnectProtocol){
       .on_connect = opt.on_connect,
       .on_fail = opt.on_fail,
@@ -493,8 +493,6 @@ intptr_t facil_connect(struct facil_connect_args opt) {
       .rw_udata = opt.rw_udata,
       .opened = 0,
   };
-  if (!connector)
-    goto error;
   intptr_t uuid = sock_connect(opt.address, opt.port);
   if (uuid == -1)
     goto error;
@@ -1032,12 +1030,13 @@ int facil_attach(intptr_t uuid, protocol_s *protocol) {
       protocol->on_shutdown = mock_on_ev;
     protocol->rsv = 0;
   }
+  spn_lock(&uuid_data(uuid).lock);
   if (!sock_isvalid(uuid)) {
+    spn_unlock(&uuid_data(uuid).lock);
     if (protocol)
       defer(deferred_on_close, protocol, NULL);
     return -1;
   }
-  spn_lock(&uuid_data(uuid).lock);
   protocol_s *old_protocol = uuid_data(uuid).protocol;
   uuid_data(uuid).protocol = protocol;
   uuid_data(uuid).active = facil_data->last_cycle;

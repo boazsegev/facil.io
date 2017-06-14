@@ -54,6 +54,7 @@ protocol_s *on_client_connect(intptr_t uuid, void *udata) {
 void on_client_fail(void *udata) {
   fprintf(stderr, "Client FAILED to connect (%s).\n",
           udata ? (char *)udata : "");
+  perror("Reason");
 }
 
 void client_attempt(void *port1, void *port2) {
