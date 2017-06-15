@@ -86,6 +86,9 @@ resp_object_s *resp_str2obj(const void *str, size_t len);
  */
 resp_object_s *resp_arr2obj(int argc, const resp_object_s *argv[]);
 
+/** Duplicates an object by increasing it's reference count. */
+resp_object_s *resp_dup_object(resp_object_s *obj);
+
 /** frees an object returned from the parser. */
 void resp_free_object(resp_object_s *obj);
 
@@ -116,6 +119,18 @@ void resp_free_object(resp_object_s *obj);
  */
 int resp_format(resp_parser_pt p, uint8_t *dest, size_t *size,
                 resp_object_s *obj);
+
+/**
+ * Performs a task on each object. Protects from loop-backs.
+ *
+ * To break loop in the middle, `task` can return -1.
+ *
+ * Returns count.
+ */
+size_t resp_obj_each(resp_parser_pt p, resp_object_s *obj,
+                     int (*task)(resp_parser_pt p, resp_object_s *obj,
+                                 void *arg),
+                     void *arg);
 
 /* *****************************************************************************
 The RESP Parser
