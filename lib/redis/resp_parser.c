@@ -11,6 +11,8 @@ Copyright refers to the parser, not the protocol.
 #include <stdio.h>
 #include <string.h>
 
+#include "spnlock.inc" /* for atomic operations when reference counting. */
+
 /* *****************************************************************************
 The parser object
 ***************************************************************************** */
@@ -45,59 +47,76 @@ Object management
 Sometimes you just need a dirty stack.
 ***************************************************************************** */
 
+typedef struct {
+  volatile uintptr_t ref;
+  resp_object_s *link;
+} resp_objhead_s;
+
+#define OBJHEAD(obj) (((resp_objhead_s *)(obj)) - 1)
+
 static resp_object_s *resp_alloc_obj(enum resp_type_enum type, size_t length) {
-  void **mem = NULL;
+  resp_objhead_s *head = NULL;
   switch (type) {
   /* Fallthrough */
   case RESP_ERR:
   case RESP_STRING:
-    mem = malloc(sizeof(void *) + sizeof(resp_string_s) + length + 1);
-    mem[0] = NULL;
-    resp_string_s *s = (void *)(mem + 1); /* + 1 for NULL (safety) */
+    head = malloc(sizeof(*head) + sizeof(resp_string_s) + length + 1);
+    *head = (resp_objhead_s){.ref = 1};
+    resp_string_s *s = (void *)(head + 1); /* + 1 for NULL (safety) */
     *s = (resp_string_s){.type = type, .len = length};
     return (void *)s;
     break;
   case RESP_NULL:
   case RESP_OK:
-    mem = malloc(sizeof(void *) + sizeof(resp_object_s));
-    mem[0] = NULL;
-    resp_object_s *ok = (void *)(mem + 1);
+    head = malloc(sizeof(*head) + sizeof(resp_object_s));
+    *head = (resp_objhead_s){.ref = 1};
+    resp_object_s *ok = (void *)(head + 1);
     *ok = (resp_object_s){.type = type};
     return (void *)ok;
     break;
   case RESP_ARRAY:
   case RESP_PUBSUB:
-    mem = malloc(sizeof(void *) + sizeof(resp_array_s) +
-                 (sizeof(resp_object_s *) * length));
-    mem[0] = NULL;
-    resp_array_s *ar = (void *)(mem + 1);
+    head = malloc(sizeof(*head) + sizeof(resp_array_s) +
+                  (sizeof(resp_object_s *) * length));
+    *head = (resp_objhead_s){.ref = 1};
+    resp_array_s *ar = (void *)(head + 1);
     *ar = (resp_array_s){.type = type, .len = length};
     return (void *)ar;
     break;
   case RESP_NUMBER:
-    mem = malloc(sizeof(void *) + sizeof(resp_number_s));
-    mem[0] = NULL;
-    resp_number_s *i = (void *)(mem + 1);
+    head = malloc(sizeof(*head) + sizeof(resp_number_s));
+    *head = (resp_objhead_s){.ref = 1};
+    resp_number_s *i = (void *)(head + 1);
     *i = (resp_number_s){.type = RESP_NUMBER, .number = length};
     return (void *)i;
     break;
   }
   return NULL;
 }
+
 static void resp_dealloc_obj(resp_object_s *obj) {
-  void **mem = (void **)obj;
-  free(mem - 1);
+  if (!spn_sub(&OBJHEAD(obj)->ref, 1))
+    free(OBJHEAD(obj));
 }
 
 inline static resp_object_s *pop_obj(resp_object_s *obj) {
-  void **mem = (void **)obj;
-  return mem[-1];
+  resp_object_s *ret = OBJHEAD(obj)->link;
+  if (ret) {
+    OBJHEAD(obj)->link = OBJHEAD(ret)->link;
+  } else
+    OBJHEAD(obj)->link = NULL;
+  return ret;
+}
+inline static resp_object_s *peek_obj(resp_object_s *obj) {
+  return OBJHEAD(obj)->link;
 }
 inline static void push_obj(resp_object_s *dest, resp_object_s *obj) {
   if (!dest)
     return;
-  void **mem = (void **)dest;
-  mem[-1] = obj;
+  if (obj) {
+    OBJHEAD(obj)->link = OBJHEAD(dest)->link;
+  }
+  OBJHEAD(dest)->link = obj;
 }
 
 /* *****************************************************************************
@@ -173,7 +192,9 @@ Formatter (RESP => Memory Buffer)
 
 int resp_format(resp_parser_pt p, uint8_t *dest, size_t *size,
                 resp_object_s *obj) {
-  push_obj(obj, NULL);
+  /* use a stack to print it all...*/
+  resp_object_s *head = obj;
+
   uint8_t multiplex_pubsub =
       (p && p->multiplex_pubsub && obj->type == RESP_ARRAY &&
        ((resp_array_s *)obj)->len &&
@@ -226,7 +247,7 @@ int resp_format(resp_parser_pt p, uint8_t *dest, size_t *size,
     }                                                                          \
   } while (0)
 
-  while (obj) {
+  do {
     switch (obj->type) {
     case RESP_ERR:
       safe_write1('-');
@@ -246,11 +267,9 @@ int resp_format(resp_parser_pt p, uint8_t *dest, size_t *size,
       {
         resp_array_s *a = resp_obj2arr(obj);
         a->pos = a->len;
-        obj = NULL;
         while (a->pos) {
           a->pos--;
-          push_obj(a->array[a->pos], obj);
-          obj = a->array[a->pos];
+          push_obj(head, a->array[a->pos]);
         }
       }
       continue;
@@ -272,8 +291,7 @@ int resp_format(resp_parser_pt p, uint8_t *dest, size_t *size,
       safe_write_eol();
       break;
     }
-    obj = pop_obj(obj);
-  }
+  } while ((obj = pop_obj(head)));
   if (*size < limit) {
     *dest = '0';
     return 0;
@@ -576,7 +594,7 @@ void resp_test(void) {
     resp_object_s *tmp = resp_alloc_obj(RESP_NULL, 0);
     push_obj(obj, tmp);
     fprintf(stderr, "* Push/Pop test: %s\n",
-            (pop_obj(obj) == tmp) ? "ok." : "FAILED!");
+            (pop_obj(obj) == tmp && pop_obj(obj) == NULL) ? "ok." : "FAILED!");
     resp_dealloc_obj(obj);
     resp_dealloc_obj(tmp);
   }

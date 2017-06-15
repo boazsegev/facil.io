@@ -6,41 +6,41 @@
 /* *****************************************************************************
 Sending Commands or Responses
 ***************************************************************************** */
-//
-// /** The following arguments (`struct` members) can be used to `redis_send` */
-// struct redis_send_args_s {
-//   /** The Redis connection's uuid (facil.io's connection ID). REQUIRED.*/
-//   intptr_t uuid;
-//   /** A RESP array with the command and it's arguments. REQUIRED.*/
-//   const resp_array_s *cmd;
-//   /** An optional callback that will receive the response. */
-//   void (*on_response)(intptr_t uuid, const resp_object_s *response,
-//                       void *udata);
-//   /** an opaque user data that's passed along to the `on_response` callback.
-//   */ void *udata;
-//   /**
-//    * If set, `redis_send` will automatically deallocate the array when done.
-//    *
-//    * Setting this flag should be prefered.
-//    */
-//   uint8_t move;
-// };
-//
-// /**
-//  * Sends RESP messages. Returns -1 on a known error and 0 if the message was
-//  * successfully validated to be sent.
-//  *
-//  * Servers implementations should probably write directly to the socket using
-//  * `sock_write` or `sock_write2`. This function is more client oriented and
-//  * manages a callback system to handle responses.
-//  *
-//  * Since this is an evented framework, this doesn't mean the data was
-//  actually * sent. That's why there's the `on_response` callback... ;-)
-//  */
-// int redis_send(struct redis_send_args_s);
-// #define redis_send(redis_uuid, cmd_array, ...) \
-//   redis_send((struct redis_send_args_s){ \
-//       .uuid = (redis_uuid), .cmd = cmd_array, __VA_ARGS__})
+
+/** The following arguments (`struct` members) can be used to `redis_send` */
+struct redis_send_args_s {
+  /** The Redis connection's uuid (facil.io's connection ID). REQUIRED.*/
+  intptr_t uuid;
+  /** A RESP array with the command/response and it's arguments. REQUIRED.*/
+  const resp_array_s *cmd;
+  /** An optional callback that will receive the response. */
+  void (*on_response)(intptr_t uuid, const resp_object_s *response,
+                      void *udata);
+  /** an opaque user data that's passed along to the `on_response` callback.
+  */ void *udata;
+  /**
+   * If set, `redis_send` will automatically deallocate the array when done.
+   *
+   * Setting this flag should be prefered.
+   */
+  uint8_t move;
+};
+
+/**
+ * Sends RESP messages. Returns -1 on a known error and 0 if the message was
+ * successfully validated to be sent.
+ *
+ * Servers implementations should probably write directly to the socket using
+ * `sock_write` or `sock_write2`. This function is more client oriented and
+ * manages a callback system to handle responses.
+ *
+ * Since this is an evented framework, this doesn't mean the data was
+ actually * sent. That's why there's the `on_response` callback... ;-)
+ */
+int redis_send(struct redis_send_args_s);
+#define redis_send(redis_uuid, cmd_array, ...)                                 \
+  redis_send((struct redis_send_args_s){                                       \
+      .uuid = (redis_uuid), .cmd = cmd_array, __VA_ARGS__})
 
 /* *****************************************************************************
 Connectivity

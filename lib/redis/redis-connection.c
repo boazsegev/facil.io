@@ -129,9 +129,8 @@ void redis_on_shutdown(intptr_t uuid, protocol_s *pr) {
   (void)pr;
 }
 
-static void redis_on_data_deferred(intptr_t uuid, protocol_s *pr, void *d);
-
 /** called when a data is available, but will not run concurrently */
+static void redis_on_data_deferred(intptr_t uuid, protocol_s *pr, void *d);
 static void redis_on_data(intptr_t uuid, protocol_s *pr) {
   redis_protocol_s *r = (redis_protocol_s *)pr;
   uint8_t buffer[REDIS_READ_BUFFER];
@@ -286,3 +285,19 @@ static void mock_on_response(intptr_t uuid, const resp_object_s *response,
   (void)uuid;
   (void)response;
 }
+
+// struct redis_send_args_s {
+//   intptr_t uuid;
+//   const resp_array_s *cmd;
+//   void (*on_response)(intptr_t uuid, const resp_object_s *response,
+//                       void *udata);
+//   void *udata;
+//   uint8_t move;
+// };
+
+/**
+ * Sends RESP messages. Returns -1 on a known error and 0 if the message was
+ * successfully validated to be sent.
+ */
+#undef redis_send
+int redis_send(struct redis_send_args_s args) {}
