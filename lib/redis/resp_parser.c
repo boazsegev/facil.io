@@ -12,6 +12,34 @@ Copyright refers to the parser, not the protocol.
 #include <string.h>
 
 /* *****************************************************************************
+The parser object
+***************************************************************************** */
+
+typedef struct resp_parser_s {
+  resp_object_s *obj;
+  size_t missing;
+  uint8_t *leftovers;
+  size_t llen;
+  unsigned has_first_object : 1;
+  unsigned exclude_pubsub : 1;
+  unsigned is_pubsub : 1;
+  unsigned multiplex_pubsub : 1;
+} resp_parser_s;
+
+/* *****************************************************************************
+Pub/Sub state and Extension Flags
+***************************************************************************** */
+
+/** Set the parsing mode to enable and prefer pub/sub semantics. */
+void resp_set_pubsub(resp_parser_pt p) { p->is_pubsub = 1; }
+
+/** Set the parsing mode to enable the experimental pub/sub duplexing. */
+void resp_enable_duplex_pubsub(resp_parser_pt p) {
+  p->is_pubsub = 1;
+  p->multiplex_pubsub = 1;
+}
+
+/* *****************************************************************************
 Object management
 +
 Sometimes you just need a dirty stack.
@@ -25,7 +53,7 @@ static resp_object_s *resp_alloc_obj(enum resp_type_enum type, size_t length) {
   case RESP_STRING:
     mem = malloc(sizeof(void *) + sizeof(resp_string_s) + length + 1);
     mem[0] = NULL;
-    resp_string_s *s = (void *)(mem + 1);
+    resp_string_s *s = (void *)(mem + 1); /* + 1 for NULL (safety) */
     *s = (resp_string_s){.type = type, .len = length};
     return (void *)s;
     break;
@@ -38,11 +66,12 @@ static resp_object_s *resp_alloc_obj(enum resp_type_enum type, size_t length) {
     return (void *)ok;
     break;
   case RESP_ARRAY:
+  case RESP_PUBSUB:
     mem = malloc(sizeof(void *) + sizeof(resp_array_s) +
                  (sizeof(resp_object_s *) * length));
     mem[0] = NULL;
     resp_array_s *ar = (void *)(mem + 1);
-    *ar = (resp_array_s){.type = RESP_ARRAY, .len = length};
+    *ar = (resp_array_s){.type = type, .len = length};
     return (void *)ar;
     break;
   case RESP_NUMBER:
@@ -72,15 +101,195 @@ inline static void push_obj(resp_object_s *dest, resp_object_s *obj) {
 }
 
 /* *****************************************************************************
-Parser
+Object API
 ***************************************************************************** */
 
-typedef struct resp_parser_s {
-  resp_object_s *obj;
-  size_t missing;
-  uint8_t *leftovers;
-  size_t llen;
-} resp_parser_s;
+/** Allocates an RESP NULL objcet. Remeber to free when done. */
+resp_object_s *resp_nil2obj(void) { return resp_alloc_obj(RESP_NULL, 0); }
+
+/** Allocates an RESP OK objcet. Remeber to free when done. */
+resp_object_s *resp_OK2obj(void) { return resp_alloc_obj(RESP_OK, 0); }
+
+/** Allocates an RESP Error objcet. Remeber to free when done. */
+resp_object_s *resp_err2obj(const void *msg, size_t len) {
+  resp_string_s *o = (resp_string_s *)resp_alloc_obj(RESP_STRING, len);
+  memcpy(o->string, msg, len);
+  o->string[len] = 0;
+  return (void *)o;
+}
+
+/** Allocates an RESP Number objcet. Remeber to free when done. */
+resp_object_s *resp_num2obj(uint64_t num) {
+  return resp_alloc_obj(RESP_NUMBER, num);
+}
+
+/** Allocates an RESP String objcet. Remeber to free when done. */
+resp_object_s *resp_str2obj(const void *str, size_t len) {
+  resp_string_s *o = (resp_string_s *)resp_alloc_obj(RESP_STRING, len);
+  memcpy(o->string, str, len);
+  o->string[len] = 0;
+  return (void *)o;
+}
+
+/** Allocates an RESP Number objcet. Remeber to free when done. */
+resp_object_s *resp_arr2obj(int argc, const resp_object_s *argv[]) {
+  if (argc < 0)
+    return NULL;
+  resp_array_s *o = (resp_array_s *)resp_alloc_obj(RESP_ARRAY, argc);
+  if (argv) {
+    for (int i = 0; i < argc; i++) {
+      o->array[i] = (resp_object_s *)argv[i];
+    }
+  }
+  return (void *)o;
+}
+
+/** frees an object returned from the parser. */
+void resp_free_object(resp_object_s *obj) {
+  switch (obj->type) {
+  /* Fallthrough */
+  case RESP_ERR:
+  case RESP_STRING:
+  case RESP_NUMBER:
+  case RESP_NULL:
+  case RESP_OK:
+    resp_dealloc_obj(obj);
+    break;
+  case RESP_ARRAY:
+  case RESP_PUBSUB:
+    ((resp_array_s *)obj)->pos = 0;
+    while (((resp_array_s *)obj)->pos < ((resp_array_s *)obj)->len) {
+      resp_free_object(
+          ((resp_array_s *)obj)->array[((resp_array_s *)obj)->pos++]);
+    }
+    resp_dealloc_obj(obj);
+    break;
+  }
+}
+
+/* *****************************************************************************
+Formatter (RESP => Memory Buffer)
+***************************************************************************** */
+
+int resp_format(resp_parser_pt p, uint8_t *dest, size_t *size,
+                resp_object_s *obj) {
+  push_obj(obj, NULL);
+  uint8_t multiplex_pubsub =
+      (p && p->multiplex_pubsub && obj->type == RESP_ARRAY &&
+       ((resp_array_s *)obj)->len &&
+       ((resp_array_s *)obj)->array[0]->type == RESP_STRING &&
+       ((((resp_string_s *)((resp_array_s *)obj)->array[0])->string[0] ==
+         'm') ||
+        (((resp_string_s *)((resp_array_s *)obj)->array[0])->string[0] ==
+         'M') ||
+        (((resp_string_s *)((resp_array_s *)obj)->array[0])->string[0] ==
+         '+')));
+
+  size_t limit = *size;
+  *size = 0;
+
+#define safe_write_eol()                                                       \
+  if ((*size += 2) <= limit) {                                                 \
+    *dest++ = '\r';                                                            \
+    *dest++ = '\n';                                                            \
+  }
+#define safe_write1(data)                                                      \
+  if (++(*size) <= limit) {                                                    \
+    *dest++ = (data);                                                          \
+  }
+#define safe_write2(data, len)                                                 \
+  do {                                                                         \
+    *size += (len);                                                            \
+    if (*size <= limit) {                                                      \
+      memcpy(dest, (data), (len));                                             \
+      dest += (len);                                                           \
+    }                                                                          \
+  } while (0)
+#define safe_write_i(i)                                                        \
+  do {                                                                         \
+    size_t t2 = (i);                                                           \
+    if (i < 0) {                                                               \
+      safe_write1('-');                                                        \
+      t2 = ((i) * -1);                                                         \
+    }                                                                          \
+    size_t len = (size_t)log10((double)(t2)) + 1;                              \
+    *size += (len);                                                            \
+    if (*size <= limit) {                                                      \
+      size_t t1 = len;                                                         \
+      size_t t3 = t2 / 10;                                                     \
+      while (t1--) {                                                           \
+        dest[t1] = '0' + (t2 - (t3 * 10));                                     \
+        t2 = t3;                                                               \
+        t3 = t3 / 10;                                                          \
+      }                                                                        \
+      dest += len;                                                             \
+    }                                                                          \
+  } while (0)
+
+  while (obj) {
+    switch (obj->type) {
+    case RESP_ERR:
+      safe_write1('-');
+      safe_write2((resp_obj2str(obj)->string), (resp_obj2str(obj)->len));
+      safe_write_eol();
+      break;
+    case RESP_NULL:
+      safe_write2("$-1\r\n", (resp_obj2str(obj)->len));
+      break;
+    case RESP_OK:
+      safe_write2("+OK\r\n", 5);
+    case RESP_ARRAY:
+    case RESP_PUBSUB:
+      safe_write1('*');
+      safe_write_i(resp_obj2arr(obj)->len);
+      safe_write_eol();
+      {
+        resp_array_s *a = resp_obj2arr(obj);
+        a->pos = a->len;
+        obj = NULL;
+        while (a->pos) {
+          a->pos--;
+          push_obj(a->array[a->pos], obj);
+          obj = a->array[a->pos];
+        }
+      }
+      continue;
+      break;
+    case RESP_STRING:
+      safe_write1('$');
+      safe_write_i(resp_obj2str(obj)->len);
+      safe_write_eol();
+      if (multiplex_pubsub) {
+        multiplex_pubsub = 0;
+        safe_write1('+');
+      }
+      safe_write2((resp_obj2str(obj)->string), (resp_obj2str(obj)->len));
+      safe_write_eol();
+      break;
+    case RESP_NUMBER:
+      safe_write1(':');
+      safe_write_i(resp_obj2num(obj)->number);
+      safe_write_eol();
+      break;
+    }
+    obj = pop_obj(obj);
+  }
+  if (*size < limit) {
+    *dest = '0';
+    return 0;
+  }
+  if (*size == limit)
+    return 0;
+  return -1;
+#undef safe_write_eol
+#undef safe_write1
+#undef safe_write2
+#undef safe_write_i
+}
+
+/* *****************************************************************************
+Parser (Memory Buffer => RESP)
+***************************************************************************** */
 
 /** create the parser */
 resp_parser_pt resp_parser_new(void) {
@@ -96,28 +305,6 @@ void resp_parser_destroy(resp_parser_pt p) {
   if (p->obj)
     resp_free_object(p->obj);
   free(p);
-}
-
-/** frees an object returned from the parser. */
-void resp_free_object(resp_object_s *obj) {
-  switch (obj->type) {
-  /* Fallthrough */
-  case RESP_ERR:
-  case RESP_STRING:
-  case RESP_NUMBER:
-  case RESP_NULL:
-  case RESP_OK:
-    resp_dealloc_obj(obj);
-    break;
-  case RESP_ARRAY:
-    ((resp_array_s *)obj)->pos = 0;
-    while (((resp_array_s *)obj)->pos < ((resp_array_s *)obj)->len) {
-      resp_free_object(
-          ((resp_array_s *)obj)->array[((resp_array_s *)obj)->pos++]);
-    }
-    resp_dealloc_obj(obj);
-    break;
-  }
 }
 
 /**
@@ -152,16 +339,24 @@ resp_object_s *resp_parser_feed(resp_parser_pt p, uint8_t *buf, size_t *len) {
     }
 
     if (p->missing && p->obj->type == RESP_STRING) {
-      if (p->missing > *len) {
-        memcpy(as_s->string + as_s->len - p->missing, pos, *len);
+      if (!p->has_first_object && p->multiplex_pubsub && pos[0] == '+' &&
+          (pos[1] == '+' || pos[1] == 'm' || pos[1] == 'M')) {
+        pos++;
+        p->exclude_pubsub = 1;
+      }
+      p->has_first_object = 1;
+
+      if (p->missing > (size_t)(end - pos)) {
+        memcpy(as_s->string + as_s->len - p->missing, pos, (size_t)(end - pos));
+        p->missing -= (size_t)(end - pos);
         pos = end;
-        p->missing -= *len;
         goto finish;
       } else {
         memcpy(as_s->string + as_s->len - p->missing, pos, p->missing);
         pos += p->missing + 2; /* eat the EOL */
         p->missing = 0;
         /* this part of the review logic happpens only here */
+        /* once we finished with the object, we pop the stack. */
         tmp = p->obj;
         p->obj = pop_obj(p->obj);
         goto review;
@@ -236,6 +431,7 @@ resp_object_s *resp_parser_feed(resp_parser_pt p, uint8_t *buf, size_t *len) {
 
     case '+': /* Simple String */
     case '-': /* Error String */
+      p->has_first_object = 1;
       if (num == 2 && pos[0] == 'O' && pos[1] == 'K') {
         tmp = resp_alloc_obj(RESP_OK, 0);
       } else {
@@ -246,6 +442,7 @@ resp_object_s *resp_parser_feed(resp_parser_pt p, uint8_t *buf, size_t *len) {
       break;
 
     case ':': /* number */
+      p->has_first_object = 1;
       num = 0;
       flag = 0;
       if (*pos == '-') {
@@ -288,17 +485,9 @@ resp_object_s *resp_parser_feed(resp_parser_pt p, uint8_t *buf, size_t *len) {
 
   review:
 
-    if (!p->obj) {
-      *len = pos - buf;
-      *p = (resp_parser_s){.obj = NULL};
-      return tmp;
-    }
+    if (!p->obj)
+      goto message_complete; /* tmp == result */
 
-    if (p->obj->type != RESP_ARRAY) {
-      fprintf(stderr, "ERROR RESP Parser: possible bug in the parser."
-                      "What was the imput?\n");
-      goto error; /* no nested items unless they're in an array, right? */
-    }
     as_a->array[as_a->pos++] = tmp;
     p->missing = as_a->len - as_a->pos;
 
@@ -320,6 +509,30 @@ resp_object_s *resp_parser_feed(resp_parser_pt p, uint8_t *buf, size_t *len) {
 finish:
   return NULL;
 
+/* tmp == result */
+message_complete:
+  /* report how much the parser actually "ate" */
+  *len = pos - buf;
+  /* test for pub/sub semantics */
+  if (p->is_pubsub && !p->exclude_pubsub) {
+    if (tmp->type == RESP_ARRAY && resp_obj2arr(tmp)->len == 3 &&
+        resp_obj2arr(tmp)->array[0]->type == RESP_STRING &&
+        resp_obj2arr(tmp)->array[1]->type == RESP_STRING &&
+        resp_obj2arr(tmp)->array[2]->type == RESP_STRING &&
+        resp_obj2str(resp_obj2arr(tmp)->array[0])->len == 7 &&
+        !memcmp("message", resp_obj2str(resp_obj2arr(tmp)->array[0])->string,
+                7)) {
+      /* PUB / SUB */
+      tmp->type = RESP_PUBSUB;
+    }
+  }
+  /* reset the parser, keeping it's state. */
+  *p = (resp_parser_s){
+      .is_pubsub = p->is_pubsub, .multiplex_pubsub = p->multiplex_pubsub,
+  };
+  /* return the result. */
+  return tmp;
+
 error:
   while ((tmp = p->obj)) {
     p->obj = pop_obj(tmp);
@@ -331,107 +544,6 @@ error:
   }
   *len = 0;
   return NULL;
-}
-
-/**
- * Formats a RESP object back into a string.
- */
-int resp_format(uint8_t *dest, size_t *size, resp_object_s *obj) {
-  push_obj(obj, NULL);
-  size_t limit = *size;
-  *size = 0;
-#define safe_write_eol()                                                       \
-  if ((*size += 2) <= limit) {                                                 \
-    *dest++ = '\r';                                                            \
-    *dest++ = '\n';                                                            \
-  }
-#define safe_write1(data)                                                      \
-  if (++(*size) <= limit) {                                                    \
-    *dest++ = (data);                                                          \
-  }
-#define safe_write2(data, len)                                                 \
-  do {                                                                         \
-    *size += (len);                                                            \
-    if (*size <= limit) {                                                      \
-      memcpy(dest, (data), (len));                                             \
-      dest += (len);                                                           \
-    }                                                                          \
-  } while (0)
-#define safe_write_i(i)                                                        \
-  do {                                                                         \
-    size_t t2 = (i);                                                           \
-    if (i < 0) {                                                               \
-      safe_write1('-');                                                        \
-      t2 = ((i) * -1);                                                         \
-    }                                                                          \
-    size_t len = (size_t)log10((double)(t2)) + 1;                              \
-    *size += (len);                                                            \
-    if (*size <= limit) {                                                      \
-      size_t t1 = len;                                                         \
-      size_t t3 = t2 / 10;                                                     \
-      while (t1--) {                                                           \
-        dest[t1] = '0' + (t2 - (t3 * 10));                                     \
-        t2 = t3;                                                               \
-        t3 = t3 / 10;                                                          \
-      }                                                                        \
-      dest += len;                                                             \
-    }                                                                          \
-  } while (0)
-
-  while (obj) {
-    switch (obj->type) {
-    case RESP_ERR:
-      safe_write1('-');
-      safe_write2((resp_obj2str(obj)->string), (resp_obj2str(obj)->len));
-      safe_write_eol();
-      break;
-    case RESP_NULL:
-      safe_write2("$-1\r\n", (resp_obj2str(obj)->len));
-      break;
-    case RESP_OK:
-      safe_write2("+OK\r\n", 5);
-    case RESP_ARRAY:
-      safe_write1('*');
-      safe_write_i(resp_obj2arr(obj)->len);
-      safe_write_eol();
-      {
-        resp_array_s *a = resp_obj2arr(obj);
-        a->pos = a->len;
-        obj = NULL;
-        while (a->pos) {
-          a->pos--;
-          push_obj(a->array[a->pos], obj);
-          obj = a->array[a->pos];
-        }
-      }
-      continue;
-      break;
-    case RESP_STRING:
-      safe_write1('$');
-      safe_write_i(resp_obj2str(obj)->len);
-      safe_write_eol();
-      safe_write2((resp_obj2str(obj)->string), (resp_obj2str(obj)->len));
-      safe_write_eol();
-      break;
-    case RESP_NUMBER:
-      safe_write1(':');
-      safe_write_i(resp_obj2num(obj)->number);
-      safe_write_eol();
-      break;
-    }
-    obj = pop_obj(obj);
-  }
-  if (*size < limit) {
-    *dest = '0';
-    return 0;
-  }
-  if (*size == limit)
-    return 0;
-  return -1;
-#undef safe_write_eol
-#undef safe_write1
-#undef safe_write2
-#undef safe_write_i
 }
 
 /* *****************************************************************************
@@ -543,7 +655,7 @@ void resp_test(void) {
     {
       uint8_t buff[48] = {0};
       size_t len = 47;
-      resp_format(buff, &len, obj);
+      resp_format(NULL, buff, &len, obj);
       fprintf(stderr,
               "* In RESP format, it should take %lu bytes like so:\n%s\n", len,
               buff);
