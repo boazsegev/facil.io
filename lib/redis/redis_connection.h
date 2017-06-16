@@ -75,6 +75,23 @@ void redis_on_close(intptr_t uuid, void (*on_close)(void *udata), void *udata);
 void redis_on_close2(protocol_s *pr, void (*on_close)(void *udata),
                      void *udata);
 
+/**
+ * Sets a the `fallback_handler` event callback assuming the protocol for the
+ * socket is locked (see {facil_protocol_try_lock}), i.e., within an
+ * `on_connect` wrapper function for {facil_connect} or {facil_listen}.
+ *
+ * `udata` is a user opaque pointer that's simply passed along.
+ *
+ * This callback is called when data was received and no callback was specified
+ * (i.e., as a default `on_response` for {redis_send} or when implementing a
+ * server)
+ */
+void redis_fallback_handler(protocol_s *pr,
+                            void (*fallback_handler)(intptr_t uuid,
+                                                     resp_object_s *msg,
+                                                     void *udata),
+                            void *udata);
+
 /* *****************************************************************************
 Pub/Sub streams
 ***************************************************************************** */

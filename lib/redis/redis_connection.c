@@ -45,6 +45,9 @@ typedef struct {
   /* The on_pubsub callback */
   void (*on_pubsub)(intptr_t uuid, const resp_array_s *msg, void *udata);
   void *on_pubsub_udata;
+  /* Fallback / default handler for messages. */
+  void (*fallback)(intptr_t uuid, resp_object_s *msg, void *udata);
+  void *fallback_udata;
 } redis_protocol_s;
 
 /************************
@@ -148,16 +151,20 @@ static void redis_on_data(intptr_t uuid, protocol_s *pr) {
       if (r->on_pubsub && msg->type == RESP_PUBSUB) {
         /* *** PuB / Sub *** */
         r->on_pubsub(uuid, (resp_array_s *)msg, r->on_pubsub_udata);
-
       } else {
         /* *** Normal *** */
         if (msg->type == RESP_PUBSUB)
           msg->type = RESP_ARRAY;
         callback_s *c = fio_list_pop(callback_s, node, r->callbacks);
         if (c) {
-          c->on_response(uuid, msg, c->udata);
+          if (c->on_response)
+            c->on_response(uuid, msg, c->udata);
+          else if (r->fallback)
+            r->fallback(uuid, msg, r->fallback_udata);
+          callback_free(c);
+        } else if (r->fallback) {
+          r->fallback(uuid, (resp_object_s *)msg, r->fallback_udata);
         }
-        callback_free(c);
       }
       resp_free_object(msg);
       msg = NULL;
@@ -204,6 +211,11 @@ protocol_s *redis_create_protocol(intptr_t uuid, void *ignored) {
 /* *****************************************************************************
 Setting callbacks
 ***************************************************************************** */
+static void mock_fallback(intptr_t uuid, resp_object_s *msg, void *udata) {
+  (void)uuid;
+  (void)msg;
+  (void)udata;
+}
 
 typedef struct {
   enum {
@@ -277,6 +289,31 @@ void redis_on_close2(protocol_s *pr, void (*on_close)(void *udata),
     return;
   r->on_close = on_close;
   r->on_close_udata = udata;
+}
+
+/**
+ * Sets a the `fallback_handler` event callback assuming the protocol for the
+ * socket is locked (see {facil_protocol_try_lock}), i.e., within an
+ * `on_connect` wrapper function for {facil_connect} or {facil_listen}.
+ *
+ * `udata` is a user opaque pointer that's simply passed along.
+ *
+ * This callback is called when data was received and no callback was specified
+ * (i.e., as a default `on_response` for {redis_send} or when implementing a
+ * server)
+ */
+void redis_fallback_handler(protocol_s *pr,
+                            void (*fallback_handler)(intptr_t uuid,
+                                                     resp_object_s *msg,
+                                                     void *udata),
+                            void *udata) {
+  redis_protocol_s *r = (void *)pr;
+  if (!pr || pr->service != REDIS_PROTOCOL_ID)
+    return;
+  if (!fallback_handler)
+    fallback_handler = mock_fallback;
+  r->fallback = fallback_handler;
+  r->fallback_udata = udata;
 }
 
 /**
