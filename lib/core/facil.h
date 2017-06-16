@@ -219,9 +219,10 @@ struct facil_connect_args {
    */
   protocol_s *(*on_connect)(intptr_t uuid, void *udata);
   /**
-   * The `on_fail` is called when a socket fails to connect.
+   * The `on_fail` is called when a socket fails to connect. The old sock UUID
+   * is passed along.
    */
-  void (*on_fail)(void *udata);
+  void (*on_fail)(intptr_t uuid, void *udata);
   /** Opaque user data. */
   void *udata;
   /** Opaque user data for `set_rw_hooks`. */

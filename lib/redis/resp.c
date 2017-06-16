@@ -6,13 +6,21 @@ Feel free to copy, use and enjoy according to the license provided.
 
 Copyright refers to the parser, not the protocol.
 */
-#include "resp_parser.h"
+#include "resp.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "spnlock.inc" /* for atomic operations when reference counting. */
 
+/* *****************************************************************************
+Error Reporting
+***************************************************************************** */
+#ifdef DEBUG
+#define REPORT(...) fprintf(stderr, __VA_ARGS__);
+#else
+#define REPORT(...)
+#endif
 /* *****************************************************************************
 The parser object
 ***************************************************************************** */
@@ -24,7 +32,6 @@ typedef struct resp_parser_s {
   size_t llen;
   unsigned has_first_object : 1;
   unsigned exclude_pubsub : 1;
-  unsigned is_pubsub : 1;
   unsigned multiplex_pubsub : 1;
 } resp_parser_s;
 
@@ -32,14 +39,8 @@ typedef struct resp_parser_s {
 Pub/Sub state and Extension Flags
 ***************************************************************************** */
 
-/** Set the parsing mode to enable and prefer pub/sub semantics. */
-void resp_set_pubsub(resp_parser_pt p) { p->is_pubsub = 1; }
-
 /** Set the parsing mode to enable the experimental pub/sub duplexing. */
-void resp_enable_duplex_pubsub(resp_parser_pt p) {
-  p->is_pubsub = 1;
-  p->multiplex_pubsub = 1;
-}
+void resp_enable_duplex_pubsub(resp_parser_pt p) { p->multiplex_pubsub = 1; }
 
 /* *****************************************************************************
 Object management
@@ -179,6 +180,9 @@ size_t resp_obj_each(resp_parser_pt p, resp_object_s *obj,
     resp_obj2arr(obj)->pos = resp_obj2arr(obj)->len;
     while (resp_obj2arr(obj)->pos != 0) {
       resp_obj2arr(obj)->pos--;
+      if (!resp_obj2arr(obj)
+               ->array[resp_obj2arr(obj)->pos]) /* fill any holes...? */
+        resp_obj2arr(obj)->array[resp_obj2arr(obj)->pos] = resp_nil2obj();
       push_obj(next, resp_obj2arr(obj)->array[resp_obj2arr(obj)->pos]);
     }
     goto perform;
@@ -195,10 +199,12 @@ size_t resp_obj_each(resp_parser_pt p, resp_object_s *obj,
   }
 
   /* cleaup */
-  if (err)
-    resp_dealloc_obj(NULL, err, NULL);
-  while ((tmp = pop_obj(past)))
-    ;
+  if (task != resp_dealloc_obj) {
+    if (err)
+      resp_dealloc_obj(NULL, err, NULL);
+    while ((tmp = pop_obj(past)))
+      ;
+  }
   return count;
 }
 
@@ -234,7 +240,7 @@ resp_object_s *resp_str2obj(const void *str, size_t len) {
 }
 
 /** Allocates an RESP Number objcet. Remeber to free when done. */
-resp_object_s *resp_arr2obj(int argc, const resp_object_s *argv[]) {
+resp_object_s *resp_arr2obj(int argc, resp_object_s *argv[]) {
   if (argc < 0)
     return NULL;
   resp_array_s *o = (resp_array_s *)resp_alloc_obj(RESP_ARRAY, argc);
@@ -297,16 +303,16 @@ static int resp_format_task(resp_parser_pt p, resp_object_s *obj, void *s_) {
   } while (0)
 #define safe_write_i(i)                                                        \
   do {                                                                         \
-    size_t t2 = (i);                                                           \
-    if (i < 0) {                                                               \
+    int64_t t2 = (i);                                                          \
+    if ((t2) < 0) {                                                            \
       safe_write1('-');                                                        \
-      t2 = ((i) * -1);                                                         \
+      t2 = (t2 * -1);                                                          \
     }                                                                          \
-    size_t len = (size_t)log10((double)(t2)) + 1;                              \
+    size_t len = ((size_t)log10((double)(t2))) + 1;                            \
     *s->size += (len);                                                         \
     if (*s->size <= s->limit) {                                                \
-      size_t t1 = len;                                                         \
-      size_t t3 = t2 / 10;                                                     \
+      int64_t t1 = len;                                                        \
+      int64_t t3 = t2 / 10;                                                    \
       while (t1--) {                                                           \
         s->dest[t1] = '0' + (t2 - (t3 * 10));                                  \
         t2 = t3;                                                               \
@@ -397,12 +403,21 @@ resp_parser_pt resp_parser_new(void) {
   return p;
 }
 
-/** free the parser and it's resources. */
-void resp_parser_destroy(resp_parser_pt p) {
+static inline void reset_parser(resp_parser_pt p) {
+  resp_object_s *tmp;
+  while ((tmp = p->obj)) {
+    p->obj = OBJHEAD(p->obj)->link;
+    resp_free_object(tmp);
+  }
   if (p->leftovers)
     free(p->leftovers);
   if (p->obj)
     resp_free_object(p->obj);
+}
+
+/** free the parser and it's resources. */
+void resp_parser_destroy(resp_parser_pt p) {
+  reset_parser(p);
   free(p);
 }
 
@@ -420,200 +435,205 @@ void resp_parser_destroy(resp_parser_pt p) {
  *
  */
 resp_object_s *resp_parser_feed(resp_parser_pt p, uint8_t *buf, size_t *len) {
-#define as_s ((resp_string_s *)p->obj)
-#define as_n ((resp_number_s *)p->obj)
-#define as_a ((resp_array_s *)p->obj)
   resp_object_s *tmp;
   uint8_t *pos = buf;
   uint8_t *eol = pos;
   uint8_t *end = pos + (*len);
   int64_t num;
   uint8_t flag;
+restart:
 
-  while (pos < end) {
-    /* Eat up misaligned newline markers. */
-    if (pos[0] == '\r' || pos[0] == '\n') {
+  while (pos < end && (*pos == '\r' || *pos == '\n'))
+    pos++; /* consume empty EOL markers. */
+
+  if (p->missing && p->obj->type == RESP_STRING) {
+    /* test for pub/sub duplexing extension */
+    if (!p->has_first_object && p->multiplex_pubsub && pos[0] == '+' &&
+        (pos[1] == '+' || pos[1] == 'm' || pos[1] == 'M')) {
       pos++;
-      continue;
+      p->exclude_pubsub = 1;
     }
-
-    if (p->missing && p->obj->type == RESP_STRING) {
-      if (!p->has_first_object && p->multiplex_pubsub && pos[0] == '+' &&
-          (pos[1] == '+' || pos[1] == 'm' || pos[1] == 'M')) {
-        pos++;
-        p->exclude_pubsub = 1;
-      }
-      p->has_first_object = 1;
-
-      if (p->missing > (size_t)(end - pos)) {
-        memcpy(as_s->string + as_s->len - p->missing, pos, (size_t)(end - pos));
-        p->missing -= (size_t)(end - pos);
-        pos = end;
-        goto finish;
-      } else {
-        memcpy(as_s->string + as_s->len - p->missing, pos, p->missing);
-        pos += p->missing + 2; /* eat the EOL */
-        p->missing = 0;
-        /* this part of the review logic happpens only here */
-        /* once we finished with the object, we pop the stack. */
-        tmp = p->obj;
-        p->obj = pop_obj(p->obj);
-        goto review;
-      }
+    p->has_first_object = 1;
+    /* just fill the string with missing bytes */
+    if (p->missing > (size_t)(end - pos)) {
+      memcpy(resp_obj2str(p->obj)->string + resp_obj2str(p->obj)->len -
+                 p->missing,
+             pos, (size_t)(end - pos));
+      p->missing -= (size_t)(end - pos);
+      pos = end;
+      goto finish;
+    } else {
+      memcpy(resp_obj2str(p->obj)->string + resp_obj2str(p->obj)->len -
+                 p->missing,
+             pos, p->missing);
+      pos += p->missing + 2; /* eat the EOL */
+      /* set state to equal a freash, complete object */
+      p->missing = 0;
+      tmp = p->obj;
+      p->obj = OBJHEAD(p->obj)->link;
+      goto review;
     }
+  }
 
-    /* seek non-String object. */
-    while (eol < end - 1) {
-      if (eol[0] == '\r' && eol[1] == '\n')
-        goto found_eol;
-      eol++;
-    }
+  /* seek EOL */
+  eol = pos;
+  while (eol < end - 1) {
+    if (eol[0] == '\r' && eol[1] == '\n')
+      goto found_eol;
+    eol++;
+  }
 
-    /* no EOL, we can't parse. */
-    tmp = realloc(p->leftovers, p->llen + end - pos);
-    if (!tmp)
+  /* no EOL, we can't parse. */
+  if (p->llen + (end - pos) >=
+      131072) /* IMHO: simple objects are smaller than 128Kib. */
+    REPORT("ERROR: (RESP parser) single line object too long. "
+           "128Kib limit for simple strings, numbers exc'.\n");
+  goto error;
+  {
+    void *tmp = realloc(p->leftovers, p->llen + (end - pos));
+    if (!tmp) {
+      fprintf(stderr, "ERROR: (RESP parser) Couldn't allocate memory.\n");
       goto error;
+    }
     p->leftovers = (void *)tmp;
     memcpy(p->leftovers + p->llen, pos, end - pos);
-    if (p->llen >= 131072) /* IMHO: simple objects are smaller than 128Kib. */
+    p->llen += (end - pos);
+  }
+  goto finish;
+
+found_eol:
+
+  *eol = 0; /* mark with NUL */
+
+  num = eol - pos - 1;
+  /* route `pos` to p->leftovers, if data was fragmented. */
+  if (p->leftovers) {
+    void *tmp = realloc(p->leftovers, p->llen + num + 1);
+    if (!tmp) {
+      REPORT("ERROR: (RESP parser) Couldn't allocate memory.\n");
       goto error;
-    goto finish;
-
-  found_eol:
-    *eol = 0;
-    num = eol - pos - 1;
-    if (p->leftovers) {
-      tmp = realloc(p->leftovers, p->llen + num + 1);
-      if (!tmp)
-        goto error;
-      p->leftovers = (void *)tmp;
-      memcpy(p->leftovers + p->llen, pos, num + 1); /* copy the NUL byte. */
-      pos = p->leftovers;
     }
+    p->leftovers = (void *)tmp;
+    memcpy(p->leftovers + p->llen, pos, num + 1); /* copy the NUL byte. */
+    p->llen += (end - pos);
+    pos = p->leftovers;
+  }
 
-    switch (*pos++) {
-    case '*': /* Array */
-      num = 0;
-      if (*pos == '-') {
+  /* ** let's actually parse something ** put new objects in `tmp` ** */
+  switch (*pos++) {
+  case '*': /* Array */
+    num = 0;
+    while (*pos) {
+      if (*pos < '0' || *pos > '9')
+        goto error;
+      num = (num * 10) + (*pos - '0');
+      pos++;
+    }
+    tmp = resp_alloc_obj(RESP_ARRAY, num);
+    p->missing = num;
+    break;
+
+  case '$': /* String */
+    if (*pos == '-') {
+      if (pos[1] == '1') {
+        /* NULL Object */
+        tmp = resp_alloc_obj(RESP_NULL, -1);
+        p->missing = 0;
+      } else {
+        REPORT("ERROR: (RESP parser) Bulk String input error.\n");
         goto error;
       }
+    } else {
+      num = 0;
       while (*pos) {
-        if (*pos < '0' || *pos > '9')
+        if (*pos < '0' || *pos > '9') {
+          REPORT("ERROR: (RESP parser) Bulk String length error.\n");
           goto error;
-        num = (num * 10) + (*pos - '0');
-        pos++;
-      }
-      tmp = resp_alloc_obj(RESP_ARRAY, num);
-      p->missing = num;
-      break;
-
-    case '$': /* String */
-      if (*pos == '-') {
-        if (pos[1] == '1') {
-          /* NULL Object */
-          tmp = resp_alloc_obj(RESP_NULL, -1);
-          p->missing = 0;
-        } else
-          goto error;
-      } else {
-        num = 0;
-        while (*pos) {
-          if (*pos < '0' || *pos > '9')
-            goto error;
-          num = (num * 10) + (*pos - '0');
-          pos++;
         }
-        tmp = resp_alloc_obj(RESP_STRING, num);
-        p->missing = num;
-      }
-      break;
-
-    case '+': /* Simple String */
-    case '-': /* Error String */
-      p->has_first_object = 1;
-      if (num == 2 && pos[0] == 'O' && pos[1] == 'K') {
-        tmp = resp_alloc_obj(RESP_OK, 0);
-      } else {
-        tmp = resp_alloc_obj((pos[-1] == '+' ? RESP_STRING : RESP_ERR), num);
-        memcpy(((resp_string_s *)tmp)->string, pos, num + 1); /* copy NUL */
-      }
-      p->missing = 0;
-      break;
-
-    case ':': /* number */
-      p->has_first_object = 1;
-      num = 0;
-      flag = 0;
-      if (*pos == '-') {
-        flag = 1;
-        pos++;
-      }
-      while (*pos) {
-        if (*pos < '0' || *pos > '9')
-          goto error;
         num = (num * 10) + (*pos - '0');
         pos++;
       }
-      if (flag)
-        num = num * -1;
-      tmp = resp_alloc_obj(RESP_NUMBER, num);
-      p->missing = 0;
-      break;
-    default:
-      fprintf(stderr, "ERROR RESP Parser: input prefix unknown\n");
+      tmp = resp_alloc_obj(RESP_STRING, num);
+      p->missing = num;
+    }
+    break;
+
+  case '+': /* Simple String */
+  case '-': /* Error String */
+    p->has_first_object = 1;
+    if (num == 2 && pos[0] == 'O' && pos[1] == 'K') {
+      tmp = resp_alloc_obj(RESP_OK, 0);
+    } else {
+      tmp = resp_alloc_obj((pos[-1] == '+' ? RESP_STRING : RESP_ERR), num);
+      memcpy(((resp_string_s *)tmp)->string, pos, num + 1); /* copy NUL */
+    }
+    p->missing = 0;
+    break;
+
+  case ':': /* number */
+    p->has_first_object = 1;
+    num = 0;
+    flag = 0;
+    if (*pos == '-') {
+      flag = 1;
+      pos++;
+    }
+    while (*pos) {
+      if (*pos < '0' || *pos > '9') {
+        REPORT("ERROR: (RESP parser) input error.\n");
+        goto error;
+      }
+      num = (num * 10) + (*pos - '0');
+      pos++;
+    }
+    if (flag)
+      num = num * -1;
+    tmp = resp_alloc_obj(RESP_NUMBER, num);
+    p->missing = 0;
+    break;
+  default:
+    REPORT("ERROR: (RESP Parser) input prefix unknown\n");
+    goto error;
+  }
+  /* replace parsing marker */
+  pos = eol + 2;
+
+  /* clear the buffer used to handle fragmented transmissions. */
+  if (p->leftovers) {
+    free(p->leftovers);
+    p->leftovers = NULL;
+    p->llen = 0;
+  }
+
+review:
+  /* handle object rotation and nesting */
+  if (p->missing) {
+    /* tmp missing data: link and step into new object (nesting objects) */
+    OBJHEAD(tmp)->link = p->obj;
+    p->obj = tmp;
+    tmp = NULL;
+    goto restart;
+  } else if (p->obj) {
+    if (p->obj->type != RESP_ARRAY) {
+      /* Nesting of objects can only be performed by RESP_ARRAY objects. */
+      fprintf(stderr, "ERROR: (RESP Parser) internal error - "
+                      "objects can only be nested within arrays.\n");
       goto error;
     }
-
-    if (p->leftovers) {
-      free(p->leftovers);
-      p->leftovers = NULL;
-      p->llen = 0;
-    }
-    pos = eol + 2;
-
-    if (p->missing) {
-      push_obj(tmp, p->obj);
-      p->obj = tmp;
-      if (pos >= end)
-        goto finish;
-      else
-        continue;
-    }
-
-  /* tmp == recently completed item ; p->obj == awaiting completion */
-
-  review:
-
-    if (!p->obj)
-      goto message_complete; /* tmp == result */
-
-    as_a->array[as_a->pos++] = tmp;
-    p->missing = as_a->len - as_a->pos;
-
-    if (p->missing) {
-      if (pos >= end)
-        goto finish;
-      else
-        continue;
-    }
-
+    resp_obj2arr(p->obj)->array[resp_obj2arr(p->obj)->pos++] = tmp;
+    p->missing = resp_obj2arr(p->obj)->len - resp_obj2arr(p->obj)->pos;
+    if (p->missing)
+      goto restart; /* collect more objects. */
+    /* un-nest */
     tmp = p->obj;
-    p->obj = pop_obj(p->obj);
+    p->obj = OBJHEAD(p->obj)->link;
     goto review;
   }
-#undef as_s
-#undef as_n
-#undef as_a
 
-finish:
-  return NULL;
+  /* tmp now holds the top-most object, it's missing no data, we're done */
 
-/* tmp == result */
-message_complete:
-  /* report how much the parser actually "ate" */
-  *len = pos - buf;
   /* test for pub/sub semantics */
-  if (p->is_pubsub && !p->exclude_pubsub) {
+  if (!p->exclude_pubsub) {
     if (tmp->type == RESP_ARRAY && resp_obj2arr(tmp)->len == 3 &&
         resp_obj2arr(tmp)->array[0]->type == RESP_STRING &&
         resp_obj2arr(tmp)->array[1]->type == RESP_STRING &&
@@ -626,22 +646,16 @@ message_complete:
     }
   }
   /* reset the parser, keeping it's state. */
-  *p = (resp_parser_s){
-      .is_pubsub = p->is_pubsub, .multiplex_pubsub = p->multiplex_pubsub,
-  };
+  reset_parser(p);
+  /* report how much the parser actually "ate" */
+  *len = pos - buf;
   /* return the result. */
   return tmp;
 
 error:
-  while ((tmp = p->obj)) {
-    p->obj = pop_obj(tmp);
-    resp_free_object(tmp);
-  }
-  if (p->leftovers) {
-    free(p->leftovers);
-    *p = (resp_parser_s){.llen = 0};
-  }
+  reset_parser(p);
   *len = 0;
+finish:
   return NULL;
 }
 
@@ -658,20 +672,23 @@ void resp_test(void) {
   uint8_t b_neg_num[] = ":-13\r\n";
   uint8_t b_err[] = "-ERR: or not :-)\r\n";
   uint8_t b_str[] = "$19\r\nthis is a string :)\r\n";
-  uint8_t b_longer[] = "*6\r\n"
+  uint8_t b_longer[] = "*8\r\n"
                        ":1\r\n"
                        ":2\r\n"
                        ":3\r\n"
                        ":4\r\n"
                        ":-5794\r\n"
                        "$6\r\n"
-                       "foobar\r\n";
+                       "foobar\r\n"
+                       "$6\r\n"
+                       "barfoo\r\n"
+                       ":4\r\n";
   resp_parser_pt parser = resp_parser_new();
   size_t len;
 
   resp_object_s *obj;
 
-  fprintf(stderr, "* OBJHEAD teast %s\n",
+  fprintf(stderr, "* OBJHEAD test %s\n",
           (OBJHEAD(((resp_objhead_s *)NULL) + 1) == NULL) ? "passed"
                                                           : "FAILED");
 
@@ -759,8 +776,8 @@ void resp_test(void) {
     {
       fprintf(stderr, "found %lu objects\n",
               resp_obj_each(NULL, obj, NULL, NULL));
-      uint8_t buff[48] = {0};
-      size_t len = 47;
+      uint8_t buff[128] = {0};
+      size_t len = 127;
       resp_format(NULL, buff, &len, obj);
       fprintf(stderr,
               "* In RESP format, it should take %lu bytes like so:\n%s\n", len,

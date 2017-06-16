@@ -96,6 +96,8 @@ int main(int argc, char const *argv[]) {
   uint32_t workers = 0;
   uint8_t print_log = 0;
 
+  /*     ****  Command line arguments ****     */
+
   for (int i = 1; i < argc; i++) {
     int offset = 0;
     if (argv[i][0] == '-') {
@@ -128,6 +130,8 @@ int main(int argc, char const *argv[]) {
     } else if (i == argc - 1)
       public_folder = argv[i];
   }
+
+  /*     ****  actual code ****     */
 
   if (http_listen(port, NULL, .on_request = answer_http_request,
                   .log_static = print_log, .public_folder = public_folder))

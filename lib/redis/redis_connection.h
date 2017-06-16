@@ -1,7 +1,7 @@
 #ifndef H_REDIS_CONNECTION_H
 #define H_REDIS_CONNECTION_H
 #include "facil.h"
-#include "resp_parser.h"
+#include "resp.h"
 
 /* *****************************************************************************
 Sending Commands or Responses
@@ -38,9 +38,7 @@ struct redis_send_args_s {
  actually * sent. That's why there's the `on_response` callback... ;-)
  */
 int redis_send(struct redis_send_args_s);
-#define redis_send(redis_uuid, cmd_array, ...)                                 \
-  redis_send((struct redis_send_args_s){                                       \
-      .uuid = (redis_uuid), .cmd = cmd_array, __VA_ARGS__})
+#define redis_send(...) redis_send((struct redis_send_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
 Connectivity
@@ -52,15 +50,14 @@ Connectivity
  *
  * The protocol can be used to implement both a client and a server.
  *
- * To implement more features, set up the `on_open` callback to initialize
+ * To implement more features, set up a wrapper function to initialize
  * features such as the `pubsub_handler` (the callback used for pub/sub
  * messages).
  *
  */
-protocol_s *create_redis_protocol(intptr_t uuid,
-                                  void (*on_open)(intptr_t uuid));
-#define create_redis_protocol                                                  \
-  ((protocol_s * (*)(intptr_t, void *)) create_redis_protocol)
+protocol_s *redis_create_protocol(intptr_t uuid, void *ignored);
+#define redis_create_protocol                                                  \
+  ((protocol_s * (*)(intptr_t, void *)) redis_create_protocol)
 
 /**
  * Sets a the `on_close` event callback.
@@ -68,6 +65,15 @@ protocol_s *create_redis_protocol(intptr_t uuid,
  * `udata` is a user opaque pointer that's simply passed along.
  */
 void redis_on_close(intptr_t uuid, void (*on_close)(void *udata), void *udata);
+
+/**
+ * Sets a the `on_close` event callback assuming the protocol for the socket is
+ * locked (see {facil_protocol_try_lock}).
+ *
+ * `udata` is a user opaque pointer that's simply passed along.
+ */
+void redis_on_close2(protocol_s *pr, void (*on_close)(void *udata),
+                     void *udata);
 
 /* *****************************************************************************
 Pub/Sub streams
@@ -92,5 +98,13 @@ void redis_on_pubsub(intptr_t uuid,
                      void (*on_pubsub)(intptr_t uuid, const resp_array_s *msg,
                                        void *udata),
                      void *udata);
+/**
+ * Sets a the `on_pubsub` event callback assuming the protocol for the socket is
+ * locked (see {facil_protocol_try_lock}).
+ */
+void redis_on_pubsub2(protocol_s *protocol,
+                      void (*on_pubsub)(intptr_t uuid, const resp_array_s *msg,
+                                        void *udata),
+                      void *udata);
 
 #endif

@@ -27,7 +27,12 @@ enum resp_type_enum {
   RESP_STRING,
   /** An Array object object (`resp_array_s`). */
   RESP_ARRAY,
-  /** A specific Array object object (`resp_array_s`) for Pub/Sub semantics. */
+  /**
+   * A specific Array object object (`resp_array_s`) for Pub/Sub semantics.
+   *
+   * This is more of a hint than a decree, sometimes pubsub semantics are
+   * misleading.
+   */
   RESP_PUBSUB,
 };
 
@@ -84,12 +89,12 @@ resp_object_s *resp_str2obj(const void *str, size_t len);
  * It's possible to pass NULL as the `argv`, in which case the array created
  * will have the capacity `argc` and could me manually populated.
  */
-resp_object_s *resp_arr2obj(int argc, const resp_object_s *argv[]);
+resp_object_s *resp_arr2obj(int argc, resp_object_s *argv[]);
 
 /** Duplicates an object by increasing it's reference count. */
 resp_object_s *resp_dup_object(resp_object_s *obj);
 
-/** frees an object returned from the parser. */
+/** frees an object by decreasing it's reference count and testing. */
 void resp_free_object(resp_object_s *obj);
 
 /**
@@ -163,14 +168,7 @@ void resp_parser_destroy(resp_parser_pt);
 resp_object_s *resp_parser_feed(resp_parser_pt, uint8_t *buffer, size_t *len);
 
 /* *****************************************************************************
-State - The Pub / Sub Switch
-***************************************************************************** */
-
-/** Set the parsing mode to enable and prefer pub/sub semantics. */
-void resp_set_pubsub(resp_parser_pt parser);
-
-/* *****************************************************************************
-Experimental
+State - The Pub / Sub Multiplexer (Experimental)
 ***************************************************************************** */
 
 /**

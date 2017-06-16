@@ -435,10 +435,11 @@ static const char *connector_protocol_name = "connect protocol __internal__";
 struct ConnectProtocol {
   protocol_s protocol;
   protocol_s *(*on_connect)(intptr_t uuid, void *udata);
-  void (*on_fail)(void *udata);
+  void (*on_fail)(intptr_t uuid, void *udata);
   sock_rw_hook_s *(*set_rw_hooks)(intptr_t uuid, void *udata);
   void *udata;
   void *rw_udata;
+  intptr_t uuid;
   int opened;
 };
 
@@ -468,7 +469,7 @@ static void connector_on_data(intptr_t uuid, protocol_s *connector) {
 static void connector_on_close(protocol_s *pconnector) {
   struct ConnectProtocol *connector = (void *)pconnector;
   if (connector->opened == 0 && connector->on_fail)
-    connector->on_fail(connector->udata);
+    connector->on_fail(connector->uuid, connector->udata);
   free(connector);
 }
 
@@ -493,7 +494,7 @@ intptr_t facil_connect(struct facil_connect_args opt) {
       .rw_udata = opt.rw_udata,
       .opened = 0,
   };
-  intptr_t uuid = sock_connect(opt.address, opt.port);
+  intptr_t uuid = connector->uuid = sock_connect(opt.address, opt.port);
   if (uuid == -1)
     goto error;
   if (facil_attach(uuid, &connector->protocol) == -1) {
@@ -503,7 +504,7 @@ intptr_t facil_connect(struct facil_connect_args opt) {
   return uuid;
 error:
   if (opt.on_fail)
-    opt.on_fail(opt.udata);
+    opt.on_fail(uuid, opt.udata);
   return -1;
 }
 
