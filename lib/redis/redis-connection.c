@@ -279,12 +279,6 @@ void redis_on_pubsub(intptr_t uuid,
 /* *****************************************************************************
 Sending Commands or Responses
 ***************************************************************************** */
-static void mock_on_response(intptr_t uuid, const resp_object_s *response,
-                             void *udata) {
-  (void)udata;
-  (void)uuid;
-  (void)response;
-}
 
 // struct redis_send_args_s {
 //   intptr_t uuid;
@@ -294,10 +288,55 @@ static void mock_on_response(intptr_t uuid, const resp_object_s *response,
 //   void *udata;
 //   uint8_t move;
 // };
+static void redis_perform_send_fallback(intptr_t uuid, void *args_) {
+  struct redis_send_args_s *args = args_;
+  resp_free_object((resp_object_s *)args->cmd);
+  free(args);
+  (void)uuid;
+}
+
+static void redis_perform_send(intptr_t uuid, protocol_s *pr, void *args_) {
+  struct redis_send_args_s *args = args_;
+  redis_protocol_s *r = (redis_protocol_s *)pr;
+  size_t len = 0;
+  resp_format(r->parser, NULL, &len, args->cmd);
+  if (!len)
+    goto finish;
+  void *buff = malloc(len);
+  if (!buff)
+    goto finish;
+  resp_format(r->parser, buff, &len, args->cmd);
+
+  sock_write2(.uuid = uuid, .buffer = buff, .length = len, .move = 1);
+
+  callback_s *cb = callback_alloc();
+  cb->on_response = args->on_response;
+  cb->udata = args->udata;
+  fio_list_shift(callback_s, node, r->callbacks);
+
+finish:
+  resp_free_object(args->cmd);
+  free(args);
+}
 
 /**
  * Sends RESP messages. Returns -1 on a known error and 0 if the message was
  * successfully validated to be sent.
  */
 #undef redis_send
-int redis_send(struct redis_send_args_s args) {}
+int redis_send(struct redis_send_args_s args) {
+  if (!args.cmd || !args.uuid || !sock_isvalid(args.uuid))
+    goto error;
+  struct redis_send_args_s *c = malloc(sizeof(*c));
+  *c = args;
+  if (!args.move)
+    resp_dup_object(args.cmd);
+  facil_defer(.uuid = args.uuid, .task = redis_perform_send,
+              .fallback = redis_perform_send_fallback, .arg = c,
+              .task_type = FIO_PR_LOCK_TASK);
+  return 0;
+error:
+  if (args.move && args.cmd)
+    resp_free_object(args.cmd);
+  return -1;
+}

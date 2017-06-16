@@ -12,7 +12,7 @@ struct redis_send_args_s {
   /** The Redis connection's uuid (facil.io's connection ID). REQUIRED.*/
   intptr_t uuid;
   /** A RESP array with the command/response and it's arguments. REQUIRED.*/
-  const resp_array_s *cmd;
+  resp_object_s *cmd;
   /** An optional callback that will receive the response. */
   void (*on_response)(intptr_t uuid, const resp_object_s *response,
                       void *udata);

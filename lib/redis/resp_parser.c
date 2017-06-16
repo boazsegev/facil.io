@@ -155,13 +155,15 @@ size_t resp_obj_each(resp_parser_pt p, resp_object_s *obj,
     count++;
     if (obj->type == RESP_ARRAY || obj->type == RESP_PUBSUB)
       goto is_array;
+
   perform:
-    /* in case `obj` is freed, we will "pop" the next object first */
+    /* in case the task is to free `obj`, "pop" the next object first */
     tmp = obj;
     obj = pop_obj(next);
     if (task(p, tmp, arg) == -1)
       break;
     continue;
+
   is_array:
     /* test for loop-back. */
     tmp = OBJHEAD(past)->link;
@@ -180,6 +182,7 @@ size_t resp_obj_each(resp_parser_pt p, resp_object_s *obj,
       push_obj(next, resp_obj2arr(obj)->array[resp_obj2arr(obj)->pos]);
     }
     goto perform;
+
   skip:
     if (task != resp_dealloc_obj) {
       if (!err)
