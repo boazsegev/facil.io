@@ -17,6 +17,9 @@ set(facil.io_SOURCES
   ./lib/http/http_request.c
   ./lib/http/http_response.c
   ./lib/http/websockets.c
+  ./lib/redis/redis_connection.c
+  ./lib/redis/redis_engine.c
+  ./lib/redis/resp.c
   ./lib/bscrypt/bscrypt/base64.c
   ./lib/bscrypt/bscrypt/hex.c
   ./lib/bscrypt/bscrypt/misc.c
@@ -35,6 +38,7 @@ target_include_directories(facil.io
   PUBLIC  ./lib/core/types
   PUBLIC  ./lib/services
   PUBLIC  ./lib/http
+  PUBLIC  ./lib/redis
   PRIVATE ./lib/bscrypt
   PRIVATE ./lib/bscrypt/bscrypt
 )
