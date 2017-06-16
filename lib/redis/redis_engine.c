@@ -41,15 +41,57 @@ static void on_pubsub(intptr_t uuid, const resp_array_s *msg, void *udata) {
 Connections
 ***************************************************************************** */
 
+/**** Don't do this at home, kids (monkey patching in C) ****/
+#include "fio_list.h"
+typedef struct {
+  protocol_s protocol;
+  /* the RESP parser */
+  resp_parser_pt parser;
+  /* The callbacks list.
+   * We don't neet locks since we'll be using the facil.io protocol locking
+   * mechanism.
+   */
+  fio_list_s callbacks;
+  /* The on_open callback */
+  void (*on_open)(intptr_t uuid);
+  /* The on_open callback */
+  void (*on_close)(void *udata);
+  void *on_close_udata;
+  /* The on_pubsub callback */
+  void (*on_pubsub)(intptr_t uuid, const resp_array_s *msg, void *udata);
+  void *on_pubsub_udata;
+  /* Fallback / default handler for messages. */
+  void (*fallback)(intptr_t uuid, resp_object_s *msg, void *udata);
+  void *fallback_udata;
+} redis_protocol_s;
+
+static void (*original_on_close)(protocol_s *) = NULL;
+
+static void on_close(protocol_s *p) {
+  redis_protocol_s *r = (void *)p;
+  pubsub_engine_resubscribe(r->on_pubsub_udata);
+  original_on_close(p);
+}
+/**** Okay, you can open your eyes now ****/
+
 static protocol_s *on_connect(intptr_t uuid, void *en_) {
   protocol_s *pr = redis_create_protocol(uuid, NULL);
   redis_on_pubsub2(pr, on_pubsub, en_);
+  pubsub_engine_resubscribe(en_);
+  original_on_close = pr->on_close;
+  pr->on_close = on_close;
   return pr;
+}
+static void on_fail(intptr_t uuid, void *en_) {
+  facil_run_every(50, 1, (void (*)(void *))pubsub_engine_resubscribe,
+                  (void *)en_, NULL);
+  (void)uuid;
 }
 
 #define CONNECT_SUB(e)                                                         \
-  e->sub = facil_connect(.address = e->address, .port = e->port,               \
-                         .on_connect = on_connect, .udata = e, )
+  e->sub =                                                                     \
+      facil_connect(.address = e->address, .port = e->port,                    \
+                    .on_connect = on_connect, .udata = e, .on_fail = on_fail)
 
 #define CONNECT_PUB(e)                                                         \
   e->pub = facil_connect(.address = e->address, .port = e->port,               \
@@ -63,18 +105,24 @@ Callbacks
 static int subscribe(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
                      uint8_t use_pattern) {
   redis_engine_s *e = (redis_engine_s *)eng;
-  if (!sock_isvalid(e->sub))
-    CONNECT_SUB(e);
   if (!sock_isvalid(e->sub)) {
-    fprintf(
-        stderr,
-        "ERROR: (RedisEngine) cannot connect to Subscription service at %s:%s",
-        e->address, e->port);
-    return -1;
+    CONNECT_SUB(e);
+    if (!sock_isvalid(e->sub)) {
+      fprintf(stderr,
+              "ERROR: (RedisEngine) cannot connect to Subscription service at "
+              "%s:%s\n",
+              e->address, e->port);
+      return -1;
+    }
+    fprintf(stderr,
+            "ERROR: (RedisEngine) lost connection to Redis, reconnectiong at "
+            "%s:%s\n",
+            e->address, e->port);
   }
   resp_object_s *cmd = resp_arr2obj(2, NULL);
-  if (!cmd)
+  if (!cmd) {
     return -1;
+  }
   resp_obj2arr(cmd)->array[0] = use_pattern ? resp_str2obj("PSUBSCRIBE", 10)
                                             : resp_str2obj("SUBSCRIBE", 9);
   resp_obj2arr(cmd)->array[1] =
@@ -107,12 +155,16 @@ static int publish(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
     return -1;
   if (!ch)
     return -1;
-  if (!sock_isvalid(e->pub))
-    CONNECT_PUB(e);
+  // if (!sock_isvalid(e->sub)){
+  //   CONNECT_SUB(e);
+  // }
   if (!sock_isvalid(e->pub)) {
-    fprintf(stderr, "ERROR: (RedisEngine) cannot connect to Redis at %s:%s",
-            e->address, e->port);
-    return -1;
+    CONNECT_PUB(e);
+    if (!sock_isvalid(e->pub)) {
+      fprintf(stderr, "ERROR: (RedisEngine) cannot connect to Redis at %s:%s",
+              e->address, e->port);
+      return -1;
+    }
   }
   resp_object_s *cmd = resp_arr2obj(3, NULL);
   if (!cmd)

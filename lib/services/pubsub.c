@@ -127,7 +127,8 @@ static void pubsub_publish_matched_channel(fio_dict_s *ch_, void *msg_) {
   }
   channel_s *pattern;
   fio_list_for_each(channel_s, channels.list, pattern, pubsub_patterns) {
-    if (fio_glob_match((uint8_t *)msg->pub.channel.name, msg->pub.channel.len,
+    if (msg->pub.engine == pattern->engine &&
+        fio_glob_match((uint8_t *)msg->pub.channel.name, msg->pub.channel.len,
                        (uint8_t *)pattern->name, pattern->len)) {
       fio_ht_for_each(client_s, clients, cl, pattern->clients) {
         spn_add(&msg->ref, 1);
@@ -275,6 +276,39 @@ void pubsub_engine_distribute(pubsub_message_s msg) {
       .push2cluster = msg.engine->push2cluster,
       .use_pattern = msg.use_pattern,
   });
+}
+
+static void resubscribe_action(fio_dict_s *ch_, void *eng_) {
+  if (!eng_)
+    return;
+  pubsub_engine_s *eng = eng_;
+  channel_s *ch = fio_node2obj(channel_s, channels.dict, ch_);
+  eng->subscribe(eng, ch->name, ch->len, ch->use_pattern);
+}
+
+static void pubsub_engine_resubscribe_task(void *eng_, void *ignored) {
+  if (!eng_)
+    return;
+  pubsub_engine_s *eng = eng_;
+  channel_s *ch;
+  spn_lock(&pubsub_GIL);
+  fio_list_for_each(channel_s, channels.list, ch, pubsub_patterns) {
+    eng->subscribe(eng, ch->name, ch->len, ch->use_pattern);
+  }
+
+  fio_dict_each(fio_dict_prefix(&pubsub_channels, (void *)&eng, sizeof(void *)),
+                resubscribe_action, eng);
+  spn_unlock(&pubsub_GIL);
+
+  (void)ignored;
+}
+/**
+ * Engines can ask facil.io to perform an action on all their active channels.
+ */
+void pubsub_engine_resubscribe(pubsub_engine_s *eng) {
+  if (!eng)
+    return;
+  defer(pubsub_engine_resubscribe_task, eng, NULL);
 }
 
 /* *****************************************************************************

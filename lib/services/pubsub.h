@@ -196,4 +196,15 @@ void pubsub_engine_distribute(pubsub_message_s msg);
 #define pubsub_engine_distribute(...)                                          \
   pubsub_engine_distribute((pubsub_message_s){__VA_ARGS__})
 
+/**
+ * Engines can ask facil.io to resubscribe to all active channels.
+ *
+ * This allows engines that lost their connection to their Pub/Sub service to
+ * resubscribe all the currently active channels with the new connection.
+ *
+ * CAUTION: This is an evented task... try not to free the engine's memory while
+ * resubscriptions are under way...
+ */
+void pubsub_engine_resubscribe(pubsub_engine_s *eng);
+
 #endif /* H_FACIL_PUBSUB_H */
