@@ -5,13 +5,13 @@ OUT_ROOT=tmp
 # All object files will be placed in this folder
 TMP_ROOT=tmp
 # The none library .c file(s) (i.e., the one with `int main(void)`.
-MAIN_ROOT=./dev ./lib/redis
+MAIN_ROOT=./dev
 # any allowed subfolders in the main root
 MAIN_SUBFOLDERS=http
 # the .c and .cpp source files root folder - subfolders are automatically included
 LIB_ROOT=./lib
 # publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=core core/types services http
+LIB_PUBLIC_SUBFOLDERS=core core/types services http redis
 # privately used subfolders in the lib root (this distinction is for CMake)
 LIB_PRIVATE_SUBFOLDERS=bscrypt bscrypt/bscrypt
 # any librries required (write in full flags)
