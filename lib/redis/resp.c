@@ -61,9 +61,10 @@ static resp_object_s *resp_alloc_obj(enum resp_type_enum type, size_t length) {
   /* Fallthrough */
   case RESP_ERR:
   case RESP_STRING:
+    /* + 1 for NULL (safety) */
     head = malloc(sizeof(*head) + sizeof(resp_string_s) + length + 1);
     *head = (resp_objhead_s){.ref = 1};
-    resp_string_s *s = (void *)(head + 1); /* + 1 for NULL (safety) */
+    resp_string_s *s = (void *)(head + 1);
     *s = (resp_string_s){.type = type, .len = length};
     return (void *)s;
     break;
@@ -308,7 +309,7 @@ static int resp_format_task(resp_parser_pt p, resp_object_s *obj, void *s_) {
       safe_write1('-');                                                        \
       t2 = (t2 * -1);                                                          \
     }                                                                          \
-    size_t len = ((size_t)log10((double)(t2))) + 1;                            \
+    size_t len = t2 ? (((size_t)log10((double)(t2))) + 1) : 1;                 \
     *s->size += (len);                                                         \
     if (*s->size <= s->limit) {                                                \
       int64_t t1 = len;                                                        \
@@ -342,7 +343,8 @@ static int resp_format_task(resp_parser_pt p, resp_object_s *obj, void *s_) {
     break;
   case RESP_STRING:
     safe_write1('$');
-    safe_write_i(resp_obj2str(obj)->len);
+    safe_write_i(s->multiplex_pubsub ? (resp_obj2str(obj)->len + 1)
+                                     : resp_obj2str(obj)->len);
     safe_write_eol();
     if (s->multiplex_pubsub) {
       s->multiplex_pubsub = 0;
@@ -353,7 +355,7 @@ static int resp_format_task(resp_parser_pt p, resp_object_s *obj, void *s_) {
     break;
   case RESP_NUMBER:
     safe_write1(':');
-    safe_write_i(resp_obj2num(obj)->number);
+    safe_write_i((resp_obj2num(obj)->number));
     safe_write_eol();
     break;
   }
@@ -413,12 +415,18 @@ static inline void reset_parser(resp_parser_pt p) {
     free(p->leftovers);
   if (p->obj)
     resp_free_object(p->obj);
+  *p = (resp_parser_s){.obj = NULL, .multiplex_pubsub = p->multiplex_pubsub};
 }
 
 /** free the parser and it's resources. */
 void resp_parser_destroy(resp_parser_pt p) {
   reset_parser(p);
   free(p);
+}
+
+void resp_parser_clear(resp_parser_pt p) {
+  reset_parser(p);
+  *p = (resp_parser_s){.obj = NULL};
 }
 
 /**
@@ -437,14 +445,14 @@ void resp_parser_destroy(resp_parser_pt p) {
 resp_object_s *resp_parser_feed(resp_parser_pt p, uint8_t *buf, size_t *len) {
   resp_object_s *tmp;
   uint8_t *pos = buf;
-  uint8_t *eol = pos;
+  uint8_t *eol = NULL;
   uint8_t *end = pos + (*len);
   int64_t num;
   uint8_t flag;
 restart:
 
-  while (pos < end && (*pos == '\r' || *pos == '\n'))
-    pos++; /* consume empty EOL markers. */
+  // while (pos < end && (*pos == '\r' || *pos == '\n'))
+  //   pos++; /* consume empty EOL markers. */
 
   if (p->missing && p->obj->type == RESP_STRING) {
     /* test for pub/sub duplexing extension */
@@ -452,6 +460,7 @@ restart:
         (pos[1] == '+' || pos[1] == 'm' || pos[1] == 'M')) {
       pos++;
       p->exclude_pubsub = 1;
+      p->missing--;
     }
     p->has_first_object = 1;
     /* just fill the string with missing bytes */
@@ -485,10 +494,12 @@ restart:
 
   /* no EOL, we can't parse. */
   if (p->llen + (end - pos) >=
-      131072) /* IMHO: simple objects are smaller than 128Kib. */
+      131072) { /* IMHO: simple objects are smaller than 128Kib. */
     REPORT("ERROR: (RESP parser) single line object too long. "
            "128Kib limit for simple strings, numbers exc'.\n");
-  goto error;
+    eol = NULL;
+    goto error;
+  }
   {
     void *tmp = realloc(p->leftovers, p->llen + (end - pos));
     if (!tmp) {
@@ -555,6 +566,10 @@ found_eol:
       }
       tmp = resp_alloc_obj(RESP_STRING, num);
       p->missing = num;
+      if (!num) {
+        *eol = '\r';
+        eol += 2;
+      }
     }
     break;
 
@@ -597,6 +612,9 @@ found_eol:
   }
   /* replace parsing marker */
   pos = eol + 2;
+  /* un-effect the EOL */
+  *eol = '\r';
+  eol = NULL;
 
   /* clear the buffer used to handle fragmented transmissions. */
   if (p->leftovers) {
@@ -655,6 +673,9 @@ review:
 error:
   reset_parser(p);
   *len = 0;
+  if (eol)
+    *eol = '\r';
+
 finish:
   return NULL;
 }
@@ -754,6 +775,17 @@ void resp_test(void) {
   } else
     fprintf(stderr, "* String FAILED\n");
 
+  {
+    uint8_t empty_str[] = "$0\r\n\r\n";
+    len = sizeof(empty_str) - 1;
+    obj = resp_parser_feed(parser, empty_str, &len);
+    if (obj && obj->type == RESP_STRING) {
+      fprintf(stderr, "* Empty String recognized: %s\n",
+              resp_obj2str(obj)->string);
+      resp_free_object(obj);
+    } else
+      fprintf(stderr, "* Empty String FAILED\n");
+  }
   len = sizeof(b_longer) - 1;
   obj = resp_parser_feed(parser, b_longer, &len);
   if (obj && obj->type == RESP_ARRAY) {

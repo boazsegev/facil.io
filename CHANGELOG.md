@@ -2,9 +2,11 @@
 
 ### Ver. 0.5.0 (next)
 
-**Braking change**: (`pubsub`) The API was changed / updated, making `pubsub_engine_s` objects easier to author and allowing allocations to be avoided by utilizing two `void * udata` fields... Since this is a breaking change, and following semantic versioning, the minor version is updated. I do wish I could have delayed the version bump, as the roadmap ahead is long, but it is what it is.
+**Braking changes**: (`pubsub`) The API was changed / updated, making `pubsub_engine_s` objects easier to author and allowing allocations to be avoided by utilizing two `void * udata` fields... Since this is a breaking change, and following semantic versioning, the minor version is updated. I do wish I could have delayed the version bump, as the roadmap ahead is long, but it is what it is.
 
-**Feature**: (`websockets`) The websocket pub/sub support is here - supporting protocol tasks as well as direct client publishsing (and autu text/binary detection)! There are limits and high memory costs related to channel names, since `pubsub` uses a trie for absolute channel matching (i.e. channel name length should be short, definitely less than 1024Bytes).
+**Braking changes**: (`facil`) Since the API is already changing a bit, I thought I'd clean it up a bit and have all the `on_X` flow events (`on_close`, `on_fail`, `on_start`...) share the same function signature where possible.
+
+**Changes**: (`facil`) Minor changes to the `fio_cluster_*` API now use signed message types. All negative `msg_type` values are reserved for internal use.
 
 **Fix**: (`facil`) `facil_connect` now correctly calls the `on_fail` callback even on immediate failures (i.e. when the function call was missing a target address and port).
 
@@ -22,9 +24,11 @@
 
 **Fix**?: (`http`) When decoding the path or a request, the `+` sign is now left unencoded (correct behavior), trusting in better clients in this great jungle.
 
-**Changes**: (`facil`) Minor changes to the `fio_cluster_*` API now use signed message types. All negative `msg_type` values are reserved for internal use.
-
 **Changes**: Major folder structure updates make development and support for CMake submodules easier. These changes should also make it easier to push PRs for by offering the `dev` folder for any localized testing prior to submitting the PR.
+
+**Feature**: (`websockets`) The websocket pub/sub support is here - supporting protocol tasks as well as direct client publishsing (and autu text/binary detection)! There are limits and high memory costs related to channel names, since `pubsub` uses a trie for absolute channel matching (i.e. channel name length should be short, definitely less than 1024Bytes).
+
+**Feature**: (`redis`) The websocket pub/sub support features a shiny new Redis engine to synchronize pub/sub across machines! ... I tested it as much as I could, but I know my tests are as buggy as my code, so please test before using.
 
 **Feature**: (`facil_listen`, `http_listen`) supports an optional `on_finish_rw` callback to clean-up the `rw_udata` object.
 

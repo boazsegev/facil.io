@@ -1,6 +1,7 @@
 #include "redis_connection.h"
 #include "fio_list.h"
 #include "spnlock.inc"
+#include <errno.h>
 #include <signal.h>
 #include <string.h>
 #include <strings.h>
@@ -20,108 +21,64 @@ Memory and Data structures - The protocol object.
 static const char *REDIS_PROTOCOL_ID =
     "Redis Protocol for the facil.io framework";
 
-/* a callback container */
-typedef struct {
-  fio_list_s node;
-  void (*on_response)(intptr_t uuid, const resp_object_s *response,
-                      void *udata);
-  void *udata;
-} callback_s;
-
 typedef struct {
   protocol_s protocol;
-  /* the RESP parser */
-  resp_parser_pt parser;
-  /* The callbacks list.
-   * We don't neet locks since we'll be using the facil.io protocol locking
-   * mechanism.
-   */
-  fio_list_s callbacks;
-  /* The on_open callback */
-  void (*on_open)(intptr_t uuid);
-  /* The on_open callback */
-  void (*on_close)(void *udata);
-  void *on_close_udata;
-  /* The on_pubsub callback */
-  void (*on_pubsub)(intptr_t uuid, const resp_array_s *msg, void *udata);
-  void *on_pubsub_udata;
-  /* Fallback / default handler for messages. */
-  void (*fallback)(intptr_t uuid, resp_object_s *msg, void *udata);
-  void *fallback_udata;
+  struct redis_context_args *settings;
 } redis_protocol_s;
 
-/************************
-Allocation / Deallocation
-Using the memory pools
-********************** */
-
-static spn_lock_i callback_pool_lock = SPN_LOCK_INIT;
-static callback_s callback_pool_mem[REDIS_POOL_SIZES];
-static fio_list_s callbacks_pool = FIO_LIST_INIT_STATIC(callbacks_pool);
-static uint8_t callbacks_pool_is_init = 0;
-static inline void callbacks_pool_init(void) {
-  if (callbacks_pool_is_init)
-    return;
-  callbacks_pool_is_init = 1;
-  for (size_t i = 0; i < REDIS_POOL_SIZES; i++) {
-    fio_list_add(&callbacks_pool, &callback_pool_mem[i].node);
+/* *****************************************************************************
+The Protocol Context
+***************************************************************************** */
+#undef redis_create_context
+void *redis_create_context(struct redis_context_args args) {
+  if (!args.on_message || !args.parser) {
+    fprintf(stderr, "A Redix connection context requires both an `on_message` "
+                    "callback and a parser.\n");
+    exit(EINVAL);
   }
-}
-static callback_s *callback_alloc(void) {
-  callback_s *c;
-  spn_lock(&callback_pool_lock);
-  if (!callbacks_pool_is_init)
-    callbacks_pool_init();
-  c = fio_list_pop(callback_s, node, callbacks_pool);
-  spn_unlock(&callback_pool_lock);
-  if (!c)
-    c = malloc(sizeof(*c));
+  struct redis_context_args *c = malloc(sizeof(*c));
+  *c = args;
   return c;
 }
 
-static void callback_free(callback_s *c) {
-  if ((uintptr_t)c >= (uintptr_t)callback_pool_mem &&
-      (uintptr_t)c < (uintptr_t)(callback_pool_mem + REDIS_POOL_SIZES)) {
-    spn_lock(&callback_pool_lock);
-    fio_list_push(callback_s, node, callbacks_pool, c);
-    spn_unlock(&callback_pool_lock);
-    return;
-  }
-  free(c);
-}
-
 /* *****************************************************************************
-The Protocol Callbacks and initialization
+The Protocol Callbacks
 ***************************************************************************** */
 
-/** called when the connection was closed, but will not run concurrently */
-static void redis_on_close_protocol(protocol_s *pr) {
+void redis_protocol_cleanup(intptr_t uuid, void *settings) {
+  struct redis_context_args *s = settings;
+  if (s->on_close)
+    s->on_close(uuid, s->udata);
+  if (s->autodestruct)
+    free(settings);
+}
+
+static void redis_on_close_client(intptr_t uuid, protocol_s *pr) {
   redis_protocol_s *r = (redis_protocol_s *)pr;
-  if (r->on_close)
-    r->on_close(r->on_close_udata);
-  callback_s *cl;
-  while ((cl = fio_list_pop(callback_s, node, r->callbacks)))
-    callback_free(cl);
-  resp_parser_destroy(r->parser);
+  // if (r->settings->on_close)
+  //   r->settings->on_close(uuid, r->settings->udata);
+  redis_protocol_cleanup(uuid, r->settings);
   free(r);
 }
+
+static void redis_on_close_server(intptr_t uuid, protocol_s *pr) {
+  redis_protocol_s *r = (redis_protocol_s *)pr;
+  if (r->settings->on_close)
+    r->settings->on_close(uuid, r->settings->udata);
+  free(r);
+}
+
+static const char REDIS_PING_STR[] = "*2"
+                                     "$4\r\nPING\r\n"
+                                     "$24\r\nfacil.io connection PING\r\n";
 
 /** called when a connection's timeout was reached */
 static void redis_ping(intptr_t uuid, protocol_s *pr) {
   /* We cannow write directly to the socket in case `redis_send` has scheduled
    * callbacks. */
-  resp_object_s *cmd = resp_str2obj("PING", 4);
-  cmd = resp_arr2obj(1, &cmd);
-  redis_send(.uuid = uuid, .cmd = cmd, .move = 1);
-  (void)pr;
-}
-
-void redis_on_shutdown(intptr_t uuid, protocol_s *pr) {
-  /* We cannow write directly to the socket in case `redis_send` has scheduled
-   * callbacks. */
-  resp_object_s *cmd = resp_str2obj("QUIT", 4);
-  cmd = resp_arr2obj(1, &cmd);
-  redis_send(.uuid = uuid, .cmd = cmd, .move = 1);
+  sock_write2(.uuid = uuid, .buffer = REDIS_PING_STR,
+              .length = sizeof(REDIS_PING_STR) - 1, .move = 1,
+              .dealloc = SOCK_DEALLOC_NOOP);
   (void)pr;
 }
 
@@ -137,35 +94,37 @@ static void redis_on_data(intptr_t uuid, protocol_s *pr) {
     return;
   pos = 0;
   while (len) {
-    msg = resp_parser_feed(r->parser, buffer + pos, (size_t *)&len);
-    if (msg) {
-      // { // for debugging.
-      //   uint8_t tmp[127] = {0};
-      //   size_t blen = 127;
-      //   resp_format(r->parser, tmp, &blen, msg);
-      //   fprintf(stderr,
-      //           "Got a response type %d (%lu long):\n%.*s\n Original:
-      //           %.*s\n", msg->type, blen, (int)blen, tmp, (int)len, buffer +
-      //           pos);
-      // }
-      if (r->on_pubsub && msg->type == RESP_PUBSUB) {
-        /* *** PuB / Sub *** */
-        r->on_pubsub(uuid, (resp_array_s *)msg, r->on_pubsub_udata);
-      } else {
-        /* *** Normal *** */
-        if (msg->type == RESP_PUBSUB)
-          msg->type = RESP_ARRAY;
-        callback_s *c = fio_list_pop(callback_s, node, r->callbacks);
-        if (c) {
-          if (c->on_response)
-            c->on_response(uuid, msg, c->udata);
-          else if (r->fallback)
-            r->fallback(uuid, msg, r->fallback_udata);
-          callback_free(c);
-        } else if (r->fallback) {
-          r->fallback(uuid, (resp_object_s *)msg, r->fallback_udata);
+    msg = resp_parser_feed(r->settings->parser, buffer + pos, (size_t *)&len);
+    if (!len && !msg) {
+      fprintf(stderr, "ERROR: (RESP Parser) Bad input (%lu):\n%s\n", limit,
+              buffer);
+      /* we'll simply ignore bad input. skip a line. */
+      for (; pos < limit; pos++) {
+        len++;
+        if (buffer[pos] == '\n') {
+          pos++;
+          len++;
+          break; /* from `for` loop */
         }
       }
+      continue; /* while loop */
+    }
+    if (msg) {
+      if (msg->type == RESP_ARRAY &&
+          resp_obj2arr(msg)->array[0]->type == RESP_STRING &&
+          resp_obj2str(resp_obj2arr(msg)->array[0])->len == 4 &&
+          resp_obj2arr(msg)->array[1]->type == RESP_STRING &&
+          resp_obj2str(resp_obj2arr(msg)->array[1])->len ==
+              sizeof(REDIS_PING_STR) - 1 &&
+          !strncasecmp(
+              (char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string, "pong",
+              4) &&
+          !strncasecmp(
+              (char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string,
+              REDIS_PING_STR, sizeof(REDIS_PING_STR) - 1)) {
+        /* an internal ping, do not forward. */
+      } else
+        r->settings->on_message(uuid, msg, r->settings->udata);
       resp_free_object(msg);
       msg = NULL;
     }
@@ -185,248 +144,55 @@ static void redis_on_data_deferred(intptr_t uuid, protocol_s *pr, void *d) {
   redis_on_data(uuid, pr);
   (void)d;
 }
+
+static void redis_on_open(intptr_t uuid, protocol_s *pr, void *d) {
+  redis_protocol_s *r = (void *)pr;
+  r->settings->on_open(uuid, r->settings->udata);
+  (void)d;
+}
+
 /**
- * This function can be used as a function pointer for both `facil_connect` and
- * `facil_listen` calls.
+ * This function is used as a function pointer for the `facil_connect` and
+ * calls (the `on_connect` callback).
  */
-#undef redis_create_protocol
-protocol_s *redis_create_protocol(intptr_t uuid, void *ignored) {
+protocol_s *redis_create_client_protocol(intptr_t uuid, void *settings) {
   redis_protocol_s *r = malloc(sizeof(*r));
   *r = (redis_protocol_s){
       .protocol =
           {
               .service = REDIS_PROTOCOL_ID,
               .on_data = redis_on_data,
-              .on_close = redis_on_close_protocol,
+              .on_close = redis_on_close_client,
               .ping = redis_ping,
           },
-      .callbacks = FIO_LIST_INIT(r->callbacks),
-      .parser = resp_parser_new(),
+      .settings = settings,
   };
+  facil_set_timeout(uuid, r->settings->ping);
+  if (r->settings->on_open)
+    facil_defer(.task = redis_on_open, .uuid = uuid);
   return &r->protocol;
   (void)uuid;
-  (void)ignored;
 }
 
-/* *****************************************************************************
-Setting callbacks
-***************************************************************************** */
-static void mock_fallback(intptr_t uuid, resp_object_s *msg, void *udata) {
-  (void)uuid;
-  (void)msg;
-  (void)udata;
-}
-
-typedef struct {
-  enum {
-    CB_ON_CLOSE,
-    CB_ON_PUBSUB,
-  } type;
-  union {
-    void (*on_close)(void *udata);
-    void (*on_pubsub)(intptr_t uuid, const resp_array_s *msg, void *udata);
-    callback_s *on_response;
+/**
+ * This function is used as a function pointer for the `facil_listen` calls (the
+ * `on_open` callbacks).
+ */
+protocol_s *redis_create_server_protocol(intptr_t uuid, void *settings) {
+  redis_protocol_s *r = malloc(sizeof(*r));
+  *r = (redis_protocol_s){
+      .protocol =
+          {
+              .service = REDIS_PROTOCOL_ID,
+              .on_data = redis_on_data,
+              .on_close = redis_on_close_server,
+              .ping = redis_ping,
+          },
+      .settings = settings,
   };
-  void *udata;
-  size_t len;
-} callback_set_s;
-
-static void set_callback(intptr_t uuid, protocol_s *pr, void *udata) {
-  redis_protocol_s *r = (void *)pr;
-  callback_set_s *c = udata;
-  switch (c->type) {
-  case CB_ON_CLOSE:
-    r->on_close = c->on_close;
-    r->on_close_udata = c->udata;
-    break;
-  case CB_ON_PUBSUB:
-    r->on_pubsub = c->on_pubsub;
-    r->on_pubsub_udata = c->udata;
-    break;
-  }
-  free(c);
+  facil_set_timeout(uuid, r->settings->ping);
+  if (r->settings->on_open)
+    facil_defer(.task = redis_on_open, .uuid = uuid);
+  return &r->protocol;
   (void)uuid;
-}
-
-static void set_callback_fallback(intptr_t uuid, void *udata) {
-  free(udata);
-  (void)uuid;
-}
-
-/**
- * Sets a the on_close event callback.
- */
-void redis_on_close(intptr_t uuid, void (*on_close)(void *udata), void *udata) {
-  redis_protocol_s *r = (void *)facil_protocol_try_lock(uuid, FIO_PR_LOCK_TASK);
-  if (r) {
-    if (r->protocol.service == REDIS_PROTOCOL_ID) {
-      r->on_close = on_close;
-      r->on_close_udata = udata;
-    }
-    facil_protocol_unlock(&r->protocol, FIO_PR_LOCK_TASK);
-    return;
-  }
-
-  callback_set_s *c = malloc(sizeof(*c));
-  if (!c) {
-    perror("ERROR (Redis), no memory");
-    kill(0, SIGINT);
-    return;
-  }
-  *c = (callback_set_s){
-      .type = CB_ON_CLOSE, .on_close = on_close, .udata = udata};
-  facil_defer(.uuid = uuid, .task = set_callback, .arg = c,
-              .fallback = set_callback_fallback, .task_type = FIO_PR_LOCK_TASK);
-}
-/**
- * Sets a the `on_pubsub` event callback assuming the protocol for the socket is
- * locked (see {facil_protocol_try_lock}).
- */
-void redis_on_close2(protocol_s *pr, void (*on_close)(void *udata),
-                     void *udata) {
-  redis_protocol_s *r = (void *)pr;
-  if (!pr || pr->service != REDIS_PROTOCOL_ID)
-    return;
-  r->on_close = on_close;
-  r->on_close_udata = udata;
-}
-
-/**
- * Sets a the `fallback_handler` event callback assuming the protocol for the
- * socket is locked (see {facil_protocol_try_lock}), i.e., within an
- * `on_connect` wrapper function for {facil_connect} or {facil_listen}.
- *
- * `udata` is a user opaque pointer that's simply passed along.
- *
- * This callback is called when data was received and no callback was specified
- * (i.e., as a default `on_response` for {redis_send} or when implementing a
- * server)
- */
-void redis_fallback_handler(protocol_s *pr,
-                            void (*fallback_handler)(intptr_t uuid,
-                                                     resp_object_s *msg,
-                                                     void *udata),
-                            void *udata) {
-  redis_protocol_s *r = (void *)pr;
-  if (!pr || pr->service != REDIS_PROTOCOL_ID)
-    return;
-  if (!fallback_handler)
-    fallback_handler = mock_fallback;
-  r->fallback = fallback_handler;
-  r->fallback_udata = udata;
-}
-
-/**
- * Sets a the `on_pubsub` event callback. This will be called when messages
- * arrive through the use of the Pub/Sub semantics.
- *
- * If `udata` is set (NULL is ignored), than the function will also behave the
- * same as `redis_udata_set`.
- */
-void redis_on_pubsub(intptr_t uuid,
-                     void (*on_pubsub)(intptr_t uuid, const resp_array_s *msg,
-                                       void *udata),
-                     void *udata) {
-  redis_protocol_s *r = (void *)facil_protocol_try_lock(uuid, FIO_PR_LOCK_TASK);
-  if (r) {
-    if (r->protocol.service == REDIS_PROTOCOL_ID) {
-      r->on_pubsub = on_pubsub;
-      r->on_pubsub_udata = udata;
-    }
-    facil_protocol_unlock(&r->protocol, FIO_PR_LOCK_TASK);
-    return;
-  }
-
-  callback_set_s *c = malloc(sizeof(*c));
-  if (!c) {
-    perror("ERROR (Redis), no memory");
-    kill(0, SIGINT);
-    return;
-  }
-  *c = (callback_set_s){
-      .type = CB_ON_PUBSUB, .on_pubsub = on_pubsub, .udata = udata};
-  facil_defer(.uuid = uuid, .task = set_callback, .arg = c,
-              .fallback = set_callback_fallback, .task_type = FIO_PR_LOCK_TASK);
-}
-/**
- * Sets a the `on_pubsub` event callback assuming the protocol for the socket is
- * locked (see {facil_protocol_try_lock}).
- */
-void redis_on_pubsub2(protocol_s *pr,
-                      void (*on_pubsub)(intptr_t uuid, const resp_array_s *msg,
-                                        void *udata),
-                      void *udata) {
-  redis_protocol_s *r = (void *)pr;
-  if (!pr || pr->service != REDIS_PROTOCOL_ID)
-    return;
-  r->on_pubsub = on_pubsub;
-  r->on_pubsub_udata = udata;
-}
-
-/* *****************************************************************************
-Sending Commands or Responses
-***************************************************************************** */
-
-// struct redis_send_args_s {
-//   intptr_t uuid;
-//   const resp_array_s *cmd;
-//   void (*on_response)(intptr_t uuid, const resp_object_s *response,
-//                       void *udata);
-//   void *udata;
-//   uint8_t move;
-// };
-static void redis_perform_send_fallback(intptr_t uuid, void *args_) {
-  struct redis_send_args_s *args = args_;
-  resp_free_object((resp_object_s *)args->cmd);
-  free(args);
-  (void)uuid;
-}
-
-static void redis_perform_send(intptr_t uuid, protocol_s *pr, void *args_) {
-  struct redis_send_args_s *args = args_;
-  if (!pr || pr->service != REDIS_PROTOCOL_ID)
-    goto finish;
-  redis_protocol_s *r = (redis_protocol_s *)pr;
-  size_t len = 0;
-  resp_format(r->parser, NULL, &len, args->cmd);
-  if (!len)
-    goto finish;
-  void *buff = malloc(len);
-  if (!buff)
-    goto finish;
-
-  resp_format(r->parser, buff, &len, args->cmd);
-
-  sock_write2(.uuid = uuid, .buffer = buff, .length = len, .move = 1);
-
-  callback_s *cb = callback_alloc();
-  cb->on_response = args->on_response;
-  cb->udata = args->udata;
-  fio_list_shift(callback_s, node, r->callbacks);
-
-finish:
-  resp_free_object(args->cmd);
-  free(args);
-}
-
-/**
- * Sends RESP messages. Returns -1 on a known error and 0 if the message was
- * successfully validated to be sent.
- */
-#undef redis_send
-int redis_send(struct redis_send_args_s args) {
-  if (!args.cmd || !args.uuid || !sock_isvalid(args.uuid))
-    goto error;
-  struct redis_send_args_s *c = malloc(sizeof(*c));
-  *c = args;
-  if (!args.move)
-    resp_dup_object(args.cmd);
-  facil_defer(.uuid = args.uuid, .task = redis_perform_send,
-              .fallback = redis_perform_send_fallback, .arg = c,
-              .task_type = FIO_PR_LOCK_TASK);
-  return 0;
-error:
-  if (args.move && args.cmd)
-    resp_free_object(args.cmd);
-  return -1;
 }

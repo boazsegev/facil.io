@@ -147,6 +147,9 @@ resp_parser_pt resp_parser_new(void);
 /** free the parser and it's resources. */
 void resp_parser_destroy(resp_parser_pt);
 
+/** Clears the parser state, as if starting a new session / connection. */
+void resp_parser_clear(resp_parser_pt);
+
 /**
  * Feed the parser with data.
  *

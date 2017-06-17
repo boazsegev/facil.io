@@ -67,7 +67,7 @@ struct FacilIOProtocol {
    * but before closing the connection. */
   void (*on_shutdown)(intptr_t uuid, protocol_s *protocol);
   /** called when the connection was closed, but will not run concurrently */
-  void (*on_close)(protocol_s *protocol);
+  void (*on_close)(intptr_t uuid, protocol_s *protocol);
   /** called when a connection's timeout was reached */
   void (*ping)(intptr_t uuid, protocol_s *protocol);
   /** private metadata used by facil. */
@@ -178,16 +178,16 @@ struct facil_listen_args {
    * timed event scheduling.
    *
    * This will be called seperately for every process. */
-  void (*on_start)(void *udata);
+  void (*on_start)(intptr_t uuid, void *udata);
   /**
    * Called when the server is done, usable for cleanup.
    *
    * This will be called seperately for every process. */
-  void (*on_finish)(void *udata);
+  void (*on_finish)(intptr_t uuid, void *udata);
   /**
    * A cleanup callback for the `rw_udata`.
    */
-  void (*on_finish_rw)(void *rw_udata);
+  void (*on_finish_rw)(intptr_t uuid, void *rw_udata);
 };
 
 /** Schedule a network service on a listening socket. */

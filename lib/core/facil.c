@@ -83,15 +83,14 @@ inline static void protocol_unlock(protocol_s *pr,
 /* *****************************************************************************
 Deferred event handlers
 ***************************************************************************** */
-static void deferred_on_close(void *arg, void *arg2) {
-  protocol_s *pr = arg;
+static void deferred_on_close(void *uuid_, void *pr_) {
+  protocol_s *pr = pr_;
   if (pr->rsv)
     goto postpone;
-  pr->on_close(pr);
+  pr->on_close((intptr_t)uuid_, pr);
   return;
 postpone:
-  defer(deferred_on_close, arg, NULL);
-  (void)arg2;
+  defer(deferred_on_close, uuid_, pr_);
 }
 
 static void deferred_on_ready(void *arg, void *arg2) {
@@ -181,7 +180,7 @@ void sock_on_close(intptr_t uuid) {
   clear_connection_data_unsafe(uuid, NULL);
   spn_unlock(&uuid_data(uuid).lock);
   if (old_protocol)
-    defer(deferred_on_close, old_protocol, NULL);
+    defer(deferred_on_close, (void *)uuid, old_protocol);
 }
 
 void sock_touch(intptr_t uuid) {
@@ -242,7 +241,15 @@ static void mock_on_ev(intptr_t uuid, protocol_s *protocol) {
   (void)protocol;
 }
 
-static void mock_on_close(protocol_s *protocol) { (void)(protocol); }
+static void mock_on_close(intptr_t uuid, protocol_s *protocol) {
+  (void)(protocol);
+  (void)(uuid);
+}
+
+static void mock_on_finish(intptr_t uuid, void *udata) {
+  (void)(udata);
+  (void)(uuid);
+}
 
 static void mock_ping(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
@@ -282,9 +289,9 @@ struct ListenerProtocol {
   void *udata;
   void *rw_udata;
   sock_rw_hook_s *(*set_rw_hooks)(intptr_t uuid, void *udata);
-  void (*on_finish_rw)(void *rw_udata);
-  void (*on_start)(void *udata);
-  void (*on_finish)(void *udata);
+  void (*on_finish_rw)(intptr_t uuid, void *rw_udata);
+  void (*on_start)(intptr_t uuid, void *udata);
+  void (*on_finish)(intptr_t uuid, void *udata);
   char port[16];
 };
 
@@ -343,10 +350,10 @@ static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
 
 static void free_listenner(void *li) { free(li); }
 
-static void listener_on_close(protocol_s *plistener) {
+static void listener_on_close(intptr_t uuid, protocol_s *plistener) {
   struct ListenerProtocol *listener = (void *)plistener;
-  listener->on_finish(listener->udata);
-  listener->on_finish_rw(listener->rw_udata);
+  listener->on_finish(uuid, listener->udata);
+  listener->on_finish_rw(uuid, listener->rw_udata);
   if (FACIL_PRINT_STATE)
     fprintf(stderr, "* (%d) Stopped listening on port %s\n", getpid(),
             listener->port);
@@ -356,11 +363,11 @@ static void listener_on_close(protocol_s *plistener) {
 static inline struct ListenerProtocol *
 listener_alloc(struct facil_listen_args settings) {
   if (!settings.on_start)
-    settings.on_start = (void (*)(void *))mock_on_close;
+    settings.on_start = mock_on_finish;
   if (!settings.on_finish)
-    settings.on_finish = (void (*)(void *))mock_on_close;
+    settings.on_finish = (void (*)(intptr_t, void *))mock_on_close;
   if (!settings.on_finish_rw)
-    settings.on_finish_rw = (void (*)(void *))mock_on_close;
+    settings.on_finish_rw = mock_on_finish;
   if (!settings.set_rw_hooks)
     settings.set_rw_hooks = listener_set_rw_hooks;
   struct ListenerProtocol *listener = malloc(sizeof(*listener));
@@ -396,7 +403,7 @@ inline static void listener_on_start(size_t fd) {
   // call the on_init callback
   struct ListenerProtocol *listener =
       (struct ListenerProtocol *)uuid_data(uuid).protocol;
-  listener->on_start(listener->udata);
+  listener->on_start(uuid, listener->udata);
 }
 
 /**
@@ -466,11 +473,12 @@ static void connector_on_data(intptr_t uuid, protocol_s *connector) {
   defer(deferred_on_data, (void *)uuid, NULL);
 }
 
-static void connector_on_close(protocol_s *pconnector) {
+static void connector_on_close(intptr_t uuid, protocol_s *pconnector) {
   struct ConnectProtocol *connector = (void *)pconnector;
   if (connector->opened == 0 && connector->on_fail)
     connector->on_fail(connector->uuid, connector->udata);
   free(connector);
+  (void)uuid;
 }
 
 #undef facil_connect
@@ -540,9 +548,10 @@ static void timer_on_data(intptr_t uuid, protocol_s *protocol) {
   sock_force_close(uuid);
 }
 
-static void timer_on_close(protocol_s *protocol) {
+static void timer_on_close(intptr_t uuid, protocol_s *protocol) {
   prot2timer(protocol).on_finish(prot2timer(protocol).arg);
   free(protocol);
+  (void)uuid;
 }
 
 static inline timer_protocol_s *timer_alloc(void (*task)(void *), void *arg,
@@ -670,7 +679,7 @@ static void facil_cluster_handle_msg(struct facil_cluster_msg *msg) {
 static char *facil_cluster_protocol_id = "facil_io_internal_cluster_protocol";
 
 /* cluster protocol on_close callback */
-static void facil_cluster_on_close(protocol_s *pr_) {
+static void facil_cluster_on_close(intptr_t uuid, protocol_s *pr_) {
   struct facil_cluster_protocol *pr = (struct facil_cluster_protocol *)pr_;
   if (pr->msg)
     free(pr->msg);
@@ -680,6 +689,7 @@ static void facil_cluster_on_close(protocol_s *pr_) {
     fprintf(stderr, "ERROR: facil cluster member (%d) closed prematurely.\n",
             defer_fork_pid());
 #endif
+  (void)uuid;
 }
 
 /* cluster protocol on_data callback */
@@ -1035,7 +1045,7 @@ int facil_attach(intptr_t uuid, protocol_s *protocol) {
   if (!sock_isvalid(uuid)) {
     spn_unlock(&uuid_data(uuid).lock);
     if (protocol)
-      defer(deferred_on_close, protocol, NULL);
+      defer(deferred_on_close, (void *)uuid, protocol);
     return -1;
   }
   protocol_s *old_protocol = uuid_data(uuid).protocol;
@@ -1043,7 +1053,7 @@ int facil_attach(intptr_t uuid, protocol_s *protocol) {
   uuid_data(uuid).active = facil_data->last_cycle;
   spn_unlock(&uuid_data(uuid).lock);
   if (old_protocol)
-    defer(deferred_on_close, old_protocol, NULL);
+    defer(deferred_on_close, (void *)uuid, old_protocol);
   if (evio_isactive())
     evio_add(sock_uuid2fd(uuid), (void *)uuid);
   return 0;
@@ -1139,6 +1149,10 @@ static void perform_single_task(void *v_uuid, void *v_task) {
   protocol_s *pr = protocol_try_lock(sock_uuid2fd(v_uuid), task->task_type);
   if (!pr)
     goto defer;
+  if (pr->service == connector_protocol_name) {
+    protocol_unlock(pr, task->task_type);
+    goto defer;
+  }
   task->func((intptr_t)v_uuid, pr, task->arg);
   protocol_unlock(pr, task->task_type);
   free_facil_task(task);

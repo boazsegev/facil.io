@@ -32,18 +32,19 @@ http_on_finish_func http_get_on_finish_func(http_settings_s *settings) {
   return (http_on_finish_func)route[settings->version];
 }
 
-void http_on_finish(void *set) {
+void http_on_finish(intptr_t uuid, void *set) {
   http_settings_s *settings = set;
   if (http_get_on_finish_func(set))
     http_get_on_finish_func(set)(set);
 
   if (settings->on_finish)
-    settings->on_finish(settings->udata);
+    settings->on_finish(uuid, settings->udata);
 
   if (settings->private_metaflags & 2) {
     free((void *)settings->public_folder);
     free(settings);
   }
+  (void)uuid;
 }
 
 /**

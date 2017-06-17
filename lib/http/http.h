@@ -82,7 +82,7 @@ struct http_settings_s {
   /** Opaque user data for the optional `set_rw_hooks`. */
   void *rw_udata;
   /** (optional) the callback to be performed when the HTTP service closes. */
-  void (*on_finish)(void *udata);
+  void (*on_finish)(intptr_t uuid, void *udata);
   /**
    * Allows a an implementation for the transport layer (i.e. TLS) without
    * effecting the HTTP protocol.
@@ -91,7 +91,7 @@ struct http_settings_s {
   /**
    * A cleanup callback for the `rw_udata`.
    */
-  void (*on_finish_rw)(void *rw_udata);
+  void (*on_finish_rw)(intptr_t uuid, void *rw_udata);
   /**
   Logging flag - set to TRUE to log static file requests.
 

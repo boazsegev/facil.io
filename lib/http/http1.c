@@ -43,7 +43,7 @@ static struct {
   http1_protocol_s protocol_mem[HTTP1_POOL_SIZE];
 } http1_pool = {.lock = SPN_LOCK_INIT, .init = 0};
 
-static void http1_free(http1_protocol_s *pr) {
+static void http1_free(intptr_t uuid, http1_protocol_s *pr) {
   if ((uintptr_t)pr < (uintptr_t)http1_pool.protocol_mem ||
       (uintptr_t)pr >= (uintptr_t)(http1_pool.protocol_mem + HTTP1_POOL_SIZE))
     goto use_free;
@@ -55,12 +55,13 @@ static void http1_free(http1_protocol_s *pr) {
 use_free:
   free(pr);
   return;
+  (void)uuid;
 }
 
 static inline void http1_set_protocol_data(http1_protocol_s *pr) {
-  pr->protocol =
-      (protocol_s){.on_data = (void (*)(intptr_t, protocol_s *))http1_on_data,
-                   .on_close = (void (*)(protocol_s *))http1_free};
+  pr->protocol = (protocol_s){
+      .on_data = (void (*)(intptr_t, protocol_s *))http1_on_data,
+      .on_close = (void (*)(intptr_t uuid, protocol_s *))http1_free};
   pr->request.request = (http_request_s){.fd = 0, .http_version = HTTP_V1};
   pr->request.header_pos = pr->request.buffer_pos = pr->len = 0;
 }

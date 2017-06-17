@@ -199,7 +199,7 @@ int main(int argc, char const *argv[]) {
 
   /*     ****  actual code ****     */
 
-  RedisEngine = redis_engine_create(redis_address, redis_port);
+  RedisEngine = redis_engine_create(redis_address, redis_port, 40);
   if (!RedisEngine) {
     perror("\nERROR: couldn't initialize Redis engine.\n");
     exit(-2);

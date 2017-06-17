@@ -204,7 +204,10 @@ static void ws_ping(intptr_t fd, protocol_s *ws) {
               .dealloc = SOCK_DEALLOC_NOOP);
 }
 
-static void on_close(protocol_s *_ws) { destroy_ws((ws_s *)_ws); }
+static void on_close(intptr_t uuid, protocol_s *_ws) {
+  destroy_ws((ws_s *)_ws);
+  (void)uuid;
+}
 
 static void on_ready(intptr_t fduuid, protocol_s *ws) {
   (void)(fduuid);
