@@ -173,10 +173,10 @@ static void init_rand_fd(void) {
     return ret;                                                                \
   }
 /* rand functions */
-MAKE_RAND_FUNC(uint32_t, bscrypt_rand32);
-MAKE_RAND_FUNC(uint64_t, bscrypt_rand64);
-MAKE_RAND_FUNC(bits128_u, bscrypt_rand128);
-MAKE_RAND_FUNC(bits256_u, bscrypt_rand256);
+MAKE_RAND_FUNC(uint32_t, bscrypt_rand32)
+MAKE_RAND_FUNC(uint64_t, bscrypt_rand64)
+MAKE_RAND_FUNC(bits128_u, bscrypt_rand128)
+MAKE_RAND_FUNC(bits256_u, bscrypt_rand256)
 /* clear template */
 #undef MAKE_RAND_FUNC
 

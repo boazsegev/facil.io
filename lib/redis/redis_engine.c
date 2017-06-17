@@ -328,6 +328,8 @@ pubsub_engine_s *redis_engine_create(const char *address, const char *port,
       .parser = resp_parser_new(),
       .callbacks = FIO_LIST_INIT_STATIC(e->callbacks),
       .active = 1,
+      .sub_state = 1,
+      .pub_state = 1,
   };
   if (address)
     memcpy(e->address, address, addr_len);
