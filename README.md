@@ -10,6 +10,16 @@
 
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
 
+## Compiling
+
+[facil.io](http://facil.io) is a source code library, so it's possible to simply copy the source code into a new project.
+
+[facil.io](http://facil.io) also supports both `git` and CMake submodules.
+
+However, when starting a new project, it's often easiest to simply fork this project and place your own source code in the `dev` folder, perhaps updating the `makefile` to make it more compatible with your project's folder structure.
+
+When forking this project, please run `make clean` to build the `tmp` folder structure used for compiling. Unless `make clean` is called, the compiler / linker will fail with a `No such file or directory` error.
+
 ## Three Quick Examples
 
 Writing HTTP and Websocket services in C is easy with [facil.io](http://facil.io).
