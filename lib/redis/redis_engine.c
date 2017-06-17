@@ -46,16 +46,16 @@ static int dealloc_engine(redis_engine_s *r) {
 /* *****************************************************************************
 Writing commands
 ***************************************************************************** */
-static void redis_pub_send(void *e, void *ignr) {
+static void redis_pub_send(void *e, void *uuid) {
   redis_engine_s *r = e;
+  if (r->pub != (intptr_t)uuid)
+    return;
   callbacks_s *cb;
   spn_lock(&r->lock);
 
   if (fio_list_any(r->callbacks)) {
-    fprintf(stderr, "Has data\n");
     cb = fio_node2obj(callbacks_s, node, r->callbacks.next);
     if (cb->sent == 0) {
-      fprintf(stderr, "Sending...\n");
       cb->sent = 1;
       sock_write2(.uuid = r->pub, .buffer = (uint8_t *)(cb + 1),
                   .length = cb->len, .move = 1, .dealloc = SOCK_DEALLOC_NOOP);
@@ -63,12 +63,11 @@ static void redis_pub_send(void *e, void *ignr) {
   }
   spn_unlock(&r->lock);
   dealloc_engine(r);
-  (void)ignr;
 }
 
-static void schedule_pub_send(redis_engine_s *r) {
+static void schedule_pub_send(redis_engine_s *r, intptr_t uuid) {
   spn_add(&r->ref, 1);
-  defer(redis_pub_send, r, NULL);
+  defer(redis_pub_send, r, (void *)uuid);
 }
 
 /* *****************************************************************************
@@ -99,7 +98,7 @@ static void on_message_pub(intptr_t uuid, resp_object_s *msg, void *udata) {
   cl = fio_list_pop(callbacks_s, node, r->callbacks);
   spn_unlock(&r->lock);
   if (cl) {
-    schedule_pub_send(r);
+    schedule_pub_send(r, uuid);
     if (cl->callback)
       cl->callback(&r->engine, msg, cl->udata);
     free(cl);
@@ -107,8 +106,10 @@ static void on_message_pub(intptr_t uuid, resp_object_s *msg, void *udata) {
     uint8_t buffer[64] = {0};
     size_t len = 63;
     resp_format(NULL, buffer, &len, msg);
-    fprintf(stderr, "WARN: Received unknown message type %d (%lu bytes):\n%s\n",
-            msg->type, len, (char *)buffer);
+    fprintf(stderr,
+            "WARN: (RedisEngine) Possible issue, "
+            "received unknown message (%lu bytes):\n%s\n",
+            len, (char *)buffer);
   }
   (void)uuid;
 }
@@ -173,11 +174,12 @@ static void on_open_pub(intptr_t uuid, void *e) {
           "INFO: (RedisEngine) redis Pub "
           "connection (re)established: %s:%s\n",
           r->address ? r->address : "0.0.0.0", r->port);
+  r->pub_state = 1;
   spn_lock(&r->lock);
   callbacks_s *cb;
   fio_list_for_each(callbacks_s, node, cb, r->callbacks) { cb->sent = 0; }
   spn_unlock(&r->lock);
-  schedule_pub_send(r);
+  schedule_pub_send(r, uuid);
 }
 
 static void on_open_sub(intptr_t uuid, void *e) {
@@ -377,7 +379,7 @@ intptr_t redis_engine_send(pubsub_engine_s *e, resp_object_s *data,
   spn_lock(&r->lock);
   fio_list_unshift(callbacks_s, node, r->callbacks, cb);
   spn_unlock(&r->lock);
-  schedule_pub_send(r);
+  schedule_pub_send(r, r->pub);
   return 0;
 }
 

@@ -20,6 +20,12 @@ Memory and Data structures - The protocol object.
 /* a protocol ID string */
 static const char *REDIS_PROTOCOL_ID =
     "Redis Protocol for the facil.io framework";
+/* Pings */
+#define REDIS_PING_LEN 24
+static const char REDIS_PING_STR[] = "*2\r\n"
+                                     "$4\r\nPING\r\n"
+                                     "$24\r\nfacil.io connection PING\r\n";
+static const char REDIS_PING_PAYLOAD[] = "facil.io connection PING";
 
 typedef struct {
   protocol_s protocol;
@@ -68,10 +74,6 @@ static void redis_on_close_server(intptr_t uuid, protocol_s *pr) {
   free(r);
 }
 
-static const char REDIS_PING_STR[] = "*2"
-                                     "$4\r\nPING\r\n"
-                                     "$24\r\nfacil.io connection PING\r\n";
-
 /** called when a connection's timeout was reached */
 static void redis_ping(intptr_t uuid, protocol_s *pr) {
   /* We cannow write directly to the socket in case `redis_send` has scheduled
@@ -110,18 +112,20 @@ static void redis_on_data(intptr_t uuid, protocol_s *pr) {
       continue; /* while loop */
     }
     if (msg) {
-      if (msg->type == RESP_ARRAY &&
-          resp_obj2arr(msg)->array[0]->type == RESP_STRING &&
-          resp_obj2str(resp_obj2arr(msg)->array[0])->len == 4 &&
-          resp_obj2arr(msg)->array[1]->type == RESP_STRING &&
-          resp_obj2str(resp_obj2arr(msg)->array[1])->len ==
-              sizeof(REDIS_PING_STR) - 1 &&
-          !strncasecmp(
-              (char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string, "pong",
-              4) &&
-          !strncasecmp(
-              (char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string,
-              REDIS_PING_STR, sizeof(REDIS_PING_STR) - 1)) {
+      if ((msg->type == RESP_STRING &&
+           resp_obj2str(msg)->len == REDIS_PING_LEN &&
+           !memcmp(resp_obj2str(msg)->string, REDIS_PING_PAYLOAD,
+                   REDIS_PING_LEN)) ||
+          (msg->type == RESP_ARRAY &&
+           resp_obj2arr(msg)->array[0]->type == RESP_STRING &&
+           resp_obj2str(resp_obj2arr(msg)->array[0])->len == 4 &&
+           resp_obj2arr(msg)->array[1]->type == RESP_STRING &&
+           resp_obj2str(resp_obj2arr(msg)->array[1])->len == REDIS_PING_LEN &&
+           !strncasecmp(
+               (char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string,
+               "pong", 4) &&
+           !memcmp((char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string,
+                   REDIS_PING_PAYLOAD, REDIS_PING_LEN))) {
         /* an internal ping, do not forward. */
       } else
         r->settings->on_message(uuid, msg, r->settings->udata);
@@ -147,6 +151,7 @@ static void redis_on_data_deferred(intptr_t uuid, protocol_s *pr, void *d) {
 
 static void redis_on_open(intptr_t uuid, protocol_s *pr, void *d) {
   redis_protocol_s *r = (void *)pr;
+  facil_set_timeout(uuid, r->settings->ping);
   r->settings->on_open(uuid, r->settings->udata);
   (void)d;
 }
