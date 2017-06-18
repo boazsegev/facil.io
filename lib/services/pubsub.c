@@ -247,18 +247,23 @@ static int pubsub_cluster_eng_publish(const pubsub_engine_s *eng,
   return 0;
 }
 
-const pubsub_engine_s PUBSUB_CLUSTER_ENGINE = {
+const pubsub_engine_s PUBSUB_CLUSTER_ENGINE_S = {
     .publish = pubsub_cluster_eng_publish,
     .subscribe = pubsub_cluster_subscribe,
     .unsubscribe = pubsub_cluster_unsubscribe,
     .push2cluster = 1,
 };
+const pubsub_engine_s *PUBSUB_CLUSTER_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
 
-const pubsub_engine_s PUBSUB_PROCESS_ENGINE = {
+const pubsub_engine_s PUBSUB_PROCESS_ENGINE_S = {
     .publish = pubsub_cluster_eng_publish,
     .subscribe = pubsub_cluster_subscribe,
     .unsubscribe = pubsub_cluster_unsubscribe,
 };
+const pubsub_engine_s *PUBSUB_PROCESS_ENGINE = &PUBSUB_PROCESS_ENGINE_S;
+
+pubsub_engine_s *PUBSUB_DEFAULT_ENGINE =
+    (pubsub_engine_s *)&PUBSUB_CLUSTER_ENGINE_S;
 
 /* *****************************************************************************
 External Engine Bridge
@@ -334,7 +339,7 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
     return NULL;
   }
   if (!args.engine)
-    args.engine = &PUBSUB_CLUSTER_ENGINE;
+    args.engine = PUBSUB_DEFAULT_ENGINE;
   channel_s *ch;
   client_s *client;
   uint64_t cl_hash =
@@ -431,7 +436,7 @@ pubsub_sub_pt pubsub_find_sub(struct pubsub_subscribe_args args) {
     return NULL;
   }
   if (!args.engine)
-    args.engine = &PUBSUB_CLUSTER_ENGINE;
+    args.engine = PUBSUB_DEFAULT_ENGINE;
   channel_s *ch;
   client_s *client;
   uint64_t cl_hash =
@@ -507,12 +512,12 @@ int pubsub_publish(struct pubsub_publish_args args) {
   if (args.channel.name && !args.channel.len)
     args.channel.len = strlen(args.channel.name);
   if (!args.engine) {
-    args.engine = &PUBSUB_CLUSTER_ENGINE;
+    args.engine = PUBSUB_DEFAULT_ENGINE;
     args.push2cluster = 1;
   } else if (args.push2cluster)
-    PUBSUB_CLUSTER_ENGINE.publish(args.engine, args.channel.name,
-                                  args.channel.len, args.msg.data, args.msg.len,
-                                  args.use_pattern);
+    PUBSUB_CLUSTER_ENGINE_S.publish(args.engine, args.channel.name,
+                                    args.channel.len, args.msg.data,
+                                    args.msg.len, args.use_pattern);
   return args.engine->publish(args.engine, args.channel.name, args.channel.len,
                               args.msg.data, args.msg.len, args.use_pattern);
 }

@@ -21,15 +21,12 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 #include "websockets.h"
 
 #include "redis_engine.h"
-pubsub_engine_s *RedisEngine = NULL;
 
 #include <string.h>
 
 static void on_open_shootout_websocket(ws_s *ws) {
-  websocket_subscribe(ws, .engine = RedisEngine, .channel.name = "text",
-                      .force_text = 1);
-  websocket_subscribe(ws, .engine = RedisEngine, .channel.name = "binary",
-                      .force_binary = 1);
+  websocket_subscribe(ws, .channel.name = "text", .force_text = 1);
+  websocket_subscribe(ws, .channel.name = "binary", .force_binary = 1);
 }
 
 static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
@@ -38,15 +35,13 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   (void)(is_text);
   (void)(size);
   if (data[0] == 'b') {
-    pubsub_publish(.engine = RedisEngine, .channel.name = "binary",
-                   .msg.data = data, .msg.len = size);
+    pubsub_publish(.channel.name = "binary", .msg.data = data, .msg.len = size);
     // fwrite(".", 1, 1, stderr);
     data[0] = 'r';
     websocket_write(ws, data, size, 0);
   } else if (data[9] == 'b') {
     // fwrite(".", 1, 1, stderr);
-    pubsub_publish(.engine = RedisEngine, .channel.name = "text",
-                   .msg.data = data, .msg.len = size);
+    pubsub_publish(.channel.name = "text", .msg.data = data, .msg.len = size);
     /* send result */
     size = size + (25 - 19);
     void *buff = malloc(size);
@@ -144,8 +139,4 @@ int main(int argc, char const *argv[]) {
                   .log_static = print_log, .public_folder = public_folder))
     perror("Couldn't initiate Websocket Shootout service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
-  if (RedisEngine) {
-    redis_engine_destroy(RedisEngine);
-    RedisEngine = NULL;
-  }
 }
