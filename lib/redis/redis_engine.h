@@ -10,19 +10,35 @@ subscription or publication... it will simply try until successful.
 #include "pubsub.h"
 #include "resp.h"
 
+/** possible arguments for the `redis_engine_create` function call */
+struct redis_engine_create_args {
+  /** Redis server's address */
+  const char *address;
+  /** Redis server's port */
+  const char *port;
+  /** Redis server's password, if any */
+  const char *auth;
+  /** Redis server's password length (if any). */
+  size_t auth_len;
+  /** A `ping` will be sent every `ping_interval` interval or inactivity. */
+  uint8_t ping_interval;
+};
+
 /**
 See the {pubsub.h} file for documentation about engines.
 
 The engine is active only after facil.io starts running.
 
-A `ping` will be sent every `timeout` interval or inactivity. The default value
-(0) will fallback to facil.io's maximum time of inactivity (5 minutes) before
-polling on the connection's protocol.
+A `ping` will be sent every `ping_interval` interval or inactivity. The default
+value (0) will fallback to facil.io's maximum time of inactivity (5 minutes)
+before polling on the connection's protocol.
 
 function names speak for themselves ;-)
 */
-pubsub_engine_s *redis_engine_create(const char *address, const char *port,
-                                     uint8_t ping_interval);
+pubsub_engine_s *redis_engine_create(struct redis_engine_create_args);
+
+#define redis_engine_create(...)                                               \
+  redis_engine_create((struct redis_engine_create_args){__VA_ARGS__})
 
 /**
 Sends a Redis message through the engine's connection. The response will be sent

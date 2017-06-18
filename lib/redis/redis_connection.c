@@ -2,6 +2,7 @@
 #include "fio_list.h"
 #include "spnlock.inc"
 #include <errno.h>
+#include <math.h>
 #include <signal.h>
 #include <string.h>
 #include <strings.h>
@@ -30,7 +31,27 @@ static const char REDIS_PING_PAYLOAD[] = "facil.io connection PING";
 typedef struct {
   protocol_s protocol;
   struct redis_context_args *settings;
+  unsigned authenticated : 1;
 } redis_protocol_s;
+
+static inline size_t ul2a(char *dest, size_t num) {
+  uint8_t digits = 1;
+  size_t tmp = num;
+  while ((tmp /= 10))
+    ++digits;
+
+  if (dest) {
+    dest += digits;
+    *(dest--) = 0;
+  }
+  for (size_t i = 0; i < digits; i++) {
+    num = num - (10 * (tmp = (num / 10)));
+    if (dest)
+      *(dest--) = '0' + num;
+    num = tmp;
+  }
+  return digits;
+}
 
 /* *****************************************************************************
 The Protocol Context
@@ -42,8 +63,19 @@ void *redis_create_context(struct redis_context_args args) {
                     "callback and a parser.\n");
     exit(EINVAL);
   }
-  struct redis_context_args *c = malloc(sizeof(*c));
+  if (args.auth) {
+    if (!args.auth_len)
+      args.auth_len = strlen(args.auth);
+    args.auth_len++;
+  }
+  struct redis_context_args *c = malloc(sizeof(*c) + args.auth_len);
   *c = args;
+  if (args.auth) {
+    c->auth_len--;
+    c->auth = (char *)(c + 1);
+    memcpy(c->auth, args.auth, c->auth_len);
+    c->auth[c->auth_len] = 0;
+  }
   return c;
 }
 
@@ -112,20 +144,37 @@ static void redis_on_data(intptr_t uuid, protocol_s *pr) {
       continue; /* while loop */
     }
     if (msg) {
-      if ((msg->type == RESP_STRING &&
-           resp_obj2str(msg)->len == REDIS_PING_LEN &&
-           !memcmp(resp_obj2str(msg)->string, REDIS_PING_PAYLOAD,
-                   REDIS_PING_LEN)) ||
-          (msg->type == RESP_ARRAY &&
-           resp_obj2arr(msg)->array[0]->type == RESP_STRING &&
-           resp_obj2str(resp_obj2arr(msg)->array[0])->len == 4 &&
-           resp_obj2arr(msg)->array[1]->type == RESP_STRING &&
-           resp_obj2str(resp_obj2arr(msg)->array[1])->len == REDIS_PING_LEN &&
-           !strncasecmp(
-               (char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string,
-               "pong", 4) &&
-           !memcmp((char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string,
-                   REDIS_PING_PAYLOAD, REDIS_PING_LEN))) {
+      if (!r->authenticated) {
+        r->authenticated = 1;
+        if (msg->type != RESP_OK) {
+          if (msg->type == RESP_ERR) {
+            fprintf(stderr,
+                    "ERROR: (RedisConnection) Authentication FAILED.\n"
+                    "        %s\n",
+                    resp_obj2str(msg)->string);
+          } else {
+            fprintf(stderr,
+                    "ERROR: (RedisConnection) Authentication FAILED "
+                    "(unexpected response %d).\n",
+                    msg->type);
+          }
+        }
+      } else if ((msg->type == RESP_STRING &&
+                  resp_obj2str(msg)->len == REDIS_PING_LEN &&
+                  !memcmp(resp_obj2str(msg)->string, REDIS_PING_PAYLOAD,
+                          REDIS_PING_LEN)) ||
+                 (msg->type == RESP_ARRAY &&
+                  resp_obj2arr(msg)->array[0]->type == RESP_STRING &&
+                  resp_obj2str(resp_obj2arr(msg)->array[0])->len == 4 &&
+                  resp_obj2arr(msg)->array[1]->type == RESP_STRING &&
+                  resp_obj2str(resp_obj2arr(msg)->array[1])->len ==
+                      REDIS_PING_LEN &&
+                  !strncasecmp(
+                      (char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string,
+                      "pong", 4) &&
+                  !memcmp(
+                      (char *)resp_obj2str(resp_obj2arr(msg)->array[0])->string,
+                      REDIS_PING_PAYLOAD, REDIS_PING_LEN))) {
         /* an internal ping, do not forward. */
       } else
         r->settings->on_message(uuid, msg, r->settings->udata);
@@ -152,6 +201,23 @@ static void redis_on_data_deferred(intptr_t uuid, protocol_s *pr, void *d) {
 static void redis_on_open(intptr_t uuid, protocol_s *pr, void *d) {
   redis_protocol_s *r = (void *)pr;
   facil_set_timeout(uuid, r->settings->ping);
+  if (r->settings->auth) {
+    size_t n_len = ul2a(NULL, r->settings->auth_len);
+    char *t =
+        malloc(r->settings->auth_len + 20 + n_len); /* 19 is probably enough */
+    memcpy(t, "*2\r\n$4\r\nAUTH\r\n$", 15);
+    ul2a(t + 15, r->settings->auth_len);
+    t[15 + n_len] = '\r';
+    t[16 + n_len] = '\n';
+    memcpy(t + 17 + n_len, r->settings->auth, r->settings->auth_len);
+    t[17 + n_len + r->settings->auth_len] = '\r';
+    t[18 + n_len + r->settings->auth_len] = '\n';
+    t[19 + n_len + r->settings->auth_len] = 0; /* we don't need it, but nice */
+    sock_write2(.uuid = uuid, .buffer = t,
+                .length = (19 + n_len + r->settings->auth_len), .move = 1);
+
+  } else
+    r->authenticated = 1;
   r->settings->on_open(uuid, r->settings->udata);
   (void)d;
 }

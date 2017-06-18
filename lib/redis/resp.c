@@ -386,7 +386,7 @@ int resp_format(resp_parser_pt p, uint8_t *dest, size_t *size,
   *size = 0;
   resp_obj_each(p, obj, resp_format_task, &arg);
   if (*arg.size < arg.limit) {
-    *arg.dest = '0';
+    *arg.dest = 0;
     return 0;
   }
   if (*arg.size == arg.limit)
@@ -475,6 +475,7 @@ restart:
       memcpy(resp_obj2str(p->obj)->string + resp_obj2str(p->obj)->len -
                  p->missing,
              pos, p->missing);
+      resp_obj2str(p->obj)->string[resp_obj2str(p->obj)->len] = 0; /* set NUL */
       pos += p->missing + 2; /* eat the EOL */
       /* set state to equal a freash, complete object */
       p->missing = 0;

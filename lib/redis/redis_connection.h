@@ -34,6 +34,10 @@ struct redis_context_args {
   void (*on_close)(intptr_t uuid, void *udata);
   /** called when the Redix connection opens. */
   void (*on_open)(intptr_t uuid, void *udata);
+  /** Authentication string (password). */
+  char *auth;
+  /** Authentication string (password) length. */
+  size_t auth_len;
   /** Opaque user data. */
   void *udata;
   /** PING intervals. */
