@@ -1,11 +1,14 @@
+/*
+Copyright: Boaz segev, 2017
+License: MIT except for any non-public-domain algorithms (none that I'm aware
+of), which might be subject to their own licenses.
+
+Feel free to copy, use and enjoy in accordance with to the license(s).
+*/
 #ifndef H_REDIS_CONNECTION_H
 #define H_REDIS_CONNECTION_H
 #include "facil.h"
 #include "resp.h"
-
-/* *****************************************************************************
-Sending Commands or Responses
-***************************************************************************** */
 
 /* *****************************************************************************
 Connectivity

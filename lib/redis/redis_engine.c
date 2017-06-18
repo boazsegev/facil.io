@@ -1,3 +1,10 @@
+/*
+Copyright: Boaz segev, 2017
+License: MIT except for any non-public-domain algorithms (none that I'm aware
+of), which might be subject to their own licenses.
+
+Feel free to copy, use and enjoy in accordance with to the license(s).
+*/
 #include "spnlock.inc"
 
 #include "fio_list.h"
