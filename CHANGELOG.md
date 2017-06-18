@@ -8,6 +8,10 @@
 
 **Changes**: (`facil`) Minor changes to the `fio_cluster_*` API now use signed message types. All negative `msg_type` values are reserved for internal use.
 
+**Fix**: plugging memory leaks while testing the system under very high stress.
+
+**Fix**: (`facil`) `facil_defer` would leak memory if a connection was disconnected while a task was scheduled.
+
 **Fix**: (`facil`) `facil_connect` now correctly calls the `on_fail` callback even on immediate failures (i.e. when the function call was missing a target address and port).
 
 **Fix**: (`facil`) `facil_connect` can now be called before other socket events (protected form library initialization conflicts).

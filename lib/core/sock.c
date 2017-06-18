@@ -879,10 +879,9 @@ ssize_t sock_read(intptr_t uuid, void *buf, size_t count) {
 */
 ssize_t sock_write2_fn(sock_write_info_s options) {
   int fd = sock_uuid2fd(options.uuid);
-  if (validate_uuid(options.uuid))
-    clear_fd(fd, 0);
+
   // avoid work when an error is expected to occur.
-  if (!fdinfo(fd).open || options.offset < 0) {
+  if (validate_uuid(options.uuid) || !fdinfo(fd).open || options.offset < 0) {
     if (options.move == 0) {
       errno = (options.offset < 0) ? ERANGE : EBADF;
       return -1;
@@ -895,8 +894,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
     errno = (options.offset < 0) ? ERANGE : EBADF;
     return -1;
   }
-  // if (options.offset < 0)
-  //   options.offset = 0;
+
   packet_s *packet = sock_packet_grab();
   packet->buffer.len = options.length;
   if (options.is_fd == 0 && options.is_pfd == 0) { /* is data */
@@ -923,6 +921,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
     ext->dealloc = options.dealloc ? options.dealloc : free;
     packet->metadata = (struct packet_metadata_s){
         .write_func = sock_write_buffer_ext, .free_func = sock_free_buffer_ext};
+
   } else { /* is file */
     struct sock_packet_file_data_s *ext = (void *)packet->buffer.buf;
     if (options.is_pfd) {
@@ -943,6 +942,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
         .free_func = options.move ? sock_close_from_fd
                                   : (void (*)(packet_s *))SOCK_DEALLOC_NOOP};
   }
+
 /* place packet in queue */
 place_packet_in_queue:
   if (validate_uuid(options.uuid))

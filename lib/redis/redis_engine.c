@@ -146,6 +146,10 @@ static inline int connect_pub(redis_engine_s *r) {
 
 static void on_close_sub(intptr_t uuid, void *p) {
   redis_engine_s *r = p;
+  if (!defer_fork_is_active()) {
+    dealloc_engine(r);
+    return;
+  }
   if (r->sub == uuid && r->active) {
     if (r->sub_state) {
       r->sub_state = 0;
@@ -163,6 +167,10 @@ static void on_close_sub(intptr_t uuid, void *p) {
 
 static void on_close_pub(intptr_t uuid, void *p) {
   redis_engine_s *r = p;
+  if (!defer_fork_is_active()) {
+    dealloc_engine(r);
+    return;
+  }
   if (r->pub == uuid && r->active) {
     connect_pub(r);
     if (r->pub_state) {
@@ -249,40 +257,12 @@ static void unsubscribe(const pubsub_engine_s *eng, const char *ch,
                                             : resp_str2obj("UNSUBSCRIBE", 11);
   resp_obj2arr(cmd)->array[1] =
       (ch ? resp_str2obj(ch, ch_len) : resp_nil2obj());
-  void *buffer = malloc(22 + ch_len);
-  size_t size = 22 + ch_len;
-  if (!resp_format(e->sub_parser, buffer, &size, cmd) && size <= 22 + ch_len)
+  void *buffer = malloc(32 + ch_len);
+  size_t size = 32 + ch_len;
+  if (!resp_format(e->sub_parser, buffer, &size, cmd) && size <= (32 + ch_len))
     sock_write2(.uuid = e->sub, .buffer = buffer, .length = size, .move = 1);
   resp_free_object(cmd);
 }
-
-static void deferred_publish2(void *d);
-static void deferred_publish(void *data_, void *ignore) {
-  if (!defer_fork_is_active())
-    return;
-  struct {
-    redis_engine_s *e;
-    resp_object_s *cmd;
-  } *data = data_;
-  sock_flush(data->e->pub);
-  if (!sock_isvalid(data->e->pub))
-    goto reschedule;
-  redis_engine_send(&data->e->engine, data->cmd, NULL, NULL);
-  free(data);
-  return;
-reschedule:
-  connect_pub(data->e);
-  if (!sock_isvalid(data->e->pub)) {
-    fprintf(stderr,
-            "ERROR: (RedisEngine) cannot connect"
-            "to Redis (publish) at %s:%s",
-            data->e->address, data->e->port);
-    facil_run_every(96, 1, deferred_publish2, data_, NULL);
-  } else
-    defer(deferred_publish, data_, NULL);
-  (void)ignore;
-}
-static void deferred_publish2(void *d) { deferred_publish(d, NULL); }
 
 /** Should return 0 on success and -1 on failure. */
 static int publish(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
@@ -292,23 +272,17 @@ static int publish(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
   resp_object_s *cmd = resp_arr2obj(3, NULL);
   if (!cmd)
     return -1;
-  struct {
-    redis_engine_s *e;
-    resp_object_s *cmd;
-  } *data = malloc(sizeof(*data));
-  data->e = (void *)eng;
-  data->cmd = cmd;
   resp_obj2arr(cmd)->array[0] = resp_str2obj("PUBLISH", 7);
   resp_obj2arr(cmd)->array[1] = resp_str2obj(ch, ch_len);
   resp_obj2arr(cmd)->array[2] = resp_str2obj(msg, msg_len);
-  deferred_publish(data, NULL);
+  redis_engine_send((pubsub_engine_s *)eng, cmd, NULL, NULL);
+  resp_free_object(cmd);
   return 0;
 }
 
 /* *****************************************************************************
-Creation
-*****************************************************************************
-*/
+Creation / Destruction
+***************************************************************************** */
 
 static void initialize_engine(void *en_, void *ig) {
   redis_engine_s *r = (redis_engine_s *)en_;
@@ -367,6 +341,10 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args a) {
   defer(initialize_engine, e, NULL);
   return (pubsub_engine_s *)e;
 }
+
+/* *****************************************************************************
+Sending Data
+***************************************************************************** */
 
 /**
 Sends a Redis message through the engine's connection. The response will be sent

@@ -97,7 +97,7 @@ static resp_object_s *resp_alloc_obj(enum resp_type_enum type, size_t length) {
 }
 
 static int resp_dealloc_obj(resp_parser_pt p, resp_object_s *obj, void *arg) {
-  if (!spn_sub(&OBJHEAD(obj)->ref, 1))
+  if (obj && !spn_sub(&OBJHEAD(obj)->ref, 1))
     free(OBJHEAD(obj));
   (void)arg;
   (void)p;

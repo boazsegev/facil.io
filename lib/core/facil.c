@@ -1159,6 +1159,7 @@ static void perform_single_task(void *v_uuid, void *v_task) {
   return;
 fallback:
   task->on_done((intptr_t)v_uuid, task->arg);
+  free_facil_task(task);
   return;
 defer:
   defer(perform_single_task, v_uuid, v_task);
