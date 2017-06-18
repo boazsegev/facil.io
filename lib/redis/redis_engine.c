@@ -19,7 +19,8 @@ Data Structures / State
 
 typedef struct {
   pubsub_engine_s engine;
-  resp_parser_pt parser;
+  resp_parser_pt sub_parser;
+  resp_parser_pt pub_parser;
   intptr_t sub;
   intptr_t pub;
   void *sub_ctx;
@@ -44,6 +45,8 @@ typedef struct {
 
 static int dealloc_engine(redis_engine_s *r) {
   if (!spn_sub(&r->ref, 1)) {
+    resp_parser_destroy(r->sub_parser);
+    resp_parser_destroy(r->pub_parser);
     free(r);
     return -1;
   }
@@ -225,7 +228,7 @@ static int subscribe(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
       (ch ? resp_str2obj(ch, ch_len) : resp_nil2obj());
   void *buffer = malloc(32 + ch_len);
   size_t size = 32 + ch_len;
-  if (resp_format(e->parser, buffer, &size, cmd))
+  if (resp_format(e->sub_parser, buffer, &size, cmd))
     fprintf(stderr, "ERROR: RESP format? size = %lu ch = %lu\n", size, ch_len);
   sock_write2(.uuid = e->sub, .buffer = buffer, .length = size, .move = 1);
   resp_free_object(cmd);
@@ -248,7 +251,7 @@ static void unsubscribe(const pubsub_engine_s *eng, const char *ch,
       (ch ? resp_str2obj(ch, ch_len) : resp_nil2obj());
   void *buffer = malloc(22 + ch_len);
   size_t size = 22 + ch_len;
-  if (!resp_format(e->parser, buffer, &size, cmd) && size <= 22 + ch_len)
+  if (!resp_format(e->sub_parser, buffer, &size, cmd) && size <= 22 + ch_len)
     sock_write2(.uuid = e->sub, .buffer = buffer, .length = size, .move = 1);
   resp_free_object(cmd);
 }
@@ -334,7 +337,8 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args a) {
       .address = (char *)(e + 1),
       .port = ((char *)(e + 1) + addr_len + 1),
       .ref = 1,
-      .parser = resp_parser_new(),
+      .sub_parser = resp_parser_new(),
+      .pub_parser = resp_parser_new(),
       .callbacks = FIO_LIST_INIT_STATIC(e->callbacks),
       .active = 1,
       .sub_state = 1,
@@ -349,13 +353,13 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args a) {
   e->port[port_len] = 0;
 
   e->sub_ctx =
-      redis_create_context(.parser = e->parser, .auth = (char *)a.auth,
+      redis_create_context(.parser = e->sub_parser, .auth = (char *)a.auth,
                            .auth_len = a.auth_len, .on_message = on_message_sub,
                            .on_close = on_close_sub, .on_open = on_open_sub,
                            .udata = e, .ping = a.ping_interval),
 
   e->pub_ctx =
-      redis_create_context(.parser = e->parser, .auth = (char *)a.auth,
+      redis_create_context(.parser = e->pub_parser, .auth = (char *)a.auth,
                            .auth_len = a.auth_len, .on_message = on_message_pub,
                            .on_close = on_close_pub, .on_open = on_open_pub,
                            .udata = e, .ping = a.ping_interval, ),
@@ -377,7 +381,7 @@ intptr_t redis_engine_send(pubsub_engine_s *e, resp_object_s *data,
 
   redis_engine_s *r = (redis_engine_s *)e;
   size_t len = 0;
-  resp_format(r->parser, NULL, &len, data);
+  resp_format(r->pub_parser, NULL, &len, data);
   if (!len)
     return -1;
 
@@ -388,7 +392,7 @@ intptr_t redis_engine_send(pubsub_engine_s *e, resp_object_s *data,
       .udata = udata,
       .len = len,
   };
-  resp_format(r->parser, (uint8_t *)(cb + 1), &len, data);
+  resp_format(r->pub_parser, (uint8_t *)(cb + 1), &len, data);
   spn_lock(&r->lock);
   fio_list_unshift(callbacks_s, node, r->callbacks, cb);
   spn_unlock(&r->lock);
@@ -409,6 +413,7 @@ void redis_engine_destroy(pubsub_engine_s *engine) {
   fio_list_for_each(callbacks_s, node, cb, r->callbacks) free(cb);
   sock_force_close(r->pub);
   sock_force_close(r->sub);
+
   r->active = 0;
   if (dealloc_engine(r))
     return;
