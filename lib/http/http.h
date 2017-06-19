@@ -156,6 +156,10 @@ it's a super funky year, 32 bytes is about 3 more than you need).
 Returns the number of bytes actually written.
 */
 size_t http_date2str(char *target, struct tm *tmbuf);
+/** An alternative, RFC 2109 date representation. Requires */
+size_t http_date2rfc2109(char *target, struct tm *tmbuf);
+/** An alternative, RFC 2822 date representation. */
+size_t http_date2rfc2822(char *target, struct tm *tmbuf);
 
 /**
 A fast, inline alternative to `sprintf(dest, "%lu", num)`.

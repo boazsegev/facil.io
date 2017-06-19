@@ -127,7 +127,7 @@ struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
   };
   if (*timer < 0)
     return gmtime_r(timer, tmbuf);
-  ssize_t tmp;
+  ssize_t a, b;
   tmbuf->tm_gmtoff = 0;
   tmbuf->tm_zone = "UTC";
   tmbuf->tm_isdst = 0;
@@ -135,82 +135,83 @@ struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
   tmbuf->tm_mon = 0;
   // for seconds up to weekdays, we build up, as small values clean up larger
   // values.
-  tmp = ((ssize_t)*timer);
-  tmbuf->tm_sec = tmp % 60;
-  tmp = tmp / 60;
-  tmbuf->tm_min = tmp % 60;
-  tmp = tmp / 60;
-  tmbuf->tm_hour = tmp % 24;
-  tmp = tmp / 24;
-  // day of epoch was a thursday. Add + 3 so sunday == 0...
-  tmbuf->tm_wday = (tmp + 3) % 7;
+  a = ((ssize_t)*timer);
+  b = a / 60;
+  tmbuf->tm_sec = a - (b * 60);
+  a = b / 60;
+  tmbuf->tm_min = b - (a * 60);
+  b = a / 24;
+  tmbuf->tm_hour = a - (b * 24);
+  // day of epoch was a thursday. Add + 4 so sunday == 0...
+  tmbuf->tm_wday = (b + 4) % 7;
 // tmp == number of days since epoch
 #define DAYS_PER_400_YEARS ((400 * 365) + 97)
-  while (tmp >= DAYS_PER_400_YEARS) {
+  while (b >= DAYS_PER_400_YEARS) {
     tmbuf->tm_year += 400;
-    tmp -= DAYS_PER_400_YEARS;
+    b -= DAYS_PER_400_YEARS;
   }
 #undef DAYS_PER_400_YEARS
 #define DAYS_PER_100_YEARS ((100 * 365) + 24)
-  while (tmp >= DAYS_PER_100_YEARS) {
+  while (b >= DAYS_PER_100_YEARS) {
     tmbuf->tm_year += 100;
-    tmp -= DAYS_PER_100_YEARS;
+    b -= DAYS_PER_100_YEARS;
     if (((tmbuf->tm_year / 100) & 3) ==
         0) // leap century divisable by 400 => add leap
-      --tmp;
+      --b;
   }
 #undef DAYS_PER_100_YEARS
 #define DAYS_PER_32_YEARS ((32 * 365) + 8)
-  while (tmp >= DAYS_PER_32_YEARS) {
+  while (b >= DAYS_PER_32_YEARS) {
     tmbuf->tm_year += 32;
-    tmp -= DAYS_PER_32_YEARS;
+    b -= DAYS_PER_32_YEARS;
   }
 #undef DAYS_PER_32_YEARS
 #define DAYS_PER_8_YEARS ((8 * 365) + 2)
-  while (tmp >= DAYS_PER_8_YEARS) {
+  while (b >= DAYS_PER_8_YEARS) {
     tmbuf->tm_year += 8;
-    tmp -= DAYS_PER_8_YEARS;
+    b -= DAYS_PER_8_YEARS;
   }
 #undef DAYS_PER_8_YEARS
 #define DAYS_PER_4_YEARS ((4 * 365) + 1)
-  while (tmp >= DAYS_PER_4_YEARS) {
+  while (b >= DAYS_PER_4_YEARS) {
     tmbuf->tm_year += 4;
-    tmp -= DAYS_PER_4_YEARS;
+    b -= DAYS_PER_4_YEARS;
   }
 #undef DAYS_PER_4_YEARS
-  while (tmp >= 365) {
+  while (b >= 365) {
     tmbuf->tm_year += 1;
-    tmp -= 365;
+    b -= 365;
     if ((tmbuf->tm_year & 3) == 0) { // leap year
-      if (tmp > 0) {
-        --tmp;
+      if (b > 0) {
+        --b;
         continue;
       } else {
-        tmp += 365;
+        b += 365;
         --tmbuf->tm_year;
         break;
       }
     }
   }
-  tmbuf->tm_yday = tmp;
+  b++; /* day 1 of the year is 1, not 0. */
+  tmbuf->tm_yday = b;
   if ((tmbuf->tm_year & 3) == 1) {
     // regular year
     for (size_t i = 0; i < 12; i++) {
-      if (tmp < month_len[i])
+      if (b <= month_len[i])
         break;
-      tmp -= month_len[i];
+      b -= month_len[i];
       ++tmbuf->tm_mon;
     }
   } else {
     // leap year
     for (size_t i = 12; i < 24; i++) {
-      if (tmp < month_len[i])
+      if (b <= month_len[i])
         break;
-      tmp -= month_len[i];
+      b -= month_len[i];
       ++tmbuf->tm_mon;
     }
   }
-  tmbuf->tm_mday = tmp;
+  tmbuf->tm_mday = b;
   return tmbuf;
 }
 
@@ -256,6 +257,91 @@ size_t http_date2str(char *target, struct tm *tmbuf) {
   pos[0] = ' ';
   *((uint32_t *)(pos + 1)) = *((uint32_t *)GMT_STR);
   pos += 4;
+  return pos - target;
+}
+
+size_t http_date2rfc2822(char *target, struct tm *tmbuf) {
+  char *pos = target;
+  uint16_t tmp;
+  *(uint32_t *)pos = *((uint32_t *)DAY_NAMES[tmbuf->tm_wday]);
+  pos[3] = ',';
+  pos[4] = ' ';
+  pos += 5;
+  if (tmbuf->tm_mday < 10) {
+    *pos = '0' + tmbuf->tm_mday;
+    ++pos;
+  } else {
+    tmp = tmbuf->tm_mday / 10;
+    pos[0] = '0' + tmp;
+    pos[1] = '0' + (tmbuf->tm_mday - (tmp * 10));
+    pos += 2;
+  }
+  *(pos++) = '-';
+  *(uint32_t *)pos = *((uint32_t *)MONTH_NAMES[tmbuf->tm_mon]);
+  pos += 3;
+  *(pos++) = '-';
+  // write year.
+  pos += http_ul2a(pos, tmbuf->tm_year + 1900);
+  *(pos++) = ' ';
+  tmp = tmbuf->tm_hour / 10;
+  pos[0] = '0' + tmp;
+  pos[1] = '0' + (tmbuf->tm_hour - (tmp * 10));
+  pos[2] = ':';
+  tmp = tmbuf->tm_min / 10;
+  pos[3] = '0' + tmp;
+  pos[4] = '0' + (tmbuf->tm_min - (tmp * 10));
+  pos[5] = ':';
+  tmp = tmbuf->tm_sec / 10;
+  pos[6] = '0' + tmp;
+  pos[7] = '0' + (tmbuf->tm_sec - (tmp * 10));
+  pos += 8;
+  pos[0] = ' ';
+  *((uint32_t *)(pos + 1)) = *((uint32_t *)GMT_STR);
+  pos += 4;
+  return pos - target;
+}
+
+size_t http_date2rfc2109(char *target, struct tm *tmbuf) {
+  char *pos = target;
+  uint16_t tmp;
+  *(uint32_t *)pos = *((uint32_t *)DAY_NAMES[tmbuf->tm_wday]);
+  pos[3] = ',';
+  pos[4] = ' ';
+  pos += 5;
+  if (tmbuf->tm_mday < 10) {
+    *pos = '0' + tmbuf->tm_mday;
+    ++pos;
+  } else {
+    tmp = tmbuf->tm_mday / 10;
+    pos[0] = '0' + tmp;
+    pos[1] = '0' + (tmbuf->tm_mday - (tmp * 10));
+    pos += 2;
+  }
+  *(pos++) = ' ';
+  *(uint32_t *)pos = *((uint32_t *)MONTH_NAMES[tmbuf->tm_mon]);
+  pos += 4;
+  // write year.
+  pos += http_ul2a(pos, tmbuf->tm_year + 1900);
+  *(pos++) = ' ';
+  tmp = tmbuf->tm_hour / 10;
+  pos[0] = '0' + tmp;
+  pos[1] = '0' + (tmbuf->tm_hour - (tmp * 10));
+  pos[2] = ':';
+  tmp = tmbuf->tm_min / 10;
+  pos[3] = '0' + tmp;
+  pos[4] = '0' + (tmbuf->tm_min - (tmp * 10));
+  pos[5] = ':';
+  tmp = tmbuf->tm_sec / 10;
+  pos[6] = '0' + tmp;
+  pos[7] = '0' + (tmbuf->tm_sec - (tmp * 10));
+  pos += 8;
+  *pos++ = ' ';
+  *pos++ = '-';
+  *pos++ = '0';
+  *pos++ = '0';
+  *pos++ = '0';
+  *pos++ = '0';
+  *pos = 0;
   return pos - target;
 }
 

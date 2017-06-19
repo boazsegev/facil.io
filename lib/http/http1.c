@@ -247,13 +247,14 @@ bad_request:
   {
     http_response_s *response = http_response_create(&request->request);
     response->status = 400;
-    if (pr->settings->public_folder &&
-        !http_response_sendfile2(response, &request->request,
-                                 pr->settings->public_folder,
-                                 pr->settings->public_folder_length, "400.html",
-                                 8, pr->settings->log_static))
+    if (!pr->settings->public_folder ||
+        http_response_sendfile2(response, &request->request,
+                                pr->settings->public_folder,
+                                pr->settings->public_folder_length, "400.html",
+                                8, pr->settings->log_static)) {
       http_response_write_body(response, "Bad Request", 11);
-    http_response_finish(response);
+      http_response_finish(response);
+    }
     sock_close(uuid);
     request->buffer_pos = 0;
     goto finished_reading;
@@ -263,13 +264,14 @@ too_big:
   {
     http_response_s *response = http_response_create(&request->request);
     response->status = 431;
-    if (pr->settings->public_folder &&
-        !http_response_sendfile2(response, &request->request,
-                                 pr->settings->public_folder,
-                                 pr->settings->public_folder_length, "431.html",
-                                 8, pr->settings->log_static))
+    if (!pr->settings->public_folder ||
+        http_response_sendfile2(response, &request->request,
+                                pr->settings->public_folder,
+                                pr->settings->public_folder_length, "431.html",
+                                8, pr->settings->log_static)) {
       http_response_write_body(response, "Request Header Fields Too Large", 31);
-    http_response_finish(response);
+      http_response_finish(response);
+    }
     sock_close(uuid);
     request->buffer_pos = 0;
     goto finished_reading;
@@ -278,13 +280,14 @@ too_big:
     {
       http_response_s *response = http_response_create(&request->request);
       response->status = 413;
-      if (pr->settings->public_folder &&
-          !http_response_sendfile2(response, &request->request,
-                                   pr->settings->public_folder,
-                                   pr->settings->public_folder_length,
-                                   "413.html", 8, pr->settings->log_static))
+      if (!pr->settings->public_folder ||
+          http_response_sendfile2(response, &request->request,
+                                  pr->settings->public_folder,
+                                  pr->settings->public_folder_length,
+                                  "413.html", 8, pr->settings->log_static)) {
         http_response_write_body(response, "Payload Too Large", 17);
-      http_response_finish(response);
+        http_response_finish(response);
+      }
       sock_close(uuid);
       request->buffer_pos = 0;
       goto finished_reading;
