@@ -6,12 +6,12 @@ Feel free to copy, use and enjoy according to the license provided.
 
 Copyright refers to the parser, not the protocol.
 */
+#include "spnlock.inc" /* for atomic operations when reference counting. */
+
 #include "resp.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
-
-#include "spnlock.inc" /* for atomic operations when reference counting. */
 
 /* *****************************************************************************
 Error Reporting

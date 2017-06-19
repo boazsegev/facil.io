@@ -121,8 +121,8 @@ static void http1_on_data_def(intptr_t uuid, protocol_s *pr, void *ignr) {
 static void http1_on_data(intptr_t uuid, http1_protocol_s *pr) {
   ssize_t result;
   char buff[HTTP_BODY_CHUNK_SIZE];
-  char *buffer;
   http1_request_s *request = &pr->request;
+  char *buffer = request->buffer;
   for (;;) {
     // handle requests with no file data
     if (request->request.body_file <= 0) {

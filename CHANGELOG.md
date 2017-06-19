@@ -20,6 +20,8 @@
 
 **Fix**: (`http`) `http_listen` will now always *copy* the string for the `public_folder`, allowing dynamic strings to be safely used.
 
+**Fix**: (`http1`) a minor issue in the `on_data` callback could have caused the parser to crash in rare cases of fragmented pipelined requests on slower connections. This is now fixed.
+
 **Security**: (`http`) the HTTP parser now breaks pipelined HTTP requests into fragmented events, preventing an attacker from monopolizing requests through endless pipelining of requests that have a long processing time.
 
 **Fix**: (`facil`) `facil_listen` will now always *copy* the string for the `port`, allowing dynamic strings to be safely used when `FACIL_PRINT_STATE` is set.
