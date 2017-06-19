@@ -150,7 +150,8 @@ struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf);
 /**
 Writes an HTTP date string to the `target` buffer.
 
-This requires _____ bytes of space to be available at the target buffer.
+This requires ~32 bytes of space to be available at the target buffer (unless
+it's a super funky year, 32 bytes is about 3 more than you need).
 
 Returns the number of bytes actually written.
 */
