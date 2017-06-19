@@ -121,8 +121,8 @@ restart:
     spn_unlock(&deferred.lock);
     task.func(task.arg1, task.arg2);
     goto restart;
-  } else
-    spn_unlock(&deferred.lock);
+  }
+  spn_unlock(&deferred.lock);
 }
 
 /** returns true if there are deferred functions waiting for execution. */
@@ -287,6 +287,8 @@ int defer_perform_in_fork(unsigned int process_count,
   if (forked_pool)
     return -1; /* we're already running inside an active `fork` */
 
+  static struct defer_pool pool_placeholder = {.count = 1, .flag = 1};
+
   struct sigaction act, old, old_term, old_pipe;
   pid_t *pids = NULL;
   int ret = 0;
@@ -320,6 +322,7 @@ int defer_perform_in_fork(unsigned int process_count,
   for (pids_count = 0; pids_count < process_count; pids_count++) {
     if (!(pids[pids_count] = fork())) {
       defer_fork_pid_id = pids_count + 1;
+      forked_pool = &pool_placeholder;
       forked_pool = defer_pool_start(thread_count);
       defer_pool_wait(forked_pool);
       defer_perform();
@@ -332,6 +335,7 @@ int defer_perform_in_fork(unsigned int process_count,
     }
   }
   pids_count++;
+  forked_pool = &pool_placeholder;
   forked_pool = defer_pool_start(thread_count);
   defer_pool_wait(forked_pool);
   forked_pool = NULL;

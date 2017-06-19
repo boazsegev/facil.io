@@ -29,7 +29,7 @@ DUMP_LIB=libdump
 # any include folders, space seperated list
 INCLUDE= ./
 
-# any preprocessosr defined flags we want, space seperated list
+# any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
 FLAGS=DEBUG
 
 ##############
