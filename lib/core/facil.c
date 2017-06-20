@@ -919,18 +919,24 @@ static void facil_cycle(void *arg, void *ignr) {
   (void)ignr;
   static int idle = 0;
   time(&facil_data->last_cycle);
-  int events = evio_review(defer_has_queue() ? 0 : 512);
-  if (events < 0)
-    goto error;
-  if (events > 0) {
-    idle = 1;
-    goto finish;
+  int events;
+  if (defer_has_queue()) {
+    events = evio_review(0);
+    if (events < 0)
+      goto error;
+    if (events > 0)
+      idle = 1;
+  } else {
+    events = evio_review(512);
+    if (events < 0)
+      goto error;
+    if (events > 0) {
+      idle = 1;
+    } else if (idle) {
+      ((struct facil_run_args *)arg)->on_idle();
+      idle = 0;
+    }
   }
-  if (idle) {
-    ((struct facil_run_args *)arg)->on_idle();
-    idle = 0;
-  }
-finish:
   if (!defer_fork_is_active())
     return;
   if (facil_data->need_review) {
@@ -1082,8 +1088,8 @@ time_t facil_last_tick(void) {
 }
 
 /**
- * This function allows out-of-task access to a connection's `protocol_s` object
- * by attempting to lock it.
+ * This function allows out-of-task access to a connection's `protocol_s`
+ * object by attempting to lock it.
  */
 protocol_s *facil_protocol_try_lock(intptr_t uuid,
                                     enum facil_protocol_lock_e type) {

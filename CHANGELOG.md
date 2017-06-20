@@ -34,6 +34,8 @@
 
 **Fix**: (`facil`) `facil_last_tick` would crash if called before the library was initialized during socket operations (`facil_listen`, `facil_attach`, etc')...  now `facil_last_tick` falls back to `time()` if nothing happened yet.
 
+**Fix**: (`facil`) `.on_idle` now correctly checks for non networks events as well before the callback is called.
+
 **Fix**: (`defer`) A large enough (or fast enough) thread pool in a forked process would complete the existing tasks before the active flag was set, causing the facil.io reactor to be stranded in an unscheduled mode, as if expecting to exit. This is now fixed by setting a temporary flag pointer for the forked children, preventing a premature task cleanup.
 
 **Changes**: Major folder structure updates make development and support for CMake submodules easier. These changes should also make it easier to push PRs for by offering the `dev` folder for any localized testing prior to submitting the PR.
