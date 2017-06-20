@@ -65,6 +65,8 @@ struct pubsub_subscribe_args {
   } channel;
   /** The on message callback. the `*msg` pointer is to a temporary object. */
   void (*on_message)(pubsub_message_s *msg);
+  /** An optional callback for when a subscription is fully canceled. */
+  void (*on_unsubscribe)(void *udata1, void *udata2);
   /** Opaque user data#1 */
   void *udata1;
   /** Opaque user data#2 .. using two allows allocation to be avoided. */

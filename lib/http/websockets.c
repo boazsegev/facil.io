@@ -740,6 +740,19 @@ static inline uint32_t validate_utf8(uint8_t *str, size_t len) {
 Subscription handling
 ***************************************************************************** */
 
+typedef struct {
+  void (*on_message)(websocket_pubsub_notification_s notification);
+  void (*on_unsubscribe)(void *udata);
+  void *udata;
+} websocket_sub_data_s;
+
+static void websocket_on_unsubscribe(void *u1, void *u2) {
+  websocket_sub_data_s *d = u2;
+  (void)u1;
+  if (d->on_unsubscribe)
+    d->on_unsubscribe(d->udata);
+}
+
 static void websocket_on_pubsub_message_direct(pubsub_message_s *msg) {
   protocol_s *pr =
       facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
@@ -791,8 +804,17 @@ static void websocket_on_pubsub_message(pubsub_message_s *msg) {
     pubsub_defer(msg);
     return;
   }
+  websocket_sub_data_s *d = msg->udata2;
 
-  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len, 0);
+  if (d->on_message)
+    d->on_message((websocket_pubsub_notification_s){
+        .ws = (ws_s *)pr,
+        .engine = (pubsub_engine_s *)msg->engine,
+        .subscription_id = (intptr_t)msg->subscription,
+        .channel = {.name = msg->channel.name, .len = msg->channel.len},
+        .msg = {.data = msg->msg.data, .len = msg->msg.len},
+        .use_pattern = msg->use_pattern,
+    });
   facil_protocol_unlock(pr, FIO_PR_LOCK_TASK);
 }
 
@@ -801,6 +823,10 @@ static void websocket_on_pubsub_message(pubsub_message_s *msg) {
  */
 #undef websocket_subscribe
 uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
+  websocket_sub_data_s *d = malloc(sizeof(*d));
+  *d = (websocket_sub_data_s){.udata = args.udata,
+                              .on_message = args.on_message,
+                              .on_unsubscribe = args.on_unsubscribe};
   pubsub_sub_pt sub = pubsub_subscribe(
           .engine = args.engine,
           .channel =
@@ -808,6 +834,7 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
                   .name = (char *)args.channel.name, .len = args.channel.len,
               },
           .use_pattern = args.use_pattern,
+          .on_unsubscribe = websocket_on_unsubscribe,
           .on_message =
               (args.on_message
                    ? websocket_on_pubsub_message
@@ -816,7 +843,7 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
                          : args.force_text
                                ? websocket_on_pubsub_message_direct_txt
                                : websocket_on_pubsub_message_direct),
-          .udata1 = (void *)args.ws->fd, .udata2 = args.udata);
+          .udata1 = (void *)args.ws->fd, .udata2 = d);
   if (!sub)
     return 0;
   subscription_s *s = create_subscription(args.ws, sub);

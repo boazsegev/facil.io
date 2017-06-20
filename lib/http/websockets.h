@@ -213,6 +213,10 @@ struct websocket_subscribe_s {
    * Default: send directly to websocket client.
    */
   void (*on_message)(websocket_pubsub_notification_s notification);
+  /**
+   * An optional cleanup callback for the `udata`.
+   */
+  void (*on_unsubscribe)(void *udata);
   /** User opaque data, passed along to the notification. */
   void *udata;
   /** Use pattern matching for channel subscription. */
