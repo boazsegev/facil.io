@@ -751,6 +751,7 @@ static void websocket_on_unsubscribe(void *u1, void *u2) {
   (void)u1;
   if (d->on_unsubscribe)
     d->on_unsubscribe(d->udata);
+  free(d);
 }
 
 static void websocket_on_pubsub_message_direct(pubsub_message_s *msg) {
