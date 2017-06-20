@@ -845,8 +845,10 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
                                ? websocket_on_pubsub_message_direct_txt
                                : websocket_on_pubsub_message_direct),
           .udata1 = (void *)args.ws->fd, .udata2 = d);
-  if (!sub)
+  if (!sub) {
+    free(d);
     return 0;
+  }
   subscription_s *s = create_subscription(args.ws, sub);
   return (uintptr_t)s;
 }

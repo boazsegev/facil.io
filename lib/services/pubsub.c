@@ -402,6 +402,7 @@ found_channel:
     goto error;
   *client = (client_s){
       .on_message = args.on_message,
+      .on_unsubscribe = args.on_unsubscribe,
       .udata1 = args.udata1,
       .udata2 = args.udata2,
       .parent = ch,
