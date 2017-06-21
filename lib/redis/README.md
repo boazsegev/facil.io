@@ -102,22 +102,28 @@ Here's a short example that reads data from an `fd` and forwards any messages to
 
 void read_resp(resp_parser_pt parser, int fd, void (*callback)(resp_object_s *)) {
   resp_object_s * msg;
-
   uint8_t buffer[2048];
-  ssize_t limit = read(fd, buffer, 2048);
+  ssize_t limit;
+  size_t i;
+  
+  while(1) {
+    limit = read(fd, buffer, 2048);
+    if(limit <= 0)
+      return;
 
-  while(limit) {
-    size_t i = limit;
-    msg = resp_parser_feed(parser, buffer, &i);
-    if(i == 0) {
-      // an error occurred, no data was consumed by the parser.
-      exit(-1);
-    }
-    limit -= i;
-    if(msg){
-      if(callback)
-        callback(msg);
-      resp_free_object(msg);
+    while(limit) {
+      i = limit;
+      msg = resp_parser_feed(parser, buffer, &i);
+      if(i == 0) {
+        // an error occurred, no data was consumed by the parser.
+        exit(-1);
+      }
+      limit -= i;
+      if(msg){
+        if(callback)
+          callback(msg);
+        resp_free_object(msg);
+      }
     }
   }
 }
