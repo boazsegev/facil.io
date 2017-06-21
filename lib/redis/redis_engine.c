@@ -58,8 +58,6 @@ Writing commands
 ***************************************************************************** */
 static void redis_pub_send(void *e, void *uuid) {
   redis_engine_s *r = e;
-  if (r->pub != (intptr_t)uuid)
-    return;
   callbacks_s *cb;
   spn_lock(&r->lock);
 
@@ -73,6 +71,7 @@ static void redis_pub_send(void *e, void *uuid) {
   }
   spn_unlock(&r->lock);
   dealloc_engine(r);
+  (void)uuid;
 }
 
 static void schedule_pub_send(redis_engine_s *r, intptr_t uuid) {
@@ -103,15 +102,15 @@ static void on_message_sub(intptr_t uuid, resp_object_s *msg, void *udata) {
 
 static void on_message_pub(intptr_t uuid, resp_object_s *msg, void *udata) {
   redis_engine_s *r = udata;
-  callbacks_s *cl;
+  callbacks_s *cb;
   spn_lock(&r->lock);
-  cl = fio_list_pop(callbacks_s, node, r->callbacks);
+  cb = fio_list_shift(callbacks_s, node, r->callbacks);
   spn_unlock(&r->lock);
-  if (cl) {
+  if (cb) {
     schedule_pub_send(r, uuid);
-    if (cl->callback)
-      cl->callback(&r->engine, msg, cl->udata);
-    free(cl);
+    if (cb->callback)
+      cb->callback(&r->engine, msg, cb->udata);
+    free(cb);
   } else {
     uint8_t buffer[64] = {0};
     size_t len = 63;
@@ -372,7 +371,7 @@ intptr_t redis_engine_send(pubsub_engine_s *e, resp_object_s *data,
   };
   resp_format(r->pub_parser, (uint8_t *)(cb + 1), &len, data);
   spn_lock(&r->lock);
-  fio_list_unshift(callbacks_s, node, r->callbacks, cb);
+  fio_list_push(callbacks_s, node, r->callbacks, cb);
   spn_unlock(&r->lock);
   schedule_pub_send(r, r->pub);
   return 0;

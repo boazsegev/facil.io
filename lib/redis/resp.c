@@ -6,7 +6,9 @@ Feel free to copy, use and enjoy according to the license provided.
 
 Copyright refers to the parser, not the protocol.
 */
-#include "spnlock.inc" /* for atomic operations when reference counting. */
+
+/* for atomic operations when reference counting: `spn_add` and `spn_sub` */
+#include "spnlock.inc"
 
 #include "resp.h"
 #include <math.h>
@@ -240,7 +242,7 @@ resp_object_s *resp_str2obj(const void *str, size_t len) {
   return (void *)o;
 }
 
-/** Allocates an RESP Number objcet. Remeber to free when done. */
+/** Allocates an RESP Array objcet. Remeber to free when done. */
 resp_object_s *resp_arr2obj(int argc, resp_object_s *argv[]) {
   if (argc < 0)
     return NULL;

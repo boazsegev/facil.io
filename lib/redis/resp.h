@@ -22,29 +22,31 @@ RESP types and objects (Arrays, Strings & Integers)
 ***************************************************************************** */
 
 enum resp_type_enum {
-  /** A String object (`resp_string_s`) that indicates an error. */
-  RESP_ERR = 0,
   /** A simple flag object object (`resp_object_s`) for NULL. */
-  RESP_NULL,
+  RESP_NULL = 0,
   /** A simple flag object object (`resp_object_s`) for OK. */
-  RESP_OK,
+  RESP_OK = 1,
+  /** A String object (`resp_string_s`) that indicates an error. */
+  RESP_ERR = (2 + 8),
   /** A Number object object (`resp_number_s`). */
-  RESP_NUMBER,
+  RESP_NUMBER = 4,
   /** A String object (`resp_string_s`). */
-  RESP_STRING,
+  RESP_STRING = 8,
   /** An Array object object (`resp_array_s`). */
-  RESP_ARRAY,
+  RESP_ARRAY = 16,
   /**
    * A specific Array object object (`resp_array_s`) for Pub/Sub semantics.
    *
    * This is more of a hint than a decree, sometimes pubsub semantics are
    * misleading.
    */
-  RESP_PUBSUB,
+  RESP_PUBSUB = (32 + 16),
 };
 
+/** a simple emtpy object type, used for RESP_NULL and RESP_OK */
 typedef struct { enum resp_type_enum type; } resp_object_s;
 
+/** The RESP_ARRAY and RESP_PUBSUB types */
 typedef struct {
   enum resp_type_enum type;
   size_t len;
@@ -52,12 +54,14 @@ typedef struct {
   resp_object_s *array[];
 } resp_array_s;
 
+/** The RESP_STRING and RESP_ERR types */
 typedef struct {
   enum resp_type_enum type;
   size_t len;
   uint8_t string[];
 } resp_string_s;
 
+/** The RESP_NUMBER type */
 typedef struct {
   enum resp_type_enum type;
   int64_t number;
@@ -95,6 +99,10 @@ resp_object_s *resp_str2obj(const void *str, size_t len);
  *
  * It's possible to pass NULL as the `argv`, in which case the array created
  * will have the capacity `argc` and could me manually populated.
+ *
+ * The objects are MOVED into the array's possesion. If you wish to retain a
+ * copy of the objects, use the `resp_dup_object` to increase their reference
+ * count.
  */
 resp_object_s *resp_arr2obj(int argc, resp_object_s *argv[]);
 
