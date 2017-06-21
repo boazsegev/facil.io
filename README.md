@@ -1,6 +1,6 @@
 # facil.io - the C WebApp mini-framework
 
-**Notice: The *master* branch is the development branch. Please select the latest release version by choosing the latest version available as a `tag` in the branch list.**
+**Notice: The *master* branch is the development branch. Please select the *stable* branch for the latest release or select a release version.**
 
 [facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, as well as support for custom protocols.
 
