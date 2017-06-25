@@ -990,13 +990,15 @@ ssize_t sock_flush(intptr_t uuid) {
   if (validate_uuid(uuid) || !fdinfo(fd).open)
     return -1;
   ssize_t ret;
+  uint8_t touch = 0;
   lock_fd(fd);
   sock_rw_hook_s *rw;
 retry:
   rw = fdinfo(fd).rw_hooks;
   unlock_fd(fd);
   while ((ret = rw->flush(fd)) > 0)
-    ;
+    if (ret > 0)
+      touch = 1;
   if (ret == -1) {
     if (errno == EINTR)
       goto retry;
@@ -1008,7 +1010,7 @@ retry:
   lock_fd(fd);
   while (fdinfo(fd).packet && (ret = fdinfo(fd).packet->metadata.write_func(
                                    fd, fdinfo(fd).packet)) > 0)
-    ;
+    touch = 1;
   if (ret == -1) {
     if (errno == EINTR)
       goto retry;
@@ -1021,7 +1023,8 @@ retry:
     goto error;
 finish:
   unlock_fd(fd);
-  sock_touch(uuid);
+  if (touch)
+    sock_touch(uuid);
   return 0;
 error:
   unlock_fd(fd);
