@@ -9,6 +9,8 @@ libdump
 dev/*
 !dev/about
 !dev/about/README.md
+!dev/maybe
+!dev/maybe/*
 .gitignore
 .DS_Store
 .gitmodules

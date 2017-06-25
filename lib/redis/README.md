@@ -10,7 +10,7 @@ Here I'll introduce the following:
 
 The facil.io framework contains an optimistic asynchronous Redis client that synchronizes the built in Pub/Sub system with an external Pub/Sub Redis server, allowing facil.io's Pub/Sub to be extended beyond a single machine or process cluster.
 
-The `redis_engine` can be used also to send commands to a Redis server, leveraging the existing Redis "subscribe" client.
+The `redis_engine` can be used to send commands to a Redis server, leveraging the existing Redis "subscribe" client in order to send additional asynchronous commands.
 
 When sending commands, it's important that the client communicate with the Redis server using the RESP protocol.
 
@@ -18,7 +18,7 @@ This entails the creation and destruction of RESP objects to be used as a transl
 
 The reply will be given asynchronously using a callback that will receive a RESP object that can be easily converted into C data.
 
-The following (non-running) example demonstrates just about the whole of the concepts involved in the communication between facil.io and Redis:
+The following (non-running and extra verbose) example demonstrates just about the whole of the concepts involved in the communication between facil.io and Redis:
 
 ```c
 #include "redis_engine.h"
@@ -105,7 +105,7 @@ void read_resp(resp_parser_pt parser, int fd, void (*callback)(resp_object_s *))
   uint8_t buffer[2048];
   ssize_t limit;
   size_t i;
-  
+
   while(1) {
     limit = read(fd, buffer, 2048);
     if(limit <= 0)

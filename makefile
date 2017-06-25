@@ -1,36 +1,45 @@
+### Output
 # binary name and location
 NAME=demo
 OUT_ROOT=tmp
-# temporary folder will be cleared out and deleted between fresh builds
-# All object files will be placed in this folder
-TMP_ROOT=tmp
-# The none library .c file(s) (i.e., the one with `int main(void)`.
-MAIN_ROOT=./dev
-# any allowed subfolders in the main root
-MAIN_SUBFOLDERS=http
+
+### Library folders
 # the .c and .cpp source files root folder - subfolders are automatically included
 LIB_ROOT=./lib
 # publicly used subfolders in the lib root
 LIB_PUBLIC_SUBFOLDERS=core core/types services http redis
 # privately used subfolders in the lib root (this distinction is for CMake)
 LIB_PRIVATE_SUBFOLDERS=bscrypt bscrypt/bscrypt
+
+### Development folders
+# The development, non-library .c file(s) (i.e., the one with `int main(void)`.
+MAIN_ROOT=./dev
+# Development subfolders in the main root
+MAIN_SUBFOLDERS=
+
+### Build Root
+# temporary folder will be cleared out and deleted between fresh builds
+# All object files will be placed in this folder
+TMP_ROOT=tmp
+
+### Compiler & Linker flags
 # any librries required (write in full flags)
 LINKER_FLAGS=-lpthread
 # optimization level.
 OPTIMIZATION=-O3 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
 WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
-
-# The library details for CMake incorporation. Can be safely removed.
-CMAKE_LIBFILE_NAME=CMakeLists.txt
-
-# dumps all library files in one place
-DUMP_LIB=libdump
-# any include folders, space seperated list
+# any extra include folders, space seperated list
 INCLUDE= ./
-
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
 FLAGS=DEBUG
+
+### Helpers
+# The library details for CMake incorporation. Can be safely removed.
+CMAKE_LIBFILE_NAME=CMakeLists.txt
+# dumps all library files in one place
+DUMP_LIB=libdump
+
 
 ##############
 ## OS specific data - compiler, assembler etc.
@@ -89,11 +98,14 @@ FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 
 OBJS = $(foreach source, $(SOURCES), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 
-# the C flags
+# the computed C flags
 CFLAGS= -g -std=c11  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 CPPFLAGS= -std=c++11 $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 
-$(NAME): build
+########
+## Main Tasks
+
+$(NAME): cmake libdump build
 
 build: $(OBJS)
 	$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
@@ -134,6 +146,10 @@ run: | cmake libdump build execute
 .PHONY : db
 db: | clean build
 	$(DB) $(BIN)
+
+
+########
+## Helper Tasks
 
 ifndef DUMP_LIB
 .PHONY : libdump
@@ -185,6 +201,7 @@ cmake:
 
 endif
 
+# Prints the make variables, used for debugging the makefile
 .PHONY : vars
 vars:
 	@echo "BIN: $(BIN)"
