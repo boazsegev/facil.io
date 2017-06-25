@@ -41,7 +41,7 @@ void send_echo(void) {
   resp_obj2arr(cmd)->array[1] = resp_str2obj("Hello Redis!", 12);
   // We'll send the command, passing a callback that can handle it.
   // We can also pass a `void *` pointer with any data we want.
-  redis_engine_send(MyRedis, resp_object_s *data,
+  redis_engine_send(PUBSUB_DEFAULT_ENGINE, resp_object_s *data,
                              on_redis_echo,(intptr_t)42);
   // unless we keep the data for later use, we need to free the objects
   // this will free the nested objects as well
