@@ -231,12 +231,6 @@ static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
 static size_t websocket_encode(void *buff, void *data, size_t len, char text,
                                char first, char last, char client);
 
-static void on_data(intptr_t sockfd, protocol_s *_ws);
-static void on_data_def(intptr_t sockfd, protocol_s *_ws, void *arg) {
-  on_data(sockfd, _ws);
-  (void)arg;
-}
-
 /* read data from the socket, parse it and invoke the websocket events. */
 static void on_data(intptr_t sockfd, protocol_s *_ws) {
 #define ws ((ws_s *)_ws)
@@ -244,10 +238,11 @@ static void on_data(intptr_t sockfd, protocol_s *_ws) {
     return;
   ssize_t len = 0;
   ssize_t data_len = 0;
+  read_buffer.pos = 0;
+
   if ((len = sock_read(sockfd, read_buffer.buffer, WEBSOCKET_READ_MAX)) <= 0)
     return;
-  data_len = 0;
-  read_buffer.pos = 0;
+
   while (read_buffer.pos < len) {
     // collect the frame's head
     if (!ws->parser.state.has_head) {

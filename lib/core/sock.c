@@ -862,9 +862,10 @@ ssize_t sock_read(intptr_t uuid, void *buf, size_t count) {
     return rw->read(uuid, buf, count);
   int old_errno = errno;
   ssize_t ret = rw->read(uuid, buf, count);
-  sock_touch(uuid);
-  if (ret > 0)
+  if (ret > 0) {
+    sock_touch(uuid);
     return ret;
+  }
   if (ret < 0 && (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR ||
                   errno == ENOTCONN)) {
     errno = old_errno;
