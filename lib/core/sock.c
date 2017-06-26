@@ -1040,7 +1040,8 @@ error:
 after all the data was sent. This is a "busy" wait, polling isn't performed.
 */
 void sock_flush_strong(intptr_t uuid) {
-  while (sock_flush(uuid) == 0)
+  errno = 0;
+  while (sock_flush(uuid) == 0 && errno == 0)
     ;
 }
 /**
