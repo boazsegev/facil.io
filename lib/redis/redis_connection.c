@@ -152,8 +152,8 @@ static void redis_on_data(intptr_t uuid, protocol_s *pr) {
       continue; /* while loop */
     }
     if (msg) {
-      if (!r->authenticated) {
-        r->authenticated = 1;
+      if (r->authenticated) {
+        r->authenticated--;
         if (msg->type != RESP_OK) {
           if (msg->type == RESP_ERR) {
             fprintf(stderr,
@@ -210,6 +210,7 @@ static void redis_on_open(intptr_t uuid, protocol_s *pr, void *d) {
   redis_protocol_s *r = (void *)pr;
   facil_set_timeout(uuid, r->settings->ping);
   if (r->settings->auth) {
+    r->authenticated = 1;
     size_t n_len = ul2a(NULL, r->settings->auth_len);
     char *t =
         malloc(r->settings->auth_len + 20 + n_len); /* 19 is probably enough */
@@ -225,7 +226,7 @@ static void redis_on_open(intptr_t uuid, protocol_s *pr, void *d) {
                 .length = (19 + n_len + r->settings->auth_len), .move = 1);
 
   } else
-    r->authenticated = 1;
+    r->authenticated = 0;
   r->settings->on_open(uuid, r->settings->udata);
   (void)d;
 }

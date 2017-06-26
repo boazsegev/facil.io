@@ -1,6 +1,12 @@
 # Change Log
 
-### Ver. 0.5.0 (next)
+### Ver. 0.5.1 (next)
+
+**Fix**: Fixed an issue where `sock_flush` would always invoke `sock_touch`, even if no data was actually sent on the wire.
+
+**Fix**: fixed a possible issue with `sock_flush_strong` which might have caused the facil.io to hang.
+
+### Ver. 0.5.0
 
 **Braking changes**: (`pubsub`) The API was changed / updated, making `pubsub_engine_s` objects easier to author and allowing allocations to be avoided by utilizing two `void * udata` fields... Since this is a breaking change, and following semantic versioning, the minor version is updated. I do wish I could have delayed the version bump, as the roadmap ahead is long, but it is what it is.
 

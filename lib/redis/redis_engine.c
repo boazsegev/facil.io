@@ -341,6 +341,26 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args a) {
   return (pubsub_engine_s *)e;
 }
 
+/**
+See the {pubsub.h} file for documentation about engines.
+
+function names speak for themselves ;-)
+*/
+void redis_engine_destroy(pubsub_engine_s *engine) {
+  redis_engine_s *r = (redis_engine_s *)engine;
+
+  spn_lock(&r->lock);
+  callbacks_s *cb;
+  fio_list_for_each(callbacks_s, node, cb, r->callbacks) free(cb);
+  sock_force_close(r->pub);
+  sock_force_close(r->sub);
+
+  r->active = 0;
+  if (dealloc_engine(r))
+    return;
+  spn_unlock(&r->lock);
+}
+
 /* *****************************************************************************
 Sending Data
 ***************************************************************************** */
@@ -375,24 +395,4 @@ intptr_t redis_engine_send(pubsub_engine_s *e, resp_object_s *data,
   spn_unlock(&r->lock);
   schedule_pub_send(r, r->pub);
   return 0;
-}
-
-/**
-See the {pubsub.h} file for documentation about engines.
-
-function names speak for themselves ;-)
-*/
-void redis_engine_destroy(pubsub_engine_s *engine) {
-  redis_engine_s *r = (redis_engine_s *)engine;
-
-  spn_lock(&r->lock);
-  callbacks_s *cb;
-  fio_list_for_each(callbacks_s, node, cb, r->callbacks) free(cb);
-  sock_force_close(r->pub);
-  sock_force_close(r->sub);
-
-  r->active = 0;
-  if (dealloc_engine(r))
-    return;
-  spn_unlock(&r->lock);
 }
