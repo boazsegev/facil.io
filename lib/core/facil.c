@@ -171,6 +171,24 @@ void evio_on_error(void *arg) { sock_force_close((intptr_t)arg); }
 void evio_on_data(void *arg) { defer(deferred_on_data, arg, NULL); }
 
 /* *****************************************************************************
+Forcing IO events
+***************************************************************************** */
+
+void facil_force_event(intptr_t uuid, enum facil_io_event ev) {
+  switch (ev) {
+  case FIO_EVENT_ON_DATA:
+    evio_on_data((void *)uuid);
+    break;
+  case FIO_EVENT_ON_TIMEOUT:
+    defer(deferred_ping, (void *)uuid, NULL);
+    break;
+  case FIO_EVENT_ON_READY:
+    evio_on_ready((void *)uuid);
+    break;
+  }
+}
+
+/* *****************************************************************************
 Socket callbacks
 ***************************************************************************** */
 

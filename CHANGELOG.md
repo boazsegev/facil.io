@@ -2,9 +2,13 @@
 
 ### Ver. 0.5.1 (next)
 
-**Fix**: Fixed an issue where `sock_flush` would always invoke `sock_touch`, even if no data was actually sent on the wire.
+**Fix**: (`sock`) Fixed an issue where `sock_flush` would always invoke `sock_touch`, even if no data was actually sent on the wire.
 
-**Fix**: fixed a possible issue with `sock_flush_strong` which might have caused the facil.io to hang.
+**Fix**: (`sock`) fixed a possible issue with `sock_flush_strong` which might have caused the facil.io to hang.
+
+**Fix**: (`Websocket`) fixed an issue with fragmented pipelined Websocket messages.
+
+**Feature**: (`facil`) easily force an IO event, even if it did not occur, using `facil_force_event`.
 
 ### Ver. 0.5.0
 

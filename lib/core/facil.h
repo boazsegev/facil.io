@@ -303,6 +303,14 @@ void facil_set_timeout(intptr_t uuid, uint8_t timeout);
 /** Gets a timeout for a specific connection. Returns 0 if none. */
 uint8_t facil_get_timeout(intptr_t uuid);
 
+enum facil_io_event {
+  FIO_EVENT_ON_DATA,
+  FIO_EVENT_ON_READY,
+  FIO_EVENT_ON_TIMEOUT,
+};
+/** Schedules an IO event, even id it did not occur. */
+void facil_force_event(intptr_t uuid, enum facil_io_event);
+
 /* *****************************************************************************
 Helper API
 ***************************************************************************** */
