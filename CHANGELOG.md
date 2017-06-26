@@ -1,6 +1,6 @@
 # Change Log
 
-### Ver. 0.5.1 (next)
+### Ver. 0.5.1
 
 **Fix**: (`sock`) Fixed an issue where `sock_flush` would always invoke `sock_touch`, even if no data was actually sent on the wire.
 
