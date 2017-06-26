@@ -26,7 +26,7 @@ ws2.onclose = function(e) { console.log("closed"); };
 ws2.onopen = function(e) { ws2.send("Brut."); };
 
 Remember that published messages will now be printed to the console both by
-Mitchel and Johana, which means messages will be delivered twich unless using
+Mitchel and Johana, which means messages will be delivered twice unless using
 two different browser windows.
 */
 
