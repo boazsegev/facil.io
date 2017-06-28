@@ -234,10 +234,11 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   if (file_path_safe && path_safe_len == 0)
     path_safe_len = strlen(file_path_safe);
 
-  if (file_path_unsafe && path_unsafe_len == 0)
+  if (file_path_unsafe && path_unsafe_len == 0) {
     path_unsafe_len = strlen(file_path_unsafe);
-  if (!path_unsafe_len)
-    return -1;
+    if (!path_unsafe_len)
+      return -1;
+  }
 
   const char *mime = NULL;
   const char *ext = NULL;
@@ -257,6 +258,8 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   if (file_path_unsafe) {
     if (fname[path_safe_len - 1] == '/' && file_path_unsafe[0] == '/')
       path_safe_len--;
+    else if (fname[path_safe_len - 1] != '/' && file_path_unsafe[0] != '/')
+      fname[path_safe_len++] = '/';
     ssize_t tmp = http_decode_path(fname + path_safe_len, file_path_unsafe,
                                    path_unsafe_len);
     if (tmp < 0)

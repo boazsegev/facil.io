@@ -1,5 +1,9 @@
 # Change Log
 
+### Ver. 0.5.2 (next)
+
+**Fix**: (`http_response`) Fixed `http_response_sendfile2` where an issue where path concatenation occurred without a folder separator (`/`) and exclusively safe file paths were being ignored (the function assumed an unsafe path to be used, at least in part).
+
 ### Ver. 0.5.1
 
 **Fix**: (`sock`) Fixed an issue where `sock_flush` would always invoke `sock_touch`, even if no data was actually sent on the wire.
