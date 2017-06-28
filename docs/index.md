@@ -49,15 +49,8 @@ Here's a simple Websocket chatroom example:
 /* *****************************************************************************
 Nicknames
 ***************************************************************************** */
-
-struct nickname {
-  size_t len;
-  char nick[];
-};
-
-/* This initalization requires GNU gcc / clang ...
- * ... it's a default name for unimaginative visitors.
- */
+struct nickname { size_t len; char nick[]; };
+/* a default nickname when missing */
 static struct nickname MISSING_NICKNAME = {.len = 7, .nick = "unknown"};
 
 /* *****************************************************************************
@@ -134,6 +127,9 @@ static void answer_http_request(http_request_s *request) {
   http_response_finish(response);
 }
 
+/* *****************************************************************************
+The main function, where we setup facil.io and start it up.
+***************************************************************************** */
 int main(int argc, char const *argv[]) {
   const char * port = "3000";
   const char * public_folder = NULL;
