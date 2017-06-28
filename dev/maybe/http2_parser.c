@@ -112,6 +112,8 @@ static int h2p_unwrap_frame(http2_parser_pt p) {
     break;
   }
   case 0x2: { /* PRIORITY frames */
+    if (!p->state.id)
+      return H2ERR_PROTOCOL_ERROR;
     uint32_t dep_id = b2i32(p->frame);
     p->settings.callbacks->on_priority(p, p->settings.udata, p->state.id,
                                        (dep_id & 0x7FFF), (dep_id >> 31),
@@ -119,11 +121,15 @@ static int h2p_unwrap_frame(http2_parser_pt p) {
     break;
   }
   case 0x3: { /* RST_STREAM frames */
+    if (!p->state.id)
+      return H2ERR_PROTOCOL_ERROR;
     p->settings.callbacks->on_reset_stream(p, p->settings.udata, p->state.id,
                                            b2i32(p->frame));
     break;
   }
   case 0x4: { /* SETTINGS frames */
+    if (p->state.id)
+      return H2ERR_PROTOCOL_ERROR;
     p->settings.callbacks->on_settings(p, p->settings.udata, b2i16((p->frame)),
                                        b2i32((p->frame + 2)),
                                        p->state.flags & 0x1);
