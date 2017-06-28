@@ -123,7 +123,7 @@ static void answer_http_request(http_request_s *request) {
 }
 
 /*
-Available comman line flags:
+Available command line flags:
 -p <port>            : defaults port 3000.
 -t <threads>         : defaults to 1 (use 0 for automatic CPU core test/set).
 -w <processes>       : defaults to 1 (use 0 for automatic CPU core test/set).

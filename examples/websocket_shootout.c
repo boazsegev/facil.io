@@ -85,7 +85,7 @@ static void answer_http_request(http_request_s *request) {
 }
 
 /*
-Available comman line flags:
+Available command line flags:
 -p <port>          : defaults port 3000.
 -t <threads>       : defaults to the number of CPU cores (or 1).
 -w <processes>     : defaults to the number of CPU cores (or 1).
