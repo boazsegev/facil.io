@@ -191,7 +191,7 @@ extern const pubsub_engine_s *PUBSUB_CLUSTER_ENGINE;
 extern const pubsub_engine_s *PUBSUB_PROCESS_ENGINE;
 
 /** Allows process wide changes to the default Pub/Sub Engine. */
-extern pubsub_engine_s *PUBSUB_DEFAULT_ENGINE;
+extern const pubsub_engine_s *PUBSUB_DEFAULT_ENGINE;
 
 /**
  * The function used by engines to distribute received messages.

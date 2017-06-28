@@ -37,11 +37,6 @@ two different browser windows.
 #include <string.h>
 
 /* *****************************************************************************
-The Engine (global data... I'm lazy).
-***************************************************************************** */
-pubsub_engine_s *RedisEngine = NULL;
-
-/* *****************************************************************************
 Nicknames
 ***************************************************************************** */
 
@@ -51,7 +46,7 @@ struct nickname {
 };
 
 /* This initalization requires GNU gcc / clang ...
- * ... it's a default name for unimaginitive visitors.
+ * ... it's a default name for unimaginative visitors.
  */
 static struct nickname MISSING_NICKNAME = {.len = 8, .nick = "shithead"};
 
@@ -61,8 +56,7 @@ Websocket callbacks
 
 /* We'll subscribe to the channel's chat channel when a new connection opens */
 static void on_open_websocket(ws_s *ws) {
-  websocket_subscribe(ws, .engine = RedisEngine, .channel.name = "chat",
-                      .force_text = 1);
+  websocket_subscribe(ws, .channel.name = "chat", .force_text = 1);
 }
 
 /* Free the nickname, if any. */
@@ -82,7 +76,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   msg[n->len] = ':';
   msg[n->len + 1] = ' ';
   memcpy(msg + n->len + 2, data, size);
-  pubsub_publish(.engine = RedisEngine, .channel = {.name = "chat", .len = 4},
+  pubsub_publish(.channel = {.name = "chat", .len = 4},
                  .msg = {.data = msg, .len = (size + n->len + 2)});
   free(msg);
   (void)(ws);
@@ -198,12 +192,14 @@ int main(int argc, char const *argv[]) {
     threads = workers = 0;
 
   /*     ****  actual code ****     */
-
-  RedisEngine = redis_engine_create(.address = redis_address,
-                                    .port = redis_port, .ping_interval = 40);
-  if (!RedisEngine) {
-    perror("\nERROR: couldn't initialize Redis engine.\n");
-    exit(-2);
+  if (redis_address) {
+    PUBSUB_DEFAULT_ENGINE =
+        redis_engine_create(.address = redis_address, .port = redis_port,
+                            .ping_interval = 40);
+    if (!PUBSUB_DEFAULT_ENGINE) {
+      perror("\nERROR: couldn't initialize Redis engine.\n");
+      exit(-2);
+    }
   }
 
   if (http_listen(port, NULL, .on_request = answer_http_request,
@@ -211,6 +207,8 @@ int main(int argc, char const *argv[]) {
     perror("Couldn't initiate Websocket service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 
-  if (RedisEngine)
-    redis_engine_destroy(RedisEngine);
+  if (PUBSUB_DEFAULT_ENGINE != PUBSUB_CLUSTER_ENGINE) {
+    redis_engine_destroy(PUBSUB_DEFAULT_ENGINE);
+    PUBSUB_DEFAULT_ENGINE = PUBSUB_CLUSTER_ENGINE;
+  }
 }

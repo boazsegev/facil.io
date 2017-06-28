@@ -27,19 +27,129 @@ int main(void) {
 }
 ```
 
-# facil.io - more than a powerful HTTP/Websockets server library.
+## facil.io - more than a powerful HTTP/Websockets server library.
 
-[facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, as well as support for custom protocols.
+[facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, a native Pub/Sub solution, an optional Redis pub/sub engine, support for custom protocols and some nifty tidbits.
 
 [facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.
 
-[facil.io](http://facil.io) provides high performance TCP/IP network services to Linux / BSD (and macOS) by using an evented design and provides an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
+[facil.io](http://facil.io) provides high performance TCP/IP network services to Linux / BSD (and macOS) by using an evented design that was tested with tens of thousands of connections and provides an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
 
-[facil.io](http://facil.io) prefers a TCP/IP specialized solution over a generic one (although it can be easily adopted for UDP and other approaches).
+[facil.io](http://facil.io) prefers a TCP/IP specialized solution over a generic one (although it can be easily adopted for Unix sockets, UDP and other approaches).
 
 [facil.io](http://facil.io) includes a number of libraries that work together for a common goal. Some of the libraries (i.e. the thread-pool library `defer`, the socket library `sock` and the evented IO core `evio`) can be used independently while others are designed to work together using a modular approach.
 
 I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
+
+## An easy chatroom example
+
+Here's a simple Websocket chatroom example:
+
+```c
+/* *****************************************************************************
+Nicknames
+***************************************************************************** */
+
+struct nickname {
+  size_t len;
+  char nick[];
+};
+
+/* This initalization requires GNU gcc / clang ...
+ * ... it's a default name for unimaginative visitors.
+ */
+static struct nickname MISSING_NICKNAME = {.len = 7, .nick = "unknown"};
+
+/* *****************************************************************************
+Websocket callbacks
+***************************************************************************** */
+
+/* We'll subscribe to the channel's chat channel when a new connection opens */
+static void on_open_websocket(ws_s *ws) {
+  websocket_subscribe(ws, .channel.name = "chat",
+                          .force_text = 1);
+}
+
+/* Free the nickname, if any. */
+static void on_close_websocket(ws_s *ws) {
+  if (websocket_udata(ws))
+    free(websocket_udata(ws));
+}
+
+/* Copy the nickname and the data to format a nicer message. */
+static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
+                                      uint8_t is_text) {
+  struct nickname * n = websocket_udata(ws);
+  if (!n)
+    n = &MISSING_NICKNAME;
+  char * msg = malloc(size + n->len + 2);
+  memcpy(msg, n->nick, n->len);
+  msg[n->len] = ':';
+  msg[n->len + 1] = ' ';
+  memcpy(msg + n->len + 2, data, size);
+  pubsub_publish( .channel = {.name = "chat", .len = 4},
+                  .msg     = {.data = msg,    .len = (size + n->len + 2)});
+  free(msg);
+  (void)(ws);
+  (void)(is_text);
+}
+
+/* *****************************************************************************
+HTTP Handling (Upgrading to Websocket)
+***************************************************************************** */
+
+static void answer_http_request(http_request_s *request) {
+  http_response_s * response = http_response_create(request);
+  // We'll match the dynamic logging settings with the static logging ones.
+  if (request->settings->log_static)
+    http_response_log_start(response);
+
+  http_response_write_header(response, .name = "Server", .name_len = 6,
+                               .value = "facil.example", .value_len = 13);
+
+  // the upgrade header value has a quick access pointer.
+  if (request->upgrade) {
+    struct nickname * n = NULL;
+    // We'll use the request path as the nickname
+    if (request->path_len > 1) {
+      n = malloc(request->path_len + sizeof(*n));
+      n->len = request->path_len - 1;
+      memcpy(n->nick, request->path + 1, request->path_len - 1);
+    }
+    // Websocket upgrade will use our existing response (never leak responses).
+    websocket_upgrade(.request = request, .response = response,
+                      .on_open = on_open_websocket,
+                      .on_close = on_close_websocket,
+                      .on_message = handle_websocket_messages, .udata = n);
+
+    return;
+  }
+  //     ****  Normal HTTP request, no Websockets ****     
+
+  http_response_write_header(response, .name  = "Content-Type", .name_len = 12,
+                                       .value = "text/plain",   .value_len = 10);
+  http_response_write_body(
+      response, "This is a Websocket chatroom example using Redis.", 49);
+  // this both sends and frees the response.
+  http_response_finish(response);
+}
+
+int main(int argc, char const *argv[]) {
+  const char * port = "3000";
+  const char * public_folder = NULL;
+  uint32_t threads = 1;
+  uint32_t workers = 1;
+  uint8_t print_log = 0;
+
+  if (http_listen(port, NULL, .on_request = answer_http_request,
+                              .log_static = print_log,
+                              .public_folder = public_folder))
+    perror("Couldn't initiate Websocket service"), exit(1);
+
+  facil_run(.threads = threads, .processes = workers);
+}
+
+```
 
 ## Further reading
 

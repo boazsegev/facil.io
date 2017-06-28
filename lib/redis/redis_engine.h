@@ -64,5 +64,5 @@ See the {pubsub.h} file for documentation about engines.
 
 function names speak for themselves ;-)
 */
-void redis_engine_destroy(pubsub_engine_s *engine);
+void redis_engine_destroy(const pubsub_engine_s *engine);
 #endif
