@@ -90,12 +90,13 @@ Once you have all the information you need to implementing the feature, the disc
 
 These are the features that have been requested so far. Even if any of them are assigned, feel free to offer your help:
 
-|      Feature      |      assigned      |      remarks       |
-|-------------------|--------------------|--------------------|
-|      HTTP/2       |  Bo (help wanted)  |                    |
-|    HTTP Router    |                    |                    |
-|  Websocket Client |                    |                    |
-|      SSL/TLS      |                    |Use `sock` R/W hooks|
+|      Feature      |      assigned      |      remarks               |
+|-------------------|--------------------|----------------------------|
+|   Documentation   |       help 🙏      | place in the `docs` folder |
+|      HTTP/2       |  Bo (help wanted)  |                            |
+|    HTTP Router    |                    |                            |
+|  Websocket Client |                    |                            |
+|      SSL/TLS      |                    |Use `sock` R/W hooks        |
 
 
 ## License
