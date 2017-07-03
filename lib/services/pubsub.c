@@ -266,8 +266,7 @@ const pubsub_engine_s PUBSUB_PROCESS_ENGINE_S = {
 };
 const pubsub_engine_s *PUBSUB_PROCESS_ENGINE = &PUBSUB_PROCESS_ENGINE_S;
 
-pubsub_engine_s *PUBSUB_DEFAULT_ENGINE =
-    (pubsub_engine_s *)&PUBSUB_CLUSTER_ENGINE_S;
+const pubsub_engine_s *PUBSUB_DEFAULT_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
 
 /* *****************************************************************************
 External Engine Bridge
