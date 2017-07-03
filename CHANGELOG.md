@@ -2,6 +2,10 @@
 
 ### Ver. 0.5.2 (next)
 
+**Fix / Feature**: (`facil`) sibling processes will now detect a sibling's death (caused by a crashed process) and shutdown.
+
+**Fix**: (`defer`) Fixed `SIGTERM` handling (signal was mistakingly filtered away).
+
 **Fix**: (`http_response`) Fixed `http_response_sendfile2` where an issue where path concatenation occurred without a folder separator (`/`) and exclusively safe file paths were being ignored (the function assumed an unsafe path to be used, at least in part).
 
 ### Ver. 0.5.1

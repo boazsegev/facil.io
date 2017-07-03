@@ -242,7 +242,7 @@ Child Process support (`fork`)
 static pool_pt forked_pool;
 
 static void sig_int_handler(int sig) {
-  if (sig != SIGINT)
+  if (sig != SIGINT && sig != SIGTERM)
     return;
   if (!forked_pool)
     return;
@@ -302,15 +302,18 @@ int defer_perform_in_fork(unsigned int process_count,
     perror("couldn't set signal handler");
     goto finish;
   };
+
   if (sigaction(SIGTERM, &act, &old_term)) {
     perror("couldn't set signal handler");
     goto finish;
   };
+
   act.sa_handler = SIG_IGN;
   if (sigaction(SIGPIPE, &act, &old_pipe)) {
     perror("couldn't set signal handler");
     goto finish;
   };
+
   reap_children();
 
   if (!process_count)

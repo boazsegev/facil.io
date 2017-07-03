@@ -326,6 +326,7 @@ static void listener_ping(intptr_t uuid, protocol_s *plistener) {
   (void)plistener;
 }
 
+/* called asynchronously after a new connection was opened */
 static void listener_deferred_on_open(void *uuid_, void *srv_uuid_) {
   intptr_t uuid = (intptr_t)uuid_;
   intptr_t srv_uuid = (intptr_t)srv_uuid_;
@@ -468,6 +469,7 @@ struct ConnectProtocol {
   int opened;
 };
 
+/* The first `ready` signal is fired when a connection was established */
 static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
   struct ConnectProtocol *connector = (void *)_connector;
   // fprintf(stderr, "connector_on_ready called\n");
@@ -486,11 +488,13 @@ error:
   sock_close(uuid);
 }
 
+/* If data events reach this protocol, delay their execution. */
 static void connector_on_data(intptr_t uuid, protocol_s *connector) {
   (void)connector;
-  defer(deferred_on_data, (void *)uuid, NULL);
+  facil_force_event(uuid, FIO_EVENT_ON_DATA);
 }
 
+/* Failed to connect */
 static void connector_on_close(intptr_t uuid, protocol_s *pconnector) {
   struct ConnectProtocol *connector = (void *)pconnector;
   if (connector->opened == 0 && connector->on_fail)
@@ -521,11 +525,12 @@ intptr_t facil_connect(struct facil_connect_args opt) {
       .opened = 0,
   };
   intptr_t uuid = connector->uuid = sock_connect(opt.address, opt.port);
+  /* check for errors, always invoke the on_fail if required */
   if (uuid == -1)
     goto error;
   if (facil_attach(uuid, &connector->protocol) == -1) {
     sock_close(uuid);
-    return -1;
+    goto error;
   }
   return uuid;
 error:
@@ -710,6 +715,22 @@ static void facil_cluster_on_close(intptr_t uuid, protocol_s *pr_) {
   (void)uuid;
 }
 
+/* React when a sibling process closes / crashes */
+static void facil_cluster_on_sibling_close(intptr_t uuid, protocol_s *pr_) {
+  if (facil_cluster_data.pipes[defer_fork_pid()].in == uuid)
+    return;
+  if (defer_fork_is_active()) {
+    kill(getpid(), SIGINT);
+#if DEBUG
+    fprintf(stderr,
+            "* Sibling death detected, signaling self exit process %d\n",
+            getpid());
+#endif
+  }
+  (void)uuid;
+  (void)pr_;
+}
+
 /* cluster protocol on_data callback */
 static void facil_cluster_on_data(intptr_t uuid, protocol_s *pr_) {
   struct facil_cluster_protocol *pr = (struct facil_cluster_protocol *)pr_;
@@ -755,12 +776,20 @@ static void facil_cluster_register(void *arg1, void *arg2) {
   (void)arg2;
   if (facil_cluster_data.count < 2)
     return;
-  // for (size_t i = 0; i < facil_cluster_data.count; i++) {
-  //   if (i == (size_t)defer_fork_pid())
-  //     continue;
-  //   sock_close(facil_cluster_data.pipes[i].in);
-  // }
-  // sock_close(facil_cluster_data.pipes[defer_fork_pid()].out);
+
+  /* used to watch for sibling crashes and prevent other events from firing */
+      .service = NULL,
+      .ping = listener_ping,
+      .on_close = facil_cluster_on_sibling_close,
+  };
+  /* close what we don't need and watch the connections we do need */
+  for (size_t i = 0; i < facil_cluster_data.count; i++) {
+    if (i == (size_t)defer_fork_pid())
+      continue;
+    sock_close(facil_cluster_data.pipes[i].in);
+  }
+  sock_close(facil_cluster_data.pipes[defer_fork_pid()].out);
+
   struct facil_cluster_protocol *pr = malloc(sizeof(*pr));
   if (!pr)
     perror("ERROR: (critical) cannot allocate memory for cluster."),
@@ -787,7 +816,10 @@ static void facil_cluster_init(uint16_t count) {
   if (!facil_cluster_data.pipes)
     goto error;
 
-  static protocol_s stub_protocol = {.service = NULL, .ping = listener_ping};
+  /* used to prevent any events from firing  */
+  static protocol_s stub_protocol = {
+      .service = NULL, .ping = listener_ping,
+  };
   stub_protocol.service = facil_cluster_protocol_id;
 
   facil_cluster_data.count = count;
@@ -799,8 +831,8 @@ static void facil_cluster_init(uint16_t count) {
     sock_set_non_block(p_tmp[0]);
     sock_set_non_block(p_tmp[1]);
     facil_cluster_data.pipes[i].in = sock_open(p_tmp[0]);
-    facil_cluster_data.pipes[i].out = sock_open(p_tmp[1]);
     facil_attach(facil_cluster_data.pipes[i].in, &stub_protocol);
+    facil_cluster_data.pipes[i].out = sock_open(p_tmp[1]);
     facil_attach(facil_cluster_data.pipes[i].out, &stub_protocol);
   }
   defer(facil_cluster_register, NULL, NULL);
