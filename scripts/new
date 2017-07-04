@@ -30,5 +30,6 @@ rm -R facil.io-stable
 rm -R dev
 mkdir dev
 make clean &> /dev/null
-mv ./examples/boiler_plate_http/* ./dev
+mv ./examples/boiler_plates/http/* ./dev
+rm -R ./examples/boiler_plates
 make clean &> /dev/null

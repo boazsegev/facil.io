@@ -15,7 +15,7 @@ LIB_PRIVATE_SUBFOLDERS=bscrypt bscrypt/bscrypt
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`.
 MAIN_ROOT=./dev
 # Development subfolders in the main root
-MAIN_SUBFOLDERS=
+MAIN_SUBFOLDERS=startup services
 
 ### Build Root
 # temporary folder will be cleared out and deleted between fresh builds
