@@ -1,4 +1,3 @@
--Idev/
 -Ilib/
 -Ilib/facil
 -Ilib/facil/core
@@ -8,8 +7,10 @@
 -Ilib/facil/services
 -Ilib/facil/bscrypt
 -Ilib/facil/bscrypt/bscrypt
+
 -Idev/
 -Idev/startup
 -Idev/services
 -Idev/http
+
 -DDEBUG
