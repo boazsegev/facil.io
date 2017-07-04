@@ -778,6 +778,7 @@ static void facil_cluster_register(void *arg1, void *arg2) {
     return;
 
   /* used to watch for sibling crashes and prevent other events from firing */
+  static protocol_s sentinel_protocol = {
       .service = NULL,
       .ping = listener_ping,
       .on_close = facil_cluster_on_sibling_close,
@@ -787,6 +788,7 @@ static void facil_cluster_register(void *arg1, void *arg2) {
     if (i == (size_t)defer_fork_pid())
       continue;
     sock_close(facil_cluster_data.pipes[i].in);
+    facil_attach(facil_cluster_data.pipes[i].out, &sentinel_protocol);
   }
   sock_close(facil_cluster_data.pipes[defer_fork_pid()].out);
 
