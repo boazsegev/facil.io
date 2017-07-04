@@ -1,0 +1,18 @@
+#! /bin/bash
+
+if [ -z $1 ]
+  then
+	echo "Please provide file name."
+  exit 0
+fi
+echo "Creating $1"
+mkdir $1
+cd $1
+curl -LJO https://github.com/boazsegev/facil.io/archive/stable.tar.gz
+tar -xf facil.io-stable.tar.gz
+rm facil.io-stable.tar.gz
+mv ./facil.io-stable/* ./
+rm -R facil.io-stable
+rm -R dev
+mkdir dev
+mv ./examples/boiler_plate_http/* ./dev
