@@ -30,24 +30,33 @@ Compile time settings
 Data Structures
 ***************************************************************************** */
 
+/* task node data */
 typedef struct {
   void (*func)(void *, void *);
   void *arg1;
   void *arg2;
 } task_s;
 
+/* a single linked list for tasks */
 typedef struct task_node_s {
   task_s task;
   struct task_node_s *next;
 } task_node_s;
 
+/* static memory allocation for a task node buffer */
 static task_node_s tasks_buffer[DEFER_QUEUE_BUFFER];
 
+/* the state machine - this holds all the data about the task queue and pool */
 static struct {
+  /* the next task to be performed */
   task_node_s *first;
+  /* a pointer to the linked list's tail, where the next task will be stored */
   task_node_s **last;
+  /* a linked list for task nodes (staticly allocated) */
   task_node_s *pool;
+  /* a lock for the state machine, used for multi-threading support */
   spn_lock_i lock;
+  /* a flag indicating whether the task pool was initialized */
   unsigned char initialized;
 } deferred = {.first = NULL,
               .last = &deferred.first,
@@ -61,9 +70,11 @@ API
 
 /** Defer an execution of a function for later. */
 int defer(void (*func)(void *, void *), void *arg1, void *arg2) {
+  /* must have a task to defer */
   if (!func)
     goto call_error;
   task_node_s *task;
+  /* lock the state machine, to grab/create a task and place it at the tail */
   spn_lock(&deferred.lock);
   if (deferred.pool) {
     task = deferred.pool;
@@ -74,6 +85,7 @@ int defer(void (*func)(void *, void *), void *arg1, void *arg2) {
       goto error;
   } else
     goto initialize;
+
 schedule:
   *deferred.last = task;
   deferred.last = &task->next;
@@ -83,13 +95,18 @@ schedule:
   task->next = NULL;
   spn_unlock(&deferred.lock);
   return 0;
+
 error:
   spn_unlock(&deferred.lock);
   perror("ERROR CRITICAL: defer can't allocate task");
   kill(0, SIGINT), exit(errno);
+
 call_error:
   return -1;
+
 initialize:
+  /* initialize the task pool using all the items in the static buffer */
+  /* also assign `task` one of the tasks from the pool and schedule the task */
   deferred.initialized = 1;
   task = tasks_buffer;
   deferred.pool = tasks_buffer + 1;
@@ -105,7 +122,7 @@ void defer_perform(void) {
   task_node_s *tmp;
   task_s task;
 restart:
-  spn_lock(&deferred.lock);
+  spn_lock(&deferred.lock); /* remember never to perform tasks within a lock! */
   tmp = deferred.first;
   if (tmp) {
     deferred.first = tmp->next;
@@ -119,7 +136,9 @@ restart:
       free(tmp);
     }
     spn_unlock(&deferred.lock);
+    /* perform the task outside the lock. */
     task.func(task.arg1, task.arg2);
+    /* I used `goto` to optimize assembly instruction flow. maybe it helps. */
     goto restart;
   }
   spn_unlock(&deferred.lock);
@@ -135,6 +154,8 @@ Thread Pool Support
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__) ||           \
     defined(DEBUG)
 #include <pthread.h>
+
+/* `weak` functions can be overloaded to change the thread implementation. */
 
 #pragma weak defer_new_thread
 void *defer_new_thread(void *(*thread_func)(void *), pool_pt arg) {
@@ -161,7 +182,7 @@ void defer_thread_throttle(unsigned long microsec) {
   throttle_thread(microsec);
 }
 
-#else /* No pthreads... BYO thread implementation. */
+#else /* No pthreads... BYO thread implementation. This one simply fails. */
 
 #pragma weak defer_new_thread
 void *defer_new_thread(void *(*thread_func)(void *), void *arg) {
@@ -186,13 +207,17 @@ struct defer_pool {
   void *threads[];
 };
 
+/* a thread's cycle. This is what a worker thread does... repeatedly. */
 static void *defer_worker_thread(void *pool_) {
   volatile pool_pt pool = pool_;
   signal(SIGPIPE, SIG_IGN);
+  /* the throttle replaces conditional variables for better performance */
   size_t throttle = (pool->count) * DEFER_THROTTLE;
   if (!throttle || throttle > 1572864UL)
     throttle = 1572864UL;
+  /* perform any available tasks */
   defer_perform();
+  /* as long as the flag is true, wait for and perform tasks. */
   do {
     throttle_thread(throttle);
     defer_perform();
@@ -200,10 +225,13 @@ static void *defer_worker_thread(void *pool_) {
   return NULL;
 }
 
+/** Signals a running thread pool to stop. Returns immediately. */
 void defer_pool_stop(pool_pt pool) { pool->flag = 0; }
 
+/** Returns TRUE (1) if the pool is hadn't been signaled to finish up. */
 int defer_pool_is_active(pool_pt pool) { return pool->flag; }
 
+/** Waits for a running thread pool, joining threads and finishing all tasks. */
 void defer_pool_wait(pool_pt pool) {
   while (pool->count) {
     pool->count--;
@@ -211,6 +239,7 @@ void defer_pool_wait(pool_pt pool) {
   }
 }
 
+/** The logic behind `defer_pool_start`. */
 static inline pool_pt defer_pool_initialize(unsigned int thread_count,
                                             pool_pt pool) {
   pool->flag = 1;
@@ -226,6 +255,7 @@ static inline pool_pt defer_pool_initialize(unsigned int thread_count,
   return NULL;
 }
 
+/** Starts a thread pool that will run deferred tasks in the background. */
 pool_pt defer_pool_start(unsigned int thread_count) {
   if (thread_count == 0)
     return NULL;
@@ -239,8 +269,10 @@ pool_pt defer_pool_start(unsigned int thread_count) {
 Child Process support (`fork`)
 ***************************************************************************** */
 
+/* forked `defer` workers use a global thread pool object. */
 static pool_pt forked_pool;
 
+/* handles the SIGINT and SIGTERM signals by shutting down workers */
 static void sig_int_handler(int sig) {
   if (sig != SIGINT && sig != SIGTERM)
     return;
@@ -249,12 +281,11 @@ static void sig_int_handler(int sig) {
   defer_pool_stop(forked_pool);
 }
 
-/* *
+/*
 Zombie Reaping
 With thanks to Dr Graham D Shaw.
 http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
 */
-
 void reap_child_handler(int sig) {
   (void)(sig);
   int old_errno = errno;
@@ -263,6 +294,7 @@ void reap_child_handler(int sig) {
   errno = old_errno;
 }
 
+/* initializes zombie reaping for the process */
 inline static void reap_children(void) {
   struct sigaction sa;
   sa.sa_handler = reap_child_handler;
@@ -274,7 +306,9 @@ inline static void reap_children(void) {
   }
 }
 
+/* a global process identifier (0 == root) */
 static int defer_fork_pid_id = 0;
+
 /**
  * Forks the process, starts up a thread pool and waits for all tasks to run.
  * All existing tasks will run in all processes (multiple times).
@@ -287,8 +321,12 @@ int defer_perform_in_fork(unsigned int process_count,
   if (forked_pool)
     return -1; /* we're already running inside an active `fork` */
 
+  /* we use a placeholder while initializing the forked thread pool, so calls to
+   * `defer_fork_is_active` don't fail.
+   */
   static struct defer_pool pool_placeholder = {.count = 1, .flag = 1};
 
+  /* setup signal handling */
   struct sigaction act, old, old_term, old_pipe;
   pid_t *pids = NULL;
   int ret = 0;
@@ -314,11 +352,14 @@ int defer_perform_in_fork(unsigned int process_count,
     goto finish;
   };
 
+  /* setup zomie reaping */
   reap_children();
 
   if (!process_count)
     process_count = 1;
   --process_count;
+
+  /* for `process_count == 0` nothing happens */
   pids = calloc(process_count, sizeof(*pids));
   if (process_count && !pids)
     goto finish;
@@ -337,12 +378,16 @@ int defer_perform_in_fork(unsigned int process_count,
       goto finish;
     }
   }
+
   pids_count++;
   forked_pool = &pool_placeholder;
   forked_pool = defer_pool_start(thread_count);
+
   defer_pool_wait(forked_pool);
   forked_pool = NULL;
+
   defer_perform();
+
 finish:
   if (pids) {
     for (size_t j = 0; j < pids_count; j++) {

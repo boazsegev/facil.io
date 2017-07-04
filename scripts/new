@@ -1,5 +1,10 @@
 #! /bin/bash
 
+# This script is Benjamín C. Calderón's brain child (@benjcal).
+# Written by Bo and a "good enough for now" draft.
+#
+# Expected changes will update the makefile and the boiler plate code.
+
 if [ -z $1 ]
   then
 	echo "Please provide file name."

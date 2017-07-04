@@ -24,6 +24,8 @@ Next, edit the boiler plate code to match your needs and start development.
 
 *notice: boiler-plate code will only be available once version 0.5.2 is released.*
 
+Credit to @benjcal for suggesting the script.
+
 ## Adding facil.io to an existing project
 
 [facil.io](http://facil.io) is a source code library, so it's possible to simply copy the source code into an existing project and start using the library right away.
