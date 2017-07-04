@@ -24,5 +24,6 @@ mv ./facil.io-stable/* ./
 rm -R facil.io-stable
 rm -R dev
 mkdir dev
+make clean &> /dev/null
 mv ./examples/boiler_plate_http/* ./dev
 make clean &> /dev/null
