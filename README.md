@@ -16,7 +16,7 @@ To start a new project using the `facil.io` framework, run the following command
 
      $ bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new) appname
 
-This will create a new folder called `appname` (or whatever you decide), downloads a copy of the stable branch, move the HTTP boiler plate code to the `appname/dev` folder and run `make clean` (which is required to build the `tmp` folder structure).
+This will create a new folder called `appname` (or whatever you decide), download a copy of the stable branch, move the HTTP boiler plate code to the `appname/dev` folder and run `make clean` (which is required to build the `tmp` folder structure).
 
 Once the boiler-plate code is ready, edit the `makefile` to remove any generic features you don't need, such as the `DUMP_LIB` feature, the `DEBUG` flag or the `DISAMS` disassembler.
 
