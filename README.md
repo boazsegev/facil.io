@@ -10,17 +10,35 @@
 
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
 
-## Compiling
+## Starting a new project with `facil.io`
 
-[facil.io](http://facil.io) is a source code library, so it's possible to simply copy the source code into a new project.
+To start a new project using the `facil.io` framework, run the following command in the terminal (change `appname` to whatever you want):
+
+     $ bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new) appname
+
+This will create a new folder called `appname` (or whatever you decide), downloads a copy of the stable branch, move the HTTP boiler plate code to the `appname/dev` folder and run `make clean` (which is required to build the `tmp` folder structure).
+
+Once the boiler-plate code is ready, edit the `makefile` to remove any generic features you don't need, such as the `DUMP_LIB` feature, the `DEBUG` flag or the `DISAMS` disassembler.
+
+Next, edit the boiler plate code to match your needs and start development.
+
+*notice: boiler-plate code will only be available once version 0.5.2 is released.*
+
+## Adding facil.io to an existing project
+
+[facil.io](http://facil.io) is a source code library, so it's possible to simply copy the source code into an existing project and start using the library right away.
 
 [facil.io](http://facil.io) also supports both `git` and CMake submodules.
 
-However, when starting a new project, it's often easiest to simply fork this project and place your own source code in the `dev` folder, perhaps updating the `makefile` to make it more compatible with your project's folder structure.
+To use the library in an existing project, clone the `git` repo and run:
 
-When forking this project, please run `make clean` to build the `tmp` folder structure used for compiling.
+     $ make libdump
 
-Unless `make clean` is called, the compiler / linker will fail with a `No such file or directory` error.
+This will dump all the library files into a folder called `libdump`.
+
+The header files are in `libdump/include` and the source files are in `libdump/src`. The folder `libdump/all` contains all the source and header files mixed together.
+
+Copy these files to your project, as required by your project's folder structure and start using the library.
 
 ## Three Quick Examples
 
