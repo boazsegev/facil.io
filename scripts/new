@@ -5,11 +5,20 @@ if [ -z $1 ]
 	echo "Please provide file name."
   exit 0
 fi
+
+if [ -a $1 ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
+if [ -d $1 ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
+
 echo "Creating $1"
 mkdir $1
 cd $1
-curl -LJO https://github.com/boazsegev/facil.io/archive/master.tar.gz
-tar -xf facil.io-stable.tar.gz
+
+curl -s -LJO https://github.com/boazsegev/facil.io/archive/stable.tar.gz
+if [ $? -ne 0 ]; then echo "Couldn't download the stable branch from facil.io's GitHub repo."; exit 1; fi
+
+tar -xzf facil.io-stable.tar.gz
+if [ $? -ne 0 ]; then echo "Couldn't extract tar."; exit 1; fi
+
 rm facil.io-stable.tar.gz
 mv ./facil.io-stable/* ./
 rm -R facil.io-stable
