@@ -7,9 +7,9 @@ OUT_ROOT=tmp
 # the .c and .cpp source files root folder - subfolders are automatically included
 LIB_ROOT=./lib
 # publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=core core/types services http redis
+LIB_PUBLIC_SUBFOLDERS=facil/core facil/core/types facil/services facil/http facil/redis
 # privately used subfolders in the lib root (this distinction is for CMake)
-LIB_PRIVATE_SUBFOLDERS=bscrypt bscrypt/bscrypt
+LIB_PRIVATE_SUBFOLDERS=facil/bscrypt facil/bscrypt/bscrypt
 
 ### Development folders
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`.
@@ -32,7 +32,7 @@ WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
 # any extra include folders, space seperated list
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
-FLAGS=DEBUG
+FLAGS=
 
 ### Helpers
 # The library details for CMake incorporation. Can be safely removed.
@@ -40,6 +40,10 @@ CMAKE_LIBFILE_NAME=CMakeLists.txt
 # dumps all library files in one place
 DUMP_LIB=libdump
 
+# add DEBUG flag if requested
+ifdef DEBUG
+	FLAGS:=$(FLAGS) DEBUG
+endif
 
 ##############
 ## OS specific data - compiler, assembler etc.
@@ -135,6 +139,7 @@ clean: cmake libdump
 	-@rm $(BIN)
 	-@rm -R $(TMP_ROOT)
 	-@mkdir -p $(BUILDTREE)
+
 
 .PHONY : execute
 execute:

@@ -28,8 +28,16 @@ rm facil.io-stable.tar.gz
 mv ./facil.io-stable/* ./
 rm -R facil.io-stable
 rm -R dev
-mkdir dev
+rm -R docs
+rm -R tests
+rm CHANGELOG.md
+rm README.md
+rm CONTRIBUTING.md
+rm Doxyfile
+rm CMakeLists.txt
+rm LICENSE
+rm NOTICE
 make clean &> /dev/null
-mv ./examples/boiler_plates/http/* ./dev
+mv ./examples/boiler_plates/http/* ./
 rm -R ./examples/boiler_plates
 make clean &> /dev/null

@@ -2,4 +2,4 @@
 
 # DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$( dirname "${BASH_SOURCE[0]}" )/.."
-make db
+DEBUG=1 make db

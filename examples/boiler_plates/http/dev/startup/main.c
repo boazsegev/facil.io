@@ -49,7 +49,6 @@ int main(int argc, char const *argv[]) {
     ARGV = argv;
   }
 
-  const char *bind = NULL;
   const char *redis_address = NULL;
   const char *redis_port = NULL;
   const char *redis_password = NULL;
@@ -62,6 +61,8 @@ int main(int argc, char const *argv[]) {
     HTTP_PORT = getenv("PORT");
   if (getenv("ADDRESS"))
     HTTP_ADDRESS = getenv("ADDRESS");
+  if (getenv("HTTP_PUBLIC_FOLDER"))
+    HTTP_PUBLIC_FOLDER = getenv("HTTP_PUBLIC_FOLDER");
 
   /* parse the Redis URL to manage redis pub/sub */
   if (getenv("REDIS_URL")) {
