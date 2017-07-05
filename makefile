@@ -109,7 +109,7 @@ CPPFLAGS= -std=c++11 $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 ########
 ## Main Tasks
 
-$(NAME): cmake libdump build
+$(NAME): build
 
 build: $(OBJS)
 	$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
@@ -135,7 +135,7 @@ $(TMP_ROOT)/%.o: %.cpp
 endif
 
 .PHONY : clean
-clean: cmake libdump
+clean:
 	-@rm $(BIN)
 	-@rm -R $(TMP_ROOT)
 	-@mkdir -p $(BUILDTREE)
@@ -158,12 +158,12 @@ db: | clean build
 
 ifndef DUMP_LIB
 .PHONY : libdump
-libdump:
+libdump: cmake
 
 else
 
 .PHONY : libdump
-libdump:
+libdump: cmake
 	-@rm -R $(DUMP_LIB)
 	@mkdir $(DUMP_LIB)
 	@mkdir $(DUMP_LIB)/src
