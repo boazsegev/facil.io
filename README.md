@@ -16,7 +16,7 @@ To start a new project using the `facil.io` framework, run the following command
 
      $ bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new) appname
 
-This will create a new folder called `appname` (or whatever you decide), download a copy of the stable branch, move the HTTP boiler plate code to the `appname/dev` folder and run `make clean` (which is required to build the `tmp` folder structure).
+You can [review the script here](scripts/new). In short, it will create a new folder, download a copy of the stable branch, prepare boiler plate code and run `make clean` (which is required to build the `tmp` folder structure).
 
 Once the boiler-plate code is ready, edit the `makefile` to remove any generic features you don't need, such as the `DUMP_LIB` feature, the `DEBUG` flag or the `DISAMS` disassembler.
 
@@ -36,9 +36,7 @@ To use the library in an existing project, clone the `git` repo and run:
 
      $ make libdump
 
-This will dump all the library files into a folder called `libdump`.
-
-The header files are in `libdump/include` and the source files are in `libdump/src`. The folder `libdump/all` contains all the source and header files mixed together.
+This will dump all the library files into a folder called `libdump`. The header files are in `libdump/include` and the source files are in `libdump/src`. The folder `libdump/all` contains all the source and header files mixed together.
 
 Copy these files to your project, as required by your project's folder structure and start using the library.
 
