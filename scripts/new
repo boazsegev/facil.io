@@ -19,12 +19,12 @@
 #       sed -n "/<--$SECTION/,/-->/p" /tmp/facil/templates/test.c.template | egrep -v '<--' | egrep -v '\-->'
 
 FACIL_TMP_DIR='/tmp/'
-FACIL_ARCHIVE_NAME='facil.tgz'
+FACIL_ARCHIVE_NAME='facil.io-stable.tar.gz'
 
 function cache_exist() {
     if [[ -a $FACIL_TMP_DIR/$FACIL_ARCHIVE_NAME ]]; then
         # use cache is it's younger than 7 days
-        if [ "$(find /tmp/facil.tgz -mtime -7)" ]; then
+        if [ "$(find /tmp/$FACIL_ARCHIVE_NAME -mtime -7)" ]; then
             echo "TRUE"
         fi
     fi
@@ -33,9 +33,10 @@ function cache_exist() {
 function download_facil() {
     if [ "$(cache_exist)" == 'TRUE' ]; then
         # consider using $TMPDIR
-        echo -e "\nUsing cached download\n"
+        echo -e "Using cached download\n"
     else
-        curl -o $FACIL_TMP_DIR/$FACIL_ARCHIVE_NAME https://github.com/boazsegev/facil.io/archive/stable.tar.gz
+        cd /tmp
+        curl -LJO https://codeload.github.com/boazsegev/facil.io/tar.gz/stable
     fi
 }
 
