@@ -22,8 +22,6 @@ Once the boiler-plate code is ready, edit the `makefile` to remove any generic f
 
 Next, edit the boiler plate code to match your needs and start development.
 
-*notice: boiler-plate code will only be available once version 0.5.2 is released.*
-
 Credit to @benjcal for suggesting the script.
 
 ## Adding facil.io to an existing project
