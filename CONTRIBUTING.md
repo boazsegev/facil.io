@@ -101,6 +101,6 @@ These are the features that have been requested so far. Even if any of them are 
 
 ## License
 
-The project requires that all the code is licensed under the MIT license. Please refrain from using or offering code that required a change to the licensing scheme.
+The project requires that all the code is licensed under the MIT license. Please refrain from using or offering code that requires a change to the licensing scheme.
 
-I have no idea what Github's terms of service dictate in regards to PRs, but I'm sure it's reasonable and that it should apply.
+I understand GitHub doesn't offer a default CLA (Copyright and Licensing Agreement), so I should clarify: the resulting code uses the MIT license, listing me (and only me) as the author. I will list contributors in the CHANGELOG and special contributions will be listed in the README and/or here.
