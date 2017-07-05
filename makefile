@@ -45,6 +45,15 @@ ifdef DEBUG
 	FLAGS:=$(FLAGS) DEBUG
 endif
 
+# add BearSSL/OpenSSL library flags
+ifeq ($(shell printf "int main(void) {}" | gcc -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+FLAGS:=$(FLAGS) HAVE_BEARSSL
+LINKER_FLAGS:=$(LINKER_FLAGS) -lbearssl
+else ifeq ($(shell printf "int main(void) {}" | gcc -lcrypto -lssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+FLAGS:=$(FLAGS) HAVE_OPENSSL
+LINKER_FLAGS:=$(LINKER_FLAGS) -lcrypto -lssl
+endif
+
 ##############
 ## OS specific data - compiler, assembler etc.
 
@@ -232,3 +241,5 @@ vars:
 	@echo "CFLAGS: $(CFLAGS)"
 	@echo ""
 	@echo "CPPFLAGS: $(CPPFLAGS)"
+	@echo ""
+	@echo "LINKER_FLAGS: $(LINKER_FLAGS)"
