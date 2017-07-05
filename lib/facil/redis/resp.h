@@ -14,6 +14,11 @@ This is a neive implementation of the RESP protocol for Redis.
 #include <stdint.h>
 #include <stdlib.h>
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /** The RESP Parser Type */
 typedef struct resp_parser_s *resp_parser_pt;
 
@@ -248,6 +253,10 @@ void resp_enable_duplex_pubsub(resp_parser_pt parser);
 
 #ifdef DEBUG
 void resp_test(void);
+#endif
+
+#ifdef __cplusplus
+} /* extern "C" */
 #endif
 
 #endif

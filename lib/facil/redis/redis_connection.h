@@ -10,6 +10,11 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #include "facil.h"
 #include "resp.h"
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* *****************************************************************************
 Connectivity
 ***************************************************************************** */
@@ -73,5 +78,9 @@ protocol_s *redis_create_server_protocol(intptr_t uuid, void *settings);
  * It's main responsibility is to free the context and protocol resources.
  */
 void redis_protocol_cleanup(intptr_t uuid, void *settings);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

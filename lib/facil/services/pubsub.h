@@ -20,6 +20,11 @@ between all of an application's processes, enhancing overall performance.
 #define H_FACIL_PUBSUB_H
 #include "facil.h"
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef FIO_PUBBSUB_MAX_CHANNEL_LEN
 #define FIO_PUBBSUB_MAX_CHANNEL_LEN 1024
 #endif
@@ -211,5 +216,9 @@ void pubsub_engine_distribute(pubsub_message_s msg);
  * resubscriptions are under way...
  */
 void pubsub_engine_resubscribe(pubsub_engine_s *eng);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* H_FACIL_PUBSUB_H */

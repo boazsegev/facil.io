@@ -21,6 +21,11 @@ the key "hello1" will cost only 272 bytes... brrr.
 #include <stdint.h>
 #include <stdlib.h>
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct fio_dict_s {
   struct fio_dict_s *parent;
   struct fio_dict_s *trie[16];
@@ -86,5 +91,9 @@ int fio_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
      (dict)->trie[9] || (dict)->trie[10] || (dict)->trie[11] ||                \
      (dict)->trie[12] || (dict)->trie[13] || (dict)->trie[14] ||               \
      (dict)->trie[15]))
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

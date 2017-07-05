@@ -54,6 +54,11 @@ Hard Coded Settings
 #define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
 #endif
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* *****************************************************************************
 HTTP Core API & data structure
 */
@@ -199,5 +204,9 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data);
 /** Decodes the "path" part of an HTTP request, no buffer overflow protection.
  */
 ssize_t http_decode_path(char *dest, const char *url_data, size_t length);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

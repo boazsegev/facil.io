@@ -9,6 +9,11 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "http.h"
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* *****************************************************************************
 Upgrading from HTTP to Websockets
 ***************************************************************************** */
@@ -341,5 +346,9 @@ details for possible arguments.
 int websocket_write_each(struct websocket_write_each_args_s args);
 #define websocket_write_each(...)                                              \
   websocket_write_each((struct websocket_write_each_args_s){__VA_ARGS__})
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

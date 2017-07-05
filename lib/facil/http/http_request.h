@@ -10,6 +10,11 @@ typedef struct http_request_s http_request_s;
 
 #include "http.h"
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct http_request_s {
   /** the HTTP version, also controlls the `http_request_s` flavor. */
   enum HTTP_VERSION http_version;
@@ -89,5 +94,9 @@ http_header_s http_request_header_first(http_request_s *request);
  *
  * Header itteration is NOT thread-safe. */
 http_header_s http_request_header_next(http_request_s *request);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* H_HTTP_REQUEST_H */

@@ -1,5 +1,9 @@
 # Change Log
 
+### Ver. 0.5.3 (next)
+
+**Portability**: added `extern "C"` directive for untested C++ support.
+
 ### Ver. 0.5.2
 
 **Change**: non-breaking changes to the folder structure are also reflected in the updated `makefile` and `.clang_complete`.

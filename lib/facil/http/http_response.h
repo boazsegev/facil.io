@@ -10,6 +10,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdio.h>
 #include <time.h>
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
   /** The protocol version family (HTTP/1.1 / HTTP/2 etc'). */
   enum HTTP_VERSION http_version;
@@ -237,5 +242,9 @@ const char *http_response_ext2mime(const char *ext);
 
 /** Starts counting miliseconds for log results. */
 void http_response_log_start(http_response_s *);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif
