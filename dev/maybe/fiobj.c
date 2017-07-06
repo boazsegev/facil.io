@@ -410,9 +410,9 @@ int64_t fio_atol(const char *str) {
       if (str[0] >= '0' && str[0] <= '9')
         tmp = str[0] - '0';
       else if (str[0] >= 'A' && str[0] <= 'F')
-        tmp = str[0] - 'A';
+        tmp = str[0] - ('A' - 10);
       else if (str[0] >= 'a' && str[0] <= 'f')
-        tmp = str[0] - 'a';
+        tmp = str[0] - ('a' - 10);
       else
         goto finish;
       result = (result << 4) | tmp;
@@ -425,7 +425,7 @@ int64_t fio_atol(const char *str) {
       end++;
     if ((uintptr_t)(end - str) > 21) /* too large for a number */
       return 0;
-    end--;
+
     while (str < end) {
       result = (result * 10) + (str[0] - '0');
       str++;
@@ -495,9 +495,9 @@ String API
 ***************************************************************************** */
 
 /**
- * A helper function that convers between a signed int64_t to a String.
+ * A helper function that convers between a signed int64_t to a string.
  *
- * No overflow guard is provided, make sure there's at least 68 bytes available
+ * No overflow guard is provided, make sure there's at least 66 bytes available
  * (for base 2).
  *
  * Supports base 2, base 10 and base 16. An unsupported base will silently
@@ -506,7 +506,21 @@ String API
  *
  * Returns the number of bytes actually written (excluding the NUL terminator).
  */
-size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
+size_t fio_ltoa(char *dest, int64_t num, uint8_t base) { return 0; }
+
+/**
+ * A helper function that convers between a double to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 130 bytes available
+ * (for base 2).
+ *
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL terminator).
+ */
+size_t fio_ftoa(char *dest, double num, uint8_t base) { return 0; }
 
 /** Creates a String object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_new(const char *str, size_t len) {
@@ -750,6 +764,16 @@ void fiobj_test(void) {
   obj = fiobj_str_new("0x7F", 4);
   if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 127)
     fprintf(stderr, "* FAILED 0x7F object test.\n");
+  fiobj_free(obj);
+
+  obj = fiobj_str_new("0b01111111", 10);
+  if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 127)
+    fprintf(stderr, "* FAILED 0b01111111 object test.\n");
+  fiobj_free(obj);
+
+  obj = fiobj_str_new("232", 3);
+  if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 232)
+    fprintf(stderr, "* FAILED 232 object test. %llu\n", fiobj_obj2num(obj));
   fiobj_free(obj);
 }
 #endif
