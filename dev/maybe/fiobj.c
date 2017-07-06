@@ -177,7 +177,8 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
     head->ref = 1;
     HEAD2OBJ(head)->type = type;
     ((fio_str_s *)HEAD2OBJ(head))->len = len;
-    memcpy(((fio_str_s *)HEAD2OBJ(head))->str, buffer, len);
+    if (buffer)
+      memcpy(((fio_str_s *)HEAD2OBJ(head))->str, buffer, len);
     ((fio_str_s *)HEAD2OBJ(head))->str[len] = 0;
     return HEAD2OBJ(head);
     break;
@@ -187,7 +188,8 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
     head->ref = 1;
     HEAD2OBJ(head)->type = type;
     ((fio_sym_s *)HEAD2OBJ(head))->len = len;
-    memcpy(((fio_sym_s *)HEAD2OBJ(head))->str, buffer, len);
+    if (buffer)
+      memcpy(((fio_sym_s *)HEAD2OBJ(head))->str, buffer, len);
     ((fio_sym_s *)HEAD2OBJ(head))->str[len] = 0;
     ((fio_sym_s *)HEAD2OBJ(head))->hash = fio_ht_hash(buffer, len);
     return HEAD2OBJ(head);
@@ -605,12 +607,15 @@ FILE *fiobj_file(fiobj_s *obj) {
 /* *****************************************************************************
 Array API
 ***************************************************************************** */
+#define obj2ary(ary) ((fio_ary_s *)(ary))
 
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
-fiobj_s *fiobj_ary_new(void);
+fiobj_s *fiobj_ary_new(void) { return fiobj_alloc(FIOBJ_T_ARRAY, 0, NULL); }
 
 /** Returns the number of elements in the Array. */
-size_t fiobj_ary_count(fiobj_s *ary);
+size_t fiobj_ary_count(fiobj_s *ary) {
+  return (obj2ary(ary)->end - obj2ary(ary)->start);
+}
 
 /**
  * Pushes an object to the end of the Array.
@@ -713,3 +718,38 @@ fiobj_s *fiobj_couplet2sym(fiobj_s *obj);
  * Otherwise returns NULL.
  */
 fiobj_s *fiobj_couplet2obj(fiobj_s *obj);
+
+#ifdef DEBUG
+
+void fiobj_test(void) {
+  fiobj_s *obj;
+  fprintf(stderr, "Starting fiobj basic testing:\n");
+
+  obj = fiobj_null();
+  if (obj->type != FIOBJ_T_NULL)
+    fprintf(stderr, "* FAILED null object test.\n");
+  fiobj_free(obj);
+
+  obj = fiobj_false();
+  if (obj->type != FIOBJ_T_FALSE)
+    fprintf(stderr, "* FAILED false object test.\n");
+  fiobj_free(obj);
+
+  obj = fiobj_true();
+  if (obj->type != FIOBJ_T_TRUE)
+    fprintf(stderr, "* FAILED true object test.\n");
+  fiobj_free(obj);
+
+  obj = fiobj_num_new(42);
+  if (obj->type != FIOBJ_T_NUMBER || fiobj_obj2num(obj) != 42)
+    fprintf(stderr, "* FAILED 42 object test.\n");
+  if (strcmp(fiobj_obj2cstr(obj).data, "42"))
+    fprintf(stderr, "* FAILED 42 fiobj_obj2cstr test.\n");
+  fiobj_free(obj);
+
+  obj = fiobj_str_new("0x7F", 4);
+  if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 127)
+    fprintf(stderr, "* FAILED 0x7F object test.\n");
+  fiobj_free(obj);
+}
+#endif
