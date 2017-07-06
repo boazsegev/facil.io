@@ -13,6 +13,7 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 #define H_FACIL_IO_OBJECTS_H
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 /* *****************************************************************************
@@ -219,6 +220,34 @@ Symbol API
 /** Fetches a Symbol object. Creates one if doesn't exist. Use
  * `fiobj_free`. */
 fiobj_s *fiobj_sym_new(const char *str, size_t len);
+
+/* *****************************************************************************
+IO API
+***************************************************************************** */
+
+/** Wrapps a file descriptor in an IO object. Use `fiobj_free` to close. */
+fiobj_s *fio_io_wrap(intptr_t fd);
+
+/**
+ * Return an IO's fd.
+ *
+ * A type error results in -1.
+ */
+intptr_t fiobj_io_fd(fiobj_s *obj);
+
+/* *****************************************************************************
+File API
+***************************************************************************** */
+
+/** Wrapps a `FILe` pointer in a File object. Use `fiobj_free` to close. */
+fiobj_s *fio_file_wrap(FILE *fd);
+
+/**
+ * Returns a temporary `FILE` pointer.
+ *
+ * A type error results in NULL.
+ */
+FILE *fiobj_file(fiobj_s *obj);
 
 /* *****************************************************************************
 Array API
