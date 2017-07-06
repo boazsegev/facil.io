@@ -103,4 +103,10 @@ These are the features that have been requested so far. Even if any of them are 
 
 The project requires that all the code is licensed under the MIT license. Please refrain from using or offering code that requires a change to the licensing scheme.
 
-I understand GitHub doesn't offer a default CLA (Copyright and Licensing Agreement), so I should clarify: the resulting code uses the MIT license, listing me (and only me) as the author. I will list contributors in the CHANGELOG and special contributions will be listed in the README and/or here.
+I understand GitHub doesn't offer a default CLA (Copyright and Licensing Agreement), so I should clarify:
+
+* the resulting code uses the MIT license, listing me (and only me) as the author.
+
+* I will list contributors in the CHANGELOG and special contributions will be listed in the README and/or here.
+
+This allows me to circumvent any future licensing concerns and prevent contributors from revoking the MIT license attached to their code.
