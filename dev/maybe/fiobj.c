@@ -506,7 +506,82 @@ String API
  *
  * Returns the number of bytes actually written (excluding the NUL terminator).
  */
-size_t fio_ltoa(char *dest, int64_t num, uint8_t base) { return 0; }
+size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
+  if (!num) {
+    *(dest++) = '0';
+    *(dest++) = 0;
+    return 1;
+  }
+
+  size_t len = 0;
+
+  if (base == 2) {
+    uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
+    uint8_t i = 0;    /* counting bits */
+
+    while ((i < 64) && (n & 0x8000000000000000) == 0) {
+      n = n << 1;
+      i++;
+    }
+    /* make sure the Binary representation doesn't appear signed. */
+    if (i) {
+      dest[len++] = '0';
+    }
+    /* write to dest. */
+    while (i < 64) {
+      dest[len++] = ((n & 0x8000000000000000) ? '1' : '0');
+      n = n << 1;
+      i++;
+    }
+    dest[len] = 0;
+    return len;
+
+  } else if (base == 16) {
+    uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
+    uint8_t i = 0;    /* counting bytes */
+    uint8_t tmp = 0;
+    while (i < 8 && (n & 0xFF00000000000000) == 0) {
+      n = n << 8;
+      i++;
+    }
+    /* make sure the Hex representation doesn't appear signed. */
+    if (i && (n & 0x8000000000000000)) {
+      dest[len++] = '0';
+      dest[len++] = '0';
+    }
+    /* write the damn thing */
+    while (i < 8) {
+      tmp = (n & 0xF000000000000000) >> 60;
+      dest[len++] = ((tmp < 10) ? ('0' + tmp) : (('A' - 10) + tmp));
+      tmp = (n & 0x0F00000000000000) >> 56;
+      dest[len++] = ((tmp < 10) ? ('0' + tmp) : (('A' - 10) + tmp));
+      i++;
+      n = n << 8;
+    }
+    dest[len] = 0;
+    return len;
+  }
+
+  /* fallback to base 10 */
+  uint64_t rem = 0;
+  uint64_t factor = 1;
+  if (num < 0) {
+    dest[len++] = '-';
+    num = 0 - num;
+  }
+
+  while (num / factor)
+    factor *= 10;
+
+  while (factor > 1) {
+    factor = factor / 10;
+    rem = (rem * 10);
+    dest[len++] = '0' + ((num / factor) - rem);
+    rem += ((num / factor) - rem);
+  }
+  dest[len] = 0;
+  return len;
+}
 
 /**
  * A helper function that convers between a double to a string.
@@ -737,6 +812,7 @@ fiobj_s *fiobj_couplet2obj(fiobj_s *obj);
 
 void fiobj_test(void) {
   fiobj_s *obj;
+  size_t i;
   fprintf(stderr, "Starting fiobj basic testing:\n");
 
   obj = fiobj_null();
@@ -754,11 +830,20 @@ void fiobj_test(void) {
     fprintf(stderr, "* FAILED true object test.\n");
   fiobj_free(obj);
 
-  obj = fiobj_num_new(42);
-  if (obj->type != FIOBJ_T_NUMBER || fiobj_obj2num(obj) != 42)
-    fprintf(stderr, "* FAILED 42 object test.\n");
-  if (strcmp(fiobj_obj2cstr(obj).data, "42"))
-    fprintf(stderr, "* FAILED 42 fiobj_obj2cstr test.\n");
+  obj = fiobj_num_new(255);
+  if (obj->type != FIOBJ_T_NUMBER || fiobj_obj2num(obj) != 255)
+    fprintf(stderr, "* FAILED 255 object test.\n");
+  if (strcmp(fiobj_obj2cstr(obj).data, "255"))
+    fprintf(stderr, "* FAILED base 10 fiobj_obj2cstr test with %s.\n",
+            fiobj_obj2cstr(obj).data);
+  i = fio_ltoa(num_buffer, fiobj_obj2num(obj), 16);
+  if (strcmp(num_buffer, "00FF"))
+    fprintf(stderr, "* FAILED base 16 fiobj_obj2cstr test with (%lu): %s.\n", i,
+            num_buffer);
+  i = fio_ltoa(num_buffer, fiobj_obj2num(obj), 2);
+  if (strcmp(num_buffer, "011111111"))
+    fprintf(stderr, "* FAILED base 2 fiobj_obj2cstr test with (%lu): %s.\n", i,
+            num_buffer);
   fiobj_free(obj);
 
   obj = fiobj_str_new("0x7F", 4);
