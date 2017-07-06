@@ -1,4 +1,3 @@
-#ifndef H_FACIL_IO_OBJECTS_H
 /*
 Copyright: Boaz segev, 2017
 License: MIT
@@ -6,83 +5,276 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 
-/**
-This facil.io core library provides wrappers around complex and (or) dynamic
-types, abstracting some complexity and making dynamic type related tasks easier.
-*/
-#define H_FACIL_IO_OBJECTS_H
+#include "spnlock.inc"
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "fio_hash_table.h"
+#include "fiobj.h"
+
+#include <string.h>
+#include <unistd.h>
 
 /* *****************************************************************************
-The Object type (`fiobj_s`) and it's variants
+Object types
 ***************************************************************************** */
 
-/* FIO Object types */
-typedef enum {
-  /** A simple flag object indicating a NULL (or nil) object */
-  FIOBJ_T_NULL,
-  /** A simple flag object indicating a TRUE value. */
-  FIOBJ_T_TRUE,
-  /** A simple flag object indicating a FALSE value. */
-  FIOBJ_T_FALSE,
-  /** A signed numerical object containing an `int64_t`. */
-  FIOBJ_T_NUMBER,
-  /** A signed numerical object containing a `long double`. */
-  FIOBJ_T_FLOAT,
-  /** A String object. */
-  FIOBJ_T_STRING,
-  /** A Symbol object. This object contains an immutable String. */
-  FIOBJ_T_SYM,
-  /** An Array object. */
-  FIOBJ_T_ARRAY,
-  /** A Hash Table object. Hash keys MUST be Symbol objects. */
-  FIOBJ_T_HASH,
-  /** A Hash Table key-value pair. This is available when using `fiobj_each`. */
-  FIOBJ_T_HASH_COUPLET,
-  /** An IO object containing an `intptr_t` as a `fd` (File Descriptor). */
-  FIOBJ_T_IO,
-  /** A temporary File object containing a `FILE *`. */
-  FIOBJ_T_FILE,
-} fiobj_type_en;
+/* Number */
+typedef struct {
+  fiobj_type_en type;
+  int64_t i;
+} fio_num_s;
 
-typedef struct fiobj_s { fiobj_type_en type; } fiobj_s;
+/* Float */
+typedef struct {
+  fiobj_type_en type;
+  long double f;
+} fio_float_s;
+
+/* String */
+typedef struct {
+  fiobj_type_en type;
+  uint64_t len;
+  char str[];
+} fio_str_s;
+
+/* Symbol */
+typedef struct {
+  fiobj_type_en type;
+  fio_ht_node_s node;
+  uint64_t len;
+  char str[];
+} fio_sym_s;
+
+/* IO */
+typedef struct {
+  fiobj_type_en type;
+  intptr_t fd;
+} fio_io_s;
+
+/* File */
+typedef struct {
+  fiobj_type_en type;
+  FILE *f;
+} fio_file_s;
+
+/* Array */
+typedef struct {
+  fiobj_type_en type;
+  uint64_t start;
+  uint64_t end;
+  uint64_t capa;
+  fiobj_s **arry;
+} fio_ary_s;
+
+/* Hash */
+typedef struct {
+  fiobj_type_en type;
+  fio_ht_s h;
+} fio_hash_s;
+
+/* Hash node */
+typedef struct {
+  fiobj_type_en type;
+  fiobj_s *name;
+  fiobj_s *obj;
+  fio_ht_node_s node;
+} fio_couplet_s;
 
 /* *****************************************************************************
-Helper macros
+The Object type head and management
 ***************************************************************************** */
 
-/** returns TRUE (1) if the object is NULL */
-#define FIOBJ_ISNULL(o) ((o) == NULL || (o)->type == FIOBJ_T_NULL)
+typedef struct {
+  uint64_t ref;
+  fiobj_s *next;
+  fiobj_s *prev;
+} fiobj_head_s;
 
-/** returns TRUE (1) if the object is either NULL or FALSE  */
-#define FIOBJ_FALSE(o)                                                         \
-  ((o) == NULL || (o)->type == FIOBJ_T_FALSE || (o)->type == FIOBJ_T_NULL)
+#define OBJ2HEAD(o) (((fiobj_head_s *)(o)) - 1)[0]
+#define HEAD2OBJ(o) ((fiobj_s *)(((fiobj_head_s *)(o)) + 1))
 
-/** returns TRUE (1) if the object isn't NULL, FALSE, 0, or an empty String  */
-#define FIOBJ_TRUE(o)                                                          \
-  ((o) && ((o)->type == FIOBJ_T_TRUE ||                                        \
-           ((o)->type == FIOBJ_T_NUMBER && fiobj_obj2num((o)) != 0) ||         \
-           ((o)->type == FIOBJ_T_FLOAT && fiobj_obj2float((o)) != 0) ||        \
-           ((o)->type == FIOBJ_T_STRING && fiobj_obj2cstr((o))[0] != 0) ||     \
-           (o)->type == FIOBJ_T_SYM || (o)->type == FIOBJ_T_ARRAY ||           \
-           (o)->type == FIOBJ_T_HASH || (o)->type == FIOBJ_T_IO ||             \
-           (o)->type == FIOBJ_T_FILE))
+#define LISTINIT(o)                                                            \
+  do {                                                                         \
+    OBJ2HEAD(o).next = o;                                                      \
+    OBJ2HEAD(o).prev = o;                                                      \
+  } while (0);
+
+inline static void objlist_push(fiobj_s *dest, fiobj_s *obj) {
+  if (!obj || !dest)
+    return;
+  OBJ2HEAD(obj).prev = OBJ2HEAD(dest).prev;
+  OBJ2HEAD(obj).next = dest;
+  OBJ2HEAD(dest).prev = obj;
+  OBJ2HEAD(OBJ2HEAD(obj).prev).next = obj;
+}
+inline static fiobj_s *objlist_shift(fiobj_s *from) {
+  if (OBJ2HEAD(from).next == from)
+    return NULL;
+  fiobj_s *ret = OBJ2HEAD(from).next;
+  OBJ2HEAD(OBJ2HEAD(ret).next).prev = OBJ2HEAD(ret).prev;
+  OBJ2HEAD(OBJ2HEAD(ret).prev).next = OBJ2HEAD(ret).next;
+  return ret;
+}
+
+/* *****************************************************************************
+Object Allocation
+***************************************************************************** */
+
+static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
+  fiobj_head_s *head;
+  switch (type) {
+  case FIOBJ_T_NULL:
+  case FIOBJ_T_TRUE:
+  case FIOBJ_T_FALSE: {
+    head = malloc(sizeof(*head) + sizeof(fiobj_s));
+    head->ref = 1;
+    HEAD2OBJ(head)->type = type;
+    return HEAD2OBJ(head);
+    break;
+  }
+  case FIOBJ_T_HASH_COUPLET: {
+    head = malloc(sizeof(*head) + sizeof(fio_couplet_s));
+    head->ref = 1;
+    HEAD2OBJ(head)->type = type;
+    *(fio_couplet_s *)(HEAD2OBJ(head)) = (fio_couplet_s){.name = NULL};
+    return HEAD2OBJ(head);
+    break;
+  }
+  case FIOBJ_T_NUMBER: {
+    head = malloc(sizeof(*head) + sizeof(fio_num_s));
+    head->ref = 1;
+    HEAD2OBJ(head)->type = type;
+    ((fio_num_s *)HEAD2OBJ(head))->i = ((int64_t *)buffer)[0];
+    return HEAD2OBJ(head);
+    break;
+  }
+  case FIOBJ_T_FLOAT: {
+    head = malloc(sizeof(*head) + sizeof(fio_float_s));
+    head->ref = 1;
+    HEAD2OBJ(head)->type = type;
+    ((fio_float_s *)HEAD2OBJ(head))->f = ((long double *)buffer)[0];
+    return HEAD2OBJ(head);
+    break;
+  }
+  case FIOBJ_T_IO: {
+    head = malloc(sizeof(*head) + sizeof(fio_io_s));
+    head->ref = 1;
+    HEAD2OBJ(head)->type = type;
+    ((fio_io_s *)HEAD2OBJ(head))->fd = ((intptr_t *)buffer)[0];
+    return HEAD2OBJ(head);
+    break;
+  }
+  case FIOBJ_T_FILE: {
+    head = malloc(sizeof(*head) + sizeof(fio_file_s));
+    head->ref = 1;
+    HEAD2OBJ(head)->type = type;
+    ((fio_file_s *)HEAD2OBJ(head))->f = buffer;
+    return HEAD2OBJ(head);
+    break;
+  }
+  case FIOBJ_T_STRING: {
+    head = malloc(sizeof(*head) + sizeof(fio_str_s) + len + 1);
+    head->ref = 1;
+    HEAD2OBJ(head)->type = type;
+    ((fio_str_s *)HEAD2OBJ(head))->len = len;
+    memcpy(((fio_str_s *)HEAD2OBJ(head))->str, buffer, len);
+    ((fio_str_s *)HEAD2OBJ(head))->str[len] = 0;
+    return HEAD2OBJ(head);
+    break;
+  }
+  case FIOBJ_T_SYM: {
+    head = malloc(sizeof(*head) + sizeof(fio_sym_s) + len + 1);
+    head->ref = 1;
+    HEAD2OBJ(head)->type = type;
+    ((fio_sym_s *)HEAD2OBJ(head))->len = len;
+    memcpy(((fio_sym_s *)HEAD2OBJ(head))->str, buffer, len);
+    ((fio_sym_s *)HEAD2OBJ(head))->str[len] = 0;
+    return HEAD2OBJ(head);
+    break;
+  }
+  case FIOBJ_T_ARRAY: {
+    head = malloc(sizeof(*head) + sizeof(fio_ary_s) + len + 1);
+    head->ref = 1;
+    *((fio_ary_s *)HEAD2OBJ(head)) =
+        (fio_ary_s){.start = 8,
+                    .end = 8,
+                    .capa = 32,
+                    .arry = malloc(sizeof(fiobj_s *) * 8),
+                    .type = type};
+    return HEAD2OBJ(head);
+    break;
+  }
+  case FIOBJ_T_HASH: {
+    head = malloc(sizeof(*head) + sizeof(fio_hash_s));
+    head->ref = 1;
+    *((fio_hash_s *)HEAD2OBJ(head)) = (fio_hash_s){
+        .h = FIO_HASH_TABLE_STATIC(((fio_hash_s *)HEAD2OBJ(head))->h),
+        .type = type};
+    return HEAD2OBJ(head);
+    break;
+  }
+  }
+  return NULL;
+}
+
+static void fiobj_dealloc(fiobj_s *obj) {
+  if (spn_sub(&OBJ2HEAD(obj).ref, 1))
+    return;
+  switch (obj->type) {
+  case FIOBJ_T_HASH_COUPLET:
+    fiobj_dealloc(((fio_couplet_s *)obj)->name);
+    fiobj_dealloc(((fio_couplet_s *)obj)->obj);
+    fio_ht_remove(&((fio_couplet_s *)obj)->node);
+    goto common;
+  case FIOBJ_T_ARRAY:
+    free(((fio_ary_s *)obj)->arry);
+    goto common;
+  case FIOBJ_T_HASH:
+    fio_ht_free(&((fio_hash_s *)obj)->h);
+    goto common;
+  case FIOBJ_T_IO:
+    close(((fio_io_s *)obj)->fd);
+    goto common;
+  case FIOBJ_T_FILE:
+    fclose(((fio_file_s *)obj)->f);
+    goto common;
+  case FIOBJ_T_SYM:
+    fio_ht_remove(&((fio_sym_s *)obj)->node);
+    goto common;
+  /* fallthrough */
+  common:
+  case FIOBJ_T_NULL:
+  case FIOBJ_T_TRUE:
+  case FIOBJ_T_FALSE:
+  case FIOBJ_T_NUMBER:
+  case FIOBJ_T_FLOAT:
+  case FIOBJ_T_STRING:
+    free(&OBJ2HEAD(obj));
+  }
+}
 
 /* *****************************************************************************
 Generic Object API
 ***************************************************************************** */
 
-/**
- * Increases an object's (and any nested object's) reference count.
- *
- * Future implementations might provide a (deep) copy for Arrays and Hashes...
- * We don't need this feature just yet, so I'm not working on it.
- */
-fiobj_s *fiobj_dup(fiobj_s *);
+/* simply increrase the reference count for each object. */
+static int dup_task_callback(fiobj_s *obj, void *arg) {
+  spn_add(&OBJ2HEAD(obj).ref, 1);
+  fiobj_dealloc(obj);
+  return 0;
+  (void)arg;
+}
 
+/** Increases an object's reference count. */
+fiobj_s *fiobj_dup(fiobj_s *obj) {
+  fiobj_each(obj, dup_task_callback, NULL);
+  return obj;
+}
+
+static int dealloc_task_callback(fiobj_s *obj, void *arg) {
+  fiobj_dealloc(obj);
+  return 0;
+  (void)arg;
+}
 /**
  * Decreases an object's reference count, releasing memory and
  * resources.
@@ -91,7 +283,7 @@ fiobj_s *fiobj_dup(fiobj_s *);
  * a Hashe object is passed along, it's children (nested objects) are
  * also freed.
  */
-void fiobj_free(fiobj_s *);
+void fiobj_free(fiobj_s *obj) { fiobj_each(obj, dealloc_task_callback, NULL); }
 
 /**
  * Performes a task for each fio object.
@@ -111,20 +303,74 @@ void fiobj_free(fiobj_s *);
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  */
-void fiobj_each(fiobj_s *, int (*task)(fiobj_s *obj, void *arg), void *arg);
+void fiobj_each(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg), void *arg) {
+  if (!task || !obj)
+    return;
+  fiobj_head_s head[2]; /* memory allocation */
+
+  fiobj_s *list = HEAD2OBJ(&head);
+  fiobj_s *processed = HEAD2OBJ((head + 1));
+  LISTINIT(list);
+  LISTINIT(processed);
+
+  fiobj_s *tmp = obj;
+  while (tmp) {
+    switch (tmp->type) {
+    case FIOBJ_T_ARRAY: {
+      /* test against cyclic nesting */
+      fiobj_s *pos = OBJ2HEAD(processed).next;
+      while (pos != processed) {
+        if (pos == tmp)
+          goto skip;
+        pos = OBJ2HEAD(pos).next;
+      }
+      fio_ary_s *a = (fio_ary_s *)tmp;
+
+      for (size_t i = a->start; i < a->end; i++) {
+        if (a->arry[i])
+          objlist_push(list, a->arry[i]);
+      }
+      objlist_push(processed, tmp);
+      break;
+    }
+    case FIOBJ_T_HASH: {
+      /* test against cyclic nesting */
+      fiobj_s *pos = OBJ2HEAD(processed).next;
+      while (pos != processed) {
+        if (pos == tmp)
+          goto skip;
+        pos = OBJ2HEAD(pos).next;
+      }
+      fio_hash_s *h = (fio_hash_s *)tmp;
+      fio_couplet_s *i;
+      fio_ht_for_each(fio_couplet_s, node, i, h->h) {
+        if (i)
+          objlist_push(list, (fiobj_s *)i);
+      }
+      objlist_push(processed, tmp);
+      break;
+    }
+    default:
+      break;
+    }
+    task(tmp, arg);
+  skip:
+    tmp = objlist_shift(list);
+  }
+}
 
 /* *****************************************************************************
 NULL, TRUE, FALSE API
 ***************************************************************************** */
 
-/** Retruns a NULL object. Use `fiobj_free` to free memory.*/
-fiobj_s *fiobj_null(void);
+/** Retruns a NULL object. */
+fiobj_s *fiobj_null(void) { return fiobj_alloc(FIOBJ_T_NULL, 0, NULL); }
 
-/** Retruns a TRUE object. Use `fiobj_free` to free memory. */
-fiobj_s *fiobj_true(void);
+/** Retruns a TRUE object. */
+fiobj_s *fiobj_true(void) { return fiobj_alloc(FIOBJ_T_TRUE, 0, NULL); }
 
-/** Retruns a FALSE object. Use `fiobj_free` to free memory. */
-fiobj_s *fiobj_false(void);
+/** Retruns a FALSE object. */
+fiobj_s *fiobj_false(void) { return fiobj_alloc(FIOBJ_T_FALSE, 0, NULL); }
 
 /* *****************************************************************************
 Number and Float API
@@ -171,21 +417,6 @@ long double fiobj_obj2float(fiobj_s *obj);
 /* *****************************************************************************
 String API
 ***************************************************************************** */
-
-/** A string information type, contains data about the length and the pointer */
-typedef struct {
-  union {
-    uint64_t len;
-    uint64_t length;
-  };
-  union {
-    const void *buffer;
-    const uint8_t *bytes;
-    const char *data;
-    const char *value;
-    const char *name;
-  };
-} fio_string_s;
 
 /**
  * A helper function that convers between a signed int64_t to a String.
@@ -363,5 +594,3 @@ fiobj_s *fiobj_hash_sym(fiobj_s *obj);
  * Otherwise returns NULL.
  */
 fiobj_s *fiobj_hash_obj(fiobj_s *obj);
-
-#endif
