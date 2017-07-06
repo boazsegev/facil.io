@@ -269,7 +269,7 @@ File API
 ***************************************************************************** */
 
 /** Wrapps a `FILe` pointer in a File object. Use `fiobj_free` to close. */
-fiobj_s *fio_file_wrap(FILE *fd);
+fiobj_s *fio_file_wrap(FILE *file);
 
 /**
  * Returns a temporary `FILE` pointer.
@@ -380,7 +380,7 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym);
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_hash_sym(fiobj_s *obj);
+fiobj_s *fiobj_couplet2sym(fiobj_s *obj);
 
 /**
  * If object is a Hash couplet (occurs in `fiobj_each`), returns the object
@@ -388,6 +388,6 @@ fiobj_s *fiobj_hash_sym(fiobj_s *obj);
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_hash_obj(fiobj_s *obj);
+fiobj_s *fiobj_couplet2obj(fiobj_s *obj);
 
 #endif

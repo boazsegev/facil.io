@@ -555,11 +555,12 @@ Symbol API
 /** Creates a Symbol object. Use `fiobj_free`. */
 fiobj_s *fiobj_sym_new(const char *str, size_t len) {
   return fiobj_alloc(FIOBJ_T_SYM, len, (void *)str);
-  ;
 }
 
 /** Returns 1 if both Symbols are equal and 0 if not. */
 int fiobj_sym_iseql(fiobj_s *sym1, fiobj_s *sym2) {
+  if (sym1->type != FIOBJ_T_SYM || sym2->type != FIOBJ_T_SYM)
+    return 0;
   return (((fio_sym_s *)sym1)->hash == ((fio_sym_s *)sym2)->hash);
 }
 
@@ -568,28 +569,38 @@ IO API
 ***************************************************************************** */
 
 /** Wrapps a file descriptor in an IO object. Use `fiobj_free` to close. */
-fiobj_s *fio_io_wrap(intptr_t fd);
+fiobj_s *fio_io_wrap(intptr_t fd) { return fiobj_alloc(FIOBJ_T_IO, 0, &fd); }
 
 /**
  * Return an IO's fd.
  *
  * A type error results in -1.
  */
-intptr_t fiobj_io_fd(fiobj_s *obj);
+intptr_t fiobj_io_fd(fiobj_s *obj) {
+  if (obj->type != FIOBJ_T_IO)
+    return -1;
+  return ((fio_io_s *)obj)->fd;
+}
 
 /* *****************************************************************************
 File API
 ***************************************************************************** */
 
 /** Wrapps a `FILe` pointer in a File object. Use `fiobj_free` to close. */
-fiobj_s *fio_file_wrap(FILE *fd);
+fiobj_s *fio_file_wrap(FILE *file) {
+  return fiobj_alloc(FIOBJ_T_FILE, 0, (void *)file);
+}
 
 /**
  * Returns a temporary `FILE` pointer.
  *
  * A type error results in NULL.
  */
-FILE *fiobj_file(fiobj_s *obj);
+FILE *fiobj_file(fiobj_s *obj) {
+  if (obj->type != FIOBJ_T_FILE)
+    return NULL;
+  return ((fio_file_s *)obj)->f;
+}
 
 /* *****************************************************************************
 Array API
@@ -693,7 +704,7 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym);
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_hash_sym(fiobj_s *obj);
+fiobj_s *fiobj_couplet2sym(fiobj_s *obj);
 
 /**
  * If object is a Hash couplet (occurs in `fiobj_each`), returns the object
@@ -701,4 +712,4 @@ fiobj_s *fiobj_hash_sym(fiobj_s *obj);
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_hash_obj(fiobj_s *obj);
+fiobj_s *fiobj_couplet2obj(fiobj_s *obj);
