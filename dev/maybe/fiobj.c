@@ -27,7 +27,7 @@ typedef struct {
 /* Float */
 typedef struct {
   fiobj_type_en type;
-  long double f;
+  double f;
 } fio_float_s;
 
 /* String */
@@ -152,7 +152,7 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
     head = malloc(sizeof(*head) + sizeof(fio_float_s));
     head->ref = 1;
     HEAD2OBJ(head)->type = type;
-    ((fio_float_s *)HEAD2OBJ(head))->f = ((long double *)buffer)[0];
+    ((fio_float_s *)HEAD2OBJ(head))->f = ((double *)buffer)[0];
     return HEAD2OBJ(head);
     break;
   }
@@ -436,7 +436,7 @@ finish:
 }
 
 /** A helper function that convers between String data to a signed double. */
-long double fio_atof(const char *str) { return strtold(str, NULL); }
+double fio_atof(const char *str) { return strtold(str, NULL); }
 
 /** Creates a Number object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_num_new(int64_t num) {
@@ -444,7 +444,7 @@ fiobj_s *fiobj_num_new(int64_t num) {
 }
 
 /** Creates a Float object. Remember to use `fiobj_free`.  */
-fiobj_s *fiobj_float_new(long double num) {
+fiobj_s *fiobj_float_new(double num) {
   return fiobj_alloc(FIOBJ_T_FLOAT, 0, &num);
 }
 
@@ -476,9 +476,9 @@ int64_t fiobj_obj2num(fiobj_s *obj) {
  *
  * A type error results in 0.
  */
-long double fiobj_obj2float(fiobj_s *obj) {
+double fiobj_obj2float(fiobj_s *obj) {
   if (obj->type == FIOBJ_T_NUMBER)
-    return (long double)((fio_num_s *)obj)->i;
+    return (double)((fio_num_s *)obj)->i;
   if (obj->type == FIOBJ_T_FLOAT)
     return ((fio_float_s *)obj)->f;
   if (obj->type == FIOBJ_T_STRING)

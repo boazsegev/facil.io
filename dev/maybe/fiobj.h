@@ -30,7 +30,7 @@ typedef enum {
   FIOBJ_T_FALSE,
   /** A signed numerical object containing an `int64_t`. */
   FIOBJ_T_NUMBER,
-  /** A signed numerical object containing a `long double`. */
+  /** A signed numerical object containing a `double`. */
   FIOBJ_T_FLOAT,
   /** A String object. */
   FIOBJ_T_STRING,
@@ -141,13 +141,13 @@ Number and Float API
 int64_t fio_atol(const char *str);
 
 /** A helper function that convers between String data to a signed double. */
-long double fio_atof(const char *str);
+double fio_atof(const char *str);
 
 /** Creates a Number object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_num_new(int64_t num);
 
 /** Creates a Float object. Remember to use `fiobj_free`.  */
-fiobj_s *fiobj_float_new(long double num);
+fiobj_s *fiobj_float_new(double num);
 
 /**
  * Returns a Number's value.
@@ -167,7 +167,7 @@ int64_t fiobj_obj2num(fiobj_s *obj);
  *
  * A type error results in 0.
  */
-long double fiobj_obj2float(fiobj_s *obj);
+double fiobj_obj2float(fiobj_s *obj);
 
 /* *****************************************************************************
 String API
@@ -203,7 +203,7 @@ typedef struct {
 size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
 
 /**
- * A helper function that convers between a long double to a string.
+ * A helper function that convers between a double to a string.
  *
  * No overflow guard is provided, make sure there's at least 130 bytes available
  * (for base 2).
@@ -214,7 +214,7 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
  *
  * Returns the number of bytes actually written (excluding the NUL terminator).
  */
-size_t fio_ftoa(char *dest, long double num, uint8_t base);
+size_t fio_ftoa(char *dest, double num, uint8_t base);
 
 /** Creates a String object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_new(const char *str, size_t len);
