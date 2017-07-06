@@ -22,7 +22,7 @@ struct http_request_s {
   const http_settings_s *settings;
   /** the HTTP connection identifier. */
   intptr_t fd;
-  /** this is an opaque pointer, intended for request pooling / chaining */
+  /** this is an opaque pointer, doubles for request pooling / chaining */
   void *udata;
   /** points to the HTTP method name. */
   const char *method;

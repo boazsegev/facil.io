@@ -193,6 +193,8 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *pr) {
       goto bad_request;
     http_settings_s *settings = pr->settings;
     request->request.settings = settings;
+    // make sure udata to NULL, making it available for the user
+    request->request.udata = NULL;
     // call request callback
     if (pr && settings &&
         (request->request.upgrade || settings->public_folder == NULL ||
