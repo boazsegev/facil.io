@@ -479,10 +479,10 @@ int64_t fiobj_obj2num(fiobj_s *obj) {
  * A type error results in 0.
  */
 double fiobj_obj2float(fiobj_s *obj) {
-  if (obj->type == FIOBJ_T_NUMBER)
-    return (double)((fio_num_s *)obj)->i;
   if (obj->type == FIOBJ_T_FLOAT)
     return ((fio_float_s *)obj)->f;
+  if (obj->type == FIOBJ_T_NUMBER)
+    return (double)((fio_num_s *)obj)->i;
   if (obj->type == FIOBJ_T_STRING)
     return fio_atof(((fio_str_s *)obj)->str);
   if (obj->type == FIOBJ_T_SYM)
@@ -595,7 +595,35 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
  *
  * Returns the number of bytes actually written (excluding the NUL terminator).
  */
-size_t fio_ftoa(char *dest, double num, uint8_t base) { return 0; }
+size_t fio_ftoa(char *dest, double num, uint8_t base) {
+  if (base == 2 || base == 16) {
+    /* handle the binary / Hex representation the same as if it were an int64_t
+     */
+    int64_t *i = (void *)&num;
+    return fio_ltoa(dest, *i, base);
+  }
+
+  int64_t i = (int64_t)trunc(num); /* grab the int data and handle first */
+  size_t len = fio_ltoa(dest, i, 10);
+  num = num - i;
+  num = copysign(num, 1.0);
+  if (num) {
+    /* write decimal data */
+    dest[len++] = '.';
+    uint8_t limit = 7; /* post decimal point limit */
+    while (limit-- && num) {
+      num = num * 10;
+      uint8_t tmp = (int64_t)trunc(num);
+      dest[len++] = tmp + '0';
+      num -= tmp;
+    }
+    /* remove excess zeros */
+    while (dest[len - 1] == '0')
+      len--;
+  }
+  dest[len] = 0;
+  return len;
+}
 
 /** Creates a String object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_new(const char *str, size_t len) {
@@ -633,7 +661,7 @@ fio_string_s fiobj_obj2cstr(fiobj_s *obj) {
   } else if (obj->type == FIOBJ_T_FLOAT) {
     return (fio_string_s){
         .buffer = num_buffer,
-        .len = fio_ftoa(num_buffer, ((fio_num_s *)obj)->i, 10),
+        .len = fio_ftoa(num_buffer, ((fio_float_s *)obj)->f, 10),
     };
   }
   return (fio_string_s){.buffer = NULL, .len = 0};
@@ -832,7 +860,8 @@ void fiobj_test(void) {
 
   obj = fiobj_num_new(255);
   if (obj->type != FIOBJ_T_NUMBER || fiobj_obj2num(obj) != 255)
-    fprintf(stderr, "* FAILED 255 object test.\n");
+    fprintf(stderr, "* FAILED 255 object test i == %llu with type %d.\n",
+            fiobj_obj2num(obj), obj->type);
   if (strcmp(fiobj_obj2cstr(obj).data, "255"))
     fprintf(stderr, "* FAILED base 10 fiobj_obj2cstr test with %s.\n",
             fiobj_obj2cstr(obj).data);
@@ -846,6 +875,15 @@ void fiobj_test(void) {
             num_buffer);
   fiobj_free(obj);
 
+  obj = fiobj_float_new(77.777);
+  if (obj->type != FIOBJ_T_FLOAT || fiobj_obj2num(obj) != 77 ||
+      fiobj_obj2float(obj) != 77.777)
+    fprintf(stderr, "* FAILED 77.777 object test.\n");
+  if (strcmp(fiobj_obj2cstr(obj).data, "77.777"))
+    fprintf(stderr, "* FAILED float2str test with %s.\n",
+            fiobj_obj2cstr(obj).data);
+  fiobj_free(obj);
+
   obj = fiobj_str_new("0x7F", 4);
   if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 127)
     fprintf(stderr, "* FAILED 0x7F object test.\n");
@@ -856,9 +894,12 @@ void fiobj_test(void) {
     fprintf(stderr, "* FAILED 0b01111111 object test.\n");
   fiobj_free(obj);
 
-  obj = fiobj_str_new("232", 3);
+  obj = fiobj_str_new("232.79", 6);
   if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 232)
     fprintf(stderr, "* FAILED 232 object test. %llu\n", fiobj_obj2num(obj));
+  if (fiobj_obj2float(obj) != 232.79)
+    fprintf(stderr, "* FAILED fiobj_obj2float test with %f.\n",
+            fiobj_obj2float(obj));
   fiobj_free(obj);
 }
 #endif
