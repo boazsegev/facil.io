@@ -133,13 +133,14 @@ Number and Float API
 /**
  * A helper function that converts between String data to a signed int64_t.
  *
- * Numbers are assumed to be in base 10. `0x##` (or `x##`) and `0b##` (or `b##`)
- * are recognized as base 16 and base 2 (binary MSB first) respectively.
+ * Numbers are assumed to be in base 10.
+ *
+ * The `0x##` (or `x##`) and `0b##` (or `b##`) are recognized as base 16 and
+ * base 2 (binary MSB first) respectively.
  */
 int64_t fio_atol(const char *str);
 
-/** A helper function that convers between String data to a signed double.
- */
+/** A helper function that convers between String data to a signed double. */
 long double fio_atof(const char *str);
 
 /** Creates a Number object. Remember to use `fiobj_free`. */
@@ -188,15 +189,32 @@ typedef struct {
 } fio_string_s;
 
 /**
- * A helper function that convers between a signed int64_t to a String.
+ * A helper function that convers between a signed int64_t to a string.
  *
- * No overflow guard is provided, make sure there's at least 68 bytes available
+ * No overflow guard is provided, make sure there's at least 66 bytes available
  * (for base 2).
  *
- * Supports base 2 (0b###), base 10 (###) and base 16 (0x###). An unsupported
- * base will silently default to base 10.
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL terminator).
  */
-void fio_ltoa(char *dest, int64_t num, uint8_t base);
+size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
+
+/**
+ * A helper function that convers between a long double to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 130 bytes available
+ * (for base 2).
+ *
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL terminator).
+ */
+size_t fio_ftoa(char *dest, long double num, uint8_t base);
 
 /** Creates a String object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_new(const char *str, size_t len);
@@ -220,9 +238,17 @@ fio_string_s fiobj_obj2cstr(fiobj_s *obj);
 Symbol API
 ***************************************************************************** */
 
-/** Fetches a Symbol object. Creates one if doesn't exist. Use
- * `fiobj_free`. */
+/**
+ * Creates a Symbol object. Always use `fiobj_free`.
+ *
+ * It is better to keep the symbol object than to create a new one each time.
+ * This approach prevents the symbol from being deallocated and reallocated as
+ * well as minimizes hash value computation.
+ */
 fiobj_s *fiobj_sym_new(const char *str, size_t len);
+
+/** Returns 1 if both Symbols are equal and 0 if not. */
+int fiobj_sym_iseql(fiobj_s *sym1, fiobj_s *sym2);
 
 /* *****************************************************************************
 IO API

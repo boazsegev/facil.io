@@ -10,6 +10,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fio_hash_table.h"
 #include "fiobj.h"
 
+#include <math.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -39,7 +40,7 @@ typedef struct {
 /* Symbol */
 typedef struct {
   fiobj_type_en type;
-  fio_ht_node_s node;
+  uint64_t hash;
   uint64_t len;
   char str[];
 } fio_sym_s;
@@ -188,6 +189,7 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
     ((fio_sym_s *)HEAD2OBJ(head))->len = len;
     memcpy(((fio_sym_s *)HEAD2OBJ(head))->str, buffer, len);
     ((fio_sym_s *)HEAD2OBJ(head))->str[len] = 0;
+    ((fio_sym_s *)HEAD2OBJ(head))->hash = fio_ht_hash(buffer, len);
     return HEAD2OBJ(head);
     break;
   }
@@ -237,9 +239,6 @@ static void fiobj_dealloc(fiobj_s *obj) {
   case FIOBJ_T_FILE:
     fclose(((fio_file_s *)obj)->f);
     goto common;
-  case FIOBJ_T_SYM:
-    fio_ht_remove(&((fio_sym_s *)obj)->node);
-    goto common;
   /* fallthrough */
   common:
   case FIOBJ_T_NULL:
@@ -248,6 +247,7 @@ static void fiobj_dealloc(fiobj_s *obj) {
   case FIOBJ_T_NUMBER:
   case FIOBJ_T_FLOAT:
   case FIOBJ_T_STRING:
+  case FIOBJ_T_SYM:
     free(&OBJ2HEAD(obj));
   }
 }
@@ -382,17 +382,71 @@ Number and Float API
  * Numbers are assumed to be in base 10. `0x##` (or `x##`) and `0b##` (or `b##`)
  * are recognized as base 16 and base 2 (binary MSB first) respectively.
  */
-int64_t fio_atol(const char *str);
+int64_t fio_atol(const char *str) {
+  uint64_t result = 0;
+  uint8_t invert = 0;
+  while (str[0] == '0')
+    str++;
+  while (str[0] == '-') {
+    invert ^= 1;
+    str++;
+  }
+  while (str[0] == '0')
+    str++;
+  if (str[0] == 'b' || str[0] == 'B') {
+    /* base 2 */
+    str++;
+    while (str[0] == '0' || str[0] == '1') {
+      result = (result << 1) | (str[0] == '1');
+      str++;
+    }
+  } else if (str[0] == 'x' || str[0] == 'X') {
+    /* base 16 */
+    uint8_t tmp;
+    str++;
+    while (1) {
+      if (str[0] >= '0' && str[0] <= '9')
+        tmp = str[0] - '0';
+      else if (str[0] >= 'A' && str[0] <= 'F')
+        tmp = str[0] - 'A';
+      else if (str[0] >= 'a' && str[0] <= 'f')
+        tmp = str[0] - 'a';
+      else
+        goto finish;
+      result = (result << 4) | tmp;
+      str++;
+    }
+  } else {
+    /* base 10 */
+    const char *end = str;
+    while (end[0] >= '0' && end[0] <= '9' && (uintptr_t)(end - str) < 22)
+      end++;
+    if ((uintptr_t)(end - str) > 21) /* too large for a number */
+      return 0;
+    end--;
+    while (str < end) {
+      result = (result * 10) + (str[0] - '0');
+      str++;
+    }
+  }
+finish:
+  if (invert)
+    result = 0 - result;
+  return (int64_t)result;
+}
 
-/** A helper function that convers between String data to a signed double.
- */
-long double fio_atof(const char *str);
+/** A helper function that convers between String data to a signed double. */
+long double fio_atof(const char *str) { return strtold(str, NULL); }
 
 /** Creates a Number object. Remember to use `fiobj_free`. */
-fiobj_s *fiobj_num_new(int64_t num);
+fiobj_s *fiobj_num_new(int64_t num) {
+  return fiobj_alloc(FIOBJ_T_NUMBER, 0, &num);
+}
 
 /** Creates a Float object. Remember to use `fiobj_free`.  */
-fiobj_s *fiobj_float_new(long double num);
+fiobj_s *fiobj_float_new(long double num) {
+  return fiobj_alloc(FIOBJ_T_FLOAT, 0, &num);
+}
 
 /**
  * Returns a Number's value.
@@ -402,7 +456,17 @@ fiobj_s *fiobj_float_new(long double num);
  *
  * A type error results in 0.
  */
-int64_t fiobj_obj2num(fiobj_s *obj);
+int64_t fiobj_obj2num(fiobj_s *obj) {
+  if (obj->type == FIOBJ_T_NUMBER)
+    return ((fio_num_s *)obj)->i;
+  if (obj->type == FIOBJ_T_FLOAT)
+    return (int64_t)floorl(((fio_float_s *)obj)->f);
+  if (obj->type == FIOBJ_T_STRING)
+    return fio_atol(((fio_str_s *)obj)->str);
+  if (obj->type == FIOBJ_T_SYM)
+    return fio_atol(((fio_sym_s *)obj)->str);
+  return 0;
+}
 
 /**
  * Returns a Float's value.
@@ -412,7 +476,17 @@ int64_t fiobj_obj2num(fiobj_s *obj);
  *
  * A type error results in 0.
  */
-long double fiobj_obj2float(fiobj_s *obj);
+long double fiobj_obj2float(fiobj_s *obj) {
+  if (obj->type == FIOBJ_T_NUMBER)
+    return (long double)((fio_num_s *)obj)->i;
+  if (obj->type == FIOBJ_T_FLOAT)
+    return ((fio_float_s *)obj)->f;
+  if (obj->type == FIOBJ_T_STRING)
+    return fio_atof(((fio_str_s *)obj)->str);
+  if (obj->type == FIOBJ_T_SYM)
+    return fio_atof(((fio_sym_s *)obj)->str);
+  return 0;
+}
 
 /* *****************************************************************************
 String API
@@ -424,13 +498,18 @@ String API
  * No overflow guard is provided, make sure there's at least 68 bytes available
  * (for base 2).
  *
- * Supports base 2 (0b###), base 10 (###) and base 16 (0x###). An unsupported
- * base will silently default to base 10.
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL terminator).
  */
-void fio_ltoa(char *dest, int64_t num, uint8_t base);
+size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
 
 /** Creates a String object. Remember to use `fiobj_free`. */
-fiobj_s *fiobj_str_new(const char *str, size_t len);
+fiobj_s *fiobj_str_new(const char *str, size_t len) {
+  return fiobj_alloc(FIOBJ_T_STRING, len, (void *)str);
+}
 
 /**
  * Returns a C String (NUL terminated) using the `fio_string_s` data type.
@@ -445,15 +524,44 @@ fiobj_s *fiobj_str_new(const char *str, size_t len);
  *
  * A type error results in NULL (i.e. object isn't a String).
  */
-fio_string_s fiobj_obj2cstr(fiobj_s *obj);
+static __thread char num_buffer[128];
+fio_string_s fiobj_obj2cstr(fiobj_s *obj) {
+  if (obj->type == FIOBJ_T_STRING) {
+    return (fio_string_s){
+        .buffer = ((fio_str_s *)obj)->str, .len = ((fio_str_s *)obj)->len,
+    };
+  } else if (obj->type == FIOBJ_T_SYM) {
+    return (fio_string_s){
+        .buffer = ((fio_sym_s *)obj)->str, .len = ((fio_sym_s *)obj)->len,
+    };
+  } else if (obj->type == FIOBJ_T_NUMBER) {
+    return (fio_string_s){
+        .buffer = num_buffer,
+        .len = fio_ltoa(num_buffer, ((fio_num_s *)obj)->i, 10),
+    };
+  } else if (obj->type == FIOBJ_T_FLOAT) {
+    return (fio_string_s){
+        .buffer = num_buffer,
+        .len = fio_ftoa(num_buffer, ((fio_num_s *)obj)->i, 10),
+    };
+  }
+  return (fio_string_s){.buffer = NULL, .len = 0};
+}
 
 /* *****************************************************************************
 Symbol API
 ***************************************************************************** */
 
-/** Fetches a Symbol object. Creates one if doesn't exist. Use
- * `fiobj_free`. */
-fiobj_s *fiobj_sym_new(const char *str, size_t len);
+/** Creates a Symbol object. Use `fiobj_free`. */
+fiobj_s *fiobj_sym_new(const char *str, size_t len) {
+  return fiobj_alloc(FIOBJ_T_SYM, len, (void *)str);
+  ;
+}
+
+/** Returns 1 if both Symbols are equal and 0 if not. */
+int fiobj_sym_iseql(fiobj_s *sym1, fiobj_s *sym2) {
+  return (((fio_sym_s *)sym1)->hash == ((fio_sym_s *)sym2)->hash);
+}
 
 /* *****************************************************************************
 IO API
