@@ -11,6 +11,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fiobj.h"
 
 #include <math.h>
+#include <signal.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -197,7 +198,16 @@ Object Deallocation
 ***************************************************************************** */
 
 static void fiobj_dealloc(fiobj_s *obj) {
-  if (obj == NULL || spn_sub(&OBJ2HEAD(obj).ref, 1))
+  if (obj == NULL)
+    return;
+  if (OBJ2HEAD(obj).ref == 0) {
+    fprintf(stderr,
+            "ERROR: attempting to free an object that isn't a fiobj or already "
+            "freed (%p)\n",
+            (void *)obj);
+    kill(0, SIGABRT);
+  }
+  if (spn_sub(&OBJ2HEAD(obj).ref, 1))
     return;
   switch (obj->type) {
   case FIOBJ_T_HASH_COUPLET:
@@ -1171,7 +1181,7 @@ void fiobj_test(void) {
             "a1, pos %llu and a2, pos %llu\n",
             obj2ary(a1)->end, obj2ary(a2)->end);
     fiobj_ary_push(a1, a2); /* the intentionally offending code */
-    fiobj_ary_push(a2, a1);
+    // fiobj_ary_push(a2, a1);
 
     obj = fiobj_dup(fiobj_ary_entry(a2, -3));
     if (!obj || obj->type != FIOBJ_T_NUMBER)
