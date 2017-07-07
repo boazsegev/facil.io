@@ -9,6 +9,11 @@ Feel free to copy, use and enjoy according to the license provided.
 /**
 This facil.io core library provides wrappers around complex and (or) dynamic
 types, abstracting some complexity and making dynamic type related tasks easier.
+
+The library attempts to provide rudementry protection against cyclic references
+(i.e., nesting an Array within itself)... however, something's wrong with the
+protection for now and the code might overflowing somewhere when this happens...
+so don't do it.
 */
 #define H_FACIL_IO_OBJECTS_H
 
@@ -96,26 +101,29 @@ fiobj_s *fiobj_dup(fiobj_s *);
 void fiobj_free(fiobj_s *);
 
 /**
- * Performes a task for each fio object.
+ * Deep itteration using a callback for each fio object, including the parent.
+ *
+ * Accepts any `fiobj_s *` type.
  *
  * Collections (Arrays, Hashes) are deeply probed while being marginally
- * protected from cyclic references. Simpler objects are simply passed along.
+ * protected from cyclic references.
  *
- * The callback task function should accept an object and an opaque user pointer
- * that is simply passed along.
+ * The callback task function must accept an object and an opaque user pointer.
  *
  * When a cyclic reference is detected, NULL is passed along instead of the
  * offending object.
- * The callback's `name` parameter is only set for
- * Hash pairs, indicating the source of the object is a Hash. Arrays and other
- * objects will pass along a NULL pointer for the `name` argument.
  *
- * Notice that when passing collections to the function, both the collection
- * itself and it's nested objects will be passed to the callback task function.
+ * Hash objects will offer a `FIOBJ_T_HASH_COUPLET` object, containing
+ * references for both the key (Symbol) and the object (any object).
+ *
+ * Notice that when passing collections to the function, the collection itself
+ * is sent to the callback followed by it's children (if any). This is true also
+ * for nested collections (a nested Hash will be sent first, followed by the
+ * nested Hash's children and then followed by the rest of it's siblings.
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  */
-void fiobj_each(fiobj_s *, int (*task)(fiobj_s *obj, void *arg), void *arg);
+void fiobj_each2(fiobj_s *, int (*task)(fiobj_s *obj, void *arg), void *arg);
 
 /* *****************************************************************************
 NULL, TRUE, FALSE API
@@ -388,7 +396,7 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym);
 fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym);
 
 /**
- * If object is a Hash couplet (occurs in `fiobj_each`), returns the key
+ * If object is a Hash couplet (occurs in `fiobj_each2`), returns the key
  * (Symbol) from the key-value pair.
  *
  * Otherwise returns NULL.
@@ -396,7 +404,7 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym);
 fiobj_s *fiobj_couplet2key(fiobj_s *obj);
 
 /**
- * If object is a Hash couplet (occurs in `fiobj_each`), returns the object
+ * If object is a Hash couplet (occurs in `fiobj_each2`), returns the object
  * (the value) from the key-value pair.
  *
  * Otherwise returns NULL.

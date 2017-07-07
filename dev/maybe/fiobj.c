@@ -168,7 +168,7 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
     break;
   }
   case FIOBJ_T_ARRAY: {
-    head = malloc(sizeof(*head) + sizeof(fio_ary_s) + len + 1);
+    head = malloc(sizeof(*head) + sizeof(fio_ary_s));
     head->ref = 1;
     *((fio_ary_s *)HEAD2OBJ(head)) =
         (fio_ary_s){.start = 8,
@@ -191,6 +191,10 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
   }
   return NULL;
 }
+
+/* *****************************************************************************
+Object Deallocation
+***************************************************************************** */
 
 static void fiobj_dealloc(fiobj_s *obj) {
   if (obj == NULL || spn_sub(&OBJ2HEAD(obj).ref, 1))
@@ -241,7 +245,7 @@ static int dup_task_callback(fiobj_s *obj, void *arg) {
 
 /** Increases an object's reference count. */
 fiobj_s *fiobj_dup(fiobj_s *obj) {
-  fiobj_each(obj, dup_task_callback, NULL);
+  fiobj_each2(obj, dup_task_callback, NULL);
   return obj;
 }
 
@@ -260,39 +264,23 @@ static int dealloc_task_callback(fiobj_s *obj, void *arg) {
  */
 void fiobj_free(fiobj_s *obj) {
   if (obj)
-    fiobj_each(obj, dealloc_task_callback, NULL);
+    fiobj_each2(obj, dealloc_task_callback, NULL);
 }
 
 /**
- * Performes a task for each fio object.
- *
- * Collections (Arrays, Hashes) are deeply probed while being protected from
- * cyclic references. Simpler objects are simply passed along.
- *
- * The callback task function should accept the object, it's name and an opaque
- * user pointer that is simply passed along.
- *
- * The callback's `name` parameter is only set for Hash pairs, indicating the
- * source of the object is a Hash. Arrays and other objects will pass along a
- * NULL pointer for the `name` argument.
- *
- * Notice that when passing collections to the function, both the collection
- * itself and it's nested objects will be passed to the callback task function.
- *
+ * Deep itteration using a callback for each fio object, including the parent.
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  */
-void fiobj_each(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg), void *arg) {
+void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
+                 void *arg) {
   fiobj_s *list;
   fiobj_s *processed;
-  fiobj_s *tmp;
+
   if (!task)
     return;
-  if (!obj) {
-    task(NULL, arg);
-    return;
-  }
-  if (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH)
+  if (obj && (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH))
     goto nested;
+
   /* no nested objects, just straight up. */
   task(obj, arg);
   return;
@@ -300,25 +288,26 @@ void fiobj_each(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg), void *arg) {
 nested:
   list = fiobj_ary_new();
   processed = fiobj_ary_new();
-  tmp = obj;
-
+  fiobj_ary_push(list, obj);
   do {
-
-    switch (tmp->type) {
+    obj = fiobj_ary_shift(list);
+    if (!obj)
+      goto perform_task;
+    switch (obj->type) {
 
     case FIOBJ_T_ARRAY: {
       /* test against cyclic nesting */
       for (size_t i = 0; i < fiobj_ary_count(processed); i++) {
-        if (fiobj_ary_entry(processed, i) == tmp) {
-          tmp = NULL;
-          goto skip;
+        if (fiobj_ary_entry(processed, i) == obj) {
+          obj = NULL;
+          goto perform_task;
         }
       }
       /* add object to cyclic protection */
-      fiobj_ary_push(processed, tmp);
+      fiobj_ary_push(processed, obj);
       /* add all objects to the queue */
-      for (size_t i = 0; i < fiobj_ary_count(tmp); i++) {
-        fiobj_ary_push(list, fiobj_ary_entry(tmp, i));
+      for (size_t i = 0; i < fiobj_ary_count(obj); i++) {
+        fiobj_ary_push(list, fiobj_ary_entry(obj, i));
       }
       break;
     }
@@ -326,15 +315,15 @@ nested:
     case FIOBJ_T_HASH: {
       /* test against cyclic nesting */
       for (size_t i = 0; i < fiobj_ary_count(processed); i++) {
-        if (fiobj_ary_entry(processed, i) == tmp) {
-          tmp = NULL;
-          goto skip;
+        if (fiobj_ary_entry(processed, i) == obj) {
+          obj = NULL;
+          goto perform_task;
         }
       }
       /* add object to cyclic protection */
-      fiobj_ary_push(processed, tmp);
+      fiobj_ary_push(processed, obj);
       /* add all objects to the queue */
-      fio_hash_s *h = (fio_hash_s *)tmp;
+      fio_hash_s *h = (fio_hash_s *)obj;
       fio_couplet_s *i;
       fio_ht_for_each(fio_couplet_s, node, i, h->h) {
         fiobj_ary_push(list, (fiobj_s *)i);
@@ -344,14 +333,15 @@ nested:
     default:
       break;
     }
-  skip:
-    if (task(tmp, arg) == -1)
-      break;
-    tmp = fiobj_ary_shift(list);
-  } while (tmp);
 
-  fiobj_dealloc(processed);
+  perform_task:
+    if (task(obj, arg) == -1)
+      goto finish;
+  } while (fiobj_ary_count(list));
+
+finish:
   fiobj_dealloc(list);
+  fiobj_dealloc(processed);
 }
 
 /* *****************************************************************************
@@ -796,11 +786,9 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
   if (needed >= 0) /* we're done, realloc grows the top of the address space*/
     return;
 
-  /* change to a positive number that represents space from begining */
-  needed = 0 - needed;
-
+  /* move everything to the max, since  memmove could get expensive  */
   uint64_t len = obj2ary(ary)->end - obj2ary(ary)->start;
-
+  needed = obj2ary(ary)->capa - len;
   memmove(obj2ary(ary)->arry + needed, obj2ary(ary)->arry + obj2ary(ary)->start,
           len * sizeof(*obj2ary(ary)->arry));
   obj2ary(ary)->end = needed + len;
@@ -812,7 +800,7 @@ fiobj_s *fiobj_ary_new(void) { return fiobj_alloc(FIOBJ_T_ARRAY, 0, NULL); }
 
 /** Returns the number of elements in the Array. */
 size_t fiobj_ary_count(fiobj_s *ary) {
-  if (ary->type != FIOBJ_T_ARRAY)
+  if (!ary || ary->type != FIOBJ_T_ARRAY)
     return 0;
   return (obj2ary(ary)->end - obj2ary(ary)->start);
 }
@@ -821,7 +809,7 @@ size_t fiobj_ary_count(fiobj_s *ary) {
  * Pushes an object to the end of the Array.
  */
 void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
-  if (ary->type != FIOBJ_T_ARRAY) {
+  if (!ary || ary->type != FIOBJ_T_ARRAY) {
     fiobj_free(obj);
     return;
   }
@@ -832,7 +820,7 @@ void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
 
 /** Pops an object from the end of the Array. */
 fiobj_s *fiobj_ary_pop(fiobj_s *ary) {
-  if (ary->type != FIOBJ_T_ARRAY)
+  if (!ary || ary->type != FIOBJ_T_ARRAY)
     return NULL;
   if (obj2ary(ary)->start == obj2ary(ary)->end)
     return NULL;
@@ -845,7 +833,7 @@ fiobj_s *fiobj_ary_pop(fiobj_s *ary) {
  * expensive.
  */
 void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj) {
-  if (ary->type != FIOBJ_T_ARRAY) {
+  if (!ary || ary->type != FIOBJ_T_ARRAY) {
     fiobj_free(obj);
     return;
   }
@@ -856,7 +844,7 @@ void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj) {
 
 /** Shifts an object from the beginning of the Array. */
 fiobj_s *fiobj_ary_shift(fiobj_s *ary) {
-  if (ary->type != FIOBJ_T_ARRAY)
+  if (!ary || ary->type != FIOBJ_T_ARRAY)
     return NULL;
   if (obj2ary(ary)->start == obj2ary(ary)->end)
     return NULL;
@@ -871,7 +859,7 @@ fiobj_s *fiobj_ary_shift(fiobj_s *ary) {
  * is the last item.
  */
 fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos) {
-  if (ary->type != FIOBJ_T_ARRAY)
+  if (!ary || ary->type != FIOBJ_T_ARRAY)
     return NULL;
 
   if (pos >= 0) {
@@ -881,7 +869,7 @@ fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos) {
     return obj2ary(ary)->arry[pos];
   }
 
-  pos = pos + obj2ary(ary)->end;
+  pos = (int64_t)obj2ary(ary)->end + pos;
   if (pos < 0)
     return NULL;
   if ((uint64_t)pos < obj2ary(ary)->start)
@@ -893,36 +881,36 @@ fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos) {
  * Sets an object at the requested position.
  */
 void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos) {
-  if (ary->type != FIOBJ_T_ARRAY) {
+  if (!ary || ary->type != FIOBJ_T_ARRAY) {
     fiobj_free(obj);
     return;
   }
-  /* test for memory and request memory if missing. */
+
+  /* test for memory and request memory if missing, promises valid bounds. */
   if (pos >= 0) {
     if ((uint64_t)pos + obj2ary(ary)->start >= obj2ary(ary)->capa)
-      fiobj_ary_getmem(ary, (uint64_t)pos + obj2ary(ary)->start -
-                                obj2ary(ary)->capa + 1);
+      fiobj_ary_getmem(ary, (((uint64_t)pos + obj2ary(ary)->start) -
+                             (obj2ary(ary)->capa - 1)));
   } else if (pos + (int64_t)obj2ary(ary)->end < 0)
     fiobj_ary_getmem(ary, pos + obj2ary(ary)->end);
 
   if (pos >= 0) {
     /* position relative to start */
     pos = pos + obj2ary(ary)->start;
-    /* check for an existing object */
-    if ((uint64_t)pos < obj2ary(ary)->end && obj2ary(ary)->arry[pos])
-      fiobj_free(obj2ary(ary)->arry[pos]);
-    /* initialize empty spaces */
+    /* initialize empty spaces, if any, setting new boundries */
     while ((uint64_t)pos >= obj2ary(ary)->end)
       obj2ary(ary)->arry[(obj2ary(ary)->end)++] = NULL;
-
   } else {
     /* position relative to end */
     pos = pos + (int64_t)obj2ary(ary)->end;
-    /* initialize empty spaces */
+    /* initialize empty spaces, if any, setting new boundries */
     while (obj2ary(ary)->start >= (uint64_t)pos)
-      obj2ary(ary)->arry[(obj2ary(ary)->start)--] = NULL;
+      obj2ary(ary)->arry[--(obj2ary(ary)->start)] = NULL;
   }
 
+  /* check for an existing object and set new objects */
+  if (obj2ary(ary)->arry[pos])
+    fiobj_free(obj2ary(ary)->arry[pos]);
   obj2ary(ary)->arry[pos] = obj;
 }
 
@@ -1009,7 +997,7 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
 }
 
 /**
- * If object is a Hash couplet (occurs in `fiobj_each`), returns the key
+ * If object is a Hash couplet (occurs in `fiobj_each2`), returns the key
  * (Symbol) from the key-value pair.
  *
  * Otherwise returns NULL.
@@ -1019,7 +1007,7 @@ fiobj_s *fiobj_couplet2key(fiobj_s *obj) {
 }
 
 /**
- * If object is a Hash couplet (occurs in `fiobj_each`), returns the object
+ * If object is a Hash couplet (occurs in `fiobj_each2`), returns the object
  * (the value) from the key-value pair.
  *
  * Otherwise returns NULL.
@@ -1041,7 +1029,10 @@ static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
   if (--count) {
     fprintf(stderr, "%s, ", fiobj_obj2cstr(obj).data);
   } else
-    fprintf(stderr, "%s] (should be 127..0)\n", fiobj_obj2cstr(obj).data);
+    fprintf(stderr,
+            "%s]\n    "
+            "(should be 127..0)\n",
+            fiobj_obj2cstr(obj).data);
   return 0;
   (void)arg;
 }
@@ -1049,7 +1040,7 @@ static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
 void fiobj_test(void) {
   fiobj_s *obj;
   size_t i;
-  fprintf(stderr, "Starting fiobj basic testing:\n");
+  fprintf(stderr, "\n===\nStarting fiobj basic testing:\n");
 
   obj = fiobj_null();
   if (obj->type != FIOBJ_T_NULL)
@@ -1120,7 +1111,7 @@ void fiobj_test(void) {
         fprintf(stderr, "* FAILED Array count. %lu/%llu != %lu\n",
                 fiobj_ary_count(obj), obj2ary(obj)->capa, i + 1);
     }
-    fiobj_each(obj, fiobj_test_array_task, NULL);
+    fiobj_each2(obj, fiobj_test_array_task, NULL);
     fiobj_free(obj);
   } else {
     fprintf(stderr, "* FAILED to initialize Array test!\n");
@@ -1178,13 +1169,17 @@ void fiobj_test(void) {
     fprintf(stderr, "* testing cyclic protection. \n");
     fiobj_s *a1 = fiobj_ary_new();
     fiobj_s *a2 = fiobj_ary_new();
-    for (size_t i = 0; i < 128; i++) {
+    for (size_t i = 0; i < 129; i++) {
       obj = fiobj_num_new(1024 + i);
       fiobj_ary_push(a1, fiobj_num_new(i));
       fiobj_ary_unshift(a2, fiobj_num_new(i));
       fiobj_ary_push(a1, fiobj_dup(obj));
       fiobj_ary_unshift(a2, obj);
     }
+    fprintf(stderr,
+            "* creating cyclic reference for "
+            "a1, pos %llu and a2, pos %llu\n",
+            obj2ary(a1)->end, obj2ary(a2)->end);
     fiobj_ary_push(a1, a2); /* the intentionally offending code */
     fiobj_ary_push(a2, a1);
 
@@ -1192,7 +1187,7 @@ void fiobj_test(void) {
     if (!obj || obj->type != FIOBJ_T_NUMBER)
       fprintf(stderr, "* FAILED unexpected object %p with type %d\n",
               (void *)obj, obj ? obj->type : 0);
-    if (OBJ2HEAD(obj).ref != 2)
+    if (OBJ2HEAD(obj).ref < 2)
       fprintf(stderr, "* FAILED object reference counting test (%llu)\n",
               OBJ2HEAD(obj).ref);
     fiobj_free(a1); /* frees both... */
@@ -1203,6 +1198,26 @@ void fiobj_test(void) {
               "array members (%llu)\n ",
               OBJ2HEAD(obj).ref);
     fiobj_free(obj);
+  }
+
+  /* test deep nesting */
+  {
+    fprintf(stderr, "* testing deep array nesting. \n");
+    fiobj_s *top = fiobj_ary_new();
+    fiobj_s *pos = top;
+    for (size_t i = 0; i < 128; i++) {
+      for (size_t j = 0; j < 128; j++) {
+        fiobj_ary_push(pos, fiobj_num_new(j));
+      }
+      fiobj_ary_push(pos, fiobj_ary_new());
+      pos = fiobj_ary_entry(pos, -1);
+      if (!pos || pos->type != FIOBJ_T_ARRAY) {
+        fprintf(stderr, "* FAILED Couldn't retrive position -1 (%d)\n",
+                pos ? pos->type : 0);
+        break;
+      }
+    }
+    fiobj_free(top); /* frees both... */
   }
 }
 #endif
