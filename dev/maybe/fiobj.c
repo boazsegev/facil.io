@@ -236,7 +236,6 @@ static int dup_task_callback(fiobj_s *obj, void *arg) {
   if (!obj)
     return 0;
   spn_add(&OBJ2HEAD(obj).ref, 1);
-  fiobj_dealloc(obj);
   return 0;
   (void)arg;
 }
@@ -750,6 +749,17 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
         0 - ((obj2ary(ary)->capa <= 1024) ? (obj2ary(ary)->capa >> 1) : 1024);
   }
 
+  /* FIFO would probably benefit from memmove over bloating allocations. */
+  if (needed == 1 && obj2ary(ary)->start > (obj2ary(ary)->capa >> 1)) {
+    uint64_t len = obj2ary(ary)->end - obj2ary(ary)->start;
+    memmove(obj2ary(ary)->arry + 2, obj2ary(ary)->arry + obj2ary(ary)->start,
+            len * sizeof(*obj2ary(ary)->arry));
+    obj2ary(ary)->start = 2;
+    obj2ary(ary)->end = len + 2;
+
+    return;
+  }
+
   // fprintf(stderr,
   //         "ARRAY MEMORY REVIEW (%p) "
   //         "with capa %llu, (%llu..%llu):\n",
@@ -1064,9 +1074,24 @@ void fiobj_test(void) {
     fprintf(stderr, "* testing cyclic protection. \n");
     fiobj_s *a1 = fiobj_ary_new();
     fiobj_s *a2 = fiobj_ary_new();
-    fiobj_ary_unshift(a1, a2);
+    for (size_t i = 0; i < 128; i++) {
+      fiobj_ary_push(a1, fiobj_num_new(i));
+      fiobj_ary_unshift(a2, fiobj_num_new(i));
+    }
+    fiobj_ary_push(a1, a2);
     fiobj_ary_unshift(a2, a1);
+    obj = fiobj_dup(fiobj_ary_entry(a2, -32));
+    if (!obj || obj->type != FIOBJ_T_NUMBER)
+      fprintf(stderr, "* FAILED unexpected object %p with type %d\n",
+              (void *)obj, obj ? obj->type : 0);
+    if (OBJ2HEAD(obj).ref != 2)
+      fprintf(stderr, "* FAILED object reference counting test (%llu)\n",
+              OBJ2HEAD(obj).ref);
     fiobj_free(a1); /* should free both, but I can't really test that... */
+    if (OBJ2HEAD(obj).ref != 1)
+      fprintf(stderr, "* FAILED to free cyclic nested array members (%llu)\n",
+              OBJ2HEAD(obj).ref);
+    fiobj_free(obj);
   }
 }
 #endif
