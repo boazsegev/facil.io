@@ -76,9 +76,11 @@ Generic Object API
 ***************************************************************************** */
 
 /**
- * Increases an object's (and any nested object's) reference count.
+ * Copy by reference(!) - increases an object's (and any nested object's)
+ * reference count.
  *
- * Future implementations might provide a (deep) copy for Arrays and Hashes...
+ * Future implementations might provide `fiobj_dup2` providing a deep copy.
+ *
  * We don't need this feature just yet, so I'm not working on it.
  */
 fiobj_s *fiobj_dup(fiobj_s *);
@@ -354,6 +356,9 @@ Hash API
  */
 fiobj_s *fiobj_hash_new(void);
 
+/** Returns the number of elements in the Hash. */
+size_t fiobj_hash_count(fiobj_s *hash);
+
 /**
  * Sets a key-value pair in the Hash, duplicating the Symbol and **moving** the
  * ownership of the object to the Hash.
@@ -388,7 +393,7 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym);
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_couplet2sym(fiobj_s *obj);
+fiobj_s *fiobj_couplet2key(fiobj_s *obj);
 
 /**
  * If object is a Hash couplet (occurs in `fiobj_each`), returns the object
