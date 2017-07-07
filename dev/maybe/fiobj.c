@@ -278,11 +278,9 @@ void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
 
   if (!task)
     return;
-
   if (obj && (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH))
     goto nested;
-
-  /* no nested objects, just straight up. */
+  /* no nested objects, fast and easy. */
   task(obj, arg);
   return;
 
@@ -290,8 +288,11 @@ nested:
   list = fiobj_ary_new();
   processed = fiobj_ary_new();
   fiobj_ary_push(list, obj);
+  /* as long as `list` contains items... */
   do {
+    /* remove from the begining of the list, add at it's end. */
     obj = fiobj_ary_shift(list);
+    /* if it's a simple object, fast forward */
     if (!obj || (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH))
       goto perform_task;
 
@@ -307,12 +308,12 @@ nested:
     fiobj_ary_push(processed, obj);
 
     if (obj->type == FIOBJ_T_ARRAY) {
-      /* add all objects to the queue */
+      /* add all children to the queue */
       for (size_t i = 0; i < fiobj_ary_count(obj); i++) {
         fiobj_ary_push(list, fiobj_ary_entry(obj, i));
       }
     } else {
-      /* must be Hash, add all objects to the queue */
+      /* must be Hash, add all children to the queue */
       fio_hash_s *h = (fio_hash_s *)obj;
       fio_couplet_s *i;
       fio_ht_for_each(fio_couplet_s, node, i, h->h) {
