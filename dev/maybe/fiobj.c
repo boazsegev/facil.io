@@ -278,6 +278,7 @@ void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
 
   if (!task)
     return;
+
   if (obj && (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH))
     goto nested;
 
@@ -291,49 +292,33 @@ nested:
   fiobj_ary_push(list, obj);
   do {
     obj = fiobj_ary_shift(list);
-    if (!obj)
+    if (!obj || (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH))
       goto perform_task;
-    switch (obj->type) {
 
-    case FIOBJ_T_ARRAY: {
-      /* test against cyclic nesting */
-      for (size_t i = 0; i < fiobj_ary_count(processed); i++) {
-        if (fiobj_ary_entry(processed, i) == obj) {
-          obj = NULL;
-          goto perform_task;
-        }
+    /* test against cyclic nesting */
+    for (size_t i = 0; i < fiobj_ary_count(processed); i++) {
+      if (fiobj_ary_entry(processed, i) == obj) {
+        fprintf(stderr, "NESTING detected\n");
+        obj = NULL;
+        goto perform_task;
       }
-      /* add object to cyclic protection */
-      fiobj_ary_push(processed, obj);
+    }
+    /* add object to cyclic protection */
+    fiobj_ary_push(processed, obj);
+
+    if (obj->type == FIOBJ_T_ARRAY) {
       /* add all objects to the queue */
       for (size_t i = 0; i < fiobj_ary_count(obj); i++) {
         fiobj_ary_push(list, fiobj_ary_entry(obj, i));
       }
-      break;
-    }
-
-    case FIOBJ_T_HASH: {
-      /* test against cyclic nesting */
-      for (size_t i = 0; i < fiobj_ary_count(processed); i++) {
-        if (fiobj_ary_entry(processed, i) == obj) {
-          obj = NULL;
-          goto perform_task;
-        }
-      }
-      /* add object to cyclic protection */
-      fiobj_ary_push(processed, obj);
-      /* add all objects to the queue */
+    } else {
+      /* must be Hash, add all objects to the queue */
       fio_hash_s *h = (fio_hash_s *)obj;
       fio_couplet_s *i;
       fio_ht_for_each(fio_couplet_s, node, i, h->h) {
         fiobj_ary_push(list, (fiobj_s *)i);
       }
-      break;
     }
-    default:
-      break;
-    }
-
   perform_task:
     if (task(obj, arg) == -1)
       goto finish;
@@ -364,8 +349,9 @@ Number and Float API
 /**
  * A helper function that converts between String data to a signed int64_t.
  *
- * Numbers are assumed to be in base 10. `0x##` (or `x##`) and `0b##` (or `b##`)
- * are recognized as base 16 and base 2 (binary MSB first) respectively.
+ * Numbers are assumed to be in base 10. `0x##` (or `x##`) and `0b##` (or
+ * `b##`) are recognized as base 16 and base 2 (binary MSB first)
+ * respectively.
  */
 int64_t fio_atol(const char *str) {
   uint64_t result = 0;
@@ -494,14 +480,15 @@ String API
 /**
  * A helper function that convers between a signed int64_t to a string.
  *
- * No overflow guard is provided, make sure there's at least 66 bytes available
- * (for base 2).
+ * No overflow guard is provided, make sure there's at least 66 bytes
+ * available (for base 2).
  *
  * Supports base 2, base 10 and base 16. An unsupported base will silently
  * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
  * beginning of the string).
  *
- * Returns the number of bytes actually written (excluding the NUL terminator).
+ * Returns the number of bytes actually written (excluding the NUL
+ * terminator).
  */
 size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
   if (!num) {
@@ -583,18 +570,20 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
 /**
  * A helper function that convers between a double to a string.
  *
- * No overflow guard is provided, make sure there's at least 130 bytes available
- * (for base 2).
+ * No overflow guard is provided, make sure there's at least 130 bytes
+ * available (for base 2).
  *
  * Supports base 2, base 10 and base 16. An unsupported base will silently
  * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
  * beginning of the string).
  *
- * Returns the number of bytes actually written (excluding the NUL terminator).
+ * Returns the number of bytes actually written (excluding the NUL
+ * terminator).
  */
 size_t fio_ftoa(char *dest, double num, uint8_t base) {
   if (base == 2 || base == 16) {
-    /* handle the binary / Hex representation the same as if it were an int64_t
+    /* handle the binary / Hex representation the same as if it were an
+     * int64_t
      */
     int64_t *i = (void *)&num;
     return fio_ltoa(dest, *i, base);
@@ -630,8 +619,8 @@ fiobj_s *fiobj_str_new(const char *str, size_t len) {
 /**
  * Returns a C String (NUL terminated) using the `fio_string_s` data type.
  *
- * The Sting in binary safe and might contain NUL bytes in the middle as well as
- * a terminating NUL.
+ * The Sting in binary safe and might contain NUL bytes in the middle as well
+ * as a terminating NUL.
  *
  * If a Symbol, a Number or a Float are passed to the function, they
  * will be parsed as a *temporary*, thread-safe, String.
@@ -748,7 +737,7 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
         0 - ((obj2ary(ary)->capa <= 1024) ? (obj2ary(ary)->capa >> 1) : 1024);
   }
 
-  /* FIFO would probably benefit from memmove over bloating allocations. */
+  /* FIFO support optimizes smaller FIFO ranges over bloating allocations. */
   if (needed == 1 && obj2ary(ary)->start >= (obj2ary(ary)->capa >> 1)) {
     uint64_t len = obj2ary(ary)->end - obj2ary(ary)->start;
     memmove(obj2ary(ary)->arry + 2, obj2ary(ary)->arry + obj2ary(ary)->start,
@@ -778,7 +767,7 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
         (updated_capa <= 4096) ? (updated_capa << 1) : (updated_capa + 4096);
 
   /* we assume memory allocation works. it's better to crash than to continue
-   * living without memory... besides, malloc is optimistic these days.       */
+   * living without memory... besides, malloc is optimistic these days. */
   obj2ary(ary)->arry =
       realloc(obj2ary(ary)->arry, updated_capa * sizeof(*obj2ary(ary)->arry));
   obj2ary(ary)->capa = updated_capa;
@@ -930,8 +919,8 @@ fiobj_s *fiobj_hash_new(void) { return fiobj_alloc(FIOBJ_T_HASH, 0, NULL); }
 size_t fiobj_hash_count(fiobj_s *hash) { return ((fio_hash_s *)hash)->h.count; }
 
 /**
- * Sets a key-value pair in the Hash, duplicating the Symbol and **moving** the
- * ownership of the object to the Hash.
+ * Sets a key-value pair in the Hash, duplicating the Symbol and **moving**
+ * the ownership of the object to the Hash.
  *
  * Returns -1 on error.
  */
@@ -966,8 +955,8 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
 }
 
 /**
- * Deletes a key-value pair from the Hash, if it exists, freeing the associated
- * object.
+ * Deletes a key-value pair from the Hash, if it exists, freeing the
+ * associated object.
  *
  * Returns -1 on type error or if the object never existed.
  */
@@ -980,8 +969,8 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
 }
 
 /**
- * Returns a temporary handle to the object associated with the Symbol, NULL if
- * none.
+ * Returns a temporary handle to the object associated with the Symbol, NULL
+ * if none.
  */
 fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
   if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYM) {
