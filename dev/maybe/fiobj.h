@@ -96,15 +96,17 @@ void fiobj_free(fiobj_s *);
 /**
  * Performes a task for each fio object.
  *
- * Collections (Arrays, Hashes) are deeply probed while being protected from
- * cyclic references. Simpler objects are simply passed along.
+ * Collections (Arrays, Hashes) are deeply probed while being marginally
+ * protected from cyclic references. Simpler objects are simply passed along.
  *
- * The callback task function should accept the object, it's name and an opaque
- * user pointer that is simply passed along.
+ * The callback task function should accept an object and an opaque user pointer
+ * that is simply passed along.
  *
- * The callback's `name` parameter is only set for Hash pairs, indicating the
- * source of the object is a Hash. Arrays and other objects will pass along a
- * NULL pointer for the `name` argument.
+ * When a cyclic reference is detected, NULL is passed along instead of the
+ * offending object.
+ * The callback's `name` parameter is only set for
+ * Hash pairs, indicating the source of the object is a Hash. Arrays and other
+ * objects will pass along a NULL pointer for the `name` argument.
  *
  * Notice that when passing collections to the function, both the collection
  * itself and it's nested objects will be passed to the callback task function.
@@ -148,6 +150,12 @@ fiobj_s *fiobj_num_new(int64_t num);
 
 /** Creates a Float object. Remember to use `fiobj_free`.  */
 fiobj_s *fiobj_float_new(double num);
+
+/** Mutates a Number object's value. Effects every object's reference! */
+void fiobj_num_set(fiobj_s *target, int64_t num);
+
+/** Mutates a Float object's value. Effects every object's reference!  */
+void fiobj_float_set(fiobj_s *target, double num);
 
 /**
  * Returns a Number's value.
@@ -330,9 +338,9 @@ fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos);
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
  *
- * Returns -1 on error (i.e., object not an Array).
+ * Type errors are silently ignored.
  */
-int fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos);
+void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos);
 
 /* *****************************************************************************
 Hash API

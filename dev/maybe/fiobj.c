@@ -84,37 +84,10 @@ typedef struct {
 The Object type head and management
 ***************************************************************************** */
 
-typedef struct {
-  uint64_t ref;
-  fiobj_s *next;
-  fiobj_s *prev;
-} fiobj_head_s;
+typedef struct { uint64_t ref; } fiobj_head_s;
 
 #define OBJ2HEAD(o) (((fiobj_head_s *)(o)) - 1)[0]
 #define HEAD2OBJ(o) ((fiobj_s *)(((fiobj_head_s *)(o)) + 1))
-
-#define LISTINIT(o)                                                            \
-  do {                                                                         \
-    OBJ2HEAD(o).next = o;                                                      \
-    OBJ2HEAD(o).prev = o;                                                      \
-  } while (0);
-
-inline static void objlist_push(fiobj_s *dest, fiobj_s *obj) {
-  if (!obj || !dest)
-    return;
-  OBJ2HEAD(obj).prev = OBJ2HEAD(dest).prev;
-  OBJ2HEAD(obj).next = dest;
-  OBJ2HEAD(dest).prev = obj;
-  OBJ2HEAD(OBJ2HEAD(obj).prev).next = obj;
-}
-inline static fiobj_s *objlist_shift(fiobj_s *from) {
-  if (OBJ2HEAD(from).next == from)
-    return NULL;
-  fiobj_s *ret = OBJ2HEAD(from).next;
-  OBJ2HEAD(OBJ2HEAD(ret).next).prev = OBJ2HEAD(ret).prev;
-  OBJ2HEAD(OBJ2HEAD(ret).prev).next = OBJ2HEAD(ret).next;
-  return ret;
-}
 
 /* *****************************************************************************
 Object Allocation
@@ -202,7 +175,7 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
         (fio_ary_s){.start = 8,
                     .end = 8,
                     .capa = 32,
-                    .arry = malloc(sizeof(fiobj_s *) * 8),
+                    .arry = malloc(sizeof(fiobj_s *) * 32),
                     .type = type};
     return HEAD2OBJ(head);
     break;
@@ -221,13 +194,13 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
 }
 
 static void fiobj_dealloc(fiobj_s *obj) {
-  if (spn_sub(&OBJ2HEAD(obj).ref, 1))
+  if (!obj || spn_sub(&OBJ2HEAD(obj).ref, 1))
     return;
   switch (obj->type) {
   case FIOBJ_T_HASH_COUPLET:
+    /* notice that the containing Hash might have already been freed */
     fiobj_dealloc(((fio_couplet_s *)obj)->name);
     fiobj_dealloc(((fio_couplet_s *)obj)->obj);
-    fio_ht_remove(&((fio_couplet_s *)obj)->node);
     goto common;
   case FIOBJ_T_ARRAY:
     free(((fio_ary_s *)obj)->arry);
@@ -260,6 +233,8 @@ Generic Object API
 
 /* simply increrase the reference count for each object. */
 static int dup_task_callback(fiobj_s *obj, void *arg) {
+  if (!obj)
+    return 0;
   spn_add(&OBJ2HEAD(obj).ref, 1);
   fiobj_dealloc(obj);
   return 0;
@@ -285,7 +260,10 @@ static int dealloc_task_callback(fiobj_s *obj, void *arg) {
  * a Hashe object is passed along, it's children (nested objects) are
  * also freed.
  */
-void fiobj_free(fiobj_s *obj) { fiobj_each(obj, dealloc_task_callback, NULL); }
+void fiobj_free(fiobj_s *obj) {
+  if (obj)
+    fiobj_each(obj, dealloc_task_callback, NULL);
+}
 
 /**
  * Performes a task for each fio object.
@@ -306,58 +284,72 @@ void fiobj_free(fiobj_s *obj) { fiobj_each(obj, dealloc_task_callback, NULL); }
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  */
 void fiobj_each(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg), void *arg) {
-  if (!task || !obj)
+  if (!task)
     return;
-  fiobj_head_s head[2]; /* memory allocation */
+  if (!obj) {
+    task(NULL, arg);
+    return;
+  }
 
-  fiobj_s *list = HEAD2OBJ(&head);
-  fiobj_s *processed = HEAD2OBJ((head + 1));
-  LISTINIT(list);
-  LISTINIT(processed);
+  fiobj_s *list = NULL;
+  fiobj_s *processed = NULL;
+
+  if (obj->type == FIOBJ_T_HASH || obj->type == FIOBJ_T_ARRAY) {
+    list = fiobj_ary_new();
+    processed = fiobj_ary_new();
+  }
 
   fiobj_s *tmp = obj;
-  while (tmp) {
+  do {
+
     switch (tmp->type) {
+
     case FIOBJ_T_ARRAY: {
       /* test against cyclic nesting */
-      fiobj_s *pos = OBJ2HEAD(processed).next;
-      while (pos != processed) {
-        if (pos == tmp)
+      for (size_t i = 0; i < fiobj_ary_count(processed); i++) {
+        if (fiobj_ary_entry(processed, i) == tmp) {
+          tmp = NULL;
           goto skip;
-        pos = OBJ2HEAD(pos).next;
+        }
       }
+      fiobj_ary_push(processed, tmp);
+      /* add all objects to the queue */
       fio_ary_s *a = (fio_ary_s *)tmp;
-
       for (size_t i = a->start; i < a->end; i++) {
-        if (a->arry[i])
-          objlist_push(list, a->arry[i]);
+        fiobj_ary_push(list, a->arry[i]);
       }
-      objlist_push(processed, tmp);
       break;
     }
     case FIOBJ_T_HASH: {
       /* test against cyclic nesting */
-      fiobj_s *pos = OBJ2HEAD(processed).next;
-      while (pos != processed) {
-        if (pos == tmp)
+      for (size_t i = 0; i < fiobj_ary_count(processed); i++) {
+        if (fiobj_ary_entry(processed, i) == tmp) {
+          tmp = NULL;
           goto skip;
-        pos = OBJ2HEAD(pos).next;
+        }
       }
+      fiobj_ary_push(processed, tmp);
+      /* add all objects to the queue */
       fio_hash_s *h = (fio_hash_s *)tmp;
       fio_couplet_s *i;
       fio_ht_for_each(fio_couplet_s, node, i, h->h) {
-        if (i)
-          objlist_push(list, (fiobj_s *)i);
+        fiobj_ary_push(list, (fiobj_s *)i);
       }
-      objlist_push(processed, tmp);
       break;
     }
     default:
       break;
     }
-    task(tmp, arg);
   skip:
-    tmp = objlist_shift(list);
+    if (task(tmp, arg) == -1)
+      break;
+    if (list)
+      tmp = fiobj_ary_shift(list);
+  } while (tmp && list);
+
+  if (processed) {
+    fiobj_dealloc(processed);
+    fiobj_dealloc(list);
   }
 }
 
@@ -448,6 +440,16 @@ fiobj_s *fiobj_num_new(int64_t num) {
 /** Creates a Float object. Remember to use `fiobj_free`.  */
 fiobj_s *fiobj_float_new(double num) {
   return fiobj_alloc(FIOBJ_T_FLOAT, 0, &num);
+}
+
+/** Mutates a Number object's value. Effects every object's reference! */
+void fiobj_num_set(fiobj_s *target, int64_t num) {
+  ((fio_num_s *)target)[0].i = num;
+}
+
+/** Mutates a Float object's value. Effects every object's reference!  */
+void fiobj_float_set(fiobj_s *target, double num) {
+  ((fio_float_s *)target)[0].f = num;
 }
 
 /**
@@ -726,36 +728,122 @@ Array API
 ***************************************************************************** */
 #define obj2ary(ary) ((fio_ary_s *)(ary))
 
+static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
+  /* we have enough memory, but we need to re-organize it. */
+  if (needed == -1) {
+    if (obj2ary(ary)->end < obj2ary(ary)->capa) {
+
+      /* since allocation can be cheaper than memmove (depending on size),
+       * we'll just shove everything to the end...
+       */
+      uint64_t len = obj2ary(ary)->end - obj2ary(ary)->start;
+      memmove(obj2ary(ary)->arry + (obj2ary(ary)->capa - len),
+              obj2ary(ary)->arry + obj2ary(ary)->start,
+              len * sizeof(*obj2ary(ary)->arry));
+      obj2ary(ary)->start = obj2ary(ary)->capa - len;
+      obj2ary(ary)->end = obj2ary(ary)->capa;
+
+      return;
+    }
+    /* add some breathing room for future `unshift`s */
+    needed =
+        0 - ((obj2ary(ary)->capa <= 1024) ? (obj2ary(ary)->capa >> 1) : 1024);
+  }
+
+  // fprintf(stderr,
+  //         "ARRAY MEMORY REVIEW (%p) "
+  //         "with capa %llu, (%llu..%llu):\n",
+  //         (void *)obj2ary(ary)->arry, obj2ary(ary)->capa,
+  //         obj2ary(ary)->start, obj2ary(ary)->end);
+
+  // for (size_t i = obj2ary(ary)->start; i < obj2ary(ary)->end; i++) {
+  //   fprintf(stderr, "(%lu) %p\n", i, (void *)obj2ary(ary)->arry[i]);
+  // }
+
+  /* alocate using exponential growth, up to single page size. */
+  uint64_t updated_capa = obj2ary(ary)->capa;
+  uint64_t minimum =
+      obj2ary(ary)->capa + ((needed < 0) ? (0 - needed) : needed);
+  while (updated_capa <= minimum)
+    updated_capa =
+        (updated_capa <= 4096) ? (updated_capa << 1) : (updated_capa + 4096);
+
+  /* we assume memory allocation works. it's better to crash than to continue
+   * living without memory... besides, malloc is optimistic these days.       */
+  obj2ary(ary)->arry =
+      realloc(obj2ary(ary)->arry, updated_capa * sizeof(*obj2ary(ary)->arry));
+  obj2ary(ary)->capa = updated_capa;
+
+  if (needed >= 0) /* we're done, realloc grows the top of the address space*/
+    return;
+
+  /* change to a positive number that represents space from begining */
+  needed = 0 - needed;
+
+  uint64_t len = obj2ary(ary)->end - obj2ary(ary)->start;
+
+  memmove(obj2ary(ary)->arry + needed, obj2ary(ary)->arry + obj2ary(ary)->start,
+          len * sizeof(*obj2ary(ary)->arry));
+  obj2ary(ary)->end = needed + len;
+  obj2ary(ary)->start = needed;
+}
+
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
 fiobj_s *fiobj_ary_new(void) { return fiobj_alloc(FIOBJ_T_ARRAY, 0, NULL); }
 
 /** Returns the number of elements in the Array. */
 size_t fiobj_ary_count(fiobj_s *ary) {
+  if (ary->type != FIOBJ_T_ARRAY)
+    return 0;
   return (obj2ary(ary)->end - obj2ary(ary)->start);
 }
 
 /**
  * Pushes an object to the end of the Array.
- *
- * The Array now owns the object. Use `fiobj_dup` to push a copy if
- * required.
  */
-void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj);
+void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
+  if (ary->type != FIOBJ_T_ARRAY) {
+    fiobj_free(obj);
+    return;
+  }
+  if (obj2ary(ary)->capa <= obj2ary(ary)->end)
+    fiobj_ary_getmem(ary, 1);
+  obj2ary(ary)->arry[(obj2ary(ary)->end)++] = obj;
+}
 
 /** Pops an object from the end of the Array. */
-fiobj_s *fiobj_ary_pop(fiobj_s *ary);
+fiobj_s *fiobj_ary_pop(fiobj_s *ary) {
+  if (ary->type != FIOBJ_T_ARRAY)
+    return NULL;
+  if (obj2ary(ary)->start == obj2ary(ary)->end)
+    return NULL;
+  fiobj_s *ret = obj2ary(ary)->arry[--(obj2ary(ary)->end)];
+  return ret;
+}
 
 /**
  * Unshifts an object to the begining of the Array. This could be
  * expensive.
- *
- * The Array now owns the object. Use `fiobj_dup` to push a copy if
- * required.
  */
-void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj);
+void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj) {
+  if (ary->type != FIOBJ_T_ARRAY) {
+    fiobj_free(obj);
+    return;
+  }
+  if (obj2ary(ary)->start == 0)
+    fiobj_ary_getmem(ary, -1);
+  obj2ary(ary)->arry[--(obj2ary(ary)->start)] = obj;
+}
 
 /** Shifts an object from the beginning of the Array. */
-fiobj_s *fiobj_ary_shift(fiobj_s *ary);
+fiobj_s *fiobj_ary_shift(fiobj_s *ary) {
+  if (ary->type != FIOBJ_T_ARRAY)
+    return NULL;
+  if (obj2ary(ary)->start == obj2ary(ary)->end)
+    return NULL;
+  fiobj_s *ret = obj2ary(ary)->arry[(obj2ary(ary)->start)++];
+  return ret;
+}
 
 /**
  * Returns a temporary object owned by the Array.
@@ -763,22 +851,58 @@ fiobj_s *fiobj_ary_shift(fiobj_s *ary);
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
  */
-fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos);
+fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos) {
+  if (ary->type != FIOBJ_T_ARRAY)
+    return NULL;
+  if (pos >= 0) {
+    pos = pos + obj2ary(ary)->start;
+    if ((uint64_t)pos >= obj2ary(ary)->end)
+      return NULL;
+    return obj2ary(ary)->arry[pos];
+  }
+  pos = pos + obj2ary(ary)->end;
+  if (pos < 0)
+    return NULL;
+  if ((uint64_t)pos < obj2ary(ary)->start)
+    return NULL;
+  return obj2ary(ary)->arry[pos];
+}
 
 /**
  * Sets an object at the requested position.
- *
- * If the position overflows the current array size, all intermediate
- * positions will be set to NULL and the Array will grow in size.
- *
- * The old object (if any) occupying the same space will be freed.
- *
- * Negative values are retrived from the end of the array. i.e., `-1`
- * is the last item.
- *
- * Returns -1 on error (i.e., object not an Array).
  */
-int fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos);
+void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos) {
+  if (ary->type != FIOBJ_T_ARRAY) {
+    fiobj_free(obj);
+    return;
+  }
+  /* test for memory and request memory if missing. */
+  if (pos >= 0) {
+    if ((uint64_t)pos >= (obj2ary(ary)->capa + obj2ary(ary)->start))
+      fiobj_ary_getmem(ary, obj2ary(ary)->capa - pos);
+  } else if (pos + (int64_t)obj2ary(ary)->end < 0)
+    fiobj_ary_getmem(ary, pos + obj2ary(ary)->end);
+
+  if (pos >= 0) {
+    /* position relative to start */
+    pos = pos + obj2ary(ary)->start;
+    /* check for an existing object */
+    if ((uint64_t)pos < obj2ary(ary)->end && obj2ary(ary)->arry[pos])
+      fiobj_free(obj2ary(ary)->arry[pos]);
+    /* initialize empty spaces */
+    while ((uint64_t)pos >= obj2ary(ary)->end)
+      obj2ary(ary)->arry[(obj2ary(ary)->end)++] = NULL;
+
+  } else {
+    /* position relative to end */
+    pos = pos + (int64_t)obj2ary(ary)->end;
+    /* initialize empty spaces */
+    while (obj2ary(ary)->start >= (uint64_t)pos)
+      obj2ary(ary)->arry[(obj2ary(ary)->start)--] = NULL;
+  }
+
+  obj2ary(ary)->arry[pos] = obj;
+}
 
 /* *****************************************************************************
 Hash API
@@ -836,7 +960,25 @@ fiobj_s *fiobj_couplet2sym(fiobj_s *obj);
  */
 fiobj_s *fiobj_couplet2obj(fiobj_s *obj);
 
+/* *****************************************************************************
+A touch of testing
+***************************************************************************** */
 #ifdef DEBUG
+
+static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
+  static size_t count = 0;
+  if (obj->type == FIOBJ_T_ARRAY) {
+    count = fiobj_ary_count(obj);
+    fprintf(stderr, "* Array data: [");
+    return 0;
+  }
+  if (--count) {
+    fprintf(stderr, "%s, ", fiobj_obj2cstr(obj).data);
+  } else
+    fprintf(stderr, "%s] (should be 127..0)\n", fiobj_obj2cstr(obj).data);
+  return 0;
+  (void)arg;
+}
 
 void fiobj_test(void) {
   fiobj_s *obj;
@@ -901,5 +1043,30 @@ void fiobj_test(void) {
     fprintf(stderr, "* FAILED fiobj_obj2float test with %f.\n",
             fiobj_obj2float(obj));
   fiobj_free(obj);
+
+  /* test array */
+  obj = fiobj_ary_new();
+  if (obj->type == FIOBJ_T_ARRAY) {
+    for (size_t i = 0; i < 128; i++) {
+      fiobj_ary_unshift(obj, fiobj_num_new(i));
+      if (fiobj_ary_count(obj) != i + 1)
+        fprintf(stderr, "* FAILED Array count. %lu/%llu != %lu\n",
+                fiobj_ary_count(obj), obj2ary(obj)->capa, i + 1);
+    }
+    fiobj_each(obj, fiobj_test_array_task, NULL);
+    fiobj_free(obj);
+  } else {
+    fprintf(stderr, "* FAILED to initialize Array test!\n");
+    fiobj_free(obj);
+  }
+  /* test cyclic protection */
+  {
+    fprintf(stderr, "* testing cyclic protection. \n");
+    fiobj_s *a1 = fiobj_ary_new();
+    fiobj_s *a2 = fiobj_ary_new();
+    fiobj_ary_unshift(a1, a2);
+    fiobj_ary_unshift(a2, a1);
+    fiobj_free(a1); /* should free both, but I can't really test that... */
+  }
 }
 #endif
