@@ -2,15 +2,21 @@
 
 ### Ver. 0.5.3 (next)
 
+**Changes**: minor changes to the versioning scheme removed some version MACROS... this isn't API related, so I don't consider it a breaking change, but it might effect code that relied too much on internal workings. The only valid version macros are the `FACIL_VERSION_*` macros, in the `facil.h` header.
+
+**Fix**: (`http1`) HTTP/1.x now correctly initializes the `udata` pointer to NULL fore each new request.
+
 **Portability**: added `extern "C"` directive for untested C++ support.
+
+**Feature**: added a dynamic type library to `facil.io`'s core, making some common web related tasks easier to manage.
 
 ### Ver. 0.5.2
 
 **Change**: non-breaking changes to the folder structure are also reflected in the updated `makefile` and `.clang_complete`.
 
-**Fix**: (`defer`) Fixed `SIGTERM` handling (signal was mistakingly filtered away).
+**Fix**: (`defer`) fixed `SIGTERM` handling (signal was mistakingly filtered away).
 
-**Fix**: (`http_response`) Fixed `http_response_sendfile2` where path concatenation occurred without a folder separator (`/`) and exclusively safe file paths were being ignored (the function assumed an unsafe path to be used, at least in part).
+**Fix**: (`http_response`) fixed `http_response_sendfile2` where path concatenation occurred without a folder separator (`/`) and exclusively safe file paths were being ignored (the function assumed an unsafe path to be used, at least in part).
 
 **Fix**: minor fixes and documentation.
 
@@ -18,7 +24,7 @@
 
 **Feature**: @benjcal suggested the script used to create new applications. The current version is a stand-in draft used for testing.
 
-**Feature**: Temporary boiler plate code for a simple "hello world" HTTP application using the new application script (see the README). This is a temporary design to allow us to test the script's functionality and decide on the final boiler plate's design.
+**Feature**: temporary boiler plate code for a simple "hello world" HTTP application using the new application script (see the README). This is a temporary design to allow us to test the script's functionality and decide on the final boiler plate's design.
 
 ### Ver. 0.5.1
 
