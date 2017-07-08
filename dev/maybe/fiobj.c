@@ -16,6 +16,55 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <unistd.h>
 
 /* *****************************************************************************
+Simple List - I will slowly move any external dependencies to allow independance
+***************************************************************************** */
+
+typedef struct fio_ls_s {
+  struct fio_ls_s *prev;
+  struct fio_ls_s *next;
+  fiobj_s *obj;
+} fio_ls_s;
+
+#define FIO_LS_INIT(name)                                                      \
+  { .next = &(name), .prev = &(name) }
+
+/** Adds an object to the list's head. */
+static inline __attribute__((unused)) void fio_ls_push(fio_ls_s *pos,
+                                                       fiobj_s *obj) {
+  /* prepare item */
+  fio_ls_s *item = malloc(sizeof(*item));
+  *item = (fio_ls_s){.prev = pos, .next = pos->next, .obj = obj};
+  /* inject item */
+  pos->next->prev = item;
+  pos->next = item;
+}
+
+/** Adds an object to the list's tail. */
+static inline __attribute__((unused)) void fio_ls_unshift(fio_ls_s *pos,
+                                                          fiobj_s *obj) {
+  pos = pos->prev;
+  fio_ls_push(pos, obj);
+}
+
+/** Removes an object from the list's head. */
+static inline __attribute__((unused)) fiobj_s *fio_ls_pop(fio_ls_s *list) {
+  if (list->next == list)
+    return NULL;
+  fio_ls_s *item = list->next;
+  fiobj_s *ret = item->obj;
+  list->next = item->next;
+  list->next->prev = list;
+  free(item);
+  return ret;
+}
+
+/** Removes an object from the list's tail. */
+static inline __attribute__((unused)) fiobj_s *fio_ls_shift(fio_ls_s *list) {
+  if (list->prev == list)
+    return fio_ls_pop(list->prev);
+}
+
+/* *****************************************************************************
 Object types
 ***************************************************************************** */
 
@@ -283,8 +332,10 @@ void fiobj_free(fiobj_s *obj) {
  */
 void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
                  void *arg) {
-  fiobj_s *list;
-  fiobj_s *processed;
+
+  fio_ls_s list = FIO_LS_INIT(list);
+  fio_ls_s processed = FIO_LS_INIT(processed);
+  fio_ls_s *pos;
 
   if (!task)
     return;
@@ -295,49 +346,53 @@ void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
   return;
 
 nested:
-  list = fiobj_ary_new();
-  processed = fiobj_ary_new();
-  fiobj_ary_push(list, obj);
+
+  fio_ls_push(&list, obj);
   /* as long as `list` contains items... */
   do {
     /* remove from the begining of the list, add at it's end. */
-    obj = fiobj_ary_shift(list);
+    obj = fio_ls_shift(&list);
     /* if it's a simple object, fast forward */
     if (!obj || (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH))
       goto perform_task;
 
     /* test against cyclic nesting */
-    for (size_t i = 0; i < fiobj_ary_count(processed); i++) {
-      if (fiobj_ary_entry(processed, i) == obj) {
+    pos = processed.next;
+    while (pos != &processed) {
+      if (pos->obj == obj) {
         fprintf(stderr, "NESTING detected\n");
         obj = NULL;
         goto perform_task;
       }
+      pos = pos->next;
     }
+
     /* add object to cyclic protection */
-    fiobj_ary_push(processed, obj);
+    fio_ls_push(&processed, obj);
 
     if (obj->type == FIOBJ_T_ARRAY) {
       /* add all children to the queue */
       for (size_t i = 0; i < fiobj_ary_count(obj); i++) {
-        fiobj_ary_push(list, fiobj_ary_entry(obj, i));
+        fio_ls_unshift(&list, fiobj_ary_entry(obj, i));
       }
     } else {
       /* must be Hash, add all children to the queue */
       fio_hash_s *h = (fio_hash_s *)obj;
       fio_couplet_s *i;
       fio_ht_for_each(fio_couplet_s, node, i, h->h) {
-        fiobj_ary_push(list, (fiobj_s *)i);
+        fio_ls_unshift(&list, (fiobj_s *)i);
       }
     }
   perform_task:
     if (task(obj, arg) == -1)
       goto finish;
-  } while (fiobj_ary_count(list));
+  } while (list.next != &list);
 
 finish:
-  fiobj_dealloc(list);
-  fiobj_dealloc(processed);
+  while (fio_ls_pop(&list))
+    ;
+  while (fio_ls_pop(&processed))
+    ;
 }
 
 /* *****************************************************************************
