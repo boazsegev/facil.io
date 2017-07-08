@@ -8,6 +8,7 @@ set(facil.io_SOURCES
   ./lib/facil/core/facil.c
   ./lib/facil/core/sock.c
   ./lib/facil/core/types/fio_dict.c
+  ./lib/facil/core/types/fiobj.c
   ./lib/facil/services/pubsub.c
   ./lib/facil/http/http.c
   ./lib/facil/http/http1.c
