@@ -358,7 +358,7 @@ ssize_t http1_parse_request_body(void *buffer, size_t len,
     request->body_file = mkstemp(template);
     if (request->body_file == -1)
       return -1;
-    // use the `next` field to store parser state.
+    // use the `udata` field to store parser state.
     uintptr_t *tmp = (uintptr_t *)(&request->udata);
     *tmp = 0;
   }
@@ -373,9 +373,9 @@ ssize_t http1_parse_request_body(void *buffer, size_t len,
   // write the data to the temporary file.
   if (write(request->body_file, buffer, to_read) < to_read)
     return -1;
-  // update the `next` field data with the received content length
+  // update the `udata` field data with the received content length
   uintptr_t *tmp = (uintptr_t *)(&request->udata);
-  *tmp += to_read; // request->metadata.next += to_read;
+  *tmp += to_read; // (uintptr_t)(request->metadata.udata) += to_read;
 
   // check the state and return.
   if (((uintptr_t)request->udata) >= request->content_length) {

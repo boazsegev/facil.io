@@ -8,7 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #define LIB_SOCK_VERSION_MAJOR 0
 #define LIB_SOCK_VERSION_MINOR 3
-#define LIB_SOCK_VERSION_PATCH 0
+#define LIB_SOCK_VERSION_PATCH 2
 
 /** \file
 The `sock.h` is a non-blocking socket helper library, using a user level buffer,

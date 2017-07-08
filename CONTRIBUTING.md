@@ -92,15 +92,22 @@ These are the features that have been requested so far. Even if any of them are 
 
 |      Feature      |      assigned      |      remarks               |
 |-------------------|--------------------|----------------------------|
-|   Documentation   |       help 🙏      | place in the `docs` folder |
+|   Documentation   |     🙏 Help 🙏      | place in the `docs` folder |
 |      HTTP/2       |  Bo (help wanted)  |                            |
 |    HTTP Router    |                    |                            |
 |  Websocket Client |                    |                            |
-|      SSL/TLS      |                    |Use `sock` R/W hooks        |
+|      SSL/TLS      |                    | Use `sock` R/W hooks       |
+|       JSON        |                    | Use `fiobj` objects        |
 
 
 ## License
 
 The project requires that all the code is licensed under the MIT license. Please refrain from using or offering code that requires a change to the licensing scheme.
 
-I understand GitHub doesn't offer a default CLA (Copyright and Licensing Agreement), so I should clarify: the resulting code uses the MIT license, listing me (and only me) as the author. I will list contributors in the CHANGELOG and special contributions will be listed in the README and/or here.
+I discovered GitHub doesn't offer a default CLA (Copyright and Licensing Agreement), so I adopted the one used by [BearSSL](https://www.bearssl.org/contrib.html), meaning:
+
+* the resulting code uses the MIT license, listing me (and only me) as the author. You can take credit by stating that the code was written by yourself, but should attribute copyright and authorship to me (Boaz Segev).
+
+* I will list contributors in the CHANGELOG and special contributions will be listed in the README and/or here.
+
+This allows me to circumvent any future licensing concerns and prevent contributors from revoking the MIT license attached to their code.
