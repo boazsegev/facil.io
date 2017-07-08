@@ -1111,6 +1111,8 @@ A touch of testing
 ***************************************************************************** */
 #ifdef DEBUG
 
+// #include "fio2resp.h"
+
 static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
   static __thread uintptr_t count = 0;
   static __thread const char *stop = ".";
@@ -1297,6 +1299,14 @@ void fiobj_test(void) {
     }
 
     fiobj_each2(obj, fiobj_test_array_task, NULL);
+
+    // char tmp_buffer[4096];
+    // size_t tmp_size = 4096;
+    // if (resp_fioformat((uint8_t *)tmp_buffer, &tmp_size, obj))
+    //   fprintf(stderr, "* notice, RESP formatting required more space
+    //   (%lu).\n",
+    //           tmp_size);
+    // fprintf(stderr, "* RESP formatting:\n%.*s", (int)tmp_size, tmp_buffer);
 
     fiobj_free(obj);
     if (OBJ2HEAD(fiobj_ary_entry(syms, 2)).ref != 1)
