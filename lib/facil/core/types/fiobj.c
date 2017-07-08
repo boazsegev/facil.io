@@ -61,7 +61,13 @@ static inline __attribute__((unused)) fiobj_s *fio_ls_pop(fio_ls_s *list) {
 /** Removes an object from the list's tail. */
 static inline __attribute__((unused)) fiobj_s *fio_ls_shift(fio_ls_s *list) {
   if (list->prev == list)
-    return fio_ls_pop(list->prev);
+    return NULL;
+  fio_ls_s *item = list->prev;
+  fiobj_s *ret = item->obj;
+  list->prev = item->prev;
+  list->prev->next = list;
+  free(item);
+  return ret;
 }
 
 /* *****************************************************************************
@@ -326,6 +332,10 @@ void fiobj_free(fiobj_s *obj) {
     fiobj_each2(obj, dealloc_task_callback, NULL);
 }
 
+/* *****************************************************************************
+Object Iteration (`each2`)
+***************************************************************************** */
+
 /**
  * Deep itteration using a callback for each fio object, including the parent.
  * If the callback returns -1, the loop is broken. Any other value is ignored.
@@ -346,43 +356,47 @@ void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
   return;
 
 nested:
-
   fio_ls_push(&list, obj);
   /* as long as `list` contains items... */
   do {
     /* remove from the begining of the list, add at it's end. */
     obj = fio_ls_shift(&list);
-    /* if it's a simple object, fast forward */
-    if (!obj || (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH))
+    if (!obj)
       goto perform_task;
 
-    /* test against cyclic nesting */
+    /* test for cyclic nesting before reading the object (possibly freed) */
     pos = processed.next;
     while (pos != &processed) {
       if (pos->obj == obj) {
-        fprintf(stderr, "NESTING detected\n");
         obj = NULL;
         goto perform_task;
       }
       pos = pos->next;
     }
+    /* if it's a simple object, fast forward */
+    if (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH)
+      goto perform_task;
 
     /* add object to cyclic protection */
     fio_ls_push(&processed, obj);
 
+    /* add all children to the queue */
     if (obj->type == FIOBJ_T_ARRAY) {
-      /* add all children to the queue */
-      for (size_t i = 0; i < fiobj_ary_count(obj); i++) {
+      size_t i = fiobj_ary_count(obj);
+      while (i) {
+        i--;
         fio_ls_unshift(&list, fiobj_ary_entry(obj, i));
       }
-    } else {
-      /* must be Hash, add all children to the queue */
+    } else { /* must be Hash */
+      fio_ls_s *at = &list;
       fio_hash_s *h = (fio_hash_s *)obj;
       fio_couplet_s *i;
       fio_ht_for_each(fio_couplet_s, node, i, h->h) {
-        fio_ls_unshift(&list, (fiobj_s *)i);
+        fio_ls_unshift(at, (fiobj_s *)i);
+        at = at->prev;
       }
     }
+
   perform_task:
     if (task(obj, arg) == -1)
       goto finish;
@@ -1076,7 +1090,7 @@ A touch of testing
 
 static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
   static size_t count = 0;
-  if (obj->type == FIOBJ_T_ARRAY) {
+  if (obj && obj->type == FIOBJ_T_ARRAY) {
     count = fiobj_ary_count(obj);
     fprintf(stderr, "* Array data: [");
     return 0;
@@ -1092,6 +1106,7 @@ static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
   (void)arg;
 }
 
+/* test were written for OSX (fprintf types) with clang (%s for NULL is okay) */
 void fiobj_test(void) {
   fiobj_s *obj;
   size_t i;
@@ -1231,12 +1246,13 @@ void fiobj_test(void) {
       fiobj_ary_push(a1, fiobj_dup(obj));
       fiobj_ary_unshift(a2, obj);
     }
-    fprintf(stderr,
-            "* creating cyclic reference for "
-            "a1, pos %llu and a2, pos %llu\n",
-            obj2ary(a1)->end, obj2ary(a2)->end);
     fiobj_ary_push(a1, a2); /* the intentionally offending code */
-    // fiobj_ary_push(a2, a1);
+    fiobj_ary_push(a2, a1);
+    fprintf(stderr,
+            "* Printing cyclic array references with "
+            "a1, pos %llu  == a2 and a2, pos %llu == a1\n",
+            obj2ary(a1)->end, obj2ary(a2)->end);
+    fiobj_each2(a1, fiobj_test_array_task, NULL);
 
     obj = fiobj_dup(fiobj_ary_entry(a2, -3));
     if (!obj || obj->type != FIOBJ_T_NUMBER)
