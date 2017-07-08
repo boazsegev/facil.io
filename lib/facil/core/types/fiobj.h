@@ -46,7 +46,7 @@ typedef enum {
   /** A Hash Table object. Hash keys MUST be Symbol objects. */
   FIOBJ_T_HASH,
   /** A Hash Table key-value pair. This is available when using `fiobj_each`. */
-  FIOBJ_T_HASH_COUPLET,
+  FIOBJ_T_COUPLET,
   /** An IO object containing an `intptr_t` as a `fd` (File Descriptor). */
   FIOBJ_T_IO,
   /** A temporary File object containing a `FILE *`. */
@@ -113,7 +113,7 @@ void fiobj_free(fiobj_s *);
  * When a cyclic reference is detected, NULL is passed along instead of the
  * offending object.
  *
- * Hash objects will offer a `FIOBJ_T_HASH_COUPLET` object, containing
+ * Hash objects will offer a `FIOBJ_T_COUPLET` object, containing
  * references for both the key (Symbol) and the object (any object).
  *
  * Notice that when passing collections to the function, the collection itself

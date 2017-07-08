@@ -161,7 +161,7 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
     return HEAD2OBJ(head);
     break;
   }
-  case FIOBJ_T_HASH_COUPLET: {
+  case FIOBJ_T_COUPLET: {
     head = malloc(sizeof(*head) + sizeof(fio_couplet_s));
     head->ref = 1;
     *(fio_couplet_s *)(HEAD2OBJ(head)) = (fio_couplet_s){.type = type};
@@ -265,7 +265,7 @@ static void fiobj_dealloc(fiobj_s *obj) {
   if (spn_sub(&OBJ2HEAD(obj).ref, 1))
     return;
   switch (obj->type) {
-  case FIOBJ_T_HASH_COUPLET:
+  case FIOBJ_T_COUPLET:
     /* notice that the containing Hash might have already been freed */
     fiobj_dealloc(((fio_couplet_s *)obj)->name);
     fiobj_dealloc(((fio_couplet_s *)obj)->obj);
@@ -349,7 +349,8 @@ void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
 
   if (!task)
     return;
-  if (obj && (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH))
+  if (obj && (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH ||
+              obj->type == FIOBJ_T_COUPLET))
     goto nested;
   /* no nested objects, fast and easy. */
   task(obj, arg);
@@ -373,23 +374,30 @@ nested:
       }
       pos = pos->next;
     }
+
+    fiobj_s *tmp = obj;
+    if (obj->type == FIOBJ_T_COUPLET)
+      tmp = fiobj_couplet2obj(obj);
+
     /* if it's a simple object, fast forward */
-    if (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH)
+    if (tmp->type != FIOBJ_T_ARRAY && tmp->type != FIOBJ_T_HASH)
       goto perform_task;
 
     /* add object to cyclic protection */
     fio_ls_push(&processed, obj);
+    if (obj->type == FIOBJ_T_COUPLET)
+      fio_ls_push(&processed, tmp);
 
     /* add all children to the queue */
-    if (obj->type == FIOBJ_T_ARRAY) {
-      size_t i = fiobj_ary_count(obj);
+    if (tmp->type == FIOBJ_T_ARRAY) {
+      size_t i = fiobj_ary_count(tmp);
       while (i) {
         i--;
-        fio_ls_unshift(&list, fiobj_ary_entry(obj, i));
+        fio_ls_unshift(&list, fiobj_ary_entry(tmp, i));
       }
     } else { /* must be Hash */
       fio_ls_s *at = &list;
-      fio_hash_s *h = (fio_hash_s *)obj;
+      fio_hash_s *h = (fio_hash_s *)tmp;
       fio_couplet_s *i;
       fio_ht_for_each(fio_couplet_s, node, i, h->h) {
         fio_ls_unshift(at, (fiobj_s *)i);
@@ -725,7 +733,7 @@ fio_string_s fiobj_obj2cstr(fiobj_s *obj) {
   } else if (obj->type == FIOBJ_T_NULL) {
     /* unlike NULL (not fiobj), this returns an empty string. */
     return (fio_string_s){.buffer = "", .len = 0};
-  } else if (obj->type == FIOBJ_T_HASH_COUPLET) {
+  } else if (obj->type == FIOBJ_T_COUPLET) {
     return fiobj_obj2cstr(((fio_couplet_s *)obj)->obj);
   } else if (obj->type == FIOBJ_T_NUMBER) {
     return (fio_string_s){
@@ -1018,7 +1026,7 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
     fiobj_dealloc((fiobj_s *)obj);
     return -1;
   }
-  fiobj_s *coup = fiobj_alloc(FIOBJ_T_HASH_COUPLET, 0, NULL);
+  fiobj_s *coup = fiobj_alloc(FIOBJ_T_COUPLET, 0, NULL);
   ((fio_couplet_s *)coup)->name = fiobj_dup(sym);
   ((fio_couplet_s *)coup)->obj = obj;
   fio_ht_add(&((fio_hash_s *)hash)->h, &((fio_couplet_s *)coup)->node,
@@ -1081,7 +1089,7 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
  * Otherwise returns NULL.
  */
 fiobj_s *fiobj_couplet2key(fiobj_s *obj) {
-  if (!obj || obj->type != FIOBJ_T_HASH_COUPLET)
+  if (!obj || obj->type != FIOBJ_T_COUPLET)
     return NULL;
   return ((fio_couplet_s *)obj)->name;
 }
@@ -1093,7 +1101,7 @@ fiobj_s *fiobj_couplet2key(fiobj_s *obj) {
  * Otherwise returns NULL.
  */
 fiobj_s *fiobj_couplet2obj(fiobj_s *obj) {
-  if (!obj || obj->type != FIOBJ_T_HASH_COUPLET)
+  if (!obj || obj->type != FIOBJ_T_COUPLET)
     return obj;
   return ((fio_couplet_s *)obj)->obj;
 }
@@ -1134,7 +1142,17 @@ static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
     count = fiobj_hash_count(obj);
     return 0;
   }
-
+  if (obj && obj->type == FIOBJ_T_COUPLET) {
+    fprintf(stderr, "%s:", fiobj_obj2cstr(fiobj_couplet2key(obj)).data);
+    fiobj_s *tmp = fiobj_couplet2obj(obj);
+    if (tmp->type == FIOBJ_T_HASH) {
+      obj = fiobj_couplet2key(obj);
+      count += fiobj_hash_count(tmp);
+    } else if (tmp->type == FIOBJ_T_ARRAY) {
+      obj = fiobj_couplet2key(obj);
+      count += fiobj_ary_count(tmp);
+    }
+  }
   if (--count) {
     fprintf(stderr, "%s, ", fiobj_obj2cstr(obj).data);
   } else {
@@ -1243,16 +1261,21 @@ void fiobj_test(void) {
   if (obj->type == FIOBJ_T_HASH) {
     fprintf(stderr, "* testing Hash. \n");
     fiobj_s *syms = fiobj_ary_new();
+    fiobj_s *a = fiobj_ary_new();
     fiobj_s *tmp;
+    fiobj_ary_push(a, fiobj_str_new("String in a nested Array", 24));
+    tmp = fiobj_sym_new("array", 5);
+    fiobj_hash_set(obj, tmp, a);
+    fiobj_free(tmp);
 
     for (size_t i = 0; i < 128; i++) {
       tmp = fiobj_num_new(i);
       fio_string_s s = fiobj_obj2cstr(tmp);
       fiobj_ary_set(syms, fiobj_sym_new(s.buffer, s.len), i);
       fiobj_hash_set(obj, fiobj_ary_entry(syms, i), tmp);
-      if (fiobj_hash_count(obj) != i + 1)
+      if (fiobj_hash_count(obj) != i + 2)
         fprintf(stderr, "* FAILED Hash count. %lu != %lu\n",
-                fiobj_hash_count(obj), i + 1);
+                fiobj_hash_count(obj), i + 2);
     }
 
     if (OBJ2HEAD(fiobj_ary_entry(syms, 2)).ref < 2)
