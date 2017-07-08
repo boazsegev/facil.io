@@ -722,6 +722,11 @@ fio_string_s fiobj_obj2cstr(fiobj_s *obj) {
     return (fio_string_s){
         .buffer = ((fio_sym_s *)obj)->str, .len = ((fio_sym_s *)obj)->len,
     };
+  } else if (obj->type == FIOBJ_T_NULL) {
+    /* unlike NULL (not fiobj), this returns an empty string. */
+    return (fio_string_s){.buffer = "", .len = 0};
+  } else if (obj->type == FIOBJ_T_HASH_COUPLET) {
+    return fiobj_obj2cstr(((fio_couplet_s *)obj)->obj);
   } else if (obj->type == FIOBJ_T_NUMBER) {
     return (fio_string_s){
         .buffer = num_buffer,
@@ -996,7 +1001,11 @@ Hash API
 fiobj_s *fiobj_hash_new(void) { return fiobj_alloc(FIOBJ_T_HASH, 0, NULL); }
 
 /** Returns the number of elements in the Hash. */
-size_t fiobj_hash_count(fiobj_s *hash) { return ((fio_hash_s *)hash)->h.count; }
+size_t fiobj_hash_count(fiobj_s *hash) {
+  if (!hash || hash->type != FIOBJ_T_HASH)
+    return 0;
+  return ((fio_hash_s *)hash)->h.count;
+}
 
 /**
  * Sets a key-value pair in the Hash, duplicating the Symbol and **moving**
@@ -1072,6 +1081,8 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
  * Otherwise returns NULL.
  */
 fiobj_s *fiobj_couplet2key(fiobj_s *obj) {
+  if (!obj || obj->type != FIOBJ_T_HASH_COUPLET)
+    return NULL;
   return ((fio_couplet_s *)obj)->name;
 }
 
@@ -1081,7 +1092,11 @@ fiobj_s *fiobj_couplet2key(fiobj_s *obj) {
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_couplet2obj(fiobj_s *obj) { return ((fio_couplet_s *)obj)->obj; }
+fiobj_s *fiobj_couplet2obj(fiobj_s *obj) {
+  if (!obj || obj->type != FIOBJ_T_HASH_COUPLET)
+    return obj;
+  return ((fio_couplet_s *)obj)->obj;
+}
 
 /* *****************************************************************************
 A touch of testing
@@ -1089,19 +1104,54 @@ A touch of testing
 #ifdef DEBUG
 
 static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
-  static size_t count = 0;
+  static __thread uintptr_t count = 0;
+  static __thread const char *stop = ".";
+  static __thread fio_ls_s nested = {NULL, NULL, NULL};
+  if (!nested.next)
+    nested = (fio_ls_s)FIO_LS_INIT(nested);
+
   if (obj && obj->type == FIOBJ_T_ARRAY) {
+    fio_ls_push(&nested, (fiobj_s *)stop);
+    if (!count) {
+      fio_ls_push(&nested, (fiobj_s *)count);
+      fprintf(stderr, "\n* Array data: [");
+    } else {
+      fio_ls_push(&nested, (fiobj_s *)(--count));
+      fprintf(stderr, "[ ");
+    }
+    stop = " ]";
     count = fiobj_ary_count(obj);
-    fprintf(stderr, "* Array data: [");
+    return 0;
+  } else if (obj && obj->type == FIOBJ_T_HASH) {
+    fio_ls_push(&nested, (fiobj_s *)stop);
+    fio_ls_push(&nested, (fiobj_s *)count);
+    if (!count)
+      fprintf(stderr, "\n* Hash data: {");
+    else {
+      fprintf(stderr, "{ ");
+    }
+    stop = " }";
+    count = fiobj_hash_count(obj);
     return 0;
   }
+
   if (--count) {
     fprintf(stderr, "%s, ", fiobj_obj2cstr(obj).data);
-  } else
-    fprintf(stderr,
-            "%s]\n    "
-            "(should be 127..0)\n",
-            fiobj_obj2cstr(obj).data);
+  } else {
+    count = (uintptr_t)fio_ls_pop(&nested);
+    if (count) {
+      fprintf(stderr, "%s %s, ", fiobj_obj2cstr(obj).data, stop);
+      stop = (char *)fio_ls_pop(&nested);
+    } else {
+      fprintf(stderr, "%s %s ", fiobj_obj2cstr(obj).data, stop);
+      stop = (char *)fio_ls_pop(&nested);
+      if (stop[0] != '.')
+        fprintf(stderr, "%s", stop);
+      else
+        fprintf(stderr, "\n (should be 127..0)\n");
+    }
+  }
+
   return 0;
   (void)arg;
 }
@@ -1222,6 +1272,8 @@ void fiobj_test(void) {
                     ? fiobj_hash_get(obj, fiobj_ary_entry(syms, i))->type
                     : 0);
     }
+
+    fiobj_each2(obj, fiobj_test_array_task, NULL);
 
     fiobj_free(obj);
     if (OBJ2HEAD(fiobj_ary_entry(syms, 2)).ref != 1)
