@@ -126,7 +126,7 @@ void resp_free_object(resp_object_s *obj);
  * to the size of the buffer.
  *
  * Once the function returns, `size` will be updated to include the number of
- * bytes required for the string. If the function returned a failuer, this value
+ * bytes required for the string. If the function returned a failure, this value
  * can be used to allocate enough memory to contain the string.
  *
  * The string is Binary safe and it ISN'T always NUL terminated.
@@ -134,8 +134,7 @@ void resp_free_object(resp_object_s *obj);
  * The optional `parser` argument allows experimental extensions to be used when
  * formatting the object. It can be ignored when formatting without extensions.
  *
- * **If implementing a server**: DON'T use this to format outgoing pub/sub
- * notifications.
+ * **If implementing a server**:
  *
  * When implementing a server, Pub/Sub should avoid multiple copies by using a
  * dedicated buffer with a reference count. By decreasing the reference count
