@@ -9,7 +9,7 @@ LIB_ROOT=./lib
 # publicly used subfolders in the lib root
 LIB_PUBLIC_SUBFOLDERS=facil/core facil/core/types facil/services facil/http facil/redis
 # privately used subfolders in the lib root (this distinction is for CMake)
-LIB_PRIVATE_SUBFOLDERS=facil/bscrypt facil/bscrypt/bscrypt
+LIB_PRIVATE_SUBFOLDERS=facil/bscrypt facil/bscrypt/bscrypt facil/core/types/fiobj
 
 ### Development folders
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`.

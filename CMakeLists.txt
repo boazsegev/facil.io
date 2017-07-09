@@ -8,7 +8,6 @@ set(facil.io_SOURCES
   ./lib/facil/core/facil.c
   ./lib/facil/core/sock.c
   ./lib/facil/core/types/fio_dict.c
-  ./lib/facil/core/types/fiobj.c
   ./lib/facil/services/pubsub.c
   ./lib/facil/http/http.c
   ./lib/facil/http/http1.c
@@ -18,6 +17,7 @@ set(facil.io_SOURCES
   ./lib/facil/http/http_request.c
   ./lib/facil/http/http_response.c
   ./lib/facil/http/websockets.c
+  ./lib/facil/redis/fio2resp.c
   ./lib/facil/redis/redis_connection.c
   ./lib/facil/redis/redis_engine.c
   ./lib/facil/redis/resp.c
@@ -29,6 +29,15 @@ set(facil.io_SOURCES
   ./lib/facil/bscrypt/bscrypt/sha2.c
   ./lib/facil/bscrypt/bscrypt/siphash.c
   ./lib/facil/bscrypt/bscrypt/xor-crypt.c
+  ./lib/facil/core/types/fiobj/fiobj_alloc.c
+  ./lib/facil/core/types/fiobj/fiobj_ary.c
+  ./lib/facil/core/types/fiobj/fiobj_generic.c
+  ./lib/facil/core/types/fiobj/fiobj_hash.c
+  ./lib/facil/core/types/fiobj/fiobj_misc.c
+  ./lib/facil/core/types/fiobj/fiobj_numers.c
+  ./lib/facil/core/types/fiobj/fiobj_str.c
+  ./lib/facil/core/types/fiobj/fiobj_sym.c
+  ./lib/facil/core/types/fiobj/fiobj_tests.c
 )
 
 add_library(facil.io ${facil.io_SOURCES})
@@ -42,5 +51,6 @@ target_include_directories(facil.io
   PUBLIC  ./lib/facil/redis
   PRIVATE ./lib/facil/bscrypt
   PRIVATE ./lib/facil/bscrypt/bscrypt
+  PRIVATE ./lib/facil/core/types/fiobj
 )
 
