@@ -12,6 +12,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <math.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -89,8 +90,9 @@ typedef struct {
 /* String */
 typedef struct {
   fiobj_type_en type;
+  uint64_t capa;
   uint64_t len;
-  char str[];
+  char *str;
 } fio_str_s;
 
 /* Symbol */
@@ -201,25 +203,30 @@ static fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
     break;
   }
   case FIOBJ_T_STRING: {
-    head = malloc(sizeof(*head) + sizeof(fio_str_s) + len + 1);
+    head = malloc(sizeof(*head) + sizeof(fio_str_s));
     head->ref = 1;
-    HEAD2OBJ(head)->type = type;
-    ((fio_str_s *)HEAD2OBJ(head))->len = len;
+    *((fio_str_s *)HEAD2OBJ(head)) = (fio_str_s){
+        .type = type, .len = len, .capa = len, .str = malloc(len),
+    };
     if (buffer)
       memcpy(((fio_str_s *)HEAD2OBJ(head))->str, buffer, len);
     ((fio_str_s *)HEAD2OBJ(head))->str[len] = 0;
     return HEAD2OBJ(head);
     break;
   }
-  case FIOBJ_T_SYM: {
+  case FIOBJ_T_SYMBOL: {
     head = malloc(sizeof(*head) + sizeof(fio_sym_s) + len + 1);
     head->ref = 1;
-    HEAD2OBJ(head)->type = type;
-    ((fio_sym_s *)HEAD2OBJ(head))->len = len;
-    if (buffer)
+    if (buffer) {
+      *((fio_sym_s *)HEAD2OBJ(head)) = (fio_sym_s){
+          .type = type, .len = len, .hash = fio_ht_hash(buffer, len),
+      };
       memcpy(((fio_sym_s *)HEAD2OBJ(head))->str, buffer, len);
-    ((fio_sym_s *)HEAD2OBJ(head))->str[len] = 0;
-    ((fio_sym_s *)HEAD2OBJ(head))->hash = fio_ht_hash(buffer, len);
+      ((fio_sym_s *)HEAD2OBJ(head))->str[len] = 0;
+    } else
+      *((fio_sym_s *)HEAD2OBJ(head)) = (fio_sym_s){
+          .type = type, .len = len, .hash = 0,
+      };
     return HEAD2OBJ(head);
     break;
   }
@@ -282,15 +289,17 @@ static void fiobj_dealloc(fiobj_s *obj) {
   case FIOBJ_T_FILE:
     fclose(((fio_file_s *)obj)->f);
     goto common;
-  /* fallthrough */
+  case FIOBJ_T_STRING:
+    free(((fio_str_s *)obj)->str);
+    goto common;
+
   common:
   case FIOBJ_T_NULL:
   case FIOBJ_T_TRUE:
   case FIOBJ_T_FALSE:
   case FIOBJ_T_NUMBER:
   case FIOBJ_T_FLOAT:
-  case FIOBJ_T_STRING:
-  case FIOBJ_T_SYM:
+  case FIOBJ_T_SYMBOL:
     free(&OBJ2HEAD(obj));
   }
 }
@@ -418,6 +427,158 @@ finish:
 }
 
 /* *****************************************************************************
+Object Comparison (`fiobj_iseq`)
+***************************************************************************** */
+
+static int fiobj_iseq_check(fiobj_s *obj1, fiobj_s *obj2) {
+  if (obj1->type != obj2->type)
+    return 0;
+  switch (obj1->type) {
+  case FIOBJ_T_NULL:
+  case FIOBJ_T_TRUE:
+  case FIOBJ_T_FALSE:
+    if (obj1->type == obj2->type)
+      return 1;
+    break;
+  case FIOBJ_T_COUPLET:
+    return fiobj_iseq_check(((fio_couplet_s *)obj1)->name,
+                            ((fio_couplet_s *)obj2)->name) &&
+           fiobj_iseq_check(((fio_couplet_s *)obj1)->obj,
+                            ((fio_couplet_s *)obj2)->obj);
+    break;
+  case FIOBJ_T_ARRAY:
+    if (fiobj_ary_count(obj1) == fiobj_ary_count(obj2))
+      return 1;
+    break;
+  case FIOBJ_T_HASH:
+    if (fiobj_hash_count(obj1) == fiobj_hash_count(obj2))
+      return 1;
+    break;
+  case FIOBJ_T_IO:
+    if (((fio_io_s *)obj1)->fd == ((fio_io_s *)obj2)->fd)
+      return 1;
+    break;
+  case FIOBJ_T_FILE:
+    if (((fio_file_s *)obj1)->f == ((fio_file_s *)obj2)->f)
+      return 1;
+    break;
+  case FIOBJ_T_NUMBER:
+    if (((fio_num_s *)obj1)->i == ((fio_num_s *)obj2)->i)
+      return 1;
+    break;
+  case FIOBJ_T_FLOAT:
+    if (((fio_float_s *)obj1)->f == ((fio_float_s *)obj2)->f)
+      return 1;
+    break;
+  case FIOBJ_T_SYMBOL:
+    if (((fio_sym_s *)obj1)->hash == ((fio_sym_s *)obj2)->hash)
+      return 1;
+    break;
+  case FIOBJ_T_STRING:
+    if (((fio_str_s *)obj1)->len == ((fio_str_s *)obj2)->len &&
+        !memcmp(((fio_str_s *)obj1)->str, ((fio_str_s *)obj2)->str,
+                ((fio_str_s *)obj1)->len))
+      return 1;
+    break;
+  }
+  return 0;
+}
+
+/**
+ * Deeply compare two objects. No hashing is involved.
+ */
+int fiobj_iseq(fiobj_s *obj1, fiobj_s *obj2) {
+
+  fio_ls_s pos1 = FIO_LS_INIT(pos1);
+  fio_ls_s pos2 = FIO_LS_INIT(pos2);
+  fio_ls_s history = FIO_LS_INIT(history);
+  fio_ls_push(&pos1, obj1);
+  fio_ls_push(&pos2, obj2);
+  int ret;
+
+  while (pos1.next != &pos1 && pos2.next != &pos2) {
+  restart_cmp_loop:
+    obj1 = fio_ls_pop(&pos1);
+    obj2 = fio_ls_pop(&pos2);
+
+#ifndef DEBUG /* don't optimize when testing */
+    if (obj1 == obj2)
+      continue;
+#else
+    if (!obj1 && !obj2)
+      continue;
+#endif
+
+    if (!obj1 || !obj2)
+      goto not_equal;
+
+    if (!fiobj_iseq_check(obj1, obj2))
+      goto not_equal;
+
+    /* test for nested objects */
+    if (obj1->type == FIOBJ_T_COUPLET || obj1->type == FIOBJ_T_ARRAY ||
+        obj1->type == FIOBJ_T_HASH) {
+      fio_ls_s *p = history.next;
+      while (p != &history) {
+        if (p->obj == obj1)
+          goto restart_cmp_loop;
+        p = p->next;
+      }
+    }
+
+    if (obj1->type == FIOBJ_T_COUPLET) {
+      if (((fio_couplet_s *)obj1)->obj->type == FIOBJ_T_HASH ||
+          ((fio_couplet_s *)obj1)->obj->type == FIOBJ_T_COUPLET)
+        fio_ls_push(&history, obj1);
+      obj1 = ((fio_couplet_s *)obj1)->obj;
+      obj2 = ((fio_couplet_s *)obj2)->obj;
+    }
+
+    if (obj1->type == FIOBJ_T_ARRAY) {
+      fio_ls_push(&history, obj1);
+      size_t i = fiobj_ary_count(obj1);
+      while (i) {
+        i--;
+        fio_ls_unshift(&pos1, fiobj_ary_entry(obj1, i));
+      }
+      i = fiobj_ary_count(obj2);
+      while (i) {
+        i--;
+        fio_ls_unshift(&pos2, fiobj_ary_entry(obj2, i));
+      }
+    } else if (obj1->type == FIOBJ_T_HASH) {
+      fio_ls_push(&history, obj1);
+      fio_ls_s *at = &pos1;
+      fio_couplet_s *i;
+      fio_ht_for_each(fio_couplet_s, node, i, (((fio_hash_s *)obj1)->h)) {
+        fio_ls_unshift(at, (fiobj_s *)i);
+        at = at->prev;
+      }
+      at = &pos2;
+      fio_ht_for_each(fio_couplet_s, node, i, (((fio_hash_s *)obj2)->h)) {
+        fio_ls_unshift(at, (fiobj_s *)i);
+        at = at->prev;
+      }
+    }
+  }
+
+finish:
+
+  ret = (pos1.next == &pos1 && pos2.next == &pos2);
+
+  while (fio_ls_pop(&pos1))
+    ;
+  while (fio_ls_pop(&pos2))
+    ;
+  while (fio_ls_pop(&history))
+    ;
+  return ret;
+not_equal:
+  fio_ls_push(&pos1, (fiobj_s *)&pos1);
+  goto finish;
+}
+
+/* *****************************************************************************
 NULL, TRUE, FALSE API
 ***************************************************************************** */
 
@@ -534,8 +695,12 @@ int64_t fiobj_obj2num(fiobj_s *obj) {
     return (int64_t)floorl(((fio_float_s *)obj)->f);
   if (obj->type == FIOBJ_T_STRING)
     return fio_atol(((fio_str_s *)obj)->str);
-  if (obj->type == FIOBJ_T_SYM)
+  if (obj->type == FIOBJ_T_SYMBOL)
     return fio_atol(((fio_sym_s *)obj)->str);
+  if (obj->type == FIOBJ_T_ARRAY)
+    return fiobj_ary_count(obj);
+  if (obj->type == FIOBJ_T_HASH)
+    return fiobj_hash_count(obj);
   return 0;
 }
 
@@ -556,8 +721,12 @@ double fiobj_obj2float(fiobj_s *obj) {
     return (double)((fio_num_s *)obj)->i;
   if (obj->type == FIOBJ_T_STRING)
     return fio_atof(((fio_str_s *)obj)->str);
-  if (obj->type == FIOBJ_T_SYM)
+  if (obj->type == FIOBJ_T_SYMBOL)
     return fio_atof(((fio_sym_s *)obj)->str);
+  if (obj->type == FIOBJ_T_ARRAY)
+    return (double)fiobj_ary_count(obj);
+  if (obj->type == FIOBJ_T_HASH)
+    return (double)fiobj_hash_count(obj);
   return 0;
 }
 
@@ -704,8 +873,126 @@ fiobj_s *fiobj_str_new(const char *str, size_t len) {
   return fiobj_alloc(FIOBJ_T_STRING, len, (void *)str);
 }
 
+/** Creates a String object using a printf like interface. */
+__attribute__((format(printf, 1, 0))) fiobj_s *
+fiobj_strvprintf(const char *restrict format, va_list argv) {
+  fiobj_s *str = NULL;
+  va_list argv_cpy;
+  va_copy(argv_cpy, argv);
+  int len = vsnprintf(NULL, 0, format, argv_cpy);
+  va_end(argv_cpy);
+  if (len == 0)
+    str = fiobj_alloc(FIOBJ_T_STRING, 0, (void *)"");
+  if (len <= 0)
+    return str;
+  str = fiobj_alloc(FIOBJ_T_STRING, len, NULL); /* adds 1 to len, for NUL */
+  vsnprintf(((fio_str_s *)(str))->str, len + 1, format, argv);
+  return str;
+}
+__attribute__((format(printf, 1, 2))) fiobj_s *
+fiobj_strprintf(const char *restrict format, ...) {
+  va_list argv;
+  va_start(argv, format);
+  fiobj_s *str = fiobj_strvprintf(format, argv);
+  va_end(argv);
+  return str;
+}
+
+/** Creates a buffer String object. Remember to use `fiobj_free`. */
+fiobj_s *fiobj_str_buf(size_t capa) {
+  fiobj_s *str = fiobj_alloc(FIOBJ_T_STRING, capa, NULL);
+  fiobj_str_clear(str);
+  return str;
+}
+
+/** Resizes a String object, allocating more memory if required. */
+void fiobj_str_resize(fiobj_s *str, size_t size) {
+  if (str->type != FIOBJ_T_STRING)
+    return;
+  if (((fio_str_s *)str)->capa >= size + 1) {
+    ((fio_str_s *)str)->len = size;
+    ((fio_str_s *)str)->str[size] = 0;
+    return;
+  }
+  /* it's better to crash than live without memory... */
+  ((fio_str_s *)str)->str = realloc(((fio_str_s *)str)->str, size + 1);
+  ((fio_str_s *)str)->capa = size + 1;
+  return;
+}
+
+/** Return's a String's capacity, if any. */
+size_t fiobj_str_capa(fiobj_s *str) {
+  if (str->type != FIOBJ_T_STRING)
+    return 0;
+  return ((fio_str_s *)str)->capa;
+}
+
+/** Deallocates any unnecessary memory (if supported by OS). */
+void fiobj_str_minimize(fiobj_s *str) {
+  if (str->type != FIOBJ_T_STRING)
+    return;
+  ((fio_str_s *)str)->capa = ((fio_str_s *)str)->len + 1;
+  ((fio_str_s *)str)->str =
+      realloc(((fio_str_s *)str)->str, ((fio_str_s *)str)->capa);
+  return;
+}
+
+/** Empties a String's data. */
+void fiobj_str_clear(fiobj_s *str) {
+  if (str->type != FIOBJ_T_STRING)
+    return;
+  ((fio_str_s *)str)->str[0] = 0;
+  ((fio_str_s *)str)->len = 0;
+}
+
 /**
- * Returns a C String (NUL terminated) using the `fio_string_s` data type.
+ * Writes data at the end of the string, resizing the string as required.
+ * Returns the new length of the String
+ */
+size_t fiobj_str_write(fiobj_s *dest, const char *data, size_t len) {
+  if (dest->type != FIOBJ_T_STRING)
+    return 0;
+  fiobj_str_resize(dest, ((fio_str_s *)dest)->len + len);
+  memcpy(((fio_str_s *)dest)->str + ((fio_str_s *)dest)->len - len, data, len);
+  ((fio_str_s *)dest)->str[((fio_str_s *)dest)->len] = 0;
+  return ((fio_str_s *)dest)->len;
+}
+/**
+ * Writes data at the end of the string, resizing the string as required.
+ * Returns the new length of the String
+ */
+size_t fiobj_str_write2(fiobj_s *dest, const char *format, ...) {
+  if (dest->type != FIOBJ_T_STRING)
+    return 0;
+  va_list argv;
+  va_start(argv, format);
+  int len = vsnprintf(NULL, 0, format, argv);
+  va_end(argv);
+  if (len <= 0)
+    return ((fio_str_s *)dest)->len;
+  fiobj_str_resize(dest, ((fio_str_s *)dest)->len + len);
+  va_start(argv, format);
+  vsnprintf(((fio_str_s *)(dest))->str + ((fio_str_s *)dest)->len - len,
+            len + 1, format, argv);
+  va_end(argv);
+  ((fio_str_s *)dest)->str[((fio_str_s *)dest)->len] = 0;
+  return ((fio_str_s *)dest)->len;
+}
+/**
+ * Writes data at the end of the string, resizing the string as required.
+ * Returns the new length of the String
+ */
+size_t fiobj_str_join(fiobj_s *dest, fiobj_s *obj) {
+  if (dest->type != FIOBJ_T_STRING)
+    return 0;
+  fio_cstr_s o = fiobj_obj2cstr(obj);
+  if (o.len == 0)
+    return ((fio_str_s *)dest)->len;
+  return fiobj_str_write(dest, o.data, o.len);
+}
+
+/**
+ * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
  *
  * The Sting in binary safe and might contain NUL bytes in the middle as well
  * as a terminating NUL.
@@ -718,35 +1005,35 @@ fiobj_s *fiobj_str_new(const char *str, size_t len) {
  * A type error results in NULL (i.e. object isn't a String).
  */
 static __thread char num_buffer[128];
-fio_string_s fiobj_obj2cstr(fiobj_s *obj) {
+fio_cstr_s fiobj_obj2cstr(fiobj_s *obj) {
   if (!obj)
-    return (fio_string_s){.buffer = NULL, .len = 0};
+    return (fio_cstr_s){.buffer = NULL, .len = 0};
 
   if (obj->type == FIOBJ_T_STRING) {
-    return (fio_string_s){
+    return (fio_cstr_s){
         .buffer = ((fio_str_s *)obj)->str, .len = ((fio_str_s *)obj)->len,
     };
-  } else if (obj->type == FIOBJ_T_SYM) {
-    return (fio_string_s){
+  } else if (obj->type == FIOBJ_T_SYMBOL) {
+    return (fio_cstr_s){
         .buffer = ((fio_sym_s *)obj)->str, .len = ((fio_sym_s *)obj)->len,
     };
   } else if (obj->type == FIOBJ_T_NULL) {
     /* unlike NULL (not fiobj), this returns an empty string. */
-    return (fio_string_s){.buffer = "", .len = 0};
+    return (fio_cstr_s){.buffer = "", .len = 0};
   } else if (obj->type == FIOBJ_T_COUPLET) {
     return fiobj_obj2cstr(((fio_couplet_s *)obj)->obj);
   } else if (obj->type == FIOBJ_T_NUMBER) {
-    return (fio_string_s){
+    return (fio_cstr_s){
         .buffer = num_buffer,
         .len = fio_ltoa(num_buffer, ((fio_num_s *)obj)->i, 10),
     };
   } else if (obj->type == FIOBJ_T_FLOAT) {
-    return (fio_string_s){
+    return (fio_cstr_s){
         .buffer = num_buffer,
         .len = fio_ftoa(num_buffer, ((fio_float_s *)obj)->f, 10),
     };
   }
-  return (fio_string_s){.buffer = NULL, .len = 0};
+  return (fio_cstr_s){.buffer = NULL, .len = 0};
 }
 
 /* *****************************************************************************
@@ -755,12 +1042,38 @@ Symbol API
 
 /** Creates a Symbol object. Use `fiobj_free`. */
 fiobj_s *fiobj_sym_new(const char *str, size_t len) {
-  return fiobj_alloc(FIOBJ_T_SYM, len, (void *)str);
+  return fiobj_alloc(FIOBJ_T_SYMBOL, len, (void *)str);
+}
+
+/** Creates a Symbol object using a printf like interface. */
+__attribute__((format(printf, 1, 0))) fiobj_s *
+fiobj_symvprintf(const char *restrict format, va_list argv) {
+  fiobj_s *sym = NULL;
+  va_list argv_cpy;
+  va_copy(argv_cpy, argv);
+  int len = vsnprintf(NULL, 0, format, argv_cpy);
+  va_end(argv_cpy);
+  if (len == 0)
+    sym = fiobj_alloc(FIOBJ_T_SYMBOL, 0, (void *)"");
+  if (len <= 0)
+    return sym;
+  sym = fiobj_alloc(FIOBJ_T_SYMBOL, len, NULL); /* adds 1 to len, for NUL */
+  vsnprintf(((fio_sym_s *)(sym))->str, len + 1, format, argv);
+  ((fio_sym_s *)(sym))->hash = fio_ht_hash(((fio_sym_s *)(sym))->str, len);
+  return sym;
+}
+__attribute__((format(printf, 1, 2))) fiobj_s *
+fiobj_symprintf(const char *restrict format, ...) {
+  va_list argv;
+  va_start(argv, format);
+  fiobj_s *sym = fiobj_symvprintf(format, argv);
+  va_end(argv);
+  return sym;
 }
 
 /** Returns 1 if both Symbols are equal and 0 if not. */
 int fiobj_sym_iseql(fiobj_s *sym1, fiobj_s *sym2) {
-  if (sym1->type != FIOBJ_T_SYM || sym2->type != FIOBJ_T_SYM)
+  if (sym1->type != FIOBJ_T_SYMBOL || sym2->type != FIOBJ_T_SYMBOL)
     return 0;
   return (((fio_sym_s *)sym1)->hash == ((fio_sym_s *)sym2)->hash);
 }
@@ -1022,7 +1335,7 @@ size_t fiobj_hash_count(fiobj_s *hash) {
  * Returns -1 on error.
  */
 int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
-  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYM) {
+  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYMBOL) {
     fiobj_dealloc((fiobj_s *)obj);
     return -1;
   }
@@ -1039,7 +1352,7 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
  * object (instead of freeing it).
  */
 fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
-  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYM)
+  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYMBOL)
     return NULL;
   fio_couplet_s *coup =
       (void *)fio_ht_pop(&((fio_hash_s *)hash)->h, ((fio_sym_s *)sym)->hash);
@@ -1070,7 +1383,7 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
  * if none.
  */
 fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
-  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYM) {
+  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYMBOL) {
     return NULL;
   }
   fio_couplet_s *coup =
@@ -1080,6 +1393,21 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
   }
   coup = fio_node2obj(fio_couplet_s, node, coup);
   return coup->obj;
+}
+
+/**
+ * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.
+ */
+int fiobj_hash_haskey(fiobj_s *hash, fiobj_s *sym) {
+  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYMBOL) {
+    return 0;
+  }
+  fio_couplet_s *coup =
+      (void *)fio_ht_find(&((fio_hash_s *)hash)->h, ((fio_sym_s *)sym)->hash);
+  if (!coup) {
+    return 0;
+  }
+  return 1;
 }
 
 /**
@@ -1176,7 +1504,8 @@ static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
   (void)arg;
 }
 
-/* test were written for OSX (fprintf types) with clang (%s for NULL is okay) */
+/* test were written for OSX (fprintf types) with clang (%s for NULL is okay)
+ */
 void fiobj_test(void) {
   fiobj_s *obj;
   size_t i;
@@ -1272,7 +1601,7 @@ void fiobj_test(void) {
 
     for (size_t i = 0; i < 128; i++) {
       tmp = fiobj_num_new(i);
-      fio_string_s s = fiobj_obj2cstr(tmp);
+      fio_cstr_s s = fiobj_obj2cstr(tmp);
       fiobj_ary_set(syms, fiobj_sym_new(s.buffer, s.len), i);
       fiobj_hash_set(obj, fiobj_ary_entry(syms, i), tmp);
       if (fiobj_hash_count(obj) != i + 2)

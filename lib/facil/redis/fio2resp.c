@@ -46,40 +46,40 @@ static int resp_fioformat_task(fiobj_s *obj, void *s_) {
     }                                                                          \
   } while (0)
 
-  fio_string_s str = {.data = NULL};
+  fio_cstr_s str = {.data = NULL};
 
   switch (obj->type) {
   case FIOBJ_T_FALSE:
-    str = (fio_string_s){.data = "false", .len = 5};
+    str = (fio_cstr_s){.data = "false", .len = 5};
     break;
   case FIOBJ_T_TRUE:
-    str = (fio_string_s){.data = "true", .len = 4};
+    str = (fio_cstr_s){.data = "true", .len = 4};
     break;
   case FIOBJ_T_NUMBER:
   case FIOBJ_T_STRING:
-  case FIOBJ_T_SYM:
+  case FIOBJ_T_SYMBOL:
     str = fiobj_obj2cstr(obj);
     break;
   case FIOBJ_T_FLOAT:
-    str = (fio_string_s){.data = num_buffer,
-                         .len = fio_ltoa(num_buffer, fiobj_obj2num(obj), 10)};
+    str = (fio_cstr_s){.data = num_buffer,
+                       .len = fio_ltoa(num_buffer, fiobj_obj2num(obj), 10)};
     break;
   case FIOBJ_T_FILE:
   case FIOBJ_T_IO:
   case FIOBJ_T_NULL:
     safe_write2("$-1\r\n", (resp_obj2str(obj)->len));
     return 0;
-    case FIOBJ_T_ARRAY:
-      safe_write1('*');
-      str = (fio_string_s){.data = num_buffer,
-                           .len = fio_ltoa(num_buffer, fiobj_ary_count(obj), 10)};
-      break;
-      case FIOBJ_T_HASH:
-        safe_write1('*');
-        str = (fio_string_s){
-            .data = num_buffer,
-            .len = fio_ltoa(num_buffer, (fiobj_hash_count(obj) << 1), 10)};
-        break;
+  case FIOBJ_T_ARRAY:
+    safe_write1('*');
+    str = (fio_cstr_s){.data = num_buffer,
+                       .len = fio_ltoa(num_buffer, fiobj_ary_count(obj), 10)};
+    break;
+  case FIOBJ_T_HASH:
+    safe_write1('*');
+    str = (fio_cstr_s){
+        .data = num_buffer,
+        .len = fio_ltoa(num_buffer, (fiobj_hash_count(obj) << 1), 10)};
+    break;
   case FIOBJ_T_COUPLET:
     resp_fioformat_task(fiobj_couplet2key(obj), s_);
     resp_fioformat_task(fiobj_couplet2obj(obj), s_);

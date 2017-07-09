@@ -17,6 +17,7 @@ so don't do it.
 */
 #define H_FACIL_IO_OBJECTS_H
 
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,12 +41,12 @@ typedef enum {
   /** A String object. */
   FIOBJ_T_STRING,
   /** A Symbol object. This object contains an immutable String. */
-  FIOBJ_T_SYM,
+  FIOBJ_T_SYMBOL,
   /** An Array object. */
   FIOBJ_T_ARRAY,
   /** A Hash Table object. Hash keys MUST be Symbol objects. */
   FIOBJ_T_HASH,
-  /** A Hash Table key-value pair. This is available when using `fiobj_each`. */
+  /** A Hash Table key-value pair. See `fiobj_each2`. */
   FIOBJ_T_COUPLET,
   /** An IO object containing an `intptr_t` as a `fd` (File Descriptor). */
   FIOBJ_T_IO,
@@ -54,6 +55,7 @@ typedef enum {
 } fiobj_type_en;
 
 typedef struct fiobj_s { fiobj_type_en type; } fiobj_s;
+typedef fiobj_s *fiobj_pt;
 
 /* *****************************************************************************
 Helper macros
@@ -72,7 +74,7 @@ Helper macros
            ((o)->type == FIOBJ_T_NUMBER && fiobj_obj2num((o)) != 0) ||         \
            ((o)->type == FIOBJ_T_FLOAT && fiobj_obj2float((o)) != 0) ||        \
            ((o)->type == FIOBJ_T_STRING && fiobj_obj2cstr((o))[0] != 0) ||     \
-           (o)->type == FIOBJ_T_SYM || (o)->type == FIOBJ_T_ARRAY ||           \
+           (o)->type == FIOBJ_T_SYMBOL || (o)->type == FIOBJ_T_ARRAY ||        \
            (o)->type == FIOBJ_T_HASH || (o)->type == FIOBJ_T_IO ||             \
            (o)->type == FIOBJ_T_FILE))
 
@@ -83,6 +85,8 @@ Generic Object API
 /**
  * Copy by reference(!) - increases an object's (and any nested object's)
  * reference count.
+ *
+ * Always returns the value passed along.
  *
  * Future implementations might provide `fiobj_dup2` providing a deep copy.
  *
@@ -99,6 +103,64 @@ fiobj_s *fiobj_dup(fiobj_s *);
  * also freed.
  */
 void fiobj_free(fiobj_s *);
+
+/**
+ * Returns an Object's numerical value.
+ *
+ * If a String or Symbol are passed to the function, they will be
+ * parsed assuming base 10 numerical data.
+ *
+ * Hashes and Arrays return their object count.
+ *
+ * IO and File objects return their underlying file descriptor.
+ *
+ * A type error results in 0.
+ */
+int64_t fiobj_obj2num(fiobj_s *obj);
+
+/**
+ * Returns a Float's value.
+ *
+ * If a String or Symbol are passed to the function, they will be
+ * parsed assuming base 10 numerical data.
+ *
+ * Hashes and Arrays return their object count.
+ *
+ * IO and File objects return their underlying file descriptor.
+ *
+ * A type error results in 0.
+ */
+double fiobj_obj2float(fiobj_s *obj);
+
+/** A string information type, reports anformation about a C string. */
+typedef struct {
+  union {
+    uint64_t len;
+    uint64_t length;
+  };
+  union {
+    const void *buffer;
+    const uint8_t *bytes;
+    const char *data;
+    const char *value;
+    const char *name;
+  };
+} fio_cstr_s;
+
+/**
+ * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
+ *
+ * The Sting in binary safe and might contain NUL bytes in the middle as well as
+ * a terminating NUL.
+ *
+ * If a Symbol, a Number or a Float are passed to the function, they
+ * will be parsed as a *temporary*, thread-safe, String.
+ *
+ * Numbers will be represented in base 10 numerical data.
+ *
+ * A type error results in NULL (i.e. object isn't a String).
+ */
+fio_cstr_s fiobj_obj2cstr(fiobj_s *obj);
 
 /**
  * Deep itteration using a callback for each fio object, including the parent.
@@ -124,6 +186,26 @@ void fiobj_free(fiobj_s *);
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  */
 void fiobj_each2(fiobj_s *, int (*task)(fiobj_s *obj, void *arg), void *arg);
+
+/**
+ * Deeply compare two objects. No hashing is involved.
+ *
+ * Uses a similar algorithm to `fiobj_each2`, except adjusted to two objects.
+ *
+ * Hash order will be ignored when comapring Hashes, however at the moment it
+ * isn't (see KNOWN ISSUES).
+ *
+ * KNOWN ISSUES:
+ *
+ * * Since Hashes offer ordered access, false negatives occur when comparing two
+ *   identical Hash objects that have a different internal order.
+ *
+ * * Since nested objects aren't followed, there might be a risk regarding false
+ *   positives when both nested objects and NULL pointers (not NULL objects) are
+ *   used in the same superposition.
+ *
+ */
+int fiobj_iseq(fiobj_s *obj1, fiobj_s *obj2);
 
 /* *****************************************************************************
 NULL, TRUE, FALSE API
@@ -167,44 +249,9 @@ void fiobj_num_set(fiobj_s *target, int64_t num);
 /** Mutates a Float object's value. Effects every object's reference!  */
 void fiobj_float_set(fiobj_s *target, double num);
 
-/**
- * Returns a Number's value.
- *
- * If a String or Symbol are passed to the function, they will be
- * parsed assuming base 10 numerical data.
- *
- * A type error results in 0.
- */
-int64_t fiobj_obj2num(fiobj_s *obj);
-
-/**
- * Returns a Float's value.
- *
- * If a String or Symbol are passed to the function, they will be
- * parsed assuming base 10 numerical data.
- *
- * A type error results in 0.
- */
-double fiobj_obj2float(fiobj_s *obj);
-
 /* *****************************************************************************
 String API
 ***************************************************************************** */
-
-/** A string information type, contains data about the length and the pointer */
-typedef struct {
-  union {
-    uint64_t len;
-    uint64_t length;
-  };
-  union {
-    const void *buffer;
-    const uint8_t *bytes;
-    const char *data;
-    const char *value;
-    const char *name;
-  };
-} fio_string_s;
 
 /**
  * A helper function that convers between a signed int64_t to a string.
@@ -234,23 +281,53 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
  */
 size_t fio_ftoa(char *dest, double num, uint8_t base);
 
-/** Creates a String object. Remember to use `fiobj_free`. */
+/** Creates a String object. Remember to `fiobj_free`. */
 fiobj_s *fiobj_str_new(const char *str, size_t len);
 
 /**
- * Returns a C String (NUL terminated) using the `fio_string_s` data type.
+ * Allocates a new String using `prinf` semantics. Remember to `fiobj_free`.
  *
- * The Sting in binary safe and might contain NUL bytes in the middle as well as
- * a terminating NUL.
- *
- * If a Symbol, a Number or a Float are passed to the function, they
- * will be parsed as a *temporary*, thread-safe, String.
- *
- * Numbers will be represented in base 10 numerical data.
- *
- * A type error results in NULL (i.e. object isn't a String).
+ * On error returns NULL.
  */
-fio_string_s fiobj_obj2cstr(fiobj_s *obj);
+__attribute__((format(printf, 1, 2))) fiobj_s *
+fiobj_strprintf(const char *restrict format, ...);
+__attribute__((format(printf, 1, 0))) fiobj_s *
+fiobj_strvprintf(const char *restrict format, va_list argv);
+
+/** Creates a buffer String object. Remember to use `fiobj_free`. */
+fiobj_s *fiobj_str_buf(size_t capa);
+
+/** Resizes a String object, allocating more memory if required. */
+void fiobj_str_resize(fiobj_s *str, size_t size);
+
+/** Returns a String's capacity, if any. */
+size_t fiobj_str_capa(fiobj_s *str);
+
+/** Deallocates any unnecessary memory (if supported by OS). */
+void fiobj_str_minimize(fiobj_s *str);
+
+/** Empties a String's data. */
+void fiobj_str_clear(fiobj_s *str);
+
+/**
+ * Writes data at the end of the string, resizing the string as required.
+ *
+ * Returns the new length of the String.
+ */
+size_t fiobj_str_write(fiobj_s *dest, const char *data, size_t len);
+/**
+ * Writes data at the end of the string, using `printf` syntaz and resizing the
+ * string as required.
+ *
+ * Returns the new length of the String.
+ */
+size_t fiobj_str_write2(fiobj_s *dest, const char *format, ...);
+
+/**
+ * Writes data at the end of the string, resizing the string as required.
+ * Returns the new length of the String
+ */
+size_t fiobj_str_join(fiobj_s *dest, fiobj_s *obj);
 
 /* *****************************************************************************
 Symbol API
@@ -264,6 +341,13 @@ Symbol API
  * well as minimizes hash value computation.
  */
 fiobj_s *fiobj_sym_new(const char *str, size_t len);
+
+/** Allocated a new Symbol using `prinf` semantics. Remember to `fiobj_free`.*/
+fiobj_s *fiobj_symprintf(const char *restrict format, ...)
+    __attribute__((format(printf, 1, 2)));
+
+fiobj_s *fiobj_symvprintf(const char *restrict format, va_list argv)
+    __attribute__((format(printf, 1, 0)));
 
 /** Returns 1 if both Symbols are equal and 0 if not. */
 int fiobj_sym_iseql(fiobj_s *sym1, fiobj_s *sym2);
@@ -309,10 +393,19 @@ size_t fiobj_ary_count(fiobj_s *ary);
 /**
  * Pushes an object to the end of the Array.
  *
- * The Array now owns the object. Use `fiobj_dup` to push a copy if
- * required.
+ * The Array now owns the object. If an error occurs or the Array is freed, the
+ * object will be freed.
+ *
+ * Use `fiobj_dup` to push a copy, if required.
  */
 void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj);
+
+/** Pushes a copy of an object to the end of the Array, returning the object.*/
+static inline __attribute__((unused)) fiobj_s *
+fiobj_ary_push_dup(fiobj_s *ary, fiobj_s *obj) {
+  fiobj_ary_push(ary, fiobj_dup(obj));
+  return obj;
+}
 
 /** Pops an object from the end of the Array. */
 fiobj_s *fiobj_ary_pop(fiobj_s *ary);
@@ -325,6 +418,13 @@ fiobj_s *fiobj_ary_pop(fiobj_s *ary);
  * required.
  */
 void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj);
+
+/** Unshifts a copy to the begining of the Array, returning the object.*/
+static inline __attribute__((unused)) fiobj_s *
+fiobj_ary_unshift_dup(fiobj_s *ary, fiobj_s *obj) {
+  fiobj_ary_unshift(ary, fiobj_dup(obj));
+  return obj;
+}
 
 /** Shifts an object from the beginning of the Array. */
 fiobj_s *fiobj_ary_shift(fiobj_s *ary);
@@ -371,10 +471,12 @@ size_t fiobj_hash_count(fiobj_s *hash);
  * Sets a key-value pair in the Hash, duplicating the Symbol and **moving** the
  * ownership of the object to the Hash.
  *
+ * This implies Symbol objects should be initialized once per application run,
+ * when possible.
+ *
  * Returns -1 on error.
  */
 int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj);
-
 /**
  * Removes a key-value pair from the Hash, if it exists, returning the old
  * object (instead of freeing it).
@@ -396,6 +498,11 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym);
 fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym);
 
 /**
+ * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.
+ */
+int fiobj_hash_haskey(fiobj_s *hash, fiobj_s *sym);
+
+/**
  * If object is a Hash couplet (occurs in `fiobj_each2`), returns the key
  * (Symbol) from the key-value pair.
  *
@@ -411,4 +518,8 @@ fiobj_s *fiobj_couplet2key(fiobj_s *obj);
  */
 fiobj_s *fiobj_couplet2obj(fiobj_s *obj);
 
+#ifdef DEBUG
+void fiobj_test(void);
 #endif
+
+#endif /* H_FACIL_IO_OBJECTS_H */
