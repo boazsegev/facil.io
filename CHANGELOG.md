@@ -6,6 +6,8 @@
 
 **Fix**: (`http1`) HTTP/1.x now correctly initializes the `udata` pointer to NULL fore each new request.
 
+**Fix**: (documentation) credit to @cdkrot for reporting an outdated demo in the README.
+
 **Portability**: added `extern "C"` directive for untested C++ support.
 
 **Feature**: added a dynamic type library to `facil.io`'s core, making some common web related tasks easier to manage.

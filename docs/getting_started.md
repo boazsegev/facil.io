@@ -138,15 +138,16 @@ static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
 }
 // performed after the socket was closed and the currently running task had
 // completed.
-static void destroy_echo_protocol(protocol_s * echo_proto) {
+static void destroy_echo_protocol(intptr_t old_uuid, protocol_s * echo_proto) {
   if (echo_proto) // always error check, even if it isn't needed.
     free(echo_proto);
   fprintf(stderr, "Freed Echo protocol at %p\n", (void * )echo_proto);
+  (void)old_uuid;
 }
 // performed whenever a new connection is accepted.
-static inline protocol_s *create_echo_protocol(intptr_t uuid, void *arg) {
+static inline protocol_s * create_echo_protocol(intptr_t uuid, void * arg) {
   // create a protocol object
-  protocol_s *echo_proto = malloc(sizeof( * echo_proto));
+  protocol_s * cho_proto = malloc(sizeof( * echo_proto));
   // set the callbacks
   * echo_proto = (protocol_s){
       .service = "echo",
