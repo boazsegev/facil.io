@@ -45,7 +45,9 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
                                ((fio_sym_s *)sym)->hash);
   if (coup) {
     coup = (fiobj_s *)fio_node2obj(fio_couplet_s, node, coup);
-    fiobj_free(coup);
+    fiobj_free(((fio_couplet_s *)coup)->obj);
+    fiobj_dealloc(((fio_couplet_s *)coup)->name);
+    fiobj_dealloc(coup);
   }
   return 0;
 }

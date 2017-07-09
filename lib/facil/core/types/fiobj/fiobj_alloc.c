@@ -78,16 +78,13 @@ fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
   case FIOBJ_T_SYMBOL: {
     head = malloc(sizeof(*head) + sizeof(fio_sym_s) + len + 1);
     head->ref = 1;
+    *((fio_sym_s *)HEAD2OBJ(head)) = (fio_sym_s){
+        .type = type, .len = len, .hash = 0,
+    };
     if (buffer) {
-      *((fio_sym_s *)HEAD2OBJ(head)) = (fio_sym_s){
-          .type = type, .len = len, .hash = fio_ht_hash(buffer, len),
-      };
       memcpy(((fio_sym_s *)HEAD2OBJ(head))->str, buffer, len);
       ((fio_sym_s *)HEAD2OBJ(head))->str[len] = 0;
-    } else
-      *((fio_sym_s *)HEAD2OBJ(head)) = (fio_sym_s){
-          .type = type, .len = len, .hash = 0,
-      };
+    }
     return HEAD2OBJ(head);
     break;
   }
@@ -133,12 +130,6 @@ void fiobj_dealloc(fiobj_s *obj) {
   if (spn_sub(&OBJ2HEAD(obj).ref, 1))
     return;
   switch (obj->type) {
-  case FIOBJ_T_COUPLET:
-    /* notice that the containing Hash might have already been freed */
-    fiobj_dealloc(((fio_couplet_s *)obj)->name);
-    /* notice that nested objects are handled by `fiobj_each2` */
-    fiobj_dealloc(((fio_couplet_s *)obj)->obj);
-    goto common;
   case FIOBJ_T_ARRAY:
     free(((fio_ary_s *)obj)->arry);
     goto common;
@@ -156,6 +147,7 @@ void fiobj_dealloc(fiobj_s *obj) {
     goto common;
 
   common:
+  case FIOBJ_T_COUPLET:
   case FIOBJ_T_NULL:
   case FIOBJ_T_TRUE:
   case FIOBJ_T_FALSE:
@@ -164,4 +156,54 @@ void fiobj_dealloc(fiobj_s *obj) {
   case FIOBJ_T_SYMBOL:
     free(&OBJ2HEAD(obj));
   }
+}
+
+/* *****************************************************************************
+Deep Allocation (`fiobj_dup`)
+***************************************************************************** */
+
+/* simply increrase the reference count for each object. */
+static int dup_task_callback(fiobj_s *obj, void *arg) {
+  if (!obj)
+    return 0;
+  spn_add(&OBJ2HEAD(obj).ref, 1);
+  if (obj->type == FIOBJ_T_COUPLET) {
+    spn_add(&OBJ2HEAD((((fio_couplet_s *)obj)->name)).ref, 1);
+    spn_add(&OBJ2HEAD((((fio_couplet_s *)obj)->obj)).ref, 1);
+  }
+  return 0;
+  (void)arg;
+}
+
+/** Increases an object's reference count. */
+fiobj_s *fiobj_dup(fiobj_s *obj) {
+  fiobj_each2(obj, dup_task_callback, NULL);
+  return obj;
+}
+
+/* *****************************************************************************
+Deep Deallocation (`fiobj_free`)
+***************************************************************************** */
+
+static int dealloc_task_callback(fiobj_s *obj, void *arg) {
+  if (obj && obj->type == FIOBJ_T_COUPLET) {
+    fiobj_dealloc(((fio_couplet_s *)obj)->obj);
+    fiobj_dealloc(((fio_couplet_s *)obj)->name);
+  }
+  fiobj_dealloc(obj);
+  return 0;
+  (void)arg;
+}
+/**
+ * Decreases an object's reference count, releasing memory and
+ * resources.
+ *
+ * This function affects nested objects, meaning that when an Array or
+ * a Hashe object is passed along, it's children (nested objects) are
+ * also freed.
+ */
+void fiobj_free(fiobj_s *obj) {
+  if (!obj)
+    return;
+  fiobj_each2(obj, dealloc_task_callback, NULL);
 }

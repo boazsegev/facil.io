@@ -11,48 +11,6 @@ Feel free to copy, use and enjoy according to the license provided.
 Generic Object API
 ***************************************************************************** */
 
-/* simply increrase the reference count for each object. */
-static int dup_task_callback(fiobj_s *obj, void *arg) {
-  if (!obj)
-    return 0;
-  spn_add(&OBJ2HEAD(obj).ref, 1);
-  if (obj->type == FIOBJ_T_COUPLET) {
-    spn_add(&OBJ2HEAD((((fio_couplet_s *)obj)->name)).ref, 1);
-    spn_add(&OBJ2HEAD((((fio_couplet_s *)obj)->obj)).ref, 1);
-  }
-  return 0;
-  (void)arg;
-}
-
-/** Increases an object's reference count. */
-fiobj_s *fiobj_dup(fiobj_s *obj) {
-  fiobj_each2(obj, dup_task_callback, NULL);
-  return obj;
-}
-
-static int dealloc_task_callback(fiobj_s *obj, void *arg) {
-  fiobj_dealloc(obj);
-  return 0;
-  (void)arg;
-}
-/**
- * Decreases an object's reference count, releasing memory and
- * resources.
- *
- * This function affects nested objects, meaning that when an Array or
- * a Hashe object is passed along, it's children (nested objects) are
- * also freed.
- */
-void fiobj_free(fiobj_s *obj) {
-  if (!obj)
-    return;
-  if (obj->type == FIOBJ_T_COUPLET && (((fio_couplet_s *)obj)->obj)) {
-    fiobj_each2((((fio_couplet_s *)obj)->obj), dealloc_task_callback, NULL);
-    ((fio_couplet_s *)obj)->obj = NULL;
-  }
-  fiobj_each2(obj, dealloc_task_callback, NULL);
-}
-
 /**
  * Returns a Number's value.
  *

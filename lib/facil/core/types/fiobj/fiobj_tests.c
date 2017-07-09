@@ -33,8 +33,7 @@ struct fiobj_str_new_json_data_s {
 
 static int fiobj_str_new_json_task(fiobj_s *obj, void *d_) {
   struct fiobj_str_new_json_data_s *data = d_;
-  uint8_t was_rerooted = 0;
-  if (fiobj_obj2num(data->count))
+  if (data->count && fiobj_obj2num(data->count))
     fiobj_num_set(data->count, fiobj_obj2num(data->count) - 1);
 re_rooted:
   if (!obj) {
@@ -79,7 +78,6 @@ re_rooted:
     fiobj_str_write(data->buffer, s.data, s.len);
     fiobj_str_write(data->buffer, "\":", 2);
     obj = fiobj_couplet2obj(obj);
-    was_rerooted = 1;
     goto re_rooted;
     break;
   }
@@ -116,9 +114,8 @@ review_nesting:
       fiobj_str_write(data->buffer, "}", 1);
   }
   /* print object divisions to String */
-  if (fiobj_obj2num(data->count) &&
-      (was_rerooted == 1 ||
-       (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH)))
+  if (data->count && fiobj_obj2num(data->count) &&
+      (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH))
     fiobj_str_write(data->buffer, ",", 1);
   return 0;
 }
@@ -127,14 +124,15 @@ review_nesting:
 fiobj_s *fiobj_str_new_json(fiobj_s *obj) {
   /* Using a whole page size could optimize future allocations (no copy) */
   struct fiobj_str_new_json_data_s data = {
-      .buffer = fiobj_str_buf(4096 - 1),
       .parent = fiobj_ary_new(),
       .waiting = fiobj_ary_new(),
-      .count = fiobj_num_new(0),
+      .buffer = fiobj_str_buf(4096 - 1),
+      .count = NULL,
   };
   fiobj_each2(obj, fiobj_str_new_json_task, &data);
+
   while (fiobj_ary_pop(data.parent))
-    ;
+    ; /* we didn't duplicate the objects, so we must remove them from array */
   fiobj_free(data.parent);
   fiobj_free(data.waiting);
   fiobj_str_minimize(data.buffer);
@@ -179,8 +177,9 @@ void fiobj_test_hash_json(void) {
   for (int i = 1; i < 6; i++) {
     /* creates a temporary symbol, since we're not retriving the data */
     sym = fiobj_symprintf("%d", i);
-    for (size_t j = 0; j < 1; j++) {
-      /* make sure the Hash isn't leaking */
+    /* make sure the Hash isn't leaking */
+    for (size_t j = 0; j < 7; j++) {
+      /* set alternating key-value pairs */
       if (i & 1)
         fiobj_hash_set(
             tmp, sym,
@@ -240,12 +239,6 @@ void fiobj_test_hash_json(void) {
   fprintf(stderr, "* Testing nested Hash delete reference count: %s\n",
           (OBJ2HEAD(fiobj_hash_get(hash2, sym)).ref == 2) ? "passed."
                                                           : "FAILED!");
-  fiobj_free(hash2);
-  fprintf(stderr, "* Testing nested Array delete reference count: %s\n",
-          (OBJ2HEAD(syms).ref == 1) ? "passed." : "FAILED!");
-  fprintf(stderr, "* Testing nested Hash delete reference count: %s\n",
-          (OBJ2HEAD(fiobj_hash_get(hash3, sym)).ref == 1) ? "passed."
-                                                          : "FAILED!");
   fprintf(stderr,
           "* Testing reference count for "
           "nested nested object in nessted Hash: %s\n",
@@ -256,6 +249,24 @@ void fiobj_test_hash_json(void) {
           "* Reference count for "
           "nested nested object in nested Hash: %llu\n",
           OBJ2HEAD(fiobj_hash_get(fiobj_hash_get(hash3, sym), tmp)).ref);
+
+  fiobj_free(hash2);
+  fprintf(stderr, "* Testing nested Array delete reference count: %s\n",
+          (OBJ2HEAD(syms).ref == 1) ? "passed." : "FAILED!");
+  fprintf(stderr, "* Testing nested Hash delete reference count: %s\n",
+          (OBJ2HEAD(fiobj_hash_get(hash3, sym)).ref == 1) ? "passed."
+                                                          : "FAILED!");
+  fprintf(stderr,
+          "* Testing reference count for "
+          "nested nested object in nessted Hash: %s\n",
+          (OBJ2HEAD(fiobj_hash_get(fiobj_hash_get(hash3, sym), tmp)).ref == 1)
+              ? "passed."
+              : "FAILED!");
+  fprintf(stderr,
+          "* Reference count for "
+          "nested nested object in nested Hash: %llu\n",
+          OBJ2HEAD(fiobj_hash_get(fiobj_hash_get(hash3, sym), tmp)).ref);
+
   fiobj_free(hash3);
   fiobj_free(sym);
   fiobj_free(tmp);
