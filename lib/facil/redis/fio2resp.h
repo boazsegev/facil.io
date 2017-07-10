@@ -23,21 +23,12 @@ extern "C" {
 ***************************************************************************** */
 typedef struct fiobj_s *fiobj_pt;
 /**
- * Formats a `fiobj_s` object into a RESP string.
+ * Returns a **new** String object containing a RESP representation of `obj`.
  *
- * Returns 0 on success and -1 on failur.
- *
- * Accepts a memory buffer `dest` to which the data will be written and a poiner
- * to the size of the buffer.
- *
- * `size` will be updated to include the number of bytes required for the
- * string. This value may be larger than the buffer's size.
- *
- * The string is Binary safe and it ISN'T always NUL terminated.
+ * Returns NULL on failur.
  *
  * Obviously, RESP objects and `fiobj_s` objects aren't fully compatible,
- * meaning that the RESP_OK and RESP_ERR aren't implemented (use a String
- * instead, starting error strings with a minus sign `-`).
+ * meaning that the RESP_OK and RESP_ERR aren't implemented.
  *
  * Also, `FIOBJ_T_HASH` objects are rendered as a flattened Array of `[key,
  * value, key, value, ...]`, any `FIOBJ_T_FLOAT` will be converted to an Integet
@@ -46,8 +37,11 @@ typedef struct fiobj_s *fiobj_pt;
  *
  * No `parser` argument is provided and extensions aren't supported for this
  * format.
+ *
+ * To write a RESP OK or Error don;t use this function. Instead, simply ctreate
+ * a new String "OK" or "-error message".
  */
-int resp_fioformat(uint8_t *dest, size_t *size, fiobj_pt obj);
+fiobj_pt resp_fioformat(fiobj_pt obj);
 
 #ifdef __cplusplus
 } /* extern "C" */
