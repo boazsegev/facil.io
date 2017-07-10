@@ -133,6 +133,22 @@ typedef struct {
   fio_ht_s h;
 } fio_hash_s;
 
+/* Hash2 */
+typedef struct {
+  fiobj_type_en type;
+  /* an ordered array for all the couplets */
+  fiobj_s *couplets;
+  /* an Array to handle hash collisions */
+  fiobj_s *collisions;
+  /* an Array with the following structure:
+   * sym (hash), number (pos)
+   * If pos < 0, than a collision occured and can be searched using (pos * -1).
+   */
+  fiobj_s *bins;
+  /* the Hash mask for bin selection. */
+  uint64_t mask;
+} fio_hash2_s;
+
 /* Hash node */
 typedef struct {
   fiobj_type_en type;
@@ -161,6 +177,7 @@ typedef struct { uint64_t ref; } fiobj_head_s;
 #define obj2file(o) ((fio_file_s *)(o))
 #define obj2hash(o) ((fio_hash_s *)(o))
 #define obj2float(o) ((fio_float_s *)(o))
+#define obj2couplet(o) ((fio_couplet_s *)(o))
 
 /* *****************************************************************************
 Internal API required across the board

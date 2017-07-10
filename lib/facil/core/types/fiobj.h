@@ -391,6 +391,32 @@ fiobj_s *fiobj_ary_new(void);
 size_t fiobj_ary_count(fiobj_s *ary);
 
 /**
+ * Returns a temporary object owned by the Array.
+ *
+ * Negative values are retrived from the end of the array. i.e., `-1` is the
+ * last item.
+ */
+fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos);
+
+/**
+ * Sets an object at the requested position.
+ *
+ * If the position overflows the current array size, all intermediate
+ * positions will be set to NULL and the Array will grow in size.
+ *
+ * The old object (if any) occupying the same space will be freed.
+ *
+ * Negative values are retrived from the end of the array. i.e., `-1`
+ * is the last item.
+ *
+ * Type errors are silently ignored.
+ *
+ * For the Array [41], `fiobj_ary_set(ary, fiobj_num_new(42), -10)` will become:
+ *    `[42, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 41]`
+ */
+void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos);
+
+/**
  * Pushes an object to the end of the Array.
  *
  * The Array now owns the object. If an error occurs or the Array is freed, the
@@ -430,28 +456,14 @@ fiobj_ary_unshift_dup(fiobj_s *ary, fiobj_s *obj) {
 fiobj_s *fiobj_ary_shift(fiobj_s *ary);
 
 /**
- * Returns a temporary object owned by the Array.
+ * Flattens an Array, making it single dimentional.
  *
- * Negative values are retrived from the end of the array. i.e., `-1`
- * is the last item.
+ * Other Arrays are simply unnested inplace.
+ *
+ * Hashes are treated as a multi-dimentional Array:
+ * `[[key,value],[key,value],..]`.
  */
-fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos);
-
-/**
- * Sets an object at the requested position.
- *
- * If the position overflows the current array size, all intermediate
- * positions will be set to NULL and the Array will grow in size.
- *
- * The old object (if any) occupying the same space will be freed.
- *
- * Negative values are retrived from the end of the array. i.e., `-1`
- * is the last item.
- *
- * Type errors are silently ignored.
- */
-void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos);
-
+void fiobj_ary_flatten(fiobj_s *ary);
 /* *****************************************************************************
 Hash API
 ***************************************************************************** */

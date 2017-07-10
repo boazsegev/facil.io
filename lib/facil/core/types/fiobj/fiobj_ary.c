@@ -8,7 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fiobj_types.h"
 
 /* *****************************************************************************
-Array API
+Array memory management
 ***************************************************************************** */
 
 static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
@@ -80,6 +80,10 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
   obj2ary(ary)->start = needed;
 }
 
+/* *****************************************************************************
+Array API
+***************************************************************************** */
+
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
 fiobj_s *fiobj_ary_new(void) { return fiobj_alloc(FIOBJ_T_ARRAY, 0, NULL); }
 
@@ -90,52 +94,9 @@ size_t fiobj_ary_count(fiobj_s *ary) {
   return (obj2ary(ary)->end - obj2ary(ary)->start);
 }
 
-/**
- * Pushes an object to the end of the Array.
- */
-void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY) {
-    fiobj_free(obj);
-    return;
-  }
-  if (obj2ary(ary)->capa <= obj2ary(ary)->end)
-    fiobj_ary_getmem(ary, 1);
-  obj2ary(ary)->arry[(obj2ary(ary)->end)++] = obj;
-}
-
-/** Pops an object from the end of the Array. */
-fiobj_s *fiobj_ary_pop(fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
-    return NULL;
-  if (obj2ary(ary)->start == obj2ary(ary)->end)
-    return NULL;
-  fiobj_s *ret = obj2ary(ary)->arry[--(obj2ary(ary)->end)];
-  return ret;
-}
-
-/**
- * Unshifts an object to the begining of the Array. This could be
- * expensive.
- */
-void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY) {
-    fiobj_free(obj);
-    return;
-  }
-  if (obj2ary(ary)->start == 0)
-    fiobj_ary_getmem(ary, -1);
-  obj2ary(ary)->arry[--(obj2ary(ary)->start)] = obj;
-}
-
-/** Shifts an object from the beginning of the Array. */
-fiobj_s *fiobj_ary_shift(fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
-    return NULL;
-  if (obj2ary(ary)->start == obj2ary(ary)->end)
-    return NULL;
-  fiobj_s *ret = obj2ary(ary)->arry[(obj2ary(ary)->start)++];
-  return ret;
-}
+/* *****************************************************************************
+Array direct entry access API
+***************************************************************************** */
 
 /**
  * Returns a temporary object owned by the Array.
@@ -189,7 +150,7 @@ void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos) {
     /* position relative to end */
     pos = pos + (int64_t)obj2ary(ary)->end;
     /* initialize empty spaces, if any, setting new boundries */
-    while (obj2ary(ary)->start >= (uint64_t)pos)
+    while (obj2ary(ary)->start > (uint64_t)pos)
       obj2ary(ary)->arry[--(obj2ary(ary)->start)] = NULL;
   }
 
@@ -197,4 +158,93 @@ void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos) {
   if (obj2ary(ary)->arry[pos])
     fiobj_free(obj2ary(ary)->arry[pos]);
   obj2ary(ary)->arry[pos] = obj;
+}
+
+/* *****************************************************************************
+Array push / shift API
+***************************************************************************** */
+
+/**
+ * Pushes an object to the end of the Array.
+ */
+void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
+  if (!ary || ary->type != FIOBJ_T_ARRAY) {
+    fiobj_free(obj);
+    return;
+  }
+  if (obj2ary(ary)->capa <= obj2ary(ary)->end)
+    fiobj_ary_getmem(ary, 1);
+  obj2ary(ary)->arry[(obj2ary(ary)->end)++] = obj;
+}
+
+/** Pops an object from the end of the Array. */
+fiobj_s *fiobj_ary_pop(fiobj_s *ary) {
+  if (!ary || ary->type != FIOBJ_T_ARRAY)
+    return NULL;
+  if (obj2ary(ary)->start == obj2ary(ary)->end)
+    return NULL;
+  fiobj_s *ret = obj2ary(ary)->arry[--(obj2ary(ary)->end)];
+  return ret;
+}
+
+/**
+ * Unshifts an object to the begining of the Array. This could be
+ * expensive.
+ */
+void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj) {
+  if (!ary || ary->type != FIOBJ_T_ARRAY) {
+    fiobj_free(obj);
+    return;
+  }
+  if (obj2ary(ary)->start == 0)
+    fiobj_ary_getmem(ary, -1);
+  obj2ary(ary)->arry[--(obj2ary(ary)->start)] = obj;
+}
+
+/** Shifts an object from the beginning of the Array. */
+fiobj_s *fiobj_ary_shift(fiobj_s *ary) {
+  if (!ary || ary->type != FIOBJ_T_ARRAY)
+    return NULL;
+  if (obj2ary(ary)->start == obj2ary(ary)->end)
+    return NULL;
+  fiobj_s *ret = obj2ary(ary)->arry[(obj2ary(ary)->start)++];
+  return ret;
+}
+
+/* *****************************************************************************
+Array flattenning
+***************************************************************************** */
+
+static int fiobj_ary_flatten_task(fiobj_s *obj, void *a_) {
+  if (obj == a_) {
+    obj2ary(a_)->start = 0;
+    obj2ary(a_)->end = 0;
+    return 0;
+  }
+  if (obj->type == FIOBJ_T_HASH || obj->type == FIOBJ_T_ARRAY) {
+    fiobj_dealloc(obj);
+    return 0;
+  }
+  if (obj->type == FIOBJ_T_COUPLET) {
+    fiobj_ary_push(a_, obj2couplet(obj)->name);
+    fiobj_ary_push(a_, obj2couplet(obj)->obj);
+    fiobj_dealloc(obj);
+    return 0;
+  }
+  fiobj_ary_push(a_, obj);
+  return 0;
+}
+
+/**
+ * Flattens an Array, making it single dimentional.
+ *
+ * Other Arrays are simply unnested inplace.
+ *
+ * Hashes are treated as a multi-dimentional Array:
+ * `[[key,value],[key,value],..]`.
+ */
+void fiobj_ary_flatten(fiobj_s *ary) {
+  if (!ary || ary->type != FIOBJ_T_ARRAY)
+    return;
+  fiobj_each2(ary, fiobj_ary_flatten_task, ary);
 }

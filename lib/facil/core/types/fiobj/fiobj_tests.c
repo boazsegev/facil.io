@@ -115,7 +115,7 @@ review_nesting:
   }
   /* print object divisions to String */
   if (data->count && fiobj_obj2num(data->count) &&
-      (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH))
+      (!obj || (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH)))
     fiobj_str_write(data->buffer, ",", 1);
   return 0;
 }
