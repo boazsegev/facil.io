@@ -111,3 +111,7 @@ I discovered GitHub doesn't offer a default CLA (Copyright and Licensing Agreeme
 * I will list contributors in the CHANGELOG and special contributions will be listed in the README and/or here.
 
 This allows me to circumvent any future licensing concerns and prevent contributors from revoking the MIT license attached to their code.
+
+## Notable Contributions
+
+* @cdkrot took the time to test some of the demo code using valgrind, detecting a shutdown issue with in core `defer` library and offering a quick fix.

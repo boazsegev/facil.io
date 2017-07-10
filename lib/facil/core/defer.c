@@ -379,7 +379,6 @@ int defer_perform_in_fork(unsigned int process_count,
     }
   }
 
-  pids_count++;
   forked_pool = &pool_placeholder;
   forked_pool = defer_pool_start(thread_count);
 

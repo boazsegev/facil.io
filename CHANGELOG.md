@@ -6,6 +6,8 @@
 
 **Fix**: (`http1`) HTTP/1.x now correctly initializes the `udata` pointer to NULL fore each new request.
 
+**Fix**: (`defer`) a shutdown issue in `defer_perform_in_fork` was detected by @cdkrot and his fix was implemented.
+
 **Fix**: (documentation) credit to @cdkrot for reporting an outdated demo in the README.
 
 **Portability**: added `extern "C"` directive for untested C++ support.
