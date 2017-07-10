@@ -11,135 +11,6 @@ Feel free to copy, use and enjoy according to the license provided.
 // #include "fio2resp.h"
 
 /* *****************************************************************************
-JSON API TODO: implement parser + finish formatter
-***************************************************************************** */
-
-/* Parses JSON, returning a new Object. Remember to `fiobj_free`. */
-fiobj_s *fiobj_json2obj(const char *data, size_t len);
-/* Formats an object into a JSON string. Remember to `fiobj_free`. */
-fiobj_s *fiobj_str_new_json(fiobj_s *);
-
-/* *****************************************************************************
-JSON formatting TODO: convert all String and SYmbol data to safe strings
-***************************************************************************** */
-
-/* this is used to persist data in `fiobj_each2` */
-struct fiobj_str_new_json_data_s {
-  fiobj_s *parent;  /* stores item types */
-  fiobj_s *waiting; /* stores item counts and types */
-  fiobj_s *buffer;  /* we'll write the JSON here */
-  fiobj_s *count;   /* used to persist item counts for arrays / hashes */
-};
-
-static int fiobj_str_new_json_task(fiobj_s *obj, void *d_) {
-  struct fiobj_str_new_json_data_s *data = d_;
-  if (data->count && fiobj_obj2num(data->count))
-    fiobj_num_set(data->count, fiobj_obj2num(data->count) - 1);
-re_rooted:
-  if (!obj) {
-    fiobj_str_write(data->buffer, "NULL", 4);
-    goto review_nesting;
-  }
-  switch (obj->type) {
-  case FIOBJ_T_HASH:
-    fiobj_str_write(data->buffer, "{", 1);
-    fiobj_ary_push(data->parent, obj);
-    fiobj_ary_push(data->waiting, data->count);
-    data->count = fiobj_num_new(fiobj_hash_count(obj));
-    break;
-  case FIOBJ_T_ARRAY:
-    fiobj_str_write(data->buffer, "[", 1);
-    /* push current state to stacks and update state */
-    fiobj_ary_push(data->parent, obj);
-    fiobj_ary_push(data->waiting, data->count);
-    data->count = fiobj_num_new(fiobj_ary_count(obj));
-    break;
-  case FIOBJ_T_SYMBOL:
-  case FIOBJ_T_STRING: {
-    fio_cstr_s s = fiobj_obj2cstr(obj);
-    /* optimize allocations by checking capacity and a bit of space */
-    if ((fiobj_obj2cstr(data->buffer).len + s.len + 128) >=
-        fiobj_str_capa(data->buffer)) {
-      /* align to page size */
-      fiobj_str_resize(
-          data->buffer,
-          ((((fiobj_obj2cstr(data->buffer).len + s.len + 128) >> 12) + 1)
-           << 12) -
-              1);
-    }
-    fiobj_str_write(data->buffer, "\"", 1);
-    fiobj_str_write(data->buffer, s.data, s.len);
-    fiobj_str_write(data->buffer, "\"", 1);
-    break;
-  }
-  case FIOBJ_T_COUPLET: {
-    fio_cstr_s s = fiobj_obj2cstr(fiobj_couplet2key(obj));
-    fiobj_str_write(data->buffer, "\"", 1);
-    fiobj_str_write(data->buffer, s.data, s.len);
-    fiobj_str_write(data->buffer, "\":", 2);
-    obj = fiobj_couplet2obj(obj);
-    goto re_rooted;
-    break;
-  }
-  case FIOBJ_T_NUMBER:
-  case FIOBJ_T_FLOAT: {
-    fio_cstr_s s = fiobj_obj2cstr(obj);
-    fiobj_str_write(data->buffer, s.data, s.len);
-    break;
-  }
-  case FIOBJ_T_TRUE:
-    fiobj_str_write(data->buffer, "true", 4);
-    break;
-  case FIOBJ_T_FALSE:
-    fiobj_str_write(data->buffer, "false", 5);
-    break;
-  case FIOBJ_T_FILE:
-  case FIOBJ_T_IO:
-  case FIOBJ_T_NULL:
-    fiobj_str_write(data->buffer, "NULL", 4);
-    break;
-  }
-
-review_nesting:
-  /* print clousure to String */
-  while (!fiobj_obj2num(data->count)) {
-    fiobj_s *tmp = fiobj_ary_pop(data->parent);
-    if (!tmp)
-      break;
-    fiobj_free(data->count);
-    data->count = fiobj_ary_pop(data->waiting);
-    if (tmp->type == FIOBJ_T_ARRAY)
-      fiobj_str_write(data->buffer, "]", 1);
-    else
-      fiobj_str_write(data->buffer, "}", 1);
-  }
-  /* print object divisions to String */
-  if (data->count && fiobj_obj2num(data->count) &&
-      (!obj || (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH)))
-    fiobj_str_write(data->buffer, ",", 1);
-  return 0;
-}
-
-/* Formats an object into a JSON string. Remember to `fiobj_free`. */
-fiobj_s *fiobj_str_new_json(fiobj_s *obj) {
-  /* Using a whole page size could optimize future allocations (no copy) */
-  struct fiobj_str_new_json_data_s data = {
-      .parent = fiobj_ary_new(),
-      .waiting = fiobj_ary_new(),
-      .buffer = fiobj_str_buf(4096 - 1),
-      .count = NULL,
-  };
-  fiobj_each2(obj, fiobj_str_new_json_task, &data);
-
-  while (fiobj_ary_pop(data.parent))
-    ; /* we didn't duplicate the objects, so we must remove them from array */
-  fiobj_free(data.parent);
-  fiobj_free(data.waiting);
-  fiobj_str_minimize(data.buffer);
-  return data.buffer;
-}
-
-/* *****************************************************************************
 A JSON testing
 ***************************************************************************** */
 
@@ -167,8 +38,9 @@ void fiobj_test_hash_json(void) {
   fiobj_ary_push(syms, sym);
   fiobj_hash_set(
       hash, sym,
-      fiobj_strprintf("take my %s, take my whole %s too...", "hand", "heart"));
-
+      fiobj_strprintf("\n\ttake \\ my  \\ %s"
+                      "\n\ttake \\ my  \\ whole ❤️  %s ❤️  too...\n",
+                      "hand", "heart"));
   sym = fiobj_sym_new("hash", 4);
   fiobj_ary_push(syms, sym);
   tmp = fiobj_hash_new();
@@ -351,7 +223,7 @@ static char num_buffer[148];
 void fiobj_test(void) {
   /* test JSON (I know... it assumes everything else works...) */
   fiobj_test_hash_json();
-  return;
+
   fiobj_s *obj;
   size_t i;
   fprintf(stderr, "\n===\nStarting fiobj basic testing:\n");

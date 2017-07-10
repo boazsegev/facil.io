@@ -60,6 +60,8 @@ FILE *fiobj_file(fiobj_s *obj) {
 /* *****************************************************************************
 Number and Float Helpers
 ***************************************************************************** */
+static char hex_notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                              '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
 /**
  * A helper function that converts between String data to a signed int64_t.
@@ -187,9 +189,9 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
     /* write the damn thing */
     while (i < 8) {
       tmp = (n & 0xF000000000000000) >> 60;
-      dest[len++] = ((tmp < 10) ? ('0' + tmp) : (('A' - 10) + tmp));
+      dest[len++] = hex_notation[tmp];
       tmp = (n & 0x0F00000000000000) >> 56;
-      dest[len++] = ((tmp < 10) ? ('0' + tmp) : (('A' - 10) + tmp));
+      dest[len++] = hex_notation[tmp];
       i++;
       n = n << 8;
     }

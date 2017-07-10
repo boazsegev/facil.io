@@ -16,6 +16,12 @@ fiobj_s *fiobj_str_new(const char *str, size_t len) {
   return fiobj_alloc(FIOBJ_T_STRING, len, (void *)str);
 }
 
+/** Creates a copy from an existing String. Remember to use `fiobj_free`. */
+fiobj_s *fiobj_str_copy(fiobj_s *src) {
+  fio_cstr_s s = fiobj_obj2cstr(src);
+  return fiobj_alloc(FIOBJ_T_STRING, s.len, (void *)s.data);
+}
+
 /** Creates a String object using a printf like interface. */
 __attribute__((format(printf, 1, 0))) fiobj_s *
 fiobj_strvprintf(const char *restrict format, va_list argv) {
@@ -43,6 +49,10 @@ fiobj_strprintf(const char *restrict format, ...) {
 
 /** Creates a buffer String object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_buf(size_t capa) {
+  if (capa)
+    capa = capa - 1;
+  else
+    capa = 31;
   fiobj_s *str = fiobj_alloc(FIOBJ_T_STRING, capa, NULL);
   fiobj_str_clear(str);
   return str;
@@ -60,6 +70,8 @@ void fiobj_str_resize(fiobj_s *str, size_t size) {
   /* it's better to crash than live without memory... */
   ((fio_str_s *)str)->str = realloc(((fio_str_s *)str)->str, size + 1);
   ((fio_str_s *)str)->capa = size + 1;
+  ((fio_str_s *)str)->len = size;
+  ((fio_str_s *)str)->str[size] = 0;
   return;
 }
 
