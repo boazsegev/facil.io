@@ -254,7 +254,7 @@ static int fiobj_str_new_json_task(fiobj_s *obj, void *d_) {
     fiobj_num_set(data->count, fiobj_obj2num(data->count) - 1);
 re_rooted:
   if (!obj) {
-    fiobj_str_write(data->buffer, "NULL", 4);
+    fiobj_str_write(data->buffer, "null", 4);
     goto review_nesting;
   }
   switch (obj->type) {
@@ -303,7 +303,7 @@ re_rooted:
   case FIOBJ_T_FILE:
   case FIOBJ_T_IO:
   case FIOBJ_T_NULL:
-    fiobj_str_write(data->buffer, "NULL", 4);
+    fiobj_str_write(data->buffer, "null", 4);
     break;
   }
 
