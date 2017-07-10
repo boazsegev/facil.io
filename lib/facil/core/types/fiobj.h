@@ -79,6 +79,51 @@ Helper macros
            (o)->type == FIOBJ_T_FILE))
 
 /* *****************************************************************************
+Helpers: not fiobj_s specific, but since they're used internally, they're here.
+***************************************************************************** */
+
+/**
+ * A helper function that converts between String data to a signed int64_t.
+ *
+ * Numbers are assumed to be in base 10.
+ *
+ * The `0x##` (or `x##`) and `0b##` (or `b##`) are recognized as base 16 and
+ * base 2 (binary MSB first) respectively.
+ */
+int64_t fio_atol(const char *str);
+
+/** A helper function that convers between String data to a signed double. */
+double fio_atof(const char *str);
+
+/**
+ * A helper function that convers between a signed int64_t to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 66 bytes available
+ * (for base 2).
+ *
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL terminator).
+ */
+size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
+
+/**
+ * A helper function that convers between a double to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 130 bytes available
+ * (for base 2).
+ *
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL terminator).
+ */
+size_t fio_ftoa(char *dest, double num, uint8_t base);
+
+/* *****************************************************************************
 Generic Object API
 ***************************************************************************** */
 
@@ -224,19 +269,6 @@ fiobj_s *fiobj_false(void);
 Number and Float API
 ***************************************************************************** */
 
-/**
- * A helper function that converts between String data to a signed int64_t.
- *
- * Numbers are assumed to be in base 10.
- *
- * The `0x##` (or `x##`) and `0b##` (or `b##`) are recognized as base 16 and
- * base 2 (binary MSB first) respectively.
- */
-int64_t fio_atol(const char *str);
-
-/** A helper function that convers between String data to a signed double. */
-double fio_atof(const char *str);
-
 /** Creates a Number object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_num_new(int64_t num);
 
@@ -253,36 +285,22 @@ void fiobj_float_set(fiobj_s *target, double num);
 String API
 ***************************************************************************** */
 
-/**
- * A helper function that convers between a signed int64_t to a string.
- *
- * No overflow guard is provided, make sure there's at least 66 bytes available
- * (for base 2).
- *
- * Supports base 2, base 10 and base 16. An unsupported base will silently
- * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
- * beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL terminator).
- */
-size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
-
-/**
- * A helper function that convers between a double to a string.
- *
- * No overflow guard is provided, make sure there's at least 130 bytes available
- * (for base 2).
- *
- * Supports base 2, base 10 and base 16. An unsupported base will silently
- * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
- * beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL terminator).
- */
-size_t fio_ftoa(char *dest, double num, uint8_t base);
-
 /** Creates a String object. Remember to `fiobj_free`. */
 fiobj_s *fiobj_str_new(const char *str, size_t len);
+
+/** Creates a buffer String object. Remember to use `fiobj_free`. */
+fiobj_s *fiobj_str_buf(size_t capa);
+
+/** Creates a copy from an existing String. Remember to use `fiobj_free`. */
+fiobj_s *fiobj_str_copy(fiobj_s *src);
+
+/**
+ * Formats an object into a JSON string. Remember to `fiobj_free`.
+ *
+ * Notice that nested String objects should contain valid UTF-8 data. An attempt
+ * to correct invalid UTF-8 encoding will be made, although not ideal.
+ */
+fiobj_s *fiobj_str_new_json(fiobj_s *);
 
 /**
  * Allocates a new String using `prinf` semantics. Remember to `fiobj_free`.
@@ -293,9 +311,6 @@ __attribute__((format(printf, 1, 2))) fiobj_s *
 fiobj_strprintf(const char *restrict format, ...);
 __attribute__((format(printf, 1, 0))) fiobj_s *
 fiobj_strvprintf(const char *restrict format, va_list argv);
-
-/** Creates a buffer String object. Remember to use `fiobj_free`. */
-fiobj_s *fiobj_str_buf(size_t capa);
 
 /** Resizes a String object, allocating more memory if required. */
 void fiobj_str_resize(fiobj_s *str, size_t size);

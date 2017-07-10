@@ -37,7 +37,7 @@ int main(void) {
 
 [facil.io](http://facil.io) prefers a TCP/IP specialized solution over a generic one (although it can be easily adopted for Unix sockets, UDP and other approaches).
 
-[facil.io](http://facil.io) includes a number of libraries that work together for a common goal. Some of the libraries (i.e. the thread-pool library `defer`, the socket library `sock` and the evented IO core `evio`) can be used independently while others are designed to work together using a modular approach.
+[facil.io](http://facil.io) includes a number of libraries that work together for a common goal. Some of the libraries (i.e. the thread-pool library `defer`, the socket library `sock`, the evented IO core `evio`, and [the dynamic type library](fiobj.md)) can be used independently while others are designed to work together using a modular approach.
 
 I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
 
@@ -46,12 +46,12 @@ I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (
 Here's a simple Websocket chatroom example:
 
 ```c
-/* *****************************************************************************
-Nicknames
-***************************************************************************** */
-struct nickname { size_t len; char nick[]; };
-/* a default nickname when missing */
-static struct nickname MISSING_NICKNAME = {.len = 7, .nick = "unknown"};
+/* including the Websocket extension automatically includes the facil.io core */
+#include "websockets.h"
+/* We'll use the process cluster pub/sub service */
+#include "pubsub.h"
+/* We'll leverage the dynamic type library in this example */
+#include "fiobj.h"
 
 /* *****************************************************************************
 Websocket callbacks
@@ -59,30 +59,26 @@ Websocket callbacks
 
 /* We'll subscribe to the channel's chat channel when a new connection opens */
 static void on_open_websocket(ws_s *ws) {
-  websocket_subscribe(ws, .channel.name = "chat",
-                          .force_text = 1);
+  websocket_subscribe(ws, .channel.name = "chat", .force_text = 1);
 }
 
-/* Free the nickname, if any. */
+/* Free the nickname */
 static void on_close_websocket(ws_s *ws) {
   if (websocket_udata(ws))
-    free(websocket_udata(ws));
+    fiobj_free(websocket_udata(ws));
 }
 
 /* Copy the nickname and the data to format a nicer message. */
 static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
                                       uint8_t is_text) {
-  struct nickname * n = websocket_udata(ws);
-  if (!n)
-    n = &MISSING_NICKNAME;
-  char * msg = malloc(size + n->len + 2);
-  memcpy(msg, n->nick, n->len);
-  msg[n->len] = ':';
-  msg[n->len + 1] = ' ';
-  memcpy(msg + n->len + 2, data, size);
-  pubsub_publish( .channel = {.name = "chat", .len = 4},
-                  .msg     = {.data = msg,    .len = (size + n->len + 2)});
-  free(msg);
+  fiobj_s * nickname = websocket_udata(ws);
+  fiobj_s * msg = fiobj_str_copy(nickname);
+  fiobj_str_write(msg, ": ", 2);
+  fiobj_str_write(msg, data, size);
+  fio_cstr_s cmsg = fiobj_obj2cstr(msg);
+  pubsub_publish(.channel = {.name = "chat", .len = 4},
+                 .msg = {.data = (char * )cmsg.data, .len = cmsg.len});
+  fiobj_free(msg);
   (void)(ws);
   (void)(is_text);
 }
@@ -98,31 +94,31 @@ static void answer_http_request(http_request_s *request) {
     http_response_log_start(response);
 
   http_response_write_header(response, .name = "Server", .name_len = 6,
-                               .value = "facil.example", .value_len = 13);
+                             .value = "facil.example", .value_len = 13);
 
   // the upgrade header value has a quick access pointer.
   if (request->upgrade) {
-    struct nickname * n = NULL;
-    // We'll use the request path as the nickname
+    fiobj_s * nickname = NULL;
+    // We'll use the request path as the nickname, if it's available
     if (request->path_len > 1) {
-      n = malloc(request->path_len + sizeof(*n));
-      n->len = request->path_len - 1;
-      memcpy(n->nick, request->path + 1, request->path_len - 1);
+      nickname = fiobj_str_new(request->path + 1, request->path_len - 1);
+    } else {
+      nickname = fiobj_str_new("unknown", 7);
     }
     // Websocket upgrade will use our existing response (never leak responses).
     websocket_upgrade(.request = request, .response = response,
                       .on_open = on_open_websocket,
                       .on_close = on_close_websocket,
-                      .on_message = handle_websocket_messages, .udata = n);
-
+                      .on_message = handle_websocket_messages,
+                      .udata = nickname);
     return;
   }
-  //     ****  Normal HTTP request, no Websockets ****     
+  //     ****  Normal HTTP request, no Websockets ****
+  http_response_write_header(response, .name = "Content-Type", .name_len = 12,
+                             .value = "text/plain", .value_len = 10);
 
-  http_response_write_header(response, .name  = "Content-Type", .name_len = 12,
-                                       .value = "text/plain",   .value_len = 10);
-  http_response_write_body(
-      response, "This is a Websocket chatroom example using Redis.", 49);
+  http_response_write_body(response, "This is a Websocket chatroom example.",
+                           37);
   // this both sends and frees the response.
   http_response_finish(response);
 }
@@ -130,7 +126,7 @@ static void answer_http_request(http_request_s *request) {
 /* *****************************************************************************
 The main function, where we setup facil.io and start it up.
 ***************************************************************************** */
-int main(int argc, char const *argv[]) {
+int main(void) {
   const char * port = "3000";
   const char * public_folder = NULL;
   uint32_t threads = 1;
@@ -138,13 +134,11 @@ int main(int argc, char const *argv[]) {
   uint8_t print_log = 0;
 
   if (http_listen(port, NULL, .on_request = answer_http_request,
-                              .log_static = print_log,
-                              .public_folder = public_folder))
+                  .log_static = print_log, .public_folder = public_folder))
     perror("Couldn't initiate Websocket service"), exit(1);
 
   facil_run(.threads = threads, .processes = workers);
 }
-
 ```
 
 ## Further reading
@@ -156,6 +150,8 @@ However, experience shows that a quick reference guide is immensely helpful and 
 The documentation in this folder includes:
 
 * A [Getting Started Guide](getting_started.md) with example for WebApps utilizing the HTTP / Websocket protocols as well as a custom protocol.
+
+* A [quick guide to `facil.io`'s dynamic type library](fiobj.md) with quick examples get you started.
 
 * The core [`facil.io` API documentation](facil.md).
 

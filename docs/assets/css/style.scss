@@ -2,3 +2,10 @@
 ---
 
 @import "{{ site.theme }}";
+
+.wrapper { width: auto; margin: 0 15%;}
+
+@media print, screen and (max-width: 740px) {
+  body { padding: 0; }
+  .wrapper { border-radius: 0; box-shadow: none; width: 100%; margin: 0;}
+}
