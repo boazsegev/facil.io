@@ -14,7 +14,7 @@ You can read more about [facil.io](http://facil.io) on the [facil.io](http://fac
 
 To start a new project using the `facil.io` framework, run the following command in the terminal (change `appname` to whatever you want):
 
-     $ bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new) appname
+     $ bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/stable/scripts/new) appname
 
 You can [review the script here](scripts/new). In short, it will create a new folder, download a copy of the stable branch, prepare boiler plate code and run `make clean` (which is required to build the `tmp` folder structure).
 
