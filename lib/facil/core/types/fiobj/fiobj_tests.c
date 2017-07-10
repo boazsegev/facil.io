@@ -7,8 +7,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifdef DEBUG
 
 #include "bscrypt.h"
+#include "fio2resp.h"
 #include "fiobj_types.h"
-// #include "fio2resp.h"
 
 /* *****************************************************************************
 A JSON testing
@@ -38,7 +38,7 @@ void fiobj_test_hash_json(void) {
   fiobj_ary_push(syms, sym);
   fiobj_hash_set(
       hash, sym,
-      fiobj_strprintf("\n\ttake \\ my  \\ %s"
+      fiobj_strprintf("𝄞\n\ttake \\ my  \\ %s"
                       "\n\ttake \\ my  \\ whole ❤️  %s ❤️  too...\n",
                       "hand", "heart"));
   sym = fiobj_sym_new("hash", 4);
@@ -96,6 +96,14 @@ void fiobj_test_hash_json(void) {
           fiobj_obj2cstr(tmp).len, fiobj_str_capa(tmp),
           fiobj_obj2cstr(tmp).data);
   fiobj_free(tmp);
+#ifdef H_FIO2RESP_FORMAT_H
+  /* print RESP string */
+  tmp = resp_fioformat(hash);
+  fprintf(stderr, "* Printing RESP (len: %llu capa: %lu):\n   %s\n",
+          fiobj_obj2cstr(tmp).len, fiobj_str_capa(tmp),
+          fiobj_obj2cstr(tmp).data);
+  fiobj_free(tmp);
+#endif
 
   sym = fiobj_sym_new("hash", 4);
   tmp = fiobj_sym_new("1", 1);
@@ -345,14 +353,6 @@ void fiobj_test(void) {
     }
 
     fiobj_each2(obj, fiobj_test_array_task, NULL);
-
-    // char tmp_buffer[4096];
-    // size_t tmp_size = 4096;
-    // if (resp_fioformat((uint8_t *)tmp_buffer, &tmp_size, obj))
-    //   fprintf(stderr, "* notice, RESP formatting required more space
-    //   (%lu).\n",
-    //           tmp_size);
-    // fprintf(stderr, "* RESP formatting:\n%.*s", (int)tmp_size, tmp_buffer);
 
     fiobj_free(obj);
     if (OBJ2HEAD(fiobj_ary_entry(syms, 2)).ref != 1)

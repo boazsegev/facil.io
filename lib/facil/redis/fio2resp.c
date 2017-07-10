@@ -39,7 +39,7 @@ static int resp_fioformat_task(fiobj_s *obj, void *s_) {
     /* use this opportunity to optimize memory allocation to page boundries */
     fio_cstr_s s = fiobj_obj2cstr(str);
     if (fiobj_str_capa(str) <= s.len + 128 + fiobj_obj2cstr(obj).len) {
-      fiobj_str_resize(str, (((fiobj_str_capa(str) >> 12) + 1) << 12));
+      fiobj_str_resize(str, (((fiobj_str_capa(str) >> 12) + 1) << 12) - 1);
       fiobj_str_resize(str, s.len);
     }
   }
@@ -74,6 +74,6 @@ static int resp_fioformat_task(fiobj_s *obj, void *s_) {
 
 fiobj_pt resp_fioformat(fiobj_pt obj) {
   fiobj_pt str = fiobj_str_buf(4096);
-  fiobj_each2(obj, resp_fioformat_task, &str);
+  fiobj_each2(obj, resp_fioformat_task, str);
   return str;
 }
