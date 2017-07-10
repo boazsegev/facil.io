@@ -221,6 +221,9 @@ static int fiobj_ary_flatten_task(fiobj_s *obj, void *a_) {
     obj2ary(a_)->end = 0;
     return 0;
   }
+
+  if (!obj)
+    goto perform_push;
   if (obj->type == FIOBJ_T_HASH || obj->type == FIOBJ_T_ARRAY) {
     fiobj_dealloc(obj);
     return 0;
@@ -231,6 +234,7 @@ static int fiobj_ary_flatten_task(fiobj_s *obj, void *a_) {
     fiobj_dealloc(obj);
     return 0;
   }
+perform_push:
   fiobj_ary_push(a_, obj);
   return 0;
 }
