@@ -66,6 +66,7 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
   coup = fio_node2obj(fio_couplet_s, node, coup);
   fiobj_s *obj = coup->obj;
   coup->obj = NULL;
+  fiobj_dealloc(((fio_couplet_s *)coup)->name);
   fiobj_dealloc((fiobj_s *)coup);
   return obj;
 }

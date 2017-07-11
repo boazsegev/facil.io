@@ -46,7 +46,11 @@ typedef enum {
   FIOBJ_T_ARRAY,
   /** A Hash Table object. Hash keys MUST be Symbol objects. */
   FIOBJ_T_HASH,
-  /** A Hash Table key-value pair. See `fiobj_each2`. */
+  /** A Hash Table key-value pair. See `fiobj_each2`.
+   *
+   * This should be considered a virtual object and shouldn't saved outside of
+   * the `fiobj_each2` loop.
+   */
   FIOBJ_T_COUPLET,
   /** An IO object containing an `intptr_t` as a `fd` (File Descriptor). */
   FIOBJ_T_IO,

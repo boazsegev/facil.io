@@ -11,6 +11,15 @@ Feel free to copy, use and enjoy according to the license provided.
 Array memory management
 ***************************************************************************** */
 
+/* **ENTANGLEMENT WARNING: Hash depends on Array internals.**
+ *
+ * This funcation manages the Array's memory.
+ *
+ *Upwards growth MUST keep the starting point static (no `memmove`).
+ *
+ * Downwards growth MAY change actual data placement in the Array using
+ * `memmove`.
+ */
 static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
   /* we have enough memory, but we need to re-organize it. */
   if (needed == -1) {
