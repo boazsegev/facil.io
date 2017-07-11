@@ -246,9 +246,38 @@ perform_push:
  *
  * Hashes are treated as a multi-dimentional Array:
  * `[[key,value],[key,value],..]`.
+ *
+ * This action is O(n + d) where n is the length and d is the deapth.
+ * It could get expensive.
  */
 void fiobj_ary_flatten(fiobj_s *ary) {
   if (!ary || ary->type != FIOBJ_T_ARRAY)
     return;
   fiobj_each2(ary, fiobj_ary_flatten_task, ary);
+}
+
+/* *****************************************************************************
+Array compacting (untested)
+***************************************************************************** */
+
+/**
+ * Removes any NULL *pointers* from an Array, keeping all Objects (including
+ * explicit NULL objects) in the array.
+ *
+ * This action is O(n) where n in the length of the array.
+ * It could get expensive.
+ */
+void fiobj_ary_compact(fiobj_s *ary) {
+  if (!ary || ary->type != FIOBJ_T_ARRAY)
+    return;
+  fiobj_s **reader = obj2ary(ary)->arry + obj2ary(ary)->start;
+  fiobj_s **writer = obj2ary(ary)->arry + obj2ary(ary)->start;
+  while (reader < (obj2ary(ary)->arry + obj2ary(ary)->end)) {
+    if (*reader == NULL) {
+      reader++;
+      continue;
+    }
+    *(writer++) = *(reader++);
+  }
+  obj2ary(ary)->end = (uint64_t)(writer - obj2ary(ary)->arry);
 }
