@@ -101,7 +101,7 @@ typedef struct {
 /* Symbol */
 typedef struct {
   fiobj_type_en type;
-  uint64_t hash;
+  uintptr_t hash;
   uint64_t len;
   char str[];
 } fio_sym_s;
@@ -132,22 +132,6 @@ typedef struct {
   fiobj_type_en type;
   fio_ht_s h;
 } fio_hash_s;
-
-/* Hash2 */
-typedef struct {
-  fiobj_type_en type;
-  /* an ordered array for all the couplets */
-  fiobj_s *couplets;
-  /* an Array to handle hash collisions */
-  fiobj_s *collisions;
-  /* an Array with the following structure:
-   * sym (hash), number (pos)
-   * If pos < 0, than a collision occured and can be searched using (pos * -1).
-   */
-  fiobj_s *bins;
-  /* the Hash mask for bin selection. */
-  uint64_t mask;
-} fio_hash2_s;
 
 /* Hash node */
 typedef struct {

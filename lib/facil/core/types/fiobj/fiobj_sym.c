@@ -111,7 +111,7 @@ Symbol API
 /** Creates a Symbol object. Use `fiobj_free`. */
 fiobj_s *fiobj_sym_new(const char *str, size_t len) {
   fiobj_s *sym = fiobj_alloc(FIOBJ_T_SYMBOL, len, (void *)str);
-  ((fio_sym_s *)(sym))->hash = fio_sym_hash(str, len);
+  ((fio_sym_s *)(sym))->hash = (uintptr_t)fio_sym_hash(str, len);
   return sym;
 }
 
@@ -131,7 +131,8 @@ fiobj_symvprintf(const char *restrict format, va_list argv) {
     return sym;
   sym = fiobj_alloc(FIOBJ_T_SYMBOL, len, NULL); /* adds 1 to len, for NUL */
   vsnprintf(((fio_sym_s *)(sym))->str, len + 1, format, argv);
-  ((fio_sym_s *)(sym))->hash = fio_sym_hash(((fio_sym_s *)(sym))->str, len);
+  ((fio_sym_s *)(sym))->hash =
+      (uintptr_t)fio_sym_hash(((fio_sym_s *)(sym))->str, len);
   return sym;
 }
 __attribute__((format(printf, 1, 2))) fiobj_s *
