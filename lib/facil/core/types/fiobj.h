@@ -371,6 +371,14 @@ fiobj_s *fiobj_symvprintf(const char *restrict format, va_list argv)
 /** Returns 1 if both Symbols are equal and 0 if not. */
 int fiobj_sym_iseql(fiobj_s *sym1, fiobj_s *sym2);
 
+/**
+ * Returns a symbol's identifier.
+ *
+ * The unique identifier is calculated using SipHash and is equal for all Symbol
+ * objects that were created using the same data.
+ */
+uintptr_t fiobj_sym_id(fiobj_s *sym);
+
 /* *****************************************************************************
 IO API
 ***************************************************************************** */

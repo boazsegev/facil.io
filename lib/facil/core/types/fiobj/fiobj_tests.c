@@ -91,11 +91,13 @@ void fiobj_test_hash_json(void) {
             (fiobj_iseq(hash, syms)) ? "FAILED!" : "passed.");
   }
   /* print JSON string */
-  tmp = fiobj_str_new_json(hash);
-  fprintf(stderr, "* Printing JSON (len: %llu capa: %lu):\n   %s\n",
-          fiobj_obj2cstr(tmp).len, fiobj_str_capa(tmp),
-          fiobj_obj2cstr(tmp).data);
-  fiobj_free(tmp);
+  {
+    tmp = fiobj_str_new_json(hash);
+    fprintf(stderr, "* Printing JSON (len: %llu capa: %lu ref: %llu):\n   %s\n",
+            fiobj_obj2cstr(tmp).len, fiobj_str_capa(tmp), OBJ2HEAD(tmp).ref,
+            fiobj_obj2cstr(tmp).data);
+    fiobj_free(tmp);
+  }
 #ifdef H_FIO2RESP_FORMAT_H
   /* print RESP string */
   tmp = resp_fioformat(hash);
@@ -153,84 +155,112 @@ void fiobj_test_hash_json(void) {
 }
 
 /* *****************************************************************************
-Basic tests fiobj types
+Test Hash performance
 ***************************************************************************** */
 
-/* used to print objects */
-static int fiobj_test_array_task(fiobj_s *obj, void *arg) {
-  static __thread uintptr_t count = 0;
-  static __thread const char *stop = ".";
-  static __thread fio_ls_s nested = {NULL, NULL, NULL};
-  if (!nested.next)
-    nested = (fio_ls_s)FIO_LS_INIT(nested);
+#include <time.h>
+#define HASH_TEST_SIZE (4194304 >> 3)
+#define HASH_TEST_REPEAT 1
 
-  if (obj && obj->type == FIOBJ_T_ARRAY) {
-    fio_ls_push(&nested, (fiobj_s *)stop);
-    if (!count) {
-      fio_ls_push(&nested, (fiobj_s *)count);
-      fprintf(stderr, "\n* Array data: [");
-    } else {
-      fio_ls_push(&nested, (fiobj_s *)(--count));
-      fprintf(stderr, "[ ");
-    }
-    stop = " ]";
-    count = fiobj_ary_count(obj);
-    return 0;
-  } else if (obj && obj->type == FIOBJ_T_HASH) {
-    fio_ls_push(&nested, (fiobj_s *)stop);
-    fio_ls_push(&nested, (fiobj_s *)count);
-    if (!count)
-      fprintf(stderr, "\n* Hash data: {");
-    else {
-      fprintf(stderr, "{ ");
-    }
-    stop = " }";
-    count = fiobj_hash_count(obj);
-    return 0;
+void fiobj_hash_test(void) {
+  clock_t start, end;
+  fiobj_s *syms;
+  fiobj_s *strings;
+  fiobj_s *hash;
+  fprintf(stderr, "\nTesting Hash and Array allocations\n");
+
+  start = clock();
+  syms = fiobj_ary_new();
+  strings = fiobj_ary_new();
+  for (size_t i = 0; i < HASH_TEST_SIZE; i++) {
+    fiobj_ary_push(syms, fiobj_symprintf("sym %lu", i));
+    fiobj_ary_push(strings, fiobj_strprintf("str %lu", i));
   }
-  if (obj && obj->type == FIOBJ_T_COUPLET) {
-    fprintf(stderr, "%s:", fiobj_obj2cstr(fiobj_couplet2key(obj)).data);
-    fiobj_s *tmp = fiobj_couplet2obj(obj);
-    if (tmp->type == FIOBJ_T_HASH) {
-      obj = fiobj_couplet2key(obj);
-      count += fiobj_hash_count(tmp);
-    } else if (tmp->type == FIOBJ_T_ARRAY) {
-      obj = fiobj_couplet2key(obj);
-      count += fiobj_ary_count(tmp);
+  end = clock();
+  fprintf(stderr,
+          "Created 2 arrays with %d symbols and strings "
+          "using printf in %lu.%lus\n",
+          HASH_TEST_SIZE << 1, (end - start) / CLOCKS_PER_SEC,
+          (end - start) - ((end - start) / CLOCKS_PER_SEC));
+
+  /******* Repeat Testing starts here *******/
+  for (size_t i = 0; i < HASH_TEST_REPEAT; i++) {
+
+    start = clock();
+    hash = fiobj_hash_new();
+    for (size_t i = 0; i < HASH_TEST_SIZE; i++) {
+      fiobj_hash_set(hash, fiobj_ary_entry(syms, i),
+                     fiobj_dup(fiobj_ary_entry(strings, i)));
     }
-  }
-  if (--count) {
-    fprintf(stderr, "%s, ", fiobj_obj2cstr(obj).data);
-  } else {
-    count = (uintptr_t)fio_ls_pop(&nested);
-    if (count) {
-      fprintf(stderr, "%s %s, ", fiobj_obj2cstr(obj).data, stop);
-      stop = (char *)fio_ls_pop(&nested);
-    } else {
-      fprintf(stderr, "%s %s ", fiobj_obj2cstr(obj).data, stop);
-      stop = (char *)fio_ls_pop(&nested);
-      if (stop[0] != '.')
-        fprintf(stderr, "%s", stop);
-      else
-        fprintf(stderr, "\n (should be 127..0)\n");
+    end = clock();
+    fprintf(stderr, "Set %d items in %lu.%lus\n", HASH_TEST_SIZE,
+            (end - start) / CLOCKS_PER_SEC,
+            (end - start) - ((end - start) / CLOCKS_PER_SEC));
+
+    start = clock();
+    for (size_t i = 0; i < HASH_TEST_SIZE; i++) {
+      fiobj_hash_set(hash, fiobj_ary_entry(syms, i),
+                     fiobj_dup(fiobj_ary_entry(strings, i)));
     }
+    end = clock();
+    fprintf(stderr,
+            "Resetting %d (test count == %lu) "
+            "items in %lu.%lus\n",
+            HASH_TEST_SIZE, fiobj_hash_count(hash),
+            (end - start) / CLOCKS_PER_SEC,
+            (end - start) - ((end - start) / CLOCKS_PER_SEC));
+
+    start = clock();
+    for (size_t i = 0; i < HASH_TEST_SIZE; i++) {
+      if (fiobj_hash_get(hash, fiobj_ary_entry(syms, i)) !=
+          fiobj_ary_entry(strings, i))
+        fprintf(stderr, "ERROR: fiobj_hash_get FAILED for %s != %s\n",
+                fiobj_obj2cstr(fiobj_ary_entry(strings, i)).data,
+                fiobj_obj2cstr(fiobj_hash_get(hash, fiobj_ary_entry(syms, i)))
+                    .data),
+            exit(-1);
+    }
+    end = clock();
+    fprintf(stderr, "Seek and test %d items in %lu.%lus\n", HASH_TEST_SIZE,
+            (end - start) / CLOCKS_PER_SEC,
+            (end - start) - ((end - start) / CLOCKS_PER_SEC));
+
+    start = clock();
+    fiobj_free(hash);
+    end = clock();
+    fprintf(stderr, "Destroy hash with %d items in %lu.%lus\n", HASH_TEST_SIZE,
+            (end - start) / CLOCKS_PER_SEC,
+            (end - start) - ((end - start) / CLOCKS_PER_SEC));
+
+    /******* Repeat Testing ends here *******/
   }
 
-  return 0;
-  (void)arg;
+  /** cleanup **/
+
+  start = clock();
+  fiobj_free(syms);
+  fiobj_free(strings);
+  end = clock();
+  fprintf(stderr,
+          "Deallocated 2 arrays with %d symbols and strings "
+          "in %lu.%lus\n\n",
+          HASH_TEST_SIZE << 1, (end - start) / CLOCKS_PER_SEC,
+          (end - start) - ((end - start) / CLOCKS_PER_SEC));
 }
 
 /* *****************************************************************************
-The Testing code
+Basic tests fiobj types
 ***************************************************************************** */
-
 static char num_buffer[148];
 
 /* test were written for OSX (fprintf types) with clang (%s for NULL is okay)
  */
 void fiobj_test(void) {
+  /* test hash+array for memory leaks and performance*/
+  fiobj_hash_test();
   /* test JSON (I know... it assumes everything else works...) */
   fiobj_test_hash_json();
+  /* start simple tests */
 
   fiobj_s *obj;
   size_t i;
@@ -305,65 +335,15 @@ void fiobj_test(void) {
         fprintf(stderr, "* FAILED Array count. %lu/%llu != %lu\n",
                 fiobj_ary_count(obj), obj2ary(obj)->capa, i + 1);
     }
-    fiobj_each2(obj, fiobj_test_array_task, NULL);
+    fiobj_s *tmp = fiobj_str_new_json(obj);
+    fprintf(stderr, "Array test printout:\n%s\n",
+            tmp ? obj2str(tmp)->str : "ERROR");
+    fiobj_free(tmp);
     fiobj_free(obj);
   } else {
     fprintf(stderr, "* FAILED to initialize Array test!\n");
     fiobj_free(obj);
   }
-
-  /* test hash */
-  obj = fiobj_hash_new();
-  if (obj->type == FIOBJ_T_HASH) {
-    fprintf(stderr, "* testing Hash. \n");
-    fiobj_s *syms = fiobj_ary_new();
-    fiobj_s *a = fiobj_ary_new();
-    fiobj_s *tmp;
-    fiobj_ary_push(a, fiobj_str_new("String in a nested Array", 24));
-    tmp = fiobj_sym_new("array", 5);
-    fiobj_hash_set(obj, tmp, a);
-    fiobj_free(tmp);
-
-    for (size_t i = 0; i < 128; i++) {
-      tmp = fiobj_num_new(i);
-      fio_cstr_s s = fiobj_obj2cstr(tmp);
-      fiobj_ary_set(syms, fiobj_sym_new(s.buffer, s.len), i);
-      fiobj_hash_set(obj, fiobj_ary_entry(syms, i), tmp);
-      if (fiobj_hash_count(obj) != i + 2)
-        fprintf(stderr, "* FAILED Hash count. %lu != %lu\n",
-                fiobj_hash_count(obj), i + 2);
-    }
-
-    if (OBJ2HEAD(fiobj_ary_entry(syms, 2)).ref < 2)
-      fprintf(stderr, "* FAILED Hash Symbol duplication.\n");
-
-    for (size_t i = 0; i < 128; i++) {
-      if ((size_t)fiobj_obj2num(
-              fiobj_hash_get(obj, fiobj_ary_entry(syms, i))) != i)
-        fprintf(stderr,
-                "* FAILED to retrive data from hash for Symbol %s (%p): %lld "
-                "(%p) type %d\n",
-                fiobj_obj2cstr(fiobj_ary_entry(syms, i)).data,
-                (void *)((fio_sym_s *)fiobj_ary_entry(syms, i))->hash,
-                fiobj_obj2num(fiobj_hash_get(obj, fiobj_ary_entry(syms, i))),
-                (void *)fiobj_hash_get(obj, fiobj_ary_entry(syms, i)),
-                fiobj_hash_get(obj, fiobj_ary_entry(syms, i))
-                    ? fiobj_hash_get(obj, fiobj_ary_entry(syms, i))->type
-                    : 0);
-    }
-
-    fiobj_each2(obj, fiobj_test_array_task, NULL);
-
-    fiobj_free(obj);
-    if (OBJ2HEAD(fiobj_ary_entry(syms, 2)).ref != 1)
-      fprintf(stderr, "* FAILED Hash Symbol deallocation.\n");
-    fiobj_free(syms);
-  } else {
-    fprintf(stderr, "* FAILED to initialize Hash test!\n");
-    if (obj)
-      fiobj_free(obj);
-  }
-  obj = NULL;
 
   /* test cyclic protection */
   {
@@ -383,7 +363,11 @@ void fiobj_test(void) {
             "* Printing cyclic array references with "
             "a1, pos %llu  == a2 and a2, pos %llu == a1\n",
             obj2ary(a1)->end, obj2ary(a2)->end);
-    fiobj_each2(a1, fiobj_test_array_task, NULL);
+    {
+      fiobj_s *tmp = fiobj_str_new_json(a1);
+      fprintf(stderr, "%s\n", tmp ? obj2str(tmp)->str : "ERROR");
+      fiobj_free(tmp);
+    }
 
     obj = fiobj_dup(fiobj_ary_entry(a2, -3));
     if (!obj || obj->type != FIOBJ_T_NUMBER)

@@ -150,3 +150,15 @@ int fiobj_sym_iseql(fiobj_s *sym1, fiobj_s *sym2) {
     return 0;
   return (((fio_sym_s *)sym1)->hash == ((fio_sym_s *)sym2)->hash);
 }
+
+/**
+ * Returns a symbol's identifier.
+ *
+ * The unique identifier is calculated using SipHash and is equal for all Symbol
+ * objects that were created using the same data.
+ */
+uintptr_t fiobj_sym_id(fiobj_s *sym) {
+  if (sym->type != FIOBJ_T_SYMBOL)
+    return 0;
+  return obj2sym(sym)->hash;
+}

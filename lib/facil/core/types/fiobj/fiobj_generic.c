@@ -166,12 +166,11 @@ nested:
         fio_ls_unshift(&list, fiobj_ary_entry(tmp, i));
       }
     } else { /* must be Hash */
-      fio_ls_s *at = &list;
-      fio_hash_s *h = (fio_hash_s *)tmp;
-      fio_couplet_s *i;
-      fio_ht_for_each(fio_couplet_s, node, i, h->h) {
-        fio_ls_unshift(at, (fiobj_s *)i);
-        at = at->prev;
+      /* walk in reverse */
+      fio_ls_s *hash_pos = obj2hash(tmp)->items.prev;
+      while (hash_pos != &obj2hash(tmp)->items) {
+        fio_ls_unshift(&list, hash_pos->obj);
+        hash_pos = hash_pos->prev;
       }
     }
 
@@ -309,16 +308,16 @@ int fiobj_iseq(fiobj_s *obj1, fiobj_s *obj2) {
       }
     } else if (obj1->type == FIOBJ_T_HASH) {
       fio_ls_push(&history, obj1);
-      fio_ls_s *at = &pos1;
-      fio_couplet_s *i;
-      fio_ht_for_each(fio_couplet_s, node, i, (((fio_hash_s *)obj1)->h)) {
-        fio_ls_unshift(at, (fiobj_s *)i);
-        at = at->prev;
+      /* walk in reverse */
+      fio_ls_s *hash_pos = obj2hash(obj1)->items.prev;
+      while (hash_pos != &obj2hash(obj1)->items) {
+        fio_ls_unshift(&pos1, hash_pos->obj);
+        hash_pos = hash_pos->prev;
       }
-      at = &pos2;
-      fio_ht_for_each(fio_couplet_s, node, i, (((fio_hash_s *)obj2)->h)) {
-        fio_ls_unshift(at, (fiobj_s *)i);
-        at = at->prev;
+      hash_pos = obj2hash(obj2)->items.prev;
+      while (hash_pos != &obj2hash(obj2)->items) {
+        fio_ls_unshift(&pos2, hash_pos->obj);
+        hash_pos = hash_pos->prev;
       }
     }
   }

@@ -67,7 +67,7 @@ fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
     head = malloc(sizeof(*head) + sizeof(fio_str_s));
     head->ref = 1;
     *((fio_str_s *)HEAD2OBJ(head)) = (fio_str_s){
-        .type = type, .len = len, .capa = len, .str = malloc(len),
+        .type = type, .len = len, .capa = len, .str = malloc(len + 1),
     };
     if (buffer)
       memcpy(((fio_str_s *)HEAD2OBJ(head))->str, buffer, len);
@@ -103,9 +103,13 @@ fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
   case FIOBJ_T_HASH: {
     head = malloc(sizeof(*head) + sizeof(fio_hash_s));
     head->ref = 1;
-    *((fio_hash_s *)HEAD2OBJ(head)) = (fio_hash_s){
-        .h = FIO_HASH_TABLE_STATIC(((fio_hash_s *)HEAD2OBJ(head))->h),
-        .type = type};
+    *obj2hash(HEAD2OBJ(head)) = (fio_hash_s){
+        .type = FIOBJ_T_HASH,
+        .mask = 511,
+        .items = FIO_LS_INIT(obj2hash(HEAD2OBJ(head))->items),
+    };
+    fiobj_hash_rehash(HEAD2OBJ(head));
+
     return HEAD2OBJ(head);
     break;
   }
@@ -134,7 +138,12 @@ void fiobj_dealloc(fiobj_s *obj) {
     free(((fio_ary_s *)obj)->arry);
     goto common;
   case FIOBJ_T_HASH:
-    fio_ht_free(&((fio_hash_s *)obj)->h);
+    /* the actual objects are handled by the deep `fiobj_each2` dealloc task */
+    while (fio_ls_pop(&obj2hash(obj)->items))
+      ;
+    free(obj2hash(obj)->map.data);
+    obj2hash(obj)->map.data = NULL;
+    obj2hash(obj)->map.capa = 0;
     goto common;
   case FIOBJ_T_IO:
     close(((fio_io_s *)obj)->fd);

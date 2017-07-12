@@ -74,6 +74,15 @@ static inline __attribute__((unused)) fiobj_s *fio_ls_shift(fio_ls_s *list) {
   return ret;
 }
 
+/** Removes an object from the containing node. */
+static inline __attribute__((unused)) fiobj_s *fio_ls_remove(fio_ls_s *node) {
+  fiobj_s *ret = node->obj;
+  node->next->prev = node->prev->next;
+  node->prev->next = node->next->prev;
+  free(node);
+  return ret;
+}
+
 /* *****************************************************************************
 Object types
 ***************************************************************************** */
@@ -127,10 +136,27 @@ typedef struct {
   fiobj_s **arry;
 } fio_ary_s;
 
-/* Hash */
+/* *****************************************************************************
+Hash types
+***************************************************************************** */
+#define FIOBJ_HASH_MAX_MAP_SEEK (128)
+
+typedef struct {
+  uintptr_t hash;
+  fio_ls_s *container;
+} map_info_s;
+
+typedef struct {
+  uintptr_t capa;
+  map_info_s *data;
+} fio_map_s;
+
 typedef struct {
   fiobj_type_en type;
-  fio_ht_s h;
+  uintptr_t count;
+  uintptr_t mask;
+  fio_ls_s items;
+  fio_map_s map;
 } fio_hash_s;
 
 /* Hash node */
@@ -138,8 +164,9 @@ typedef struct {
   fiobj_type_en type;
   fiobj_s *name;
   fiobj_s *obj;
-  fio_ht_node_s node;
 } fio_couplet_s;
+
+void fiobj_hash_rehash(fiobj_s *h);
 
 /* *****************************************************************************
 The Object type head and management
