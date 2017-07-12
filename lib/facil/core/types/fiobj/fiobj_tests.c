@@ -159,7 +159,7 @@ Test Hash performance
 ***************************************************************************** */
 
 #include <time.h>
-#define HASH_TEST_SIZE (4194304 >> 3)
+#define HASH_TEST_SIZE ((4194304 >> 3) + (4194304 >> 4))
 #define HASH_TEST_REPEAT 1
 
 void fiobj_hash_test(void) {
@@ -178,7 +178,7 @@ void fiobj_hash_test(void) {
   }
   end = clock();
   fprintf(stderr,
-          "Created 2 arrays with %d symbols and strings "
+          "* Created 2 arrays with %d symbols and strings "
           "using printf in %lu.%lus\n",
           HASH_TEST_SIZE << 1, (end - start) / CLOCKS_PER_SEC,
           (end - start) - ((end - start) / CLOCKS_PER_SEC));
@@ -193,10 +193,13 @@ void fiobj_hash_test(void) {
                      fiobj_dup(fiobj_ary_entry(strings, i)));
     }
     end = clock();
-    fprintf(stderr, "Set %d items in %lu.%lus\n", HASH_TEST_SIZE,
+    fprintf(stderr, "* Set %d items in %lu.%lus\n", HASH_TEST_SIZE,
             (end - start) / CLOCKS_PER_SEC,
             (end - start) - ((end - start) / CLOCKS_PER_SEC));
-
+    fprintf(stderr,
+            "   - Final hash-map "
+            "length/capacity == %lu/%lu\n",
+            obj2hash(hash)->count, obj2hash(hash)->map.capa);
     start = clock();
     for (size_t i = 0; i < HASH_TEST_SIZE; i++) {
       fiobj_hash_set(hash, fiobj_ary_entry(syms, i),
@@ -204,7 +207,7 @@ void fiobj_hash_test(void) {
     }
     end = clock();
     fprintf(stderr,
-            "Resetting %d (test count == %lu) "
+            "* Resetting %d (test count == %lu) "
             "items in %lu.%lus\n",
             HASH_TEST_SIZE, fiobj_hash_count(hash),
             (end - start) / CLOCKS_PER_SEC,
@@ -221,15 +224,15 @@ void fiobj_hash_test(void) {
             exit(-1);
     }
     end = clock();
-    fprintf(stderr, "Seek and test %d items in %lu.%lus\n", HASH_TEST_SIZE,
+    fprintf(stderr, "* Seek and test %d items in %lu.%lus\n", HASH_TEST_SIZE,
             (end - start) / CLOCKS_PER_SEC,
             (end - start) - ((end - start) / CLOCKS_PER_SEC));
 
     start = clock();
     fiobj_free(hash);
     end = clock();
-    fprintf(stderr, "Destroy hash with %d items in %lu.%lus\n", HASH_TEST_SIZE,
-            (end - start) / CLOCKS_PER_SEC,
+    fprintf(stderr, "* Destroy hash with %d items in %lu.%lus\n",
+            HASH_TEST_SIZE, (end - start) / CLOCKS_PER_SEC,
             (end - start) - ((end - start) / CLOCKS_PER_SEC));
 
     /******* Repeat Testing ends here *******/
@@ -258,6 +261,7 @@ static char num_buffer[148];
 void fiobj_test(void) {
   /* test hash+array for memory leaks and performance*/
   fiobj_hash_test();
+  return;
   /* test JSON (I know... it assumes everything else works...) */
   fiobj_test_hash_json();
   /* start simple tests */

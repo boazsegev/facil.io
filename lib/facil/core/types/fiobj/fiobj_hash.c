@@ -17,7 +17,7 @@ static inline void fio_map_reset(fio_map_s *map, uintptr_t capa) {
   /* It's better to reallocate using calloc than manually zero out memory */
   /* Maybe there's enough zeroed out pages available in the system */
   /* capacity should be page alighned */
-  map->capa = ((((capa + FIOBJ_HASH_MAX_MAP_SEEK) >> 12) + 1) << 12);
+  map->capa = ((((capa) >> 12) + 1) << 12);
   free(map->data);
   map->data = calloc(sizeof(*map->data), map->capa);
   if (!map->data)
@@ -27,15 +27,21 @@ static inline void fio_map_reset(fio_map_s *map, uintptr_t capa) {
 /* *****************************************************************************
 Internal HashMap
 ***************************************************************************** */
+static inline uintptr_t fio_map_cuckoo_steps(uintptr_t step) {
+  // return ((step * (step + 1)) >> 1);
+  return (step * 3);
+}
 
 /* seeks the hash's position in the map */
 static map_info_s *fio_hash_seek(fio_hash_s *h, uintptr_t hash) {
   map_info_s *pos = h->map.data + (hash & h->mask);
-  map_info_s *end = pos + FIOBJ_HASH_MAX_MAP_SEEK;
+  map_info_s *end = pos + fio_map_cuckoo_steps(FIOBJ_HASH_MAX_MAP_SEEK);
+  uintptr_t i = 0;
   while (pos < end) {
     if (!pos->hash || pos->hash == hash)
       return pos;
-    pos++;
+    pos = h->map.data +
+          (((hash & h->mask) + fio_map_cuckoo_steps(i++)) & h->mask);
   }
   return NULL;
 }
@@ -45,10 +51,6 @@ static void *fio_hash_find(fio_hash_s *h, uintptr_t hash) {
   map_info_s *info = fio_hash_seek(h, hash);
   if (!info || !info->container)
     return NULL;
-  // fprintf(
-  //     stderr, "found hash %s => %p\n",
-  //     fiobj_obj2cstr(obj2couplet((void *)info->container->obj)->name).buffer,
-  //     (void *)info->container->obj);
   return info->container->obj;
 }
 
@@ -86,6 +88,10 @@ static void *fio_hash_insert(fio_hash_s *h, uintptr_t hash, void *obj) {
 /* attempts to rehash the hashmap. */
 void fiobj_hash_rehash(fiobj_s *h_) {
   fio_hash_s *h = obj2hash(h_);
+  fprintf(stderr,
+          "- Rehash with "
+          "length/capacity == %lu/%lu\n",
+          h->count, h->map.capa);
 retry_rehashing:
   h->mask = ((h->mask) << 1) | 1;
   fio_map_reset(&h->map, h->mask);
@@ -156,9 +162,11 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
     fiobj_dealloc((fiobj_s *)obj);
     return -1;
   }
-  /* TODO: preemptive rehashing? */
+  // TODO: shoule we use preemptive rehashing? - NO! has negative impact!
+  /*
   if (obj2hash3(hash)->count >= (((obj2hash3(hash)->mask + 1) << 1) / 3))
     fiobj_hash_rehash(hash);
+  */
   fiobj_s *coup = fiobj_alloc(FIOBJ_T_COUPLET, 0, NULL);
   ((fio_couplet_s *)coup)->name = fiobj_dup(sym);
   ((fio_couplet_s *)coup)->obj = obj;
@@ -166,7 +174,8 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
   while (old == (void *)-1) {
     fiobj_hash_rehash(hash);
     old = fio_hash_insert((fio_hash_s *)hash, obj2sym(sym)->hash, coup);
-    fprintf(stderr, "couldn't insert - forced rehashing\n");
+    // fprintf(stderr, "WARN: (fiobj Hash) collision limit reached"
+    //                 " - forced rehashing\n");
   }
   if (old) {
     fiobj_free(obj2couplet(old)->obj);

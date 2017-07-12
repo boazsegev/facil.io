@@ -139,7 +139,7 @@ typedef struct {
 /* *****************************************************************************
 Hash types
 ***************************************************************************** */
-#define FIOBJ_HASH_MAX_MAP_SEEK (128)
+#define FIOBJ_HASH_MAX_MAP_SEEK (256)
 
 typedef struct {
   uintptr_t hash;
