@@ -34,6 +34,7 @@ static inline uintptr_t fio_map_cuckoo_steps(uintptr_t step) {
 
 /* seeks the hash's position in the map */
 static map_info_s *fio_hash_seek(fio_hash_s *h, uintptr_t hash) {
+  /* TODO: consider implementing Robing Hood reordering during seek */
   map_info_s *pos = h->map.data + (hash & h->mask);
   map_info_s *end = pos + fio_map_cuckoo_steps(FIOBJ_HASH_MAX_MAP_SEEK);
   uintptr_t i = 0;
@@ -88,10 +89,10 @@ static void *fio_hash_insert(fio_hash_s *h, uintptr_t hash, void *obj) {
 /* attempts to rehash the hashmap. */
 void fiobj_hash_rehash(fiobj_s *h_) {
   fio_hash_s *h = obj2hash(h_);
-  fprintf(stderr,
-          "- Rehash with "
-          "length/capacity == %lu/%lu\n",
-          h->count, h->map.capa);
+// fprintf(stderr,
+//         "- Rehash with "
+//         "length/capacity == %lu/%lu\n",
+//         h->count, h->map.capa);
 retry_rehashing:
   h->mask = ((h->mask) << 1) | 1;
   fio_map_reset(&h->map, h->mask);
