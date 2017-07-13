@@ -21,6 +21,17 @@ parsed as errors, since they hadn't been declared yet.
 
 EXAMPLE:
 
+    // initialize the CLI helper.
+    fio_cli_start(argc, argv, "App description or NULL");
+    // setup possible command line arguments.
+    fio_cli_accept_num("port p", "the port to listen to, defaults to 3000.");
+    fio_cli_accept_bool("log v", "enable logging");
+    // read command line arguments.
+    uint8_t logging = fio_cli_get_int("v");
+    const char *port = fio_cli_get_str("port");
+    if (!port)
+      port = "3000";
+    fio_cli_end();
 
 
 */
