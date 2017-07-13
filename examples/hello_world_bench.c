@@ -45,7 +45,7 @@ Available command line flags:
 int main(int argc, char const *argv[]) {
   const char *port = "3000";
   const char *public_folder = NULL;
-  uint32_t threads = 1;
+  uint32_t threads = 0;
   uint32_t workers = 0;
   uint8_t print_log = 1;
 
@@ -85,7 +85,7 @@ int main(int argc, char const *argv[]) {
   }
   if (print_log) {
     /* log to the "benchmark.log" file, set to `if` to 0 to skip this*/
-    if (0) {
+    if (1) {
       fclose(stderr);
       FILE *log = fopen("./tmp/benchmark.log", "a");
       if (!log) {
