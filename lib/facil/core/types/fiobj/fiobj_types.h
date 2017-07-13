@@ -103,6 +103,7 @@ typedef struct {
   fiobj_type_en type;
   uint64_t capa;
   uint64_t len;
+  uint8_t is_static;
   char *str;
 } fio_str_s;
 

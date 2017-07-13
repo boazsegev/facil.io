@@ -84,12 +84,9 @@ static void answer_http_request(http_request_s *request) {
   http_response_finish(response);
 }
 
+#include "fio_cli_helper.h"
 /*
-Available command line flags:
--p <port>          : defaults port 3000.
--t <threads>       : defaults to the number of CPU cores (or 1).
--w <processes>     : defaults to the number of CPU cores (or 1).
--v                 : sets verbosity (HTTP logging) on.
+Read available command line details using "-?".
 */
 int main(int argc, char const *argv[]) {
   const char *port = "3000";
@@ -99,39 +96,34 @@ int main(int argc, char const *argv[]) {
   uint8_t print_log = 0;
 
   /*     ****  Command line arguments ****     */
+  fio_cli_start(argc, argv,
+                "This is a facil.io example application.\n"
+                "\nThis example conforms to the "
+                "Websocket Shootout requirements at:\n"
+                "https://github.com/hashrocket/websocket-shootout\n"
+                "\nThe following arguments are supported:");
+  fio_cli_accept_num(
+      "threads t",
+      "The number of threads to use. Default uses smart selection.");
+  fio_cli_accept_num(
+      "workers w",
+      "The number of processes to use. Default uses smart selection.");
+  fio_cli_accept_num("port p", "The port number to listen to.");
+  fio_cli_accept_str("public www",
+                     "A public folder for serve an HTTP static file service.");
+  fio_cli_accept_bool("log v", "Turns logging on.");
 
-  for (int i = 1; i < argc; i++) {
-    int offset = 0;
-    if (argv[i][0] == '-') {
-      switch (argv[i][1]) {
-      case 'v': /* logging */
-        print_log = 1;
-        break;
-      case 't': /* threads */
-        if (!argv[i][2])
-          i++;
-        else
-          offset = 2;
-        threads = atoi(argv[i] + offset);
-        break;
-      case 'w': /* processes */
-        if (!argv[i][2])
-          i++;
-        else
-          offset = 2;
-        workers = atoi(argv[i] + offset);
-        break;
-      case 'p': /* port */
-        if (!argv[i][2])
-          i++;
-        else
-          offset = 2;
-        port = argv[i] + offset;
-        break;
-      }
-    } else if (i == argc - 1)
-      public_folder = argv[i];
+  if (fio_cli_get_str("p"))
+    port = fio_cli_get_str("p");
+  if (fio_cli_get_str("www")) {
+    public_folder = fio_cli_get_str("www");
+    printf("* serving static files from:%s", public_folder);
   }
+  if (fio_cli_get_str("t"))
+    threads = fio_cli_get_int("t");
+  if (fio_cli_get_str("w"))
+    workers = fio_cli_get_int("w");
+  print_log = fio_cli_get_int("v");
 
   /*     ****  actual code ****     */
   // RedisEngine = redis_engine_create(.address = "localhost", .port = "6379");

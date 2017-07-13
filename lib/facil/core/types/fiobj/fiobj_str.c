@@ -16,6 +16,37 @@ fiobj_s *fiobj_str_new(const char *str, size_t len) {
   return fiobj_alloc(FIOBJ_T_STRING, len, (void *)str);
 }
 
+/** Creates a buffer String object. Remember to use `fiobj_free`. */
+fiobj_s *fiobj_str_buf(size_t capa) {
+  if (capa)
+    capa = capa - 1;
+  else
+    capa = 31;
+  fiobj_s *str = fiobj_alloc(FIOBJ_T_STRING, capa, NULL);
+  fiobj_str_clear(str);
+  return str;
+}
+
+/**
+ * Creates a static String object from a static C string. Remember `fiobj_free`.
+ *
+ * This variation avoids allocating memory for an existing static String.
+ *
+ * The object still needs to be frees, but the string isn't copied and isn't
+ * freed.
+ *
+ * NOTICE: static strings can't be written to.
+ */
+fiobj_s *fiobj_str_static(const char *str, size_t len) {
+  fiobj_s *obj = fiobj_alloc(FIOBJ_T_STRING, 7, NULL);
+  free(obj2str(obj)->str);
+  obj2str(obj)->str = (char *)str;
+  obj2str(obj)->len = len ? len : strlen(str);
+  obj2str(obj)->capa = 0;
+  obj2str(obj)->is_static = 1;
+  return obj;
+}
+
 /** Creates a copy from an existing String. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_copy(fiobj_s *src) {
   fio_cstr_s s = fiobj_obj2cstr(src);
@@ -47,20 +78,9 @@ fiobj_strprintf(const char *restrict format, ...) {
   return str;
 }
 
-/** Creates a buffer String object. Remember to use `fiobj_free`. */
-fiobj_s *fiobj_str_buf(size_t capa) {
-  if (capa)
-    capa = capa - 1;
-  else
-    capa = 31;
-  fiobj_s *str = fiobj_alloc(FIOBJ_T_STRING, capa, NULL);
-  fiobj_str_clear(str);
-  return str;
-}
-
 /** Resizes a String object, allocating more memory if required. */
 void fiobj_str_resize(fiobj_s *str, size_t size) {
-  if (str->type != FIOBJ_T_STRING)
+  if (str->type != FIOBJ_T_STRING || ((fio_str_s *)str)->capa == 0)
     return;
   if (((fio_str_s *)str)->capa >= size + 1) {
     ((fio_str_s *)str)->len = size;

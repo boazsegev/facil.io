@@ -8,6 +8,7 @@ void setup_network_services(void);
 
 /* declared here, implemented in setup.h */
 #include "main.h"
+#include "fio_cli_helper.h"
 #include "redis_engine.h"
 #include <string.h>
 
@@ -93,168 +94,53 @@ int main(int argc, char const *argv[]) {
 
   /*     ****  Command line arguments ****     */
 
-  if (argc == 2 && argv[1][0] == '-' &&
-      (argv[1][1] == '?' || argv[1][1] == 'h') && argv[1][2] == 0) {
-    fprintf(
-        stderr,
-        "Available command line options\n"
-        "   -p <port>            : "
-        "defaults port 3000.\n"
-        "   -t <threads>         : "
-        "number of threads per process."
-        "defaults to 0 (automatic CPU core test/set).\n"
-        "   -w <processes>       : "
-        "number of processes. defaults to 0 (automatic CPU core test/set).\n"
-        "   -v                   : "
-        "request verbosity (logging)."
-        "   -r <address> <port>  : "
-        "a spece delimited couplet for the Redis address and port for "
-        "pub/sub.\n"
-        "   -k <0..255>          : "
-        "HTTP keep-alive timeout. default (0) reverts to ~5 seconds."
-        "   -ping <0..255>       : "
-        "websocket ping interval. default (0) reverts to ~40 seconds.\n"
-        "   -public <folder>     : "
-        "public folder, for static file service."
-        "default (NULL) disables static file service.\n"
-        "   -maxbd <Mb>          : "
-        "HTTP upload limit. default to ~50Mb.\n"
-        "   -maxms <Kb>          : "
-        "incoming websocket message size limit. default to ~250Kb.\n"
-        "   -?                   : "
-        "print command line options.\n"
-        "\n");
-    return 0;
+  fio_cli_start(argc, argv, NULL);
+  fio_cli_accept_num("port p", "port number to listen to. defaults port 3000");
+  fio_cli_accept_num("threads t",
+                     "number of threads per process."
+                     "defaults to 0 (automatic CPU core test/set).");
+  fio_cli_accept_num("workers w",
+                     "number of threads per process."
+                     "defaults to 0 (automatic CPU core test/set).");
+  fio_cli_accept_bool("log v", "request verbosity (logging).");
+  fio_cli_accept_str("public www",
+                     "public folder, for static file service."
+                     "default (NULL) disables static file service.");
+  fio_cli_accept_num("keep-alive k", "HTTP keep-alive timeout (0..255). "
+                                     "default (0) reverts to ~5 seconds.");
+  fio_cli_accept_num("ping", "websocket ping interval (0..255). "
+                             "default (0) reverts to ~40 seconds.");
+  fio_cli_accept_num("max-body maxbd", "HTTP upload limit. default to ~50Mb.");
+  fio_cli_accept_num("max-message maxms",
+                     "incoming websocket message size limit. "
+                     "default to ~250Kb.");
+  fio_cli_accept_str("redis r", "an optional Redis server's address.");
+  fio_cli_accept_str("redis-port rp",
+                     "an optional Redis server's port. defaults to 6379.");
+  fio_cli_accept_str("redis-password rpw", "Redis password, if any.");
+
+  if (fio_cli_get_str("p"))
+    HTTP_PORT = fio_cli_get_str("p");
+  if (fio_cli_get_str("www")) {
+    HTTP_PUBLIC_FOLDER = fio_cli_get_str("www");
   }
-
-  for (int i = 1; i < ARGC; i++) {
-    int offset = 0;
-    if (ARGV[i][0] == '-') {
-      switch (ARGV[i][1]) {
-
-      case 'v': /* logging */
-        if (ARGV[i][2])
-          goto unknown_option;
-        VERBOSE = 1;
-        break;
-
-      case 't': /* threads */
-        if (!ARGV[i][2])
-          i++;
-        else
-          offset = 2;
-        if ((*(ARGV[i] + offset) >= '9' || *(ARGV[i] + offset) <= '0'))
-          goto unknown_option;
-        threads = atoi(ARGV[i] + offset);
-        break;
-
-      case 'w': /* processes */
-        if (!ARGV[i][2])
-          i++;
-        else
-          offset = 2;
-        workers = atoi(ARGV[i] + offset);
-        break;
-
-      case 'k': /* keep-alive timeout */
-        if (!ARGV[i][2])
-          i++;
-        else
-          offset = 2;
-        if ((*(ARGV[i] + offset) >= '9' || *(ARGV[i] + offset) <= '0'))
-          goto unknown_option;
-        HTTP_TIMEOUT = atoi(ARGV[i] + offset);
-        break;
-
-      case 'p': /* port (p), ping or public */
-        if (!ARGV[i][2] || (ARGV[i][2] <= '9' && ARGV[i][2] >= '0')) {
-          /* port */
-          offset = 2;
-          if (!ARGV[i][2]) {
-            i++;
-            offset = 0;
-          }
-          HTTP_PORT = ARGV[i] + offset;
-          if ((*HTTP_PORT >= '9' || *HTTP_PORT <= '0'))
-            goto unknown_option;
-
-        } else if (ARGV[i][2] && ARGV[i][2] == 'i' && ARGV[i][3] &&
-                   ARGV[i][3] == 'n' && ARGV[i][4] && ARGV[i][4] == 'g') {
-          /* ping */
-          offset = 5;
-          if (!ARGV[i][5]) {
-            i++;
-            offset = 0;
-          }
-
-          WEBSOCKET_PING_INTERVAL = atoi(ARGV[i] + offset);
-
-        } else if (ARGV[i][2] && ARGV[i][2] == 'u' && ARGV[i][3] &&
-                   ARGV[i][3] == 'b' && ARGV[i][4] && ARGV[i][4] == 'l' &&
-                   ARGV[i][5] && ARGV[i][5] == 'i' && ARGV[i][6] &&
-                   ARGV[i][6] == 'c') {
-          /* public */
-          offset = 7;
-          if (!ARGV[i][7]) {
-            i++;
-            offset = 0;
-          }
-          HTTP_PUBLIC_FOLDER = ARGV[i] + offset;
-
-        } else
-          goto unknown_option;
-        break;
-
-      case 'm': /* maxbd or maxms */
-        offset = 6;
-        if (ARGV[i][2] && ARGV[i][2] == 'a' && ARGV[i][3] &&
-            ARGV[i][3] == 'x' && ARGV[i][4] && ARGV[i][4] == 'b' &&
-            ARGV[i][5] && ARGV[i][5] == 'd' &&
-            (!ARGV[i][6] || (ARGV[i][6] >= '0' && ARGV[i][6] <= '9'))) {
-          /* maxbd */
-          if (!ARGV[i][offset]) {
-            i++;
-            offset = 0;
-          }
-          HTTP_BODY_LIMIT = atoi(ARGV[i] + offset) * (1024 * 1024);
-
-        } else if (ARGV[i][2] && ARGV[i][2] == 'a' && ARGV[i][3] &&
-                   ARGV[i][3] == 'x' && ARGV[i][4] && ARGV[i][4] == 'm' &&
-                   ARGV[i][5] && ARGV[i][5] == 's' &&
-                   (!ARGV[i][6] || (ARGV[i][6] >= '0' && ARGV[i][6] <= '9'))) {
-          /* maxms */
-          if (!ARGV[i][offset]) {
-            i++;
-            offset = 0;
-          }
-          WEBSOCKET_MSG_LIMIT = atoi(ARGV[i] + offset) * 1024;
-
-        } else
-          goto unknown_option;
-        break;
-
-      case 'r': /* resid */
-        if (!ARGV[i][2])
-          i++;
-        else
-          offset = 2;
-        redis_address = ARGV[i] + offset;
-        offset = 0;
-        while (ARGV[i + 1][offset]) {
-          if (ARGV[i + 1][offset] < '0' || ARGV[i + 1][offset] > '9') {
-            fprintf(stderr, "\nERROR: invalid redis port %s\n", ARGV[i + 1]);
-            exit(-1);
-          }
-        }
-        redis_port = ARGV[i + 1];
-        break;
-      }
-    } else {
-    unknown_option:
-      fprintf(stderr, "ERROR: unknown option: %s\n", ARGV[i]);
-      return -1;
-    }
-  }
+  if (fio_cli_get_str("t"))
+    threads = fio_cli_get_int("t");
+  if (fio_cli_get_str("w"))
+    workers = fio_cli_get_int("w");
+  VERBOSE = fio_cli_get_int("v");
+  if (fio_cli_get_str("redis"))
+    redis_address = fio_cli_get_str("redis");
+  if (fio_cli_get_str("redis-port"))
+    redis_port = fio_cli_get_str("redis-port");
+  if (fio_cli_get_str("redis-port"))
+    redis_password = fio_cli_get_str("redis-password");
+  HTTP_TIMEOUT = fio_cli_get_int("keep-alive");
+  WEBSOCKET_PING_INTERVAL = fio_cli_get_int("ping");
+  if (fio_cli_get_int("maxbd"))
+    HTTP_BODY_LIMIT = fio_cli_get_int("maxbd");
+  if (fio_cli_get_int("maxms"))
+    WEBSOCKET_MSG_LIMIT = fio_cli_get_int("maxms");
 
   if (!HTTP_PORT)
     HTTP_PORT = "3000";

@@ -152,7 +152,8 @@ void fiobj_dealloc(fiobj_s *obj) {
     fclose(((fio_file_s *)obj)->f);
     goto common;
   case FIOBJ_T_STRING:
-    free(((fio_str_s *)obj)->str);
+    if (obj2str(obj)->is_static == 0)
+      free(((fio_str_s *)obj)->str);
     goto common;
 
   common:

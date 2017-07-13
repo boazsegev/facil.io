@@ -74,13 +74,14 @@ Helper macros
 
 /** returns TRUE (1) if the object isn't NULL, FALSE, 0, or an empty String  */
 #define FIOBJ_TRUE(o)                                                          \
-  ((o) && ((o)->type == FIOBJ_T_TRUE ||                                        \
-           ((o)->type == FIOBJ_T_NUMBER && fiobj_obj2num((o)) != 0) ||         \
-           ((o)->type == FIOBJ_T_FLOAT && fiobj_obj2float((o)) != 0) ||        \
-           ((o)->type == FIOBJ_T_STRING && fiobj_obj2cstr((o))[0] != 0) ||     \
-           (o)->type == FIOBJ_T_SYMBOL || (o)->type == FIOBJ_T_ARRAY ||        \
-           (o)->type == FIOBJ_T_HASH || (o)->type == FIOBJ_T_IO ||             \
-           (o)->type == FIOBJ_T_FILE))
+  ((o) &&                                                                      \
+   ((o)->type == FIOBJ_T_TRUE ||                                               \
+    ((o)->type == FIOBJ_T_NUMBER && fiobj_obj2num((o)) != 0) ||                \
+    ((o)->type == FIOBJ_T_FLOAT && fiobj_obj2float((o)) != 0) ||               \
+    ((o)->type == FIOBJ_T_STRING && fiobj_obj2cstr((o)).data[0] != 0) ||       \
+    (o)->type == FIOBJ_T_SYMBOL || (o)->type == FIOBJ_T_ARRAY ||               \
+    (o)->type == FIOBJ_T_HASH || (o)->type == FIOBJ_T_IO ||                    \
+    (o)->type == FIOBJ_T_FILE))
 
 /* *****************************************************************************
 Helpers: not fiobj_s specific, but since they're used internally, they're here.
@@ -299,6 +300,18 @@ fiobj_s *fiobj_str_buf(size_t capa);
 fiobj_s *fiobj_str_copy(fiobj_s *src);
 
 /**
+ * Creates a static String object from a static C string. Remember `fiobj_free`.
+ *
+ * This variation avoids allocating memory for an existing static String.
+ *
+ * The object still needs to be frees, but the string isn't copied and isn't
+ * freed.
+ *
+ * NOTICE: static strings can't be written to.
+ */
+fiobj_s *fiobj_str_static(const char *str, size_t len);
+
+/**
  * Formats an object into a JSON string. Remember to `fiobj_free`.
  *
  * Notice that nested String objects should contain valid UTF-8 data. An attempt
@@ -309,7 +322,7 @@ fiobj_s *fiobj_str_new_json(fiobj_s *);
 /**
  * Allocates a new String using `prinf` semantics. Remember to `fiobj_free`.
  *
- * On error returns NULL.
+ * Returns NULL on error.
  */
 __attribute__((format(printf, 1, 2))) fiobj_s *
 fiobj_strprintf(const char *restrict format, ...);

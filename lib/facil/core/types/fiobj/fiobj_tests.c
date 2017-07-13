@@ -261,7 +261,6 @@ static char num_buffer[148];
 void fiobj_test(void) {
   /* test hash+array for memory leaks and performance*/
   fiobj_hash_test();
-  return;
   /* test JSON (I know... it assumes everything else works...) */
   fiobj_test_hash_json();
   /* start simple tests */
