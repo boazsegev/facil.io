@@ -14,6 +14,8 @@
 
 **Feature**: added a dynamic type library to `facil.io`'s core, making some common web related tasks easier to manage.
 
+**Feature**: added a CLI helper service, allowing easy parsing and publishing of possible command line arguments.
+
 ### Ver. 0.5.2
 
 **Change**: non-breaking changes to the folder structure are also reflected in the updated `makefile` and `.clang_complete`.
