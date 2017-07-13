@@ -1,3 +1,9 @@
+/*
+Copyright: Boaz segev, 2017
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #include "fio_cli_helper.h"
 #include "fiobj.h"
 

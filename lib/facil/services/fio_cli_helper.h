@@ -1,3 +1,9 @@
+/*
+Copyright: Boaz segev, 2017
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #ifndef H_FIO_CLI_HELPER_H
 /**
 
