@@ -10,7 +10,6 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "spnlock.inc"
 
-#include "fio_hash_table.h"
 #include "fiobj.h"
 
 #include <math.h>
