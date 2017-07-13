@@ -475,9 +475,8 @@ void http_response_log_start(http_response_s *response) {
 prints out the log to stderr.
 */
 static void http_response_log_finish(http_response_s *response) {
-#define HTTP_REQUEST_LOG_LIMIT 128
+#define HTTP_REQUEST_LOG_LIMIT 128 /* Log message length limit */
   char buffer[HTTP_REQUEST_LOG_LIMIT];
-
   http_request_s *request = response->request;
   intptr_t bytes_sent = response->content_length;
 
@@ -485,9 +484,20 @@ static void http_response_log_finish(http_response_s *response) {
       response->logged
           ? ((get_clock_mili() - response->clock_start) / CLOCK_RESOLUTION)
           : 0;
-  struct tm tm;
+
+  /* pre-print log message every 1 or 2 seconds or so. */
+  static __thread time_t cached_tick;
+  static __thread char cached_httpdate[48];
+  static __thread size_t chached_len;
   time_t last_tick = facil_last_tick();
-  http_gmtime(&last_tick, &tm);
+  if (last_tick > cached_tick) {
+    struct tm tm;
+    cached_tick = last_tick | 1;
+    http_gmtime(&last_tick, &tm);
+    chached_len = http_date2str(cached_httpdate, &tm);
+    fprintf(stderr, "Updated date cache to (%lu) %s\n", chached_len,
+            cached_httpdate);
+  }
 
   // TODO Guess IP address from headers (forwarded) where possible
   sock_peer_addr_s addrinfo = sock_peer_addr(response->fd);
@@ -509,7 +519,8 @@ static void http_response_log_finish(http_response_s *response) {
   }
   memcpy(buffer + pos, " - - [", 6);
   pos += 6;
-  pos += http_date2str(buffer + pos, &tm);
+  memcpy(buffer + pos, cached_httpdate, chached_len);
+  pos += chached_len;
   buffer[pos++] = ']';
   buffer[pos++] = ' ';
   buffer[pos++] = '"';
