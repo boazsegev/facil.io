@@ -36,7 +36,7 @@ static uint8_t is_hex[] = {
     0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0};
 
 /* invalid byte length is ignored */
-static inline int utf8_clen(const char *str) {
+static inline int utf8_clen(const uint8_t *str) {
   if (str[0] <= 127)
     return 1;
   if ((str[0] & 192) == 192 && (str[1] & 192) == 192)
@@ -68,7 +68,7 @@ static inline int utf8_from_u16(uint8_t *dest, uint16_t u) {
 /** Writes a JSON friendly version of the src String, requires the */
 static void write_safe_str(fiobj_s *dest, fiobj_s *str) {
   fio_cstr_s s = fiobj_obj2cstr(str);
-  const char *src = s.data;
+  const uint8_t *src = (const uint8_t *)s.data;
   size_t len = s.len;
   uint64_t end = obj2str(dest)->len;
   while (len) {
@@ -147,7 +147,7 @@ static void safestr2local(fiobj_s *str) {
   uint8_t *reader = (uint8_t *)obj2str(str)->str;
   uint8_t *writer = (uint8_t *)obj2str(str)->str;
   while (reader < end) {
-    int tmp = utf8_clen((char *)reader);
+    int tmp = utf8_clen(reader);
     if (tmp == 1) {
       if (reader[0] == '\\') {
         switch (reader[1]) {

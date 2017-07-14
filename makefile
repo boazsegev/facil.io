@@ -24,7 +24,7 @@ TMP_ROOT=tmp
 
 ### Compiler & Linker flags
 # any librries required (write in full flags)
-LINKER_FLAGS=-lpthread
+LINKER_FLAGS=-lpthread -lm
 # optimization level.
 OPTIMIZATION=-O3 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
@@ -109,19 +109,24 @@ CCL = $(CC)
 INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(FOLDERS),$(addprefix -I, $(dir)))
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 
-OBJS = $(foreach source, $(SOURCES), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 
 # the computed C flags
-CFLAGS= -g -std=c11  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
-CPPFLAGS= -std=c++11 $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CFLAGS= -g -std=c11 -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CPPFLAGS= -std=c++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 
 ########
 ## Main Tasks
 
 $(NAME): build
 
-build: $(OBJS)
+build: $(LIB_OBJS) $(MAIN_OBJS)
 	$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+	$(DOCUMENTATION)
+
+lib: $(LIB_OBJS)
+	$(CCL) -shared -o $(OUT_ROOT)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	$(DOCUMENTATION)
 
 ifdef DISAMS
@@ -234,9 +239,9 @@ vars:
 	@echo ""
 	@echo "MAINSRC: $(MAINSRC)"
 	@echo ""
-	@echo "SOURCES: $(SOURCES)"
+	@echo "LIB_OBJS: $(OBJS)"
 	@echo ""
-	@echo "OBJS: $(OBJS)"
+	@echo "MAIN_OBJS: $(OBJS)"
 	@echo ""
 	@echo "CFLAGS: $(CFLAGS)"
 	@echo ""

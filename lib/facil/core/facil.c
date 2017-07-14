@@ -505,6 +505,7 @@ static void connector_on_close(intptr_t uuid, protocol_s *pconnector) {
 
 #undef facil_connect
 intptr_t facil_connect(struct facil_connect_args opt) {
+  intptr_t uuid = -1;
   if (!opt.address || !opt.port || !opt.on_connect)
     goto error;
   if (!opt.set_rw_hooks)
@@ -524,7 +525,7 @@ intptr_t facil_connect(struct facil_connect_args opt) {
       .rw_udata = opt.rw_udata,
       .opened = 0,
   };
-  intptr_t uuid = connector->uuid = sock_connect(opt.address, opt.port);
+  uuid = connector->uuid = sock_connect(opt.address, opt.port);
   /* check for errors, always invoke the on_fail if required */
   if (uuid == -1)
     goto error;
