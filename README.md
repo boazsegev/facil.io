@@ -47,24 +47,44 @@ Writing HTTP and Websocket services in C is easy with [facil.io](http://facil.io
 The simplest example, of course, would be the famous "Hello World" application... this is so easy, it's practically boring (so we add custom headers and cookies):
 
 ```c
-#include "http.h"
+#include "http.h"           /* the HTTP facil.io extension */
+#include "fio_cli_helper.h" /* a command line interface (CLI) helper */
+
+static uint8_t HTTP_LOGGING; /* easier access to the logging settings. */
+
+// We'll use this callback in `http_listen`, to handles HTTP requests
+void on_request(http_request_s* request);
+
+int main(int argc, char const **argv) {
+  // easily support a command line interface
+  fio_cli_start(argc, argv, NULL);
+  fio_cli_accept_num("port p", "the port to listen to, defaults to 3000.");
+  fio_cli_accept_bool("log v", "enable logging");
+  fio_cli_accept_num("public-folder, www",
+                     "enables a static file service from the folder's root.");
+  HTTP_LOGGING = fio_cli_get_int("v");
+  const char * port = fio_cli_get_str("port");
+  const char * public_folder = fio_cli_get_str("www");
+  if (!port)
+    port = "3000";    
+  fio_cli_end();
+
+  // listen on any available network binding (NULL == 0.0.0.0)
+  http_listen(port, NULL,  .on_request = on_request,
+                           .public_folder = public_folder,
+                           .log_static = HTTP_LOGGING );
+  // start the server
+  facil_run(.threads = 8);
+}
 
 void on_request(http_request_s* request) {
   http_response_s * response = http_response_create(request);
-  // http_response_log_start(response); // logging ?
+  if(HTTP_LOGGING)
+    http_response_log_start(response);
   http_response_set_cookie(response, .name = "my_cookie", .value = "data");
   http_response_write_header(response, .name = "X-Data", .value = "my data");
   http_response_write_body(response, "Hello World!\r\n", 14);
   http_response_finish(response);
-}
-
-int main() {
-  char* public_folder = NULL;
-  // listen on port 3000, any available network binding (NULL == 0.0.0.0)
-  http_listen("3000", NULL, .on_request = on_request,
-               .public_folder = public_folder, .log_static = 0);
-  // start the server
-  facil_run(.threads = 16);
 }
 ```
 

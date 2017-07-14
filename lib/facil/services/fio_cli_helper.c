@@ -35,7 +35,7 @@ static void fio_cli_handle_error(void) {
           "\n"
           "%s\n"
           "%s\n"
-          "Accepts any of the following onput formats:\n"
+          "Use any of the following input formats:\n"
           "\t-arg <value>\t-arg=<value>\t-arg<value>\n"
           "\n"
           "Use the -h, -help or -? to get this information again.\n"

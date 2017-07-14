@@ -46,6 +46,11 @@ EXAMPLE:
 */
 #define H_FIO_CLI_HELPER_H
 
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /** Initialize the CLI helper and adds the `info` string to the help section */
 void fio_cli_start(int argc, const char **argv, const char *info);
 
@@ -116,5 +121,9 @@ int fio_cli_get_int(const char *opt);
  * For boolean values, the value will be 0 for FALSE and 1 for TRUE.
  */
 int fio_cli_get_float(const char *opt);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif
