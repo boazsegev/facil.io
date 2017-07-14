@@ -8,6 +8,7 @@ set(facil.io_SOURCES
   ./lib/facil/core/facil.c
   ./lib/facil/core/sock.c
   ./lib/facil/core/types/fio_dict.c
+  ./lib/facil/services/fio_cli_helper.c
   ./lib/facil/services/pubsub.c
   ./lib/facil/http/http.c
   ./lib/facil/http/http1.c
@@ -33,6 +34,7 @@ set(facil.io_SOURCES
   ./lib/facil/core/types/fiobj/fiobj_ary.c
   ./lib/facil/core/types/fiobj/fiobj_generic.c
   ./lib/facil/core/types/fiobj/fiobj_hash.c
+  ./lib/facil/core/types/fiobj/fiobj_json.c
   ./lib/facil/core/types/fiobj/fiobj_misc.c
   ./lib/facil/core/types/fiobj/fiobj_numers.c
   ./lib/facil/core/types/fiobj/fiobj_str.c
