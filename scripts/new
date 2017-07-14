@@ -5,78 +5,39 @@
 #
 # Expected changes will update the makefile and the boiler plate code.
 
-#--------------------------------------------------
-# Flow:
-# * Check for cached download on /tmp
-#   * if none download to /tmp
-#   * if there's one unpack it on /tmp
-# * Ask the user what template to use
-# * Ask the user what libs to use (can be assumed
-#       from the template selection)
-# * mkdir app_name and copy 'lib/...' as slected by the user
-# * generate sample src code from template. code is surrounded by <--SECTION_NAME ... -->
-#       SECTION=HTTP
-#       sed -n "/<--$SECTION/,/-->/p" /tmp/facil/templates/test.c.template | egrep -v '<--' | egrep -v '\-->'
+if [ -z $1 ]
+  then
+	echo "Please provide file name."
+  exit 0
+fi
 
-FACIL_TMP_DIR='/tmp/'
-FACIL_ARCHIVE_NAME='facil.io-stable.tar.gz'
+if [ -a $1 ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
+if [ -d $1 ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
 
-function cache_exist() {
-    if [[ -a $FACIL_TMP_DIR/$FACIL_ARCHIVE_NAME ]]; then
-        # use cache is it's younger than 7 days
-        if [ "$(find /tmp/$FACIL_ARCHIVE_NAME -mtime -7)" ]; then
-            echo "TRUE"
-        fi
-    fi
-}
+echo "Creating $1"
+mkdir $1
+cd $1
 
-function download_facil() {
-    if [ "$(cache_exist)" == 'TRUE' ]; then
-        # consider using $TMPDIR
-        echo -e "Using cached download\n"
-    else
-        cd /tmp
-        curl -LJO https://codeload.github.com/boazsegev/facil.io/tar.gz/stable
-    fi
-}
+curl -s -LJO https://github.com/boazsegev/facil.io/archive/stable.tar.gz
+if [ $? -ne 0 ]; then echo "Couldn't download the stable branch from facil.io's GitHub repo."; exit 1; fi
 
-download_facil
+tar -xzf facil.io-stable.tar.gz
+if [ $? -ne 0 ]; then echo "Couldn't extract tar."; exit 1; fi
 
-####################################################
-
-# if [ -z $1 ]
-#   then
-# 	echo "Please provide file name."
-#   exit 0
-# fi
-
-# if [ -a $1 ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
-# if [ -d $1 ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
-
-# echo "Creating $1"
-# mkdir $1
-# cd $1
-
-# curl -s -LJO https://github.com/boazsegev/facil.io/archive/stable.tar.gz
-# if [ $? -ne 0 ]; then echo "Couldn't download the stable branch from facil.io's GitHub repo."; exit 1; fi
-
-# tar -xzf facil.io-stable.tar.gz
-# if [ $? -ne 0 ]; then echo "Couldn't extract tar."; exit 1; fi
-
-# rm facil.io-stable.tar.gz
-# mv ./facil.io-stable/* ./
-# rm -R facil.io-stable
-# rm -R dev
-# rm -R docs
-# rm -R tests
-# rm CHANGELOG.md
-# rm README.md
-# rm CONTRIBUTING.md
-# rm Doxyfile
-# rm CMakeLists.txt
-# rm LICENSE
-# rm NOTICE
-# make clean &> /dev/null
-# mv ./examples/boiler_plates/http/* ./
-# rm -R ./examples/boiler_plates
-# make clean &> /dev/null
+rm facil.io-stable.tar.gz
+mv ./facil.io-stable/* ./
+rm -R facil.io-stable
+rm -R dev
+rm -R docs
+rm -R tests
+rm CHANGELOG.md
+rm README.md
+rm CONTRIBUTING.md
+rm Doxyfile
+rm CMakeLists.txt
+rm LICENSE
+rm NOTICE
+make clean &> /dev/null
+mv ./examples/boiler_plates/http/* ./
+rm -R ./examples/boiler_plates
+make clean &> /dev/null
