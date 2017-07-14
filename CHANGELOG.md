@@ -10,6 +10,8 @@
 
 **Fix**: (documentation) credit to @cdkrot for reporting an outdated demo in the README.
 
+**Fix**: (linking) added the missing `-lm` linker flag for `gcc`/Linux (I was using `clang`, which automatically links to the math library, so I didn't notice this).
+
 **Portability**: added `extern "C"` directive for untested C++ support.
 
 **Feature**: added a dynamic type library to `facil.io`'s core, making some common web related tasks easier to manage.
