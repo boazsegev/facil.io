@@ -70,11 +70,8 @@ Matching arguments to C string
 ***************************************************************************** */
 
 /* returns the primamry symbol for the argument, of NULL (if none) */
-static fiobj_s *fio_cli_get_name(const char *str, size_t len) {
-  fiobj_s *sym = fiobj_sym_new(str, len);
-  fiobj_s *obj = fiobj_hash_get(arg_aliases, sym);
-  fiobj_free(sym);
-  return obj;
+static inline fiobj_s *fio_cli_get_name(const char *str, size_t len) {
+  return fiobj_hash_get2(arg_aliases, str, len);
 }
 
 /* *****************************************************************************

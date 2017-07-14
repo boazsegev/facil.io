@@ -231,6 +231,25 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
 }
 
 /**
+ * Returns a temporary handle to the object associated with the Symbol C string.
+ *
+ * This function takes a C string instead of a Symbol, which is slower if a
+ * Symbol can be cached but faster if a Symbol must be created.
+ *
+ * Returns NULL if no object is asociated with this String data.
+ */
+fiobj_s *fiobj_hash_get2(fiobj_s *hash, const char *str, size_t len) {
+  if (hash->type != FIOBJ_T_HASH || str == NULL) {
+    return NULL;
+  }
+  uintptr_t hashed_sym = fiobj_sym_hash(str, len);
+  fiobj_s *coup = fio_hash_find((fio_hash_s *)hash, hashed_sym);
+  if (!coup)
+    return NULL;
+  return fiobj_couplet2obj(coup);
+}
+
+/**
  * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.
  */
 int fiobj_hash_haskey(fiobj_s *hash, fiobj_s *sym) {

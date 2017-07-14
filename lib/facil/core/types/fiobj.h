@@ -529,6 +529,7 @@ size_t fiobj_hash_count(fiobj_s *hash);
  * Returns -1 on error.
  */
 int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj);
+
 /**
  * Removes a key-value pair from the Hash, if it exists, returning the old
  * object (instead of freeing it).
@@ -548,6 +549,16 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym);
  * none.
  */
 fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym);
+
+/**
+ * Returns a temporary handle to the object associated with the C string Symbol.
+ *
+ * This function takes a C string instead of a Symbol, which is slower if a
+ * Symbol can be cached but faster if a Symbol must be allocated.
+ *
+ * Returns NULL if no object is asociated with this C string data.
+ */
+fiobj_s *fiobj_hash_get2(fiobj_s *hash, const char *str, size_t len);
 
 /**
  * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.

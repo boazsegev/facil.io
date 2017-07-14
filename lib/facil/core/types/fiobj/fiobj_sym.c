@@ -28,7 +28,7 @@ Hashing (SipHash copy)
 #define lrot64(i, bits)                                                        \
   (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
 
-static uint64_t fio_sym_hash(const void *data, size_t len) {
+uint64_t fiobj_sym_hash(const void *data, size_t len) {
   /* initialize the 4 words */
   uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL);
   uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL);
@@ -111,7 +111,7 @@ Symbol API
 /** Creates a Symbol object. Use `fiobj_free`. */
 fiobj_s *fiobj_sym_new(const char *str, size_t len) {
   fiobj_s *sym = fiobj_alloc(FIOBJ_T_SYMBOL, len, (void *)str);
-  ((fio_sym_s *)(sym))->hash = (uintptr_t)fio_sym_hash(str, len);
+  ((fio_sym_s *)(sym))->hash = (uintptr_t)fiobj_sym_hash(str, len);
   return sym;
 }
 
@@ -125,14 +125,14 @@ fiobj_symvprintf(const char *restrict format, va_list argv) {
   va_end(argv_cpy);
   if (len == 0) {
     sym = fiobj_alloc(FIOBJ_T_SYMBOL, 0, (void *)"");
-    ((fio_sym_s *)(sym))->hash = fio_sym_hash(NULL, 0);
+    ((fio_sym_s *)(sym))->hash = fiobj_sym_hash(NULL, 0);
   }
   if (len <= 0)
     return sym;
   sym = fiobj_alloc(FIOBJ_T_SYMBOL, len, NULL); /* adds 1 to len, for NUL */
   vsnprintf(((fio_sym_s *)(sym))->str, len + 1, format, argv);
   ((fio_sym_s *)(sym))->hash =
-      (uintptr_t)fio_sym_hash(((fio_sym_s *)(sym))->str, len);
+      (uintptr_t)fiobj_sym_hash(((fio_sym_s *)(sym))->str, len);
   return sym;
 }
 __attribute__((format(printf, 1, 2))) fiobj_s *

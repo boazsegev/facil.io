@@ -196,4 +196,5 @@ Internal API required across the board
 fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer);
 void fiobj_dealloc(fiobj_s *obj);
 
+uint64_t fiobj_sym_hash(const void *data, size_t len);
 #endif
