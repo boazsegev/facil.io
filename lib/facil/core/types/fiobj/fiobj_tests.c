@@ -93,9 +93,11 @@ void fiobj_test_hash_json(void) {
   /* print JSON string */
   {
     tmp = fiobj_str_new_json(hash);
-    fprintf(stderr, "* Printing JSON (len: %llu capa: %lu ref: %llu):\n   %s\n",
-            fiobj_obj2cstr(tmp).len, fiobj_str_capa(tmp), OBJ2HEAD(tmp).ref,
-            fiobj_obj2cstr(tmp).data);
+    fprintf(stderr,
+            "* Printing JSON (len: %llu real len: %lu capa: %lu ref: %llu):\n  "
+            " %s\n",
+            fiobj_obj2cstr(tmp).len, strlen(fiobj_obj2cstr(tmp).data),
+            fiobj_str_capa(tmp), OBJ2HEAD(tmp).ref, fiobj_obj2cstr(tmp).data);
     fiobj_free(tmp);
   }
 #ifdef H_FIO2RESP_FORMAT_H

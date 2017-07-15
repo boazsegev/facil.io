@@ -314,8 +314,8 @@ fiobj_s *fiobj_str_static(const char *str, size_t len);
 /**
  * Formats an object into a JSON string. Remember to `fiobj_free`.
  *
- * Notice that nested String objects should contain valid UTF-8 data. An attempt
- * to correct invalid UTF-8 encoding will be made, although not ideal.
+ * Notice that nested String objects should contain valid UTF-8 data. facil.io
+ * will ignore encoding errors and assume that you know what you're doing.
  */
 fiobj_s *fiobj_str_new_json(fiobj_s *);
 

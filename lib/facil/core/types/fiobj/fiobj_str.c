@@ -128,8 +128,18 @@ size_t fiobj_str_write(fiobj_s *dest, const char *data, size_t len) {
   if (dest->type != FIOBJ_T_STRING)
     return 0;
   fiobj_str_resize(dest, ((fio_str_s *)dest)->len + len);
-  memcpy(((fio_str_s *)dest)->str + ((fio_str_s *)dest)->len - len, data, len);
-  ((fio_str_s *)dest)->str[((fio_str_s *)dest)->len] = 0;
+  if (len < 8) {
+    size_t pos = obj2str(dest)->len;
+    while (len) {
+      len--;
+      pos--;
+      obj2str(dest)->str[pos] = data[len];
+    }
+  } else {
+    memcpy(((fio_str_s *)dest)->str + ((fio_str_s *)dest)->len - len, data,
+           len);
+  }
+  // ((fio_str_s *)dest)->str[((fio_str_s *)dest)->len] = 0; // see str_resize
   return ((fio_str_s *)dest)->len;
 }
 /**
@@ -150,7 +160,7 @@ size_t fiobj_str_write2(fiobj_s *dest, const char *format, ...) {
   vsnprintf(((fio_str_s *)(dest))->str + ((fio_str_s *)dest)->len - len,
             len + 1, format, argv);
   va_end(argv);
-  ((fio_str_s *)dest)->str[((fio_str_s *)dest)->len] = 0;
+  // ((fio_str_s *)dest)->str[((fio_str_s *)dest)->len] = 0; // see str_resize
   return ((fio_str_s *)dest)->len;
 }
 /**

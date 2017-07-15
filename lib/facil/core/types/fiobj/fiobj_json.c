@@ -39,12 +39,12 @@ static uint8_t is_hex[] = {
 static inline int utf8_clen(const uint8_t *str) {
   if (str[0] <= 127)
     return 1;
-  if ((str[0] & 192) == 192 && (str[1] & 192) == 192)
+  if ((str[0] & 224) == 192 && (str[1] & 192) == 128)
     return 2;
-  if ((str[0] & 224) == 224 && (str[1] & 192) == 192 && (str[2] & 129) == 192)
+  if ((str[0] & 240) == 224 && (str[1] & 192) == 128 && (str[2] & 192) == 128)
     return 3;
-  if ((str[0] & 240) == 240 && (str[1] & 192) == 192 && (str[2] & 129) == 192 &&
-      (str[3] & 192) == 192)
+  if ((str[0] & 248) == 240 && (str[1] & 192) == 128 && (str[2] & 192) == 128 &&
+      (str[3] & 192) == 128)
     return 4;
   return 0; /* invalid UTF-8 */
 }
@@ -125,13 +125,19 @@ static void write_safe_str(fiobj_s *dest, fiobj_s *str) {
       obj2str(dest)->str[end++] = *(src++);
       len -= 4;
     } else { /* (tmp == 0) */
-      int t = utf8_from_u16((uint8_t *)(obj2str(dest)->str + end), *(src++));
-      src += t;
-      len -= t;
+      // fprintf(stderr,
+      //         "WARN: invalid UTF-8 code in JSON string val=%u, pos
+      //         %llu:\n%s\n", *src, end - obj2str(dest)->len, s.data);
+      obj2str(dest)->str[end++] = src[0];
+      src++;
+      len--;
+      // int t = utf8_from_u16((uint8_t *)(obj2str(dest)->str + end), *(src++));
+      // src += t;
+      // len -= t;
     }
   }
   obj2str(dest)->len = end;
-  obj2str(dest)->str[obj2str(dest)->len] = 0;
+  obj2str(dest)->str[end] = 0;
 }
 
 /* *****************************************************************************
