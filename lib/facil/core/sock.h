@@ -21,6 +21,11 @@ sockets, except listenning sockets, shouldn't be shared among processes.
 
 Socket connections accepted or created using this library will use the
 TCP_NODELAY option by default.
+
+Non TCP/IP stream sockets and file descriptors (i.e., unix sockets) can be
+safely used with this library. However, file descriptors that can't use the
+`read` or `write` system calls MUST set correct Read / Write hooks or they will
+fail.
 */
 
 #include <stdint.h>
