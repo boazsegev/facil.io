@@ -10,9 +10,9 @@
 
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
 
-## Using `fcail.io` in your project
+## Using `facil.io` in your project
 
-It's possible to either start a new project with `facil.io` or simply add it to an existing one. GNU make is the default build system and CMake is also supported.
+It's possible to either start a new project with `facil.io` or simply add it to an existing one. GNU make is the default build system and CMake is also supported. Notice that `facil.io` is requires some C11 support from the compiler.
 
 ### Starting a new project with `facil.io`
 
