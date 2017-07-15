@@ -49,7 +49,6 @@ static int resp_fioformat_task(fiobj_s *obj, void *s_) {
     fiobj_str_join(str, obj);
     fiobj_str_write(str, "\r\n", 2);
     break;
-  case FIOBJ_T_FILE:
   case FIOBJ_T_IO:
   case FIOBJ_T_NULL:
     fiobj_str_write(str, "$-1\r\n", 4);

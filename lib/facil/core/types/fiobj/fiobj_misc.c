@@ -38,26 +38,6 @@ intptr_t fiobj_io_fd(fiobj_s *obj) {
 }
 
 /* *****************************************************************************
-File API    TODO: move to a different file when it grows.
-***************************************************************************** */
-
-/** Wrapps a `FILe` pointer in a File object. Use `fiobj_free` to close. */
-fiobj_s *fio_file_wrap(FILE *file) {
-  return fiobj_alloc(FIOBJ_T_FILE, 0, (void *)file);
-}
-
-/**
- * Returns a temporary `FILE` pointer.
- *
- * A type error results in NULL.
- */
-FILE *fiobj_file(fiobj_s *obj) {
-  if (obj->type != FIOBJ_T_FILE)
-    return NULL;
-  return ((fio_file_s *)obj)->f;
-}
-
-/* *****************************************************************************
 Number and Float Helpers
 ***************************************************************************** */
 static char hex_notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',

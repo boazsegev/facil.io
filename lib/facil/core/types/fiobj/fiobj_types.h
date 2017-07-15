@@ -121,12 +121,6 @@ typedef struct {
   intptr_t fd;
 } fio_io_s;
 
-/* File */
-typedef struct {
-  fiobj_type_en type;
-  FILE *f;
-} fio_file_s;
-
 /* Array */
 typedef struct {
   fiobj_type_en type;
@@ -185,7 +179,6 @@ typedef struct { uint64_t ref; } fiobj_head_s;
 #define obj2str(o) ((fio_str_s *)(o))
 #define obj2sym(o) ((fio_sym_s *)(o))
 #define obj2num(o) ((fio_num_s *)(o))
-#define obj2file(o) ((fio_file_s *)(o))
 #define obj2hash(o) ((fio_hash_s *)(o))
 #define obj2float(o) ((fio_float_s *)(o))
 #define obj2couplet(o) ((fio_couplet_s *)(o))

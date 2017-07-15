@@ -55,14 +55,6 @@ fiobj_s *fiobj_alloc(fiobj_type_en type, uint64_t len, void *buffer) {
     return HEAD2OBJ(head);
     break;
   }
-  case FIOBJ_T_FILE: {
-    head = malloc(sizeof(*head) + sizeof(fio_file_s));
-    head->ref = 1;
-    HEAD2OBJ(head)->type = type;
-    ((fio_file_s *)HEAD2OBJ(head))->f = buffer;
-    return HEAD2OBJ(head);
-    break;
-  }
   case FIOBJ_T_STRING: {
     head = malloc(sizeof(*head) + sizeof(fio_str_s));
     head->ref = 1;
@@ -147,9 +139,6 @@ void fiobj_dealloc(fiobj_s *obj) {
     goto common;
   case FIOBJ_T_IO:
     close(((fio_io_s *)obj)->fd);
-    goto common;
-  case FIOBJ_T_FILE:
-    fclose(((fio_file_s *)obj)->f);
     goto common;
   case FIOBJ_T_STRING:
     if (obj2str(obj)->is_static == 0)

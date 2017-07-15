@@ -36,8 +36,6 @@ int64_t fiobj_obj2num(fiobj_s *obj) {
     return fiobj_hash_count(obj);
   if (obj->type == FIOBJ_T_IO)
     return (int64_t)((fio_io_s *)obj)->fd;
-  if (obj->type == FIOBJ_T_FILE)
-    return (int64_t)fileno(((fio_file_s *)obj)->f);
   return 0;
 }
 
@@ -64,6 +62,8 @@ double fiobj_obj2float(fiobj_s *obj) {
     return (double)fiobj_ary_count(obj);
   if (obj->type == FIOBJ_T_HASH)
     return (double)fiobj_hash_count(obj);
+  if (obj->type == FIOBJ_T_IO)
+    return (double)((fio_io_s *)obj)->fd;
   return 0;
 }
 
@@ -216,10 +216,6 @@ static int fiobj_iseq_check(fiobj_s *obj1, fiobj_s *obj2) {
     break;
   case FIOBJ_T_IO:
     if (((fio_io_s *)obj1)->fd == ((fio_io_s *)obj2)->fd)
-      return 1;
-    break;
-  case FIOBJ_T_FILE:
-    if (((fio_file_s *)obj1)->f == ((fio_file_s *)obj2)->f)
       return 1;
     break;
   case FIOBJ_T_NUMBER:

@@ -312,7 +312,6 @@ re_rooted:
   case FIOBJ_T_FALSE:
     fiobj_str_write(data->buffer, "false", 5);
     break;
-  case FIOBJ_T_FILE:
   case FIOBJ_T_IO:
   case FIOBJ_T_NULL:
     fiobj_str_write(data->buffer, "null", 4);

@@ -38,7 +38,7 @@ void fiobj_test_hash_json(void) {
   fiobj_ary_push(syms, sym);
   fiobj_hash_set(
       hash, sym,
-      fiobj_strprintf("𝄞\n\ttake \\ my  \\ %s"
+      fiobj_strprintf(u8"𝄞\n\ttake \\ my  \\ %s"
                       "\n\ttake \\ my  \\ whole ❤️  %s ❤️  too...\n",
                       "hand", "heart"));
   sym = fiobj_sym_new("hash", 4);

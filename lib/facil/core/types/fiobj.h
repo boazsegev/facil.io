@@ -54,8 +54,6 @@ typedef enum {
   FIOBJ_T_COUPLET,
   /** An IO object containing an `intptr_t` as a `fd` (File Descriptor). */
   FIOBJ_T_IO,
-  /** A temporary File object containing a `FILE *`. */
-  FIOBJ_T_FILE,
 } fiobj_type_en;
 
 typedef struct fiobj_s { fiobj_type_en type; } fiobj_s;
@@ -405,20 +403,6 @@ fiobj_s *fio_io_wrap(intptr_t fd);
  * A type error results in -1.
  */
 intptr_t fiobj_io_fd(fiobj_s *obj);
-
-/* *****************************************************************************
-File API
-***************************************************************************** */
-
-/** Wrapps a `FILe` pointer in a File object. Use `fiobj_free` to close. */
-fiobj_s *fio_file_wrap(FILE *file);
-
-/**
- * Returns a temporary `FILE` pointer.
- *
- * A type error results in NULL.
- */
-FILE *fiobj_file(fiobj_s *obj);
 
 /* *****************************************************************************
 Array API
