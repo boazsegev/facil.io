@@ -96,27 +96,21 @@ int main(int argc, char const *argv[]) {
 
   fio_cli_start(argc, argv, NULL);
   fio_cli_accept_num("port p", "port number to listen to. defaults port 3000");
-  fio_cli_accept_num("threads t",
-                     "number of threads per process."
-                     "defaults to 0 (automatic CPU core test/set).");
-  fio_cli_accept_num("workers w",
-                     "number of threads per process."
-                     "defaults to 0 (automatic CPU core test/set).");
+  fio_cli_accept_num("workers w", "number of processes to use.");
+  fio_cli_accept_num("threads t", "number of threads per process.");
   fio_cli_accept_bool("log v", "request verbosity (logging).");
-  fio_cli_accept_str("public www",
-                     "public folder, for static file service."
-                     "default (NULL) disables static file service.");
+  fio_cli_accept_str("public www", "public folder, for static file service.");
   fio_cli_accept_num("keep-alive k", "HTTP keep-alive timeout (0..255). "
-                                     "default (0) reverts to ~5 seconds.");
+                                     "default: ~5s");
   fio_cli_accept_num("ping", "websocket ping interval (0..255). "
-                             "default (0) reverts to ~40 seconds.");
-  fio_cli_accept_num("max-body maxbd", "HTTP upload limit. default to ~50Mb.");
+                             "default: ~40s");
+  fio_cli_accept_num("max-body maxbd", "HTTP upload limit. default: ~50Mb");
   fio_cli_accept_num("max-message maxms",
                      "incoming websocket message size limit. "
-                     "default to ~250Kb.");
-  fio_cli_accept_str("redis r", "an optional Redis server's address.");
+                     "default: ~250Kb");
+  fio_cli_accept_str("redis-address ra", "an optional Redis server's address.");
   fio_cli_accept_str("redis-port rp",
-                     "an optional Redis server's port. defaults to 6379.");
+                     "an optional Redis server's port. default: 6379");
   fio_cli_accept_str("redis-password rpw", "Redis password, if any.");
 
   if (fio_cli_get_str("p"))

@@ -109,7 +109,7 @@ static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
         fiobj_hash_set(arg_type, arg_name, fiobj_null());
         break;
       case CLI_NUM:
-        fiobj_str_write2(help_str, "\t-%s <###>\t%s\n",
+        fiobj_str_write2(help_str, "\t-%s ###\t%s\n",
                          fiobj_obj2cstr(arg_name).data, desc);
         fiobj_hash_set(arg_type, arg_name, fiobj_true());
         break;
@@ -125,7 +125,7 @@ static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
       /* add to aliases hash */
       fiobj_hash_set(arg_aliases, tmp, fiobj_dup(arg_name));
       /* add to description + free it*/
-      fiobj_str_write2(help_str, "\t-%s\t\tsame as -%s\n",
+      fiobj_str_write2(help_str, "\t\t-%s\tsame as -%s\n",
                        fiobj_obj2cstr(tmp).data, fiobj_obj2cstr(arg_name).data);
       fiobj_free(tmp);
     }

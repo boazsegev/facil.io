@@ -9,8 +9,7 @@
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
 
 ```c
-#include "http.h"           /* the HTTP facil.io extension */
-
+#include "http.h" /* the HTTP facil.io extension */
 // We'll use this callback in `http_listen`, to handles HTTP requests
 void on_request(http_request_s* request);
 // Listen to HTTP requests and start facil.io
