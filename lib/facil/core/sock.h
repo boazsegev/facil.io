@@ -16,8 +16,11 @@ non-blocking sockets and some helper functions.
 
 This library is great when using it alongside `evio.h`.
 
-The library is designed to be thread safe, but not fork safe (mostly since
-sockets, except listenning sockets, shouldn't be shared among processes).
+The library is designed to be thread safe, but not fork safe - mostly since
+sockets, except listenning sockets, shouldn't be shared among processes.
+
+Socket connections accepted or created using this library will use the
+TCP_NODELAY option by default.
 */
 
 #include <stdint.h>

@@ -2,7 +2,9 @@
 
 ### Ver. 0.5.3 (next)
 
-**Changes**: minor changes to the versioning scheme removed some version MACROS... this isn't API related, so I don't consider it a breaking change, but it might effect code that relied too much on internal workings. The only valid version macros are the `FACIL_VERSION_*` macros, in the `facil.h` header.
+**Change**: minor changes to the versioning scheme removed some version MACROS... this isn't API related, so I don't consider it a breaking change, but it might effect code that relied too much on internal workings. The only valid version macros are the `FACIL_VERSION_*` macros, in the `facil.h` header.
+
+**Change**: (`sock`) sockets created using the TCP/IP `sock` library now use `TCP_NODELAY` as the new default. This shouldn't be considered a breaking change as much as it should be considered a fix.
 
 **Fix**: (`http1`) HTTP/1.x now correctly initializes the `udata` pointer to NULL fore each new request.
 

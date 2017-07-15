@@ -18,6 +18,8 @@ Includes and state
 #include <fcntl.h>
 #include <limits.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -688,6 +690,7 @@ intptr_t sock_accept(intptr_t srv_uuid) {
   struct sockaddr_in6 addrinfo;
   socklen_t addrlen = sizeof(addrinfo);
   int client;
+  int one = 1;
 #ifdef SOCK_NONBLOCK
   client = accept4(sock_uuid2fd(srv_uuid), (struct sockaddr *)&addrinfo,
                    &addrlen, SOCK_NONBLOCK);
@@ -700,10 +703,10 @@ intptr_t sock_accept(intptr_t srv_uuid) {
     return -1;
   sock_set_non_block(client);
 #endif
+  setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
   clear_fd(client, 1);
   fdinfo(client).addrinfo = addrinfo;
   fdinfo(client).addrlen = addrlen;
-  // sock_touch(srv_uuid);
   return fd2uuid(client);
 }
 
@@ -733,6 +736,7 @@ before attempting to write to the socket.
 */
 intptr_t sock_connect(char *address, char *port) {
   int fd;
+  int one = 1;
   // setup the address
   struct addrinfo hints;
   struct addrinfo *addrinfo;       // will point to the results
@@ -763,6 +767,7 @@ intptr_t sock_connect(char *address, char *port) {
     freeaddrinfo(addrinfo);
     return -1;
   }
+  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
   clear_fd(fd, 1);
   fdinfo(fd).addrinfo = *((struct sockaddr_in6 *)addrinfo->ai_addr);
   fdinfo(fd).addrlen = addrinfo->ai_addrlen;
