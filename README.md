@@ -1,7 +1,5 @@
 # facil.io - the C WebApp mini-framework
 
-**Notice: The *master* branch is the development branch. Please select the *stable* branch for the latest release or select a release version.**
-
 [facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, as well as support for custom protocols.
 
 [facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.
@@ -9,6 +7,29 @@
 [facil.io](http://facil.io) provides high performance TCP/IP network services to Linux / BSD (and macOS) by using an evented design and provides an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
 
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
+
+```c
+#include "http.h"           /* the HTTP facil.io extension */
+
+// We'll use this callback in `http_listen`, to handles HTTP requests
+void on_request(http_request_s* request);
+// Listen to HTTP requests and start facil.io
+int main(int argc, char const **argv) {
+  // listen on port 3000 and any available network binding (NULL == 0.0.0.0)
+  http_listen(3000, NULL, .on_request = on_request );
+  // start the server
+  facil_run(.threads = 1);
+}
+// Easy HTTP handling
+void on_request(http_request_s* request) {
+  http_response_s * response = http_response_create(request);
+  http_response_log_start(response);
+  http_response_set_cookie(response, .name = "my_cookie", .value = "data");
+  http_response_write_header(response, .name = "X-Data", .value = "my data");
+  http_response_write_body(response, "Hello World!\r\n", 14);
+  http_response_finish(response);
+}
+```
 
 ## Using `facil.io` in your project
 
@@ -25,6 +46,8 @@ You can [review the script here](scripts/new). In short, it will create a new fo
 Next, edit the `makefile` to remove any generic features you don't need, such as the `DUMP_LIB` feature, the `DEBUG` flag or the `DISAMS` disassembler and start development.
 
 Credit to @benjcal for suggesting the script.
+
+**Notice: The *master* branch is the development branch. Please select the *stable* branch for the latest release or select a release version.**
 
 ### Adding facil.io to an existing project
 
@@ -53,52 +76,6 @@ Then add the following line the project's `CMakeLists.txt`
 ## Three Quick Examples
 
 Writing HTTP and Websocket services in C is easy with [facil.io](http://facil.io).
-
-### HTTP/1.1
-
-The simplest example, of course, would be the famous "Hello World" application... this is so easy, it's practically boring (so we add custom headers and cookies):
-
-```c
-#include "http.h"           /* the HTTP facil.io extension */
-#include "fio_cli_helper.h" /* a command line interface (CLI) helper */
-
-static uint8_t HTTP_LOGGING; /* easier access to the logging settings. */
-
-// We'll use this callback in `http_listen`, to handles HTTP requests
-void on_request(http_request_s* request);
-
-int main(int argc, char const **argv) {
-  // easily support a command line interface
-  fio_cli_start(argc, argv, NULL);
-  fio_cli_accept_num("port p", "the port to listen to, defaults to 3000.");
-  fio_cli_accept_bool("log v", "enable logging");
-  fio_cli_accept_num("public-folder, www",
-                     "enables a static file service from the folder's root.");
-  HTTP_LOGGING = fio_cli_get_int("v");
-  const char * port = fio_cli_get_str("port");
-  const char * public_folder = fio_cli_get_str("www");
-  if (!port)
-    port = "3000";    
-  fio_cli_end();
-
-  // listen on any available network binding (NULL == 0.0.0.0)
-  http_listen(port, NULL,  .on_request = on_request,
-                           .public_folder = public_folder,
-                           .log_static = HTTP_LOGGING );
-  // start the server
-  facil_run(.threads = 8);
-}
-
-void on_request(http_request_s* request) {
-  http_response_s * response = http_response_create(request);
-  if(HTTP_LOGGING)
-    http_response_log_start(response);
-  http_response_set_cookie(response, .name = "my_cookie", .value = "data");
-  http_response_write_header(response, .name = "X-Data", .value = "my data");
-  http_response_write_body(response, "Hello World!\r\n", 14);
-  http_response_finish(response);
-}
-```
 
 ### Websockets
 
@@ -156,10 +133,20 @@ The main function
 
 #define THREAD_COUNT 1
 int main(void) {
-  const char* public_folder = NULL;
-  http_listen("3000", NULL, .on_request = on_request,
-               .public_folder = public_folder, .log_static = 1);
+  // easily support a command line interface
+  fio_cli_start(argc, argv, NULL);
+  fio_cli_accept_num("port p", "the port to listen to, defaults to 3000.");
+  fio_cli_accept_bool("log v", "enable logging");
+  fio_cli_accept_num("public-folder, www",
+                     "enables a static file service from the folder's root.");
+  const char * port = fio_cli_get_str("port");
+  if (!port) // make sure NULL resolves to a default port.
+    port = "3000";    
+  http_listen("3000", NULL,  .on_request = on_request,
+                             .public_folder = fio_cli_get_str("www"),
+                             .log_static = fio_cli_get_int("v"));
   facil_run(.threads = THREAD_COUNT);
+  fio_cli_end(); // clean up CLI data
   return 0;
 }
 ```
