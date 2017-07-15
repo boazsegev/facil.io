@@ -125,7 +125,7 @@ build: $(LIB_OBJS) $(MAIN_OBJS)
 	$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	$(DOCUMENTATION)
 
-lib: $(LIB_OBJS)
+lib: libdump $(LIB_OBJS)
 	$(CCL) -shared -o $(OUT_ROOT)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	$(DOCUMENTATION)
 
@@ -154,13 +154,9 @@ clean:
 	-@rm -R $(TMP_ROOT)
 	-@mkdir -p $(BUILDTREE)
 
-
-.PHONY : execute
-execute:
-	@$(BIN)
-
 .PHONY : run
-run: | cmake libdump build execute
+run: | libdump build
+	@$(BIN)
 
 .PHONY : db
 db: | clean build

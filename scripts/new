@@ -18,15 +18,17 @@ echo "Creating $1"
 mkdir $1
 cd $1
 
-curl -s -LJO https://github.com/boazsegev/facil.io/archive/stable.tar.gz
-if [ $? -ne 0 ]; then echo "Couldn't download the stable branch from facil.io's GitHub repo."; exit 1; fi
 
-tar -xzf facil.io-stable.tar.gz
+# Was: curl -s -LJO https://github.com/boazsegev/facil.io/archive/stable.tar.gz
+# But it's better to use releases than the stable branch:
+curl -s -o facil.io.tar.gz -LJO $(curl -s https://api.github.com/repos/boazsegev/facil.io/releases/latest | grep tarball_url | cut -d '"' -f 4)
+
+if [ $? -ne 0 ]; then echo "Couldn't download the latest release from facil.io's GitHub repo."; exit 1; fi
+
+tar --strip-components=1 -xzf facil.io.tar.gz
 if [ $? -ne 0 ]; then echo "Couldn't extract tar."; exit 1; fi
 
-rm facil.io-stable.tar.gz
-mv ./facil.io-stable/* ./
-rm -R facil.io-stable
+rm facil.io.tar.gz
 rm -R dev
 rm -R docs
 rm -R tests
