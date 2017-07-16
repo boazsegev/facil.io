@@ -208,6 +208,7 @@ cmake:
 	@echo '' >> $(CMAKE_LIBFILE_NAME)
 	@echo 'add_library(facil.io $${facil.io_SOURCES})' >> $(CMAKE_LIBFILE_NAME)
 	@echo 'target_link_libraries(facil.io PRIVATE Threads::Threads)' >> $(CMAKE_LIBFILE_NAME)
+	@echo 'target_link_libraries(facil.io m)' >> $(CMAKE_LIBFILE_NAME)
 	@echo 'target_include_directories(facil.io' >> $(CMAKE_LIBFILE_NAME)
 	@$(foreach src,$(LIBDIR_PUB),echo '  PUBLIC  $(src)' >> $(CMAKE_LIBFILE_NAME);)
 	@$(foreach src,$(LIBDIR_PRIV),echo '  PRIVATE $(src)' >> $(CMAKE_LIBFILE_NAME);)
