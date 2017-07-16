@@ -25,6 +25,9 @@ fiobj_s *fiobj_obj2json(fiobj_s *);
 JSON UTF-8 safe string formatting
 ***************************************************************************** */
 
+static char hex_notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                              '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+
 static uint8_t is_hex[] = {
     0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
     0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
@@ -78,7 +81,7 @@ static void write_safe_str(fiobj_s *dest, fiobj_s *str) {
   uint64_t end = obj2str(dest)->len;
   while (len) {
     /* make sure we have enough space for the largest UTF-8 char + NUL */
-    if (obj2str(dest)->capa <= end + 5)
+    if (obj2str(dest)->capa <= end + 7)
       fiobj_str_resize(dest, (((obj2str(dest)->capa >> 12) + 1) << 12) - 1);
     int tmp = utf8_clen(src);
     if (tmp == 1) {
@@ -109,7 +112,16 @@ static void write_safe_str(fiobj_s *dest, fiobj_s *str) {
         obj2str(dest)->str[end++] = '\\';
       /* fallthrough */
       default:
-        obj2str(dest)->str[end++] = src[0];
+        if (src[0] <= 31) {
+          /*TODO: MUST escape all control values less than 32 */
+          obj2str(dest)->str[end++] = '\\';
+          obj2str(dest)->str[end++] = 'u';
+          obj2str(dest)->str[end++] = '0';
+          obj2str(dest)->str[end++] = '0';
+          obj2str(dest)->str[end++] = hex_notation[src[0] >> 4];
+          obj2str(dest)->str[end++] = hex_notation[src[0] & 15];
+        } else
+          obj2str(dest)->str[end++] = src[0];
         break; /* from switch */
       }
       src++;
