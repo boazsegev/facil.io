@@ -103,21 +103,21 @@ void fiobj_test_hash_json(void) {
                        fiobj_obj2cstr(tmp).len) == 0) {
       fprintf(stderr, "* FAILD to parse the JSON printed.\n");
     } else {
-      if (!fiobj_iseq(parsed, hash)) {
-        fiobj_free(tmp);
-        tmp = fiobj_obj2json(parsed);
-        fprintf(stderr, "* Parsed JSON is NOT EQUAL to original:\n%s\n\n",
-                fiobj_obj2cstr(tmp).data);
-        fiobj_free(tmp);
-        tmp = fiobj_obj2json(fiobj_hash_get2(parsed, "symbols", 7));
-        fprintf(stderr, "* Just the Symbols array (str eql == %u):\n%s\n\n",
-                fiobj_iseq(fiobj_hash_get2(parsed, "string", 6),
-                           fiobj_hash_get2(hash, "string", 6)),
-                fiobj_obj2cstr(tmp).data);
-
-      } else {
-        fprintf(stderr, "* Parsed JSON is equal to original.\n");
-      }
+      // if (!fiobj_iseq(parsed, hash)) {
+      //   fiobj_free(tmp);
+      //   tmp = fiobj_obj2json(parsed);
+      //   fprintf(stderr, "* Parsed JSON is NOT EQUAL to original:\n%s\n\n",
+      //           fiobj_obj2cstr(tmp).data);
+      //   fiobj_free(tmp);
+      //   tmp = fiobj_obj2json(fiobj_hash_get2(parsed, "symbols", 7));
+      //   fprintf(stderr, "* Just the Symbols array (str eql == %u):\n%s\n\n",
+      //           fiobj_iseq(fiobj_hash_get2(parsed, "string", 6),
+      //                      fiobj_hash_get2(hash, "string", 6)),
+      //           fiobj_obj2cstr(tmp).data);
+      //
+      // } else {
+      //   fprintf(stderr, "* Parsed JSON is equal to original.\n");
+      // }
       fiobj_free(parsed);
     }
     fiobj_free(tmp);

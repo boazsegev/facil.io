@@ -28,6 +28,8 @@ int64_t fiobj_obj2num(fiobj_s *obj) {
     return (int64_t)floorl(((fio_float_s *)obj)->f);
   if (obj->type == FIOBJ_T_STRING)
     return fio_atol(((fio_str_s *)obj)->str);
+  if (obj->type == FIOBJ_T_TRUE)
+    return 1;
   if (obj->type == FIOBJ_T_SYMBOL)
     return fio_atol(((fio_sym_s *)obj)->str);
   if (obj->type == FIOBJ_T_ARRAY)
@@ -56,6 +58,8 @@ double fiobj_obj2float(fiobj_s *obj) {
     return (double)((fio_num_s *)obj)->i;
   if (obj->type == FIOBJ_T_STRING)
     return fio_atof(((fio_str_s *)obj)->str);
+  if (obj->type == FIOBJ_T_TRUE)
+    return 1;
   if (obj->type == FIOBJ_T_SYMBOL)
     return fio_atof(((fio_sym_s *)obj)->str);
   if (obj->type == FIOBJ_T_ARRAY)
@@ -112,11 +116,7 @@ Object Iteration (`fiobj_each2`)
  */
 void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
                  void *arg) {
-
   fio_ls_s list = FIO_LS_INIT(list);
-  fio_ls_s processed = FIO_LS_INIT(processed);
-  fio_ls_s *pos;
-
   if (!task)
     return;
   if (obj && (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH ||
@@ -127,7 +127,9 @@ void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
   return;
 
 nested:
+
   fio_ls_push(&list, obj);
+  fiobj_s *processed = fiobj_ary_new();
   /* as long as `list` contains items... */
   do {
     /* remove from the begining of the list, add at it's end. */
@@ -136,13 +138,12 @@ nested:
       goto perform_task;
 
     /* test for cyclic nesting before reading the object (possibly freed) */
-    pos = processed.next;
-    while (pos != &processed) {
-      if (pos->obj == obj) {
+    for (size_t i = obj2ary(processed)->start; i < obj2ary(processed)->end;
+         i++) {
+      if (obj2ary(processed)->arry[i] == obj) {
         obj = NULL;
         goto perform_task;
       }
-      pos = pos->next;
     }
 
     fiobj_s *tmp = obj;
@@ -154,9 +155,9 @@ nested:
       goto perform_task;
 
     /* add object to cyclic protection */
-    fio_ls_push(&processed, obj);
-    if (obj->type == FIOBJ_T_COUPLET)
-      fio_ls_push(&processed, tmp);
+    fiobj_ary_push(processed, obj);
+    // if (obj->type == FIOBJ_T_COUPLET)
+    //   fio_ls_push(&processed, tmp);
 
     /* add all children to the queue */
     if (tmp->type == FIOBJ_T_ARRAY) {
@@ -182,8 +183,7 @@ nested:
 finish:
   while (fio_ls_pop(&list))
     ;
-  while (fio_ls_pop(&processed))
-    ;
+  fiobj_dealloc(processed);
 }
 
 /* *****************************************************************************
