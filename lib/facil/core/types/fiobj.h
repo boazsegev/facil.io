@@ -82,49 +82,18 @@ Helper macros
     (o)->type == FIOBJ_T_FILE))
 
 /* *****************************************************************************
-Helpers: not fiobj_s specific, but since they're used internally, they're here.
+JSON API
 ***************************************************************************** */
 
 /**
- * A helper function that converts between String data to a signed int64_t.
+ * Parses JSON, setting `pobj` to point to the new Object.
  *
- * Numbers are assumed to be in base 10.
- *
- * The `0x##` (or `x##`) and `0b##` (or `b##`) are recognized as base 16 and
- * base 2 (binary MSB first) respectively.
+ * Returns the number of bytes consumed. On Error, 0 is returned and no data is
+ * consumed.
  */
-int64_t fio_atol(const char *str);
-
-/** A helper function that convers between String data to a signed double. */
-double fio_atof(const char *str);
-
-/**
- * A helper function that convers between a signed int64_t to a string.
- *
- * No overflow guard is provided, make sure there's at least 66 bytes available
- * (for base 2).
- *
- * Supports base 2, base 10 and base 16. An unsupported base will silently
- * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
- * beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL terminator).
- */
-size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
-
-/**
- * A helper function that convers between a double to a string.
- *
- * No overflow guard is provided, make sure there's at least 130 bytes available
- * (for base 2).
- *
- * Supports base 2, base 10 and base 16. An unsupported base will silently
- * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
- * beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL terminator).
- */
-size_t fio_ftoa(char *dest, double num, uint8_t base);
+size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
+/* Formats an object into a JSON String. Remember to `fiobj_free`. */
+fiobj_s *fiobj_obj2json(fiobj_s *);
 
 /* *****************************************************************************
 Generic Object API
@@ -308,14 +277,6 @@ fiobj_s *fiobj_str_copy(fiobj_s *src);
  * NOTICE: static strings can't be written to.
  */
 fiobj_s *fiobj_str_static(const char *str, size_t len);
-
-/**
- * Formats an object into a JSON string. Remember to `fiobj_free`.
- *
- * Notice that nested String objects should contain valid UTF-8 data. facil.io
- * will ignore encoding errors and assume that you know what you're doing.
- */
-fiobj_s *fiobj_str_new_json(fiobj_s *);
 
 /**
  * Allocates a new String using `prinf` semantics. Remember to `fiobj_free`.
@@ -564,6 +525,51 @@ fiobj_s *fiobj_couplet2key(fiobj_s *obj);
  * Otherwise returns NULL.
  */
 fiobj_s *fiobj_couplet2obj(fiobj_s *obj);
+
+/* *****************************************************************************
+Helpers: not fiobj_s specific, but since they're used internally, they're here.
+***************************************************************************** */
+
+/**
+ * A helper function that converts between String data to a signed int64_t.
+ *
+ * Numbers are assumed to be in base 10.
+ *
+ * The `0x##` (or `x##`) and `0b##` (or `b##`) are recognized as base 16 and
+ * base 2 (binary MSB first) respectively.
+ */
+int64_t fio_atol(const char *str);
+
+/** A helper function that convers between String data to a signed double. */
+double fio_atof(const char *str);
+
+/**
+ * A helper function that convers between a signed int64_t to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 66 bytes available
+ * (for base 2).
+ *
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL terminator).
+ */
+size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
+
+/**
+ * A helper function that convers between a double to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 130 bytes available
+ * (for base 2).
+ *
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL terminator).
+ */
+size_t fio_ftoa(char *dest, double num, uint8_t base);
 
 #ifdef DEBUG
 void fiobj_test(void);

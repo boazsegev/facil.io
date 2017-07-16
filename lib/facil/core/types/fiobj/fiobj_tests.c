@@ -90,14 +90,36 @@ void fiobj_test_hash_json(void) {
             (fiobj_iseq(hash, hash3)) ? "passed." : "FAILED!",
             (fiobj_iseq(hash, syms)) ? "FAILED!" : "passed.");
   }
-  /* print JSON string */
+  /* print JSON string and test parser */
   {
-    tmp = fiobj_str_new_json(hash);
+    tmp = fiobj_obj2json(hash);
     fprintf(stderr,
             "* Printing JSON (len: %llu real len: %lu capa: %lu ref: %llu):\n  "
             " %s\n",
             fiobj_obj2cstr(tmp).len, strlen(fiobj_obj2cstr(tmp).data),
             fiobj_str_capa(tmp), OBJ2HEAD(tmp).ref, fiobj_obj2cstr(tmp).data);
+    fiobj_s *parsed = NULL;
+    if (fiobj_json2obj(&parsed, fiobj_obj2cstr(tmp).buffer,
+                       fiobj_obj2cstr(tmp).len) == 0) {
+      fprintf(stderr, "* FAILD to parse the JSON printed.\n");
+    } else {
+      if (!fiobj_iseq(parsed, hash)) {
+        fiobj_free(tmp);
+        tmp = fiobj_obj2json(parsed);
+        fprintf(stderr, "* Parsed JSON is NOT EQUAL to original:\n%s\n\n",
+                fiobj_obj2cstr(tmp).data);
+        fiobj_free(tmp);
+        tmp = fiobj_obj2json(fiobj_hash_get2(parsed, "symbols", 7));
+        fprintf(stderr, "* Just the Symbols array (str eql == %u):\n%s\n\n",
+                fiobj_iseq(fiobj_hash_get2(parsed, "string", 6),
+                           fiobj_hash_get2(hash, "string", 6)),
+                fiobj_obj2cstr(tmp).data);
+
+      } else {
+        fprintf(stderr, "* Parsed JSON is equal to original.\n");
+      }
+      fiobj_free(parsed);
+    }
     fiobj_free(tmp);
   }
 #ifdef H_FIO2RESP_FORMAT_H
@@ -340,7 +362,7 @@ void fiobj_test(void) {
         fprintf(stderr, "* FAILED Array count. %lu/%llu != %lu\n",
                 fiobj_ary_count(obj), obj2ary(obj)->capa, i + 1);
     }
-    fiobj_s *tmp = fiobj_str_new_json(obj);
+    fiobj_s *tmp = fiobj_obj2json(obj);
     fprintf(stderr, "Array test printout:\n%s\n",
             tmp ? obj2str(tmp)->str : "ERROR");
     fiobj_free(tmp);
@@ -369,7 +391,7 @@ void fiobj_test(void) {
             "a1, pos %llu  == a2 and a2, pos %llu == a1\n",
             obj2ary(a1)->end, obj2ary(a2)->end);
     {
-      fiobj_s *tmp = fiobj_str_new_json(a1);
+      fiobj_s *tmp = fiobj_obj2json(a1);
       fprintf(stderr, "%s\n", tmp ? obj2str(tmp)->str : "ERROR");
       fiobj_free(tmp);
     }
