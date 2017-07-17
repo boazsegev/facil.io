@@ -8,8 +8,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_FIOBJ_TYPES_INTERNAL_H
 #define H_FIOBJ_TYPES_INTERNAL_H
 
-#include "spnlock.inc"
-
 #include "fiobj.h"
 
 #include <math.h>
@@ -17,6 +15,42 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
+
+/* *****************************************************************************
+Atomic add / subtract
+***************************************************************************** */
+
+/* Select the correct compiler builtin method. */
+#if defined(__has_builtin)
+
+#if __has_builtin(__atomic_exchange_n)
+#define SPN_LOCK_BUILTIN(...) __atomic_exchange_n(__VA_ARGS__, __ATOMIC_ACQ_REL)
+/** An atomic addition operation */
+#define spn_add(...) __atomic_add_fetch(__VA_ARGS__, __ATOMIC_ACQ_REL)
+/** An atomic subtraction operation */
+#define spn_sub(...) __atomic_sub_fetch(__VA_ARGS__, __ATOMIC_ACQ_REL)
+
+#elif __has_builtin(__sync_fetch_and_or)
+#define SPN_LOCK_BUILTIN(...) __sync_fetch_and_or(__VA_ARGS__)
+/** An atomic addition operation */
+#define spn_add(...) __sync_add_and_fetch(__VA_ARGS__)
+/** An atomic subtraction operation */
+#define spn_sub(...) __sync_sub_and_fetch(__VA_ARGS__)
+
+#else
+#error Required builtin "__sync_swap" or "__sync_fetch_and_or" missing from compiler.
+#endif /* defined(__has_builtin) */
+
+#elif __GNUC__ > 3
+#define SPN_LOCK_BUILTIN(...) __sync_fetch_and_or(__VA_ARGS__)
+/** An atomic addition operation */
+#define spn_add(...) __sync_add_and_fetch(__VA_ARGS__)
+/** An atomic subtraction operation */
+#define spn_sub(...) __sync_sub_and_fetch(__VA_ARGS__)
+
+#else
+#error Required builtin "__sync_swap" or "__sync_fetch_and_or" not found.
+#endif
 
 /* *****************************************************************************
 Simple List - I will slowly move any external dependencies to allow independance
