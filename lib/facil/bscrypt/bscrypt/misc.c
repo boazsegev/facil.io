@@ -54,16 +54,17 @@ fdump_s *bscrypt_fdump(const char *file_path, size_t size_limit) {
     goto error;
   if (size_limit == 0 || (size_t)f_data.st_size < size_limit)
     size_limit = f_data.st_size;
-  container = malloc(size_limit + sizeof(fdump_s));
+  container = malloc(size_limit + sizeof(fdump_s) + 1);
   if (!container)
     goto error;
-  container->length = size_limit;
   file = open(file_path, O_RDONLY);
   if (file < 0)
     goto error;
   if (read(file, container->data, size_limit) != (ssize_t)size_limit)
     goto error;
   close(file);
+  container->length = size_limit;
+  container->data[size_limit] = 0;
   return container;
 error:
   if (container)
