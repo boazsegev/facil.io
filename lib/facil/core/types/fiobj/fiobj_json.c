@@ -435,8 +435,9 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     /* skip any white space / seperators */
     while (start < stop && JSON_SEPERATOR[end[0]] == 1)
       end++;
-    if (end >= stop)
+    if (end >= stop) {
       goto finish;
+    }
     start = end;
 
     /* test object type. tests are ordered by precedence, if one fails, the
@@ -446,8 +447,9 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       fio_ls_push(&nesting, fiobj_hash_new());
       end++;
       depth++;
-      if (depth >= 32)
+      if (depth >= 32) {
         goto error;
+      }
       continue;
     }
     if (end[0] == '[') {
@@ -455,8 +457,9 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       fio_ls_push(&nesting, fiobj_ary_new());
       end++;
       depth++;
-      if (depth >= 32)
+      if (depth >= 32) {
         goto error;
+      }
       continue;
     }
     if (end[0] == '}') {
@@ -464,8 +467,9 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       end++;
       depth--;
       obj = fio_ls_pop(&nesting);
-      if (obj->type != FIOBJ_T_HASH)
+      if (obj->type != FIOBJ_T_HASH) {
         goto error;
+      }
       goto has_obj;
     }
     if (end[0] == ']') {
@@ -473,8 +477,9 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       end++;
       depth--;
       obj = fio_ls_pop(&nesting);
-      if (obj->type != FIOBJ_T_ARRAY)
+      if (obj->type != FIOBJ_T_ARRAY) {
         goto error;
+      }
       goto has_obj;
     }
     if (end + 3 < stop && end[0] == 't' && end[1] == 'r' && end[2] == 'u' &&
@@ -521,32 +526,45 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
         end++;
       continue;
     }
+    if (start[0] == '"') {
+      /* object is a string (require qoutes) */
+      start++;
+      end++;
+      uint8_t dirty = 0;
+      while (end < stop && end[0] != '"') {
+        if (end[0] == '\\') {
+          dirty = 1;
+          end++;
+        }
+        end++;
+      }
+      if (end >= stop) {
+        goto error;
+      }
+      if (nesting.next->obj && nesting.next->obj->type == FIOBJ_T_HASH) {
+        obj = fiobj_sym_new((char *)start, end - start);
+      } else {
+        obj = fiobj_str_new((char *)start, end - start);
+      }
+      if (dirty)
+        safestr2local(obj);
+      end++;
+      goto has_obj;
+    }
     if (end[0] == '-' || (end[0] >= '0' && end[0] <= '9')) {
       /* test for a number OR float */
       uint8_t decimal = 0;
-      uint8_t breaker = 0;
       while (end < stop && JSON_SEPERATOR[*end] == 0 && *end != ']' &&
              *end != '}') {
-        if (breaker)
-          goto error;
-        while (end < stop &&
-               ((*end >= '0' && *end <= '9') || *end == '-' || *end == '+'))
-          end++;
-        if (end >= stop)
-          break;
-        else if (*end == '.' || *end == 'e' || *end == 'E') {
+        if (*end == '.' || *end == 'e' || *end == 'E')
           decimal = 1;
-          end++;
-        } else if (*end == 'x' || *end == 'b') {
-          /* hex isn't allowed, but some people... what can you do. */
-          end++;
-        } else
-          breaker = 1;
+        end++;
       }
-      /* test against forbidden leading zeros... mostly. */
-      if (end - start > 1 && end[0] == '0' &&
-          !(end[1] == '.' || end[1] == 'x' || end[1] == 'b'))
+      /* test against forbidden leading zeros... but allow hex and binary */
+      if (end - start > 1 && start[0] == '0' &&
+          !(start[1] == '.' || start[1] == 'x' || start[1] == 'b')) {
         goto error;
+      }
       /* it's a number */
       if (decimal) {
         obj = fiobj_float_new(fio_atof((char *)start));
@@ -555,24 +573,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       }
       goto has_obj;
     }
-    end = start;
-    /* assume object is a string (require qoutes) */
-    if (start[0] != '"')
-      goto error;
-    start++;
-    end++;
-    while (end < stop && end[0] != '"') {
-      end += 1 + (end[0] == '\\');
-    }
-    if (end >= stop)
-      goto error;
-    if (nesting.next->obj && nesting.next->obj->type == FIOBJ_T_HASH) {
-      obj = fiobj_sym_new((char *)start, end - start);
-    } else {
-      obj = fiobj_str_new((char *)start, end - start);
-    }
-    safestr2local(obj);
-    end++;
+    goto error;
 
   has_obj:
     if (nesting.next == &nesting)
@@ -594,208 +595,9 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       fio_ls_push(&nesting, fiobj_sym_new(s.buffer, s.len));
       fiobj_free(obj);
       continue;
-    } else
-      goto error;
-  }
-
-finish:
-  if (!obj)
-    obj = fio_ls_pop(&nesting);
-finish_with_obj:
-  if (obj && nesting.next == &nesting) {
-    *pobj = obj;
-    return end - (uint8_t *)data;
-  }
-error:
-  if (obj)
-    fiobj_free(obj);
-  while ((obj = fio_ls_pop(&nesting)))
-    fiobj_free(obj);
-  fprintf(stderr, "error starting at %s\n", end);
-  return 0;
-}
-
-/**
- * Parses JSON, setting `pobj` to point to the new Object.
- *
- * Returns the number of bytes consumed. On Error, 0 is returned and no data is
- * consumed.
- */
-size_t fiobj_json2obj_num(fiobj_s **pobj, const void *data, size_t len) {
-  fio_ls_s nesting = FIO_LS_INIT(nesting);
-  const uint8_t *start;
-  fiobj_s *obj;
-  const uint8_t *end = (uint8_t *)data;
-  const uint8_t *stop = end + len;
-  while (1) {
-    /* set objcet data end point to the starting endpoint */
-    obj = NULL;
-    start = end;
-    /* skip any white space / seperators */
-    while (start < stop && JSON_SEPERATOR[end[0]] == 1)
-      end++;
-    if (end >= stop)
-      goto finish;
-    start = end;
-
-    /* test object type. tests are ordered by precedence, if one fails, the
-     * other is performed. */
-    if (end[0] == '{') {
-      /* start an object (hash) */
-      fio_ls_push(&nesting, fiobj_hash_new());
-      end++;
-      continue;
-    }
-    if (end[0] == '[') {
-      /* start an array */
-      fio_ls_push(&nesting, fiobj_ary_new());
-      end++;
-      continue;
-    }
-    if (end[0] == '}') {
-      /* end an object (hash) */
-      end++;
-      obj = fio_ls_pop(&nesting);
-      if (obj->type != FIOBJ_T_HASH)
-        goto error;
-      goto has_obj;
-    }
-    if (end[0] == ']') {
-      /* end an array */
-      end++;
-      obj = fio_ls_pop(&nesting);
-      if (obj->type != FIOBJ_T_ARRAY)
-        goto error;
-      goto has_obj;
-    }
-    if (end + 3 < stop && end[0] == 't' && end[1] == 'r' && end[2] == 'u' &&
-        end[3] == 'e') {
-      /* true */
-      end += 4;
-      obj = fiobj_true();
-      goto has_obj;
-    }
-    if (end + 4 < stop && end[0] == 'f' && end[1] == 'a' && end[2] == 'l' &&
-        end[3] == 's' && end[4] == 'e') {
-      /* false */
-      end += 5;
-      obj = fiobj_false();
-      goto has_obj;
-    }
-    if (end + 3 < stop && end[0] == 'n' && end[1] == 'u' && end[2] == 'l' &&
-        end[3] == 'l') {
-      /* null */
-      end += 4;
-      obj = fiobj_null();
-      goto has_obj;
-    }
-    if (end[0] == '/') {
-      /* could be a Javascript comment */
-      if (end[1] == '/') {
-        end += 2;
-        while (end < stop && end[0] != '\n')
-          end++;
-        continue;
-      }
-      if (end[1] == '*') {
-        end += 2;
-        while (end < stop && !(end[0] == '*' && end[1] == '/'))
-          end++;
-        if (end < stop && end[0] == '*')
-          end += 2;
-        continue;
-      }
-    }
-    if (end[0] == '#') {
-      /* could be a Ruby style comment */
-      while (end < stop && end[0] != '\n')
-        end++;
-      continue;
-    }
-    if (end[0] == '-' || (end[0] >= 0 && end[0] <= '9')) {
-      /* test for a number OR float */
-      uint8_t invert = end[0] == '-';
-      uint8_t decimal = 0;
-      if (invert)
-        end++;
-      else
-        end = start;
-      while (end[0] >= '0' && end[0] <= '9')
-        end++;
-      if (end[0] == '.') {
-        end++;
-        decimal = 1;
-        while (end[0] >= '0' && end[0] <= '9')
-          end++;
-      }
-      if (end + decimal + invert == start)
-        goto not_number;
-      if (*end == 'e' || *end == 'E') {
-        decimal = 1;
-        end++;
-        if (*end == '-' || *end == '+')
-          end++;
-        while (end[0] >= '0' && end[0] <= '9')
-          end++;
-        if (end[0] == '.') {
-          end++;
-          while (end[0] >= '0' && end[0] <= '9')
-            end++;
-        }
-      }
-      if (end - start <= 32 &&
-          (JSON_SEPERATOR[*end] || *end == ']' || *end == '}')) {
-        /* it's a number */
-        if (decimal) {
-          obj = fiobj_float_new(fio_atof((char *)start));
-        } else {
-          obj = fiobj_num_new(fio_atol((char *)start));
-        }
-        goto has_obj;
-      }
-    }
-  not_number:
-    end = start;
-    /* assume object is a string (require qoutes) */
-    if (start[0] != '"')
-      goto error;
-    start++;
-    end++;
-    while (end < stop && end[0] != '"') {
-      end += 1 + (end[0] == '\\');
-    }
-    if (end >= stop)
-      goto error;
-    if (nesting.next->obj && nesting.next->obj->type == FIOBJ_T_HASH) {
-      obj = fiobj_sym_new((char *)start, end - start);
     } else {
-      obj = fiobj_str_new((char *)start, end - start);
-    }
-    safestr2local(obj);
-    end++;
-
-  has_obj:
-    if (nesting.next == &nesting)
-      goto finish_with_obj;
-    if (nesting.next->obj->type == FIOBJ_T_ARRAY) {
-      fiobj_ary_push(nesting.next->obj, obj);
-      continue;
-    } else if (nesting.next->obj->type == FIOBJ_T_SYMBOL) {
-      fiobj_s *sym = fio_ls_pop(&nesting);
-      fiobj_hash_set(nesting.next->obj, sym, obj);
-      fiobj_free(sym);
-      continue;
-    } else if (nesting.next->obj->type == FIOBJ_T_HASH) {
-      if (obj->type == FIOBJ_T_SYMBOL) {
-        fio_ls_push(&nesting, obj);
-        continue;
-      }
-      fio_cstr_s s = fiobj_obj2cstr(obj);
-      fio_ls_push(&nesting, fiobj_sym_new(s.buffer, s.len));
-      fiobj_free(obj);
-      continue;
-    } else
       goto error;
+    }
   }
 
 finish:
@@ -811,5 +613,8 @@ error:
     fiobj_free(obj);
   while ((obj = fio_ls_pop(&nesting)))
     fiobj_free(obj);
+  // fprintf(stderr, "ERROR starting at %.*s, ending at %.*s, with %s\n", 3,
+  // start,
+  //         3, end, start);
   return 0;
 }
