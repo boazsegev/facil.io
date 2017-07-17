@@ -120,7 +120,28 @@ int fio_cli_get_int(const char *opt);
  *
  * For boolean values, the value will be 0 for FALSE and 1 for TRUE.
  */
-int fio_cli_get_float(const char *opt);
+double fio_cli_get_float(const char *opt);
+
+/**
+ * Overrides the existing value of the argument with the requested C String.
+ *
+ * Boolean that were set to TRUE have the string "1".
+ */
+void fio_cli_set_str(const char *opt, const char *value);
+
+/**
+ * Overrides the existing value of the argument with the requested Integer.
+ *
+ * For boolean values, the value will be 0 for FALSE and 1 for TRUE.
+ */
+void fio_cli_set_int(const char *opt, int value);
+
+/**
+ * Overrides the existing value of the argument with the requested Float.
+ *
+ * For boolean values, the value will be 0 for FALSE and 1 for TRUE.
+ */
+void fio_cli_set_float(const char *opt, double value);
 
 #ifdef __cplusplus
 } /* extern "C" */
