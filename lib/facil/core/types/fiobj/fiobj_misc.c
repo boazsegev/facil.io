@@ -50,7 +50,8 @@ static char hex_notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
  * `b##`) are recognized as base 16 and base 2 (binary MSB first)
  * respectively.
  */
-int64_t fio_atol(const char *str) {
+int64_t fio_atol(char **pstr) {
+  char *str = *pstr;
   uint64_t result = 0;
   uint8_t invert = 0;
   while (str[0] == '0')
@@ -100,11 +101,12 @@ int64_t fio_atol(const char *str) {
 finish:
   if (invert)
     result = 0 - result;
+  *pstr = str;
   return (int64_t)result;
 }
 
 /** A helper function that convers between String data to a signed double. */
-double fio_atof(const char *str) { return strtold(str, NULL); }
+double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
 
 /* *****************************************************************************
 String Helpers

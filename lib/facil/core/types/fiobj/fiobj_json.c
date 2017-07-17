@@ -553,25 +553,34 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     }
     if (end[0] == '-' || (end[0] >= '0' && end[0] <= '9')) {
       /* test for a number OR float */
-      uint8_t decimal = 0;
-      while (end < stop && JSON_SEPERATOR[*end] == 0 && *end != ']' &&
-             *end != '}') {
-        if (*end == '.' || *end == 'e' || *end == 'E')
-          decimal = 1;
-        end++;
+      int64_t num = fio_atol((char **)&end);
+      if (*end == '.' || *end == 'e' || *end == 'E') {
+        end = start;
+        double fnum = fio_atof((char **)&end);
+        obj = fiobj_float_new(fnum);
+        goto has_obj;
       }
-      /* test against forbidden leading zeros... but allow hex and binary */
-      if (end - start > 1 && start[0] == '0' &&
-          !(start[1] == '.' || start[1] == 'x' || start[1] == 'b')) {
-        goto error;
-      }
-      /* it's a number */
-      if (decimal) {
-        obj = fiobj_float_new(fio_atof((char *)start));
-      } else {
-        obj = fiobj_num_new(fio_atol((char *)start));
-      }
+      obj = fiobj_num_new(num);
       goto has_obj;
+      // uint8_t decimal = 0;
+      // while (end < stop && JSON_SEPERATOR[*end] == 0 && *end != ']' &&
+      //        *end != '}') {
+      //   if (*end == '.' || *end == 'e' || *end == 'E')
+      //     decimal = 1;
+      //   end++;
+      // }
+      // /* test against forbidden leading zeros... but allow hex and binary */
+      // if (end - start > 1 && start[0] == '0' &&
+      //     !(start[1] == '.' || start[1] == 'x' || start[1] == 'b')) {
+      //   goto error;
+      // }
+      // /* it's a number */
+      // if (decimal) {
+      //   obj = fiobj_float_new(fio_atof((char *)start));
+      // } else {
+      //   obj = fiobj_num_new(fio_atol((char *)start));
+      // }
+      // goto has_obj;
     }
     goto error;
 

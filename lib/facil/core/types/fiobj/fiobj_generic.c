@@ -26,12 +26,16 @@ int64_t fiobj_obj2num(fiobj_s *obj) {
     return ((fio_num_s *)obj)->i;
   if (obj->type == FIOBJ_T_FLOAT)
     return (int64_t)floorl(((fio_float_s *)obj)->f);
-  if (obj->type == FIOBJ_T_STRING)
-    return fio_atol(((fio_str_s *)obj)->str);
+  if (obj->type == FIOBJ_T_STRING) {
+    char *s = ((fio_str_s *)obj)->str;
+    return fio_atol(&s);
+  }
   if (obj->type == FIOBJ_T_TRUE)
     return 1;
-  if (obj->type == FIOBJ_T_SYMBOL)
-    return fio_atol(((fio_sym_s *)obj)->str);
+  if (obj->type == FIOBJ_T_SYMBOL) {
+    char *s = ((fio_sym_s *)obj)->str;
+    return fio_atol(&s);
+  }
   if (obj->type == FIOBJ_T_ARRAY)
     return fiobj_ary_count(obj);
   if (obj->type == FIOBJ_T_HASH)
@@ -56,12 +60,16 @@ double fiobj_obj2float(fiobj_s *obj) {
     return ((fio_float_s *)obj)->f;
   if (obj->type == FIOBJ_T_NUMBER)
     return (double)((fio_num_s *)obj)->i;
-  if (obj->type == FIOBJ_T_STRING)
-    return fio_atof(((fio_str_s *)obj)->str);
+  if (obj->type == FIOBJ_T_STRING) {
+    char *s = ((fio_str_s *)obj)->str;
+    return fio_atof(&s);
+  }
   if (obj->type == FIOBJ_T_TRUE)
     return 1;
-  if (obj->type == FIOBJ_T_SYMBOL)
-    return fio_atof(((fio_sym_s *)obj)->str);
+  if (obj->type == FIOBJ_T_SYMBOL) {
+    char *s = ((fio_str_s *)obj)->str;
+    return fio_atof(&s);
+  }
   if (obj->type == FIOBJ_T_ARRAY)
     return (double)fiobj_ary_count(obj);
   if (obj->type == FIOBJ_T_HASH)

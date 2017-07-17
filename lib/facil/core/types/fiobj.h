@@ -537,11 +537,13 @@ Helpers: not fiobj_s specific, but since they're used internally, they're here.
  *
  * The `0x##` (or `x##`) and `0b##` (or `b##`) are recognized as base 16 and
  * base 2 (binary MSB first) respectively.
+ *
+ * The pointer will be updated to point to the first byte after the number.
  */
-int64_t fio_atol(const char *str);
+int64_t fio_atol(char **pstr);
 
 /** A helper function that convers between String data to a signed double. */
-double fio_atof(const char *str);
+double fio_atof(char **pstr);
 
 /**
  * A helper function that convers between a signed int64_t to a string.
