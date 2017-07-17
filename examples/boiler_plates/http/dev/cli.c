@@ -9,8 +9,8 @@ static char tmp_url_parsing[1024];
 
 void initialize_cli(int argc, char const *argv[]) {
   /*     ****  Command line arguments ****     */
-
   fio_cli_start(argc, argv, NULL);
+  /* setup allowed argumennts */
   fio_cli_accept_str("bind b", "address to listen to. defaults any available.");
   fio_cli_accept_num("port p", "port number to listen to. defaults port 3000");
   fio_cli_accept_num("workers w", "number of processes to use.");
@@ -30,10 +30,9 @@ void initialize_cli(int argc, char const *argv[]) {
                      "an optional Redis server's port. default: 6379");
   fio_cli_accept_str("redis-password rpw", "Redis password, if any.");
 
-  /* Set any lingering defaults */
-
+  /* Test and set any default options */
   if (!fio_cli_get_str("p")) {
-    /* Test environment*/
+    /* Test environment as well */
     char *tmp = getenv("PORT");
     if (!tmp)
       tmp = "3000";
@@ -41,16 +40,12 @@ void initialize_cli(int argc, char const *argv[]) {
     fio_cli_set_str("p", tmp);
   }
   if (!fio_cli_get_str("b")) {
-    /* Test environment*/
     char *tmp = getenv("ADDRESS");
-    /* Set default */
     if (tmp)
       fio_cli_set_str("b", tmp);
   }
   if (!fio_cli_get_str("public")) {
-    /* Test environment*/
     char *tmp = getenv("HTTP_PUBLIC_FOLDER");
-    /* Set default */
     if (tmp)
       fio_cli_set_str("public", tmp);
   }
