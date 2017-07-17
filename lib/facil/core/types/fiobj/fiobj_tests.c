@@ -92,7 +92,7 @@ void fiobj_test_hash_json(void) {
   }
   /* print JSON string and test parser */
   {
-    tmp = fiobj_obj2json(hash);
+    tmp = fiobj_obj2json(hash, 0);
     fprintf(stderr,
             "* Printing JSON (len: %llu real len: %lu capa: %lu ref: %llu):\n  "
             " %s\n",
@@ -362,7 +362,7 @@ void fiobj_test(void) {
         fprintf(stderr, "* FAILED Array count. %lu/%llu != %lu\n",
                 fiobj_ary_count(obj), obj2ary(obj)->capa, i + 1);
     }
-    fiobj_s *tmp = fiobj_obj2json(obj);
+    fiobj_s *tmp = fiobj_obj2json(obj, 0);
     fprintf(stderr, "Array test printout:\n%s\n",
             tmp ? obj2str(tmp)->str : "ERROR");
     fiobj_free(tmp);
@@ -391,7 +391,7 @@ void fiobj_test(void) {
             "a1, pos %llu  == a2 and a2, pos %llu == a1\n",
             obj2ary(a1)->end, obj2ary(a2)->end);
     {
-      fiobj_s *tmp = fiobj_obj2json(a1);
+      fiobj_s *tmp = fiobj_obj2json(a1, 0);
       fprintf(stderr, "%s\n", tmp ? obj2str(tmp)->str : "ERROR");
       fiobj_free(tmp);
     }

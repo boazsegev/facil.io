@@ -108,35 +108,48 @@ uint64_t fiobj_sym_hash(const void *data, size_t len) {
 Symbol API
 ***************************************************************************** */
 
+static inline fiobj_s *fiobj_sym_alloc(size_t len) {
+  fiobj_head_s *head;
+  head = malloc(sizeof(*head) + sizeof(fio_sym_s) + len + 1);
+  head->ref = 1;
+  *obj2sym(HEAD2OBJ(head)) = (fio_sym_s){
+      .type = FIOBJ_T_SYMBOL, .len = len,
+  };
+  obj2sym(HEAD2OBJ(head))->str[len] = 0;
+  return HEAD2OBJ(head);
+}
+
 /** Creates a Symbol object. Use `fiobj_free`. */
 fiobj_s *fiobj_sym_new(const char *str, size_t len) {
-  fiobj_s *sym = fiobj_alloc(FIOBJ_T_SYMBOL, len, (void *)str);
-  ((fio_sym_s *)(sym))->hash = (uintptr_t)fiobj_sym_hash(str, len);
-  return sym;
+  fiobj_s *s = fiobj_sym_alloc(len);
+  if (str)
+    memcpy(obj2sym(s)->str, str, len);
+  obj2sym(s)->hash = (uintptr_t)fiobj_sym_hash(str, len);
+  return s;
 }
 
 /** Creates a Symbol object using a printf like interface. */
 __attribute__((format(printf, 1, 0))) fiobj_s *
-fiobj_symvprintf(const char *restrict format, va_list argv) {
+fiobj_symvprintf(const char *format, va_list argv) {
   fiobj_s *sym = NULL;
   va_list argv_cpy;
   va_copy(argv_cpy, argv);
   int len = vsnprintf(NULL, 0, format, argv_cpy);
   va_end(argv_cpy);
   if (len == 0) {
-    sym = fiobj_alloc(FIOBJ_T_SYMBOL, 0, (void *)"");
+    sym = fiobj_sym_alloc(0);
     ((fio_sym_s *)(sym))->hash = fiobj_sym_hash(NULL, 0);
   }
   if (len <= 0)
     return sym;
-  sym = fiobj_alloc(FIOBJ_T_SYMBOL, len, NULL); /* adds 1 to len, for NUL */
+  sym = fiobj_sym_alloc(len); /* adds 1 to len, for NUL */
   vsnprintf(((fio_sym_s *)(sym))->str, len + 1, format, argv);
   ((fio_sym_s *)(sym))->hash =
       (uintptr_t)fiobj_sym_hash(((fio_sym_s *)(sym))->str, len);
   return sym;
 }
 __attribute__((format(printf, 1, 2))) fiobj_s *
-fiobj_symprintf(const char *restrict format, ...) {
+fiobj_symprintf(const char *format, ...) {
   va_list argv;
   va_start(argv, format);
   fiobj_s *sym = fiobj_symvprintf(format, argv);

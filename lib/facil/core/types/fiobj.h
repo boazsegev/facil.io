@@ -22,6 +22,10 @@ so don't do it.
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* *****************************************************************************
 The Object type (`fiobj_s`) and it's variants
 ***************************************************************************** */
@@ -93,7 +97,7 @@ JSON API
  */
 size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
 /* Formats an object into a JSON String. Remember to `fiobj_free`. */
-fiobj_s *fiobj_obj2json(fiobj_s *);
+fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t pretty);
 
 /* *****************************************************************************
 Generic Object API
@@ -284,20 +288,23 @@ fiobj_s *fiobj_str_static(const char *str, size_t len);
  * Returns NULL on error.
  */
 __attribute__((format(printf, 1, 2))) fiobj_s *
-fiobj_strprintf(const char *restrict format, ...);
+fiobj_strprintf(const char *printf_frmt, ...);
 __attribute__((format(printf, 1, 0))) fiobj_s *
-fiobj_strvprintf(const char *restrict format, va_list argv);
-
-/** Resizes a String object, allocating more memory if required. */
-void fiobj_str_resize(fiobj_s *str, size_t size);
+fiobj_strvprintf(const char *printf_frmt, va_list argv);
 
 /** Returns a String's capacity, if any. */
 size_t fiobj_str_capa(fiobj_s *str);
 
+/** Resizes a String object, allocating more memory if required. */
+void fiobj_str_resize(fiobj_s *str, size_t size);
+
+/** Confirms the requested capacity is available and allocates as required. */
+void fiobj_str_capa_assert(fiobj_s *str, size_t size);
+
 /** Deallocates any unnecessary memory (if supported by OS). */
 void fiobj_str_minimize(fiobj_s *str);
 
-/** Empties a String's data. */
+/** Empties a String's data, keeping the existing allocated buffer. */
 void fiobj_str_clear(fiobj_s *str);
 
 /**
@@ -334,10 +341,10 @@ Symbol API
 fiobj_s *fiobj_sym_new(const char *str, size_t len);
 
 /** Allocated a new Symbol using `prinf` semantics. Remember to `fiobj_free`.*/
-fiobj_s *fiobj_symprintf(const char *restrict format, ...)
+fiobj_s *fiobj_symprintf(const char *printf_frmt, ...)
     __attribute__((format(printf, 1, 2)));
 
-fiobj_s *fiobj_symvprintf(const char *restrict format, va_list argv)
+fiobj_s *fiobj_symvprintf(const char *printf_frmt, va_list argv)
     __attribute__((format(printf, 1, 0)));
 
 /** Returns 1 if both Symbols are equal and 0 if not. */
@@ -369,8 +376,11 @@ intptr_t fiobj_io_fd(fiobj_s *obj);
 Array API
 ***************************************************************************** */
 
-/** Creates a mutable empty Array object. Use `fiobj_free` when done. */
+/** Creates an empty Array object. Use `fiobj_free` when done. */
 fiobj_s *fiobj_ary_new(void);
+
+/** Creates an empty Array object, preallocating the requested capacity. */
+fiobj_s *fiobj_ary_new2(size_t capa);
 
 /** Returns the number of elements in the Array. */
 size_t fiobj_ary_count(fiobj_s *ary);
@@ -575,6 +585,10 @@ size_t fio_ftoa(char *dest, double num, uint8_t base);
 
 #ifdef DEBUG
 void fiobj_test(void);
+#endif
+
+#ifdef __cplusplus
+} /* closing brace for extern "C" */
 #endif
 
 #endif /* H_FACIL_IO_OBJECTS_H */

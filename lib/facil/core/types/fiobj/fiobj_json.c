@@ -10,7 +10,7 @@ Feel free to copy, use and enjoy according to the license provided.
 /* *****************************************************************************
 JSON API
 ***************************************************************************** */
-
+#define JSON_MAX_DEPTH 24
 /**
  * Parses JSON, setting `pobj` to point to the new Object.
  *
@@ -19,14 +19,14 @@ JSON API
  */
 size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
 /* Formats an object into a JSON string. Remember to `fiobj_free`. */
-fiobj_s *fiobj_obj2json(fiobj_s *);
+fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t);
 
 /* *****************************************************************************
 JSON UTF-8 safe string formatting
 ***************************************************************************** */
 
-static char hex_notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
-                              '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+static char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                           '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
 static uint8_t is_hex[] = {
     0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
@@ -79,79 +79,71 @@ static void write_safe_str(fiobj_s *dest, fiobj_s *str) {
   const uint8_t *src = (const uint8_t *)s.data;
   size_t len = s.len;
   uint64_t end = obj2str(dest)->len;
+  /* make sure we have some room */
+  size_t added = 0;
+  if (obj2str(dest)->capa <= end + s.len + 64)
+    fiobj_str_capa_assert(dest, (((obj2str(dest)->capa >> 12) + 1) << 12) - 1);
   while (len) {
-    /* make sure we have enough space for the largest UTF-8 char + NUL */
-    if (obj2str(dest)->capa <= end + 7)
-      fiobj_str_resize(dest, (((obj2str(dest)->capa >> 12) + 1) << 12) - 1);
-    int tmp = utf8_clen(src);
-    if (tmp == 1) {
-      switch (src[0]) {
-      case '\b':
-        obj2str(dest)->str[end++] = '\\';
-        obj2str(dest)->str[end++] = 'b';
-        break; /* from switch */
-      case '\f':
-        obj2str(dest)->str[end++] = '\\';
-        obj2str(dest)->str[end++] = 'f';
-        break; /* from switch */
-      case '\n':
-        obj2str(dest)->str[end++] = '\\';
-        obj2str(dest)->str[end++] = 'n';
-        break; /* from switch */
-      case '\r':
-        obj2str(dest)->str[end++] = '\\';
-        obj2str(dest)->str[end++] = 'r';
-        break; /* from switch */
-      case '\t':
-        obj2str(dest)->str[end++] = '\\';
-        obj2str(dest)->str[end++] = 't';
-        break; /* from switch */
-      case '"':
-      case '\\':
-      case '/':
-        obj2str(dest)->str[end++] = '\\';
-        obj2str(dest)->str[end++] = src[0];
-        break; /* from switch */
-      default:
-        if (src[0] <= 31) {
-          /* MUST escape all control values less than 32 */
-          obj2str(dest)->str[end++] = '\\';
-          obj2str(dest)->str[end++] = 'u';
-          obj2str(dest)->str[end++] = '0';
-          obj2str(dest)->str[end++] = '0';
-          obj2str(dest)->str[end++] = hex_notation[src[0] >> 4];
-          obj2str(dest)->str[end++] = hex_notation[src[0] & 15];
-        } else
-          obj2str(dest)->str[end++] = src[0];
-        break; /* from switch */
-      }
-      src++;
+    while (len &&
+           (src[0] > 32 && src[0] != '"' && src[0] != '\\' && src[0] != '/')) {
       len--;
-    } else if (tmp == 2) {
       obj2str(dest)->str[end++] = *(src++);
-      obj2str(dest)->str[end++] = *(src++);
-      len -= 2;
-    } else if (tmp == 3) {
-      obj2str(dest)->str[end++] = *(src++);
-      obj2str(dest)->str[end++] = *(src++);
-      obj2str(dest)->str[end++] = *(src++);
-      len -= 3;
-    } else if (tmp == 4) {
-      obj2str(dest)->str[end++] = *(src++);
-      obj2str(dest)->str[end++] = *(src++);
-      obj2str(dest)->str[end++] = *(src++);
-      obj2str(dest)->str[end++] = *(src++);
-      len -= 4;
-    } else { /* (tmp == 0) */
-      // fprintf(stderr,
-      //         "WARN: invalid UTF-8 code in JSON string val=%u, pos
-      //         %llu:\n%s\n", *src, end - obj2str(dest)->len, s.data);
+    }
+    if (!len)
+      break;
+    switch (src[0]) {
+    case '\b':
+      obj2str(dest)->str[end++] = '\\';
+      obj2str(dest)->str[end++] = 'b';
+      added++;
+      break; /* from switch */
+    case '\f':
+      obj2str(dest)->str[end++] = '\\';
+      obj2str(dest)->str[end++] = 'f';
+      added++;
+      break; /* from switch */
+    case '\n':
+      obj2str(dest)->str[end++] = '\\';
+      obj2str(dest)->str[end++] = 'n';
+      added++;
+      break; /* from switch */
+    case '\r':
+      obj2str(dest)->str[end++] = '\\';
+      obj2str(dest)->str[end++] = 'r';
+      added++;
+      break; /* from switch */
+    case '\t':
+      obj2str(dest)->str[end++] = '\\';
+      obj2str(dest)->str[end++] = 't';
+      added++;
+      break; /* from switch */
+    case '"':
+    case '\\':
+    case '/':
+      obj2str(dest)->str[end++] = '\\';
       obj2str(dest)->str[end++] = src[0];
-      src++;
-      len--;
-      // int t = utf8_from_u16((uint8_t *)(obj2str(dest)->str + end), *(src++));
-      // src += t;
-      // len -= t;
+      added++;
+      break; /* from switch */
+    default:
+      if (src[0] <= 31) {
+        /* MUST escape all control values less than 32 */
+        obj2str(dest)->str[end++] = '\\';
+        obj2str(dest)->str[end++] = 'u';
+        obj2str(dest)->str[end++] = '0';
+        obj2str(dest)->str[end++] = '0';
+        obj2str(dest)->str[end++] = hex_chars[src[0] >> 4];
+        obj2str(dest)->str[end++] = hex_chars[src[0] & 15];
+        added += 4;
+      } else
+        obj2str(dest)->str[end++] = src[0];
+      break; /* from switch */
+    }
+    src++;
+    len--;
+    if (added >= 48 && obj2str(dest)->capa <= end + len + 64) {
+      fiobj_str_capa_assert(dest,
+                            (((obj2str(dest)->capa >> 12) + 1) << 12) - 1);
+      added = 0;
     }
   }
   obj2str(dest)->len = end;
@@ -168,12 +160,25 @@ struct fiobj_str_new_json_data_s {
   fiobj_s *waiting; /* stores item counts and types */
   fiobj_s *buffer;  /* we'll write the JSON here */
   fiobj_s *count;   /* used to persist item counts for arrays / hashes */
+  uint8_t pretty;   /* make it beautiful */
 };
 
 static int fiobj_str_new_json_task(fiobj_s *obj, void *d_) {
   struct fiobj_str_new_json_data_s *data = d_;
   if (data->count && fiobj_obj2num(data->count))
     fiobj_num_set(data->count, fiobj_obj2num(data->count) - 1);
+  /* headroom */
+  fiobj_str_capa_assert(
+      data->buffer,
+      ((((obj2str(data->buffer)->len + 63) >> 12) + 1) << 12) - 1);
+pretty_re_rooted:
+  /* pretty? */
+  if (data->pretty) {
+    fiobj_str_write(data->buffer, "\n", 1);
+    for (size_t i = 0; i < fiobj_ary_count(data->parent); i++) {
+      fiobj_str_write(data->buffer, "  ", 2);
+    }
+  }
 re_rooted:
   if (!obj) {
     fiobj_str_write(data->buffer, "null", 4);
@@ -195,27 +200,47 @@ re_rooted:
     break;
   case FIOBJ_T_SYMBOL:
   case FIOBJ_T_STRING: {
+    fiobj_str_capa_assert(
+        data->buffer,
+        ((((obj2str(data->buffer)->len + 63 + obj2str(obj)->len) >> 12) + 1)
+         << 12) -
+            1);
     fiobj_str_write(data->buffer, "\"", 1);
     write_safe_str(data->buffer, obj);
     fiobj_str_write(data->buffer, "\"", 1);
     break;
   }
   case FIOBJ_T_COUPLET: {
+    fiobj_str_capa_assert(data->buffer,
+                          ((((obj2str(data->buffer)->len + 31 +
+                              obj2sym(fiobj_couplet2key(obj))->len) >>
+                             12) +
+                            1)
+                           << 12) -
+                              1);
     fiobj_str_write(data->buffer, "\"", 1);
     write_safe_str(data->buffer, fiobj_couplet2key(obj));
     fiobj_str_write(data->buffer, "\":", 2);
     obj = fiobj_couplet2obj(obj);
+    if (data->pretty &&
+        (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH))
+      goto pretty_re_rooted;
     goto re_rooted;
     break;
   }
-  case FIOBJ_T_NUMBER: {
-    fio_cstr_s s = fiobj_obj2cstr(obj);
-    fiobj_str_write(data->buffer, s.data, s.len);
-    break;
-  }
   case FIOBJ_T_FLOAT:
-    fiobj_str_write2(data->buffer, "%e", fiobj_obj2float(obj));
+    obj2str(data->buffer)->len +=
+        fio_ftoa(obj2str(data->buffer)->str + obj2str(data->buffer)->len,
+                 obj2float(obj)->f, 10);
     break;
+  case FIOBJ_T_NUMBER:
+    obj2str(data->buffer)->len +=
+        fio_ltoa(obj2str(data->buffer)->str + obj2str(data->buffer)->len,
+                 obj2num(obj)->i, 10);
+    break;
+  // case FIOBJ_T_FLOAT:
+  //   fiobj_str_write2(data->buffer, "%g", fiobj_obj2float(obj));
+  //   break;
   case FIOBJ_T_TRUE:
     fiobj_str_write(data->buffer, "true", 4);
     break;
@@ -236,6 +261,12 @@ review_nesting:
       break;
     fiobj_free(data->count);
     data->count = fiobj_ary_pop(data->waiting);
+    if (data->pretty) {
+      fiobj_str_write(data->buffer, "\n", 1);
+      for (size_t i = 0; i < fiobj_ary_count(data->parent); i++) {
+        fiobj_str_write(data->buffer, "  ", 2);
+      }
+    }
     if (tmp->type == FIOBJ_T_ARRAY)
       fiobj_str_write(data->buffer, "]", 1);
     else
@@ -249,13 +280,14 @@ review_nesting:
 }
 
 /* Formats an object into a JSON string. Remember to `fiobj_free`. */
-fiobj_s *fiobj_obj2json(fiobj_s *obj) {
+fiobj_s *fiobj_obj2json(fiobj_s *obj, uint8_t pretty) {
   /* Using a whole page size could optimize future allocations (no copy) */
   struct fiobj_str_new_json_data_s data = {
       .parent = fiobj_ary_new(),
       .waiting = fiobj_ary_new(),
       .buffer = fiobj_str_buf(4096),
       .count = NULL,
+      .pretty = pretty,
   };
   fiobj_each2(obj, fiobj_str_new_json_task, &data);
 
@@ -265,6 +297,50 @@ fiobj_s *fiobj_obj2json(fiobj_s *obj) {
   fiobj_free(data.waiting);
   fiobj_str_minimize(data.buffer);
   return data.buffer;
+}
+
+/* *****************************************************************************
+JSON parsing
+***************************************************************************** */
+
+/*
+Marks as object seperators any of the following:
+
+* White Space: [0x09, 0x0A, 0x0D, 0x20]
+* Comma ("," / 0x2C)
+* Colon (":" / 0x3A)
+The rest belong to objects,
+*/
+static const uint8_t JSON_SEPERATOR[] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+// inline static void move_to_end(const uint8_t **pos, const uint8_t *limit) {
+//   while (*pos < limit && JSON_SEPERATOR[**pos] == 0)
+//     (*pos)++;
+// }
+inline static void move_to_start(const uint8_t **pos, const uint8_t *limit) {
+  while (*pos < limit && JSON_SEPERATOR[**pos])
+    (*pos)++;
+}
+inline static void move_to_eol(const uint8_t **pos, const uint8_t *limit) {
+  while (*pos < limit && **pos != '\n')
+    (*pos)++;
+}
+inline static int move_to_quote(const uint8_t **pos, const uint8_t *limit) {
+  while (*pos < limit && **pos != '"' && **pos != '\\')
+    (*pos)++;
+  return *pos < limit && **pos == '\\';
 }
 
 /* *****************************************************************************
@@ -287,6 +363,7 @@ static void safestr2local(fiobj_s *str) {
   uint8_t *reader = (uint8_t *)s.bytes;
   uint8_t *writer = (uint8_t *)s.bytes;
   while (reader < end) {
+    // while(move_to_quote(&reader, end))
     int tmp = utf8_clen(reader);
     if (tmp == 1) {
       if (reader[0] == '\\') {
@@ -391,29 +468,8 @@ static void safestr2local(fiobj_s *str) {
 }
 
 /* *****************************************************************************
-JSON parsing
+JSON => Obj
 ***************************************************************************** */
-
-/*
-Marks as object seperators any of the following:
-
-* White Space: [0x09, 0x0A, 0x0D, 0x20]
-* Comma ("," / 0x2C)
-* Colon (":" / 0x3A)
-The rest belong to objects,
-*/
-static const uint8_t JSON_SEPERATOR[] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 /**
  * Parses JSON, setting `pobj` to point to the new Object.
@@ -422,42 +478,42 @@ static const uint8_t JSON_SEPERATOR[] = {
  * consumed.
  */
 size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
-  fio_ls_s nesting = FIO_LS_INIT(nesting);
+  fiobj_s *nesting = fiobj_ary_new();
+  obj2ary(nesting)->start = 0;
+  obj2ary(nesting)->end = 0;
   const uint8_t *start;
   fiobj_s *obj;
   const uint8_t *end = (uint8_t *)data;
   const uint8_t *stop = end + len;
   uint8_t depth = 0;
   while (1) {
+    /* skip any white space / seperators */
+    move_to_start(&end, stop);
     /* set objcet data end point to the starting endpoint */
     obj = NULL;
     start = end;
-    /* skip any white space / seperators */
-    while (start < stop && JSON_SEPERATOR[end[0]] == 1)
-      end++;
     if (end >= stop) {
       goto finish;
     }
-    start = end;
 
     /* test object type. tests are ordered by precedence, if one fails, the
      * other is performed. */
     if (end[0] == '{') {
       /* start an object (hash) */
-      fio_ls_push(&nesting, fiobj_hash_new());
+      fiobj_ary_push(nesting, fiobj_hash_new());
       end++;
       depth++;
-      if (depth >= 32) {
+      if (depth >= JSON_MAX_DEPTH) {
         goto error;
       }
       continue;
     }
     if (end[0] == '[') {
       /* start an array */
-      fio_ls_push(&nesting, fiobj_ary_new());
+      fiobj_ary_push(nesting, fiobj_ary_new2(8));
       end++;
       depth++;
-      if (depth >= 32) {
+      if (depth >= JSON_MAX_DEPTH) {
         goto error;
       }
       continue;
@@ -466,7 +522,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       /* end an object (hash) */
       end++;
       depth--;
-      obj = fio_ls_pop(&nesting);
+      obj = fiobj_ary_pop(nesting);
       if (obj->type != FIOBJ_T_HASH) {
         goto error;
       }
@@ -476,7 +532,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       /* end an array */
       end++;
       depth--;
-      obj = fio_ls_pop(&nesting);
+      obj = fiobj_ary_pop(nesting);
       if (obj->type != FIOBJ_T_ARRAY) {
         goto error;
       }
@@ -507,8 +563,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       /* could be a Javascript comment */
       if (end[1] == '/') {
         end += 2;
-        while (end < stop && end[0] != '\n')
-          end++;
+        move_to_eol(&end, stop);
         continue;
       }
       if (end[1] == '*') {
@@ -522,8 +577,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     }
     if (end[0] == '#') {
       /* could be a Ruby style comment */
-      while (end < stop && end[0] != '\n')
-        end++;
+      move_to_eol(&end, stop);
       continue;
     }
     if (start[0] == '"') {
@@ -531,17 +585,15 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       start++;
       end++;
       uint8_t dirty = 0;
-      while (end < stop && end[0] != '"') {
-        if (end[0] == '\\') {
-          dirty = 1;
-          end++;
-        }
-        end++;
+      while (move_to_quote(&end, stop)) {
+        end += 2;
+        dirty = 1;
       }
       if (end >= stop) {
         goto error;
       }
-      if (nesting.next->obj && nesting.next->obj->type == FIOBJ_T_HASH) {
+      if (fiobj_ary_entry(nesting, -1) &&
+          fiobj_ary_entry(nesting, -1)->type == FIOBJ_T_HASH) {
         obj = fiobj_sym_new((char *)start, end - start);
       } else {
         obj = fiobj_str_new((char *)start, end - start);
@@ -549,6 +601,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       if (dirty)
         safestr2local(obj);
       end++;
+
       goto has_obj;
     }
     if (end[0] == '-' || (end[0] >= '0' && end[0] <= '9')) {
@@ -585,43 +638,42 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     goto error;
 
   has_obj:
-    if (nesting.next == &nesting)
+
+    if (fiobj_ary_count(nesting) == 0)
       goto finish_with_obj;
-    if (nesting.next->obj->type == FIOBJ_T_ARRAY) {
-      fiobj_ary_push(nesting.next->obj, obj);
+    if (fiobj_ary_entry(nesting, -1)->type == FIOBJ_T_ARRAY) {
+      fiobj_ary_push(fiobj_ary_entry(nesting, -1), obj);
       continue;
-    } else if (nesting.next->obj->type == FIOBJ_T_SYMBOL) {
-      fiobj_s *sym = fio_ls_pop(&nesting);
-      fiobj_hash_set(nesting.next->obj, sym, obj);
-      fiobj_free(sym);
-      continue;
-    } else if (nesting.next->obj->type == FIOBJ_T_HASH) {
-      if (obj->type == FIOBJ_T_SYMBOL) {
-        fio_ls_push(&nesting, obj);
-        continue;
-      }
+    }
+    if (fiobj_ary_entry(nesting, -1)->type == FIOBJ_T_HASH) {
       fio_cstr_s s = fiobj_obj2cstr(obj);
-      fio_ls_push(&nesting, fiobj_sym_new(s.buffer, s.len));
+      fiobj_ary_push(nesting, fiobj_sym_new(s.buffer, s.len));
       fiobj_free(obj);
       continue;
-    } else {
-      goto error;
     }
+    fiobj_s *sym = fiobj_ary_pop(nesting);
+    if (fiobj_ary_entry(nesting, -1)->type != FIOBJ_T_HASH)
+      goto error;
+    fiobj_hash_set(fiobj_ary_entry(nesting, -1), sym, obj);
+    fiobj_free(sym);
+    continue;
   }
 
 finish:
   if (!obj)
-    obj = fio_ls_pop(&nesting);
+    obj = fiobj_ary_pop(nesting);
 finish_with_obj:
-  if (obj && nesting.next == &nesting) {
+  if (obj && fiobj_ary_count(nesting) == 0) {
     *pobj = obj;
+    fiobj_free(nesting);
     return end - (uint8_t *)data;
   }
 error:
   if (obj)
     fiobj_free(obj);
-  while ((obj = fio_ls_pop(&nesting)))
+  while ((obj = fiobj_ary_pop(nesting)))
     fiobj_free(obj);
+  fiobj_free(nesting);
   // fprintf(stderr, "ERROR starting at %.*s, ending at %.*s, with %s\n", 3,
   // start,
   //         3, end, start);

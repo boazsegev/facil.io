@@ -11,9 +11,23 @@ Feel free to copy, use and enjoy according to the license provided.
 String API
 ***************************************************************************** */
 
+static inline fiobj_s *fiobj_str_alloc(size_t len) {
+  fiobj_head_s *head;
+  head = malloc(sizeof(*head) + sizeof(fio_str_s));
+  head->ref = 1;
+  *obj2str(HEAD2OBJ(head)) = (fio_str_s){
+      .type = FIOBJ_T_STRING, .len = len, .capa = len, .str = malloc(len + 1),
+  };
+  obj2str(HEAD2OBJ(head))->str[len] = 0;
+  return HEAD2OBJ(head);
+}
+
 /** Creates a String object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_new(const char *str, size_t len) {
-  return fiobj_alloc(FIOBJ_T_STRING, len, (void *)str);
+  fiobj_s *s = fiobj_str_alloc(len);
+  if (str)
+    memcpy(obj2str(s)->str, str, len);
+  return s;
 }
 
 /** Creates a buffer String object. Remember to use `fiobj_free`. */
@@ -22,9 +36,9 @@ fiobj_s *fiobj_str_buf(size_t capa) {
     capa = capa - 1;
   else
     capa = 31;
-  fiobj_s *str = fiobj_alloc(FIOBJ_T_STRING, capa, NULL);
-  fiobj_str_clear(str);
-  return str;
+  fiobj_s *s = fiobj_str_alloc(capa);
+  fiobj_str_clear(s);
+  return s;
 }
 
 /**
@@ -38,39 +52,43 @@ fiobj_s *fiobj_str_buf(size_t capa) {
  * NOTICE: static strings can't be written to.
  */
 fiobj_s *fiobj_str_static(const char *str, size_t len) {
-  fiobj_s *obj = fiobj_alloc(FIOBJ_T_STRING, 7, NULL);
-  free(obj2str(obj)->str);
-  obj2str(obj)->str = (char *)str;
-  obj2str(obj)->len = len ? len : strlen(str);
-  obj2str(obj)->capa = 0;
-  obj2str(obj)->is_static = 1;
-  return obj;
+  fiobj_head_s *head;
+  head = malloc(sizeof(*head) + sizeof(fio_str_s));
+  head->ref = 1;
+  *obj2str(HEAD2OBJ(head)) = (fio_str_s){
+      .type = FIOBJ_T_STRING,
+      .len = (len ? len : strlen(str)),
+      .capa = 0,
+      .str = (char *)str,
+      .is_static = 1,
+  };
+  return HEAD2OBJ(head);
 }
 
 /** Creates a copy from an existing String. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_copy(fiobj_s *src) {
   fio_cstr_s s = fiobj_obj2cstr(src);
-  return fiobj_alloc(FIOBJ_T_STRING, s.len, (void *)s.data);
+  return fiobj_str_new(s.data, s.len);
 }
 
 /** Creates a String object using a printf like interface. */
 __attribute__((format(printf, 1, 0))) fiobj_s *
-fiobj_strvprintf(const char *restrict format, va_list argv) {
+fiobj_strvprintf(const char *format, va_list argv) {
   fiobj_s *str = NULL;
   va_list argv_cpy;
   va_copy(argv_cpy, argv);
   int len = vsnprintf(NULL, 0, format, argv_cpy);
   va_end(argv_cpy);
   if (len == 0)
-    str = fiobj_alloc(FIOBJ_T_STRING, 0, (void *)"");
+    str = fiobj_str_new("", 0);
   if (len <= 0)
     return str;
-  str = fiobj_alloc(FIOBJ_T_STRING, len, NULL); /* adds 1 to len, for NUL */
+  str = fiobj_str_new(NULL, len);
   vsnprintf(((fio_str_s *)(str))->str, len + 1, format, argv);
   return str;
 }
 __attribute__((format(printf, 1, 2))) fiobj_s *
-fiobj_strprintf(const char *restrict format, ...) {
+fiobj_strprintf(const char *format, ...) {
   va_list argv;
   va_start(argv, format);
   fiobj_s *str = fiobj_strvprintf(format, argv);
@@ -78,20 +96,24 @@ fiobj_strprintf(const char *restrict format, ...) {
   return str;
 }
 
-/** Resizes a String object, allocating more memory if required. */
-void fiobj_str_resize(fiobj_s *str, size_t size) {
-  if (str->type != FIOBJ_T_STRING || ((fio_str_s *)str)->capa == 0)
+/** Confirms the requested capacity is available and allocates as required. */
+void fiobj_str_capa_assert(fiobj_s *str, size_t size) {
+  if (str->type != FIOBJ_T_STRING || ((fio_str_s *)str)->capa == 0 ||
+      ((fio_str_s *)str)->capa >= size + 1)
     return;
-  if (((fio_str_s *)str)->capa >= size + 1) {
-    ((fio_str_s *)str)->len = size;
-    ((fio_str_s *)str)->str[size] = 0;
-    return;
-  }
   /* it's better to crash than live without memory... */
   ((fio_str_s *)str)->str = realloc(((fio_str_s *)str)->str, size + 1);
   ((fio_str_s *)str)->capa = size + 1;
-  ((fio_str_s *)str)->len = size;
   ((fio_str_s *)str)->str[size] = 0;
+  return;
+}
+
+/** Resizes a String object, allocating more memory if required. */
+void fiobj_str_resize(fiobj_s *str, size_t size) {
+  if (str->type != FIOBJ_T_STRING)
+    return;
+  fiobj_str_capa_assert(str, size);
+  ((fio_str_s *)str)->len = size;
   return;
 }
 

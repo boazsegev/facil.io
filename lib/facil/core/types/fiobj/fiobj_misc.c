@@ -10,21 +10,35 @@ Feel free to copy, use and enjoy according to the license provided.
 NULL, TRUE, FALSE API
 ***************************************************************************** */
 
+inline static fiobj_s *fiobj_alloc_simple(fiobj_type_en type) {
+  fiobj_head_s *head;
+  head = malloc(sizeof(*head) + sizeof(fiobj_s));
+  head->ref = 1;
+  HEAD2OBJ(head)->type = type;
+  return HEAD2OBJ(head);
+}
+
 /** Retruns a NULL object. */
-fiobj_s *fiobj_null(void) { return fiobj_alloc(FIOBJ_T_NULL, 0, NULL); }
+fiobj_s *fiobj_null(void) { return fiobj_alloc_simple(FIOBJ_T_NULL); }
 
 /** Retruns a TRUE object. */
-fiobj_s *fiobj_true(void) { return fiobj_alloc(FIOBJ_T_TRUE, 0, NULL); }
+fiobj_s *fiobj_true(void) { return fiobj_alloc_simple(FIOBJ_T_TRUE); }
 
 /** Retruns a FALSE object. */
-fiobj_s *fiobj_false(void) { return fiobj_alloc(FIOBJ_T_FALSE, 0, NULL); }
+fiobj_s *fiobj_false(void) { return fiobj_alloc_simple(FIOBJ_T_FALSE); }
 
 /* *****************************************************************************
 IO API      TODO: move to a different file when it grows.
 ***************************************************************************** */
 
 /** Wrapps a file descriptor in an IO object. Use `fiobj_free` to close. */
-fiobj_s *fio_io_wrap(intptr_t fd) { return fiobj_alloc(FIOBJ_T_IO, 0, &fd); }
+fiobj_s *fio_io_wrap(intptr_t fd) {
+  fiobj_head_s *head;
+  head = malloc(sizeof(*head) + sizeof(fio_io_s));
+  head->ref = 1;
+  *obj2io(HEAD2OBJ(head)) = (fio_io_s){.type = FIOBJ_T_IO, .fd = fd};
+  return HEAD2OBJ(head);
+}
 
 /**
  * Return an IO's fd.

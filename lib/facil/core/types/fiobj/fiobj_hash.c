@@ -16,8 +16,8 @@ We avoid the fiobj_ary_s to prevent entanglement
 static inline void fio_map_reset(fio_map_s *map, uintptr_t capa) {
   /* It's better to reallocate using calloc than manually zero out memory */
   /* Maybe there's enough zeroed out pages available in the system */
-  /* capacity should be page alighned */
-  map->capa = ((((capa) >> 12) + 1) << 12);
+  /* capacity will be page aligned for large masks */
+  map->capa = ((((capa) >> 9) + 1) << 9);
   free(map->data);
   map->data = calloc(sizeof(*map->data), map->capa);
   if (!map->data)
@@ -109,10 +109,17 @@ retry_rehashing:
   }
 }
 
+static inline fiobj_s *fiobj_couplet_alloc(void *sym, void *obj) {
+  fiobj_head_s *head;
+  head = malloc(sizeof(*head) + sizeof(fio_couplet_s));
+  head->ref = 1;
+  *(fio_couplet_s *)(HEAD2OBJ(head)) =
+      (fio_couplet_s){.type = FIOBJ_T_COUPLET, .name = sym, .obj = obj};
+  return HEAD2OBJ(head);
+}
 /* *****************************************************************************
 Hash API
 ***************************************************************************** */
-#define obj2hash3(o) ((fio_hash_s *)(o))
 /**
  * Creates a mutable empty Hash object. Use `fiobj_free` when done.
  *
@@ -124,32 +131,32 @@ fiobj_s *fiobj_hash_new(void) {
   head->ref = 1;
   *((fio_hash_s *)HEAD2OBJ(head)) = (fio_hash_s){
       .type = FIOBJ_T_HASH,
-      .mask = 1023,
+      .mask = 255,
       .items = FIO_LS_INIT((((fio_hash_s *)HEAD2OBJ(head))->items)),
   };
-  fio_map_reset(&obj2hash3(HEAD2OBJ(head))->map,
-                obj2hash3(HEAD2OBJ(head))->mask);
+  fio_map_reset(&obj2hash(HEAD2OBJ(head))->map, obj2hash(HEAD2OBJ(head))->mask);
   return HEAD2OBJ(head);
 }
-void fiobj_hash_free(fiobj_s *h) {
-  fiobj_s *coup;
-  while ((coup = fio_ls_pop(&obj2hash3(h)->items))) {
-    /* these deallocations go inside the `each2` */
-    fiobj_free(obj2couplet(coup)->obj);
-    fiobj_dealloc(obj2couplet(coup)->name);
-    fiobj_dealloc(coup);
-  }
-  free(obj2hash3(h)->map.data);
-  obj2hash3(h)->map.data = NULL;
-  obj2hash3(h)->map.capa = 0;
-  free(&OBJ2HEAD(h));
-}
+
+// static void fiobj_hash_free(fiobj_s *h) {
+//   fiobj_s *coup;
+//   while ((coup = fio_ls_pop(&obj2hash(h)->items))) {
+//     /* these deallocations go inside the `each2` */
+//     fiobj_free(obj2couplet(coup)->obj);
+//     fiobj_dealloc(obj2couplet(coup)->name);
+//     fiobj_dealloc(coup);
+//   }
+//   free(obj2hash(h)->map.data);
+//   obj2hash(h)->map.data = NULL;
+//   obj2hash(h)->map.capa = 0;
+//   free(&OBJ2HEAD(h));
+// }
 
 /** Returns the number of elements in the Hash. */
 size_t fiobj_hash_count(fiobj_s *hash) {
   if (!hash || hash->type != FIOBJ_T_HASH)
     return 0;
-  return obj2hash3(hash)->count;
+  return obj2hash(hash)->count;
 }
 
 /**
@@ -165,12 +172,10 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
   }
   // TODO: shoule we use preemptive rehashing? - NO! has negative impact!
   /*
-  if (obj2hash3(hash)->count >= (((obj2hash3(hash)->mask + 1) << 1) / 3))
+  if (obj2hash(hash)->count >= (((obj2hash(hash)->mask + 1) << 1) / 3))
     fiobj_hash_rehash(hash);
   */
-  fiobj_s *coup = fiobj_alloc(FIOBJ_T_COUPLET, 0, NULL);
-  ((fio_couplet_s *)coup)->name = fiobj_dup(sym);
-  ((fio_couplet_s *)coup)->obj = obj;
+  fiobj_s *coup = fiobj_couplet_alloc(fiobj_dup(sym), obj);
   fiobj_s *old = fio_hash_insert((fio_hash_s *)hash, obj2sym(sym)->hash, coup);
   while (old == (void *)-1) {
     fiobj_hash_rehash(hash);

@@ -93,8 +93,23 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
 Array API
 ***************************************************************************** */
 
+static fiobj_s *fiobj_ary_alloc(size_t capa, size_t start_at) {
+  fiobj_head_s *head;
+  head = malloc(sizeof(*head) + sizeof(fio_ary_s));
+  head->ref = 1;
+  *((fio_ary_s *)HEAD2OBJ(head)) =
+      (fio_ary_s){.start = start_at,
+                  .end = start_at,
+                  .capa = capa,
+                  .arry = malloc(sizeof(fiobj_s *) * capa),
+                  .type = FIOBJ_T_ARRAY};
+  return HEAD2OBJ(head);
+}
+
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
-fiobj_s *fiobj_ary_new(void) { return fiobj_alloc(FIOBJ_T_ARRAY, 0, NULL); }
+fiobj_s *fiobj_ary_new(void) { return fiobj_ary_alloc(32, 8); }
+/** Creates a mutable empty Array object with the requested capacity. */
+fiobj_s *fiobj_ary_new2(size_t capa) { return fiobj_ary_alloc(capa, 0); }
 
 /** Returns the number of elements in the Array. */
 size_t fiobj_ary_count(fiobj_s *ary) {
