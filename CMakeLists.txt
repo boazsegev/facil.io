@@ -36,7 +36,7 @@ set(facil.io_SOURCES
   ./lib/facil/core/types/fiobj/fiobj_hash.c
   ./lib/facil/core/types/fiobj/fiobj_json.c
   ./lib/facil/core/types/fiobj/fiobj_misc.c
-  ./lib/facil/core/types/fiobj/fiobj_numers.c
+  ./lib/facil/core/types/fiobj/fiobj_numbers.c
   ./lib/facil/core/types/fiobj/fiobj_str.c
   ./lib/facil/core/types/fiobj/fiobj_sym.c
   ./lib/facil/core/types/fiobj/fiobj_tests.c
