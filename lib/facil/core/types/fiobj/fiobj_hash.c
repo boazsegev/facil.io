@@ -36,7 +36,10 @@ static map_info_s *fio_hash_seek(fio_hash_s *h, uintptr_t hash) {
   /* TODO: consider implementing Robing Hood reordering during seek */
   map_info_s *pos = h->map.data + (hash & h->mask);
   uintptr_t i = 0;
-  while (i < FIOBJ_HASH_MAX_MAP_SEEK) {
+  const uintptr_t limit = h->map.capa > FIOBJ_HASH_MAX_MAP_SEEK
+                              ? FIOBJ_HASH_MAX_MAP_SEEK
+                              : (h->map.capa >> 1);
+  while (i < limit) {
     if (!pos->hash || pos->hash == hash)
       return pos;
     pos = h->map.data +
@@ -118,6 +121,10 @@ static inline fiobj_s *fiobj_couplet_alloc(void *sym, void *obj) {
 /* *****************************************************************************
 Hash API
 ***************************************************************************** */
+
+/* MUST be a power of 2 */
+#define HASH_INITIAL_CAPACITY 16
+
 /**
  * Creates a mutable empty Hash object. Use `fiobj_free` when done.
  *
@@ -129,10 +136,10 @@ fiobj_s *fiobj_hash_new(void) {
   head->ref = 1;
   *obj2hash(HEAD2OBJ(head)) = (fio_hash_s){
       .type = FIOBJ_T_HASH,
-      .mask = ((FIOBJ_HASH_MAX_MAP_SEEK << 1) - 1),
+      .mask = (HASH_INITIAL_CAPACITY - 1),
       .items = FIO_LS_INIT((obj2hash(HEAD2OBJ(head))->items)),
-      .map.data = calloc(sizeof(map_info_s), (FIOBJ_HASH_MAX_MAP_SEEK << 1)),
-      .map.capa = (FIOBJ_HASH_MAX_MAP_SEEK << 1),
+      .map.data = calloc(sizeof(map_info_s), HASH_INITIAL_CAPACITY),
+      .map.capa = HASH_INITIAL_CAPACITY,
   };
   // fio_map_reset(&obj2hash(HEAD2OBJ(head))->map,
   // obj2hash(HEAD2OBJ(head))->mask);
