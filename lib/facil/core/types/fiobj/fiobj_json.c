@@ -335,14 +335,53 @@ inline static void move_to_start(const uint8_t **pos, const uint8_t *limit) {
   while (*pos < limit && JSON_SEPERATOR[**pos])
     (*pos)++;
 }
-inline static void move_to_eol(const uint8_t **pos, const uint8_t *limit) {
-  while (*pos < limit && **pos != '\n')
-    (*pos)++;
+inline static uint8_t move_to_eol(const uint8_t **pos, const uint8_t *limit) {
+  /* single char lookup using library is best when target is far... */
+  if (*pos >= limit)
+    return 0;
+  if (**pos == '\n')
+    return 1;
+  void *tmp = memchr(*pos, '\n', limit - (*pos));
+  if (tmp) {
+    *pos = tmp;
+    return 1;
+  }
+  *pos = limit;
+  return 0;
 }
+
 inline static int move_to_quote(const uint8_t **pos, const uint8_t *limit) {
-  while (*pos < limit && **pos != '"' && **pos != '\\')
+  if (**pos == '\\')
+    return 1;
+  if (**pos == '\"')
+    return 0;
+  uint64_t wanted1 = 0x0101010101010101ULL * '"';
+  uint64_t wanted2 = 0x0101010101010101ULL * '\\';
+  uint64_t *lpos = (uint64_t *)*pos;
+  uint64_t *llimit = ((uint64_t *)limit) - 1;
+
+  for (; lpos < llimit; ++lpos) {
+    const uint64_t eq1 = ~((*lpos) ^ wanted1);
+    const uint64_t t0 = (eq1 & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
+    const uint64_t t1 = (eq1 & 0x8080808080808080llu);
+    const uint64_t eq2 = ~((*lpos) ^ wanted2);
+    const uint64_t t2 = (eq2 & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
+    const uint64_t t3 = (eq2 & 0x8080808080808080llu);
+    if ((t0 & t1) || (t2 & t3))
+      break;
+  }
+  *pos = (uint8_t *)lpos;
+
+  while (*pos < limit) {
+    if (**pos == '\"') {
+      return 0;
+    }
+    if (**pos == '\\') {
+      return 1;
+    }
     (*pos)++;
-  return *pos < limit && **pos == '\\';
+  }
+  return 0;
 }
 
 /* *****************************************************************************
