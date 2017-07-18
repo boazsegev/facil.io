@@ -43,19 +43,21 @@ static uint8_t is_hex[] = {
     0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
     0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0};
 
-/* invalid byte length is ignored */
-static inline int utf8_clen(const uint8_t *str) {
-  if (str[0] <= 127)
-    return 1;
-  if ((str[0] & 224) == 192 && (str[1] & 192) == 128)
-    return 2;
-  if ((str[0] & 240) == 224 && (str[1] & 192) == 128 && (str[2] & 192) == 128)
-    return 3;
-  if ((str[0] & 248) == 240 && (str[1] & 192) == 128 && (str[2] & 192) == 128 &&
-      (str[3] & 192) == 128)
-    return 4;
-  return 0; /* invalid UTF-8 */
-}
+// /* invalid byte length is ignored */
+// static inline int utf8_clen(const uint8_t *str) {
+//   if (str[0] <= 127)
+//     return 1;
+//   if ((str[0] & 224) == 192 && (str[1] & 192) == 128)
+//     return 2;
+//   if ((str[0] & 240) == 224 && (str[1] & 192) == 128 && (str[2] & 192) ==
+//   128)
+//     return 3;
+//   if ((str[0] & 248) == 240 && (str[1] & 192) == 128 && (str[2] & 192) == 128
+//   &&
+//       (str[3] & 192) == 128)
+//     return 4;
+//   return 0; /* invalid UTF-8 */
+// }
 
 /* converts a uint16_t to UTF-8 and returns the number of bytes written */
 static inline int utf8_from_u16(uint8_t *dest, uint16_t u) {
@@ -363,97 +365,78 @@ static void safestr2local(fiobj_s *str) {
   uint8_t *reader = (uint8_t *)s.bytes;
   uint8_t *writer = (uint8_t *)s.bytes;
   while (reader < end) {
-    // while(move_to_quote(&reader, end))
-    int tmp = utf8_clen(reader);
-    if (tmp == 1) {
-      if (reader[0] == '\\') {
-        had_changed = 1;
-        switch (reader[1]) {
-        case 'b':
-          *(writer++) = '\b';
-          reader += 2;
-          break; /* from switch */
-        case 'f':
-          *(writer++) = '\f';
-          reader += 2;
-          break; /* from switch */
-        case 'n':
-          *(writer++) = '\n';
-          reader += 2;
-          break; /* from switch */
-        case 'r':
-          *(writer++) = '\r';
-          reader += 2;
-          break; /* from switch */
-        case 't':
-          *(writer++) = '\t';
-          reader += 2;
-          break;    /* from switch */
-        case 'u': { /* test for octal notation */
-          if (is_hex[reader[2]] && is_hex[reader[3]] && is_hex[reader[4]] &&
-              is_hex[reader[5]]) {
-            uint16_t t =
-                (((is_hex[reader[2]] - 1) << 4) | (is_hex[reader[3]] - 1)
-                                                      << 8) |
-                (((is_hex[reader[4]] - 1) << 4) | (is_hex[reader[5]] - 1));
-            writer += utf8_from_u16(writer, t);
-            reader += 6;
-            break; /* from switch */
-          } else
-            goto invalid_escape;
-        }
-        case 'x': { /* test for hex notation */
-          if (is_hex[reader[2]] && is_hex[reader[3]]) {
-            *(writer++) =
-                ((is_hex[reader[2]] - 1) << 4) | (is_hex[reader[3]] - 1);
-            reader += 4;
-            break; /* from switch */
-          } else
-            goto invalid_escape;
-        }
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7': { /* test for octal notation */
-          if (reader[1] >= '0' && reader[1] <= '7' && reader[2] >= '0' &&
-              reader[2] <= '7') {
-            *(writer++) = ((reader[1] - '0') << 3) | (reader[2] - '0');
-            reader += 3;
-            break; /* from switch */
-          } else
-            goto invalid_escape;
-        }
-        case '"':
-        case '\\':
-        case '/':
-        /* fallthrough */
-        default:
-        invalid_escape:
-          *(writer++) = reader[1];
-          reader += 2;
-          break; /* from switch */
-        }
-        continue;
-      }
-      *(writer++) = (*reader++);
-    } else if (tmp == 2) {
-      *(writer++) = (*reader++);
-      *(writer++) = (*reader++);
-    } else if (tmp == 3) {
-      *(writer++) = (*reader++);
-      *(writer++) = (*reader++);
-      *(writer++) = (*reader++);
-    } else if (tmp == 4) {
-      *(writer++) = (*reader++);
-      *(writer++) = (*reader++);
-      *(writer++) = (*reader++);
-      *(writer++) = (*reader++);
-    } else { /* (tmp == 0) : we ignore UTF-8 invalidity*/
-      *(writer++) = (*reader++);
+    while (reader < end && reader[0] != '\\') {
+      *(writer++) = *(reader++);
+    }
+    if (reader[0] != '\\')
+      break;
+
+    had_changed = 1;
+    switch (reader[1]) {
+    case 'b':
+      *(writer++) = '\b';
+      reader += 2;
+      break; /* from switch */
+    case 'f':
+      *(writer++) = '\f';
+      reader += 2;
+      break; /* from switch */
+    case 'n':
+      *(writer++) = '\n';
+      reader += 2;
+      break; /* from switch */
+    case 'r':
+      *(writer++) = '\r';
+      reader += 2;
+      break; /* from switch */
+    case 't':
+      *(writer++) = '\t';
+      reader += 2;
+      break;    /* from switch */
+    case 'u': { /* test for octal notation */
+      if (is_hex[reader[2]] && is_hex[reader[3]] && is_hex[reader[4]] &&
+          is_hex[reader[5]]) {
+        uint16_t t =
+            (((is_hex[reader[2]] - 1) << 4) | (is_hex[reader[3]] - 1) << 8) |
+            (((is_hex[reader[4]] - 1) << 4) | (is_hex[reader[5]] - 1));
+        writer += utf8_from_u16(writer, t);
+        reader += 6;
+        break; /* from switch */
+      } else
+        goto invalid_escape;
+    }
+    case 'x': { /* test for hex notation */
+      if (is_hex[reader[2]] && is_hex[reader[3]]) {
+        *(writer++) = ((is_hex[reader[2]] - 1) << 4) | (is_hex[reader[3]] - 1);
+        reader += 4;
+        break; /* from switch */
+      } else
+        goto invalid_escape;
+    }
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7': { /* test for octal notation */
+      if (reader[1] >= '0' && reader[1] <= '7' && reader[2] >= '0' &&
+          reader[2] <= '7') {
+        *(writer++) = ((reader[1] - '0') << 3) | (reader[2] - '0');
+        reader += 3;
+        break; /* from switch */
+      } else
+        goto invalid_escape;
+    }
+    case '"':
+    case '\\':
+    case '/':
+    /* fallthrough */
+    default:
+    invalid_escape:
+      *(writer++) = reader[1];
+      reader += 2;
     }
   }
   if (str->type == FIOBJ_T_STRING) {
@@ -478,9 +461,7 @@ JSON => Obj
  * consumed.
  */
 size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
-  fiobj_s *nesting = fiobj_ary_new();
-  obj2ary(nesting)->start = 0;
-  obj2ary(nesting)->end = 0;
+  fiobj_s *nesting = fiobj_ary_new2(JSON_MAX_DEPTH + 2);
   const uint8_t *start;
   fiobj_s *obj;
   const uint8_t *end = (uint8_t *)data;
