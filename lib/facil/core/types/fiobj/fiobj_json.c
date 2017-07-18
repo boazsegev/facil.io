@@ -491,7 +491,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     }
     if (end[0] == '[') {
       /* start an array */
-      fiobj_ary_push(nesting, fiobj_ary_new2(8));
+      fiobj_ary_push(nesting, fiobj_ary_new2(4));
       end++;
       depth++;
       if (depth >= JSON_MAX_DEPTH) {

@@ -16,8 +16,7 @@ We avoid the fiobj_ary_s to prevent entanglement
 static inline void fio_map_reset(fio_map_s *map, uintptr_t capa) {
   /* It's better to reallocate using calloc than manually zero out memory */
   /* Maybe there's enough zeroed out pages available in the system */
-  /* capacity will be page aligned for large masks */
-  map->capa = ((((capa) >> 9) + 1) << 9);
+  map->capa = capa;
   free(map->data);
   map->data = calloc(sizeof(*map->data), map->capa);
   if (!map->data)
@@ -36,9 +35,8 @@ static inline uintptr_t fio_map_cuckoo_steps(uintptr_t step) {
 static map_info_s *fio_hash_seek(fio_hash_s *h, uintptr_t hash) {
   /* TODO: consider implementing Robing Hood reordering during seek */
   map_info_s *pos = h->map.data + (hash & h->mask);
-  map_info_s *end = pos + fio_map_cuckoo_steps(FIOBJ_HASH_MAX_MAP_SEEK);
   uintptr_t i = 0;
-  while (pos < end) {
+  while (i < FIOBJ_HASH_MAX_MAP_SEEK) {
     if (!pos->hash || pos->hash == hash)
       return pos;
     pos = h->map.data +
@@ -95,7 +93,7 @@ void fiobj_hash_rehash(fiobj_s *h_) {
 //         h->count, h->map.capa);
 retry_rehashing:
   h->mask = ((h->mask) << 1) | 1;
-  fio_map_reset(&h->map, h->mask);
+  fio_map_reset(&h->map, h->mask + 1);
   fio_ls_s *pos = h->items.next;
   while (pos != &h->items) {
     /* can't use fio_hash_insert, because we're recycling containers */
@@ -129,12 +127,15 @@ Hash API
 fiobj_s *fiobj_hash_new(void) {
   fiobj_head_s *head = malloc(sizeof(*head) + sizeof(fio_hash_s));
   head->ref = 1;
-  *((fio_hash_s *)HEAD2OBJ(head)) = (fio_hash_s){
+  *obj2hash(HEAD2OBJ(head)) = (fio_hash_s){
       .type = FIOBJ_T_HASH,
-      .mask = 255,
-      .items = FIO_LS_INIT((((fio_hash_s *)HEAD2OBJ(head))->items)),
+      .mask = ((FIOBJ_HASH_MAX_MAP_SEEK << 1) - 1),
+      .items = FIO_LS_INIT((obj2hash(HEAD2OBJ(head))->items)),
+      .map.data = calloc(sizeof(map_info_s), (FIOBJ_HASH_MAX_MAP_SEEK << 1)),
+      .map.capa = (FIOBJ_HASH_MAX_MAP_SEEK << 1),
   };
-  fio_map_reset(&obj2hash(HEAD2OBJ(head))->map, obj2hash(HEAD2OBJ(head))->mask);
+  // fio_map_reset(&obj2hash(HEAD2OBJ(head))->map,
+  // obj2hash(HEAD2OBJ(head))->mask);
   return HEAD2OBJ(head);
 }
 

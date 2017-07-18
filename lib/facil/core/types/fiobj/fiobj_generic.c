@@ -118,80 +118,136 @@ fio_cstr_s fiobj_obj2cstr(fiobj_s *obj) {
 Object Iteration (`fiobj_each2`)
 ***************************************************************************** */
 
+static uint8_t already_processed(fiobj_s *nested, fiobj_s *obj) {
+  size_t end = obj2ary(nested)->end;
+  for (size_t i = obj2ary(nested)->start; i < end; i++) {
+    if (obj2ary(nested)->arry[i] == obj)
+      return 1;
+  }
+  OBJREF_ADD(obj);
+  fiobj_ary_push(nested, obj);
+  return 0;
+}
+
 /**
  * Deep itteration using a callback for each fio object, including the parent.
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  */
 void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
                  void *arg) {
-  fio_ls_s list = FIO_LS_INIT(list);
-  if (!task)
+  /* optimize simple items */
+  if (!obj || (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH)) {
+    task(obj, arg);
     return;
-  if (obj && (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH ||
-              obj->type == FIOBJ_T_COUPLET))
-    goto nested;
-  /* no nested objects, fast and easy. */
-  task(obj, arg);
-  return;
-
-nested:
-
-  fio_ls_push(&list, obj);
-  fiobj_s *processed = fiobj_ary_new();
-  /* as long as `list` contains items... */
-  do {
-    /* remove from the begining of the list, add at it's end. */
-    obj = fio_ls_shift(&list);
-    if (!obj)
-      goto perform_task;
-
-    /* test for cyclic nesting before reading the object (possibly freed) */
-    for (size_t i = obj2ary(processed)->start; i < obj2ary(processed)->end;
-         i++) {
-      if (obj2ary(processed)->arry[i] == obj) {
-        obj = NULL;
-        goto perform_task;
+  }
+  /* Prepare for layerd iteration */
+  fiobj_s *child = NULL;
+  uintptr_t count = 0;
+  fiobj_s *nested = fiobj_ary_new2(64);
+  fiobj_s *state = fiobj_ary_new2(128);
+  OBJREF_ADD(obj);
+  fiobj_ary_push(nested, obj);
+  if (task(obj, arg) == -1)
+    goto finish;
+rebase:
+  switch (obj->type) {
+  case FIOBJ_T_ARRAY: {
+    size_t i;
+    size_t end = obj2ary(obj)->end;
+    /* resume ? */
+    if (count) {
+      i = count;
+      // count = 0;
+    } else {
+      i = obj2ary(obj)->start;
+    }
+    /* iteration over elements */
+    for (; i < end; i++) {
+      if (obj2ary(obj)->arry[i] &&
+          (obj2ary(obj)->arry[i]->type == FIOBJ_T_ARRAY ||
+           obj2ary(obj)->arry[i]->type == FIOBJ_T_HASH)) {
+        if (already_processed(nested, obj2ary(obj)->arry[i])) {
+          if (task(NULL, arg) == -1) {
+            goto finish;
+          }
+          continue;
+        }
+        if (task(obj2ary(obj)->arry[i], arg) == -1) {
+          goto finish;
+        }
+        count = i + 1;
+        child = obj2ary(obj)->arry[i];
+        goto dig_deeper;
+      }
+      if (task(obj2ary(obj)->arry[i], arg) == -1) {
+        goto finish;
       }
     }
-
-    fiobj_s *tmp = obj;
-    if (obj->type == FIOBJ_T_COUPLET)
-      tmp = fiobj_couplet2obj(obj);
-
-    /* if it's a simple object, fast forward */
-    if (!tmp || (tmp->type != FIOBJ_T_ARRAY && tmp->type != FIOBJ_T_HASH))
-      goto perform_task;
-
-    /* add object to cyclic protection */
-    fiobj_ary_push(processed, obj);
-    // if (obj->type == FIOBJ_T_COUPLET)
-    //   fio_ls_push(&processed, tmp);
-
-    /* add all children to the queue */
-    if (tmp->type == FIOBJ_T_ARRAY) {
-      size_t i = fiobj_ary_count(tmp);
-      while (i) {
-        i--;
-        fio_ls_unshift(&list, fiobj_ary_entry(tmp, i));
-      }
-    } else { /* must be Hash */
-      /* walk in reverse */
-      fio_ls_s *hash_pos = obj2hash(tmp)->items.prev;
-      while (hash_pos != &obj2hash(tmp)->items) {
-        fio_ls_unshift(&list, hash_pos->obj);
-        hash_pos = hash_pos->prev;
-      }
+    break;
+  }
+  case FIOBJ_T_HASH: {
+    fio_ls_s *pos;
+    /* resume ? */
+    if (count) {
+      pos = ((fio_ls_s *)count);
+      count = 0;
+    } else {
+      pos = obj2hash(obj)->items.next;
     }
+    /* itteration over elements */
+    while (pos != &obj2hash(obj)->items) {
+      // if (pos->obj == NULL) {
+      //   /* an item was removed?! */
+      //   pos = pos->next;
+      //   continue;
+      // }
+      child = obj2couplet(pos->obj)->obj;
+      if (child &&
+          (child->type == FIOBJ_T_ARRAY || child->type == FIOBJ_T_HASH)) {
+        if (already_processed(nested, child)) {
+          if (task(NULL, arg) == -1) {
+            goto finish;
+          }
+          pos = pos->next;
+          continue;
+        }
+        if (task(pos->obj, arg) == -1) {
+          goto finish;
+        }
+        count = (uintptr_t)pos->next;
+        goto dig_deeper;
+      }
+      if (task(pos->obj, arg) == -1) {
+        goto finish;
+      }
+      pos = pos->next;
+    }
+    break;
+  }
+  default:
+    break;
+  }
 
-  perform_task:
-    if (task(obj, arg) == -1)
-      goto finish;
-  } while (list.next != &list);
+  /* any more nested layers left to handle? */
+  if (fiobj_ary_count(state)) {
+    count = (uintptr_t)fiobj_ary_pop(state);
+    obj = fiobj_ary_pop(state);
+    goto rebase;
+  }
 
 finish:
-  while (fio_ls_pop(&list))
-    ;
-  fiobj_dealloc(processed);
+  while ((obj = fiobj_ary_pop(nested)))
+    fiobj_dealloc(obj);
+  fiobj_dealloc(nested);
+  fiobj_dealloc(state);
+  return;
+
+dig_deeper:
+  fiobj_ary_push(state, obj);
+  fiobj_ary_push(state, (void *)count);
+  count = 0;
+  obj = child;
+  goto rebase;
 }
 
 /* *****************************************************************************

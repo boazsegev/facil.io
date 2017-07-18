@@ -114,6 +114,7 @@ void fiobj_str_resize(fiobj_s *str, size_t size) {
     return;
   fiobj_str_capa_assert(str, size);
   ((fio_str_s *)str)->len = size;
+  ((fio_str_s *)str)->str[size] = 0;
   return;
 }
 
@@ -149,7 +150,7 @@ void fiobj_str_clear(fiobj_s *str) {
 size_t fiobj_str_write(fiobj_s *dest, const char *data, size_t len) {
   if (dest->type != FIOBJ_T_STRING)
     return 0;
-  fiobj_str_resize(dest, ((fio_str_s *)dest)->len + len);
+  fiobj_str_resize(dest, obj2str(dest)->len + len);
   if (len < 8) {
     size_t pos = obj2str(dest)->len;
     while (len) {
