@@ -27,8 +27,9 @@ extern "C" {
 #endif
 
 /**
- * Sets the default state for nesting protection (true state should be placed in
- * the makefile).
+ * Sets the default state for nesting protection.
+ *
+ * NOTICE: facil.io's default makefile will disables nesting protection.
  *
  * This effects traversing functions, such as `fiobj_each2`, `fiobj_dup`,
  * `fiobj_free` etc'.
