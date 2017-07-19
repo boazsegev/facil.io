@@ -20,7 +20,7 @@
 
 **Feature**: 🎉🎉 added a dynamic type library to `facil.io`'s core, making some common web related tasks easier to manage.
 
-**Feature**: 🎉🎉🎉 added native JSON support. JSON strings can be converted to `fiobj_s *` objects and `fiobj_s *` objects can be rendered as JSON!
+**Feature**: 🎉🎉🎉 added native JSON support. JSON strings can be converted to `fiobj_s *` objects and `fiobj_s *` objects can be rendered as JSON! I'm hoping to get it [benchmarked publicly](https://github.com/miloyip/nativejson-benchmark/pull/92).
 
 
 
