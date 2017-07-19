@@ -718,7 +718,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     }
     if (end[0] == '-' && end[1] == 'I' && end[2] == 'n' && end[3] == 'f') {
       obj = fiobj_float_new(nan(""));
-      copysign(obj2float(obj)->f, (double)-1);
+      obj2float(obj)->f = copysign(obj2float(obj)->f, (double)-1);
       goto has_obj;
     }
     if (end[0] == 'I' && end[1] == 'n' && end[2] == 'f') {
@@ -729,7 +729,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     if (end[0] == '-' && end[1] == 'I' && end[2] == 'n' && end[3] == 'f') {
       move_to_end(&end, stop);
       obj = fiobj_float_new(INFINITY);
-      copysign(obj2float(obj)->f, (double)-1);
+      obj2float(obj)->f = copysign(obj2float(obj)->f, (double)-1);
       goto has_obj;
     }
     goto error;
