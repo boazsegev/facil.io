@@ -6,6 +6,7 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #include "fiobj_types.h"
 // #include "fio2resp.h"
+#include <ctype.h>
 
 /* *****************************************************************************
 JSON API
@@ -60,7 +61,7 @@ static uint8_t is_hex[] = {
 // }
 
 /* converts a uint16_t to UTF-8 and returns the number of bytes written */
-static inline int utf8_from_u16(uint8_t *dest, uint16_t u) {
+static inline int utf8_from_u32(uint8_t *dest, uint32_t u) {
   if (u <= 127) {
     *dest = u;
     return 1;
@@ -68,11 +69,17 @@ static inline int utf8_from_u16(uint8_t *dest, uint16_t u) {
     *(dest++) = 192 | (u >> 6);
     *(dest++) = 128 | (u & 63);
     return 2;
+  } else if (u <= 65535) {
+    *(dest++) = 224 | (u >> 12);
+    *(dest++) = 128 | ((u >> 6) & 63);
+    *(dest++) = 128 | (u & 63);
+    return 3;
   }
-  *(dest++) = 192 | (u >> 12);
+  *(dest++) = 240 | ((u >> 18) & 7);
+  *(dest++) = 128 | ((u >> 12) & 63);
   *(dest++) = 128 | ((u >> 6) & 63);
   *(dest++) = 128 | (u & 63);
-  return 3;
+  return 4;
 }
 
 /** Writes a JSON friendly version of the src String, requires the */
@@ -230,18 +237,18 @@ re_rooted:
     goto re_rooted;
     break;
   }
-  case FIOBJ_T_FLOAT:
-    obj2str(data->buffer)->len +=
-        fio_ftoa(obj2str(data->buffer)->str + obj2str(data->buffer)->len,
-                 obj2float(obj)->f, 10);
-    break;
   case FIOBJ_T_NUMBER:
     obj2str(data->buffer)->len +=
         fio_ltoa(obj2str(data->buffer)->str + obj2str(data->buffer)->len,
                  obj2num(obj)->i, 10);
     break;
+  case FIOBJ_T_FLOAT:
+    fiobj_str_write2(data->buffer, "%g", fiobj_obj2float(obj));
+    break;
   // case FIOBJ_T_FLOAT:
-  //   fiobj_str_write2(data->buffer, "%g", fiobj_obj2float(obj));
+  //   obj2str(data->buffer)->len +=
+  //       fio_ftoa(obj2str(data->buffer)->str + obj2str(data->buffer)->len,
+  //                obj2float(obj)->f, 10);
   //   break;
   case FIOBJ_T_TRUE:
     fiobj_str_write(data->buffer, "true", 4);
@@ -435,10 +442,28 @@ static void safestr2local(fiobj_s *str) {
     case 'u': { /* test for octal notation */
       if (is_hex[reader[2]] && is_hex[reader[3]] && is_hex[reader[4]] &&
           is_hex[reader[5]]) {
-        uint16_t t =
-            (((is_hex[reader[2]] - 1) << 4) | (is_hex[reader[3]] - 1) << 8) |
+        uint32_t t =
+            ((((is_hex[reader[2]] - 1) << 4) | (is_hex[reader[3]] - 1)) << 8) |
             (((is_hex[reader[4]] - 1) << 4) | (is_hex[reader[5]] - 1));
-        writer += utf8_from_u16(writer, t);
+        if (reader[6] == '\\' && reader[7] == 'u' && is_hex[reader[8]] &&
+            is_hex[reader[9]] && is_hex[reader[10]] && is_hex[reader[11]]) {
+          /* Serrogate Pair */
+          t = (t & 0x03FF) << 10;
+          t |= ((((((is_hex[reader[8]] - 1) << 4) | (is_hex[reader[9]] - 1))
+                  << 8) |
+                 (((is_hex[reader[10]] - 1) << 4) | (is_hex[reader[11]] - 1))) &
+                0x03FF);
+          t += 0x10000;
+          /* Wikipedia way: */
+          // t = 0x10000 + ((t - 0xD800) * 0x400) +
+          //     ((((((is_hex[reader[8]] - 1) << 4) | (is_hex[reader[9]] - 1))
+          //        << 8) |
+          //       (((is_hex[reader[10]] - 1) << 4) | (is_hex[reader[11]] - 1)))
+          //       -
+          //      0xDC00);
+          reader += 6;
+        }
+        writer += utf8_from_u32(writer, t);
         reader += 6;
         break; /* from switch */
       } else
@@ -500,6 +525,10 @@ JSON => Obj
  * consumed.
  */
 size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
+  if (!data) {
+    *pobj = NULL;
+    return 0;
+  }
   fiobj_s *nesting = fiobj_ary_new2(JSON_MAX_DEPTH + 2);
   const uint8_t *start;
   fiobj_s *obj;
@@ -627,9 +656,11 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     if (end[0] == '-' || (end[0] >= '0' && end[0] <= '9')) {
       /* test for a number OR float */
       int64_t num = fio_atol((char **)&end);
-      if (*end == '.' || *end == 'e' || *end == 'E') {
+      if (end == start || *end == '.' || *end == 'e' || *end == 'E') {
         end = start;
         double fnum = fio_atof((char **)&end);
+        if (end == start)
+          goto error;
         obj = fiobj_float_new(fnum);
         goto has_obj;
       }
@@ -694,6 +725,7 @@ error:
   while ((obj = fiobj_ary_pop(nesting)))
     fiobj_free(obj);
   fiobj_free(nesting);
+  *pobj = NULL;
   // fprintf(stderr, "ERROR starting at %.*s, ending at %.*s, with %s\n", 3,
   // start,
   //         3, end, start);
