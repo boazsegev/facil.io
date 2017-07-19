@@ -244,12 +244,12 @@ re_rooted:
     break;
   case FIOBJ_T_FLOAT:
     if (isnan(obj2float(obj)->f))
-      fiobj_str_write(data->buffer, "NaN", 3);
+      fiobj_str_write(data->buffer, "\"NaN\"", 5);
     else if (isinf(obj2float(obj)->f)) {
       if (obj2float(obj)->f > 0)
-        fiobj_str_write(data->buffer, "Infinity", 8);
+        fiobj_str_write(data->buffer, "\"Infinity\"", 10);
       else
-        fiobj_str_write(data->buffer, "-Infinity", 9);
+        fiobj_str_write(data->buffer, "\"-Infinity\"", 11);
     } else {
       char *start = obj2str(data->buffer)->str + obj2str(data->buffer)->len;
       fiobj_str_write2(data->buffer, "%g", obj2float(obj)->f);
