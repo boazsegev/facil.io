@@ -16,9 +16,13 @@
 
 **Portability**: added `extern "C"` directive for untested C++ support.
 
-**Feature**: added a dynamic type library to `facil.io`'s core, making some common web related tasks easier to manage.
+**Feature**: 🎉 added a CLI helper service, allowing easy parsing and publishing of possible command line arguments.
 
-**Feature**: added a CLI helper service, allowing easy parsing and publishing of possible command line arguments.
+**Feature**: 🎉🎉 added a dynamic type library to `facil.io`'s core, making some common web related tasks easier to manage.
+
+**Feature**: 🎉🎉🎉 added native JSON support. JSON strings can be converted to `fiobj_s *` objects and `fiobj_s *` objects can be rendered as JSON!
+
+
 
 ### Ver. 0.5.2
 
