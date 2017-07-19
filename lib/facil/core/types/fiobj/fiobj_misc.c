@@ -238,7 +238,7 @@ size_t fio_ftoa(char *dest, double num, uint8_t base) {
     return fio_ltoa(dest, *i, base);
   }
 
-  size_t written = sprintf(dest, "%.17g", num);
+  size_t written = sprintf(dest, "%g", num);
   uint8_t need_zero = 1;
   char *start = dest;
   while (*start) {

@@ -252,7 +252,7 @@ re_rooted:
         fiobj_str_write(data->buffer, "-Infinity", 9);
     } else {
       char *start = obj2str(data->buffer)->str + obj2str(data->buffer)->len;
-      fiobj_str_write2(data->buffer, "%.17g", obj2float(obj)->f);
+      fiobj_str_write2(data->buffer, "%g", obj2float(obj)->f);
       uint8_t need_zero = 1;
       while (*start) {
         if (*start == ',') // locale issues?
