@@ -372,7 +372,8 @@ void fiobj_test(void) {
     fiobj_free(obj);
   }
 
-  /* test cyclic protection */
+/* test cyclic protection */
+#if FIOBJ_NESTING_PROTECTION == 1
   {
     fprintf(stderr, "* testing cyclic protection. \n");
     fiobj_s *a1 = fiobj_ary_new();
@@ -412,6 +413,7 @@ void fiobj_test(void) {
               OBJ2HEAD(obj).ref);
     fiobj_free(obj);
   }
+#endif
 
   /* test deep nesting */
   {
