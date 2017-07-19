@@ -243,7 +243,7 @@ re_rooted:
                  obj2num(obj)->i, 10);
     break;
   case FIOBJ_T_FLOAT:
-    fiobj_str_write2(data->buffer, "%g", fiobj_obj2float(obj));
+    fiobj_str_write2(data->buffer, "%#.1g", fiobj_obj2float(obj));
     break;
   // case FIOBJ_T_FLOAT:
   //   obj2str(data->buffer)->len +=

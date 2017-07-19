@@ -7,6 +7,9 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "fiobj_types.h"
 
+/* MUST be a power of 2 */
+#define HASH_INITIAL_CAPACITY 16
+
 #include <errno.h>
 /* *****************************************************************************
 Internal Map Array
@@ -121,9 +124,6 @@ static inline fiobj_s *fiobj_couplet_alloc(void *sym, void *obj) {
 /* *****************************************************************************
 Hash API
 ***************************************************************************** */
-
-/* MUST be a power of 2 */
-#define HASH_INITIAL_CAPACITY 16
 
 /**
  * Creates a mutable empty Hash object. Use `fiobj_free` when done.

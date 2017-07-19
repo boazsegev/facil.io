@@ -119,11 +119,13 @@ Object Iteration (`fiobj_each2`)
 ***************************************************************************** */
 
 static uint8_t already_processed(fiobj_s *nested, fiobj_s *obj) {
+#if FIOBJ_NESTING_PROTECTION
   size_t end = obj2ary(nested)->end;
   for (size_t i = obj2ary(nested)->start; i < end; i++) {
     if (obj2ary(nested)->arry[i] == obj)
       return 1;
   }
+#endif
   OBJREF_ADD(obj);
   fiobj_ary_push(nested, obj);
   return 0;
@@ -255,6 +257,10 @@ Object Comparison (`fiobj_iseq`)
 ***************************************************************************** */
 
 static int fiobj_iseq_check(fiobj_s *obj1, fiobj_s *obj2) {
+  if (obj1 == obj2)
+    return 1;
+  if (!obj1 || !obj2)
+    return 0;
   if (obj1->type != obj2->type)
     return 0;
   switch (obj1->type) {
@@ -308,6 +314,15 @@ static int fiobj_iseq_check(fiobj_s *obj1, fiobj_s *obj2) {
  * Deeply compare two objects. No hashing is involved.
  */
 int fiobj_iseq(fiobj_s *obj1, fiobj_s *obj2) {
+  if (obj1 == obj2)
+    return 1;
+  if (!obj1 || !obj2)
+    return 0;
+  if (obj1->type != obj2->type)
+    return 0;
+  if (obj1->type != FIOBJ_T_ARRAY && obj1->type != FIOBJ_T_HASH &&
+      obj1->type != FIOBJ_T_COUPLET)
+    return fiobj_iseq_check(obj1, obj2);
 
   fio_ls_s pos1 = FIO_LS_INIT(pos1);
   fio_ls_s pos2 = FIO_LS_INIT(pos2);

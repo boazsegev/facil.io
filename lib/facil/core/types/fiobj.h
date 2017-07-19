@@ -26,6 +26,11 @@ so don't do it.
 extern "C" {
 #endif
 
+/** Enables nesting protection by default. This effects `fiobj_each2` etc'. */
+#ifndef FIOBJ_NESTING_PROTECTION
+#define FIOBJ_NESTING_PROTECTION 1
+#endif
+
 /* *****************************************************************************
 The Object type (`fiobj_s`) and it's variants
 ***************************************************************************** */
@@ -450,15 +455,6 @@ fiobj_ary_unshift_dup(fiobj_s *ary, fiobj_s *obj) {
 /** Shifts an object from the beginning of the Array. */
 fiobj_s *fiobj_ary_shift(fiobj_s *ary);
 
-/**
- * Flattens an Array, making it single dimentional.
- *
- * Other Arrays are simply unnested inplace.
- *
- * Hashes are treated as a multi-dimentional Array:
- * `[[key,value],[key,value],..]`.
- */
-void fiobj_ary_flatten(fiobj_s *ary);
 /* *****************************************************************************
 Hash API
 ***************************************************************************** */

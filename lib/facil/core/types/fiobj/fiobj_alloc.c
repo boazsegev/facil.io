@@ -5,6 +5,12 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 
+/* *****************************************************************************
+This file handles deallocation concerns.
+
+Since Hash and Array objects will need to deallocate their children, the logic
+regareding object type recorgnition and deallocation was centrelized here.
+***************************************************************************** */
 #include "fiobj_types.h"
 
 /* *****************************************************************************

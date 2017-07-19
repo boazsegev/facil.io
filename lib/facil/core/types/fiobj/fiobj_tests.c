@@ -1,10 +1,10 @@
+#ifdef DEBUG
 /*
 Copyright: Boaz segev, 2017
 License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifdef DEBUG
 
 #include "bscrypt.h"
 #include "fio2resp.h"

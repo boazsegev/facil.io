@@ -11,20 +11,11 @@ Feel free to copy, use and enjoy according to the license provided.
 Array memory management
 ***************************************************************************** */
 
-/* **ENTANGLEMENT WARNING: Hash depends on Array internals.**
- *
- * This funcation manages the Array's memory.
- *
- *Upwards growth MUST keep the starting point static (no `memmove`).
- *
- * Downwards growth MAY change actual data placement in the Array using
- * `memmove`.
- */
+/* This funcation manages the Array's memory. */
 static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
   /* we have enough memory, but we need to re-organize it. */
   if (needed == -1) {
     if (obj2ary(ary)->end < obj2ary(ary)->capa) {
-
       /* since allocation can be cheaper than memmove (depending on size),
        * we'll just shove everything to the end...
        */
@@ -52,16 +43,6 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
 
     return;
   }
-
-  // fprintf(stderr,
-  //         "ARRAY MEMORY REVIEW (%p) "
-  //         "with capa %llu, (%llu..%llu):\n",
-  //         (void *)obj2ary(ary)->arry, obj2ary(ary)->capa,
-  //         obj2ary(ary)->start, obj2ary(ary)->end);
-  //
-  // for (size_t i = obj2ary(ary)->start; i < obj2ary(ary)->end; i++) {
-  //   fprintf(stderr, "(%lu) %p\n", i, (void *)obj2ary(ary)->arry[i]);
-  // }
 
   /* alocate using exponential growth, up to single page size. */
   uint64_t updated_capa = obj2ary(ary)->capa;
@@ -131,14 +112,14 @@ Array direct entry access API
 fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos) {
   if (!ary || ary->type != FIOBJ_T_ARRAY)
     return NULL;
-
+  /* position is relative to `start`*/
   if (pos >= 0) {
     pos = pos + obj2ary(ary)->start;
     if ((uint64_t)pos >= obj2ary(ary)->end)
       return NULL;
     return obj2ary(ary)->arry[pos];
   }
-
+  /* position is relative to `end`*/
   pos = (int64_t)obj2ary(ary)->end + pos;
   if (pos < 0)
     return NULL;
@@ -152,6 +133,7 @@ fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos) {
  */
 void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos) {
   if (!ary || ary->type != FIOBJ_T_ARRAY) {
+    /* function takes ownership of memory even if an error occurs. */
     fiobj_free(obj);
     return;
   }
@@ -193,6 +175,7 @@ Array push / shift API
  */
 void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
   if (!ary || ary->type != FIOBJ_T_ARRAY) {
+    /* function takes ownership of memory even if an error occurs. */
     fiobj_free(obj);
     return;
   }
@@ -203,9 +186,8 @@ void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
 
 /** Pops an object from the end of the Array. */
 fiobj_s *fiobj_ary_pop(fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
-    return NULL;
-  if (obj2ary(ary)->start == obj2ary(ary)->end)
+  if (!ary || ary->type != FIOBJ_T_ARRAY ||
+      obj2ary(ary)->start == obj2ary(ary)->end)
     return NULL;
   fiobj_s *ret = obj2ary(ary)->arry[--(obj2ary(ary)->end)];
   return ret;
@@ -217,6 +199,7 @@ fiobj_s *fiobj_ary_pop(fiobj_s *ary) {
  */
 void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj) {
   if (!ary || ary->type != FIOBJ_T_ARRAY) {
+    /* function takes ownership of memory even if an error occurs. */
     fiobj_free(obj);
     return;
   }
@@ -233,51 +216,6 @@ fiobj_s *fiobj_ary_shift(fiobj_s *ary) {
     return NULL;
   fiobj_s *ret = obj2ary(ary)->arry[(obj2ary(ary)->start)++];
   return ret;
-}
-
-/* *****************************************************************************
-Array flattenning
-***************************************************************************** */
-
-static int fiobj_ary_flatten_task(fiobj_s *obj, void *a_) {
-  if (obj == a_) {
-    obj2ary(a_)->start = 0;
-    obj2ary(a_)->end = 0;
-    return 0;
-  }
-
-  if (!obj)
-    goto perform_push;
-  if (obj->type == FIOBJ_T_HASH || obj->type == FIOBJ_T_ARRAY) {
-    fiobj_dealloc(obj);
-    return 0;
-  }
-  if (obj->type == FIOBJ_T_COUPLET) {
-    fiobj_ary_push(a_, obj2couplet(obj)->name);
-    fiobj_ary_push(a_, obj2couplet(obj)->obj);
-    fiobj_dealloc(obj);
-    return 0;
-  }
-perform_push:
-  fiobj_ary_push(a_, obj);
-  return 0;
-}
-
-/**
- * Flattens an Array, making it single dimentional.
- *
- * Other Arrays are simply unnested inplace.
- *
- * Hashes are treated as a multi-dimentional Array:
- * `[[key,value],[key,value],..]`.
- *
- * This action is O(n + d) where n is the length and d is the deapth.
- * It could get expensive.
- */
-void fiobj_ary_flatten(fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
-    return;
-  fiobj_each2(ary, fiobj_ary_flatten_task, ary);
 }
 
 /* *****************************************************************************
