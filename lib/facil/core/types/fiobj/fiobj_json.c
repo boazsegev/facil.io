@@ -357,10 +357,10 @@ static const uint8_t JSON_SEPERATOR[] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-// inline static void move_to_end(const uint8_t **pos, const uint8_t *limit) {
-//   while (*pos < limit && JSON_SEPERATOR[**pos] == 0)
-//     (*pos)++;
-// }
+inline static void move_to_end(const uint8_t **pos, const uint8_t *limit) {
+  while (*pos < limit && JSON_SEPERATOR[**pos] == 0)
+    (*pos)++;
+}
 inline static void move_to_start(const uint8_t **pos, const uint8_t *limit) {
   while (*pos < limit && JSON_SEPERATOR[**pos])
     (*pos)++;
@@ -711,6 +711,26 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       //   obj = fiobj_num_new(fio_atol((char *)start));
       // }
       // goto has_obj;
+    }
+    if (end[0] == 'N' && end[1] == 'a' && end[2] == 'N') {
+      obj = fiobj_float_new(nan(""));
+      goto has_obj;
+    }
+    if (end[0] == '-' && end[1] == 'I' && end[2] == 'n' && end[3] == 'f') {
+      obj = fiobj_float_new(nan(""));
+      copysign(obj2float(obj)->f, (double)-1);
+      goto has_obj;
+    }
+    if (end[0] == 'I' && end[1] == 'n' && end[2] == 'f') {
+      move_to_end(&end, stop);
+      obj = fiobj_float_new(INFINITY);
+      goto has_obj;
+    }
+    if (end[0] == '-' && end[1] == 'I' && end[2] == 'n' && end[3] == 'f') {
+      move_to_end(&end, stop);
+      obj = fiobj_float_new(INFINITY);
+      copysign(obj2float(obj)->f, (double)-1);
+      goto has_obj;
     }
     goto error;
 
