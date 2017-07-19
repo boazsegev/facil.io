@@ -243,7 +243,29 @@ re_rooted:
                  obj2num(obj)->i, 10);
     break;
   case FIOBJ_T_FLOAT:
-    fiobj_str_write2(data->buffer, "%#.1g", fiobj_obj2float(obj));
+    if (isnan(obj2float(obj)->f))
+      fiobj_str_write(data->buffer, "NaN", 3);
+    else if (isinf(obj2float(obj)->f)) {
+      if (obj2float(obj)->f > 0)
+        fiobj_str_write(data->buffer, "Infinity", 8);
+      else
+        fiobj_str_write(data->buffer, "-Infinity", 9);
+    } else {
+      char *start = obj2str(data->buffer)->str + obj2str(data->buffer)->len;
+      fiobj_str_write2(data->buffer, "%.17g", obj2float(obj)->f);
+      uint8_t need_zero = 1;
+      while (*start) {
+        if (*start == ',') // locale issues?
+          *start = '.';
+        if (*start == '.' || *start == 'e') {
+          need_zero = 0;
+          break;
+        }
+        start++;
+      }
+      if (need_zero)
+        fiobj_str_write(data->buffer, ".0", 2);
+    }
     break;
   // case FIOBJ_T_FLOAT:
   //   obj2str(data->buffer)->len +=
@@ -310,7 +332,8 @@ fiobj_s *fiobj_obj2json(fiobj_s *obj, uint8_t pretty) {
 
 /* *****************************************************************************
 JSON parsing
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /*
 Marks as object seperators any of the following:
@@ -393,7 +416,8 @@ inline static int move_to_quote(const uint8_t **pos, const uint8_t *limit) {
 
 /* *****************************************************************************
 JSON UTF-8 safe string deconstruction
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /* Converts a JSON friendly String to a binary String.
  *
@@ -458,7 +482,8 @@ static void safestr2local(fiobj_s *str) {
           // t = 0x10000 + ((t - 0xD800) * 0x400) +
           //     ((((((is_hex[reader[8]] - 1) << 4) | (is_hex[reader[9]] - 1))
           //        << 8) |
-          //       (((is_hex[reader[10]] - 1) << 4) | (is_hex[reader[11]] - 1)))
+          //       (((is_hex[reader[10]] - 1) << 4) | (is_hex[reader[11]] -
+          //       1)))
           //       -
           //      0xDC00);
           reader += 6;
@@ -516,13 +541,14 @@ static void safestr2local(fiobj_s *str) {
 
 /* *****************************************************************************
 JSON => Obj
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /**
  * Parses JSON, setting `pobj` to point to the new Object.
  *
- * Returns the number of bytes consumed. On Error, 0 is returned and no data is
- * consumed.
+ * Returns the number of bytes consumed. On Error, 0 is returned and no data
+ * is consumed.
  */
 size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
   if (!data) {
@@ -673,8 +699,8 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       //     decimal = 1;
       //   end++;
       // }
-      // /* test against forbidden leading zeros... but allow hex and binary */
-      // if (end - start > 1 && start[0] == '0' &&
+      // /* test against forbidden leading zeros... but allow hex and binary
+      // */ if (end - start > 1 && start[0] == '0' &&
       //     !(start[1] == '.' || start[1] == 'x' || start[1] == 'b')) {
       //   goto error;
       // }

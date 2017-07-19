@@ -238,24 +238,21 @@ size_t fio_ftoa(char *dest, double num, uint8_t base) {
     return fio_ltoa(dest, *i, base);
   }
 
-  int64_t i = (int64_t)trunc(num); /* grab the int data and handle first */
-  size_t len = fio_ltoa(dest, i, 10);
-  num = num - i;
-  num = copysign(num, 1.0);
-  if (num) {
-    /* write decimal data */
-    dest[len++] = '.';
-    uint8_t limit = 7; /* post decimal point limit */
-    while (limit-- && num) {
-      num = num * 10;
-      uint8_t tmp = (int64_t)trunc(num);
-      dest[len++] = tmp + '0';
-      num -= tmp;
+  size_t written = sprintf(dest, "%.17g", num);
+  uint8_t need_zero = 1;
+  char *start = dest;
+  while (*start) {
+    if (*start == ',') // locale issues?
+      *start = '.';
+    if (*start == '.' || *start == 'e') {
+      need_zero = 0;
+      break;
     }
-    /* remove excess zeros */
-    while (dest[len - 1] == '0')
-      len--;
+    start++;
   }
-  dest[len] = 0;
-  return len;
+  if (need_zero) {
+    dest[written++] = '.';
+    dest[written++] = '0';
+  }
+  return written;
 }

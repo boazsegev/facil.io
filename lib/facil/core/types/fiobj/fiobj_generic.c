@@ -82,7 +82,7 @@ double fiobj_obj2float(fiobj_s *obj) {
 /**
  * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
  */
-static __thread char num_buffer[128];
+static __thread char num_buffer[512];
 fio_cstr_s fiobj_obj2cstr(fiobj_s *obj) {
   if (!obj)
     return (fio_cstr_s){.buffer = NULL, .len = 0};
