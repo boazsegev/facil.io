@@ -26,7 +26,13 @@ so don't do it.
 extern "C" {
 #endif
 
-/** Enables nesting protection by default. This effects `fiobj_each2` etc'. */
+/**
+ * Sets the default state for nesting protection (true state should be placed in
+ * the makefile).
+ *
+ * This effects traversing functions, such as `fiobj_each2`, `fiobj_dup`,
+ * `fiobj_free` etc'.
+ */
 #ifndef FIOBJ_NESTING_PROTECTION
 #define FIOBJ_NESTING_PROTECTION 1
 #endif
@@ -189,19 +195,19 @@ typedef struct {
 fio_cstr_s fiobj_obj2cstr(fiobj_s *obj);
 
 /**
- * Deep itteration using a callback for each fio object, including the parent.
+ * Deep iteration using a callback for each fio object, including the parent.
  *
  * Accepts any `fiobj_s *` type.
  *
- * Collections (Arrays, Hashes) are deeply probed while being marginally
- * protected from cyclic references.
+ * Collections (Arrays, Hashes) are deeply probed.
  *
  * The callback task function must accept an object and an opaque user pointer.
  *
- * When a cyclic reference is detected, NULL is passed along instead of the
- * offending object.
+ * If `FIOBJ_NESTING_PROTECTION` is equal to 1 and a cyclic (or recursive)
+ * nesting is detected, a NULL pointer (not object) will be used instead of the
+ * original (cyclic) object.
  *
- * Hash objects will offer a `FIOBJ_T_COUPLET` object, containing
+ * Hash objects pass along a `FIOBJ_T_COUPLET` object, containing
  * references for both the key (Symbol) and the object (any object).
  *
  * Notice that when passing collections to the function, the collection itself
