@@ -6,15 +6,15 @@ Thank you for inquiring `facil.io`'s contribution guide. It's people like you an
 
 `facil.io` contributions should (ideally) be:
 
-* Easy to use: clear and concise API, with macros that emulate "named arguments" when appropriate).
+* Easy to use: clear and concise API, with macros that emulate "named arguments" when appropriate.
 
 * Easy to maintain:
 
-    * Modular: even at the price of performance.
+    * Modular: even at the price of performance and even (although less desired) at the price of keeping things DRY.
 
         Developers should be able to simply remove the module from their implementation if they're not using it.
 
-        To clarify, a module should have as small a responsibility as possible. This makes the module easier to maintain and minimizes code fragility and code entanglement.
+        To clarify, a module should have as small a responsibility as possible without requiring non-core modules. This makes the module easier to maintain and minimizes code fragility and code entanglement.
 
     * Clearly commented: you might not always have time to maintain your contribution. It's important to pave the way for others to lend a hand.
 
@@ -22,11 +22,11 @@ Thank you for inquiring `facil.io`'s contribution guide. It's people like you an
 
     When possible, code should be portable. This is both true in regards to CPU architecture and in regards to OS and environment.
 
-    The project currently has the following limitation that I hope to resolve in the future:
+    The project currently has the following limitation that might be addressed in the future:
 
     * The coded uses unaligned memory access (requires newer CPUs).
 
-    * The code requires `kqueue` or `epoll` servicces from the OS, which means Linux / BSD / macOS.
+    * The code requires `kqueue` or `epoll` services from the OS, which means Linux / BSD / macOS.
 
     * The code assumes a Unix environment (file naming etc').
 
@@ -55,6 +55,10 @@ No matter if discussing a PR (where we might find ourselves entering a heated di
     * Core types available for all the rest of the modules: `fio_list` (a simple doubly linked list), `fio_hash_table` (a simple Hash Table), `fio_dict` (a trie structure) and `spnlock` (simple atomic operations and a spin-lock).
 
         I avoided `atomic.h` and a few other C11 features because they weren't available on all the platforms where I was compiling `facil.io`, which is partially why I wrote the `spnlock` and the core types.
+
+    * Core dynamic types (`fiobj_s *`) with native JSON support.
+
+        Although this module is removable from the core (the core will function without it), this module offers a "glue" soft type system layer that can be used by other modules. It's assumed all extensions and modules might break if this system is removed or it's core API broken.
 
 * Services:
 
@@ -97,7 +101,6 @@ These are the features that have been requested so far. Even if any of them are 
 |    HTTP Router    |                    |                            |
 |  Websocket Client |                    |                            |
 |      SSL/TLS      |                    | Use `sock` R/W hooks       |
-|       JSON        |                    | Use `fiobj` objects        |
 
 
 ## License
