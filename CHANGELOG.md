@@ -8,6 +8,8 @@
 
 **Fix**: (`sock`) sockets created using the TCP/IP `sock` library now use `TCP_NODELAY` as the new default. This shouldn't be considered a breaking change as much as it should be considered a fix.
 
+**Fix**: (`http1`) HTTP/1.x is now more fragmented, avoiding a `read` loop to allow for mid-stream / mid-processing protocol upgrades. This also fixes #16 at it's root (besides the improved `websocket` callback handling).
+
 **Fix**: (`http1`) HTTP/1.x now correctly initializes the `udata` pointer to NULL fore each new request.
 
 **Fix**: (`defer`) a shutdown issue in `defer_perform_in_fork` was detected by @cdkrot and his fix was implemented.
