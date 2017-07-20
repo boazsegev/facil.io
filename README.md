@@ -72,7 +72,7 @@ Then add the following line the project's `CMakeLists.txt`
 
     add_subdirectory(facil.io)
 
-## Three Quick Examples
+## More Examples
 
 Writing HTTP and Websocket services in C is easy with [facil.io](http://facil.io).
 

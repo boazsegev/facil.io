@@ -881,6 +881,11 @@ void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id) {
 The API implementation
 */
 
+static void deferred_on_open(void *func, void *pr) {
+  ((void (*)(ws_s *))func)(pr);
+  facil_protocol_unlock(pr, FIO_PR_LOCK_TASK);
+}
+
 /** The upgrade */
 #undef websocket_upgrade
 ssize_t websocket_upgrade(websocket_settings_s settings) {
@@ -973,6 +978,8 @@ refuse:
   response->status = 400;
 cleanup:
   if (response->status == 101) {
+    // update the protocol object, cleanning up the old one
+    facil_attach_locked(ws->fd, (protocol_s *)ws);
     // send the response
     http_response_finish(response);
     // we have an active websocket connection - prep the connection buffer
@@ -980,10 +987,9 @@ cleanup:
     // update the timeout
     facil_set_timeout(ws->fd, settings.timeout);
     // call the on_open callback
-    if (settings.on_open)
-      settings.on_open(ws);
-    // update the protocol object, cleanning up the old one
-    facil_attach(ws->fd, (protocol_s *)ws);
+    if (settings.on_open) {
+      defer(deferred_on_open, (void *)settings.on_open, ws);
+    }
     return 0;
   }
   http_response_finish(response);

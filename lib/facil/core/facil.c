@@ -1081,10 +1081,8 @@ void facil_run(struct facil_run_args args) {
 Setting the protocol
 ***************************************************************************** */
 
-/** Attaches (or updates) a protocol object to a socket UUID.
- * Returns -1 on error and 0 on success.
- */
-int facil_attach(intptr_t uuid, protocol_s *protocol) {
+static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
+                              protocol_metadata_s state) {
   if (!facil_data)
     facil_lib_init();
   if (protocol) {
@@ -1098,7 +1096,7 @@ int facil_attach(intptr_t uuid, protocol_s *protocol) {
       protocol->ping = mock_ping;
     if (!protocol->on_shutdown)
       protocol->on_shutdown = mock_on_ev;
-    protocol->rsv = 0;
+    prt_meta(protocol) = state;
   }
   spn_lock(&uuid_data(uuid).lock);
   if (!sock_isvalid(uuid)) {
@@ -1116,6 +1114,24 @@ int facil_attach(intptr_t uuid, protocol_s *protocol) {
   if (evio_isactive())
     evio_add(sock_uuid2fd(uuid), (void *)uuid);
   return 0;
+}
+
+/** Attaches (or updates) a protocol object to a socket UUID.
+ * Returns -1 on error and 0 on success.
+ */
+int facil_attach(intptr_t uuid, protocol_s *protocol) {
+  return facil_attach_state(uuid, protocol, (protocol_metadata_s){.rsv = 0});
+}
+
+/**
+ * Attaches (or updates) a LOCKED protocol object to a socket UUID.
+ */
+int facil_attach_locked(intptr_t uuid, protocol_s *protocol) {
+  {
+    protocol_metadata_s state = {.rsv = 0};
+    spn_lock(state.locks + FIO_PR_LOCK_TASK);
+    return facil_attach_state(uuid, protocol, state);
+  }
 }
 
 /** Sets a timeout for a specific connection (if active). */

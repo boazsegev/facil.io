@@ -284,6 +284,7 @@ struct facil_run_args {
  */
 void facil_run(struct facil_run_args args);
 #define facil_run(...) facil_run((struct facil_run_args){__VA_ARGS__})
+
 /**
  * Attaches (or updates) a protocol object to a socket UUID.
  *
@@ -297,6 +298,23 @@ void facil_run(struct facil_run_args args);
  * On error, the new protocol's `on_close` callback will be called.
  */
 int facil_attach(intptr_t uuid, protocol_s *protocol);
+
+/**
+ * Attaches (or updates) a LOCKED protocol object to a socket UUID.
+ *
+ * The protocol will be attached in the FIO_PR_LOCK_TASK state, requiring a
+ * furthur call to `facil_protocol_unlock`.
+ *
+ * The new protocol object can be NULL, which will practically "hijack" the
+ * socket away from facil.
+ *
+ * The old protocol's `on_close` will be scheduled, if they both exist.
+ *
+ * Returns -1 on error and 0 on success.
+ *
+ * On error, the new protocol's `on_close` callback will be called.
+ */
+int facil_attach_locked(intptr_t uuid, protocol_s *protocol);
 
 /** Sets a timeout for a specific connection (if active). */
 void facil_set_timeout(intptr_t uuid, uint8_t timeout);
