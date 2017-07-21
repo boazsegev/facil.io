@@ -174,16 +174,23 @@ size_t fiobj_hash_count(fiobj_s *hash) {
  * Returns -1 on error.
  */
 int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
-  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYMBOL) {
+  if (hash->type != FIOBJ_T_HASH) {
     fiobj_dealloc((fiobj_s *)obj);
     return -1;
   }
-  // TODO: shoule we use preemptive rehashing? - NO! has negative impact!
-  /*
-  if (obj2hash(hash)->count >= (((obj2hash(hash)->mask + 1) << 1) / 3))
-    fiobj_hash_rehash(hash);
-  */
-  fiobj_s *coup = fiobj_couplet_alloc(fiobj_dup(sym), obj);
+  switch (sym->type) {
+  case FIOBJ_T_SYMBOL:
+    sym = fiobj_dup(sym);
+    break;
+  case FIOBJ_T_STRING:
+    sym = fiobj_sym_new(obj2str(sym)->str, obj2str(sym)->len);
+    break;
+  default:
+    fiobj_dealloc((fiobj_s *)obj);
+    return -1;
+  }
+
+  fiobj_s *coup = fiobj_couplet_alloc(sym, obj);
   fiobj_s *old = fio_hash_insert((fio_hash_s *)hash, obj2sym(sym)->hash, coup);
   while (old == (void *)-1) {
     fiobj_hash_rehash(hash);
@@ -204,9 +211,21 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
  * object (instead of freeing it).
  */
 fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
-  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYMBOL)
-    return NULL;
-  fiobj_s *coup = fio_hash_insert((fio_hash_s *)hash, obj2sym(sym)->hash, NULL);
+  if (hash->type != FIOBJ_T_HASH) {
+    return 0;
+  }
+  uintptr_t hash_value = 0;
+  switch (sym->type) {
+  case FIOBJ_T_SYMBOL:
+    hash_value = obj2sym(sym)->hash;
+    break;
+  case FIOBJ_T_STRING:
+    hash_value = fiobj_sym_hash(obj2str(sym)->str, obj2str(sym)->len);
+    break;
+  default:
+    return 0;
+  }
+  fiobj_s *coup = fio_hash_insert((fio_hash_s *)hash, hash_value, NULL);
   if (!coup)
     return NULL;
   fiobj_s *ret = fiobj_couplet2obj(coup);
@@ -234,10 +253,21 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
  * if none.
  */
 fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
-  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYMBOL) {
-    return NULL;
+  if (hash->type != FIOBJ_T_HASH) {
+    return 0;
   }
-  fiobj_s *coup = fio_hash_find((fio_hash_s *)hash, obj2sym(sym)->hash);
+  uintptr_t hash_value = 0;
+  switch (sym->type) {
+  case FIOBJ_T_SYMBOL:
+    hash_value = obj2sym(sym)->hash;
+    break;
+  case FIOBJ_T_STRING:
+    hash_value = fiobj_sym_hash(obj2str(sym)->str, obj2str(sym)->len);
+    break;
+  default:
+    return 0;
+  }
+  fiobj_s *coup = fio_hash_find((fio_hash_s *)hash, hash_value);
   if (!coup)
     return NULL;
   return fiobj_couplet2obj(coup);
@@ -266,10 +296,22 @@ fiobj_s *fiobj_hash_get2(fiobj_s *hash, const char *str, size_t len) {
  * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.
  */
 int fiobj_hash_haskey(fiobj_s *hash, fiobj_s *sym) {
-  if (hash->type != FIOBJ_T_HASH || sym->type != FIOBJ_T_SYMBOL) {
+  if (hash->type != FIOBJ_T_HASH) {
     return 0;
   }
-  fiobj_s *coup = fio_hash_find((fio_hash_s *)hash, obj2sym(sym)->hash);
+  uintptr_t hash_value = 0;
+  switch (sym->type) {
+  case FIOBJ_T_SYMBOL:
+    hash_value = obj2sym(sym)->hash;
+    break;
+  case FIOBJ_T_STRING:
+    hash_value = fiobj_sym_hash(obj2str(sym)->str, obj2str(sym)->len);
+    break;
+  default:
+    return 0;
+  }
+
+  fiobj_s *coup = fio_hash_find((fio_hash_s *)hash, hash_value);
   if (!coup)
     return 0;
   return 1;
