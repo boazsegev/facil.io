@@ -24,7 +24,9 @@ This offers the following advantages (among others):
 
 * Allows for "typeless" actions, such as collection iteration (`fiobj_each2`), simple conversion (`fiobj_obj2num` and `fiobj_obj2cstr`), deallocation (`fiobj_free`). reference counting (`fiobj_dup`) and equality checks (`fiobj_iseq`).
 
-* Allows us to avoid recursion during iteration and includes an *optional* (disabled by default) cyclic nesting protection.
+* Offers non-recursive iteration and an *optional* (disabled by default) cyclic nesting protection.
+
+* Offers JSON parsing and formatting to and from `fiobj_s *`.
 
 ## The API
 

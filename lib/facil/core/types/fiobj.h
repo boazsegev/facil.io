@@ -200,13 +200,14 @@ fio_cstr_s fiobj_obj2cstr(fiobj_s *obj);
  *
  * Accepts any `fiobj_s *` type.
  *
- * Collections (Arrays, Hashes) are deeply probed.
+ * Collections (Arrays, Hashes) are deeply probed and MUST NEVER be edited
+ * during an `fiobj_each2` call (or weird things may happen).
  *
  * The callback task function must accept an object and an opaque user pointer.
  *
  * If `FIOBJ_NESTING_PROTECTION` is equal to 1 and a cyclic (or recursive)
- * nesting is detected, a NULL pointer (not object) will be used instead of the
- * original (cyclic) object.
+ * nesting is detected, a NULL pointer (not a NULL object) will be used instead
+ * of the original (cyclic) object.
  *
  * Hash objects pass along a `FIOBJ_T_COUPLET` object, containing
  * references for both the key (Symbol) and the object (any object).
