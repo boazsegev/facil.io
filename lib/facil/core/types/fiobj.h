@@ -35,7 +35,7 @@ extern "C" {
  * `fiobj_free` etc'.
  */
 #ifndef FIOBJ_NESTING_PROTECTION
-#define FIOBJ_NESTING_PROTECTION 1
+#define FIOBJ_NESTING_PROTECTION 0
 #endif
 
 /* *****************************************************************************
