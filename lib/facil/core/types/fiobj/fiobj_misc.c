@@ -54,8 +54,8 @@ intptr_t fiobj_io_fd(fiobj_s *obj) {
 /* *****************************************************************************
 Number and Float Helpers
 ***************************************************************************** */
-static char hex_notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
-                              '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+static const char hex_notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                                    '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
 /**
  * A helper function that converts between String data to a signed int64_t.

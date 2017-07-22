@@ -121,7 +121,7 @@ struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
   // static char * Months = {  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   // "Jul",
   // "Aug", "Sep", "Oct", "Nov", "Dec"};
-  static uint8_t month_len[] = {
+  static const uint8_t month_len[] = {
       31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, // nonleap year
       31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31  // leap year
   };
@@ -215,9 +215,11 @@ struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
   return tmbuf;
 }
 
-static char *DAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-static char *MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ", "May ", "Jun ",
-                              "Jul ", "Aug ", "Sep ", "Oct ", "Nov ", "Dec "};
+static const char *DAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed",
+                                  "Thu", "Fri", "Sat"};
+static const char *MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ",
+                                    "May ", "Jun ", "Jul ", "Aug ",
+                                    "Sep ", "Oct ", "Nov ", "Dec "};
 static const char *GMT_STR = "GMT";
 
 size_t http_date2str(char *target, struct tm *tmbuf) {
