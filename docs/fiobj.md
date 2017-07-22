@@ -2,6 +2,8 @@
 
 `facil.io` offers a dynamic type system that makes it a breeze to mix object types together.
 
+This dynamic type system is an independent module within the `facil.io` core and can be used separately.
+
 ### The Problem
 
 C doesn't lend itself easily to the dynamic types that are often used in languages such as Javascript. This makes it harder to use an optimized C backend (server) when the frontend (client / browser) expects multi-type responses such as JSON objects.
@@ -28,7 +30,7 @@ This offers the following advantages (among others):
 
 * Offers JSON parsing and formatting to and from `fiobj_s *`.
 
-## The API
+## API Considerations
 
 This is a short summery regarding the API and it's use. The `fiobj_*` API is well documented in the header files, so only main guidelines are mentioned.
 
@@ -189,3 +191,11 @@ fiobj_s * ary_copy = fiobj_dup(ary2);
 fiobj_free(ary_copy);
 fiobj_free(ary);
 ```
+
+## Independence
+
+The `fiobj_s` module is independent and can be extracted from `facil.io` by copying the `fiobj.h` file (under `lib/facil/core/types`) and all the files in the `lib/facil/core/types/fiobj` folder.
+
+Place these files in your project and use to your heart's content.
+
+The module is licensed under the same MIT license offered by the rest of the `facil.io` source code.
