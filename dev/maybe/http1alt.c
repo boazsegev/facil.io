@@ -214,17 +214,20 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
   http1_protocol_s *pr = parser->udata;
   if (!pr || pr->request.header_pos >= HTTP1_MAX_HEADER_COUNT - 1)
     goto too_big;
+
   /** test for special headers that should be easily accessible **/
-  if (name_len == 4 && !strncasecmp(name, "Host", name_len)) {
+  if (name_len == 4 && HEADER_NAME_IS_EQ(name, "Host", name_len)) {
     pr->request.request.host = data;
     pr->request.request.host_len = data_len;
-  } else if (name_len == 12 && !strncasecmp(name, "Content-Type", name_len)) {
+  } else if (name_len == 12 &&
+             HEADER_NAME_IS_EQ(name, "Content-Type", name_len)) {
     pr->request.request.content_type = data;
     pr->request.request.content_type_len = data_len;
-  } else if (name_len == 7 && !strncasecmp(name, "Upgrade", name_len)) {
+  } else if (name_len == 7 && HEADER_NAME_IS_EQ(name, "Upgrade", name_len)) {
     pr->request.request.upgrade = data;
     pr->request.request.upgrade_len = data_len;
-  } else if (name_len == 10 && !strncasecmp(name, "Connection", name_len)) {
+  } else if (name_len == 10 &&
+             HEADER_NAME_IS_EQ(name, "Connection", name_len)) {
     pr->request.request.connection = data;
     pr->request.request.connection_len = data_len;
   }

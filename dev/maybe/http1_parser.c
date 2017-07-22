@@ -3,6 +3,7 @@
 #endif
 
 #include "http1_parser.h"
+#include <ctype.h>
 #include <string.h>
 
 // inline static uint8_t seek2ch(uint8_t **pos, uint8_t *limit, uint8_t ch) {
@@ -80,6 +81,7 @@ size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args) {
 #define CONSUMED ((size_t)((uintptr_t)start - (uintptr_t)args->buffer))
 
   switch (args->parser->state.reserved & 0x0F) {
+
   case 0:
     /* request / response line */
     /* clear out any leadinng white space */
@@ -136,6 +138,7 @@ size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args) {
     }
     end = start = end + 1;
     args->parser->state.reserved |= 1;
+
   /* fallthrough */
   case 1:
     do {
@@ -152,12 +155,17 @@ size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args) {
       }
       if (!seek2ch(&tmp, end, ':'))
         goto error;
+#if HTTP_HEADERS_LOWERCASE
+      for (uint8_t *t3 = start; t3 < tmp; t3++) {
+        *t3 = tolower(*t3);
+      }
+#endif
       if (*tmp == ' ') {
         tmp++;
         t2 = 1;
       };
       if (tmp - start - t2 == 14 &&
-          !strncasecmp((char *)start, "Content-Length", 14)) {
+          HEADER_NAME_IS_EQ((char *)start, "content-length", 14)) {
         /* handle the special `content-length` header */
         args->parser->state.content_length = atol((char *)tmp);
       }
@@ -170,6 +178,7 @@ size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args) {
   finished_headers:
     if (args->parser->state.content_length == 0)
       goto finish;
+
   /* fallthrough */
   /*  2 | 1 == 3 */
   case 3:

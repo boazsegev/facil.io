@@ -9,6 +9,21 @@ to maintain and that could be used for an HTTP/1.x client as well.
 #include <stdint.h>
 #include <stdlib.h>
 
+#ifndef HTTP_HEADERS_LOWERCASE
+/** when defined, HTTP headers will be converted to lowercase and header
+ * searches will be case sensitive. This improves the parser performance in some
+ * instances (which surprised me.) */
+#define HTTP_HEADERS_LOWERCASE 1
+#endif
+
+#if HTTP_HEADERS_LOWERCASE
+#define HEADER_NAME_IS_EQ(var_name, const_name, len)                           \
+  (!memcmp((var_name), (const_name), (len)))
+#else
+#define HEADER_NAME_IS_EQ(var_name, const_name, len)                           \
+  (!strncasecmp((var_name), (const_name), (len)))
+#endif
+
 /** this struct contains the state of the parser. */
 typedef struct http1_parser_s {
   void *udata;
