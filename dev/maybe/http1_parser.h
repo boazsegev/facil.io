@@ -27,7 +27,7 @@ to maintain and that could be used for an HTTP/1.x client as well.
 /** this struct contains the state of the parser. */
 typedef struct http1_parser_s {
   void *udata;
-  struct {
+  struct http1_parser_protected_read_only_state_s {
     size_t content_length;
     size_t read;
     uint8_t reserved;
