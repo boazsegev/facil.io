@@ -112,8 +112,9 @@ static int http1_on_request(http1_parser_s *parser) {
   http1_protocol_s *pr = parser->udata;
   if (!pr)
     return -1;
-  if (pr->request.request.host == NULL)
+  if (pr->request.request.host == NULL) {
     goto bad_request;
+  }
   http_settings_s *settings = pr->settings;
   pr->request.request.settings = settings;
   // make sure udata to NULL, making it available for the user
@@ -214,20 +215,20 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
   http1_protocol_s *pr = parser->udata;
   if (!pr || pr->request.header_pos >= HTTP1_MAX_HEADER_COUNT - 1)
     goto too_big;
-
+  // fprintf(stderr, "* %s:%s\n", name, data);
   /** test for special headers that should be easily accessible **/
-  if (name_len == 4 && HEADER_NAME_IS_EQ(name, "Host", name_len)) {
+  if (name_len == 4 && HEADER_NAME_IS_EQ(name, "host", name_len)) {
     pr->request.request.host = data;
     pr->request.request.host_len = data_len;
   } else if (name_len == 12 &&
-             HEADER_NAME_IS_EQ(name, "Content-Type", name_len)) {
+             HEADER_NAME_IS_EQ(name, "content-type", name_len)) {
     pr->request.request.content_type = data;
     pr->request.request.content_type_len = data_len;
-  } else if (name_len == 7 && HEADER_NAME_IS_EQ(name, "Upgrade", name_len)) {
+  } else if (name_len == 7 && HEADER_NAME_IS_EQ(name, "upgrade", name_len)) {
     pr->request.request.upgrade = data;
     pr->request.request.upgrade_len = data_len;
   } else if (name_len == 10 &&
-             HEADER_NAME_IS_EQ(name, "Connection", name_len)) {
+             HEADER_NAME_IS_EQ(name, "connection", name_len)) {
     pr->request.request.connection = data;
     pr->request.request.connection_len = data_len;
   }
@@ -266,10 +267,10 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
   if (!parser->state.read) {
     if (parser->state.content_length > pr->settings->max_body_size)
       return -1;
+    pr->request.request.content_length = parser->state.content_length;
     if (pr->request.buffer_pos + parser->state.content_length <
         HTTP1_MAX_HEADER_SIZE) {
-      pr->request.request.body_str =
-          pr->request.buffer + pr->request.buffer_pos;
+      pr->request.request.body_str = data;
     } else {
 // create a temporary file to contain the data.
 #ifdef P_tmpdir
@@ -291,8 +292,7 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
         (ssize_t)data_len)
       return -1;
   } else {
-    memcpy(pr->request.buffer + pr->request.buffer_pos, data, data_len);
-    pr->request.buffer_pos += data_len;
+    /* nothing to do... the parser and `on_data` are doing all the work */
   }
   return 0;
 }
@@ -303,6 +303,7 @@ static int http1_on_error(http1_parser_s *parser) {
   if (!pr)
     return -1;
   sock_close(pr->request.request.fd);
+  http1_request_clear(&pr->request.request);
   return 0;
 }
 
@@ -375,6 +376,8 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *pr) {
     }
     http1_request_clear(&request->request);
     pr->len = 0;
+  } else {
+    pr->len = pr->len - consumed;
   }
   if (tmp)
     facil_force_event(uuid, FIO_EVENT_ON_DATA);
