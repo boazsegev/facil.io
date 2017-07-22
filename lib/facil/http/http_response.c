@@ -495,8 +495,6 @@ static void http_response_log_finish(http_response_s *response) {
     cached_tick = last_tick | 1;
     http_gmtime(&last_tick, &tm);
     chached_len = http_date2str(cached_httpdate, &tm);
-    fprintf(stderr, "Updated date cache to (%lu) %s\n", chached_len,
-            cached_httpdate);
   }
 
   // TODO Guess IP address from headers (forwarded) where possible
