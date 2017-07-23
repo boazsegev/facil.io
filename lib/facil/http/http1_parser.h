@@ -15,6 +15,7 @@ to maintain and that could be used for an HTTP/1.x client as well.
 */
 #define H_HTTP1_PARSER_H
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #ifndef HTTP_HEADERS_LOWERCASE
@@ -36,8 +37,8 @@ to maintain and that could be used for an HTTP/1.x client as well.
 typedef struct http1_parser_s {
   void *udata;
   struct http1_parser_protected_read_only_state_s {
-    size_t content_length;
-    size_t read;
+    ssize_t content_length; /* negative values indicate chuncked data state */
+    ssize_t read;
     uint8_t reserved;
   } state;
 } http1_parser_s;

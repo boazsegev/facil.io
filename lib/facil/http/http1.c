@@ -102,6 +102,43 @@ initialize:
 }
 
 /* *****************************************************************************
+HTTP/1.1 error responses
+***************************************************************************** */
+
+static void err_bad_request(http1_protocol_s *pr) {
+  http_response_s *response = http_response_create(&pr->request.request);
+  if (pr->settings->log_static)
+    http_response_log_start(response);
+  response->status = 400;
+  if (!pr->settings->public_folder ||
+      http_response_sendfile2(response, &pr->request.request,
+                              pr->settings->public_folder,
+                              pr->settings->public_folder_length, "400.html", 8,
+                              pr->settings->log_static)) {
+    response->should_close = 1;
+    http_response_write_body(response, "Bad Request", 11);
+    http_response_finish(response);
+  }
+  sock_close(pr->request.request.fd);
+  pr->request.buffer_pos = 0;
+}
+
+static void err_too_big(http1_protocol_s *pr) {
+  http_response_s *response = http_response_create(&pr->request.request);
+  if (pr->settings->log_static)
+    http_response_log_start(response);
+  response->status = 431;
+  if (!pr->settings->public_folder ||
+      http_response_sendfile2(response, &pr->request.request,
+                              pr->settings->public_folder,
+                              pr->settings->public_folder_length, "431.html", 8,
+                              pr->settings->log_static)) {
+    http_response_write_body(response, "Request Header Fields Too Large", 31);
+    http_response_finish(response);
+  }
+}
+
+/* *****************************************************************************
 HTTP/1.1 parsre callbacks
 ***************************************************************************** */
 
@@ -115,6 +152,7 @@ static int http1_on_request(http1_parser_s *parser) {
   if (pr->request.request.host == NULL) {
     goto bad_request;
   }
+  pr->request.request.content_length = parser->state.content_length;
   http_settings_s *settings = pr->settings;
   pr->request.request.settings = settings;
   // make sure udata to NULL, making it available for the user
@@ -131,23 +169,7 @@ static int http1_on_request(http1_parser_s *parser) {
   return 0;
 bad_request:
   /* handle generally bad requests */
-  {
-    http_response_s *response = http_response_create(&pr->request.request);
-    if (pr->settings->log_static)
-      http_response_log_start(response);
-    response->status = 400;
-    if (!pr->settings->public_folder ||
-        http_response_sendfile2(response, &pr->request.request,
-                                pr->settings->public_folder,
-                                pr->settings->public_folder_length, "400.html",
-                                8, pr->settings->log_static)) {
-      response->should_close = 1;
-      http_response_write_body(response, "Bad Request", 11);
-      http_response_finish(response);
-    }
-    sock_close(pr->request.request.fd);
-    pr->request.buffer_pos = 0;
-  }
+  err_bad_request(pr);
   return -1;
 }
 /** called when a response was received. */
@@ -215,6 +237,8 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
   http1_protocol_s *pr = parser->udata;
   if (!pr || pr->request.header_pos >= HTTP1_MAX_HEADER_COUNT - 1)
     goto too_big;
+  if (parser->state.read)
+    goto too_big; /* refuse trailer header data, it isn't in buffer */
 
 /** test for special headers that should be easily accessible **/
 #if HTTP_HEADERS_LOWERCASE
@@ -259,20 +283,7 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
   return 0;
 too_big:
   /* handle oversized headers */
-  {
-    http_response_s *response = http_response_create(&pr->request.request);
-    if (pr->settings->log_static)
-      http_response_log_start(response);
-    response->status = 431;
-    if (!pr->settings->public_folder ||
-        http_response_sendfile2(response, &pr->request.request,
-                                pr->settings->public_folder,
-                                pr->settings->public_folder_length, "431.html",
-                                8, pr->settings->log_static)) {
-      http_response_write_body(response, "Request Header Fields Too Large", 31);
-      http_response_finish(response);
-    }
-  }
+  err_too_big(pr);
   return -1;
 }
 
@@ -282,12 +293,13 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
   http1_protocol_s *pr = parser->udata;
   if (!pr)
     return -1;
+  if (parser->state.content_length > (ssize_t)pr->settings->max_body_size ||
+      parser->state.read > (ssize_t)pr->settings->max_body_size)
+    return -1; /* test every time, in case of chunked data */
   if (!parser->state.read) {
-    if (parser->state.content_length > pr->settings->max_body_size)
-      return -1;
-    pr->request.request.content_length = parser->state.content_length;
-    if (pr->request.buffer_pos + parser->state.content_length <
-        HTTP1_MAX_HEADER_SIZE) {
+    if (parser->state.content_length > 0 &&
+        (pr->request.buffer_pos + parser->state.content_length <
+         HTTP1_MAX_HEADER_SIZE)) {
       pr->request.request.body_str = data;
     } else {
 // create a temporary file to contain the data.
@@ -348,6 +360,12 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *pr) {
       tmp = 0;
     buffer = request->buffer + request->buffer_pos - pr->len;
   } else {
+    if (pr->len) {
+      /* protocol error, we shouldn't have letfovers during file processing */
+      err_bad_request(pr);
+      http1_on_error(&pr->parser);
+      return;
+    }
     buffer = buff;
     tmp = sock_read(uuid, buffer, HTTP_BODY_CHUNK_SIZE);
     if (tmp > 0) {

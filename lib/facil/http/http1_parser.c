@@ -163,18 +163,129 @@ inline static int consume_header(struct http1_fio_parser_args_s *args,
       *((uint64_t *)(start + 6)) == *((uint64_t *)"t-length")) {
     /* handle the special `content-length` header */
     args->parser->state.content_length = atol((char *)tmp);
+  } else if ((tmp - start) - t2 == 17 &&
+             *((uint64_t *)start) == *((uint64_t *)"transfer") &&
+             *((uint64_t *)(start + 8)) == *((uint64_t *)"-encodin") &&
+             *((uint32_t *)tmp) == *((uint32_t *)"chun") &&
+             *((uint32_t *)(tmp + 3)) == *((uint32_t *)"nked")) {
+    /* handle the special `transfer-encoding: chunked` header */
+    args->parser->state.reserved |= 64;
+  } else if ((tmp - start) - t2 == 7 &&
+             *((uint64_t *)start) == *((uint64_t *)"trailer")) {
+    /* chunked data with trailer... */
+    args->parser->state.reserved |= 64;
+    args->parser->state.reserved |= 32;
   }
 #else
   if ((tmp - start) - t2 == 14 &&
       HEADER_NAME_IS_EQ((char *)start, "content-length", 14)) {
     /* handle the special `content-length` header */
     args->parser->state.content_length = atol((char *)tmp);
+  } else if ((tmp - start) - t2 == 17 &&
+             HEADER_NAME_IS_EQ((char *)start, "transfer-encoding", 17) &&
+             memcmp(tmp, "chunked", 7)) {
+    /* handle the special `transfer-encoding: chunked` header */
+    args->parser->state.reserved |= 64;
+  } else if ((tmp - start) - t2 == 7 &&
+             HEADER_NAME_IS_EQ((char *)start, "trailer", 7)) {
+    /* chunked data with trailer... */
+    args->parser->state.reserved |= 64;
+    args->parser->state.reserved |= 32;
   }
 #endif
   /* perform callback */
   if (args->on_header(args->parser, (char *)start, (tmp - start) - t2,
                       (char *)tmp, end - tmp))
     return -1;
+  return 0;
+}
+
+/* *****************************************************************************
+HTTP/1.1 Body handling
+***************************************************************************** */
+
+inline static int consume_body_streamed(struct http1_fio_parser_args_s *args,
+                                        uint8_t **start) {
+  uint8_t *end =
+      *start + args->parser->state.content_length - args->parser->state.read;
+  uint8_t *const stop = ((uint8_t *)args->buffer) + args->length;
+  if (end > stop)
+    end = stop;
+  if (end > *start &&
+      args->on_body_chunk(args->parser, (char *)(*start), end - *start))
+    return -1;
+  args->parser->state.read += (end - *start);
+  *start = end;
+  if (args->parser->state.content_length <= args->parser->state.read)
+    args->parser->state.reserved |= 4;
+  return 0;
+}
+
+inline static int consume_body_chunked(struct http1_fio_parser_args_s *args,
+                                       uint8_t **start) {
+  uint8_t *const stop = ((uint8_t *)args->buffer) + args->length;
+  uint8_t *end = *start;
+  while (*start < stop) {
+    if (args->parser->state.content_length == 0) {
+      size_t eol_len;
+      /* collect chunked length */
+      if (!(eol_len = seek2eol(&end, stop))) {
+        /* requires length data to continue */
+        return 0;
+      }
+      /* an empty EOL is possible in mid stream processing */
+      if (*start + eol_len - 1 >= end && (*start = end) &&
+          !seek2eol(&end, stop)) {
+        return 0;
+      }
+      args->parser->state.content_length = 0 - strtol((char *)*start, NULL, 16);
+      *start = end = end + 1;
+      if (args->parser->state.content_length == 0) {
+        /* all chunked data was parsed */
+        args->parser->state.content_length = args->parser->state.read;
+        /* consume trailing EOL */
+        if (seek2eol(start, stop))
+          (*start)++;
+        if (args->parser->state.reserved & 32) {
+          /* remove the "headers complete" and "trailer" flags */
+          args->parser->state.reserved &= 0xDD; /* 0xDD == ~2 & ~32 & 0xFF */
+          return -2;
+        }
+        /* the parsing complete flag */
+        args->parser->state.reserved |= 4;
+        return 0;
+      }
+    }
+    end = *start + (0 - args->parser->state.content_length);
+    if (end > stop)
+      end = stop;
+    if (end > *start &&
+        args->on_body_chunk(args->parser, (char *)(*start), end - *start)) {
+      return -1;
+    }
+    args->parser->state.read += (end - *start);
+    args->parser->state.content_length += (end - *start);
+    *start = end;
+    if (args->parser->state.content_length == 0 && seek2eol(start, stop))
+      (*start)++;
+  }
+  return 0;
+}
+
+inline static int consume_body(struct http1_fio_parser_args_s *args,
+                               uint8_t **start) {
+  if (args->parser->state.content_length > 0 &&
+      args->parser->state.content_length > args->parser->state.read) {
+    /* normal, streamed data */
+    return consume_body_streamed(args, start);
+  } else if (args->parser->state.content_length <= 0 &&
+             (args->parser->state.reserved & 64)) {
+    /* chuncked encoding */
+    return consume_body_chunked(args, start);
+  } else {
+    /* nothing to do - parsing complete */
+    args->parser->state.reserved |= 4;
+  }
   return 0;
 }
 
@@ -188,10 +299,11 @@ size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args) {
   uint8_t *const stop = start + args->length;
   uint8_t eol_len = 0;
 #define CONSUMED ((size_t)((uintptr_t)start - (uintptr_t)args->buffer))
-  // fprintf(stderr, "** resuming with at %p with %.*s...(%lu)\n", args->buffer,
-  // 4,
-  //         start, args->length);
-  switch ((args->parser->state.reserved & 31)) {
+// fprintf(stderr, "** resuming with at %p with %.*s...(%lu)\n", args->buffer,
+// 4,
+//         start, args->length);
+re_eval:
+  switch ((args->parser->state.reserved & 15)) {
 
   /* request / response line */
   case 0:
@@ -208,7 +320,7 @@ size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args) {
       /* HTTP response */
       if (consume_response_line(args, start, end - eol_len + 1))
         goto error;
-    } else {
+    } else if (tolower(start[0]) >= 'a' && tolower(start[0]) <= 'z') {
       /* HTTP request */
       if (consume_request_line(args, start, end - eol_len + 1))
         goto error;
@@ -233,44 +345,31 @@ size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args) {
   finished_headers:
     end = start = end + 1;
     args->parser->state.reserved |= 2;
-    if (args->parser->state.content_length == 0)
-      goto finish;
-    if (end >= stop)
-      return args->length;
-
   /* fallthrough */
   /* request body */
-  case 3: /*  2 | 1 == 3 */
-    end = start + args->parser->state.content_length - args->parser->state.read;
-    if (end > stop)
-      end = stop;
-    if (end == start)
-      return CONSUMED;
-    // fprintf(stderr, "Consuming body at (%lu/%lu):%.*s\n", end - start,
-    //         args->parser->state.content_length, (int)(end - start), start);
-    if (args->on_body_chunk(args->parser, (char *)start, end - start))
+  case 3: { /*  2 | 1 == 3 */
+    int t3 = consume_body(args, &start);
+    if (t3 == -1)
       goto error;
-    args->parser->state.read += (end - start);
-    start = end;
-    if (args->parser->state.content_length <= args->parser->state.read)
-      goto finish;
-    return CONSUMED;
+    if (t3 == -2)
+      goto re_eval;
     break;
   }
-
+  }
+  /* are we done ? */
+  if (args->parser->state.reserved & 4) {
+    if (((args->parser->state.reserved & 128) ? args->on_response
+                                              : args->on_request)(args->parser))
+      goto error;
+    args->parser->state =
+        (struct http1_parser_protected_read_only_state_s){0, 0, 0};
+  }
+  return CONSUMED;
 error:
   args->on_error(args->parser);
   args->parser->state =
       (struct http1_parser_protected_read_only_state_s){0, 0, 0};
   return args->length;
-
-finish:
-  if (((args->parser->state.reserved & 128) ? args->on_response
-                                            : args->on_request)(args->parser))
-    goto error;
-  args->parser->state =
-      (struct http1_parser_protected_read_only_state_s){0, 0, 0};
-  return CONSUMED;
 }
 
 #undef CONSUMED
