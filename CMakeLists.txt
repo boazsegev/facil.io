@@ -12,9 +12,9 @@ set(facil.io_SOURCES
   ./lib/facil/services/pubsub.c
   ./lib/facil/http/http.c
   ./lib/facil/http/http1.c
+  ./lib/facil/http/http1_parser.c
   ./lib/facil/http/http1_request.c
   ./lib/facil/http/http1_response.c
-  ./lib/facil/http/http1_simple_parser.c
   ./lib/facil/http/http_request.c
   ./lib/facil/http/http_response.c
   ./lib/facil/http/websockets.c

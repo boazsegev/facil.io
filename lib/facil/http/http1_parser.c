@@ -1,3 +1,9 @@
+/*
+Copyright: Boaz segev, 2017
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
 #ifndef __GNU_SOURCE
 #define __GNU_SOURCE
 #endif
@@ -7,42 +13,33 @@
 #include <stdio.h>
 #include <string.h>
 
-#define DONT_EXPECT_RESULT 1
-
-#if defined(__has_builtin) && !defined(likely) &&                              \
-    (!defined(DONT_EXPECT_RESULT) || DONT_EXPECT_RESULT == 0)
-#if __has_builtin(__builtin_expect)
-#define unlikely(expr) __builtin_expect(!!(expr), 0)
-#define likely(expr) __builtin_expect(!!(expr), 1)
-#endif
-#endif
-#ifndef likely
-#define unlikely(expr) (expr)
-#define likely(expr) (expr)
-#endif
+#define PREFER_MEMCHAR 0
 
 /* *****************************************************************************
 Seeking for characters in a string
 ***************************************************************************** */
 
-// inline static uint8_t seek2ch(uint8_t **pos, uint8_t *limit, uint8_t ch) {
-//   /* This is library based alternative that is sometimes slower  */
-//   if (*pos >= limit || **pos == ch) {
-//     return 0;
-//   }
-//   uint8_t *tmp = memchr(*pos, ch, limit - (*pos));
-//   if (tmp) {
-//     *pos = tmp;
-//     *tmp = 0;
-//     return 1;
-//   }
-//   *pos = limit;
-//   return 0;
-// }
+#if PREFER_MEMCHAR
 
-/* a helper that seeks any char, converts it to NUL and returns 1 if found.
- * requires at lease 1 character.
- */
+/* a helper that seeks any char, converts it to NUL and returns 1 if found. */
+inline static uint8_t seek2ch(uint8_t **pos, uint8_t *const limit, uint8_t ch) {
+  /* This is library based alternative that is sometimes slower  */
+  if (*pos >= limit || **pos == ch) {
+    return 0;
+  }
+  uint8_t *tmp = memchr(*pos, ch, limit - (*pos));
+  if (tmp) {
+    *pos = tmp;
+    *tmp = 0;
+    return 1;
+  }
+  *pos = limit;
+  return 0;
+}
+
+#else
+
+/* a helper that seeks any char, converts it to NUL and returns 1 if found. */
 static inline uint8_t seek2ch(uint8_t **buffer, const uint8_t *const limit,
                               const uint8_t c) {
   /* this single char lookup is better when target is closer... */
@@ -65,8 +62,8 @@ static inline uint8_t seek2ch(uint8_t **buffer, const uint8_t *const limit,
   }
 
   *buffer = (uint8_t *)lpos;
-  while (likely(*buffer < limit)) {
-    if (unlikely(**buffer == c)) {
+  while (*buffer < limit) {
+    if (**buffer == c) {
       **buffer = 0;
       return 1;
     }
@@ -75,36 +72,19 @@ static inline uint8_t seek2ch(uint8_t **buffer, const uint8_t *const limit,
   return 0;
 }
 
+#endif
+
 /* a helper that seeks the EOL, converts it to NUL and returns it's length */
-inline static uint8_t seek2eol(uint8_t **pos, const uint8_t *const limit) {
+inline static uint8_t seek2eol(uint8_t **pos, uint8_t *const limit) {
   /* single char lookup using memchr might be better when target is far... */
-  if (unlikely(!seek2ch(pos, limit, '\n')))
+  if (!seek2ch(pos, limit, '\n'))
     return 0;
-  if (likely((*pos)[-1] == '\r')) {
+  if ((*pos)[-1] == '\r') {
     (*pos)[-1] = 0;
     return 2;
   }
   return 1;
 }
-
-/* a helper that seeks the EOL, converts it to NUL and returns it's length */
-// inline static uint8_t seek2eol(uint8_t **pos, uint8_t *limit) {
-//   /* single char lookup using library is best when target is far... */
-//   if (*pos >= limit)
-//     return 0;
-//   uint8_t *tmp = memchr(*pos, '\n', limit - (*pos));
-//   if (tmp) {
-//     *pos = tmp;
-//     *tmp = 0;
-//     if (tmp[-1] == '\r') {
-//       (tmp)[-1] = 0;
-//       return 2;
-//     }
-//     return 1;
-//   }
-//   *pos = limit;
-//   return 0;
-// }
 
 /* *****************************************************************************
 HTTP/1.1 parsre stages
@@ -171,20 +151,26 @@ inline static int consume_header(struct http1_fio_parser_args_s *args,
     *t3 = tolower(*t3);
   }
 #endif
+
   tmp++;
-  if (likely(tmp[0] == ' ')) {
+  if (tmp[0] == ' ') {
     tmp++;
     t2++;
   };
-  while (unlikely(tmp[0] == ' ')) {
-    tmp++;
-    t2++;
-  };
+#if HTTP_HEADERS_LOWERCASE
+  if ((tmp - start) - t2 == 14 &&
+      *((uint64_t *)start) == *((uint64_t *)"content-") &&
+      *((uint64_t *)(start + 6)) == *((uint64_t *)"t-length")) {
+    /* handle the special `content-length` header */
+    args->parser->state.content_length = atol((char *)tmp);
+  }
+#else
   if ((tmp - start) - t2 == 14 &&
       HEADER_NAME_IS_EQ((char *)start, "content-length", 14)) {
     /* handle the special `content-length` header */
     args->parser->state.content_length = atol((char *)tmp);
   }
+#endif
   /* perform callback */
   if (args->on_header(args->parser, (char *)start, (tmp - start) - t2,
                       (char *)tmp, end - tmp))

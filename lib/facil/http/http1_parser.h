@@ -1,6 +1,14 @@
 #ifndef H_HTTP1_PARSER_H
 /*
-A callback based parser.
+Copyright: Boaz segev, 2017
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
+
+/**
+This is a callback based parser. It parses the skeleton of the HTTP/1.x protocol
+and leaves most of the work (validation, error checks, etc') to the callbacks.
 
 This is an attempt to replace the existing HTTP/1.x parser with something easier
 to maintain and that could be used for an HTTP/1.x client as well.
@@ -11,12 +19,12 @@ to maintain and that could be used for an HTTP/1.x client as well.
 
 #ifndef HTTP_HEADERS_LOWERCASE
 /** when defined, HTTP headers will be converted to lowercase and header
- * searches will be case sensitive. This improves the parser performance in some
- * instances (which surprised me.) */
+ * searches will be case sensitive. */
 #define HTTP_HEADERS_LOWERCASE 1
 #endif
 
 #if HTTP_HEADERS_LOWERCASE
+
 #define HEADER_NAME_IS_EQ(var_name, const_name, len)                           \
   (!memcmp((var_name), (const_name), (len)))
 #else

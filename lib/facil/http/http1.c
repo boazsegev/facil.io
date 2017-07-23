@@ -7,34 +7,35 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "spnlock.inc"
 
 #include "http.h"
-#include "http1.h"
+#include "http1_parser.h"
 #include "http1_request.h"
-#include "http1_simple_parser.h"
 
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 
-char *HTTP1_Protocol_String = "facil_http/1.1_protocol";
+char *HTTP11_Protocol_String = "facil_http/1.1_protocol";
 /* *****************************************************************************
 HTTP/1.1 data structures
-*/
+***************************************************************************** */
 
 typedef struct http1_protocol_s {
   protocol_s protocol;
   http_settings_s *settings;
+  http1_parser_s parser;
   void (*on_request)(http_request_s *request);
   struct http1_protocol_s *next;
   http1_request_s request;
-  ssize_t len; /* used as a persistent socket `read` indication. */
+  size_t len;     /* used as a persistent socket `read` indication. */
+  size_t refresh; /* a flag indicating a request callback was called. */
 } http1_protocol_s;
 
 static void http1_on_data(intptr_t uuid, http1_protocol_s *protocol);
 
 /* *****************************************************************************
 HTTP/1.1 pool
-*/
+***************************************************************************** */
 
 static struct {
   spn_lock_i lock;
@@ -63,7 +64,8 @@ static inline void http1_set_protocol_data(http1_protocol_s *pr) {
       .on_data = (void (*)(intptr_t, protocol_s *))http1_on_data,
       .on_close = (void (*)(intptr_t uuid, protocol_s *))http1_free};
   pr->request.request = (http_request_s){.fd = 0, .http_version = HTTP_V1};
-  pr->request.header_pos = pr->request.buffer_pos = pr->len = 0;
+  pr->refresh = pr->request.header_pos = pr->request.buffer_pos = pr->len = 0;
+  pr->parser = (http1_parser_s){.udata = pr};
 }
 
 static http1_protocol_s *http1_alloc(void) {
@@ -100,188 +102,289 @@ initialize:
 }
 
 /* *****************************************************************************
-HTTP callbacks
-*/
+HTTP/1.1 parsre callbacks
+***************************************************************************** */
+
 #define HTTP_BODY_CHUNK_SIZE 3072 // 4096
 
-static void http1_on_header_found(http_request_s *request,
-                                  http_header_s *header) {
-  ((http1_request_s *)request)
-      ->headers[((http1_request_s *)request)->header_pos] = *header;
-  ((http1_request_s *)request)->header_pos += 1;
-}
-
-/* parse and call callback */
-static void http1_on_data(intptr_t uuid, http1_protocol_s *pr) {
-  ssize_t result;
-  char buff[HTTP_BODY_CHUNK_SIZE];
-  http1_request_s *request = &pr->request;
-  char *buffer = request->buffer;
-  // handle requests with no file data
-  if (request->request.body_file <= 0) {
-    // request headers parsing
-    if (pr->len == 0) {
-      buffer = request->buffer;
-      // make sure headers don't overflow
-      pr->len = sock_read(uuid, buffer + request->buffer_pos,
-                          HTTP1_MAX_HEADER_SIZE - request->buffer_pos);
-      // update buffer read position.
-      request->buffer_pos += pr->len;
-      // if (len > 0) {
-      //   fprintf(stderr, "\n----\nRead from socket, %lu bytes, total
-      //   %lu:\n",
-      //           len, request->buffer_pos);
-      //   for (size_t i = 0; i < request->buffer_pos; i++) {
-      //     fprintf(stderr, "%c", buffer[i] ? buffer[i] : '-');
-      //   }
-      //   fprintf(stderr, "\n");
-      // }
-    }
-    if (pr->len <= 0)
-      goto finished_reading;
-
-    // parse headers
-    result = http1_parse_request_headers(
-        buffer, request->buffer_pos, &request->request, http1_on_header_found);
-    // review result
-    if (result >= 0) { // headers comeplete
-      // are we done?
-      if (request->request.content_length == 0 || request->request.body_str) {
-        goto handle_request;
-      }
-      if (request->request.content_length > pr->settings->max_body_size) {
-        goto body_to_big;
-      }
-      // initialize or submit body data
-      result = http1_parse_request_body(buffer + result, pr->len - result,
-                                        (http_request_s *)request);
-      if (result >= 0) {
-        request->buffer_pos += result;
-        goto handle_request;
-      } else if (result == -1) // parser error
-        goto parser_error;
-      goto parse_body;
-    } else if (result == -1) // parser error
-      goto parser_error;
-    // assume incomplete (result == -2), even if wrong, we're right.
-    pr->len = 0;
-    goto postpone;
-  }
-  if (request->request.body_file > 0) {
-  // fprintf(stderr, "Body File\n");
-  parse_body:
-    buffer = buff;
-    // request body parsing
-    pr->len = sock_read(uuid, buffer, HTTP_BODY_CHUNK_SIZE);
-    if (pr->len <= 0)
-      goto finished_reading;
-    result = http1_parse_request_body(buffer, pr->len, &request->request);
-    if (result >= 0) {
-      goto handle_request;
-    } else if (result == -1) // parser error
-      goto parser_error;
-    if (pr->len < HTTP_BODY_CHUNK_SIZE) // pause parser for more data
-      goto finished_reading;
-    goto parse_body;
-  }
-  goto postpone;
-handle_request:
-  // review required headers / data
-  if (request->request.host == NULL)
+/** called when a request was received. */
+static int http1_on_request(http1_parser_s *parser) {
+  http1_protocol_s *pr = parser->udata;
+  if (!pr)
+    return -1;
+  if (pr->request.request.host == NULL) {
     goto bad_request;
+  }
   http_settings_s *settings = pr->settings;
-  request->request.settings = settings;
+  pr->request.request.settings = settings;
   // make sure udata to NULL, making it available for the user
-  request->request.udata = NULL;
-  // call request callback
-  if (pr && settings &&
-      (request->request.upgrade || settings->public_folder == NULL ||
-       http_response_sendfile2(NULL, &request->request, settings->public_folder,
-                               settings->public_folder_length,
-                               request->request.path, request->request.path_len,
-                               settings->log_static))) {
-    pr->on_request(&request->request);
-    // fprintf(stderr, "Called on_request\n");
+  pr->request.request.udata = NULL;
+  // static file service or call request callback
+  if (pr->request.request.upgrade || settings->public_folder == NULL ||
+      http_response_sendfile2(
+          NULL, &pr->request.request, settings->public_folder,
+          settings->public_folder_length, pr->request.request.path,
+          pr->request.request.path_len, settings->log_static)) {
+    pr->on_request(&pr->request.request);
   }
-  // rotate buffer for HTTP pipelining
-  if ((ssize_t)request->buffer_pos <= result) {
-    pr->len = 0;
-    // fprintf(stderr, "\n----\nAll data consumed.\n");
-  } else {
-    memmove(request->buffer, buffer + result, request->buffer_pos - result);
-    pr->len = request->buffer_pos - result;
-    // fprintf(stderr, "\n----\ndata after move, %lu long:\n%.*s\n", len,
-    //         (int)len, request->buffer);
-  }
-  // fprintf(stderr, "data in buffer, %lu long:\n%.*s\n", len, (int)len,
-  //         request->buffer);
-  // clear request state
-  http1_request_clear(&request->request);
-  request->buffer_pos = pr->len;
-  // make sure to use the correct buffer.
-  buffer = request->buffer;
-/* prevent this connection from hogging the thread by pipelining endless
- * requests.
- */
-postpone:
-  facil_force_event(uuid, FIO_EVENT_ON_DATA);
-  return;
-parser_error:
-  if (request->request.headers_count >= HTTP1_MAX_HEADER_COUNT)
-    goto too_big;
+  pr->refresh = 1;
+  return 0;
 bad_request:
   /* handle generally bad requests */
   {
-    http_response_s *response = http_response_create(&request->request);
+    http_response_s *response = http_response_create(&pr->request.request);
+    if (pr->settings->log_static)
+      http_response_log_start(response);
     response->status = 400;
     if (!pr->settings->public_folder ||
-        http_response_sendfile2(response, &request->request,
+        http_response_sendfile2(response, &pr->request.request,
                                 pr->settings->public_folder,
                                 pr->settings->public_folder_length, "400.html",
                                 8, pr->settings->log_static)) {
+      response->should_close = 1;
       http_response_write_body(response, "Bad Request", 11);
       http_response_finish(response);
     }
-    sock_close(uuid);
-    request->buffer_pos = 0;
-    goto finished_reading;
+    sock_close(pr->request.request.fd);
+    pr->request.buffer_pos = 0;
   }
+  return -1;
+}
+/** called when a response was received. */
+static int http1_on_response(http1_parser_s *parser) {
+  return -1;
+  (void)parser;
+}
+/** called when a request method is parsed. */
+static int http1_on_method(http1_parser_s *parser, char *method,
+                           size_t method_len) {
+  http1_protocol_s *pr = parser->udata;
+  if (!pr)
+    return -1;
+  pr->request.request.method = method;
+  pr->request.request.method_len = method_len;
+  return 0;
+}
+
+/** called when a response status is parsed. the status_str is the string
+ * without the prefixed numerical status indicator.*/
+static int http1_on_status(http1_parser_s *parser, size_t status,
+                           char *status_str, size_t len) {
+  return -1;
+  (void)parser;
+  (void)status;
+  (void)status_str;
+  (void)len;
+}
+
+/** called when a request path (excluding query) is parsed. */
+static int http1_on_path(http1_parser_s *parser, char *path, size_t path_len) {
+  http1_protocol_s *pr = parser->udata;
+  if (!pr)
+    return -1;
+  pr->request.request.path = path;
+  pr->request.request.path_len = path_len;
+  return 0;
+}
+
+/** called when a request path (excluding query) is parsed. */
+static int http1_on_query(http1_parser_s *parser, char *query,
+                          size_t query_len) {
+  http1_protocol_s *pr = parser->udata;
+  if (!pr)
+    return -1;
+  pr->request.request.query = query;
+  pr->request.request.query_len = query_len;
+  return 0;
+}
+
+/** called when a the HTTP/1.x version is parsed. */
+static int http1_on_http_version(http1_parser_s *parser, char *version,
+                                 size_t len) {
+  http1_protocol_s *pr = parser->udata;
+  if (!pr)
+    return -1;
+  pr->request.request.version = version;
+  pr->request.request.version_len = len;
+  return 0;
+}
+
+/** called when a header is parsed. */
+static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
+                           char *data, size_t data_len) {
+  http1_protocol_s *pr = parser->udata;
+  if (!pr || pr->request.header_pos >= HTTP1_MAX_HEADER_COUNT - 1)
+    goto too_big;
+
+/** test for special headers that should be easily accessible **/
+#if HTTP_HEADERS_LOWERCASE
+  if (name_len == 4 && *((uint32_t *)name) == *((uint32_t *)"host")) {
+    pr->request.request.host = data;
+    pr->request.request.host_len = data_len;
+  } else if (name_len == 12 && *((uint32_t *)name) == *((uint32_t *)"cont") &&
+             *((uint64_t *)(name + 4)) == *((uint64_t *)"ent-type")) {
+    pr->request.request.content_type = data;
+    pr->request.request.content_type_len = data_len;
+  } else if (name_len == 7 && *((uint64_t *)name) == *((uint64_t *)"upgrade")) {
+    pr->request.request.upgrade = data;
+    pr->request.request.upgrade_len = data_len;
+  } else if (name_len == 10 && *((uint32_t *)name) == *((uint32_t *)"conn") &&
+             *((uint64_t *)(name + 2)) == *((uint64_t *)"nnection")) {
+    pr->request.request.connection = data;
+    pr->request.request.connection_len = data_len;
+  }
+#else
+  if (name_len == 4 && HEADER_NAME_IS_EQ(name, "host", name_len)) {
+    pr->request.request.host = data;
+    pr->request.request.host_len = data_len;
+  } else if (name_len == 12 &&
+             HEADER_NAME_IS_EQ(name, "content-type", name_len)) {
+    pr->request.request.content_type = data;
+    pr->request.request.content_type_len = data_len;
+  } else if (name_len == 7 && HEADER_NAME_IS_EQ(name, "upgrade", name_len)) {
+    pr->request.request.upgrade = data;
+    pr->request.request.upgrade_len = data_len;
+  } else if (name_len == 10 &&
+             HEADER_NAME_IS_EQ(name, "connection", name_len)) {
+    pr->request.request.connection = data;
+    pr->request.request.connection_len = data_len;
+  }
+#endif
+  pr->request.headers[pr->request.header_pos].name = name;
+  pr->request.headers[pr->request.header_pos].name_len = name_len;
+  pr->request.headers[pr->request.header_pos].data = data;
+  pr->request.headers[pr->request.header_pos].data_len = data_len;
+  pr->request.header_pos++;
+  return 0;
 too_big:
   /* handle oversized headers */
   {
-    http_response_s *response = http_response_create(&request->request);
+    http_response_s *response = http_response_create(&pr->request.request);
+    if (pr->settings->log_static)
+      http_response_log_start(response);
     response->status = 431;
     if (!pr->settings->public_folder ||
-        http_response_sendfile2(response, &request->request,
+        http_response_sendfile2(response, &pr->request.request,
                                 pr->settings->public_folder,
                                 pr->settings->public_folder_length, "431.html",
                                 8, pr->settings->log_static)) {
       http_response_write_body(response, "Request Header Fields Too Large", 31);
       http_response_finish(response);
     }
-    sock_close(uuid);
-    request->buffer_pos = 0;
-    goto finished_reading;
-  body_to_big:
-    /* handle oversized body */
-    {
-      http_response_s *response = http_response_create(&request->request);
-      response->status = 413;
-      if (!pr->settings->public_folder ||
-          http_response_sendfile2(response, &request->request,
-                                  pr->settings->public_folder,
-                                  pr->settings->public_folder_length,
-                                  "413.html", 8, pr->settings->log_static)) {
-        http_response_write_body(response, "Payload Too Large", 17);
-        http_response_finish(response);
-      }
-      sock_close(uuid);
-      request->buffer_pos = 0;
-      goto finished_reading;
+  }
+  return -1;
+}
+
+/** called when a body chunk is parsed. */
+static int http1_on_body_chunk(http1_parser_s *parser, char *data,
+                               size_t data_len) {
+  http1_protocol_s *pr = parser->udata;
+  if (!pr)
+    return -1;
+  if (!parser->state.read) {
+    if (parser->state.content_length > pr->settings->max_body_size)
+      return -1;
+    pr->request.request.content_length = parser->state.content_length;
+    if (pr->request.buffer_pos + parser->state.content_length <
+        HTTP1_MAX_HEADER_SIZE) {
+      pr->request.request.body_str = data;
+    } else {
+// create a temporary file to contain the data.
+#ifdef P_tmpdir
+#if defined(__linux__) /* linux doesn't end with a divider */
+      char template[] = P_tmpdir "/http_request_body_XXXXXXXX";
+#else
+      char template[] = P_tmpdir "http_request_body_XXXXXXXX";
+#endif
+#else
+      char template[] = "/tmp/http_request_body_XXXXXXXX";
+#endif
+      pr->request.request.body_file = mkstemp(template);
+      if (pr->request.request.body_file == -1)
+        return -1;
     }
   }
-finished_reading:
-  pr->len = 0;
+  if (pr->request.request.body_file) {
+    if (write(pr->request.request.body_file, data, data_len) !=
+        (ssize_t)data_len)
+      return -1;
+  } else {
+    /* nothing to do... the parser and `on_data` are doing all the work */
+  }
+  return 0;
+}
+
+/** called when a protocol error occured. */
+static int http1_on_error(http1_parser_s *parser) {
+  http1_protocol_s *pr = parser->udata;
+  if (!pr)
+    return -1;
+  sock_close(pr->request.request.fd);
+  http1_request_clear(&pr->request.request);
+  return 0;
+}
+
+/* *****************************************************************************
+HTTP/1.1 protocol callbacks
+***************************************************************************** */
+
+/* parse and call callback */
+static void http1_on_data(intptr_t uuid, http1_protocol_s *pr) {
+  size_t consumed;
+  char buff[HTTP_BODY_CHUNK_SIZE];
+  http1_request_s *request = &pr->request;
+  char *buffer = request->buffer;
+  ssize_t tmp = 0;
+  // handle requests with no file data
+  if (request->request.body_file <= 0) {
+    // read into the request buffer.
+    tmp = sock_read(uuid, request->buffer + request->buffer_pos,
+                    HTTP1_MAX_HEADER_SIZE - request->buffer_pos);
+    if (tmp > 0) {
+      request->buffer_pos += tmp;
+      pr->len += tmp;
+    } else
+      tmp = 0;
+    buffer = request->buffer + request->buffer_pos - pr->len;
+  } else {
+    buffer = buff;
+    pr->len = sock_read(uuid, buffer, HTTP_BODY_CHUNK_SIZE);
+  }
+
+  if (pr->len == 0)
+    return;
+
+  // parse HTTP data
+  consumed =
+      http1_fio_parser(.parser = &pr->parser, .buffer = buffer,
+                       .length = pr->len, .on_request = http1_on_request,
+                       .on_response = http1_on_response,
+                       .on_method = http1_on_method,
+                       .on_status = http1_on_status, .on_path = http1_on_path,
+                       .on_query = http1_on_query,
+                       .on_http_version = http1_on_http_version,
+                       .on_header = http1_on_header,
+                       .on_body_chunk = http1_on_body_chunk,
+                       .on_error = http1_on_error);
+
+  // handle leftovers, if any
+  if (pr->refresh) {
+    pr->refresh = 0;
+    if (pr->len > consumed) {
+      memmove(request->buffer, buffer + consumed, pr->len - consumed);
+      pr->len = pr->len - consumed;
+      http1_request_clear(&request->request);
+      request->buffer_pos = pr->len;
+      facil_force_event(uuid, FIO_EVENT_ON_DATA);
+      return;
+    }
+    http1_request_clear(&request->request);
+    pr->len = 0;
+  } else {
+    pr->len = pr->len - consumed;
+  }
+  if (tmp)
+    facil_force_event(uuid, FIO_EVENT_ON_DATA);
 }
 
 /* *****************************************************************************
@@ -353,8 +456,8 @@ is_busy:
 
 busy_no_file:
   sock_write(fd,
-             "HTTP/1.1 503 Service Unavailable\r\nContent-Length: "
-             "13\r\n\r\nServer Busy.",
+             "HTTP/1.1 503 Service Unavailable\r\n"
+             "Content-Length: 13\r\n\r\nServer Busy.",
              68);
   sock_close(fd);
   return NULL;
