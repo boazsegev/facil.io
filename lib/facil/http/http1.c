@@ -105,7 +105,7 @@ initialize:
 HTTP/1.1 parsre callbacks
 ***************************************************************************** */
 
-#define HTTP_BODY_CHUNK_SIZE 3072 // 4096
+#define HTTP_BODY_CHUNK_SIZE 4096
 
 /** called when a request was received. */
 static int http1_on_request(http1_parser_s *parser) {
@@ -349,7 +349,12 @@ static void http1_on_data(intptr_t uuid, http1_protocol_s *pr) {
     buffer = request->buffer + request->buffer_pos - pr->len;
   } else {
     buffer = buff;
-    pr->len = sock_read(uuid, buffer, HTTP_BODY_CHUNK_SIZE);
+    tmp = sock_read(uuid, buffer, HTTP_BODY_CHUNK_SIZE);
+    if (tmp > 0) {
+      request->buffer_pos += tmp;
+      pr->len += tmp;
+    } else
+      tmp = 0;
   }
 
   if (pr->len == 0)
