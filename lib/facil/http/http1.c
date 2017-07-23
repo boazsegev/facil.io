@@ -255,6 +255,7 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
   pr->request.headers[pr->request.header_pos].data = data;
   pr->request.headers[pr->request.header_pos].data_len = data_len;
   pr->request.header_pos++;
+  pr->request.request.headers_count++;
   return 0;
 too_big:
   /* handle oversized headers */
