@@ -96,10 +96,11 @@ These are the features that have been requested so far. Even if any of them are 
 
 |      Feature      |      assigned      |      remarks               |
 |-------------------|--------------------|----------------------------|
-|   Documentation   |     🙏 Help 🙏      | place in the `docs` folder |
-|      HTTP/2       |  Bo (help wanted)  |                            |
-|    HTTP Router    |                    |                            |
+|   Documentation   |     🙏 Help 🙏     | Place in the `docs` folder |
+|      HTTP/2       | Bo (me), help me?  |                            |
+|    HTTP Router    |  @benjcal          |                            |
 |  Websocket Client |                    |                            |
+|    HTTP Client    |                    |                            |
 |      SSL/TLS      |                    | Use `sock` R/W hooks       |
 
 
