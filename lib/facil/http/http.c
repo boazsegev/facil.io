@@ -347,6 +347,34 @@ size_t http_date2rfc2109(char *target, struct tm *tmbuf) {
   return pos - target;
 }
 
+/**
+ * Prints Unix time to a HTTP time formatted string.
+ *
+ * This variation implements chached results for faster processeing, at the
+ * price of a less accurate string.
+ */
+size_t http_time2str(char *target, const time_t t) {
+  /* pre-print time every 1 or 2 seconds or so. */
+  static __thread time_t cached_tick;
+  static __thread char cached_httpdate[48];
+  static __thread size_t chached_len;
+  time_t last_tick = facil_last_tick();
+  if ((t | 7) < last_tick) {
+    /* this is a custom time, not "now", pass through */
+    struct tm tm;
+    http_gmtime(&t, &tm);
+    return http_date2str(target, &tm);
+  }
+  if (last_tick > cached_tick) {
+    struct tm tm;
+    cached_tick = last_tick | 1;
+    http_gmtime(&last_tick, &tm);
+    chached_len = http_date2str(cached_httpdate, &tm);
+  }
+  memcpy(target, cached_httpdate, chached_len);
+  return chached_len;
+}
+
 /* Credit to Jonathan Leffler for the idea of a unified conditional */
 #define hex_val(c)                                                             \
   (((c) >= '0' && (c) <= '9')                                                  \

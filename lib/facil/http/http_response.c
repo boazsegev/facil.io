@@ -485,18 +485,6 @@ static void http_response_log_finish(http_response_s *response) {
           ? ((get_clock_mili() - response->clock_start) / CLOCK_RESOLUTION)
           : 0;
 
-  /* pre-print log message every 1 or 2 seconds or so. */
-  static __thread time_t cached_tick;
-  static __thread char cached_httpdate[48];
-  static __thread size_t chached_len;
-  time_t last_tick = facil_last_tick();
-  if (last_tick > cached_tick) {
-    struct tm tm;
-    cached_tick = last_tick | 1;
-    http_gmtime(&last_tick, &tm);
-    chached_len = http_date2str(cached_httpdate, &tm);
-  }
-
   // TODO Guess IP address from headers (forwarded) where possible
   sock_peer_addr_s addrinfo = sock_peer_addr(response->fd);
 
@@ -517,8 +505,7 @@ static void http_response_log_finish(http_response_s *response) {
   }
   memcpy(buffer + pos, " - - [", 6);
   pos += 6;
-  memcpy(buffer + pos, cached_httpdate, chached_len);
-  pos += chached_len;
+  pos += http_time2str(buffer + pos, facil_last_tick());
   buffer[pos++] = ']';
   buffer[pos++] = ' ';
   buffer[pos++] = '"';

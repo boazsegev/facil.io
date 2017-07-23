@@ -165,6 +165,14 @@ size_t http_date2rfc2109(char *target, struct tm *tmbuf);
 size_t http_date2rfc2822(char *target, struct tm *tmbuf);
 
 /**
+ * Prints Unix time to a HTTP time formatted string.
+ *
+ * This variation implements chached results for faster processeing, at the
+ * price of a less accurate string.
+ */
+size_t http_time2str(char *target, const time_t t);
+
+/**
 A fast, inline alternative to `sprintf(dest, "%lu", num)`.
 
 Writes an **unsigned** number to a buffer, as a string. This is an unsafe

@@ -85,11 +85,11 @@ initialize:
   return (http_response_s *)http1_response_pool.pool_mem;
 }
 
-static void http1_response_deffered_destroy(void *rs_, void *ignr) {
+static void http1_response_deferred_destroy(void *rs_, void *ignr) {
   (void)(ignr);
   http1_response_s *rs = rs_;
   if (spn_trylock(&rs->lock)) {
-    defer(http1_response_deffered_destroy, rs, NULL);
+    defer(http1_response_deferred_destroy, rs, NULL);
     return;
   }
   rs->use_count -= 1;
@@ -118,7 +118,7 @@ use_free:
 /** Destroys the response object. No data is sent.*/
 void http1_response_destroy(http_response_s *rs) {
   ((http1_response_s *)rs)->dest_count++;
-  http1_response_deffered_destroy(rs, NULL);
+  http1_response_deferred_destroy(rs, NULL);
 }
 
 /* *****************************************************************************
@@ -162,15 +162,15 @@ static void http1_response_finalize_headers(http1_response_s *rs) {
       rs->response.date = rs->response.last_modified;
     struct tm t;
     /* date header */
-    http_gmtime(&rs->response.date, &t);
     h1p_protected_copy(rs, "Date: ", 6);
-    rs->buffer_end += http_date2str(rs->buffer + rs->buffer_end, &t);
+    rs->buffer_end +=
+        http_time2str(rs->buffer + rs->buffer_end, rs->response.date);
     rs->buffer[rs->buffer_end++] = '\r';
     rs->buffer[rs->buffer_end++] = '\n';
     /* last-modified header */
-    http_gmtime(&rs->response.last_modified, &t);
     h1p_protected_copy(rs, "Last-Modified: ", 15);
-    rs->buffer_end += http_date2str(rs->buffer + rs->buffer_end, &t);
+    rs->buffer_end +=
+        http_time2str(rs->buffer + rs->buffer_end, rs->response.last_modified);
     rs->buffer[rs->buffer_end++] = '\r';
     rs->buffer[rs->buffer_end++] = '\n';
   }
@@ -229,7 +229,7 @@ void http1_response_finish(http_response_s *rs) {
     http1_response_send_headers((http1_response_s *)rs);
   if (rs->should_close)
     sock_close(rs->fd);
-  http1_response_deffered_destroy(rs, NULL);
+  http1_response_deferred_destroy(rs, NULL);
 }
 
 /* *****************************************************************************
