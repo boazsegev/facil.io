@@ -8,13 +8,66 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fiobj_types.h"
 
 /* *****************************************************************************
+String VTable
+***************************************************************************** */
+
+static void fiobj_str_dealloc(fiobj_s *o) {
+  free(obj2str(o)->str);
+  free(&OBJ2HEAD(o));
+}
+
+static void fiobj_str_dealloc_static(fiobj_s *o) { free(&OBJ2HEAD(o)); }
+
+static int fiobj_str_is_eq(fiobj_s *self, fiobj_s *other) {
+  if (!other || other->type != self->type ||
+      obj2str(self)->len != obj2str(other)->len)
+    return 0;
+  return self == other || obj2str(self)->str == obj2str(other)->str ||
+         !memcmp(obj2str(self)->str, obj2str(other)->str, obj2str(self)->len);
+}
+
+static fio_cstr_s fio_str2str(fiobj_s *o) {
+  return (fio_cstr_s){.buffer = obj2str(o)->str, .len = obj2str(o)->len};
+}
+static int64_t fio_str2i(fiobj_s *o) {
+  char *s = obj2str(o)->str;
+  return fio_atol(&s);
+}
+static double fio_str2f(fiobj_s *o) {
+  char *s = obj2str(o)->str;
+  return fio_atof(&s);
+}
+
+static struct fiobj_vtable_s FIOBJ_VTABLE_STRING = {
+    .free = fiobj_str_dealloc,
+    .to_i = fio_str2i,
+    .to_f = fio_str2f,
+    .to_str = fio_str2str,
+    .is_eq = fiobj_str_is_eq,
+    .count = fiobj_noop_count,
+    .each1 = fiobj_noop_each1,
+};
+
+static struct fiobj_vtable_s FIOBJ_VTABLE_STATIC_STRING = {
+    .free = fiobj_str_dealloc_static,
+    .to_i = fio_str2i,
+    .to_f = fio_str2f,
+    .to_str = fio_str2str,
+    .is_eq = fiobj_str_is_eq,
+    .count = fiobj_noop_count,
+    .each1 = fiobj_noop_each1,
+};
+
+/* *****************************************************************************
 String API
 ***************************************************************************** */
 
 static inline fiobj_s *fiobj_str_alloc(size_t len) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_str_s));
-  head->ref = 1;
+  *head = (fiobj_head_s){
+      .ref = 1, .vtable = &FIOBJ_VTABLE_STRING,
+  };
   *obj2str(HEAD2OBJ(head)) = (fio_str_s){
       .type = FIOBJ_T_STRING, .len = len, .capa = len, .str = malloc(len + 1),
   };
@@ -54,7 +107,9 @@ fiobj_s *fiobj_str_buf(size_t capa) {
 fiobj_s *fiobj_str_static(const char *str, size_t len) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_str_s));
-  head->ref = 1;
+  *head = (fiobj_head_s){
+      .ref = 1, .vtable = &FIOBJ_VTABLE_STATIC_STRING,
+  };
   *obj2str(HEAD2OBJ(head)) = (fio_str_s){
       .type = FIOBJ_T_STRING,
       .len = (len ? len : strlen(str)),
@@ -108,6 +163,13 @@ void fiobj_str_capa_assert(fiobj_s *str, size_t size) {
   return;
 }
 
+/** Return's a String's capacity, if any. */
+size_t fiobj_str_capa(fiobj_s *str) {
+  if (str->type != FIOBJ_T_STRING)
+    return 0;
+  return ((fio_str_s *)str)->capa;
+}
+
 /** Resizes a String object, allocating more memory if required. */
 void fiobj_str_resize(fiobj_s *str, size_t size) {
   if (str->type != FIOBJ_T_STRING)
@@ -116,13 +178,6 @@ void fiobj_str_resize(fiobj_s *str, size_t size) {
   ((fio_str_s *)str)->len = size;
   ((fio_str_s *)str)->str[size] = 0;
   return;
-}
-
-/** Return's a String's capacity, if any. */
-size_t fiobj_str_capa(fiobj_s *str) {
-  if (str->type != FIOBJ_T_STRING)
-    return 0;
-  return ((fio_str_s *)str)->capa;
 }
 
 /** Deallocates any unnecessary memory (if supported by OS). */
@@ -195,6 +250,6 @@ size_t fiobj_str_join(fiobj_s *dest, fiobj_s *obj) {
     return 0;
   fio_cstr_s o = fiobj_obj2cstr(obj);
   if (o.len == 0)
-    return ((fio_str_s *)dest)->len;
+    return obj2str(dest)->len;
   return fiobj_str_write(dest, o.data, o.len);
 }

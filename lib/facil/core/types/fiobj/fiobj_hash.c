@@ -113,14 +113,151 @@ retry_rehashing:
   }
 }
 
+/* *****************************************************************************
+Couplet alloc + Couplet VTable
+***************************************************************************** */
+
+static void fiobj_couplet_dealloc(fiobj_s *o) {
+  fiobj_dealloc(obj2couplet(o)->name);
+  fiobj_dealloc(obj2couplet(o)->obj);
+  free(&OBJ2HEAD(o));
+}
+
+static size_t fiobj_couplet_each1(fiobj_s *o, size_t start_at,
+                                  int (*task)(fiobj_s *obj, void *arg),
+                                  void *arg) {
+  if (obj2couplet(o)->obj == NULL)
+    return 0;
+  return OBJ2HEAD(obj2couplet(o)->obj)
+      .vtable->each1(obj2couplet(o)->obj, start_at, task, arg);
+}
+
+static int fiobj_coup_is_eq(fiobj_s *self, fiobj_s *other) {
+  if (!other || other->type != FIOBJ_T_COUPLET)
+    return 0;
+  OBJ2HEAD(obj2couplet(self)->name)
+      .vtable->is_eq(obj2couplet(self)->name, obj2couplet(other)->name);
+  if (obj2couplet(self)->obj == obj2couplet(other)->obj)
+    return 1;
+  if (!obj2couplet(self)->obj || !obj2couplet(other)->obj)
+    return 0;
+  return OBJ2HEAD(obj2couplet(self)->obj)
+      .vtable->is_eq(obj2couplet(self)->obj, obj2couplet(other)->obj);
+}
+
+/** Returns the number of elements in the Array. */
+static size_t fiobj_couplet_count_items(fiobj_s *o) {
+  if (obj2couplet(o)->obj == NULL)
+    return 0;
+  return OBJ2HEAD(obj2couplet(o)->obj).vtable->count(obj2couplet(o)->obj);
+}
+
+static struct fiobj_vtable_s FIOBJ_VTABLE_COUPLET = {
+    .free = fiobj_couplet_dealloc,
+    .to_i = fiobj_noop_i,
+    .to_f = fiobj_noop_f,
+    .to_str = fiobj_noop_str,
+    .is_eq = fiobj_coup_is_eq,
+    .count = fiobj_couplet_count_items,
+    .each1 = fiobj_couplet_each1,
+};
+
 static inline fiobj_s *fiobj_couplet_alloc(void *sym, void *obj) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_couplet_s));
-  head->ref = 1;
+  *head = (fiobj_head_s){
+      .ref = 1, .vtable = &FIOBJ_VTABLE_COUPLET,
+  };
   *(fio_couplet_s *)(HEAD2OBJ(head)) =
       (fio_couplet_s){.type = FIOBJ_T_COUPLET, .name = sym, .obj = obj};
   return HEAD2OBJ(head);
 }
+
+/**
+ * If object is a Hash couplet (occurs in `fiobj_each2`), returns the key
+ * (Symbol) from the key-value pair.
+ *
+ * Otherwise returns NULL.
+ */
+fiobj_s *fiobj_couplet2key(fiobj_s *obj) {
+  if (!obj || obj->type != FIOBJ_T_COUPLET)
+    return NULL;
+  return ((fio_couplet_s *)obj)->name;
+}
+
+/**
+ * If object is a Hash couplet (occurs in `fiobj_each2`), returns the object
+ * (the value) from the key-value pair.
+ *
+ * Otherwise returns NULL.
+ */
+fiobj_s *fiobj_couplet2obj(fiobj_s *obj) {
+  if (!obj || obj->type != FIOBJ_T_COUPLET)
+    return obj;
+  return ((fio_couplet_s *)obj)->obj;
+}
+
+/* *****************************************************************************
+Hash alloc + VTable
+***************************************************************************** */
+
+static void fiobj_hash_dealloc(fiobj_s *h) {
+  while (fio_ls_pop(&obj2hash(h)->items))
+    ;
+  free(obj2hash(h)->map.data);
+  obj2hash(h)->map.data = NULL;
+  obj2hash(h)->map.capa = 0;
+  free(&OBJ2HEAD(h));
+}
+
+static size_t fiobj_hash_each1(fiobj_s *o, const size_t start_at,
+                               int (*task)(fiobj_s *obj, void *arg),
+                               void *arg) {
+  if (start_at >= obj2hash(o)->count)
+    return obj2hash(o)->count;
+  size_t i = 0;
+  fio_ls_s *pos = obj2hash(o)->items.next;
+  while (pos != &obj2hash(o)->items && start_at > i) {
+    pos = pos->next;
+    ++i;
+  }
+  while (pos != &obj2hash(o)->items) {
+    ++i;
+    if (task(pos->obj, arg) == -1)
+      return i;
+    pos = pos->next;
+  }
+  return i;
+}
+
+static int fiobj_hash_is_eq(fiobj_s *self, fiobj_s *other) {
+  if (!other || other->type != FIOBJ_T_HASH)
+    return 0;
+  if (obj2hash(self)->count != obj2hash(other)->count)
+    return 0;
+  fio_ls_s *pos = obj2hash(self)->items.next;
+  while (pos != &obj2hash(self)->items) {
+    if (!fio_hash_find((fio_hash_s *)other,
+                       obj2sym(obj2couplet(pos->obj)->name)->hash))
+      return 0;
+    pos = pos->next;
+  }
+  return 1;
+}
+
+/** Returns the number of elements in the Array. */
+static size_t fiobj_hash_count_items(fiobj_s *o) { return obj2hash(o)->count; }
+
+static struct fiobj_vtable_s FIOBJ_VTABLE_HASH = {
+    .free = fiobj_hash_dealloc,
+    .to_i = fiobj_noop_i,
+    .to_f = fiobj_noop_f,
+    .to_str = fiobj_noop_str,
+    .is_eq = fiobj_hash_is_eq,
+    .count = fiobj_hash_count_items,
+    .each1 = fiobj_hash_each1,
+};
+
 /* *****************************************************************************
 Hash API
 ***************************************************************************** */
@@ -133,7 +270,9 @@ Hash API
  */
 fiobj_s *fiobj_hash_new(void) {
   fiobj_head_s *head = malloc(sizeof(*head) + sizeof(fio_hash_s));
-  head->ref = 1;
+  *head = (fiobj_head_s){
+      .ref = 1, .vtable = &FIOBJ_VTABLE_HASH,
+  };
   *obj2hash(HEAD2OBJ(head)) = (fio_hash_s){
       .type = FIOBJ_T_HASH,
       .mask = (HASH_INITIAL_CAPACITY - 1),
@@ -145,20 +284,6 @@ fiobj_s *fiobj_hash_new(void) {
   // obj2hash(HEAD2OBJ(head))->mask);
   return HEAD2OBJ(head);
 }
-
-// static void fiobj_hash_free(fiobj_s *h) {
-//   fiobj_s *coup;
-//   while ((coup = fio_ls_pop(&obj2hash(h)->items))) {
-//     /* these deallocations go inside the `each2` */
-//     fiobj_free(obj2couplet(coup)->obj);
-//     fiobj_dealloc(obj2couplet(coup)->name);
-//     fiobj_dealloc(coup);
-//   }
-//   free(obj2hash(h)->map.data);
-//   obj2hash(h)->map.data = NULL;
-//   obj2hash(h)->map.capa = 0;
-//   free(&OBJ2HEAD(h));
-// }
 
 /** Returns the number of elements in the Hash. */
 size_t fiobj_hash_count(fiobj_s *hash) {
@@ -200,7 +325,7 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
   }
   if (old) {
     fiobj_free(obj2couplet(old)->obj);
-    fiobj_dealloc(obj2couplet(old)->name);
+    obj2couplet(old)->obj = NULL;
     fiobj_dealloc(old);
   }
   return 0;
@@ -229,7 +354,7 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
   if (!coup)
     return NULL;
   fiobj_s *ret = fiobj_couplet2obj(coup);
-  fiobj_dealloc(((fio_couplet_s *)coup)->name);
+  obj2couplet(coup)->obj = NULL;
   fiobj_dealloc((fiobj_s *)coup);
   return ret;
 }
@@ -315,28 +440,4 @@ int fiobj_hash_haskey(fiobj_s *hash, fiobj_s *sym) {
   if (!coup)
     return 0;
   return 1;
-}
-
-/**
- * If object is a Hash couplet (occurs in `fiobj_each2`), returns the key
- * (Symbol) from the key-value pair.
- *
- * Otherwise returns NULL.
- */
-fiobj_s *fiobj_couplet2key(fiobj_s *obj) {
-  if (!obj || obj->type != FIOBJ_T_COUPLET)
-    return NULL;
-  return ((fio_couplet_s *)obj)->name;
-}
-
-/**
- * If object is a Hash couplet (occurs in `fiobj_each2`), returns the object
- * (the value) from the key-value pair.
- *
- * Otherwise returns NULL.
- */
-fiobj_s *fiobj_couplet2obj(fiobj_s *obj) {
-  if (!obj || obj->type != FIOBJ_T_COUPLET)
-    return obj;
-  return ((fio_couplet_s *)obj)->obj;
 }

@@ -71,13 +71,54 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
 }
 
 /* *****************************************************************************
-Array API
+VTable
+***************************************************************************** */
+
+static void fiobj_ary_dealloc(fiobj_s *a) {
+  free(obj2ary(a)->arry);
+  free(&OBJ2HEAD(a));
+}
+
+static size_t fiobj_ary_each1(fiobj_s *o, size_t start_at,
+                              int (*task)(fiobj_s *obj, void *arg), void *arg) {
+  const uint64_t start_pos = obj2ary(o)->start;
+  start_at += start_pos;
+  while (start_at < obj2ary(o)->end &&
+         task(obj2ary(o)->arry[start_at++], arg) != -1)
+    ;
+  return start_at - start_pos;
+}
+
+static int fiobj_ary_is_eq(fiobj_s *self, fiobj_s *other) {
+  return (other && other->type == FIOBJ_T_ARRAY &&
+          obj2ary(self)->end - obj2ary(self)->start ==
+              obj2ary(other)->end - obj2ary(other)->start);
+}
+
+/** Returns the number of elements in the Array. */
+static size_t fiobj_ary_count_items(fiobj_s *ary) {
+  return (obj2ary(ary)->end - obj2ary(ary)->start);
+}
+
+static struct fiobj_vtable_s FIOBJ_VTABLE_ARRAY = {
+    .free = fiobj_ary_dealloc,
+    .to_i = fiobj_noop_i,
+    .to_f = fiobj_noop_f,
+    .to_str = fiobj_noop_str,
+    .is_eq = fiobj_ary_is_eq,
+    .count = fiobj_ary_count_items,
+    .each1 = fiobj_ary_each1,
+};
+/* *****************************************************************************
+Allocation
 ***************************************************************************** */
 
 static fiobj_s *fiobj_ary_alloc(size_t capa, size_t start_at) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_ary_s));
-  head->ref = 1;
+  *head = (fiobj_head_s){
+      .ref = 1, .vtable = &FIOBJ_VTABLE_ARRAY,
+  };
   *((fio_ary_s *)HEAD2OBJ(head)) =
       (fio_ary_s){.start = start_at,
                   .end = start_at,
@@ -94,7 +135,7 @@ fiobj_s *fiobj_ary_new2(size_t capa) { return fiobj_ary_alloc(capa, 0); }
 
 /** Returns the number of elements in the Array. */
 size_t fiobj_ary_count(fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
+  if (!ary)
     return 0;
   return (obj2ary(ary)->end - obj2ary(ary)->start);
 }

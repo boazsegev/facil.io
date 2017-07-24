@@ -198,10 +198,44 @@ typedef struct {
 void fiobj_hash_rehash(fiobj_s *h);
 
 /* *****************************************************************************
+Type VTable (virtual function table)
+***************************************************************************** */
+struct fiobj_vtable_s {
+  /* deallocate an object */
+  void (*free)(fiobj_s *);
+  /* object value as String */
+  fio_cstr_s (*to_str)(fiobj_s *);
+  /* object value as Integer */
+  int64_t (*to_i)(fiobj_s *);
+  /* object value as Float */
+  double (*to_f)(fiobj_s *);
+  /* true if object is equal. nested objects must be ignored (test container) */
+  int (*is_eq)(fiobj_s *self, fiobj_s *other);
+  /* return the number of nested object */
+  size_t (*count)(fiobj_s *);
+  /* perform a task for the object's children (-1 stops iteration)
+   * returns the number of items processed + `start_at`.
+   */
+  size_t (*each1)(fiobj_s *, size_t start_at,
+                  int (*task)(fiobj_s *obj, void *arg), void *arg);
+};
+
+fio_cstr_s fiobj_noop_str(fiobj_s *obj);
+int64_t fiobj_noop_i(fiobj_s *obj);
+double fiobj_noop_f(fiobj_s *obj);
+size_t fiobj_noop_count(fiobj_s *obj);
+size_t fiobj_noop_each1(fiobj_s *obj, size_t start_at,
+                        int (*task)(fiobj_s *obj, void *arg), void *arg);
+void fiobj_simple_dealloc(fiobj_s *o);
+
+/* *****************************************************************************
 The Object type head and management
 ***************************************************************************** */
 
-typedef struct { uint64_t ref; } fiobj_head_s;
+typedef struct {
+  uint64_t ref;
+  struct fiobj_vtable_s *vtable;
+} fiobj_head_s;
 
 #define OBJ2HEAD(o) (((fiobj_head_s *)(o)) - 1)[0]
 #define HEAD2OBJ(o) ((fiobj_s *)(((fiobj_head_s *)(o)) + 1))
@@ -223,4 +257,5 @@ Internal API required across the board
 ***************************************************************************** */
 void fiobj_dealloc(fiobj_s *obj);
 uint64_t fiobj_sym_hash(const void *data, size_t len);
+
 #endif

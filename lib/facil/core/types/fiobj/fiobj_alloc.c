@@ -18,7 +18,7 @@ Object Deallocation
 ***************************************************************************** */
 
 void fiobj_dealloc(fiobj_s *obj) {
-  if (obj == NULL)
+  if (!obj)
     return;
   if (OBJ2HEAD(obj).ref == 0) {
     fprintf(stderr,
@@ -29,36 +29,7 @@ void fiobj_dealloc(fiobj_s *obj) {
   }
   if (spn_sub(&OBJ2HEAD(obj).ref, 1))
     return;
-  switch (obj->type) {
-  case FIOBJ_T_ARRAY:
-    free(((fio_ary_s *)obj)->arry);
-    goto common;
-  case FIOBJ_T_HASH:
-    /* the actual objects are handled by the deep `fiobj_each2` dealloc task */
-    while (fio_ls_pop(&obj2hash(obj)->items))
-      ;
-    free(obj2hash(obj)->map.data);
-    obj2hash(obj)->map.data = NULL;
-    obj2hash(obj)->map.capa = 0;
-    goto common;
-  case FIOBJ_T_IO:
-    close(((fio_io_s *)obj)->fd);
-    goto common;
-  case FIOBJ_T_STRING:
-    if (obj2str(obj)->is_static == 0)
-      free(((fio_str_s *)obj)->str);
-    goto common;
-
-  common:
-  case FIOBJ_T_COUPLET:
-  case FIOBJ_T_NULL:
-  case FIOBJ_T_TRUE:
-  case FIOBJ_T_FALSE:
-  case FIOBJ_T_NUMBER:
-  case FIOBJ_T_FLOAT:
-  case FIOBJ_T_SYMBOL:
-    free(&OBJ2HEAD(obj));
-  }
+  OBJ2HEAD(obj).vtable->free(obj);
 }
 
 /* *****************************************************************************
@@ -70,10 +41,8 @@ static int dup_task_callback(fiobj_s *obj, void *arg) {
   if (!obj)
     return 0;
   spn_add(&OBJ2HEAD(obj).ref, 1);
-  if (obj->type == FIOBJ_T_COUPLET) {
-    spn_add(&OBJ2HEAD((((fio_couplet_s *)obj)->name)).ref, 1);
-    spn_add(&OBJ2HEAD((((fio_couplet_s *)obj)->obj)).ref, 1);
-  }
+  // if (obj->type == FIOBJ_T_COUPLET)
+  //   spn_add(&OBJ2HEAD(obj2couplet(obj)->obj).ref, 1);
   return 0;
   (void)arg;
 }
@@ -89,10 +58,10 @@ Deep Deallocation (`fiobj_free`)
 ***************************************************************************** */
 
 static int dealloc_task_callback(fiobj_s *obj, void *arg) {
-  if (obj && obj->type == FIOBJ_T_COUPLET) {
-    fiobj_dealloc(((fio_couplet_s *)obj)->obj);
-    fiobj_dealloc(((fio_couplet_s *)obj)->name);
-  }
+  // if (!obj)
+  //   return 0;
+  // if (obj->type == FIOBJ_T_COUPLET)
+  //   fiobj_dealloc(obj2couplet(obj)->obj);
   fiobj_dealloc(obj);
   return 0;
   (void)arg;

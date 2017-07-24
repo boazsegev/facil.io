@@ -207,7 +207,8 @@ fio_cstr_s fiobj_obj2cstr(fiobj_s *obj);
  *
  * If `FIOBJ_NESTING_PROTECTION` is equal to 1 and a cyclic (or recursive)
  * nesting is detected, a NULL pointer (not a NULL object) will be used instead
- * of the original (cyclic) object.
+ * of the original (cyclic) object and the original (cyclic) object will be
+ * available using the `fiobj_each_get_cyclic` function.
  *
  * Hash objects pass along a `FIOBJ_T_COUPLET` object, containing
  * references for both the key (Symbol) and the object (any object).
@@ -220,6 +221,9 @@ fio_cstr_s fiobj_obj2cstr(fiobj_s *obj);
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  */
 void fiobj_each2(fiobj_s *, int (*task)(fiobj_s *obj, void *arg), void *arg);
+
+/** Within `fiobj_each2`, this will return the current cyclic object, if any. */
+fiobj_s *fiobj_each_get_cyclic(void);
 
 /**
  * Deeply compare two objects. No hashing is involved.

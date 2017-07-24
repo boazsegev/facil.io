@@ -34,9 +34,11 @@ set(facil.io_SOURCES
   ./lib/facil/core/types/fiobj/fiobj_ary.c
   ./lib/facil/core/types/fiobj/fiobj_generic.c
   ./lib/facil/core/types/fiobj/fiobj_hash.c
+  ./lib/facil/core/types/fiobj/fiobj_io.c
   ./lib/facil/core/types/fiobj/fiobj_json.c
   ./lib/facil/core/types/fiobj/fiobj_misc.c
   ./lib/facil/core/types/fiobj/fiobj_numbers.c
+  ./lib/facil/core/types/fiobj/fiobj_primitives.c
   ./lib/facil/core/types/fiobj/fiobj_str.c
   ./lib/facil/core/types/fiobj/fiobj_sym.c
   ./lib/facil/core/types/fiobj/fiobj_tests.c

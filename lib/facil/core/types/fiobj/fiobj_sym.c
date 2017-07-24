@@ -105,13 +105,47 @@ uint64_t fiobj_sym_hash(const void *data, size_t len) {
 }
 
 /* *****************************************************************************
+Symbol VTable
+***************************************************************************** */
+
+static int fiobj_sym_is_eq(fiobj_s *self, fiobj_s *other) {
+  if (!other || other->type != self->type)
+    return 0;
+  return obj2sym(self)->hash == obj2sym(other)->hash;
+}
+
+static fio_cstr_s fio_sym2str(fiobj_s *o) {
+  return (fio_cstr_s){.buffer = obj2sym(o)->str, .len = obj2sym(o)->len};
+}
+static int64_t fio_sym2i(fiobj_s *o) {
+  char *s = obj2str(o)->str;
+  return fio_atol(&s);
+}
+static double fio_sym2f(fiobj_s *o) {
+  char *s = obj2sym(o)->str;
+  return fio_atof(&s);
+}
+
+static struct fiobj_vtable_s FIOBJ_VTABLE_SYMBOL = {
+    .free = fiobj_simple_dealloc,
+    .to_i = fio_sym2i,
+    .to_f = fio_sym2f,
+    .to_str = fio_sym2str,
+    .is_eq = fiobj_sym_is_eq,
+    .count = fiobj_noop_count,
+    .each1 = fiobj_noop_each1,
+};
+
+/* *****************************************************************************
 Symbol API
 ***************************************************************************** */
 
 static inline fiobj_s *fiobj_sym_alloc(size_t len) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_sym_s) + len + 1);
-  head->ref = 1;
+  *head = (fiobj_head_s){
+      .ref = 1, .vtable = &FIOBJ_VTABLE_SYMBOL,
+  };
   *obj2sym(HEAD2OBJ(head)) = (fio_sym_s){
       .type = FIOBJ_T_SYMBOL, .len = len,
   };

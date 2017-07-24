@@ -136,15 +136,15 @@ void fiobj_test_hash_json(void) {
 
   fprintf(stderr,
           "* Reference count for "
-          "nested nested object in nested Hash: %llu\n",
-          OBJ2HEAD(fiobj_hash_get(fiobj_hash_get(hash3, sym), tmp)).ref);
+          "couplet in nested Hash: %llu\n",
+          OBJ2HEAD(obj2hash(hash3)->items.next->obj).ref);
 
   fiobj_free(hash);
   fprintf(stderr, "* Testing nested Array delete reference count: %s\n",
           (OBJ2HEAD(syms).ref == 2) ? "passed." : "FAILED!");
   fprintf(stderr, "* Testing nested Hash delete reference count: %s\n",
-          (OBJ2HEAD(fiobj_hash_get(hash2, sym)).ref == 2) ? "passed."
-                                                          : "FAILED!");
+          (OBJ2HEAD(obj2hash(hash3)->items.next->obj).ref == 2) ? "passed."
+                                                                : "FAILED!");
   fprintf(stderr,
           "* Testing reference count for "
           "nested nested object in nessted Hash: %s\n",
@@ -160,14 +160,13 @@ void fiobj_test_hash_json(void) {
   fprintf(stderr, "* Testing nested Array delete reference count: %s\n",
           (OBJ2HEAD(syms).ref == 1) ? "passed." : "FAILED!");
   fprintf(stderr, "* Testing nested Hash delete reference count: %s\n",
-          (OBJ2HEAD(fiobj_hash_get(hash3, sym)).ref == 1) ? "passed."
-                                                          : "FAILED!");
+          (OBJ2HEAD(obj2hash(hash3)->items.next->obj).ref == 1) ? "passed."
+                                                                : "FAILED!");
   fprintf(stderr,
           "* Testing reference count for "
           "nested nested object in nessted Hash: %s\n",
-          (OBJ2HEAD(fiobj_hash_get(fiobj_hash_get(hash3, sym), tmp)).ref == 1)
-              ? "passed."
-              : "FAILED!");
+          (OBJ2HEAD(obj2hash(hash3)->items.next->obj).ref == 1) ? "passed."
+                                                                : "FAILED!");
   fprintf(stderr,
           "* Reference count for "
           "nested nested object in nested Hash: %llu\n",
