@@ -160,7 +160,6 @@ static void http1_response_finalize_headers(http1_response_s *rs) {
       rs->response.last_modified = rs->response.date;
     else if (rs->response.date < rs->response.last_modified)
       rs->response.date = rs->response.last_modified;
-    struct tm t;
     /* date header */
     h1p_protected_copy(rs, "Date: ", 6);
     rs->buffer_end +=
