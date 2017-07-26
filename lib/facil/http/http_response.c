@@ -1669,7 +1669,7 @@ const char *http_response_ext2mime(const char *ext) {
   char *extlow = (void *)(&ext8byte);
   // change the copy to lowercase
   size_t pos = 0;
-  while (ext[pos] && pos < 8) {
+  while (pos < 8 && ext[pos]) {
     extlow[pos] =
         (ext[pos] >= 'A' && ext[pos] <= 'Z') ? (ext[pos] | 32) : ext[pos];
     ++pos;

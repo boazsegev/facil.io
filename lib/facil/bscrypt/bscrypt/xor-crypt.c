@@ -103,14 +103,17 @@ int bscrypt_xor_crypt(xor_key_s *key, void *target, const void *source,
   while (length > i) {
     while ((key->length - key->position >= 8) // we have 8 bytes for key.
            && ((i + 8) <= length)             // we have 8 bytes for stream.
-           && (((uintptr_t)(target + i)) & 7) == 0 // target memory is aligned.
-           && (((uintptr_t)(source + i)) & 7) == 0 // source memory is aligned.
+           && (((uintptr_t)((uintptr_t)target + i)) & 7) ==
+                  0 // target memory is aligned.
+           && (((uintptr_t)((uintptr_t)source + i)) & 7) ==
+                  0 // source memory is aligned.
            && ((uintptr_t)(key->key + key->position) & 7) == 0 // key aligned.
            ) {
       // fprintf(stderr, "XOR optimization used i= %lu, key pos = %lu.\n", i,
       //         key->position);
-      *((uint64_t *)(target + i)) = *((uint64_t *)(source + i)) ^
-                                    *((uint64_t *)(key->key + key->position));
+      *((uint64_t *)((uintptr_t)target + i)) =
+          *((uint64_t *)((uintptr_t)source + i)) ^
+          *((uint64_t *)(key->key + key->position));
       key->position += 8;
       i += 8;
       if (key->position < key->length)
@@ -122,8 +125,9 @@ int bscrypt_xor_crypt(xor_key_s *key, void *target, const void *source,
 
     if (i < length) {
       // fprintf(stderr, "XOR single byte.\n");
-      *((uint8_t *)(target + i)) =
-          *((uint8_t *)(source + i)) ^ *((uint8_t *)(key->key + key->position));
+      *((uint8_t *)((uintptr_t)target + i)) =
+          *((uint8_t *)((uintptr_t)source + i)) ^
+          *((uint8_t *)(key->key + key->position));
       ++i;
       ++key->position;
       if (key->position == key->length) {
@@ -145,8 +149,8 @@ int bscrypt_xor128_crypt(uint64_t *key, void *target, const void *source,
   uint8_t pos = 0;
   for (size_t i = 0; i < (length >> 3); i++) {
     ((uint64_t *)target)[0] = ((uint64_t *)source)[0] ^ key[pos++];
-    target += 8;
-    source += 8;
+    target = (void *)((uintptr_t)target + 8);
+    source = (void *)((uintptr_t)source + 8);
     if (pos < 2)
       continue;
     if (on_cycle && on_cycle(key))
@@ -169,8 +173,8 @@ int bscrypt_xor256_crypt(uint64_t *key, void *target, const void *source,
     ((uint64_t *)target)[1] = ((uint64_t *)source)[1] ^ key[1];
     ((uint64_t *)target)[2] = ((uint64_t *)source)[2] ^ key[2];
     ((uint64_t *)target)[3] = ((uint64_t *)source)[3] ^ key[3];
-    target += 32;
-    source += 32;
+    target = (void *)((uintptr_t)target + 32);
+    source = (void *)((uintptr_t)source + 32);
     if (on_cycle && on_cycle(key))
       return -1;
   }
@@ -178,8 +182,8 @@ int bscrypt_xor256_crypt(uint64_t *key, void *target, const void *source,
   uint8_t pos = 0;
   for (size_t i = 0; i < (length >> 3); i++) {
     ((uint64_t *)target)[0] = ((uint64_t *)source)[0] ^ key[pos++];
-    target += 8;
-    source += 8;
+    target = (void *)((uintptr_t)target + 8);
+    source = (void *)((uintptr_t)source + 8);
   }
   length = length & 7;
   for (size_t i = 0; i < length; i++) {

@@ -308,7 +308,7 @@ re_eval:
   /* request / response line */
   case 0:
     /* clear out any leadinng white space */
-    while (*start == '\r' || *start == '\r' || *start == ' ' || *start == 0) {
+    while (*start == '\r' || *start == '\n' || *start == ' ' || *start == 0) {
       start++;
     }
     end = start;

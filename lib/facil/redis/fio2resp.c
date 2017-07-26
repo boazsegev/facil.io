@@ -17,13 +17,6 @@ Copyright refers to the parser, not the protocol.
 #include <stdlib.h>
 #include <string.h>
 
-struct resp_format_s {
-  uint8_t *dest;
-  size_t *size;
-  size_t limit;
-  int err;
-};
-
 static int resp_fioformat_task(fiobj_s *obj, void *s_) {
   fiobj_s *str = s_;
 

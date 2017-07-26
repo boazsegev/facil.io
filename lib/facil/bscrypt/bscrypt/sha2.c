@@ -478,12 +478,12 @@ void bscrypt_sha2_write(sha2_s *s, const void *data, size_t len) {
     if (in_buffer) {
       memcpy(s->buffer + in_buffer, data, partial);
       len -= partial;
-      data += partial;
+      data = (void *)((uintptr_t)data + partial);
       perform_all_rounds(s, s->buffer);
     }
     while (len >= 128) {
       perform_all_rounds(s, data);
-      data += 128;
+      data = (void *)((uintptr_t)data + 128);
       len -= 128;
     }
     if (len) {
@@ -505,12 +505,12 @@ void bscrypt_sha2_write(sha2_s *s, const void *data, size_t len) {
   if (in_buffer) {
     memcpy(s->buffer + in_buffer, data, partial);
     len -= partial;
-    data += partial;
+    data = (void *)((uintptr_t)data + partial);
     perform_all_rounds(s, s->buffer);
   }
   while (len >= 64) {
     perform_all_rounds(s, data);
-    data += 64;
+    data = (void *)((uintptr_t)data + 64);
     len -= 64;
   }
   if (len) {

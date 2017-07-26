@@ -133,7 +133,7 @@ static inline void sock_packet_free(packet_s *packet) {
 }
 
 static inline packet_s *sock_packet_try_grab(void) {
-  packet_s *packet = NULL;
+  packet_s *packet;
   spn_lock(&packet_pool.lock);
   packet = packet_pool.next;
   if (packet == NULL)

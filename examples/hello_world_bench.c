@@ -52,8 +52,8 @@ int main(int argc, char const *argv[]) {
   /*     ****  Command line arguments ****     */
 
   for (int i = 1; i < argc; i++) {
-    int offset = 0;
     if (argv[i][0] == '-') {
+      int offset = 0;
       switch (argv[i][1]) {
       case 'q': /* logging */
         print_log = 0;
