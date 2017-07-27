@@ -34,13 +34,14 @@ Here's a simple SHA-1 computation:
 
 ```c
 #include "bscrypt.h"
+#include <assert.h>
 
 int main(int argv, const char * argv[]) {
   char * result;
   sha1_s sha1 = bscrypt_sha1_init();
   bscrypt_sha1_write(&sha1, "The quick brown fox jumps over the lazy dog ", 43);
   result = bscrypt_sha1_result(&sha1);
-  assert(result == sha1.digest.str); /* locally stored on the stack */
+  assert(result == (cahr *)sha1.digest.str); /* locally stored on the stack */
   /* another option is to use a single call with the allocated sha1 variable */
   result = bscrypt_sha1(&sha1,
                         "The quick brown fox jumps over the lazy dog ",
