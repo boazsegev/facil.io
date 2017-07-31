@@ -119,6 +119,10 @@ int bscrypt_base64_decode(char *target, char *encoded, int base64_len) {
   int written = 0;
   char tmp1, tmp2, tmp3, tmp4;
   while (base64_len >= 4) {
+    while (*encoded == '\r' || *encoded == '\n' || *encoded == ' ') {
+      base64_len--;
+      encoded++;
+    }
     tmp1 = *(encoded++);
     tmp2 = *(encoded++);
     tmp3 = *(encoded++);
