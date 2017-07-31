@@ -26,7 +26,7 @@ TMP_ROOT=tmp
 # any librries required (write in full flags)
 LINKER_FLAGS=-lpthread -lm
 # optimization level.
-OPTIMIZATION=-O3 -march=native
+OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
 WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
 # any extra include folders, space seperated list
@@ -43,15 +43,6 @@ DUMP_LIB=libdump
 # add DEBUG flag if requested
 ifdef DEBUG
 	FLAGS:=$(FLAGS) DEBUG
-endif
-
-# add BearSSL/OpenSSL library flags
-ifeq ($(shell printf "int main(void) {}" | gcc -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-FLAGS:=$(FLAGS) HAVE_BEARSSL
-LINKER_FLAGS:=$(LINKER_FLAGS) -lbearssl
-else ifeq ($(shell printf "int main(void) {}" | gcc -lcrypto -lssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-FLAGS:=$(FLAGS) HAVE_OPENSSL
-LINKER_FLAGS:=$(LINKER_FLAGS) -lcrypto -lssl
 endif
 
 ##############
@@ -107,6 +98,18 @@ BUILDTREE =$(foreach dir, $(FOLDERS), $(addsuffix /, $(basename $(TMP_ROOT)))$(b
 CCL = $(CC)
 
 INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(FOLDERS),$(addprefix -I, $(dir)))
+
+# add BearSSL/OpenSSL library flags
+ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | gcc $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+FLAGS:=$(FLAGS) HAVE_BEARSSL
+LINKER_FLAGS:=$(LINKER_FLAGS) -lbearssl
+else
+ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | gcc $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+FLAGS:=$(FLAGS) HAVE_OPENSSL
+LINKER_FLAGS:=$(LINKER_FLAGS) -lcrypto -lssl
+endif
+endif
+
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 
 MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
