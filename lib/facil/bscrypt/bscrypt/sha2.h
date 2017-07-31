@@ -96,7 +96,7 @@ An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 512 variant.
 */
 static inline UNUSED_FUNC char *bscrypt_sha2_512(sha2_s *s, const void *data,
-                                              size_t len) {
+                                                 size_t len) {
   *s = bscrypt_sha2_init(SHA_512);
   bscrypt_sha2_write(s, data, len);
   return bscrypt_sha2_result(s);
@@ -107,7 +107,7 @@ An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 256 variant.
 */
 static inline UNUSED_FUNC char *bscrypt_sha2_256(sha2_s *s, const void *data,
-                                              size_t len) {
+                                                 size_t len) {
   *s = bscrypt_sha2_init(SHA_256);
   bscrypt_sha2_write(s, data, len);
   return bscrypt_sha2_result(s);
@@ -118,7 +118,7 @@ An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 384 variant.
 */
 static inline UNUSED_FUNC char *bscrypt_sha2_384(sha2_s *s, const void *data,
-                                              size_t len) {
+                                                 size_t len) {
   *s = bscrypt_sha2_init(SHA_384);
   bscrypt_sha2_write(s, data, len);
   return bscrypt_sha2_result(s);
