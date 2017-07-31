@@ -220,12 +220,12 @@ void bscrypt_sha1_write(sha1_s *s, const void *data, size_t len) {
   if (in_buffer) {
     memcpy(s->buffer + in_buffer, data, partial);
     len -= partial;
-    data += partial;
+    data = (void *)((uintptr_t)data + partial);
     perform_all_rounds(s, s->buffer);
   }
   while (len >= 64) {
     perform_all_rounds(s, data);
-    data += 64;
+    data = (void *)((uintptr_t)data + 64);
     len -= 64;
   }
   if (len) {
@@ -276,11 +276,8 @@ SHA-1 testing
 #include <time.h>
 
 // clang-format off
-#if defined(TEST_OPENSSL) && defined(__has_include)
-#  if __has_include(<openssl/sha.h>)
-#    include <openssl/sha.h>
-#    define HAS_OPEN_SSL 1
-#  endif
+#if defined(HAVE_OPENSSL)
+#  include <openssl/sha.h>
 #endif
 // clang-format on
 
@@ -326,7 +323,7 @@ void bscrypt_test_sha1(void) {
   }
   fprintf(stderr, " SHA-1 passed.\n");
 
-#ifdef HAS_OPEN_SSL
+#ifdef HAVE_OPENSSL
   fprintf(stderr, "===================================\n");
   fprintf(stderr, "bscrypt SHA-1 struct size: %lu\n", sizeof(sha1_s));
   fprintf(stderr, "OpenSSL SHA-1 struct size: %lu\n", sizeof(SHA_CTX));

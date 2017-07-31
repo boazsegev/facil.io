@@ -658,11 +658,8 @@ static char *sha2_variant_names[] = {
 };
 
 // clang-format off
-#if defined(TEST_OPENSSL) && defined(__has_include)
-#  if __has_include(<openssl/sha.h>)
-#    include <openssl/sha.h>
-#    define HAS_OPEN_SSL 1
-#  endif
+#if defined(HAVE_OPENSSL)
+#  include <openssl/sha.h>
 #endif
 // clang-format on
 
@@ -761,7 +758,7 @@ void bscrypt_test_sha2(void) {
 
   fprintf(stderr, " SHA-2 passed.\n");
 
-#ifdef HAS_OPEN_SSL
+#ifdef HAVE_OPENSSL
   fprintf(stderr, "===================================\n");
   fprintf(stderr, "bscrypt SHA-2 struct size: %lu\n", sizeof(sha2_s));
   fprintf(stderr, "OpenSSL SHA-2/256 struct size: %lu\n", sizeof(SHA256_CTX));
