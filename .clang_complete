@@ -14,3 +14,4 @@
 -Idev/http
 
 -DDEBUG
+-DHAVE_OPENSSL
