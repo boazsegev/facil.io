@@ -75,34 +75,34 @@ void bscrypt_rand_bytes(void *target, size_t length) {
   while (length > 64) {
     memcpy(target, sha2.digest.str, 64);
     length -= 64;
-    target += 64;
+    target = (void *)((uintptr_t)target + 64);
     bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
     bscrypt_sha2_result(&sha2);
   }
   if (length > 32) {
     memcpy(target, sha2.digest.str, 32);
     length -= 32;
-    target += 32;
+    target = (void *)((uintptr_t)target + 32);
     bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
     bscrypt_sha2_result(&sha2);
   }
   if (length > 16) {
     memcpy(target, sha2.digest.str, 16);
     length -= 16;
-    target += 16;
+    target = (void *)((uintptr_t)target + 16);
     bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
     bscrypt_sha2_result(&sha2);
   }
   if (length > 8) {
     memcpy(target, sha2.digest.str, 8);
     length -= 8;
-    target += 8;
+    target = (void *)((uintptr_t)target + 8);
     bscrypt_sha2_write(&sha2, &cpu_state, sizeof(cpu_state));
     bscrypt_sha2_result(&sha2);
   }
   while (length) {
     *((uint8_t *)target) = sha2.digest.str[length];
-    ++target;
+    target = (void *)((uintptr_t)target + 1);
     --length;
   }
 }

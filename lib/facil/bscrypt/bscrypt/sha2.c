@@ -809,7 +809,7 @@ void bscrypt_test_sha2(void) {
 #endif
 
   return;
-  goto error;
+
 error:
   fprintf(stderr,
           ":\n--- bscrypt SHA-2 Test FAILED!\ntype: "
