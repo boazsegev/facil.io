@@ -81,6 +81,14 @@ fio_cstr_s fiobj_obj2cstr(fiobj_s *obj) {
   return OBJ2HEAD(obj).vtable->to_str(obj);
 }
 
+/**
+ * Single layer iteration using a callback for each nested fio object.
+ */
+size_t fiobj_each1(fiobj_s *obj, size_t start_at,
+                   int (*task)(fiobj_s *obj, void *arg), void *arg) {
+  return OBJ2HEAD(obj).vtable->each1(obj, start_at, task, arg);
+}
+
 /* *****************************************************************************
 Object Iteration (`fiobj_each2`)
 ***************************************************************************** */

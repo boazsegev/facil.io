@@ -196,11 +196,31 @@ typedef struct {
 fio_cstr_s fiobj_obj2cstr(fiobj_s *obj);
 
 /**
+ * Single layer iteration using a callback for each nested fio object.
+ *
+ * Accepts any `fiobj_s *` type but only collections (Arrays and Hashes) are
+ * processed. The container itself (the Array or the Hash) is **not** processed
+ * (unlike `fiobj_each2`).
+ *
+ * The callback task function must accept an object and an opaque user pointer.
+ *
+ * Hash objects pass along a `FIOBJ_T_COUPLET` object, containing
+ * references for both the key (Symbol) and the object (any object).
+ *
+ * If the callback returns -1, the loop is broken. Any other value is ignored.
+ *
+ * Returns the "stop" position, i.e., the number of items processed + the
+ * starting point.
+ */
+size_t fiobj_each1(fiobj_s *, size_t start_at,
+                   int (*task)(fiobj_s *obj, void *arg), void *arg);
+
+/**
  * Deep iteration using a callback for each fio object, including the parent.
  *
  * Accepts any `fiobj_s *` type.
  *
- * Collections (Arrays, Hashes) are deeply probed and MUST NEVER be edited
+ * Collections (Arrays, Hashes) are deeply probed and shouldn't be edited
  * during an `fiobj_each2` call (or weird things may happen).
  *
  * The callback task function must accept an object and an opaque user pointer.
@@ -230,17 +250,17 @@ fiobj_s *fiobj_each_get_cyclic(void);
  *
  * Uses a similar algorithm to `fiobj_each2`, except adjusted to two objects.
  *
- * Hash order will be ignored when comapring Hashes, however at the moment it
- * isn't (see KNOWN ISSUES).
+ * Hash order will be ignored when comapring Hashes.
  *
  * KNOWN ISSUES:
  *
- * * Since Hashes offer ordered access, false negatives occur when comparing two
- *   identical Hash objects that have a different internal order.
+ * * Cyclic nesting will cause this function to hang (much like `fiobj_each2`).
  *
- * * Since nested objects aren't followed, there might be a risk regarding false
- *   positives when both nested objects and NULL pointers (not NULL objects) are
- *   used in the same superposition.
+ *   If `FIOBJ_NESTING_PROTECTION` is set, then cyclic nesting might produce
+ *   false positives.
+ *
+ * * Hash order will be ignored when comapring Hashes, which means that equal
+ *   Hases might behave differently during iteration.
  *
  */
 int fiobj_iseq(fiobj_s *obj1, fiobj_s *obj2);
@@ -527,6 +547,10 @@ fiobj_s *fiobj_hash_get2(fiobj_s *hash, const char *str, size_t len);
  * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.
  */
 int fiobj_hash_haskey(fiobj_s *hash, fiobj_s *sym);
+
+/* *****************
+Hash API - Couplets
+****************** */
 
 /**
  * If object is a Hash couplet (occurs in `fiobj_each2`), returns the key
