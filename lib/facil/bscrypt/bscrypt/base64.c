@@ -38,27 +38,6 @@ static unsigned base64_decodes[] = {
     0,  0,  0,  0,  0,  0,  0,  0,  0};
 
 /**
-a union used for Base64 parsing
-*/
-union base64_parser_u {
-  struct {
-    unsigned tail : 2;
-    unsigned data : 6;
-  } byte1;
-  struct {
-    unsigned prev : 8;
-    unsigned tail : 4;
-    unsigned head : 4;
-  } byte2;
-  struct {
-    unsigned prev : 16;
-    unsigned data : 6;
-    unsigned head : 2;
-  } byte3;
-  char bytes[3];
-};
-
-/**
 This will encode a byte array (data) of a specified length (len) and
 place the encoded data into the target byte buffer (target). The target buffer
 MUST have enough room for the expected data.
@@ -75,45 +54,42 @@ Returns the number of bytes actually written to the target buffer
 A NULL terminator char is NOT written to the target buffer.
 */
 int bscrypt_base64_encode(char *target, const char *data, int len) {
-  int written = 0;
-  // // optional implementation: allow a non writing, length computation.
-  // if (!target)
-  //   return (len % 3) ? (((len + 3) / 3) * 4) : (len / 3);
-  // use a union to avoid padding issues.
-  union base64_parser_u *section;
-  while (len >= 3) {
-    section = (void *)data;
-    target[0] = base64_encodes[section->byte1.data];
-    target[1] =
-        base64_encodes[(section->byte1.tail << 4) | (section->byte2.head)];
-    target[2] =
-        base64_encodes[(section->byte2.tail << 2) | (section->byte3.head)];
-    target[3] = base64_encodes[section->byte3.data];
-
-    target += 4;
-    data += 3;
-    len -= 3;
-    written += 4;
+  /* walk backwards, allowing fo inplace decoding (target == data) */
+  int groups = len / 3;
+  const int mod = len - (groups * 3);
+  const int target_size = (groups + (mod != 0)) * 4;
+  char *writer = target + target_size - 1;
+  const char *reader = data + len - 1;
+  char tmp1, tmp2, tmp3;
+  writer[1] = 0;
+  switch (mod) {
+  case 2:
+    tmp2 = *(reader--);
+    tmp1 = *(reader--);
+    *(writer--) = '=';
+    *(writer--) = base64_encodes[((tmp2 & 15) << 2)];
+    *(writer--) = base64_encodes[((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15)];
+    *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
+    break;
+  case 1:
+    tmp1 = *(reader--);
+    *(writer--) = '=';
+    *(writer--) = '=';
+    *(writer--) = base64_encodes[(tmp1 & 3) << 4];
+    *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
+    break;
   }
-  section = (void *)data;
-  if (len == 2) {
-    target[0] = base64_encodes[section->byte1.data];
-    target[1] =
-        base64_encodes[(section->byte1.tail << 4) | (section->byte2.head)];
-    target[2] = base64_encodes[section->byte2.tail << 2];
-    target[3] = '=';
-    target += 4;
-    written += 4;
-  } else if (len == 1) {
-    target[0] = base64_encodes[section->byte1.data];
-    target[1] = base64_encodes[section->byte1.tail << 4];
-    target[2] = '=';
-    target[3] = '=';
-    target += 4;
-    written += 4;
+  while (groups) {
+    groups--;
+    tmp3 = *(reader--);
+    tmp2 = *(reader--);
+    tmp1 = *(reader--);
+    *(writer--) = base64_encodes[tmp3 & 63];
+    *(writer--) = base64_encodes[((tmp2 & 15) << 2) | (tmp3 >> 6)];
+    *(writer--) = base64_encodes[((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15)];
+    *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
   }
-  target[0] = 0; // NULL terminator
-  return written;
+  return target_size;
 }
 
 /**
@@ -140,56 +116,54 @@ int bscrypt_base64_decode(char *target, char *encoded, int base64_len) {
     return -1;
   if (!target)
     target = encoded;
-  union base64_parser_u section;
   int written = 0;
-  // base64_encodes
-  // a struct that will be used to read the data.
+  char tmp1, tmp2, tmp3, tmp4;
   while (base64_len >= 4) {
-    base64_len -= 4; // make sure we don't loop forever.
-    // copying the data allows us to write destructively to the same buffer
-    section.byte1.data = base64_decodes[(unsigned char)(*encoded)];
-    encoded++;
-    section.byte1.tail = (base64_decodes[(unsigned char)(*encoded)] >> 4);
-    section.byte2.head = base64_decodes[(unsigned char)(*encoded)];
-    encoded++;
-    section.byte2.tail = (base64_decodes[(unsigned char)(*encoded)] >> 2);
-    section.byte3.head = base64_decodes[(unsigned char)(*encoded)];
-    encoded++;
-    section.byte3.data = base64_decodes[(unsigned char)(*encoded)];
-    encoded++;
-    // write to the target buffer
-    *(target++) = section.bytes[0];
-    *(target++) = section.bytes[1];
-    *(target++) = section.bytes[2];
+    tmp1 = *(encoded++);
+    tmp2 = *(encoded++);
+    tmp3 = *(encoded++);
+    tmp4 = *(encoded++);
+    *(target++) = (base64_decodes[(size_t)tmp1] << 2) |
+                  (base64_decodes[(size_t)tmp2] >> 4);
+    *(target++) = (base64_decodes[(size_t)tmp2] << 4) |
+                  (base64_decodes[(size_t)tmp3] >> 2);
+    *(target++) =
+        (base64_decodes[(size_t)tmp3] << 6) | (base64_decodes[(size_t)tmp4]);
+    // make sure we don't loop forever.
+    base64_len -= 4;
     // count written bytes
-    written += section.bytes[2] ? 3 : section.bytes[1] ? 2 : 1;
+    written += 3;
   }
-  // deal with the "tail" of the encoded stream
-  if (base64_len) {
-    // zero out data
-    section.bytes[0] = 0;
-    section.bytes[1] = 0;
-    section.bytes[2] = 0;
-    // byte 1 + 2 (2 might be padding)
-    section.byte1.data = base64_decodes[(unsigned char)*(encoded++)];
-    if (--base64_len) {
-      section.byte1.tail = base64_decodes[(unsigned char)(*encoded)] >> 4;
-      section.byte2.head = base64_decodes[(unsigned char)(*encoded)];
-      encoded++;
-      if (--base64_len) {
-        section.byte2.tail = base64_decodes[(unsigned char)(*encoded)] >> 4;
-        section.byte3.head = base64_decodes[(unsigned char)(*encoded)];
-        // --base64_len;  // will always be 0 at this point (or it was 4)
-      }
-    }
-    // write to the target buffer
-    *(target++) = section.bytes[0];
-    if (section.bytes[1] || section.bytes[2])
-      *(target++) = section.bytes[1];
-    if (section.bytes[2])
-      *(target++) = section.bytes[2];
-    // count written bytes
-    written += section.bytes[2] ? 3 : section.bytes[1] ? 2 : 1;
+  // deal with the "tail" of the mis-encoded stream - this shouldn't happen
+  tmp1 = 0;
+  tmp2 = 0;
+  tmp3 = 0;
+  tmp4 = 0;
+  switch (base64_len) {
+  case 1:
+    tmp1 = *(encoded++);
+    *(target++) = base64_decodes[(size_t)tmp1];
+    written += 1;
+    break;
+  case 2:
+    tmp1 = *(encoded++);
+    tmp2 = *(encoded++);
+    *(target++) = (base64_decodes[(size_t)tmp1] << 2) |
+                  (base64_decodes[(size_t)tmp2] >> 6);
+    *(target++) = (base64_decodes[(size_t)tmp2] << 4);
+    written += 2;
+    break;
+  case 3:
+    tmp1 = *(encoded++);
+    tmp2 = *(encoded++);
+    tmp3 = *(encoded++);
+    *(target++) = (base64_decodes[(size_t)tmp1] << 2) |
+                  (base64_decodes[(size_t)tmp2] >> 6);
+    *(target++) = (base64_decodes[(size_t)tmp2] << 4) |
+                  (base64_decodes[(size_t)tmp3] >> 2);
+    *(target++) = base64_decodes[(size_t)tmp3] << 6;
+    written += 3;
+    break;
   }
   *target = 0;
   return written;
