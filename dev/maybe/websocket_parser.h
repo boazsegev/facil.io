@@ -2,12 +2,15 @@
 copyright: Boaz Segev, 2017
 license: MIT
 
-Feel free to copy, use and enjoy according to the license provided.
+Feel free to copy, use and enjoy according to the license specified.
 */
 #ifndef H_WEBSOCKET_PARSER_H
 /**\file
-An extraction of the Websocket message parser and the Websocket message
-formatter from the Websocket protocol suite.
+A single file Websocket message parser and Websocket message wrapper, decoupled
+from the IO.
+
+Notice that this header file library includes static funnction declerations that
+must be implemented by the including file (the callbacks).
 */
 #define H_WEBSOCKET_PARSER_H
 #include <stdint.h>
@@ -66,6 +69,18 @@ static size_t websocket_client_wrap(void *target, void *msg, size_t len,
                                     unsigned char rsv);
 
 /* *****************************************************************************
+Callbacks - Required functions that must be inplemented to use this header
+***************************************************************************** */
+
+static void websocket_on_unwrapped(void *udata, void *msg, size_t len,
+                                   char first, char last, char text,
+                                   unsigned char rsv);
+static void websocket_on_protocol_ping(void *udata, void *msg, size_t len);
+static void websocket_on_protocol_pong(void *udata, void *msg, size_t len);
+static void websocket_on_protocol_close(void *udata);
+static void websocket_on_protocol_error(void *udata);
+
+/* *****************************************************************************
 API - Parsing (unwrapping)
 ***************************************************************************** */
 
@@ -80,12 +95,6 @@ inline static size_t websocket_buffer_required(void *buffer, size_t len);
  * This argumennt structure sets the callbacks and data used for parsing.
  */
 struct websocket_consume_args_s {
-  void (*on_unwrapped)(void *udata, void *msg, size_t len, char first,
-                       char last, char text, unsigned char rsv);
-  void (*on_ping)(void *udata, void *msg, size_t len);
-  void (*on_pong)(void *udata, void *msg, size_t len);
-  void (*on_close)(void *udata);
-  void (*on_error)(void *udata);
   uint8_t require_masking;
 };
 
@@ -313,7 +322,7 @@ static size_t websocket_consume(void *buffer, size_t len, void *udata,
                                 struct websocket_consume_args_s args) {
   size_t border = websocket_buffer_required(buffer, len);
   size_t reminder = len;
-  uint8_t *pos = buffer;
+  uint8_t *pos = (uint8_t *)buffer;
   while (border <= reminder) {
     /* parse head */
     uint64_t payload_len;
@@ -341,39 +350,39 @@ static size_t websocket_consume(void *buffer, size_t len, void *udata,
       websocket_xmask(payload + 4, payload_len, mask);
     } else if (args.require_masking) {
       /* error */
-      args.on_error(udata);
+      websocket_on_protocol_error(udata);
     }
     /* call callback */
     switch (pos[0] & 15) {
     case 0:
       /* continuation frame */
-      args.on_unwrapped(udata, payload, payload_len, 0, (pos[0] >> 7), 0,
-                        ((pos[0] >> 4) & 15));
+      websocket_on_unwrapped(udata, payload, payload_len, 0, (pos[0] >> 7), 0,
+                             ((pos[0] >> 4) & 15));
       break;
     case 1:
       /* text frame */
-      args.on_unwrapped(udata, payload, payload_len, 1, (pos[0] >> 7), 1,
-                        ((pos[0] >> 4) & 15));
+      websocket_on_unwrapped(udata, payload, payload_len, 1, (pos[0] >> 7), 1,
+                             ((pos[0] >> 4) & 15));
       break;
     case 2:
       /* data frame */
-      args.on_unwrapped(udata, payload, payload_len, 1, (pos[0] >> 7), 0,
-                        ((pos[0] >> 4) & 15));
+      websocket_on_unwrapped(udata, payload, payload_len, 1, (pos[0] >> 7), 0,
+                             ((pos[0] >> 4) & 15));
       break;
     case 8:
       /* close frame */
-      args.on_close(udata);
+      websocket_on_protocol_close(udata);
       break;
     case 9:
       /* ping frame */
-      args.on_ping(udata, payload, payload_len);
+      websocket_on_protocol_ping(udata, payload, payload_len);
       break;
     case 10:
       /* pong frame */
-      args.on_pong(udata, payload, payload_len);
+      websocket_on_protocol_pong(udata, payload, payload_len);
       break;
     default:
-      args.on_error(udata);
+      websocket_on_protocol_error(udata);
     }
     /* step forward */
     reminder -= border;
