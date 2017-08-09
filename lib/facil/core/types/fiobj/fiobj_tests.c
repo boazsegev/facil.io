@@ -14,6 +14,40 @@ Feel free to copy, use and enjoy according to the license provided.
 A JSON testing
 ***************************************************************************** */
 
+int fiobj_test_json_str(char const *json, size_t len, uint8_t print_result) {
+  clock_t start, end;
+
+  fiobj_s *result = NULL;
+  start = clock();
+  size_t i = fiobj_json2obj(&result, json, len);
+  end = clock();
+  if (!i || !result) {
+    fprintf(stderr, "FAILED to parse JSON?! consumed %lu and result == %p\n", i,
+            (void *)result);
+    return -1;
+  }
+  fprintf(stderr, "* Parsed JSON in %lu\n", end - start);
+  start = clock();
+  fiobj_s *jstr = fiobj_obj2json(result, 1);
+  end = clock();
+  fprintf(stderr, "* Formatted JSON in %lu\n", end - start);
+  fprintf(stderr,
+          "Consumed %lu bytes out of %lu with result length %llu:\n%s\n", i,
+          len, fiobj_obj2cstr(jstr).length,
+          (print_result) ? fiobj_obj2cstr(jstr).buffer
+                         : "\t\tfiles aren't printed.");
+
+  start = clock();
+  fiobj_free(result);
+  end = clock();
+  fprintf(stderr, "* Freed JSON result in %lu\n", end - start);
+
+  start = clock();
+  fiobj_free(jstr);
+  end = clock();
+  fprintf(stderr, "* Freed JSON String in %lu\n", end - start);
+  return 0;
+}
 void fiobj_test_hash_json(void) {
   fiobj_pt hash = fiobj_hash_new();
   fiobj_pt hash2 = fiobj_hash_new();

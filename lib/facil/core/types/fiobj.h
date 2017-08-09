@@ -617,6 +617,7 @@ size_t fio_ftoa(char *dest, double num, uint8_t base);
 
 #ifdef DEBUG
 void fiobj_test(void);
+int fiobj_test_json_str(char const *json, size_t len, uint8_t print_result);
 #endif
 
 #ifdef __cplusplus
