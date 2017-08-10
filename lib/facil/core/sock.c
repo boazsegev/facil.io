@@ -236,7 +236,6 @@ struct fd_data_s {
 
 static struct sock_data_store {
   size_t capacity;
-  uint8_t exit_init;
   struct fd_data_s *fds;
 } sock_data_store;
 
@@ -270,40 +269,39 @@ static inline int initialize_sock_lib(size_t capacity) {
     return 0;
   struct fd_data_s *new_collection =
       realloc(sock_data_store.fds, sizeof(struct fd_data_s) * capacity);
-  if (new_collection) {
-    sock_data_store.fds = new_collection;
-    for (size_t i = sock_data_store.capacity; i < capacity; i++) {
-      fdinfo(i) =
-          (struct fd_data_s){.open = 0,
-                             .lock = SPN_LOCK_INIT,
-                             .rw_hooks = (sock_rw_hook_s *)&SOCK_DEFAULT_HOOKS,
-                             .counter = 0};
-    }
-    sock_data_store.capacity = capacity;
+  if (!new_collection)
+    return -1;
+  sock_data_store.fds = new_collection;
+  for (size_t i = sock_data_store.capacity; i < capacity; i++) {
+    fdinfo(i) =
+        (struct fd_data_s){.open = 0,
+                           .lock = SPN_LOCK_INIT,
+                           .rw_hooks = (sock_rw_hook_s *)&SOCK_DEFAULT_HOOKS,
+                           .counter = 0};
+  }
+  sock_data_store.capacity = capacity;
 
 #ifdef DEBUG
-    fprintf(stderr,
-            "\nInitialized libsock for %lu sockets, "
-            "each one requires %lu bytes.\n"
-            "overall ovearhead: %lu bytes.\n"
-            "Initialized packet pool for %d elements, "
-            "each one %lu bytes.\n"
-            "overall buffer ovearhead: %lu bytes.\n"
-            "=== Socket Library Total: %lu bytes ===\n\n",
-            capacity, sizeof(struct fd_data_s),
-            sizeof(struct fd_data_s) * capacity, BUFFER_PACKET_POOL,
-            sizeof(packet_s), sizeof(packet_s) * BUFFER_PACKET_POOL,
-            (sizeof(packet_s) * BUFFER_PACKET_POOL) +
-                (sizeof(struct fd_data_s) * capacity));
+  fprintf(stderr,
+          "\nInitialized libsock for %lu sockets, "
+          "each one requires %lu bytes.\n"
+          "overall ovearhead: %lu bytes.\n"
+          "Initialized packet pool for %d elements, "
+          "each one %lu bytes.\n"
+          "overall buffer ovearhead: %lu bytes.\n"
+          "=== Socket Library Total: %lu bytes ===\n\n",
+          capacity, sizeof(struct fd_data_s),
+          sizeof(struct fd_data_s) * capacity, BUFFER_PACKET_POOL,
+          sizeof(packet_s), sizeof(packet_s) * BUFFER_PACKET_POOL,
+          (sizeof(packet_s) * BUFFER_PACKET_POOL) +
+              (sizeof(struct fd_data_s) * capacity));
 #endif
 
-    if (init_exit)
-      return 0;
-    init_exit = 1;
-    atexit(clear_sock_lib);
+  if (init_exit)
     return 0;
-  }
-  return -1;
+  init_exit = 1;
+  atexit(clear_sock_lib);
+  return 0;
 }
 
 static inline int clear_fd(uintptr_t fd, uint8_t is_open) {
