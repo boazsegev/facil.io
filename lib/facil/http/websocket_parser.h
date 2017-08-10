@@ -21,14 +21,14 @@ API - Internal Helpers
 ***************************************************************************** */
 
 /** used internally to mask and unmask client messages. */
-void websocket_xmask(void *msg, size_t len, uint32_t mask);
+void websocket_xmask(void *msg, uint64_t len, uint32_t mask);
 
 /* *****************************************************************************
 API - Message Wrapping
 ***************************************************************************** */
 
 /** returns the length of the buffer required to wrap a message `len` long */
-static inline size_t websocket_wrapped_len(uint64_t len);
+static inline uint64_t websocket_wrapped_len(uint64_t len);
 
 /**
  * Wraps a Websocket server message and writes it to the target buffer.
@@ -55,9 +55,9 @@ static inline size_t websocket_wrapped_len(uint64_t len);
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len)`
  */
-static size_t websocket_server_wrap(void *target, void *msg, size_t len,
-                                    char opcode, char first, char last,
-                                    unsigned char rsv);
+static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
+                                      char opcode, char first, char last,
+                                      unsigned char rsv);
 
 /**
  * Wraps a Websocket client message and writes it to the target buffer.
@@ -74,19 +74,19 @@ static size_t websocket_server_wrap(void *target, void *msg, size_t len,
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) + 4`
  */
-static size_t websocket_client_wrap(void *target, void *msg, size_t len,
-                                    char opcode, char first, char last,
-                                    unsigned char rsv);
+static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
+                                      char opcode, char first, char last,
+                                      unsigned char rsv);
 
 /* *****************************************************************************
 Callbacks - Required functions that must be inplemented to use this header
 ***************************************************************************** */
 
-static void websocket_on_unwrapped(void *udata, void *msg, size_t len,
+static void websocket_on_unwrapped(void *udata, void *msg, uint64_t len,
                                    char first, char last, char text,
                                    unsigned char rsv);
-static void websocket_on_protocol_ping(void *udata, void *msg, size_t len);
-static void websocket_on_protocol_pong(void *udata, void *msg, size_t len);
+static void websocket_on_protocol_ping(void *udata, void *msg, uint64_t len);
+static void websocket_on_protocol_pong(void *udata, void *msg, uint64_t len);
 static void websocket_on_protocol_close(void *udata);
 static void websocket_on_protocol_error(void *udata);
 
@@ -94,12 +94,36 @@ static void websocket_on_protocol_error(void *udata);
 API - Parsing (unwrapping)
 ***************************************************************************** */
 
+/** the returned value for `websocket_buffer_required` */
+struct websocket_packet_info_s {
+  /** the expected packet length */
+  uint64_t packet_length;
+  /** the packet's "head" size (before the data) */
+  uint8_t head_length;
+  /** a flag indicating if the packet is masked */
+  uint8_t masked;
+};
+
 /**
- * Returns the minimal buffer required for the next (upcoming) message.
+ * Returns all known information regarding the upcoming message.
  *
- * On protocol error, the value 0 is returned (no buffer required).
+ * @returns a struct websocket_packet_info_s.
+ *
+ * On protocol error, the `head_length` value is 0 (no valid head detected).
  */
-inline static size_t websocket_buffer_required(void *buffer, size_t len);
+inline static struct websocket_packet_info_s
+websocket_buffer_peek(void *buffer, uint64_t len);
+
+/**
+ * Consumes the data in the buffer, calling any callbacks required.
+ *
+ * Returns the remaining data in the existing buffer (can be 0).
+ *
+ * Notice: if there's any remaining data in the buffer, `memmove` is used to
+ * place the data at the begining of the buffer.
+ */
+static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
+                                  uint8_t require_masking);
 
 /* *****************************************************************************
 
@@ -111,7 +135,7 @@ inline static size_t websocket_buffer_required(void *buffer, size_t len);
 Message masking
 ***************************************************************************** */
 /** used internally to mask and unmask client messages. */
-void websocket_xmask(void *msg, size_t len, uint32_t mask) {
+void websocket_xmask(void *msg, uint64_t len, uint32_t mask) {
   const uint64_t xmask = (((uint64_t)mask) << 32) | mask;
   while (len >= 8) {
     *((uint64_t *)msg) ^= xmask;
@@ -172,7 +196,7 @@ Message wrapping
 #endif
 
 /** returns the length of the buffer required to wrap a message `len` long */
-static inline size_t websocket_wrapped_len(uint64_t len) {
+static inline uint64_t websocket_wrapped_len(uint64_t len) {
   if (len < 126)
     return len + 2;
   if (len < (1UL << 16))
@@ -205,9 +229,9 @@ static inline size_t websocket_wrapped_len(uint64_t len) {
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len)`
  */
-static size_t websocket_server_wrap(void *target, void *msg, size_t len,
-                                    char opcode, char first, char last,
-                                    unsigned char rsv) {
+static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
+                                      char opcode, char first, char last,
+                                      unsigned char rsv) {
   if (len < 126) {
     ((uint8_t *)target)[0] =
         /*opcode*/ ((first ? opcode : 0) << 4) |
@@ -249,9 +273,9 @@ static size_t websocket_server_wrap(void *target, void *msg, size_t len,
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) + 4`
  */
-static size_t websocket_client_wrap(void *target, void *msg, size_t len,
-                                    char opcode, char first, char last,
-                                    unsigned char rsv) {
+static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
+                                      char opcode, char first, char last,
+                                      unsigned char rsv) {
   uint32_t mask = rand() + 0x01020408;
   if (len < 126) {
     ((uint8_t *)target)[0] =
@@ -292,29 +316,37 @@ Message unwrapping
 ***************************************************************************** */
 
 /**
- * Returns the minimal buffer required for the next (upcoming) message.
+ * Returns all known information regarding the upcoming message.
  *
- * On protocol error, the value 0 is returned (no buffer required).
+ * @returns a struct websocket_packet_info_s.
+ *
+ * On protocol error, the `head_length` value is 0 (no valid head detected).
  */
-inline static size_t websocket_buffer_required(void *buffer, size_t len) {
+inline static struct websocket_packet_info_s
+websocket_buffer_peek(void *buffer, uint64_t len) {
   if (len < 2)
-    return 2;
-  const size_t mask = (((((uint8_t *)buffer)[1] >> 7) & 1) << 2);
-  // const size_t mask = (((uint8_t *)buffer)[1] & 128) ? 4 : 0;
-  size_t ret = (((uint8_t *)buffer)[1] & 127);
-  if (ret < 126)
-    return ret + mask + 2;
-  switch (ret) {
+    return (struct websocket_packet_info_s){0, 2, 0};
+  const uint8_t mask_f = (((uint8_t *)buffer)[1] >> 7) & 1;
+  const uint8_t mask_l = (mask_f << 2);
+  uint8_t len_indicator = (((uint8_t *)buffer)[1] & 127);
+  if (len < 126)
+    return (struct websocket_packet_info_s){len_indicator,
+                                            (uint8_t)(2 + mask_l), mask_f};
+  switch (len_indicator) {
   case 126:
     if (len < 4)
-      return 4;
-    return htons(((uint16_t *)buffer)[1]) + mask + 4;
+      return (struct websocket_packet_info_s){0, (uint8_t)(4 + mask_l), mask_f};
+    return (struct websocket_packet_info_s){htons(((uint16_t *)buffer)[1]),
+                                            (uint8_t)(2 + mask_l), mask_f};
   case 127:
     if (len < 10)
-      return 10;
-    return bswap64(((uint64_t *)((uint8_t *)buffer + 2))[0]) + mask + 10;
+      return (struct websocket_packet_info_s){0, (uint8_t)(10 + mask_l),
+                                              mask_f};
+    return (struct websocket_packet_info_s){
+        bswap64(((uint64_t *)((uint8_t *)buffer + 2))[0]),
+        (uint8_t)(10 + mask_l), mask_f};
   default:
-    return 0;
+    return (struct websocket_packet_info_s){0, 0, 0};
   }
 }
 
@@ -323,39 +355,21 @@ inline static size_t websocket_buffer_required(void *buffer, size_t len) {
  *
  * Returns the remaining data in the existing buffer (can be 0).
  */
-static size_t websocket_consume(void *buffer, size_t len, void *udata,
-                                uint8_t require_masking) {
-  size_t border = websocket_buffer_required(buffer, len);
-  if (border > len)
+static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
+                                  uint8_t require_masking) {
+  struct websocket_packet_info_s info = websocket_buffer_peek(buffer, len);
+  if (info.head_length + info.packet_length > len)
     return len;
-  size_t reminder = len;
+  uint64_t reminder = len;
   uint8_t *pos = (uint8_t *)buffer;
-  while (border <= reminder) {
+  while (info.head_length + info.packet_length <= reminder) {
     /* parse head */
-    uint64_t payload_len;
-    uint8_t *payload;
-    payload_len = border;
-    switch ((((uint8_t *)pos)[1] & 127)) { /* length  marker */
-    case 126:
-      payload = pos + 4;
-      payload_len -= 4;
-      break;
-    case 127:
-      payload = pos + 10;
-      payload_len -= 10;
-      break;
-    default:
-      payload = pos + 2;
-      payload_len -= 2;
-      break;
-    }
+    void *payload = (void *)(pos + info.head_length);
     /* unmask? */
-    if (pos[1] & 128) {
+    if (info.masked) {
       /* masked */
-      const uint32_t mask = *((uint32_t *)payload);
-      payload += 4;
-      payload_len -= 4;
-      websocket_xmask(payload, payload_len, mask);
+      const uint32_t mask = ((uint32_t *)payload)[-1];
+      websocket_xmask(payload, info.packet_length, mask);
     } else if (require_masking) {
       /* error */
       websocket_on_protocol_error(udata);
@@ -364,17 +378,17 @@ static size_t websocket_consume(void *buffer, size_t len, void *udata,
     switch (pos[0] & 15) {
     case 0:
       /* continuation frame */
-      websocket_on_unwrapped(udata, payload, payload_len, 0,
+      websocket_on_unwrapped(udata, payload, info.packet_length, 0,
                              ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 15));
       break;
     case 1:
       /* text frame */
-      websocket_on_unwrapped(udata, payload, payload_len, 1,
+      websocket_on_unwrapped(udata, payload, info.packet_length, 1,
                              ((pos[0] >> 7) & 1), 1, ((pos[0] >> 4) & 15));
       break;
     case 2:
       /* data frame */
-      websocket_on_unwrapped(udata, payload, payload_len, 1,
+      websocket_on_unwrapped(udata, payload, info.packet_length, 1,
                              ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 15));
       break;
     case 8:
@@ -383,19 +397,19 @@ static size_t websocket_consume(void *buffer, size_t len, void *udata,
       break;
     case 9:
       /* ping frame */
-      websocket_on_protocol_ping(udata, payload, payload_len);
+      websocket_on_protocol_ping(udata, payload, info.packet_length);
       break;
     case 10:
       /* pong frame */
-      websocket_on_protocol_pong(udata, payload, payload_len);
+      websocket_on_protocol_pong(udata, payload, info.packet_length);
       break;
     default:
       websocket_on_protocol_error(udata);
     }
     /* step forward */
-    reminder -= border;
-    pos += border;
-    border = websocket_buffer_required(pos, reminder);
+    reminder -= info.head_length + info.packet_length;
+    pos += info.head_length + info.packet_length;
+    info = websocket_buffer_peek(pos, reminder);
   }
   /* reset buffer state - support pipelining */
   if (!reminder)
