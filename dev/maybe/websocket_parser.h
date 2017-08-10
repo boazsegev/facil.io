@@ -38,15 +38,25 @@ static inline size_t websocket_wrapped_len(uint64_t len);
  * * target: the target buffer to write to.
  * * msg:    the message to be wrapped.
  * * len:    the message length.
- * * text:   set to 1 to indicate this is a UTF-8 message or 0 for binary.
+ * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
  * * first:  set to 1 if `msg` points the begining of the message.
  * * last:   set to 1 if `msg + len` ends the message.
- * * rsv:    accepts a 3 bit value for the rsv websocket message bits.
+ * * client: set to 1 to use client mode (data  masking).
+ *
+ * Further opcode values:
+ * * %x0 denotes a continuation frame
+ * *  %x1 denotes a text frame
+ * *  %x2 denotes a binary frame
+ * *  %x3-7 are reserved for further non-control frames
+ * *  %x8 denotes a connection close
+ * *  %x9 denotes a ping
+ * *  %xA denotes a pong
+ * *  %xB-F are reserved for further control frames
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len)`
  */
 static size_t websocket_server_wrap(void *target, void *msg, size_t len,
-                                    char text, char first, char last,
+                                    char opcode, char first, char last,
                                     unsigned char rsv);
 
 /**
@@ -57,15 +67,15 @@ static size_t websocket_server_wrap(void *target, void *msg, size_t len,
  * * target: the target buffer to write to.
  * * msg:    the message to be wrapped.
  * * len:    the message length.
- * * text:   set to 1 to indicate this is a UTF-8 message or 0 for binary.
+ * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
  * * first:  set to 1 if `msg` points the begining of the message.
  * * last:   set to 1 if `msg + len` ends the message.
- * * rsv:    accepts a 3 bit value for the rsv websocket message bits.
+ * * client: set to 1 to use client mode (data  masking).
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) + 4`
  */
 static size_t websocket_client_wrap(void *target, void *msg, size_t len,
-                                    char text, char first, char last,
+                                    char opcode, char first, char last,
                                     unsigned char rsv);
 
 /* *****************************************************************************
@@ -90,13 +100,6 @@ API - Parsing (unwrapping)
  * On protocol error, the value 0 is returned (no buffer required).
  */
 inline static size_t websocket_buffer_required(void *buffer, size_t len);
-
-/**
- * This argumennt structure sets the callbacks and data used for parsing.
- */
-struct websocket_consume_args_s {
-  uint8_t require_masking;
-};
 
 /* *****************************************************************************
 
@@ -296,18 +299,20 @@ Message unwrapping
 inline static size_t websocket_buffer_required(void *buffer, size_t len) {
   if (len < 2)
     return 2;
-  size_t ret = (((uint8_t *)buffer)[0] & 127);
+  const size_t mask = (((((uint8_t *)buffer)[1] >> 7) & 1) << 2);
+  // const size_t mask = (((uint8_t *)buffer)[1] & 128) ? 4 : 0;
+  size_t ret = (((uint8_t *)buffer)[1] & 127);
   if (ret < 126)
-    return ret;
+    return ret + mask + 2;
   switch (ret) {
   case 126:
     if (len < 4)
       return 4;
-    return htons(((uint16_t *)buffer)[1]);
+    return htons(((uint16_t *)buffer)[1]) + mask + 4;
   case 127:
     if (len < 10)
       return 10;
-    return bswap64(((uint64_t *)((uint8_t *)buffer + 2))[0]);
+    return bswap64(((uint64_t *)((uint8_t *)buffer + 2))[0]) + mask + 10;
   default:
     return 0;
   }
@@ -319,27 +324,29 @@ inline static size_t websocket_buffer_required(void *buffer, size_t len) {
  * Returns the remaining data in the existing buffer (can be 0).
  */
 static size_t websocket_consume(void *buffer, size_t len, void *udata,
-                                struct websocket_consume_args_s args) {
+                                uint8_t require_masking) {
   size_t border = websocket_buffer_required(buffer, len);
+  if (border > len)
+    return len;
   size_t reminder = len;
   uint8_t *pos = (uint8_t *)buffer;
   while (border <= reminder) {
     /* parse head */
     uint64_t payload_len;
-    char text, first, last;
-    unsigned char rsv;
     uint8_t *payload;
-    payload_len = pos[1] & 127;
-    switch (payload_len) { /* length */
+    payload_len = border;
+    switch ((((uint8_t *)pos)[1] & 127)) { /* length  marker */
     case 126:
-      payload = pos + 6;
-      payload_len = ntohs(*((uint32_t *)(pos + 2)));
+      payload = pos + 4;
+      payload_len -= 4;
       break;
     case 127:
       payload = pos + 10;
-      payload_len = bswap64(*(uint64_t *)(pos + 2));
+      payload_len -= 10;
       break;
     default:
+      payload = pos + 2;
+      payload_len -= 2;
       break;
     }
     /* unmask? */
@@ -347,8 +354,9 @@ static size_t websocket_consume(void *buffer, size_t len, void *udata,
       /* masked */
       const uint32_t mask = *((uint32_t *)payload);
       payload += 4;
-      websocket_xmask(payload + 4, payload_len, mask);
-    } else if (args.require_masking) {
+      payload_len -= 4;
+      websocket_xmask(payload, payload_len, mask);
+    } else if (require_masking) {
       /* error */
       websocket_on_protocol_error(udata);
     }
@@ -356,18 +364,18 @@ static size_t websocket_consume(void *buffer, size_t len, void *udata,
     switch (pos[0] & 15) {
     case 0:
       /* continuation frame */
-      websocket_on_unwrapped(udata, payload, payload_len, 0, (pos[0] >> 7), 0,
-                             ((pos[0] >> 4) & 15));
+      websocket_on_unwrapped(udata, payload, payload_len, 0,
+                             ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 15));
       break;
     case 1:
       /* text frame */
-      websocket_on_unwrapped(udata, payload, payload_len, 1, (pos[0] >> 7), 1,
-                             ((pos[0] >> 4) & 15));
+      websocket_on_unwrapped(udata, payload, payload_len, 1,
+                             ((pos[0] >> 7) & 1), 1, ((pos[0] >> 4) & 15));
       break;
     case 2:
       /* data frame */
-      websocket_on_unwrapped(udata, payload, payload_len, 1, (pos[0] >> 7), 0,
-                             ((pos[0] >> 4) & 15));
+      websocket_on_unwrapped(udata, payload, payload_len, 1,
+                             ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 15));
       break;
     case 8:
       /* close frame */
@@ -387,6 +395,7 @@ static size_t websocket_consume(void *buffer, size_t len, void *udata,
     /* step forward */
     reminder -= border;
     pos += border;
+    border = websocket_buffer_required(pos, reminder);
   }
   /* reset buffer state - support pipelining */
   if (!reminder)
