@@ -60,33 +60,32 @@ int bscrypt_base64_encode(char *target, const char *data, int len) {
   const int target_size = (groups + (mod != 0)) * 4;
   char *writer = target + target_size - 1;
   const char *reader = data + len - 1;
-  char tmp1, tmp2, tmp3;
   writer[1] = 0;
   switch (mod) {
-  case 2:
-    tmp2 = *(reader--);
-    tmp1 = *(reader--);
+  case 2: {
+    char tmp2 = *(reader--);
+    char tmp1 = *(reader--);
     *(writer--) = '=';
     *(writer--) = base64_encodes[((tmp2 & 15) << 2)];
     *(writer--) = base64_encodes[((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15)];
     *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
-    break;
-  case 1:
-    tmp1 = *(reader--);
+  } break;
+  case 1: {
+    char tmp1 = *(reader--);
     *(writer--) = '=';
     *(writer--) = '=';
     *(writer--) = base64_encodes[(tmp1 & 3) << 4];
     *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
-    break;
+  } break;
   }
   while (groups) {
     groups--;
-    tmp3 = *(reader--);
-    tmp2 = *(reader--);
-    tmp1 = *(reader--);
+    const char tmp3 = *(reader--);
+    const char tmp2 = *(reader--);
+    const char tmp1 = *(reader--);
     *(writer--) = base64_encodes[tmp3 & 63];
-    *(writer--) = base64_encodes[((tmp2 & 15) << 2) | (tmp3 >> 6)];
-    *(writer--) = base64_encodes[((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15)];
+    *(writer--) = base64_encodes[((tmp2 & 15) << 2) | ((tmp3 >> 6) & 3)];
+    *(writer--) = base64_encodes[(((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15))];
     *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
   }
   return target_size;
@@ -112,10 +111,12 @@ Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
 int bscrypt_base64_decode(char *target, char *encoded, int base64_len) {
-  if (base64_len <= 0)
-    return -1;
   if (!target)
     target = encoded;
+  if (base64_len <= 0) {
+    target[0] = 0;
+    return 0;
+  }
   int written = 0;
   char tmp1, tmp2, tmp3, tmp4;
   while (*encoded == '\r' || *encoded == '\n' || *encoded == ' ') {
@@ -202,6 +203,13 @@ void bscrypt_test_base64(void) {
       {"any carnal pleasure.", "YW55IGNhcm5hbCBwbGVhc3VyZS4="},
       {"any carnal pleasure", "YW55IGNhcm5hbCBwbGVhc3VyZQ=="},
       {"any carnal pleasur", "YW55IGNhcm5hbCBwbGVhc3Vy"},
+      {"", ""},
+      {"f", "Zg=="},
+      {"fo", "Zm8="},
+      {"foo", "Zm9v"},
+      {"foob", "Zm9vYg=="},
+      {"fooba", "Zm9vYmE="},
+      {"foobar", "Zm9vYmFy"},
       {NULL, NULL} // Stop
   };
   int i = 0;
