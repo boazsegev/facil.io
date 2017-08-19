@@ -56,8 +56,8 @@ static inline uint64_t websocket_wrapped_len(uint64_t len);
  * Returns the number of bytes written. Always `websocket_wrapped_len(len)`
  */
 static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
-                                      char opcode, char first, char last,
-                                      unsigned char rsv);
+                                      unsigned char opcode, unsigned char first,
+                                      unsigned char last, unsigned char rsv);
 
 /**
  * Wraps a Websocket client message and writes it to the target buffer.
@@ -75,8 +75,8 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) + 4`
  */
 static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
-                                      char opcode, char first, char last,
-                                      unsigned char rsv);
+                                      unsigned char opcode, unsigned char first,
+                                      unsigned char last, unsigned char rsv);
 
 /* *****************************************************************************
 Callbacks - Required functions that must be inplemented to use this header
@@ -230,29 +230,24 @@ static inline uint64_t websocket_wrapped_len(uint64_t len) {
  * Returns the number of bytes written. Always `websocket_wrapped_len(len)`
  */
 static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
-                                      char opcode, char first, char last,
-                                      unsigned char rsv) {
+                                      unsigned char opcode, unsigned char first,
+                                      unsigned char last, unsigned char rsv) {
+  ((uint8_t *)target)[0] = 0 |
+                           /* opcode */ (((first ? opcode : 0) & 15)) |
+                           /* rsv */ ((rsv & 3) << 4) |
+                           /*fin*/ ((last & 1) << 7);
   if (len < 126) {
-    ((uint8_t *)target)[0] =
-        /*opcode*/ ((first ? opcode : 0) << 4) |
-        /*rsv*/ ((rsv & 3) << 1) | /*fin*/ (last & 1);
     ((uint8_t *)target)[1] = len;
     memcpy(((uint8_t *)target) + 2, msg, len);
     return len + 2;
   } else if (len < (1UL << 16)) {
     /* head is 4 bytes */
-    ((uint8_t *)target)[0] =
-        /*opcode*/ ((first ? opcode : 0) << 4) |
-        /*rsv*/ ((rsv & 3) << 1) | /*fin*/ (last & 1);
     ((uint8_t *)target)[1] = 126;
     ((uint16_t *)target)[1] = htons(len);
     memcpy((uint8_t *)target + 4, msg, len);
     return len + 4;
   }
   /* Really Long Message  */
-  ((uint8_t *)target)[0] =
-      /*opcode*/ ((first ? opcode : 0) << 4) |
-      /*rsv*/ ((rsv & 3) << 1) | /*fin*/ (last & 1);
   ((uint8_t *)target)[1] = 127;
   ((uint64_t *)((uint8_t *)target + 2))[0] = bswap64(len);
   memcpy((uint8_t *)target + 10, msg, len);
@@ -274,24 +269,21 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) + 4`
  */
 static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
-                                      char opcode, char first, char last,
-                                      unsigned char rsv) {
+                                      unsigned char opcode, unsigned char first,
+                                      unsigned char last, unsigned char rsv) {
   uint32_t mask = rand() + 0x01020408;
+  ((uint8_t *)target)[0] = 0 |
+                           /* opcode */ (((first ? opcode : 0) & 15)) |
+                           /* rsv */ ((rsv & 3) << 4) |
+                           /*fin*/ ((last & 1) << 7);
   if (len < 126) {
-    ((uint8_t *)target)[0] =
-        /*opcode*/ ((first ? opcode : 0) << 4) |
-        /*rsv*/ ((rsv & 3) << 1) | /*fin*/ (last & 1);
-    ((uint8_t *)target)[1] = len;
-    ((uint8_t *)target)[1] |= 128;
+    ((uint8_t *)target)[1] = len | 128;
     ((uint32_t *)((uint8_t *)target + 2))[0] = mask;
     memcpy(((uint8_t *)target) + 6, msg, len);
     websocket_xmask((uint8_t *)target + 6, len, mask);
     return len + 6;
   } else if (len < (1UL << 16)) {
     /* head is 4 bytes */
-    ((uint8_t *)target)[0] =
-        /*opcode*/ ((first ? opcode : 0) << 4) |
-        /*rsv*/ ((rsv & 3) << 1) | /*fin*/ (last & 1);
     ((uint8_t *)target)[1] = 126 | 128;
     ((uint16_t *)target)[1] = htons(len);
     ((uint32_t *)((uint8_t *)target + 4))[0] = mask;
@@ -300,9 +292,6 @@ static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
     return len + 8;
   }
   /* Really Long Message  */
-  ((uint8_t *)target)[0] =
-      /*opcode*/ ((first ? opcode : 0) << 4) |
-      /*rsv*/ ((rsv & 3) << 1) | /*fin*/ (last & 1);
   ((uint8_t *)target)[1] = 255;
   ((uint64_t *)((uint8_t *)target + 2))[0] = bswap64(len);
   ((uint32_t *)((uint8_t *)target + 10))[0] = mask;
