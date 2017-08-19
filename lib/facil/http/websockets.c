@@ -7,6 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "spnlock.inc"
 
 #include "fio_list.h"
+#include "fiobj.h"
 
 #include "bscrypt.h"
 #include "pubsub.h"
@@ -17,6 +18,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+
+#include "websocket_parser.h"
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>
@@ -111,55 +114,22 @@ struct Websocket {
   size_t max_msg_size;
   /** active pub/sub subscriptions */
   fio_list_s subscriptions;
-  /** message buffer. */
+  /** socket buffer. */
   struct buffer_s buffer;
-  /** message length (how much of the buffer actually used). */
+  /** data length (how much of the buffer actually used). */
   size_t length;
-  /** parser. */
-  struct {
-    union {
-      unsigned len1 : 16;
-      unsigned long long len2 : 64;
-      char bytes[8];
-    } psize;
-    size_t length;
-    size_t received;
-    char mask[4];
-    struct {
-      unsigned op_code : 4;
-      unsigned rsv3 : 1;
-      unsigned rsv2 : 1;
-      unsigned rsv1 : 1;
-      unsigned fin : 1;
-    } head, head2;
-    struct {
-      unsigned size : 7;
-      unsigned masked : 1;
-    } sdata;
-    struct {
-      unsigned has_mask : 1;
-      unsigned at_mask : 2;
-      unsigned has_len : 1;
-      unsigned at_len : 3;
-      unsigned has_head : 1;
-    } state;
-    unsigned client : 1;
-  } parser;
+  /** message buffer. */
+  fiobj_s *msg;
+  /** latest text state. */
+  uint8_t is_text;
+  /** websocket connection type. */
+  uint8_t is_client;
 };
 
 /**
 The Websocket Protocol Identifying String. Used for the `each` function.
 */
 char *WEBSOCKET_ID_STR = "websockets";
-
-/**
-A thread localized buffer used for reading and parsing data from the socket.
-*/
-#define WEBSOCKET_READ_MAX 4096
-static __thread struct {
-  int pos;
-  char buffer[WEBSOCKET_READ_MAX];
-} read_buffer;
 
 /* *****************************************************************************
 Create/Destroy the websocket subscription objects
@@ -188,6 +158,50 @@ static inline void clear_subscriptions(ws_s *ws) {
     pubsub_unsubscribe(s->sub);
     free_subscription(s);
   }
+}
+
+/* *****************************************************************************
+Callbacks - Required functions for websocket_parser.h
+***************************************************************************** */
+
+static void websocket_on_unwrapped(void *udata, void *msg, uint64_t len,
+                                   char first, char last, char text,
+                                   unsigned char rsv) {
+  ws_s *ws = udata;
+  if (last && first) {
+    ws->on_message(ws, msg, len, (uint8_t)text);
+    return;
+  }
+  if (first) {
+    ws->is_text = (uint8_t)text;
+    if (ws->msg == NULL)
+      ws->msg = fiobj_str_buf(len);
+    fiobj_str_resize(ws->msg, 0);
+  }
+  fiobj_str_write(ws->msg, msg, len);
+  if (last)
+    ws->on_message(ws, msg, len, ws->is_text);
+
+  (void)rsv;
+}
+static void websocket_on_protocol_ping(void *udata, void *msg_, uint64_t len) {
+  ws_s *ws = udata;
+  uint16_t *msg = msg_;
+  msg[-1] = *((uint16_t *)"\x89\x00");
+  sock_write2(.uuid = ws->fd, .buffer = (void *)(msg - 1), .length = 2 + len);
+}
+static void websocket_on_protocol_pong(void *udata, void *msg, uint64_t len) {
+  (void)len;
+  (void)msg;
+  (void)udata;
+}
+static void websocket_on_protocol_close(void *udata) {
+  ws_s *ws = udata;
+  sock_close(ws->fd);
+}
+static void websocket_on_protocol_error(void *udata) {
+  ws_s *ws = udata;
+  sock_close(ws->fd);
 }
 
 /*******************************************************************************
@@ -225,247 +239,45 @@ static void on_shutdown(intptr_t fd, protocol_s *ws) {
     ((ws_s *)ws)->on_shutdown((ws_s *)ws);
 }
 
+/************** new implementation */
+
+static void on_data(intptr_t sockfd, protocol_s *ws_) {
+  ws_s *const ws = (ws_s *)ws_;
+  if (ws == NULL || ws->protocol.service != WEBSOCKET_ID_STR)
+    return;
+  struct websocket_packet_info_s info =
+      websocket_buffer_peek(ws->buffer.data, ws->length);
+  const uint64_t raw_length = info.packet_length + info.head_length;
+  /* test expected data amount */
+  if (ws->max_msg_size < raw_length) {
+    /* too big */
+    websocket_close(ws);
+    return;
+  }
+  /* test buffer capacity */
+  if (raw_length >= ws->buffer.size) {
+    ws->buffer.size = (size_t)raw_length;
+    ws->buffer = resize_ws_buffer(ws, ws->buffer);
+    if (!ws->buffer.data) {
+      // no memory.
+      websocket_close(ws);
+      return;
+    }
+  }
+
+  ssize_t len = sock_read(sockfd, (uint8_t *)ws->buffer.data + ws->length,
+                          ws->buffer.size - ws->length);
+  if (len <= 0) {
+    return;
+  }
+  ws->length += len;
+  ws->length = websocket_consume(ws->buffer.data, ws->length, ws, 1);
+
+  facil_force_event(sockfd, FIO_EVENT_ON_DATA);
+}
 /* later */
 static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
                                  char first, char last, char client);
-static size_t websocket_encode(void *buff, void *data, size_t len, char text,
-                               char first, char last, char client);
-
-/* read data from the socket, parse it and invoke the websocket events. */
-static void on_data(intptr_t sockfd, protocol_s *_ws) {
-#define ws ((ws_s *)_ws)
-  if (ws == NULL || ws->protocol.service != WEBSOCKET_ID_STR)
-    return;
-  ssize_t len = 0;
-  ssize_t data_len = 0;
-  read_buffer.pos = 0;
-
-  if ((len = sock_read(sockfd, read_buffer.buffer, WEBSOCKET_READ_MAX)) <= 0)
-    return;
-
-  while (read_buffer.pos < len) {
-    // collect the frame's head
-    if (!ws->parser.state.has_head) {
-      ws->parser.state.has_head = 1;
-      *((char *)(&(ws->parser.head))) = read_buffer.buffer[read_buffer.pos];
-      // save a copy if it's the first head in a fragmented message
-      if (!(*(char *)(&ws->parser.head2))) {
-        ws->parser.head2 = ws->parser.head;
-      }
-      // advance
-      read_buffer.pos++;
-      // go back to the `while` head, to review if there's more data
-      continue;
-    }
-
-    // save the mask and size information
-    if (!ws->parser.state.at_len && !ws->parser.state.has_len) {
-      // uint8_t tmp = ws->parser.sdata.masked;
-      *((char *)(&(ws->parser.sdata))) = read_buffer.buffer[read_buffer.pos];
-      // ws->parser.sdata.masked |= tmp;
-      // set length
-      ws->parser.state.at_len =
-          (ws->parser.sdata.size == 127 ? 7
-                                        : ws->parser.sdata.size == 126 ? 1 : 0);
-      if (!ws->parser.state.at_len) {
-        ws->parser.length = ws->parser.sdata.size;
-        ws->parser.state.has_len = 1;
-      }
-      read_buffer.pos++;
-      continue;
-    }
-
-    // check that if we need to collect the length data
-    if (!ws->parser.state.has_len) {
-    // avoiding a loop so we don't mixup the meaning of "continue" and
-    // "break"
-    collect_len:
-////////// NOTICE: Network Byte Order requires us to translate the data
-#ifdef __BIG_ENDIAN__
-      if ((ws->parser.state.at_len == 1 && ws->parser.sdata.size == 126) ||
-          (ws->parser.state.at_len == 7 && ws->parser.sdata.size == 127)) {
-        ws->parser.psize.bytes[ws->parser.state.at_len] =
-            read_buffer.buffer[read_buffer.pos++];
-        ws->parser.state.has_len = 1;
-        ws->parser.length = (ws->parser.sdata.size == 126)
-                                ? ws->parser.psize.len1
-                                : ws->parser.psize.len2;
-      } else {
-        ws->parser.psize.bytes[ws->parser.state.at_len++] =
-            read_buffer.buffer[read_buffer.pos++];
-        if (read_buffer.pos < len)
-          goto collect_len;
-      }
-#else
-      if (ws->parser.state.at_len == 0) {
-        ws->parser.psize.bytes[ws->parser.state.at_len] =
-            read_buffer.buffer[read_buffer.pos++];
-        ws->parser.state.has_len = 1;
-        ws->parser.length = (ws->parser.sdata.size == 126)
-                                ? ws->parser.psize.len1
-                                : ws->parser.psize.len2;
-      } else {
-        ws->parser.psize.bytes[ws->parser.state.at_len--] =
-            read_buffer.buffer[read_buffer.pos++];
-        if (read_buffer.pos < len)
-          goto collect_len;
-      }
-#endif
-      // check message size limit
-      if (ws->max_msg_size <
-          ws->length + (ws->parser.length - ws->parser.received)) {
-        // close connection!
-        fprintf(stderr, "ERROR Websocket: Payload too big, review limits.\n");
-        sock_close(sockfd);
-        return;
-      }
-      continue;
-    }
-
-    // check that the data is masked and that we didn't colleced the mask yet
-    if (ws->parser.sdata.masked && !(ws->parser.state.has_mask)) {
-    // avoiding a loop so we don't mixup the meaning of "continue" and "break"
-    collect_mask:
-      if (ws->parser.state.at_mask == 3) {
-        ws->parser.mask[ws->parser.state.at_mask] =
-            read_buffer.buffer[read_buffer.pos++];
-        ws->parser.state.has_mask = 1;
-        ws->parser.state.at_mask = 0;
-      } else {
-        ws->parser.mask[ws->parser.state.at_mask++] =
-            read_buffer.buffer[read_buffer.pos++];
-        if (read_buffer.pos < len)
-          goto collect_mask;
-        else
-          continue;
-      }
-      // since it's possible that there's no more data (0 length frame),
-      // we don't use `continue` (check while loop) and we process what we
-      // have.
-    }
-
-    // Now that we know everything about the frame, let's collect the data
-
-    // How much data in the buffer is part of the frame?
-    data_len = len - read_buffer.pos;
-    if (data_len + ws->parser.received > ws->parser.length)
-      data_len = ws->parser.length - ws->parser.received;
-
-    // a note about unmasking: since ws->parser.state.at_mask is only 2 bits,
-    // it will wrap around (i.e. 3++ == 0), so no modulus is required :-)
-    // unmask:
-    if (ws->parser.sdata.masked) {
-      for (int i = 0; i < data_len; i++) {
-        read_buffer.buffer[i + read_buffer.pos] ^=
-            ws->parser.mask[ws->parser.state.at_mask++];
-      }
-    } else if (ws->parser.client == 0) {
-      // enforce masking unless acting as client, also for security reasons...
-      fprintf(stderr, "ERROR Websockets: unmasked frame, disconnecting.\n");
-      sock_close(sockfd);
-      return;
-    }
-    // Copy the data to the Websocket buffer - only if it's a user message
-    if (data_len &&
-        (ws->parser.head.op_code == 1 || ws->parser.head.op_code == 2 ||
-         (!ws->parser.head.op_code &&
-          (ws->parser.head2.op_code == 1 || ws->parser.head2.op_code == 2)))) {
-      // review and resize the buffer's capacity - it can only grow.
-      if (ws->length + ws->parser.length - ws->parser.received >
-          ws->buffer.size) {
-        ws->buffer = resize_ws_buffer(ws, ws->buffer);
-        if (!ws->buffer.data) {
-          // no memory.
-          websocket_close(ws);
-          return;
-        }
-      }
-      // copy here
-      memcpy((uint8_t *)ws->buffer.data + ws->length,
-             read_buffer.buffer + read_buffer.pos, data_len);
-      ws->length += data_len;
-    }
-    // set the frame's data received so far (copied or not)
-    ws->parser.received += data_len;
-
-    // check that we have collected the whole of the frame.
-    if (ws->parser.length > ws->parser.received) {
-      read_buffer.pos += data_len;
-      // fprintf(stderr, "%p websocket has %lu out of %lu\n", (void *)ws,
-      //         ws->parser.received, ws->parser.length);
-      continue;
-    }
-
-    // we have the whole frame, time to process the data.
-    // pings, pongs and other non-user messages are handled independently.
-    if (ws->parser.head.op_code == 0 || ws->parser.head.op_code == 1 ||
-        ws->parser.head.op_code == 2) {
-      /* a user data frame - make sure we got the `fin` flag, or an error
-       * occured */
-      if (!ws->parser.head.fin) {
-        /* This frame was a partial message. */
-        goto reset_state;
-      }
-      /* This was the last frame */
-      if (ws->on_message) /* call the on_message callback */
-        ws->on_message(ws, ws->buffer.data, ws->length,
-                       ws->parser.head2.op_code == 1);
-      goto reset_parser;
-    } else if (ws->parser.head.op_code == 8) {
-      /* op-code == close */
-      websocket_close(ws);
-      if (ws->parser.head2.op_code == ws->parser.head.op_code)
-        goto reset_parser;
-    } else if (ws->parser.head.op_code == 9) {
-      /* ping */
-      // write Pong - including ping data...
-      websocket_write_impl(sockfd, read_buffer.buffer + read_buffer.pos,
-                           data_len, 10, 1, 1, ws->parser.client);
-      if (ws->parser.head2.op_code == ws->parser.head.op_code)
-        goto reset_parser;
-    } else if (ws->parser.head.op_code == 10) {
-      /* pong */
-      // do nothing... almost
-      if (ws->parser.head2.op_code == ws->parser.head.op_code)
-        goto reset_parser;
-    } else if (ws->parser.head.op_code > 2 && ws->parser.head.op_code < 8) {
-      /* future control frames. ignore. */
-      if (ws->parser.head2.op_code == ws->parser.head.op_code)
-        goto reset_parser;
-    } else {
-      /* WTF? */
-      // fprintf(stderr, "%p websocket reached a WTF?! state..."
-      //                 "op1: %i , op2: %i\n",
-      //         (void *)ws, ws->parser.head.op_code,
-      //         ws->parser.head2.op_code);
-      fprintf(stderr, "ERROR Websockets: protocol error, disconnecting.\n");
-      sock_close(sockfd);
-      return;
-    }
-
-  reset_parser:
-    ws->length = 0;
-    // clear the parser's multi-frame state
-    *((char *)(&(ws->parser.head2))) = 0;
-    ws->parser.sdata.masked = 0;
-  reset_state:
-    // move the pos marker along - in case we have more then one frame in the
-    // buffer
-    read_buffer.pos += data_len;
-    // reset parser state
-    ws->parser.state.has_len = 0;
-    ws->parser.state.at_len = 0;
-    ws->parser.state.has_mask = 0;
-    ws->parser.state.at_mask = 0;
-    ws->parser.state.has_head = 0;
-    ws->parser.sdata.size = 0;
-    *((char *)(&(ws->parser.head))) = 0;
-    ws->parser.received = ws->parser.length = ws->parser.psize.len2 = data_len =
-        0;
-  }
-  facil_force_event(sockfd, FIO_EVENT_ON_DATA);
-#undef ws
-}
 
 /*******************************************************************************
 Create/Destroy the websocket object
@@ -482,6 +294,7 @@ static ws_s *new_websocket() {
       .protocol.on_ready = on_ready,
       .protocol.on_shutdown = on_shutdown,
       .subscriptions = FIO_LIST_INIT_STATIC(ws->subscriptions),
+      .is_client = 0,
   };
   return ws;
 }
@@ -489,6 +302,8 @@ static void destroy_ws(ws_s *ws) {
   clear_subscriptions(ws);
   if (ws->on_close)
     ws->on_close(ws);
+  if (ws->msg)
+    fiobj_free(ws->msg);
   free_ws_buffer(ws, ws->buffer);
   free(ws);
 }
@@ -526,115 +341,27 @@ Writing to the Websocket
    (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                    \
    (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |            \
    (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
-
 #endif
-
-static void websocket_mask(void *dest, void *data, size_t len) {
-  /* a semi-random 4 byte mask */
-  uint32_t mask = ((rand() << 7) ^ ((uintptr_t)dest >> 13));
-  /* place mask at head of data */
-  dest = (uint8_t *)dest + 4;
-  memcpy(dest, &mask, 4);
-  /* TODO: optimize this */
-  for (size_t i = 0; i < len; i++) {
-    ((uint8_t *)dest)[i] = ((uint8_t *)data)[i] ^ ((uint8_t *)(&mask))[i & 3];
-  }
-}
-static size_t websocket_encode(void *buff, void *data, size_t len, char text,
-                               char first, char last, char client) {
-  if (len < 126) {
-    struct {
-      unsigned op_code : 4;
-      unsigned rsv3 : 1;
-      unsigned rsv2 : 1;
-      unsigned rsv1 : 1;
-      unsigned fin : 1;
-      unsigned size : 7;
-      unsigned masked : 1;
-    } head = {.op_code = (first ? (!text ? 2 : text) : 0),
-              .fin = last,
-              .size = len,
-              .masked = client};
-    memcpy(buff, &head, 2);
-    if (client) {
-      websocket_mask((uint8_t *)buff + 2, data, len);
-      len += 4;
-    } else
-      memcpy((uint8_t *)buff + 2, data, len);
-    return len + 2;
-  } else if (len < (1UL << 16)) {
-    /* head is 4 bytes */
-    struct {
-      unsigned op_code : 4;
-      unsigned rsv3 : 1;
-      unsigned rsv2 : 1;
-      unsigned rsv1 : 1;
-      unsigned fin : 1;
-      unsigned size : 7;
-      unsigned masked : 1;
-      unsigned length : 16;
-    } head = {.op_code = (first ? (text ? 1 : 2) : 0),
-              .fin = last,
-              .size = 126,
-              .masked = client,
-              .length = htons(len)};
-    memcpy(buff, &head, 4);
-    if (client) {
-      websocket_mask((uint8_t *)buff + 4, data, len);
-      len += 4;
-    } else
-      memcpy((uint8_t *)buff + 4, data, len);
-    return len + 4;
-  }
-  /* Really Long Message  */
-  struct {
-    unsigned op_code : 4;
-    unsigned rsv3 : 1;
-    unsigned rsv2 : 1;
-    unsigned rsv1 : 1;
-    unsigned fin : 1;
-    unsigned size : 7;
-    unsigned masked : 1;
-  } head = {
-      .op_code = (first ? (text ? 1 : 2) : 0),
-      .fin = last,
-      .size = 127,
-      .masked = client,
-  };
-  memcpy(buff, &head, 2);
-  ((size_t *)((uint8_t *)buff + 2))[0] = bswap64(len);
-  if (client) {
-    websocket_mask((uint8_t *)buff + 10, data, len);
-    len += 4;
-  } else
-    memcpy((uint8_t *)buff + 10, data, len);
-  return len + 10;
-}
 
 static void websocket_write_impl(intptr_t fd, void *data, size_t len,
                                  char text, /* TODO: add client masking */
                                  char first, char last, char client) {
-  if (len < 126) {
+  if (len < (BUFFER_PACKET_SIZE - 16)) {
     sock_buffer_s *sbuff = sock_buffer_checkout();
+
     sbuff->len =
-        websocket_encode(sbuff->buf, data, len, text, first, last, client);
+        (client ? websocket_client_wrap(sbuff->buf, data, len, (text ? 1 : 2),
+                                        first, last, 0)
+                : websocket_server_wrap(sbuff->buf, data, len, (text ? 1 : 2),
+                                        first, last, 0));
     sock_buffer_send(fd, sbuff);
-    // // was:
-    // char buff[len + (client ? 6 : 2)];
-    // len = websocket_encode(buff, data, len, text, first, last, client);
-    // sock_write(fd, buff, len);
   } else if (len <= WS_MAX_FRAME_SIZE) {
-    if (len >= BUFFER_PACKET_SIZE - 8) { // can't feet in sock buffer
-      /* head MUST be 4 bytes */
-      void *buff = malloc(len + 4);
-      len = websocket_encode(buff, data, len, text, first, last, client);
-      sock_write2(.uuid = fd, .buffer = buff, .length = len, .move = 1);
-    } else {
-      sock_buffer_s *sbuff = sock_buffer_checkout();
-      sbuff->len =
-          websocket_encode(sbuff->buf, data, len, text, first, last, client);
-      sock_buffer_send(fd, sbuff);
-    }
+    void *buff = malloc(len + 16);
+    len = (client ? websocket_client_wrap(buff, data, len, (text ? 1 : 2),
+                                          first, last, 0)
+                  : websocket_server_wrap(buff, data, len, (text ? 1 : 2),
+                                          first, last, 0));
+    sock_write2(.uuid = fd, .buffer = buff, .length = len, .move = 1);
   } else {
     /* frame fragmentation is better for large data then large frames */
     while (len > WS_MAX_FRAME_SIZE) {
@@ -1013,7 +740,7 @@ void *websocket_udata_set(ws_s *ws, void *udata) {
 /** Writes data to the websocket. Returns -1 on failure (0 on success). */
 int websocket_write(ws_s *ws, void *data, size_t size, uint8_t is_text) {
   if (sock_isvalid(ws->fd)) {
-    websocket_write_impl(ws->fd, data, size, is_text, 1, 1, ws->parser.client);
+    websocket_write_impl(ws->fd, data, size, is_text, 1, 1, ws->is_client);
     return 0;
   }
   return -1;
@@ -1135,7 +862,7 @@ static void ws_finish_multi_write(intptr_t fd, void *arg) {
 
 static void ws_direct_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
   struct websocket_multi_write *multi = arg;
-  if (((ws_s *)(_ws))->parser.client != multi->as_client)
+  if (((ws_s *)(_ws))->is_client != multi->as_client)
     return;
   spn_lock(&multi->lock);
   multi->count += 1;
@@ -1146,7 +873,7 @@ static void ws_direct_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
 
 static void ws_check_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
   struct websocket_multi_write *multi = arg;
-  if (((ws_s *)(_ws))->parser.client != multi->as_client)
+  if (((ws_s *)(_ws))->is_client != multi->as_client)
     return;
   if (multi->if_callback((void *)_ws, multi->arg))
     ws_direct_multi_write(fd, _ws, arg);
@@ -1164,8 +891,12 @@ int websocket_write_each(struct websocket_write_each_args_s args) {
     return -1;
   }
   *multi = (struct websocket_multi_write){
-      .length = websocket_encode(multi->buffer, args.data, args.length,
-                                 args.is_text, 1, 1, args.as_client),
+      .length =
+          (args.as_client
+               ? websocket_client_wrap(multi->buffer, args.data, args.length,
+                                       args.is_text ? 1 : 2, 1, 1, 0)
+               : websocket_server_wrap(multi->buffer, args.data, args.length,
+                                       args.is_text ? 1 : 2, 1, 1, 0)),
       .if_callback = args.filter,
       .on_finished = args.on_finished,
       .arg = args.arg,
