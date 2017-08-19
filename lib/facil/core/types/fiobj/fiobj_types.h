@@ -8,13 +8,17 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_FIOBJ_TYPES_INTERNAL_H
 #define H_FIOBJ_TYPES_INTERNAL_H
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "fiobj.h"
 
 #include <math.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <string.h>
-#include <unistd.h>
+#include <sys/types.h>
 
 /* *****************************************************************************
 Atomic add / subtract

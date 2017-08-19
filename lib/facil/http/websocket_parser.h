@@ -142,12 +142,19 @@ void websocket_xmask(void *msg, uint64_t len, uint32_t mask) {
     len -= 8;
     msg = (void *)((uintptr_t)msg + 8);
   }
-  if (len >= 4) {
-    *((uint32_t *)msg) ^= mask;
-    len -= 4;
-    msg = (void *)((uintptr_t)msg + 4);
-  }
   switch (len) {
+  case 7:
+    ((uint8_t *)msg)[6] ^= ((uint8_t *)(&mask))[2];
+  /* fallthrough */
+  case 6:
+    ((uint8_t *)msg)[5] ^= ((uint8_t *)(&mask))[1];
+  /* fallthrough */
+  case 5:
+    ((uint8_t *)msg)[4] ^= ((uint8_t *)(&mask))[0];
+  /* fallthrough */
+  case 4:
+    ((uint8_t *)msg)[3] ^= ((uint8_t *)(&mask))[3];
+  /* fallthrough */
   case 3:
     ((uint8_t *)msg)[2] ^= ((uint8_t *)(&mask))[2];
   /* fallthrough */

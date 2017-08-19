@@ -53,26 +53,26 @@ ifneq ($(OS),Windows_NT)
 endif
 ifeq ($(OS),Darwin) # Run MacOS commands
 	# c compiler
-	CC=@gcc
+	CC=gcc
 	# c++ compiler
-	CPP=@g++
+	CPP=g++
 	# debugger
-	DB=@lldb
+	DB=lldb
 	# disassemble tool. Use stub to disable.
-	DISAMS=@otool -tVX
+	DISAMS=otool -tVX
 	# documentation commands
 	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(SRCDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
 
 
 else
 	# c compiler
-	CC=@gcc
+	CC=gcc
 	# c++ compiler
-	CPP=@g++
+	CPP=g++
 	# debugger
-	DB=@gdb
+	DB=gdb
 	# disassemble tool, leave undefined.
-	# DISAMS=@otool -tVX
+	# DISAMS=otool -tVX
 	DOCUMENTATION=
 
 endif
@@ -100,15 +100,22 @@ CCL = $(CC)
 INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(FOLDERS),$(addprefix -I, $(dir)))
 
 # add BearSSL/OpenSSL library flags
-ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | gcc $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
 FLAGS:=$(FLAGS) HAVE_BEARSSL
 LINKER_FLAGS:=$(LINKER_FLAGS) -lbearssl
 else
-ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | gcc $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
 FLAGS:=$(FLAGS) HAVE_OPENSSL
 LINKER_FLAGS:=$(LINKER_FLAGS) -lcrypto -lssl
 endif
 endif
+
+# add ZLib library flags
+ifeq ($(shell printf "\#include \\"zlib.h\\"\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+FLAGS:=$(FLAGS) HAVE_ZLIB
+LINKER_FLAGS:=$(LINKER_FLAGS) -lz
+endif
+
 
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 
@@ -125,29 +132,29 @@ CPPFLAGS= -std=c++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_S
 $(NAME): build
 
 build: $(LIB_OBJS) $(MAIN_OBJS)
-	$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
-	$(DOCUMENTATION)
+	@$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(DOCUMENTATION)
 
 lib: libdump $(LIB_OBJS)
-	$(CCL) -shared -o $(OUT_ROOT)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
-	$(DOCUMENTATION)
+	@$(CCL) -shared -o $(OUT_ROOT)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(DOCUMENTATION)
 
 ifdef DISAMS
 $(TMP_ROOT)/%.o: %.c
-	$(CC) -o $@ -c $^ $(CFLAGS)
-	$(DISAMS) $@ > $@.s
+	@$(CC) -o $@ -c $^ $(CFLAGS)
+	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.cpp
-	$(CPP) -o $@ -c $^ $(CPPFLAGS)
+	@$(CPP) -o $@ -c $^ $(CPPFLAGS)
 	$(eval CCL = $(CPP))
-	$(DISAMS) $@ > $@.s
+	@$(DISAMS) $@ > $@.s
 
 else
 $(TMP_ROOT)/%.o: %.c
-	$(CC) -o $@ -c $^ $(CFLAGS)
+	@$(CC) -o $@ -c $^ $(CFLAGS)
 
 $(TMP_ROOT)/%.o: %.cpp
-	$(CPP) -o $@ -c $^ $(CPPFLAGS)
+	@$(CPP) -o $@ -c $^ $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 endif
 
@@ -223,6 +230,8 @@ endif
 # Prints the make variables, used for debugging the makefile
 .PHONY : vars
 vars:
+	@echo "CC: $(CC)"
+	@echo ""
 	@echo "BIN: $(BIN)"
 	@echo ""
 	@echo "LIBDIR_PUB: $(LIBDIR_PUB)"

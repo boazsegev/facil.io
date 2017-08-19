@@ -14,9 +14,11 @@ This is an attempt to replace the existing HTTP/1.x parser with something easier
 to maintain and that could be used for an HTTP/1.x client as well.
 */
 #define H_HTTP1_PARSER_H
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
 
 #ifndef HTTP_HEADERS_LOWERCASE
 /** when defined, HTTP headers will be converted to lowercase and header
