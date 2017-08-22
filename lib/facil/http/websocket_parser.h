@@ -21,14 +21,15 @@ API - Internal Helpers
 ***************************************************************************** */
 
 /** used internally to mask and unmask client messages. */
-void websocket_xmask(void *msg, uint64_t len, uint32_t mask);
+inline static void websocket_xmask(void *msg, uint64_t len, uint32_t mask);
 
 /* *****************************************************************************
 API - Message Wrapping
 ***************************************************************************** */
 
 /** returns the length of the buffer required to wrap a message `len` long */
-static inline uint64_t websocket_wrapped_len(uint64_t len);
+static inline __attribute__((unused)) uint64_t
+websocket_wrapped_len(uint64_t len);
 
 /**
  * Wraps a Websocket server message and writes it to the target buffer.
@@ -55,9 +56,10 @@ static inline uint64_t websocket_wrapped_len(uint64_t len);
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len)`
  */
-static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
-                                      unsigned char opcode, unsigned char first,
-                                      unsigned char last, unsigned char rsv);
+inline static uint64_t __attribute__((unused))
+websocket_server_wrap(void *target, void *msg, uint64_t len,
+                      unsigned char opcode, unsigned char first,
+                      unsigned char last, unsigned char rsv);
 
 /**
  * Wraps a Websocket client message and writes it to the target buffer.
@@ -74,9 +76,10 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) + 4`
  */
-static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
-                                      unsigned char opcode, unsigned char first,
-                                      unsigned char last, unsigned char rsv);
+inline static __attribute__((unused)) uint64_t
+websocket_client_wrap(void *target, void *msg, uint64_t len,
+                      unsigned char opcode, unsigned char first,
+                      unsigned char last, unsigned char rsv);
 
 /* *****************************************************************************
 Callbacks - Required functions that must be inplemented to use this header
@@ -122,8 +125,9 @@ websocket_buffer_peek(void *buffer, uint64_t len);
  * Notice: if there's any remaining data in the buffer, `memmove` is used to
  * place the data at the begining of the buffer.
  */
-static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
-                                  uint8_t require_masking);
+inline static __attribute__((unused)) uint64_t
+websocket_consume(void *buffer, uint64_t len, void *udata,
+                  uint8_t require_masking);
 
 /* *****************************************************************************
 

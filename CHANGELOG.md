@@ -4,9 +4,9 @@
 
 **Change**: minor changes to the versioning scheme removed some version MACROS... this isn't API related, so I don't consider it a breaking change, but it might effect code that relied too much on internal workings. The only valid version macros are the `FACIL_VERSION_*` macros, in the `facil.h` header.
 
-**Change**: (`http`) the HTTP/1.x parser was re-written and replaced. It should perform the same, but should be easier to maintain. Also, the new parser could potentially be used to author an HTTP client.
+**Change**: (`http`) the HTTP/1.x parser was re-written and replaced. It should perform the same, while being easier to maintain. Also, the new parser could potentially be used to author an HTTP client.
 
-**Change**: (`websocket`) the Websocket parser was re-written and replaced, decoupling the parser and message wrapper from the IO layer. Performance might slightly improve, but mostly remain the same, however, the new code is easier to maintain and easier to port to other implementations. Also, the new parser supports a client mode (message masking).
+**Change**: (`websocket`) the Websocket parser was re-written and replaced, decoupling the parser and message wrapper from the IO layer. Performance might slightly improve, but should mostly remain the same. However, the new code is easier to maintain and easier to port to other implementations. Also, the new parser supports a client mode (message masking).
 
 **Fix**: (`websocket`) fix #16, where a client's first message could have been lost due to long `on_open` processing times. This was fixed by fragmenting the `upgrade` event into two events, adding the `facil_attach_locked` feature and attaching the new protocol before sending the response. Credit to @madsheep and @nilclass for exposing the issue and tracking it down to the `on_open` callbacks.
 
