@@ -31,7 +31,7 @@ Error / Help handling - printing the information and exiting.
 static void fio_cli_handle_error(void) {
   fio_cstr_s info = fiobj_obj2cstr(info_str);
   fio_cstr_s args = fiobj_obj2cstr(help_str);
-  fprintf(stderr,
+  fprintf(stdout,
           "\n"
           "%s\n"
           "%s\n"
@@ -214,7 +214,7 @@ static void fio_cli_parse(void) {
     fiobj_hash_set(parsed, arg_name, fiobj_str_static(start, len));
     continue;
   error:
-    fprintf(stderr, "\n\tArgument Error: %s\n", start);
+    fprintf(stderr, "\n*** Argument Error: %s\n", start);
     fio_cli_handle_error();
   }
 }
@@ -368,7 +368,7 @@ void fio_cli_set_str(const char *opt, const char *value) {
                     "valid options\n");
     exit(-1);
   }
-  fiobj_hash_set(parsed, name, fiobj_str_new(value, strlen(value)));
+  fiobj_hash_set(parsed, name, fiobj_str_static(value, strlen(value)));
 }
 
 /**

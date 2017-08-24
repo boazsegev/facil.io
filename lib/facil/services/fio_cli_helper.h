@@ -125,6 +125,8 @@ double fio_cli_get_float(const char *opt);
 /**
  * Overrides the existing value of the argument with the requested C String.
  *
+ * The String isn't copied, it's only referenced.
+ *
  * Boolean that were set to TRUE have the string "1".
  */
 void fio_cli_set_str(const char *opt, const char *value);
