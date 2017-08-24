@@ -1,6 +1,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include "fio_cli_helper.h"
 #include "http.h"
 #include "sock.h"
 
@@ -43,46 +44,33 @@ Available command line flags:
 -q                 : sets verbosity (HTTP logging) off (on by default).
 */
 int main(int argc, char const *argv[]) {
-  const char *port = "3000";
-  const char *public_folder = NULL;
-  uint32_t threads = 0;
-  uint32_t workers = 0;
   uint8_t print_log = 1;
 
   /*     ****  Command line arguments ****     */
+  fio_cli_start(argc, argv,
+                "This is a facil.io example application.\n"
+                "\nThis example offers a simple \"Hello World\" server "
+                "used for benchmarking.\n"
+                "\nThe following arguments are supported:\n");
 
-  for (int i = 1; i < argc; i++) {
-    if (argv[i][0] == '-') {
-      int offset = 0;
-      switch (argv[i][1]) {
-      case 'q': /* logging */
-        print_log = 0;
-        break;
-      case 't': /* threads */
-        if (!argv[i][2])
-          i++;
-        else
-          offset = 2;
-        threads = atoi(argv[i] + offset);
-        break;
-      case 'w': /* processes */
-        if (!argv[i][2])
-          i++;
-        else
-          offset = 2;
-        workers = atoi(argv[i] + offset);
-        break;
-      case 'p': /* port */
-        if (!argv[i][2])
-          i++;
-        else
-          offset = 2;
-        port = argv[i] + offset;
-        break;
-      }
-    } else if (i == argc - 1)
-      public_folder = argv[i];
-  }
+  fio_cli_accept_num("port p", "the port to listen to, defaults to 3000.");
+  fio_cli_accept_num("threads t", "number of threads.");
+  fio_cli_accept_num("workers w", "number of processes.");
+  fio_cli_accept_str("public www", "public folder for static file service.");
+  fio_cli_accept_bool("log q", "disable logging, by default logs to a file.");
+
+  if (fio_cli_get_int("q"))
+    print_log = 0;
+  if (!fio_cli_get_str("port"))
+    fio_cli_set_str("port", "3000");
+  const char *port = fio_cli_get_str("port");
+  const uint32_t threads = fio_cli_get_int("t");
+  const uint32_t workers = fio_cli_get_int("w");
+  const char *public_folder = fio_cli_get_str("www");
+  fio_cli_end();
+
+  /*     ****  logging ****     */
+
   if (print_log) {
     /* log to the "benchmark.log" file, set to `if` to 0 to skip this*/
     if (1) {
@@ -104,7 +92,7 @@ int main(int argc, char const *argv[]) {
   // RedisEngine = redis_engine_create(.address = "localhost", .port = "6379");
   if (http_listen(port, NULL, .on_request = http_hello_on_request,
                   .log_static = print_log, .public_folder = public_folder))
-    perror("Couldn't initiate Websocket Shootout service"), exit(1);
+    perror("Couldn't initiate Hello World service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 }
 
