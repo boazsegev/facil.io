@@ -613,12 +613,14 @@ inline static void timer_on_server_start(int fd) {
  * will repeat forever.
  *
  * Returns -1 on error or the new file descriptor on succeess.
+ *
+ * The `on_finish` handler is always called (even on error).
  */
 int facil_run_every(size_t milliseconds, size_t repetitions,
                     void (*task)(void *), void *arg,
                     void (*on_finish)(void *)) {
   if (task == NULL)
-    return -1;
+    goto error_fin;
   timer_protocol_s *protocol = NULL;
   intptr_t uuid = -1;
   int fd = evio_open_timer();
@@ -641,6 +643,9 @@ error:
     sock_close(uuid);
   else if (fd != -1)
     close(fd);
+error_fin:
+  if (on_finish)
+    on_finish(arg);
   return -1;
 }
 

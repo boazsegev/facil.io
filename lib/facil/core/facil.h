@@ -349,6 +349,8 @@ size_t facil_count(void *service);
  * will repeat forever.
  *
  * Returns -1 on error or the new file descriptor on succeess.
+ *
+ * The `on_finish` handler is always called (even on error).
  */
 int facil_run_every(size_t milliseconds, size_t repetitions,
                     void (*task)(void *), void *arg, void (*on_finish)(void *));

@@ -16,6 +16,8 @@
 
 **Fix**: (`http1`) HTTP/1.x now correctly initializes the `udata` pointer to NULL fore each new request.
 
+**Fix**: (`facil`) the `facil_run_every` function now correctly calls the `on_finish` callback when a timer initialization fails. This fixes a leak that could have occurred due to inconsistent API expectations. Workarounds written due to this issue should be removed.
+
 **Fix**: (`defer`) a shutdown issue in `defer_perform_in_fork` was detected by @cdkrot and his fix was implemented.
 
 **Fix**: (documentation) credit to @cdkrot for reporting an outdated demo in the README.
