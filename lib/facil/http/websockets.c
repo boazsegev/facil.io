@@ -64,7 +64,7 @@ the code probably wouldn't offer a high performance boost.
 struct buffer_s create_ws_buffer(ws_s *owner) {
   (void)(owner);
   struct buffer_s buff;
-  buff.size = round_up_buffer_size(WS_INITIAL_BUFFER_SIZE);
+  buff.size = WS_INITIAL_BUFFER_SIZE;
   buff.data = malloc(buff.size);
   return buff;
 }
