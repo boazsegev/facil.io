@@ -245,7 +245,7 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
                                       unsigned char last, unsigned char rsv) {
   ((uint8_t *)target)[0] = 0 |
                            /* opcode */ (((first ? opcode : 0) & 15)) |
-                           /* rsv */ ((rsv & 3) << 4) |
+                           /* rsv */ ((rsv & 7) << 4) |
                            /*fin*/ ((last & 1) << 7);
   if (len < 126) {
     ((uint8_t *)target)[1] = len;
@@ -285,7 +285,7 @@ static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
   uint32_t mask = rand() + 0x01020408;
   ((uint8_t *)target)[0] = 0 |
                            /* opcode */ (((first ? opcode : 0) & 15)) |
-                           /* rsv */ ((rsv & 3) << 4) |
+                           /* rsv */ ((rsv & 7) << 4) |
                            /*fin*/ ((last & 1) << 7);
   if (len < 126) {
     ((uint8_t *)target)[1] = len | 128;
@@ -379,17 +379,17 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
     case 0:
       /* continuation frame */
       websocket_on_unwrapped(udata, payload, info.packet_length, 0,
-                             ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 15));
+                             ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 7));
       break;
     case 1:
       /* text frame */
       websocket_on_unwrapped(udata, payload, info.packet_length, 1,
-                             ((pos[0] >> 7) & 1), 1, ((pos[0] >> 4) & 15));
+                             ((pos[0] >> 7) & 1), 1, ((pos[0] >> 4) & 7));
       break;
     case 2:
       /* data frame */
       websocket_on_unwrapped(udata, payload, info.packet_length, 1,
-                             ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 15));
+                             ((pos[0] >> 7) & 1), 0, ((pos[0] >> 4) & 7));
       break;
     case 8:
       /* close frame */
