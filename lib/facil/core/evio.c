@@ -15,12 +15,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #error This library currently supports only Unix based systems (i.e. Linux and BSD)
 #endif
 
-#if !defined(__linux__) && !defined(__CYGWIN__)
-#include <sys/event.h>
-#else
-#include <sys/epoll.h>
-#include <sys/timerfd.h>
-#endif
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -66,6 +60,7 @@ static int evio_fd = -1;
 void evio_close() {
   if (evio_fd != -1)
     close(evio_fd);
+  evio_fd = -1;
 }
 
 /**
@@ -73,10 +68,13 @@ returns true if the evio is available for adding or removing file descriptors.
 */
 int evio_isactive(void) { return evio_fd >= 0; }
 
+#if defined(__linux__) || defined(__CYGWIN__)
 /* *****************************************************************************
 Linux `epoll` implementation
 ***************************************************************************** */
-#if defined(__linux__) || defined(__CYGWIN__)
+#include <sys/epoll.h>
+#include <sys/timerfd.h>
+
 /**
 Creates the `epoll` or `kqueue` object.
 */
@@ -168,6 +166,7 @@ int evio_review(const int timeout_millisec) {
 /* *****************************************************************************
 BSD `kqueue` implementation
 ***************************************************************************** */
+#include <sys/event.h>
 
 /**
 Creates the `epoll` or `kqueue` object.
