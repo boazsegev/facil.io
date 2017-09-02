@@ -6,11 +6,13 @@ Feel free to copy, use and enjoy according to the license specified.
 */
 #ifndef H_WEBSOCKET_PARSER_H
 /**\file
+
 A single file Websocket message parser and Websocket message wrapper, decoupled
-from the IO.
+from any IO layer.
 
 Notice that this header file library includes static funnction declerations that
 must be implemented by the including file (the callbacks).
+
 */
 #define H_WEBSOCKET_PARSER_H
 #include <stdint.h>
