@@ -104,17 +104,17 @@ static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
       /* add the help section and set type*/
       switch (type) {
       case CLI_BOOL:
-        fiobj_str_write2(help_str, "\t-%s\t\t%s\n",
+        fiobj_str_write2(help_str, "\t\e[1m-%s\e[0m\t\t%s\n",
                          fiobj_obj2cstr(arg_name).data, desc);
         fiobj_hash_set(arg_type, arg_name, fiobj_null());
         break;
       case CLI_NUM:
-        fiobj_str_write2(help_str, "\t-%s ###\t%s\n",
+        fiobj_str_write2(help_str, "\t\e[1m-%s\e[0m \e[2###\e[0m\t%s\n",
                          fiobj_obj2cstr(arg_name).data, desc);
         fiobj_hash_set(arg_type, arg_name, fiobj_true());
         break;
       case CLI_STR:
-        fiobj_str_write2(help_str, "\t-%s <val>\t%s\n",
+        fiobj_str_write2(help_str, "\t\e[1m-%s\e[0m \e[2<val>\e[0m\t%s\n",
                          fiobj_obj2cstr(arg_name).data, desc);
         fiobj_hash_set(arg_type, arg_name, fiobj_false());
         break;
@@ -125,7 +125,7 @@ static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
       /* add to aliases hash */
       fiobj_hash_set(arg_aliases, tmp, fiobj_dup(arg_name));
       /* add to description + free it*/
-      fiobj_str_write2(help_str, "\t\t-%s\tsame as -%s\n",
+      fiobj_str_write2(help_str, "\t\t\e[1m-%s\e[0m\tsame as -%s\n",
                        fiobj_obj2cstr(tmp).data, fiobj_obj2cstr(arg_name).data);
       fiobj_free(tmp);
     }
