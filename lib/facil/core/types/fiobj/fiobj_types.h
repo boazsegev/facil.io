@@ -14,6 +14,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "fiobj.h"
 
+#include <errno.h>
 #include <math.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -74,6 +75,8 @@ static inline __attribute__((unused)) void fio_ls_push(fio_ls_s *pos,
                                                        fiobj_s *obj) {
   /* prepare item */
   fio_ls_s *item = (fio_ls_s *)malloc(sizeof(*item));
+  if (!item)
+    perror("ERROR: fiobj list couldn't allocate memory"), exit(errno);
   *item = (fio_ls_s){.prev = pos, .next = pos->next, .obj = obj};
   /* inject item */
   pos->next->prev = item;

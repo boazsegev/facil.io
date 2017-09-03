@@ -73,6 +73,8 @@ inline static fiobj_s *fiobj_simple_alloc(fiobj_type_en t,
                                           struct fiobj_vtable_s *vt) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fiobj_s));
+  if (!head)
+    perror("ERROR: fiobj primitive couldn't allocate memory"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = vt,
   };

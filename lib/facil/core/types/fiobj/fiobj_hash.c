@@ -165,6 +165,8 @@ static struct fiobj_vtable_s FIOBJ_VTABLE_COUPLET = {
 static inline fiobj_s *fiobj_couplet_alloc(void *sym, void *obj) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_couplet_s));
+  if (!head)
+    perror("ERROR: fiobj hash couldn't allocate couplet"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = &FIOBJ_VTABLE_COUPLET,
   };
@@ -270,6 +272,8 @@ Hash API
  */
 fiobj_s *fiobj_hash_new(void) {
   fiobj_head_s *head = malloc(sizeof(*head) + sizeof(fio_hash_s));
+  if (!head)
+    perror("ERROR: fiobj hash couldn't allocate memory"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = &FIOBJ_VTABLE_HASH,
   };

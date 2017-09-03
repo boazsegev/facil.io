@@ -80,6 +80,8 @@ Number API
 fiobj_s *fiobj_num_new(int64_t num) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_num_s));
+  if (!head)
+    perror("ERROR: fiobj number couldn't allocate memory"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = &FIOBJ_VTABLE_INT,
   };
@@ -98,6 +100,8 @@ Float API
 fiobj_s *fiobj_float_new(double num) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_float_s));
+  if (!head)
+    perror("ERROR: fiobj float couldn't allocate memory"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = &FIOBJ_VTABLE_FLOAT,
   };

@@ -37,6 +37,8 @@ IO API
 fiobj_s *fio_io_wrap(intptr_t fd) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_io_s));
+  if (!head)
+    perror("ERROR: fiobj IO couldn't allocate memory"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = &FIOBJ_VTABLE_IO,
   };

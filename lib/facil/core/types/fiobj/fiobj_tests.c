@@ -467,5 +467,6 @@ void fiobj_test(void) {
     }
     fiobj_free(top); /* frees both... */
   }
+  fprintf(stderr, "* finished fiobj testing.\n");
 }
 #endif

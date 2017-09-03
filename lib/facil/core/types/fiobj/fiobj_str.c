@@ -65,12 +65,16 @@ String API
 static inline fiobj_s *fiobj_str_alloc(size_t len) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_str_s));
+  if (!head)
+    perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = &FIOBJ_VTABLE_STRING,
   };
   *obj2str(HEAD2OBJ(head)) = (fio_str_s){
       .type = FIOBJ_T_STRING, .len = len, .capa = len, .str = malloc(len + 1),
   };
+  if (!obj2str(HEAD2OBJ(head))->str)
+    perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
   obj2str(HEAD2OBJ(head))->str[len] = 0;
   return HEAD2OBJ(head);
 }
@@ -107,6 +111,8 @@ fiobj_s *fiobj_str_buf(size_t capa) {
 fiobj_s *fiobj_str_static(const char *str, size_t len) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_str_s));
+  if (!head)
+    perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = &FIOBJ_VTABLE_STATIC_STRING,
   };

@@ -143,6 +143,8 @@ Symbol API
 static inline fiobj_s *fiobj_sym_alloc(size_t len) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_sym_s) + len + 1);
+  if (!head)
+    perror("ERROR: fiobj symbol couldn't allocate memory"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = &FIOBJ_VTABLE_SYMBOL,
   };

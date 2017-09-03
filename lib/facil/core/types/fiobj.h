@@ -11,10 +11,6 @@ This facil.io core library provides wrappers around complex and (or) dynamic
 types, abstracting some complexity and making dynamic type related tasks easier.
 
 
-The library doesn't check against failed `malloc` or failed `realloc`, allowing
-the chips fall where they may (assuming the process will crash during NULL
-dereferencing). This might not be the best option for embedded systems.
-
 The library offers a rudementry protection against cyclic references using the
 `FIOBJ_NESTING_PROTECTION` flag (i.e., nesting an Array within itself)...
 however, this isn't fully tested and the performance price is high.

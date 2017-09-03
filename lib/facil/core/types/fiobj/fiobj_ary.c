@@ -57,6 +57,8 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
   obj2ary(ary)->arry =
       realloc(obj2ary(ary)->arry, updated_capa * sizeof(*obj2ary(ary)->arry));
   obj2ary(ary)->capa = updated_capa;
+  if (!obj2ary(ary)->arry)
+    perror("ERROR: fiobj array couldn't be reallocated"), exit(errno);
 
   if (needed >= 0) /* we're done, realloc grows the top of the address space*/
     return;
@@ -116,6 +118,8 @@ Allocation
 static fiobj_s *fiobj_ary_alloc(size_t capa, size_t start_at) {
   fiobj_head_s *head;
   head = malloc(sizeof(*head) + sizeof(fio_ary_s));
+  if (!head)
+    perror("ERROR: fiobj array couldn't allocate memory"), exit(errno);
   *head = (fiobj_head_s){
       .ref = 1, .vtable = &FIOBJ_VTABLE_ARRAY,
   };
