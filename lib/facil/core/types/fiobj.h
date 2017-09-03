@@ -10,10 +10,14 @@ Feel free to copy, use and enjoy according to the license provided.
 This facil.io core library provides wrappers around complex and (or) dynamic
 types, abstracting some complexity and making dynamic type related tasks easier.
 
-The library attempts to provide rudementry protection against cyclic references
-(i.e., nesting an Array within itself)... however, something's wrong with the
-protection for now and the code might overflowing somewhere when this happens...
-so don't do it.
+
+The library doesn't check against failed `malloc` or failed `realloc`, allowing
+the chips fall where they may (assuming the process will crash during NULL
+dereferencing). This might not be the best option for embedded systems.
+
+The library offers a rudementry protection against cyclic references using the
+`FIOBJ_NESTING_PROTECTION` flag (i.e., nesting an Array within itself)...
+however, this isn't fully tested and the performance price is high.
 */
 #define H_FACIL_IO_OBJECTS_H
 
