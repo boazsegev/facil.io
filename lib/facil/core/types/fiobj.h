@@ -301,7 +301,11 @@ String API
 /** Creates a String object. Remember to `fiobj_free`. */
 fiobj_s *fiobj_str_new(const char *str, size_t len);
 
-/** Creates a buffer String object. Remember to use `fiobj_free`. */
+/**
+ * Creates a buffer String object. Remember to use `fiobj_free`.
+ *
+ * The default allocation (if capa == 0) is a full memory page (~4096 bytes).
+ */
 fiobj_s *fiobj_str_buf(size_t capa);
 
 /** Creates a copy from an existing String. Remember to use `fiobj_free`. */

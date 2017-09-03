@@ -88,7 +88,7 @@ fiobj_s *fiobj_str_buf(size_t capa) {
   if (capa)
     capa = capa - 1;
   else
-    capa = 31;
+    capa = fiobj_memory_page_size();
   fiobj_s *s = fiobj_str_alloc(capa);
   fiobj_str_clear(s);
   return s;

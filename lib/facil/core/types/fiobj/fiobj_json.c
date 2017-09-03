@@ -316,7 +316,7 @@ fiobj_s *fiobj_obj2json(fiobj_s *obj, uint8_t pretty) {
   struct fiobj_str_new_json_data_s data = {
       .parent = fiobj_ary_new(),
       .waiting = fiobj_ary_new(),
-      .buffer = fiobj_str_buf(4096),
+      .buffer = fiobj_str_buf(0),
       .count = NULL,
       .pretty = pretty,
   };

@@ -73,7 +73,7 @@ typedef struct fio_ls_s {
 static inline __attribute__((unused)) void fio_ls_push(fio_ls_s *pos,
                                                        fiobj_s *obj) {
   /* prepare item */
-  fio_ls_s *item = malloc(sizeof(*item));
+  fio_ls_s *item = (fio_ls_s *)malloc(sizeof(*item));
   *item = (fio_ls_s){.prev = pos, .next = pos->next, .obj = obj};
   /* inject item */
   pos->next->prev = item;
@@ -120,6 +120,28 @@ static inline __attribute__((unused)) fiobj_s *fio_ls_remove(fio_ls_s *node) {
   return ret;
 }
 
+/* *****************************************************************************
+Memory Page Size
+***************************************************************************** */
+
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#include <unistd.h>
+
+size_t __attribute__((weak)) fiobj_memory_page_size(void) {
+  static size_t page_size = 0;
+  if (page_size)
+    return page_size;
+  page_size = sysconf(_SC_PAGESIZE);
+  if (!page_size)
+    page_size = 4096;
+  return page_size;
+}
+#pragma weak fiobj_memory_page_size
+
+#else
+#define fiobj_memory_page_size() 4096
+
+#endif
 /* *****************************************************************************
 Object types
 ***************************************************************************** */
