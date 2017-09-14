@@ -319,7 +319,9 @@ void fiobj_test(void) {
   /* test hash+array for memory leaks and performance*/
   fiobj_hash_test();
   /* test JSON (I know... it assumes everything else works...) */
-  fiobj_test_hash_json();
+  for (int i = 0; i < 1; ++i) {
+    fiobj_test_hash_json();
+  }
   /* start simple tests */
 
   fiobj_s *obj;
