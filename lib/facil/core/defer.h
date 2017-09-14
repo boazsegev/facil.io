@@ -108,6 +108,11 @@ int defer_fork_is_active(void);
 /** Returns the process number for the current working proceess. 0 == parent. */
 int defer_fork_pid(void);
 
+#ifdef DEBUG
+/** minor testing facilities */
+void defer_test(void);
+#endif
+
 #ifdef __cplusplus
 } /* closing brace for extern "C" */
 #endif

@@ -473,6 +473,18 @@ void defer_test(void) {
   i_count = 0;
   spn_unlock(&i_lock);
   start = clock();
+  for (size_t i = 0; i < (1024 * 1024); i++) {
+    sample_task(NULL, NULL);
+  }
+  end = clock();
+  fprintf(stderr,
+          "Deferless (direct call) counter: %lu cycles with i_count = %lu\n",
+          end - start, i_count);
+
+  spn_lock(&i_lock);
+  i_count = 0;
+  spn_unlock(&i_lock);
+  start = clock();
   for (size_t i = 0; i < 1024; i++) {
     defer(sched_sample_task, NULL, NULL);
   }
