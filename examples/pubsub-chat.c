@@ -189,6 +189,10 @@ int main(int argc, char const *argv[]) {
       perror("\nERROR: couldn't initialize Redis engine.\n");
       exit(-2);
     }
+    printf("* Redis engine initialized.\n");
+  } else {
+    printf(
+        "* Redis engine details missing, using native-local pub/sub engine.\n");
   }
 
   if (http_listen(port, NULL, .on_request = answer_http_request,
