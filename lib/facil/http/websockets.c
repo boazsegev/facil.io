@@ -179,8 +179,10 @@ static void websocket_on_unwrapped(void *udata, void *msg, uint64_t len,
     fiobj_str_resize(ws->msg, 0);
   }
   fiobj_str_write(ws->msg, msg, len);
-  if (last)
-    ws->on_message(ws, msg, len, ws->is_text);
+  if (last) {
+    fio_cstr_s s = fiobj_obj2cstr(ws->msg);
+    ws->on_message(ws, (char *)s.data, s.len, ws->is_text);
+  }
 
   (void)rsv;
 }
