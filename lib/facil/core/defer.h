@@ -19,6 +19,11 @@ forked process.
 #define LIB_DEFER_VERSION_MINOR 1
 #define LIB_DEFER_VERSION_PATCH 2
 
+/* child process reaping is enabled by default */
+#ifndef NO_CHILD_REAPER
+#define NO_CHILD_REAPER 0
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

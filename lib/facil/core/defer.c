@@ -352,8 +352,10 @@ int defer_perform_in_fork(unsigned int process_count,
     goto finish;
   };
 
-  /* setup zomie reaping */
+/* setup zomie reaping */
+#if !defined(NO_CHILD_REAPER) || NO_CHILD_REAPER == 0
   reap_children();
+#endif
 
   if (!process_count)
     process_count = 1;
