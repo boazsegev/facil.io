@@ -18,6 +18,8 @@
 
 **Fix**: (`facil`) the `facil_run_every` function now correctly calls the `on_finish` callback when a timer initialization fails. This fixes a leak that could have occurred due to inconsistent API expectations. Workarounds written due to this issue should be removed.
 
+**Fix**: (`facil`) connection timeout is now correctly ignored for timers.
+
 **Fix**: (`defer`) a shutdown issue in `defer_perform_in_fork` was detected by @cdkrot and his fix was implemented.
 
 **Fix**: (`evio`) fixed an issue where the evented IO library failed to reset the state indicator after `evio_close` was called, causing some functions to believe that events are still processed. Now the `evio_isactive` will correctly indicate that the evented IO is inactive after `evio_close` was called.

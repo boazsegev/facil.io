@@ -58,7 +58,7 @@ Atomic add / subtract
 #endif
 
 /* *****************************************************************************
-Simple List - I will slowly move any external dependencies to allow independance
+Simple List - Used for fiobj_s * objects, but can be used for anything really.
 ***************************************************************************** */
 
 typedef struct fio_ls_s {
