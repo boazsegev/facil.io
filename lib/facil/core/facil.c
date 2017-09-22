@@ -578,6 +578,11 @@ static void timer_on_close(intptr_t uuid, protocol_s *protocol) {
   (void)uuid;
 }
 
+static void timer_ping(intptr_t uuid, protocol_s *protocol) {
+  sock_touch(uuid);
+  (void)protocol;
+}
+
 static inline timer_protocol_s *timer_alloc(void (*task)(void *), void *arg,
                                             size_t milliseconds,
                                             size_t repetitions,
@@ -590,6 +595,7 @@ static inline timer_protocol_s *timer_alloc(void (*task)(void *), void *arg,
         .protocol.service = timer_protocol_name,
         .protocol.on_data = timer_on_data,
         .protocol.on_close = timer_on_close,
+        .protocol.ping = timer_ping,
         .arg = arg,
         .task = task,
         .on_finish = on_finish,
