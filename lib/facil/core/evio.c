@@ -103,7 +103,30 @@ int evio_add(int fd, void *callback_arg) {
 Creates a timer file descriptor, system dependent.
 */
 intptr_t evio_open_timer(void) {
-  return timerfd_create(CLOCK_MONOTONIC, O_NONBLOCK);
+#ifndef TFD_NONBLOCK
+  intptr_t fd = timerfd_create(CLOCK_MONOTONIC, O_NONBLOCK);
+  if (fd != -1) { /* make sure it's a non-blocking timer. */
+#if defined(O_NONBLOCK)
+    /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
+    int flags;
+    if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+      flags = 0;
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
+      goto error;
+#else
+    /* no O_NONBLOCK, use the old way of doing it */
+    static int flags = 1;
+    if (ioctl(fd, FIOBIO, &flags) == -1)
+      goto error;
+#endif
+  }
+  return fd;
+error:
+  close(fd);
+  return -1;
+#else
+  return timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+#endif
 }
 
 /**
@@ -111,16 +134,16 @@ Adds a timer file descriptor, so that callbacks will be called for it's events.
 */
 intptr_t evio_add_timer(int fd, void *callback_arg,
                         unsigned long milliseconds) {
-  struct epoll_event chevent;
-  chevent.data.ptr = (void *)callback_arg;
-  chevent.events =
-      EPOLLOUT | EPOLLIN | EPOLLET | EPOLLERR | EPOLLRDHUP | EPOLLHUP;
+  struct epoll_event chevent = {.data.ptr = (void *)callback_arg,
+                                .events = (EPOLLOUT | EPOLLIN | EPOLLET |
+                                           EPOLLERR | EPOLLRDHUP | EPOLLHUP)};
   struct itimerspec new_t_data;
   new_t_data.it_value.tv_sec = new_t_data.it_interval.tv_sec =
       milliseconds / 1000;
   new_t_data.it_value.tv_nsec = new_t_data.it_interval.tv_nsec =
       (milliseconds % 1000) * 1000000;
-  timerfd_settime(fd, 0, &new_t_data, NULL);
+  if (timerfd_settime(fd, 0, &new_t_data, NULL) == -1)
+    return -1;
   return epoll_ctl(evio_fd, EPOLL_CTL_ADD, fd, &chevent);
 }
 
