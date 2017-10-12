@@ -58,7 +58,7 @@ To use the library in an existing project, clone the `git` repo and run:
 
 This will dump all the library files into a folder called `libdump`. The header files are in `libdump/include` and the source files are in `libdump/src`. The folder `libdump/all` contains all the source and header files mixed together.
 
-Copy these files to your project, as required by your project's folder structure and start using the library.
+Copy the header and source files to the appropriate location in your project and start using the library.
 
 ### Using `facil.io` as a CMake submodule
 
@@ -228,7 +228,7 @@ int main(void) {
 
 ## Forking, Contributing and all that Jazz
 
-Sure, why not. If you can add Solaris or Windows support to `libreact`, that could mean `lib-server` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties).
+Sure, why not. If you can add Solaris or Windows support to `evio`, that could mean `facil` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties).
 
 If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
 
@@ -238,7 +238,7 @@ Hit me up if you want to:
 
 * Help me design / write a generic HTTP routing helper library for the `http_request_s` struct.
 
-* If you want to help me write a new SSL/TLS library or have an SSL/TLS solution we can fit into `lib-server` (as source code).
+* If you want to help me write a new SSL/TLS library or have an SSL/TLS solution we can fit into `facil` (as source code).
 
 * If you want to help promote the library, that would be great as well. Perhaps publish [benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks)) or share your story.
 

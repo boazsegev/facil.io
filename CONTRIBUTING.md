@@ -98,9 +98,9 @@ These are the features that have been requested so far. Even if any of them are 
 |-------------------|--------------------|----------------------------|
 |   Documentation   |     🙏 Help 🙏     | Place in the `docs` folder |
 |      HTTP/2       | Bo (me), help me?  |                            |
-|    HTTP Router    |  @benjcal          |                            |
-|  Websocket Client |                    |                            |
+|    HTTP Router    |                    |                            |
 |    HTTP Client    |                    |                            |
+|  Websocket Client |                    |                            |
 |      SSL/TLS      |                    | Use `sock` R/W hooks       |
 
 

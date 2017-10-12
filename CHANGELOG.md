@@ -38,8 +38,6 @@
 
 **Feature**: 🎉🎉🎉 added native JSON support. JSON strings can be converted to `fiobj_s *` objects and `fiobj_s *` objects can be rendered as JSON! I'm hoping to get it [benchmarked publicly](https://github.com/miloyip/nativejson-benchmark/pull/92).
 
-
-
 ### Ver. 0.5.2
 
 **Change**: non-breaking changes to the folder structure are also reflected in the updated `makefile` and `.clang_complete`.
