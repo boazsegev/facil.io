@@ -168,6 +168,8 @@ static void websocket_on_unwrapped(void *udata, void *msg, uint64_t len,
                                    char first, char last, char text,
                                    unsigned char rsv) {
   ws_s *ws = udata;
+  fprintf(stderr, "Unwrapped %llu bytes, %d first, %d last, %d text\n%s\n", len,
+          first, last, text, (char *)msg);
   if (last && first) {
     ws->on_message(ws, msg, len, (uint8_t)text);
     return;
@@ -718,6 +720,8 @@ cleanup:
     // call the on_open callback
     if (settings.on_open) {
       defer(deferred_on_open, (void *)settings.on_open, ws);
+    } else {
+      facil_protocol_unlock(&ws->protocol, FIO_PR_LOCK_TASK);
     }
     return 0;
   }
