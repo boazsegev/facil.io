@@ -194,17 +194,21 @@ Message wrapping
 // clang-format on
 
 #ifdef __BIG_ENDIAN__
-/** byte swap 64 bit integer */
-#define bswap64(i) (i)
+/** stub byte swap 64 bit integer */
+#define netiswap64(i) (i)
+/** stub byte swap 16 bit integer */
+#define netiswap16(i) (i)
 
 #else
 // TODO: check for __builtin_bswap64
 /** byte swap 64 bit integer */
-#define bswap64(i)                                                             \
+#define netiswap64(i)                                                          \
   ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                           \
    (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                    \
    (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |            \
    (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
+/** byte swap 16 bit integer */
+#define netiswap16(i) ((((i)&0x00ff) << 8) | (((i)&0xff00) >> 8))
 
 #endif
 
@@ -256,13 +260,13 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
   } else if (len < (1UL << 16)) {
     /* head is 4 bytes */
     ((uint8_t *)target)[1] = 126;
-    ((uint16_t *)target)[1] = htons(len);
+    ((uint16_t *)target)[1] = netiswap16(len);
     memcpy((uint8_t *)target + 4, msg, len);
     return len + 4;
   }
   /* Really Long Message  */
   ((uint8_t *)target)[1] = 127;
-  ((uint64_t *)((uint8_t *)target + 2))[0] = bswap64(len);
+  ((uint64_t *)((uint8_t *)target + 2))[0] = netiswap64(len);
   memcpy((uint8_t *)target + 10, msg, len);
   return len + 10;
 }
@@ -298,7 +302,7 @@ static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
   } else if (len < (1UL << 16)) {
     /* head is 4 bytes */
     ((uint8_t *)target)[1] = 126 | 128;
-    ((uint16_t *)target)[1] = htons(len);
+    ((uint16_t *)target)[1] = netiswap16(len);
     ((uint32_t *)((uint8_t *)target + 4))[0] = mask;
     memcpy((uint8_t *)target + 8, msg, len);
     websocket_xmask((uint8_t *)target + 8, len, mask);
@@ -306,7 +310,7 @@ static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
   }
   /* Really Long Message  */
   ((uint8_t *)target)[1] = 255;
-  ((uint64_t *)((uint8_t *)target + 2))[0] = bswap64(len);
+  ((uint64_t *)((uint8_t *)target + 2))[0] = netiswap64(len);
   ((uint32_t *)((uint8_t *)target + 10))[0] = mask;
   memcpy((uint8_t *)target + 14, msg, len);
   websocket_xmask((uint8_t *)target + 14, len, mask);
@@ -338,14 +342,15 @@ websocket_buffer_peek(void *buffer, uint64_t len) {
   case 126:
     if (len < 4)
       return (struct websocket_packet_info_s){0, (uint8_t)(4 + mask_l), mask_f};
-    return (struct websocket_packet_info_s){htons(((uint16_t *)buffer)[1]),
-                                            (uint8_t)(2 + mask_l), mask_f};
+    return (struct websocket_packet_info_s){
+        (uint64_t)netiswap16(((uint16_t *)buffer)[1]), (uint8_t)(4 + mask_l),
+        mask_f};
   case 127:
     if (len < 10)
       return (struct websocket_packet_info_s){0, (uint8_t)(10 + mask_l),
                                               mask_f};
     return (struct websocket_packet_info_s){
-        bswap64(((uint64_t *)((uint8_t *)buffer + 2))[0]),
+        netiswap64(((uint64_t *)((uint8_t *)buffer + 2))[0]),
         (uint8_t)(10 + mask_l), mask_f};
   default:
     return (struct websocket_packet_info_s){0, 0, 0};
