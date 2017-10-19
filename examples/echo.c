@@ -1,33 +1,15 @@
 /**
-This example creates a simple chat application that uses Redis to sync pub/sub
-across machines.
+This example creates a simple echo Websocket server.
 
-To test this application, you will need a Redis server (defaults to address
-"localhost" and port "6379").
+To run the test, connect using a websocket client.
 
-To run the test, run the application twice, on two different ports. Clients on
-each port will share their pub/sub events with clients from the other port - fun
-times :-)
+i.e., from the browser's console:
 
-i.e.:
+ws = new WebSocket("ws://localhost:3000/"); // run 1st app on port 3000.
+ws.onmessage = function(e) { console.log(e.data); };
+ws.onclose = function(e) { console.log("closed"); };
+ws.onopen = function(e) { ws.send("Echo This!"); };
 
-
-Use a javascript consol to connect to the websockets... maybe using the
-following javascript code:
-
-ws1 = new WebSocket("ws://localhost:3000/Mitchel"); // run 1st app on port 3000.
-ws1.onmessage = function(e) { console.log(e.data); };
-ws1.onclose = function(e) { console.log("closed"); };
-ws1.onopen = function(e) { ws1.send("Yo!"); };
-
-ws2 = new WebSocket("ws://localhost:3030/Johana"); // run 2nd app on port 3030.
-ws2.onmessage = function(e) { console.log(e.data); };
-ws2.onclose = function(e) { console.log("closed"); };
-ws2.onopen = function(e) { ws2.send("Brut."); };
-
-Remember that published messages will now be printed to the console both by
-Mitchel and Johana, which means messages will be delivered twice unless using
-two different browser windows.
 */
 
 #include "pubsub.h"
@@ -42,7 +24,6 @@ Websocket callbacks
 /* Copy the nickname and the data to format a nicer message. */
 static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
                                       uint8_t is_text) {
-  fprintf(stderr, "Got data: %s\n", data);
   websocket_write(ws, data, size, is_text);
   (void)(ws);
   (void)(is_text);
