@@ -168,8 +168,6 @@ static void websocket_on_unwrapped(void *udata, void *msg, uint64_t len,
                                    char first, char last, char text,
                                    unsigned char rsv) {
   ws_s *ws = udata;
-  fprintf(stderr, "Unwrapped %llu bytes, %d first, %d last, %d text\n%s\n", len,
-          first, last, text, (char *)msg);
   if (last && first) {
     ws->on_message(ws, msg, len, (uint8_t)text);
     return;
