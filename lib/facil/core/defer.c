@@ -201,6 +201,7 @@ void defer_thread_throttle(unsigned long microsec) { return; }
 
 #endif /* DEBUG || pthread default */
 
+/* thread pool data container */
 struct defer_pool {
   unsigned int flag;
   unsigned int count;
