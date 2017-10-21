@@ -92,6 +92,14 @@ Child Process support (`fork`)
 ***************************************************************************** */
 
 /**
+OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
+into the forking function.
+
+Behaves like the system's `fork`.
+*/
+int defer_new_child(void);
+
+/**
  * Forks the process, starts up a thread pool and waits for all tasks to run.
  * All existing tasks will run in all processes (multiple times).
  *

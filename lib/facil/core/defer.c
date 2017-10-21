@@ -270,6 +270,15 @@ pool_pt defer_pool_start(unsigned int thread_count) {
 Child Process support (`fork`)
 ***************************************************************************** */
 
+/**
+OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
+into the forking function.
+
+Behaves like the system's `fork`.
+*/
+#pragma weak defer_new_child
+int defer_new_child(void) { return (int)fork(); }
+
 /* forked `defer` workers use a global thread pool object. */
 static pool_pt forked_pool;
 
@@ -367,7 +376,7 @@ int defer_perform_in_fork(unsigned int process_count,
   if (process_count && !pids)
     goto finish;
   for (pids_count = 0; pids_count < process_count; pids_count++) {
-    if (!(pids[pids_count] = fork())) {
+    if (!(pids[pids_count] = (pid_t)defer_new_child())) {
       defer_fork_pid_id = pids_count + 1;
       forked_pool = &pool_placeholder;
       forked_pool = defer_pool_start(thread_count);
