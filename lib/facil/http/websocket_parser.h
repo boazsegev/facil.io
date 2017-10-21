@@ -19,13 +19,6 @@ must be implemented by the including file (the callbacks).
 #include <stdlib.h>
 #include <string.h>
 /* *****************************************************************************
-API - Internal Helpers
-***************************************************************************** */
-
-/** used internally to mask and unmask client messages. */
-inline static void websocket_xmask(void *msg, uint64_t len, uint32_t mask);
-
-/* *****************************************************************************
 API - Message Wrapping
 ***************************************************************************** */
 
@@ -124,12 +117,19 @@ websocket_buffer_peek(void *buffer, uint64_t len);
  *
  * Returns the remaining data in the existing buffer (can be 0).
  *
- * Notice: if there's any remaining data in the buffer, `memmove` is used to
- * place the data at the begining of the buffer.
+ * Notice: if there's any data in the buffer that can't be parsed
+ * just yet, `memmove` is used to place the data at the begining of the buffer.
  */
 inline static __attribute__((unused)) uint64_t
 websocket_consume(void *buffer, uint64_t len, void *udata,
                   uint8_t require_masking);
+
+/* *****************************************************************************
+API - Internal Helpers
+***************************************************************************** */
+
+/** used internally to mask and unmask client messages. */
+inline static void websocket_xmask(void *msg, uint64_t len, uint32_t mask);
 
 /* *****************************************************************************
 
@@ -330,14 +330,16 @@ Message unwrapping
  */
 inline static struct websocket_packet_info_s
 websocket_buffer_peek(void *buffer, uint64_t len) {
-  if (len < 2)
+  if (len < 2) {
     return (struct websocket_packet_info_s){0, 2, 0};
+  }
   const uint8_t mask_f = (((uint8_t *)buffer)[1] >> 7) & 1;
   const uint8_t mask_l = (mask_f << 2);
   uint8_t len_indicator = (((uint8_t *)buffer)[1] & 127);
-  if (len < 126)
+  if (len < 126) {
     return (struct websocket_packet_info_s){len_indicator,
                                             (uint8_t)(2 + mask_l), mask_f};
+  }
   switch (len_indicator) {
   case 126:
     if (len < 4)
