@@ -194,9 +194,29 @@ Message wrapping
 // clang-format on
 
 #ifdef __BIG_ENDIAN__
-/** stub byte swap 64 bit integer */
+/** stub byte swap 64 bit integer from pointer */
+static inline uint64_t netpiswap64(uint8_t *i) {
+  uint64_t ret = 0;
+  uint8_t *const pret = &ret;
+  pret[7] = i[7];
+  pret[6] = i[6];
+  pret[5] = i[5];
+  pret[4] = i[4];
+  pret[3] = i[3];
+  pret[2] = i[2];
+  pret[1] = i[1];
+  pret[0] = i[0];
+  return ret;
+}
+/** stub byte swap 16 bit integer from pointer */
+static inline uint16_t netpiswap16(uint8_t *i) {
+  uint16_t ret = 0;
+  uint8_t *const pret = (uint8_t *)&ret;
+  pret[1] = i[1];
+  pret[0] = i[0];
+  return ret;
+}
 #define netiswap64(i) (i)
-/** stub byte swap 16 bit integer */
 #define netiswap16(i) (i)
 
 #else
@@ -209,6 +229,28 @@ Message wrapping
    (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
 /** byte swap 16 bit integer */
 #define netiswap16(i) ((((i)&0x00ff) << 8) | (((i)&0xff00) >> 8))
+/** byte swap 64 bit integer from pointer */
+static inline uint64_t netpiswap64(uint8_t *i) {
+  uint64_t ret = 0;
+  uint8_t *const pret = (uint8_t *)&ret;
+  pret[0] = i[7];
+  pret[1] = i[6];
+  pret[2] = i[5];
+  pret[3] = i[4];
+  pret[4] = i[3];
+  pret[5] = i[2];
+  pret[6] = i[1];
+  pret[7] = i[0];
+  return ret;
+}
+/** byte swap 16 bit integer from pointer */
+static inline uint16_t netpiswap16(uint8_t *i) {
+  uint16_t ret = 0;
+  uint8_t *const pret = (uint8_t *)&ret;
+  pret[0] = i[1];
+  pret[1] = i[0];
+  return ret;
+}
 
 #endif
 
@@ -260,13 +302,23 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
   } else if (len < (1UL << 16)) {
     /* head is 4 bytes */
     ((uint8_t *)target)[1] = 126;
-    ((uint16_t *)target)[1] = netiswap16(len);
+    const uint16_t net_len = netiswap16(len);
+    ((uint8_t *)target)[2] = ((uint8_t *)(&net_len))[0];
+    ((uint8_t *)target)[3] = ((uint8_t *)(&net_len))[1];
     memcpy((uint8_t *)target + 4, msg, len);
     return len + 4;
   }
   /* Really Long Message  */
   ((uint8_t *)target)[1] = 127;
-  ((uint64_t *)((uint8_t *)target + 2))[0] = netiswap64(len);
+  const uint64_t net_len = netiswap16(len);
+  ((uint8_t *)target)[2] = ((uint8_t *)(&net_len))[0];
+  ((uint8_t *)target)[3] = ((uint8_t *)(&net_len))[1];
+  ((uint8_t *)target)[4] = ((uint8_t *)(&net_len))[2];
+  ((uint8_t *)target)[5] = ((uint8_t *)(&net_len))[3];
+  ((uint8_t *)target)[6] = ((uint8_t *)(&net_len))[4];
+  ((uint8_t *)target)[7] = ((uint8_t *)(&net_len))[5];
+  ((uint8_t *)target)[8] = ((uint8_t *)(&net_len))[6];
+  ((uint8_t *)target)[9] = ((uint8_t *)(&net_len))[7];
   memcpy((uint8_t *)target + 10, msg, len);
   return len + 10;
 }
@@ -295,23 +347,42 @@ static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
                            /*fin*/ ((last & 1) << 7);
   if (len < 126) {
     ((uint8_t *)target)[1] = len | 128;
-    ((uint32_t *)((uint8_t *)target + 2))[0] = mask;
+    ((uint8_t *)target)[2] = ((uint8_t *)(&mask))[0];
+    ((uint8_t *)target)[3] = ((uint8_t *)(&mask))[1];
+    ((uint8_t *)target)[4] = ((uint8_t *)(&mask))[2];
+    ((uint8_t *)target)[5] = ((uint8_t *)(&mask))[3];
     memcpy(((uint8_t *)target) + 6, msg, len);
     websocket_xmask((uint8_t *)target + 6, len, mask);
     return len + 6;
   } else if (len < (1UL << 16)) {
     /* head is 4 bytes */
     ((uint8_t *)target)[1] = 126 | 128;
-    ((uint16_t *)target)[1] = netiswap16(len);
-    ((uint32_t *)((uint8_t *)target + 4))[0] = mask;
+    const uint16_t net_len = netiswap16(len);
+    ((uint8_t *)target)[2] = ((uint8_t *)(&net_len))[0];
+    ((uint8_t *)target)[3] = ((uint8_t *)(&net_len))[1];
+    ((uint8_t *)target)[4] = ((uint8_t *)(&mask))[0];
+    ((uint8_t *)target)[5] = ((uint8_t *)(&mask))[1];
+    ((uint8_t *)target)[6] = ((uint8_t *)(&mask))[2];
+    ((uint8_t *)target)[7] = ((uint8_t *)(&mask))[3];
     memcpy((uint8_t *)target + 8, msg, len);
     websocket_xmask((uint8_t *)target + 8, len, mask);
     return len + 8;
   }
   /* Really Long Message  */
   ((uint8_t *)target)[1] = 255;
-  ((uint64_t *)((uint8_t *)target + 2))[0] = netiswap64(len);
-  ((uint32_t *)((uint8_t *)target + 10))[0] = mask;
+  const uint64_t net_len = netiswap16(len);
+  ((uint8_t *)target)[2] = ((uint8_t *)(&net_len))[0];
+  ((uint8_t *)target)[3] = ((uint8_t *)(&net_len))[1];
+  ((uint8_t *)target)[4] = ((uint8_t *)(&net_len))[2];
+  ((uint8_t *)target)[5] = ((uint8_t *)(&net_len))[3];
+  ((uint8_t *)target)[6] = ((uint8_t *)(&net_len))[4];
+  ((uint8_t *)target)[7] = ((uint8_t *)(&net_len))[5];
+  ((uint8_t *)target)[8] = ((uint8_t *)(&net_len))[6];
+  ((uint8_t *)target)[9] = ((uint8_t *)(&net_len))[7];
+  ((uint8_t *)target)[10] = ((uint8_t *)(&mask))[0];
+  ((uint8_t *)target)[11] = ((uint8_t *)(&mask))[1];
+  ((uint8_t *)target)[12] = ((uint8_t *)(&mask))[2];
+  ((uint8_t *)target)[13] = ((uint8_t *)(&mask))[3];
   memcpy((uint8_t *)target + 14, msg, len);
   websocket_xmask((uint8_t *)target + 14, len, mask);
   return len + 14;
@@ -331,31 +402,28 @@ Message unwrapping
 inline static struct websocket_packet_info_s
 websocket_buffer_peek(void *buffer, uint64_t len) {
   if (len < 2) {
-    return (struct websocket_packet_info_s){0, 2, 0};
+    return (struct websocket_packet_info_s){0 /* packet */, 2 /* head */,
+                                            0 /* masked? */};
   }
   const uint8_t mask_f = (((uint8_t *)buffer)[1] >> 7) & 1;
   const uint8_t mask_l = (mask_f << 2);
-  uint8_t len_indicator = (((uint8_t *)buffer)[1] & 127);
-  if (len < 126) {
-    return (struct websocket_packet_info_s){len_indicator,
-                                            (uint8_t)(2 + mask_l), mask_f};
-  }
+  uint8_t len_indicator = ((((uint8_t *)buffer)[1]) & 127);
   switch (len_indicator) {
   case 126:
     if (len < 4)
       return (struct websocket_packet_info_s){0, (uint8_t)(4 + mask_l), mask_f};
     return (struct websocket_packet_info_s){
-        (uint64_t)netiswap16(((uint16_t *)buffer)[1]), (uint8_t)(4 + mask_l),
+        (uint64_t)netpiswap16(((uint8_t *)buffer) + 2), (uint8_t)(4 + mask_l),
         mask_f};
   case 127:
     if (len < 10)
       return (struct websocket_packet_info_s){0, (uint8_t)(10 + mask_l),
                                               mask_f};
     return (struct websocket_packet_info_s){
-        netiswap64(((uint64_t *)((uint8_t *)buffer + 2))[0]),
-        (uint8_t)(10 + mask_l), mask_f};
+        netpiswap64(((uint8_t *)buffer) + 2), (uint8_t)(10 + mask_l), mask_f};
   default:
-    return (struct websocket_packet_info_s){0, 0, 0};
+    return (struct websocket_packet_info_s){len_indicator,
+                                            (uint8_t)(2 + mask_l), mask_f};
   }
 }
 
@@ -416,13 +484,13 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       websocket_on_protocol_error(udata);
     }
     /* step forward */
-    reminder -= info.head_length + info.packet_length;
+    reminder = reminder - (info.head_length + info.packet_length);
+    if (!reminder)
+      return 0;
     pos += info.head_length + info.packet_length;
     info = websocket_buffer_peek(pos, reminder);
   }
   /* reset buffer state - support pipelining */
-  if (!reminder)
-    return 0;
   memmove(buffer, (uint8_t *)buffer + len - reminder, reminder);
   return reminder;
 }
