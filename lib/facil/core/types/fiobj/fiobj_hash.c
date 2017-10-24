@@ -13,7 +13,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <errno.h>
 /* *****************************************************************************
 Internal Map Array
-We avoid the fiobj_ary_s to prevent entanglement
+We avoid the fiobj_ary_s to prevent code entanglement
 ***************************************************************************** */
 
 static inline void fio_map_reset(fio_map_s *map, uintptr_t capa) {

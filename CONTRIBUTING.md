@@ -1,6 +1,6 @@
 # How to Contribute
 
-Thank you for inquiring `facil.io`'s contribution guide. It's people like you and me, that are willing to share our efforts, that help make the world of open source development so inspiring and wonderful.
+Thank you for inquiring `facil.io`'s contribution guide. It's people like you and me, that are willing to share our efforts, who help make the world of open source development so inspiring and wonderful.
 
 "Facil" comes from the Spanish word "easy", and this is embedded in `facil.io`'s DNA.
 
@@ -24,11 +24,11 @@ Thank you for inquiring `facil.io`'s contribution guide. It's people like you an
 
     The project currently has the following limitation that might be addressed in the future:
 
-    * The coded uses unaligned memory access (requires newer CPUs).
-
     * The code requires `kqueue` or `epoll` services from the OS, which means Linux / BSD / macOS.
 
     * The code assumes a Unix environment (file naming etc').
+
+    * Some of the code (namely some HTTP parts) uses unaligned memory access (requiring newer CPUs and possibly introducing undefined behavior).
 
 * Easy to compile:
 
