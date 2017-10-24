@@ -267,13 +267,12 @@ static void on_data(intptr_t sockfd, protocol_s *ws_) {
     }
   }
 
-  ssize_t len = sock_read(sockfd, (uint8_t *)ws->buffer.data + ws->length,
-                          ws->buffer.size - ws->length);
+  const ssize_t len = sock_read(sockfd, (uint8_t *)ws->buffer.data + ws->length,
+                                ws->buffer.size - ws->length);
   if (len <= 0) {
     return;
   }
-  ws->length += len;
-  ws->length = websocket_consume(ws->buffer.data, ws->length, ws, 1);
+  ws->length = websocket_consume(ws->buffer.data, ws->length + len, ws, 1);
 
   facil_force_event(sockfd, FIO_EVENT_ON_DATA);
 }
