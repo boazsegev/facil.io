@@ -189,13 +189,21 @@ struct pubsub_engine_s {
   unsigned push2cluster : 1;
 };
 
-/** The default pub/sub engine. */
+/** The default pub/sub engine.
+ * This engine performs pub/sub within a group of processes (process cluster).
+ *
+ * The process cluser is initialized by the `facil_run` command with `processes`
+ * set to more than 1.
+ */
 extern const pubsub_engine_s *PUBSUB_CLUSTER_ENGINE;
 
 /** An engine that performs pub/sub only within a single process. */
 extern const pubsub_engine_s *PUBSUB_PROCESS_ENGINE;
 
-/** Allows process wide changes to the default Pub/Sub Engine. */
+/** Allows process wide changes to the default Pub/Sub Engine.
+ * Setting a new default before calling `facil_run` will change the default for
+ * the whole process cluster.
+ */
 extern const pubsub_engine_s *PUBSUB_DEFAULT_ENGINE;
 
 /**

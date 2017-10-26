@@ -1,5 +1,5 @@
 ---
-title: facil.io - the C WebApp mini-framework
+title: facil.io - a mini-framework for C web applications
 ---
 # {{ page.title }}
 
@@ -143,7 +143,7 @@ int main(void) {
 
 ## Further reading
 
-The code in this project is heavily commented and the header files could (and probably should) be used for the actual documentation.
+The code in this project is heavily commented and the header files could (and probably should) be used as the actual documentation.
 
 However, experience shows that a quick reference guide is immensely helpful and that Doxygen documentation is ... well ... less helpful and harder to navigate (I'll leave it at that for now).
 

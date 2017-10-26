@@ -1,5 +1,5 @@
 /*
-copyright: Boaz segev, 2016-2017
+copyright: Boaz segev, 2017
 license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -65,6 +65,7 @@ struct fioapp_settings_s {
   void (*on_finish_rw)(intptr_t uuid, void *rw_udata);
 };
 
+extern fiobj_s *SOCK_UUID;
 extern fiobj_s *PATH_INFO;
 extern fiobj_s *PATH_ARRAY;
 extern fiobj_s *QUERY;
@@ -93,6 +94,7 @@ Constants Etc'
 ***************************************************************************** */
 char *FIOBJ_HTTP1_Protocol_String = "facil_fiobj_http/1.1_protocol";
 
+fiobj_s *SOCK_UUID;
 fiobj_s *PATH_INFO;
 fiobj_s *PATH_ARRAY;
 fiobj_s *QUERY;
@@ -132,13 +134,17 @@ The HTTP/1.x Protocol object
 ***************************************************************************** */
 #define POOL_SIZE 64
 typedef struct fiobj_fiobj_http1_protocol_s {
+  /* connection handling + pooling. */
   protocol_s protocol;
   struct fiobj_fiobj_http1_protocol_s *next;
+  /* HTTP settings and request handling. */
   struct fioapp_settings_s *settings;
+  /* connection state. */
+  uintptr_t uuid;
+  /* request state. */
   fiobj_s *request;
   fiobj_s *headers;
   fiobj_s *body;
-  uintptr_t uuid;
   /* parsing helpers. */
   http1_parser_s parser;
   ssize_t len;
@@ -154,6 +160,7 @@ Alloc, Dealloc and Initialization
 ***************************************************************************** */
 
 static void destroy_data(void) {
+  fiobj_free(SOCK_UUID);
   fiobj_free(PATH_INFO);
   fiobj_free(PATH_ARRAY);
   fiobj_free(QUERY);
@@ -167,6 +174,7 @@ static inline fiobj_http1_protocol_s *initialize_data(void) {
   if (BODY)
     return NULL;
   /* Initialize symbols */
+  SOCK_UUID = fiobj_sym_new("SOCK_UUID", 9);
   PATH_INFO = fiobj_sym_new("PATH_INFO", 9);
   PATH_ARRAY = fiobj_sym_new("PATH_ARRAY", 9);
   QUERY = fiobj_sym_new("QUERY", 5);
@@ -221,13 +229,8 @@ static inline fiobj_http1_protocol_s *protocol_alloc(void *settings) {
 /* *****************************************************************************
 Parser callbacks
 ***************************************************************************** */
-
-// /** REQUIRED: the parser object that manages the parser's state. */
-// http1_parser_s *parser;
-// /** REQUIRED: the data to be parsed. */
-// void *buffer;
-// /** REQUIRED: the length of the data to be parsed. */
-// size_t length;
+#define HTTP1_READ_BUFFER_SIZE 8096
+#define HTTP1_MAX_HEADER_COUNT 128
 
 /** called when a request was received. */
 static int on_request(http1_parser_s *parser) {
@@ -245,6 +248,7 @@ static int on_method(http1_parser_s *parser, char *method, size_t method_len) {
     fiobj_free(pr->request);
   pr->request = fiobj_hash_new();
   fiobj_hash_set(pr->request, METHOD, fiobj_str_new(method, method_len));
+  fiobj_hash_set(pr->request, SOCK_UUID, fiobj_num_new(pr->uuid));
   return 0;
 }
 /** called when a response status is parsed. the status_str is the string
@@ -279,6 +283,8 @@ static int on_http_version(http1_parser_s *parser, char *version, size_t len) {
 static int on_header(http1_parser_s *parser, char *name, size_t name_len,
                      char *data, size_t data_len) {
   fiobj_http1_protocol_s *pr = parser->udata;
+  if (fiobj_hash_count(pr->headers) >= HTTP1_MAX_HEADER_COUNT)
+    return -1;
   fiobj_s *tmp = fiobj_sym_new(name, name_len);
   fiobj_hash_set(pr->headers, tmp, fiobj_str_new(data, data_len));
   fiobj_free(tmp);
@@ -307,7 +313,7 @@ static int on_body_chunk(http1_parser_s *parser, char *data, size_t data_len) {
 /** called when a protocol error occured. */
 static int on_error(http1_parser_s *parser) {
   fiobj_http1_protocol_s *pr = parser->udata;
-  /* TODO: return HTTP response "Entity too big" */
+  /* TODO: return HTTP response "Entity too big" or "Bad Request"*/
 
   /* free resources */
   fiobj_free(pr->request);
@@ -318,7 +324,7 @@ static int on_error(http1_parser_s *parser) {
 /* *****************************************************************************
 Protocol callbacks
 ***************************************************************************** */
-#define HTTP1_READ_BUFFER_SIZE 8096
+
 /** called when a data is available, but will not run concurrently */
 static void fio_http1_on_data(intptr_t uuid, protocol_s *pr_) {
   fiobj_http1_protocol_s *pr = (fiobj_http1_protocol_s *)pr_;
@@ -388,9 +394,14 @@ static void fio_http1_on_close(intptr_t uuid, protocol_s *pr_) {
 Listening callback
 ***************************************************************************** */
 
-static protocol_s *fio_http1_on_open(intptr_t fduuid, void *udata) {
+static protocol_s *fio_http1_on_open(intptr_t uuid, void *udata) {
   fiobj_http1_protocol_s *pr = protocol_alloc(udata);
-  facil_set_timeout(fduuid, pr->settings->timeout_short);
-  pr->uuid = fduuid;
+  facil_set_timeout(uuid, pr->settings->timeout_short);
+  pr->uuid = uuid;
+  if (sock_uuid2fd(uuid) + 16 >= sock_max_capacity()) {
+    /* TODO: send Server Busy response */
+    // sock_close(uuid); // returning NULL closes the socket
+    return NULL;
+  }
   return &pr->protocol;
 }

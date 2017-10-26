@@ -1,10 +1,17 @@
-# facil.io - the C WebApp mini-framework
+# facil.io - a mini-framework for C web applications
 
-[facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, as well as support for custom protocols.
+[facil.io](http://facil.io) is a C mini-framework for web applications and includes:
+
+* A fast HTTP/1.1 and Websocket static file + application server.
+* Support for custom network protocols for both server and client connections.
+* A pub/sub process cluster engine for Websocket pub/sub.
+* Optional connectivity with Redis.
+* Optional dynamic types designed with web applications in mind (Strings, Hashes, Arrays etc').
+* JSON parsing and formatting for easy network communication.
 
 [facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.
 
-[facil.io](http://facil.io) provides high performance TCP/IP network services to Linux / BSD (and macOS) by using an evented design and provides an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
+[facil.io](http://facil.io) provides high performance TCP/IP network services to Linux / BSD (and macOS) by using an evented design (as well as thread pool and forking support) and provides an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
 
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
 
