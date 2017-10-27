@@ -10,11 +10,11 @@ set(facil.io_SOURCES
   ./lib/facil/core/types/fio_dict.c
   ./lib/facil/services/fio_cli_helper.c
   ./lib/facil/services/pubsub.c
+  ./lib/facil/http/http.c
   ./lib/facil/http/http1.c
   ./lib/facil/http/http1_parser.c
   ./lib/facil/http/http1_request.c
   ./lib/facil/http/http1_response.c
-  ./lib/facil/http/http.c
   ./lib/facil/http/http_request.c
   ./lib/facil/http/http_response.c
   ./lib/facil/http/websockets.c
