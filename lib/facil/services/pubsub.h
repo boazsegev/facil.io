@@ -146,7 +146,7 @@ int pubsub_publish(struct pubsub_publish_args);
  *
  * This should only be called from within the `on_message` callback.
  *
- * It's recommended that the `on_message` callback return immediately followin
+ * It's recommended that the `on_message` callback return immediately following
  * this function call, as code might run concurrently.
  *
  * Uses reference counting for zero copy.
