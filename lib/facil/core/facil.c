@@ -641,17 +641,25 @@ int facil_run_every(size_t milliseconds, size_t repetitions,
   if (protocol == NULL)
     goto error;
   facil_attach(uuid, (protocol_s *)protocol);
-  if (evio_isactive() && evio_add_timer(fd, (void *)uuid, milliseconds) < 0)
+  if (evio_isactive() && evio_add_timer(fd, (void *)uuid, milliseconds) == -1)
     goto error;
   return 0;
 error:
-  if (uuid != -1)
+  if (uuid != -1) {
+    const int old = errno;
     sock_close(uuid);
-  else if (fd != -1)
+    errno = old;
+  } else if (fd != -1) {
+    const int old = errno;
     close(fd);
+    errno = old;
+  }
 error_fin:
-  if (on_finish)
+  if (on_finish) {
+    const int old = errno;
     on_finish(arg);
+    errno = old;
+  }
   return -1;
 }
 

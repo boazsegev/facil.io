@@ -24,6 +24,8 @@
 
 **Fix**: (`evio`) fixed an issue where the evented IO library failed to reset the state indicator after `evio_close` was called, causing some functions to believe that events are still processed. Now the `evio_isactive` will correctly indicate that the evented IO is inactive after `evio_close` was called.
 
+**Fix**: (`evio`) fixes an issue where `evio_add_timer` would fail with `EEXIST` instead of reporting success (this might be related to timer consolidation concerns in the Linux kernel).
+
 **Fix**: (`evio`) better timer `fd` creation compatibility with different Linux kernels.
 
 **Fix**: (documentation) credit to @cdkrot for reporting an outdated demo in the README.

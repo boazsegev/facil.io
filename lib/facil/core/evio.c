@@ -94,8 +94,7 @@ Adds a file descriptor to the polling object.
 int evio_add(int fd, void *callback_arg) {
   struct epoll_event chevent = {0};
   chevent.data.ptr = (void *)callback_arg;
-  chevent.events =
-      EPOLLOUT | EPOLLIN | EPOLLET | EPOLLERR | EPOLLRDHUP | EPOLLHUP;
+  chevent.events = EPOLLOUT | EPOLLIN | EPOLLET | EPOLLRDHUP | EPOLLHUP;
   return epoll_ctl(evio_fd, EPOLL_CTL_ADD, fd, &chevent);
 }
 
@@ -135,8 +134,7 @@ Adds a timer file descriptor, so that callbacks will be called for it's events.
 intptr_t evio_add_timer(int fd, void *callback_arg,
                         unsigned long milliseconds) {
   struct epoll_event chevent = {.data.ptr = (void *)callback_arg,
-                                .events = (EPOLLOUT | EPOLLIN | EPOLLET |
-                                           EPOLLERR | EPOLLRDHUP | EPOLLHUP)};
+                                .events = (EPOLLIN | EPOLLET)};
   struct itimerspec new_t_data;
   new_t_data.it_value.tv_sec = new_t_data.it_interval.tv_sec =
       milliseconds / 1000;
@@ -144,7 +142,10 @@ intptr_t evio_add_timer(int fd, void *callback_arg,
       (milliseconds % 1000) * 1000000;
   if (timerfd_settime(fd, 0, &new_t_data, NULL) == -1)
     return -1;
-  return epoll_ctl(evio_fd, EPOLL_CTL_ADD, fd, &chevent);
+  int ret = epoll_ctl(evio_fd, EPOLL_CTL_ADD, fd, &chevent);
+  if (ret == -1 && errno == EEXIST)
+    return 0;
+  return ret;
 }
 
 /** Rearms the timer. Required only by `epoll`.*/
