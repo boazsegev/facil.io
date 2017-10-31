@@ -11,6 +11,7 @@ This is a neive implementation of the RESP protocol for Redis.
 */
 #define H_FIO2RESP_FORMAT_H
 
+#include "fiobj.h"
 #include "resp.h"
 
 /* support C++ */
@@ -21,7 +22,7 @@ extern "C" {
 /* *****************************************************************************
 `fiobj_s` => RESP (formatting): implemented seperately; can be safely removed.
 ***************************************************************************** */
-typedef struct fiobj_s *fiobj_pt;
+
 /**
  * Returns a **new** String object containing a RESP representation of `obj`.
  *

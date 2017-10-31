@@ -1,6 +1,18 @@
 # Change Log
 
-### Ver. 0.5.3 (next)
+### Ver. 0.5.4 (next)
+
+I've been making so many changes, it took me a while.
+
+This version includes all the updates in the unreleased version 0.5.3 as well as some extra work.
+
+The new HTTP/1.1 and Websocket parsers have been debugged and tested in the Iodine Ruby server, the dynamic type system (`fiobj_s`) will be updated to revision 2 in this release...
+
+**Change/Update**: (`fiobj`) The dynamic type library was redesigned to make it extendable. This means that code that used type testing using a `switch` statement needs to be rewritten.
+
+**Fix**: (`websocket`) issues with the new websocket parser were fixed. Credit to Tom Lahti (@uidzip) for exposing the issues.
+
+### Ver. 0.5.3 (unreleased)
 
 **Change**: minor changes to the versioning scheme removed some version MACROS... this isn't API related, so I don't consider it a breaking change, but it might effect code that relied too much on internal workings. The only valid version macros are the `FACIL_VERSION_*` macros, in the `facil.h` header.
 

@@ -5,7 +5,21 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 
-#include "fiobj_types.h"
+#include "fiobj_internal.h"
+
+/* *****************************************************************************
+Array Type
+***************************************************************************** */
+
+typedef struct {
+  struct fiobj_vtable_s *vtable;
+  uint64_t start;
+  uint64_t end;
+  uint64_t capa;
+  fiobj_s **arry;
+} fiobj_ary_s;
+
+#define obj2ary(o) ((fiobj_ary_s *)(o))
 
 /* *****************************************************************************
 Array memory management
@@ -76,9 +90,11 @@ static void fiobj_ary_getmem(fiobj_s *ary, int64_t needed) {
 VTable
 ***************************************************************************** */
 
+const uintptr_t FIOBJ_T_ARRAY;
+
 static void fiobj_ary_dealloc(fiobj_s *a) {
   free(obj2ary(a)->arry);
-  free(&OBJ2HEAD(a));
+  fiobj_dealloc(a);
 }
 
 static size_t fiobj_ary_each1(fiobj_s *o, size_t start_at,
@@ -92,9 +108,13 @@ static size_t fiobj_ary_each1(fiobj_s *o, size_t start_at,
 }
 
 static int fiobj_ary_is_eq(fiobj_s *self, fiobj_s *other) {
-  return (other && other->type == FIOBJ_T_ARRAY &&
-          obj2ary(self)->end - obj2ary(self)->start ==
-              obj2ary(other)->end - obj2ary(other)->start);
+  if (self == other)
+    return 1;
+  if (!other || other->type != FIOBJ_T_ARRAY ||
+      (obj2ary(self)->end - obj2ary(self)->start) !=
+          (obj2ary(other)->end - obj2ary(other)->start))
+    return 0;
+  return 1;
 }
 
 /** Returns the number of elements in the Array. */
@@ -103,33 +123,37 @@ static size_t fiobj_ary_count_items(fiobj_s *ary) {
 }
 
 static struct fiobj_vtable_s FIOBJ_VTABLE_ARRAY = {
+    .name = "Array",
     .free = fiobj_ary_dealloc,
     .to_i = fiobj_noop_i,
     .to_f = fiobj_noop_f,
     .to_str = fiobj_noop_str,
     .is_eq = fiobj_ary_is_eq,
     .count = fiobj_ary_count_items,
+    .unwrap = fiobj_noop_unwrap,
     .each1 = fiobj_ary_each1,
 };
+
+const uintptr_t FIOBJ_T_ARRAY = (uintptr_t)(&FIOBJ_VTABLE_ARRAY);
+
 /* *****************************************************************************
 Allocation
 ***************************************************************************** */
 
 static fiobj_s *fiobj_ary_alloc(size_t capa, size_t start_at) {
-  fiobj_head_s *head;
-  head = malloc(sizeof(*head) + sizeof(fio_ary_s));
-  if (!head)
+  fiobj_s *ary = fiobj_alloc(sizeof(fiobj_ary_s));
+  if (!ary)
     perror("ERROR: fiobj array couldn't allocate memory"), exit(errno);
-  *head = (fiobj_head_s){
-      .ref = 1, .vtable = &FIOBJ_VTABLE_ARRAY,
+  *(obj2ary(ary)) = (fiobj_ary_s){
+      .vtable = &FIOBJ_VTABLE_ARRAY,
+      .start = start_at,
+      .end = start_at,
+      .capa = capa,
+      .arry = malloc(sizeof(fiobj_s *) * capa),
   };
-  *((fio_ary_s *)HEAD2OBJ(head)) =
-      (fio_ary_s){.start = start_at,
-                  .end = start_at,
-                  .capa = capa,
-                  .arry = malloc(sizeof(fiobj_s *) * capa),
-                  .type = FIOBJ_T_ARRAY};
-  return HEAD2OBJ(head);
+  if (capa && !obj2ary(ary)->capa)
+    perror("ERROR: fiobj array couldn't allocate memory"), exit(errno);
+  return ary;
 }
 
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
@@ -144,6 +168,13 @@ size_t fiobj_ary_count(fiobj_s *ary) {
   return (obj2ary(ary)->end - obj2ary(ary)->start);
 }
 
+/** Returns the current, temporary, array capacity (it's dynamic). */
+size_t fiobj_ary_capa(fiobj_s *ary) {
+  if (!ary)
+    return 0;
+  return obj2ary(ary)->capa;
+}
+
 /* *****************************************************************************
 Array direct entry access API
 ***************************************************************************** */
@@ -154,7 +185,7 @@ Array direct entry access API
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
  */
-fiobj_s *fiobj_ary_entry(fiobj_s *ary, int64_t pos) {
+fiobj_s *fiobj_ary_index(fiobj_s *ary, int64_t pos) {
   if (!ary || ary->type != FIOBJ_T_ARRAY)
     return NULL;
   /* position is relative to `start`*/

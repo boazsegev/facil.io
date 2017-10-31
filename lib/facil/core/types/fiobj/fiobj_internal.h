@@ -1,3 +1,4 @@
+#ifndef FIOBJECT_INTERNAL_H
 /*
 Copyright: Boaz segev, 2017
 License: MIT
@@ -5,19 +6,24 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 
-#ifndef H_FIOBJ_TYPES_INTERNAL_H
-#define H_FIOBJ_TYPES_INTERNAL_H
+/**
+This header includes all the internal rescources / data and types required to
+create object types.
+*/
+#define FIOBJECT_INTERNAL_H
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
 
-#include "fiobj.h"
+#include "fiobject.h"
 
 #include <errno.h>
 #include <math.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 
@@ -145,146 +151,125 @@ size_t __attribute__((weak)) fiobj_memory_page_size(void) {
 #define fiobj_memory_page_size() 4096
 
 #endif
-/* *****************************************************************************
-Object types
-***************************************************************************** */
-
-/* Number */
-typedef struct {
-  fiobj_type_en type;
-  int64_t i;
-} fio_num_s;
-
-/* Float */
-typedef struct {
-  fiobj_type_en type;
-  double f;
-} fio_float_s;
-
-/* String */
-typedef struct {
-  fiobj_type_en type;
-  uint64_t capa;
-  uint64_t len;
-  uint8_t is_static;
-  char *str;
-} fio_str_s;
-
-/* Symbol */
-typedef struct {
-  fiobj_type_en type;
-  uintptr_t hash;
-  uint64_t len;
-  char str[];
-} fio_sym_s;
-
-/* IO */
-typedef struct {
-  fiobj_type_en type;
-  intptr_t fd;
-} fio_io_s;
-
-/* Array */
-typedef struct {
-  fiobj_type_en type;
-  uint64_t start;
-  uint64_t end;
-  uint64_t capa;
-  fiobj_s **arry;
-} fio_ary_s;
-
-/* *****************************************************************************
-Hash types
-***************************************************************************** */
-/* MUST be a power of 2 */
-#define FIOBJ_HASH_MAX_MAP_SEEK (256)
-
-typedef struct {
-  uintptr_t hash;
-  fio_ls_s *container;
-} map_info_s;
-
-typedef struct {
-  uintptr_t capa;
-  map_info_s *data;
-} fio_map_s;
-
-typedef struct {
-  fiobj_type_en type;
-  uintptr_t count;
-  uintptr_t mask;
-  fio_ls_s items;
-  fio_map_s map;
-} fio_hash_s;
-
-/* Hash node */
-typedef struct {
-  fiobj_type_en type;
-  fiobj_s *name;
-  fiobj_s *obj;
-} fio_couplet_s;
-
-void fiobj_hash_rehash(fiobj_s *h);
 
 /* *****************************************************************************
 Type VTable (virtual function table)
 ***************************************************************************** */
+
+/**
+ * Each type must define a complete virtual function table and point to the
+ * table from it's topmost element in it's `struct`.
+ */
 struct fiobj_vtable_s {
-  /* deallocate an object */
+  /** class name as a C string */
+  const char *name;
+  /** deallocate an object - should deallocate parent only
+   *
+   * Note that nested objects, such as contained by Arrays and Hash maps, are
+   * handled using `each1` and handled accoring to their reference count.
+   */
   void (*free)(fiobj_s *);
-  /* object value as String */
+  /** object should evaluate as true/false? */
+  int (*is_true)(fiobj_s *);
+  /** object value as String */
   fio_cstr_s (*to_str)(fiobj_s *);
-  /* object value as Integer */
+  /** object value as Integer */
   int64_t (*to_i)(fiobj_s *);
-  /* object value as Float */
+  /** object value as Float */
   double (*to_f)(fiobj_s *);
-  /* true if object is equal. nested objects must be ignored (test container) */
+  /**
+   * returns 1 if objects are equal, 0 if unequal.
+   *
+   * `self` and `other` are never NULL.
+   *
+   * objects that enumerate (`count > 0`) should only test
+   * themselves (not their children). any nested objects will be tested
+   * seperately.
+   *
+   * wrapping objects should forward the function call to the wrapped objectd
+   * (similar to `count` and `each1`) after completing any internal testing.
+   */
   int (*is_eq)(fiobj_s *self, fiobj_s *other);
-  /* return the number of nested object */
+  /**
+   * return the number of nested object
+   *
+   * wrapping objects should forward the function call to the wrapped objectd
+   * (similar to `each1`).
+   */
   size_t (*count)(fiobj_s *);
-  /* perform a task for the object's children (-1 stops iteration)
+  /**
+   * return either `self` or a wrapped object.
+   * (if object wrapping exists, i.e. Hash couplet, return nested object)
+   */
+  fiobj_s *(*unwrap)(fiobj_s *);
+  /**
+   * perform a task for the object's children (-1 stops iteration)
    * returns the number of items processed + `start_at`.
+   *
+   * wrapping objects should forward the function call to the wrapped objectd
+   * (similar to `count`).
    */
   size_t (*each1)(fiobj_s *, size_t start_at,
                   int (*task)(fiobj_s *obj, void *arg), void *arg);
 };
 
+/* *****************************************************************************
+VTable (virtual function table) common implememntations
+***************************************************************************** */
+
+/** simple deallocation (`free`). */
+void fiobj_simple_dealloc(fiobj_s *o);
+/** no deallocation (eternal objects). */
+void fiobj_noop_free(fiobj_s *obj);
+/** always true. */
+int fiobj_noop_true(fiobj_s *obj);
+/** always false. */
+int fiobj_noop_false(fiobj_s *obj);
+/** NULL C string. */
 fio_cstr_s fiobj_noop_str(fiobj_s *obj);
+/** always 0. */
 int64_t fiobj_noop_i(fiobj_s *obj);
+/** always 0. */
 double fiobj_noop_f(fiobj_s *obj);
+/** always 0. */
 size_t fiobj_noop_count(fiobj_s *obj);
+/** always self. */
+fiobj_s *fiobj_noop_unwrap(fiobj_s *obj);
+/** always 0. */
 size_t fiobj_noop_each1(fiobj_s *obj, size_t start_at,
                         int (*task)(fiobj_s *obj, void *arg), void *arg);
-void fiobj_simple_dealloc(fiobj_s *o);
 
 /* *****************************************************************************
 The Object type head and management
 ***************************************************************************** */
 
-typedef struct {
-  uint64_t ref;
-  struct fiobj_vtable_s *vtable;
-} fiobj_head_s;
+typedef struct { uintptr_t ref; } fiobj_head_s;
 
-#define OBJ2HEAD(o) (((fiobj_head_s *)(o)) - 1)[0]
+#define OBJ2HEAD(o) (((fiobj_head_s *)(o)) - 1)
 #define HEAD2OBJ(o) ((fiobj_s *)(((fiobj_head_s *)(o)) + 1))
 
-#define OBJREF_ADD(o) spn_add(&OBJ2HEAD((o)).ref, 1)
-#define OBJREF_REM(o) spn_sub(&OBJ2HEAD((o)).ref, 1)
+#define OBJREF_ADD(o) spn_add(&(OBJ2HEAD((o))->ref), 1)
+#define OBJREF_REM(o) spn_sub(&(OBJ2HEAD((o))->ref), 1)
 
-#define obj2io(o) ((fio_io_s *)(o))
-#define obj2ary(o) ((fio_ary_s *)(o))
-#define obj2str(o) ((fio_str_s *)(o))
-#define obj2sym(o) ((fio_sym_s *)(o))
-#define obj2num(o) ((fio_num_s *)(o))
-#define obj2hash(o) ((fio_hash_s *)(o))
-#define obj2float(o) ((fio_float_s *)(o))
-#define obj2couplet(o) ((fio_couplet_s *)(o))
+#define OBJVTBL(o) ((struct fiobj_vtable_s *)(((fiobj_s *)(o))->type))
 
 /* *****************************************************************************
 Internal API required across the board
 ***************************************************************************** */
-void fiobj_dealloc(fiobj_s *obj);
+
+/** Allocates memory for the fiobj_s's data structure */
+static inline fiobj_s *fiobj_alloc(size_t size) {
+  fiobj_head_s *head = (fiobj_head_s *)malloc(size + sizeof(head));
+  if (!head)
+    return NULL;
+  *head = (fiobj_head_s){.ref = 1};
+  return HEAD2OBJ(head);
+};
+
+/** Deallocates the fiobj_s's data structure. */
+static inline void fiobj_dealloc(fiobj_s *obj) { free(OBJ2HEAD(obj)); }
+
+/** The Hashing function used by dynamic facil.io objects. */
 uint64_t fiobj_sym_hash(const void *data, size_t len);
 
 #endif

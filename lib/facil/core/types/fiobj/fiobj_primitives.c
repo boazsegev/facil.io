@@ -4,95 +4,130 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "fiobj_types.h"
+
+/**
+Herein are defined some primitive types for the facil.io dynamic object system.
+*/
+#include "fiobj_primitives.h"
+#include "fiobj_internal.h"
 
 /* *****************************************************************************
-NULL, TRUE, FALSE VTable
+NULL
 ***************************************************************************** */
 
-static int fiobj_simple_is_eq(fiobj_s *self, fiobj_s *other) {
-  if (!other || other->type != self->type)
-    return 0;
-  return 1;
+static int fiobj_primitive_is_eq(fiobj_s *self, fiobj_s *other) {
+  return self == other;
 }
 
-static fio_cstr_s fio_true2str(fiobj_s *obj) {
-  return (fio_cstr_s){.buffer = "true", .len = 4};
-  (void)obj;
-}
-static fio_cstr_s fio_false2str(fiobj_s *obj) {
-  return (fio_cstr_s){.buffer = "false", .len = 5};
-  (void)obj;
-}
-static fio_cstr_s fio_null2str(fiobj_s *obj) {
-  return (fio_cstr_s){.buffer = "null", .len = 4};
-  (void)obj;
-}
-static int64_t fio_true2i(fiobj_s *obj) {
-  return 1;
-  (void)obj;
-}
-static double fio_true2f(fiobj_s *obj) {
-  return 1;
-  (void)obj;
-}
-
-static struct fiobj_vtable_s FIOBJ_VTABLE_NULL = {
-    .free = fiobj_simple_dealloc,
+static struct fiobj_vtable_s NULL_VTABLE = {
+    .name = "NULL",
+    /* deallocate an object */
+    .free = fiobj_noop_free,
+    /* object should evaluate as true/false? */
+    .is_true = fiobj_noop_false,
+    /* object value as String */
+    .to_str = fiobj_noop_str,
+    /* object value as Integer */
     .to_i = fiobj_noop_i,
+    /* object value as Float */
     .to_f = fiobj_noop_f,
-    .to_str = fio_null2str,
-    .is_eq = fiobj_simple_is_eq,
+    .is_eq = fiobj_primitive_is_eq,
+    /* return the number of nested object */
     .count = fiobj_noop_count,
-    .each1 = fiobj_noop_each1,
-};
-static struct fiobj_vtable_s FIOBJ_VTABLE_TRUE = {
-    .free = fiobj_simple_dealloc,
-    .to_i = fio_true2i,
-    .to_f = fio_true2f,
-    .to_str = fio_true2str,
-    .is_eq = fiobj_simple_is_eq,
-    .count = fiobj_noop_count,
-    .each1 = fiobj_noop_each1,
-};
-static struct fiobj_vtable_s FIOBJ_VTABLE_FALSE = {
-    .free = fiobj_simple_dealloc,
-    .to_i = fiobj_noop_i,
-    .to_f = fiobj_noop_f,
-    .to_str = fio_false2str,
-    .is_eq = fiobj_simple_is_eq,
-    .count = fiobj_noop_count,
+    /* return a wrapped object (if object wrapping exists, i.e. Hash couplet) */
+    .unwrap = fiobj_noop_unwrap,
+    /* perform a task for the object's children (-1 stops iteration)
+     * returns the number of items processed + `start_at`.
+     */
     .each1 = fiobj_noop_each1,
 };
 
-/* *****************************************************************************
-NULL, TRUE, FALSE API
-***************************************************************************** */
+/** Identifies the NULL type. */
+const uintptr_t FIOBJ_T_NULL = (uintptr_t)(&NULL_VTABLE);
 
-inline static fiobj_s *fiobj_simple_alloc(fiobj_type_en t,
-                                          struct fiobj_vtable_s *vt) {
-  fiobj_head_s *head;
-  head = malloc(sizeof(*head) + sizeof(fiobj_s));
-  if (!head)
-    perror("ERROR: fiobj primitive couldn't allocate memory"), exit(errno);
-  *head = (fiobj_head_s){
-      .ref = 1, .vtable = vt,
-  };
-  HEAD2OBJ(head)->type = t;
-  return HEAD2OBJ(head);
-}
-
-/** Retruns a NULL object. */
+/** Returns a NULL object. */
 fiobj_s *fiobj_null(void) {
-  return fiobj_simple_alloc(FIOBJ_T_NULL, &FIOBJ_VTABLE_NULL);
+  static struct {
+    fiobj_head_s head;
+    struct fiobj_vtable_s *vtable;
+  } null_obj = {.head = {.ref = 1}, .vtable = &NULL_VTABLE};
+  return (fiobj_s *)(&null_obj.vtable);
 }
 
-/** Retruns a FALSE object. */
-fiobj_s *fiobj_false(void) {
-  return fiobj_simple_alloc(FIOBJ_T_FALSE, &FIOBJ_VTABLE_FALSE);
-}
+/* *****************************************************************************
+True
+***************************************************************************** */
 
-/** Retruns a TRUE object. */
+static struct fiobj_vtable_s TRUE_VTABLE = {
+    .name = "True",
+    /* deallocate an object */
+    .free = fiobj_noop_free,
+    /* object should evaluate as true/false? */
+    .is_true = fiobj_noop_true,
+    /* object value as String */
+    .to_str = fiobj_noop_str,
+    /* object value as Integer */
+    .to_i = fiobj_noop_i,
+    /* object value as Float */
+    .to_f = fiobj_noop_f,
+    .is_eq = fiobj_primitive_is_eq,
+    /* return the number of nested object */
+    .count = fiobj_noop_count,
+    /* return a wrapped object (if object wrapping exists, i.e. Hash couplet) */
+    .unwrap = fiobj_noop_unwrap,
+    /* perform a task for the object's children (-1 stops iteration)
+     * returns the number of items processed + `start_at`.
+     */
+    .each1 = fiobj_noop_each1,
+};
+
+/** Identifies the TRUE type. */
+const uintptr_t FIOBJ_T_TRUE = (uintptr_t)(&TRUE_VTABLE);
+
+/** Returns a TRUE object. */
 fiobj_s *fiobj_true(void) {
-  return fiobj_simple_alloc(FIOBJ_T_TRUE, &FIOBJ_VTABLE_TRUE);
+  static struct {
+    fiobj_head_s head;
+    struct fiobj_vtable_s *vtable;
+  } obj = {.head = {.ref = 1}, .vtable = &TRUE_VTABLE};
+  return (fiobj_s *)(&obj.vtable);
+}
+
+/* *****************************************************************************
+False
+***************************************************************************** */
+
+static struct fiobj_vtable_s FALSE_VTABLE = {
+    .name = "False",
+    /* deallocate an object */
+    .free = fiobj_noop_free,
+    /* object should evaluate as true/false? */
+    .is_true = fiobj_noop_false,
+    /* object value as String */
+    .to_str = fiobj_noop_str,
+    /* object value as Integer */
+    .to_i = fiobj_noop_i,
+    /* object value as Float */
+    .to_f = fiobj_noop_f,
+    .is_eq = fiobj_primitive_is_eq,
+    /* return the number of nested object */
+    .count = fiobj_noop_count,
+    /* return a wrapped object (if object wrapping exists, i.e. Hash couplet) */
+    .unwrap = fiobj_noop_unwrap,
+    /* perform a task for the object's children (-1 stops iteration)
+     * returns the number of items processed + `start_at`.
+     */
+    .each1 = fiobj_noop_each1,
+};
+
+/** Identifies the FALSE type. */
+const uintptr_t FIOBJ_T_FALSE = (uintptr_t)(&FALSE_VTABLE);
+
+/** Returns a FALSE object. */
+fiobj_s *fiobj_false(void) {
+  static struct {
+    fiobj_head_s head;
+    struct fiobj_vtable_s *vtable;
+  } obj = {.head = {.ref = 1}, .vtable = &FALSE_VTABLE};
+  return (fiobj_s *)(&obj.vtable);
 }

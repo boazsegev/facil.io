@@ -14,13 +14,11 @@ Having a local application crash at Runtime is bad. But having a server crash wh
 
 ### The Solution
 
-`facil.io` offers the static `fiobj_s` type object. This type contains only a single public data member - it's actual type (using an `enum`).
+`facil.io` offers the static `fiobj_s` type object. This type contains only a single public data member - it's actual type (using a numerical unique ID that maps an object to it's virtual function table and type data).
 
 This offers the following advantages (among others):
 
 * Saves you precious development time.
-
-* Using `switch` statements will warn about unhandled cases and offer a strong type mismatching protection (this is achieved by having a static type system).
 
 * Allows deep integration with `facil.io` services, reducing the need to translate from one type to another.
 
@@ -29,6 +27,8 @@ This offers the following advantages (among others):
 * Offers non-recursive iteration and an *optional* (disabled by default) cyclic nesting protection.
 
 * Offers JSON parsing and formatting to and from `fiobj_s *`.
+
+* Extendable type system, allowing new dynamic types to be easily create as needed.
 
 ## API Considerations
 
@@ -124,7 +124,7 @@ fiobj_free(str);
 fiobj_free(str2);
 ```
 
-If you need a fresh copy, simply create a new object instead of duplicating the old one:
+An independent copy can be created using an object's specific copy function. This example  create a new, independent, object instead of referencing the old one:
 
 ```c
 fiobj_s * str = fiobj_str_new("Hello!", 6);
@@ -147,7 +147,7 @@ fiobj_s * ary_copy = fiobj_dup(ary);
 // ...
 fiobj_free(ary);
 // all the items in ary2 are still accessible.
-fprintf(stderr, "%s\n", fiobj_obj2cstr( fiobj_ary_entry(ary_copy, -1) ).buffer );
+fprintf(stderr, "%s\n", fiobj_obj2cstr( fiobj_ary_index(ary_copy, -1) ).buffer );
 fiobj_free(ary_copy);
 ```
 
@@ -170,7 +170,7 @@ fiobj_s * ary2 = fiobj_ary_new();
 // cyclic nesting
 fiobj_ary_push(ary, ary2);
 fiobj_ary_push(ary2, ary);
-// free will crash
+// free might crash or produce unexpected results
 fiobj_free(ary);
 // dup and each2 will cycle forever
 fiobj_s * ary3 = fiobj_dup(ary2);

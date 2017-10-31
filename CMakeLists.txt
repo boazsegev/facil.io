@@ -30,18 +30,16 @@ set(facil.io_SOURCES
   ./lib/facil/bscrypt/bscrypt/sha2.c
   ./lib/facil/bscrypt/bscrypt/siphash.c
   ./lib/facil/bscrypt/bscrypt/xor-crypt.c
-  ./lib/facil/core/types/fiobj/fiobj_alloc.c
   ./lib/facil/core/types/fiobj/fiobj_ary.c
-  ./lib/facil/core/types/fiobj/fiobj_generic.c
   ./lib/facil/core/types/fiobj/fiobj_hash.c
-  ./lib/facil/core/types/fiobj/fiobj_io.c
+  ./lib/facil/core/types/fiobj/fiobj_internal.c
   ./lib/facil/core/types/fiobj/fiobj_json.c
-  ./lib/facil/core/types/fiobj/fiobj_misc.c
   ./lib/facil/core/types/fiobj/fiobj_numbers.c
   ./lib/facil/core/types/fiobj/fiobj_primitives.c
   ./lib/facil/core/types/fiobj/fiobj_str.c
   ./lib/facil/core/types/fiobj/fiobj_sym.c
   ./lib/facil/core/types/fiobj/fiobj_tests.c
+  ./lib/facil/core/types/fiobj/fiobject.c
 )
 
 add_library(facil.io ${facil.io_SOURCES})

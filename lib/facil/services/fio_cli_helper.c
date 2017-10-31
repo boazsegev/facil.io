@@ -181,7 +181,7 @@ static void fio_cli_parse(void) {
       goto error;
     /* at this point arg_name is a handle to the argument's Symbol */
     fiobj_s *type = fiobj_hash_get(arg_type, arg_name);
-    if (FIOBJ_ISNULL(type)) {
+    if (type->type == FIOBJ_T_NULL) {
       /* type is BOOL, no further processing required */
       start = "1";
       len = 1;
@@ -197,7 +197,7 @@ static void fio_cli_parse(void) {
     } else
       start = start + len;
     len = 0;
-    if (FIOBJ_FALSE(type)) /* no restrictions on data  */
+    if (type->type == FIOBJ_T_FALSE) /* no restrictions on data  */
       goto set_arg;
     /* test that the argument is numerical */
     if (start[len] == '-') /* negative number? */

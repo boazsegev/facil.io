@@ -5,7 +5,24 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 
-#include "fiobj_types.h"
+#include "fiobj_internal.h"
+
+/* *****************************************************************************
+Numbers Type
+***************************************************************************** */
+
+typedef struct {
+  struct fiobj_vtable_s *vtable;
+  uint64_t i;
+} fiobj_num_s;
+
+typedef struct {
+  struct fiobj_vtable_s *vtable;
+  double f;
+} fiobj_float_s;
+
+#define obj2num(o) ((fiobj_num_s *)(o))
+#define obj2float(o) ((fiobj_float_s *)(o))
 
 /* *****************************************************************************
 Numbers VTable
@@ -14,11 +31,12 @@ Numbers VTable
 static __thread char num_buffer[512];
 
 static int64_t fio_i2i(fiobj_s *o) { return obj2num(o)->i; }
-static int64_t fio_f2i(fiobj_s *o) {
-  return (int64_t)floorl(((fio_float_s *)o)->f);
-}
+static int64_t fio_f2i(fiobj_s *o) { return (int64_t)floorl(obj2float(o)->f); }
 static double fio_i2f(fiobj_s *o) { return (double)obj2num(o)->i; }
 static double fio_f2f(fiobj_s *o) { return obj2float(o)->f; }
+
+static int fio_itrue(fiobj_s *o) { return (obj2num(o)->i != 0); }
+static int fio_ftrue(fiobj_s *o) { return (obj2float(o)->f != 0); }
 
 static fio_cstr_s fio_i2str(fiobj_s *o) {
   return (fio_cstr_s){
@@ -40,37 +58,41 @@ static fio_cstr_s fio_f2str(fiobj_s *o) {
 }
 
 static int fiobj_i_is_eq(fiobj_s *self, fiobj_s *other) {
-  if (!other || other->type != self->type ||
-      obj2num(self)->i != obj2num(other)->i)
-    return 0;
-  return 1;
+  return self->type == other->type && obj2num(self)->i == obj2num(other)->i;
 }
 static int fiobj_f_is_eq(fiobj_s *self, fiobj_s *other) {
-  if (!other || other->type != self->type ||
-      obj2float(self)->f != obj2float(other)->f)
-    return 0;
-  return 1;
+  return self->type == other->type && obj2float(self)->f == obj2float(other)->f;
 }
 
 static struct fiobj_vtable_s FIOBJ_VTABLE_INT = {
+    .name = "Number",
     .free = fiobj_simple_dealloc,
     .to_i = fio_i2i,
     .to_f = fio_i2f,
     .to_str = fio_i2str,
+    .is_true = fio_itrue,
     .is_eq = fiobj_i_is_eq,
     .count = fiobj_noop_count,
+    .unwrap = fiobj_noop_unwrap,
     .each1 = fiobj_noop_each1,
 };
 
+const uintptr_t FIOBJ_T_NUMBER = (uintptr_t)&FIOBJ_VTABLE_INT;
+
 static struct fiobj_vtable_s FIOBJ_VTABLE_FLOAT = {
+    .name = "Float",
     .free = fiobj_simple_dealloc,
     .to_i = fio_f2i,
     .to_f = fio_f2f,
+    .is_true = fio_ftrue,
     .to_str = fio_f2str,
     .is_eq = fiobj_f_is_eq,
     .count = fiobj_noop_count,
+    .unwrap = fiobj_noop_unwrap,
     .each1 = fiobj_noop_each1,
 };
+
+const uintptr_t FIOBJ_T_FLOAT = (uintptr_t)&FIOBJ_VTABLE_FLOAT;
 
 /* *****************************************************************************
 Number API
@@ -78,15 +100,13 @@ Number API
 
 /** Creates a Number object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_num_new(int64_t num) {
-  fiobj_head_s *head;
-  head = malloc(sizeof(*head) + sizeof(fio_num_s));
-  if (!head)
+  fiobj_num_s *o = (fiobj_num_s *)fiobj_alloc(sizeof(*o));
+  if (!o)
     perror("ERROR: fiobj number couldn't allocate memory"), exit(errno);
-  *head = (fiobj_head_s){
-      .ref = 1, .vtable = &FIOBJ_VTABLE_INT,
+  *o = (fiobj_num_s){
+      .vtable = &FIOBJ_VTABLE_INT, .i = num,
   };
-  *obj2num(HEAD2OBJ(head)) = (fio_num_s){.i = num, .type = FIOBJ_T_NUMBER};
-  return HEAD2OBJ(head);
+  return (fiobj_s *)o;
 }
 
 /** Mutates a Number object's value. Effects every object's reference! */
@@ -98,15 +118,13 @@ Float API
 
 /** Creates a Float object. Remember to use `fiobj_free`.  */
 fiobj_s *fiobj_float_new(double num) {
-  fiobj_head_s *head;
-  head = malloc(sizeof(*head) + sizeof(fio_float_s));
-  if (!head)
+  fiobj_float_s *o = (fiobj_float_s *)fiobj_alloc(sizeof(*o));
+  if (!o)
     perror("ERROR: fiobj float couldn't allocate memory"), exit(errno);
-  *head = (fiobj_head_s){
-      .ref = 1, .vtable = &FIOBJ_VTABLE_FLOAT,
+  *o = (fiobj_float_s){
+      .vtable = &FIOBJ_VTABLE_FLOAT, .f = num,
   };
-  *obj2float(HEAD2OBJ(head)) = (fio_float_s){.f = num, .type = FIOBJ_T_FLOAT};
-  return HEAD2OBJ(head);
+  return (fiobj_s *)o;
 }
 
 /** Mutates a Float object's value. Effects every object's reference!  */

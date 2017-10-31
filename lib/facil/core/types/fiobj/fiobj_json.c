@@ -4,9 +4,13 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "fiobj_types.h"
+#include "fiobj_json.h"
+
 // #include "fio2resp.h"
 #include <ctype.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 /* *****************************************************************************
 JSON API
@@ -85,78 +89,84 @@ static inline int utf8_from_u32(uint8_t *dest, uint32_t u) {
 /** Writes a JSON friendly version of the src String, requires the */
 static void write_safe_str(fiobj_s *dest, fiobj_s *str) {
   fio_cstr_s s = fiobj_obj2cstr(str);
+  fio_cstr_s t = fiobj_obj2cstr(dest);
   const uint8_t *src = (const uint8_t *)s.data;
   size_t len = s.len;
-  uint64_t end = obj2str(dest)->len;
+  uint64_t end = t.len;
   /* make sure we have some room */
   size_t added = 0;
-  if (obj2str(dest)->capa <= end + s.len + 64)
-    fiobj_str_capa_assert(dest, (((obj2str(dest)->capa >> 12) + 1) << 12) - 1);
+  size_t capa = fiobj_str_capa(dest);
+  if (capa <= end + s.len + 64) {
+    capa = (((capa >> 12) + 1) << 12) - 1;
+    fiobj_str_capa_assert(dest, capa);
+    t = fiobj_obj2cstr(dest);
+  }
   while (len) {
+    char *writer = (char *)t.data;
     while (len &&
            (src[0] > 32 && src[0] != '"' && src[0] != '\\' && src[0] != '/')) {
       len--;
-      obj2str(dest)->str[end++] = *(src++);
+      writer[end++] = *(src++);
     }
     if (!len)
       break;
     switch (src[0]) {
     case '\b':
-      obj2str(dest)->str[end++] = '\\';
-      obj2str(dest)->str[end++] = 'b';
+      writer[end++] = '\\';
+      writer[end++] = 'b';
       added++;
       break; /* from switch */
     case '\f':
-      obj2str(dest)->str[end++] = '\\';
-      obj2str(dest)->str[end++] = 'f';
+      writer[end++] = '\\';
+      writer[end++] = 'f';
       added++;
       break; /* from switch */
     case '\n':
-      obj2str(dest)->str[end++] = '\\';
-      obj2str(dest)->str[end++] = 'n';
+      writer[end++] = '\\';
+      writer[end++] = 'n';
       added++;
       break; /* from switch */
     case '\r':
-      obj2str(dest)->str[end++] = '\\';
-      obj2str(dest)->str[end++] = 'r';
+      writer[end++] = '\\';
+      writer[end++] = 'r';
       added++;
       break; /* from switch */
     case '\t':
-      obj2str(dest)->str[end++] = '\\';
-      obj2str(dest)->str[end++] = 't';
+      writer[end++] = '\\';
+      writer[end++] = 't';
       added++;
       break; /* from switch */
     case '"':
     case '\\':
     case '/':
-      obj2str(dest)->str[end++] = '\\';
-      obj2str(dest)->str[end++] = src[0];
+      writer[end++] = '\\';
+      writer[end++] = src[0];
       added++;
       break; /* from switch */
     default:
       if (src[0] <= 31) {
         /* MUST escape all control values less than 32 */
-        obj2str(dest)->str[end++] = '\\';
-        obj2str(dest)->str[end++] = 'u';
-        obj2str(dest)->str[end++] = '0';
-        obj2str(dest)->str[end++] = '0';
-        obj2str(dest)->str[end++] = hex_chars[src[0] >> 4];
-        obj2str(dest)->str[end++] = hex_chars[src[0] & 15];
+        writer[end++] = '\\';
+        writer[end++] = 'u';
+        writer[end++] = '0';
+        writer[end++] = '0';
+        writer[end++] = hex_chars[src[0] >> 4];
+        writer[end++] = hex_chars[src[0] & 15];
         added += 4;
       } else
-        obj2str(dest)->str[end++] = src[0];
+        writer[end++] = src[0];
       break; /* from switch */
     }
     src++;
     len--;
-    if (added >= 48 && obj2str(dest)->capa <= end + len + 64) {
-      fiobj_str_capa_assert(dest,
-                            (((obj2str(dest)->capa >> 12) + 1) << 12) - 1);
+    if (added >= 48 && capa <= end + len + 64) {
+      capa = (((capa >> 12) + 1) << 12) - 1;
+      fiobj_str_capa_assert(dest, capa);
+      t = fiobj_obj2cstr(dest);
       added = 0;
     }
   }
-  obj2str(dest)->len = end;
-  obj2str(dest)->str[end] = 0;
+  fiobj_str_resize(dest, end);
 }
 
 /* *****************************************************************************
@@ -179,7 +189,7 @@ static int fiobj_str_new_json_task(fiobj_s *obj, void *d_) {
   /* headroom */
   fiobj_str_capa_assert(
       data->buffer,
-      ((((obj2str(data->buffer)->len + 63) >> 12) + 1) << 12) - 1);
+      ((((fiobj_obj2cstr(data->buffer).len + 63) >> 12) + 1) << 12) - 1);
 pretty_re_rooted:
   /* pretty? */
   if (data->pretty) {
@@ -193,36 +203,32 @@ re_rooted:
     fiobj_str_write(data->buffer, "null", 4);
     goto review_nesting;
   }
-  switch (obj->type) {
-  case FIOBJ_T_HASH:
+  if (obj->type == FIOBJ_T_HASH) {
     fiobj_str_write(data->buffer, "{", 1);
     fiobj_ary_push(data->parent, obj);
     fiobj_ary_push(data->waiting, data->count);
     data->count = fiobj_num_new(fiobj_hash_count(obj));
-    break;
-  case FIOBJ_T_ARRAY:
+  } else if (obj->type == FIOBJ_T_ARRAY) {
     fiobj_str_write(data->buffer, "[", 1);
     /* push current state to stacks and update state */
     fiobj_ary_push(data->parent, obj);
     fiobj_ary_push(data->waiting, data->count);
     data->count = fiobj_num_new(fiobj_ary_count(obj));
-    break;
-  case FIOBJ_T_SYMBOL:
-  case FIOBJ_T_STRING: {
+  } else if (obj->type == FIOBJ_T_SYMBOL || FIOBJ_IS_STRING(obj)) {
     fiobj_str_capa_assert(
         data->buffer,
-        ((((obj2str(data->buffer)->len + 63 + obj2str(obj)->len) >> 12) + 1)
+        ((((fiobj_obj2cstr(data->buffer).len + 63 + fiobj_obj2cstr(obj).len) >>
+           12) +
+          1)
          << 12) -
             1);
     fiobj_str_write(data->buffer, "\"", 1);
     write_safe_str(data->buffer, obj);
     fiobj_str_write(data->buffer, "\"", 1);
-    break;
-  }
-  case FIOBJ_T_COUPLET: {
+  } else if (obj->type == FIOBJ_T_COUPLET) {
     fiobj_str_capa_assert(data->buffer,
-                          ((((obj2str(data->buffer)->len + 31 +
-                              obj2sym(fiobj_couplet2key(obj))->len) >>
+                          ((((fiobj_obj2cstr(data->buffer).len + 31 +
+                              fiobj_obj2cstr(fiobj_couplet2key(obj)).len) >>
                              12) +
                             1)
                            << 12) -
@@ -235,54 +241,15 @@ re_rooted:
         (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH))
       goto pretty_re_rooted;
     goto re_rooted;
-    break;
-  }
-  case FIOBJ_T_NUMBER:
-    obj2str(data->buffer)->len +=
-        fio_ltoa(obj2str(data->buffer)->str + obj2str(data->buffer)->len,
-                 obj2num(obj)->i, 10);
-    break;
-  case FIOBJ_T_FLOAT:
-    if (isnan(obj2float(obj)->f))
-      fiobj_str_write(data->buffer, "\"NaN\"", 5);
-    else if (isinf(obj2float(obj)->f)) {
-      if (obj2float(obj)->f > 0)
-        fiobj_str_write(data->buffer, "\"Infinity\"", 10);
-      else
-        fiobj_str_write(data->buffer, "\"-Infinity\"", 11);
-    } else {
-      char *start = obj2str(data->buffer)->str + obj2str(data->buffer)->len;
-      fiobj_str_write2(data->buffer, "%g", obj2float(obj)->f);
-      uint8_t need_zero = 1;
-      while (*start) {
-        if (*start == ',') // locale issues?
-          *start = '.';
-        if (*start == '.' || *start == 'e') {
-          need_zero = 0;
-          break;
-        }
-        start++;
-      }
-      if (need_zero)
-        fiobj_str_write(data->buffer, ".0", 2);
-    }
-    break;
-  // case FIOBJ_T_FLOAT:
-  //   obj2str(data->buffer)->len +=
-  //       fio_ftoa(obj2str(data->buffer)->str + obj2str(data->buffer)->len,
-  //                obj2float(obj)->f, 10);
-  //   break;
-  case FIOBJ_T_TRUE:
-    fiobj_str_write(data->buffer, "true", 4);
-    break;
-  case FIOBJ_T_FALSE:
-    fiobj_str_write(data->buffer, "false", 5);
-    break;
-  case FIOBJ_T_IO:
-  case FIOBJ_T_NULL:
+  } else if (obj->type == FIOBJ_T_NUMBER || obj->type == FIOBJ_T_FLOAT) {
+    fio_cstr_s i2s = fiobj_obj2cstr(obj);
+    fiobj_str_write(data->buffer, i2s.data, i2s.len);
+  } else if (obj->type == FIOBJ_T_NULL) {
     fiobj_str_write(data->buffer, "null", 4);
-    break;
-  }
+  } else if (fiobj_is_true(obj)) {
+    fiobj_str_write(data->buffer, "true", 4);
+  } else
+    fiobj_str_write(data->buffer, "false", 5);
 
 review_nesting:
   /* print clousure to String */
@@ -528,15 +495,8 @@ static void safestr2local(fiobj_s *str) {
       reader += 2;
     }
   }
-  if (str->type == FIOBJ_T_STRING) {
-    obj2str(str)->len = (uintptr_t)writer - (uintptr_t)obj2str(str)->str;
-    obj2str(str)->str[obj2str(str)->len] = 0;
-  } else {
-    obj2sym(str)->len = (uintptr_t)writer - (uintptr_t)obj2sym(str)->str;
-    obj2sym(str)->str[obj2sym(str)->len] = 0;
-    if (had_changed)
-      obj2sym(str)->hash = fiobj_sym_hash(obj2sym(str)->str, obj2sym(str)->len);
-  }
+  // if(had_changed)
+  fiobj_str_resize(str, (uintptr_t)writer - (uintptr_t)s.bytes);
 }
 
 /* *****************************************************************************
@@ -667,14 +627,16 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       if (end >= stop) {
         goto error;
       }
-      if (fiobj_ary_entry(nesting, -1) &&
-          fiobj_ary_entry(nesting, -1)->type == FIOBJ_T_HASH) {
-        obj = fiobj_sym_new((char *)start, end - start);
-      } else {
-        obj = fiobj_str_new((char *)start, end - start);
-      }
+      obj = fiobj_str_new((char *)start, end - start);
       if (dirty)
         safestr2local(obj);
+      if (fiobj_ary_index(nesting, -1) &&
+          fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
+        fiobj_s *tmp = obj;
+        fio_cstr_s s = fiobj_obj2cstr(tmp);
+        obj = fiobj_sym_new(s.data, s.len);
+        fiobj_free(tmp);
+      }
       end++;
 
       goto has_obj;
@@ -692,33 +654,17 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       }
       obj = fiobj_num_new(num);
       goto has_obj;
-      // uint8_t decimal = 0;
-      // while (end < stop && JSON_SEPERATOR[*end] == 0 && *end != ']' &&
-      //        *end != '}') {
-      //   if (*end == '.' || *end == 'e' || *end == 'E')
-      //     decimal = 1;
-      //   end++;
-      // }
-      // /* test against forbidden leading zeros... but allow hex and binary
-      // */ if (end - start > 1 && start[0] == '0' &&
-      //     !(start[1] == '.' || start[1] == 'x' || start[1] == 'b')) {
-      //   goto error;
-      // }
-      // /* it's a number */
-      // if (decimal) {
-      //   obj = fiobj_float_new(fio_atof((char *)start));
-      // } else {
-      //   obj = fiobj_num_new(fio_atol((char *)start));
-      // }
-      // goto has_obj;
     }
     if (end[0] == 'N' && end[1] == 'a' && end[2] == 'N') {
+      move_to_end(&end, stop);
       obj = fiobj_float_new(nan(""));
       goto has_obj;
     }
-    if (end[0] == '-' && end[1] == 'I' && end[2] == 'n' && end[3] == 'f') {
-      obj = fiobj_float_new(nan(""));
-      obj2float(obj)->f = copysign(obj2float(obj)->f, (double)-1);
+    if (end[0] == '-' && end[1] == 'N' && end[2] == 'a' && end[3] == 'N') {
+      move_to_end(&end, stop);
+      double fl = nan("");
+      fl = copysign(fl, (double)-1);
+      obj = fiobj_float_new(fl);
       goto has_obj;
     }
     if (end[0] == 'I' && end[1] == 'n' && end[2] == 'f') {
@@ -728,8 +674,9 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     }
     if (end[0] == '-' && end[1] == 'I' && end[2] == 'n' && end[3] == 'f') {
       move_to_end(&end, stop);
-      obj = fiobj_float_new(INFINITY);
-      obj2float(obj)->f = copysign(obj2float(obj)->f, (double)-1);
+      double fl = INFINITY;
+      fl = copysign(fl, (double)-1);
+      obj = fiobj_float_new(fl);
       goto has_obj;
     }
     goto error;
@@ -738,20 +685,20 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
 
     if (fiobj_ary_count(nesting) == 0)
       goto finish_with_obj;
-    if (fiobj_ary_entry(nesting, -1)->type == FIOBJ_T_ARRAY) {
-      fiobj_ary_push(fiobj_ary_entry(nesting, -1), obj);
+    if (fiobj_ary_index(nesting, -1)->type == FIOBJ_T_ARRAY) {
+      fiobj_ary_push(fiobj_ary_index(nesting, -1), obj);
       continue;
     }
-    if (fiobj_ary_entry(nesting, -1)->type == FIOBJ_T_HASH) {
+    if (fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
       fio_cstr_s s = fiobj_obj2cstr(obj);
       fiobj_ary_push(nesting, fiobj_sym_new(s.buffer, s.len));
       fiobj_free(obj);
       continue;
     }
     fiobj_s *sym = fiobj_ary_pop(nesting);
-    if (fiobj_ary_entry(nesting, -1)->type != FIOBJ_T_HASH)
+    if (fiobj_ary_index(nesting, -1)->type != FIOBJ_T_HASH)
       goto error;
-    fiobj_hash_set(fiobj_ary_entry(nesting, -1), sym, obj);
+    fiobj_hash_set(fiobj_ary_index(nesting, -1), sym, obj);
     fiobj_free(sym);
     continue;
   }
