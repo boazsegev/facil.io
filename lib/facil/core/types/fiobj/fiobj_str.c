@@ -33,7 +33,7 @@ static void fiobj_str_dealloc(fiobj_s *o) {
 }
 
 static int fiobj_str_is_eq(fiobj_s *self, fiobj_s *other) {
-  if (!other || other->type != self->type ||
+  if (!other || (FIOBJ_IS_STRING(other)) ||
       obj2str(self)->len != obj2str(other)->len)
     return 0;
   return self == other || obj2str(self)->str == obj2str(other)->str ||
@@ -146,7 +146,6 @@ fiobj_s *fiobj_str_static(const char *str, size_t len) {
   };
   if (!obj2str(o)->str)
     perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
-  obj2str(o)->str[len] = 0;
   return o;
 }
 
