@@ -20,6 +20,7 @@ Object Deallocation
 void fiobj_dealloc(fiobj_s *obj) {
   if (!obj)
     return;
+#if DEBUG
   if (OBJ2HEAD(obj).ref == 0) {
     fprintf(stderr,
             "ERROR: attempting to free an object that isn't a fiobj or already "
@@ -27,6 +28,7 @@ void fiobj_dealloc(fiobj_s *obj) {
             (void *)obj);
     kill(0, SIGABRT);
   }
+#endif
   if (spn_sub(&OBJ2HEAD(obj).ref, 1))
     return;
   OBJ2HEAD(obj).vtable->free(obj);
