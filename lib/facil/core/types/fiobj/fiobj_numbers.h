@@ -29,7 +29,7 @@ void fiobj_num_set(fiobj_s *target, int64_t num);
 Float API (Double)
 ***************************************************************************** */
 
-extern uintptr_t FIOBJ_T_FLOAT;
+extern const uintptr_t FIOBJ_T_FLOAT;
 
 /** Creates a Float object. Remember to use `fiobj_free`.  */
 fiobj_s *fiobj_float_new(double num);
