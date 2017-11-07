@@ -139,6 +139,8 @@ static int fiobj_free_or_mark(fiobj_s *o, void *arg) {
  */
 void fiobj_free(fiobj_s *o) {
 #if DEBUG
+  if (!o)
+    return;
   if (OBJ2HEAD(o)->ref == 0) {
     fprintf(stderr,
             "ERROR: attempting to free an object that isn't a fiobj or already "
@@ -147,7 +149,7 @@ void fiobj_free(fiobj_s *o) {
     kill(0, SIGABRT);
   }
 #endif
-  if (OBJREF_REM(o))
+  if (!o || OBJREF_REM(o))
     return;
 
   /* handle wrapping */
