@@ -24,20 +24,20 @@ typedef struct {
 Symbol VTable
 ***************************************************************************** */
 
-static int fiobj_sym_is_eq(fiobj_s *self, fiobj_s *other) {
+static int fiobj_sym_is_eq(const fiobj_s *self, const fiobj_s *other) {
   if (other->type != self->type)
     return 0;
   return obj2sym(self)->hash == obj2sym(other)->hash;
 }
 
-static fio_cstr_s fio_sym2str(fiobj_s *o) {
+static fio_cstr_s fio_sym2str(const fiobj_s *o) {
   return (fio_cstr_s){.buffer = obj2sym(o)->str, .len = obj2sym(o)->len};
 }
-static int64_t fio_sym2i(fiobj_s *o) {
+static int64_t fio_sym2i(const fiobj_s *o) {
   char *s = obj2sym(o)->str;
   return fio_atol(&s);
 }
-static double fio_sym2f(fiobj_s *o) {
+static double fio_sym2f(const fiobj_s *o) {
   char *s = obj2sym(o)->str;
   return fio_atof(&s);
 }

@@ -23,32 +23,32 @@ void fiobj_simple_dealloc(fiobj_s *o) { fiobj_dealloc(o); }
 
 void fiobj_noop_free(fiobj_s *obj) { OBJ2HEAD(obj)->ref = (uintptr_t)-1; }
 
-int fiobj_noop_true(fiobj_s *obj) {
+int fiobj_noop_true(const fiobj_s *obj) {
   return 1;
   (void)obj;
 }
-int fiobj_noop_false(fiobj_s *obj) {
+int fiobj_noop_false(const fiobj_s *obj) {
   return 0;
   (void)obj;
 }
-fio_cstr_s fiobj_noop_str(fiobj_s *obj) {
+fio_cstr_s fiobj_noop_str(const fiobj_s *obj) {
   return (fio_cstr_s){.length = 0, .data = ""};
   (void)obj;
 }
-int64_t fiobj_noop_i(fiobj_s *obj) {
+int64_t fiobj_noop_i(const fiobj_s *obj) {
   return 0;
   (void)obj;
 }
-double fiobj_noop_f(fiobj_s *obj) {
+double fiobj_noop_f(const fiobj_s *obj) {
   return 0;
   (void)obj;
 }
-size_t fiobj_noop_count(fiobj_s *obj) {
+size_t fiobj_noop_count(const fiobj_s *obj) {
   return 0;
   (void)obj;
 }
-fiobj_s *fiobj_noop_unwrap(fiobj_s *obj) {
-  return obj;
+fiobj_s *fiobj_noop_unwrap(const fiobj_s *obj) {
+  return (fiobj_s *)obj;
   (void)obj;
 }
 size_t fiobj_noop_each1(fiobj_s *obj, size_t start_at,

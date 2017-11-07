@@ -32,7 +32,7 @@ static void fiobj_str_dealloc(fiobj_s *o) {
   fiobj_dealloc(o);
 }
 
-static int fiobj_str_is_eq(fiobj_s *self, fiobj_s *other) {
+static int fiobj_str_is_eq(const fiobj_s *self, const fiobj_s *other) {
   if (!other || (FIOBJ_IS_STRING(other)) ||
       obj2str(self)->len != obj2str(other)->len)
     return 0;
@@ -40,19 +40,19 @@ static int fiobj_str_is_eq(fiobj_s *self, fiobj_s *other) {
          !memcmp(obj2str(self)->str, obj2str(other)->str, obj2str(self)->len);
 }
 
-static fio_cstr_s fio_str2str(fiobj_s *o) {
+static fio_cstr_s fio_str2str(const fiobj_s *o) {
   return (fio_cstr_s){.buffer = obj2str(o)->str, .len = obj2str(o)->len};
 }
-static int64_t fio_str2i(fiobj_s *o) {
+static int64_t fio_str2i(const fiobj_s *o) {
   char *s = obj2str(o)->str;
   return fio_atol(&s);
 }
-static double fio_str2f(fiobj_s *o) {
+static double fio_str2f(const fiobj_s *o) {
   char *s = obj2str(o)->str;
   return fio_atof(&s);
 }
 
-static int fio_str2bool(fiobj_s *o) { return obj2str(o)->len != 0; }
+static int fio_str2bool(const fiobj_s *o) { return obj2str(o)->len != 0; }
 
 static struct fiobj_vtable_s FIOBJ_VTABLE_STRING = {
     .name = "String",
@@ -96,7 +96,7 @@ static inline fiobj_s *fiobj_str_alloc(size_t len) {
   *obj2str(o) = (fiobj_str_s){
       .vtable = &FIOBJ_VTABLE_STRING,
       .len = len,
-      .capa = len,
+      .capa = len + 1,
       .str = malloc(len + 1),
   };
   if (!obj2str(o)->str)
@@ -122,6 +122,25 @@ fiobj_s *fiobj_str_buf(size_t capa) {
   fiobj_s *s = fiobj_str_alloc(capa);
   fiobj_str_clear(s);
   return s;
+}
+
+/**
+ * Creates a String object. Remember to use `fiobj_free`.
+ *
+ * The ownership of the memory indicated by `str` will now "move" to the object,
+ * so `free` will be called for `str` by the `fiobj` library as needed.
+ */
+fiobj_s *fiobj_str_move(char *str, size_t len, size_t capacity) {
+  fiobj_s *o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
+  if (!o)
+    perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
+  *obj2str(o) = (fiobj_str_s){
+      .vtable = &FIOBJ_VTABLE_STRING,
+      .len = len,
+      .capa = (capacity < len ? len : capacity),
+      .str = (char *)str,
+  };
+  return o;
 }
 
 /**

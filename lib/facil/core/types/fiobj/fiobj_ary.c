@@ -107,7 +107,7 @@ static size_t fiobj_ary_each1(fiobj_s *o, size_t start_at,
   return start_at - start_pos;
 }
 
-static int fiobj_ary_is_eq(fiobj_s *self, fiobj_s *other) {
+static int fiobj_ary_is_eq(const fiobj_s *self, const fiobj_s *other) {
   if (self == other)
     return 1;
   if (!other || other->type != FIOBJ_T_ARRAY ||
@@ -118,7 +118,7 @@ static int fiobj_ary_is_eq(fiobj_s *self, fiobj_s *other) {
 }
 
 /** Returns the number of elements in the Array. */
-static size_t fiobj_ary_count_items(fiobj_s *ary) {
+static size_t fiobj_ary_count_items(const fiobj_s *ary) {
   return (obj2ary(ary)->end - obj2ary(ary)->start);
 }
 

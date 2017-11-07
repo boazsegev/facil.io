@@ -15,7 +15,7 @@ Herein are defined some primitive types for the facil.io dynamic object system.
 NULL
 ***************************************************************************** */
 
-static int fiobj_primitive_is_eq(fiobj_s *self, fiobj_s *other) {
+static int fiobj_primitive_is_eq(const fiobj_s *self, const fiobj_s *other) {
   return self == other;
 }
 

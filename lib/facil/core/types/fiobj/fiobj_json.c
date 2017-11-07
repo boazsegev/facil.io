@@ -87,10 +87,10 @@ static inline int utf8_from_u32(uint8_t *dest, uint32_t u) {
 }
 
 /** Writes a JSON friendly version of the src String, requires the */
-static void write_safe_str(fiobj_s *dest, fiobj_s *str) {
+static void write_safe_str(fiobj_s *dest, const fiobj_s *str) {
   fio_cstr_s s = fiobj_obj2cstr(str);
   fio_cstr_s t = fiobj_obj2cstr(dest);
-  const uint8_t *src = (const uint8_t *)s.data;
+  const uint8_t *restrict src = (const uint8_t *)s.data;
   size_t len = s.len;
   uint64_t end = t.len;
   /* make sure we have some room */
@@ -102,7 +102,7 @@ static void write_safe_str(fiobj_s *dest, fiobj_s *str) {
     t = fiobj_obj2cstr(dest);
   }
   while (len) {
-    char *writer = (char *)t.data;
+    char *restrict writer = (char *)t.data;
     while (len &&
            (src[0] > 32 && src[0] != '"' && src[0] != '\\' && src[0] != '/')) {
       len--;

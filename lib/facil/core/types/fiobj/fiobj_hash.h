@@ -35,7 +35,7 @@ extern const uintptr_t FIOBJ_T_COUPLET;
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_couplet2key(fiobj_s *obj);
+fiobj_s *fiobj_couplet2key(const fiobj_s *obj);
 
 /**
  * If object is a Hash couplet (occurs in `fiobj_each2`), returns the object
@@ -43,7 +43,7 @@ fiobj_s *fiobj_couplet2key(fiobj_s *obj);
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_couplet2obj(fiobj_s *obj);
+fiobj_s *fiobj_couplet2obj(const fiobj_s *obj);
 
 /* *****************************************************************************
 Hash API
@@ -61,7 +61,7 @@ extern const uintptr_t FIOBJ_T_HASH;
 fiobj_s *fiobj_hash_new(void);
 
 /** Returns the number of elements in the Hash. */
-size_t fiobj_hash_count(fiobj_s *hash);
+size_t fiobj_hash_count(const fiobj_s *hash);
 
 /**
  * Sets a key-value pair in the Hash, duplicating the Symbol and **moving**
@@ -89,7 +89,7 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym);
  * Returns a temporary handle to the object associated with the Symbol, NULL
  * if none.
  */
-fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym);
+fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym);
 
 /**
  * Returns a temporary handle to the object associated with the Symbol C string.
@@ -99,18 +99,18 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym);
  *
  * Returns NULL if no object is asociated with this String data.
  */
-fiobj_s *fiobj_hash_get2(fiobj_s *hash, const char *str, size_t len);
+fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len);
 
 /**
  * Returns 1 if the key (Symbol) exists in the Hash, even if it's value is NULL.
  */
-int fiobj_hash_haskey(fiobj_s *hash, fiobj_s *sym);
+int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym);
 
 /**
  * Returns a temporary theoretical Hash map capacity.
  * This could be used for testig performance and memory consumption.
  */
-size_t fiobj_hash_capa(fiobj_s *hash);
+size_t fiobj_hash_capa(const fiobj_s *hash);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -66,7 +66,7 @@ Generic Object API
 ***************************************************************************** */
 
 /** Returns a C string naming the objects dynamic type. */
-const char *fiobj_type_name(fiobj_s *obj);
+const char *fiobj_type_name(const fiobj_s *obj);
 
 /**
  * Copy by reference(!) - increases an object's (and any nested object's)
@@ -95,7 +95,7 @@ void fiobj_free(fiobj_s *);
  *
  * This is mostly for testing rather than normal library operations.
  */
-uintptr_t fiobj_reference_count(fiobj_s *);
+uintptr_t fiobj_reference_count(const fiobj_s *);
 
 /**
  * Tests if an object evaluates as TRUE.
@@ -103,7 +103,7 @@ uintptr_t fiobj_reference_count(fiobj_s *);
  * This is object type specific. For example, empty strings might evaluate as
  * FALSE, even though they aren't a boolean type.
  */
-int fiobj_is_true(fiobj_s *);
+int fiobj_is_true(const fiobj_s *);
 
 /**
  * Returns an Object's numerical value.
@@ -117,7 +117,7 @@ int fiobj_is_true(fiobj_s *);
  *
  * A type error results in 0.
  */
-int64_t fiobj_obj2num(fiobj_s *obj);
+int64_t fiobj_obj2num(const fiobj_s *obj);
 
 /**
  * Returns a Float's value.
@@ -131,7 +131,7 @@ int64_t fiobj_obj2num(fiobj_s *obj);
  *
  * A type error results in 0.
  */
-double fiobj_obj2float(fiobj_s *obj);
+double fiobj_obj2float(const fiobj_s *obj);
 
 /**
  * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
@@ -146,7 +146,7 @@ double fiobj_obj2float(fiobj_s *obj);
  *
  * A type error results in NULL (i.e. object isn't a String).
  */
-fio_cstr_s fiobj_obj2cstr(fiobj_s *obj);
+fio_cstr_s fiobj_obj2cstr(const fiobj_s *obj);
 
 /**
  * Single layer iteration using a callback for each nested fio object.
@@ -217,7 +217,7 @@ fiobj_s *fiobj_each_get_cyclic(void);
  * equal Hashes might be considered unequal if their order doesn't match.
  *
  */
-int fiobj_iseq(fiobj_s *obj1, fiobj_s *obj2);
+int fiobj_iseq(const fiobj_s *obj1, const fiobj_s *obj2);
 
 /* *****************************************************************************
 Helpers: not fiobj_s specific, but since they're used internally, they're here.

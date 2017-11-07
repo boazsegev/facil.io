@@ -30,20 +30,22 @@ Numbers VTable
 
 static __thread char num_buffer[512];
 
-static int64_t fio_i2i(fiobj_s *o) { return obj2num(o)->i; }
-static int64_t fio_f2i(fiobj_s *o) { return (int64_t)floorl(obj2float(o)->f); }
-static double fio_i2f(fiobj_s *o) { return (double)obj2num(o)->i; }
-static double fio_f2f(fiobj_s *o) { return obj2float(o)->f; }
+static int64_t fio_i2i(const fiobj_s *o) { return obj2num(o)->i; }
+static int64_t fio_f2i(const fiobj_s *o) {
+  return (int64_t)floorl(obj2float(o)->f);
+}
+static double fio_i2f(const fiobj_s *o) { return (double)obj2num(o)->i; }
+static double fio_f2f(const fiobj_s *o) { return obj2float(o)->f; }
 
-static int fio_itrue(fiobj_s *o) { return (obj2num(o)->i != 0); }
-static int fio_ftrue(fiobj_s *o) { return (obj2float(o)->f != 0); }
+static int fio_itrue(const fiobj_s *o) { return (obj2num(o)->i != 0); }
+static int fio_ftrue(const fiobj_s *o) { return (obj2float(o)->f != 0); }
 
-static fio_cstr_s fio_i2str(fiobj_s *o) {
+static fio_cstr_s fio_i2str(const fiobj_s *o) {
   return (fio_cstr_s){
       .buffer = num_buffer, .len = fio_ltoa(num_buffer, obj2num(o)->i, 10),
   };
 }
-static fio_cstr_s fio_f2str(fiobj_s *o) {
+static fio_cstr_s fio_f2str(const fiobj_s *o) {
   if (isnan(obj2float(o)->f))
     return (fio_cstr_s){.buffer = "NaN", .len = 3};
   else if (isinf(obj2float(o)->f)) {
@@ -57,10 +59,10 @@ static fio_cstr_s fio_f2str(fiobj_s *o) {
   };
 }
 
-static int fiobj_i_is_eq(fiobj_s *self, fiobj_s *other) {
+static int fiobj_i_is_eq(const fiobj_s *self, const fiobj_s *other) {
   return self->type == other->type && obj2num(self)->i == obj2num(other)->i;
 }
-static int fiobj_f_is_eq(fiobj_s *self, fiobj_s *other) {
+static int fiobj_f_is_eq(const fiobj_s *self, const fiobj_s *other) {
   return self->type == other->type && obj2float(self)->f == obj2float(other)->f;
 }
 

@@ -56,7 +56,7 @@ static inline fiobj_s *protected_pop_obj(fio_ls_s *queue, fio_ls_s *history) {
 #endif
 }
 
-static inline void protected_push_obj(fiobj_s *obj, fio_ls_s *history) {
+static inline void protected_push_obj(const fiobj_s *obj, fio_ls_s *history) {
 #if FIOBJ_NESTING_PROTECTION
   fio_ls_push(history, OBJVTBL(obj)->unwrap(obj));
 #else
@@ -70,7 +70,7 @@ Generic Object API
 ***************************************************************************** */
 
 /** Returns a C string naming the objects dynamic type. */
-const char *fiobj_type_name(fiobj_s *obj) { return OBJVTBL(obj)->name; }
+const char *fiobj_type_name(const fiobj_s *obj) { return OBJVTBL(obj)->name; }
 
 /**
  * Copy by reference(!) - increases an object's (and any nested object's)
@@ -184,7 +184,7 @@ void fiobj_free(fiobj_s *o) {
  *
  * This is mostly for testing rather than normal library operations.
  */
-uintptr_t fiobj_reference_count(fiobj_s *o) { return OBJ2HEAD(o)->ref; }
+uintptr_t fiobj_reference_count(const fiobj_s *o) { return OBJ2HEAD(o)->ref; }
 
 /**
  * Tests if an object evaluates as TRUE.
@@ -192,7 +192,7 @@ uintptr_t fiobj_reference_count(fiobj_s *o) { return OBJ2HEAD(o)->ref; }
  * This is object type specific. For example, empty strings might evaluate as
  * FALSE, even though they aren't a boolean type.
  */
-int fiobj_is_true(fiobj_s *o) { return (o && OBJVTBL(o)->is_true(o)); }
+int fiobj_is_true(const fiobj_s *o) { return (o && OBJVTBL(o)->is_true(o)); }
 
 /**
  * Returns an Object's numerical value.
@@ -206,7 +206,7 @@ int fiobj_is_true(fiobj_s *o) { return (o && OBJVTBL(o)->is_true(o)); }
  *
  * A type error results in 0.
  */
-int64_t fiobj_obj2num(fiobj_s *o) { return o ? OBJVTBL(o)->to_i(o) : 0; }
+int64_t fiobj_obj2num(const fiobj_s *o) { return o ? OBJVTBL(o)->to_i(o) : 0; }
 
 /**
  * Returns a Float's value.
@@ -220,7 +220,7 @@ int64_t fiobj_obj2num(fiobj_s *o) { return o ? OBJVTBL(o)->to_i(o) : 0; }
  *
  * A type error results in 0.
  */
-double fiobj_obj2float(fiobj_s *o) { return o ? OBJVTBL(o)->to_f(o) : 0; }
+double fiobj_obj2float(const fiobj_s *o) { return o ? OBJVTBL(o)->to_f(o) : 0; }
 
 /**
  * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
@@ -235,7 +235,7 @@ double fiobj_obj2float(fiobj_s *o) { return o ? OBJVTBL(o)->to_f(o) : 0; }
  *
  * A type error results in NULL (i.e. object isn't a String).
  */
-fio_cstr_s fiobj_obj2cstr(fiobj_s *o) {
+fio_cstr_s fiobj_obj2cstr(const fiobj_s *o) {
   return o ? OBJVTBL(o)->to_str(o) : fiobj_noop_str(NULL);
 }
 
@@ -325,7 +325,7 @@ single:
  *   Hases might behave differently during iteration.
  *
  */
-int fiobj_iseq(fiobj_s *self, fiobj_s *other) {
+int fiobj_iseq(const fiobj_s *self, const fiobj_s *other) {
   if (self == other)
     return 1;
   if (!self)
@@ -347,8 +347,10 @@ int fiobj_iseq(fiobj_s *self, fiobj_s *other) {
   while (self) {
     protected_push_obj(self, &self_history);
     protected_push_obj(other, &other_history);
-    OBJVTBL(self)->each1(self, 0, each2_add_to_queue, self_queue.next);
-    OBJVTBL(other)->each1(other, 0, each2_add_to_queue, other_queue.next);
+    OBJVTBL(self)->each1((fiobj_s *)self, 0, each2_add_to_queue,
+                         self_queue.next);
+    OBJVTBL(other)->each1((fiobj_s *)other, 0, each2_add_to_queue,
+                          other_queue.next);
     while (self_queue.next != &self_queue || self) {
       self = protected_pop_obj(&self_queue, &self_history);
       other = protected_pop_obj(&other_queue, &other_history);

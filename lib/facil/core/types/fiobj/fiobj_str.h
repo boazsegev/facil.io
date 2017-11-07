@@ -62,7 +62,7 @@ fiobj_strprintf(const char *format, ...);
  */
 size_t fiobj_str_capa_assert(fiobj_s *str, size_t size);
 
-/** Return's a String's capacity, if any. */
+/** Return's a String's capacity, if any. This should include the NUL byte. */
 size_t fiobj_str_capa(fiobj_s *str);
 
 /** Resizes a String object, allocating more memory if required. */

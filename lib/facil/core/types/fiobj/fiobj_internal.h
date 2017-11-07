@@ -70,7 +70,7 @@ Simple List - Used for fiobj_s * objects, but can be used for anything really.
 typedef struct fio_ls_s {
   struct fio_ls_s *prev;
   struct fio_ls_s *next;
-  fiobj_s *obj;
+  const fiobj_s *obj;
 } fio_ls_s;
 
 #define FIO_LS_INIT(name)                                                      \
@@ -78,7 +78,7 @@ typedef struct fio_ls_s {
 
 /** Adds an object to the list's head. */
 static inline __attribute__((unused)) void fio_ls_push(fio_ls_s *pos,
-                                                       fiobj_s *obj) {
+                                                       const fiobj_s *obj) {
   /* prepare item */
   fio_ls_s *item = (fio_ls_s *)malloc(sizeof(*item));
   if (!item)
@@ -91,7 +91,7 @@ static inline __attribute__((unused)) void fio_ls_push(fio_ls_s *pos,
 
 /** Adds an object to the list's tail. */
 static inline __attribute__((unused)) void fio_ls_unshift(fio_ls_s *pos,
-                                                          fiobj_s *obj) {
+                                                          const fiobj_s *obj) {
   pos = pos->prev;
   fio_ls_push(pos, obj);
 }
@@ -101,11 +101,11 @@ static inline __attribute__((unused)) fiobj_s *fio_ls_pop(fio_ls_s *list) {
   if (list->next == list)
     return NULL;
   fio_ls_s *item = list->next;
-  fiobj_s *ret = item->obj;
+  const fiobj_s *ret = item->obj;
   list->next = item->next;
   list->next->prev = list;
   free(item);
-  return ret;
+  return (fiobj_s *)ret;
 }
 
 /** Removes an object from the list's tail. */
@@ -113,20 +113,20 @@ static inline __attribute__((unused)) fiobj_s *fio_ls_shift(fio_ls_s *list) {
   if (list->prev == list)
     return NULL;
   fio_ls_s *item = list->prev;
-  fiobj_s *ret = item->obj;
+  const fiobj_s *ret = item->obj;
   list->prev = item->prev;
   list->prev->next = list;
   free(item);
-  return ret;
+  return (fiobj_s *)ret;
 }
 
 /** Removes an object from the containing node. */
 static inline __attribute__((unused)) fiobj_s *fio_ls_remove(fio_ls_s *node) {
-  fiobj_s *ret = node->obj;
+  const fiobj_s *ret = node->obj;
   node->next->prev = node->prev->next;
   node->prev->next = node->next->prev;
   free(node);
-  return ret;
+  return (fiobj_s *)ret;
 }
 
 /* *****************************************************************************
@@ -170,13 +170,13 @@ struct fiobj_vtable_s {
    */
   void (*free)(fiobj_s *);
   /** object should evaluate as true/false? */
-  int (*is_true)(fiobj_s *);
+  int (*is_true)(const fiobj_s *);
   /** object value as String */
-  fio_cstr_s (*to_str)(fiobj_s *);
+  fio_cstr_s (*to_str)(const fiobj_s *);
   /** object value as Integer */
-  int64_t (*to_i)(fiobj_s *);
+  int64_t (*to_i)(const fiobj_s *);
   /** object value as Float */
-  double (*to_f)(fiobj_s *);
+  double (*to_f)(const fiobj_s *);
   /**
    * returns 1 if objects are equal, 0 if unequal.
    *
@@ -189,19 +189,19 @@ struct fiobj_vtable_s {
    * wrapping objects should forward the function call to the wrapped objectd
    * (similar to `count` and `each1`) after completing any internal testing.
    */
-  int (*is_eq)(fiobj_s *self, fiobj_s *other);
+  int (*is_eq)(const fiobj_s *self, const fiobj_s *other);
   /**
    * return the number of nested object
    *
    * wrapping objects should forward the function call to the wrapped objectd
    * (similar to `each1`).
    */
-  size_t (*count)(fiobj_s *);
+  size_t (*count)(const fiobj_s *o);
   /**
    * return either `self` or a wrapped object.
    * (if object wrapping exists, i.e. Hash couplet, return nested object)
    */
-  fiobj_s *(*unwrap)(fiobj_s *);
+  fiobj_s *(*unwrap)(const fiobj_s *obj);
   /**
    * perform a task for the object's children (-1 stops iteration)
    * returns the number of items processed + `start_at`.
@@ -222,19 +222,19 @@ void fiobj_simple_dealloc(fiobj_s *o);
 /** no deallocation (eternal objects). */
 void fiobj_noop_free(fiobj_s *obj);
 /** always true. */
-int fiobj_noop_true(fiobj_s *obj);
+int fiobj_noop_true(const fiobj_s *obj);
 /** always false. */
-int fiobj_noop_false(fiobj_s *obj);
+int fiobj_noop_false(const fiobj_s *obj);
 /** NULL C string. */
-fio_cstr_s fiobj_noop_str(fiobj_s *obj);
+fio_cstr_s fiobj_noop_str(const fiobj_s *obj);
 /** always 0. */
-int64_t fiobj_noop_i(fiobj_s *obj);
+int64_t fiobj_noop_i(const fiobj_s *obj);
 /** always 0. */
-double fiobj_noop_f(fiobj_s *obj);
+double fiobj_noop_f(const fiobj_s *obj);
 /** always 0. */
-size_t fiobj_noop_count(fiobj_s *obj);
+size_t fiobj_noop_count(const fiobj_s *obj);
 /** always self. */
-fiobj_s *fiobj_noop_unwrap(fiobj_s *obj);
+fiobj_s *fiobj_noop_unwrap(const fiobj_s *obj);
 /** always 0. */
 size_t fiobj_noop_each1(fiobj_s *obj, size_t start_at,
                         int (*task)(fiobj_s *obj, void *arg), void *arg);

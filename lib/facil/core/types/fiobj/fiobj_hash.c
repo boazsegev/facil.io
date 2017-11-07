@@ -91,7 +91,7 @@ static void *fio_hash_find(fiobj_hash_s *h, uintptr_t hash) {
   map_info_s *info = fio_hash_seek(h, hash);
   if (!info || !info->container)
     return NULL;
-  return info->container->obj;
+  return (void *)info->container->obj;
 }
 
 /* inserts an object to the map, rehashing if required, returning old object.
@@ -120,7 +120,7 @@ static void *fio_hash_insert(fiobj_hash_s *h, uintptr_t hash, void *obj) {
     return obj;
   }
   /* replace */
-  void *old = info->container->obj;
+  void *old = (void *)info->container->obj;
   info->container->obj = obj;
   return old;
 }
@@ -169,7 +169,7 @@ static size_t fiobj_couplet_each1(fiobj_s *o, size_t start_at,
       ->each1(obj2couplet(o)->obj, start_at, task, arg);
 }
 
-static int fiobj_coup_is_eq(fiobj_s *self, fiobj_s *other) {
+static int fiobj_coup_is_eq(const fiobj_s *self, const fiobj_s *other) {
 
   if (other->type != FIOBJ_T_COUPLET)
     return 0;
@@ -182,13 +182,13 @@ static int fiobj_coup_is_eq(fiobj_s *self, fiobj_s *other) {
 }
 
 /** Returns the number of elements in the Array. */
-static size_t fiobj_couplet_count_items(fiobj_s *o) {
+static size_t fiobj_couplet_count_items(const fiobj_s *o) {
   if (obj2couplet(o)->obj == NULL)
     return 0;
   return OBJVTBL(obj2couplet(o)->obj)->count(obj2couplet(o)->obj);
 }
 
-fiobj_s *fiobj_couplet2obj(fiobj_s *obj);
+fiobj_s *fiobj_couplet2obj(const fiobj_s *obj);
 
 static struct fiobj_vtable_s FIOBJ_VTABLE_COUPLET = {
     .free = fiobj_couplet_dealloc,
@@ -218,7 +218,7 @@ static inline fiobj_s *fiobj_couplet_alloc(void *sym, void *obj) {
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_couplet2key(fiobj_s *obj) {
+fiobj_s *fiobj_couplet2key(const fiobj_s *obj) {
   if (!obj || obj->type != FIOBJ_T_COUPLET)
     return NULL;
   return obj2couplet(obj)->name;
@@ -230,9 +230,9 @@ fiobj_s *fiobj_couplet2key(fiobj_s *obj) {
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_couplet2obj(fiobj_s *obj) {
+fiobj_s *fiobj_couplet2obj(const fiobj_s *obj) {
   if (!obj || obj->type != FIOBJ_T_COUPLET)
-    return obj;
+    return (fiobj_s *)obj;
   return obj2couplet(obj)->obj;
 }
 
@@ -264,14 +264,14 @@ static size_t fiobj_hash_each1(fiobj_s *o, const size_t start_at,
   }
   while (pos != &obj2hash(o)->items) {
     ++i;
-    if (task(pos->obj, arg) == -1)
+    if (task((fiobj_s *)pos->obj, arg) == -1)
       return i;
     pos = pos->next;
   }
   return i;
 }
 
-static int fiobj_hash_is_eq(fiobj_s *self, fiobj_s *other) {
+static int fiobj_hash_is_eq(const fiobj_s *self, const fiobj_s *other) {
   if (other->type != FIOBJ_T_HASH)
     return 0;
   if (obj2hash(self)->count != obj2hash(other)->count)
@@ -287,7 +287,9 @@ static int fiobj_hash_is_eq(fiobj_s *self, fiobj_s *other) {
 }
 
 /** Returns the number of elements in the Array. */
-static size_t fiobj_hash_count_items(fiobj_s *o) { return obj2hash(o)->count; }
+static size_t fiobj_hash_count_items(const fiobj_s *o) {
+  return obj2hash(o)->count;
+}
 
 static struct fiobj_vtable_s FIOBJ_VTABLE_HASH = {
     .free = fiobj_hash_dealloc,
@@ -329,7 +331,7 @@ fiobj_s *fiobj_hash_new(void) {
 }
 
 /** Returns the number of elements in the Hash. */
-size_t fiobj_hash_count(fiobj_s *hash) {
+size_t fiobj_hash_count(const fiobj_s *hash) {
   if (!hash || hash->type != FIOBJ_T_HASH)
     return 0;
   return obj2hash(hash)->count;
@@ -418,7 +420,7 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
  * Returns a temporary handle to the object associated with the Symbol, NULL
  * if none.
  */
-fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
+fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym) {
   if (hash->type != FIOBJ_T_HASH) {
     return 0;
   }
@@ -445,7 +447,7 @@ fiobj_s *fiobj_hash_get(fiobj_s *hash, fiobj_s *sym) {
  *
  * Returns NULL if no object is asociated with this String data.
  */
-fiobj_s *fiobj_hash_get2(fiobj_s *hash, const char *str, size_t len) {
+fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len) {
   if (hash->type != FIOBJ_T_HASH || str == NULL) {
     return NULL;
   }
@@ -459,7 +461,7 @@ fiobj_s *fiobj_hash_get2(fiobj_s *hash, const char *str, size_t len) {
 /**
  * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.
  */
-int fiobj_hash_haskey(fiobj_s *hash, fiobj_s *sym) {
+int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym) {
   if (hash->type != FIOBJ_T_HASH) {
     return 0;
   }
@@ -482,4 +484,4 @@ int fiobj_hash_haskey(fiobj_s *hash, fiobj_s *sym) {
  * Returns a temporary theoretical Hash map capacity.
  * This could be used for testig performance and memory consumption.
  */
-size_t fiobj_hash_capa(fiobj_s *hash) { return obj2hash(hash)->map.capa; }
+size_t fiobj_hash_capa(const fiobj_s *hash) { return obj2hash(hash)->map.capa; }
