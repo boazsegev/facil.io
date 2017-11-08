@@ -496,7 +496,7 @@ static uintptr_t safestr2local(fiobj_s *str) {
     }
   }
   // if(had_changed)
-  return ((uintptr_t)writer - (uintptr_t)s.bytes)
+  return ((uintptr_t)writer - (uintptr_t)s.bytes);
 }
 
 /* *****************************************************************************
