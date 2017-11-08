@@ -37,15 +37,15 @@ typedef fiobj_s *fiobj_pt;
 /** A string information type, reports anformation about a C string. */
 typedef struct {
   union {
-    const uint64_t len;
-    const uint64_t length;
+    uint64_t len;
+    uint64_t length;
   };
   union {
-    const void *buffer;
-    const uint8_t *bytes;
-    const char *data;
-    const char *value;
-    const char *name;
+    void *buffer;
+    uint8_t *bytes;
+    char *data;
+    char *value;
+    char *name;
   };
 } fio_cstr_s;
 

@@ -86,7 +86,7 @@ static inline int utf8_from_u32(uint8_t *dest, uint32_t u) {
   return 4;
 }
 
-/** Writes a JSON friendly version of the src String, requires the */
+/** Writes a JSON friendly version of the src String */
 static void write_safe_str(fiobj_s *dest, const fiobj_s *str) {
   fio_cstr_s s = fiobj_obj2cstr(str);
   fio_cstr_s t = fiobj_obj2cstr(dest);
@@ -99,7 +99,8 @@ static void write_safe_str(fiobj_s *dest, const fiobj_s *str) {
   if (capa <= end + s.len + 64) {
     capa = (((capa >> 12) + 1) << 12) - 1;
     fiobj_str_capa_assert(dest, capa);
-    t = fiobj_obj2cstr(dest);
+    fio_cstr_s tmp = fiobj_obj2cstr(dest);
+    t = tmp;
   }
   while (len) {
     char *restrict writer = (char *)t.data;
@@ -397,7 +398,7 @@ static uintptr_t safestr2local(fiobj_s *str) {
     exit(-1);
   }
   fio_cstr_s s = fiobj_obj2cstr(str);
-  uint8_t had_changed = 0;
+  // uint8_t had_changed = 0;
   uint8_t *end = (uint8_t *)s.bytes + s.len;
   uint8_t *reader = (uint8_t *)s.bytes;
   uint8_t *writer = (uint8_t *)s.bytes;
@@ -408,7 +409,7 @@ static uintptr_t safestr2local(fiobj_s *str) {
     if (reader[0] != '\\')
       break;
 
-    had_changed = 1;
+    // had_changed = 1;
     switch (reader[1]) {
     case 'b':
       *(writer++) = '\b';
