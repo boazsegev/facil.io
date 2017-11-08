@@ -81,6 +81,19 @@ fiobj_s *fiobj_sym_new(const char *str, size_t len) {
   return s;
 }
 
+/** Finalizes a pre-allocated Symbol buffer to set it's final length and
+ * calculate it's final hashing value. */
+fiobj_s *fiobj_sym_reinitialize(fiobj_s *s, const size_t len) {
+  if (obj2sym(s)->len < len)
+    fprintf(stderr,
+            "FATAL ERROR: facil.io Symbol object reinitialization error.\n"),
+        exit(-1);
+  obj2sym(s)->len = len;
+  obj2sym(s)->str[len] = 0;
+  obj2sym(s)->hash = (uintptr_t)fiobj_sym_hash(obj2sym(s)->str, len);
+  return s;
+}
+
 /** Creates a Symbol object using a printf like interface. */
 __attribute__((format(printf, 1, 0))) fiobj_s *
 fiobj_symvprintf(const char *format, va_list argv) {

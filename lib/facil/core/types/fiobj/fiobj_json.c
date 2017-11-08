@@ -390,7 +390,7 @@ JSON UTF-8 safe string deconstruction
  *
  * Also deals with the non-standard oct ("\77") and hex ("\xFF") notations
  */
-static void safestr2local(fiobj_s *str) {
+static uintptr_t safestr2local(fiobj_s *str) {
   if (str->type != FIOBJ_T_STRING && str->type != FIOBJ_T_SYMBOL) {
     fprintf(stderr,
             "CRITICAL ERROR: unexpected function call `safestr2local`\n");
@@ -496,7 +496,7 @@ static void safestr2local(fiobj_s *str) {
     }
   }
   // if(had_changed)
-  fiobj_str_resize(str, (uintptr_t)writer - (uintptr_t)s.bytes);
+  return ((uintptr_t)writer - (uintptr_t)s.bytes)
 }
 
 /* *****************************************************************************
@@ -627,15 +627,16 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       if (end >= stop) {
         goto error;
       }
-      obj = fiobj_str_new((char *)start, end - start);
-      if (dirty)
-        safestr2local(obj);
+
       if (fiobj_ary_index(nesting, -1) &&
           fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
-        fiobj_s *tmp = obj;
-        fio_cstr_s s = fiobj_obj2cstr(tmp);
-        obj = fiobj_sym_new(s.data, s.len);
-        fiobj_free(tmp);
+        obj = fiobj_sym_new((char *)start, end - start);
+        if (dirty)
+          fiobj_sym_reinitialize(obj, (size_t)safestr2local(obj));
+      } else {
+        obj = fiobj_str_new((char *)start, end - start);
+        if (dirty)
+          fiobj_str_resize(obj, (size_t)safestr2local(obj));
       }
       end++;
 

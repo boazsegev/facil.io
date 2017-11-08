@@ -42,6 +42,19 @@ fiobj_symprintf(const char *format, ...);
  */
 uintptr_t fiobj_sym_id(fiobj_s *sym);
 
+/* *****************************************************************************
+Risky Symbol API
+***************************************************************************** */
+
+/**
+ * Reinitializes a pre-allocated Symbol buffer to set it's final length and
+ * calculate it's final hashing value.
+ *
+ * NEVER use this on a symbol that was already used in other objects, such as a
+ * Hash.
+ */
+fiobj_s *fiobj_sym_reinitialize(fiobj_s *s, const size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

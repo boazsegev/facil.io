@@ -2,6 +2,8 @@
 
 ### Ver. 0.5.5 (next)
 
+**Fix**: (`fiobj`) fixed NULL pointer testing for `fiobj_free(NULL)`.
+
 **Optimization**: (`fiobj`) fixed some of the function declarations to add the `const` keyword where relevant.
 
 ### Ver. 0.5.4
