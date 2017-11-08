@@ -2,6 +2,8 @@
 
 ### Ver. 0.5.5 (next)
 
+**Fix**: (`fiobj`) fixed an issue #21, where `gcc` would complain about overwriting the `fio_cstr_s` struct due to `const` members. Credit to @vit1251 for exposing this issue.
+
 **Fix**: (`fiobj`) fixed NULL pointer testing for `fiobj_free(NULL)`.
 
 **Optimization**: (`fiobj`) fixed some of the function declarations to add the `const` keyword where relevant.
