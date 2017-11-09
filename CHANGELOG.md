@@ -1,6 +1,6 @@
 # Change Log
 
-### Ver. 0.5.5 (next)
+### Ver. 0.5.5
 
 **Fix**: (`fiobj`) fixed an issue #21, where `gcc` would complain about overwriting the `fio_cstr_s` struct due to `const` members. Credit to @vit1251 for exposing this issue.
 
