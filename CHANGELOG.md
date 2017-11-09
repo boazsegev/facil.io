@@ -6,6 +6,8 @@
 
 **Fix**: (`fiobj`) fixed NULL pointer testing for `fiobj_free(NULL)`.
 
+**Compatibility**: (`gcc-6`) Fix some compatibility concerns with `gcc` version 6, as well as some warnings that were exposed when testing with `gcc`.
+
 **Optimization**: (`fiobj`) fixed some of the function declarations to add the `const` keyword where relevant.
 
 ### Ver. 0.5.4
