@@ -38,13 +38,14 @@ spinlock / sync for tasks
 
 /** locks use a single byte */
 typedef volatile unsigned char spn_lock_i;
+
 /** The initail value of an unlocked spinlock. */
 #define SPN_LOCK_INIT 0
 
 /* Select the correct compiler builtin method. */
-#if defined(__has_builtin)
+#if defined(__ATOMIC_RELAXED) || defined(__has_builtin)
 
-#if __has_builtin(__atomic_exchange_n)
+#if defined(__ATOMIC_RELAXED) || __has_builtin(__atomic_exchange_n)
 #define SPN_LOCK_BUILTIN(...) __atomic_exchange_n(__VA_ARGS__, __ATOMIC_ACQ_REL)
 /** An atomic addition operation */
 #define spn_add(...) __atomic_add_fetch(__VA_ARGS__, __ATOMIC_ACQ_REL)

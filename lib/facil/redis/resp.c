@@ -751,7 +751,7 @@ void resp_test(void) {
     resp_free_object(obj);
   } else
     fprintf(stderr, "* ERR / Simple String FAILED (type %d)\n",
-            obj ? obj->type : -1);
+            obj ? (int)obj->type : -1);
 
   len = sizeof(b_num) - 1;
   obj = resp_parser_feed(parser, b_num, &len);
@@ -820,7 +820,7 @@ void resp_test(void) {
     }
     resp_free_object(obj);
   } else {
-    fprintf(stderr, "* Array FAILED (type == %d)\n", obj ? obj->type : -1);
+    fprintf(stderr, "* Array FAILED (type == %d)\n", obj ? (int)obj->type : -1);
   }
   {
     // uint8_t buff[128] = {0};

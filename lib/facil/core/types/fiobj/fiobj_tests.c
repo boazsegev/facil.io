@@ -53,11 +53,10 @@ int fiobj_test_json_str(char const *json, size_t len, uint8_t print_result) {
   fiobj_s *jstr = fiobj_obj2json(result, 1);
   end = clock();
   fprintf(stderr, "* Formatted JSON in %lu\n", end - start);
-  fprintf(stderr,
-          "Consumed %lu bytes out of %lu with result length %llu:\n%s\n", i,
-          len, fiobj_obj2cstr(jstr).length,
-          (print_result) ? fiobj_obj2cstr(jstr).buffer
-                         : "\t\tfiles aren't printed.");
+  fprintf(
+      stderr, "Consumed %lu bytes out of %lu with result length %llu:\n%s\n", i,
+      len, fiobj_obj2cstr(jstr).length,
+      (print_result) ? fiobj_obj2cstr(jstr).data : "\t\tfiles aren't printed.");
 
   start = clock();
   fiobj_free(result);

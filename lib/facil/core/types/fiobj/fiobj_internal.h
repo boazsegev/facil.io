@@ -32,9 +32,9 @@ Atomic add / subtract
 ***************************************************************************** */
 
 /* Select the correct compiler builtin method. */
-#if defined(__has_builtin)
+#if defined(__ATOMIC_RELAXED) || defined(__has_builtin)
 
-#if __has_builtin(__atomic_exchange_n)
+#if defined(__ATOMIC_RELAXED) || __has_builtin(__atomic_exchange_n)
 #define SPN_LOCK_BUILTIN(...) __atomic_exchange_n(__VA_ARGS__, __ATOMIC_ACQ_REL)
 /** An atomic addition operation */
 #define spn_add(...) __atomic_add_fetch(__VA_ARGS__, __ATOMIC_ACQ_REL)
@@ -168,15 +168,15 @@ struct fiobj_vtable_s {
    * Note that nested objects, such as contained by Arrays and Hash maps, are
    * handled using `each1` and handled accoring to their reference count.
    */
-  void (*free)(fiobj_s *);
+  void (*const free)(fiobj_s *);
   /** object should evaluate as true/false? */
-  int (*is_true)(const fiobj_s *);
+  int (*const is_true)(const fiobj_s *);
   /** object value as String */
-  fio_cstr_s (*to_str)(const fiobj_s *);
+  fio_cstr_s (*const to_str)(const fiobj_s *);
   /** object value as Integer */
-  int64_t (*to_i)(const fiobj_s *);
+  int64_t (*const to_i)(const fiobj_s *);
   /** object value as Float */
-  double (*to_f)(const fiobj_s *);
+  double (*const to_f)(const fiobj_s *);
   /**
    * returns 1 if objects are equal, 0 if unequal.
    *
@@ -189,19 +189,19 @@ struct fiobj_vtable_s {
    * wrapping objects should forward the function call to the wrapped objectd
    * (similar to `count` and `each1`) after completing any internal testing.
    */
-  int (*is_eq)(const fiobj_s *self, const fiobj_s *other);
+  int (*const is_eq)(const fiobj_s *self, const fiobj_s *other);
   /**
    * return the number of nested object
    *
    * wrapping objects should forward the function call to the wrapped objectd
    * (similar to `each1`).
    */
-  size_t (*count)(const fiobj_s *o);
+  size_t (*const count)(const fiobj_s *o);
   /**
    * return either `self` or a wrapped object.
    * (if object wrapping exists, i.e. Hash couplet, return nested object)
    */
-  fiobj_s *(*unwrap)(const fiobj_s *obj);
+  fiobj_s *(*const unwrap)(const fiobj_s *obj);
   /**
    * perform a task for the object's children (-1 stops iteration)
    * returns the number of items processed + `start_at`.
@@ -209,8 +209,8 @@ struct fiobj_vtable_s {
    * wrapping objects should forward the function call to the wrapped objectd
    * (similar to `count`).
    */
-  size_t (*each1)(fiobj_s *, size_t start_at,
-                  int (*task)(fiobj_s *obj, void *arg), void *arg);
+  size_t (*const each1)(fiobj_s *, size_t start_at,
+                        int (*task)(fiobj_s *obj, void *arg), void *arg);
 };
 
 /* *****************************************************************************

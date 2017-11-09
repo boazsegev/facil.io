@@ -25,7 +25,11 @@ typedef struct ProtocolMetadata {
   unsigned rsv : 8;
 } protocol_metadata_s;
 
-#define prt_meta(prt) (*((protocol_metadata_s *)(&(prt)->rsv)))
+union protocol_metadata_union_u {
+  size_t opaque;
+  protocol_metadata_s meta;
+};
+#define prt_meta(prt) (((union protocol_metadata_union_u *)(&(prt)->rsv))->meta)
 
 struct connection_data_s {
   protocol_s *protocol;
