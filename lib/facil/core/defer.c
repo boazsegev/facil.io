@@ -535,12 +535,12 @@ void defer_test(void) {
   defer(text_task, NULL, NULL);
   defer_perform();
   fprintf(stderr, "defer_perform returned. i_count = %lu\n", i_count);
-  // fprintf(stderr, "press ^C to finish PID test\n");
-  // defer(pid_task, "pid test", NULL);
-  // if (defer_perform_in_fork(4, 64) > 0) {
-  //   fprintf(stderr, "* %d finished\n", getpid());
-  //   exit(0);
-  // };
+  fprintf(stderr, "press ^C to finish PID test\n");
+  defer(pid_task, "pid test", NULL);
+  if (defer_perform_in_fork(4, 64) > 0) {
+    fprintf(stderr, "* %d finished\n", getpid());
+    exit(0);
+  };
 }
 
 #endif
