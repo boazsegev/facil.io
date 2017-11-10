@@ -34,6 +34,11 @@ Thank you for inquiring `facil.io`'s contribution guide. It's people like you an
 
     The code uses GNU `make` and although we have CMake support, neither CMake nor `configure` should be required at any point.
 
+* Easy to manage:
+
+    See the License section below. Contributions must relinquish ownership of contributed code, so licensing and copyright can be managed without the need to reach out to every contributer.
+
+
 ## Play nice
 
 As a child, I wasn't any good with people (I'm not sure I'm any better now that I'm older)... which is how come I became good with computers and why we have `facil.io` and other open source projects ;-)

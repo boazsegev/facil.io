@@ -55,7 +55,7 @@ fiobj_str_write(str, "Hello!", 6);
 // ...
 fiobj_free(str);
 
-/* for simple strings, this is the best */
+/* for simple strings, one line will do */
 fiobj_s * str = fiobj_str_new("Hello!", 6);
 // ...
 fiobj_free(str);
@@ -63,6 +63,11 @@ fiobj_free(str);
 /* for more complex cases, printf style is supported */
 fiobj_s * str = fiobj_str_buf(0);
 fiobj_str_write2(str, "%s %d" , "Hello!", 42);
+// ...
+fiobj_free(str);
+
+/* for static strings, this is the best */
+fiobj_s * str = fiobj_str_static("Hello!", 6);
 // ...
 fiobj_free(str);
 ```
@@ -172,11 +177,11 @@ fiobj_ary_push(ary, ary2);
 fiobj_ary_push(ary2, ary);
 // free might crash or produce unexpected results
 fiobj_free(ary);
-// dup and each2 will cycle forever
-fiobj_s * ary3 = fiobj_dup(ary2);
+// each2 will cycle forever
+fiobj_each2(ary2, ...);
 ```
 
-However, enabling the optional cyclic nesting protection will protect against cyclic nesting issues:
+However, enabling the optional cyclic nesting protection will protect against cyclic nesting issues (while adversely impacting performance):
 
 ```c
 // FIOBJ_NESTING_PROTECTION == 1
@@ -185,10 +190,9 @@ fiobj_s * ary2 = fiobj_ary_new();
 // cyclic nesting
 fiobj_ary_push(ary, ary2);
 fiobj_ary_push(ary2, ary);
-// dup and each2 will safely skip cyclic objects
-fiobj_s * ary_copy = fiobj_dup(ary2);
+// each2 will safely skip cyclic objects
+fiobj_each2(ary2, ...);
 // both arrays, that "own" each other, are freed
-fiobj_free(ary_copy);
 fiobj_free(ary);
 ```
 

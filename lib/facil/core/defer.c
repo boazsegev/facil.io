@@ -22,6 +22,9 @@ Compile time settings
 #ifndef DEFER_THROTTLE
 #define DEFER_THROTTLE 524287UL
 #endif
+#ifndef DEFER_THROTTLE_LIMIT
+#define DEFER_THROTTLE_LIMIT 1572864UL
+#endif
 
 #ifndef DEFER_QUEUE_BLOCK_COUNT
 #define DEFER_QUEUE_BLOCK_COUNT 164 /* about a page of mempry */
@@ -209,8 +212,8 @@ static void *defer_worker_thread(void *pool_) {
   signal(SIGPIPE, SIG_IGN);
   /* the throttle replaces conditional variables for better performance */
   size_t throttle = (pool->count) * DEFER_THROTTLE;
-  if (!throttle || throttle > 1572864UL)
-    throttle = 1572864UL;
+  if (!throttle || throttle > DEFER_THROTTLE_LIMIT)
+    throttle = DEFER_THROTTLE_LIMIT;
   /* perform any available tasks */
   defer_perform();
   /* as long as the flag is true, wait for and perform tasks. */
