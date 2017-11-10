@@ -36,7 +36,7 @@ JSON API
  */
 size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
 /* Formats an object into a JSON string. Remember to `fiobj_free`. */
-fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t);
+fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t pretty);
 
 #ifdef __cplusplus
 } /* extern "C" */
