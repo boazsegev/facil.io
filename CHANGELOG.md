@@ -1,5 +1,9 @@
 # Change Log
 
+### Ver. 0.5.6
+
+**Optimization**: (`defer`) rewrote the defer queue data structure to use a hybrid array collection list instead of a single task linked list, optimizing locality to minimize CPU cache misses.
+
 ### Ver. 0.5.5
 
 **Fix**: (`fiobj`) fixed an issue #21, where `gcc` would complain about overwriting the `fio_cstr_s` struct due to `const` members. Credit to @vit1251 for exposing this issue.

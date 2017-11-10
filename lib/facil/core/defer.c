@@ -19,11 +19,12 @@ Feel free to copy, use and enjoy according to the license provided.
 Compile time settings
 ***************************************************************************** */
 
-#ifndef DEFER_QUEUE_BUFFER
-#define DEFER_QUEUE_BUFFER 4096
-#endif
 #ifndef DEFER_THROTTLE
 #define DEFER_THROTTLE 524287UL
+#endif
+
+#ifndef DEFER_QUEUE_BLOCK_COUNT
+#define DEFER_QUEUE_BLOCK_COUNT 164 /* about a page of mempry */
 #endif
 
 /* *****************************************************************************
@@ -37,32 +38,79 @@ typedef struct {
   void *arg2;
 } task_s;
 
-/* a single linked list for tasks */
-typedef struct task_node_s {
-  task_s task;
-  struct task_node_s *next;
-} task_node_s;
+/* task queue block */
+typedef struct queue_block_s {
+  task_s tasks[DEFER_QUEUE_BLOCK_COUNT];
+  struct queue_block_s *next;
+  size_t write;
+  size_t read;
+} queue_block_s;
 
-/* static memory allocation for a task node buffer */
-static task_node_s tasks_buffer[DEFER_QUEUE_BUFFER];
+static queue_block_s static_queue;
 
 /* the state machine - this holds all the data about the task queue and pool */
 static struct {
-  /* the next task to be performed */
-  task_node_s *first;
-  /* a pointer to the linked list's tail, where the next task will be stored */
-  task_node_s **last;
-  /* a linked list for task nodes (staticly allocated) */
-  task_node_s *pool;
   /* a lock for the state machine, used for multi-threading support */
   spn_lock_i lock;
-  /* a flag indicating whether the task pool was initialized */
-  unsigned char initialized;
-} deferred = {.first = NULL,
-              .last = &deferred.first,
-              .pool = NULL,
-              .lock = 0,
-              .initialized = 0};
+  /* current active block to pop tasks */
+  queue_block_s *reader;
+  /* current active block to push tasks */
+  queue_block_s *writer;
+} deferred = {.reader = &static_queue, .writer = &static_queue};
+
+/* *****************************************************************************
+Internal Data API
+***************************************************************************** */
+
+static inline task_s pop_task(void) {
+  task_s ret = (task_s){NULL};
+  queue_block_s *to_free = NULL;
+  /* lock the state machine, to grab/create a task and place it at the tail */
+  spn_lock(&deferred.lock);
+  if (deferred.reader->read == deferred.reader->write)
+    goto finish;
+  ret = deferred.reader->tasks[deferred.reader->read++];
+  if (deferred.reader->read == deferred.reader->write) {
+    to_free = deferred.reader;
+    deferred.reader = deferred.writer = &static_queue;
+    deferred.reader->read = deferred.reader->write = 0;
+  } else if (deferred.reader->read >= DEFER_QUEUE_BLOCK_COUNT) {
+    to_free = deferred.reader;
+    deferred.reader = deferred.reader->next;
+    deferred.reader->read = 0;
+  }
+
+finish:
+  spn_unlock(&deferred.lock);
+  if (to_free && to_free != &static_queue) {
+    free(to_free);
+  }
+  return ret;
+}
+
+static inline void push_task(task_s task) {
+  spn_lock(&deferred.lock);
+  if (deferred.writer->write >= DEFER_QUEUE_BLOCK_COUNT) {
+    deferred.writer->write++;
+    deferred.writer->next = malloc(sizeof(*deferred.writer->next));
+    if (!deferred.writer->next)
+      goto critical_error;
+    deferred.writer = deferred.writer->next;
+    deferred.writer->write = 0;
+    deferred.writer->next = NULL;
+  }
+  deferred.writer->tasks[deferred.writer->write++] = task;
+  spn_unlock(&deferred.lock);
+  return;
+
+critical_error:
+  perror("ERROR CRITICAL: defer can't allocate task");
+  kill(0, SIGINT);
+  exit(errno);
+  spn_unlock(&deferred.lock);
+}
+
+#define push_task(...) push_task((task_s){__VA_ARGS__})
 
 /* *****************************************************************************
 API
@@ -73,79 +121,26 @@ int defer(void (*func)(void *, void *), void *arg1, void *arg2) {
   /* must have a task to defer */
   if (!func)
     goto call_error;
-  task_node_s *task;
-  /* lock the state machine, to grab/create a task and place it at the tail */
-  spn_lock(&deferred.lock);
-  if (deferred.pool) {
-    task = deferred.pool;
-    deferred.pool = deferred.pool->next;
-  } else if (deferred.initialized) {
-    task = malloc(sizeof(task_node_s));
-    if (!task)
-      goto error;
-  } else
-    goto initialize;
-
-schedule:
-  *deferred.last = task;
-  deferred.last = &task->next;
-  task->task.func = func;
-  task->task.arg1 = arg1;
-  task->task.arg2 = arg2;
-  task->next = NULL;
-  spn_unlock(&deferred.lock);
+  push_task(.func = func, .arg1 = arg1, .arg2 = arg2);
   return 0;
-
-error:
-  spn_unlock(&deferred.lock);
-  perror("ERROR CRITICAL: defer can't allocate task");
-  kill(0, SIGINT), exit(errno);
 
 call_error:
   return -1;
-
-initialize:
-  /* initialize the task pool using all the items in the static buffer */
-  /* also assign `task` one of the tasks from the pool and schedule the task */
-  deferred.initialized = 1;
-  task = tasks_buffer;
-  deferred.pool = tasks_buffer + 1;
-  for (size_t i = 1; i < (DEFER_QUEUE_BUFFER - 1); i++) {
-    tasks_buffer[i].next = &tasks_buffer[i + 1];
-  }
-  tasks_buffer[DEFER_QUEUE_BUFFER - 1].next = NULL;
-  goto schedule;
 }
 
 /** Performs all deferred functions until the queue had been depleted. */
 void defer_perform(void) {
-  task_node_s *tmp;
-  task_s task;
-restart:
-  spn_lock(&deferred.lock); /* remember never to perform tasks within a lock! */
-  tmp = deferred.first;
-  if (tmp) {
-    deferred.first = tmp->next;
-    if (!deferred.first)
-      deferred.last = &deferred.first;
-    task = tmp->task;
-    if (tmp >= tasks_buffer && tmp < tasks_buffer + DEFER_QUEUE_BUFFER) {
-      tmp->next = deferred.pool;
-      deferred.pool = tmp;
-    } else {
-      free(tmp);
-    }
-    spn_unlock(&deferred.lock);
-    /* perform the task outside the lock. */
+  task_s task = pop_task();
+  while (task.func) {
     task.func(task.arg1, task.arg2);
-    /* I used `goto` to optimize assembly instruction flow. maybe it helps. */
-    goto restart;
+    task = pop_task();
   }
-  spn_unlock(&deferred.lock);
 }
 
 /** returns true if there are deferred functions waiting for execution. */
-int defer_has_queue(void) { return deferred.first != NULL; }
+int defer_has_queue(void) {
+  return deferred.reader->read != deferred.reader->write;
+}
 
 /* *****************************************************************************
 Thread Pool Support
@@ -172,7 +167,7 @@ error:
 int defer_join_thread(void *p_thr) {
   if (!p_thr)
     return -1;
-  pthread_join(*(pthread_t *)p_thr, NULL);
+  pthread_join(*((pthread_t *)p_thr), NULL);
   free(p_thr);
   return 0;
 }
@@ -540,24 +535,12 @@ void defer_test(void) {
   defer(text_task, NULL, NULL);
   defer_perform();
   fprintf(stderr, "defer_perform returned. i_count = %lu\n", i_count);
-  size_t pool_count = 0;
-  task_node_s *pos = deferred.pool;
-  while (pos) {
-    pool_count++;
-    pos = pos->next;
-  }
-  fprintf(stderr, "defer pool count %lu/%d (%s)\n", pool_count,
-          DEFER_QUEUE_BUFFER,
-          pool_count == DEFER_QUEUE_BUFFER ? "pass" : "FAILED");
-  fprintf(stderr, "press ^C to finish PID test\n");
-  defer(pid_task, "pid test", NULL);
-  if (defer_perform_in_fork(4, 64) > 0) {
-    fprintf(stderr, "* %d finished\n", getpid());
-    exit(0);
-  };
-  fprintf(stderr,
-          "   === Defer pool memory footprint %lu X %d = %lu bytes ===\n",
-          sizeof(task_node_s), DEFER_QUEUE_BUFFER, sizeof(tasks_buffer));
+  // fprintf(stderr, "press ^C to finish PID test\n");
+  // defer(pid_task, "pid test", NULL);
+  // if (defer_perform_in_fork(4, 64) > 0) {
+  //   fprintf(stderr, "* %d finished\n", getpid());
+  //   exit(0);
+  // };
 }
 
 #endif
