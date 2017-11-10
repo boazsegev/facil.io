@@ -101,12 +101,13 @@ These are the features that have been requested so far. Even if any of them are 
 
 |      Feature      |      assigned      |      remarks               |
 |-------------------|--------------------|----------------------------|
-|   Documentation   |     🙏 Help 🙏     | Place in the `docs` folder |
+|   Documentation   |     🙏 Help 🙏    | Place in the `docs` folder |
 |      HTTP/2       | Bo (me), help me?  |                            |
 |    HTTP Router    |                    |                            |
 |    HTTP Client    |                    |                            |
 |  Websocket Client |                    |                            |
 |      SSL/TLS      |                    | Use `sock` R/W hooks       |
+|      Gossip       |                    | For Pub/Sub engine scaling |
 
 
 ## License

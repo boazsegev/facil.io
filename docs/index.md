@@ -29,7 +29,7 @@ int main(void) {
 
 ## facil.io - more than a powerful HTTP/Websockets server library.
 
-[facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, a native Pub/Sub solution, an optional Redis pub/sub engine, support for custom protocols and some nifty tidbits.
+[facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, a [native Pub/Sub solution](pubsub.md), an optional Redis pub/sub engine, support for custom protocols and some nifty tidbits.
 
 [facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.
 

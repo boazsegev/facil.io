@@ -4,7 +4,7 @@ Parsing, editing and outputting JSON in C can be easily accomplished using [faci
 
 There are faster alternatives out there (i.e., the C++ RapidJSON is much faster).
 
-However, `facil.io` offers the added benefit of complete parsing from JSON to object. This is in contrast to some parsers that offer a mid-way structure (often a linked list of JSON nodes) or delay parsing for types such as `true`, `false` and Numbers.
+However, `facil.io` offers the added benefit of complete parsing from JSON to object. This is in contrast to some parsers that offer a mid-way structure (often a linked list of JSON nodes) or lazy (delayed) parsing for types such as `true`, `false` and Numbers.
 
 `facil.io` also offers the added benefit of complete formatting from object to JSON. This is in contrast to some solutions that require a linked list of node structures.
 
