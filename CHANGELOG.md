@@ -1,6 +1,8 @@
 # Change Log
 
-### Ver. 0.5.6
+### Ver. 0.5.6 (next)
+
+**Fix**: Added `cmake_minimum_required` and related CMake fixes to the CMake file and generator. Credit to David Morán (@david-moran) for [PR #22](https://github.com/boazsegev/facil.io/pull/22) fixing the CMakelist.txt.
 
 **Optimization**: (`defer`) rewrote the defer queue data structure to use a hybrid array collection list instead of a single task linked list, optimizing locality to minimize CPU cache misses.
 
