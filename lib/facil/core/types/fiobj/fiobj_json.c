@@ -517,6 +517,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
     return 0;
   }
   fiobj_s *nesting = fiobj_ary_new2(JSON_MAX_DEPTH + 2);
+  int64_t num;
   const uint8_t *start;
   fiobj_s *obj;
   const uint8_t *end = (uint8_t *)data;
@@ -534,6 +535,57 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
 
     /* test object type. tests are ordered by precedence, if one fails, the
      * other is performed. */
+    if (start[0] == '"') {
+      /* object is a string (require qoutes) */
+      start++;
+      end++;
+      uint8_t dirty = 0;
+      while (move_to_quote(&end, stop)) {
+        end += 2;
+        dirty = 1;
+      }
+      if (end >= stop) {
+        goto error;
+      }
+
+      if (fiobj_ary_index(nesting, -1) &&
+          fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
+        obj = fiobj_sym_new((char *)start, end - start);
+        if (dirty)
+          fiobj_sym_reinitialize(obj, (size_t)safestr2local(obj));
+      } else {
+        obj = fiobj_str_new((char *)start, end - start);
+        if (dirty)
+          fiobj_str_resize(obj, (size_t)safestr2local(obj));
+      }
+      end++;
+
+      goto has_obj;
+    }
+    if (end[0] >= 'a' && end[0] <= 'z') {
+      if (end + 3 < stop && end[0] == 't' && end[1] == 'r' && end[2] == 'u' &&
+          end[3] == 'e') {
+        /* true */
+        end += 4;
+        obj = fiobj_true();
+        goto has_obj;
+      }
+      if (end + 4 < stop && end[0] == 'f' && end[1] == 'a' && end[2] == 'l' &&
+          end[3] == 's' && end[4] == 'e') {
+        /* false */
+        end += 5;
+        obj = fiobj_false();
+        goto has_obj;
+      }
+      if (end + 3 < stop && end[0] == 'n' && end[1] == 'u' && end[2] == 'l' &&
+          end[3] == 'l') {
+        /* null */
+        end += 4;
+        obj = fiobj_null();
+        goto has_obj;
+      }
+      goto error;
+    }
     if (end[0] == '{') {
       /* start an object (hash) */
       fiobj_ary_push(nesting, fiobj_hash_new());
@@ -574,52 +626,47 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       }
       goto has_obj;
     }
-    if (start[0] == '"') {
-      /* object is a string (require qoutes) */
-      start++;
-      end++;
-      uint8_t dirty = 0;
-      while (move_to_quote(&end, stop)) {
-        end += 2;
-        dirty = 1;
-      }
-      if (end >= stop) {
-        goto error;
-      }
 
-      if (fiobj_ary_index(nesting, -1) &&
-          fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
-        obj = fiobj_sym_new((char *)start, end - start);
-        if (dirty)
-          fiobj_sym_reinitialize(obj, (size_t)safestr2local(obj));
-      } else {
-        obj = fiobj_str_new((char *)start, end - start);
-        if (dirty)
-          fiobj_str_resize(obj, (size_t)safestr2local(obj));
+    if (end[0] == '-') {
+      if (end[0] == '-' && end[1] == 'N' && end[2] == 'a' && end[3] == 'N') {
+        move_to_end(&end, stop);
+        double fl = nan("");
+        fl = copysign(fl, (double)-1);
+        obj = fiobj_float_new(fl);
+        goto has_obj;
       }
-      end++;
+      if (end[0] == '-' && end[1] == 'I' && end[2] == 'n' && end[3] == 'f') {
+        move_to_end(&end, stop);
+        double fl = INFINITY;
+        fl = copysign(fl, (double)-1);
+        obj = fiobj_float_new(fl);
+        goto has_obj;
+      }
+      goto test_for_number;
+    }
+    if (end[0] >= '0' && end[0] <= '9') {
+    test_for_number: /* test for a number OR float */
+      num = fio_atol((char **)&end);
+      if (end == start || *end == '.' || *end == 'e' || *end == 'E') {
+        end = start;
+        double fnum = fio_atof((char **)&end);
+        if (end == start)
+          goto error;
+        obj = fiobj_float_new(fnum);
+        goto has_obj;
+      }
+      obj = fiobj_num_new(num);
+      goto has_obj;
+    }
 
+    if (end[0] == 'N' && end[1] == 'a' && end[2] == 'N') {
+      move_to_end(&end, stop);
+      obj = fiobj_float_new(nan(""));
       goto has_obj;
     }
-    if (end + 3 < stop && end[0] == 't' && end[1] == 'r' && end[2] == 'u' &&
-        end[3] == 'e') {
-      /* true */
-      end += 4;
-      obj = fiobj_true();
-      goto has_obj;
-    }
-    if (end + 4 < stop && end[0] == 'f' && end[1] == 'a' && end[2] == 'l' &&
-        end[3] == 's' && end[4] == 'e') {
-      /* false */
-      end += 5;
-      obj = fiobj_false();
-      goto has_obj;
-    }
-    if (end + 3 < stop && end[0] == 'n' && end[1] == 'u' && end[2] == 'l' &&
-        end[3] == 'l') {
-      /* null */
-      end += 4;
-      obj = fiobj_null();
+    if (end[0] == 'I' && end[1] == 'n' && end[2] == 'f') {
+      move_to_end(&end, stop);
+      obj = fiobj_float_new(INFINITY);
       goto has_obj;
     }
     if (end[0] == '/') {
@@ -642,44 +689,6 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       /* could be a Ruby style comment */
       move_to_eol(&end, stop);
       continue;
-    }
-    if (end[0] == '-' || (end[0] >= '0' && end[0] <= '9')) {
-      /* test for a number OR float */
-      int64_t num = fio_atol((char **)&end);
-      if (end == start || *end == '.' || *end == 'e' || *end == 'E') {
-        end = start;
-        double fnum = fio_atof((char **)&end);
-        if (end == start)
-          goto error;
-        obj = fiobj_float_new(fnum);
-        goto has_obj;
-      }
-      obj = fiobj_num_new(num);
-      goto has_obj;
-    }
-    if (end[0] == 'N' && end[1] == 'a' && end[2] == 'N') {
-      move_to_end(&end, stop);
-      obj = fiobj_float_new(nan(""));
-      goto has_obj;
-    }
-    if (end[0] == '-' && end[1] == 'N' && end[2] == 'a' && end[3] == 'N') {
-      move_to_end(&end, stop);
-      double fl = nan("");
-      fl = copysign(fl, (double)-1);
-      obj = fiobj_float_new(fl);
-      goto has_obj;
-    }
-    if (end[0] == 'I' && end[1] == 'n' && end[2] == 'f') {
-      move_to_end(&end, stop);
-      obj = fiobj_float_new(INFINITY);
-      goto has_obj;
-    }
-    if (end[0] == '-' && end[1] == 'I' && end[2] == 'n' && end[3] == 'f') {
-      move_to_end(&end, stop);
-      double fl = INFINITY;
-      fl = copysign(fl, (double)-1);
-      obj = fiobj_float_new(fl);
-      goto has_obj;
     }
     goto error;
 
