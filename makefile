@@ -25,6 +25,7 @@ TMP_ROOT=tmp
 ### Compiler & Linker flags
 # any librries required (only names, ommit the "-l" at the begining)
 LINKER_LIBS=pthread m
+LINKER_LIBS_EXT=
 # optimization level.
 OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
@@ -102,18 +103,18 @@ INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(
 # add BearSSL/OpenSSL library flags
 ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
 FLAGS:=$(FLAGS) HAVE_BEARSSL
-LINKER_LIBS:=$(LINKER_LIBS) bearssl
+LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
 else
 ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
 FLAGS:=$(FLAGS) HAVE_OPENSSL
-LINKER_LIBS:=$(LINKER_LIBS) crypto ssl
+LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
 endif
 endif
 
 # add ZLib library flags
 ifeq ($(shell printf "\#include \\"zlib.h\\"\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
 FLAGS:=$(FLAGS) HAVE_ZLIB
-LINKER_LIBS:=$(LINKER_LIBS) z
+LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
 endif
 
 
@@ -125,7 +126,7 @@ LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o
 # the computed C flags
 CFLAGS= -g -std=c11 -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 CPPFLAGS= -std=c++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
-LINKER_FLAGS=$(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib)))
+LINKER_FLAGS=$(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 
 ########
 ## Main Tasks
