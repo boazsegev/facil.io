@@ -574,6 +574,33 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       }
       goto has_obj;
     }
+    if (start[0] == '"') {
+      /* object is a string (require qoutes) */
+      start++;
+      end++;
+      uint8_t dirty = 0;
+      while (move_to_quote(&end, stop)) {
+        end += 2;
+        dirty = 1;
+      }
+      if (end >= stop) {
+        goto error;
+      }
+
+      if (fiobj_ary_index(nesting, -1) &&
+          fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
+        obj = fiobj_sym_new((char *)start, end - start);
+        if (dirty)
+          fiobj_sym_reinitialize(obj, (size_t)safestr2local(obj));
+      } else {
+        obj = fiobj_str_new((char *)start, end - start);
+        if (dirty)
+          fiobj_str_resize(obj, (size_t)safestr2local(obj));
+      }
+      end++;
+
+      goto has_obj;
+    }
     if (end + 3 < stop && end[0] == 't' && end[1] == 'r' && end[2] == 'u' &&
         end[3] == 'e') {
       /* true */
@@ -615,33 +642,6 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       /* could be a Ruby style comment */
       move_to_eol(&end, stop);
       continue;
-    }
-    if (start[0] == '"') {
-      /* object is a string (require qoutes) */
-      start++;
-      end++;
-      uint8_t dirty = 0;
-      while (move_to_quote(&end, stop)) {
-        end += 2;
-        dirty = 1;
-      }
-      if (end >= stop) {
-        goto error;
-      }
-
-      if (fiobj_ary_index(nesting, -1) &&
-          fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
-        obj = fiobj_sym_new((char *)start, end - start);
-        if (dirty)
-          fiobj_sym_reinitialize(obj, (size_t)safestr2local(obj));
-      } else {
-        obj = fiobj_str_new((char *)start, end - start);
-        if (dirty)
-          fiobj_str_resize(obj, (size_t)safestr2local(obj));
-      }
-      end++;
-
-      goto has_obj;
     }
     if (end[0] == '-' || (end[0] >= '0' && end[0] <= '9')) {
       /* test for a number OR float */
@@ -692,9 +692,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       continue;
     }
     if (fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
-      fio_cstr_s s = fiobj_obj2cstr(obj);
-      fiobj_ary_push(nesting, fiobj_sym_new(s.buffer, s.len));
-      fiobj_free(obj);
+      fiobj_ary_push(nesting, obj);
       continue;
     }
     fiobj_s *sym = fiobj_ary_pop(nesting);
