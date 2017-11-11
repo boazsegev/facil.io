@@ -1,4 +1,5 @@
 project(facil.io C)
+cmake_minimum_required(VERSION 2.4)
 
 find_package(Threads REQUIRED)
 
@@ -43,8 +44,9 @@ set(facil.io_SOURCES
 )
 
 add_library(facil.io ${facil.io_SOURCES})
-target_link_libraries(facil.io PRIVATE Threads::Threads)
-target_link_libraries(facil.io m)
+target_link_libraries(facil.io
+  PRIVATE Threads::Threads
+  PUBLIC  m)
 target_include_directories(facil.io
   PUBLIC  ./lib
   PUBLIC  ./lib/facil/core
