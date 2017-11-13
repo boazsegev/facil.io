@@ -1,5 +1,5 @@
 ---
-title: facil.io - a mini-framework for C web applications
+title: facil.io - Native Pub/Sub
 ---
 # {{ page.title }}
 
