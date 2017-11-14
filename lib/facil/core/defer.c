@@ -107,10 +107,10 @@ static inline void push_task(task_s task) {
   return;
 
 critical_error:
+  spn_unlock(&deferred.lock);
   perror("ERROR CRITICAL: defer can't allocate task");
   kill(0, SIGINT);
   exit(errno);
-  spn_unlock(&deferred.lock);
 }
 
 #define push_task(...) push_task((task_s){__VA_ARGS__})
