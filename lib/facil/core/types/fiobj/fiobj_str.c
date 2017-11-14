@@ -9,6 +9,11 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "fiobj_internal.h"
 
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <sys/stat.h>
+
 /* *****************************************************************************
 String Type
 ***************************************************************************** */
@@ -198,6 +203,66 @@ fiobj_strprintf(const char *format, ...) {
   va_end(argv);
   return str;
 }
+
+#if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
+/** Dumps the `filename` file's contents into a new String. If `limit == 0`,
+ * than the data will be read until EOF.
+ *
+ * If the file can't be located, opened or read, or if `start_at` is beyond the
+ * EOF position, NULL is returned.
+ *
+ * Remember to use `fiobj_free`.
+ */
+fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
+                            size_t limit) {
+  if (filename == NULL)
+    return NULL;
+  struct stat f_data;
+  int file = -1;
+  size_t file_path_len = strlen(filename);
+  if (file_path_len == 0 || file_path_len > PATH_MAX)
+    return NULL;
+
+  char real_public_path[PATH_MAX + 1];
+  real_public_path[PATH_MAX] = 0;
+
+  if (filename[0] == '~' && getenv("HOME") && file_path_len <= PATH_MAX) {
+    strcpy(real_public_path, getenv("HOME"));
+    memcpy(real_public_path + strlen(real_public_path), filename + 1,
+           file_path_len);
+    filename = real_public_path;
+  }
+
+  if (stat(filename, &f_data) || f_data.st_size < 0)
+    return NULL;
+
+  if (limit <= 0 || (size_t)f_data.st_size < limit + start_at)
+    limit = f_data.st_size - start_at;
+  fiobj_s *str = fiobj_str_buf(limit + 1);
+  if (!str)
+    return NULL;
+  file = open(filename, O_RDONLY);
+  if (file < 0) {
+    fiobj_str_dealloc(str);
+    return NULL;
+  }
+
+  if (pread(file, obj2str(str)->str, limit, start_at) != (ssize_t)limit) {
+    fiobj_str_dealloc(str);
+    close(file);
+    return NULL;
+  }
+  close(file);
+  obj2str(str)->len = limit;
+  obj2str(str)->str[limit] = 0;
+  return str;
+}
+#else
+fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
+                            size_t limit) {
+  return NULL;
+}
+#endif
 
 /** Confirms the requested capacity is available and allocates as required. */
 size_t fiobj_str_capa_assert(fiobj_s *str, size_t size) {

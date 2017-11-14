@@ -29,7 +29,10 @@ String API
 /** Creates a String object. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_new(const char *str, size_t len);
 
-/** Creates a buffer String object. Remember to use `fiobj_free`. */
+/** Creates a buffer String object. capa includes NUL.
+ *
+ * Remember to use `fiobj_free`.
+ */
 fiobj_s *fiobj_str_buf(size_t capa);
 
 /**
@@ -55,6 +58,18 @@ fiobj_strvprintf(const char *format, va_list argv);
 __attribute__((format(printf, 1, 2))) fiobj_s *
 fiobj_strprintf(const char *format, ...);
 
+/** Dumps the `filename` file's contents into a new String. If `limit == 0`,
+ * than the data will be read until EOF.
+ *
+ * If the file can't be located, opened or read, or if `start_at` is beyond the
+ * EOF position, NULL is returned.
+ *
+ * Remember to use `fiobj_free`.
+ *
+ * NOTE: Requires a UNIX system, otherwise always returns NULL.
+ */
+fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
+                            size_t limit);
 /**
  * Confirms the requested capacity is available and allocates as required.
  *
