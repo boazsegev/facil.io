@@ -130,6 +130,8 @@ uint64_t siphash24(const void *data, size_t len, uint64_t iv_key[2]) {
 #if defined(DEBUG) && DEBUG == 1
 
 #include <stdio.h>
+#include <time.h>
+
 void bscrypt_test_siphash(void) {
   uint64_t result =
       siphash24("\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e",
@@ -137,6 +139,15 @@ void bscrypt_test_siphash(void) {
   fprintf(stderr, "===================================\n");
   fprintf(stderr, "SipHash simple test %s\n",
           (result == 0xa129ca6149be45e5ULL) ? "passed" : "FAILED");
+  clock_t start;
+  start = clock();
+  for (size_t i = 0; i < 100000; i++) {
+    __asm__ volatile("" ::: "memory");
+    result = siphash24("The quick brown fox jumps over the lazy dog ", 43,
+                       SIPHASH_DEFAULT_KEY);
+  }
+  fprintf(stderr, "bscrypt 100K SipHash: %lf\n",
+          (double)(clock() - start) / CLOCKS_PER_SEC);
   fprintf(stderr, "===================================\n");
 }
 
