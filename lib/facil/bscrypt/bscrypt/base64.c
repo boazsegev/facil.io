@@ -123,6 +123,10 @@ int bscrypt_base64_decode(char *target, char *encoded, int base64_len) {
     base64_len--;
     encoded++;
   }
+  while (encoded[base64_len - 1] == '\r' || encoded[base64_len - 1] == '\n' ||
+         encoded[base64_len - 1] == ' ' || encoded[base64_len - 1] == 0) {
+    base64_len--;
+  }
   while (base64_len >= 4) {
     tmp1 = *(encoded++);
     tmp2 = *(encoded++);
@@ -175,6 +179,14 @@ int bscrypt_base64_decode(char *target, char *encoded, int base64_len) {
     *(target++) = base64_decodes[(size_t)tmp3] << 6;
     written += 3;
     break;
+  }
+  if (encoded[-1] == '=') {
+    target--;
+    written--;
+    if (encoded[-2] == '=') {
+      target--;
+      written--;
+    }
   }
   *target = 0;
   return written;
