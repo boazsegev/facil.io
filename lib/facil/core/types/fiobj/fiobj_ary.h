@@ -1,9 +1,7 @@
 #ifndef FIOBJ_ARRAY_H
 /*
-Copyright: Boaz segev, 2017
+Copyright: Boaz Segev, 2017
 License: MIT
-
-Feel free to copy, use and enjoy according to the license provided.
 */
 
 /**
