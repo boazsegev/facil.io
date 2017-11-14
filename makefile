@@ -44,6 +44,7 @@ DUMP_LIB=libdump
 # add DEBUG flag if requested
 ifdef DEBUG
 	FLAGS:=$(FLAGS) DEBUG
+	OPTIMIZATION:=$(OPTIMIZATION) -fsanitize=address -fno-omit-frame-pointer
 endif
 
 ##############
