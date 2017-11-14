@@ -71,7 +71,7 @@ static inline uintptr_t fio_map_cuckoo_steps(uintptr_t step) {
 
 /* seeks the hash's position in the map */
 static map_info_s *fio_hash_seek(fiobj_hash_s *h, uintptr_t hash) {
-  /* TODO: consider implementing Robing Hood reordering during seek */
+  /* TODO: consider implementing Robing Hood reordering during seek? */
   map_info_s *pos = h->map.data + (hash & h->mask);
   uintptr_t i = 0;
   const uintptr_t limit = h->map.capa > FIOBJ_HASH_MAX_MAP_SEEK
@@ -85,6 +85,28 @@ static map_info_s *fio_hash_seek(fiobj_hash_s *h, uintptr_t hash) {
   }
   return NULL;
 }
+
+/* seeks the hash's position in the map while actually comparing key data */
+// static map_info_s *fio_hash_seek_secure(fiobj_hash_s *h, uintptr_t hash,
+//                                         fiobj_s *key) {
+//   /* TODO: consider implementing Robing Hood reordering during seek? */
+//   map_info_s *pos = h->map.data + (hash & h->mask);
+//   uintptr_t i = 0;
+//   const uintptr_t limit = h->map.capa > FIOBJ_HASH_MAX_MAP_SEEK
+//                               ? FIOBJ_HASH_MAX_MAP_SEEK
+//                               : (h->map.capa >> 1);
+//   while (i < limit) {
+//     if (!pos->hash ||
+//         (pos->hash == hash &&
+//          (!pos->container || !pos->container->obj ||
+//           obj2couplet(pos->container->obj)->name == key ||
+//           fiobj_iseq(obj2couplet(pos->container->obj)->name, key))))
+//       return pos;
+//     pos = h->map.data +
+//           (((hash & h->mask) + fio_map_cuckoo_steps(i++)) & h->mask);
+//   }
+//   return NULL;
+// }
 
 /* finds an object in the map */
 static void *fio_hash_find(fiobj_hash_s *h, uintptr_t hash) {

@@ -49,7 +49,18 @@ fiobj_s *fiobj_couplet2obj(const fiobj_s *obj);
 Hash API
 ***************************************************************************** */
 
-/** Hash type identifier. */
+/** Hash type identifier.
+
+The facil.io Hash object is, by default, an insecure (non-collision resistant)
+ordered Hash Table implementation.
+
+By being non-collision resistant (comparing only the Hash data), memory
+comparison can be avoided and performance increased.
+
+By being ordered it's possible to iterate over key-value pairs in the order in
+which they were added to the Hash table, making it possible to output JSON in a
+controlled manner.
+*/
 extern const uintptr_t FIOBJ_T_HASH;
 
 /**
