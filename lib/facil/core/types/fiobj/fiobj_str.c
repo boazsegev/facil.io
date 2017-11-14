@@ -204,7 +204,6 @@ fiobj_strprintf(const char *format, ...) {
   return str;
 }
 
-#if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
 /** Dumps the `filename` file's contents into a new String. If `limit == 0`,
  * than the data will be read until EOF.
  *
@@ -215,6 +214,8 @@ fiobj_strprintf(const char *format, ...) {
  */
 fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
                             size_t limit) {
+#if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
+  /* POSIX implementations. */
   if (filename == NULL)
     return NULL;
   struct stat f_data;
@@ -256,13 +257,11 @@ fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
   obj2str(str)->len = limit;
   obj2str(str)->str[limit] = 0;
   return str;
-}
 #else
-fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
-                            size_t limit) {
+  /* TODO: consider adding non POSIX implementations. */
   return NULL;
-}
 #endif
+}
 
 /** Confirms the requested capacity is available and allocates as required. */
 size_t fiobj_str_capa_assert(fiobj_s *str, size_t size) {
