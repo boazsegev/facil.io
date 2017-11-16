@@ -159,10 +159,10 @@ void websocket_xmask(void *msg, uint64_t len, uint32_t mask) {
       msg = (void *)((uintptr_t)msg + offset);
       len -= offset;
     }
-#if !defined(__SIZEOF_SIZE_T__) || __SIZEOF_SIZE_T__ == 4
+#if UINTPTR_MAX <= 0xFFFFFFFF
     /* handle  4 byte XOR alignment in 32 bit mnachine*/
     while (len >= 4) {
-      *((uint64_t *)msg) ^= mask;
+      *((uint32_t *)msg) ^= mask;
       len -= 4;
       msg = (void *)((uintptr_t)msg + 4);
     }
