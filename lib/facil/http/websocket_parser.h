@@ -159,7 +159,15 @@ void websocket_xmask(void *msg, uint64_t len, uint32_t mask) {
       msg = (void *)((uintptr_t)msg + offset);
       len -= offset;
     }
-    /* handle 4 byte XOR alignment */
+#if !defined(__SIZEOF_SIZE_T__) || __SIZEOF_SIZE_T__ == 4
+    /* handle  4 byte XOR alignment in 32 bit mnachine*/
+    while (len >= 4) {
+      *((uint64_t *)msg) ^= mask;
+      len -= 4;
+      msg = (void *)((uintptr_t)msg + 4);
+    }
+#else
+    /* handle first 4 byte XOR alignment and move on to 64 bits */
     if ((uintptr_t)msg & 7) {
       *((uint32_t *)msg) ^= mask;
       len -= 4;
@@ -172,6 +180,7 @@ void websocket_xmask(void *msg, uint64_t len, uint32_t mask) {
       len -= 8;
       msg = (void *)((uintptr_t)msg + 8);
     }
+#endif
   }
   /* XOR any leftover bytes (might be non aligned)  */
   switch (len) {
