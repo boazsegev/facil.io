@@ -142,12 +142,38 @@ Message masking
 ***************************************************************************** */
 /** used internally to mask and unmask client messages. */
 void websocket_xmask(void *msg, uint64_t len, uint32_t mask) {
-  const uint64_t xmask = (((uint64_t)mask) << 32) | mask;
-  while (len >= 8) {
-    *((uint64_t *)msg) ^= xmask;
-    len -= 8;
-    msg = (void *)((uintptr_t)msg + 8);
+  if (len > 7) {
+    /* XOR any unaligned memory (4 byte alignment) */
+    const uintptr_t offset = 4 - ((uintptr_t)msg & 3);
+    switch (offset) {
+    case 3:
+      ((uint8_t *)msg)[2] ^= ((uint8_t *)(&mask))[2];
+    /* fallthrough */
+    case 2:
+      ((uint8_t *)msg)[1] ^= ((uint8_t *)(&mask))[1];
+    /* fallthrough */
+    case 1:
+      ((uint8_t *)msg)[0] ^= ((uint8_t *)(&mask))[0];
+      /* rotate mask and move pointer to first 4 byte alignment */
+      mask = (mask << (offset << 3)) | (mask >> ((4 - offset) << 3));
+      msg = (void *)((uintptr_t)msg + offset);
+      len -= offset;
+    }
+    /* handle 4 byte XOR alignment */
+    if ((uintptr_t)msg & 7) {
+      *((uint32_t *)msg) ^= mask;
+      len -= 4;
+      msg = (void *)((uintptr_t)msg + 4);
+    }
+    /* intrinsic / XOR by 8 byte block, memory aligned */
+    const uint64_t xmask = (((uint64_t)mask) << 32) | mask;
+    while (len >= 8) {
+      *((uint64_t *)msg) ^= xmask;
+      len -= 8;
+      msg = (void *)((uintptr_t)msg + 8);
+    }
   }
+  /* XOR any leftover bytes (might be non aligned)  */
   switch (len) {
   case 7:
     ((uint8_t *)msg)[6] ^= ((uint8_t *)(&mask))[2];
@@ -335,7 +361,8 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
  * * first:  set to 1 if `msg` points the begining of the message.
  * * last:   set to 1 if `msg + len` ends the message.
  *
- * Returns the number of bytes written. Always `websocket_wrapped_len(len) + 4`
+ * Returns the number of bytes written. Always `websocket_wrapped_len(len) +
+ * 4`
  */
 static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
                                       unsigned char opcode, unsigned char first,
@@ -390,7 +417,8 @@ static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
 
 /* *****************************************************************************
 Message unwrapping
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /**
  * Returns all known information regarding the upcoming message.
