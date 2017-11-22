@@ -496,8 +496,9 @@ void defer_test(void) {
   }
   end = clock();
   fprintf(stderr,
-          "Deferless (direct call) counter: %lu cycles with i_count = %lu\n",
-          end - start, i_count);
+          "Deferless (direct call) counter: %lu cycles with i_count = %lu, "
+          "%lu/%lu free/malloc\n",
+          end - start, i_count, count_dealloc, count_alloc);
 
   spn_lock(&i_lock);
   i_count = 0;
@@ -508,8 +509,10 @@ void defer_test(void) {
   }
   defer_perform();
   end = clock();
-  fprintf(stderr, "Defer single thread: %lu cycles with i_count = %lu\n",
-          end - start, i_count);
+  fprintf(stderr,
+          "Defer single thread: %lu cycles with i_count = %lu, %lu/%lu "
+          "free/malloc\n",
+          end - start, i_count, count_dealloc, count_alloc);
 
   spn_lock(&i_lock);
   i_count = 0;
@@ -525,8 +528,10 @@ void defer_test(void) {
     defer_pool_wait(pool);
     end = clock();
     fprintf(stderr,
-            "Defer multi-thread (%d threads): %lu cycles with i_count = %lu\n",
-            DEFER_TEST_THREAD_COUNT, end - start, i_count);
+            "Defer multi-thread (%d threads): %lu cycles with i_count = %lu, "
+            "%lu/%lu free/malloc\n",
+            DEFER_TEST_THREAD_COUNT, end - start, i_count, count_dealloc,
+            count_alloc);
   } else
     fprintf(stderr, "Defer multi-thread: FAILED!\n");
 
@@ -539,13 +544,17 @@ void defer_test(void) {
   }
   defer_perform();
   end = clock();
-  fprintf(stderr, "Defer single thread (2): %lu cycles with i_count = %lu\n",
-          end - start, i_count);
+  fprintf(stderr,
+          "Defer single thread (2): %lu cycles with i_count = %lu, %lu/%lu "
+          "free/malloc\n",
+          end - start, i_count, count_dealloc, count_alloc);
 
   fprintf(stderr, "calling defer_perform.\n");
   defer(text_task, NULL, NULL);
   defer_perform();
-  fprintf(stderr, "defer_perform returned. i_count = %lu\n", i_count);
+  fprintf(stderr,
+          "defer_perform returned. i_count = %lu, %lu/%lu free/malloc\n",
+          i_count, count_dealloc, count_alloc);
   fprintf(stderr, "press ^C to finish PID test\n");
   defer(pid_task, "pid test", NULL);
   if (defer_perform_in_fork(4, 64) > 0) {
