@@ -65,6 +65,12 @@ static struct {
 Internal Data API
 ***************************************************************************** */
 
+#if DEBUG
+static size_t count_alloc, count_dealloc;
+#define COUNT_ALLOC spn_add(&count_alloc, 1)
+#define COUNT_DEALLOC spn_add(&count_dealloc, 1)
+#endif
+
 static inline task_s pop_task(void) {
   task_s ret = (task_s){NULL};
   queue_block_s *to_free = NULL;
@@ -87,6 +93,7 @@ finish:
   spn_unlock(&deferred.lock);
   if (to_free && to_free != &static_queue) {
     free(to_free);
+    COUNT_DEALLOC;
   }
   return ret;
 }
@@ -96,6 +103,7 @@ static inline void push_task(task_s task) {
   if (deferred.writer->write >= DEFER_QUEUE_BLOCK_COUNT) {
     deferred.writer->write++;
     deferred.writer->next = malloc(sizeof(*deferred.writer->next));
+    COUNT_ALLOC;
     if (!deferred.writer->next)
       goto critical_error;
     deferred.writer = deferred.writer->next;
@@ -544,6 +552,8 @@ void defer_test(void) {
     fprintf(stderr, "* %d finished\n", getpid());
     exit(0);
   };
+  fprintf(stderr, "* Defer queue %lu/%lu free/malloc\n", count_dealloc,
+          count_alloc);
 }
 
 #endif
