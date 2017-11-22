@@ -178,56 +178,6 @@ static inline void clear_tasks(void) {
   spn_unlock(&deferred.lock);
 }
 
-// static inline task_s pop_task(void) {
-//   task_s ret = (task_s){NULL};
-//   queue_block_s *to_free = NULL;
-//   /* lock the state machine, to grab/create a task and place it at the tail
-//   */ spn_lock(&deferred.lock);
-//   if (deferred.reader->read == deferred.reader->write)
-//     goto finish;
-//   ret = deferred.reader->tasks[deferred.reader->read++];
-//   if (deferred.reader->read == deferred.reader->write) {
-//     to_free = deferred.reader;
-//     deferred.reader = deferred.writer = &static_queue;
-//     deferred.reader->read = deferred.reader->write = 0;
-//   } else if (deferred.reader->read >= DEFER_QUEUE_BLOCK_COUNT) {
-//     to_free = deferred.reader;
-//     deferred.reader = deferred.reader->next;
-//     deferred.reader->read = 0;
-//   }
-
-// finish:
-//   spn_unlock(&deferred.lock);
-//   if (to_free && to_free != &static_queue) {
-//     free(to_free);
-//     COUNT_DEALLOC;
-//   }
-//   return ret;
-// }
-
-// static inline void push_task(task_s task) {
-//   spn_lock(&deferred.lock);
-//   if (deferred.writer->write >= DEFER_QUEUE_BLOCK_COUNT) {
-//     deferred.writer->write++;
-//     deferred.writer->next = malloc(sizeof(*deferred.writer->next));
-//     COUNT_ALLOC;
-//     if (!deferred.writer->next)
-//       goto critical_error;
-//     deferred.writer = deferred.writer->next;
-//     deferred.writer->write = 0;
-//     deferred.writer->next = NULL;
-//   }
-//   deferred.writer->tasks[deferred.writer->write++] = task;
-//   spn_unlock(&deferred.lock);
-//   return;
-
-// critical_error:
-//   spn_unlock(&deferred.lock);
-//   perror("ERROR CRITICAL: defer can't allocate task");
-//   kill(0, SIGINT);
-//   exit(errno);
-// }
-
 #define push_task(...) push_task((task_s){__VA_ARGS__})
 
 /* *****************************************************************************
