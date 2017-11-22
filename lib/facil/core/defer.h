@@ -13,6 +13,10 @@ library.
 
 All deferred execution is shared among the same process and inherited by any
 forked process.
+
+The defer library could produce a single page "memory leak", since the last task
+buffer is nenver freed (it's left "on call" for new events). To avoid this leak
+call `defer_clear_queue` before exiting the program.
 */
 #define H_DEFER_H
 #define LIB_DEFER_VERSION_MAJOR 0
@@ -39,6 +43,9 @@ void defer_perform(void);
 
 /** returns true if there are deferred functions waiting for execution. */
 int defer_has_queue(void);
+
+/** Clears the queue without performing any of the tasks. */
+void defer_clear_queue(void);
 
 /* *****************************************************************************
 Thread Pool support

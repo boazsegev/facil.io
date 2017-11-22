@@ -27,7 +27,13 @@ Compile time settings
 #endif
 
 #ifndef DEFER_QUEUE_BLOCK_COUNT
-#define DEFER_QUEUE_BLOCK_COUNT 164 /* about a page of mempry */
+#if UINTPTR_MAX <= 0xFFFFFFFF
+/* Almost a page of memory on most 32 bit machines: ((4096/4)-4)/3 */
+#define DEFER_QUEUE_BLOCK_COUNT 340
+#else
+/* Almost a page of memory on most 64 bit machines: ((4096/8)-4)/3 */
+#define DEFER_QUEUE_BLOCK_COUNT 168
+#endif
 #endif
 
 /* *****************************************************************************
@@ -47,6 +53,7 @@ typedef struct queue_block_s {
   struct queue_block_s *next;
   size_t write;
   size_t read;
+  uint8_t state;
 } queue_block_s;
 
 static queue_block_s static_queue;
@@ -69,48 +76,41 @@ Internal Data API
 static size_t count_alloc, count_dealloc;
 #define COUNT_ALLOC spn_add(&count_alloc, 1)
 #define COUNT_DEALLOC spn_add(&count_dealloc, 1)
+#define COUNT_RESET                                                            \
+  do {                                                                         \
+    count_alloc = count_dealloc = 0;                                           \
+  } while (0)
 #endif
-
-static inline task_s pop_task(void) {
-  task_s ret = (task_s){NULL};
-  queue_block_s *to_free = NULL;
-  /* lock the state machine, to grab/create a task and place it at the tail */
-  spn_lock(&deferred.lock);
-  if (deferred.reader->read == deferred.reader->write)
-    goto finish;
-  ret = deferred.reader->tasks[deferred.reader->read++];
-  if (deferred.reader->read == deferred.reader->write) {
-    to_free = deferred.reader;
-    deferred.reader = deferred.writer = &static_queue;
-    deferred.reader->read = deferred.reader->write = 0;
-  } else if (deferred.reader->read >= DEFER_QUEUE_BLOCK_COUNT) {
-    to_free = deferred.reader;
-    deferred.reader = deferred.reader->next;
-    deferred.reader->read = 0;
-  }
-
-finish:
-  spn_unlock(&deferred.lock);
-  if (to_free && to_free != &static_queue) {
-    free(to_free);
-    COUNT_DEALLOC;
-  }
-  return ret;
-}
 
 static inline void push_task(task_s task) {
   spn_lock(&deferred.lock);
-  if (deferred.writer->write >= DEFER_QUEUE_BLOCK_COUNT) {
-    deferred.writer->write++;
-    deferred.writer->next = malloc(sizeof(*deferred.writer->next));
-    COUNT_ALLOC;
-    if (!deferred.writer->next)
-      goto critical_error;
+
+  /* test if full */
+  if (deferred.writer->state &&
+      deferred.writer->write == deferred.writer->read) {
+    /* return to static buffer or allocate new buffer */
+    if (static_queue.state == 2) {
+      deferred.writer->next = &static_queue;
+    } else {
+      deferred.writer->next = malloc(sizeof(*deferred.writer->next));
+      COUNT_ALLOC;
+      if (!deferred.writer->next)
+        goto critical_error;
+    }
     deferred.writer = deferred.writer->next;
     deferred.writer->write = 0;
+    deferred.writer->read = 0;
+    deferred.writer->state = 0;
     deferred.writer->next = NULL;
   }
+
+  /* place task and finish */
   deferred.writer->tasks[deferred.writer->write++] = task;
+  /* cycle buffer */
+  if (deferred.writer->write == DEFER_QUEUE_BLOCK_COUNT) {
+    deferred.writer->write = 0;
+    deferred.writer->state = 1;
+  }
   spn_unlock(&deferred.lock);
   return;
 
@@ -120,6 +120,113 @@ critical_error:
   kill(0, SIGINT);
   exit(errno);
 }
+
+static inline task_s pop_task(void) {
+  task_s ret = (task_s){NULL};
+  queue_block_s *to_free = NULL;
+  /* lock the state machine, to grab/create a task and place it at the tail
+  */ spn_lock(&deferred.lock);
+
+  /* empty? */
+  if (deferred.reader->write == deferred.reader->read &&
+      !deferred.reader->state)
+    goto finish;
+  /* collect task */
+  ret = deferred.reader->tasks[deferred.reader->read++];
+  /* cycle */
+  if (deferred.reader->read == DEFER_QUEUE_BLOCK_COUNT) {
+    deferred.reader->read = 0;
+    deferred.reader->state = 0;
+  }
+  /* did we finish the queue in the buffer? */
+  if (deferred.reader->write == deferred.reader->read) {
+    if (deferred.reader->next) {
+      to_free = deferred.reader;
+      deferred.reader = deferred.reader->next;
+    } else {
+      deferred.reader->write = deferred.reader->read = deferred.reader->state =
+          0;
+    }
+    goto finish;
+  }
+
+finish:
+  if (to_free == &static_queue) {
+    static_queue.state = 2;
+  }
+  spn_unlock(&deferred.lock);
+
+  if (to_free && to_free != &static_queue) {
+    free(to_free);
+    COUNT_DEALLOC;
+  }
+  return ret;
+}
+
+static inline void clear_tasks(void) {
+  spn_lock(&deferred.lock);
+  while (deferred.reader) {
+    queue_block_s *tmp = deferred.reader;
+    deferred.reader = deferred.reader->next;
+    if (tmp != &static_queue) {
+      COUNT_DEALLOC;
+      free(tmp);
+    }
+  }
+  static_queue = (queue_block_s){.next = NULL};
+  deferred.reader = deferred.writer = &static_queue;
+  spn_unlock(&deferred.lock);
+}
+
+// static inline task_s pop_task(void) {
+//   task_s ret = (task_s){NULL};
+//   queue_block_s *to_free = NULL;
+//   /* lock the state machine, to grab/create a task and place it at the tail
+//   */ spn_lock(&deferred.lock);
+//   if (deferred.reader->read == deferred.reader->write)
+//     goto finish;
+//   ret = deferred.reader->tasks[deferred.reader->read++];
+//   if (deferred.reader->read == deferred.reader->write) {
+//     to_free = deferred.reader;
+//     deferred.reader = deferred.writer = &static_queue;
+//     deferred.reader->read = deferred.reader->write = 0;
+//   } else if (deferred.reader->read >= DEFER_QUEUE_BLOCK_COUNT) {
+//     to_free = deferred.reader;
+//     deferred.reader = deferred.reader->next;
+//     deferred.reader->read = 0;
+//   }
+
+// finish:
+//   spn_unlock(&deferred.lock);
+//   if (to_free && to_free != &static_queue) {
+//     free(to_free);
+//     COUNT_DEALLOC;
+//   }
+//   return ret;
+// }
+
+// static inline void push_task(task_s task) {
+//   spn_lock(&deferred.lock);
+//   if (deferred.writer->write >= DEFER_QUEUE_BLOCK_COUNT) {
+//     deferred.writer->write++;
+//     deferred.writer->next = malloc(sizeof(*deferred.writer->next));
+//     COUNT_ALLOC;
+//     if (!deferred.writer->next)
+//       goto critical_error;
+//     deferred.writer = deferred.writer->next;
+//     deferred.writer->write = 0;
+//     deferred.writer->next = NULL;
+//   }
+//   deferred.writer->tasks[deferred.writer->write++] = task;
+//   spn_unlock(&deferred.lock);
+//   return;
+
+// critical_error:
+//   spn_unlock(&deferred.lock);
+//   perror("ERROR CRITICAL: defer can't allocate task");
+//   kill(0, SIGINT);
+//   exit(errno);
+// }
 
 #define push_task(...) push_task((task_s){__VA_ARGS__})
 
@@ -148,10 +255,13 @@ void defer_perform(void) {
   }
 }
 
-/** returns true if there are deferred functions waiting for execution. */
+/** Returns true if there are deferred functions waiting for execution. */
 int defer_has_queue(void) {
   return deferred.reader->read != deferred.reader->write;
 }
+
+/** Clears the queue. */
+void defer_clear_queue(void) { clear_tasks(); }
 
 /* *****************************************************************************
 Thread Pool Support
@@ -449,6 +559,16 @@ static void sample_task(void *unused, void *unused2) {
   spn_unlock(&i_lock);
 }
 
+static void single_counter_task(void *unused, void *unused2) {
+  (void)(unused);
+  (void)(unused2);
+  spn_lock(&i_lock);
+  i_count++;
+  spn_unlock(&i_lock);
+  if (i_count < (1024 * 1024))
+    defer(single_counter_task, NULL, NULL);
+}
+
 static void sched_sample_task(void *unused, void *unused2) {
   (void)(unused);
   (void)(unused2);
@@ -501,6 +621,22 @@ void defer_test(void) {
           end - start, i_count, count_dealloc, count_alloc);
 
   spn_lock(&i_lock);
+  COUNT_RESET;
+  i_count = 0;
+  spn_unlock(&i_lock);
+  start = clock();
+  defer(single_counter_task, NULL, NULL);
+  defer(single_counter_task, NULL, NULL);
+  defer_perform();
+  end = clock();
+  fprintf(stderr,
+          "Defer single thread, two tasks: "
+          "%lu cycles with i_count = %lu, %lu/%lu "
+          "free/malloc\n",
+          end - start, i_count, count_dealloc, count_alloc);
+
+  spn_lock(&i_lock);
+  COUNT_RESET;
   i_count = 0;
   spn_unlock(&i_lock);
   start = clock();
@@ -515,6 +651,7 @@ void defer_test(void) {
           end - start, i_count, count_dealloc, count_alloc);
 
   spn_lock(&i_lock);
+  COUNT_RESET;
   i_count = 0;
   spn_unlock(&i_lock);
   start = clock();
@@ -536,6 +673,7 @@ void defer_test(void) {
     fprintf(stderr, "Defer multi-thread: FAILED!\n");
 
   spn_lock(&i_lock);
+  COUNT_RESET;
   i_count = 0;
   spn_unlock(&i_lock);
   start = clock();
@@ -555,12 +693,16 @@ void defer_test(void) {
   fprintf(stderr,
           "defer_perform returned. i_count = %lu, %lu/%lu free/malloc\n",
           i_count, count_dealloc, count_alloc);
-  fprintf(stderr, "press ^C to finish PID test\n");
-  defer(pid_task, "pid test", NULL);
-  if (defer_perform_in_fork(4, 64) > 0) {
-    fprintf(stderr, "* %d finished\n", getpid());
-    exit(0);
-  };
+
+  // fprintf(stderr, "press ^C to finish PID test\n");
+  // defer(pid_task, "pid test", NULL);
+  // if (defer_perform_in_fork(4, 64) > 0) {
+  //   fprintf(stderr, "* %d finished\n", getpid());
+  //   exit(0);
+  // };
+  fprintf(stderr, "* Defer queue %lu/%lu free/malloc\n", count_dealloc,
+          count_alloc);
+  defer_clear_queue();
   fprintf(stderr, "* Defer queue %lu/%lu free/malloc\n", count_dealloc,
           count_alloc);
 }
