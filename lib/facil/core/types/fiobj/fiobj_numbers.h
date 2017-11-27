@@ -35,6 +35,13 @@ fiobj_s *fiobj_float_new(double num);
 /** Mutates a Float object's value. Effects every object's reference!  */
 void fiobj_float_set(fiobj_s *obj, double num);
 
+/* *****************************************************************************
+Pointer Wrapping Helper MACROs (uses integers)
+***************************************************************************** */
+
+#define fiobj_ptr_wrap(ptr) fiobj_num_new((int64_t)(ptr))
+#define fiobj_ptr_unwrap(obj) ((void *)fiobj_obj2num((obj)))
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
