@@ -113,7 +113,8 @@ endif
 endif
 
 # add ZLib library flags
-ifeq ($(shell printf "\#include \\"zlib.h\\"\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+# ifeq ($(shell printf "\#include \\"zlib.h\\"\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lz -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lz -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
 FLAGS:=$(FLAGS) HAVE_ZLIB
 LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
 endif
