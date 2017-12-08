@@ -212,6 +212,7 @@ struct fiobj_vtable_s {
                         int (*task)(fiobj_s *obj, void *arg), void *arg);
 };
 
+// extern struct fiobj_vtable_s FIOBJ_VTABLE_INVALID; // unused just yet
 /* *****************************************************************************
 VTable (virtual function table) common implememntations
 ***************************************************************************** */
@@ -232,6 +233,8 @@ int64_t fiobj_noop_i(const fiobj_s *obj);
 double fiobj_noop_f(const fiobj_s *obj);
 /** always 0. */
 size_t fiobj_noop_count(const fiobj_s *obj);
+/** always 0. */
+int fiobj_noop_is_eq(const fiobj_s *self, const fiobj_s *other);
 /** always self. */
 fiobj_s *fiobj_noop_unwrap(const fiobj_s *obj);
 /** always 0. */
@@ -251,6 +254,9 @@ typedef struct { uintptr_t ref; } fiobj_head_s;
 #define OBJREF_REM(o) spn_sub(&(OBJ2HEAD((o))->ref), 1)
 
 #define OBJVTBL(o) ((struct fiobj_vtable_s *)(((fiobj_s *)(o))->type))
+
+// #define PTR2OBJ(o) (((o) << 1) | 1)
+// #define OBJ2PTR(o) (((o)&1) ? ((o) >> 1) : (o))
 
 /* *****************************************************************************
 Internal API required across the board

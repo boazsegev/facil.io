@@ -41,6 +41,14 @@ double fiobj_noop_f(const fiobj_s *obj) {
   return 0;
   (void)obj;
 }
+
+/** always 0. */
+int fiobj_noop_is_eq(const fiobj_s *self, const fiobj_s *other) {
+  return 0;
+  (void)self;
+  (void)other;
+}
+
 size_t fiobj_noop_count(const fiobj_s *obj) {
   return 0;
   (void)obj;
@@ -57,6 +65,27 @@ size_t fiobj_noop_each1(fiobj_s *obj, size_t start_at,
   (void)task;
   (void)arg;
 }
+
+/* *****************************************************************************
+Invalid Object VTable - unused, still considering...
+***************************************************************************** */
+
+// static void fiobj_noop_free_invalid(fiobj_s *obj) { (void)obj; }
+// static int64_t fiobj_noop_i_invalid(const fiobj_s *obj) {
+//   return ((int64_t)(obj) ^ 3);
+// }
+// struct fiobj_vtable_s FIOBJ_VTABLE_INVALID = {
+//     .name = "Invalid Class - not a facil.io Object",
+//     .free = fiobj_noop_free_invalid,
+//     .is_true = fiobj_noop_false,
+//     .to_str = fiobj_noop_str,
+//     .to_i = fiobj_noop_i_invalid,
+//     .to_f = fiobj_noop_f,
+//     .is_eq = fiobj_noop_is_eq,
+//     .count = fiobj_noop_count,
+//     .unwrap = fiobj_noop_unwrap,
+//     .each1 = fiobj_noop_each1,
+// };
 
 /* *****************************************************************************
 Internal API required across the board
