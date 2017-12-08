@@ -3,11 +3,12 @@
 # This script is Benjamín C. Calderón's brain child (@benjcal).
 # Written by Bo and a "good enough for now" draft.
 #
-# Expected changes will update the makefile and the boiler plate code.
+# This script isn't safe to update between releases. The new_post_download script should be edited instead.
 
 if [ -z $1 ]
   then
-	echo "Please provide file name."
+	echo "Please provide application (folder) name. i.e:"
+	echo "bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/stable/scripts/new) hello_world"
   exit 0
 fi
 
@@ -29,17 +30,4 @@ tar --strip-components=1 -xzf facil.io.tar.gz
 if [ $? -ne 0 ]; then echo "Couldn't extract tar."; exit 1; fi
 
 rm facil.io.tar.gz
-rm -R dev
-rm -R docs
-rm -R tests
-rm CHANGELOG.md
-rm README.md
-rm CONTRIBUTING.md
-rm Doxyfile
-rm CMakeLists.txt
-rm LICENSE
-rm NOTICE
-make clean &> /dev/null
-mv ./examples/boiler_plates/http/* ./
-rm -R ./examples/boiler_plates
-make clean &> /dev/null
+./scripts/new/cleanup
