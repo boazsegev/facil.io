@@ -45,15 +45,15 @@ It's possible to either start a new project with `facil.io` or simply add it to 
 
 To start a new project using the `facil.io` framework, run the following command in the terminal (change `appname` to whatever you want):
 
-     $ bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/stable/scripts/new) appname
+     $ bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
 
-You can [review the script here](scripts/new). In short, it will create a new folder, download a copy of the stable branch, add some demo boiler plate code and run `make clean` (which is required to build the `tmp` folder structure).
+You can [review the script here](scripts/new/app). In short, it will create a new folder, download a copy of the stable branch, add some demo boiler plate code and run `make clean` (which is required to build the `tmp` folder structure).
 
 Next, edit the `makefile` to remove any generic features you don't need, such as the `DUMP_LIB` feature, the `DEBUG` flag or the `DISAMS` disassembler and start development.
 
 Credit to @benjcal for suggesting the script.
 
-**Notice: The *master* branch is the development branch. Please select the *stable* branch for the latest release or select a release version.**
+**Notice: The *master* branch is the development branch. Please select the latest release tag for the latest stable release version.**
 
 ### Adding facil.io to an existing project
 
