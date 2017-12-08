@@ -169,7 +169,7 @@ clean:
 	-@mkdir -p $(BUILDTREE)
 
 .PHONY : run
-run: | libdump build
+run: | build
 	@$(BIN)
 
 .PHONY : db
