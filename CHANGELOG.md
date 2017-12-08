@@ -1,6 +1,6 @@
 # Change Log
 
-### Ver. 0.5.6 (next)
+### Ver. 0.5.6
 
 **Fix**: Added `cmake_minimum_required` and related CMake fixes to the CMake file and generator. Credit to David Morán (@david-moran) for [PR #22](https://github.com/boazsegev/facil.io/pull/22) fixing the CMakelist.txt.
 
