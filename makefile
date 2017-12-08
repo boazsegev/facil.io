@@ -15,7 +15,7 @@ LIB_PRIVATE_SUBFOLDERS=facil/bscrypt facil/bscrypt/bscrypt facil/core/types/fiob
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`.
 MAIN_ROOT=./dev
 # Development subfolders in the main root
-MAIN_SUBFOLDERS=startup services
+MAIN_SUBFOLDERS=
 
 ### Build Root
 # temporary folder will be cleared out and deleted between fresh builds
