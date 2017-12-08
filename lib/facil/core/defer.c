@@ -80,6 +80,10 @@ static size_t count_alloc, count_dealloc;
   do {                                                                         \
     count_alloc = count_dealloc = 0;                                           \
   } while (0)
+#else
+#define COUNT_ALLOC
+#define COUNT_DEALLOC
+#define COUNT_RESET
 #endif
 
 static inline void push_task(task_s task) {

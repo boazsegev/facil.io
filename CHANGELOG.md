@@ -1,6 +1,12 @@
 # Change Log
 
-### Ver. 0.5.6
+### Ver. 0.5.7
+
+**Fix**: (`defer`) fixes the non-debug version of the new (v.0.5.6) defer, which didn't define some debug macros.
+
+**Updates**: minor updates to the boilerplate documentation and the "new application" creation process.
+
+### Ver. 0.5.6 (yanked)
 
 **Fix**: Added `cmake_minimum_required` and related CMake fixes to the CMake file and generator. Credit to David Morán (@david-moran) for [PR #22](https://github.com/boazsegev/facil.io/pull/22) fixing the CMakelist.txt.
 
