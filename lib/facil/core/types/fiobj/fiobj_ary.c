@@ -159,6 +159,10 @@ fiobj_s *fiobj_ary_new(void) { return fiobj_ary_alloc(32, 8); }
 /** Creates a mutable empty Array object with the requested capacity. */
 fiobj_s *fiobj_ary_new2(size_t capa) { return fiobj_ary_alloc(capa, 0); }
 
+/* *****************************************************************************
+Array direct entry access API
+***************************************************************************** */
+
 /** Returns the number of elements in the Array. */
 size_t fiobj_ary_count(fiobj_s *ary) {
   if (!ary)
@@ -173,9 +177,15 @@ size_t fiobj_ary_capa(fiobj_s *ary) {
   return obj2ary(ary)->capa;
 }
 
-/* *****************************************************************************
-Array direct entry access API
-***************************************************************************** */
+/**
+ * Returns a TEMPORARY pointer to the begining of the array.
+ *
+ * This pointer can be used for sorting and other direct access operations as
+ * long as no other actions (insertion/deletion) are performed on the array.
+ */
+fiobj_s **fiobj_ary2prt(fiobj_s *ary) {
+  return obj2ary(ary)->arry + obj2ary(ary)->start;
+}
 
 /**
  * Returns a temporary object owned by the Array.

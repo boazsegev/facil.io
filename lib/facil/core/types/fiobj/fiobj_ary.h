@@ -19,7 +19,7 @@ extern "C" {
 extern const uintptr_t FIOBJ_T_ARRAY;
 
 /* *****************************************************************************
-Array direct entry access API
+Array creation API
 ***************************************************************************** */
 
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
@@ -28,15 +28,23 @@ fiobj_s *fiobj_ary_new(void);
 /** Creates a mutable empty Array object with the requested capacity. */
 fiobj_s *fiobj_ary_new2(size_t capa);
 
+/* *****************************************************************************
+Array direct entry access API
+***************************************************************************** */
+
 /** Returns the number of elements in the Array. */
 size_t fiobj_ary_count(fiobj_s *ary);
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
 size_t fiobj_ary_capa(fiobj_s *ary);
 
-/* *****************************************************************************
-Array direct entry access API
-***************************************************************************** */
+/**
+ * Returns a TEMPORARY pointer to the begining of the array.
+ *
+ * This pointer can be used for sorting and other direct access operations as
+ * long as no other actions (insertion/deletion) are performed on the array.
+ */
+fiobj_s **fiobj_ary2prt(fiobj_s *ary);
 
 /**
  * Returns a temporary object owned by the Array.
