@@ -6,7 +6,7 @@
 
 **Compatibility**: (`websocket_parser`) removed unaligned memory access from the XOR logic in the parser, making it more compatible with older CPU systems that don't support unaligned memory access or 64 bit word lengths.
 
-**Optimization**: (`defer`) rewrote the data structure to use a hybrid cyclic buffer and linked list for the task queue (instead of a simple linked list), optimizing locality and memory allocations.
+**Optimization**: (`defer`) rewrote the data structure to use a hybrid cyclic buffer and linked list for the task queue (instead of a simple linked list), optimizing locality and minimizing memory allocations.
 
 **Misc**: minor updates and tweaks, such as adding the `fiobj_ary2prt` function for operations such as quick sort, updating some documentation etc'.
 
