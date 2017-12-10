@@ -53,7 +53,7 @@ typedef struct queue_block_s {
   struct queue_block_s *next;
   size_t write;
   size_t read;
-  uint8_t state;
+  unsigned char state;
 } queue_block_s;
 
 static queue_block_s static_queue;

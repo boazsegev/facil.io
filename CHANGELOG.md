@@ -1,5 +1,9 @@
 # Change Log
 
+### Ver. 0.5.8
+
+**Fix**: (`defer`, `fiobj`) fix Linux compatibility concerns (when using GCC). Credit goes to @kotocom for opening issue #23.
+
 ### Ver. 0.5.7
 
 **Fix**: (`defer`) fixes the non-debug version of the new (v.0.5.6) defer, which didn't define some debug macros.

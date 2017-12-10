@@ -3,14 +3,24 @@ Copyright: Boaz Segev, 2017
 License: MIT
 */
 
-#include "fiobj_str.h"
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <unistd.h>
+#endif
 
 #include "fiobj_internal.h"
+#include "fiobj_str.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <sys/stat.h>
+
+#ifndef PATH_MAX
+#define PATH_MAX 2096
+#endif
 
 /* *****************************************************************************
 String Type
