@@ -375,7 +375,7 @@ void reap_child_handler(int sig) {
 }
 
 /* initializes zombie reaping for the process */
-inline static void reap_children(void) {
+void defer_reap_children(void) {
   struct sigaction sa;
   sa.sa_handler = reap_child_handler;
   sigemptyset(&sa.sa_mask);
@@ -434,7 +434,7 @@ int defer_perform_in_fork(unsigned int process_count,
 
 /* setup zomie reaping */
 #if !defined(NO_CHILD_REAPER) || NO_CHILD_REAPER == 0
-  reap_children();
+  defer_reap_children();
 #endif
 
   if (!process_count)

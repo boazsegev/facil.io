@@ -5,22 +5,14 @@ License: MIT
 #ifndef FIOBJ_H
 #define FIOBJ_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "fiobject.h"
 
-#include "fiobj/fiobject.h"
-
-#include "fiobj/fiobj_ary.h"
-#include "fiobj/fiobj_hash.h"
-#include "fiobj/fiobj_json.h"
-#include "fiobj/fiobj_numbers.h"
-#include "fiobj/fiobj_primitives.h"
-#include "fiobj/fiobj_str.h"
-#include "fiobj/fiobj_sym.h"
-
-#ifdef __cplusplus
-} /* extern "C" */
-#endif
+#include "fiobj_ary.h"
+#include "fiobj_hash.h"
+#include "fiobj_json.h"
+#include "fiobj_numbers.h"
+#include "fiobj_primitives.h"
+#include "fiobj_str.h"
+#include "fiobj_sym.h"
 
 #endif

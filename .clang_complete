@@ -4,6 +4,7 @@
 -Ilib/facil/http/
 -Ilib/facil/redis
 -Ilib/facil/core/types
+-Ilib/facil/core/types/fiobj
 -Ilib/facil/services
 -Ilib/facil/bscrypt
 -Ilib/facil/bscrypt/bscrypt

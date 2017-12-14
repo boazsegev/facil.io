@@ -23,7 +23,7 @@ call `defer_clear_queue` before exiting the program.
 #define LIB_DEFER_VERSION_MINOR 1
 #define LIB_DEFER_VERSION_PATCH 2
 
-/* child process reaping is enabled by default */
+/* child process reaping is can be enabled as a default */
 #ifndef NO_CHILD_REAPER
 #define NO_CHILD_REAPER 0
 #endif
@@ -107,15 +107,23 @@ Behaves like the system's `fork`.
 int defer_new_child(void);
 
 /**
+ * Initializes zombie reaping for the process
+ *
+ * This will be automatically called if NO_CHILD_REAPER is defined with a
+ * non-zero value. i.e.: #define NO_CHILD_REAPER 1
+ */
+void defer_reap_children(void);
+
+/**
  * Forks the process, starts up a thread pool and waits for all tasks to run.
  * All existing tasks will run in all processes (multiple times).
  *
  * It's possible to synchronize workload across processes by using a pipe (or
  * pipes) and a self-scheduling event that reads instructions from the pipe.
  *
- * This function will use SIGINT or SIGTERM to signal all the children processes
- * to finish up and exit. It will also setup a child process reaper (which will
- * remain active for the application's lifetime).
+ * This function will use SIGINT or SIGTERM to signal all the children
+ * processes to finish up and exit. It will also setup a child process reaper
+ * (which will remain active for the application's lifetime).
  *
  * Returns 0 on success, -1 on error and a positive number if this is a child
  * process that was forked.
