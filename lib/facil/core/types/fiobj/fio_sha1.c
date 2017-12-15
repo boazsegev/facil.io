@@ -8,7 +8,10 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include "sha1.h"
+#include "fio_sha1.h"
+
+#include <string.h>
+
 /*****************************************************************************
 Useful Macros - Not all of them are used here, but it's a copy-paste convenience
 */
@@ -198,7 +201,7 @@ SHA-1 hashing
 Initialize or reset the `sha1` object. This must be performed before hashing
 data using sha1.
 */
-sha1_s bscrypt_sha1_init(void) {
+sha1_s fio_sha1_init(void) {
   return (sha1_s){.digest.i[0] = 0x67452301,
                   .digest.i[1] = 0xefcdab89,
                   .digest.i[2] = 0x98badcfe,
@@ -209,7 +212,7 @@ sha1_s bscrypt_sha1_init(void) {
 /**
 Writes data to the sha1 buffer.
 */
-void bscrypt_sha1_write(sha1_s *s, const void *data, size_t len) {
+void fio_sha1_write(sha1_s *s, const void *data, size_t len) {
   size_t in_buffer = s->length & 63;
   size_t partial = 64 - in_buffer;
   s->length += len;
@@ -234,7 +237,7 @@ void bscrypt_sha1_write(sha1_s *s, const void *data, size_t len) {
   return;
 }
 
-char *bscrypt_sha1_result(sha1_s *s) {
+char *fio_sha1_result(sha1_s *s) {
   size_t in_buffer = s->length & 63;
   if (in_buffer > 55) {
     memcpy(s->buffer + in_buffer, sha1_padding, 64 - in_buffer);
@@ -273,6 +276,7 @@ char *bscrypt_sha1_result(sha1_s *s) {
 SHA-1 testing
 */
 #if defined(DEBUG) && DEBUG == 1
+#include <stdio.h>
 #include <time.h>
 
 // clang-format off
@@ -281,7 +285,7 @@ SHA-1 testing
 #endif
 // clang-format on
 
-void bscrypt_test_sha1(void) {
+void fio_sha1_test(void) {
   struct {
     char *str;
     char hash[21];
@@ -300,20 +304,19 @@ void bscrypt_test_sha1(void) {
   int i = 0;
   sha1_s sha1;
   fprintf(stderr, "===================================\n");
-  fprintf(stderr, "bscrypt SHA-1 struct size: %lu\n", sizeof(sha1_s));
-  fprintf(stderr, "+ bscrypt");
+  fprintf(stderr, "fio SHA-1 struct size: %lu\n", sizeof(sha1_s));
+  fprintf(stderr, "+ fio");
   while (sets[i].str) {
-    sha1 = bscrypt_sha1_init();
-    bscrypt_sha1_write(&sha1, sets[i].str, strlen(sets[i].str));
-    if (strcmp(bscrypt_sha1_result(&sha1), sets[i].hash)) {
-      fprintf(stderr,
-              ":\n--- bscrypt SHA-1 Test FAILED!\nstring: %s\nexpected: ",
+    sha1 = fio_sha1_init();
+    fio_sha1_write(&sha1, sets[i].str, strlen(sets[i].str));
+    if (strcmp(fio_sha1_result(&sha1), sets[i].hash)) {
+      fprintf(stderr, ":\n--- fio SHA-1 Test FAILED!\nstring: %s\nexpected: ",
               sets[i].str);
       char *p = sets[i].hash;
       while (*p)
         fprintf(stderr, "%02x", *(p++) & 0xFF);
       fprintf(stderr, "\ngot: ");
-      p = bscrypt_sha1_result(&sha1);
+      p = fio_sha1_result(&sha1);
       while (*p)
         fprintf(stderr, "%02x", *(p++) & 0xFF);
       fprintf(stderr, "\n");
@@ -325,7 +328,7 @@ void bscrypt_test_sha1(void) {
 
 #ifdef HAVE_OPENSSL
   fprintf(stderr, "===================================\n");
-  fprintf(stderr, "bscrypt SHA-1 struct size: %lu\n", sizeof(sha1_s));
+  fprintf(stderr, "fio SHA-1 struct size: %lu\n", sizeof(sha1_s));
   fprintf(stderr, "OpenSSL SHA-1 struct size: %lu\n", sizeof(SHA_CTX));
   fprintf(stderr, "===================================\n");
 
@@ -334,12 +337,11 @@ void bscrypt_test_sha1(void) {
   clock_t start;
   start = clock();
   for (size_t i = 0; i < 100000; i++) {
-    sha1 = bscrypt_sha1_init();
-    bscrypt_sha1_write(&sha1, "The quick brown fox jumps over the lazy dog ",
-                       43);
-    bscrypt_sha1_result(&sha1);
+    sha1 = fio_sha1_init();
+    fio_sha1_write(&sha1, "The quick brown fox jumps over the lazy dog ", 43);
+    fio_sha1_result(&sha1);
   }
-  fprintf(stderr, "bscrypt 100K SHA-1: %lf\n",
+  fprintf(stderr, "fio 100K SHA-1: %lf\n",
           (double)(clock() - start) / CLOCKS_PER_SEC);
 
   hash[SHA_DIGEST_LENGTH] = 0;

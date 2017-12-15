@@ -6,6 +6,8 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #include "spnlock.inc"
 
+#include "fiobj.h"
+
 #include "http.h"
 #include "http1_parser.h"
 #include "http1_request.h"
@@ -449,29 +451,32 @@ is_busy:
     int file = open(fname, O_RDONLY);
     if (file == -1)
       goto busy_no_file;
-    sock_buffer_s *buffer;
-    buffer = sock_buffer_checkout();
-    memcpy(buffer->buf,
-           "HTTP/1.1 503 Service Unavailable\r\n"
-           "Content-Type: text/html\r\n"
-           "Connection: close\r\n"
-           "Content-Length: ",
-           94);
-    p_len = 94 + http_ul2a((char *)buffer->buf + 94, file_data.st_size);
-    memcpy(buffer->buf + p_len, "\r\n\r\n", 4);
-    p_len += 4;
-    if ((off_t)(BUFFER_PACKET_SIZE - p_len) > file_data.st_size) {
-      if (read(file, buffer->buf + p_len, file_data.st_size) < 0) {
+    fiobj_s *str = fiobj_str_buf(4096);
+    fiobj_str_write(str,
+                    "HTTP/1.1 503 Service Unavailable\r\n"
+                    "Content-Type: text/html\r\n"
+                    "Connection: close\r\n"
+                    "Content-Length: ",
+                    94);
+    fiobj_str_resize(str, 94 + fio_ltoa(fiobj_obj2cstr(str).data + 94,
+                                        file_data.st_size, 10));
+    fiobj_str_write(str, "\r\n\r\n", 4);
+    fio_cstr_s s = fiobj_obj2cstr(str);
+    if (file_data.st_size < 3992) {
+      if (read(file, s.data + s.length, file_data.st_size) < 0) {
         close(file);
-        sock_buffer_free(buffer);
+        fiobj_free(str);
         goto busy_no_file;
       }
       close(file);
-      buffer->len = p_len + file_data.st_size;
-      sock_buffer_send(fd, buffer);
+      sock_write2(.uuid = fd, .buffer = str,
+                  .offset = ((intptr_t)str - (intptr_t)s.data),
+                  .length = (file_data.st_size + s.length),
+                  .dealloc = (void (*)(void *))fiobj_free);
     } else {
-      buffer->len = p_len;
-      sock_buffer_send(fd, buffer);
+      sock_write2(.uuid = fd, .buffer = str,
+                  .offset = ((intptr_t)str - (intptr_t)s.data),
+                  .length = s.length, .dealloc = (void (*)(void *))fiobj_free);
       sock_sendfile(fd, file, 0, file_data.st_size);
       sock_close(fd);
     }

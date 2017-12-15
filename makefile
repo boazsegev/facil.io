@@ -7,9 +7,9 @@ OUT_ROOT=tmp
 # the .c and .cpp source files root folder - subfolders are automatically included
 LIB_ROOT=./lib
 # publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=facil/core facil/core/types facil/services facil/http facil/redis
+LIB_PUBLIC_SUBFOLDERS=facil/core facil/core/types facil/services facil/http facil/http/parsers facil/redis
 # privately used subfolders in the lib root (this distinction is for CMake)
-LIB_PRIVATE_SUBFOLDERS=facil/bscrypt facil/bscrypt/bscrypt facil/core/types/fiobj
+LIB_PRIVATE_SUBFOLDERS=facil/core/types/fiobj 
 
 ### Development folders
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`.

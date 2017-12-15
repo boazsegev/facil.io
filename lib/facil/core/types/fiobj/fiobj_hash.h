@@ -7,6 +7,7 @@ License: MIT
 
 #include "fiobj_str.h"
 #include "fiobj_sym.h"
+#include "fiobj_sym_hash.h"
 
 #ifdef __cplusplus
 extern "C" {

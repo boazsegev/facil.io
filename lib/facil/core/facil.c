@@ -35,6 +35,7 @@ struct connection_data_s {
   protocol_s *protocol;
   time_t active;
   uint8_t timeout;
+  spn_lock_i scheduled;
   spn_lock_i lock;
 };
 
@@ -97,20 +98,6 @@ postpone:
   defer(deferred_on_close, uuid_, pr_);
 }
 
-static void deferred_on_ready(void *arg, void *arg2) {
-  if (!uuid_data(arg).protocol)
-    return;
-  protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_WRITE);
-  if (!pr)
-    goto postpone;
-  pr->on_ready((intptr_t)arg, pr);
-  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
-  return;
-postpone:
-  defer(deferred_on_ready, arg, NULL);
-  (void)arg2;
-}
-
 static void deferred_on_shutdown(void *arg, void *arg2) {
   if (!uuid_data(arg).protocol)
     return;
@@ -126,14 +113,35 @@ postpone:
   (void)arg2;
 }
 
+static void deferred_on_ready(void *arg, void *arg2) {
+  if (!uuid_data(arg).protocol)
+    return;
+  protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_WRITE);
+  if (!pr)
+    goto postpone;
+  pr->on_ready((intptr_t)arg, pr);
+  if (sock_has_pending((intptr_t)arg))
+    evio_add(sock_uuid2fd((intptr_t)arg), arg);
+  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+  return;
+postpone:
+  defer(deferred_on_ready, arg, NULL);
+  (void)arg2;
+}
+
 static void deferred_on_data(void *arg, void *arg2) {
   if (!uuid_data(arg).protocol)
     return;
   protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_TASK);
   if (!pr)
     goto postpone;
+  spn_unlock(&uuid_data(arg).scheduled);
   pr->on_data((intptr_t)arg, pr);
   protocol_unlock(pr, FIO_PR_LOCK_TASK);
+  if (!spn_trylock(&uuid_data(arg).scheduled))
+    evio_add(sock_uuid2fd((intptr_t)arg), arg);
+  // else
+  //   fprintf(stderr, "skipped evio_add\n");
   return;
 postpone:
   defer(deferred_on_data, arg, NULL);
@@ -181,6 +189,7 @@ Forcing IO events
 void facil_force_event(intptr_t uuid, enum facil_io_event ev) {
   switch (ev) {
   case FIO_EVENT_ON_DATA:
+    spn_trylock(&uuid_data(uuid).scheduled);
     evio_on_data((void *)uuid);
     break;
   case FIO_EVENT_ON_TIMEOUT:
@@ -360,12 +369,14 @@ static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
   intptr_t new_client;
   if ((new_client = sock_accept(uuid)) == -1) {
     if (errno == ECONNABORTED || errno == ECONNRESET)
-      defer(deferred_on_data, (void *)uuid, NULL);
+      goto reschedule;
     else if (errno != EWOULDBLOCK)
       perror("ERROR: socket accept error");
     return;
   }
   defer(listener_deferred_on_open, (void *)new_client, (void *)uuid);
+reschedule:
+  facil_force_event(uuid, FIO_EVENT_ON_DATA);
   defer(deferred_on_data, (void *)uuid, NULL);
   return;
   (void)plistener;
@@ -566,14 +577,17 @@ static const char *timer_protocol_name = "timer protocol __facil_internal__";
 
 static void timer_on_data(intptr_t uuid, protocol_s *protocol) {
   prot2timer(protocol).task(prot2timer(protocol).arg);
-  evio_reset_timer(sock_uuid2fd(uuid));
   if (prot2timer(protocol).repetitions == 0)
-    return;
+    goto reschedule;
   prot2timer(protocol).repetitions -= 1;
   if (prot2timer(protocol).repetitions)
-    return;
-  evio_remove(sock_uuid2fd(uuid));
+    goto reschedule;
   sock_force_close(uuid);
+  return;
+reschedule:
+  spn_trylock(&uuid_data(uuid).scheduled);
+  evio_set_timer(sock_uuid2fd(uuid), (void *)uuid,
+                 prot2timer(protocol).milliseconds);
 }
 
 static void timer_on_close(intptr_t uuid, protocol_s *protocol) {
@@ -610,7 +624,7 @@ static inline timer_protocol_s *timer_alloc(void (*task)(void *), void *arg,
 }
 
 inline static void timer_on_server_start(int fd) {
-  if (evio_add_timer(fd, (void *)sock_fd2uuid(fd),
+  if (evio_set_timer(fd, (void *)sock_fd2uuid(fd),
                      prot2timer(fd_data(fd).protocol).milliseconds))
     perror("Couldn't register a required timed event."), kill(0, SIGINT),
         exit(4);
@@ -645,7 +659,7 @@ int facil_run_every(size_t milliseconds, size_t repetitions,
   if (protocol == NULL)
     goto error;
   facil_attach(uuid, (protocol_s *)protocol);
-  if (evio_isactive() && evio_add_timer(fd, (void *)uuid, milliseconds) == -1)
+  if (evio_isactive() && evio_set_timer(fd, (void *)uuid, milliseconds) == -1)
     goto error;
   return 0;
 error:
@@ -940,8 +954,7 @@ int facil_cluster_send(int32_t msg_type, void *data, uint32_t len) {
                     .offset =
                         ((uintptr_t) &
                          (((struct facil_cluster_msg_packet *)(0))->payload)),
-                    .length = msg->payload.len, .move = 1,
-                    .dealloc = facil_msg_free))
+                    .length = msg->payload.len, .dealloc = facil_msg_free))
       perror("ERROR: Cluster `write` failed");
   }
   return 0;

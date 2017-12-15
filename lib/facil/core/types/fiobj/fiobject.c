@@ -135,10 +135,10 @@ static int fiobj_free_or_mark(fiobj_s *o, void *arg) {
  * a Hash object is passed along, it's children (nested objects) are
  * also freed.
  */
-void fiobj_free(fiobj_s *o) {
+uintptr_t fiobj_free(fiobj_s *o) {
 #if DEBUG
   if (!o)
-    return;
+    return 0;
   if (OBJ2HEAD(o)->ref == 0) {
     fprintf(stderr,
             "ERROR: attempting to free an object that isn't a fiobj or already "
@@ -147,22 +147,26 @@ void fiobj_free(fiobj_s *o) {
     kill(0, SIGABRT);
   }
 #endif
-  if (!o || OBJREF_REM(o))
-    return;
-
+  {
+    if (!o)
+      return 0;
+    uintptr_t left = OBJREF_REM(o);
+    if (left)
+      return left;
+  }
   /* handle wrapping */
   {
     fiobj_s *child = OBJVTBL(o)->unwrap(o);
     if (child != o) {
       OBJVTBL(o)->free(o);
       if (OBJREF_REM(child))
-        return;
+        return 0;
       o = child;
     }
   }
   if (OBJVTBL(o)->count(o) == 0) {
     OBJVTBL(o)->free(o);
-    return;
+    return 0;
   }
   /* nested free */
   fio_ls_s queue = FIO_LS_INIT(queue);
@@ -176,7 +180,7 @@ void fiobj_free(fiobj_s *o) {
   /* clean up and free enumerables */
   while ((o = fio_ls_pop(&history)))
     OBJVTBL(o)->free(o);
-  return;
+  return 0;
 }
 
 /**

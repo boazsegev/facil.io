@@ -16,6 +16,10 @@ create object types.
 
 #include "fiobject.h"
 
+#include "fio_llist.h"
+
+#include "fiobj_sym_hash.h"
+
 #include <errno.h>
 #include <math.h>
 #include <signal.h>
@@ -61,72 +65,6 @@ Atomic add / subtract
 #else
 #error Required builtin "__sync_swap" or "__sync_fetch_and_or" not found.
 #endif
-
-/* *****************************************************************************
-Simple List - Used for fiobj_s * objects, but can be used for anything really.
-***************************************************************************** */
-
-typedef struct fio_ls_s {
-  struct fio_ls_s *prev;
-  struct fio_ls_s *next;
-  const fiobj_s *obj;
-} fio_ls_s;
-
-#define FIO_LS_INIT(name)                                                      \
-  { .next = &(name), .prev = &(name) }
-
-/** Adds an object to the list's head. */
-static inline __attribute__((unused)) void fio_ls_push(fio_ls_s *pos,
-                                                       const fiobj_s *obj) {
-  /* prepare item */
-  fio_ls_s *item = (fio_ls_s *)malloc(sizeof(*item));
-  if (!item)
-    perror("ERROR: fiobj list couldn't allocate memory"), exit(errno);
-  *item = (fio_ls_s){.prev = pos, .next = pos->next, .obj = obj};
-  /* inject item */
-  pos->next->prev = item;
-  pos->next = item;
-}
-
-/** Adds an object to the list's tail. */
-static inline __attribute__((unused)) void fio_ls_unshift(fio_ls_s *pos,
-                                                          const fiobj_s *obj) {
-  pos = pos->prev;
-  fio_ls_push(pos, obj);
-}
-
-/** Removes an object from the list's head. */
-static inline __attribute__((unused)) fiobj_s *fio_ls_pop(fio_ls_s *list) {
-  if (list->next == list)
-    return NULL;
-  fio_ls_s *item = list->next;
-  const fiobj_s *ret = item->obj;
-  list->next = item->next;
-  list->next->prev = list;
-  free(item);
-  return (fiobj_s *)ret;
-}
-
-/** Removes an object from the list's tail. */
-static inline __attribute__((unused)) fiobj_s *fio_ls_shift(fio_ls_s *list) {
-  if (list->prev == list)
-    return NULL;
-  fio_ls_s *item = list->prev;
-  const fiobj_s *ret = item->obj;
-  list->prev = item->prev;
-  list->prev->next = list;
-  free(item);
-  return (fiobj_s *)ret;
-}
-
-/** Removes an object from the containing node. */
-static inline __attribute__((unused)) fiobj_s *fio_ls_remove(fio_ls_s *node) {
-  const fiobj_s *ret = node->obj;
-  node->next->prev = node->prev->next;
-  node->prev->next = node->next->prev;
-  free(node);
-  return (fiobj_s *)ret;
-}
 
 /* *****************************************************************************
 Memory Page Size
@@ -273,8 +211,5 @@ static inline fiobj_s *fiobj_alloc(size_t size) {
 
 /** Deallocates the fiobj_s's data structure. */
 static inline void fiobj_dealloc(fiobj_s *obj) { free(OBJ2HEAD(obj)); }
-
-/** The Hashing function used by dynamic facil.io objects. */
-uint64_t fiobj_sym_hash(const void *data, size_t len);
 
 #endif

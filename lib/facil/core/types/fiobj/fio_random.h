@@ -5,12 +5,15 @@ of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
-#ifndef bscrypt_RANDOM_H
-#define bscrypt_RANDOM_H
-#include "bscrypt-common.h"
+#ifndef fio_RANDOM_H
+#define fio_RANDOM_H
 /* *****************************************************************************
 C++ extern
 */
+
+#include <stdint.h>
+#include <stdlib.h>
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -20,22 +23,16 @@ Random stuff... (why is this not a system call?)
 */
 
 /** returns 32 random bits. */
-uint32_t bscrypt_rand32(void);
+uint32_t fio_rand32(void);
 
 /** returns 64 random bits. */
-uint64_t bscrypt_rand64(void);
-
-/** returns 128 random bits. */
-bits128_u bscrypt_rand128(void);
-
-/** returns 256 random bits. */
-bits256_u bscrypt_rand256(void);
+uint64_t fio_rand64(void);
 
 /** returns a variable length string of random bytes. */
-void bscrypt_rand_bytes(void *target, size_t length);
+void fio_rand_bytes(void *target, size_t length);
 
 #if defined(DEBUG) && DEBUG == 1
-void bscrypt_test_random(void);
+void fio_random_test(void);
 #endif
 
 /* *****************************************************************************

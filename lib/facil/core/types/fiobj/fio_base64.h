@@ -1,13 +1,12 @@
 /*
-Copyright: Boaz segev, 2016-2017
+Copyright: Boaz Segev, 2016-2018
 License: MIT except for any non-public-domain algorithms (none that I'm aware
 of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
-#ifndef BSCRYPT_BASE64_H
-#define BSCRYPT_BASE64_H
-#include "bscrypt-common.h"
+#ifndef H_FIO_BASE64_H
+#define H_FIO_BASE64_H
 /* *****************************************************************************
 C++ extern
 */
@@ -35,7 +34,7 @@ Returns the number of bytes actually written to the target buffer
 
 A NULL terminator char is NOT written to the target buffer.
 */
-int bscrypt_base64_encode(char *target, const char *data, int len);
+int fio_base64_encode(char *target, const char *data, int len);
 
 /**
 This will decode a Base64 encoded string of a specified length (len) and
@@ -56,10 +55,10 @@ be, at least, `base64_len/4*3 + 3` long.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-int bscrypt_base64_decode(char *target, char *encoded, int base64_len);
+int fio_base64_decode(char *target, char *encoded, int base64_len);
 
 #if defined(DEBUG) && DEBUG == 1
-void bscrypt_test_base64(void);
+void fio_base64_test(void);
 #endif
 
 /* *****************************************************************************

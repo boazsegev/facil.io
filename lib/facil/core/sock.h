@@ -7,8 +7,8 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #define LIB_SOCK_VERSION_MAJOR 0
-#define LIB_SOCK_VERSION_MINOR 3
-#define LIB_SOCK_VERSION_PATCH 2
+#define LIB_SOCK_VERSION_MINOR 4
+#define LIB_SOCK_VERSION_PATCH 0
 
 /** \file
 The `sock.h` is a non-blocking socket helper library, using a user level buffer,
@@ -31,27 +31,12 @@ fail.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #ifndef UNUSED_FUNC
 #define UNUSED_FUNC __attribute__((unused))
-#endif
-
-/* *****************************************************************************
-User land buffer settings for every packet's pre-alocated memory size (17Kb)
-
-This information is also useful when implementing read / write hooks.
-*/
-#ifndef BUFFER_PACKET_SIZE
-#define BUFFER_PACKET_SIZE                                                     \
-  (1024 * 16) /* Use 32 Kb. With sendfile, 16 Kb appears to work better. */
-#endif
-#ifndef BUFFER_FILE_READ_SIZE
-#define BUFFER_FILE_READ_SIZE 4096UL
-#endif
-#ifndef BUFFER_PACKET_POOL
-#define BUFFER_PACKET_POOL 1024
 #endif
 
 /* *****************************************************************************
@@ -281,14 +266,9 @@ typedef struct {
   /** The length (size) of the buffer, or the amount of data to be sent from the
    * file descriptor.
    */
-  size_t length;
+  uintptr_t length;
   /** Starting point offset from the buffer or file descriptor's beginning. */
-  off_t offset;
-  /** When sending data from the memory, using `move` will prevent copy and
-   * memory allocations, moving the memory ownership to the `sock_write2`
-   * function.
-   */
-  unsigned move : 1;
+  intptr_t offset;
   /** The packet will be sent as soon as possible. */
   unsigned urgent : 1;
   /**
@@ -311,7 +291,7 @@ typedef struct {
 } sock_write_info_s;
 
 void SOCK_DEALLOC_NOOP(void *arg);
-#define SOCK_DEALLOC_NOOP SOCK_DEALLOC_NOOP
+#define SOCK_CLOSE_NOOP ((void (*)(intptr_t))SOCK_DEALLOC_NOOP)
 
 /**
 `sock_write2_fn` is the actual function behind the macro `sock_write2`.
@@ -326,8 +306,8 @@ transferred to the socket's user level buffer.
 */
 #define sock_write2(...) sock_write2_fn((sock_write_info_s){__VA_ARGS__})
 /**
-`sock_write` writes up to count bytes from the buffer pointed `buf` to the
-buffer associated with the socket `sockfd`.
+`sock_write` copies `legnth` data from the buffer and schedules the data to be
+sent over the socket.
 
 The data isn't necessarily written to the socket and multiple calls to
 `sock_flush` might be required before all the data is actually sent.
@@ -335,11 +315,19 @@ The data isn't necessarily written to the socket and multiple calls to
 On error, -1 will be returned. Otherwise returns 0. All the bytes are
 transferred to the socket's user level buffer.
 
-**Note** this is actually a specific case of `sock_write2` and this macro
-actually calls `sock_write2`.
+Returns the same values as `sock_write2`.
 */
-#define sock_write(sock_uuid, buf, count)                                      \
-  sock_write2(.uuid = (sock_uuid), .buffer = (buf), .length = (count))
+// ssize_t sock_write(uintptr_t uuid, void *buffer, size_t legnth);
+UNUSED_FUNC static inline ssize_t
+sock_write(const intptr_t uuid, const void *buffer, const size_t length) {
+  if (!length || !buffer)
+    return 0;
+  void *cpy = malloc(length);
+  if (!cpy)
+    return -1;
+  memcpy(cpy, buffer, length);
+  return sock_write2(.uuid = uuid, .buffer = cpy, .length = length);
+}
 
 /**
 Sends data from a file as if it were a single atomic packet (sends up to
@@ -359,8 +347,26 @@ Returns -1 and closes the file on error. Returns 0 on success.
 UNUSED_FUNC static inline ssize_t
 sock_sendfile(intptr_t uuid, intptr_t source_fd, off_t offset, size_t length) {
   return sock_write2(.uuid = uuid, .buffer = (void *)(source_fd),
-                     .length = length, .is_fd = 1, .offset = offset, .move = 1);
+                     .length = length, .is_fd = 1, .offset = offset);
 }
+
+/**
+`sock_close` marks the connection for disconnection once all the data was sent.
+The actual disconnection will be managed by the `sock_flush` function.
+
+`sock_flash` will automatically be called.
+*/
+void sock_close(intptr_t uuid);
+/**
+`sock_force_close` closes the connection immediately, without adhering to any
+protocol restrictions and without sending any remaining data in the connection
+buffer.
+*/
+void sock_force_close(intptr_t uuid);
+
+/* *****************************************************************************
+Direct user level buffer API.
+*/
 
 /**
 `sock_flush` writes the data in the internal buffer to the underlying file
@@ -380,63 +386,6 @@ void sock_flush_strong(intptr_t uuid);
 Calls `sock_flush` for each file descriptor that's buffer isn't empty.
 */
 void sock_flush_all(void);
-/**
-`sock_close` marks the connection for disconnection once all the data was sent.
-The actual disconnection will be managed by the `sock_flush` function.
-
-`sock_flash` will automatically be called.
-*/
-void sock_close(intptr_t uuid);
-/**
-`sock_force_close` closes the connection immediately, without adhering to any
-protocol restrictions and without sending any remaining data in the connection
-buffer.
-*/
-void sock_force_close(intptr_t uuid);
-
-/* *****************************************************************************
-Direct user level buffer API.
-
-The following API allows data to be written directly to the packet, minimizing
-memory copy operations.
-*/
-
-/**
-The buffer of a user-land sock-packet.
-
-Remember to set the correct `len` value, so the full amount of the data is sent.
-
-See `sock_buffer_checkout`, `sock_buffer_send` and `sock_buffer_free` for more
-information.
-*/
-typedef struct sock_buffer_s {
-  size_t len;
-  uint8_t buf[BUFFER_PACKET_SIZE];
-} sock_buffer_s;
-
-/**
-Checks out a `sock_buffer_s` from the buffer pool.
-
-This function will hang until a buffer becomes available, so never check out
-more then a single buffer at a time and remember to free or send the buffer
-using the `sock_buffer_*` functions.
-
-Every checked out buffer packet comes with an attached buffer of
-BUFFER_PACKET_SIZE bytes. This buffer is accessible using the `->buf`
-pointer.
-
-This attached buffer's memory is automatically manages as long as the
-`sock_buffer_send` or `sock_buffer_free` functions are called.
-*/
-sock_buffer_s *sock_buffer_checkout(void);
-/**
-Attaches a packet to a socket's output buffer and calls `sock_flush` for the
-socket.
-
-Returns -1 on error. Returns 0 on success. The `buffer` memory is always
-automatically managed.
-*/
-ssize_t sock_buffer_send(intptr_t uuid, sock_buffer_s *buffer);
 
 /**
 Returns TRUE (non 0) if there is data waiting to be written to the socket in the
@@ -444,16 +393,8 @@ user-land buffer.
 */
 int sock_has_pending(intptr_t uuid);
 
-/**
-Use `sock_buffer_free` to free unused buffers that were checked-out using
-`sock_buffer_checkout`.
-*/
-void sock_buffer_free(sock_buffer_s *buffer);
-
 /* *****************************************************************************
 TLC - Transport Layer Callback.
-
-Experimental
 */
 
 /**

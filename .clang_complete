@@ -1,13 +1,12 @@
 -Ilib/
 -Ilib/facil
 -Ilib/facil/core
--Ilib/facil/http/
--Ilib/facil/redis
 -Ilib/facil/core/types
 -Ilib/facil/core/types/fiobj
 -Ilib/facil/services
--Ilib/facil/bscrypt
--Ilib/facil/bscrypt/bscrypt
+-Ilib/facil/http/
+-Ilib/facil/http/parsers
+-Ilib/facil/redis
 
 -Idev/
 -Idev/startup

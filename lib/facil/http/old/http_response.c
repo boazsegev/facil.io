@@ -8,10 +8,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #define _GNU_SOURCE
 #endif
 
-#include "base64.h"
+#include "fio_base64.h"
+#include "fiobj_sym_hash.h"
 #include "http.h"
 #include "http1_response.h"
-#include "siphash.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -343,8 +343,8 @@ int http_response_sendfile2(http_response_s *response, http_request_s *request,
   /* add ETag */
   uint64_t sip = (uint64_t)file_data.st_size;
   sip ^= (uint64_t)file_data.st_mtime;
-  sip = siphash24(&sip, sizeof(uint64_t), SIPHASH_DEFAULT_KEY);
-  bscrypt_base64_encode(buffer, (void *)&sip, 8);
+  sip = fiobj_sym_hash(&sip, sizeof(uint64_t));
+  fio_base64_encode(buffer, (void *)&sip, 8);
   http_response_write_header(response, .name = "ETag", .name_len = 4,
                              .value = buffer, .value_len = 12);
 

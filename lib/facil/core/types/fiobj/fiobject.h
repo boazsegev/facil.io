@@ -85,8 +85,10 @@ fiobj_s *fiobj_dup(fiobj_s *);
  * This function affects nested objects, meaning that when an Array or
  * a Hash object is passed along, it's children (nested objects) are
  * also freed.
+ *
+ * Returns the number of existing references or zero if memory was released.
  */
-void fiobj_free(fiobj_s *);
+uintptr_t fiobj_free(fiobj_s *);
 
 /**
  * Attempts to return the object's current reference count.

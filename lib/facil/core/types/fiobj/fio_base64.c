@@ -1,5 +1,5 @@
 /*
-Copyright: Boaz segev, 2016-2017
+Copyright: Boaz Segev, 2016-2018
 License: MIT except for any non-public-domain algorithms (none that I'm aware
 of), which might be subject to their own licenses.
 
@@ -8,11 +8,13 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include "base64.h"
+#include "fio_base64.h"
 
-/* ***************************************************************************
+#include <stdint.h>
+#include <stdlib.h>
+/* ****************************************************************************
 Base64 encoding
-*/
+***************************************************************************** */
 
 /** the base64 encoding array */
 static char base64_encodes[] =
@@ -53,7 +55,7 @@ Returns the number of bytes actually written to the target buffer
 
 A NULL terminator char is NOT written to the target buffer.
 */
-int bscrypt_base64_encode(char *target, const char *data, int len) {
+int fio_base64_encode(char *target, const char *data, int len) {
   /* walk backwards, allowing fo inplace decoding (target == data) */
   int groups = len / 3;
   const int mod = len - (groups * 3);
@@ -110,7 +112,7 @@ be, at least, `base64_len/4*3 + 3` long.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 */
-int bscrypt_base64_decode(char *target, char *encoded, int base64_len) {
+int fio_base64_decode(char *target, char *encoded, int base64_len) {
   if (!target)
     target = encoded;
   if (base64_len <= 0) {
@@ -192,11 +194,15 @@ int bscrypt_base64_decode(char *target, char *encoded, int base64_len) {
   return written;
 }
 
-/*******************************************************************************
-Base64
-*/
+/* *****************************************************************************
+Base64 Testing
+***************************************************************************** */
 #if defined(DEBUG) && DEBUG == 1
-void bscrypt_test_base64(void) {
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+void fio_base64_test(void) {
   struct {
     char *str;
     char *base64;
@@ -226,12 +232,12 @@ void bscrypt_test_base64(void) {
   };
   int i = 0;
   char buffer[1024];
-  fprintf(stderr, "+ bscrypt");
+  fprintf(stderr, "+ fio");
   while (sets[i].str) {
-    bscrypt_base64_encode(buffer, sets[i].str, strlen(sets[i].str));
+    fio_base64_encode(buffer, sets[i].str, strlen(sets[i].str));
     if (strcmp(buffer, sets[i].base64)) {
       fprintf(stderr,
-              ":\n--- bscrypt Base64 Test FAILED!\nstring: %s\nlength: %lu\n "
+              ":\n--- fio Base64 Test FAILED!\nstring: %s\nlength: %lu\n "
               "expected: %s\ngot: %s\n\n",
               sets[i].str, strlen(sets[i].str), sets[i].base64, buffer);
       break;
@@ -242,12 +248,12 @@ void bscrypt_test_base64(void) {
     fprintf(stderr, " Base64 encode passed.\n");
 
   i = 0;
-  fprintf(stderr, "+ bscrypt");
+  fprintf(stderr, "+ fio");
   while (sets[i].str) {
-    bscrypt_base64_decode(buffer, sets[i].base64, strlen(sets[i].base64));
+    fio_base64_decode(buffer, sets[i].base64, strlen(sets[i].base64));
     if (strcmp(buffer, sets[i].str)) {
       fprintf(stderr,
-              ":\n--- bscrypt Base64 Test FAILED!\nbase64: %s\nexpected: "
+              ":\n--- fio Base64 Test FAILED!\nbase64: %s\nexpected: "
               "%s\ngot: %s\n\n",
               sets[i].base64, sets[i].str, buffer);
       return;
@@ -259,10 +265,10 @@ void bscrypt_test_base64(void) {
   size_t b64_len;
   clock_t start = clock();
   for (size_t i = 0; i < 100000; i++) {
-    b64_len = bscrypt_base64_encode(buffer, buff_b64, sizeof(buff_b64) - 1);
-    bscrypt_base64_decode(buff_b64, buffer, b64_len);
+    b64_len = fio_base64_encode(buffer, buff_b64, sizeof(buff_b64) - 1);
+    fio_base64_decode(buff_b64, buffer, b64_len);
   }
-  fprintf(stderr, "bscrypt 100K Base64: %lf\n",
+  fprintf(stderr, "fio 100K Base64: %lf\n",
           (double)(clock() - start) / CLOCKS_PER_SEC);
 }
 #endif

@@ -6,12 +6,12 @@ Also, some of the file name resolution schemes (i.e., the one used for the HTTP 
 
 ## Library Requirements
 
-The `facil.io` library in this folder requires the `fiobj` and `bscrypt` libraries for parts of it's operations.
+The `facil.io` library in this folder requires the `fiobj` library for parts of it's operations.
 
 Specifically:
 
-- The `websockets.h` extension uses the `fiobj` library for caching network data.
-- The `websockets.h` extension uses the `bscrypt` library in the `Upgrade` stage.
+- The `websockets.h` extension uses the `fiobj` library for caching network data and the upgrade process.
+- The `http.h` extension uses the `fiobj` library for authoring network packets and handling some network data.
 - The `fio_cli_helper.h` extension uses the `fiobj` library to manage it's inner data structures.
 - The `fio2resp.h` is a translation unit between RESP (Redis) objects and `fiobj` objects (facio.io objects). By it's nature, it requires the `fiobj` library.
 

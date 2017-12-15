@@ -6,30 +6,16 @@ License: MIT
 #include "fiobj_hash.h"
 #include "fiobj_internal.h"
 
+#include "fio_hashmap.h"
+
 #include <errno.h>
 
 /* *****************************************************************************
 Hash types
 ***************************************************************************** */
-/* MUST be a power of 2 */
-#define FIOBJ_HASH_MAX_MAP_SEEK (256)
-
-typedef struct {
-  uintptr_t hash;
-  fio_ls_s *container;
-} map_info_s;
-
-typedef struct {
-  uintptr_t capa;
-  map_info_s *data;
-} fio_map_s;
-
 typedef struct {
   struct fiobj_vtable_s *vtable;
-  uintptr_t count;
-  uintptr_t mask;
-  fio_ls_s items;
-  fio_map_s map;
+  fio_hash_s hash;
 } fiobj_hash_s;
 
 /* Hash node */
@@ -39,133 +25,13 @@ typedef struct {
   fiobj_s *obj;
 } fiobj_couplet_s;
 
-void fiobj_hash_rehash(fiobj_s *h);
-
 #define obj2hash(o) ((fiobj_hash_s *)(o))
 #define obj2couplet(o) ((fiobj_couplet_s *)(o))
 
-/* *****************************************************************************
-Internal Map Array
-We avoid the fiobj_ary_s to prevent code entanglement
-***************************************************************************** */
-
-static inline void fio_map_reset(fio_map_s *map, uintptr_t capa) {
-  /* It's better to reallocate using calloc than manually zero out memory */
-  /* Maybe there's enough zeroed out pages available in the system */
-  map->capa = capa;
-  free(map->data);
-  map->data = calloc(sizeof(*map->data), map->capa);
-  if (!map->data)
-    perror("HashMap Allocation Failed"), exit(errno);
-}
-
-/* *****************************************************************************
-Internal HashMap
-***************************************************************************** */
-static inline uintptr_t fio_map_cuckoo_steps(uintptr_t step) {
-  // return ((step * (step + 1)) >> 1);
-  return (step * 3);
-}
-
-/* seeks the hash's position in the map */
-static map_info_s *fio_hash_seek(fiobj_hash_s *h, uintptr_t hash) {
-  /* TODO: consider implementing Robing Hood reordering during seek? */
-  map_info_s *pos = h->map.data + (hash & h->mask);
-  uintptr_t i = 0;
-  const uintptr_t limit = h->map.capa > FIOBJ_HASH_MAX_MAP_SEEK
-                              ? FIOBJ_HASH_MAX_MAP_SEEK
-                              : (h->map.capa >> 1);
-  while (i < limit) {
-    if (!pos->hash || pos->hash == hash)
-      return pos;
-    pos = h->map.data +
-          (((hash & h->mask) + fio_map_cuckoo_steps(i++)) & h->mask);
-  }
-  return NULL;
-}
-
-/* seeks the hash's position in the map while actually comparing key data */
-// static map_info_s *fio_hash_seek_secure(fiobj_hash_s *h, uintptr_t hash,
-//                                         fiobj_s *key) {
-//   /* TODO: consider implementing Robing Hood reordering during seek? */
-//   map_info_s *pos = h->map.data + (hash & h->mask);
-//   uintptr_t i = 0;
-//   const uintptr_t limit = h->map.capa > FIOBJ_HASH_MAX_MAP_SEEK
-//                               ? FIOBJ_HASH_MAX_MAP_SEEK
-//                               : (h->map.capa >> 1);
-//   while (i < limit) {
-//     if (!pos->hash ||
-//         (pos->hash == hash &&
-//          (!pos->container || !pos->container->obj ||
-//           obj2couplet(pos->container->obj)->name == key ||
-//           fiobj_iseq(obj2couplet(pos->container->obj)->name, key))))
-//       return pos;
-//     pos = h->map.data +
-//           (((hash & h->mask) + fio_map_cuckoo_steps(i++)) & h->mask);
-//   }
-//   return NULL;
-// }
-
-/* finds an object in the map */
-static void *fio_hash_find(fiobj_hash_s *h, uintptr_t hash) {
-  map_info_s *info = fio_hash_seek(h, hash);
-  if (!info || !info->container)
-    return NULL;
-  return (void *)info->container->obj;
-}
-
-/* inserts an object to the map, rehashing if required, returning old object.
- * set obj to NULL to remove existing data.
- */
-static void *fio_hash_insert(fiobj_hash_s *h, uintptr_t hash, void *obj) {
-  map_info_s *info = fio_hash_seek(h, hash);
-  if (!info)
-    return (void *)(-1);
-  if (!info->container) {
-    /* a fresh object */
-    if (obj == NULL)
-      return NULL; /* nothing to delete */
-    /* create container and set hash */
-    fio_ls_unshift(&h->items, obj);
-    *info = (map_info_s){.hash = hash, .container = h->items.prev};
-    h->count++;
-    return NULL;
-  }
-  /* a container object exists, this is a "replace/delete" operation */
-  if (!obj) {
-    /* delete */
-    h->count--;
-    obj = fio_ls_remove(info->container);
-    *info = (map_info_s){.hash = hash}; /* hash is set to seek over position */
-    return obj;
-  }
-  /* replace */
-  void *old = (void *)info->container->obj;
-  info->container->obj = obj;
-  return old;
-}
-
-/* attempts to rehash the hashmap. */
-void fiobj_hash_rehash(fiobj_s *h_) {
-  fiobj_hash_s *h = obj2hash(h_);
-// fprintf(stderr,
-//         "- Rehash with "
-//         "length/capacity == %lu/%lu\n",
-//         h->count, h->map.capa);
-retry_rehashing:
-  h->mask = ((h->mask) << 1) | 1;
-  fio_map_reset(&h->map, h->mask + 1);
-  fio_ls_s *pos = h->items.next;
-  while (pos != &h->items) {
-    /* can't use fio_hash_insert, because we're recycling containers */
-    uintptr_t pos_hash = fiobj_sym_id(obj2couplet(pos->obj)->name);
-    map_info_s *info = fio_hash_seek(h, pos_hash);
-    if (!info) {
-      goto retry_rehashing;
-    }
-    *info = (map_info_s){.hash = pos_hash, .container = pos};
-    pos = pos->next;
-  }
+void fiobj_hash_rehash(fiobj_s *h) {
+  if (!h || h->type != FIOBJ_T_HASH)
+    return;
+  fio_hash_rehash(&obj2hash(h)->hash);
 }
 
 /* *****************************************************************************
@@ -263,38 +129,35 @@ Hash alloc + VTable
 const uintptr_t FIOBJ_T_HASH;
 
 static void fiobj_hash_dealloc(fiobj_s *h) {
-  while (fio_ls_pop(&obj2hash(h)->items))
-    ;
-  free(obj2hash(h)->map.data);
-  obj2hash(h)->map.data = NULL;
-  obj2hash(h)->map.capa = 0;
+  fio_hash_free(&obj2hash(h)->hash);
   fiobj_dealloc(h);
+}
+
+struct fiobj_inner_task_s {
+  void *arg;
+  int (*task)(fiobj_s *, void *);
+};
+static int fiobj_inner_task(uintptr_t key, void *obj, void *a_) {
+  struct fiobj_inner_task_s *t = a_;
+  return t->task(obj, t->arg);
+  (void)key;
 }
 
 static size_t fiobj_hash_each1(fiobj_s *o, const size_t start_at,
                                int (*task)(fiobj_s *obj, void *arg),
                                void *arg) {
-  if (start_at >= obj2hash(o)->count)
-    return obj2hash(o)->count;
-  size_t i = 0;
-  fio_ls_s *pos = obj2hash(o)->items.next;
-  while (pos != &obj2hash(o)->items && start_at > i) {
-    pos = pos->next;
-    ++i;
-  }
-  while (pos != &obj2hash(o)->items) {
-    ++i;
-    if (task((fiobj_s *)pos->obj, arg) == -1)
-      return i;
-    pos = pos->next;
-  }
-  return i;
+  if (!o || o->type != FIOBJ_T_HASH)
+    return 0;
+  struct fiobj_inner_task_s a = {.task = task, .arg = arg};
+  return fio_hash_each(&obj2hash(o)->hash, start_at, fiobj_inner_task,
+                       (void *)&a);
 }
 
 static int fiobj_hash_is_eq(const fiobj_s *self, const fiobj_s *other) {
   if (other->type != FIOBJ_T_HASH)
     return 0;
-  if (obj2hash(self)->count != obj2hash(other)->count)
+  if (fio_hash_count(&obj2hash(self)->hash) !=
+      fio_hash_count(&obj2hash(other)->hash))
     return 0;
   // fio_ls_s *pos = obj2hash(self)->items.next;
   // while (pos != &obj2hash(self)->items) {
@@ -307,8 +170,10 @@ static int fiobj_hash_is_eq(const fiobj_s *self, const fiobj_s *other) {
 }
 
 /** Returns the number of elements in the Array. */
-static size_t fiobj_hash_count_items(const fiobj_s *o) {
-  return obj2hash(o)->count;
+size_t fiobj_hash_count(const fiobj_s *o) {
+  if (!o || o->type != FIOBJ_T_HASH)
+    return 0;
+  return fio_hash_count(&obj2hash(o)->hash);
 }
 
 static struct fiobj_vtable_s FIOBJ_VTABLE_HASH = {
@@ -317,7 +182,7 @@ static struct fiobj_vtable_s FIOBJ_VTABLE_HASH = {
     .to_f = fiobj_noop_f,
     .to_str = fiobj_noop_str,
     .is_eq = fiobj_hash_is_eq,
-    .count = fiobj_hash_count_items,
+    .count = fiobj_hash_count,
     .unwrap = fiobj_noop_unwrap,
     .each1 = fiobj_hash_each1,
 };
@@ -340,21 +205,9 @@ fiobj_s *fiobj_hash_new(void) {
     perror("ERROR: fiobj hash couldn't allocate memory"), exit(errno);
   *obj2hash(o) = (fiobj_hash_s){
       .vtable = &FIOBJ_VTABLE_HASH,
-      .mask = (HASH_INITIAL_CAPACITY - 1),
-      .items = FIO_LS_INIT((obj2hash(o)->items)),
-      .map.data = calloc(sizeof(map_info_s), HASH_INITIAL_CAPACITY),
-      .map.capa = HASH_INITIAL_CAPACITY,
   };
-  if (!obj2hash(o)->map.data)
-    perror("ERROR: fiobj hash couldn't allocate memory"), exit(errno);
+  fio_hash_new(&obj2hash(o)->hash);
   return o;
-}
-
-/** Returns the number of elements in the Hash. */
-size_t fiobj_hash_count(const fiobj_s *hash) {
-  if (!hash || hash->type != FIOBJ_T_HASH)
-    return 0;
-  return obj2hash(hash)->count;
 }
 
 /**
@@ -364,7 +217,7 @@ size_t fiobj_hash_count(const fiobj_s *hash) {
  * Returns -1 on error.
  */
 int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
-  if (hash->type != FIOBJ_T_HASH) {
+  if (!hash || hash->type != FIOBJ_T_HASH) {
     fiobj_free(obj);
     return -1;
   }
@@ -380,14 +233,8 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
   }
 
   fiobj_s *coup = fiobj_couplet_alloc(sym, obj);
-  fiobj_s *old = fio_hash_insert(obj2hash(hash), hash_value, coup);
-  while (old == (void *)-1) {
-    fiobj_hash_rehash(hash);
-    old = fio_hash_insert(obj2hash(hash), hash_value, coup);
-    // fprintf(stderr, "WARN: (fiobj Hash) collision limit reached"
-    //                 " - forced rehashing\n");
-  }
-  if (old) {
+  fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, coup);
+  if (old && !OBJREF_REM(old)) {
     fiobj_free(obj2couplet(old)->obj);
     obj2couplet(old)->obj = NULL;
     fiobj_couplet_dealloc(old);
@@ -400,7 +247,7 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
  * object (instead of freeing it).
  */
 fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
-  if (hash->type != FIOBJ_T_HASH) {
+  if (!hash || hash->type != FIOBJ_T_HASH) {
     return 0;
   }
   uintptr_t hash_value = 0;
@@ -412,13 +259,13 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
   } else {
     return NULL;
   }
-  fiobj_s *coup = fio_hash_insert(obj2hash(hash), hash_value, NULL);
-  if (!coup)
+  fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, NULL);
+  if (!old)
     return NULL;
-  fiobj_s *ret = fiobj_couplet2obj(coup);
-  obj2couplet(coup)->obj = NULL;
-
-  fiobj_couplet_dealloc((fiobj_s *)coup);
+  fiobj_s *ret = fiobj_couplet2obj(old);
+  if (!OBJREF_REM(old)) {
+    fiobj_couplet_dealloc(old);
+  }
   return ret;
 }
 
@@ -429,6 +276,9 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
  * Returns -1 on type error or if the object never existed.
  */
 int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
+  if (!hash || hash->type != FIOBJ_T_HASH) {
+    return -1;
+  }
   fiobj_s *obj = fiobj_hash_remove(hash, sym);
   if (!obj)
     return -1;
@@ -441,7 +291,7 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
  * if none.
  */
 fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym) {
-  if (hash->type != FIOBJ_T_HASH) {
+  if (!hash || hash->type != FIOBJ_T_HASH) {
     return 0;
   }
   uintptr_t hash_value = 0;
@@ -453,7 +303,7 @@ fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym) {
   } else {
     return 0;
   }
-  fiobj_s *coup = fio_hash_find(obj2hash(hash), hash_value);
+  fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hash_value);
   if (!coup)
     return NULL;
   return fiobj_couplet2obj(coup);
@@ -468,11 +318,29 @@ fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym) {
  * Returns NULL if no object is asociated with this String data.
  */
 fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len) {
-  if (hash->type != FIOBJ_T_HASH || str == NULL) {
+  if (!hash || hash->type != FIOBJ_T_HASH || str == NULL) {
     return NULL;
   }
   uintptr_t hashed_sym = fiobj_sym_hash(str, len);
-  fiobj_s *coup = fio_hash_find(obj2hash(hash), hashed_sym);
+  fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hashed_sym);
+  if (!coup)
+    return NULL;
+  return fiobj_couplet2obj(coup);
+}
+
+/**
+ * Returns a temporary handle to the object associated hashed key value.
+ *
+ * This function takes a `uintptr_t` Hash value (see `fiobj_sym_hash`) to
+ * perform a lookup in the HashMap.
+ *
+ * Returns NULL if no object is asociated with this hashed key value.
+ */
+fiobj_s *fiobj_hash_get3(const fiobj_s *hash, uintptr_t key_hash) {
+  if (!hash || hash->type != FIOBJ_T_HASH) {
+    return NULL;
+  }
+  fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, key_hash);
   if (!coup)
     return NULL;
   return fiobj_couplet2obj(coup);
@@ -482,7 +350,7 @@ fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len) {
  * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.
  */
 int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym) {
-  if (hash->type != FIOBJ_T_HASH) {
+  if (!hash || hash->type != FIOBJ_T_HASH) {
     return 0;
   }
   uintptr_t hash_value = 0;
@@ -494,7 +362,7 @@ int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym) {
   } else {
     return 0;
   }
-  fiobj_s *coup = fio_hash_find(obj2hash(hash), hash_value);
+  fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hash_value);
   if (!coup)
     return 0;
   return 1;
@@ -504,4 +372,9 @@ int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym) {
  * Returns a temporary theoretical Hash map capacity.
  * This could be used for testig performance and memory consumption.
  */
-size_t fiobj_hash_capa(const fiobj_s *hash) { return obj2hash(hash)->map.capa; }
+size_t fiobj_hash_capa(const fiobj_s *hash) {
+  if (!hash || hash->type != FIOBJ_T_HASH) {
+    return 0;
+  }
+  return fio_hash_capa(&obj2hash(hash)->hash);
+}

@@ -119,7 +119,7 @@ static void redis_ping(intptr_t uuid, protocol_s *pr) {
   /* We cannow write directly to the socket in case `redis_send` has scheduled
    * callbacks. */
   sock_write2(.uuid = uuid, .buffer = REDIS_PING_STR,
-              .length = sizeof(REDIS_PING_STR) - 1, .move = 1,
+              .length = sizeof(REDIS_PING_STR) - 1,
               .dealloc = SOCK_DEALLOC_NOOP);
   (void)pr;
 }
@@ -223,7 +223,7 @@ static void redis_on_open(intptr_t uuid, protocol_s *pr, void *d) {
     t[18 + n_len + r->settings->auth_len] = '\n';
     t[19 + n_len + r->settings->auth_len] = 0; /* we don't need it, but nice */
     sock_write2(.uuid = uuid, .buffer = t,
-                .length = (19 + n_len + r->settings->auth_len), .move = 1);
+                .length = (19 + n_len + r->settings->auth_len));
 
   } else
     r->authenticated = 0;

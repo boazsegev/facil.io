@@ -66,7 +66,7 @@ static void redis_pub_send(void *e, void *uuid) {
     if (cb->sent == 0) {
       cb->sent = 1;
       sock_write2(.uuid = r->pub, .buffer = (uint8_t *)(cb + 1),
-                  .length = cb->len, .move = 1, .dealloc = SOCK_DEALLOC_NOOP);
+                  .length = cb->len, .dealloc = SOCK_DEALLOC_NOOP);
     }
   }
   spn_unlock(&r->lock);
@@ -237,7 +237,7 @@ static int subscribe(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
   size_t size = 32 + ch_len;
   if (resp_format(e->sub_parser, buffer, &size, cmd))
     fprintf(stderr, "ERROR: RESP format? size = %lu ch = %lu\n", size, ch_len);
-  sock_write2(.uuid = e->sub, .buffer = buffer, .length = size, .move = 1);
+  sock_write2(.uuid = e->sub, .buffer = buffer, .length = size);
   resp_free_object(cmd);
   return 0;
 }
@@ -259,7 +259,7 @@ static void unsubscribe(const pubsub_engine_s *eng, const char *ch,
   void *buffer = malloc(32 + ch_len);
   size_t size = 32 + ch_len;
   if (!resp_format(e->sub_parser, buffer, &size, cmd) && size <= (32 + ch_len))
-    sock_write2(.uuid = e->sub, .buffer = buffer, .length = size, .move = 1);
+    sock_write2(.uuid = e->sub, .buffer = buffer, .length = size);
   resp_free_object(cmd);
 }
 

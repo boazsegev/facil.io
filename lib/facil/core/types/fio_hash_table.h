@@ -188,7 +188,7 @@ inline FIO_FUNC void fio_ht_rehash(fio_ht_s *table, uint64_t bin_count) {
   if (!mem)
     return;
   table->bin_count = bin_count;
-  table->bins = mem;
+  table->bins = (struct fio_list_s *)mem;
   table->mask = bin_count - 1;
   while (bin_count) {
     bin_count--;
@@ -203,6 +203,8 @@ inline FIO_FUNC void fio_ht_rehash(fio_ht_s *table, uint64_t bin_count) {
 /* *****************************************************************************
 The Hash Function
 ***************************************************************************** */
+
+#include "fiobj_sym_hash.h"
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) &&                 \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -222,79 +224,7 @@ The Hash Function
   (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
 
 FIO_FUNC uint64_t fio_ht_hash(const void *data, size_t len) {
-  /* initialize the 4 words */
-  uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL);
-  uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL);
-  uint64_t v2 = (0x0706050403020100ULL ^ 0x6c7967656e657261ULL);
-  uint64_t v3 = (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL);
-  const uint64_t *w64 = data;
-  uint8_t len_mod = len & 255;
-  union {
-    uint64_t i;
-    uint8_t str[8];
-  } word;
-
-#define hash_map_SipRound                                                      \
-  do {                                                                         \
-    v2 += v3;                                                                  \
-    v3 = lrot64(v3, 16) ^ v2;                                                  \
-    v0 += v1;                                                                  \
-    v1 = lrot64(v1, 13) ^ v0;                                                  \
-    v0 = lrot64(v0, 32);                                                       \
-    v2 += v1;                                                                  \
-    v0 += v3;                                                                  \
-    v1 = lrot64(v1, 17) ^ v2;                                                  \
-    v3 = lrot64(v3, 21) ^ v0;                                                  \
-    v2 = lrot64(v2, 32);                                                       \
-  } while (0);
-
-  while (len >= 8) {
-    word.i = sip_local64(*w64);
-    v3 ^= word.i;
-    /* Sip Rounds */
-    hash_map_SipRound;
-    hash_map_SipRound;
-    v0 ^= word.i;
-    w64 += 1;
-    len -= 8;
-  }
-  word.i = 0;
-  uint8_t *pos = word.str;
-  uint8_t *w8 = (void *)w64;
-  switch (len) { /* fallthrough is intentional */
-  case 7:
-    pos[6] = w8[6];
-  case 6:
-    pos[5] = w8[5];
-  case 5:
-    pos[4] = w8[4];
-  case 4:
-    pos[3] = w8[3];
-  case 3:
-    pos[2] = w8[2];
-  case 2:
-    pos[1] = w8[1];
-  case 1:
-    pos[0] = w8[0];
-  }
-  word.str[7] = len_mod;
-
-  /* last round */
-  v3 ^= word.i;
-  hash_map_SipRound;
-  hash_map_SipRound;
-  v0 ^= word.i;
-  /* Finalization */
-  v2 ^= 0xff;
-  /* d iterations of SipRound */
-  hash_map_SipRound;
-  hash_map_SipRound;
-  hash_map_SipRound;
-  hash_map_SipRound;
-  /* XOR it all together */
-  v0 ^= v1 ^ v2 ^ v3;
-#undef hash_map_SipRound
-  return v0;
+  return fiobj_sym_hash(data, len);
 }
 
 FIO_FUNC uint64_t fio_ht_hash_cstr(const void *data) {
@@ -303,7 +233,7 @@ FIO_FUNC uint64_t fio_ht_hash_cstr(const void *data) {
   uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL);
   uint64_t v2 = (0x0706050403020100ULL ^ 0x6c7967656e657261ULL);
   uint64_t v3 = (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL);
-  const uint64_t *w64 = data;
+  const uint64_t *w64 = (uint64_t *)data;
   uint8_t len = 0;
   union {
     uint64_t i;
@@ -339,7 +269,7 @@ FIO_FUNC uint64_t fio_ht_hash_cstr(const void *data) {
   }
   word.i = 0;
   uint8_t *pos = word.str;
-  uint8_t *w8 = (void *)w64;
+  uint8_t *w8 = (uint8_t *)w64;
   while (*w8) {
     *(pos++) = *(w8++);
     len++;

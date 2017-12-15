@@ -5,9 +5,32 @@ of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
-#ifndef bscrypt_SHA2_H
-#define bscrypt_SHA2_H
-#include "bscrypt-common.h"
+#ifndef H_FIO_SHA2_H
+#define H_FIO_SHA2_H
+
+// clang-format off
+#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
+#   if defined(__has_include)
+#     if __has_include(<endian.h>)
+#      include <endian.h>
+#     elif __has_include(<sys/endian.h>)
+#      include <sys/endian.h>
+#     endif
+#   endif
+#   if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) && \
+                __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#      define __BIG_ENDIAN__
+#   endif
+#endif
+
+#ifndef UNUSED_FUNC
+#   define UNUSED_FUNC __attribute__((unused))
+#endif
+// clang-format on
+
+#include <stdlib.h>
+#include <stdint.h>
+
 /* *****************************************************************************
 C++ extern
 */
@@ -45,15 +68,23 @@ Use, for example:
 
     #include "mini-crypt.h"
     sha2_s sha2;
-    bscrypt.sha2_init(&sha2, SHA_512);
-    bscrypt.sha2_write(&sha2,
+    fio_sha2_init(&sha2, SHA_512);
+    fio_sha2_write(&sha2,
                   "The quick brown fox jumps over the lazy dog", 43);
-    char *hashed_result = bscrypt.sha2_result(&sha2);
+    char *hashed_result = fio_sha2_result(&sha2);
 
 */
 typedef struct {
   /* notice: we're counting bits, not bytes. max length: 2^128 bits */
-  bits128_u length;
+  union {
+    uint8_t bytes[16];
+    uint8_t matrix[4][4];
+    uint32_t words_small[4];
+    uint64_t words[2];
+#if defined(__SIZEOF_INT128__)
+    __uint128_t i;
+#endif
+  } length;
   uint8_t buffer[128];
   union {
     uint32_t i32[16];
@@ -78,54 +109,54 @@ apply. The following are valid options (see the sha2_variant enum):
 - SHA_224
 
 */
-sha2_s bscrypt_sha2_init(sha2_variant variant);
+sha2_s fio_sha2_init(sha2_variant variant);
 /**
 Writes data to the SHA-2 buffer.
 */
-void bscrypt_sha2_write(sha2_s *s, const void *data, size_t len);
+void fio_sha2_write(sha2_s *s, const void *data, size_t len);
 /**
 Finalizes the SHA-2 hash, returning the Hashed data.
 
 `sha2_result` can be called for the same object multiple times, but the
 finalization will only be performed the first time this function is called.
 */
-char *bscrypt_sha2_result(sha2_s *s);
+char *fio_sha2_result(sha2_s *s);
 
 /**
 An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 512 variant.
 */
-static inline UNUSED_FUNC char *bscrypt_sha2_512(sha2_s *s, const void *data,
-                                                 size_t len) {
-  *s = bscrypt_sha2_init(SHA_512);
-  bscrypt_sha2_write(s, data, len);
-  return bscrypt_sha2_result(s);
+static inline UNUSED_FUNC char *fio_sha2_512(sha2_s *s, const void *data,
+                                             size_t len) {
+  *s = fio_sha2_init(SHA_512);
+  fio_sha2_write(s, data, len);
+  return fio_sha2_result(s);
 }
 
 /**
 An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 256 variant.
 */
-static inline UNUSED_FUNC char *bscrypt_sha2_256(sha2_s *s, const void *data,
-                                                 size_t len) {
-  *s = bscrypt_sha2_init(SHA_256);
-  bscrypt_sha2_write(s, data, len);
-  return bscrypt_sha2_result(s);
+static inline UNUSED_FUNC char *fio_sha2_256(sha2_s *s, const void *data,
+                                             size_t len) {
+  *s = fio_sha2_init(SHA_256);
+  fio_sha2_write(s, data, len);
+  return fio_sha2_result(s);
 }
 
 /**
 An SHA2 helper function that performs initialiation, writing and finalizing.
 Uses the SHA2 384 variant.
 */
-static inline UNUSED_FUNC char *bscrypt_sha2_384(sha2_s *s, const void *data,
-                                                 size_t len) {
-  *s = bscrypt_sha2_init(SHA_384);
-  bscrypt_sha2_write(s, data, len);
-  return bscrypt_sha2_result(s);
+static inline UNUSED_FUNC char *fio_sha2_384(sha2_s *s, const void *data,
+                                             size_t len) {
+  *s = fio_sha2_init(SHA_384);
+  fio_sha2_write(s, data, len);
+  return fio_sha2_result(s);
 }
 
 #if defined(DEBUG) && DEBUG == 1
-void bscrypt_test_sha2(void);
+void fio_sha2_test(void);
 #endif
 
 /* *****************************************************************************

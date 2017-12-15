@@ -1,5 +1,9 @@
 # facil.io - a mini-framework for C web applications
 
+**This is an experimental development branch concerned with re-writing the HTTP API and the `evio` core.**
+
+---
+
 [facil.io](http://facil.io) is a C mini-framework for web applications and includes:
 
 * A fast HTTP/1.1 and Websocket static file + application server.

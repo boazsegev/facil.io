@@ -5,9 +5,32 @@ of), which might be subject to their own licenses.
 
 Feel free to copy, use and enjoy in accordance with to the license(s).
 */
-#ifndef bscrypt_SHA1_H
-#define bscrypt_SHA1_H
-#include "bscrypt-common.h"
+#ifndef H_FIO_SHA1_H
+#define H_FIO_SHA1_H
+
+#include <stdint.h>
+#include <stdlib.h>
+
+// clang-format off
+#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
+#   if defined(__has_include)
+#     if __has_include(<endian.h>)
+#      include <endian.h>
+#     elif __has_include(<sys/endian.h>)
+#      include <sys/endian.h>
+#     endif
+#   endif
+#   if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) && \
+                __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#      define __BIG_ENDIAN__
+#   endif
+#endif
+
+#ifndef UNUSED_FUNC
+#   define UNUSED_FUNC __attribute__((unused))
+#endif
+// clang-format on
+
 /* *****************************************************************************
 C++ extern
 */
@@ -28,12 +51,11 @@ required.
 
 Use, for example:
 
-    #include "mini-crypt.h"
     sha1_s sha1;
-    bscrypt.sha1_init(&sha1);
-    bscrypt.sha1_write(&sha1,
+    fio_sha1_init(&sha1);
+    fio_sha1_write(&sha1,
                   "The quick brown fox jumps over the lazy dog", 43);
-    char *hashed_result = bscrypt.sha1_result(&sha1);
+    char *hashed_result = fio_sha1_result(&sha1);
 */
 typedef struct {
   uint64_t length;
@@ -48,31 +70,31 @@ typedef struct {
 Initialize or reset the `sha1` object. This must be performed before hashing
 data using sha1.
 */
-sha1_s bscrypt_sha1_init(void);
+sha1_s fio_sha1_init(void);
 /**
 Writes data to the sha1 buffer.
 */
-void bscrypt_sha1_write(sha1_s *s, const void *data, size_t len);
+void fio_sha1_write(sha1_s *s, const void *data, size_t len);
 /**
 Finalizes the SHA1 hash, returning the Hashed data.
 
 `sha1_result` can be called for the same object multiple times, but the
 finalization will only be performed the first time this function is called.
 */
-char *bscrypt_sha1_result(sha1_s *s);
+char *fio_sha1_result(sha1_s *s);
 
 /**
 An SHA1 helper function that performs initialiation, writing and finalizing.
 */
-static inline UNUSED_FUNC char *bscrypt_sha1(sha1_s *s, const void *data,
-                                          size_t len) {
-  *s = bscrypt_sha1_init();
-  bscrypt_sha1_write(s, data, len);
-  return bscrypt_sha1_result(s);
+static inline UNUSED_FUNC char *fio_sha1(sha1_s *s, const void *data,
+                                         size_t len) {
+  *s = fio_sha1_init();
+  fio_sha1_write(s, data, len);
+  return fio_sha1_result(s);
 }
 
 #if defined(DEBUG) && DEBUG == 1
-void bscrypt_test_sha1(void);
+void fio_sha1_test(void);
 #endif
 
 /* *****************************************************************************

@@ -9,7 +9,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fio_list.h"
 #include "fiobj.h"
 
-#include "bscrypt.h"
+#include "fio_base64.h"
+#include "fio_sha1.h"
+
 #include "pubsub.h"
 #include "websockets.h"
 #include <arpa/inet.h>
@@ -188,9 +190,10 @@ static void websocket_on_unwrapped(void *udata, void *msg, uint64_t len,
 }
 static void websocket_on_protocol_ping(void *udata, void *msg_, uint64_t len) {
   ws_s *ws = udata;
-  uint16_t *msg = msg_;
-  msg[-1] = *((uint16_t *)"\x89\x00");
-  sock_write2(.uuid = ws->fd, .buffer = (void *)(msg - 1), .length = 2 + len);
+  uint16_t *msg = malloc(2 + len);
+  msg[0] = *((uint16_t *)"\x89\x00");
+  memcpy(msg + 1, msg_, len);
+  sock_write2(.uuid = ws->fd, .buffer = (void *)(msg), .length = 2 + len);
 }
 static void websocket_on_protocol_pong(void *udata, void *msg, uint64_t len) {
   (void)len;
@@ -214,7 +217,7 @@ The Websocket Protocol implementation
 
 static void ws_ping(intptr_t fd, protocol_s *ws) {
   (void)(ws);
-  sock_write2(.uuid = fd, .buffer = "\x89\x00", .length = 2, .move = 1,
+  sock_write2(.uuid = fd, .buffer = "\x89\x00", .length = 2,
               .dealloc = SOCK_DEALLOC_NOOP);
 }
 
@@ -347,22 +350,13 @@ Writing to the Websocket
 static void websocket_write_impl(intptr_t fd, void *data, size_t len,
                                  char text, /* TODO: add client masking */
                                  char first, char last, char client) {
-  if (len < (BUFFER_PACKET_SIZE - 16)) {
-    sock_buffer_s *sbuff = sock_buffer_checkout();
-
-    sbuff->len =
-        (client ? websocket_client_wrap(sbuff->buf, data, len, (text ? 1 : 2),
-                                        first, last, 0)
-                : websocket_server_wrap(sbuff->buf, data, len, (text ? 1 : 2),
-                                        first, last, 0));
-    sock_buffer_send(fd, sbuff);
-  } else if (len <= WS_MAX_FRAME_SIZE) {
+  if (len <= WS_MAX_FRAME_SIZE) {
     void *buff = malloc(len + 16);
     len = (client ? websocket_client_wrap(buff, data, len, (text ? 1 : 2),
                                           first, last, 0)
                   : websocket_server_wrap(buff, data, len, (text ? 1 : 2),
                                           first, last, 0));
-    sock_write2(.uuid = fd, .buffer = buff, .length = len, .move = 1);
+    sock_write2(.uuid = fd, .buffer = buff, .length = len);
   } else {
     /* frame fragmentation is better for large data then large frames */
     while (len > WS_MAX_FRAME_SIZE) {
@@ -669,13 +663,12 @@ ssize_t websocket_upgrade(websocket_settings_s settings) {
   // the client's unique string
   // use the SHA1 methods provided to concat the client string and hash
   sha1_s sha1;
-  sha1 = bscrypt_sha1_init();
-  bscrypt_sha1_write(&sha1, sec_h.value, sec_h.value_len);
-  bscrypt_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
+  sha1 = fio_sha1_init();
+  fio_sha1_write(&sha1, sec_h.value, sec_h.value_len);
+  fio_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
   // base encode the data
   char websockets_key[32];
-  int len =
-      bscrypt_base64_encode(websockets_key, bscrypt_sha1_result(&sha1), 20);
+  int len = fio_base64_encode(websockets_key, fio_sha1_result(&sha1), 20);
 
   // websocket extentions (none)
 
@@ -750,7 +743,7 @@ int websocket_write(ws_s *ws, void *data, size_t size, uint8_t is_text) {
 }
 /** Closes a websocket connection. */
 void websocket_close(ws_s *ws) {
-  sock_write2(.uuid = ws->fd, .buffer = "\x88\x00", .length = 2, .move = 1,
+  sock_write2(.uuid = ws->fd, .buffer = "\x88\x00", .length = 2,
               .dealloc = SOCK_DEALLOC_NOOP);
   sock_close(ws->fd);
   return;
@@ -871,7 +864,7 @@ static void ws_direct_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
   multi->count += 1;
   spn_unlock(&multi->lock);
   sock_write2(.uuid = fd, .buffer = multi->buffer, .length = multi->length,
-              .dealloc = ws_reduce_or_free_multi_write, .move = 1);
+              .dealloc = ws_reduce_or_free_multi_write);
 }
 
 static void ws_check_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {

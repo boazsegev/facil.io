@@ -9,9 +9,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 
 /**
-This is an `epoll` / `kqueue` edge triggered wrapper, allowing for portability
-between BSD and Linux polling machanisms as well as routing events to hard-coded
-callbacks (weak function symbols) instead of the polling return values.
+This is an `epoll` / `kqueue` ONE-SHOT polling wrapper, allowing for portability
+between BSD and Linux polling machanisms and routing events to hard-coded
+callbacks (weak function symbols).
 
 The callbacks supported by thils library:
 
@@ -23,8 +23,16 @@ The callbacks supported by thils library:
 */
 #define H_FACIL_EVIO_H
 #define LIB_EVIO_VERSION_MAJOR 0
-#define LIB_EVIO_VERSION_MINOR 1
-#define LIB_EVIO_VERSION_PATCH 2
+#define LIB_EVIO_VERSION_MINOR 2
+#define LIB_EVIO_VERSION_PATCH 0
+
+#if defined(__linux__) || defined(__CYGWIN__)
+#define EVIO_ENGINE_EPOLL 1
+#elif defined(__APPLE__) || defined(__unix__)
+#define EVIO_ENGINE_KQUEUE 1
+#else
+#error This library currently supports only Unix based systems with kqueue or epoll (i.e. Linux and BSD)
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,6 +43,13 @@ extern "C" {
 #endif
 #ifndef EVIO_TICK
 #define EVIO_TICK 256 /** in milliseconsd */
+#endif
+
+#if (EVIO_MAX_EVENTS & 1)
+#error EVIO_MAX_EVENTS must be an EVEN number.
+#endif
+#if EVIO_MAX_EVENTS <= 3
+#error EVIO_MAX_EVENTS must be an GREATER than 4.
 #endif
 
 /**
@@ -62,7 +77,8 @@ Returns -1 on error, otherwise returns the number of events handled.
 int evio_review(const int timeout_millisec);
 
 /**
-Closes the `epoll` / `kqueue` object, releasing it's resources.
+Closes the `epoll` / `kqueue` object, releasing it's resources (important if
+forking!).
 */
 void evio_close(void);
 
@@ -72,24 +88,16 @@ returns true if the evio is available for adding or removing file descriptors.
 int evio_isactive(void);
 
 /* *****************************************************************************
-Adding and removing normal file descriptors.
+Adding and removing normal file descriptors (ONE SHOT).
 */
 
 /**
-Adds a file descriptor to the polling object.
+Adds a file descriptor to the polling object (ONE SHOT).
 
 Returns -1 on error, otherwise return value is system dependent and can be
 safely ignored.
 */
 int evio_add(int fd, void *callback_arg);
-
-/**
-Removes a file descriptor from the polling object.
-
-Returns -1 on error, otherwise return value is system dependent. If the file
-descriptor did exist in the polling object, it isn't an error.
-*/
-int evio_remove(int fd);
 
 /* *****************************************************************************
 Timers.
@@ -109,14 +117,7 @@ Adds a timer file descriptor, so that callbacks will be called for it's events.
 
 Returns -1 on error, otherwise return value is system dependent.
 */
-intptr_t evio_add_timer(int fd, void *callback_arg, unsigned long milliseconds);
-
-/**
-Re-arms the timer.
-
-Required only by `epoll`. `kqueue` timers will continue cycling regardless.
-*/
-void evio_reset_timer(int timer_fd);
+intptr_t evio_set_timer(int fd, void *callback_arg, unsigned long milliseconds);
 
 /* *****************************************************************************
 Callbacks - override these.

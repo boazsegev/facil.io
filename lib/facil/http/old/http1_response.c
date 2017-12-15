@@ -215,7 +215,7 @@ int http1_response_send_headers(http1_response_s *rs) {
   if (sock_write2(.uuid = rs->response.fd, .buffer = rs,
                   .offset = ((uintptr_t)(rs->buffer + rs->buffer_start) -
                              (uintptr_t)rs),
-                  .length = rs->buffer_end - rs->buffer_start, .move = 1,
+                  .length = rs->buffer_end - rs->buffer_start,
                   .dealloc = (void (*)(void *))http1_response_destroy) < 0)
     return -1;
   rs->buffer_end = 0;
@@ -409,7 +409,7 @@ int http1_response_sendfile(http_response_s *rs, int source_fd, off_t offset,
   }
   if (length)
     return (sock_write2(.uuid = rs->fd, .data_fd = source_fd, .length = length,
-                        .offset = offset, .is_fd = 1, .move = 1) >= 0);
+                        .offset = offset, .is_fd = 1) >= 0);
   else
     close(source_fd);
 
