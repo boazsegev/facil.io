@@ -319,17 +319,16 @@ struct ListenerProtocol {
   protocol_s *(*on_open)(intptr_t uuid, void *udata);
   void *udata;
   void *rw_udata;
-  sock_rw_hook_s *(*set_rw_hooks)(intptr_t uuid, void *udata);
+  void (*set_rw_hooks)(intptr_t uuid, void *udata);
   void (*on_finish_rw)(intptr_t uuid, void *rw_udata);
   void (*on_start)(intptr_t uuid, void *udata);
   void (*on_finish)(intptr_t uuid, void *udata);
   char port[16];
 };
 
-static sock_rw_hook_s *listener_set_rw_hooks(intptr_t uuid, void *udata) {
+static void listener_set_rw_hooks(intptr_t uuid, void *udata) {
   (void)udata;
   (void)uuid;
-  return NULL; /* (sock_rw_hook_s *)&SOCK_DEFAULT_HOOKS; */
 }
 
 static void listener_ping(intptr_t uuid, protocol_s *plistener) {
@@ -353,11 +352,7 @@ static void listener_deferred_on_open(void *uuid_, void *srv_uuid_) {
       sock_close(uuid);
     return;
   }
-  {
-    sock_rw_hook_s *hooks = listener->set_rw_hooks(uuid, listener->rw_udata);
-    if (hooks)
-      sock_rw_hook_set(uuid, hooks);
-  }
+  listener->set_rw_hooks(uuid, listener->rw_udata);
   protocol_s *pr = listener->on_open(uuid, listener->udata);
   protocol_unlock((protocol_s *)listener, FIO_PR_LOCK_WRITE);
   facil_attach(uuid, pr);
@@ -477,7 +472,7 @@ struct ConnectProtocol {
   protocol_s protocol;
   protocol_s *(*on_connect)(intptr_t uuid, void *udata);
   void (*on_fail)(intptr_t uuid, void *udata);
-  sock_rw_hook_s *(*set_rw_hooks)(intptr_t uuid, void *udata);
+  void (*set_rw_hooks)(intptr_t uuid, void *udata);
   void *udata;
   void *rw_udata;
   intptr_t uuid;
@@ -489,9 +484,7 @@ static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
   struct ConnectProtocol *connector = (void *)_connector;
   // fprintf(stderr, "connector_on_ready called\n");
   if (!connector->opened) {
-    sock_rw_hook_s *hooks = connector->set_rw_hooks(uuid, connector->rw_udata);
-    if (hooks)
-      sock_rw_hook_set(uuid, hooks);
+    connector->set_rw_hooks(uuid, connector->rw_udata);
   }
   connector->opened = 1;
   sock_touch(uuid);
