@@ -8,6 +8,24 @@ Following is a quick overview and examples for both HTTP/ Websocket WebApps and 
 
 These examples demonstrate how easy and empowering the `facil.io` framework can be.
 
+## Creating your first facil.io application
+
+Since facil.io is a source code library, it can be easily added to existing projects and it can be easily customized.
+
+To start a new application using facil.io, run the following command from the terminal, replacing `appname` with the name of the new application.
+
+     $ bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
+
+You can review the script in the GitHub repo. In short, it will create a new folder, download a copy of the latest release, add some demo boiler plate code and run `make clean` (which is required to build the `tmp` folder structure used for compiling the application).
+
+Next, edit the `makefile` to remove any generic features you don't need, such as the `DUMP_LIB` feature, the `DEBUG` flag or the `DISAMS` disassembler and start development.
+
+The new application's boiler plate code is a simple HTTP application that presents some text. You can build and run the application using the following command-line script from withing the application's folder:
+
+    $ DEBUG=1 make run
+
+You can also use the scripts in the provided scripts folder from the OS's folder viewer (i.e., finder on macOS).
+
 ## Writing HTTP and Websocket services in C? Easy!
 
 Websockets and HTTP are super common, so `facil.io` comes with HTTP and Websocket extensions, allowing us to easily write HTTP/1.1 and Websocket services.
