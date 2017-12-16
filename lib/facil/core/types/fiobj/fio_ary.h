@@ -26,7 +26,6 @@ License: MIT
 
 #ifdef __cplusplus
 #define register
-extern "C" {
 #endif
 
 typedef struct fio_ary_s {
@@ -377,7 +376,6 @@ inline FIO_FUNC void fio_ary_compact(fio_ary_s *ary) {
 }
 
 #ifdef __cplusplus
-} /* extern "C" */
 #undef register
 #endif
 
