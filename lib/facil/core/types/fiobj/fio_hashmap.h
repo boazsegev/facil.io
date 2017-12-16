@@ -5,13 +5,14 @@ License: MIT
 */
 
 /**
- * A simple ordered Hash Table implementation, offering a minimal API.
+ * A simple ordered Hash Table implementation, with a minimal API.
  *
- * This Hash Table has zero tolerance for hash value collisions.
+ * Unique keys are required. Full key collisions aren't handled, instead the old
+ * value is replaced and returned.
  *
- * Bin collisions are handled by seeking forward (in leaps) and attempting to
- * find a close enough spot. If a close enough spot isn't found, rehashing is
- * initiated.
+ * Partial key collisions are handled by seeking forward (in leaps) and
+ * attempting to find a close enough spot. If a close enough spot isn't found,
+ * rehashing is initiated and memory consumption increases.
  *
  * The Hash Table is ordered using an internal linked list of data containers
  * with duplicates of the hash key data.
@@ -48,16 +49,13 @@ Hash API
 typedef struct fio_hash_s fio_hash_s;
 
 /** Allocates and initializes internal data and resources. */
-FIO_FUNC void fio_hash_new(fio_hash_s *h);
+FIO_FUNC void fio_hash_new(fio_hash_s *hash);
 
 /** Deallocates any internal resources. */
 FIO_FUNC void fio_hash_free(fio_hash_s *hash);
 
-/** Locates an object in the Hash Map according to the hash key value. */
+/** Locates an object in the Hash Map Table according to the hash key value. */
 inline FIO_FUNC void *fio_hash_find(fio_hash_s *hash, uintptr_t key);
-
-/** Locates an object in the Hash Map according to the hash key value. */
-FIO_FUNC void *fio_hash_find(fio_hash_s *hash, uintptr_t key);
 
 /** Forces a rehashinh of the hash. */
 FIO_FUNC void fio_hash_rehash(fio_hash_s *hash);
@@ -73,9 +71,10 @@ FIO_FUNC void fio_hash_rehash(fio_hash_s *hash);
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
-                              int (*task)(uintptr_t key, void *obj, void *arg),
-                              void *arg);
+inline FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
+                                     int (*task)(uintptr_t key, void *obj,
+                                                 void *arg),
+                                     void *arg);
 
 /** Returns the number of elements currently in the Hash Table. */
 inline FIO_FUNC size_t fio_hash_count(const fio_hash_s *hash);
@@ -87,7 +86,7 @@ inline FIO_FUNC size_t fio_hash_count(const fio_hash_s *hash);
 inline FIO_FUNC size_t fio_hash_capa(const fio_hash_s *hash);
 
 /* *****************************************************************************
-Hash Types and other required perlimenaries
+Hash Table Internal Data Structures
 ***************************************************************************** */
 
 typedef struct fio_hash_ls_s {
@@ -115,7 +114,7 @@ struct fio_hash_s {
 };
 
 /* *****************************************************************************
-Hash Data Container Linked List - (object + hash key).
+Container Linked List - (object + hash key).
 ***************************************************************************** */
 
 #define FIO_HASH_LS_INIT(name)                                                 \
@@ -258,8 +257,8 @@ static void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
     /* delete */
     hash->count--;
     obj = fio_hash_ls_remove(info->container);
-    *info = (fio_hash_map_info_s){
-        .key = key}; /* hash is set to seek over position */
+    /* remove cobtainer, but key is required to keep seeking intact */
+    info->container->obj = NULL;
     return obj;
   }
   /* replace */
@@ -294,9 +293,10 @@ retry_rehashing:
   }
 }
 
-FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
-                              int (*task)(uintptr_t key, void *obj, void *arg),
-                              void *arg) {
+inline FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
+                                     int (*task)(uintptr_t key, void *obj,
+                                                 void *arg),
+                                     void *arg) {
   if (start_at >= hash->count)
     return hash->count;
   size_t i = 0;

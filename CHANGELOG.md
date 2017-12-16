@@ -2,13 +2,22 @@
 
 ### Ver. 0.6.0 (ReHTTP branch)
 
-**Changes!**: (`evio`) the evented IO library was redesigned for **one-shot** notifications, requiring a call to `evio_add` or `evio_set_timer` in order to receive future notifications. This was a significant change in behavior and the changes to the API (causing backwards incompatibility) were intentional.
+**Changes!**: (`evio`):
 
-**Changes!**: (`sock`) the socket library Read/Write hooks API was revised, separating the function pointers from the user data. At server loads over 25%, this decreases the memory footprint.
+- the evented IO library was redesigned for **one-shot** notifications, requiring a call to `evio_add` or `evio_set_timer` in order to receive future notifications.
 
-**Changes!**: (`sock`) the socket library now enforces `move` (the option for data copy was removed) and the packet buffer API was deprecated. Also, it's internal engine was updated, removing pre-allocated packet buffers altogether and enabling packet header allocation using `malloc`, which introduces a significant change to the internal behavior.
 
-**Refactoring**: (`evio`) the code was refactored to separate system specific logic into different files. making it easier to support more systems in the future.
+    This was a significant change in behavior and the changes to the API (causing backwards incompatibility) were intentional.
+
+- the code was refactored to separate system specific logic into different files. making it easier to support more systems in the future.
+
+**Changes!**: (`sock`):
+
+- the socket library's Read/Write hooks API was revised, separating the function pointers from the user data. At server loads over 25%, this decreases the memory footprint.
+
+- the socket library's packet buffer API was deprecated and all `sock_write2(...)` operations take ownership of the memory/file (enforce `move`).
+
+- The internal engine was updated, removing pre-allocated packet buffers altogether and enabling packet header allocation using `malloc`, which introduces a significant changes to the internal behavior, possibly effecting embedded systems.
 
 **Refactoring**: (`fiobj`) moved the underlying Dynamic Array and Hash Table logic into single file libraries that support `void *` pointers, allowing the same logic to be used for any C object collection (as well as the facil.io objects).
 
