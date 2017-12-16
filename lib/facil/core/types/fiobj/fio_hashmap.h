@@ -54,6 +54,9 @@ FIO_FUNC void fio_hash_new(fio_hash_s *hash);
 /** Deallocates any internal resources. */
 FIO_FUNC void fio_hash_free(fio_hash_s *hash);
 
+/** Returns the number of elements currently in the Hash Table. */
+inline FIO_FUNC size_t fio_hash_count(const fio_hash_s *hash);
+
 /** Locates an object in the Hash Map Table according to the hash key value. */
 inline FIO_FUNC void *fio_hash_find(fio_hash_s *hash, uintptr_t key);
 
@@ -61,10 +64,29 @@ inline FIO_FUNC void *fio_hash_find(fio_hash_s *hash, uintptr_t key);
 FIO_FUNC void fio_hash_rehash(fio_hash_s *hash);
 
 /**
- * Single layer iteration using a callback for each entry in the Hash Table.
+ * Returns a temporary theoretical Hash map capacity.
+ * This could be used for testig performance and memory consumption.
+ */
+inline FIO_FUNC size_t fio_hash_capa(const fio_hash_s *hash);
+
+/**
+ * A macro for a `for` loop that iterates over all the hashed objetcs (in
+ * order).
+ *
+ * `hash` is the name of the hash table variable and `i` is a temporary variable
+ * name to be created for iteration.
+ *
+ * `i->key` is the key and `i->obj` is the hashed data.
+ */
+#define FIO_HASH_FOR_LOOP(hash, i)
+
+/**
+ * Iteration using a callback for each entry in the Hash Table.
  *
  * The callback task function must accept the hash key, the entry data and an
- * opaque user pointer.
+ * opaque user pointer:
+ *
+ *     int example_task(uintptr_t key, void *obj, void *arg) {return 0;}
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  *
@@ -76,14 +98,16 @@ inline FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
                                                  void *arg),
                                      void *arg);
 
-/** Returns the number of elements currently in the Hash Table. */
-inline FIO_FUNC size_t fio_hash_count(const fio_hash_s *hash);
-
 /**
- * Returns a temporary theoretical Hash map capacity.
- * This could be used for testig performance and memory consumption.
+ * A macro for a `for` loop that iterates over all the hashed objetcs (in
+ * order).
+ *
+ * `hash` is the name of the hash table variable and `i` is a temporary variable
+ * name to be created for iteration.
+ *
+ *`i->key` is the key and `i->obj` is the hashed data.
  */
-inline FIO_FUNC size_t fio_hash_capa(const fio_hash_s *hash);
+#define FIO_HASH_FOR_LOOP(hash, i)
 
 /* *****************************************************************************
 Hash Table Internal Data Structures
@@ -112,6 +136,11 @@ struct fio_hash_s {
   fio_hash_ls_s items;
   fio_hash_map_s map;
 };
+
+#undef FIO_HASH_FOR_LOOP
+#define FIO_HASH_FOR_LOOP(hash, container)                                     \
+  for (fio_hash_ls_s *container = (hash)->items.next;                          \
+       container != &((hash)->items); container = container->next)
 
 /* *****************************************************************************
 Container Linked List - (object + hash key).

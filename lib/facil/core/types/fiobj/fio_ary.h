@@ -92,7 +92,7 @@ inline FIO_FUNC int fio_ary_unshift(fio_ary_s *ary, void *data);
 inline FIO_FUNC void *fio_ary_shift(fio_ary_s *ary);
 
 /**
- * Single layer iteration using a callback for each entry in the array.
+ * Iteration using a callback for each entry in the array.
  *
  * The callback task function must accept an the entry data as well as an opaque
  * user pointer.
