@@ -16,6 +16,9 @@ License: MIT
  *
  * The Hash Table is ordered using an internal linked list of data containers
  * with duplicates of the hash key data.
+ *
+ * The file was written to be compatible with C++ as well as C, hence some
+ * pointer casting.
  */
 #define H_FIO_SIMPLE_HASH_H
 

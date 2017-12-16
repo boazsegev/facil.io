@@ -7,7 +7,8 @@ License: MIT
 /**
  * A Dynamic Array for general use (void * pointers).
  *
- * The file was written to be compatible with C++ as well as C.
+ * The file was written to be compatible with C++ as well as C, hence some
+ * pointer casting.
  */
 #define H_FIO_ARRAY_H
 
