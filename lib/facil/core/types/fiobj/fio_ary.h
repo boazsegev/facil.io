@@ -24,6 +24,11 @@ License: MIT
 #define FIO_FUNC static __attribute__((unused))
 #endif
 
+#ifdef __cplusplus
+#define register
+extern "C" {
+#endif
+
 typedef struct fio_ary_s {
   uint64_t start;
   uint64_t end;
@@ -117,7 +122,8 @@ Array creation API
   (fio_ary_s) { .arry = NULL }
 
 inline FIO_FUNC void fio_ary_new(fio_ary_s *ary, size_t capa) {
-  *ary = (fio_ary_s){.arry = malloc(capa * sizeof(*ary->arry)), .capa = capa};
+  *ary = (fio_ary_s){.arry = (void **)malloc(capa * sizeof(*ary->arry)),
+                     .capa = capa};
   if (!ary->arry)
     perror("ERROR: facil.io dynamic array couldn't be allocated"), exit(errno);
 }
@@ -166,7 +172,7 @@ void fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
 
   /* we assume memory allocation works. it's better to crash than to continue
    * living without memory... besides, malloc is optimistic these days. */
-  ary->arry = realloc(ary->arry, updated_capa * sizeof(*ary->arry));
+  ary->arry = (void **)realloc(ary->arry, updated_capa * sizeof(*ary->arry));
   ary->capa = updated_capa;
   if (!ary->arry)
     perror("ERROR: facil.io dynamic array couldn't be reallocated"),
@@ -369,5 +375,10 @@ inline FIO_FUNC void fio_ary_compact(fio_ary_s *ary) {
   }
   ary->end = (uint64_t)(pos - ary->arry);
 }
+
+#ifdef __cplusplus
+} /* extern "C" */
+#undef register
+#endif
 
 #endif

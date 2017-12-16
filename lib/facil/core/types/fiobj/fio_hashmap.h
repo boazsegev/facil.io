@@ -153,7 +153,7 @@ Container Linked List - (object + hash key).
 inline FIO_FUNC void fio_hash_ls_push(fio_hash_ls_s *pos, const void *obj,
                                       uintptr_t key) {
   /* prepare item */
-  fio_hash_ls_s *item = malloc(sizeof(*item));
+  fio_hash_ls_s *item = (fio_hash_ls_s *)malloc(sizeof(*item));
   if (!item)
     perror("ERROR: hash list couldn't allocate memory"), exit(errno);
   *item =
@@ -211,7 +211,8 @@ FIO_FUNC void fio_hash_new(fio_hash_s *h) {
   *h = (fio_hash_s){
       .mask = (HASH_INITIAL_CAPACITY - 1),
       .items = FIO_HASH_LS_INIT((h->items)),
-      .map.data = calloc(sizeof(*h->map.data), HASH_INITIAL_CAPACITY),
+      .map.data = (fio_hash_map_info_s *)calloc(sizeof(*h->map.data),
+                                                HASH_INITIAL_CAPACITY),
       .map.capa = HASH_INITIAL_CAPACITY,
   };
   if (!h->map.data)
@@ -304,7 +305,8 @@ retry_rehashing:
     /* Maybe there's enough zeroed out pages available in the system */
     h->map.capa = h->mask + 1;
     free(h->map.data);
-    h->map.data = calloc(sizeof(*h->map.data), h->map.capa);
+    h->map.data =
+        (fio_hash_map_info_s *)calloc(sizeof(*h->map.data), h->map.capa);
     if (!h->map.data)
       perror("HashMap Allocation Failed"), exit(errno);
   }
