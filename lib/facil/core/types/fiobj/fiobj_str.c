@@ -276,10 +276,16 @@ size_t fiobj_str_capa_assert(fiobj_s *str, size_t size) {
   if (str->type != FIOBJ_T_STRING || obj2str(str)->capa == 0 ||
       obj2str(str)->capa >= size + 1)
     return obj2str(str)->capa;
+  size += 1;
+  /* large strings should increase memory by page size (assumes 4096 pages) */
+  if (size << 12)
+    size = ((size << 12) + 1) >> 12;
   /* it's better to crash than live without memory... */
-  obj2str(str)->str = realloc(obj2str(str)->str, size + 1);
-  obj2str(str)->capa = size + 1;
-  obj2str(str)->str[size] = 0;
+  obj2str(str)->str = realloc(obj2str(str)->str, size);
+  if (!obj2str(str)->str)
+    perror("FATAL ERROR: Couldn't allocate String memory"), exit(errno);
+  obj2str(str)->capa = size;
+  obj2str(str)->str[size - 1] = 0;
   return obj2str(str)->capa;
 }
 
