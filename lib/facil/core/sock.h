@@ -403,10 +403,10 @@ replace the default system calls to `recv` and `write`. */
 typedef struct sock_rw_hook_s {
   /** Implement reading from a file descriptor. Should behave like the file
    * system `read` call, including the setup or errno to EAGAIN / EWOULDBLOCK.*/
-  ssize_t (*read)(intptr_t uuid, void *buf, size_t count);
+  ssize_t (*read)(intptr_t uuid, void *udata, void *buf, size_t count);
   /** Implement writing to a file descriptor. Should behave like the file system
    * `write` call.*/
-  ssize_t (*write)(intptr_t uuid, const void *buf, size_t count);
+  ssize_t (*write)(intptr_t uuid, void *udata, const void *buf, size_t count);
   /** When implemented, this function will be called to flush any data remaining
    * in the internal buffer.
    * The function should return the number of bytes remaining in the internal
@@ -415,26 +415,29 @@ typedef struct sock_rw_hook_s {
    * the
    * writing operation returns -1 with EWOULDBLOCK or all the data was written.
    */
-  ssize_t (*flush)(intptr_t fduuid);
+  ssize_t (*flush)(intptr_t uuid, void *udata);
   /** The `on_close` callback is called when the socket is closed, allowing for
    * dynamic sock_rw_hook_s memory management.
    *
    * The `on_close` callback should manage is own thread safety mechanism, if
    * required. */
-  void (*on_close)(intptr_t fduuid, struct sock_rw_hook_s *rw_hook);
+  void (*on_close)(intptr_t uuid, struct sock_rw_hook_s *rw_hook, void *udata);
 } sock_rw_hook_s;
 
 /* *****************************************************************************
 RW hooks implementation
 */
 
-/** Gets a socket hook state (a pointer to the struct). */
-struct sock_rw_hook_s *sock_rw_hook_get(intptr_t fduuid);
-
 /** Sets a socket hook state (a pointer to the struct). */
-int sock_rw_hook_set(intptr_t fduuid, sock_rw_hook_s *rw_hooks);
+int sock_rw_hook_set(intptr_t uuid, sock_rw_hook_s *rw_hooks, void *udata);
 
-/** The default Read/Write hooks used for system Read/Write */
+/** Gets a socket hook state (a pointer to the struct). */
+struct sock_rw_hook_s *sock_rw_hook_get(intptr_t uuid);
+
+/** Returns the socket's udata associated with the read/write hook. */
+void *sock_rw_udata(intptr_t uuid);
+
+/** The default Read/Write hooks used for system Read/Write (udata == NULL). */
 extern const sock_rw_hook_s SOCK_DEFAULT_HOOKS;
 
 /* *****************************************************************************

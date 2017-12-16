@@ -156,22 +156,29 @@ init:
 Default Socket Read/Write Hook
 ***************************************************************************** */
 
-static ssize_t sock_default_hooks_read(intptr_t uuid, void *buf, size_t count) {
+static ssize_t sock_default_hooks_read(intptr_t uuid, void *udata, void *buf,
+                                       size_t count) {
   return read(sock_uuid2fd(uuid), buf, count);
+  (void)(udata);
 }
-static ssize_t sock_default_hooks_write(intptr_t uuid, const void *buf,
-                                        size_t count) {
+static ssize_t sock_default_hooks_write(intptr_t uuid, void *udata,
+                                        const void *buf, size_t count) {
   return write(sock_uuid2fd(uuid), buf, count);
+  (void)(udata);
 }
 
 static void sock_default_hooks_on_close(intptr_t fduuid,
-                                        struct sock_rw_hook_s *rw_hook) {
+                                        struct sock_rw_hook_s *rw_hook,
+                                        void *udata) {
+  (void)udata;
   (void)rw_hook;
   (void)fduuid;
 }
 
-static ssize_t sock_default_hooks_flush(intptr_t uuid) {
-  return (((void)(uuid)), 0);
+static ssize_t sock_default_hooks_flush(intptr_t uuid, void *udata) {
+  return 0;
+  (void)(uuid);
+  (void)(udata);
 }
 
 const sock_rw_hook_s SOCK_DEFAULT_HOOKS = {
@@ -199,6 +206,8 @@ struct fd_data_s {
   packet_s *packet;
   /** RW hooks. */
   sock_rw_hook_s *rw_hooks;
+  /** RW udata. */
+  void *rw_udata;
   /** Peer/listenning address. */
   struct sockaddr_in6 addrinfo;
   /** address length. */
@@ -296,8 +305,8 @@ clear:
     old_data.packet = old_data.packet->next;
     sock_packet_free(packet);
   }
-  old_data.rw_hooks->on_close(((fd << 8) | old_data.counter),
-                              old_data.rw_hooks);
+  old_data.rw_hooks->on_close(((fd << 8) | old_data.counter), old_data.rw_hooks,
+                              old_data.rw_udata);
   if (old_data.open || (old_data.rw_hooks != &SOCK_DEFAULT_HOOKS)) {
     sock_on_close((fd << 8) | old_data.counter);
   }
@@ -313,8 +322,9 @@ Writing - from memory
 ***************************************************************************** */
 
 static int sock_write_buffer(int fd, struct packet_s *packet) {
-  int written = fdinfo(fd).rw_hooks->write(
-      fd2uuid(fd), packet->buffer + packet->offset, packet->length);
+  int written = fdinfo(fd).rw_hooks->write(fd2uuid(fd), fdinfo(fd).rw_udata,
+                                           packet->buffer + packet->offset,
+                                           packet->length);
   if (written > 0) {
     packet->length -= written;
     packet->offset += written;
@@ -353,7 +363,8 @@ static int sock_write_from_fd(int fd, struct packet_s *packet) {
             : pread(packet->fd, buff, BUFFER_FILE_READ_SIZE, packet->offset);
     if (asked <= 0)
       goto read_error;
-    sent = fdinfo(fd).rw_hooks->write(fd2uuid(fd), buff, asked);
+    sent = fdinfo(fd).rw_hooks->write(fd2uuid(fd), fdinfo(fd).rw_udata, buff,
+                                      asked);
   } while (sent == asked && packet->length);
   if (sent >= 0) {
     packet->offset += sent;
@@ -810,11 +821,12 @@ ssize_t sock_read(intptr_t uuid, void *buf, size_t count) {
     return -1;
   }
   sock_rw_hook_s *rw = fdinfo(sock_uuid2fd(uuid)).rw_hooks;
+  void *udata = fdinfo(sock_uuid2fd(uuid)).rw_udata;
   unlock_fd(sock_uuid2fd(uuid));
   if (count == 0)
-    return rw->read(uuid, buf, count);
+    return rw->read(uuid, udata, buf, count);
   int old_errno = errno;
-  ssize_t ret = rw->read(uuid, buf, count);
+  ssize_t ret = rw->read(uuid, udata, buf, count);
   if (ret > 0) {
     sock_touch(uuid);
     return ret;
@@ -947,10 +959,12 @@ ssize_t sock_flush(intptr_t uuid) {
   uint8_t touch = 0;
   lock_fd(fd);
   sock_rw_hook_s *rw;
+  void *rw_udata;
 retry:
   rw = fdinfo(fd).rw_hooks;
+  rw_udata = fdinfo(fd).rw_udata;
   unlock_fd(fd);
-  while ((ret = rw->flush(fd)) > 0)
+  while ((ret = rw->flush(uuid, rw_udata)) > 0)
     if (ret > 0)
       touch = 1;
   if (ret == -1) {
@@ -1035,8 +1049,16 @@ struct sock_rw_hook_s *sock_rw_hook_get(intptr_t uuid) {
   return fdinfo(uuid).rw_hooks;
 }
 
+/** Returns the socket's udata associated with the read/write hook. */
+void *sock_rw_udata(intptr_t uuid) {
+  if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).open)
+    return NULL;
+  uuid = sock_uuid2fd(uuid);
+  return fdinfo(uuid).rw_udata;
+}
+
 /** Sets a socket hook state (a pointer to the struct). */
-int sock_rw_hook_set(intptr_t uuid, sock_rw_hook_s *rw_hooks) {
+int sock_rw_hook_set(intptr_t uuid, sock_rw_hook_s *rw_hooks, void *udata) {
   if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).open)
     return -1;
   if (!rw_hooks->read)
@@ -1050,6 +1072,7 @@ int sock_rw_hook_set(intptr_t uuid, sock_rw_hook_s *rw_hooks) {
   uuid = sock_uuid2fd(uuid);
   lock_fd(uuid);
   fdinfo(uuid).rw_hooks = rw_hooks;
+  fdinfo(uuid).rw_udata = udata;
   unlock_fd(uuid);
   return 0;
 }

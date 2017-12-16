@@ -4,6 +4,8 @@
 
 **Changes!**: (`evio`) the evented IO library was redesigned for **one-shot** notifications, requiring a call to `evio_add` or `evio_set_timer` in order to receive future notifications. This was a significant change in behavior and the changes to the API (causing backwards incompatibility) were intentional.
 
+**Changes!**: (`sock`) the socket library Read/Write hooks API was revised, separating the function pointers from the user data. At server loads over 25%, this decreases the memory footprint.
+
 **Changes!**: (`sock`) the socket library now enforces `move` (the option for data copy was removed) and the packet buffer API was deprecated. Also, it's internal engine was updated, removing pre-allocated packet buffers altogether and enabling packet header allocation using `malloc`, which introduces a significant change to the internal behavior.
 
 **Refactoring**: (`evio`) the code was refactored to separate system specific logic into different files. making it easier to support more systems in the future.

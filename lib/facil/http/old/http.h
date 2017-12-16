@@ -80,7 +80,7 @@ struct http_settings_s {
   The length of the public_folder string.
   */
   size_t public_folder_length;
-  /** Opaque user data. */
+  /** Opaque user data. Facil.io will ignore this field, but you can use it. */
   void *udata;
   /** Opaque user data for the optional `set_rw_hooks`. */
   void *rw_udata;
