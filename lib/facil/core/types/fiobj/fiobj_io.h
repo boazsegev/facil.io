@@ -1,4 +1,5 @@
-#ifndef H_FIOBJ_IO_H
+#if !defined(H_FIOBJ_IO_H) && (defined(__unix__) || defined(__APPLE__) ||      \
+                               defined(__linux__) || defined(__CYGWIN__))
 /*
 Copyright: Boaz Segev, 2017
 License: MIT
@@ -107,6 +108,10 @@ intptr_t fiobj_io_write(fiobj_s *io, void *buffer, uintptr_t length);
  * Behaves and returns the same value as the system call `write`.
  */
 intptr_t fiobj_io_puts(fiobj_s *io, void *buffer, uintptr_t length);
+
+#if DEBUG
+void fiobj_io_test(char *filename);
+#endif
 
 #ifdef __cplusplus
 }

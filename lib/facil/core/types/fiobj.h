@@ -9,6 +9,7 @@ License: MIT
 
 #include "fiobj_ary.h"
 #include "fiobj_hash.h"
+#include "fiobj_io.h"
 #include "fiobj_json.h"
 #include "fiobj_numbers.h"
 #include "fiobj_primitives.h"
