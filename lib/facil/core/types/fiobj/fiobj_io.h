@@ -1,9 +1,9 @@
-#if !defined(H_FIOBJ_IO_H) && (defined(__unix__) || defined(__APPLE__) ||      \
-                               defined(__linux__) || defined(__CYGWIN__))
 /*
 Copyright: Boaz Segev, 2017
 License: MIT
 */
+#if !defined(H_FIOBJ_IO_H) && (defined(__unix__) || defined(__APPLE__) ||      \
+                               defined(__linux__) || defined(__CYGWIN__))
 
 /**
  * A dynamic type for reading / writing to a local file,  a temporary file or an

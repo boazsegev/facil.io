@@ -41,9 +41,11 @@ typedef struct http_req_s {
    * the hash will be initialized when parsing the request.
    */
   fiobj_s *params;
-  /** a reader for body data (might be a temporary file or a string or NULL). */
+  /**
+   * a reader for body data (might be a temporary file or a string or NULL).
+   * see fiobj_io.h for details.
+   */
   fiobj_s *body;
-
 } http_req_s;
 
 /* support C++ */

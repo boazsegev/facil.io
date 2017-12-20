@@ -57,13 +57,22 @@ FIO_FUNC void fio_hash_new(fio_hash_s *hash);
 /** Deallocates any internal resources. */
 FIO_FUNC void fio_hash_free(fio_hash_s *hash);
 
-/** Returns the number of elements currently in the Hash Table. */
-inline FIO_FUNC size_t fio_hash_count(const fio_hash_s *hash);
+/**
+ * Inserts an object to the Hash Map Table, rehashing if required, returning the
+ * old object if it exists.
+ *
+ * Set obj to NULL to remove an existing data (the existing object will be
+ * returned).
+ */
+static void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj);
 
 /** Locates an object in the Hash Map Table according to the hash key value. */
 inline FIO_FUNC void *fio_hash_find(fio_hash_s *hash, uintptr_t key);
 
-/** Forces a rehashinh of the hash. */
+/** Returns the number of elements currently in the Hash Table. */
+inline FIO_FUNC size_t fio_hash_count(const fio_hash_s *hash);
+
+/** Forces a rehashing of the hash. */
 FIO_FUNC void fio_hash_rehash(fio_hash_s *hash);
 
 /**
