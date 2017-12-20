@@ -33,7 +33,16 @@ JSON API
  * consumed.
  */
 size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
-/* Formats an object into a JSON string. Remember to `fiobj_free`. */
+/**
+ * Formats an object into a JSON string. Remember to `fiobj_free`.
+ *
+ * Note that only the foloowing basic fiobj types are supported: Primitives
+ * (True / False / NULL), Numbers (Number / Float), Symbols, Strings, Hashes and
+ * Arrays.
+ *
+ * Some objects (such as the POSIX specific IO type) are unsupported and will be
+ * formatted incorrectly.
+ */
 fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t pretty);
 
 #ifdef __cplusplus

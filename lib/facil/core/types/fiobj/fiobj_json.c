@@ -213,17 +213,6 @@ re_rooted:
     fiobj_ary_push(data->parent, obj);
     fiobj_ary_push(data->waiting, data->count);
     data->count = fiobj_num_new(fiobj_ary_count(obj));
-  } else if (obj->type == FIOBJ_T_SYMBOL || FIOBJ_IS_STRING(obj)) {
-    fiobj_str_capa_assert(
-        data->buffer,
-        ((((fiobj_obj2cstr(data->buffer).len + 63 + fiobj_obj2cstr(obj).len) >>
-           12) +
-          1)
-         << 12) -
-            1);
-    fiobj_str_write(data->buffer, "\"", 1);
-    write_safe_str(data->buffer, obj);
-    fiobj_str_write(data->buffer, "\"", 1);
   } else if (obj->type == FIOBJ_T_COUPLET) {
     fiobj_str_capa_assert(data->buffer,
                           ((((fiobj_obj2cstr(data->buffer).len + 31 +
@@ -245,10 +234,22 @@ re_rooted:
     fiobj_str_write(data->buffer, i2s.data, i2s.len);
   } else if (obj->type == FIOBJ_T_NULL) {
     fiobj_str_write(data->buffer, "null", 4);
-  } else if (fiobj_is_true(obj)) {
+  } else if (obj->type == FIOBJ_T_TRUE) {
     fiobj_str_write(data->buffer, "true", 4);
-  } else
+  } else if (obj->type == FIOBJ_T_FALSE) {
     fiobj_str_write(data->buffer, "false", 5);
+  } else {
+    fiobj_str_capa_assert(
+        data->buffer,
+        ((((fiobj_obj2cstr(data->buffer).len + 63 + fiobj_obj2cstr(obj).len) >>
+           12) +
+          1)
+         << 12) -
+            1);
+    fiobj_str_write(data->buffer, "\"", 1);
+    write_safe_str(data->buffer, obj);
+    fiobj_str_write(data->buffer, "\"", 1);
+  }
 
 review_nesting:
   /* print clousure to String */
