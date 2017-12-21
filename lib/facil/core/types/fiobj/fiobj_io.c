@@ -440,6 +440,17 @@ fio_cstr_s fiobj_io_read2ch(fiobj_s *io, uint8_t token) {
 }
 
 /**
+ * Returns the current reading position.
+ */
+intptr_t fiobj_io_pos(fiobj_s *io) {
+  if (!io || io->type != FIOBJ_T_IO)
+    return -1;
+  if (obj2io(io)->fd == -1)
+    return obj2io(io)->pos;
+  return obj2io(io)->fpos;
+}
+
+/**
  * Moves the reading position to the requested position.
  */
 void fiobj_io_seek(fiobj_s *io, intptr_t position) {

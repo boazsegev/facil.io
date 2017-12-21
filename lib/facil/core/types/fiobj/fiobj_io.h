@@ -88,6 +88,11 @@ fio_cstr_s fiobj_io_read2ch(fiobj_s *io, uint8_t token);
 #define fiobj_io_gets(io) fiobj_io_read2ch((io), '\n');
 
 /**
+ * Returns the current reading position. Returns -1 on error.
+ */
+intptr_t fiobj_io_pos(fiobj_s *io);
+
+/**
  * Moves the reading position to the requested position.
  */
 void fiobj_io_seek(fiobj_s *io, intptr_t position);
