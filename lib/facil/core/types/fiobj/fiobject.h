@@ -199,7 +199,7 @@ void fiobj_each2(fiobj_s *, int (*task)(fiobj_s *obj, void *arg), void *arg);
 fiobj_s *fiobj_each_get_cyclic(void);
 
 /**
- * Deeply compare two objects. No hashing or recursive functio n calls are
+ * Deeply compare two objects. No hashing or recursive function calls are
  * involved.
  *
  * Uses a similar algorithm to `fiobj_each2`, except adjusted to two objects.
@@ -216,6 +216,7 @@ fiobj_s *fiobj_each_get_cyclic(void);
  * * Hash order will be tested as well as the Hash content, which means that
  * equal Hashes might be considered unequal if their order doesn't match.
  *
+ * Returns 1 if true and 0 if false.
  */
 int fiobj_iseq(const fiobj_s *obj1, const fiobj_s *obj2);
 
