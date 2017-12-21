@@ -131,8 +131,11 @@ static fio_cstr_s fio_io2str(const fiobj_s *o) {
 }
 
 static int fiobj_io_is_eq(const fiobj_s *self, const fiobj_s *other) {
-  /* TODO: test equality */
-  return 0;
+  int64_t len;
+  return (self == other || (self->type == other->type &&
+                            (len = fiobj_io_i(self)) == fiobj_io_i(other) &&
+                            !memcmp(fio_io2str(self).buffer,
+                                    fio_io2str(other).buffer, (size_t)len)));
 }
 
 static struct fiobj_vtable_s FIOBJ_VTABLE_IO = {
