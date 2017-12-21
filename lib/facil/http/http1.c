@@ -250,13 +250,20 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
   *p = (http1_s){
       .p.protocol =
           {
-              .on_data = on_data, .on_close = on_close,
+              .service = HTTP1_SERVICE_STR,
+              .on_data = on_data,
+              .on_close = on_close,
           },
       .p.uuid = uuid,
       .p.settings = settings,
       .p.vtable = NULL,
       .buf = (uint8_t *)(p + 1),
   };
+  if (unread_data && unread_length <= HTTP1_MAX_HEADER_SIZE) {
+    memcpy(p->buf, unread_data, unread_length);
+    p->buf_len = unread_length;
+    facil_force_event(uuid, FIO_EVENT_ON_DATA);
+  }
   return &p->p.protocol;
 }
 
