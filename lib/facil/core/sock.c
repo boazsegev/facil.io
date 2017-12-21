@@ -826,13 +826,17 @@ ssize_t sock_read(intptr_t uuid, void *buf, size_t count) {
   if (count == 0)
     return rw->read(uuid, udata, buf, count);
   int old_errno = errno;
-  ssize_t ret = rw->read(uuid, udata, buf, count);
+  ssize_t ret;
+retry_int:
+  ret = rw->read(uuid, udata, buf, count);
   if (ret > 0) {
     sock_touch(uuid);
     return ret;
   }
-  if (ret < 0 && (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR ||
-                  errno == ENOTCONN)) {
+  if (ret < 0 && errno == EINTR)
+    goto retry_int;
+  if (ret < 0 &&
+      (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOTCONN)) {
     errno = old_errno;
     return 0;
   }
