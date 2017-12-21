@@ -2,6 +2,12 @@
 
 ### Ver. 0.6.0 (ReHTTP branch)
 
+**Changes!**: (`http`):
+
+- The HTTP API and engine was completely re-written (except the HTTP/1.1 parser), both to support client mode (including chunked encoding trailing headers) and to make routing and request parsing easier.
+
+- The updates to the HTTP API might result in a slightly decreased performance during the HTTP request reading due to the need to copy some of the data and the use of dynamic storage... For example, header Hash Tables replaced header Arrays, improving lookup times and increasing creation  time). 
+
 **Changes!**: (`evio`):
 
 - the evented IO library was redesigned for **one-shot** notifications, requiring a call to `evio_add` or `evio_set_timer` in order to receive future notifications.
