@@ -243,6 +243,42 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
 }
 
 /**
+ * Replaces the value in a key-value pair, returning the old value (and it's
+ * ownership) to the caller.
+ *
+ * A return value of NULL indicates that no previous object existed (but a new
+ * key-value pair was created.
+ *
+ * Errors are silently ignored.
+ */
+fiobj_s *fiobj_hash_replace(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
+  if (!hash || hash->type != FIOBJ_T_HASH) {
+    fiobj_free(obj);
+    return NULL;
+  }
+  uintptr_t hash_value = 0;
+  if (sym->type == FIOBJ_T_SYMBOL) {
+    hash_value = fiobj_sym_id(sym);
+  } else if (FIOBJ_IS_STRING(sym)) {
+    fio_cstr_s str = fiobj_obj2cstr(sym);
+    hash_value = fiobj_sym_hash(str.value, str.len);
+  } else {
+    fiobj_free((fiobj_s *)obj);
+    return NULL;
+  }
+
+  fiobj_s *coup = fiobj_couplet_alloc(sym, obj);
+  fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, coup);
+  if (!old)
+    return NULL;
+  fiobj_s *ret = fiobj_couplet2obj(old);
+  if (!OBJREF_REM(old)) {
+    fiobj_couplet_dealloc(old);
+  }
+  return ret;
+}
+
+/**
  * Removes a key-value pair from the Hash, if it exists, returning the old
  * object (instead of freeing it).
  */

@@ -82,6 +82,17 @@ size_t fiobj_hash_count(const fiobj_s *hash);
 int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj);
 
 /**
+ * Replaces the value in a key-value pair, returning the old value (and it's
+ * ownership) to the caller.
+ *
+ * A return value of NULL indicates that no previous object existed (but a new
+ * key-value pair was created.
+ *
+ * Errors are silently ignored.
+ */
+fiobj_s *fiobj_hash_replace(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj);
+
+/**
  * Removes a key-value pair from the Hash, if it exists, returning the old
  * object (instead of freeing it).
  */
