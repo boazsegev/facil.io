@@ -45,6 +45,8 @@ DUMP_LIB=libdump
 ifdef DEBUG
 	FLAGS:=$(FLAGS) DEBUG
 	OPTIMIZATION:=$(OPTIMIZATION) -fsanitize=address -fno-omit-frame-pointer
+else
+	FLAGS:=$(FLAGS) NODEBUG
 endif
 
 ##############

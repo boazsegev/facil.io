@@ -147,9 +147,10 @@ uintptr_t fiobj_free(fiobj_s *o) {
     kill(0, SIGABRT);
   }
 #endif
+  if (!o)
+    return 0;
   {
-    if (!o)
-      return 0;
+
     uintptr_t left = OBJREF_REM(o);
     if (left)
       return left;
