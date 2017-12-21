@@ -110,17 +110,6 @@ inline FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
                                                  void *arg),
                                      void *arg);
 
-/**
- * A macro for a `for` loop that iterates over all the hashed objetcs (in
- * order).
- *
- * `hash` is the name of the hash table variable and `i` is a temporary variable
- * name to be created for iteration.
- *
- *`i->key` is the key and `i->obj` is the hashed data.
- */
-#define FIO_HASH_FOR_LOOP(hash, i)
-
 /* *****************************************************************************
 Hash Table Internal Data Structures
 ***************************************************************************** */
