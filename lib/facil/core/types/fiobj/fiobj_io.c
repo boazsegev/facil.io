@@ -354,8 +354,7 @@ fio_cstr_s fiobj_io_read(fiobj_s *io, intptr_t length) {
 }
 
 /**
- * Reads a line (until the '\n' byte is encountered) or until the end of the
- * stream.
+ * Reads until the `token` byte is encountered or until the end of the stream.
  *
  * Returns a temporary(!) C string including the end of line marker.
  *
@@ -365,7 +364,7 @@ fio_cstr_s fiobj_io_read(fiobj_s *io, intptr_t length) {
  * The C string object will be invalidate the next time a function call to the
  * IO object is made.
  */
-fio_cstr_s fiobj_io_gets(fiobj_s *io) {
+fio_cstr_s fiobj_io_read2ch(fiobj_s *io, uint8_t token) {
   if (!io || io->type != FIOBJ_T_IO) {
     errno = EFAULT;
     return (fio_cstr_s){.buffer = NULL, .len = 0};
@@ -377,7 +376,7 @@ fio_cstr_s fiobj_io_gets(fiobj_s *io) {
 
     uint8_t *pos = obj2io(io)->buffer + obj2io(io)->pos;
     uint8_t *lim = obj2io(io)->buffer + obj2io(io)->len;
-    swallow_ch(&pos, lim, '\n');
+    swallow_ch(&pos, lim, token);
     fio_cstr_s ret = (fio_cstr_s){
         .buffer = obj2io(io)->buffer + obj2io(io)->pos,
         .length = (uintptr_t)(pos - obj2io(io)->buffer) - obj2io(io)->pos,
@@ -389,7 +388,7 @@ fio_cstr_s fiobj_io_gets(fiobj_s *io) {
     /* File */
     uint8_t *pos = obj2io(io)->buffer + obj2io(io)->pos;
     uint8_t *lim = obj2io(io)->buffer + obj2io(io)->len;
-    if (pos != lim && swallow_ch(&pos, lim, '\n')) {
+    if (pos != lim && swallow_ch(&pos, lim, token)) {
       /* newline found in existing buffer */
       const uintptr_t delta =
           (uintptr_t)(pos - (obj2io(io)->buffer + obj2io(io)->pos));
@@ -424,7 +423,7 @@ fio_cstr_s fiobj_io_gets(fiobj_s *io) {
       obj2io(io)->len += tmp;
       pos = obj2io(io)->buffer;
       lim = obj2io(io)->buffer + obj2io(io)->len;
-      if (swallow_ch(&pos, lim, '\n')) {
+      if (swallow_ch(&pos, lim, token)) {
         const uintptr_t delta =
             (uintptr_t)(pos - (obj2io(io)->buffer + obj2io(io)->pos));
         obj2io(io)->pos = delta;
