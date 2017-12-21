@@ -20,6 +20,7 @@ create object types.
 
 #include "fiobj_sym_hash.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <math.h>
 #include <signal.h>

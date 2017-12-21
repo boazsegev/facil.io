@@ -31,6 +31,8 @@ typedef struct {
 void fiobj_hash_rehash(fiobj_s *h) {
   if (!h || h->type != FIOBJ_T_HASH)
     return;
+  assert(h && h->type == FIOBJ_T_HASH);
+
   fio_hash_rehash(&obj2hash(h)->hash);
 }
 
@@ -105,8 +107,9 @@ static inline fiobj_s *fiobj_couplet_alloc(void *sym, void *obj) {
  * Otherwise returns NULL.
  */
 fiobj_s *fiobj_couplet2key(const fiobj_s *obj) {
-  if (!obj || obj->type != FIOBJ_T_COUPLET)
+  if (!obj)
     return NULL;
+  assert(obj->type == FIOBJ_T_COUPLET);
   return obj2couplet(obj)->name;
 }
 
@@ -117,8 +120,9 @@ fiobj_s *fiobj_couplet2key(const fiobj_s *obj) {
  * Otherwise returns NULL.
  */
 fiobj_s *fiobj_couplet2obj(const fiobj_s *obj) {
-  if (!obj || obj->type != FIOBJ_T_COUPLET)
-    return (fiobj_s *)obj;
+  if (!obj)
+    return NULL;
+  assert(obj->type == FIOBJ_T_COUPLET);
   return obj2couplet(obj)->obj;
 }
 
@@ -146,8 +150,9 @@ static int fiobj_inner_task(uintptr_t key, void *obj, void *a_) {
 static size_t fiobj_hash_each1(fiobj_s *o, const size_t start_at,
                                int (*task)(fiobj_s *obj, void *arg),
                                void *arg) {
-  if (!o || o->type != FIOBJ_T_HASH)
+  if (!o)
     return 0;
+  assert(o->type == FIOBJ_T_HASH);
   struct fiobj_inner_task_s a = {.task = task, .arg = arg};
   return fio_hash_each(&obj2hash(o)->hash, start_at, fiobj_inner_task,
                        (void *)&a);
@@ -171,8 +176,9 @@ static int fiobj_hash_is_eq(const fiobj_s *self, const fiobj_s *other) {
 
 /** Returns the number of elements in the Array. */
 size_t fiobj_hash_count(const fiobj_s *o) {
-  if (!o || o->type != FIOBJ_T_HASH)
+  if (!o)
     return 0;
+  assert(o->type == FIOBJ_T_HASH);
   return fio_hash_count(&obj2hash(o)->hash);
 }
 
@@ -217,10 +223,7 @@ fiobj_s *fiobj_hash_new(void) {
  * Returns -1 on error.
  */
 int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
-  if (!hash || hash->type != FIOBJ_T_HASH) {
-    fiobj_free(obj);
-    return -1;
-  }
+  assert(hash && hash->type == FIOBJ_T_HASH);
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
@@ -252,10 +255,7 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
  * Errors are silently ignored.
  */
 fiobj_s *fiobj_hash_replace(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
-  if (!hash || hash->type != FIOBJ_T_HASH) {
-    fiobj_free(obj);
-    return NULL;
-  }
+  assert(hash && hash->type == FIOBJ_T_HASH);
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
@@ -283,9 +283,10 @@ fiobj_s *fiobj_hash_replace(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
  * object (instead of freeing it).
  */
 fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
-  if (!hash || hash->type != FIOBJ_T_HASH) {
-    return 0;
+  if (!hash) {
+    return NULL;
   }
+  assert(hash->type == FIOBJ_T_HASH);
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
@@ -312,9 +313,10 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
  * Returns -1 on type error or if the object never existed.
  */
 int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
-  if (!hash || hash->type != FIOBJ_T_HASH) {
+  if (!hash) {
     return -1;
   }
+  assert(hash->type == FIOBJ_T_HASH);
   fiobj_s *obj = fiobj_hash_remove(hash, sym);
   if (!obj)
     return -1;
@@ -327,9 +329,10 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
  * if none.
  */
 fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym) {
-  if (!hash || hash->type != FIOBJ_T_HASH) {
-    return 0;
+  if (!hash) {
+    return NULL;
   }
+  assert(hash && hash->type == FIOBJ_T_HASH);
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
@@ -337,7 +340,7 @@ fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym) {
     fio_cstr_s str = fiobj_obj2cstr(sym);
     hash_value = fiobj_sym_hash(str.value, str.len);
   } else {
-    return 0;
+    return NULL;
   }
   fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hash_value);
   if (!coup)
@@ -354,9 +357,10 @@ fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym) {
  * Returns NULL if no object is asociated with this String data.
  */
 fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len) {
-  if (!hash || hash->type != FIOBJ_T_HASH || str == NULL) {
+  if (!hash) {
     return NULL;
   }
+  assert(hash->type == FIOBJ_T_HASH);
   uintptr_t hashed_sym = fiobj_sym_hash(str, len);
   fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hashed_sym);
   if (!coup)
@@ -373,9 +377,10 @@ fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len) {
  * Returns NULL if no object is asociated with this hashed key value.
  */
 fiobj_s *fiobj_hash_get3(const fiobj_s *hash, uintptr_t key_hash) {
-  if (!hash || hash->type != FIOBJ_T_HASH) {
+  if (!hash) {
     return NULL;
   }
+  assert(hash && hash->type == FIOBJ_T_HASH);
   fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, key_hash);
   if (!coup)
     return NULL;
@@ -386,9 +391,11 @@ fiobj_s *fiobj_hash_get3(const fiobj_s *hash, uintptr_t key_hash) {
  * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.
  */
 int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym) {
-  if (!hash || hash->type != FIOBJ_T_HASH) {
+  if (!hash) {
     return 0;
   }
+  assert(hash->type == FIOBJ_T_HASH);
+
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
@@ -409,8 +416,9 @@ int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym) {
  * This could be used for testig performance and memory consumption.
  */
 size_t fiobj_hash_capa(const fiobj_s *hash) {
-  if (!hash || hash->type != FIOBJ_T_HASH) {
+  if (!hash) {
     return 0;
   }
+  assert(hash->type == FIOBJ_T_HASH);
   return fio_hash_capa(&obj2hash(hash)->hash);
 }

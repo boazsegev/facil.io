@@ -46,8 +46,9 @@ static int fiobj_ary_is_eq(const fiobj_s *self, const fiobj_s *other) {
 
 /** Returns the number of elements in the Array. */
 size_t fiobj_ary_count(const fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
+  if (!ary)
     return 0;
+  assert(ary->type == FIOBJ_T_ARRAY);
   return fio_ary_count(&obj2ary(ary)->ary);
 }
 
@@ -92,8 +93,9 @@ Array direct entry access API
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
 size_t fiobj_ary_capa(fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
+  if (!ary)
     return 0;
+  assert(ary->type == FIOBJ_T_ARRAY);
   return fio_ary_capa(&obj2ary(ary)->ary);
 }
 
@@ -104,8 +106,9 @@ size_t fiobj_ary_capa(fiobj_s *ary) {
  * long as no other actions (insertion/deletion) are performed on the array.
  */
 fiobj_s **fiobj_ary2prt(fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
+  if (!ary)
     return NULL;
+  assert(ary->type == FIOBJ_T_ARRAY);
   return (fiobj_s **)(obj2ary(ary)->ary.arry + obj2ary(ary)->ary.start);
 }
 
@@ -116,8 +119,9 @@ fiobj_s **fiobj_ary2prt(fiobj_s *ary) {
  * is the last item.
  */
 fiobj_s *fiobj_ary_index(fiobj_s *ary, int64_t pos) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
+  if (!ary)
     return NULL;
+  assert(ary->type == FIOBJ_T_ARRAY);
   return fio_ary_index(&obj2ary(ary)->ary, pos);
 }
 
@@ -125,11 +129,7 @@ fiobj_s *fiobj_ary_index(fiobj_s *ary, int64_t pos) {
  * Sets an object at the requested position.
  */
 void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY) {
-    /* function takes ownership of memory even if an error occurs. */
-    fiobj_free(obj);
-    return;
-  }
+  assert(ary && ary->type == FIOBJ_T_ARRAY);
   fiobj_s *old = fio_ary_set(&obj2ary(ary)->ary, obj, pos);
   fiobj_free(old);
 }
@@ -142,11 +142,7 @@ Array push / shift API
  * Pushes an object to the end of the Array.
  */
 void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY) {
-    /* function takes ownership of memory even if an error occurs. */
-    fiobj_free(obj);
-    return;
-  }
+  assert(ary && ary->type == FIOBJ_T_ARRAY);
   fio_ary_push(&obj2ary(ary)->ary, obj);
 }
 
@@ -158,18 +154,15 @@ fiobj_s *fiobj_ary_pop(fiobj_s *ary) { return fio_ary_pop(&obj2ary(ary)->ary); }
  * expensive.
  */
 void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY) {
-    /* function takes ownership of memory even if an error occurs. */
-    fiobj_free(obj);
-    return;
-  }
+  assert(ary && ary->type == FIOBJ_T_ARRAY);
   fio_ary_unshift(&obj2ary(ary)->ary, obj);
 }
 
 /** Shifts an object from the beginning of the Array. */
 fiobj_s *fiobj_ary_shift(fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
+  if (!ary)
     return NULL;
+  assert(ary->type == FIOBJ_T_ARRAY);
   return fio_ary_shift(&obj2ary(ary)->ary);
 }
 
@@ -185,7 +178,6 @@ Array compacting (untested)
  * It could get expensive.
  */
 void fiobj_ary_compact(fiobj_s *ary) {
-  if (!ary || ary->type != FIOBJ_T_ARRAY)
-    return;
+  assert(ary && ary->type == FIOBJ_T_ARRAY);
   fio_ary_compact(&obj2ary(ary)->ary);
 }
