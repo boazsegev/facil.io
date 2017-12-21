@@ -26,8 +26,8 @@ typedef struct http_req_s {
   struct {
     /** the connection's identifier - used by facil.io, don't use directly! */
     uintptr_t uuid;
-    /** a link to the response object, if any.*/
-    void *response;
+    /** The response headers, if they weren't sent. Don't access directly. */
+    fiobj_s *response_headers;
     /** a private request ID, used by the owner (facil.io), do not touch. */
     uintptr_t request_id;
     /** a private request reference counter, do not touch. */
@@ -70,13 +70,15 @@ typedef struct http_req_s {
 } http_req_s;
 
 /**
- * Sets a response header.
+ * Sets a response header, taking ownership of the value object, but NOT the
+ * name object (so name objects could be reused in future responses).
  *
  * Returns -1 on error and 0 on success.
  */
 int http_set_header(http_req_s *r, fiobj_s *name, fiobj_s *value);
 /**
- * Sets a response cookie.
+ * Sets a response cookie, taking ownership of the value object, but NOT the
+ * name object (so name objects could be reused in future responses).
  *
  * Returns -1 on error and 0 on success.
  */

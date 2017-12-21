@@ -37,18 +37,17 @@ inline static void set_request(http1_s *p) {
       .private.ref_count = 1,
       .private.uuid = p->p.uuid,
       .private.request_id = 1,
-      .private.response = NULL,
+      .private.response_headers = fiobj_hash_new(),
       .headers = fiobj_hash_new(),
       .version = p->request.version,
       .received_at = facil_last_tick(),
       .status = 200,
   };
-  /* TODO: manage response object */
-  (void)p->request.private.response;
 }
 
 inline static void clear_request(http_req_s *r) {
   fiobj_free(r->method);
+  fiobj_free(r->private.response_headers);
   fiobj_free(r->headers);
   fiobj_free(r->version);
   fiobj_free(r->query);
@@ -57,8 +56,6 @@ inline static void clear_request(http_req_s *r) {
   fiobj_free(r->cookies);
   fiobj_free(r->body);
   fiobj_free(r->params);
-  /* TODO: manage response object */
-  (void)r->private.response;
 }
 
 inline static void h1_reset(http1_s *p) {
