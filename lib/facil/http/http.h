@@ -275,7 +275,7 @@ typedef struct http_settings_s {
 int http_listen(char *port, char *binding, struct http_settings_s);
 /** Listens to HTTP connections at the specified `port` and `binding`. */
 #define http_listen(port, binding, ...)                                        \
-  http_listen((port), (binding), (struct http_settings_s)(__VA_ARGS__))
+  http_listen((port), (binding), (struct http_settings_s){__VA_ARGS__})
 
 /**
  * Returns the settings used to setup the connection.

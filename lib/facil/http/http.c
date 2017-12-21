@@ -155,8 +155,9 @@ static protocol_s *http_on_open(intptr_t uuid, void *set) {
   static __thread ssize_t capa = 0;
   if (!capa)
     capa = sock_max_capacity();
-  if (uuid > capa - HTTP_BUSY_UNLESS_HAS_FDS) {
+  if (sock_uuid2fd(uuid) + HTTP_BUSY_UNLESS_HAS_FDS >= capa) {
     /* TODO: use http_send_error2(uuid) */
+    fprintf(stderr, "WARNING: HTTP server at capacity\n");
     sock_close(uuid);
     return NULL;
   }

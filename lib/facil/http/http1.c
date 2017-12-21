@@ -45,16 +45,16 @@ inline static void set_request(http1_s *p) {
 }
 
 inline static void clear_request(http_s *r) {
-  fiobj_free(r->method);
+  fiobj_free(r->method); /* union for   fiobj_free(r->status_str); */
   fiobj_free(r->private.response_headers);
   fiobj_free(r->headers);
   fiobj_free(r->version);
   fiobj_free(r->query);
   fiobj_free(r->path);
-  fiobj_free(r->status_str);
   fiobj_free(r->cookies);
   fiobj_free(r->body);
   fiobj_free(r->params);
+  *r = (http_s){0};
 }
 
 inline static void h1_reset(http1_s *p) {
@@ -62,8 +62,8 @@ inline static void h1_reset(http1_s *p) {
   if (p->buf_len) {
     memmove((uint8_t *)(p + 1), p->buf + p->buf_pos, p->buf_len);
   }
-  p->buf_pos = 0;
   p->buf = (uint8_t *)(p + 1);
+  p->buf_pos = 0;
   p->body_is_fd = 0;
   p->restart = 0;
 }
@@ -86,8 +86,12 @@ static int on_request(http1_parser_s *parser) {
 }
 /** called when a response was received. */
 static int on_response(http1_parser_s *parser) {
-  return -1;
-  (void)parser;
+  http1_s *p = parser2http(parser);
+  p->request.private.request_id &= ~((uintptr_t)2);
+  p->p.settings->on_request(&p->request);
+  clear_request(&p->request);
+  p->restart = 1;
+  return 0;
 }
 /** called when a request method is parsed. */
 static int on_method(http1_parser_s *parser, char *method, size_t method_len) {
@@ -258,13 +262,22 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
       .p.vtable = NULL,
       .buf = (uint8_t *)(p + 1),
   };
+  if (!unread_data)
+    return &p->p.protocol;
   if (unread_data && unread_length <= HTTP1_MAX_HEADER_SIZE) {
     memcpy(p->buf, unread_data, unread_length);
     p->buf_len = unread_length;
     facil_force_event(uuid, FIO_EVENT_ON_DATA);
+    return &p->p.protocol;
   }
-  return &p->p.protocol;
+  /*TODO: Send Error */
+  sock_close(uuid);
+  return NULL;
 }
 
 /** Manually destroys the HTTP1 protocol object. */
-void http1_destroy(protocol_s *p) { free(p); }
+void http1_destroy(protocol_s *pr) {
+  http1_s *p = (http1_s *)pr;
+  clear_request(&p->request);
+  free(p);
+}
