@@ -17,11 +17,31 @@ extern "C" {
 #endif
 
 /* *****************************************************************************
+Compile Time Settings
+***************************************************************************** */
+
+/** When a new connection is accepted, it will be immediately declined with a
+ * 503 service unavailable (server busy) response unless the following number of
+ * file descriptors is available.*/
+#ifndef HTTP_BUSY_UNLESS_HAS_FDS
+#define HTTP_BUSY_UNLESS_HAS_FDS 64
+#endif
+
+#ifndef HTTP_DEFAULT_BODY_LIMIT
+#define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
+#endif
+
+/* *****************************************************************************
 The Request / Response type and functions
 ***************************************************************************** */
 
-/** A generic type used for HTTP request/response data. */
-typedef struct http_req_s {
+/**
+ * A generic type used for HTTP request/response data.
+ *
+ * The `http_s` data can only be accessed safely from within the `on_request`
+ * HTTP callback OR an `http_defer` callback.
+ */
+typedef struct {
   /** the HTTP request's "head" starts with a private data used by facil.io */
   struct {
     /** the connection's identifier - used by facil.io, don't use directly! */
@@ -30,8 +50,6 @@ typedef struct http_req_s {
     fiobj_s *response_headers;
     /** a private request ID, used by the owner (facil.io), do not touch. */
     uintptr_t request_id;
-    /** a private request reference counter, do not touch. */
-    uintptr_t ref_count;
   } private;
   /** a time merker indicating when the request was received. */
   time_t received_at;
@@ -67,7 +85,9 @@ typedef struct http_req_s {
    * see fiobj_io.h for details.
    */
   fiobj_s *body;
-} http_req_s;
+  /** an opaque user data pointer, to be used BEFORE calling `http_defer`. */
+  void *udata;
+} http_s;
 
 /**
 * This is a helper for setting cookie data.
@@ -110,21 +130,21 @@ typedef struct {
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_header(http_req_s *r, fiobj_s *name, fiobj_s *value);
+int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value);
 /**
  * Sets a response header, taking ownership of the value object, but NOT the
  * name object (so name objects could be reused in future responses).
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_header2(http_req_s *r, fio_cstr_s name, fio_cstr_s value);
+int http_set_header2(http_s *r, fio_cstr_s name, fio_cstr_s value);
 /**
  * Sets a response cookie, taking ownership of the value object, but NOT the
  * name object (so name objects could be reused in future responses).
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_cookie(http_req_s *r, http_cookie_args_s);
+int http_set_cookie(http_s *r, http_cookie_args_s);
 #define http_set_cookie(http__req__, ...)                                      \
   http_set_cookie((http__req__), (http_cookie_args_s){__VA_ARGS__})
 /**
@@ -132,46 +152,58 @@ int http_set_cookie(http_req_s *r, http_cookie_args_s);
  *
  * Returns -1 on error and 0 on success.
  *
- * AFTER THIS FUNCTION IS CALLED, THE `http_req_s` OBJECT IS NO LONGER VALID.
+ * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_send_body(http_req_s *r, void *data, uintptr_t length);
+int http_send_body(http_s *r, void *data, uintptr_t length);
 /**
  * Sends the response headers and the specified file (the response's body).
  *
  * Returns -1 on error and 0 on success.
  *
- * AFTER THIS FUNCTION IS CALLED, THE `http_req_s` OBJECT IS NO LONGER VALID.
+ * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile(http_req_s *r, int fd, uintptr_t length, uintptr_t offset);
+int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset);
 /**
  * Sends the response headers and the specified file (the response's body).
  *
  * Returns -1 on error and 0 on success.
  *
- * AFTER THIS FUNCTION IS CALLED, THE `http_req_s` OBJECT IS NO LONGER VALID.
+ * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile2(http_req_s *r, char *filename, size_t name_length);
+int http_sendfile2(http_s *r, char *filename, size_t name_length);
+
+/**
+ * Sends an HTTP error response.
+ *
+ * Returns -1 on error and 0 on success.
+ *
+ * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
+ *
+ * The `uuid` argument is optional and will be used only if the `http_s`
+ * argument is set to NULL.
+ */
+int http_send_error(http_s *r, intptr_t uuid, size_t error);
 /**
  * Sends the response headers and starts streaming, creating a new and valid
- * `http_req_s` object that allows further streaming.
+ * `http_s` object that allows further streaming.
  *
- * Returns NULL on error and a new valid `http_req_s` object on success.
+ * Returns NULL on error and a new valid `http_s` object on success.
  *
- * THE OLD `http_req_s` OBJECT BECOMES INVALID.
+ * THE OLD `http_s` OBJECT BECOMES INVALID.
  */
-http_req_s *http_stream(http_req_s *r, void *data, uintptr_t length);
+http_s *http_stream(http_s *r, void *data, uintptr_t length);
 /**
  * Sends the response headers for a header only response.
  *
- * AFTER THIS FUNCTION IS CALLED, THE `http_req_s` OBJECT IS NO LONGER VALID.
+ * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-void http_finish(http_req_s *r);
+void http_finish(http_s *r);
 /**
  * Pushes a data response when supported (HTTP/2 only).
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_data(http_req_s *r, void *data, uintptr_t length, char *mime_type,
+int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
                    uintptr_t type_length);
 /**
  * Pushes a file response when supported (HTTP/2 only).
@@ -181,8 +213,17 @@ int http_push_data(http_req_s *r, void *data, uintptr_t length, char *mime_type,
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_file(http_req_s *r, char *filename, size_t name_length,
+int http_push_file(http_s *r, char *filename, size_t name_length,
                    char *mime_type, uintptr_t type_length);
+
+/**
+ * Defers the request / response handling for later.
+ *
+ * Returns -1 on error and 0 on success.
+ *
+ * Note: HTTP/1.1 requests CAN'T be deferred due to protocol requirements.
+ */
+int http_defer(http_s *r, void (*task)(http_s *r));
 
 /* *****************************************************************************
 Listening to HTTP connections
@@ -191,7 +232,7 @@ Listening to HTTP connections
 /** The HTTP settings. */
 typedef struct http_settings_s {
   /** REQUIRED: the callback to be performed when requests come in. */
-  void (*on_request)(http_req_s *request);
+  void (*on_request)(http_s *request);
   /**
    * A public folder for file transfers - allows to circumvent any application
    * layer server and simply serve files.
@@ -204,7 +245,7 @@ typedef struct http_settings_s {
   /** Opaque user data. Facil.io will ignore this field, but you can use it. */
   void *udata;
   /** (optional) the callback to be performed when the HTTP service closes. */
-  void (*on_finish)(intptr_t uuid, void *udata);
+  void (*on_finish)(struct http_settings_s *settings);
   /**
    * Allows an implementation for the transport layer (i.e. TLS) without
    * effecting the HTTP protocol.
@@ -241,7 +282,7 @@ int http_listen(char *port, char *binding, struct http_settings_s);
  *
  * Returns -1 on error and 0 on success.
  */
-struct http_settings_s *http_settings(http_req_s *r);
+struct http_settings_s *http_settings(http_s *r);
 
 /* *****************************************************************************
 TODO: HTTP client mode

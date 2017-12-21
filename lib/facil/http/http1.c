@@ -17,7 +17,7 @@ The HTTP/1.1 Protocol Object
 typedef struct http1_s {
   http_protocol_s p;
   http1_parser_s parser;
-  http_req_s request;
+  http_s request;
   uint8_t restart;    /* placed here to force padding */
   uint8_t body_is_fd; /* placed here to force padding */
   uintptr_t buf_pos;
@@ -33,8 +33,7 @@ Internal Helpers
   ((http1_s *)((uintptr_t)(x) - (uintptr_t)(&((http1_s *)0)->parser)))
 
 inline static void set_request(http1_s *p) {
-  p->request = (http_req_s){
-      .private.ref_count = 1,
+  p->request = (http_s){
       .private.uuid = p->p.uuid,
       .private.request_id = 1,
       .private.response_headers = fiobj_hash_new(),
@@ -45,7 +44,7 @@ inline static void set_request(http1_s *p) {
   };
 }
 
-inline static void clear_request(http_req_s *r) {
+inline static void clear_request(http_s *r) {
   fiobj_free(r->method);
   fiobj_free(r->private.response_headers);
   fiobj_free(r->headers);
