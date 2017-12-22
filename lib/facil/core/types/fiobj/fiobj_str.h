@@ -102,9 +102,12 @@ fiobj_str_write2(fiobj_s *dest, const char *format, ...);
 
 /**
  * Writes data at the end of the string, resizing the string as required.
- * Returns the new length of the String
+ *
+ * Remember to call `fiobj_free` to free the source (when done with it).
+ *
+ * Returns the new length of the String.
  */
-size_t fiobj_str_join(fiobj_s *dest, fiobj_s *obj);
+size_t fiobj_str_join(fiobj_s *dest, fiobj_s *source);
 
 #ifdef __cplusplus
 } /* extern "C" */
