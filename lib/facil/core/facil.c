@@ -255,7 +255,7 @@ static void facil_external_cleanup(void) {}
 
 #pragma weak http_lib_init
 void http_lib_init(void) {}
-#pragma weak http_lib_init
+#pragma weak http_lib_cleanup
 void http_lib_cleanup(void) {}
 
 /* perform initialization for external services. */
