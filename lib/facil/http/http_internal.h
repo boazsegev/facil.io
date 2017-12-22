@@ -14,14 +14,21 @@ typedef struct http_protocol_s http_protocol_s;
 typedef struct http_vtable_s http_vtable_s;
 
 struct http_vtable_s {
+  /** Should send existing headers and data */
   int (*http_send_body)(http_s *h, void *data, uintptr_t length);
+  /** Should send existing headers and file */
   int (*http_sendfile)(http_s *h, int fd, uintptr_t length, uintptr_t offset);
+  /** Should send existing headers and data and prepare for streaming */
   int (*http_stream)(http_s *h, void *data, uintptr_t length);
+  /** Should send existing headers or complete streaming */
   void (*http_finish)(http_s *h);
+  /** Push for data. */
   int (*http_push_data)(http_s *h, void *data, uintptr_t length,
                         char *mime_type, uintptr_t type_length);
+  /** Push for files. */
   int (*http_push_file)(http_s *h, char *filename, size_t name_length,
                         char *mime_type, uintptr_t type_length);
+  /** Defer request handling for later... careful (memory concern apply). */
   int (*http_defer)(http_s *h, void (*task)(http_s *r));
 };
 
@@ -56,6 +63,10 @@ static inline void http_s_cleanup(http_s *h) {
   fiobj_free(h->params);
   *h = (http_s){{0}};
 }
+
+/** Use this function to handle HTTP requests.*/
+void http_on_request_handler______internal(http_s *h,
+                                           http_settings_s *settings);
 
 #define HTTP_ASSERT(x, m)                                                      \
   if (!x)                                                                      \

@@ -49,6 +49,77 @@ inline static void h1_reset(http1_s *p) {
 /* *****************************************************************************
 Virtual Functions API
 ***************************************************************************** */
+struct header_writer_s {
+  fiobj_s *dest;
+  fiobj_s *name;
+  fiobj_s *value;
+};
+
+static int write_header(fiobj_s *o, void *w_) {
+  struct header_writer_s *w = w_;
+  if (!o)
+    return 0;
+  if (o->type == FIOBJ_T_COUPLET) {
+    w->name = fiobj_couplet2key(o);
+    o = fiobj_couplet2obj(o);
+  } else if (o->type == FIOBJ_T_ARRAY) {
+    fiobj_each1(o, 0, write_header, w);
+    return 0;
+  }
+  if (!o)
+    return 0;
+  fio_cstr_s str = fiobj_obj2cstr(o);
+  if (!str.data)
+    return 0;
+  fiobj_str_write(w->dest, str.data, str.len);
+  return 0;
+}
+
+static int send_headers(http_s *h) {
+  if (!h->headers)
+    return -1;
+  struct header_writer_s w;
+  w.dest = fiobj_str_buf(4096);
+  fiobj_str_write2(w.dest, "%u ", (unsigned int)h->status);
+  fiobj_str_write2(w.dest, "OK", 2);
+  fiobj_str_write(w.dest, " HTTP/1.1\r\n", 11);
+  fiobj_each1(h->headers, 0, write_header, &w);
+  fiobj_str_write2(w.dest, "\r\n", 2);
+  fio_cstr_s str = fiobj_obj2cstr(w.dest);
+  sock_write2(.uuid = ((http_protocol_s *)h->private.owner)->uuid,
+              .buffer = w.dest,
+              .offset = (uintptr_t)w.dest - (uintptr_t)str.data,
+              .length = str.length, .dealloc = (void (*)(void *))fiobj_free);
+  return 0;
+}
+
+/** Should send existing headers and data */
+static int http1_send_body(http_s *h, void *data, uintptr_t length);
+/** Should send existing headers and file */
+static int http1_sendfile(http_s *h, int fd, uintptr_t length,
+                          uintptr_t offset);
+/** Should send existing headers and data and prepare for streaming */
+static int http1_stream(http_s *h, void *data, uintptr_t length);
+/** Should send existing headers or complete streaming */
+static void htt1p_finish(http_s *h);
+/** Push for data. */
+static int http1_push_data(http_s *h, void *data, uintptr_t length,
+                           char *mime_type, uintptr_t type_length);
+/** Push for files. */
+static int http1_push_file(http_s *h, char *filename, size_t name_length,
+                           char *mime_type, uintptr_t type_length);
+/** Defer request handling for later... careful (memory concern apply). */
+static int http1_defer(http_s *h, void (*task)(http_s *r));
+
+struct http_vtable_s HTTP1_VTABLE = {
+    .http_send_body = http1_send_body,
+    .http_sendfile = http1_sendfile,
+    .http_stream = http1_stream,
+    .http_finish = htt1p_finish,
+    .http_push_data = http1_push_data,
+    .http_push_file = http1_push_file,
+    .http_defer = http1_defer,
+};
 
 /* *****************************************************************************
 Parser Callbacks
@@ -221,6 +292,26 @@ static void on_close(intptr_t uuid, protocol_s *protocol) {
   (void)uuid;
 }
 
+/** called when a data is available for the first time */
+static void on_data_first_time(intptr_t uuid, protocol_s *protocol) {
+  http1_s *p = (http1_s *)protocol;
+  ssize_t i;
+
+  i = sock_read(uuid, p->buf + p->buf_pos, HTTP1_MAX_HEADER_SIZE - p->buf_pos);
+
+  if (i <= 0)
+    return;
+  if (i >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
+    fprintf(stderr,
+            "ERROR: unsupported HTTP/2 attempeted using prior knowledge.\n");
+    sock_close(uuid);
+    return;
+  }
+  p->p.protocol.on_data = on_data;
+  p->buf_len += i;
+  on_data(uuid, protocol);
+}
+
 /* *****************************************************************************
 Public API
 ***************************************************************************** */
@@ -234,12 +325,12 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
       .p.protocol =
           {
               .service = HTTP1_SERVICE_STR,
-              .on_data = on_data,
+              .on_data = on_data_first_time,
               .on_close = on_close,
           },
       .p.uuid = uuid,
       .p.settings = settings,
-      .p.vtable = NULL,
+      .p.vtable = &HTTP1_VTABLE,
       .buf = (uint8_t *)(p + 1),
   };
   if (!unread_data)

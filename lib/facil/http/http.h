@@ -341,6 +341,20 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data);
  */
 ssize_t http_decode_path(char *dest, const char *url_data, size_t length);
 
+/* *****************************************************************************
+Commonly used headers (fiobj Symbol objects)
+***************************************************************************** */
+
+extern fiobj_s *HTTP_HEADER_UPGRADE;
+extern fiobj_s *HTTP_HEADER_CONNECTION;
+extern fiobj_s *HTTP_HEADER_DATE;
+extern fiobj_s *HTTP_HEADER_ETAG;
+extern fiobj_s *HTTP_HEADER_CONTENT_LENGTH;
+extern fiobj_s *HTTP_HEADER_CONTENT_TYPE;
+extern fiobj_s *HTTP_HEADER_LAST_MODIFIED;
+extern fiobj_s *HTTP_HEADER_SET_COOKIE;
+extern fiobj_s *HTTP_HEADER_COOKIE;
+
 /* support C++ */
 #ifdef __cplusplus
 }
