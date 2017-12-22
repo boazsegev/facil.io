@@ -21,13 +21,12 @@ Includes and state
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
+#include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <sys/types.h>
-#include <time.h>
 
 /* *****************************************************************************
 OS Sendfile settings.
@@ -504,10 +503,12 @@ int sock_set_non_block(int fd) {
     flags = 0;
   // printf("flags initial value was %d\n", flags);
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-#else
+#elif defined(FIOBIO)
   /* Otherwise, use the old way of doing it */
   static int flags = 1;
   return ioctl(fd, FIOBIO, &flags);
+#else
+#error Couldn't find functions / argumnet macros for non-blocking sockets.
 #endif
 }
 
@@ -525,24 +526,30 @@ ssize_t sock_max_capacity(void) {
     return flim;
 #ifdef _SC_OPEN_MAX
   flim = sysconf(_SC_OPEN_MAX);
-#elif defined(OPEN_MAX)
-  flim = OPEN_MAX;
+#elif defined(FOPEN_MAX)
+  flim = FOPEN_MAX;
 #endif
   // try to maximize limits - collect max and set to max
   struct rlimit rlim = {.rlim_max = 0};
-  getrlimit(RLIMIT_NOFILE, &rlim);
-// printf("Meximum open files are %llu out of %llu\n", rlim.rlim_cur,
-//        rlim.rlim_max);
-#if defined(__APPLE__) /* Apple's getrlimit is broken. */
-  rlim.rlim_cur = rlim.rlim_max >= OPEN_MAX ? OPEN_MAX : rlim.rlim_max;
-#else
-  rlim.rlim_cur = rlim.rlim_max;
-#endif
+  if (getrlimit(RLIMIT_NOFILE, &rlim) == -1) {
+    fprintf(stderr, "WARNING: `getrlimit` failed in `sock_max_capacity`.\n");
+  } else {
+    // #if defined(__APPLE__) /* Apple's getrlimit is broken. */
+    //     rlim.rlim_cur = rlim.rlim_max >= FOPEN_MAX ? FOPEN_MAX :
+    //     rlim.rlim_max;
+    // #else
+    rlim.rlim_cur = rlim.rlim_max;
+    // #endif
 
-  setrlimit(RLIMIT_NOFILE, &rlim);
-  getrlimit(RLIMIT_NOFILE, &rlim);
-  // printf("Meximum open files are %llu out of %llu\n", rlim.rlim_cur,
-  //        rlim.rlim_max);
+    if (!setrlimit(RLIMIT_NOFILE, &rlim))
+      getrlimit(RLIMIT_NOFILE, &rlim);
+  }
+#if 1 || DEBUG
+  fprintf(stderr,
+          "libsock capacity initialization:\n"
+          "*    Meximum open files %llu out of %llu\n",
+          rlim.rlim_cur, rlim.rlim_max);
+#endif
   // if the current limit is higher than it was, update
   if (flim < ((ssize_t)rlim.rlim_cur))
     flim = rlim.rlim_cur;
