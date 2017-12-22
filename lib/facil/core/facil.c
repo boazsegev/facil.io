@@ -43,7 +43,7 @@ static struct facil_data_s {
   spn_lock_i global_lock;
   uint8_t need_review;
   ssize_t capacity;
-  time_t last_cycle;
+  struct timespec last_cycle;
   pid_t parent;
   struct connection_data_s conn[];
 } * facil_data;
@@ -54,9 +54,10 @@ static struct facil_data_s {
 
 static inline void clear_connection_data_unsafe(intptr_t uuid,
                                                 protocol_s *protocol) {
-  uuid_data(uuid) = (struct connection_data_s){.active = facil_data->last_cycle,
-                                               .protocol = protocol,
-                                               .lock = uuid_data(uuid).lock};
+  uuid_data(uuid) =
+      (struct connection_data_s){.active = facil_data->last_cycle.tv_sec,
+                                 .protocol = protocol,
+                                 .lock = uuid_data(uuid).lock};
 }
 /** locks a connection's protocol returns a pointer that need to be unlocked. */
 inline static protocol_s *protocol_try_lock(intptr_t fd,
@@ -152,7 +153,7 @@ static void deferred_ping(void *arg, void *arg2) {
   if (!uuid_data(arg).protocol ||
       (uuid_data(arg).timeout &&
        (uuid_data(arg).timeout >
-        (facil_data->last_cycle - uuid_data(arg).active)))) {
+        (facil_data->last_cycle.tv_sec - uuid_data(arg).active)))) {
     return;
   }
   protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_WRITE);
@@ -215,7 +216,7 @@ void sock_on_close(intptr_t uuid) {
 }
 
 void sock_touch(intptr_t uuid) {
-  uuid_data(uuid).active = facil_data->last_cycle;
+  uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
 }
 
 /* *****************************************************************************
@@ -261,7 +262,7 @@ static void facil_lib_init(void) {
 #endif
 finish:
   spn_unlock(&facil_libinit_lock);
-  time(&facil_data->last_cycle);
+  clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
 }
 
 /* *****************************************************************************
@@ -333,7 +334,7 @@ static void listener_set_rw_hooks(intptr_t uuid, void *udata) {
 
 static void listener_ping(intptr_t uuid, protocol_s *plistener) {
   // fprintf(stderr, "*** Listener Ping Called for %ld\n", sock_uuid2fd(uuid));
-  uuid_data(uuid).active = facil_data->last_cycle;
+  uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
   return;
   (void)plistener;
 }
@@ -428,7 +429,7 @@ inline static void listener_on_start(size_t fd) {
         exit(4);
   if (evio_add(fd, (void *)uuid) < 0)
     perror("Couldn't register listening socket"), kill(0, SIGINT), exit(4);
-  fd_data(fd).active = facil_data->last_cycle;
+  fd_data(fd).active = facil_data->last_cycle.tv_sec;
   // call the on_init callback
   struct ListenerProtocol *listener =
       (struct ListenerProtocol *)uuid_data(uuid).protocol;
@@ -966,7 +967,7 @@ static void print_pid(void *arg, void *ignr) {
 static void facil_review_timeout(void *arg, void *ignr) {
   (void)ignr;
   protocol_s *tmp;
-  time_t review = facil_data->last_cycle;
+  time_t review = facil_data->last_cycle.tv_sec;
   intptr_t fd = (intptr_t)arg;
 
   uint16_t timeout = fd_data(fd).timeout;
@@ -1000,7 +1001,7 @@ reschedule:
 static void facil_cycle(void *arg, void *ignr) {
   (void)ignr;
   static int idle = 0;
-  time(&facil_data->last_cycle);
+  clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   int events;
   if (defer_has_queue()) {
     events = evio_review(0);
@@ -1034,7 +1035,7 @@ static void facil_init_run(void *arg, void *arg2) {
   (void)arg;
   (void)arg2;
   evio_create();
-  time(&facil_data->last_cycle);
+  clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   for (intptr_t i = 0; i < facil_data->capacity; i++) {
     if (fd_data(i).protocol) {
       if (fd_data(i).protocol->service == listener_protocol_name)
@@ -1136,7 +1137,7 @@ static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
   }
   protocol_s *old_protocol = uuid_data(uuid).protocol;
   uuid_data(uuid).protocol = protocol;
-  uuid_data(uuid).active = facil_data->last_cycle;
+  uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
   spn_unlock(&uuid_data(uuid).lock);
   if (old_protocol)
     defer(deferred_on_close, (void *)uuid, old_protocol);
@@ -1166,7 +1167,7 @@ int facil_attach_locked(intptr_t uuid, protocol_s *protocol) {
 /** Sets a timeout for a specific connection (if active). */
 void facil_set_timeout(intptr_t uuid, uint8_t timeout) {
   if (sock_isvalid(uuid)) {
-    uuid_data(uuid).active = facil_data->last_cycle;
+    uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
     uuid_data(uuid).timeout = timeout;
   }
 }
@@ -1181,8 +1182,10 @@ Misc helpers
 /**
 Returns the last time the server reviewed any pending IO events.
 */
-time_t facil_last_tick(void) {
-  return facil_data ? facil_data->last_cycle : time(NULL);
+struct timespec facil_last_tick(void) {
+  if (!facil_data)
+    clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
+  return facil_data->last_cycle;
 }
 
 /**
