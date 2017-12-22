@@ -44,15 +44,15 @@ The Request / Response type and functions
 typedef struct {
   /** the HTTP request's "head" starts with a private data used by facil.io */
   struct {
-    /** the connection's identifier - used by facil.io, don't use directly! */
-    uintptr_t uuid;
+    /** the connection's owner - used by facil.io, don't use directly! */
+    protocol_s *owner;
     /** The response headers, if they weren't sent. Don't access directly. */
-    fiobj_s *response_headers;
+    fiobj_s *out_headers;
     /** a private request ID, used by the owner (facil.io), do not touch. */
     uintptr_t request_id;
   } private;
   /** a time merker indicating when the request was received. */
-  time_t received_at;
+  struct timespec received_at;
   union {
     /** a String containing the method data (supports non-standard methods. */
     fiobj_s *method;
@@ -100,16 +100,14 @@ This struct is used together with the `http_response_set_cookie`. i.e.:
 
 */
 typedef struct {
-  /** The cookie's name (key). */
-  char *name;
+  /** The cookie's name (Symbol). */
+  fiobj_s *name;
   /** The cookie's value (leave blank to delete cookie). */
   char *value;
   /** The cookie's domain (optional). */
   char *domain;
   /** The cookie's path (optional). */
   char *path;
-  /** The cookie name's size in bytes or a terminating NULL will be assumed.*/
-  size_t name_len;
   /** The cookie value's size in bytes or a terminating NULL will be assumed.*/
   size_t value_len;
   /** The cookie domain's size in bytes or a terminating NULL will be assumed.*/
@@ -131,6 +129,7 @@ typedef struct {
  * Returns -1 on error and 0 on success.
  */
 int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value);
+
 /**
  * Sets a response header, taking ownership of the value object, but NOT the
  * name object (so name objects could be reused in future responses).
@@ -138,6 +137,7 @@ int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value);
  * Returns -1 on error and 0 on success.
  */
 int http_set_header2(http_s *r, fio_cstr_s name, fio_cstr_s value);
+
 /**
  * Sets a response cookie, taking ownership of the value object, but NOT the
  * name object (so name objects could be reused in future responses).
@@ -147,6 +147,7 @@ int http_set_header2(http_s *r, fio_cstr_s name, fio_cstr_s value);
 int http_set_cookie(http_s *r, http_cookie_args_s);
 #define http_set_cookie(http__req__, ...)                                      \
   http_set_cookie((http__req__), (http_cookie_args_s){__VA_ARGS__})
+
 /**
  * Sends the response headers and body.
  *
@@ -155,6 +156,7 @@ int http_set_cookie(http_s *r, http_cookie_args_s);
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_send_body(http_s *r, void *data, uintptr_t length);
+
 /**
  * Sends the response headers and the specified file (the response's body).
  *
@@ -163,6 +165,7 @@ int http_send_body(http_s *r, void *data, uintptr_t length);
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset);
+
 /**
  * Sends the response headers and the specified file (the response's body).
  *
@@ -183,21 +186,22 @@ int http_sendfile2(http_s *r, char *filename, size_t name_length);
  * argument is set to NULL.
  */
 int http_send_error(http_s *r, intptr_t uuid, size_t error);
+
 /**
- * Sends the response headers and starts streaming, creating a new and valid
- * `http_s` object that allows further streaming.
+ * Sends the response headers and starts streaming. Use `http_defer` to continue
+ * straming.
  *
- * Returns NULL on error and a new valid `http_s` object on success.
- *
- * THE OLD `http_s` OBJECT BECOMES INVALID.
+ * Returns -1 on error and 0 on success.
  */
-http_s *http_stream(http_s *r, void *data, uintptr_t length);
+int http_stream(http_s *r, void *data, uintptr_t length);
+
 /**
  * Sends the response headers for a header only response.
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 void http_finish(http_s *r);
+
 /**
  * Pushes a data response when supported (HTTP/2 only).
  *
@@ -205,6 +209,7 @@ void http_finish(http_s *r);
  */
 int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
                    uintptr_t type_length);
+
 /**
  * Pushes a file response when supported (HTTP/2 only).
  *
@@ -272,7 +277,7 @@ typedef struct http_settings_s {
  *
  * Returns -1 on error and 0 on success.
  */
-int http_listen(char *port, char *binding, struct http_settings_s);
+int http_listen(const char *port, const char *binding, struct http_settings_s);
 /** Listens to HTTP connections at the specified `port` and `binding`. */
 #define http_listen(port, binding, ...)                                        \
   http_listen((port), (binding), (struct http_settings_s){__VA_ARGS__})

@@ -7,7 +7,7 @@
 
 #include <stdio.h>
 
-static void http_hello_on_request(http_request_s *request);
+static void http_hello_on_request(http_s *request);
 
 /*
 A simple Hello World HTTP response + static file service, for benchmarking.
@@ -91,22 +91,11 @@ int main(int argc, char const *argv[]) {
 
   // RedisEngine = redis_engine_create(.address = "localhost", .port = "6379");
   if (http_listen(port, NULL, .on_request = http_hello_on_request,
-                  .log_static = print_log, .public_folder = public_folder))
+                  .log = print_log, .public_folder = public_folder))
     perror("Couldn't initiate Hello World service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 }
 
-static void http_hello_on_request(http_request_s *request) {
-  http_response_s *rs = http_response_create(request);
-  if (!rs) {
-    perror("ERROR: WTF?! No Memory? ");
-    return;
-  }
-
-  /* locate the logging settings passed to `http_listen`*/
-  if (request->settings->log_static)
-    http_response_log_start(rs);
-
-  http_response_write_body(rs, "Hello World!", 12);
-  http_response_finish(rs);
+static void http_hello_on_request(http_s *h) {
+  http_send_body(h, "Hello World!", 12);
 }

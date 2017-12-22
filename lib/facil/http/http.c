@@ -23,9 +23,9 @@ The Request / Response type and functions
  * Returns -1 on error and 0 on success.
  */
 int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value) {
-  if (!r || !name || !r->private.response_headers)
+  if (!r || !name || !r->private.out_headers)
     return -1;
-  fiobj_s *old = fiobj_hash_replace(r->private.response_headers, name, value);
+  fiobj_s *old = fiobj_hash_replace(r->private.out_headers, name, value);
   if (!old)
     return 0;
   if (!value) {
@@ -38,7 +38,7 @@ int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value) {
     old = tmp;
   }
   fiobj_ary_push(old, value);
-  fiobj_hash_replace(r->private.response_headers, name, old);
+  fiobj_hash_replace(r->private.out_headers, name, old);
   return 0;
 }
 /**
@@ -49,7 +49,7 @@ int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value) {
  */
 int http_set_header2(http_s *r, fio_cstr_s n, fio_cstr_s v) {
   if (!r || !n.data || !n.length || (v.data && !v.length) ||
-      !r->private.response_headers)
+      !r->private.out_headers)
     return -1;
   fiobj_s *tmp = fiobj_sym_new(n.data, n.length);
   int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.length));
@@ -73,7 +73,10 @@ int http_set_cookie(http_s *r, http_cookie_args_s);
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_send_body(http_s *r, void *data, uintptr_t length);
+int http_send_body(http_s *r, void *data, uintptr_t length) {
+  return ((http_protocol_s *)r->private.owner)
+      ->vtable->http_send_body(r, data, length);
+}
 /**
  * Sends the response headers and the specified file (the response's body).
  *
@@ -81,7 +84,10 @@ int http_send_body(http_s *r, void *data, uintptr_t length);
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset);
+int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
+  return ((http_protocol_s *)r->private.owner)
+      ->vtable->http_sendfile(r, fd, length, offset);
+}
 /**
  * Sends the response headers and the specified file (the response's body).
  *
@@ -104,27 +110,33 @@ int http_sendfile2(http_s *r, char *filename, size_t name_length);
 int http_send_error(http_s *r, intptr_t uuid, size_t error);
 
 /**
- * Sends the response headers and starts streaming, creating a new and valid
- * `http_s` object that allows further streaming.
+ * Sends the response headers and starts streaming. Use `http_defer` to continue
+ * straming.
  *
- * Returns NULL on error and a new valid `http_s` object on success.
- *
- * THE OLD `http_s` OBJECT BECOMES INVALID.
+ * Returns -1 on error and 0 on success.
  */
-http_s *http_stream(http_s *r, void *data, uintptr_t length);
+int http_stream(http_s *r, void *data, uintptr_t length) {
+  return ((http_protocol_s *)r->private.owner)
+      ->vtable->http_stream(r, data, length);
+}
 /**
  * Sends the response headers for a header only response.
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-void http_finish(http_s *r);
+void http_finish(http_s *r) {
+  return ((http_protocol_s *)r->private.owner)->vtable->http_finish(r);
+}
 /**
  * Pushes a data response when supported (HTTP/2 only).
  *
  * Returns -1 on error and 0 on success.
  */
 int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
-                   uintptr_t type_length);
+                   uintptr_t type_length) {
+  return ((http_protocol_s *)r->private.owner)
+      ->vtable->http_push_data(r, data, length, mime_type, type_length);
+}
 /**
  * Pushes a file response when supported (HTTP/2 only).
  *
@@ -134,7 +146,11 @@ int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
  * Returns -1 on error and 0 on success.
  */
 int http_push_file(http_s *r, char *filename, size_t name_length,
-                   char *mime_type, uintptr_t type_length);
+                   char *mime_type, uintptr_t type_length) {
+  return ((http_protocol_s *)r->private.owner)
+      ->vtable->http_push_file(r, filename, name_length, mime_type,
+                               type_length);
+}
 
 /**
  * Defers the request / response handling for later.
@@ -142,9 +158,7 @@ int http_push_file(http_s *r, char *filename, size_t name_length,
  * Returns -1 on error and 0 on success.
  */
 int http_defer(http_s *r, void (*task)(http_s *r)) {
-  if (r->path->type == FIOBJ_T_STRING_STATIC)
-    return -1;
-  return 0;
+  return ((http_protocol_s *)r->private.owner)->vtable->http_defer(r, task);
 }
 
 /* *****************************************************************************
@@ -183,7 +197,7 @@ static void http_on_finish(intptr_t uuid, void *set) {
  * Returns -1 on error and 0 on success.
  */
 #undef http_listen
-int http_listen(char *port, char *binding,
+int http_listen(const char *port, const char *binding,
                 struct http_settings_s arg_settings) {
   if (arg_settings.on_request == NULL) {
     fprintf(
@@ -238,18 +252,7 @@ int http_listen(char *port, char *binding,
  * Returns NULL on error (i.e., connection was lost).
  */
 struct http_settings_s *http_settings(http_s *r) {
-  protocol_s *pr = NULL;
-  while (1) {
-    pr = facil_protocol_try_lock(r->private.uuid, FIO_PR_LOCK_STATE);
-    if (pr)
-      break;
-    if (!sock_isvalid(r->private.uuid))
-      return NULL;
-    reschedule_thread();
-  };
-  struct http_settings_s *ret = ((http_protocol_s *)pr)->settings;
-  facil_protocol_unlock(pr, FIO_PR_LOCK_STATE);
-  return ret;
+  return ((http_protocol_s *)r->private.owner)->settings;
 }
 
 /* *****************************************************************************
@@ -509,7 +512,7 @@ size_t http_time2str(char *target, const time_t t) {
   static __thread time_t cached_tick;
   static __thread char cached_httpdate[48];
   static __thread size_t chached_len;
-  time_t last_tick = facil_last_tick();
+  time_t last_tick = facil_last_tick().tv_sec;
   if ((t | 7) < last_tick) {
     /* this is a custom time, not "now", pass through */
     struct tm tm;

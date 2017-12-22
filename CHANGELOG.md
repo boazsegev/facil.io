@@ -4,9 +4,17 @@
 
 **Changes!**: (`http`):
 
-- The HTTP API and engine was completely re-written (except the HTTP/1.1 parser), both to support client mode (including chunked encoding trailing headers) and to make routing and request parsing easier.
+- The HTTP API and engine was completely re-written (except the HTTP/1.1 parser), both to support future client mode (including chunked encoding for trailing headers) and to make routing and request parsing easier.
 
-- The updates to the HTTP API might result in a slightly decreased performance during the HTTP request reading due to the need to copy some of the data and the use of dynamic storage... For example, header Hash Tables replaced header Arrays, improving lookup times and increasing creation  time). 
+- The updates to the HTTP API might result in decreased performance during the HTTP request reading due to the need to allocate resources and possibly copy some of the data into dynamic storage... For example, header Hash Tables replaced header Arrays, improving lookup times and increasing creation time. 
+
+**Changes!**: (`facil`):
+
+- Slight API changes:
+
+    - `facil_last_tick` now returns `struct timespec` instead of `time_t`, allowing for more accurate time stamping.
+
+- Internal updates to accommodate changes to other libraries.
 
 **Changes!**: (`evio`):
 

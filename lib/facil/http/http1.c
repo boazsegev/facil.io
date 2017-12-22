@@ -8,6 +8,8 @@ License: MIT
 #include "http1_parser.h"
 #include "http_internal.h"
 
+#include "fio_ary.h"
+
 #include <stddef.h>
 
 /* *****************************************************************************
@@ -23,6 +25,8 @@ typedef struct http1_s {
   uintptr_t buf_pos;
   uintptr_t buf_len;
   uint8_t *buf;
+  uintptr_t next_id;
+  fio_ary_s queue;
 } http1_s;
 
 /* *****************************************************************************
@@ -31,31 +35,6 @@ Internal Helpers
 
 #define parser2http(x)                                                         \
   ((http1_s *)((uintptr_t)(x) - (uintptr_t)(&((http1_s *)0)->parser)))
-
-inline static void set_request(http1_s *p) {
-  p->request = (http_s){
-      .private.uuid = p->p.uuid,
-      .private.request_id = 1,
-      .private.response_headers = fiobj_hash_new(),
-      .headers = fiobj_hash_new(),
-      .version = p->request.version,
-      .received_at = facil_last_tick(),
-      .status = 200,
-  };
-}
-
-inline static void clear_request(http_s *r) {
-  fiobj_free(r->method); /* union for   fiobj_free(r->status_str); */
-  fiobj_free(r->private.response_headers);
-  fiobj_free(r->headers);
-  fiobj_free(r->version);
-  fiobj_free(r->query);
-  fiobj_free(r->path);
-  fiobj_free(r->cookies);
-  fiobj_free(r->body);
-  fiobj_free(r->params);
-  *r = (http_s){0};
-}
 
 inline static void h1_reset(http1_s *p) {
   p->buf_len = p->buf_len - p->buf_pos;
@@ -80,7 +59,7 @@ static int on_request(http1_parser_s *parser) {
   http1_s *p = parser2http(parser);
   p->request.private.request_id &= ~((uintptr_t)2);
   p->p.settings->on_request(&p->request);
-  clear_request(&p->request);
+  http_s_cleanup(&p->request);
   p->restart = 1;
   return 0;
 }
@@ -89,13 +68,13 @@ static int on_response(http1_parser_s *parser) {
   http1_s *p = parser2http(parser);
   p->request.private.request_id &= ~((uintptr_t)2);
   p->p.settings->on_request(&p->request);
-  clear_request(&p->request);
+  http_s_cleanup(&p->request);
   p->restart = 1;
   return 0;
 }
 /** called when a request method is parsed. */
 static int on_method(http1_parser_s *parser, char *method, size_t method_len) {
-  set_request(parser2http(parser));
+  http_s_init(&parser2http(parser)->request, &parser2http(parser)->p);
   parser2http(parser)->request.method = fiobj_str_static(method, method_len);
   return 0;
 }
@@ -104,7 +83,6 @@ static int on_method(http1_parser_s *parser, char *method, size_t method_len) {
  * without the prefixed numerical status indicator.*/
 static int on_status(http1_parser_s *parser, size_t status, char *status_str,
                      size_t len) {
-  set_request(parser2http(parser));
   parser2http(parser)->request.status_str = fiobj_str_static(status_str, len);
   parser2http(parser)->request.status = status;
   return 0;
@@ -123,6 +101,8 @@ static int on_query(http1_parser_s *parser, char *query, size_t len) {
 }
 /** called when a the HTTP/1.x version is parsed. */
 static int on_http_version(http1_parser_s *parser, char *version, size_t len) {
+  if (!parser2http(parser)->request.headers)
+    http_s_init(&parser2http(parser)->request, &parser2http(parser)->p);
   parser2http(parser)->request.version = fiobj_str_static(version, len);
   return 0;
 }
@@ -278,6 +258,14 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
 /** Manually destroys the HTTP1 protocol object. */
 void http1_destroy(protocol_s *pr) {
   http1_s *p = (http1_s *)pr;
-  clear_request(&p->request);
+  http_s_cleanup(&p->request);
+  if (p->queue.arry) {
+    http_s *o;
+    while ((o = fio_ary_pop(&p->queue))) {
+      http_s_cleanup(o);
+      free(o);
+    }
+    fio_ary_free(&p->queue);
+  }
   free(p);
 }
