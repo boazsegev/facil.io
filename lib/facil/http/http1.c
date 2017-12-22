@@ -68,48 +68,98 @@ static int write_header(fiobj_s *o, void *w_) {
   }
   if (!o)
     return 0;
+  fio_cstr_s name = fiobj_obj2cstr(w->name);
   fio_cstr_s str = fiobj_obj2cstr(o);
   if (!str.data)
     return 0;
+  fiobj_str_write(w->dest, name.data, name.len);
+  fiobj_str_write(w->dest, ":", 1);
   fiobj_str_write(w->dest, str.data, str.len);
+  fiobj_str_write(w->dest, "\r\n", 2);
   return 0;
 }
 
-static int send_headers(http_s *h) {
+static fiobj_s *headers2str(http_s *h) {
   if (!h->headers)
-    return -1;
+    return NULL;
   struct header_writer_s w;
   w.dest = fiobj_str_buf(4096);
-  fiobj_str_write2(w.dest, "%u ", (unsigned int)h->status);
-  fiobj_str_write2(w.dest, "OK", 2);
-  fiobj_str_write(w.dest, " HTTP/1.1\r\n", 11);
-  fiobj_each1(h->headers, 0, write_header, &w);
-  fiobj_str_write2(w.dest, "\r\n", 2);
-  fio_cstr_s str = fiobj_obj2cstr(w.dest);
-  sock_write2(.uuid = ((http_protocol_s *)h->private.owner)->uuid,
-              .buffer = w.dest,
-              .offset = (uintptr_t)w.dest - (uintptr_t)str.data,
-              .length = str.length, .dealloc = (void (*)(void *))fiobj_free);
+  fiobj_s *cl = fiobj_sym_new("connection", 10); // HTTP_HEADER_CONNECTION
+  set_header_if_missing(h, cl, fiobj_str_static("keep-alive", 10));
+  fiobj_free(cl);
+  fiobj_str_write(w.dest, "HTTP/1.1 ", 9);
+  fiobj_str_write2(w.dest, "%u", (unsigned int)h->status);
+  fiobj_str_write(w.dest, " OK\r\n", 5);
+  fiobj_each1(h->private.out_headers, 0, write_header, &w);
+  fiobj_str_write(w.dest, "\r\n", 2);
+  return w.dest;
   return 0;
 }
 
 /** Should send existing headers and data */
-static int http1_send_body(http_s *h, void *data, uintptr_t length);
+static int http1_send_body(http_s *h, void *data, uintptr_t length) {
+
+  fiobj_s *packet = headers2str(h);
+  if (!packet)
+    return -1;
+  fiobj_str_write(packet, data, length);
+  fiobj_send((((http_protocol_s *)h->private.owner)->uuid), packet);
+  return 0;
+}
 /** Should send existing headers and file */
 static int http1_sendfile(http_s *h, int fd, uintptr_t length,
-                          uintptr_t offset);
+                          uintptr_t offset) {
+  fiobj_s *packet = headers2str(h);
+  if (!packet)
+    return -1;
+  fiobj_send((((http_protocol_s *)h->private.owner)->uuid), packet);
+  sock_sendfile((((http_protocol_s *)h->private.owner)->uuid), fd, offset,
+                length);
+  return 0;
+}
 /** Should send existing headers and data and prepare for streaming */
-static int http1_stream(http_s *h, void *data, uintptr_t length);
+static int http1_stream(http_s *h, void *data, uintptr_t length) {
+  return -1; /*  TODO: tmp unsupported */
+  (void)h;
+  (void)data;
+  (void)length;
+}
 /** Should send existing headers or complete streaming */
-static void htt1p_finish(http_s *h);
-/** Push for data. */
+static void htt1p_finish(http_s *h) {
+  fiobj_s *packet = headers2str(h);
+  if (packet)
+    fiobj_send((((http_protocol_s *)h->private.owner)->uuid), packet);
+  http1_s *p = (http1_s *)h->private.owner;
+  http_s_cleanup(h);
+  if (h != &p->request)
+    free(h);
+}
+/** Push for data - unsupported. */
 static int http1_push_data(http_s *h, void *data, uintptr_t length,
-                           char *mime_type, uintptr_t type_length);
-/** Push for files. */
+                           char *mime_type, uintptr_t type_length) {
+  return -1;
+  (void)h;
+  (void)data;
+  (void)length;
+  (void)mime_type;
+  (void)type_length;
+}
+/** Push for files - unsupported. */
 static int http1_push_file(http_s *h, char *filename, size_t name_length,
-                           char *mime_type, uintptr_t type_length);
+                           char *mime_type, uintptr_t type_length) {
+  return -1;
+  (void)h;
+  (void)filename;
+  (void)name_length;
+  (void)mime_type;
+  (void)type_length;
+}
 /** Defer request handling for later... careful (memory concern apply). */
-static int http1_defer(http_s *h, void (*task)(http_s *r));
+static int http1_defer(http_s *h, void (*task)(http_s *h)) {
+  return -1; /*  TODO: tmp unsupported */
+  (void)h;
+  (void)task;
+}
 
 struct http_vtable_s HTTP1_VTABLE = {
     .http_send_body = http1_send_body,
@@ -129,7 +179,7 @@ Parser Callbacks
 static int on_request(http1_parser_s *parser) {
   http1_s *p = parser2http(parser);
   p->request.private.request_id &= ~((uintptr_t)2);
-  p->p.settings->on_request(&p->request);
+  http_on_request_handler______internal(&p->request, p->p.settings);
   http_s_cleanup(&p->request);
   p->restart = 1;
   return 0;

@@ -12,7 +12,7 @@ void http_on_request_handler______internal(http_s *h,
   if (settings->public_folder) {
 
     fio_cstr_s path = fiobj_obj2cstr(h->path);
-    http_sendfile2(h, path.name, path.length);
+    // http_sendfile2(h, path.name, path.length);
   }
   settings->on_request(h);
 }
@@ -26,6 +26,9 @@ fiobj_s *HTTP_HEADER_CONTENT_TYPE;
 fiobj_s *HTTP_HEADER_LAST_MODIFIED;
 fiobj_s *HTTP_HEADER_SET_COOKIE;
 fiobj_s *HTTP_HEADER_COOKIE;
+fiobj_s *HTTP_HVALUE_CLOSE;
+fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
+fiobj_s *HTTP_HVALUE_WEBSOCKET;
 
 void http_lib_init(void) {
   HTTP_HEADER_UPGRADE = fiobj_sym_new("upgrade", 7);
@@ -37,6 +40,9 @@ void http_lib_init(void) {
   HTTP_HEADER_LAST_MODIFIED = fiobj_sym_new("last-modified", 13);
   HTTP_HEADER_SET_COOKIE = fiobj_sym_new("set-cookie", 10);
   HTTP_HEADER_COOKIE = fiobj_sym_new("cookie", 6);
+  HTTP_HVALUE_CLOSE = fiobj_sym_new("close", 5);
+  HTTP_HVALUE_KEEP_ALIVE = fiobj_sym_new("keep-alive", 10);
+  HTTP_HVALUE_WEBSOCKET = fiobj_sym_new("websocket", 9);
 }
 
 void http_lib_cleanup(void) {

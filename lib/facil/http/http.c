@@ -25,20 +25,7 @@ The Request / Response type and functions
 int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value) {
   if (!r || !name || !r->private.out_headers)
     return -1;
-  fiobj_s *old = fiobj_hash_replace(r->private.out_headers, name, value);
-  if (!old)
-    return 0;
-  if (!value) {
-    fiobj_free(old);
-    return 0;
-  }
-  if (old->type != FIOBJ_T_ARRAY) {
-    fiobj_s *tmp = fiobj_ary_new();
-    fiobj_ary_push(tmp, old);
-    old = tmp;
-  }
-  fiobj_ary_push(old, value);
-  fiobj_hash_replace(r->private.out_headers, name, old);
+  set_header_add(r, name, value);
   return 0;
 }
 /**
@@ -74,6 +61,10 @@ int http_set_cookie(http_s *r, http_cookie_args_s);
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_send_body(http_s *r, void *data, uintptr_t length) {
+  fiobj_s *cl =
+      fiobj_sym_new("content-length", 14); // HTTP_HEADER_CONTENT_LENGTH
+  set_header_if_missing(r, cl, fiobj_num_new(length));
+  fiobj_free(cl);
   return ((http_protocol_s *)r->private.owner)
       ->vtable->http_send_body(r, data, length);
 }
@@ -85,6 +76,7 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
+  set_header_if_missing(r, HTTP_HEADER_CONTENT_LENGTH, fiobj_num_new(length));
   return ((http_protocol_s *)r->private.owner)
       ->vtable->http_sendfile(r, fd, length, offset);
 }

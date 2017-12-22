@@ -128,7 +128,7 @@ typedef struct {
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value);
+int http_set_header(http_s *h, fiobj_s *name, fiobj_s *value);
 
 /**
  * Sets a response header, taking ownership of the value object, but NOT the
@@ -136,7 +136,7 @@ int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value);
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_header2(http_s *r, fio_cstr_s name, fio_cstr_s value);
+int http_set_header2(http_s *h, fio_cstr_s name, fio_cstr_s value);
 
 /**
  * Sets a response cookie, taking ownership of the value object, but NOT the
@@ -144,7 +144,7 @@ int http_set_header2(http_s *r, fio_cstr_s name, fio_cstr_s value);
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_cookie(http_s *r, http_cookie_args_s);
+int http_set_cookie(http_s *h, http_cookie_args_s);
 #define http_set_cookie(http__req__, ...)                                      \
   http_set_cookie((http__req__), (http_cookie_args_s){__VA_ARGS__})
 
@@ -155,7 +155,7 @@ int http_set_cookie(http_s *r, http_cookie_args_s);
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_send_body(http_s *r, void *data, uintptr_t length);
+int http_send_body(http_s *h, void *data, uintptr_t length);
 
 /**
  * Sends the response headers and the specified file (the response's body).
@@ -164,7 +164,7 @@ int http_send_body(http_s *r, void *data, uintptr_t length);
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset);
+int http_sendfile(http_s *h, int fd, uintptr_t length, uintptr_t offset);
 
 /**
  * Sends the response headers and the specified file (the response's body).
@@ -173,7 +173,7 @@ int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset);
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile2(http_s *r, char *filename, size_t name_length);
+int http_sendfile2(http_s *h, char *filename, size_t name_length);
 
 /**
  * Sends an HTTP error response.
@@ -185,7 +185,7 @@ int http_sendfile2(http_s *r, char *filename, size_t name_length);
  * The `uuid` argument is optional and will be used only if the `http_s`
  * argument is set to NULL.
  */
-int http_send_error(http_s *r, intptr_t uuid, size_t error);
+int http_send_error(http_s *h, intptr_t uuid, size_t error);
 
 /**
  * Sends the response headers and starts streaming. Use `http_defer` to continue
@@ -193,21 +193,21 @@ int http_send_error(http_s *r, intptr_t uuid, size_t error);
  *
  * Returns -1 on error and 0 on success.
  */
-int http_stream(http_s *r, void *data, uintptr_t length);
+int http_stream(http_s *h, void *data, uintptr_t length);
 
 /**
  * Sends the response headers for a header only response.
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-void http_finish(http_s *r);
+void http_finish(http_s *h);
 
 /**
  * Pushes a data response when supported (HTTP/2 only).
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
+int http_push_data(http_s *h, void *data, uintptr_t length, char *mime_type,
                    uintptr_t type_length);
 
 /**
@@ -218,7 +218,7 @@ int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_file(http_s *r, char *filename, size_t name_length,
+int http_push_file(http_s *h, char *filename, size_t name_length,
                    char *mime_type, uintptr_t type_length);
 
 /**
@@ -228,7 +228,7 @@ int http_push_file(http_s *r, char *filename, size_t name_length,
  *
  * Note: HTTP/1.1 requests CAN'T be deferred due to protocol requirements.
  */
-int http_defer(http_s *r, void (*task)(http_s *r));
+int http_defer(http_s *h, void (*task)(http_s *h));
 
 /* *****************************************************************************
 Listening to HTTP connections
@@ -237,7 +237,7 @@ Listening to HTTP connections
 /** The HTTP settings. */
 typedef struct http_settings_s {
   /** REQUIRED: the callback to be performed when requests come in. */
-  void (*on_request)(http_s *request);
+  void (*on_request)(http_s *hequest);
   /**
    * A public folder for file transfers - allows to circumvent any application
    * layer server and simply serve files.
@@ -287,7 +287,7 @@ int http_listen(const char *port, const char *binding, struct http_settings_s);
  *
  * Returns -1 on error and 0 on success.
  */
-struct http_settings_s *http_settings(http_s *r);
+struct http_settings_s *http_settings(http_s *h);
 
 /* *****************************************************************************
 TODO: HTTP client mode

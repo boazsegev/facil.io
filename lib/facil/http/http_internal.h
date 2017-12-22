@@ -10,6 +10,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "http.h"
 
 #include <errno.h>
+
+/* *****************************************************************************
+Types
+***************************************************************************** */
+
 typedef struct http_protocol_s http_protocol_s;
 typedef struct http_vtable_s http_vtable_s;
 
@@ -38,6 +43,18 @@ struct http_protocol_s {
   http_settings_s *settings;
   http_vtable_s *vtable;
 };
+
+/* *****************************************************************************
+Constants that shouldn't be accessed by the users (`fiobj_dup` required).
+***************************************************************************** */
+
+extern fiobj_s *HTTP_HVALUE_CLOSE;
+extern fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
+extern fiobj_s *HTTP_HVALUE_WEBSOCKET;
+
+/* *****************************************************************************
+HTTP request/response object management
+***************************************************************************** */
 
 static inline void http_s_init(http_s *h, http_protocol_s *owner) {
   *h = (http_s){
@@ -68,8 +85,51 @@ static inline void http_s_cleanup(http_s *h) {
 void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings);
 
+/* *****************************************************************************
+Helpers
+***************************************************************************** */
+
 #define HTTP_ASSERT(x, m)                                                      \
   if (!x)                                                                      \
     perror("FATAL ERROR: (http)" m), exit(errno);
+
+/** send a fiobj_s * object through a socket. */
+static inline __attribute__((unused)) int fiobj_send(intptr_t uuid,
+                                                     fiobj_s *o) {
+  fio_cstr_s s = fiobj_obj2cstr(o);
+  // fprintf(stderr, "%s\n", s.data);
+  return sock_write2(.uuid = uuid, .buffer = (o),
+                     .offset = (((uintptr_t)s.data) - ((uintptr_t)(o))),
+                     .length = s.length,
+                     .dealloc = (void (*)(void *))fiobj_free);
+}
+
+/** sets an outgoing header only if it doesn't exist */
+static inline void set_header_if_missing(http_s *r, fiobj_s *name,
+                                         fiobj_s *value) {
+  fiobj_s *old = fiobj_hash_replace(r->private.out_headers, name, value);
+  if (!old)
+    return;
+  fiobj_hash_replace(r->private.out_headers, name, old);
+  fiobj_free(value);
+}
+
+/** sets an outgoing header, collecting duplicates in an Array (i.e. cookies) */
+static inline void set_header_add(http_s *r, fiobj_s *name, fiobj_s *value) {
+  fiobj_s *old = fiobj_hash_replace(r->private.out_headers, name, value);
+  if (!old)
+    return;
+  if (!value) {
+    fiobj_free(old);
+    return;
+  }
+  if (old->type != FIOBJ_T_ARRAY) {
+    fiobj_s *tmp = fiobj_ary_new();
+    fiobj_ary_push(tmp, old);
+    old = tmp;
+  }
+  fiobj_ary_push(old, value);
+  fiobj_hash_replace(r->private.out_headers, name, old);
+}
 
 #endif /* H_HTTP_INTERNAL_H */
