@@ -137,7 +137,7 @@ Array memory management
 ***************************************************************************** */
 
 /* This funcation manages the Array's memory. */
-void fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
+void FIO_FUNC fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
   /* we have enough memory, but we need to re-organize it. */
   if (needed == -1) {
     if (ary->end < ary->capa) {

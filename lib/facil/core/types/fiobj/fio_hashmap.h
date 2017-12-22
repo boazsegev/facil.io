@@ -64,7 +64,7 @@ FIO_FUNC void fio_hash_free(fio_hash_s *hash);
  * Set obj to NULL to remove an existing data (the existing object will be
  * returned).
  */
-static void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj);
+FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj);
 
 /** Locates an object in the Hash Map Table according to the hash key value. */
 inline FIO_FUNC void *fio_hash_find(fio_hash_s *hash, uintptr_t key);
