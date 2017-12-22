@@ -220,52 +220,6 @@ void sock_touch(intptr_t uuid) {
 }
 
 /* *****************************************************************************
-Initialization and Cleanup
-***************************************************************************** */
-static spn_lock_i facil_libinit_lock = SPN_LOCK_INIT;
-
-static void facil_libcleanup(void) {
-  /* free memory */
-  spn_lock(&facil_libinit_lock);
-  if (facil_data) {
-    munmap(facil_data,
-           sizeof(*facil_data) +
-               (facil_data->capacity * sizeof(struct connection_data_s)));
-    facil_data = NULL;
-  }
-  spn_unlock(&facil_libinit_lock);
-}
-
-static void facil_lib_init(void) {
-  ssize_t capa = sock_max_capacity();
-  if (capa < 0)
-    perror("ERROR: socket capacity unknown / failure"), exit(ENOMEM);
-  size_t mem_size =
-      sizeof(*facil_data) + (capa * sizeof(struct connection_data_s));
-  spn_lock(&facil_libinit_lock);
-  if (facil_data)
-    goto finish;
-  facil_data = mmap(NULL, mem_size, PROT_READ | PROT_WRITE | PROT_EXEC,
-                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (!facil_data)
-    perror("ERROR: Couldn't initialize the facil.io library"), exit(0);
-  memset(facil_data, 0, mem_size);
-  *facil_data = (struct facil_data_s){.capacity = capa, .parent = getpid()};
-  atexit(facil_libcleanup);
-#ifdef DEBUG
-  if (FACIL_PRINT_STATE)
-    fprintf(stderr,
-            "Initialized the facil.io library.\n"
-            "facil.io's memory footprint per connection == %lu Bytes X %lu\n"
-            "=== facil.io's memory footprint: %lu ===\n\n",
-            sizeof(struct connection_data_s), facil_data->capacity, mem_size);
-#endif
-finish:
-  spn_unlock(&facil_libinit_lock);
-  clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
-}
-
-/* *****************************************************************************
 Mock Protocol Callbacks and Service Funcions
 ***************************************************************************** */
 static void mock_on_ev(intptr_t uuid, protocol_s *protocol) {
@@ -293,19 +247,69 @@ static void mock_idle(void) {}
 #pragma weak pubsub_cluster_init
 void pubsub_cluster_init(void) {}
 
-/*
- * Support for the (removed) file caching service.
- *
- * It's possible to re-add the service from the `unused` folder.
- */
-#pragma weak fio_cfd_clear
-void fio_cfd_clear(void) {}
-
 /* perform initialization for external services. */
 static void facil_external_init(void) { pubsub_cluster_init(); }
 
 /* perform cleanup for external services. */
-static void facil_external_cleanup(void) { fio_cfd_clear(); }
+static void facil_external_cleanup(void) {}
+
+#pragma weak http_lib_init
+void http_lib_init(void) {}
+#pragma weak http_lib_init
+void http_lib_cleanup(void) {}
+
+/* perform initialization for external services. */
+static void facil_external_root_init(void) { http_lib_init(); }
+/* perform cleanup for external services. */
+static void facil_external_root_cleanup(void) { http_lib_cleanup(); }
+
+/* *****************************************************************************
+Initialization and Cleanup
+***************************************************************************** */
+static spn_lock_i facil_libinit_lock = SPN_LOCK_INIT;
+
+static void facil_libcleanup(void) {
+  /* free memory */
+  spn_lock(&facil_libinit_lock);
+  if (facil_data) {
+    munmap(facil_data,
+           sizeof(*facil_data) +
+               (facil_data->capacity * sizeof(struct connection_data_s)));
+    facil_external_root_cleanup();
+    facil_data = NULL;
+  }
+  spn_unlock(&facil_libinit_lock);
+}
+
+static void facil_lib_init(void) {
+  ssize_t capa = sock_max_capacity();
+  if (capa < 0)
+    perror("ERROR: socket capacity unknown / failure"), exit(ENOMEM);
+  size_t mem_size =
+      sizeof(*facil_data) + (capa * sizeof(struct connection_data_s));
+  spn_lock(&facil_libinit_lock);
+  if (facil_data)
+    goto finish;
+  facil_data = mmap(NULL, mem_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (!facil_data)
+    perror("ERROR: Couldn't initialize the facil.io library"), exit(0);
+  memset(facil_data, 0, mem_size);
+  *facil_data = (struct facil_data_s){.capacity = capa, .parent = getpid()};
+  facil_external_root_init();
+  atexit(facil_libcleanup);
+#ifdef DEBUG
+  if (FACIL_PRINT_STATE)
+    fprintf(stderr,
+            "Initialized the facil.io library.\n"
+            "facil.io's memory footprint per connection == %lu Bytes X %lu\n"
+            "=== facil.io's memory footprint: %lu ===\n\n",
+            sizeof(struct connection_data_s), facil_data->capacity, mem_size);
+#endif
+finish:
+  spn_unlock(&facil_libinit_lock);
+  clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
+}
 
 /* *****************************************************************************
 The listenning protocol
@@ -1102,6 +1106,7 @@ void facil_run(struct facil_run_args args) {
   if (frk < 0) {
     perror("ERROR: couldn't spawn workers");
   } else if (frk > 0) {
+    facil_external_root_cleanup();
     exit(0);
   }
   if (FACIL_PRINT_STATE)
