@@ -21,8 +21,12 @@ to maintain and that could be used for an HTTP/1.x client as well.
 #include <sys/types.h>
 
 #ifndef HTTP_HEADERS_LOWERCASE
-/** when defined, HTTP headers will be converted to lowercase and header
- * searches will be case sensitive. */
+/**
+ * when defined, HTTP headers will be converted to lowercase and header
+ * searches will be case sensitive.
+ *
+ * this is required by facil.io and helps with HTTP/2 compatibility.
+ */
 #define HTTP_HEADERS_LOWERCASE 1
 #endif
 
