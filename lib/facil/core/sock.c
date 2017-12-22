@@ -544,7 +544,7 @@ ssize_t sock_max_capacity(void) {
     if (!setrlimit(RLIMIT_NOFILE, &rlim))
       getrlimit(RLIMIT_NOFILE, &rlim);
   }
-#if 1 || DEBUG
+#if DEBUG
   fprintf(stderr,
           "libsock capacity initialization:\n"
           "*    Meximum open files %llu out of %llu\n",
