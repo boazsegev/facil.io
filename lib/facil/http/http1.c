@@ -123,7 +123,6 @@ static fiobj_s *headers2str(http_s *h) {
   fiobj_each1(h->private_data.out_headers, 0, write_header, &w);
   fiobj_str_write(w.dest, "\r\n", 2);
   return w.dest;
-  return 0;
 }
 
 /** Should send existing headers and data */

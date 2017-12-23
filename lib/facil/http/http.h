@@ -312,6 +312,12 @@ HTTP Helper functions that might be used globally
 ***************************************************************************** */
 
 /**
+ * Returns a String object representing the unparsed HTTP request (HTTP version
+ * is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
+ */
+fiobj_s *http_req2str(http_s *h);
+
+/**
 A faster (yet less localized) alternative to `gmtime_r`.
 
 See the libc `gmtime_r` documentation for details.

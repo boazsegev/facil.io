@@ -290,12 +290,9 @@ fio_cstr_s fiobj_io_read(fiobj_s *io, intptr_t length) {
       return (fio_cstr_s){.buffer = NULL, .len = 0};
     }
 
-    if (!length) {
-      /* read to EOF */
-      length = obj2io(io)->len - obj2io(io)->pos;
-    } else if (length < 0) {
+    if (length <= 0) {
       /* read to EOF - length */
-      length = (obj2io(io)->len - obj2io(io)->pos) + length + 1;
+      length = (obj2io(io)->len - obj2io(io)->pos) + length;
     }
 
     if (length <= 0) {
@@ -316,15 +313,11 @@ fio_cstr_s fiobj_io_read(fiobj_s *io, intptr_t length) {
   /* File code */
   uintptr_t fsize = fiobj_io_get_fd_size(io);
 
-  if (!length) {
-    /* read to EOF */
-    length = fsize - obj2io(io)->fpos;
-
-  } else if (length < 0) {
+  if (length <= 0) {
     /* read to EOF - length */
-
-    length = (fsize - obj2io(io)->fpos) + length + 1;
+    length = (fsize - obj2io(io)->fpos) + length;
   }
+
   if (length <= 0) {
     /* We are at EOF - length or beyond */
     errno = 0;
@@ -469,7 +462,7 @@ void fiobj_io_seek(fiobj_s *io, intptr_t position) {
       obj2io(io)->pos = position;
       return;
     }
-    position = (0 - position) + 1;
+    position = (0 - position);
     if ((uintptr_t)position > obj2io(io)->len)
       position = 0;
     else
@@ -496,7 +489,7 @@ void fiobj_io_seek(fiobj_s *io, intptr_t position) {
       obj2io(io)->fpos = position;
       return;
     }
-    position = (0 - position) + 1;
+    position = (0 - position);
     if (position > len)
       position = 0;
     else
@@ -527,7 +520,7 @@ fio_cstr_s fiobj_io_pread(fiobj_s *io, intptr_t start_at, uintptr_t length) {
   if (obj2io(io)->fd == -1) {
     /* String Code */
     if (start_at < 0)
-      start_at = obj2io(io)->len + start_at + 1;
+      start_at = obj2io(io)->len + start_at;
     if (start_at < 0)
       start_at = 0;
     if (length + start_at > obj2io(io)->len)
@@ -544,7 +537,7 @@ fio_cstr_s fiobj_io_pread(fiobj_s *io, intptr_t start_at, uintptr_t length) {
 
   const int64_t size = fiobj_io_get_fd_size(io);
   if (start_at < 0)
-    start_at = size + start_at + 1;
+    start_at = size + start_at;
   if (start_at < 0)
     start_at = 0;
   if (length + start_at > (uint64_t)size)

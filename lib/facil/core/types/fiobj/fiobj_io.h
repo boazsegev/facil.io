@@ -54,6 +54,9 @@ Reading API
  * Reads up to `length` bytes and returns a temporary(!) buffer object (not NUL
  * terminated).
  *
+ * If `length` is zero or negative, it will be computed from the end of the
+ * input backwards (0 == EOF).
+ *
  * The C string object will be invalidate the next time a function call to the
  * IO object is made.
  */

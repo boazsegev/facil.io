@@ -13,6 +13,65 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <signal.h>
 
 /* *****************************************************************************
+Small Helpers
+***************************************************************************** */
+static inline void add_content_length(http_s *r, uintptr_t length) {
+  static uint64_t cl_hash = 0;
+  if (!cl_hash)
+    cl_hash = fiobj_sym_hash("content-length", 14);
+  if (!fiobj_hash_get3(r->private_data.out_headers, cl_hash)) {
+    static fiobj_s *cl;
+    if (!cl)
+      cl = HTTP_HEADER_CONTENT_LENGTH;
+    set_header_if_missing(r, cl, fiobj_num_new(length));
+  }
+}
+
+static inline void add_date(http_s *r, time_t t) {
+  static uint64_t date_hash = 0;
+  if (!date_hash)
+    date_hash = fiobj_sym_hash("date", 4);
+  if (!fiobj_hash_get3(r->private_data.out_headers, date_hash)) {
+    static fiobj_s *d;
+    if (!d)
+      d = HTTP_HEADER_DATE;
+    fiobj_s *s = fiobj_str_buf(32);
+    fiobj_str_resize(s, http_time2str(fiobj_obj2cstr(s).data, t));
+    set_header_if_missing(r, d, s);
+  }
+}
+
+struct header_writer_s {
+  fiobj_s *dest;
+  fiobj_s *name;
+  fiobj_s *value;
+};
+
+static int write_header(fiobj_s *o, void *w_) {
+  struct header_writer_s *w = w_;
+  if (!o)
+    return 0;
+  if (o->type == FIOBJ_T_COUPLET) {
+    w->name = fiobj_couplet2key(o);
+    o = fiobj_couplet2obj(o);
+  } else if (o->type == FIOBJ_T_ARRAY) {
+    fiobj_each1(o, 0, write_header, w);
+    return 0;
+  }
+  if (!o)
+    return 0;
+  fio_cstr_s name = fiobj_obj2cstr(w->name);
+  fio_cstr_s str = fiobj_obj2cstr(o);
+  if (!str.data)
+    return 0;
+  fiobj_str_write(w->dest, name.data, name.len);
+  fiobj_str_write(w->dest, ":", 1);
+  fiobj_str_write(w->dest, str.data, str.len);
+  fiobj_str_write(w->dest, "\r\n", 2);
+  return 0;
+}
+
+/* *****************************************************************************
 The Request / Response type and functions
 ***************************************************************************** */
 
@@ -150,15 +209,8 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_send_body(http_s *r, void *data, uintptr_t length) {
-  static uint64_t cl_hash = 0;
-  if (!cl_hash)
-    cl_hash = fiobj_sym_hash("content-length", 14);
-  if (!fiobj_hash_get3(r->private_data.out_headers, cl_hash)) {
-    static fiobj_s *cl;
-    if (!cl)
-      cl = HTTP_HEADER_CONTENT_LENGTH;
-    set_header_if_missing(r, cl, fiobj_num_new(length));
-  }
+  add_content_length(r, length);
+  add_date(r, facil_last_tick().tv_sec);
   return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_send_body(r, data, length);
 }
@@ -170,7 +222,8 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
-  set_header_if_missing(r, HTTP_HEADER_CONTENT_LENGTH, fiobj_num_new(length));
+  add_content_length(r, length);
+  add_date(r, facil_last_tick().tv_sec);
   return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_sendfile(r, fd, length, offset);
 }
@@ -351,6 +404,44 @@ TODO: HTTP client mode
 /* *****************************************************************************
 HTTP Helper functions that could be used globally
 ***************************************************************************** */
+
+/**
+ * Returns a String object representing the unparsed HTTP request (HTTP version
+ * is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
+ */
+fiobj_s *http_req2str(http_s *h) {
+  if (!h->headers)
+    return NULL;
+
+  struct header_writer_s w;
+  w.dest = fiobj_str_buf(4096);
+
+  fiobj_str_join(w.dest, h->method);
+  fiobj_str_write(w.dest, " ", 1);
+  fiobj_str_join(w.dest, h->path);
+  if (h->query) {
+    fiobj_str_write(w.dest, "?", 1);
+    fiobj_str_join(w.dest, h->query);
+  }
+  {
+    fio_cstr_s t = fiobj_obj2cstr(h->version);
+    if (t.len < 6 || t.data[5] != '1')
+      fiobj_str_write(w.dest, "HTTP/1.1\r\n", 10);
+    else {
+      fiobj_str_join(w.dest, h->version);
+      fiobj_str_write(w.dest, "\r\n", 2);
+    }
+  }
+
+  fiobj_each1(h->headers, 0, write_header, &w);
+  fiobj_str_write(w.dest, "\r\n", 2);
+  if (h->body) {
+    fiobj_io_seek(h->body, 0);
+    fio_cstr_s t = fiobj_io_read(h->body, 0);
+    fiobj_str_write(w.dest, t.data, t.len);
+  }
+  return w.dest;
+}
 
 /**
 A faster (yet less localized) alternative to `gmtime_r`.
