@@ -132,7 +132,7 @@ inline static int consume_request_line(struct http1_fio_parser_args_s *args,
       return -1;
   }
   start = tmp + 1;
-  if (start + 7 >= end)
+  if (start + 5 >= end) /* require "HTTP/" */
     return -1;
   if (args->on_http_version(args->parser, (char *)start, end - start))
     return -1;

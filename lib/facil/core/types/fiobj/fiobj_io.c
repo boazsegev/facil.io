@@ -569,8 +569,23 @@ fio_cstr_s fiobj_io_pread(fiobj_s *io, intptr_t start_at, uintptr_t length) {
 
 /* *****************************************************************************
 Writing API
-*****************************************************************************
-*/
+***************************************************************************** */
+
+/**
+ * Makes sure the IO object isn't attached to a static or external string.
+ *
+ * If the IO object is attached to a static or external string, the data will be
+ * copied to a new memory block.
+ */
+void fiobj_io_assert_dynamic(fiobj_s *io) {
+  if (!io) {
+    errno = ENFILE;
+    return;
+  }
+  assert(io->type == FIOBJ_T_IO);
+  fiobj_io_pre_write(io, 0);
+  return;
+}
 
 /**
  * Writes `length` bytes at the end of the IO stream, ignoring the reading

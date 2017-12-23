@@ -36,7 +36,7 @@ The Request / Response type and functions
 ***************************************************************************** */
 
 /**
- * A generic type used for HTTP request/response data.
+ * A generic HTTP handle used for HTTP request/response data.
  *
  * The `http_s` data can only be accessed safely from within the `on_request`
  * HTTP callback OR an `http_defer` callback.
@@ -50,7 +50,7 @@ typedef struct {
     fiobj_s *out_headers;
     /** a private request ID, used by the owner (facil.io), do not touch. */
     uintptr_t request_id;
-  } private;
+  } private_data;
   /** a time merker indicating when the request was received. */
   struct timespec received_at;
   union {
@@ -101,13 +101,15 @@ This struct is used together with the `http_response_set_cookie`. i.e.:
 */
 typedef struct {
   /** The cookie's name (Symbol). */
-  fiobj_s *name;
+  char *name;
   /** The cookie's value (leave blank to delete cookie). */
   char *value;
   /** The cookie's domain (optional). */
   char *domain;
   /** The cookie's path (optional). */
   char *path;
+  /** The cookie name's size in bytes or a terminating NULL will be assumed.*/
+  size_t name_len;
   /** The cookie value's size in bytes or a terminating NULL will be assumed.*/
   size_t value_len;
   /** The cookie domain's size in bytes or a terminating NULL will be assumed.*/
@@ -145,8 +147,8 @@ int http_set_header2(http_s *h, fio_cstr_s name, fio_cstr_s value);
  * Returns -1 on error and 0 on success.
  */
 int http_set_cookie(http_s *h, http_cookie_args_s);
-#define http_set_cookie(http__req__, ...)                                      \
-  http_set_cookie((http__req__), (http_cookie_args_s){__VA_ARGS__})
+#define http_set_cookie(http___handle, ...)                                    \
+  http_set_cookie((http___handle), (http_cookie_args_s){__VA_ARGS__})
 
 /**
  * Sends the response headers and body.
@@ -222,13 +224,25 @@ int http_push_file(http_s *h, char *filename, size_t name_length,
                    char *mime_type, uintptr_t type_length);
 
 /**
- * Defers the request / response handling for later.
+ * Defers the request / response handling for later and INVALIDATES the current
+ * `http_s` handle.
+ *
+ * The `task` MUST call one of the `http_send_*`, `http_stream`, `http_finish`
+ * or `http_defer`functions.
+ *
+ * The (optional) `fallback` is for read only puposes (most importantly reading
+ * the `udata` and/or freeing the `udata` and it's resources). It MUST NOT call
+ * any of the `http_` functions.
  *
  * Returns -1 on error and 0 on success.
  *
+ * Note: the currecnt `http_s` handle will become invalid once this function is
+ *    called and it's data might be deallocated, invalid or used by a different
+ *    thread.
+ *
  * Note: HTTP/1.1 requests CAN'T be deferred due to protocol requirements.
  */
-int http_defer(http_s *h, void (*task)(http_s *h));
+int http_defer(http_s *h, void (*task)(http_s *h), void (*fallback)(http_s *h));
 
 /* *****************************************************************************
 Listening to HTTP connections

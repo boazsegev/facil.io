@@ -127,6 +127,14 @@ intptr_t fiobj_io_write(fiobj_s *io, void *buffer, uintptr_t length);
  */
 intptr_t fiobj_io_puts(fiobj_s *io, void *buffer, uintptr_t length);
 
+/**
+ * Makes sure the IO object isn't attached to a static or external string.
+ *
+ * If the IO object is attached to a static or external string, the data will be
+ * copied to a new memory block.
+ */
+void fiobj_io_assert_dynamic(fiobj_s *io);
+
 #if DEBUG
 void fiobj_io_test(char *filename);
 #endif

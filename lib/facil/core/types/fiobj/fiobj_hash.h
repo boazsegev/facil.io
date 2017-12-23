@@ -123,6 +123,16 @@ fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym);
 fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len);
 
 /**
+ * Returns a temporary handle to the object associated hashed key value.
+ *
+ * This function takes a `uintptr_t` Hash value (see `fiobj_sym_hash`) to
+ * perform a lookup in the HashMap.
+ *
+ * Returns NULL if no object is asociated with this hashed key value.
+ */
+fiobj_s *fiobj_hash_get3(const fiobj_s *hash, uintptr_t key_hash);
+
+/**
  * Returns 1 if the key (Symbol) exists in the Hash, even if it's value is NULL.
  */
 int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym);

@@ -23,7 +23,7 @@ The Request / Response type and functions
  * Returns -1 on error and 0 on success.
  */
 int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value) {
-  if (!r || !name || !r->private.out_headers)
+  if (!r || !name || !r->private_data.out_headers)
     return -1;
   set_header_add(r, name, value);
   return 0;
@@ -36,7 +36,7 @@ int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value) {
  */
 int http_set_header2(http_s *r, fio_cstr_s n, fio_cstr_s v) {
   if (!r || !n.data || !n.length || (v.data && !v.length) ||
-      !r->private.out_headers)
+      !r->private_data.out_headers)
     return -1;
   fiobj_s *tmp = fiobj_sym_new(n.data, n.length);
   int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.length));
@@ -50,7 +50,96 @@ int http_set_header2(http_s *r, fio_cstr_s n, fio_cstr_s v) {
  * Returns -1 on error and 0 on success.
  */
 #undef http_set_cookie
-int http_set_cookie(http_s *r, http_cookie_args_s);
+int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
+#if DEBUG
+  HTTP_ASSERT(h, "Can't set cookie for NULL HTTP handler!");
+#endif
+
+  if (!h || !cookie.name || !h->private_data.out_headers)
+    return -1;
+
+#define invalid_cookie_char(c)                                                 \
+  ((c) < '!' || (c) > '~' || (c) == '=' || (c) == ' ' || (c) == ',' ||         \
+   (c) == ';')
+
+  if (cookie.name_len) {
+    ssize_t tmp = cookie.name_len;
+    do {
+      tmp--;
+      if (invalid_cookie_char(cookie.name[tmp])) {
+        fprintf(stderr, "ERROR: illigal char 0x%.2x in cookie name (in %s)\n",
+                cookie.name[tmp], cookie.name);
+        return -1;
+      }
+    } while (tmp);
+  } else {
+    while (cookie.name[cookie.name_len]) {
+      if (invalid_cookie_char(cookie.name[cookie.name_len])) {
+        fprintf(stderr, "ERROR: illigal char 0x%.2x in cookie name (in %s)\n",
+                cookie.name[cookie.name_len], cookie.name);
+        return -1;
+      }
+      cookie.name_len++;
+    }
+  }
+
+  if (cookie.value_len) {
+    ssize_t tmp = cookie.value_len;
+    do {
+      tmp--;
+      if (invalid_cookie_char(cookie.value[tmp])) {
+        fprintf(stderr,
+                "ERROR: illigal char 0x%.2x in cookie value (for cookie %s)\n",
+                cookie.value[tmp], cookie.name);
+        return -1;
+      }
+    } while (tmp);
+  } else {
+    while (cookie.value[cookie.value_len]) {
+      if (invalid_cookie_char(cookie.value[cookie.value_len])) {
+        fprintf(stderr,
+                "ERROR: illigal char 0x%.2x in cookie value (for cookie %s)\n",
+                cookie.value[cookie.value_len], cookie.name);
+        return -1;
+      }
+      cookie.value_len++;
+    }
+  }
+
+#undef invalid_cookie_char
+  fiobj_s *c = fiobj_str_new(cookie.name, cookie.name_len);
+  /* write name and value */
+  fiobj_str_write(c, "=", 1);
+  if (cookie.value)
+    fiobj_str_write(c, cookie.value, cookie.value_len);
+  else
+    cookie.max_age = -1;
+  fiobj_str_write(c, ";", 1);
+
+  if (cookie.max_age) {
+    fiobj_str_write2(c, "Max-Age=%d;", cookie.max_age);
+  }
+  if (cookie.domain && cookie.domain_len) {
+    fiobj_str_write(c, "domain=", 7);
+    fiobj_str_write(c, cookie.domain, cookie.domain_len);
+    fiobj_str_write(c, ";", 1);
+  }
+  if (cookie.path && cookie.path_len) {
+    fiobj_str_write(c, "path=", 5);
+    fiobj_str_write(c, cookie.path, cookie.path_len);
+    fiobj_str_write(c, ";", 1);
+  }
+  if (cookie.http_only) {
+    fiobj_str_write(c, "HttpOnly;", 9);
+  }
+  if (cookie.secure) {
+    fiobj_str_write(c, "secure;", 7);
+  }
+  fiobj_s *sym = fiobj_sym_new("set-cookie", 10);
+  set_header_add(h, sym, c);
+  fiobj_free(sym);
+  return 0;
+}
 #define http_set_cookie(http__req__, ...)                                      \
   http_set_cookie((http__req__), (http_cookie_args_s){__VA_ARGS__})
 /**
@@ -61,11 +150,16 @@ int http_set_cookie(http_s *r, http_cookie_args_s);
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_send_body(http_s *r, void *data, uintptr_t length) {
-  fiobj_s *cl =
-      fiobj_sym_new("content-length", 14); // HTTP_HEADER_CONTENT_LENGTH
-  set_header_if_missing(r, cl, fiobj_num_new(length));
-  fiobj_free(cl);
-  return ((http_protocol_s *)r->private.owner)
+  static uint64_t cl_hash = 0;
+  if (!cl_hash)
+    cl_hash = fiobj_sym_hash("content-length", 14);
+  if (!fiobj_hash_get3(r->private_data.out_headers, cl_hash)) {
+    static fiobj_s *cl;
+    if (!cl)
+      cl = HTTP_HEADER_CONTENT_LENGTH;
+    set_header_if_missing(r, cl, fiobj_num_new(length));
+  }
+  return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_send_body(r, data, length);
 }
 /**
@@ -77,7 +171,7 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
   set_header_if_missing(r, HTTP_HEADER_CONTENT_LENGTH, fiobj_num_new(length));
-  return ((http_protocol_s *)r->private.owner)
+  return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_sendfile(r, fd, length, offset);
 }
 /**
@@ -108,7 +202,7 @@ int http_send_error(http_s *r, intptr_t uuid, size_t error);
  * Returns -1 on error and 0 on success.
  */
 int http_stream(http_s *r, void *data, uintptr_t length) {
-  return ((http_protocol_s *)r->private.owner)
+  return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_stream(r, data, length);
 }
 /**
@@ -117,7 +211,7 @@ int http_stream(http_s *r, void *data, uintptr_t length) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 void http_finish(http_s *r) {
-  return ((http_protocol_s *)r->private.owner)->vtable->http_finish(r);
+  return ((http_protocol_s *)r->private_data.owner)->vtable->http_finish(r);
 }
 /**
  * Pushes a data response when supported (HTTP/2 only).
@@ -126,7 +220,7 @@ void http_finish(http_s *r) {
  */
 int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
                    uintptr_t type_length) {
-  return ((http_protocol_s *)r->private.owner)
+  return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_push_data(r, data, length, mime_type, type_length);
 }
 /**
@@ -139,7 +233,7 @@ int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
  */
 int http_push_file(http_s *r, char *filename, size_t name_length,
                    char *mime_type, uintptr_t type_length) {
-  return ((http_protocol_s *)r->private.owner)
+  return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_push_file(r, filename, name_length, mime_type,
                                type_length);
 }
@@ -149,8 +243,10 @@ int http_push_file(http_s *r, char *filename, size_t name_length,
  *
  * Returns -1 on error and 0 on success.
  */
-int http_defer(http_s *r, void (*task)(http_s *r)) {
-  return ((http_protocol_s *)r->private.owner)->vtable->http_defer(r, task);
+int http_defer(http_s *h, void (*task)(http_s *h),
+               void (*fallback)(http_s *h)) {
+  return ((http_protocol_s *)h->private_data.owner)
+      ->vtable->http_defer(h, task, fallback);
 }
 
 /* *****************************************************************************
@@ -161,6 +257,7 @@ static protocol_s *http_on_open(intptr_t uuid, void *set) {
   static __thread ssize_t capa = 0;
   if (!capa)
     capa = sock_max_capacity();
+  facil_set_timeout(uuid, ((http_settings_s *)set)->timeout);
   if (sock_uuid2fd(uuid) + HTTP_BUSY_UNLESS_HAS_FDS >= capa) {
     /* TODO: use http_send_error2(uuid) */
     fprintf(stderr, "WARNING: HTTP server at capacity\n");
@@ -244,7 +341,7 @@ int http_listen(const char *port, const char *binding,
  * Returns NULL on error (i.e., connection was lost).
  */
 struct http_settings_s *http_settings(http_s *r) {
-  return ((http_protocol_s *)r->private.owner)->settings;
+  return ((http_protocol_s *)r->private_data.owner)->settings;
 }
 
 /* *****************************************************************************
