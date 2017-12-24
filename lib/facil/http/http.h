@@ -145,6 +145,11 @@ int http_set_header2(http_s *h, fio_cstr_s name, fio_cstr_s value);
  * name object (so name objects could be reused in future responses).
  *
  * Returns -1 on error and 0 on success.
+ *
+ * Note: Long cookie names and long cookie values will be considered a security
+ * vaiolation and an error will be returned. It should be noted that most
+ * proxies and servers will refuse long cookie names or values and many impose
+ * total header lengths (including cookies) of ~8Kib.
  */
 int http_set_cookie(http_s *h, http_cookie_args_s);
 #define http_set_cookie(http___handle, ...)                                    \

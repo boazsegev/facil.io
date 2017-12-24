@@ -71,9 +71,14 @@ static int write_header(fiobj_s *o, void *w_) {
   return 0;
 }
 
+static char invalid_cookie_name_char[256];
+
+static char invalid_cookie_value_char[256];
 /* *****************************************************************************
 The Request / Response type and functions
 ***************************************************************************** */
+static const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                                 '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
 /**
  * Sets a response header, taking ownership of the value object, but NOT the
@@ -113,71 +118,119 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
 #if DEBUG
   HTTP_ASSERT(h, "Can't set cookie for NULL HTTP handler!");
 #endif
-
-  if (!h || !cookie.name || !h->private_data.out_headers)
+  if (!h || !h->private_data.out_headers || cookie.name_len >= 32768 ||
+      cookie.value_len >= 131072)
     return -1;
 
-#define invalid_cookie_char(c)                                                 \
-  ((c) < '!' || (c) > '~' || (c) == '=' || (c) == ' ' || (c) == ',' ||         \
-   (c) == ';')
-
-  if (cookie.name_len) {
-    ssize_t tmp = cookie.name_len;
-    do {
-      tmp--;
-      if (invalid_cookie_char(cookie.name[tmp])) {
-        fprintf(stderr, "ERROR: illigal char 0x%.2x in cookie name (in %s)\n",
-                cookie.name[tmp], cookie.name);
-        return -1;
+  /* write name and value while auto-correcting encoding issues */
+  size_t capa = cookie.name_len + cookie.value_len + 32;
+  size_t len = 0;
+  fiobj_s *c = fiobj_str_buf(capa);
+  fio_cstr_s t = fiobj_obj2cstr(c);
+  if (cookie.name) {
+    if (cookie.name_len) {
+      size_t tmp = 0;
+      while (tmp < cookie.name_len) {
+        if (invalid_cookie_name_char[(uint8_t)cookie.name[tmp]]) {
+          fprintf(stderr,
+                  "WARNING: illigal char 0x%.2x in cookie name (in %s)\n"
+                  "         automatic %% encoding applied\n",
+                  cookie.name[tmp], cookie.name);
+          t.data[len++] = '%';
+          t.data[len++] = hex_chars[(cookie.name[tmp] >> 4) & 0x0F];
+          t.data[len++] = hex_chars[cookie.name[tmp] & 0x0F];
+        } else {
+          t.data[len++] = cookie.name[tmp];
+        }
+        tmp += 1;
+        if (capa <= len + 3) {
+          capa += 32;
+          fiobj_str_capa_assert(c, capa);
+          t = fiobj_obj2cstr(c);
+        }
       }
-    } while (tmp);
-  } else {
-    while (cookie.name[cookie.name_len]) {
-      if (invalid_cookie_char(cookie.name[cookie.name_len])) {
-        fprintf(stderr, "ERROR: illigal char 0x%.2x in cookie name (in %s)\n",
-                cookie.name[cookie.name_len], cookie.name);
-        return -1;
+    } else {
+      size_t tmp = 0;
+      while (cookie.name[tmp]) {
+        if (invalid_cookie_name_char[(uint8_t)cookie.name[tmp]]) {
+          fprintf(stderr,
+                  "WARNING: illigal char 0x%.2x in cookie name (in %s)\n"
+                  "         automatic %% encoding applied\n",
+                  cookie.name[tmp], cookie.name);
+          t.data[len++] = '%';
+          t.data[len++] = hex_chars[(cookie.name[tmp] >> 4) & 0x0F];
+          t.data[len++] = hex_chars[cookie.name[tmp] & 0x0F];
+        } else {
+          t.data[len++] = cookie.name[tmp];
+        }
+        tmp += 1;
+        if (capa <= len + 4) {
+          capa += 32;
+          fiobj_str_capa_assert(c, capa);
+          t = fiobj_obj2cstr(c);
+        }
       }
-      cookie.name_len++;
     }
   }
-
-  if (cookie.value_len) {
-    ssize_t tmp = cookie.value_len;
-    do {
-      tmp--;
-      if (invalid_cookie_char(cookie.value[tmp])) {
-        fprintf(stderr,
-                "ERROR: illigal char 0x%.2x in cookie value (for cookie %s)\n",
-                cookie.value[tmp], cookie.name);
-        return -1;
+  t.data[len++] = '=';
+  if (cookie.value) {
+    if (cookie.value_len) {
+      size_t tmp = 0;
+      while (tmp < cookie.value_len) {
+        if (invalid_cookie_value_char[(uint8_t)cookie.value[tmp]]) {
+          fprintf(stderr,
+                  "WARNING: illigal char 0x%.2x in cookie value (in %s)\n"
+                  "         automatic %% encoding applied\n",
+                  cookie.value[tmp], cookie.name);
+          t.data[len++] = '%';
+          t.data[len++] = hex_chars[(cookie.value[tmp] >> 4) & 0x0F];
+          t.data[len++] = hex_chars[cookie.value[tmp] & 0x0F];
+        } else {
+          t.data[len++] = cookie.value[tmp];
+        }
+        tmp += 1;
+        if (capa <= len + 3) {
+          capa += 32;
+          fiobj_str_capa_assert(c, capa);
+          t = fiobj_obj2cstr(c);
+        }
       }
-    } while (tmp);
-  } else {
-    while (cookie.value[cookie.value_len]) {
-      if (invalid_cookie_char(cookie.value[cookie.value_len])) {
-        fprintf(stderr,
-                "ERROR: illigal char 0x%.2x in cookie value (for cookie %s)\n",
-                cookie.value[cookie.value_len], cookie.name);
-        return -1;
+    } else {
+      size_t tmp = 0;
+      while (cookie.value[tmp]) {
+        if (invalid_cookie_value_char[(uint8_t)cookie.value[tmp]]) {
+          fprintf(stderr,
+                  "WARNING: illigal char 0x%.2x in cookie value (in %s)\n"
+                  "         automatic %% encoding applied\n",
+                  cookie.value[tmp], cookie.name);
+          t.data[len++] = '%';
+          t.data[len++] = hex_chars[(cookie.value[tmp] >> 4) & 0x0F];
+          t.data[len++] = hex_chars[cookie.value[tmp] & 0x0F];
+        } else {
+          t.data[len++] = cookie.value[tmp];
+        }
+        tmp += 1;
+        if (capa <= len + 3) {
+          capa += 32;
+          fiobj_str_capa_assert(c, capa);
+          t = fiobj_obj2cstr(c);
+        }
       }
-      cookie.value_len++;
     }
-  }
-
-#undef invalid_cookie_char
-  fiobj_s *c = fiobj_str_new(cookie.name, cookie.name_len);
-  /* write name and value */
-  fiobj_str_write(c, "=", 1);
-  if (cookie.value)
-    fiobj_str_write(c, cookie.value, cookie.value_len);
-  else
+  } else
     cookie.max_age = -1;
-  fiobj_str_write(c, ";", 1);
-
-  if (cookie.max_age) {
-    fiobj_str_write2(c, "Max-Age=%d;", cookie.max_age);
+  t.data[len++] = ';';
+  if (capa <= len + 40) {
+    capa = len + 40;
+    fiobj_str_capa_assert(c, capa);
+    t = fiobj_obj2cstr(c);
   }
+  memcpy(t.data + len, "Max-Age=", 8);
+  len += 8;
+  len += fio_ltoa(t.data + len, cookie.max_age, 10);
+  t.data[len++] = ';';
+  fiobj_str_resize(c, len);
+
   if (cookie.domain && cookie.domain_len) {
     fiobj_str_write(c, "domain=", 7);
     fiobj_str_write(c, cookie.domain, cookie.domain_len);
@@ -194,11 +247,13 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   if (cookie.secure) {
     fiobj_str_write(c, "secure;", 7);
   }
-  fiobj_s *sym = fiobj_sym_new("set-cookie", 10);
+  static fiobj_s *sym = NULL;
+  if (!sym)
+    sym = HTTP_HEADER_SET_COOKIE;
   set_header_add(h, sym, c);
-  fiobj_free(sym);
   return 0;
 }
+
 #define http_set_cookie(http__req__, ...)                                      \
   http_set_cookie((http__req__), (http_cookie_args_s){__VA_ARGS__})
 /**
@@ -249,8 +304,8 @@ int http_sendfile2(http_s *r, char *filename, size_t name_length);
 int http_send_error(http_s *r, intptr_t uuid, size_t error);
 
 /**
- * Sends the response headers and starts streaming. Use `http_defer` to continue
- * straming.
+ * Sends the response headers and starts streaming. Use `http_defer` to
+ * continue straming.
  *
  * Returns -1 on error and 0 on success.
  */
@@ -279,8 +334,8 @@ int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
 /**
  * Pushes a file response when supported (HTTP/2 only).
  *
- * If `mime_type` is NULL, an attempt at automatic detection using `filename`
- * will be made.
+ * If `mime_type` is NULL, an attempt at automatic detection using
+ * `filename` will be made.
  *
  * Returns -1 on error and 0 on success.
  */
@@ -304,7 +359,8 @@ int http_defer(http_s *h, void (*task)(http_s *h),
 
 /* *****************************************************************************
 Listening to HTTP connections
-***************************************************************************** */
+*****************************************************************************
+*/
 
 static protocol_s *http_on_open(intptr_t uuid, void *set) {
   static __thread ssize_t capa = 0;
@@ -342,9 +398,8 @@ static void http_on_finish(intptr_t uuid, void *set) {
 int http_listen(const char *port, const char *binding,
                 struct http_settings_s arg_settings) {
   if (arg_settings.on_request == NULL) {
-    fprintf(
-        stderr,
-        "ERROR: http_listen requires the .on_request parameter to be set\n");
+    fprintf(stderr, "ERROR: http_listen requires the .on_request parameter "
+                    "to be set\n");
     kill(0, SIGINT), exit(11);
   }
 
@@ -399,15 +454,18 @@ struct http_settings_s *http_settings(http_s *r) {
 
 /* *****************************************************************************
 TODO: HTTP client mode
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /* *****************************************************************************
 HTTP Helper functions that could be used globally
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /**
- * Returns a String object representing the unparsed HTTP request (HTTP version
- * is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
+ * Returns a String object representing the unparsed HTTP request (HTTP
+ * version is capped at HTTP/1.1). Mostly usable for proxy usage and
+ * debugging.
  */
 fiobj_s *http_req2str(http_s *h) {
   if (!h->headers)
@@ -426,8 +484,9 @@ fiobj_s *http_req2str(http_s *h) {
   {
     fio_cstr_s t = fiobj_obj2cstr(h->version);
     if (t.len < 6 || t.data[5] != '1')
-      fiobj_str_write(w.dest, "HTTP/1.1\r\n", 10);
+      fiobj_str_write(w.dest, " HTTP/1.1\r\n", 10);
     else {
+      fiobj_str_write(w.dest, " ", 1);
       fiobj_str_join(w.dest, h->version);
       fiobj_str_write(w.dest, "\r\n", 2);
     }
@@ -451,10 +510,9 @@ See the libc `gmtime_r` documentation for details.
 Falls back to `gmtime_r` for dates before epoch.
 */
 struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
-  // static char* DAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-  // static char * Months = {  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  // "Jul",
-  // "Aug", "Sep", "Oct", "Nov", "Dec"};
+  // static char* DAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri",
+  // "Sat"}; static char * Months = {  "Jan", "Feb", "Mar", "Apr", "May",
+  // "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
   static const uint8_t month_len[] = {
       31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, // nonleap year
       31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31  // leap year
@@ -467,8 +525,8 @@ struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
   tmbuf->tm_isdst = 0;
   tmbuf->tm_year = 70; // tm_year == The number of years since 1900
   tmbuf->tm_mon = 0;
-  // for seconds up to weekdays, we build up, as small values clean up larger
-  // values.
+  // for seconds up to weekdays, we build up, as small values clean up
+  // larger values.
   a = ((ssize_t)*timer);
   b = a / 60;
   tmbuf->tm_sec = a - (b * 60);
@@ -815,3 +873,47 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data) {
   *pos = 0;
   return pos - dest;
 }
+
+/* *****************************************************************************
+Lookup Tables
+*****************************************************************************
+*/
+
+/**
+* Create with Ruby using:
+
+a = []
+256.times {|i| a[i] = 1;}
+('a'.ord..'z'.ord).each {|i| a[i] = 0;}
+('A'.ord..'Z'.ord).each {|i| a[i] = 0;}
+('0'.ord..'9'.ord).each {|i| a[i] = 0;}
+"!#$%&'*+-.^_`|~".bytes.each {|i| a[i] = 0;}
+p a; nil
+"!#$%&'()*+-./:<=>?@[]^_`{|}~".bytes.each {|i| a[i] = 0;} # for values
+p a; nil
+*/
+static char invalid_cookie_name_char[256] = {
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+static char invalid_cookie_value_char[256] = {
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
