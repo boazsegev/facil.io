@@ -11,6 +11,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "http1.h"
 #include "http_internal.h"
 
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -323,6 +324,9 @@ int http_sendfile2(http_s *r, fiobj_s *filename) {
   if (!range_hash)
     range_hash = fiobj_sym_hash("range", 5);
 
+  int file = -1;
+  uint8_t is_gz = 0;
+
   fio_cstr_s s = fiobj_obj2cstr(filename);
   {
     fiobj_s *tmp = fiobj_hash_get3(r->headers, accept_enc_hash);
@@ -335,16 +339,17 @@ int http_sendfile2(http_s *r, fiobj_s *filename) {
         s.data[s.len - 1] != 'z') {
       fiobj_str_write(filename, ".gz", 3);
       fio_cstr_s s = fiobj_obj2cstr(filename);
-      if (!stat(s.data, &file_data)) {
-        http_set_header(r, HTTP_HEADER_CONTENT_ENCODING,
-                        fiobj_dup(HTTP_HVALUE_GZIP));
+      if (!stat(s.data, &file_data) &&
+          (S_ISREG(file_data.st_mode) || S_ISLNK(file_data.st_mode))) {
+        is_gz = 1;
         goto found_file;
       }
       fiobj_str_resize(filename, s.len - 3);
     }
   }
 no_gzip_support:
-  if (stat(s.data, &file_data))
+  if (stat(s.data, &file_data) ||
+      !(S_ISREG(file_data.st_mode) || S_ISLNK(file_data.st_mode)))
     return -1;
 found_file:
   /* set last-modified */
@@ -357,42 +362,116 @@ found_file:
   /* set cache-control */
   http_set_header(r, HTTP_HEADER_CACHE_CONTROL, fiobj_dup(HTTP_HVALUE_MAX_AGE));
   /* set & test etag */
+  uint64_t etag = (uint64_t)file_data.st_size;
+  etag ^= (uint64_t)file_data.st_mtime;
+  etag = fiobj_sym_hash(&etag, sizeof(uint64_t));
+  fiobj_s *etag_str = fiobj_str_buf(32);
+  fiobj_str_resize(etag_str,
+                   fio_base64_encode(fiobj_obj2cstr(etag_str).data,
+                                     (void *)&etag, sizeof(uint64_t)));
+  /* set */
+  http_set_header(r, HTTP_HEADER_ETAG, etag_str);
+  /* test */
   {
-    /* set */
-    uint64_t etag = (uint64_t)file_data.st_size;
-    etag ^= (uint64_t)file_data.st_mtime;
-    etag = fiobj_sym_hash(&etag, sizeof(uint64_t));
-    fiobj_s *tmp = fiobj_str_buf(32);
-    fiobj_str_resize(tmp, fio_base64_encode(fiobj_obj2cstr(tmp).data,
-                                            (void *)&etag, sizeof(uint64_t)));
-    http_set_header(r, HTTP_HEADER_ETAG, tmp);
-    /* test */
     static uint64_t none_match_hash = 0;
     if (!none_match_hash)
       none_match_hash = fiobj_sym_hash("if-none-match", 13);
     fiobj_s *tmp2 = fiobj_hash_get3(r->headers, none_match_hash);
-    if (tmp2 && fiobj_iseq(tmp2, tmp)) {
+    if (tmp2 && fiobj_iseq(tmp2, etag_str)) {
       r->status = 304;
       http_finish(r);
       return 0;
-    } else {
-      static uint64_t ifrange_hash = 0;
-      if (!ifrange_hash)
-        ifrange_hash = fiobj_sym_hash("if-range", 8);
-      tmp2 = fiobj_hash_get3(r->headers, ifrange_hash);
-      if (tmp2 && fiobj_iseq(tmp2, tmp)) {
-        fiobj_hash_delete3(r->headers, range_hash);
-      }
     }
   }
   /* handle range requests */
+  int64_t offset = 0;
+  int64_t length = file_data.st_size;
   {
-    fiobj_s *tmp = fiobj_hash_get3(r->headers, range_hash);
-    if (tmp) {
+    static uint64_t ifrange_hash = 0;
+    if (!ifrange_hash)
+      ifrange_hash = fiobj_sym_hash("if-range", 8);
+    fiobj_s *tmp = fiobj_hash_get3(r->headers, ifrange_hash);
+    if (tmp && fiobj_iseq(tmp, etag_str)) {
+      fiobj_hash_delete3(r->headers, range_hash);
+    } else {
+      tmp = fiobj_hash_get3(r->headers, range_hash);
+      if (tmp) {
+        /* range ahead... */
+        if (tmp->type == FIOBJ_T_ARRAY)
+          tmp = fiobj_ary_index(tmp, 0);
+        fio_cstr_s range = fiobj_obj2cstr(tmp);
+        if (!range.data || memcmp("bytes=", range.data, 6))
+          goto open_file;
+        char *pos = range.data + 6;
+        int64_t start_at = 0, end_at = 0;
+        start_at = fio_atol(&pos);
+        if (start_at >= file_data.st_size)
+          goto open_file;
+        if (start_at >= 0) {
+          pos++;
+          end_at = fio_atol(&pos);
+          if (end_at <= 0)
+            goto open_file;
+        }
+        /* we ignore multimple ranges, only responding with the first range. */
+        if (start_at < 0) {
+          if (0 - start_at < file_data.st_size) {
+            offset = file_data.st_size - start_at;
+            length = 0 - start_at;
+          }
+        } else if (end_at) {
+          offset = start_at;
+          length = end_at - start_at + 1;
+          if (length + start_at > file_data.st_size || length <= 0)
+            length = length - start_at;
+        } else {
+          offset = start_at;
+          length = length - start_at;
+        }
+        r->status = 206;
+
+        http_set_header(r, HTTP_HEADER_CONTENT_RANGE,
+                        fiobj_strprintf("bytes %lu-%lu/%lu",
+                                        (unsigned long)start_at,
+                                        (unsigned long)(start_at + length - 1),
+                                        (unsigned long)file_data.st_size));
+        http_set_header(r, HTTP_HEADER_ACCEPT_RANGES,
+                        fiobj_dup(HTTP_HVALUE_BYTES));
+      }
     }
   }
-  // int fd = open()
-  return -1;
+open_file:
+  s = fiobj_obj2cstr(filename);
+  file = open(s.data, O_RDONLY);
+  if (file == -1) {
+    fprintf(stderr, "ERROR: Couldn't open file %s!\n", s.data);
+    http_send_error(r, 500, 0, NULL);
+    return 0;
+  }
+  {
+    fiobj_s *tmp = NULL;
+    uintptr_t pos = 0;
+    if (is_gz) {
+      http_set_header(r, HTTP_HEADER_CONTENT_ENCODING,
+                      fiobj_dup(HTTP_HVALUE_GZIP));
+
+      pos = s.len - 4;
+      while (pos && s.data[pos] != '.')
+        pos--;
+      pos++; /* assuming, but that's fine. */
+      tmp = http_mimetype_find(s.data + pos, s.len - pos - 4);
+
+    } else {
+      pos = s.len - 1;
+      while (pos && s.data[pos] != '.')
+        pos--;
+      pos++; /* assuming, but that's fine. */
+      tmp = http_mimetype_find(s.data + pos, s.len - pos);
+    }
+    if (tmp)
+      http_set_header(r, HTTP_HEADER_CONTENT_TYPE, tmp);
+  }
+  return http_sendfile(r, file, length, offset);
 }
 
 /**
@@ -407,6 +486,7 @@ found_file:
  */
 int http_send_error(http_s *r, size_t error, intptr_t uuid,
                     http_settings_s *settings) {
+  fprintf(stderr, "ERROR: %lu\n", error);
   protocol_s *pr = NULL;
   if (!r) {
     if (!uuid || !settings)
@@ -417,19 +497,23 @@ int http_send_error(http_s *r, size_t error, intptr_t uuid,
     r = malloc(sizeof(*r));
     HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
     http_s_init(r, (http_protocol_s *)pr);
-    r->status = error;
-    fiobj_s *fname =
-        fiobj_str_new(settings->public_folder, settings->public_folder_length);
-    fiobj_str_write2(fname, "/%lu.html", error);
-    if (http_sendfile2(r, fname)) {
-      fiobj_str_resize(fname, 0);
-      fio_cstr_s t = http_status2str(error);
-      fiobj_str_write(fname, t.data, t.len);
-      fiobj_send(((http_protocol_s *)r->private_data.owner)->uuid, fname);
-      return 0;
-    }
-    fiobj_free(fname);
+  } else {
+    settings = ((http_protocol_s *)r->private_data.owner)->settings;
   }
+  r->status = error;
+  fiobj_s *fname =
+      fiobj_str_new(settings->public_folder, settings->public_folder_length);
+  fiobj_str_write2(fname, "/%lu.html", (unsigned long)error);
+  if (http_sendfile2(r, fname)) {
+    http_set_header(r, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
+    fiobj_str_resize(fname, 0);
+    fio_cstr_s t = http_status2str(error);
+    fiobj_str_write(fname, t.data, t.len);
+    fiobj_send(((http_protocol_s *)r->private_data.owner)->uuid, fname);
+  } else
+    fiobj_free(fname);
+  if (pr)
+    sock_close(uuid);
   return 0;
 }
 

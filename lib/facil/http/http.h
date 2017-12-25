@@ -353,6 +353,7 @@ extern fiobj_s *HTTP_HEADER_CACHE_CONTROL;
 extern fiobj_s *HTTP_HEADER_CONNECTION;
 extern fiobj_s *HTTP_HEADER_CONTENT_ENCODING;
 extern fiobj_s *HTTP_HEADER_CONTENT_LENGTH;
+extern fiobj_s *HTTP_HEADER_CONTENT_RANGE;
 extern fiobj_s *HTTP_HEADER_CONTENT_TYPE;
 extern fiobj_s *HTTP_HEADER_COOKIE;
 extern fiobj_s *HTTP_HEADER_DATE;

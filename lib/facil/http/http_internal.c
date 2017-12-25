@@ -53,10 +53,12 @@ void http_on_request_handler______internal(http_s *h,
   }
 }
 
+fiobj_s *HTTP_HEADER_ACCEPT_RANGES;
 fiobj_s *HTTP_HEADER_CACHE_CONTROL;
 fiobj_s *HTTP_HEADER_CONNECTION;
 fiobj_s *HTTP_HEADER_CONTENT_ENCODING;
 fiobj_s *HTTP_HEADER_CONTENT_LENGTH;
+fiobj_s *HTTP_HEADER_CONTENT_RANGE;
 fiobj_s *HTTP_HEADER_CONTENT_TYPE;
 fiobj_s *HTTP_HEADER_COOKIE;
 fiobj_s *HTTP_HEADER_DATE;
@@ -64,6 +66,7 @@ fiobj_s *HTTP_HEADER_ETAG;
 fiobj_s *HTTP_HEADER_LAST_MODIFIED;
 fiobj_s *HTTP_HEADER_SET_COOKIE;
 fiobj_s *HTTP_HEADER_UPGRADE;
+fiobj_s *HTTP_HVALUE_BYTES;
 fiobj_s *HTTP_HVALUE_CLOSE;
 fiobj_s *HTTP_HVALUE_GZIP;
 fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
@@ -75,10 +78,12 @@ void http_lib_cleanup(void) {
 #define HTTPLIB_RESET(x)                                                       \
   fiobj_free(x);                                                               \
   x = NULL;
+  HTTPLIB_RESET(HTTP_HEADER_ACCEPT_RANGES);
   HTTPLIB_RESET(HTTP_HEADER_CACHE_CONTROL);
   HTTPLIB_RESET(HTTP_HEADER_CONNECTION);
   HTTPLIB_RESET(HTTP_HEADER_CONTENT_ENCODING);
   HTTPLIB_RESET(HTTP_HEADER_CONTENT_LENGTH);
+  HTTPLIB_RESET(HTTP_HEADER_CONTENT_RANGE);
   HTTPLIB_RESET(HTTP_HEADER_CONTENT_TYPE);
   HTTPLIB_RESET(HTTP_HEADER_COOKIE);
   HTTPLIB_RESET(HTTP_HEADER_DATE);
@@ -86,6 +91,7 @@ void http_lib_cleanup(void) {
   HTTPLIB_RESET(HTTP_HEADER_LAST_MODIFIED);
   HTTPLIB_RESET(HTTP_HEADER_SET_COOKIE);
   HTTPLIB_RESET(HTTP_HEADER_UPGRADE);
+  HTTPLIB_RESET(HTTP_HVALUE_BYTES);
   HTTPLIB_RESET(HTTP_HVALUE_CLOSE);
   HTTPLIB_RESET(HTTP_HVALUE_GZIP);
   HTTPLIB_RESET(HTTP_HVALUE_KEEP_ALIVE);
@@ -95,19 +101,22 @@ void http_lib_cleanup(void) {
 }
 
 void http_lib_init(void) {
+  HTTP_HEADER_ACCEPT_RANGES = fiobj_sym_new("accept-ranges", 13);
   HTTP_HEADER_CACHE_CONTROL = fiobj_sym_new("cache-control", 13);
   HTTP_HEADER_CONNECTION = fiobj_sym_new("connection", 10);
-  HTTP_HEADER_CONTENT_ENCODING = fiobj_sym_new("content-encoding", 9);
+  HTTP_HEADER_CONTENT_ENCODING = fiobj_sym_new("content-encoding", 16);
   HTTP_HEADER_CONTENT_LENGTH = fiobj_sym_new("content-length", 14);
   HTTP_HEADER_CONTENT_TYPE = fiobj_sym_new("content-type", 12);
+  HTTP_HEADER_CONTENT_RANGE = fiobj_sym_new("content-range", 13);
   HTTP_HEADER_COOKIE = fiobj_sym_new("cookie", 6);
   HTTP_HEADER_DATE = fiobj_sym_new("date", 4);
   HTTP_HEADER_ETAG = fiobj_sym_new("etag", 4);
   HTTP_HEADER_LAST_MODIFIED = fiobj_sym_new("last-modified", 13);
   HTTP_HEADER_SET_COOKIE = fiobj_sym_new("set-cookie", 10);
   HTTP_HEADER_UPGRADE = fiobj_sym_new("upgrade", 7);
+  HTTP_HVALUE_BYTES = fiobj_sym_new("bytes", 5);
   HTTP_HVALUE_CLOSE = fiobj_sym_new("close", 5);
-  HTTP_HVALUE_GZIP = fiobj_sym_new("close", 5);
+  HTTP_HVALUE_GZIP = fiobj_sym_new("gzip", 4);
   HTTP_HVALUE_KEEP_ALIVE = fiobj_sym_new("keep-alive", 10);
   HTTP_HVALUE_MAX_AGE = fiobj_sym_new("max-age=3600", 12);
   HTTP_HVALUE_WEBSOCKET = fiobj_sym_new("websocket", 9);

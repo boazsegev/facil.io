@@ -50,6 +50,8 @@ Constants that shouldn't be accessed by the users (`fiobj_dup` required).
 *****************************************************************************
 */
 
+extern fiobj_s *HTTP_HEADER_ACCEPT_RANGES;
+extern fiobj_s *HTTP_HVALUE_BYTES;
 extern fiobj_s *HTTP_HVALUE_CLOSE;
 extern fiobj_s *HTTP_HVALUE_GZIP;
 extern fiobj_s *HTTP_HVALUE_KEEP_ALIVE;

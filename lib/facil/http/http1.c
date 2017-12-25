@@ -145,8 +145,9 @@ static int http1_send_body(http_s *h, void *data, uintptr_t length) {
 static int http1_sendfile(http_s *h, int fd, uintptr_t length,
                           uintptr_t offset) {
   fiobj_s *packet = headers2str(h);
-  if (!packet)
+  if (!packet) {
     return -1;
+  }
   fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
   sock_sendfile((((http_protocol_s *)h->private_data.owner)->uuid), fd, offset,
                 length);
