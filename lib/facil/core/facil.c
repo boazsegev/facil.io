@@ -758,8 +758,7 @@ static void facil_cluster_on_sibling_close(intptr_t uuid, protocol_s *pr_) {
   if (defer_fork_is_active()) {
     kill(getpid(), SIGINT);
 #if DEBUG
-    fprintf(stderr,
-            "* Sibling death detected, signaling self exit process %d\n",
+    fprintf(stderr, "* (%d) Sibling death detected, signaling for exit.\n",
             getpid());
 #endif
   }
@@ -1002,37 +1001,56 @@ reschedule:
   defer(facil_review_timeout, (void *)fd, NULL);
 }
 
-static void facil_cycle(void *arg, void *ignr) {
-  (void)ignr;
+// static void facil_cycle(void *arg, void *ignr) {
+//   (void)ignr;
+//   static int idle = 0;
+//   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
+//   int events;
+//   if (defer_has_queue()) {
+//     events = evio_review(0);
+//     if (events < 0)
+//       goto error;
+//     if (events > 0)
+//       idle = 1;
+//   } else {
+//     events = evio_review(512);
+//     if (events < 0)
+//       goto error;
+//     if (events > 0) {
+//       idle = 1;
+//     } else if (idle) {
+//       ((struct facil_run_args *)arg)->on_idle();
+//       idle = 0;
+//     }
+//   }
+//   if (!defer_fork_is_active())
+//     return;
+//   if (facil_data->need_review) {
+//     facil_data->need_review = 0;
+//     defer(facil_review_timeout, (void *)0, NULL);
+//   }
+//   defer(facil_cycle, arg, NULL);
+// error:
+//   (void)1;
+// }
+
+static void facil_cycle(void *arg) {
   static int idle = 0;
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   int events;
-  if (defer_has_queue()) {
-    events = evio_review(0);
-    if (events < 0)
-      goto error;
-    if (events > 0)
-      idle = 1;
-  } else {
-    events = evio_review(512);
-    if (events < 0)
-      goto error;
-    if (events > 0) {
-      idle = 1;
-    } else if (idle) {
-      ((struct facil_run_args *)arg)->on_idle();
-      idle = 0;
-    }
+  events = evio_review(512);
+  if (events < 0)
+    return;
+  if (events > 0) {
+    idle = 1;
+  } else if (idle) {
+    ((struct facil_run_args *)arg)->on_idle();
+    idle = 0;
   }
   if (!defer_fork_is_active())
     return;
-  if (facil_data->need_review) {
-    facil_data->need_review = 0;
-    defer(facil_review_timeout, (void *)0, NULL);
-  }
-  defer(facil_cycle, arg, NULL);
-error:
-  (void)1;
+  facil_data->need_review = 0;
+  defer(facil_review_timeout, (void *)0, NULL);
 }
 
 static void facil_init_run(void *arg, void *arg2) {
@@ -1052,7 +1070,6 @@ static void facil_init_run(void *arg, void *arg2) {
   }
   facil_data->need_review = 1;
   facil_external_init();
-  defer(facil_cycle, arg, NULL);
 }
 
 static void facil_cleanup(void *arg) {
@@ -1063,9 +1080,9 @@ static void facil_cleanup(void *arg) {
       defer(deferred_on_shutdown, (void *)uuid, NULL);
     }
   }
-  facil_cycle(arg, NULL);
+  facil_cycle(arg);
   defer_perform();
-  facil_cycle(arg, NULL);
+  facil_cycle(arg);
   ((struct facil_run_args *)arg)->on_finish();
   defer_perform();
   evio_close();
@@ -1101,7 +1118,8 @@ void facil_run(struct facil_run_args args) {
     defer(print_pid, NULL, NULL);
   }
   defer(facil_init_run, &args, NULL);
-  int frk = defer_perform_in_fork(args.processes, args.threads);
+  int frk =
+      defer_perform_in_fork(args.processes, args.threads, facil_cycle, &args);
   facil_cleanup(&args);
   if (frk < 0) {
     perror("ERROR: couldn't spawn workers");

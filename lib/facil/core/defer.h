@@ -54,12 +54,29 @@ Thread Pool support
 /** an opaque thread pool type */
 typedef struct defer_pool *pool_pt;
 
-/** Starts a thread pool that will run deferred tasks in the background. */
-pool_pt defer_pool_start(unsigned int thread_count);
+/**
+ * Starts a thread pool that will run deferred tasks in the background.
+ *
+ * The `defer_idle` callback will be used to handle waiting threads. It can be
+ * used to sleep, or run background tasks. It will run concurrently and
+ * continuesly for all the threads in the pool that are idling.
+ *
+ * If `defer_idle` is NULL, a fallback to `nanosleep` will be used.
+ */
+pool_pt defer_pool_start(unsigned int thread_count,
+                         void (*defer_idle)(void *arg), void *arg);
+
 /** Signals a running thread pool to stop. Returns immediately. */
 void defer_pool_stop(pool_pt pool);
-/** Waits for a running thread pool, joining threads and finishing all tasks. */
+
+/**
+ * Waits for a running thread pool, joining threads and finishing all tasks.
+ *
+ * This function MUST be called in order to free the pool's data (the
+ * `pool_pt`).
+ */
 void defer_pool_wait(pool_pt pool);
+
 /** Returns TRUE (1) if the pool is hadn't been signaled to finish up. */
 int defer_pool_is_active(pool_pt pool);
 
@@ -125,11 +142,17 @@ void defer_reap_children(void);
  * processes to finish up and exit. It will also setup a child process reaper
  * (which will remain active for the application's lifetime).
  *
+ * The `defer_idle` callback will be used to handle waiting threads. It can be
+ * used to sleep, or run background tasks. It will run concurrently and
+ * continuesly for all the threads in the pool that are idling.
+ *
+ * If `defer_idle` is NULL, a fallback to `nanosleep` will be used.
+ *
  * Returns 0 on success, -1 on error and a positive number if this is a child
  * process that was forked.
  */
-int defer_perform_in_fork(unsigned int process_count,
-                          unsigned int thread_count);
+int defer_perform_in_fork(unsigned int process_count, unsigned int thread_count,
+                          void (*defer_idle)(void *arg), void *arg);
 /** Returns TRUE (1) if the forked thread pool hadn't been signaled to finish
  * up. */
 int defer_fork_is_active(void);
