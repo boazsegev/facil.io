@@ -405,22 +405,22 @@ int64_t fio_atol(char **pstr) {
   char *str = *pstr;
   uint64_t result = 0;
   uint8_t invert = 0;
-  while (str[0] == '0')
-    str++;
   while (str[0] == '-') {
     invert ^= 1;
     str++;
   }
-  while (str[0] == '0')
-    str++;
-  if (str[0] == 'b' || str[0] == 'B') {
+  if (str[0] == 'B' || str[0] == 'b' ||
+      (str[0] == '0' && (str[1] == 'b' || str[1] == 'B'))) {
     /* base 2 */
+    if (str[0] == 0)
+      str++;
     str++;
     while (str[0] == '0' || str[0] == '1') {
       result = (result << 1) | (str[0] == '1');
       str++;
     }
-  } else if (str[0] == 'x' || str[0] == 'X') {
+  } else if (str[0] == 'x' || str[0] == 'X' ||
+             (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
     /* base 16 */
     uint8_t tmp;
     str++;
