@@ -227,12 +227,13 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
-  } else if (FIOBJ_IS_STRING(sym)) {
-    fio_cstr_s str = fiobj_obj2cstr(sym);
-    hash_value = fiobj_sym_hash(str.value, str.len);
   } else {
-    fiobj_free((fiobj_s *)obj);
-    return -1;
+    fio_cstr_s str = fiobj_obj2cstr(sym);
+    if (!str.data) {
+      fiobj_free((fiobj_s *)obj);
+      return -1;
+    }
+    hash_value = fiobj_sym_hash(str.value, str.len);
   }
 
   fiobj_s *coup = fiobj_couplet_alloc(sym, obj);
@@ -259,16 +260,36 @@ fiobj_s *fiobj_hash_replace(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
-  } else if (FIOBJ_IS_STRING(sym)) {
-    fio_cstr_s str = fiobj_obj2cstr(sym);
-    hash_value = fiobj_sym_hash(str.value, str.len);
   } else {
-    fiobj_free((fiobj_s *)obj);
-    return NULL;
+    fio_cstr_s str = fiobj_obj2cstr(sym);
+    if (!str.data) {
+      fiobj_free((fiobj_s *)obj);
+      return NULL;
+    }
+    hash_value = fiobj_sym_hash(str.value, str.len);
   }
 
   fiobj_s *coup = fiobj_couplet_alloc(sym, obj);
   fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, coup);
+  if (!old)
+    return NULL;
+  fiobj_s *ret = fiobj_couplet2obj(old);
+  if (!OBJREF_REM(old)) {
+    fiobj_couplet_dealloc(old);
+  }
+  return ret;
+}
+
+/**
+ * Removes a key-value pair from the Hash, if it exists, returning the old
+ * object (instead of freeing it).
+ */
+fiobj_s *fiobj_hash_remove3(fiobj_s *hash, uintptr_t hash_value) {
+  if (!hash) {
+    return NULL;
+  }
+  assert(hash->type == FIOBJ_T_HASH);
+  fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, NULL);
   if (!old)
     return NULL;
   fiobj_s *ret = fiobj_couplet2obj(old);
@@ -290,11 +311,12 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
-  } else if (FIOBJ_IS_STRING(sym)) {
-    fio_cstr_s str = fiobj_obj2cstr(sym);
-    hash_value = fiobj_sym_hash(str.value, str.len);
   } else {
-    return NULL;
+    fio_cstr_s str = fiobj_obj2cstr(sym);
+    if (!str.data) {
+      return NULL;
+    }
+    hash_value = fiobj_sym_hash(str.value, str.len);
   }
   fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, NULL);
   if (!old)
@@ -310,18 +332,55 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
  * Deletes a key-value pair from the Hash, if it exists, freeing the
  * associated object.
  *
+ * This function takes a `uintptr_t` Hash value (see `fiobj_sym_hash`) to
+ * perform a lookup in the HashMap, which is slightly faster than the other
+ * variations.
+ *
  * Returns -1 on type error or if the object never existed.
  */
-int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
+int fiobj_hash_delete3(fiobj_s *hash, uintptr_t key_hash) {
   if (!hash) {
     return -1;
   }
   assert(hash->type == FIOBJ_T_HASH);
-  fiobj_s *obj = fiobj_hash_remove(hash, sym);
+  fiobj_s *obj = fiobj_hash_remove3(hash, key_hash);
   if (!obj)
     return -1;
   fiobj_free(obj);
   return 0;
+}
+
+/**
+ * Deletes a key-value pair from the Hash, if it exists, freeing the
+ * associated object.
+ *
+ * This function takes a C string instead of a Symbol, which is slower if a
+ * Symbol can be cached but faster if a Symbol must be created.
+ *
+ * Returns -1 on type error or if the object never existed.
+ */
+int fiobj_hash_delete2(fiobj_s *hash, const char *str, size_t len) {
+  return (fiobj_hash_delete3(hash, fiobj_sym_hash(str, len)));
+}
+
+/**
+ * Deletes a key-value pair from the Hash, if it exists, freeing the
+ * associated object.
+ *
+ * Returns -1 on type error or if the object never existed.
+ */
+int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
+  uintptr_t hash_value = 0;
+  if (sym->type == FIOBJ_T_SYMBOL) {
+    hash_value = fiobj_sym_id(sym);
+  } else {
+    fio_cstr_s str = fiobj_obj2cstr(sym);
+    if (!str.data) {
+      return -1;
+    }
+    hash_value = fiobj_sym_hash(str.value, str.len);
+  }
+  return (fiobj_hash_delete3(hash, hash_value));
 }
 
 /**
@@ -336,11 +395,12 @@ fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym) {
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
-  } else if (FIOBJ_IS_STRING(sym)) {
-    fio_cstr_s str = fiobj_obj2cstr(sym);
-    hash_value = fiobj_sym_hash(str.value, str.len);
   } else {
-    return NULL;
+    fio_cstr_s str = fiobj_obj2cstr(sym);
+    if (!str.data) {
+      return NULL;
+    }
+    hash_value = fiobj_sym_hash(str.value, str.len);
   }
   fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hash_value);
   if (!coup)
@@ -399,11 +459,12 @@ int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym) {
   uintptr_t hash_value = 0;
   if (sym->type == FIOBJ_T_SYMBOL) {
     hash_value = fiobj_sym_id(sym);
-  } else if (FIOBJ_IS_STRING(sym)) {
-    fio_cstr_s str = fiobj_obj2cstr(sym);
-    hash_value = fiobj_sym_hash(str.value, str.len);
   } else {
-    return 0;
+    fio_cstr_s str = fiobj_obj2cstr(sym);
+    if (!str.data) {
+      return 0;
+    }
+    hash_value = fiobj_sym_hash(str.value, str.len);
   }
   fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hash_value);
   if (!coup)

@@ -107,6 +107,29 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym);
 int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym);
 
 /**
+ * Deletes a key-value pair from the Hash, if it exists, freeing the
+ * associated object.
+ *
+ * This function takes a C string instead of a Symbol, which is slower if a
+ * Symbol can be cached but faster if a Symbol must be created.
+ *
+ * Returns -1 on type error or if the object never existed.
+ */
+int fiobj_hash_delete2(fiobj_s *hash, const char *str, size_t len);
+
+/**
+ * Deletes a key-value pair from the Hash, if it exists, freeing the
+ * associated object.
+ *
+ * This function takes a `uintptr_t` Hash value (see `fiobj_sym_hash`) to
+ * perform a lookup in the HashMap, which is slightly faster than the other
+ * variations.
+ *
+ * Returns -1 on type error or if the object never existed.
+ */
+int fiobj_hash_delete3(fiobj_s *hash, uintptr_t key_hash);
+
+/**
  * Returns a temporary handle to the object associated with the Symbol, NULL
  * if none.
  */
@@ -126,7 +149,8 @@ fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len);
  * Returns a temporary handle to the object associated hashed key value.
  *
  * This function takes a `uintptr_t` Hash value (see `fiobj_sym_hash`) to
- * perform a lookup in the HashMap.
+ * perform a lookup in the HashMap, which is slightly faster than the other
+ * variations.
  *
  * Returns NULL if no object is asociated with this hashed key value.
  */

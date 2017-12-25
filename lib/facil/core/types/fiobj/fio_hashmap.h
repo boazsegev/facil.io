@@ -330,12 +330,17 @@ inline FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
   if (start_at >= hash->count)
     return hash->count;
   size_t i = 0;
+#ifdef __cplusplus
+  const fio_hash_ls_s *end = &hash->items;
+#else
+  const register fio_hash_ls_s *end = &hash->items;
+#endif
   fio_hash_ls_s *pos = hash->items.next;
-  while (pos != &hash->items && start_at > i) {
+  while (pos != end && start_at > i) {
     pos = pos->next;
     ++i;
   }
-  while (pos != &hash->items) {
+  while (pos != end) {
     ++i;
     if (task(pos->key, (void *)pos->obj, arg) == -1)
       return i;

@@ -81,7 +81,8 @@ const char *fiobj_type_name(const fiobj_s *obj) { return OBJVTBL(obj)->name; }
  * We don't need this feature just yet, so I'm not working on it.
  */
 fiobj_s *fiobj_dup(fiobj_s *obj) {
-  OBJREF_ADD(obj);
+  if (obj)
+    OBJREF_ADD(obj);
   return obj;
 }
 
