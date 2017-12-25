@@ -11,22 +11,22 @@ Feel free to copy, use and enjoy according to the license provided.
 #define LIB_SOCK_VERSION_PATCH 0
 
 /** \file
-The `sock.h` is a non-blocking socket helper library, using a user level buffer,
-non-blocking sockets and some helper functions.
-
-This library is great when using it alongside `evio.h`.
-
-The library is designed to be thread safe, but not fork safe - mostly since
-sockets, except listenning sockets, shouldn't be shared among processes.
-
-Socket connections accepted or created using this library will use the
-TCP_NODELAY option by default.
-
-Non TCP/IP stream sockets and file descriptors (i.e., unix sockets) can be
-safely used with this library. However, file descriptors that can't use the
-`read` or `write` system calls MUST set correct Read / Write hooks or they will
-fail.
-*/
+ * The `sock.h` is a non-blocking socket helper library, using a user level
+ * buffer, non-blocking sockets and some helper functions.
+ *
+ * This library is great when using it alongside `evio.h`.
+ *
+ * The library is designed to be thread safe, but not fork safe - mostly since
+ * sockets, except listenning sockets, shouldn't be shared among processes.
+ *
+ * Socket connections accepted or created using this library will use the
+ * TCP_NODELAY option by default.
+ *
+ * Non TCP/IP stream sockets and file descriptors (i.e., unix sockets) can be
+ * safely used with this library. However, file descriptors that can't use the
+ * `read` or `write` system calls MUST set correct Read / Write hooks or they
+ * will fail.
+ */
 
 #include <stdint.h>
 #include <stdio.h>
@@ -58,11 +58,11 @@ Process wide and helper sock_API.
 */
 
 /**
-Sets a socket to non blocking state.
-
-This function is called automatically for the new socket, when using
-`sock_accept` or `sock_connect`.
-*/
+ * Sets a socket to non blocking state.
+ *
+ * This function is called automatically for the new socket, when using
+ * `sock_accept` or `sock_connect`.
+ */
 int sock_set_non_block(int fd);
 
 /**
@@ -79,91 +79,91 @@ The main sock_API.
 */
 
 /**
-Opens a listening non-blocking socket. Return's the socket's UUID.
-
-Returns -1 on error. Returns a valid socket (non-random) UUID.
-
-UUIDs with values less then -1 are valid values, depending on the system's
-byte-ordering.
-
-Socket UUIDs are predictable and shouldn't be used outside the local system.
-They protect against connection mixups on concurrent systems (i.e. when saving
-client data for "broadcasting" or when an old client task is preparing a
-response in the background while a disconnection and a new connection occur on
-the same `fd`).
-*/
+ * Opens a listening non-blocking socket. Return's the socket's UUID.
+ *
+ * Returns -1 on error. Returns a valid socket (non-random) UUID.
+ *
+ * UUIDs with values less then -1 are valid values, depending on the system's
+ * byte-ordering.
+ *
+ * Socket UUIDs are predictable and shouldn't be used outside the local system.
+ * They protect against connection mixups on concurrent systems (i.e. when
+ * saving client data for "broadcasting" or when an old client task is preparing
+ * a response in the background while a disconnection and a new connection occur
+ * on the same `fd`).
+ */
 intptr_t sock_listen(const char *address, const char *port);
 
 /**
-`sock_accept` accepts a new socket connection from the listening socket
-`server_fd`, allowing the use of `sock_` functions with this new file
-descriptor.
+* `sock_accept` accepts a new socket connection from the listening socket
+* `server_fd`, allowing the use of `sock_` functions with this new file
+* descriptor.
 
-When using `libreact`, remember to call `int reactor_add(intptr_t uuid);` to
-listen for events.
-
-Returns -1 on error. Returns a valid socket (non-random) UUID.
-
-Socket UUIDs are predictable and shouldn't be used outside the local system.
-They protect against connection mixups on concurrent systems (i.e. when saving
-client data for "broadcasting" or when an old client task is preparing a
-response in the background while a disconnection and a new connection occur on
-the same `fd`).
+* When using `libreact`, remember to call `int reactor_add(intptr_t uuid);` to
+* listen for events.
+*
+* Returns -1 on error. Returns a valid socket (non-random) UUID.
+*
+* Socket UUIDs are predictable and shouldn't be used outside the local system.
+* They protect against connection mixups on concurrent systems (i.e. when saving
+* client data for "broadcasting" or when an old client task is preparing a
+* response in the background while a disconnection and a new connection occur on
+* the same `fd`).
 */
 intptr_t sock_accept(intptr_t srv_uuid);
 
 /**
-`sock_connect` is similar to `sock_accept` but should be used to initiate a
-client connection to the address requested.
-
-Returns -1 on error. Returns a valid socket (non-random) UUID.
-
-Socket UUIDs are predictable and shouldn't be used outside the local system.
-They protect against connection mixups on concurrent systems (i.e. when saving
-client data for "broadcasting" or when an old client task is preparing a
-response in the background while a disconnection and a new connection occur on
-the same `fd`).
-
-When using `evio`, remember to call `int evio_add(sock_fd2uuid(uuid),
-(void*)uuid);` to listen for events.
-
-NOTICE:
-
-This function is non-blocking, meaning that the connection probably wasn't
-established by the time the function returns (this prevents the function from
-hanging while waiting for a network timeout).
-
-Use select, poll, `evio` or other solutions to review the connection state
-before attempting to write to the socket.
-*/
+ * `sock_connect` is similar to `sock_accept` but should be used to initiate a
+ * client connection to the address requested.
+ *
+ * Returns -1 on error. Returns a valid socket (non-random) UUID.
+ *
+ * Socket UUIDs are predictable and shouldn't be used outside the local system.
+ * They protect against connection mixups on concurrent systems (i.e. when
+ * saving client data for "broadcasting" or when an old client task is preparing
+ * a response in the background while a disconnection and a new connection occur
+ * on the same `fd`).
+ *
+ * When using `evio`, remember to call `int evio_add(sock_fd2uuid(uuid),
+ * (void*)uuid);` to listen for events.
+ *
+ * NOTICE:
+ *
+ * This function is non-blocking, meaning that the connection probably wasn't
+ * established by the time the function returns (this prevents the function from
+ * hanging while waiting for a network timeout).
+ *
+ * Use select, poll, `evio` or other solutions to review the connection state
+ * before attempting to write to the socket.
+ */
 intptr_t sock_connect(char *address, char *port);
 
 /**
-`sock_open` takes an existing file descriptor `fd` and initializes it's status
-as open and available for `sock_API` calls, returning a valid UUID.
+* `sock_open` takes an existing file descriptor `fd` and initializes it's status
+* as open and available for `sock_API` calls, returning a valid UUID.
+*
+* This will reinitialize the data (user buffer etc') for the file descriptor
+* provided, calling the `sock_on_close` callback if the `fd` was previously
+* marked as used.
 
-This will reinitialize the data (user buffer etc') for the file descriptor
-provided, calling the `sock_on_close` callback if the `fd` was previously
-marked as used.
-
-When using `evio`, remember to call `int evio_add(sock_fd2uuid(uuid),
-(void*)uuid);` to listen for events.
-
-Returns -1 on error. Returns a valid socket (non-random) UUID.
-
-Socket UUIDs are predictable and shouldn't be used outside the local system.
-They protect against connection mixups on concurrent systems (i.e. when saving
-client data for "broadcasting" or when an old client task is preparing a
-response in the background while a disconnection and a new connection occur on
-the same `fd`).
+* When using `evio`, remember to call `int evio_add(sock_fd2uuid(uuid),
+* (void*)uuid);` to listen for events.
+*
+* Returns -1 on error. Returns a valid socket (non-random) UUID.
+*
+* Socket UUIDs are predictable and shouldn't be used outside the local system.
+* They protect against connection mixups on concurrent systems (i.e. when saving
+* client data for "broadcasting" or when an old client task is preparing a
+* response in the background while a disconnection and a new connection occur on
+* the same `fd`).
 */
 intptr_t sock_open(int fd);
 
 /**
-Returns 1 if the uuid refers to a valid and open, socket.
-
-Returns 0 if not.
-*/
+ * Returns 1 if the uuid refers to a valid and open, socket.
+ *
+ * Returns 0 if not.
+ */
 int sock_isvalid(intptr_t uuid);
 
 /** The return type for the `sock_peer_addr` function. */
@@ -171,7 +171,8 @@ typedef struct {
   uint32_t addrlen;
   struct sockaddr *addr;
 } sock_peer_addr_s;
-/** Returns the information available about the socket's peer address.
+/**
+ * Returns the information available about the socket's peer address.
  *
  * If no information is available, the struct will be initialized with zero
  * (`addr == NULL`).
@@ -181,66 +182,67 @@ typedef struct {
 sock_peer_addr_s sock_peer_addr(intptr_t uuid);
 
 /**
-`sock_fd2uuid` takes an existing file decriptor `fd` and returns it's active
-`uuid`.
+* `sock_fd2uuid` takes an existing file decriptor `fd` and returns it's active
+* `uuid`.
 
-If the file descriptor is marked as closed (wasn't opened / registered with
-`libsock`) the function returns -1;
-
-If the file descriptor was closed remotely (or not using `libsock`), a false
-positive will be possible. This is not an issue, since the use of an invalid fd
-will result in the registry being updated and the fd being closed.
-
-Returns -1 on error. Returns a valid socket (non-random) UUID.
+* If the file descriptor is marked as closed (wasn't opened / registered with
+* `libsock`) the function returns -1;
+*
+* If the file descriptor was closed remotely (or not using `libsock`), a false
+* positive will be possible. This is not an issue, since the use of an invalid
+fd
+* will result in the registry being updated and the fd being closed.
+*
+* Returns -1 on error. Returns a valid socket (non-random) UUID.
 */
 intptr_t sock_fd2uuid(int fd);
 
 /**
-OVERRIDABLE:
-
-"Touches" a socket connection.
-
-This is a place holder for an optional callback for systems that apply timeout
-reviews.
-
-`sock` supplies a default implementation (that does nothing) is cases where a
-callback wasn't defined.
-*/
+ * OVERRIDABLE:
+ *
+ * "Touches" a socket connection.
+ *
+ * This is a place holder for an optional callback for systems that apply
+ * timeout reviews.
+ *
+ * `sock` supplies a default implementation (that does nothing) is cases where a
+ * callback wasn't defined.
+ */
 void sock_touch(intptr_t uuid);
 
 /**
-OVERRIDABLE:.
-
-This is a place holder for an optional callback for when the socket is closed
-locally.
-
-Notice that calling `sock_close()` won't close the socket before all the data in
-the buffer is sent. This function will be called only one the connection is
-actually closed.
-
-`sock` supplies a default implementation (that does nothing) is cases where a
-callback wasn't defined.
-*/
+ * OVERRIDABLE:.
+ *
+ * This is a place holder for an optional callback for when the socket is closed
+ * locally.
+ *
+ * Notice that calling `sock_close()` won't close the socket before all the data
+ * in the buffer is sent. This function will be called only one the connection
+ * is actually closed.
+ *
+ * `sock` supplies a default implementation (that does nothing) is cases where a
+ * callback wasn't defined.
+ */
 void sock_on_close(intptr_t uuid);
 
 /**
-`sock_read` attempts to read up to count bytes from the socket into the buffer
-starting at buf.
-
-`sock_read`'s return values are wildly different then the native return values
-and they aim at making far simpler sense.
-
-`sock_read` returns the number of bytes read (0 is a valid return value which
-simply means that no bytes were read from the buffer).
-
-On a connection error (NOT EAGAIN or EWOULDBLOCK), signal interrupt, or when the
-connection was closed, `sock_read` returns -1.
-
-The value 0 is the valid value indicating no data was read.
-
-Data might be available in the kernel's buffer while it is not available to be
-read using `sock_read` (i.e., when using a transport layer, such as TLS).
-*/
+ * `sock_read` attempts to read up to count bytes from the socket into the
+ * buffer starting at buf.
+ *
+ * `sock_read`'s return values are wildly different then the native return
+ * values and they aim at making far simpler sense.
+ *
+ * `sock_read` returns the number of bytes read (0 is a valid return value which
+ * simply means that no bytes were read from the buffer).
+ *
+ * On a connection error (NOT EAGAIN or EWOULDBLOCK), signal interrupt, or when
+ * the connection was closed, `sock_read` returns -1.
+ *
+ * The value 0 is the valid value indicating no data was read.
+ *
+ * Data might be available in the kernel's buffer while it is not available to
+ * be read using `sock_read` (i.e., when using a transport layer, such as TLS).
+ */
 ssize_t sock_read(intptr_t uuid, void *buf, size_t count);
 
 typedef struct {
@@ -253,13 +255,22 @@ typedef struct {
     const intptr_t data_fd;
   };
   union {
-    /** This deallocation callback will be called when the packet is finished
+    /**
+     * This deallocation callback will be called when the packet is finished
      * with the buffer if the `move` flags is set.
+     *
      * If no deallocation callback is `free` will be used.
+     *
+     * Note: `sock` library functions MUST NEVER be called by a callback, or a
+     * deadlock might occur.
      */
     void (*dealloc)(void *buffer);
-    /** This is an alternative deallocation callback accessor (same memory space
+    /**
+     * This is an alternative deallocation callback accessor (same memory space
      * as `dealloc`) for conveniently setting the file `close` callback.
+     *
+     * Note: `sock` library functions MUST NEVER be called by a callback, or a
+     * deadlock might occur.
      */
     void (*close)(intptr_t fd);
   };
@@ -294,29 +305,30 @@ void SOCK_DEALLOC_NOOP(void *arg);
 #define SOCK_CLOSE_NOOP ((void (*)(intptr_t))SOCK_DEALLOC_NOOP)
 
 /**
-`sock_write2_fn` is the actual function behind the macro `sock_write2`.
-*/
+ * `sock_write2_fn` is the actual function behind the macro `sock_write2`.
+ */
 ssize_t sock_write2_fn(sock_write_info_s options);
 
 /**
-`sock_write2` is similar to `sock_write`, except special properties can be set.
-
-On error, -1 will be returned. Otherwise returns 0. All the bytes are
-transferred to the socket's user level buffer.
-*/
+ * `sock_write2` is similar to `sock_write`, except special properties can be
+ * set.
+ *
+ * On error, -1 will be returned. Otherwise returns 0. All the bytes are
+ * transferred to the socket's user level buffer.
+ */
 #define sock_write2(...) sock_write2_fn((sock_write_info_s){__VA_ARGS__})
 /**
-`sock_write` copies `legnth` data from the buffer and schedules the data to be
-sent over the socket.
-
-The data isn't necessarily written to the socket and multiple calls to
-`sock_flush` might be required before all the data is actually sent.
-
-On error, -1 will be returned. Otherwise returns 0. All the bytes are
-transferred to the socket's user level buffer.
-
-Returns the same values as `sock_write2`.
-*/
+ * `sock_write` copies `legnth` data from the buffer and schedules the data to
+ * be sent over the socket.
+ *
+ * The data isn't necessarily written to the socket and multiple calls to
+ * `sock_flush` might be required before all the data is actually sent.
+ *
+ * On error, -1 will be returned. Otherwise returns 0. All the bytes are
+ * transferred to the socket's user level buffer.
+ *
+ * Returns the same values as `sock_write2`.
+ */
 // ssize_t sock_write(uintptr_t uuid, void *buffer, size_t legnth);
 UNUSED_FUNC static inline ssize_t
 sock_write(const intptr_t uuid, const void *buffer, const size_t length) {
@@ -330,20 +342,20 @@ sock_write(const intptr_t uuid, const void *buffer, const size_t length) {
 }
 
 /**
-Sends data from a file as if it were a single atomic packet (sends up to
-length bytes or until EOF is reached).
-
-Once the file was sent, the `source_fd` will be closed using `close`.
-
-The file will be buffered to the socket chunk by chunk, so that memory
-consumption is capped. The system's `sendfile` might be used if conditions
-permit.
-
-`offset` dictates the starting point for te data to be sent and length sets
-the maximum amount of data to be sent.
-
-Returns -1 and closes the file on error. Returns 0 on success.
-*/
+ * Sends data from a file as if it were a single atomic packet (sends up to
+ * length bytes or until EOF is reached).
+ *
+ * Once the file was sent, the `source_fd` will be closed using `close`.
+ *
+ * The file will be buffered to the socket chunk by chunk, so that memory
+ * consumption is capped. The system's `sendfile` might be used if conditions
+ * permit.
+ *
+ * `offset` dictates the starting point for te data to be sent and length sets
+ * the maximum amount of data to be sent.
+ *
+ * Returns -1 and closes the file on error. Returns 0 on success.
+ */
 UNUSED_FUNC static inline ssize_t
 sock_sendfile(intptr_t uuid, intptr_t source_fd, off_t offset, size_t length) {
   return sock_write2(.uuid = uuid, .buffer = (void *)(source_fd),
@@ -351,17 +363,17 @@ sock_sendfile(intptr_t uuid, intptr_t source_fd, off_t offset, size_t length) {
 }
 
 /**
-`sock_close` marks the connection for disconnection once all the data was sent.
-The actual disconnection will be managed by the `sock_flush` function.
-
-`sock_flash` will automatically be called.
-*/
+ * `sock_close` marks the connection for disconnection once all the data was
+ * sent. The actual disconnection will be managed by the `sock_flush` function.
+ *
+ * `sock_flash` will automatically be called.
+ */
 void sock_close(intptr_t uuid);
 /**
-`sock_force_close` closes the connection immediately, without adhering to any
-protocol restrictions and without sending any remaining data in the connection
-buffer.
-*/
+ * `sock_force_close` closes the connection immediately, without adhering to any
+ * protocol restrictions and without sending any remaining data in the
+ * connection buffer.
+ */
 void sock_force_close(intptr_t uuid);
 
 /* *****************************************************************************
@@ -369,28 +381,28 @@ Direct user level buffer API.
 */
 
 /**
-`sock_flush` writes the data in the internal buffer to the underlying file
-descriptor and closes the underlying fd once it's marked for closure (and all
-the data was sent).
-
-Return value: 0 will be returned on success and -1 will be returned on an error
-or when the connection is closed.
-*/
+ * `sock_flush` writes the data in the internal buffer to the underlying file
+ * descriptor and closes the underlying fd once it's marked for closure (and all
+ * the data was sent).
+ *
+ * Return value: 0 will be returned on success and -1 will be returned on an
+ * error or when the connection is closed.
+ */
 ssize_t sock_flush(intptr_t uuid);
 /**
-`sock_flush_strong` performs the same action as `sock_flush` but returns only
-after all the data was sent. This is a "busy" wait, polling isn't performed.
-*/
+ * `sock_flush_strong` performs the same action as `sock_flush` but returns only
+ * after all the data was sent. This is a "busy" wait, polling isn't performed.
+ */
 void sock_flush_strong(intptr_t uuid);
 /**
-Calls `sock_flush` for each file descriptor that's buffer isn't empty.
-*/
+ * Calls `sock_flush` for each file descriptor that's buffer isn't empty.
+ */
 void sock_flush_all(void);
 
 /**
-Returns TRUE (non 0) if there is data waiting to be written to the socket in the
-user-land buffer.
-*/
+ * Returns TRUE (non 0) if there is data waiting to be written to the socket in
+ * the user-land buffer.
+ */
 int sock_has_pending(intptr_t uuid);
 
 /* *****************************************************************************
@@ -398,29 +410,54 @@ TLC - Transport Layer Callback.
 */
 
 /**
-The following struct is used for setting a the read/write hooks that will
-replace the default system calls to `recv` and `write`. */
+ * The following struct is used for setting a the read/write hooks that will
+ * replace the default system calls to `recv` and `write`.
+ *
+ * Note: `sock` library functions MUST NEVER be called by any callback, or a
+ * deadlock might occur.
+ */
 typedef struct sock_rw_hook_s {
-  /** Implement reading from a file descriptor. Should behave like the file
-   * system `read` call, including the setup or errno to EAGAIN / EWOULDBLOCK.*/
+  /**
+   * Implement reading from a file descriptor. Should behave like the file
+   * system `read` call, including the setup or errno to EAGAIN / EWOULDBLOCK.
+   *
+   * Note: `sock` library functions MUST NEVER be called by any callback, or a
+   * deadlock might occur.
+   */
   ssize_t (*read)(intptr_t uuid, void *udata, void *buf, size_t count);
-  /** Implement writing to a file descriptor. Should behave like the file system
-   * `write` call.*/
+  /**
+   * Implement writing to a file descriptor. Should behave like the file system
+   * `write` call.
+   *
+   * Note: `sock` library functions MUST NEVER be called by any callback, or a
+   * deadlock might occur.
+   */
   ssize_t (*write)(intptr_t uuid, void *udata, const void *buf, size_t count);
-  /** When implemented, this function will be called to flush any data remaining
+  /**
+   * When implemented, this function will be called to flush any data remaining
    * in the internal buffer.
+   *
    * The function should return the number of bytes remaining in the internal
    * buffer (0 is a valid response) on -1 (on error).
+   *
    * It is important thet the `flush` function write to the underlying fd until
-   * the
-   * writing operation returns -1 with EWOULDBLOCK or all the data was written.
+   * the writing operation returns -1 with EWOULDBLOCK or all the data was
+   * written.
+   *
+   * Note: `sock` library functions MUST NEVER be called by any callback, or a
+   * deadlock might occur.
    */
   ssize_t (*flush)(intptr_t uuid, void *udata);
-  /** The `on_close` callback is called when the socket is closed, allowing for
+  /**
+   * The `on_close` callback is called when the socket is closed, allowing for
    * dynamic sock_rw_hook_s memory management.
    *
    * The `on_close` callback should manage is own thread safety mechanism, if
-   * required. */
+   * required.
+   *
+   * Note: `sock` library functions MUST NEVER be called by any callback, or a
+   * deadlock might occur.
+   * */
   void (*on_close)(intptr_t uuid, struct sock_rw_hook_s *rw_hook, void *udata);
 } sock_rw_hook_s;
 

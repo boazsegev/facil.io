@@ -111,8 +111,12 @@ static struct {
 
 void SOCK_DEALLOC_NOOP(void *arg) { (void)arg; }
 
+static void sock_packet_free_cb(void *task, void *buffer) {
+  ((void (*)(void *))task)(buffer);
+}
+
 static inline void sock_packet_free(packet_s *packet) {
-  packet->free_func(packet->buffer);
+  defer(sock_packet_free_cb, (void *)packet->free_func, packet->buffer);
   if (packet >= packet_pool.mem &&
       packet <= packet_pool.mem + (BUFFER_PACKET_POOL - 1)) {
     spn_lock(&packet_pool.lock);
