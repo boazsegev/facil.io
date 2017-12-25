@@ -110,11 +110,35 @@ inline static int consume_response_line(struct http1_fio_parser_args_s *args,
 inline static int consume_request_line(struct http1_fio_parser_args_s *args,
                                        uint8_t *start, uint8_t *end) {
   uint8_t *tmp = start;
+  uint8_t *host_start = NULL;
+  uint8_t *host_end = NULL;
   if (!seek2ch(&tmp, end, ' '))
     return -1;
   if (args->on_method(args->parser, (char *)start, tmp - start))
     return -1;
   tmp = start = tmp + 1;
+  if (((uint32_t *)start)[0] == (((uint32_t *)"http")[0])) {
+    if (((uint32_t *)(start + 3))[0] == (((uint32_t *)"p://")[0])) {
+      /* Request URI is in long form... emulate Host header instead. */
+      tmp = host_end = host_start = (start += 7);
+    } else if (((uint64_t *)start)[0] == (((uint64_t *)"https://")[0])) {
+      /* Secure request is in long form... emulate Host header instead. */
+      tmp = host_end = host_start = (start += 8);
+    } else
+      goto review_path;
+    if (!seek2ch(&tmp, end, ' '))
+      return -1;
+    *tmp = ' ';
+    if (!seek2ch(&host_end, tmp, '/')) {
+      if (args->on_path(args->parser, "/", 1))
+        return -1;
+      goto start_version;
+    }
+    host_end[0] = '/';
+    start = host_end;
+  }
+review_path:
+  tmp = start;
   if (seek2ch(&tmp, end, '?')) {
     if (args->on_path(args->parser, (char *)start, tmp - start))
       return -1;
@@ -131,10 +155,14 @@ inline static int consume_request_line(struct http1_fio_parser_args_s *args,
     if (args->on_path(args->parser, (char *)start, tmp - start))
       return -1;
   }
+start_version:
   start = tmp + 1;
   if (start + 5 >= end) /* require "HTTP/" */
     return -1;
   if (args->on_http_version(args->parser, (char *)start, end - start))
+    return -1;
+  if (host_start && args->on_header(args->parser, "host", 4, (char *)host_start,
+                                    host_end - host_start))
     return -1;
   return 0;
 }

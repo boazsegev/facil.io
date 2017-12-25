@@ -30,10 +30,9 @@ struct http_vtable_s {
   void (*const http_finish)(http_s *h);
   /** Push for data. */
   int (*const http_push_data)(http_s *h, void *data, uintptr_t length,
-                              char *mime_type, uintptr_t type_length);
+                              fiobj_s *mime_type);
   /** Push for files. */
-  int (*const http_push_file)(http_s *h, char *filename, size_t name_length,
-                              char *mime_type, uintptr_t type_length);
+  int (*const http_push_file)(http_s *h, fiobj_s *filename, fiobj_s *mime_type);
   /** Defer request handling for later... careful (memory concern apply). */
   int (*const http_defer)(http_s *h, void (*task)(http_s *h),
                           void (*fallback)(http_s *h));
@@ -52,7 +51,9 @@ Constants that shouldn't be accessed by the users (`fiobj_dup` required).
 */
 
 extern fiobj_s *HTTP_HVALUE_CLOSE;
+extern fiobj_s *HTTP_HVALUE_GZIP;
 extern fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
+extern fiobj_s *HTTP_HVALUE_MAX_AGE;
 extern fiobj_s *HTTP_HVALUE_WEBSOCKET;
 
 /* *****************************************************************************
@@ -109,19 +110,20 @@ static inline __attribute__((unused)) int fiobj_send(intptr_t uuid,
 }
 
 /** sets an outgoing header only if it doesn't exist */
-static inline void set_header_if_missing(http_s *r, fiobj_s *name,
+static inline void set_header_if_missing(fiobj_s *hash, fiobj_s *name,
                                          fiobj_s *value) {
-  fiobj_s *old = fiobj_hash_replace(r->private_data.out_headers, name, value);
+  fiobj_s *old = fiobj_hash_replace(hash, name, value);
   if (!old)
     return;
-  fiobj_hash_replace(r->private_data.out_headers, name, old);
+  fiobj_hash_replace(hash, name, old);
   fiobj_free(value);
 }
 
 /** sets an outgoing header, collecting duplicates in an Array (i.e. cookies)
  */
-static inline void set_header_add(http_s *r, fiobj_s *name, fiobj_s *value) {
-  fiobj_s *old = fiobj_hash_replace(r->private_data.out_headers, name, value);
+static inline void set_header_add(fiobj_s *hash, fiobj_s *name,
+                                  fiobj_s *value) {
+  fiobj_s *old = fiobj_hash_replace(hash, name, value);
   if (!old)
     return;
   if (!value) {
@@ -134,7 +136,7 @@ static inline void set_header_add(http_s *r, fiobj_s *name, fiobj_s *value) {
     old = tmp;
   }
   fiobj_ary_push(old, value);
-  fiobj_hash_replace(r->private_data.out_headers, name, old);
+  fiobj_hash_replace(hash, name, old);
 }
 
 #endif /* H_HTTP_INTERNAL_H */

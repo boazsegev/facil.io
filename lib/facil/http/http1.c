@@ -69,12 +69,13 @@ static int write_header(fiobj_s *o, void *w_) {
   if (o->type == FIOBJ_T_COUPLET) {
     w->name = fiobj_couplet2key(o);
     o = fiobj_couplet2obj(o);
-  } else if (o->type == FIOBJ_T_ARRAY) {
+    if (!o)
+      return 0;
+  }
+  if (o->type == FIOBJ_T_ARRAY) {
     fiobj_each1(o, 0, write_header, w);
     return 0;
   }
-  if (!o)
-    return 0;
   fio_cstr_s name = fiobj_obj2cstr(w->name);
   fio_cstr_s str = fiobj_obj2cstr(o);
   if (!str.data)
@@ -178,23 +179,19 @@ static void htt1p_finish(http_s *h) {
 }
 /** Push for data - unsupported. */
 static int http1_push_data(http_s *h, void *data, uintptr_t length,
-                           char *mime_type, uintptr_t type_length) {
+                           fiobj_s *mime_type) {
   return -1;
   (void)h;
   (void)data;
   (void)length;
   (void)mime_type;
-  (void)type_length;
 }
 /** Push for files - unsupported. */
-static int http1_push_file(http_s *h, char *filename, size_t name_length,
-                           char *mime_type, uintptr_t type_length) {
+static int http1_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type) {
   return -1;
   (void)h;
   (void)filename;
-  (void)name_length;
   (void)mime_type;
-  (void)type_length;
 }
 
 /** used by defer. */
@@ -330,21 +327,7 @@ static int on_header(http1_parser_s *parser, char *name, size_t name_len,
     obj = fiobj_str_new(data, data_len);
     h1_reset(parser2http(parser));
   }
-  fiobj_s *old =
-      fiobj_hash_replace(parser2http(parser)->request.headers, sym, obj);
-  if (!old) {
-    fiobj_free(sym);
-    return 0;
-  }
-  if (old->type == FIOBJ_T_ARRAY) {
-    fiobj_ary_push(old, obj);
-    fiobj_hash_replace(parser2http(parser)->request.headers, sym, old);
-  } else {
-    fiobj_s *a = fiobj_ary_new();
-    fiobj_ary_push(a, old);
-    fiobj_ary_push(a, obj);
-    fiobj_hash_replace(parser2http(parser)->request.headers, sym, a);
-  }
+  set_header_add(parser2http(parser)->request.headers, sym, obj);
   fiobj_free(sym);
   return 0;
 }

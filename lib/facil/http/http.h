@@ -31,6 +31,8 @@ Compile Time Settings
 #define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
 #endif
 
+/* defined later on, for the `http_listen` function*/
+typedef struct http_settings_s http_settings_s;
 /* *****************************************************************************
 The Request / Response type and functions
 ***************************************************************************** */
@@ -176,11 +178,17 @@ int http_sendfile(http_s *h, int fd, uintptr_t length, uintptr_t offset);
 /**
  * Sends the response headers and the specified file (the response's body).
  *
+ * The `filename` variable MUST be a dynamic String (allocated with
+ * `fiobj_str_new`), since it might be extended to include the `.gz` extension
+ * for automatic `gzip` detection.
+ *
+ * Remember to call `fiobj_free` unless the file name will be used again.
+ *
  * Returns -1 on error and 0 on success.
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile2(http_s *h, char *filename, size_t name_length);
+int http_sendfile2(http_s *h, fiobj_s *filename);
 
 /**
  * Sends an HTTP error response.
@@ -189,10 +197,11 @@ int http_sendfile2(http_s *h, char *filename, size_t name_length);
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  *
- * The `uuid` argument is optional and will be used only if the `http_s`
- * argument is set to NULL.
+ * The `uuid` and `settings` arguments are only required if the `http_s` handle
+ * is NULL.
  */
-int http_send_error(http_s *h, intptr_t uuid, size_t error);
+int http_send_error(http_s *r, size_t error, intptr_t uuid,
+                    http_settings_s *settings);
 
 /**
  * Sends the response headers and starts streaming. Use `http_defer` to continue
@@ -214,8 +223,7 @@ void http_finish(http_s *h);
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_data(http_s *h, void *data, uintptr_t length, char *mime_type,
-                   uintptr_t type_length);
+int http_push_data(http_s *h, void *data, uintptr_t length, fiobj_s *mime_type);
 
 /**
  * Pushes a file response when supported (HTTP/2 only).
@@ -225,8 +233,7 @@ int http_push_data(http_s *h, void *data, uintptr_t length, char *mime_type,
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_file(http_s *h, char *filename, size_t name_length,
-                   char *mime_type, uintptr_t type_length);
+int http_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type);
 
 /**
  * Defers the request / response handling for later and INVALIDATES the current
@@ -254,9 +261,11 @@ Listening to HTTP connections
 ***************************************************************************** */
 
 /** The HTTP settings. */
-typedef struct http_settings_s {
-  /** REQUIRED: the callback to be performed when requests come in. */
-  void (*on_request)(http_s *hequest);
+struct http_settings_s {
+  /** REQUIRED: the callback to be performed when HTTP requests come in. */
+  void (*on_request)(http_s *request);
+  /** REQUIRED: the callback to be performed when Upgrade requests come in. */
+  void (*on_upgrade)(http_s *request, char *requested_protocol, size_t len);
   /**
    * A public folder for file transfers - allows to circumvent any application
    * layer server and simply serve files.
@@ -287,7 +296,7 @@ typedef struct http_settings_s {
   uint8_t log;
   /** An HTTP/1.x connection timeout. Defaults to ~5 seconds.*/
   uint8_t timeout;
-} http_settings_s;
+};
 
 /**
  * Listens to HTTP connections at the specified `port`.
@@ -316,11 +325,55 @@ TODO: HTTP client mode
 HTTP Helper functions that might be used globally
 ***************************************************************************** */
 
+/* *****************************************************************************
+HTTP Status Strings and Mime-Type helpers
+***************************************************************************** */
+
+/** Returns a human readable string related to the HTTP status number. */
+fio_cstr_s http_status2str(uintptr_t status);
+
+/** Registers a Mime-Type to be associated with the file extension. */
+void http_mimetype_register(char *file_ext, size_t file_ext_len,
+                            fiobj_s *mime_type_str);
+
+/**
+ * Finds the mime-type associated with the file extension.
+ *  Remember to call `fiobj_free`.
+ */
+fiobj_s *http_mimetype_find(char *file_ext, size_t file_ext_len);
+
+/** Clears the Mime-Type registry (it will be emoty afterthis call). */
+void http_mimetype_clear(void);
+
+/* *****************************************************************************
+Commonly used headers (fiobj Symbol objects)
+***************************************************************************** */
+
+extern fiobj_s *HTTP_HEADER_CACHE_CONTROL;
+extern fiobj_s *HTTP_HEADER_CONNECTION;
+extern fiobj_s *HTTP_HEADER_CONTENT_ENCODING;
+extern fiobj_s *HTTP_HEADER_CONTENT_LENGTH;
+extern fiobj_s *HTTP_HEADER_CONTENT_TYPE;
+extern fiobj_s *HTTP_HEADER_COOKIE;
+extern fiobj_s *HTTP_HEADER_DATE;
+extern fiobj_s *HTTP_HEADER_ETAG;
+extern fiobj_s *HTTP_HEADER_LAST_MODIFIED;
+extern fiobj_s *HTTP_HEADER_SET_COOKIE;
+extern fiobj_s *HTTP_HEADER_UPGRADE;
+
+/* *****************************************************************************
+HTTP General Helper functions that might be used globally
+***************************************************************************** */
+
 /**
  * Returns a String object representing the unparsed HTTP request (HTTP version
  * is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
  */
 fiobj_s *http_req2str(http_s *h);
+
+/* *****************************************************************************
+HTTP Time related helper functions that might be used globally
+***************************************************************************** */
 
 /**
 A faster (yet less localized) alternative to `gmtime_r`.
@@ -329,7 +382,7 @@ See the libc `gmtime_r` documentation for details.
 
 Falls back to `gmtime_r` for dates before epoch.
 */
-struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf);
+struct tm *http_gmtime(time_t timer, struct tm *tmbuf);
 
 /**
 Writes an HTTP date string to the `target` buffer.
@@ -353,6 +406,10 @@ size_t http_date2rfc2822(char *target, struct tm *tmbuf);
  */
 size_t http_time2str(char *target, const time_t t);
 
+/* *****************************************************************************
+HTTP URL decoding helper functions that might be used globally
+***************************************************************************** */
+
 /** Decodes a URL encoded string, no buffer overflow protection. */
 ssize_t http_decode_url_unsafe(char *dest, const char *url_data);
 
@@ -365,20 +422,6 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data);
 /** Decodes the "path" part of an HTTP request, no buffer overflow protection.
  */
 ssize_t http_decode_path(char *dest, const char *url_data, size_t length);
-
-/* *****************************************************************************
-Commonly used headers (fiobj Symbol objects)
-***************************************************************************** */
-
-extern fiobj_s *HTTP_HEADER_UPGRADE;
-extern fiobj_s *HTTP_HEADER_CONNECTION;
-extern fiobj_s *HTTP_HEADER_DATE;
-extern fiobj_s *HTTP_HEADER_ETAG;
-extern fiobj_s *HTTP_HEADER_CONTENT_LENGTH;
-extern fiobj_s *HTTP_HEADER_CONTENT_TYPE;
-extern fiobj_s *HTTP_HEADER_LAST_MODIFIED;
-extern fiobj_s *HTTP_HEADER_SET_COOKIE;
-extern fiobj_s *HTTP_HEADER_COOKIE;
 
 /* support C++ */
 #ifdef __cplusplus

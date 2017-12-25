@@ -7,10 +7,14 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "spnlock.inc"
 
+#include "fio_base64.h"
 #include "http1.h"
 #include "http_internal.h"
 
 #include <signal.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 /* *****************************************************************************
 Small Helpers
@@ -23,21 +27,41 @@ static inline void add_content_length(http_s *r, uintptr_t length) {
     static fiobj_s *cl;
     if (!cl)
       cl = HTTP_HEADER_CONTENT_LENGTH;
-    set_header_if_missing(r, cl, fiobj_num_new(length));
+    fiobj_hash_set(r->private_data.out_headers, cl, fiobj_num_new(length));
   }
 }
 
-static inline void add_date(http_s *r, time_t t) {
+static fiobj_s *current_date;
+static time_t last_date_added;
+static spn_lock_i date_lock;
+static inline void add_date(http_s *r) {
   static uint64_t date_hash = 0;
   if (!date_hash)
     date_hash = fiobj_sym_hash("date", 4);
+  static uint64_t mod_hash = 0;
+  if (!mod_hash)
+    mod_hash = fiobj_sym_hash("last-modified", 13);
+
+  if (facil_last_tick().tv_sec >= last_date_added + 60) {
+    spn_lock(&date_lock);
+    if (facil_last_tick().tv_sec >= last_date_added + 60) {
+      fiobj_free(current_date);
+      current_date = fiobj_str_buf(32);
+      last_date_added = facil_last_tick().tv_sec;
+      fiobj_str_resize(
+          current_date,
+          http_time2str(fiobj_obj2cstr(current_date).data, last_date_added));
+    }
+    spn_unlock(&date_lock);
+  }
+
   if (!fiobj_hash_get3(r->private_data.out_headers, date_hash)) {
-    static fiobj_s *d;
-    if (!d)
-      d = HTTP_HEADER_DATE;
-    fiobj_s *s = fiobj_str_buf(32);
-    fiobj_str_resize(s, http_time2str(fiobj_obj2cstr(s).data, t));
-    set_header_if_missing(r, d, s);
+    fiobj_hash_set(r->private_data.out_headers, HTTP_HEADER_DATE,
+                   fiobj_dup(current_date));
+  }
+  if (!fiobj_hash_get3(r->private_data.out_headers, mod_hash)) {
+    fiobj_hash_set(r->private_data.out_headers, HTTP_HEADER_LAST_MODIFIED,
+                   fiobj_dup(current_date));
   }
 }
 
@@ -54,12 +78,13 @@ static int write_header(fiobj_s *o, void *w_) {
   if (o->type == FIOBJ_T_COUPLET) {
     w->name = fiobj_couplet2key(o);
     o = fiobj_couplet2obj(o);
-  } else if (o->type == FIOBJ_T_ARRAY) {
+    if (!o)
+      return 0;
+  }
+  if (o->type == FIOBJ_T_ARRAY) {
     fiobj_each1(o, 0, write_header, w);
     return 0;
   }
-  if (!o)
-    return 0;
   fio_cstr_s name = fiobj_obj2cstr(w->name);
   fio_cstr_s str = fiobj_obj2cstr(o);
   if (!str.data)
@@ -89,7 +114,7 @@ static const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
 int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value) {
   if (!r || !name || !r->private_data.out_headers)
     return -1;
-  set_header_add(r, name, value);
+  set_header_add(r->private_data.out_headers, name, value);
   return 0;
 }
 /**
@@ -123,7 +148,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
     return -1;
 
   /* write name and value while auto-correcting encoding issues */
-  size_t capa = cookie.name_len + cookie.value_len + 32;
+  size_t capa = cookie.name_len + cookie.value_len + 128;
   size_t len = 0;
   fiobj_s *c = fiobj_str_buf(capa);
   fio_cstr_s t = fiobj_obj2cstr(c);
@@ -250,7 +275,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   static fiobj_s *sym = NULL;
   if (!sym)
     sym = HTTP_HEADER_SET_COOKIE;
-  set_header_add(h, sym, c);
+  set_header_add(h->private_data.out_headers, sym, c);
   return 0;
 }
 
@@ -265,7 +290,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
  */
 int http_send_body(http_s *r, void *data, uintptr_t length) {
   add_content_length(r, length);
-  add_date(r, facil_last_tick().tv_sec);
+  add_date(r);
   return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_send_body(r, data, length);
 }
@@ -278,7 +303,7 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
   add_content_length(r, length);
-  add_date(r, facil_last_tick().tv_sec);
+  add_date(r);
   return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_sendfile(r, fd, length, offset);
 }
@@ -289,7 +314,86 @@ int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile2(http_s *r, char *filename, size_t name_length);
+int http_sendfile2(http_s *r, fiobj_s *filename) {
+  struct stat file_data = {.st_size = 0};
+  static uint64_t accept_enc_hash = 0;
+  if (!accept_enc_hash)
+    accept_enc_hash = fiobj_sym_hash("accept-encoding", 15);
+  static uint64_t range_hash = 0;
+  if (!range_hash)
+    range_hash = fiobj_sym_hash("range", 5);
+
+  fio_cstr_s s = fiobj_obj2cstr(filename);
+  {
+    fiobj_s *tmp = fiobj_hash_get3(r->headers, accept_enc_hash);
+    if (!tmp)
+      goto no_gzip_support;
+    fio_cstr_s ac_str = fiobj_obj2cstr(tmp);
+    if (!strstr(ac_str.data, "gzip"))
+      goto no_gzip_support;
+    if (s.data[s.len - 2] != '.' || s.data[s.len - 2] != 'g' ||
+        s.data[s.len - 1] != 'z') {
+      fiobj_str_write(filename, ".gz", 3);
+      fio_cstr_s s = fiobj_obj2cstr(filename);
+      if (!stat(s.data, &file_data)) {
+        http_set_header(r, HTTP_HEADER_CONTENT_ENCODING,
+                        fiobj_dup(HTTP_HVALUE_GZIP));
+        goto found_file;
+      }
+      fiobj_str_resize(filename, s.len - 3);
+    }
+  }
+no_gzip_support:
+  if (stat(s.data, &file_data))
+    return -1;
+found_file:
+  /* set last-modified */
+  {
+    fiobj_s *tmp = fiobj_str_buf(32);
+    fiobj_str_resize(
+        tmp, http_time2str(fiobj_obj2cstr(tmp).data, file_data.st_mtime));
+    http_set_header(r, HTTP_HEADER_LAST_MODIFIED, tmp);
+  }
+  /* set cache-control */
+  http_set_header(r, HTTP_HEADER_CACHE_CONTROL, fiobj_dup(HTTP_HVALUE_MAX_AGE));
+  /* set & test etag */
+  {
+    /* set */
+    uint64_t etag = (uint64_t)file_data.st_size;
+    etag ^= (uint64_t)file_data.st_mtime;
+    etag = fiobj_sym_hash(&etag, sizeof(uint64_t));
+    fiobj_s *tmp = fiobj_str_buf(32);
+    fiobj_str_resize(tmp, fio_base64_encode(fiobj_obj2cstr(tmp).data,
+                                            (void *)&etag, sizeof(uint64_t)));
+    http_set_header(r, HTTP_HEADER_ETAG, tmp);
+    /* test */
+    static uint64_t none_match_hash = 0;
+    if (!none_match_hash)
+      none_match_hash = fiobj_sym_hash("if-none-match", 13);
+    fiobj_s *tmp2 = fiobj_hash_get3(r->headers, none_match_hash);
+    if (tmp2 && fiobj_iseq(tmp2, tmp)) {
+      r->status = 304;
+      http_finish(r);
+      return 0;
+    } else {
+      static uint64_t ifrange_hash = 0;
+      if (!ifrange_hash)
+        ifrange_hash = fiobj_sym_hash("if-range", 8);
+      tmp2 = fiobj_hash_get3(r->headers, ifrange_hash);
+      if (tmp2 && fiobj_iseq(tmp2, tmp)) {
+        fiobj_hash_delete3(r->headers, range_hash);
+      }
+    }
+  }
+  /* handle range requests */
+  {
+    fiobj_s *tmp = fiobj_hash_get3(r->headers, range_hash);
+    if (tmp) {
+    }
+  }
+  // int fd = open()
+  return -1;
+}
 
 /**
  * Sends an HTTP error response.
@@ -301,7 +405,33 @@ int http_sendfile2(http_s *r, char *filename, size_t name_length);
  * The `uuid` argument is optional and will be used only if the `http_s`
  * argument is set to NULL.
  */
-int http_send_error(http_s *r, intptr_t uuid, size_t error);
+int http_send_error(http_s *r, size_t error, intptr_t uuid,
+                    http_settings_s *settings) {
+  protocol_s *pr = NULL;
+  if (!r) {
+    if (!uuid || !settings)
+      return -1;
+    pr = http1_new(uuid, settings, NULL, 0);
+    HTTP_ASSERT(pr, "Couldn't allocate protocol object for error report.")
+    facil_attach(uuid, pr);
+    r = malloc(sizeof(*r));
+    HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
+    http_s_init(r, (http_protocol_s *)pr);
+    r->status = error;
+    fiobj_s *fname =
+        fiobj_str_new(settings->public_folder, settings->public_folder_length);
+    fiobj_str_write2(fname, "/%lu.html", error);
+    if (http_sendfile2(r, fname)) {
+      fiobj_str_resize(fname, 0);
+      fio_cstr_s t = http_status2str(error);
+      fiobj_str_write(fname, t.data, t.len);
+      fiobj_send(((http_protocol_s *)r->private_data.owner)->uuid, fname);
+      return 0;
+    }
+    fiobj_free(fname);
+  }
+  return 0;
+}
 
 /**
  * Sends the response headers and starts streaming. Use `http_defer` to
@@ -326,10 +456,10 @@ void http_finish(http_s *r) {
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
-                   uintptr_t type_length) {
+int http_push_data(http_s *r, void *data, uintptr_t length,
+                   fiobj_s *mime_type) {
   return ((http_protocol_s *)r->private_data.owner)
-      ->vtable->http_push_data(r, data, length, mime_type, type_length);
+      ->vtable->http_push_data(r, data, length, mime_type);
 }
 /**
  * Pushes a file response when supported (HTTP/2 only).
@@ -339,11 +469,9 @@ int http_push_data(http_s *r, void *data, uintptr_t length, char *mime_type,
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_file(http_s *r, char *filename, size_t name_length,
-                   char *mime_type, uintptr_t type_length) {
-  return ((http_protocol_s *)r->private_data.owner)
-      ->vtable->http_push_file(r, filename, name_length, mime_type,
-                               type_length);
+int http_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type) {
+  return ((http_protocol_s *)h->private_data.owner)
+      ->vtable->http_push_file(h, filename, mime_type);
 }
 
 /**
@@ -509,7 +637,7 @@ See the libc `gmtime_r` documentation for details.
 
 Falls back to `gmtime_r` for dates before epoch.
 */
-struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
+struct tm *http_gmtime(time_t timer, struct tm *tmbuf) {
   // static char* DAYS[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri",
   // "Sat"}; static char * Months = {  "Jan", "Feb", "Mar", "Apr", "May",
   // "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -517,8 +645,8 @@ struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
       31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, // nonleap year
       31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31  // leap year
   };
-  if (*timer < 0)
-    return gmtime_r(timer, tmbuf);
+  if (timer < 0)
+    return gmtime_r(&timer, tmbuf);
   ssize_t a, b;
   tmbuf->tm_gmtoff = 0;
   tmbuf->tm_zone = "UTC";
@@ -527,7 +655,7 @@ struct tm *http_gmtime(const time_t *timer, struct tm *tmbuf) {
   tmbuf->tm_mon = 0;
   // for seconds up to weekdays, we build up, as small values clean up
   // larger values.
-  a = ((ssize_t)*timer);
+  a = (ssize_t)timer;
   b = a / 60;
   tmbuf->tm_sec = a - (b * 60);
   a = b / 60;
@@ -754,13 +882,13 @@ size_t http_time2str(char *target, const time_t t) {
   if ((t | 7) < last_tick) {
     /* this is a custom time, not "now", pass through */
     struct tm tm;
-    http_gmtime(&t, &tm);
+    http_gmtime(t, &tm);
     return http_date2str(target, &tm);
   }
   if (last_tick > cached_tick) {
     struct tm tm;
     cached_tick = last_tick | 1;
-    http_gmtime(&last_tick, &tm);
+    http_gmtime(last_tick, &tm);
     chached_len = http_date2str(cached_httpdate, &tm);
   }
   memcpy(target, cached_httpdate, chached_len);
@@ -875,9 +1003,40 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data) {
 }
 
 /* *****************************************************************************
-Lookup Tables
-*****************************************************************************
-*/
+Lookup Tables / functions
+***************************************************************************** */
+#include "fio_hashmap.h"
+
+static fio_hash_s mime_types;
+
+/** Registers a Mime-Type to be associated with the file extension. */
+void http_mimetype_register(char *file_ext, size_t file_ext_len,
+                            fiobj_s *mime_type_str) {
+  if (!mime_types.map.data)
+    fio_hash_new(&mime_types);
+  uintptr_t hash = fiobj_sym_hash(file_ext, file_ext_len);
+  fiobj_s *old = fio_hash_insert(&mime_types, hash, mime_type_str);
+  fiobj_free(old);
+}
+
+/**
+ * Finds the mime-type associated with the file extension.
+ *  Remember to call `fiobj_free`.
+ */
+fiobj_s *http_mimetype_find(char *file_ext, size_t file_ext_len) {
+  if (!mime_types.map.data)
+    return NULL;
+  uintptr_t hash = fiobj_sym_hash(file_ext, file_ext_len);
+  return fiobj_dup(fio_hash_find(&mime_types, hash));
+}
+
+/** Clears the Mime-Type registry (it will be emoty afterthis call). */
+void http_mimetype_clear(void) {
+  FIO_HASH_FOR_LOOP(&mime_types, obj) { fiobj_free((void *)obj->obj); }
+  fio_hash_free(&mime_types);
+  last_date_added = 0;
+  fiobj_free(current_date);
+}
 
 /**
 * Create with Ruby using:
@@ -917,3 +1076,82 @@ static char invalid_cookie_value_char[256] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+fio_cstr_s http_status2str(uintptr_t status) {
+#define HTTP1_SET_STATUS_STR(status, str)                                      \
+  [status] = (fio_cstr_s) {                                                    \
+    .buffer = (str "(" #status ")"), .length = sizeof(str "(" #status ")"),    \
+  }
+  static fio_cstr_s status2str[] = {
+      HTTP1_SET_STATUS_STR(100, "Continue"),
+      HTTP1_SET_STATUS_STR(101, "Switching Protocols"),
+      HTTP1_SET_STATUS_STR(102, "Processing"),
+      HTTP1_SET_STATUS_STR(200, "OK"),
+      HTTP1_SET_STATUS_STR(201, "Created"),
+      HTTP1_SET_STATUS_STR(202, "Accepted"),
+      HTTP1_SET_STATUS_STR(203, "Non-Authoritative Information"),
+      HTTP1_SET_STATUS_STR(204, "No Content"),
+      HTTP1_SET_STATUS_STR(205, "Reset Content"),
+      HTTP1_SET_STATUS_STR(206, "Partial Content"),
+      HTTP1_SET_STATUS_STR(207, "Multi-Status"),
+      HTTP1_SET_STATUS_STR(208, "Already Reported"),
+      HTTP1_SET_STATUS_STR(226, "IM Used"),
+      HTTP1_SET_STATUS_STR(300, "Multiple Choices"),
+      HTTP1_SET_STATUS_STR(301, "Moved Permanently"),
+      HTTP1_SET_STATUS_STR(302, "Found"),
+      HTTP1_SET_STATUS_STR(303, "See Other"),
+      HTTP1_SET_STATUS_STR(304, "Not Modified"),
+      HTTP1_SET_STATUS_STR(305, "Use Proxy"),
+      HTTP1_SET_STATUS_STR(306, "(Unused) "),
+      HTTP1_SET_STATUS_STR(307, "Temporary Redirect"),
+      HTTP1_SET_STATUS_STR(308, "Permanent Redirect"),
+      HTTP1_SET_STATUS_STR(400, "Bad Request"),
+      HTTP1_SET_STATUS_STR(403, "Forbidden"),
+      HTTP1_SET_STATUS_STR(404, "Not Found"),
+      HTTP1_SET_STATUS_STR(401, "Unauthorized"),
+      HTTP1_SET_STATUS_STR(402, "Payment Required"),
+      HTTP1_SET_STATUS_STR(405, "Method Not Allowed"),
+      HTTP1_SET_STATUS_STR(406, "Not Acceptable"),
+      HTTP1_SET_STATUS_STR(407, "Proxy Authentication Required"),
+      HTTP1_SET_STATUS_STR(408, "Request Timeout"),
+      HTTP1_SET_STATUS_STR(409, "Conflict"),
+      HTTP1_SET_STATUS_STR(410, "Gone"),
+      HTTP1_SET_STATUS_STR(411, "Length Required"),
+      HTTP1_SET_STATUS_STR(412, "Precondition Failed"),
+      HTTP1_SET_STATUS_STR(413, "Payload Too Large"),
+      HTTP1_SET_STATUS_STR(414, "URI Too Long"),
+      HTTP1_SET_STATUS_STR(415, "Unsupported Media Type"),
+      HTTP1_SET_STATUS_STR(416, "Range Not Satisfiable"),
+      HTTP1_SET_STATUS_STR(417, "Expectation Failed"),
+      HTTP1_SET_STATUS_STR(421, "Misdirected Request"),
+      HTTP1_SET_STATUS_STR(422, "Unprocessable Entity"),
+      HTTP1_SET_STATUS_STR(423, "Locked"),
+      HTTP1_SET_STATUS_STR(424, "Failed Dependency"),
+      HTTP1_SET_STATUS_STR(425, "Unassigned"),
+      HTTP1_SET_STATUS_STR(426, "Upgrade Required"),
+      HTTP1_SET_STATUS_STR(427, "Unassigned"),
+      HTTP1_SET_STATUS_STR(428, "Precondition Required"),
+      HTTP1_SET_STATUS_STR(429, "Too Many Requests"),
+      HTTP1_SET_STATUS_STR(430, "Unassigned"),
+      HTTP1_SET_STATUS_STR(431, "Request Header Fields Too Large"),
+      HTTP1_SET_STATUS_STR(500, "Internal Server Error"),
+      HTTP1_SET_STATUS_STR(501, "Not Implemented"),
+      HTTP1_SET_STATUS_STR(502, "Bad Gateway"),
+      HTTP1_SET_STATUS_STR(503, "Service Unavailable"),
+      HTTP1_SET_STATUS_STR(504, "Gateway Timeout"),
+      HTTP1_SET_STATUS_STR(505, "HTTP Version Not Supported"),
+      HTTP1_SET_STATUS_STR(506, "Variant Also Negotiates"),
+      HTTP1_SET_STATUS_STR(507, "Insufficient Storage"),
+      HTTP1_SET_STATUS_STR(508, "Loop Detected"),
+      HTTP1_SET_STATUS_STR(509, "Unassigned"),
+      HTTP1_SET_STATUS_STR(510, "Not Extended"),
+      HTTP1_SET_STATUS_STR(511, "Network Authentication Required"),
+  };
+#undef HTTP1_SET_STATUS_STR
+  fio_cstr_s ret;
+  if (status >= 200 && status < sizeof(status2str) / sizeof(status2str[0]))
+    ret = status2str[status];
+  if (!ret.buffer)
+    ret = status2str[500];
+  return ret;
+}

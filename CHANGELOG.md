@@ -8,6 +8,8 @@
 
 - The updates to the HTTP API might result in decreased performance during the HTTP request reading due to the need to allocate resources and possibly copy some of the data into dynamic storage... For example, header Hash Tables replaced header Arrays, improving lookup times and increasing creation time. 
 
+- The HTTP parser now breaks down long URI schemes into a short URI + `host` header (which might become an array if it's included anyway).
+
 **Changes!**: (`facil`):
 
 - Slight API changes:
@@ -32,6 +34,12 @@
 - the socket library's packet buffer API was deprecated and all `sock_write2(...)` operations take ownership of the memory/file (enforce `move`).
 
 - The internal engine was updated, removing pre-allocated packet buffers altogether and enabling packet header allocation using `malloc`, which introduces a significant changes to the internal behavior, possibly effecting embedded systems.
+
+**Changes!**: (`defer`):
+
+- defer thread pools and forks now accept a callback that will be called for idling threads, allowing the idle logic to be changed.
+
+    By default, defer will fallback to `nanosleep`.
 
 **Refactoring**: (`fiobj`) moved the underlying Dynamic Array and Hash Table logic into single file libraries that support `void *` pointers, allowing the same logic to be used for any C object collection (as well as the facil.io objects).
 
