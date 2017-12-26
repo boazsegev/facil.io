@@ -279,13 +279,6 @@ struct http_settings_s {
   /** (optional) the callback to be performed when the HTTP service closes. */
   void (*on_finish)(struct http_settings_s *settings);
   /**
-   * Allows an implementation for the transport layer (i.e. TLS) without
-   * effecting the HTTP protocol.
-   */
-  void (*set_rw_hooks)(intptr_t fduuid, void *rw_udata);
-  /** Opaque user data for the optional `set_rw_hooks`. */
-  void *rw_udata;
-  /**
    * The maximum size of an HTTP request's body (when posting data).
    *
    * Defaults to ~ 50Mb.

@@ -63,13 +63,13 @@ void *redis_create_context(struct redis_context_args);
  * This function is used as a function pointer for the `facil_connect` and
  * calls (the `on_connect` callback).
  */
-protocol_s *redis_create_client_protocol(intptr_t uuid, void *settings);
+void redis_start_client_protocol(intptr_t uuid, void *settings);
 
 /**
  * This function is used as a function pointer for the `facil_listen` calls (the
  * `on_open` callbacks).
  */
-protocol_s *redis_create_server_protocol(intptr_t uuid, void *settings);
+void redis_start_server_protocol(intptr_t uuid, void *settings);
 
 /**
  * This function is used as a function pointer for both `facil_connect` and

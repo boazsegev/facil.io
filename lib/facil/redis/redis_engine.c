@@ -130,7 +130,7 @@ Connections
 static inline int connect_sub(redis_engine_s *r) {
   spn_add(&r->ref, 1);
   return (r->sub = facil_connect(.address = r->address, .port = r->port,
-                                 .on_connect = redis_create_client_protocol,
+                                 .on_connect = redis_start_client_protocol,
                                  .udata = r->sub_ctx,
                                  .on_fail = redis_protocol_cleanup));
 }
@@ -138,7 +138,7 @@ static inline int connect_sub(redis_engine_s *r) {
 static inline int connect_pub(redis_engine_s *r) {
   spn_add(&r->ref, 1);
   return (r->pub = facil_connect(.address = r->address, .port = r->port,
-                                 .on_connect = redis_create_client_protocol,
+                                 .on_connect = redis_start_client_protocol,
                                  .udata = r->pub_ctx,
                                  .on_fail = redis_protocol_cleanup));
 }

@@ -235,7 +235,7 @@ static void redis_on_open(intptr_t uuid, protocol_s *pr, void *d) {
  * This function is used as a function pointer for the `facil_connect` and
  * calls (the `on_connect` callback).
  */
-protocol_s *redis_create_client_protocol(intptr_t uuid, void *settings) {
+void redis_start_client_protocol(intptr_t uuid, void *settings) {
   redis_protocol_s *r = malloc(sizeof(*r));
   *r = (redis_protocol_s){
       .protocol =
@@ -247,10 +247,16 @@ protocol_s *redis_create_client_protocol(intptr_t uuid, void *settings) {
           },
       .settings = settings,
   };
+  if (!r) {
+    sock_close(uuid);
+    return;
+  }
   facil_set_timeout(uuid, r->settings->ping);
   if (r->settings->on_open)
     facil_defer(.task = redis_on_open, .uuid = uuid);
-  return &r->protocol;
+  facil_attach(uuid, &r->protocol);
+
+  return;
   (void)uuid;
 }
 
@@ -258,7 +264,7 @@ protocol_s *redis_create_client_protocol(intptr_t uuid, void *settings) {
  * This function is used as a function pointer for the `facil_listen` calls (the
  * `on_open` callbacks).
  */
-protocol_s *redis_create_server_protocol(intptr_t uuid, void *settings) {
+void redis_start_server_protocol(intptr_t uuid, void *settings) {
   redis_protocol_s *r = malloc(sizeof(*r));
   *r = (redis_protocol_s){
       .protocol =
@@ -270,9 +276,13 @@ protocol_s *redis_create_server_protocol(intptr_t uuid, void *settings) {
           },
       .settings = settings,
   };
+  if (!r) {
+    sock_close(uuid);
+    return;
+  }
   facil_set_timeout(uuid, r->settings->ping);
   if (r->settings->on_open)
     facil_defer(.task = redis_on_open, .uuid = uuid);
-  return &r->protocol;
+  facil_attach(uuid, &r->protocol);
   (void)uuid;
 }

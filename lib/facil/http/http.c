@@ -564,7 +564,7 @@ Listening to HTTP connections
 *****************************************************************************
 */
 
-static protocol_s *http_on_open(intptr_t uuid, void *set) {
+static void http_on_open(intptr_t uuid, void *set) {
   static __thread ssize_t capa = 0;
   if (!capa)
     capa = sock_max_capacity();
@@ -572,9 +572,13 @@ static protocol_s *http_on_open(intptr_t uuid, void *set) {
   if (sock_uuid2fd(uuid) + HTTP_BUSY_UNLESS_HAS_FDS >= capa) {
     fprintf(stderr, "WARNING: HTTP server at capacity\n");
     http_send_error2(uuid, 503, set);
-    return NULL;
+    sock_close(uuid);
+    return;
   }
-  return http1_new(uuid, set, NULL, 0);
+  protocol_s *pr = http1_new(uuid, set, NULL, 0);
+  if (!pr)
+    sock_close(uuid);
+  facil_attach(uuid, pr);
 }
 
 static void http_on_finish(intptr_t uuid, void *set) {
@@ -635,8 +639,6 @@ int http_listen(const char *port, const char *binding,
   }
 
   return facil_listen(.port = port, .address = binding,
-                      .set_rw_hooks = arg_settings.set_rw_hooks,
-                      .rw_udata = arg_settings.rw_udata,
                       .on_finish = http_on_finish, .on_open = http_on_open,
                       .udata = settings);
 }
