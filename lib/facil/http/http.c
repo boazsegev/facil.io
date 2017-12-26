@@ -745,10 +745,7 @@ void http_write_log(http_s *h) {
     fiobj_str_join(l, current_date);
     fiobj_free(date);
   }
-  buff.len += http_time2str(buff.data + buff.len, end.tv_sec);
-  buff.data[buff.len++] = ']';
-  buff.data[buff.len++] = ' ';
-  buff.data[buff.len++] = '"';
+  fiobj_str_write(l, "] \"", 3);
   fiobj_str_join(l, h->method);
   fiobj_str_write(l, " ", 1);
   fiobj_str_join(l, h->path);
