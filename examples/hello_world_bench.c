@@ -3,7 +3,6 @@
 #endif
 #include "fio_cli_helper.h"
 #include "http.h"
-#include "sock.h"
 
 #include <stdio.h>
 
