@@ -1111,7 +1111,7 @@ static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
   spn_unlock(&uuid_data(uuid).lock);
   if (old_protocol)
     defer(deferred_on_close, (void *)uuid, old_protocol);
-  if (evio_isactive())
+  else if (evio_isactive())
     evio_add(sock_uuid2fd(uuid), (void *)uuid);
   return 0;
 }
