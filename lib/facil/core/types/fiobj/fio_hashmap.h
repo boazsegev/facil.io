@@ -113,95 +113,25 @@ fio_hash_each(fio_hash_s *hash, const size_t start_at,
 Hash Table Internal Data Structures
 ***************************************************************************** */
 
-typedef struct fio_hash_ls_s {
-  struct fio_hash_ls_s *prev;
-  struct fio_hash_ls_s *next;
-  uintptr_t key;
-  const void *obj;
-} fio_hash_ls_s;
-
-typedef struct {
+typedef struct fio_hash_data_s {
   uintptr_t key; /* another copy for memory cache locality */
-  fio_hash_ls_s *container;
-} fio_hash_map_info_s;
+  struct fio_hash_data_s *obj;
+} fio_hash_data_s;
 
-typedef struct {
-  uintptr_t capa;
-  fio_hash_map_info_s *data;
-} fio_hash_map_s;
-
+/* the information in tjhe Hash Map structure should be considered READ ONLY. */
 struct fio_hash_s {
   uintptr_t count;
+  uintptr_t capa;
+  uintptr_t pos;
   uintptr_t mask;
-  fio_hash_ls_s items;
-  fio_hash_map_s map;
+  fio_hash_data_s *ordered;
+  fio_hash_data_s *map;
 };
 
 #undef FIO_HASH_FOR_LOOP
 #define FIO_HASH_FOR_LOOP(hash, container)                                     \
-  for (fio_hash_ls_s *container = (hash)->items.next;                          \
-       container != &((hash)->items); container = container->next)
-
-/* *****************************************************************************
-Container Linked List - (object + hash key).
-***************************************************************************** */
-
-#define FIO_HASH_LS_INIT(name)                                                 \
-  { .next = &(name), .prev = &(name) }
-
-/** Adds an object to the list's head. */
-FIO_FUNC inline void fio_hash_ls_push(fio_hash_ls_s *pos, const void *obj,
-                                      uintptr_t key) {
-  /* prepare item */
-  fio_hash_ls_s *item = (fio_hash_ls_s *)malloc(sizeof(*item));
-  if (!item)
-    perror("ERROR: hash list couldn't allocate memory"), exit(errno);
-  *item =
-      (fio_hash_ls_s){.prev = pos, .next = pos->next, .obj = obj, .key = key};
-  /* inject item */
-  pos->next->prev = item;
-  pos->next = item;
-}
-
-/** Adds an object to the list's tail. */
-FIO_FUNC inline void fio_hash_ls_unshift(fio_hash_ls_s *pos, const void *obj,
-                                         uintptr_t key) {
-  pos = pos->prev;
-  fio_hash_ls_push(pos, obj, key);
-}
-
-/** Removes an object from the list's head. */
-FIO_FUNC inline void *fio_hash_ls_pop(fio_hash_ls_s *list) {
-  if (list->next == list)
-    return NULL;
-  fio_hash_ls_s *item = list->next;
-  const void *ret = item->obj;
-  list->next = item->next;
-  list->next->prev = list;
-  free(item);
-  return (void *)ret;
-}
-
-/** Removes an object from the list's tail. */
-FIO_FUNC inline void *fio_hash_ls_shift(fio_hash_ls_s *list) {
-  if (list->prev == list)
-    return NULL;
-  fio_hash_ls_s *item = list->prev;
-  const void *ret = item->obj;
-  list->prev = item->prev;
-  list->prev->next = list;
-  free(item);
-  return (void *)ret;
-}
-
-/** Removes an object from the containing node. */
-FIO_FUNC inline void *fio_hash_ls_remove(fio_hash_ls_s *node) {
-  const void *ret = node->obj;
-  node->next->prev = node->prev->next;
-  node->prev->next = node->next->prev;
-  free(node);
-  return (void *)ret;
-}
+  for (fio_hash_data_s *container = (hash)->ordered; container->key;           \
+       ++container)
 
 /* *****************************************************************************
 Hash allocation / deallocation.
@@ -210,43 +140,41 @@ Hash allocation / deallocation.
 FIO_FUNC void fio_hash_new(fio_hash_s *h) {
   *h = (fio_hash_s){
       .mask = (HASH_INITIAL_CAPACITY - 1),
-      .items = FIO_HASH_LS_INIT((h->items)),
-      .map.data = (fio_hash_map_info_s *)calloc(sizeof(*h->map.data),
-                                                HASH_INITIAL_CAPACITY),
-      .map.capa = HASH_INITIAL_CAPACITY,
+      .map = (fio_hash_data_s *)calloc(sizeof(*h->map), HASH_INITIAL_CAPACITY),
+      .ordered =
+          (fio_hash_data_s *)calloc(sizeof(*h->ordered), HASH_INITIAL_CAPACITY),
+      .capa = HASH_INITIAL_CAPACITY,
   };
-  if (!h->map.data)
+  if (!h->map || !h->ordered)
     perror("ERROR: Hash Table couldn't allocate memory"), exit(errno);
+  h->ordered[0] = (fio_hash_data_s){.key = 0, .obj = NULL};
 }
 
 FIO_FUNC void fio_hash_free(fio_hash_s *h) {
-  while (fio_hash_ls_pop(&h->items))
-    ;
-  free(h->map.data);
-  h->map.data = NULL;
-  h->map.capa = 0;
+  free(h->map);
+  free(h->ordered);
+  *h = (fio_hash_s){.map = NULL};
 }
 
 /* *****************************************************************************
 Internal HashMap Functions
 ***************************************************************************** */
 FIO_FUNC inline uintptr_t fio_hash_map_cuckoo_steps(uintptr_t step) {
-  // return ((step * (step + 1)) >> 1);
   return (step * 3);
 }
 
 /* seeks the hash's position in the map */
-FIO_FUNC fio_hash_map_info_s *fio_hash_seek(fio_hash_s *hash, uintptr_t key) {
+FIO_FUNC fio_hash_data_s *fio_hash_seek_pos_(fio_hash_s *hash, uintptr_t key) {
   /* TODO: consider implementing Robing Hood reordering during seek? */
-  fio_hash_map_info_s *pos = hash->map.data + (key & hash->mask);
+  fio_hash_data_s *pos = hash->map + (key & hash->mask);
   uintptr_t i = 0;
-  const uintptr_t limit = hash->map.capa > FIO_HASH_MAX_MAP_SEEK
+  const uintptr_t limit = hash->capa > FIO_HASH_MAX_MAP_SEEK
                               ? FIO_HASH_MAX_MAP_SEEK
-                              : (hash->map.capa >> 1);
+                              : (hash->capa >> 1);
   while (i < limit) {
     if (!pos->key || pos->key == key)
       return pos;
-    pos = hash->map.data +
+    pos = hash->map +
           (((key & hash->mask) + fio_hash_map_cuckoo_steps(i++)) & hash->mask);
   }
   return NULL;
@@ -254,45 +182,67 @@ FIO_FUNC fio_hash_map_info_s *fio_hash_seek(fio_hash_s *hash, uintptr_t key) {
 
 /* finds an object in the map */
 FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, uintptr_t key) {
-  fio_hash_map_info_s *info = fio_hash_seek(hash, key);
-  if (!info || !info->container)
+  fio_hash_data_s *info = fio_hash_seek_pos_(hash, key);
+  if (!info || !info->obj)
     return NULL;
-  return (void *)info->container->obj;
+  return (void *)info->obj->obj;
 }
 
 /* inserts an object to the map, rehashing if required, returning old object.
  * set obj to NULL to remove existing data.
  */
 FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
-  fio_hash_map_info_s *info = fio_hash_seek(hash, key);
+  /* ensure some space */
+  if (obj && hash->pos + 1 >= hash->capa)
+    fio_hash_rehash(hash);
+
+  /* find where the object belongs in the map */
+  fio_hash_data_s *info = fio_hash_seek_pos_(hash, key);
   if (!info && !obj)
     return NULL;
   while (!info) {
     fio_hash_rehash(hash);
-    info = fio_hash_seek(hash, key);
+    info = fio_hash_seek_pos_(hash, key);
   }
-  if (!info->container) {
+
+  if (!info->obj) {
     /* a fresh object */
-    if (obj == NULL)
-      return NULL; /* nothing to delete */
-    /* create container and set hash */
-    fio_hash_ls_unshift(&hash->items, obj, key);
-    *info = (fio_hash_map_info_s){.key = key, .container = hash->items.prev};
+
+    if (obj == NULL) {
+      /* nothing to delete */
+      return NULL;
+    }
+    /* add object to map */
+    *info = (fio_hash_data_s){.key = key, .obj = hash->ordered + hash->pos};
+
+    /* add object to ordered hash */
+    hash->ordered[hash->pos] =
+        (fio_hash_data_s){.key = key, .obj = (fio_hash_data_s *)obj};
+
+    /* manage counters and mark end position */
     hash->count++;
+    hash->pos++;
+    hash->ordered[hash->pos] =
+        (fio_hash_data_s){.key = 0, .obj = (fio_hash_data_s *)NULL};
     return NULL;
   }
-  /* a container object exists, this is a "replace/delete" operation */
+
+  /* an object exists, this is a "replace/delete" operation */
+  void *old = (void *)info->obj->obj;
   if (!obj) {
-    /* delete */
+    /* it was a delete operation */
     hash->count--;
-    obj = fio_hash_ls_remove(info->container);
-    /* remove cobtainer, but key is required to keep seeking intact */
-    info->container->obj = NULL;
-    return obj;
+    if (info->obj == hash->ordered + hash->pos - 1) {
+      /* we removed the last ordered element, no need to keep both holes. */
+      --hash->pos;
+      info->obj->obj = NULL;
+      info->obj = NULL;
+      hash->ordered[hash->pos] =
+          (fio_hash_data_s){.key = 0, .obj = (fio_hash_data_s *)NULL};
+      return old;
+    }
   }
-  /* replace */
-  void *old = (void *)info->container->obj;
-  info->container->obj = obj;
+  info->obj->obj = (fio_hash_data_s *)obj;
   return old;
 }
 
@@ -303,48 +253,75 @@ retry_rehashing:
   {
     /* It's better to reallocate using calloc than manually zero out memory */
     /* Maybe there's enough zeroed out pages available in the system */
-    h->map.capa = h->mask + 1;
-    free(h->map.data);
-    h->map.data =
-        (fio_hash_map_info_s *)calloc(sizeof(*h->map.data), h->map.capa);
-    if (!h->map.data)
+    h->capa = h->mask + 1;
+    free(h->map);
+    h->map = (fio_hash_data_s *)calloc(sizeof(*h->map), h->capa);
+    if (!h->map)
       perror("HashMap Allocation Failed"), exit(errno);
+    /* the ordered list doesn't care about initialized memory, so realloc */
+    /* will be faster. */
+    h->ordered =
+        (fio_hash_data_s *)realloc(h->ordered, h->capa * sizeof(*h->ordered));
+    if (!h->ordered)
+      perror("HashMap Reallocation Failed"), exit(errno);
   }
-  fio_hash_ls_s *pos = h->items.next;
-  while (pos != &h->items) {
-    /* can't use fio_hash_insert, because we're recycling containers */
-    fio_hash_map_info_s *info = fio_hash_seek(h, pos->key);
-    if (!info) {
-      goto retry_rehashing;
+  if (h->pos == h->count) {
+    /* the ordered list is fully occupied, no need to rearange. */
+    FIO_HASH_FOR_LOOP(h, i) {
+      /* can't use fio_hash_insert, because we're recycling containers */
+      fio_hash_data_s *place = fio_hash_seek_pos_(h, i->key);
+      if (!place) {
+        goto retry_rehashing;
+      }
+      *place = (fio_hash_data_s){.key = i->key, .obj = i};
     }
-    *info = (fio_hash_map_info_s){.key = pos->key, .container = pos};
-    pos = pos->next;
+  } else {
+    size_t reader = 0;
+    size_t writer = 0;
+    while (reader < h->pos) {
+      if (h->ordered[reader].obj) {
+        fio_hash_data_s *place = fio_hash_seek_pos_(h, h->ordered[reader].key);
+        if (!place) {
+          goto retry_rehashing;
+        }
+        *place = (fio_hash_data_s){.key = h->ordered[reader].key,
+                                   .obj = h->ordered + writer};
+        fio_hash_data_s old = h->ordered[reader];
+        h->ordered[reader].obj = NULL;
+        h->ordered[writer] = old;
+        ++writer;
+      }
+      ++reader;
+    }
+    h->pos = writer;
+    h->ordered[h->pos] =
+        (fio_hash_data_s){.key = 0, .obj = (fio_hash_data_s *)NULL};
   }
 }
 
 FIO_FUNC inline size_t
-fio_hash_each(fio_hash_s *hash, const size_t start_at,
+fio_hash_each(fio_hash_s *hash, size_t start_at,
               int (*task)(uintptr_t key, void *obj, void *arg), void *arg) {
   if (start_at >= hash->count)
     return hash->count;
-  size_t i = 0;
-#ifdef __cplusplus
-  const fio_hash_ls_s *end = &hash->items;
-#else
-  register const fio_hash_ls_s *end = &hash->items;
-#endif
-  fio_hash_ls_s *pos = hash->items.next;
-  while (pos != end && start_at > i) {
-    pos = pos->next;
-    ++i;
+  size_t count = 0;
+  size_t pos = 0;
+  while (count < start_at && pos < hash->pos) {
+    if (hash->ordered[pos].obj) {
+      ++count;
+    }
+    ++pos;
   }
-  while (pos != end) {
-    ++i;
-    if (task(pos->key, (void *)pos->obj, arg) == -1)
-      return i;
-    pos = pos->next;
+  while (pos < hash->pos) {
+    if (hash->ordered[pos].obj) {
+      ++count;
+      if (task(hash->ordered[pos].key, (void *)hash->ordered[pos].obj, arg) ==
+          -1)
+        return count;
+    }
+    ++pos;
   }
-  return i;
+  return count;
 }
 
 /** Returns the number of elements in the Hash. */
@@ -361,7 +338,7 @@ FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash) {
 FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash) {
   if (!hash)
     return 0;
-  return hash->map.capa;
+  return hash->capa;
 }
 
-#endif
+#endif /* H_FIO_SIMPLE_HASH_H */
