@@ -303,7 +303,7 @@ void defer_thread_signal(void) {}
 
 /* a thread's cycle. This is what a worker thread does... repeatedly. */
 static void *defer_worker_thread(void *pool_) {
-  struct thread_msg_s *data = pool_;
+  struct thread_msg_s volatile *data = pool_;
   signal(SIGPIPE, SIG_IGN);
   /* perform any available tasks */
   defer_perform();
@@ -362,7 +362,8 @@ static inline pool_pt defer_pool_initialize(unsigned int thread_count,
 pool_pt defer_pool_start(unsigned int thread_count) {
   if (thread_count == 0)
     return NULL;
-  pool_pt pool = malloc(sizeof(*pool) + (thread_count * sizeof(void *)));
+  pool_pt pool =
+      malloc(sizeof(*pool) + (thread_count * sizeof(*pool->threads)));
   if (!pool)
     return NULL;
 
