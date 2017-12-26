@@ -28,34 +28,33 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   (void)(ws);
   (void)(is_text);
 }
+/* Copy the nickname and the data to format a nicer message. */
+static void on_server_shutdown(ws_s *ws) {
+  websocket_write(ws, "Server is going away", 20, 1);
+}
 
 /* *****************************************************************************
-HTTP Handling (Upgrading to Websocket)
+HTTP Handling (+ Upgrading to Websocket)
 ***************************************************************************** */
 
-static void answer_http_request(http_request_s *request) {
-  http_response_s *response = http_response_create(request);
-  /* We'll match the dynamic logging settings with the static logging ones. */
-  if (request->settings->log_static)
-    http_response_log_start(response);
+static void on_http_request(http_s *h) {
+  http_set_header2(h,
+                   (fio_cstr_s){
+                       .name = "Server", .len = 6,
+                   },
+                   (fio_cstr_s){.value = "facil.example", .len = 13});
+  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
+  /* this both sends and frees the request / response. */
+  http_send_body(h, "This is a Websocket echo example.", 33);
+}
 
-  http_response_write_header(response, .name = "Server", .name_len = 6,
-                             .value = "facil.example", .value_len = 13);
-
-  /* the upgrade header value has a quick access pointer. */
-  if (request->upgrade) {
-    // Websocket upgrade will use our existing response (never leak responses).
-    websocket_upgrade(.request = request, .response = response,
-                      .on_message = handle_websocket_messages, .udata = NULL);
+static void on_http_upgrade(http_s *h, char *targer, size_t len) {
+  if (targer[1] != 'e' && len != 9) {
+    http_send_error(h, 400);
     return;
   }
-  /*     ****  Normal HTTP request, no Websockets ****     */
-
-  http_response_write_header(response, .name = "Content-Type", .name_len = 12,
-                             .value = "text/plain", .value_len = 10);
-  http_response_write_body(response, "This is a Websocket echo example.", 33);
-  /* this both sends and frees the response. */
-  http_response_finish(response);
+  http_upgrade2ws(.http = h, .on_message = handle_websocket_messages,
+                  .on_shutdown = on_server_shutdown, .udata = NULL);
 }
 
 #include "fio_cli_helper.h"
@@ -109,8 +108,9 @@ int main(int argc, char const *argv[]) {
     threads = workers = 0;
 
   /*     ****  actual code ****     */
-  if (http_listen(port, NULL, .on_request = answer_http_request,
-                  .log_static = print_log, .public_folder = public_folder))
+  if (http_listen(port, NULL, .on_request = on_http_request,
+                  .on_upgrade = on_http_upgrade, .log = print_log,
+                  .public_folder = public_folder))
     perror("Couldn't initiate Websocket service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 }
