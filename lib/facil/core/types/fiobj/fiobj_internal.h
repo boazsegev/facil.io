@@ -208,7 +208,7 @@ static inline fiobj_s *fiobj_alloc(size_t size) {
     return NULL;
   *head = (fiobj_head_s){.ref = 1};
   return HEAD2OBJ(head);
-};
+}
 
 /** Deallocates the fiobj_s's data structure. */
 static inline void fiobj_dealloc(fiobj_s *obj) { free(OBJ2HEAD(obj)); }

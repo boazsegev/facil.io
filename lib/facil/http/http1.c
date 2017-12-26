@@ -194,23 +194,29 @@ static int http1_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type) {
   (void)filename;
   (void)mime_type;
 }
+typedef struct http_func_s {
+  void (*task)(http_s *);
+  void (*fallback)(http_s *);
+} http_func_s;
 
 /** used by defer. */
 static void http1_defer_task(intptr_t uuid, protocol_s *p_, void *arg) {
   http_s *h = arg;
-  ((void (*)(http_s * h))(((void **)(h + 1))[0]))(h);
+  http_func_s *func = ((http_func_s *)(h + 1));
+  func->task(h);
   (void)p_;
   (void)uuid;
 }
 
 /** used by defer. */
-static void http1_defer_fallback(intptr_t uuid, protocol_s *p_, void *arg) {
+static void http1_defer_fallback(intptr_t uuid, void *arg) {
   http_s *h = arg;
-  if (((void **)(h + 1))[1])
-    ((void (*)(http_s * h))(((void **)(h + 1))[1]))(h);
+  http_func_s *func = ((http_func_s *)(h + 1));
+  h->private_data.owner = NULL;
+  if (func->fallback)
+    func->fallback(h);
   http_s_cleanup(h);
   free(h);
-  (void)p_;
   (void)uuid;
 }
 
@@ -218,28 +224,31 @@ static void http1_defer_fallback(intptr_t uuid, protocol_s *p_, void *arg) {
 static int http1_defer(http_s *h, void (*task)(http_s *h),
                        void (*fallback)(http_s *h)) {
   assert(task && h);
-  if (h == &((http1_s *)h->private_data.owner)->request) {
-    // http_s *tmp = malloc(sizeof(*tmp) + (sizeof(void *) << 1));
-    // HTTP_ASSERT(tmp, "couldn't allocate memory");
-    // *tmp =
-    //     (http_s){.cookies = h->cookies, .version =
-    //     fiobj_str_copy(h->version), .path =
-    //     fiobj_str_copy(h->path), .query =
-    //     fiobj_str_copy(h->query),.private_data = h->private_data,
-    //     .body = fiobj_dup(h->private_data.out_headers),
-    //     .params = fiobj_dup(h->params), .status = h->status, .method =
-    //     fiobj_str_copy(h->method), .received_at = received_at, .udata = udata
-    // };
-    // fiobj_dup(h->private_data.out_headers);
-    // fiobj_io_assert_dynamic(h->body);
-    // http_s_cleanup(h);
-    // h = tmp;
-    // (void**)(h + 1)[0] = (void*)task;
-    // (void**)(h + 1)[1] = (void*)fallback;
-    // facil_defer(.uuid = ((http1_s *)h->private_data.owner)->p.uuid,
-    // .task_type = FIO_PR_LOCK_TASK, .task = http1_defer_task, .arg = h,
-    // .fallback = http1_defer_fallback);
-  }
+  // if (h == &((http1_s *)h->private_data.owner)->request) {
+  //   http_s *tmp = malloc(sizeof(*tmp) + (sizeof(void *) << 1));
+  //   HTTP_ASSERT(tmp, "couldn't allocate memory");
+  //   *tmp = (http_s){.cookies = h->cookies,
+  //                   .version = fiobj_str_copy(h->version),
+  //                   .path = fiobj_str_copy(h->path),
+  //                   .query = fiobj_str_copy(h->query),
+  //                   .private_data = h->private_data,
+  //                   .body = fiobj_dup(h->private_data.out_headers),
+  //                   .params = fiobj_dup(h->params),
+  //                   .status = h->status,
+  //                   .method = fiobj_str_copy(h->method),
+  //                   .received_at = h->received_at,
+  //                   .udata = h->udata};
+  //   fiobj_dup(h->private_data.out_headers);
+  //   fiobj_io_assert_dynamic(h->body);
+  //   http_s_cleanup(h);
+  //   h = tmp;
+  //   http_func_s *tasks = (http_func_s *)(h + 1);
+  //   tasks->task = task;
+  //   tasks->fallback = fallback;
+  //   facil_defer(.uuid = ((http1_s *)h->private_data.owner)->p.uuid,
+  //               .task_type = FIO_PR_LOCK_TASK, .task = http1_defer_task,
+  //               .arg = h, .fallback = http1_defer_fallback);
+  // }
   return -1; /*  TODO: tmp unsupported */
   (void)h;
   (void)task;
@@ -320,7 +329,10 @@ static int on_header(http1_parser_s *parser, char *name, size_t name_len,
   fiobj_s *sym;
   fiobj_s *obj;
   if (!parser2http(parser)->request.headers) {
-    fprintf(stderr, "Missinh HashMap for header %s: %s\n", name, data);
+    fprintf(stderr,
+            "ERROR: (http1 parse ordering error) missing HashMap for header "
+            "%s: %s\n",
+            name, data);
     return -1;
   }
   if ((uintptr_t)parser2http(parser)->buf ==
@@ -493,75 +505,73 @@ Protocol Data
 ***************************************************************************** */
 
 static fio_cstr_s http1_status2str(uintptr_t status) {
-#define HTTP1_SET_STATUS_STR(status, str)                                      \
-  [status] = (fio_cstr_s) {                                                    \
-    .buffer = ("HTTP/1.1 " #status " " str "\r\n"),                            \
-    .length = (sizeof("HTTP/1.1 " #status " " str "\r\n") - 1)                 \
-  }
+// clang-format off
+#define HTTP1_SET_STATUS_STR(status, str) [status] = (fio_cstr_s) { .buffer = ("HTTP/1.1 " #status " " str "\r\n"), .length = (sizeof("HTTP/1.1 " #status " " str "\r\n") - 1) }
   static fio_cstr_s status2str[] = {
-      HTTP1_SET_STATUS_STR(100, "Continue"),
-      HTTP1_SET_STATUS_STR(101, "Switching Protocols"),
-      HTTP1_SET_STATUS_STR(102, "Processing"),
-      HTTP1_SET_STATUS_STR(200, "OK"),
-      HTTP1_SET_STATUS_STR(201, "Created"),
-      HTTP1_SET_STATUS_STR(202, "Accepted"),
-      HTTP1_SET_STATUS_STR(203, "Non-Authoritative Information"),
-      HTTP1_SET_STATUS_STR(204, "No Content"),
-      HTTP1_SET_STATUS_STR(205, "Reset Content"),
-      HTTP1_SET_STATUS_STR(206, "Partial Content"),
-      HTTP1_SET_STATUS_STR(207, "Multi-Status"),
-      HTTP1_SET_STATUS_STR(208, "Already Reported"),
-      HTTP1_SET_STATUS_STR(226, "IM Used"),
-      HTTP1_SET_STATUS_STR(300, "Multiple Choices"),
-      HTTP1_SET_STATUS_STR(301, "Moved Permanently"),
-      HTTP1_SET_STATUS_STR(302, "Found"),
-      HTTP1_SET_STATUS_STR(303, "See Other"),
-      HTTP1_SET_STATUS_STR(304, "Not Modified"),
-      HTTP1_SET_STATUS_STR(305, "Use Proxy"),
-      HTTP1_SET_STATUS_STR(306, "(Unused) "),
-      HTTP1_SET_STATUS_STR(307, "Temporary Redirect"),
-      HTTP1_SET_STATUS_STR(308, "Permanent Redirect"),
-      HTTP1_SET_STATUS_STR(400, "Bad Request"),
-      HTTP1_SET_STATUS_STR(403, "Forbidden"),
-      HTTP1_SET_STATUS_STR(404, "Not Found"),
-      HTTP1_SET_STATUS_STR(401, "Unauthorized"),
-      HTTP1_SET_STATUS_STR(402, "Payment Required"),
-      HTTP1_SET_STATUS_STR(405, "Method Not Allowed"),
-      HTTP1_SET_STATUS_STR(406, "Not Acceptable"),
-      HTTP1_SET_STATUS_STR(407, "Proxy Authentication Required"),
-      HTTP1_SET_STATUS_STR(408, "Request Timeout"),
-      HTTP1_SET_STATUS_STR(409, "Conflict"),
-      HTTP1_SET_STATUS_STR(410, "Gone"),
-      HTTP1_SET_STATUS_STR(411, "Length Required"),
-      HTTP1_SET_STATUS_STR(412, "Precondition Failed"),
-      HTTP1_SET_STATUS_STR(413, "Payload Too Large"),
-      HTTP1_SET_STATUS_STR(414, "URI Too Long"),
-      HTTP1_SET_STATUS_STR(415, "Unsupported Media Type"),
-      HTTP1_SET_STATUS_STR(416, "Range Not Satisfiable"),
-      HTTP1_SET_STATUS_STR(417, "Expectation Failed"),
-      HTTP1_SET_STATUS_STR(421, "Misdirected Request"),
-      HTTP1_SET_STATUS_STR(422, "Unprocessable Entity"),
-      HTTP1_SET_STATUS_STR(423, "Locked"),
-      HTTP1_SET_STATUS_STR(424, "Failed Dependency"),
-      HTTP1_SET_STATUS_STR(425, "Unassigned"),
-      HTTP1_SET_STATUS_STR(426, "Upgrade Required"),
-      HTTP1_SET_STATUS_STR(427, "Unassigned"),
-      HTTP1_SET_STATUS_STR(428, "Precondition Required"),
-      HTTP1_SET_STATUS_STR(429, "Too Many Requests"),
-      HTTP1_SET_STATUS_STR(430, "Unassigned"),
-      HTTP1_SET_STATUS_STR(431, "Request Header Fields Too Large"),
-      HTTP1_SET_STATUS_STR(500, "Internal Server Error"),
-      HTTP1_SET_STATUS_STR(501, "Not Implemented"),
-      HTTP1_SET_STATUS_STR(502, "Bad Gateway"),
-      HTTP1_SET_STATUS_STR(503, "Service Unavailable"),
-      HTTP1_SET_STATUS_STR(504, "Gateway Timeout"),
-      HTTP1_SET_STATUS_STR(505, "HTTP Version Not Supported"),
-      HTTP1_SET_STATUS_STR(506, "Variant Also Negotiates"),
-      HTTP1_SET_STATUS_STR(507, "Insufficient Storage"),
-      HTTP1_SET_STATUS_STR(508, "Loop Detected"),
-      HTTP1_SET_STATUS_STR(509, "Unassigned"),
-      HTTP1_SET_STATUS_STR(510, "Not Extended"),
-      HTTP1_SET_STATUS_STR(511, "Network Authentication Required"),
+          [99] = (fio_cstr_s) { .length = (sizeof("HTTP/1.1 " "304" " " "Not Modified" "\r\n") - 1) , .buffer = ("HTTP/1.1 " "304" " " "Not Modified" "\r\n")},
+          // clang-format on
+          HTTP1_SET_STATUS_STR(100, "Continue"),
+          HTTP1_SET_STATUS_STR(101, "Switching Protocols"),
+          HTTP1_SET_STATUS_STR(102, "Processing"),
+          HTTP1_SET_STATUS_STR(200, "OK"), HTTP1_SET_STATUS_STR(201, "Created"),
+          HTTP1_SET_STATUS_STR(202, "Accepted"),
+          HTTP1_SET_STATUS_STR(203, "Non-Authoritative Information"),
+          HTTP1_SET_STATUS_STR(204, "No Content"),
+          HTTP1_SET_STATUS_STR(205, "Reset Content"),
+          HTTP1_SET_STATUS_STR(206, "Partial Content"),
+          HTTP1_SET_STATUS_STR(207, "Multi-Status"),
+          HTTP1_SET_STATUS_STR(208, "Already Reported"),
+          HTTP1_SET_STATUS_STR(226, "IM Used"),
+          HTTP1_SET_STATUS_STR(300, "Multiple Choices"),
+          HTTP1_SET_STATUS_STR(301, "Moved Permanently"),
+          HTTP1_SET_STATUS_STR(302, "Found"),
+          HTTP1_SET_STATUS_STR(303, "See Other"),
+          HTTP1_SET_STATUS_STR(304, "Not Modified"),
+          HTTP1_SET_STATUS_STR(305, "Use Proxy"),
+          HTTP1_SET_STATUS_STR(306, "(Unused) "),
+          HTTP1_SET_STATUS_STR(307, "Temporary Redirect"),
+          HTTP1_SET_STATUS_STR(308, "Permanent Redirect"),
+          HTTP1_SET_STATUS_STR(400, "Bad Request"),
+          HTTP1_SET_STATUS_STR(403, "Forbidden"),
+          HTTP1_SET_STATUS_STR(404, "Not Found"),
+          HTTP1_SET_STATUS_STR(401, "Unauthorized"),
+          HTTP1_SET_STATUS_STR(402, "Payment Required"),
+          HTTP1_SET_STATUS_STR(405, "Method Not Allowed"),
+          HTTP1_SET_STATUS_STR(406, "Not Acceptable"),
+          HTTP1_SET_STATUS_STR(407, "Proxy Authentication Required"),
+          HTTP1_SET_STATUS_STR(408, "Request Timeout"),
+          HTTP1_SET_STATUS_STR(409, "Conflict"),
+          HTTP1_SET_STATUS_STR(410, "Gone"),
+          HTTP1_SET_STATUS_STR(411, "Length Required"),
+          HTTP1_SET_STATUS_STR(412, "Precondition Failed"),
+          HTTP1_SET_STATUS_STR(413, "Payload Too Large"),
+          HTTP1_SET_STATUS_STR(414, "URI Too Long"),
+          HTTP1_SET_STATUS_STR(415, "Unsupported Media Type"),
+          HTTP1_SET_STATUS_STR(416, "Range Not Satisfiable"),
+          HTTP1_SET_STATUS_STR(417, "Expectation Failed"),
+          HTTP1_SET_STATUS_STR(421, "Misdirected Request"),
+          HTTP1_SET_STATUS_STR(422, "Unprocessable Entity"),
+          HTTP1_SET_STATUS_STR(423, "Locked"),
+          HTTP1_SET_STATUS_STR(424, "Failed Dependency"),
+          HTTP1_SET_STATUS_STR(425, "Unassigned"),
+          HTTP1_SET_STATUS_STR(426, "Upgrade Required"),
+          HTTP1_SET_STATUS_STR(427, "Unassigned"),
+          HTTP1_SET_STATUS_STR(428, "Precondition Required"),
+          HTTP1_SET_STATUS_STR(429, "Too Many Requests"),
+          HTTP1_SET_STATUS_STR(430, "Unassigned"),
+          HTTP1_SET_STATUS_STR(431, "Request Header Fields Too Large"),
+          HTTP1_SET_STATUS_STR(500, "Internal Server Error"),
+          HTTP1_SET_STATUS_STR(501, "Not Implemented"),
+          HTTP1_SET_STATUS_STR(502, "Bad Gateway"),
+          HTTP1_SET_STATUS_STR(503, "Service Unavailable"),
+          HTTP1_SET_STATUS_STR(504, "Gateway Timeout"),
+          HTTP1_SET_STATUS_STR(505, "HTTP Version Not Supported"),
+          HTTP1_SET_STATUS_STR(506, "Variant Also Negotiates"),
+          HTTP1_SET_STATUS_STR(507, "Insufficient Storage"),
+          HTTP1_SET_STATUS_STR(508, "Loop Detected"),
+          HTTP1_SET_STATUS_STR(509, "Unassigned"),
+          HTTP1_SET_STATUS_STR(510, "Not Extended"),
+          HTTP1_SET_STATUS_STR(511, "Network Authentication Required"),
   };
 #undef HTTP1_SET_STATUS_STR
   fio_cstr_s ret;

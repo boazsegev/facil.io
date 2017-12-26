@@ -1033,6 +1033,8 @@ static void facil_cycle(void *arg, void *ignr) {
   defer(facil_cycle, arg, ignr);
   return;
 error:
+  if (defer_fork_is_active())
+    defer(facil_cycle, arg, ignr);
   (void)1;
 }
 

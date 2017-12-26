@@ -41,16 +41,16 @@ Array API
 ***************************************************************************** */
 
 /** Initializes the array and allocates memory for it's internal data. */
-inline FIO_FUNC void fio_ary_new(fio_ary_s *ary, size_t capa);
+FIO_FUNC inline void fio_ary_new(fio_ary_s *ary, size_t capa);
 
 /** Frees the array's internal data. */
-inline FIO_FUNC void fio_ary_free(fio_ary_s *ary);
+FIO_FUNC inline void fio_ary_free(fio_ary_s *ary);
 
 /** Returns the number of elements in the Array. */
-inline FIO_FUNC size_t fio_ary_count(fio_ary_s *ary);
+FIO_FUNC inline size_t fio_ary_count(fio_ary_s *ary);
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
-inline FIO_FUNC size_t fio_ary_capa(fio_ary_s *ary);
+FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary);
 
 /**
  * Returns a temporary object owned by the Array.
@@ -62,7 +62,7 @@ inline FIO_FUNC size_t fio_ary_capa(fio_ary_s *ary);
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
  */
-inline FIO_FUNC void *fio_ary_index(fio_ary_s *ary, int64_t pos);
+FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, int64_t pos);
 
 /** alias for `fiobj_ary_index` */
 #define fio_ary_entry(a, p) fiobj_ary_index((a), (p))
@@ -74,22 +74,22 @@ inline FIO_FUNC void *fio_ary_index(fio_ary_s *ary, int64_t pos);
  *
  * If an error occurs, the same data passed to the function is returned.
  */
-inline FIO_FUNC void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos);
+FIO_FUNC inline void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos);
 
-inline FIO_FUNC int fio_ary_push(fio_ary_s *ary, void *data);
+FIO_FUNC inline int fio_ary_push(fio_ary_s *ary, void *data);
 
 /** Pops an object from the end of the Array. */
-inline FIO_FUNC void *fio_ary_pop(fio_ary_s *ary);
+FIO_FUNC inline void *fio_ary_pop(fio_ary_s *ary);
 
 /**
  * Unshifts an object to the begining of the Array. Returns -1 on error.
  *
  * This could be expensive, causing `memmove`.
  */
-inline FIO_FUNC int fio_ary_unshift(fio_ary_s *ary, void *data);
+FIO_FUNC inline int fio_ary_unshift(fio_ary_s *ary, void *data);
 
 /** Shifts an object from the beginning of the Array. */
-inline FIO_FUNC void *fio_ary_shift(fio_ary_s *ary);
+FIO_FUNC inline void *fio_ary_shift(fio_ary_s *ary);
 
 /**
  * Iteration using a callback for each entry in the array.
@@ -102,7 +102,7 @@ inline FIO_FUNC void *fio_ary_shift(fio_ary_s *ary);
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-inline FIO_FUNC size_t fio_ary_each(fio_ary_s *ary, size_t start_at,
+FIO_FUNC inline size_t fio_ary_each(fio_ary_s *ary, size_t start_at,
                                     int (*task)(void *pt, void *arg),
                                     void *arg);
 /**
@@ -112,7 +112,7 @@ inline FIO_FUNC size_t fio_ary_each(fio_ary_s *ary, size_t start_at,
  * This action is O(n) where n in the length of the array.
  * It could get expensive.
  */
-inline FIO_FUNC void fio_ary_compact(fio_ary_s *ary);
+FIO_FUNC inline void fio_ary_compact(fio_ary_s *ary);
 
 /* *****************************************************************************
 Array creation API
@@ -121,13 +121,13 @@ Array creation API
 #define FIO_ARY_INIT                                                           \
   (fio_ary_s) { .arry = NULL }
 
-inline FIO_FUNC void fio_ary_new(fio_ary_s *ary, size_t capa) {
+FIO_FUNC inline void fio_ary_new(fio_ary_s *ary, size_t capa) {
   *ary = (fio_ary_s){.arry = (void **)malloc(capa * sizeof(*ary->arry)),
                      .capa = capa};
   if (!ary->arry)
     perror("ERROR: facil.io dynamic array couldn't be allocated"), exit(errno);
 }
-inline FIO_FUNC void fio_ary_free(fio_ary_s *ary) {
+FIO_FUNC inline void fio_ary_free(fio_ary_s *ary) {
   if (ary)
     free(ary->arry);
 }
@@ -137,7 +137,7 @@ Array memory management
 ***************************************************************************** */
 
 /* This funcation manages the Array's memory. */
-void FIO_FUNC fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
+FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
   /* we have enough memory, but we need to re-organize it. */
   if (needed == -1) {
     if (ary->end < ary->capa) {
@@ -189,7 +189,7 @@ void FIO_FUNC fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
   ary->start = ary->capa - len;
 }
 /** Creates a mutable empty Array object with the requested capacity. */
-inline void FIO_FUNC fiobj_ary_init(fio_ary_s *ary) {
+FIO_FUNC inline void fiobj_ary_init(fio_ary_s *ary) {
   *ary = (fio_ary_s){.arry = NULL};
 }
 
@@ -198,12 +198,12 @@ Array direct entry access API
 ***************************************************************************** */
 
 /** Returns the number of elements in the Array. */
-inline FIO_FUNC size_t fio_ary_count(fio_ary_s *ary) {
+FIO_FUNC inline size_t fio_ary_count(fio_ary_s *ary) {
   return ary->end - ary->start;
 }
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
-inline FIO_FUNC size_t fio_ary_capa(fio_ary_s *ary) { return ary->capa; }
+FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary) { return ary->capa; }
 
 /**
  * Returns a temporary object owned by the Array.
@@ -215,7 +215,7 @@ inline FIO_FUNC size_t fio_ary_capa(fio_ary_s *ary) { return ary->capa; }
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
  */
-inline FIO_FUNC void *fio_ary_index(fio_ary_s *ary, int64_t pos) {
+FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, int64_t pos) {
   if (!ary)
     return NULL;
   /* position is relative to `start`*/
@@ -242,7 +242,7 @@ inline FIO_FUNC void *fio_ary_index(fio_ary_s *ary, int64_t pos) {
  *
  * If an error occurs, the same data passed to the function is returned.
  */
-inline FIO_FUNC void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos) {
+FIO_FUNC inline void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos) {
   if (!ary) {
     return data;
   }
@@ -282,7 +282,7 @@ Array push / shift API
 /**
  * Pushes an object to the end of the Array. Returns -1 on error.
  */
-inline FIO_FUNC int fio_ary_push(fio_ary_s *ary, void *data) {
+FIO_FUNC inline int fio_ary_push(fio_ary_s *ary, void *data) {
   if (!ary) {
     /* function takes ownership of memory even if an error occurs. */
     return -1;
@@ -295,7 +295,7 @@ inline FIO_FUNC int fio_ary_push(fio_ary_s *ary, void *data) {
 }
 
 /** Pops an object from the end of the Array. */
-inline FIO_FUNC void *fio_ary_pop(fio_ary_s *ary) {
+FIO_FUNC inline void *fio_ary_pop(fio_ary_s *ary) {
   if (!ary || ary->start == ary->end)
     return NULL;
   ary->end -= 1;
@@ -307,7 +307,7 @@ inline FIO_FUNC void *fio_ary_pop(fio_ary_s *ary) {
  *
  * This could be expensive, causing `memmove`.
  */
-inline FIO_FUNC int fio_ary_unshift(fio_ary_s *ary, void *data) {
+FIO_FUNC inline int fio_ary_unshift(fio_ary_s *ary, void *data) {
   if (!ary) {
     /* function takes ownership of memory even if an error occurs. */
     return -1;
@@ -320,10 +320,14 @@ inline FIO_FUNC int fio_ary_unshift(fio_ary_s *ary, void *data) {
 }
 
 /** Shifts an object from the beginning of the Array. */
-inline FIO_FUNC void *fio_ary_shift(fio_ary_s *ary) {
+FIO_FUNC inline void *fio_ary_shift(fio_ary_s *ary) {
   if (!ary || ary->start == ary->end)
     return NULL;
-  const register uint64_t pos = ary->start;
+#ifdef __cplusplus
+  const uint64_t pos = ary->start;
+#else
+  register const uint64_t pos = ary->start;
+#endif
   ary->start += 1;
   return ary->arry[pos];
 }
@@ -339,7 +343,7 @@ inline FIO_FUNC void *fio_ary_shift(fio_ary_s *ary) {
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-inline FIO_FUNC size_t fio_ary_each(fio_ary_s *ary, size_t start_at,
+FIO_FUNC inline size_t fio_ary_each(fio_ary_s *ary, size_t start_at,
                                     int (*task)(void *data, void *arg),
                                     void *arg) {
   const uint64_t start_pos = ary->start;
@@ -360,7 +364,7 @@ Array compacting (untested)
  * This action is O(n) where n in the length of the array.
  * It could get expensive.
  */
-inline FIO_FUNC void fio_ary_compact(fio_ary_s *ary) {
+FIO_FUNC inline void fio_ary_compact(fio_ary_s *ary) {
   if (!ary || ary->start == ary->end)
     return;
   register void **pos = ary->arry + ary->start;

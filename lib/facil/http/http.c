@@ -523,7 +523,7 @@ int http_stream(http_s *r, void *data, uintptr_t length) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 void http_finish(http_s *r) {
-  return ((http_protocol_s *)r->private_data.owner)->vtable->http_finish(r);
+  ((http_protocol_s *)r->private_data.owner)->vtable->http_finish(r);
 }
 /**
  * Pushes a data response when supported (HTTP/2 only).
@@ -1213,75 +1213,100 @@ static char invalid_cookie_value_char[256] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
 fio_cstr_s http_status2str(uintptr_t status) {
+
 #define HTTP1_SET_STATUS_STR(status, str)                                      \
   [status] = (fio_cstr_s) {                                                    \
-    .buffer = (str " (error " #status ")"),                                    \
     .length = (sizeof(str " (error " #status ")") - 1),                        \
+    .buffer = (str " (error " #status ")")                                     \
   }
-  static fio_cstr_s status2str[] = {
-      HTTP1_SET_STATUS_STR(100, "Continue"),
-      HTTP1_SET_STATUS_STR(101, "Switching Protocols"),
-      HTTP1_SET_STATUS_STR(102, "Processing"),
-      HTTP1_SET_STATUS_STR(200, "OK"),
-      HTTP1_SET_STATUS_STR(201, "Created"),
-      HTTP1_SET_STATUS_STR(202, "Accepted"),
-      HTTP1_SET_STATUS_STR(203, "Non-Authoritative Information"),
-      HTTP1_SET_STATUS_STR(204, "No Content"),
-      HTTP1_SET_STATUS_STR(205, "Reset Content"),
-      HTTP1_SET_STATUS_STR(206, "Partial Content"),
-      HTTP1_SET_STATUS_STR(207, "Multi-Status"),
-      HTTP1_SET_STATUS_STR(208, "Already Reported"),
-      HTTP1_SET_STATUS_STR(226, "IM Used"),
-      HTTP1_SET_STATUS_STR(300, "Multiple Choices"),
-      HTTP1_SET_STATUS_STR(301, "Moved Permanently"),
-      HTTP1_SET_STATUS_STR(302, "Found"),
-      HTTP1_SET_STATUS_STR(303, "See Other"),
-      HTTP1_SET_STATUS_STR(304, "Not Modified"),
-      HTTP1_SET_STATUS_STR(305, "Use Proxy"),
-      HTTP1_SET_STATUS_STR(306, "(Unused) "),
-      HTTP1_SET_STATUS_STR(307, "Temporary Redirect"),
-      HTTP1_SET_STATUS_STR(308, "Permanent Redirect"),
-      HTTP1_SET_STATUS_STR(400, "Bad Request"),
-      HTTP1_SET_STATUS_STR(403, "Forbidden"),
-      HTTP1_SET_STATUS_STR(404, "Not Found"),
-      HTTP1_SET_STATUS_STR(401, "Unauthorized"),
-      HTTP1_SET_STATUS_STR(402, "Payment Required"),
-      HTTP1_SET_STATUS_STR(405, "Method Not Allowed"),
-      HTTP1_SET_STATUS_STR(406, "Not Acceptable"),
-      HTTP1_SET_STATUS_STR(407, "Proxy Authentication Required"),
-      HTTP1_SET_STATUS_STR(408, "Request Timeout"),
-      HTTP1_SET_STATUS_STR(409, "Conflict"),
-      HTTP1_SET_STATUS_STR(410, "Gone"),
-      HTTP1_SET_STATUS_STR(411, "Length Required"),
-      HTTP1_SET_STATUS_STR(412, "Precondition Failed"),
-      HTTP1_SET_STATUS_STR(413, "Payload Too Large"),
-      HTTP1_SET_STATUS_STR(414, "URI Too Long"),
-      HTTP1_SET_STATUS_STR(415, "Unsupported Media Type"),
-      HTTP1_SET_STATUS_STR(416, "Range Not Satisfiable"),
-      HTTP1_SET_STATUS_STR(417, "Expectation Failed"),
-      HTTP1_SET_STATUS_STR(421, "Misdirected Request"),
-      HTTP1_SET_STATUS_STR(422, "Unprocessable Entity"),
-      HTTP1_SET_STATUS_STR(423, "Locked"),
-      HTTP1_SET_STATUS_STR(424, "Failed Dependency"),
-      HTTP1_SET_STATUS_STR(425, "Unassigned"),
-      HTTP1_SET_STATUS_STR(426, "Upgrade Required"),
-      HTTP1_SET_STATUS_STR(427, "Unassigned"),
-      HTTP1_SET_STATUS_STR(428, "Precondition Required"),
-      HTTP1_SET_STATUS_STR(429, "Too Many Requests"),
-      HTTP1_SET_STATUS_STR(430, "Unassigned"),
-      HTTP1_SET_STATUS_STR(431, "Request Header Fields Too Large"),
-      HTTP1_SET_STATUS_STR(500, "Internal Server Error"),
-      HTTP1_SET_STATUS_STR(501, "Not Implemented"),
-      HTTP1_SET_STATUS_STR(502, "Bad Gateway"),
-      HTTP1_SET_STATUS_STR(503, "Service Unavailable"),
-      HTTP1_SET_STATUS_STR(504, "Gateway Timeout"),
-      HTTP1_SET_STATUS_STR(505, "HTTP Version Not Supported"),
-      HTTP1_SET_STATUS_STR(506, "Variant Also Negotiates"),
-      HTTP1_SET_STATUS_STR(507, "Insufficient Storage"),
-      HTTP1_SET_STATUS_STR(508, "Loop Detected"),
-      HTTP1_SET_STATUS_STR(509, "Unassigned"),
-      HTTP1_SET_STATUS_STR(510, "Not Extended"),
-      HTTP1_SET_STATUS_STR(511, "Network Authentication Required"),
+  static const fio_cstr_s status2str[] = {
+          [99] =
+              (fio_cstr_s){
+                  .length = (sizeof("Continue"
+                                    " (error "
+                                    "100"
+                                    ")") -
+                             1),
+                  .buffer = ("Continue"
+                             " (error "
+                             "100"
+                             ")"),
+              },
+          [98] =
+              (fio_cstr_s){
+                  .length = (sizeof("Continue"
+                                    " (error "
+                                    "100"
+                                    ")") -
+                             1),
+                  .buffer = ("Continue"
+                             " (error "
+                             "100"
+                             ")"),
+              },
+          HTTP1_SET_STATUS_STR(100, "Continue"),
+          HTTP1_SET_STATUS_STR(101, "Switching Protocols"),
+          HTTP1_SET_STATUS_STR(102, "Processing"),
+          HTTP1_SET_STATUS_STR(200, "OK"),
+          HTTP1_SET_STATUS_STR(201, "Created"),
+          HTTP1_SET_STATUS_STR(202, "Accepted"),
+          HTTP1_SET_STATUS_STR(203, "Non-Authoritative Information"),
+          HTTP1_SET_STATUS_STR(204, "No Content"),
+          HTTP1_SET_STATUS_STR(205, "Reset Content"),
+          HTTP1_SET_STATUS_STR(206, "Partial Content"),
+          HTTP1_SET_STATUS_STR(207, "Multi-Status"),
+          HTTP1_SET_STATUS_STR(208, "Already Reported"),
+          HTTP1_SET_STATUS_STR(226, "IM Used"),
+          HTTP1_SET_STATUS_STR(300, "Multiple Choices"),
+          HTTP1_SET_STATUS_STR(301, "Moved Permanently"),
+          HTTP1_SET_STATUS_STR(302, "Found"),
+          HTTP1_SET_STATUS_STR(303, "See Other"),
+          HTTP1_SET_STATUS_STR(304, "Not Modified"),
+          HTTP1_SET_STATUS_STR(305, "Use Proxy"),
+          HTTP1_SET_STATUS_STR(306, "(Unused) "),
+          HTTP1_SET_STATUS_STR(307, "Temporary Redirect"),
+          HTTP1_SET_STATUS_STR(308, "Permanent Redirect"),
+          HTTP1_SET_STATUS_STR(400, "Bad Request"),
+          HTTP1_SET_STATUS_STR(403, "Forbidden"),
+          HTTP1_SET_STATUS_STR(404, "Not Found"),
+          HTTP1_SET_STATUS_STR(401, "Unauthorized"),
+          HTTP1_SET_STATUS_STR(402, "Payment Required"),
+          HTTP1_SET_STATUS_STR(405, "Method Not Allowed"),
+          HTTP1_SET_STATUS_STR(406, "Not Acceptable"),
+          HTTP1_SET_STATUS_STR(407, "Proxy Authentication Required"),
+          HTTP1_SET_STATUS_STR(408, "Request Timeout"),
+          HTTP1_SET_STATUS_STR(409, "Conflict"),
+          HTTP1_SET_STATUS_STR(410, "Gone"),
+          HTTP1_SET_STATUS_STR(411, "Length Required"),
+          HTTP1_SET_STATUS_STR(412, "Precondition Failed"),
+          HTTP1_SET_STATUS_STR(413, "Payload Too Large"),
+          HTTP1_SET_STATUS_STR(414, "URI Too Long"),
+          HTTP1_SET_STATUS_STR(415, "Unsupported Media Type"),
+          HTTP1_SET_STATUS_STR(416, "Range Not Satisfiable"),
+          HTTP1_SET_STATUS_STR(417, "Expectation Failed"),
+          HTTP1_SET_STATUS_STR(421, "Misdirected Request"),
+          HTTP1_SET_STATUS_STR(422, "Unprocessable Entity"),
+          HTTP1_SET_STATUS_STR(423, "Locked"),
+          HTTP1_SET_STATUS_STR(424, "Failed Dependency"),
+          HTTP1_SET_STATUS_STR(425, "Unassigned"),
+          HTTP1_SET_STATUS_STR(426, "Upgrade Required"),
+          HTTP1_SET_STATUS_STR(427, "Unassigned"),
+          HTTP1_SET_STATUS_STR(428, "Precondition Required"),
+          HTTP1_SET_STATUS_STR(429, "Too Many Requests"),
+          HTTP1_SET_STATUS_STR(430, "Unassigned"),
+          HTTP1_SET_STATUS_STR(431, "Request Header Fields Too Large"),
+          HTTP1_SET_STATUS_STR(500, "Internal Server Error"),
+          HTTP1_SET_STATUS_STR(501, "Not Implemented"),
+          HTTP1_SET_STATUS_STR(502, "Bad Gateway"),
+          HTTP1_SET_STATUS_STR(503, "Service Unavailable"),
+          HTTP1_SET_STATUS_STR(504, "Gateway Timeout"),
+          HTTP1_SET_STATUS_STR(505, "HTTP Version Not Supported"),
+          HTTP1_SET_STATUS_STR(506, "Variant Also Negotiates"),
+          HTTP1_SET_STATUS_STR(507, "Insufficient Storage"),
+          HTTP1_SET_STATUS_STR(508, "Loop Detected"),
+          HTTP1_SET_STATUS_STR(509, "Unassigned"),
+          HTTP1_SET_STATUS_STR(510, "Not Extended"),
+          HTTP1_SET_STATUS_STR(511, "Network Authentication Required"),
   };
 #undef HTTP1_SET_STATUS_STR
   fio_cstr_s ret;

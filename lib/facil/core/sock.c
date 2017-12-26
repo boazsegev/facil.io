@@ -111,12 +111,16 @@ static struct {
 
 void SOCK_DEALLOC_NOOP(void *arg) { (void)arg; }
 
+typedef struct func_s { void (*task)(void *); } func_s;
+
 static void sock_packet_free_cb(void *task, void *buffer) {
-  ((void (*)(void *))task)(buffer);
+  func_s *t = task;
+  t->task(buffer);
 }
 
 static inline void sock_packet_free(packet_s *packet) {
-  defer(sock_packet_free_cb, (void *)packet->free_func, packet->buffer);
+  defer(sock_packet_free_cb, (void *)((uintptr_t)packet->free_func),
+        packet->buffer);
   if (packet >= packet_pool.mem &&
       packet <= packet_pool.mem + (BUFFER_PACKET_POOL - 1)) {
     spn_lock(&packet_pool.lock);
@@ -325,9 +329,9 @@ Writing - from memory
 ***************************************************************************** */
 
 static int sock_write_buffer(int fd, struct packet_s *packet) {
-  int written = fdinfo(fd).rw_hooks->write(fd2uuid(fd), fdinfo(fd).rw_udata,
-                                           packet->buffer + packet->offset,
-                                           packet->length);
+  int written = fdinfo(fd).rw_hooks->write(
+      fd2uuid(fd), fdinfo(fd).rw_udata,
+      ((uint8_t *)packet->buffer + packet->offset), packet->length);
   if (written > 0) {
     packet->length -= written;
     packet->offset += written;
@@ -512,7 +516,7 @@ int sock_set_non_block(int fd) {
   static int flags = 1;
   return ioctl(fd, FIOBIO, &flags);
 #else
-#error Couldn't find functions / argumnet macros for non-blocking sockets.
+#error No functions / argumnet macros for non-blocking sockets.
 #endif
 }
 

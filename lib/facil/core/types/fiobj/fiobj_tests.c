@@ -495,4 +495,6 @@ void fiobj_test(void) {
   }
   fprintf(stderr, "* finished fiobj testing.\n");
 }
+#else
+void fiobj_test(void) {}
 #endif

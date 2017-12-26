@@ -67,10 +67,10 @@ FIO_FUNC void fio_hash_free(fio_hash_s *hash);
 FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj);
 
 /** Locates an object in the Hash Map Table according to the hash key value. */
-inline FIO_FUNC void *fio_hash_find(fio_hash_s *hash, uintptr_t key);
+FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, uintptr_t key);
 
 /** Returns the number of elements currently in the Hash Table. */
-inline FIO_FUNC size_t fio_hash_count(const fio_hash_s *hash);
+FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash);
 
 /** Forces a rehashing of the hash. */
 FIO_FUNC void fio_hash_rehash(fio_hash_s *hash);
@@ -79,7 +79,7 @@ FIO_FUNC void fio_hash_rehash(fio_hash_s *hash);
  * Returns a temporary theoretical Hash map capacity.
  * This could be used for testig performance and memory consumption.
  */
-inline FIO_FUNC size_t fio_hash_capa(const fio_hash_s *hash);
+FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash);
 
 /**
  * A macro for a `for` loop that iterates over all the hashed objetcs (in
@@ -105,10 +105,9 @@ inline FIO_FUNC size_t fio_hash_capa(const fio_hash_s *hash);
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-inline FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
-                                     int (*task)(uintptr_t key, void *obj,
-                                                 void *arg),
-                                     void *arg);
+FIO_FUNC inline size_t
+fio_hash_each(fio_hash_s *hash, const size_t start_at,
+              int (*task)(uintptr_t key, void *obj, void *arg), void *arg);
 
 /* *****************************************************************************
 Hash Table Internal Data Structures
@@ -151,7 +150,7 @@ Container Linked List - (object + hash key).
   { .next = &(name), .prev = &(name) }
 
 /** Adds an object to the list's head. */
-inline FIO_FUNC void fio_hash_ls_push(fio_hash_ls_s *pos, const void *obj,
+FIO_FUNC inline void fio_hash_ls_push(fio_hash_ls_s *pos, const void *obj,
                                       uintptr_t key) {
   /* prepare item */
   fio_hash_ls_s *item = (fio_hash_ls_s *)malloc(sizeof(*item));
@@ -165,14 +164,14 @@ inline FIO_FUNC void fio_hash_ls_push(fio_hash_ls_s *pos, const void *obj,
 }
 
 /** Adds an object to the list's tail. */
-inline FIO_FUNC void fio_hash_ls_unshift(fio_hash_ls_s *pos, const void *obj,
+FIO_FUNC inline void fio_hash_ls_unshift(fio_hash_ls_s *pos, const void *obj,
                                          uintptr_t key) {
   pos = pos->prev;
   fio_hash_ls_push(pos, obj, key);
 }
 
 /** Removes an object from the list's head. */
-inline FIO_FUNC void *fio_hash_ls_pop(fio_hash_ls_s *list) {
+FIO_FUNC inline void *fio_hash_ls_pop(fio_hash_ls_s *list) {
   if (list->next == list)
     return NULL;
   fio_hash_ls_s *item = list->next;
@@ -184,7 +183,7 @@ inline FIO_FUNC void *fio_hash_ls_pop(fio_hash_ls_s *list) {
 }
 
 /** Removes an object from the list's tail. */
-inline FIO_FUNC void *fio_hash_ls_shift(fio_hash_ls_s *list) {
+FIO_FUNC inline void *fio_hash_ls_shift(fio_hash_ls_s *list) {
   if (list->prev == list)
     return NULL;
   fio_hash_ls_s *item = list->prev;
@@ -196,7 +195,7 @@ inline FIO_FUNC void *fio_hash_ls_shift(fio_hash_ls_s *list) {
 }
 
 /** Removes an object from the containing node. */
-inline FIO_FUNC void *fio_hash_ls_remove(fio_hash_ls_s *node) {
+FIO_FUNC inline void *fio_hash_ls_remove(fio_hash_ls_s *node) {
   const void *ret = node->obj;
   node->next->prev = node->prev->next;
   node->prev->next = node->next->prev;
@@ -231,7 +230,7 @@ FIO_FUNC void fio_hash_free(fio_hash_s *h) {
 /* *****************************************************************************
 Internal HashMap Functions
 ***************************************************************************** */
-inline FIO_FUNC uintptr_t fio_hash_map_cuckoo_steps(uintptr_t step) {
+FIO_FUNC inline uintptr_t fio_hash_map_cuckoo_steps(uintptr_t step) {
   // return ((step * (step + 1)) >> 1);
   return (step * 3);
 }
@@ -254,7 +253,7 @@ FIO_FUNC fio_hash_map_info_s *fio_hash_seek(fio_hash_s *hash, uintptr_t key) {
 }
 
 /* finds an object in the map */
-inline FIO_FUNC void *fio_hash_find(fio_hash_s *hash, uintptr_t key) {
+FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, uintptr_t key) {
   fio_hash_map_info_s *info = fio_hash_seek(hash, key);
   if (!info || !info->container)
     return NULL;
@@ -264,7 +263,7 @@ inline FIO_FUNC void *fio_hash_find(fio_hash_s *hash, uintptr_t key) {
 /* inserts an object to the map, rehashing if required, returning old object.
  * set obj to NULL to remove existing data.
  */
-static void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
+FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
   fio_hash_map_info_s *info = fio_hash_seek(hash, key);
   if (!info && !obj)
     return NULL;
@@ -298,7 +297,7 @@ static void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
 }
 
 /* attempts to rehash the hashmap. */
-void FIO_FUNC fio_hash_rehash(fio_hash_s *h) {
+FIO_FUNC void fio_hash_rehash(fio_hash_s *h) {
 retry_rehashing:
   h->mask = ((h->mask) << 1) | 1;
   {
@@ -323,17 +322,16 @@ retry_rehashing:
   }
 }
 
-inline FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
-                                     int (*task)(uintptr_t key, void *obj,
-                                                 void *arg),
-                                     void *arg) {
+FIO_FUNC inline size_t
+fio_hash_each(fio_hash_s *hash, const size_t start_at,
+              int (*task)(uintptr_t key, void *obj, void *arg), void *arg) {
   if (start_at >= hash->count)
     return hash->count;
   size_t i = 0;
 #ifdef __cplusplus
   const fio_hash_ls_s *end = &hash->items;
 #else
-  const register fio_hash_ls_s *end = &hash->items;
+  register const fio_hash_ls_s *end = &hash->items;
 #endif
   fio_hash_ls_s *pos = hash->items.next;
   while (pos != end && start_at > i) {
@@ -350,7 +348,7 @@ inline FIO_FUNC size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
 }
 
 /** Returns the number of elements in the Hash. */
-inline FIO_FUNC size_t fio_hash_count(const fio_hash_s *hash) {
+FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash) {
   if (!hash)
     return 0;
   return hash->count;
@@ -360,7 +358,7 @@ inline FIO_FUNC size_t fio_hash_count(const fio_hash_s *hash) {
  * Returns a temporary theoretical Hash map capacity.
  * This could be used for testig performance and memory consumption.
  */
-inline FIO_FUNC size_t fio_hash_capa(const fio_hash_s *hash) {
+FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash) {
   if (!hash)
     return 0;
   return hash->map.capa;

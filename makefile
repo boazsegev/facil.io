@@ -29,7 +29,7 @@ LINKER_LIBS_EXT=
 # optimization level.
 OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
-WARNINGS= -Wall -Wextra -Wno-missing-field-initializers
+WARNINGS= -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
 # any extra include folders, space seperated list
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
