@@ -38,7 +38,7 @@ struct http_vtable_s {
   int (*const http_defer)(http_s *h, void (*task)(http_s *h),
                           void (*fallback)(http_s *h));
   /** Defer request handling for later... careful (memory concern apply). */
-  void (*const http2websocket)(websocket_settings_s *arg);
+  int (*const http2websocket)(websocket_settings_s *arg);
 };
 
 struct http_protocol_s {

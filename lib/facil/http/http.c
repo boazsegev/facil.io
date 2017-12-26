@@ -571,13 +571,13 @@ int http_defer(http_s *h, void (*task)(http_s *h),
  * Upgrades an HTTP/1.1 connection to a Websocket connection.
  */
 #undef http_upgrade2ws
-void http_upgrade2ws(websocket_settings_s args) {
+int http_upgrade2ws(websocket_settings_s args) {
   if (!args.http || !args.http->headers) {
     fprintf(stderr,
             "ERROR: `http_upgrade2ws` requires a valid `http_s` handle.");
-    return;
+    return -1;
   }
-  ((http_protocol_s *)args.http->private_data.owner)
+  return ((http_protocol_s *)args.http->private_data.owner)
       ->vtable->http2websocket(&args);
 }
 

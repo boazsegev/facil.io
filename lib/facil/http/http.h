@@ -321,7 +321,7 @@ typedef struct {
 /**
  * Upgrades an HTTP/1.1 connection to a Websocket connection.
  */
-void http_upgrade2ws(websocket_settings_s);
+int http_upgrade2ws(websocket_settings_s);
 
 /** This macro allows easy access to the `websocket_upgrade` function. The macro
  * allows the use of named arguments, using the `websocket_settings_s` struct

@@ -30,6 +30,7 @@ Mitchel and Johana, which means messages will be delivered twice unless using
 two different browser windows.
 */
 
+#include "fio_cli_helper.h"
 #include "pubsub.h"
 #include "redis_engine.h"
 #include "websockets.h"
@@ -71,6 +72,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   struct nickname *n = websocket_udata(ws);
   if (!n)
     n = &MISSING_NICKNAME;
+  fprintf(stderr, "nickname: %s (%lu)\n", n->nick, n->len);
   char *msg = malloc(size + n->len + 2);
   memcpy(msg, n->nick, n->len);
   msg[n->len] = ':';
@@ -87,42 +89,34 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
 HTTP Handling (Upgrading to Websocket)
 ***************************************************************************** */
 
-static void answer_http_request(http_request_s *request) {
-  http_response_s *response = http_response_create(request);
-  /* We'll match the dynamic logging settings with the static logging ones. */
-  if (request->settings->log_static)
-    http_response_log_start(response);
-
-  http_response_write_header(response, .name = "Server", .name_len = 6,
-                             .value = "facil.example", .value_len = 13);
-
-  /* the upgrade header value has a quick access pointer. */
-  if (request->upgrade) {
-    struct nickname *n = NULL;
-    if (request->path_len > 1) {
-      n = malloc(request->path_len + sizeof(*n));
-      n->len = request->path_len - 1;
-      memcpy(n->nick, request->path + 1, request->path_len - 1);
-    }
-    // Websocket upgrade will use our existing response (never leak responses).
-    websocket_upgrade(.request = request, .response = response,
-                      .on_open = on_open_websocket,
-                      .on_close = on_close_websocket,
-                      .on_message = handle_websocket_messages, .udata = n);
-
-    return;
-  }
-  /*     ****  Normal HTTP request, no Websockets ****     */
-
-  http_response_write_header(response, .name = "Content-Type", .name_len = 12,
-                             .value = "text/plain", .value_len = 10);
-  http_response_write_body(
-      response, "This is a Websocket chatroom example using Redis.", 49);
-  /* this both sends and frees the response. */
-  http_response_finish(response);
+static void answer_http_request(http_s *h) {
+  http_set_header2(h, (fio_cstr_s){.name = "Server", .len = 6},
+                   (fio_cstr_s){.value = "facil.example", .len = 13});
+  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
+  /* this both sends the response and frees the http handler. */
+  http_send_body(h, "This is a Websocket chatroom example using Redis.", 49);
 }
 
-#include "fio_cli_helper.h"
+static void answer_http_upgrade(http_s *h, char *pr, size_t len) {
+  if (pr[1] != 'e' && len != 9) {
+    http_send_error(h, 400);
+    return;
+  }
+  struct nickname *n = NULL;
+  fio_cstr_s path = fiobj_obj2cstr(h->path);
+  if (path.len > 1) {
+    n = malloc(path.len + sizeof(*n));
+    n->len = path.len - 1;
+    memcpy(n->nick, path.data + 1, path.len - 1);
+    fprintf(stderr, "nickname: %s (%lu == %lu)\n", n->nick, n->len,
+            (unsigned long)n->nick);
+  }
+  // Websocket upgrade will use our existing response (never leak
+  if (!http_upgrade2ws(.http = h, .on_open = on_open_websocket,
+                       .on_close = on_close_websocket,
+                       .on_message = handle_websocket_messages, .udata = n))
+    free(n);
+}
 
 /*
 Read available command line details using "-?".
@@ -196,7 +190,8 @@ int main(int argc, char const *argv[]) {
   }
 
   if (http_listen(port, NULL, .on_request = answer_http_request,
-                  .log_static = print_log, .public_folder = public_folder))
+                  .on_upgrade = answer_http_upgrade, .log = print_log,
+                  .public_folder = public_folder))
     perror("Couldn't initiate Websocket service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 

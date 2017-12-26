@@ -38,18 +38,15 @@ HTTP Handling (+ Upgrading to Websocket)
 ***************************************************************************** */
 
 static void on_http_request(http_s *h) {
-  http_set_header2(h,
-                   (fio_cstr_s){
-                       .name = "Server", .len = 6,
-                   },
+  http_set_header2(h, (fio_cstr_s){.name = "Server", .len = 6},
                    (fio_cstr_s){.value = "facil.example", .len = 13});
   http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
   /* this both sends and frees the request / response. */
   http_send_body(h, "This is a Websocket echo example.", 33);
 }
 
-static void on_http_upgrade(http_s *h, char *targer, size_t len) {
-  if (targer[1] != 'e' && len != 9) {
+static void on_http_upgrade(http_s *h, char *target, size_t len) {
+  if (target[1] != 'e' && len != 9) {
     http_send_error(h, 400);
     return;
   }

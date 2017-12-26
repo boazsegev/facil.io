@@ -263,7 +263,7 @@ static int http1_defer(http_s *h, void (*task)(http_s *h),
   (void)fallback;
 }
 
-static void http1_http2websocket(websocket_settings_s *args) {
+static int http1_http2websocket(websocket_settings_s *args) {
   // A static data used for all websocket connections.
   static char ws_key_accpt_str[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
   static uintptr_t sec_version;
@@ -302,9 +302,10 @@ static void http1_http2websocket(websocket_settings_s *args) {
   http_settings_s *set = http2protocol(args->http)->settings;
   http_finish(args->http);
   websocket_attach(uuid, set, args);
-  return;
+  return 0;
 bad_request:
   http_send_error(args->http, 400);
+  return -1;
 }
 
 struct http_vtable_s HTTP1_VTABLE = {
