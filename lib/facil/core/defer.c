@@ -194,6 +194,7 @@ int defer(void (*func)(void *, void *), void *arg1, void *arg2) {
   if (!func)
     goto call_error;
   push_task(.func = func, .arg1 = arg1, .arg2 = arg2);
+  defer_thread_signal();
   return 0;
 
 call_error:
@@ -223,11 +224,12 @@ Thread Pool Support
 
 /* thread pool data container */
 struct defer_pool {
-  unsigned int flag;
+  volatile unsigned int flag;
   unsigned int count;
-  void (*defer_idle)(void *arg);
-  void *udata;
-  void *threads[];
+  struct thread_msg_s {
+    pool_pt pool;
+    void *thrd;
+  } threads[];
 };
 
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__) ||           \
@@ -280,32 +282,46 @@ void defer_thread_throttle(unsigned long microsec) { return; }
 
 #endif /* DEBUG || pthread default */
 
-static void defer_default_idle(void *arg) {
-  struct defer_pool *pool = arg;
+/**
+ * A thread entering this function should wait for new evennts.
+ */
+#pragma weak defer_thread_wait
+void defer_thread_wait(pool_pt pool, void *p_thr) {
   size_t throttle = (pool->count) * DEFER_THROTTLE;
   if (!throttle || throttle > DEFER_THROTTLE_LIMIT)
     throttle = DEFER_THROTTLE_LIMIT;
   throttle_thread(throttle);
+  (void)p_thr;
 }
+
+/**
+ * This should signal a single waiting thread to wake up (a new task entered the
+ * queue).
+ */
+#pragma weak defer_thread_signal
+void defer_thread_signal(void) {}
 
 /* a thread's cycle. This is what a worker thread does... repeatedly. */
 static void *defer_worker_thread(void *pool_) {
-  volatile pool_pt pool = pool_;
+  struct thread_msg_s *data = pool_;
   signal(SIGPIPE, SIG_IGN);
   /* perform any available tasks */
   defer_perform();
   /* as long as the flag is true, wait for and perform tasks. */
   do {
-    pool->defer_idle(pool->udata);
-    if (deferred.reader->read == deferred.reader->write)
-      throttle_thread(DEFER_THROTTLE);
+    defer_thread_wait(data->pool, data->thrd);
     defer_perform();
-  } while (pool->flag);
+  } while (data->pool->flag);
   return NULL;
 }
 
 /** Signals a running thread pool to stop. Returns immediately. */
-void defer_pool_stop(pool_pt pool) { pool->flag = 0; }
+void defer_pool_stop(pool_pt pool) {
+  pool->flag = 0;
+  for (size_t i = 0; i < pool->count; ++i) {
+    defer_thread_signal();
+  }
+}
 
 /** Returns TRUE (1) if the pool is hadn't been signaled to finish up. */
 int defer_pool_is_active(pool_pt pool) { return pool->flag; }
@@ -319,7 +335,7 @@ int defer_pool_is_active(pool_pt pool) { return pool->flag; }
 void defer_pool_wait(pool_pt pool) {
   while (pool->count) {
     pool->count--;
-    defer_join_thread(pool->threads[pool->count]);
+    defer_join_thread(pool->threads[pool->count].thrd);
   }
   free(pool);
 }
@@ -330,8 +346,10 @@ static inline pool_pt defer_pool_initialize(unsigned int thread_count,
   pool->flag = 1;
   pool->count = 0;
   while (pool->count < thread_count &&
-         (pool->threads[pool->count] =
-              defer_new_thread(defer_worker_thread, pool)))
+         (pool->threads[pool->count].pool = pool) &&
+         (pool->threads[pool->count].thrd = defer_new_thread(
+              defer_worker_thread, (pool_pt)(pool->threads + pool->count))))
+
     pool->count++;
   if (pool->count == thread_count) {
     return pool;
@@ -341,20 +359,12 @@ static inline pool_pt defer_pool_initialize(unsigned int thread_count,
 }
 
 /** Starts a thread pool that will run deferred tasks in the background. */
-pool_pt defer_pool_start(unsigned int thread_count,
-                         void (*defer_idle)(void *arg), void *arg) {
+pool_pt defer_pool_start(unsigned int thread_count) {
   if (thread_count == 0)
     return NULL;
   pool_pt pool = malloc(sizeof(*pool) + (thread_count * sizeof(void *)));
   if (!pool)
     return NULL;
-  if (defer_idle) {
-    pool->defer_idle = defer_idle;
-    pool->udata = arg;
-  } else {
-    pool->defer_idle = defer_default_idle;
-    pool->udata = pool;
-  }
 
   return defer_pool_initialize(thread_count, pool);
 }
@@ -425,8 +435,8 @@ static struct defer_pool pool_placeholder = {.count = 1, .flag = 1};
  * Returns 0 on success, -1 on error and a positive number if this is a child
  * process that was forked.
  */
-int defer_perform_in_fork(unsigned int process_count, unsigned int thread_count,
-                          void (*defer_idle)(void *arg), void *arg) {
+int defer_perform_in_fork(unsigned int process_count,
+                          unsigned int thread_count) {
   if (forked_pool)
     return -1; /* we're already running inside an active `fork` */
 
@@ -473,7 +483,7 @@ int defer_perform_in_fork(unsigned int process_count, unsigned int thread_count,
     if (!(pids[pids_count] = (pid_t)defer_new_child())) {
       defer_fork_pid_id = pids_count + 1;
       forked_pool = &pool_placeholder;
-      forked_pool = defer_pool_start(thread_count, defer_idle, arg);
+      forked_pool = defer_pool_start(thread_count);
       defer_pool_stop(forked_pool);
       defer_pool_wait(forked_pool);
       defer_perform();
@@ -487,7 +497,7 @@ int defer_perform_in_fork(unsigned int process_count, unsigned int thread_count,
   }
 
   forked_pool = &pool_placeholder;
-  forked_pool = defer_pool_start(thread_count, defer_idle, arg);
+  forked_pool = defer_pool_start(thread_count);
 
   defer_pool_wait(forked_pool);
   forked_pool = NULL;

@@ -63,8 +63,7 @@ typedef struct defer_pool *pool_pt;
  *
  * If `defer_idle` is NULL, a fallback to `nanosleep` will be used.
  */
-pool_pt defer_pool_start(unsigned int thread_count,
-                         void (*defer_idle)(void *arg), void *arg);
+pool_pt defer_pool_start(unsigned int thread_count);
 
 /** Signals a running thread pool to stop. Returns immediately. */
 void defer_pool_stop(pool_pt pool);
@@ -81,46 +80,61 @@ void defer_pool_wait(pool_pt pool);
 int defer_pool_is_active(pool_pt pool);
 
 /**
-OVERRIDE THIS to replace the default pthread implementation.
-
-Accepts a pointer to a function and a single argument that should be executed
-within a new thread.
-
-The function should allocate memory for the thread object and return a pointer
-to the allocated memory that identifies the thread.
-
-On error NULL should be returned.
-*/
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Accepts a pointer to a function and a single argument that should be executed
+ * within a new thread.
+ *
+ * The function should allocate memory for the thread object and return a
+ * pointer to the allocated memory that identifies the thread.
+ *
+ * On error NULL should be returned.
+ */
 void *defer_new_thread(void *(*thread_func)(void *), pool_pt pool);
 
 /**
-OVERRIDE THIS to replace the default pthread implementation.
-
-Accepts a pointer returned from `defer_new_thread` (should also free any
-allocated memory) and joins the associated thread.
-
-Return value is ignored.
-*/
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Accepts a pointer returned from `defer_new_thread` (should also free any
+ * allocated memory) and joins the associated thread.
+ *
+ * Return value is ignored.
+ */
 int defer_join_thread(void *p_thr);
 
 /**
-OVERRIDE THIS to replace the default pthread implementation.
-
-Throttles or reschedules the current running thread. Default implementation
-simply micro-sleeps.
-*/
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Throttles or reschedules the current running thread. Default implementation
+ * simply micro-sleeps.
+ */
 void defer_thread_throttle(unsigned long microsec);
+
+/**
+ * OVERRIDE THIS to replace the default nanosleep implementation.
+ *
+ * A thread entering this function should wait for new evennts.
+ */
+void defer_thread_wait(pool_pt pool, void *p_thr);
+
+/**
+ * OVERRIDE THIS to replace the default implementation (which does nothing).
+ *
+ * This should signal a single waiting thread to wake up (a new task entered the
+ * queue).
+ */
+void defer_thread_signal(void);
 
 /* *****************************************************************************
 Child Process support (`fork`)
 ***************************************************************************** */
 
 /**
-OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
-into the forking function.
-
-Behaves like the system's `fork`.
-*/
+ * OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
+ * into the forking function.
+ *
+ * Behaves like the system's `fork`.
+ */
 int defer_new_child(void);
 
 /**
@@ -151,8 +165,8 @@ void defer_reap_children(void);
  * Returns 0 on success, -1 on error and a positive number if this is a child
  * process that was forked.
  */
-int defer_perform_in_fork(unsigned int process_count, unsigned int thread_count,
-                          void (*defer_idle)(void *arg), void *arg);
+int defer_perform_in_fork(unsigned int process_count,
+                          unsigned int thread_count);
 /** Returns TRUE (1) if the forked thread pool hadn't been signaled to finish
  * up. */
 int defer_fork_is_active(void);

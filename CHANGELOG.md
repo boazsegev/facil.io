@@ -37,9 +37,9 @@
 
 **Changes!**: (`defer`):
 
-- defer thread pools and forks now accept a callback that will be called for idling threads, allowing the idle logic to be changed.
+- defer thread pools and forks now include two weak functions that allow for customized thread scheduling (wakeup/wait). These are overwritten by facil.io (in `facil.c`).
 
-    By default, defer will fallback to `nanosleep`.
+    By default, defer will use `nanosleep`.
 
 **Refactoring**: (`fiobj`) moved the underlying Dynamic Array and Hash Table logic into single file libraries that support `void *` pointers, allowing the same logic to be used for any C object collection (as well as the facil.io objects).
 
