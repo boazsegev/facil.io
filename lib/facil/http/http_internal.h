@@ -37,6 +37,8 @@ struct http_vtable_s {
   /** Defer request handling for later... careful (memory concern apply). */
   int (*const http_defer)(http_s *h, void (*task)(http_s *h),
                           void (*fallback)(http_s *h));
+  /** Defer request handling for later... careful (memory concern apply). */
+  void (*const http2websocket)(websocket_settings_s *arg);
 };
 
 struct http_protocol_s {
@@ -52,12 +54,16 @@ Constants that shouldn't be accessed by the users (`fiobj_dup` required).
 */
 
 extern fiobj_s *HTTP_HEADER_ACCEPT_RANGES;
+extern fiobj_s *HTTP_HEADER_WS_SEC_KEY;
 extern fiobj_s *HTTP_HVALUE_BYTES;
 extern fiobj_s *HTTP_HVALUE_CLOSE;
 extern fiobj_s *HTTP_HVALUE_GZIP;
 extern fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
 extern fiobj_s *HTTP_HVALUE_MAX_AGE;
 extern fiobj_s *HTTP_HVALUE_WEBSOCKET;
+extern fiobj_s *HTTP_HVALUE_WS_SEC_VERSION;
+extern fiobj_s *HTTP_HVALUE_WS_UPGRADE;
+extern fiobj_s *HTTP_HVALUE_WS_VERSION;
 
 /* *****************************************************************************
 HTTP request/response object management
@@ -73,6 +79,7 @@ static inline void http_s_init(http_s *h, http_protocol_s *owner) {
       .version = h->version,
       .received_at = facil_last_tick(),
       .status = 200,
+      .udata = owner->settings->udata,
   };
 }
 

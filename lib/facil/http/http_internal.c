@@ -88,12 +88,16 @@ fiobj_s *HTTP_HEADER_ETAG;
 fiobj_s *HTTP_HEADER_LAST_MODIFIED;
 fiobj_s *HTTP_HEADER_SET_COOKIE;
 fiobj_s *HTTP_HEADER_UPGRADE;
+fiobj_s *HTTP_HEADER_WS_SEC_KEY;
 fiobj_s *HTTP_HVALUE_BYTES;
 fiobj_s *HTTP_HVALUE_CLOSE;
 fiobj_s *HTTP_HVALUE_GZIP;
 fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
 fiobj_s *HTTP_HVALUE_MAX_AGE;
 fiobj_s *HTTP_HVALUE_WEBSOCKET;
+fiobj_s *HTTP_HVALUE_WS_SEC_VERSION;
+fiobj_s *HTTP_HVALUE_WS_UPGRADE;
+fiobj_s *HTTP_HVALUE_WS_VERSION;
 
 void http_lib_cleanup(void) {
   http_mimetype_clear();
@@ -113,12 +117,16 @@ void http_lib_cleanup(void) {
   HTTPLIB_RESET(HTTP_HEADER_LAST_MODIFIED);
   HTTPLIB_RESET(HTTP_HEADER_SET_COOKIE);
   HTTPLIB_RESET(HTTP_HEADER_UPGRADE);
+  HTTPLIB_RESET(HTTP_HEADER_WS_SEC_KEY);
   HTTPLIB_RESET(HTTP_HVALUE_BYTES);
   HTTPLIB_RESET(HTTP_HVALUE_CLOSE);
   HTTPLIB_RESET(HTTP_HVALUE_GZIP);
   HTTPLIB_RESET(HTTP_HVALUE_KEEP_ALIVE);
   HTTPLIB_RESET(HTTP_HVALUE_MAX_AGE);
   HTTPLIB_RESET(HTTP_HVALUE_WEBSOCKET);
+  HTTPLIB_RESET(HTTP_HVALUE_WS_SEC_VERSION);
+  HTTPLIB_RESET(HTTP_HVALUE_WS_UPGRADE);
+  HTTPLIB_RESET(HTTP_HVALUE_WS_VERSION);
 #undef HTTPLIB_RESET
 }
 
@@ -128,20 +136,25 @@ void http_lib_init(void) {
   HTTP_HEADER_CONNECTION = fiobj_sym_new("connection", 10);
   HTTP_HEADER_CONTENT_ENCODING = fiobj_sym_new("content-encoding", 16);
   HTTP_HEADER_CONTENT_LENGTH = fiobj_sym_new("content-length", 14);
-  HTTP_HEADER_CONTENT_TYPE = fiobj_sym_new("content-type", 12);
   HTTP_HEADER_CONTENT_RANGE = fiobj_sym_new("content-range", 13);
+  HTTP_HEADER_CONTENT_TYPE = fiobj_sym_new("content-type", 12);
   HTTP_HEADER_COOKIE = fiobj_sym_new("cookie", 6);
   HTTP_HEADER_DATE = fiobj_sym_new("date", 4);
   HTTP_HEADER_ETAG = fiobj_sym_new("etag", 4);
   HTTP_HEADER_LAST_MODIFIED = fiobj_sym_new("last-modified", 13);
   HTTP_HEADER_SET_COOKIE = fiobj_sym_new("set-cookie", 10);
   HTTP_HEADER_UPGRADE = fiobj_sym_new("upgrade", 7);
+  HTTP_HEADER_WS_SEC_KEY = fiobj_sym_new("sec-websocket-accept", 20);
   HTTP_HVALUE_BYTES = fiobj_sym_new("bytes", 5);
   HTTP_HVALUE_CLOSE = fiobj_sym_new("close", 5);
   HTTP_HVALUE_GZIP = fiobj_sym_new("gzip", 4);
   HTTP_HVALUE_KEEP_ALIVE = fiobj_sym_new("keep-alive", 10);
   HTTP_HVALUE_MAX_AGE = fiobj_sym_new("max-age=3600", 12);
   HTTP_HVALUE_WEBSOCKET = fiobj_sym_new("websocket", 9);
+  HTTP_HVALUE_WS_SEC_VERSION = fiobj_sym_new("sec-websocket-version", 21);
+  HTTP_HVALUE_WS_UPGRADE = fiobj_sym_new("Upgrade", 7);
+  HTTP_HVALUE_WS_VERSION = fiobj_sym_new("13", 2);
+
 #define REGISTER_MIME(ext, type)                                               \
   http_mimetype_register(ext, sizeof(ext) - 1,                                 \
                          fiobj_str_static(type, sizeof(type) - 1))

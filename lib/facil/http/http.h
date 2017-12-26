@@ -31,8 +31,9 @@ Compile Time Settings
 #define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
 #endif
 
-/* defined later on, for the `http_listen` function*/
+/** the `http_listen settings, see detils in the struct definition. */
 typedef struct http_settings_s http_settings_s;
+
 /* *****************************************************************************
 The Request / Response type and functions
 ***************************************************************************** */
@@ -256,15 +257,100 @@ int http_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type);
 int http_defer(http_s *h, void (*task)(http_s *h), void (*fallback)(http_s *h));
 
 /* *****************************************************************************
-Listening to HTTP connections
+Websocket Upgrade (server side)
+***************************************************************************** */
+
+/**
+ * The type for a Websocket handle, used to identify a Websocket connection.
+ *
+ * Similar to an `http_s` handle, it is only valid within the scope of the
+ * specific connection (the callbacks / tasks) and shouldn't be stored or
+ * accessed otherwise.
+ */
+typedef struct ws_s ws_s;
+
+/**
+ * This struct is used for the named agruments in the `http_upgrade2ws`
+ * function and macro.
+ */
+typedef struct {
+  /** REQUIRED: The `http_s` to be initiating the websocket connection.*/
+  http_s *http;
+  /**
+   * The (optional) on_message callback will be called whenever a websocket
+   * message is received for this connection.
+   *
+   * The data received points to the websocket's message buffer and it will be
+   * overwritten once the function exits (it cannot be saved for later, but it
+   * can be copied).
+   */
+  void (*on_message)(ws_s *ws, char *data, size_t size, uint8_t is_text);
+  /**
+   * The (optional) on_open callback will be called once the websocket
+   * connection is established and before is is registered with `facil`, so no
+   * `on_message` events are raised before `on_open` returns.
+   */
+  void (*on_open)(ws_s *ws);
+  /**
+   * The (optional) on_ready callback will be after a the underlying socket's
+   * buffer changes it's state from full to available.
+   *
+   * If the socket's buffer is never full, the callback is never called.
+   *
+   * It should be noted that `libsock` manages the socket's buffer overflow and
+   * implements and augmenting user-land buffer, allowing data to be safely
+   * written to the websocket without worrying over the socket's buffer.
+   */
+  void (*on_ready)(ws_s *ws);
+  /**
+   * The (optional) on_shutdown callback will be called if a websocket
+   * connection is still open while the server is shutting down (called before
+   * `on_close`).
+   */
+  void (*on_shutdown)(ws_s *ws);
+  /**
+   * The (optional) on_close callback will be called once a websocket connection
+   * is terminated or failed to be established.
+   */
+  void (*on_close)(ws_s *ws);
+  /** Opaque user data. */
+  void *udata;
+} websocket_settings_s;
+
+/**
+ * Upgrades an HTTP/1.1 connection to a Websocket connection.
+ */
+void http_upgrade2ws(websocket_settings_s);
+
+/** This macro allows easy access to the `websocket_upgrade` function. The macro
+ * allows the use of named arguments, using the `websocket_settings_s` struct
+ * members. i.e.:
+ *
+ *     on_message(ws_s * ws, char * data, size_t size, int is_text) {
+ *        ; // ... this is the websocket on_message callback
+ *        websocket_write(ws, data, size, is_text); // a simple echo example
+ *     }
+ *
+ *     on_upgrade(http_s* h) {
+ *        http_upgrade2ws( .http = h, .on_message = on_message);
+ *     }
+ */
+#define http_upgrade2ws(...)                                                   \
+  http_upgrade2ws((websocket_settings_s){__VA_ARGS__})
+/* *****************************************************************************
+Listening to HTTP connections (client mode functions are later on...)
 ***************************************************************************** */
 
 /** The HTTP settings. */
-struct http_settings_s {
+typedef struct http_settings_s {
   /** REQUIRED: the callback to be performed when HTTP requests come in. */
   void (*on_request)(http_s *request);
-  /** REQUIRED: the callback to be performed when Upgrade requests come in. */
+  /** (optional) the callback to be performed when Upgrade requests come in. */
   void (*on_upgrade)(http_s *request, char *requested_protocol, size_t len);
+  /** (optional) the callback to be performed when the HTTP service closes. */
+  void (*on_finish)(struct http_settings_s *settings);
+  /** Opaque user data. Facil.io will ignore this field, but you can use it. */
+  void *udata;
   /**
    * A public folder for file transfers - allows to circumvent any application
    * layer server and simply serve files.
@@ -274,21 +360,30 @@ struct http_settings_s {
    * The length of the public_folder string.
    */
   size_t public_folder_length;
-  /** Opaque user data. Facil.io will ignore this field, but you can use it. */
-  void *udata;
-  /** (optional) the callback to be performed when the HTTP service closes. */
-  void (*on_finish)(struct http_settings_s *settings);
   /**
    * The maximum size of an HTTP request's body (when posting data).
    *
    * Defaults to ~ 50Mb.
    */
   size_t max_body_size;
-  /** Logging flag - set to TRUE to log requests. */
-  uint8_t log;
   /** An HTTP/1.x connection timeout. Defaults to ~5 seconds.*/
   uint8_t timeout;
-};
+  /**
+   * The maximum websocket message size/buffer (in bytes) for Websocket
+   * connections. Defaults to ~250KB.
+   */
+  size_t ws_max_msg_size;
+  /**
+   * Timeout for the websocket connections, a ping will be sent  whenever the
+   * timeout is reached. Defaults to 40 seconds.
+   *
+   * Connections are only closed when a ping cannot be sent (the network layer
+   * fails). Pongs aren't reviewed.
+   */
+  uint8_t ws_timeout;
+  /** Logging flag - set to TRUE to log HTTP requests. */
+  uint8_t log;
+} http_settings_s;
 
 /**
  * Listens to HTTP connections at the specified `port`.
@@ -308,7 +403,6 @@ int http_listen(const char *port, const char *binding, struct http_settings_s);
  * Returns -1 on error and 0 on success.
  */
 struct http_settings_s *http_settings(http_s *h);
-
 /* *****************************************************************************
 TODO: HTTP client mode
 ***************************************************************************** */

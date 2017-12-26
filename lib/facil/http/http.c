@@ -567,6 +567,19 @@ int http_defer(http_s *h, void (*task)(http_s *h),
       ->vtable->http_defer(h, task, fallback);
 }
 
+/**
+ * Upgrades an HTTP/1.1 connection to a Websocket connection.
+ */
+void http_upgrade2ws(websocket_settings_s args) {
+  if (!args.http || !args.http->headers) {
+    fprintf(stderr,
+            "ERROR: `http_upgrade2ws` requires a valid `http_s` handle.");
+    return;
+  }
+  ((http_protocol_s *)args.http->private_data.owner)
+      ->vtable->http2websocket(&args);
+}
+
 /* *****************************************************************************
 Listening to HTTP connections
 *****************************************************************************
@@ -623,6 +636,10 @@ int http_listen(const char *port, const char *binding,
     settings->max_body_size = HTTP_DEFAULT_BODY_LIMIT;
   if (!settings->timeout)
     settings->timeout = 5;
+  if (!settings->ws_max_msg_size)
+    settings->ws_max_msg_size = 262144; /** defaults to ~250KB */
+  if (!settings->ws_timeout)
+    settings->ws_timeout = 40; /* defaults to 40 seconds */
 
   if (settings->public_folder) {
     settings->public_folder_length = strlen(settings->public_folder);
