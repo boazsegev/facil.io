@@ -9,6 +9,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "facil.h"
 #include "fiobj.h"
+
 #include <time.h>
 
 /* support C++ */
@@ -337,6 +338,9 @@ void http_upgrade2ws(websocket_settings_s);
  */
 #define http_upgrade2ws(...)                                                   \
   http_upgrade2ws((websocket_settings_s){__VA_ARGS__})
+
+#include "websockets.h"
+
 /* *****************************************************************************
 Listening to HTTP connections (client mode functions are later on...)
 ***************************************************************************** */

@@ -48,6 +48,8 @@ struct http_protocol_s {
   http_vtable_s *vtable;
 };
 
+#define http2protocol(h) ((http_protocol_s *)h->private_data.owner)
+
 /* *****************************************************************************
 Constants that shouldn't be accessed by the users (`fiobj_dup` required).
 *****************************************************************************

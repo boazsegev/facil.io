@@ -2,6 +2,16 @@
 
 ### Ver. 0.6.0 (ReHTTP branch)
 
+**Fix?**:
+
+-  I simply rewrote much of the code to know if the issues I fixed were present in the 0.5.x version or not.
+
+   I believe some things work better. Some of the locking concerns will have less contention and I think I fixed some issues in the `fiobj` core types as well as the `http` extension.
+
+   However, experience tells me a new release (0.6.0) is always more fragile than a patch release. I did my best to test the new code, but experience tells me my tests are often as buggy as the code they test.
+
+   Anyway, I'm releasing 0.6.0 knowing it works better than the 0.5.8 version, but also knowing it wasn't battle tested just yet.
+
 **Changes!**: (`http`):
 
 - The HTTP API and engine was completely re-written (except the HTTP/1.1 parser), both to support future client mode (including chunked encoding for trailing headers) and to make routing and request parsing easier.

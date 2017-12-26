@@ -7,8 +7,11 @@ License: MIT
 #include "http1.h"
 #include "http1_parser.h"
 #include "http_internal.h"
+#include "websockets.h"
 
 #include "fio_ary.h"
+#include "fio_base64.h"
+#include "fio_sha1.h"
 #include "fiobj.h"
 
 #include <assert.h>
@@ -260,6 +263,50 @@ static int http1_defer(http_s *h, void (*task)(http_s *h),
   (void)fallback;
 }
 
+static void http1_http2websocket(websocket_settings_s *args) {
+  // A static data used for all websocket connections.
+  static char ws_key_accpt_str[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  static uintptr_t sec_version;
+  if (!sec_version)
+    sec_version = fiobj_sym_hash("sec-websocket-version", 21);
+  static uintptr_t sec_key;
+  if (!sec_key)
+    sec_key = fiobj_sym_hash("sec-websocket-key", 17);
+
+  fiobj_s *tmp = fiobj_hash_get3(args->http->headers, sec_version);
+  if (!tmp)
+    goto bad_request;
+  fio_cstr_s stmp = fiobj_obj2cstr(tmp);
+  if (stmp.length != 2 || stmp.data[0] != '1' || stmp.data[1] != '3')
+    goto bad_request;
+
+  tmp = fiobj_hash_get3(args->http->headers, sec_key);
+  if (!tmp)
+    goto bad_request;
+  stmp = fiobj_obj2cstr(tmp);
+
+  sha1_s sha1 = fio_sha1_init();
+  fio_sha1_write(&sha1, stmp.data, stmp.len);
+  fio_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
+  tmp = fiobj_str_buf(32);
+  stmp = fiobj_obj2cstr(tmp);
+  fiobj_str_resize(tmp,
+                   fio_base64_encode(stmp.data, fio_sha1_result(&sha1), 20));
+  http_set_header(args->http, HTTP_HEADER_CONNECTION,
+                  fiobj_dup(HTTP_HVALUE_WS_UPGRADE));
+  http_set_header(args->http, HTTP_HEADER_UPGRADE,
+                  fiobj_dup(HTTP_HVALUE_WEBSOCKET));
+  http_set_header(args->http, HTTP_HEADER_WS_SEC_KEY, tmp);
+  args->http->status = 101;
+  intptr_t uuid = http2protocol(args->http)->uuid;
+  http_settings_s *set = http2protocol(args->http)->settings;
+  http_finish(args->http);
+  websocket_attach(uuid, set, args);
+  return;
+bad_request:
+  http_send_error(args->http, 400);
+}
+
 struct http_vtable_s HTTP1_VTABLE = {
     .http_send_body = http1_send_body,
     .http_sendfile = http1_sendfile,
@@ -268,6 +315,7 @@ struct http_vtable_s HTTP1_VTABLE = {
     .http_push_data = http1_push_data,
     .http_push_file = http1_push_file,
     .http_defer = http1_defer,
+    .http2websocket = http1_http2websocket,
 };
 
 /* *****************************************************************************
@@ -389,7 +437,8 @@ static int http1_on_error(http1_parser_s *parser) {
 
 /* *****************************************************************************
 Connection Callbacks
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /**
  * A string to identify the protocol's service (i.e. "http").
@@ -464,7 +513,8 @@ static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
 
 /* *****************************************************************************
 Public API
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /** Creates an HTTP1 protocol object and handles any unread data in the buffer
  * (if any). */
