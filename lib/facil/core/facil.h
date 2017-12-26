@@ -155,24 +155,16 @@ int main() {
 struct facil_listen_args {
   /**
    * Called whenever a new connection is accepted.
-   * Should return a pointer to the connection's protocol
+   *
+   * Should either call `facil_attach` or close the connection.
    */
-  protocol_s *(*on_open)(intptr_t fduuid, void *udata);
+  void (*on_open)(intptr_t fduuid, void *udata);
   /** The network service / port. Defaults to "3000". */
   const char *port;
   /** The socket binding address. Defaults to the recommended NULL. */
   const char *address;
   /** Opaque user data. */
   void *udata;
-  /** Opaque user data for `set_rw_hooks`. */
-  void *rw_udata;
-  /** (optional)
-   * Called before `on_open`, allowing Read/Write hook initialization.
-   *
-   * This allows a seperation between the transport layer (i.e. TLS) and the
-   * protocol (i.e. HTTP).
-   */
-  void (*set_rw_hooks)(intptr_t fduuid, void *rw_udata);
   /**
    * Called when the server starts, allowing for further initialization, such as
    * timed event scheduling.
@@ -184,10 +176,6 @@ struct facil_listen_args {
    *
    * This will be called seperately for every process. */
   void (*on_finish)(intptr_t uuid, void *udata);
-  /**
-   * A cleanup callback for the `rw_udata`.
-   */
-  void (*on_finish_rw)(intptr_t uuid, void *rw_udata);
 };
 
 /** Schedule a network service on a listening socket. */
@@ -216,8 +204,10 @@ struct facil_connect_args {
   /**
    * The `on_connect` callback should return a pointer to a protocol object
    * that will handle any connection related events.
+   *
+   * Should either call `facil_attach` or close the connection.
    */
-  protocol_s *(*on_connect)(intptr_t uuid, void *udata);
+  void (*on_connect)(intptr_t uuid, void *udata);
   /**
    * The `on_fail` is called when a socket fails to connect. The old sock UUID
    * is passed along.
@@ -225,15 +215,6 @@ struct facil_connect_args {
   void (*on_fail)(intptr_t uuid, void *udata);
   /** Opaque user data. */
   void *udata;
-  /** Opaque user data for `set_rw_hooks`. */
-  void *rw_udata;
-  /** (optional)
-   * Called before `on_connect`, allowing Read/Write hook initialization.
-   *
-   * This allows a seperation between the transport layer (i.e. TLS) and the
-   * protocol (i.e. HTTP).
-   */
-  void (*set_rw_hooks)(intptr_t fduuid, void *udata);
 };
 
 /**

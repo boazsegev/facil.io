@@ -139,8 +139,10 @@ static void deferred_on_data(void *arg, void *arg2) {
   spn_unlock(&uuid_data(arg).scheduled);
   pr->on_data((intptr_t)arg, pr);
   protocol_unlock(pr, FIO_PR_LOCK_TASK);
-  if (!spn_trylock(&uuid_data(arg).scheduled))
+  if (!spn_trylock(&uuid_data(arg).scheduled)) {
     evio_add(sock_uuid2fd((intptr_t)arg), arg);
+    fprintf(stderr, "Rearming (evio_add) %p\n", arg);
+  }
   // else
   //   fprintf(stderr, "skipped evio_add\n");
   return;
@@ -321,20 +323,12 @@ static const char *listener_protocol_name =
 
 struct ListenerProtocol {
   protocol_s protocol;
-  protocol_s *(*on_open)(intptr_t uuid, void *udata);
+  void (*on_open)(void *uuid, void *udata);
   void *udata;
-  void *rw_udata;
-  void (*set_rw_hooks)(intptr_t uuid, void *udata);
-  void (*on_finish_rw)(intptr_t uuid, void *rw_udata);
   void (*on_start)(intptr_t uuid, void *udata);
   void (*on_finish)(intptr_t uuid, void *udata);
   char port[16];
 };
-
-static void listener_set_rw_hooks(intptr_t uuid, void *udata) {
-  (void)udata;
-  (void)uuid;
-}
 
 static void listener_ping(intptr_t uuid, protocol_s *plistener) {
   // fprintf(stderr, "*** Listener Ping Called for %ld\n", sock_uuid2fd(uuid));
@@ -343,41 +337,22 @@ static void listener_ping(intptr_t uuid, protocol_s *plistener) {
   (void)plistener;
 }
 
-/* called asynchronously after a new connection was opened */
-static void listener_deferred_on_open(void *uuid_, void *srv_uuid_) {
-  intptr_t uuid = (intptr_t)uuid_;
-  intptr_t srv_uuid = (intptr_t)srv_uuid_;
-  struct ListenerProtocol *listener =
-      (struct ListenerProtocol *)protocol_try_lock(sock_uuid2fd(srv_uuid),
-                                                   FIO_PR_LOCK_WRITE);
-  if (!listener) {
-    if (sock_isvalid(uuid) && sock_isvalid(srv_uuid))
-      defer(listener_deferred_on_open, uuid_, srv_uuid_);
-    else
-      sock_close(uuid);
-    return;
-  }
-  listener->set_rw_hooks(uuid, listener->rw_udata);
-  protocol_s *pr = listener->on_open(uuid, listener->udata);
-  protocol_unlock((protocol_s *)listener, FIO_PR_LOCK_WRITE);
-  facil_attach(uuid, pr);
-  if (!pr)
-    sock_close(uuid);
-}
-
 static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
   intptr_t new_client;
   if ((new_client = sock_accept(uuid)) == -1) {
     if (errno == ECONNABORTED || errno == ECONNRESET)
       goto reschedule;
-    else if (errno != EWOULDBLOCK)
+    else if (errno != EWOULDBLOCK && errno != EAGAIN)
       perror("ERROR: socket accept error");
     return;
   }
-  defer(listener_deferred_on_open, (void *)new_client, (void *)uuid);
+
+  // to defer or not to defer...? TODO: answer the question
+  struct ListenerProtocol *listener = (struct ListenerProtocol *)plistener;
+  defer(listener->on_open, (void *)new_client, listener->udata);
+
 reschedule:
   facil_force_event(uuid, FIO_EVENT_ON_DATA);
-  defer(deferred_on_data, (void *)uuid, NULL);
   return;
   (void)plistener;
 }
@@ -387,7 +362,6 @@ static void free_listenner(void *li) { free(li); }
 static void listener_on_close(intptr_t uuid, protocol_s *plistener) {
   struct ListenerProtocol *listener = (void *)plistener;
   listener->on_finish(uuid, listener->udata);
-  listener->on_finish_rw(uuid, listener->rw_udata);
   if (FACIL_PRINT_STATE)
     fprintf(stderr, "* (%d) Stopped listening on port %s\n", getpid(),
             listener->port);
@@ -399,11 +373,7 @@ listener_alloc(struct facil_listen_args settings) {
   if (!settings.on_start)
     settings.on_start = mock_on_finish;
   if (!settings.on_finish)
-    settings.on_finish = (void (*)(intptr_t, void *))mock_on_close;
-  if (!settings.on_finish_rw)
-    settings.on_finish_rw = mock_on_finish;
-  if (!settings.set_rw_hooks)
-    settings.set_rw_hooks = listener_set_rw_hooks;
+    settings.on_finish = mock_on_finish;
   struct ListenerProtocol *listener = malloc(sizeof(*listener));
   if (listener) {
     *listener = (struct ListenerProtocol){
@@ -411,13 +381,10 @@ listener_alloc(struct facil_listen_args settings) {
         .protocol.on_data = listener_on_data,
         .protocol.on_close = listener_on_close,
         .protocol.ping = listener_ping,
-        .on_open = settings.on_open,
+        .on_open = (void (*)(void *, void *))settings.on_open,
         .udata = settings.udata,
         .on_start = settings.on_start,
         .on_finish = settings.on_finish,
-        .on_finish_rw = settings.on_finish_rw,
-        .set_rw_hooks = settings.set_rw_hooks,
-        .rw_udata = settings.rw_udata,
     };
     size_t tmp = strlen(settings.port);
     memcpy(listener->port, settings.port, tmp + 1);
@@ -475,30 +442,23 @@ static const char *connector_protocol_name = "connect protocol __internal__";
 
 struct ConnectProtocol {
   protocol_s protocol;
-  protocol_s *(*on_connect)(intptr_t uuid, void *udata);
+  void (*on_connect)(void *uuid, void *udata);
   void (*on_fail)(intptr_t uuid, void *udata);
-  void (*set_rw_hooks)(intptr_t uuid, void *udata);
   void *udata;
-  void *rw_udata;
   intptr_t uuid;
-  int opened;
+  uint8_t opened;
 };
 
 /* The first `ready` signal is fired when a connection was established */
 static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
   struct ConnectProtocol *connector = (void *)_connector;
   // fprintf(stderr, "connector_on_ready called\n");
-  if (!connector->opened) {
-    connector->set_rw_hooks(uuid, connector->rw_udata);
-  }
-  connector->opened = 1;
   sock_touch(uuid);
-  if (facil_attach(uuid, connector->on_connect(uuid, connector->udata)) == -1)
-    goto error;
-  uuid_data(uuid).protocol->on_ready(uuid, uuid_data(uuid).protocol);
+  if (connector->opened == 0) {
+    connector->opened = 1;
+    connector->on_connect((void *)uuid, connector->udata);
+  }
   return;
-error:
-  sock_close(uuid);
 }
 
 /* If data events reach this protocol, delay their execution. */
@@ -521,21 +481,17 @@ intptr_t facil_connect(struct facil_connect_args opt) {
   intptr_t uuid = -1;
   if (!opt.address || !opt.port || !opt.on_connect)
     goto error;
-  if (!opt.set_rw_hooks)
-    opt.set_rw_hooks = listener_set_rw_hooks;
   struct ConnectProtocol *connector = malloc(sizeof(*connector));
   if (!connector)
     goto error;
   *connector = (struct ConnectProtocol){
-      .on_connect = opt.on_connect,
+      .on_connect = (void (*)(void *, void *))opt.on_connect,
       .on_fail = opt.on_fail,
       .udata = opt.udata,
       .protocol.service = connector_protocol_name,
       .protocol.on_data = connector_on_data,
       .protocol.on_ready = connector_on_ready,
       .protocol.on_close = connector_on_close,
-      .set_rw_hooks = opt.set_rw_hooks,
-      .rw_udata = opt.rw_udata,
       .opened = 0,
   };
   uuid = connector->uuid = sock_connect(opt.address, opt.port);
@@ -1001,6 +957,11 @@ reschedule:
   defer(facil_review_timeout, (void *)fd, NULL);
 }
 
+static void perform_idle(void *arg, void *ignr) {
+  ((struct facil_run_args *)arg)->on_idle();
+  (void)ignr;
+}
+
 static void facil_cycle(void *arg, void *ignr) {
   (void)ignr;
   static int idle = 0;
@@ -1020,7 +981,7 @@ static void facil_cycle(void *arg, void *ignr) {
     if (events > 0) {
       idle = 1;
     } else if (idle) {
-      ((struct facil_run_args *)arg)->on_idle();
+      defer(perform_idle, arg, ignr);
       idle = 0;
     }
   }
@@ -1066,9 +1027,11 @@ static void facil_cleanup(void *arg) {
       defer(deferred_on_shutdown, (void *)uuid, NULL);
     }
   }
-  facil_cycle(arg, NULL);
+  evio_review(100);
   defer_perform();
-  facil_cycle(arg, NULL);
+  sock_flush_all();
+  evio_review(0);
+  sock_flush_all();
   ((struct facil_run_args *)arg)->on_finish();
   defer_perform();
   evio_close();
