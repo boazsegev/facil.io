@@ -9,6 +9,15 @@ License: MIT
  *
  * The file was written to be compatible with C++ as well as C, hence some
  * pointer casting.
+ *
+ * Use:
+
+fio_ary_s ary;                   // a container can be placed on the stack.
+fio_ary_new(&ary);               // initialize the container
+fio_ary_push(&ary, (void*)1 );   // add / remove / read data...
+fio_ary_free(&ary)               // free any resources, not the container.
+
+
  */
 #define H_FIO_ARRAY_H
 
@@ -114,12 +123,24 @@ FIO_FUNC inline size_t fio_ary_each(fio_ary_s *ary, size_t start_at,
  */
 FIO_FUNC inline void fio_ary_compact(fio_ary_s *ary);
 
+/**
+ * Iterates through the list using a `for` loop.
+ *
+ * Access the data with `pos.obj` and it's index with `pos.i`. the `pos`
+ * variable can be named however you please.
+ */
+#define FIO_ARY_FOR(ary, pos)                                                  \
+  for (                                                                        \
+      struct {                                                                 \
+        size_t i;                                                              \
+        void *obj;                                                             \
+      } pos = {0, (ary)->arry[(ary)->start]};                                  \
+      (pos.i + (ary)->start) < (ary)->end;                                     \
+      (++pos.i), (pos.obj = (ary)->arry[pos.i + (ary)->start]))
+
 /* *****************************************************************************
 Array creation API
 ***************************************************************************** */
-
-#define FIO_ARY_INIT                                                           \
-  (fio_ary_s) { .arry = NULL }
 
 FIO_FUNC inline void fio_ary_new(fio_ary_s *ary, size_t capa) {
   *ary = (fio_ary_s){.arry = (void **)malloc(capa * sizeof(*ary->arry)),
