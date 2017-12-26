@@ -141,7 +141,6 @@ static void deferred_on_data(void *arg, void *arg2) {
   protocol_unlock(pr, FIO_PR_LOCK_TASK);
   if (!spn_trylock(&uuid_data(arg).scheduled)) {
     evio_add(sock_uuid2fd((intptr_t)arg), arg);
-    fprintf(stderr, "Rearming (evio_add) %p\n", arg);
   }
   // else
   //   fprintf(stderr, "skipped evio_add\n");

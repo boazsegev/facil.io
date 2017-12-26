@@ -392,7 +392,8 @@ void fiobj_test(void) {
 
   obj = fiobj_str_new("0x7F", 4);
   if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 127)
-    fprintf(stderr, "* FAILED 0x7F object test.\n");
+    fprintf(stderr, "* FAILED 0x7F object test got %ld.\n",
+            (long)fiobj_obj2num(obj));
   fiobj_free(obj);
 
   obj = fiobj_str_new("0b01111111", 10);

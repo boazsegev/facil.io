@@ -292,6 +292,8 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_send_body(http_s *r, void *data, uintptr_t length) {
+  if (!r->private_data.out_headers)
+    return -1;
   add_content_length(r, length);
   add_date(r);
   int ret = ((http_protocol_s *)r->private_data.owner)
@@ -306,6 +308,10 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
+  if (!r->private_data.out_headers) {
+    close(fd);
+    return -1;
+  };
   add_content_length(r, length);
   add_date(r);
   int ret = ((http_protocol_s *)r->private_data.owner)
@@ -320,6 +326,8 @@ int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_sendfile2(http_s *r, fiobj_s *filename) {
+  if (!r->private_data.out_headers)
+    return -1;
   struct stat file_data = {.st_size = 0};
   static uint64_t accept_enc_hash = 0;
   if (!accept_enc_hash)
@@ -489,7 +497,7 @@ open_file:
  * argument is set to NULL.
  */
 int http_send_error(http_s *r, size_t error) {
-  if (!r || !error)
+  if (!r || !error || !r->private_data.out_headers)
     return -1;
   r->status = error;
   fiobj_s *fname = fiobj_str_new(

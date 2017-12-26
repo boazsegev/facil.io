@@ -111,7 +111,7 @@ static inline __attribute__((unused)) int fiobj_send(intptr_t uuid,
   fio_cstr_s s = fiobj_obj2cstr(o);
   // fprintf(stderr, "%s\n", s.data);
   return sock_write2(.uuid = uuid, .buffer = (o),
-                     .offset = (((uintptr_t)s.data) - ((uintptr_t)(o))),
+                     .offset = (((intptr_t)s.data) - ((intptr_t)(o))),
                      .length = s.length,
                      .dealloc = (void (*)(void *))fiobj_free);
 }

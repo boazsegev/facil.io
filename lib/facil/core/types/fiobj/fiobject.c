@@ -412,7 +412,7 @@ int64_t fio_atol(char **pstr) {
   if (str[0] == 'B' || str[0] == 'b' ||
       (str[0] == '0' && (str[1] == 'b' || str[1] == 'B'))) {
     /* base 2 */
-    if (str[0] == 0)
+    if (str[0] == '0')
       str++;
     str++;
     while (str[0] == '0' || str[0] == '1') {
@@ -423,6 +423,8 @@ int64_t fio_atol(char **pstr) {
              (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
     /* base 16 */
     uint8_t tmp;
+    if (str[0] == '0')
+      str++;
     str++;
     while (1) {
       if (str[0] >= '0' && str[0] <= '9')
