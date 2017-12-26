@@ -200,8 +200,7 @@ int http_sendfile2(http_s *h, fiobj_s *filename);
  * The `uuid` and `settings` arguments are only required if the `http_s` handle
  * is NULL.
  */
-int http_send_error(http_s *r, size_t error, intptr_t uuid,
-                    http_settings_s *settings);
+int http_send_error(http_s *h, size_t error);
 
 /**
  * Sends the response headers and starts streaming. Use `http_defer` to continue
@@ -372,6 +371,12 @@ HTTP General Helper functions that might be used globally
  */
 fiobj_s *http_req2str(http_s *h);
 
+/**
+ * Writes a log line to `stderr` about the request / response object.
+ *
+ * This function is called automatically if the `.log` setting is enabled.
+ */
+void http_write_log(http_s *h);
 /* *****************************************************************************
 HTTP Time related helper functions that might be used globally
 ***************************************************************************** */

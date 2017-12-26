@@ -7,8 +7,6 @@
 
 #include <stdio.h>
 
-static void http_hello_on_request(http_s *request);
-
 /*
 A simple Hello World HTTP response + static file service, for benchmarking.
 
@@ -43,15 +41,22 @@ Available command line flags:
 -w <processes>     : defaults to the number of CPU cores (or 1).
 -q                 : sets verbosity (HTTP logging) off (on by default).
 */
+
+/* The HTTP request handler */
+static void http_hello_on_request(http_s *h) {
+  http_send_body(h, "Hello World!", 12);
+}
+
+/* reads command line arguments and starts up the server. */
 int main(int argc, char const *argv[]) {
   uint8_t print_log = 1;
 
   /*     ****  Command line arguments ****     */
   fio_cli_start(argc, argv,
-                "This is a facil.io example application.\n"
-                "\nThis example offers a simple \"Hello World\" server "
-                "used for benchmarking.\n"
-                "\nThe following arguments are supported:\n");
+                "This is a facil.io example application.\n\n"
+                "This example offers a simple \"Hello World\" server "
+                "used for benchmarking.\n\n"
+                "The following arguments are supported:\n");
 
   fio_cli_accept_num("port p", "the port to listen to, defaults to 3000.");
   fio_cli_accept_num("threads t", "number of threads.");
@@ -69,16 +74,20 @@ int main(int argc, char const *argv[]) {
   const char *public_folder = fio_cli_get_str("www");
   fio_cli_end();
 
-  /*     ****  logging ****     */
+  /*     ****  logging  ****     */
 
   if (print_log) {
     /* log to the "benchmark.log" file, set to `if` to 0 to skip this*/
     if (1) {
+      int old_stderr = dup(fileno(stderr));
       fclose(stderr);
       FILE *log = fopen("./tmp/benchmark.log", "a");
       if (!log) {
-        fprintf(stdout, "* stderr closed and couldn't be opened.\n");
+        fdopen(old_stderr, "a");
+        fprintf(stdout,
+                "* Failed to open logging file - logging to terminal.\n");
       } else {
+        close(old_stderr);
         fprintf(stdout,
                 "* All logging reports (stderr) routed to a log file at "
                 "./tmp/benchmark.log\n");
@@ -94,8 +103,4 @@ int main(int argc, char const *argv[]) {
                   .log = print_log, .public_folder = public_folder))
     perror("Couldn't initiate Hello World service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
-}
-
-static void http_hello_on_request(http_s *h) {
-  http_send_body(h, "Hello World!", 12);
 }

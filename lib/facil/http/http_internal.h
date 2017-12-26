@@ -9,6 +9,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "http.h"
 
+#include <arpa/inet.h>
 #include <errno.h>
 
 /* *****************************************************************************
@@ -76,7 +77,9 @@ static inline void http_s_init(http_s *h, http_protocol_s *owner) {
 }
 
 static inline void http_s_cleanup(http_s *h) {
-  fiobj_free(h->method); /* union for   fiobj_free(r->status_str); */
+  if (h->status && ((http_protocol_s *)h->private_data.owner)->settings->log)
+    http_write_log(h);
+  fiobj_free(h->method); /* union for fiobj_free(r->status_str); */
   fiobj_free(h->private_data.out_headers);
   fiobj_free(h->headers);
   fiobj_free(h->version);
@@ -91,6 +94,8 @@ static inline void http_s_cleanup(http_s *h) {
 /** Use this function to handle HTTP requests.*/
 void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings);
+
+int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings);
 
 /* *****************************************************************************
 Helpers

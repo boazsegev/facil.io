@@ -104,7 +104,7 @@ static fiobj_s *headers2str(http_s *h) {
     fiobj_s *tmp = fiobj_hash_get3(h->headers, connection_key);
     if (tmp) {
       t = fiobj_obj2cstr(tmp);
-      if (!t.data || !t.len || t.data[0] == 'k')
+      if (!t.data || !t.len || t.data[0] == 'k' || t.data[0] == 'K')
         fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
       else {
         fiobj_str_write(w.dest, "connection:close\r\n", 18);
@@ -319,6 +319,10 @@ static int on_header(http1_parser_s *parser, char *name, size_t name_len,
                      char *data, size_t data_len) {
   fiobj_s *sym;
   fiobj_s *obj;
+  if (!parser2http(parser)->request.headers) {
+    fprintf(stderr, "Missinh HashMap for header %s: %s\n", name, data);
+    return -1;
+  }
   if ((uintptr_t)parser2http(parser)->buf ==
       (uintptr_t)(parser2http(parser) + 1)) {
     sym = fiobj_str_static(name, name_len);

@@ -44,16 +44,18 @@ static inline void add_date(http_s *r) {
     mod_hash = fiobj_sym_hash("last-modified", 13);
 
   if (facil_last_tick().tv_sec >= last_date_added + 60) {
+    fiobj_s *tmp = fiobj_str_buf(32);
+    fiobj_str_resize(
+        tmp, http_time2str(fiobj_obj2cstr(tmp).data, facil_last_tick().tv_sec));
     spn_lock(&date_lock);
     if (facil_last_tick().tv_sec >= last_date_added + 60) {
-      fiobj_free(current_date);
-      current_date = fiobj_str_buf(32);
       last_date_added = facil_last_tick().tv_sec;
-      fiobj_str_resize(
-          current_date,
-          http_time2str(fiobj_obj2cstr(current_date).data, last_date_added));
+      fiobj_s *other = current_date;
+      current_date = tmp;
+      tmp = other;
     }
     spn_unlock(&date_lock);
+    fiobj_free(tmp);
   }
 
   if (!fiobj_hash_get3(r->private_data.out_headers, date_hash)) {
@@ -292,8 +294,9 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
 int http_send_body(http_s *r, void *data, uintptr_t length) {
   add_content_length(r, length);
   add_date(r);
-  return ((http_protocol_s *)r->private_data.owner)
-      ->vtable->http_send_body(r, data, length);
+  int ret = ((http_protocol_s *)r->private_data.owner)
+                ->vtable->http_send_body(r, data, length);
+  return ret;
 }
 /**
  * Sends the response headers and the specified file (the response's body).
@@ -305,13 +308,14 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
   add_content_length(r, length);
   add_date(r);
-  return ((http_protocol_s *)r->private_data.owner)
-      ->vtable->http_sendfile(r, fd, length, offset);
+  int ret = ((http_protocol_s *)r->private_data.owner)
+                ->vtable->http_sendfile(r, fd, length, offset);
+  return ret;
 }
 /**
  * Sends the response headers and the specified file (the response's body).
  *
- * Returns -1 on error and 0 on success.
+ * Returns -1 eton error and 0 on success.
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
@@ -445,7 +449,7 @@ open_file:
   file = open(s.data, O_RDONLY);
   if (file == -1) {
     fprintf(stderr, "ERROR: Couldn't open file %s!\n", s.data);
-    http_send_error(r, 500, 0, NULL);
+    http_send_error(r, 500);
     return 0;
   }
   {
@@ -484,36 +488,22 @@ open_file:
  * The `uuid` argument is optional and will be used only if the `http_s`
  * argument is set to NULL.
  */
-int http_send_error(http_s *r, size_t error, intptr_t uuid,
-                    http_settings_s *settings) {
-  fprintf(stderr, "ERROR: %lu\n", error);
-  protocol_s *pr = NULL;
-  if (!r) {
-    if (!uuid || !settings)
-      return -1;
-    pr = http1_new(uuid, settings, NULL, 0);
-    HTTP_ASSERT(pr, "Couldn't allocate protocol object for error report.")
-    facil_attach(uuid, pr);
-    r = malloc(sizeof(*r));
-    HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
-    http_s_init(r, (http_protocol_s *)pr);
-  } else {
-    settings = ((http_protocol_s *)r->private_data.owner)->settings;
-  }
+int http_send_error(http_s *r, size_t error) {
+  if (!r || !error)
+    return -1;
   r->status = error;
-  fiobj_s *fname =
-      fiobj_str_new(settings->public_folder, settings->public_folder_length);
+  fiobj_s *fname = fiobj_str_new(
+      ((http_protocol_s *)r->private_data.owner)->settings->public_folder,
+      ((http_protocol_s *)r->private_data.owner)
+          ->settings->public_folder_length);
   fiobj_str_write2(fname, "/%lu.html", (unsigned long)error);
   if (http_sendfile2(r, fname)) {
     http_set_header(r, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
     fiobj_str_resize(fname, 0);
     fio_cstr_s t = http_status2str(error);
-    fiobj_str_write(fname, t.data, t.len);
-    fiobj_send(((http_protocol_s *)r->private_data.owner)->uuid, fname);
-  } else
-    fiobj_free(fname);
-  if (pr)
-    sock_close(uuid);
+    http_send_body(r, t.data, t.len);
+  }
+  fiobj_free(fname);
   return 0;
 }
 
@@ -580,9 +570,8 @@ static protocol_s *http_on_open(intptr_t uuid, void *set) {
     capa = sock_max_capacity();
   facil_set_timeout(uuid, ((http_settings_s *)set)->timeout);
   if (sock_uuid2fd(uuid) + HTTP_BUSY_UNLESS_HAS_FDS >= capa) {
-    /* TODO: use http_send_error2(uuid) */
     fprintf(stderr, "WARNING: HTTP server at capacity\n");
-    sock_close(uuid);
+    http_send_error2(uuid, 503, set);
     return NULL;
   }
   return http1_new(uuid, set, NULL, 0);
@@ -712,6 +701,71 @@ fiobj_s *http_req2str(http_s *h) {
     fiobj_str_write(w.dest, t.data, t.len);
   }
   return w.dest;
+}
+
+void http_write_log(http_s *h) {
+  fiobj_s *l = fiobj_str_buf(128);
+  static uint64_t cl_hash = 0;
+  if (!cl_hash)
+    cl_hash = fiobj_sym_hash("content-length", 14);
+
+  intptr_t bytes_sent =
+      fiobj_obj2num(fiobj_hash_get3(h->private_data.out_headers, cl_hash));
+
+  struct timespec start, end;
+  clock_gettime(CLOCK_REALTIME, &end);
+  start = facil_last_tick();
+
+  fio_cstr_s buff = fiobj_obj2cstr(l);
+
+  // TODO Guess IP address from headers (forwarded) where possible
+  sock_peer_addr_s addrinfo = sock_peer_addr(
+      sock_uuid2fd(((http_protocol_s *)h->private_data.owner)->uuid));
+  if (addrinfo.addrlen) {
+    if (inet_ntop(
+            addrinfo.addr->sa_family,
+            addrinfo.addr->sa_family == AF_INET
+                ? (void *)&((struct sockaddr_in *)addrinfo.addr)->sin_addr
+                : (void *)&((struct sockaddr_in6 *)addrinfo.addr)->sin6_addr,
+            buff.data, 128))
+      buff.len = strlen(buff.data);
+  }
+  if (buff.len == 0) {
+    memcpy(buff.data, "[unknown]", 9);
+    buff.len = 9;
+  }
+  memcpy(buff.data + buff.len, " - - [", 6);
+  buff.len += 6;
+  fiobj_str_resize(l, buff.len);
+  {
+    fiobj_s *date;
+    spn_lock(&date_lock);
+    date = fiobj_dup(current_date);
+    spn_unlock(&date_lock);
+    fiobj_str_join(l, current_date);
+    fiobj_free(date);
+  }
+  buff.len += http_time2str(buff.data + buff.len, end.tv_sec);
+  buff.data[buff.len++] = ']';
+  buff.data[buff.len++] = ' ';
+  buff.data[buff.len++] = '"';
+  fiobj_str_join(l, h->method);
+  fiobj_str_write(l, " ", 1);
+  fiobj_str_join(l, h->path);
+  fiobj_str_write(l, " ", 1);
+  fiobj_str_join(l, h->version);
+  fiobj_str_write(l, "\" ", 2);
+  if (bytes_sent > 0)
+    fiobj_str_write2(l, "%lu %luB ", (unsigned long)h->status, bytes_sent);
+  else
+    fiobj_str_write2(l, "%lu -- ", (unsigned long)h->status);
+
+  bytes_sent = ((end.tv_sec - start.tv_sec) * 1000) +
+               ((end.tv_nsec - start.tv_nsec) / 1000000);
+  fiobj_str_write2(l, "%lums\r\n", (unsigned long)bytes_sent);
+  buff = fiobj_obj2cstr(l);
+
+  fwrite(buff.data, 1, buff.len, stderr);
 }
 
 /**
@@ -1164,7 +1218,8 @@ static char invalid_cookie_value_char[256] = {
 fio_cstr_s http_status2str(uintptr_t status) {
 #define HTTP1_SET_STATUS_STR(status, str)                                      \
   [status] = (fio_cstr_s) {                                                    \
-    .buffer = (str "(" #status ")"), .length = sizeof(str "(" #status ")"),    \
+    .buffer = (str " (error " #status ")"),                                    \
+    .length = (sizeof(str " (error " #status ")") - 1),                        \
   }
   static fio_cstr_s status2str[] = {
       HTTP1_SET_STATUS_STR(100, "Continue"),

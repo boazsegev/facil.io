@@ -6,6 +6,8 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #include "http_internal.h"
 
+#include "http1.h"
+
 /** Use this function to handle HTTP requests.*/
 void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings) {
@@ -16,7 +18,7 @@ void http_on_request_handler______internal(http_s *h,
   if (t == NULL) {
     if (settings->public_folder) {
       t = fiobj_str_buf(settings->public_folder_length +
-                        fiobj_obj2cstr(h->path).len + 3);
+                        fiobj_obj2cstr(h->path).len + 16);
       fiobj_str_write(t, settings->public_folder,
                       settings->public_folder_length);
       fiobj_str_join(t, h->path);
@@ -25,8 +27,11 @@ void http_on_request_handler______internal(http_s *h,
         if (s.data[s.len - 1] == '/')
           fiobj_str_write(t, "index.html", 10);
       }
-      if (!http_sendfile2(h, t))
+      if (!http_sendfile2(h, t)) {
+        fiobj_free(t);
         return;
+      }
+      fiobj_free(t);
     }
     static uint64_t host_hash = 0;
     if (!host_hash)
@@ -44,13 +49,30 @@ void http_on_request_handler______internal(http_s *h,
   } else {
     fio_cstr_s val = fiobj_obj2cstr(t);
     if (val.data[0] == 'h' && val.data[1] == '2') {
-      http_send_error(h, 400, 0, NULL);
+      http_send_error(h, 400);
     } else if (settings->on_upgrade) {
       settings->on_upgrade(h, val.data, val.len);
     } else {
-      http_send_error(h, 400, 0, NULL);
+      http_send_error(h, 400);
     }
   }
+}
+
+int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
+  protocol_s *pr = NULL;
+  if (!uuid || !settings || !error)
+    return -1;
+  pr = http1_new(uuid, settings, NULL, 0);
+  HTTP_ASSERT(pr, "Couldn't allocate protocol object for error report.")
+  facil_attach(uuid, pr);
+  http_s *r = malloc(sizeof(*r));
+  HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
+  http_s_init(r, (http_protocol_s *)pr);
+  int ret = http_send_error(r, error);
+  if (!ret)
+    free(r);
+  sock_close(uuid);
+  return ret;
 }
 
 fiobj_s *HTTP_HEADER_ACCEPT_RANGES;
