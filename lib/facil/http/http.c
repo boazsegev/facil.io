@@ -1157,7 +1157,7 @@ static fio_hash_s mime_types;
 /** Registers a Mime-Type to be associated with the file extension. */
 void http_mimetype_register(char *file_ext, size_t file_ext_len,
                             fiobj_s *mime_type_str) {
-  if (!mime_types.map.data)
+  if (!mime_types.map)
     fio_hash_new(&mime_types);
   uintptr_t hash = fiobj_sym_hash(file_ext, file_ext_len);
   fiobj_s *old = fio_hash_insert(&mime_types, hash, mime_type_str);
@@ -1169,7 +1169,7 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
  *  Remember to call `fiobj_free`.
  */
 fiobj_s *http_mimetype_find(char *file_ext, size_t file_ext_len) {
-  if (!mime_types.map.data)
+  if (!mime_types.map)
     return NULL;
   uintptr_t hash = fiobj_sym_hash(file_ext, file_ext_len);
   return fiobj_dup(fio_hash_find(&mime_types, hash));
@@ -1177,6 +1177,8 @@ fiobj_s *http_mimetype_find(char *file_ext, size_t file_ext_len) {
 
 /** Clears the Mime-Type registry (it will be emoty afterthis call). */
 void http_mimetype_clear(void) {
+  if (!mime_types.map)
+    return;
   FIO_HASH_FOR_LOOP(&mime_types, obj) { fiobj_free((void *)obj->obj); }
   fio_hash_free(&mime_types);
   last_date_added = 0;

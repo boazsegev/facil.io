@@ -100,8 +100,13 @@ static fiobj_s *headers2str(http_s *h) {
 
   fio_cstr_s t = http1_status2str(h->status);
   fiobj_str_write(w.dest, t.data, t.length);
-  if (!fiobj_hash_get3(h->private_data.out_headers, connection_key)) {
-    fiobj_s *tmp = fiobj_hash_get3(h->headers, connection_key);
+  fiobj_s *tmp = fiobj_hash_get3(h->private_data.out_headers, connection_key);
+  if (tmp) {
+    t = fiobj_obj2cstr(tmp);
+    if (t.data[0] == 'c' || t.data[0] == 'C')
+      ((http1_s *)h->private_data.owner)->close = 1;
+  } else {
+    tmp = fiobj_hash_get3(h->headers, connection_key);
     if (tmp) {
       t = fiobj_obj2cstr(tmp);
       if (!t.data || !t.len || t.data[0] == 'k' || t.data[0] == 'K')
