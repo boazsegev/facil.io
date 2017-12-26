@@ -645,7 +645,7 @@ void defer_test(void) {
   i_count = 0;
   spn_unlock(&i_lock);
   start = clock();
-  pool_pt pool = defer_pool_start(DEFER_TEST_THREAD_COUNT, NULL, NULL);
+  pool_pt pool = defer_pool_start(DEFER_TEST_THREAD_COUNT);
   if (pool) {
     for (size_t i = 0; i < DEFER_TEST_THREAD_COUNT; i++) {
       defer(thrd_sched, NULL, NULL);
@@ -686,7 +686,7 @@ void defer_test(void) {
 
   fprintf(stderr, "press ^C to finish PID test\n");
   defer(pid_task, "pid test", NULL);
-  if (defer_perform_in_fork(4, 64, NULL, NULL) > 0) {
+  if (defer_perform_in_fork(4, 64) > 0) {
     fprintf(stderr, "* %d finished\n", getpid());
     exit(0);
   };
