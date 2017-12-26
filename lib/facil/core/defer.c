@@ -299,7 +299,7 @@ void defer_thread_wait(pool_pt pool, void *p_thr) {
  * queue).
  */
 #pragma weak defer_thread_signal
-void defer_thread_signal(void) {}
+void defer_thread_signal(void) { (void)0; }
 
 /* a thread's cycle. This is what a worker thread does... repeatedly. */
 static void *defer_worker_thread(void *pool_) {
