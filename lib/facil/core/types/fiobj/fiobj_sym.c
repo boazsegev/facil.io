@@ -13,7 +13,7 @@ Symbol Type
 
 typedef struct {
   struct fiobj_vtable_s *vtable;
-  uintptr_t hash;
+  uint64_t hash;
   uint64_t len;
   char str[];
 } fiobj_sym_s;
@@ -128,7 +128,7 @@ fiobj_symprintf(const char *format, ...) {
  * The unique identifier is calculated using SipHash and is equal for all Symbol
  * objects that were created using the same data.
  */
-uintptr_t fiobj_sym_id(fiobj_s *sym) {
+uint64_t fiobj_sym_id(fiobj_s *sym) {
   if (sym->type != FIOBJ_T_SYMBOL)
     return 0;
   return obj2sym(sym)->hash;

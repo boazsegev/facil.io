@@ -38,7 +38,7 @@ fiobj_symprintf(const char *format, ...);
  * The unique identifier is calculated using SipHash and is equal for all Symbol
  * objects that were created using the same data.
  */
-uintptr_t fiobj_sym_id(fiobj_s *sym);
+uint64_t fiobj_sym_id(fiobj_s *sym);
 
 /* *****************************************************************************
 Risky Symbol API

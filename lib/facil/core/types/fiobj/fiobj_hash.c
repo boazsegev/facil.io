@@ -6,6 +6,18 @@ License: MIT
 #include "fiobj_hash.h"
 #include "fiobj_internal.h"
 
+// struct test_key_s {
+//   uint64_t hash;
+//   fiobj_s * key;
+// };
+// #define FIO_HASH_COMPARE_KEYS(k1, k2) \
+//           ( ((k1).hash) == ((k2).hash) && \
+//           ( (k1).key == (k2).key || fiobj_is_eq((k1).key,(k2).key) )  )
+// #define FIO_HASH_KEY_TYPE struct test_key_s
+// #define FIO_HASH_KEY2UINT(key) (key.key)
+// #define FIO_HASH_KEY_INVALID ((struct test_key_s){.hash = 0})
+// #define FIO_HASH_KEY_ISINVALID(key) ((key).hash == 0 && (key).key == NULL)
+
 #include "fio_hashmap.h"
 
 #include <errno.h>
@@ -141,7 +153,7 @@ struct fiobj_inner_task_s {
   void *arg;
   int (*task)(fiobj_s *, void *);
 };
-static int fiobj_inner_task(uintptr_t key, void *obj, void *a_) {
+static int fiobj_inner_task(uint64_t key, void *obj, void *a_) {
   struct fiobj_inner_task_s *t = a_;
   return t->task(obj, t->arg);
   (void)key;
