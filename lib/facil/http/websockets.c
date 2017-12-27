@@ -149,10 +149,10 @@ static inline void clear_subscriptions(ws_s *ws) {
 Callbacks - Required functions for websocket_parser.h
 ***************************************************************************** */
 
-static void websocket_on_unwrapped(void *udata, void *msg, uint64_t len,
+static void websocket_on_unwrapped(void *ws_p, void *msg, uint64_t len,
                                    char first, char last, char text,
                                    unsigned char rsv) {
-  ws_s *ws = udata;
+  ws_s *ws = ws_p;
   if (last && first) {
     ws->on_message(ws, msg, len, (uint8_t)text);
     return;
@@ -171,24 +171,24 @@ static void websocket_on_unwrapped(void *udata, void *msg, uint64_t len,
 
   (void)rsv;
 }
-static void websocket_on_protocol_ping(void *udata, void *msg_, uint64_t len) {
-  ws_s *ws = udata;
+static void websocket_on_protocol_ping(void *ws_p, void *msg_, uint64_t len) {
+  ws_s *ws = ws_p;
   uint16_t *msg = malloc(2 + len);
   msg[0] = *((uint16_t *)"\x89\x00");
   memcpy(msg + 1, msg_, len);
   sock_write2(.uuid = ws->fd, .buffer = (void *)(msg), .length = 2 + len);
 }
-static void websocket_on_protocol_pong(void *udata, void *msg, uint64_t len) {
+static void websocket_on_protocol_pong(void *ws_p, void *msg, uint64_t len) {
   (void)len;
   (void)msg;
-  (void)udata;
+  (void)ws_p;
 }
-static void websocket_on_protocol_close(void *udata) {
-  ws_s *ws = udata;
+static void websocket_on_protocol_close(void *ws_p) {
+  ws_s *ws = ws_p;
   sock_close(ws->fd);
 }
-static void websocket_on_protocol_error(void *udata) {
-  ws_s *ws = udata;
+static void websocket_on_protocol_error(void *ws_p) {
+  ws_s *ws = ws_p;
   sock_close(ws->fd);
 }
 
@@ -320,10 +320,15 @@ void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
   ws->on_shutdown = args->on_shutdown;
   // setup any user data
   ws->udata = args->udata;
-  // buffer limits
-  ws->max_msg_size = http_settings->ws_max_msg_size;
-  // update the timeout
-  facil_set_timeout(uuid, http_settings->ws_timeout);
+  if (http_settings) {
+    // buffer limits
+    ws->max_msg_size = http_settings->ws_max_msg_size;
+    // update the timeout
+    facil_set_timeout(uuid, http_settings->ws_timeout);
+  } else {
+    ws->max_msg_size = (1024 * 256);
+    facil_set_timeout(uuid, 40);
+  }
   // update the protocol object, cleanning up the old one
   facil_attach(uuid, (protocol_s *)ws);
   // allow the on_open and on_data to take over the control.
@@ -543,6 +548,8 @@ static void websocket_on_pubsub_message(pubsub_message_s *msg) {
  */
 #undef websocket_subscribe
 uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
+  if (!args.ws)
+    goto error;
   websocket_sub_data_s *d = malloc(sizeof(*d));
   *d = (websocket_sub_data_s){.udata = args.udata,
                               .on_message = args.on_message,
@@ -570,6 +577,10 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
   }
   fio_ls_push(&args.ws->subscriptions, sub);
   return (uintptr_t)args.ws->subscriptions.prev;
+error:
+  if (args.on_unsubscribe)
+    args.on_unsubscribe(args.udata);
+  return 0;
 }
 
 /**
