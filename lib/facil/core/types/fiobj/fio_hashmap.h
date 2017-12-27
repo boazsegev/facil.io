@@ -32,26 +32,36 @@ License: MIT
 #endif
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 /**
  * extra collision protection can be obtained by defining ALL of the following:
- * * FIO_HASH_KEY_TYPE                 - to set the type of a key.
- * * FIO_HASH_COMPARE_KEYS(k1, k2)     - to compare two key.
- * * FIO_HASH_KEY2UINT(key)     - to convert a key to a unique unsigned number.
- * * FIO_HASH_KEY_INVALID    - a key constant where all of it's bytes are zero.
- * * FIO_HASH_KEY_ISINVALID(key)    - tests for a key who's memory is all zero.
+ * * FIO_HASH_KEY_TYPE              - the type used for keys.
+ * * FIO_HASH_KEY_INVALID         - an invalid key with it's bytes set to zero.
+ * * FIO_HASH_KEY2UINT(key)         - converts a key to a hash value number.
+ * * FIO_HASH_COMPARE_KEYS(k1, k2)  - compares two key.
+ * * FIO_HASH_KEY_ISINVALID(key)    - tests for an invalid key.
+ * * FIO_HASH_KEY_COPY(key)         - creates a persistent copy of the key.
+ * * FIO_HASH_KEY_DESTROY(key)      - destroys (or frees) the key's copy.
  *
  * Note: FIO_HASH_COMPARE_KEYS will be used to compare against
- *       FIO_HASH_KEY_INVALID.
+ *       FIO_HASH_KEY_INVALID as well as valid keys.
+ *
+ * Note: Before freeing the Hash, FIO_HASH_KEY_DESTROY should be called for
+ *       every key. This is NOT automatic. see the FIO_HASH_FOR_EMPTY(h) macro.
  */
-#if !defined(FIO_HASH_COMPARE_KEYS) || !defined(FIO_HASH_KEY_TYPE)
+#if !defined(FIO_HASH_COMPARE_KEYS) || !defined(FIO_HASH_KEY_TYPE) ||          \
+    !defined(FIO_HASH_KEY2UINT) || !defined(FIO_HASH_KEY_INVALID) ||           \
+    !defined(FIO_HASH_KEY_ISINVALID) || !defined(FIO_HASH_KEY_COPY)
 #define FIO_HASH_COMPARE_KEYS(k1, k2) ((k1) == (k2))
 #define FIO_HASH_KEY_TYPE uint64_t
 #define FIO_HASH_KEY2UINT(key) (key)
 #define FIO_HASH_KEY_INVALID 0
 #define FIO_HASH_KEY_ISINVALID(key) ((key) == 0)
+#define FIO_HASH_KEY_COPY(key) (key)
+#define FIO_HASH_KEY_DESTROY(key) 0
 #endif
 
 #ifndef FIO_HASH_INITIAL_CAPACITY
@@ -106,12 +116,26 @@ FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash);
  * A macro for a `for` loop that iterates over all the hashed objetcs (in
  * order).
  *
- * `hash` is the name of the hash table variable and `i` is a temporary variable
+ * `hash` a pointer to the hash table variable and `i` is a temporary variable
  * name to be created for iteration.
  *
  * `i->key` is the key and `i->obj` is the hashed data.
  */
 #define FIO_HASH_FOR_LOOP(hash, i)
+
+/**
+ * A macro for a `for` loop that iterates over all the hashed objetcs (in
+ * order) and empties the hash.
+ *
+ * `hash` a pointer to the hash table variable and `i` is a temporary variable
+ * name to be created for iteration.
+ *
+ * `i->key` is the key and `i->obj` is the hashed data.
+ *
+ * Free the object manually (if required). The key will be freed automatically
+ * (if required).
+ */
+#define FIO_HASH_FOR_EMPTY(hash, i)
 
 /**
  * Iteration using a callback for each entry in the Hash Table.
@@ -158,7 +182,14 @@ struct fio_hash_s {
 #undef FIO_HASH_FOR_LOOP
 #define FIO_HASH_FOR_LOOP(hash, container)                                     \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
-       FIO_HASH_KEY_ISINVALID(container->key); ++container)
+       !FIO_HASH_KEY_ISINVALID(container->key); ++container)
+
+#undef FIO_HASH_FOR_EMPTY
+#define FIO_HASH_FOR_EMPTY(hash, container)                                    \
+  for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
+       !FIO_HASH_KEY_ISINVALID(container->key) ||                              \
+       (((hash)->pos = (hash)->count = 0) != 0);                               \
+       FIO_HASH_KEY_DESTROY(container->key), (++container))
 
 /* *****************************************************************************
 Hash allocation / deallocation.
@@ -245,12 +276,14 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
       /* nothing to delete */
       return NULL;
     }
-    /* add object to map */
-    *info = (fio_hash_data_s){.key = key, .obj = hash->ordered + hash->pos};
 
     /* add object to ordered hash */
     hash->ordered[hash->pos] =
-        (fio_hash_data_ordered_s){.key = key, .obj = obj};
+        (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_COPY(key), .obj = obj};
+
+    /* add object to map */
+    *info = (fio_hash_data_s){.key = hash->ordered[hash->pos].key,
+                              .obj = hash->ordered + hash->pos};
 
     /* manage counters and mark end position */
     hash->count++;
@@ -323,6 +356,8 @@ retry_rehashing:
         h->ordered[reader].obj = NULL;
         h->ordered[writer] = old;
         ++writer;
+      } else {
+        FIO_HASH_KEY_DESTROY(h->ordered[reader].key);
       }
       ++reader;
     }
