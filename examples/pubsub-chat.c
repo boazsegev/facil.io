@@ -72,7 +72,6 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   struct nickname *n = websocket_udata(ws);
   if (!n)
     n = &MISSING_NICKNAME;
-  fprintf(stderr, "nickname: %s (%lu)\n", n->nick, n->len);
   char *msg = malloc(size + n->len + 2);
   memcpy(msg, n->nick, n->len);
   msg[n->len] = ':';
@@ -107,14 +106,12 @@ static void answer_http_upgrade(http_s *h, char *pr, size_t len) {
   if (path.len > 1) {
     n = malloc(path.len + sizeof(*n));
     n->len = path.len - 1;
-    memcpy(n->nick, path.data + 1, path.len - 1);
-    fprintf(stderr, "nickname: %s (%lu == %lu)\n", n->nick, n->len,
-            (unsigned long)n->nick);
+    memcpy(n->nick, path.data + 1, path.len); /* will copy the NUL byte */
   }
-  // Websocket upgrade will use our existing response (never leak
-  if (!http_upgrade2ws(.http = h, .on_open = on_open_websocket,
-                       .on_close = on_close_websocket,
-                       .on_message = handle_websocket_messages, .udata = n))
+  // Websocket upgrade will use our existing response.
+  if (http_upgrade2ws(.http = h, .on_open = on_open_websocket,
+                      .on_close = on_close_websocket,
+                      .on_message = handle_websocket_messages, .udata = n))
     free(n);
 }
 
