@@ -35,6 +35,7 @@ License: MIT
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /**
  * extra collision protection can be obtained by defining ALL of the following:
@@ -54,7 +55,8 @@ License: MIT
  */
 #if !defined(FIO_HASH_COMPARE_KEYS) || !defined(FIO_HASH_KEY_TYPE) ||          \
     !defined(FIO_HASH_KEY2UINT) || !defined(FIO_HASH_KEY_INVALID) ||           \
-    !defined(FIO_HASH_KEY_ISINVALID) || !defined(FIO_HASH_KEY_COPY)
+    !defined(FIO_HASH_KEY_ISINVALID) || !defined(FIO_HASH_KEY_COPY) ||         \
+    !defined(FIO_HASH_KEY_DESTROY)
 #define FIO_HASH_COMPARE_KEYS(k1, k2) ((k1) == (k2))
 #define FIO_HASH_KEY_TYPE uint64_t
 #define FIO_HASH_KEY2UINT(key) (key)
@@ -127,6 +129,23 @@ FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash);
  * A macro for a `for` loop that iterates over all the hashed objetcs (in
  * order) and empties the hash.
  *
+ * This will also reallocate the map's memory (to zero out the data), so if this
+ * is performed before calling `fio_hash_free`, use FIO_HASH_FOR_FREE instead.
+ *
+ * `hash` a pointer to the hash table variable and `i` is a temporary variable
+ * name to be created for iteration.
+ *
+ * `i->key` is the key and `i->obj` is the hashed data.
+ *
+ * Free the object manually (if required). The key will be freed automatically
+ * (if required).
+ */
+#define FIO_HASH_FOR_EMPTY(hash, i)
+
+/**
+ * A macro for a `for` loop that will iterate over all the hashed objetcs (in
+ * order) and empties the hash, later calling `fio_hash_free` to free the hash.
+ *
  * `hash` a pointer to the hash table variable and `i` is a temporary variable
  * name to be created for iteration.
  *
@@ -188,7 +207,20 @@ struct fio_hash_s {
 #define FIO_HASH_FOR_EMPTY(hash, container)                                    \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
        !FIO_HASH_KEY_ISINVALID(container->key) ||                              \
-       (((hash)->pos = (hash)->count = 0) != 0);                               \
+       (((hash)->pos = (hash)->count = 0) != 0 ||                              \
+        (free((hash)->map),                                                    \
+         ((hash)->map =                                                        \
+              (fio_hash_data_s *)calloc(sizeof(*(hash)->map), (hash)->capa)),  \
+         0) != 0);                                                             \
+       FIO_HASH_KEY_DESTROY(container->key),                                   \
+                               container->key = FIO_HASH_KEY_INVALID,          \
+                               container->obj = NULL, (++container))
+
+#undef FIO_HASH_FOR_FREE
+#define FIO_HASH_FOR_FREE(hash, container)                                     \
+  for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
+       !FIO_HASH_KEY_ISINVALID(container->key) ||                              \
+       ((fio_hash_free(hash), 0) != 0);                                        \
        FIO_HASH_KEY_DESTROY(container->key), (++container))
 
 /* *****************************************************************************
@@ -234,7 +266,8 @@ FIO_FUNC fio_hash_data_s *fio_hash_seek_pos_(fio_hash_s *hash,
                               : (hash->capa >> 1);
   while (i < limit) {
     if (FIO_HASH_KEY_ISINVALID(pos->key) ||
-        FIO_HASH_COMPARE_KEYS(pos->key, key))
+        (FIO_HASH_KEY2UINT(pos->key) == FIO_HASH_KEY2UINT(key) &&
+         FIO_HASH_COMPARE_KEYS(pos->key, key)))
       return pos;
     pos = hash->map + (((FIO_HASH_KEY2UINT(key) & hash->mask) +
                         fio_hash_map_cuckoo_steps(i++)) &
