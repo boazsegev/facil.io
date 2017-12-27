@@ -92,7 +92,7 @@ static inline char *my_strdup(char *str, size_t len) {
 /* the macro that returns the key's hash value */
 #define FIO_HASH_KEY2UINT(key) ((key).hash)
 
-/* Compare the keys using length testing and `memcmp` */
+/* Compare the keys using length testing and `memcmp` (no hash comparison) */
 #define FIO_HASH_COMPARE_KEYS(k1, k2)                                          \
   ((k1).len == (k2).len && !memcmp((k1).str, (k2).str, (k2).len))
 
