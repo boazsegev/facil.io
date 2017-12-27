@@ -102,7 +102,7 @@ inline FIO_FUNC fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node);
 inline FIO_FUNC int fio_ls_embd_is_empty(fio_ls_embd_s *list);
 
 /** Tests if the list is NOT empty (contains any nodes). */
-inline FIO_FUNC int fio_ls_embed_any(fio_ls_embd_s *list);
+inline FIO_FUNC int fio_ls_embd_any(fio_ls_embd_s *list);
 
 /**
  * Iterates through the list using a `for` loop.
@@ -113,7 +113,7 @@ inline FIO_FUNC int fio_ls_embed_any(fio_ls_embd_s *list);
 
 /** Takes a list pointer `plist` and returns a pointer to it's container. */
 #define FIO_LS_EMBD_OBJ(type, member, plist)                                   \
-  ((type *)((uintptr_t)(ptr) - (uintptr_t)(&(((type *)0)->member))))
+  ((type *)((uintptr_t)(plist) - (uintptr_t)(&(((type *)0)->member))))
 
 /* *****************************************************************************
 Indeependent Implementation
@@ -234,7 +234,7 @@ inline FIO_FUNC int fio_ls_embd_is_empty(fio_ls_embd_s *list) {
 }
 
 /** Tests if the list is NOT empty (contains any nodes). */
-inline FIO_FUNC int fio_ls_embed_any(fio_ls_embd_s *list) {
+inline FIO_FUNC int fio_ls_embd_any(fio_ls_embd_s *list) {
   return list->next != list;
 }
 

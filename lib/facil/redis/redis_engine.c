@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 */
 #include "spnlock.inc"
 
-#include "fio_list.h"
+#include "fio_llist.h"
 #include "redis_connection.h"
 #include "redis_engine.h"
 #include "resp.h"
@@ -27,7 +27,7 @@ typedef struct {
   void *pub_ctx;
   char *address;
   char *port;
-  fio_list_s callbacks;
+  fio_ls_embd_s callbacks;
   uint16_t ref;
   volatile uint8_t active;
   volatile uint8_t sub_state;
@@ -36,7 +36,7 @@ typedef struct {
 } redis_engine_s;
 
 typedef struct {
-  fio_list_s node;
+  fio_ls_embd_s node;
   void (*callback)(pubsub_engine_s *e, resp_object_s *reply, void *udata);
   void *udata;
   size_t len;
@@ -61,8 +61,8 @@ static void redis_pub_send(void *e, void *uuid) {
   callbacks_s *cb;
   spn_lock(&r->lock);
 
-  if (fio_list_any(r->callbacks)) {
-    cb = fio_node2obj(callbacks_s, node, r->callbacks.next);
+  if (fio_ls_embd_any(&r->callbacks)) {
+    cb = FIO_LS_EMBD_OBJ(callbacks_s, node, r->callbacks.next);
     if (cb->sent == 0) {
       cb->sent = 1;
       sock_write2(.uuid = r->pub, .buffer = (uint8_t *)(cb + 1),
@@ -104,7 +104,7 @@ static void on_message_pub(intptr_t uuid, resp_object_s *msg, void *udata) {
   redis_engine_s *r = udata;
   callbacks_s *cb;
   spn_lock(&r->lock);
-  cb = fio_list_shift(callbacks_s, node, r->callbacks);
+  cb = FIO_LS_EMBD_OBJ(callbacks_s, node, fio_ls_embd_shift(&r->callbacks));
   spn_unlock(&r->lock);
   if (cb) {
     schedule_pub_send(r, uuid);
@@ -194,8 +194,9 @@ static void on_open_pub(intptr_t uuid, void *e) {
             r->address ? r->address : "0.0.0.0", r->port);
   r->pub_state = 1;
   spn_lock(&r->lock);
-  callbacks_s *cb;
-  fio_list_for_each(callbacks_s, node, cb, r->callbacks) { cb->sent = 0; }
+  FIO_LS_EMBD_FOR(&r->callbacks, node) {
+    FIO_LS_EMBD_OBJ(callbacks_s, node, node)->sent = 0;
+  }
   spn_unlock(&r->lock);
   schedule_pub_send(r, uuid);
 }
@@ -312,7 +313,7 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args a) {
       .ref = 1,
       .sub_parser = resp_parser_new(),
       .pub_parser = resp_parser_new(),
-      .callbacks = FIO_LIST_INIT_STATIC(e->callbacks),
+      .callbacks = FIO_LS_INIT(e->callbacks),
       .active = 1,
       .sub_state = 1,
       .pub_state = 1,
@@ -350,8 +351,11 @@ void redis_engine_destroy(const pubsub_engine_s *engine) {
   redis_engine_s *r = (redis_engine_s *)engine;
 
   spn_lock(&r->lock);
-  callbacks_s *cb;
-  fio_list_for_each(callbacks_s, node, cb, r->callbacks) free(cb);
+  while (fio_ls_embd_any(&r->callbacks)) {
+    callbacks_s *cb =
+        FIO_LS_EMBD_OBJ(callbacks_s, node, fio_ls_embd_pop(&r->callbacks));
+    free(cb);
+  }
   sock_force_close(r->pub);
   sock_force_close(r->sub);
 
@@ -384,14 +388,14 @@ intptr_t redis_engine_send(pubsub_engine_s *e, resp_object_s *data,
 
   callbacks_s *cb = malloc(sizeof(*cb) + len);
   *cb = (callbacks_s){
-      .node = FIO_LIST_INIT_STATIC(cb->node),
+      .node = FIO_LS_INIT(cb->node),
       .callback = callback,
       .udata = udata,
       .len = len,
   };
   resp_format(r->pub_parser, (uint8_t *)(cb + 1), &len, data);
   spn_lock(&r->lock);
-  fio_list_push(callbacks_s, node, r->callbacks, cb);
+  fio_ls_embd_push(&r->callbacks, &cb->node);
   spn_unlock(&r->lock);
   schedule_pub_send(r, r->pub);
   return 0;
