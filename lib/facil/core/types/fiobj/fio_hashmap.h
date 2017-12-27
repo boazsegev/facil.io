@@ -5,17 +5,18 @@ License: MIT
 */
 
 /**
- * A simple ordered Hash Table implementation, with a minimal API.
+ * A simple ordered Hash Table implementation, with a minimal API and zero hash
+ * collision protection.
  *
  * Unique keys are required. Full key collisions aren't handled, instead the old
  * value is replaced and returned.
  *
- * Partial key collisions are handled by seeking forward (in leaps) and
- * attempting to find a close enough spot. If a close enough spot isn't found,
- * rehashing is initiated and memory consumption increases.
+ * Partial key collisions are handled by seeking forward and attempting to find
+ * a close enough spot. If a close enough spot isn't found, rehashing is
+ * initiated and memory consumption increases.
  *
- * The Hash Table is ordered using an internal linked list of data containers
- * with duplicates of the hash key data.
+ * The Hash Table is ordered using an internal ordered array of data containers
+ * with duplicates of the key data (to improve cache locality).
  *
  * The file was written to be compatible with C++ as well as C, hence some
  * pointer casting.
@@ -34,9 +35,28 @@ License: MIT
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifndef HASH_INITIAL_CAPACITY
+/**
+ * extra collision protection can be obtained by defining ALL of the following:
+ * * FIO_HASH_KEY_TYPE                 - to set the type of a key.
+ * * FIO_HASH_COMPARE_KEYS(k1, k2)     - to compare two key.
+ * * FIO_HASH_KEY2UINT(key)     - to convert a key to a unique unsigned number.
+ * * FIO_HASH_KEY_INVALID    - a key constant where all of it's bytes are zero.
+ * * FIO_HASH_KEY_ISINVALID(key)    - tests for a key who's memory is all zero.
+ *
+ * Note: FIO_HASH_COMPARE_KEYS will be used to compare against
+ *       FIO_HASH_KEY_INVALID.
+ */
+#if !defined(FIO_HASH_COMPARE_KEYS) || !defined(FIO_HASH_KEY_TYPE)
+#define FIO_HASH_COMPARE_KEYS(k1, k2) ((k1) == (k2))
+#define FIO_HASH_KEY_TYPE uint64_t
+#define FIO_HASH_KEY2UINT(key) (key)
+#define FIO_HASH_KEY_INVALID 0
+#define FIO_HASH_KEY_ISINVALID(key) ((key) == 0)
+#endif
+
+#ifndef FIO_HASH_INITIAL_CAPACITY
 /* MUST be a power of 2 */
-#define HASH_INITIAL_CAPACITY 16
+#define FIO_HASH_INITIAL_CAPACITY 16
 #endif
 
 #ifndef FIO_HASH_MAX_MAP_SEEK
@@ -64,10 +84,11 @@ FIO_FUNC void fio_hash_free(fio_hash_s *hash);
  * Set obj to NULL to remove an existing data (the existing object will be
  * returned).
  */
-FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj);
+FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
+                               void *obj);
 
 /** Locates an object in the Hash Map Table according to the hash key value. */
-FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, uintptr_t key);
+FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key);
 
 /** Returns the number of elements currently in the Hash Table. */
 FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash);
@@ -98,28 +119,29 @@ FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash);
  * The callback task function must accept the hash key, the entry data and an
  * opaque user pointer:
  *
- *     int example_task(uintptr_t key, void *obj, void *arg) {return 0;}
+ *     int example_task(FIO_HASH_KEY_TYPE key, void *obj, void *arg) {return 0;}
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  *
  * Returns the relative "stop" position, i.e., the number of items processed +
  * the starting point.
  */
-FIO_FUNC inline size_t
-fio_hash_each(fio_hash_s *hash, const size_t start_at,
-              int (*task)(uintptr_t key, void *obj, void *arg), void *arg);
+FIO_FUNC inline size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
+                                     int (*task)(FIO_HASH_KEY_TYPE key,
+                                                 void *obj, void *arg),
+                                     void *arg);
 
 /* *****************************************************************************
 Hash Table Internal Data Structures
 ***************************************************************************** */
 
 typedef struct fio_hash_data_ordered_s {
-  uintptr_t key; /* another copy for memory cache locality */
+  FIO_HASH_KEY_TYPE key; /* another copy for memory cache locality */
   void *obj;
 } fio_hash_data_ordered_s;
 
 typedef struct fio_hash_data_s {
-  uintptr_t key; /* another copy for memory cache locality */
+  FIO_HASH_KEY_TYPE key; /* another copy for memory cache locality */
   struct fio_hash_data_ordered_s *obj;
 } fio_hash_data_s;
 
@@ -135,8 +157,8 @@ struct fio_hash_s {
 
 #undef FIO_HASH_FOR_LOOP
 #define FIO_HASH_FOR_LOOP(hash, container)                                     \
-  for (fio_hash_data_ordered_s *container = (hash)->ordered; container->key;   \
-       ++container)
+  for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
+       FIO_HASH_KEY_ISINVALID(container->key); ++container)
 
 /* *****************************************************************************
 Hash allocation / deallocation.
@@ -144,15 +166,17 @@ Hash allocation / deallocation.
 
 FIO_FUNC void fio_hash_new(fio_hash_s *h) {
   *h = (fio_hash_s){
-      .mask = (HASH_INITIAL_CAPACITY - 1),
-      .map = (fio_hash_data_s *)calloc(sizeof(*h->map), HASH_INITIAL_CAPACITY),
+      .mask = (FIO_HASH_INITIAL_CAPACITY - 1),
+      .map =
+          (fio_hash_data_s *)calloc(sizeof(*h->map), FIO_HASH_INITIAL_CAPACITY),
       .ordered = (fio_hash_data_ordered_s *)calloc(sizeof(*h->ordered),
-                                                   HASH_INITIAL_CAPACITY),
-      .capa = HASH_INITIAL_CAPACITY,
+                                                   FIO_HASH_INITIAL_CAPACITY),
+      .capa = FIO_HASH_INITIAL_CAPACITY,
   };
   if (!h->map || !h->ordered)
     perror("ERROR: Hash Table couldn't allocate memory"), exit(errno);
-  h->ordered[0] = (fio_hash_data_ordered_s){.key = 0, .obj = NULL};
+  h->ordered[0] =
+      (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
 }
 
 FIO_FUNC void fio_hash_free(fio_hash_s *h) {
@@ -169,24 +193,27 @@ FIO_FUNC inline uintptr_t fio_hash_map_cuckoo_steps(uintptr_t step) {
 }
 
 /* seeks the hash's position in the map */
-FIO_FUNC fio_hash_data_s *fio_hash_seek_pos_(fio_hash_s *hash, uintptr_t key) {
+FIO_FUNC fio_hash_data_s *fio_hash_seek_pos_(fio_hash_s *hash,
+                                             FIO_HASH_KEY_TYPE key) {
   /* TODO: consider implementing Robing Hood reordering during seek? */
-  fio_hash_data_s *pos = hash->map + (key & hash->mask);
+  fio_hash_data_s *pos = hash->map + (FIO_HASH_KEY2UINT(key) & hash->mask);
   uintptr_t i = 0;
   const uintptr_t limit = hash->capa > FIO_HASH_MAX_MAP_SEEK
                               ? FIO_HASH_MAX_MAP_SEEK
                               : (hash->capa >> 1);
   while (i < limit) {
-    if (!pos->key || pos->key == key)
+    if (FIO_HASH_KEY_ISINVALID(pos->key) ||
+        FIO_HASH_COMPARE_KEYS(pos->key, key))
       return pos;
-    pos = hash->map +
-          (((key & hash->mask) + fio_hash_map_cuckoo_steps(i++)) & hash->mask);
+    pos = hash->map + (((FIO_HASH_KEY2UINT(key) & hash->mask) +
+                        fio_hash_map_cuckoo_steps(i++)) &
+                       hash->mask);
   }
   return NULL;
 }
 
 /* finds an object in the map */
-FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, uintptr_t key) {
+FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key) {
   fio_hash_data_s *info = fio_hash_seek_pos_(hash, key);
   if (!info || !info->obj)
     return NULL;
@@ -196,7 +223,8 @@ FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, uintptr_t key) {
 /* inserts an object to the map, rehashing if required, returning old object.
  * set obj to NULL to remove existing data.
  */
-FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
+FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
+                               void *obj) {
   /* ensure some space */
   if (obj && hash->pos + 1 >= hash->capa)
     fio_hash_rehash(hash);
@@ -227,7 +255,8 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
     /* manage counters and mark end position */
     hash->count++;
     hash->pos++;
-    hash->ordered[hash->pos] = (fio_hash_data_ordered_s){.key = 0, .obj = NULL};
+    hash->ordered[hash->pos] =
+        (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
     return NULL;
   }
 
@@ -242,7 +271,7 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
       info->obj->obj = NULL;
       info->obj = NULL;
       hash->ordered[hash->pos] =
-          (fio_hash_data_ordered_s){.key = 0, .obj = NULL};
+          (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
       return old;
     }
   }
@@ -298,13 +327,15 @@ retry_rehashing:
       ++reader;
     }
     h->pos = writer;
-    h->ordered[h->pos] = (fio_hash_data_ordered_s){.key = 0, .obj = NULL};
+    h->ordered[h->pos] =
+        (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
   }
 }
 
-FIO_FUNC inline size_t
-fio_hash_each(fio_hash_s *hash, size_t start_at,
-              int (*task)(uintptr_t key, void *obj, void *arg), void *arg) {
+FIO_FUNC inline size_t fio_hash_each(fio_hash_s *hash, size_t start_at,
+                                     int (*task)(FIO_HASH_KEY_TYPE key,
+                                                 void *obj, void *arg),
+                                     void *arg) {
   if (start_at >= hash->count)
     return hash->count;
   size_t count = 0;
