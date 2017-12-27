@@ -8,7 +8,8 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "facil.h"
 #include "fio_dict.h"
-#include "fio_hash_table.h"
+#include "fio_hashmap.h"
+#include "fio_list.h"
 #include "pubsub.h"
 
 #include <errno.h>
@@ -28,7 +29,7 @@ typedef struct {
 } msg_s;
 
 typedef struct {
-  fio_ht_s clients;
+  fio_hash_s clients;
   const pubsub_engine_s *engine;
   struct {
     char *name;
@@ -42,11 +43,11 @@ typedef struct {
 } channel_s;
 
 typedef struct pubsub_sub_s {
-  fio_ht_node_s clients;
   void (*on_message)(pubsub_message_s *msg);
   void (*on_unsubscribe)(void *udata1, void *udata2);
   void *udata1;
   void *udata2;
+  uintptr_t hash;
   channel_s *parent;
   volatile uint64_t active;
   uint32_t ref;
@@ -120,10 +121,10 @@ Pubblish to clients and test against subscribed patterns.
 */
 static void pubsub_publish_matched_channel(fio_dict_s *ch_, void *msg_) {
   msg_s *msg = msg_;
-  client_s *cl;
   if (ch_) {
     channel_s *channel = fio_node2obj(channel_s, channels, ch_);
-    fio_ht_for_each(client_s, clients, cl, channel->clients) {
+    FIO_HASH_FOR_LOOP(&channel->clients, cl_p) {
+      client_s *cl = (void *)cl_p->obj;
       spn_add(&msg->ref, 1);
       spn_add(&cl->active, 1);
       defer(pubsub_deliver_msg, cl, msg);
@@ -134,7 +135,8 @@ static void pubsub_publish_matched_channel(fio_dict_s *ch_, void *msg_) {
     if (msg->pub.engine == pattern->engine &&
         fio_glob_match((uint8_t *)msg->pub.channel.name, msg->pub.channel.len,
                        (uint8_t *)pattern->name, pattern->len)) {
-      fio_ht_for_each(client_s, clients, cl, pattern->clients) {
+      FIO_HASH_FOR_LOOP(&pattern->clients, cl_p) {
+        client_s *cl = cl_p->obj;
         spn_add(&msg->ref, 1);
         spn_add(&cl->active, 1);
         defer(pubsub_deliver_msg, cl, msg);
@@ -323,10 +325,10 @@ void pubsub_engine_resubscribe(pubsub_engine_s *eng) {
 Hashing
 ***************************************************************************** */
 
-#define pubsub_client_hash(p1, p2, p3)                                         \
-  (((((uint64_t)(p1) * ((uint64_t)p2 ^ 0x736f6d6570736575ULL)) >> 5) |         \
-    (((uint64_t)(p1) * ((uint64_t)p2 ^ 0x736f6d6570736575ULL)) << 59)) ^       \
-   ((uint64_t)p3 ^ 0x646f72616e646f6dULL))
+#define pubsub_client_hash(on_msg, u1, u2)                                     \
+  (((((uint64_t)(on_msg) * ((uint64_t)u1 ^ 0x736f6d6570736575ULL)) >> 5) |     \
+    (((uint64_t)(on_msg) * ((uint64_t)u1 ^ 0x736f6d6570736575ULL)) << 59)) ^   \
+   ((uint64_t)u2 ^ 0x646f72616e646f6dULL))
 
 /* *****************************************************************************
 API
@@ -370,15 +372,15 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
     goto error;
   ch = malloc(sizeof(*ch) + args.channel.len + 1 + sizeof(void *));
   *ch = (channel_s){
-      .clients = FIO_HASH_TABLE_INIT(ch->clients),
+      .clients = {0},
       .name = (char *)(ch + 1),
       .len = args.channel.len,
       .use_pattern = args.use_pattern,
       .engine = args.engine,
   };
   memcpy(ch->name, args.channel.name, args.channel.len);
-
   ch->name[args.channel.len + sizeof(void *)] = 0;
+  fio_hash_new(&ch->clients);
 
   if (args.use_pattern) {
     fio_list_add(&pubsub_patterns, &ch->channels.list);
@@ -390,9 +392,8 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
 // fprintf(stderr, "Created a new channel for %s\n", args.channel.name);
 found_channel:
 
-  client = (void *)fio_ht_find(&ch->clients, cl_hash);
+  client = fio_hash_find(&ch->clients, cl_hash);
   if (client) {
-    client = fio_ht_object(client_s, clients, client);
     goto found_client;
   }
 
@@ -406,9 +407,10 @@ found_channel:
       .udata2 = args.udata2,
       .parent = ch,
       .active = 0,
+      .hash = cl_hash,
       .ref = 0,
   };
-  fio_ht_add(&ch->clients, &client->clients, cl_hash);
+  fio_hash_insert(&ch->clients, cl_hash, client);
 
 found_client:
 
@@ -445,7 +447,7 @@ pubsub_sub_pt pubsub_find_sub(struct pubsub_subscribe_args args) {
   if (!args.engine)
     args.engine = PUBSUB_DEFAULT_ENGINE;
   channel_s *ch;
-  client_s *client;
+  client_s *client = NULL;
   uint64_t cl_hash =
       pubsub_client_hash(args.on_message, args.udata1, args.udata2);
 
@@ -468,17 +470,11 @@ pubsub_sub_pt pubsub_find_sub(struct pubsub_subscribe_args args) {
   goto not_found;
 
 found_channel:
-
-  client = (void *)fio_ht_find(&ch->clients, cl_hash);
-  if (client) {
-    client = fio_ht_object(client_s, clients, client);
-    spn_unlock(&pubsub_GIL);
-    return client;
-  }
+  client = fio_hash_find(&ch->clients, cl_hash);
 
 not_found:
   spn_unlock(&pubsub_GIL);
-  return NULL;
+  return client;
 }
 
 void pubsub_unsubscribe(pubsub_sub_pt client) {
@@ -491,7 +487,7 @@ void pubsub_unsubscribe(pubsub_sub_pt client) {
     spn_sub(&client->active, 1);
     return;
   }
-  fio_ht_remove(&client->clients);
+  fio_hash_insert(&client->parent->clients, client->hash, NULL);
   if (client->parent->clients.count) {
     spn_unlock(&pubsub_GIL);
     defer(pubsub_free_client, client, NULL);
@@ -506,7 +502,7 @@ void pubsub_unsubscribe(pubsub_sub_pt client) {
   spn_unlock(&pubsub_GIL);
   defer(pubsub_free_client, client, NULL);
   ch->engine->unsubscribe(ch->engine, ch->name, ch->len, ch->use_pattern);
-  fio_ht_rehash(&ch->clients, 0);
+  fio_hash_free(&ch->clients);
   free(ch);
 }
 
