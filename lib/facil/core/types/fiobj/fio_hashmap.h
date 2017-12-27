@@ -113,9 +113,14 @@ fio_hash_each(fio_hash_s *hash, const size_t start_at,
 Hash Table Internal Data Structures
 ***************************************************************************** */
 
+typedef struct fio_hash_data_ordered_s {
+  uintptr_t key; /* another copy for memory cache locality */
+  void *obj;
+} fio_hash_data_ordered_s;
+
 typedef struct fio_hash_data_s {
   uintptr_t key; /* another copy for memory cache locality */
-  struct fio_hash_data_s *obj;
+  struct fio_hash_data_ordered_s *obj;
 } fio_hash_data_s;
 
 /* the information in tjhe Hash Map structure should be considered READ ONLY. */
@@ -124,13 +129,13 @@ struct fio_hash_s {
   uintptr_t capa;
   uintptr_t pos;
   uintptr_t mask;
-  fio_hash_data_s *ordered;
+  fio_hash_data_ordered_s *ordered;
   fio_hash_data_s *map;
 };
 
 #undef FIO_HASH_FOR_LOOP
 #define FIO_HASH_FOR_LOOP(hash, container)                                     \
-  for (fio_hash_data_s *container = (hash)->ordered; container->key;           \
+  for (fio_hash_data_ordered_s *container = (hash)->ordered; container->key;   \
        ++container)
 
 /* *****************************************************************************
@@ -141,13 +146,13 @@ FIO_FUNC void fio_hash_new(fio_hash_s *h) {
   *h = (fio_hash_s){
       .mask = (HASH_INITIAL_CAPACITY - 1),
       .map = (fio_hash_data_s *)calloc(sizeof(*h->map), HASH_INITIAL_CAPACITY),
-      .ordered =
-          (fio_hash_data_s *)calloc(sizeof(*h->ordered), HASH_INITIAL_CAPACITY),
+      .ordered = (fio_hash_data_ordered_s *)calloc(sizeof(*h->ordered),
+                                                   HASH_INITIAL_CAPACITY),
       .capa = HASH_INITIAL_CAPACITY,
   };
   if (!h->map || !h->ordered)
     perror("ERROR: Hash Table couldn't allocate memory"), exit(errno);
-  h->ordered[0] = (fio_hash_data_s){.key = 0, .obj = NULL};
+  h->ordered[0] = (fio_hash_data_ordered_s){.key = 0, .obj = NULL};
 }
 
 FIO_FUNC void fio_hash_free(fio_hash_s *h) {
@@ -217,13 +222,12 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
 
     /* add object to ordered hash */
     hash->ordered[hash->pos] =
-        (fio_hash_data_s){.key = key, .obj = (fio_hash_data_s *)obj};
+        (fio_hash_data_ordered_s){.key = key, .obj = obj};
 
     /* manage counters and mark end position */
     hash->count++;
     hash->pos++;
-    hash->ordered[hash->pos] =
-        (fio_hash_data_s){.key = 0, .obj = (fio_hash_data_s *)NULL};
+    hash->ordered[hash->pos] = (fio_hash_data_ordered_s){.key = 0, .obj = NULL};
     return NULL;
   }
 
@@ -238,7 +242,7 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, uintptr_t key, void *obj) {
       info->obj->obj = NULL;
       info->obj = NULL;
       hash->ordered[hash->pos] =
-          (fio_hash_data_s){.key = 0, .obj = (fio_hash_data_s *)NULL};
+          (fio_hash_data_ordered_s){.key = 0, .obj = NULL};
       return old;
     }
   }
@@ -260,8 +264,8 @@ retry_rehashing:
       perror("HashMap Allocation Failed"), exit(errno);
     /* the ordered list doesn't care about initialized memory, so realloc */
     /* will be faster. */
-    h->ordered =
-        (fio_hash_data_s *)realloc(h->ordered, h->capa * sizeof(*h->ordered));
+    h->ordered = (fio_hash_data_ordered_s *)realloc(
+        h->ordered, h->capa * sizeof(*h->ordered));
     if (!h->ordered)
       perror("HashMap Reallocation Failed"), exit(errno);
   }
@@ -286,7 +290,7 @@ retry_rehashing:
         }
         *place = (fio_hash_data_s){.key = h->ordered[reader].key,
                                    .obj = h->ordered + writer};
-        fio_hash_data_s old = h->ordered[reader];
+        fio_hash_data_ordered_s old = h->ordered[reader];
         h->ordered[reader].obj = NULL;
         h->ordered[writer] = old;
         ++writer;
@@ -294,8 +298,7 @@ retry_rehashing:
       ++reader;
     }
     h->pos = writer;
-    h->ordered[h->pos] =
-        (fio_hash_data_s){.key = 0, .obj = (fio_hash_data_s *)NULL};
+    h->ordered[h->pos] = (fio_hash_data_ordered_s){.key = 0, .obj = NULL};
   }
 }
 

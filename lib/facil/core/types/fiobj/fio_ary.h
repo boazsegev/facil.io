@@ -62,11 +62,8 @@ FIO_FUNC inline size_t fio_ary_count(fio_ary_s *ary);
 FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary);
 
 /**
- * Returns a temporary object owned by the Array.
- *
- * Wrap this function call within `fiobj_dup` to get a persistent handle. i.e.:
- *
- *     fiobj_dup(fiobj_ary_index(array, 0));
+ * Returns the object placed in the Array, if any. Returns NULL if no data or if
+ * the index is out of bounds.
  *
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
@@ -85,13 +82,16 @@ FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, int64_t pos);
  */
 FIO_FUNC inline void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos);
 
+/**
+ * Pushes an object to the end of the Array. Returns -1 on error.
+ */
 FIO_FUNC inline int fio_ary_push(fio_ary_s *ary, void *data);
 
 /** Pops an object from the end of the Array. */
 FIO_FUNC inline void *fio_ary_pop(fio_ary_s *ary);
 
 /**
- * Unshifts an object to the begining of the Array. Returns -1 on error.
+ * Unshifts an object to the beginning of the Array. Returns -1 on error.
  *
  * This could be expensive, causing `memmove`.
  */
@@ -130,19 +130,21 @@ FIO_FUNC inline void fio_ary_compact(fio_ary_s *ary);
  * variable can be named however you please.
  */
 #define FIO_ARY_FOR(ary, pos)                                                  \
-  for (                                                                        \
-      struct {                                                                 \
-        size_t i;                                                              \
-        void *obj;                                                             \
-      } pos = {0, (ary)->arry[(ary)->start]};                                  \
-      (pos.i + (ary)->start) < (ary)->end;                                     \
-      (++pos.i), (pos.obj = (ary)->arry[pos.i + (ary)->start]))
+  for (struct fio_ary_pos_for_loop_s pos = {0, (ary)->arry[(ary)->start]};     \
+       (pos.i + (ary)->start) < (ary)->end;                                    \
+       (++pos.i), (pos.obj = (ary)->arry[pos.i + (ary)->start]))
+struct fio_ary_pos_for_loop_s {
+  unsigned long i;
+  void *obj;
+};
 
 /* *****************************************************************************
 Array creation API
 ***************************************************************************** */
 
 FIO_FUNC inline void fio_ary_new(fio_ary_s *ary, size_t capa) {
+  if (!capa)
+    capa = 32;
   *ary = (fio_ary_s){.arry = (void **)malloc(capa * sizeof(*ary->arry)),
                      .capa = capa};
   if (!ary->arry)

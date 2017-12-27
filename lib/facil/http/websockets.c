@@ -6,7 +6,7 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #include "spnlock.inc"
 
-#include "fio_list.h"
+#include "fio_llist.h"
 #include "fiobj.h"
 
 #include "fio_base64.h"
@@ -117,7 +117,7 @@ struct ws_s {
   /** The maximum websocket message size */
   size_t max_msg_size;
   /** active pub/sub subscriptions */
-  fio_list_s subscriptions;
+  fio_ls_s subscriptions;
   /** socket buffer. */
   struct buffer_s buffer;
   /** data length (how much of the buffer actually used). */
@@ -139,29 +139,10 @@ char *WEBSOCKET_ID_STR = "websockets";
 Create/Destroy the websocket subscription objects
 ***************************************************************************** */
 
-typedef struct {
-  fio_list_s node;
-  pubsub_sub_pt sub;
-} subscription_s;
-
-static inline subscription_s *create_subscription(ws_s *ws, pubsub_sub_pt sub) {
-  subscription_s *s = malloc(sizeof(*s));
-  s->sub = sub;
-  fio_list_add(&ws->subscriptions, &s->node);
-  return s;
-}
-
-static inline void free_subscription(subscription_s *s) {
-  fio_list_remove(&s->node);
-  free(s);
-}
-
 static inline void clear_subscriptions(ws_s *ws) {
-  subscription_s *s;
-  fio_list_for_each(subscription_s, node, s, ws->subscriptions) {
-    pubsub_unsubscribe(s->sub);
-    free_subscription(s);
-  }
+  void *obj = NULL;
+  while (fio_ls_pop(&ws->subscriptions))
+    pubsub_unsubscribe(obj);
 }
 
 /* *****************************************************************************
@@ -307,7 +288,7 @@ static ws_s *new_websocket(intptr_t uuid) {
       .protocol.on_close = on_close,
       .protocol.on_ready = on_ready,
       .protocol.on_shutdown = on_shutdown,
-      .subscriptions = FIO_LIST_INIT_STATIC(ws->subscriptions),
+      .subscriptions = FIO_LS_INIT(ws->subscriptions),
       .is_client = 0,
       .fd = uuid,
   };
@@ -587,8 +568,8 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
     free(d);
     return 0;
   }
-  subscription_s *s = create_subscription(args.ws, sub);
-  return (uintptr_t)s;
+  fio_ls_push(&args.ws->subscriptions, sub);
+  return (uintptr_t)args.ws->subscriptions.prev;
 }
 
 /**
@@ -614,10 +595,9 @@ uintptr_t websocket_find_sub(struct websocket_subscribe_s args) {
           .udata1 = (void *)args.ws->fd, .udata2 = args.udata);
   if (!sub)
     return 0;
-  subscription_s *s;
-  fio_list_for_each(subscription_s, node, s, args.ws->subscriptions) {
-    if (s->sub == sub)
-      return (uintptr_t)s;
+  FIO_LS_FOR(&args.ws->subscriptions, pos) {
+    if (pos->obj == sub)
+      return (uintptr_t)pos;
   }
   return 0;
 }
@@ -626,14 +606,9 @@ uintptr_t websocket_find_sub(struct websocket_subscribe_s args) {
  * Unsubscribes from a channel.
  */
 void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id) {
-  subscription_s *s;
-  fio_list_for_each(subscription_s, node, s, ws->subscriptions) {
-    if (s == (subscription_s *)subscription_id) {
-      pubsub_unsubscribe(s->sub);
-      free_subscription(s);
-      return;
-    }
-  }
+  pubsub_unsubscribe((pubsub_sub_pt)((fio_ls_s *)subscription_id)->obj);
+  fio_ls_remove((fio_ls_s *)subscription_id);
+  (void)ws;
 }
 
 /*******************************************************************************

@@ -7,7 +7,6 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 */
 #include "spnlock.inc"
 
-#include "fio_list.h"
 #include "redis_connection.h"
 #include <errno.h>
 #include <math.h>

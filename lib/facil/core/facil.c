@@ -8,7 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "evio.h"
 #include "facil.h"
-#include "fio_list.h"
+#include "fio_hashmap.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -640,22 +640,13 @@ Cluster Messaging
 /* cluster state management */
 static struct {
   uintptr_t count;
-  fio_list_s handlers;
+  fio_hash_s handlers;
   spn_lock_i lock;
   struct facil_cluster_data_pipe {
     intptr_t in;
     intptr_t out;
   } * pipes;
-} facil_cluster_data = {.handlers.next = &facil_cluster_data.handlers,
-                        .handlers.prev = &facil_cluster_data.handlers,
-                        .lock = SPN_LOCK_INIT};
-
-/* message handler */
-typedef struct {
-  fio_list_s list;
-  void (*on_message)(void *data, uint32_t len);
-  int32_t msg_type;
-} fio_cluster_handler;
+} facil_cluster_data = {.lock = SPN_LOCK_INIT};
 
 /* message sending and protocol. */
 struct facil_cluster_msg_packet {
@@ -678,15 +669,16 @@ struct facil_cluster_protocol {
 
 /* cluster handling of message */
 static void facil_cluster_handle_msg(struct facil_cluster_msg *msg) {
-  fio_cluster_handler *hnd;
   spn_lock(&facil_cluster_data.lock);
-  fio_list_for_each(fio_cluster_handler, list, hnd,
-                    facil_cluster_data.handlers) {
-    if (hnd->msg_type == msg->msg_type) {
-      hnd->on_message(msg + 1, msg->len - sizeof(*msg));
-    }
-  }
+  void *func_pt =
+      fio_hash_find(&facil_cluster_data.handlers, (uintptr_t)msg->msg_type);
   spn_unlock(&facil_cluster_data.lock);
+  if (func_pt) {
+    struct {
+      void (*on_message)(void *data, uint32_t len);
+    } *pt2func = (void *)&func_pt;
+    pt2func->on_message(msg + 1, msg->len - sizeof(*msg));
+  }
 }
 
 /* cluster service ID */
@@ -808,6 +800,9 @@ static void facil_cluster_init(uint16_t count) {
   if (!facil_cluster_data.pipes)
     goto error;
 
+  /* initialize the hashtable for message handlers */
+  fio_hash_new(&facil_cluster_data.handlers);
+
   /* used to prevent any events from firing  */
   static protocol_s stub_protocol = {
       .service = NULL, .ping = listener_ping,
@@ -841,30 +836,17 @@ static void facil_cluster_destroy(void) {
     sock_close(facil_cluster_data.pipes[i].out);
     sock_close(facil_cluster_data.pipes[i].in);
   }
+  fio_hash_free(&facil_cluster_data.handlers);
 
-  fio_cluster_handler *hnd;
-  while ((hnd = fio_list_pop(fio_cluster_handler, list,
-                             facil_cluster_data.handlers)))
-    free(hnd);
   free(facil_cluster_data.pipes);
   facil_cluster_data.pipes = NULL;
 }
 
 void facil_cluster_set_handler(int32_t msg_type,
                                void (*on_message)(void *data, uint32_t len)) {
-  fio_cluster_handler *hnd;
   spn_lock(&facil_cluster_data.lock);
-  fio_list_for_each(fio_cluster_handler, list, hnd,
-                    facil_cluster_data.handlers) {
-    if (hnd->msg_type == msg_type) {
-      hnd->on_message = on_message;
-      spn_unlock(&facil_cluster_data.lock);
-      return;
-    }
-  }
-  hnd = malloc(sizeof(*hnd));
-  *hnd = (fio_cluster_handler){.msg_type = msg_type, .on_message = on_message};
-  fio_list_push(fio_cluster_handler, list, facil_cluster_data.handlers, hnd);
+  fio_hash_insert(&facil_cluster_data.handlers, (uintptr_t)msg_type,
+                  (void *)(uintptr_t)on_message);
   spn_unlock(&facil_cluster_data.lock);
 }
 
