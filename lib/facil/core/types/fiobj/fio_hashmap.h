@@ -174,6 +174,14 @@ FIO_FUNC inline size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
                                                  void *obj, void *arg),
                                      void *arg);
 
+/**
+ * Attempts to minimize memory usage by removing empty spaces caused by deleted
+ * items and rehashing the Hash Map.
+ *
+ * Returns the updated hash map capacity.
+ */
+FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash);
+
 /* *****************************************************************************
 Hash Table Internal Data Structures
 ***************************************************************************** */
@@ -278,6 +286,8 @@ FIO_FUNC fio_hash_data_s *fio_hash_seek_pos_(fio_hash_s *hash,
 
 /* finds an object in the map */
 FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key) {
+  if (!hash->map)
+    return NULL;
   fio_hash_data_s *info = fio_hash_seek_pos_(hash, key);
   if (!info || !info->obj)
     return NULL;
@@ -348,7 +358,7 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
 /* attempts to rehash the hashmap. */
 FIO_FUNC void fio_hash_rehash(fio_hash_s *h) {
 retry_rehashing:
-  h->mask = ((h->mask) << 1) | 1;
+  h->mask = ((h->mask) << 1) | (1 | (FIO_HASH_INITIAL_CAPACITY - 1));
   {
     /* It's better to reallocate using calloc than manually zero out memory */
     /* Maybe there's enough zeroed out pages available in the system */
@@ -364,7 +374,11 @@ retry_rehashing:
     if (!h->ordered)
       perror("HashMap Reallocation Failed"), exit(errno);
   }
-  if (h->pos == h->count) {
+  if (!h->count) {
+    /* empty hash */
+    return;
+
+  } else if (h->pos == h->count) {
     /* the ordered list is fully occupied, no need to rearange. */
     FIO_HASH_FOR_LOOP(h, i) {
       /* can't use fio_hash_insert, because we're recycling containers */
@@ -374,7 +388,9 @@ retry_rehashing:
       }
       *place = (fio_hash_data_s){.key = i->key, .obj = i};
     }
+
   } else {
+    /* the ordered list has holes, fill 'em up.*/
     size_t reader = 0;
     size_t writer = 0;
     while (reader < h->pos) {
@@ -440,6 +456,24 @@ FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash) {
 FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash) {
   if (!hash)
     return 0;
+  return hash->capa;
+}
+
+/**
+ * Attempts to minimize memory usage by removing empty spaces caused by deleted
+ * items and rehashing the Hash Map.
+ *
+ * Returns the updated hash map capacity.
+ */
+FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash) {
+  if (!hash)
+    return 0;
+  while (hash->mask && hash->mask >= hash->count)
+    hash->mask = hash->mask >> 1;
+  if (hash->mask + 1 < FIO_HASH_INITIAL_CAPACITY)
+    hash->mask = (FIO_HASH_INITIAL_CAPACITY - 1);
+  fio_hash_rehash(hash);
+
   return hash->capa;
 }
 

@@ -6,6 +6,7 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 
 #include "fiobj_internal.h"
+#include "fiobj_str.h"
 
 /* *****************************************************************************
 Symbol Type
@@ -129,7 +130,10 @@ fiobj_symprintf(const char *format, ...) {
  * objects that were created using the same data.
  */
 uint64_t fiobj_sym_id(fiobj_s *sym) {
-  if (sym->type != FIOBJ_T_SYMBOL)
+  if (sym->type == FIOBJ_T_SYMBOL)
+    return obj2sym(sym)->hash;
+  fio_cstr_s s = fiobj_obj2cstr(sym);
+  if (!s.data)
     return 0;
-  return obj2sym(sym)->hash;
+  return fiobj_sym_hash(s.data, s.len);
 }

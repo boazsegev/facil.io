@@ -60,10 +60,9 @@ If the `FIO_HASH_KEY_COPY` macro allocated memory dynamically or if there's a ne
 
 ### Example
 
-The following macros can be used to define a String key that protects against collisions and requires the whole string to match.
+In this example collisions are forced by setting the `hash` and string length to be equal for all keys, this demonstrates how defining these macros can secure the hash against String key collisions.
 
-In this example I'm forcing collisions by setting the `hash` and string length to be equal for all keys, but in a real situation make sure the `hash` values are as unique as can be.
-
+(another example can be found in the `pubsub.c` source code) 
 
 ```c
 #define _GNU_SOURCE
@@ -92,9 +91,10 @@ static inline char *my_strdup(char *str, size_t len) {
 /* the macro that returns the key's hash value */
 #define FIO_HASH_KEY2UINT(key) ((key).hash)
 
-/* Compare the keys using length testing and `memcmp` (no hash comparison) */
+/* Compare the keys using length testing and `memcmp` */
 #define FIO_HASH_COMPARE_KEYS(k1, k2)                                          \
-  ((k1).len == (k2).len && !memcmp((k1).str, (k2).str, (k2).len))
+  ((k1).str == (k2).str ||                                                     \
+   ((k1).len == (k2).len && !memcmp((k1).str, (k2).str, (k2).len)))
 
 /* an "all bytes are zero" invalid key */
 #define FIO_HASH_KEY_INVALID ((fio_hash_key_s){.hash = 0})
@@ -102,8 +102,7 @@ static inline char *my_strdup(char *str, size_t len) {
 /* tests if a key is the invalid key */
 #define FIO_HASH_KEY_ISINVALID(key) ((key).str == NULL)
 
-/* creates a persistent copy of a key, so changing strings keeps the data intact
- */
+/* creates a persistent copy of the key's string */
 #define FIO_HASH_KEY_COPY(key)                                                 \
   ((fio_hash_key_s){.hash = (key).hash,                                        \
                     .len = (key).len,                                          \
@@ -134,7 +133,7 @@ int main(void) {
 
   fio_hash_insert(&hash, key2, key2.str);
   fio_hash_insert(&hash, key3, key3.str);
-  fio_hash_insert(&hash, key3, NULL); /* delete the key3 object */
+  fio_hash_insert(&hash, key2, NULL); /* deletes the key2 object  */
   fio_hash_rehash(&hash); /* forces the unused key to be destroyed */
   fprintf(stderr, "Did we free %s?\n", key3.str);
   FIO_HASH_FOR_EMPTY(&hash, i) { (void)i->obj; }
