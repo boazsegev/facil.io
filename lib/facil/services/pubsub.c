@@ -7,9 +7,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "spnlock.inc"
 
 #include "facil.h"
-#include "fio_dict.h"
-#include "fio_hashmap.h"
-#include "fio_list.h"
+#include "fio_llist.h"
+#include "fiobj.h"
 #include "pubsub.h"
 
 #include <errno.h>
@@ -19,416 +18,232 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 #include <string.h>
 
+/* used later on */
+static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
+                             size_t pat_len);
 /* *****************************************************************************
-Data Structures / State
+The Hash Map (macros and the include instruction for `fio_hashmap.h`)
+***************************************************************************** */
+
+/* the hash key type for string keys */
+typedef struct {
+  size_t hash;
+  fiobj_s *obj;
+} fio_hash_key_s;
+
+/* define the macro to set the key type */
+#define FIO_HASH_KEY_TYPE fio_hash_key_s
+/* the macro that returns the key's hash value */
+#define FIO_HASH_KEY2UINT(key) ((key).hash)
+/* Compare the keys using length testing and `memcmp` */
+#define FIO_HASH_COMPARE_KEYS(k1, k2)                                          \
+  ((k1).obj == (k2).obj || fiobj_iseq((k1).obj, (k2).obj))
+/* an "all bytes are zero" invalid key */
+#define FIO_HASH_KEY_INVALID ((fio_hash_key_s){.obj = NULL})
+/* tests if a key is the invalid key */
+#define FIO_HASH_KEY_ISINVALID(key) ((key).obj == NULL)
+/* creates a persistent copy of the key's string */
+#define FIO_HASH_KEY_COPY(key)                                                 \
+  ((fio_hash_key_s){.hash = (key).hash, .obj = fiobj_dup((key).obj)})
+/* frees the allocated string */
+#define FIO_HASH_KEY_DESTROY(key) (fiobj_free((key).obj))
+
+#include "fio_hashmap.h"
+
+/* *****************************************************************************
+Channel and Client Data Structures
 ***************************************************************************** */
 
 typedef struct {
-  volatile uint64_t ref;
-  struct pubsub_publish_args pub;
-} msg_s;
-
-typedef struct {
-  fio_hash_s clients;
-  const pubsub_engine_s *engine;
-  struct {
-    char *name;
-    uint32_t len;
-  };
-  union {
-    fio_dict_s dict;
-    fio_list_s list;
-  } channels;
-  unsigned use_pattern : 1;
-} channel_s;
-
-typedef struct pubsub_sub_s {
+  /* clients are nodes in a list. */
+  fio_ls_embd_s node;
+  /* a reference counter (how many messages pending) */
+  size_t ref;
+  /* a pointer to the channel data */
+  void *parent;
+  /** The on message callback. the `*msg` pointer is to a temporary object. */
   void (*on_message)(pubsub_message_s *msg);
+  /** An optional callback for when a subscription is fully canceled. */
   void (*on_unsubscribe)(void *udata1, void *udata2);
+  /** Opaque user data#1 */
   void *udata1;
+  /** Opaque user data#2 .. using two allows some allocations to be avoided. */
   void *udata2;
-  uintptr_t hash;
-  channel_s *parent;
-  volatile uint64_t active;
-  uint32_t ref;
 } client_s;
 
 typedef struct {
-  msg_s *origin;
-  pubsub_message_s msg;
-} msg_container_s;
+  /* the root for the client's list */
+  fio_ls_embd_s clients;
+  /** The channel name. */
+  fiobj_s *name;
+  /** Use pattern matching for channel subscription. */
+  unsigned use_pattern : 1;
+} channel_s;
 
-static fio_dict_s pubsub_channels = FIO_DICT_INIT_STATIC;
-static fio_list_s pubsub_patterns = FIO_LIST_INIT_STATIC(pubsub_patterns);
-
-spn_lock_i pubsub_GIL = SPN_LOCK_INIT;
+static fio_hash_s patterns;
+static fio_hash_s channels;
+static fio_hash_s clients;
+static fio_hash_s engines;
+static spn_lock_i lock;
 
 /* *****************************************************************************
-Helpers
+Channel and Client Management
 ***************************************************************************** */
 
-static void pubsub_free_client(void *client_, void *ignr) {
-  client_s *client = client_;
-  if (spn_sub(&client->active, 1))
+/* for engine thingy */
+static void pubsub_on_channel_create(channel_s *ch);
+/* for engine thingy */
+static void pubsub_on_channel_destroy(channel_s *ch);
+
+static inline void client_test4free(client_s *cl) {
+  if (spn_sub(&cl->ref, 1)) {
+    /* client is still being used. */
     return;
-  if (client->on_unsubscribe)
-    client->on_unsubscribe(client->udata1, client->udata2);
-  free(client);
+  }
+  free(cl);
+}
+
+static void pubsub_deferred_unsub(void *cl_, void *ignr) {
+  client_s *cl = cl_;
+  cl->on_unsubscribe(cl->udata1, cl->udata2);
+  client_test4free(cl);
   (void)ignr;
 }
 
-static void pubsub_free_msg(void *msg_, void *ignr) {
-  msg_s *msg = msg_;
-  if (!spn_sub(&msg->ref, 1)) {
-    free(msg);
-  }
-  (void)ignr;
+static inline uint64_t client_compute_hash(client_s client) {
+  return (((((uint64_t)(client.on_message) *
+             ((uint64_t)client.udata1 ^ 0x736f6d6570736575ULL)) >>
+            5) |
+           (((uint64_t)(client.on_unsubscribe) *
+             ((uint64_t)client.udata1 ^ 0x736f6d6570736575ULL))
+            << 47)) ^
+          ((uint64_t)client.udata2 ^ 0x646f72616e646f6dULL));
 }
 
-static void pubsub_deliver_msg(void *client_, void *msg_) {
-  client_s *cl = client_;
-  msg_s *msg = msg_;
-  msg_container_s clmsg = {
-      .origin = msg,
-      .msg =
-          {
-              .engine = msg->pub.engine,
-              .channel.name = msg->pub.channel.name,
-              .channel.len = msg->pub.channel.len,
-              .msg.data = msg->pub.msg.data,
-              .msg.len = msg->pub.msg.len,
-              .use_pattern = msg->pub.use_pattern,
-              .udata1 = cl->udata1,
-              .udata2 = cl->udata2,
-              .subscription = cl,
-          },
-  };
-  cl->on_message(&clmsg.msg);
-  pubsub_free_msg(msg, NULL);
-  pubsub_free_client(cl, NULL);
-}
-
-/* *****************************************************************************
-Default Engine / Cluster Support
-***************************************************************************** */
-
-/** Used internally to identify oub/sub cluster messages. */
-#define FACIL_PUBSUB_CLUSTER_MESSAGE_ID ((int32_t)-1)
-
-/*
-a `ppublish` / `publish` found this channel as a match...
-Pubblish to clients and test against subscribed patterns.
-*/
-static void pubsub_publish_matched_channel(fio_dict_s *ch_, void *msg_) {
-  msg_s *msg = msg_;
-  if (ch_) {
-    channel_s *channel = fio_node2obj(channel_s, channels, ch_);
-    FIO_HASH_FOR_LOOP(&channel->clients, cl_p) {
-      client_s *cl = (void *)cl_p->obj;
-      spn_add(&msg->ref, 1);
-      spn_add(&cl->active, 1);
-      defer(pubsub_deliver_msg, cl, msg);
-    }
-  }
-  channel_s *pattern;
-  fio_list_for_each(channel_s, channels.list, pattern, pubsub_patterns) {
-    if (msg->pub.engine == pattern->engine &&
-        fio_glob_match((uint8_t *)msg->pub.channel.name, msg->pub.channel.len,
-                       (uint8_t *)pattern->name, pattern->len)) {
-      FIO_HASH_FOR_LOOP(&pattern->clients, cl_p) {
-        client_s *cl = cl_p->obj;
-        spn_add(&msg->ref, 1);
-        spn_add(&cl->active, 1);
-        defer(pubsub_deliver_msg, cl, msg);
-      }
-    }
-  }
-}
-
-static void pubsub_perform_publish(void *msg_, void *ignr) {
-  msg_s *msg = msg_;
-  fio_dict_s *channel;
-  spn_lock(&pubsub_GIL);
-
-  if (msg->pub.use_pattern) {
-    fio_dict_each_match_glob(fio_dict_prefix(&pubsub_channels,
-                                             (void *)&msg->pub.engine,
-                                             sizeof(void *)),
-                             msg->pub.channel.name, msg->pub.channel.len,
-                             pubsub_publish_matched_channel, msg);
-  } else {
-    channel = (void *)fio_dict_get(fio_dict_prefix(&pubsub_channels,
-                                                   (void *)&msg->pub.engine,
-                                                   sizeof(void *)),
-                                   msg->pub.channel.name, msg->pub.channel.len);
-    pubsub_publish_matched_channel(channel, msg);
-  }
-
-  spn_unlock(&pubsub_GIL);
-  pubsub_free_msg(msg, NULL);
-  (void)ignr;
-}
-
-static int pubsub_cluster_publish(struct pubsub_publish_args args) {
-  msg_s *msg = malloc(sizeof(*msg) + args.channel.len + args.msg.len + 2);
-  if (!msg)
-    return -1;
-  *msg = (msg_s){.ref = 1, .pub = args};
-  struct pubsub_publish_args *pub = &msg->pub;
-  pub->msg.data = (char *)(pub + 1);
-  memcpy(pub->msg.data, args.msg.data, args.msg.len);
-  pub->msg.data[args.msg.len] = 0;
-  if (pub->channel.name) {
-    pub->channel.name = pub->msg.data + args.msg.len + 1;
-    memcpy(pub->channel.name, args.channel.name, args.channel.len);
-    pub->channel.name[args.channel.len] = 0;
-  }
-  pub->use_pattern = args.use_pattern;
-  if (args.push2cluster)
-    facil_cluster_send(FACIL_PUBSUB_CLUSTER_MESSAGE_ID, msg,
-                       sizeof(*msg) + args.channel.len + args.msg.len + 2);
-  defer(pubsub_perform_publish, msg, NULL);
-  return 0;
-}
-
-static void pubsub_cluster_handle_publishing(void *data, uint32_t len) {
-  msg_s *msg = data;
-  if (len != sizeof(*msg) + msg->pub.channel.len + msg->pub.msg.len + 2) {
+static client_s *pubsub_client_new(client_s client, channel_s channel) {
+  if (!client.on_message || !channel.name) {
     fprintf(stderr,
-            "ERROR: (pub/sub) cluster message size error. Message ignored.\n");
+            "ERROR: (pubsub) subscription request failed. missing on of:\n"
+            "       1. channel name.\n"
+            "       2. massage handler.\n");
+    if (client.on_unsubscribe)
+      client.on_unsubscribe(client.udata1, client.udata2);
+    return NULL;
+  }
+  uint64_t client_hash = client_compute_hash(client);
+  spn_lock(&lock);
+  /* ignore if client exists. */
+  client_s *cl = fio_hash_find(
+      &clients, (fio_hash_key_s){.hash = client_hash, .obj = channel.name});
+  if (cl) {
+    spn_unlock(&lock);
+    return cl;
+  }
+  /* no client, we need a new client */
+  cl = malloc(sizeof(*cl));
+  if (!cl)
+    perror("FATAL ERROR: (pubsub) client memory allocation error"), exit(errno);
+  *cl = client;
+  fio_hash_insert(
+      &clients, (fio_hash_key_s){.hash = client_hash, .obj = channel.name}, cl);
+
+  /* test for existing channel */
+  uint64_t channel_hash = fiobj_sym_id(channel.name);
+  fio_hash_s *ch_hashmap = (channel.use_pattern ? &patterns : &channels);
+  channel_s *ch = fio_hash_find(
+      ch_hashmap, (fio_hash_key_s){.hash = channel_hash, .obj = channel.name});
+  if (!ch) {
+    /* open new channel */
+    ch = malloc(sizeof(*ch));
+    if (!ch)
+      perror("FATAL ERROR: (pubsub) channel memory allocation error"),
+          exit(errno);
+    *ch = channel;
+    fio_hash_insert(ch_hashmap,
+                    (fio_hash_key_s){.hash = client_hash, .obj = channel.name},
+                    cl);
+    pubsub_on_channel_create(ch);
+  }
+  cl->parent = ch;
+  cl->ref = 1;
+  fio_ls_embd_push(&ch->clients, &cl->node);
+  spn_unlock(&lock);
+  return cl;
+}
+
+/** Destroys a client (and empty channels as well) */
+static void pubsub_client_destroy(client_s *client) {
+  if (!client || !client->parent)
+    return;
+  channel_s *ch = client->parent;
+
+  fio_hash_s *ch_hashmap = (ch->use_pattern ? &patterns : &channels);
+  uint64_t channel_hash = fiobj_sym_id(ch->name);
+  uint8_t is_ch_any;
+
+  spn_lock(&lock);
+  fio_ls_embd_remove(&client->node);
+  is_ch_any = fio_ls_embd_any(&ch->clients);
+  if (!is_ch_any) {
+    channel_s *test = fio_hash_insert(
+        ch_hashmap, (fio_hash_key_s){.hash = channel_hash, .obj = ch->name},
+        NULL);
+    if (test != ch)
+      fprintf(stderr,
+              "FATAL ERROR: (pubsub) channel database corruption detected.\n"),
+          exit(-1);
+    pubsub_on_channel_destroy(ch);
+  }
+  spn_unlock(&lock);
+  if (client->on_unsubscribe) {
+    spn_add(&client->ref, 1);
+    defer(pubsub_deferred_unsub, client, NULL);
+  }
+  client_test4free(client);
+  if (is_ch_any) {
     return;
   }
-  msg = malloc(len);
-  if (!msg) {
-    fprintf(
-        stderr,
-        "ERROR: (pub/sub) cluster message allocation error.Message ignored.\n");
-    return;
+  free(ch);
+}
+
+/** finds a pointer to an existing client (matching registration details) */
+static inline client_s *pubsub_client_find(client_s client, channel_s channel) {
+  /* the logic is written twice due to locking logic (we don't want to release
+   * the lock for `pubsub_client_new`)
+   */
+  if (!client.on_message || !channel.name) {
+    return NULL;
   }
-  memcpy(msg, data, len);
-  msg->ref = 1;
-  msg->pub.msg.data = (char *)(msg + 1);
-  if (msg->pub.channel.name)
-    msg->pub.channel.name = msg->pub.msg.data + msg->pub.msg.len + 1;
-  defer(pubsub_perform_publish, msg, NULL);
+  uint64_t client_hash = client_compute_hash(client);
+  spn_lock(&lock);
+  client_s *cl = fio_hash_find(
+      &clients, (fio_hash_key_s){.hash = client_hash, .obj = channel.name});
+  spn_unlock(&lock);
+  return cl;
 }
-
-void pubsub_cluster_init(void) {
-  /* facil functions are thread safe, so we can call this without a guard. */
-  facil_cluster_set_handler(FACIL_PUBSUB_CLUSTER_MESSAGE_ID,
-                            pubsub_cluster_handle_publishing);
-}
-
-static int pubsub_cluster_subscribe(const pubsub_engine_s *eng, const char *ch,
-                                    size_t ch_len, uint8_t use_pattern) {
-  return 0;
-  (void)ch;
-  (void)ch_len;
-  (void)use_pattern;
-  (void)eng;
-}
-
-static void pubsub_cluster_unsubscribe(const pubsub_engine_s *eng,
-                                       const char *ch, size_t ch_len,
-                                       uint8_t use_pattern) {
-  (void)ch;
-  (void)ch_len;
-  (void)use_pattern;
-  (void)eng;
-}
-
-static int pubsub_cluster_eng_publish(const pubsub_engine_s *eng,
-                                      const char *ch, size_t ch_len,
-                                      const char *msg, size_t msg_len,
-                                      uint8_t use_pattern) {
-  pubsub_cluster_publish((struct pubsub_publish_args){
-      .engine = eng,
-      .channel.name = (char *)ch,
-      .channel.len = ch_len,
-      .msg.data = (char *)msg,
-      .msg.len = msg_len,
-      .use_pattern = use_pattern,
-      .push2cluster = eng->push2cluster,
-  });
-  return 0;
-}
-
-const pubsub_engine_s PUBSUB_CLUSTER_ENGINE_S = {
-    .publish = pubsub_cluster_eng_publish,
-    .subscribe = pubsub_cluster_subscribe,
-    .unsubscribe = pubsub_cluster_unsubscribe,
-    .push2cluster = 1,
-};
-const pubsub_engine_s *PUBSUB_CLUSTER_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
-
-const pubsub_engine_s PUBSUB_PROCESS_ENGINE_S = {
-    .publish = pubsub_cluster_eng_publish,
-    .subscribe = pubsub_cluster_subscribe,
-    .unsubscribe = pubsub_cluster_unsubscribe,
-};
-const pubsub_engine_s *PUBSUB_PROCESS_ENGINE = &PUBSUB_PROCESS_ENGINE_S;
-
-const pubsub_engine_s *PUBSUB_DEFAULT_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
 
 /* *****************************************************************************
-External Engine Bridge
+Subscription API
 ***************************************************************************** */
 
-#undef pubsub_engine_distribute
-
-void pubsub_engine_distribute(pubsub_message_s msg) {
-  pubsub_cluster_publish((struct pubsub_publish_args){
-      .engine = msg.engine,
-      .channel.name = msg.channel.name,
-      .channel.len = msg.channel.len,
-      .msg.data = msg.msg.data,
-      .msg.len = msg.msg.len,
-      .push2cluster = msg.engine->push2cluster,
-      .use_pattern = msg.use_pattern,
-  });
-}
-
-static void resubscribe_action(fio_dict_s *ch_, void *eng_) {
-  if (!eng_)
-    return;
-  pubsub_engine_s *eng = eng_;
-  channel_s *ch = fio_node2obj(channel_s, channels.dict, ch_);
-  eng->subscribe(eng, ch->name, ch->len, ch->use_pattern);
-}
-
-static void pubsub_engine_resubscribe_task(void *eng_, void *ignored) {
-  if (!eng_)
-    return;
-  pubsub_engine_s *eng = eng_;
-  channel_s *ch;
-  spn_lock(&pubsub_GIL);
-  fio_list_for_each(channel_s, channels.list, ch, pubsub_patterns) {
-    eng->subscribe(eng, ch->name, ch->len, ch->use_pattern);
-  }
-
-  fio_dict_each(fio_dict_prefix(&pubsub_channels, (void *)&eng, sizeof(void *)),
-                resubscribe_action, eng);
-  spn_unlock(&pubsub_GIL);
-
-  (void)ignored;
-}
 /**
- * Engines can ask facil.io to perform an action on all their active channels.
+ * Subscribes to a specific channel.
+ *
+ * Returns a subscription pointer or NULL (failure).
  */
-void pubsub_engine_resubscribe(pubsub_engine_s *eng) {
-  if (!eng)
-    return;
-  defer(pubsub_engine_resubscribe_task, eng, NULL);
-}
-
-/* *****************************************************************************
-Hashing
-***************************************************************************** */
-
-#define pubsub_client_hash(on_msg, u1, u2)                                     \
-  (((((uint64_t)(on_msg) * ((uint64_t)u1 ^ 0x736f6d6570736575ULL)) >> 5) |     \
-    (((uint64_t)(on_msg) * ((uint64_t)u1 ^ 0x736f6d6570736575ULL)) << 59)) ^   \
-   ((uint64_t)u2 ^ 0x646f72616e646f6dULL))
-
-/* *****************************************************************************
-API
-***************************************************************************** */
-
 #undef pubsub_subscribe
 pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
-  if (!args.on_message)
-    goto err_unlocked;
-  if (args.channel.name && !args.channel.len)
-    args.channel.len = strlen(args.channel.name);
-  if (args.channel.len > FIO_PUBBSUB_MAX_CHANNEL_LEN) {
-    goto err_unlocked;
-  }
-  if (!args.engine)
-    args.engine = PUBSUB_DEFAULT_ENGINE;
-  channel_s *ch;
-  client_s *client;
-  uint64_t cl_hash =
-      pubsub_client_hash(args.on_message, args.udata1, args.udata2);
-
-  spn_lock(&pubsub_GIL);
-  if (args.use_pattern) {
-    fio_list_for_each(channel_s, channels.list, ch, pubsub_patterns) {
-      if (ch->engine == args.engine && ch->len == args.channel.len &&
-          !memcmp(ch->name, args.channel.name, args.channel.len))
-        goto found_channel;
-    }
-  } else {
-    ch = (void *)fio_dict_get(
-        fio_dict_prefix(&pubsub_channels, (void *)&args.engine, sizeof(void *)),
-        args.channel.name, args.channel.len);
-    if (ch) {
-      ch = fio_node2obj(channel_s, channels, ch);
-      goto found_channel;
-    }
-  }
-
-  if (args.engine->subscribe(args.engine, args.channel.name, args.channel.len,
-                             args.use_pattern))
-    goto error;
-  ch = malloc(sizeof(*ch) + args.channel.len + 1 + sizeof(void *));
-  *ch = (channel_s){
-      .clients = {0},
-      .name = (char *)(ch + 1),
-      .len = args.channel.len,
-      .use_pattern = args.use_pattern,
-      .engine = args.engine,
-  };
-  memcpy(ch->name, args.channel.name, args.channel.len);
-  ch->name[args.channel.len + sizeof(void *)] = 0;
-  fio_hash_new(&ch->clients);
-
-  if (args.use_pattern) {
-    fio_list_add(&pubsub_patterns, &ch->channels.list);
-  } else {
-    fio_dict_set(fio_dict_ensure_prefix(&pubsub_channels, (void *)&args.engine,
-                                        sizeof(void *)),
-                 args.channel.name, args.channel.len, &ch->channels.dict);
-  }
-// fprintf(stderr, "Created a new channel for %s\n", args.channel.name);
-found_channel:
-
-  client = fio_hash_find(&ch->clients, cl_hash);
-  if (client) {
-    goto found_client;
-  }
-
-  client = malloc(sizeof(*client));
-  if (!client)
-    goto error;
-  *client = (client_s){
-      .on_message = args.on_message,
-      .on_unsubscribe = args.on_unsubscribe,
-      .udata1 = args.udata1,
-      .udata2 = args.udata2,
-      .parent = ch,
-      .active = 0,
-      .hash = cl_hash,
-      .ref = 0,
-  };
-  fio_hash_insert(&ch->clients, cl_hash, client);
-
-found_client:
-
-  client->ref++;
-  spn_add(&client->active, 1);
-  spn_unlock(&pubsub_GIL);
-  return client;
-
-error:
-  spn_unlock(&pubsub_GIL);
-err_unlocked:
-  if (args.on_unsubscribe)
-    args.on_unsubscribe(args.udata1, args.udata2);
-  return NULL;
+  channel_s channel = {.name = args.channel, .use_pattern = args.use_pattern};
+  client_s client = {.on_message = args.on_message,
+                     .on_unsubscribe = args.on_unsubscribe,
+                     .udata1 = args.udata1,
+                     .udata2 = args.udata2};
+  return (pubsub_sub_pt)pubsub_client_new(client, channel);
 }
 
 /**
  * This helper searches for an existing subscription.
+ *
  * Use with care, NEVER call `pubsub_unsubscribe` more times than you have
  * called `pubsub_subscribe`, since the subscription handle memory is realesed
  * onnce the reference count reaches 0.
@@ -437,103 +252,362 @@ err_unlocked:
  */
 #undef pubsub_find_sub
 pubsub_sub_pt pubsub_find_sub(struct pubsub_subscribe_args args) {
-  if (!args.on_message)
-    return NULL;
-  if (args.channel.name && !args.channel.len)
-    args.channel.len = strlen(args.channel.name);
-  if (args.channel.len > FIO_PUBBSUB_MAX_CHANNEL_LEN) {
-    return NULL;
-  }
-  if (!args.engine)
-    args.engine = PUBSUB_DEFAULT_ENGINE;
-  channel_s *ch;
-  client_s *client = NULL;
-  uint64_t cl_hash =
-      pubsub_client_hash(args.on_message, args.udata1, args.udata2);
-
-  spn_lock(&pubsub_GIL);
-  if (args.use_pattern) {
-    fio_list_for_each(channel_s, channels.list, ch, pubsub_patterns) {
-      if (ch->engine == args.engine && ch->len == args.channel.len &&
-          !memcmp(ch->name, args.channel.name, args.channel.len))
-        goto found_channel;
-    }
-  } else {
-    ch = (void *)fio_dict_get(
-        fio_dict_prefix(&pubsub_channels, (void *)&args.engine, sizeof(void *)),
-        args.channel.name, args.channel.len);
-    if (ch) {
-      ch = fio_node2obj(channel_s, channels, ch);
-      goto found_channel;
-    }
-  }
-  goto not_found;
-
-found_channel:
-  client = fio_hash_find(&ch->clients, cl_hash);
-
-not_found:
-  spn_unlock(&pubsub_GIL);
-  return client;
+  channel_s channel = {.name = args.channel, .use_pattern = args.use_pattern};
+  client_s client = {.on_message = args.on_message,
+                     .on_unsubscribe = args.on_unsubscribe,
+                     .udata1 = args.udata1,
+                     .udata2 = args.udata2};
+  return (pubsub_sub_pt)pubsub_client_find(client, channel);
 }
+#define pubsub_find_sub(...)                                                   \
+  pubsub_find_sub((struct pubsub_subscribe_args){__VA_ARGS__})
 
-void pubsub_unsubscribe(pubsub_sub_pt client) {
-  if (!client)
-    return;
-  spn_lock(&pubsub_GIL);
-  client->ref--;
-  if (client->ref) {
-    spn_unlock(&pubsub_GIL);
-    spn_sub(&client->active, 1);
-    return;
-  }
-  fio_hash_insert(&client->parent->clients, client->hash, NULL);
-  if (client->parent->clients.count) {
-    spn_unlock(&pubsub_GIL);
-    defer(pubsub_free_client, client, NULL);
-    return;
-  }
-  channel_s *ch = client->parent;
-  if (ch->use_pattern) {
-    fio_list_remove(&ch->channels.list);
-  } else {
-    fio_dict_remove(&ch->channels.dict);
-  }
-  spn_unlock(&pubsub_GIL);
-  defer(pubsub_free_client, client, NULL);
-  ch->engine->unsubscribe(ch->engine, ch->name, ch->len, ch->use_pattern);
-  fio_hash_free(&ch->clients);
-  free(ch);
-}
-
-#undef pubsub_publish
-int pubsub_publish(struct pubsub_publish_args args) {
-  if (!args.msg.data)
+/**
+ * Unsubscribes from a specific subscription.
+ *
+ * Returns 0 on success and -1 on failure.
+ */
+int pubsub_unsubscribe(pubsub_sub_pt subscription) {
+  if (!subscription)
     return -1;
-  if (!args.msg.len)
-    args.msg.len = strlen(args.msg.data);
-  if (args.channel.name && !args.channel.len)
-    args.channel.len = strlen(args.channel.name);
-  if (!args.engine) {
-    args.engine = PUBSUB_DEFAULT_ENGINE;
-    args.push2cluster = 1;
-  } else if (args.push2cluster)
-    PUBSUB_CLUSTER_ENGINE_S.publish(args.engine, args.channel.name,
-                                    args.channel.len, args.msg.data,
-                                    args.msg.len, args.use_pattern);
-  return args.engine->publish(args.engine, args.channel.name, args.channel.len,
-                              args.msg.data, args.msg.len, args.use_pattern);
+  pubsub_client_destroy((client_s *)subscription);
+  return 0;
 }
+
+/**
+ * Publishes a message to a channel belonging to a pub/sub service (engine).
+ *
+ * Returns 0 on success and -1 on failure.
+ */
+#undef pubsub_publish
+int pubsub_publish(struct pubsub_message_s m) {
+  if (!m.channel || !m.message)
+    return -1;
+  if (!m.engine)
+    m.engine = PUBSUB_DEFAULT_ENGINE;
+  if (!m.engine)
+    m.engine = PUBSUB_CLUSTER_ENGINE;
+  if (!m.engine)
+    fprintf(stderr, "FATAL ERROR: (pubsub) engine pointer data corrupted! \n"),
+        exit(-1);
+  return m.engine->publish(m.engine, m.channel, m.message);
+}
+#define pubsub_publish(...)                                                    \
+  pubsub_publish((struct pubsub_message_s){__VA_ARGS__})
+
+/* *****************************************************************************
+Engine handling and Management
+***************************************************************************** */
+
+/* runs in lock(!) let'm all know */
+static void pubsub_on_channel_create(channel_s *ch) {
+  FIO_HASH_FOR_LOOP(&engines, e_) {
+    if (!e_)
+      continue;
+    pubsub_engine_s *e = e_->obj;
+    e->subscribe(e, ch->name, ch->use_pattern);
+  }
+}
+
+/* runs in lock(!) let'm all know */
+static void pubsub_on_channel_destroy(channel_s *ch) {
+  FIO_HASH_FOR_LOOP(&engines, e_) {
+    if (!e_)
+      continue;
+    pubsub_engine_s *e = e_->obj;
+    e->unsubscribe(e, ch->name, ch->use_pattern);
+  }
+}
+
+/** Registers an engine, so it's callback can be called. */
+void pubsub_engine_register(pubsub_engine_s *engine) {
+  spn_lock(&lock);
+  fio_hash_insert(&engines,
+                  (fio_hash_key_s){.hash = (size_t)engine, .obj = fiobj_null()},
+                  engine);
+  spn_unlock(&lock);
+}
+
+/** Unregisters an engine, so it could be safely destroyed. */
+void pubsub_engine_deregister(pubsub_engine_s *engine) {
+  spn_lock(&lock);
+  if (PUBSUB_DEFAULT_ENGINE == engine)
+    PUBSUB_DEFAULT_ENGINE = PUBSUB_CLUSTER_ENGINE;
+  fio_hash_insert(&engines,
+                  (fio_hash_key_s){.hash = (size_t)engine, .obj = fiobj_null()},
+                  NULL);
+  spn_unlock(&lock);
+}
+
+/* *****************************************************************************
+Single Process Engine and `pubsub_defer`
+***************************************************************************** */
+
+typedef struct {
+  size_t ref;
+  fiobj_s *channel;
+  fiobj_s *msg;
+} msg_wrapper_s;
+
+typedef struct {
+  msg_wrapper_s *wrapper;
+  pubsub_message_s msg;
+} msg_container_s;
+
+static void msg_wrapper_free(msg_wrapper_s *m) {
+  if (spn_sub(&m->ref, 1))
+    return;
+  fiobj_free(m->channel);
+  fiobj_free(m->msg);
+  free(m);
+}
+
+/* calls a client's `on_message` callback */
+void pubsub_en_process_deferred_on_message(void *cl_, void *m_) {
+  msg_wrapper_s *m = m_;
+  client_s *cl = cl_;
+  msg_container_s arg = {.wrapper = m,
+                         .msg = {
+                             .channel = m->channel,
+                             .message = m->msg,
+                             .subscription = (pubsub_sub_pt)cl,
+                             .udata1 = cl->udata1,
+                             .udata2 = cl->udata1,
+                         }};
+  cl->on_message(&arg.msg);
+  msg_wrapper_free(m);
+  client_test4free(cl_);
+}
+
+/* Must subscribe channel. Failures are ignored. */
+void pubsub_en_process_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+                                 uint8_t use_pattern) {
+  (void)eng;
+  (void)channel;
+  (void)use_pattern;
+}
+
+/* Must unsubscribe channel. Failures are ignored. */
+void pubsub_en_process_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+                                   uint8_t use_pattern) {
+  (void)eng;
+  (void)channel;
+  (void)use_pattern;
+}
+/** Should return 0 on success and -1 on failure. */
+int pubsub_en_process_publish(const pubsub_engine_s *eng, fiobj_s *channel,
+                              fiobj_s *msg) {
+  uint64_t channel_hash = fiobj_sym_id(channel);
+  msg_wrapper_s *m = malloc(sizeof(*m));
+  int ret = -1;
+  if (!m)
+    perror("FATAL ERROR: (pubsub) couldn't allocate message wrapper"),
+        exit(errno);
+  *m = (msg_wrapper_s){
+      .ref = 1, .channel = fiobj_dup(channel), .msg = fiobj_dup(msg)};
+  spn_lock(&lock);
+  {
+    /* test for direct match */
+    channel_s *ch = fio_hash_find(
+        &channels, (fio_hash_key_s){.hash = channel_hash, .obj = channel});
+    if (ch) {
+      ret = 0;
+      FIO_LS_EMBD_FOR(&ch->clients, cl_) {
+        client_s *cl = FIO_LS_EMBD_OBJ(client_s, node, cl_);
+        spn_add(&m->ref, 1);
+        spn_add(&cl->ref, 1);
+        defer(pubsub_en_process_deferred_on_message, cl, m);
+      }
+    }
+  }
+  /* test for pattern match */
+  fio_cstr_s ch_str = fiobj_obj2cstr(channel);
+  FIO_HASH_FOR_LOOP(&patterns, ch_) {
+    channel_s *ch = (channel_s *)ch_->obj;
+    fio_cstr_s tmp = fiobj_obj2cstr(ch->name);
+    if (pubsub_glob_match(ch_str.bytes, ch_str.len, tmp.bytes, tmp.len)) {
+      ret = 0;
+      FIO_LS_EMBD_FOR(&ch->clients, cl_) {
+        client_s *cl = FIO_LS_EMBD_OBJ(client_s, node, cl_);
+        spn_add(&m->ref, 1);
+        spn_add(&cl->ref, 1);
+        defer(pubsub_en_process_deferred_on_message, cl, m);
+      }
+    }
+  }
+finish:
+  spn_unlock(&lock);
+  return ret;
+  (void)eng;
+  (void)channel;
+  (void)msg;
+  return -1;
+}
+
+const pubsub_engine_s PUBSUB_PROCESS_ENGINE_S = {
+    .subscribe = pubsub_en_process_subscribe,
+    .unsubscribe = pubsub_en_process_unsubscribe,
+    .publish = pubsub_en_process_publish,
+};
+
+const pubsub_engine_s *PUBSUB_PROCESS_ENGINE = &PUBSUB_PROCESS_ENGINE_S;
 
 /**
  * defers message hadling if it can't be performed (i.e., resource is busy) or
  * should be fragmented (allowing large tasks to be broken down).
+ *
+ * This should only be called from within the `on_message` callback.
+ *
+ * It's recommended that the `on_message` callback return immediately following
+ * this function call, as code might run concurrently.
+ *
+ * Uses reference counting for zero copy.
+ *
+ * It's impossible to use a different `on_message` callbck without resorting to
+ * memory allocations... so when in need, manage routing withing the
+ * `on_message` callback.
  */
-void pubsub_defer(pubsub_message_s *msg_) {
-  if (!msg_)
-    return;
-  msg_container_s *msg = fio_node2obj(msg_container_s, msg, msg_);
-  spn_add(&msg->origin->ref, 1);
-  spn_add(&msg->msg.subscription->active, 1);
-  defer(pubsub_deliver_msg, msg->msg.subscription, msg->origin);
+void pubsub_defer(pubsub_message_s *msg) {
+  msg_container_s *arg = FIO_LS_EMBD_OBJ(msg_container_s, msg, msg);
+  spn_add(&arg->wrapper->ref, 1);
+  spn_add(&((client_s *)arg->msg.subscription)->ref, 1);
+  defer(pubsub_en_process_deferred_on_message, arg->msg.subscription,
+        arg->wrapper);
+}
+
+/* *****************************************************************************
+Cluster Engine
+***************************************************************************** */
+
+/* Must subscribe channel. Failures are ignored. */
+void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+                                 uint8_t use_pattern) {
+  (void)eng;
+  (void)channel;
+  (void)use_pattern;
+}
+
+/* Must unsubscribe channel. Failures are ignored. */
+void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+                                   uint8_t use_pattern) {
+  (void)eng;
+  (void)channel;
+  (void)use_pattern;
+}
+/** Should return 0 on success and -1 on failure. */
+int pubsub_en_cluster_publish(const pubsub_engine_s *eng, fiobj_s *channel,
+                              fiobj_s *msg) {
+
+  (void)eng;
+  (void)channel;
+  (void)msg;
+  return -1;
+}
+
+const pubsub_engine_s PUBSUB_CLUSTER_ENGINE_S = {
+    .subscribe = pubsub_en_cluster_subscribe,
+    .unsubscribe = pubsub_en_cluster_unsubscribe,
+    .publish = pubsub_en_cluster_publish,
+};
+
+const pubsub_engine_s *PUBSUB_CLUSTER_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
+
+/* *****************************************************************************
+Glob Matching Helper
+***************************************************************************** */
+
+/** A binary glob matching helper. Returns 1 on match, otherwise returns 0. */
+static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
+                             size_t pat_len) {
+  /* adapted and rewritten, with thankfulness, from the code at:
+   * https://github.com/opnfv/kvmfornfv/blob/master/kernel/lib/glob.c
+   *
+   * Original version's copyright:
+   * Copyright 2015 Open Platform for NFV Project, Inc. and its contributors
+   * Under the MIT license.
+   */
+
+  /*
+   * Backtrack to previous * on mismatch and retry starting one
+   * character later in the string.  Because * matches all characters
+   * (no exception for /), it can be easily proved that there's
+   * never a need to backtrack multiple levels.
+   */
+  uint8_t *back_pat = NULL, *back_str = data;
+  size_t back_pat_len = 0, back_str_len = data_len;
+
+  /*
+   * Loop over each token (character or class) in pat, matching
+   * it against the remaining unmatched tail of str.  Return false
+   * on mismatch, or true after matching the trailing nul bytes.
+   */
+  while (data_len) {
+    uint8_t c = *data++;
+    uint8_t d = *pattern++;
+    data_len--;
+    pat_len--;
+
+    switch (d) {
+    case '?': /* Wildcard: anything goes */
+      break;
+
+    case '*':       /* Any-length wildcard */
+      if (!pat_len) /* Optimize trailing * case */
+        return 1;
+      back_pat = pattern;
+      back_pat_len = pat_len;
+      back_str = --data; /* Allow zero-length match */
+      back_str_len = ++data_len;
+      break;
+
+    case '[': { /* Character class */
+      uint8_t match = 0, inverted = (*pattern == '^');
+      uint8_t *cls = pattern + inverted;
+      uint8_t a = *cls++;
+
+      /*
+       * Iterate over each span in the character class.
+       * A span is either a single character a, or a
+       * range a-b.  The first span may begin with ']'.
+       */
+      do {
+        uint8_t b = a;
+
+        if (cls[0] == '-' && cls[1] != ']') {
+          b = cls[1];
+
+          cls += 2;
+          if (a > b) {
+            uint8_t tmp = a;
+            a = b;
+            b = tmp;
+          }
+        }
+        match |= (a <= c && c <= b);
+      } while ((a = *cls++) != ']');
+
+      if (match == inverted)
+        goto backtrack;
+      pat_len -= cls - pattern;
+      pattern = cls;
+
+    } break;
+    case '\\':
+      d = *pattern++;
+      pat_len--;
+    /*FALLTHROUGH*/
+    default: /* Literal character */
+      if (c == d)
+        break;
+    backtrack:
+      if (!back_pat)
+        return 0; /* No point continuing */
+      /* Try again from last *, one character later in str. */
+      pattern = back_pat;
+      data = ++back_str;
+      data_len = --back_str_len;
+      pat_len = back_pat_len;
+    }
+  }
+  return !data_len && !pat_len;
 }

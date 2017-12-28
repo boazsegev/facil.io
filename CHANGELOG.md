@@ -20,6 +20,18 @@
 
 - The HTTP parser now breaks down long URI schemes into a short URI + `host` header (which might become an array if it's included anyway).
 
+**Changes!**: (`websocket`):
+
+- The Websocket API includes numerous breaking changes, not least is the pub/sub API rewrite that now leverages `fiobj_s *` Strings / Symbols.
+
+- `websocket_write_each` was deprecated (favoring a pub/sub only design).
+
+**Changes!**: (`pubsub`):
+
+- The `pubsub` API was redesigned after re-evaluating the function of a pub/sub engine and in order to take advantage of the `fiobj_s` type system.
+
+- Channel names now use a hash map with collision protection (using `memcmp` to compare channel names). The means that the 4 but trie is no longer in use and will be deprecated.
+
 **Changes!**: (`facil`):
 
 - Slight API changes:
