@@ -1,8 +1,5 @@
 # facil.io - a mini-framework for C web applications
-
-**This is an experimental development branch concerned with re-writing the HTTP API and the `evio` core.**
-
----
+[![GitHub](https://img.shields.io/badge/GitHub-Open%20Source-blue.svg)](https://github.com/boazsegev/facil)
 
 [facil.io](http://facil.io) is a C mini-framework for web applications and includes:
 

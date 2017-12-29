@@ -682,8 +682,8 @@ static char *sha2_variant_names[] = {
 
 void fio_sha2_test(void) {
   sha2_s s;
-  char *expect = NULL;
-  char *got = NULL;
+  char *expect;
+  char *got;
   char *str = "";
   fprintf(stderr, "===================================\n");
   fprintf(stderr, "fio SHA-2 struct size: %lu\n", sizeof(sha2_s));

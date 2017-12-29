@@ -203,7 +203,7 @@ Internal API required across the board
 
 /** Allocates memory for the fiobj_s's data structure */
 static inline fiobj_s *fiobj_alloc(size_t size) {
-  fiobj_head_s *head = (fiobj_head_s *)malloc(size + sizeof(head));
+  fiobj_head_s *head = (fiobj_head_s *)malloc(size + sizeof(*head));
   if (!head)
     return NULL;
   *head = (fiobj_head_s){.ref = 1};

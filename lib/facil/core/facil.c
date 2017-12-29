@@ -1003,8 +1003,8 @@ static void facil_init_run(void *arg, void *arg2) {
 
 static void facil_cleanup(void *arg) {
   fprintf(stderr, "* %d cleanning up.\n", getpid());
-  intptr_t uuid;
   for (intptr_t i = 0; i < facil_data->capacity; i++) {
+    intptr_t uuid;
     if (fd_data(i).protocol && (uuid = sock_fd2uuid(i)) >= 0) {
       defer(deferred_on_shutdown, (void *)uuid, NULL);
     }
@@ -1164,9 +1164,8 @@ void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock_e type) {
 /** Counts all the connections of a specific type. */
 size_t facil_count(void *service) {
   long count = 0;
-  void *tmp;
   for (intptr_t i = 0; i < facil_data->capacity; i++) {
-    tmp = NULL;
+    void *tmp = NULL;
     spn_lock(&fd_data(i).lock);
     if (fd_data(i).protocol && fd_data(i).protocol->service)
       tmp = (void *)fd_data(i).protocol->service;

@@ -41,8 +41,14 @@ Available command line flags:
 -q                 : sets verbosity (HTTP logging) off (on by default).
 */
 
+static fiobj_s *SERVER_HEADER;
+static fiobj_s *SERVER_NAME;
+static fiobj_s *TEXT_TYPE;
+
 /* The HTTP request handler */
 static void http_hello_on_request(http_s *h) {
+  http_set_header(h, SERVER_HEADER, fiobj_dup(SERVER_NAME));
+  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, fiobj_dup(TEXT_TYPE));
   http_send_body(h, "Hello World!", 12);
 }
 
@@ -97,9 +103,17 @@ int main(int argc, char const *argv[]) {
 
   /*     ****  actual code ****     */
 
+  SERVER_HEADER = fiobj_str_static("server", 6);
+  SERVER_NAME = fiobj_str_static("facil.io", 8);
+  TEXT_TYPE = http_mimetype_find("txt", 3);
+
   // RedisEngine = redis_engine_create(.address = "localhost", .port = "6379");
   if (http_listen(port, NULL, .on_request = http_hello_on_request,
                   .log = print_log, .public_folder = public_folder))
     perror("Couldn't initiate Hello World service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
+
+  fiobj_free(SERVER_HEADER);
+  fiobj_free(SERVER_NAME);
+  fiobj_free(TEXT_TYPE);
 }
