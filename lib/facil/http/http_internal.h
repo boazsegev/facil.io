@@ -9,6 +9,8 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "http.h"
 
+#include "fiobj4sock.h"
+
 #include <arpa/inet.h>
 #include <errno.h>
 
@@ -86,7 +88,7 @@ static inline void http_s_init(http_s *h, http_protocol_s *owner) {
 }
 
 static inline void http_s_cleanup(http_s *h) {
-  if (h->status && ((http_protocol_s *)h->private_data.owner)->settings->log)
+  if (h->status && http2protocol(h) && http2protocol(h)->settings->log)
     http_write_log(h);
   fiobj_free(h->method); /* union for fiobj_free(r->status_str); */
   fiobj_free(h->private_data.out_headers);
@@ -97,7 +99,8 @@ static inline void http_s_cleanup(http_s *h) {
   fiobj_free(h->cookies);
   fiobj_free(h->body);
   fiobj_free(h->params);
-  *h = (http_s){{0}};
+
+  *h = (http_s){.private_data.owner = h->private_data.owner};
 }
 
 /** Use this function to handle HTTP requests.*/
@@ -113,17 +116,6 @@ Helpers
 #define HTTP_ASSERT(x, m)                                                      \
   if (!x)                                                                      \
     perror("FATAL ERROR: (http)" m), exit(errno);
-
-/** send a fiobj_s * object through a socket. */
-static inline __attribute__((unused)) int fiobj_send(intptr_t uuid,
-                                                     fiobj_s *o) {
-  fio_cstr_s s = fiobj_obj2cstr(o);
-  // fprintf(stderr, "%s\n", s.data);
-  return sock_write2(.uuid = uuid, .buffer = (o),
-                     .offset = (((intptr_t)s.data) - ((intptr_t)(o))),
-                     .length = s.length,
-                     .dealloc = (void (*)(void *))fiobj_free);
-}
 
 /** sets an outgoing header only if it doesn't exist */
 static inline void set_header_if_missing(fiobj_s *hash, fiobj_s *name,

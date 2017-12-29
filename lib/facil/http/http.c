@@ -780,17 +780,25 @@ void http_write_log(http_s *h) {
   fiobj_str_write(l, " ", 1);
   fiobj_str_join(l, h->version);
   fiobj_str_write(l, "\" ", 2);
-  if (bytes_sent > 0)
-    fiobj_str_write2(l, "%lu %luB ", (unsigned long)h->status, bytes_sent);
-  else
-    fiobj_str_write2(l, "%lu -- ", (unsigned long)h->status);
+  if (bytes_sent > 0) {
+    fiobj_str_join(l, fiobj_num_tmp(h->status));
+    fiobj_str_write(l, " ", 1);
+    fiobj_str_join(l, fiobj_num_tmp(bytes_sent));
+    fiobj_str_write(l, "B ", 2);
+  } else {
+    fiobj_str_join(l, fiobj_num_tmp(h->status));
+    fiobj_str_write(l, " -- ", 4);
+  }
 
   bytes_sent = ((end.tv_sec - start.tv_sec) * 1000) +
                ((end.tv_nsec - start.tv_nsec) / 1000000);
-  fiobj_str_write2(l, "%lums\r\n", (unsigned long)bytes_sent);
+  fiobj_str_join(l, fiobj_num_tmp(bytes_sent));
+  fiobj_str_write(l, "ms\r\n", 4);
+
   buff = fiobj_obj2cstr(l);
 
   fwrite(buff.data, 1, buff.len, stderr);
+  fiobj_free(l);
 }
 
 /**

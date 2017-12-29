@@ -56,6 +56,15 @@ inline static void h1_reset(http1_s *p) {
 
 static fio_cstr_s http1_status2str(uintptr_t status);
 
+static inline void http1_after_finish(http_s *h) {
+  http_s_cleanup(h);
+  /* dynamic? (i.e. streaming?) */
+  if (http2protocol(h) && h != &((http1_s *)http2protocol(h))->request) {
+    // fprintf(stderr, "Freeding external http_s handle\n");
+    free(h);
+  }
+}
+
 /* *****************************************************************************
 Virtual Functions API
 ***************************************************************************** */
@@ -144,9 +153,7 @@ static int http1_send_body(http_s *h, void *data, uintptr_t length) {
   fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
   if (((http1_s *)h->private_data.owner)->close)
     sock_close(((http1_s *)h->private_data.owner)->p.uuid);
-  /* streaming? */
-  if (h != &((http1_s *)h->private_data.owner)->request)
-    free(h);
+  http1_after_finish(h);
   return 0;
 }
 /** Should send existing headers and file */
@@ -161,9 +168,7 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
                 length);
   if (((http1_s *)h->private_data.owner)->close)
     sock_close(((http1_s *)h->private_data.owner)->p.uuid);
-  /* streaming? */
-  if (h != &((http1_s *)h->private_data.owner)->request)
-    free(h);
+  http1_after_finish(h);
   return 0;
 }
 /** Should send existing headers and data and prepare for streaming */
@@ -181,10 +186,7 @@ static void htt1p_finish(http_s *h) {
   http1_s *p = (http1_s *)h->private_data.owner;
   if (p->close)
     sock_close(((http1_s *)h->private_data.owner)->p.uuid);
-  http_s_cleanup(h);
-  /* streaming? */
-  if (h != &p->request)
-    free(h);
+  http1_after_finish(h);
 }
 /** Push for data - unsupported. */
 static int http1_push_data(http_s *h, void *data, uintptr_t length,
