@@ -32,7 +32,7 @@ two different browser windows.
 
 #include "fio_cli_helper.h"
 #include "pubsub.h"
-#include "redis_engine.h"
+// #include "redis_engine.h"
 #include "websockets.h"
 
 #include <string.h>
@@ -49,15 +49,15 @@ struct nickname {
 /* This initalization requires GNU gcc / clang ...
  * ... it's a default name for unimaginative visitors.
  */
-static struct nickname MISSING_NICKNAME = {.len = 8, .nick = "unknown"};
-
+static struct nickname MISSING_NICKNAME = {.len = 7, .nick = "unknown"};
+static fiobj_s *CHAT_CHANNEL;
 /* *****************************************************************************
 Websocket callbacks
 ***************************************************************************** */
 
 /* We'll subscribe to the channel's chat channel when a new connection opens */
 static void on_open_websocket(ws_s *ws) {
-  websocket_subscribe(ws, .channel.name = "chat", .force_text = 1);
+  websocket_subscribe(ws, .channel = CHAT_CHANNEL, .force_text = 1);
 }
 
 /* Free the nickname, if any. */
@@ -72,14 +72,14 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   struct nickname *n = websocket_udata(ws);
   if (!n)
     n = &MISSING_NICKNAME;
-  char *msg = malloc(size + n->len + 2);
-  memcpy(msg, n->nick, n->len);
-  msg[n->len] = ':';
-  msg[n->len + 1] = ' ';
-  memcpy(msg + n->len + 2, data, size);
-  pubsub_publish(.channel = {.name = "chat", .len = 4},
-                 .msg = {.data = msg, .len = (size + n->len + 2)});
-  free(msg);
+
+  fiobj_s *msg = fiobj_str_buf(n->len + 2 + size);
+  fiobj_str_write(msg, n->nick, n->len);
+  fiobj_str_write(msg, ": ", 2);
+  fiobj_str_write(msg, data, size);
+  if (pubsub_publish(.channel = CHAT_CHANNEL, .message = msg))
+    fprintf(stderr, "Failed to publish\n");
+  fiobj_free(msg);
   (void)(ws);
   (void)(is_text);
 }
@@ -131,6 +131,7 @@ int main(int argc, char const *argv[]) {
   uint32_t threads = 1;
   uint32_t workers = 1;
   uint8_t print_log = 0;
+  CHAT_CHANNEL = fiobj_sym_new("chat", 4);
 
   /*     ****  Command line arguments ****     */
   fio_cli_start(
@@ -172,19 +173,20 @@ int main(int argc, char const *argv[]) {
     threads = workers = 0;
 
   /*     ****  actual code ****     */
-  if (redis_address) {
-    PUBSUB_DEFAULT_ENGINE =
-        redis_engine_create(.address = redis_address, .port = redis_port,
-                            .ping_interval = 40);
-    if (!PUBSUB_DEFAULT_ENGINE) {
-      perror("\nERROR: couldn't initialize Redis engine.\n");
-      exit(-2);
-    }
-    printf("* Redis engine initialized.\n");
-  } else {
-    printf(
-        "* Redis engine details missing, using native-local pub/sub engine.\n");
-  }
+  // if (redis_address) {
+  //   PUBSUB_DEFAULT_ENGINE =
+  //       redis_engine_create(.address = redis_address, .port = redis_port,
+  //                           .ping_interval = 40);
+  //   if (!PUBSUB_DEFAULT_ENGINE) {
+  //     perror("\nERROR: couldn't initialize Redis engine.\n");
+  //     exit(-2);
+  //   }
+  //   printf("* Redis engine initialized.\n");
+  // } else {
+  //   printf(
+  //       "* Redis engine details missing, using native-local pub/sub
+  //       engine.\n");
+  // }
 
   if (http_listen(port, NULL, .on_request = answer_http_request,
                   .on_upgrade = answer_http_upgrade, .log = print_log,
@@ -192,8 +194,9 @@ int main(int argc, char const *argv[]) {
     perror("Couldn't initiate Websocket service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 
-  if (PUBSUB_DEFAULT_ENGINE != PUBSUB_CLUSTER_ENGINE) {
-    redis_engine_destroy(PUBSUB_DEFAULT_ENGINE);
-    PUBSUB_DEFAULT_ENGINE = PUBSUB_CLUSTER_ENGINE;
-  }
+  // if (PUBSUB_DEFAULT_ENGINE != PUBSUB_CLUSTER_ENGINE) {
+  //   redis_engine_destroy(PUBSUB_DEFAULT_ENGINE);
+  //   PUBSUB_DEFAULT_ENGINE = PUBSUB_CLUSTER_ENGINE;
+  // }
+  fiobj_free(CHAT_CHANNEL);
 }
