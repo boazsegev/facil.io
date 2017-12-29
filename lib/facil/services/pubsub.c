@@ -21,6 +21,9 @@ Feel free to copy, use and enjoy according to the license provided.
 /* used later on */
 static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
                              size_t pat_len);
+
+#define PUBSUB_FACIL_CLUSTER_ID -1
+
 /* *****************************************************************************
 The Hash Map (macros and the include instruction for `fio_hashmap.h`)
 ***************************************************************************** */
@@ -47,6 +50,9 @@ typedef struct {
   ((fio_hash_key_s){.hash = (key).hash, .obj = fiobj_dup((key).obj)})
 /* frees the allocated string */
 #define FIO_HASH_KEY_DESTROY(key) (fiobj_free((key).obj))
+
+#define FIO_OBJ2KEY(fiobj)                                                     \
+  ((fio_hash_key_s){.hash = fiobj_sym_id((fiobj)), .obj = (fiobj)})
 
 #include "fio_hashmap.h"
 
@@ -84,7 +90,7 @@ static fio_hash_s patterns;
 static fio_hash_s channels;
 static fio_hash_s clients;
 static fio_hash_s engines;
-static spn_lock_i lock;
+static spn_lock_i lock = SPN_LOCK_INIT;
 
 /* *****************************************************************************
 Channel and Client Management
@@ -158,11 +164,15 @@ static client_s *pubsub_client_new(client_s client, channel_s channel) {
     if (!ch)
       perror("FATAL ERROR: (pubsub) channel memory allocation error"),
           exit(errno);
-    *ch = channel;
+    *ch = (channel_s){.name = channel.name,
+                      .use_pattern = channel.use_pattern,
+                      .clients = FIO_LS_INIT(ch->clients)};
     fio_hash_insert(ch_hashmap,
-                    (fio_hash_key_s){.hash = client_hash, .obj = channel.name},
-                    cl);
+                    (fio_hash_key_s){.hash = channel_hash, .obj = channel.name},
+                    ch);
     pubsub_on_channel_create(ch);
+  } else {
+    /* channel exists */
   }
   cl->parent = ch;
   cl->ref = 1;
@@ -233,13 +243,17 @@ Subscription API
  */
 #undef pubsub_subscribe
 pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
-  channel_s channel = {.name = args.channel, .use_pattern = args.use_pattern};
+  channel_s channel = {.name = args.channel,
+                       .use_pattern = args.use_pattern,
+                       .clients = FIO_LS_INIT(channel.clients)};
   client_s client = {.on_message = args.on_message,
                      .on_unsubscribe = args.on_unsubscribe,
                      .udata1 = args.udata1,
                      .udata2 = args.udata2};
   return (pubsub_sub_pt)pubsub_client_new(client, channel);
 }
+#define pubsub_subscribe(...)                                                  \
+  pubsub_subscribe((struct pubsub_subscribe_args){__VA_ARGS__})
 
 /**
  * This helper searches for an existing subscription.
@@ -301,6 +315,8 @@ Engine handling and Management
 
 /* runs in lock(!) let'm all know */
 static void pubsub_on_channel_create(channel_s *ch) {
+  PUBSUB_CLUSTER_ENGINE->subscribe(PUBSUB_CLUSTER_ENGINE, ch->name,
+                                   ch->use_pattern);
   FIO_HASH_FOR_LOOP(&engines, e_) {
     if (!e_)
       continue;
@@ -311,6 +327,8 @@ static void pubsub_on_channel_create(channel_s *ch) {
 
 /* runs in lock(!) let'm all know */
 static void pubsub_on_channel_destroy(channel_s *ch) {
+  PUBSUB_CLUSTER_ENGINE->unsubscribe(PUBSUB_CLUSTER_ENGINE, ch->name,
+                                     ch->use_pattern);
   FIO_HASH_FOR_LOOP(&engines, e_) {
     if (!e_)
       continue;
@@ -340,7 +358,7 @@ void pubsub_engine_deregister(pubsub_engine_s *engine) {
 }
 
 /* *****************************************************************************
-Single Process Engine and `pubsub_defer`
+PUBSUB_PROCESS_ENGINE: Single Process Engine and `pubsub_defer`
 ***************************************************************************** */
 
 typedef struct {
@@ -435,13 +453,10 @@ int pubsub_en_process_publish(const pubsub_engine_s *eng, fiobj_s *channel,
       }
     }
   }
-finish:
   spn_unlock(&lock);
+  msg_wrapper_free(m);
   return ret;
   (void)eng;
-  (void)channel;
-  (void)msg;
-  return -1;
 }
 
 const pubsub_engine_s PUBSUB_PROCESS_ENGINE_S = {
@@ -482,26 +497,85 @@ Cluster Engine
 /* Must subscribe channel. Failures are ignored. */
 void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
                                  uint8_t use_pattern) {
+  fio_cstr_s s = fiobj_obj2cstr(channel);
+  char *buf = malloc(s.length + 64);
+  if (!buf)
+    perror("FATAL ERROR: (pubsub) failed to allocate cluster subscription"),
+        exit(errno);
+  char *pos = buf;
+  *pos = use_pattern ? 1 : 0;
+  pos++;
+  pos += fio_ltoa(pos, defer_fork_pid(), 10);
+  pos++;
+  pos += fio_ltoa(pos, s.len, 10);
+  *pos = 0;
+  pos++;
+  memcpy(pos, s.buffer, s.len);
+  pos += s.len;
+  facil_cluster_send(PUBSUB_FACIL_CLUSTER_ID, buf,
+                     (uintptr_t)pos - (uintptr_t)buf);
+  free(buf);
   (void)eng;
-  (void)channel;
-  (void)use_pattern;
 }
 
 /* Must unsubscribe channel. Failures are ignored. */
 void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
                                    uint8_t use_pattern) {
+  fio_cstr_s s = fiobj_obj2cstr(channel);
+  char *buf = malloc(s.length + 64);
+  if (!buf)
+    perror("FATAL ERROR: (pubsub) failed to allocate cluster subscription"),
+        exit(errno);
+  char *pos = buf;
+  *pos = use_pattern ? 3 : 2;
+  pos++;
+  pos += fio_ltoa(pos, defer_fork_pid(), 10);
+  pos++;
+  pos += fio_ltoa(pos, s.len, 10);
+  *pos = 0;
+  pos++;
+  memcpy(pos, s.buffer, s.len);
+  pos += s.len;
+  facil_cluster_send(PUBSUB_FACIL_CLUSTER_ID, buf,
+                     (uintptr_t)pos - (uintptr_t)buf);
+  free(buf);
   (void)eng;
-  (void)channel;
-  (void)use_pattern;
 }
 /** Should return 0 on success and -1 on failure. */
 int pubsub_en_cluster_publish(const pubsub_engine_s *eng, fiobj_s *channel,
                               fiobj_s *msg) {
-
+  if (FIOBJ_IS_STRING(msg) || msg->type == FIOBJ_T_SYMBOL) {
+    fio_cstr_s chs = fiobj_obj2cstr(channel);
+    fio_cstr_s ms = fiobj_obj2cstr(msg);
+    char *buf = malloc(chs.length + ms.len + 64);
+    if (!buf)
+      perror("FATAL ERROR: (pubsub) failed to allocate cluster subscription"),
+          exit(errno);
+    char *pos = buf;
+    *pos = 4;
+    pos++;
+    pos += fio_ltoa(pos, chs.len, 10);
+    *pos = 0;
+    pos++;
+    memcpy(pos, chs.buffer, chs.len);
+    pos += chs.len;
+    memcpy(pos, ms.buffer, ms.len);
+    pos += ms.len;
+    facil_cluster_send(PUBSUB_FACIL_CLUSTER_ID, buf,
+                       (uintptr_t)pos - (uintptr_t)buf);
+    free(buf);
+  } else {
+    fiobj_s *buf = fiobj_str_buf(0);
+    fiobj_str_write(buf, "\x05", 1);
+    fiobj_str_write2(buf, "%lu\x01",
+                     (unsigned long)(fiobj_obj2cstr(channel).len + 1));
+    fiobj_obj2json2(buf, msg, 0);
+    fio_cstr_s s = fiobj_obj2cstr(buf);
+    facil_cluster_send(PUBSUB_FACIL_CLUSTER_ID, s.data, s.len);
+    fiobj_free(buf);
+  }
+  return PUBSUB_PROCESS_ENGINE->publish(PUBSUB_PROCESS_ENGINE, channel, msg);
   (void)eng;
-  (void)channel;
-  (void)msg;
-  return -1;
 }
 
 const pubsub_engine_s PUBSUB_CLUSTER_ENGINE_S = {
@@ -511,6 +585,122 @@ const pubsub_engine_s PUBSUB_CLUSTER_ENGINE_S = {
 };
 
 const pubsub_engine_s *PUBSUB_CLUSTER_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
+const pubsub_engine_s *PUBSUB_DEFAULT_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
+/* *****************************************************************************
+Cluster Initialization and Messaging Protocol
+***************************************************************************** */
+
+/* does nothing */
+static void pubsub_cluster_on_message_noop(pubsub_message_s *msg) { (void)msg; }
+
+/* test for channel existence and registers to the channel if required */
+static void pubsub_cluster_subscribe2channel(void *ch, void *flag) {
+  fio_hash_s *map = flag ? &patterns : &channels;
+  if (spn_trylock(&lock)) {
+    defer(pubsub_cluster_subscribe2channel, ch, flag);
+    return;
+  }
+  channel_s *channel =
+      fio_hash_find(map, (fio_hash_key_s){.hash = fiobj_sym_id(ch), .obj = ch});
+  spn_unlock(&lock);
+  if (!channel)
+    pubsub_subscribe(.channel = ch,
+                     .on_message = pubsub_cluster_on_message_noop,
+                     .use_pattern = (((uintptr_t)flag) & 1), .udata1 = flag);
+}
+
+/* test for channel existence and deregisters to the channel if required */
+static void pubsub_cluster_unsubscribe2channel(void *ch, void *flag) {
+  fio_hash_s *map = ((uintptr_t)flag & 1) ? &patterns : &channels;
+  if (spn_trylock(&lock)) {
+    defer(pubsub_cluster_subscribe2channel, ch, flag);
+    return;
+  }
+  channel_s *channel =
+      fio_hash_find(map, (fio_hash_key_s){.hash = fiobj_sym_id(ch), .obj = ch});
+  if (channel)
+    pubsub_en_cluster_subscribe(PUBSUB_CLUSTER_ENGINE, ch, (uintptr_t)flag & 1);
+  spn_unlock(&lock);
+
+  pubsub_sub_pt cl =
+      pubsub_find_sub(.channel = ch,
+                      .on_message = pubsub_cluster_on_message_noop,
+                      .use_pattern = (((uintptr_t)flag) & 1), .udata1 = flag);
+  if (cl)
+    pubsub_unsubscribe(cl);
+}
+
+static void pubsub_cluster_facil_message(void *data, uint32_t len) {
+  char *pos = data;
+  switch (*pos) {
+  case 0:
+  /* NULL byte indicates a subscribe to a normal channel */
+  /* first bit (1) indicates a subscribe to a pattern channel */
+  /* fallthrough */
+  case 1: {
+    ++pos;
+    uint64_t pid = fio_atol(&pos) << 1;
+    ++pos;
+    uint64_t ch_len = fio_atol(&pos);
+    ++pos;
+    fiobj_s *ch = fiobj_sym_new(pos, ch_len);
+    uintptr_t flag = (((uint8_t *)data)[0] & 1) | pid;
+    defer(pubsub_cluster_subscribe2channel, ch, (void *)flag);
+    return;
+  }
+  case 2:
+  /* indicates an unsubscribe to a normal channel */
+  /* fallthrough */
+  case 3:
+    /* first bit indicates an unsubscribe to a pattern channel */
+    {
+      ++pos;
+      uint64_t pid = fio_atol(&pos) << 1;
+      ++pos;
+      uint64_t ch_len = fio_atol(&pos);
+      ++pos;
+      fiobj_s *ch = fiobj_sym_new(pos, ch_len);
+      uintptr_t flag = (((uint8_t *)data)[0] & 1) | pid;
+      defer(pubsub_cluster_unsubscribe2channel, ch, (void *)flag);
+      fiobj_free(ch);
+      return;
+    }
+  case 4:
+  /* indicates String message */
+  /* fallthrough */
+  case 5:
+    /* indicates JSON message */
+    ++pos;
+    const uint64_t ch_len = fio_atol(&pos);
+    ++pos;
+    fiobj_s *ch = fiobj_sym_new(pos, ch_len);
+    pos += ch_len;
+    const uint64_t msg_len = len - ((uintptr_t)pos - (uintptr_t)data);
+    fiobj_s *msg = NULL;
+    if ((((uint8_t *)data)[0] & 1)) {
+      if (!fiobj_json2obj(&msg, pos, msg_len)) {
+        fprintf(stderr, "WARNING: (pubsub) Cluster engine JSON parsing error "
+                        "(this might be a framework bug).\n");
+        msg = fiobj_str_new(pos, msg_len);
+      }
+    } else {
+      msg = fiobj_str_new(pos, msg_len);
+    }
+    PUBSUB_PROCESS_ENGINE->publish(PUBSUB_PROCESS_ENGINE, ch, msg);
+    fiobj_free(ch);
+    fiobj_free(msg);
+    return;
+  default:
+    /* indicates an error */
+    fprintf(stderr, "WARNING: (pubsub) Cluster engine received an illigal "
+                    "message - code error.\n");
+  }
+}
+
+void pubsub_cluster_init(void) {
+  facil_cluster_set_handler(PUBSUB_FACIL_CLUSTER_ID,
+                            pubsub_cluster_facil_message);
+}
 
 /* *****************************************************************************
 Glob Matching Helper

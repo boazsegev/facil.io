@@ -243,7 +243,7 @@ static void on_data(intptr_t sockfd, protocol_s *ws_) {
     return;
   }
   /* test buffer capacity */
-  if (raw_length >= ws->buffer.size) {
+  if (raw_length > ws->buffer.size) {
     ws->buffer.size = (size_t)raw_length;
     ws->buffer = resize_ws_buffer(ws, ws->buffer);
     if (!ws->buffer.data) {
@@ -487,10 +487,10 @@ static void websocket_on_pubsub_message_direct(pubsub_message_s *msg) {
     pubsub_defer(msg);
     return;
   }
-  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len,
-                  msg->msg.len >= (2 << 14)
-                      ? 0
-                      : validate_utf8((uint8_t *)msg->msg.data, msg->msg.len));
+  fio_cstr_s tmp = fiobj_obj2cstr(msg->message);
+  websocket_write(
+      (ws_s *)pr, tmp.data, tmp.len,
+      tmp.len >= (2 << 14) ? 0 : validate_utf8((uint8_t *)tmp.data, tmp.len));
   facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
 }
 
@@ -503,7 +503,8 @@ static void websocket_on_pubsub_message_direct_txt(pubsub_message_s *msg) {
     pubsub_defer(msg);
     return;
   }
-  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len, 1);
+  fio_cstr_s tmp = fiobj_obj2cstr(msg->message);
+  websocket_write((ws_s *)pr, tmp.data, tmp.len, 1);
   facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
 }
 
@@ -516,7 +517,8 @@ static void websocket_on_pubsub_message_direct_bin(pubsub_message_s *msg) {
     pubsub_defer(msg);
     return;
   }
-  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len, 0);
+  fio_cstr_s tmp = fiobj_obj2cstr(msg->message);
+  websocket_write((ws_s *)pr, tmp.data, tmp.len, 0);
   facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
 }
 
@@ -534,11 +536,9 @@ static void websocket_on_pubsub_message(pubsub_message_s *msg) {
   if (d->on_message)
     d->on_message((websocket_pubsub_notification_s){
         .ws = (ws_s *)pr,
-        .engine = (pubsub_engine_s *)msg->engine,
         .subscription_id = (intptr_t)msg->subscription,
-        .channel = {.name = msg->channel.name, .len = msg->channel.len},
-        .msg = {.data = msg->msg.data, .len = msg->msg.len},
-        .use_pattern = msg->use_pattern,
+        .channel = msg->channel,
+        .message = msg->message,
     });
   facil_protocol_unlock(pr, FIO_PR_LOCK_TASK);
 }
@@ -554,14 +554,10 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
   *d = (websocket_sub_data_s){.udata = args.udata,
                               .on_message = args.on_message,
                               .on_unsubscribe = args.on_unsubscribe};
+
   pubsub_sub_pt sub = pubsub_subscribe(
-          .engine = args.engine,
-          .channel =
-              {
-                  .name = (char *)args.channel.name, .len = args.channel.len,
-              },
+          .channel = args.channel, .on_unsubscribe = websocket_on_unsubscribe,
           .use_pattern = args.use_pattern,
-          .on_unsubscribe = websocket_on_unsubscribe,
           .on_message =
               (args.on_message
                    ? websocket_on_pubsub_message
@@ -589,12 +585,7 @@ error:
 #undef websocket_find_sub
 uintptr_t websocket_find_sub(struct websocket_subscribe_s args) {
   pubsub_sub_pt sub = pubsub_find_sub(
-          .engine = args.engine,
-          .channel =
-              {
-                  .name = (char *)args.channel.name, .len = args.channel.len,
-              },
-          .use_pattern = args.use_pattern,
+          .channel = args.channel, .use_pattern = args.use_pattern,
           .on_message =
               (args.on_message
                    ? websocket_on_pubsub_message

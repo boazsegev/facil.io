@@ -81,22 +81,12 @@ typedef struct pubsub_engine_s pubsub_engine_s;
 typedef struct {
   /** the websocket receiving the message. */
   ws_s *ws;
-  /** the pub/sub engine from which where the message originated. */
-  struct pubsub_engine_s *engine;
   /** the Websocket pub/sub subscription ID. */
   uintptr_t subscription_id;
   /** the channel where the message was published. */
-  struct {
-    const char *name;
-    size_t len;
-  } channel;
+  fiobj_s *channel;
   /** the published message. */
-  struct {
-    const char *data;
-    size_t len;
-  } msg;
-  /** Pattern matching was used for channel subscription. */
-  unsigned use_pattern : 1;
+  fiobj_s *message;
   /** user opaque data. */
   void *udata;
 } websocket_pubsub_notification_s;
@@ -105,17 +95,8 @@ typedef struct {
 struct websocket_subscribe_s {
   /** the websocket receiving the message. REQUIRED. */
   ws_s *ws;
-  /**
-   * The pub/sub engine to use.
-   *
-   * Default: engine will publish messages throughout the facil process cluster.
-   */
-  struct pubsub_engine_s *engine;
   /** the channel where the message was published. */
-  struct {
-    const char *name;
-    size_t len;
-  } channel;
+  fiobj_s *channel;
   /**
    * The callback that handles pub/sub notifications.
    *
