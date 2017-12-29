@@ -101,19 +101,24 @@ static void pubsub_on_channel_create(channel_s *ch);
 /* for engine thingy */
 static void pubsub_on_channel_destroy(channel_s *ch);
 
+static void pubsub_deferred_unsub(void *cl_, void *ignr) {
+  client_s *cl = cl_;
+  cl->on_unsubscribe(cl->udata1, cl->udata2);
+  free(cl);
+  (void)ignr;
+}
+
 static inline void client_test4free(client_s *cl) {
   if (spn_sub(&cl->ref, 1)) {
     /* client is still being used. */
     return;
   }
+  if (cl->on_unsubscribe) {
+    /* we'll call the callback before freeing the object. */
+    defer(pubsub_deferred_unsub, cl, NULL);
+    return;
+  }
   free(cl);
-}
-
-static void pubsub_deferred_unsub(void *cl_, void *ignr) {
-  client_s *cl = cl_;
-  cl->on_unsubscribe(cl->udata1, cl->udata2);
-  client_test4free(cl);
-  (void)ignr;
 }
 
 static inline uint64_t client_compute_hash(client_s client) {
@@ -205,10 +210,6 @@ static void pubsub_client_destroy(client_s *client) {
     pubsub_on_channel_destroy(ch);
   }
   spn_unlock(&lock);
-  if (client->on_unsubscribe) {
-    spn_add(&client->ref, 1);
-    defer(pubsub_deferred_unsub, client, NULL);
-  }
   client_test4free(client);
   if (is_ch_any) {
     return;
