@@ -20,13 +20,16 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 #include "pubsub.h"
 #include "websockets.h"
 
-#include "redis_engine.h"
+// #include "redis_engine.h"
 
 #include <string.h>
 
+fiobj_s *CHANNEL_TEXT;
+fiobj_s *CHANNEL_BINARY;
+
 static void on_open_shootout_websocket(ws_s *ws) {
-  websocket_subscribe(ws, .channel.name = "text", .force_text = 1);
-  websocket_subscribe(ws, .channel.name = "binary", .force_binary = 1);
+  websocket_subscribe(ws, .channel = CHANNEL_TEXT, .force_text = 1);
+  websocket_subscribe(ws, .channel = CHANNEL_BINARY, .force_binary = 1);
 }
 
 static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
@@ -35,13 +38,15 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   (void)(is_text);
   (void)(size);
   if (data[0] == 'b') {
-    pubsub_publish(.channel.name = "binary", .msg.data = data, .msg.len = size);
+    fiobj_s *msg = fiobj_str_new(data, size);
+    pubsub_publish(.channel = CHANNEL_BINARY, .message = msg);
     // fwrite(".", 1, 1, stderr);
     data[0] = 'r';
     websocket_write(ws, data, size, 0);
   } else if (data[9] == 'b') {
     // fwrite(".", 1, 1, stderr);
-    pubsub_publish(.channel.name = "text", .msg.data = data, .msg.len = size);
+    fiobj_s *msg = fiobj_str_new(data, size);
+    pubsub_publish(.channel = CHANNEL_TEXT, .message = msg);
     /* send result */
     size = size + (25 - 19);
     void *buff = malloc(size);
@@ -55,33 +60,17 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   }
 }
 
-static void answer_http_request(http_request_s *request) {
-  // to log we will start a response.
-  http_response_s *response = http_response_create(request);
-  // than we wil instruct logging to start.
-  if (request->settings->log_static)
-    http_response_log_start(response);
-  // Set the server header.
-  http_response_write_header(response, .name = "Server", .name_len = 6,
-                             .value = "facil.example", .value_len = 13);
-
-  // upgrade requests to broadcast will have the `upgrade` header
-  if (request->upgrade) {
-    // Websocket upgrade will use our existing response (never leak responses).
-    websocket_upgrade(.request = request, .response = response,
-                      .on_open = on_open_shootout_websocket,
-                      .on_message = handle_websocket_messages);
-
-    return;
-  }
-  // set the Content-Type header.
-  http_response_write_header(response, .name = "Content-Type", .name_len = 12,
-                             .value = "text/plain", .value_len = 10);
-  // write some body to the response.
-  http_response_write_body(response, "This is a Websocket-Shootout example!",
-                           37);
-  // send and free the response
-  http_response_finish(response);
+static void answer_http_request(http_s *request) {
+  http_set_header(request, HTTP_HEADER_CONTENT_TYPE,
+                  http_mimetype_find("txt", 3));
+  http_send_body(request, "This is a Websocket-Shootout example!", 37);
+}
+static void answer_http_upgrade(http_s *request, char *target, size_t len) {
+  if (len >= 9 && target[0] == 'w')
+    http_upgrade2ws(.http = request, .on_message = handle_websocket_messages,
+                    .on_open = on_open_shootout_websocket);
+  else
+    http_send_error(request, 400);
 }
 
 #include "fio_cli_helper.h"
@@ -94,6 +83,9 @@ int main(int argc, char const *argv[]) {
   uint32_t threads = 0;
   uint32_t workers = 0;
   uint8_t print_log = 0;
+  // allocate global resources
+  CHANNEL_TEXT = fiobj_sym_new("CHANNEL_TEXT", 12);
+  CHANNEL_BINARY = fiobj_sym_new("CHANNEL_BINARY", 14);
 
   /*     ****  Command line arguments ****     */
   fio_cli_start(argc, argv,
@@ -128,7 +120,11 @@ int main(int argc, char const *argv[]) {
   /*     ****  actual code ****     */
   // RedisEngine = redis_engine_create(.address = "localhost", .port = "6379");
   if (http_listen(port, NULL, .on_request = answer_http_request,
-                  .log_static = print_log, .public_folder = public_folder))
+                  .on_upgrade = answer_http_upgrade, .log = print_log,
+                  .public_folder = public_folder))
     perror("Couldn't initiate Websocket Shootout service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
+  // free global resources.
+  fiobj_free(CHANNEL_TEXT);
+  fiobj_free(CHANNEL_BINARY);
 }
