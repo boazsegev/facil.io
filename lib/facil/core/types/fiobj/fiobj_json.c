@@ -277,13 +277,16 @@ review_nesting:
   return 0;
 }
 
-/* Formats an object into a JSON string. Remember to `fiobj_free`. */
-fiobj_s *fiobj_obj2json(fiobj_s *obj, uint8_t pretty) {
+/**
+ * Formats an object into a JSON string, appending the JSON string to an
+ * existing String. Remember to `fiobj_free`.
+ */
+fiobj_s *fiobj_obj2json2(fiobj_s *dest, fiobj_s *obj, uint8_t pretty) {
   /* Using a whole page size could optimize future allocations (no copy) */
   struct fiobj_str_new_json_data_s data = {
       .parent = fiobj_ary_new(),
       .waiting = fiobj_ary_new(),
-      .buffer = fiobj_str_buf(0),
+      .buffer = dest,
       .count = NULL,
       .pretty = pretty,
   };
@@ -295,6 +298,11 @@ fiobj_s *fiobj_obj2json(fiobj_s *obj, uint8_t pretty) {
   fiobj_free(data.waiting);
   fiobj_str_minimize(data.buffer);
   return data.buffer;
+}
+
+/* Formats an object into a JSON string. Remember to `fiobj_free`. */
+fiobj_s *fiobj_obj2json(fiobj_s *obj, uint8_t pretty) {
+  return fiobj_obj2json2(fiobj_str_buf(0), obj, pretty);
 }
 
 /* *****************************************************************************
