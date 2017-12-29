@@ -5,10 +5,10 @@
 
 * A fast HTTP/1.1 and Websocket static file + application server.
 * Support for custom network protocols for both server and client connections.
-* A pub/sub process cluster engine for Websocket pub/sub.
-* Optional connectivity with Redis.
-* Optional dynamic types designed with web applications in mind (Strings, Hashes, Arrays etc').
+* Dynamic types designed with web applications in mind (Strings, Hashes, Arrays etc').
 * JSON parsing and formatting for easy network communication.
+* A pub/sub process cluster engine for local and Websocket pub/sub.
+* Optional connectivity with Redis.
 
 [facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.
 
@@ -18,23 +18,33 @@ You can read more about [facil.io](http://facil.io) on the [facil.io](http://fac
 
 ```c
 #include "http.h" /* the HTTP facil.io extension */
+
 // We'll use this callback in `http_listen`, to handles HTTP requests
-void on_request(http_request_s* request);
+void on_request(http_s *request);
+
+// These will contain pre-allocated values that we will use often
+fiobj_s *HTTP_X_DATA;
+
 // Listen to HTTP requests and start facil.io
 int main(int argc, char const **argv) {
+  // allocating values we use often
+  HTTP_X_DATA = fiobj_str_static("X-Data", 6);
   // listen on port 3000 and any available network binding (NULL == 0.0.0.0)
-  http_listen(3000, NULL, .on_request = on_request );
+  http_listen("3000", NULL, .on_request = on_request, .log = 1);
   // start the server
   facil_run(.threads = 1);
+  // deallocating the common values
+  fiobj_free(HTTP_X_DATA);
 }
+
 // Easy HTTP handling
-void on_request(http_request_s* request) {
-  http_response_s * response = http_response_create(request);
-  http_response_log_start(response);
-  http_response_set_cookie(response, .name = "my_cookie", .value = "data");
-  http_response_write_header(response, .name = "X-Data", .value = "my data");
-  http_response_write_body(response, "Hello World!\r\n", 14);
-  http_response_finish(response);
+void on_request(http_s *request) {
+  http_set_cookie(request, .name = "my_cookie", .name_len = 9, .value = "data",
+                  .value_len = 4);
+  http_set_header(request, HTTP_HEADER_CONTENT_TYPE,
+                  http_mimetype_find("txt", 3));
+  http_set_header(request, HTTP_X_DATA, fiobj_str_new("my data", 7));
+  http_send_body(request, "Hello World!\r\n", 14);
 }
 ```
 
@@ -58,15 +68,9 @@ Credit to @benjcal for suggesting the script.
 
 ### Adding facil.io to an existing project
 
-[facil.io](http://facil.io) is a source code library, so it's possible to simply copy the source code into an existing project and start using the library right away.
+[facil.io](http://facil.io) is a source code library, so it's easy to copy the source code into an existing project and start using the library right away.
 
-To use the library in an existing project, clone the `git` repo and run:
-
-     $ make libdump
-
-This will dump all the library files into a folder called `libdump`. The header files are in `libdump/include` and the source files are in `libdump/src`. The folder `libdump/all` contains all the source and header files mixed together.
-
-Copy the header and source files to the appropriate location in your project and start using the library.
+The `make libdump` command will dump all the relevant files in a single folder called `libdump`, and you can copy them all or divide them into header ands source files.
 
 ### Using `facil.io` as a CMake submodule
 
@@ -82,155 +86,7 @@ Then add the following line the project's `CMakeLists.txt`
 
 ## More Examples
 
-Writing HTTP and Websocket services in C is easy with [facil.io](http://facil.io).
-
-### Websockets
-
-[facil.io](http://facil.io) really shines when it comes to Websockets and real-time applications, where the `kqueue`/`epoll` engine gives the framework a high performance running start.
-
-Here's a full-fledge example of a Websocket echo server, a Websocket broadcast server and an HTTP "Hello World" (with an optional static file service) all rolled into one:
-
-```c
-#include "websockets.h" // includes the "http.h" header
-
-#include <stdio.h>
-#include <stdlib.h>
-
-/* ******************************
-The Websocket echo implementation
-*/
-
-void ws_open(ws_s * ws) {
-  fprintf(stderr, "Opened a new websocket connection (%p)\n", (void * )ws);
-}
-
-void ws_echo(ws_s * ws, char * data, size_t size, uint8_t is_text) {
-  // echos the data to the current websocket
-  websocket_write(ws, data, size, is_text);
-}
-
-void ws_shutdown(ws_s * ws) { websocket_write(ws, "Shutting Down", 13, 1); }
-
-void ws_close(ws_s * ws) {
-  fprintf(stderr, "Closed websocket connection (%p)\n", (void * )ws);
-}
-
-/* ********************
-The HTTP implementation
-*/
-
-void on_request(http_request_s * request) {
-  http_response_s * response = http_response_create(request);
-  http_response_log_start(response); // logging
-  // websocket upgrade.
-  if (request->upgrade) {
-    websocket_upgrade(.request = request, .on_message = ws_echo,
-                      .on_open = ws_open, .on_close = ws_close, .timeout = 40,
-                      .on_shutdown = ws_shutdown, .response = response);
-    return;
-  }
-  // HTTP response
-  http_response_write_body(response, "Hello World!", 12);
-  http_response_finish(response);
-}
-
-/****************
-The main function
-*/
-
-#define THREAD_COUNT 1
-int main(void) {
-  // easily support a command line interface
-  fio_cli_start(argc, argv, NULL);
-  fio_cli_accept_num("port p", "the port to listen to, defaults to 3000.");
-  fio_cli_accept_bool("log v", "enable logging");
-  fio_cli_accept_num("public-folder, www",
-                     "enables a static file service from the folder's root.");
-  const char * port = fio_cli_get_str("port");
-  if (!port) // make sure NULL resolves to a default port.
-    port = "3000";    
-  http_listen("3000", NULL,  .on_request = on_request,
-                             .public_folder = fio_cli_get_str("www"),
-                             .log_static = fio_cli_get_int("v"));
-  facil_run(.threads = THREAD_COUNT);
-  fio_cli_end(); // clean up CLI data
-  return 0;
-}
-```
-
-### A Custom Protocol (an Echo example)
-
-[facil.io](http://facil.io)'s API is designed for both simplicity and an object oriented approach, using network protocol objects and structs to avoid bloating function arguments and to provide sensible default behavior.
-
-Here's a simple Echo example (test with telnet to port `"3000"`).
-
-```c
-#include "facil.h" // the core library header
-
-// Performed whenever there's pending incoming data on the socket
-static void perform_echo(intptr_t uuid, protocol_s * prt) {
-  (void)prt;
-  char buffer[1024] = {'E', 'c', 'h', 'o', ':', ' '};
-  ssize_t len;
-  while ((len = sock_read(uuid, buffer + 6, 1018)) > 0) {
-    sock_write(uuid, buffer, len + 6);
-    if ((buffer[6] | 32) == 'b' && (buffer[7] | 32) == 'y' &&
-        (buffer[8] | 32) == 'e') {
-      sock_write(uuid, "Goodbye.\n", 9);
-      sock_close(uuid); // closes after `write` had completed.
-      return;
-    }
-  }
-}
-// performed whenever "timeout" is reached.
-static void echo_ping(intptr_t uuid, protocol_s * prt) {
-  (void)prt;
-  sock_write(uuid, "Server: Are you there?\n", 23);
-}
-// performed during server shutdown, before closing the socket.
-static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
-  (void)prt;
-  sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
-}
-// performed after the socket was closed and the currently running task had
-// completed.
-static void destroy_echo_protocol(intptr_t old_uuid, protocol_s * echo_proto) {
-  if (echo_proto) // always error check, even if it isn't needed.
-    free(echo_proto);
-  fprintf(stderr, "Freed Echo protocol at %p\n", (void * )echo_proto);
-  (void)old_uuid;
-}
-// performed whenever a new connection is accepted.
-static inline protocol_s * create_echo_protocol(intptr_t uuid, void * arg) {
-  // create a protocol object
-  protocol_s * echo_proto = malloc(sizeof( * echo_proto));
-  // set the callbacks
-  * echo_proto = (protocol_s){
-      .service = "echo",
-      .on_data = perform_echo,
-      .on_shutdown = echo_on_shutdown,
-      .ping = echo_ping,
-      .on_close = destroy_echo_protocol,
-  };
-  // write data to the socket and set timeout
-  sock_write(uuid, "Echo Service: Welcome. Say \"bye\" to disconnect.\n", 48);
-  facil_set_timeout(uuid, 10);
-  // print log
-  fprintf(stderr, "New Echo connection %p for socket UUID %p\n",
-          (void * )echo_proto, (void * )uuid);
-  // return the protocol object to attach it to the socket.
-  return echo_proto;
-  (void)arg; // we don't use this
-}
-// creates and runs the server
-int main(void) {
-  // listens on port 3000 for echo services.
-  facil_listen(.port = "3000", .on_open = create_echo_protocol);
-  // starts and runs the server
-  facil_run(.threads = 10);
-  return 0;
-}
-```
+You can find more examples on the [facil.io](http://facil.io) website, including examples for [lower-level custom protocols](examples/telnet-echo.c) as well as [Websocket pub/sub with Redis](examples/pubsub-chat.c).
 
 ---
 

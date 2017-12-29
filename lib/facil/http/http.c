@@ -784,7 +784,7 @@ void http_write_log(http_s *h) {
     fiobj_str_join(l, fiobj_num_tmp(h->status));
     fiobj_str_write(l, " ", 1);
     fiobj_str_join(l, fiobj_num_tmp(bytes_sent));
-    fiobj_str_write(l, "B ", 2);
+    fiobj_str_write(l, "b ", 2);
   } else {
     fiobj_str_join(l, fiobj_num_tmp(h->status));
     fiobj_str_write(l, " -- ", 4);
