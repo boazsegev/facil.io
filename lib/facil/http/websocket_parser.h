@@ -143,21 +143,40 @@ Message masking
 /** used internally to mask and unmask client messages. */
 void websocket_xmask(void *msg, uint64_t len, uint32_t mask) {
   if (len > 7) {
-    /* XOR any unaligned memory (4 byte alignment) */
-    const uintptr_t offset = 4 - ((uintptr_t)msg & 3);
-    switch (offset) {
-    case 3:
-      ((uint8_t *)msg)[2] ^= ((uint8_t *)(&mask))[2];
-    /* fallthrough */
-    case 2:
-      ((uint8_t *)msg)[1] ^= ((uint8_t *)(&mask))[1];
-    /* fallthrough */
-    case 1:
-      ((uint8_t *)msg)[0] ^= ((uint8_t *)(&mask))[0];
-      /* rotate mask and move pointer to first 4 byte alignment */
-      mask = (mask << (offset << 3)) | (mask >> ((4 - offset) << 3));
-      msg = (void *)((uintptr_t)msg + offset);
-      len -= offset;
+    { /* XOR any unaligned memory (4 byte alignment) */
+      const uintptr_t offset = 4 - ((uintptr_t)msg & 3);
+      // switch (offset) {
+      // case 3:
+      //   ((uint8_t *)msg)[2] ^= ((uint8_t *)(&mask))[2];
+      // /* fallthrough */
+      // case 2:
+      //   ((uint8_t *)msg)[1] ^= ((uint8_t *)(&mask))[1];
+      // /* fallthrough */
+      // case 1:
+      //   ((uint8_t *)msg)[0] ^= ((uint8_t *)(&mask))[0];
+      //   /* rotate mask and move pointer to first 4 byte alignment */
+      //   mask = (mask << (offset << 3)) | (mask >> ((4 - offset) << 3));
+      //   msg = (void *)((uintptr_t)msg + offset);
+      //   len -= offset;
+      // }
+      switch (offset) {
+      case 3:
+        ((uint8_t *)msg)[2] ^= ((uint8_t *)(&mask))[2];
+      /* fallthrough */
+      case 2:
+        ((uint8_t *)msg)[1] ^= ((uint8_t *)(&mask))[1];
+      /* fallthrough */
+      case 1:
+        ((uint8_t *)msg)[0] ^= ((uint8_t *)(&mask))[0];
+        /* rotate mask and move pointer to first 4 byte alignment */
+        uint64_t comb = mask | ((uint64_t)mask << 32);
+        ((uint8_t *)(&mask))[0] = ((uint8_t *)(&comb))[0 + offset];
+        ((uint8_t *)(&mask))[1] = ((uint8_t *)(&comb))[1 + offset];
+        ((uint8_t *)(&mask))[2] = ((uint8_t *)(&comb))[2 + offset];
+        ((uint8_t *)(&mask))[3] = ((uint8_t *)(&comb))[3 + offset];
+        msg = (void *)((uintptr_t)msg + offset);
+        len -= offset;
+      }
     }
 #if UINTPTR_MAX <= 0xFFFFFFFF
     /* handle  4 byte XOR alignment in 32 bit mnachine*/
@@ -182,6 +201,7 @@ void websocket_xmask(void *msg, uint64_t len, uint32_t mask) {
     }
 #endif
   }
+
   /* XOR any leftover bytes (might be non aligned)  */
   switch (len) {
   case 7:
@@ -471,7 +491,8 @@ websocket_buffer_peek(void *buffer, uint64_t len) {
  */
 static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
                                   uint8_t require_masking) {
-  struct websocket_packet_info_s info = websocket_buffer_peek(buffer, len);
+  volatile struct websocket_packet_info_s info =
+      websocket_buffer_peek(buffer, len);
   if (info.head_length + info.packet_length > len)
     return len;
   uint64_t reminder = len;
@@ -482,7 +503,11 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
     /* unmask? */
     if (info.masked) {
       /* masked */
-      const uint32_t mask = ((uint32_t *)payload)[-1];
+      const uint32_t mask; // = ((uint32_t *)payload)[-1];
+      ((uint8_t *)(&mask))[0] = ((uint8_t *)(payload))[-4];
+      ((uint8_t *)(&mask))[1] = ((uint8_t *)(payload))[-3];
+      ((uint8_t *)(&mask))[2] = ((uint8_t *)(payload))[-2];
+      ((uint8_t *)(&mask))[3] = ((uint8_t *)(payload))[-1];
       websocket_xmask(payload, info.packet_length, mask);
     } else if (require_masking) {
       /* error */
