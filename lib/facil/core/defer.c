@@ -485,7 +485,6 @@ int defer_perform_in_fork(unsigned int process_count,
       defer_fork_pid_id = pids_count + 1;
       forked_pool = &pool_placeholder;
       forked_pool = defer_pool_start(thread_count);
-      defer_pool_stop(forked_pool);
       defer_pool_wait(forked_pool);
       defer_perform();
       defer_perform();

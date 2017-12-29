@@ -42,6 +42,7 @@ struct connection_data_s {
 static struct facil_data_s {
   spn_lock_i global_lock;
   uint8_t need_review;
+  uint8_t active;
   ssize_t capacity;
   struct timespec last_cycle;
   pid_t parent;
@@ -691,7 +692,7 @@ static void facil_cluster_on_close(intptr_t uuid, protocol_s *pr_) {
     free(pr->msg);
   free(pr);
 #if FACIL_PRINT_STATE == 1
-  if (defer_fork_is_active())
+  if (facil_data->active && defer_fork_is_active())
     fprintf(stderr, "ERROR: facil cluster member (%d) closed prematurely.\n",
             defer_fork_pid());
 #endif
@@ -702,7 +703,7 @@ static void facil_cluster_on_close(intptr_t uuid, protocol_s *pr_) {
 static void facil_cluster_on_sibling_close(intptr_t uuid, protocol_s *pr_) {
   if (facil_cluster_data.pipes[defer_fork_pid()].in == uuid)
     return;
-  if (defer_fork_is_active()) {
+  if (facil_data->active && defer_fork_is_active()) {
     kill(getpid(), SIGINT);
 #if DEBUG
     fprintf(stderr, "* (%d) Sibling death detected, signaling for exit.\n",
@@ -1048,7 +1049,9 @@ void facil_run(struct facil_run_args args) {
     defer(print_pid, NULL, NULL);
   }
   defer(facil_init_run, &args, NULL);
+  facil_data->active = 1;
   int frk = defer_perform_in_fork(args.processes, args.threads);
+  facil_data->active = 0;
   facil_cleanup(&args);
   if (frk < 0) {
     perror("ERROR: couldn't spawn workers");
