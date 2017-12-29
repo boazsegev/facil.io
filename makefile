@@ -7,9 +7,9 @@ OUT_ROOT=tmp
 # the .c and .cpp source files root folder - subfolders are automatically included
 LIB_ROOT=./lib
 # publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=facil/core facil/core/types facil/services facil/http facil/http/parsers facil/redis
+LIB_PUBLIC_SUBFOLDERS=facil/core facil/core/types facil/core/types/fiobj facil/services facil/http facil/http/parsers facil/redis
 # privately used subfolders in the lib root (this distinction is for CMake)
-LIB_PRIVATE_SUBFOLDERS=facil/core/types/fiobj 
+LIB_PRIVATE_SUBFOLDERS= 
 
 ### Development folders
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`.
@@ -44,6 +44,7 @@ DUMP_LIB=libdump
 # add DEBUG flag if requested
 ifdef DEBUG
 	FLAGS:=$(FLAGS) DEBUG
+	# # comment the following line if you want to use a different address sanitizer or a profiling tool. 
 	OPTIMIZATION:=$(OPTIMIZATION) -fsanitize=address -fno-omit-frame-pointer
 else
 	FLAGS:=$(FLAGS) NODEBUG
@@ -141,7 +142,7 @@ build: $(LIB_OBJS) $(MAIN_OBJS)
 	@$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(DOCUMENTATION)
 
-lib: libdump $(LIB_OBJS)
+lib: $(LIB_OBJS)
 	@$(CCL) -shared -o $(OUT_ROOT)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(DOCUMENTATION)
 
@@ -195,12 +196,12 @@ libdump: cmake
 	@mkdir $(DUMP_LIB)/src
 	@mkdir $(DUMP_LIB)/include
 	@mkdir $(DUMP_LIB)/all # except README.md files
-	@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^m]*)) $(DUMP_LIB)/all
-	@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^m]*)) $(DUMP_LIB)/all
-	@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*)) $(DUMP_LIB)/include
-	@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*)) $(DUMP_LIB)/include
-	@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src
-	@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src
+	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^m]*)) $(DUMP_LIB)/all
+	-@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^m]*)) $(DUMP_LIB)/all
+	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*)) $(DUMP_LIB)/include
+	-@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*)) $(DUMP_LIB)/include
+	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src
+	-@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src
 
 endif
 
