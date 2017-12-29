@@ -549,6 +549,9 @@ ssize_t sock_max_capacity(void) {
     rlim.rlim_cur = rlim.rlim_max;
     // #endif
 
+    if (rlim.rlim_cur > LIB_SOCK_MAX_CAPACITY)
+      rlim.rlim_cur = LIB_SOCK_MAX_CAPACITY;
+
     if (!setrlimit(RLIMIT_NOFILE, &rlim))
       getrlimit(RLIMIT_NOFILE, &rlim);
   }

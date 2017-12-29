@@ -10,6 +10,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #define LIB_SOCK_VERSION_MINOR 4
 #define LIB_SOCK_VERSION_PATCH 0
 
+#ifndef LIB_SOCK_MAX_CAPACITY
+/** The maximum `fd` value `sock.h` should support. */
+#define LIB_SOCK_MAX_CAPACITY 4194304
+#endif
 /** \file
  * The `sock.h` is a non-blocking socket helper library, using a user level
  * buffer, non-blocking sockets and some helper functions.
