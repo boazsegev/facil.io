@@ -25,7 +25,7 @@ int main(void) {
 ```
 Note that the Array container can be placed on the stack (as well as allocated using `malloc`), but the internal data must be allocated and deallocated using `fio_ary_new` and `fio_ary_free`.
 
-### The `void fio_ary_new(fio_ary_s *ary, size_t capa)` function
+### The `fio_ary_new` function
 
 `void fio_ary_new(fio_ary_s *ary, size_t capa)`
 
@@ -35,7 +35,7 @@ Note that `capa` indicates the **initial** (or *minimal*) capacity for the array
 
 This will assume that `ary` is uninitialized and overwrite any existing data.
 
-### the `void fio_ary_free(fio_ary_s *ary)` function
+### the `fio_ary_free` function
 
 `void fio_ary_free(fio_ary_s *ary)`
 
@@ -43,19 +43,19 @@ Frees the array's internal data.
 
 If the `ary`'s container (the `fio_ary_s` object) was allocated using `malloc`, a subsequent call to `free(ary)` must be made.
 
-### the `size_t fio_ary_count(fio_ary_s *ary)` function
+### the `fio_ary_count` function
 
 `size_t fio_ary_count(fio_ary_s *ary)`
 
 Returns the number of elements in the Array.
 
-### the `size_t fio_ary_capa(fio_ary_s *ary)` function
+### the `fio_ary_capa` function
 
 `size_t fio_ary_capa(fio_ary_s *ary)`
 
 Returns the current, temporary, array capacity (it's dynamic).
 
-### the `void *fio_ary_index(fio_ary_s *ary, int64_t pos)` function
+### the `fio_ary_index` function
 
 `void *fio_ary_index(fio_ary_s *ary, int64_t pos)`
 
@@ -67,7 +67,7 @@ is the last item.
 
 `fio_ary_entry` is an alias for `fiobj_ary_index`.
 
-### the `void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos)` function
+### the `fio_ary_set` function
 
 `void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos)`
 
@@ -83,7 +83,7 @@ If an error occurs, the same data passed to the function is returned (test using
 
 Pushes an object to the end of the Array. Returns -1 on error.
 
-### the `void *fio_ary_pop(fio_ary_s *ary)` function
+### the `fio_ary_pop` function
 
 `void *fio_ary_pop(fio_ary_s *ary)`
 
@@ -91,7 +91,7 @@ Pops an object from the end of the Array
 
 Returns NULL if the object was NULL or the Array was empty.
 
-### the `int fio_ary_unshift(fio_ary_s *ary, void *data)` function
+### the `fio_ary_unshift` function
 
 `int fio_ary_unshift(fio_ary_s *ary, void *data)`
 
@@ -99,16 +99,16 @@ Unshifts an object to the beginning of the Array. Returns -1 on error.
 
 This could be expensive, causing `memmove`.
 
-### the `void *fio_ary_shift(fio_ary_s *ary)` function
+### the `fio_ary_shift` function
 
-``
+`void *fio_ary_shift(fio_ary_s *ary)`
 
 Shifts an object from the beginning of the Array.
 
 Returns NULL if the object was NULL or the Array was empty.
 
 
-### the `void fio_ary_compact(fio_ary_s *ary)` function
+### the `fio_ary_compact` function
 
 `void fio_ary_compact(fio_ary_s *ary)`
 
@@ -117,7 +117,7 @@ array.
 
 This action is O(n) where n in the length of the array.
 
-### the `FIO_ARY_FOR(ary, pos)` macro
+### the `FIO_ARY_FOR` macro
 
 `FIO_ARY_FOR(ary, pos)`
 
