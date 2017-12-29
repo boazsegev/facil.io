@@ -112,6 +112,17 @@ fiobj_s *fiobj_num_new(int64_t num) {
 /** Mutates a Number object's value. Effects every object's reference! */
 void fiobj_num_set(fiobj_s *target, int64_t num) { obj2num(target)->i = num; }
 
+/** Creates a temporary Number object. This ignores `fiobj_free`. */
+fiobj_s *fiobj_num_tmp(int64_t num) {
+  static __thread struct tmp_num_s {
+    fiobj_head_s head;
+    fiobj_num_s num;
+  } ret;
+  ret = (struct tmp_num_s){.head = {.ref = -1},
+                           .num = {.i = num, .vtable = &FIOBJ_VTABLE_INT}};
+  return (fiobj_s *)&ret.num;
+}
+
 /* *****************************************************************************
 Float API
 ***************************************************************************** */
@@ -129,3 +140,14 @@ fiobj_s *fiobj_float_new(double num) {
 
 /** Mutates a Float object's value. Effects every object's reference!  */
 void fiobj_float_set(fiobj_s *obj, double num) { obj2float(obj)->f = num; }
+
+/** Creates a temporary Number object. This ignores `fiobj_free`. */
+fiobj_s *fiobj_float_tmp(double num) {
+  static __thread struct tmp_float_s {
+    fiobj_head_s head;
+    fiobj_float_s num;
+  } ret;
+  ret = (struct tmp_float_s){.head = {.ref = -1},
+                             .num = {.f = num, .vtable = &FIOBJ_VTABLE_FLOAT}};
+  return (fiobj_s *)&ret.num;
+}
