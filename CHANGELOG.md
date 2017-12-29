@@ -2,7 +2,9 @@
 
 ### Ver. 0.6.0 (ReHTTP branch)
 
-**Fix?**:
+**Fix**: (`websocket_parser`) The websocket parser had a memory offset and alignment handling issue in it's unmasking (XOR) logic. The issue would impact the parser in rare occasions when multiple messages where pipelined in the internal buffer and their length produced an odd alignment (the issue would occur with very fast clients, or a very stressed server).
+
+**Note About Fixes**:
 
 -  I simply rewrote much of the code to know if the issues I fixed were present in the 0.5.x version or not.
 
