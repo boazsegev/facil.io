@@ -657,7 +657,8 @@ static void pubsub_cluster_facil_message(void *data, uint32_t len) {
     ++pos;
     fiobj_s *ch = fiobj_sym_new(pos, ch_len);
     uintptr_t flag = (((uint8_t *)data)[0] & 1);
-    defer(pubsub_cluster_subscribe2channel, ch, (void *)flag);
+    /* subscribe immediately, usubscribe can be deferred. */
+    pubsub_cluster_subscribe2channel(ch, (void *)flag);
     return;
   }
   case 2:
