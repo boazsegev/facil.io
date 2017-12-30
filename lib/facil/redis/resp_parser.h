@@ -135,7 +135,7 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
           tmp = parser->expecting - 1;
         resp_on_string_chunk(parser, (void *)pos, tmp);
         parser->expecting -= tmp;
-        return 0;
+        return (size_t)((uintptr_t)stop - ((uintptr_t)pos + tmp)); /* 0 or 1 */
       } else {
         resp_on_string_chunk(parser, (void *)pos, parser->expecting);
         resp_on_end_string(parser);
@@ -148,7 +148,8 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
         --parser->obj_countdown;
         if (parser->obj_countdown <= 0) {
           parser->obj_countdown = 0;
-          resp_on_message(parser);
+          if (resp_on_message(parser))
+            goto finish;
         }
         continue;
       }
@@ -158,15 +159,18 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
       break;
     switch (*pos) {
     case '+':
-      if (pos[1] == 'O' && pos[2] == 'K' && pos[3] == '\r' && pos[4] == 'n') {
+      if (pos[1] == 'O' && pos[2] == 'K' && pos[3] == '\r' && pos[4] == '\n') {
         resp_on_okay(parser);
         --parser->obj_countdown;
         break;
       }
-      resp_on_start_string(parser,
-                           (size_t)((uintptr_t)eol - (uintptr_t)pos - 3));
+      if (resp_on_start_string(parser,
+                               (size_t)((uintptr_t)eol - (uintptr_t)pos - 2))) {
+        pos = eol + 1;
+        goto finish;
+      }
       resp_on_string_chunk(parser, (void *)(pos + 1),
-                           (size_t)((uintptr_t)eol - (uintptr_t)pos - 3));
+                           (size_t)((uintptr_t)eol - (uintptr_t)pos - 2));
       resp_on_end_string(parser);
       --parser->obj_countdown;
       break;
@@ -207,7 +211,10 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
           resp_on_end_string(parser);
           --parser->obj_countdown;
         } else {
-          resp_on_start_string(parser, i);
+          if (resp_on_start_string(parser, i)) {
+            pos = eol + 1;
+            goto finish;
+          }
           parser->expecting = i;
         }
         break;
@@ -216,7 +223,10 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
           resp_on_null(parser);
           --parser->obj_countdown;
         } else {
-          resp_on_start_array(parser, i);
+          if (resp_on_start_array(parser, i)) {
+            pos = eol + 1;
+            goto finish;
+          }
           parser->obj_countdown += i;
         }
         break;
@@ -232,6 +242,7 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
       resp_on_message(parser);
     }
   }
+finish:
   return (size_t)((uintptr_t)stop - (uintptr_t)pos);
 }
 
