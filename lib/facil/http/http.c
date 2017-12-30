@@ -20,6 +20,8 @@ Feel free to copy, use and enjoy according to the license provided.
 /* *****************************************************************************
 Small Helpers
 ***************************************************************************** */
+static inline int hex2byte(uint8_t *dest, const uint8_t *source);
+
 static inline void add_content_length(http_s *r, uintptr_t length) {
   static uint64_t cl_hash = 0;
   if (!cl_hash)
@@ -348,7 +350,23 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
   {
     fio_cstr_s tmp = fiobj_obj2cstr(filename);
     if (encoded) {
-      tmp.len += http_decode_url(tmp.data + tmp.len, encoded, encoded_len);
+      char *pos = (char *)encoded;
+      const char *end = encoded + encoded_len;
+      while (pos < end) {
+        if (*pos == '/' && (pos[1] == '/' ||
+                            (((uintptr_t)end - (uintptr_t)pos >= 4) &&
+                             pos[1] == '.' && pos[2] == '.' && pos[3] == '/')))
+          return -1;
+        if (*pos == '%') {
+          // decode hex value
+          // this is a percent encoded value.
+          if (hex2byte(tmp.bytes + tmp.len, (uint8_t *)pos + 1))
+            return -1;
+          tmp.len++;
+          pos += 3;
+        } else
+          tmp.data[tmp.len++] = *(pos++);
+      }
       tmp.data[tmp.len] = 0;
       fiobj_str_resize(filename, tmp.len);
     }
