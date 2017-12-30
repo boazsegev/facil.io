@@ -1,5 +1,5 @@
 
-#include "bscrypt.h"
+#include "fiobj.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +30,7 @@ static inline int seek2(uint8_t **buffer, uint8_t *limit, const uint8_t c) {
 static inline int seek3(uint8_t **buffer, uint8_t *limit, const uint8_t c) {
   if (**buffer == c)
     return 1;
+
   // while (*buffer < limit && ((uintptr_t)(*buffer) & 15)) {
   //   if (**buffer == c)
   //     return 1;
@@ -111,7 +112,7 @@ static inline int seek4(uint8_t **buffer, uint8_t *limit, const uint8_t c) {
 }
 
 #define RUNS 8
-void test_seek(int argc, char const **argv) {
+int main(int argc, char const **argv) {
   clock_t start, end;
   uint8_t *pos;
   uint8_t *stop;
@@ -131,11 +132,17 @@ void test_seek(int argc, char const **argv) {
     fprintf(stderr, "\nUse `-f` to load file data\n");
     exit(-1);
   }
-  fdump_s *data = bscrypt_fdump(argv[2], 0);
-  if (!data) {
+  uint8_t char2find = '\n';
+  if (argc >= 4 && argv[3])
+    char2find = argv[3][0];
+  fiobj_s *str = fiobj_str_readfile(argv[2], 0, 0);
+  if (!str) {
     fprintf(stderr, "ERROR: Couldn't open file %s\n", argv[2]);
     exit(-1);
   }
+  fio_cstr_s data = fiobj_obj2cstr(str);
+  fprintf(stderr, "Starting to test file with %lu bytes\n",
+          (unsigned long)data.length);
 
   while (seek_funcs[func_pos].func) {
     fprintf(stderr, "Testing %s:\n  (", seek_funcs[func_pos].name);
@@ -143,11 +150,16 @@ void test_seek(int argc, char const **argv) {
     for (size_t i = 0; i < RUNS; i++) {
       if (i)
         fprintf(stderr, " + ");
-      pos = (uint8_t *)data->data;
-      stop = (uint8_t *)data->data + data->length;
+      pos = data.bytes;
+      stop = data.bytes + data.length;
       count = 0;
+      if (!pos || !stop)
+        perror("WTF?!"), exit(errno);
+
       start = clock();
-      while (pos < stop && seek_funcs[func_pos].func(&pos, stop, argv[3][0])) {
+      while (pos < stop && seek_funcs[func_pos].func(&pos, stop, char2find)) {
+        if (!pos)
+          perror("WTF?!2!"), exit(errno);
         pos++;
         count++;
       }
@@ -156,9 +168,10 @@ void test_seek(int argc, char const **argv) {
       fprintf(stderr, "%lu", end - start);
     }
     fprintf(stderr, ")/%d\n === finding %lu items in %lu bytes took %lfs\n\n",
-            RUNS, count, data->length, (avrg / RUNS) / (1.0 * CLOCKS_PER_SEC));
+            RUNS, count, (unsigned long)data.length,
+            (avrg / RUNS) / (1.0 * CLOCKS_PER_SEC));
     func_pos++;
   }
 
-  free(data);
+  fiobj_free(str);
 }
