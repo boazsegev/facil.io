@@ -164,8 +164,8 @@ inline FIO_FUNC void *fio_ls_shift(fio_ls_s *list) {
 /** Removes an object from the containing node. */
 inline FIO_FUNC void *fio_ls_remove(fio_ls_s *node) {
   const void *ret = node->obj;
-  node->next->prev = node->prev->next;
-  node->prev->next = node->next->prev;
+  node->next->prev = node->prev;
+  node->prev->next = node->next;
   free(node);
   return (void *)ret;
 }
@@ -223,8 +223,8 @@ inline FIO_FUNC fio_ls_embd_s *fio_ls_embd_shift(fio_ls_embd_s *list) {
 
 /** Removes a node from the containing node. */
 inline FIO_FUNC fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node) {
-  node->next->prev = node->prev->next;
-  node->prev->next = node->next->prev;
+  node->next->prev = node->prev;
+  node->prev->next = node->next;
   return node;
 }
 

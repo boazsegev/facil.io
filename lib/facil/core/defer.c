@@ -374,6 +374,15 @@ pool_pt defer_pool_start(unsigned int thread_count) {
 Child Process support (`fork`)
 ***************************************************************************** */
 
+/* a global process identifier (0 == root) */
+static int defer_fork_pid_id = 0;
+
+/* we use a placeholder while initializing the forked thread pool, so calls to
+ * `defer_fork_is_active` don't fail between the call to `defer_pool_start`
+ * and the time it returns.
+ */
+static struct defer_pool pool_placeholder = {.count = 1, .flag = 1};
+
 /**
 OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
 into the forking function.
@@ -393,6 +402,8 @@ static void sig_int_handler(int sig) {
   if (!forked_pool)
     return;
   defer_pool_stop(forked_pool);
+  pool_placeholder.flag = 0;
+  forked_pool = &pool_placeholder;
 }
 
 /*
@@ -420,15 +431,6 @@ void defer_reap_children(void) {
   }
 }
 
-/* a global process identifier (0 == root) */
-static int defer_fork_pid_id = 0;
-
-/* we use a placeholder while initializing the forked thread pool, so calls to
- * `defer_fork_is_active` don't fail between the call to `defer_pool_start`
- * and the time it returns.
- */
-static struct defer_pool pool_placeholder = {.count = 1, .flag = 1};
-
 /**
  * Forks the process, starts up a thread pool and waits for all tasks to run.
  * All existing tasks will run in all processes (multiple times).
@@ -446,6 +448,7 @@ int defer_perform_in_fork(unsigned int process_count,
   pid_t *pids = NULL;
   int ret = 0;
   unsigned int pids_count;
+  pool_placeholder.flag = 1;
 
   act.sa_handler = sig_int_handler;
   sigemptyset(&act.sa_mask);
@@ -495,12 +498,12 @@ int defer_perform_in_fork(unsigned int process_count,
       goto finish;
     }
   }
-
   forked_pool = &pool_placeholder;
   forked_pool = defer_pool_start(thread_count);
 
   defer_pool_wait(forked_pool);
-  forked_pool = NULL;
+  forked_pool = &pool_placeholder;
+  pool_placeholder.flag = 0;
 
   defer_perform();
 

@@ -748,7 +748,7 @@ static void facil_cluster_on_data(intptr_t uuid, protocol_s *pr_) {
       facil_cluster_handle_msg(pr->msg);
       pr->read = pr->read - pr->msg->len;
       if (pr->read)
-        memcpy(pr->msg, (void *)((uintptr_t)pr->msg + pr->msg->len), pr->read);
+        memmove(pr->msg, (void *)((uintptr_t)pr->msg + pr->msg->len), pr->read);
     }
   }
 }

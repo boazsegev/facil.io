@@ -21,6 +21,9 @@ that don't support "keep-alive" will have to wait for the connection to timeout:
 Once we srart adding header recognnition and seeking, the balance begins to tip
 in favor of more complex data structures, that will inhibit "hello world"
 performance but improve real-world application performance.
+
+For example, facil.io 0.6.x is slower than nginX for "Hello World" but can be as
+fast (and sometimes faster) when serving static files.
 */
 
 /* include the core library, without any extensions */
