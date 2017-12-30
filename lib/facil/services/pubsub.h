@@ -94,6 +94,10 @@ pubsub_sub_pt pubsub_find_sub(struct pubsub_subscribe_args);
 /**
  * Unsubscribes from a specific subscription.
  *
+ * Note: This should be called exactly the same number times as
+ * `pubsub_subscribe`. Any less and a memory leak might occur. Any more, and the
+ * program might crash.
+ *
  * Returns 0 on success and -1 on failure.
  */
 int pubsub_unsubscribe(pubsub_sub_pt subscription);
