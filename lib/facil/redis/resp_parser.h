@@ -14,6 +14,8 @@ Feel free to copy, use and enjoy according to the license provided.
  * When feeding the parser, the parser will inform of any trailing bytes (bytes
  * at the end of the buffer that could not be parsed). These bytes should be
  * resent to the parser along with more data. Zero is a valid return value.
+ *
+ * Note: mostly, callback return vaslues are ignored.
  */
 #define H_RESP_PARSER_H
 
@@ -37,20 +39,50 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
 Required Parser Callbacks (to be defined by the including file)
 ***************************************************************************** */
 
-static int resp_on_number(resp_parser_s *parser, int64_t num);
-static int resp_on_okay(resp_parser_s *parser);
-static int resp_on_null(resp_parser_s *parser);
-
-static int resp_on_start_string(resp_parser_s *parser, size_t str_len);
-static int resp_on_string_chunk(resp_parser_s *parser, void *data, size_t len);
-static int resp_on_end_string(resp_parser_s *parser);
-
-static int resp_on_err_msg(resp_parser_s *parser, void *data, size_t len);
-
-static int resp_on_start_array(resp_parser_s *parser, size_t array_len);
-
+/** a local static callback, called when the RESP message is complete. */
 static int resp_on_message(resp_parser_s *parser);
 
+/** a local static callback, called when a Number object is parsed. */
+static int resp_on_number(resp_parser_s *parser, int64_t num);
+/** a local static callback, called when a OK message is received. */
+static int resp_on_okay(resp_parser_s *parser);
+/** a local static callback, called when NULL is received. */
+static int resp_on_null(resp_parser_s *parser);
+
+/**
+ * a local static callback, called when a String should be allocated.
+ *
+ * `str_len` is the expected number of bytes that will fill the final string
+ * object, without any NUL byte marker (the string might be binary).
+ *
+ * If this function returns any value besides 0, parsing is stopped.
+ */
+static int resp_on_start_string(resp_parser_s *parser, size_t str_len);
+/** a local static callback, called as String objects are streamed. */
+static int resp_on_string_chunk(resp_parser_s *parser, void *data, size_t len);
+/** a local static callback, called when a String object had finished streaming.
+ */
+static int resp_on_end_string(resp_parser_s *parser);
+
+/** a local static callback, called an error message is received. */
+static int resp_on_err_msg(resp_parser_s *parser, void *data, size_t len);
+
+/**
+ * a local static callback, called when an Array should be allocated.
+ *
+ * `array_len` is the expected number of objects that will fill the Array
+ * object.
+ *
+ * There's no `resp_on_end_array` callback since the RESP protocol assumes the
+ * message is finished along with the Array (`resp_on_message` is called).
+ * However, just in case a non-conforming client/server sends nested Arrays, the
+ * callback should test against possible overflow or nested Array endings.
+ *
+ * If this function returns any value besides 0, parsing is stopped.
+ */
+static int resp_on_start_array(resp_parser_s *parser, size_t array_len);
+
+/** a local static callback, called when a parser / protocol error occurs. */
 static int resp_on_parser_error(resp_parser_s *parser);
 
 /* *****************************************************************************
