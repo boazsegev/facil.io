@@ -86,7 +86,9 @@ Then add the following line the project's `CMakeLists.txt`
 
 ## More Examples
 
-You can find more examples on the [facil.io](http://facil.io) website, including examples for [lower-level custom protocols](examples/telnet-echo.c) as well as [Websocket pub/sub with Redis](examples/pubsub-chat.c).
+The examples folder includes examples for a [telnet echo protocol](examples/telnet-echo.c), a [super fast DIY HTTP/1.1 server](examples/fast-http.c) as well as an example for [Websocket pub/sub with Redis](examples/pubsub-chat.c).
+
+You can find more information on the [facil.io](http://facil.io) website
 
 ---
 
