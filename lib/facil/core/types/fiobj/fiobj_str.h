@@ -21,7 +21,7 @@ extern const uintptr_t FIOBJ_T_STRING_STATIC;
   (obj->type == FIOBJ_T_STRING || obj->type == FIOBJ_T_STRING_STATIC)
 
 /* *****************************************************************************
-String API
+API: Creating a String Object
 ***************************************************************************** */
 
 /** Creates a String object. Remember to use `fiobj_free`. */
@@ -48,6 +48,19 @@ fiobj_s *fiobj_str_static(const char *str, size_t len);
 /** Creates a copy from an existing String. Remember to use `fiobj_free`. */
 fiobj_s *fiobj_str_copy(fiobj_s *src);
 
+/**
+ * Creates a String object. Remember to use `fiobj_free`.
+ *
+ * The ownership of the memory indicated by `str` will now "move" to the object,
+ * so `free` will be called by the `fiobj` library as needed.
+ */
+fiobj_s *fiobj_str_move(char *str, size_t len, size_t capacity);
+/**
+ * Returns a thread-static temporary string. Avoid calling `fiobj_dup` or
+ * `fiobj_free`.
+ */
+fiobj_s *fiobj_str_tmp(void);
+
 /** Creates a String object using a printf like interface. */
 __attribute__((format(printf, 1, 0))) fiobj_s *
 fiobj_strvprintf(const char *format, va_list argv);
@@ -68,6 +81,11 @@ fiobj_strprintf(const char *format, ...);
  */
 fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
                             size_t limit);
+
+/* *****************************************************************************
+API: Editing a String
+***************************************************************************** */
+
 /**
  * Confirms the requested capacity is available and allocates as required.
  *
@@ -86,6 +104,12 @@ void fiobj_str_minimize(fiobj_s *str);
 
 /** Empties a String's data. */
 void fiobj_str_clear(fiobj_s *str);
+
+/**
+ * Grabs the string's internal buffer, emptying the existing string data.
+ * `fiobj_free` is still required (unless the string is a `tmp` string).
+ */
+void *fiobj_str_steal(fiobj_s *str);
 
 /**
  * Writes data at the end of the string, resizing the string as required.

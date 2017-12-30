@@ -118,7 +118,7 @@ fiobj_s *fiobj_num_tmp(int64_t num) {
     fiobj_head_s head;
     fiobj_num_s num;
   } ret;
-  ret = (struct tmp_num_s){.head = {.ref = -1},
+  ret = (struct tmp_num_s){.head = {.ref = ((~(uintptr_t)0) >> 4)},
                            .num = {.i = num, .vtable = &FIOBJ_VTABLE_INT}};
   return (fiobj_s *)&ret.num;
 }
@@ -147,7 +147,7 @@ fiobj_s *fiobj_float_tmp(double num) {
     fiobj_head_s head;
     fiobj_float_s num;
   } ret;
-  ret = (struct tmp_float_s){.head = {.ref = -1},
+  ret = (struct tmp_float_s){.head = {.ref = ((~(uintptr_t)0) >> 4)},
                              .num = {.f = num, .vtable = &FIOBJ_VTABLE_FLOAT}};
   return (fiobj_s *)&ret.num;
 }

@@ -141,7 +141,7 @@ fiobj_s *fiobj_str_buf(size_t capa) {
  * Creates a String object. Remember to use `fiobj_free`.
  *
  * The ownership of the memory indicated by `str` will now "move" to the object,
- * so `free` will be called for `str` by the `fiobj` library as needed.
+ * so `free` will be called by the `fiobj` library as needed.
  */
 fiobj_s *fiobj_str_move(char *str, size_t len, size_t capacity) {
   fiobj_s *o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
@@ -212,6 +212,33 @@ fiobj_strprintf(const char *format, ...) {
   return str;
 }
 
+static __thread struct {
+  fiobj_head_s head;
+  fiobj_str_s str;
+} fiobj_tmpstr;
+/**
+ * Returns a thread-static temporary string. Avoid calling `fiobj_dup` or
+ * `fiobj_free`.
+ */
+fiobj_s *fiobj_str_tmp(void) {
+  fiobj_tmpstr.head.ref = ((~(uintptr_t)0) >> 4);
+  fiobj_tmpstr.str.vtable = &FIOBJ_VTABLE_STRING;
+  fiobj_tmpstr.str.len = 0;
+  return (fiobj_s *)(&fiobj_tmpstr.str);
+}
+
+/**
+ * Grabs the string's internal buffer, emptying the existing string data.
+ * `fiobj_free` is still required (unless the string is a `tmp` string).
+ */
+void *fiobj_str_steal(fiobj_s *str) {
+  if (str->type != FIOBJ_T_STRING)
+    return NULL;
+  void *ret = obj2str(str)->str;
+  *obj2str(str) = (fiobj_str_s){.vtable = &FIOBJ_VTABLE_STRING};
+  return ret;
+}
+
 /** Dumps the `filename` file's contents into a new String. If `limit == 0`,
  * than the data will be read until EOF.
  *
@@ -273,8 +300,7 @@ fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
 
 /** Confirms the requested capacity is available and allocates as required. */
 size_t fiobj_str_capa_assert(fiobj_s *str, size_t size) {
-  if (str->type != FIOBJ_T_STRING || obj2str(str)->capa == 0 ||
-      obj2str(str)->capa >= size + 1)
+  if (str->type != FIOBJ_T_STRING || obj2str(str)->capa >= size + 1)
     return obj2str(str)->capa;
   size += 1;
   /* large strings should increase memory by page size (assumes 4096 pages) */
