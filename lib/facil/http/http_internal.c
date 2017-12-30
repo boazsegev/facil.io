@@ -17,21 +17,12 @@ void http_on_request_handler______internal(http_s *h,
   fiobj_s *t = fiobj_hash_get3(h->headers, upgrade_hash);
   if (t == NULL) {
     if (settings->public_folder) {
-      t = fiobj_str_buf(settings->public_folder_length +
-                        fiobj_obj2cstr(h->path).len + 16);
-      fiobj_str_write(t, settings->public_folder,
-                      settings->public_folder_length);
-      fiobj_str_join(t, h->path);
-      {
-        fio_cstr_s s = fiobj_obj2cstr(t);
-        if (s.data[s.len - 1] == '/')
-          fiobj_str_write(t, "index.html", 10);
-      }
-      if (!http_sendfile2(h, t)) {
-        fiobj_free(t);
+      fio_cstr_s path_str = fiobj_obj2cstr(h->path);
+      if (!http_sendfile2(h, settings->public_folder,
+                          settings->public_folder_length, path_str.data,
+                          path_str.len)) {
         return;
       }
-      fiobj_free(t);
     }
     static uint64_t host_hash = 0;
     if (!host_hash)

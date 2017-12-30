@@ -325,8 +325,9 @@ int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
-int http_sendfile2(http_s *r, fiobj_s *filename) {
-  if (!r->private_data.out_headers)
+int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
+                   const char *encoded, size_t encoded_len) {
+  if (!h->private_data.out_headers)
     return -1;
   struct stat file_data = {.st_size = 0};
   static uint64_t accept_enc_hash = 0;
@@ -336,12 +337,32 @@ int http_sendfile2(http_s *r, fiobj_s *filename) {
   if (!range_hash)
     range_hash = fiobj_sym_hash("range", 5);
 
+  /* create filename string */
+  fiobj_s *filename = fiobj_str_tmp();
+  if (prefix && prefix_len) {
+    if (encoded && prefix[prefix_len - 1] == '/' && encoded[0] == '/')
+      --prefix_len;
+    fiobj_str_capa_assert(filename, prefix_len + encoded_len + 4);
+    fiobj_str_write(filename, prefix, prefix_len);
+  }
+  {
+    fio_cstr_s tmp = fiobj_obj2cstr(filename);
+    if (encoded) {
+      tmp.len += http_decode_url(tmp.data + tmp.len, encoded, encoded_len);
+      tmp.data[tmp.len] = 0;
+      fiobj_str_resize(filename, tmp.len);
+    }
+    if (tmp.data[tmp.len - 1] == '/')
+      fiobj_str_write(filename, "index.html", 10);
+  }
+  /* test for file existance  */
+
   int file = -1;
   uint8_t is_gz = 0;
 
   fio_cstr_s s = fiobj_obj2cstr(filename);
   {
-    fiobj_s *tmp = fiobj_hash_get3(r->headers, accept_enc_hash);
+    fiobj_s *tmp = fiobj_hash_get3(h->headers, accept_enc_hash);
     if (!tmp)
       goto no_gzip_support;
     fio_cstr_s ac_str = fiobj_obj2cstr(tmp);
@@ -369,10 +390,10 @@ found_file:
     fiobj_s *tmp = fiobj_str_buf(32);
     fiobj_str_resize(
         tmp, http_time2str(fiobj_obj2cstr(tmp).data, file_data.st_mtime));
-    http_set_header(r, HTTP_HEADER_LAST_MODIFIED, tmp);
+    http_set_header(h, HTTP_HEADER_LAST_MODIFIED, tmp);
   }
   /* set cache-control */
-  http_set_header(r, HTTP_HEADER_CACHE_CONTROL, fiobj_dup(HTTP_HVALUE_MAX_AGE));
+  http_set_header(h, HTTP_HEADER_CACHE_CONTROL, fiobj_dup(HTTP_HVALUE_MAX_AGE));
   /* set & test etag */
   uint64_t etag = (uint64_t)file_data.st_size;
   etag ^= (uint64_t)file_data.st_mtime;
@@ -382,16 +403,16 @@ found_file:
                    fio_base64_encode(fiobj_obj2cstr(etag_str).data,
                                      (void *)&etag, sizeof(uint64_t)));
   /* set */
-  http_set_header(r, HTTP_HEADER_ETAG, etag_str);
+  http_set_header(h, HTTP_HEADER_ETAG, etag_str);
   /* test */
   {
     static uint64_t none_match_hash = 0;
     if (!none_match_hash)
       none_match_hash = fiobj_sym_hash("if-none-match", 13);
-    fiobj_s *tmp2 = fiobj_hash_get3(r->headers, none_match_hash);
+    fiobj_s *tmp2 = fiobj_hash_get3(h->headers, none_match_hash);
     if (tmp2 && fiobj_iseq(tmp2, etag_str)) {
-      r->status = 304;
-      http_finish(r);
+      h->status = 304;
+      http_finish(h);
       return 0;
     }
   }
@@ -402,11 +423,11 @@ found_file:
     static uint64_t ifrange_hash = 0;
     if (!ifrange_hash)
       ifrange_hash = fiobj_sym_hash("if-range", 8);
-    fiobj_s *tmp = fiobj_hash_get3(r->headers, ifrange_hash);
+    fiobj_s *tmp = fiobj_hash_get3(h->headers, ifrange_hash);
     if (tmp && fiobj_iseq(tmp, etag_str)) {
-      fiobj_hash_delete3(r->headers, range_hash);
+      fiobj_hash_delete3(h->headers, range_hash);
     } else {
-      tmp = fiobj_hash_get3(r->headers, range_hash);
+      tmp = fiobj_hash_get3(h->headers, range_hash);
       if (tmp) {
         /* range ahead... */
         if (tmp->type == FIOBJ_T_ARRAY)
@@ -440,14 +461,14 @@ found_file:
           offset = start_at;
           length = length - start_at;
         }
-        r->status = 206;
+        h->status = 206;
 
-        http_set_header(r, HTTP_HEADER_CONTENT_RANGE,
+        http_set_header(h, HTTP_HEADER_CONTENT_RANGE,
                         fiobj_strprintf("bytes %lu-%lu/%lu",
                                         (unsigned long)start_at,
                                         (unsigned long)(start_at + length - 1),
                                         (unsigned long)file_data.st_size));
-        http_set_header(r, HTTP_HEADER_ACCEPT_RANGES,
+        http_set_header(h, HTTP_HEADER_ACCEPT_RANGES,
                         fiobj_dup(HTTP_HVALUE_BYTES));
       }
     }
@@ -457,14 +478,14 @@ open_file:
   file = open(s.data, O_RDONLY);
   if (file == -1) {
     fprintf(stderr, "ERROR: Couldn't open file %s!\n", s.data);
-    http_send_error(r, 500);
+    http_send_error(h, 500);
     return 0;
   }
   {
     fiobj_s *tmp = NULL;
     uintptr_t pos = 0;
     if (is_gz) {
-      http_set_header(r, HTTP_HEADER_CONTENT_ENCODING,
+      http_set_header(h, HTTP_HEADER_CONTENT_ENCODING,
                       fiobj_dup(HTTP_HVALUE_GZIP));
 
       pos = s.len - 4;
@@ -481,9 +502,9 @@ open_file:
       tmp = http_mimetype_find(s.data + pos, s.len - pos);
     }
     if (tmp)
-      http_set_header(r, HTTP_HEADER_CONTENT_TYPE, tmp);
+      http_set_header(h, HTTP_HEADER_CONTENT_TYPE, tmp);
   }
-  return http_sendfile(r, file, length, offset);
+  return http_sendfile(h, file, length, offset);
 }
 
 /**
@@ -499,19 +520,25 @@ open_file:
 int http_send_error(http_s *r, size_t error) {
   if (!r || !error || !r->private_data.out_headers)
     return -1;
+  if (error < 100 || error >= 1000)
+    error = 500;
   r->status = error;
-  fiobj_s *fname = fiobj_str_new(
-      ((http_protocol_s *)r->private_data.owner)->settings->public_folder,
-      ((http_protocol_s *)r->private_data.owner)
-          ->settings->public_folder_length);
-  fiobj_str_write2(fname, "/%lu.html", (unsigned long)error);
-  if (http_sendfile2(r, fname)) {
+  char buffer[16];
+  buffer[0] = '/';
+  size_t pos = 1 + fio_ltoa(buffer + 1, error, 10);
+  buffer[pos++] = '.';
+  buffer[pos++] = 'h';
+  buffer[pos++] = 't';
+  buffer[pos++] = 'm';
+  buffer[pos++] = 'l';
+  buffer[pos] = 0;
+  if (http_sendfile2(r, http2protocol(r)->settings->public_folder,
+                     http2protocol(r)->settings->public_folder_length, buffer,
+                     pos)) {
     http_set_header(r, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
-    fiobj_str_resize(fname, 0);
     fio_cstr_s t = http_status2str(error);
     http_send_body(r, t.data, t.len);
   }
-  fiobj_free(fname);
   return 0;
 }
 

@@ -180,17 +180,19 @@ int http_sendfile(http_s *h, int fd, uintptr_t length, uintptr_t offset);
 /**
  * Sends the response headers and the specified file (the response's body).
  *
- * The `filename` variable MUST be a dynamic String (allocated with
- * `fiobj_str_new`), since it might be extended to include the `.gz` extension
- * for automatic `gzip` detection.
+ * The `local` and `encoded` strings will be joined into a single string that
+ * represent the file name. Either or both of these strings can be empty.
  *
- * Remember to call `fiobj_free` unless the file name will be used again.
+ * The `encoded` string will be URL decoded while the `local` string will used
+ * as is.
  *
- * Returns -1 on error and 0 on success.
+ * Returns 0 on success. A success value WILL CONSUME the `http_s` handle (it
+ * will become invalid).
  *
- * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
+ * Returns -1 on error (The `http_s` handle should still be used).
  */
-int http_sendfile2(http_s *h, fiobj_s *filename);
+int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
+                   const char *encoded, size_t encoded_len);
 
 /**
  * Sends an HTTP error response.
