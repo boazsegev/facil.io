@@ -457,18 +457,18 @@ static __thread uint8_t h1_static_buffer[HTTP1_MAX_HEADER_SIZE];
 static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
   http1_s *p = (http1_s *)protocol;
   ssize_t i;
-
   if (p->body_is_fd) {
     p->buf = h1_static_buffer;
     p->buf_pos = 0;
   }
+  errno = 0;
   i = sock_read(uuid, p->buf + p->buf_pos, HTTP1_MAX_HEADER_SIZE - p->buf_pos);
-
-  if (i > 0)
-    p->buf_len += i;
-  if (p->buf_len - p->buf_pos)
-    p->buf_pos +=
-        http1_fio_parser(.parser = &p->parser, .buffer = p->buf + p->buf_pos,
+  if (i <= 0) {
+    return;
+  }
+  p->buf_len += i;
+  do {
+    i = http1_fio_parser(.parser = &p->parser, .buffer = p->buf + p->buf_pos,
                          .length = (p->buf_len - p->buf_pos),
                          .on_request = http1_on_request,
                          .on_response = http1_on_response,
@@ -479,14 +479,12 @@ static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
                          .on_header = http1_on_header,
                          .on_body_chunk = http1_on_body_chunk,
                          .on_error = http1_on_error);
-  else
-    return;
-  if (p->restart) {
-    h1_reset(p);
-  } else if (i <= 0)
-    return;
-  facil_force_event(uuid, FIO_EVENT_ON_DATA);
-  return;
+    p->buf_pos += i;
+    if (p->restart) {
+      h1_reset(p);
+    }
+  } while (i && p->buf_len > p->buf_pos);
+  // facil_force_event(uuid, FIO_EVENT_ON_DATA);
 }
 /** called when the connection was closed, but will not run concurrently */
 static void http1_on_close(intptr_t uuid, protocol_s *protocol) {
@@ -503,15 +501,34 @@ static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
 
   if (i <= 0)
     return;
+  p->buf_len += i;
+
+  /* ensure future reads skip this first time HTTP/2.0 test */
+  p->p.protocol.on_data = http1_on_data;
   if (i >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
     fprintf(stderr,
             "ERROR: unsupported HTTP/2 attempeted using prior knowledge.\n");
     sock_close(uuid);
     return;
   }
-  p->p.protocol.on_data = http1_on_data;
-  p->buf_len += i;
-  http1_on_data(uuid, protocol);
+  /* parse what we've got so far */
+  do {
+    i = http1_fio_parser(.parser = &p->parser, .buffer = p->buf + p->buf_pos,
+                         .length = (p->buf_len - p->buf_pos),
+                         .on_request = http1_on_request,
+                         .on_response = http1_on_response,
+                         .on_method = http1_on_method,
+                         .on_status = http1_on_status, .on_path = http1_on_path,
+                         .on_query = http1_on_query,
+                         .on_http_version = http1_on_http_version,
+                         .on_header = http1_on_header,
+                         .on_body_chunk = http1_on_body_chunk,
+                         .on_error = http1_on_error);
+    p->buf_pos += i;
+    if (p->restart) {
+      h1_reset(p);
+    }
+  } while (i && p->buf_len > p->buf_pos);
 }
 
 /* *****************************************************************************
