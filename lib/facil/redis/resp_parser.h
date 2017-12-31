@@ -28,7 +28,9 @@ The Parser
 ***************************************************************************** */
 
 typedef struct resp_parser_s {
+  /* for internal use - (array / object countdown) */
   intptr_t obj_countdown;
+  /* for internal use - (string byte consumption) */
   intptr_t expecting;
 } resp_parser_s;
 
@@ -265,8 +267,15 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
       }
     } break;
     default:
-      resp_on_parser_error(parser);
-      return (size_t)((uintptr_t)stop - (uintptr_t)pos);
+      if (!parser->obj_countdown && !parser->expecting) {
+        /* possible (probable) inline command... for server authoring. */
+        /* Not Supported, PRs are welcome. */
+        resp_on_parser_error(parser);
+        return (size_t)((uintptr_t)stop - (uintptr_t)pos);
+      } else {
+        resp_on_parser_error(parser);
+        return (size_t)((uintptr_t)stop - (uintptr_t)pos);
+      }
     }
     pos = eol + 1;
     if (parser->obj_countdown <= 0 && !parser->expecting) {

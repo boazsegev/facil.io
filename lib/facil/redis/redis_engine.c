@@ -1,402 +1,355 @@
 /*
-Copyright: Boaz segev, 2017
-License: MIT except for any non-public-domain algorithms (none that I'm aware
-of), which might be subject to their own licenses.
+Copyright: Boaz segev, 2016-2017
+License: MIT
 
-Feel free to copy, use and enjoy in accordance with to the license(s).
+Feel free to copy, use and enjoy according to the license provided.
 */
+#include "redis_engine.h"
+#include "fio_llist.h"
+#include "fiobj4sock.h"
+#include "resp_parser.h"
 #include "spnlock.inc"
 
-#include "fio_llist.h"
-#include "redis_connection.h"
-#include "redis_engine.h"
-#include "resp.h"
-
-#include <string.h>
+#define REDIS_READ_BUFFER 8192
 /* *****************************************************************************
-Data Structures / State
+The Redis Engine and Callbacks Object
 ***************************************************************************** */
 
 typedef struct {
-  pubsub_engine_s engine;
-  resp_parser_pt sub_parser;
-  resp_parser_pt pub_parser;
-  intptr_t sub;
-  intptr_t pub;
-  void *sub_ctx;
-  void *pub_ctx;
+  uintptr_t id_protection;
+  pubsub_engine_s en;
+  struct {
+    protocol_s protocol;
+    uintptr_t uuid;
+    resp_parser_s parser;
+    size_t is_pub;
+    fiobj_s *str;
+    fiobj_s *ary;
+    uintptr_t ary_count;
+    uintptr_t buf_pos;
+  } pub_data, sub_data;
+  fio_ls_embd_s callbacks;
+  spn_lock_i lock;
   char *address;
   char *port;
-  fio_ls_embd_s callbacks;
-  uint16_t ref;
-  volatile uint8_t active;
-  volatile uint8_t sub_state;
-  volatile uint8_t pub_state;
-  spn_lock_i lock;
+  char *auth;
+  size_t auth_len;
+  size_t ref;
+  uint8_t ping_int;
+  uint8_t flag;
+  uint8_t buf[];
 } redis_engine_s;
 
 typedef struct {
   fio_ls_embd_s node;
-  void (*callback)(pubsub_engine_s *e, resp_object_s *reply, void *udata);
+  void (*callback)(pubsub_engine_s *e, fiobj_s *reply, void *udata);
   void *udata;
-  size_t len;
-  uint8_t sent;
-} callbacks_s;
+  size_t cmd_len;
+  uint8_t cmd[];
+} redis_callbacks_s;
 
-static int dealloc_engine(redis_engine_s *r) {
-  if (!spn_sub(&r->ref, 1)) {
-    resp_parser_destroy(r->sub_parser);
-    resp_parser_destroy(r->pub_parser);
-    free(r);
-    return -1;
-  }
-  return 0;
-}
+#define sub2redis(pr) FIO_LS_EMBD_OBJ(redis_engine_s, sub_data.protocol, (pr))
+#define pub2redis(pr) FIO_LS_EMBD_OBJ(redis_engine_s, pub_data.protocol, (pr))
+#define en2redis(e) FIO_LS_EMBD_OBJ(redis_engine_s, en, (e))
 
 /* *****************************************************************************
-Writing commands
+Command / Callback handling
 ***************************************************************************** */
-static void redis_pub_send(void *e, void *uuid) {
-  redis_engine_s *r = e;
-  callbacks_s *cb;
+
+static void redis_attach_cmd(redis_engine_s *r, redis_callbacks_s *cmd) {
   spn_lock(&r->lock);
-
-  if (fio_ls_embd_any(&r->callbacks)) {
-    cb = FIO_LS_EMBD_OBJ(callbacks_s, node, r->callbacks.next);
-    if (cb->sent == 0) {
-      cb->sent = 1;
-      sock_write2(.uuid = r->pub, .buffer = (uint8_t *)(cb + 1),
-                  .length = cb->len, .dealloc = SOCK_DEALLOC_NOOP);
-    }
-  }
+  fio_ls_embd_push(&r->callbacks, &cmd->node);
   spn_unlock(&r->lock);
-  dealloc_engine(r);
-  (void)uuid;
 }
 
-static void schedule_pub_send(redis_engine_s *r, intptr_t uuid) {
-  spn_add(&r->ref, 1);
-  defer(redis_pub_send, r, (void *)uuid);
-}
-
-/* *****************************************************************************
-Engine Bridge
-***************************************************************************** */
-
-static void on_message_sub(intptr_t uuid, resp_object_s *msg, void *udata) {
-  if (msg->type == RESP_PUBSUB) {
-    pubsub_engine_distribute(
-            .engine = udata,
-            .channel =
-                {.name =
-                     (char *)resp_obj2str(resp_obj2arr(msg)->array[1])->string,
-                 .len = resp_obj2str(resp_obj2arr(msg)->array[1])->len},
-            .msg = {
-                .data =
-                    (char *)resp_obj2str(resp_obj2arr(msg)->array[2])->string,
-                .len = resp_obj2str(resp_obj2arr(msg)->array[2])->len});
+static void redis_send_cmd(redis_engine_s *r) {
+  spn_lock(&r->lock);
+  fio_ls_embd_s *p = r->callbacks.next;
+  spn_unlock(&r->lock);
+  if (p == &r->callbacks) {
     return;
   }
-  (void)uuid;
+  redis_callbacks_s *cmd = FIO_LS_EMBD_OBJ(redis_callbacks_s, node, p);
+  sock_write2(.uuid = r->pub_data.uuid, .buffer = cmd->cmd,
+              .length = cmd->cmd_len, .dealloc = SOCK_DEALLOC_NOOP);
+}
+/* *****************************************************************************
+Connection Establishment
+***************************************************************************** */
+
+static void redis_on_auth(pubsub_engine_s *e, fiobj_s *reply, void *udata) {
+  if (reply->type != FIOBJ_T_TRUE) {
+    fio_cstr_s s = fiobj_obj2cstr(reply);
+    fprintf(stderr,
+            "WARNING: (RedisConnection) Authentication FAILED.\n"
+            "        %.*s\n",
+            (int)s.len, s.data);
+  }
 }
 
-static void on_message_pub(intptr_t uuid, resp_object_s *msg, void *udata) {
-  redis_engine_s *r = udata;
-  callbacks_s *cb;
-  spn_lock(&r->lock);
-  cb = FIO_LS_EMBD_OBJ(callbacks_s, node, fio_ls_embd_shift(&r->callbacks));
-  spn_unlock(&r->lock);
-  if (cb) {
-    schedule_pub_send(r, uuid);
-    if (cb->callback)
-      cb->callback(&r->engine, msg, cb->udata);
-    free(cb);
+static void redis_on_pub_connect(intptr_t uuid, void *pr) {
+  pub2redis(pr)->pub_data.uuid = uuid;
+
+  if (pub2redis(pr)->auth) {
+    redis_callbacks_s *cb = malloc(sizeof(*cb) + pub2redis(pr)->auth_len);
+    *cb = (redis_callbacks_s){.cmd_len = pub2redis(pr)->auth_len,
+                              .callback = redis_on_auth};
+    memcpy(cb->cmd, pub2redis(pr)->auth, pub2redis(pr)->auth_len);
+    spn_lock(&pub2redis(pr)->lock);
+    fio_ls_embd_unshift(&pub2redis(pr)->callbacks, &cb->node);
+    spn_unlock(&pub2redis(pr)->lock);
+    redis_send_cmd(pub2redis(pr));
+  }
+  facil_attach(uuid, pr);
+  facil_set_timeout(uuid, pub2redis(pr)->ping_int);
+}
+static void redis_on_sub_connect(intptr_t uuid, void *pr) {
+  sub2redis(pr)->sub_data.uuid = uuid;
+  if (sub2redis(pr)->auth)
+    sock_write2(.uuid = uuid, .buffer = sub2redis(pr)->auth,
+                .length = sub2redis(pr)->auth_len,
+                .dealloc = SOCK_DEALLOC_NOOP);
+  facil_attach(uuid, pr);
+  facil_set_timeout(uuid, pub2redis(pr)->ping_int);
+  pubsub_engine_resubscribe(&sub2redis(pr)->en);
+}
+
+static void redis_on_pub_connect_fail(intptr_t uuid, void *pr) {
+  pub2redis(pr)->pub_data.uuid =
+      facil_connect(.address = pub2redis(pr)->address,
+                    .port = pub2redis(pr)->port,
+                    .on_connect = redis_on_pub_connect,
+                    .udata = &pub2redis(pr)->pub_data.protocol,
+                    .on_fail = redis_on_pub_connect_fail);
+  (void)uuid;
+}
+static void redis_on_sub_connect_fail(intptr_t uuid, void *pr) {
+  sub2redis(pr)->sub_data.uuid =
+      facil_connect(.address = sub2redis(pr)->address,
+                    .port = sub2redis(pr)->port,
+                    .on_connect = redis_on_sub_connect,
+                    .udata = &sub2redis(pr)->sub_data.protocol,
+                    .on_fail = redis_on_sub_connect_fail);
+}
+
+/* *****************************************************************************
+The Protocol layer (connection handling)
+***************************************************************************** */
+
+static void redis_pub_on_data(intptr_t uuid, protocol_s *pr) {
+  uint8_t *buf = pub2redis(pr)->buf + REDIS_READ_BUFFER;
+  ssize_t i = sock_read(uuid, buf + pub2redis(pr)->pub_data.buf_pos,
+                        REDIS_READ_BUFFER - pub2redis(pr)->pub_data.buf_pos);
+  if (i <= 0)
+    return;
+  pub2redis(pr)->pub_data.buf_pos += i;
+  i = resp_parse(&pub2redis(pr)->pub_data.parser, buf,
+                 pub2redis(pr)->pub_data.buf_pos);
+  if (i) {
+    memmove(buf, buf + pub2redis(pr)->pub_data.buf_pos - i, i);
+  }
+  pub2redis(pr)->pub_data.buf_pos = i;
+}
+
+static void redis_sub_on_data(intptr_t uuid, protocol_s *pr) {
+  uint8_t *buf = sub2redis(pr)->buf + REDIS_READ_BUFFER;
+  ssize_t i = sock_read(uuid, buf + sub2redis(pr)->sub_data.buf_pos,
+                        REDIS_READ_BUFFER - sub2redis(pr)->sub_data.buf_pos);
+  if (i <= 0)
+    return;
+  sub2redis(pr)->sub_data.buf_pos += i;
+  i = resp_parse(&sub2redis(pr)->sub_data.parser, buf,
+                 sub2redis(pr)->sub_data.buf_pos);
+  if (i) {
+    memmove(buf, buf + sub2redis(pr)->sub_data.buf_pos - i, i);
+  }
+  sub2redis(pr)->sub_data.buf_pos = i;
+}
+
+static void redis_pub_on_close(intptr_t uuid, protocol_s *pr) {
+  if (pub2redis(pr)->flag) {
+    fprintf(stderr,
+            "WARNING: (redis) lost publishing connection to database\n");
+    redis_on_pub_connect_fail(uuid, &pub2redis(pr)->pub_data.protocol);
   } else {
-    uint8_t buffer[64] = {0};
-    size_t len = 63;
-    resp_format(NULL, buffer, &len, msg);
-    fprintf(stderr,
-            "WARN: (RedisEngine) Possible issue, "
-            "received unknown message (%lu bytes):\n%s\n",
-            len, (char *)buffer);
+    if (spn_sub(&pub2redis(pr)->ref, 1))
+      return;
+    free(pub2redis(pr));
   }
-  (void)uuid;
+}
+static void redis_sub_on_close(intptr_t uuid, protocol_s *pr) {
+  if (sub2redis(pr)->flag) {
+    fprintf(stderr,
+            "WARNING: (redis) lost subscribing connection to database\n");
+    redis_on_sub_connect_fail(uuid, &sub2redis(pr)->sub_data.protocol);
+  } else {
+    if (spn_sub(&sub2redis(pr)->ref, 1))
+      return;
+    free(sub2redis(pr));
+  }
+}
+
+static void redis_on_shutdown(intptr_t uuid, protocol_s *pr) {
+  sock_write2(.uuid = uuid, .buffer = "*1\r\n$4\r\nQUIT\r\n", .length = 14,
+              .dealloc = SOCK_DEALLOC_NOOP);
+  (void)pr;
+}
+static void redis_ping(intptr_t uuid, protocol_s *pr) {
+  sock_write2(.uuid = uuid, .buffer = "*1\r\n$4\r\nPING\r\n", .length = 14,
+              .dealloc = SOCK_DEALLOC_NOOP);
+  (void)pr;
 }
 
 /* *****************************************************************************
-Connections
+Engine Callbacks
 ***************************************************************************** */
 
-static inline int connect_sub(redis_engine_s *r) {
-  spn_add(&r->ref, 1);
-  return (r->sub = facil_connect(.address = r->address, .port = r->port,
-                                 .on_connect = redis_start_client_protocol,
-                                 .udata = r->sub_ctx,
-                                 .on_fail = redis_protocol_cleanup));
-}
-
-static inline int connect_pub(redis_engine_s *r) {
-  spn_add(&r->ref, 1);
-  return (r->pub = facil_connect(.address = r->address, .port = r->port,
-                                 .on_connect = redis_start_client_protocol,
-                                 .udata = r->pub_ctx,
-                                 .on_fail = redis_protocol_cleanup));
-}
-
-static void on_close_sub(intptr_t uuid, void *p) {
-  redis_engine_s *r = p;
-  if (!defer_fork_is_active()) {
-    dealloc_engine(r);
-    return;
-  }
-  if (r->sub == uuid && r->active) {
-    if (r->sub_state) {
-      r->sub_state = 0;
-      fprintf(stderr,
-              "ERROR: (RedisEngine) redis Sub "
-              "connection LOST: %s:%s\n",
-              r->address ? r->address : "0.0.0.0", r->port);
-    }
-    connect_sub(r);
-    facil_run_every(50, 1, (void (*)(void *))pubsub_engine_resubscribe,
-                    (void *)&r->engine, NULL);
-  }
-  dealloc_engine(r);
-}
-
-static void on_close_pub(intptr_t uuid, void *p) {
-  redis_engine_s *r = p;
-  if (!defer_fork_is_active()) {
-    dealloc_engine(r);
-    return;
-  }
-  if (r->pub == uuid && r->active) {
-    connect_pub(r);
-    if (r->pub_state) {
-      r->pub_state = 0;
-      fprintf(stderr,
-              "ERROR: (RedisEngine) redis Pub "
-              "connection LOST: %s:%s\n",
-              r->address ? r->address : "0.0.0.0", r->port);
-    }
-  }
-  dealloc_engine(r);
-}
-
-static void on_open_pub(intptr_t uuid, void *e) {
-  redis_engine_s *r = e;
-  if (r->pub != uuid)
-    return;
-  if (!r->pub_state) /* no message on first connection */
-    fprintf(stderr,
-            "INFO: (RedisEngine) redis Pub "
-            "connection (re)established: %s:%s\n",
-            r->address ? r->address : "0.0.0.0", r->port);
-  r->pub_state = 1;
-  spn_lock(&r->lock);
-  FIO_LS_EMBD_FOR(&r->callbacks, node) {
-    FIO_LS_EMBD_OBJ(callbacks_s, node, node)->sent = 0;
-  }
-  spn_unlock(&r->lock);
-  schedule_pub_send(r, uuid);
-}
-
-static void on_open_sub(intptr_t uuid, void *e) {
-  redis_engine_s *r = e;
-  if (r->sub != uuid)
-    return;
-  if (!r->sub_state) /* no message on first connection */
-    fprintf(stderr,
-            "INFO: (RedisEngine) redis Sub "
-            "connection (re)established: %s:%s\n",
-            r->address ? r->address : "0.0.0.0", r->port);
-  r->sub_state = 1;
-  pubsub_engine_resubscribe(&r->engine);
-  (void)uuid;
-}
-
+static void redis_on_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+                               uint8_t use_pattern);
+static void redis_on_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+                                 uint8_t use_pattern);
+static int redis_on_publish(const pubsub_engine_s *eng, fiobj_s *channel,
+                            fiobj_s *msg);
 /* *****************************************************************************
-Callbacks
+Object Creation
 ***************************************************************************** */
 
-/** Should return 0 on success and -1 on failure. */
-static int subscribe(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
-                     uint8_t use_pattern) {
-  redis_engine_s *e = (redis_engine_s *)eng;
-  if (!sock_isvalid(e->sub)) {
-    return 0;
-  }
-  resp_object_s *cmd = resp_arr2obj(2, NULL);
-  if (!cmd) {
-    return -1;
-  }
-  resp_obj2arr(cmd)->array[0] = use_pattern ? resp_str2obj("PSUBSCRIBE", 10)
-                                            : resp_str2obj("SUBSCRIBE", 9);
-  resp_obj2arr(cmd)->array[1] =
-      (ch ? resp_str2obj(ch, ch_len) : resp_nil2obj());
-  void *buffer = malloc(32 + ch_len);
-  size_t size = 32 + ch_len;
-  if (resp_format(e->sub_parser, buffer, &size, cmd))
-    fprintf(stderr, "ERROR: RESP format? size = %lu ch = %lu\n", size, ch_len);
-  sock_write2(.uuid = e->sub, .buffer = buffer, .length = size);
-  resp_free_object(cmd);
-  return 0;
-}
-
-/** Return value is ignored. */
-static void unsubscribe(const pubsub_engine_s *eng, const char *ch,
-                        size_t ch_len, uint8_t use_pattern) {
-  redis_engine_s *e = (redis_engine_s *)eng;
-
-  if (!sock_isvalid(e->sub))
-    return;
-  resp_object_s *cmd = resp_arr2obj(2, NULL);
-  if (!cmd)
-    return;
-  resp_obj2arr(cmd)->array[0] = use_pattern ? resp_str2obj("PUNSUBSCRIBE", 12)
-                                            : resp_str2obj("UNSUBSCRIBE", 11);
-  resp_obj2arr(cmd)->array[1] =
-      (ch ? resp_str2obj(ch, ch_len) : resp_nil2obj());
-  void *buffer = malloc(32 + ch_len);
-  size_t size = 32 + ch_len;
-  if (!resp_format(e->sub_parser, buffer, &size, cmd) && size <= (32 + ch_len))
-    sock_write2(.uuid = e->sub, .buffer = buffer, .length = size);
-  resp_free_object(cmd);
-}
-
-/** Should return 0 on success and -1 on failure. */
-static int publish(const pubsub_engine_s *eng, const char *ch, size_t ch_len,
-                   const char *msg, size_t msg_len, uint8_t use_pattern) {
-  if (!msg || use_pattern || !ch)
-    return -1;
-  resp_object_s *cmd = resp_arr2obj(3, NULL);
-  if (!cmd)
-    return -1;
-  resp_obj2arr(cmd)->array[0] = resp_str2obj("PUBLISH", 7);
-  resp_obj2arr(cmd)->array[1] = resp_str2obj(ch, ch_len);
-  resp_obj2arr(cmd)->array[2] = resp_str2obj(msg, msg_len);
-  redis_engine_send((pubsub_engine_s *)eng, cmd, NULL, NULL);
-  resp_free_object(cmd);
-  return 0;
-}
-
-/* *****************************************************************************
-Creation / Destruction
-***************************************************************************** */
-
-static void initialize_engine(void *en_, void *ig) {
-  redis_engine_s *r = (redis_engine_s *)en_;
-  (void)ig;
-  connect_sub(r);
-  connect_pub(r);
-}
-
-/**
-See the {pubsub.h} file for documentation about engines.
-
-function names speak for themselves ;-)
-*/
 #undef redis_engine_create
-pubsub_engine_s *redis_engine_create(struct redis_engine_create_args a) {
-  if (!a.port) {
+pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
+  if (!args.port || !args.address)
     return NULL;
-  }
-  size_t addr_len = a.address ? strlen(a.address) : 0;
-  size_t port_len = strlen(a.port);
-  redis_engine_s *e = malloc(sizeof(*e) + addr_len + port_len + 2);
-  *e = (redis_engine_s){
-      .engine = {.subscribe = subscribe,
-                 .unsubscribe = unsubscribe,
-                 .publish = publish},
-      .address = (char *)(e + 1),
-      .port = ((char *)(e + 1) + addr_len + 1),
-      .ref = 1,
-      .sub_parser = resp_parser_new(),
-      .pub_parser = resp_parser_new(),
-      .callbacks = FIO_LS_INIT(e->callbacks),
-      .active = 1,
-      .sub_state = 1,
-      .pub_state = 1,
+  size_t port_len = 0;
+  size_t address_len = 0;
+  if (args.auth && !args.auth_len)
+    args.auth_len = strlen(args.auth);
+  if (args.address)
+    address_len = strlen(args.address);
+  if (args.port)
+    port_len = strlen(args.port);
+  redis_engine_s *r =
+      malloc(sizeof(*r) + REDIS_READ_BUFFER + REDIS_READ_BUFFER + 2 +
+             address_len + port_len + (args.auth_len ? args.auth_len + 32 : 0));
+  *r = (redis_engine_s){
+      .id_protection = 15,
+      .port = (char *)r->buf + (REDIS_READ_BUFFER + REDIS_READ_BUFFER),
+      .address = (char *)r->buf + (REDIS_READ_BUFFER + REDIS_READ_BUFFER) +
+                 port_len + 1,
+      .auth = (char *)r->buf + (REDIS_READ_BUFFER + REDIS_READ_BUFFER) +
+              port_len + address_len + 2,
+      .auth_len = args.auth_len,
+      .en =
+          {
+              .subscribe = redis_on_subscribe,
+              .unsubscribe = redis_on_unsubscribe,
+              .publish = redis_on_publish,
+          },
+      .pub_data =
+          {
+              .is_pub = 1,
+              .protocol =
+                  {
+                      .on_data = redis_pub_on_data,
+                      .on_close = redis_pub_on_close,
+                      .ping = redis_ping,
+                      .on_shutdown = redis_on_shutdown,
+                  },
+          },
+      .sub_data =
+          {
+              .protocol =
+                  {
+                      .on_data = redis_sub_on_data,
+                      .on_close = redis_sub_on_close,
+                      .ping = redis_ping,
+                      .on_shutdown = redis_on_shutdown,
+                  },
+          },
   };
-  if (a.address)
-    memcpy(e->address, a.address, addr_len);
-  else
-    e->address = NULL;
-  e->address[addr_len] = 0;
-  memcpy(e->port, a.port, port_len);
-  e->port[port_len] = 0;
-
-  e->sub_ctx =
-      redis_create_context(.parser = e->sub_parser, .auth = (char *)a.auth,
-                           .auth_len = a.auth_len, .on_message = on_message_sub,
-                           .on_close = on_close_sub, .on_open = on_open_sub,
-                           .udata = e, .ping = a.ping_interval),
-
-  e->pub_ctx =
-      redis_create_context(.parser = e->pub_parser, .auth = (char *)a.auth,
-                           .auth_len = a.auth_len, .on_message = on_message_pub,
-                           .on_close = on_close_pub, .on_open = on_open_pub,
-                           .udata = e, .ping = a.ping_interval, ),
-
-  defer(initialize_engine, e, NULL);
-  return (pubsub_engine_s *)e;
+  memcpy(r->port, args.port, port_len);
+  r->port[port_len] = 0;
+  memcpy(r->address, args.address, address_len);
+  r->address[address_len] = 0;
+  if (args.auth) {
+    char *pos = r->auth;
+    pos = memcpy(pos, "*2\r\n$4\r\nAUTH\r\n$", 15);
+    pos += fio_ltoa(pos, args.auth_len, 10);
+    *pos++ = '\r';
+    *pos++ = '\n';
+    pos = memcpy(pos, args.auth, args.auth_len);
+    pos[0] = 0;
+    args.auth_len = (uintptr_t)pos - (uintptr_t)r->auth;
+  }
+  pubsub_engine_register(&r->en);
+  redis_on_pub_connect_fail(0, &r->pub_data.protocol);
+  /* we don't need to listen for messages from each process, we publish to the
+   * cluster and the channel list is synchronized.
+   */
+  if (defer_fork_pid() == 0) {
+    redis_on_sub_connect_fail(0, &r->sub_data.protocol);
+  }
+  return &r->en;
 }
 
-/**
-See the {pubsub.h} file for documentation about engines.
-
-function names speak for themselves ;-)
-*/
-void redis_engine_destroy(const pubsub_engine_s *engine) {
-  redis_engine_s *r = (redis_engine_s *)engine;
-
-  spn_lock(&r->lock);
-  while (fio_ls_embd_any(&r->callbacks)) {
-    callbacks_s *cb =
-        FIO_LS_EMBD_OBJ(callbacks_s, node, fio_ls_embd_pop(&r->callbacks));
-    free(cb);
+void redis_engine_destroy(pubsub_engine_s *e) {
+  redis_engine_s *r = en2redis(e);
+  if (r->id_protection != 15) {
+    fprintf(
+        stderr,
+        "FATAL ERROR: (redis) engine pointer incorrect, protection failure.\n");
+    exit(-1);
   }
-  sock_force_close(r->pub);
-  sock_force_close(r->sub);
-
-  r->active = 0;
-  if (dealloc_engine(r))
-    return;
-  spn_unlock(&r->lock);
+  pubsub_engine_deregister(e);
+  r->flag = 0;
+  sock_close(r->pub_data.uuid);
+  sock_close(r->sub_data.uuid);
 }
 
 /* *****************************************************************************
-Sending Data
+RESP parser callbacks
 ***************************************************************************** */
 
+/** a local static callback, called when the RESP message is complete. */
+static int resp_on_message(resp_parser_s *parser);
+
+/** a local static callback, called when a Number object is parsed. */
+static int resp_on_number(resp_parser_s *parser, int64_t num);
+/** a local static callback, called when a OK message is received. */
+static int resp_on_okay(resp_parser_s *parser);
+/** a local static callback, called when NULL is received. */
+static int resp_on_null(resp_parser_s *parser);
+
 /**
-Sends a Redis message through the engine's connection. The response will be sent
-back using the optional callback. `udata` is passed along untouched.
-*/
-intptr_t redis_engine_send(pubsub_engine_s *e, resp_object_s *data,
-                           void (*callback)(pubsub_engine_s *e,
-                                            resp_object_s *reply, void *udata),
-                           void *udata) {
-  if (!e || !data)
-    return -1;
+ * a local static callback, called when a String should be allocated.
+ *
+ * `str_len` is the expected number of bytes that will fill the final string
+ * object, without any NUL byte marker (the string might be binary).
+ *
+ * If this function returns any value besides 0, parsing is stopped.
+ */
+static int resp_on_start_string(resp_parser_s *parser, size_t str_len);
+/** a local static callback, called as String objects are streamed. */
+static int resp_on_string_chunk(resp_parser_s *parser, void *data, size_t len);
+/** a local static callback, called when a String object had finished streaming.
+ */
+static int resp_on_end_string(resp_parser_s *parser);
 
-  redis_engine_s *r = (redis_engine_s *)e;
-  size_t len = 0;
-  resp_format(r->pub_parser, NULL, &len, data);
-  if (!len)
-    return -1;
+/** a local static callback, called an error message is received. */
+static int resp_on_err_msg(resp_parser_s *parser, void *data, size_t len);
 
-  callbacks_s *cb = malloc(sizeof(*cb) + len);
-  *cb = (callbacks_s){
-      .node = FIO_LS_INIT(cb->node),
-      .callback = callback,
-      .udata = udata,
-      .len = len,
-  };
-  resp_format(r->pub_parser, (uint8_t *)(cb + 1), &len, data);
-  spn_lock(&r->lock);
-  fio_ls_embd_push(&r->callbacks, &cb->node);
-  spn_unlock(&r->lock);
-  schedule_pub_send(r, r->pub);
-  return 0;
-}
+/**
+ * a local static callback, called when an Array should be allocated.
+ *
+ * `array_len` is the expected number of objects that will fill the Array
+ * object.
+ *
+ * There's no `resp_on_end_array` callback since the RESP protocol assumes the
+ * message is finished along with the Array (`resp_on_message` is called).
+ * However, just in case a non-conforming client/server sends nested Arrays, the
+ * callback should test against possible overflow or nested Array endings.
+ *
+ * If this function returns any value besides 0, parsing is stopped.
+ */
+static int resp_on_start_array(resp_parser_s *parser, size_t array_len);
+
+/** a local static callback, called when a parser / protocol error occurs. */
+static int resp_on_parser_error(resp_parser_s *parser);
