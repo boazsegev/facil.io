@@ -51,9 +51,8 @@ back using the optional callback. `udata` is passed along untouched.
 The message will be repeated endlessly until a response validates the fact that
 it was sent (or the engine is destroyed).
 */
-intptr_t redis_engine_send(pubsub_engine_s *engine, fiobj_s *command,
-                           fiobj_s *data,
-                           void (*callback)(pubsub_engine_s *e, fiobj_s *reply,
+intptr_t redis_engine_send(pubsub_engine_s *engine, FIOBJ command, FIOBJ data,
+                           void (*callback)(pubsub_engine_s *e, FIOBJ reply,
                                             void *udata),
                            void *udata);
 
