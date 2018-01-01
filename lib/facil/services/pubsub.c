@@ -82,6 +82,8 @@ typedef struct {
   void *udata1;
   /** Opaque user data#2 .. using two allows some allocations to be avoided. */
   void *udata2;
+  /** Task lock (per client-channel combination */
+  spn_lock_i lock;
 } client_s;
 
 typedef struct {
@@ -436,6 +438,10 @@ static void msg_wrapper_free(msg_wrapper_s *m) {
 void pubsub_en_process_deferred_on_message(void *cl_, void *m_) {
   msg_wrapper_s *m = m_;
   client_s *cl = cl_;
+  if (spn_trylock(&cl->lock)) {
+    defer(pubsub_en_process_deferred_on_message, cl, m);
+    return;
+  }
   msg_container_s arg = {.wrapper = m,
                          .msg = {
                              .channel = m->channel,
@@ -445,6 +451,7 @@ void pubsub_en_process_deferred_on_message(void *cl_, void *m_) {
                              .udata2 = cl->udata1,
                          }};
   cl->on_message(&arg.msg);
+  spn_unlock(&cl->lock);
   msg_wrapper_free(m);
   client_test4free(cl_);
 }
