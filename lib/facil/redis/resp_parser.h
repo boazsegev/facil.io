@@ -34,6 +34,10 @@ typedef struct resp_parser_s {
   intptr_t expecting;
 } resp_parser_s;
 
+/**
+ * Returns the number of bytes to be resent. i.e., for a return value 5, the
+ * last 5 bytes in the buffer need to be resent to the parser.
+ */
 static size_t resp_parse(resp_parser_s *parser, const void *buffer,
                          size_t length);
 
@@ -148,10 +152,6 @@ Parsing RESP requests
 ***************************************************************************** */
 
 /**
- * Parses raw RESP data into facil.io objects (`fiobj_s *`).
- *
- * Partial unparsed data will be moved to the begining of the buffer.
- *
  * Returns the number of bytes to be resent. i.e., for a return value 5, the
  * last 5 bytes in the buffer need to be resent to the parser.
  */
