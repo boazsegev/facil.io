@@ -69,12 +69,12 @@ static inline void http1_after_finish(http_s *h) {
 Virtual Functions API
 ***************************************************************************** */
 struct header_writer_s {
-  fiobj_s *dest;
-  fiobj_s *name;
-  fiobj_s *value;
+  FIOBJ dest;
+  FIOBJ name;
+  FIOBJ value;
 };
 
-static int write_header(fiobj_s *o, void *w_) {
+static int write_header(FIOBJ o, void *w_) {
   struct header_writer_s *w = w_;
   if (!o)
     return 0;
@@ -99,7 +99,7 @@ static int write_header(fiobj_s *o, void *w_) {
   return 0;
 }
 
-static fiobj_s *headers2str(http_s *h) {
+static FIOBJ headers2str(http_s *h) {
   if (!h->headers)
     return NULL;
 
@@ -112,7 +112,7 @@ static fiobj_s *headers2str(http_s *h) {
 
   fio_cstr_s t = http1_status2str(h->status);
   fiobj_str_write(w.dest, t.data, t.length);
-  fiobj_s *tmp = fiobj_hash_get3(h->private_data.out_headers, connection_key);
+  FIOBJ tmp = fiobj_hash_get3(h->private_data.out_headers, connection_key);
   if (tmp) {
     t = fiobj_obj2cstr(tmp);
     if (t.data[0] == 'c' || t.data[0] == 'C')
@@ -146,7 +146,7 @@ static fiobj_s *headers2str(http_s *h) {
 /** Should send existing headers and data */
 static int http1_send_body(http_s *h, void *data, uintptr_t length) {
 
-  fiobj_s *packet = headers2str(h);
+  FIOBJ packet = headers2str(h);
   if (!packet)
     return -1;
   fiobj_str_write(packet, data, length);
@@ -159,7 +159,7 @@ static int http1_send_body(http_s *h, void *data, uintptr_t length) {
 /** Should send existing headers and file */
 static int http1_sendfile(http_s *h, int fd, uintptr_t length,
                           uintptr_t offset) {
-  fiobj_s *packet = headers2str(h);
+  FIOBJ packet = headers2str(h);
   if (!packet) {
     return -1;
   }
@@ -180,7 +180,7 @@ static int http1_stream(http_s *h, void *data, uintptr_t length) {
 }
 /** Should send existing headers or complete streaming */
 static void htt1p_finish(http_s *h) {
-  fiobj_s *packet = headers2str(h);
+  FIOBJ packet = headers2str(h);
   if (packet)
     fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
   http1_s *p = (http1_s *)h->private_data.owner;
@@ -190,7 +190,7 @@ static void htt1p_finish(http_s *h) {
 }
 /** Push for data - unsupported. */
 static int http1_push_data(http_s *h, void *data, uintptr_t length,
-                           fiobj_s *mime_type) {
+                           FIOBJ mime_type) {
   return -1;
   (void)h;
   (void)data;
@@ -198,7 +198,7 @@ static int http1_push_data(http_s *h, void *data, uintptr_t length,
   (void)mime_type;
 }
 /** Push for files - unsupported. */
-static int http1_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type) {
+static int http1_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
   return -1;
   (void)h;
   (void)filename;
@@ -275,7 +275,7 @@ static int http1_http2websocket(websocket_settings_s *args) {
   if (!sec_key)
     sec_key = fiobj_sym_hash("sec-websocket-key", 17);
 
-  fiobj_s *tmp = fiobj_hash_get3(args->http->headers, sec_version);
+  FIOBJ tmp = fiobj_hash_get3(args->http->headers, sec_version);
   if (!tmp)
     goto bad_request;
   fio_cstr_s stmp = fiobj_obj2cstr(tmp);
@@ -384,8 +384,8 @@ static int http1_on_http_version(http1_parser_s *parser, char *version,
 /** called when a header is parsed. */
 static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
                            char *data, size_t data_len) {
-  fiobj_s *sym;
-  fiobj_s *obj;
+  FIOBJ sym;
+  FIOBJ obj;
   if (!parser2http(parser)->request.headers) {
     fprintf(stderr,
             "ERROR: (http1 parse ordering error) missing HashMap for header "

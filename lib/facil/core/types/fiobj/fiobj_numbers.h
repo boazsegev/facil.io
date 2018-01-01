@@ -18,13 +18,13 @@ Numbers API (Integers)
 extern const uintptr_t FIOBJ_T_NUMBER;
 
 /** Creates a Number object. Remember to use `fiobj_free`. */
-fiobj_s *fiobj_num_new(int64_t num);
+FIOBJ fiobj_num_new(int64_t num);
 
 /** Mutates a Number object's value. Effects every object's reference! */
-void fiobj_num_set(fiobj_s *target, int64_t num);
+void fiobj_num_set(FIOBJ target, int64_t num);
 
 /** Creates a temporary Number object. Avoid using `fiobj_free`. */
-fiobj_s *fiobj_num_tmp(int64_t num);
+FIOBJ fiobj_num_tmp(int64_t num);
 
 /* *****************************************************************************
 Float API (Double)
@@ -33,13 +33,13 @@ Float API (Double)
 extern const uintptr_t FIOBJ_T_FLOAT;
 
 /** Creates a Float object. Remember to use `fiobj_free`.  */
-fiobj_s *fiobj_float_new(double num);
+FIOBJ fiobj_float_new(double num);
 
 /** Mutates a Float object's value. Effects every object's reference!  */
-void fiobj_float_set(fiobj_s *obj, double num);
+void fiobj_float_set(FIOBJ obj, double num);
 
 /** Creates a temporary Float object. Avoid using `fiobj_free`. */
-fiobj_s *fiobj_float_tmp(double num);
+FIOBJ fiobj_float_tmp(double num);
 
 /* *****************************************************************************
 Pointer Wrapping Helper MACROs (uses integers)

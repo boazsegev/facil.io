@@ -23,21 +23,21 @@ VTable
 
 const uintptr_t FIOBJ_T_ARRAY;
 
-static void fiobj_ary_dealloc(fiobj_s *a) {
+static void fiobj_ary_dealloc(FIOBJ a) {
   fio_ary_free(&obj2ary(a)->ary);
   fiobj_dealloc(a);
 }
 
-static size_t fiobj_ary_each1(fiobj_s *o, size_t start_at,
-                              int (*task)(fiobj_s *obj, void *arg), void *arg) {
+static size_t fiobj_ary_each1(FIOBJ o, size_t start_at,
+                              int (*task)(FIOBJ obj, void *arg), void *arg) {
   return fio_ary_each(&obj2ary(o)->ary, start_at, (int (*)(void *, void *))task,
                       arg);
 }
 
-static int fiobj_ary_is_eq(const fiobj_s *self, const fiobj_s *other) {
+static int fiobj_ary_is_eq(const FIOBJ self, const FIOBJ other) {
   if (self == other)
     return 1;
-  if (!other || other->type != FIOBJ_T_ARRAY ||
+  if (!other || FIOBJ_TYPE(other) != FIOBJ_T_ARRAY ||
       (obj2ary(self)->ary.end - obj2ary(self)->ary.start) !=
           (obj2ary(other)->ary.end - obj2ary(other)->ary.start))
     return 0;
@@ -45,10 +45,10 @@ static int fiobj_ary_is_eq(const fiobj_s *self, const fiobj_s *other) {
 }
 
 /** Returns the number of elements in the Array. */
-size_t fiobj_ary_count(const fiobj_s *ary) {
+size_t fiobj_ary_count(const FIOBJ ary) {
   if (!ary)
     return 0;
-  assert(ary->type == FIOBJ_T_ARRAY);
+  assert(FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
   return fio_ary_count(&obj2ary(ary)->ary);
 }
 
@@ -70,8 +70,8 @@ const uintptr_t FIOBJ_T_ARRAY = (uintptr_t)(&FIOBJ_VTABLE_ARRAY);
 Allocation
 ***************************************************************************** */
 
-static fiobj_s *fiobj_ary_alloc(size_t capa, size_t start_at) {
-  fiobj_s *ary = fiobj_alloc(sizeof(fiobj_ary_s));
+static FIOBJ fiobj_ary_alloc(size_t capa, size_t start_at) {
+  FIOBJ ary = fiobj_alloc(sizeof(fiobj_ary_s));
   if (!ary)
     perror("ERROR: fiobj array couldn't allocate memory"), exit(errno);
   *(obj2ary(ary)) = (fiobj_ary_s){
@@ -83,19 +83,19 @@ static fiobj_s *fiobj_ary_alloc(size_t capa, size_t start_at) {
 }
 
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
-fiobj_s *fiobj_ary_new(void) { return fiobj_ary_alloc(32, 8); }
+FIOBJ fiobj_ary_new(void) { return fiobj_ary_alloc(32, 8); }
 /** Creates a mutable empty Array object with the requested capacity. */
-fiobj_s *fiobj_ary_new2(size_t capa) { return fiobj_ary_alloc(capa, 0); }
+FIOBJ fiobj_ary_new2(size_t capa) { return fiobj_ary_alloc(capa, 0); }
 
 /* *****************************************************************************
 Array direct entry access API
 ***************************************************************************** */
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
-size_t fiobj_ary_capa(fiobj_s *ary) {
+size_t fiobj_ary_capa(FIOBJ ary) {
   if (!ary)
     return 0;
-  assert(ary->type == FIOBJ_T_ARRAY);
+  assert(FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
   return fio_ary_capa(&obj2ary(ary)->ary);
 }
 
@@ -105,11 +105,11 @@ size_t fiobj_ary_capa(fiobj_s *ary) {
  * This pointer can be used for sorting and other direct access operations as
  * long as no other actions (insertion/deletion) are performed on the array.
  */
-fiobj_s **fiobj_ary2prt(fiobj_s *ary) {
+FIOBJ *fiobj_ary2prt(FIOBJ ary) {
   if (!ary)
     return NULL;
-  assert(ary->type == FIOBJ_T_ARRAY);
-  return (fiobj_s **)(obj2ary(ary)->ary.arry + obj2ary(ary)->ary.start);
+  assert(FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
+  return (FIOBJ *)(obj2ary(ary)->ary.arry + obj2ary(ary)->ary.start);
 }
 
 /**
@@ -118,19 +118,19 @@ fiobj_s **fiobj_ary2prt(fiobj_s *ary) {
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
  */
-fiobj_s *fiobj_ary_index(fiobj_s *ary, int64_t pos) {
+FIOBJ fiobj_ary_index(FIOBJ ary, int64_t pos) {
   if (!ary)
     return NULL;
-  assert(ary->type == FIOBJ_T_ARRAY);
+  assert(FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
   return fio_ary_index(&obj2ary(ary)->ary, pos);
 }
 
 /**
  * Sets an object at the requested position.
  */
-void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos) {
-  assert(ary && ary->type == FIOBJ_T_ARRAY);
-  fiobj_s *old = fio_ary_set(&obj2ary(ary)->ary, obj, pos);
+void fiobj_ary_set(FIOBJ ary, FIOBJ obj, int64_t pos) {
+  assert(ary && FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
+  FIOBJ old = fio_ary_set(&obj2ary(ary)->ary, obj, pos);
   fiobj_free(old);
 }
 
@@ -141,28 +141,28 @@ Array push / shift API
 /**
  * Pushes an object to the end of the Array.
  */
-void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
-  assert(ary && ary->type == FIOBJ_T_ARRAY);
+void fiobj_ary_push(FIOBJ ary, FIOBJ obj) {
+  assert(ary && FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
   fio_ary_push(&obj2ary(ary)->ary, obj);
 }
 
 /** Pops an object from the end of the Array. */
-fiobj_s *fiobj_ary_pop(fiobj_s *ary) { return fio_ary_pop(&obj2ary(ary)->ary); }
+FIOBJ fiobj_ary_pop(FIOBJ ary) { return fio_ary_pop(&obj2ary(ary)->ary); }
 
 /**
  * Unshifts an object to the begining of the Array. This could be
  * expensive.
  */
-void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj) {
-  assert(ary && ary->type == FIOBJ_T_ARRAY);
+void fiobj_ary_unshift(FIOBJ ary, FIOBJ obj) {
+  assert(ary && FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
   fio_ary_unshift(&obj2ary(ary)->ary, obj);
 }
 
 /** Shifts an object from the beginning of the Array. */
-fiobj_s *fiobj_ary_shift(fiobj_s *ary) {
+FIOBJ fiobj_ary_shift(FIOBJ ary) {
   if (!ary)
     return NULL;
-  assert(ary->type == FIOBJ_T_ARRAY);
+  assert(FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
   return fio_ary_shift(&obj2ary(ary)->ary);
 }
 
@@ -177,7 +177,7 @@ Array compacting (untested)
  * This action is O(n) where n in the length of the array.
  * It could get expensive.
  */
-void fiobj_ary_compact(fiobj_s *ary) {
-  assert(ary && ary->type == FIOBJ_T_ARRAY);
+void fiobj_ary_compact(FIOBJ ary) {
+  assert(ary && FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
   fio_ary_compact(&obj2ary(ary)->ary);
 }

@@ -1,0 +1,2507 @@
+Searching 78 files for "fiobj_s \*" (regex)
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_ary.c:
+   24  const uintptr_t FIOBJ_T_ARRAY;
+   25  
+   26: static void fiobj_ary_dealloc(fiobj_s *a) {
+   27    fio_ary_free(&obj2ary(a)->ary);
+   28    fiobj_dealloc(a);
+   29  }
+   30  
+   31: static size_t fiobj_ary_each1(fiobj_s *o, size_t start_at,
+   32:                               int (*task)(fiobj_s *obj, void *arg), void *arg) {
+   33    return fio_ary_each(&obj2ary(o)->ary, start_at, (int (*)(void *, void *))task,
+   34                        arg);
+   35  }
+   36  
+   37: static int fiobj_ary_is_eq(const fiobj_s *self, const fiobj_s *other) {
+   38    if (self == other)
+   39      return 1;
+   ..
+   46  
+   47  /** Returns the number of elements in the Array. */
+   48: size_t fiobj_ary_count(const fiobj_s *ary) {
+   49    if (!ary)
+   50      return 0;
+   ..
+   71  ***************************************************************************** */
+   72  
+   73: static fiobj_s *fiobj_ary_alloc(size_t capa, size_t start_at) {
+   74:   fiobj_s *ary = fiobj_alloc(sizeof(fiobj_ary_s));
+   75    if (!ary)
+   76      perror("ERROR: fiobj array couldn't allocate memory"), exit(errno);
+   ..
+   84  
+   85  /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
+   86: fiobj_s *fiobj_ary_new(void) { return fiobj_ary_alloc(32, 8); }
+   87  /** Creates a mutable empty Array object with the requested capacity. */
+   88: fiobj_s *fiobj_ary_new2(size_t capa) { return fiobj_ary_alloc(capa, 0); }
+   89  
+   90  /* *****************************************************************************
+   ..
+   93  
+   94  /** Returns the current, temporary, array capacity (it's dynamic). */
+   95: size_t fiobj_ary_capa(fiobj_s *ary) {
+   96    if (!ary)
+   97      return 0;
+   ..
+  106   * long as no other actions (insertion/deletion) are performed on the array.
+  107   */
+  108: fiobj_s **fiobj_ary2prt(fiobj_s *ary) {
+  109    if (!ary)
+  110      return NULL;
+  111    assert(FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
+  112:   return (fiobj_s **)(obj2ary(ary)->ary.arry + obj2ary(ary)->ary.start);
+  113  }
+  114  
+  ...
+  119   * is the last item.
+  120   */
+  121: fiobj_s *fiobj_ary_index(fiobj_s *ary, int64_t pos) {
+  122    if (!ary)
+  123      return NULL;
+  ...
+  129   * Sets an object at the requested position.
+  130   */
+  131: void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos) {
+  132    assert(ary && FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
+  133:   fiobj_s *old = fio_ary_set(&obj2ary(ary)->ary, obj, pos);
+  134    fiobj_free(old);
+  135  }
+  ...
+  142   * Pushes an object to the end of the Array.
+  143   */
+  144: void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj) {
+  145    assert(ary && FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
+  146    fio_ary_push(&obj2ary(ary)->ary, obj);
+  ...
+  148  
+  149  /** Pops an object from the end of the Array. */
+  150: fiobj_s *fiobj_ary_pop(fiobj_s *ary) { return fio_ary_pop(&obj2ary(ary)->ary); }
+  151  
+  152  /**
+  ...
+  154   * expensive.
+  155   */
+  156: void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj) {
+  157    assert(ary && FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
+  158    fio_ary_unshift(&obj2ary(ary)->ary, obj);
+  ...
+  160  
+  161  /** Shifts an object from the beginning of the Array. */
+  162: fiobj_s *fiobj_ary_shift(fiobj_s *ary) {
+  163    if (!ary)
+  164      return NULL;
+  ...
+  178   * It could get expensive.
+  179   */
+  180: void fiobj_ary_compact(fiobj_s *ary) {
+  181    assert(ary && FIOBJ_TYPE(ary) == FIOBJ_T_ARRAY);
+  182    fio_ary_compact(&obj2ary(ary)->ary);
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_ary.h:
+   24  
+   25  /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
+   26: fiobj_s *fiobj_ary_new(void);
+   27  
+   28  /** Creates a mutable empty Array object with the requested capacity. */
+   29: fiobj_s *fiobj_ary_new2(size_t capa);
+   30  
+   31  /* *****************************************************************************
+   ..
+   34  
+   35  /** Returns the number of elements in the Array. */
+   36: size_t fiobj_ary_count(fiobj_s *ary);
+   37  
+   38  /** Returns the current, temporary, array capacity (it's dynamic). */
+   39: size_t fiobj_ary_capa(fiobj_s *ary);
+   40  
+   41  /**
+   ..
+   45   * long as no other actions (insertion/deletion) are performed on the array.
+   46   */
+   47: fiobj_s **fiobj_ary2prt(fiobj_s *ary);
+   48  
+   49  /**
+   ..
+   57   * is the last item.
+   58   */
+   59: fiobj_s *fiobj_ary_index(fiobj_s *ary, int64_t pos);
+   60  /** alias for `fiobj_ary_index` */
+   61  #define fiobj_ary_entry(a, p) fiobj_ary_index((a), (p))
+   ..
+   64   * Sets an object at the requested position.
+   65   */
+   66: void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos);
+   67  
+   68  /* *****************************************************************************
+   ..
+   73   * Pushes an object to the end of the Array.
+   74   */
+   75: void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj);
+   76  
+   77  /** Pops an object from the end of the Array. */
+   78: fiobj_s *fiobj_ary_pop(fiobj_s *ary);
+   79  
+   80  /**
+   ..
+   82   * expensive.
+   83   */
+   84: void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj);
+   85  
+   86  /** Shifts an object from the beginning of the Array. */
+   87: fiobj_s *fiobj_ary_shift(fiobj_s *ary);
+   88  
+   89  /* *****************************************************************************
+   ..
+   98   * It could get expensive.
+   99   */
+  100: void fiobj_ary_compact(fiobj_s *ary);
+  101  
+  102  #ifdef __cplusplus
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_hash.c:
+    9  // struct test_key_s {
+   10  //   uint64_t hash;
+   11: //   fiobj_s * key;
+   12  // };
+   13  // #define FIO_HASH_COMPARE_KEYS(k1, k2) \
+   ..
+   34  typedef struct {
+   35    struct fiobj_vtable_s *vtable;
+   36:   fiobj_s *name;
+   37:   fiobj_s *obj;
+   38  } fiobj_couplet_s;
+   39  
+   ..
+   41  #define obj2couplet(o) ((fiobj_couplet_s *)(o))
+   42  
+   43: void fiobj_hash_rehash(fiobj_s *h) {
+   44    if (!h || FIOBJ_TYPE(h) != FIOBJ_T_HASH)
+   45      return;
+   ..
+   55  const uintptr_t FIOBJ_T_COUPLET;
+   56  
+   57: static void fiobj_couplet_dealloc(fiobj_s *o) {
+   58    if (OBJREF_REM(obj2couplet(o)->name) == 0)
+   59      OBJVTBL(obj2couplet(o)->name)->free(obj2couplet(o)->name);
+   ..
+   61  }
+   62  
+   63: static size_t fiobj_couplet_each1(fiobj_s *o, size_t start_at,
+   64:                                   int (*task)(fiobj_s *obj, void *arg),
+   65                                    void *arg) {
+   66    if (obj2couplet(o)->obj == NULL)
+   ..
+   70  }
+   71  
+   72: static int fiobj_coup_is_eq(const fiobj_s *self, const fiobj_s *other) {
+   73  
+   74    if (FIOBJ_TYPE(other) != FIOBJ_T_COUPLET)
+   ..
+   83  
+   84  /** Returns the number of elements in the Array. */
+   85: static size_t fiobj_couplet_count_items(const fiobj_s *o) {
+   86    if (obj2couplet(o)->obj == NULL)
+   87      return 0;
+   ..
+   89  }
+   90  
+   91: fiobj_s *fiobj_couplet2obj(const fiobj_s *obj);
+   92  
+   93  static struct fiobj_vtable_s FIOBJ_VTABLE_COUPLET = {
+   ..
+  104  const uintptr_t FIOBJ_T_COUPLET = (uintptr_t)(&FIOBJ_VTABLE_COUPLET);
+  105  
+  106: static inline fiobj_s *fiobj_couplet_alloc(void *sym, void *obj) {
+  107:   fiobj_s *o = fiobj_alloc(sizeof(fiobj_couplet_s));
+  108    if (!o)
+  109      perror("ERROR: fiobj hash couldn't allocate couplet"), exit(errno);
+  ...
+  119   * Otherwise returns NULL.
+  120   */
+  121: fiobj_s *fiobj_couplet2key(const fiobj_s *obj) {
+  122    if (!obj)
+  123      return NULL;
+  ...
+  132   * Otherwise returns NULL.
+  133   */
+  134: fiobj_s *fiobj_couplet2obj(const fiobj_s *obj) {
+  135    if (!obj)
+  136      return NULL;
+  ...
+  145  const uintptr_t FIOBJ_T_HASH;
+  146  
+  147: static void fiobj_hash_dealloc(fiobj_s *h) {
+  148    fio_hash_free(&obj2hash(h)->hash);
+  149    fiobj_dealloc(h);
+  ...
+  152  struct fiobj_inner_task_s {
+  153    void *arg;
+  154:   int (*task)(fiobj_s *, void *);
+  155  };
+  156  static int fiobj_inner_task(uint64_t key, void *obj, void *a_) {
+  ...
+  160  }
+  161  
+  162: static size_t fiobj_hash_each1(fiobj_s *o, const size_t start_at,
+  163:                                int (*task)(fiobj_s *obj, void *arg),
+  164                                 void *arg) {
+  165    if (!o)
+  ...
+  171  }
+  172  
+  173: static int fiobj_hash_is_eq(const fiobj_s *self, const fiobj_s *other) {
+  174    if (FIOBJ_TYPE(other) != FIOBJ_T_HASH)
+  175      return 0;
+  ...
+  188  
+  189  /** Returns the number of elements in the Array. */
+  190: size_t fiobj_hash_count(const fiobj_s *o) {
+  191    if (!o)
+  192      return 0;
+  ...
+  218   * retain order of object insertion.
+  219   */
+  220: fiobj_s *fiobj_hash_new(void) {
+  221:   fiobj_s *o = fiobj_alloc(sizeof(fiobj_hash_s));
+  222    if (!o)
+  223      perror("ERROR: fiobj hash couldn't allocate memory"), exit(errno);
+  ...
+  235   * Returns -1 on error.
+  236   */
+  237: int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
+  238    assert(hash && FIOBJ_TYPE(hash) == FIOBJ_T_HASH);
+  239    uintptr_t hash_value = 0;
+  ...
+  243      fio_cstr_s str = fiobj_obj2cstr(sym);
+  244      if (!str.data) {
+  245:       fiobj_free((fiobj_s *)obj);
+  246        return -1;
+  247      }
+  ...
+  249    }
+  250  
+  251:   fiobj_s *coup = fiobj_couplet_alloc(sym, obj);
+  252:   fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, coup);
+  253    if (old && !OBJREF_REM(old)) {
+  254      fiobj_free(obj2couplet(old)->obj);
+  ...
+  268   * Errors are silently ignored.
+  269   */
+  270: fiobj_s *fiobj_hash_replace(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj) {
+  271    assert(hash && FIOBJ_TYPE(hash) == FIOBJ_T_HASH);
+  272    uintptr_t hash_value = 0;
+  ...
+  276      fio_cstr_s str = fiobj_obj2cstr(sym);
+  277      if (!str.data) {
+  278:       fiobj_free((fiobj_s *)obj);
+  279        return NULL;
+  280      }
+  ...
+  282    }
+  283  
+  284:   fiobj_s *coup = fiobj_couplet_alloc(sym, obj);
+  285:   fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, coup);
+  286    if (!old)
+  287      return NULL;
+  288:   fiobj_s *ret = fiobj_couplet2obj(old);
+  289    if (!OBJREF_REM(old)) {
+  290      fiobj_couplet_dealloc(old);
+  ...
+  297   * object (instead of freeing it).
+  298   */
+  299: fiobj_s *fiobj_hash_remove3(fiobj_s *hash, uintptr_t hash_value) {
+  300    if (!hash) {
+  301      return NULL;
+  302    }
+  303    assert(FIOBJ_TYPE(hash) == FIOBJ_T_HASH);
+  304:   fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, NULL);
+  305    if (!old)
+  306      return NULL;
+  307:   fiobj_s *ret = fiobj_couplet2obj(old);
+  308    if (!OBJREF_REM(old)) {
+  309      fiobj_couplet_dealloc(old);
+  ...
+  316   * object (instead of freeing it).
+  317   */
+  318: fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym) {
+  319    if (!hash) {
+  320      return NULL;
+  ...
+  331      hash_value = fiobj_sym_hash(str.value, str.len);
+  332    }
+  333:   fiobj_s *old = fio_hash_insert(&obj2hash(hash)->hash, hash_value, NULL);
+  334    if (!old)
+  335      return NULL;
+  336:   fiobj_s *ret = fiobj_couplet2obj(old);
+  337    if (!OBJREF_REM(old)) {
+  338      fiobj_couplet_dealloc(old);
+  ...
+  351   * Returns -1 on type error or if the object never existed.
+  352   */
+  353: int fiobj_hash_delete3(fiobj_s *hash, uintptr_t key_hash) {
+  354    if (!hash) {
+  355      return -1;
+  356    }
+  357    assert(FIOBJ_TYPE(hash) == FIOBJ_T_HASH);
+  358:   fiobj_s *obj = fiobj_hash_remove3(hash, key_hash);
+  359    if (!obj)
+  360      return -1;
+  ...
+  372   * Returns -1 on type error or if the object never existed.
+  373   */
+  374: int fiobj_hash_delete2(fiobj_s *hash, const char *str, size_t len) {
+  375    return (fiobj_hash_delete3(hash, fiobj_sym_hash(str, len)));
+  376  }
+  ...
+  382   * Returns -1 on type error or if the object never existed.
+  383   */
+  384: int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym) {
+  385    uintptr_t hash_value = 0;
+  386    if (FIOBJ_TYPE(sym) == FIOBJ_T_SYMBOL) {
+  ...
+  400   * if none.
+  401   */
+  402: fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym) {
+  403    if (!hash) {
+  404      return NULL;
+  ...
+  415      hash_value = fiobj_sym_hash(str.value, str.len);
+  416    }
+  417:   fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hash_value);
+  418    if (!coup)
+  419      return NULL;
+  ...
+  429   * Returns NULL if no object is asociated with this String data.
+  430   */
+  431: fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len) {
+  432    if (!hash) {
+  433      return NULL;
+  ...
+  435    assert(FIOBJ_TYPE(hash) == FIOBJ_T_HASH);
+  436    uintptr_t hashed_sym = fiobj_sym_hash(str, len);
+  437:   fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hashed_sym);
+  438    if (!coup)
+  439      return NULL;
+  ...
+  449   * Returns NULL if no object is asociated with this hashed key value.
+  450   */
+  451: fiobj_s *fiobj_hash_get3(const fiobj_s *hash, uintptr_t key_hash) {
+  452    if (!hash) {
+  453      return NULL;
+  454    }
+  455    assert(hash && FIOBJ_TYPE(hash) == FIOBJ_T_HASH);
+  456:   fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, key_hash);
+  457    if (!coup)
+  458      return NULL;
+  ...
+  463   * Returns 1 if the key (Symbol) exists in the Hash, even if value is NULL.
+  464   */
+  465: int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym) {
+  466    if (!hash) {
+  467      return 0;
+  ...
+  479      hash_value = fiobj_sym_hash(str.value, str.len);
+  480    }
+  481:   fiobj_s *coup = fio_hash_find(&obj2hash(hash)->hash, hash_value);
+  482    if (!coup)
+  483      return 0;
+  ...
+  489   * This could be used for testig performance and memory consumption.
+  490   */
+  491: size_t fiobj_hash_capa(const fiobj_s *hash) {
+  492    if (!hash) {
+  493      return 0;
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_hash.h:
+   20  
+   21  /** attempts to rehash the hashmap. */
+   22: void fiobj_hash_rehash(fiobj_s *h);
+   23  
+   24  /* *****************************************************************************
+   ..
+   35   * Otherwise returns NULL.
+   36   */
+   37: fiobj_s *fiobj_couplet2key(const fiobj_s *obj);
+   38  
+   39  /**
+   ..
+   43   * Otherwise returns NULL.
+   44   */
+   45: fiobj_s *fiobj_couplet2obj(const fiobj_s *obj);
+   46  
+   47  /* *****************************************************************************
+   ..
+   69   * retain order of object insertion.
+   70   */
+   71: fiobj_s *fiobj_hash_new(void);
+   72  
+   73  /** Returns the number of elements in the Hash. */
+   74: size_t fiobj_hash_count(const fiobj_s *hash);
+   75  
+   76  /**
+   ..
+   80   * Returns -1 on error.
+   81   */
+   82: int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj);
+   83  
+   84  /**
+   ..
+   91   * Errors are silently ignored.
+   92   */
+   93: fiobj_s *fiobj_hash_replace(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj);
+   94  
+   95  /**
+   ..
+   97   * object (instead of freeing it).
+   98   */
+   99: fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym);
+  100  
+  101  /**
+  ...
+  105   * Returns -1 on type error or if the object never existed.
+  106   */
+  107: int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym);
+  108  
+  109  /**
+  ...
+  116   * Returns -1 on type error or if the object never existed.
+  117   */
+  118: int fiobj_hash_delete2(fiobj_s *hash, const char *str, size_t len);
+  119  
+  120  /**
+  ...
+  128   * Returns -1 on type error or if the object never existed.
+  129   */
+  130: int fiobj_hash_delete3(fiobj_s *hash, uintptr_t key_hash);
+  131  
+  132  /**
+  ...
+  134   * if none.
+  135   */
+  136: fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym);
+  137  
+  138  /**
+  ...
+  144   * Returns NULL if no object is asociated with this String data.
+  145   */
+  146: fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len);
+  147  
+  148  /**
+  ...
+  155   * Returns NULL if no object is asociated with this hashed key value.
+  156   */
+  157: fiobj_s *fiobj_hash_get3(const fiobj_s *hash, uintptr_t key_hash);
+  158  
+  159  /**
+  160   * Returns 1 if the key (Symbol) exists in the Hash, even if it's value is NULL.
+  161   */
+  162: int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym);
+  163  
+  164  /**
+  ...
+  166   * This could be used for testig performance and memory consumption.
+  167   */
+  168: size_t fiobj_hash_capa(const fiobj_s *hash);
+  169  
+  170  #ifdef __cplusplus
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_internal.c:
+   18  ***************************************************************************** */
+   19  
+   20: void fiobj_simple_dealloc(fiobj_s *o) { fiobj_dealloc(o); }
+   21  
+   22: void fiobj_noop_free(fiobj_s *obj) { OBJ2HEAD(obj)->ref = (uintptr_t)-1; }
+   23  
+   24: int fiobj_noop_true(const fiobj_s *obj) {
+   25    return 1;
+   26    (void)obj;
+   27  }
+   28: int fiobj_noop_false(const fiobj_s *obj) {
+   29    return 0;
+   30    (void)obj;
+   31  }
+   32: fio_cstr_s fiobj_noop_str(const fiobj_s *obj) {
+   33    return (fio_cstr_s){.length = 0, .data = ""};
+   34    (void)obj;
+   35  }
+   36: int64_t fiobj_noop_i(const fiobj_s *obj) {
+   37    return 0;
+   38    (void)obj;
+   39  }
+   40: double fiobj_noop_f(const fiobj_s *obj) {
+   41    return 0;
+   42    (void)obj;
+   ..
+   44  
+   45  /** always 0. */
+   46: int fiobj_noop_is_eq(const fiobj_s *self, const fiobj_s *other) {
+   47    return 0;
+   48    (void)self;
+   ..
+   50  }
+   51  
+   52: size_t fiobj_noop_count(const fiobj_s *obj) {
+   53    return 0;
+   54    (void)obj;
+   55  }
+   56: fiobj_s *fiobj_noop_unwrap(const fiobj_s *obj) {
+   57:   return (fiobj_s *)obj;
+   58    (void)obj;
+   59  }
+   60: size_t fiobj_noop_each1(fiobj_s *obj, size_t start_at,
+   61:                         int (*task)(fiobj_s *obj, void *arg), void *arg) {
+   62    return 0;
+   63    (void)obj;
+   ..
+   71  ***************************************************************************** */
+   72  
+   73: // static void fiobj_noop_free_invalid(fiobj_s *obj) { (void)obj; }
+   74: // static int64_t fiobj_noop_i_invalid(const fiobj_s *obj) {
+   75  //   return ((int64_t)(obj) ^ 3);
+   76  // }
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_internal.h:
+  107     * handled using `each1` and handled accoring to their reference count.
+  108     */
+  109:   void (*const free)(fiobj_s *);
+  110    /** object should evaluate as true/false? */
+  111:   int (*const is_true)(const fiobj_s *);
+  112    /** object value as String */
+  113:   fio_cstr_s (*const to_str)(const fiobj_s *);
+  114    /** object value as Integer */
+  115:   int64_t (*const to_i)(const fiobj_s *);
+  116    /** object value as Float */
+  117:   double (*const to_f)(const fiobj_s *);
+  118    /**
+  119     * returns 1 if objects are equal, 0 if unequal.
+  ...
+  128     * (similar to `count` and `each1`) after completing any internal testing.
+  129     */
+  130:   int (*const is_eq)(const fiobj_s *self, const fiobj_s *other);
+  131    /**
+  132     * return the number of nested object
+  ...
+  135     * (similar to `each1`).
+  136     */
+  137:   size_t (*const count)(const fiobj_s *o);
+  138    /**
+  139     * return either `self` or a wrapped object.
+  140     * (if object wrapping exists, i.e. Hash couplet, return nested object)
+  141     */
+  142:   fiobj_s *(*const unwrap)(const fiobj_s *obj);
+  143    /**
+  144     * perform a task for the object's children (-1 stops iteration)
+  ...
+  148     * (similar to `count`).
+  149     */
+  150:   size_t (*const each1)(fiobj_s *, size_t start_at,
+  151:                         int (*task)(fiobj_s *obj, void *arg), void *arg);
+  152  };
+  153  
+  ...
+  158  
+  159  /** simple deallocation (`free`). */
+  160: void fiobj_simple_dealloc(fiobj_s *o);
+  161  /** no deallocation (eternal objects). */
+  162: void fiobj_noop_free(fiobj_s *obj);
+  163  /** always true. */
+  164: int fiobj_noop_true(const fiobj_s *obj);
+  165  /** always false. */
+  166: int fiobj_noop_false(const fiobj_s *obj);
+  167  /** NULL C string. */
+  168: fio_cstr_s fiobj_noop_str(const fiobj_s *obj);
+  169  /** always 0. */
+  170: int64_t fiobj_noop_i(const fiobj_s *obj);
+  171  /** always 0. */
+  172: double fiobj_noop_f(const fiobj_s *obj);
+  173  /** always 0. */
+  174: size_t fiobj_noop_count(const fiobj_s *obj);
+  175  /** always 0. */
+  176: int fiobj_noop_is_eq(const fiobj_s *self, const fiobj_s *other);
+  177  /** always self. */
+  178: fiobj_s *fiobj_noop_unwrap(const fiobj_s *obj);
+  179  /** always 0. */
+  180: size_t fiobj_noop_each1(fiobj_s *obj, size_t start_at,
+  181:                         int (*task)(fiobj_s *obj, void *arg), void *arg);
+  182  
+  183  /* *****************************************************************************
+  ...
+  188  
+  189  #define OBJ2HEAD(o) (((fiobj_head_s *)(o)) - 1)
+  190: #define HEAD2OBJ(o) ((fiobj_s *)(((fiobj_head_s *)(o)) + 1))
+  191  
+  192  #define OBJREF_ADD(o) spn_add(&(OBJ2HEAD((o))->ref), 1)
+  193  #define OBJREF_REM(o) spn_sub(&(OBJ2HEAD((o))->ref), 1)
+  194  
+  195: #define OBJVTBL(o) ((struct fiobj_vtable_s *)(((fiobj_s *)(o))->type))
+  196  
+  197  // #define PTR2OBJ(o) (((o) << 1) | 1)
+  ...
+  203  
+  204  /** Allocates memory for the fiobj_s's data structure */
+  205: static inline fiobj_s *fiobj_alloc(size_t size) {
+  206    fiobj_head_s *head = (fiobj_head_s *)malloc(size + sizeof(*head));
+  207    if (!head)
+  ...
+  212  
+  213  /** Deallocates the fiobj_s's data structure. */
+  214: static inline void fiobj_dealloc(fiobj_s *obj) { free(OBJ2HEAD(obj)); }
+  215  
+  216  #endif
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_io.c:
+   55    } while (0)
+   56  
+   57: static void fiobj_io_copy_buffer(fiobj_s *o) {
+   58    obj2io(o)->capa = (((obj2io(o)->len) >> 12) + 1) << 12;
+   59    void *tmp = malloc(obj2io(o)->capa);
+   ..
+   66  }
+   67  
+   68: static inline void fiobj_io_pre_write(fiobj_s *o, uintptr_t length) {
+   69    if (obj2io(o)->fd == -1 && obj2io(o)->dealloc != free)
+   70      fiobj_io_copy_buffer(o);
+   ..
+   77  }
+   78  
+   79: static inline int64_t fiobj_io_get_fd_size(const fiobj_s *o) {
+   80    struct stat stat;
+   81  retry:
+   ..
+   88  }
+   89  
+   90: static fiobj_s *fiobj_io_alloc(void *buffer, int fd) {
+   91:   fiobj_s *o = fiobj_alloc(sizeof(fiobj_io_s));
+   92    REQUIRE_MEM(o);
+   93    obj2io(o)[0] =
+   ..
+   96  }
+   97  
+   98: static void fiobj_io_dealloc(fiobj_s *o) {
+   99    if (obj2io(o)->fd != -1) {
+  100      close(obj2io(o)->fd);
+  ...
+  107  }
+  108  
+  109: static int64_t fiobj_io_i(const fiobj_s *o) {
+  110    if (obj2io(o)->fd == -1) {
+  111      return obj2io(o)->len;
+  ...
+  115  }
+  116  
+  117: static fio_cstr_s fio_io2str(const fiobj_s *o) {
+  118    if (obj2io(o)->fd == -1) {
+  119      return (fio_cstr_s){.buffer = obj2io(o)->buffer, .len = obj2io(o)->len};
+  ...
+  124    obj2io(o)->len = 0;
+  125    obj2io(o)->pos = 0;
+  126:   fiobj_io_pre_write((fiobj_s *)o, i + 1);
+  127    if (pread(obj2io(o)->fd, obj2io(o)->buffer, i, 0) != i)
+  128      return (fio_cstr_s){.buffer = NULL, .len = 0};
+  ...
+  131  }
+  132  
+  133: static int fiobj_io_is_eq(const fiobj_s *self, const fiobj_s *other) {
+  134    int64_t len;
+  135    return (self == other || (FIOBJ_TYPE(self) == FIOBJ_TYPE(other) &&
+  ...
+  219  
+  220  /** Creates a new local in-memory IO object */
+  221: fiobj_s *fiobj_io_newstr(void) {
+  222:   fiobj_s *o = fiobj_io_alloc(malloc(4096), -1);
+  223    REQUIRE_MEM(obj2io(o)->buffer);
+  224    obj2io(o)->capa = 4096;
+  ...
+  232   * pointer if the buffer is static and shouldn't be freed.
+  233   */
+  234: fiobj_s *fiobj_io_newstr2(void *buffer, uintptr_t length,
+  235                            void (*dealloc)(void *)) {
+  236:   fiobj_s *o = fiobj_io_alloc(buffer, -1);
+  237    obj2io(o)->capa = length;
+  238    obj2io(o)->len = length;
+  ...
+  242  
+  243  /** Creates a new local file IO object */
+  244: fiobj_s *fiobj_io_newfd(int fd) {
+  245:   fiobj_s *o = fiobj_io_alloc(malloc(4096), fd);
+  246    REQUIRE_MEM(obj2io(o)->buffer);
+  247    obj2io(o)->fpos = 0;
+  ...
+  250  
+  251  /** Creates a new local tempfile IO object */
+  252: fiobj_s *fiobj_io_newtmpfile(void) {
+  253  // create a temporary file to contain the data.
+  254  #ifdef P_tmpdir
+  ...
+  277   * IO object is made.
+  278   */
+  279: fio_cstr_s fiobj_io_read(fiobj_s *io, intptr_t length) {
+  280    if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO) {
+  281      errno = EFAULT;
+  ...
+  361   * IO object is made.
+  362   */
+  363: fio_cstr_s fiobj_io_read2ch(fiobj_s *io, uint8_t token) {
+  364    if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO) {
+  365      errno = EFAULT;
+  ...
+  436   * Returns the current reading position.
+  437   */
+  438: intptr_t fiobj_io_pos(fiobj_s *io) {
+  439    if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO)
+  440      return -1;
+  ...
+  447   * Moves the reading position to the requested position.
+  448   */
+  449: void fiobj_io_seek(fiobj_s *io, intptr_t position) {
+  450    if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO)
+  451      return;
+  ...
+  508   * IO object is made.
+  509   */
+  510: fio_cstr_s fiobj_io_pread(fiobj_s *io, intptr_t start_at, uintptr_t length) {
+  511    if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO) {
+  512      errno = EFAULT;
+  ...
+  571   * copied to a new memory block.
+  572   */
+  573: void fiobj_io_assert_dynamic(fiobj_s *io) {
+  574    if (!io) {
+  575      errno = ENFILE;
+  ...
+  587   * Behaves and returns the same value as the system call `write`.
+  588   */
+  589: intptr_t fiobj_io_write(fiobj_s *io, void *buffer, uintptr_t length) {
+  590    if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO || (!buffer && length)) {
+  591      errno = EFAULT;
+  ...
+  612   * Behaves and returns the same value as the system call `write`.
+  613   */
+  614: intptr_t fiobj_io_puts(fiobj_s *io, void *buffer, uintptr_t length) {
+  615    if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO || (!buffer && length)) {
+  616      errno = EFAULT;
+  ...
+  650  
+  651  void fiobj_io_test(char *filename) {
+  652:   fiobj_s *text;
+  653    fio_cstr_s s1, s2;
+  654    fprintf(stderr, "*** testing fiobj_io ***\n");
+  ...
+  657    else
+  658      text = fiobj_str_static("Line 1\r\nLine 2\nLine 3 unended", 29);
+  659:   fiobj_s *strio = fiobj_io_newstr();
+  660    fprintf(stderr, "* `newstr` passed.\n");
+  661:   fiobj_s *fdio = fiobj_io_newtmpfile();
+  662    fprintf(stderr, "* `newtmpfile` passed.\n");
+  663    fiobj_io_write(fdio, fiobj_obj2cstr(text).buffer,
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_io.h:
+   31  
+   32  /** Creates a new local in-memory IO object */
+   33: fiobj_s *fiobj_io_newstr(void);
+   34  
+   35  /**
+   ..
+   38   * pointer if the buffer is static and shouldn't be freed.
+   39   */
+   40: fiobj_s *fiobj_io_newstr2(void *buffer, uintptr_t length,
+   41                            void (*dealloc)(void *));
+   42  
+   43  /** Creates a new local tempfile IO object */
+   44: fiobj_s *fiobj_io_newtmpfile(void);
+   45  
+   46  /** Creates a new local file IO object */
+   47: fiobj_s *fiobj_io_newfd(int fd);
+   48  
+   49  /* *****************************************************************************
+   ..
+   61   * IO object is made.
+   62   */
+   63: fio_cstr_s fiobj_io_read(fiobj_s *io, intptr_t length);
+   64  
+   65  /**
+   ..
+   74   * IO object is made.
+   75   */
+   76: fio_cstr_s fiobj_io_read2ch(fiobj_s *io, uint8_t token);
+   77  
+   78  /**
+   ..
+   94   * Returns the current reading position. Returns -1 on error.
+   95   */
+   96: intptr_t fiobj_io_pos(fiobj_s *io);
+   97  
+   98  /**
+   99   * Moves the reading position to the requested position.
+  100   */
+  101: void fiobj_io_seek(fiobj_s *io, intptr_t position);
+  102  
+  103  /**
+  ...
+  109   * IO object is made.
+  110   */
+  111: fio_cstr_s fiobj_io_pread(fiobj_s *io, intptr_t start_at, uintptr_t length);
+  112  
+  113  /* *****************************************************************************
+  ...
+  121   * Behaves and returns the same value as the system call `write`.
+  122   */
+  123: intptr_t fiobj_io_write(fiobj_s *io, void *buffer, uintptr_t length);
+  124  
+  125  /**
+  ...
+  129   * Behaves and returns the same value as the system call `write`.
+  130   */
+  131: intptr_t fiobj_io_puts(fiobj_s *io, void *buffer, uintptr_t length);
+  132  
+  133  /**
+  ...
+  137   * copied to a new memory block.
+  138   */
+  139: void fiobj_io_assert_dynamic(fiobj_s *io);
+  140  
+  141  #if DEBUG
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_json.c:
+   21   * consumed.
+   22   */
+   23: size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
+   24  /* Formats an object into a JSON string. Remember to `fiobj_free`. */
+   25: fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t);
+   26  
+   27  /* *****************************************************************************
+   ..
+   86  
+   87  /** Writes a JSON friendly version of the src String */
+   88: static void write_safe_str(fiobj_s *dest, const fiobj_s *str) {
+   89    fio_cstr_s s = fiobj_obj2cstr(str);
+   90    fio_cstr_s t = fiobj_obj2cstr(dest);
+   ..
+  175  /* this is used to persist data in `fiobj_each2` */
+  176  struct fiobj_str_new_json_data_s {
+  177:   fiobj_s *parent;  /* stores item types */
+  178:   fiobj_s *waiting; /* stores item counts and types */
+  179:   fiobj_s *buffer;  /* we'll write the JSON here */
+  180:   fiobj_s *count;   /* used to persist item counts for arrays / hashes */
+  181    uint8_t pretty;   /* make it beautiful */
+  182  };
+  183  
+  184: static int fiobj_str_new_json_task(fiobj_s *obj, void *d_) {
+  185    struct fiobj_str_new_json_data_s *data = d_;
+  186    if (data->count && fiobj_obj2num(data->count))
+  ...
+  256    /* print clousure to String */
+  257    while (!fiobj_obj2num(data->count)) {
+  258:     fiobj_s *tmp = fiobj_ary_pop(data->parent);
+  259      if (!tmp)
+  260        break;
+  ...
+  284   * existing String. Remember to `fiobj_free`.
+  285   */
+  286: fiobj_s *fiobj_obj2json2(fiobj_s *dest, fiobj_s *obj, uint8_t pretty) {
+  287    /* Using a whole page size could optimize future allocations (no copy) */
+  288    struct fiobj_str_new_json_data_s data = {
+  ...
+  304  
+  305  /* Formats an object into a JSON string. Remember to `fiobj_free`. */
+  306: fiobj_s *fiobj_obj2json(fiobj_s *obj, uint8_t pretty) {
+  307    return fiobj_obj2json2(fiobj_str_buf(0), obj, pretty);
+  308  }
+  ...
+  401   * Also deals with the non-standard oct ("\77") and hex ("\xFF") notations
+  402   */
+  403: static uintptr_t safestr2local(fiobj_s *str) {
+  404    if (FIOBJ_TYPE(str) != FIOBJ_T_STRING && FIOBJ_TYPE(str) != FIOBJ_T_SYMBOL) {
+  405      fprintf(stderr,
+  ...
+  521   * is consumed.
+  522   */
+  523: size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
+  524    if (!data) {
+  525      *pobj = NULL;
+  526      return 0;
+  527    }
+  528:   fiobj_s *nesting = fiobj_ary_new2(JSON_MAX_DEPTH + 2);
+  529    int64_t num;
+  530    const uint8_t *start;
+  531:   fiobj_s *obj;
+  532    const uint8_t *end = (uint8_t *)data;
+  533    const uint8_t *stop = end + len;
+  ...
+  714        continue;
+  715      }
+  716:     fiobj_s *sym = fiobj_ary_pop(nesting);
+  717      if (FIOBJ_TYPE(fiobj_ary_index(nesting, -1)) != FIOBJ_T_HASH)
+  718        goto error;
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_json.h:
+   33   * consumed.
+   34   */
+   35: size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
+   36  /**
+   37   * Formats an object into a JSON string. Remember to `fiobj_free`.
+   ..
+   44   * formatted incorrectly.
+   45   */
+   46: fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t pretty);
+   47  
+   48  /**
+   ..
+   57   * formatted incorrectly.
+   58   */
+   59: fiobj_s *fiobj_obj2json2(fiobj_s *dest, fiobj_s *object, uint8_t pretty);
+   60  
+   61  #ifdef __cplusplus
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_numbers.c:
+   29  static __thread char num_buffer[512];
+   30  
+   31: static int64_t fio_i2i(const fiobj_s *o) { return obj2num(o)->i; }
+   32: static int64_t fio_f2i(const fiobj_s *o) {
+   33    return (int64_t)floorl(obj2float(o)->f);
+   34  }
+   35: static double fio_i2f(const fiobj_s *o) { return (double)obj2num(o)->i; }
+   36: static double fio_f2f(const fiobj_s *o) { return obj2float(o)->f; }
+   37  
+   38: static int fio_itrue(const fiobj_s *o) { return (obj2num(o)->i != 0); }
+   39: static int fio_ftrue(const fiobj_s *o) { return (obj2float(o)->f != 0); }
+   40  
+   41: static fio_cstr_s fio_i2str(const fiobj_s *o) {
+   42    return (fio_cstr_s){
+   43        .buffer = num_buffer, .len = fio_ltoa(num_buffer, obj2num(o)->i, 10),
+   44    };
+   45  }
+   46: static fio_cstr_s fio_f2str(const fiobj_s *o) {
+   47    if (isnan(obj2float(o)->f))
+   48      return (fio_cstr_s){.buffer = "NaN", .len = 3};
+   ..
+   58  }
+   59  
+   60: static int fiobj_i_is_eq(const fiobj_s *self, const fiobj_s *other) {
+   61    return FIOBJ_TYPE(self) == FIOBJ_TYPE(other) &&
+   62           obj2num(self)->i == obj2num(other)->i;
+   63  }
+   64: static int fiobj_f_is_eq(const fiobj_s *self, const fiobj_s *other) {
+   65    return FIOBJ_TYPE(self) == FIOBJ_TYPE(other) &&
+   66           obj2float(self)->f == obj2float(other)->f;
+   ..
+  102  
+  103  /** Creates a Number object. Remember to use `fiobj_free`. */
+  104: fiobj_s *fiobj_num_new(int64_t num) {
+  105    fiobj_num_s *o = (fiobj_num_s *)fiobj_alloc(sizeof(*o));
+  106    if (!o)
+  ...
+  109        .vtable = &FIOBJ_VTABLE_INT, .i = num,
+  110    };
+  111:   return (fiobj_s *)o;
+  112  }
+  113  
+  114  /** Mutates a Number object's value. Effects every object's reference! */
+  115: void fiobj_num_set(fiobj_s *target, int64_t num) { obj2num(target)->i = num; }
+  116  
+  117  /** Creates a temporary Number object. This ignores `fiobj_free`. */
+  118: fiobj_s *fiobj_num_tmp(int64_t num) {
+  119    static __thread struct tmp_num_s {
+  120      fiobj_head_s head;
+  ...
+  123    ret = (struct tmp_num_s){.head = {.ref = ((~(uintptr_t)0) >> 4)},
+  124                             .num = {.i = num, .vtable = &FIOBJ_VTABLE_INT}};
+  125:   return (fiobj_s *)&ret.num;
+  126  }
+  127  
+  ...
+  131  
+  132  /** Creates a Float object. Remember to use `fiobj_free`.  */
+  133: fiobj_s *fiobj_float_new(double num) {
+  134    fiobj_float_s *o = (fiobj_float_s *)fiobj_alloc(sizeof(*o));
+  135    if (!o)
+  ...
+  138        .vtable = &FIOBJ_VTABLE_FLOAT, .f = num,
+  139    };
+  140:   return (fiobj_s *)o;
+  141  }
+  142  
+  143  /** Mutates a Float object's value. Effects every object's reference!  */
+  144: void fiobj_float_set(fiobj_s *obj, double num) { obj2float(obj)->f = num; }
+  145  
+  146  /** Creates a temporary Number object. This ignores `fiobj_free`. */
+  147: fiobj_s *fiobj_float_tmp(double num) {
+  148    static __thread struct tmp_float_s {
+  149      fiobj_head_s head;
+  ...
+  152    ret = (struct tmp_float_s){.head = {.ref = ((~(uintptr_t)0) >> 4)},
+  153                               .num = {.f = num, .vtable = &FIOBJ_VTABLE_FLOAT}};
+  154:   return (fiobj_s *)&ret.num;
+  155  }
+  156  
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_numbers.h:
+   19  
+   20  /** Creates a Number object. Remember to use `fiobj_free`. */
+   21: fiobj_s *fiobj_num_new(int64_t num);
+   22  
+   23  /** Mutates a Number object's value. Effects every object's reference! */
+   24: void fiobj_num_set(fiobj_s *target, int64_t num);
+   25  
+   26  /** Creates a temporary Number object. Avoid using `fiobj_free`. */
+   27: fiobj_s *fiobj_num_tmp(int64_t num);
+   28  
+   29  /* *****************************************************************************
+   ..
+   34  
+   35  /** Creates a Float object. Remember to use `fiobj_free`.  */
+   36: fiobj_s *fiobj_float_new(double num);
+   37  
+   38  /** Mutates a Float object's value. Effects every object's reference!  */
+   39: void fiobj_float_set(fiobj_s *obj, double num);
+   40  
+   41  /** Creates a temporary Float object. Avoid using `fiobj_free`. */
+   42: fiobj_s *fiobj_float_tmp(double num);
+   43  
+   44  /* *****************************************************************************
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_primitives.c:
+   14  ***************************************************************************** */
+   15  
+   16: static int fiobj_primitive_is_eq(const fiobj_s *self, const fiobj_s *other) {
+   17    return self == other;
+   18  }
+   ..
+   45  
+   46  /** Returns a NULL object. */
+   47: fiobj_s *fiobj_null(void) {
+   48    static struct {
+   49      fiobj_head_s head;
+   50      struct fiobj_vtable_s *vtable;
+   51    } null_obj = {.head = {.ref = 1}, .vtable = &NULL_VTABLE};
+   52:   return (fiobj_s *)(&null_obj.vtable);
+   53  }
+   54  
+   ..
+   84  
+   85  /** Returns a TRUE object. */
+   86: fiobj_s *fiobj_true(void) {
+   87    static struct {
+   88      fiobj_head_s head;
+   89      struct fiobj_vtable_s *vtable;
+   90    } obj = {.head = {.ref = 1}, .vtable = &TRUE_VTABLE};
+   91:   return (fiobj_s *)(&obj.vtable);
+   92  }
+   93  
+   ..
+  123  
+  124  /** Returns a FALSE object. */
+  125: fiobj_s *fiobj_false(void) {
+  126    static struct {
+  127      fiobj_head_s head;
+  128      struct fiobj_vtable_s *vtable;
+  129    } obj = {.head = {.ref = 1}, .vtable = &FALSE_VTABLE};
+  130:   return (fiobj_s *)(&obj.vtable);
+  131  }
+  132  
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_primitives.h:
+   24  
+   25  /** Returns a NULL object. */
+   26: fiobj_s *fiobj_null(void);
+   27  
+   28: /** Tests if a `fiobj_s *` is NULL. */
+   29  #define FIOBJ_IS_NULL(o) ((o) == NULL) || (FIOBJ_TYPE(o) == FIOBJ_T_NULL)
+   30  
+   ..
+   37  
+   38  /** Returns a TRUE object. */
+   39: fiobj_s *fiobj_true(void);
+   40  
+   41  /* *****************************************************************************
+   ..
+   47  
+   48  /** Returns a FALSE object. */
+   49: fiobj_s *fiobj_false(void);
+   50  
+   51  #ifdef __cplusplus
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_str.c:
+   41  ***************************************************************************** */
+   42  
+   43: static void fiobj_str_dealloc(fiobj_s *o) {
+   44    free(obj2str(o)->str);
+   45    fiobj_dealloc(o);
+   46  }
+   47  
+   48: static int fiobj_str_is_eq(const fiobj_s *self, const fiobj_s *other) {
+   49    if (!other || (FIOBJ_IS_STRING(other)) ||
+   50        obj2str(self)->len != obj2str(other)->len)
+   ..
+   54  }
+   55  
+   56: static fio_cstr_s fio_str2str(const fiobj_s *o) {
+   57    return (fio_cstr_s){.buffer = obj2str(o)->str, .len = obj2str(o)->len};
+   58  }
+   59: static int64_t fio_str2i(const fiobj_s *o) {
+   60    char *s = obj2str(o)->str;
+   61    return fio_atol(&s);
+   62  }
+   63: static double fio_str2f(const fiobj_s *o) {
+   64    char *s = obj2str(o)->str;
+   65    return fio_atof(&s);
+   66  }
+   67  
+   68: static int fio_str2bool(const fiobj_s *o) { return obj2str(o)->len != 0; }
+   69  
+   70  static struct fiobj_vtable_s FIOBJ_VTABLE_STRING = {
+   ..
+  103  ***************************************************************************** */
+  104  
+  105: static inline fiobj_s *fiobj_str_alloc(size_t len) {
+  106:   fiobj_s *o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
+  107    if (!o)
+  108      perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
+  ...
+  120  
+  121  /** Creates a String object. Remember to use `fiobj_free`. */
+  122: fiobj_s *fiobj_str_new(const char *str, size_t len) {
+  123:   fiobj_s *s = fiobj_str_alloc(len);
+  124    if (str)
+  125      memcpy(obj2str(s)->str, str, len);
+  ...
+  128  
+  129  /** Creates a buffer String object. Remember to use `fiobj_free`. */
+  130: fiobj_s *fiobj_str_buf(size_t capa) {
+  131    if (capa)
+  132      capa = capa - 1;
+  133    else
+  134      capa = fiobj_memory_page_size();
+  135:   fiobj_s *s = fiobj_str_alloc(capa);
+  136    fiobj_str_clear(s);
+  137    return s;
+  ...
+  144   * so `free` will be called by the `fiobj` library as needed.
+  145   */
+  146: fiobj_s *fiobj_str_move(char *str, size_t len, size_t capacity) {
+  147:   fiobj_s *o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
+  148    if (!o)
+  149      perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
+  ...
+  167   * NOTICE: static strings can't be written to.
+  168   */
+  169: fiobj_s *fiobj_str_static(const char *str, size_t len) {
+  170:   fiobj_s *o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
+  171    if (!o)
+  172      perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
+  ...
+  183  
+  184  /** Creates a copy from an existing String. Remember to use `fiobj_free`. */
+  185: fiobj_s *fiobj_str_copy(fiobj_s *src) {
+  186    fio_cstr_s s = fiobj_obj2cstr(src);
+  187    return fiobj_str_new(s.data, s.len);
+  ...
+  189  
+  190  /** Creates a String object using a printf like interface. */
+  191: __attribute__((format(printf, 1, 0))) fiobj_s *
+  192  fiobj_strvprintf(const char *format, va_list argv) {
+  193:   fiobj_s *str = NULL;
+  194    va_list argv_cpy;
+  195    va_copy(argv_cpy, argv);
+  ...
+  204    return str;
+  205  }
+  206: __attribute__((format(printf, 1, 2))) fiobj_s *
+  207  fiobj_strprintf(const char *format, ...) {
+  208    va_list argv;
+  209    va_start(argv, format);
+  210:   fiobj_s *str = fiobj_strvprintf(format, argv);
+  211    va_end(argv);
+  212    return str;
+  ...
+  221   * `fiobj_free`.
+  222   */
+  223: fiobj_s *fiobj_str_tmp(void) {
+  224    fiobj_tmpstr.head.ref = ((~(uintptr_t)0) >> 4);
+  225    fiobj_tmpstr.str.vtable = &FIOBJ_VTABLE_STRING;
+  226    fiobj_tmpstr.str.len = 0;
+  227:   return (fiobj_s *)(&fiobj_tmpstr.str);
+  228  }
+  229  
+  ...
+  232   * `fiobj_free` is still required (unless the string is a `tmp` string).
+  233   */
+  234: void *fiobj_str_steal(fiobj_s *str) {
+  235    if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
+  236      return NULL;
+  ...
+  248   * Remember to use `fiobj_free`.
+  249   */
+  250: fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
+  251                              size_t limit) {
+  252  #if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
+  ...
+  275    if (limit <= 0 || (size_t)f_data.st_size < limit + start_at)
+  276      limit = f_data.st_size - start_at;
+  277:   fiobj_s *str = fiobj_str_buf(limit + 1);
+  278    if (!str)
+  279      return NULL;
+  ...
+  300  
+  301  /** Confirms the requested capacity is available and allocates as required. */
+  302: size_t fiobj_str_capa_assert(fiobj_s *str, size_t size) {
+  303    if (FIOBJ_TYPE(str) != FIOBJ_T_STRING || obj2str(str)->capa >= size + 1)
+  304      return obj2str(str)->capa;
+  ...
+  317  
+  318  /** Return's a String's capacity, if any. */
+  319: size_t fiobj_str_capa(fiobj_s *str) {
+  320    if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
+  321      return 0;
+  ...
+  324  
+  325  /** Resizes a String object, allocating more memory if required. */
+  326: void fiobj_str_resize(fiobj_s *str, size_t size) {
+  327    if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
+  328      return;
+  ...
+  334  
+  335  /** Deallocates any unnecessary memory (if supported by OS). */
+  336: void fiobj_str_minimize(fiobj_s *str) {
+  337    if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
+  338      return;
+  ...
+  343  
+  344  /** Empties a String's data. */
+  345: void fiobj_str_clear(fiobj_s *str) {
+  346    if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
+  347      return;
+  ...
+  354   * Returns the new length of the String
+  355   */
+  356: size_t fiobj_str_write(fiobj_s *dest, const char *data, size_t len) {
+  357    if (FIOBJ_TYPE(dest) != FIOBJ_T_STRING)
+  358      return 0;
+  ...
+  375   * Returns the new length of the String
+  376   */
+  377: size_t fiobj_str_write2(fiobj_s *dest, const char *format, ...) {
+  378    if (FIOBJ_TYPE(dest) != FIOBJ_T_STRING)
+  379      return 0;
+  ...
+  396   * Returns the new length of the String
+  397   */
+  398: size_t fiobj_str_join(fiobj_s *dest, fiobj_s *obj) {
+  399    if (FIOBJ_TYPE(dest) != FIOBJ_T_STRING)
+  400      return 0;
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_str.h:
+   27  
+   28  /** Creates a String object. Remember to use `fiobj_free`. */
+   29: fiobj_s *fiobj_str_new(const char *str, size_t len);
+   30  
+   31  /** Creates a buffer String object. capa includes NUL.
+   ..
+   33   * Remember to use `fiobj_free`.
+   34   */
+   35: fiobj_s *fiobj_str_buf(size_t capa);
+   36  
+   37  /**
+   ..
+   45   * NOTICE: static strings can't be written to.
+   46   */
+   47: fiobj_s *fiobj_str_static(const char *str, size_t len);
+   48  
+   49  /** Creates a copy from an existing String. Remember to use `fiobj_free`. */
+   50: fiobj_s *fiobj_str_copy(fiobj_s *src);
+   51  
+   52  /**
+   ..
+   56   * so `free` will be called by the `fiobj` library as needed.
+   57   */
+   58: fiobj_s *fiobj_str_move(char *str, size_t len, size_t capacity);
+   59  /**
+   60   * Returns a thread-static temporary string. Avoid calling `fiobj_dup` or
+   61   * `fiobj_free`.
+   62   */
+   63: fiobj_s *fiobj_str_tmp(void);
+   64  
+   65  /** Creates a String object using a printf like interface. */
+   66: __attribute__((format(printf, 1, 0))) fiobj_s *
+   67  fiobj_strvprintf(const char *format, va_list argv);
+   68  
+   69  /** Creates a String object using a printf like interface. */
+   70: __attribute__((format(printf, 1, 2))) fiobj_s *
+   71  fiobj_strprintf(const char *format, ...);
+   72  
+   ..
+   81   * NOTE: Requires a UNIX system, otherwise always returns NULL.
+   82   */
+   83: fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
+   84                              size_t limit);
+   85  
+   ..
+   93   * Returns updated capacity.
+   94   */
+   95: size_t fiobj_str_capa_assert(fiobj_s *str, size_t size);
+   96  
+   97  /** Return's a String's capacity, if any. This should include the NUL byte. */
+   98: size_t fiobj_str_capa(fiobj_s *str);
+   99  
+  100  /** Resizes a String object, allocating more memory if required. */
+  101: void fiobj_str_resize(fiobj_s *str, size_t size);
+  102  
+  103  /** Deallocates any unnecessary memory (if supported by OS). */
+  104: void fiobj_str_minimize(fiobj_s *str);
+  105  
+  106  /** Empties a String's data. */
+  107: void fiobj_str_clear(fiobj_s *str);
+  108  
+  109  /**
+  ...
+  111   * `fiobj_free` is still required (unless the string is a `tmp` string).
+  112   */
+  113: void *fiobj_str_steal(fiobj_s *str);
+  114  
+  115  /**
+  ...
+  117   * Returns the new length of the String
+  118   */
+  119: size_t fiobj_str_write(fiobj_s *dest, const char *data, size_t len);
+  120  
+  121  /**
+  ...
+  124   */
+  125  __attribute__((format(printf, 2, 3))) size_t
+  126: fiobj_str_write2(fiobj_s *dest, const char *format, ...);
+  127  
+  128  /**
+  ...
+  133   * Returns the new length of the String.
+  134   */
+  135: size_t fiobj_str_join(fiobj_s *dest, fiobj_s *source);
+  136  
+  137  #ifdef __cplusplus
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_sym.c:
+   26  ***************************************************************************** */
+   27  
+   28: static int fiobj_sym_is_eq(const fiobj_s *self, const fiobj_s *other) {
+   29    if (FIOBJ_TYPE(other) != FIOBJ_TYPE(self))
+   30      return 0;
+   ..
+   33  }
+   34  
+   35: static fio_cstr_s fio_sym2str(const fiobj_s *o) {
+   36    return (fio_cstr_s){.buffer = obj2sym(o)->str, .len = obj2sym(o)->len};
+   37  }
+   38: static int64_t fio_sym2i(const fiobj_s *o) {
+   39    char *s = obj2sym(o)->str;
+   40    return fio_atol(&s);
+   41  }
+   42: static double fio_sym2f(const fiobj_s *o) {
+   43    char *s = obj2sym(o)->str;
+   44    return fio_atof(&s);
+   ..
+   64  ***************************************************************************** */
+   65  
+   66: static inline fiobj_s *fiobj_sym_alloc(size_t len) {
+   67:   fiobj_s *o = fiobj_alloc(sizeof(fiobj_sym_s) + len + 1);
+   68    if (!o)
+   69      perror("ERROR: fiobj symbol couldn't allocate memory"), exit(errno);
+   ..
+   75  
+   76  /** Creates a Symbol object. Use `fiobj_free`. */
+   77: fiobj_s *fiobj_sym_new(const char *str, size_t len) {
+   78:   fiobj_s *s = fiobj_sym_alloc(len);
+   79    if (str)
+   80      memcpy(obj2sym(s)->str, str, len);
+   ..
+   86  /** Finalizes a pre-allocated Symbol buffer to set it's final length and
+   87   * calculate it's final hashing value. */
+   88: fiobj_s *fiobj_sym_reinitialize(fiobj_s *s, const size_t len) {
+   89    if (obj2sym(s)->len < len)
+   90      fprintf(stderr,
+   ..
+   98  
+   99  /** Creates a Symbol object using a printf like interface. */
+  100: __attribute__((format(printf, 1, 0))) fiobj_s *
+  101  fiobj_symvprintf(const char *format, va_list argv) {
+  102:   fiobj_s *sym = NULL;
+  103    va_list argv_cpy;
+  104    va_copy(argv_cpy, argv);
+  ...
+  116    return sym;
+  117  }
+  118: __attribute__((format(printf, 1, 2))) fiobj_s *
+  119  fiobj_symprintf(const char *format, ...) {
+  120    va_list argv;
+  121    va_start(argv, format);
+  122:   fiobj_s *sym = fiobj_symvprintf(format, argv);
+  123    va_end(argv);
+  124    return sym;
+  ...
+  131   * objects that were created using the same data.
+  132   */
+  133: uint64_t fiobj_sym_id(fiobj_s *sym) {
+  134    if (FIOBJ_TYPE(sym) == FIOBJ_T_SYMBOL)
+  135      return obj2sym(sym)->hash;
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_sym.h:
+   23  
+   24  /** Creates a Symbol object. Use `fiobj_free`. */
+   25: fiobj_s *fiobj_sym_new(const char *str, size_t len);
+   26  
+   27  /** Creates a Symbol object using a printf like interface. */
+   28: __attribute__((format(printf, 1, 0))) fiobj_s *
+   29  fiobj_symvprintf(const char *format, va_list argv);
+   30  
+   31  /** Creates a Symbol object using a printf like interface. */
+   32: __attribute__((format(printf, 1, 2))) fiobj_s *
+   33  fiobj_symprintf(const char *format, ...);
+   34  
+   ..
+   39   * objects that were created using the same data.
+   40   */
+   41: uint64_t fiobj_sym_id(fiobj_s *sym);
+   42  
+   43  /* *****************************************************************************
+   ..
+   52   * Hash.
+   53   */
+   54: fiobj_s *fiobj_sym_reinitialize(fiobj_s *s, const size_t len);
+   55  
+   56  #ifdef __cplusplus
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobj_tests.c:
+   38    clock_t start, end;
+   39  
+   40:   fiobj_s *result = NULL;
+   41    start = clock();
+   42    size_t i = fiobj_json2obj(&result, json, len);
+   ..
+   49    fprintf(stderr, "* Parsed JSON in %lu\n", end - start);
+   50    start = clock();
+   51:   fiobj_s *jstr = fiobj_obj2json(result, 1);
+   52    end = clock();
+   53    fprintf(stderr, "* Formatted JSON in %lu\n", end - start);
+   ..
+  153              fiobj_str_capa(tmp), fiobj_reference_count(tmp),
+  154              fiobj_obj2cstr(tmp).data);
+  155:     fiobj_s *parsed = NULL;
+  156      if (fiobj_json2obj(&parsed, fiobj_obj2cstr(tmp).buffer,
+  157                         fiobj_obj2cstr(tmp).len) == 0) {
+  ...
+  243  static void fiobj_hash_test(void) {
+  244    clock_t start, end;
+  245:   fiobj_s *syms;
+  246:   fiobj_s *strings;
+  247:   fiobj_s *hash;
+  248    fprintf(stderr, "\nTesting Hash and Array allocations\n");
+  249  
+  ...
+  346    /* start simple tests */
+  347  
+  348:   fiobj_s *obj;
+  349    size_t i;
+  350    fprintf(stderr, "\n===\nStarting fiobj basic testing:\n");
+  ...
+  420                  fiobj_ary_count(obj), fiobj_ary_capa(obj), i + 1);
+  421      }
+  422:     fiobj_s *tmp = fiobj_obj2json(obj, 0);
+  423      fprintf(stderr, "Array test printout:\n%s\n",
+  424              tmp ? fiobj_obj2cstr(tmp).data : "ERROR");
+  ...
+  434    {
+  435      fprintf(stderr, "* testing cyclic protection. \n");
+  436:     fiobj_s *a1 = fiobj_ary_new();
+  437:     fiobj_s *a2 = fiobj_ary_new();
+  438      for (size_t i = 0; i < 129; i++) {
+  439        obj = fiobj_num_new(1024 + i);
+  ...
+  450              fiobj_ary_count(a1), fiobj_ary_count(a2));
+  451      {
+  452:       fiobj_s *tmp = fiobj_obj2json(a1, 0);
+  453        fprintf(stderr, "%s\n", tmp ? fiobj_obj2cstr(tmp).data : "ERROR");
+  454        fiobj_free(tmp);
+  ...
+  479    {
+  480      fprintf(stderr, "* testing deep array nesting. \n");
+  481:     fiobj_s *top = fiobj_ary_new();
+  482:     fiobj_s *pos = top;
+  483      for (size_t i = 0; i < 128; i++) {
+  484        for (size_t j = 0; j < 128; j++) {
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobject.c:
+   25  ***************************************************************************** */
+   26  
+   27: static __thread fiobj_s *fiobj_cyclic_protection = NULL;
+   28: fiobj_s *fiobj_each_get_cyclic(void) { return fiobj_cyclic_protection; }
+   29  
+   30: static inline fiobj_s *protected_pop_obj(fio_ls_s *queue, fio_ls_s *history) {
+   31  #if FIOBJ_NESTING_PROTECTION
+   32    fiobj_cyclic_protection = NULL;
+   33  
+   34:   fiobj_s *obj = fio_ls_pop(queue);
+   35    if (!obj)
+   36      return NULL;
+   37:   fiobj_s *child = OBJVTBL(obj)->unwrap(obj);
+   38    if (!child)
+   39      return obj;
+   ..
+   55  }
+   56  
+   57: static inline void protected_push_obj(const fiobj_s *obj, fio_ls_s *history) {
+   58  #if FIOBJ_NESTING_PROTECTION
+   59    fio_ls_push(history, OBJVTBL(obj)->unwrap(obj));
+   ..
+   69  
+   70  /** Returns a C string naming the objects dynamic type. */
+   71: const char *fiobj_type_name(const fiobj_s *obj) { return OBJVTBL(obj)->name; }
+   72  
+   73  /**
+   ..
+   81   * We don't need this feature just yet, so I'm not working on it.
+   82   */
+   83: fiobj_s *fiobj_dup(fiobj_s *obj) {
+   84    if (obj)
+   85      OBJREF_ADD(obj);
+   ..
+   87  }
+   88  
+   89: static int fiobj_free_or_mark(fiobj_s *o, void *arg) {
+   90    if (!o)
+   91      return 0;
+   ..
+  109  
+  110    /* test for wrapped object (i.e., Hash Couplet) */
+  111:   fiobj_s *child = OBJVTBL(o)->unwrap(o);
+  112  
+  113    if (child != o) {
+  ...
+  137   * also freed.
+  138   */
+  139: uintptr_t fiobj_free(fiobj_s *o) {
+  140  #if DEBUG
+  141    if (!o)
+  ...
+  159    /* handle wrapping */
+  160    {
+  161:     fiobj_s *child = OBJVTBL(o)->unwrap(o);
+  162      if (child != o) {
+  163        OBJVTBL(o)->free(o);
+  ...
+  191   * This is mostly for testing rather than normal library operations.
+  192   */
+  193: uintptr_t fiobj_reference_count(const fiobj_s *o) { return OBJ2HEAD(o)->ref; }
+  194  
+  195  /**
+  ...
+  199   * FALSE, even though they aren't a boolean type.
+  200   */
+  201: int fiobj_is_true(const fiobj_s *o) { return (o && OBJVTBL(o)->is_true(o)); }
+  202  
+  203  /**
+  ...
+  213   * A type error results in 0.
+  214   */
+  215: int64_t fiobj_obj2num(const fiobj_s *o) { return o ? OBJVTBL(o)->to_i(o) : 0; }
+  216  
+  217  /**
+  ...
+  227   * A type error results in 0.
+  228   */
+  229: double fiobj_obj2float(const fiobj_s *o) { return o ? OBJVTBL(o)->to_f(o) : 0; }
+  230  
+  231  /**
+  ...
+  242   * A type error results in NULL (i.e. object isn't a String).
+  243   */
+  244: fio_cstr_s fiobj_obj2cstr(const fiobj_s *o) {
+  245    return o ? OBJVTBL(o)->to_str(o) : fiobj_noop_str(NULL);
+  246  }
+  ...
+  249   * Single layer iteration using a callback for each nested fio object.
+  250   *
+  251:  * Accepts any `fiobj_s *` type but only collections (Arrays and Hashes) are
+  252   * processed. The container itself (the Array or the Hash) is **not** processed
+  253   * (unlike `fiobj_each2`).
+  ...
+  263   * starting point.
+  264   */
+  265: size_t fiobj_each1(fiobj_s *o, size_t start_at,
+  266:                    int (*task)(fiobj_s *obj, void *arg), void *arg) {
+  267    return o ? OBJVTBL(o)->each1(o, start_at, task, arg) : 0;
+  268  }
+  ...
+  272  ***************************************************************************** */
+  273  
+  274: static int each2_add_to_queue(fiobj_s *obj, void *arg) {
+  275    fio_ls_s *const queue = arg;
+  276    fio_ls_unshift(queue, obj);
+  ...
+  289   * If the callback returns -1, the loop is broken. Any other value is ignored.
+  290   */
+  291: void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
+  292                   void *arg) {
+  293    if (!obj)
+  ...
+  332   *
+  333   */
+  334: int fiobj_iseq(const fiobj_s *self, const fiobj_s *other) {
+  335    if (self == other)
+  336      return 1;
+  ...
+  354      protected_push_obj(self, &self_history);
+  355      protected_push_obj(other, &other_history);
+  356:     OBJVTBL(self)->each1((fiobj_s *)self, 0, each2_add_to_queue,
+  357                           self_queue.next);
+  358:     OBJVTBL(other)->each1((fiobj_s *)other, 0, each2_add_to_queue,
+  359                            other_queue.next);
+  360      while (self_queue.next != &self_queue || self) {
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj/fiobject.h:
+   31  /** The dynamic facil.io object type. */
+   32  typedef struct { uintptr_t type; } fiobj_s;
+   33: typedef fiobj_s *fiobj_pt;
+   34  
+   35: #define FIOBJ fiobj_s *
+   36  
+   37  /** A string information type, reports anformation about a C string. */
+   ..
+   67  
+   68  #define FIOBJ_TYPE(obj) fiobj_type((obj))
+   69: static inline __attribute__((unused)) uintptr_t fiobj_type(fiobj_s *obj);
+   70  
+   71  /* *****************************************************************************
+   ..
+   74  
+   75  /** Returns a C string naming the objects dynamic type. */
+   76: const char *fiobj_type_name(const fiobj_s *obj);
+   77  
+   78  /**
+   ..
+   86   * We don't need this feature just yet, so I'm not working on it.
+   87   */
+   88: fiobj_s *fiobj_dup(fiobj_s *);
+   89  
+   90  /**
+   ..
+   98   * Returns the number of existing references or zero if memory was released.
+   99   */
+  100: uintptr_t fiobj_free(fiobj_s *);
+  101  
+  102  /**
+  ...
+  105   * This is mostly for testing rather than normal library operations.
+  106   */
+  107: uintptr_t fiobj_reference_count(const fiobj_s *);
+  108  
+  109  /**
+  ...
+  113   * FALSE, even though they aren't a boolean type.
+  114   */
+  115: int fiobj_is_true(const fiobj_s *);
+  116  
+  117  /**
+  ...
+  127   * A type error results in 0.
+  128   */
+  129: int64_t fiobj_obj2num(const fiobj_s *obj);
+  130  
+  131  /**
+  ...
+  141   * A type error results in 0.
+  142   */
+  143: double fiobj_obj2float(const fiobj_s *obj);
+  144  
+  145  /**
+  ...
+  156   * A type error results in NULL (i.e. object isn't a String).
+  157   */
+  158: fio_cstr_s fiobj_obj2cstr(const fiobj_s *obj);
+  159  
+  160  /**
+  161   * Single layer iteration using a callback for each nested fio object.
+  162   *
+  163:  * Accepts any `fiobj_s *` type but only collections (Arrays and Hashes) are
+  164   * processed. The container itself (the Array or the Hash) is **not** processed
+  165   * (unlike `fiobj_each2`).
+  ...
+  175   * starting point.
+  176   */
+  177: size_t fiobj_each1(fiobj_s *, size_t start_at,
+  178:                    int (*task)(fiobj_s *obj, void *arg), void *arg);
+  179  
+  180  /**
+  181   * Deep iteration using a callback for each fio object, including the parent.
+  182   *
+  183:  * Accepts any `fiobj_s *` type.
+  184   *
+  185   * Collections (Arrays, Hashes) are deeply probed and shouldn't be edited
+  ...
+  203   * If the callback returns -1, the loop is broken. Any other value is ignored.
+  204   */
+  205: void fiobj_each2(fiobj_s *, int (*task)(fiobj_s *obj, void *arg), void *arg);
+  206  
+  207  /** Within `fiobj_each2`, this will return the current cyclic object, if any. */
+  208: fiobj_s *fiobj_each_get_cyclic(void);
+  209  
+  210  /**
+  ...
+  228   * Returns 1 if true and 0 if false.
+  229   */
+  230: int fiobj_iseq(const fiobj_s *obj1, const fiobj_s *obj2);
+  231  
+  232  /* *****************************************************************************
+  ...
+  290  ***************************************************************************** */
+  291  
+  292: static inline __attribute__((unused)) uintptr_t fiobj_type(fiobj_s *obj) {
+  293    return obj->type;
+  294  }
+
+/Users/2be/rC/facilio/lib/facil/core/types/fiobj4sock.h:
+   10  static void my_dealloc(void *o) { fiobj_free(o); }
+   11  
+   12: /** send a fiobj_s * object through a socket. */
+   13  static inline __attribute__((unused)) int fiobj_send(intptr_t uuid,
+   14:                                                      fiobj_s *o) {
+   15    fio_cstr_s s = fiobj_obj2cstr(o);
+   16    // fprintf(stderr, "%s\n", s.data);
+
+/Users/2be/rC/facilio/lib/facil/http/http.c:
+   28      cl_hash = fiobj_sym_hash("content-length", 14);
+   29    if (!fiobj_hash_get3(r->private_data.out_headers, cl_hash)) {
+   30:     static fiobj_s *cl;
+   31      if (!cl)
+   32        cl = HTTP_HEADER_CONTENT_LENGTH;
+   ..
+   35  }
+   36  
+   37: static fiobj_s *current_date;
+   38  static time_t last_date_added;
+   39  static spn_lock_i date_lock;
+   ..
+   47  
+   48    if (facil_last_tick().tv_sec >= last_date_added + 60) {
+   49:     fiobj_s *tmp = fiobj_str_buf(32);
+   50      fiobj_str_resize(
+   51          tmp, http_time2str(fiobj_obj2cstr(tmp).data, facil_last_tick().tv_sec));
+   ..
+   53      if (facil_last_tick().tv_sec >= last_date_added + 60) {
+   54        last_date_added = facil_last_tick().tv_sec;
+   55:       fiobj_s *other = current_date;
+   56        current_date = tmp;
+   57        tmp = other;
+   ..
+   72  
+   73  struct header_writer_s {
+   74:   fiobj_s *dest;
+   75:   fiobj_s *name;
+   76:   fiobj_s *value;
+   77  };
+   78  
+   79: static int write_header(fiobj_s *o, void *w_) {
+   80    struct header_writer_s *w = w_;
+   81    if (!o)
+   ..
+  117   * Returns -1 on error and 0 on success.
+  118   */
+  119: int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value) {
+  120    if (!r || !name || !r->private_data.out_headers)
+  121      return -1;
+  ...
+  133        !r->private_data.out_headers)
+  134      return -1;
+  135:   fiobj_s *tmp = fiobj_sym_new(n.data, n.length);
+  136    int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.length));
+  137    fiobj_free(tmp);
+  ...
+  156    size_t capa = cookie.name_len + cookie.value_len + 128;
+  157    size_t len = 0;
+  158:   fiobj_s *c = fiobj_str_buf(capa);
+  159    fio_cstr_s t = fiobj_obj2cstr(c);
+  160    if (cookie.name) {
+  ...
+  278      fiobj_str_write(c, "secure;", 7);
+  279    }
+  280:   static fiobj_s *sym = NULL;
+  281    if (!sym)
+  282      sym = HTTP_HEADER_SET_COOKIE;
+  ...
+  341  
+  342    /* create filename string */
+  343:   fiobj_s *filename = fiobj_str_tmp();
+  344    if (prefix && prefix_len) {
+  345      if (encoded && prefix[prefix_len - 1] == '/' && encoded[0] == '/')
+  ...
+  381    fio_cstr_s s = fiobj_obj2cstr(filename);
+  382    {
+  383:     fiobj_s *tmp = fiobj_hash_get3(h->headers, accept_enc_hash);
+  384      if (!tmp)
+  385        goto no_gzip_support;
+  ...
+  406    /* set last-modified */
+  407    {
+  408:     fiobj_s *tmp = fiobj_str_buf(32);
+  409      fiobj_str_resize(
+  410          tmp, http_time2str(fiobj_obj2cstr(tmp).data, file_data.st_mtime));
+  ...
+  417    etag ^= (uint64_t)file_data.st_mtime;
+  418    etag = fiobj_sym_hash(&etag, sizeof(uint64_t));
+  419:   fiobj_s *etag_str = fiobj_str_buf(32);
+  420    fiobj_str_resize(etag_str,
+  421                     fio_base64_encode(fiobj_obj2cstr(etag_str).data,
+  ...
+  428      if (!none_match_hash)
+  429        none_match_hash = fiobj_sym_hash("if-none-match", 13);
+  430:     fiobj_s *tmp2 = fiobj_hash_get3(h->headers, none_match_hash);
+  431      if (tmp2 && fiobj_iseq(tmp2, etag_str)) {
+  432        h->status = 304;
+  ...
+  442      if (!ifrange_hash)
+  443        ifrange_hash = fiobj_sym_hash("if-range", 8);
+  444:     fiobj_s *tmp = fiobj_hash_get3(h->headers, ifrange_hash);
+  445      if (tmp && fiobj_iseq(tmp, etag_str)) {
+  446        fiobj_hash_delete3(h->headers, range_hash);
+  ...
+  501    }
+  502    {
+  503:     fiobj_s *tmp = NULL;
+  504      uintptr_t pos = 0;
+  505      if (is_gz) {
+  ...
+  585   */
+  586  int http_push_data(http_s *r, void *data, uintptr_t length,
+  587:                    fiobj_s *mime_type) {
+  588    return ((http_protocol_s *)r->private_data.owner)
+  589        ->vtable->http_push_data(r, data, length, mime_type);
+  ...
+  597   * Returns -1 on error and 0 on success.
+  598   */
+  599: int http_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type) {
+  600    return ((http_protocol_s *)h->private_data.owner)
+  601        ->vtable->http_push_file(h, filename, mime_type);
+  ...
+  742   * debugging.
+  743   */
+  744: fiobj_s *http_req2str(http_s *h) {
+  745    if (!h->headers)
+  746      return NULL;
+  ...
+  778  
+  779  void http_write_log(http_s *h) {
+  780:   fiobj_s *l = fiobj_str_buf(128);
+  781    static uint64_t cl_hash = 0;
+  782    if (!cl_hash)
+  ...
+  812    fiobj_str_resize(l, buff.len);
+  813    {
+  814:     fiobj_s *date;
+  815      spn_lock(&date_lock);
+  816      date = fiobj_dup(current_date);
+  ...
+ 1228  /** Registers a Mime-Type to be associated with the file extension. */
+ 1229  void http_mimetype_register(char *file_ext, size_t file_ext_len,
+ 1230:                             fiobj_s *mime_type_str) {
+ 1231    if (!mime_types.map)
+ 1232      fio_hash_new(&mime_types);
+ 1233    uintptr_t hash = fiobj_sym_hash(file_ext, file_ext_len);
+ 1234:   fiobj_s *old = fio_hash_insert(&mime_types, hash, mime_type_str);
+ 1235    fiobj_free(old);
+ 1236  }
+ ....
+ 1240   *  Remember to call `fiobj_free`.
+ 1241   */
+ 1242: fiobj_s *http_mimetype_find(char *file_ext, size_t file_ext_len) {
+ 1243    if (!mime_types.map)
+ 1244      return NULL;
+
+/Users/2be/rC/facilio/lib/facil/http/http.h:
+   52      protocol_s *owner;
+   53      /** The response headers, if they weren't sent. Don't access directly. */
+   54:     fiobj_s *out_headers;
+   55      /** a private request ID, used by the owner (facil.io), do not touch. */
+   56      uintptr_t request_id;
+   ..
+   60    union {
+   61      /** a String containing the method data (supports non-standard methods. */
+   62:     fiobj_s *method;
+   63      /** The status string., if the object is a response. */
+   64:     fiobj_s *status_str;
+   65    };
+   66    /** The HTTP version string, if any. */
+   67:   fiobj_s *version;
+   68    /** The status used for the response (or if the object is a response). */
+   69    uintptr_t status;
+   70    /** The request path, if any. */
+   71:   fiobj_s *path;
+   72    /** The request query, if any. */
+   73:   fiobj_s *query;
+   74    /** a hash of general header data. When a header is set multiple times (such
+   75     * as cookie headers), an Array will be used instead of a String. */
+   76:   fiobj_s *headers;
+   77    /**
+   78     * a placeholder for a hash of cookie data.
+   79     * the hash will be initialized when parsing the request.
+   80     */
+   81:   fiobj_s *cookies;
+   82    /**
+   83     * a placeholder for a hash of request data.
+   84     * the hash will be initialized when parsing the request.
+   85     */
+   86:   fiobj_s *params;
+   87    /**
+   88     * a reader for body data (might be a temporary file or a string or NULL).
+   89     * see fiobj_io.h for details.
+   90     */
+   91:   fiobj_s *body;
+   92    /** an opaque user data pointer, to be used BEFORE calling `http_defer`. */
+   93    void *udata;
+   ..
+  135   * Returns -1 on error and 0 on success.
+  136   */
+  137: int http_set_header(http_s *h, fiobj_s *name, fiobj_s *value);
+  138  
+  139  /**
+  ...
+  227   * Returns -1 on error and 0 on success.
+  228   */
+  229: int http_push_data(http_s *h, void *data, uintptr_t length, fiobj_s *mime_type);
+  230  
+  231  /**
+  ...
+  237   * Returns -1 on error and 0 on success.
+  238   */
+  239: int http_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type);
+  240  
+  241  /**
+  ...
+  427  /** Registers a Mime-Type to be associated with the file extension. */
+  428  void http_mimetype_register(char *file_ext, size_t file_ext_len,
+  429:                             fiobj_s *mime_type_str);
+  430  
+  431  /**
+  ...
+  433   *  Remember to call `fiobj_free`.
+  434   */
+  435: fiobj_s *http_mimetype_find(char *file_ext, size_t file_ext_len);
+  436  
+  437  /** Clears the Mime-Type registry (it will be emoty afterthis call). */
+  ...
+  442  ***************************************************************************** */
+  443  
+  444: extern fiobj_s *HTTP_HEADER_CACHE_CONTROL;
+  445: extern fiobj_s *HTTP_HEADER_CONNECTION;
+  446: extern fiobj_s *HTTP_HEADER_CONTENT_ENCODING;
+  447: extern fiobj_s *HTTP_HEADER_CONTENT_LENGTH;
+  448: extern fiobj_s *HTTP_HEADER_CONTENT_RANGE;
+  449: extern fiobj_s *HTTP_HEADER_CONTENT_TYPE;
+  450: extern fiobj_s *HTTP_HEADER_COOKIE;
+  451: extern fiobj_s *HTTP_HEADER_DATE;
+  452: extern fiobj_s *HTTP_HEADER_ETAG;
+  453: extern fiobj_s *HTTP_HEADER_LAST_MODIFIED;
+  454: extern fiobj_s *HTTP_HEADER_SET_COOKIE;
+  455: extern fiobj_s *HTTP_HEADER_UPGRADE;
+  456  
+  457  /* *****************************************************************************
+  ...
+  463   * is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
+  464   */
+  465: fiobj_s *http_req2str(http_s *h);
+  466  
+  467  /**
+
+/Users/2be/rC/facilio/lib/facil/http/http1.c:
+   70  ***************************************************************************** */
+   71  struct header_writer_s {
+   72:   fiobj_s *dest;
+   73:   fiobj_s *name;
+   74:   fiobj_s *value;
+   75  };
+   76  
+   77: static int write_header(fiobj_s *o, void *w_) {
+   78    struct header_writer_s *w = w_;
+   79    if (!o)
+   ..
+  100  }
+  101  
+  102: static fiobj_s *headers2str(http_s *h) {
+  103    if (!h->headers)
+  104      return NULL;
+  ...
+  113    fio_cstr_s t = http1_status2str(h->status);
+  114    fiobj_str_write(w.dest, t.data, t.length);
+  115:   fiobj_s *tmp = fiobj_hash_get3(h->private_data.out_headers, connection_key);
+  116    if (tmp) {
+  117      t = fiobj_obj2cstr(tmp);
+  ...
+  147  static int http1_send_body(http_s *h, void *data, uintptr_t length) {
+  148  
+  149:   fiobj_s *packet = headers2str(h);
+  150    if (!packet)
+  151      return -1;
+  ...
+  160  static int http1_sendfile(http_s *h, int fd, uintptr_t length,
+  161                            uintptr_t offset) {
+  162:   fiobj_s *packet = headers2str(h);
+  163    if (!packet) {
+  164      return -1;
+  ...
+  181  /** Should send existing headers or complete streaming */
+  182  static void htt1p_finish(http_s *h) {
+  183:   fiobj_s *packet = headers2str(h);
+  184    if (packet)
+  185      fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
+  ...
+  191  /** Push for data - unsupported. */
+  192  static int http1_push_data(http_s *h, void *data, uintptr_t length,
+  193:                            fiobj_s *mime_type) {
+  194    return -1;
+  195    (void)h;
+  ...
+  199  }
+  200  /** Push for files - unsupported. */
+  201: static int http1_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type) {
+  202    return -1;
+  203    (void)h;
+  ...
+  276      sec_key = fiobj_sym_hash("sec-websocket-key", 17);
+  277  
+  278:   fiobj_s *tmp = fiobj_hash_get3(args->http->headers, sec_version);
+  279    if (!tmp)
+  280      goto bad_request;
+  ...
+  385  static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
+  386                             char *data, size_t data_len) {
+  387:   fiobj_s *sym;
+  388:   fiobj_s *obj;
+  389    if (!parser2http(parser)->request.headers) {
+  390      fprintf(stderr,
+
+/Users/2be/rC/facilio/lib/facil/http/http_internal.c:
+   15    if (!upgrade_hash)
+   16      upgrade_hash = fiobj_sym_hash("upgrade", 7);
+   17:   fiobj_s *t = fiobj_hash_get3(h->headers, upgrade_hash);
+   18    if (t == NULL) {
+   19      if (settings->public_folder) {
+   ..
+   29        host_hash = fiobj_sym_hash("host", 4);
+   30      {
+   31:       fiobj_s *tmp = fiobj_hash_get3(h->headers, host_hash);
+   32        if (tmp->type == FIOBJ_T_ARRAY) {
+   33:         fiobj_s *sym = fiobj_sym_new("host", 4);
+   34          fiobj_hash_set(h->headers, sym, fiobj_ary_pop(tmp));
+   35          fiobj_free(sym);
+   ..
+   67  }
+   68  
+   69: fiobj_s *HTTP_HEADER_ACCEPT_RANGES;
+   70: fiobj_s *HTTP_HEADER_CACHE_CONTROL;
+   71: fiobj_s *HTTP_HEADER_CONNECTION;
+   72: fiobj_s *HTTP_HEADER_CONTENT_ENCODING;
+   73: fiobj_s *HTTP_HEADER_CONTENT_LENGTH;
+   74: fiobj_s *HTTP_HEADER_CONTENT_RANGE;
+   75: fiobj_s *HTTP_HEADER_CONTENT_TYPE;
+   76: fiobj_s *HTTP_HEADER_COOKIE;
+   77: fiobj_s *HTTP_HEADER_DATE;
+   78: fiobj_s *HTTP_HEADER_ETAG;
+   79: fiobj_s *HTTP_HEADER_LAST_MODIFIED;
+   80: fiobj_s *HTTP_HEADER_SET_COOKIE;
+   81: fiobj_s *HTTP_HEADER_UPGRADE;
+   82: fiobj_s *HTTP_HEADER_WS_SEC_KEY;
+   83: fiobj_s *HTTP_HVALUE_BYTES;
+   84: fiobj_s *HTTP_HVALUE_CLOSE;
+   85: fiobj_s *HTTP_HVALUE_GZIP;
+   86: fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
+   87: fiobj_s *HTTP_HVALUE_MAX_AGE;
+   88: fiobj_s *HTTP_HVALUE_WEBSOCKET;
+   89: fiobj_s *HTTP_HVALUE_WS_SEC_VERSION;
+   90: fiobj_s *HTTP_HVALUE_WS_UPGRADE;
+   91: fiobj_s *HTTP_HVALUE_WS_VERSION;
+   92  
+   93  void http_lib_cleanup(void) {
+
+/Users/2be/rC/facilio/lib/facil/http/http_internal.h:
+   34    /** Push for data. */
+   35    int (*const http_push_data)(http_s *h, void *data, uintptr_t length,
+   36:                               fiobj_s *mime_type);
+   37    /** Push for files. */
+   38:   int (*const http_push_file)(http_s *h, fiobj_s *filename, fiobj_s *mime_type);
+   39    /** Defer request handling for later... careful (memory concern apply). */
+   40    int (*const http_defer)(http_s *h, void (*task)(http_s *h),
+   ..
+   58  */
+   59  
+   60: extern fiobj_s *HTTP_HEADER_ACCEPT_RANGES;
+   61: extern fiobj_s *HTTP_HEADER_WS_SEC_KEY;
+   62: extern fiobj_s *HTTP_HVALUE_BYTES;
+   63: extern fiobj_s *HTTP_HVALUE_CLOSE;
+   64: extern fiobj_s *HTTP_HVALUE_GZIP;
+   65: extern fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
+   66: extern fiobj_s *HTTP_HVALUE_MAX_AGE;
+   67: extern fiobj_s *HTTP_HVALUE_WEBSOCKET;
+   68: extern fiobj_s *HTTP_HVALUE_WS_SEC_VERSION;
+   69: extern fiobj_s *HTTP_HVALUE_WS_UPGRADE;
+   70: extern fiobj_s *HTTP_HVALUE_WS_VERSION;
+   71  
+   72  /* *****************************************************************************
+   ..
+  119  
+  120  /** sets an outgoing header only if it doesn't exist */
+  121: static inline void set_header_if_missing(fiobj_s *hash, fiobj_s *name,
+  122:                                          fiobj_s *value) {
+  123:   fiobj_s *old = fiobj_hash_replace(hash, name, value);
+  124    if (!old)
+  125      return;
+  ...
+  130  /** sets an outgoing header, collecting duplicates in an Array (i.e. cookies)
+  131   */
+  132: static inline void set_header_add(fiobj_s *hash, fiobj_s *name,
+  133:                                   fiobj_s *value) {
+  134:   fiobj_s *old = fiobj_hash_replace(hash, name, value);
+  135    if (!old)
+  136      return;
+  ...
+  140    }
+  141    if (old->type != FIOBJ_T_ARRAY) {
+  142:     fiobj_s *tmp = fiobj_ary_new();
+  143      fiobj_ary_push(tmp, old);
+  144      old = tmp;
+
+/Users/2be/rC/facilio/lib/facil/http/websockets.c:
+  124    size_t length;
+  125    /** message buffer. */
+  126:   fiobj_s *msg;
+  127    /** latest text state. */
+  128    uint8_t is_text;
+
+/Users/2be/rC/facilio/lib/facil/http/websockets.h:
+   85    uintptr_t subscription_id;
+   86    /** the channel where the message was published. */
+   87:   fiobj_s *channel;
+   88    /** the published message. */
+   89:   fiobj_s *message;
+   90    /** user opaque data. */
+   91    void *udata;
+   ..
+   97    ws_s *ws;
+   98    /** the channel where the message was published. */
+   99:   fiobj_s *channel;
+  100    /**
+  101     * The callback that handles pub/sub notifications.
+
+/Users/2be/rC/facilio/lib/facil/redis/fiobj_resp.h:
+   29   * Returns NULL on error.
+   30   */
+   31: fiobj_s *fiobj_obj2resp(fiobj_s *dest, fiobj_s *object);
+   32  
+   33  /* support C++ */
+
+/Users/2be/rC/facilio/lib/facil/redis/redis_engine.c:
+   24      resp_parser_s parser;
+   25      uintptr_t is_pub;
+   26:     fiobj_s *str;
+   27:     fiobj_s *ary;
+   28      uintptr_t ary_count;
+   29      uintptr_t buf_pos;
+   ..
+   44  typedef struct {
+   45    fio_ls_embd_s node;
+   46:   void (*callback)(pubsub_engine_s *e, fiobj_s *reply, void *udata);
+   47    void *udata;
+   48    size_t cmd_len;
+   ..
+   82  static void redis_prform_callback(void *e, void *cmd_) {
+   83    redis_commands_s *cmd = cmd_;
+   84:   fiobj_s *reply = (fiobj_s *)cmd->node.next;
+   85    if (cmd->callback)
+   86      cmd->callback(e, reply, cmd->udata);
+   ..
+  105  }
+  106  
+  107: static void redis_cmd_reply(redis_engine_s *r, fiobj_s *reply) {
+  108    spn_lock(&r->lock);
+  109    fio_ls_embd_s *node = fio_ls_embd_shift(&r->callbacks);
+  ...
+  135  ***************************************************************************** */
+  136  
+  137: static void redis_on_auth(pubsub_engine_s *e, fiobj_s *reply, void *udata) {
+  138    if (reply->type != FIOBJ_T_TRUE) {
+  139      fio_cstr_s s = fiobj_obj2cstr(reply);
+  ...
+  291  ***************************************************************************** */
+  292  
+  293: static void redis_on_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+  294                                 uint8_t use_pattern) {
+  295    redis_engine_s *r = en2redis(eng);
+  296    if (r->sub_data.uuid) {
+  297      fio_cstr_s ch_str = fiobj_obj2cstr(channel);
+  298:     fiobj_s *cmd = fiobj_str_buf(64 + ch_str.len);
+  299      if (use_pattern)
+  300        fiobj_str_write(cmd, "$9\r\nPSUBSCRIBE\r\n$", 17);
+  ...
+  308    }
+  309  }
+  310: static void redis_on_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+  311                                   uint8_t use_pattern) {
+  312    redis_engine_s *r = en2redis(eng);
+  313    if (r->sub_data.uuid) {
+  314      fio_cstr_s ch_str = fiobj_obj2cstr(channel);
+  315:     fiobj_s *cmd = fiobj_str_buf(64 + ch_str.len);
+  316      if (use_pattern)
+  317        fiobj_str_write(cmd, "$9\r\nPUNSUBSCRIBE\r\n$", 19);
+  ...
+  325    }
+  326  }
+  327: static int redis_on_publish(const pubsub_engine_s *eng, fiobj_s *channel,
+  328:                             fiobj_s *msg) {
+  329    redis_engine_s *r = en2redis(eng);
+  330  #error todo
+  ...
+  429  
+  430  /* */
+  431: static fiobj_s *fiobj2resp_tmp(fiobj_s *obj1, fiobj_s *obj2) {
+  432:   fiobj_s *dest = fiobj_str_tmp();
+  433    if (FIOBJ_TYPE(obj2) == FIOBJ_T_ARRAY) {
+  434      size_t count = fiobj_ary_count(obj2);
+  ...
+  442      fiobj_str_write(dest, s.data, d.len);
+  443  
+  444:     fiobj_s ** 
+  445      for (int i = 0; i < count; ++i)
+  446      {
+  ...
+  483    struct redis_engine_internal_s *i =
+  484        FIO_LS_EMBD_OBJ(struct redis_engine_internal_s, parser, parser);
+  485:   fiobj_s *msg = i->ary ? i->ary : i->str;
+  486    if (i->is_pub) {
+  487      /* publishing / command parser */
+  ...
+  500  /** a local helper to add parsed objects to the data store. */
+  501  static inline void resp_add_obj(struct redis_engine_internal_s *dest,
+  502:                                 fiobj_s *o) {
+  503    if (dest->ary) {
+  504      if (!dest->ary_count)
+
+/Users/2be/rC/facilio/lib/facil/redis/redis_engine.h:
+   52  it was sent (or the engine is destroyed).
+   53  */
+   54: intptr_t redis_engine_send(pubsub_engine_s *engine, fiobj_s *command,
+   55:                            fiobj_s *data,
+   56:                            void (*callback)(pubsub_engine_s *e, fiobj_s *reply,
+   57                                              void *udata),
+   58                             void *udata);
+
+/Users/2be/rC/facilio/lib/facil/redis/resp_parser.h:
+  149  
+  150  /**
+  151:  * Parses raw RESP data into facil.io objects (`fiobj_s *`).
+  152   *
+  153   * Partial unparsed data will be moved to the begining of the buffer.
+
+/Users/2be/rC/facilio/lib/facil/redis/tmp/fio2resp.c:
+   18  #include <string.h>
+   19  
+   20: static int resp_fioformat_task(fiobj_s *obj, void *s_) {
+   21:   fiobj_s *str = s_;
+   22  
+   23    if (obj->type == FIOBJ_T_FALSE)
+
+/Users/2be/rC/facilio/lib/facil/services/fio_cli_helper.c:
+   16  static int ARGC;
+   17  static const char **ARGV;
+   18: static fiobj_s *arg_aliases; /* a hash for translating aliases */
+   19: static fiobj_s *arg_type;    /* a with information about each argument */
+   20: static fiobj_s *parsed;      /* a with information about each argument */
+   21: static fiobj_s *help_str;    /* The CLI help string */
+   22: static fiobj_s *info_str;    /* The CLI information string */
+   23  static int is_parsed;
+   24  
+   ..
+   71  
+   72  /* returns the primamry symbol for the argument, of NULL (if none) */
+   73: static inline fiobj_s *fio_cli_get_name(const char *str, size_t len) {
+   74    return fiobj_hash_get2(arg_aliases, str, len);
+   75  }
+   ..
+   83    const char *start = aliases;
+   84    size_t len = 0;
+   85:   fiobj_s *arg_name = NULL;
+   86  
+   87    while (1) {
+   ..
+  123      } else {
+  124        /* this is an alias */
+  125:       fiobj_s *tmp = fiobj_sym_new(start, len);
+  126        /* add to aliases hash */
+  127        fiobj_hash_set(arg_aliases, tmp, fiobj_dup(arg_name));
+  ...
+  158    const char *start;
+  159    size_t len;
+  160:   fiobj_s *arg_name;
+  161  
+  162    /* ignore the first element, it's the program's name. */
+  ...
+  182        goto error;
+  183      /* at this point arg_name is a handle to the argument's Symbol */
+  184:     fiobj_s *type = fiobj_hash_get(arg_type, arg_name);
+  185      if (type->type == FIOBJ_T_NULL) {
+  186        /* type is BOOL, no further processing required */
+  ...
+  316  const char *fio_cli_get_str(const char *opt) {
+  317    fio_cli_parse();
+  318:   fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  319    if (!name)
+  320      return NULL;
+  321:   fiobj_s *result = fiobj_hash_get(parsed, name);
+  322    if (!result)
+  323      return NULL;
+  ...
+  332  int fio_cli_get_int(const char *opt) {
+  333    fio_cli_parse();
+  334:   fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  335    if (!name)
+  336      return 0;
+  337:   fiobj_s *result = fiobj_hash_get(parsed, name);
+  338    if (!result)
+  339      return 0;
+  ...
+  348  double fio_cli_get_float(const char *opt) {
+  349    fio_cli_parse();
+  350:   fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  351    if (!name)
+  352      return 0;
+  353:   fiobj_s *result = fiobj_hash_get(parsed, name);
+  354    if (!result)
+  355      return 0;
+  ...
+  364  void fio_cli_set_str(const char *opt, const char *value) {
+  365    fio_cli_parse();
+  366:   fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  367    if (!name) {
+  368      fprintf(stderr, "ERROR: facil.io's CLI helper can only override values for "
+  ...
+  380  void fio_cli_set_int(const char *opt, int value) {
+  381    fio_cli_parse();
+  382:   fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  383    if (!name) {
+  384      fprintf(stderr, "ERROR: facil.io's CLI helper can only override values for "
+  ...
+  396  void fio_cli_set_float(const char *opt, double value) {
+  397    fio_cli_parse();
+  398:   fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  399    if (!name) {
+  400      fprintf(stderr, "ERROR: facil.io's CLI helper can only override values for "
+
+/Users/2be/rC/facilio/lib/facil/services/pubsub.c:
+   32  typedef struct {
+   33    size_t hash;
+   34:   fiobj_s *obj;
+   35  } fio_hash_key_s;
+   36  
+   ..
+   84    fio_ls_embd_s clients;
+   85    /** The channel name. */
+   86:   fiobj_s *name;
+   87    /** Use pattern matching for channel subscription. */
+   88    unsigned use_pattern : 1;
+   ..
+  393  typedef struct {
+  394    size_t ref;
+  395:   fiobj_s *channel;
+  396:   fiobj_s *msg;
+  397  } msg_wrapper_s;
+  398  
+  ...
+  428  
+  429  /* Must subscribe channel. Failures are ignored. */
+  430: void pubsub_en_process_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+  431                                   uint8_t use_pattern) {
+  432    (void)eng;
+  ...
+  436  
+  437  /* Must unsubscribe channel. Failures are ignored. */
+  438: void pubsub_en_process_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+  439                                     uint8_t use_pattern) {
+  440    (void)eng;
+  ...
+  443  }
+  444  /** Should return 0 on success and -1 on failure. */
+  445: int pubsub_en_process_publish(const pubsub_engine_s *eng, fiobj_s *channel,
+  446:                               fiobj_s *msg) {
+  447    uint64_t channel_hash = fiobj_sym_id(channel);
+  448    msg_wrapper_s *m = malloc(sizeof(*m));
+  ...
+  525  
+  526  /* Must subscribe channel. Failures are ignored. */
+  527: void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+  528                                   uint8_t use_pattern) {
+  529    fio_cstr_s s = fiobj_obj2cstr(channel);
+  ...
+  547  
+  548  /* Must unsubscribe channel. Failures are ignored. */
+  549: void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+  550                                     uint8_t use_pattern) {
+  551    fio_cstr_s s = fiobj_obj2cstr(channel);
+  ...
+  568  }
+  569  /** Should return 0 on success and -1 on failure. */
+  570: int pubsub_en_cluster_publish(const pubsub_engine_s *eng, fiobj_s *channel,
+  571:                               fiobj_s *msg) {
+  572    if (FIOBJ_IS_STRING(msg) || msg->type == FIOBJ_T_SYMBOL) {
+  573      fio_cstr_s chs = fiobj_obj2cstr(channel);
+  ...
+  591      free(buf);
+  592    } else {
+  593:     fiobj_s *buf = fiobj_str_tmp();
+  594      fiobj_str_write(buf, "\x05", 1);
+  595      fiobj_str_write2(buf, "%lu\x01",
+  ...
+  656      uint64_t ch_len = fio_atol(&pos);
+  657      ++pos;
+  658:     fiobj_s *ch = fiobj_sym_new(pos, ch_len);
+  659      uintptr_t flag = (((uint8_t *)data)[0] & 1);
+  660      /* subscribe immediately, usubscribe can be deferred. */
+  ...
+  671        uint64_t ch_len = fio_atol(&pos);
+  672        ++pos;
+  673:       fiobj_s *ch = fiobj_sym_new(pos, ch_len);
+  674        uintptr_t flag = (((uint8_t *)data)[0] & 1);
+  675        defer(pubsub_cluster_unsubscribe2channel, ch, (void *)flag);
+  ...
+  684      const uint64_t ch_len = fio_atol(&pos);
+  685      ++pos;
+  686:     fiobj_s *ch = fiobj_sym_new(pos, ch_len);
+  687      pos += ch_len;
+  688      const uint64_t msg_len = len - ((uintptr_t)pos - (uintptr_t)data);
+  689:     fiobj_s *msg = NULL;
+  690      if ((((uint8_t *)data)[0] & 1)) {
+  691        if (!fiobj_json2obj(&msg, pos, msg_len)) {
+
+/Users/2be/rC/facilio/lib/facil/services/pubsub.h:
+   43    pubsub_engine_s const *engine;
+   44    /** The pub/sub target channnel. */
+   45:   fiobj_s *channel;
+   46    /** The pub/sub message. */
+   47:   fiobj_s *message;
+   48    /** The subscription that prompted the message to be routed to the client. */
+   49    pubsub_sub_pt subscription;
+   ..
+   57  struct pubsub_subscribe_args {
+   58    /** The channel namr used for the subscription. */
+   59:   fiobj_s *channel;
+   60    /** The on message callback. the `*msg` pointer is to a temporary object. */
+   61    void (*on_message)(pubsub_message_s *msg);
+   ..
+  150  struct pubsub_engine_s {
+  151    /* Must subscribe channel. Failures are ignored. */
+  152:   void (*subscribe)(const pubsub_engine_s *eng, fiobj_s *channel,
+  153                      uint8_t use_pattern);
+  154    /* Must unsubscribe channel. Failures are ignored. */
+  155:   void (*unsubscribe)(const pubsub_engine_s *eng, fiobj_s *channel,
+  156                        uint8_t use_pattern);
+  157    /** Should return 0 on success and -1 on failure. */
+  158:   int (*publish)(const pubsub_engine_s *eng, fiobj_s *channel, fiobj_s *msg);
+  159  };
+  160  
+
+645 matches across 37 files

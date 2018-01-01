@@ -23,20 +23,20 @@ Array creation API
 ***************************************************************************** */
 
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
-fiobj_s *fiobj_ary_new(void);
+FIOBJ fiobj_ary_new(void);
 
 /** Creates a mutable empty Array object with the requested capacity. */
-fiobj_s *fiobj_ary_new2(size_t capa);
+FIOBJ fiobj_ary_new2(size_t capa);
 
 /* *****************************************************************************
 Array direct entry access API
 ***************************************************************************** */
 
 /** Returns the number of elements in the Array. */
-size_t fiobj_ary_count(fiobj_s *ary);
+size_t fiobj_ary_count(FIOBJ ary);
 
 /** Returns the current, temporary, array capacity (it's dynamic). */
-size_t fiobj_ary_capa(fiobj_s *ary);
+size_t fiobj_ary_capa(FIOBJ ary);
 
 /**
  * Returns a TEMPORARY pointer to the begining of the array.
@@ -44,7 +44,7 @@ size_t fiobj_ary_capa(fiobj_s *ary);
  * This pointer can be used for sorting and other direct access operations as
  * long as no other actions (insertion/deletion) are performed on the array.
  */
-fiobj_s **fiobj_ary2prt(fiobj_s *ary);
+FIOBJ *fiobj_ary2prt(FIOBJ ary);
 
 /**
  * Returns a temporary object owned by the Array.
@@ -56,14 +56,14 @@ fiobj_s **fiobj_ary2prt(fiobj_s *ary);
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
  */
-fiobj_s *fiobj_ary_index(fiobj_s *ary, int64_t pos);
+FIOBJ fiobj_ary_index(FIOBJ ary, int64_t pos);
 /** alias for `fiobj_ary_index` */
 #define fiobj_ary_entry(a, p) fiobj_ary_index((a), (p))
 
 /**
  * Sets an object at the requested position.
  */
-void fiobj_ary_set(fiobj_s *ary, fiobj_s *obj, int64_t pos);
+void fiobj_ary_set(FIOBJ ary, FIOBJ obj, int64_t pos);
 
 /* *****************************************************************************
 Array push / shift API
@@ -72,19 +72,19 @@ Array push / shift API
 /**
  * Pushes an object to the end of the Array.
  */
-void fiobj_ary_push(fiobj_s *ary, fiobj_s *obj);
+void fiobj_ary_push(FIOBJ ary, FIOBJ obj);
 
 /** Pops an object from the end of the Array. */
-fiobj_s *fiobj_ary_pop(fiobj_s *ary);
+FIOBJ fiobj_ary_pop(FIOBJ ary);
 
 /**
  * Unshifts an object to the begining of the Array. This could be
  * expensive.
  */
-void fiobj_ary_unshift(fiobj_s *ary, fiobj_s *obj);
+void fiobj_ary_unshift(FIOBJ ary, FIOBJ obj);
 
 /** Shifts an object from the beginning of the Array. */
-fiobj_s *fiobj_ary_shift(fiobj_s *ary);
+FIOBJ fiobj_ary_shift(FIOBJ ary);
 
 /* *****************************************************************************
 Array compacting (untested)
@@ -97,7 +97,7 @@ Array compacting (untested)
  * This action is O(n) where n in the length of the array.
  * It could get expensive.
  */
-void fiobj_ary_compact(fiobj_s *ary);
+void fiobj_ary_compact(FIOBJ ary);
 
 #ifdef __cplusplus
 } /* extern "C" */

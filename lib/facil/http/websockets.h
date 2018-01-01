@@ -84,9 +84,9 @@ typedef struct {
   /** the Websocket pub/sub subscription ID. */
   uintptr_t subscription_id;
   /** the channel where the message was published. */
-  fiobj_s *channel;
+  FIOBJ channel;
   /** the published message. */
-  fiobj_s *message;
+  FIOBJ message;
   /** user opaque data. */
   void *udata;
 } websocket_pubsub_notification_s;
@@ -96,7 +96,7 @@ struct websocket_subscribe_s {
   /** the websocket receiving the message. REQUIRED. */
   ws_s *ws;
   /** the channel where the message was published. */
-  fiobj_s *channel;
+  FIOBJ channel;
   /**
    * The callback that handles pub/sub notifications.
    *

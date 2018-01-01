@@ -25,20 +25,21 @@ typedef struct {
 Symbol VTable
 ***************************************************************************** */
 
-static int fiobj_sym_is_eq(const fiobj_s *self, const fiobj_s *other) {
-  if (other->type != self->type)
+static int fiobj_sym_is_eq(const FIOBJ self, const FIOBJ other) {
+  if (FIOBJ_TYPE(other) != FIOBJ_TYPE(self))
     return 0;
-  return obj2sym(self)->hash == obj2sym(other)->hash;
+  return (obj2sym(self)->len == obj2sym(other)->len &&
+          obj2sym(self)->hash == obj2sym(other)->hash);
 }
 
-static fio_cstr_s fio_sym2str(const fiobj_s *o) {
+static fio_cstr_s fio_sym2str(const FIOBJ o) {
   return (fio_cstr_s){.buffer = obj2sym(o)->str, .len = obj2sym(o)->len};
 }
-static int64_t fio_sym2i(const fiobj_s *o) {
+static int64_t fio_sym2i(const FIOBJ o) {
   char *s = obj2sym(o)->str;
   return fio_atol(&s);
 }
-static double fio_sym2f(const fiobj_s *o) {
+static double fio_sym2f(const FIOBJ o) {
   char *s = obj2sym(o)->str;
   return fio_atof(&s);
 }
@@ -62,8 +63,8 @@ const uintptr_t FIOBJ_T_SYMBOL = (uintptr_t)(&FIOBJ_VTABLE_SYMBOL);
 Symbol API
 ***************************************************************************** */
 
-static inline fiobj_s *fiobj_sym_alloc(size_t len) {
-  fiobj_s *o = fiobj_alloc(sizeof(fiobj_sym_s) + len + 1);
+static inline FIOBJ fiobj_sym_alloc(size_t len) {
+  FIOBJ o = fiobj_alloc(sizeof(fiobj_sym_s) + len + 1);
   if (!o)
     perror("ERROR: fiobj symbol couldn't allocate memory"), exit(errno);
   *obj2sym(o) = (fiobj_sym_s){
@@ -73,8 +74,8 @@ static inline fiobj_s *fiobj_sym_alloc(size_t len) {
 }
 
 /** Creates a Symbol object. Use `fiobj_free`. */
-fiobj_s *fiobj_sym_new(const char *str, size_t len) {
-  fiobj_s *s = fiobj_sym_alloc(len);
+FIOBJ fiobj_sym_new(const char *str, size_t len) {
+  FIOBJ s = fiobj_sym_alloc(len);
   if (str)
     memcpy(obj2sym(s)->str, str, len);
   obj2sym(s)->str[len] = 0;
@@ -84,7 +85,7 @@ fiobj_s *fiobj_sym_new(const char *str, size_t len) {
 
 /** Finalizes a pre-allocated Symbol buffer to set it's final length and
  * calculate it's final hashing value. */
-fiobj_s *fiobj_sym_reinitialize(fiobj_s *s, const size_t len) {
+FIOBJ fiobj_sym_reinitialize(FIOBJ s, const size_t len) {
   if (obj2sym(s)->len < len)
     fprintf(stderr,
             "FATAL ERROR: facil.io Symbol object reinitialization error.\n"),
@@ -96,9 +97,9 @@ fiobj_s *fiobj_sym_reinitialize(fiobj_s *s, const size_t len) {
 }
 
 /** Creates a Symbol object using a printf like interface. */
-__attribute__((format(printf, 1, 0))) fiobj_s *
-fiobj_symvprintf(const char *format, va_list argv) {
-  fiobj_s *sym = NULL;
+__attribute__((format(printf, 1, 0))) FIOBJ fiobj_symvprintf(const char *format,
+                                                             va_list argv) {
+  FIOBJ sym = NULL;
   va_list argv_cpy;
   va_copy(argv_cpy, argv);
   int len = vsnprintf(NULL, 0, format, argv_cpy);
@@ -114,11 +115,11 @@ fiobj_symvprintf(const char *format, va_list argv) {
   obj2sym(sym)->hash = (uintptr_t)fiobj_sym_hash(obj2sym(sym)->str, len);
   return sym;
 }
-__attribute__((format(printf, 1, 2))) fiobj_s *
-fiobj_symprintf(const char *format, ...) {
+__attribute__((format(printf, 1, 2))) FIOBJ fiobj_symprintf(const char *format,
+                                                            ...) {
   va_list argv;
   va_start(argv, format);
-  fiobj_s *sym = fiobj_symvprintf(format, argv);
+  FIOBJ sym = fiobj_symvprintf(format, argv);
   va_end(argv);
   return sym;
 }
@@ -129,8 +130,8 @@ fiobj_symprintf(const char *format, ...) {
  * The unique identifier is calculated using SipHash and is equal for all Symbol
  * objects that were created using the same data.
  */
-uint64_t fiobj_sym_id(fiobj_s *sym) {
-  if (sym->type == FIOBJ_T_SYMBOL)
+uint64_t fiobj_sym_id(FIOBJ sym) {
+  if (FIOBJ_TYPE(sym) == FIOBJ_T_SYMBOL)
     return obj2sym(sym)->hash;
   fio_cstr_s s = fiobj_obj2cstr(sym);
   if (!s.data)

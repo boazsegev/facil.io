@@ -23,10 +23,10 @@ NULL
 extern const uintptr_t FIOBJ_T_NULL;
 
 /** Returns a NULL object. */
-fiobj_s *fiobj_null(void);
+FIOBJ fiobj_null(void);
 
-/** Tests if a `fiobj_s *` is NULL. */
-#define FIOBJ_IS_NULL(o) ((o) == NULL) || ((fiobj_s *)(o)->type == FIOBJ_T_NULL)
+/** Tests if a `FIOBJ ` is NULL. */
+#define FIOBJ_IS_NULL(o) ((o) == NULL) || (FIOBJ_TYPE(o) == FIOBJ_T_NULL)
 
 /* *****************************************************************************
 True
@@ -36,7 +36,7 @@ True
 extern const uintptr_t FIOBJ_T_TRUE;
 
 /** Returns a TRUE object. */
-fiobj_s *fiobj_true(void);
+FIOBJ fiobj_true(void);
 
 /* *****************************************************************************
 False
@@ -46,7 +46,7 @@ False
 extern const uintptr_t FIOBJ_T_FALSE;
 
 /** Returns a FALSE object. */
-fiobj_s *fiobj_false(void);
+FIOBJ fiobj_false(void);
 
 #ifdef __cplusplus
 } /* extern "C" */

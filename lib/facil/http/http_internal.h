@@ -33,9 +33,9 @@ struct http_vtable_s {
   void (*const http_finish)(http_s *h);
   /** Push for data. */
   int (*const http_push_data)(http_s *h, void *data, uintptr_t length,
-                              fiobj_s *mime_type);
+                              FIOBJ mime_type);
   /** Push for files. */
-  int (*const http_push_file)(http_s *h, fiobj_s *filename, fiobj_s *mime_type);
+  int (*const http_push_file)(http_s *h, FIOBJ filename, FIOBJ mime_type);
   /** Defer request handling for later... careful (memory concern apply). */
   int (*const http_defer)(http_s *h, void (*task)(http_s *h),
                           void (*fallback)(http_s *h));
@@ -57,17 +57,17 @@ Constants that shouldn't be accessed by the users (`fiobj_dup` required).
 *****************************************************************************
 */
 
-extern fiobj_s *HTTP_HEADER_ACCEPT_RANGES;
-extern fiobj_s *HTTP_HEADER_WS_SEC_KEY;
-extern fiobj_s *HTTP_HVALUE_BYTES;
-extern fiobj_s *HTTP_HVALUE_CLOSE;
-extern fiobj_s *HTTP_HVALUE_GZIP;
-extern fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
-extern fiobj_s *HTTP_HVALUE_MAX_AGE;
-extern fiobj_s *HTTP_HVALUE_WEBSOCKET;
-extern fiobj_s *HTTP_HVALUE_WS_SEC_VERSION;
-extern fiobj_s *HTTP_HVALUE_WS_UPGRADE;
-extern fiobj_s *HTTP_HVALUE_WS_VERSION;
+extern FIOBJ HTTP_HEADER_ACCEPT_RANGES;
+extern FIOBJ HTTP_HEADER_WS_SEC_KEY;
+extern FIOBJ HTTP_HVALUE_BYTES;
+extern FIOBJ HTTP_HVALUE_CLOSE;
+extern FIOBJ HTTP_HVALUE_GZIP;
+extern FIOBJ HTTP_HVALUE_KEEP_ALIVE;
+extern FIOBJ HTTP_HVALUE_MAX_AGE;
+extern FIOBJ HTTP_HVALUE_WEBSOCKET;
+extern FIOBJ HTTP_HVALUE_WS_SEC_VERSION;
+extern FIOBJ HTTP_HVALUE_WS_UPGRADE;
+extern FIOBJ HTTP_HVALUE_WS_VERSION;
 
 /* *****************************************************************************
 HTTP request/response object management
@@ -118,9 +118,8 @@ Helpers
     perror("FATAL ERROR: (http)" m), exit(errno);
 
 /** sets an outgoing header only if it doesn't exist */
-static inline void set_header_if_missing(fiobj_s *hash, fiobj_s *name,
-                                         fiobj_s *value) {
-  fiobj_s *old = fiobj_hash_replace(hash, name, value);
+static inline void set_header_if_missing(FIOBJ hash, FIOBJ name, FIOBJ value) {
+  FIOBJ old = fiobj_hash_replace(hash, name, value);
   if (!old)
     return;
   fiobj_hash_replace(hash, name, old);
@@ -129,9 +128,8 @@ static inline void set_header_if_missing(fiobj_s *hash, fiobj_s *name,
 
 /** sets an outgoing header, collecting duplicates in an Array (i.e. cookies)
  */
-static inline void set_header_add(fiobj_s *hash, fiobj_s *name,
-                                  fiobj_s *value) {
-  fiobj_s *old = fiobj_hash_replace(hash, name, value);
+static inline void set_header_add(FIOBJ hash, FIOBJ name, FIOBJ value) {
+  FIOBJ old = fiobj_hash_replace(hash, name, value);
   if (!old)
     return;
   if (!value) {
@@ -139,7 +137,7 @@ static inline void set_header_add(fiobj_s *hash, fiobj_s *name,
     return;
   }
   if (old->type != FIOBJ_T_ARRAY) {
-    fiobj_s *tmp = fiobj_ary_new();
+    FIOBJ tmp = fiobj_ary_new();
     fiobj_ary_push(tmp, old);
     old = tmp;
   }

@@ -13,7 +13,7 @@ Herein are defined some primitive types for the facil.io dynamic object system.
 NULL
 ***************************************************************************** */
 
-static int fiobj_primitive_is_eq(const fiobj_s *self, const fiobj_s *other) {
+static int fiobj_primitive_is_eq(const FIOBJ self, const FIOBJ other) {
   return self == other;
 }
 
@@ -44,12 +44,12 @@ static struct fiobj_vtable_s NULL_VTABLE = {
 const uintptr_t FIOBJ_T_NULL = (uintptr_t)(&NULL_VTABLE);
 
 /** Returns a NULL object. */
-fiobj_s *fiobj_null(void) {
+FIOBJ fiobj_null(void) {
   static struct {
     fiobj_head_s head;
     struct fiobj_vtable_s *vtable;
   } null_obj = {.head = {.ref = 1}, .vtable = &NULL_VTABLE};
-  return (fiobj_s *)(&null_obj.vtable);
+  return (FIOBJ)(&null_obj.vtable);
 }
 
 /* *****************************************************************************
@@ -83,12 +83,12 @@ static struct fiobj_vtable_s TRUE_VTABLE = {
 const uintptr_t FIOBJ_T_TRUE = (uintptr_t)(&TRUE_VTABLE);
 
 /** Returns a TRUE object. */
-fiobj_s *fiobj_true(void) {
+FIOBJ fiobj_true(void) {
   static struct {
     fiobj_head_s head;
     struct fiobj_vtable_s *vtable;
   } obj = {.head = {.ref = 1}, .vtable = &TRUE_VTABLE};
-  return (fiobj_s *)(&obj.vtable);
+  return (FIOBJ)(&obj.vtable);
 }
 
 /* *****************************************************************************
@@ -122,10 +122,10 @@ static struct fiobj_vtable_s FALSE_VTABLE = {
 const uintptr_t FIOBJ_T_FALSE = (uintptr_t)(&FALSE_VTABLE);
 
 /** Returns a FALSE object. */
-fiobj_s *fiobj_false(void) {
+FIOBJ fiobj_false(void) {
   static struct {
     fiobj_head_s head;
     struct fiobj_vtable_s *vtable;
   } obj = {.head = {.ref = 1}, .vtable = &FALSE_VTABLE};
-  return (fiobj_s *)(&obj.vtable);
+  return (FIOBJ)(&obj.vtable);
 }

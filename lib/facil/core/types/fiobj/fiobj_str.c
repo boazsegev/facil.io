@@ -40,12 +40,12 @@ typedef struct {
 String VTable
 ***************************************************************************** */
 
-static void fiobj_str_dealloc(fiobj_s *o) {
+static void fiobj_str_dealloc(FIOBJ o) {
   free(obj2str(o)->str);
   fiobj_dealloc(o);
 }
 
-static int fiobj_str_is_eq(const fiobj_s *self, const fiobj_s *other) {
+static int fiobj_str_is_eq(const FIOBJ self, const FIOBJ other) {
   if (!other || (FIOBJ_IS_STRING(other)) ||
       obj2str(self)->len != obj2str(other)->len)
     return 0;
@@ -53,19 +53,19 @@ static int fiobj_str_is_eq(const fiobj_s *self, const fiobj_s *other) {
          !memcmp(obj2str(self)->str, obj2str(other)->str, obj2str(self)->len);
 }
 
-static fio_cstr_s fio_str2str(const fiobj_s *o) {
+static fio_cstr_s fio_str2str(const FIOBJ o) {
   return (fio_cstr_s){.buffer = obj2str(o)->str, .len = obj2str(o)->len};
 }
-static int64_t fio_str2i(const fiobj_s *o) {
+static int64_t fio_str2i(const FIOBJ o) {
   char *s = obj2str(o)->str;
   return fio_atol(&s);
 }
-static double fio_str2f(const fiobj_s *o) {
+static double fio_str2f(const FIOBJ o) {
   char *s = obj2str(o)->str;
   return fio_atof(&s);
 }
 
-static int fio_str2bool(const fiobj_s *o) { return obj2str(o)->len != 0; }
+static int fio_str2bool(const FIOBJ o) { return obj2str(o)->len != 0; }
 
 static struct fiobj_vtable_s FIOBJ_VTABLE_STRING = {
     .name = "String",
@@ -102,8 +102,8 @@ const uintptr_t FIOBJ_T_STRING_STATIC =
 String API
 ***************************************************************************** */
 
-static inline fiobj_s *fiobj_str_alloc(size_t len) {
-  fiobj_s *o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
+static inline FIOBJ fiobj_str_alloc(size_t len) {
+  FIOBJ o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
   if (!o)
     perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
   *obj2str(o) = (fiobj_str_s){
@@ -119,20 +119,20 @@ static inline fiobj_s *fiobj_str_alloc(size_t len) {
 }
 
 /** Creates a String object. Remember to use `fiobj_free`. */
-fiobj_s *fiobj_str_new(const char *str, size_t len) {
-  fiobj_s *s = fiobj_str_alloc(len);
+FIOBJ fiobj_str_new(const char *str, size_t len) {
+  FIOBJ s = fiobj_str_alloc(len);
   if (str)
     memcpy(obj2str(s)->str, str, len);
   return s;
 }
 
 /** Creates a buffer String object. Remember to use `fiobj_free`. */
-fiobj_s *fiobj_str_buf(size_t capa) {
+FIOBJ fiobj_str_buf(size_t capa) {
   if (capa)
     capa = capa - 1;
   else
     capa = fiobj_memory_page_size();
-  fiobj_s *s = fiobj_str_alloc(capa);
+  FIOBJ s = fiobj_str_alloc(capa);
   fiobj_str_clear(s);
   return s;
 }
@@ -143,8 +143,8 @@ fiobj_s *fiobj_str_buf(size_t capa) {
  * The ownership of the memory indicated by `str` will now "move" to the object,
  * so `free` will be called by the `fiobj` library as needed.
  */
-fiobj_s *fiobj_str_move(char *str, size_t len, size_t capacity) {
-  fiobj_s *o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
+FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity) {
+  FIOBJ o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
   if (!o)
     perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
   *obj2str(o) = (fiobj_str_s){
@@ -166,8 +166,8 @@ fiobj_s *fiobj_str_move(char *str, size_t len, size_t capacity) {
  *
  * NOTICE: static strings can't be written to.
  */
-fiobj_s *fiobj_str_static(const char *str, size_t len) {
-  fiobj_s *o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
+FIOBJ fiobj_str_static(const char *str, size_t len) {
+  FIOBJ o = fiobj_alloc(sizeof(fiobj_str_s) + len + 1);
   if (!o)
     perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
   *obj2str(o) = (fiobj_str_s){
@@ -182,15 +182,15 @@ fiobj_s *fiobj_str_static(const char *str, size_t len) {
 }
 
 /** Creates a copy from an existing String. Remember to use `fiobj_free`. */
-fiobj_s *fiobj_str_copy(fiobj_s *src) {
+FIOBJ fiobj_str_copy(FIOBJ src) {
   fio_cstr_s s = fiobj_obj2cstr(src);
   return fiobj_str_new(s.data, s.len);
 }
 
 /** Creates a String object using a printf like interface. */
-__attribute__((format(printf, 1, 0))) fiobj_s *
-fiobj_strvprintf(const char *format, va_list argv) {
-  fiobj_s *str = NULL;
+__attribute__((format(printf, 1, 0))) FIOBJ fiobj_strvprintf(const char *format,
+                                                             va_list argv) {
+  FIOBJ str = NULL;
   va_list argv_cpy;
   va_copy(argv_cpy, argv);
   int len = vsnprintf(NULL, 0, format, argv_cpy);
@@ -203,11 +203,11 @@ fiobj_strvprintf(const char *format, va_list argv) {
   vsnprintf(obj2str(str)->str, len + 1, format, argv);
   return str;
 }
-__attribute__((format(printf, 1, 2))) fiobj_s *
-fiobj_strprintf(const char *format, ...) {
+__attribute__((format(printf, 1, 2))) FIOBJ fiobj_strprintf(const char *format,
+                                                            ...) {
   va_list argv;
   va_start(argv, format);
-  fiobj_s *str = fiobj_strvprintf(format, argv);
+  FIOBJ str = fiobj_strvprintf(format, argv);
   va_end(argv);
   return str;
 }
@@ -220,19 +220,19 @@ static __thread struct {
  * Returns a thread-static temporary string. Avoid calling `fiobj_dup` or
  * `fiobj_free`.
  */
-fiobj_s *fiobj_str_tmp(void) {
+FIOBJ fiobj_str_tmp(void) {
   fiobj_tmpstr.head.ref = ((~(uintptr_t)0) >> 4);
   fiobj_tmpstr.str.vtable = &FIOBJ_VTABLE_STRING;
   fiobj_tmpstr.str.len = 0;
-  return (fiobj_s *)(&fiobj_tmpstr.str);
+  return (FIOBJ)(&fiobj_tmpstr.str);
 }
 
 /**
  * Grabs the string's internal buffer, emptying the existing string data.
  * `fiobj_free` is still required (unless the string is a `tmp` string).
  */
-void *fiobj_str_steal(fiobj_s *str) {
-  if (str->type != FIOBJ_T_STRING)
+void *fiobj_str_steal(FIOBJ str) {
+  if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
     return NULL;
   void *ret = obj2str(str)->str;
   *obj2str(str) = (fiobj_str_s){.vtable = &FIOBJ_VTABLE_STRING};
@@ -247,8 +247,7 @@ void *fiobj_str_steal(fiobj_s *str) {
  *
  * Remember to use `fiobj_free`.
  */
-fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
-                            size_t limit) {
+FIOBJ fiobj_str_readfile(const char *filename, size_t start_at, size_t limit) {
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
   /* POSIX implementations. */
   if (filename == NULL)
@@ -274,7 +273,7 @@ fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
 
   if (limit <= 0 || (size_t)f_data.st_size < limit + start_at)
     limit = f_data.st_size - start_at;
-  fiobj_s *str = fiobj_str_buf(limit + 1);
+  FIOBJ str = fiobj_str_buf(limit + 1);
   if (!str)
     return NULL;
   file = open(filename, O_RDONLY);
@@ -299,8 +298,8 @@ fiobj_s *fiobj_str_readfile(const char *filename, size_t start_at,
 }
 
 /** Confirms the requested capacity is available and allocates as required. */
-size_t fiobj_str_capa_assert(fiobj_s *str, size_t size) {
-  if (str->type != FIOBJ_T_STRING || obj2str(str)->capa >= size + 1)
+size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
+  if (FIOBJ_TYPE(str) != FIOBJ_T_STRING || obj2str(str)->capa >= size + 1)
     return obj2str(str)->capa;
   size += 1;
   /* large strings should increase memory by page size (assumes 4096 pages) */
@@ -316,15 +315,15 @@ size_t fiobj_str_capa_assert(fiobj_s *str, size_t size) {
 }
 
 /** Return's a String's capacity, if any. */
-size_t fiobj_str_capa(fiobj_s *str) {
-  if (str->type != FIOBJ_T_STRING)
+size_t fiobj_str_capa(FIOBJ str) {
+  if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
     return 0;
   return obj2str(str)->capa;
 }
 
 /** Resizes a String object, allocating more memory if required. */
-void fiobj_str_resize(fiobj_s *str, size_t size) {
-  if (str->type != FIOBJ_T_STRING)
+void fiobj_str_resize(FIOBJ str, size_t size) {
+  if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
     return;
   fiobj_str_capa_assert(str, size);
   obj2str(str)->len = size;
@@ -333,8 +332,8 @@ void fiobj_str_resize(fiobj_s *str, size_t size) {
 }
 
 /** Deallocates any unnecessary memory (if supported by OS). */
-void fiobj_str_minimize(fiobj_s *str) {
-  if (str->type != FIOBJ_T_STRING)
+void fiobj_str_minimize(FIOBJ str) {
+  if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
     return;
   obj2str(str)->capa = obj2str(str)->len + 1;
   obj2str(str)->str = realloc(obj2str(str)->str, obj2str(str)->capa);
@@ -342,8 +341,8 @@ void fiobj_str_minimize(fiobj_s *str) {
 }
 
 /** Empties a String's data. */
-void fiobj_str_clear(fiobj_s *str) {
-  if (str->type != FIOBJ_T_STRING)
+void fiobj_str_clear(FIOBJ str) {
+  if (FIOBJ_TYPE(str) != FIOBJ_T_STRING)
     return;
   obj2str(str)->str[0] = 0;
   obj2str(str)->len = 0;
@@ -353,8 +352,8 @@ void fiobj_str_clear(fiobj_s *str) {
  * Writes data at the end of the string, resizing the string as required.
  * Returns the new length of the String
  */
-size_t fiobj_str_write(fiobj_s *dest, const char *data, size_t len) {
-  if (dest->type != FIOBJ_T_STRING)
+size_t fiobj_str_write(FIOBJ dest, const char *data, size_t len) {
+  if (FIOBJ_TYPE(dest) != FIOBJ_T_STRING)
     return 0;
   fiobj_str_resize(dest, obj2str(dest)->len + len);
   if (len < 8) {
@@ -374,8 +373,8 @@ size_t fiobj_str_write(fiobj_s *dest, const char *data, size_t len) {
  * Writes data at the end of the string, resizing the string as required.
  * Returns the new length of the String
  */
-size_t fiobj_str_write2(fiobj_s *dest, const char *format, ...) {
-  if (dest->type != FIOBJ_T_STRING)
+size_t fiobj_str_write2(FIOBJ dest, const char *format, ...) {
+  if (FIOBJ_TYPE(dest) != FIOBJ_T_STRING)
     return 0;
   va_list argv;
   va_start(argv, format);
@@ -395,8 +394,8 @@ size_t fiobj_str_write2(fiobj_s *dest, const char *format, ...) {
  * Writes data at the end of the string, resizing the string as required.
  * Returns the new length of the String
  */
-size_t fiobj_str_join(fiobj_s *dest, fiobj_s *obj) {
-  if (dest->type != FIOBJ_T_STRING)
+size_t fiobj_str_join(FIOBJ dest, FIOBJ obj) {
+  if (FIOBJ_TYPE(dest) != FIOBJ_T_STRING)
     return 0;
   fio_cstr_s o = fiobj_obj2cstr(obj);
   if (o.len == 0)

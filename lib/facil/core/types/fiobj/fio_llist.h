@@ -111,7 +111,15 @@ inline FIO_FUNC int fio_ls_embd_any(fio_ls_embd_s *list);
  */
 #define FIO_LS_EMBD_FOR(list, node)
 
-/** Takes a list pointer `plist` and returns a pointer to it's container. */
+/**
+ * Takes a list pointer `plist` and returns a pointer to it's container.
+ *
+ * This uses pointer offset calculations and can be used to caluculate any
+ * struct's pointer (not just list containers) as an offset fro a pointer of one
+ * of it's members.
+ *
+ * Very useful.
+ */
 #define FIO_LS_EMBD_OBJ(type, member, plist)                                   \
   ((type *)((uintptr_t)(plist) - (uintptr_t)(&(((type *)0)->member))))
 

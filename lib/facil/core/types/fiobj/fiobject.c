@@ -24,17 +24,17 @@ however, this isn't fully tested and the performance price is high.
 Cyclic Protection helpers & API
 ***************************************************************************** */
 
-static __thread fiobj_s *fiobj_cyclic_protection = NULL;
-fiobj_s *fiobj_each_get_cyclic(void) { return fiobj_cyclic_protection; }
+static __thread FIOBJ fiobj_cyclic_protection = NULL;
+FIOBJ fiobj_each_get_cyclic(void) { return fiobj_cyclic_protection; }
 
-static inline fiobj_s *protected_pop_obj(fio_ls_s *queue, fio_ls_s *history) {
+static inline FIOBJ protected_pop_obj(fio_ls_s *queue, fio_ls_s *history) {
 #if FIOBJ_NESTING_PROTECTION
   fiobj_cyclic_protection = NULL;
 
-  fiobj_s *obj = fio_ls_pop(queue);
+  FIOBJ obj = fio_ls_pop(queue);
   if (!obj)
     return NULL;
-  fiobj_s *child = OBJVTBL(obj)->unwrap(obj);
+  FIOBJ child = OBJVTBL(obj)->unwrap(obj);
   if (!child)
     return obj;
   if (OBJVTBL(child)->count(child) == 0)
@@ -54,7 +54,7 @@ static inline fiobj_s *protected_pop_obj(fio_ls_s *queue, fio_ls_s *history) {
 #endif
 }
 
-static inline void protected_push_obj(const fiobj_s *obj, fio_ls_s *history) {
+static inline void protected_push_obj(const FIOBJ obj, fio_ls_s *history) {
 #if FIOBJ_NESTING_PROTECTION
   fio_ls_push(history, OBJVTBL(obj)->unwrap(obj));
 #else
@@ -68,7 +68,7 @@ Generic Object API
 ***************************************************************************** */
 
 /** Returns a C string naming the objects dynamic type. */
-const char *fiobj_type_name(const fiobj_s *obj) { return OBJVTBL(obj)->name; }
+const char *fiobj_type_name(const FIOBJ obj) { return OBJVTBL(obj)->name; }
 
 /**
  * Copy by reference(!) - increases an object's (and any nested object's)
@@ -80,13 +80,13 @@ const char *fiobj_type_name(const fiobj_s *obj) { return OBJVTBL(obj)->name; }
  *
  * We don't need this feature just yet, so I'm not working on it.
  */
-fiobj_s *fiobj_dup(fiobj_s *obj) {
+FIOBJ fiobj_dup(FIOBJ obj) {
   if (obj)
     OBJREF_ADD(obj);
   return obj;
 }
 
-static int fiobj_free_or_mark(fiobj_s *o, void *arg) {
+static int fiobj_free_or_mark(FIOBJ o, void *arg) {
   if (!o)
     return 0;
 #if FIOBJ_NESTING_PROTECTION
@@ -108,7 +108,7 @@ static int fiobj_free_or_mark(fiobj_s *o, void *arg) {
   /* reference count is zero: free memory or add to queue */
 
   /* test for wrapped object (i.e., Hash Couplet) */
-  fiobj_s *child = OBJVTBL(o)->unwrap(o);
+  FIOBJ child = OBJVTBL(o)->unwrap(o);
 
   if (child != o) {
     if (!child || OBJREF_REM(child)) {
@@ -136,7 +136,7 @@ static int fiobj_free_or_mark(fiobj_s *o, void *arg) {
  * a Hash object is passed along, it's children (nested objects) are
  * also freed.
  */
-uintptr_t fiobj_free(fiobj_s *o) {
+uintptr_t fiobj_free(FIOBJ o) {
 #if DEBUG
   if (!o)
     return 0;
@@ -158,7 +158,7 @@ uintptr_t fiobj_free(fiobj_s *o) {
   }
   /* handle wrapping */
   {
-    fiobj_s *child = OBJVTBL(o)->unwrap(o);
+    FIOBJ child = OBJVTBL(o)->unwrap(o);
     if (child != o) {
       OBJVTBL(o)->free(o);
       if (OBJREF_REM(child))
@@ -190,7 +190,7 @@ uintptr_t fiobj_free(fiobj_s *o) {
  *
  * This is mostly for testing rather than normal library operations.
  */
-uintptr_t fiobj_reference_count(const fiobj_s *o) { return OBJ2HEAD(o)->ref; }
+uintptr_t fiobj_reference_count(const FIOBJ o) { return OBJ2HEAD(o)->ref; }
 
 /**
  * Tests if an object evaluates as TRUE.
@@ -198,7 +198,7 @@ uintptr_t fiobj_reference_count(const fiobj_s *o) { return OBJ2HEAD(o)->ref; }
  * This is object type specific. For example, empty strings might evaluate as
  * FALSE, even though they aren't a boolean type.
  */
-int fiobj_is_true(const fiobj_s *o) { return (o && OBJVTBL(o)->is_true(o)); }
+int fiobj_is_true(const FIOBJ o) { return (o && OBJVTBL(o)->is_true(o)); }
 
 /**
  * Returns an Object's numerical value.
@@ -212,7 +212,7 @@ int fiobj_is_true(const fiobj_s *o) { return (o && OBJVTBL(o)->is_true(o)); }
  *
  * A type error results in 0.
  */
-int64_t fiobj_obj2num(const fiobj_s *o) { return o ? OBJVTBL(o)->to_i(o) : 0; }
+int64_t fiobj_obj2num(const FIOBJ o) { return o ? OBJVTBL(o)->to_i(o) : 0; }
 
 /**
  * Returns a Float's value.
@@ -226,7 +226,7 @@ int64_t fiobj_obj2num(const fiobj_s *o) { return o ? OBJVTBL(o)->to_i(o) : 0; }
  *
  * A type error results in 0.
  */
-double fiobj_obj2float(const fiobj_s *o) { return o ? OBJVTBL(o)->to_f(o) : 0; }
+double fiobj_obj2float(const FIOBJ o) { return o ? OBJVTBL(o)->to_f(o) : 0; }
 
 /**
  * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
@@ -241,14 +241,14 @@ double fiobj_obj2float(const fiobj_s *o) { return o ? OBJVTBL(o)->to_f(o) : 0; }
  *
  * A type error results in NULL (i.e. object isn't a String).
  */
-fio_cstr_s fiobj_obj2cstr(const fiobj_s *o) {
+fio_cstr_s fiobj_obj2cstr(const FIOBJ o) {
   return o ? OBJVTBL(o)->to_str(o) : fiobj_noop_str(NULL);
 }
 
 /**
  * Single layer iteration using a callback for each nested fio object.
  *
- * Accepts any `fiobj_s *` type but only collections (Arrays and Hashes) are
+ * Accepts any `FIOBJ ` type but only collections (Arrays and Hashes) are
  * processed. The container itself (the Array or the Hash) is **not** processed
  * (unlike `fiobj_each2`).
  *
@@ -262,8 +262,8 @@ fio_cstr_s fiobj_obj2cstr(const fiobj_s *o) {
  * Returns the "stop" position, i.e., the number of items processed + the
  * starting point.
  */
-size_t fiobj_each1(fiobj_s *o, size_t start_at,
-                   int (*task)(fiobj_s *obj, void *arg), void *arg) {
+size_t fiobj_each1(FIOBJ o, size_t start_at, int (*task)(FIOBJ obj, void *arg),
+                   void *arg) {
   return o ? OBJVTBL(o)->each1(o, start_at, task, arg) : 0;
 }
 
@@ -271,7 +271,7 @@ size_t fiobj_each1(fiobj_s *o, size_t start_at,
 Nested concern (each2, is_eq)
 ***************************************************************************** */
 
-static int each2_add_to_queue(fiobj_s *obj, void *arg) {
+static int each2_add_to_queue(FIOBJ obj, void *arg) {
   fio_ls_s *const queue = arg;
   fio_ls_unshift(queue, obj);
   return 0;
@@ -288,8 +288,7 @@ static int each2_add_to_queue(fiobj_s *obj, void *arg) {
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  */
-void fiobj_each2(fiobj_s *obj, int (*task)(fiobj_s *obj, void *arg),
-                 void *arg) {
+void fiobj_each2(FIOBJ obj, int (*task)(FIOBJ obj, void *arg), void *arg) {
   if (!obj)
     goto single;
   size_t count = OBJVTBL(obj)->count(obj);
@@ -331,13 +330,13 @@ single:
  *   Hases might behave differently during iteration.
  *
  */
-int fiobj_iseq(const fiobj_s *self, const fiobj_s *other) {
+int fiobj_iseq(const FIOBJ self, const FIOBJ other) {
   if (self == other)
     return 1;
   if (!self)
-    return other->type == FIOBJ_T_NULL;
+    return FIOBJ_TYPE(other) == FIOBJ_T_NULL;
   if (!other)
-    return self->type == FIOBJ_T_NULL;
+    return FIOBJ_TYPE(self) == FIOBJ_T_NULL;
 
   if (!OBJVTBL(self)->is_eq(self, other))
     return 0;
@@ -350,28 +349,28 @@ int fiobj_iseq(const fiobj_s *self, const fiobj_s *other) {
   fio_ls_s other_queue = FIO_LS_INIT(other_queue);
   fio_ls_s other_history = FIO_LS_INIT(other_history);
 
-  while (self) {
-    protected_push_obj(self, &self_history);
-    protected_push_obj(other, &other_history);
-    OBJVTBL(self)->each1((fiobj_s *)self, 0, each2_add_to_queue,
-                         self_queue.next);
-    OBJVTBL(other)->each1((fiobj_s *)other, 0, each2_add_to_queue,
-                          other_queue.next);
-    while (self_queue.next != &self_queue || self) {
-      self = protected_pop_obj(&self_queue, &self_history);
-      other = protected_pop_obj(&other_queue, &other_history);
-      if (self == other)
+  FIOBJ tmp = (FIOBJ)self;
+  FIOBJ otmp = (FIOBJ)other;
+  while (tmp) {
+    protected_push_obj(tmp, &self_history);
+    protected_push_obj(otmp, &other_history);
+    OBJVTBL(tmp)->each1((FIOBJ)tmp, 0, each2_add_to_queue, self_queue.next);
+    OBJVTBL(otmp)->each1((FIOBJ)otmp, 0, each2_add_to_queue, other_queue.next);
+    while (self_queue.next != &self_queue || tmp) {
+      tmp = protected_pop_obj(&self_queue, &self_history);
+      otmp = protected_pop_obj(&other_queue, &other_history);
+      if (tmp == otmp)
         continue;
-      if (!self && other->type != FIOBJ_T_NULL)
+      if (!tmp && FIOBJ_TYPE(otmp) != FIOBJ_T_NULL)
         goto finish;
-      if (!other && self->type != FIOBJ_T_NULL)
+      if (!otmp && FIOBJ_TYPE(tmp) != FIOBJ_T_NULL)
         goto finish;
-      if (OBJVTBL(self)->count(self))
+      if (OBJVTBL(tmp)->count(tmp))
         break;
-      if (!OBJVTBL(self)->is_eq(self, other))
+      if (!OBJVTBL(tmp)->is_eq(tmp, otmp))
         goto finish;
     }
-    if (self && !OBJVTBL(self)->is_eq(self, other))
+    if (tmp && !OBJVTBL(tmp)->is_eq(tmp, otmp))
       goto finish;
   }
   eq = 1;

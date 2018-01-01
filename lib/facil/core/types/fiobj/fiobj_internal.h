@@ -106,15 +106,15 @@ struct fiobj_vtable_s {
    * Note that nested objects, such as contained by Arrays and Hash maps, are
    * handled using `each1` and handled accoring to their reference count.
    */
-  void (*const free)(fiobj_s *);
+  void (*const free)(FIOBJ);
   /** object should evaluate as true/false? */
-  int (*const is_true)(const fiobj_s *);
+  int (*const is_true)(const FIOBJ);
   /** object value as String */
-  fio_cstr_s (*const to_str)(const fiobj_s *);
+  fio_cstr_s (*const to_str)(const FIOBJ);
   /** object value as Integer */
-  int64_t (*const to_i)(const fiobj_s *);
+  int64_t (*const to_i)(const FIOBJ);
   /** object value as Float */
-  double (*const to_f)(const fiobj_s *);
+  double (*const to_f)(const FIOBJ);
   /**
    * returns 1 if objects are equal, 0 if unequal.
    *
@@ -127,19 +127,19 @@ struct fiobj_vtable_s {
    * wrapping objects should forward the function call to the wrapped objectd
    * (similar to `count` and `each1`) after completing any internal testing.
    */
-  int (*const is_eq)(const fiobj_s *self, const fiobj_s *other);
+  int (*const is_eq)(const FIOBJ self, const FIOBJ other);
   /**
    * return the number of nested object
    *
    * wrapping objects should forward the function call to the wrapped objectd
    * (similar to `each1`).
    */
-  size_t (*const count)(const fiobj_s *o);
+  size_t (*const count)(const FIOBJ o);
   /**
    * return either `self` or a wrapped object.
    * (if object wrapping exists, i.e. Hash couplet, return nested object)
    */
-  fiobj_s *(*const unwrap)(const fiobj_s *obj);
+  FIOBJ (*const unwrap)(const FIOBJ obj);
   /**
    * perform a task for the object's children (-1 stops iteration)
    * returns the number of items processed + `start_at`.
@@ -147,8 +147,8 @@ struct fiobj_vtable_s {
    * wrapping objects should forward the function call to the wrapped objectd
    * (similar to `count`).
    */
-  size_t (*const each1)(fiobj_s *, size_t start_at,
-                        int (*task)(fiobj_s *obj, void *arg), void *arg);
+  size_t (*const each1)(FIOBJ, size_t start_at,
+                        int (*task)(FIOBJ obj, void *arg), void *arg);
 };
 
 // extern struct fiobj_vtable_s FIOBJ_VTABLE_INVALID; // unused just yet
@@ -157,28 +157,28 @@ VTable (virtual function table) common implememntations
 ***************************************************************************** */
 
 /** simple deallocation (`free`). */
-void fiobj_simple_dealloc(fiobj_s *o);
+void fiobj_simple_dealloc(FIOBJ o);
 /** no deallocation (eternal objects). */
-void fiobj_noop_free(fiobj_s *obj);
+void fiobj_noop_free(FIOBJ obj);
 /** always true. */
-int fiobj_noop_true(const fiobj_s *obj);
+int fiobj_noop_true(const FIOBJ obj);
 /** always false. */
-int fiobj_noop_false(const fiobj_s *obj);
+int fiobj_noop_false(const FIOBJ obj);
 /** NULL C string. */
-fio_cstr_s fiobj_noop_str(const fiobj_s *obj);
+fio_cstr_s fiobj_noop_str(const FIOBJ obj);
 /** always 0. */
-int64_t fiobj_noop_i(const fiobj_s *obj);
+int64_t fiobj_noop_i(const FIOBJ obj);
 /** always 0. */
-double fiobj_noop_f(const fiobj_s *obj);
+double fiobj_noop_f(const FIOBJ obj);
 /** always 0. */
-size_t fiobj_noop_count(const fiobj_s *obj);
+size_t fiobj_noop_count(const FIOBJ obj);
 /** always 0. */
-int fiobj_noop_is_eq(const fiobj_s *self, const fiobj_s *other);
+int fiobj_noop_is_eq(const FIOBJ self, const FIOBJ other);
 /** always self. */
-fiobj_s *fiobj_noop_unwrap(const fiobj_s *obj);
+FIOBJ fiobj_noop_unwrap(const FIOBJ obj);
 /** always 0. */
-size_t fiobj_noop_each1(fiobj_s *obj, size_t start_at,
-                        int (*task)(fiobj_s *obj, void *arg), void *arg);
+size_t fiobj_noop_each1(FIOBJ obj, size_t start_at,
+                        int (*task)(FIOBJ obj, void *arg), void *arg);
 
 /* *****************************************************************************
 The Object type head and management
@@ -187,12 +187,12 @@ The Object type head and management
 typedef struct { uintptr_t ref; } fiobj_head_s;
 
 #define OBJ2HEAD(o) (((fiobj_head_s *)(o)) - 1)
-#define HEAD2OBJ(o) ((fiobj_s *)(((fiobj_head_s *)(o)) + 1))
+#define HEAD2OBJ(o) ((FIOBJ)(((fiobj_head_s *)(o)) + 1))
 
 #define OBJREF_ADD(o) spn_add(&(OBJ2HEAD((o))->ref), 1)
 #define OBJREF_REM(o) spn_sub(&(OBJ2HEAD((o))->ref), 1)
 
-#define OBJVTBL(o) ((struct fiobj_vtable_s *)(((fiobj_s *)(o))->type))
+#define OBJVTBL(o) ((struct fiobj_vtable_s *)(((FIOBJ)(o))->type))
 
 // #define PTR2OBJ(o) (((o) << 1) | 1)
 // #define OBJ2PTR(o) (((o)&1) ? ((o) >> 1) : (o))
@@ -202,7 +202,7 @@ Internal API required across the board
 ***************************************************************************** */
 
 /** Allocates memory for the fiobj_s's data structure */
-static inline fiobj_s *fiobj_alloc(size_t size) {
+static inline FIOBJ fiobj_alloc(size_t size) {
   fiobj_head_s *head = (fiobj_head_s *)malloc(size + sizeof(*head));
   if (!head)
     return NULL;
@@ -211,6 +211,6 @@ static inline fiobj_s *fiobj_alloc(size_t size) {
 }
 
 /** Deallocates the fiobj_s's data structure. */
-static inline void fiobj_dealloc(fiobj_s *obj) { free(OBJ2HEAD(obj)); }
+static inline void fiobj_dealloc(FIOBJ obj) { free(OBJ2HEAD(obj)); }
 
 #endif

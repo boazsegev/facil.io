@@ -19,7 +19,7 @@ extern "C" {
 #include <errno.h>
 
 /** attempts to rehash the hashmap. */
-void fiobj_hash_rehash(fiobj_s *h);
+void fiobj_hash_rehash(FIOBJ h);
 
 /* *****************************************************************************
 Couplets API - the Key-Value pair, created by the Hash object
@@ -34,7 +34,7 @@ extern const uintptr_t FIOBJ_T_COUPLET;
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_couplet2key(const fiobj_s *obj);
+FIOBJ fiobj_couplet2key(const FIOBJ obj);
 
 /**
  * If object is a Hash couplet (occurs in `fiobj_each2`), returns the object
@@ -42,7 +42,7 @@ fiobj_s *fiobj_couplet2key(const fiobj_s *obj);
  *
  * Otherwise returns NULL.
  */
-fiobj_s *fiobj_couplet2obj(const fiobj_s *obj);
+FIOBJ fiobj_couplet2obj(const FIOBJ obj);
 
 /* *****************************************************************************
 Hash API
@@ -68,10 +68,10 @@ extern const uintptr_t FIOBJ_T_HASH;
  * Notice that these Hash objects are optimized for smaller collections and
  * retain order of object insertion.
  */
-fiobj_s *fiobj_hash_new(void);
+FIOBJ fiobj_hash_new(void);
 
 /** Returns the number of elements in the Hash. */
-size_t fiobj_hash_count(const fiobj_s *hash);
+size_t fiobj_hash_count(const FIOBJ hash);
 
 /**
  * Sets a key-value pair in the Hash, duplicating the Symbol and **moving**
@@ -79,7 +79,7 @@ size_t fiobj_hash_count(const fiobj_s *hash);
  *
  * Returns -1 on error.
  */
-int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj);
+int fiobj_hash_set(FIOBJ hash, FIOBJ sym, FIOBJ obj);
 
 /**
  * Replaces the value in a key-value pair, returning the old value (and it's
@@ -90,13 +90,13 @@ int fiobj_hash_set(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj);
  *
  * Errors are silently ignored.
  */
-fiobj_s *fiobj_hash_replace(fiobj_s *hash, fiobj_s *sym, fiobj_s *obj);
+FIOBJ fiobj_hash_replace(FIOBJ hash, FIOBJ sym, FIOBJ obj);
 
 /**
  * Removes a key-value pair from the Hash, if it exists, returning the old
  * object (instead of freeing it).
  */
-fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym);
+FIOBJ fiobj_hash_remove(FIOBJ hash, FIOBJ sym);
 
 /**
  * Deletes a key-value pair from the Hash, if it exists, freeing the
@@ -104,7 +104,7 @@ fiobj_s *fiobj_hash_remove(fiobj_s *hash, fiobj_s *sym);
  *
  * Returns -1 on type error or if the object never existed.
  */
-int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym);
+int fiobj_hash_delete(FIOBJ hash, FIOBJ sym);
 
 /**
  * Deletes a key-value pair from the Hash, if it exists, freeing the
@@ -115,7 +115,7 @@ int fiobj_hash_delete(fiobj_s *hash, fiobj_s *sym);
  *
  * Returns -1 on type error or if the object never existed.
  */
-int fiobj_hash_delete2(fiobj_s *hash, const char *str, size_t len);
+int fiobj_hash_delete2(FIOBJ hash, const char *str, size_t len);
 
 /**
  * Deletes a key-value pair from the Hash, if it exists, freeing the
@@ -127,13 +127,13 @@ int fiobj_hash_delete2(fiobj_s *hash, const char *str, size_t len);
  *
  * Returns -1 on type error or if the object never existed.
  */
-int fiobj_hash_delete3(fiobj_s *hash, uintptr_t key_hash);
+int fiobj_hash_delete3(FIOBJ hash, uintptr_t key_hash);
 
 /**
  * Returns a temporary handle to the object associated with the Symbol, NULL
  * if none.
  */
-fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym);
+FIOBJ fiobj_hash_get(const FIOBJ hash, FIOBJ sym);
 
 /**
  * Returns a temporary handle to the object associated with the Symbol C string.
@@ -143,7 +143,7 @@ fiobj_s *fiobj_hash_get(const fiobj_s *hash, fiobj_s *sym);
  *
  * Returns NULL if no object is asociated with this String data.
  */
-fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len);
+FIOBJ fiobj_hash_get2(const FIOBJ hash, const char *str, size_t len);
 
 /**
  * Returns a temporary handle to the object associated hashed key value.
@@ -154,18 +154,18 @@ fiobj_s *fiobj_hash_get2(const fiobj_s *hash, const char *str, size_t len);
  *
  * Returns NULL if no object is asociated with this hashed key value.
  */
-fiobj_s *fiobj_hash_get3(const fiobj_s *hash, uintptr_t key_hash);
+FIOBJ fiobj_hash_get3(const FIOBJ hash, uintptr_t key_hash);
 
 /**
  * Returns 1 if the key (Symbol) exists in the Hash, even if it's value is NULL.
  */
-int fiobj_hash_haskey(const fiobj_s *hash, fiobj_s *sym);
+int fiobj_hash_haskey(const FIOBJ hash, FIOBJ sym);
 
 /**
  * Returns a temporary theoretical Hash map capacity.
  * This could be used for testig performance and memory consumption.
  */
-size_t fiobj_hash_capa(const fiobj_s *hash);
+size_t fiobj_hash_capa(const FIOBJ hash);
 
 #ifdef __cplusplus
 } /* extern "C" */

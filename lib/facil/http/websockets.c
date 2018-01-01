@@ -123,7 +123,7 @@ struct ws_s {
   /** data length (how much of the buffer actually used). */
   size_t length;
   /** message buffer. */
-  fiobj_s *msg;
+  FIOBJ msg;
   /** latest text state. */
   uint8_t is_text;
   /** websocket connection type. */

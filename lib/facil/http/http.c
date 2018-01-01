@@ -27,14 +27,14 @@ static inline void add_content_length(http_s *r, uintptr_t length) {
   if (!cl_hash)
     cl_hash = fiobj_sym_hash("content-length", 14);
   if (!fiobj_hash_get3(r->private_data.out_headers, cl_hash)) {
-    static fiobj_s *cl;
+    static FIOBJ cl;
     if (!cl)
       cl = HTTP_HEADER_CONTENT_LENGTH;
     fiobj_hash_set(r->private_data.out_headers, cl, fiobj_num_new(length));
   }
 }
 
-static fiobj_s *current_date;
+static FIOBJ current_date;
 static time_t last_date_added;
 static spn_lock_i date_lock;
 static inline void add_date(http_s *r) {
@@ -46,13 +46,13 @@ static inline void add_date(http_s *r) {
     mod_hash = fiobj_sym_hash("last-modified", 13);
 
   if (facil_last_tick().tv_sec >= last_date_added + 60) {
-    fiobj_s *tmp = fiobj_str_buf(32);
+    FIOBJ tmp = fiobj_str_buf(32);
     fiobj_str_resize(
         tmp, http_time2str(fiobj_obj2cstr(tmp).data, facil_last_tick().tv_sec));
     spn_lock(&date_lock);
     if (facil_last_tick().tv_sec >= last_date_added + 60) {
       last_date_added = facil_last_tick().tv_sec;
-      fiobj_s *other = current_date;
+      FIOBJ other = current_date;
       current_date = tmp;
       tmp = other;
     }
@@ -71,12 +71,12 @@ static inline void add_date(http_s *r) {
 }
 
 struct header_writer_s {
-  fiobj_s *dest;
-  fiobj_s *name;
-  fiobj_s *value;
+  FIOBJ dest;
+  FIOBJ name;
+  FIOBJ value;
 };
 
-static int write_header(fiobj_s *o, void *w_) {
+static int write_header(FIOBJ o, void *w_) {
   struct header_writer_s *w = w_;
   if (!o)
     return 0;
@@ -116,7 +116,7 @@ static const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_header(http_s *r, fiobj_s *name, fiobj_s *value) {
+int http_set_header(http_s *r, FIOBJ name, FIOBJ value) {
   if (!r || !name || !r->private_data.out_headers)
     return -1;
   set_header_add(r->private_data.out_headers, name, value);
@@ -132,7 +132,7 @@ int http_set_header2(http_s *r, fio_cstr_s n, fio_cstr_s v) {
   if (!r || !n.data || !n.length || (v.data && !v.length) ||
       !r->private_data.out_headers)
     return -1;
-  fiobj_s *tmp = fiobj_sym_new(n.data, n.length);
+  FIOBJ tmp = fiobj_sym_new(n.data, n.length);
   int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.length));
   fiobj_free(tmp);
   return ret;
@@ -155,7 +155,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   /* write name and value while auto-correcting encoding issues */
   size_t capa = cookie.name_len + cookie.value_len + 128;
   size_t len = 0;
-  fiobj_s *c = fiobj_str_buf(capa);
+  FIOBJ c = fiobj_str_buf(capa);
   fio_cstr_s t = fiobj_obj2cstr(c);
   if (cookie.name) {
     if (cookie.name_len) {
@@ -277,7 +277,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   if (cookie.secure) {
     fiobj_str_write(c, "secure;", 7);
   }
-  static fiobj_s *sym = NULL;
+  static FIOBJ sym = NULL;
   if (!sym)
     sym = HTTP_HEADER_SET_COOKIE;
   set_header_add(h->private_data.out_headers, sym, c);
@@ -340,7 +340,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
     range_hash = fiobj_sym_hash("range", 5);
 
   /* create filename string */
-  fiobj_s *filename = fiobj_str_tmp();
+  FIOBJ filename = fiobj_str_tmp();
   if (prefix && prefix_len) {
     if (encoded && prefix[prefix_len - 1] == '/' && encoded[0] == '/')
       --prefix_len;
@@ -380,7 +380,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
 
   fio_cstr_s s = fiobj_obj2cstr(filename);
   {
-    fiobj_s *tmp = fiobj_hash_get3(h->headers, accept_enc_hash);
+    FIOBJ tmp = fiobj_hash_get3(h->headers, accept_enc_hash);
     if (!tmp)
       goto no_gzip_support;
     fio_cstr_s ac_str = fiobj_obj2cstr(tmp);
@@ -405,7 +405,7 @@ no_gzip_support:
 found_file:
   /* set last-modified */
   {
-    fiobj_s *tmp = fiobj_str_buf(32);
+    FIOBJ tmp = fiobj_str_buf(32);
     fiobj_str_resize(
         tmp, http_time2str(fiobj_obj2cstr(tmp).data, file_data.st_mtime));
     http_set_header(h, HTTP_HEADER_LAST_MODIFIED, tmp);
@@ -416,7 +416,7 @@ found_file:
   uint64_t etag = (uint64_t)file_data.st_size;
   etag ^= (uint64_t)file_data.st_mtime;
   etag = fiobj_sym_hash(&etag, sizeof(uint64_t));
-  fiobj_s *etag_str = fiobj_str_buf(32);
+  FIOBJ etag_str = fiobj_str_buf(32);
   fiobj_str_resize(etag_str,
                    fio_base64_encode(fiobj_obj2cstr(etag_str).data,
                                      (void *)&etag, sizeof(uint64_t)));
@@ -427,7 +427,7 @@ found_file:
     static uint64_t none_match_hash = 0;
     if (!none_match_hash)
       none_match_hash = fiobj_sym_hash("if-none-match", 13);
-    fiobj_s *tmp2 = fiobj_hash_get3(h->headers, none_match_hash);
+    FIOBJ tmp2 = fiobj_hash_get3(h->headers, none_match_hash);
     if (tmp2 && fiobj_iseq(tmp2, etag_str)) {
       h->status = 304;
       http_finish(h);
@@ -441,7 +441,7 @@ found_file:
     static uint64_t ifrange_hash = 0;
     if (!ifrange_hash)
       ifrange_hash = fiobj_sym_hash("if-range", 8);
-    fiobj_s *tmp = fiobj_hash_get3(h->headers, ifrange_hash);
+    FIOBJ tmp = fiobj_hash_get3(h->headers, ifrange_hash);
     if (tmp && fiobj_iseq(tmp, etag_str)) {
       fiobj_hash_delete3(h->headers, range_hash);
     } else {
@@ -500,7 +500,7 @@ open_file:
     return 0;
   }
   {
-    fiobj_s *tmp = NULL;
+    FIOBJ tmp = NULL;
     uintptr_t pos = 0;
     if (is_gz) {
       http_set_header(h, HTTP_HEADER_CONTENT_ENCODING,
@@ -583,8 +583,7 @@ void http_finish(http_s *r) {
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_data(http_s *r, void *data, uintptr_t length,
-                   fiobj_s *mime_type) {
+int http_push_data(http_s *r, void *data, uintptr_t length, FIOBJ mime_type) {
   return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_push_data(r, data, length, mime_type);
 }
@@ -596,7 +595,7 @@ int http_push_data(http_s *r, void *data, uintptr_t length,
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type) {
+int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
   return ((http_protocol_s *)h->private_data.owner)
       ->vtable->http_push_file(h, filename, mime_type);
 }
@@ -741,7 +740,7 @@ HTTP Helper functions that could be used globally
  * version is capped at HTTP/1.1). Mostly usable for proxy usage and
  * debugging.
  */
-fiobj_s *http_req2str(http_s *h) {
+FIOBJ http_req2str(http_s *h) {
   if (!h->headers)
     return NULL;
 
@@ -777,7 +776,7 @@ fiobj_s *http_req2str(http_s *h) {
 }
 
 void http_write_log(http_s *h) {
-  fiobj_s *l = fiobj_str_buf(128);
+  FIOBJ l = fiobj_str_buf(128);
   static uint64_t cl_hash = 0;
   if (!cl_hash)
     cl_hash = fiobj_sym_hash("content-length", 14);
@@ -811,7 +810,7 @@ void http_write_log(http_s *h) {
   buff.len += 6;
   fiobj_str_resize(l, buff.len);
   {
-    fiobj_s *date;
+    FIOBJ date;
     spn_lock(&date_lock);
     date = fiobj_dup(current_date);
     spn_unlock(&date_lock);
@@ -1227,11 +1226,11 @@ static fio_hash_s mime_types;
 
 /** Registers a Mime-Type to be associated with the file extension. */
 void http_mimetype_register(char *file_ext, size_t file_ext_len,
-                            fiobj_s *mime_type_str) {
+                            FIOBJ mime_type_str) {
   if (!mime_types.map)
     fio_hash_new(&mime_types);
   uintptr_t hash = fiobj_sym_hash(file_ext, file_ext_len);
-  fiobj_s *old = fio_hash_insert(&mime_types, hash, mime_type_str);
+  FIOBJ old = fio_hash_insert(&mime_types, hash, mime_type_str);
   fiobj_free(old);
 }
 
@@ -1239,7 +1238,7 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
  * Finds the mime-type associated with the file extension.
  *  Remember to call `fiobj_free`.
  */
-fiobj_s *http_mimetype_find(char *file_ext, size_t file_ext_len) {
+FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
   if (!mime_types.map)
     return NULL;
   uintptr_t hash = fiobj_sym_hash(file_ext, file_ext_len);

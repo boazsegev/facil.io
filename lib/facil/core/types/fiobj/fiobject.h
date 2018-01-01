@@ -30,7 +30,8 @@ Core Types
 
 /** The dynamic facil.io object type. */
 typedef struct { uintptr_t type; } fiobj_s;
-typedef fiobj_s *fiobj_pt;
+
+typedef fiobj_s *FIOBJ;
 
 /** A string information type, reports anformation about a C string. */
 typedef struct {
@@ -60,11 +61,18 @@ typedef struct {
 #endif
 
 /* *****************************************************************************
+Core MACROS
+***************************************************************************** */
+
+#define FIOBJ_TYPE(obj) fiobj_type((FIOBJ)(obj))
+static inline __attribute__((unused)) uintptr_t fiobj_type(const FIOBJ obj);
+
+/* *****************************************************************************
 Generic Object API
 ***************************************************************************** */
 
 /** Returns a C string naming the objects dynamic type. */
-const char *fiobj_type_name(const fiobj_s *obj);
+const char *fiobj_type_name(const FIOBJ obj);
 
 /**
  * Copy by reference(!) - increases an object's (and any nested object's)
@@ -76,7 +84,7 @@ const char *fiobj_type_name(const fiobj_s *obj);
  *
  * We don't need this feature just yet, so I'm not working on it.
  */
-fiobj_s *fiobj_dup(fiobj_s *);
+FIOBJ fiobj_dup(FIOBJ);
 
 /**
  * Decreases an object's reference count, releasing memory and
@@ -88,14 +96,14 @@ fiobj_s *fiobj_dup(fiobj_s *);
  *
  * Returns the number of existing references or zero if memory was released.
  */
-uintptr_t fiobj_free(fiobj_s *);
+uintptr_t fiobj_free(FIOBJ);
 
 /**
  * Attempts to return the object's current reference count.
  *
  * This is mostly for testing rather than normal library operations.
  */
-uintptr_t fiobj_reference_count(const fiobj_s *);
+uintptr_t fiobj_reference_count(const FIOBJ);
 
 /**
  * Tests if an object evaluates as TRUE.
@@ -103,7 +111,7 @@ uintptr_t fiobj_reference_count(const fiobj_s *);
  * This is object type specific. For example, empty strings might evaluate as
  * FALSE, even though they aren't a boolean type.
  */
-int fiobj_is_true(const fiobj_s *);
+int fiobj_is_true(const FIOBJ);
 
 /**
  * Returns an Object's numerical value.
@@ -117,7 +125,7 @@ int fiobj_is_true(const fiobj_s *);
  *
  * A type error results in 0.
  */
-int64_t fiobj_obj2num(const fiobj_s *obj);
+int64_t fiobj_obj2num(const FIOBJ obj);
 
 /**
  * Returns a Float's value.
@@ -131,7 +139,7 @@ int64_t fiobj_obj2num(const fiobj_s *obj);
  *
  * A type error results in 0.
  */
-double fiobj_obj2float(const fiobj_s *obj);
+double fiobj_obj2float(const FIOBJ obj);
 
 /**
  * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
@@ -146,12 +154,12 @@ double fiobj_obj2float(const fiobj_s *obj);
  *
  * A type error results in NULL (i.e. object isn't a String).
  */
-fio_cstr_s fiobj_obj2cstr(const fiobj_s *obj);
+fio_cstr_s fiobj_obj2cstr(const FIOBJ obj);
 
 /**
  * Single layer iteration using a callback for each nested fio object.
  *
- * Accepts any `fiobj_s *` type but only collections (Arrays and Hashes) are
+ * Accepts any `FIOBJ ` type but only collections (Arrays and Hashes) are
  * processed. The container itself (the Array or the Hash) is **not** processed
  * (unlike `fiobj_each2`).
  *
@@ -165,13 +173,13 @@ fio_cstr_s fiobj_obj2cstr(const fiobj_s *obj);
  * Returns the "stop" position, i.e., the number of items processed + the
  * starting point.
  */
-size_t fiobj_each1(fiobj_s *, size_t start_at,
-                   int (*task)(fiobj_s *obj, void *arg), void *arg);
+size_t fiobj_each1(FIOBJ, size_t start_at, int (*task)(FIOBJ obj, void *arg),
+                   void *arg);
 
 /**
  * Deep iteration using a callback for each fio object, including the parent.
  *
- * Accepts any `fiobj_s *` type.
+ * Accepts any `FIOBJ ` type.
  *
  * Collections (Arrays, Hashes) are deeply probed and shouldn't be edited
  * during an `fiobj_each2` call (or weird things may happen).
@@ -193,10 +201,10 @@ size_t fiobj_each1(fiobj_s *, size_t start_at,
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  */
-void fiobj_each2(fiobj_s *, int (*task)(fiobj_s *obj, void *arg), void *arg);
+void fiobj_each2(FIOBJ, int (*task)(FIOBJ obj, void *arg), void *arg);
 
 /** Within `fiobj_each2`, this will return the current cyclic object, if any. */
-fiobj_s *fiobj_each_get_cyclic(void);
+FIOBJ fiobj_each_get_cyclic(void);
 
 /**
  * Deeply compare two objects. No hashing or recursive function calls are
@@ -218,7 +226,7 @@ fiobj_s *fiobj_each_get_cyclic(void);
  *
  * Returns 1 if true and 0 if false.
  */
-int fiobj_iseq(const fiobj_s *obj1, const fiobj_s *obj2);
+int fiobj_iseq(const FIOBJ obj1, const FIOBJ obj2);
 
 /* *****************************************************************************
 Helpers: not fiobj_s specific, but since they're used internally, they're here.
@@ -275,5 +283,13 @@ int fiobj_test_json_str(char const *json, size_t len, uint8_t print_result);
 #ifdef __cplusplus
 } /* closing brace for extern "C" */
 #endif
+
+/* *****************************************************************************
+Inline Helpers
+***************************************************************************** */
+
+static inline __attribute__((unused)) uintptr_t fiobj_type(const FIOBJ obj) {
+  return obj->type;
+}
 
 #endif

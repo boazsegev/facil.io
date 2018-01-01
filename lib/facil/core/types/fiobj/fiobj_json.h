@@ -32,7 +32,7 @@ JSON API
  * Returns the number of bytes consumed. On Error, 0 is returned and no data is
  * consumed.
  */
-size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
+size_t fiobj_json2obj(FIOBJ *pobj, const void *data, size_t len);
 /**
  * Formats an object into a JSON string. Remember to `fiobj_free`.
  *
@@ -43,7 +43,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
  * Some objects (such as the POSIX specific IO type) are unsupported and may be
  * formatted incorrectly.
  */
-fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t pretty);
+FIOBJ fiobj_obj2json(FIOBJ, uint8_t pretty);
 
 /**
  * Formats an object into a JSON string, appending the JSON string to an
@@ -56,7 +56,7 @@ fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t pretty);
  * Some objects (such as the POSIX specific IO type) are unsupported and may be
  * formatted incorrectly.
  */
-fiobj_s *fiobj_obj2json2(fiobj_s *dest, fiobj_s *object, uint8_t pretty);
+FIOBJ fiobj_obj2json2(FIOBJ dest, FIOBJ object, uint8_t pretty);
 
 #ifdef __cplusplus
 } /* extern "C" */

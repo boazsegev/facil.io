@@ -37,7 +37,7 @@ A JSON testing
 int fiobj_test_json_str(char const *json, size_t len, uint8_t print_result) {
   clock_t start, end;
 
-  fiobj_s *result = NULL;
+  FIOBJ result = NULL;
   start = clock();
   size_t i = fiobj_json2obj(&result, json, len);
   end = clock();
@@ -48,7 +48,7 @@ int fiobj_test_json_str(char const *json, size_t len, uint8_t print_result) {
   }
   fprintf(stderr, "* Parsed JSON in %lu\n", end - start);
   start = clock();
-  fiobj_s *jstr = fiobj_obj2json(result, 1);
+  FIOBJ jstr = fiobj_obj2json(result, 1);
   end = clock();
   fprintf(stderr, "* Formatted JSON in %lu\n", end - start);
   fprintf(
@@ -68,12 +68,12 @@ int fiobj_test_json_str(char const *json, size_t len, uint8_t print_result) {
   return 0;
 }
 static void fiobj_test_hash_json(void) {
-  fiobj_pt hash = fiobj_hash_new();
-  fiobj_pt hash2 = fiobj_hash_new();
-  fiobj_pt hash3 = fiobj_hash_new();
-  fiobj_pt syms = fiobj_ary_new(); /* freed within Hashes */
+  FIOBJ hash = fiobj_hash_new();
+  FIOBJ hash2 = fiobj_hash_new();
+  FIOBJ hash3 = fiobj_hash_new();
+  FIOBJ syms = fiobj_ary_new(); /* freed within Hashes */
   char num_buffer[68] = "0x";
-  fiobj_pt tmp, sym;
+  FIOBJ tmp, sym;
 
   sym = fiobj_sym_new("id", 2);
   fiobj_ary_push(syms, sym);
@@ -152,7 +152,7 @@ static void fiobj_test_hash_json(void) {
             fiobj_obj2cstr(tmp).len, strlen(fiobj_obj2cstr(tmp).data),
             fiobj_str_capa(tmp), fiobj_reference_count(tmp),
             fiobj_obj2cstr(tmp).data);
-    fiobj_s *parsed = NULL;
+    FIOBJ parsed = NULL;
     if (fiobj_json2obj(&parsed, fiobj_obj2cstr(tmp).buffer,
                        fiobj_obj2cstr(tmp).len) == 0) {
       fprintf(stderr, "* FAILD to parse the JSON printed.\n");
@@ -242,9 +242,9 @@ Test Hash performance
 
 static void fiobj_hash_test(void) {
   clock_t start, end;
-  fiobj_s *syms;
-  fiobj_s *strings;
-  fiobj_s *hash;
+  FIOBJ syms;
+  FIOBJ strings;
+  FIOBJ hash;
   fprintf(stderr, "\nTesting Hash and Array allocations\n");
 
   start = clock();
@@ -345,29 +345,29 @@ void fiobj_test(void) {
   }
   /* start simple tests */
 
-  fiobj_s *obj;
+  FIOBJ obj;
   size_t i;
   fprintf(stderr, "\n===\nStarting fiobj basic testing:\n");
 
   obj = fiobj_null();
-  if (obj->type != FIOBJ_T_NULL)
+  if (FIOBJ_TYPE(obj) != FIOBJ_T_NULL)
     fprintf(stderr, "* FAILED null object test.\n");
   fiobj_free(obj);
 
   obj = fiobj_false();
-  if (obj->type != FIOBJ_T_FALSE)
+  if (FIOBJ_TYPE(obj) != FIOBJ_T_FALSE)
     fprintf(stderr, "* FAILED false object test.\n");
   fiobj_free(obj);
 
   obj = fiobj_true();
-  if (obj->type != FIOBJ_T_TRUE)
+  if (FIOBJ_TYPE(obj) != FIOBJ_T_TRUE)
     fprintf(stderr, "* FAILED true object test.\n");
   fiobj_free(obj);
 
   obj = fiobj_num_new(255);
-  if (obj->type != FIOBJ_T_NUMBER || fiobj_obj2num(obj) != 255)
+  if (FIOBJ_TYPE(obj) != FIOBJ_T_NUMBER || fiobj_obj2num(obj) != 255)
     fprintf(stderr, "* FAILED 255 object test i == %llu with type %p.\n",
-            fiobj_obj2num(obj), (void *)obj->type);
+            fiobj_obj2num(obj), (void *)FIOBJ_TYPE(obj));
   if (strcmp(fiobj_obj2cstr(obj).data, "255"))
     fprintf(stderr, "* FAILED base 10 fiobj_obj2cstr test with %s.\n",
             fiobj_obj2cstr(obj).data);
@@ -382,7 +382,7 @@ void fiobj_test(void) {
   fiobj_free(obj);
 
   obj = fiobj_float_new(77.777);
-  if (obj->type != FIOBJ_T_FLOAT || fiobj_obj2num(obj) != 77 ||
+  if (FIOBJ_TYPE(obj) != FIOBJ_T_FLOAT || fiobj_obj2num(obj) != 77 ||
       fiobj_obj2float(obj) != 77.777)
     fprintf(stderr, "* FAILED 77.777 object test.\n");
   if (strcmp(fiobj_obj2cstr(obj).data, "77.777"))
@@ -391,18 +391,18 @@ void fiobj_test(void) {
   fiobj_free(obj);
 
   obj = fiobj_str_new("0x7F", 4);
-  if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 127)
+  if (FIOBJ_TYPE(obj) != FIOBJ_T_STRING || fiobj_obj2num(obj) != 127)
     fprintf(stderr, "* FAILED 0x7F object test got %ld.\n",
             (long)fiobj_obj2num(obj));
   fiobj_free(obj);
 
   obj = fiobj_str_new("0b01111111", 10);
-  if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 127)
+  if (FIOBJ_TYPE(obj) != FIOBJ_T_STRING || fiobj_obj2num(obj) != 127)
     fprintf(stderr, "* FAILED 0b01111111 object test.\n");
   fiobj_free(obj);
 
   obj = fiobj_str_new("232.79", 6);
-  if (obj->type != FIOBJ_T_STRING || fiobj_obj2num(obj) != 232)
+  if (FIOBJ_TYPE(obj) != FIOBJ_T_STRING || fiobj_obj2num(obj) != 232)
     fprintf(stderr, "* FAILED 232 object test. %llu\n", fiobj_obj2num(obj));
   if (fiobj_obj2float(obj) != 232.79)
     fprintf(stderr, "* FAILED fiobj_obj2float test with %f.\n",
@@ -411,7 +411,7 @@ void fiobj_test(void) {
 
   /* test array */
   obj = fiobj_ary_new();
-  if (obj->type == FIOBJ_T_ARRAY) {
+  if (FIOBJ_TYPE(obj) == FIOBJ_T_ARRAY) {
     fprintf(stderr, "* testing Array. \n");
     for (size_t i = 0; i < 128; i++) {
       fiobj_ary_unshift(obj, fiobj_num_new(i));
@@ -419,7 +419,7 @@ void fiobj_test(void) {
         fprintf(stderr, "* FAILED Array count. %lu/%lu != %lu\n",
                 fiobj_ary_count(obj), fiobj_ary_capa(obj), i + 1);
     }
-    fiobj_s *tmp = fiobj_obj2json(obj, 0);
+    FIOBJ tmp = fiobj_obj2json(obj, 0);
     fprintf(stderr, "Array test printout:\n%s\n",
             tmp ? fiobj_obj2cstr(tmp).data : "ERROR");
     fiobj_free(tmp);
@@ -433,8 +433,8 @@ void fiobj_test(void) {
 #if FIOBJ_NESTING_PROTECTION == 1
   {
     fprintf(stderr, "* testing cyclic protection. \n");
-    fiobj_s *a1 = fiobj_ary_new();
-    fiobj_s *a2 = fiobj_ary_new();
+    FIOBJ a1 = fiobj_ary_new();
+    FIOBJ a2 = fiobj_ary_new();
     for (size_t i = 0; i < 129; i++) {
       obj = fiobj_num_new(1024 + i);
       fiobj_ary_push(a1, fiobj_num_new(i));
@@ -449,15 +449,15 @@ void fiobj_test(void) {
             "a1[%lu]  == a2 and a2[%lu] == a1\n",
             fiobj_ary_count(a1), fiobj_ary_count(a2));
     {
-      fiobj_s *tmp = fiobj_obj2json(a1, 0);
+      FIOBJ tmp = fiobj_obj2json(a1, 0);
       fprintf(stderr, "%s\n", tmp ? fiobj_obj2cstr(tmp).data : "ERROR");
       fiobj_free(tmp);
     }
 
     obj = fiobj_dup(fiobj_ary_index(a2, -3));
-    if (!obj || obj->type != FIOBJ_T_NUMBER)
+    if (!obj || FIOBJ_TYPE(obj) != FIOBJ_T_NUMBER)
       fprintf(stderr, "* FAILED unexpected object %p with type %p\n",
-              (void *)obj, (void *)(obj ? obj->type : 0));
+              (void *)obj, (void *)(obj ? FIOBJ_TYPE(obj) : 0));
     if (OBJ2HEAD(obj)->ref < 2)
       fprintf(stderr, "* FAILED object reference counting test (%lu)\n",
               OBJ2HEAD(obj)->ref);
@@ -478,17 +478,17 @@ void fiobj_test(void) {
   /* test deep nesting */
   {
     fprintf(stderr, "* testing deep array nesting. \n");
-    fiobj_s *top = fiobj_ary_new();
-    fiobj_s *pos = top;
+    FIOBJ top = fiobj_ary_new();
+    FIOBJ pos = top;
     for (size_t i = 0; i < 128; i++) {
       for (size_t j = 0; j < 128; j++) {
         fiobj_ary_push(pos, fiobj_num_new(j));
       }
       fiobj_ary_push(pos, fiobj_ary_new());
       pos = fiobj_ary_index(pos, -1);
-      if (!pos || pos->type != FIOBJ_T_ARRAY) {
+      if (!pos || FIOBJ_TYPE(pos) != FIOBJ_T_ARRAY) {
         fprintf(stderr, "* FAILED Couldn't retrive position -1 (%p)\n",
-                (void *)(pos ? pos->type : 0));
+                (void *)(pos ? FIOBJ_TYPE(pos) : 0));
         break;
       }
     }

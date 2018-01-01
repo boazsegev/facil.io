@@ -20,9 +20,9 @@ JSON API
  * Returns the number of bytes consumed. On Error, 0 is returned and no data is
  * consumed.
  */
-size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len);
+size_t fiobj_json2obj(FIOBJ *pobj, const void *data, size_t len);
 /* Formats an object into a JSON string. Remember to `fiobj_free`. */
-fiobj_s *fiobj_obj2json(fiobj_s *, uint8_t);
+FIOBJ fiobj_obj2json(FIOBJ, uint8_t);
 
 /* *****************************************************************************
 JSON UTF-8 safe string formatting
@@ -85,7 +85,7 @@ static inline int utf8_from_u32(uint8_t *dest, uint32_t u) {
 }
 
 /** Writes a JSON friendly version of the src String */
-static void write_safe_str(fiobj_s *dest, const fiobj_s *str) {
+static void write_safe_str(FIOBJ dest, const FIOBJ str) {
   fio_cstr_s s = fiobj_obj2cstr(str);
   fio_cstr_s t = fiobj_obj2cstr(dest);
   const uint8_t *restrict src = (const uint8_t *)s.data;
@@ -174,14 +174,14 @@ JSON formatting
 
 /* this is used to persist data in `fiobj_each2` */
 struct fiobj_str_new_json_data_s {
-  fiobj_s *parent;  /* stores item types */
-  fiobj_s *waiting; /* stores item counts and types */
-  fiobj_s *buffer;  /* we'll write the JSON here */
-  fiobj_s *count;   /* used to persist item counts for arrays / hashes */
-  uint8_t pretty;   /* make it beautiful */
+  FIOBJ parent;   /* stores item types */
+  FIOBJ waiting;  /* stores item counts and types */
+  FIOBJ buffer;   /* we'll write the JSON here */
+  FIOBJ count;    /* used to persist item counts for arrays / hashes */
+  uint8_t pretty; /* make it beautiful */
 };
 
-static int fiobj_str_new_json_task(fiobj_s *obj, void *d_) {
+static int fiobj_str_new_json_task(FIOBJ obj, void *d_) {
   struct fiobj_str_new_json_data_s *data = d_;
   if (data->count && fiobj_obj2num(data->count))
     fiobj_num_set(data->count, fiobj_obj2num(data->count) - 1);
@@ -202,18 +202,18 @@ re_rooted:
     fiobj_str_write(data->buffer, "null", 4);
     goto review_nesting;
   }
-  if (obj->type == FIOBJ_T_HASH) {
+  if (FIOBJ_TYPE(obj) == FIOBJ_T_HASH) {
     fiobj_str_write(data->buffer, "{", 1);
     fiobj_ary_push(data->parent, obj);
     fiobj_ary_push(data->waiting, data->count);
     data->count = fiobj_num_new(fiobj_hash_count(obj));
-  } else if (obj->type == FIOBJ_T_ARRAY) {
+  } else if (FIOBJ_TYPE(obj) == FIOBJ_T_ARRAY) {
     fiobj_str_write(data->buffer, "[", 1);
     /* push current state to stacks and update state */
     fiobj_ary_push(data->parent, obj);
     fiobj_ary_push(data->waiting, data->count);
     data->count = fiobj_num_new(fiobj_ary_count(obj));
-  } else if (obj->type == FIOBJ_T_COUPLET) {
+  } else if (FIOBJ_TYPE(obj) == FIOBJ_T_COUPLET) {
     fiobj_str_capa_assert(data->buffer,
                           ((((fiobj_obj2cstr(data->buffer).len + 31 +
                               fiobj_obj2cstr(fiobj_couplet2key(obj)).len) >>
@@ -226,17 +226,18 @@ re_rooted:
     fiobj_str_write(data->buffer, "\":", 2);
     obj = fiobj_couplet2obj(obj);
     if (data->pretty &&
-        (obj->type == FIOBJ_T_ARRAY || obj->type == FIOBJ_T_HASH))
+        (FIOBJ_TYPE(obj) == FIOBJ_T_ARRAY || FIOBJ_TYPE(obj) == FIOBJ_T_HASH))
       goto pretty_re_rooted;
     goto re_rooted;
-  } else if (obj->type == FIOBJ_T_NUMBER || obj->type == FIOBJ_T_FLOAT) {
+  } else if (FIOBJ_TYPE(obj) == FIOBJ_T_NUMBER ||
+             FIOBJ_TYPE(obj) == FIOBJ_T_FLOAT) {
     fio_cstr_s i2s = fiobj_obj2cstr(obj);
     fiobj_str_write(data->buffer, i2s.data, i2s.len);
-  } else if (obj->type == FIOBJ_T_NULL) {
+  } else if (FIOBJ_TYPE(obj) == FIOBJ_T_NULL) {
     fiobj_str_write(data->buffer, "null", 4);
-  } else if (obj->type == FIOBJ_T_TRUE) {
+  } else if (FIOBJ_TYPE(obj) == FIOBJ_T_TRUE) {
     fiobj_str_write(data->buffer, "true", 4);
-  } else if (obj->type == FIOBJ_T_FALSE) {
+  } else if (FIOBJ_TYPE(obj) == FIOBJ_T_FALSE) {
     fiobj_str_write(data->buffer, "false", 5);
   } else {
     fiobj_str_capa_assert(
@@ -254,7 +255,7 @@ re_rooted:
 review_nesting:
   /* print clousure to String */
   while (!fiobj_obj2num(data->count)) {
-    fiobj_s *tmp = fiobj_ary_pop(data->parent);
+    FIOBJ tmp = fiobj_ary_pop(data->parent);
     if (!tmp)
       break;
     fiobj_free(data->count);
@@ -265,14 +266,15 @@ review_nesting:
         fiobj_str_write(data->buffer, "  ", 2);
       }
     }
-    if (tmp->type == FIOBJ_T_ARRAY)
+    if (FIOBJ_TYPE(tmp) == FIOBJ_T_ARRAY)
       fiobj_str_write(data->buffer, "]", 1);
     else
       fiobj_str_write(data->buffer, "}", 1);
   }
   /* print object divisions to String */
   if (data->count && fiobj_obj2num(data->count) &&
-      (!obj || (obj->type != FIOBJ_T_ARRAY && obj->type != FIOBJ_T_HASH)))
+      (!obj ||
+       (FIOBJ_TYPE(obj) != FIOBJ_T_ARRAY && FIOBJ_TYPE(obj) != FIOBJ_T_HASH)))
     fiobj_str_write(data->buffer, ",", 1);
   return 0;
 }
@@ -281,7 +283,7 @@ review_nesting:
  * Formats an object into a JSON string, appending the JSON string to an
  * existing String. Remember to `fiobj_free`.
  */
-fiobj_s *fiobj_obj2json2(fiobj_s *dest, fiobj_s *obj, uint8_t pretty) {
+FIOBJ fiobj_obj2json2(FIOBJ dest, FIOBJ obj, uint8_t pretty) {
   /* Using a whole page size could optimize future allocations (no copy) */
   struct fiobj_str_new_json_data_s data = {
       .parent = fiobj_ary_new(),
@@ -301,7 +303,7 @@ fiobj_s *fiobj_obj2json2(fiobj_s *dest, fiobj_s *obj, uint8_t pretty) {
 }
 
 /* Formats an object into a JSON string. Remember to `fiobj_free`. */
-fiobj_s *fiobj_obj2json(fiobj_s *obj, uint8_t pretty) {
+FIOBJ fiobj_obj2json(FIOBJ obj, uint8_t pretty) {
   return fiobj_obj2json2(fiobj_str_buf(0), obj, pretty);
 }
 
@@ -398,8 +400,8 @@ JSON UTF-8 safe string deconstruction
  *
  * Also deals with the non-standard oct ("\77") and hex ("\xFF") notations
  */
-static uintptr_t safestr2local(fiobj_s *str) {
-  if (str->type != FIOBJ_T_STRING && str->type != FIOBJ_T_SYMBOL) {
+static uintptr_t safestr2local(FIOBJ str) {
+  if (FIOBJ_TYPE(str) != FIOBJ_T_STRING && FIOBJ_TYPE(str) != FIOBJ_T_SYMBOL) {
     fprintf(stderr,
             "CRITICAL ERROR: unexpected function call `safestr2local`\n");
     exit(-1);
@@ -518,15 +520,15 @@ JSON => Obj
  * Returns the number of bytes consumed. On Error, 0 is returned and no data
  * is consumed.
  */
-size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
+size_t fiobj_json2obj(FIOBJ *pobj, const void *data, size_t len) {
   if (!data) {
     *pobj = NULL;
     return 0;
   }
-  fiobj_s *nesting = fiobj_ary_new2(JSON_MAX_DEPTH + 2);
+  FIOBJ nesting = fiobj_ary_new2(JSON_MAX_DEPTH + 2);
   int64_t num;
   const uint8_t *start;
-  fiobj_s *obj;
+  FIOBJ obj;
   const uint8_t *end = (uint8_t *)data;
   const uint8_t *stop = end + len;
   uint8_t depth = 0;
@@ -556,7 +558,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       }
 
       if (fiobj_ary_index(nesting, -1) &&
-          fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
+          FIOBJ_TYPE(fiobj_ary_index(nesting, -1)) == FIOBJ_T_HASH) {
         obj = fiobj_sym_new((char *)start, end - start);
         if (dirty)
           fiobj_sym_reinitialize(obj, (size_t)safestr2local(obj));
@@ -618,7 +620,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       end++;
       depth--;
       obj = fiobj_ary_pop(nesting);
-      if (obj->type != FIOBJ_T_HASH) {
+      if (FIOBJ_TYPE(obj) != FIOBJ_T_HASH) {
         goto error;
       }
       goto has_obj;
@@ -628,7 +630,7 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
       end++;
       depth--;
       obj = fiobj_ary_pop(nesting);
-      if (obj->type != FIOBJ_T_ARRAY) {
+      if (FIOBJ_TYPE(obj) != FIOBJ_T_ARRAY) {
         goto error;
       }
       goto has_obj;
@@ -703,16 +705,16 @@ size_t fiobj_json2obj(fiobj_s **pobj, const void *data, size_t len) {
 
     if (fiobj_ary_count(nesting) == 0)
       goto finish_with_obj;
-    if (fiobj_ary_index(nesting, -1)->type == FIOBJ_T_ARRAY) {
+    if (FIOBJ_TYPE(fiobj_ary_index(nesting, -1)) == FIOBJ_T_ARRAY) {
       fiobj_ary_push(fiobj_ary_index(nesting, -1), obj);
       continue;
     }
-    if (fiobj_ary_index(nesting, -1)->type == FIOBJ_T_HASH) {
+    if (FIOBJ_TYPE(fiobj_ary_index(nesting, -1)) == FIOBJ_T_HASH) {
       fiobj_ary_push(nesting, obj);
       continue;
     }
-    fiobj_s *sym = fiobj_ary_pop(nesting);
-    if (fiobj_ary_index(nesting, -1)->type != FIOBJ_T_HASH)
+    FIOBJ sym = fiobj_ary_pop(nesting);
+    if (FIOBJ_TYPE(fiobj_ary_index(nesting, -1)) != FIOBJ_T_HASH)
       goto error;
     fiobj_hash_set(fiobj_ary_index(nesting, -1), sym, obj);
     fiobj_free(sym);

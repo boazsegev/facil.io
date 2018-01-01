@@ -51,7 +51,7 @@ typedef struct {
     /** the connection's owner - used by facil.io, don't use directly! */
     protocol_s *owner;
     /** The response headers, if they weren't sent. Don't access directly. */
-    fiobj_s *out_headers;
+    FIOBJ out_headers;
     /** a private request ID, used by the owner (facil.io), do not touch. */
     uintptr_t request_id;
   } private_data;
@@ -59,36 +59,36 @@ typedef struct {
   struct timespec received_at;
   union {
     /** a String containing the method data (supports non-standard methods. */
-    fiobj_s *method;
+    FIOBJ method;
     /** The status string., if the object is a response. */
-    fiobj_s *status_str;
+    FIOBJ status_str;
   };
   /** The HTTP version string, if any. */
-  fiobj_s *version;
+  FIOBJ version;
   /** The status used for the response (or if the object is a response). */
   uintptr_t status;
   /** The request path, if any. */
-  fiobj_s *path;
+  FIOBJ path;
   /** The request query, if any. */
-  fiobj_s *query;
+  FIOBJ query;
   /** a hash of general header data. When a header is set multiple times (such
    * as cookie headers), an Array will be used instead of a String. */
-  fiobj_s *headers;
+  FIOBJ headers;
   /**
    * a placeholder for a hash of cookie data.
    * the hash will be initialized when parsing the request.
    */
-  fiobj_s *cookies;
+  FIOBJ cookies;
   /**
    * a placeholder for a hash of request data.
    * the hash will be initialized when parsing the request.
    */
-  fiobj_s *params;
+  FIOBJ params;
   /**
    * a reader for body data (might be a temporary file or a string or NULL).
    * see fiobj_io.h for details.
    */
-  fiobj_s *body;
+  FIOBJ body;
   /** an opaque user data pointer, to be used BEFORE calling `http_defer`. */
   void *udata;
 } http_s;
@@ -134,7 +134,7 @@ typedef struct {
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_header(http_s *h, fiobj_s *name, fiobj_s *value);
+int http_set_header(http_s *h, FIOBJ name, FIOBJ value);
 
 /**
  * Sets a response header, taking ownership of the value object, but NOT the
@@ -226,7 +226,7 @@ void http_finish(http_s *h);
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_data(http_s *h, void *data, uintptr_t length, fiobj_s *mime_type);
+int http_push_data(http_s *h, void *data, uintptr_t length, FIOBJ mime_type);
 
 /**
  * Pushes a file response when supported (HTTP/2 only).
@@ -236,7 +236,7 @@ int http_push_data(http_s *h, void *data, uintptr_t length, fiobj_s *mime_type);
  *
  * Returns -1 on error and 0 on success.
  */
-int http_push_file(http_s *h, fiobj_s *filename, fiobj_s *mime_type);
+int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
 
 /**
  * Defers the request / response handling for later and INVALIDATES the current
@@ -426,13 +426,13 @@ fio_cstr_s http_status2str(uintptr_t status);
 
 /** Registers a Mime-Type to be associated with the file extension. */
 void http_mimetype_register(char *file_ext, size_t file_ext_len,
-                            fiobj_s *mime_type_str);
+                            FIOBJ mime_type_str);
 
 /**
  * Finds the mime-type associated with the file extension.
  *  Remember to call `fiobj_free`.
  */
-fiobj_s *http_mimetype_find(char *file_ext, size_t file_ext_len);
+FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len);
 
 /** Clears the Mime-Type registry (it will be emoty afterthis call). */
 void http_mimetype_clear(void);
@@ -441,18 +441,18 @@ void http_mimetype_clear(void);
 Commonly used headers (fiobj Symbol objects)
 ***************************************************************************** */
 
-extern fiobj_s *HTTP_HEADER_CACHE_CONTROL;
-extern fiobj_s *HTTP_HEADER_CONNECTION;
-extern fiobj_s *HTTP_HEADER_CONTENT_ENCODING;
-extern fiobj_s *HTTP_HEADER_CONTENT_LENGTH;
-extern fiobj_s *HTTP_HEADER_CONTENT_RANGE;
-extern fiobj_s *HTTP_HEADER_CONTENT_TYPE;
-extern fiobj_s *HTTP_HEADER_COOKIE;
-extern fiobj_s *HTTP_HEADER_DATE;
-extern fiobj_s *HTTP_HEADER_ETAG;
-extern fiobj_s *HTTP_HEADER_LAST_MODIFIED;
-extern fiobj_s *HTTP_HEADER_SET_COOKIE;
-extern fiobj_s *HTTP_HEADER_UPGRADE;
+extern FIOBJ HTTP_HEADER_CACHE_CONTROL;
+extern FIOBJ HTTP_HEADER_CONNECTION;
+extern FIOBJ HTTP_HEADER_CONTENT_ENCODING;
+extern FIOBJ HTTP_HEADER_CONTENT_LENGTH;
+extern FIOBJ HTTP_HEADER_CONTENT_RANGE;
+extern FIOBJ HTTP_HEADER_CONTENT_TYPE;
+extern FIOBJ HTTP_HEADER_COOKIE;
+extern FIOBJ HTTP_HEADER_DATE;
+extern FIOBJ HTTP_HEADER_ETAG;
+extern FIOBJ HTTP_HEADER_LAST_MODIFIED;
+extern FIOBJ HTTP_HEADER_SET_COOKIE;
+extern FIOBJ HTTP_HEADER_UPGRADE;
 
 /* *****************************************************************************
 HTTP General Helper functions that might be used globally
@@ -462,7 +462,7 @@ HTTP General Helper functions that might be used globally
  * Returns a String object representing the unparsed HTTP request (HTTP version
  * is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
  */
-fiobj_s *http_req2str(http_s *h);
+FIOBJ http_req2str(http_s *h);
 
 /**
  * Writes a log line to `stderr` about the request / response object.

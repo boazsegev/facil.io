@@ -15,11 +15,11 @@ State (static data)
 /* static variables are automatically initialized to 0, which is what we need.*/
 static int ARGC;
 static const char **ARGV;
-static fiobj_s *arg_aliases; /* a hash for translating aliases */
-static fiobj_s *arg_type;    /* a with information about each argument */
-static fiobj_s *parsed;      /* a with information about each argument */
-static fiobj_s *help_str;    /* The CLI help string */
-static fiobj_s *info_str;    /* The CLI information string */
+static FIOBJ arg_aliases; /* a hash for translating aliases */
+static FIOBJ arg_type;    /* a with information about each argument */
+static FIOBJ parsed;      /* a with information about each argument */
+static FIOBJ help_str;    /* The CLI help string */
+static FIOBJ info_str;    /* The CLI information string */
 static int is_parsed;
 
 const char DEFAULT_CLI_INFO[] =
@@ -70,7 +70,7 @@ Matching arguments to C string
 ***************************************************************************** */
 
 /* returns the primamry symbol for the argument, of NULL (if none) */
-static inline fiobj_s *fio_cli_get_name(const char *str, size_t len) {
+static inline FIOBJ fio_cli_get_name(const char *str, size_t len) {
   return fiobj_hash_get2(arg_aliases, str, len);
 }
 
@@ -82,7 +82,7 @@ static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
   fio_cli_init();
   const char *start = aliases;
   size_t len = 0;
-  fiobj_s *arg_name = NULL;
+  FIOBJ arg_name = NULL;
 
   while (1) {
     /* get rid of any white space or commas */
@@ -122,7 +122,7 @@ static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
       }
     } else {
       /* this is an alias */
-      fiobj_s *tmp = fiobj_sym_new(start, len);
+      FIOBJ tmp = fiobj_sym_new(start, len);
       /* add to aliases hash */
       fiobj_hash_set(arg_aliases, tmp, fiobj_dup(arg_name));
       /* add to description + free it*/
@@ -157,7 +157,7 @@ static void fio_cli_parse(void) {
 
   const char *start;
   size_t len;
-  fiobj_s *arg_name;
+  FIOBJ arg_name;
 
   /* ignore the first element, it's the program's name. */
   for (int i = 1; i < ARGC; i++) {
@@ -181,7 +181,7 @@ static void fio_cli_parse(void) {
     if (!len)
       goto error;
     /* at this point arg_name is a handle to the argument's Symbol */
-    fiobj_s *type = fiobj_hash_get(arg_type, arg_name);
+    FIOBJ type = fiobj_hash_get(arg_type, arg_name);
     if (type->type == FIOBJ_T_NULL) {
       /* type is BOOL, no further processing required */
       start = "1";
@@ -315,10 +315,10 @@ void fio_cli_accept_bool(const char *aliases, const char *desc) {
  */
 const char *fio_cli_get_str(const char *opt) {
   fio_cli_parse();
-  fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
   if (!name)
     return NULL;
-  fiobj_s *result = fiobj_hash_get(parsed, name);
+  FIOBJ result = fiobj_hash_get(parsed, name);
   if (!result)
     return NULL;
   return fiobj_obj2cstr(result).data;
@@ -331,10 +331,10 @@ const char *fio_cli_get_str(const char *opt) {
  */
 int fio_cli_get_int(const char *opt) {
   fio_cli_parse();
-  fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
   if (!name)
     return 0;
-  fiobj_s *result = fiobj_hash_get(parsed, name);
+  FIOBJ result = fiobj_hash_get(parsed, name);
   if (!result)
     return 0;
   return (int)fiobj_obj2num(result);
@@ -347,10 +347,10 @@ int fio_cli_get_int(const char *opt) {
  */
 double fio_cli_get_float(const char *opt) {
   fio_cli_parse();
-  fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
   if (!name)
     return 0;
-  fiobj_s *result = fiobj_hash_get(parsed, name);
+  FIOBJ result = fiobj_hash_get(parsed, name);
   if (!result)
     return 0;
   return fiobj_obj2float(result);
@@ -363,7 +363,7 @@ double fio_cli_get_float(const char *opt) {
  */
 void fio_cli_set_str(const char *opt, const char *value) {
   fio_cli_parse();
-  fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
   if (!name) {
     fprintf(stderr, "ERROR: facil.io's CLI helper can only override values for "
                     "valid options\n");
@@ -379,7 +379,7 @@ void fio_cli_set_str(const char *opt, const char *value) {
  */
 void fio_cli_set_int(const char *opt, int value) {
   fio_cli_parse();
-  fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
   if (!name) {
     fprintf(stderr, "ERROR: facil.io's CLI helper can only override values for "
                     "valid options\n");
@@ -395,7 +395,7 @@ void fio_cli_set_int(const char *opt, int value) {
  */
 void fio_cli_set_float(const char *opt, double value) {
   fio_cli_parse();
-  fiobj_s *name = fio_cli_get_name(opt, strlen(opt));
+  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
   if (!name) {
     fprintf(stderr, "ERROR: facil.io's CLI helper can only override values for "
                     "valid options\n");

@@ -54,7 +54,7 @@ static struct fiobj_vtable_s FIOBJ_VTABLE_IO;
     }                                                                          \
   } while (0)
 
-static void fiobj_io_copy_buffer(fiobj_s *o) {
+static void fiobj_io_copy_buffer(FIOBJ o) {
   obj2io(o)->capa = (((obj2io(o)->len) >> 12) + 1) << 12;
   void *tmp = malloc(obj2io(o)->capa);
   REQUIRE_MEM(tmp);
@@ -65,7 +65,7 @@ static void fiobj_io_copy_buffer(fiobj_s *o) {
   obj2io(o)->buffer = tmp;
 }
 
-static inline void fiobj_io_pre_write(fiobj_s *o, uintptr_t length) {
+static inline void fiobj_io_pre_write(FIOBJ o, uintptr_t length) {
   if (obj2io(o)->fd == -1 && obj2io(o)->dealloc != free)
     fiobj_io_copy_buffer(o);
   if (obj2io(o)->capa <= obj2io(o)->len + length)
@@ -76,7 +76,7 @@ static inline void fiobj_io_pre_write(fiobj_s *o, uintptr_t length) {
   REQUIRE_MEM(obj2io(o)->buffer);
 }
 
-static inline int64_t fiobj_io_get_fd_size(const fiobj_s *o) {
+static inline int64_t fiobj_io_get_fd_size(const FIOBJ o) {
   struct stat stat;
 retry:
   if (fstat(obj2io(o)->fd, &stat)) {
@@ -87,15 +87,15 @@ retry:
   return stat.st_size;
 }
 
-static fiobj_s *fiobj_io_alloc(void *buffer, int fd) {
-  fiobj_s *o = fiobj_alloc(sizeof(fiobj_io_s));
+static FIOBJ fiobj_io_alloc(void *buffer, int fd) {
+  FIOBJ o = fiobj_alloc(sizeof(fiobj_io_s));
   REQUIRE_MEM(o);
   obj2io(o)[0] =
       (fiobj_io_s){.vtable = &FIOBJ_VTABLE_IO, .buffer = buffer, .fd = fd};
   return o;
 }
 
-static void fiobj_io_dealloc(fiobj_s *o) {
+static void fiobj_io_dealloc(FIOBJ o) {
   if (obj2io(o)->fd != -1) {
     close(obj2io(o)->fd);
     free(obj2io(o)->buffer);
@@ -106,7 +106,7 @@ static void fiobj_io_dealloc(fiobj_s *o) {
   fiobj_dealloc(o);
 }
 
-static int64_t fiobj_io_i(const fiobj_s *o) {
+static int64_t fiobj_io_i(const FIOBJ o) {
   if (obj2io(o)->fd == -1) {
     return obj2io(o)->len;
   } else {
@@ -114,7 +114,7 @@ static int64_t fiobj_io_i(const fiobj_s *o) {
   }
 }
 
-static fio_cstr_s fio_io2str(const fiobj_s *o) {
+static fio_cstr_s fio_io2str(const FIOBJ o) {
   if (obj2io(o)->fd == -1) {
     return (fio_cstr_s){.buffer = obj2io(o)->buffer, .len = obj2io(o)->len};
   }
@@ -123,16 +123,16 @@ static fio_cstr_s fio_io2str(const fiobj_s *o) {
     return (fio_cstr_s){.buffer = obj2io(o)->buffer, .len = obj2io(o)->len};
   obj2io(o)->len = 0;
   obj2io(o)->pos = 0;
-  fiobj_io_pre_write((fiobj_s *)o, i + 1);
+  fiobj_io_pre_write((FIOBJ)o, i + 1);
   if (pread(obj2io(o)->fd, obj2io(o)->buffer, i, 0) != i)
     return (fio_cstr_s){.buffer = NULL, .len = 0};
   obj2io(o)->buffer[i] = 0;
   return (fio_cstr_s){.buffer = obj2io(o)->buffer, .len = i};
 }
 
-static int fiobj_io_is_eq(const fiobj_s *self, const fiobj_s *other) {
+static int fiobj_io_is_eq(const FIOBJ self, const FIOBJ other) {
   int64_t len;
-  return (self == other || (self->type == other->type &&
+  return (self == other || (FIOBJ_TYPE(self) == FIOBJ_TYPE(other) &&
                             (len = fiobj_io_i(self)) == fiobj_io_i(other) &&
                             !memcmp(fio_io2str(self).buffer,
                                     fio_io2str(other).buffer, (size_t)len)));
@@ -218,8 +218,8 @@ Creating the IO object
 ***************************************************************************** */
 
 /** Creates a new local in-memory IO object */
-fiobj_s *fiobj_io_newstr(void) {
-  fiobj_s *o = fiobj_io_alloc(malloc(4096), -1);
+FIOBJ fiobj_io_newstr(void) {
+  FIOBJ o = fiobj_io_alloc(malloc(4096), -1);
   REQUIRE_MEM(obj2io(o)->buffer);
   obj2io(o)->capa = 4096;
   obj2io(o)->dealloc = free;
@@ -231,9 +231,9 @@ fiobj_s *fiobj_io_newstr(void) {
  * using the provided `dealloc` function pointer. Use a NULL `dealloc` function
  * pointer if the buffer is static and shouldn't be freed.
  */
-fiobj_s *fiobj_io_newstr2(void *buffer, uintptr_t length,
-                          void (*dealloc)(void *)) {
-  fiobj_s *o = fiobj_io_alloc(buffer, -1);
+FIOBJ fiobj_io_newstr2(void *buffer, uintptr_t length,
+                       void (*dealloc)(void *)) {
+  FIOBJ o = fiobj_io_alloc(buffer, -1);
   obj2io(o)->capa = length;
   obj2io(o)->len = length;
   obj2io(o)->dealloc = dealloc;
@@ -241,15 +241,15 @@ fiobj_s *fiobj_io_newstr2(void *buffer, uintptr_t length,
 }
 
 /** Creates a new local file IO object */
-fiobj_s *fiobj_io_newfd(int fd) {
-  fiobj_s *o = fiobj_io_alloc(malloc(4096), fd);
+FIOBJ fiobj_io_newfd(int fd) {
+  FIOBJ o = fiobj_io_alloc(malloc(4096), fd);
   REQUIRE_MEM(obj2io(o)->buffer);
   obj2io(o)->fpos = 0;
   return o;
 }
 
 /** Creates a new local tempfile IO object */
-fiobj_s *fiobj_io_newtmpfile(void) {
+FIOBJ fiobj_io_newtmpfile(void) {
 // create a temporary file to contain the data.
 #ifdef P_tmpdir
 #if defined(__linux__) /* linux doesn't end with a divider */
@@ -276,8 +276,8 @@ Reading API
  * The C string object will be invalidate the next time a function call to the
  * IO object is made.
  */
-fio_cstr_s fiobj_io_read(fiobj_s *io, intptr_t length) {
-  if (!io || io->type != FIOBJ_T_IO) {
+fio_cstr_s fiobj_io_read(FIOBJ io, intptr_t length) {
+  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO) {
     errno = EFAULT;
     return (fio_cstr_s){.buffer = NULL, .len = 0};
   }
@@ -360,8 +360,8 @@ fio_cstr_s fiobj_io_read(fiobj_s *io, intptr_t length) {
  * The C string object will be invalidate the next time a function call to the
  * IO object is made.
  */
-fio_cstr_s fiobj_io_read2ch(fiobj_s *io, uint8_t token) {
-  if (!io || io->type != FIOBJ_T_IO) {
+fio_cstr_s fiobj_io_read2ch(FIOBJ io, uint8_t token) {
+  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO) {
     errno = EFAULT;
     return (fio_cstr_s){.buffer = NULL, .len = 0};
   }
@@ -435,8 +435,8 @@ fio_cstr_s fiobj_io_read2ch(fiobj_s *io, uint8_t token) {
 /**
  * Returns the current reading position.
  */
-intptr_t fiobj_io_pos(fiobj_s *io) {
-  if (!io || io->type != FIOBJ_T_IO)
+intptr_t fiobj_io_pos(FIOBJ io) {
+  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO)
     return -1;
   if (obj2io(io)->fd == -1)
     return obj2io(io)->pos;
@@ -446,8 +446,8 @@ intptr_t fiobj_io_pos(fiobj_s *io) {
 /**
  * Moves the reading position to the requested position.
  */
-void fiobj_io_seek(fiobj_s *io, intptr_t position) {
-  if (!io || io->type != FIOBJ_T_IO)
+void fiobj_io_seek(FIOBJ io, intptr_t position) {
+  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO)
     return;
   if (obj2io(io)->fd == -1) {
     /* String code */
@@ -507,8 +507,8 @@ void fiobj_io_seek(fiobj_s *io, intptr_t position) {
  * The C string object will be invalidate the next time a function call to the
  * IO object is made.
  */
-fio_cstr_s fiobj_io_pread(fiobj_s *io, intptr_t start_at, uintptr_t length) {
-  if (!io || io->type != FIOBJ_T_IO) {
+fio_cstr_s fiobj_io_pread(FIOBJ io, intptr_t start_at, uintptr_t length) {
+  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO) {
     errno = EFAULT;
     return (fio_cstr_s){
         .buffer = NULL, .length = 0,
@@ -570,12 +570,12 @@ Writing API
  * If the IO object is attached to a static or external string, the data will be
  * copied to a new memory block.
  */
-void fiobj_io_assert_dynamic(fiobj_s *io) {
+void fiobj_io_assert_dynamic(FIOBJ io) {
   if (!io) {
     errno = ENFILE;
     return;
   }
-  assert(io->type == FIOBJ_T_IO);
+  assert(FIOBJ_TYPE(io) == FIOBJ_T_IO);
   fiobj_io_pre_write(io, 0);
   return;
 }
@@ -586,8 +586,8 @@ void fiobj_io_assert_dynamic(fiobj_s *io) {
  *
  * Behaves and returns the same value as the system call `write`.
  */
-intptr_t fiobj_io_write(fiobj_s *io, void *buffer, uintptr_t length) {
-  if (!io || io->type != FIOBJ_T_IO || (!buffer && length)) {
+intptr_t fiobj_io_write(FIOBJ io, void *buffer, uintptr_t length) {
+  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO || (!buffer && length)) {
     errno = EFAULT;
     return -1;
   }
@@ -611,8 +611,8 @@ intptr_t fiobj_io_write(fiobj_s *io, void *buffer, uintptr_t length) {
  *
  * Behaves and returns the same value as the system call `write`.
  */
-intptr_t fiobj_io_puts(fiobj_s *io, void *buffer, uintptr_t length) {
-  if (!io || io->type != FIOBJ_T_IO || (!buffer && length)) {
+intptr_t fiobj_io_puts(FIOBJ io, void *buffer, uintptr_t length) {
+  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO || (!buffer && length)) {
     errno = EFAULT;
     return -1;
   }
@@ -649,16 +649,16 @@ intptr_t fiobj_io_puts(fiobj_s *io, void *buffer, uintptr_t length) {
 #include "fiobj.h"
 
 void fiobj_io_test(char *filename) {
-  fiobj_s *text;
+  FIOBJ text;
   fio_cstr_s s1, s2;
   fprintf(stderr, "*** testing fiobj_io ***\n");
   if (filename)
     text = fiobj_str_readfile(filename, 0, 0);
   else
     text = fiobj_str_static("Line 1\r\nLine 2\nLine 3 unended", 29);
-  fiobj_s *strio = fiobj_io_newstr();
+  FIOBJ strio = fiobj_io_newstr();
   fprintf(stderr, "* `newstr` passed.\n");
-  fiobj_s *fdio = fiobj_io_newtmpfile();
+  FIOBJ fdio = fiobj_io_newtmpfile();
   fprintf(stderr, "* `newtmpfile` passed.\n");
   fiobj_io_write(fdio, fiobj_obj2cstr(text).buffer,
                  fiobj_obj2cstr(text).length);

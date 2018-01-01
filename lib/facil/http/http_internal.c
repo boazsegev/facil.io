@@ -14,7 +14,7 @@ void http_on_request_handler______internal(http_s *h,
   static uint64_t upgrade_hash = 0;
   if (!upgrade_hash)
     upgrade_hash = fiobj_sym_hash("upgrade", 7);
-  fiobj_s *t = fiobj_hash_get3(h->headers, upgrade_hash);
+  FIOBJ t = fiobj_hash_get3(h->headers, upgrade_hash);
   if (t == NULL) {
     if (settings->public_folder) {
       fio_cstr_s path_str = fiobj_obj2cstr(h->path);
@@ -28,9 +28,9 @@ void http_on_request_handler______internal(http_s *h,
     if (!host_hash)
       host_hash = fiobj_sym_hash("host", 4);
     {
-      fiobj_s *tmp = fiobj_hash_get3(h->headers, host_hash);
+      FIOBJ tmp = fiobj_hash_get3(h->headers, host_hash);
       if (tmp->type == FIOBJ_T_ARRAY) {
-        fiobj_s *sym = fiobj_sym_new("host", 4);
+        FIOBJ sym = fiobj_sym_new("host", 4);
         fiobj_hash_set(h->headers, sym, fiobj_ary_pop(tmp));
         fiobj_free(sym);
       }
@@ -66,29 +66,29 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   return ret;
 }
 
-fiobj_s *HTTP_HEADER_ACCEPT_RANGES;
-fiobj_s *HTTP_HEADER_CACHE_CONTROL;
-fiobj_s *HTTP_HEADER_CONNECTION;
-fiobj_s *HTTP_HEADER_CONTENT_ENCODING;
-fiobj_s *HTTP_HEADER_CONTENT_LENGTH;
-fiobj_s *HTTP_HEADER_CONTENT_RANGE;
-fiobj_s *HTTP_HEADER_CONTENT_TYPE;
-fiobj_s *HTTP_HEADER_COOKIE;
-fiobj_s *HTTP_HEADER_DATE;
-fiobj_s *HTTP_HEADER_ETAG;
-fiobj_s *HTTP_HEADER_LAST_MODIFIED;
-fiobj_s *HTTP_HEADER_SET_COOKIE;
-fiobj_s *HTTP_HEADER_UPGRADE;
-fiobj_s *HTTP_HEADER_WS_SEC_KEY;
-fiobj_s *HTTP_HVALUE_BYTES;
-fiobj_s *HTTP_HVALUE_CLOSE;
-fiobj_s *HTTP_HVALUE_GZIP;
-fiobj_s *HTTP_HVALUE_KEEP_ALIVE;
-fiobj_s *HTTP_HVALUE_MAX_AGE;
-fiobj_s *HTTP_HVALUE_WEBSOCKET;
-fiobj_s *HTTP_HVALUE_WS_SEC_VERSION;
-fiobj_s *HTTP_HVALUE_WS_UPGRADE;
-fiobj_s *HTTP_HVALUE_WS_VERSION;
+FIOBJ HTTP_HEADER_ACCEPT_RANGES;
+FIOBJ HTTP_HEADER_CACHE_CONTROL;
+FIOBJ HTTP_HEADER_CONNECTION;
+FIOBJ HTTP_HEADER_CONTENT_ENCODING;
+FIOBJ HTTP_HEADER_CONTENT_LENGTH;
+FIOBJ HTTP_HEADER_CONTENT_RANGE;
+FIOBJ HTTP_HEADER_CONTENT_TYPE;
+FIOBJ HTTP_HEADER_COOKIE;
+FIOBJ HTTP_HEADER_DATE;
+FIOBJ HTTP_HEADER_ETAG;
+FIOBJ HTTP_HEADER_LAST_MODIFIED;
+FIOBJ HTTP_HEADER_SET_COOKIE;
+FIOBJ HTTP_HEADER_UPGRADE;
+FIOBJ HTTP_HEADER_WS_SEC_KEY;
+FIOBJ HTTP_HVALUE_BYTES;
+FIOBJ HTTP_HVALUE_CLOSE;
+FIOBJ HTTP_HVALUE_GZIP;
+FIOBJ HTTP_HVALUE_KEEP_ALIVE;
+FIOBJ HTTP_HVALUE_MAX_AGE;
+FIOBJ HTTP_HVALUE_WEBSOCKET;
+FIOBJ HTTP_HVALUE_WS_SEC_VERSION;
+FIOBJ HTTP_HVALUE_WS_UPGRADE;
+FIOBJ HTTP_HVALUE_WS_VERSION;
 
 void http_lib_cleanup(void) {
   http_mimetype_clear();
