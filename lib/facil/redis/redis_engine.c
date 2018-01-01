@@ -626,7 +626,7 @@ static int resp_on_message(resp_parser_s *parser) {
   fiobj_free(msg);
   i->ary = NULL;
   i->str = NULL;
-  return -1;
+  return 0;
 }
 
 /** a local helper to add parsed objects to the data store. */
