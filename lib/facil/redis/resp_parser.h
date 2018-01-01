@@ -244,6 +244,7 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
           resp_on_start_string(parser, 0);
           resp_on_end_string(parser);
           --parser->obj_countdown;
+          eol += 2; /* consume the extra "\r\n" */
         } else {
           if (resp_on_start_string(parser, i)) {
             pos = eol + 1;
