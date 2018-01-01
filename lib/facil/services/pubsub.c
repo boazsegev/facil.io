@@ -130,16 +130,14 @@ static inline void client_test4free(client_s *cl) {
   free(cl);
 }
 
-static inline uint64_t client_compute_hash(client_s client,
-                                           uint64_t channel_hash) {
-  return (channel_hash ^
-          (((((uint64_t)(client.on_message) *
-              ((uint64_t)client.udata1 ^ 0x736f6d6570736575ULL)) >>
-             5) |
-            (((uint64_t)(client.on_unsubscribe) *
-              ((uint64_t)client.udata1 ^ 0x736f6d6570736575ULL))
-             << 47)) ^
-           ((uint64_t)client.udata2 ^ 0x646f72616e646f6dULL)));
+static inline uint64_t client_compute_hash(client_s client) {
+  return (((((uint64_t)(client.on_message) *
+             ((uint64_t)client.udata1 ^ 0x736f6d6570736575ULL)) >>
+            5) |
+           (((uint64_t)(client.on_unsubscribe) *
+             ((uint64_t)client.udata1 ^ 0x736f6d6570736575ULL))
+            << 47)) ^
+          ((uint64_t)client.udata2 ^ 0x646f72616e646f6dULL));
 }
 
 static client_s *pubsub_client_new(client_s client, channel_s channel) {
@@ -153,7 +151,7 @@ static client_s *pubsub_client_new(client_s client, channel_s channel) {
     return NULL;
   }
   uint64_t channel_hash = fiobj_sym_id(channel.name);
-  uint64_t client_hash = client_compute_hash(client, channel_hash);
+  uint64_t client_hash = client_compute_hash(client);
   spn_lock(&lock);
   /* ignore if client exists. */
   client_s *cl = fio_hash_find(
@@ -211,7 +209,7 @@ static int pubsub_client_destroy(client_s *client) {
 
   fio_hash_s *ch_hashmap = (ch->use_pattern ? &patterns : &channels);
   uint64_t channel_hash = fiobj_sym_id(ch->name);
-  uint64_t client_hash = client_compute_hash(*client, channel_hash);
+  uint64_t client_hash = client_compute_hash(*client);
   uint8_t is_ch_any;
   spn_lock(&lock);
   if ((client->sub_count -= 1)) {
@@ -252,8 +250,7 @@ static inline client_s *pubsub_client_find(client_s client, channel_s channel) {
   if (!client.on_message || !channel.name) {
     return NULL;
   }
-  uint64_t channel_hash = fiobj_sym_id(channel.name);
-  uint64_t client_hash = client_compute_hash(client, channel_hash);
+  uint64_t client_hash = client_compute_hash(client);
   spn_lock(&lock);
   client_s *cl = fio_hash_find(
       &clients, (fio_hash_key_s){.hash = client_hash, .obj = channel.name});
