@@ -485,6 +485,11 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
 }
 
 void redis_engine_destroy(pubsub_engine_s *e) {
+  if (e == PUBSUB_CLUSTER_ENGINE || e == PUBSUB_PROCESS_ENGINE) {
+    fprintf(stderr, "WARNING: (redis free) trying to distroy one of the "
+                    "core engines\n");
+    return;
+  }
   redis_engine_s *r = en2redis(e);
   if (r->id_protection != 15) {
     fprintf(
@@ -496,6 +501,44 @@ void redis_engine_destroy(pubsub_engine_s *e) {
   pubsub_engine_deregister(e);
   sock_close(r->pub_data.uuid);
   sock_close(r->sub_data.uuid);
+}
+
+/**
+ * Sends a Redis command through the engine's connection.
+ *
+ * The response will be sent back using the optional callback. `udata` is passed
+ * along untouched.
+ *
+ * The message will be resent on network failures, until a response validates
+ * the fact that the command was sent (or the engine is destroyed).
+ *
+ * Note: NEVER call Pub/Sub commands using this function, as it will violate the
+ * Redis connection's protocol (best case scenario, a disconnection will occur
+ * before and messages are lost).
+ */
+intptr_t redis_engine_send(pubsub_engine_s *engine, FIOBJ command, FIOBJ data,
+                           void (*callback)(pubsub_engine_s *e, FIOBJ reply,
+                                            void *udata),
+                           void *udata) {
+  if (engine == PUBSUB_CLUSTER_ENGINE || engine == PUBSUB_PROCESS_ENGINE) {
+    fprintf(stderr, "WARNING: (redis send) trying to use one of the "
+                    "core engines\n");
+    return -1;
+  }
+  redis_engine_s *r = en2redis(engine);
+  if (r->id_protection != 15) {
+    fprintf(stderr,
+            "ERROR: (redis) engine pointer incorrect, protection failure.\n");
+    return -1;
+  }
+  FIOBJ tmp = fiobj2resp_tmp(command, data);
+  fio_cstr_s cmd_str = fiobj_obj2cstr(tmp);
+  redis_commands_s *cmd = malloc(sizeof(*cmd) + cmd_str.len + 1);
+  *cmd = (redis_commands_s){
+      .callback = callback, .udata = udata, .cmd_len = cmd_str.len};
+  memcpy(cmd->cmd, cmd_str.data, cmd_str.len + 1);
+  redis_attach_cmd(r, cmd);
+  return 0;
 }
 
 /* *****************************************************************************

@@ -384,7 +384,7 @@ void pubsub_engine_register(pubsub_engine_s *engine) {
 void pubsub_engine_deregister(pubsub_engine_s *engine) {
   spn_lock(&lock);
   if (PUBSUB_DEFAULT_ENGINE == engine)
-    PUBSUB_DEFAULT_ENGINE = PUBSUB_CLUSTER_ENGINE;
+    PUBSUB_DEFAULT_ENGINE = (pubsub_engine_s *)PUBSUB_CLUSTER_ENGINE;
   fio_hash_insert(&engines,
                   (fio_hash_key_s){.hash = (size_t)engine, .obj = fiobj_null()},
                   NULL);
@@ -635,8 +635,9 @@ const pubsub_engine_s PUBSUB_CLUSTER_ENGINE_S = {
     .publish = pubsub_en_cluster_publish,
 };
 
-const pubsub_engine_s *PUBSUB_CLUSTER_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
-const pubsub_engine_s *PUBSUB_DEFAULT_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
+pubsub_engine_s const *PUBSUB_CLUSTER_ENGINE = &PUBSUB_CLUSTER_ENGINE_S;
+pubsub_engine_s *PUBSUB_DEFAULT_ENGINE =
+    (pubsub_engine_s *)&PUBSUB_CLUSTER_ENGINE_S;
 /* *****************************************************************************
 Cluster Initialization and Messaging Protocol
 ***************************************************************************** */

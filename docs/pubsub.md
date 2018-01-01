@@ -9,9 +9,11 @@ This Pub/Sub implementation covers the whole process cluster and it can be easil
 
 ## Connection based vs. non-connection based Pub/Sub
 
-Pub/Sub can be implemented both as a connection based subscription, where a connection's `on_close` callback unsubscribes from any existing subscriptions.
+The Websockets extension allows for connection based subscription in adition to the regular Pub/Sub subscriptions.
 
-In these cases, messages can be either forwarded directly to the client or handled by a server-side callback.
+When using connection based subscription, the connection's `on_close` callback will automatically unsubscribes from any existing subscriptions.
+
+This allows messages to be be either forwarded directly to the client or handled by a server-side callback.
 
 An example for this approach can be seen in the [chatroom example](/index.md#an-easy-chatroom-example) using the `websocket_subscribe` function. The same function could have been used with a server-side callback.
 
@@ -21,18 +23,48 @@ This event allows the server to react to certain channels, allowing remotely pub
 
 This approach uses the `pubsub_subscribe` function directly rather than a connection related function.
 
+## Connecting Redis as a Pub/Sub Service
+
+A built-in Redis engine is bundled with facil.io (it can be removed safely by deleting the folder).
+
+It's simple to add Redis for multi-machine clustering by creating a Redis engine and setting it as the default engine.
+
+i.e.:
+
+```c
+int main(void) {
+  PUBSUB_DEFAULT_ENGINE =
+      redis_engine_create(/** Redis server's address */
+                              .address = "localhost", .ping_interval = 2, );
+  /* code */
+  facil_run(/* settings */);
+  redis_engine_destroy(PUBSUB_DEFAULT_ENGINE);
+  return 0;
+}
+```
+
+## Connecting a custom Pub/Sub Service
+
+It's possible. The documentation is available within the header file `pubsub.h` (using `pubsub_engine_s`).
+
+Notice, that the `on_subscribe` will be called for all the channels in the process cluster, so it's possible to connect to the external pub/sub service from a single process (minimizing network traffic) and to publish to the whole cluster.
+
+Also, be aware that messages arrive **at least** once. When using pattern matching, messages might arrive far more than once (i.e., if the service sends two copies, one for the channel and one for the pattern, the cluster might receive four copies, due to internal pattern matching).
+
+Also, see known issues for lost messages when connection is disrupted (this might be pub/sub service specific).
+
 ## Details and Limitations:
 
-* facil.io doesn't use a Hash table for the Pub/Sub channels, it uses a [4 bit trie](https://en.wikipedia.org/wiki/Trie).
+* facil.io v.0.6.x uses a Hash table for the Pub/Sub channels (replacing the [4 bit trie](https://en.wikipedia.org/wiki/Trie) approach from facil.io v.0.5.x).
 
-    The cost is higher memory consumption per channel and a limitation of 1024 bytes per channel name (shorter names are better).
+    This means that hash collision (using SipHash) might cause excessive `memcmp` calls.
 
-    The bonus is high lookup times, zero chance of channel conflicts and an optimized preference for shared prefix channels (i.e. "user:1", "user:2"...).
-
-    Another added bonus is pattern publishing (is addition to pattern subscriptions) which isn't available when using Redis (since Redis doesn't support this feature).
+    Pattern publishing (which isn't supported by Redis and shouldn't be confused with pattern subscriptions) was deprecated due to the change in data structure.
 
 * The Redis client engine does *not* support multiple databases. This is both becasue [database scoping is ignored by Redis during pub/sub](https://redis.io/topics/pubsub#database-amp-scoping) and because [Redis Cluster doesn't support multiple databases](https://redis.io/topics/cluster-spec). This indicated that multiple database support just isn't worth the extra effort.
 
-* The Redis client engine will use two Redis connections **per process** (one for subscriptions and the other for publishing and commands). Both connections will be automatically re-established if timeouts or errors occur.
+   It's possible to manually send commands to the Redis client and overcome this issue, but disconnections will require resetting the database.
 
-    A future implementation might the process cluster connections to a single pair (instead of a pair per process), however, this requires rewriting the engine so it will forward channel subscription management data to the main process.
+* The Redis client engine will use a single Redis connection **per process** (for publishing) + a single connection **per cluster** (for subscriptions).
+
+    Note that **outgoing** messages are guarantied to be published **at least** once (automatic network error recovery)... however, **incoming** messages might be lost due to network connectivity issues (nothing I can do about this, it's on the Redis server side).
