@@ -110,6 +110,7 @@ static void redis_attach_cmd(redis_engine_s *r, redis_commands_s *cmd) {
     cmd = NULL;
   uuid = r->pub_data.uuid;
   spn_unlock(&r->lock);
+  // fprintf(stderr, "Sending: %s\n", cmd->cmd);
   if (cmd)
     sock_write2(.uuid = uuid, .buffer = cmd->cmd, .length = cmd->cmd_len,
                 .dealloc = SOCK_DEALLOC_NOOP);
@@ -269,6 +270,7 @@ static void redis_pub_on_close(intptr_t uuid, protocol_s *pr) {
     resis_free(r);
   }
 }
+
 static void redis_sub_on_close(intptr_t uuid, protocol_s *pr) {
   redis_engine_s *r = prot2redis(pr);
   if (r->flag && defer_fork_is_active()) {
@@ -306,9 +308,9 @@ static void redis_pub_ping(intptr_t uuid, protocol_s *pr) {
     sock_close(uuid);
     return;
   }
-  redis_commands_s *cmd = malloc(sizeof(*cmd) + 14);
+  redis_commands_s *cmd = malloc(sizeof(*cmd) + 15);
   *cmd = (redis_commands_s){.cmd_len = 14};
-  memcpy(cmd + 1, "*1\r\n$4\r\nPING\r\n", 14);
+  memcpy(cmd->cmd, "*1\r\n$4\r\nPING\r\n\0", 15);
   redis_attach_cmd(r, cmd);
 }
 
@@ -419,6 +421,7 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
   *r = (redis_engine_s){
       .id_protection = 15,
       .flag = 1,
+      .ping_int = args.ping_interval,
       .callbacks = FIO_LS_INIT(r->callbacks),
       .port = (char *)r->buf + (REDIS_READ_BUFFER + REDIS_READ_BUFFER),
       .address = (char *)r->buf + (REDIS_READ_BUFFER + REDIS_READ_BUFFER) +
@@ -579,17 +582,6 @@ static int resp_on_message(resp_parser_s *parser) {
   struct redis_engine_internal_s *i =
       FIO_LS_EMBD_OBJ(struct redis_engine_internal_s, parser, parser);
   FIOBJ msg = i->ary ? i->ary : i->str;
-  // if (FIOBJ_TYPE(msg) == FIOBJ_T_ARRAY) {
-  //   FIOBJ *ary = fiobj_ary2prt(msg);
-  //   for (size_t i = 0; i < fiobj_ary_count(msg); ++i) {
-  //     fio_cstr_s tmp = fiobj_obj2cstr(ary[i]);
-  //     fprintf(stderr, "%s\n", tmp.data);
-  //   }
-
-  // } else {
-  //   fio_cstr_s tmp = fiobj_obj2cstr(msg);
-  //   fprintf(stderr, "%s\n", tmp.data);
-  // }
   if (i->is_pub) {
     /* publishing / command parser */
     redis_cmd_reply(FIO_LS_EMBD_OBJ(redis_engine_s, pub_data, i), msg);
@@ -598,27 +590,24 @@ static int resp_on_message(resp_parser_s *parser) {
     if (FIOBJ_TYPE(msg) != FIOBJ_T_ARRAY) {
       fprintf(
           stderr,
-          "WARNING: (redis) unexpected data format in subscription stream\n");
+          "WARNING: (redis) unexpected data format in subscription stream:\n");
+      fio_cstr_s tmp = fiobj_obj2cstr(msg);
+      fprintf(stderr, "     %s\n", tmp.data);
     } else {
+      // FIOBJ *ary = fiobj_ary2prt(msg);
+      // for (size_t i = 0; i < fiobj_ary_count(msg); ++i) {
+      //   fio_cstr_s tmp = fiobj_obj2cstr(ary[i]);
+      //   fprintf(stderr, "(%lu) %s\n", i, tmp.data);
+      // }
       fio_cstr_s tmp = fiobj_obj2cstr(fiobj_ary_index(msg, 0));
       if (tmp.len == 7) { /* "message"  */
         pubsub_publish(.channel = fiobj_ary_index(msg, 1),
                        .message = fiobj_ary_index(msg, 2),
                        .engine = PUBSUB_CLUSTER_ENGINE);
-        FIOBJ *ary = fiobj_ary2prt(msg);
-        for (size_t i = 0; i < fiobj_ary_count(msg); ++i) {
-          fio_cstr_s tmp = fiobj_obj2cstr(ary[i]);
-          fprintf(stderr, "(%lu) %s\n", i, tmp.data);
-        }
       } else if (tmp.len == 8) { /* "pmessage" */
         pubsub_publish(.channel = fiobj_ary_index(msg, 2),
                        .message = fiobj_ary_index(msg, 3),
                        .engine = PUBSUB_CLUSTER_ENGINE);
-        FIOBJ *ary = fiobj_ary2prt(msg);
-        for (size_t i = 0; i < fiobj_ary_count(msg); ++i) {
-          fio_cstr_s tmp = fiobj_obj2cstr(ary[i]);
-          fprintf(stderr, "(%lu) %s\n", i, tmp.data);
-        }
       }
     }
   }
