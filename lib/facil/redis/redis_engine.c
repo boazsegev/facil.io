@@ -552,7 +552,14 @@ Simple RESP formatting
  */
 static FIOBJ fiobj2resp_tmp(FIOBJ obj1, FIOBJ obj2) {
   FIOBJ dest = fiobj_str_tmp();
-  if (FIOBJ_TYPE(obj2) == FIOBJ_T_ARRAY) {
+  if (!obj2 || FIOBJ_IS_NULL(obj2)) {
+    fio_cstr_s s = fiobj_obj2cstr(obj1);
+    fiobj_str_write(dest, "*1\r\n$", 5);
+    fiobj_str_join(dest, fiobj_num_tmp(s.len));
+    fiobj_str_write(dest, "\r\n", 2);
+    fiobj_str_write(dest, s.data, s.len);
+    fiobj_str_write(dest, "\r\n", 2);
+  } else if (FIOBJ_TYPE(obj2) == FIOBJ_T_ARRAY) {
     size_t count = fiobj_ary_count(obj2);
     fiobj_str_write(dest, "*", 1);
     fiobj_str_join(dest, fiobj_num_tmp(count + 1));
@@ -568,7 +575,7 @@ static FIOBJ fiobj2resp_tmp(FIOBJ obj1, FIOBJ obj2) {
 
     for (size_t i = 0; i < count; ++i) {
       fio_cstr_s s = fiobj_obj2cstr(ary[i]);
-      fiobj_str_write(dest, "$", 2);
+      fiobj_str_write(dest, "$", 1);
       fiobj_str_join(dest, fiobj_num_tmp(s.len));
       fiobj_str_write(dest, "\r\n", 2);
       fiobj_str_write(dest, s.data, s.len);
@@ -578,7 +585,7 @@ static FIOBJ fiobj2resp_tmp(FIOBJ obj1, FIOBJ obj2) {
   } else if (FIOBJ_TYPE(obj2) == FIOBJ_T_HASH) {
     FIOBJ json = fiobj_obj2json(obj2, 0);
     fio_cstr_s s = fiobj_obj2cstr(obj1);
-    fiobj_str_write(dest, "*2\r\n$", 4);
+    fiobj_str_write(dest, "*2\r\n$", 5);
     fiobj_str_join(dest, fiobj_num_tmp(s.len));
     fiobj_str_write(dest, "\r\n", 2);
     fiobj_str_write(dest, s.data, s.len);
@@ -592,7 +599,7 @@ static FIOBJ fiobj2resp_tmp(FIOBJ obj1, FIOBJ obj2) {
 
   } else {
     fio_cstr_s s = fiobj_obj2cstr(obj1);
-    fiobj_str_write(dest, "*2\r\n$", 4);
+    fiobj_str_write(dest, "*2\r\n$", 5);
     fiobj_str_join(dest, fiobj_num_tmp(s.len));
     fiobj_str_write(dest, "\r\n", 2);
     fiobj_str_write(dest, s.data, s.len);
