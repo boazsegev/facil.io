@@ -33,6 +33,7 @@ typedef struct {
   char *address;
   char *port;
   char *auth;
+  FIOBJ last_ch;
   size_t auth_len;
   size_t ref;
   uint8_t ping_int;
@@ -64,13 +65,14 @@ typedef struct {
 
 #define parser2redis(prsr)                                                     \
   (parser2data(prsr)->is_pub                                                   \
-       ?: FIO_LS_EMBD_OBJ(redis_engine_s, pub_data.parser, (prsr))             \
-   : FIO_LS_EMBD_OBJ(redis_engine_s, sub_data.parser, (prsr)))
+       ? FIO_LS_EMBD_OBJ(redis_engine_s, pub_data.parser, (prsr))              \
+       : FIO_LS_EMBD_OBJ(redis_engine_s, sub_data.parser, (prsr)))
 
 /** cleans up and frees the engine data. */
 static inline void resis_free(redis_engine_s *r) {
   fiobj_free(r->pub_data.ary ? r->pub_data.ary : r->pub_data.str);
   fiobj_free(r->sub_data.ary ? r->sub_data.ary : r->sub_data.str);
+  fiobj_free(r->last_ch);
   while (fio_ls_embd_any(&r->callbacks)) {
     free(FIO_LS_EMBD_OBJ(redis_commands_s, node,
                          fio_ls_embd_pop(&r->callbacks)));
@@ -650,14 +652,18 @@ static int resp_on_message(resp_parser_s *parser) {
       //   fprintf(stderr, "(%lu) %s\n", i, tmp.data);
       // }
       fio_cstr_s tmp = fiobj_obj2cstr(fiobj_ary_index(msg, 0));
+      redis_engine_s *r = parser2redis(parser);
       if (tmp.len == 7) { /* "message"  */
-        pubsub_publish(.channel = fiobj_ary_index(msg, 1),
+        fiobj_free(r->last_ch);
+        r->last_ch = fiobj_dup(fiobj_ary_index(msg, 1));
+        pubsub_publish(.channel = r->last_ch,
                        .message = fiobj_ary_index(msg, 2),
                        .engine = PUBSUB_CLUSTER_ENGINE);
       } else if (tmp.len == 8) { /* "pmessage" */
-        pubsub_publish(.channel = fiobj_ary_index(msg, 2),
-                       .message = fiobj_ary_index(msg, 3),
-                       .engine = PUBSUB_CLUSTER_ENGINE);
+        if (!fiobj_iseq(r->last_ch, fiobj_ary_index(msg, 2)))
+          pubsub_publish(.channel = fiobj_ary_index(msg, 2),
+                         .message = fiobj_ary_index(msg, 3),
+                         .engine = PUBSUB_CLUSTER_ENGINE);
       }
     }
   }
