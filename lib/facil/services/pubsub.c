@@ -31,16 +31,21 @@ The Hash Map (macros and the include instruction for `fio_hashmap.h`)
 /* the hash key type for string keys */
 typedef struct {
   size_t hash;
-  fiobj_s *obj;
+  FIOBJ obj;
 } fio_hash_key_s;
 
+static inline int fio_hash_fiobj_keys_eq(fio_hash_key_s a, fio_hash_key_s b) {
+  fio_cstr_s sa = fiobj_obj2cstr(a.obj);
+  fio_cstr_s sb = fiobj_obj2cstr(b.obj);
+  return sa.len == sb.len && !memcmp(sa.data, sb.data, sa.len);
+}
 /* define the macro to set the key type */
 #define FIO_HASH_KEY_TYPE fio_hash_key_s
 /* the macro that returns the key's hash value */
 #define FIO_HASH_KEY2UINT(key) ((key).hash)
 /* Compare the keys using length testing and `memcmp` */
 #define FIO_HASH_COMPARE_KEYS(k1, k2)                                          \
-  ((k1).obj == (k2).obj || fiobj_iseq((k1).obj, (k2).obj))
+  ((k1).obj == (k2).obj || fio_hash_fiobj_keys_eq((k1), (k2)))
 /* an "all bytes are zero" invalid key */
 #define FIO_HASH_KEY_INVALID ((fio_hash_key_s){.obj = NULL})
 /* tests if a key is the invalid key */
@@ -83,7 +88,7 @@ typedef struct {
   /* the root for the client's list */
   fio_ls_embd_s clients;
   /** The channel name. */
-  fiobj_s *name;
+  FIOBJ name;
   /** Use pattern matching for channel subscription. */
   unsigned use_pattern : 1;
   /** Use pattern matching for channel subscription. */
@@ -386,14 +391,36 @@ void pubsub_engine_deregister(pubsub_engine_s *engine) {
   spn_unlock(&lock);
 }
 
+/**
+ * Engines can ask facil.io to resubscribe to all active channels.
+ *
+ * This allows engines that lost their connection to their Pub/Sub service to
+ * resubscribe all the currently active channels with the new connection.
+ *
+ * CAUTION: This is an evented task... try not to free the engine's memory while
+ * resubscriptions are under way...
+ */
+void pubsub_engine_resubscribe(pubsub_engine_s *eng) {
+  spn_lock(&lock);
+  FIO_HASH_FOR_LOOP(&channels, i) {
+    channel_s *ch = i->obj;
+    eng->subscribe(eng, ch->name, 0);
+  }
+  FIO_HASH_FOR_LOOP(&patterns, i) {
+    channel_s *ch = i->obj;
+    eng->subscribe(eng, ch->name, 1);
+  }
+  spn_unlock(&lock);
+}
+
 /* *****************************************************************************
 PUBSUB_PROCESS_ENGINE: Single Process Engine and `pubsub_defer`
 ***************************************************************************** */
 
 typedef struct {
   size_t ref;
-  fiobj_s *channel;
-  fiobj_s *msg;
+  FIOBJ channel;
+  FIOBJ msg;
 } msg_wrapper_s;
 
 typedef struct {
@@ -427,7 +454,7 @@ void pubsub_en_process_deferred_on_message(void *cl_, void *m_) {
 }
 
 /* Must subscribe channel. Failures are ignored. */
-void pubsub_en_process_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+void pubsub_en_process_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                  uint8_t use_pattern) {
   (void)eng;
   (void)channel;
@@ -435,15 +462,15 @@ void pubsub_en_process_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
 }
 
 /* Must unsubscribe channel. Failures are ignored. */
-void pubsub_en_process_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+void pubsub_en_process_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                    uint8_t use_pattern) {
   (void)eng;
   (void)channel;
   (void)use_pattern;
 }
 /** Should return 0 on success and -1 on failure. */
-int pubsub_en_process_publish(const pubsub_engine_s *eng, fiobj_s *channel,
-                              fiobj_s *msg) {
+int pubsub_en_process_publish(const pubsub_engine_s *eng, FIOBJ channel,
+                              FIOBJ msg) {
   uint64_t channel_hash = fiobj_sym_id(channel);
   msg_wrapper_s *m = malloc(sizeof(*m));
   int ret = -1;
@@ -524,7 +551,7 @@ Cluster Engine
 ***************************************************************************** */
 
 /* Must subscribe channel. Failures are ignored. */
-void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                  uint8_t use_pattern) {
   fio_cstr_s s = fiobj_obj2cstr(channel);
   char *buf = malloc(s.length + 32);
@@ -546,7 +573,7 @@ void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
 }
 
 /* Must unsubscribe channel. Failures are ignored. */
-void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                    uint8_t use_pattern) {
   fio_cstr_s s = fiobj_obj2cstr(channel);
   char *buf = malloc(s.length + 32);
@@ -567,8 +594,8 @@ void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
   (void)eng;
 }
 /** Should return 0 on success and -1 on failure. */
-int pubsub_en_cluster_publish(const pubsub_engine_s *eng, fiobj_s *channel,
-                              fiobj_s *msg) {
+int pubsub_en_cluster_publish(const pubsub_engine_s *eng, FIOBJ channel,
+                              FIOBJ msg) {
   if (FIOBJ_IS_STRING(msg) || msg->type == FIOBJ_T_SYMBOL) {
     fio_cstr_s chs = fiobj_obj2cstr(channel);
     fio_cstr_s ms = fiobj_obj2cstr(msg);
@@ -590,7 +617,7 @@ int pubsub_en_cluster_publish(const pubsub_engine_s *eng, fiobj_s *channel,
                        (uintptr_t)pos - (uintptr_t)buf);
     free(buf);
   } else {
-    fiobj_s *buf = fiobj_str_tmp();
+    FIOBJ buf = fiobj_str_tmp();
     fiobj_str_write(buf, "\x05", 1);
     fiobj_str_write2(buf, "%lu\x01",
                      (unsigned long)(fiobj_obj2cstr(channel).len + 1));
@@ -655,7 +682,7 @@ static void pubsub_cluster_facil_message(void *data, uint32_t len) {
     ++pos;
     uint64_t ch_len = fio_atol(&pos);
     ++pos;
-    fiobj_s *ch = fiobj_sym_new(pos, ch_len);
+    FIOBJ ch = fiobj_sym_new(pos, ch_len);
     uintptr_t flag = (((uint8_t *)data)[0] & 1);
     /* subscribe immediately, usubscribe can be deferred. */
     pubsub_cluster_subscribe2channel(ch, (void *)flag);
@@ -670,7 +697,7 @@ static void pubsub_cluster_facil_message(void *data, uint32_t len) {
       ++pos;
       uint64_t ch_len = fio_atol(&pos);
       ++pos;
-      fiobj_s *ch = fiobj_sym_new(pos, ch_len);
+      FIOBJ ch = fiobj_sym_new(pos, ch_len);
       uintptr_t flag = (((uint8_t *)data)[0] & 1);
       defer(pubsub_cluster_unsubscribe2channel, ch, (void *)flag);
       return;
@@ -683,10 +710,10 @@ static void pubsub_cluster_facil_message(void *data, uint32_t len) {
     ++pos;
     const uint64_t ch_len = fio_atol(&pos);
     ++pos;
-    fiobj_s *ch = fiobj_sym_new(pos, ch_len);
+    FIOBJ ch = fiobj_sym_new(pos, ch_len);
     pos += ch_len;
     const uint64_t msg_len = len - ((uintptr_t)pos - (uintptr_t)data);
-    fiobj_s *msg = NULL;
+    FIOBJ msg = NULL;
     if ((((uint8_t *)data)[0] & 1)) {
       if (!fiobj_json2obj(&msg, pos, msg_len)) {
         fprintf(stderr, "WARNING: (pubsub) Cluster engine JSON parsing error "

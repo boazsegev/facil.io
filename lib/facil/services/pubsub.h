@@ -37,14 +37,31 @@ typedef struct pubsub_sub_s *pubsub_sub_pt;
 /** A pub/sub engine data structure. See details later on. */
 typedef struct pubsub_engine_s pubsub_engine_s;
 
+/** The default pub/sub engine.
+ * This engine performs pub/sub within a group of processes (process cluster).
+ *
+ * The process cluser is initialized by the `facil_run` command with `processes`
+ * set to more than 1.
+ */
+extern const pubsub_engine_s *PUBSUB_CLUSTER_ENGINE;
+
+/** An engine that performs pub/sub only within a single process. */
+extern const pubsub_engine_s *PUBSUB_PROCESS_ENGINE;
+
+/** Allows process wide changes to the default Pub/Sub Engine.
+ * Setting a new default before calling `facil_run` will change the default for
+ * the whole process cluster.
+ */
+extern const pubsub_engine_s *PUBSUB_DEFAULT_ENGINE;
+
 /** Publishing and on_message callback arguments. */
 typedef struct pubsub_message_s {
   /** The pub/sub engine that should be used to farward this message. */
   pubsub_engine_s const *engine;
   /** The pub/sub target channnel. */
-  fiobj_s *channel;
+  FIOBJ channel;
   /** The pub/sub message. */
-  fiobj_s *message;
+  FIOBJ message;
   /** The subscription that prompted the message to be routed to the client. */
   pubsub_sub_pt subscription;
   /** Client opaque data pointer (from the `subscribe`) function call. */
@@ -56,7 +73,7 @@ typedef struct pubsub_message_s {
 /** The arguments used for `pubsub_subscribe` or `pubsub_find_sub`. */
 struct pubsub_subscribe_args {
   /** The channel namr used for the subscription. */
-  fiobj_s *channel;
+  FIOBJ channel;
   /** The on message callback. the `*msg` pointer is to a temporary object. */
   void (*on_message)(pubsub_message_s *msg);
   /** An optional callback for when a subscription is fully canceled. */
@@ -149,13 +166,13 @@ void pubsub_defer(pubsub_message_s *msg);
  */
 struct pubsub_engine_s {
   /* Must subscribe channel. Failures are ignored. */
-  void (*subscribe)(const pubsub_engine_s *eng, fiobj_s *channel,
+  void (*subscribe)(const pubsub_engine_s *eng, FIOBJ channel,
                     uint8_t use_pattern);
   /* Must unsubscribe channel. Failures are ignored. */
-  void (*unsubscribe)(const pubsub_engine_s *eng, fiobj_s *channel,
+  void (*unsubscribe)(const pubsub_engine_s *eng, FIOBJ channel,
                       uint8_t use_pattern);
   /** Should return 0 on success and -1 on failure. */
-  int (*publish)(const pubsub_engine_s *eng, fiobj_s *channel, fiobj_s *msg);
+  int (*publish)(const pubsub_engine_s *eng, FIOBJ channel, FIOBJ msg);
 };
 
 /** Registers an engine, so it's callback can be called. */
@@ -163,34 +180,6 @@ void pubsub_engine_register(pubsub_engine_s *engine);
 
 /** Unregisters an engine, so it could be safely destroyed. */
 void pubsub_engine_deregister(pubsub_engine_s *engine);
-
-/** The default pub/sub engine.
- * This engine performs pub/sub within a group of processes (process cluster).
- *
- * The process cluser is initialized by the `facil_run` command with `processes`
- * set to more than 1.
- */
-extern const pubsub_engine_s *PUBSUB_CLUSTER_ENGINE;
-
-/** An engine that performs pub/sub only within a single process. */
-extern const pubsub_engine_s *PUBSUB_PROCESS_ENGINE;
-
-/** Allows process wide changes to the default Pub/Sub Engine.
- * Setting a new default before calling `facil_run` will change the default for
- * the whole process cluster.
- */
-extern const pubsub_engine_s *PUBSUB_DEFAULT_ENGINE;
-
-/**
- * The function used by engines to distribute received messages.
- * The `udata*` and `subscription` fields are ignored.
- *
- * The `.engine` field should be either PUBSUB_PROCESS_ENGINE or
- *                                      PUBSUB_CLUSTER_ENGINE
- */
-void pubsub_engine_distribute(pubsub_message_s msg);
-#define pubsub_engine_distribute(...)                                          \
-  pubsub_engine_distribute((pubsub_message_s){__VA_ARGS__})
 
 /**
  * Engines can ask facil.io to resubscribe to all active channels.
