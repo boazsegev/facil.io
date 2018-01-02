@@ -34,11 +34,11 @@ fast (and sometimes faster) when serving static files.
 
 /* a simple HTTP/1.1 response */
 static char HTTP_RESPONSE[] = "HTTP/1.1 200 OK\r\n"
-                              "Content-Length: 12\r\n"
+                              "Content-Length: 14\r\n"
                               "Connection: keep-alive\r\n"
                               "Content-Type: text/plain\r\n"
                               "\r\n"
-                              "Hello World!";
+                              "A Quick Hello!";
 
 /* our header buffer size */
 #define MAX_HTTP_HEADER_LENGTH 16384
