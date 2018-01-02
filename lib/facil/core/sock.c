@@ -27,6 +27,7 @@ Includes and state
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
 
 /* *****************************************************************************
 OS Sendfile settings.
@@ -590,53 +591,92 @@ the same `fd`).
 */
 intptr_t sock_listen(const char *address, const char *port) {
   int srvfd;
-  // setup the address
-  struct addrinfo hints;
-  struct addrinfo *servinfo;       // will point to the results
-  memset(&hints, 0, sizeof hints); // make sure the struct is empty
-  hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
-  hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-  hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
-  if (getaddrinfo(address, port, &hints, &servinfo)) {
-    // perror("addr err");
-    return -1;
-  }
-  // get the file descriptor
-  srvfd =
-      socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
-  if (srvfd <= 0) {
-    // perror("socket err");
-    freeaddrinfo(servinfo);
-    return -1;
-  }
-  // make sure the socket is non-blocking
-  if (sock_set_non_block(srvfd) < 0) {
-    // perror("couldn't set socket as non blocking! ");
-    freeaddrinfo(servinfo);
-    close(srvfd);
-    return -1;
-  }
-  // avoid the "address taken"
-  {
-    int optval = 1;
-    setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-  }
-  // bind the address to the socket
-  {
-    int bound = 0;
-    for (struct addrinfo *p = servinfo; p != NULL; p = p->ai_next) {
-      if (!bind(srvfd, p->ai_addr, p->ai_addrlen))
-        bound = 1;
+  if (!port || *port == 0 || (port[0] == '0' && port[1] == 0)) {
+    /* Unix socket */
+    if (!address) {
+      errno = EFTYPE;
+      fprintf(
+          stderr,
+          "ERROR: (sock) sock_listen - a Unix socket requires a valid address."
+          "              or specify port for TCP/IP.\n");
+      return -1;
+    }
+    struct sockaddr_un addr = {0};
+    size_t addr_len = strlen(address);
+    if (addr_len >= sizeof(addr.sun_path)) {
+      errno = ENAMETOOLONG;
+      return -1;
+    }
+    addr.sun_family = AF_UNIX;
+    memcpy(addr.sun_path, address, addr_len + 1); /* copy the NUL byte. */
+#if defined(__APPLE__)
+    addr.sun_len = addr_len;
+#endif
+    // get the file descriptor
+    srvfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (srvfd == -1) {
+      return -1;
+    }
+    if (sock_set_non_block(srvfd) == -1) {
+      close(srvfd);
+      return -1;
+    }
+    unlink(addr.sun_path);
+    if (bind(srvfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+      close(srvfd);
+      return -1;
     }
 
-    if (!bound) {
-      // perror("bind err");
+  } else {
+    /* TCP/IP socket */
+    // setup the address
+    struct addrinfo hints = {0};
+    struct addrinfo *servinfo;       // will point to the results
+    memset(&hints, 0, sizeof hints); // make sure the struct is empty
+    hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
+    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
+    if (getaddrinfo(address, port, &hints, &servinfo)) {
+      // perror("addr err");
+      return -1;
+    }
+    // get the file descriptor
+    srvfd = socket(servinfo->ai_family, servinfo->ai_socktype,
+                   servinfo->ai_protocol);
+    if (srvfd <= 0) {
+      // perror("socket err");
+      freeaddrinfo(servinfo);
+      return -1;
+    }
+    // make sure the socket is non-blocking
+    if (sock_set_non_block(srvfd) < 0) {
+      // perror("couldn't set socket as non blocking! ");
       freeaddrinfo(servinfo);
       close(srvfd);
       return -1;
     }
+    // avoid the "address taken"
+    {
+      int optval = 1;
+      setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    }
+    // bind the address to the socket
+    {
+      int bound = 0;
+      for (struct addrinfo *p = servinfo; p != NULL; p = p->ai_next) {
+        if (!bind(srvfd, p->ai_addr, p->ai_addrlen))
+          bound = 1;
+      }
+
+      if (!bound) {
+        // perror("bind err");
+        freeaddrinfo(servinfo);
+        close(srvfd);
+        return -1;
+      }
+    }
+    freeaddrinfo(servinfo);
   }
-  freeaddrinfo(servinfo);
   // listen in
   if (listen(srvfd, SOMAXCONN) < 0) {
     // perror("couldn't start listening");
@@ -714,41 +754,79 @@ before attempting to write to the socket.
 intptr_t sock_connect(char *address, char *port) {
   int fd;
   int one = 1;
-  // setup the address
-  struct addrinfo hints;
-  struct addrinfo *addrinfo;       // will point to the results
-  memset(&hints, 0, sizeof hints); // make sure the struct is empty
-  hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
-  hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-  hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
-  if (getaddrinfo(address, port, &hints, &addrinfo)) {
-    return -1;
-  }
-  // get the file descriptor
-  fd =
-      socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
-  if (fd <= 0) {
-    freeaddrinfo(addrinfo);
-    return -1;
-  }
-  // make sure the socket is non-blocking
-  if (sock_set_non_block(fd) < 0) {
-    freeaddrinfo(addrinfo);
-    close(fd);
-    return -1;
-  }
+  if (!port || *port == 0 || (port[0] == '0' && port[1] == 0)) {
+    /* Unix socket */
+    if (!address) {
+      errno = EFTYPE;
+      fprintf(
+          stderr,
+          "ERROR: (sock) sock_listen - a Unix socket requires a valid address."
+          "              or specify port for TCP/IP.\n");
+      return -1;
+    }
 
-  if (connect(fd, addrinfo->ai_addr, addrinfo->ai_addrlen) < 0 &&
-      errno != EINPROGRESS) {
-    close(fd);
+    struct sockaddr_un addr = {0};
+    size_t addr_len = strlen(address);
+    if (addr_len >= sizeof(addr.sun_path)) {
+      errno = ENAMETOOLONG;
+      return -1;
+    }
+    addr.sun_family = AF_UNIX;
+    memcpy(addr.sun_path, address, addr_len + 1); /* copy the NUL byte. */
+#if defined(__APPLE__)
+    addr.sun_len = addr_len;
+#endif
+    // get the file descriptor
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd == -1) {
+      return -1;
+    }
+    if (sock_set_non_block(fd) == -1) {
+      close(fd);
+      return -1;
+    }
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
+        errno != EINPROGRESS) {
+      close(fd);
+      return -1;
+    }
+  } else {
+    // setup the address
+    struct addrinfo hints;
+    struct addrinfo *addrinfo;       // will point to the results
+    memset(&hints, 0, sizeof hints); // make sure the struct is empty
+    hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
+    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
+    if (getaddrinfo(address, port, &hints, &addrinfo)) {
+      return -1;
+    }
+    // get the file descriptor
+    fd = socket(addrinfo->ai_family, addrinfo->ai_socktype,
+                addrinfo->ai_protocol);
+    if (fd <= 0) {
+      freeaddrinfo(addrinfo);
+      return -1;
+    }
+    // make sure the socket is non-blocking
+    if (sock_set_non_block(fd) < 0) {
+      freeaddrinfo(addrinfo);
+      close(fd);
+      return -1;
+    }
+
+    if (connect(fd, addrinfo->ai_addr, addrinfo->ai_addrlen) < 0 &&
+        errno != EINPROGRESS) {
+      close(fd);
+      freeaddrinfo(addrinfo);
+      return -1;
+    }
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    clear_fd(fd, 1);
+    fdinfo(fd).addrinfo = *((struct sockaddr_in6 *)addrinfo->ai_addr);
+    fdinfo(fd).addrlen = addrinfo->ai_addrlen;
     freeaddrinfo(addrinfo);
-    return -1;
   }
-  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-  clear_fd(fd, 1);
-  fdinfo(fd).addrinfo = *((struct sockaddr_in6 *)addrinfo->ai_addr);
-  fdinfo(fd).addrlen = addrinfo->ai_addrlen;
-  freeaddrinfo(addrinfo);
   return fd2uuid(fd);
 }
 

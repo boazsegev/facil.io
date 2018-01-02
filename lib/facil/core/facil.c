@@ -327,7 +327,8 @@ struct ListenerProtocol {
   void *udata;
   void (*on_start)(intptr_t uuid, void *udata);
   void (*on_finish)(intptr_t uuid, void *udata);
-  char port[16];
+  char *port;
+  char *address;
 };
 
 static void listener_ping(intptr_t uuid, protocol_s *plistener) {
@@ -362,9 +363,18 @@ static void free_listenner(void *li) { free(li); }
 static void listener_on_close(intptr_t uuid, protocol_s *plistener) {
   struct ListenerProtocol *listener = (void *)plistener;
   listener->on_finish(uuid, listener->udata);
-  if (FACIL_PRINT_STATE)
-    fprintf(stderr, "* (%d) Stopped listening on port %s\n", getpid(),
-            listener->port);
+  if (FACIL_PRINT_STATE) {
+    if (listener->port) {
+      fprintf(stderr, "* (%d) Stopped listening on port %s\n", getpid(),
+              listener->port);
+    } else {
+      fprintf(stderr, "* (%d) Stopped listening on Unix Socket %p\n", getpid(),
+              listener->address);
+    }
+  }
+  if (!listener->port) {
+    unlink(listener->address);
+  }
   free_listenner(listener);
 }
 
@@ -374,7 +384,17 @@ listener_alloc(struct facil_listen_args settings) {
     settings.on_start = mock_on_finish;
   if (!settings.on_finish)
     settings.on_finish = mock_on_finish;
-  struct ListenerProtocol *listener = malloc(sizeof(*listener));
+  size_t port_len = 0;
+  size_t addr_len = 0;
+  if (settings.port) {
+    port_len = strlen(settings.port) + 1;
+  }
+  if (settings.address) {
+    addr_len = strlen(settings.address) + 1;
+  }
+  struct ListenerProtocol *listener =
+      malloc(sizeof(*listener) + addr_len + port_len);
+
   if (listener) {
     *listener = (struct ListenerProtocol){
         .protocol.service = listener_protocol_name,
@@ -386,8 +406,15 @@ listener_alloc(struct facil_listen_args settings) {
         .on_start = settings.on_start,
         .on_finish = settings.on_finish,
     };
-    size_t tmp = strlen(settings.port);
-    memcpy(listener->port, settings.port, tmp + 1);
+    if (settings.port) {
+      listener->port = (char *)(listener + 1);
+      memcpy(listener->port, settings.port, port_len);
+    }
+    if (settings.address) {
+      listener->address = (char *)(listener + 1);
+      listener->address += port_len;
+      memcpy(listener->address, settings.address, addr_len);
+    }
     return listener;
   }
   return NULL;
@@ -417,8 +444,12 @@ though a `srv_stop` function or when a SIGINT/SIGTERM is received).
 int facil_listen(struct facil_listen_args settings) {
   if (!facil_data)
     facil_lib_init();
-  if (settings.on_open == NULL || settings.port == NULL)
+  if (settings.on_open == NULL)
     return -1;
+  if (!settings.port || settings.port[0] == 0 ||
+      (settings.port[0] == '0' && settings.port[1] == 0)) {
+    settings.port = NULL;
+  }
   intptr_t uuid = sock_listen(settings.address, settings.port);
   if (uuid == -1) {
     return -1;
@@ -429,8 +460,12 @@ int facil_listen(struct facil_listen_args settings) {
     sock_close(uuid);
     return -1;
   }
-  if (FACIL_PRINT_STATE)
-    fprintf(stderr, "* Listening on port %s\n", settings.port);
+  if (FACIL_PRINT_STATE) {
+    if (settings.port)
+      fprintf(stderr, "* Listening on port %s\n", settings.port);
+    else
+      fprintf(stderr, "* Listening on Unix Socket at %s\n", settings.address);
+  }
   return 0;
 }
 

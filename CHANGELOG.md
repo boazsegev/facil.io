@@ -53,6 +53,8 @@
 
 **Changes!**: (`sock`):
 
+- the socket library now supports automatic Unix detection (set `port` to NULL and provide a valid Unix socket path in the `address` field).
+
 - the socket library's Read/Write hooks API was revised, separating the function pointers from the user data. At server loads over 25%, this decreases the memory footprint.
 
 - the socket library's packet buffer API was deprecated and all `sock_write2(...)` operations take ownership of the memory/file (enforce `move`).

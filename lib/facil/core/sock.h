@@ -85,6 +85,10 @@ The main sock_API.
 /**
  * Opens a listening non-blocking socket. Return's the socket's UUID.
  *
+ * If `port` is provided (`address` can be NULL), a TCP/IP socket will be
+ * opened. Otherwise, `address` is required and a Unix Socket will be used
+ * (remember Unix Sockets have name length restrictions).
+ *
  * Returns -1 on error. Returns a valid socket (non-random) UUID.
  *
  * UUIDs with values less then -1 are valid values, depending on the system's
@@ -103,7 +107,7 @@ intptr_t sock_listen(const char *address, const char *port);
 * `server_fd`, allowing the use of `sock_` functions with this new file
 * descriptor.
 
-* When using `libreact`, remember to call `int reactor_add(intptr_t uuid);` to
+* When using `evio`, remember to call `int evio_add(intptr_t uuid);` to
 * listen for events.
 *
 * Returns -1 on error. Returns a valid socket (non-random) UUID.
@@ -119,6 +123,10 @@ intptr_t sock_accept(intptr_t srv_uuid);
 /**
  * `sock_connect` is similar to `sock_accept` but should be used to initiate a
  * client connection to the address requested.
+ *
+ * If `port` is provided (`address` can be NULL), a TCP/IP socket will be
+ * opened. Otherwise, `address` is required and a Unix Socket will be used
+ * (remember Unix Sockets have name length restrictions).
  *
  * Returns -1 on error. Returns a valid socket (non-random) UUID.
  *
