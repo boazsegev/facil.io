@@ -14,7 +14,7 @@ Having a local application crash at Runtime is bad. But having a server crash wh
 
 ### The Solution
 
-`facil.io` offers the static `fiobj_s` type object. This type contains only a single public data member - it's actual type (using a numerical unique ID that maps an object to it's virtual function table and type data).
+`facil.io` offers the static `FIOBJ` type object. This type contains only a single public data member - it's actual type (using a numerical unique ID that maps an object to it's virtual function table and type data).
 
 This offers the following advantages (among others):
 
@@ -26,7 +26,7 @@ This offers the following advantages (among others):
 
 * Offers non-recursive iteration and an *optional* (disabled by default) cyclic nesting protection.
 
-* Offers JSON parsing and formatting to and from `fiobj_s *`.
+* Offers JSON parsing and formatting to and from `FIOBJ`.
 
 * Extendable type system, allowing new dynamic types to be easily create as needed.
 
@@ -42,7 +42,7 @@ For example:
 
 ```c
 /* this will work */
-fiobj_s * str = fiobj_str_buf(7); /* add 1 for NUL terminator */
+FIOBJ str = fiobj_str_buf(7); /* add 1 for NUL terminator */
 fio_cstr_s raw_str = fiobj_obj2cstr(str);
 memcpy(raw_str.buffer, "Hello!", 6);
 fiobj_str_resize(str, 6);
@@ -50,24 +50,24 @@ fiobj_str_resize(str, 6);
 fiobj_free(str);
 
 /* this is better */
-fiobj_s * str = fiobj_str_buf(7); /* add 1 for NUL terminator */
+FIOBJ str = fiobj_str_buf(7); /* add 1 for NUL terminator */
 fiobj_str_write(str, "Hello!", 6);
 // ...
 fiobj_free(str);
 
 /* for simple strings, one line will do */
-fiobj_s * str = fiobj_str_new("Hello!", 6);
+FIOBJ str = fiobj_str_new("Hello!", 6);
 // ...
 fiobj_free(str);
 
 /* for more complex cases, printf style is supported */
-fiobj_s * str = fiobj_str_buf(0);
+FIOBJ str = fiobj_str_buf(0);
 fiobj_str_write2(str, "%s %d" , "Hello!", 42);
 // ...
 fiobj_free(str);
 
 /* for static strings, this is the best */
-fiobj_s * str = fiobj_str_static("Hello!", 6);
+FIOBJ str = fiobj_str_static("Hello!", 6);
 // ...
 fiobj_free(str);
 ```
@@ -81,8 +81,8 @@ An object's memory should *always* be managed by it's "owner". This usually mean
 In the following example, the String nested within the Array is freed when the Array is freed:
 
 ```c
-fiobj_s * ary = fiobj_ary_new();
-fiobj_s * str = fiobj_str_new("Hello!", 6);
+FIOBJ ary = fiobj_ary_new();
+FIOBJ str = fiobj_str_new("Hello!", 6);
 fiobj_ary_push(ary, str);
 // ...
 fiobj_free(ary);
@@ -94,8 +94,8 @@ It's important to note that Symbol objects (Hash keys) aren't transferred to the
 When calling `fiobj_hash_set`, we are storing a *value* in the Hash, the key is what we use to access that value. This is why **the key's ownership remains with the calling function**. i.e.:
 
 ```c
-fiobj_s * h = fiobj_hash_new();
-static __thread fiobj_s * ID = NULL;
+FIOBJ h = fiobj_hash_new();
+static __thread FIOBJ ID = NULL;
 if(!ID)
   ID = fiobj_sym_new("id", 2);
 /* By placing the Number in the Hash, it will be deallocated together with the Hash */
@@ -117,8 +117,8 @@ All objects are passed along by reference. The `dup` (duplication) process simpl
 This is a very powerful tool. In the following example, `str2` is a "copy" **by reference** of `str`. By editing `str2` we're also editing `str`:
 
 ```c
-fiobj_s * str = fiobj_str_new("Hello!", 6);
-fiobj_s * str2 = fiobj_dup(str);
+FIOBJ str = fiobj_str_new("Hello!", 6);
+FIOBJ str2 = fiobj_dup(str);
 /* We'll edit str2 to say "Hello There!" instead of "Hello!" */
 fiobj_str_resize(str2, 5);
 fiobj_str_write(str2, " There!", 7);
@@ -132,11 +132,11 @@ fiobj_free(str2);
 An independent copy can be created using an object's specific copy function. This example  create a new, independent, object instead of referencing the old one:
 
 ```c
-fiobj_s * str = fiobj_str_new("Hello!", 6);
+FIOBJ str = fiobj_str_new("Hello!", 6);
 /* create a copy instead of a reference */
-fiobj_s * str2 = fiobj_str_copy(str);
+FIOBJ str2 = fiobj_str_copy(str);
 /* this is the same as */
-fiobj_s * str3 = fiobj_str_new(fiobj_obj2cstr(str).data, fiobj_obj2cstr(str).len);
+FIOBJ str3 = fiobj_str_new(fiobj_obj2cstr(str).data, fiobj_obj2cstr(str).len);
 // ...
 fiobj_free(str);
 fiobj_free(str2);
@@ -146,9 +146,9 @@ fiobj_free(str3);
 Copy by reference produces a deep reference adjustment, so Arrays and Hashes can be safely copied by reference.
 
 ```c
-fiobj_s * ary = fiobj_ary_new();
+FIOBJ ary = fiobj_ary_new();
 fiobj_ary_push(ary, fiobj_str_new("Hello!", 6));
-fiobj_s * ary_copy = fiobj_dup(ary);
+FIOBJ ary_copy = fiobj_dup(ary);
 // ...
 fiobj_free(ary);
 // all the items in ary2 are still accessible.
@@ -170,8 +170,8 @@ Without the optional cyclic nesting protection, the following code will crash:
 
 ```c
 // FIOBJ_NESTING_PROTECTION == 0 or not defined
-fiobj_s * ary = fiobj_ary_new();
-fiobj_s * ary2 = fiobj_ary_new();
+FIOBJ ary = fiobj_ary_new();
+FIOBJ ary2 = fiobj_ary_new();
 // cyclic nesting
 fiobj_ary_push(ary, ary2);
 fiobj_ary_push(ary2, ary);
@@ -185,8 +185,8 @@ However, enabling the optional cyclic nesting protection will protect against cy
 
 ```c
 // FIOBJ_NESTING_PROTECTION == 1
-fiobj_s * ary = fiobj_ary_new();
-fiobj_s * ary2 = fiobj_ary_new();
+FIOBJ ary = fiobj_ary_new();
+FIOBJ ary2 = fiobj_ary_new();
 // cyclic nesting
 fiobj_ary_push(ary, ary2);
 fiobj_ary_push(ary2, ary);
@@ -198,7 +198,7 @@ fiobj_free(ary);
 
 ## Independence
 
-The `fiobj_s` module is independent and can be extracted from `facil.io` by copying the `fiobj.h` file (under `lib/facil/core/types`) and all the files in the `lib/facil/core/types/fiobj` folder.
+The `FIOBJ` module is independent and can be extracted from `facil.io` by copying the `fiobj.h` file (under `lib/facil/core/types`) and all the files in the `lib/facil/core/types/fiobj` folder.
 
 Place these files in your project and use to your heart's content.
 

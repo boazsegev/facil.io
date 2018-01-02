@@ -41,9 +41,9 @@ Available command line flags:
 -q                 : sets verbosity (HTTP logging) off (on by default).
 */
 
-static fiobj_s *SERVER_HEADER;
-static fiobj_s *SERVER_NAME;
-static fiobj_s *TEXT_TYPE;
+static FIOBJ SERVER_HEADER;
+static FIOBJ SERVER_NAME;
+static FIOBJ TEXT_TYPE;
 
 /* The HTTP request handler */
 static void http_hello_on_request(http_s *h) {

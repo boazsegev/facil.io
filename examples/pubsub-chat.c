@@ -18,12 +18,12 @@ following javascript code:
 ws1 = new WebSocket("ws://localhost:3000/Mitchel"); // run 1st app on port 3000.
 ws1.onmessage = function(e) { console.log(e.data); };
 ws1.onclose = function(e) { console.log("closed"); };
-ws1.onopen = function(e) { ws1.send("Yo!"); };
+ws1.onopen = function(e) { e.target.send("Yo!"); };
 
 ws2 = new WebSocket("ws://localhost:3030/Johana"); // run 2nd app on port 3030.
 ws2.onmessage = function(e) { console.log(e.data); };
 ws2.onclose = function(e) { console.log("closed"); };
-ws2.onopen = function(e) { ws2.send("Brut."); };
+ws2.onopen = function(e) { e.target.send("Brut."); };
 
 Remember that published messages will now be printed to the console both by
 Mitchel and Johana, which means messages will be delivered twice unless using
@@ -50,7 +50,7 @@ struct nickname {
  * ... it's a default name for unimaginative visitors.
  */
 static struct nickname MISSING_NICKNAME = {.len = 7, .nick = "unknown"};
-static fiobj_s *CHAT_CHANNEL;
+static FIOBJ CHAT_CHANNEL;
 /* *****************************************************************************
 Websocket callbacks
 ***************************************************************************** */
@@ -73,7 +73,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   if (!n)
     n = &MISSING_NICKNAME;
 
-  fiobj_s *msg = fiobj_str_buf(n->len + 2 + size);
+  FIOBJ msg = fiobj_str_buf(n->len + 2 + size);
   fiobj_str_write(msg, n->nick, n->len);
   fiobj_str_write(msg, ": ", 2);
   fiobj_str_write(msg, data, size);

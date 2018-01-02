@@ -24,8 +24,8 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 
 #include <string.h>
 
-fiobj_s *CHANNEL_TEXT;
-fiobj_s *CHANNEL_BINARY;
+FIOBJ CHANNEL_TEXT;
+FIOBJ CHANNEL_BINARY;
 
 static void on_open_shootout_websocket(ws_s *ws) {
   websocket_subscribe(ws, .channel = CHANNEL_TEXT, .force_text = 1);
@@ -38,14 +38,14 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   (void)(is_text);
   (void)(size);
   if (data[0] == 'b') {
-    fiobj_s *msg = fiobj_str_new(data, size);
+    FIOBJ msg = fiobj_str_new(data, size);
     pubsub_publish(.channel = CHANNEL_BINARY, .message = msg);
     // fwrite(".", 1, 1, stderr);
     data[0] = 'r';
     websocket_write(ws, data, size, 0);
   } else if (data[9] == 'b') {
     // fwrite(".", 1, 1, stderr);
-    fiobj_s *msg = fiobj_str_new(data, size);
+    FIOBJ msg = fiobj_str_new(data, size);
     pubsub_publish(.channel = CHANNEL_TEXT, .message = msg);
     /* send result */
     size = size + (25 - 19);

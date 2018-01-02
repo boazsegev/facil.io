@@ -64,7 +64,7 @@ typedef struct {
   size_t header_count; /* the header count - everything after this is garbage */
   char *headers[MAX_HTTP_HEADER_COUNT];
   char *values[MAX_HTTP_HEADER_COUNT];
-  fiobj_s *body; /* the HTTP body, this is where a little complexity helps */
+  FIOBJ body; /* the HTTP body, this is where a little complexity helps */
   size_t buf_reader; /* internal: marks the read position in the buffer */
   size_t buf_writer; /* internal: marks the write position in the buffer */
   uint8_t reset; /* used internally to mark when some buffer can be deleted */

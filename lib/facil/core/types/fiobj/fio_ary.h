@@ -407,4 +407,6 @@ FIO_FUNC inline void fio_ary_compact(fio_ary_s *ary) {
 #undef register
 #endif
 
+#undef FIO_FUNC
+
 #endif

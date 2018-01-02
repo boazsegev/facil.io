@@ -105,56 +105,22 @@ FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key);
 /** Returns the number of elements currently in the Hash Table. */
 FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash);
 
-/** Forces a rehashing of the hash. */
-FIO_FUNC void fio_hash_rehash(fio_hash_s *hash);
-
 /**
  * Returns a temporary theoretical Hash map capacity.
- * This could be used for testig performance and memory consumption.
+ * This could be used for testing performance and memory consumption.
  */
 FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash);
 
 /**
- * A macro for a `for` loop that iterates over all the hashed objetcs (in
- * order).
+ * Attempts to minimize memory usage by removing empty spaces caused by deleted
+ * items and rehashing the Hash Map.
  *
- * `hash` a pointer to the hash table variable and `i` is a temporary variable
- * name to be created for iteration.
- *
- * `i->key` is the key and `i->obj` is the hashed data.
+ * Returns the updated hash map capacity.
  */
-#define FIO_HASH_FOR_LOOP(hash, i)
+FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash);
 
-/**
- * A macro for a `for` loop that iterates over all the hashed objetcs (in
- * order) and empties the hash.
- *
- * This will also reallocate the map's memory (to zero out the data), so if this
- * is performed before calling `fio_hash_free`, use FIO_HASH_FOR_FREE instead.
- *
- * `hash` a pointer to the hash table variable and `i` is a temporary variable
- * name to be created for iteration.
- *
- * `i->key` is the key and `i->obj` is the hashed data.
- *
- * Free the object manually (if required). The key will be freed automatically
- * (if required).
- */
-#define FIO_HASH_FOR_EMPTY(hash, i)
-
-/**
- * A macro for a `for` loop that will iterate over all the hashed objetcs (in
- * order) and empties the hash, later calling `fio_hash_free` to free the hash.
- *
- * `hash` a pointer to the hash table variable and `i` is a temporary variable
- * name to be created for iteration.
- *
- * `i->key` is the key and `i->obj` is the hashed data.
- *
- * Free the object manually (if required). The key will be freed automatically
- * (if required).
- */
-#define FIO_HASH_FOR_EMPTY(hash, i)
+/** Forces a rehashing of the hash. */
+FIO_FUNC void fio_hash_rehash(fio_hash_s *hash);
 
 /**
  * Iteration using a callback for each entry in the Hash Table.
@@ -175,12 +141,49 @@ FIO_FUNC inline size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
                                      void *arg);
 
 /**
- * Attempts to minimize memory usage by removing empty spaces caused by deleted
- * items and rehashing the Hash Map.
+ * A macro for a `for` loop that iterates over all the hashed objects (in
+ * order).
  *
- * Returns the updated hash map capacity.
+ * `hash` a pointer to the hash table variable and `i` is a temporary variable
+ * name to be created for iteration.
+ *
+ * `i->key` is the key and `i->obj` is the hashed data.
  */
-FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash);
+#define FIO_HASH_FOR_LOOP(hash, i)
+
+/**
+ * A macro for a `for` loop that will iterate over all the hashed objects (in
+ * order) and empties the hash, later calling `fio_hash_free` to free the hash
+ * (but not the comtainer).
+ *
+ * `hash` a pointer to the hash table variable and `i` is a temporary variable
+ * name to be created for iteration.
+ *
+ * `i->key` is the key and `i->obj` is the hashed data.
+ *
+ * Free the objects and the Hash Map container manually (if required). Custom
+ * keys will be freed automatically when using this macro.
+ *
+ */
+#define FIO_HASH_FOR_FREE(hash, i)
+
+/**
+ * A macro for a `for` loop that iterates over all the hashed objects (in
+ * order) and empties the hash.
+ *
+ * This will also reallocate the map's memory (to zero out the data), so if this
+ * is performed before calling `fio_hash_free`, use FIO_HASH_FOR_FREE instead.
+ *
+ * `hash` a pointer to the hash table variable and `i` is a temporary variable
+ * name to be created for iteration.
+ *
+ * `i->key` is the key and `i->obj` is the hashed data.
+ *
+ * Free the objects and the Hash Map container manually (if required). Custom
+ * keys will be freed automatically when using this macro.
+ *
+ */
+#define FIO_HASH_FOR_EMPTY(hash, i)
 
 /* *****************************************************************************
 Hash Table Internal Data Structures
@@ -211,6 +214,13 @@ struct fio_hash_s {
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
        container && !FIO_HASH_KEY_ISINVALID(container->key); ++container)
 
+#undef FIO_HASH_FOR_FREE
+#define FIO_HASH_FOR_FREE(hash, container)                                     \
+  for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
+       container && !FIO_HASH_KEY_ISINVALID(container->key) ||                 \
+       ((fio_hash_free(hash), 0) != 0);                                        \
+       FIO_HASH_KEY_DESTROY(container->key), (++container))
+
 #undef FIO_HASH_FOR_EMPTY
 #define FIO_HASH_FOR_EMPTY(hash, container)                                    \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
@@ -223,13 +233,6 @@ struct fio_hash_s {
        FIO_HASH_KEY_DESTROY(container->key),                                   \
                                container->key = FIO_HASH_KEY_INVALID,          \
                                container->obj = NULL, (++container))
-
-#undef FIO_HASH_FOR_FREE
-#define FIO_HASH_FOR_FREE(hash, container)                                     \
-  for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
-       container && !FIO_HASH_KEY_ISINVALID(container->key) ||                 \
-       ((fio_hash_free(hash), 0) != 0);                                        \
-       FIO_HASH_KEY_DESTROY(container->key), (++container))
 
 /* *****************************************************************************
 Hash allocation / deallocation.
@@ -476,5 +479,7 @@ FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash) {
 
   return hash->capa;
 }
+
+#undef FIO_FUNC
 
 #endif /* H_FIO_SIMPLE_HASH_H */

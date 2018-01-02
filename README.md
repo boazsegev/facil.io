@@ -23,7 +23,7 @@ You can read more about [facil.io](http://facil.io) on the [facil.io](http://fac
 void on_request(http_s *request);
 
 // These will contain pre-allocated values that we will use often
-fiobj_s *HTTP_X_DATA;
+FIOBJ HTTP_X_DATA;
 
 // Listen to HTTP requests and start facil.io
 int main(int argc, char const **argv) {
@@ -50,7 +50,7 @@ void on_request(http_s *request) {
 
 ## Using `facil.io` in your project
 
-It's possible to either start a new project with `facil.io` or simply add it to an existing one. GNU make is the default build system and CMake is also supported. Notice that `facil.io` is requires some C11 support from the compiler.
+It's possible to either start a new project with `facil.io` or simply add it to an existing one. GNU `make` is the default build system and CMake is also supported. Notice that `facil.io` requires some C11 support from the compiler.
 
 ### Starting a new project with `facil.io`
 
