@@ -1,5 +1,5 @@
 # facil.io - a mini-framework for C web applications
-[![GitHub](https://img.shields.io/badge/GitHub-Open%20Source-blue.svg)](https://github.com/boazsegev/facil)
+[![GitHub](https://img.shields.io/badge/GitHub-Open%20Source-blue.svg)](https://github.com/boazsegev/facil.io)
 
 [facil.io](http://facil.io) is a C mini-framework for web applications and includes:
 
