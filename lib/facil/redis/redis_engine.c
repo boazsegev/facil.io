@@ -640,11 +640,13 @@ static int resp_on_message(resp_parser_s *parser) {
   } else {
     /* subscriotion parser */
     if (FIOBJ_TYPE(msg) != FIOBJ_T_ARRAY) {
-      fprintf(
-          stderr,
-          "WARNING: (redis) unexpected data format in subscription stream:\n");
-      fio_cstr_s tmp = fiobj_obj2cstr(msg);
-      fprintf(stderr, "     %s\n", tmp.data);
+      if (FIOBJ_TYPE(msg) != FIOBJ_T_STRING || fiobj_obj2cstr(msg).len != 4 ||
+          fiobj_obj2cstr(msg).data[0] != 'P') {
+        fprintf(stderr, "WARNING: (redis) unexpected data format in "
+                        "subscription stream:\n");
+        fio_cstr_s tmp = fiobj_obj2cstr(msg);
+        fprintf(stderr, "     %s\n", tmp.data);
+      }
     } else {
       // FIOBJ *ary = fiobj_ary2prt(msg);
       // for (size_t i = 0; i < fiobj_ary_count(msg); ++i) {
