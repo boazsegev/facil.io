@@ -216,6 +216,8 @@ struct facil_connect_args {
   void (*on_fail)(intptr_t uuid, void *udata);
   /** Opaque user data. */
   void *udata;
+  /** A non-system timeout after which connection is assumed to have failed. */
+  uint8_t timeout;
 };
 
 /**

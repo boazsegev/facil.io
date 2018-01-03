@@ -22,7 +22,12 @@ Feel free to copy, use and enjoy according to the license provided.
 static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
                              size_t pat_len);
 
-#define PUBSUB_FACIL_CLUSTER_ID -1
+#define PUBSUB_FACIL_CLUSTER_CHANNEL_FILTER ((int32_t)-1)
+#define PUBSUB_FACIL_CLUSTER_PATTERN_FILTER ((int32_t)-2)
+#define PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER ((int32_t)-3)
+#define PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER ((int32_t)-4)
+#define PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER ((int32_t)-5)
+#define PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER ((int32_t)-6)
 
 /* *****************************************************************************
 The Hash Map (macros and the include instruction for `fio_hashmap.h`)
@@ -556,78 +561,24 @@ Cluster Engine
 /* Must subscribe channel. Failures are ignored. */
 void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                  uint8_t use_pattern) {
-  fio_cstr_s s = fiobj_obj2cstr(channel);
-  char *buf = malloc(s.length + 32);
-  if (!buf)
-    perror("FATAL ERROR: (pubsub) failed to allocate cluster subscription"),
-        exit(errno);
-  char *pos = buf;
-  *pos = use_pattern ? 1 : 0;
-  pos++;
-  pos += fio_ltoa(pos, s.len, 10);
-  *pos = 0;
-  pos++;
-  memcpy(pos, s.buffer, s.len);
-  pos += s.len;
-  facil_cluster_send(PUBSUB_FACIL_CLUSTER_ID, buf,
-                     (uintptr_t)pos - (uintptr_t)buf);
-  free(buf);
+  facil_cluster_send((use_pattern ? PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER
+                                  : PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER),
+                     channel, NULL);
   (void)eng;
 }
 
 /* Must unsubscribe channel. Failures are ignored. */
 void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                    uint8_t use_pattern) {
-  fio_cstr_s s = fiobj_obj2cstr(channel);
-  char *buf = malloc(s.length + 32);
-  if (!buf)
-    perror("FATAL ERROR: (pubsub) failed to allocate cluster subscription"),
-        exit(errno);
-  char *pos = buf;
-  *pos = use_pattern ? 3 : 2;
-  pos++;
-  pos += fio_ltoa(pos, s.len, 10);
-  *pos = 0;
-  pos++;
-  memcpy(pos, s.buffer, s.len);
-  pos += s.len;
-  facil_cluster_send(PUBSUB_FACIL_CLUSTER_ID, buf,
-                     (uintptr_t)pos - (uintptr_t)buf);
-  free(buf);
+  facil_cluster_send((use_pattern ? PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER
+                                  : PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER),
+                     channel, NULL);
   (void)eng;
 }
 /** Should return 0 on success and -1 on failure. */
 int pubsub_en_cluster_publish(const pubsub_engine_s *eng, FIOBJ channel,
                               FIOBJ msg) {
-  if (FIOBJ_IS_STRING(msg) || msg->type == FIOBJ_T_SYMBOL) {
-    fio_cstr_s chs = fiobj_obj2cstr(channel);
-    fio_cstr_s ms = fiobj_obj2cstr(msg);
-    char *buf = malloc(chs.length + ms.len + 64);
-    if (!buf)
-      perror("FATAL ERROR: (pubsub) failed to allocate cluster subscription"),
-          exit(errno);
-    char *pos = buf;
-    *pos = 4;
-    pos++;
-    pos += fio_ltoa(pos, chs.len, 10);
-    *pos = 0;
-    pos++;
-    memcpy(pos, chs.buffer, chs.len);
-    pos += chs.len;
-    memcpy(pos, ms.buffer, ms.len);
-    pos += ms.len;
-    facil_cluster_send(PUBSUB_FACIL_CLUSTER_ID, buf,
-                       (uintptr_t)pos - (uintptr_t)buf);
-    free(buf);
-  } else {
-    FIOBJ buf = fiobj_str_tmp();
-    fiobj_str_write(buf, "\x05", 1);
-    fiobj_str_write2(buf, "%lu\x01",
-                     (unsigned long)(fiobj_obj2cstr(channel).len + 1));
-    fiobj_obj2json2(buf, msg, 0);
-    fio_cstr_s s = fiobj_obj2cstr(buf);
-    facil_cluster_send(PUBSUB_FACIL_CLUSTER_ID, s.data, s.len);
-  }
+  facil_cluster_send(PUBSUB_FACIL_CLUSTER_CHANNEL_FILTER, channel, msg);
   return PUBSUB_PROCESS_ENGINE->publish(PUBSUB_PROCESS_ENGINE, channel, msg);
   (void)eng;
 }
@@ -648,7 +599,7 @@ Cluster Initialization and Messaging Protocol
 /* does nothing */
 static void pubsub_cluster_on_message_noop(pubsub_message_s *msg) { (void)msg; }
 
-/* test for channel existence and registers to the channel if required */
+/* registers to the channel  */
 static void pubsub_cluster_subscribe2channel(void *ch, void *flag) {
   channel_s channel = {
       .name = ch,
@@ -661,7 +612,7 @@ static void pubsub_cluster_subscribe2channel(void *ch, void *flag) {
   fiobj_free(ch);
 }
 
-/* test for channel existence and deregisters to the channel if required */
+/* deregisters from the channel if required */
 static void pubsub_cluster_unsubscribe2channel(void *ch, void *flag) {
   channel_s channel = {
       .name = ch,
@@ -675,71 +626,38 @@ static void pubsub_cluster_unsubscribe2channel(void *ch, void *flag) {
   fiobj_free(ch);
 }
 
-static void pubsub_cluster_facil_message(void *data, uint32_t len) {
-  char *pos = data;
-  switch (*pos) {
-  case 0:
-  /* NULL byte indicates a subscribe to a normal channel */
-  /* first bit (1) indicates a subscribe to a pattern channel */
-  /* fallthrough */
-  case 1: {
-    ++pos;
-    uint64_t ch_len = fio_atol(&pos);
-    ++pos;
-    FIOBJ ch = fiobj_sym_new(pos, ch_len);
-    uintptr_t flag = (((uint8_t *)data)[0] & 1);
-    /* subscribe immediately, usubscribe can be deferred. */
-    pubsub_cluster_subscribe2channel(ch, (void *)flag);
-    return;
+static void pubsub_cluster_facil_message(int32_t filter, FIOBJ channel,
+                                         FIOBJ message) {
+  switch (filter) {
+  case PUBSUB_FACIL_CLUSTER_CHANNEL_FILTER:
+    PUBSUB_PROCESS_ENGINE->publish(PUBSUB_PROCESS_ENGINE, channel, message);
+    break;
+  case PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER:
+    pubsub_cluster_subscribe2channel(channel, 0);
+    break;
+  case PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER:
+    pubsub_cluster_subscribe2channel(channel, (void *)1);
+    break;
+  case PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER:
+    pubsub_cluster_unsubscribe2channel(channel, 0);
+    break;
+  case PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER:
+    pubsub_cluster_unsubscribe2channel(channel, (void *)1);
+    break;
   }
-  case 2:
-  /* indicates an unsubscribe to a normal channel */
-  /* fallthrough */
-  case 3:
-    /* first bit indicates an unsubscribe to a pattern channel */
-    {
-      ++pos;
-      uint64_t ch_len = fio_atol(&pos);
-      ++pos;
-      FIOBJ ch = fiobj_sym_new(pos, ch_len);
-      uintptr_t flag = (((uint8_t *)data)[0] & 1);
-      defer(pubsub_cluster_unsubscribe2channel, ch, (void *)flag);
-      return;
-    }
-  case 4:
-  /* indicates String message */
-  /* fallthrough */
-  case 5:
-    /* indicates JSON message */
-    ++pos;
-    const uint64_t ch_len = fio_atol(&pos);
-    ++pos;
-    FIOBJ ch = fiobj_sym_new(pos, ch_len);
-    pos += ch_len;
-    const uint64_t msg_len = len - ((uintptr_t)pos - (uintptr_t)data);
-    FIOBJ msg = NULL;
-    if ((((uint8_t *)data)[0] & 1)) {
-      if (!fiobj_json2obj(&msg, pos, msg_len)) {
-        fprintf(stderr, "WARNING: (pubsub) Cluster engine JSON parsing error "
-                        "(this might be a framework bug).\n");
-        msg = fiobj_str_new(pos, msg_len);
-      }
-    } else {
-      msg = fiobj_str_new(pos, msg_len);
-    }
-    PUBSUB_PROCESS_ENGINE->publish(PUBSUB_PROCESS_ENGINE, ch, msg);
-    fiobj_free(ch);
-    fiobj_free(msg);
-    return;
-  default:
-    /* indicates an error */
-    fprintf(stderr, "WARNING: (pubsub) Cluster engine received an illigal "
-                    "message - code error.\n");
-  }
+  (void)filter;
 }
 
 void pubsub_cluster_init(void) {
-  facil_cluster_set_handler(PUBSUB_FACIL_CLUSTER_ID,
+  facil_cluster_set_handler(PUBSUB_FACIL_CLUSTER_CHANNEL_FILTER,
+                            pubsub_cluster_facil_message);
+  facil_cluster_set_handler(PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER,
+                            pubsub_cluster_facil_message);
+  facil_cluster_set_handler(PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER,
+                            pubsub_cluster_facil_message);
+  facil_cluster_set_handler(PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER,
+                            pubsub_cluster_facil_message);
+  facil_cluster_set_handler(PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER,
                             pubsub_cluster_facil_message);
 }
 

@@ -218,7 +218,7 @@ static void redis_on_pub_connect_fail(intptr_t uuid, void *pr) {
   (void)uuid;
 }
 static void redis_on_sub_connect_fail(intptr_t uuid, void *pr) {
-  if (facil_parent_pid() == getpid())
+  if (facil_parent_pid() != getpid())
     return;
   redis_engine_s *r = prot2redis(pr);
   r->sub_data.uuid = 0;
