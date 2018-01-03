@@ -9,7 +9,7 @@ get slower for a full application vs. when authoring a proxy.
 Benchmark with keep-alive:
 
    ab -c 200 -t 4 -n 1000000 -k http://127.0.0.1:3000/
-   wrk -c200 -d4 -t12 http://localhost:3000/
+   wrk -c200 -d4 -t1 http://localhost:3000/
 
 As mentioned, the high speeds have their disadvantages.
 
@@ -101,7 +101,7 @@ int main(void) {
                    .on_open = fast_http_on_open, .udata = NULL))
     perror("FATAL ERROR: Couldn't open listening socket"), exit(errno);
   /* run facil with 1 working thread - this blocks until we're done. */
-  facil_run(.threads = 1);
+  facil_run(.threads = 1, .processes = 1);
   /* that's it */
   return 0;
 }

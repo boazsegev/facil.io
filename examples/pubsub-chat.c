@@ -32,7 +32,7 @@ two different browser windows.
 
 #include "fio_cli_helper.h"
 #include "pubsub.h"
-// #include "redis_engine.h"
+#include "redis_engine.h"
 #include "websockets.h"
 
 #include <string.h>
@@ -57,6 +57,11 @@ Websocket callbacks
 
 /* We'll subscribe to the channel's chat channel when a new connection opens */
 static void on_open_websocket(ws_s *ws) {
+  struct nickname *n = websocket_udata(ws);
+  if (!n)
+    n = &MISSING_NICKNAME;
+  fprintf(stderr, "(%d) %s connected to the chat service.\n", getpid(),
+          n->nick);
   websocket_subscribe(ws, .channel = CHAT_CHANNEL, .force_text = 1);
 }
 
@@ -173,20 +178,20 @@ int main(int argc, char const *argv[]) {
     threads = workers = 0;
 
   /*     ****  actual code ****     */
-  // if (redis_address) {
-  //   PUBSUB_DEFAULT_ENGINE =
-  //       redis_engine_create(.address = redis_address, .port = redis_port,
-  //                           .ping_interval = 40);
-  //   if (!PUBSUB_DEFAULT_ENGINE) {
-  //     perror("\nERROR: couldn't initialize Redis engine.\n");
-  //     exit(-2);
-  //   }
-  //   printf("* Redis engine initialized.\n");
-  // } else {
-  //   printf(
-  //       "* Redis engine details missing, using native-local pub/sub
-  //       engine.\n");
-  // }
+  if (redis_address) {
+    fprintf(stderr, "* Connecting to Redis for Pub/Sub.\n");
+    PUBSUB_DEFAULT_ENGINE =
+        redis_engine_create(.address = redis_address, .port = redis_port,
+                            .ping_interval = 40);
+    if (!PUBSUB_DEFAULT_ENGINE) {
+      perror("\nERROR: couldn't initialize Redis engine.\n");
+      exit(-2);
+    }
+    printf("* Redis engine initialized.\n");
+  } else {
+    printf("* Redis engine details missing, "
+           "using native-local pub/sub engine.\n");
+  }
 
   if (http_listen(port, NULL, .on_request = answer_http_request,
                   .on_upgrade = answer_http_upgrade, .log = print_log,

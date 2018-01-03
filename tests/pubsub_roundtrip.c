@@ -1,5 +1,6 @@
 #include "facil.h"
 #include "pubsub.h"
+#include "redis_engine.h"
 
 static void reporter_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
                                uint8_t use_pattern) {
@@ -32,22 +33,28 @@ pubsub_engine_s REPORTER = {
 
 void my_on_message(pubsub_message_s *msg) {
   fio_cstr_s s = fiobj_obj2cstr(msg->channel);
-  fprintf(stderr, "Got message from %s, with subscription %p\n", s.data,
-          (void *)fiobj_obj2num(msg->message));
-  pubsub_sub_pt sub =
-      pubsub_find_sub(.channel = msg->channel, .on_message = my_on_message,
-                      .udata1 = msg->udata1, .udata2 = msg->udata2);
-  pubsub_unsubscribe(sub);
+  if (FIOBJ_TYPE(msg->message) == FIOBJ_T_STRING) {
+    fprintf(stderr, "Got message from %s: %s\n", s.data,
+            fiobj_obj2cstr(msg->message).data);
+  } else {
+    fprintf(stderr, "Got message from %s, with subscription %p\n", s.data,
+            (void *)fiobj_obj2num(msg->message));
+    pubsub_sub_pt sub =
+        pubsub_find_sub(.channel = msg->channel, .on_message = my_on_message,
+                        .udata1 = msg->udata1, .udata2 = msg->udata2);
+    pubsub_unsubscribe(sub);
+  }
 }
 
-void perfrom_sub(void *a, void *b) {
-  if (defer_fork_pid()) {
+void perfrom_sub(void *a) {
+  if (facil_parent_pid() != getpid()) {
     (void)a;
   } else {
     fiobj_s *ch = fiobj_sym_new("my channel", 10);
     fiobj_s *msg = fiobj_num_new(
         (intptr_t)pubsub_subscribe(.channel = ch, .on_message = my_on_message,
-                                   .udata1 = a, .udata2 = b));
+                                   .udata1 = a, .udata2 = NULL));
+    pubsub_publish(.channel = ch, .message = ch);
     pubsub_publish(.channel = ch, .message = msg);
     fiobj_free(msg);
     fiobj_free(ch);
@@ -55,8 +62,9 @@ void perfrom_sub(void *a, void *b) {
 }
 
 int main(void) {
+  // PUBSUB_DEFAULT_ENGINE = redis_engine_create(.address = "localhost");
   pubsub_engine_register(&REPORTER);
-  defer(perfrom_sub, NULL, NULL);
+  facil_run_every(100, 1, perfrom_sub, NULL, NULL);
   facil_run(.threads = 4, .processes = 4);
   pubsub_engine_deregister(&REPORTER);
   return 0;
