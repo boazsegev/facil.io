@@ -135,7 +135,7 @@ Child Process support (`fork`)
  *
  * Behaves like the system's `fork`.
  */
-int defer_new_child(void);
+// int defer_new_child(void);
 
 /**
  * Initializes zombie reaping for the process
@@ -143,7 +143,7 @@ int defer_new_child(void);
  * This will be automatically called if NO_CHILD_REAPER is defined with a
  * non-zero value. i.e.: #define NO_CHILD_REAPER 1
  */
-void defer_reap_children(void);
+// void defer_reap_children(void);
 
 /**
  * Forks the process, starts up a thread pool and waits for all tasks to run.
@@ -165,13 +165,13 @@ void defer_reap_children(void);
  * Returns 0 on success, -1 on error and a positive number if this is a child
  * process that was forked.
  */
-int defer_perform_in_fork(unsigned int process_count,
-                          unsigned int thread_count);
+// int defer_perform_in_fork(unsigned int process_count,
+//                           unsigned int thread_count);
 /** Returns TRUE (1) if the forked thread pool hadn't been signaled to finish
  * up. */
-int defer_fork_is_active(void);
+// int defer_fork_is_active(void);
 /** Returns the process number for the current working proceess. 0 == parent. */
-int defer_fork_pid(void);
+// int defer_fork_pid(void);
 
 #ifdef DEBUG
 /** minor testing facilities */
