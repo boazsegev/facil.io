@@ -24,6 +24,7 @@ regarding the server state (start / finish / listen messages).
 Required facil libraries
 ***************************************************************************** */
 #include "defer.h"
+#include "fiobj.h"
 #include "sock.h"
 
 /* support C++ */
@@ -265,6 +266,19 @@ void facil_run(struct facil_run_args args);
 #define facil_run(...) facil_run((struct facil_run_args){__VA_ARGS__})
 
 /**
+ * returns true (1) if the facil.io engine is already running.
+ */
+int facil_is_running(void);
+
+/**
+OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
+into the forking function.
+
+Behaves like the system's `fork`.
+*/
+int facil_fork(void);
+
+/**
  * Attaches (or updates) a protocol object to a socket UUID.
  *
  * The new protocol object can be NULL, which will practically "hijack" the
@@ -314,8 +328,14 @@ Helper API
 ***************************************************************************** */
 
 /**
-Returns the last time the server reviewed any pending IO events.
-*/
+ * Initializes zombie reaping for the process. Call before `facil_run` to enable
+ * global zombie reaping.
+ */
+void facil_reap_children(void);
+
+/**
+ * Returns the last time the server reviewed any pending IO events.
+ */
 struct timespec facil_last_tick(void);
 
 /** Counts all the connections of a specific type `service`. */
@@ -415,11 +435,14 @@ int facil_each(struct facil_each_args_s args);
 #define facil_each(...) facil_each((struct facil_each_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
-Cluster specific API - local cluster messaging.
+ * Cluster specific API - local cluster messaging.
+ *
+ * Facil supports message process clustering, so that a multi-process
+ * application can easily send and receive messages across process boundries.
+ **************************************************************************** */
 
-Facil supports message process clustering, so that a multi-process application
-can easily send and receive messages across process boundries.
-***************************************************************************** */
+/** returns facil.io's parent (root) process pid. */
+pid_t facil_parent_pid(void);
 
 /**
 Sets a callback / handler for a message of type `msg_type`.
@@ -430,9 +453,9 @@ registered callbacks.
 The `msg_type` value can be any positive number up to 2^31-1 (2,147,483,647).
 All values less than 0 are reserved for internal use.
 */
-void facil_cluster_set_handler(int32_t msg_type,
-                               void (*on_message)(void *data, uint32_t len));
-
+void facil_cluster_set_handler(int32_t filter,
+                               void (*on_message)(int32_t filter, FIOBJ ch,
+                                                  FIOBJ msg));
 /** Sends a message of type `msg_type` to the **other** cluster processes.
 
 `msg_type` should match a message type used when calling
@@ -446,7 +469,7 @@ starting at 1,073,741,824 are reserved for internal use.
 Callbacks are invoked using an O(n) matching, where `n` is the number of
 registered callbacks.
 */
-int facil_cluster_send(int32_t msg_type, void *data, uint32_t len);
+int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg);
 
 /* *****************************************************************************
 Lower Level API - for special circumstances, use with care under .
