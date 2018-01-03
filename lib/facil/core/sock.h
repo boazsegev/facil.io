@@ -39,6 +39,22 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/types.h>
 #include <unistd.h>
 
+// clang-format off
+#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
+#   if defined(__has_include)
+#     if __has_include(<endian.h>)
+#      include <endian.h>
+#     elif __has_include(<sys/endian.h>)
+#      include <sys/endian.h>
+#     endif
+#   endif
+#   if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) && \
+                __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#      define __BIG_ENDIAN__
+#   endif
+#endif
+// clang-format on
+
 #ifndef UNUSED_FUNC
 #define UNUSED_FUNC __attribute__((unused))
 #endif

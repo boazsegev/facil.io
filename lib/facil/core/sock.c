@@ -790,6 +790,7 @@ intptr_t sock_connect(char *address, char *port) {
       close(fd);
       return -1;
     }
+    clear_fd(fd, 1);
   } else {
     // setup the address
     struct addrinfo hints;
