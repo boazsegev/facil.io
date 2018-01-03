@@ -141,7 +141,7 @@ Create/Destroy the websocket subscription objects
 
 static inline void clear_subscriptions(ws_s *ws) {
   void *obj = NULL;
-  while (fio_ls_pop(&ws->subscriptions))
+  while ((obj = fio_ls_pop(&ws->subscriptions)))
     pubsub_unsubscribe(obj);
 }
 
