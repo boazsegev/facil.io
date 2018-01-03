@@ -218,7 +218,7 @@ static void redis_on_pub_connect_fail(intptr_t uuid, void *pr) {
   (void)uuid;
 }
 static void redis_on_sub_connect_fail(intptr_t uuid, void *pr) {
-  if (defer_fork_pid())
+  if (facil_parent_pid() == getpid())
     return;
   redis_engine_s *r = prot2redis(pr);
   r->sub_data.uuid = 0;
@@ -257,7 +257,7 @@ static void redis_on_data(intptr_t uuid, protocol_s *pr) {
 
 static void redis_pub_on_close(intptr_t uuid, protocol_s *pr) {
   redis_engine_s *r = prot2redis(pr);
-  if (r->flag && defer_fork_is_active()) {
+  if (r->flag && facil_is_running()) {
     fprintf(stderr,
             "WARNING: (redis %d) lost publishing connection to database\n",
             (int)getpid());
@@ -275,7 +275,7 @@ static void redis_pub_on_close(intptr_t uuid, protocol_s *pr) {
 
 static void redis_sub_on_close(intptr_t uuid, protocol_s *pr) {
   redis_engine_s *r = prot2redis(pr);
-  if (r->flag && defer_fork_is_active()) {
+  if (r->flag && facil_is_running()) {
     fprintf(stderr,
             "WARNING: (redis %d) lost subscribing connection to database\n",
             (int)getpid());
