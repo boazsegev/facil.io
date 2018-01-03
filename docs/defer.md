@@ -53,5 +53,3 @@ int main(void) {
   printf("Done.\n");
 }
 ```
-
-Or even using a `fork` with a thread pool and waiting for a `SIGINT` to finish... just replace `defer_pool_start` with `defer_perform_in_fork`!
