@@ -1,4 +1,4 @@
-#ifndef FIOBJECT_INTERNAL_H
+__ATOMIC_SEQ_CST #ifndef FIOBJECT_INTERNAL_H
 /*
 Copyright: Boaz Segev, 2017
 License: MIT
@@ -36,11 +36,11 @@ Atomic add / subtract
 
 /* C11 Atomics are defined? */
 #if defined(__ATOMIC_RELAXED)
-#define SPN_LOCK_BUILTIN(...) __atomic_exchange_n(__VA_ARGS__, __ATOMIC_ACQ_REL)
+#define SPN_LOCK_BUILTIN(...) __atomic_exchange_n(__VA_ARGS__, __ATOMIC_SEQ_CST)
 /** An atomic addition operation */
-#define spn_add(...) __atomic_add_fetch(__VA_ARGS__, __ATOMIC_ACQ_REL)
+#define spn_add(...) __atomic_add_fetch(__VA_ARGS__, __ATOMIC_SEQ_CST)
 /** An atomic subtraction operation */
-#define spn_sub(...) __atomic_sub_fetch(__VA_ARGS__, __ATOMIC_ACQ_REL)
+#define spn_sub(...) __atomic_sub_fetch(__VA_ARGS__, __ATOMIC_SEQ_CST)
 
 /* Select the correct compiler builtin method. */
 #elif defined(__has_builtin)
@@ -74,7 +74,7 @@ Memory Page Size
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
 #include <unistd.h>
 
-size_t __attribute__((weak)) fiobj_memory_page_size(void) {
+    size_t __attribute__((weak)) fiobj_memory_page_size(void) {
   static size_t page_size = 0;
   if (page_size)
     return page_size;

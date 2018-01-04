@@ -44,11 +44,11 @@ typedef volatile unsigned char spn_lock_i;
 
 /* C11 Atomics are defined? */
 #if defined(__ATOMIC_RELAXED)
-#define SPN_LOCK_BUILTIN(...) __atomic_exchange_n(__VA_ARGS__, __ATOMIC_ACQ_REL)
+#define SPN_LOCK_BUILTIN(...) __atomic_exchange_n(__VA_ARGS__, __ATOMIC_SEQ_CST)
 /** An atomic addition operation */
-#define spn_add(...) __atomic_add_fetch(__VA_ARGS__, __ATOMIC_ACQ_REL)
+#define spn_add(...) __atomic_add_fetch(__VA_ARGS__, __ATOMIC_SEQ_CST)
 /** An atomic subtraction operation */
-#define spn_sub(...) __atomic_sub_fetch(__VA_ARGS__, __ATOMIC_ACQ_REL)
+#define spn_sub(...) __atomic_sub_fetch(__VA_ARGS__, __ATOMIC_SEQ_CST)
 
 /* Select the correct compiler builtin method. */
 #elif defined(__has_builtin)
