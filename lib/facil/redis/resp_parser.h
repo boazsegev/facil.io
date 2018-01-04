@@ -102,7 +102,7 @@ Seeking the new line...
  *
  * On newer systems, `memchr` should be faster.
  */
-static inline int seek2ch(uint8_t **buffer, register uint8_t *const limit,
+static inline int seek2ch(uint8_t **buffer, register const uint8_t *limit,
                           const uint8_t c) {
   if (**buffer == c)
     return 1;
