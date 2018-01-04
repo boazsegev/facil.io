@@ -773,7 +773,6 @@ enum cluster_message_type_e {
 };
 
 static void facil_init_run(uint8_t sentinal);
-static void cluster_run_worker(void) { facil_init_run(0); }
 
 static void cluster_deferred_handler(void *msg_data_, void *ignr) {
   cluster_msg_data_s *data = msg_data_;
@@ -855,28 +854,9 @@ static inline void cluster_send2traget(uint32_t ch_len, uint32_t msg_len,
   }
 }
 
-static void cluster_on_detected_death(void) {
-  if (FACIL_PRINT_STATE)
-    fprintf(stderr, "* (%d) Sibling death detected, signaling for exit.\n",
-            getpid());
-  facil_stop();
-}
-
-static void cluster_on_message(cluster_pr_s *c, intptr_t uuid) {
-  /* forward to any cluster clients */
-  // fprintf(stderr, "(%d) On Message %u (%d), %s, %s\n", getpid(), c->type,
-  //         c->filter, fiobj_obj2cstr(c->channel).data,
-  //         fiobj_obj2cstr(c->msg).data);
-
+static void cluster_on_client_message(cluster_pr_s *c, intptr_t uuid) {
   switch ((enum cluster_message_type_e)c->type) {
   case CLUSTER_MESSAGE_JSON: {
-    if (fio_hash_count(&facil_cluster_data.clients)) {
-      fio_cstr_s cs = fiobj_obj2cstr(c->channel);
-      fio_cstr_s ms = fiobj_obj2cstr(c->msg);
-      cluster_send2clients(cs.len, ms.len, c->type, c->filter, cs.bytes,
-                           ms.bytes, uuid);
-    }
-
     fio_cstr_s s = fiobj_obj2cstr(c->channel);
     FIOBJ tmp = NULL;
     if (fiobj_json2obj(&tmp, s.bytes, s.len)) {
@@ -887,7 +867,6 @@ static void cluster_on_message(cluster_pr_s *c, intptr_t uuid) {
       fprintf(stderr,
               "WARNING: (facil.io cluster) JSON message isn't valid JSON.\n");
     }
-
     s = fiobj_obj2cstr(c->msg);
     if (fiobj_json2obj(&tmp, s.bytes, s.len)) {
       fiobj_free(c->msg);
@@ -896,60 +875,125 @@ static void cluster_on_message(cluster_pr_s *c, intptr_t uuid) {
       fprintf(stderr,
               "WARNING: (facil.io cluster) JSON message isn't valid JSON.\n");
     }
-
+  }
+  /* fallthrough */
+  case CLUSTER_MESSAGE_FORWARD:
     cluster_forward_msg2handlers(c);
     break;
+
+  case CLUSTER_MESSAGE_ERROR:
+  case CLUSTER_MESSAGE_SHUTDOWN:
+    facil_stop();
+    sock_close(uuid);
+    facil_cluster_data.root = -1;
+    break;
+
+  case CLUSTER_MESSAGE_PING:
+    /* do nothing, really. */
+    break;
   }
-  case CLUSTER_MESSAGE_FORWARD:
+}
+
+static void cluster_on_server_message(cluster_pr_s *c, intptr_t uuid) {
+  switch ((enum cluster_message_type_e)c->type) {
+  case CLUSTER_MESSAGE_JSON:
+  case CLUSTER_MESSAGE_FORWARD: {
     if (fio_hash_count(&facil_cluster_data.clients)) {
       fio_cstr_s cs = fiobj_obj2cstr(c->channel);
       fio_cstr_s ms = fiobj_obj2cstr(c->msg);
       cluster_send2clients(cs.len, ms.len, c->type, c->filter, cs.bytes,
                            ms.bytes, uuid);
     }
+    if (c->type == CLUSTER_MESSAGE_JSON) {
+      fio_cstr_s s = fiobj_obj2cstr(c->channel);
+      FIOBJ tmp = NULL;
+      if (fiobj_json2obj(&tmp, s.bytes, s.len)) {
+        fiobj_free(c->channel);
+        c->channel = tmp;
+        tmp = NULL;
+      } else {
+        fprintf(stderr,
+                "WARNING: (facil.io cluster) JSON message isn't valid JSON.\n");
+      }
+      s = fiobj_obj2cstr(c->msg);
+      if (fiobj_json2obj(&tmp, s.bytes, s.len)) {
+        fiobj_free(c->msg);
+        c->msg = tmp;
+      } else {
+        fprintf(stderr,
+                "WARNING: (facil.io cluster) JSON message isn't valid JSON.\n");
+      }
+    }
     cluster_forward_msg2handlers(c);
     break;
-  case CLUSTER_MESSAGE_ERROR:
-    cluster_send2clients(0, 0, CLUSTER_MESSAGE_ERROR, 0, NULL, NULL, 0);
-    cluster_on_detected_death();
-    sock_close(uuid);
-    break;
+  }
   case CLUSTER_MESSAGE_SHUTDOWN:
-    cluster_send2clients(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL, 0);
-    facil_stop();
-    break;
+  case CLUSTER_MESSAGE_ERROR:
   case CLUSTER_MESSAGE_PING:
     /* do nothing, really. */
     break;
   }
-  fiobj_free(c->msg);
-  fiobj_free(c->channel);
-  c->msg = NULL;
-  c->channel = NULL;
 }
-static void cluster_on_close(intptr_t uuid, protocol_s *pr_) {
-  cluster_pr_s *c = (cluster_pr_s *)pr_;
-  fiobj_free(c->msg);
-  if (facil_cluster_data.client_mode) {
-    if (c->type != CLUSTER_MESSAGE_SHUTDOWN && facil_data->active) {
-      cluster_send2clients(0, 0, CLUSTER_MESSAGE_ERROR, 0, NULL, NULL, 0);
-      cluster_on_detected_death();
-    } else {
-      facil_stop();
-    }
-  } else {
-    // cluster_send2traget(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL);
-    if (facil_data->active)
-      cluster_on_detected_death();
-  }
-  free(c);
+
+static void cluster_on_server_close(intptr_t uuid, protocol_s *pr_) {
+  if (facil_cluster_data.client_mode)
+    return; /* we respawned. */
   spn_lock(&facil_cluster_data.lock);
   fio_hash_insert(&facil_cluster_data.clients, uuid, NULL);
   spn_unlock(&facil_cluster_data.lock);
-  unlink(facil_cluster_data.cluster_name);
-  if (facil_cluster_data.root == uuid)
-    facil_cluster_data.root = -1;
-  (void)uuid;
+  cluster_pr_s *c = (cluster_pr_s *)pr_;
+  if (facil_data->active) {
+#if DEBUG
+    cluster_send2clients(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL, 0);
+    sock_close(uuid);
+    if (FACIL_PRINT_STATE)
+      fprintf(stderr,
+              "* (%d) Worker crash detected, signaling for exit (debug).\n",
+              getpid());
+    facil_stop();
+#else
+    fprintf(stderr, "ERROR: Wroker crash detected, spinning new worker.\n");
+    if (!facil_fork()) {
+      facil_data->thread_pool = NULL;
+      defer_on_fork();
+      facil_cluster_data.client_mode = 1;
+      sock_close(facil_cluster_data.root);
+      facil_cluster_data.root = -1;
+      evio_close();
+
+      for (intptr_t i = 0; i < facil_data->capacity; i++) {
+        if (fd_data(i).protocol &&
+            (fd_data(i).protocol->service != listener_protocol_name &&
+             fd_data(i).protocol->service != timer_protocol_name)) {
+          close(i); /* close first to prevent TCP/IP shutdown */
+          sock_close(sock_fd2uuid(i));
+        }
+      }
+      facil_init_run(0);
+      exit(0);
+    }
+#endif
+  }
+  fiobj_free(c->msg);
+  fiobj_free(c->channel);
+  free(c);
+}
+static void cluster_on_client_close(intptr_t uuid, protocol_s *pr_) {
+  cluster_pr_s *c = (cluster_pr_s *)pr_;
+  /* no shutdown message received - parent crashed. */
+  if (facil_cluster_data.root == uuid && c->type != CLUSTER_MESSAGE_SHUTDOWN &&
+      facil_data->active) {
+    if (FACIL_PRINT_STATE)
+      fprintf(stderr,
+              "* (%d) Parent Process crash detected, signaling for exit.\n",
+              getpid());
+    facil_stop();
+    unlink(facil_cluster_data.cluster_name);
+  }
+  fiobj_free(c->msg);
+  fiobj_free(c->channel);
+  free(c);
+  facil_cluster_data.root = -1;
 }
 
 static void cluster_on_shutdown(intptr_t uuid, protocol_s *pr_) {
@@ -1004,7 +1048,15 @@ static void cluster_on_data(intptr_t uuid, protocol_s *pr_) {
         c->exp_msg = 0;
       }
     }
-    cluster_on_message(c, uuid);
+    if (facil_cluster_data.client_mode) {
+      cluster_on_client_message(c, uuid);
+    } else {
+      cluster_on_server_message(c, uuid);
+    }
+    fiobj_free(c->msg);
+    fiobj_free(c->channel);
+    c->msg = NULL;
+    c->channel = NULL;
   } while (c->length > i);
   c->length -= i;
   if (c->length) {
@@ -1030,7 +1082,9 @@ static void cluster_on_open(intptr_t fd, void *udata) {
               .service = "facil_io_cluster_protocol",
               .on_data = cluster_on_data,
               .on_shutdown = cluster_on_shutdown,
-              .on_close = cluster_on_close,
+              .on_close =
+                  (facil_cluster_data.client_mode ? cluster_on_client_close
+                                                  : cluster_on_server_close),
               .ping = cluster_ping,
           },
   };
@@ -1056,7 +1110,8 @@ static void cluster_on_new_peer(intptr_t srv, protocol_s *pr) {
 static void cluster_on_listening_close(intptr_t srv, protocol_s *pr) {
   fio_hash_free(&facil_cluster_data.clients);
   facil_cluster_data.clients = (fio_hash_s){0};
-  unlink(facil_cluster_data.cluster_name);
+  if (facil_parent_pid() == getpid())
+    unlink(facil_cluster_data.cluster_name);
   facil_cluster_data.root = -1;
   (void)srv;
   (void)pr;
@@ -1076,6 +1131,7 @@ static void cluster_on_start(void *udata1, void *udata) {
   } else {
     facil_cluster_data.client_mode = 1;
     sock_close(facil_cluster_data.root);
+    FIO_HASH_FOR_LOOP(&facil_cluster_data.clients, i) { sock_close(i->key); }
     fio_hash_free(&facil_cluster_data.clients);
     facil_cluster_data.clients = (fio_hash_s){0};
     facil_cluster_data.root =
@@ -1104,7 +1160,6 @@ static int facil_cluster_init(void) {
            "             Check file permissions.\r\n");
     return -1;
   }
-  defer(cluster_on_start, NULL, NULL);
   return 0;
 }
 
@@ -1263,6 +1318,8 @@ static void facil_init_run(uint8_t sentinal) {
   }
   facil_data->need_review = 1;
   facil_external_init();
+
+  defer(cluster_on_start, NULL, NULL);
   defer(facil_cycle, NULL, NULL);
 
   if (FACIL_PRINT_STATE && facil_data->parent == getpid()) {
