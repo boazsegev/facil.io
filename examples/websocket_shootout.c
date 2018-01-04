@@ -40,6 +40,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   if (data[0] == 'b') {
     FIOBJ msg = fiobj_str_new(data, size);
     pubsub_publish(.channel = CHANNEL_BINARY, .message = msg);
+    fiobj_free(msg);
     // fwrite(".", 1, 1, stderr);
     data[0] = 'r';
     websocket_write(ws, data, size, 0);
@@ -47,6 +48,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
     // fwrite(".", 1, 1, stderr);
     FIOBJ msg = fiobj_str_new(data, size);
     pubsub_publish(.channel = CHANNEL_TEXT, .message = msg);
+    fiobj_free(msg);
     /* send result */
     size = size + (25 - 19);
     void *buff = malloc(size);
