@@ -4,11 +4,12 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "redis_engine.h"
+#include "spnlock.inc"
+
 #include "fio_llist.h"
 #include "fiobj4sock.h"
+#include "redis_engine.h"
 #include "resp_parser.h"
-#include "spnlock.inc"
 
 #define REDIS_READ_BUFFER 8192
 /* *****************************************************************************

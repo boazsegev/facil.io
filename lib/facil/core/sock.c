@@ -594,7 +594,7 @@ intptr_t sock_listen(const char *address, const char *port) {
   if (!port || *port == 0 || (port[0] == '0' && port[1] == 0)) {
     /* Unix socket */
     if (!address) {
-      errno = EFTYPE;
+      errno = EINVAL;
       fprintf(
           stderr,
           "ERROR: (sock) sock_listen - a Unix socket requires a valid address."
@@ -757,7 +757,7 @@ intptr_t sock_connect(char *address, char *port) {
   if (!port || *port == 0 || (port[0] == '0' && port[1] == 0)) {
     /* Unix socket */
     if (!address) {
-      errno = EFTYPE;
+      errno = EINVAL;
       fprintf(
           stderr,
           "ERROR: (sock) sock_listen - a Unix socket requires a valid address."

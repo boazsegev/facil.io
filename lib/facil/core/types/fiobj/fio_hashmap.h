@@ -63,7 +63,7 @@ License: MIT
 #define FIO_HASH_KEY_INVALID 0
 #define FIO_HASH_KEY_ISINVALID(key) ((key) == 0)
 #define FIO_HASH_KEY_COPY(key) (key)
-#define FIO_HASH_KEY_DESTROY(key) 0
+#define FIO_HASH_KEY_DESTROY(key) ((void)0)
 #endif
 
 #ifndef FIO_HASH_INITIAL_CAPACITY

@@ -17,6 +17,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 
 /* *****************************************************************************
 Data Structures
@@ -1122,6 +1123,8 @@ static void cluster_on_listening_ping(intptr_t srv, protocol_s *pr) {
 }
 
 static void cluster_on_start(void *udata1, void *udata) {
+  if (facil_data->active <= 1)
+    return;
   if (facil_parent_pid() == getpid()) {
     facil_cluster_data.client_mode = 0;
     if (facil_attach(facil_cluster_data.root, &facil_cluster_data.listening)) {
@@ -1149,15 +1152,15 @@ static void cluster_on_start(void *udata1, void *udata) {
 }
 
 static int facil_cluster_init(void) {
-  memcpy(facil_cluster_data.cluster_name, "facil.io.sock.", 14);
+  memcpy(facil_cluster_data.cluster_name, "facil-io-sock-", 14);
   facil_cluster_data
       .cluster_name[14 + fio_ltoa(facil_cluster_data.cluster_name + 14,
                                   getpid(), 10)] = 0;
   facil_cluster_data.root = sock_listen(facil_cluster_data.cluster_name, NULL);
 
   if (facil_cluster_data.root == -1) {
-    perror("FATAL ERROR: (facil.io cluster) failed to open cluster socket."
-           "             Check file permissions.\r\n");
+    perror("FATAL ERROR: (facil.io cluster) failed to open cluster socket.\n"
+           "             check file permissions");
     return -1;
   }
   return 0;
@@ -1454,8 +1457,10 @@ void facil_run(struct facil_run_args args) {
   facil_data->on_finish = args.on_finish;
   facil_data->on_idle = args.on_idle;
   /* initialize cluster */
-  facil_cluster_init();
   if (args.processes > 1) {
+    if (facil_cluster_init()) {
+      goto cleanup;
+    }
     while (args.processes) {
       --args.processes;
       int pid = facil_fork();
@@ -1499,6 +1504,8 @@ Setting the protocol
 
 static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
                               protocol_metadata_s state) {
+  if (uuid == -1)
+    return -1;
   if (!facil_data)
     facil_lib_init();
   if (protocol) {
