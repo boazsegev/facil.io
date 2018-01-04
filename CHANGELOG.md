@@ -1,6 +1,6 @@
 # Change Log
 
-### Ver. 0.6.0 (ReHTTP branch)
+### Ver. 0.6.0 (upcoming release)
 
 **Fix**: (`websocket_parser`) The websocket parser had a memory offset and alignment handling issue in it's unmasking (XOR) logic and the new memory alignment protection code. The issue would impact the parser in rare occasions when multiple messages where pipelined in the internal buffer and their length produced an odd alignment (the issue would occur with very fast clients, or a very stressed server).
 
@@ -24,15 +24,19 @@
 
 **Changes!**: (`websocket`):
 
-- The Websocket API includes numerous breaking changes, not least is the pub/sub API rewrite that now leverages `fiobj_s *` Strings / Symbols.
+- The Websocket API includes numerous breaking changes, not least is the pub/sub API rewrite that now leverages `FIOBJ` Strings / Symbols.
 
 - `websocket_write_each` was deprecated (favoring a pub/sub only design).
 
 **Changes!**: (`pubsub`):
 
-- The `pubsub` API was redesigned after re-evaluating the function of a pub/sub engine and in order to take advantage of the `fiobj_s` type system.
+- The `pubsub` API was redesigned after re-evaluating the function of a pub/sub engine and in order to take advantage of the `FIOBJ` type system.
 
 - Channel names now use a hash map with collision protection (using `memcmp` to compare channel names). The means that the 4 but trie is no longer in use and will be deprecated.
+
+**Changes!**: (`redis`):
+
+- The `redis_engine` was rewritten, along with the RESP parser, to reflect the changes in the new `pubsub` service and to remove obsolete code.
 
 **Changes!**: (`facil`):
 
@@ -40,7 +44,11 @@
 
     - `facil_last_tick` now returns `struct timespec` instead of `time_t`, allowing for more accurate time stamping.
 
+    - `facil_cluster_send` and `facil_cluster_set_handler` were redesigned to reflect the new cluster engine (now using Unix Sockets instead of pipes).
+
 - Internal updates to accommodate changes to other libraries.
+
+- Cluster mode now behaves as sentinel, re-spawning any crashed worker processes (except in DEBUG mode).
 
 **Changes!**: (`evio`):
 
@@ -63,7 +71,9 @@
 
 **Changes!**: (`defer`):
 
-- defer thread pools and forks now include two weak functions that allow for customized thread scheduling (wakeup/wait). These are overwritten by facil.io (in `facil.c`).
+- Removed forking from the defer library, moving the `fork` logic into the main `facil` source code.
+
+- Defer thread pools and now include two weak functions that allow for customized thread scheduling (wakeup/wait). These are overwritten by facil.io (in `facil.c`).
 
     By default, defer will use `nanosleep`.
 
