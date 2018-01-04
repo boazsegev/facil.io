@@ -276,10 +276,12 @@ static void redis_pub_on_close(intptr_t uuid, protocol_s *pr) {
 static void redis_sub_on_close(intptr_t uuid, protocol_s *pr) {
   redis_engine_s *r = prot2redis(pr);
   if (r->flag && facil_is_running()) {
-    fprintf(stderr,
-            "WARNING: (redis %d) lost subscribing connection to database\n",
-            (int)getpid());
-    redis_on_sub_connect_fail(uuid, &r->sub_data.protocol);
+    if (facil_parent_pid() == getpid()) {
+      fprintf(stderr,
+              "WARNING: (redis %d) lost subscribing connection to database\n",
+              (int)getpid());
+      redis_on_sub_connect_fail(uuid, &r->sub_data.protocol);
+    }
     fiobj_free(r->sub_data.ary ? r->sub_data.ary : r->sub_data.str);
     r->sub_data.ary = r->sub_data.str = NULL;
     r->sub_data.uuid = 0;
