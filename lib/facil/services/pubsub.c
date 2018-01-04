@@ -628,6 +628,8 @@ static void pubsub_cluster_unsubscribe2channel(void *ch, void *flag) {
 
 static void pubsub_cluster_facil_message(int32_t filter, FIOBJ channel,
                                          FIOBJ message) {
+  // fprintf(stderr, "(%d) pubsub message filter %d (%s)\n", getpid(), filter,
+  //         fiobj_obj2cstr(channel).name);
   switch (filter) {
   case PUBSUB_FACIL_CLUSTER_CHANNEL_FILTER:
     PUBSUB_PROCESS_ENGINE->publish(PUBSUB_PROCESS_ENGINE, channel, message);
