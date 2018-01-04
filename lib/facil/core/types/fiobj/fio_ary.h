@@ -39,9 +39,9 @@ fio_ary_free(&ary)               // free any resources, not the container.
 #endif
 
 typedef struct fio_ary_s {
-  uint64_t start;
-  uint64_t end;
-  uint64_t capa;
+  size_t start;
+  size_t end;
+  size_t capa;
   void **arry;
 } fio_ary_s;
 
@@ -68,7 +68,7 @@ FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary);
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
  */
-FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, int64_t pos);
+FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, intptr_t pos);
 
 /** alias for `fiobj_ary_index` */
 #define fio_ary_entry(a, p) fiobj_ary_index((a), (p))
@@ -80,7 +80,7 @@ FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, int64_t pos);
  *
  * If an error occurs, the same data passed to the function is returned.
  */
-FIO_FUNC inline void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos);
+FIO_FUNC inline void *fio_ary_set(fio_ary_s *ary, void *data, intptr_t pos);
 
 /**
  * Pushes an object to the end of the Array. Returns -1 on error.
@@ -160,14 +160,14 @@ Array memory management
 ***************************************************************************** */
 
 /* This funcation manages the Array's memory. */
-FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
+FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, intptr_t needed) {
   /* we have enough memory, but we need to re-organize it. */
   if (needed == -1) {
     if (ary->end < ary->capa) {
       /* since allocation can be cheaper than memmove (depending on size),
        * we'll just shove everything to the end...
        */
-      uint64_t len = ary->end - ary->start;
+      size_t len = ary->end - ary->start;
       memmove(ary->arry + ary->capa - len, ary->arry + ary->start,
               len * sizeof(*ary->arry));
       ary->start = ary->capa - len;
@@ -179,7 +179,7 @@ FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
 
   } else if (needed == 1 && ary->start >= (ary->capa >> 1)) {
     /* FIFO support optimizes smaller FIFO ranges over bloating allocations. */
-    uint64_t len = ary->end - ary->start;
+    size_t len = ary->end - ary->start;
     memmove(ary->arry + 2, ary->arry + ary->start, len * sizeof(*ary->arry));
     ary->start = 2;
     ary->end = len + 2;
@@ -187,8 +187,8 @@ FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
   }
 
   /* alocate using exponential growth, up to single page size. */
-  uint64_t updated_capa = ary->capa;
-  uint64_t minimum = ary->capa + ((needed < 0) ? (0 - needed) : needed);
+  size_t updated_capa = ary->capa;
+  size_t minimum = ary->capa + ((needed < 0) ? (0 - needed) : needed);
   while (updated_capa <= minimum)
     updated_capa =
         (updated_capa <= 4096) ? (updated_capa << 1) : (updated_capa + 4096);
@@ -205,7 +205,7 @@ FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, int64_t needed) {
     return;
 
   /* move everything to the max, since  memmove could get expensive  */
-  uint64_t len = ary->end - ary->start;
+  size_t len = ary->end - ary->start;
   memmove((ary->arry + ary->capa) - len, ary->arry + ary->start,
           len * sizeof(*ary->arry));
   ary->end = ary->capa;
@@ -238,19 +238,19 @@ FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary) { return ary->capa; }
  * Negative values are retrived from the end of the array. i.e., `-1`
  * is the last item.
  */
-FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, int64_t pos) {
+FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, intptr_t pos) {
   if (!ary)
     return NULL;
   /* position is relative to `start`*/
   if (pos >= 0) {
     pos = pos + ary->start;
-    if ((uint64_t)pos >= ary->end)
+    if ((size_t)pos >= ary->end)
       return NULL;
     return ary->arry[pos];
   }
   /* position is relative to `end`*/
-  pos = (int64_t)ary->end + pos;
-  if (pos < 0 || (uint64_t)pos < ary->start)
+  pos = (intptr_t)ary->end + pos;
+  if (pos < 0 || (size_t)pos < ary->start)
     return NULL;
   return ary->arry[pos];
 }
@@ -265,29 +265,29 @@ FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, int64_t pos) {
  *
  * If an error occurs, the same data passed to the function is returned.
  */
-FIO_FUNC inline void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos) {
+FIO_FUNC inline void *fio_ary_set(fio_ary_s *ary, void *data, intptr_t pos) {
   if (!ary) {
     return data;
   }
   void *old = NULL;
   /* test for memory and request memory if missing, promises valid bounds. */
   if (pos >= 0) {
-    if ((uint64_t)pos + ary->start >= ary->capa)
-      fio_ary_getmem(ary, (((uint64_t)pos + ary->start) - (ary->capa - 1)));
-  } else if (pos + (int64_t)ary->end < 0)
+    if ((size_t)pos + ary->start >= ary->capa)
+      fio_ary_getmem(ary, (((size_t)pos + ary->start) - (ary->capa - 1)));
+  } else if (pos + (intptr_t)ary->end < 0)
     fio_ary_getmem(ary, pos + ary->end);
 
   if (pos >= 0) {
     /* position relative to start */
     pos = pos + ary->start;
     /* initialize empty spaces, if any, setting new boundries */
-    while ((uint64_t)pos >= ary->end)
+    while ((size_t)pos >= ary->end)
       ary->arry[(ary->end)++] = NULL;
   } else {
     /* position relative to end */
-    pos = pos + (int64_t)ary->end;
+    pos = pos + (intptr_t)ary->end;
     /* initialize empty spaces, if any, setting new boundries */
-    while (ary->start > (uint64_t)pos)
+    while (ary->start > (size_t)pos)
       ary->arry[--(ary->start)] = NULL;
   }
 
@@ -347,9 +347,9 @@ FIO_FUNC inline void *fio_ary_shift(fio_ary_s *ary) {
   if (!ary || ary->start == ary->end)
     return NULL;
 #ifdef __cplusplus
-  const uint64_t pos = ary->start;
+  const size_t pos = ary->start;
 #else
-  register const uint64_t pos = ary->start;
+  register const size_t pos = ary->start;
 #endif
   ary->start += 1;
   return ary->arry[pos];
@@ -369,7 +369,7 @@ FIO_FUNC inline void *fio_ary_shift(fio_ary_s *ary) {
 FIO_FUNC inline size_t fio_ary_each(fio_ary_s *ary, size_t start_at,
                                     int (*task)(void *data, void *arg),
                                     void *arg) {
-  const uint64_t start_pos = ary->start;
+  const size_t start_pos = ary->start;
   start_at += start_pos;
   while (start_at < ary->end && task(ary->arry[start_at++], arg) != -1)
     ;
@@ -400,7 +400,7 @@ FIO_FUNC inline void fio_ary_compact(fio_ary_s *ary) {
     }
     reader += 1;
   }
-  ary->end = (uint64_t)(pos - ary->arry);
+  ary->end = (size_t)(pos - ary->arry);
 }
 
 #ifdef __cplusplus
