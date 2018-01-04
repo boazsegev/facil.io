@@ -773,7 +773,8 @@ enum cluster_message_type_e {
   CLUSTER_MESSAGE_PING,
 };
 
-static void facil_init_run(uint8_t sentinal);
+static void facil_worker_startup(uint8_t sentinal);
+static void facil_worker_cleanup(void);
 
 static void cluster_deferred_handler(void *msg_data_, void *ignr) {
   cluster_msg_data_s *data = msg_data_;
@@ -955,7 +956,6 @@ static void cluster_on_server_close(intptr_t uuid, protocol_s *pr_) {
 #else
     fprintf(stderr, "ERROR: Wroker crash detected, spinning new worker.\n");
     if (!facil_fork()) {
-      facil_data->thread_pool = NULL;
       defer_on_fork();
       facil_cluster_data.client_mode = 1;
       sock_close(facil_cluster_data.root);
@@ -970,7 +970,12 @@ static void cluster_on_server_close(intptr_t uuid, protocol_s *pr_) {
           sock_close(sock_fd2uuid(i));
         }
       }
-      facil_init_run(0);
+      defer_pool_stop(facil_data->thread_pool);
+      defer_pool_wait(facil_data->thread_pool);
+      facil_data->thread_pool = NULL;
+      facil_worker_startup(0);
+      defer_pool_wait(facil_data->thread_pool);
+      facil_worker_cleanup();
       exit(0);
     }
 #endif
@@ -1295,7 +1300,7 @@ Behaves like the system's `fork`.
 #pragma weak facil_fork
 int facil_fork(void) { return (int)fork(); }
 
-static void facil_init_run(uint8_t sentinal) {
+static void facil_worker_startup(uint8_t sentinal) {
   evio_create();
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   if (sentinal == 0) {
@@ -1333,7 +1338,9 @@ static void facil_init_run(uint8_t sentinal) {
   }
   defer(print_pid, NULL, NULL);
   facil_data->thread_pool = defer_pool_start(facil_data->threads);
-  defer_pool_wait(facil_data->thread_pool);
+}
+
+static void facil_worker_cleanup(void) {
   facil_data->active = 0;
   fprintf(stderr, "* %d cleanning up.\n", getpid());
   for (intptr_t i = 0; i < facil_data->capacity; i++) {
@@ -1469,17 +1476,15 @@ void facil_run(struct facil_run_args args) {
         kill(0, SIGINT);
         goto cleanup;
       }
-      if (!pid) {
-        facil_init_run(0);
+      if (!pid)
         break;
-      }
     }
-    if (facil_data->parent == getpid()) {
-      facil_init_run(1);
-    }
+    facil_worker_startup(facil_data->parent == getpid());
   } else {
-    facil_init_run(0);
+    facil_worker_startup(0);
   }
+  defer_pool_wait(facil_data->thread_pool);
+  facil_worker_cleanup();
   return;
 
 cleanup:
