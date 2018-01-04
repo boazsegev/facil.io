@@ -1321,8 +1321,8 @@ static void facil_init_run(uint8_t sentinal) {
   }
   facil_data->need_review = 1;
   facil_external_init();
-
-  defer(cluster_on_start, NULL, NULL);
+  if (facil_data->active > 1)
+    defer(cluster_on_start, NULL, NULL);
   defer(facil_cycle, NULL, NULL);
 
   if (FACIL_PRINT_STATE && facil_data->parent == getpid()) {
@@ -1452,8 +1452,8 @@ void facil_run(struct facil_run_args args) {
   facil_setp_signal_handler();
 
   /* activate facil, fork if needed */
-  facil_data->active = args.threads;
-  facil_data->threads = args.processes;
+  facil_data->active = args.processes;
+  facil_data->threads = args.threads;
   facil_data->on_finish = args.on_finish;
   facil_data->on_idle = args.on_idle;
   /* initialize cluster */
