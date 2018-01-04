@@ -52,7 +52,10 @@ BSD `kqueue` implementation
 /**
 Creates the `epoll` or `kqueue` object.
 */
-intptr_t evio_create() { return evio_fd = kqueue(); }
+intptr_t evio_create() {
+  evio_close();
+  return evio_fd = kqueue();
+}
 
 /**
 Removes a file descriptor from the polling object.

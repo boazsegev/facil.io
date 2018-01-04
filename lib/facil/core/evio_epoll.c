@@ -65,7 +65,10 @@ Linux `epoll` implementation
 /**
 Creates the `epoll` or `kqueue` object.
 */
-intptr_t evio_create() { return evio_fd = epoll_create1(EPOLL_CLOEXEC); }
+intptr_t evio_create() {
+  evio_close();
+  return evio_fd = epoll_create1(EPOLL_CLOEXEC);
+}
 
 /**
 Removes a file descriptor from the polling object.
