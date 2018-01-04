@@ -95,7 +95,60 @@ static int resp_on_parser_error(resp_parser_s *parser);
 Seeking the new line...
 ***************************************************************************** */
 
-#if PREFER_MEMCHAR
+#if FIO_MEMCHAR
+
+/**
+ * This seems to be faster on some systems, especially for smaller distances.
+ *
+ * On newer systems, `memchr` should be faster.
+ */
+static inline int seek2ch(uint8_t **buffer, register uint8_t *const limit,
+                          const uint8_t c) {
+  if (**buffer == c)
+    return 1;
+
+#if !defined(__x86_64__)
+  /* too short for this mess */
+  if ((uintptr_t)limit <= 16 + ((uintptr_t)*buffer & (~(uintptr_t)7)))
+    goto finish;
+
+  /* align memory */
+  {
+    const uint8_t *alignment =
+        (uint8_t *)(((uintptr_t)(*buffer) & (~(uintptr_t)7)) + 8);
+    if (limit >= alignment) {
+      while (*buffer < alignment) {
+        if (**buffer == c)
+          return 1;
+        *buffer += 1;
+      }
+    }
+  }
+  const uint8_t *limit64 = (uint8_t *)((uintptr_t)limit & (~(uintptr_t)7));
+#else
+  const uint8_t *limit64 = (uint8_t *)limit - 7;
+#endif
+  uint64_t wanted1 = 0x0101010101010101ULL * c;
+  for (; *buffer < limit64; *buffer += 8) {
+    const uint64_t eq1 = ~((*((uint64_t *)*buffer)) ^ wanted1);
+    const uint64_t t0 = (eq1 & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
+    const uint64_t t1 = (eq1 & 0x8080808080808080llu);
+    if ((t0 & t1)) {
+      break;
+    }
+  }
+#if !defined(__x86_64__)
+finish:
+#endif
+  while (*buffer < limit) {
+    if (**buffer == c)
+      return 1;
+    (*buffer)++;
+  }
+  return 0;
+}
+
+#else
 
 /* a helper that seeks any char, converts it to NUL and returns 1 if found. */
 inline static uint8_t seek2ch(uint8_t **pos, uint8_t *const limit, uint8_t ch) {
@@ -103,45 +156,12 @@ inline static uint8_t seek2ch(uint8_t **pos, uint8_t *const limit, uint8_t ch) {
   if (*pos >= limit || **pos == ch) {
     return 0;
   }
-  uint8_t *tmp = memchr(*pos, ch, limit - (*pos));
+  uint8_t *tmp = (uint8_t *)memchr(*pos, ch, limit - (*pos));
   if (tmp) {
     *pos = tmp;
     return 1;
   }
   *pos = limit;
-  return 0;
-}
-
-#else
-
-/* a helper that seeks any char, converts it to NUL and returns 1 if found. */
-static inline uint8_t seek2ch(uint8_t **buffer, const uint8_t *const limit,
-                              const uint8_t c) {
-  /* this single char lookup is better when the target is closer... */
-  if (**buffer == c) {
-    return 1;
-  }
-
-  uint64_t wanted = 0x0101010101010101ULL * c;
-  uint64_t *lpos = (uint64_t *)*buffer;
-  uint64_t *llimit = ((uint64_t *)limit) - 1;
-
-  for (; lpos < llimit; lpos++) {
-    const uint64_t eq = ~((*lpos) ^ wanted);
-    const uint64_t t0 = (eq & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
-    const uint64_t t1 = (eq & 0x8080808080808080llu);
-    if ((t0 & t1)) {
-      break;
-    }
-  }
-
-  *buffer = (uint8_t *)lpos;
-  while (*buffer < limit) {
-    if (**buffer == c) {
-      return 1;
-    }
-    (*buffer)++;
-  }
   return 0;
 }
 

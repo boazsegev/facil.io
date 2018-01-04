@@ -6,19 +6,10 @@
 #include <string.h>
 #include <time.h>
 
-static inline int seek1(uint8_t **buffer, uint8_t *limit, const uint8_t c) {
-  if (limit - *buffer == 0)
-    return 0;
-  void *tmp = memchr(*buffer, c, limit - (*buffer));
-  if (tmp) {
-    *buffer = tmp;
-    return 1;
-  }
-  *buffer = limit;
-  return 0;
-}
+// fwrite(".", 1, 1, stderr);
 
-static inline int seek2(uint8_t **buffer, uint8_t *limit, const uint8_t c) {
+static inline int seek1(register uint8_t **buffer,
+                        register uint8_t *const limit, const uint8_t c) {
   while (*buffer < limit) {
     if (**buffer == c)
       return 1;
@@ -27,58 +18,91 @@ static inline int seek2(uint8_t **buffer, uint8_t *limit, const uint8_t c) {
   return 0;
 }
 
-static inline int seek3(uint8_t **buffer, uint8_t *limit, const uint8_t c) {
-  if (**buffer == c)
+static inline int seek_memchr(uint8_t **buffer, uint8_t *const limit,
+                              const uint8_t c) {
+  if (limit - *buffer == 0)
+    return 0;
+  void *tmp = memchr(*buffer, c, limit - (*buffer));
+  if (tmp) {
+    *buffer = tmp;
     return 1;
-
-  // while (*buffer < limit && ((uintptr_t)(*buffer) & 15)) {
-  //   if (**buffer == c)
-  //     return 1;
-  //   (*buffer)++;
-  // }
-  // if (*buffer > limit)
-  //   return 0;
-
-  uint64_t wanted1 = 0x0101010101010101ULL * c;
-  // uint64_t wanted2 = 0x0101010101010101ULL * '\n';
-  uint64_t *lpos = (uint64_t *)*buffer;
-  uint64_t *llimit = ((uint64_t *)limit) - 1;
-
-  for (; lpos < llimit; lpos++) {
-    const uint64_t eq1 = ~((*lpos) ^ wanted1);
-    // const uint64_t eq2 = ~((*lpos) ^ wanted2);
-    const uint64_t t0 = (eq1 & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
-    const uint64_t t1 = (eq1 & 0x8080808080808080llu);
-    // const uint64_t t2 = (eq2 & 0x7f7f7f7f7f7f7f7fllu) +
-    // 0x0101010101010101llu; const uint64_t t3 = (eq2 & 0x8080808080808080llu);
-    if ((t0 & t1) /* || (t2 & t3) */) {
-      break;
-    }
   }
-
-  *buffer = (uint8_t *)lpos;
-  while (*buffer < limit) {
-    if (**buffer == c /* || **buffer == '\n' */)
-      return 1;
-    (*buffer)++;
-  }
+  *buffer = (uint8_t *)limit;
   return 0;
 }
 
-static inline int seek4(uint8_t **buffer, uint8_t *limit, const uint8_t c) {
+/**
+ * This seems to be faster on some systems, especially for smaller distances.
+ *
+ * On newer systems, `memchr` should be faster.
+ */
+static inline int seek3(uint8_t **buffer, register uint8_t *const limit,
+                        const uint8_t c) {
+  if (**buffer == c)
+    return 1;
+
+#if !defined(__x86_64__)
+  /* too short for this mess */
+  if ((uintptr_t)limit <= 16 + ((uintptr_t)*buffer & (~(uintptr_t)7)))
+    goto finish;
+
+  /* align memory */
+  {
+    const uint8_t *alignment =
+        (uint8_t *)(((uintptr_t)(*buffer) & (~(uintptr_t)7)) + 8);
+    if (limit >= alignment) {
+      while (*buffer < alignment) {
+        if (**buffer == c)
+          return 1;
+        *buffer += 1;
+      }
+    }
+  }
+  const uint8_t *limit64 = (uint8_t *)((uintptr_t)limit & (~(uintptr_t)7));
+#else
+  const uint8_t *limit64 = (uint8_t *)limit - 7;
+#endif
+  uint64_t wanted1 = 0x0101010101010101ULL * c;
+  for (; *buffer < limit64; *buffer += 8) {
+    const uint64_t eq1 = ~((*((uint64_t *)*buffer)) ^ wanted1);
+    const uint64_t t0 = (eq1 & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
+    const uint64_t t1 = (eq1 & 0x8080808080808080llu);
+    if ((t0 & t1)) {
+      break;
+    }
+  }
+#if !defined(__x86_64__)
+finish:
+#endif
+  while (*buffer < limit) {
+    if (**buffer == c)
+      return 1;
+    (*buffer)++;
+  }
+
+  return 0;
+}
+
+static inline int seek4(register uint8_t **buffer,
+                        register uint8_t *const limit, const uint8_t c) {
 #ifndef __SIZEOF_INT128__
   return 0;
 #else
   if (**buffer == c)
     return 1;
-  // while (*buffer < limit && ((uintptr_t)(*buffer) & 15)) {
-  //   if (**buffer == c)
-  //     return 1;
-  //   (*buffer)++;
-  // }
-  // if (*buffer > limit)
-  //   return 0;
 
+  /* move by step until memory unalignment */
+  {
+    const uint8_t *alignment =
+        (uint8_t *)(((uintptr_t)(*buffer) & (~(uintptr_t)15)) + 16);
+    if (limit >= alignment) {
+      while (*buffer < alignment) {
+        if (**buffer == c)
+          return 1;
+        *buffer += 1;
+      }
+    }
+  }
   const __uint128_t just_1_bit = ((((__uint128_t)0x0101010101010101ULL) << 64) |
                                   (__uint128_t)0x0101010101010101ULL);
   const __uint128_t is_7bit_set =
@@ -102,6 +126,7 @@ static inline int seek4(uint8_t **buffer, uint8_t *limit, const uint8_t c) {
   }
 
   *buffer = (uint8_t *)lpos;
+
   while (*buffer < limit) {
     if (**buffer == c)
       return 1;
@@ -118,12 +143,17 @@ int main(int argc, char const **argv) {
   uint8_t *stop;
   size_t count;
 
+  fprintf(stderr, "Size of longest word found %lu\n",
+          sizeof(unsigned long long));
+
   struct {
-    int (*func)(uint8_t **buffer, uint8_t *limit, const uint8_t c);
+    int (*func)(uint8_t **buffer, uint8_t *const limit, const uint8_t c);
     const char *name;
   } seek_funcs[] = {
-      {.func = seek1, .name = "seek1"}, {.func = seek2, .name = "seek2"},
-      {.func = seek3, .name = "seek3"}, {.func = seek4, .name = "seek4"},
+      // {.func = seek1, .name = "seek1 (basic loop)"},
+      {.func = seek_memchr, .name = "memchr"},
+      {.func = seek3, .name = "seek3"},
+      {.func = seek4, .name = "seek4"},
       {.func = NULL, .name = NULL},
   };
   size_t func_pos = 0;
@@ -167,11 +197,12 @@ int main(int argc, char const **argv) {
       avrg += end - start;
       fprintf(stderr, "%lu", end - start);
     }
-    fprintf(stderr, ")/%d\n === finding %lu items in %lu bytes took %lfs\n\n",
-            RUNS, count, (unsigned long)data.length,
+    fprintf(stderr, ")/%d\n === %s finding %lu items in %lu bytes took %lfs\n",
+            RUNS, seek_funcs[func_pos].name, count, (unsigned long)data.length,
             (avrg / RUNS) / (1.0 * CLOCKS_PER_SEC));
     func_pos++;
   }
+  fprintf(stderr, "\n");
 
   fiobj_free(str);
 }

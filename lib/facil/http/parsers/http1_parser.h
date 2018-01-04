@@ -30,6 +30,10 @@ to maintain and that could be used for an HTTP/1.x client as well.
 #define HTTP_HEADERS_LOWERCASE 1
 #endif
 
+#ifndef HTTP1_PARSER_CONVERT_EOL2NUL
+#define HTTP1_PARSER_CONVERT_EOL2NUL 1
+#endif
+
 #if HTTP_HEADERS_LOWERCASE
 
 #define HEADER_NAME_IS_EQ(var_name, const_name, len)                           \
