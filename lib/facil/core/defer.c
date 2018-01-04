@@ -182,6 +182,8 @@ static inline void clear_tasks(void) {
   spn_unlock(&deferred.lock);
 }
 
+void defer_on_fork(void) { deferred.lock = SPN_LOCK_INIT; }
+
 #define push_task(...) push_task((task_s){__VA_ARGS__})
 
 /* *****************************************************************************
@@ -427,12 +429,6 @@ static void text_task(void *a1, void *a2) {
   static const struct timespec tm = {.tv_sec = 2};
   nanosleep(&tm, NULL);
   defer(text_task_text, a1, a2);
-}
-
-static void pid_task(void *arg, void *unused2) {
-  (void)(unused2);
-  fprintf(stderr, "* %d pid is going to sleep... (%s)\n", getpid(),
-          arg ? (char *)arg : "unknown");
 }
 
 void defer_test(void) {

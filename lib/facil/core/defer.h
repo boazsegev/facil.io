@@ -125,53 +125,8 @@ void defer_thread_wait(pool_pt pool, void *p_thr);
  */
 void defer_thread_signal(void);
 
-/* *****************************************************************************
-Child Process support (`fork`)
-***************************************************************************** */
-
-/**
- * OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
- * into the forking function.
- *
- * Behaves like the system's `fork`.
- */
-// int defer_new_child(void);
-
-/**
- * Initializes zombie reaping for the process
- *
- * This will be automatically called if NO_CHILD_REAPER is defined with a
- * non-zero value. i.e.: #define NO_CHILD_REAPER 1
- */
-// void defer_reap_children(void);
-
-/**
- * Forks the process, starts up a thread pool and waits for all tasks to run.
- * All existing tasks will run in all processes (multiple times).
- *
- * It's possible to synchronize workload across processes by using a pipe (or
- * pipes) and a self-scheduling event that reads instructions from the pipe.
- *
- * This function will use SIGINT or SIGTERM to signal all the children
- * processes to finish up and exit. It will also setup a child process reaper
- * (which will remain active for the application's lifetime).
- *
- * The `defer_idle` callback will be used to handle waiting threads. It can be
- * used to sleep, or run background tasks. It will run concurrently and
- * continuesly for all the threads in the pool that are idling.
- *
- * If `defer_idle` is NULL, a fallback to `nanosleep` will be used.
- *
- * Returns 0 on success, -1 on error and a positive number if this is a child
- * process that was forked.
- */
-// int defer_perform_in_fork(unsigned int process_count,
-//                           unsigned int thread_count);
-/** Returns TRUE (1) if the forked thread pool hadn't been signaled to finish
- * up. */
-// int defer_fork_is_active(void);
-/** Returns the process number for the current working proceess. 0 == parent. */
-// int defer_fork_pid(void);
+/** Call this function after forking, to make sure no locks are engaged. */
+void defer_on_fork(void);
 
 #ifdef DEBUG
 /** minor testing facilities */
