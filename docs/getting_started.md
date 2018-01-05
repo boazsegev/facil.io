@@ -1,7 +1,7 @@
 ---
- title: facil.io - Getting Started
+title: facil.io - Getting Started
+toc: true
 ---
-
 # {{ page.title }}
 
 Following is a quick overview and examples for both HTTP/ Websocket WebApps and custom protocol network services.

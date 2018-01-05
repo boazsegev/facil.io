@@ -1,10 +1,14 @@
+---
+title: facil.io - lib defer, an event scheduling and thread pool library in C.
+toc: true
+---
 # `defer` - An event scheduling library in C.
 
-`defer` is a simple thread pool and `fork` library that defaults to POSIX threads (and could be easily ported to any thread system).
+`defer` is a simple thread pool library that defaults to POSIX threads (and could be easily ported to any thread system).
 
 It uses a combination of micro-sleep and spin-locks for load-balancing across threads, making it more performant then the conditional variable approach as well as more portable.
 
-Unlike most thread pool libraries, `defer` allows for two pointers to be passed to each task, allowing greater versatility and optimizations. For example, `facil.io` uses this approach to perform interactions between objects without requiring any additional allocations (which is very important for large object collections).
+Unlike most thread pool libraries, `defer` allows for two pointers to be passed to each task, allowing greater versatility and optimizations. For example, `facil.io` uses this approach to perform interactions between objects without requiring any additional allocations (which is very important for larger object collections).
 
 The library is conveniently documented inside it's `defer.h` file.
 

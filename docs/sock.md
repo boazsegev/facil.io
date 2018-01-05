@@ -1,3 +1,7 @@
+---
+title: facil.io - lib sock - a making sockets in C easy to use.
+toc: true
+---
 # A Simple Socket Library for non-blocking Berkeley Sockets
 
 This library aims to:

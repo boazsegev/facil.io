@@ -1,5 +1,6 @@
 ---
 title: facil.io - Native Pub/Sub
+toc: true
 ---
 # {{ page.title }}
 

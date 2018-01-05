@@ -1,12 +1,16 @@
+---
+title: facil.io - Core Types
+toc: true
+---
 # Core types in facil.io 
 
 At it's core, facil.io utilizes a number of core types, that make it easier to develop network application.
 
 These types are divided into three categories:
 
-1. Core types: [dynamic arrays](fio_ary.md), [hash maps](fio_hashmap.md) and [linked lists](fio_list.md).
+1. Core types: [dynamic arrays](api/fio_ary.md), [hash maps](api/fio_hashmap.md) and [linked lists](api/fio_list.md).
 
-1. Core object: the [facil.io object types (`fiobj_s *`)](fiobj.md).
+1. Core object: the [facil.io object types (`fiobj_s *`)](api/fiobj.md).
 
 1. Network / API related types: these are specific types that are used in specific function calls or situations, such as `protocol_s`, `http_s` etc'.
 
@@ -78,10 +82,10 @@ int main(void) {
 
 The API for the core types is documented within the source files. To read more about each type click the links here:
 
-1. [Dynamic Arrays](fio_ary.md)
+1. [Dynamic Arrays](api/fio_ary.md)
 
-1. [HashMaps](fio_hashmap.md)
+1. [HashMaps](api/fio_hashmap.md)
 
-1. [Linked Lists](fio_list.md).
+1. [Linked Lists](api/fio_list.md).
 
 

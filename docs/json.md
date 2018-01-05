@@ -1,3 +1,7 @@
+---
+title: facil.io - JSON support
+toc: true
+---
 # Using facil.io's JSON support
 
 Parsing, editing and outputting JSON in C can be easily accomplished using [facil.io's dynamic types](fiobj.md) (`fiobj_s`).
@@ -40,7 +44,7 @@ int main(int argc, char const *argv[]) {
   }
   printf("\nattempting to parse:\n%s\n", json);
   // actual code for parsing the JSON
-  fiobj_s * obj;
+  FIOBJ obj;
   size_t consumed = fiobj_json2obj(&obj, json, strlen(json));
   // test for errors
   if (!obj) {
@@ -48,7 +52,7 @@ int main(int argc, char const *argv[]) {
     exit(-1);
   }
   // format the JSON back to a String object and print it up
-  fiobj_s * str = fiobj_obj2json(obj, PRETTY);
+  FIOBJ str = fiobj_obj2json(obj, PRETTY);
   printf("\nOriginal JSON length was: %lu bytes,"
          "output is %lu bytes:\n\n%s\n\n",
          consumed, (size_t)fiobj_obj2cstr(str).len, fiobj_obj2cstr(str).data);

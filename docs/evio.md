@@ -1,10 +1,14 @@
+---
+title: facil.io - lib evio, kqueue/epoll abstraction in C.
+toc: true
+---
 # The Evented IO Library - KQueue/EPoll abstraction
 
 The `evio.h` library, is a KQueue/EPoll abstraction for edge triggered events and is part of [`facil.io`'s](./facil.md) core.
 
 It should be noted that exactly like `epoll` and `kqueue`, `evio.h` might produce unexpected results if forked after initialized, since this will cause the `epoll`/`kqueue` data to be shared across processes, even though these processes will not have access to new file descriptors (i.e. `fd` 90 on one process might reference file "A" while on a different process the same `fd` (90) might reference file "B").
 
-This documentation isn't relevant for `facil.io` users. `facil.io` implements `evio.h` callbacks and `evio.h` cannot be used without removing `facil.h` anf `facil.c` from the project.
+This documentation isn't relevant for `facil.io` users. `facil.io` implements `evio.h` callbacks and `evio.h` cannot be used without removing `facil.h` and `facil.c` from the project.
 
 This file is here as quick reference to anyone interested in maintaining `facil.io` or learning about how it's insides work.
 
@@ -12,7 +16,7 @@ This file is here as quick reference to anyone interested in maintaining `facil.
 
 Event callbacks are defined during the linking stage and are hardwired once compilation is complete.
 
-`void evio_on_data(void *)` - called when the file descriptor has incoming data. This is edge triggered and will not be called again unless all the previous data was consumed.
+`void evio_on_data(void *)` - called when the file descriptor has incoming data. This is **one-shot** triggered, meaning it will **not** be called again unless the `evio_add` (or `evio_set_timer`) are called.
 
 `void evio_on_ready(void *)` - called when the file descriptor is ready to send data (outgoing).
 
@@ -26,4 +30,70 @@ Event callbacks are defined during the linking stage and are hardwired once comp
 
 ## The `evio` API
 
-Coming soon... until then, please review the header file for documentation.
+
+### `evio_create`
+
+`intptr_t evio_create(void)`
+
+Creates the `epoll` or `kqueue` object.
+
+It's impossible to add or remove file descriptors from the polling system before
+calling this method.
+
+Returns -1 on error, otherwise returns a unique value representing the `epoll`
+or `kqueue` object. The returned value can be safely ignored.
+
+**NOTE**: Once an `epoll` / `kqueue` object was opened, `fork` should be avoided,
+since ALL the events will be shared among the forked processes (while not ALL
+the file descriptors are expected to be shared).
+
+### `evio_review`
+
+`int evio_review(const int timeout_millisec)`
+
+Reviews any pending events (up to EVIO_MAX_EVENTS) and calls any callbacks.
+
+Waits up to `timeout_millisec` for events to occur.
+
+Returns -1 on error, otherwise returns the number of events handled.
+
+### `evio_close`
+
+`void evio_close(void);`
+
+Closes the `epoll` / `kqueue` object, releasing it's resources (important if
+forking!).
+
+### `evio_isactive`
+
+`int evio_isactive(void)`
+
+Returns true if the evio is available for adding or removing file descriptors.
+
+
+### `evio_add`
+
+`int evio_add(int fd, void *callback_arg)`
+
+Adds a file descriptor to the polling object (ONE SHOT).
+
+Returns -1 on error, otherwise return value is system dependent and can be
+safely ignored.
+
+### `evio_open_timer`
+
+`intptr_t evio_open_timer(void)`
+
+Creates a timer file descriptor, system dependent.
+
+Returns -1 on error, or a valid fd on success.
+
+NOTE: Systems have a limit on the number of timers that can be opened.
+
+### `evio_set_timer`
+
+`intptr_t evio_set_timer(int fd, void *callback_arg, unsigned long milliseconds)`
+
+Adds a timer file descriptor, so that callbacks will be called for it's events.
+
+Returns -1 on error, otherwise return value is system dependent.

@@ -1,5 +1,6 @@
 ---
 title: facil.io - scratch pad - leave this alone
+toc: true
 ---
 
 # {{ page.title }}

@@ -1,4 +1,8 @@
-# Dynamic Type System: `fiobj_*`
+---
+title: facil.io - a Dynamic Type System using facil.io objects.
+toc: true
+---
+# Dynamic Type System: facil.io objects (`FIOBJ`)
 
 `facil.io` offers a dynamic type system that makes it a breeze to mix object types together.
 

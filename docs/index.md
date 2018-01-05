@@ -48,7 +48,7 @@ void on_request(http_s *request) {
 
 [facil.io](http://facil.io) prefers a TCP/IP specialized solution over a generic one (although it can be easily adopted for Unix sockets, UDP and other approaches).
 
-[facil.io](http://facil.io) includes a number of libraries that work together for a common goal. Some of the libraries (i.e. the thread-pool library `defer`, the socket library `sock`, the evented IO core `evio`, [the dynamic type library](fiobj.md)) and the [parsers]() can be used independently while others are designed to work together using a modular approach.
+[facil.io](http://facil.io) includes a number of libraries that work together for a common goal. Some of the libraries (i.e., some [core types](api/types.md) the thread-pool library `defer`, the socket library `sock`, the evented IO core `evio` and the [parsers]() can be used independently while others are designed to work together using a modular approach.
 
 I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
 
