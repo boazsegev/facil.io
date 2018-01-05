@@ -1,4 +1,4 @@
-__ATOMIC_SEQ_CST #ifndef FIOBJECT_INTERNAL_H
+#ifndef FIOBJECT_INTERNAL_H
 /*
 Copyright: Boaz Segev, 2017
 License: MIT
@@ -74,7 +74,7 @@ Memory Page Size
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
 #include <unistd.h>
 
-    size_t __attribute__((weak)) fiobj_memory_page_size(void) {
+size_t __attribute__((weak)) fiobj_memory_page_size(void) {
   static size_t page_size = 0;
   if (page_size)
     return page_size;
