@@ -45,12 +45,13 @@ static inline void add_date(http_s *r) {
   if (!mod_hash)
     mod_hash = fiobj_sym_hash("last-modified", 13);
 
-  if (facil_last_tick().tv_sec >= last_date_added + 60) {
-    FIOBJ tmp = fiobj_str_buf(32);
-    fiobj_str_resize(
-        tmp, http_time2str(fiobj_obj2cstr(tmp).data, facil_last_tick().tv_sec));
+  if (facil_last_tick().tv_sec > last_date_added) {
+    FIOBJ tmp = NULL;
     spn_lock(&date_lock);
-    if (facil_last_tick().tv_sec >= last_date_added + 60) {
+    if (facil_last_tick().tv_sec > last_date_added) { /* retest inside lock */
+      tmp = fiobj_str_buf(32);
+      fiobj_str_resize(tmp, http_time2str(fiobj_obj2cstr(tmp).data,
+                                          facil_last_tick().tv_sec));
       last_date_added = facil_last_tick().tv_sec;
       FIOBJ other = current_date;
       current_date = tmp;
@@ -1102,7 +1103,7 @@ size_t http_time2str(char *target, const time_t t) {
   }
   if (last_tick > cached_tick) {
     struct tm tm;
-    cached_tick = last_tick | 1;
+    cached_tick = last_tick; /* refresh every second */
     http_gmtime(last_tick, &tm);
     chached_len = http_date2str(cached_httpdate, &tm);
   }
