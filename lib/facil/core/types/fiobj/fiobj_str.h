@@ -1,6 +1,6 @@
 #ifndef H_FIOBJ_STR_H
 /*
-Copyright: Boaz Segev, 2017
+Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 #define H_FIOBJ_STR_H
@@ -11,15 +11,7 @@ License: MIT
 extern "C" {
 #endif
 
-/** String type identifier */
-extern const uintptr_t FIOBJ_T_STRING;
-
-/** Static String type identifier */
-extern const uintptr_t FIOBJ_T_STRING_STATIC;
-
-#define FIOBJ_IS_STRING(obj)                                                   \
-  (FIOBJ_TYPE(obj) == FIOBJ_T_STRING ||                                        \
-   FIOBJ_TYPE(obj) == FIOBJ_T_STRING_STATIC)
+#define FIOBJ_IS_STRING(obj) FIOBJ_TYPE_IS((obj), FIOBJ_T_STRING)
 
 /* *****************************************************************************
 API: Creating a String Object
@@ -47,7 +39,10 @@ FIOBJ fiobj_str_buf(size_t capa);
 FIOBJ fiobj_str_static(const char *str, size_t len);
 
 /** Creates a copy from an existing String. Remember to use `fiobj_free`. */
-FIOBJ fiobj_str_copy(FIOBJ src);
+static inline __attribute__((unused)) FIOBJ fiobj_str_copy(FIOBJ src) {
+  fio_cstr_s s = fiobj_obj2cstr(src);
+  return fiobj_str_new(s.data, s.len);
+}
 
 /**
  * Creates a String object. Remember to use `fiobj_free`.
@@ -87,6 +82,17 @@ API: Editing a String
 ***************************************************************************** */
 
 /**
+ * Prevents the String object from being changed.
+ *
+ * When a String is used as a key for a Hash, it is automatically frozenn to
+ * prevent the Hash from becoming broken.
+ *
+ * A call to `fiobj_str_hash` or `fiobj_obj2hash` will automactically freeze the
+ * String.
+ */
+void fiobj_str_freeze(FIOBJ str);
+
+/**
  * Confirms the requested capacity is available and allocates as required.
  *
  * Returns updated capacity.
@@ -104,12 +110,6 @@ void fiobj_str_minimize(FIOBJ str);
 
 /** Empties a String's data. */
 void fiobj_str_clear(FIOBJ str);
-
-/**
- * Grabs the string's internal buffer, emptying the existing string data.
- * `fiobj_free` is still required (unless the string is a `tmp` string).
- */
-void *fiobj_str_steal(FIOBJ str);
 
 /**
  * Writes data at the end of the string, resizing the string as required.
@@ -132,6 +132,39 @@ fiobj_str_write2(FIOBJ dest, const char *format, ...);
  * Returns the new length of the String.
  */
 size_t fiobj_str_join(FIOBJ dest, FIOBJ source);
+
+/* *****************************************************************************
+API: String Values
+***************************************************************************** */
+
+/**
+ * Calculates a String's SipHash value for possible use as a HashMap key.
+ *
+ * Hashing the String's value automatically freezes the string, preventing
+ * future changes.
+ */
+uint64_t fiobj_str_hash(FIOBJ o);
+
+/* *****************************************************************************
+Inline Implementations
+***************************************************************************** */
+
+/**
+ * Calculates an Objects's SipHash value for possible use as a HashMap key.
+ *
+ * The Object MUST answer to the fiobj_obj2cstr, or the result is unusable. In
+ * other waords, Hash Objects and Arrays can NOT be used for Hash keys.
+ */
+FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o) {
+  if (FIOBJ_TYPE_IS(o, FIOBJ_T_STRING))
+    return fiobj_str_hash(o);
+  fio_cstr_s s = fiobj_obj2cstr(o);
+  return fio_siphash(s.buffer, s.len);
+}
+
+#if DEBUG
+void fiobj_test_string(void);
+#endif
 
 #ifdef __cplusplus
 } /* extern "C" */

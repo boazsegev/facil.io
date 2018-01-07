@@ -25,8 +25,8 @@ static inline int hex2byte(uint8_t *dest, const uint8_t *source);
 static inline void add_content_length(http_s *r, uintptr_t length) {
   static uint64_t cl_hash = 0;
   if (!cl_hash)
-    cl_hash = fiobj_sym_hash("content-length", 14);
-  if (!fiobj_hash_get3(r->private_data.out_headers, cl_hash)) {
+    cl_hash = fio_siphash("content-length", 14);
+  if (!fiobj_hash_get2(r->private_data.out_headers, cl_hash)) {
     static FIOBJ cl;
     if (!cl)
       cl = HTTP_HEADER_CONTENT_LENGTH;
@@ -40,13 +40,13 @@ static spn_lock_i date_lock;
 static inline void add_date(http_s *r) {
   static uint64_t date_hash = 0;
   if (!date_hash)
-    date_hash = fiobj_sym_hash("date", 4);
+    date_hash = fio_siphash("date", 4);
   static uint64_t mod_hash = 0;
   if (!mod_hash)
-    mod_hash = fiobj_sym_hash("last-modified", 13);
+    mod_hash = fio_siphash("last-modified", 13);
 
   if (facil_last_tick().tv_sec > last_date_added) {
-    FIOBJ tmp = NULL;
+    FIOBJ tmp = FIOBJ_INVALID;
     spn_lock(&date_lock);
     if (facil_last_tick().tv_sec > last_date_added) { /* retest inside lock */
       tmp = fiobj_str_buf(32);
@@ -61,11 +61,11 @@ static inline void add_date(http_s *r) {
     fiobj_free(tmp);
   }
 
-  if (!fiobj_hash_get3(r->private_data.out_headers, date_hash)) {
+  if (!fiobj_hash_get2(r->private_data.out_headers, date_hash)) {
     fiobj_hash_set(r->private_data.out_headers, HTTP_HEADER_DATE,
                    fiobj_dup(current_date));
   }
-  if (!fiobj_hash_get3(r->private_data.out_headers, mod_hash)) {
+  if (!fiobj_hash_get2(r->private_data.out_headers, mod_hash)) {
     fiobj_hash_set(r->private_data.out_headers, HTTP_HEADER_LAST_MODIFIED,
                    fiobj_dup(current_date));
   }
@@ -81,13 +81,10 @@ static int write_header(FIOBJ o, void *w_) {
   struct header_writer_s *w = w_;
   if (!o)
     return 0;
-  if (o->type == FIOBJ_T_COUPLET) {
-    w->name = fiobj_couplet2key(o);
-    o = fiobj_couplet2obj(o);
-    if (!o)
-      return 0;
+  if (fiobj_hash_key_in_loop()) {
+    w->name = fiobj_hash_key_in_loop();
   }
-  if (o->type == FIOBJ_T_ARRAY) {
+  if (FIOBJ_TYPE_IS(o, FIOBJ_T_ARRAY)) {
     fiobj_each1(o, 0, write_header, w);
     return 0;
   }
@@ -133,7 +130,7 @@ int http_set_header2(http_s *r, fio_cstr_s n, fio_cstr_s v) {
   if (!r || !n.data || !n.length || (v.data && !v.length) ||
       !r->private_data.out_headers)
     return -1;
-  FIOBJ tmp = fiobj_sym_new(n.data, n.length);
+  FIOBJ tmp = fiobj_str_new(n.data, n.length);
   int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.length));
   fiobj_free(tmp);
   return ret;
@@ -278,7 +275,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   if (cookie.secure) {
     fiobj_str_write(c, "secure;", 7);
   }
-  static FIOBJ sym = NULL;
+  static FIOBJ sym = FIOBJ_INVALID;
   if (!sym)
     sym = HTTP_HEADER_SET_COOKIE;
   set_header_add(h->private_data.out_headers, sym, c);
@@ -335,10 +332,10 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
   struct stat file_data = {.st_size = 0};
   static uint64_t accept_enc_hash = 0;
   if (!accept_enc_hash)
-    accept_enc_hash = fiobj_sym_hash("accept-encoding", 15);
+    accept_enc_hash = fio_siphash("accept-encoding", 15);
   static uint64_t range_hash = 0;
   if (!range_hash)
-    range_hash = fiobj_sym_hash("range", 5);
+    range_hash = fio_siphash("range", 5);
 
   /* create filename string */
   FIOBJ filename = fiobj_str_tmp();
@@ -381,7 +378,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
 
   fio_cstr_s s = fiobj_obj2cstr(filename);
   {
-    FIOBJ tmp = fiobj_hash_get3(h->headers, accept_enc_hash);
+    FIOBJ tmp = fiobj_hash_get2(h->headers, accept_enc_hash);
     if (!tmp)
       goto no_gzip_support;
     fio_cstr_s ac_str = fiobj_obj2cstr(tmp);
@@ -416,7 +413,7 @@ found_file:
   /* set & test etag */
   uint64_t etag = (uint64_t)file_data.st_size;
   etag ^= (uint64_t)file_data.st_mtime;
-  etag = fiobj_sym_hash(&etag, sizeof(uint64_t));
+  etag = fio_siphash(&etag, sizeof(uint64_t));
   FIOBJ etag_str = fiobj_str_buf(32);
   fiobj_str_resize(etag_str,
                    fio_base64_encode(fiobj_obj2cstr(etag_str).data,
@@ -427,8 +424,8 @@ found_file:
   {
     static uint64_t none_match_hash = 0;
     if (!none_match_hash)
-      none_match_hash = fiobj_sym_hash("if-none-match", 13);
-    FIOBJ tmp2 = fiobj_hash_get3(h->headers, none_match_hash);
+      none_match_hash = fio_siphash("if-none-match", 13);
+    FIOBJ tmp2 = fiobj_hash_get2(h->headers, none_match_hash);
     if (tmp2 && fiobj_iseq(tmp2, etag_str)) {
       h->status = 304;
       http_finish(h);
@@ -441,15 +438,15 @@ found_file:
   {
     static uint64_t ifrange_hash = 0;
     if (!ifrange_hash)
-      ifrange_hash = fiobj_sym_hash("if-range", 8);
-    FIOBJ tmp = fiobj_hash_get3(h->headers, ifrange_hash);
+      ifrange_hash = fio_siphash("if-range", 8);
+    FIOBJ tmp = fiobj_hash_get2(h->headers, ifrange_hash);
     if (tmp && fiobj_iseq(tmp, etag_str)) {
-      fiobj_hash_delete3(h->headers, range_hash);
+      fiobj_hash_delete2(h->headers, range_hash);
     } else {
-      tmp = fiobj_hash_get3(h->headers, range_hash);
+      tmp = fiobj_hash_get2(h->headers, range_hash);
       if (tmp) {
         /* range ahead... */
-        if (tmp->type == FIOBJ_T_ARRAY)
+        if (FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY))
           tmp = fiobj_ary_index(tmp, 0);
         fio_cstr_s range = fiobj_obj2cstr(tmp);
         if (!range.data || memcmp("bytes=", range.data, 6))
@@ -501,7 +498,7 @@ open_file:
     return 0;
   }
   {
-    FIOBJ tmp = NULL;
+    FIOBJ tmp = 0;
     uintptr_t pos = 0;
     if (is_gz) {
       http_set_header(h, HTTP_HEADER_CONTENT_ENCODING,
@@ -743,7 +740,7 @@ HTTP Helper functions that could be used globally
  */
 FIOBJ http_req2str(http_s *h) {
   if (!h->headers)
-    return NULL;
+    return FIOBJ_INVALID;
 
   struct header_writer_s w;
   w.dest = fiobj_str_buf(4096);
@@ -780,10 +777,10 @@ void http_write_log(http_s *h) {
   FIOBJ l = fiobj_str_buf(128);
   static uint64_t cl_hash = 0;
   if (!cl_hash)
-    cl_hash = fiobj_sym_hash("content-length", 14);
+    cl_hash = fio_siphash("content-length", 14);
 
   intptr_t bytes_sent =
-      fiobj_obj2num(fiobj_hash_get3(h->private_data.out_headers, cl_hash));
+      fiobj_obj2num(fiobj_hash_get2(h->private_data.out_headers, cl_hash));
 
   struct timespec start, end;
   clock_gettime(CLOCK_REALTIME, &end);
@@ -1230,8 +1227,8 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
                             FIOBJ mime_type_str) {
   if (!mime_types.map)
     fio_hash_new(&mime_types);
-  uintptr_t hash = fiobj_sym_hash(file_ext, file_ext_len);
-  FIOBJ old = fio_hash_insert(&mime_types, hash, mime_type_str);
+  uintptr_t hash = fio_siphash(file_ext, file_ext_len);
+  FIOBJ old = (FIOBJ)fio_hash_insert(&mime_types, hash, (void *)mime_type_str);
   fiobj_free(old);
 }
 
@@ -1241,16 +1238,16 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
  */
 FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
   if (!mime_types.map)
-    return NULL;
-  uintptr_t hash = fiobj_sym_hash(file_ext, file_ext_len);
-  return fiobj_dup(fio_hash_find(&mime_types, hash));
+    return FIOBJ_INVALID;
+  uintptr_t hash = fio_siphash(file_ext, file_ext_len);
+  return fiobj_dup((FIOBJ)fio_hash_find(&mime_types, hash));
 }
 
 /** Clears the Mime-Type registry (it will be emoty afterthis call). */
 void http_mimetype_clear(void) {
   if (!mime_types.map)
     return;
-  FIO_HASH_FOR_LOOP(&mime_types, obj) { fiobj_free((void *)obj->obj); }
+  FIO_HASH_FOR_LOOP(&mime_types, obj) { fiobj_free((FIOBJ)obj->obj); }
   fio_hash_free(&mime_types);
   last_date_added = 0;
   fiobj_free(current_date);

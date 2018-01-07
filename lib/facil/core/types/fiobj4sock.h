@@ -7,13 +7,13 @@
 #include "fiobj.h"
 #include "sock.h"
 
-static void my_dealloc(void *o) { fiobj_free(o); }
+static void my_dealloc(void *o) { fiobj_free((FIOBJ)o); }
 
 /** send a FIOBJ  object through a socket. */
 static inline __attribute__((unused)) int fiobj_send(intptr_t uuid, FIOBJ o) {
   fio_cstr_s s = fiobj_obj2cstr(o);
   // fprintf(stderr, "%s\n", s.data);
-  return sock_write2(.uuid = uuid, .buffer = (o),
+  return sock_write2(.uuid = uuid, .buffer = (void *)(o),
                      .offset = (((intptr_t)s.data) - ((intptr_t)(o))),
                      .length = s.length,
                      .dealloc = my_dealloc); // (void (*)(void *))fiobj_free

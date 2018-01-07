@@ -24,7 +24,7 @@ set(facil.io_SOURCES
   ./lib/facil/core/types/fiobj/fiobj_primitives.c
   ./lib/facil/core/types/fiobj/fiobj_str.c
   ./lib/facil/core/types/fiobj/fiobj_sym.c
-  ./lib/facil/core/types/fiobj/fiobj_sym_hash.c
+  ./lib/facil/core/types/fiobj/fiobj_siphash.c
   ./lib/facil/core/types/fiobj/fiobj_tests.c
   ./lib/facil/core/types/fiobj/fiobject.c
   ./lib/facil/services/fio_cli_helper.c

@@ -150,7 +150,7 @@ Connection Establishment
 ***************************************************************************** */
 
 static void redis_on_auth(pubsub_engine_s *e, FIOBJ reply, void *udata) {
-  if (reply->type != FIOBJ_T_TRUE) {
+  if (FIOBJ_TYPE_IS(reply, FIOBJ_T_TRUE)) {
     fio_cstr_s s = fiobj_obj2cstr(reply);
     fprintf(stderr,
             "WARNING: (redis) Authentication FAILED.\n"
@@ -264,7 +264,7 @@ static void redis_pub_on_close(intptr_t uuid, protocol_s *pr) {
             (int)getpid());
     redis_on_pub_connect_fail(uuid, &r->pub_data.protocol);
     fiobj_free(r->pub_data.ary ? r->pub_data.ary : r->pub_data.str);
-    r->pub_data.ary = r->pub_data.str = NULL;
+    r->pub_data.ary = r->pub_data.str = FIOBJ_INVALID;
     r->pub_data.uuid = 0;
     r->sent = 0;
   } else {
@@ -284,7 +284,7 @@ static void redis_sub_on_close(intptr_t uuid, protocol_s *pr) {
       redis_on_sub_connect_fail(uuid, &r->sub_data.protocol);
     }
     fiobj_free(r->sub_data.ary ? r->sub_data.ary : r->sub_data.str);
-    r->sub_data.ary = r->sub_data.str = NULL;
+    r->sub_data.ary = r->sub_data.str = FIOBJ_INVALID;
     r->sub_data.uuid = 0;
   } else {
     if (spn_sub(&r->ref, 1))
@@ -674,8 +674,8 @@ static int resp_on_message(resp_parser_s *parser) {
   }
   /* cleanup */
   fiobj_free(msg);
-  i->ary = NULL;
-  i->str = NULL;
+  i->ary = FIOBJ_INVALID;
+  i->str = FIOBJ_INVALID;
   return 0;
 }
 

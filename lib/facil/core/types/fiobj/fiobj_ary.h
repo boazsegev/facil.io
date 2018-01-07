@@ -1,6 +1,6 @@
 #ifndef FIOBJ_ARRAY_H
 /*
-Copyright: Boaz Segev, 2017
+Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 
@@ -14,9 +14,6 @@ A dynamic Array type for the fiobj_s dynamic type system.
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/** The Array type indentifier. */
-extern const uintptr_t FIOBJ_T_ARRAY;
 
 /* *****************************************************************************
 Array creation API
@@ -98,6 +95,10 @@ Array compacting (untested)
  * It could get expensive.
  */
 void fiobj_ary_compact(FIOBJ ary);
+
+#if DEBUG
+void fiobj_test_array(void);
+#endif
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -2,7 +2,7 @@
 Copyright: Boaz Segev, 2017
 License: MIT
 */
-#include "fiobj_sym_hash.h"
+#include "fio_siphash.h"
 
 /* *****************************************************************************
 Hashing (SipHash implementation)
@@ -25,7 +25,7 @@ Hashing (SipHash implementation)
 #define lrot64(i, bits)                                                        \
   (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
 
-uint64_t fiobj_sym_hash(const void *data, size_t len) {
+uint64_t fio_siphash(const void *data, size_t len) {
   /* initialize the 4 words */
   uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL);
   uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL);

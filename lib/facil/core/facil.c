@@ -860,11 +860,11 @@ static void cluster_on_client_message(cluster_pr_s *c, intptr_t uuid) {
   switch ((enum cluster_message_type_e)c->type) {
   case CLUSTER_MESSAGE_JSON: {
     fio_cstr_s s = fiobj_obj2cstr(c->channel);
-    FIOBJ tmp = NULL;
+    FIOBJ tmp = FIOBJ_INVALID;
     if (fiobj_json2obj(&tmp, s.bytes, s.len)) {
       fiobj_free(c->channel);
       c->channel = tmp;
-      tmp = NULL;
+      tmp = FIOBJ_INVALID;
     } else {
       fprintf(stderr,
               "WARNING: (facil.io cluster) JSON message isn't valid JSON.\n");
@@ -908,11 +908,11 @@ static void cluster_on_server_message(cluster_pr_s *c, intptr_t uuid) {
     }
     if (c->type == CLUSTER_MESSAGE_JSON) {
       fio_cstr_s s = fiobj_obj2cstr(c->channel);
-      FIOBJ tmp = NULL;
+      FIOBJ tmp = FIOBJ_INVALID;
       if (fiobj_json2obj(&tmp, s.bytes, s.len)) {
         fiobj_free(c->channel);
         c->channel = tmp;
-        tmp = NULL;
+        tmp = FIOBJ_INVALID;
       } else {
         fprintf(stderr,
                 "WARNING: (facil.io cluster) JSON message isn't valid JSON.\n");
@@ -1061,8 +1061,8 @@ static void cluster_on_data(intptr_t uuid, protocol_s *pr_) {
     }
     fiobj_free(c->msg);
     fiobj_free(c->channel);
-    c->msg = NULL;
-    c->channel = NULL;
+    c->msg = FIOBJ_INVALID;
+    c->channel = FIOBJ_INVALID;
   } while (c->length > i);
   c->length -= i;
   if (c->length) {
@@ -1187,8 +1187,8 @@ int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg) {
   }
   uint32_t type = CLUSTER_MESSAGE_FORWARD;
 
-  if ((!ch || FIOBJ_IS_STRING(ch) || FIOBJ_TYPE(ch) == FIOBJ_T_SYMBOL) &&
-      (!msg || FIOBJ_IS_STRING(msg) || FIOBJ_TYPE(msg) == FIOBJ_T_SYMBOL)) {
+  if ((!ch || !FIOBJ_TYPE_IS(ch, FIOBJ_T_STRING)) &&
+      (!msg || !FIOBJ_TYPE_IS(msg, FIOBJ_T_STRING))) {
     fiobj_dup(ch);
     fiobj_dup(msg);
   } else {

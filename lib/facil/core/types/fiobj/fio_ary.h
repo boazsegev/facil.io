@@ -1,6 +1,6 @@
 #ifndef H_FIO_ARRAY_H
 /*
-Copyright: Boaz Segev, 2017
+Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 
@@ -131,8 +131,9 @@ FIO_FUNC inline void fio_ary_compact(fio_ary_s *ary);
  */
 #define FIO_ARY_FOR(ary, pos)                                                  \
   for (struct fio_ary_pos_for_loop_s pos = {0, (ary)->arry[(ary)->start]};     \
-       (pos.i + (ary)->start) < (ary)->end;                                    \
-       (++pos.i), (pos.obj = (ary)->arry[pos.i + (ary)->start]))
+       (pos.i + (ary)->start) < (ary)->end &&                                  \
+       ((pos.obj = (ary)->arry[pos.i + (ary)->start]), 1);                     \
+       (++pos.i))
 struct fio_ary_pos_for_loop_s {
   unsigned long i;
   void *obj;

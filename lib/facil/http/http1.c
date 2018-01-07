@@ -78,13 +78,10 @@ static int write_header(FIOBJ o, void *w_) {
   struct header_writer_s *w = w_;
   if (!o)
     return 0;
-  if (o->type == FIOBJ_T_COUPLET) {
-    w->name = fiobj_couplet2key(o);
-    o = fiobj_couplet2obj(o);
-    if (!o)
-      return 0;
+  if (fiobj_hash_key_in_loop()) {
+    w->name = fiobj_hash_key_in_loop();
   }
-  if (o->type == FIOBJ_T_ARRAY) {
+  if (FIOBJ_TYPE_IS(o, FIOBJ_T_ARRAY)) {
     fiobj_each1(o, 0, write_header, w);
     return 0;
   }
@@ -101,24 +98,24 @@ static int write_header(FIOBJ o, void *w_) {
 
 static FIOBJ headers2str(http_s *h) {
   if (!h->headers)
-    return NULL;
+    return FIOBJ_INVALID;
 
   static uintptr_t connection_key;
   if (!connection_key)
-    connection_key = fiobj_sym_hash("connection", 10);
+    connection_key = fio_siphash("connection", 10);
 
   struct header_writer_s w;
   w.dest = fiobj_str_buf(4096);
 
   fio_cstr_s t = http1_status2str(h->status);
   fiobj_str_write(w.dest, t.data, t.length);
-  FIOBJ tmp = fiobj_hash_get3(h->private_data.out_headers, connection_key);
+  FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, connection_key);
   if (tmp) {
     t = fiobj_obj2cstr(tmp);
     if (t.data[0] == 'c' || t.data[0] == 'C')
       ((http1_s *)h->private_data.owner)->close = 1;
   } else {
-    tmp = fiobj_hash_get3(h->headers, connection_key);
+    tmp = fiobj_hash_get2(h->headers, connection_key);
     if (tmp) {
       t = fiobj_obj2cstr(tmp);
       if (!t.data || !t.len || t.data[0] == 'k' || t.data[0] == 'K')
@@ -270,19 +267,19 @@ static int http1_http2websocket(websocket_settings_s *args) {
   static char ws_key_accpt_str[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
   static uintptr_t sec_version;
   if (!sec_version)
-    sec_version = fiobj_sym_hash("sec-websocket-version", 21);
+    sec_version = fio_siphash("sec-websocket-version", 21);
   static uintptr_t sec_key;
   if (!sec_key)
-    sec_key = fiobj_sym_hash("sec-websocket-key", 17);
+    sec_key = fio_siphash("sec-websocket-key", 17);
 
-  FIOBJ tmp = fiobj_hash_get3(args->http->headers, sec_version);
+  FIOBJ tmp = fiobj_hash_get2(args->http->headers, sec_version);
   if (!tmp)
     goto bad_request;
   fio_cstr_s stmp = fiobj_obj2cstr(tmp);
   if (stmp.length != 2 || stmp.data[0] != '1' || stmp.data[1] != '3')
     goto bad_request;
 
-  tmp = fiobj_hash_get3(args->http->headers, sec_key);
+  tmp = fiobj_hash_get2(args->http->headers, sec_key);
   if (!tmp)
     goto bad_request;
   stmp = fiobj_obj2cstr(tmp);
@@ -398,7 +395,7 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
     sym = fiobj_str_static(name, name_len);
     obj = fiobj_str_static(data, data_len);
   } else {
-    sym = fiobj_sym_new(name, name_len);
+    sym = fiobj_str_new(name, name_len);
     obj = fiobj_str_new(data, data_len);
     h1_reset(parser2http(parser));
   }

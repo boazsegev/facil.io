@@ -52,9 +52,9 @@ static inline int fio_hash_fiobj_keys_eq(fio_hash_key_s a, fio_hash_key_s b) {
 #define FIO_HASH_COMPARE_KEYS(k1, k2)                                          \
   ((k1).obj == (k2).obj || fio_hash_fiobj_keys_eq((k1), (k2)))
 /* an "all bytes are zero" invalid key */
-#define FIO_HASH_KEY_INVALID ((fio_hash_key_s){.obj = NULL})
+#define FIO_HASH_KEY_INVALID ((fio_hash_key_s){.obj = FIOBJ_INVALID})
 /* tests if a key is the invalid key */
-#define FIO_HASH_KEY_ISINVALID(key) ((key).obj == NULL)
+#define FIO_HASH_KEY_ISINVALID(key) ((key).obj == FIOBJ_INVALID)
 /* creates a persistent copy of the key's string */
 #define FIO_HASH_KEY_COPY(key)                                                 \
   ((fio_hash_key_s){.hash = (key).hash, .obj = fiobj_dup((key).obj)})
@@ -62,7 +62,7 @@ static inline int fio_hash_fiobj_keys_eq(fio_hash_key_s a, fio_hash_key_s b) {
 #define FIO_HASH_KEY_DESTROY(key) (fiobj_free((key).obj))
 
 #define FIO_OBJ2KEY(fiobj)                                                     \
-  ((fio_hash_key_s){.hash = fiobj_sym_id((fiobj)), .obj = (fiobj)})
+  ((fio_hash_key_s){.hash = fiobj_obj2hash((fiobj)), .obj = (fiobj)})
 
 #include "fio_hashmap.h"
 
@@ -157,7 +157,7 @@ static client_s *pubsub_client_new(client_s client, channel_s channel) {
       client.on_unsubscribe(client.udata1, client.udata2);
     return NULL;
   }
-  uint64_t channel_hash = fiobj_sym_id(channel.name);
+  uint64_t channel_hash = fiobj_obj2hash(channel.name);
   uint64_t client_hash = client_compute_hash(client);
   spn_lock(&lock);
   /* ignore if client exists. */
@@ -215,7 +215,7 @@ static int pubsub_client_destroy(client_s *client) {
   channel_s *ch = client->parent;
 
   fio_hash_s *ch_hashmap = (ch->use_pattern ? &patterns : &channels);
-  uint64_t channel_hash = fiobj_sym_id(ch->name);
+  uint64_t channel_hash = fiobj_obj2hash(ch->name);
   uint64_t client_hash = client_compute_hash(*client);
   uint8_t is_ch_any;
   spn_lock(&lock);
@@ -479,7 +479,7 @@ void pubsub_en_process_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
 /** Should return 0 on success and -1 on failure. */
 int pubsub_en_process_publish(const pubsub_engine_s *eng, FIOBJ channel,
                               FIOBJ msg) {
-  uint64_t channel_hash = fiobj_sym_id(channel);
+  uint64_t channel_hash = fiobj_obj2hash(channel);
   msg_wrapper_s *m = malloc(sizeof(*m));
   int ret = -1;
   if (!m)
@@ -563,7 +563,7 @@ void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                  uint8_t use_pattern) {
   facil_cluster_send((use_pattern ? PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER
                                   : PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER),
-                     channel, NULL);
+                     channel, FIOBJ_INVALID);
   (void)eng;
 }
 
@@ -572,7 +572,7 @@ void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                    uint8_t use_pattern) {
   facil_cluster_send((use_pattern ? PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER
                                   : PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER),
-                     channel, NULL);
+                     channel, FIOBJ_INVALID);
   (void)eng;
 }
 /** Should return 0 on success and -1 on failure. */
@@ -602,20 +602,20 @@ static void pubsub_cluster_on_message_noop(pubsub_message_s *msg) { (void)msg; }
 /* registers to the channel  */
 static void pubsub_cluster_subscribe2channel(void *ch, void *flag) {
   channel_s channel = {
-      .name = ch,
+      .name = (FIOBJ)ch,
       .clients = FIO_LS_INIT(channel.clients),
       .use_pattern = ((uintptr_t)flag & 1),
       .publish2cluster = 0,
   };
   client_s client = {.on_message = pubsub_cluster_on_message_noop};
   pubsub_client_new(client, channel);
-  fiobj_free(ch);
+  fiobj_free((FIOBJ)ch);
 }
 
 /* deregisters from the channel if required */
 static void pubsub_cluster_unsubscribe2channel(void *ch, void *flag) {
   channel_s channel = {
-      .name = ch,
+      .name = (FIOBJ)ch,
       .clients = FIO_LS_INIT(channel.clients),
       .use_pattern = ((uintptr_t)flag & 1),
       .publish2cluster = 0,
@@ -623,7 +623,7 @@ static void pubsub_cluster_unsubscribe2channel(void *ch, void *flag) {
   client_s client = {.on_message = pubsub_cluster_on_message_noop};
   client_s *sub = pubsub_client_find(client, channel);
   pubsub_client_destroy(sub);
-  fiobj_free(ch);
+  fiobj_free((FIOBJ)ch);
 }
 
 static void pubsub_cluster_facil_message(int32_t filter, FIOBJ channel,
@@ -635,16 +635,16 @@ static void pubsub_cluster_facil_message(int32_t filter, FIOBJ channel,
     PUBSUB_PROCESS_ENGINE->publish(PUBSUB_PROCESS_ENGINE, channel, message);
     break;
   case PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER:
-    pubsub_cluster_subscribe2channel(channel, 0);
+    pubsub_cluster_subscribe2channel((void *)channel, 0);
     break;
   case PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER:
-    pubsub_cluster_subscribe2channel(channel, (void *)1);
+    pubsub_cluster_subscribe2channel((void *)channel, (void *)1);
     break;
   case PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER:
-    pubsub_cluster_unsubscribe2channel(channel, 0);
+    pubsub_cluster_unsubscribe2channel((void *)channel, 0);
     break;
   case PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER:
-    pubsub_cluster_unsubscribe2channel(channel, (void *)1);
+    pubsub_cluster_unsubscribe2channel((void *)channel, (void *)1);
     break;
   }
   (void)filter;

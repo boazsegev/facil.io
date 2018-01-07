@@ -13,9 +13,9 @@ void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings) {
   static uint64_t upgrade_hash = 0;
   if (!upgrade_hash)
-    upgrade_hash = fiobj_sym_hash("upgrade", 7);
-  FIOBJ t = fiobj_hash_get3(h->headers, upgrade_hash);
-  if (t == NULL) {
+    upgrade_hash = fio_siphash("upgrade", 7);
+  FIOBJ t = fiobj_hash_get2(h->headers, upgrade_hash);
+  if (t == FIOBJ_INVALID) {
     if (settings->public_folder) {
       fio_cstr_s path_str = fiobj_obj2cstr(h->path);
       if (!http_sendfile2(h, settings->public_folder,
@@ -26,11 +26,11 @@ void http_on_request_handler______internal(http_s *h,
     }
     static uint64_t host_hash = 0;
     if (!host_hash)
-      host_hash = fiobj_sym_hash("host", 4);
+      host_hash = fio_siphash("host", 4);
     {
-      FIOBJ tmp = fiobj_hash_get3(h->headers, host_hash);
-      if (tmp->type == FIOBJ_T_ARRAY) {
-        FIOBJ sym = fiobj_sym_new("host", 4);
+      FIOBJ tmp = fiobj_hash_get2(h->headers, host_hash);
+      if (FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY)) {
+        FIOBJ sym = fiobj_str_new("host", 4);
         fiobj_hash_set(h->headers, sym, fiobj_ary_pop(tmp));
         fiobj_free(sym);
       }
@@ -94,7 +94,7 @@ void http_lib_cleanup(void) {
   http_mimetype_clear();
 #define HTTPLIB_RESET(x)                                                       \
   fiobj_free(x);                                                               \
-  x = NULL;
+  x = FIOBJ_INVALID;
   HTTPLIB_RESET(HTTP_HEADER_ACCEPT_RANGES);
   HTTPLIB_RESET(HTTP_HEADER_CACHE_CONTROL);
   HTTPLIB_RESET(HTTP_HEADER_CONNECTION);
@@ -122,29 +122,29 @@ void http_lib_cleanup(void) {
 }
 
 void http_lib_init(void) {
-  HTTP_HEADER_ACCEPT_RANGES = fiobj_sym_new("accept-ranges", 13);
-  HTTP_HEADER_CACHE_CONTROL = fiobj_sym_new("cache-control", 13);
-  HTTP_HEADER_CONNECTION = fiobj_sym_new("connection", 10);
-  HTTP_HEADER_CONTENT_ENCODING = fiobj_sym_new("content-encoding", 16);
-  HTTP_HEADER_CONTENT_LENGTH = fiobj_sym_new("content-length", 14);
-  HTTP_HEADER_CONTENT_RANGE = fiobj_sym_new("content-range", 13);
-  HTTP_HEADER_CONTENT_TYPE = fiobj_sym_new("content-type", 12);
-  HTTP_HEADER_COOKIE = fiobj_sym_new("cookie", 6);
-  HTTP_HEADER_DATE = fiobj_sym_new("date", 4);
-  HTTP_HEADER_ETAG = fiobj_sym_new("etag", 4);
-  HTTP_HEADER_LAST_MODIFIED = fiobj_sym_new("last-modified", 13);
-  HTTP_HEADER_SET_COOKIE = fiobj_sym_new("set-cookie", 10);
-  HTTP_HEADER_UPGRADE = fiobj_sym_new("upgrade", 7);
-  HTTP_HEADER_WS_SEC_KEY = fiobj_sym_new("sec-websocket-accept", 20);
-  HTTP_HVALUE_BYTES = fiobj_sym_new("bytes", 5);
-  HTTP_HVALUE_CLOSE = fiobj_sym_new("close", 5);
-  HTTP_HVALUE_GZIP = fiobj_sym_new("gzip", 4);
-  HTTP_HVALUE_KEEP_ALIVE = fiobj_sym_new("keep-alive", 10);
-  HTTP_HVALUE_MAX_AGE = fiobj_sym_new("max-age=3600", 12);
-  HTTP_HVALUE_WEBSOCKET = fiobj_sym_new("websocket", 9);
-  HTTP_HVALUE_WS_SEC_VERSION = fiobj_sym_new("sec-websocket-version", 21);
-  HTTP_HVALUE_WS_UPGRADE = fiobj_sym_new("Upgrade", 7);
-  HTTP_HVALUE_WS_VERSION = fiobj_sym_new("13", 2);
+  HTTP_HEADER_ACCEPT_RANGES = fiobj_str_new("accept-ranges", 13);
+  HTTP_HEADER_CACHE_CONTROL = fiobj_str_new("cache-control", 13);
+  HTTP_HEADER_CONNECTION = fiobj_str_new("connection", 10);
+  HTTP_HEADER_CONTENT_ENCODING = fiobj_str_new("content-encoding", 16);
+  HTTP_HEADER_CONTENT_LENGTH = fiobj_str_new("content-length", 14);
+  HTTP_HEADER_CONTENT_RANGE = fiobj_str_new("content-range", 13);
+  HTTP_HEADER_CONTENT_TYPE = fiobj_str_new("content-type", 12);
+  HTTP_HEADER_COOKIE = fiobj_str_new("cookie", 6);
+  HTTP_HEADER_DATE = fiobj_str_new("date", 4);
+  HTTP_HEADER_ETAG = fiobj_str_new("etag", 4);
+  HTTP_HEADER_LAST_MODIFIED = fiobj_str_new("last-modified", 13);
+  HTTP_HEADER_SET_COOKIE = fiobj_str_new("set-cookie", 10);
+  HTTP_HEADER_UPGRADE = fiobj_str_new("upgrade", 7);
+  HTTP_HEADER_WS_SEC_KEY = fiobj_str_new("sec-websocket-accept", 20);
+  HTTP_HVALUE_BYTES = fiobj_str_new("bytes", 5);
+  HTTP_HVALUE_CLOSE = fiobj_str_new("close", 5);
+  HTTP_HVALUE_GZIP = fiobj_str_new("gzip", 4);
+  HTTP_HVALUE_KEEP_ALIVE = fiobj_str_new("keep-alive", 10);
+  HTTP_HVALUE_MAX_AGE = fiobj_str_new("max-age=3600", 12);
+  HTTP_HVALUE_WEBSOCKET = fiobj_str_new("websocket", 9);
+  HTTP_HVALUE_WS_SEC_VERSION = fiobj_str_new("sec-websocket-version", 21);
+  HTTP_HVALUE_WS_UPGRADE = fiobj_str_new("Upgrade", 7);
+  HTTP_HVALUE_WS_VERSION = fiobj_str_new("13", 2);
 
 #define REGISTER_MIME(ext, type)                                               \
   http_mimetype_register(ext, sizeof(ext) - 1,                                 \

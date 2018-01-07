@@ -1,19 +1,15 @@
 /*
-Copyright: Boaz Segev, 2017
+Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 
 /**
 This facil.io core library provides wrappers around complex and (or) dynamic
 types, abstracting some complexity and making dynamic type related tasks easier.
-
-
-The library offers a rudementry protection against cyclic references using the
-`FIOBJ_NESTING_PROTECTION` flag (i.e., nesting an Array within itself)...
-however, this isn't fully tested and the performance price is high.
 */
-#include "fiobj_internal.h"
-#include "fiobj_primitives.h"
+#include "fiobject.h"
+
+#include "fio_ary.h"
 
 #include <stdarg.h>
 #include <stdint.h>
@@ -21,230 +17,33 @@ however, this isn't fully tested and the performance price is high.
 #include <stdlib.h>
 
 /* *****************************************************************************
-Cyclic Protection helpers & API
+the `fiobj_each2` function
 ***************************************************************************** */
+struct task_packet_s {
+  int (*task)(FIOBJ obj, void *arg);
+  void *arg;
+  fio_ary_s *stack;
+  FIOBJ next;
+  uintptr_t *counter;
+  uint8_t stop;
+  uint8_t incomplete;
+};
 
-static __thread FIOBJ fiobj_cyclic_protection = NULL;
-FIOBJ fiobj_each_get_cyclic(void) { return fiobj_cyclic_protection; }
-
-static inline FIOBJ protected_pop_obj(fio_ls_s *queue, fio_ls_s *history) {
-#if FIOBJ_NESTING_PROTECTION
-  fiobj_cyclic_protection = NULL;
-
-  FIOBJ obj = fio_ls_pop(queue);
-  if (!obj)
-    return NULL;
-  FIOBJ child = OBJVTBL(obj)->unwrap(obj);
-  if (!child)
-    return obj;
-  if (OBJVTBL(child)->count(child) == 0)
-    return obj;
-  fio_ls_s *pos = history->next;
-  while (pos != history) {
-    if (child == pos->obj) {
-      fiobj_cyclic_protection = obj;
-      return NULL;
-    }
-    pos = pos->next;
+static int fiobj_task_wrapper(FIOBJ o, void *p_) {
+  struct task_packet_s *p = p_;
+  ++*p->counter;
+  int ret = p->task(o, p->arg);
+  if (ret == -1) {
+    p->stop = 1;
+    return -1;
   }
-  return obj;
-#else
-  return fio_ls_pop(queue);
-  (void)history;
-#endif
-}
-
-static inline void protected_push_obj(const FIOBJ obj, fio_ls_s *history) {
-#if FIOBJ_NESTING_PROTECTION
-  fio_ls_push(history, OBJVTBL(obj)->unwrap(obj));
-#else
-  (void)obj;
-  (void)history;
-#endif
-}
-
-/* *****************************************************************************
-Generic Object API
-***************************************************************************** */
-
-/** Returns a C string naming the objects dynamic type. */
-const char *fiobj_type_name(const FIOBJ obj) { return OBJVTBL(obj)->name; }
-
-/**
- * Copy by reference(!) - increases an object's (and any nested object's)
- * reference count.
- *
- * Always returns the value passed along.
- *
- * Future implementations might provide `fiobj_dup2` providing a deep copy.
- *
- * We don't need this feature just yet, so I'm not working on it.
- */
-FIOBJ fiobj_dup(FIOBJ obj) {
-  if (obj)
-    OBJREF_ADD(obj);
-  return obj;
-}
-
-static int fiobj_free_or_mark(FIOBJ o, void *arg) {
-  if (!o)
-    return 0;
-#if FIOBJ_NESTING_PROTECTION
-  if (OBJ2HEAD(o)->ref == 0) /* maybe a nested returning... */
-    return 0;
-#elif DEBUG
-  if (OBJ2HEAD(o)->ref == 0) {
-    fprintf(stderr,
-            "ERROR: attempting to free an object that isn't a fiobj or already "
-            "freed (%p)\n",
-            (void *)o);
-    kill(0, SIGABRT);
+  if (FIOBJ_IS_ALLOCATED(o) && FIOBJECT2VTBL(o)->each) {
+    p->incomplete = 1;
+    p->next = o;
+    return -1;
   }
-#endif
-
-  if (OBJREF_REM(o))
-    return 0;
-
-  /* reference count is zero: free memory or add to queue */
-
-  /* test for wrapped object (i.e., Hash Couplet) */
-  FIOBJ child = OBJVTBL(o)->unwrap(o);
-
-  if (child != o) {
-    if (!child || OBJREF_REM(child)) {
-      OBJVTBL(o)->free(o);
-      return 0;
-    }
-    OBJVTBL(o)->free(o);
-    o = child;
-  }
-
-  if (OBJVTBL(o)->count(o)) {
-    fio_ls_push(arg, o);
-  } else
-    OBJVTBL(o)->free(o);
-
-  /* handle nesting / wrapping (i.e., Array, Hash, Couplets ) */
   return 0;
 }
-
-/**
- * Decreases an object's reference count, releasing memory and
- * resources.
- *
- * This function affects nested objects, meaning that when an Array or
- * a Hash object is passed along, it's children (nested objects) are
- * also freed.
- */
-uintptr_t fiobj_free(FIOBJ o) {
-#if DEBUG
-  if (!o)
-    return 0;
-  if (OBJ2HEAD(o)->ref == 0) {
-    fprintf(stderr,
-            "ERROR: attempting to free an object that isn't a fiobj or already "
-            "freed (%p)\n",
-            (void *)o);
-    kill(0, SIGABRT);
-  }
-#endif
-  if (!o)
-    return 0;
-  {
-
-    uintptr_t left = OBJREF_REM(o);
-    if (left)
-      return left;
-  }
-  /* handle wrapping */
-  {
-    FIOBJ child = OBJVTBL(o)->unwrap(o);
-    if (child != o) {
-      OBJVTBL(o)->free(o);
-      if (OBJREF_REM(child))
-        return 0;
-      o = child;
-    }
-  }
-  if (OBJVTBL(o)->count(o) == 0) {
-    OBJVTBL(o)->free(o);
-    return 0;
-  }
-  /* nested free */
-  fio_ls_s queue = FIO_LS_INIT(queue);
-  fio_ls_s history = FIO_LS_INIT(history);
-  while (o) {
-    /* the queue always contains valid enumerable objects that are unwrapped. */
-    OBJVTBL(o)->each1(o, 0, fiobj_free_or_mark, &queue);
-    fio_ls_push(&history, o);
-    o = protected_pop_obj(&queue, &history);
-  }
-  /* clean up and free enumerables */
-  while ((o = fio_ls_pop(&history)))
-    OBJVTBL(o)->free(o);
-  return 0;
-}
-
-/**
- * Attempts to return the object's current reference count.
- *
- * This is mostly for testing rather than normal library operations.
- */
-uintptr_t fiobj_reference_count(const FIOBJ o) { return OBJ2HEAD(o)->ref; }
-
-/**
- * Tests if an object evaluates as TRUE.
- *
- * This is object type specific. For example, empty strings might evaluate as
- * FALSE, even though they aren't a boolean type.
- */
-int fiobj_is_true(const FIOBJ o) { return (o && OBJVTBL(o)->is_true(o)); }
-
-/**
- * Returns an Object's numerical value.
- *
- * If a String or Symbol are passed to the function, they will be
- * parsed assuming base 10 numerical data.
- *
- * Hashes and Arrays return their object count.
- *
- * IO and File objects return their underlying file descriptor.
- *
- * A type error results in 0.
- */
-int64_t fiobj_obj2num(const FIOBJ o) { return o ? OBJVTBL(o)->to_i(o) : 0; }
-
-/**
- * Returns a Float's value.
- *
- * If a String or Symbol are passed to the function, they will be
- * parsed assuming base 10 numerical data.
- *
- * Hashes and Arrays return their object count.
- *
- * IO and File objects return their underlying file descriptor.
- *
- * A type error results in 0.
- */
-double fiobj_obj2float(const FIOBJ o) { return o ? OBJVTBL(o)->to_f(o) : 0; }
-
-/**
- * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
- *
- * The Sting in binary safe and might contain NUL bytes in the middle as well as
- * a terminating NUL.
- *
- * If a Symbol, a Number or a Float are passed to the function, they
- * will be parsed as a *temporary*, thread-safe, String.
- *
- * Numbers will be represented in base 10 numerical data.
- *
- * A type error results in NULL (i.e. object isn't a String).
- */
-fio_cstr_s fiobj_obj2cstr(const FIOBJ o) {
-  return o ? OBJVTBL(o)->to_str(o) : fiobj_noop_str(NULL);
-}
-
 /**
  * Single layer iteration using a callback for each nested fio object.
  *
@@ -255,342 +54,199 @@ fio_cstr_s fiobj_obj2cstr(const FIOBJ o) {
  * The callback task function must accept an object and an opaque user pointer.
  *
  * Hash objects pass along a `FIOBJ_T_COUPLET` object, containing
- * references for both the key (Symbol) and the object (any object).
+ * references for both the key and the object. Keys shouldn't be altered once
+ * placed as a key (or the Hash will break). Collections (Arrays / Hashes) can't
+ * be used as keeys.
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  *
  * Returns the "stop" position, i.e., the number of items processed + the
  * starting point.
  */
-size_t fiobj_each1(FIOBJ o, size_t start_at, int (*task)(FIOBJ obj, void *arg),
-                   void *arg) {
-  return o ? OBJVTBL(o)->each1(o, start_at, task, arg) : 0;
+size_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ obj, void *arg), void *arg) {
+  if (!o || !FIOBJ_IS_ALLOCATED(o) || (FIOBJECT2VTBL(o)->each == NULL)) {
+    task(o, arg);
+    return 1;
+  }
+  /* run task for root object */
+  if (task(o, arg) == -1)
+    return 1;
+  uintptr_t pos = 0;
+  fio_ary_s stack = {0};
+  size_t count = 1;
+  struct task_packet_s packet = {
+      .task = task, .arg = arg, .stack = &stack, .counter = &count,
+  };
+  fio_ary_new(&stack, 0);
+  fio_ary_push(&stack, (void *)pos);
+  fio_ary_push(&stack, (void *)o);
+  do {
+    o = (FIOBJ)fio_ary_pop(&stack);
+    pos = (uintptr_t)fio_ary_pop(&stack);
+    if (!pos)
+      packet.next = 0;
+    packet.incomplete = 0;
+    pos = FIOBJECT2VTBL(o)->each(o, pos, fiobj_task_wrapper, &packet);
+    if (packet.stop)
+      goto finish;
+    if (packet.incomplete) {
+      fio_ary_push(&stack, (void *)pos);
+      fio_ary_push(&stack, (void *)o);
+    }
+
+    if (packet.next) {
+      fio_ary_push(&stack, (void *)0);
+      fio_ary_push(&stack, (void *)packet.next);
+    }
+
+  } while (fio_ary_count(&stack));
+finish:
+  fio_ary_free(&stack);
+  return count;
 }
 
 /* *****************************************************************************
-Nested concern (each2, is_eq)
+Free complex objects (objects with nesting)
 ***************************************************************************** */
 
-static int each2_add_to_queue(FIOBJ obj, void *arg) {
-  fio_ls_s *const queue = arg;
-  fio_ls_unshift(queue, obj);
+static void fiobj_dealloc_task(FIOBJ o, void *stack_) {
+  // if (!o)
+  //   fprintf(stderr, "* WARN: freeing a NULL no-object\n");
+  // else
+  //   fprintf(stderr, "* freeing object %s\n", fiobj_obj2cstr(o).data);
+  if (!o || !FIOBJ_IS_ALLOCATED(o))
+    return;
+  if (OBJREF_REM(o))
+    return;
+  if (!FIOBJECT2VTBL(o)->each) {
+    FIOBJECT2VTBL(o)->dealloc(o, NULL, NULL);
+    return;
+  }
+  fio_ary_s *s = stack_;
+  fio_ary_push(s, (void *)o);
+}
+/**
+ * Decreases an object's reference count, releasing memory and
+ * resources.
+ *
+ * This function affects nested objects, meaning that when an Array or
+ * a Hash object is passed along, it's children (nested objects) are
+ * also freed.
+ */
+void fiobj_free_complex_object(FIOBJ o) {
+  fio_ary_s stack = {0};
+  fio_ary_new(&stack, 0);
+  fio_ary_push(&stack, (void *)o);
+  do {
+    o = (FIOBJ)fio_ary_pop(&stack);
+    FIOBJECT2VTBL(o)->dealloc(o, fiobj_dealloc_task, &stack);
+  } while (fio_ary_count(&stack));
+  fio_ary_free(&stack);
+}
+
+/* *****************************************************************************
+Defaults / NOOPs
+***************************************************************************** */
+
+void fiobject___noop_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
+  (void)o;
+  (void)task;
+  (void)arg;
+}
+void fiobject___simple_dealloc(FIOBJ o, void (*task)(FIOBJ, void *),
+                               void *arg) {
+  free(FIOBJ2PTR(o));
+  (void)task;
+  (void)arg;
+}
+
+uintptr_t fiobject___noop_count(FIOBJ o) {
+  (void)o;
+  return 0;
+}
+size_t fiobject___noop_is_eq(FIOBJ o1, FIOBJ o2) {
+  (void)o1;
+  (void)o2;
   return 0;
 }
 
-/**
- * Deep iteration using a callback for each fio object, including the parent.
- *
- *
- * Notice that when passing collections to the function, the collection itself
- * is sent to the callback followed by it's children (if any). This is true also
- * for nested collections (a nested Hash will be sent first, followed by the
- * nested Hash's children and then followed by the rest of it's siblings.
- *
- * If the callback returns -1, the loop is broken. Any other value is ignored.
- */
-void fiobj_each2(FIOBJ obj, int (*task)(FIOBJ obj, void *arg), void *arg) {
-  if (!obj)
-    goto single;
-  size_t count = OBJVTBL(obj)->count(obj);
-  if (!count)
-    goto single;
-
-  fio_ls_s queue = FIO_LS_INIT(queue), history = FIO_LS_INIT(history);
-  while (obj || queue.next != &queue) {
-    int i = task(obj, arg);
-    if (i == -1)
-      goto finish;
-    if (obj && OBJVTBL(obj)->count(obj)) {
-      protected_push_obj(obj, &history);
-      OBJVTBL(obj)->each1(obj, 0, each2_add_to_queue, queue.next);
-    }
-    obj = protected_pop_obj(&queue, &history);
-  }
-finish:
-  while (fio_ls_pop(&history))
-    ;
-  while (fio_ls_pop(&queue))
-    ;
-  return;
-single:
-  task(obj, arg);
-  return;
+fio_cstr_s fiobject___noop_to_str(FIOBJ o) {
+  (void)o;
+  return (fio_cstr_s){.len = 0, .data = NULL};
+}
+intptr_t fiobject___noop_to_i(FIOBJ o) {
+  (void)o;
+  return 0;
+}
+double fiobject___noop_to_f(FIOBJ o) {
+  (void)o;
+  return 0;
 }
 
-/**
- * Deeply compare two objects. No hashing is involved.
- *
- * KNOWN ISSUES:
- *
- * * Cyclic nesting might cause this function to hang (much like `fiobj_each2`).
- *
- * * `FIOBJ_NESTING_PROTECTION` might be ignored when testing nested objects.
- *
- * * Hash order might be ignored when comapring Hashes, which means that equal
- *   Hases might behave differently during iteration.
- *
- */
-int fiobj_iseq(const FIOBJ self, const FIOBJ other) {
-  if (self == other)
-    return 1;
-  if (!self)
-    return FIOBJ_TYPE(other) == FIOBJ_T_NULL;
-  if (!other)
-    return FIOBJ_TYPE(self) == FIOBJ_T_NULL;
+#if DEBUG
 
-  if (!OBJVTBL(self)->is_eq(self, other))
-    return 0;
-  if (!OBJVTBL(self)->count(self))
-    return 1;
+#include "fiobj_ary.h"
+#include "fiobj_hash.h"
+#include "fiobj_numbers.h"
 
-  uint8_t eq = 0;
-  fio_ls_s self_queue = FIO_LS_INIT(self_queue);
-  fio_ls_s self_history = FIO_LS_INIT(self_history);
-  fio_ls_s other_queue = FIO_LS_INIT(other_queue);
-  fio_ls_s other_history = FIO_LS_INIT(other_history);
-
-  FIOBJ tmp = (FIOBJ)self;
-  FIOBJ otmp = (FIOBJ)other;
-  while (tmp) {
-    protected_push_obj(tmp, &self_history);
-    protected_push_obj(otmp, &other_history);
-    OBJVTBL(tmp)->each1((FIOBJ)tmp, 0, each2_add_to_queue, self_queue.next);
-    OBJVTBL(otmp)->each1((FIOBJ)otmp, 0, each2_add_to_queue, other_queue.next);
-    while (self_queue.next != &self_queue || tmp) {
-      tmp = protected_pop_obj(&self_queue, &self_history);
-      otmp = protected_pop_obj(&other_queue, &other_history);
-      if (tmp == otmp)
-        continue;
-      if (!tmp && FIOBJ_TYPE(otmp) != FIOBJ_T_NULL)
-        goto finish;
-      if (!otmp && FIOBJ_TYPE(tmp) != FIOBJ_T_NULL)
-        goto finish;
-      if (OBJVTBL(tmp)->count(tmp))
-        break;
-      if (!OBJVTBL(tmp)->is_eq(tmp, otmp))
-        goto finish;
-    }
-    if (tmp && !OBJVTBL(tmp)->is_eq(tmp, otmp))
-      goto finish;
-  }
-  eq = 1;
-
-finish:
-  while (fio_ls_pop(&self_history))
-    ;
-  while (fio_ls_pop(&self_queue))
-    ;
-  while (fio_ls_pop(&other_history))
-    ;
-  while (fio_ls_pop(&other_queue))
-    ;
-  return eq;
+static int fiobject_test_task(FIOBJ o, void *arg) {
+  ++((uintptr_t *)arg)[0];
+  if (!o)
+    fprintf(stderr, "* WARN: counting a NULL no-object\n");
+  // else
+  //   fprintf(stderr, "* counting object %s\n", fiobj_obj2cstr(o).data);
+  return 0;
+  (void)o;
 }
 
-/* *****************************************************************************
-Number and Float Helpers
-***************************************************************************** */
-static const char hex_notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
-                                    '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-
-/**
- * A helper function that converts between String data to a signed int64_t.
- *
- * Numbers are assumed to be in base 10. `0x##` (or `x##`) and `0b##` (or
- * `b##`) are recognized as base 16 and base 2 (binary MSB first)
- * respectively.
- */
-int64_t fio_atol(char **pstr) {
-  char *str = *pstr;
-  uint64_t result = 0;
-  uint8_t invert = 0;
-  while (str[0] == '-') {
-    invert ^= 1;
-    str++;
+void fiobj_test_core(void) {
+#define TEST_ASSERT(cond, ...)                                                 \
+  if (!(cond)) {                                                               \
+    fprintf(stderr, __VA_ARGS__);                                              \
+    fprintf(stderr, "Testing failed.\n");                                      \
+    exit(-1);                                                                  \
   }
-  if (str[0] == 'B' || str[0] == 'b' ||
-      (str[0] == '0' && (str[1] == 'b' || str[1] == 'B'))) {
-    /* base 2 */
-    if (str[0] == '0')
-      str++;
-    str++;
-    while (str[0] == '0' || str[0] == '1') {
-      result = (result << 1) | (str[0] == '1');
-      str++;
-    }
-  } else if (str[0] == 'x' || str[0] == 'X' ||
-             (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
-    /* base 16 */
-    uint8_t tmp;
-    if (str[0] == '0')
-      str++;
-    str++;
-    while (1) {
-      if (str[0] >= '0' && str[0] <= '9')
-        tmp = str[0] - '0';
-      else if (str[0] >= 'A' && str[0] <= 'F')
-        tmp = str[0] - ('A' - 10);
-      else if (str[0] >= 'a' && str[0] <= 'f')
-        tmp = str[0] - ('a' - 10);
-      else
-        goto finish;
-      result = (result << 4) | tmp;
-      str++;
-    }
-  } else {
-    /* base 10 */
-    const char *end = str;
-    while (end[0] >= '0' && end[0] <= '9' && (uintptr_t)(end - str) < 22)
-      end++;
-    if ((uintptr_t)(end - str) > 21) /* too large for a number */
-      return 0;
-
-    while (str < end) {
-      result = (result * 10) + (str[0] - '0');
-      str++;
-    }
-  }
-finish:
-  if (invert)
-    result = 0 - result;
-  *pstr = str;
-  return (int64_t)result;
+  fprintf(stderr, "=== Testing Primitives\n");
+  FIOBJ o = fiobj_null();
+  TEST_ASSERT(o == (FIOBJ)FIOBJ_T_NULL, "fiobj_null isn't NULL!\n");
+  TEST_ASSERT(FIOBJ_TYPE(0) == FIOBJ_T_NULL, "NULL isn't NULL!\n");
+  TEST_ASSERT(FIOBJ_TYPE_IS(0, FIOBJ_T_NULL), "NULL isn't NULL! (2)\n");
+  TEST_ASSERT(!FIOBJ_IS_ALLOCATED(fiobj_null()),
+              "fiobj_null claims to be allocated!\n");
+  TEST_ASSERT(!FIOBJ_IS_ALLOCATED(fiobj_true()),
+              "fiobj_true claims to be allocated!\n");
+  TEST_ASSERT(!FIOBJ_IS_ALLOCATED(fiobj_false()),
+              "fiobj_false claims to be allocated!\n");
+  TEST_ASSERT(FIOBJ_TYPE(fiobj_true()) == FIOBJ_T_TRUE,
+              "fiobj_true isn't FIOBJ_T_TRUE!\n");
+  TEST_ASSERT(FIOBJ_TYPE_IS(fiobj_true(), FIOBJ_T_TRUE),
+              "fiobj_true isn't FIOBJ_T_TRUE! (2)\n");
+  TEST_ASSERT(FIOBJ_TYPE(fiobj_false()) == FIOBJ_T_FALSE,
+              "fiobj_false isn't FIOBJ_T_TRUE!\n");
+  TEST_ASSERT(FIOBJ_TYPE_IS(fiobj_false(), FIOBJ_T_FALSE),
+              "fiobj_false isn't FIOBJ_T_TRUE! (2)\n");
+  fiobj_free(o); /* testing for crash*/
+  o = fiobj_ary_new2(4);
+  FIOBJ tmp = fiobj_ary_new();
+  fiobj_ary_push(o, tmp);
+  fiobj_ary_push(o, fiobj_true());
+  fiobj_ary_push(o, fiobj_null());
+  fiobj_ary_push(o, fiobj_num_new(10));
+  fiobj_ary_push(tmp, fiobj_num_new(13));
+  fiobj_ary_push(tmp, fiobj_hash_new());
+  FIOBJ key = fiobj_str_new("my key", 6);
+  fiobj_hash_set(fiobj_ary_entry(tmp, -1), key, fiobj_true());
+  fiobj_free(key);
+  /* we have root array + 4 children (w/ array) + 2 children (w/ hash) + 1 */
+  uintptr_t count = 0;
+  size_t each_ret = 0;
+  TEST_ASSERT(fiobj_each2(o, fiobject_test_task, (void *)&count) == 8,
+              "fiobj_each1 didn't count everything... (%d != %d)", (int)count,
+              (int)each_ret);
+  TEST_ASSERT(count == 8, "Something went wrong with the counter task... (%d)",
+              (int)count)
+  fiobj_free(o);
+  fprintf(stderr, "* passed.\n");
 }
 
-/** A helper function that convers between String data to a signed double. */
-double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
-
-/* *****************************************************************************
-String Helpers
-***************************************************************************** */
-
-/**
- * A helper function that convers between a signed int64_t to a string.
- *
- * No overflow guard is provided, make sure there's at least 66 bytes
- * available (for base 2).
- *
- * Supports base 2, base 10 and base 16. An unsupported base will silently
- * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
- * beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL
- * terminator).
- */
-size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
-  if (!num) {
-    *(dest++) = '0';
-    *(dest++) = 0;
-    return 1;
-  }
-
-  size_t len = 0;
-
-  if (base == 2) {
-    uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
-    uint8_t i = 0;    /* counting bits */
-
-    while ((i < 64) && (n & 0x8000000000000000) == 0) {
-      n = n << 1;
-      i++;
-    }
-    /* make sure the Binary representation doesn't appear signed. */
-    if (i) {
-      dest[len++] = '0';
-    }
-    /* write to dest. */
-    while (i < 64) {
-      dest[len++] = ((n & 0x8000000000000000) ? '1' : '0');
-      n = n << 1;
-      i++;
-    }
-    dest[len] = 0;
-    return len;
-
-  } else if (base == 16) {
-    uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
-    uint8_t i = 0;    /* counting bytes */
-    uint8_t tmp = 0;
-    while (i < 8 && (n & 0xFF00000000000000) == 0) {
-      n = n << 8;
-      i++;
-    }
-    /* make sure the Hex representation doesn't appear signed. */
-    if (i && (n & 0x8000000000000000)) {
-      dest[len++] = '0';
-      dest[len++] = '0';
-    }
-    /* write the damn thing */
-    while (i < 8) {
-      tmp = (n & 0xF000000000000000) >> 60;
-      dest[len++] = hex_notation[tmp];
-      tmp = (n & 0x0F00000000000000) >> 56;
-      dest[len++] = hex_notation[tmp];
-      i++;
-      n = n << 8;
-    }
-    dest[len] = 0;
-    return len;
-  }
-
-  /* fallback to base 10 */
-  uint64_t rem = 0;
-  uint64_t factor = 1;
-  if (num < 0) {
-    dest[len++] = '-';
-    num = 0 - num;
-  }
-
-  while (num / factor)
-    factor *= 10;
-
-  while (factor > 1) {
-    factor = factor / 10;
-    rem = (rem * 10);
-    dest[len++] = '0' + ((num / factor) - rem);
-    rem += ((num / factor) - rem);
-  }
-  dest[len] = 0;
-  return len;
-}
-
-/**
- * A helper function that convers between a double to a string.
- *
- * No overflow guard is provided, make sure there's at least 130 bytes
- * available (for base 2).
- *
- * Supports base 2, base 10 and base 16. An unsupported base will silently
- * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
- * beginning of the string).
- *
- * Returns the number of bytes actually written (excluding the NUL
- * terminator).
- */
-size_t fio_ftoa(char *dest, double num, uint8_t base) {
-  if (base == 2 || base == 16) {
-    /* handle the binary / Hex representation the same as if it were an
-     * int64_t
-     */
-    int64_t *i = (void *)&num;
-    return fio_ltoa(dest, *i, base);
-  }
-
-  size_t written = sprintf(dest, "%g", num);
-  uint8_t need_zero = 1;
-  char *start = dest;
-  while (*start) {
-    if (*start == ',') // locale issues?
-      *start = '.';
-    if (*start == '.' || *start == 'e') {
-      need_zero = 0;
-      break;
-    }
-    start++;
-  }
-  if (need_zero) {
-    dest[written++] = '.';
-    dest[written++] = '0';
-  }
-  return written;
-}
+#endif

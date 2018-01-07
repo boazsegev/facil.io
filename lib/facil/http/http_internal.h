@@ -136,7 +136,7 @@ static inline void set_header_add(FIOBJ hash, FIOBJ name, FIOBJ value) {
     fiobj_free(old);
     return;
   }
-  if (old->type != FIOBJ_T_ARRAY) {
+  if (FIOBJ_TYPE_IS(old, FIOBJ_T_ARRAY)) {
     FIOBJ tmp = fiobj_ary_new();
     fiobj_ary_push(tmp, old);
     old = tmp;

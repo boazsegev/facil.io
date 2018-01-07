@@ -1,5 +1,5 @@
 /*
-Copyright: Boaz Segev, 2017
+Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 #if !defined(H_FIOBJ_IO_H) && (defined(__unix__) || defined(__APPLE__) ||      \
@@ -21,9 +21,6 @@ License: MIT
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/** The local IO abstraction type indentifier. */
-extern const uintptr_t FIOBJ_T_IO;
 
 /* *****************************************************************************
 Creating the IO object
@@ -138,7 +135,7 @@ intptr_t fiobj_io_puts(FIOBJ io, void *buffer, uintptr_t length);
 void fiobj_io_assert_dynamic(FIOBJ io);
 
 #if DEBUG
-void fiobj_io_test(char *filename);
+void fiobj_io_test(void);
 #endif
 
 #ifdef __cplusplus

@@ -13,6 +13,6 @@
  *
  * Currently implemented using SipHash.
  */
-uint64_t fiobj_sym_hash(const void *data, size_t len);
+uint64_t fio_siphash(const void *data, size_t len);
 
 #endif

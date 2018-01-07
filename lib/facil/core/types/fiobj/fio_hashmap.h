@@ -1,6 +1,6 @@
 #ifndef H_FIO_SIMPLE_HASH_H
 /*
-Copyright: Boaz Segev, 2017
+Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 
@@ -68,7 +68,7 @@ License: MIT
 
 #ifndef FIO_HASH_INITIAL_CAPACITY
 /* MUST be a power of 2 */
-#define FIO_HASH_INITIAL_CAPACITY 16
+#define FIO_HASH_INITIAL_CAPACITY 8
 #endif
 
 #ifndef FIO_HASH_MAX_MAP_SEEK

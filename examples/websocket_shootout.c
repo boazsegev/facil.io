@@ -86,8 +86,8 @@ int main(int argc, char const *argv[]) {
   uint32_t workers = 0;
   uint8_t print_log = 0;
   // allocate global resources
-  CHANNEL_TEXT = fiobj_sym_new("CHANNEL_TEXT", 12);
-  CHANNEL_BINARY = fiobj_sym_new("CHANNEL_BINARY", 14);
+  CHANNEL_TEXT = fiobj_str_new("CHANNEL_TEXT", 12);
+  CHANNEL_BINARY = fiobj_str_new("CHANNEL_BINARY", 14);
 
   /*     ****  Command line arguments ****     */
   fio_cli_start(argc, argv,

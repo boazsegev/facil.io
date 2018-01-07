@@ -159,7 +159,7 @@ static void websocket_on_unwrapped(void *ws_p, void *msg, uint64_t len,
   }
   if (first) {
     ws->is_text = (uint8_t)text;
-    if (ws->msg == NULL)
+    if (ws->msg == FIOBJ_INVALID)
       ws->msg = fiobj_str_buf(len);
     fiobj_str_resize(ws->msg, 0);
   }

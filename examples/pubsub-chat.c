@@ -136,7 +136,7 @@ int main(int argc, char const *argv[]) {
   uint32_t threads = 1;
   uint32_t workers = 1;
   uint8_t print_log = 0;
-  CHAT_CHANNEL = fiobj_sym_new("chat", 4);
+  CHAT_CHANNEL = fiobj_str_new("chat", 4);
 
   /*     ****  Command line arguments ****     */
   fio_cli_start(

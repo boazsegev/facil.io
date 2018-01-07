@@ -14,6 +14,20 @@
 
    Anyway, I'm releasing 0.6.0 knowing it works better than the 0.5.8 version, but also knowing it wasn't battle tested just yet.
 
+**Changes!**: (`fiobj` / facil.io objects):
+
+- Major API changes.
+
+    The facil.io dynamic type library moved closer to facil.io's core, integrating itself into the HTTP request/response handling, the Pub/Sub engine, the Websocket internal buffer and practically every aspect of the library.
+
+    This required some simplification of the `fiobj` and making sure future changes would require less of a migration process.
+
+- The Symbol and Couplet types were removed, along with nesting protection support (which nobody seemed to use anyway).
+
+- We're back to static typing with `enum`, using macros and inline functions for type identification (better performance at the expense of making extendability somewhat harder).
+
+- Hashes are now 100% collision resistant and have improved memory locality, at the expense of using more memory and performing calling `memcmp` (this can be avoided when seeking / removing / deleting items, but not when overwriting items).
+
 **Changes!**: (`http`):
 
 - The HTTP API and engine was completely re-written (except the HTTP/1.1 parser), both to support future client mode (including chunked encoding for trailing headers) and to make routing and request parsing easier.

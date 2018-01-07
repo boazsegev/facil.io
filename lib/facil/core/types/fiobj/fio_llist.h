@@ -1,6 +1,6 @@
 #ifndef H_FIO_SIMPLE_LIST_H
 /*
-Copyright: Boaz Segev, 2017
+Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 

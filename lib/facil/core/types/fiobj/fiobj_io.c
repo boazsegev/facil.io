@@ -1,5 +1,5 @@
 /*
-Copyright: Boaz Segev, 2017
+Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__) ||           \
@@ -14,10 +14,12 @@ License: MIT
  * Writing is always performed at the end of the stream / memory buffer,
  * ignoring the current seek position.
  */
-#include "fiobj_internal.h"
-
 #include "fiobj_io.h"
+#include "fiobj_str.h"
 
+#include <assert.h>
+#include <errno.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -26,7 +28,7 @@ Numbers Type
 ***************************************************************************** */
 
 typedef struct {
-  struct fiobj_vtable_s *vtable;
+  fiobj_object_header_s head;
   uint8_t *buffer; /* reader buffer */
   union {
     void (*dealloc)(void *); /* buffer deallocation function */
@@ -43,8 +45,6 @@ typedef struct {
 /* *****************************************************************************
 Object required VTable and functions
 ***************************************************************************** */
-
-static struct fiobj_vtable_s FIOBJ_VTABLE_IO;
 
 #define REQUIRE_MEM(mem)                                                       \
   do {                                                                         \
@@ -88,14 +88,15 @@ retry:
 }
 
 static FIOBJ fiobj_io_alloc(void *buffer, int fd) {
-  FIOBJ o = fiobj_alloc(sizeof(fiobj_io_s));
-  REQUIRE_MEM(o);
-  obj2io(o)[0] =
-      (fiobj_io_s){.vtable = &FIOBJ_VTABLE_IO, .buffer = buffer, .fd = fd};
-  return o;
+  fiobj_io_s *io = malloc(sizeof(*io));
+  REQUIRE_MEM(io);
+  *io = (fiobj_io_s){
+      .head = {.ref = 1, .type = FIOBJ_T_IO}, .buffer = buffer, .fd = fd,
+  };
+  return (FIOBJ)io;
 }
 
-static void fiobj_io_dealloc(FIOBJ o) {
+static void fiobj_io_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
   if (obj2io(o)->fd != -1) {
     close(obj2io(o)->fd);
     free(obj2io(o)->buffer);
@@ -103,16 +104,20 @@ static void fiobj_io_dealloc(FIOBJ o) {
     if (obj2io(o)->dealloc && obj2io(o)->buffer)
       obj2io(o)->dealloc(obj2io(o)->buffer);
   }
-  fiobj_dealloc(o);
+  free((void *)o);
+  (void)task;
+  (void)arg;
 }
 
-static int64_t fiobj_io_i(const FIOBJ o) {
+static intptr_t fiobj_io_i(const FIOBJ o) {
   if (obj2io(o)->fd == -1) {
     return obj2io(o)->len;
   } else {
     return fiobj_io_get_fd_size(o);
   }
 }
+
+static size_t fiobj_io_is_true(const FIOBJ o) { return fiobj_io_i(o) > 0; }
 
 static fio_cstr_s fio_io2str(const FIOBJ o) {
   if (obj2io(o)->fd == -1) {
@@ -130,7 +135,7 @@ static fio_cstr_s fio_io2str(const FIOBJ o) {
   return (fio_cstr_s){.buffer = obj2io(o)->buffer, .len = i};
 }
 
-static int fiobj_io_is_eq(const FIOBJ self, const FIOBJ other) {
+static size_t fiobj_io_iseq(const FIOBJ self, const FIOBJ other) {
   int64_t len;
   return (self == other || (FIOBJ_TYPE(self) == FIOBJ_TYPE(other) &&
                             (len = fiobj_io_i(self)) == fiobj_io_i(other) &&
@@ -138,69 +143,71 @@ static int fiobj_io_is_eq(const FIOBJ self, const FIOBJ other) {
                                     fio_io2str(other).buffer, (size_t)len)));
 }
 
-static struct fiobj_vtable_s FIOBJ_VTABLE_IO = {
-    .name = "IO",
-    .free = fiobj_io_dealloc,
-    .to_i = fiobj_io_i,
-    .to_f = fiobj_noop_f,
-    .to_str = fio_io2str,
-    .is_true = fiobj_noop_true,
-    .is_eq = fiobj_io_is_eq,
-    .count = fiobj_noop_count,
-    .unwrap = fiobj_noop_unwrap,
-    .each1 = fiobj_noop_each1,
-};
+uintptr_t fiobject___noop_count(FIOBJ o);
+double fiobject___noop_to_f(FIOBJ o);
 
-/** The local IO abstraction type indentifier. */
-const uintptr_t FIOBJ_T_IO = (uintptr_t)&FIOBJ_VTABLE_IO;
+const fiobj_object_vtable_s FIOBJECT_VTABLE_IO = {
+    .class_name = "IO",
+    .dealloc = fiobj_io_dealloc,
+    .to_i = fiobj_io_i,
+    .to_str = fio_io2str,
+    .is_eq = fiobj_io_iseq,
+    .is_true = fiobj_io_is_true,
+    .to_f = fiobject___noop_to_f,
+    .count = fiobject___noop_count,
+};
 
 /* *****************************************************************************
 Seeking for characters in a string
 ***************************************************************************** */
 
-#if PREFER_MEMCHAR
+#if FIO_MEMCHAR
 
-/* a helper that seeks any char, converts it to NUL and returns 1 if found. */
-inline static uint8_t swallow_ch(uint8_t **pos, uint8_t *const limit,
-                                 uint8_t ch) {
-  /* This is library based alternative that is sometimes slower  */
-  if (*pos >= limit || **pos == ch) {
-    return 0;
-  }
-  uint8_t *tmp = memchr(*pos, ch, limit - (*pos));
-  if (tmp) {
-    *pos = tmp;
-    pos++;
+/**
+ * This seems to be faster on some systems, especially for smaller distances.
+ *
+ * On newer systems, `memchr` should be faster.
+ */
+static inline int swallow_ch(uint8_t **buffer, register uint8_t *const limit,
+                             const uint8_t c) {
+  if (**buffer == c)
     return 1;
-  }
-  *pos = limit;
-  return 0;
-}
 
+#if !defined(__x86_64__)
+  /* too short for this mess */
+  if ((uintptr_t)limit <= 16 + ((uintptr_t)*buffer & (~(uintptr_t)7)))
+    goto finish;
+
+  /* align memory */
+  {
+    const uint8_t *alignment =
+        (uint8_t *)(((uintptr_t)(*buffer) & (~(uintptr_t)7)) + 8);
+    if (limit >= alignment) {
+      while (*buffer < alignment) {
+        if (**buffer == c) {
+          (*buffer)++;
+          return 1;
+        }
+        *buffer += 1;
+      }
+    }
+  }
+  const uint8_t *limit64 = (uint8_t *)((uintptr_t)limit & (~(uintptr_t)7));
 #else
-
-/* a helper that seeks any char, converts it to NUL and returns 1 if found. */
-static inline uint8_t swallow_ch(uint8_t **buffer, const uint8_t *const limit,
-                                 const uint8_t c) {
-  /* this single char lookup is better when target is closer... */
-  if (**buffer == c) {
-    return 1;
-  }
-
-  uint64_t wanted = 0x0101010101010101ULL * c;
-  uint64_t *lpos = (uint64_t *)*buffer;
-  uint64_t *llimit = ((uint64_t *)limit) - 1;
-
-  for (; lpos < llimit; lpos++) {
-    const uint64_t eq = ~((*lpos) ^ wanted);
-    const uint64_t t0 = (eq & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
-    const uint64_t t1 = (eq & 0x8080808080808080llu);
+  const uint8_t *limit64 = (uint8_t *)limit - 7;
+#endif
+  uint64_t wanted1 = 0x0101010101010101ULL * c;
+  for (; *buffer < limit64; *buffer += 8) {
+    const uint64_t eq1 = ~((*((uint64_t *)*buffer)) ^ wanted1);
+    const uint64_t t0 = (eq1 & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
+    const uint64_t t1 = (eq1 & 0x8080808080808080llu);
     if ((t0 & t1)) {
       break;
     }
   }
-
-  *buffer = (uint8_t *)lpos;
+#if !defined(__x86_64__)
+finish:
+#endif
   while (*buffer < limit) {
     if (**buffer == c) {
       (*buffer)++;
@@ -208,6 +215,22 @@ static inline uint8_t swallow_ch(uint8_t **buffer, const uint8_t *const limit,
     }
     (*buffer)++;
   }
+
+  return 0;
+}
+#else
+
+static inline int swallow_ch(uint8_t **buffer, uint8_t *const limit,
+                             const uint8_t c) {
+  if (limit - *buffer == 0)
+    return 0;
+  void *tmp = memchr(*buffer, c, limit - (*buffer));
+  if (tmp) {
+    *buffer = tmp;
+    (*buffer)++;
+    return 1;
+  }
+  *buffer = (uint8_t *)limit;
   return 0;
 }
 
@@ -262,7 +285,7 @@ FIOBJ fiobj_io_newtmpfile(void) {
 #endif
   int fd = mkstemp(template);
   if (fd == -1)
-    return NULL;
+    return 0;
   return fiobj_io_newfd(fd);
 }
 
@@ -646,12 +669,11 @@ intptr_t fiobj_io_puts(FIOBJ io, void *buffer, uintptr_t length) {
 
 #if DEBUG
 
-#include "fiobj.h"
-
-void fiobj_io_test(char *filename) {
+void fiobj_io_test(void) {
+  char *filename = NULL;
   FIOBJ text;
   fio_cstr_s s1, s2;
-  fprintf(stderr, "*** testing fiobj_io ***\n");
+  fprintf(stderr, "=== testing fiobj_io\n");
   if (filename)
     text = fiobj_str_readfile(filename, 0, 0);
   else
@@ -720,6 +742,7 @@ void fiobj_io_test(char *filename) {
   fiobj_free(text);
   fiobj_free(strio);
   fiobj_free(fdio);
+  fprintf(stderr, "* passed.\n");
 }
 
 #endif
