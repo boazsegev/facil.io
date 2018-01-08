@@ -652,6 +652,8 @@ static void http_on_upgrade_fallback(http_s *h, char *p, size_t i) {
 static void http_on_response_fallback(http_s *h) { http_send_error(h, 400); }
 
 http_settings_s *http_settings_new(http_settings_s arg_settings) {
+  if (!arg_settings.on_request)
+    arg_settings.on_request = http_on_request_fallback;
   if (!arg_settings.on_response)
     arg_settings.on_response = http_on_response_fallback;
   if (!arg_settings.on_upgrade)
@@ -1260,6 +1262,8 @@ Lookup Tables / functions
 
 static fio_hash_s mime_types;
 
+void http_lib_init(void); /* if library not initialized */
+
 /** Registers a Mime-Type to be associated with the file extension. */
 void http_mimetype_register(char *file_ext, size_t file_ext_len,
                             FIOBJ mime_type_str) {
@@ -1275,8 +1279,9 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
  *  Remember to call `fiobj_free`.
  */
 FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
-  if (!mime_types.map)
-    return FIOBJ_INVALID;
+  if (!mime_types.map) {
+    http_lib_init();
+  }
   uintptr_t hash = fio_siphash(file_ext, file_ext_len);
   return fiobj_dup((FIOBJ)fio_hash_find(&mime_types, hash));
 }

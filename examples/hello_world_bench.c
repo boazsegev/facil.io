@@ -77,9 +77,12 @@ int main(int argc, char const *argv[]) {
   const uint32_t threads = fio_cli_get_int("t");
   const uint32_t workers = fio_cli_get_int("w");
   const char *public_folder = fio_cli_get_str("www");
-  fio_cli_end();
 
   /*     ****  logging  ****     */
+
+  if (public_folder) {
+    fprintf(stderr, "* Serving static files from: %s\n", public_folder);
+  }
 
   if (print_log) {
     /* log to the "benchmark.log" file, set to `if` to 0 to skip this*/
@@ -113,6 +116,7 @@ int main(int argc, char const *argv[]) {
     perror("Couldn't initiate Hello World service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 
+  fio_cli_end();
   fiobj_free(SERVER_HEADER);
   fiobj_free(SERVER_NAME);
   fiobj_free(TEXT_TYPE);

@@ -409,9 +409,8 @@ void fiobj_free_complex_object(FIOBJ o);
  * Always returns the value passed along.
  */
 FIO_INLINE FIOBJ fiobj_dup(FIOBJ o) {
-  if (o & FIOBJECT_NUMBER_FLAG)
-    return o;
-  if ((o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_PRIMITIVE_FLAG)
+  if (!o || (o & FIOBJECT_NUMBER_FLAG) ||
+      (o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_PRIMITIVE_FLAG)
     return o;
   OBJREF_ADD(o);
   return o;

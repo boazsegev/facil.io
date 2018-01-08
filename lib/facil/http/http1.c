@@ -48,12 +48,9 @@ static fio_cstr_s http1pr_status2str(uintptr_t status);
 /* cleanup an HTTP/1.1 handler object */
 static inline void http1_after_finish(http_s *h) {
   http_s_cleanup(h);
-  // /* dynamic? (i.e. streaming?) */
-  // if (http2protocol(h) &&
-  //     h != &http1_pr2handle((http1pr_s *)http2protocol(h))) {
-  // fprintf(stderr, "Freeding external http_s handle\n");
-  //   free(h);
-  // }
+  http1pr_s *p = (http1pr_s *)h->private_data.owner;
+  if (p->close)
+    sock_close(p->p.uuid);
 }
 
 /* *****************************************************************************
@@ -91,22 +88,22 @@ static FIOBJ headers2str(http_s *h) {
   if (!h->headers)
     return FIOBJ_INVALID;
 
-  static uintptr_t connection_key;
-  if (!connection_key)
-    connection_key = fio_siphash("connection", 10);
+  static uintptr_t connection_hash;
+  if (!connection_hash)
+    connection_hash = fio_siphash("connection", 10);
 
   struct header_writer_s w;
   w.dest = fiobj_str_buf(4096);
 
   fio_cstr_s t = http1pr_status2str(h->status);
   fiobj_str_write(w.dest, t.data, t.length);
-  FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, connection_key);
+  FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, connection_hash);
   if (tmp) {
     t = fiobj_obj2cstr(tmp);
     if (t.data[0] == 'c' || t.data[0] == 'C')
       ((http1pr_s *)h->private_data.owner)->close = 1;
   } else {
-    tmp = fiobj_hash_get2(h->headers, connection_key);
+    tmp = fiobj_hash_get2(h->headers, connection_hash);
     if (tmp) {
       t = fiobj_obj2cstr(tmp);
       if (!t.data || !t.len || t.data[0] == 'k' || t.data[0] == 'K')
@@ -117,7 +114,7 @@ static FIOBJ headers2str(http_s *h) {
       }
     } else {
       t = fiobj_obj2cstr(h->version);
-      if (t.data && t.data[5] == '1' && t.data[6] == '.')
+      if (t.data && t.data[5] == '1' && t.data[6] == '.' && t.data[7] == '1')
         fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
       else {
         fiobj_str_write(w.dest, "connection:close\r\n", 18);
@@ -139,8 +136,6 @@ static int http1_send_body(http_s *h, void *data, uintptr_t length) {
     return -1;
   fiobj_str_write(packet, data, length);
   fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
-  if (((http1pr_s *)h->private_data.owner)->close)
-    sock_close(((http1pr_s *)h->private_data.owner)->p.uuid);
   http1_after_finish(h);
   return 0;
 }
@@ -151,11 +146,27 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
   if (!packet) {
     return -1;
   }
+  if (length < HTTP1_READ_BUFFER) {
+    /* optimize away small files */
+    fio_cstr_s s = fiobj_obj2cstr(packet);
+    fiobj_str_capa_assert(packet, s.len + length);
+    s = fiobj_obj2cstr(packet);
+    intptr_t i = pread(fd, s.data + s.len, length, offset);
+    if (i < 0) {
+      close(fd);
+      fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
+      sock_close((((http_protocol_s *)h->private_data.owner)->uuid));
+      return -1;
+    }
+    close(fd);
+    fiobj_str_resize(packet, s.len + i);
+    fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
+    http1_after_finish(h);
+    return 0;
+  }
   fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
   sock_sendfile((((http_protocol_s *)h->private_data.owner)->uuid), fd, offset,
                 length);
-  if (((http1pr_s *)h->private_data.owner)->close)
-    sock_close(((http1pr_s *)h->private_data.owner)->p.uuid);
   http1_after_finish(h);
   return 0;
 }
@@ -165,9 +176,6 @@ static void htt1p_finish(http_s *h) {
   FIOBJ packet = headers2str(h);
   if (packet)
     fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
-  http1pr_s *p = (http1pr_s *)h->private_data.owner;
-  if (p->close)
-    sock_close(((http1pr_s *)h->private_data.owner)->p.uuid);
   http1_after_finish(h);
 }
 /** Push for data - unsupported. */

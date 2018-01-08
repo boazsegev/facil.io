@@ -461,8 +461,10 @@ though a `srv_stop` function or when a SIGINT/SIGTERM is received).
 int facil_listen(struct facil_listen_args settings) {
   if (!facil_data)
     facil_lib_init();
-  if (settings.on_open == NULL)
+  if (settings.on_open == NULL) {
+    errno = EINVAL;
     return -1;
+  }
   if (!settings.port || settings.port[0] == 0 ||
       (settings.port[0] == '0' && settings.port[1] == 0)) {
     settings.port = NULL;

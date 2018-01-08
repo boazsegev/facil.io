@@ -122,6 +122,8 @@ void http_lib_cleanup(void) {
 }
 
 void http_lib_init(void) {
+  if (HTTP_HEADER_ACCEPT_RANGES)
+    return;
   HTTP_HEADER_ACCEPT_RANGES = fiobj_str_new("accept-ranges", 13);
   HTTP_HEADER_CACHE_CONTROL = fiobj_str_new("cache-control", 13);
   HTTP_HEADER_CONNECTION = fiobj_str_new("connection", 10);

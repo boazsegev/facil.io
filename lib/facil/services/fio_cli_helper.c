@@ -62,7 +62,7 @@ static void fio_cli_init(void) {
   arg_type = fiobj_hash_new();
   help_str = fiobj_str_buf(1024);
   if (!info_str) /* might exist through `fio_cli_start` */
-    info_str = fiobj_str_static(DEFAULT_CLI_INFO, sizeof(DEFAULT_CLI_INFO) - 1);
+    info_str = fiobj_str_new(DEFAULT_CLI_INFO, sizeof(DEFAULT_CLI_INFO) - 1);
 }
 
 /* *****************************************************************************
@@ -222,7 +222,7 @@ static void fio_cli_parse(void) {
     if (start[len]) /* if there's data left, this aint a number. */
       goto error;
   set_arg:
-    fiobj_hash_set(parsed, arg_name, fiobj_str_static(start, len));
+    fiobj_hash_set(parsed, arg_name, fiobj_str_new(start, strlen(start)));
     continue;
   error:
     fprintf(stderr, "\n\t*** Argument Error: %s ***\n", start);
@@ -241,9 +241,9 @@ void fio_cli_start(int argc, const char **argv, const char *info) {
   if (info_str)
     fiobj_free(info_str);
   if (info) {
-    info_str = fiobj_str_static(info, 0);
+    info_str = fiobj_str_new(info, 0);
   } else {
-    info_str = fiobj_str_static(DEFAULT_CLI_INFO, sizeof(DEFAULT_CLI_INFO) - 1);
+    info_str = fiobj_str_new(DEFAULT_CLI_INFO, sizeof(DEFAULT_CLI_INFO) - 1);
   }
 }
 
@@ -379,7 +379,7 @@ void fio_cli_set_str(const char *opt, const char *value) {
                     "valid options\n");
     exit(-1);
   }
-  fiobj_hash_set(parsed, name, fiobj_str_static(value, strlen(value)));
+  fiobj_hash_set(parsed, name, fiobj_str_new(value, strlen(value)));
 }
 
 /**
