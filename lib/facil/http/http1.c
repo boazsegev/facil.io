@@ -25,13 +25,11 @@ typedef struct http1pr_s {
   http_protocol_s p;
   http1_parser_s parser;
   http_s request;
-  uint8_t restart;    /* placed here to force padding */
-  uint8_t close;      /* placed here to force padding */
-  uint8_t body_is_fd; /* placed here to force padding */
-  uintptr_t buf_pos;
   uintptr_t buf_len;
-  uint8_t *buf;
-  // fio_ary_s queue;
+  uintptr_t max_header_size;
+  uintptr_t header_size;
+  uint8_t close;
+  uint8_t buf[];
 } http1pr_s;
 
 /* *****************************************************************************
@@ -41,16 +39,7 @@ Internal Helpers
 #define parser2http(x)                                                         \
   ((http1pr_s *)((uintptr_t)(x) - (uintptr_t)(&((http1pr_s *)0)->parser)))
 
-inline static void h1_reset(http1pr_s *p) {
-  p->buf_len = p->buf_len - p->buf_pos;
-  if (p->buf_len) {
-    memmove((uint8_t *)(p + 1), p->buf + p->buf_pos, p->buf_len);
-  }
-  p->buf = (uint8_t *)(p + 1);
-  p->buf_pos = 0;
-  p->body_is_fd = 0;
-  p->restart = 0;
-}
+inline static void h1_reset(http1pr_s *p) { p->header_size = 0; }
 
 #define http1_pr2handle(pr) (((http1pr_s *)(pr))->request)
 
@@ -316,15 +305,15 @@ static int http1_on_request(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
   http_on_request_handler______internal(&http1_pr2handle(p), p->p.settings);
   http_s_cleanup(&http1_pr2handle(p));
-  p->restart = 1;
+  h1_reset(p);
   return 0;
 }
 /** called when a response was received. */
 static int http1_on_response(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
-  p->p.settings->on_request(&http1_pr2handle(p));
+  p->p.settings->on_response(&http1_pr2handle(p));
   http_s_cleanup(&http1_pr2handle(p));
-  p->restart = 1;
+  h1_reset(p);
   return 0;
 }
 /** called when a request method is parsed. */
@@ -333,6 +322,7 @@ static int http1_on_method(http1_parser_s *parser, char *method,
   http_s_init(&http1_pr2handle(parser2http(parser)), &parser2http(parser)->p);
   http1_pr2handle(parser2http(parser)).method =
       fiobj_str_new(method, method_len);
+  parser2http(parser)->header_size += method_len;
   return 0;
 }
 
@@ -343,18 +333,21 @@ static int http1_on_status(http1_parser_s *parser, size_t status,
   http1_pr2handle(parser2http(parser)).status_str =
       fiobj_str_new(status_str, len);
   http1_pr2handle(parser2http(parser)).status = status;
+  parser2http(parser)->header_size += len;
   return 0;
 }
 
 /** called when a request path (excluding query) is parsed. */
 static int http1_on_path(http1_parser_s *parser, char *path, size_t len) {
   http1_pr2handle(parser2http(parser)).path = fiobj_str_new(path, len);
+  parser2http(parser)->header_size += len;
   return 0;
 }
 
 /** called when a request path (excluding query) is parsed. */
 static int http1_on_query(http1_parser_s *parser, char *query, size_t len) {
   http1_pr2handle(parser2http(parser)).query = fiobj_str_new(query, len);
+  parser2http(parser)->header_size += len;
   return 0;
 }
 /** called when a the HTTP/1.x version is parsed. */
@@ -363,6 +356,7 @@ static int http1_on_http_version(http1_parser_s *parser, char *version,
   if (!http1_pr2handle(parser2http(parser)).headers)
     http_s_init(&http1_pr2handle(parser2http(parser)), &parser2http(parser)->p);
   http1_pr2handle(parser2http(parser)).version = fiobj_str_new(version, len);
+  parser2http(parser)->header_size += len;
   return 0;
 }
 /** called when a header is parsed. */
@@ -375,14 +369,20 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
             "ERROR: (http1 parse ordering error) missing HashMap for header "
             "%s: %s\n",
             name, data);
+    {
+      http_send_error2(500, parser2http(parser)->p.uuid,
+                       parser2http(parser)->p.settings);
+      return -1;
+    }
+  }
+  parser2http(parser)->header_size += name_len + data_len;
+  if (parser2http(parser)->header_size >=
+      parser2http(parser)->max_header_size) {
+    http_send_error(&http1_pr2handle(parser2http(parser)), 413);
     return -1;
   }
   sym = fiobj_str_new(name, name_len);
   obj = fiobj_str_new(data, data_len);
-  if ((uintptr_t)parser2http(parser)->buf !=
-      (uintptr_t)(parser2http(parser) + 1)) {
-    h1_reset(parser2http(parser));
-  }
   set_header_add(http1_pr2handle(parser2http(parser)).headers, sym, obj);
   fiobj_free(sym);
   return 0;
@@ -393,23 +393,19 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
   if (parser->state.content_length >
           (ssize_t)parser2http(parser)->p.settings->max_body_size ||
       parser->state.read >
-          (ssize_t)parser2http(parser)->p.settings->max_body_size)
+          (ssize_t)parser2http(parser)->p.settings->max_body_size) {
+    http_send_error(&http1_pr2handle(parser2http(parser)), 413);
     return -1; /* test every time, in case of chunked data */
+  }
   if (!parser->state.read) {
     if (parser->state.content_length > 0 &&
-        parser->state.content_length + parser2http(parser)->buf_pos <=
-            HTTP1_MAX_HEADER_SIZE) {
-      http1_pr2handle(parser2http(parser)).body =
-          fiobj_io_newstr2(data, data_len, NULL);
+        parser->state.content_length <= HTTP1_READ_BUFFER) {
+      http1_pr2handle(parser2http(parser)).body = fiobj_io_newstr();
     } else {
-      parser2http(parser)->body_is_fd = 1;
       http1_pr2handle(parser2http(parser)).body = fiobj_io_newtmpfile();
-      fiobj_io_write(http1_pr2handle(parser2http(parser)).body, data, data_len);
     }
-    return 0;
   }
-  if (parser2http(parser)->body_is_fd)
-    fiobj_io_write(http1_pr2handle(parser2http(parser)).body, data, data_len);
+  fiobj_io_write(http1_pr2handle(parser2http(parser)).body, data, data_len);
   return 0;
 }
 
@@ -430,28 +426,21 @@ Connection Callbacks
  * The string should be a global constant, only a pointer comparison will be
  * used (not `strcmp`).
  */
-static const char *http_sERVICE_STR = "http1_protocol_facil_io";
-
-static __thread uint8_t h1_static_buffer[HTTP1_MAX_HEADER_SIZE];
+static const char *HTTP1_SERVICE_STR = "http1_protocol_facil_io";
 
 /** called when a data is available, but will not run concurrently */
 static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
   http1pr_s *p = (http1pr_s *)protocol;
   ssize_t i;
-  if (p->body_is_fd) {
-    p->buf = h1_static_buffer;
-    p->buf_pos = 0;
-  }
   errno = 0;
-  i = sock_read(uuid, p->buf + p->buf_pos, HTTP1_MAX_HEADER_SIZE - p->buf_pos);
+  i = sock_read(uuid, p->buf + p->buf_len, HTTP1_READ_BUFFER - p->buf_len);
   if (i <= 0) {
     return;
   }
   p->buf_len += i;
   do {
-    i = http1_fio_parser(.parser = &p->parser, .buffer = p->buf + p->buf_pos,
-                         .length = (p->buf_len - p->buf_pos),
-                         .on_request = http1_on_request,
+    i = http1_fio_parser(.parser = &p->parser, .buffer = p->buf,
+                         .length = p->buf_len, .on_request = http1_on_request,
                          .on_response = http1_on_response,
                          .on_method = http1_on_method,
                          .on_status = http1_on_status, .on_path = http1_on_path,
@@ -460,11 +449,14 @@ static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
                          .on_header = http1_on_header,
                          .on_body_chunk = http1_on_body_chunk,
                          .on_error = http1_on_error);
-    p->buf_pos += i;
-    if (p->restart) {
-      h1_reset(p);
+    p->buf_len -= i;
+    if (i && p->buf_len) {
+      memmove(p->buf, p->buf + i, p->buf_len);
     }
-  } while (i && p->buf_len > p->buf_pos);
+    if (p->buf_len == HTTP1_READ_BUFFER) {
+      http_send_error2(413, uuid, p->p.settings);
+    }
+  } while (i);
   // facil_force_event(uuid, FIO_EVENT_ON_DATA);
 }
 /** called when the connection was closed, but will not run concurrently */
@@ -478,7 +470,7 @@ static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
   http1pr_s *p = (http1pr_s *)protocol;
   ssize_t i;
 
-  i = sock_read(uuid, p->buf + p->buf_pos, HTTP1_MAX_HEADER_SIZE - p->buf_pos);
+  i = sock_read(uuid, p->buf + p->buf_len, HTTP1_READ_BUFFER - p->buf_len);
 
   if (i <= 0)
     return;
@@ -494,9 +486,8 @@ static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
   }
   /* parse what we've got so far */
   do {
-    i = http1_fio_parser(.parser = &p->parser, .buffer = p->buf + p->buf_pos,
-                         .length = (p->buf_len - p->buf_pos),
-                         .on_request = http1_on_request,
+    i = http1_fio_parser(.parser = &p->parser, .buffer = p->buf,
+                         .length = p->buf_len, .on_request = http1_on_request,
                          .on_response = http1_on_response,
                          .on_method = http1_on_method,
                          .on_status = http1_on_status, .on_path = http1_on_path,
@@ -505,11 +496,14 @@ static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
                          .on_header = http1_on_header,
                          .on_body_chunk = http1_on_body_chunk,
                          .on_error = http1_on_error);
-    p->buf_pos += i;
-    if (p->restart) {
-      h1_reset(p);
+    p->buf_len -= i;
+    if (i && p->buf_len) {
+      memmove(p->buf, p->buf + i, p->buf_len);
     }
-  } while (i && p->buf_len > p->buf_pos);
+    if (p->buf_len == HTTP1_READ_BUFFER) {
+      http_send_error2(413, uuid, p->p.settings);
+    }
+  } while (i);
 }
 
 /* *****************************************************************************
@@ -521,22 +515,20 @@ Public API
  * (if any). */
 protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
                       void *unread_data, size_t unread_length) {
-  if (unread_data && unread_length > HTTP1_MAX_HEADER_SIZE)
+  if (unread_data && unread_length > HTTP1_READ_BUFFER)
     return NULL;
-  http1pr_s *p = malloc(sizeof(*p) + HTTP1_MAX_HEADER_SIZE);
-  *p = (http1pr_s){
-      .p.protocol =
-          {
-              .service = http_sERVICE_STR,
-              .on_data = http1_on_data_first_time,
-              .on_close = http1_on_close,
-          },
-      .p.uuid = uuid,
-      .p.settings = settings,
-      .p.vtable = &HTTP1_VTABLE,
-      .buf = (uint8_t *)(p + 1),
-  };
-  if (unread_data && unread_length <= HTTP1_MAX_HEADER_SIZE) {
+  http1pr_s *p = malloc(sizeof(*p) + HTTP1_READ_BUFFER);
+  *p = (http1pr_s){.p.protocol =
+                       {
+                           .service = HTTP1_SERVICE_STR,
+                           .on_data = http1_on_data_first_time,
+                           .on_close = http1_on_close,
+                       },
+                   .p.uuid = uuid,
+                   .p.settings = settings,
+                   .p.vtable = &HTTP1_VTABLE,
+                   .max_header_size = settings->max_header_size};
+  if (unread_data && unread_length <= HTTP1_READ_BUFFER) {
     memcpy(p->buf, unread_data, unread_length);
     p->buf_len = unread_length;
     facil_force_event(uuid, FIO_EVENT_ON_DATA);

@@ -7,16 +7,12 @@ License: MIT
 
 #include "http.h"
 
-#ifndef HTTP1_MAX_HEADER_SIZE
+#ifndef HTTP1_READ_BUFFER
 /**
-Sets the maximum allowed size of a requests header section
-(all cookies, headers and other data that isn't the request's "body").
-
-This value includes the request line itself.
-
-Defaults to ~16Kb headers per request.
-*/
-#define HTTP1_MAX_HEADER_SIZE (16 * 1024) /* ~16kb */
+ * The size of a single `read` command, it sets the limit for an HTTP/1.1
+ * header line.
+ */
+#define HTTP1_READ_BUFFER (8 * 1024) /* ~8kb */
 #endif
 
 /** Creates an HTTP1 protocol object and handles any unread data in the buffer
