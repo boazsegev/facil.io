@@ -20,8 +20,6 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 #include "pubsub.h"
 #include "websockets.h"
 
-// #include "redis_engine.h"
-
 #include <string.h>
 
 FIOBJ CHANNEL_TEXT;
@@ -120,7 +118,6 @@ int main(int argc, char const *argv[]) {
   print_log = fio_cli_get_int("v");
 
   /*     ****  actual code ****     */
-  // RedisEngine = redis_engine_create(.address = "localhost", .port = "6379");
   if (http_listen(port, NULL, .on_request = answer_http_request,
                   .on_upgrade = answer_http_upgrade, .log = print_log,
                   .public_folder = public_folder))
