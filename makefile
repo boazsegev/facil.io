@@ -127,43 +127,58 @@ FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 
 MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+# OBJS_DEPENDENCY:=$(foreach source, $(LIBSRC) $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .d, $(basename $(source)))))
+OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
 
 # the computed C flags
 CFLAGS= -g -std=c11 -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 CPPFLAGS= -std=c++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 LINKER_FLAGS=$(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
-
+CFALGS_DEPENDENCY=-MT $@ -MMD -MP
+# -MT $@ -MMD -MP
+# -MT $(patsubst %.o,%.d,$@) -MMD
 ########
 ## Main Tasks
 
 $(NAME): build
 
-build: $(LIB_OBJS) $(MAIN_OBJS)
+build: create_tree | build_objects
+
+build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 	@$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(DOCUMENTATION)
 
 lib: $(LIB_OBJS)
+	-@mkdir -p $(BUILDTREE)
 	@$(CCL) -shared -o $(OUT_ROOT)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(DOCUMENTATION)
 
-ifdef DISAMS
-$(TMP_ROOT)/%.o: %.c
-	@$(CC) -o $@ -c $^ $(CFLAGS)
-	@$(DISAMS) $@ > $@.s
 
-$(TMP_ROOT)/%.o: %.cpp
-	@$(CPP) -o $@ -c $^ $(CPPFLAGS)
+%.o : %.c
+
+ifdef DISAMS
+$(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(DISAMS) $@ > $@.s 
+
+$(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
+	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 	@$(DISAMS) $@ > $@.s
 
 else
-$(TMP_ROOT)/%.o: %.c
-	@$(CC) -o $@ -c $^ $(CFLAGS)
+$(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
+	@$(CC) -c $^ -o $@  $(CFLAGS) 
+	# @$(CC) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CFLAGS)
 
-$(TMP_ROOT)/%.o: %.cpp
-	@$(CPP) -o $@ -c $^ $(CPPFLAGS)
+$(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
+	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 endif
+
+$(TMP_ROOT)/%.d: ;
+
+-include $(OBJS_DEPENDENCY)
 
 .PHONY : clean
 clean:
@@ -179,6 +194,10 @@ run: | build
 db: | clean build
 	$(DB) $(BIN)
 
+
+.PHONY : create_tree
+create_tree:
+	-@mkdir -p $(BUILDTREE)
 
 ########
 ## Helper Tasks
@@ -258,9 +277,11 @@ vars:
 	@echo ""
 	@echo "MAINSRC: $(MAINSRC)"
 	@echo ""
-	@echo "LIB_OBJS: $(OBJS)"
+	@echo "LIB_OBJS: $(LIB_OBJS)"
 	@echo ""
-	@echo "MAIN_OBJS: $(OBJS)"
+	@echo "MAIN_OBJS: $(MAIN_OBJS)"
+	@echo ""
+	@echo "OBJS_DEPENDENCY: $(OBJS_DEPENDENCY)"
 	@echo ""
 	@echo "CFLAGS: $(CFLAGS)"
 	@echo ""
@@ -269,3 +290,5 @@ vars:
 	@echo "LINKER_LIBS: $(LINKER_LIBS)"
 	@echo ""
 	@echo "LINKER_FLAGS: $(LINKER_FLAGS)"
+
+
