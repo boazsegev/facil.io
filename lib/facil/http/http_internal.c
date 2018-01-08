@@ -34,6 +34,8 @@ void http_on_request_handler______internal(http_s *h,
         fiobj_hash_set(h->headers, sym, fiobj_ary_pop(tmp));
         fiobj_free(sym);
       }
+      if (!tmp)
+        http_send_error(h, 400);
     }
     settings->on_request(h);
     return;
@@ -41,10 +43,8 @@ void http_on_request_handler______internal(http_s *h,
     fio_cstr_s val = fiobj_obj2cstr(t);
     if (val.data[0] == 'h' && val.data[1] == '2') {
       http_send_error(h, 400);
-    } else if (settings->on_upgrade) {
-      settings->on_upgrade(h, val.data, val.len);
     } else {
-      http_send_error(h, 400);
+      settings->on_upgrade(h, val.data, val.len);
     }
   }
 }

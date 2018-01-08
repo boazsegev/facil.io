@@ -202,7 +202,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
  * The `uuid` and `settings` arguments are only required if the `http_s` handle
  * is NULL.
  */
-int http_send_error(http_s *h, size_t error);
+int http_send_error(http_s *h, size_t error_code);
 
 /**
  * Sends the response headers for a header only response.
@@ -248,6 +248,88 @@ int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
  * Note: HTTP/1.1 requests CAN'T be deferred due to protocol requirements.
  */
 int http_defer(http_s *h, void (*task)(http_s *h), void (*fallback)(http_s *h));
+
+/* *****************************************************************************
+Listening to HTTP connections (client mode functions are later on...)
+***************************************************************************** */
+
+/** The HTTP settings. */
+typedef struct http_settings_s {
+  /** SERVER REQUIRED: a callback to be performed when HTTP requests come in. */
+  void (*on_request)(http_s *request);
+  /** (server optional) a callback for Upgrade requests. */
+  void (*on_upgrade)(http_s *request, char *requested_protocol, size_t len);
+  /** CLIENT REQUIRED: a callback for the HTTP response. */
+  void (*on_response)(http_s *response);
+  /** (optional) the callback to be performed when the HTTP service closes. */
+  void (*on_finish)(struct http_settings_s *settings);
+  /** Opaque user data. Facil.io will ignore this field, but you can use it. */
+  void *udata;
+  /**
+   * A public folder for file transfers - allows to circumvent any application
+   * layer logic and simply serve static files.
+   *
+   * Supports automatic `gz` pre-compressed alternatives.
+   */
+  const char *public_folder;
+  /**
+   * The length of the public_folder string.
+   */
+  size_t public_folder_length;
+  /**
+   * The maximum number of bytes allowed for the request string (method, path,
+   * query), header names and fields.
+   *
+   * Defaults to 32Kib (which is about 4 times more than I would recommend).
+   */
+  size_t max_header_size;
+  /**
+   * The maximum size of an HTTP request's body (posting / downloading).
+   *
+   * Defaults to ~ 50Mb.
+   */
+  size_t max_body_size;
+  /**
+   * An HTTP/1.x connection timeout. Defaults to ~5 seconds.
+   *
+   * Note: the connection might be closed (by other side) before timeout occurs.
+   */
+  uint8_t timeout;
+  /**
+   * The maximum websocket message size/buffer (in bytes) for Websocket
+   * connections. Defaults to ~250KB.
+   */
+  size_t ws_max_msg_size;
+  /**
+   * Timeout for the websocket connections, a ping will be sent whenever the
+   * timeout is reached. Defaults to 40 seconds.
+   *
+   * Connections are only closed when a ping cannot be sent (the network layer
+   * fails). Pongs are ignored.
+   */
+  uint8_t ws_timeout;
+  /** Logging flag - set to TRUE to log HTTP requests. */
+  uint8_t log;
+} http_settings_s;
+
+/**
+ * Listens to HTTP connections at the specified `port`.
+ *
+ * Leave as NULL to ignore IP binding.
+ *
+ * Returns -1 on error and 0 on success.
+ */
+int http_listen(const char *port, const char *binding, struct http_settings_s);
+/** Listens to HTTP connections at the specified `port` and `binding`. */
+#define http_listen(port, binding, ...)                                        \
+  http_listen((port), (binding), (struct http_settings_s){__VA_ARGS__})
+
+/**
+ * Returns the settings used to setup the connection.
+ *
+ * Returns -1 on error and 0 on success.
+ */
+struct http_settings_s *http_settings(http_s *h);
 
 /* *****************************************************************************
 Websocket Upgrade (server side)
@@ -333,72 +415,6 @@ int http_upgrade2ws(websocket_settings_s);
 
 #include "websockets.h"
 
-/* *****************************************************************************
-Listening to HTTP connections (client mode functions are later on...)
-***************************************************************************** */
-
-/** The HTTP settings. */
-typedef struct http_settings_s {
-  /** REQUIRED: the callback to be performed when HTTP requests come in. */
-  void (*on_request)(http_s *request);
-  /** (optional) the callback to be performed when Upgrade requests come in. */
-  void (*on_upgrade)(http_s *request, char *requested_protocol, size_t len);
-  /** (optional) the callback to be performed when the HTTP service closes. */
-  void (*on_finish)(struct http_settings_s *settings);
-  /** Opaque user data. Facil.io will ignore this field, but you can use it. */
-  void *udata;
-  /**
-   * A public folder for file transfers - allows to circumvent any application
-   * layer server and simply serve files.
-   */
-  const char *public_folder;
-  /**
-   * The length of the public_folder string.
-   */
-  size_t public_folder_length;
-  /**
-   * The maximum size of an HTTP request's body (when posting data).
-   *
-   * Defaults to ~ 50Mb.
-   */
-  size_t max_body_size;
-  /** An HTTP/1.x connection timeout. Defaults to ~5 seconds.*/
-  uint8_t timeout;
-  /**
-   * The maximum websocket message size/buffer (in bytes) for Websocket
-   * connections. Defaults to ~250KB.
-   */
-  size_t ws_max_msg_size;
-  /**
-   * Timeout for the websocket connections, a ping will be sent  whenever the
-   * timeout is reached. Defaults to 40 seconds.
-   *
-   * Connections are only closed when a ping cannot be sent (the network layer
-   * fails). Pongs aren't reviewed.
-   */
-  uint8_t ws_timeout;
-  /** Logging flag - set to TRUE to log HTTP requests. */
-  uint8_t log;
-} http_settings_s;
-
-/**
- * Listens to HTTP connections at the specified `port`.
- *
- * Leave as NULL to ignore IP binding.
- *
- * Returns -1 on error and 0 on success.
- */
-int http_listen(const char *port, const char *binding, struct http_settings_s);
-/** Listens to HTTP connections at the specified `port` and `binding`. */
-#define http_listen(port, binding, ...)                                        \
-  http_listen((port), (binding), (struct http_settings_s){__VA_ARGS__})
-
-/**
- * Returns the settings used to setup the connection.
- *
- * Returns -1 on error and 0 on success.
- */
-struct http_settings_s *http_settings(http_s *h);
 /* *****************************************************************************
 TODO: HTTP client mode
 ***************************************************************************** */

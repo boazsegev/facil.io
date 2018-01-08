@@ -640,9 +640,63 @@ int http_upgrade2ws(websocket_settings_s args) {
 }
 
 /* *****************************************************************************
+Setting the default settings and allocating a persistent copy
+***************************************************************************** */
+
+static void http_on_request_fallback(http_s *h) { http_send_error(h, 404); }
+static void http_on_upgrade_fallback(http_s *h, char *p, size_t i) {
+  http_send_error(h, 400);
+  (void)p;
+  (void)i;
+}
+static void http_on_response_fallback(http_s *h) { http_send_error(h, 400); }
+
+http_settings_s *http_settings_new(http_settings_s arg_settings) {
+  if (!arg_settings.on_response)
+    arg_settings.on_response = http_on_response_fallback;
+  if (!arg_settings.on_upgrade)
+    arg_settings.on_upgrade = http_on_upgrade_fallback;
+
+  if (!arg_settings.max_body_size)
+    arg_settings.max_body_size = HTTP_DEFAULT_BODY_LIMIT;
+  if (!arg_settings.timeout)
+    arg_settings.timeout = 5;
+  if (!arg_settings.ws_max_msg_size)
+    arg_settings.ws_max_msg_size = 262144; /** defaults to ~250KB */
+  if (!arg_settings.ws_timeout)
+    arg_settings.ws_timeout = 40; /* defaults to 40 seconds */
+  if (!arg_settings.max_header_size)
+    arg_settings.max_header_size = 32 * 1024; /* defaults to 32Kib seconds */
+
+  http_settings_s *settings = malloc(sizeof(*settings));
+  *settings = arg_settings;
+
+  if (settings->public_folder) {
+    settings->public_folder_length = strlen(settings->public_folder);
+    if (settings->public_folder[0] == '~' &&
+        settings->public_folder[1] == '/' && getenv("HOME")) {
+      char *home = getenv("HOME");
+      size_t home_len = strlen(home);
+      char *tmp = malloc(settings->public_folder_length + home_len + 1);
+      memcpy(tmp, home, home_len);
+      if (home[home_len - 1] == '/')
+        --home_len;
+      memcpy(tmp + home_len, settings->public_folder + 1,
+             settings->public_folder_length); // copy also the NULL
+      settings->public_folder = tmp;
+      settings->public_folder_length = strlen(settings->public_folder);
+    } else {
+      settings->public_folder = malloc(settings->public_folder_length + 1);
+      memcpy((void *)settings->public_folder, arg_settings.public_folder,
+             settings->public_folder_length);
+      ((uint8_t *)settings->public_folder)[settings->public_folder_length] = 0;
+    }
+  }
+  return settings;
+}
+/* *****************************************************************************
 Listening to HTTP connections
-*****************************************************************************
-*/
+***************************************************************************** */
 
 static void http_on_open(intptr_t uuid, void *set) {
   static __thread ssize_t capa = 0;
@@ -688,39 +742,7 @@ int http_listen(const char *port, const char *binding,
     kill(0, SIGINT), exit(11);
   }
 
-  http_settings_s *settings = malloc(sizeof(*settings));
-  *settings = arg_settings;
-
-  if (!settings->max_body_size)
-    settings->max_body_size = HTTP_DEFAULT_BODY_LIMIT;
-  if (!settings->timeout)
-    settings->timeout = 5;
-  if (!settings->ws_max_msg_size)
-    settings->ws_max_msg_size = 262144; /** defaults to ~250KB */
-  if (!settings->ws_timeout)
-    settings->ws_timeout = 40; /* defaults to 40 seconds */
-
-  if (settings->public_folder) {
-    settings->public_folder_length = strlen(settings->public_folder);
-    if (settings->public_folder[0] == '~' &&
-        settings->public_folder[1] == '/' && getenv("HOME")) {
-      char *home = getenv("HOME");
-      size_t home_len = strlen(home);
-      char *tmp = malloc(settings->public_folder_length + home_len + 1);
-      memcpy(tmp, home, home_len);
-      if (home[home_len - 1] == '/')
-        --home_len;
-      memcpy(tmp + home_len, settings->public_folder + 1,
-             settings->public_folder_length); // copy also the NULL
-      settings->public_folder = tmp;
-      settings->public_folder_length = strlen(settings->public_folder);
-    } else {
-      settings->public_folder = malloc(settings->public_folder_length + 1);
-      memcpy((void *)settings->public_folder, arg_settings.public_folder,
-             settings->public_folder_length);
-      ((uint8_t *)settings->public_folder)[settings->public_folder_length] = 0;
-    }
-  }
+  http_settings_s *settings = http_settings_new(arg_settings);
 
   return facil_listen(.port = port, .address = binding,
                       .on_finish = http_on_finish, .on_open = http_on_open,
