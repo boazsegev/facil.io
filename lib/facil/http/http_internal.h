@@ -76,9 +76,8 @@ HTTP request/response object management
 
 static inline void http_s_init(http_s *h, http_protocol_s *owner) {
   *h = (http_s){
-      .private_data.owner = (protocol_s *)owner,
-      .private_data.request_id = 1,
-      .private_data.out_headers = fiobj_hash_new(),
+      .private_data = {.owner = (protocol_s *)owner,
+                       .out_headers = fiobj_hash_new()},
       .headers = fiobj_hash_new(),
       .version = h->version,
       .received_at = facil_last_tick(),

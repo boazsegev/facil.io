@@ -52,8 +52,6 @@ typedef struct {
     protocol_s *owner;
     /** The response headers, if they weren't sent. Don't access directly. */
     FIOBJ out_headers;
-    /** a private request ID, used by the owner (facil.io), do not touch. */
-    uintptr_t request_id;
   } private_data;
   /** a time merker indicating when the request was received. */
   struct timespec received_at;
@@ -205,14 +203,6 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
  * is NULL.
  */
 int http_send_error(http_s *h, size_t error);
-
-/**
- * Sends the response headers and starts streaming. Use `http_defer` to continue
- * straming.
- *
- * Returns -1 on error and 0 on success.
- */
-int http_stream(http_s *h, void *data, uintptr_t length);
 
 /**
  * Sends the response headers for a header only response.

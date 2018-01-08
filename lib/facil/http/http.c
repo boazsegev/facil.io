@@ -34,6 +34,16 @@ static inline void add_content_length(http_s *r, uintptr_t length) {
   }
 }
 
+static inline int http_lost_owner(http_s *h) {
+  http_s_cleanup(h);
+  free(h);
+  return -1;
+}
+#define HTTP_TEST_FOR_OWNER(h)                                                 \
+  if (!(http_protocol_s *)(h)->private_data.owner) {                           \
+    return http_lost_owner(h);                                                 \
+  }
+
 static FIOBJ current_date;
 static time_t last_date_added;
 static spn_lock_i date_lock;
@@ -292,6 +302,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_send_body(http_s *r, void *data, uintptr_t length) {
+  HTTP_TEST_FOR_OWNER(r);
   if (!r->private_data.out_headers)
     return -1;
   add_content_length(r, length);
@@ -308,6 +319,9 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
+  HTTP_TEST_FOR_OWNER(r);
+  if (!r->private_data.owner) {
+  }
   if (!r->private_data.out_headers) {
     close(fd);
     return -1;
@@ -534,6 +548,7 @@ open_file:
  * argument is set to NULL.
  */
 int http_send_error(http_s *r, size_t error) {
+  HTTP_TEST_FOR_OWNER(r);
   if (!r || !error || !r->private_data.out_headers)
     return -1;
   if (error < 100 || error >= 1000)
@@ -559,21 +574,16 @@ int http_send_error(http_s *r, size_t error) {
 }
 
 /**
- * Sends the response headers and starts streaming. Use `http_defer` to
- * continue straming.
- *
- * Returns -1 on error and 0 on success.
- */
-int http_stream(http_s *r, void *data, uintptr_t length) {
-  return ((http_protocol_s *)r->private_data.owner)
-      ->vtable->http_stream(r, data, length);
-}
-/**
  * Sends the response headers for a header only response.
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 void http_finish(http_s *r) {
+  if (!(http_protocol_s *)r->private_data.owner) {
+    http_s_cleanup(r);
+    free(r);
+    return;
+  }
   ((http_protocol_s *)r->private_data.owner)->vtable->http_finish(r);
 }
 /**
@@ -582,6 +592,8 @@ void http_finish(http_s *r) {
  * Returns -1 on error and 0 on success.
  */
 int http_push_data(http_s *r, void *data, uintptr_t length, FIOBJ mime_type) {
+  if (!(http_protocol_s *)r->private_data.owner)
+    return -1;
   return ((http_protocol_s *)r->private_data.owner)
       ->vtable->http_push_data(r, data, length, mime_type);
 }
@@ -605,6 +617,7 @@ int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
  */
 int http_defer(http_s *h, void (*task)(http_s *h),
                void (*fallback)(http_s *h)) {
+  HTTP_TEST_FOR_OWNER(h);
   return ((http_protocol_s *)h->private_data.owner)
       ->vtable->http_defer(h, task, fallback);
 }
@@ -614,11 +627,14 @@ int http_defer(http_s *h, void (*task)(http_s *h),
  */
 #undef http_upgrade2ws
 int http_upgrade2ws(websocket_settings_s args) {
-  if (!args.http || !args.http->headers) {
+  if (!args.http) {
     fprintf(stderr,
             "ERROR: `http_upgrade2ws` requires a valid `http_s` handle.");
     return -1;
   }
+  HTTP_TEST_FOR_OWNER(args.http);
+  if (args.http->headers)
+    return -1;
   return ((http_protocol_s *)args.http->private_data.owner)
       ->vtable->http2websocket(&args);
 }
