@@ -1,0 +1,136 @@
+---
+---
+
+html, body {
+	width: 100%;
+	height: 100%;
+	font: Lato, "Helvetica Neue", Helvetica, Arial, sans-serif;
+	font-size: 1em;
+	box-sizing: border-box;
+	background-color: #111;
+	color: #eee;
+	padding: 0;
+	margin: 0;
+}
+
+
+a {
+    color: #faa;
+    text-decoration: none
+}
+
+p {
+	    padding: 0; margin: 0;
+}
+strong {
+    color: #fef;
+    font-weight: 700
+}
+
+h1, h2, h3 {
+	margin: 0.5em 0;
+	width: auto;
+	padding: 0 20px;
+}
+h1 {
+	font-size: 1.5em;
+}
+
+h2 {
+	font-size: 1.3em;
+}
+
+h3 {
+	font-size: 1.1em;
+}
+
+header, section, footer {margin-left: 10%; margin-right: 10%; width: 80%;}
+
+header {
+	box-sizing: border-box;
+  border-radius: 0 0 1em 1em 0 0;
+	height:  auto;
+	border-bottom: #966 solid 1px;
+	padding: 1em;
+	background: #544;	
+	background: linear-gradient(#533, #733);
+	position: fixed;
+	top: 0;
+	z-index: 1001;
+}
+
+
+header h1 {
+    margin: 0;
+    padding: 0;
+    font-size: 2em;
+    line-height: 1.2;
+    color: #ddf;
+    text-shadow: rgba(228, 96, 228, 0.75) -3px 3px 5px;
+		position: relative;
+}
+
+header .view {
+	position: fixed;
+	display:  block;
+	top: 0.5em;
+	right: 11%;
+	width: 6em;
+	font-size: 1em;
+	padding: 0.5em;
+	text-align: center;
+	background: #533;	
+	color: #dde;
+	box-sizing: border-box;
+  border-radius: 1em;
+	border: #966 solid 0.2em;
+	transition: background-color 200ms, border 200ms, opacity 200ms;
+	opacity: 0.8;
+}
+
+header .view:hover{
+	background: #422;	
+	border: #966 solid 0.2em;
+	opacity: 1;
+}
+header .view:active{
+	background: #855;	
+	border: #a66 solid 0.2em;
+	opacity: 1;
+}
+
+header .view strong {
+	font-size: 1.2em;
+    color: #ddf;
+}
+section {
+	box-sizing: border-box;
+	height:  auto;
+	padding: 10em 0em 2em 0em;
+	background: #333;	
+}
+
+section h1, section h2, section h3 {
+	background-color: #444;
+	padding: 0.5em 20px;
+}
+section h1:after, section h2:after, section h3:after {
+	content: '';
+	display: block;
+	width: 40%;
+	border-bottom: #eee solid 1px;
+}
+
+section p {
+	    padding: 1em; margin: 0;
+}
+pre { padding:  1em; }
+
+
+h2 code , h3 code { font-size:1.1em; padding: 0 0.5em; } 
+
+@media print, screen and (max-width: 740px) {
+  body { padding: 0; }
+  header, section, footer {margin-left: 0; margin-right: 0; width: 100%;}
+	header .view { right: 0.5em; }
+}
