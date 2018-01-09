@@ -163,7 +163,7 @@ int main(int argc, char const *argv[]) {
     port = fio_cli_get_str("p");
   if (fio_cli_get_str("www")) {
     public_folder = fio_cli_get_str("www");
-    fprintf(stderr, "* serving static files from:%s", public_folder);
+    fprintf(stderr, "* serving static files from:%s\n", public_folder);
   }
   if (fio_cli_get_str("t"))
     threads = fio_cli_get_int("t");
@@ -204,4 +204,5 @@ int main(int argc, char const *argv[]) {
   //   PUBSUB_DEFAULT_ENGINE = PUBSUB_CLUSTER_ENGINE;
   // }
   fiobj_free(CHAT_CHANNEL);
+  fio_cli_end();
 }

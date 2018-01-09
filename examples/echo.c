@@ -93,7 +93,7 @@ int main(int argc, char const *argv[]) {
     port = fio_cli_get_str("p");
   if (fio_cli_get_str("www")) {
     public_folder = fio_cli_get_str("www");
-    printf("* serving static files from:%s", public_folder);
+    fprintf(stderr, "* serving static files from:%s\n", public_folder);
   }
   if (fio_cli_get_str("t"))
     threads = fio_cli_get_int("t");
@@ -110,4 +110,6 @@ int main(int argc, char const *argv[]) {
                   .public_folder = public_folder))
     perror("Couldn't initiate Websocket service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
+
+  fio_cli_end();
 }

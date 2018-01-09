@@ -21,6 +21,7 @@ static FIOBJ parsed;      /* a with information about each argument */
 static FIOBJ help_str;    /* The CLI help string */
 static FIOBJ info_str;    /* The CLI information string */
 static int is_parsed;
+static int ignore_unknown;
 
 const char DEFAULT_CLI_INFO[] =
     "This application accepts any of the following possible arguments:";
@@ -28,7 +29,12 @@ const char DEFAULT_CLI_INFO[] =
 Error / Help handling - printing the information and exiting.
 ***************************************************************************** */
 
+/** Tells the CLI helper to ignore invalid command line arguments. */
+void fio_cli_ignore_unknown(void) { ignore_unknown = 1; }
+
 static void fio_cli_handle_error(void) {
+  if (ignore_unknown)
+    return;
   fio_cstr_s info = fiobj_obj2cstr(info_str);
   fio_cstr_s args = fiobj_obj2cstr(help_str);
   fprintf(stdout,
@@ -172,6 +178,8 @@ static void fio_cli_parse(void) {
   for (int i = 1; i < FIO_CLI_ARGC; i++) {
     /* test for errors or help requests */
     if (FIO_CLI_ARGV[i][0] != '-' || FIO_CLI_ARGV[i][1] == 0) {
+      if (ignore_unknown)
+        continue;
       start = FIO_CLI_ARGV[i];
       goto error;
     }
@@ -181,6 +189,7 @@ static void fio_cli_parse(void) {
           (FIO_CLI_ARGV[i][2] == 'e' && FIO_CLI_ARGV[i][3] == 'l' &&
            FIO_CLI_ARGV[i][4] == 'p' && FIO_CLI_ARGV[i][5] == 0)))) {
       fio_cli_handle_error();
+      continue;
     }
     /* we walk the name backwards, so `name` is tested before `n` */
     start = FIO_CLI_ARGV[i] + 1;

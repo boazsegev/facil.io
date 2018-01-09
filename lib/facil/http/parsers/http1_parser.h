@@ -31,7 +31,7 @@ to maintain and that could be used for an HTTP/1.x client as well.
 #endif
 
 #ifndef HTTP1_PARSER_CONVERT_EOL2NUL
-#define HTTP1_PARSER_CONVERT_EOL2NUL 1
+#define HTTP1_PARSER_CONVERT_EOL2NUL 0
 #endif
 
 #if HTTP_HEADERS_LOWERCASE

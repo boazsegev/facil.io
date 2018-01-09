@@ -13,8 +13,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdio.h>
 #include <string.h>
 
-#define PREFER_MEMCHAR 0
-
 /* *****************************************************************************
 Seeking for characters in a string
 ***************************************************************************** */
@@ -203,52 +201,49 @@ start_version:
 
 inline static int consume_header(struct http1_fio_parser_args_s *args,
                                  uint8_t *start, uint8_t *end) {
-  uint8_t t2 = 1;
-  uint8_t *tmp = start;
+  uint8_t *end_name = start;
   /* divide header name from data */
-  if (!seek2ch(&tmp, end, ':'))
+  if (!seek2ch(&end_name, end, ':'))
     return -1;
 #if HTTP_HEADERS_LOWERCASE
-  for (uint8_t *t3 = start; t3 < tmp; t3++) {
-    *t3 = tolower(*t3);
+  for (uint8_t *t = start; t < end_name; t++) {
+    *t = tolower(*t);
   }
 #endif
-
-  tmp++;
-  if (tmp[0] == ' ') {
-    tmp++;
-    t2++;
+  uint8_t *start_value = end_name + 1;
+  if (start_value[0] == ' ') {
+    start_value++;
   };
 #if HTTP_HEADERS_LOWERCASE
-  if ((tmp - start) - t2 == 14 &&
+  if ((end_name - start) == 14 &&
       *((uint64_t *)start) == *((uint64_t *)"content-") &&
       *((uint64_t *)(start + 6)) == *((uint64_t *)"t-length")) {
     /* handle the special `content-length` header */
-    args->parser->state.content_length = atol((char *)tmp);
-  } else if ((tmp - start) - t2 == 17 &&
+    args->parser->state.content_length = atol((char *)start_value);
+  } else if ((end_name - start) == 17 &&
              *((uint64_t *)start) == *((uint64_t *)"transfer") &&
              *((uint64_t *)(start + 8)) == *((uint64_t *)"-encodin") &&
-             *((uint32_t *)tmp) == *((uint32_t *)"chun") &&
-             *((uint32_t *)(tmp + 3)) == *((uint32_t *)"nked")) {
+             *((uint32_t *)start_value) == *((uint32_t *)"chun") &&
+             *((uint32_t *)(start_value + 3)) == *((uint32_t *)"nked")) {
     /* handle the special `transfer-encoding: chunked` header */
     args->parser->state.reserved |= 64;
-  } else if ((tmp - start) - t2 == 7 &&
+  } else if ((end_name - start) == 7 &&
              *((uint64_t *)start) == *((uint64_t *)"trailer")) {
     /* chunked data with trailer... */
     args->parser->state.reserved |= 64;
     args->parser->state.reserved |= 32;
   }
 #else
-  if ((tmp - start) - t2 == 14 &&
+  if ((end_name - start) == 14 &&
       HEADER_NAME_IS_EQ((char *)start, "content-length", 14)) {
     /* handle the special `content-length` header */
-    args->parser->state.content_length = atol((char *)tmp);
-  } else if ((tmp - start) - t2 == 17 &&
+    args->parser->state.content_length = atol((char *)start_value);
+  } else if ((end_name - start) == 17 &&
              HEADER_NAME_IS_EQ((char *)start, "transfer-encoding", 17) &&
-             memcmp(tmp, "chunked", 7)) {
+             memcmp(start_value, "chunked", 7)) {
     /* handle the special `transfer-encoding: chunked` header */
     args->parser->state.reserved |= 64;
-  } else if ((tmp - start) - t2 == 7 &&
+  } else if ((end_name - start) == 7 &&
              HEADER_NAME_IS_EQ((char *)start, "trailer", 7)) {
     /* chunked data with trailer... */
     args->parser->state.reserved |= 64;
@@ -256,8 +251,8 @@ inline static int consume_header(struct http1_fio_parser_args_s *args,
   }
 #endif
   /* perform callback */
-  if (args->on_header(args->parser, (char *)start, (tmp - start) - t2,
-                      (char *)tmp, end - tmp))
+  if (args->on_header(args->parser, (char *)start, (end_name - start),
+                      (char *)start_value, end - start_value))
     return -1;
   return 0;
 }
@@ -403,27 +398,33 @@ re_eval:
   /* headers */
   case 1:
     do {
+      if (start >= stop)
+        return CONSUMED; /* buffer ended on header line */
+      if (*start == '\r' || *start == '\n') {
+        goto finished_headers; /* empty line, end of headers */
+      }
       if (!(eol_len = seek2eol(&end, stop)))
         return CONSUMED;
-      /* test for header ending */
-      if (*start == 0)
-        goto finished_headers; /* break the do..while loop, not the switch
-                                  statement */
       if (consume_header(args, start, end - eol_len + 1))
         goto error;
       end = start = end + 1;
     } while ((args->parser->state.reserved & 2) == 0);
   finished_headers:
-    end = start = end + 1;
+    ++start;
+    if (*start == '\n')
+      ++start;
+    end = start;
     args->parser->state.reserved |= 2;
   /* fallthrough */
   /* request body */
   case 3: { /*  2 | 1 == 3 */
     int t3 = consume_body(args, &start);
-    if (t3 == -1)
+    switch (t3) {
+    case -1:
       goto error;
-    if (t3 == -2)
+    case -2:
       goto re_eval;
+    }
     break;
   }
   }

@@ -374,9 +374,12 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
   }
   if (obj2str(str)->capa >= size)
     return obj2str(str)->capa;
+
   /* large strings should increase memory by page size (assumes 4096 pages) */
   if (size << 12)
     size = ((size << 12) + 1) >> 12;
+  else if (size < (obj2str(str)->capa << 1))
+    size = obj2str(str)->capa << 1; /* grow in steps */
 
   if (obj2str(str)->capa == 0) {
     /* a static string */

@@ -33,7 +33,7 @@ WARNINGS= -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
 # any extra include folders, space seperated list
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
-FLAGS:= FIOBJ_NESTING_PROTECTION=0
+FLAGS:= 
 
 ### Helpers
 # The library details for CMake incorporation. Can be safely removed.

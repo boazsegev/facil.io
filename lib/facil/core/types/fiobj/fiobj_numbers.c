@@ -180,6 +180,7 @@ static const char hex_notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
  * respectively.
  */
 intptr_t fio_atol(char **pstr) {
+  /* use strtol ?*/
   char *str = *pstr;
   uintptr_t result = 0;
   uint8_t invert = 0;

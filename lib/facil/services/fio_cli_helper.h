@@ -8,7 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 /**
 
 This is a customized version for command line interface (CLI) arguments. All
-arguments are converted all command line arguments into a key-value paired Hash.
+arguments are converted into a key-value paired Hash.
 
 The CLI helper automatically provides `-?`, `-h` and `-help` support that
 prints a short explanation for every option and exits.
@@ -39,8 +39,10 @@ EXAMPLE:
     const char *port = fio_cli_get_str("port");
     if (!port)
       port = "3000";
+    // use parsed information.
+    // ...
+    // cleanup
     fio_cli_end();
-    // .. use parsed information.
 
 
 */
@@ -51,10 +53,13 @@ EXAMPLE:
 extern "C" {
 #endif
 
-/** Initialize the CLI helper and adds the `info` string to the help section */
+/** Initialize the CLI helper and adds the `info` string to the help section. */
 void fio_cli_start(int argc, const char **argv, const char *info);
 
-/** Clears the memory and resources used by the CLI helper */
+/** Tells the CLI helper to ignore unrecognized command line arguments. */
+void fio_cli_ignore_unknown(void);
+
+/** Clears the memory and resources related to the CLI helper. */
 void fio_cli_end(void);
 
 /**

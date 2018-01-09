@@ -109,7 +109,7 @@ int main(int argc, char const *argv[]) {
     port = fio_cli_get_str("p");
   if (fio_cli_get_str("www")) {
     public_folder = fio_cli_get_str("www");
-    printf("* serving static files from:%s", public_folder);
+    fprintf(stderr, "* serving static files from:%s\n", public_folder);
   }
   if (fio_cli_get_str("t"))
     threads = fio_cli_get_int("t");
@@ -126,4 +126,5 @@ int main(int argc, char const *argv[]) {
   // free global resources.
   fiobj_free(CHANNEL_TEXT);
   fiobj_free(CHANNEL_BINARY);
+  fio_cli_end();
 }
