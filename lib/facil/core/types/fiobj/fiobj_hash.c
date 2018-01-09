@@ -69,21 +69,17 @@ static size_t fiobj_hash_each1(FIOBJ o, const size_t start_at,
   FIOBJ old_each_at_key = each_at_key;
   fio_hash_s *hash = &obj2hash(o)->hash;
   size_t count = 0;
-  fio_hash_data_ordered_s *i;
   if (hash->count == hash->pos) {
     /* no holes in the hash, we can work as we please. */
-    for (i = hash->ordered + start_at; i && !FIO_HASH_KEY_ISINVALID(i->key);
-         ++i) {
-      /* performing */
-      if (!i->obj)
-        continue;
-      ++count;
-      each_at_key = i->key.key;
-      if (task((FIOBJ)i->obj, arg) == -1)
-        break;
+    for (count = start_at; count < hash->count; ++count) {
+      each_at_key = hash->ordered[count].key.key;
+      if (task((FIOBJ)hash->ordered[count].obj, arg) == -1) {
+        ++count;
+        goto end;
+      }
     }
-
   } else {
+    fio_hash_data_ordered_s *i;
     for (i = hash->ordered;
          count < start_at && i && !FIO_HASH_KEY_ISINVALID(i->key); ++i) {
       /* counting */
@@ -101,6 +97,7 @@ static size_t fiobj_hash_each1(FIOBJ o, const size_t start_at,
         break;
     }
   }
+end:
   each_at_key = old_each_at_key;
   return count;
 }

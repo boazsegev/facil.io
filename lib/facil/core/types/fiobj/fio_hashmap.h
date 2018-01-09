@@ -432,8 +432,8 @@ FIO_FUNC inline size_t fio_hash_each(fio_hash_s *hash, size_t start_at,
     while (count < hash->pos) {
       /* no "holes" in the hash. */
       ++count;
-      if (task(hash->ordered[count].key, (void *)hash->ordered[count].obj,
-               arg) == -1)
+      if (task(hash->ordered[count - 1].key,
+               (void *)hash->ordered[count - 1].obj, arg) == -1)
         return count;
     }
   } else {
