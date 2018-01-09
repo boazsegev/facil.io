@@ -134,7 +134,7 @@ static void fiobj_dealloc_task(FIOBJ o, void *stack_) {
  * also freed.
  */
 void fiobj_free_complex_object(FIOBJ o) {
-  fio_ary_s stack = {0};
+  fio_ary_s stack = FIO_ARY_INIT;
   fio_ary_new(&stack, 0);
   fio_ary_push(&stack, (void *)o);
   do {
