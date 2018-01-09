@@ -45,6 +45,9 @@ typedef struct fio_ary_s {
   void **arry;
 } fio_ary_s;
 
+/** this value can be used for lazy initialization. */
+#define FIO_ARY_INIT ((fio_ary_s){.arry = NULL})
+
 /* *****************************************************************************
 Array API
 ***************************************************************************** */
@@ -241,7 +244,7 @@ FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary) { return ary->capa; }
  */
 FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, intptr_t pos) {
   if (!ary)
-    return NULL;
+    fio_ary_new(ary, 0);
   /* position is relative to `start`*/
   if (pos >= 0) {
     pos = pos + ary->start;
@@ -268,7 +271,7 @@ FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, intptr_t pos) {
  */
 FIO_FUNC inline void *fio_ary_set(fio_ary_s *ary, void *data, intptr_t pos) {
   if (!ary) {
-    return data;
+    fio_ary_new(ary, 0);
   }
   void *old = NULL;
   /* test for memory and request memory if missing, promises valid bounds. */
@@ -307,11 +310,9 @@ Array push / shift API
  * Pushes an object to the end of the Array. Returns -1 on error.
  */
 FIO_FUNC inline int fio_ary_push(fio_ary_s *ary, void *data) {
-  if (!ary) {
-    /* function takes ownership of memory even if an error occurs. */
-    return -1;
-  }
-  if (ary->capa <= ary->end)
+  if (!ary)
+    fio_ary_new(ary, 0);
+  else if (ary->capa <= ary->end)
     fio_ary_getmem(ary, 1);
   ary->arry[ary->end] = data;
   ary->end += 1;
@@ -332,11 +333,9 @@ FIO_FUNC inline void *fio_ary_pop(fio_ary_s *ary) {
  * This could be expensive, causing `memmove`.
  */
 FIO_FUNC inline int fio_ary_unshift(fio_ary_s *ary, void *data) {
-  if (!ary) {
-    /* function takes ownership of memory even if an error occurs. */
-    return -1;
-  }
-  if (!ary->start)
+  if (!ary)
+    fio_ary_new(ary, 0);
+  else if (!ary->start)
     fio_ary_getmem(ary, -1);
   ary->start -= 1;
   ary->arry[ary->start] = data;

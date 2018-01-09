@@ -410,6 +410,7 @@ retry_rehashing:
         ++writer;
       } else {
         FIO_HASH_KEY_DESTROY(h->ordered[reader].key);
+        h->ordered[reader].key = FIO_HASH_KEY_INVALID;
       }
       ++reader;
     }
@@ -426,21 +427,32 @@ FIO_FUNC inline size_t fio_hash_each(fio_hash_s *hash, size_t start_at,
   if (start_at >= hash->count)
     return hash->count;
   size_t count = 0;
-  size_t pos = 0;
-  while (count < start_at && pos < hash->pos) {
-    if (hash->ordered[pos].obj) {
+  if (hash->pos == hash->count) {
+    count = start_at;
+    while (count < hash->pos) {
+      /* no "holes" in the hash. */
       ++count;
-    }
-    ++pos;
-  }
-  while (pos < hash->pos) {
-    if (hash->ordered[pos].obj) {
-      ++count;
-      if (task(hash->ordered[pos].key, (void *)hash->ordered[pos].obj, arg) ==
-          -1)
+      if (task(hash->ordered[count].key, (void *)hash->ordered[count].obj,
+               arg) == -1)
         return count;
     }
-    ++pos;
+  } else {
+    size_t pos = 0;
+    while (count < start_at && pos < hash->pos) {
+      if (hash->ordered[pos].obj) {
+        ++count;
+      }
+      ++pos;
+    }
+    while (pos < hash->pos) {
+      if (hash->ordered[pos].obj) {
+        ++count;
+        if (task(hash->ordered[pos].key, (void *)hash->ordered[pos].obj, arg) ==
+            -1)
+          return count;
+      }
+      ++pos;
+    }
   }
   return count;
 }
@@ -475,6 +487,8 @@ FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash) {
     hash->mask = hash->mask >> 1;
   if (hash->mask + 1 < FIO_HASH_INITIAL_CAPACITY)
     hash->mask = (FIO_HASH_INITIAL_CAPACITY - 1);
+  while (hash->count >= hash->mask)
+    hash->mask = (hash->mask << 1) | 1;
   fio_hash_rehash(hash);
 
   return hash->capa;

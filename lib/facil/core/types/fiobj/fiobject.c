@@ -72,7 +72,7 @@ size_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ obj, void *arg), void *arg) {
   if (task(o, arg) == -1)
     return 1;
   uintptr_t pos = 0;
-  fio_ary_s stack = {0};
+  fio_ary_s stack = FIO_ARY_INIT;
   size_t count = 1;
   struct task_packet_s packet = {
       .task = task, .arg = arg, .stack = &stack, .counter = &count,
