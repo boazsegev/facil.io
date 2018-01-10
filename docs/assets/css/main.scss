@@ -189,6 +189,10 @@ footer {
 .section-nav {
 	box-sizing: border-box;
 	display: block;
+	background: #422;	
+	border: #966 solid 0.2em;
+	opacity: 0.8;
+	border-radius: 1em;
 	position: fixed;
 	right: 10%;
 	overflow: visible;
@@ -198,6 +202,11 @@ footer {
 	transform: translateX(9999px);
 }
 
+.section-nav:hover {
+	height: auto;
+	max-height: 75%;
+	overflow: auto;
+}
 .section-nav:before {
 	content: "Table of Contents";
 	display: block;
@@ -219,12 +228,8 @@ footer {
 }
 
 .section-nav > li {
-	background: #422;	
-	border: #966 solid 0.2em;
-	opacity: 0.8;
 	transition: transform 200ms;
 	transform-origin: 0 0;
-	border-radius: 1em;
 	transform: rotateX(90deg);
 }
 
