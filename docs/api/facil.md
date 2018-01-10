@@ -1,3 +1,8 @@
+---
+title: facil.io - Core API
+toc: true
+layout: api
+---
 # Facil.io - a dynamic protocol network services library
 
 `facil.h` is "A Library (or mini-framework) for Dynamic Protocol based Network Services":

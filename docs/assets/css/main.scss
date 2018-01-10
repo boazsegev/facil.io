@@ -58,7 +58,7 @@ header {
 	padding: 1em;
 	background: #544;	
 	background: linear-gradient(#533, #733);
-	position: fixed;
+	position: abso;
 	top: 0;
 	z-index: 1001;
 	transition: background 200ms;
@@ -146,6 +146,10 @@ header li a {
 	vertical-align: middle;
 }
 
+
+header, header ul, header .view {
+	position: absolute;
+}
 
  section {
 	box-sizing: border-box;
@@ -406,10 +410,24 @@ body.light .section-nav a:hover{
     transform: scaleY(1); } 
 }
 
-.anchor:before {
+:target:before {
 	content: " ";
 	display:block;
-	height:6em;  /* fixed header height */
-	margin:-6em 0 0; /* negative fixed header height */
+	position: relative;
+	top: -4em;
+	height: 0;
+	overflow: visible;
+	z-index: -10;
+  box-sizing: border-box;
+}
+
+.anchor {
+	display:block;
+	position: relative;
+	top: -6em;
+	height: 0px;
+	overflow: visible;
+	z-index: -10;
+	vertical-align: top;
 }
 
