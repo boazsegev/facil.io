@@ -1,6 +1,7 @@
 ---
 title: facil.io - Core Dynamic Array Type
 toc: true
+layout: api
 ---
 # Simple Dynamic Arrays
 
@@ -31,7 +32,9 @@ Note that the Array container can be placed on the stack (as well as allocated u
 
 ### The `fio_ary_new` function
 
-`void fio_ary_new(fio_ary_s *ary, size_t capa)`
+```c
+void fio_ary_new(fio_ary_s *ary, size_t capa)
+```
 
 Initializes the array and allocates memory for it's internal data.
 
@@ -41,7 +44,9 @@ This will assume that `ary` is uninitialized and overwrite any existing data.
 
 ### the `fio_ary_free` function
 
-`void fio_ary_free(fio_ary_s *ary)`
+```c
+void fio_ary_free(fio_ary_s *ary)
+```
 
 Frees the array's internal data.
 
@@ -49,19 +54,25 @@ If the `ary`'s container (the `fio_ary_s` object) was allocated using `malloc`, 
 
 ### the `fio_ary_count` function
 
-`size_t fio_ary_count(fio_ary_s *ary)`
+```c
+size_t fio_ary_count(fio_ary_s *ary)
+```
 
 Returns the number of elements in the Array.
 
 ### the `fio_ary_capa` function
 
-`size_t fio_ary_capa(fio_ary_s *ary)`
+```c
+size_t fio_ary_capa(fio_ary_s *ary)
+```
 
 Returns the current, temporary, array capacity (it's dynamic).
 
 ### the `fio_ary_index` function
 
-`void *fio_ary_index(fio_ary_s *ary, int64_t pos)`
+```c
+void *fio_ary_index(fio_ary_s *ary, int64_t pos)
+```
 
 Returns the object placed in the Array, if any. Returns NULL if no data or if
 the index is out of bounds.
@@ -73,7 +84,9 @@ is the last item.
 
 ### the `fio_ary_set` function
 
-`void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos)`
+```c
+void *fio_ary_set(fio_ary_s *ary, void *data, int64_t pos)
+```
 
 Sets an object at the requested position.
 
@@ -83,13 +96,17 @@ If an error occurs, the same data passed to the function is returned (test using
 
 ### the `fio_ary_push` function
 
-`int fio_ary_push(fio_ary_s *ary, void *data)`
+```c
+int fio_ary_push(fio_ary_s *ary, void *data)
+```
 
 Pushes an object to the end of the Array. Returns -1 on error.
 
 ### the `fio_ary_pop` function
 
-`void *fio_ary_pop(fio_ary_s *ary)`
+```c
+void *fio_ary_pop(fio_ary_s *ary)
+```
 
 Pops an object from the end of the Array
 
@@ -97,7 +114,9 @@ Returns NULL if the object was NULL or the Array was empty.
 
 ### the `fio_ary_unshift` function
 
-`int fio_ary_unshift(fio_ary_s *ary, void *data)`
+```c
+int fio_ary_unshift(fio_ary_s *ary, void *data)
+```
 
 Unshifts an object to the beginning of the Array. Returns -1 on error.
 
@@ -105,7 +124,9 @@ This could be expensive, causing `memmove`.
 
 ### the `fio_ary_shift` function
 
-`void *fio_ary_shift(fio_ary_s *ary)`
+```c
+void *fio_ary_shift(fio_ary_s *ary)
+```
 
 Shifts an object from the beginning of the Array.
 
@@ -114,7 +135,9 @@ Returns NULL if the object was NULL or the Array was empty.
 
 ### the `fio_ary_compact` function
 
-`void fio_ary_compact(fio_ary_s *ary)`
+```c
+void fio_ary_compact(fio_ary_s *ary)
+```
 
 Removes any NULL *pointers* from an Array, keeping all other data in the
 array.
@@ -123,7 +146,9 @@ This action is O(n) where n in the length of the array.
 
 ### the `FIO_ARY_FOR` macro
 
-`FIO_ARY_FOR(ary, pos)`
+```c
+FIO_ARY_FOR(ary, pos)
+```
 
 Iterates through the list using a `for` loop.
 

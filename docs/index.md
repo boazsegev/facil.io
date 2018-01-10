@@ -232,6 +232,6 @@ Hit me up if you want to:
 
 * Help me write HPACK / HTTP2 protocol support.
 
-* Help me design / write a generic HTTP routing helper library for the `http_request_s` struct.
+* Help me design / write a generic HTTP routing helper library for the `http_s` struct.
 
-* If you want to help me write a new SSL/TLS library or have an SSL/TLS solution we can fit into `lib-server` (as source code).
+* If you want to help integrate an SSL/TLS library into `facil`, that would be great.

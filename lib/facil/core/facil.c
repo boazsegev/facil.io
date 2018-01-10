@@ -210,6 +210,19 @@ void facil_force_event(intptr_t uuid, enum facil_io_event ev) {
   }
 }
 
+/**
+ * Temporarily prevents `on_data` events from firing.
+ *
+ * The `on_data` event will be automatically rescheduled when (if) the socket's
+ * outgoing buffer fills up or when `facil_force_event` is called with
+ * `FIO_EVENT_ON_DATA`.
+ */
+void facil_quite(intptr_t uuid) {
+  if(sock_isvalid(uuid))
+    spn_trylock(&uuid_data(uuid).scheduled);
+}
+
+
 /* *****************************************************************************
 Socket callbacks
 ***************************************************************************** */

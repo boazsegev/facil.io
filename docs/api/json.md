@@ -1,6 +1,7 @@
 ---
 title: facil.io - JSON support
 toc: true
+layout: api
 ---
 # Using facil.io's JSON support
 

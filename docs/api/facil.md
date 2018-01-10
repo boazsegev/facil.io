@@ -10,13 +10,11 @@
 
 `facil.h` utilizes `evio.h`, `defer.h` and `sock.h` to create a simple API wrapper around these minimalistic libraries and managing the "glue" that makes them work together for a whole that's greater than the sum of it's parts.
 
-It's simple, it's awesome, and I love it. But why trust me when it's all clearly open-source and you can test it yourself? ;-)
-
-But if you'd rather write the whole thing yourself, I recommend starting with [Beej's guide](http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html) as a good source for information.
+It's simple, it's awesome, and I love it. It's also open-source, MIT licensed and you can test it yourself ;-)
 
 ## Core Concepts And A Quick Example
 
-Facil.io aims to provide a simple API, so that developers can focus on developing their applications rather then learning new APIs.
+facil.io aims to provide a simple API, so that developers can focus on developing their applications rather then learning new APIs.
 
 However, server applications are not the simplest of beasts, so if you encounter some minor complexity, I hope this documentation can help elevate the situation.
 

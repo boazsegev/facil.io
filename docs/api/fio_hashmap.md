@@ -1,6 +1,7 @@
 ---
 title: facil.io - Core Hash Map Type
 toc: true
+layout: api
 ---
 # A Simple Hash Map
 
@@ -22,7 +23,9 @@ The container type for a Hash Map is `fio_hash_s`. The data in the container sho
 
 ### `fio_hash_new`
 
-`void fio_hash_new(fio_hash_s *hash)`
+```c
+void fio_hash_new(fio_hash_s *hash)
+```
 
 Allocates and initializes internal data and resources.
 
@@ -32,7 +35,9 @@ Lazy initialization of the Hash Map is possible by initializing the `fio_hash_s`
 
 ### `fio_hash_free`
 
-`void fio_hash_free(fio_hash_s *hash)`
+```c
+void fio_hash_free(fio_hash_s *hash)
+```
 
 Deallocates any internal resources.
 
@@ -54,19 +59,25 @@ The `FIO_HASH_KEY_TYPE` defaults to `uint64_t`, [this could be changed by defini
 
 ### `fio_hash_find`
 
-`void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key)`
+```c
+void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key)
+```
 
 Locates an object in the Hash Map Table according to the hash key value.
 
 ### `fio_hash_count`
 
-`size_t fio_hash_count(const fio_hash_s *hash)`
+```c
+size_t fio_hash_count(const fio_hash_s *hash)
+```
 
 Returns the number of elements currently in the Hash Table.
 
 ### `fio_hash_capa`
 
-`size_t fio_hash_capa(const fio_hash_s *hash)`
+```c
+size_t fio_hash_capa(const fio_hash_s *hash)
+```
 
 Returns a temporary theoretical Hash map capacity.
 
@@ -74,7 +85,9 @@ This could be used for testing performance and memory consumption.
 
 ### `fio_hash_compact`
 
-`size_t fio_hash_compact(fio_hash_s *hash)`
+```c
+size_t fio_hash_compact(fio_hash_s *hash)
+```
 
 Attempts to minimize memory usage by removing empty spaces caused by deleted
 items (freeing their custom keys, if any) and rehashing the Hash Map.
@@ -83,7 +96,9 @@ Returns the updated hash map capacity.
 
 ### `fio_hash_rehash`
 
-`void fio_hash_rehash(fio_hash_s *hash)`
+```c
+void fio_hash_rehash(fio_hash_s *hash)
+```
 
 Forces a rehashing of the hash, increasing memory consumption as well as minimizing internal collisions (possibly improving seek times).
 
@@ -116,7 +131,9 @@ the starting point.
 
 ### `FIO_HASH_FOR_LOOP`
 
-`FIO_HASH_FOR_LOOP(hash, i)`
+```c
+FIO_HASH_FOR_LOOP(hash, i)
+```
 
 A macro for a `for` loop that iterates over all the hashed objects (in
 order).
@@ -131,7 +148,9 @@ The `i` variable can be names differently (i.e. `FIO_HASH_FOR_LOOP(hash, pos)` f
 
 ### `FIO_HASH_FOR_FREE`
 
-`FIO_HASH_FOR_FREE(hash, i)`
+```c
+FIO_HASH_FOR_FREE(hash, i)
+```
 
 A macro for a `for` loop that will iterate over all the hashed objects (in
 order) and empties the hash, later calling `fio_hash_free` to free the hash.
@@ -145,7 +164,9 @@ Free the objects and the Hash Map container manually (if required). Custom keys 
 
 ### `FIO_HASH_FOR_EMPTY`
 
-`FIO_HASH_FOR_EMPTY(hash, i)`
+```c
+FIO_HASH_FOR_EMPTY(hash, i)
+```
 
 A macro for a `for` loop that iterates over all the hashed objects (in
 order) and empties the hash.

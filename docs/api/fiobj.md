@@ -1,6 +1,7 @@
 ---
 title: facil.io - a Dynamic Type System using facil.io objects.
 toc: true
+layout: api
 ---
 # Dynamic Type System: facil.io objects (`FIOBJ`)
 
@@ -46,7 +47,7 @@ For example:
 
 ```c
 /* this will work */
-FIOBJ str = fiobj_str_buf(7); /* add 1 for NUL terminator */
+FIOBJ str = fiobj_str_buf(6); /* automatically adds room for the NUL terminator */
 fio_cstr_s raw_str = fiobj_obj2cstr(str);
 memcpy(raw_str.buffer, "Hello!", 6);
 fiobj_str_resize(str, 6);
@@ -54,7 +55,7 @@ fiobj_str_resize(str, 6);
 fiobj_free(str);
 
 /* this is better */
-FIOBJ str = fiobj_str_buf(7); /* add 1 for NUL terminator */
+FIOBJ str = fiobj_str_buf(6);
 fiobj_str_write(str, "Hello!", 6);
 // ...
 fiobj_free(str);
@@ -65,6 +66,11 @@ FIOBJ str = fiobj_str_new("Hello!", 6);
 fiobj_free(str);
 
 /* for more complex cases, printf style is supported */
+FIOBJ str = fiobj_strprintf("%s %d" , "Hello!", 42)
+// ...
+fiobj_free(str);
+
+/* or */
 FIOBJ str = fiobj_str_buf(0);
 fiobj_str_write2(str, "%s %d" , "Hello!", 42);
 // ...
@@ -80,7 +86,7 @@ fiobj_free(str);
 
 An object's memory should *always* be managed by it's "owner". This usually means the calling function.
 
-*However*, when an object is nested within another object (i.e., placed in an Array or a Hash), **the ownership of the object is transferred**.
+*However*, when an object is nested within another object (i.e., placed in an Array or a Hash or an HTTP header *value*), **the ownership of the object is transferred**.
 
 In the following example, the String nested within the Array is freed when the Array is freed:
 
@@ -93,15 +99,15 @@ fiobj_free(ary);
 ```
 Hashes follow the same rule. However...
 
-It's important to note that Symbol objects (Hash keys) aren't transferred to the Hash (they are used to access and store data, but they are not the data itself).
+It's important to note that Hash keys aren't transferred to the Hash (they are used to access and store data, but they are not the data itself).
 
-When calling `fiobj_hash_set`, we are storing a *value* in the Hash, the key is what we use to access that value. This is why **the key's ownership remains with the calling function**. i.e.:
+When calling `fiobj_hash_set`, we are storing a *value* in the Hash, the *key* is what we use to access that value. This is why **the key's ownership remains with the calling function**. i.e.:
 
 ```c
 FIOBJ h = fiobj_hash_new();
 static __thread FIOBJ ID = NULL;
 if(!ID)
-  ID = fiobj_sym_new("id", 2);
+  ID = fiobj_str_new("id", 2);
 /* By placing the Number in the Hash, it will be deallocated together with the Hash */
 fiobj_hash_set(h, ID, fiobj_num_new(42));
 // ...
@@ -160,20 +166,13 @@ fprintf(stderr, "%s\n", fiobj_obj2cstr( fiobj_ary_index(ary_copy, -1) ).buffer )
 fiobj_free(ary_copy);
 ```
 
-### Optional Cyclic Nesting Protection
+### Cyclic Nesting Errors
 
-Cyclic protection is disabled by default due to performance concerns. Consider that the the protection layer must keep a list of any Hash or Array processed and test each Array and Hash to see if they were processed before.
+Cyclic protection is disabled by default due to performance concerns.  
 
-To enable the optional cyclic nesting protection, `FIOBJ_NESTING_PROTECTION` must be defined during compile time.
-
-i.e., add `-DFIOBJ_NESTING_PROTECTION` to the compiler flags.
-
-Optionally, you could edit the `fiobj.h` file, but that is less recommended, since updated might overwrite the edit.
-
-Without the optional cyclic nesting protection, the following code will crash:
+Cyclic nesting should be avoided. For example, the following code will crash:
 
 ```c
-// FIOBJ_NESTING_PROTECTION == 0 or not defined
 FIOBJ ary = fiobj_ary_new();
 FIOBJ ary2 = fiobj_ary_new();
 // cyclic nesting
@@ -183,21 +182,6 @@ fiobj_ary_push(ary2, ary);
 fiobj_free(ary);
 // each2 will cycle forever
 fiobj_each2(ary2, ...);
-```
-
-However, enabling the optional cyclic nesting protection will protect against cyclic nesting issues (while adversely impacting performance):
-
-```c
-// FIOBJ_NESTING_PROTECTION == 1
-FIOBJ ary = fiobj_ary_new();
-FIOBJ ary2 = fiobj_ary_new();
-// cyclic nesting
-fiobj_ary_push(ary, ary2);
-fiobj_ary_push(ary2, ary);
-// each2 will safely skip cyclic objects
-fiobj_each2(ary2, ...);
-// both arrays, that "own" each other, are freed
-fiobj_free(ary);
 ```
 
 ## Independence

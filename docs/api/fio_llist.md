@@ -1,6 +1,7 @@
 ---
 title: facil.io - Linked Lists
 toc: true
+layout: api
 ---
 # A Simple Linked List
 
@@ -21,9 +22,13 @@ The API is practically the same for both, the only difference is in the prefix (
 
 ## Data Structure and Initialization.
 
-The container for a list is the same as a node, however, it must be initialized so that it links to itself (see `FIO_LS_INIT`).
+The container for a list is the same as a node, however, it must be initialized so that it links to itself (see `FIO_LS_INIT`). i.e.:
 
-The container can be dynamically allocated, placed of the stack or embedded in a dynamic object.
+```c
+fio_ls_s my_list = FIO_LS_INIT(my_list);
+```
+
+The linked list container is a simple data structure shown here... however, it is best to **access the data using the API and avoid accessing the data directly**. This will both protect the program from future changes to the data structures and minimize possible errors. 
 
 ```c
 /** an embeded linked list. */
@@ -42,55 +47,75 @@ typedef struct fio_ls_s {
 #define FIO_LS_INIT(name)  { .next = &(name), .prev = &(name) }
 ```
 
+The container can be dynamically allocated, placed of the stack or embedded in a dynamic object.
+
 ## Generic Linked List API
+
+Note that the API is comprised of **inline static functions that act like macros**, so there is no performance to be gained by accessing the data structure directly (only integrity to be lost).
 
 ### `fio_ls_push`
 
-`void fio_ls_push(fio_ls_s *pos, const void *obj)`
+```c
+void fio_ls_push(fio_ls_s *pos, const void *obj)
+```
 
 Adds an object to the list's head.
 
 ### `fio_ls_unshift`
 
-`void fio_ls_unshift(fio_ls_s *pos, const void *obj)`
+```c
+void fio_ls_unshift(fio_ls_s *pos, const void *obj)
+```
 
 
 Adds an object to the list's tail. 
 
 ### `fio_ls_pop`
 
-`void *fio_ls_pop(fio_ls_s *list)`
+```c
+void *fio_ls_pop(fio_ls_s *list)
+```
 
 Removes an object from the list's head.
 
 ### `fio_ls_shift`
 
-`void *fio_ls_shift(fio_ls_s *list)`
+```c
+void *fio_ls_shift(fio_ls_s *list)
+```
 
 Removes an object from the list's tail.
 
 ### `fio_ls_remove`
 
-`void *fio_ls_remove(fio_ls_s *node)`
+```c
+void *fio_ls_remove(fio_ls_s *node)
+```
 
 Removes a node from the list, returning the contained object.
 
 
 ### `fio_ls_is_empty`
 
-`int fio_ls_is_empty(fio_ls_s *list)`
+```c
+int fio_ls_is_empty(fio_ls_s *list)
+```
 
 Tests if the list is empty.
 
 ### `fio_ls_any`
 
-`int fio_ls_any(fio_ls_s *list)`
+```c
+int fio_ls_any(fio_ls_s *list)
+```
 
 Tests if the list is NOT empty (contains any nodes).
 
 ### `FIO_LS_FOR`
 
-`FIO_LS_FOR(list, pos)`
+```c
+FIO_LS_FOR(list, pos)
+```
  
 Iterates through the list using a `for` loop.
 
@@ -100,49 +125,65 @@ Access the data with `pos->obj` (`pos` can be named however you please).
 
 ### `fio_ls_embd_push`
 
-`void fio_ls_embd_push(fio_ls_embd_s *dest, fio_ls_embd_s *node)`
+```c
+void fio_ls_embd_push(fio_ls_embd_s *dest, fio_ls_embd_s *node)
+```
 
 Adds a node to the list's head.
 
 ### `fio_ls_embd_unshift`
 
-`fio_ls_embd_unshift(fio_ls_embd_s *dest, fio_ls_embd_s *node)`
+```c
+fio_ls_embd_unshift(fio_ls_embd_s *dest, fio_ls_embd_s *node)
+```
 
 Adds a node to the list's tail.
 
 ### `fio_ls_embd_pop`
 
-`fio_ls_embd_s *fio_ls_embd_pop(fio_ls_embd_s *list)`
+```c
+fio_ls_embd_s *fio_ls_embd_pop(fio_ls_embd_s *list)
+```
 
 Removes a node from the list's head.
 
 ### `fio_ls_embd_shift`
 
-`fio_ls_embd_s *fio_ls_embd_shift(fio_ls_embd_s *list)`
+```c
+fio_ls_embd_s *fio_ls_embd_shift(fio_ls_embd_s *list)
+```
 
 Removes a node from the list's tail.
 
 ### `fio_ls_embd_remove`
 
-`fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node)`
+```c
+fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node)
+```
 
 Removes a node from it's container list.
 
 ### `fio_ls_embd_is_empty`
 
-`fio_ls_embd_is_empty(fio_ls_embd_s *list)`
+```c
+fio_ls_embd_is_empty(fio_ls_embd_s *list)
+```
 
 Tests if the list is empty.
 
 ### `fio_ls_embd_any`
 
-`int fio_ls_embd_any(fio_ls_embd_s *list)`
+```c
+int fio_ls_embd_any(fio_ls_embd_s *list)
+```
 
 Tests if the list is NOT empty (contains any nodes).
 
 ### `FIO_LS_EMBD_FOR`
 
-`FIO_LS_EMBD_FOR(list, node)`
+```c
+FIO_LS_EMBD_FOR(list, node)
+```
 
 Iterates through the list using a `for` loop.
 

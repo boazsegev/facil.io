@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<svg width="480" height="480" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+ <!-- Created By Bo using SVG-edit and some hand coding - http://svg-edit.googlecode.com/ -->
+ <g>
+  <title>Layer 1</title>
+  <circle fill-opacity="0" id="svg_1" r="232" cy="240" cx="240" stroke-width="16" stroke="#e5e5e5" stroke-opacity="0.72" fill="#000000"/>
+  <ellipse stroke="#e5e5e5" transform="rotate(45 240,240) " ry="16" rx="72" id="svg_3" cy="240" cx="240" stroke-opacity="0.72" fill-opacity="0.72" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="2" fill="#e5e5e5"/>
+  <ellipse id="svg_5" transform="rotate(135 240,240) " stroke="#e5e5e5" ry="16" rx="72" cy="240" cx="240" stroke-opacity="0.72" fill-opacity="0.72" stroke-linecap="null" stroke-linejoin="null" stroke-dasharray="null" stroke-width="2" fill="#e5e5e5"/>
+ </g>
+</svg>

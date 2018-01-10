@@ -1,6 +1,7 @@
 ---
 title: facil.io - lib defer, an event scheduling and thread pool library in C.
 toc: true
+layout: api
 ---
 # `defer` - An event scheduling library in C.
 
@@ -57,3 +58,5 @@ int main(void) {
   printf("Done.\n");
 }
 ```
+
+This is actually most of the API right there, but if you need more details you can find them in the [`defer.h` header file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/defer.h).

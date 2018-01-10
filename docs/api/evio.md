@@ -1,6 +1,7 @@
 ---
 title: facil.io - lib evio, kqueue/epoll abstraction in C.
 toc: true
+layout: api
 ---
 # The Evented IO Library - KQueue/EPoll abstraction
 
@@ -33,7 +34,9 @@ Event callbacks are defined during the linking stage and are hardwired once comp
 
 ### `evio_create`
 
-`intptr_t evio_create(void)`
+```c
+intptr_t evio_create(void)
+```
 
 Creates the `epoll` or `kqueue` object.
 
@@ -49,9 +52,11 @@ the file descriptors are expected to be shared).
 
 ### `evio_review`
 
-`int evio_review(const int timeout_millisec)`
+```c
+int evio_review(const int timeout_millisec)
+```
 
-Reviews any pending events (up to EVIO_MAX_EVENTS) and calls any callbacks.
+Reviews any pending events (up to `EVIO_MAX_EVENTS`) and calls any callbacks.
 
 Waits up to `timeout_millisec` for events to occur.
 
@@ -59,21 +64,27 @@ Returns -1 on error, otherwise returns the number of events handled.
 
 ### `evio_close`
 
-`void evio_close(void);`
+```c
+void evio_close(void);
+```
 
 Closes the `epoll` / `kqueue` object, releasing it's resources (important if
 forking!).
 
 ### `evio_isactive`
 
-`int evio_isactive(void)`
+```c
+int evio_isactive(void)
+```
 
 Returns true if the evio is available for adding or removing file descriptors.
 
 
 ### `evio_add`
 
-`int evio_add(int fd, void *callback_arg)`
+```c
+int evio_add(int fd, void *callback_arg)
+```
 
 Adds a file descriptor to the polling object (ONE SHOT).
 
@@ -82,7 +93,9 @@ safely ignored.
 
 ### `evio_open_timer`
 
-`intptr_t evio_open_timer(void)`
+```c
+intptr_t evio_open_timer(void)
+```
 
 Creates a timer file descriptor, system dependent.
 
@@ -92,7 +105,9 @@ NOTE: Systems have a limit on the number of timers that can be opened.
 
 ### `evio_set_timer`
 
-`intptr_t evio_set_timer(int fd, void *callback_arg, unsigned long milliseconds)`
+```c
+intptr_t evio_set_timer(int fd, void *callback_arg, unsigned long milliseconds)
+```
 
 Adds a timer file descriptor, so that callbacks will be called for it's events.
 

@@ -283,10 +283,10 @@ int facil_fork(void);
 /**
  * Attaches (or updates) a protocol object to a socket UUID.
  *
- * The new protocol object can be NULL, which will practically "hijack" the
- * socket away from facil.
+ * The new protocol object can be NULL, which will detach ("hijack"), the
+ * socket.
  *
- * The old protocol's `on_close` will be scheduled, if they both exist.
+ * The old protocol's `on_close` (if any) will be scheduled.
  *
  * Returns -1 on error and 0 on success.
  *
@@ -300,10 +300,7 @@ int facil_attach(intptr_t uuid, protocol_s *protocol);
  * The protocol will be attached in the FIO_PR_LOCK_TASK state, requiring a
  * furthur call to `facil_protocol_unlock`.
  *
- * The new protocol object can be NULL, which will practically "hijack" the
- * socket away from facil.
- *
- * The old protocol's `on_close` will be scheduled, if they both exist.
+ * The old protocol's `on_close` (if any) will be scheduled.
  *
  * Returns -1 on error and 0 on success.
  *
@@ -324,6 +321,19 @@ enum facil_io_event {
 };
 /** Schedules an IO event, even id it did not occur. */
 void facil_force_event(intptr_t uuid, enum facil_io_event);
+
+/**
+ * Temporarily prevents `on_data` events from firing.
+ *
+ * The `on_data` event will be automatically rescheduled when (if) the socket's
+ * outgoing buffer fills up or when `facil_force_event` is called with
+ * `FIO_EVENT_ON_DATA`.
+ *
+ * Note: the function will work as expected when called within the protocol's
+ * `on_data` callback and the `uuid` refers to a valid socket. Otherwise the
+ * function might quitely fail.
+ */
+void facil_quite(intptr_t uuid);
 
 /* *****************************************************************************
 Helper API

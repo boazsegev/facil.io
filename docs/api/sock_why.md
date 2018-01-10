@@ -1,8 +1,9 @@
 ---
 title: facil.io - lib sock - a making sockets in C easy to use.
 toc: true
+layout: api
 ---
-# A Simple Socket Library for non-blocking Berkeley Sockets
+# A Simple Socket Library for non-blocking Sockets
 
 This library aims to:
 
@@ -120,26 +121,8 @@ In our example:
 
 So, using `sock.h`, Alice will **not** receive Bob's bank statement.
 
-#### TCP/IP as default
+#### TCP/IP and Unix Sockets as default
 
-`sock.h` defaults to TCP/IP sockets, so calls to `sock_listen` and `sock_connect` will assume TCP/IP.
+`sock.h` defaults to TCP/IP and Unix Domain sockets, so calls to `sock_listen` and `sock_connect` will assume one or the other (if no port is assigned, it is assumed to be a Unix Domain socket).
 
-However, importing other socket types should be possible by using the `sock_open(fd)` function, that allows us to import an existing file descriptor into `sock.h`, assigning this file descriptor a valid UUID.
-
-## A Simple API
-
-The `sock.h` API can be divided into a few different categories:
-
-- General helper functions
-
-- Accepting connections and opening new sockets.
-
-- Sending and receiving data.
-
-- Direct user level buffer API.
-
-- Read/Write Hooks.
-
----
-
-More information coming soon. Until than, read the header files.
+However, importing other socket types (such as pipes) should be possible by using the `sock_open(fd)` function, that imports an existing file descriptor into `sock.h`, assigning this file descriptor a valid UUID.

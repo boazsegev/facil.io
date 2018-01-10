@@ -7,7 +7,11 @@
 {% seo %}
 
     <link href='https://fonts.googleapis.com/css?family=Lato:300italic,700italic,300,700' rel='stylesheet' type='text/css'>
-    <link rel="stylesheet" href="{{ '/assets/css/style.css?v=' | append: site.github.build_revision | relative_url }}">
+    <link media="screen" rel="stylesheet" href="{{ '/assets/css/main.css?v=' | append: site.github.build_revision | relative_url }}">
+    <link media="screen" rel="stylesheet" href="{{ '/assets/css/dark.css?v=' | append: site.github.build_revision | relative_url }}">
+    <link media="screen" rel="stylesheet" href="{{ '/assets/css/light.css?v=' | append: site.github.build_revision | relative_url }}">
+    <link media="print" rel="stylesheet" href="{{ '/assets/css/print.css?v=' | append: site.github.build_revision | relative_url }}">
+    <link media="print" rel="stylesheet" href="{{ '/assets/css/github.css?v=' | append: site.github.build_revision | relative_url }}">
     <script src="{{ '/assets/js/scale.fix.js' | relative_url }}"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 
@@ -15,33 +19,46 @@
     <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
     <![endif]-->
   </head>
-  <body>
-    <div class="wrapper">
-      <header {% unless site.description or site.github.project_tagline %} class="without-description" {% endunless %}>
-        <h1><a href='/'>{{ site.title | default: site.github.repository_name }}</a></h1>
-        {% if site.description or site.github.project_tagline %}
-          <p>{{ site.description | default: site.github.project_tagline }}</p>
-        {% endif %}
-        <p class="view"><a href="{{ site.github.repository_url }}">View the Project on GitHub <small>{{ github_name }}</small></a></p>
-        <ul>
-        {% if site.show_downloads %}
-          <li><a href="{{ site.github.zip_url }}">Download <strong>ZIP File</strong></a></li>
-          <li><a href="{{ site.github.tar_url }}">Download <strong>TAR Ball</strong></a></li>
-        {% endif %}
-          <li><a href="{{ site.github.repository_url }}">View On <strong>GitHub</strong></a></li>
-        </ul>
-      </header>
+  <body><header {% unless site.description or site.github.project_tagline %} class="without-description" {% endunless %}>
+          <h1><a href='/'>{{ site.title | default: site.github.repository_name }}</a></h1>
+          <a class="view" href="{{ site.github.repository_url }}">View On <strong>GitHub</strong></a>
+          <input id="burger" type="checkbox">
+          <ul>
+            <li><a href='/api/types'>Types</a></li>
+            <li><a href='/api/modules'>Modules</a></li>
+            <li><a href="javascript: change_themes();" id="theme">Day Theme</a></li>
+          </ul>
+          <script>
+            function change_themes() {
+              if(localStorage.getItem("theme") == 'light') {
+                  localStorage.setItem("theme", "dark");
+              } else {
+                  localStorage.setItem("theme", "light");
+              }
+              document.getElementsByTagName('body')[0].className = localStorage.getItem("theme");
+              document.getElementsByTagName('html')[0].className = localStorage.getItem("theme");
+              set_theme_link();
+              // $('#show_nav').attr('checked', false);
+              return false;
+            };
+            function set_theme_link() {
+              document.getElementById('theme').innerHTML = ( (localStorage.getItem("theme") == 'light') ? "Night" : "Day") + " Theme";
+            }
+            document.getElementsByTagName('body')[0].className = (localStorage.getItem("theme") == 'light') ? "light" : "dark";
+            document.getElementsByTagName('html')[0].className = document.getElementsByTagName('body')[0].className;
+            set_theme_link();
+          </script>
+        </header>
       <section>
 
-      {{ content }}
+      {{ content | toc }}
 
       </section>
-    </div>
     <footer>
     {% if site.github.is_project_page %}
       <p>Project maintained by <a href="{{ site.github.owner_url }}">{{ site.github.owner_name }}</a></p>
     {% endif %}
-      <p>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></p>
+      <p>Hosted on GitHub Pages</p>
     </footer>
     <!--[if !IE]><script>fixScale(document);</script><![endif]-->
 
