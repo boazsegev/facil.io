@@ -104,7 +104,7 @@ These are the features that have been requested so far. Even if any of them are 
 |   Documentation   |     🙏 Help 🙏    | Place in the `docs` folder |
 |      HTTP/2       | Bo (me), help me?  |                            |
 |    HTTP Router    |                    |                            |
-|    HTTP Client    |                    |                            |
+|    HTTP Client    |                    | Missing TLS/SSL, cookie retention and auto-redirect(?)  |
 |  Websocket Client |                    |                            |
 |      SSL/TLS      |                    | Use `sock` R/W hooks       |
 |      Gossip       |                    | For Pub/Sub engine scaling |
