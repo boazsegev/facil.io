@@ -877,10 +877,13 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
     }
     memcpy(a, address + 7, len + 1);
   }
+  p = memchr(a, '/', len);
+  if (p) {
+    len = p - a;
+    *p = 0;
+  }
   p = memchr(a, ':', len);
   if (p) {
-    if (a[--len] == '/')
-      a[len] = 0;
     len = p - a;
     *p = 0;
     if (a + len == p + 1) {
@@ -898,8 +901,6 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
     else
       p = "80";
   }
-  if (a[len - 1] == '/')
-    a[--len] = 0;
 
   /* set settings */
   if (!arg_settings.timeout)
@@ -913,6 +914,7 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
   settings->udata = h;
   http_set_header2(h, (fio_cstr_s){.data = "host", .len = 4},
                    (fio_cstr_s){.data = a, .len = len});
+  fprintf(stderr, "COnnecting to %s : %s\n", a, p);
   intptr_t ret =
       facil_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
                     .on_connect = http_on_open_client, .udata = settings);
