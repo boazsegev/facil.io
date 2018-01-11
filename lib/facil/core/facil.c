@@ -218,10 +218,9 @@ void facil_force_event(intptr_t uuid, enum facil_io_event ev) {
  * `FIO_EVENT_ON_DATA`.
  */
 void facil_quite(intptr_t uuid) {
-  if(sock_isvalid(uuid))
+  if (sock_isvalid(uuid))
     spn_trylock(&uuid_data(uuid).scheduled);
 }
-
 
 /* *****************************************************************************
 Socket callbacks
@@ -519,7 +518,6 @@ struct ConnectProtocol {
 /* The first `ready` signal is fired when a connection was established */
 static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
   struct ConnectProtocol *connector = (void *)_connector;
-  // fprintf(stderr, "connector_on_ready called\n");
   sock_touch(uuid);
   if (connector->opened == 0) {
     connector->opened = 1;
@@ -567,11 +565,11 @@ intptr_t facil_connect(struct facil_connect_args opt) {
   /* check for errors, always invoke the on_fail if required */
   if (uuid == -1)
     goto error;
-  facil_set_timeout(uuid, opt.timeout);
   if (facil_attach(uuid, &connector->protocol) == -1) {
     sock_close(uuid);
     goto error;
   }
+  facil_set_timeout(uuid, opt.timeout);
   return uuid;
 error:
   if (opt.on_fail)
@@ -1320,13 +1318,15 @@ static void facil_worker_startup(uint8_t sentinal) {
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   if (sentinal == 0) {
     for (intptr_t i = 0; i < facil_data->capacity; i++) {
+      errno = 0;
       if (fd_data(i).protocol) {
         if (fd_data(i).protocol->service == listener_protocol_name)
           listener_on_start(i);
         else if (fd_data(i).protocol->service == timer_protocol_name)
           timer_on_server_start(i);
-        else
+        else {
           evio_add(i, (void *)sock_fd2uuid(i));
+        }
       }
     }
   } else {
@@ -1597,8 +1597,10 @@ Misc helpers
 Returns the last time the server reviewed any pending IO events.
 */
 struct timespec facil_last_tick(void) {
-  if (!facil_data)
+  if (!facil_data) {
+    facil_lib_init();
     clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
+  }
   return facil_data->last_cycle;
 }
 

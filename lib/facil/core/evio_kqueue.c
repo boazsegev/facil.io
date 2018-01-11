@@ -120,18 +120,24 @@ int evio_review(const int timeout_millisec) {
 
   if (active_count > 0) {
     for (int i = 0; i < active_count; i++) {
+      // test for event(s) type
+      if (events[i].filter == EVFILT_WRITE) {
+        evio_on_ready(events[i].udata);
+      } else if (events[i].filter == EVFILT_READ ||
+                 events[i].filter == EVFILT_TIMER) {
+        evio_on_data(events[i].udata);
+      }
+      // connection errors should be reported after `read` in case there's data
+      // left in the buffer.
       if (events[i].flags & (EV_EOF | EV_ERROR)) {
         // errors are hendled as disconnections (on_close)
+        // fprintf(stderr, "%p: %s\n", events[i].udata,
+        //         (events[i].flags & EV_EOF)
+        //             ? "EV_EOF"
+        //             : (events[i].flags & EV_ERROR) ? "EV_ERROR" : "WTF?");
         evio_on_error(events[i].udata);
-      } else {
-        // no error, then it's an active event(s)
-        if (events[i].filter == EVFILT_WRITE) {
-          evio_on_ready(events[i].udata);
-        }
-        if (events[i].filter == EVFILT_READ || events[i].filter == EVFILT_TIMER)
-          evio_on_data(events[i].udata);
       }
-    } // end for loop
+    }
   } else if (active_count < 0) {
     if (errno == EINTR)
       return 0;

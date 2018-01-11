@@ -765,7 +765,7 @@ intptr_t sock_connect(char *address, char *port) {
       return -1;
     }
 
-    struct sockaddr_un addr = {0};
+    struct sockaddr_un addr = {.sun_family = AF_UNIX};
     size_t addr_len = strlen(address);
     if (addr_len >= sizeof(addr.sun_path)) {
       errno = ENAMETOOLONG;
@@ -1029,6 +1029,7 @@ void sock_force_close(intptr_t uuid) {
   //         "ERROR: `sock_force_close` called"
   //         " for %p with errno %d\n",
   //         (void *)uuid, errno);
+  // perror("errno");
   shutdown(sock_uuid2fd(uuid), SHUT_RDWR);
   close(sock_uuid2fd(uuid));
   clear_fd(sock_uuid2fd(uuid), 0);
@@ -1098,7 +1099,7 @@ finish:
 error:
   unlock_fd(fd);
   // fprintf(stderr,
-  //         "ERROR: sock `write` failed"
+  //         "ERROR: sock `flush` failed"
   //         " for %p with %d\n",
   //         (void *)uuid, errno);
   sock_force_close(uuid);

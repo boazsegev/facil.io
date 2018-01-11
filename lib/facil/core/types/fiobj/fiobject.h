@@ -492,6 +492,8 @@ fio_cstr_s fio_ftocstr(double);
  * A type error results in NULL (i.e. object isn't a String).
  */
 FIO_INLINE fio_cstr_s fiobj_obj2cstr(const FIOBJ o) {
+  if (!o)
+    return (fio_cstr_s){.buffer = (void *)"null", .len = 4};
   if (o & FIOBJECT_NUMBER_FLAG)
     return fio_ltocstr(((intptr_t)o) >> 1);
   if ((o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_PRIMITIVE_FLAG) {
