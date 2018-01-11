@@ -227,7 +227,7 @@ footer {
 
 .section-nav, .section-nav li, .section-nav ul , .section-nav ol {
 	list-style: none;
-	padding: 0.3em 1em;
+	padding: 0 1em;
 	margin: 0;
 }
 
@@ -253,6 +253,7 @@ footer {
 }
 
 .section-nav a{
+	padding: 0.3em 0;
 	display: block;
 	width: 100%;	
 }
@@ -308,7 +309,7 @@ body.light .section-nav:before {
 	border: #966 solid 0.2em;
 }
 
-body.light .section-nav > li {
+body.light .section-nav {
 	background: #fee;	
 	color:  #400;
 	border: #966 solid 0.2em;
