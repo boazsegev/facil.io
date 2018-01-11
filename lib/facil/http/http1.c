@@ -48,8 +48,8 @@ static fio_cstr_s http1pr_status2str(uintptr_t status);
 
 /* cleanup an HTTP/1.1 handler object */
 static inline void http1_after_finish(http_s *h) {
-  http_s_cleanup(h);
   http1pr_s *p = (http1pr_s *)h->private_data.owner;
+  http_s_cleanup(h);
   if (h != &p->request)
     free(h);
   if (p->close)
@@ -164,8 +164,10 @@ static FIOBJ headers2str(http_s *h) {
 static int http1_send_body(http_s *h, void *data, uintptr_t length) {
 
   FIOBJ packet = headers2str(h);
-  if (!packet)
+  if (!packet) {
+    http1_after_finish(h);
     return -1;
+  }
   fiobj_str_write(packet, data, length);
   fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
   http1_after_finish(h);
@@ -176,6 +178,8 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
                           uintptr_t offset) {
   FIOBJ packet = headers2str(h);
   if (!packet) {
+    close(fd);
+    http1_after_finish(h);
     return -1;
   }
   if (length < HTTP1_READ_BUFFER) {
@@ -481,8 +485,10 @@ static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
     return;
   }
   p->buf_len += i;
+  size_t org_len = p->buf_len;
   do {
-    i = http1_fio_parser(.parser = &p->parser, .buffer = p->buf,
+    i = http1_fio_parser(.parser = &p->parser,
+                         .buffer = p->buf + (org_len - p->buf_len),
                          .length = p->buf_len, .on_request = http1_on_request,
                          .on_response = http1_on_response,
                          .on_method = http1_on_method,
@@ -493,15 +499,22 @@ static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
                          .on_body_chunk = http1_on_body_chunk,
                          .on_error = http1_on_error);
     p->buf_len -= i;
-    if (i && p->buf_len) {
-      memmove(p->buf, p->buf + i, p->buf_len);
-    }
-    if (p->buf_len == HTTP1_READ_BUFFER) {
-      http_send_error2(413, uuid, p->p.settings);
-    }
   } while (i);
+
+  if (i && p->buf_len) {
+    memmove(p->buf, p->buf + i, p->buf_len);
+  }
+
+  if (p->buf_len == HTTP1_READ_BUFFER) {
+    /* no room to read... parser not consuming data */
+    if (p->request.headers)
+      http_send_error(&p->request, 413);
+    else
+      http_send_error2(413, uuid, p->p.settings);
+  }
   // facil_force_event(uuid, FIO_EVENT_ON_DATA);
 }
+
 /** called when the connection was closed, but will not run concurrently */
 static void http1_on_close(intptr_t uuid, protocol_s *protocol) {
   http1_destroy(protocol);
