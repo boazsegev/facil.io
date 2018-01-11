@@ -76,9 +76,9 @@ static inline void fiobj_str_setlen(FIOBJ o, size_t len) {
     obj2str(o)->slen = len;
     STR_INTENAL_STR(o)[len] = 0;
   } else {
+    obj2str(o)->len = len;
     obj2str(o)->str[len] = 0;
     obj2str(o)->hash = 0;
-    obj2str(o)->len = len;
   }
 }
 static inline fio_cstr_s fiobj_str_get_cstr(FIOBJ o) {
@@ -360,7 +360,6 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
       perror("FATAL ERROR: Couldn't allocate larger String memory"),
           exit(errno);
     memcpy(mem, STR_INTENAL_STR(str), obj2str(str)->slen + 1);
-    mem[size - 1] = 0;
     *obj2str(str) = (fiobj_str_s){
         .head =
             {
@@ -395,7 +394,6 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
       perror("FATAL ERROR: Couldn't (re)allocate String memory"), exit(errno);
   }
   obj2str(str)->capa = size;
-  obj2str(str)->str[size - 1] = 0;
   return obj2str(str)->capa - 1;
 }
 
@@ -562,6 +560,16 @@ void fiobj_test_string(void) {
   STR_EQ(o, "hello my dear friend, I hope that your are well and happy."
             " World");
   fiobj_free(o);
+
+  o = fiobj_str_buf(4);
+  for (int i = 0; i < 16000; ++i) {
+    fiobj_str_write(o, "a", 1);
+  }
+  TEST_ASSERT(obj2str(o)->len == 16000, "16K fiobj_str_write not 16K.\n");
+  TEST_ASSERT(obj2str(o)->capa > 16001,
+              "16K fiobj_str_write capa not enough.\n");
+  fiobj_free(o);
+
   fprintf(stderr, "* passed.\n");
 }
 #endif
