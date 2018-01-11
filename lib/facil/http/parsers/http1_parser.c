@@ -285,14 +285,16 @@ inline static int consume_body_chunked(struct http1_fio_parser_args_s *args,
   while (*start < stop) {
     if (args->parser->state.content_length == 0) {
       size_t eol_len;
+      /* consume seperator */
+      while (*start < stop && (**start == '\n' || **start == '\r'))
+        ++(*start);
       /* collect chunked length */
       if (!(eol_len = seek2eol(&end, stop))) {
         /* requires length data to continue */
         return 0;
       }
       /* an empty EOL is possible in mid stream processing */
-      if (*start + eol_len - 1 >= end && (*start = end) &&
-          !seek2eol(&end, stop)) {
+      if (*start + eol_len > end && (*start = end) && !seek2eol(&end, stop)) {
         return 0;
       }
       args->parser->state.content_length = 0 - strtol((char *)*start, NULL, 16);
@@ -323,8 +325,6 @@ inline static int consume_body_chunked(struct http1_fio_parser_args_s *args,
     args->parser->state.read += (end - *start);
     args->parser->state.content_length += (end - *start);
     *start = end;
-    if (args->parser->state.content_length == 0 && seek2eol(start, stop))
-      (*start)++;
   }
   return 0;
 }
