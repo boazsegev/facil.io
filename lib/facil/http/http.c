@@ -969,8 +969,8 @@ FIOBJ http_req2str(http_s *h) {
   fiobj_each1(h->headers, 0, write_header, &w);
   fiobj_str_write(w.dest, "\r\n", 2);
   if (h->body) {
-    // fiobj_io_seek(h->body, 0);
-    // fio_cstr_s t = fiobj_io_read(h->body, 0);
+    // fiobj_data_seek(h->body, 0);
+    // fio_cstr_s t = fiobj_data_read(h->body, 0);
     // fiobj_str_write(w.dest, t.data, t.len);
     fiobj_str_join(w.dest, h->body);
   }

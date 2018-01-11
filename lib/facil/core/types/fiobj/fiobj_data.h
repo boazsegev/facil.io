@@ -27,27 +27,28 @@ Creating the IO object
 ***************************************************************************** */
 
 /** Creates a new local in-memory IO object */
-FIOBJ fiobj_io_newstr(void);
+FIOBJ fiobj_data_newstr(void);
 
 /**
  * Creates a IO object from an existing buffer. The buffer will be deallocated
  * using the provided `dealloc` function pointer. Use a NULL `dealloc` function
  * pointer if the buffer is static and shouldn't be freed.
  */
-FIOBJ fiobj_io_newstr2(void *buffer, uintptr_t length, void (*dealloc)(void *));
+FIOBJ fiobj_data_newstr2(void *buffer, uintptr_t length,
+                         void (*dealloc)(void *));
 
 /** Creates a new local tempfile IO object */
-FIOBJ fiobj_io_newtmpfile(void);
+FIOBJ fiobj_data_newtmpfile(void);
 
 /** Creates a new local file IO object */
-FIOBJ fiobj_io_newfd(int fd);
+FIOBJ fiobj_data_newfd(int fd);
 
 /* *****************************************************************************
 Saving the IO object
 ***************************************************************************** */
 
 /** Creates a new local file IO object */
-int fiobj_io_save(FIOBJ io, const char *filename);
+int fiobj_data_save(FIOBJ io, const char *filename);
 
 /* *****************************************************************************
 Reading API
@@ -63,7 +64,7 @@ Reading API
  * The C string object will be invalidate the next time a function call to the
  * IO object is made.
  */
-fio_cstr_s fiobj_io_read(FIOBJ io, intptr_t length);
+fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length);
 
 /**
  * Reads until the `token` byte is encountered or until the end of the stream.
@@ -76,7 +77,7 @@ fio_cstr_s fiobj_io_read(FIOBJ io, intptr_t length);
  * The C string object will be invalidate the next time a function call to the
  * IO object is made.
  */
-fio_cstr_s fiobj_io_read2ch(FIOBJ io, uint8_t token);
+fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token);
 
 /**
  * Reads a line (until the '\n' byte is encountered) or until the end of the
@@ -91,17 +92,17 @@ fio_cstr_s fiobj_io_read2ch(FIOBJ io, uint8_t token);
  * The C string object will be invalidate the next time a function call to the
  * IO object is made.
  */
-#define fiobj_io_gets(io) fiobj_io_read2ch((io), '\n');
+#define fiobj_data_gets(io) fiobj_data_read2ch((io), '\n');
 
 /**
  * Returns the current reading position. Returns -1 on error.
  */
-intptr_t fiobj_io_pos(FIOBJ io);
+intptr_t fiobj_data_pos(FIOBJ io);
 
 /**
  * Moves the reading position to the requested position.
  */
-void fiobj_io_seek(FIOBJ io, intptr_t position);
+void fiobj_data_seek(FIOBJ io, intptr_t position);
 
 /**
  * Reads up to `length` bytes starting at `start_at` position and returns a
@@ -111,7 +112,7 @@ void fiobj_io_seek(FIOBJ io, intptr_t position);
  * The C string object will be invalidate the next time a function call to the
  * IO object is made.
  */
-fio_cstr_s fiobj_io_pread(FIOBJ io, intptr_t start_at, uintptr_t length);
+fio_cstr_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length);
 
 /* *****************************************************************************
 Writing API
@@ -123,7 +124,7 @@ Writing API
  *
  * Behaves and returns the same value as the system call `write`.
  */
-intptr_t fiobj_io_write(FIOBJ io, void *buffer, uintptr_t length);
+intptr_t fiobj_data_write(FIOBJ io, void *buffer, uintptr_t length);
 
 /**
  * Writes `length` bytes at the end of the IO stream, ignoring the reading
@@ -131,7 +132,7 @@ intptr_t fiobj_io_write(FIOBJ io, void *buffer, uintptr_t length);
  *
  * Behaves and returns the same value as the system call `write`.
  */
-intptr_t fiobj_io_puts(FIOBJ io, void *buffer, uintptr_t length);
+intptr_t fiobj_data_puts(FIOBJ io, void *buffer, uintptr_t length);
 
 /**
  * Makes sure the IO object isn't attached to a static or external string.
@@ -139,10 +140,10 @@ intptr_t fiobj_io_puts(FIOBJ io, void *buffer, uintptr_t length);
  * If the IO object is attached to a static or external string, the data will be
  * copied to a new memory block.
  */
-void fiobj_io_assert_dynamic(FIOBJ io);
+void fiobj_data_assert_dynamic(FIOBJ io);
 
 #if DEBUG
-void fiobj_io_test(void);
+void fiobj_data_test(void);
 #endif
 
 #ifdef __cplusplus

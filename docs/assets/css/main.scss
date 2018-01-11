@@ -10,7 +10,7 @@ html, body {
 	color: #fdd;
 	padding: 0;
 	margin: 0;
-	transition: background 200ms;
+	transition: background 120ms;
 }
 
 
@@ -61,7 +61,7 @@ header {
 	position: abso;
 	top: 0;
 	z-index: 1001;
-	transition: background 200ms;
+	transition: background 120ms;
 }
 
 
@@ -93,7 +93,7 @@ header .view , header li a {
 	box-sizing: border-box;
   border-radius: 1em;
 	border: #966 solid 0.2em;
-	transition: background-color 200ms, border 200ms, opacity 200ms;
+	transition: background-color 120ms, border 120ms, opacity 120ms;
 	opacity: 0.8;
 	width: 6em;
 }
@@ -114,40 +114,57 @@ header .view strong {
     color: #ddf;
 }
 
+header .view2 {
+	display: none;
+}
+
 header ul {
 	box-sizing: border-box;
-	display: block;
-	width: auto;
-	height: auto;
+	display: inline-block;
+	width: 10.2em;
+	max-height: 2.6em;
 	margin: 0;
 	padding: 0;
-	margin-left: 12em;
 	list-style: none;
+	overflow: hidden;
+	vertical-align: top;
+	transition: max-height 120ms;
+}
+
+header ul:hover {
+	max-height: 300em;
+}
+
+header > ul {
+	display: inline-block;
+	width: auto;
+	max-height: 1em;
+	margin-left: 12em;
 	position: fixed;
 	top: 1.2em;
-	vertical-align: bottom;
+	overflow: visible;
 }
 
 header li {
 	box-sizing: border-box;
 	display: inline-block;
-	position: relative;
-	margin: 0 0.5em;
+	// position: relative;
+	margin: 0;
+	padding: 0;
 	width:  10em;
-	height: 3em;
-	vertical-align: middle;
+	vertical-align: top;
 }
 
 header li a {
 	box-sizing: border-box;
-	display: inline-block;
+	display: block;
 	height: 2.4em;
 	width:  10em;
-	vertical-align: middle;
+	margin: 0.1em 0.2em;
 }
 
 
-header, header ul, header .view {
+header, header > ul, header .view {
 	position: absolute;
 }
 
@@ -157,7 +174,7 @@ header, header ul, header .view {
 	padding: 5em 0em 2em 0em;
 	background: #333;	
 	box-sizing: border-box;
-	transition: background 200ms;
+	transition: background 120ms;
 }
 
 section h1, section h2, section h3 {
@@ -211,6 +228,7 @@ footer {
 	max-height: 75%;
 	overflow: auto;
 }
+
 .section-nav:before {
 	content: "Table of Contents";
 	display: block;
@@ -220,7 +238,7 @@ footer {
 	background: #422;	
 	border: #966 solid 0.2em;
 	opacity: 0.8;
-	transition: opacity 200ms;
+	transition: opacity 120ms;
 	transform: translateX(-9999px);
 	padding: 0.5em;
 }
@@ -232,7 +250,7 @@ footer {
 }
 
 .section-nav > li {
-	transition: transform 200ms;
+	transition: transform 120ms;
 	transform-origin: 0 0;
 	transform: rotateX(90deg);
 }
@@ -260,6 +278,10 @@ footer {
 
 .section-nav a:hover{
 	background-color: #644;
+}
+
+.section-nav > a , .section-nav ul > a {
+	display: none;
 }
 
 body.light {
@@ -327,16 +349,21 @@ body.light .section-nav a:hover{
   header, section, footer {margin-left: 0; margin-right: 0; width: 100%;}
   header { position: absolute; }
 	header .view { right: 0.5em; position: absolute; }
-	header ul { position: absolute; }
-	header li { padding: 0; margin: 0;}
+	header ul { width: 100%; height: auto; padding: 0; margin: 0; max-height:none;}
+	header > ul { position: absolute;  max-height: 300em; width: 100%; height: auto; display: inline;}
+	header > ul:hover { position: absolute;  max-height: 300em; width: auto; display: inline;}
+	header li { padding: 0; margin: 0; display: block;}
+	// header > ul > li { border-top: 2px #a88 solid; height:auto;}
 	.section-nav {display: none;}
+	header .view { display: none; }
+	header .view2 { display: block; }
 
   #burger {
     display: block;
     position: absolute;
     font-size: 1.4em;
     top: 0.2em;
-    left: 6em;
+    right: 2em;
     overflow: visible;
     transform: translateX(-999999px);
     z-index: 900; }
@@ -385,22 +412,27 @@ body.light .section-nav a:hover{
       display: block;
       width: 100%;
       margin: 0;
-      box-sizing: border-box; }
+      box-sizing: border-box;
+	    height:auto; }
     #burger + ul ul {
       height: auto;
-      border-bottom: rgba(128, 128, 128, 0.4) solid 1px;
-      border-top: rgba(128, 128, 128, 0.6) solid 1px; }
-      #burger + ul ul li {
+      margin: 0.2em 0; }
+      #burger + ul ul li a {
         opacity: 1;
-        border-radius: 0; }
-        #burger + ul ul li:first-child {
-          background: rgba(0, 0, 0, 0.7); }
-        #burger + ul ul li:last-child {
-          border-radius: 0; }
-    #burger + ul a , #burger + ul li{
+        margin: 0;
+        }
+        #burger + ul ul:first-child li:first-child a {
+          opacity: 0.8; }
+        #burger + ul ul:last-child a { }
+    #burger + ul a {
       width: 100%;
-      height: 4em;
-      padding: 1.5em;
+      height: auto;
+      box-sizing: border-box;
+      vertical-align: middle;
+    }
+     #burger + ul li{
+      width: 100%;
+      height: auto;
       margin: 2px 0;
       box-sizing: border-box;
       vertical-align: middle;

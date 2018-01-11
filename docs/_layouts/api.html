@@ -24,9 +24,33 @@
           <a class="view" href="{{ site.github.repository_url }}">View On <strong>GitHub</strong></a>
           <input id="burger" type="checkbox">
           <ul>
-            <li><a href='/api/types'>Types</a></li>
-            <li><a href='/api/modules'>Modules</a></li>
+            <li><ul>
+              <li><a href='/api/types'>Types</a></li>
+              <li><a href='/api/fio_llist'>Core List</a></li>
+              <li><a href='/api/fio_ary'>Core Array</a></li>
+              <li><a href='/api/fio_hashmap'>Core Hash</a></li>
+              <li><a href='/api/fiobj'>Dynamic Types</a></li>
+              <li><a href='/api/fiobj_core'>Core API</a></li>
+              <li><a href='/api/fiobj_primitives'>Primitives</a></li>
+              <li><a href='/api/fiobj_numbers'>Numbers</a></li>
+              <li><a href='/api/fiobj_str'>String</a></li>
+              <li><a href='/api/fiobj_ary'>Array</a></li>
+              <li><a href='/api/fiobj_hash'>Hash</a></li>
+              <li><a href='/api/fiobj_data'>Data</a></li>
+              <li><a href='/api/fiobj_json'>JSON</a></li>
+            </ul></li>
+            <li><ul>
+              <li><a href='/api/modules'>Modules</a></li>
+              <li><a href='/api/facil'>Core `facil`</a></li>
+              <li><a href='/api/sock'>Core `sock`</a></li>
+              <li><a href='/api/defer'>Core `defer`</a></li>
+              <li><a href='/api/evio'>Core `evio`</a></li>
+              <li><a href='/api/http'>HTTP / Websocket</a></li>
+              <li><a href='/api/pubsub'>Pub/Sub + Redis</a></li>
+              <li><a href='/api/modules'>CLI helper</a></li>
+            </ul></li>
             <li><a href="javascript: change_themes();" id="theme">Day Theme</a></li>
+            <li class="view2"><a href="{{ site.github.repository_url }}">View On GitHub</li>
           </ul>
           <script>
             function change_themes() {

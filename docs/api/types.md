@@ -11,7 +11,7 @@ These types are divided into three categories:
 
 1. Core types: [dynamic arrays](/api/fio_ary), [hash maps](/api/fio_hashmap) and [linked lists](/api/fio_llist).
 
-1. Core object: the [facil.io object types (`fiobj_s *`)](/api/fiobj).
+1. Core object: the [facil.io object types (`FIOBJ`)](/api/fiobj).
 
 1. Network / API related types: these are specific types that are used in specific function calls or situations, such as `protocol_s`, `http_s` etc'.
 

@@ -84,7 +84,7 @@ typedef struct {
   FIOBJ params;
   /**
    * a reader for body data (might be a temporary file or a string or NULL).
-   * see fiobj_io.h for details.
+   * see fiobj_data.h for details.
    */
   FIOBJ body;
   /** an opaque user data pointer, to be used BEFORE calling `http_defer`. */

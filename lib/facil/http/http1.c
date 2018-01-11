@@ -268,7 +268,7 @@ static int http1_defer(http_s *h, void (*task)(http_s *h),
   //   http_s *tmp = malloc(sizeof(*tmp) + sizeof(http_func_s));
   //   HTTP_ASSERT(tmp, "couldn't allocate memory for http1_defer");
   //   *tmp = *(http_s *)h;
-  //   fiobj_io_assert_dynamic(h->body);
+  //   fiobj_data_assert_dynamic(h->body);
   //   *(http_s *)h =
   //       (http_s){.handle.private_data.owner = h->private_data.owner};
   //   h = &tmp->handle;
@@ -447,12 +447,12 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
   if (!parser->state.read) {
     if (parser->state.content_length > 0 &&
         parser->state.content_length <= HTTP1_READ_BUFFER) {
-      http1_pr2handle(parser2http(parser)).body = fiobj_io_newstr();
+      http1_pr2handle(parser2http(parser)).body = fiobj_data_newstr();
     } else {
-      http1_pr2handle(parser2http(parser)).body = fiobj_io_newtmpfile();
+      http1_pr2handle(parser2http(parser)).body = fiobj_data_newtmpfile();
     }
   }
-  fiobj_io_write(http1_pr2handle(parser2http(parser)).body, data, data_len);
+  fiobj_data_write(http1_pr2handle(parser2http(parser)).body, data, data_len);
   return 0;
 }
 

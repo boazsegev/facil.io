@@ -6,8 +6,8 @@ License: MIT
 #define H_FIOBJ_H
 
 #include "fiobj_ary.h"
+#include "fiobj_data.h"
 #include "fiobj_hash.h"
-#include "fiobj_io.h"
 #include "fiobj_json.h"
 #include "fiobj_numbers.h"
 #include "fiobj_str.h"
@@ -22,7 +22,7 @@ FIO_INLINE void fiobj_test(void) {
   fiobj_test_array();
   fiobj_test_hash();
   fiobj_test_core();
-  fiobj_io_test();
+  fiobj_data_test();
   fiobj_test_json();
 }
 #else

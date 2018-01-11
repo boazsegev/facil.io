@@ -9,17 +9,24 @@ layout: api
 
 This dynamic type system is an independent module within the `facil.io` core and can be used separately.
 
-### The Problem
+The `FIOBJ` type API is divided by it's inner types (tested using `FIOBJ_TYPE(obj)` or `FIOBJ_TYPE_IS(obj, type)`):
+
+* [Core and Generic API](fiobj_core)
+* [Primitive Types](fiobj_primitives)
+* [Number / Float](fiobj_numbers)
+* [String](fiobj_str)
+* [Array](fiobj_ary)
+* [Hash](fiobj_hash)
+* [Data](fiobj_data)
+* [JSON](fiobj_json)
+
+### Why we need dynamic types?
 
 C doesn't lend itself easily to the dynamic types that are often used in languages such as Javascript. This makes it harder to use an optimized C backend (server) when the frontend (client / browser) expects multi-type responses such as JSON objects.
 
-Often this is resolved using the `void` pointer while maintaining a system of type expectations that safeguards against type mismatching. However, typecasting into different types can be dangerous when the types don't match.
+To resolve this difference in expectations, `facil.io` offers the `FIOBJ` type system.
 
-Having a local application crash at Runtime is bad. But having a server crash when mishandling a response is arguably worse.
-
-### The Solution
-
-`facil.io` offers the static `FIOBJ` type object. This type contains only a single public data member - it's actual type (using a numerical unique ID that maps an object to it's virtual function table and type data).
+This is an opaque type that can be tested using `FIOBJ_TYPE(obj)` or `FIOBJ_TYPE_IS(obj, type)`.
 
 This offers the following advantages (among others):
 
@@ -29,11 +36,9 @@ This offers the following advantages (among others):
 
 * Allows for "typeless" actions, such as collection iteration (`fiobj_each2`), simple conversion (`fiobj_obj2num` and `fiobj_obj2cstr`), deallocation (`fiobj_free`). reference counting (`fiobj_dup`) and equality checks (`fiobj_iseq`).
 
-* Offers non-recursive iteration and an *optional* (disabled by default) cyclic nesting protection.
-
 * Offers JSON parsing and formatting to and from `FIOBJ`.
 
-* Extendable type system, allowing new dynamic types to be easily create as needed.
+* Offers non-recursive iteration.
 
 ## API Considerations
 
@@ -41,7 +46,7 @@ This is a short summery regarding the API and it's use. The `fiobj_*` API is wel
 
 ### Functional Access
 
-All object access should be functional, except for type testing. Although this requirement can be circumvented, using the functional interface should be preferred.
+All object access should be functional, or using the macros provided. Although this requirement can be circumvented, using the functional interface should be preferred.
 
 For example:
 
@@ -86,7 +91,7 @@ fiobj_free(str);
 
 An object's memory should *always* be managed by it's "owner". This usually means the calling function.
 
-*However*, when an object is nested within another object (i.e., placed in an Array or a Hash or an HTTP header *value*), **the ownership of the object is transferred**.
+*However*, when an object is nested within another object (i.e., placed in an Array or set as the *value* for a Hash or an HTTP header), **the ownership of the object is transferred**.
 
 In the following example, the String nested within the Array is freed when the Array is freed:
 
@@ -168,7 +173,7 @@ fiobj_free(ary_copy);
 
 ### Cyclic Nesting Errors
 
-Cyclic protection is disabled by default due to performance concerns.  
+Cyclic protection is unsupported mostly because of performance concerns, but also because cyclic nesting is impractical for network applications (for example, how would a cyclic object be formatted into JSON?).  
 
 Cyclic nesting should be avoided. For example, the following code will crash:
 
