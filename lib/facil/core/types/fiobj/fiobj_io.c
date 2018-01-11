@@ -68,7 +68,7 @@ static void fiobj_io_copy_buffer(FIOBJ o) {
 static inline void fiobj_io_pre_write(FIOBJ o, uintptr_t length) {
   if (obj2io(o)->fd == -1 && obj2io(o)->dealloc != free)
     fiobj_io_copy_buffer(o);
-  if (obj2io(o)->capa <= obj2io(o)->len + length)
+  if (obj2io(o)->capa >= obj2io(o)->len + length)
     return;
   /* add rounded pages (4096) to capacity */
   obj2io(o)->capa = (((obj2io(o)->len + length) >> 12) + 1) << 12;
