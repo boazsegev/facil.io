@@ -19,8 +19,10 @@ License: MIT
 
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 /* *****************************************************************************
@@ -287,6 +289,51 @@ FIOBJ fiobj_io_newtmpfile(void) {
   if (fd == -1)
     return 0;
   return fiobj_io_newfd(fd);
+}
+
+/* *****************************************************************************
+Saving the IO object
+***************************************************************************** */
+
+/** Creates a new local file IO object */
+int fiobj_io_save(FIOBJ o, const char *filename) {
+  int target = open(filename, O_RDWR | O_CLOEXEC | O_CREAT | O_TRUNC, 0777);
+  if (target == -1)
+    return -1;
+  errno = 0;
+  if (obj2io(o)->fd == -1) {
+    /* String code */
+    size_t total = 0;
+    do {
+      ssize_t act =
+          write(target, obj2io(o)->buffer + total, obj2io(o)->len - total);
+      if (act < 0)
+        goto error;
+      total += act;
+    } while (total < obj2io(o)->len);
+    close(target);
+    return 0;
+  }
+  /* File code */
+  char buf[1024];
+  size_t total = 0;
+  do {
+    ssize_t act = pread(obj2io(o)->fd, buf, 1024, total);
+    if (act == 0)
+      break;
+    if (act < 0)
+      goto error;
+    ssize_t act2 = write(target, buf, act);
+    if (act2 < act)
+      goto error;
+    total += act2;
+  } while (1);
+  close(target);
+  return 0;
+error:
+  close(target);
+  unlink(filename);
+  return -1;
 }
 
 /* *****************************************************************************
@@ -746,5 +793,28 @@ void fiobj_io_test(void) {
 }
 
 #endif
+
+#else
+
+/** Creates a new local in-memory IO object */
+FIOBJ fiobj_io_newstr(void) { return FIOBJ_INVALID; }
+
+/**
+ * Creates a IO object from an existing buffer. The buffer will be deallocated
+ * using the provided `dealloc` function pointer. Use a NULL `dealloc` function
+ * pointer if the buffer is static and shouldn't be freed.
+ */
+FIOBJ fiobj_io_newstr2(void *buffer, uintptr_t length,
+                       void (*dealloc)(void *)) {
+  return FIOBJ_INVALID;
+}
+
+/** Creates a new local tempfile IO object */
+FIOBJ fiobj_io_newtmpfile(void) { return FIOBJ_INVALID; }
+
+/** Creates a new local file IO object */
+FIOBJ fiobj_io_newfd(int fd) { return FIOBJ_INVALID; }
+
+int fiobj_io_save(FIOBJ io, const char *filename) { return -1; }
 
 #endif /* require POSIX */
