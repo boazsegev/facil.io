@@ -8,13 +8,13 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "http1.h"
 
+static uint64_t http_upgrade_hash = 0;
 /** Use this function to handle HTTP requests.*/
 void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings) {
-  static uint64_t upgrade_hash = 0;
-  if (!upgrade_hash)
-    upgrade_hash = fio_siphash("upgrade", 7);
-  FIOBJ t = fiobj_hash_get2(h->headers, upgrade_hash);
+  if (!http_upgrade_hash)
+    http_upgrade_hash = fio_siphash("upgrade", 7);
+  FIOBJ t = fiobj_hash_get2(h->headers, http_upgrade_hash);
   if (t == FIOBJ_INVALID) {
     if (settings->public_folder) {
       fio_cstr_s path_str = fiobj_obj2cstr(h->path);
@@ -49,6 +49,20 @@ void http_on_request_handler______internal(http_s *h,
   }
 }
 
+void http_on_response_handler______internal(http_s *h,
+                                            http_settings_s *settings) {
+  if (!http_upgrade_hash)
+    http_upgrade_hash = fio_siphash("upgrade", 7);
+  FIOBJ t = fiobj_hash_get2(h->headers, http_upgrade_hash);
+  if (t == FIOBJ_INVALID) {
+    settings->on_response(h);
+    return;
+  } else {
+    fio_cstr_s val = fiobj_obj2cstr(t);
+    settings->on_upgrade(h, val.data, val.len);
+  }
+}
+
 int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   protocol_s *pr = NULL;
   if (!uuid || !settings || !error)
@@ -60,8 +74,6 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
   http_s_init(r, (http_protocol_s *)pr);
   int ret = http_send_error(r, error);
-  if (!ret)
-    free(r);
   sock_close(uuid);
   return ret;
 }
@@ -76,6 +88,7 @@ FIOBJ HTTP_HEADER_CONTENT_TYPE;
 FIOBJ HTTP_HEADER_COOKIE;
 FIOBJ HTTP_HEADER_DATE;
 FIOBJ HTTP_HEADER_ETAG;
+FIOBJ HTTP_HEADER_HOST;
 FIOBJ HTTP_HEADER_LAST_MODIFIED;
 FIOBJ HTTP_HEADER_SET_COOKIE;
 FIOBJ HTTP_HEADER_UPGRADE;
@@ -105,6 +118,7 @@ void http_lib_cleanup(void) {
   HTTPLIB_RESET(HTTP_HEADER_COOKIE);
   HTTPLIB_RESET(HTTP_HEADER_DATE);
   HTTPLIB_RESET(HTTP_HEADER_ETAG);
+  HTTPLIB_RESET(HTTP_HEADER_HOST);
   HTTPLIB_RESET(HTTP_HEADER_LAST_MODIFIED);
   HTTPLIB_RESET(HTTP_HEADER_SET_COOKIE);
   HTTPLIB_RESET(HTTP_HEADER_UPGRADE);
@@ -134,6 +148,7 @@ void http_lib_init(void) {
   HTTP_HEADER_COOKIE = fiobj_str_new("cookie", 6);
   HTTP_HEADER_DATE = fiobj_str_new("date", 4);
   HTTP_HEADER_ETAG = fiobj_str_new("etag", 4);
+  HTTP_HEADER_HOST = fiobj_str_new("host", 4);
   HTTP_HEADER_LAST_MODIFIED = fiobj_str_new("last-modified", 13);
   HTTP_HEADER_SET_COOKIE = fiobj_str_new("set-cookie", 10);
   HTTP_HEADER_UPGRADE = fiobj_str_new("upgrade", 7);

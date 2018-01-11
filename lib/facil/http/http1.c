@@ -29,6 +29,7 @@ typedef struct http1pr_s {
   uintptr_t max_header_size;
   uintptr_t header_size;
   uint8_t close;
+  uint8_t is_client;
   uint8_t buf[];
 } http1pr_s;
 
@@ -49,6 +50,8 @@ static fio_cstr_s http1pr_status2str(uintptr_t status);
 static inline void http1_after_finish(http_s *h) {
   http_s_cleanup(h);
   http1pr_s *p = (http1pr_s *)h->private_data.owner;
+  if (h != &p->request)
+    free(h);
   if (p->close)
     sock_close(p->p.uuid);
 }
@@ -93,34 +96,63 @@ static FIOBJ headers2str(http_s *h) {
     connection_hash = fio_siphash("connection", 10);
 
   struct header_writer_s w;
-  w.dest = fiobj_str_buf(4096);
+  w.dest = fiobj_str_buf(0);
+  http1pr_s *p = ((http1pr_s *)h->private_data.owner);
 
-  fio_cstr_s t = http1pr_status2str(h->status);
-  fiobj_str_write(w.dest, t.data, t.length);
-  FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, connection_hash);
-  if (tmp) {
-    t = fiobj_obj2cstr(tmp);
-    if (t.data[0] == 'c' || t.data[0] == 'C')
-      ((http1pr_s *)h->private_data.owner)->close = 1;
-  } else {
-    tmp = fiobj_hash_get2(h->headers, connection_hash);
+  if (h->status || !p->is_client) {
+    fio_cstr_s t = http1pr_status2str(h->status);
+    fiobj_str_write(w.dest, t.data, t.length);
+    FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, connection_hash);
     if (tmp) {
-      t = fiobj_obj2cstr(tmp);
-      if (!t.data || !t.len || t.data[0] == 'k' || t.data[0] == 'K')
-        fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
-      else {
-        fiobj_str_write(w.dest, "connection:close\r\n", 18);
+      fio_cstr_s t = fiobj_obj2cstr(tmp);
+      if (t.data[0] == 'c' || t.data[0] == 'C')
         ((http1pr_s *)h->private_data.owner)->close = 1;
-      }
     } else {
-      t = fiobj_obj2cstr(h->version);
-      if (t.data && t.data[5] == '1' && t.data[6] == '.' && t.data[7] == '1')
-        fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
-      else {
-        fiobj_str_write(w.dest, "connection:close\r\n", 18);
-        ((http1pr_s *)h->private_data.owner)->close = 1;
+      tmp = fiobj_hash_get2(h->headers, connection_hash);
+      if (tmp) {
+        fio_cstr_s t = fiobj_obj2cstr(tmp);
+        if (!t.data || !t.len || t.data[0] == 'k' || t.data[0] == 'K')
+          fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
+        else {
+          fiobj_str_write(w.dest, "connection:close\r\n", 18);
+          ((http1pr_s *)h->private_data.owner)->close = 1;
+        }
+      } else {
+        fio_cstr_s t = fiobj_obj2cstr(h->version);
+        if (t.data && t.data[5] == '1' && t.data[6] == '.' && t.data[7] == '1')
+          fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
+        else {
+          fiobj_str_write(w.dest, "connection:close\r\n", 18);
+          ((http1pr_s *)h->private_data.owner)->close = 1;
+        }
       }
     }
+  } else {
+    if (h->method) {
+      fiobj_str_join(w.dest, h->method);
+      fiobj_str_write(w.dest, " ", 1);
+    } else {
+      fiobj_str_write(w.dest, "GET ", 4);
+    }
+    fiobj_str_join(w.dest, h->path);
+    if (h->query) {
+      fiobj_str_write(w.dest, "?", 1);
+      fiobj_str_join(w.dest, h->query);
+    }
+    fiobj_str_write(w.dest, " HTTP/1.1\r\n", 11);
+    /* make sure we have a host header? */
+    static uint64_t host_hash;
+    if (!host_hash)
+      host_hash = fio_siphash("host", 4);
+    FIOBJ tmp;
+    if (!fiobj_hash_get2(h->private_data.out_headers, host_hash) &&
+        (tmp = fiobj_hash_get2(h->headers, host_hash))) {
+      fiobj_str_write(w.dest, "host:", 5);
+      fiobj_str_join(w.dest, tmp);
+      fiobj_str_write(w.dest, "\r\n", 2);
+    }
+    if (!fiobj_hash_get2(h->private_data.out_headers, connection_hash))
+      fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
   }
 
   fiobj_each1(h->private_data.out_headers, 0, write_header, &w);
@@ -176,6 +208,9 @@ static void htt1p_finish(http_s *h) {
   FIOBJ packet = headers2str(h);
   if (packet)
     fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
+  else {
+    // fprintf(stderr, "WARNING: invalid call to `htt1p_finish`\n");
+  }
   http1_after_finish(h);
 }
 /** Push for data - unsupported. */
@@ -319,7 +354,7 @@ static int http1_on_request(http1_parser_s *parser) {
 /** called when a response was received. */
 static int http1_on_response(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
-  p->p.settings->on_response(&http1_pr2handle(p));
+  http_on_response_handler______internal(&http1_pr2handle(p), p->p.settings);
   http_s_cleanup(&http1_pr2handle(p));
   h1_reset(p);
   return 0;
@@ -526,16 +561,19 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
   if (unread_data && unread_length > HTTP1_READ_BUFFER)
     return NULL;
   http1pr_s *p = malloc(sizeof(*p) + HTTP1_READ_BUFFER);
-  *p = (http1pr_s){.p.protocol =
-                       {
-                           .service = HTTP1_SERVICE_STR,
-                           .on_data = http1_on_data_first_time,
-                           .on_close = http1_on_close,
-                       },
-                   .p.uuid = uuid,
-                   .p.settings = settings,
-                   .p.vtable = &HTTP1_VTABLE,
-                   .max_header_size = settings->max_header_size};
+  *p = (http1pr_s){
+      .p.protocol =
+          {
+              .service = HTTP1_SERVICE_STR,
+              .on_data = http1_on_data_first_time,
+              .on_close = http1_on_close,
+          },
+      .p.uuid = uuid,
+      .p.settings = settings,
+      .p.vtable = &HTTP1_VTABLE,
+      .max_header_size = settings->max_header_size,
+      .is_client = settings->is_client,
+  };
   if (unread_data && unread_length <= HTTP1_READ_BUFFER) {
     memcpy(p->buf, unread_data, unread_length);
     p->buf_len = unread_length;

@@ -8,7 +8,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #define H_HTTP_H
 
 #include "facil.h"
-#include "fiobj.h"
 
 #include <time.h>
 
@@ -55,15 +54,16 @@ typedef struct {
   } private_data;
   /** a time merker indicating when the request was received. */
   struct timespec received_at;
-  union {
-    /** a String containing the method data (supports non-standard methods. */
-    FIOBJ method;
-    /** The status string., if the object is a response. */
-    FIOBJ status_str;
-  };
+  /** a String containing the method data (supports non-standard methods. */
+  FIOBJ method;
+  /** The status string, for response objects (client mode response). */
+  FIOBJ status_str;
   /** The HTTP version string, if any. */
   FIOBJ version;
-  /** The status used for the response (or if the object is a response). */
+  /** The status used for the response (or if the object is a response).
+   *
+   * When sending a request, the status should be set to 0.
+   */
   uintptr_t status;
   /** The request path, if any. */
   FIOBJ path;
@@ -160,6 +160,9 @@ int http_set_cookie(http_s *h, http_cookie_args_s);
 /**
  * Sends the response headers and body.
  *
+ * **Note**: The body is *copied* to the HTTP stream and it's memory should be
+ * freed by the calling function.
+ *
  * Returns -1 on error and 0 on success.
  *
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
@@ -168,6 +171,8 @@ int http_send_body(http_s *h, void *data, uintptr_t length);
 
 /**
  * Sends the response headers and the specified file (the response's body).
+ *
+ * The file is closed automatically.
  *
  * Returns -1 on error and 0 on success.
  *
@@ -250,7 +255,7 @@ int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
 int http_defer(http_s *h, void (*task)(http_s *h), void (*fallback)(http_s *h));
 
 /* *****************************************************************************
-Listening to HTTP connections (client mode functions are later on...)
+HTTP Connections - Listening / Connecting
 ***************************************************************************** */
 
 /** The HTTP settings. */
@@ -290,7 +295,9 @@ typedef struct http_settings_s {
    */
   size_t max_body_size;
   /**
-   * An HTTP/1.x connection timeout. Defaults to ~5 seconds.
+   * An HTTP/1.x connection timeout.
+   *
+   * `http_listen` defaults to ~5s and `http_connect` defaults to ~30s.
    *
    * Note: the connection might be closed (by other side) before timeout occurs.
    */
@@ -310,6 +317,8 @@ typedef struct http_settings_s {
   uint8_t ws_timeout;
   /** Logging flag - set to TRUE to log HTTP requests. */
   uint8_t log;
+  /** a read only flag set automatically to indicate the protocol's mode. */
+  uint8_t is_client;
 } http_settings_s;
 
 /**
@@ -317,12 +326,31 @@ typedef struct http_settings_s {
  *
  * Leave as NULL to ignore IP binding.
  *
- * Returns -1 on error and 0 on success.
+ * Returns -1 on error and 0 on success. the `on_finish` callback is always
+ * called.
  */
 int http_listen(const char *port, const char *binding, struct http_settings_s);
 /** Listens to HTTP connections at the specified `port` and `binding`. */
 #define http_listen(port, binding, ...)                                        \
   http_listen((port), (binding), (struct http_settings_s){__VA_ARGS__})
+
+/**
+ * Connects to an HTTP server as a client.
+ *
+ * Upon a successful connection, the `on_response` callback is called with an
+ * empty `http_s*` handler (status == 0). Use the same API to set it's content
+ * and send the request to the server. The next`on_response` will contain the
+ * response.
+ *
+ * `address` should contain a full URL style address for the server. i.e.:
+ *           "http:/www.example.com:8080/"
+ *
+ * Returns -1 on error and 0 on success. the `on_finish` callback is always
+ * called.
+ */
+int http_connect(const char *address, struct http_settings_s);
+#define http_connect(address, ...)                                             \
+  http_connect((address), (struct http_settings_s){__VA_ARGS__})
 
 /**
  * Returns the settings used to setup the connection.
@@ -416,14 +444,6 @@ int http_upgrade2ws(websocket_settings_s);
 #include "websockets.h"
 
 /* *****************************************************************************
-TODO: HTTP client mode
-***************************************************************************** */
-
-/* *****************************************************************************
-HTTP Helper functions that might be used globally
-***************************************************************************** */
-
-/* *****************************************************************************
 HTTP Status Strings and Mime-Type helpers
 ***************************************************************************** */
 
@@ -456,6 +476,7 @@ extern FIOBJ HTTP_HEADER_CONTENT_TYPE;
 extern FIOBJ HTTP_HEADER_COOKIE;
 extern FIOBJ HTTP_HEADER_DATE;
 extern FIOBJ HTTP_HEADER_ETAG;
+extern FIOBJ HTTP_HEADER_HOST;
 extern FIOBJ HTTP_HEADER_LAST_MODIFIED;
 extern FIOBJ HTTP_HEADER_SET_COOKIE;
 extern FIOBJ HTTP_HEADER_UPGRADE;

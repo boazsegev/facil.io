@@ -75,7 +75,8 @@ static inline void add_date(http_s *r) {
     fiobj_hash_set(r->private_data.out_headers, HTTP_HEADER_DATE,
                    fiobj_dup(current_date));
   }
-  if (!fiobj_hash_get2(r->private_data.out_headers, mod_hash)) {
+  if (r->status_str == FIOBJ_INVALID &&
+      !fiobj_hash_get2(r->private_data.out_headers, mod_hash)) {
     fiobj_hash_set(r->private_data.out_headers, HTTP_HEADER_LAST_MODIFIED,
                    fiobj_dup(current_date));
   }
@@ -125,8 +126,10 @@ static const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
  * Returns -1 on error and 0 on success.
  */
 int http_set_header(http_s *r, FIOBJ name, FIOBJ value) {
-  if (!r || !name || !r->private_data.out_headers)
+  if (!r || !name || !r->private_data.out_headers) {
+    fiobj_free(value);
     return -1;
+  }
   set_header_add(r->private_data.out_headers, name, value);
   return 0;
 }
@@ -258,6 +261,21 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   } else
     cookie.max_age = -1;
   t.data[len++] = ';';
+
+  if (h->status_str || !h->status) { /* on first request status == 0 */
+    static uint64_t cookie_hash;
+    if (!cookie_hash)
+      cookie_hash = fio_siphash("cookie", 6);
+    FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, cookie_hash);
+    if (!tmp) {
+      set_header_add(h->private_data.out_headers, HTTP_HEADER_COOKIE, c);
+    } else {
+      fiobj_str_join(tmp, c);
+      fiobj_free(c);
+    }
+    return 0;
+  }
+
   if (capa <= len + 40) {
     capa = len + 40;
     fiobj_str_capa_assert(c, capa);
@@ -285,10 +303,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   if (cookie.secure) {
     fiobj_str_write(c, "secure;", 7);
   }
-  static FIOBJ sym = FIOBJ_INVALID;
-  if (!sym)
-    sym = HTTP_HEADER_SET_COOKIE;
-  set_header_add(h->private_data.out_headers, sym, c);
+  set_header_add(h->private_data.out_headers, HTTP_HEADER_SET_COOKIE, c);
   return 0;
 }
 
@@ -319,8 +334,9 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
-  HTTP_TEST_FOR_OWNER(r);
-  if (!r->private_data.owner) {
+  if (!(http_protocol_s *)(r)->private_data.owner) {
+    return http_lost_owner(r);
+    close(fd);
   }
   if (!r->private_data.out_headers) {
     close(fd);
@@ -670,7 +686,7 @@ http_settings_s *http_settings_new(http_settings_s arg_settings) {
   if (!arg_settings.max_header_size)
     arg_settings.max_header_size = 32 * 1024; /* defaults to 32Kib seconds */
 
-  http_settings_s *settings = malloc(sizeof(*settings));
+  http_settings_s *settings = malloc(sizeof(*settings) + sizeof(void *));
   *settings = arg_settings;
 
   if (settings->public_folder) {
@@ -745,6 +761,7 @@ int http_listen(const char *port, const char *binding,
   }
 
   http_settings_s *settings = http_settings_new(arg_settings);
+  settings->is_client = 0;
 
   return facil_listen(.port = port, .address = binding,
                       .on_finish = http_on_finish, .on_open = http_on_open,
@@ -764,14 +781,150 @@ struct http_settings_s *http_settings(http_s *r) {
 }
 
 /* *****************************************************************************
-TODO: HTTP client mode
-*****************************************************************************
-*/
+HTTP client connections
+***************************************************************************** */
+
+static void http_on_close_client(intptr_t uuid, protocol_s *protocol) {
+  http_protocol_s *p = (http_protocol_s *)protocol;
+  http_settings_s *set = p->settings;
+  void (**original)(intptr_t, protocol_s *) =
+      (void (**)(intptr_t, protocol_s *))(set + 1);
+  if (set->on_finish)
+    set->on_finish(set);
+
+  original[0](uuid, protocol);
+  free((void *)set->public_folder);
+  free(set);
+}
+
+static void http_on_open_client(intptr_t uuid, void *set_) {
+  http_settings_s *set = set_;
+  http_s *h = set->udata;
+  set->udata = h->udata;
+  facil_set_timeout(uuid, set->timeout);
+  protocol_s *pr = http1_new(uuid, set, NULL, 0);
+  if (!pr) {
+    sock_close(uuid);
+    return;
+  }
+  { /* store the original on_close at the end of the struct, we wrap it. */
+    void (**original)(intptr_t, protocol_s *) =
+        (void (**)(intptr_t, protocol_s *))(set + 1);
+    *original = pr->on_close;
+    pr->on_close = http_on_close_client;
+  }
+  h->private_data.owner = pr;
+  facil_attach(uuid, pr);
+  set->on_response(h);
+}
+
+static void http_on_client_failed(intptr_t uuid, void *set_) {
+  http_settings_s *set = set_;
+  http_s *h = set->udata;
+  set->udata = h->udata;
+  http_s_cleanup(h);
+  free(h);
+  if (set->on_finish)
+    set->on_finish(set);
+  free((void *)set->public_folder);
+  free(set);
+  (void)uuid;
+}
+
+/**
+ * Connects to an HTTP server as a client.
+ *
+ * Upon a successful connection, the `on_response` callback is called with an
+ * empty `http_s*` handler (status == 0). Use the same API to set it's content
+ * and send the request to the server. The next`on_response` will contain the
+ * response.
+ *
+ * `address` should contain a full URL style address for the server. i.e.:
+ *           "http:/www.example.com:8080/"
+ *
+ * Returns -1 on error and 0 on success. the `on_finish` callback is always
+ * called.
+ */
+#undef http_connect
+int http_connect(const char *address, struct http_settings_s arg_settings) {
+  if (!arg_settings.on_response && !arg_settings.on_upgrade) {
+    fprintf(stderr, "ERROR: http_connect requires either an on_response "
+                    " or an on_upgrade callback.\n");
+    errno = EINVAL;
+    return -1;
+  }
+  size_t len;
+  char *a, *p;
+  if (!address || (len = strlen(address)) <= 7 ||
+      strncasecmp(address, "http", 4)) {
+    fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
+    errno = EINVAL;
+    return -1;
+  }
+  /* parse address */
+  if (address[5] == 's') {
+    /* TODO: SSL/TLS */
+    fprintf(stderr, "ERROR: http_connect doesn't support TLS/SSL "
+                    "just yet.\n");
+    errno = EINVAL;
+    return -1;
+  } else {
+    len -= 7;
+    a = malloc(len + 1);
+    if (!a) {
+      perror("FATAL ERROR: http_connect couldn't allocate memory "
+             "for address parsing");
+    }
+    memcpy(a, address + 7, len + 1);
+  }
+  p = memchr(a, ':', len);
+  if (p) {
+    if (a[--len] == '/')
+      a[len] = 0;
+    len = p - a;
+    *p = 0;
+    if (a + len == p + 1) {
+      p = NULL;
+    } else {
+      p++;
+      if (!len) {
+        a = "localhost";
+        len = 9;
+      }
+    }
+  } else {
+    if (address[5] == 's')
+      p = "443";
+    else
+      p = "80";
+  }
+  if (a[len - 1] == '/')
+    a[--len] = 0;
+
+  /* set settings */
+  if (!arg_settings.timeout)
+    arg_settings.timeout = 30;
+  http_settings_s *settings = http_settings_new(arg_settings);
+  settings->is_client = 1;
+  http_s *h = malloc(sizeof(*h));
+  http_s_init(h, NULL);
+  h->udata = arg_settings.udata;
+  h->status = 0;
+  settings->udata = h;
+  http_set_header2(h, (fio_cstr_s){.data = "host", .len = 4},
+                   (fio_cstr_s){.data = a, .len = len});
+  intptr_t ret =
+      facil_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
+                    .on_connect = http_on_open_client, .udata = settings);
+  free(a);
+  return ret;
+}
+#define http_connect(address, ...)                                             \
+  http_connect((address), (struct http_settings_s){__VA_ARGS__})
 
 /* *****************************************************************************
 HTTP Helper functions that could be used globally
-*****************************************************************************
-*/
+***************************************************************************** */
 
 /**
  * Returns a String object representing the unparsed HTTP request (HTTP
@@ -783,32 +936,41 @@ FIOBJ http_req2str(http_s *h) {
     return FIOBJ_INVALID;
 
   struct header_writer_s w;
-  w.dest = fiobj_str_buf(4096);
-
-  fiobj_str_join(w.dest, h->method);
-  fiobj_str_write(w.dest, " ", 1);
-  fiobj_str_join(w.dest, h->path);
-  if (h->query) {
-    fiobj_str_write(w.dest, "?", 1);
-    fiobj_str_join(w.dest, h->query);
-  }
-  {
-    fio_cstr_s t = fiobj_obj2cstr(h->version);
-    if (t.len < 6 || t.data[5] != '1')
-      fiobj_str_write(w.dest, " HTTP/1.1\r\n", 10);
-    else {
-      fiobj_str_write(w.dest, " ", 1);
-      fiobj_str_join(w.dest, h->version);
-      fiobj_str_write(w.dest, "\r\n", 2);
+  w.dest = fiobj_str_buf(0);
+  if (h->status_str) {
+    fiobj_str_join(w.dest, h->version);
+    fiobj_str_write(w.dest, " ", 1);
+    fiobj_str_join(w.dest, fiobj_num_tmp(h->status));
+    fiobj_str_write(w.dest, " ", 1);
+    fiobj_str_join(w.dest, h->status_str);
+    fiobj_str_write(w.dest, "\r\n", 2);
+  } else {
+    fiobj_str_join(w.dest, h->method);
+    fiobj_str_write(w.dest, " ", 1);
+    fiobj_str_join(w.dest, h->path);
+    if (h->query) {
+      fiobj_str_write(w.dest, "?", 1);
+      fiobj_str_join(w.dest, h->query);
+    }
+    {
+      fio_cstr_s t = fiobj_obj2cstr(h->version);
+      if (t.len < 6 || t.data[5] != '1')
+        fiobj_str_write(w.dest, " HTTP/1.1\r\n", 10);
+      else {
+        fiobj_str_write(w.dest, " ", 1);
+        fiobj_str_join(w.dest, h->version);
+        fiobj_str_write(w.dest, "\r\n", 2);
+      }
     }
   }
 
   fiobj_each1(h->headers, 0, write_header, &w);
   fiobj_str_write(w.dest, "\r\n", 2);
   if (h->body) {
-    fiobj_io_seek(h->body, 0);
-    fio_cstr_s t = fiobj_io_read(h->body, 0);
-    fiobj_str_write(w.dest, t.data, t.len);
+    // fiobj_io_seek(h->body, 0);
+    // fio_cstr_s t = fiobj_io_read(h->body, 0);
+    // fiobj_str_write(w.dest, t.data, t.len);
+    fiobj_str_join(w.dest, h->body);
   }
   return w.dest;
 }

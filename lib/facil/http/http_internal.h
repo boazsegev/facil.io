@@ -87,9 +87,10 @@ static inline void http_s_init(http_s *h, http_protocol_s *owner) {
 }
 
 static inline void http_s_cleanup(http_s *h) {
-  if (h->status && http2protocol(h) && http2protocol(h)->settings->log)
+  if (h->status && !h->status_str && http2protocol(h) && http2protocol(h)->settings->log)
     http_write_log(h);
-  fiobj_free(h->method); /* union for fiobj_free(r->status_str); */
+  fiobj_free(h->method);
+  fiobj_free(h->status_str);
   fiobj_free(h->private_data.out_headers);
   fiobj_free(h->headers);
   fiobj_free(h->version);
@@ -106,6 +107,8 @@ static inline void http_s_cleanup(http_s *h) {
 void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings);
 
+void http_on_response_handler______internal(http_s *h,
+                                           http_settings_s *settings);
 int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings);
 
 /* *****************************************************************************
