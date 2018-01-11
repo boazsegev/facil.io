@@ -335,8 +335,8 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
   if (!(http_protocol_s *)(r)->private_data.owner) {
-    return http_lost_owner(r);
     close(fd);
+    return http_lost_owner(r);
   }
   if (!r->private_data.out_headers) {
     close(fd);
