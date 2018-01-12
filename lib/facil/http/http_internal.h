@@ -76,10 +76,11 @@ HTTP request/response object management
 
 static inline void http_s_init(http_s *h, http_protocol_s *owner) {
   *h = (http_s){
-      .private_data = {.owner = (protocol_s *)owner,
-                       .out_headers = fiobj_hash_new()},
+      .private_data =
+          {
+              .owner = (protocol_s *)owner, .out_headers = fiobj_hash_new(),
+          },
       .headers = fiobj_hash_new(),
-      .version = h->version,
       .received_at = facil_last_tick(),
       .status = 200,
       .udata = owner->settings->udata,
@@ -87,7 +88,8 @@ static inline void http_s_init(http_s *h, http_protocol_s *owner) {
 }
 
 static inline void http_s_cleanup(http_s *h) {
-  if (h->status && !h->status_str && http2protocol(h) && http2protocol(h)->settings->log)
+  if (h->status && !h->status_str && http2protocol(h) &&
+      http2protocol(h)->settings->log)
     http_write_log(h);
   fiobj_free(h->method);
   fiobj_free(h->status_str);
@@ -108,7 +110,7 @@ void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings);
 
 void http_on_response_handler______internal(http_s *h,
-                                           http_settings_s *settings);
+                                            http_settings_s *settings);
 int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings);
 
 /* *****************************************************************************

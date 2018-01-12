@@ -119,7 +119,8 @@ static FIOBJ headers2str(http_s *h) {
         }
       } else {
         fio_cstr_s t = fiobj_obj2cstr(h->version);
-        if (t.data && t.data[5] == '1' && t.data[6] == '.' && t.data[7] == '1')
+        if (t.len > 7 && t.data && t.data[5] == '1' && t.data[6] == '.' &&
+            t.data[7] == '1')
           fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
         else {
           fiobj_str_write(w.dest, "connection:close\r\n", 18);
@@ -574,6 +575,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
   if (unread_data && unread_length > HTTP1_READ_BUFFER)
     return NULL;
   http1pr_s *p = malloc(sizeof(*p) + HTTP1_READ_BUFFER);
+  HTTP_ASSERT(p, "HTTP/1.1 protocol allocation failed");
   *p = (http1pr_s){
       .p.protocol =
           {
@@ -587,6 +589,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
       .max_header_size = settings->max_header_size,
       .is_client = settings->is_client,
   };
+  facil_attach(uuid, &p->p.protocol);
   if (unread_data && unread_length <= HTTP1_READ_BUFFER) {
     memcpy(p->buf, unread_data, unread_length);
     p->buf_len = unread_length;

@@ -40,6 +40,8 @@ static inline int http_lost_owner(http_s *h) {
   return -1;
 }
 #define HTTP_TEST_FOR_OWNER(h)                                                 \
+  if (!h)                                                                      \
+    return -1;                                                                 \
   if (!(http_protocol_s *)(h)->private_data.owner) {                           \
     return http_lost_owner(h);                                                 \
   }
@@ -357,7 +359,7 @@ int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
  */
 int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
                    const char *encoded, size_t encoded_len) {
-  if (!h->private_data.out_headers)
+  if (!h || !h->private_data.out_headers)
     return -1;
   struct stat file_data = {.st_size = 0};
   static uint64_t accept_enc_hash = 0;
@@ -550,7 +552,8 @@ open_file:
     if (tmp)
       http_set_header(h, HTTP_HEADER_CONTENT_TYPE, tmp);
   }
-  return http_sendfile(h, file, length, offset);
+  http_sendfile(h, file, length, offset);
+  return 0;
 }
 
 /**
@@ -565,8 +568,9 @@ open_file:
  */
 int http_send_error(http_s *r, size_t error) {
   HTTP_TEST_FOR_OWNER(r);
-  if (!r || !error || !r->private_data.out_headers)
+  if (!r->private_data.out_headers) {
     return -1;
+  }
   if (error < 100 || error >= 1000)
     error = 500;
   r->status = error;
@@ -685,6 +689,13 @@ http_settings_s *http_settings_new(http_settings_s arg_settings) {
     arg_settings.ws_timeout = 40; /* defaults to 40 seconds */
   if (!arg_settings.max_header_size)
     arg_settings.max_header_size = 32 * 1024; /* defaults to 32Kib seconds */
+  if (arg_settings.max_clients <= 0 ||
+      arg_settings.max_clients + HTTP_BUSY_UNLESS_HAS_FDS >
+          sock_max_capacity()) {
+    arg_settings.max_clients = sock_max_capacity();
+    if ((ssize_t)arg_settings.max_clients - HTTP_BUSY_UNLESS_HAS_FDS > 0)
+      arg_settings.max_clients -= HTTP_BUSY_UNLESS_HAS_FDS;
+  }
 
   http_settings_s *settings = malloc(sizeof(*settings) + sizeof(void *));
   *settings = arg_settings;
@@ -717,20 +728,20 @@ Listening to HTTP connections
 ***************************************************************************** */
 
 static void http_on_open(intptr_t uuid, void *set) {
-  static __thread ssize_t capa = 0;
-  if (!capa)
-    capa = sock_max_capacity();
+  static uint8_t at_capa;
   facil_set_timeout(uuid, ((http_settings_s *)set)->timeout);
-  if (sock_uuid2fd(uuid) + HTTP_BUSY_UNLESS_HAS_FDS >= capa) {
-    fprintf(stderr, "WARNING: HTTP server at capacity\n");
+  if (sock_uuid2fd(uuid) >= ((http_settings_s *)set)->max_clients) {
+    if (!at_capa)
+      fprintf(stderr, "WARNING: HTTP server at capacity\n");
+    at_capa = 1;
     http_send_error2(uuid, 503, set);
     sock_close(uuid);
     return;
   }
+  at_capa = 0;
   protocol_s *pr = http1_new(uuid, set, NULL, 0);
   if (!pr)
     sock_close(uuid);
-  facil_attach(uuid, pr);
 }
 
 static void http_on_finish(intptr_t uuid, void *set) {
@@ -814,7 +825,6 @@ static void http_on_open_client(intptr_t uuid, void *set_) {
     pr->on_close = http_on_close_client;
   }
   h->private_data.owner = pr;
-  facil_attach(uuid, pr);
   set->on_response(h);
 }
 

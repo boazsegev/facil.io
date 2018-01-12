@@ -64,12 +64,10 @@ void http_on_response_handler______internal(http_s *h,
 }
 
 int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
-  protocol_s *pr = NULL;
   if (!uuid || !settings || !error)
     return -1;
-  pr = http1_new(uuid, settings, NULL, 0);
+  protocol_s *pr = http1_new(uuid, settings, NULL, 0);
   HTTP_ASSERT(pr, "Couldn't allocate protocol object for error report.")
-  facil_attach(uuid, pr);
   http_s *r = malloc(sizeof(*r));
   HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
   http_s_init(r, (http_protocol_s *)pr);
