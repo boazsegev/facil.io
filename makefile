@@ -45,7 +45,7 @@ DUMP_LIB=libdump
 ifdef DEBUG
 	FLAGS:=$(FLAGS) DEBUG
 	# # comment the following line if you want to use a different address sanitizer or a profiling tool. 
-	OPTIMIZATION:=$(OPTIMIZATION) -fsanitize=address -fno-omit-frame-pointer
+	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
 else
 	FLAGS:=$(FLAGS) NODEBUG
 endif
