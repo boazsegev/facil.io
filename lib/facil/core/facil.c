@@ -107,11 +107,15 @@ postpone:
 }
 
 static void deferred_on_shutdown(void *arg, void *arg2) {
-  if (!uuid_data(arg).protocol)
+  if (!uuid_data(arg).protocol) {
     return;
+  }
   protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_WRITE);
-  if (!pr)
+  if (!pr) {
+    if (errno == EBADF)
+      return;
     goto postpone;
+  }
   pr->on_shutdown((intptr_t)arg, pr);
   protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   sock_close((intptr_t)arg);
@@ -122,11 +126,15 @@ postpone:
 }
 
 static void deferred_on_ready(void *arg, void *arg2) {
-  if (!uuid_data(arg).protocol)
+  if (!uuid_data(arg).protocol) {
     return;
+  }
   protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_WRITE);
-  if (!pr)
+  if (!pr) {
+    if (errno == EBADF)
+      return;
     goto postpone;
+  }
   pr->on_ready((intptr_t)arg, pr);
   if (sock_has_pending((intptr_t)arg))
     evio_add(sock_uuid2fd((intptr_t)arg), arg);
@@ -138,11 +146,15 @@ postpone:
 }
 
 static void deferred_on_data(void *arg, void *arg2) {
-  if (!uuid_data(arg).protocol)
+  if (!uuid_data(arg).protocol) {
     return;
+  }
   protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_TASK);
-  if (!pr)
+  if (!pr) {
+    if (errno == EBADF)
+      return;
     goto postpone;
+  }
   spn_unlock(&uuid_data(arg).scheduled);
   pr->on_data((intptr_t)arg, pr);
   protocol_unlock(pr, FIO_PR_LOCK_TASK);
@@ -521,6 +533,7 @@ static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
   sock_touch(uuid);
   if (connector->opened == 0) {
     connector->opened = 1;
+    facil_set_timeout(uuid, 0); /* remove connection timeout settings */
     connector->on_connect((void *)uuid, connector->udata);
   }
   return;
