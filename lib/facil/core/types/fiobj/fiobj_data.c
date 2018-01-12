@@ -149,7 +149,7 @@ static size_t fiobj_data_iseq(const FIOBJ self, const FIOBJ other) {
 uintptr_t fiobject___noop_count(FIOBJ o);
 double fiobject___noop_to_f(FIOBJ o);
 
-const fiobj_object_vtable_s FIOBJECT_VTABLE_IO = {
+const fiobj_object_vtable_s FIOBJECT_VTABLE_DATA = {
     .class_name = "IO",
     .dealloc = fiobj_data_dealloc,
     .to_i = fiobj_data_i,

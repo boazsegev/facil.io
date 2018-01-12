@@ -1,7 +1,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include "fio_cli_helper.h"
+#include "fio_cli.h"
 #include "http.h"
 
 #include <stdio.h>

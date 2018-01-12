@@ -54,7 +54,7 @@ static void on_http_upgrade(http_s *h, char *target, size_t len) {
                   .on_shutdown = on_server_shutdown, .udata = NULL);
 }
 
-#include "fio_cli_helper.h"
+#include "fio_cli.h"
 
 /*
 Read available command line details using "-?".

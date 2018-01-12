@@ -5,6 +5,10 @@ layout: api
 ---
 # Dynamic Type System: facil.io objects (`FIOBJ`)
 
+In this page you will find a general overview. For detailed API information please visit the Core or Type pages.
+
+## Overview
+
 `facil.io` offers a dynamic type system that makes it a breeze to mix object types together.
 
 This dynamic type system is an independent module within the `facil.io` core and can be used separately.

@@ -30,7 +30,7 @@ Mitchel and Johana, which means messages will be delivered twice unless using
 two different browser windows.
 */
 
-#include "fio_cli_helper.h"
+#include "fio_cli.h"
 #include "pubsub.h"
 #include "redis_engine.h"
 #include "websockets.h"

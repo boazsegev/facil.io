@@ -3,7 +3,7 @@
 
 #include "cli.h"
 
-#include "fio_cli_helper.h"
+#include "fio_cli.h"
 
 static char tmp_url_parsing[1024];
 

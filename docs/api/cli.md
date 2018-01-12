@@ -1,11 +1,11 @@
 ---
-title: facil.io - lib sock - a making sockets in C easy to use.
+title: facil.io - CLI helpers.
 toc: true
 layout: api
 ---
-# A Simple Socket Library for non-blocking Sockets
+# Command Line Helper
 
-This documentation is incomplete. I would love your help to finish it up. Until that time, please read the documentation in [the `sock.h` header file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/sock.h).
+This documentation is incomplete. I would love your help to finish it up. Until that time, please read the documentation in [the `fio_cli.h` header file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/services/fio_cli.h).
 
 ## Overview
 

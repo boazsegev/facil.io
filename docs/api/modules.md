@@ -1,6 +1,6 @@
 ---
 title: facil.io - core API and extensions
-toc: true
+toc: false
 layout: api
 ---
 # {{ page.title }}
@@ -13,7 +13,7 @@ facil.io's API is divided into different modules, each of them belonging to one 
 
     * [The `facil` library](facil) - this is the hub for everything network related except socket read/write calls.
     
-    the `facil` library and it's API is at the heart of everything and it is the glue that holds the different modules together.
+        the `facil` library and it's API is at the heart of everything and it is the glue that holds the different modules together.
 
     * [The `sock` library](sock) - an abstraction layer over POSIX sockets, which solves many of the issues and pitfalls related to socket programming.
 
@@ -27,11 +27,13 @@ facil.io's API is divided into different modules, each of them belonging to one 
 
     These modules can be safely ignored or removed if not utilized by an application. These modules include:
 
-    * [The `http` and `websockets` extensions](http) - this is compound module is everything HTTP.
+    * [The `http` extension](http) - this is compound module is everything HTTP.
+
+    * [The `websockets` extension](websockets) - this is part of the HTTP module and extends it to support Websocket connections.
 
     * [The `pubsub` extension](pubsub) - this allows messages to be exchanged using the [Publish–Subscribe Pattern](https://en.wikipedia.org/wiki/Publish–subscribe_pattern).
 
-    This powerful tool, which integrates seamlessly with the Websocket library, can allow an application to scale horizontally across machines, as can be demonstrated by the use of the [Redis pub/sub engine](redis).
+        This powerful tool, which integrates seamlessly with the Websocket library, can allow an application to scale horizontally across machines, as can be demonstrated by the use of the [Redis pub/sub engine](redis).
 
     * [The `redis_engine` extension](redis) to the pub/sub service.
     

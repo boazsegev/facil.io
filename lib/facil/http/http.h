@@ -295,6 +295,19 @@ typedef struct http_settings_s {
    */
   size_t max_body_size;
   /**
+   * The maximum number of clients that are allowed to connect concurrently.
+   *
+   * This value's default setting is usually for the best.
+   *
+   * The default value is computed according to the server's capacity, leaving
+   * some breathing room for other network and disk operations.
+   *
+   * Note: clients, by the nature of socket programming, are counted according
+   *       to their internal file descriptor (`fd`) value. Open files and other
+   *       sockets count towards a server's limit.
+   */
+  intptr_t max_clients;
+  /**
    * An HTTP/1.x connection timeout.
    *
    * `http_listen` defaults to ~5s and `http_connect` defaults to ~30s.

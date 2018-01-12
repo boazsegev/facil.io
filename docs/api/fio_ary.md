@@ -7,7 +7,15 @@ layout: api
 
 The simple dynamic array offers a simple data structure that manages only it's own memory (but not the memory of any objects placed in the array).
 
+## Overview
+
 The simple dynamic array type is included in a single file library, `fio_ary.h` that can be used independently as well.
+
+The Core Array is designed to contain `void *` pointers and doesn't manage any memory except it's own.
+
+As a general rule, facil.io doen's make assumptions about allocation / deallocation except where mentioned. A good example is the `sock_write` function that copies the data vs. `sock_write2` which asks about the correct deallocation function to be used (defaults to `free`) and takes ownership of the data.
+
+##% Example
 
 Here's a short example from [the introduction to the simple core types](types.md):
 
@@ -24,11 +32,29 @@ int main(void) {
   FIO_ARY_FOR(&ary, pos) {
     printf("index: %lu == %lu\n", (unsigned long)pos.i, (unsigned long)pos.obj);
   }
-  // free the internal data to avoid memory leaks
+  // free the array's data to avoid memory leaks (doesn't free the objects)
   fio_ary_free(&ary);
 }
 ```
+
 Note that the Array container can be placed on the stack (as well as allocated using `malloc`), but the internal data must be allocated and deallocated using `fio_ary_new` and `fio_ary_free`.
+
+## Types
+
+The Core Array uses the `fio_ary_s` type.
+
+The data in in the `fio_ary_s` type shouldn't be accessed directly. Functional access should be preferred.
+
+```c
+typedef struct fio_ary_s {
+  size_t start;
+  size_t end;
+  size_t capa;
+  void **arry;
+} fio_ary_s;
+```
+
+## Functions
 
 ### The `fio_ary_new` function
 

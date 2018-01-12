@@ -233,7 +233,8 @@ Object Type Identification
 #endif
 
 #define FIOBJ_IS_ALLOCATED(o)                                                  \
-  (((o)&1) == 0 && ((o)&FIOBJECT_PRIMITIVE_FLAG) != FIOBJECT_PRIMITIVE_FLAG)
+  ((o) && ((o)&1) == 0 &&                                                      \
+   ((o)&FIOBJECT_PRIMITIVE_FLAG) != FIOBJECT_PRIMITIVE_FLAG)
 #define FIOBJ2PTR(o) ((void *)((o)&FIOBJECT_TYPE_MASK))
 
 FIO_INLINE fiobj_type_enum fiobj_type(FIOBJ o) {
@@ -320,7 +321,7 @@ extern const fiobj_object_vtable_s FIOBJECT_VTABLE_FLOAT;
 extern const fiobj_object_vtable_s FIOBJECT_VTABLE_STRING;
 extern const fiobj_object_vtable_s FIOBJECT_VTABLE_ARRAY;
 extern const fiobj_object_vtable_s FIOBJECT_VTABLE_HASH;
-extern const fiobj_object_vtable_s FIOBJECT_VTABLE_IO;
+extern const fiobj_object_vtable_s FIOBJECT_VTABLE_DATA;
 
 #define FIOBJECT2VTBL(o) fiobj_type_vtable(o)
 #define FIOBJECT2HEAD(o) (((fiobj_object_header_s *)FIOBJ2PTR((o))))
@@ -338,7 +339,7 @@ FIO_INLINE const fiobj_object_vtable_s *fiobj_type_vtable(FIOBJ o) {
   case FIOBJ_T_HASH:
     return &FIOBJECT_VTABLE_HASH;
   case FIOBJ_T_IO:
-    return &FIOBJECT_VTABLE_IO;
+    return &FIOBJECT_VTABLE_DATA;
   case FIOBJ_T_NULL:
   case FIOBJ_T_TRUE:
   case FIOBJ_T_FALSE:
@@ -409,10 +410,8 @@ void fiobj_free_complex_object(FIOBJ o);
  * Always returns the value passed along.
  */
 FIO_INLINE FIOBJ fiobj_dup(FIOBJ o) {
-  if (!o || (o & FIOBJECT_NUMBER_FLAG) ||
-      (o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_PRIMITIVE_FLAG)
-    return o;
-  OBJREF_ADD(o);
+  if (FIOBJ_IS_ALLOCATED(o))
+    OBJREF_ADD(o);
   return o;
 }
 
@@ -427,7 +426,7 @@ FIO_INLINE FIOBJ fiobj_dup(FIOBJ o) {
  * Returns the number of existing references or zero if memory was released.
  */
 FIO_INLINE void fiobj_free(FIOBJ o) {
-  if (o == 0 || !FIOBJ_IS_ALLOCATED(o))
+  if (!FIOBJ_IS_ALLOCATED(o))
     return;
   if (fiobj_ref_dec(o))
     return;
@@ -581,9 +580,9 @@ FIO_INLINE int fiobj_iseq(const FIOBJ o, const FIOBJ o2) {
  */
 FIO_INLINE size_t fiobj_each1(FIOBJ o, size_t start_at,
                               int (*task)(FIOBJ obj, void *arg), void *arg) {
-  if (!o || !FIOBJ_IS_ALLOCATED(o) || !FIOBJECT2VTBL(o)->each)
-    return 0;
-  return FIOBJECT2VTBL(o)->each(o, start_at, task, arg);
+  if (FIOBJ_IS_ALLOCATED(o) && FIOBJECT2VTBL(o)->each)
+    return FIOBJECT2VTBL(o)->each(o, start_at, task, arg);
+  return 0;
 }
 
 #if DEBUG

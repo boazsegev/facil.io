@@ -73,7 +73,7 @@ static void answer_http_upgrade(http_s *request, char *target, size_t len) {
     http_send_error(request, 400);
 }
 
-#include "fio_cli_helper.h"
+#include "fio_cli.h"
 /*
 Read available command line details using "-?".
 */

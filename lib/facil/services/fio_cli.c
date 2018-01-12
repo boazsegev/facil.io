@@ -4,7 +4,7 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "fio_cli_helper.h"
+#include "fio_cli.h"
 #include "fiobj.h"
 
 #include <string.h>

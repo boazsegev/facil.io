@@ -5,21 +5,49 @@ layout: api
 ---
 # A Simple Hash Map
 
-The Hash Map core type offers a simple key-value map with a very simple API.
+## Overview
+
+The Hash Map core type offers an ordered key-value map with a very simple API.
+
+The Hash Map is ordered by order of insertion.
 
 The core Hash Map type is provided in a single file library `fio_hashmap.h`, which allows it's functions to be inlined for maximum performance (similarly to macros).
-
-The Hash Map also attempts to maximize memory locality for Hash Map operations, minimizing cache misses and increasing performance.
 
 The Hash Map defaults to `uint64_t` keys, meaning that matching is performed using a simple integer comparison. However, [this could be changed by defining macros **before** including the library file for increased collision protection](#collision-protection).
 
 Much like the Array in [the introduction to the simple core types](types.md), Hash Map containers can be placed on the stack as well as allocated dynamically.
 
-## API
+## Types
 
-The Hash Map header file contains documentation in the comments and it should be easy enough to read.
+The Core Hash uses the `fio_hash_s` type.
 
-The container type for a Hash Map is `fio_hash_s`. The data in the container should be considered as *read only* data and should preferably be accessed using the functions rather than directly.
+The data in in the `fio_hash_s` type should be considered *opaque* and shouldn't be accessed directly. Functional access should be preferred.
+
+The `fio_hash_s` utilizes two arrays using internal data types that contain duplicates of the Hash key data, maximizing memory locality for Hash Map operations and minimizing cache misses to increase performance.
+
+```c
+typedef struct fio_hash_data_ordered_s {
+  FIO_HASH_KEY_TYPE key; /* another copy for memory cache locality */
+  void *obj;
+} fio_hash_data_ordered_s;
+
+typedef struct fio_hash_data_s {
+  FIO_HASH_KEY_TYPE key; /* another copy for memory cache locality */
+  struct fio_hash_data_ordered_s *obj;
+} fio_hash_data_s;
+
+/* the information in tjhe Hash Map structure should be considered READ ONLY. */
+struct fio_hash_s {
+  uintptr_t count;
+  uintptr_t capa;
+  uintptr_t pos;
+  uintptr_t mask;
+  fio_hash_data_ordered_s *ordered;
+  fio_hash_data_s *map;
+};
+```
+
+## Functions
 
 ### `fio_hash_new`
 
