@@ -54,8 +54,7 @@ struct http_protocol_s {
 
 /* *****************************************************************************
 Constants that shouldn't be accessed by the users (`fiobj_dup` required).
-*****************************************************************************
-*/
+***************************************************************************** */
 
 extern FIOBJ HTTP_HEADER_ACCEPT_RANGES;
 extern FIOBJ HTTP_HEADER_WS_SEC_KEY;
@@ -71,8 +70,7 @@ extern FIOBJ HTTP_HVALUE_WS_VERSION;
 
 /* *****************************************************************************
 HTTP request/response object management
-*****************************************************************************
-*/
+***************************************************************************** */
 
 static inline void http_s_init(http_s *h, http_protocol_s *owner) {
   *h = (http_s){

@@ -599,6 +599,8 @@ int http_send_error(http_s *r, size_t error) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 void http_finish(http_s *r) {
+  if (!r)
+    return;
   if (!(http_protocol_s *)r->private_data.owner) {
     http_s_cleanup(r);
     free(r);
@@ -918,13 +920,13 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
   http_settings_s *settings = http_settings_new(arg_settings);
   settings->is_client = 1;
   http_s *h = malloc(sizeof(*h));
+  HTTP_ASSERT(h, "HTTP Client handler allocation failed");
   http_s_init(h, NULL);
   h->udata = arg_settings.udata;
   h->status = 0;
   settings->udata = h;
   http_set_header2(h, (fio_cstr_s){.data = "host", .len = 4},
                    (fio_cstr_s){.data = a, .len = len});
-  fprintf(stderr, "COnnecting to %s : %s\n", a, p);
   intptr_t ret =
       facil_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
                     .on_connect = http_on_open_client, .udata = settings);

@@ -112,6 +112,8 @@ size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args);
 
 static inline __attribute__((unused)) size_t
 http1_fio_parser(struct http1_fio_parser_args_s args) {
+  if (!args.length)
+    return 0;
   return http1_fio_parser_fn(&args);
 }
 #if __STDC_VERSION__ >= 199901L

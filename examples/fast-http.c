@@ -114,7 +114,7 @@ The HTTP/1.1 Parsing Callbacks - we need to implememnt everything for the parser
 int fast_http1_on_request(http1_parser_s *parser) {
   int ret = on_http_request(parser2pr(parser));
   fiobj_free(parser2pr(parser)->body);
-  parser2pr(parser)->body = NULL;
+  parser2pr(parser)->body = FIOBJ_INVALID;
   parser2pr(parser)->reset = 1;
   return ret;
 }
@@ -181,8 +181,8 @@ int fast_http1_on_body_chunk(http1_parser_s *parser, char *data,
   if (parser->state.content_length >= MAX_HTTP_BODY_MAX)
     return -1;
   if (!parser2pr(parser)->body)
-    parser2pr(parser)->body = fiobj_io_newtmpfile();
-  fiobj_io_write(parser2pr(parser)->body, data, data_len);
+    parser2pr(parser)->body = fiobj_data_newtmpfile();
+  fiobj_data_write(parser2pr(parser)->body, data, data_len);
   if (fiobj_obj2num(parser2pr(parser)->body) >= MAX_HTTP_BODY_MAX)
     return -1;
   return 0;
@@ -291,7 +291,7 @@ void fast_http_on_data(intptr_t uuid, protocol_s *pr) {
 void fast_http_on_close(intptr_t uuid, protocol_s *pr) {
   /* in case we lost connection midway */
   fiobj_free(((fast_http_s *)pr)->body);
-  ((fast_http_s *)pr)->body = NULL;
+  ((fast_http_s *)pr)->body = FIOBJ_INVALID;
   /* free our protocol data and resources */
   free(pr);
   (void)uuid;

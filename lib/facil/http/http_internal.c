@@ -67,7 +67,6 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   if (!uuid || !settings || !error)
     return -1;
   protocol_s *pr = http1_new(uuid, settings, NULL, 0);
-  HTTP_ASSERT(pr, "Couldn't allocate protocol object for error report.")
   http_s *r = malloc(sizeof(*r));
   HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
   http_s_init(r, (http_protocol_s *)pr);

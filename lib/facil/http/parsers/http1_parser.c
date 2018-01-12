@@ -398,7 +398,7 @@ re_eval:
   /* headers */
   case 1:
     do {
-      if (start >= stop)
+      if (start + 1 >= stop)
         return CONSUMED; /* buffer ended on header line */
       if (*start == '\r' || *start == '\n') {
         goto finished_headers; /* empty line, end of headers */

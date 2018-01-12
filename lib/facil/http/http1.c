@@ -264,25 +264,6 @@ static int http1_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
 static int http1_defer(http_s *h, void (*task)(http_s *h),
                        void (*fallback)(http_s *h)) {
   assert(task && h);
-  // if (http2protocol(h) &&
-  //     h == &http1_pr2handle((http1pr_s *)http2protocol(h))) {
-  //   http_s *tmp = malloc(sizeof(*tmp) + sizeof(http_func_s));
-  //   HTTP_ASSERT(tmp, "couldn't allocate memory for http1_defer");
-  //   *tmp = *(http_s *)h;
-  //   fiobj_data_assert_dynamic(h->body);
-  //   *(http_s *)h =
-  //       (http_s){.handle.private_data.owner = h->private_data.owner};
-  //   h = &tmp->handle;
-  //   fio_ary_push(&((http1pr_s *)http2protocol(h))->queue, h);
-  // }
-  // http_s *h1 = (http_s *)h;
-  // http_func_s *tasks = (http_func_s *)(h1 + 1);
-  // tasks->task = task;
-  // tasks->fallback = fallback;
-  // facil_defer(.uuid = ((http1pr_s *)h->private_data.owner)->p.uuid,
-  //             .task_type = FIO_PR_LOCK_TASK, .task = http1_defer_task, .arg =
-  //             h, .fallback = http1_defer_fallback);
-  // return 0;
   return -1; /*  TODO: tmp unsupported */
   (void)h;
   (void)task;
@@ -476,16 +457,8 @@ Connection Callbacks
  */
 static const char *HTTP1_SERVICE_STR = "http1_protocol_facil_io";
 
-/** called when a data is available, but will not run concurrently */
-static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
-  http1pr_s *p = (http1pr_s *)protocol;
+static inline void http1_consume_data(http1pr_s *p) {
   ssize_t i;
-  errno = 0;
-  i = sock_read(uuid, p->buf + p->buf_len, HTTP1_READ_BUFFER - p->buf_len);
-  if (i <= 0) {
-    return;
-  }
-  p->buf_len += i;
   size_t org_len = p->buf_len;
   do {
     i = http1_fio_parser(.parser = &p->parser,
@@ -500,20 +473,34 @@ static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
                          .on_body_chunk = http1_on_body_chunk,
                          .on_error = http1_on_error);
     p->buf_len -= i;
-  } while (i);
+  } while (i && p->buf_len);
 
-  if (i && p->buf_len) {
-    memmove(p->buf, p->buf + i, p->buf_len);
+  if (p->buf_len && org_len != p->buf_len) {
+    memmove(p->buf, p->buf + (org_len - p->buf_len), p->buf_len);
   }
 
   if (p->buf_len == HTTP1_READ_BUFFER) {
     /* no room to read... parser not consuming data */
     if (p->request.headers)
       http_send_error(&p->request, 413);
-    else
-      http_send_error2(413, uuid, p->p.settings);
+    else {
+      http_s_init(&p->request, &p->p);
+      http_send_error(&p->request, 413);
+    }
   }
-  // facil_force_event(uuid, FIO_EVENT_ON_DATA);
+}
+
+/** called when a data is available, but will not run concurrently */
+static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
+  http1pr_s *p = (http1pr_s *)protocol;
+  ssize_t i;
+  errno = 0;
+  i = sock_read(uuid, p->buf + p->buf_len, HTTP1_READ_BUFFER - p->buf_len);
+  if (i <= 0) {
+    return;
+  }
+  p->buf_len += i;
+  http1_consume_data(p);
 }
 
 /** called when the connection was closed, but will not run concurrently */
@@ -541,32 +528,14 @@ static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
     sock_close(uuid);
     return;
   }
-  /* parse what we've got so far */
-  do {
-    i = http1_fio_parser(.parser = &p->parser, .buffer = p->buf,
-                         .length = p->buf_len, .on_request = http1_on_request,
-                         .on_response = http1_on_response,
-                         .on_method = http1_on_method,
-                         .on_status = http1_on_status, .on_path = http1_on_path,
-                         .on_query = http1_on_query,
-                         .on_http_version = http1_on_http_version,
-                         .on_header = http1_on_header,
-                         .on_body_chunk = http1_on_body_chunk,
-                         .on_error = http1_on_error);
-    p->buf_len -= i;
-    if (i && p->buf_len) {
-      memmove(p->buf, p->buf + i, p->buf_len);
-    }
-    if (p->buf_len == HTTP1_READ_BUFFER) {
-      http_send_error2(413, uuid, p->p.settings);
-    }
-  } while (i);
+
+  /* Finish handling the same way as the normal `on_data` */
+  http1_consume_data(p);
 }
 
 /* *****************************************************************************
 Public API
-*****************************************************************************
-*/
+***************************************************************************** */
 
 /** Creates an HTTP1 protocol object and handles any unread data in the buffer
  * (if any). */
@@ -603,14 +572,6 @@ void http1_destroy(protocol_s *pr) {
   http1pr_s *p = (http1pr_s *)pr;
   http1_pr2handle(p).status = 0;
   http_s_cleanup(&http1_pr2handle(p));
-  // if (p->queue.arry) {
-  //   http_s *o;
-  //   while ((o = fio_ary_pop(&p->queue))) {
-  //     http_s_cleanup(o);
-  //     free(o);
-  //   }
-  //   fio_ary_free(&p->queue);
-  // }
   free(p);
 }
 
