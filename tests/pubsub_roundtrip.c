@@ -2,22 +2,22 @@
 #include "pubsub.h"
 #include "redis_engine.h"
 
-static void reporter_subscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+static void reporter_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                uint8_t use_pattern) {
   fprintf(stderr, "(%u) + subscribing to %s\n", getpid(),
           fiobj_obj2cstr(channel).data);
   (void)eng;
   (void)use_pattern;
 }
-static void reporter_unsubscribe(const pubsub_engine_s *eng, fiobj_s *channel,
+static void reporter_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                  uint8_t use_pattern) {
   fprintf(stderr, "(%u) - unsubscribing to %s\n", getpid(),
           fiobj_obj2cstr(channel).data);
   (void)eng;
   (void)use_pattern;
 }
-static int reporter_publish(const pubsub_engine_s *eng, fiobj_s *channel,
-                            fiobj_s *msg) {
+static int reporter_publish(const pubsub_engine_s *eng, FIOBJ channel,
+                            FIOBJ msg) {
   fprintf(stderr, "(%u) publishing to %s\n", getpid(),
           fiobj_obj2cstr(channel).data);
   (void)eng;
@@ -50,8 +50,8 @@ void perfrom_sub(void *a) {
   if (facil_parent_pid() != getpid()) {
     (void)a;
   } else {
-    fiobj_s *ch = fiobj_sym_new("my channel", 10);
-    fiobj_s *msg = fiobj_num_new(
+    FIOBJ ch = fiobj_str_new("my channel", 10);
+    FIOBJ msg = fiobj_num_new(
         (intptr_t)pubsub_subscribe(.channel = ch, .on_message = my_on_message,
                                    .udata1 = a, .udata2 = NULL));
     pubsub_publish(.channel = ch, .message = ch);

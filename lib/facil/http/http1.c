@@ -30,6 +30,7 @@ typedef struct http1pr_s {
   uintptr_t header_size;
   uint8_t close;
   uint8_t is_client;
+  uint8_t upgraded;
   uint8_t buf[];
 } http1pr_s;
 
@@ -305,10 +306,13 @@ static int http1_http2websocket(websocket_settings_s *args) {
                   fiobj_dup(HTTP_HVALUE_WEBSOCKET));
   http_set_header(args->http, HTTP_HEADER_WS_SEC_KEY, tmp);
   args->http->status = 101;
-  intptr_t uuid = http2protocol(args->http)->uuid;
+  ((http1pr_s *)http2protocol(args->http))->upgraded = 1;
+  const http1pr_s *pr = (http1pr_s *)http2protocol(args->http);
+  const intptr_t uuid = http2protocol(args->http)->uuid;
   http_settings_s *set = http2protocol(args->http)->settings;
   http_finish(args->http);
-  websocket_attach(uuid, set, args);
+  websocket_attach(uuid, set, args, pr->parser.state.next,
+                   pr->buf_len - (intptr_t)(pr->parser.state.next - pr->buf));
   return 0;
 bad_request:
   http_send_error(args->http, 400);
@@ -473,7 +477,10 @@ static inline void http1_consume_data(http1pr_s *p) {
                          .on_body_chunk = http1_on_body_chunk,
                          .on_error = http1_on_error);
     p->buf_len -= i;
-  } while (i && p->buf_len);
+  } while (i && p->buf_len && !p->upgraded);
+
+  if (p->upgraded)
+    return;
 
   if (p->buf_len && org_len != p->buf_len) {
     memmove(p->buf, p->buf + (org_len - p->buf_len), p->buf_len);

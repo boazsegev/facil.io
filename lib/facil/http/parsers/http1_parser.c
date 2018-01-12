@@ -360,6 +360,7 @@ size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args) {
   if (DEBUG) {
     assert(args->parser && args->buffer);
   }
+  args->parser->state.next = NULL;
   uint8_t *start = args->buffer;
   uint8_t *end = start;
   uint8_t *const stop = start + args->length;
@@ -430,6 +431,7 @@ re_eval:
   }
   /* are we done ? */
   if (args->parser->state.reserved & 4) {
+    args->parser->state.next = start;
     if (((args->parser->state.reserved & 128) ? args->on_response
                                               : args->on_request)(args->parser))
       goto error;

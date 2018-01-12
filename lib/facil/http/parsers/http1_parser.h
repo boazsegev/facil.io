@@ -49,7 +49,8 @@ typedef struct http1_parser_s {
   struct http1_parser_protected_read_only_state_s {
     ssize_t content_length; /* negative values indicate chuncked data state */
     ssize_t read;           /* total number of bytes read so far (body only) */
-    uint8_t reserved;       /* for internal use */
+    uint8_t *next;    /* the known position for the end of request/response */
+    uint8_t reserved; /* for internal use */
   } state;
 } http1_parser_s;
 

@@ -82,6 +82,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   fiobj_str_write(msg, n->nick, n->len);
   fiobj_str_write(msg, ": ", 2);
   fiobj_str_write(msg, data, size);
+  // fprintf(stderr, "PUB %s\n", fiobj_obj2cstr(msg).data);
   if (pubsub_publish(.channel = CHAT_CHANNEL, .message = msg))
     fprintf(stderr, "Failed to publish\n");
   fiobj_free(msg);

@@ -215,12 +215,6 @@ static void on_ready(intptr_t fduuid, protocol_s *ws) {
     ((ws_s *)ws)->on_ready((ws_s *)ws);
 }
 
-// static void on_open(intptr_t fd, protocol_s *ws, void *callback) {
-//   (void)(fd);
-//   if (callback && ws && ws->service == WEBSOCKET_ID_STR)
-//     ((void (*)(void *))callback)(ws);
-// }
-
 static void on_shutdown(intptr_t fd, protocol_s *ws) {
   (void)(fd);
   if (ws && ((ws_s *)ws)->on_shutdown)
@@ -258,15 +252,22 @@ static void on_data(intptr_t sockfd, protocol_s *ws_) {
   if (len <= 0) {
     return;
   }
-  ws->length = websocket_consume(ws->buffer.data, ws->length + len, ws, 1);
+  ws->length = websocket_consume(ws->buffer.data, ws->length + len, ws,
+                                 (~(ws->is_client) & 1));
 
   facil_force_event(sockfd, FIO_EVENT_ON_DATA);
 }
+
 static void on_data_first(intptr_t sockfd, protocol_s *ws_) {
   ws_s *const ws = (ws_s *)ws_;
   if (ws->on_open)
     ws->on_open(ws);
   ws->protocol.on_data = on_data;
+
+  if (ws->length)
+    ws->length = websocket_consume(ws->buffer.data, ws->length, ws,
+                                   (~(ws->is_client) & 1));
+
   facil_force_event(sockfd, FIO_EVENT_ON_DATA);
 }
 
@@ -305,7 +306,7 @@ static void destroy_ws(ws_s *ws) {
 }
 
 void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
-                      websocket_settings_s *args) {
+                      websocket_settings_s *args, void *data, size_t length) {
   ws_s *ws = new_websocket(uuid);
   if (!ws)
     perror("FATAL ERROR: couldn't allocate Websocket protocol object"),
@@ -318,6 +319,8 @@ void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
   ws->on_message = args->on_message;
   ws->on_ready = args->on_ready;
   ws->on_shutdown = args->on_shutdown;
+  // client mode?
+  ws->is_client = http_settings->is_client;
   // setup any user data
   ws->udata = args->udata;
   if (http_settings) {
@@ -328,6 +331,21 @@ void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
   } else {
     ws->max_msg_size = (1024 * 256);
     facil_set_timeout(uuid, 40);
+  }
+
+  if (data && length) {
+    if (length > ws->buffer.size) {
+      ws->buffer.size = length;
+      ws->buffer = resize_ws_buffer(ws, ws->buffer);
+      if (!ws->buffer.data) {
+        // no memory.
+        facil_attach(uuid, (protocol_s *)ws);
+        websocket_close(ws);
+        return;
+      }
+    }
+    memcpy(ws->buffer.data, data, length);
+    ws->length = length;
   }
   // update the protocol object, cleanning up the old one
   facil_attach(uuid, (protocol_s *)ws);

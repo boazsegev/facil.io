@@ -655,7 +655,7 @@ int http_upgrade2ws(websocket_settings_s args) {
     return -1;
   }
   HTTP_TEST_FOR_OWNER(args.http);
-  if (args.http->headers)
+  if (!args.http->headers)
     return -1;
   return ((http_protocol_s *)args.http->private_data.owner)
       ->vtable->http2websocket(&args);

@@ -19,8 +19,9 @@ The protocol / service identifier.
 */
 extern char *WEBSOCKET_ID_STR;
 
+/** used internally: attaches the Websocket protocol to the socket. */
 void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
-                      websocket_settings_s *args);
+                      websocket_settings_s *args, void *data, size_t length);
 
 /* *****************************************************************************
 Websocket information
