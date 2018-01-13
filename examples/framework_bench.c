@@ -97,7 +97,7 @@ Request handlers
 static void on_request_json(http_s *h) {
   http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("json", 4));
   FIOBJ json;
-  if (0) {
+  if (1) {
     /* recreate the Hash to be serialized */
     FIOBJ hash = fiobj_hash_new(); /* an object to serialise as JSON*/
     fiobj_hash_set(hash, JSON_KEY, fiobj_dup(JSON_VALUE));
