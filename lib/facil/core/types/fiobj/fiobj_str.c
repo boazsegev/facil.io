@@ -339,8 +339,8 @@ FIOBJ fiobj_str_readfile(const char *filename, size_t start_at, size_t limit) {
 
 /** Prevents the String object from being changed. */
 void fiobj_str_freeze(FIOBJ str) {
-  assert(FIOBJ_TYPE_IS(str, FIOBJ_T_STRING));
-  obj2str(str)->frozen = 1;
+  if (FIOBJ_TYPE_IS(str, FIOBJ_T_STRING))
+    obj2str(str)->frozen = 1;
 }
 
 /** Confirms the requested capacity is available and allocates as required. */
@@ -487,7 +487,6 @@ size_t fiobj_str_join(FIOBJ dest, FIOBJ obj) {
  */
 uint64_t fiobj_str_hash(FIOBJ o) {
   assert(FIOBJ_TYPE_IS(o, FIOBJ_T_STRING));
-  obj2str(o)->frozen = 1;
   if (obj2str(o)->is_small) {
     return fio_siphash(STR_INTENAL_STR(o), STR_INTENAL_LEN(o));
   } else if (obj2str(o)->hash) {
@@ -540,8 +539,10 @@ void fiobj_test_string(void) {
               "Invalid long string length (%lu != 58)!\n",
               fiobj_obj2cstr(o).len)
   uint64_t hash = fiobj_str_hash(o);
+  TEST_ASSERT(!obj2str(o)->frozen, "String forzen when only hashing!\n");
+  fiobj_str_freeze(o);
+  TEST_ASSERT(obj2str(o)->frozen, "String not forzen!\n");
   fiobj_str_write(o, " World", 6);
-  TEST_ASSERT(obj2str(o)->frozen, "String not forzen after hashing!\n");
   TEST_ASSERT(hash == fiobj_str_hash(o),
               "String hash changed after hashing - not frozen?\n");
   TEST_ASSERT(fiobj_obj2cstr(o).len == 58,

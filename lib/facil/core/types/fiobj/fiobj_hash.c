@@ -16,6 +16,7 @@ typedef struct {
 
 static hash_key_s hash_key_copy(hash_key_s key) {
   fiobj_dup(key.key);
+  fiobj_str_freeze(key.key);
   return key;
 }
 static hash_key_s hash_key_free(hash_key_s key) {
