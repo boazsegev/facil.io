@@ -250,7 +250,7 @@ void fio_cli_start(int argc, const char **argv, const char *info) {
   if (info_str)
     fiobj_free(info_str);
   if (info) {
-    info_str = fiobj_str_new(info, 0);
+    info_str = fiobj_str_new(info, strlen(info));
   } else {
     info_str = fiobj_str_new(DEFAULT_CLI_INFO, sizeof(DEFAULT_CLI_INFO) - 1);
   }
