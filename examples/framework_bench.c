@@ -20,8 +20,11 @@ static void cli_init(int argc, char const *argv[]);
 /* cleanup any leftovers */
 static void cleanup(void);
 
+/* reusable objects */
 static FIOBJ HTTP_HEADER_SERVER;
 static FIOBJ HTTP_VALUE_SERVER;
+static FIOBJ JSON_KEY;
+static FIOBJ JSON_VALUE;
 
 /* *****************************************************************************
 Routing
@@ -60,6 +63,9 @@ int main(int argc, char const *argv[]) {
   /* Server name and header */
   HTTP_HEADER_SERVER = fiobj_str_new("server", 6);
   HTTP_VALUE_SERVER = fiobj_str_new("facil.io", 8);
+  /* JSON values to be serialized */
+  JSON_KEY = fiobj_str_new("message", 7);
+  JSON_VALUE = fiobj_str_new("Hello, World!", 13);
 
   /* Test for static file service */
   const char *public_folder = fio_cli_get_str("www");
@@ -87,10 +93,8 @@ Request handlers
 /* handles JSON requests */
 static void on_request_json(http_s *h) {
   http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("json", 4));
-  FIOBJ hash = fiobj_hash_new();           /* to serialise as JSON*/
-  FIOBJ key = fiobj_str_new("message", 7); /* hash owns values, not keys */
-  fiobj_hash_set(hash, key, fiobj_str_new("Hello, World!", 13));
-  fiobj_free(key);
+  FIOBJ hash = fiobj_hash_new(); /* an object to serialise as JSON*/
+  fiobj_hash_set(hash, JSON_KEY, fiobj_dup(JSON_VALUE));
   FIOBJ json = fiobj_obj2json(hash, 0);
   fiobj_free(hash);
   fio_cstr_s tmp = fiobj_obj2cstr(json);
@@ -125,9 +129,23 @@ static void cli_init(int argc, char const *argv[]) {
   fio_cli_accept_str("public www",
                      "A public folder for serve an HTTP static file service.");
   fio_cli_accept_bool("log v", "Turns logging on (logs to terminal).");
+  fio_cli_accept_num("database db", "The database adrress.");
+  fio_cli_accept_num("database dbp", "The database port.");
 
+  /* setup default port */
   if (!fio_cli_get_str("p"))
     fio_cli_set_str("p", "8080");
+
+  /* setup database address */
+  if (!fio_cli_get_str("db")) {
+    char *database = getenv("DBHOST");
+    if (!database)
+      database = "localhost";
+    fio_cli_set_str("db", database);
+  }
+  /* setup database port - default for Redis */
+  if (!fio_cli_get_str("dbp"))
+    fio_cli_set_str("dbp", "6379");
 }
 
 /* *****************************************************************************
@@ -173,5 +191,7 @@ static void cleanup(void) {
   fio_cli_end();
   fiobj_free(HTTP_HEADER_SERVER);
   fiobj_free(HTTP_VALUE_SERVER);
+  fiobj_free(JSON_KEY);
+  fiobj_free(JSON_VALUE);
   route_clear();
 }
