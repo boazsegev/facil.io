@@ -34,18 +34,6 @@ static inline void add_content_length(http_s *r, uintptr_t length) {
   }
 }
 
-static inline int http_lost_owner(http_s *h) {
-  http_s_cleanup(h);
-  free(h);
-  return -1;
-}
-#define HTTP_TEST_FOR_OWNER(h)                                                 \
-  if (!h)                                                                      \
-    return -1;                                                                 \
-  if (!(http_protocol_s *)(h)->private_data.owner) {                           \
-    return http_lost_owner(h);                                                 \
-  }
-
 static FIOBJ current_date;
 static time_t last_date_added;
 static spn_lock_i date_lock;
@@ -319,13 +307,12 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_send_body(http_s *r, void *data, uintptr_t length) {
-  HTTP_TEST_FOR_OWNER(r);
-  if (!r->private_data.out_headers)
+  if (!r || !r->private_data.out_headers)
     return -1;
   add_content_length(r, length);
   add_date(r);
-  int ret = ((http_protocol_s *)r->private_data.owner)
-                ->vtable->http_send_body(r, data, length);
+  int ret =
+      ((http_vtable_s *)r->private_data.vtbl)->http_send_body(r, data, length);
   return ret;
 }
 /**
@@ -336,18 +323,15 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
-  if (!(http_protocol_s *)(r)->private_data.owner) {
-    close(fd);
-    return http_lost_owner(r);
-  }
-  if (!r->private_data.out_headers) {
+  if (!r || !(http_protocol_s *)(r)->private_data.flag ||
+      !r->private_data.out_headers) {
     close(fd);
     return -1;
   };
   add_content_length(r, length);
   add_date(r);
-  int ret = ((http_protocol_s *)r->private_data.owner)
-                ->vtable->http_sendfile(r, fd, length, offset);
+  int ret = ((http_vtable_s *)r->private_data.vtbl)
+                ->http_sendfile(r, fd, length, offset);
   return ret;
 }
 /**
@@ -567,8 +551,7 @@ open_file:
  * argument is set to NULL.
  */
 int http_send_error(http_s *r, size_t error) {
-  HTTP_TEST_FOR_OWNER(r);
-  if (!r->private_data.out_headers) {
+  if (!r || !r->private_data.out_headers) {
     return -1;
   }
   if (error < 100 || error >= 1000)
@@ -599,14 +582,10 @@ int http_send_error(http_s *r, size_t error) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 void http_finish(http_s *r) {
-  if (!r)
-    return;
-  if (!(http_protocol_s *)r->private_data.owner) {
-    http_s_cleanup(r);
-    free(r);
+  if (!r || !r->private_data.vtbl) {
     return;
   }
-  ((http_protocol_s *)r->private_data.owner)->vtable->http_finish(r);
+  ((http_vtable_s *)r->private_data.vtbl)->http_finish(r);
 }
 /**
  * Pushes a data response when supported (HTTP/2 only).
@@ -614,10 +593,10 @@ void http_finish(http_s *r) {
  * Returns -1 on error and 0 on success.
  */
 int http_push_data(http_s *r, void *data, uintptr_t length, FIOBJ mime_type) {
-  if (!(http_protocol_s *)r->private_data.owner)
+  if (!r || !(http_protocol_s *)r->private_data.flag)
     return -1;
-  return ((http_protocol_s *)r->private_data.owner)
-      ->vtable->http_push_data(r, data, length, mime_type);
+  return ((http_vtable_s *)r->private_data.vtbl)
+      ->http_push_data(r, data, length, mime_type);
 }
 /**
  * Pushes a file response when supported (HTTP/2 only).
@@ -628,20 +607,10 @@ int http_push_data(http_s *r, void *data, uintptr_t length, FIOBJ mime_type) {
  * Returns -1 on error and 0 on success.
  */
 int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
-  return ((http_protocol_s *)h->private_data.owner)
-      ->vtable->http_push_file(h, filename, mime_type);
-}
-
-/**
- * Defers the request / response handling for later.
- *
- * Returns -1 on error and 0 on success.
- */
-int http_defer(http_s *h, void (*task)(http_s *h),
-               void (*fallback)(http_s *h)) {
-  HTTP_TEST_FOR_OWNER(h);
-  return ((http_protocol_s *)h->private_data.owner)
-      ->vtable->http_defer(h, task, fallback);
+  if (!h || !(http_protocol_s *)h->private_data.flag)
+    return -1;
+  return ((http_vtable_s *)h->private_data.vtbl)
+      ->http_push_file(h, filename, mime_type);
 }
 
 /**
@@ -654,11 +623,79 @@ int http_upgrade2ws(websocket_settings_s args) {
             "ERROR: `http_upgrade2ws` requires a valid `http_s` handle.");
     return -1;
   }
-  HTTP_TEST_FOR_OWNER(args.http);
   if (!args.http->headers)
     return -1;
-  return ((http_protocol_s *)args.http->private_data.owner)
-      ->vtable->http2websocket(&args);
+  return ((http_vtable_s *)args.http->private_data.vtbl)->http2websocket(&args);
+}
+
+/* *****************************************************************************
+Pause / Resume
+***************************************************************************** */
+typedef struct {
+  uintptr_t uuid;
+  http_s *h;
+  void *udata;
+  void (*task)(http_s *);
+  void (*fallback)(void *);
+} http_pause_handle_s;
+
+/* perform the pause task outside of the connection's lock */
+static void http_pause_wrapper(void *h_, void *task_) {
+  void (*task)(http_s * h) = (void (*)(http_s * h)) task_;
+  task(h_);
+}
+
+/* perform the resume task within of the connection's lock */
+static void http_resume_wrapper(intptr_t uuid, protocol_s *p_, void *arg) {
+  http_protocol_s *p = (http_protocol_s *)p_;
+  http_pause_handle_s *http = arg;
+  http_s *h = http->h;
+  h->udata = http->udata;
+  http_vtable_s *vtbl = (http_vtable_s *)h->private_data.vtbl;
+  http->task(h);
+  vtbl->http_on_resume(h, p);
+  free(http);
+  (void)uuid;
+}
+
+/* perform the resume task fallback */
+static void http_resume_fallback_wrapper(intptr_t uuid, void *arg) {
+  http_pause_handle_s *http = arg;
+  http->fallback(http->udata);
+  free(http);
+  (void)uuid;
+}
+
+/**
+ * Defers the request / response handling for later.
+ */
+void http_pause(http_s *h, void (*task)(void *http, void *udata)) {
+  if (!h || !(http_protocol_s *)h->private_data.flag) {
+    return;
+  }
+  http_protocol_s *p = (http_protocol_s *)h->private_data.flag;
+  http_vtable_s *vtbl = (http_vtable_s *)h->private_data.vtbl;
+  http_pause_handle_s *http = malloc(sizeof(*http));
+  *http = (http_pause_handle_s){
+      .uuid = p->uuid, .h = h, .udata = h->udata,
+  };
+  vtbl->http_on_pause(h, p);
+  defer(http_pause_wrapper, h, (void *)task);
+}
+
+/**
+ * Defers the request / response handling for later.
+ */
+void http_resume(void *http_, void (*task)(http_s *h),
+                 void (*fallback)(void *udata)) {
+  if (!http_)
+    return;
+  http_pause_handle_s *http = http_;
+  http->task = task;
+  http->fallback = fallback;
+  facil_defer(.uuid = http->uuid, .arg = http, .type = FIO_PR_LOCK_TASK,
+              .task = http_resume_wrapper,
+              .fallback = http_resume_fallback_wrapper);
 }
 
 /* *****************************************************************************
@@ -790,7 +827,7 @@ int http_listen(const char *port, const char *binding,
  * Returns NULL on error (i.e., connection was lost).
  */
 struct http_settings_s *http_settings(http_s *r) {
-  return ((http_protocol_s *)r->private_data.owner)->settings;
+  return ((http_protocol_s *)r->private_data.flag)->settings;
 }
 
 /* *****************************************************************************
@@ -826,7 +863,8 @@ static void http_on_open_client(intptr_t uuid, void *set_) {
     *original = pr->on_close;
     pr->on_close = http_on_close_client;
   }
-  h->private_data.owner = pr;
+  h->private_data.flag = (uintptr_t)pr;
+  h->private_data.vtbl = http1_vtable();
   set->on_response(h);
 }
 
@@ -834,7 +872,7 @@ static void http_on_client_failed(intptr_t uuid, void *set_) {
   http_settings_s *set = set_;
   http_s *h = set->udata;
   set->udata = h->udata;
-  http_s_cleanup(h);
+  http_s_cleanup(h, 0);
   free(h);
   if (set->on_finish)
     set->on_finish(set);
@@ -921,8 +959,7 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
   settings->is_client = 1;
   http_s *h = malloc(sizeof(*h));
   HTTP_ASSERT(h, "HTTP Client handler allocation failed");
-  http_s_init(h, NULL);
-  h->udata = arg_settings.udata;
+  http_s_init(h, 0, NULL, arg_settings.udata);
   h->status = 0;
   settings->udata = h;
   http_set_header2(h, (fio_cstr_s){.data = "host", .len = 4},
@@ -1006,7 +1043,7 @@ void http_write_log(http_s *h) {
 
   // TODO Guess IP address from headers (forwarded) where possible
   sock_peer_addr_s addrinfo = sock_peer_addr(
-      sock_uuid2fd(((http_protocol_s *)h->private_data.owner)->uuid));
+      sock_uuid2fd(((http_protocol_s *)h->private_data.flag)->uuid));
   if (addrinfo.addrlen) {
     if (inet_ntop(
             addrinfo.addr->sa_family,

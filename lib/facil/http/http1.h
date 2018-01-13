@@ -23,4 +23,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
 /** Manually destroys the HTTP1 protocol object. */
 void http1_destroy(protocol_s *);
 
+/** returns the HTTP/1.1 protocol's VTable. */
+void * http1_vtable(void);
+
 #endif

@@ -30,7 +30,7 @@ typedef struct http1pr_s {
   uintptr_t header_size;
   uint8_t close;
   uint8_t is_client;
-  uint8_t upgraded;
+  uint8_t stop;
   uint8_t buf[];
 } http1pr_s;
 
@@ -44,13 +44,15 @@ Internal Helpers
 inline static void h1_reset(http1pr_s *p) { p->header_size = 0; }
 
 #define http1_pr2handle(pr) (((http1pr_s *)(pr))->request)
+#define handle2pr(h) ((http1pr_s *)h->private_data.flag)
 
 static fio_cstr_s http1pr_status2str(uintptr_t status);
 
 /* cleanup an HTTP/1.1 handler object */
 static inline void http1_after_finish(http_s *h) {
-  http1pr_s *p = (http1pr_s *)h->private_data.owner;
-  http_s_cleanup(h);
+  http1pr_s *p = handle2pr(h);
+  p->stop = 0;
+  http_s_cleanup(h, p->p.settings->log);
   if (h != &p->request)
     free(h);
   if (p->close)
@@ -98,7 +100,7 @@ static FIOBJ headers2str(http_s *h) {
 
   struct header_writer_s w;
   w.dest = fiobj_str_buf(0);
-  http1pr_s *p = ((http1pr_s *)h->private_data.owner);
+  http1pr_s *p = handle2pr(h);
 
   if (h->status || !p->is_client) {
     fio_cstr_s t = http1pr_status2str(h->status);
@@ -107,7 +109,7 @@ static FIOBJ headers2str(http_s *h) {
     if (tmp) {
       fio_cstr_s t = fiobj_obj2cstr(tmp);
       if (t.data[0] == 'c' || t.data[0] == 'C')
-        ((http1pr_s *)h->private_data.owner)->close = 1;
+        p->close = 1;
     } else {
       tmp = fiobj_hash_get2(h->headers, connection_hash);
       if (tmp) {
@@ -116,7 +118,7 @@ static FIOBJ headers2str(http_s *h) {
           fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
         else {
           fiobj_str_write(w.dest, "connection:close\r\n", 18);
-          ((http1pr_s *)h->private_data.owner)->close = 1;
+          p->close = 1;
         }
       } else {
         fio_cstr_s t = fiobj_obj2cstr(h->version);
@@ -125,7 +127,7 @@ static FIOBJ headers2str(http_s *h) {
           fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
         else {
           fiobj_str_write(w.dest, "connection:close\r\n", 18);
-          ((http1pr_s *)h->private_data.owner)->close = 1;
+          p->close = 1;
         }
       }
     }
@@ -171,7 +173,7 @@ static int http1_send_body(http_s *h, void *data, uintptr_t length) {
     return -1;
   }
   fiobj_str_write(packet, data, length);
-  fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
+  fiobj_send((handle2pr(h)->p.uuid), packet);
   http1_after_finish(h);
   return 0;
 }
@@ -192,19 +194,18 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
     intptr_t i = pread(fd, s.data + s.len, length, offset);
     if (i < 0) {
       close(fd);
-      fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
-      sock_close((((http_protocol_s *)h->private_data.owner)->uuid));
+      fiobj_send((handle2pr(h)->p.uuid), packet);
+      sock_close((handle2pr(h)->p.uuid));
       return -1;
     }
     close(fd);
     fiobj_str_resize(packet, s.len + i);
-    fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
+    fiobj_send((handle2pr(h)->p.uuid), packet);
     http1_after_finish(h);
     return 0;
   }
-  fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
-  sock_sendfile((((http_protocol_s *)h->private_data.owner)->uuid), fd, offset,
-                length);
+  fiobj_send((handle2pr(h)->p.uuid), packet);
+  sock_sendfile((handle2pr(h)->p.uuid), fd, offset, length);
   http1_after_finish(h);
   return 0;
 }
@@ -213,7 +214,7 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
 static void htt1p_finish(http_s *h) {
   FIOBJ packet = headers2str(h);
   if (packet)
-    fiobj_send((((http_protocol_s *)h->private_data.owner)->uuid), packet);
+    fiobj_send((handle2pr(h)->p.uuid), packet);
   else {
     // fprintf(stderr, "WARNING: invalid call to `htt1p_finish`\n");
   }
@@ -236,39 +237,23 @@ static int http1_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
   (void)mime_type;
 }
 
-// /** will be used by defer. */
-// typedef struct http_func_s {
-//   void (*task)(http_s *);
-//   void (*fallback)(http_s *);
-// } http_func_s;
-
-// /** will be used by defer. */
-// static void http1_defer_task(intptr_t uuid, protocol_s *p_, void *arg) {
-//   http_s *h = arg;
-//   http_func_s *func = ((http_func_s *)(h + 1));
-//   func->task(&h->handle);
-//   (void)p_;
-//   (void)uuid;
-// }
-
-// /** will be used by defer. */
-// static void http1_defer_fallback(intptr_t uuid, void *arg) {
-//   http_s *h = arg;
-//   http_func_s *func = ((http_func_s *)(h + 1));
-//   if (func->fallback)
-//     func->fallback(&h->handle);
-//   http1_after_finish(&h->handle);
-//   (void)uuid;
-// }
-
-/** Defer request handling for later... careful (memory concern apply). */
-static int http1_defer(http_s *h, void (*task)(http_s *h),
-                       void (*fallback)(http_s *h)) {
-  assert(task && h);
-  return -1; /*  TODO: tmp unsupported */
+/**
+ * Called befor a pause task,
+ */
+void http1_on_pause(http_s *h, http_protocol_s *pr) {
+  ((http1pr_s *)pr)->stop = 1;
+  facil_quite(pr->uuid);
   (void)h;
-  (void)task;
-  (void)fallback;
+}
+
+/**
+ * called after the resume task had completed.
+ */
+void http1_on_resume(http_s *h, http_protocol_s *pr) {
+  if (!((http1pr_s *)pr)->stop) {
+    facil_force_event(pr->uuid, FIO_EVENT_ON_DATA);
+  }
+  (void)h;
 }
 
 static int http1_http2websocket(websocket_settings_s *args) {
@@ -306,11 +291,11 @@ static int http1_http2websocket(websocket_settings_s *args) {
                   fiobj_dup(HTTP_HVALUE_WEBSOCKET));
   http_set_header(args->http, HTTP_HEADER_WS_SEC_KEY, tmp);
   args->http->status = 101;
-  ((http1pr_s *)http2protocol(args->http))->upgraded = 1;
-  const http1pr_s *pr = (http1pr_s *)http2protocol(args->http);
-  const intptr_t uuid = http2protocol(args->http)->uuid;
-  http_settings_s *set = http2protocol(args->http)->settings;
+  http1pr_s *pr = handle2pr(args->http);
+  const intptr_t uuid = handle2pr(args->http)->p.uuid;
+  http_settings_s *set = handle2pr(args->http)->p.settings;
   http_finish(args->http);
+  pr->stop = 1;
   websocket_attach(uuid, set, args, pr->parser.state.next,
                    pr->buf_len - (intptr_t)(pr->parser.state.next - pr->buf));
   return 0;
@@ -325,9 +310,12 @@ struct http_vtable_s HTTP1_VTABLE = {
     .http_finish = htt1p_finish,
     .http_push_data = http1_push_data,
     .http_push_file = http1_push_file,
-    .http_defer = http1_defer,
+    .http_on_pause = http1_on_pause,
+    .http_on_resume = http1_on_resume,
     .http2websocket = http1_http2websocket,
 };
+
+void *http1_vtable(void) { return (void *)&HTTP1_VTABLE; }
 
 /* *****************************************************************************
 Parser Callbacks
@@ -337,7 +325,8 @@ Parser Callbacks
 static int http1_on_request(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
   http_on_request_handler______internal(&http1_pr2handle(p), p->p.settings);
-  http_s_cleanup(&http1_pr2handle(p));
+  if (p->request.headers && !p->stop)
+    http_finish(&p->request);
   h1_reset(p);
   return 0;
 }
@@ -345,14 +334,17 @@ static int http1_on_request(http1_parser_s *parser) {
 static int http1_on_response(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
   http_on_response_handler______internal(&http1_pr2handle(p), p->p.settings);
-  http_s_cleanup(&http1_pr2handle(p));
+  if (p->request.headers && !p->stop)
+    http_finish(&p->request);
   h1_reset(p);
   return 0;
 }
 /** called when a request method is parsed. */
 static int http1_on_method(http1_parser_s *parser, char *method,
                            size_t method_len) {
-  http_s_init(&http1_pr2handle(parser2http(parser)), &parser2http(parser)->p);
+  http_s_init(&http1_pr2handle(parser2http(parser)),
+              (uintptr_t)&parser2http(parser)->p, &HTTP1_VTABLE,
+              parser2http(parser)->p.settings->udata);
   http1_pr2handle(parser2http(parser)).method =
       fiobj_str_new(method, method_len);
   parser2http(parser)->header_size += method_len;
@@ -387,7 +379,9 @@ static int http1_on_query(http1_parser_s *parser, char *query, size_t len) {
 static int http1_on_http_version(http1_parser_s *parser, char *version,
                                  size_t len) {
   if (!http1_pr2handle(parser2http(parser)).headers)
-    http_s_init(&http1_pr2handle(parser2http(parser)), &parser2http(parser)->p);
+    http_s_init(&http1_pr2handle(parser2http(parser)),
+                (uintptr_t)&parser2http(parser)->p, &HTTP1_VTABLE,
+                parser2http(parser)->p.settings->udata);
   http1_pr2handle(parser2http(parser)).version = fiobj_str_new(version, len);
   parser2http(parser)->header_size += len;
   return 0;
@@ -477,10 +471,7 @@ static inline void http1_consume_data(http1pr_s *p) {
                          .on_body_chunk = http1_on_body_chunk,
                          .on_error = http1_on_error);
     p->buf_len -= i;
-  } while (i && p->buf_len && !p->upgraded);
-
-  if (p->upgraded)
-    return;
+  } while (i && p->buf_len && !p->stop);
 
   if (p->buf_len && org_len != p->buf_len) {
     memmove(p->buf, p->buf + (org_len - p->buf_len), p->buf_len);
@@ -491,7 +482,8 @@ static inline void http1_consume_data(http1pr_s *p) {
     if (p->request.headers)
       http_send_error(&p->request, 413);
     else {
-      http_s_init(&p->request, &p->p);
+      http_s_init(&p->request, (uintptr_t)&p->p, &HTTP1_VTABLE,
+                  p->p.settings->udata);
       http_send_error(&p->request, 413);
     }
   }
@@ -500,6 +492,10 @@ static inline void http1_consume_data(http1pr_s *p) {
 /** called when a data is available, but will not run concurrently */
 static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
   http1pr_s *p = (http1pr_s *)protocol;
+  if (p->stop) {
+    facil_quite(uuid);
+    return;
+  }
   ssize_t i;
   errno = 0;
   i = sock_read(uuid, p->buf + p->buf_len, HTTP1_READ_BUFFER - p->buf_len);
@@ -561,7 +557,6 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
           },
       .p.uuid = uuid,
       .p.settings = settings,
-      .p.vtable = &HTTP1_VTABLE,
       .max_header_size = settings->max_header_size,
       .is_client = settings->is_client,
   };
@@ -578,7 +573,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
 void http1_destroy(protocol_s *pr) {
   http1pr_s *p = (http1pr_s *)pr;
   http1_pr2handle(p).status = 0;
-  http_s_cleanup(&http1_pr2handle(p));
+  http_s_cleanup(&http1_pr2handle(p), 0);
   free(p);
 }
 

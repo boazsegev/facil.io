@@ -34,23 +34,24 @@ struct http_vtable_s {
   /** Push for data. */
   int (*const http_push_data)(http_s *h, void *data, uintptr_t length,
                               FIOBJ mime_type);
+  /** Upgrades a connection to Websockets. */
+  int (*const http2websocket)(websocket_settings_s *arg);
   /** Push for files. */
   int (*const http_push_file)(http_s *h, FIOBJ filename, FIOBJ mime_type);
-  /** Defer request handling for later... careful (memory concern apply). */
-  int (*const http_defer)(http_s *h, void (*task)(http_s *h),
-                          void (*fallback)(http_s *h));
-  /** Defer request handling for later... careful (memory concern apply). */
-  int (*const http2websocket)(websocket_settings_s *arg);
+  /** Pauses the request / response handling. */
+  void (*http_on_pause)(http_s *, http_protocol_s *);
+
+  /** Resumes a request / response handling. */
+  void (*http_on_resume)(http_s *, http_protocol_s *);
 };
 
 struct http_protocol_s {
   protocol_s protocol;
   intptr_t uuid;
   http_settings_s *settings;
-  http_vtable_s *vtable;
 };
 
-#define http2protocol(h) ((http_protocol_s *)h->private_data.owner)
+#define http2protocol(h) ((http_protocol_s *)h->private_data.flag)
 
 /* *****************************************************************************
 Constants that shouldn't be accessed by the users (`fiobj_dup` required).
@@ -72,22 +73,22 @@ extern FIOBJ HTTP_HVALUE_WS_VERSION;
 HTTP request/response object management
 ***************************************************************************** */
 
-static inline void http_s_init(http_s *h, http_protocol_s *owner) {
+static inline void http_s_init(http_s *h, uintptr_t owner, http_vtable_s *vtbl,
+                               void *udata) {
   *h = (http_s){
       .private_data =
           {
-              .owner = (protocol_s *)owner, .out_headers = fiobj_hash_new(),
+              .vtbl = vtbl, .flag = owner, .out_headers = fiobj_hash_new(),
           },
       .headers = fiobj_hash_new(),
       .received_at = facil_last_tick(),
       .status = 200,
-      .udata = owner->settings->udata,
+      .udata = udata,
   };
 }
 
-static inline void http_s_cleanup(http_s *h) {
-  if (h->status && !h->status_str && http2protocol(h) &&
-      http2protocol(h)->settings->log)
+static inline void http_s_cleanup(http_s *h, uint8_t log) {
+  if (h->status && !h->status_str && log)
     http_write_log(h);
   fiobj_free(h->method);
   fiobj_free(h->status_str);
@@ -100,7 +101,7 @@ static inline void http_s_cleanup(http_s *h) {
   fiobj_free(h->body);
   fiobj_free(h->params);
 
-  *h = (http_s){.private_data.owner = h->private_data.owner};
+  *h = (http_s){.private_data.vtbl = h->private_data.vtbl};
 }
 
 /** Use this function to handle HTTP requests.*/

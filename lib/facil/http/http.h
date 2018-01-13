@@ -47,8 +47,10 @@ The Request / Response type and functions
 typedef struct {
   /** the HTTP request's "head" starts with a private data used by facil.io */
   struct {
-    /** the connection's owner - used by facil.io, don't use directly! */
-    protocol_s *owner;
+    /** the function touting table - used by facil.io, don't use directly! */
+    void *vtbl;
+    /** the connection's owner / uuid - used by facil.io, don't use directly! */
+    uintptr_t flag;
     /** The response headers, if they weren't sent. Don't access directly. */
     FIOBJ out_headers;
   } private_data;
@@ -234,25 +236,43 @@ int http_push_data(http_s *h, void *data, uintptr_t length, FIOBJ mime_type);
 int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
 
 /**
- * Defers the request / response handling for later and INVALIDATES the current
- * `http_s` handle.
+ * Pauses the request / response handling and INVALIDATES the current `http_s`
+ * handle (no `http` functions can be called).
  *
- * The `task` MUST call one of the `http_send_*`, `http_stream`, `http_finish`
- * or `http_defer`functions.
+ * The `http_resume` function MUST be called (at some point) using the opaque
+ * `http` pointer given to the callback `task`.
  *
- * The (optional) `fallback` is for read only puposes (most importantly reading
- * the `udata` and/or freeing the `udata` and it's resources). It MUST NOT call
- * any of the `http_` functions.
+ * The opaque `http` pointer is only valid for calls to `http_resume` and can't
+ * be used by any other `http` function (it's a different data type).
  *
- * Returns -1 on error and 0 on success.
+ * `task` must accept an opaque `http` pointer and the `udata` pointer that was
+ * originally attached to the HTTP handle.
  *
  * Note: the currecnt `http_s` handle will become invalid once this function is
  *    called and it's data might be deallocated, invalid or used by a different
  *    thread.
- *
- * Note: HTTP/1.1 requests CAN'T be deferred due to protocol requirements.
  */
-int http_defer(http_s *h, void (*task)(http_s *h), void (*fallback)(http_s *h));
+void http_pause(http_s *h, void (*task)(void *http, void *udata));
+
+/**
+ * Resumes a request / response handling within a task and INVALIDATES the
+ * current `http_s` handle.
+ *
+ * The `task` MUST call one of the `http_send_*`, `http_finish`, or
+ * `http_pause`functions.
+ *
+ * The (optional) `fallback` will receive the opaque `udata` that was stored in
+ * the HTTP handle and can be used for cleanup.
+ *
+ * Note: `http_resume` can only be called after calling `http_pause` and
+ * entering it's task.
+ *
+ * Note: the current `http_s` handle will become invalid once this function is
+ *    called and it's data might be deallocated, invalidated or used by a
+ *    different thread.
+ */
+void http_resume(void *http, void (*task)(http_s *h),
+                 void (*fallback)(void *udata));
 
 /* *****************************************************************************
 HTTP Connections - Listening / Connecting
