@@ -658,7 +658,7 @@ void *http_paused_udata_set(void *http_, void *udata) {
 
 /* perform the pause task outside of the connection's lock */
 static void http_pause_wrapper(void *h_, void *task_) {
-  void (*task)(http_s * h) = (void (*)(http_s * h)) task_;
+  void (*task)(void *h) = (void (*)(void *h))task_;
   task(h_);
 }
 
@@ -669,7 +669,8 @@ static void http_resume_wrapper(intptr_t uuid, protocol_s *p_, void *arg) {
   http_s *h = http->h;
   h->udata = http->udata;
   http_vtable_s *vtbl = (http_vtable_s *)h->private_data.vtbl;
-  http->task(h);
+  if (http->task)
+    http->task(h);
   vtbl->http_on_resume(h, p);
   free(http);
   (void)uuid;
@@ -678,7 +679,8 @@ static void http_resume_wrapper(intptr_t uuid, protocol_s *p_, void *arg) {
 /* perform the resume task fallback */
 static void http_resume_fallback_wrapper(intptr_t uuid, void *arg) {
   http_pause_handle_s *http = arg;
-  http->fallback(http->udata);
+  if (http->fallback)
+    http->fallback(http->udata);
   free(http);
   (void)uuid;
 }
@@ -686,7 +688,7 @@ static void http_resume_fallback_wrapper(intptr_t uuid, void *arg) {
 /**
  * Defers the request / response handling for later.
  */
-void http_pause(http_s *h, void (*task)(void *http, void *udata)) {
+void http_pause(http_s *h, void (*task)(void *http)) {
   if (!h || !(http_protocol_s *)h->private_data.flag) {
     return;
   }
@@ -697,7 +699,7 @@ void http_pause(http_s *h, void (*task)(void *http, void *udata)) {
       .uuid = p->uuid, .h = h, .udata = h->udata,
   };
   vtbl->http_on_pause(h, p);
-  defer(http_pause_wrapper, h, (void *)task);
+  defer(http_pause_wrapper, http, (void *)task);
 }
 
 /**

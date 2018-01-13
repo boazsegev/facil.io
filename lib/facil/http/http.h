@@ -246,17 +246,14 @@ HTTP evented API (pause / resume HTTp handling)
  * The `http_resume` function MUST be called (at some point) using the opaque
  * `http` pointer given to the callback `task`.
  *
- * The opaque `http` pointer is only valid for calls to `http_resume` and can't
- * be used by any other `http` function (it's a different data type).
- *
- * `task` must accept an opaque `http` pointer and the `udata` pointer that was
- * originally attached to the HTTP handle.
+ * The opaque `http` pointer is only valid for a single call to `http_resume`
+ * and can't be used by any other `http` function (it's a different data type).
  *
  * Note: the currecnt `http_s` handle will become invalid once this function is
  *    called and it's data might be deallocated, invalid or used by a different
  *    thread.
  */
-void http_pause(http_s *h, void (*task)(void *http, void *udata));
+void http_pause(http_s *h, void (*task)(void *http));
 
 /**
  * Resumes a request / response handling within a task and INVALIDATES the

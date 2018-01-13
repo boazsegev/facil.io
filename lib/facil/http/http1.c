@@ -342,9 +342,8 @@ static int http1_on_response(http1_parser_s *parser) {
 /** called when a request method is parsed. */
 static int http1_on_method(http1_parser_s *parser, char *method,
                            size_t method_len) {
-  http_s_init(&http1_pr2handle(parser2http(parser)),
-              (uintptr_t)&parser2http(parser)->p, &HTTP1_VTABLE,
-              parser2http(parser)->p.settings->udata);
+  http_s_init(&http1_pr2handle(parser2http(parser)), &parser2http(parser)->p,
+              &HTTP1_VTABLE, parser2http(parser)->p.settings->udata);
   http1_pr2handle(parser2http(parser)).method =
       fiobj_str_new(method, method_len);
   parser2http(parser)->header_size += method_len;
@@ -379,9 +378,8 @@ static int http1_on_query(http1_parser_s *parser, char *query, size_t len) {
 static int http1_on_http_version(http1_parser_s *parser, char *version,
                                  size_t len) {
   if (!http1_pr2handle(parser2http(parser)).headers)
-    http_s_init(&http1_pr2handle(parser2http(parser)),
-                (uintptr_t)&parser2http(parser)->p, &HTTP1_VTABLE,
-                parser2http(parser)->p.settings->udata);
+    http_s_init(&http1_pr2handle(parser2http(parser)), &parser2http(parser)->p,
+                &HTTP1_VTABLE, parser2http(parser)->p.settings->udata);
   http1_pr2handle(parser2http(parser)).version = fiobj_str_new(version, len);
   parser2http(parser)->header_size += len;
   return 0;
@@ -482,8 +480,7 @@ static inline void http1_consume_data(http1pr_s *p) {
     if (p->request.headers)
       http_send_error(&p->request, 413);
     else {
-      http_s_init(&p->request, (uintptr_t)&p->p, &HTTP1_VTABLE,
-                  p->p.settings->udata);
+      http_s_init(&p->request, &p->p, &HTTP1_VTABLE, p->p.settings->udata);
       http_send_error(&p->request, 413);
     }
   }

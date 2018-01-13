@@ -73,12 +73,14 @@ extern FIOBJ HTTP_HVALUE_WS_VERSION;
 HTTP request/response object management
 ***************************************************************************** */
 
-static inline void http_s_init(http_s *h, uintptr_t owner, http_vtable_s *vtbl,
-                               void *udata) {
+static inline void http_s_init(http_s *h, http_protocol_s *owner,
+                               http_vtable_s *vtbl, void *udata) {
   *h = (http_s){
       .private_data =
           {
-              .vtbl = vtbl, .flag = owner, .out_headers = fiobj_hash_new(),
+              .vtbl = vtbl,
+              .flag = (uintptr_t)owner,
+              .out_headers = fiobj_hash_new(),
           },
       .headers = fiobj_hash_new(),
       .received_at = facil_last_tick(),
