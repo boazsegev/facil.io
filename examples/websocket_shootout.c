@@ -94,12 +94,10 @@ int main(int argc, char const *argv[]) {
                 "Websocket Shootout requirements at:\n"
                 "https://github.com/hashrocket/websocket-shootout\n"
                 "\nThe following arguments are supported:");
+  fio_cli_accept_num("threads t",
+                     "The number of threads to use. System dependent default.");
   fio_cli_accept_num(
-      "threads t",
-      "The number of threads to use. Default uses smart selection.");
-  fio_cli_accept_num(
-      "workers w",
-      "The number of processes to use. Default uses smart selection.");
+      "workers w", "The number of processes to use. System dependent default.");
   fio_cli_accept_num("port p", "The port number to listen to.");
   fio_cli_accept_str("public www",
                      "A public folder for serve an HTTP static file service.");
