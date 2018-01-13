@@ -235,6 +235,10 @@ int http_push_data(http_s *h, void *data, uintptr_t length, FIOBJ mime_type);
  */
 int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
 
+/* *****************************************************************************
+HTTP evented API (pause / resume HTTp handling)
+***************************************************************************** */
+
 /**
  * Pauses the request / response handling and INVALIDATES the current `http_s`
  * handle (no `http` functions can be called).
@@ -273,6 +277,15 @@ void http_pause(http_s *h, void (*task)(void *http, void *udata));
  */
 void http_resume(void *http, void (*task)(http_s *h),
                  void (*fallback)(void *udata));
+
+/** Returns the `udata` associated with the paused opaque handle */
+void *http_paused_udata_get(void *http);
+
+/**
+ * Sets the `udata` associated with the paused opaque handle, returning the
+ * old value.
+ */
+void *http_paused_udata_set(void *http, void *udata);
 
 /* *****************************************************************************
 HTTP Connections - Listening / Connecting

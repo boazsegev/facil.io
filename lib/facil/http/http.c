@@ -639,6 +639,23 @@ typedef struct {
   void (*fallback)(void *);
 } http_pause_handle_s;
 
+/** Returns the `udata` associated with the paused opaque handle */
+void *http_paused_udata_get(void *http_) {
+  const http_pause_handle_s *http = http_;
+  return http->udata;
+}
+
+/**
+ * Sets the `udata` associated with the paused opaque handle, returning the
+ * old value.
+ */
+void *http_paused_udata_set(void *http_, void *udata) {
+  http_pause_handle_s *http = http_;
+  void *old = http->udata;
+  http->udata = udata;
+  return old;
+}
+
 /* perform the pause task outside of the connection's lock */
 static void http_pause_wrapper(void *h_, void *task_) {
   void (*task)(http_s * h) = (void (*)(http_s * h)) task_;
