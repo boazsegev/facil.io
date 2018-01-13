@@ -756,7 +756,7 @@ static void ws_reduce_or_free_multi_write(void *buff) {
     if (mw->on_finished) {
       facil_defer(.uuid = mw->origin, .task = ws_mw_defered_on_finish,
                   .arg = mw, .fallback = ws_mw_defered_on_finish_fb,
-                  .task_type = FIO_PR_LOCK_WRITE);
+                  .type = FIO_PR_LOCK_WRITE);
     } else
       free(mw);
   } else

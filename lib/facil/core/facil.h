@@ -398,7 +398,7 @@ struct facil_defer_args_s {
   intptr_t uuid;
   /** The type of task to be performed. Defaults to `FIO_PR_LOCK_TASK` but could
    * also be seto to `FIO_PR_LOCK_WRITE`. */
-  enum facil_protocol_lock_e task_type;
+  enum facil_protocol_lock_e type;
   /** The task (function) to be performed. This is required. */
   void (*task)(intptr_t uuid, protocol_s *, void *arg);
   /** An opaque user data that will be passed along to the task. */

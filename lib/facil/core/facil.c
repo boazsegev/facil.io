@@ -1778,8 +1778,8 @@ complete:
 void facil_defer(struct facil_defer_args_s args) {
   if (!args.fallback)
     args.fallback = mock_on_task_done;
-  if (!args.task_type)
-    args.task_type = FIO_PR_LOCK_TASK;
+  if (!args.type)
+    args.type = FIO_PR_LOCK_TASK;
   if (!args.task || !uuid_data(args.uuid).protocol || args.uuid < 0 ||
       !sock_isvalid(args.uuid))
     goto error;
