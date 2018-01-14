@@ -93,7 +93,7 @@ static FIOBJ fiobj_data_alloc(void *buffer, int fd) {
   fiobj_data_s *io = malloc(sizeof(*io));
   REQUIRE_MEM(io);
   *io = (fiobj_data_s){
-      .head = {.ref = 1, .type = FIOBJ_T_IO}, .buffer = buffer, .fd = fd,
+      .head = {.ref = 1, .type = FIOBJ_T_DATA}, .buffer = buffer, .fd = fd,
   };
   return (FIOBJ)io;
 }
@@ -348,7 +348,7 @@ Reading API
  * IO object is made.
  */
 fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length) {
-  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO) {
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA)) {
     errno = EFAULT;
     return (fio_cstr_s){.buffer = NULL, .len = 0};
   }
@@ -432,7 +432,7 @@ fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length) {
  * IO object is made.
  */
 fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token) {
-  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO) {
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA)) {
     errno = EFAULT;
     return (fio_cstr_s){.buffer = NULL, .len = 0};
   }
@@ -507,7 +507,7 @@ fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token) {
  * Returns the current reading position.
  */
 intptr_t fiobj_data_pos(FIOBJ io) {
-  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO)
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA))
     return -1;
   if (obj2io(io)->fd == -1)
     return obj2io(io)->pos;
@@ -515,10 +515,19 @@ intptr_t fiobj_data_pos(FIOBJ io) {
 }
 
 /**
+ * Returns the length of the stream.
+ */
+intptr_t fiobj_data_len(FIOBJ io) {
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA))
+    return -1;
+  return fiobj_data_i(io);
+}
+
+/**
  * Moves the reading position to the requested position.
  */
 void fiobj_data_seek(FIOBJ io, intptr_t position) {
-  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO)
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA))
     return;
   if (obj2io(io)->fd == -1) {
     /* String code */
@@ -579,7 +588,7 @@ void fiobj_data_seek(FIOBJ io, intptr_t position) {
  * IO object is made.
  */
 fio_cstr_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length) {
-  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO) {
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA)) {
     errno = EFAULT;
     return (fio_cstr_s){
         .buffer = NULL, .length = 0,
@@ -646,7 +655,7 @@ void fiobj_data_assert_dynamic(FIOBJ io) {
     errno = ENFILE;
     return;
   }
-  assert(FIOBJ_TYPE(io) == FIOBJ_T_IO);
+  assert(FIOBJ_TYPE(io) == FIOBJ_T_DATA);
   fiobj_data_pre_write(io, 0);
   return;
 }
@@ -658,7 +667,7 @@ void fiobj_data_assert_dynamic(FIOBJ io) {
  * Behaves and returns the same value as the system call `write`.
  */
 intptr_t fiobj_data_write(FIOBJ io, void *buffer, uintptr_t length) {
-  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO || (!buffer && length)) {
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA) || (!buffer && length)) {
     errno = EFAULT;
     return -1;
   }
@@ -683,7 +692,7 @@ intptr_t fiobj_data_write(FIOBJ io, void *buffer, uintptr_t length) {
  * Behaves and returns the same value as the system call `write`.
  */
 intptr_t fiobj_data_puts(FIOBJ io, void *buffer, uintptr_t length) {
-  if (!io || FIOBJ_TYPE(io) != FIOBJ_T_IO || (!buffer && length)) {
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA) || (!buffer && length)) {
     errno = EFAULT;
     return -1;
   }
@@ -796,6 +805,7 @@ void fiobj_data_test(void) {
 #endif
 
 #else /* require POSIX */
+#include "fiobj_data.h"
 
 /** Creates a new local in-memory IO object */
 FIOBJ fiobj_data_newstr(void) { return FIOBJ_INVALID; }

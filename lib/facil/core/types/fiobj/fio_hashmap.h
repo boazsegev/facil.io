@@ -233,6 +233,8 @@ struct fio_hash_s {
        FIO_HASH_KEY_DESTROY(container->key),                                   \
                                container->key = FIO_HASH_KEY_INVALID,          \
                                container->obj = NULL, (++container))
+#define FIO_HASH_INIT                                                          \
+  { .capa = 0 }
 
 /* *****************************************************************************
 Hash allocation / deallocation.
@@ -483,6 +485,8 @@ FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash) {
 FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash) {
   if (!hash)
     return 0;
+  if (hash->count == hash->pos && (hash->count << 1) >= hash->capa)
+    return hash->capa;
   while (hash->mask && hash->mask >= hash->count)
     hash->mask = hash->mask >> 1;
   if (hash->mask + 1 < FIO_HASH_INITIAL_CAPACITY)

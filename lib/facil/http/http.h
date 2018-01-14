@@ -285,7 +285,7 @@ void *http_paused_udata_get(void *http);
 void *http_paused_udata_set(void *http, void *udata);
 
 /* *****************************************************************************
-HTTP Connections - Listening / Connecting
+HTTP Connections - Listening / Connecting / Hijacking
 ***************************************************************************** */
 
 /** The HTTP settings. */
@@ -401,6 +401,24 @@ int http_connect(const char *address, struct http_settings_s);
  * Returns -1 on error and 0 on success.
  */
 struct http_settings_s *http_settings(http_s *h);
+
+/**
+ * Hijacks the socket away from the HTTP protocol and away from facil.io.
+ *
+ * It's possible to hijack the socket and than reconnect it to a new protocol
+ * object.
+ *
+ * If any HTTP functions are called after the hijacking, the protocol object
+ * might attempt to continue reading data from the buffer.
+ *
+ * Returns the underlining socket connection's uuid. If `leftover` isn't NULL,
+ * it will be populated with any remaining data in the HTTP buffer (the data
+ * will be automatically deallocated, so copy the data if it's required).
+ *
+ * WARNING: this isn't a good was to handle HTTP connections, especially as
+ * HTTP/2 enters the picture.
+ */
+intptr_t http_hijack(http_s *h, fio_cstr_s *leftover);
 
 /* *****************************************************************************
 Websocket Upgrade (server side)

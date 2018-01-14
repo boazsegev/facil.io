@@ -256,6 +256,25 @@ void http1_on_resume(http_s *h, http_protocol_s *pr) {
   (void)h;
 }
 
+intptr_t http1_hijack(http_s *h, fio_cstr_s *leftover) {
+  if (leftover) {
+    intptr_t len =
+        handle2pr(h)->buf_len -
+        (intptr_t)(handle2pr(h)->parser.state.next - handle2pr(h)->buf);
+    if (len) {
+      *leftover =
+          (fio_cstr_s){.len = len, .bytes = handle2pr(h)->parser.state.next};
+    } else {
+      *leftover = (fio_cstr_s){.len = 0, .data = NULL};
+    }
+  }
+
+  handle2pr(h)->stop = 1;
+  intptr_t uuid = handle2pr(h)->p.uuid;
+  facil_attach(uuid, NULL);
+  return uuid;
+}
+
 static int http1_http2websocket(websocket_settings_s *args) {
   // A static data used for all websocket connections.
   static char ws_key_accpt_str[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -312,6 +331,7 @@ struct http_vtable_s HTTP1_VTABLE = {
     .http_push_file = http1_push_file,
     .http_on_pause = http1_on_pause,
     .http_on_resume = http1_on_resume,
+    .http_hijack = http1_hijack,
     .http2websocket = http1_http2websocket,
 };
 

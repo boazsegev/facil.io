@@ -100,6 +100,11 @@ fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token);
 intptr_t fiobj_data_pos(FIOBJ io);
 
 /**
+ * Returns the length of the stream.
+ */
+intptr_t fiobj_data_len(FIOBJ io);
+
+/**
  * Moves the reading position to the requested position.
  */
 void fiobj_data_seek(FIOBJ io, intptr_t position);

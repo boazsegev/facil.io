@@ -717,6 +717,15 @@ void http_resume(void *http_, void (*task)(http_s *h),
               .fallback = http_resume_fallback_wrapper);
 }
 
+/**
+ * Hijacks the socket away from the HTTP protocol and away from facil.io.
+ */
+intptr_t http_hijack(http_s *h, fio_cstr_s *leftover) {
+  if (!h)
+    return -1;
+  return ((http_vtable_s *)h->private_data.vtbl)->http_hijack(h, leftover);
+}
+
 /* *****************************************************************************
 Setting the default settings and allocating a persistent copy
 ***************************************************************************** */

@@ -40,7 +40,7 @@ typedef enum {
   FIOBJ_T_STRING,
   FIOBJ_T_ARRAY,
   FIOBJ_T_HASH,
-  FIOBJ_T_IO,
+  FIOBJ_T_DATA,
   FIOBJ_T_UNKNOWN,
 } fiobj_type_enum;
 
@@ -338,7 +338,7 @@ FIO_INLINE const fiobj_object_vtable_s *fiobj_type_vtable(FIOBJ o) {
     return &FIOBJECT_VTABLE_ARRAY;
   case FIOBJ_T_HASH:
     return &FIOBJECT_VTABLE_HASH;
-  case FIOBJ_T_IO:
+  case FIOBJ_T_DATA:
     return &FIOBJECT_VTABLE_DATA;
   case FIOBJ_T_NULL:
   case FIOBJ_T_TRUE:

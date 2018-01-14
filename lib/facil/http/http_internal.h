@@ -43,6 +43,8 @@ struct http_vtable_s {
 
   /** Resumes a request / response handling. */
   void (*http_on_resume)(http_s *, http_protocol_s *);
+  /** hijacks the socket aaway from the protocol. */
+  intptr_t (*http_hijack)(http_s *h, fio_cstr_s *leftover);
 };
 
 struct http_protocol_s {

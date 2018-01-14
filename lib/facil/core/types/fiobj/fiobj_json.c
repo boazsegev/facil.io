@@ -213,7 +213,7 @@ static int fiobj_fiobj_obj2json_task(FIOBJ o, void *data_) {
     --data->count;
     break;
 
-  case FIOBJ_T_IO:
+  case FIOBJ_T_DATA:
   case FIOBJ_T_UNKNOWN:
   case FIOBJ_T_STRING:
     write_safe_str(data->dest, o);
