@@ -124,6 +124,9 @@ int pubsub_unsubscribe(pubsub_sub_pt subscription);
  *
  * Returns 0 on success and -1 on failure (i.e., no channel, no message or no
  * known subscriptions).
+ *
+ * NOTE: Memory ownership is retained by the calling function. Both the channel
+ * and the message should be freed when the caller is done with them.
  */
 int pubsub_publish(struct pubsub_message_s);
 #define pubsub_publish(...)                                                    \
@@ -158,10 +161,12 @@ void pubsub_defer(pubsub_message_s *msg);
  * `pubsub_publish` function with the engine to which the message is forwarded.
  * i.e.:
  *
- *       pubsub_engine_distribute(
+ *       pubsub_publish(
  *           .engine = PUBSUB_PROCESS_ENGINE,
  *           .channel = channel_name,
  *           .message = msg_body );
+ *
+ * Engines MUST NOT free any of the FIOBJ objects they receive.
  *
  */
 struct pubsub_engine_s {
