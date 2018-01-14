@@ -705,7 +705,8 @@ Performs a task on each websocket connection that shares the same process
 (except the originating `ws_s` connection which is allowed to be NULL).
  */
 #undef websocket_each
-void websocket_each(struct websocket_each_args_s args) {
+void __attribute__((deprecated))
+websocket_each(struct websocket_each_args_s args) {
   struct WSTask *tsk = malloc(sizeof(*tsk));
   tsk->arg = args.arg;
   tsk->on_finish = args.on_finish;
@@ -789,7 +790,8 @@ static void ws_check_multi_write(intptr_t fd, protocol_s *_ws, void *arg) {
 }
 
 #undef websocket_write_each
-int websocket_write_each(struct websocket_write_each_args_s args) {
+int __attribute__((deprecated))
+websocket_write_each(struct websocket_write_each_args_s args) {
   if (!args.data || !args.length)
     return -1;
   struct websocket_multi_write *multi =

@@ -174,8 +174,7 @@ void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id);
 
 /* *****************************************************************************
 Websocket Tasks - within a single process scope, NOT and entire cluster
-*****************************************************************************
-*/
+***************************************************************************** */
 
 /** The named arguments for `websocket_each` */
 struct websocket_each_args_s {
@@ -189,17 +188,22 @@ struct websocket_each_args_s {
   void (*on_finish)(ws_s *origin, void *arg);
 };
 /**
-Performs a task on each websocket connection that shares the same process
-(except the originating `ws_s` connection which is allowed to be NULL).
+ * DEPRECATION NOTICE: this function will be removed in favor of pub/sub logic.
+ *
+ * Performs a task on each websocket connection that shares the same process
+ * (except the originating `ws_s` connection which is allowed to be NULL).
  */
-void websocket_each(struct websocket_each_args_s args);
+void __attribute__((deprecated))
+websocket_each(struct websocket_each_args_s args);
 #define websocket_each(...)                                                    \
   websocket_each((struct websocket_each_args_s){__VA_ARGS__})
 
 /**
-The Arguments passed to the `websocket_write_each` function / macro are defined
-here, for convinience of calling the function.
-*/
+ * DEPRECATION NOTICE: this function will be removed in favor of pub/sub logic.
+ *
+ * The Arguments passed to the `websocket_write_each` function / macro are
+ * defined here, for convinience of calling the function.
+ */
 struct websocket_write_each_args_s {
   /** The originating websocket client will be excluded from the `write`.
    * Can be NULL. */
@@ -229,7 +233,8 @@ Writes data to each websocket connection that shares the same process
 Accepts a sing `struct websocket_write_each_args_s` argument. See the struct
 details for possible arguments.
  */
-int websocket_write_each(struct websocket_write_each_args_s args);
+int __attribute__((deprecated))
+websocket_write_each(struct websocket_write_each_args_s args);
 #define websocket_write_each(...)                                              \
   websocket_write_each((struct websocket_write_each_args_s){__VA_ARGS__})
 
