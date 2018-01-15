@@ -407,7 +407,8 @@ retry_rehashing:
         *place = (fio_hash_data_s){.key = h->ordered[reader].key,
                                    .obj = h->ordered + writer};
         fio_hash_data_ordered_s old = h->ordered[reader];
-        h->ordered[reader].obj = NULL;
+        h->ordered[reader] =
+            (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
         h->ordered[writer] = old;
         ++writer;
       } else {
@@ -497,6 +498,78 @@ FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash) {
 
   return hash->capa;
 }
+
+#if DEBUG && FIO_HASH_KEY_TYPE == uint64_t
+#define FIO_HASHMAP_TEXT_COUNT 524288UL
+#include <stdio.h>
+FIO_FUNC void fio_hash_test(void) {
+#define TEST_ASSERT(cond, ...)                                                 \
+  if (!(cond)) {                                                               \
+    fprintf(stderr, "* " __VA_ARGS__);                                         \
+    fprintf(stderr, "Testing failed.\n");                                      \
+    exit(-1);                                                                  \
+  }
+  fio_hash_s h = {.capa = 0};
+  fprintf(stderr, "=== Testing Core HashMap (fio_hashmap.h)\n");
+  fprintf(stderr, "* Inserting %lu items\n", FIO_HASHMAP_TEXT_COUNT);
+  for (unsigned long i = 1; i < FIO_HASHMAP_TEXT_COUNT; ++i) {
+    fio_hash_insert(&h, i, (void *)i);
+    TEST_ASSERT((i == (uintptr_t)fio_hash_find(&h, i)), "insertion != find");
+  }
+  fprintf(stderr, "* Seeking %lu items\n", FIO_HASHMAP_TEXT_COUNT);
+  for (unsigned long i = 1; i < FIO_HASHMAP_TEXT_COUNT; ++i) {
+    TEST_ASSERT((i == (uintptr_t)fio_hash_find(&h, i)), "insertion != find");
+  }
+  {
+    fprintf(stderr, "* Testing order for %lu items\n", FIO_HASHMAP_TEXT_COUNT);
+    uintptr_t i = 1;
+    FIO_HASH_FOR_LOOP(&h, pos) {
+      TEST_ASSERT(pos->key == (uintptr_t)pos->obj, "Key and value mismatch.");
+      TEST_ASSERT(pos->key == i, "Key out of order %lu !=  %lu.",
+                  (unsigned long)i, (unsigned long)pos->key);
+      ++i;
+    }
+  }
+  fprintf(stderr, "* Removing odd items from %lu items\n",
+          FIO_HASHMAP_TEXT_COUNT);
+  for (unsigned long i = 1; i < FIO_HASHMAP_TEXT_COUNT; i += 2) {
+    uintptr_t old = (uintptr_t)fio_hash_insert(&h, i, NULL);
+    TEST_ASSERT(old == i, "Removal didn't return old value.");
+    TEST_ASSERT(!(fio_hash_find(&h, i)), "Removal failed (still exists).");
+  }
+  {
+    fprintf(stderr, "* Testing for %lu / 2 holes\n", FIO_HASHMAP_TEXT_COUNT);
+    uintptr_t i = 1;
+    FIO_HASH_FOR_LOOP(&h, pos) {
+      if (pos->obj) {
+        TEST_ASSERT(pos->key == (uintptr_t)pos->obj, "Key and value mismatch.");
+        TEST_ASSERT(pos->key == i, "Key out of order %lu !=  %lu.",
+                    (unsigned long)i, (unsigned long)pos->key);
+      } else {
+        TEST_ASSERT(pos->obj == NULL, "old value detected.");
+        TEST_ASSERT(pos->key == i, "Key out of order.");
+      }
+      ++i;
+    }
+  }
+  fprintf(stderr, "* Compacting Hash to %lu\n", FIO_HASHMAP_TEXT_COUNT >> 1);
+  fio_hash_compact(&h);
+  {
+    fprintf(stderr, "* Testing that %lu items are continues\n",
+            FIO_HASHMAP_TEXT_COUNT >> 1);
+    uintptr_t i = 0;
+    FIO_HASH_FOR_LOOP(&h, pos) {
+      TEST_ASSERT(pos->obj, "Found a hole after compact.");
+      TEST_ASSERT(pos->key == (uintptr_t)pos->obj, "Key and value mismatch.");
+      ++i;
+    }
+    TEST_ASSERT(i == h.count, "count error (%lu != %lu).", i, h.count);
+  }
+  fio_hash_free(&h);
+  fprintf(stderr, "* passed... without testing that FIO_HASH_KEY_DESTROY is "
+                  "called only once.\n");
+}
+#endif /* DEBUG Testing */
 
 #undef FIO_FUNC
 
