@@ -332,14 +332,19 @@ int pubsub_unsubscribe(pubsub_sub_pt subscription) {
 int pubsub_publish(struct pubsub_message_s m) {
   if (!m.channel || !m.message)
     return -1;
-  if (!m.engine)
+  if (!m.engine) {
     m.engine = PUBSUB_DEFAULT_ENGINE;
-  if (!m.engine)
-    m.engine = PUBSUB_CLUSTER_ENGINE;
-  if (!m.engine)
-    fprintf(stderr, "FATAL ERROR: (pubsub) engine pointer data corrupted! \n"),
-        exit(-1);
+    if (!m.engine) {
+      m.engine = PUBSUB_CLUSTER_ENGINE;
+      if (!m.engine)
+        fprintf(stderr,
+                "FATAL ERROR: (pubsub) engine pointer data corrupted! \n"),
+            exit(-1);
+    }
+  }
   return m.engine->publish(m.engine, m.channel, m.message);
+  // We don't call `fiobj_free` because the data isn't placed into an accessible
+  // object.
 }
 #define pubsub_publish(...)                                                    \
   pubsub_publish((struct pubsub_message_s){__VA_ARGS__})

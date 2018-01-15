@@ -10,7 +10,8 @@
 static void my_dealloc(void *o) { fiobj_free((FIOBJ)o); }
 
 /** send a FIOBJ  object through a socket. */
-static inline __attribute__((unused)) int fiobj_send(intptr_t uuid, FIOBJ o) {
+static inline __attribute__((unused)) int fiobj_send_free(intptr_t uuid,
+                                                          FIOBJ o) {
   fio_cstr_s s = fiobj_obj2cstr(o);
   // fprintf(stderr, "%s\n", s.data);
   return sock_write2(.uuid = uuid, .buffer = (void *)(o),

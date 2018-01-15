@@ -863,7 +863,7 @@ static inline void cluster_send2clients(uint32_t ch_len, uint32_t msg_len,
   FIO_HASH_FOR_LOOP(&facil_cluster_data.clients, i) {
     if (i->obj) {
       if ((intptr_t)i->key != uuid)
-        fiobj_send((intptr_t)i->key, fiobj_dup(forward));
+        fiobj_send_free((intptr_t)i->key, fiobj_dup(forward));
     }
   }
   spn_unlock(&facil_cluster_data.lock);
@@ -876,7 +876,7 @@ static inline void cluster_send2traget(uint32_t ch_len, uint32_t msg_len,
   if (facil_cluster_data.client_mode) {
     FIOBJ forward =
         cluster_wrap_message(ch_len, msg_len, type, id, ch_data, msg_data);
-    fiobj_send(facil_cluster_data.root, fiobj_dup(forward));
+    fiobj_send_free(facil_cluster_data.root, fiobj_dup(forward));
   } else {
     cluster_send2clients(ch_len, msg_len, type, id, ch_data, msg_data, 0);
   }
@@ -1213,8 +1213,8 @@ int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg) {
   }
   uint32_t type = CLUSTER_MESSAGE_FORWARD;
 
-  if ((!ch || !FIOBJ_TYPE_IS(ch, FIOBJ_T_STRING)) &&
-      (!msg || !FIOBJ_TYPE_IS(msg, FIOBJ_T_STRING))) {
+  if ((!ch || FIOBJ_TYPE_IS(ch, FIOBJ_T_STRING)) &&
+      (!msg || FIOBJ_TYPE_IS(msg, FIOBJ_T_STRING))) {
     fiobj_dup(ch);
     fiobj_dup(msg);
   } else {

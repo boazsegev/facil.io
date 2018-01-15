@@ -173,7 +173,7 @@ static int http1_send_body(http_s *h, void *data, uintptr_t length) {
     return -1;
   }
   fiobj_str_write(packet, data, length);
-  fiobj_send((handle2pr(h)->p.uuid), packet);
+  fiobj_send_free((handle2pr(h)->p.uuid), packet);
   http1_after_finish(h);
   return 0;
 }
@@ -194,17 +194,17 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
     intptr_t i = pread(fd, s.data + s.len, length, offset);
     if (i < 0) {
       close(fd);
-      fiobj_send((handle2pr(h)->p.uuid), packet);
+      fiobj_send_free((handle2pr(h)->p.uuid), packet);
       sock_close((handle2pr(h)->p.uuid));
       return -1;
     }
     close(fd);
     fiobj_str_resize(packet, s.len + i);
-    fiobj_send((handle2pr(h)->p.uuid), packet);
+    fiobj_send_free((handle2pr(h)->p.uuid), packet);
     http1_after_finish(h);
     return 0;
   }
-  fiobj_send((handle2pr(h)->p.uuid), packet);
+  fiobj_send_free((handle2pr(h)->p.uuid), packet);
   sock_sendfile((handle2pr(h)->p.uuid), fd, offset, length);
   http1_after_finish(h);
   return 0;
@@ -214,7 +214,7 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
 static void htt1p_finish(http_s *h) {
   FIOBJ packet = headers2str(h);
   if (packet)
-    fiobj_send((handle2pr(h)->p.uuid), packet);
+    fiobj_send_free((handle2pr(h)->p.uuid), packet);
   else {
     // fprintf(stderr, "WARNING: invalid call to `htt1p_finish`\n");
   }

@@ -341,7 +341,7 @@ static void redis_on_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
     //   fio_cstr_s s = fiobj_obj2cstr(cmd);
     //   fprintf(stderr, "%s\n", s.data);
     // }
-    fiobj_send(r->sub_data.uuid, cmd);
+    fiobj_send_free(r->sub_data.uuid, cmd);
   }
 }
 static void redis_on_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
@@ -362,7 +362,7 @@ static void redis_on_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
     //   fio_cstr_s s = fiobj_obj2cstr(cmd);
     //   fprintf(stderr, "%s\n", s.data);
     // }
-    fiobj_send(r->sub_data.uuid, cmd);
+    fiobj_send_free(r->sub_data.uuid, cmd);
   }
 }
 static int redis_on_publish(const pubsub_engine_s *eng, FIOBJ channel,
