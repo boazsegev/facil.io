@@ -219,7 +219,7 @@ struct fio_hash_s {
 #undef FIO_HASH_FOR_FREE
 #define FIO_HASH_FOR_FREE(hash, container)                                     \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
-       container && !FIO_HASH_KEY_ISINVALID(container->key) ||                 \
+       (container && !FIO_HASH_KEY_ISINVALID(container->key)) ||               \
        ((fio_hash_free(hash), 0) != 0);                                        \
        FIO_HASH_KEY_DESTROY(container->key), (++container))
 
