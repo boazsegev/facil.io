@@ -181,9 +181,7 @@ $(TMP_ROOT)/%.d: ;
 -include $(OBJS_DEPENDENCY)
 
 .PHONY : test 
-test: | clean create_tree test_add_deubg_flag $(LIB_OBJS)
-	@$(CC) -c ./tests/shorts.c -o $(TMP_ROOT)/shorts.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/shorts.o $(OPTIMIZATION) $(LINKER_FLAGS)
+test: | clean create_tree test_add_deubg_flag test_build
 	$(BIN)
 
 .PHONY : test_add_deubg_flag
