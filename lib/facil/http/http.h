@@ -403,6 +403,11 @@ int http_connect(const char *address, struct http_settings_s);
 struct http_settings_s *http_settings(http_s *h);
 
 /**
+ * Returns the direct address of the connected peer (likely an intermediary).
+ */
+sock_peer_addr_s http_peer_addr(http_s *h);
+
+/**
  * Hijacks the socket away from the HTTP protocol and away from facil.io.
  *
  * It's possible to hijack the socket and than reconnect it to a new protocol

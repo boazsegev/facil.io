@@ -858,6 +858,13 @@ struct http_settings_s *http_settings(http_s *r) {
   return ((http_protocol_s *)r->private_data.flag)->settings;
 }
 
+/**
+ * Returns the direct address of the connected peer (likely an intermediary).
+ */
+sock_peer_addr_s http_peer_addr(http_s *h) {
+  return sock_peer_addr(((http_protocol_s *)h->private_data.flag)->uuid);
+}
+
 /* *****************************************************************************
 HTTP client connections
 ***************************************************************************** */
