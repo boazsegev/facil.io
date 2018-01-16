@@ -64,6 +64,8 @@ License: MIT
 #define FIO_HASH_KEY_ISINVALID(key) ((key) == 0)
 #define FIO_HASH_KEY_COPY(key) (key)
 #define FIO_HASH_KEY_DESTROY(key) ((void)0)
+#elif !defined(FIO_HASH_NO_TEST)
+#define FIO_HASH_NO_TEST 1
 #endif
 
 #ifndef FIO_HASH_INITIAL_CAPACITY
@@ -499,7 +501,7 @@ FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash) {
   return hash->capa;
 }
 
-#if DEBUG && FIO_HASH_KEY_TYPE == uint64_t
+#if DEBUG && !FIO_HASH_NO_TEST
 #define FIO_HASHMAP_TEXT_COUNT 524288UL
 #include <stdio.h>
 FIO_FUNC void fio_hash_test(void) {
