@@ -1,9 +1,12 @@
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__) ||           \
+    defined(__CYGWIN__) /* require POSIX */
 /*
 Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
-#if defined(__unix__) || defined(__APPLE__) || defined(__linux__) ||           \
-    defined(__CYGWIN__) /* require POSIX */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 /**
  * A dynamic type for reading / writing to a local file,  a temporary file or an
