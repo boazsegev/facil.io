@@ -1210,6 +1210,9 @@ void sock_libtest(void) {
     fprintf(stderr, "done.\n");
     sock_close(uuid);
   }
+  sock_max_capacity();
+  packet_s *packet = sock_packet_new();
+  sock_packet_free(packet);
   packet_s *head, *pos;
   pos = head = packet_pool.next;
   size_t count = 0;
@@ -1220,8 +1223,7 @@ void sock_libtest(void) {
   fprintf(stderr, "Packet pool test %s (%lu =? %lu)\n",
           count == BUFFER_PACKET_POOL ? "PASS" : "FAIL", BUFFER_PACKET_POOL,
           count);
-  count = sock_max_capacity();
-  printf("Allocated sock capacity %lu X %lu\n", count,
+  printf("Allocated sock capacity %lu X %lu\n", sock_max_capacity(),
          sizeof(struct fd_data_s));
 }
 #endif
