@@ -142,7 +142,7 @@ CFALGS_DEPENDENCY=-MT $@ -MMD -MP
 
 $(NAME): build
 
-build: create_tree | build_objects
+build: | create_tree build_objects
 
 build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 	@$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
@@ -179,6 +179,16 @@ endif
 $(TMP_ROOT)/%.d: ;
 
 -include $(OBJS_DEPENDENCY)
+
+.PHONY : test 
+test: | clean test_add_deubg_flag $(LIB_OBJS)
+	@$(CC) -c ./tests/shorts.c -o $(TMP_ROOT)/shorts.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/shorts.o $(OPTIMIZATION) $(LINKER_FLAGS)
+	$(BIN)
+
+.PHONY : test_add_deubg_flag
+test_add_deubg_flag: 
+	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1)
 
 .PHONY : clean
 clean:
