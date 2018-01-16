@@ -8,7 +8,7 @@ int main(void) {
   defer_test();
   sock_libtest();
 #else
-  fprintf(stderr, "DEBUG must e set to access tests.\n");
+  fprintf(stderr, "DEBUG must be set to access tests.\n");
   exit(-1);
 #endif
   return 0;

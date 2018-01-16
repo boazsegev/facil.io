@@ -288,7 +288,7 @@ SHA-1 testing
 void fio_sha1_test(void) {
   struct {
     char *str;
-    char hash[21];
+    uint8_t hash[21];
   } sets[] = {
       {"The quick brown fox jumps over the lazy dog",
        {0x2f, 0xd4, 0xe1, 0xc6, 0x7a, 0x2d, 0x28, 0xfc, 0xed, 0x84, 0x9e,
@@ -309,10 +309,10 @@ void fio_sha1_test(void) {
   while (sets[i].str) {
     sha1 = fio_sha1_init();
     fio_sha1_write(&sha1, sets[i].str, strlen(sets[i].str));
-    if (strcmp(fio_sha1_result(&sha1), sets[i].hash)) {
+    if (strcmp(fio_sha1_result(&sha1), (char *)sets[i].hash)) {
       fprintf(stderr, ":\n--- fio SHA-1 Test FAILED!\nstring: %s\nexpected: ",
               sets[i].str);
-      char *p = sets[i].hash;
+      char *p = (char *)sets[i].hash;
       while (*p)
         fprintf(stderr, "%02x", *(p++) & 0xFF);
       fprintf(stderr, "\ngot: ");
@@ -328,8 +328,10 @@ void fio_sha1_test(void) {
 
 #ifdef HAVE_OPENSSL
   fprintf(stderr, "===================================\n");
-  fprintf(stderr, "fio SHA-1 struct size: %lu\n", sizeof(sha1_s));
-  fprintf(stderr, "OpenSSL SHA-1 struct size: %lu\n", sizeof(SHA_CTX));
+  fprintf(stderr, "fio SHA-1 struct size: %lu\n",
+          (unsigned long)sizeof(sha1_s));
+  fprintf(stderr, "OpenSSL SHA-1 struct size: %lu\n",
+          (unsigned long)sizeof(SHA_CTX));
   fprintf(stderr, "===================================\n");
 
   unsigned char hash[SHA512_DIGEST_LENGTH + 1];

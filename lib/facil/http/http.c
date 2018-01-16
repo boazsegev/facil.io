@@ -658,7 +658,7 @@ void *http_paused_udata_set(void *http_, void *udata) {
 
 /* perform the pause task outside of the connection's lock */
 static void http_pause_wrapper(void *h_, void *task_) {
-  void (*task)(void *h) = (void (*)(void *h))task_;
+  void (*task)(void *h) = (void (*)(void *h))((uintptr_t)task_);
   task(h_);
 }
 
@@ -699,7 +699,7 @@ void http_pause(http_s *h, void (*task)(void *http)) {
       .uuid = p->uuid, .h = h, .udata = h->udata,
   };
   vtbl->http_on_pause(h, p);
-  defer(http_pause_wrapper, http, (void *)task);
+  defer(http_pause_wrapper, http, (void *)((uintptr_t)task));
 }
 
 /**

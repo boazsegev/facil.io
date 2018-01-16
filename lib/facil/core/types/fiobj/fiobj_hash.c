@@ -307,10 +307,10 @@ void fiobj_test_hash(void) {
               "String was mutated (not frozen)!\n");
   TEST_ASSERT(fiobj_hash_get(o, str_key) == fiobj_true(),
               "full compare didn't get value back");
-  TEST_ASSERT(fiobj_hash_get2(o, fiobj_str_hash(str_key)) == fiobj_true(),
+  TEST_ASSERT(fiobj_hash_get2(o, fiobj_obj2hash(str_key)) == fiobj_true(),
               "hash compare didn't get value back");
   fiobj_hash_delete(o, str_key);
-  TEST_ASSERT(fiobj_hash_get2(o, fiobj_str_hash(str_key)) == 0,
+  TEST_ASSERT(fiobj_hash_get2(o, fiobj_obj2hash(str_key)) == 0,
               "item wasn't deleted!");
   fiobj_free(
       str_key); /* note that a copy will remain in the Hash until rehashing. */

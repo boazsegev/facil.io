@@ -145,23 +145,6 @@ API: String Values
  */
 uint64_t fiobj_str_hash(FIOBJ o);
 
-/* *****************************************************************************
-Inline Implementations
-***************************************************************************** */
-
-/**
- * Calculates an Objects's SipHash value for possible use as a HashMap key.
- *
- * The Object MUST answer to the fiobj_obj2cstr, or the result is unusable. In
- * other waords, Hash Objects and Arrays can NOT be used for Hash keys.
- */
-FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o) {
-  if (FIOBJ_TYPE_IS(o, FIOBJ_T_STRING))
-    return fiobj_str_hash(o);
-  fio_cstr_s s = fiobj_obj2cstr(o);
-  return fio_siphash(s.buffer, s.len);
-}
-
 #if DEBUG
 void fiobj_test_string(void);
 #endif

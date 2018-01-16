@@ -559,8 +559,8 @@ ssize_t sock_max_capacity(void) {
 #if DEBUG
   fprintf(stderr,
           "libsock capacity initialization:\n"
-          "*    Meximum open files %llu out of %llu\n",
-          rlim.rlim_cur, rlim.rlim_max);
+          "*    Meximum open files %lu out of %lu\n",
+          (unsigned long)rlim.rlim_cur, (unsigned long)rlim.rlim_max);
 #endif
   // if the current limit is higher than it was, update
   if (flim < ((ssize_t)rlim.rlim_cur))

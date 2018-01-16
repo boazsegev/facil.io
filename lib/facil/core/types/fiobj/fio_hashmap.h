@@ -226,7 +226,7 @@ struct fio_hash_s {
 #undef FIO_HASH_FOR_EMPTY
 #define FIO_HASH_FOR_EMPTY(hash, container)                                    \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
-       container && !FIO_HASH_KEY_ISINVALID(container->key) ||                 \
+       (container && !FIO_HASH_KEY_ISINVALID(container->key)) ||               \
        (((hash)->pos = (hash)->count = 0) != 0 ||                              \
         (free((hash)->map),                                                    \
          ((hash)->map =                                                        \
