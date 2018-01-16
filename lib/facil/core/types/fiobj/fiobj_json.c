@@ -901,6 +901,7 @@ void fiobj_test_json(void) {
       (int)fiobj_obj2cstr(o).len, fiobj_obj2cstr(o).data,
       fiobj_obj2cstr(o).data + 3);
   fiobj_free(o);
+  fprintf(stderr, "* passed.\n");
 }
 
 #endif
