@@ -5,7 +5,7 @@ OUT_ROOT=tmp
 
 ### Library folders
 # the .c and .cpp source files root folder - subfolders are automatically included
-LIB_ROOT=./lib
+LIB_ROOT=lib
 # publicly used subfolders in the lib root
 LIB_PUBLIC_SUBFOLDERS=facil/core facil/core/types facil/core/types/fiobj facil/services facil/http facil/http/parsers facil/redis
 # privately used subfolders in the lib root (this distinction is for CMake)
@@ -13,7 +13,7 @@ LIB_PRIVATE_SUBFOLDERS=
 
 ### Development folders
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`.
-MAIN_ROOT=./dev
+MAIN_ROOT=dev
 # Development subfolders in the main root
 MAIN_SUBFOLDERS=
 
@@ -181,7 +181,7 @@ $(TMP_ROOT)/%.d: ;
 -include $(OBJS_DEPENDENCY)
 
 .PHONY : test 
-test: | clean test_add_deubg_flag $(LIB_OBJS)
+test: | clean create_tree test_add_deubg_flag $(LIB_OBJS)
 	@$(CC) -c ./tests/shorts.c -o $(TMP_ROOT)/shorts.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
 	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/shorts.o $(OPTIMIZATION) $(LINKER_FLAGS)
 	$(BIN)
