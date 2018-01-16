@@ -58,9 +58,13 @@ ifneq ($(OS),Windows_NT)
 endif
 ifeq ($(OS),Darwin) # Run MacOS commands
 	# c compiler
+ifndef CC
 	CC=gcc
+endif
 	# c++ compiler
+ifndef CPP
 	CPP=g++
+endif
 	# debugger
 	DB=lldb
 	# disassemble tool. Use stub to disable.
@@ -71,9 +75,13 @@ ifeq ($(OS),Darwin) # Run MacOS commands
 
 else
 	# c compiler
+ifndef CC
 	CC=gcc
+endif
 	# c++ compiler
+ifndef CPP
 	CPP=g++
+endif
 	# debugger
 	DB=gdb
 	# disassemble tool, leave undefined.
