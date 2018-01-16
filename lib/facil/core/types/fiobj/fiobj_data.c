@@ -298,7 +298,7 @@ Saving the IO object
 
 /** Creates a new local file IO object */
 int fiobj_data_save(FIOBJ o, const char *filename) {
-  int target = open(filename, O_RDWR | O_CLOEXEC | O_CREAT | O_TRUNC, 0777);
+  int target = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0777);
   if (target == -1)
     return -1;
   errno = 0;

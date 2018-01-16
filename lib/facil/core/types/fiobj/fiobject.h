@@ -41,7 +41,7 @@ typedef enum {
   FIOBJ_T_ARRAY,
   FIOBJ_T_HASH,
   FIOBJ_T_DATA,
-  FIOBJ_T_UNKNOWN,
+  FIOBJ_T_UNKNOWN
 } fiobj_type_enum;
 
 typedef uintptr_t FIOBJ;
@@ -346,6 +346,7 @@ FIO_INLINE const fiobj_object_vtable_s *fiobj_type_vtable(FIOBJ o) {
   case FIOBJ_T_UNKNOWN:
     return NULL;
   }
+  return NULL;
 }
 
 /* *****************************************************************************

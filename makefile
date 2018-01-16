@@ -135,7 +135,6 @@ FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 
 MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
-# OBJS_DEPENDENCY:=$(foreach source, $(LIBSRC) $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .d, $(basename $(source)))))
 OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
 
 # the computed C flags
@@ -156,8 +155,9 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 	@$(CCL) -o $(BIN) $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(DOCUMENTATION)
 
-lib: $(LIB_OBJS)
-	-@mkdir -p $(BUILDTREE)
+lib: | create_tree lib_build
+
+lib_build: $(LIB_OBJS)
 	@$(CCL) -shared -o $(OUT_ROOT)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(DOCUMENTATION)
 
@@ -176,11 +176,10 @@ $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 
 else
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
-	@$(CC) -c $^ -o $@  $(CFLAGS) 
-	# @$(CC) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
-	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
 	$(eval CCL = $(CPP))
 endif
 
