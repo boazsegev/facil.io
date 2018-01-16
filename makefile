@@ -183,10 +183,17 @@ $(TMP_ROOT)/%.d: ;
 .PHONY : test 
 test: | clean create_tree test_add_deubg_flag test_build
 	$(BIN)
+	-@rm $(BIN)
+	-@rm -R $(TMP_ROOT)
 
 .PHONY : test_add_deubg_flag
 test_add_deubg_flag: 
 	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1)
+
+.PHONY : test_build
+test_build: $(LIB_OBJS)
+	@$(CC) -c ./tests/shorts.c -o $(TMP_ROOT)/shorts.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/shorts.o $(OPTIMIZATION) $(LINKER_FLAGS)
 
 .PHONY : clean
 clean:
