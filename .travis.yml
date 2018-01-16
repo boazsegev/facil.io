@@ -1,5 +1,5 @@
 language: c
-script: make
+script: make test
 os:
   - linux
   - osx
