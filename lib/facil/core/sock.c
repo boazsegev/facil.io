@@ -1184,30 +1184,32 @@ test
 */
 #ifdef DEBUG
 void sock_libtest(void) {
-  char request[] = "GET / HTTP/1.1\r\n"
-                   "Host: www.google.com\r\n"
-                   "\r\n";
-  char buff[1024];
-  ssize_t i_read;
-  intptr_t uuid = sock_connect("www.google.com", "80");
-  if (uuid == -1)
-    perror("sock_connect failed"), exit(1);
-  if (sock_write(uuid, request, sizeof(request) - 1) < 0)
-    perror("sock_write error ");
+  if (0) { /* this test can't be performed witout initializeing `facil`. */
+    char request[] = "GET / HTTP/1.1\r\n"
+                     "Host: www.google.com\r\n"
+                     "\r\n";
+    char buff[1024];
+    ssize_t i_read;
+    intptr_t uuid = sock_connect("www.google.com", "80");
+    if (uuid == -1)
+      perror("sock_connect failed"), exit(1);
+    if (sock_write(uuid, request, sizeof(request) - 1) < 0)
+      perror("sock_write error ");
 
-  while ((i_read = sock_read(uuid, buff, 1024)) >= 0) {
-    if (i_read == 0) { // could be we hadn't finished connecting yet.
-      sock_flush(uuid);
-      reschedule_thread();
-    } else {
-      fprintf(stderr, "\n%.*s\n\n", (int)i_read, buff);
-      break;
+    while ((i_read = sock_read(uuid, buff, 1024)) >= 0) {
+      if (i_read == 0) { // could be we hadn't finished connecting yet.
+        sock_flush(uuid);
+        reschedule_thread();
+      } else {
+        fprintf(stderr, "\n%.*s\n\n", (int)i_read, buff);
+        break;
+      }
     }
+    if (i_read < 0)
+      perror("Error with sock_read ");
+    fprintf(stderr, "done.\n");
+    sock_close(uuid);
   }
-  if (i_read < 0)
-    perror("Error with sock_read ");
-  fprintf(stderr, "done.\n");
-  sock_close(uuid);
   packet_s *head, *pos;
   pos = head = packet_pool.next;
   size_t count = 0;
