@@ -165,7 +165,7 @@ int main(int argc, char const **argv) {
   uint8_t char2find = '\n';
   if (argc >= 4 && argv[3])
     char2find = argv[3][0];
-  fiobj_s *str = fiobj_str_readfile(argv[2], 0, 0);
+  FIOBJ str = fiobj_str_readfile(argv[2], 0, 0);
   if (!str) {
     fprintf(stderr, "ERROR: Couldn't open file %s\n", argv[2]);
     exit(-1);
