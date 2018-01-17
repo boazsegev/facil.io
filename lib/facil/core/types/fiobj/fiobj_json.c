@@ -137,6 +137,75 @@ static const uint8_t is_hex[] = {
     0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0};
 
 /* *****************************************************************************
+JSON String Helper - Seeking to the end of a string
+***************************************************************************** */
+
+/**
+ * finds the first occurance of either '"' or '\\'.
+ */
+static inline int seek2marker(uint8_t **buffer,
+                              register const uint8_t *const limit) {
+  if (**buffer == '"' || **buffer == '\\')
+    return 1;
+
+#if 1 || !defined(__x86_64__)
+  /* too short for this mess */
+  if ((uintptr_t)limit <= 8 + ((uintptr_t)*buffer & (~(uintptr_t)7)))
+    goto finish;
+
+  /* align memory */
+  {
+    const uint8_t *alignment =
+        (uint8_t *)(((uintptr_t)(*buffer) & (~(uintptr_t)7)) + 8);
+    if (limit >= alignment) {
+      while (*buffer < alignment) {
+        if (**buffer == '"' || **buffer == '\\')
+          return 1;
+        *buffer += 1;
+      }
+    }
+  }
+  const uint8_t *limit64 = (uint8_t *)((uintptr_t)limit & (~(uintptr_t)7));
+#else
+  const uint8_t *limit64 = (uint8_t *)limit - 7;
+#endif
+  uint64_t wanted1 = 0x0101010101010101ULL * '"';
+  uint64_t wanted2 = 0x0101010101010101ULL * '\\';
+  for (; *buffer < limit64; *buffer += 8) {
+    const uint64_t eq1 = ~((*((uint64_t *)*buffer)) ^ wanted1);
+    const uint64_t t1 =
+        ((eq1 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+        (eq1 & 0x8080808080808080ULL);
+    const uint64_t eq2 = ~((*((uint64_t *)*buffer)) ^ wanted2);
+    const uint64_t t2 =
+        ((eq2 & 0x7f7f7f7f7f7f7f7fULL) + 0x0101010101010101ULL) &
+        (eq2 & 0x8080808080808080ULL);
+    if ((t1 | t2)) {
+      break;
+    }
+  }
+#if 1 || !defined(__x86_64__)
+finish:
+#endif
+  while (*buffer < limit) {
+    if (**buffer == '"' || **buffer == '\\')
+      return 1;
+    (*buffer)++;
+  }
+  return 0;
+}
+
+static inline int seek2eos(uint8_t **buffer,
+                           register const uint8_t *const limit) {
+  while (*buffer < limit) {
+    if (seek2marker(buffer, limit) && **buffer == '"')
+      return 1;
+    (*buffer) += 2; /* consume both the escape '\\' and the escape code. */
+  }
+  return 0;
+}
+
+/* *****************************************************************************
 JSON Consumption (astract parsing)
 ***************************************************************************** */
 
@@ -157,14 +226,9 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
       goto stop;
     switch (*pos) {
     case '"': {
-      uint8_t *tmp = pos;
-      do {
-        ++tmp;
-        tmp = memchr(tmp, '"', (uintptr_t)(limit - tmp));
-      } while (tmp && tmp[-1] == '\\');
-      if (!tmp)
+      uint8_t *tmp = ++pos;
+      if (seek2eos(&tmp, limit) == 0)
         goto stop;
-      ++pos;
       on_string(parser, pos, (uintptr_t)(tmp - pos));
       pos = tmp + 1;
       break;
@@ -290,6 +354,8 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
       on_json(parser);
       goto stop;
     }
+    if (parser->depth >= JSON_MAX_DEPTH)
+      goto error;
   } while (pos < limit);
 stop:
   return (size_t)((uintptr_t)pos - (uintptr_t)buffer);
@@ -570,7 +636,6 @@ static void on_json(json_parser_s *p) {
 }
 /** the JSON parsing is complete */
 static void on_error(json_parser_s *p) {
-  fprintf(stderr, "ERROR: JSON error called\n");
   fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
   fiobj_free((FIOBJ)fio_ary_index(&pr->stack, 0));
   fio_ary_free(&pr->stack);
