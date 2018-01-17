@@ -702,7 +702,9 @@ static void on_json(json_parser_s *p) {
 /** the JSON parsing is complete */
 static void on_error(json_parser_s *p) {
   fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
-  fprintf(stderr, "ERROR: JSON on error\n");
+#if DEBUG
+  fprintf(stderr, "ERROR: JSON on error called.\n");
+#endif
   fiobj_free((FIOBJ)fio_ary_index(&pr->stack, 0));
   fiobj_free(pr->key);
   fio_ary_free(&pr->stack);
