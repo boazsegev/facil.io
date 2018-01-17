@@ -145,6 +145,65 @@ void fiobj_free_complex_object(FIOBJ o) {
 }
 
 /* *****************************************************************************
+Is Equal?
+***************************************************************************** */
+
+static inline int fiobj_iseq_simple(const FIOBJ o, const FIOBJ o2) {
+  if (o == o2)
+    return 1;
+  if (!o || !o2)
+    return 0; /* they should have compared equal before. */
+  if (!FIOBJ_IS_ALLOCATED(o) || !FIOBJ_IS_ALLOCATED(o2))
+    return 0; /* they should have compared equal before. */
+  if (FIOBJECT2HEAD(o)->type != FIOBJECT2HEAD(o)->type)
+    return 0; /* non-type equality is a barriar to equality. */
+  if (!FIOBJECT2VTBL(o)->is_eq(o, o2))
+    return 0;
+  return 1;
+}
+
+int fiobj_iseq____internal_complex__task(FIOBJ o, void *ary_) {
+  fio_ary_s *ary = ary_;
+  fio_ary_push(ary, (void *)o);
+  return 0;
+}
+
+/** used internally for complext nested tests (Array / Hash types) */
+int fiobj_iseq____internal_complex__(FIOBJ o, FIOBJ o2) {
+  // if (FIOBJECT2VTBL(o)->each && FIOBJECT2VTBL(o)->count(o))
+  //   return int fiobj_iseq____internal_complex__(const FIOBJ o, const FIOBJ
+  //   o2);
+  fio_ary_s left = FIO_ARY_INIT, right = FIO_ARY_INIT, queue = FIO_ARY_INIT;
+  do {
+    fiobj_each1(o, 0, fiobj_iseq____internal_complex__task, &left);
+    fiobj_each1(o2, 0, fiobj_iseq____internal_complex__task, &right);
+    while (fio_ary_count(&left)) {
+      o = (FIOBJ)fio_ary_pop(&left);
+      o2 = (FIOBJ)fio_ary_pop(&right);
+      if (!fiobj_iseq_simple(o, o2))
+        goto unequal;
+      if (FIOBJECT2VTBL(o)->each && FIOBJECT2VTBL(o)->count(o)) {
+        fio_ary_push(&queue, (void *)o);
+        fio_ary_push(&queue, (void *)o2);
+      }
+    }
+    o2 = (FIOBJ)fio_ary_pop(&queue);
+    o = (FIOBJ)fio_ary_pop(&queue);
+    if (!fiobj_iseq_simple(o, o2))
+      goto unequal;
+  } while (o);
+  fio_ary_free(&left);
+  fio_ary_free(&right);
+  fio_ary_free(&queue);
+  return 1;
+unequal:
+  fio_ary_free(&left);
+  fio_ary_free(&right);
+  fio_ary_free(&queue);
+  return 0;
+}
+
+/* *****************************************************************************
 Defaults / NOOPs
 ***************************************************************************** */
 
@@ -245,7 +304,20 @@ void fiobj_test_core(void) {
               (int)each_ret);
   TEST_ASSERT(count == 8, "Something went wrong with the counter task... (%d)",
               (int)count)
+  FIOBJ o2 = fiobj_ary_new2(4);
+  tmp = fiobj_ary_new();
+  fiobj_ary_push(o2, tmp);
+  fiobj_ary_push(o2, fiobj_true());
+  fiobj_ary_push(o2, fiobj_null());
+  fiobj_ary_push(o2, fiobj_num_new(10));
+  fiobj_ary_push(tmp, fiobj_num_new(13));
+  fiobj_ary_push(tmp, fiobj_hash_new());
+  key = fiobj_str_new("my key", 6);
+  fiobj_hash_set(fiobj_ary_entry(tmp, -1), key, fiobj_true());
+  fiobj_free(key);
+  TEST_ASSERT(fiobj_iseq(o, o2), "Arrays aren't euqal!");
   fiobj_free(o);
+  fiobj_free(o2);
   fprintf(stderr, "* passed.\n");
 }
 

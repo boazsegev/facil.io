@@ -549,6 +549,8 @@ FIO_INLINE double fiobj_obj2float(const FIOBJ o) {
   return FIOBJECT2VTBL(o)->to_f(o);
 }
 
+/** used internally for complext nested tests (Array / Hash types) */
+int fiobj_iseq____internal_complex__(FIOBJ o, FIOBJ o2);
 /**
  * Deeply compare two objects. No hashing or recursive function calls are
  * involved.
@@ -571,11 +573,15 @@ FIO_INLINE int fiobj_iseq(const FIOBJ o, const FIOBJ o2) {
     return 1;
   if (!o || !o2)
     return 0; /* they should have compared equal before. */
-  if (o & (~(FIOBJECT_TYPE_MASK)))
+  if (!FIOBJ_IS_ALLOCATED(o) || !FIOBJ_IS_ALLOCATED(o2))
     return 0; /* they should have compared equal before. */
   if (FIOBJECT2HEAD(o)->type != FIOBJECT2HEAD(o)->type)
     return 0; /* non-type equality is a barriar to equality. */
-  return FIOBJECT2VTBL(o)->is_eq(o, o2);
+  if (!FIOBJECT2VTBL(o)->is_eq(o, o2))
+    return 0;
+  if (FIOBJECT2VTBL(o)->each && FIOBJECT2VTBL(o)->count(o))
+    return fiobj_iseq____internal_complex__((FIOBJ)o, (FIOBJ)o2);
+  return 1;
 }
 
 /**
