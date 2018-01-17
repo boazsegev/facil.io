@@ -112,6 +112,17 @@ CCL = $(CC)
 
 INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(FOLDERS),$(addprefix -I, $(dir)))
 
+MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
+
+
+# S2N TLS/SSL library: https://github.com/awslabs/s2n
+ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -ls2n -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+FLAGS:=$(FLAGS) HAVE_S2N
+LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
+endif
+
 # add BearSSL/OpenSSL library flags
 ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
 FLAGS:=$(FLAGS) HAVE_BEARSSL
@@ -131,19 +142,15 @@ LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
 endif
 
 
+#####################
+# Updated flags and final values
+
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
-
-MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
-LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
-OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
-
-# the computed C flags
 CFLAGS= -g -std=c11 -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 CPPFLAGS= -std=c++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 LINKER_FLAGS=$(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFALGS_DEPENDENCY=-MT $@ -MMD -MP
-# -MT $@ -MMD -MP
-# -MT $(patsubst %.o,%.d,$@) -MMD
+
 ########
 ## Main Tasks
 
