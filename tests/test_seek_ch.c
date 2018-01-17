@@ -41,7 +41,7 @@ static inline int seek3(uint8_t **buffer, register uint8_t *const limit,
   if (**buffer == c)
     return 1;
 
-#if !defined(__x86_64__)
+#if !__x86_64__ && !__aarch64__
   /* too short for this mess */
   if ((uintptr_t)limit <= 16 + ((uintptr_t)*buffer & (~(uintptr_t)7)))
     goto finish;
@@ -71,7 +71,7 @@ static inline int seek3(uint8_t **buffer, register uint8_t *const limit,
       break;
     }
   }
-#if !defined(__x86_64__)
+#if !__x86_64__ && !__aarch64__
 finish:
 #endif
   while (*buffer < limit) {

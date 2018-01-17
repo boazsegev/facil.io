@@ -148,7 +148,7 @@ static inline int seek2marker(uint8_t **buffer,
   if (**buffer == '"' || **buffer == '\\')
     return 1;
 
-#if 1 || !defined(__x86_64__)
+#if !__x86_64__ && !__aarch64__
   /* too short for this mess */
   if ((uintptr_t)limit <= 8 + ((uintptr_t)*buffer & (~(uintptr_t)7)))
     goto finish;
@@ -184,7 +184,7 @@ static inline int seek2marker(uint8_t **buffer,
       break;
     }
   }
-#if 1 || !defined(__x86_64__)
+#if !__x86_64__ && !__aarch64__
 finish:
 #endif
   while (*buffer < limit) {
@@ -492,7 +492,7 @@ fio_json_unescape_str(void *dest, const char *source, size_t length) {
   uint8_t *writer = (uint8_t *)dest;
   /* copy in chuncks unless we hit an escape marker */
   while (reader < stop) {
-#if 1 || !defined(__x86_64__)
+#if !__x86_64__ && !__aarch64__
     /* we can't leverage unaligned memory access, so we read the buffer twice */
     uint8_t *tmp = memchr(reader, '\\', (size_t)(stop - reader));
     if (!tmp) {
@@ -504,22 +504,28 @@ fio_json_unescape_str(void *dest, const char *source, size_t length) {
     writer += (size_t)(tmp - reader);
     reader = tmp;
 #else
-    const uint8_t *limit64 = (uint8_t *)((uintptr_t)limit & (~(uintptr_t)7));
-    const uint8_t *limit64 = (uint8_t *)limit - 7;
-    uint64_t wanted1 = 0x0101010101010101ULL * c;
-    for (; *buffer < limit64; *buffer += 8) {
-      const uint64_t eq1 = ~((*((uint64_t *)*buffer)) ^ wanted1);
+    const uint8_t *limit64 = (uint8_t *)stop - 7;
+    uint64_t wanted1 = 0x0101010101010101ULL * '\\';
+    while (reader < limit64) {
+      const uint64_t eq1 = ~((*((uint64_t *)reader)) ^ wanted1);
       const uint64_t t0 = (eq1 & 0x7f7f7f7f7f7f7f7fllu) + 0x0101010101010101llu;
       const uint64_t t1 = (eq1 & 0x8080808080808080llu);
       if ((t0 & t1)) {
         break;
       }
+      *((uint64_t *)writer) = *((uint64_t *)reader);
+      reader += 8;
+      writer += 8;
     }
-    while (*buffer < limit) {
-      if (**buffer == c)
-        return 1;
-      (*buffer)++;
+    while (reader < stop) {
+      if (*reader == '\\')
+        break;
+      *writer = *reader;
+      ++reader;
+      ++writer;
     }
+    if (reader >= stop)
+      goto finish;
 #endif
     fio_json_unescape_str_internal(&writer, &reader);
   }
