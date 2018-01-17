@@ -28,6 +28,7 @@ FIO_INLINE void fiobj_test(void) {
 #else
 FIO_INLINE void fiobj_test(void) {
   fprintf(stderr, "ERROR: tesing functions only defined with DEBUG=1\n");
+  exit(-1);
 }
 #endif
 #undef FIO_INLINE
