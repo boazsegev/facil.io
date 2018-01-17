@@ -6,3 +6,5 @@ os:
 compiler:
   - clang
   - gcc
+notifications:
+  email: false
