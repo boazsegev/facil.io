@@ -54,7 +54,7 @@ static void http_hello_on_request(http_s *h) {
 
 /* reads command line arguments and starts up the server. */
 int main(int argc, char const *argv[]) {
-  uint8_t print_log = 1;
+  uint8_t print_log = 0;
 
   /*     ****  Command line arguments ****     */
   fio_cli_start(argc, argv,
@@ -67,10 +67,10 @@ int main(int argc, char const *argv[]) {
   fio_cli_accept_num("threads t", "number of threads.");
   fio_cli_accept_num("workers w", "number of processes.");
   fio_cli_accept_str("public www", "public folder for static file service.");
-  fio_cli_accept_bool("log q", "disable logging, by default logs to a file.");
+  fio_cli_accept_bool("log v", "verobse, logs to a file at the ./tmp folder.");
 
-  if (fio_cli_get_int("q"))
-    print_log = 0;
+  if (fio_cli_get_int("log"))
+    print_log = 1;
   if (!fio_cli_get_str("port"))
     fio_cli_set_str("port", "3000");
   const char *port = fio_cli_get_str("port");
@@ -89,7 +89,7 @@ int main(int argc, char const *argv[]) {
     if (1) {
       int old_stderr = dup(fileno(stderr));
       fclose(stderr);
-      FILE *log = fopen("./tmp/benchmark.log", "a");
+      FILE *log = fopen("./tmp/hello_world.log", "a");
       if (!log) {
         fdopen(old_stderr, "a");
         fprintf(stdout,
@@ -98,7 +98,7 @@ int main(int argc, char const *argv[]) {
         close(old_stderr);
         fprintf(stdout,
                 "* All logging reports (stderr) routed to a log file at "
-                "./tmp/benchmark.log\n");
+                "./tmp/hello_world.log\n");
         sock_open(fileno(log));
       }
     }

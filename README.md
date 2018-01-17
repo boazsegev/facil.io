@@ -29,7 +29,7 @@ FIOBJ HTTP_X_DATA;
 // Listen to HTTP requests and start facil.io
 int main(int argc, char const **argv) {
   // allocating values we use often
-  HTTP_X_DATA = fiobj_str_static("X-Data", 6);
+  HTTP_X_DATA = fiobj_str_new("X-Data", 6);
   // listen on port 3000 and any available network binding (NULL == 0.0.0.0)
   http_listen("3000", NULL, .on_request = on_request, .log = 1);
   // start the server
@@ -87,7 +87,7 @@ Then add the following line the project's `CMakeLists.txt`
 
 ## More Examples
 
-The examples folder includes examples for a [telnet echo protocol](examples/telnet-echo.c), a [super fast DIY HTTP/1.1 server](examples/fast-http.c) as well as an example for [Websocket pub/sub with Redis](examples/pubsub-chat.c).
+The examples folder includes code examples for a [telnet echo protocol](examples/telnet-echo.c), a [Simple Hello World server](examples/hello-world.c), an example for [Websocket pub/sub with (optional) Redis](examples/pubsub-chat.c) ,a [super fast DIY HTTP/1.1 server](examples/fast-http.c), etc'.
 
 You can find more information on the [facil.io](http://facil.io) website
 
