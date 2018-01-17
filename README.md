@@ -1,21 +1,27 @@
-# facil.io - a mini-framework for C web applications
+# facil.io - a micro-framework for C web applications
 [![GitHub](https://img.shields.io/badge/GitHub-Open%20Source-blue.svg)](https://github.com/boazsegev/facil.io)
 [![Build Status](https://travis-ci.org/boazsegev/facil.io.svg?branch=reHTTP)](https://travis-ci.org/boazsegev/facil.io)
 
-[facil.io](http://facil.io) is a C mini-framework for web applications and includes:
+[facil.io](http://facil.io) is a C micro-framework for web applications. facil.io includes:
 
 * A fast HTTP/1.1 and Websocket static file + application server.
 * Support for custom network protocols for both server and client connections.
 * Dynamic types designed with web applications in mind (Strings, Hashes, Arrays etc').
-* JSON parsing and formatting for easy network communication.
+* Performant JSON parsing and formatting for easy network communication.
 * A pub/sub process cluster engine for local and Websocket pub/sub.
 * Optional connectivity with Redis.
-
-[facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.
 
 [facil.io](http://facil.io) provides high performance TCP/IP network services to Linux / BSD (and macOS) by using an evented design (as well as thread pool and forking support) and provides an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
 
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
+
+### Running on `facil.io`
+
+* [Iodine, a Ruby HTTP/Websockets Ruby application server](https://github.com/boazsegev/iodine) is powered by `facil.io`.
+
+* Are you using `facil.io`? Let me know!
+
+### An HTTP example
 
 ```c
 #include "http.h" /* the HTTP facil.io extension */
