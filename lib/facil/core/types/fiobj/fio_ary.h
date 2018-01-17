@@ -133,10 +133,11 @@ FIO_FUNC inline void fio_ary_compact(fio_ary_s *ary);
  * variable can be named however you please.
  */
 #define FIO_ARY_FOR(ary, pos)                                                  \
-  for (struct fio_ary_pos_for_loop_s pos = {0, (ary)->arry[(ary)->start]};     \
-       (pos.i + (ary)->start) < (ary)->end &&                                  \
-       ((pos.obj = (ary)->arry[pos.i + (ary)->start]), 1);                     \
-       (++pos.i))
+  if ((ary)->arry)                                                             \
+    for (struct fio_ary_pos_for_loop_s pos = {0, (ary)->arry[(ary)->start]};   \
+         (pos.i + (ary)->start) < (ary)->end &&                                \
+         ((pos.obj = (ary)->arry[pos.i + (ary)->start]), 1);                   \
+         (++pos.i))
 struct fio_ary_pos_for_loop_s {
   unsigned long i;
   void *obj;
@@ -310,7 +311,7 @@ Array push / shift API
  * Pushes an object to the end of the Array. Returns -1 on error.
  */
 FIO_FUNC inline int fio_ary_push(fio_ary_s *ary, void *data) {
-  if (!ary)
+  if (!ary->arry)
     fio_ary_new(ary, 0);
   else if (ary->capa <= ary->end)
     fio_ary_getmem(ary, 1);
@@ -333,7 +334,7 @@ FIO_FUNC inline void *fio_ary_pop(fio_ary_s *ary) {
  * This could be expensive, causing `memmove`.
  */
 FIO_FUNC inline int fio_ary_unshift(fio_ary_s *ary, void *data) {
-  if (!ary)
+  if (!ary->arry)
     fio_ary_new(ary, 0);
   else if (!ary->start)
     fio_ary_getmem(ary, -1);
