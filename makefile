@@ -220,7 +220,8 @@ run: | build
 	@$(BIN)
 
 .PHONY : db
-db: | clean build
+db: | clean
+	DEBUG=1 $(MAKE) build
 	$(DB) $(BIN)
 
 
