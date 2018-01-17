@@ -182,7 +182,8 @@ int fiobj_iseq____internal_complex__(FIOBJ o, FIOBJ o2) {
       o2 = (FIOBJ)fio_ary_pop(&right);
       if (!fiobj_iseq_simple(o, o2))
         goto unequal;
-      if (FIOBJECT2VTBL(o)->each && FIOBJECT2VTBL(o)->count(o)) {
+      if (FIOBJ_IS_ALLOCATED(o) && FIOBJECT2VTBL(o)->each &&
+          FIOBJECT2VTBL(o)->count(o)) {
         fio_ary_push(&queue, (void *)o);
         fio_ary_push(&queue, (void *)o2);
       }
@@ -285,6 +286,8 @@ void fiobj_test_core(void) {
   TEST_ASSERT(FIOBJ_TYPE_IS(fiobj_false(), FIOBJ_T_FALSE),
               "fiobj_false isn't FIOBJ_T_TRUE! (2)\n");
   fiobj_free(o); /* testing for crash*/
+  fprintf(stderr, "* passed.\n");
+  fprintf(stderr, "=== Testing fioj_each2\n");
   o = fiobj_ary_new2(4);
   FIOBJ tmp = fiobj_ary_new();
   fiobj_ary_push(o, tmp);
@@ -304,6 +307,8 @@ void fiobj_test_core(void) {
               (int)each_ret);
   TEST_ASSERT(count == 8, "Something went wrong with the counter task... (%d)",
               (int)count)
+  fprintf(stderr, "* passed.\n");
+  fprintf(stderr, "=== Testing fioj_iseq with nested items\n");
   FIOBJ o2 = fiobj_ary_new2(4);
   tmp = fiobj_ary_new();
   fiobj_ary_push(o2, tmp);
