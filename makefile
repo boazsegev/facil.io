@@ -70,7 +70,7 @@ endif
 	# disassemble tool. Use stub to disable.
 	DISAMS=otool -tVX
 	# documentation commands
-	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(SRCDIR), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
+	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
 
 
 else
@@ -195,7 +195,11 @@ $(TMP_ROOT)/%.d: ;
 -include $(OBJS_DEPENDENCY)
 
 .PHONY : test 
-test: | clean create_tree test_add_deubg_flag test_build
+test: | clean 
+	@$(MAKE) test_build_and_run
+
+.PHONY : test_build_and_run
+test_build_and_run: create_tree test_add_deubg_flag test_build
 	$(BIN)
 	-@rm $(BIN)
 	-@rm -R $(TMP_ROOT)
