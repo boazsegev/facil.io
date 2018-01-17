@@ -15,7 +15,11 @@ License: MIT
 /* *****************************************************************************
 JSON API
 ***************************************************************************** */
-#define JSON_MAX_DEPTH 24
+/* maximum allowed depth values max out at 32 */
+#if !defined(JSON_MAX_DEPTH) || JSON_MAX_DEPTH > 32
+#undef JSON_MAX_DEPTH
+#define JSON_MAX_DEPTH 32
+#endif
 /**
  * Parses JSON, setting `pobj` to point to the new Object.
  *
@@ -29,10 +33,14 @@ FIOBJ fiobj_obj2json(FIOBJ, uint8_t);
 JSON Parser Type, Callacks && API (FIOBJ specifics are later on)
 ***************************************************************************** */
 
-/** The JSON parser type */
+/** The JSON parser type. Memory must be initialized to 0 before first uses. */
 typedef struct {
-  /** must be initialized to 0 before first parsing is performed. */
-  uintptr_t depth;
+  /** in dictionary flag. */
+  uint32_t dict;
+  /** level of nesting. */
+  uint8_t depth;
+  /** in dictionary waiting for key. */
+  uint8_t key;
 } json_parser_s;
 
 /** a NULL object was detected */
@@ -82,13 +90,14 @@ Marks as object seperators any of the following:
 
 * White Space: [0x09, 0x0A, 0x0D, 0x20]
 * Comma ("," / 0x2C)
-* Colon (":" / 0x3A)
+* NOT Colon (":" / 0x3A)
+* == [0x09, 0x0A, 0x0D, 0x20, 0x2C]
 The rest belong to objects,
 */
 static const uint8_t JSON_SEPERATOR[] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -226,31 +235,82 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
       goto stop;
     switch (*pos) {
     case '"': {
-      uint8_t *tmp = ++pos;
+      uint8_t *tmp = pos + 1;
       if (seek2eos(&tmp, limit) == 0)
         goto stop;
-      on_string(parser, pos, (uintptr_t)(tmp - pos));
-      pos = tmp + 1;
+      if (parser->key) {
+        uint8_t *key = tmp + 1;
+        while (key < limit && JSON_SEPERATOR[*key])
+          ++key;
+        if (key >= limit)
+          goto stop;
+        if (*key != ':')
+          goto error;
+        ++pos;
+        on_string(parser, pos, (uintptr_t)(tmp - pos));
+        pos = key + 1;
+        parser->key = 0;
+        continue /* skip tests */;
+      } else {
+        ++pos;
+        on_string(parser, pos, (uintptr_t)(tmp - pos));
+        pos = tmp + 1;
+      }
       break;
     }
     case '{':
+      if (parser->key) {
+#if DEBUG
+        fprintf(stderr, "ERROR: JSON key can't be a Hash.\n");
+#endif
+        goto error;
+      }
       ++parser->depth;
+      if (parser->depth >= JSON_MAX_DEPTH)
+        goto error;
+      parser->dict = (parser->dict << 1) | 1;
       ++pos;
       on_start_object(parser);
       break;
     case '}':
+      if ((parser->dict & 1) == 0) {
+#if DEBUG
+        fprintf(stderr, "ERROR: JSON dictionary closure error.\n");
+#endif
+        goto error;
+      }
+      if (!parser->key) {
+#if DEBUG
+        fprintf(stderr, "ERROR: JSON dictionary closure missing key value.\n");
+        goto error;
+#endif
+        on_null(parser); /* append NULL and recuperate from error. */
+      }
       --parser->depth;
       ++pos;
+      parser->dict = (parser->dict >> 1);
       on_end_object(parser);
       break;
     case '[':
+      if (parser->key) {
+#if DEBUG
+        fprintf(stderr, "ERROR: JSON key can't be an array.\n");
+#endif
+        goto error;
+      }
       ++parser->depth;
+      if (parser->depth >= JSON_MAX_DEPTH)
+        goto error;
       ++pos;
+      parser->dict = (parser->dict << 1);
       on_start_array(parser);
       break;
     case ']':
+      if ((parser->dict & 1))
+        goto error;
       --parser->depth;
       ++pos;
+      parser->dict = (parser->dict >> 1);
       on_end_array(parser);
       break;
     case 't':
@@ -326,7 +386,7 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
       if (!tmp)
         goto stop;
       pos = tmp + 1;
-      break;
+      continue /* skip tests */;
     }
     case '/': /* C style / Javascript style comment */
       if (pos[1] == '*') {
@@ -346,7 +406,7 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
         pos = tmp + 1;
       } else
         goto error;
-      break;
+      continue /* skip tests */;
     default:
       goto error;
     }
@@ -354,8 +414,7 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
       on_json(parser);
       goto stop;
     }
-    if (parser->depth >= JSON_MAX_DEPTH)
-      goto error;
+    parser->key = (parser->dict & 1);
   } while (pos < limit);
 stop:
   return (size_t)((uintptr_t)pos - (uintptr_t)buffer);
@@ -643,7 +702,9 @@ static void on_json(json_parser_s *p) {
 /** the JSON parsing is complete */
 static void on_error(json_parser_s *p) {
   fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
+  fprintf(stderr, "ERROR: JSON on error\n");
   fiobj_free((FIOBJ)fio_ary_index(&pr->stack, 0));
+  fiobj_free(pr->key);
   fio_ary_free(&pr->stack);
   pr->stack = FIO_ARY_INIT;
   *pr = (fiobj_json_parser_s){.top = FIOBJ_INVALID};
@@ -914,6 +975,35 @@ void fiobj_test_json(void) {
   char json_str[] = "{\"array\":[1,2,3,\"boom\"],\"my\":{\"secret\":42},"
                     "\"true\":true,\"false\":false,\"null\":null,\"float\":-2."
                     "2,\"string\":\"I \\\"wrote\\\" this.\"}";
+  char json_str2[] =
+      "[\n    \"JSON Test Pattern pass1\",\n    {\"object with 1 "
+      "member\":[\"array with 1 element\"]},\n    {},\n    [],\n    -42,\n    "
+      "true,\n    false,\n    null,\n    {\n        \"integer\": 1234567890,\n "
+      "       \"real\": -9876.543210,\n        \"e\": 0.123456789e-12,\n       "
+      " \"E\": 1.234567890E+34,\n        \"\":  23456789012E66,\n        "
+      "\"zero\": 0,\n        \"one\": 1,\n        \"space\": \" \",\n        "
+      "\"quote\": \"\\\"\",\n        \"backslash\": \"\\\\\",\n        "
+      "\"controls\": \"\\b\\f\\n\\r\\t\",\n        \"slash\": \"/ & \\/\",\n   "
+      "     \"alpha\": \"abcdefghijklmnopqrstuvwyz\",\n        \"ALPHA\": "
+      "\"ABCDEFGHIJKLMNOPQRSTUVWYZ\",\n        \"digit\": \"0123456789\",\n    "
+      "    \"0123456789\": \"digit\",\n        \"special\": "
+      "\"`1~!@#$%^&*()_+-={':[,]}|;.</>?\",\n        \"hex\": "
+      "\"\\u0123\\u4567\\u89AB\\uCDEF\\uabcd\\uef4A\",\n        \"true\": "
+      "true,\n        \"false\": false,\n        \"null\": null,\n        "
+      "\"array\":[  ],\n        \"object\":{  },\n        \"address\": \"50 "
+      "St. James Street\",\n        \"url\": \"http://www.JSON.org/\",\n       "
+      " \"comment\": \"// /* <!-- --\",\n        \"# -- --> */\": \" \",\n     "
+      "   \" s p a c e d \" :[1,2 , 3\n\n,\n\n4 , 5        ,          6        "
+      "   ,7        ],\"compact\":[1,2,3,4,5,6,7],\n        \"jsontext\": "
+      "\"{\\\"object with 1 member\\\":[\\\"array with 1 element\\\"]}\",\n    "
+      "    \"quotes\": \"&#34; \\u0022 %22 0x22 034 &#x22;\",\n        "
+      "\"\\/"
+      "\\\\\\\"\\uCAFE\\uBABE\\uAB98\\uFCDE\\ubcda\\uef4A\\b\\f\\n\\r\\t`1~!@#$"
+      "%^&*()_+-=[]{}|;:',./<>?\"\n: \"A key can be any string\"\n    },\n    "
+      "0.5 "
+      ",98.6\n,\n99.44\n,\n\n1066,\n1e1,\n0.1e1,\n1e-1,\n1e00,2e+00,2e-00\n,"
+      "\"rosebud\"]";
+
   FIOBJ o = 0;
   TEST_ASSERT(fiobj_json2obj(&o, "1", 2) == 1,
               "JSON number parsing failed to run!\n");
@@ -1016,6 +1106,14 @@ void fiobj_test_json(void) {
       "JSON NUL containing String incorrect! (%u): %s . %s\n",
       (int)fiobj_obj2cstr(o).len, fiobj_obj2cstr(o).data,
       fiobj_obj2cstr(o).data + 3);
+  fiobj_free(o);
+  size_t consumed = fiobj_json2obj(&o, json_str2, sizeof(json_str2));
+  TEST_ASSERT(
+      consumed == (sizeof(json_str2) - 1),
+      "JSON messy string failed to parse (consumed %lu instead of %lu\n",
+      (unsigned long)consumed, (unsigned long)(sizeof(json_str2) - 1));
+  TEST_ASSERT(FIOBJ_TYPE_IS(o, FIOBJ_T_ARRAY),
+              "JSON messy string object error\n");
   fiobj_free(o);
   fprintf(stderr, "* passed.\n");
 }
