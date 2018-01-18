@@ -2,7 +2,7 @@
 
 ### Ver. 0.6.0 (upcoming release)
 
-**Fix**: (`websocket_parser`) The websocket parser had a memory offset and alignment handling issue in it's unmasking (XOR) logic and the new memory alignment protection code. The issue would impact the parser in rare occasions when multiple messages where pipelined in the internal buffer and their length produced an odd alignment (the issue would occur with very fast clients, or a very stressed server).
+**Fix** (backported): (`websocket_parser`) The websocket parser had a memory offset and alignment handling issue in it's unmasking (XOR) logic and the new memory alignment protection code. The issue would impact the parser in rare occasions when multiple messages where pipelined in the internal buffer and their length produced an odd alignment (the issue would occur with very fast clients, or a very stressed server).
 
 **Note About Fixes**:
 
@@ -10,7 +10,7 @@
 
    I believe some things work better. Some of the locking concerns will have less contention and I think I fixed some issues in the `fiobj` core types as well as the `http` extension.
 
-   However, experience tells me a new release (0.6.0) is always more fragile than a patch release. I did my best to test the new code, but experience tells me my tests are often as buggy as the code they test.
+   However, experience tells me a new major release (0.6.0) is always more fragile than a patch release. I did my best to test the new code, but experience tells me my tests are often as buggy as the code they test.
 
    Anyway, I'm releasing 0.6.0 knowing it works better than the 0.5.8 version, but also knowing it wasn't battle tested just yet.
 
@@ -92,6 +92,10 @@
     By default, defer will use `nanosleep`.
 
 **Refactoring**: (`fiobj`) moved the underlying Dynamic Array and Hash Table logic into single file libraries that support `void *` pointers, allowing the same logic to be used for any C object collection (as well as the facil.io objects).
+
+### Ver. 0.5.9
+
+**Fix** (backported from 0.6.0): (`websocket_parser`) The websocket parser had a memory offset and alignment handling issue in it's unmasking (XOR) logic and the new memory alignment protection code. The issue would impact the parser in rare occasions when multiple messages where pipelined in the internal buffer and their length produced an odd alignment (the issue would occur with very fast clients, or a very stressed server).
 
 ### Ver. 0.5.8
 

@@ -25,7 +25,6 @@ static FIOBJ HTTP_HEADER_SERVER;
 static FIOBJ HTTP_VALUE_SERVER;
 static FIOBJ JSON_KEY;
 static FIOBJ JSON_VALUE;
-static FIOBJ JSON_HASH;
 
 /* *****************************************************************************
 Routing
@@ -67,8 +66,6 @@ int main(int argc, char const *argv[]) {
   /* JSON values to be serialized */
   JSON_KEY = fiobj_str_new("message", 7);
   JSON_VALUE = fiobj_str_new("Hello, World!", 13);
-  JSON_HASH = fiobj_hash_new();
-  fiobj_hash_set(JSON_HASH, JSON_KEY, fiobj_dup(JSON_VALUE));
 
   /* Test for static file service */
   const char *public_folder = fio_cli_get_str("www");
@@ -97,16 +94,11 @@ Request handlers
 static void on_request_json(http_s *h) {
   http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("json", 4));
   FIOBJ json;
-  if (1) {
-    /* recreate the Hash to be serialized */
-    FIOBJ hash = fiobj_hash_new(); /* an object to serialise as JSON*/
-    fiobj_hash_set(hash, JSON_KEY, fiobj_dup(JSON_VALUE));
-    json = fiobj_obj2json(hash, 0);
-    fiobj_free(hash);
-  } else {
-    /* serialize cached hash */
-    json = fiobj_obj2json(JSON_HASH, 0);
-  }
+  /* create a new Hash to be serialized for every request */
+  FIOBJ hash = fiobj_hash_new();
+  fiobj_hash_set(hash, JSON_KEY, fiobj_dup(JSON_VALUE));
+  json = fiobj_obj2json(hash, 0);
+  fiobj_free(hash);
   fio_cstr_s tmp = fiobj_obj2cstr(json);
   http_send_body(h, tmp.data, tmp.len);
   fiobj_free(json);
@@ -203,7 +195,6 @@ static void cleanup(void) {
   fiobj_free(HTTP_VALUE_SERVER);
   fiobj_free(JSON_KEY);
   fiobj_free(JSON_VALUE);
-  fiobj_free(JSON_HASH);
 
   route_clear();
 }
