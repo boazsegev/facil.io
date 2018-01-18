@@ -20,9 +20,10 @@ extern "C" {
 JSON API
 ***************************************************************************** */
 
-/** Limit JSON nesting, we can handle more, but this is mostly for security.  */
-#ifndef JSON_MAX_DEPTH
-#define JSON_MAX_DEPTH 24
+/** Limit JSON nesting, 32 is the limit to accomodate a 32 bit type. */
+#if !defined(JSON_MAX_DEPTH) || JSON_MAX_DEPTH > 32
+#undef JSON_MAX_DEPTH
+#define JSON_MAX_DEPTH 32
 #endif
 
 /**
