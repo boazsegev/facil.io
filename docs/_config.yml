@@ -1,3 +1,2 @@
-theme: none
 plugins:
   - jekyll-toc
