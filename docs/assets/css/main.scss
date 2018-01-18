@@ -48,7 +48,7 @@ ul, ol {
 	margin: 0;
 }
 
-header, section, footer {margin-left: 10%; margin-right: 10%; width: 80%;}
+header, section, footer {margin-left: 10%; margin-right: 10%; width: 80%; transition: background-color 120ms, border 120ms, opacity 120ms; }
 
 header {
 	box-sizing: border-box;
@@ -61,7 +61,7 @@ header {
 	position: abso;
 	top: 0;
 	z-index: 1001;
-	transition: background 120ms;
+	transition: background 120ms, margin 120ms, width 120ms;
 }
 
 
@@ -93,7 +93,6 @@ header .view , header li a {
 	box-sizing: border-box;
   border-radius: 1em;
 	border: #966 solid 0.2em;
-	transition: background-color 120ms, border 120ms, opacity 120ms;
 	opacity: 0.8;
 	width: 6em;
 }
@@ -163,18 +162,16 @@ header li a {
 	margin: 0.1em 0.2em;
 }
 
-
 header, header > ul, header .view {
 	position: absolute;
 }
 
- section {
+section {
 	box-sizing: border-box;
 	height:  auto;
 	padding: 5em 0em 2em 0em;
 	background: #333;	
 	box-sizing: border-box;
-	transition: background 120ms;
 }
 
 section h1, section h2, section h3 {
@@ -344,7 +341,11 @@ body.light .section-nav a:hover{
 
 #burger { display: none; }
 
-@media screen and (max-width: 1048px) {
+@media screen and (max-width: 1284px) {
+header, section, footer {margin-left: 0%; margin-right: 0%; width: 100%;}
+}
+
+@media screen and (max-width: 960px) {
   body { padding: 0; }
   header, section, footer {margin-left: 0; margin-right: 0; width: 100%;}
   header { position: absolute; }

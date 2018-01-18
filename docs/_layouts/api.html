@@ -55,10 +55,10 @@
           </ul>
           <script>
             function change_themes() {
-              if(localStorage.getItem("theme") == 'light') {
-                  localStorage.setItem("theme", "dark");
-              } else {
+              if(localStorage.getItem("theme") == 'dark') {
                   localStorage.setItem("theme", "light");
+              } else {
+                  localStorage.setItem("theme", "dark");
               }
               document.getElementsByTagName('body')[0].className = localStorage.getItem("theme");
               document.getElementsByTagName('html')[0].className = localStorage.getItem("theme");
@@ -67,9 +67,9 @@
               return false;
             };
             function set_theme_link() {
-              document.getElementById('theme').innerHTML = ( (localStorage.getItem("theme") == 'light') ? "Night" : "Day") + " Theme";
+              document.getElementById('theme').innerHTML = ( (localStorage.getItem("theme") == 'dark') ?  "Day" : "Night" ) + " Theme";
             }
-            document.getElementsByTagName('body')[0].className = (localStorage.getItem("theme") == 'light') ? "light" : "dark";
+            document.getElementsByTagName('body')[0].className = (localStorage.getItem("theme") == 'dark') ?  "dark" : "light";
             document.getElementsByTagName('html')[0].className = document.getElementsByTagName('body')[0].className;
             set_theme_link();
           </script>
