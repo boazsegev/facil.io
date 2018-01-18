@@ -9,19 +9,7 @@ This documentation is incomplete. I would love your help to finish it up. Until 
 
 ## Overview
 
-The `sock` linrary was born to solve [many concerns](sock_why) that pop up when using the system sockets API directly.
-
-It supports TCP/IP sockets as well as unix doamin sockets. Pipes can also be attached to the library.
-
-The `sock.h` API can be divided into a few different categories:
-
-- General helper functions
-
-- Accepting connections and opening new sockets.
-
-- Sending and receiving data.
-
-- Read/Write Hooks.
+The `fio_cli.h` helper was created to make command line interfaces easier to manage, adding automatic argument documentation, aliases, string to integer conversion, etc'.
 
 ### example
 

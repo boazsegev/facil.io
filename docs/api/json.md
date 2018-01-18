@@ -54,8 +54,8 @@ int main(int argc, char const *argv[]) {
   }
   // format the JSON back to a String object and print it up
   FIOBJ str = fiobj_obj2json(obj, PRETTY);
-  printf("\nOriginal JSON length was: %lu bytes,"
-         "output is %lu bytes:\n\n%s\n\n",
+  printf("\nParsed JSON input was: %lu bytes"
+         "\nJSON output is %lu bytes:\n\n%s\n\n",
          consumed, (size_t)fiobj_obj2cstr(str).len, fiobj_obj2cstr(str).data);
   // cleanup
   fiobj_free(str);
