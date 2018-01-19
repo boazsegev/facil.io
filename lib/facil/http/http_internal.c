@@ -531,7 +531,7 @@ void http_lib_init(void) {
   REGISTER_MIME("jpgv", "video/jpeg");
   REGISTER_MIME("jpm", "video/jpm");
   REGISTER_MIME("js", "application/javascript");
-  REGISTER_MIME("json", "application/json; charset=UTF-8");
+  REGISTER_MIME("json", "application/json");
   REGISTER_MIME("jsonml", "application/jsonml+json");
   REGISTER_MIME("kar", "audio/midi");
   REGISTER_MIME("karbon", "application/vnd.kde.karbon");
