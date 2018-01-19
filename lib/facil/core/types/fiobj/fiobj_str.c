@@ -249,9 +249,10 @@ __attribute__((format(printf, 1, 0))) FIOBJ fiobj_strvprintf(const char *format,
     str = fiobj_str_new("", 0);
   if (len <= 0)
     return str;
-  str = fiobj_str_new(NULL, len);
+  str = fiobj_str_buf(len);
   char *mem = FIOBJECT2VTBL(str)->to_str(str).data;
   vsnprintf(mem, len + 1, format, argv);
+  fiobj_str_setlen(str, len);
   return str;
 }
 __attribute__((format(printf, 1, 2))) FIOBJ fiobj_strprintf(const char *format,
