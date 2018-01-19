@@ -577,8 +577,9 @@ intptr_t facil_connect(struct facil_connect_args opt) {
   };
   uuid = connector->uuid = sock_connect(opt.address, opt.port);
   /* check for errors, always invoke the on_fail if required */
-  if (uuid == -1)
+  if (uuid == -1) {
     goto error;
+  }
   if (facil_attach(uuid, &connector->protocol) == -1) {
     sock_close(uuid);
     goto error;
@@ -780,7 +781,7 @@ static struct {
   fio_hash_s handlers;
   spn_lock_i lock;
   uint8_t client_mode;
-  char cluster_name[64];
+  char cluster_name[128];
 } facil_cluster_data = {
     .lock = SPN_LOCK_INIT,
     .root = -1,
@@ -1165,6 +1166,7 @@ static void cluster_on_start(void *udata1, void *udata) {
     // facil_force_event(facil_cluster_data.root, FIO_EVENT_ON_DATA);
   } else {
     facil_cluster_data.client_mode = 1;
+    close(sock_uuid2fd(facil_cluster_data.root)); /* prevent `shutdown` */
     sock_close(facil_cluster_data.root);
     FIO_HASH_FOR_LOOP(&facil_cluster_data.clients, i) { sock_close(i->key); }
     fio_hash_free(&facil_cluster_data.clients);
@@ -1184,14 +1186,32 @@ static void cluster_on_start(void *udata1, void *udata) {
 }
 
 static int facil_cluster_init(void) {
-  memcpy(facil_cluster_data.cluster_name, "facil-io-sock-", 14);
-  facil_cluster_data
-      .cluster_name[14 + fio_ltoa(facil_cluster_data.cluster_name + 14,
-                                  getpid(), 10)] = 0;
+  /* create a unique socket name */
+  char *tmp_folder = getenv("TMPDIR");
+  uint16_t tmp_folder_len = 0;
+  if (!tmp_folder || (tmp_folder_len = strlen(tmp_folder) > 100)) {
+    tmp_folder = P_tmpdir;
+    if (tmp_folder)
+      tmp_folder_len = strlen(tmp_folder);
+  }
+  if (tmp_folder_len >= 100)
+    tmp_folder_len = 0;
+  if (tmp_folder_len) {
+    memcpy(facil_cluster_data.cluster_name, tmp_folder, tmp_folder_len);
+    if (facil_cluster_data.cluster_name[tmp_folder_len - 1] != '/')
+      facil_cluster_data.cluster_name[tmp_folder_len++] = '/';
+  }
+  memcpy(facil_cluster_data.cluster_name + tmp_folder_len, "facil-io-sock-",
+         14);
+  tmp_folder_len += 14;
+  tmp_folder_len +=
+      fio_ltoa(facil_cluster_data.cluster_name + tmp_folder_len, getpid(), 8);
+  facil_cluster_data.cluster_name[tmp_folder_len] = 0;
+
+  /* remove if existing */
   unlink(facil_cluster_data.cluster_name);
+  /* create, bind, listen */
   facil_cluster_data.root = sock_listen(facil_cluster_data.cluster_name, NULL);
-  chmod(facil_cluster_data.cluster_name, 0777);
-  fchmod(sock_uuid2fd(facil_cluster_data.root), 0777);
 
   if (facil_cluster_data.root == -1) {
     perror("FATAL ERROR: (facil.io cluster) failed to open cluster socket.\n"

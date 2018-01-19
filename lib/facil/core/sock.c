@@ -26,6 +26,7 @@ Includes and state
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
 
@@ -626,6 +627,8 @@ intptr_t sock_listen(const char *address, const char *port) {
       close(srvfd);
       return -1;
     }
+    /* chmod for foriegn connections */
+    fchmod(srvfd, 0777);
 
   } else {
     /* TCP/IP socket */
