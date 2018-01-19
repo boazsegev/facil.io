@@ -107,7 +107,9 @@ int main(int argc, char const *argv[]) {
   /*     ****  actual code ****     */
 
   SERVER_HEADER = fiobj_str_static("server", 6);
-  SERVER_NAME = fiobj_str_static("facil.io", 8);
+  SERVER_NAME = fiobj_strprintf("facil.io %u.%u.%u", FACIL_VERSION_MAJOR,
+                                FACIL_VERSION_MINOR, FACIL_VERSION_PATCH);
+
   TEXT_TYPE = http_mimetype_find("txt", 3);
 
   // RedisEngine = redis_engine_create(.address = "localhost", .port = "6379");

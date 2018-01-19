@@ -62,7 +62,8 @@ int main(int argc, char const *argv[]) {
 
   /* Server name and header */
   HTTP_HEADER_SERVER = fiobj_str_new("server", 6);
-  HTTP_VALUE_SERVER = fiobj_str_new("facil.io", 8);
+  HTTP_VALUE_SERVER = fiobj_strprintf("facil.io %u.%u.%u", FACIL_VERSION_MAJOR,
+                                      FACIL_VERSION_MINOR, FACIL_VERSION_PATCH);
   /* JSON values to be serialized */
   JSON_KEY = fiobj_str_new("message", 7);
   JSON_VALUE = fiobj_str_new("Hello, World!", 13);
