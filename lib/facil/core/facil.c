@@ -17,6 +17,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 /* *****************************************************************************
@@ -1187,7 +1188,10 @@ static int facil_cluster_init(void) {
   facil_cluster_data
       .cluster_name[14 + fio_ltoa(facil_cluster_data.cluster_name + 14,
                                   getpid(), 10)] = 0;
+  unlink(facil_cluster_data.cluster_name);
   facil_cluster_data.root = sock_listen(facil_cluster_data.cluster_name, NULL);
+  chmod(facil_cluster_data.cluster_name, 0777);
+  fchmod(sock_uuid2fd(facil_cluster_data.root), 0777);
 
   if (facil_cluster_data.root == -1) {
     perror("FATAL ERROR: (facil.io cluster) failed to open cluster socket.\n"
@@ -1502,6 +1506,7 @@ void facil_run(struct facil_run_args args) {
   /* initialize cluster */
   if (args.processes > 1) {
     if (facil_cluster_init()) {
+      kill(0, SIGINT);
       goto cleanup;
     }
     while (args.processes) {
@@ -1532,6 +1537,7 @@ cleanup:
       fprintf(stderr, "\n   !!!  Crashed trying to start the service  !!!\n");
     }
   }
+  exit(-1);
 }
 
 /**

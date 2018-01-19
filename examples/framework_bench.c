@@ -128,12 +128,12 @@ static void cli_init(int argc, char const *argv[]) {
       "workers w", "The number of processes to use. System dependent default.");
   fio_cli_accept_num(
       "port p", "The port number to listen to (set to 0 for Unix Sockets.");
-  fio_cli_accept_num("address b", "The address to bind to.");
+  fio_cli_accept_str("address b", "The address to bind to.");
   fio_cli_accept_str("public www",
                      "A public folder for serve an HTTP static file service.");
   fio_cli_accept_bool("log v", "Turns logging on (logs to terminal).");
-  fio_cli_accept_num("database db", "The database adrress.");
-  fio_cli_accept_num("database dbp", "The database port.");
+  fio_cli_accept_str("database db", "The database adrress.");
+  fio_cli_accept_num("database-port dbp", "The database port.");
 
   /* setup default port */
   if (!fio_cli_get_str("p"))
@@ -163,7 +163,7 @@ static void route_add(char *path, void (*handler)(http_s *)) {
   /* add handler to the hash map */
   size_t len = strlen(path);
   uint64_t hash = fio_siphash(path, len);
-  fio_hash_insert(&routes, hash, (void *)handler);
+  fio_hash_insert(&routes, hash, (void *)(uintptr_t)handler);
 }
 
 /* routes a request to the correct handler */
@@ -173,7 +173,8 @@ static void route_perform(http_s *h) {
   /* collect path from hash map */
   fio_cstr_s tmp = fiobj_obj2cstr(h->path);
   uint64_t hash = fio_siphash(tmp.data, tmp.len);
-  void (*handler)(http_s *) = (void (*)(http_s *))fio_hash_find(&routes, hash);
+  void (*handler)(http_s *) =
+      (void (*)(http_s *))(uintptr_t)fio_hash_find(&routes, hash);
   /* forward request or send error */
   if (handler) {
     handler(h);
