@@ -507,8 +507,9 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
     }
   }
 
-  if (!pipeline_limit)
+  if (!pipeline_limit) {
     facil_force_event(uuid, FIO_EVENT_ON_DATA);
+  }
 }
 
 /** called when a data is available, but will not run concurrently */
@@ -518,13 +519,12 @@ static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
     facil_quite(uuid);
     return;
   }
-  ssize_t i;
-  errno = 0;
-  i = sock_read(uuid, p->buf + p->buf_len, HTTP1_READ_BUFFER - p->buf_len);
-  if (i <= 0) {
-    return;
+  ssize_t i = 0;
+  if (HTTP1_READ_BUFFER - p->buf_len)
+    i = sock_read(uuid, p->buf + p->buf_len, HTTP1_READ_BUFFER - p->buf_len);
+  if (i > 0) {
+    p->buf_len += i;
   }
-  p->buf_len += i;
   http1_consume_data(uuid, p);
 }
 
