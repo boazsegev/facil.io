@@ -1475,20 +1475,28 @@ void facil_run(struct facil_run_args args) {
     ssize_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
     if (cpu_count > 0)
       args.threads = args.processes = cpu_count;
+  } else if (args.threads < 0 || args.processes < 0) {
+    ssize_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+    if (cpu_count > 0) {
+      if (args.threads < 0)
+        args.threads = cpu_count;
+      if (args.processes < 0)
+        args.processes = cpu_count;
+    }
   }
 #endif
 
-  if (!args.processes)
+  if (args.processes <= 0)
     args.processes = 1;
-  if (!args.threads)
+  if (args.threads <= 0)
     args.threads = 1;
 
   /* listen to SIGINT / SIGTERM */
   facil_setp_signal_handler();
 
   /* activate facil, fork if needed */
-  facil_data->active = args.processes;
-  facil_data->threads = args.threads;
+  facil_data->active = (uint16_t)args.processes;
+  facil_data->threads = (uint16_t)args.threads;
   facil_data->on_finish = args.on_finish;
   facil_data->on_idle = args.on_idle;
   /* initialize cluster */

@@ -250,9 +250,9 @@ Core API
 
 struct facil_run_args {
   /** The number of threads to run in the thread pool. Has "smart" defaults. */
-  uint16_t threads;
+  int16_t threads;
   /** The number of processes to run (including this one). "smart" defaults. */
-  uint16_t processes;
+  int16_t processes;
   /** called if the event loop in cycled with no pending events. */
   void (*on_idle)(void);
   /** called when the server is done, to clean up any leftovers. */
