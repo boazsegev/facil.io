@@ -26,6 +26,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <time.h>
 #include <unistd.h>
 
+/** override this if not using facil.io, also change event loop */
+#ifndef sock_uuid2fd
+#define sock_uuid2fd(uuid) ((intptr_t)((uintptr_t)uuid >> 8))
+#endif
+
 /* *****************************************************************************
 Callbacks - weak versions to be overridden.
 ***************************************************************************** */
@@ -35,26 +40,27 @@ void __attribute__((weak)) evio_on_data(void *arg) { (void)arg; }
 void __attribute__((weak)) evio_on_ready(void *arg) { (void)arg; }
 #pragma weak evio_on_error
 void __attribute__((weak)) evio_on_error(void *arg) { (void)arg; }
-#pragma weak evio_on_close
-void __attribute__((weak)) evio_on_close(void *arg) { (void)arg; }
 
 /* *****************************************************************************
 Global data and system independant code
 ***************************************************************************** */
 
-static int evio_fd = -1;
+/* epoll tester, in and out */
+static int evio_fd[3] = {-1, -1, -1};
 
 /** Closes the `epoll` / `kqueue` object, releasing it's resources. */
 void evio_close() {
-  if (evio_fd != -1)
-    close(evio_fd);
-  evio_fd = -1;
+  for (int i = 0; i < 3; ++i) {
+    if (evio_fd[i] != -1)
+      close(evio_fd[i]);
+    evio_fd[i] = -1;
+  }
 }
 
 /**
 returns true if the evio is available for adding or removing file descriptors.
 */
-int evio_isactive(void) { return evio_fd >= 0; }
+int evio_isactive(void) { return evio_fd[0] >= 0; }
 
 /* *****************************************************************************
 Linux `epoll` implementation
@@ -67,25 +73,70 @@ Creates the `epoll` or `kqueue` object.
 */
 intptr_t evio_create() {
   evio_close();
-  return evio_fd = epoll_create1(EPOLL_CLOEXEC);
+  for (int i = 0; i < 3; ++i) {
+    evio_fd[i] = epoll_create1(EPOLL_CLOEXEC);
+    if (evio_fd[i] == -1)
+      goto error;
+  }
+  for (int i = 1; i < 3; ++i) {
+    struct epoll_event chevent = {
+        .events = (EPOLLOUT | EPOLLIN), .data.fd = evio_fd[i],
+    };
+    if (epoll_ctl(evio_fd[0], EPOLL_CTL_ADD, evio_fd[i], &chevent) == -1)
+      goto error;
+  }
+  return 0;
+error:
+#if 1 || DEBUB
+  perror("ERROR: (evoid) failed to initialize");
+#endif
+  evio_close();
+  return -1;
 }
 
 /**
 Removes a file descriptor from the polling object.
 */
-// static int evio_remove(int fd) {
-//   struct epoll_event chevent = {0};
-//   return epoll_ctl(evio_fd, EPOLL_CTL_DEL, fd, &chevent);
-// }
+int evio_remove(int fd) {
+  if (evio_fd[0] < 0)
+    return -1;
+  struct epoll_event chevent = {0};
+  epoll_ctl(evio_fd[1], EPOLL_CTL_DEL, fd, &chevent);
+  epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, fd, &chevent);
+  return 0;
+}
+
+static int evio_add2(int fd, void *callback_arg, uint32_t events, int ep_fd) {
+  struct epoll_event chevent;
+  errno = 0;
+  chevent = (struct epoll_event){
+      .events = events, .data.ptr = (void *)callback_arg,
+  };
+  int ret = epoll_ctl(ep_fd, EPOLL_CTL_MOD, fd, &chevent);
+  if (ret == -1 && errno == ENOENT) {
+    errno = 0;
+    chevent = (struct epoll_event){
+        .events = events, .data.ptr = (void *)callback_arg,
+    };
+    ret = epoll_ctl(ep_fd, EPOLL_CTL_ADD, fd, &chevent);
+  }
+  return ret;
+}
 
 /**
 Adds a file descriptor to the polling object.
 */
 int evio_add(int fd, void *callback_arg) {
-  struct epoll_event chevent = {0};
-  chevent.data.ptr = (void *)callback_arg;
-  chevent.events = EPOLLOUT | EPOLLIN | EPOLLONESHOT | EPOLLRDHUP | EPOLLHUP;
-  return epoll_ctl(evio_fd, EPOLL_CTL_ADD, fd, &chevent);
+  /* is EPOLLONESHOT broken?*/
+  if (evio_add2(fd, callback_arg,
+                (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                evio_fd[1]) == -1)
+    return -1;
+  if (evio_add2(fd, callback_arg,
+                (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                evio_fd[2]) == -1)
+    return -1;
+  return 0;
 }
 
 /**
@@ -124,6 +175,8 @@ Adds a timer file descriptor, so that callbacks will be called for it's events.
 intptr_t evio_set_timer(int fd, void *callback_arg,
                         unsigned long milliseconds) {
 
+  if (evio_fd[0] < 0)
+    return -1;
   /* clear out existing timer marker, if exists. */
   char data[8]; // void * is 8 byte long
   if (read(fd, &data, 8) < 0)
@@ -137,43 +190,46 @@ intptr_t evio_set_timer(int fd, void *callback_arg,
   if (timerfd_settime(fd, 0, &new_t_data, NULL) == -1)
     return -1;
   /* add to epoll */
-  struct epoll_event chevent = {.data.ptr = (void *)callback_arg,
-                                .events = (EPOLLIN | EPOLLONESHOT)};
-  int ret = epoll_ctl(evio_fd, EPOLL_CTL_ADD, fd, &chevent);
-  if (ret == -1 && errno == EEXIST)
-    return 0;
-  return ret;
+  return evio_add2(fd, callback_arg, (EPOLLIN | EPOLLONESHOT), evio_fd[1]);
 }
 
 /**
 Reviews any pending events (up to EVIO_MAX_EVENTS) and calls any callbacks.
  */
 int evio_review(const int timeout_millisec) {
-  if (evio_fd < 0)
+  if (evio_fd[0] < 0)
     return -1;
+  struct epoll_event internal[2];
   struct epoll_event events[EVIO_MAX_EVENTS];
+  int total = 0;
   /* wait for events and handle them */
-  int active_count =
-      epoll_wait(evio_fd, events, EVIO_MAX_EVENTS, timeout_millisec);
-
-  if (active_count > 0) {
-    for (int i = 0; i < active_count; i++) {
-      if (events[i].events & (~(EPOLLIN | EPOLLOUT))) {
-        // errors are hendled as disconnections (on_close)
-        evio_on_error(events[i].data.ptr);
-      } else {
-        // no error, then it's an active event(s)
-        if (events[i].events & EPOLLOUT) {
-          evio_on_ready(events[i].data.ptr);
-        }
-        if (events[i].events & EPOLLIN)
-          evio_on_data(events[i].data.ptr);
-      }
-    } // end for loop
-  } else if (active_count < 0) {
+  int internal_count = epoll_wait(evio_fd[0], internal, 2, timeout_millisec);
+  if (internal_count == -1)
     return -1;
+  if (internal_count == 0)
+    return 0;
+  for (int i = 0; i < internal_count; ++i) {
+    int active_count =
+        epoll_wait(internal[i].data.fd, events, EVIO_MAX_EVENTS, 0);
+    if (active_count > 0) {
+      for (int i = 0; i < active_count; i++) {
+        if (events[i].events & (~(EPOLLIN | EPOLLOUT))) {
+          // errors are hendled as disconnections (on_close)
+          evio_on_error(events[i].data.ptr);
+        } else {
+          // no error, then it's an active event(s)
+          if (events[i].events & EPOLLOUT) {
+            evio_on_ready(events[i].data.ptr);
+          }
+          if (events[i].events & EPOLLIN)
+            evio_on_data(events[i].data.ptr);
+        }
+      } // end for loop
+      total += active_count;
+    }
   }
-  return active_count;
+
+  return total;
 }
 
 #endif /* system dependent code */
