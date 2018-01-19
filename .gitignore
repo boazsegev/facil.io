@@ -1,17 +1,12 @@
 tmp/*
-experimental
 html/
 public_www/
 Dockerfile
-
 libdump
 docs/_site
 
-dev/*
-!dev/about
-!dev/about/README.md
-!dev/maybe
-!dev/maybe/*
+/src/
+
 .gitignore
 .DS_Store
 .gitmodules

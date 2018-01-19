@@ -12,11 +12,11 @@ This folder contains the library code, some boilerplate application code, a comp
 
 ### Temporary boilerplate application
 
-The boilerplate code, which is a basic "Hello World!" HTTP application resides in the `dev` folder.
+The boilerplate code, which is a basic "Hello World!" HTTP application resides in the `src` folder.
 
-If you would rather name the folder `src`, make sure to update the `MAIN_ROOT` in the  `makefile`.
+If you wish to rename the folder, make sure to update the `MAIN_ROOT` in the  `makefile`.
 
-It's also possible to use sub-folders using the `MAIN_SUBFOLDERS` variable in the `makefile` (i.e., add `foo/bar` to add the sub-folder `dev/foo/bar`).
+It's also possible to use sub-folders using the `MAIN_SUBFOLDERS` variable in the `makefile` (i.e., add `foo/bar` to add the sub-folder `src/foo/bar`).
 
 ### The Library code
 

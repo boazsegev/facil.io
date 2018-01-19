@@ -13,7 +13,7 @@ LIB_PRIVATE_SUBFOLDERS=
 
 ### Development folders
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`.
-MAIN_ROOT=dev
+MAIN_ROOT=src
 # Development subfolders in the main root
 MAIN_SUBFOLDERS=
 
