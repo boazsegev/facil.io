@@ -473,9 +473,10 @@ Connection Callbacks
  */
 static const char *HTTP1_SERVICE_STR = "http1_protocol_facil_io";
 
-static inline void http1_consume_data(http1pr_s *p) {
+static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
   ssize_t i;
   size_t org_len = p->buf_len;
+  int pipeline_limit = 8;
   do {
     i = http1_fio_parser(.parser = &p->parser,
                          .buffer = p->buf + (org_len - p->buf_len),
@@ -489,7 +490,8 @@ static inline void http1_consume_data(http1pr_s *p) {
                          .on_body_chunk = http1_on_body_chunk,
                          .on_error = http1_on_error);
     p->buf_len -= i;
-  } while (i && p->buf_len && !p->stop);
+    --pipeline_limit;
+  } while (i && p->buf_len && pipeline_limit && !p->stop);
 
   if (p->buf_len && org_len != p->buf_len) {
     memmove(p->buf, p->buf + (org_len - p->buf_len), p->buf_len);
@@ -504,6 +506,9 @@ static inline void http1_consume_data(http1pr_s *p) {
       http_send_error(&p->request, 413);
     }
   }
+
+  if (!pipeline_limit)
+    facil_force_event(uuid, FIO_EVENT_ON_DATA);
 }
 
 /** called when a data is available, but will not run concurrently */
@@ -520,7 +525,7 @@ static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
     return;
   }
   p->buf_len += i;
-  http1_consume_data(p);
+  http1_consume_data(uuid, p);
 }
 
 /** called when the connection was closed, but will not run concurrently */
@@ -550,7 +555,7 @@ static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
   }
 
   /* Finish handling the same way as the normal `on_data` */
-  http1_consume_data(p);
+  http1_consume_data(uuid, p);
 }
 
 /* *****************************************************************************
