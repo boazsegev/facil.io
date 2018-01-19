@@ -87,7 +87,7 @@ intptr_t evio_create() {
   }
   return 0;
 error:
-#if 1 || DEBUB
+#if DEBUB
   perror("ERROR: (evoid) failed to initialize");
 #endif
   evio_close();

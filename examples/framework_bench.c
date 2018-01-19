@@ -108,7 +108,7 @@ static void on_request_json(http_s *h) {
 /* handles plain text requests (Hello World) */
 static void on_request_plain_text(http_s *h) {
   http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
-  http_send_body(h, "Hello World!", 12);
+  http_send_body(h, "Hello, World!", 13);
 }
 
 /* *****************************************************************************
