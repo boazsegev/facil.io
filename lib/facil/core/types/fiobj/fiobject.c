@@ -155,7 +155,7 @@ static inline int fiobj_iseq_simple(const FIOBJ o, const FIOBJ o2) {
     return 0; /* they should have compared equal before. */
   if (!FIOBJ_IS_ALLOCATED(o) || !FIOBJ_IS_ALLOCATED(o2))
     return 0; /* they should have compared equal before. */
-  if (FIOBJECT2HEAD(o)->type != FIOBJECT2HEAD(o)->type)
+  if (FIOBJECT2HEAD(o)->type != FIOBJECT2HEAD(o2)->type)
     return 0; /* non-type equality is a barriar to equality. */
   if (!FIOBJECT2VTBL(o)->is_eq(o, o2))
     return 0;

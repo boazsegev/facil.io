@@ -68,16 +68,22 @@ uint64_t fio_siphash(const void *data, size_t len) {
   switch (len) { /* fallthrough is intentional */
   case 7:
     pos[6] = w8[6];
+    /* fallthrough */
   case 6:
     pos[5] = w8[5];
+    /* fallthrough */
   case 5:
     pos[4] = w8[4];
+    /* fallthrough */
   case 4:
     pos[3] = w8[3];
+    /* fallthrough */
   case 3:
     pos[2] = w8[2];
+    /* fallthrough */
   case 2:
     pos[1] = w8[1];
+    /* fallthrough */
   case 1:
     pos[0] = w8[0];
   }
