@@ -68,25 +68,24 @@ uint64_t fio_siphash(const void *data, size_t len) {
   switch (len) { /* fallthrough is intentional */
   case 7:
     pos[6] = w8[6];
-    __attribute__((fallthrough));
+    /* fallthrough */
   case 6:
     pos[5] = w8[5];
-    __attribute__((fallthrough));
+    /* fallthrough */
   case 5:
     pos[4] = w8[4];
-    __attribute__((fallthrough));
+    /* fallthrough */
   case 4:
     pos[3] = w8[3];
-    __attribute__((fallthrough));
+    /* fallthrough */
   case 3:
     pos[2] = w8[2];
-    __attribute__((fallthrough));
+    /* fallthrough */
   case 2:
     pos[1] = w8[1];
-    __attribute__((fallthrough));
+    /* fallthrough */
   case 1:
     pos[0] = w8[0];
-    __attribute__((fallthrough));
   }
   word.str[7] = len_mod;
 
