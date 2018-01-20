@@ -337,6 +337,19 @@ typedef struct http_settings_s {
    *       sockets count towards a server's limit.
    */
   intptr_t max_clients;
+  /** reserved for future use. */
+  intptr_t reserved1;
+  /** reserved for future use. */
+  intptr_t reserved2;
+  /** reserved for future use. */
+  intptr_t reserved3;
+  /** reserved for future use. */
+  intptr_t reserved4;
+  /**
+   * The maximum websocket message size/buffer (in bytes) for Websocket
+   * connections. Defaults to ~250KB.
+   */
+  size_t ws_max_msg_size;
   /**
    * An HTTP/1.x connection timeout.
    *
@@ -345,11 +358,6 @@ typedef struct http_settings_s {
    * Note: the connection might be closed (by other side) before timeout occurs.
    */
   uint8_t timeout;
-  /**
-   * The maximum websocket message size/buffer (in bytes) for Websocket
-   * connections. Defaults to ~250KB.
-   */
-  size_t ws_max_msg_size;
   /**
    * Timeout for the websocket connections, a ping will be sent whenever the
    * timeout is reached. Defaults to 40 seconds.
