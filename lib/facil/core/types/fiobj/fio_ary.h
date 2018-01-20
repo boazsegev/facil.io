@@ -274,7 +274,7 @@ FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, intptr_t pos) {
  * If an error occurs, the same data passed to the function is returned.
  */
 FIO_FUNC inline void *fio_ary_set(fio_ary_s *ary, void *data, intptr_t pos) {
-  if (!ary) {
+  if (!ary->arry) {
     fio_ary_new(ary, 0);
   }
   void *old = NULL;
