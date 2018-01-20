@@ -115,19 +115,19 @@ OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
 
 # S2N TLS/SSL library: https://github.com/awslabs/s2n
 ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -ls2n -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-  $(info Detected the s2n library, setting HAVE_S2N)
+  $(info * Detected the s2n library, setting HAVE_S2N)
 	FLAGS:=$(FLAGS) HAVE_S2N
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
 
 # add BearSSL/OpenSSL library flags
 ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-  $(info Detected the BearSSL library, setting HAVE_BEARSSL)
+  $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
 else
 ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-  $(info Detected the OpenSSL library, setting HAVE_OPENSSL)
+  $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
 endif
@@ -135,7 +135,7 @@ endif
 
 # add ZLib library flags
 ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lz -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-  $(info Detected the zlib library, setting HAVE_ZLIB)
+  $(info * Detected the zlib library, setting HAVE_ZLIB)
 	FLAGS:=$(FLAGS) HAVE_ZLIB
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
 endif
