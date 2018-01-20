@@ -319,8 +319,10 @@ static void facil_libcleanup(void) {
 
 static void facil_lib_init(void) {
   ssize_t capa = sock_max_capacity();
-  if (capa < 0)
-    perror("ERROR: socket capacity unknown / failure"), exit(ENOMEM);
+  if (capa < 0) {
+    perror("ERROR: socket capacity unknown / failure");
+    exit(ENOMEM);
+  }
   size_t mem_size =
       sizeof(*facil_data) + (capa * sizeof(struct connection_data_s));
   spn_lock(&facil_libinit_lock);
@@ -328,8 +330,10 @@ static void facil_lib_init(void) {
     goto finish;
   facil_data = mmap(NULL, mem_size, PROT_READ | PROT_WRITE | PROT_EXEC,
                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (!facil_data)
-    perror("ERROR: Couldn't initialize the facil.io library"), exit(0);
+  if (!facil_data) {
+    perror("ERROR: Couldn't initialize the facil.io library");
+    exit(0);
+  }
   memset(facil_data, 0, mem_size);
   *facil_data = (struct facil_data_s){.capacity = capa, .parent = getpid()};
   facil_external_root_init();
@@ -340,7 +344,8 @@ static void facil_lib_init(void) {
             "Initialized the facil.io library.\n"
             "facil.io's memory footprint per connection == %lu Bytes X %lu\n"
             "=== facil.io's memory footprint: %lu ===\n\n",
-            sizeof(struct connection_data_s), facil_data->capacity, mem_size);
+            (unsigned long)sizeof(struct connection_data_s),
+            (unsigned long)facil_data->capacity, (unsigned long)mem_size);
 #endif
 finish:
   spn_unlock(&facil_libinit_lock);
@@ -464,11 +469,15 @@ listener_alloc(struct facil_listen_args settings) {
 
 inline static void listener_on_start(size_t fd) {
   intptr_t uuid = sock_fd2uuid(fd);
-  if (uuid < 0)
-    fprintf(stderr, "ERROR: listening socket dropped?\n"), kill(0, SIGINT),
-        exit(4);
-  if (evio_add(fd, (void *)uuid) < 0)
-    perror("Couldn't register listening socket"), kill(0, SIGINT), exit(4);
+  if (uuid < 0) {
+    fprintf(stderr, "ERROR: listening socket dropped?\n");
+    kill(0, SIGINT);
+    exit(4);
+  }
+  if (evio_add(fd, (void *)uuid) < 0) {
+    perror("Couldn't register listening socket"), kill(0, SIGINT);
+    exit(4);
+  }
   fd_data(fd).active = facil_data->last_cycle.tv_sec;
   // call the on_init callback
   struct ListenerProtocol *listener =
@@ -664,9 +673,11 @@ static inline timer_protocol_s *timer_alloc(void (*task)(void *), void *arg,
 
 inline static void timer_on_server_start(int fd) {
   if (evio_set_timer(fd, (void *)sock_fd2uuid(fd),
-                     prot2timer(fd_data(fd).protocol).milliseconds))
-    perror("Couldn't register a required timed event."), kill(0, SIGINT),
-        exit(4);
+                     prot2timer(fd_data(fd).protocol).milliseconds)) {
+    perror("Couldn't register a required timed event.");
+    kill(0, SIGINT);
+    exit(4);
+  }
 }
 
 /**
@@ -1474,7 +1485,8 @@ void facil_reap_children(void) {
   sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
   if (sigaction(SIGCHLD, &sa, 0) == -1) {
     perror("Child reaping initialization failed");
-    kill(0, SIGINT), exit(errno);
+    kill(0, SIGINT);
+    exit(errno);
   }
 }
 

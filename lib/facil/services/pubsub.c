@@ -170,8 +170,10 @@ static client_s *pubsub_client_new(client_s client, channel_s channel) {
   }
   /* no client, we need a new client */
   cl = malloc(sizeof(*cl));
-  if (!cl)
-    perror("FATAL ERROR: (pubsub) client memory allocation error"), exit(errno);
+  if (!cl) {
+    perror("FATAL ERROR: (pubsub) client memory allocation error");
+    exit(errno);
+  }
   *cl = client;
   cl->ref = 1;
   cl->sub_count = 1;
@@ -186,9 +188,10 @@ static client_s *pubsub_client_new(client_s client, channel_s channel) {
   if (!ch) {
     /* open new channel */
     ch = malloc(sizeof(*ch));
-    if (!ch)
-      perror("FATAL ERROR: (pubsub) channel memory allocation error"),
-          exit(errno);
+    if (!ch) {
+      perror("FATAL ERROR: (pubsub) channel memory allocation error");
+      exit(errno);
+    }
     *ch = (channel_s){
         .name = channel.name,
         .clients = FIO_LS_INIT(ch->clients),
@@ -234,10 +237,11 @@ static int pubsub_client_destroy(client_s *client) {
     channel_s *test = fio_hash_insert(
         ch_hashmap, (fio_hash_key_s){.hash = channel_hash, .obj = ch->name},
         NULL);
-    if (test != ch)
+    if (test != ch) {
       fprintf(stderr,
-              "FATAL ERROR: (pubsub) channel database corruption detected.\n"),
-          exit(-1);
+              "FATAL ERROR: (pubsub) channel database corruption detected.\n");
+      exit(-1);
+    }
     pubsub_on_channel_destroy(ch);
   }
   spn_unlock(&lock);
@@ -336,10 +340,11 @@ int pubsub_publish(struct pubsub_message_s m) {
     m.engine = PUBSUB_DEFAULT_ENGINE;
     if (!m.engine) {
       m.engine = PUBSUB_CLUSTER_ENGINE;
-      if (!m.engine)
+      if (!m.engine) {
         fprintf(stderr,
-                "FATAL ERROR: (pubsub) engine pointer data corrupted! \n"),
-            exit(-1);
+                "FATAL ERROR: (pubsub) engine pointer data corrupted! \n");
+        exit(-1);
+      }
     }
   }
   return m.engine->publish(m.engine, m.channel, m.message);
@@ -487,9 +492,10 @@ int pubsub_en_process_publish(const pubsub_engine_s *eng, FIOBJ channel,
   uint64_t channel_hash = fiobj_obj2hash(channel);
   msg_wrapper_s *m = malloc(sizeof(*m));
   int ret = -1;
-  if (!m)
-    perror("FATAL ERROR: (pubsub) couldn't allocate message wrapper"),
-        exit(errno);
+  if (!m) {
+    perror("FATAL ERROR: (pubsub) couldn't allocate message wrapper");
+    exit(errno);
+  }
   *m = (msg_wrapper_s){
       .ref = 1, .channel = fiobj_dup(channel), .msg = fiobj_dup(msg)};
   spn_lock(&lock);

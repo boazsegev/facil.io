@@ -263,10 +263,10 @@ void fio_base64_test(void) {
   fprintf(stderr, " Base64 decode passed.\n");
   {
     char buff_b64[] = "any carnal pleasure.";
-    size_t b64_len;
     clock_t start = clock();
     for (size_t i = 0; i < 100000; i++) {
-      b64_len = fio_base64_encode(buffer, buff_b64, sizeof(buff_b64) - 1);
+      size_t b64_len =
+          fio_base64_encode(buffer, buff_b64, sizeof(buff_b64) - 1);
       fio_base64_decode(buff_b64, buffer, b64_len);
     }
     fprintf(stderr, "fio 100K Base64: %lf\n",

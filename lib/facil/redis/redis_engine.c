@@ -654,7 +654,7 @@ static int resp_on_message(resp_parser_s *parser) {
       // FIOBJ *ary = fiobj_ary2prt(msg);
       // for (size_t i = 0; i < fiobj_ary_count(msg); ++i) {
       //   fio_cstr_s tmp = fiobj_obj2cstr(ary[i]);
-      //   fprintf(stderr, "(%lu) %s\n", i, tmp.data);
+      //   fprintf(stderr, "(%lu) %s\n", (unsigned long)i, tmp.data);
       // }
       fio_cstr_s tmp = fiobj_obj2cstr(fiobj_ary_index(msg, 0));
       redis_engine_s *r = parser2redis(parser);

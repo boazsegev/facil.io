@@ -101,8 +101,10 @@ Number API
 /** Creates a Number object. Remember to use `fiobj_free`. */
 FIOBJ fiobj_num_new_bignum(intptr_t num) {
   fiobj_num_s *o = malloc(sizeof(*o));
-  if (!o)
-    perror("ERROR: fiobj number couldn't allocate memory"), exit(errno);
+  if (!o) {
+    perror("ERROR: fiobj number couldn't allocate memory");
+    exit(errno);
+  }
   *o = (fiobj_num_s){
       .head =
           {
@@ -135,8 +137,10 @@ Float API
 /** Creates a Float object. Remember to use `fiobj_free`.  */
 FIOBJ fiobj_float_new(double num) {
   fiobj_float_s *o = malloc(sizeof(*o));
-  if (!o)
-    perror("ERROR: fiobj float couldn't allocate memory"), exit(errno);
+  if (!o) {
+    perror("ERROR: fiobj float couldn't allocate memory");
+    exit(errno);
+  }
   *o = (fiobj_float_s){
       .head =
           {
@@ -290,7 +294,6 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
   } else if (base == 16) {
     uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
     uint8_t i = 0;    /* counting bytes */
-    uint8_t tmp = 0;
     while (i < 8 && (n & 0xFF00000000000000) == 0) {
       n = n << 8;
       i++;
@@ -302,7 +305,7 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
     }
     /* write the damn thing */
     while (i < 8) {
-      tmp = (n & 0xF000000000000000) >> 60;
+      uint8_t tmp = (n & 0xF000000000000000) >> 60;
       dest[len++] = hex_notation[tmp];
       tmp = (n & 0x0F00000000000000) >> 56;
       dest[len++] = hex_notation[tmp];

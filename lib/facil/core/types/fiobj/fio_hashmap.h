@@ -251,8 +251,10 @@ FIO_FUNC void fio_hash_new(fio_hash_s *h) {
                                                    FIO_HASH_INITIAL_CAPACITY),
       .capa = FIO_HASH_INITIAL_CAPACITY,
   };
-  if (!h->map || !h->ordered)
-    perror("ERROR: Hash Table couldn't allocate memory"), exit(errno);
+  if (!h->map || !h->ordered) {
+    perror("ERROR: Hash Table couldn't allocate memory");
+    exit(errno);
+  }
   h->ordered[0] =
       (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
 }
@@ -372,14 +374,18 @@ retry_rehashing:
     h->capa = h->mask + 1;
     free(h->map);
     h->map = (fio_hash_data_s *)calloc(sizeof(*h->map), h->capa);
-    if (!h->map)
-      perror("HashMap Allocation Failed"), exit(errno);
+    if (!h->map) {
+      perror("HashMap Allocation Failed");
+      exit(errno);
+    }
     /* the ordered list doesn't care about initialized memory, so realloc */
     /* will be faster. */
     h->ordered = (fio_hash_data_ordered_s *)realloc(
         h->ordered, h->capa * sizeof(*h->ordered));
-    if (!h->ordered)
-      perror("HashMap Reallocation Failed"), exit(errno);
+    if (!h->ordered) {
+      perror("HashMap Reallocation Failed");
+      exit(errno);
+    }
   }
   if (!h->count) {
     /* empty hash */

@@ -74,8 +74,10 @@ Allocation
 
 static FIOBJ fiobj_ary_alloc(size_t capa, size_t start_at) {
   fiobj_ary_s *ary = malloc(sizeof(*ary));
-  if (!ary)
-    perror("ERROR: fiobj array couldn't allocate memory"), exit(errno);
+  if (!ary) {
+    perror("ERROR: fiobj array couldn't allocate memory");
+    exit(errno);
+  }
   *ary = (fiobj_ary_s){
       .head =
           {

@@ -152,8 +152,10 @@ FIO_FUNC inline void fio_ary_new(fio_ary_s *ary, size_t capa) {
     capa = 32;
   *ary = (fio_ary_s){.arry = (void **)malloc(capa * sizeof(*ary->arry)),
                      .capa = capa};
-  if (!ary->arry)
-    perror("ERROR: facil.io dynamic array couldn't be allocated"), exit(errno);
+  if (!ary->arry) {
+    perror("ERROR: facil.io dynamic array couldn't be allocated");
+    exit(errno);
+  }
 }
 FIO_FUNC inline void fio_ary_free(fio_ary_s *ary) {
   if (ary)
@@ -202,9 +204,10 @@ FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, intptr_t needed) {
    * living without memory... besides, malloc is optimistic these days. */
   ary->arry = (void **)realloc(ary->arry, updated_capa * sizeof(*ary->arry));
   ary->capa = updated_capa;
-  if (!ary->arry)
-    perror("ERROR: facil.io dynamic array couldn't be reallocated"),
-        exit(errno);
+  if (!ary->arry) {
+    perror("ERROR: facil.io dynamic array couldn't be reallocated");
+    exit(errno);
+  }
 
   if (needed >= 0) /* we're done, realloc grows the top of the address space*/
     return;

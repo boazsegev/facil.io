@@ -149,8 +149,10 @@ Hash API
  */
 FIOBJ fiobj_hash_new(void) {
   fiobj_hash_s *h = malloc(sizeof(*h));
-  if (!h)
-    perror("ERROR: fiobj hash couldn't allocate memory"), exit(errno);
+  if (!h) {
+    perror("ERROR: fiobj hash couldn't allocate memory");
+    exit(errno);
+  }
   *h = (fiobj_hash_s){.head = {.ref = 1, .type = FIOBJ_T_HASH}};
   fio_hash_new(&h->hash);
   return (FIOBJ)h | FIOBJECT_HASH_FLAG;

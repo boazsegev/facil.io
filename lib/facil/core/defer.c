@@ -446,7 +446,8 @@ void defer_test(void) {
   fprintf(stderr,
           "Deferless (direct call) counter: %lu cycles with i_count = %lu, "
           "%lu/%lu free/malloc\n",
-          end - start, i_count, count_dealloc, count_alloc);
+          (unsigned long)(end - start), (unsigned long)i_count,
+          (unsigned long)count_dealloc, (unsigned long)count_alloc);
 
   spn_lock(&i_lock);
   COUNT_RESET;
@@ -461,7 +462,8 @@ void defer_test(void) {
           "Defer single thread, two tasks: "
           "%lu cycles with i_count = %lu, %lu/%lu "
           "free/malloc\n",
-          end - start, i_count, count_dealloc, count_alloc);
+          (unsigned long)(end - start), (unsigned long)i_count,
+          (unsigned long)count_dealloc, (unsigned long)count_alloc);
 
   spn_lock(&i_lock);
   COUNT_RESET;
@@ -476,7 +478,8 @@ void defer_test(void) {
   fprintf(stderr,
           "Defer single thread: %lu cycles with i_count = %lu, %lu/%lu "
           "free/malloc\n",
-          end - start, i_count, count_dealloc, count_alloc);
+          (unsigned long)(end - start), (unsigned long)i_count,
+          (unsigned long)count_dealloc, (unsigned long)count_alloc);
 
   spn_lock(&i_lock);
   COUNT_RESET;
@@ -495,8 +498,8 @@ void defer_test(void) {
     fprintf(stderr,
             "Defer multi-thread (%d threads): %lu cycles with i_count = %lu, "
             "%lu/%lu free/malloc\n",
-            DEFER_TEST_THREAD_COUNT, end - start, i_count, count_dealloc,
-            count_alloc);
+            DEFER_TEST_THREAD_COUNT, (unsigned long)(end - start),
+            (unsigned long)i_count, (unsigned long)count_dealloc, count_alloc);
   } else
     fprintf(stderr, "Defer multi-thread: FAILED!\n");
 
@@ -513,17 +516,19 @@ void defer_test(void) {
   fprintf(stderr,
           "Defer single thread (2): %lu cycles with i_count = %lu, %lu/%lu "
           "free/malloc\n",
-          end - start, i_count, count_dealloc, count_alloc);
+          (unsigned long)(end - start), (unsigned long)i_count,
+          (unsigned long)count_dealloc, (unsigned long)count_alloc);
 
   fprintf(stderr, "calling defer_perform.\n");
   defer(text_task, NULL, NULL);
   defer_perform();
   fprintf(stderr,
           "defer_perform returned. i_count = %lu, %lu/%lu free/malloc\n",
-          i_count, count_dealloc, count_alloc);
+          (unsigned long)i_count, (unsigned long)count_dealloc,
+          (unsigned long)count_alloc);
   defer_clear_queue();
-  fprintf(stderr, "* Defer cleared queue: %lu/%lu free/malloc\n", count_dealloc,
-          count_alloc);
+  fprintf(stderr, "* Defer cleared queue: %lu/%lu free/malloc\n",
+          (unsigned long)count_dealloc, (unsigned long)count_alloc);
 }
 
 #endif

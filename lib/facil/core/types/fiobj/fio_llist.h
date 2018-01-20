@@ -131,8 +131,10 @@ Independent Implementation
 FIO_FUNC inline void fio_ls_push(fio_ls_s *pos, const void *obj) {
   /* prepare item */
   fio_ls_s *item = (fio_ls_s *)malloc(sizeof(*item));
-  if (!item)
-    perror("ERROR: simple list couldn't allocate memory"), exit(errno);
+  if (!item) {
+    perror("ERROR: simple list couldn't allocate memory");
+    exit(errno);
+  }
   *item = (fio_ls_s){.prev = pos, .next = pos->next, .obj = obj};
   /* inject item */
   pos->next->prev = item;

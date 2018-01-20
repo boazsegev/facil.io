@@ -147,8 +147,10 @@ none_in_pool:
     goto init;
   spn_unlock(&packet_pool.lock);
   packet = malloc(sizeof(*packet));
-  if (!packet)
-    perror("FATAL ERROR: memory allocation failed"), exit(errno);
+  if (!packet) {
+    perror("FATAL ERROR: memory allocation failed");
+    exit(errno);
+  }
   return packet;
 init:
   packet_pool.init = 1;
@@ -1224,9 +1226,10 @@ void sock_libtest(void) {
     pos = pos->next;
   }
   fprintf(stderr, "Packet pool test %s (%lu =? %lu)\n",
-          count == BUFFER_PACKET_POOL ? "PASS" : "FAIL", BUFFER_PACKET_POOL,
-          count);
-  printf("Allocated sock capacity %lu X %lu\n", sock_max_capacity(),
-         sizeof(struct fd_data_s));
+          count == BUFFER_PACKET_POOL ? "PASS" : "FAIL",
+          (unsigned long)BUFFER_PACKET_POOL, (unsigned long)count);
+  printf("Allocated sock capacity %lu X %lu\n",
+         (unsigned long)sock_max_capacity(),
+         (unsigned long)sizeof(struct fd_data_s));
 }
 #endif

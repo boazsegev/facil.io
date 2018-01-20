@@ -467,9 +467,8 @@ static const uint8_t utf8d[] = {
 
 static inline uint32_t validate_utf8(uint8_t *str, size_t len) {
   uint32_t state = 0;
-  uint32_t type;
   while (len) {
-    type = utf8d[*str];
+    uint32_t type = utf8d[*str];
     state = utf8d[256 + state * 16 + type];
     if (state == UTF8_REJECT)
       return 0;

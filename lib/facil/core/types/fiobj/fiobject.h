@@ -466,10 +466,9 @@ FIO_INLINE int fiobj_is_true(const FIOBJ o) {
 FIO_INLINE intptr_t fiobj_obj2num(const FIOBJ o) {
   if (o & FIOBJECT_NUMBER_FLAG)
     return (((intptr_t)o) >> 1);
-  if (!o || (o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_PRIMITIVE_FLAG)
+  if (!o || !FIOBJ_IS_ALLOCATED(o))
     return o == FIOBJ_T_TRUE;
   return FIOBJECT2VTBL(o)->to_i(o);
-  return 0;
 }
 
 /** Converts a number to a temporary, thread safe, C string object */

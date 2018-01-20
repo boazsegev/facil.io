@@ -171,7 +171,6 @@ static void fio_cli_parse(void) {
   // }
 
   const char *start;
-  size_t len;
   FIOBJ arg_name;
 
   /* ignore the first element, it's the program's name. */
@@ -193,7 +192,7 @@ static void fio_cli_parse(void) {
     }
     /* we walk the name backwards, so `name` is tested before `n` */
     start = FIO_CLI_ARGV[i] + 1;
-    len = strlen(start);
+    size_t len = strlen(start);
     while (len && !(arg_name = fio_cli_get_name(start, len))) {
       --len;
     }

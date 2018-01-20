@@ -835,7 +835,8 @@ int http_listen(const char *port, const char *binding,
   if (arg_settings.on_request == NULL) {
     fprintf(stderr, "ERROR: http_listen requires the .on_request parameter "
                     "to be set\n");
-    kill(0, SIGINT), exit(11);
+    kill(0, SIGINT);
+    exit(11);
   }
 
   http_settings_s *settings = http_settings_new(arg_settings);

@@ -145,8 +145,10 @@ static protocol_s *echo_on_open(intptr_t uuid, void *udata) {
 
 int main() {
   // Setup a listening socket
-  if (facil_listen(.port = "8888", .on_open = echo_on_open))
-    perror("No listening socket available on port 8888"), exit(-1);
+  if (facil_listen(.port = "8888", .on_open = echo_on_open)) {
+      perror("No listening socket available on port 8888");
+      exit(-1);
+  }
   // Run the server and hang until a stop signal is received.
   facil_run(.threads = 4, .processes = 1);
 }

@@ -146,8 +146,10 @@ FIOBJ fiobj_str_buf(size_t capa) {
     capa = PAGE_SIZE;
 
   fiobj_str_s *s = malloc(sizeof(*s));
-  if (!s)
-    perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
+  if (!s) {
+    perror("ERROR: fiobj string couldn't allocate memory");
+    exit(errno);
+  }
 
   if (capa <= STR_INTENAL_CAPA) {
     *s = (fiobj_str_s){
@@ -168,9 +170,10 @@ FIOBJ fiobj_str_buf(size_t capa) {
         .capa = capa,
         .str = malloc(capa),
     };
-    if (!s->str)
-      perror("ERROR: fiobj string couldn't allocate buffer memory"),
-          exit(errno);
+    if (!s->str) {
+      perror("ERROR: fiobj string couldn't allocate buffer memory");
+      exit(errno);
+    }
   }
   return ((uintptr_t)s | FIOBJECT_STRING_FLAG);
 }
@@ -192,8 +195,10 @@ FIOBJ fiobj_str_new(const char *str, size_t len) {
  */
 FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity) {
   fiobj_str_s *s = malloc(sizeof(*s));
-  if (!s)
-    perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
+  if (!s) {
+    perror("ERROR: fiobj string couldn't allocate memory");
+    exit(errno);
+  }
   *s = (fiobj_str_s){
       .head =
           {
@@ -223,8 +228,10 @@ FIOBJ fiobj_str_static(const char *str, size_t len) {
     return fiobj_str_new(str, len);
 #endif
   fiobj_str_s *s = malloc(sizeof(*s));
-  if (!s)
-    perror("ERROR: fiobj string couldn't allocate memory"), exit(errno);
+  if (!s) {
+    perror("ERROR: fiobj string couldn't allocate memory");
+    exit(errno);
+  }
   *s = (fiobj_str_s){
       .head =
           {
@@ -357,9 +364,10 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
     if (size >> 12)
       size = ((size >> 12) + 1) << 12;
     char *mem = malloc(size);
-    if (!mem)
-      perror("FATAL ERROR: Couldn't allocate larger String memory"),
-          exit(errno);
+    if (!mem) {
+      perror("FATAL ERROR: Couldn't allocate larger String memory");
+      exit(errno);
+    }
     memcpy(mem, STR_INTENAL_STR(str), obj2str(str)->slen + 1);
     *obj2str(str) = (fiobj_str_s){
         .head =
@@ -384,15 +392,19 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
   if (obj2str(str)->capa == 0) {
     /* a static string */
     char *mem = malloc(size);
-    if (!mem)
-      perror("FATAL ERROR: Couldn't allocate new String memory"), exit(errno);
+    if (!mem) {
+      perror("FATAL ERROR: Couldn't allocate new String memory");
+      exit(errno);
+    }
     memcpy(mem, obj2str(str)->str, obj2str(str)->len + 1);
     obj2str(str)->str = mem;
   } else {
     /* it's better to crash than live without memory... */
     obj2str(str)->str = realloc(obj2str(str)->str, size);
-    if (!obj2str(str)->str)
-      perror("FATAL ERROR: Couldn't (re)allocate String memory"), exit(errno);
+    if (!obj2str(str)->str) {
+      perror("FATAL ERROR: Couldn't (re)allocate String memory");
+      exit(errno);
+    }
   }
   obj2str(str)->capa = size;
   return obj2str(str)->capa - 1;
