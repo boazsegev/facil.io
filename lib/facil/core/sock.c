@@ -821,12 +821,16 @@ intptr_t sock_connect(char *address, char *port) {
       return -1;
     }
 
-    if (connect(fd, addrinfo->ai_addr, addrinfo->ai_addrlen) < 0 &&
-        errno != EINPROGRESS) {
-      close(fd);
-      freeaddrinfo(addrinfo);
-      return -1;
+    for (struct addrinfo *i = addrinfo; i; i = i->ai_next) {
+      if (connect(fd, i->ai_addr, i->ai_addrlen) == 0 || errno == EINPROGRESS)
+        goto connection_requested;
     }
+    freeaddrinfo(addrinfo);
+    close(fd);
+    return -1;
+
+  connection_requested:
+
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     clear_fd(fd, 1);
     fdinfo(fd).addrinfo = *((struct sockaddr_in6 *)addrinfo->ai_addr);
