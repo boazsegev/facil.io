@@ -247,8 +247,8 @@ FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary) { return ary->capa; }
  * is the last item.
  */
 FIO_FUNC inline void *fio_ary_index(fio_ary_s *ary, intptr_t pos) {
-  if (!ary)
-    fio_ary_new(ary, 0);
+  if (!ary || !ary->arry)
+    return NULL;
   /* position is relative to `start`*/
   if (pos >= 0) {
     pos = pos + ary->start;
@@ -373,6 +373,8 @@ FIO_FUNC inline void *fio_ary_shift(fio_ary_s *ary) {
 FIO_FUNC inline size_t fio_ary_each(fio_ary_s *ary, size_t start_at,
                                     int (*task)(void *data, void *arg),
                                     void *arg) {
+  if (!ary || ary->start == ary->end)
+    return 0;
   const size_t start_pos = ary->start;
   start_at += start_pos;
   while (start_at < ary->end && task(ary->arry[start_at++], arg) != -1)

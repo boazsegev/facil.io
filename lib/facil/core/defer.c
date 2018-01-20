@@ -499,7 +499,8 @@ void defer_test(void) {
             "Defer multi-thread (%d threads): %lu cycles with i_count = %lu, "
             "%lu/%lu free/malloc\n",
             DEFER_TEST_THREAD_COUNT, (unsigned long)(end - start),
-            (unsigned long)i_count, (unsigned long)count_dealloc, count_alloc);
+            (unsigned long)i_count, (unsigned long)count_dealloc,
+            (unsigned long)count_alloc);
   } else
     fprintf(stderr, "Defer multi-thread: FAILED!\n");
 

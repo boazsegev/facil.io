@@ -515,10 +515,10 @@ int sock_set_non_block(int fd) {
     flags = 0;
   // printf("flags initial value was %d\n", flags);
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-#elif defined(FIOBIO)
+#elif defined(FIONBIO)
   /* Otherwise, use the old way of doing it */
   static int flags = 1;
-  return ioctl(fd, FIOBIO, &flags);
+  return ioctl(fd, FIONBIO, &flags);
 #else
 #error No functions / argumnet macros for non-blocking sockets.
 #endif

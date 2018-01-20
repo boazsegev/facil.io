@@ -1200,7 +1200,7 @@ static int facil_cluster_init(void) {
   /* create a unique socket name */
   char *tmp_folder = getenv("TMPDIR");
   uint16_t tmp_folder_len = 0;
-  if (!tmp_folder || (tmp_folder_len = strlen(tmp_folder) > 100)) {
+  if (!tmp_folder || ((tmp_folder_len = strlen(tmp_folder)) > 100)) {
     tmp_folder = P_tmpdir;
     if (tmp_folder)
       tmp_folder_len = strlen(tmp_folder);

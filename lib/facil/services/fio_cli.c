@@ -88,7 +88,6 @@ typedef enum { CLI_BOOL, CLI_NUM, CLI_STR } cli_type;
 static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
   fio_cli_init();
   const char *start = aliases;
-  size_t len = 0;
   FIOBJ arg_name = FIOBJ_INVALID;
 
   while (1) {
@@ -98,7 +97,7 @@ static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
     /* we're done */
     if (!start[0])
       return;
-    len = 0;
+    size_t len = 0;
     /* find the length of the argument name */
     while (start[len] != 0 && start[len] != ' ' && start[len] != ',')
       len++;

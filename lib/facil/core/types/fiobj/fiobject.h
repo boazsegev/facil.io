@@ -525,7 +525,6 @@ FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o) {
     return (uint64_t)o;
   fio_cstr_s s = fiobj_obj2cstr(o);
   return fio_siphash(s.buffer, s.len);
-  return 0;
 }
 
 /**
