@@ -320,11 +320,11 @@ void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
   ws->on_message = args->on_message;
   ws->on_ready = args->on_ready;
   ws->on_shutdown = args->on_shutdown;
-  // client mode?
-  ws->is_client = http_settings->is_client;
   // setup any user data
   ws->udata = args->udata;
   if (http_settings) {
+    // client mode?
+    ws->is_client = http_settings->is_client;
     // buffer limits
     ws->max_msg_size = http_settings->ws_max_msg_size;
     // update the timeout

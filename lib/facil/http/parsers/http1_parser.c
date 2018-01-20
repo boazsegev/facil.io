@@ -357,9 +357,7 @@ HTTP/1.1 parsre function
 #endif
 
 size_t http1_fio_parser_fn(struct http1_fio_parser_args_s *args) {
-  if (DEBUG) {
-    assert(args->parser && args->buffer);
-  }
+  assert(args->parser && args->buffer);
   args->parser->state.next = NULL;
   uint8_t *start = args->buffer;
   uint8_t *end = start;
