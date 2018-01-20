@@ -197,12 +197,12 @@ $(TMP_ROOT)/%.d: ;
 .PHONY : test 
 test: | clean 
 	@$(MAKE) test_build_and_run
+	-@rm $(BIN)
+	-@rm -R $(TMP_ROOT)
 
 .PHONY : test_build_and_run
 test_build_and_run: | create_tree test_add_flags test_build
 	$(BIN)
-	-@rm $(BIN)
-	-@rm -R $(TMP_ROOT)
 
 .PHONY : test_add_flags
 test_add_flags: 

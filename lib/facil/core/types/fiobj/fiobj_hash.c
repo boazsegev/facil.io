@@ -19,10 +19,7 @@ static hash_key_s hash_key_copy(hash_key_s key) {
   fiobj_str_freeze(key.key);
   return key;
 }
-static hash_key_s hash_key_free(hash_key_s key) {
-  fiobj_free(key.key);
-  return key;
-}
+static void hash_key_free(hash_key_s key) { fiobj_free(key.key); }
 
 #define FIO_HASH_KEY_TYPE hash_key_s
 #define FIO_HASH_KEY_INVALID ((hash_key_s){.hash = 0})
@@ -304,7 +301,8 @@ void fiobj_test_hash(void) {
   TEST_ASSERT(FIOBJ_TYPE_IS(o, FIOBJ_T_HASH), "Type identification error!\n");
   TEST_ASSERT(fiobj_hash_count(o) == 0, "Hash should be empty!\n");
   fiobj_hash_set(o, str_key, fiobj_true());
-  fiobj_str_write(str_key, "should fail...", 13);
+  TEST_ASSERT(fiobj_str_write(str_key, "should fail...", 13) == 0,
+              "wrote to frozen string?");
   TEST_ASSERT(fiobj_obj2cstr(str_key).len == 12,
               "String was mutated (not frozen)!\n");
   TEST_ASSERT(fiobj_hash_get(o, str_key) == fiobj_true(),

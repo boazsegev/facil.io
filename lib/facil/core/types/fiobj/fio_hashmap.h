@@ -78,6 +78,16 @@ License: MIT
 #define FIO_HASH_MAX_MAP_SEEK (256)
 #endif
 
+#ifndef FIO_HASH_REALLOC /* NULL ptr indicates new allocation */
+#define FIO_HASH_REALLOC(ptr, size) realloc((ptr), (size))
+#endif
+#ifndef FIO_HASH_CALLOC
+#define FIO_HASH_CALLOC(size, count) calloc((size), (count))
+#endif
+#ifndef FIO_HASH_FREE
+#define FIO_HASH_FREE(ptr) free((ptr))
+#endif
+
 /* *****************************************************************************
 Hash API
 ***************************************************************************** */
@@ -219,7 +229,7 @@ struct fio_hash_s {
 #undef FIO_HASH_FOR_FREE
 #define FIO_HASH_FOR_FREE(hash, container)                                     \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
-       (container && !FIO_HASH_KEY_ISINVALID(container->key)) ||               \
+       (container && (container < (hash)->ordered + (hash)->pos)) ||           \
        ((fio_hash_free(hash), 0) != 0);                                        \
        FIO_HASH_KEY_DESTROY(container->key), (++container))
 
@@ -228,9 +238,9 @@ struct fio_hash_s {
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
        (container && !FIO_HASH_KEY_ISINVALID(container->key)) ||               \
        (((hash)->pos = (hash)->count = 0) != 0 ||                              \
-        (free((hash)->map),                                                    \
-         ((hash)->map =                                                        \
-              (fio_hash_data_s *)calloc(sizeof(*(hash)->map), (hash)->capa)),  \
+        (FIO_HASH_FREE((hash)->map),                                           \
+         ((hash)->map = (fio_hash_data_s *)FIO_HASH_CALLOC(                    \
+              sizeof(*(hash)->map), (hash)->capa)),                            \
          0) != 0);                                                             \
        FIO_HASH_KEY_DESTROY(container->key),                                   \
                                container->key = FIO_HASH_KEY_INVALID,          \
@@ -245,10 +255,10 @@ Hash allocation / deallocation.
 FIO_FUNC void fio_hash_new(fio_hash_s *h) {
   *h = (fio_hash_s){
       .mask = (FIO_HASH_INITIAL_CAPACITY - 1),
-      .map =
-          (fio_hash_data_s *)calloc(sizeof(*h->map), FIO_HASH_INITIAL_CAPACITY),
-      .ordered = (fio_hash_data_ordered_s *)calloc(sizeof(*h->ordered),
-                                                   FIO_HASH_INITIAL_CAPACITY),
+      .map = (fio_hash_data_s *)FIO_HASH_CALLOC(sizeof(*h->map),
+                                                FIO_HASH_INITIAL_CAPACITY),
+      .ordered = (fio_hash_data_ordered_s *)FIO_HASH_CALLOC(
+          sizeof(*h->ordered), FIO_HASH_INITIAL_CAPACITY),
       .capa = FIO_HASH_INITIAL_CAPACITY,
   };
   if (!h->map || !h->ordered) {
@@ -260,8 +270,8 @@ FIO_FUNC void fio_hash_new(fio_hash_s *h) {
 }
 
 FIO_FUNC void fio_hash_free(fio_hash_s *h) {
-  free(h->map);
-  free(h->ordered);
+  FIO_HASH_FREE(h->map);
+  FIO_HASH_FREE(h->ordered);
   *h = (fio_hash_s){.map = NULL};
 }
 
@@ -355,6 +365,7 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
       --hash->pos;
       info->obj->obj = NULL;
       info->obj = NULL;
+      FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
       hash->ordered[hash->pos] =
           (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
       return old;
@@ -372,15 +383,15 @@ retry_rehashing:
     /* It's better to reallocate using calloc than manually zero out memory */
     /* Maybe there's enough zeroed out pages available in the system */
     h->capa = h->mask + 1;
-    free(h->map);
-    h->map = (fio_hash_data_s *)calloc(sizeof(*h->map), h->capa);
+    FIO_HASH_FREE(h->map);
+    h->map = (fio_hash_data_s *)FIO_HASH_CALLOC(sizeof(*h->map), h->capa);
     if (!h->map) {
       perror("HashMap Allocation Failed");
       exit(errno);
     }
     /* the ordered list doesn't care about initialized memory, so realloc */
     /* will be faster. */
-    h->ordered = (fio_hash_data_ordered_s *)realloc(
+    h->ordered = (fio_hash_data_ordered_s *)FIO_HASH_REALLOC(
         h->ordered, h->capa * sizeof(*h->ordered));
     if (!h->ordered) {
       perror("HashMap Reallocation Failed");
