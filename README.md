@@ -1,5 +1,7 @@
 # facil.io - a mini-framework for C web applications
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/2abeba588afb444ca6d92e68ccfbe36b)](https://www.codacy.com/app/boazsegev/facil.io?utm_source=github.com&utm_medium=referral&utm_content=boazsegev/facil.io&utm_campaign=badger)
+
 **NOTICE**:
 
 The `master` branch is temporarily outdated.
