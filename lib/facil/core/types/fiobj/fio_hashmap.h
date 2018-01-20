@@ -57,10 +57,10 @@ License: MIT
     !defined(FIO_HASH_KEY2UINT) || !defined(FIO_HASH_KEY_INVALID) ||           \
     !defined(FIO_HASH_KEY_ISINVALID) || !defined(FIO_HASH_KEY_COPY) ||         \
     !defined(FIO_HASH_KEY_DESTROY)
-#define FIO_HASH_COMPARE_KEYS(k1, k2) ((k1) == (k2))
 #define FIO_HASH_KEY_TYPE uint64_t
-#define FIO_HASH_KEY2UINT(key) (key)
 #define FIO_HASH_KEY_INVALID 0
+#define FIO_HASH_KEY2UINT(key) (key)
+#define FIO_HASH_COMPARE_KEYS(k1, k2) ((k1) == (k2))
 #define FIO_HASH_KEY_ISINVALID(key) ((key) == 0)
 #define FIO_HASH_KEY_COPY(key) (key)
 #define FIO_HASH_KEY_DESTROY(key) ((void)0)
