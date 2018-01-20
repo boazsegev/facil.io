@@ -55,9 +55,8 @@
           </script>
         </header>
       <section>
-
-      {{ content | toc }}
-
+      <div class='section-nav'>{% include toc.html html=content %} </div>
+      {{ content }}
       </section>
     <footer>
     {% if site.github.is_project_page %}

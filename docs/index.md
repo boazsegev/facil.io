@@ -1,6 +1,5 @@
 ---
 title: facil.io - a mini-framework for C web applications
-toc: true
 ---
 # {{ page.title }}
 

@@ -1,6 +1,5 @@
 ---
 title: facil.io - API
-toc: true
 layout: api
 ---
 # {{ page.title }}
