@@ -64,4 +64,6 @@ By reviewing the HTTP and Websocket examples in the facil.io codebase, it's easy
 
 ---
 
-### More documentation coming soon. For now, the comments in the header files should provide great documentation and they can be used with Doxygen (or any documentation creation tool).
+### More documentation coming soon.
+
+For now, the comments in the header files should provide great documentation and they can be used with Doxygen (or any documentation creation tool).
