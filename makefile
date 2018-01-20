@@ -199,14 +199,14 @@ test: | clean
 	@$(MAKE) test_build_and_run
 
 .PHONY : test_build_and_run
-test_build_and_run: create_tree test_add_deubg_flag test_build
+test_build_and_run: | create_tree test_add_flags test_build
 	$(BIN)
 	-@rm $(BIN)
 	-@rm -R $(TMP_ROOT)
 
-.PHONY : test_add_deubg_flag
+.PHONY : test_add_flags
 test_add_deubg_flag: 
-	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1)
+	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1 -Werror)
 
 .PHONY : test_build
 test_build: $(LIB_OBJS)
