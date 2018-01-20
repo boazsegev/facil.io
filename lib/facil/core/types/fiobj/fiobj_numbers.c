@@ -380,7 +380,7 @@ size_t fio_ftoa(char *dest, double num, uint8_t base) {
 
 static __thread char num_buffer[512];
 
-fio_cstr_s fio_ltocstr(unsigned long i) {
+fio_cstr_s fio_ltocstr(long i) {
   return (fio_cstr_s){.buffer = num_buffer, .len = fio_ltoa(num_buffer, i, 10)};
 }
 fio_cstr_s fio_ftocstr(double f) {

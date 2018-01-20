@@ -110,14 +110,14 @@ Returns -1 on error, or a valid fd on success.
 
 NOTE: Systems have a limit on the number of timers that can be opened.
 */
-intptr_t evio_open_timer(void);
+int evio_open_timer(void);
 
 /**
 Adds a timer file descriptor, so that callbacks will be called for it's events.
 
 Returns -1 on error, otherwise return value is system dependent.
 */
-intptr_t evio_set_timer(int fd, void *callback_arg, unsigned long milliseconds);
+int evio_set_timer(int fd, void *callback_arg, unsigned long milliseconds);
 
 /* *****************************************************************************
 Callbacks - override these.

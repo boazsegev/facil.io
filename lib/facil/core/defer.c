@@ -326,7 +326,7 @@ void defer_pool_stop(pool_pt pool) {
 }
 
 /** Returns TRUE (1) if the pool is hadn't been signaled to finish up. */
-int defer_pool_is_active(pool_pt pool) { return pool->flag; }
+int defer_pool_is_active(pool_pt pool) { return (int)pool->flag; }
 
 /**
  * Waits for a running thread pool, joining threads and finishing all tasks.
@@ -432,7 +432,7 @@ static void text_task(void *a1, void *a2) {
 }
 
 void defer_test(void) {
-  time_t start, end;
+  clock_t start, end;
   fprintf(stderr, "Starting defer testing\n");
 
   spn_lock(&i_lock);

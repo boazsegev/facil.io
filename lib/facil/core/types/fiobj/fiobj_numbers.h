@@ -82,7 +82,7 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
 size_t fio_ftoa(char *dest, double num, uint8_t base);
 
 /** Converts a number to a temporary, thread safe, C string object */
-fio_cstr_s fio_ltocstr(unsigned long);
+fio_cstr_s fio_ltocstr(long);
 
 /** Converts a float to a temporary, thread safe, C string object */
 fio_cstr_s fio_ftocstr(double);
@@ -104,7 +104,7 @@ FIOBJ fiobj_num_new_bignum(intptr_t num);
 FIO_INLINE FIOBJ fiobj_num_new(intptr_t num) {
   intptr_t i = (num << 1) | FIOBJECT_NUMBER_FLAG;
   if ((i >> 1) == num)
-    return i;
+    return (FIOBJ)i;
   return fiobj_num_new_bignum(num);
 }
 

@@ -142,9 +142,9 @@ int evio_add(int fd, void *callback_arg) {
 /**
 Creates a timer file descriptor, system dependent.
 */
-intptr_t evio_open_timer(void) {
+int evio_open_timer(void) {
 #ifndef TFD_NONBLOCK
-  intptr_t fd = timerfd_create(CLOCK_MONOTONIC, O_NONBLOCK);
+  int fd = timerfd_create(CLOCK_MONOTONIC, O_NONBLOCK);
   if (fd != -1) { /* make sure it's a non-blocking timer. */
 #if defined(O_NONBLOCK)
     /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
@@ -172,8 +172,7 @@ error:
 /**
 Adds a timer file descriptor, so that callbacks will be called for it's events.
 */
-intptr_t evio_set_timer(int fd, void *callback_arg,
-                        unsigned long milliseconds) {
+int evio_set_timer(int fd, void *callback_arg, unsigned long milliseconds) {
 
   if (evio_fd[0] < 0)
     return -1;

@@ -43,11 +43,24 @@ DUMP_LIB=libdump
 
 # add DEBUG flag if requested
 ifdef DEBUG
+  $(info Detected DEBUG environment flag, enforcing debug mode compilation)
 	FLAGS:=$(FLAGS) DEBUG
 	# # comment the following line if you want to use a different address sanitizer or a profiling tool. 
-	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
+	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer -Wcomma
+	# possibly useful:  -Wconversion
+	# go crazy with clang: -Weverything -Wno-cast-qual -Wno-used-but-marked-unused -Wno-reserved-id-macro -Wno-padded -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-bad-function-cast -Wno-missing-prototypes
 else
 	FLAGS:=$(FLAGS) NODEBUG
+endif
+
+
+# c compiler
+ifndef CC
+	CC=gcc
+endif
+# c++ compiler
+ifndef CPP
+	CPP=g++
 endif
 
 ##############
@@ -55,39 +68,22 @@ endif
 
 ifneq ($(OS),Windows_NT)
 	OS := $(shell uname)
+else
+	$(error Windows systems aren\'t supported by this makefile / library.)
 endif
 ifeq ($(OS),Darwin) # Run MacOS commands
-	# c compiler
-ifndef CC
-	CC=gcc
-endif
-	# c++ compiler
-ifndef CPP
-	CPP=g++
-endif
 	# debugger
 	DB=lldb
 	# disassemble tool. Use stub to disable.
 	DISAMS=otool -tVX
 	# documentation commands
 	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
-
-
 else
-	# c compiler
-ifndef CC
-	CC=gcc
-endif
-	# c++ compiler
-ifndef CPP
-	CPP=g++
-endif
 	# debugger
 	DB=gdb
 	# disassemble tool, leave undefined.
 	# DISAMS=otool -tVX
 	DOCUMENTATION=
-
 endif
 
 #####################
@@ -119,26 +115,29 @@ OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
 
 # S2N TLS/SSL library: https://github.com/awslabs/s2n
 ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -ls2n -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-FLAGS:=$(FLAGS) HAVE_S2N
-LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
+  $(info Detected the s2n library, setting HAVE_S2N)
+	FLAGS:=$(FLAGS) HAVE_S2N
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
 
 # add BearSSL/OpenSSL library flags
 ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-FLAGS:=$(FLAGS) HAVE_BEARSSL
-LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
+  $(info Detected the BearSSL library, setting HAVE_BEARSSL)
+	FLAGS:=$(FLAGS) HAVE_BEARSSL
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
 else
 ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-FLAGS:=$(FLAGS) HAVE_OPENSSL
-LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
+  $(info Detected the OpenSSL library, setting HAVE_OPENSSL)
+	FLAGS:=$(FLAGS) HAVE_OPENSSL
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
 endif
 endif
 
 # add ZLib library flags
-# ifeq ($(shell printf "\#include \\"zlib.h\\"\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lz -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
 ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lz -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
-FLAGS:=$(FLAGS) HAVE_ZLIB
-LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
+  $(info Detected the zlib library, setting HAVE_ZLIB)
+	FLAGS:=$(FLAGS) HAVE_ZLIB
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
 endif
 
 

@@ -63,7 +63,7 @@ Feel free to copy, use and enjoy according to the license provided.
 A simple, predictable UUID for file-descriptors, for collision prevention
 */
 #ifndef sock_uuid2fd
-#define sock_uuid2fd(uuid) ((intptr_t)((uintptr_t)uuid >> 8))
+#define sock_uuid2fd(uuid) ((int)((uintptr_t)uuid >> 8))
 #endif
 
 /* *****************************************************************************

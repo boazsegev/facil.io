@@ -83,7 +83,7 @@ int evio_add(int fd, void *callback_arg) {
 /**
 Creates a timer file descriptor, system dependent.
 */
-intptr_t evio_open_timer() {
+int evio_open_timer() {
 #ifdef P_tmpdir
   char template[] = P_tmpdir "evio_facil_timer_XXXXXX";
 #else
@@ -95,8 +95,7 @@ intptr_t evio_open_timer() {
 /**
 Adds a timer file descriptor, so that callbacks will be called for it's events.
 */
-intptr_t evio_set_timer(int fd, void *callback_arg,
-                        unsigned long milliseconds) {
+int evio_set_timer(int fd, void *callback_arg, unsigned long milliseconds) {
   struct kevent chevent;
   EV_SET(&chevent, fd, EVFILT_TIMER, EV_ADD | EV_ENABLE | EV_ONESHOT, 0,
          milliseconds, callback_arg);

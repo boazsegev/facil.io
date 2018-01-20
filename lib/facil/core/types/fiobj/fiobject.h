@@ -277,10 +277,14 @@ FIO_INLINE size_t fiobj_type_is(FIOBJ o, fiobj_type_enum type) {
             (o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_HASH_FLAG) ||
            (FIOBJECT_HASH_FLAG == 0 &&
             ((fiobj_type_enum *)FIOBJ2PTR(o))[0] == FIOBJ_T_HASH);
-  default:
+  case FIOBJ_T_FLOAT:
+  case FIOBJ_T_ARRAY:
+  case FIOBJ_T_DATA:
+  case FIOBJ_T_UNKNOWN:
     return FIOBJ_IS_ALLOCATED(o) &&
            ((fiobj_type_enum *)FIOBJ2PTR(o))[0] == type;
   }
+  return FIOBJ_IS_ALLOCATED(o) && ((fiobj_type_enum *)FIOBJ2PTR(o))[0] == type;
 }
 
 /* *****************************************************************************
@@ -448,7 +452,7 @@ FIO_INLINE int fiobj_is_true(const FIOBJ o) {
     return ((uintptr_t)o >> 1) != 0;
   if ((o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_PRIMITIVE_FLAG)
     return o == FIOBJ_T_TRUE;
-  return (FIOBJECT2VTBL(o)->is_true(o));
+  return (int)(FIOBJECT2VTBL(o)->is_true(o));
 }
 
 /**
@@ -472,7 +476,7 @@ FIO_INLINE intptr_t fiobj_obj2num(const FIOBJ o) {
 }
 
 /** Converts a number to a temporary, thread safe, C string object */
-fio_cstr_s fio_ltocstr(unsigned long);
+fio_cstr_s fio_ltocstr(long);
 
 /** Converts a float to a temporary, thread safe, C string object */
 fio_cstr_s fio_ftocstr(double);

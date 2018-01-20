@@ -238,7 +238,7 @@ static struct sock_data_store {
 #define unlock_fd(fd) spn_unlock(&sock_data_store.fds[(fd)].lock)
 
 static inline int validate_uuid(uintptr_t uuid) {
-  uintptr_t fd = sock_uuid2fd(uuid);
+  uintptr_t fd = (uintptr_t)sock_uuid2fd(uuid);
   if ((intptr_t)uuid == -1 || sock_data_store.capacity <= fd ||
       fdinfo(fd).counter != (uuid & 0xFF))
     return -1;
@@ -1150,7 +1150,7 @@ Experimental
 /** Gets a socket hook state (a pointer to the struct). */
 struct sock_rw_hook_s *sock_rw_hook_get(intptr_t uuid) {
   if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).open ||
-      ((uuid = sock_uuid2fd(uuid)),
+      ((void)(uuid = sock_uuid2fd(uuid)),
        fdinfo(uuid).rw_hooks == &SOCK_DEFAULT_HOOKS))
     return NULL;
   return fdinfo(uuid).rw_hooks;
@@ -1196,8 +1196,10 @@ void sock_libtest(void) {
     char buff[1024];
     ssize_t i_read;
     intptr_t uuid = sock_connect("www.google.com", "80");
-    if (uuid == -1)
-      perror("sock_connect failed"), exit(1);
+    if (uuid == -1) {
+      perror("sock_connect failed");
+      exit(1);
+    }
     if (sock_write(uuid, request, sizeof(request) - 1) < 0)
       perror("sock_write error ");
 

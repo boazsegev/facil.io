@@ -180,8 +180,10 @@ static void close_rand_fd(void) {
 static void init_rand_fd(void) {
   if (fio_rand_fd_ < 0) {
     while ((fio_rand_fd_ = open("/dev/urandom", O_RDONLY)) == -1) {
-      if (errno == ENXIO)
-        perror("FATAL ERROR: caanot initiate random generator"), exit(-1);
+      if (errno == ENXIO) {
+        perror("FATAL ERROR: caanot initiate random generator");
+        exit(-1);
+      }
       sched_yield();
     }
   }
