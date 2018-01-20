@@ -279,17 +279,20 @@ FIOBJ fiobj_data_newfd(int fd) {
 
 /** Creates a new local tempfile IO object */
 FIOBJ fiobj_data_newtmpfile(void) {
-// create a temporary file to contain the data.
+  // create a temporary file to contain the data.
+  int fd = 0;
 #ifdef P_tmpdir
-#if defined(__linux__) /* linux doesn't end with a divider */
-  char template[] = P_tmpdir "/http_request_body_XXXXXXXX";
-#else
-  char template[] = P_tmpdir "http_request_body_XXXXXXXX";
-#endif
+  if (P_tmpdir[sizeof(P_tmpdir) - 1] == '/') {
+    char template[] = P_tmpdir "http_request_body_XXXXXXXX";
+    fd = mkstemp(template);
+  } else {
+    char template[] = P_tmpdir "/http_request_body_XXXXXXXX";
+    fd = mkstemp(template);
+  }
 #else
   char template[] = "/tmp/http_request_body_XXXXXXXX";
-#endif
   int fd = mkstemp(template);
+#endif
   if (fd == -1)
     return 0;
   return fiobj_data_newfd(fd);
