@@ -400,7 +400,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
     fio_cstr_s ac_str = fiobj_obj2cstr(tmp);
     if (!strstr(ac_str.data, "gzip"))
       goto no_gzip_support;
-    if (s.data[s.len - 2] != '.' || s.data[s.len - 2] != 'g' ||
+    if (s.data[s.len - 3] != '.' || s.data[s.len - 2] != 'g' ||
         s.data[s.len - 1] != 'z') {
       fiobj_str_write(filename, ".gz", 3);
       fio_cstr_s s = fiobj_obj2cstr(filename);
@@ -524,7 +524,7 @@ open_file:
       while (pos && s.data[pos] != '.')
         pos--;
       pos++; /* assuming, but that's fine. */
-      tmp = http_mimetype_find(s.data + pos, s.len - pos - 4);
+      tmp = http_mimetype_find(s.data + pos, s.len - pos - 3);
 
     } else {
       pos = s.len - 1;
