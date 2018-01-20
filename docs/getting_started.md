@@ -200,13 +200,15 @@ int main(void) {
 
 Although encryption is important, separating the encryption layer from the application layer is often preferred and more effective.
 
-For example, most web applications (Node.js, Ruby etc') end up running behind load balancers and proxies. The encryption layer is often handled as an intermediary (i.e. an SSL/TLS proxy / tunnel or even an SSL/TLS load balancer).
+The idea behind "separation of concerns" is valid between programs, not only between code modules.
+
+It is recommended to achieve SSL/TLS using a separate encryption layer, such as proxy (i.e. nginx, apache, etc') or an encryption tunnel (i.e., spiped etc').
+
+Since facil.io supports unix domain sockets, these solutions could be applied safely to both server and client applications.
 
 However, if you need to expose the application directly to the web or insist on integrating encryption within the app itself, it is possible to implement SSL/TLS support using `sock`'s read/write hooks.
 
-Using `sock`'s read-write hooks (`sock_rw_hook_set`) allows us to use our choice of TLS/SSL library to send data securely. Use `sock_uuid2fd` to convert a connection's UUID to it's system assigned `fd` when the SSL/TLS library needs the information.
-
-I did not write a TLS implementation since I'm still looking into OpenSSL alternatives (which has a difficult API and I fear for it's thread safety as far as concurrency goes) and since it isn't a priority for many use-cases (such as fast micro-services running behind a load-balancer/proxy that manages the SSL/TLS layer).
+Using `sock`'s read-write hooks (`sock_rw_hook_set`) it's possible to attach any SSL/TLS library. Use `sock_uuid2fd` to convert a connection's UUID to it's system assigned `fd` when the SSL/TLS library needs the information.
 
 ---
 

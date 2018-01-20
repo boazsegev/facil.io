@@ -15,7 +15,7 @@ The Core Array is designed to contain `void *` pointers and doesn't manage any m
 
 As a general rule, facil.io doen's make assumptions about allocation / deallocation except where mentioned. A good example is the `sock_write` function that copies the data vs. `sock_write2` which asks about the correct deallocation function to be used (defaults to `free`) and takes ownership of the data.
 
-##% Example
+## Example
 
 Here's a short example from [the introduction to the simple core types](types.md):
 
