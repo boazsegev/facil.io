@@ -1,6 +1,7 @@
 # facil.io - a micro-framework for C web applications
 [![GitHub](https://img.shields.io/badge/GitHub-Open%20Source-blue.svg)](https://github.com/boazsegev/facil.io)
 [![Build Status](https://travis-ci.org/boazsegev/facil.io.svg?branch=reHTTP)](https://travis-ci.org/boazsegev/facil.io)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/2abeba588afb444ca6d92e68ccfbe36b)](https://www.codacy.com/app/boazsegev/facil.io?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=boazsegev/facil.io&amp;utm_campaign=Badge_Grade)
 
 [facil.io](http://facil.io) is a C micro-framework for web applications. facil.io includes:
 
