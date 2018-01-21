@@ -118,7 +118,7 @@ static void fiobj_dealloc_task(FIOBJ o, void *stack_) {
     return;
   if (OBJREF_REM(o))
     return;
-  if (!FIOBJECT2VTBL(o)->each) {
+  if (!FIOBJECT2VTBL(o)->each || !FIOBJECT2VTBL(o)->count(o)) {
     FIOBJECT2VTBL(o)->dealloc(o, NULL, NULL);
     return;
   }
@@ -135,12 +135,9 @@ static void fiobj_dealloc_task(FIOBJ o, void *stack_) {
  */
 void fiobj_free_complex_object(FIOBJ o) {
   fio_ary_s stack = FIO_ARY_INIT;
-  fio_ary_new(&stack, 0);
-  fio_ary_push(&stack, (void *)o);
   do {
-    o = (FIOBJ)fio_ary_pop(&stack);
     FIOBJECT2VTBL(o)->dealloc(o, fiobj_dealloc_task, &stack);
-  } while (fio_ary_count(&stack));
+  } while ((o = (FIOBJ)fio_ary_pop(&stack)));
   fio_ary_free(&stack);
 }
 
