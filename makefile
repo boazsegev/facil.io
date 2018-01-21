@@ -43,7 +43,7 @@ DUMP_LIB=libdump
 
 # add DEBUG flag if requested
 ifdef DEBUG
-  $(info Detected DEBUG environment flag, enforcing debug mode compilation)
+  $(info * Detected DEBUG environment flag, enforcing debug mode compilation)
 	FLAGS:=$(FLAGS) DEBUG
 	# # comment the following line if you want to use a different address sanitizer or a profiling tool. 
 	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
@@ -69,7 +69,7 @@ endif
 ifneq ($(OS),Windows_NT)
 	OS := $(shell uname)
 else
-	$(error Windows systems aren\'t supported by this makefile / library.)
+	$(error *** Windows systems aren\'t supported by this makefile / library.)
 endif
 ifeq ($(OS),Darwin) # Run MacOS commands
 	# debugger
@@ -195,7 +195,7 @@ $(TMP_ROOT)/%.d: ;
 
 .PHONY : test 
 test: | clean 
-	@$(MAKE) test_build_and_run
+	@DEBUG=1 $(MAKE) test_build_and_run
 	-@rm $(BIN)
 	-@rm -R $(TMP_ROOT)
 
@@ -205,7 +205,8 @@ test_build_and_run: | create_tree test_add_flags test_build
 
 .PHONY : test_add_flags
 test_add_flags: 
-	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1 -Werror)
+	$(eval CFLAGS:=-coverage $(CFLAGS) -DDEBUG=1 -Werror)
+	$(eval LINKER_FLAGS:=-coverage -DDEBUG=1 $(LINKER_FLAGS))
 
 .PHONY : test_build
 test_build: $(LIB_OBJS)

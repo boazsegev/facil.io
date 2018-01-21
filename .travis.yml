@@ -1,5 +1,5 @@
 language: c
-script: make -j 8 test
+script: DEBUG=1 make -j 8 test_build_and_run
 os:
   - linux
   - osx
