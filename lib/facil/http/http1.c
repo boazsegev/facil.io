@@ -51,7 +51,7 @@ static fio_cstr_s http1pr_status2str(uintptr_t status);
 /* cleanup an HTTP/1.1 handler object */
 static inline void http1_after_finish(http_s *h) {
   http1pr_s *p = handle2pr(h);
-  p->stop = 0;
+  p->stop = p->stop & (~1UL);
   http_s_cleanup(h, p->p.settings->log);
   if (h != &p->request)
     free(h);
@@ -269,7 +269,7 @@ intptr_t http1_hijack(http_s *h, fio_cstr_s *leftover) {
     }
   }
 
-  handle2pr(h)->stop = 1;
+  handle2pr(h)->stop = 3;
   intptr_t uuid = handle2pr(h)->p.uuid;
   facil_attach(uuid, NULL);
   return uuid;
