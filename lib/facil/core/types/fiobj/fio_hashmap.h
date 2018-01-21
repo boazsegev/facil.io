@@ -370,17 +370,11 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
   void *old = (void *)info->obj->obj;
   if (!obj) {
     /* it was a delete operation */
-    hash->count--;
     if (info->obj == hash->ordered + hash->pos - 1) {
-      /* we removed the last ordered element, no need to keep both holes. */
-      --hash->pos;
-      info->obj->obj = NULL;
-      info->obj = NULL;
-      FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
-      hash->ordered[hash->pos] =
-          (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
-      return old;
+      /* we removed the last ordered element, no need to keep any holes. */
+      return fio_hash_pop(hash, NULL);
     }
+    --hash->count;
   }
   info->obj->obj = (fio_hash_data_s *)obj;
   return old;
