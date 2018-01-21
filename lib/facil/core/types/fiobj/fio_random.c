@@ -221,7 +221,7 @@ void fio_rand_bytes(void *target, size_t length) {
 /*******************************************************************************
 Random Testing
 ***************************************************************************** */
-#if defined(DEBUG) && DEBUG == 1
+#if DEBUG
 void fio_random_test(void) {
   uint64_t buffer[8];
   clock_t start, end;

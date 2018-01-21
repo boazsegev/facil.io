@@ -199,6 +199,12 @@ test: | clean
 	-@rm $(BIN)
 	-@rm -R $(TMP_ROOT)
 
+.PHONY : test_optimized
+test_optimized: | clean 
+	@$(MAKE) test_build_and_run
+	-@rm $(BIN)
+	-@rm -R $(TMP_ROOT)
+
 .PHONY : test_build_and_run
 test_build_and_run: | create_tree test_add_flags test_build
 	$(BIN)

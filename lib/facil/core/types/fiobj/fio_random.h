@@ -31,7 +31,7 @@ uint64_t fio_rand64(void);
 /** returns a variable length string of random bytes. */
 void fio_rand_bytes(void *target, size_t length);
 
-#if defined(DEBUG) && DEBUG == 1
+#if DEBUG
 void fio_random_test(void);
 #endif
 

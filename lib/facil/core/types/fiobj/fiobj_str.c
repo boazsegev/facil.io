@@ -575,6 +575,12 @@ void fiobj_test_string(void) {
             " World");
   fiobj_free(o);
 
+  o = fiobj_strprintf("%u", 42);
+  TEST_ASSERT(fiobj_str_getlen(o) == 2, "fiobj_strprintf length error.\n");
+  TEST_ASSERT(fiobj_obj2num(o), "fiobj_strprintf integer error.\n");
+  TEST_ASSERT(!memcmp(fiobj_obj2cstr(o).data, "42", 2),
+              "fiobj_strprintf string error.\n");
+
   o = fiobj_str_buf(4);
   for (int i = 0; i < 16000; ++i) {
     fiobj_str_write(o, "a", 1);
