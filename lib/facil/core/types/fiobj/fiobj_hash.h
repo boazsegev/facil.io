@@ -73,13 +73,27 @@ Populating the Hash
 int fiobj_hash_set(FIOBJ hash, FIOBJ key, FIOBJ obj);
 
 /**
+ * Allows the Hash to be used as a stack.
+ *
+ * If a pointer `key` is provided, it will receive ownership of the key
+ * (remember to free).
+ *
+ * Returns FIOBJ_INVALID on error.
+ *
+ * Returns and object if successful (remember to free).
+ */
+FIOBJ fiobj_hash_pop(FIOBJ hash, FIOBJ *key);
+
+/**
  * Replaces the value in a key-value pair, returning the old value (and it's
  * ownership) to the caller.
  *
- * A return value of NULL indicates that no previous object existed (but a new
- * key-value pair was created.
+ * A return value of FIOBJ_INVALID indicates that no previous object existed
+ * (but a new key-value pair was created.
  *
  * Errors are silently ignored.
+ *
+ * Remember to free the returned object.
  */
 FIOBJ fiobj_hash_replace(FIOBJ hash, FIOBJ key, FIOBJ obj);
 
@@ -116,8 +130,8 @@ int fiobj_hash_delete(FIOBJ hash, FIOBJ key);
 int fiobj_hash_delete2(FIOBJ hash, uint64_t key_hash);
 
 /**
- * Returns a temporary handle to the object associated with the Symbol, NULL
- * if none.
+ * Returns a temporary handle to the object associated with the Symbol,
+ * FIOBJ_INVALID if none.
  */
 FIOBJ fiobj_hash_get(const FIOBJ hash, FIOBJ key);
 
@@ -128,7 +142,7 @@ FIOBJ fiobj_hash_get(const FIOBJ hash, FIOBJ key);
  * perform a lookup in the HashMap, which is slightly faster than the other
  * variations.
  *
- * Returns NULL if no object is asociated with this hashed key value.
+ * Returns FIOBJ_INVALID if no object is asociated with this hashed key value.
  */
 FIOBJ fiobj_hash_get2(const FIOBJ hash, uint64_t key_hash);
 

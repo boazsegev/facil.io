@@ -179,6 +179,29 @@ int fiobj_hash_set(FIOBJ hash, FIOBJ key, FIOBJ obj) {
 }
 
 /**
+ * Allows the Hash to be used as a stack.
+ *
+ * If a pointer `key` is provided, it will receive ownership of the key
+ * (remember to free).
+ *
+ * Returns FIOBJ_INVALID on error.
+ *
+ * Returns and object if successful (remember to free).
+ */
+FIOBJ fiobj_hash_pop(FIOBJ hash, FIOBJ *key) {
+  assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
+  hash_key_s k = {.hash = 0, .key = FIOBJ_INVALID};
+  FIOBJ old = (FIOBJ)fio_hash_pop(&obj2hash(hash)->hash, &k);
+  if (!old)
+    return FIOBJ_INVALID;
+  if (key)
+    *key = k.key;
+  else
+    fiobj_free(k.key);
+  return old;
+}
+
+/**
  * Replaces the value in a key-value pair, returning the old value (and it's
  * ownership) to the caller.
  *

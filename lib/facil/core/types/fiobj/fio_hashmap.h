@@ -101,6 +101,9 @@ FIO_FUNC void fio_hash_new(fio_hash_s *hash);
 /** Deallocates any internal resources. */
 FIO_FUNC void fio_hash_free(fio_hash_s *hash);
 
+/** Locates an object in the Hash Map Table according to the hash key value. */
+FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key);
+
 /**
  * Inserts an object to the Hash Map Table, rehashing if required, returning the
  * old object if it exists.
@@ -111,8 +114,16 @@ FIO_FUNC void fio_hash_free(fio_hash_s *hash);
 FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
                                void *obj);
 
-/** Locates an object in the Hash Map Table according to the hash key value. */
-FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key);
+/**
+ * Allows the Hash to be momenterally used as a stack, poping the last element
+ * entered.
+ *
+ * If a pointer to `key` is provided, the element's key will be placed in it's
+ * place.
+ *
+ * Remember that keys might have to be freed as well (`FIO_HASH_KEY_DESTROY`).
+ */
+FIO_FUNC void *fio_hash_pop(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key);
 
 /** Returns the number of elements currently in the Hash Table. */
 FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash);
@@ -375,6 +386,43 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
   return old;
 }
 
+/**
+ * Allows the Hash to be momenterally used as a stack, poping the last element
+ * entered.
+ * Remember that keys might have to be freed as well (`FIO_HASH_KEY_DESTROY`).
+ */
+FIO_FUNC void *fio_hash_pop(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key) {
+  if (!hash->pos)
+    return NULL;
+  --hash->pos;
+  --hash->count;
+  void *old = hash->ordered[hash->pos].obj;
+  /* removing hole from hashtable is possible because it's the last element */
+  fio_hash_data_s *info =
+      fio_hash_seek_pos_(hash, hash->ordered[hash->pos].key);
+  if (info) /* no info is a data corruption error we'll ignore for now... */
+    *info = (fio_hash_data_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
+  /* cleanup key (or copy to target) and reset the ordered position. */
+  if (key)
+    *key = hash->ordered[hash->pos].key;
+  else
+    FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
+  hash->ordered[hash->pos] =
+      (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
+  /* remove any holes from the top (top is kept tight) */
+  while (hash->pos && hash->ordered[hash->pos - 1].obj == NULL) {
+    --hash->pos;
+    fio_hash_data_s *info =
+        fio_hash_seek_pos_(hash, hash->ordered[hash->pos].key);
+    if (info) /* no info is a data corruption error we'll ignore for now... */
+      *info = (fio_hash_data_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
+    FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
+    hash->ordered[hash->pos] =
+        (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
+  }
+  return old;
+}
+
 /* attempts to rehash the hashmap. */
 FIO_FUNC void fio_hash_rehash(fio_hash_s *h) {
 retry_rehashing:
@@ -570,6 +618,16 @@ FIO_FUNC void fio_hash_test(void) {
       }
       ++i;
     }
+  }
+  {
+    fprintf(stderr, "* Poping two elements (testing pop through holes)\n");
+    FIO_HASH_KEY_TYPE k;
+    TEST_ASSERT(fio_hash_pop(&h, &k), "Pop 1 failed to collect object");
+    TEST_ASSERT(k, "Pop 1 failed to collect key");
+    FIO_HASH_KEY_DESTROY(k);
+    TEST_ASSERT(fio_hash_pop(&h, &k), "Pop 2 failed to collect object");
+    TEST_ASSERT(k, "Pop 2 failed to collect key");
+    FIO_HASH_KEY_DESTROY(k);
   }
   fprintf(stderr, "* Compacting Hash to %lu\n", FIO_HASHMAP_TEXT_COUNT >> 1);
   fio_hash_compact(&h);
