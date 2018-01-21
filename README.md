@@ -2,6 +2,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Open%20Source-blue.svg)](https://github.com/boazsegev/facil.io)
 [![Build Status](https://travis-ci.org/boazsegev/facil.io.svg?branch=reHTTP)](https://travis-ci.org/boazsegev/facil.io)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/2abeba588afb444ca6d92e68ccfbe36b)](https://www.codacy.com/app/boazsegev/facil.io?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=boazsegev/facil.io&amp;utm_campaign=Badge_Grade)
+[![codecov](https://codecov.io/gh/boazsegev/facil.io/branch/master/graph/badge.svg)](https://codecov.io/gh/boazsegev/facil.io)
 
 [facil.io](http://facil.io) is a C micro-framework for web applications. facil.io includes:
 
@@ -102,17 +103,21 @@ You can find more information on the [facil.io](http://facil.io) website
 
 ## Forking, Contributing and all that Jazz
 
+[The contribution guide can be found here](CONTRIBUTING).
+
 Sure, why not. If you can add Solaris or Windows support to `evio`, that could mean `facil` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties).
 
 If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
 
 Hit me up if you want to:
 
+* Write tests... I always need more tests...
+
 * Help me write HPACK / HTTP2 protocol support.
 
-* Help me design / write a generic HTTP routing helper library for the `http_request_s` struct.
+* Help me design / write a generic HTTP routing helper library for the `http_s` struct.
 
-* If you want to help me write a new SSL/TLS library or have an SSL/TLS solution we can fit into `facil` (as source code).
+* If you want to help me write a new SSL/TLS library or have an SSL/TLS solution we can fit into `facil` (as source code)... Note: SSL/TLS solutions should fit both client and server modes.
 
 * If you want to help promote the library, that would be great as well. Perhaps publish [benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks)) or share your story.
 

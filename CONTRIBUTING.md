@@ -57,13 +57,13 @@ No matter if discussing a PR (where we might find ourselves entering a heated di
 
     * The IO reactor (`evio`), the event loop (`defer`), the socket abstraction layer (`sock`) and the "glue" (`facil`).
 
-    * Core types available for all the rest of the modules: `fio_list` (a simple doubly linked list), `fio_hash_table` (a simple Hash Table), `fio_dict` (a trie structure) and `spnlock` (simple atomic operations and a spin-lock).
+    * Core types available for all the rest of the modules: `fio_llist.h` (a simple doubly linked list), `fio_hashmap.h` (a simple Hash Table), and `spnlock` (simple atomic operations and a spin-lock).
 
-        I avoided `atomic.h` and a few other C11 features because they weren't available on all the platforms where I was compiling `facil.io`, which is partially why I wrote the `spnlock` and the core types.
+        I avoided `atomic.h` and some C11 features because they weren't available on all the platforms where I was compiling `facil.io`, which is partially why I wrote the `spnlock` and the core types.
 
-    * Core dynamic types (`fiobj_s *`) with native JSON support.
+    * Core dynamic types (`FIOBJ`) with native JSON support.
 
-        Although this module is removable from the core (the core will function without it), this module offers a "glue" soft type system layer that can be used by other modules. It's assumed all extensions and modules might break if this system is removed or it's core API broken.
+        This module is used like "glue" and a soft type system layer. Even the core can't function without it (for example, it's used in cluster communication).
 
 * Services:
 
@@ -87,7 +87,7 @@ No matter if discussing a PR (where we might find ourselves entering a heated di
 
     The redis engine is in it's own folder, both because it's clearly an "add-on" (even though it's a pub/sub add-on) and because it's as optional as it gets.
 
-    This is also a good example for my preference for modular design. The RESP parser can be easily ported to different projects and is totally separate from the network layer.
+    This is also a good example for my preference for modular design. The RESP parser is a single file library. It can be easily ported to different projects and is totally separate from the network layer.
 
 ## Where to start / Roadmap
 
@@ -102,10 +102,11 @@ These are the features that have been requested so far. Even if any of them are 
 |      Feature      |      assigned      |      remarks               |
 |-------------------|--------------------|----------------------------|
 |   Documentation   |     🙏 Help 🙏    | Place in the `docs` folder |
+|       Tests       |    Never enough    | run through [`short.c`](shorts.c) but implement in source files. |
 |      HTTP/2       | Bo (me), help me?  |                            |
-|    HTTP Router    |                    |                            |
-|    HTTP Client    |                    | Missing TLS/SSL, cookie retention and auto-redirect(?)  |
-|  Websocket Client |                    |                            |
+|    HTTP Router    |                    | No RegEx. Example: `/users/(:id)` |
+|    HTTP Client    |                    | Missing SSL/TLS, cookie retention and auto-redirect(?)  |
+|  Websocket Client |                    | Currently manual using the HTTP client. |
 |      SSL/TLS      |                    | Use `sock` R/W hooks       |
 |      Gossip       |                    | For Pub/Sub engine scaling |
 
