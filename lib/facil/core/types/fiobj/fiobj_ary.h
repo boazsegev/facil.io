@@ -41,7 +41,7 @@ size_t fiobj_ary_capa(FIOBJ ary);
  * This pointer can be used for sorting and other direct access operations as
  * long as no other actions (insertion/deletion) are performed on the array.
  */
-FIOBJ *fiobj_ary2prt(FIOBJ ary);
+FIOBJ *fiobj_ary2ptr(FIOBJ ary);
 
 /**
  * Returns a temporary object owned by the Array.

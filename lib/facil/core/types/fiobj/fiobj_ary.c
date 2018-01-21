@@ -110,7 +110,7 @@ size_t fiobj_ary_capa(FIOBJ ary) {
  * This pointer can be used for sorting and other direct access operations as
  * long as no other actions (insertion/deletion) are performed on the array.
  */
-FIOBJ *fiobj_ary2prt(FIOBJ ary) {
+FIOBJ *fiobj_ary2ptr(FIOBJ ary) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
   return (FIOBJ *)(obj2ary(ary)->ary.arry + obj2ary(ary)->ary.start);
 }
@@ -197,9 +197,12 @@ void fiobj_test_array(void) {
     fprintf(stderr, "Testing failed.\n");                                      \
     exit(-1);                                                                  \
   }
-  FIOBJ a = fiobj_ary_new();
+  FIOBJ a = fiobj_ary_new2(4);
   TEST_ASSERT(FIOBJ_TYPE_IS(a, FIOBJ_T_ARRAY), "Array type isn't an array!\n");
+  TEST_ASSERT(fiobj_ary_capa(a) == 4, "Array capacity ignored!\n");
   fiobj_ary_push(a, fiobj_null());
+  TEST_ASSERT(fiobj_ary2ptr(a)[0] == fiobj_null(),
+              "Array direct access failed!\n");
   fiobj_ary_push(a, fiobj_true());
   fiobj_ary_push(a, fiobj_false());
   TEST_ASSERT(fiobj_ary_count(a) == 3, "Array count isn't 3\n");
@@ -221,6 +224,9 @@ void fiobj_test_array(void) {
   TEST_ASSERT(fiobj_ary_index(a, -1) == fiobj_true(),
               "Array index retrival error for index -1\n");
   TEST_ASSERT(fiobj_ary_count(a) == 4, "Array compact error\n");
+  fiobj_ary_unshift(a, fiobj_false());
+  TEST_ASSERT(fiobj_ary_count(a) == 5, "Array unshift error\n");
+  TEST_ASSERT(fiobj_ary_shift(a) == fiobj_false(), "Array shift value error\n");
   fiobj_free(a);
   fprintf(stderr, "* passed.\n");
 }

@@ -1116,7 +1116,12 @@ void fiobj_test_json(void) {
       (unsigned long)consumed, (unsigned long)(sizeof(json_str2) - 1));
   TEST_ASSERT(FIOBJ_TYPE_IS(o, FIOBJ_T_ARRAY),
               "JSON messy string object error\n");
+  tmp = fiobj_obj2json(o, 1);
+  TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_STRING),
+              "JSON messy string isn't a string\n");
+  fprintf(stderr, "Messy JSON:\n%s\n", fiobj_obj2cstr(tmp).data);
   fiobj_free(o);
+  fiobj_free(tmp);
   fprintf(stderr, "* passed.\n");
 }
 

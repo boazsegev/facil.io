@@ -147,6 +147,7 @@ void fiobj_free_complex_object(FIOBJ o) {
 /* *****************************************************************************
 Is Equal?
 ***************************************************************************** */
+#include "fiobj_hash.h"
 
 static inline int fiobj_iseq_simple(const FIOBJ o, const FIOBJ o2) {
   if (o == o2)
@@ -165,6 +166,8 @@ static inline int fiobj_iseq_simple(const FIOBJ o, const FIOBJ o2) {
 int fiobj_iseq____internal_complex__task(FIOBJ o, void *ary_) {
   fio_ary_s *ary = ary_;
   fio_ary_push(ary, (void *)o);
+  if (fiobj_hash_key_in_loop())
+    fio_ary_push(ary, (void *)fiobj_hash_key_in_loop());
   return 0;
 }
 
@@ -246,7 +249,6 @@ double fiobject___noop_to_f(FIOBJ o) {
 #if DEBUG
 
 #include "fiobj_ary.h"
-#include "fiobj_hash.h"
 #include "fiobj_numbers.h"
 
 static int fiobject_test_task(FIOBJ o, void *arg) {
@@ -320,9 +322,23 @@ void fiobj_test_core(void) {
   key = fiobj_str_new("my key", 6);
   fiobj_hash_set(fiobj_ary_entry(tmp, -1), key, fiobj_true());
   fiobj_free(key);
+  TEST_ASSERT(!fiobj_iseq(o, FIOBJ_INVALID),
+              "Array and FIOBJ_INVALID can't be equal!");
+  TEST_ASSERT(!fiobj_iseq(o, fiobj_null()),
+              "Array and fiobj_null can't be equal!");
   TEST_ASSERT(fiobj_iseq(o, o2), "Arrays aren't euqal!");
   fiobj_free(o);
   fiobj_free(o2);
+  TEST_ASSERT(fiobj_iseq(fiobj_null(), fiobj_null()),
+              "fiobj_null() not equal to self!");
+  TEST_ASSERT(fiobj_iseq(fiobj_false(), fiobj_false()),
+              "fiobj_false() not equal to self!");
+  TEST_ASSERT(fiobj_iseq(fiobj_true(), fiobj_true()),
+              "fiobj_true() not equal to self!");
+  TEST_ASSERT(!fiobj_iseq(fiobj_null(), fiobj_false()),
+              "fiobj_null eqal to fiobj_false!");
+  TEST_ASSERT(!fiobj_iseq(fiobj_null(), fiobj_true()),
+              "fiobj_null eqal to fiobj_true!");
   fprintf(stderr, "* passed.\n");
 }
 

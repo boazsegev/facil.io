@@ -576,7 +576,7 @@ static FIOBJ fiobj2resp_tmp(FIOBJ obj1, FIOBJ obj2) {
     fiobj_str_write(dest, s.data, s.len);
     fiobj_str_write(dest, "\r\n", 2);
 
-    FIOBJ *ary = fiobj_ary2prt(obj2);
+    FIOBJ *ary = fiobj_ary2ptr(obj2);
 
     for (size_t i = 0; i < count; ++i) {
       fio_cstr_s s = fiobj_obj2cstr(ary[i]);
@@ -651,7 +651,7 @@ static int resp_on_message(resp_parser_s *parser) {
         fprintf(stderr, "     %s\n", tmp.data);
       }
     } else {
-      // FIOBJ *ary = fiobj_ary2prt(msg);
+      // FIOBJ *ary = fiobj_ary2ptr(msg);
       // for (size_t i = 0; i < fiobj_ary_count(msg); ++i) {
       //   fio_cstr_s tmp = fiobj_obj2cstr(ary[i]);
       //   fprintf(stderr, "(%lu) %s\n", (unsigned long)i, tmp.data);
