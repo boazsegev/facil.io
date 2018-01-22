@@ -8,6 +8,8 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 **Minor fixes**: more error handling, more tests, fixed `fiobj_iseq` to test hash keys as well as objects. The `fio_hashmap.h` key caching for removed objects is cleared when hash is empty (i.e, if it's empty, it's really empty).
 
+**Performance** minor improvements. For example, Header Hash Maps are now cleared and reused by HTTP/1.1 during keep-alive (instead of deallocated and reallocated).
+
 ### Ver. 0.6.0.dev
 
 This is a major release, changing much of the extension API (HTTP, pub/sub, cli) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
