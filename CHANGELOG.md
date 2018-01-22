@@ -2,7 +2,13 @@
 
 ### Ver. 0.6.0 (`master` branch, upcoming release)
 
+(wait for it...)
+
+### Ver. 0.6.0.beta
+
 Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, cli) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
+
+In this beta 1 release:
 
 **Fix** (`http`): fixed an issue where receiving the same header name more than once would fail to convert the header value into an array of values.
 
