@@ -151,6 +151,11 @@ FIOBJ fiobj_hash_get2(const FIOBJ hash, uint64_t key_hash);
  */
 int fiobj_hash_haskey(const FIOBJ hash, FIOBJ key);
 
+/**
+ * Empties the Hash.
+ */
+void fiobj_hash_clear(const FIOBJ hash);
+
 #if DEBUG
 void fiobj_test_hash(void);
 #endif

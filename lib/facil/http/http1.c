@@ -52,9 +52,11 @@ static fio_cstr_s http1pr_status2str(uintptr_t status);
 static inline void http1_after_finish(http_s *h) {
   http1pr_s *p = handle2pr(h);
   p->stop = p->stop & (~1UL);
-  http_s_cleanup(h, p->p.settings->log);
-  if (h != &p->request)
+  http_s_clear(h, p->p.settings->udata, p->p.settings->log);
+  if (h != &p->request) {
+    http_s_destroy(h, 0);
     free(h);
+  }
   if (p->close)
     sock_close(p->p.uuid);
 }
@@ -91,7 +93,7 @@ static int write_header(FIOBJ o, void *w_) {
 }
 
 static FIOBJ headers2str(http_s *h) {
-  if (!h->headers)
+  if (!h->method && !!h->status_str)
     return FIOBJ_INVALID;
 
   static uintptr_t connection_hash;
@@ -102,7 +104,7 @@ static FIOBJ headers2str(http_s *h) {
   w.dest = fiobj_str_buf(0);
   http1pr_s *p = handle2pr(h);
 
-  if (h->status || !p->is_client) {
+  if (p->is_client == 0) {
     fio_cstr_s t = http1pr_status2str(h->status);
     fiobj_str_write(w.dest, t.data, t.length);
     FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, connection_hash);
@@ -345,7 +347,7 @@ Parser Callbacks
 static int http1_on_request(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
   http_on_request_handler______internal(&http1_pr2handle(p), p->p.settings);
-  if (p->request.headers && !p->stop)
+  if (p->request.method && !p->stop)
     http_finish(&p->request);
   h1_reset(p);
   return 0;
@@ -354,7 +356,7 @@ static int http1_on_request(http1_parser_s *parser) {
 static int http1_on_response(http1_parser_s *parser) {
   http1pr_s *p = parser2http(parser);
   http_on_response_handler______internal(&http1_pr2handle(p), p->p.settings);
-  if (p->request.headers && !p->stop)
+  if (p->request.status_str && !p->stop)
     http_finish(&p->request);
   h1_reset(p);
   return 0;
@@ -362,8 +364,6 @@ static int http1_on_response(http1_parser_s *parser) {
 /** called when a request method is parsed. */
 static int http1_on_method(http1_parser_s *parser, char *method,
                            size_t method_len) {
-  http_s_init(&http1_pr2handle(parser2http(parser)), &parser2http(parser)->p,
-              &HTTP1_VTABLE, parser2http(parser)->p.settings->udata);
   http1_pr2handle(parser2http(parser)).method =
       fiobj_str_new(method, method_len);
   parser2http(parser)->header_size += method_len;
@@ -397,9 +397,6 @@ static int http1_on_query(http1_parser_s *parser, char *query, size_t len) {
 /** called when a the HTTP/1.x version is parsed. */
 static int http1_on_http_version(http1_parser_s *parser, char *version,
                                  size_t len) {
-  if (!http1_pr2handle(parser2http(parser)).headers)
-    http_s_init(&http1_pr2handle(parser2http(parser)), &parser2http(parser)->p,
-                &HTTP1_VTABLE, parser2http(parser)->p.settings->udata);
   http1_pr2handle(parser2http(parser)).version = fiobj_str_new(version, len);
   parser2http(parser)->header_size += len;
   return 0;
@@ -499,10 +496,10 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
 
   if (p->buf_len == HTTP1_READ_BUFFER) {
     /* no room to read... parser not consuming data */
-    if (p->request.headers)
+    if (p->request.method)
       http_send_error(&p->request, 413);
     else {
-      http_s_init(&p->request, &p->p, &HTTP1_VTABLE, p->p.settings->udata);
+      p->request.method = fiobj_str_tmp();
       http_send_error(&p->request, 413);
     }
   }
@@ -582,6 +579,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
       .max_header_size = settings->max_header_size,
       .is_client = settings->is_client,
   };
+  http_s_new(&p->request, &p->p, &HTTP1_VTABLE, settings->udata);
   facil_attach(uuid, &p->p.protocol);
   if (unread_data && unread_length <= HTTP1_READ_BUFFER) {
     memcpy(p->buf, unread_data, unread_length);
@@ -595,7 +593,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
 void http1_destroy(protocol_s *pr) {
   http1pr_s *p = (http1pr_s *)pr;
   http1_pr2handle(p).status = 0;
-  http_s_cleanup(&http1_pr2handle(p), 0);
+  http_s_destroy(&http1_pr2handle(p), 0);
   free(p);
 }
 

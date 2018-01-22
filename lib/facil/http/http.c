@@ -109,6 +109,7 @@ The Request / Response type and functions
 static const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                                  '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
+#define HTTP_INVALID_HANDLE(h) (!h || (!h->method && !h->status_str))
 /**
  * Sets a response header, taking ownership of the value object, but NOT the
  * name object (so name objects could be reused in future responses).
@@ -116,7 +117,7 @@ static const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
  * Returns -1 on error and 0 on success.
  */
 int http_set_header(http_s *r, FIOBJ name, FIOBJ value) {
-  if (!r || !name || !r->private_data.out_headers) {
+  if (HTTP_INVALID_HANDLE(r) || !name) {
     fiobj_free(value);
     return -1;
   }
@@ -130,8 +131,7 @@ int http_set_header(http_s *r, FIOBJ name, FIOBJ value) {
  * Returns -1 on error and 0 on success.
  */
 int http_set_header2(http_s *r, fio_cstr_s n, fio_cstr_s v) {
-  if (!r || !n.data || !n.length || (v.data && !v.length) ||
-      !r->private_data.out_headers)
+  if (HTTP_INVALID_HANDLE(r) || !n.data || !n.length || (v.data && !v.length))
     return -1;
   FIOBJ tmp = fiobj_str_new(n.data, n.length);
   int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.length));
@@ -149,7 +149,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
 #if DEBUG
   HTTP_ASSERT(h, "Can't set cookie for NULL HTTP handler!");
 #endif
-  if (!h || !h->private_data.out_headers || cookie.name_len >= 32768 ||
+  if (HTTP_INVALID_HANDLE(h) || cookie.name_len >= 32768 ||
       cookie.value_len >= 131072)
     return -1;
 
@@ -311,7 +311,7 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
     http_finish(r);
     return 0;
   }
-  if (!r || !r->private_data.out_headers)
+  if (HTTP_INVALID_HANDLE(r))
     return -1;
   add_content_length(r, length);
   add_date(r);
@@ -327,8 +327,7 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
-  if (!r || !(http_protocol_s *)(r)->private_data.flag ||
-      !r->private_data.out_headers) {
+  if (HTTP_INVALID_HANDLE(r)) {
     close(fd);
     return -1;
   };
@@ -347,7 +346,7 @@ int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
  */
 int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
                    const char *encoded, size_t encoded_len) {
-  if (!h || !h->private_data.out_headers)
+  if (HTTP_INVALID_HANDLE(h))
     return -1;
   struct stat file_data = {.st_size = 0};
   static uint64_t accept_enc_hash = 0;
@@ -611,7 +610,7 @@ int http_push_data(http_s *r, void *data, uintptr_t length, FIOBJ mime_type) {
  * Returns -1 on error and 0 on success.
  */
 int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
-  if (!h || !(http_protocol_s *)h->private_data.flag)
+  if (HTTP_INVALID_HANDLE(h))
     return -1;
   return ((http_vtable_s *)h->private_data.vtbl)
       ->http_push_file(h, filename, mime_type);
@@ -693,7 +692,7 @@ static void http_resume_fallback_wrapper(intptr_t uuid, void *arg) {
  * Defers the request / response handling for later.
  */
 void http_pause(http_s *h, void (*task)(void *http)) {
-  if (!h || !(http_protocol_s *)h->private_data.flag) {
+  if (HTTP_INVALID_HANDLE(h)) {
     return;
   }
   http_protocol_s *p = (http_protocol_s *)h->private_data.flag;
@@ -912,7 +911,7 @@ static void http_on_client_failed(intptr_t uuid, void *set_) {
   http_settings_s *set = set_;
   http_s *h = set->udata;
   set->udata = h->udata;
-  http_s_cleanup(h, 0);
+  http_s_destroy(h, 0);
   free(h);
   if (set->on_finish)
     set->on_finish(set);
@@ -999,7 +998,7 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
   settings->is_client = 1;
   http_s *h = malloc(sizeof(*h));
   HTTP_ASSERT(h, "HTTP Client handler allocation failed");
-  http_s_init(h, 0, NULL, arg_settings.udata);
+  http_s_new(h, 0, http1_vtable(), arg_settings.udata);
   h->status = 0;
   settings->udata = h;
   http_set_header2(h, (fio_cstr_s){.data = "host", .len = 4},
@@ -1023,7 +1022,7 @@ HTTP Helper functions that could be used globally
  * debugging.
  */
 FIOBJ http_req2str(http_s *h) {
-  if (!h->headers)
+  if (HTTP_INVALID_HANDLE(h) || !fiobj_hash_count(h->headers))
     return FIOBJ_INVALID;
 
   struct header_writer_s w;

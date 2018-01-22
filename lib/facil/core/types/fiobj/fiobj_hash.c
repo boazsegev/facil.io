@@ -306,6 +306,14 @@ int fiobj_hash_haskey(const FIOBJ hash, FIOBJ key) {
   return (FIOBJ)fio_hash_find(&obj2hash(hash)->hash, k) != 0;
 }
 
+/**
+ * Empties the Hash.
+ */
+void fiobj_hash_clear(const FIOBJ hash) {
+  assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
+  FIO_HASH_FOR_EMPTY(&obj2hash(hash)->hash, i) { fiobj_free((FIOBJ)i->obj); }
+}
+
 /* *****************************************************************************
 Simple Tests
 ***************************************************************************** */
