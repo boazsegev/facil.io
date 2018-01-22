@@ -248,11 +248,8 @@ struct fio_hash_s {
 #define FIO_HASH_FOR_EMPTY(hash, container)                                    \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
        (container && !FIO_HASH_KEY_ISINVALID(container->key)) ||               \
-       (((hash)->pos = (hash)->count = 0) != 0 ||                              \
-        (FIO_HASH_FREE((hash)->map),                                           \
-         ((hash)->map = (fio_hash_data_s *)FIO_HASH_CALLOC(                    \
-              sizeof(*(hash)->map), (hash)->capa)),                            \
-         0) != 0);                                                             \
+       (memset((hash)->map, 0, (hash)->capa * sizeof(*(hash)->map)),           \
+        ((hash)->pos = (hash)->count = 0));                                    \
        FIO_HASH_KEY_DESTROY(container->key),                                   \
                                container->key = FIO_HASH_KEY_INVALID,          \
                                container->obj = NULL, (++container))
