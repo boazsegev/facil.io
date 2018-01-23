@@ -508,6 +508,32 @@ found_file:
       }
     }
   }
+  /* test for an OPTIONS request or invalid methods */
+  s = fiobj_obj2cstr(h->method);
+  switch (s.len) {
+  case 7:
+    if (!strncasecmp("options", s.data, 7)) {
+      http_set_header2(h, (fio_cstr_s){.data = "allow", .len = 5},
+                       (fio_cstr_s){.data = "GET, HEAD", .len = 9});
+      h->status = 200;
+      http_finish(h);
+      return 0;
+    }
+    break;
+  case 3:
+    if (!strncasecmp("get", s.data, 3))
+      goto open_file;
+    break;
+  case 4:
+    if (!strncasecmp("head", s.data, 4)) {
+      http_set_header(h, HTTP_HEADER_CONTENT_LENGTH, fiobj_num_new(length));
+      http_finish(h);
+      return 0;
+    }
+    break;
+  }
+  http_send_error(h, 403);
+  return 0;
 open_file:
   s = fiobj_obj2cstr(filename);
   file = open(s.data, O_RDONLY);
@@ -588,6 +614,7 @@ void http_finish(http_s *r) {
   if (!r || !r->private_data.vtbl) {
     return;
   }
+  add_content_length(r, 0);
   ((http_vtable_s *)r->private_data.vtbl)->http_finish(r);
 }
 /**
