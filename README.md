@@ -105,7 +105,7 @@ You can find more information on the [facil.io](http://facil.io) website
 
 [The contribution guide can be found here](CONTRIBUTING).
 
-Sure, why not. If you can add Solaris or Windows support to `evio`, that could mean `facil` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties).
+Sure, why not. If you can add Solaris or Windows support to `evio` and `sock`, that could mean `facil` would become available for use on these platforms as well.
 
 If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
 
@@ -121,4 +121,4 @@ Hit me up if you want to:
 
 * If you want to help promote the library, that would be great as well. Perhaps publish [benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks)) or share your story.
 
-* Writing documentation into the `facil.io` website would be great. I keep the source code documentation fairly updated, but sometimes I can be a lazy bastard.
+* Writing documentation into the `facil.io` website would be great. I keep the source code documentation fairly updated, but the documentation should be copied to the `docs` folder to get the documentation website up and running.

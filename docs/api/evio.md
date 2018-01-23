@@ -112,3 +112,9 @@ intptr_t evio_set_timer(int fd, void *callback_arg, unsigned long milliseconds)
 Adds a timer file descriptor, so that callbacks will be called for it's events.
 
 Returns -1 on error, otherwise return value is system dependent.
+
+## Known Issues
+
+* On Linux, using `epoll`, the `EPOLLONESHOT` flag doesn't remove the `fd` from `epoll` descriptor, requiring `EPOLL_CTL_MOD` instead of `EPOLL_CTL_ADD`.
+
+    To support a stateless API, where the user doesn't need to remember if a specific `fd` was previously passed to the `evio_add` function, the `epoll` implementation performs two system calls for new connections instead of a single system call (`EPOLL_CTL_ADD` is performed only if `EPOLL_CTL_MOD` fails).
