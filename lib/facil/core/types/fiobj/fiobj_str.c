@@ -81,7 +81,7 @@ static inline void fiobj_str_setlen(FIOBJ o, size_t len) {
     obj2str(o)->hash = 0;
   }
 }
-static inline fio_cstr_s fiobj_str_get_cstr(FIOBJ o) {
+static inline fio_cstr_s fiobj_str_get_cstr(const FIOBJ o) {
   if (obj2str(o)->is_small)
     return (fio_cstr_s){.buffer = STR_INTENAL_STR(o),
                         .len = STR_INTENAL_LEN(o)};
@@ -121,7 +121,7 @@ static double fio_str2f(const FIOBJ o) {
 
 static size_t fio_str2bool(const FIOBJ o) { return fiobj_str_getlen(o) != 0; }
 
-uintptr_t fiobject___noop_count(FIOBJ o);
+uintptr_t fiobject___noop_count(const FIOBJ o);
 
 const fiobj_object_vtable_s FIOBJECT_VTABLE_STRING = {
     .class_name = "String",

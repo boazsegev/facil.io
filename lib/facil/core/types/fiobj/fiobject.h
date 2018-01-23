@@ -297,20 +297,20 @@ typedef struct {
   /* deallocate root object's memory, perform task for each nested object. */
   void (*const dealloc)(FIOBJ, void (*task)(FIOBJ, void *), void *);
   /* return the number of normal nested object */
-  uintptr_t (*const count)(FIOBJ);
+  uintptr_t (*const count)(const FIOBJ);
   /* tests the object for truthfulness. */
-  size_t (*const is_true)(FIOBJ);
+  size_t (*const is_true)(const FIOBJ);
   /* tests if two objects are equal. */
-  size_t (*const is_eq)(FIOBJ, FIOBJ);
+  size_t (*const is_eq)(const FIOBJ, const FIOBJ);
   /* iterates through the normal nested objects (ignore deep nesting) */
   size_t (*const each)(FIOBJ, size_t start_at, int (*task)(FIOBJ, void *),
                        void *);
   /* object value as String */
-  fio_cstr_s (*const to_str)(FIOBJ);
+  fio_cstr_s (*const to_str)(const FIOBJ);
   /* object value as Integer */
-  intptr_t (*const to_i)(FIOBJ);
+  intptr_t (*const to_i)(const FIOBJ);
   /* object value as Float */
-  double (*const to_f)(FIOBJ);
+  double (*const to_f)(const FIOBJ);
 } fiobj_object_vtable_s;
 
 typedef struct {

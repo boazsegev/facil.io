@@ -220,25 +220,25 @@ void fiobject___simple_dealloc(FIOBJ o, void (*task)(FIOBJ, void *),
   (void)arg;
 }
 
-uintptr_t fiobject___noop_count(FIOBJ o) {
+uintptr_t fiobject___noop_count(const FIOBJ o) {
   (void)o;
   return 0;
 }
-size_t fiobject___noop_is_eq(FIOBJ o1, FIOBJ o2) {
+size_t fiobject___noop_is_eq(const FIOBJ o1, const FIOBJ o2) {
   (void)o1;
   (void)o2;
   return 0;
 }
 
-fio_cstr_s fiobject___noop_to_str(FIOBJ o) {
+fio_cstr_s fiobject___noop_to_str(const FIOBJ o) {
   (void)o;
   return (fio_cstr_s){.len = 0, .data = NULL};
 }
-intptr_t fiobject___noop_to_i(FIOBJ o) {
+intptr_t fiobject___noop_to_i(const FIOBJ o) {
   (void)o;
   return 0;
 }
-double fiobject___noop_to_f(FIOBJ o) {
+double fiobject___noop_to_f(const FIOBJ o) {
   (void)o;
   return 0;
 }

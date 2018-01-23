@@ -52,9 +52,9 @@ static size_t fiobj_ary_is_true(const FIOBJ ary) {
   return fiobj_ary_count(ary) > 0;
 }
 
-fio_cstr_s fiobject___noop_to_str(FIOBJ o);
-intptr_t fiobject___noop_to_i(FIOBJ o);
-double fiobject___noop_to_f(FIOBJ o);
+fio_cstr_s fiobject___noop_to_str(const FIOBJ o);
+intptr_t fiobject___noop_to_i(const FIOBJ o);
+double fiobject___noop_to_f(const FIOBJ o);
 
 const fiobj_object_vtable_s FIOBJECT_VTABLE_ARRAY = {
     .class_name = "Array",
