@@ -315,9 +315,8 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
     return -1;
   add_content_length(r, length);
   add_date(r);
-  int ret =
-      ((http_vtable_s *)r->private_data.vtbl)->http_send_body(r, data, length);
-  return ret;
+  return ((http_vtable_s *)r->private_data.vtbl)
+      ->http_send_body(r, data, length);
 }
 /**
  * Sends the response headers and the specified file (the response's body).
@@ -333,9 +332,8 @@ int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
   };
   add_content_length(r, length);
   add_date(r);
-  int ret = ((http_vtable_s *)r->private_data.vtbl)
-                ->http_sendfile(r, fd, length, offset);
-  return ret;
+  return ((http_vtable_s *)r->private_data.vtbl)
+      ->http_sendfile(r, fd, length, offset);
 }
 /**
  * Sends the response headers and the specified file (the response's body).
@@ -615,6 +613,7 @@ void http_finish(http_s *r) {
     return;
   }
   add_content_length(r, 0);
+  add_date(r);
   ((http_vtable_s *)r->private_data.vtbl)->http_finish(r);
 }
 /**
