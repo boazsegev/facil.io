@@ -2,11 +2,17 @@
 
 ### Ver. 0.6.0 (`master` branch, upcoming release)
 
-(wait for it...)
+Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
+
+In this release:
+
+**Update**: (`http`) Added experimental query parsing helpers that perform nested parameter name resolution (i.e. `named_hash[named_array][]=value`). Logic might change as performance considerations apply. I'd love to read your feedback on this feature.
+
+**Update**: (`facil`) Simplified the child worker sentinel observation logic, to use threads instead of IPC.
 
 ### Ver. 0.6.0.beta
 
-Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, cli) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
+Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
 
 In this beta 1 release:
 
@@ -18,7 +24,7 @@ In this beta 1 release:
 
 ### Ver. 0.6.0.dev
 
-This is a major release, changing much of the extension API (HTTP, pub/sub, cli) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
+This is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
 
 Migration isn't difficult, but is not transparent either.
 
