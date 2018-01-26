@@ -518,6 +518,32 @@ int http_upgrade2ws(websocket_settings_s);
 #include "websockets.h"
 
 /* *****************************************************************************
+HTTP GET and POST parsing helpers
+***************************************************************************** */
+
+/** Parses the query part of an HTTP request/response. Uses `http_add2hash`. */
+void http_parse_query(http_s *h);
+
+/**
+ * Adds a named parameter to the hash, resolving nesting references.
+ *
+ * i.e.:
+ *
+ * * "name[]" references a nested Array (nested in the Hash).
+ * * "name[key]" references a nested Hash.
+ * * "name[][key]" references a nested Hash within an array. Hash keys will be
+ *   unique (repeating a key advances the hash).
+ * * These rules can be nested (i.e. "name[][key1][][key2]...")
+ * * "name[][]" is an error (there's no way for the parser to analyse
+ *    dimentions)
+ *
+ * Note: names can't begine with "[" or end with "]" as these are reserved
+ *       characters.
+ */
+void http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
+                   size_t value_len);
+
+/* *****************************************************************************
 HTTP Status Strings and Mime-Type helpers
 ***************************************************************************** */
 
@@ -556,7 +582,7 @@ extern FIOBJ HTTP_HEADER_SET_COOKIE;
 extern FIOBJ HTTP_HEADER_UPGRADE;
 
 /* *****************************************************************************
-HTTP General Helper functions that might be used globally
+HTTP General Helper functions that could be used globally
 ***************************************************************************** */
 
 /**
@@ -572,7 +598,7 @@ FIOBJ http_req2str(http_s *h);
  */
 void http_write_log(http_s *h);
 /* *****************************************************************************
-HTTP Time related helper functions that might be used globally
+HTTP Time related helper functions that could be used globally
 ***************************************************************************** */
 
 /**
@@ -613,7 +639,7 @@ HTTP URL decoding helper functions that might be used globally
 /** Decodes a URL encoded string, no buffer overflow protection. */
 ssize_t http_decode_url_unsafe(char *dest, const char *url_data);
 
-/** Decodes a URL encoded string (i.e., the "query" part of a request). */
+/** Decodes a URL encoded string (query / form data). */
 ssize_t http_decode_url(char *dest, const char *url_data, size_t length);
 
 /** Decodes the "path" part of a request, no buffer overflow protection. */

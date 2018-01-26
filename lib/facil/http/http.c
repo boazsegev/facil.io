@@ -368,6 +368,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
       char *pos = (char *)encoded;
       const char *end = encoded + encoded_len;
       while (pos < end) {
+        /* test for path manipulations while decoding */
         if (*pos == '/' && (pos[1] == '/' ||
                             (((uintptr_t)end - (uintptr_t)pos >= 4) &&
                              pos[1] == '.' && pos[2] == '.' && pos[3] == '/')))
@@ -1037,6 +1038,257 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
 }
 #define http_connect(address, ...)                                             \
   http_connect((address), (struct http_settings_s){__VA_ARGS__})
+
+/* *****************************************************************************
+HTTP GET and POST parsing helpers
+***************************************************************************** */
+
+/** URL decodes a string, returning a `FIOBJ`. */
+static inline FIOBJ http_urlstr2fiobj(char *s, size_t len) {
+  FIOBJ o = fiobj_str_buf(len);
+  ssize_t l = http_decode_url(fiobj_obj2cstr(o).data, s, len);
+  if (l < 0) {
+    fiobj_free(o);
+    return fiobj_str_new(NULL, 0); /* empty string */
+  }
+  fiobj_str_resize(o, (size_t)l);
+  return o;
+}
+
+/** converts a string into a `FIOBJ`. */
+static inline FIOBJ http_str2fiobj(char *s, size_t len) {
+  switch (len) {
+  case 0:
+    return fiobj_str_new(NULL, 0); /* empty string */
+  case 4:
+    if (!strncasecmp(s, "true", 4))
+      return fiobj_true();
+    if (!strncasecmp(s, "null", 4))
+      return fiobj_null();
+    break;
+  case 5:
+    if (!strncasecmp(s, "false", 5))
+      return fiobj_false();
+  }
+  {
+    char *end = s;
+    const uint64_t tmp = fio_atol(&end);
+    if (end == s + len)
+      return fiobj_num_new(tmp);
+  }
+  {
+    char *end = s;
+    const double tmp = fio_atof(&end);
+    if (end == s + len)
+      return fiobj_float_new(tmp);
+  }
+  return http_urlstr2fiobj(s, len);
+}
+
+/** Parses the query part of an HTTP request/response. Uses `http_add2hash`. */
+void http_parse_query(http_s *h) {
+  if (!h->query)
+    return;
+  if (!h->params)
+    h->params = fiobj_hash_new();
+  fio_cstr_s q = fiobj_obj2cstr(h->query);
+  do {
+    char *cut = memchr(q.data, '&', q.len);
+    if (!cut)
+      cut = q.data + q.len;
+    char *cut2 = memchr(q.data, '=', (cut - q.data));
+    if (cut2) {
+      /* we only add named elements... */
+      http_add2hash(h->params, q.data, (size_t)(cut2 - q.data), (cut2 + 1),
+                    (size_t)(cut - (cut2 + 1)));
+    }
+    if (cut[0] == '&') {
+      /* protecting against some ...less informed... clients */
+      if (cut[1] == 'a' && cut[2] == 'm' && cut[3] == 'p' && cut[4] == ';')
+        cut += 5;
+      else
+        cut += 1;
+    }
+    q.len -= (uintptr_t)(cut - q.data);
+    q.data = cut;
+  } while (q.len);
+}
+
+/**
+ * Adds a named parameter to the hash, resolving nesting references.
+ *
+ * i.e.:
+ *
+ * * "name[]" references a nested Array (nested in the Hash).
+ * * "name[key]" references a nested Hash.
+ * * "name[][key]" references a nested Hash within an array. Hash keys will be
+ *   unique (repeating a key advances the hash).
+ * * These rules can be nested (i.e. "name[][key1][][key2]...")
+ * * "name[][]" is an error (there's no way for the parser to analyse
+ *    dimentions)
+ *
+ * Note: names can't begine with "[" or end with "]" as these are reserved
+ *       characters.
+ */
+void http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
+                   size_t value_len) {
+  if (!name)
+    return;
+  FIOBJ nested_ary = FIOBJ_INVALID;
+  char *cut1;
+  /* we can't start with an empty object name */
+  while (name_len && name[0] == '[') {
+    --name_len;
+    ++name;
+  }
+  if (!name_len) {
+    /* an empty name is an error */
+    return;
+  }
+  uint32_t nesting = ((uint32_t)~0);
+rebase:
+  /* test for nesting level limit (limit at 32) */
+  if (!nesting)
+    return;
+  /* start clearing away bits. */
+  nesting >>= 1;
+  /* since we might be rebasing, notice that "name" might be "name]" */
+  cut1 = memchr(name, '[', name_len);
+  if (!cut1)
+    goto place_in_hash;
+  /* simple case "name=" (the "=" was already removed) */
+  if (cut1 == name) {
+    /* an empty name is an error */
+    return;
+  }
+  if (cut1 + 1 == name + name_len) {
+    /* we have name[= ... autocorrect */
+    name_len -= 1;
+    goto place_in_array;
+  }
+
+  if (cut1[1] == ']') {
+    /* Nested Array "name[]..." */
+
+    /* Test for name[]= */
+    if ((cut1 + 2) == name + name_len) {
+      name_len -= 2;
+      goto place_in_array;
+    }
+
+    /* Test for a nested Array format error */
+    if (cut1[2] != '[' || cut1[3] == ']') { /* error, we can't parse this */
+      return;
+    }
+
+    /* we have name[][key...= */
+
+    /* ensure array exists and it's an array + set nested_ary */
+    const size_t len = ((cut1[-1] == ']') ? (size_t)((cut1 - 1) - name)
+                                          : (size_t)(cut1 - name));
+    const uint64_t hash = fio_siphash(name, len); /* hash the current name */
+    nested_ary = fiobj_hash_get2(dest, hash);
+    if (!nested_ary) {
+      /* create a new nested array */
+      FIOBJ key = http_urlstr2fiobj(name, len);
+      nested_ary = fiobj_ary_new2(4);
+      fiobj_hash_set(dest, key, nested_ary);
+      fiobj_free(key);
+    } else if (!FIOBJ_TYPE_IS(nested_ary, FIOBJ_T_ARRAY)) {
+      /* convert existing object to an array - auto error correction */
+      FIOBJ key = http_urlstr2fiobj(name, len);
+      FIOBJ tmp = fiobj_ary_new2(4);
+      fiobj_ary_push(tmp, nested_ary);
+      nested_ary = tmp;
+      fiobj_hash_set(dest, key, nested_ary);
+      fiobj_free(key);
+    }
+
+    /* test if last object in the array is a hash - create hash if not */
+    dest = fiobj_ary_index(nested_ary, -1);
+    if (!dest || !FIOBJ_TYPE_IS(dest, FIOBJ_T_HASH)) {
+      dest = fiobj_hash_new();
+      fiobj_ary_push(nested_ary, dest);
+    }
+
+    /* rebase `name` to `key` and restart. */
+    cut1 += 3; /* consume "[][" */
+    name_len -= (size_t)(cut1 - name);
+    name = cut1;
+    goto rebase;
+
+  } else {
+    /* we have name[key]... */
+    const size_t len = ((cut1[-1] == ']') ? (size_t)((cut1 - 1) - name)
+                                          : (size_t)(cut1 - name));
+    const uint64_t hash = fio_siphash(name, len); /* hash the current name */
+    FIOBJ tmp = fiobj_hash_get2(dest, hash);
+    if (!tmp) {
+      /* hash doesn't exist, create it */
+      FIOBJ key = http_urlstr2fiobj(name, len);
+      tmp = fiobj_hash_new();
+      fiobj_hash_set(dest, key, tmp);
+      fiobj_free(key);
+    } else if (!FIOBJ_TYPE_IS(tmp, FIOBJ_T_HASH)) {
+      /* type error, referencing an existing object that isn't a Hash */
+      return;
+    }
+    dest = tmp;
+    /* no rollback is possible once we enter the new nesting level... */
+    nested_ary = FIOBJ_INVALID;
+    /* rebase `name` to `key` and restart. */
+    cut1 += 1; /* consume "[" */
+    name_len -= (size_t)(cut1 - name);
+    name = cut1;
+    goto rebase;
+  }
+
+place_in_hash:
+  if (name[name_len - 1] == ']')
+    --name_len;
+  FIOBJ key = http_urlstr2fiobj(name, name_len);
+  FIOBJ val = http_str2fiobj(value, value_len);
+  FIOBJ old = fiobj_hash_replace(dest, key, val);
+  if (old) {
+    if (nested_ary) {
+      fiobj_hash_replace(dest, key, old);
+      old = fiobj_hash_new();
+      fiobj_hash_set(old, key, val);
+      fiobj_ary_push(nested_ary, old);
+    } else {
+      if (!FIOBJ_TYPE_IS(old, FIOBJ_T_ARRAY)) {
+        FIOBJ tmp = fiobj_ary_new2(4);
+        fiobj_ary_push(tmp, old);
+        old = tmp;
+      }
+      fiobj_ary_push(old, val);
+      fiobj_hash_replace(dest, key, old);
+    }
+  }
+  fiobj_free(key);
+  return;
+
+place_in_array:
+  if (name[name_len - 1] == ']')
+    --name_len;
+  uint64_t hash = fio_siphash(name, name_len);
+  FIOBJ ary = fiobj_hash_get2(dest, hash);
+  if (!ary) {
+    FIOBJ key = http_urlstr2fiobj(name, name_len);
+    ary = fiobj_ary_new2(4);
+    fiobj_hash_set(dest, key, ary);
+    fiobj_free(key);
+  } else if (!FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY)) {
+    FIOBJ tmp = fiobj_ary_new2(4);
+    fiobj_ary_push(tmp, ary);
+    ary = tmp;
+    FIOBJ key = http_urlstr2fiobj(name, name_len);
+    fiobj_hash_replace(dest, key, ary);
+    fiobj_free(key);
+  }
+  fiobj_ary_push(ary, http_str2fiobj(value, value_len));
+  return;
+}
 
 /* *****************************************************************************
 HTTP Helper functions that could be used globally
