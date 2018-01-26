@@ -813,9 +813,6 @@ enum cluster_message_type_e {
   CLUSTER_MESSAGE_PING,
 };
 
-static void facil_worker_startup(uint8_t sentinal);
-static void facil_worker_cleanup(void);
-
 static void cluster_deferred_handler(void *msg_data_, void *ignr) {
   cluster_msg_data_s *data = msg_data_;
   data->on_message(data->filter, data->channel, data->msg);
@@ -927,8 +924,8 @@ static void cluster_on_client_message(cluster_pr_s *c, intptr_t uuid) {
   case CLUSTER_MESSAGE_ERROR:
   case CLUSTER_MESSAGE_SHUTDOWN:
     facil_stop();
-    sock_close(uuid);
     facil_cluster_data.root = -1;
+    sock_close(uuid);
     break;
 
   case CLUSTER_MESSAGE_PING:
@@ -978,53 +975,6 @@ static void cluster_on_server_message(cluster_pr_s *c, intptr_t uuid) {
   }
 }
 
-static void cluster_on_server_close(intptr_t uuid, protocol_s *pr_) {
-  if (facil_cluster_data.client_mode)
-    return; /* we respawned. */
-  spn_lock(&facil_cluster_data.lock);
-  fio_hash_insert(&facil_cluster_data.clients, (FIO_HASH_KEY_TYPE)uuid, NULL);
-  spn_unlock(&facil_cluster_data.lock);
-  cluster_pr_s *c = (cluster_pr_s *)pr_;
-  if (facil_data->active) {
-#if DEBUG
-    cluster_send2clients(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL, 0);
-    sock_close(uuid);
-    if (FACIL_PRINT_STATE)
-      fprintf(stderr,
-              "* (%d) Worker crash detected, signaling for exit (debug).\n",
-              getpid());
-    facil_stop();
-#else
-    fprintf(stderr, "ERROR: Wroker crash detected, spinning new worker.\n");
-    if (!facil_fork()) {
-      defer_on_fork();
-      facil_cluster_data.client_mode = 1;
-      sock_close(facil_cluster_data.root);
-      facil_cluster_data.root = -1;
-      evio_close();
-
-      for (intptr_t i = 0; i < facil_data->capacity; i++) {
-        if (fd_data(i).protocol &&
-            (fd_data(i).protocol->service != listener_protocol_name &&
-             fd_data(i).protocol->service != timer_protocol_name)) {
-          close(i); /* close first to prevent TCP/IP shutdown */
-          sock_close(sock_fd2uuid(i));
-        }
-      }
-      defer_pool_stop(facil_data->thread_pool);
-      defer_pool_wait(facil_data->thread_pool);
-      facil_data->thread_pool = NULL;
-      facil_worker_startup(0);
-      defer_pool_wait(facil_data->thread_pool);
-      facil_worker_cleanup();
-      exit(0);
-    }
-#endif
-  }
-  fiobj_free(c->msg);
-  fiobj_free(c->channel);
-  free(c);
-}
 static void cluster_on_client_close(intptr_t uuid, protocol_s *pr_) {
   cluster_pr_s *c = (cluster_pr_s *)pr_;
   /* no shutdown message received - parent crashed. */
@@ -1041,6 +991,21 @@ static void cluster_on_client_close(intptr_t uuid, protocol_s *pr_) {
   fiobj_free(c->channel);
   free(c);
   facil_cluster_data.root = -1;
+}
+
+static void cluster_on_server_close(intptr_t uuid, protocol_s *pr_) {
+  if (facil_cluster_data.client_mode) {
+    cluster_on_client_close(uuid, pr_); /* we respawned. */
+    return;
+  }
+  spn_lock(&facil_cluster_data.lock);
+  fio_hash_insert(&facil_cluster_data.clients, (FIO_HASH_KEY_TYPE)uuid, NULL);
+  // fio_hash_compact(&facil_cluster_data.clients);
+  spn_unlock(&facil_cluster_data.lock);
+  cluster_pr_s *c = (cluster_pr_s *)pr_;
+  fiobj_free(c->msg);
+  fiobj_free(c->channel);
+  free(c);
 }
 
 static void cluster_on_shutdown(intptr_t uuid, protocol_s *pr_) {
@@ -1157,11 +1122,11 @@ static void cluster_on_new_peer(intptr_t srv, protocol_s *pr) {
   (void)pr;
 }
 static void cluster_on_listening_close(intptr_t srv, protocol_s *pr) {
-  fio_hash_free(&facil_cluster_data.clients);
-  facil_cluster_data.clients = (fio_hash_s){0};
-  if (facil_parent_pid() == getpid())
+  if (facil_parent_pid() == getpid()) {
     unlink(facil_cluster_data.cluster_name);
-  facil_cluster_data.root = -1;
+  }
+  if (facil_cluster_data.root == srv)
+    facil_cluster_data.root = -1;
   (void)srv;
   (void)pr;
 }
@@ -1170,7 +1135,7 @@ static void cluster_on_listening_ping(intptr_t srv, protocol_s *pr) {
   (void)pr;
 }
 
-static void cluster_on_start(void *udata1, void *udata) {
+static void cluster_on_start(void) {
   if (facil_data->active <= 1)
     return;
   if (facil_parent_pid() == getpid()) {
@@ -1181,13 +1146,14 @@ static void cluster_on_start(void *udata1, void *udata) {
     // facil_force_event(facil_cluster_data.root, FIO_EVENT_ON_DATA);
   } else {
     facil_cluster_data.client_mode = 1;
-    close(sock_uuid2fd(facil_cluster_data.root)); /* prevent `shutdown` */
-    sock_close(facil_cluster_data.root);
-    FIO_HASH_FOR_LOOP(&facil_cluster_data.clients, i) {
-      sock_close((intptr_t)i->key);
+    FIO_HASH_FOR_FREE(&facil_cluster_data.clients, pos) {
+      if (!pos->obj)
+        continue;
+      close(sock_uuid2fd(pos->key));
     }
-    fio_hash_free(&facil_cluster_data.clients);
     facil_cluster_data.clients = (fio_hash_s)FIO_HASH_INIT;
+    if (facil_cluster_data.root != -1)
+      close(sock_uuid2fd(facil_cluster_data.root)); /* prevent `shutdown` */
     facil_cluster_data.root =
         facil_connect(.address = facil_cluster_data.cluster_name,
                       .on_connect = cluster_on_open);
@@ -1198,11 +1164,11 @@ static void cluster_on_start(void *udata1, void *udata) {
       facil_stop();
     }
   }
-  (void)udata;
-  (void)udata1;
 }
 
 static int facil_cluster_init(void) {
+  if (facil_data->active <= 1)
+    return 0;
   /* create a unique socket name */
   char *tmp_folder = getenv("TMPDIR");
   uint32_t tmp_folder_len = 0;
@@ -1394,20 +1360,21 @@ static void facil_worker_startup(uint8_t sentinal) {
         evio_add(i, (void *)sock_fd2uuid(i));
     }
   }
+  /* called after `evio_create` but before actually reacting to events. */
   facil_data->need_review = 1;
   facil_external_init();
-  if (facil_data->active > 1)
-    defer(cluster_on_start, NULL, NULL);
+  cluster_on_start();
+  defer(print_pid, NULL, NULL);
   defer(facil_cycle, NULL, NULL);
 
-  if (FACIL_PRINT_STATE && facil_data->parent == getpid()) {
+  if (FACIL_PRINT_STATE && (sentinal || facil_data->parent == getpid())) {
     fprintf(stderr, "Server is running %u %s X %u %s, press ^C to stop\n",
             facil_data->active, facil_data->active > 1 ? "workers" : "worker",
             facil_data->threads,
             facil_data->threads > 1 ? "threads" : "thread");
   }
-  defer(print_pid, NULL, NULL);
-  facil_data->thread_pool = defer_pool_start(facil_data->threads);
+  facil_data->thread_pool =
+      defer_pool_start((sentinal ? 1 : facil_data->threads));
 }
 
 static void facil_worker_cleanup(void) {
@@ -1436,6 +1403,51 @@ static void facil_worker_cleanup(void) {
       fprintf(stderr, "\n   ---  Completed Shutdown  ---\n");
     }
   }
+}
+
+static void facil_sentinel_task(void *arg1, void *arg2);
+
+static void *facil_sentinel_worker_thraed(void *arg) {
+  pid_t child = facil_fork();
+  if (child == -1) {
+    perror("FATAL ERROR: couldn't spawn workers at startup");
+    kill(0, SIGINT);
+    return NULL;
+  } else if (child) {
+    int status;
+    waitpid(child, &status, 0);
+#if DEBUG
+    if (!WIFEXITED(status) || WEXITSTATUS(status) || facil_data->active) {
+      fprintf(stderr,
+              "FATAL ERROR: Child wordker (%d) crashed. Stopping services in "
+              "DEBUG mode.\n",
+              child);
+      kill(0, SIGINT);
+    }
+#else
+    if (!WIFEXITED(status) || WEXITSTATUS(status) || facil_data->active) {
+      fprintf(stderr, "ERROR: Child wordker (%d) crashed. Respawning worker.\n",
+              child);
+      defer(facil_sentinel_task, NULL, NULL);
+    }
+#endif
+  } else {
+    defer_on_fork();
+    defer_clear_queue();
+    facil_worker_startup(0);
+    defer_pool_wait(facil_data->thread_pool);
+    facil_worker_cleanup();
+    exit(0);
+  }
+  (void)arg;
+  return NULL;
+}
+
+static void facil_sentinel_task(void *arg1, void *arg2) {
+  void *thrd = defer_new_thread(facil_sentinel_worker_thraed, NULL);
+  defer_free_thread(thrd);
+  (void)arg1;
+  (void)arg2;
 }
 
 /* handles the SIGINT and SIGTERM signals by shutting down workers */
@@ -1546,37 +1558,21 @@ void facil_run(struct facil_run_args args) {
   if (args.processes > 1) {
     if (facil_cluster_init()) {
       kill(0, SIGINT);
-      goto cleanup;
-    }
-    while (args.processes) {
-      --args.processes;
-      int pid = facil_fork();
-      if (pid == -1) {
-        perror("FATAL ERROR: couldn't spawn workers at startup");
-        kill(0, SIGINT);
-        goto cleanup;
+      if (FACIL_PRINT_STATE) {
+        fprintf(stderr, "\n   !!!  Crashed trying to "
+                        "start the service  !!!\n");
       }
-      if (!pid)
-        break;
+      exit(-1);
     }
-    facil_worker_startup(facil_data->parent == getpid());
+    for (int i = 0; i < args.processes; ++i) {
+      defer(facil_sentinel_task, NULL, NULL);
+    }
+    facil_worker_startup(1);
   } else {
     facil_worker_startup(0);
   }
   defer_pool_wait(facil_data->thread_pool);
   facil_worker_cleanup();
-  return;
-
-cleanup:
-  facil_data->active = 0;
-  if (facil_data->parent == getpid()) {
-    while (wait(NULL) != -1)
-      ;
-    if (FACIL_PRINT_STATE) {
-      fprintf(stderr, "\n   !!!  Crashed trying to start the service  !!!\n");
-    }
-  }
-  exit(-1);
 }
 
 /**

@@ -95,6 +95,14 @@ void *defer_new_thread(void *(*thread_func)(void *), pool_pt pool);
 /**
  * OVERRIDE THIS to replace the default pthread implementation.
  *
+ * Frees the memory asociated with a thread indentifier (allows the thread to
+ * run it's course, just the identifier is freed).
+ */
+void defer_free_thread(void *p_thr);
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
  * Accepts a pointer returned from `defer_new_thread` (should also free any
  * allocated memory) and joins the associated thread.
  *

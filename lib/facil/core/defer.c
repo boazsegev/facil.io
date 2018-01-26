@@ -251,12 +251,21 @@ error:
   return NULL;
 }
 
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Frees the memory asociated with a thread indentifier (allows the thread to
+ * run it's course, just the identifier is freed).
+ */
+#pragma weak defer_join_thread
+void defer_free_thread(void *p_thr) { free(p_thr); }
+
 #pragma weak defer_join_thread
 int defer_join_thread(void *p_thr) {
   if (!p_thr)
     return -1;
   pthread_join(*((pthread_t *)p_thr), NULL);
-  free(p_thr);
+  defer_free_thread(p_thr);
   return 0;
 }
 
@@ -273,6 +282,10 @@ void *defer_new_thread(void *(*thread_func)(void *), void *arg) {
   (void)arg;
   return NULL;
 }
+
+#pragma weak defer_join_thread
+void defer_free_thread(void *p_thr) { void(p_thr); }
+
 #pragma weak defer_join_thread
 int defer_join_thread(void *p_thr) {
   (void)p_thr;
