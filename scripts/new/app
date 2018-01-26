@@ -7,17 +7,18 @@
 
 if [ -z $1 ]
   then
-	echo "Please provide application (folder) name. i.e:"
-	echo "bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/stable/scripts/new) hello_world"
-  exit 0
+	echo "Please name the application (the folder to create):"
+	read FIO_APPNAME
+else
+	FIO_APPNAME=$1
 fi
 
-if [ -a $1 ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
-if [ -d $1 ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
+if [ -a $FIO_APPNAME ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
+if [ -d $FIO_APPNAME ]; then echo "Couldn't create folder, already exists?"; exit 1; fi
 
-echo "Creating $1"
-mkdir $1
-cd $1
+echo "* Creating $FIO_APPNAME"
+mkdir $FIO_APPNAME
+cd $FIO_APPNAME
 
 if [[ -z "${FIO_BRANCH}" ]]; then
   FIO_URL=$(curl -s https://api.github.com/repos/boazsegev/facil.io/releases/latest | grep tarball_url | cut -d '"' -f 4)
@@ -37,4 +38,5 @@ tar --strip-components=1 -xzf facil.io.tar.gz
 if [ $? -ne 0 ]; then echo "Couldn't extract tar."; exit 1; fi
 
 rm facil.io.tar.gz
+
 ./scripts/new/cleanup
