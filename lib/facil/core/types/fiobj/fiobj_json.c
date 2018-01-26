@@ -942,6 +942,10 @@ size_t fiobj_json2obj(FIOBJ *pobj, const void *data, size_t len) {
  */
 FIOBJ fiobj_obj2json2(FIOBJ dest, FIOBJ o, uint8_t pretty) {
   assert(dest && FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
+  if (!o) {
+    fiobj_str_write(dest, "null", 4);
+    return 0;
+  }
   fio_ary_s stack;
   obj2json_data_s data = {
       .dest = dest, .stack = &stack, .pretty = pretty, .count = 1,
