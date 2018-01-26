@@ -29,6 +29,7 @@ fast (and sometimes faster) when serving static files.
 /* include the core library, without any extensions */
 #include "facil.h"
 
+#include "fio_cli.h"
 #include "fiobj.h"
 #include "http1_parser.h"
 
@@ -95,13 +96,24 @@ Listening for Connections (main)
 void fast_http_on_open(intptr_t uuid, void *udata);
 
 /* our main function / starting point */
-int main(void) {
+int main(int argc, char const *argv[]) {
+  /* A simple CLI interface. */
+  fio_cli_start(argc, argv, "Fast HTTP example for the facil.io framework.");
+  fio_cli_accept_str("port p", "Port to bind to.");
+  fio_cli_accept_str("workers w", "Number of workers (processes).");
+  fio_cli_accept_str("threads t", "Number of threads.");
+  /* Default to port 3000. */
+  if (!fio_cli_get_str("p"))
+    fio_cli_set_str("p", "3000");
+  /* Default to single thread. */
+  if (!fio_cli_get_int("t"))
+    fio_cli_set_int("t", 1);
   /* try to listen on port 3000. */
-  if (facil_listen(.port = "3000", .address = NULL,
+  if (facil_listen(.port = fio_cli_get_str("p"), .address = NULL,
                    .on_open = fast_http_on_open, .udata = NULL))
     perror("FATAL ERROR: Couldn't open listening socket"), exit(errno);
   /* run facil with 1 working thread - this blocks until we're done. */
-  facil_run(.threads = 1, .processes = 1);
+  facil_run(.threads = fio_cli_get_int("t"), .processes = fio_cli_get_int("w"));
   /* that's it */
   return 0;
 }
