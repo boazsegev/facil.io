@@ -3,7 +3,7 @@
 # This handles cleanup operations and boiler-plate code and it is executed after downloading a copy of the latest release.
 #
 # Since the version of the script executed is the version included in the release, it is safe to change between releases.
-rm -R src
+rm -R src &> /dev/null
 rm -R docs
 rm -R tests
 rm -R scripts/new
@@ -14,7 +14,6 @@ rm Doxyfile
 rm CMakeLists.txt
 rm LICENSE
 rm NOTICE
-make clean &> /dev/null
 mv ./examples/boiler_plates/http/* ./
 rm -R ./examples/boiler_plates
 make clean &> /dev/null
