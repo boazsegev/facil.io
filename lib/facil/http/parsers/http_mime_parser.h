@@ -224,7 +224,7 @@ consume_partial:
             if (name[name_len - 1] == '"')
               --name_len;
           } else if (start + 9 < end && !strncasecmp(start, "filename", 8)) {
-            uint8_t encoded;
+            uint8_t encoded = 0;
             start += 8;
             if (start[0] == '*') {
               encoded = 1;
@@ -254,9 +254,12 @@ consume_partial:
             }
             if (filename[filename_len - 1] == '"')
               --filename_len;
-            if (encoded)
-              filename_len =
+            if (encoded) {
+              ssize_t new_len =
                   http_mime_decode_url(filename, filename, filename_len);
+              if (new_len > 0)
+                filename_len = new_len;
+            }
           } else {
             start = memchr(start, ';', (size_t)(end - start));
           }
@@ -270,6 +273,8 @@ consume_partial:
         start = memchr(start, ';', (size_t)(end - start));
         if (!start) {
           mime_len = (size_t)(end - mime);
+          if (mime[mime_len - 1] == '\r')
+            --mime_len;
         } else {
           mime_len = (size_t)(start - mime);
         }
