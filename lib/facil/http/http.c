@@ -1056,7 +1056,7 @@ static inline FIOBJ http_urlstr2fiobj(char *s, size_t len) {
 }
 
 /** converts a string into a `FIOBJ`. */
-static inline FIOBJ http_str2fiobj(char *s, size_t len) {
+static inline FIOBJ http_str2fiobj(char *s, size_t len, uint8_t encoded) {
   switch (len) {
   case 0:
     return fiobj_str_new(NULL, 0); /* empty string */
@@ -1082,7 +1082,9 @@ static inline FIOBJ http_str2fiobj(char *s, size_t len) {
     if (end == s + len)
       return fiobj_float_new(tmp);
   }
-  return http_urlstr2fiobj(s, len);
+  if (encoded)
+    return http_urlstr2fiobj(s, len);
+  return fiobj_str_new(s, len);
 }
 
 /** Parses the query part of an HTTP request/response. Uses `http_add2hash`. */
@@ -1100,7 +1102,7 @@ void http_parse_query(http_s *h) {
     if (cut2) {
       /* we only add named elements... */
       http_add2hash(h->params, q.data, (size_t)(cut2 - q.data), (cut2 + 1),
-                    (size_t)(cut - (cut2 + 1)));
+                    (size_t)(cut - (cut2 + 1)), 1);
     }
     if (cut[0] == '&') {
       /* protecting against some ...less informed... clients */
@@ -1131,7 +1133,7 @@ void http_parse_query(http_s *h) {
  *       characters.
  */
 void http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
-                   size_t value_len) {
+                   size_t value_len, uint8_t encoded) {
   if (!name)
     return;
   FIOBJ nested_ary = FIOBJ_INVALID;
@@ -1190,13 +1192,15 @@ rebase:
     nested_ary = fiobj_hash_get2(dest, hash);
     if (!nested_ary) {
       /* create a new nested array */
-      FIOBJ key = http_urlstr2fiobj(name, len);
+      FIOBJ key =
+          encoded ? http_urlstr2fiobj(name, len) : fiobj_str_new(name, len);
       nested_ary = fiobj_ary_new2(4);
       fiobj_hash_set(dest, key, nested_ary);
       fiobj_free(key);
     } else if (!FIOBJ_TYPE_IS(nested_ary, FIOBJ_T_ARRAY)) {
       /* convert existing object to an array - auto error correction */
-      FIOBJ key = http_urlstr2fiobj(name, len);
+      FIOBJ key =
+          encoded ? http_urlstr2fiobj(name, len) : fiobj_str_new(name, len);
       FIOBJ tmp = fiobj_ary_new2(4);
       fiobj_ary_push(tmp, nested_ary);
       nested_ary = tmp;
@@ -1225,7 +1229,8 @@ rebase:
     FIOBJ tmp = fiobj_hash_get2(dest, hash);
     if (!tmp) {
       /* hash doesn't exist, create it */
-      FIOBJ key = http_urlstr2fiobj(name, len);
+      FIOBJ key =
+          encoded ? http_urlstr2fiobj(name, len) : fiobj_str_new(name, len);
       tmp = fiobj_hash_new();
       fiobj_hash_set(dest, key, tmp);
       fiobj_free(key);
@@ -1246,8 +1251,9 @@ rebase:
 place_in_hash:
   if (name[name_len - 1] == ']')
     --name_len;
-  FIOBJ key = http_urlstr2fiobj(name, name_len);
-  FIOBJ val = http_str2fiobj(value, value_len);
+  FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
+                      : fiobj_str_new(name, name_len);
+  FIOBJ val = http_str2fiobj(value, value_len, encoded);
   FIOBJ old = fiobj_hash_replace(dest, key, val);
   if (old) {
     if (nested_ary) {
@@ -1274,7 +1280,8 @@ place_in_array:
   uint64_t hash = fio_siphash(name, name_len);
   FIOBJ ary = fiobj_hash_get2(dest, hash);
   if (!ary) {
-    FIOBJ key = http_urlstr2fiobj(name, name_len);
+    FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
+                        : fiobj_str_new(name, name_len);
     ary = fiobj_ary_new2(4);
     fiobj_hash_set(dest, key, ary);
     fiobj_free(key);
@@ -1282,11 +1289,12 @@ place_in_array:
     FIOBJ tmp = fiobj_ary_new2(4);
     fiobj_ary_push(tmp, ary);
     ary = tmp;
-    FIOBJ key = http_urlstr2fiobj(name, name_len);
+    FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
+                        : fiobj_str_new(name, name_len);
     fiobj_hash_replace(dest, key, ary);
     fiobj_free(key);
   }
-  fiobj_ary_push(ary, http_str2fiobj(value, value_len));
+  fiobj_ary_push(ary, http_str2fiobj(value, value_len, encoded));
   return;
 }
 

@@ -525,7 +525,8 @@ HTTP GET and POST parsing helpers
 void http_parse_query(http_s *h);
 
 /**
- * Adds a named parameter to the hash, resolving nesting references.
+ * Adds a named parameter to the hash, resolving nesting references and URL
+ * decoding if required.
  *
  * i.e.:
  *
@@ -541,7 +542,7 @@ void http_parse_query(http_s *h);
  *       characters.
  */
 void http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
-                   size_t value_len);
+                   size_t value_len, uint8_t encoded);
 
 /* *****************************************************************************
 HTTP Status Strings and Mime-Type helpers
