@@ -742,8 +742,7 @@ static void write_safe_str(FIOBJ dest, const FIOBJ str) {
   }
   while (len) {
     char *restrict writer = (char *)t.data;
-    while (len &&
-           (src[0] > 32 && src[0] != '"' && src[0] != '\\' && src[0] != '/')) {
+    while (len && (src[0] > 32 && src[0] != '"' && src[0] != '\\')) {
       len--;
       writer[end++] = *(src++);
     }
