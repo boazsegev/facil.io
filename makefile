@@ -221,8 +221,8 @@ test_build: $(LIB_OBJS)
 
 .PHONY : clean
 clean:
-	-@rm $(BIN)
-	-@rm -R $(TMP_ROOT)
+	-@rm $(BIN) 2>/dev/null
+	-@rm -R $(TMP_ROOT) 2>/dev/null
 	-@mkdir -p $(BUILDTREE)
 
 .PHONY : run
@@ -250,7 +250,7 @@ else
 
 .PHONY : libdump
 libdump: cmake
-	-@rm -R $(DUMP_LIB)
+	-@rm -R $(DUMP_LIB) 2>/dev/null
 	@mkdir $(DUMP_LIB)
 	@mkdir $(DUMP_LIB)/src
 	@mkdir $(DUMP_LIB)/include
@@ -272,7 +272,7 @@ else
 
 .PHONY : cmake
 cmake:
-	-@rm $(CMAKE_LIBFILE_NAME)
+	-@rm $(CMAKE_LIBFILE_NAME) 2>/dev/null
 	@touch $(CMAKE_LIBFILE_NAME)
 	@echo 'project(facil.io C)' >> $(CMAKE_LIBFILE_NAME)
 	@echo 'cmake_minimum_required(VERSION 2.4)' >> $(CMAKE_LIBFILE_NAME)
