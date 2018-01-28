@@ -114,19 +114,19 @@ OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
 
 
 # S2N TLS/SSL library: https://github.com/awslabs/s2n
-ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -ls2n -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -ls2n -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null ), 0)
   $(info * Detected the s2n library, setting HAVE_S2N)
 	FLAGS:=$(FLAGS) HAVE_S2N
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
 
 # add BearSSL/OpenSSL library flags
-ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
 else
-ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
@@ -134,7 +134,7 @@ endif
 endif
 
 # add ZLib library flags
-ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lz -xc -o /dev/null - >& /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lz -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the zlib library, setting HAVE_ZLIB)
 	FLAGS:=$(FLAGS) HAVE_ZLIB
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
@@ -196,14 +196,14 @@ $(TMP_ROOT)/%.d: ;
 .PHONY : test 
 test: | clean 
 	@DEBUG=1 $(MAKE) test_build_and_run
-	-@rm $(BIN)
-	-@rm -R $(TMP_ROOT)
+	-@rm $(BIN) 2> /dev/null
+	-@rm -R $(TMP_ROOT) 2> /dev/null
 
 .PHONY : test_optimized
 test_optimized: | clean 
 	@$(MAKE) test_build_and_run
-	-@rm $(BIN)
-	-@rm -R $(TMP_ROOT)
+	-@rm $(BIN) 2> /dev/null
+	-@rm -R $(TMP_ROOT) 2> /dev/null
 
 .PHONY : test_build_and_run
 test_build_and_run: | create_tree test_add_flags test_build
@@ -221,9 +221,9 @@ test_build: $(LIB_OBJS)
 
 .PHONY : clean
 clean:
-	-@rm $(BIN) 2>/dev/null
-	-@rm -R $(TMP_ROOT) 2>/dev/null
-	-@mkdir -p $(BUILDTREE)
+	-@rm $(BIN) 2> /dev/null || echo "" >> /dev/null
+	-@rm -R $(TMP_ROOT) 2> /dev/null || echo "" >> /dev/null
+	-@mkdir -p $(BUILDTREE) 
 
 .PHONY : run
 run: | build
@@ -237,7 +237,7 @@ db: | clean
 
 .PHONY : create_tree
 create_tree:
-	-@mkdir -p $(BUILDTREE)
+	-@mkdir -p $(BUILDTREE) 2> /dev/null
 
 ########
 ## Helper Tasks
@@ -250,7 +250,7 @@ else
 
 .PHONY : libdump
 libdump: cmake
-	-@rm -R $(DUMP_LIB) 2>/dev/null
+	-@rm -R $(DUMP_LIB) 2> /dev/null
 	@mkdir $(DUMP_LIB)
 	@mkdir $(DUMP_LIB)/src
 	@mkdir $(DUMP_LIB)/include
@@ -272,7 +272,7 @@ else
 
 .PHONY : cmake
 cmake:
-	-@rm $(CMAKE_LIBFILE_NAME) 2>/dev/null
+	-@rm $(CMAKE_LIBFILE_NAME) 2> /dev/null
 	@touch $(CMAKE_LIBFILE_NAME)
 	@echo 'project(facil.io C)' >> $(CMAKE_LIBFILE_NAME)
 	@echo 'cmake_minimum_required(VERSION 2.4)' >> $(CMAKE_LIBFILE_NAME)
