@@ -30,7 +30,7 @@ Creating the IO object
 FIOBJ fiobj_data_newstr(void);
 
 /**
- * Creates a IO object from an existing buffer. The buffer will be deallocated
+ * Creates a Data object from an existing buffer. The buffer will be deallocated
  * using the provided `dealloc` function pointer. Use a NULL `dealloc` function
  * pointer if the buffer is static and shouldn't be freed.
  */
@@ -42,6 +42,9 @@ FIOBJ fiobj_data_newtmpfile(void);
 
 /** Creates a new local file IO object */
 FIOBJ fiobj_data_newfd(int fd);
+
+/** Creates a slice from an existing Data object. */
+FIOBJ fiobj_data_slice(FIOBJ parent, intptr_t offset, uintptr_t length);
 
 /* *****************************************************************************
 Saving the IO object

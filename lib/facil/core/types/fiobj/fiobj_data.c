@@ -36,6 +36,7 @@ typedef struct {
   fiobj_object_header_s head;
   uint8_t *buffer; /* reader buffer */
   union {
+    FIOBJ parent;
     void (*dealloc)(void *); /* buffer deallocation function */
     size_t fpos;             /* the file reader's position */
   };
@@ -70,9 +71,23 @@ static void fiobj_data_copy_buffer(FIOBJ o) {
   obj2io(o)->buffer = tmp;
 }
 
+static void fiobj_data_copy_parent(FIOBJ o) {
+  fprintf(stderr, "FATAL ERROR: writing to data slices isn't supported yet.\n");
+  exit(-1);
+  (void)o;
+}
+
 static inline void fiobj_data_pre_write(FIOBJ o, uintptr_t length) {
-  if (obj2io(o)->fd == -1 && obj2io(o)->dealloc != free)
-    fiobj_data_copy_buffer(o);
+  switch (obj2io(o)->fd) {
+  case -1:
+    if (obj2io(o)->dealloc != free) {
+      fiobj_data_copy_buffer(o);
+    }
+    break;
+  case -2:
+    fiobj_data_copy_parent(o);
+    break;
+  }
   if (obj2io(o)->capa >= obj2io(o)->len + length)
     return;
   /* add rounded pages (4096) to capacity */
@@ -103,12 +118,18 @@ static FIOBJ fiobj_data_alloc(void *buffer, int fd) {
 
 static void fiobj_data_dealloc(FIOBJ o, void (*task)(FIOBJ, void *),
                                void *arg) {
-  if (obj2io(o)->fd != -1) {
-    close(obj2io(o)->fd);
-    free(obj2io(o)->buffer);
-  } else {
+  switch (obj2io(o)->fd) {
+  case -1:
     if (obj2io(o)->dealloc && obj2io(o)->buffer)
       obj2io(o)->dealloc(obj2io(o)->buffer);
+    break;
+  case -2:
+    fiobj_free(obj2io(o)->parent);
+    break;
+  default:
+    close(obj2io(o)->fd);
+    free(obj2io(o)->buffer);
+    break;
   }
   free((void *)o);
   (void)task;
@@ -116,9 +137,14 @@ static void fiobj_data_dealloc(FIOBJ o, void (*task)(FIOBJ, void *),
 }
 
 static intptr_t fiobj_data_i(const FIOBJ o) {
-  if (obj2io(o)->fd == -1) {
+  switch (obj2io(o)->fd) {
+  case -1:
     return obj2io(o)->len;
-  } else {
+    break;
+  case -2:
+    return fiobj_data_i(obj2io(o)->parent);
+    break;
+  default:
     return fiobj_data_get_fd_size(o);
   }
 }
@@ -126,8 +152,13 @@ static intptr_t fiobj_data_i(const FIOBJ o) {
 static size_t fiobj_data_is_true(const FIOBJ o) { return fiobj_data_i(o) > 0; }
 
 static fio_cstr_s fio_io2str(const FIOBJ o) {
-  if (obj2io(o)->fd == -1) {
+  switch (obj2io(o)->fd) {
+  case -1:
     return (fio_cstr_s){.buffer = obj2io(o)->buffer, .len = obj2io(o)->len};
+    break;
+  case -2:
+    return fiobj_data_pread(obj2io(o)->parent, obj2io(o)->capa, obj2io(o)->len);
+    break;
   }
   int64_t i = fiobj_data_get_fd_size(o);
   if (i <= 0)
@@ -143,10 +174,9 @@ static fio_cstr_s fio_io2str(const FIOBJ o) {
 
 static size_t fiobj_data_iseq(const FIOBJ self, const FIOBJ other) {
   int64_t len;
-  return (self == other || (FIOBJ_TYPE(self) == FIOBJ_TYPE(other) &&
-                            (len = fiobj_data_i(self)) == fiobj_data_i(other) &&
-                            !memcmp(fio_io2str(self).buffer,
-                                    fio_io2str(other).buffer, (size_t)len)));
+  return (
+      (len = fiobj_data_i(self)) == fiobj_data_i(other) &&
+      !memcmp(fio_io2str(self).buffer, fio_io2str(other).buffer, (size_t)len));
 }
 
 uintptr_t fiobject___noop_count(FIOBJ o);
@@ -298,30 +328,44 @@ FIOBJ fiobj_data_newtmpfile(void) {
   return fiobj_data_newfd(fd);
 }
 
+/** Creates a slice from an existing Data object. */
+FIOBJ fiobj_data_slice(FIOBJ parent, intptr_t offset, uintptr_t length) {
+  FIOBJ o = fiobj_data_alloc((void *)fiobj_dup(parent), -2);
+  obj2io(o)->capa = offset;
+  obj2io(o)->len = length;
+  return o;
+}
+
 /* *****************************************************************************
 Saving the IO object
 ***************************************************************************** */
 
-/** Creates a new local file IO object */
-int fiobj_data_save(FIOBJ o, const char *filename) {
+static int fiobj_data_save_str(FIOBJ o, const char *filename) {
   int target = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0777);
   if (target == -1)
     return -1;
   errno = 0;
-  if (obj2io(o)->fd == -1) {
-    /* String code */
-    size_t total = 0;
-    do {
-      ssize_t act =
-          write(target, obj2io(o)->buffer + total, obj2io(o)->len - total);
-      if (act < 0)
-        goto error;
-      total += act;
-    } while (total < obj2io(o)->len);
-    close(target);
-    return 0;
-  }
-  /* File code */
+  size_t total = 0;
+  do {
+    ssize_t act =
+        write(target, obj2io(o)->buffer + total, obj2io(o)->len - total);
+    if (act < 0)
+      goto error;
+    total += act;
+  } while (total < obj2io(o)->len);
+  close(target);
+  return 0;
+error:
+  close(target);
+  unlink(filename);
+  return -1;
+}
+
+static int fiobj_data_save_file(FIOBJ o, const char *filename) {
+  int target = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0777);
+  if (target == -1)
+    return -1;
+  errno = 0;
   char buf[1024];
   size_t total = 0;
   do {
@@ -343,51 +387,103 @@ error:
   return -1;
 }
 
+static int fiobj_data_save_slice(FIOBJ o, const char *filename) {
+  int target = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0777);
+  if (target == -1)
+    return -1;
+  errno = 0;
+  fio_cstr_s tmp;
+  size_t total = 0;
+  do {
+    tmp = fiobj_data_pread(obj2io(o)->parent, obj2io(o)->capa + total, 4096);
+    if (tmp.len == 0)
+      break;
+    if (total + tmp.len > obj2io(o)->len)
+      tmp.len = obj2io(o)->len - total;
+    if (tmp.len) {
+      ssize_t act2 = write(target, tmp.data, tmp.len);
+      if (act2 < 0 || (size_t)act2 < tmp.len)
+        goto error;
+      total += act2;
+    }
+  } while (tmp.len == 4096);
+  close(target);
+  return 0;
+error:
+  close(target);
+  unlink(filename);
+  return -1;
+}
+
+/** Creates a new local file IO object */
+int fiobj_data_save(FIOBJ o, const char *filename) {
+  switch (obj2io(o)->fd) {
+  case -1:
+    return fiobj_data_save_str(o, filename);
+    break;
+  case -2:
+    return fiobj_data_save_slice(o, filename);
+    break;
+  default:
+    return fiobj_data_save_file(o, filename);
+  }
+}
+
 /* *****************************************************************************
 Reading API
 ***************************************************************************** */
 
-/**
- * Reads up to `length` bytes and returns a temporary(!) C string object.
- *
- * The C string object will be invalidate the next time a function call to the
- * IO object is made.
- */
-fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length) {
-  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA)) {
-    errno = EFAULT;
+/** Reads up to `length` bytes */
+static fio_cstr_s fiobj_data_read_str(FIOBJ io, intptr_t length) {
+  if (obj2io(io)->pos == obj2io(io)->len) {
+    /* EOF */
     return (fio_cstr_s){.buffer = NULL, .len = 0};
   }
-  errno = 0;
-  if (obj2io(io)->fd == -1) {
-    /* String code */
 
-    if (obj2io(io)->pos == obj2io(io)->len) {
-      /* EOF */
-      return (fio_cstr_s){.buffer = NULL, .len = 0};
-    }
-
-    if (length <= 0) {
-      /* read to EOF - length */
-      length = (obj2io(io)->len - obj2io(io)->pos) + length;
-    }
-
-    if (length <= 0) {
-      /* We are at EOF - length or beyond */
-      return (fio_cstr_s){.buffer = NULL, .len = 0};
-    }
-
-    /* reading length bytes */
-    register size_t pos = obj2io(io)->pos;
-    obj2io(io)->pos = pos + length;
-    if (obj2io(io)->pos > obj2io(io)->len)
-      obj2io(io)->pos = obj2io(io)->len;
-    return (fio_cstr_s){
-        .buffer = (obj2io(io)->buffer + pos), .length = (obj2io(io)->pos - pos),
-    };
+  if (length <= 0) {
+    /* read to EOF - length */
+    length = (obj2io(io)->len - obj2io(io)->pos) + length;
   }
 
-  /* File code */
+  if (length <= 0) {
+    /* We are at EOF - length or beyond */
+    return (fio_cstr_s){.buffer = NULL, .len = 0};
+  }
+
+  /* reading length bytes */
+  register size_t pos = obj2io(io)->pos;
+  obj2io(io)->pos = pos + length;
+  if (obj2io(io)->pos > obj2io(io)->len)
+    obj2io(io)->pos = obj2io(io)->len;
+  return (fio_cstr_s){
+      .buffer = (obj2io(io)->buffer + pos), .length = (obj2io(io)->pos - pos),
+  };
+}
+
+/** Reads up to `length` bytes */
+static fio_cstr_s fiobj_data_read_slice(FIOBJ io, intptr_t length) {
+  if (obj2io(io)->pos == obj2io(io)->len) {
+    /* EOF */
+    return (fio_cstr_s){.buffer = NULL, .len = 0};
+  }
+  if (length <= 0) {
+    /* read to EOF - length */
+    length = (obj2io(io)->len - obj2io(io)->pos) + length;
+  }
+
+  if (length <= 0) {
+    /* We are at EOF - length or beyond */
+    return (fio_cstr_s){.buffer = NULL, .len = 0};
+  }
+  register size_t pos = obj2io(io)->pos;
+  obj2io(io)->pos = pos + length;
+  if (obj2io(io)->pos > obj2io(io)->len)
+    obj2io(io)->pos = obj2io(io)->len;
+  return fiobj_data_pread(io, pos + obj2io(io)->capa, (obj2io(io)->pos - pos));
+}
+
+/** Reads up to `length` bytes */
+static fio_cstr_s fiobj_data_read_file(FIOBJ io, intptr_t length) {
   uintptr_t fsize = fiobj_data_get_fd_size(io);
 
   if (length <= 0) {
@@ -427,6 +523,114 @@ fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length) {
 }
 
 /**
+ * Reads up to `length` bytes and returns a temporary(!) C string object.
+ *
+ * The C string object will be invalidate the next time a function call to the
+ * IO object is made.
+ */
+fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length) {
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA)) {
+    errno = EFAULT;
+    return (fio_cstr_s){.buffer = NULL, .len = 0};
+  }
+  errno = 0;
+  switch (obj2io(io)->fd) {
+  case -1:
+    return fiobj_data_read_str(io, length);
+    break;
+  case -2:
+    return fiobj_data_read_slice(io, length);
+    break;
+  default:
+    return fiobj_data_read_file(io, length);
+  }
+}
+
+/* *****************************************************************************
+Tokenize (read2ch)
+***************************************************************************** */
+
+static fio_cstr_s fiobj_data_read2ch_str(FIOBJ io, uint8_t token) {
+  if (obj2io(io)->pos == obj2io(io)->len) /* EOF */
+    return (fio_cstr_s){.buffer = NULL, .len = 0};
+
+  uint8_t *pos = obj2io(io)->buffer + obj2io(io)->pos;
+  uint8_t *lim = obj2io(io)->buffer + obj2io(io)->len;
+  swallow_ch(&pos, lim, token);
+  fio_cstr_s ret = (fio_cstr_s){
+      .buffer = obj2io(io)->buffer + obj2io(io)->pos,
+      .length = (uintptr_t)(pos - obj2io(io)->buffer) - obj2io(io)->pos,
+  };
+  obj2io(io)->pos = (uintptr_t)(pos - obj2io(io)->buffer);
+  return ret;
+}
+
+static fio_cstr_s fiobj_data_read2ch_slice(FIOBJ io, uint8_t token) {
+  if (obj2io(io)->pos == obj2io(io)->len) /* EOF */
+    return (fio_cstr_s){.buffer = NULL, .len = 0};
+  size_t old_pos = obj2io(obj2io(io)->parent)->pos;
+  obj2io(obj2io(io)->parent)->pos = obj2io(io)->capa + obj2io(io)->pos;
+  fio_cstr_s tmp = fiobj_data_read2ch(obj2io(io)->parent, token);
+  obj2io(obj2io(io)->parent)->pos = old_pos;
+  if (tmp.len + obj2io(io)->pos > obj2io(io)->len) {
+    /* EOF */
+    tmp.len = obj2io(io)->len - obj2io(io)->pos;
+    obj2io(io)->pos = obj2io(io)->len;
+    return tmp;
+  }
+  return tmp;
+}
+
+static fio_cstr_s fiobj_data_read2ch_file(FIOBJ io, uint8_t token) {
+  uint8_t *pos = obj2io(io)->buffer + obj2io(io)->pos;
+  uint8_t *lim = obj2io(io)->buffer + obj2io(io)->len;
+  if (pos != lim && swallow_ch(&pos, lim, token)) {
+    /* newline found in existing buffer */
+    const uintptr_t delta =
+        (uintptr_t)(pos - (obj2io(io)->buffer + obj2io(io)->pos));
+    obj2io(io)->pos += delta;
+    obj2io(io)->fpos += delta;
+    return (fio_cstr_s){
+        .buffer =
+            (delta ? ((obj2io(io)->buffer + obj2io(io)->pos) - delta) : NULL),
+        .length = delta,
+    };
+  }
+
+  obj2io(io)->pos = 0;
+  obj2io(io)->len = 0;
+
+  while (1) {
+    ssize_t tmp;
+    fiobj_data_pre_write(io, 4096); /* read a page at a time */
+  retry_int:
+    tmp = pread(obj2io(io)->fd, obj2io(io)->buffer + obj2io(io)->len, 4096,
+                obj2io(io)->fpos + obj2io(io)->len);
+    if (tmp < 0 && errno == EINTR)
+      goto retry_int;
+    if (tmp < 0 || (tmp == 0 && obj2io(io)->len == 0)) {
+      return (fio_cstr_s){.buffer = NULL, .len = 0};
+    }
+    if (tmp == 0) {
+      obj2io(io)->fpos += obj2io(io)->len;
+      return (fio_cstr_s){.buffer = obj2io(io)->buffer, .len = obj2io(io)->len};
+    }
+    obj2io(io)->len += tmp;
+    pos = obj2io(io)->buffer;
+    lim = obj2io(io)->buffer + obj2io(io)->len;
+    if (swallow_ch(&pos, lim, token)) {
+      const uintptr_t delta =
+          (uintptr_t)(pos - (obj2io(io)->buffer + obj2io(io)->pos));
+      obj2io(io)->pos = delta;
+      obj2io(io)->fpos += delta;
+      return (fio_cstr_s){
+          .buffer = obj2io(io)->buffer, .length = delta,
+      };
+    }
+  }
+}
+
+/**
  * Reads until the `token` byte is encountered or until the end of the stream.
  *
  * Returns a temporary(!) C string including the end of line marker.
@@ -442,72 +646,21 @@ fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token) {
     errno = EFAULT;
     return (fio_cstr_s){.buffer = NULL, .len = 0};
   }
-  if (obj2io(io)->fd == -1) {
-    /* String code */
-    if (obj2io(io)->pos == obj2io(io)->len) /* EOF */
-      return (fio_cstr_s){.buffer = NULL, .len = 0};
-
-    uint8_t *pos = obj2io(io)->buffer + obj2io(io)->pos;
-    uint8_t *lim = obj2io(io)->buffer + obj2io(io)->len;
-    swallow_ch(&pos, lim, token);
-    fio_cstr_s ret = (fio_cstr_s){
-        .buffer = obj2io(io)->buffer + obj2io(io)->pos,
-        .length = (uintptr_t)(pos - obj2io(io)->buffer) - obj2io(io)->pos,
-    };
-    obj2io(io)->pos = (uintptr_t)(pos - obj2io(io)->buffer);
-    return ret;
-
-  } else {
-    /* File */
-    uint8_t *pos = obj2io(io)->buffer + obj2io(io)->pos;
-    uint8_t *lim = obj2io(io)->buffer + obj2io(io)->len;
-    if (pos != lim && swallow_ch(&pos, lim, token)) {
-      /* newline found in existing buffer */
-      const uintptr_t delta =
-          (uintptr_t)(pos - (obj2io(io)->buffer + obj2io(io)->pos));
-      obj2io(io)->pos += delta;
-      obj2io(io)->fpos += delta;
-      return (fio_cstr_s){
-          .buffer =
-              (delta ? ((obj2io(io)->buffer + obj2io(io)->pos) - delta) : NULL),
-          .length = delta,
-      };
-    }
-
-    obj2io(io)->pos = 0;
-    obj2io(io)->len = 0;
-
-    while (1) {
-      ssize_t tmp;
-      fiobj_data_pre_write(io, 4096); /* read a page at a time */
-    retry_int:
-      tmp = pread(obj2io(io)->fd, obj2io(io)->buffer + obj2io(io)->len, 4096,
-                  obj2io(io)->fpos + obj2io(io)->len);
-      if (tmp < 0 && errno == EINTR)
-        goto retry_int;
-      if (tmp < 0 || (tmp == 0 && obj2io(io)->len == 0)) {
-        return (fio_cstr_s){.buffer = NULL, .len = 0};
-      }
-      if (tmp == 0) {
-        obj2io(io)->fpos += obj2io(io)->len;
-        return (fio_cstr_s){.buffer = obj2io(io)->buffer,
-                            .len = obj2io(io)->len};
-      }
-      obj2io(io)->len += tmp;
-      pos = obj2io(io)->buffer;
-      lim = obj2io(io)->buffer + obj2io(io)->len;
-      if (swallow_ch(&pos, lim, token)) {
-        const uintptr_t delta =
-            (uintptr_t)(pos - (obj2io(io)->buffer + obj2io(io)->pos));
-        obj2io(io)->pos = delta;
-        obj2io(io)->fpos += delta;
-        return (fio_cstr_s){
-            .buffer = obj2io(io)->buffer, .length = delta,
-        };
-      }
-    }
+  switch (obj2io(io)->fd) {
+  case -1:
+    return fiobj_data_read2ch_str(io, token);
+    break;
+  case -2:
+    return fiobj_data_read2ch_slice(io, token);
+    break;
+  default:
+    return fiobj_data_read2ch_file(io, token);
   }
 }
+
+/* *****************************************************************************
+Position / Seeking
+***************************************************************************** */
 
 /**
  * Returns the current reading position.
@@ -515,9 +668,14 @@ fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token) {
 intptr_t fiobj_data_pos(FIOBJ io) {
   if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA))
     return -1;
-  if (obj2io(io)->fd == -1)
+  switch (obj2io(io)->fd) {
+  case -1: /* fallthrough */
+  case -2:
     return obj2io(io)->pos;
-  return obj2io(io)->fpos;
+    break;
+  default:
+    return obj2io(io)->fpos;
+  }
 }
 
 /**
@@ -535,9 +693,10 @@ intptr_t fiobj_data_len(FIOBJ io) {
 void fiobj_data_seek(FIOBJ io, intptr_t position) {
   if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA))
     return;
-  if (obj2io(io)->fd == -1) {
-    /* String code */
-
+  switch (obj2io(io)->fd) {
+  case -1: /* fallthrough */
+  case -2:
+    /* String / Slice code */
     if (position == 0) {
       obj2io(io)->pos = 0;
       return;
@@ -555,8 +714,8 @@ void fiobj_data_seek(FIOBJ io, intptr_t position) {
       position = obj2io(io)->len - position;
     obj2io(io)->pos = position;
     return;
-
-  } else {
+    break;
+  default:
     /* File code */
     obj2io(io)->pos = 0;
     obj2io(io)->len = 0;
@@ -585,42 +744,54 @@ void fiobj_data_seek(FIOBJ io, intptr_t position) {
   }
 }
 
-/**
- * Reads up to `length` bytes starting at `start_at` position and returns a
- * temporary(!) C string object. The reading position is ignored and
- * unchanged.
- *
- * The C string object will be invalidate the next time a function call to the
- * IO object is made.
- */
-fio_cstr_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length) {
-  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA)) {
-    errno = EFAULT;
+/* *****************************************************************************
+`fiobj_data_pread`
+***************************************************************************** */
+// switch(obj2io(o)->fd) {
+//   case -1:
+//   break;
+//   case -2:
+//   break;
+//   default:
+// }
+
+static fio_cstr_s fiobj_data_pread_str(FIOBJ io, intptr_t start_at,
+                                       uintptr_t length) {
+  if (start_at < 0)
+    start_at = obj2io(io)->len + start_at;
+  if (start_at < 0)
+    start_at = 0;
+  if ((size_t)start_at > obj2io(io)->len)
+    start_at = obj2io(io)->len;
+  if (length + start_at > obj2io(io)->len)
+    length = obj2io(io)->len - start_at;
+  if (length == 0)
     return (fio_cstr_s){
         .buffer = NULL, .length = 0,
     };
-  }
-
-  errno = 0;
-
-  if (obj2io(io)->fd == -1) {
-    /* String Code */
-    if (start_at < 0)
-      start_at = obj2io(io)->len + start_at;
-    if (start_at < 0)
-      start_at = 0;
-    if (length + start_at > obj2io(io)->len)
-      length = obj2io(io)->len - start_at;
-    if (length == 0)
-      return (fio_cstr_s){
-          .buffer = NULL, .length = 0,
-      };
+  return (fio_cstr_s){
+      .buffer = obj2io(io)->buffer + start_at, .length = length,
+  };
+}
+static fio_cstr_s fiobj_data_pread_slice(FIOBJ io, intptr_t start_at,
+                                         uintptr_t length) {
+  if (start_at < 0)
+    start_at = obj2io(io)->len + start_at;
+  if (start_at < 0)
+    start_at = 0;
+  if ((size_t)start_at > obj2io(io)->len)
+    start_at = obj2io(io)->len;
+  if (length + start_at > obj2io(io)->len)
+    length = obj2io(io)->len - start_at;
+  if (length == 0)
     return (fio_cstr_s){
-        .buffer = obj2io(io)->buffer + start_at, .length = length,
+        .buffer = NULL, .length = 0,
     };
-  }
-  /* File Code */
+  return fiobj_data_pread(obj2io(io)->parent, start_at, length);
+}
 
+static fio_cstr_s fiobj_data_pread_file(FIOBJ io, intptr_t start_at,
+                                        uintptr_t length) {
   const int64_t size = fiobj_data_get_fd_size(io);
   if (start_at < 0)
     start_at = size + start_at;
@@ -644,6 +815,34 @@ fio_cstr_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length) {
   return (fio_cstr_s){
       .buffer = obj2io(io)->buffer, .length = tmp,
   };
+}
+/**
+ * Reads up to `length` bytes starting at `start_at` position and returns a
+ * temporary(!) C string object. The reading position is ignored and
+ * unchanged.
+ *
+ * The C string object will be invalidate the next time a function call to the
+ * IO object is made.
+ */
+fio_cstr_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length) {
+  if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA)) {
+    errno = EFAULT;
+    return (fio_cstr_s){
+        .buffer = NULL, .length = 0,
+    };
+  }
+
+  errno = 0;
+  switch (obj2io(io)->fd) {
+  case -1:
+    return fiobj_data_pread_str(io, start_at, length);
+    break;
+  case -2:
+    return fiobj_data_pread_slice(io, start_at, length);
+    break;
+  default:
+    return fiobj_data_pread_file(io, start_at, length);
+  }
 }
 
 /* *****************************************************************************
