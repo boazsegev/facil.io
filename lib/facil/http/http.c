@@ -1449,6 +1449,8 @@ int http_parse_body(http_s *h) {
     content_type_hash = fio_siphash("content-type", 12);
   FIOBJ ct = fiobj_hash_get2(h->headers, content_type_hash);
   fio_cstr_s content_type = fiobj_obj2cstr(ct);
+  if (content_type.len < 16)
+    return -1;
   if (content_type.len >= 33 &&
       !strncasecmp("application/x-www-form-urlencoded", content_type.data,
                    33)) {
