@@ -1,3 +1,11 @@
+/*
+Copyright: Boaz Segev, 2018
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+*/
+#ifndef H_HTTP_MIME_PARSER_H
+#define H_HTTP_MIME_PARSER_H
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -243,7 +251,7 @@ consume_partial:
               continue;
             }
             filename = start;
-            start = memchr(name, ';', (size_t)(end - start));
+            start = memchr(filename, ';', (size_t)(end - start));
             if (!start) {
               filename_len = (size_t)((end - filename));
               if (filename[filename_len - 1] == '\r') {
@@ -330,3 +338,4 @@ error:
   parser->error = 1;
   return (size_t)((uintptr_t)pos - (uintptr_t)buffer);
 }
+#endif

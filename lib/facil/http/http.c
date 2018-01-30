@@ -1,5 +1,5 @@
 /*
-Copyright: Boaz segev, 2016-2017
+Copyright: Boaz Segev, 2016-2018
 License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -1132,10 +1132,10 @@ void http_parse_query(http_s *h) {
  * Note: names can't begine with "[" or end with "]" as these are reserved
  *       characters.
  */
-void http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
-                   size_t value_len, uint8_t encoded) {
+int http_add2hash2(FIOBJ dest, char *name, size_t name_len, FIOBJ val,
+                   uint8_t encoded) {
   if (!name)
-    return;
+    goto error;
   FIOBJ nested_ary = FIOBJ_INVALID;
   char *cut1;
   /* we can't start with an empty object name */
@@ -1145,13 +1145,13 @@ void http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
   }
   if (!name_len) {
     /* an empty name is an error */
-    return;
+    goto error;
   }
   uint32_t nesting = ((uint32_t)~0);
 rebase:
   /* test for nesting level limit (limit at 32) */
   if (!nesting)
-    return;
+    goto error;
   /* start clearing away bits. */
   nesting >>= 1;
   /* since we might be rebasing, notice that "name" might be "name]" */
@@ -1161,7 +1161,7 @@ rebase:
   /* simple case "name=" (the "=" was already removed) */
   if (cut1 == name) {
     /* an empty name is an error */
-    return;
+    goto error;
   }
   if (cut1 + 1 == name + name_len) {
     /* we have name[= ... autocorrect */
@@ -1180,7 +1180,7 @@ rebase:
 
     /* Test for a nested Array format error */
     if (cut1[2] != '[' || cut1[3] == ']') { /* error, we can't parse this */
-      return;
+      goto error;
     }
 
     /* we have name[][key...= */
@@ -1236,7 +1236,7 @@ rebase:
       fiobj_free(key);
     } else if (!FIOBJ_TYPE_IS(tmp, FIOBJ_T_HASH)) {
       /* type error, referencing an existing object that isn't a Hash */
-      return;
+      goto error;
     }
     dest = tmp;
     /* no rollback is possible once we enter the new nesting level... */
@@ -1253,7 +1253,6 @@ place_in_hash:
     --name_len;
   FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
                       : fiobj_str_new(name, name_len);
-  FIOBJ val = http_str2fiobj(value, value_len, encoded);
   FIOBJ old = fiobj_hash_replace(dest, key, val);
   if (old) {
     if (nested_ary) {
@@ -1272,7 +1271,7 @@ place_in_hash:
     }
   }
   fiobj_free(key);
-  return;
+  return 0;
 
 place_in_array:
   if (name[name_len - 1] == ']')
@@ -1294,8 +1293,197 @@ place_in_array:
     fiobj_hash_replace(dest, key, ary);
     fiobj_free(key);
   }
-  fiobj_ary_push(ary, http_str2fiobj(value, value_len, encoded));
-  return;
+  fiobj_ary_push(ary, val);
+  return 0;
+error:
+  fiobj_free(val);
+  errno = EOPNOTSUPP;
+  return -1;
+}
+
+/**
+ * Adds a named parameter to the hash, resolving nesting references.
+ *
+ * i.e.:
+ *
+ * * "name[]" references a nested Array (nested in the Hash).
+ * * "name[key]" references a nested Hash.
+ * * "name[][key]" references a nested Hash within an array. Hash keys will be
+ *   unique (repeating a key advances the hash).
+ * * These rules can be nested (i.e. "name[][key1][][key2]...")
+ * * "name[][]" is an error (there's no way for the parser to analyse
+ *    dimentions)
+ *
+ * Note: names can't begine with "[" or end with "]" as these are reserved
+ *       characters.
+ */
+int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
+                  size_t value_len, uint8_t encoded) {
+  return http_add2hash2(dest, name, name_len,
+                        http_str2fiobj(value, value_len, encoded), encoded);
+}
+
+/* *****************************************************************************
+HTTP Body Parsing
+***************************************************************************** */
+#include "http_mime_parser.h"
+
+typedef struct {
+  http_mime_parser_s p;
+  http_s *h;
+  fio_cstr_s buffer;
+  size_t pos;
+  size_t partial_offset;
+  size_t partial_length;
+  FIOBJ partial_name;
+} http_fio_mime_s;
+
+#define http_mime_parser2fio(parser) ((http_fio_mime_s *)(parser))
+
+/** Called when all the data is available at once. */
+static void http_mime_parser_on_data(http_mime_parser_s *parser, void *name,
+                                     size_t name_len, void *filename,
+                                     size_t filename_len, void *mimetype,
+                                     size_t mimetype_len, void *value,
+                                     size_t value_len) {
+  if (!filename) {
+    http_add2hash(http_mime_parser2fio(parser)->h->params, name, name_len,
+                  value, value_len, 0);
+    return;
+  }
+  FIOBJ n = fiobj_str_new(name, name_len);
+  fiobj_str_write(n, "[data]", 6);
+  fio_cstr_s tmp = fiobj_obj2cstr(n);
+  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
+                value, value_len, 0);
+  fiobj_str_resize(n, name_len);
+  fiobj_str_write(n, "[type]", 6);
+  tmp = fiobj_obj2cstr(n);
+  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
+                mimetype, mimetype_len, 0);
+  fiobj_str_resize(n, name_len);
+  fiobj_str_write(n, "[name]", 6);
+  tmp = fiobj_obj2cstr(n);
+  fprintf(stderr, "filename length %zu\n", filename_len);
+  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
+                filename, filename_len, 0);
+  fiobj_free(n);
+}
+
+/** Called when the data didn't fit in the buffer. Data will be streamed. */
+static void http_mime_parser_on_partial_start(
+    http_mime_parser_s *parser, void *name, size_t name_len, void *filename,
+    size_t filename_len, void *mimetype, size_t mimetype_len) {
+  http_mime_parser2fio(parser)->partial_length = 0;
+  http_mime_parser2fio(parser)->partial_offset = 0;
+  http_mime_parser2fio(parser)->partial_name = fiobj_str_new(name, name_len);
+
+  if (!filename)
+    return;
+
+  fiobj_str_write(http_mime_parser2fio(parser)->partial_name, "[type]", 6);
+  fio_cstr_s tmp = fiobj_obj2cstr(http_mime_parser2fio(parser)->partial_name);
+  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
+                mimetype, mimetype_len, 0);
+
+  fiobj_str_resize(http_mime_parser2fio(parser)->partial_name, name_len);
+  fiobj_str_write(http_mime_parser2fio(parser)->partial_name, "[name]", 6);
+  tmp = fiobj_obj2cstr(http_mime_parser2fio(parser)->partial_name);
+  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
+                filename, filename_len, 0);
+
+  fiobj_str_resize(http_mime_parser2fio(parser)->partial_name, name_len);
+  fiobj_str_write(http_mime_parser2fio(parser)->partial_name, "[data]", 6);
+}
+
+/** Called when partial data is available. */
+static void http_mime_parser_on_partial_data(http_mime_parser_s *parser,
+                                             void *value, size_t value_len) {
+  if (!http_mime_parser2fio(parser)->partial_offset)
+    http_mime_parser2fio(parser)->partial_offset =
+        http_mime_parser2fio(parser)->pos +
+        ((uintptr_t)value -
+         (uintptr_t)http_mime_parser2fio(parser)->buffer.data);
+  http_mime_parser2fio(parser)->partial_length += value_len;
+  (void)value;
+}
+
+/** Called when the partial data is complete. */
+static void http_mime_parser_on_partial_end(http_mime_parser_s *parser) {
+
+  fio_cstr_s tmp = fiobj_obj2cstr(http_mime_parser2fio(parser)->partial_name);
+  http_add2hash2(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
+                 fiobj_data_slice(http_mime_parser2fio(parser)->h->body,
+                                  http_mime_parser2fio(parser)->partial_offset,
+                                  http_mime_parser2fio(parser)->partial_length),
+                 0);
+  fiobj_free(http_mime_parser2fio(parser)->partial_name);
+  http_mime_parser2fio(parser)->partial_name = FIOBJ_INVALID;
+}
+
+/**
+ * Called when URL decoding is required.
+ *
+ * Should support inplace decoding (`dest == encoded`).
+ *
+ * Should return the length of the decoded string.
+ */
+static inline size_t http_mime_decode_url(char *dest, const char *encoded,
+                                          size_t length) {
+  return http_decode_url(dest, encoded, length);
+}
+
+/**
+ * Attempts to decode the request's body.
+ *
+ * Supported Types include:
+ * * application/x-www-form-urlencoded
+ * * application/json
+ * * multipart/form-data
+ */
+int http_parse_body(http_s *h) {
+  static uint64_t content_type_hash;
+  if (!h->body)
+    return -1;
+  if (!content_type_hash)
+    content_type_hash = fio_siphash("content-type", 12);
+  FIOBJ ct = fiobj_hash_get2(h->headers, content_type_hash);
+  fio_cstr_s content_type = fiobj_obj2cstr(ct);
+  if (content_type.len >= 33 &&
+      !strncasecmp("application/x-www-form-urlencoded", content_type.data,
+                   33)) {
+    if (!h->params)
+      h->params = fiobj_hash_new();
+    FIOBJ tmp = h->query;
+    h->query = h->body;
+    http_parse_query(h);
+    h->query = tmp;
+    return 0;
+  }
+  if (content_type.len >= 16 &&
+      !strncasecmp("application/json", content_type.data, 16)) {
+    if (h->params)
+      return -1;
+    content_type = fiobj_obj2cstr(h->body);
+    return (
+        (fiobj_json2obj(&h->params, content_type.data, content_type.len) > 0) -
+        1);
+  }
+
+  http_fio_mime_s p = {.h = h};
+  if (http_mime_parser_init(&p.p, content_type.data, content_type.len))
+    return -1;
+  if (!h->params)
+    h->params = fiobj_hash_new();
+
+  do {
+    size_t cons = http_mime_parse(&p.p, p.buffer.data, p.buffer.len);
+    p.pos += cons;
+    p.buffer = fiobj_data_pread(h->body, p.pos, 256);
+  } while (p.buffer.data && !p.p.done && !p.p.error);
+  fiobj_free(p.partial_name);
+  p.partial_name = FIOBJ_INVALID;
+  return 0;
 }
 
 /* *****************************************************************************

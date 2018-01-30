@@ -1,5 +1,5 @@
 /*
-Copyright: Boaz segev, 2016-2017
+Copyright: Boaz Segev, 2016-2018
 License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
@@ -521,12 +521,22 @@ int http_upgrade2ws(websocket_settings_s);
 HTTP GET and POST parsing helpers
 ***************************************************************************** */
 
+/**
+ * Attempts to decode the request's body.
+ *
+ * Supported Types include:
+ * * application/x-www-form-urlencoded
+ * * application/json
+ * * multipart/form-data
+ */
+int http_parse_body(http_s *h);
+
 /** Parses the query part of an HTTP request/response. Uses `http_add2hash`. */
 void http_parse_query(http_s *h);
 
 /**
- * Adds a named parameter to the hash, resolving nesting references and URL
- * decoding if required.
+ * Adds a named parameter to the hash, converting a string to an object and
+ * resolving nesting references and URL decoding if required.
  *
  * i.e.:
  *
@@ -541,8 +551,28 @@ void http_parse_query(http_s *h);
  * Note: names can't begine with "[" or end with "]" as these are reserved
  *       characters.
  */
-void http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
-                   size_t value_len, uint8_t encoded);
+int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
+                  size_t value_len, uint8_t encoded);
+
+/**
+ * Adds a named parameter to the hash, using an existing object and resolving
+ * nesting references.
+ *
+ * i.e.:
+ *
+ * * "name[]" references a nested Array (nested in the Hash).
+ * * "name[key]" references a nested Hash.
+ * * "name[][key]" references a nested Hash within an array. Hash keys will be
+ *   unique (repeating a key advances the hash).
+ * * These rules can be nested (i.e. "name[][key1][][key2]...")
+ * * "name[][]" is an error (there's no way for the parser to analyse
+ *    dimentions)
+ *
+ * Note: names can't begine with "[" or end with "]" as these are reserved
+ *       characters.
+ */
+int http_add2hash2(FIOBJ dest, char *name, size_t name_len, FIOBJ value,
+                   uint8_t encoded);
 
 /* *****************************************************************************
 HTTP Status Strings and Mime-Type helpers
