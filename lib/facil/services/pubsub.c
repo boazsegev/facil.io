@@ -35,11 +35,13 @@ The Hash Map (macros and the include instruction for `fio_hashmap.h`)
 
 /* the hash key type for string keys */
 typedef struct {
-  size_t hash;
+  uintptr_t hash;
   FIOBJ obj;
 } fio_hash_key_s;
 
 static inline int fio_hash_fiobj_keys_eq(fio_hash_key_s a, fio_hash_key_s b) {
+  if (a.obj == b.obj)
+    return 1;
   fio_cstr_s sa = fiobj_obj2cstr(a.obj);
   fio_cstr_s sb = fiobj_obj2cstr(b.obj);
   return sa.len == sb.len && !memcmp(sa.data, sb.data, sa.len);
@@ -54,7 +56,7 @@ static inline int fio_hash_fiobj_keys_eq(fio_hash_key_s a, fio_hash_key_s b) {
 /* an "all bytes are zero" invalid key */
 #define FIO_HASH_KEY_INVALID ((fio_hash_key_s){.obj = FIOBJ_INVALID})
 /* tests if a key is the invalid key */
-#define FIO_HASH_KEY_ISINVALID(key) ((key).obj == FIOBJ_INVALID)
+#define FIO_HASH_KEY_ISINVALID(key) ((key).obj == FIOBJ_INVALID && !key.hash)
 /* creates a persistent copy of the key's string */
 #define FIO_HASH_KEY_COPY(key)                                                 \
   ((fio_hash_key_s){.hash = (key).hash, .obj = fiobj_dup((key).obj)})
@@ -364,7 +366,7 @@ static void pubsub_on_channel_create(channel_s *ch) {
     PUBSUB_CLUSTER_ENGINE->subscribe(PUBSUB_CLUSTER_ENGINE, ch->name,
                                      ch->use_pattern);
   FIO_HASH_FOR_LOOP(&engines, e_) {
-    if (!e_)
+    if (!e_ || !e_->obj)
       continue;
     pubsub_engine_s *e = e_->obj;
     e->subscribe(e, ch->name, ch->use_pattern);
@@ -377,7 +379,7 @@ static void pubsub_on_channel_destroy(channel_s *ch) {
     PUBSUB_CLUSTER_ENGINE->unsubscribe(PUBSUB_CLUSTER_ENGINE, ch->name,
                                        ch->use_pattern);
   FIO_HASH_FOR_LOOP(&engines, e_) {
-    if (!e_)
+    if (!e_ || !e_->obj)
       continue;
     pubsub_engine_s *e = e_->obj;
     e->unsubscribe(e, ch->name, ch->use_pattern);
@@ -387,9 +389,10 @@ static void pubsub_on_channel_destroy(channel_s *ch) {
 /** Registers an engine, so it's callback can be called. */
 void pubsub_engine_register(pubsub_engine_s *engine) {
   spn_lock(&lock);
-  fio_hash_insert(&engines,
-                  (fio_hash_key_s){.hash = (size_t)engine, .obj = fiobj_null()},
-                  engine);
+  fio_hash_insert(
+      &engines,
+      (fio_hash_key_s){.hash = (uintptr_t)engine, .obj = FIOBJ_INVALID},
+      engine);
   spn_unlock(&lock);
 }
 
@@ -398,10 +401,12 @@ void pubsub_engine_deregister(pubsub_engine_s *engine) {
   spn_lock(&lock);
   if (PUBSUB_DEFAULT_ENGINE == engine)
     PUBSUB_DEFAULT_ENGINE = (pubsub_engine_s *)PUBSUB_CLUSTER_ENGINE;
-  fio_hash_insert(&engines,
-                  (fio_hash_key_s){.hash = (size_t)engine, .obj = fiobj_null()},
-                  NULL);
+  void *old = fio_hash_insert(
+      &engines,
+      (fio_hash_key_s){.hash = (uintptr_t)engine, .obj = FIOBJ_INVALID}, NULL);
   spn_unlock(&lock);
+  if (!old)
+    fprintf(stderr, "Deregister error, not registered?\n");
 }
 
 /**

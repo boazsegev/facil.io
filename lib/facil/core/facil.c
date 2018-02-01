@@ -70,6 +70,7 @@ static inline void clear_connection_data_unsafe(intptr_t uuid,
 /** locks a connection's protocol returns a pointer that need to be unlocked. */
 inline static protocol_s *protocol_try_lock(intptr_t fd,
                                             enum facil_protocol_lock_e type) {
+  errno = 0;
   if (spn_trylock(&fd_data(fd).lock))
     goto would_block;
   protocol_s *pr = fd_data(fd).protocol;
@@ -553,7 +554,7 @@ static void connector_on_ready(intptr_t uuid, protocol_s *_connector) {
 /* If data events reach this protocol, delay their execution. */
 static void connector_on_data(intptr_t uuid, protocol_s *connector) {
   (void)connector;
-  facil_force_event(uuid, FIO_EVENT_ON_DATA);
+  (void)uuid;
 }
 
 /* Failed to connect */

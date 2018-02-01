@@ -15,15 +15,16 @@ i.e.:
 Use a javascript consol to connect to the websockets... maybe using the
 following javascript code:
 
-ws1 = new WebSocket("ws://localhost:3000/Mitchel"); // run 1st app on port 3000.
-ws1.onmessage = function(e) { console.log(e.data); };
-ws1.onclose = function(e) { console.log("closed"); };
-ws1.onopen = function(e) { e.target.send("Yo!"); };
-
-ws2 = new WebSocket("ws://localhost:3030/Johana"); // run 2nd app on port 3030.
-ws2.onmessage = function(e) { console.log(e.data); };
-ws2.onclose = function(e) { console.log("closed"); };
-ws2.onopen = function(e) { e.target.send("Brut."); };
+    // run 1st client app on port 3000.
+    ws = new WebSocket("ws://localhost:3000/Mitchel");
+    ws.onmessage = function(e) { console.log(e.data); };
+    ws.onclose = function(e) { console.log("closed"); };
+    ws.onopen = function(e) { e.target.send("Yo!"); };
+    // run 2nd client app on port 3030.
+    ws = new WebSocket("ws://localhost:3030/Johana");
+    ws.onmessage = function(e) { console.log(e.data); };
+    ws.onclose = function(e) { console.log("closed"); };
+    ws.onopen = function(e) { e.target.send("Brut."); };
 
 Remember that published messages will now be printed to the console both by
 Mitchel and Johana, which means messages will be delivered twice unless using
@@ -198,10 +199,10 @@ int main(int argc, char const *argv[]) {
     perror("Couldn't initiate Websocket service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 
-  // if (PUBSUB_DEFAULT_ENGINE != PUBSUB_CLUSTER_ENGINE) {
-  //   redis_engine_destroy(PUBSUB_DEFAULT_ENGINE);
-  //   PUBSUB_DEFAULT_ENGINE = PUBSUB_CLUSTER_ENGINE;
-  // }
+  if (PUBSUB_DEFAULT_ENGINE != PUBSUB_CLUSTER_ENGINE) {
+    redis_engine_destroy(PUBSUB_DEFAULT_ENGINE);
+    PUBSUB_DEFAULT_ENGINE = (pubsub_engine_s *)PUBSUB_CLUSTER_ENGINE;
+  }
   fiobj_free(CHAT_CHANNEL);
   fio_cli_end();
 }

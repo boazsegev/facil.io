@@ -6,6 +6,8 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 In this release:
 
+**Fix** (`redis`, `evio`): fixes for the internal Redis engine. There was a connection re-establishing error related to updates in the new `evio` event logic.
+
 **Update**: (`http`) Added experimental query parsing helpers that perform nested parameter name resolution (i.e. `named_hash[named_array][]=value`). Logic might change as performance considerations apply. I'd love to read your feedback on this feature.
 
 **Update**: (`facil`) Simplified the child worker sentinel observation logic, to use threads instead of IPC.
