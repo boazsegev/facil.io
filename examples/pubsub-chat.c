@@ -39,54 +39,42 @@ two different browser windows.
 #include <string.h>
 
 /* *****************************************************************************
-Nicknames
+Websocket Pub/Sub
 ***************************************************************************** */
 
-struct nickname {
-  size_t len;
-  char nick[];
-};
-
-/* This initalization requires GNU gcc / clang ...
- * ... it's a default name for unimaginative visitors.
- */
-static struct nickname MISSING_NICKNAME = {.len = 7, .nick = "unknown"};
+/* Pub/Sub channels can persists safely in memory. */
 static FIOBJ CHAT_CHANNEL;
-/* *****************************************************************************
-Websocket callbacks
-***************************************************************************** */
 
 /* We'll subscribe to the channel's chat channel when a new connection opens */
 static void on_open_websocket(ws_s *ws) {
-  struct nickname *n = websocket_udata(ws);
-  if (!n)
-    n = &MISSING_NICKNAME;
+  /* we use a FIOBJ String for the client's "nickname" */
+  FIOBJ n = (FIOBJ)websocket_udata(ws);
   fprintf(stderr, "(%d) %s connected to the chat service.\n", getpid(),
-          n->nick);
+          fiobj_obj2cstr(n).data);
   websocket_subscribe(ws, .channel = CHAT_CHANNEL, .force_text = 1);
 }
 
 /* Free the nickname, if any. */
 static void on_close_websocket(ws_s *ws) {
-  if (websocket_udata(ws))
-    free(websocket_udata(ws));
+  fiobj_free((FIOBJ)websocket_udata(ws));
 }
 
 /* Copy the nickname and the data to format a nicer message. */
 static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
                                       uint8_t is_text) {
-  struct nickname *n = websocket_udata(ws);
-  if (!n)
-    n = &MISSING_NICKNAME;
-
-  FIOBJ msg = fiobj_str_buf(n->len + 2 + size);
-  fiobj_str_write(msg, n->nick, n->len);
+  /* we use a FIOBJ String for the client's "nickname" */
+  FIOBJ n = (FIOBJ)websocket_udata(ws);
+  /* We'll copy the nickname and the data to a new message buffer */
+  FIOBJ msg = fiobj_str_buf(fiobj_obj2cstr(n).len + 2 + size);
+  fiobj_str_join(msg, n);
   fiobj_str_write(msg, ": ", 2);
   fiobj_str_write(msg, data, size);
-  // fprintf(stderr, "PUB %s\n", fiobj_obj2cstr(msg).data);
+  /* Publish to the chat channel */
   if (pubsub_publish(.channel = CHAT_CHANNEL, .message = msg))
     fprintf(stderr, "Failed to publish\n");
+  /* free any temporary objects */
   fiobj_free(msg);
+  /* we didn't use these for this `on_message` callback implementation */
   (void)(ws);
   (void)(is_text);
 }
@@ -95,6 +83,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
 HTTP Handling (Upgrading to Websocket)
 ***************************************************************************** */
 
+/* handles normal HTTP requests. */
 static void answer_http_request(http_s *h) {
   http_set_header2(h, (fio_cstr_s){.name = "Server", .len = 6},
                    (fio_cstr_s){.value = "facil.example", .len = 13});
@@ -103,23 +92,29 @@ static void answer_http_request(http_s *h) {
   http_send_body(h, "This is a Websocket chatroom example using Redis.", 49);
 }
 
+/* handles HTTP upgrade requests. */
 static void answer_http_upgrade(http_s *h, char *pr, size_t len) {
+  /* make sure the upgrade request is for Websockets */
   if (pr[1] != 'e' && len != 9) {
     http_send_error(h, 400);
     return;
   }
-  struct nickname *n = NULL;
+  /* Assign a nickname */
+  FIOBJ nickname = FIOBJ_INVALID;
   fio_cstr_s path = fiobj_obj2cstr(h->path);
   if (path.len > 1) {
-    n = malloc(path.len + sizeof(*n));
-    n->len = path.len - 1;
-    memcpy(n->nick, path.data + 1, path.len); /* will copy the NUL byte */
+    nickname = fiobj_str_new(path.data + 1, path.len - 1);
+  } else {
+    nickname = fiobj_str_new("guest", 5);
   }
-  // Websocket upgrade will use our existing response.
+  /* attempt Websocket upgrade */
   if (http_upgrade2ws(.http = h, .on_open = on_open_websocket,
                       .on_close = on_close_websocket,
-                      .on_message = handle_websocket_messages, .udata = n))
-    free(n);
+                      .on_message = handle_websocket_messages,
+                      .udata = (void *)nickname)) {
+    /* if the upgrade failed, free the user's nickname. */
+    fiobj_free(nickname);
+  }
 }
 
 /*
