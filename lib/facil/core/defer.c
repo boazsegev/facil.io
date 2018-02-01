@@ -126,7 +126,7 @@ critical_error:
 }
 
 static inline task_s pop_task(void) {
-  task_s ret = (task_s){NULL};
+  task_s ret = (task_s){.func = NULL};
   queue_block_s *to_free = NULL;
   /* lock the state machine, to grab/create a task and place it at the tail
   */ spn_lock(&deferred.lock);
