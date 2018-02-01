@@ -679,6 +679,16 @@ void pubsub_cluster_init(void) {
                             pubsub_cluster_facil_message);
 }
 
+void pubsub_cluster_on_fork(void) {
+  lock = SPN_LOCK_INIT;
+  FIO_HASH_FOR_LOOP(&clients, pos) {
+    if (pos->obj) {
+      client_s *c = pos->obj;
+      c->lock = SPN_LOCK_INIT;
+    }
+  }
+}
+
 /* *****************************************************************************
 Glob Matching Helper
 ***************************************************************************** */

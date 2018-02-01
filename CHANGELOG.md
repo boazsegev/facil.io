@@ -6,7 +6,9 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 In this release:
 
-**Fix** (`redis`, `evio`): fixes for the internal Redis engine. There was a connection re-establishing error related to updates in the new `evio` event logic.
+**Fix** (`facil`): fixes an issue that could occur when forking a large number of processes, where cluster connection locks would remain locked, causing the cluster connections to spin the CPU and prevent shutdown.
+
+**Fix** (`redis`, `pubsub`, `evio`): fixes for the internal Redis engine. There was a connection re-establishing error related to updates in the new `evio` event logic.
 
 **Update**: (`http`) Added experimental query parsing helpers that perform nested parameter name resolution (i.e. `named_hash[named_array][]=value`). Logic might change as performance considerations apply. I'd love to read your feedback on this feature.
 

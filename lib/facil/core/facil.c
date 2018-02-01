@@ -280,9 +280,11 @@ static void mock_idle(void) {}
 /* Support for the default pub/sub cluster engine */
 #pragma weak pubsub_cluster_init
 void pubsub_cluster_init(void) {}
+#pragma weak pubsub_cluster_on_fork
+void pubsub_cluster_on_fork(void) {}
 
 /* perform initialization for external services. */
-static void facil_external_init(void) {}
+static void facil_external_init(void) { pubsub_cluster_on_fork(); }
 
 /* perform cleanup for external services. */
 static void facil_external_cleanup(void) {}
@@ -1273,9 +1275,10 @@ unlock:
 finish:
   do {
     fd++;
-  } while (!fd_data(fd).protocol && (fd < facil_data->capacity));
+  } while (!fd_data(fd).protocol && (fd < facil_data->capacity) &&
+           facil_data->active);
 
-  if (facil_data->capacity <= fd) {
+  if (facil_data->capacity <= fd || facil_data->active == 0) {
     facil_data->need_review = 1;
     return;
   }
@@ -1335,13 +1338,28 @@ Behaves like the system's `fork`.
 #pragma weak facil_fork
 int facil_fork(void) { return (int)fork(); }
 
+/** This will be called by child processes, make sure to unlock any existing
+ * locks.
+ *
+ * Known locks:
+ * * `defer` tasks lock.
+ * * `facil` global lock.
+ * * `facil` pub/sub lock.
+ * * `facil` connection data lock (per connection data).
+ * * `facil` protocol lock (per protocol object, placed in `rsv`).
+ * * `pubsub` pubsub global lock (should be initialized in facil_external_init.
+ * * `pubsub` pubsub client lock (should be initialized in facil_external_init.
+ */
 static void facil_worker_startup(uint8_t sentinal) {
+  facil_cluster_data.lock = facil_data->global_lock = SPN_LOCK_INIT;
   evio_create();
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   if (sentinal == 0) {
     for (int i = 0; i < facil_data->capacity; i++) {
       errno = 0;
+      fd_data(i).lock = SPN_LOCK_INIT;
       if (fd_data(i).protocol) {
+        fd_data(i).protocol->rsv = 0;
         if (fd_data(i).protocol->service == listener_protocol_name)
           listener_on_start(i);
         else if (fd_data(i).protocol->service == timer_protocol_name)
@@ -1353,12 +1371,14 @@ static void facil_worker_startup(uint8_t sentinal) {
     }
   } else {
     for (int i = 0; i < facil_data->capacity; i++) {
-      if (fd_data(i).protocol &&
-          fd_data(i).protocol->service == timer_protocol_name)
-        timer_on_server_start(i);
-      if (fd_data(i).protocol &&
-          fd_data(i).protocol->service != listener_protocol_name)
-        evio_add(i, (void *)sock_fd2uuid(i));
+      fd_data(i).lock = SPN_LOCK_INIT;
+      if (fd_data(i).protocol) {
+        fd_data(i).protocol->rsv = 0;
+        if (fd_data(i).protocol->service == timer_protocol_name)
+          timer_on_server_start(i);
+        else if (fd_data(i).protocol->service != listener_protocol_name)
+          evio_add(i, (void *)sock_fd2uuid(i));
+      }
     }
   }
   /* called after `evio_create` but before actually reacting to events. */
@@ -1418,7 +1438,7 @@ static void *facil_sentinel_worker_thraed(void *arg) {
     int status;
     waitpid(child, &status, 0);
 #if DEBUG
-    if (!WIFEXITED(status) || WEXITSTATUS(status) || facil_data->active) {
+    if (facil_data->active) { /* !WIFEXITED(status) || WEXITSTATUS(status) */
       fprintf(stderr,
               "FATAL ERROR: Child wordker (%d) crashed. Stopping services in "
               "DEBUG mode.\n",
@@ -1426,7 +1446,7 @@ static void *facil_sentinel_worker_thraed(void *arg) {
       kill(0, SIGINT);
     }
 #else
-    if (!WIFEXITED(status) || WEXITSTATUS(status) || facil_data->active) {
+    if (facil_data->active) {
       fprintf(stderr, "ERROR: Child wordker (%d) crashed. Respawning worker.\n",
               child);
       defer(facil_sentinel_task, NULL, NULL);
