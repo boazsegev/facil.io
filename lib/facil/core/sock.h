@@ -74,8 +74,11 @@ extern "C" {
 #endif
 
 /* *****************************************************************************
-Process wide and helper sock_API.
+Process wide and helper sock API.
 */
+
+/** MUST be called after forking a process. */
+void sock_on_fork(void);
 
 /**
  * Sets a socket to non blocking state.
@@ -95,7 +98,7 @@ extended to the allowed "hard" limit.
 ssize_t sock_max_capacity(void);
 
 /* *****************************************************************************
-The main sock_API.
+The main sock API.
 */
 
 /**
@@ -168,7 +171,7 @@ intptr_t sock_connect(char *address, char *port);
 
 /**
 * `sock_open` takes an existing file descriptor `fd` and initializes it's status
-* as open and available for `sock_API` calls, returning a valid UUID.
+* as open and available for `sock_*` API calls, returning a valid UUID.
 *
 * This will reinitialize the data (user buffer etc') for the file descriptor
 * provided, calling the `sock_on_close` callback if the `fd` was previously

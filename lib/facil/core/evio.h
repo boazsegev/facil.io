@@ -99,6 +99,11 @@ safely ignored.
 */
 int evio_add(int fd, void *callback_arg);
 
+/**
+Removes a file descriptor from the polling object.
+*/
+void evio_remove(int fd);
+
 /* *****************************************************************************
 Timers.
 */

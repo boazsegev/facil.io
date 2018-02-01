@@ -231,7 +231,7 @@ static struct sock_data_store {
 } sock_data_store;
 
 #define fd2uuid(fd)                                                            \
-  (((uintptr_t)(fd) << 8) | (sock_data_store.fds[(fd)].counter))
+  (((uintptr_t)(fd) << 8) | (sock_data_store.fds[(fd)].counter & 0xFF))
 #define fdinfo(fd) sock_data_store.fds[(fd)]
 
 #define lock_fd(fd) spn_lock(&sock_data_store.fds[(fd)].lock)
@@ -260,7 +260,7 @@ static void clear_sock_lib(void) {
 static inline int initialize_sock_lib(size_t capacity) {
   static uint8_t init_exit = 0;
   if (sock_data_store.capacity >= capacity)
-    return 0;
+    goto finish;
   struct fd_data_s *new_collection =
       realloc(sock_data_store.fds, sizeof(struct fd_data_s) * capacity);
   if (!new_collection)
@@ -291,6 +291,11 @@ static inline int initialize_sock_lib(size_t capacity) {
               (sizeof(struct fd_data_s) * capacity));
 #endif
 
+finish:
+  packet_pool.lock = SPN_LOCK_INIT;
+  for (size_t i = 0; i < sock_data_store.capacity; ++i) {
+    sock_data_store.fds[i].lock = SPN_LOCK_INIT;
+  }
   if (init_exit)
     return 0;
   init_exit = 1;
@@ -497,8 +502,11 @@ The API
 ***************************************************************************** */
 
 /* *****************************************************************************
-Process wide and helper sock_API.
+Process wide and helper sock API.
 */
+
+/** MUST be called after forking a process. */
+void sock_on_fork(void) { initialize_sock_lib(0); }
 
 /**
 Sets a socket to non blocking state.
@@ -575,7 +583,7 @@ ssize_t sock_max_capacity(void) {
 }
 
 /* *****************************************************************************
-The main sock_API.
+The main sock API.
 */
 
 /**
@@ -842,7 +850,7 @@ intptr_t sock_connect(char *address, char *port) {
 
 /**
 `sock_open` takes an existing file descriptor `fd` and initializes it's status
-as open and available for `sock_API` calls, returning a valid UUID.
+as open and available for `sock_*` API calls, returning a valid UUID.
 
 This will reinitialize the data (user buffer etc') for the file descriptor
 provided, calling the `reactor_on_close` callback if the `fd` was previously
@@ -880,6 +888,16 @@ Returns 1 if the uuid refers to a valid and open, socket.
 Returns 0 if not.
 */
 int sock_isvalid(intptr_t uuid) {
+  // if (validate_uuid(uuid)) {
+  //   fprintf(stderr, "sock is INVALID %p\n", (void *)uuid);
+  //   if ((intptr_t)uuid == -1)
+  //     fprintf(stderr, "sock value == -1 %p\n", (void *)uuid);
+  //   if (sock_data_store.capacity <= (size_t)sock_uuid2fd(uuid))
+  //     fprintf(stderr, "sock value too big %p\n", (void *)uuid);
+  //   if (fdinfo(sock_uuid2fd(uuid)).counter != (uuid & 0xFF))
+  //     fprintf(stderr, "sock counter error %p != %p\n", (void *)uuid,
+  //             (void *)(fd2uuid(sock_uuid2fd(uuid))));
+  // }
   return validate_uuid(uuid) == 0 && fdinfo(sock_uuid2fd(uuid)).open;
 }
 

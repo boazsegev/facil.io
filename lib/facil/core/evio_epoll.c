@@ -97,13 +97,12 @@ error:
 /**
 Removes a file descriptor from the polling object.
 */
-int evio_remove(int fd) {
+void evio_remove(int fd) {
   if (evio_fd[0] < 0)
-    return -1;
-  struct epoll_event chevent = {0};
+    return;
+  struct epoll_event chevent = {.events = (EPOLLOUT | EPOLLIN), .data.fd = fd};
   epoll_ctl(evio_fd[1], EPOLL_CTL_DEL, fd, &chevent);
   epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, fd, &chevent);
-  return 0;
 }
 
 static int evio_add2(int fd, void *callback_arg, uint32_t events, int ep_fd) {
@@ -127,7 +126,6 @@ static int evio_add2(int fd, void *callback_arg, uint32_t events, int ep_fd) {
 Adds a file descriptor to the polling object.
 */
 int evio_add(int fd, void *callback_arg) {
-  /* is EPOLLONESHOT broken?*/
   if (evio_add2(fd, callback_arg,
                 (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
                 evio_fd[1]) == -1)

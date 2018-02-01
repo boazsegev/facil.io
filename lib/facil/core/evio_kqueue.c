@@ -60,13 +60,15 @@ intptr_t evio_create() {
 /**
 Removes a file descriptor from the polling object.
 */
-// static int evio_remove(int fd) {
-//   struct kevent chevent[3];
-//   EV_SET(chevent, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-//   EV_SET(chevent + 1, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
-//   EV_SET(chevent + 2, fd, EVFILT_TIMER, EV_DELETE, 0, 0, NULL);
-//   return kevent(evio_fd, chevent, 3, NULL, 0, NULL);
-// }
+void evio_remove(int fd) {
+  if (evio_fd < 0)
+    return;
+  struct kevent chevent[3];
+  EV_SET(chevent, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+  EV_SET(chevent + 1, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+  EV_SET(chevent + 2, fd, EVFILT_TIMER, EV_DELETE, 0, 0, NULL);
+  kevent(evio_fd, chevent, 3, NULL, 0, NULL);
+}
 
 /**
 Adds a file descriptor to the polling object.
