@@ -48,7 +48,7 @@ FIOBJ fiobj_obj2json(FIOBJ, uint8_t pretty);
  * Formats an object into a JSON string, appending the JSON string to an
  * existing String. Remember to `fiobj_free` as usual.
  *
- * Note that only the foloowing basic fiobj types are supported: Primitives
+ * Note that only the following basic fiobj types are supported: Primitives
  * (True / False / NULL), Numbers (Number / Float), Strings, Hashes and
  * Arrays.
  *
