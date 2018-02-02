@@ -18,6 +18,7 @@ License: MIT
  * ignoring the current seek position.
  */
 #include "fiobj_data.h"
+#include "fio_tmpfile.h"
 #include "fiobj_str.h"
 
 #include <assert.h>
@@ -72,9 +73,48 @@ static void fiobj_data_copy_buffer(FIOBJ o) {
 }
 
 static void fiobj_data_copy_parent(FIOBJ o) {
-  fprintf(stderr, "FATAL ERROR: writing to data slices isn't supported yet.\n");
-  exit(-1);
-  (void)o;
+  switch (obj2io(obj2io(o)->parent)->fd) {
+  case -1:
+    obj2io(o)->buffer = malloc(obj2io(o)->len + 1);
+    memcpy(obj2io(o)->buffer,
+           obj2io(obj2io(o)->parent)->buffer + obj2io(o)->capa, obj2io(o)->len);
+    obj2io(o)->buffer[obj2io(o)->len] = 0;
+    obj2io(o)->capa = obj2io(o)->len;
+    obj2io(o)->fd = -1;
+    fiobj_free(obj2io(o)->parent);
+    obj2io(o)->dealloc = free;
+    return;
+  default:
+    obj2io(o)->fd = fio_tmpfile();
+    if (obj2io(o)->fd < 0) {
+      perror("FATAL ERROR: (fiobj_data) can't create temporary file");
+      exit(errno);
+    }
+    fio_cstr_s data;
+    size_t pos = 0;
+    do {
+      ssize_t written;
+      data = fiobj_data_pread(obj2io(o)->parent, pos + obj2io(o)->capa, 4096);
+      if (data.len + pos > obj2io(o)->len)
+        data.len = obj2io(o)->len - pos;
+    retry_int:
+      written = write(obj2io(o)->fd, data.buffer, data.len);
+      if (written < 0) {
+        if (errno == EINTR)
+          goto retry_int;
+        perror("FATAL ERROR: (fiobj_data) can't write to temporary file");
+        exit(errno);
+      }
+      pos += written;
+    } while (data.len == 4096);
+    fiobj_free(obj2io(o)->parent);
+    obj2io(o)->capa = 0;
+    obj2io(o)->len = pos;
+    obj2io(o)->fpos = obj2io(o)->pos;
+    obj2io(o)->pos = 0;
+    obj2io(o)->buffer = NULL;
+    break;
+  }
 }
 
 static inline void fiobj_data_pre_write(FIOBJ o, uintptr_t length) {
@@ -308,19 +348,7 @@ FIOBJ fiobj_data_newfd(int fd) {
 /** Creates a new local tempfile IO object */
 FIOBJ fiobj_data_newtmpfile(void) {
   // create a temporary file to contain the data.
-  int fd = 0;
-#ifdef P_tmpdir
-  if (P_tmpdir[sizeof(P_tmpdir) - 1] == '/') {
-    char template[] = P_tmpdir "http_request_body_XXXXXXXX";
-    fd = mkstemp(template);
-  } else {
-    char template[] = P_tmpdir "/http_request_body_XXXXXXXX";
-    fd = mkstemp(template);
-  }
-#else
-  char template[] = "/tmp/http_request_body_XXXXXXXX";
-  int fd = mkstemp(template);
-#endif
+  int fd = fio_tmpfile();
   if (fd == -1)
     return 0;
   return fiobj_data_newfd(fd);
@@ -328,6 +356,26 @@ FIOBJ fiobj_data_newtmpfile(void) {
 
 /** Creates a slice from an existing Data object. */
 FIOBJ fiobj_data_slice(FIOBJ parent, intptr_t offset, uintptr_t length) {
+  /* cut from the end */
+  if (offset < 0) {
+    size_t parent_len = fiobj_data_len(parent);
+    offset = parent_len + 1 + offset;
+  }
+  if (offset < 0)
+    offset = 0;
+  while (obj2io(parent)->fd == -2) {
+    /* don't slice a slice... climb the parent chain. */
+    offset += obj2io(parent)->capa;
+    parent = obj2io(parent)->parent;
+  }
+  size_t parent_len = fiobj_data_len(parent);
+  if (parent_len <= (size_t)offset) {
+    length = 0;
+    offset = parent_len;
+  } else if (parent_len < offset + length) {
+    length = parent_len - offset;
+  }
+  /* make the object */
   FIOBJ o = fiobj_data_alloc(NULL, -2);
   obj2io(o)->capa = offset;
   obj2io(o)->len = length;
@@ -500,7 +548,7 @@ static fio_cstr_s fiobj_data_read_file(FIOBJ io, intptr_t length) {
   /* reading length bytes */
   if (length + obj2io(io)->pos <= obj2io(io)->len) {
     /* the data already exists in the buffer */
-    fprintf(stderr, "in_buffer...\n");
+    // fprintf(stderr, "in_buffer...\n");
     fio_cstr_s data = {.buffer = (obj2io(io)->buffer + obj2io(io)->pos),
                        .length = (uintptr_t)length};
     obj2io(io)->pos += length;
@@ -508,7 +556,7 @@ static fio_cstr_s fiobj_data_read_file(FIOBJ io, intptr_t length) {
     return data;
   } else {
     /* read the data into the buffer - internal counting gets invalidated */
-    fprintf(stderr, "populate buffer...\n");
+    // fprintf(stderr, "populate buffer...\n");
     obj2io(io)->len = 0;
     obj2io(io)->pos = 0;
     fiobj_data_pre_write(io, length);
@@ -880,6 +928,10 @@ intptr_t fiobj_data_write(FIOBJ io, void *buffer, uintptr_t length) {
     return -1;
   }
   errno = 0;
+  /* Unslice slices */
+  if (obj2io(io)->fd == -2)
+    fiobj_data_assert_dynamic(io);
+
   if (obj2io(io)->fd == -1) {
     /* String Code */
     fiobj_data_pre_write(io, length + 1);
@@ -904,7 +956,10 @@ intptr_t fiobj_data_puts(FIOBJ io, void *buffer, uintptr_t length) {
     errno = EFAULT;
     return -1;
   }
-  obj2io(io)->pos = 0;
+  /* Unslice slices */
+  if (obj2io(io)->fd == -2)
+    fiobj_data_assert_dynamic(io);
+
   if (obj2io(io)->fd == -1) {
     /* String Code */
     fiobj_data_pre_write(io, length + 2);
@@ -1046,16 +1101,28 @@ void fiobj_data_test(void) {
   fiobj_free(strio);
   fiobj_free(fdio);
 
-  fiobj_data_seek(sliceio, 0);
-  s1 = fiobj_data_read(sliceio, 4096);
-  if (s1.len != (size_t)fiobj_data_len(sliceio) || !s1.data) {
-    fprintf(stderr, "* `fiobj_data_slice` data lost? FAILED!\n");
-    fprintf(stderr,
-            "* `fiobj_data_slice` s1.len = %zu (out of %zu) s1.data = %s!\n",
-            s1.len, (size_t)fiobj_data_len(sliceio), s1.data);
-    exit(-1);
+  {
+    fiobj_data_seek(sliceio, 0);
+    s1 = fiobj_data_read(sliceio, 4096);
+    if (s1.len != (size_t)fiobj_data_len(sliceio) || !s1.data) {
+      fprintf(stderr, "* `fiobj_data_slice` data lost? FAILED!\n");
+      fprintf(stderr,
+              "* `fiobj_data_slice` s1.len = %zu (out of %zu) s1.data = %s!\n",
+              s1.len, (size_t)fiobj_data_len(sliceio), s1.data);
+      exit(-1);
+    }
+    size_t old_len = fiobj_data_len(sliceio);
+    fiobj_data_write(sliceio, "hi", 2);
+    fiobj_data_seek(sliceio, 0);
+    s1 = fiobj_data_read(sliceio, 4096);
+    if (s1.len != old_len + 2 || !s1.data || s1.data[s1.len - 1] != 'i') {
+      fprintf(stderr, "* `fiobj_data_write` for Slice data lost? FAILED!\n");
+      fprintf(stderr,
+              "* `fiobj_data_slice` s1.len = %zu (out of %zu) s1.data = %s!\n",
+              s1.len, (size_t)fiobj_data_len(sliceio), s1.data);
+      exit(-1);
+    }
   }
-
   fiobj_free(sliceio);
 
   fprintf(stderr, "* passed.\n");

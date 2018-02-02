@@ -147,6 +147,9 @@ intptr_t fiobj_data_puts(FIOBJ io, void *buffer, uintptr_t length);
  *
  * If the IO object is attached to a static or external string, the data will be
  * copied to a new memory block.
+ *
+ * If the IO object is a slice from another IO object, the data will be copied
+ * and the type of IO object (memory vs. tmpfile) will be inherited.
  */
 void fiobj_data_assert_dynamic(FIOBJ io);
 

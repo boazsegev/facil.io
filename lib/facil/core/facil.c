@@ -1195,9 +1195,14 @@ static int facil_cluster_init(void) {
   char *tmp_folder = getenv("TMPDIR");
   uint32_t tmp_folder_len = 0;
   if (!tmp_folder || ((tmp_folder_len = (uint32_t)strlen(tmp_folder)) > 100)) {
+#ifdef P_tmpdir
     tmp_folder = P_tmpdir;
     if (tmp_folder)
       tmp_folder_len = (uint32_t)strlen(tmp_folder);
+#else
+    tmp_folder = "/tmp/";
+    tmp_folder_len = 5;
+#endif
   }
   if (tmp_folder_len >= 100)
     tmp_folder_len = 0;

@@ -87,11 +87,16 @@ Creates a timer file descriptor, system dependent.
 */
 int evio_open_timer() {
 #ifdef P_tmpdir
-  char template[] = P_tmpdir "evio_facil_timer_XXXXXX";
+  if (P_tmpdir[sizeof(P_tmpdir) - 1] == '/') {
+    char name_template[] = P_tmpdir "evio_facil_timer_XXXXXX";
+    return mkstemp(name_template);
+  }
+  char name_template[] = P_tmpdir "/evio_facil_timer_XXXXXX";
+  return mkstemp(name_template);
 #else
-  char template[] = "/tmp/evio_facil_timer_XXXXXX";
+  char name_template[] = "/tmp/evio_facil_timer_XXXXXX";
+  return mkstemp(name_template);
 #endif
-  return mkstemp(template);
 }
 
 /**
