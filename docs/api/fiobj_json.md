@@ -5,8 +5,6 @@ layout: api
 ---
 # {{ page.title }}
 
-This documentation is incomplete. I would love your help to finish it up. Until that time, please read the documentation in [the `fiobj_json.h` header file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/types/fiobj/fiobj_json.h).
-
 ## Overview
 
 Parsing, editing and outputting JSON in C can be easily accomplished using [facil.io's dynamic types](fiobj.md) (`fiobj_s`).
