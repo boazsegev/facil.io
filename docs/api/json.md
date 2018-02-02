@@ -7,11 +7,11 @@ layout: api
 
 Parsing, editing and outputting JSON in C can be easily accomplished using [facil.io's dynamic types](fiobj.md) (`fiobj_s`).
 
-There are faster alternatives out there (i.e., the C++ RapidJSON is much faster).
+There are [faster alternatives as well as slower alternatives out there](json_performance.html) (i.e., the C++ RapidJSON is much faster).
 
 However, `facil.io` offers the added benefit of complete parsing from JSON to object. This is in contrast to some parsers that offer a mid-way structure (often a linked list of JSON nodes) or lazy (delayed) parsing for types such as `true`, `false` and Numbers.
 
-`facil.io` also offers the added benefit of complete formatting from object to JSON. This is in contrast to some solutions that require a linked list of node structures.
+`facil.io` also offers the added benefit of complete formatting from a framework wide object type (`FIOBJ`) to JSON. This is in contrast to some solutions that require a linked list of node structures.
 
 ## Parsing JSON
 

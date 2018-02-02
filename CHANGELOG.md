@@ -4,7 +4,13 @@
 
 Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
 
-In this release:
+Coming Soon...
+
+### Ver. 0.6.0.beta.2
+
+Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
+
+In this beta 2 release:
 
 **Fix** (`facil`): fixes an issue that could occur when forking a large number of processes, where cluster connection locks would remain locked, causing the cluster connections to spin the CPU and prevent shutdown.
 
