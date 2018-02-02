@@ -1116,6 +1116,7 @@ void fiobj_test_json(void) {
       fiobj_hash_update_json(o, json_str_update, strlen(json_str_update)),
       "JSON update failed to parse data.");
   fiobj_free(tmp);
+
   tmp = fiobj_hash_get2(o, fio_siphash("array", 5));
   TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY),
               "JSON updated 'array' not an Array!\n");
