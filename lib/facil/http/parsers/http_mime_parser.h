@@ -307,7 +307,7 @@ consume_partial:
       end = memchr(end, '\n', (size_t)(stop - end));
     } while (end && ++end &&
              (size_t)(stop - end) >= (4 + parser->boundary_len) &&
-             (end[0] != '-' || end[0] != '-' ||
+             (end[0] != '-' || end[1] != '-' ||
               memcmp(end + 2, parser->boundary, parser->boundary_len)));
     if (!end || end + 4 + parser->boundary_len >= stop) {
       if (first_run) {
