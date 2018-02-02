@@ -1467,9 +1467,13 @@ int http_parse_body(http_s *h) {
     if (h->params)
       return -1;
     content_type = fiobj_obj2cstr(h->body);
-    return (
-        (fiobj_json2obj(&h->params, content_type.data, content_type.len) > 0) -
-        1);
+    if (fiobj_json2obj(&h->params, content_type.data, content_type.len) == 0)
+      return -1;
+    if (FIOBJ_TYPE_IS(h->params, FIOBJ_T_HASH))
+      return 0;
+    fiobj_free(h->params);
+    h->params = FIOBJ_INVALID;
+    return -1;
   }
 
   http_fio_mime_s p = {.h = h};
