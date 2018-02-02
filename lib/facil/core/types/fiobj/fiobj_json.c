@@ -55,12 +55,12 @@ static void on_number(json_parser_s *p, long long i);
 static void on_float(json_parser_s *p, double f);
 /** a String was detected (int / float). update `pos` to point at ending */
 static void on_string(json_parser_s *p, void *start, size_t length);
-/** a dictionary object was detected */
-static void on_start_object(json_parser_s *p);
+/** a dictionary object was detected, should return 0 unless error occurred. */
+static int on_start_object(json_parser_s *p);
 /** a dictionary object closure detected */
 static void on_end_object(json_parser_s *p);
-/** an array object was detected */
-static void on_start_array(json_parser_s *p);
+/** an array object was detected, should return 0 unless error occurred. */
+static int on_start_array(json_parser_s *p);
 /** an array closure was detected */
 static void on_end_array(json_parser_s *p);
 /** the JSON parsing is complete */
@@ -270,7 +270,8 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
         goto error;
       parser->dict = (parser->dict << 1) | 1;
       ++pos;
-      on_start_object(parser);
+      if (on_start_object(parser))
+        goto error;
       break;
     case '}':
       if ((parser->dict & 1) == 0) {
@@ -303,7 +304,8 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
         goto error;
       ++pos;
       parser->dict = (parser->dict << 1);
-      on_start_array(parser);
+      if (on_start_array(parser))
+        goto error;
       break;
     case ']':
       if ((parser->dict & 1))
@@ -603,6 +605,7 @@ typedef struct {
   json_parser_s p;
   FIOBJ key;
   FIOBJ top;
+  FIOBJ target;
   fio_ary_s stack;
   uint8_t is_hash;
 } fiobj_json_parser_s;
@@ -657,13 +660,21 @@ static void on_string(json_parser_s *p, void *start, size_t length) {
   fiobj_json_add2parser((fiobj_json_parser_s *)p, str);
 }
 /** a dictionary object was detected */
-static void on_start_object(json_parser_s *p) {
-  FIOBJ hash = fiobj_hash_new();
+static int on_start_object(json_parser_s *p) {
   fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
-  fiobj_json_add2parser(pr, hash);
-  fio_ary_push(&pr->stack, (void *)pr->top);
-  pr->top = hash;
+  if (pr->target) {
+    /* push NULL, don't free the objects */
+    fio_ary_push(&pr->stack, (void *)pr->top);
+    pr->top = pr->target;
+    pr->target = FIOBJ_INVALID;
+  } else {
+    FIOBJ hash = fiobj_hash_new();
+    fiobj_json_add2parser(pr, hash);
+    fio_ary_push(&pr->stack, (void *)pr->top);
+    pr->top = hash;
+  }
   pr->is_hash = 1;
+  return 0;
 }
 /** a dictionary object closure detected */
 static void on_end_object(json_parser_s *p) {
@@ -678,13 +689,16 @@ static void on_end_object(json_parser_s *p) {
   pr->is_hash = FIOBJ_TYPE_IS(pr->top, FIOBJ_T_HASH);
 }
 /** an array object was detected */
-static void on_start_array(json_parser_s *p) {
-  FIOBJ ary = fiobj_ary_new2(4);
-  fiobj_json_add2parser((fiobj_json_parser_s *)p, ary);
+static int on_start_array(json_parser_s *p) {
   fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
+  if (pr->target)
+    return -1;
+  FIOBJ ary = fiobj_ary_new2(4);
+  fiobj_json_add2parser(pr, ary);
   fio_ary_push(&pr->stack, (void *)pr->top);
   pr->top = ary;
   pr->is_hash = 0;
+  return 0;
 }
 /** an array closure was detected */
 static void on_end_array(json_parser_s *p) {
@@ -936,6 +950,30 @@ size_t fiobj_json2obj(FIOBJ *pobj, const void *data, size_t len) {
 }
 
 /**
+ * Updates a Hash using JSON data.
+ *
+ * Parsing errors and non-dictionar object JSON data are silently ignored,
+ * attempting to update the Hash as much as possible before any errors
+ * encountered.
+ *
+ * Conflicting Hash data is overwritten (prefering the new over the old).
+ *
+ * Returns the number of bytes consumed. On Error, 0 is returned and no data is
+ * consumed.
+ */
+size_t fiobj_hash_update_json(FIOBJ hash, const void *data, size_t len) {
+  if (!hash)
+    return 0;
+  fiobj_json_parser_s p = {.top = FIOBJ_INVALID, .target = hash};
+  size_t consumed = fio_json_parse(&p.p, data, len);
+  fio_ary_free(&p.stack);
+  fiobj_free(p.key);
+  if (p.top != hash)
+    fiobj_free(p.top);
+  return consumed;
+}
+
+/**
  * Formats an object into a JSON string, appending the JSON string to an
  * existing String. Remember to `fiobj_free`.
  */
@@ -980,6 +1018,7 @@ void fiobj_test_json(void) {
   char json_str[] = "{\"array\":[1,2,3,\"boom\"],\"my\":{\"secret\":42},"
                     "\"true\":true,\"false\":false,\"null\":null,\"float\":-2."
                     "2,\"string\":\"I \\\"wrote\\\" this.\"}";
+  char json_str_update[] = "{\"array\":[1,2,3]}";
   char json_str2[] =
       "[\n    \"JSON Test Pattern pass1\",\n    {\"object with 1 "
       "member\":[\"array with 1 element\"]},\n    {},\n    [],\n    -42,\n    "
@@ -1073,8 +1112,18 @@ void fiobj_test_json(void) {
           (int)fiobj_obj2cstr(tmp).len, fiobj_obj2cstr(tmp).data);
   if (!strcmp(fiobj_obj2cstr(tmp).data, json_str))
     fprintf(stderr, "* Stringify == Original.\n");
-  fiobj_free(o);
+  TEST_ASSERT(
+      fiobj_hash_update_json(o, json_str_update, strlen(json_str_update)),
+      "JSON update failed to parse data.");
   fiobj_free(tmp);
+  tmp = fiobj_hash_get2(o, fio_siphash("array", 5));
+  TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY),
+              "JSON updated 'array' not an Array!\n");
+  TEST_ASSERT(fiobj_ary_count(tmp) == 3, "JSON updated 'array' not updated?");
+  tmp = fiobj_hash_get2(o, fio_siphash("float", 5));
+  TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_FLOAT),
+              "JSON updated (old) 'float' missing!\n");
+  fiobj_free(o);
   fprintf(stderr, "* passed.\n");
 
   fprintf(stderr, "=== Testing JSON parsing (UTF-8 and special cases)\n");

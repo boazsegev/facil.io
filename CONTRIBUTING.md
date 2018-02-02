@@ -102,13 +102,13 @@ These are the features that have been requested so far. Even if any of them are 
 |      Feature      |      assigned      |      remarks               |
 |-------------------|--------------------|----------------------------|
 |   Documentation   |     🙏 Help 🙏    | Place in the `docs` folder |
-|       Tests       |    Never enough    | run through [`short.c`](shorts.c) but implement in source files. |
+|       Tests       |    Never enough    | run through [`shorts.c`](shorts.c) but implement in source files. |
 |      HTTP/2       | Bo (me), help me?  |                            |
 |    HTTP Router    |                    | No RegEx. Example: `/users/(:id)` |
 |    HTTP Client    |                    | Missing SSL/TLS, cookie retention and auto-redirect(?)  |
 |  Websocket Client |                    | Currently manual using the HTTP client. |
 |      SSL/TLS      |                    | Use `sock` R/W hooks       |
-|      Gossip       |                    | For Pub/Sub engine scaling |
+|     Gossip (?)    |                    | For Pub/Sub engine scaling |
 
 
 ## License
