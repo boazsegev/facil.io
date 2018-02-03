@@ -6,6 +6,8 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
+**Fix** (`facil`): updates the logical assumption about open connections, to make sure any open connections are closed when re-spawning a child worker (this should effect internal extensions only, since active connections aren't handled by the root process except).
+
 ### Ver. 0.6.0.beta.2
 
 Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).

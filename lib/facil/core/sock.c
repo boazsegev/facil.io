@@ -27,6 +27,7 @@ Includes and state
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <sys/types.h>
 #include <sys/un.h>
 
@@ -300,6 +301,15 @@ finish:
     return 0;
   init_exit = 1;
   atexit(clear_sock_lib);
+  /* the library is server oriented, we should avoid long TIME_WAIT values */
+  // {
+  //   size_t new_val = 1;
+  //   size_t new_val_size = sizeof(new_val);
+  //   size_t old_val = 1;
+  //   size_t old_val_size = sizeof(old_val);
+  //   sysctlbyname("net.inet.tcp.msl", &old_val, &old_val_size, &new_val,
+  //                new_val_size);
+  // }
   return 0;
 }
 
@@ -1116,7 +1126,7 @@ retry:
       goto finish;
     goto error;
   }
-  if (fdinfo(fd).close && !fdinfo(fd).packet)
+  if (!touch && fdinfo(fd).close && !fdinfo(fd).packet)
     goto error;
 finish:
   unlock_fd(fd);
@@ -1160,7 +1170,8 @@ user-land buffer.
 */
 int sock_has_pending(intptr_t uuid) {
   return validate_uuid(uuid) == 0 && fdinfo(sock_uuid2fd(uuid)).open &&
-         fdinfo(sock_uuid2fd(uuid)).packet;
+         (fdinfo(sock_uuid2fd(uuid)).packet ||
+          fdinfo(sock_uuid2fd(uuid)).close);
 }
 
 /* *****************************************************************************

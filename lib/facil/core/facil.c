@@ -1165,12 +1165,13 @@ static void cluster_on_start(void) {
     }
   } else {
     facil_cluster_data.client_mode = 1;
-    FIO_HASH_FOR_FREE(&facil_cluster_data.clients, pos) {
-      if (!pos->obj)
-        continue;
-      close(sock_uuid2fd(pos->key));
-      sock_force_close(pos->key);
-    }
+    fio_hash_free(&facil_cluster_data.clients);
+    // FIO_HASH_FOR_FREE(&facil_cluster_data.clients, pos) {
+    //   if (!pos->obj)
+    //     continue;
+    //   close(sock_uuid2fd(pos->key));
+    //   sock_force_close(pos->key);
+    // }
     facil_cluster_data.clients = (fio_hash_s)FIO_HASH_INIT;
     if (facil_cluster_data.root != -1) {
       close(sock_uuid2fd(facil_cluster_data.root)); /* prevent `shutdown` */
@@ -1376,14 +1377,14 @@ int facil_fork(void) { return (int)fork(); }
  * * `pubsub` pubsub global lock (should be initialized in facil_external_init.
  * * `pubsub` pubsub client lock (should be initialized in facil_external_init.
  */
-static void facil_worker_startup(uint8_t sentinal) {
+static void facil_worker_startup(uint8_t sentinel) {
   facil_cluster_data.lock = facil_data->global_lock = SPN_LOCK_INIT;
   defer_on_fork();
   evio_create();
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   facil_external_init();
-  cluster_on_start();
-  if (sentinal == 0) {
+  if (facil_data->active == 1) {
+    /* single process */
     for (int i = 0; i < facil_data->capacity; i++) {
       errno = 0;
       fd_data(i).lock = SPN_LOCK_INIT;
@@ -1398,7 +1399,26 @@ static void facil_worker_startup(uint8_t sentinal) {
         }
       }
     }
+  } else if (sentinel == 0) {
+    /* child process */
+    for (int i = 0; i < facil_data->capacity; i++) {
+      errno = 0;
+      fd_data(i).lock = SPN_LOCK_INIT;
+      if (fd_data(i).protocol) {
+        fd_data(i).protocol->rsv = 0;
+        if (fd_data(i).protocol->service == listener_protocol_name)
+          listener_on_start(i);
+        else if (fd_data(i).protocol->service == timer_protocol_name)
+          timer_on_server_start(i);
+        else {
+          /* prevent normal connections from being shared across workers */
+          close(i);
+          sock_force_close(sock_fd2uuid(i));
+        }
+      }
+    }
   } else {
+    /* sentinel process - ignore listening sockets, but keep them open */
     for (int i = 0; i < facil_data->capacity; i++) {
       fd_data(i).lock = SPN_LOCK_INIT;
       if (fd_data(i).protocol) {
@@ -1410,12 +1430,14 @@ static void facil_worker_startup(uint8_t sentinal) {
       }
     }
   }
+  /* called after connection cleanup, as it will close any connections. */
+  cluster_on_start();
   /* called after `evio_create` but before actually reacting to events. */
   facil_data->need_review = 1;
   defer(facil_cycle, NULL, NULL);
 
   if (FACIL_PRINT_STATE) {
-    if (sentinal || facil_data->parent == getpid()) {
+    if (sentinel || facil_data->parent == getpid()) {
       fprintf(stderr,
               "Server is running %u %s X %u %s, press ^C to stop\n"
               "* Root pid: %d\n",
@@ -1428,7 +1450,7 @@ static void facil_worker_startup(uint8_t sentinal) {
     }
   }
   facil_data->thread_pool =
-      defer_pool_start((sentinal ? 1 : facil_data->threads));
+      defer_pool_start((sentinel ? 1 : facil_data->threads));
 }
 
 static void facil_worker_cleanup(void) {
@@ -1488,6 +1510,7 @@ static void *facil_sentinel_worker_thraed(void *arg) {
   } else {
     if (arg) {
       /* respawn */
+      defer_on_fork();
       defer_clear_queue();
     }
     facil_worker_startup(0);
