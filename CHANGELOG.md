@@ -6,7 +6,19 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
+### Ver. 0.6.0.beta.3
+
+**Breaking Change**: (`websockets`) the websocket `on_close` callback signature had changed to allow it to be called on connection/upgrade failures as well (easier `udata` cleanup).
+
+**Fix** (`facil`): fixes an issue introduced in the beta.2 version, where deferred events that where scheduled before `facil_run` was called would only be called for the parent process.
+
 **Fix** (`facil`): updates the logical assumption about open connections, to make sure any open connections are closed when re-spawning a child worker (this should effect internal extensions only, since active connections aren't handled by the root process except).
+
+**Change** (`websocket`): the protocol is now more forgiving in cases where clients don't mask empty messages.
+
+**Feature** (`websockets`): A simple and easy Websocket client using `websocket_connect` as well as support for more complex clients (with authentication logic etc') using a combination of the `http_connect` and `http_upgrade2ws` functions.
+
+**Minor**: some changes to the inner HTTP logic, fixed some error messages, and other minor updates.
 
 ### Ver. 0.6.0.beta.2
 

@@ -14,6 +14,7 @@ void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings) {
   if (!http_upgrade_hash)
     http_upgrade_hash = fio_siphash("upgrade", 7);
+  h->udata = settings->udata;
   FIOBJ t = fiobj_hash_get2(h->headers, http_upgrade_hash);
   if (t == FIOBJ_INVALID) {
     if (settings->public_folder) {
@@ -53,6 +54,7 @@ void http_on_response_handler______internal(http_s *h,
                                             http_settings_s *settings) {
   if (!http_upgrade_hash)
     http_upgrade_hash = fio_siphash("upgrade", 7);
+  h->udata = settings->udata;
   FIOBJ t = fiobj_hash_get2(h->headers, http_upgrade_hash);
   if (t == FIOBJ_INVALID) {
     settings->on_response(h);
@@ -69,7 +71,7 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   protocol_s *pr = http1_new(uuid, settings, NULL, 0);
   http_s *r = malloc(sizeof(*r));
   HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
-  http_s_new(r, (http_protocol_s *)pr, http1_vtable(), settings->udata);
+  http_s_new(r, (http_protocol_s *)pr, http1_vtable());
   int ret = http_send_error(r, error);
   sock_close(uuid);
   return ret;
@@ -89,6 +91,7 @@ FIOBJ HTTP_HEADER_HOST;
 FIOBJ HTTP_HEADER_LAST_MODIFIED;
 FIOBJ HTTP_HEADER_SET_COOKIE;
 FIOBJ HTTP_HEADER_UPGRADE;
+FIOBJ HTTP_HEADER_WS_SEC_CLIENT_KEY;
 FIOBJ HTTP_HEADER_WS_SEC_KEY;
 FIOBJ HTTP_HVALUE_BYTES;
 FIOBJ HTTP_HVALUE_CLOSE;
@@ -119,6 +122,7 @@ void http_lib_cleanup(void) {
   HTTPLIB_RESET(HTTP_HEADER_LAST_MODIFIED);
   HTTPLIB_RESET(HTTP_HEADER_SET_COOKIE);
   HTTPLIB_RESET(HTTP_HEADER_UPGRADE);
+  HTTPLIB_RESET(HTTP_HEADER_WS_SEC_CLIENT_KEY);
   HTTPLIB_RESET(HTTP_HEADER_WS_SEC_KEY);
   HTTPLIB_RESET(HTTP_HVALUE_BYTES);
   HTTPLIB_RESET(HTTP_HVALUE_CLOSE);
@@ -149,6 +153,7 @@ void http_lib_init(void) {
   HTTP_HEADER_LAST_MODIFIED = fiobj_str_new("last-modified", 13);
   HTTP_HEADER_SET_COOKIE = fiobj_str_new("set-cookie", 10);
   HTTP_HEADER_UPGRADE = fiobj_str_new("upgrade", 7);
+  HTTP_HEADER_WS_SEC_CLIENT_KEY = fiobj_str_new("sec-websocket-key", 17);
   HTTP_HEADER_WS_SEC_KEY = fiobj_str_new("sec-websocket-accept", 20);
   HTTP_HVALUE_BYTES = fiobj_str_new("bytes", 5);
   HTTP_HVALUE_CLOSE = fiobj_str_new("close", 5);

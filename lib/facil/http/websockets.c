@@ -111,7 +111,7 @@ struct ws_s {
   void (*on_shutdown)(ws_s *ws);
   void (*on_ready)(ws_s *ws);
   void (*on_open)(ws_s *ws);
-  void (*on_close)(ws_s *ws);
+  void (*on_close)(intptr_t uuid, void *udata);
   /** Opaque user data. */
   void *udata;
   /** The maximum websocket message size */
@@ -173,10 +173,21 @@ static void websocket_on_unwrapped(void *ws_p, void *msg, uint64_t len,
 }
 static void websocket_on_protocol_ping(void *ws_p, void *msg_, uint64_t len) {
   ws_s *ws = ws_p;
-  uint16_t *msg = malloc(2 + len);
-  msg[0] = *((uint16_t *)"\x89\x00");
-  memcpy(msg + 1, msg_, len);
-  sock_write2(.uuid = ws->fd, .buffer = (void *)(msg), .length = 2 + len);
+  if (msg_) {
+    void *buff = malloc(len + 16);
+    len = (((ws_s *)ws)->is_client
+               ? websocket_client_wrap(buff, msg_, len, 10, 1, 1, 0)
+               : websocket_server_wrap(buff, msg_, len, 10, 1, 1, 0));
+    sock_write2(.uuid = ws->fd, .buffer = buff, .length = len);
+  } else {
+    if (((ws_s *)ws)->is_client) {
+      sock_write2(.uuid = ws->fd, .buffer = "\x89\x80mask", .length = 2,
+                  .dealloc = SOCK_DEALLOC_NOOP);
+    } else {
+      sock_write2(.uuid = ws->fd, .buffer = "\x89\x00", .length = 2,
+                  .dealloc = SOCK_DEALLOC_NOOP);
+    }
+  }
 }
 static void websocket_on_protocol_pong(void *ws_p, void *msg, uint64_t len) {
   (void)len;
@@ -200,8 +211,13 @@ The Websocket Protocol implementation
 
 static void ws_ping(intptr_t fd, protocol_s *ws) {
   (void)(ws);
-  sock_write2(.uuid = fd, .buffer = "\x89\x00", .length = 2,
-              .dealloc = SOCK_DEALLOC_NOOP);
+  if (((ws_s *)ws)->is_client) {
+    sock_write2(.uuid = fd, .buffer = "\x89\x80mask", .length = 2,
+                .dealloc = SOCK_DEALLOC_NOOP);
+  } else {
+    sock_write2(.uuid = fd, .buffer = "\x89\x00", .length = 2,
+                .dealloc = SOCK_DEALLOC_NOOP);
+  }
 }
 
 static void on_close(intptr_t uuid, protocol_s *_ws) {
@@ -298,7 +314,7 @@ static ws_s *new_websocket(intptr_t uuid) {
 static void destroy_ws(ws_s *ws) {
   clear_subscriptions(ws);
   if (ws->on_close)
-    ws->on_close(ws);
+    ws->on_close(ws->fd, ws->udata);
   if (ws->msg)
     fiobj_free(ws->msg);
   free_ws_buffer(ws, ws->buffer);
@@ -389,8 +405,7 @@ Writing to the Websocket
    (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
 #endif
 
-static void websocket_write_impl(intptr_t fd, void *data, size_t len,
-                                 char text, /* TODO: add client masking */
+static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
                                  char first, char last, char client) {
   if (len <= WS_MAX_FRAME_SIZE) {
     void *buff = malloc(len + 16);

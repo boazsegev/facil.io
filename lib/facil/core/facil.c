@@ -358,6 +358,11 @@ finish:
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
 }
 
+/** Sets to shutdown flag for the current process.
+ *
+ * If a cluster is used and this function is called for a worker, a new worker
+ * will respawn.
+ */
 static void facil_stop(void) {
   if (!facil_data)
     return;
@@ -974,6 +979,8 @@ static void cluster_on_server_message(cluster_pr_s *c, intptr_t uuid) {
     break;
   }
   case CLUSTER_MESSAGE_SHUTDOWN:
+    facil_stop();
+    break;
   case CLUSTER_MESSAGE_ERROR:
   case CLUSTER_MESSAGE_PING:
     /* do nothing, really. */
@@ -1017,6 +1024,7 @@ static void cluster_on_server_close(intptr_t uuid, protocol_s *pr_) {
 
 static void cluster_on_shutdown(intptr_t uuid, protocol_s *pr_) {
   cluster_send2traget(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL);
+  facil_force_event(uuid, FIO_EVENT_ON_READY);
   (void)pr_;
   (void)uuid;
 }
@@ -1482,7 +1490,7 @@ static void facil_worker_cleanup(void) {
 }
 
 static void facil_sentinel_task(void *arg1, void *arg2);
-static void *facil_sentinel_worker_thraed(void *arg) {
+static void *facil_sentinel_worker_thread(void *arg) {
   errno = 0;
   pid_t child = facil_fork();
   if (child == -1) {
@@ -1495,26 +1503,27 @@ static void *facil_sentinel_worker_thraed(void *arg) {
 #if DEBUG
     if (facil_data->active) { /* !WIFEXITED(status) || WEXITSTATUS(status) */
       fprintf(stderr,
-              "FATAL ERROR: Child wordker (%d) crashed. Stopping services in "
+              "FATAL ERROR: Child worker (%d) crashed. Stopping services in "
               "DEBUG mode.\n",
               child);
       kill(0, SIGINT);
     }
 #else
     if (facil_data->active) {
-      fprintf(stderr, "ERROR: Child wordker (%d) crashed. Respawning worker.\n",
+      fprintf(stderr, "ERROR: Child worker (%d) crashed. Respawning worker.\n",
               child);
       defer(facil_sentinel_task, (void *)1, NULL);
     }
 #endif
   } else {
+    defer_on_fork();
     if (arg) {
       /* respawn */
-      defer_on_fork();
       defer_clear_queue();
     }
     facil_worker_startup(0);
     defer_pool_wait(facil_data->thread_pool);
+    facil_data->thread_pool = NULL;
     facil_worker_cleanup();
     exit(0);
   }
@@ -1523,7 +1532,7 @@ static void *facil_sentinel_worker_thraed(void *arg) {
 }
 
 static void facil_sentinel_task(void *arg1, void *arg2) {
-  void *thrd = defer_new_thread(facil_sentinel_worker_thraed, arg1);
+  void *thrd = defer_new_thread(facil_sentinel_worker_thread, arg1);
   defer_free_thread(thrd);
   (void)arg1;
   (void)arg2;
@@ -1644,13 +1653,14 @@ void facil_run(struct facil_run_args args) {
       exit(-1);
     }
     for (int i = 0; i < args.processes; ++i) {
-      defer(facil_sentinel_task, NULL, NULL);
+      facil_sentinel_task(NULL, NULL);
     }
     facil_worker_startup(1);
   } else {
     facil_worker_startup(0);
   }
   defer_pool_wait(facil_data->thread_pool);
+  facil_data->thread_pool = NULL;
   facil_worker_cleanup();
 }
 

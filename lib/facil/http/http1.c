@@ -52,7 +52,7 @@ static fio_cstr_s http1pr_status2str(uintptr_t status);
 static inline void http1_after_finish(http_s *h) {
   http1pr_s *p = handle2pr(h);
   p->stop = p->stop & (~1UL);
-  http_s_clear(h, p->p.settings->udata, p->p.settings->log);
+  http_s_clear(h, p->p.settings->log);
   if (h != &p->request) {
     http_s_destroy(h, 0);
     free(h);
@@ -62,7 +62,7 @@ static inline void http1_after_finish(http_s *h) {
 }
 
 /* *****************************************************************************
-Virtual Functions API
+HTTP Request / Response (Virtual) Functions
 ***************************************************************************** */
 struct header_writer_s {
   FIOBJ dest;
@@ -277,13 +277,50 @@ intptr_t http1_hijack(http_s *h, fio_cstr_s *leftover) {
   return uuid;
 }
 
-static int http1_http2websocket(websocket_settings_s *args) {
+/* *****************************************************************************
+Websockets Upgrading
+***************************************************************************** */
+
+static void http1_websocket_client_on_upgrade(http_s *h, char *proto,
+                                              size_t len) {
+  http1pr_s *p = handle2pr(h);
+  websocket_settings_s *args = h->udata;
+  args->http = h;
+  const intptr_t uuid = handle2pr(args->http)->p.uuid;
+  http_settings_s *set = handle2pr(args->http)->p.settings;
+  set->udata = NULL;
+  http_finish(args->http);
+  p->stop = 1;
+  websocket_attach(uuid, set, args, p->parser.state.next,
+                   p->buf_len - (intptr_t)(p->parser.state.next - p->buf));
+  free(args);
+  (void)proto;
+  (void)len;
+}
+static void http1_websocket_client_on_failed(http_s *h) {
+  websocket_settings_s *s = h->udata;
+  if (s->on_close)
+    s->on_close(0, s->udata);
+  free(h->udata);
+  h->udata = http_settings(h)->udata = NULL;
+}
+static void http1_websocket_client_on_hangup(http_settings_s *settings) {
+  websocket_settings_s *s = settings->udata;
+  if (s) {
+    if (s->on_close)
+      s->on_close(0, settings->udata);
+    free(settings->udata);
+    settings->udata = NULL;
+  }
+}
+
+static int http1_http2websocket_server(websocket_settings_s *args) {
   // A static data used for all websocket connections.
   static char ws_key_accpt_str[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-  static uintptr_t sec_version;
+  static uintptr_t sec_version = 0;
+  static uintptr_t sec_key = 0;
   if (!sec_version)
     sec_version = fio_siphash("sec-websocket-version", 21);
-  static uintptr_t sec_key;
   if (!sec_key)
     sec_key = fio_siphash("sec-websocket-key", 17);
 
@@ -322,8 +359,59 @@ static int http1_http2websocket(websocket_settings_s *args) {
   return 0;
 bad_request:
   http_send_error(args->http, 400);
+  if (args->on_close)
+    args->on_close(0, args->udata);
   return -1;
 }
+
+static int http1_http2websocket_client(websocket_settings_s *args) {
+  http1pr_s *p = handle2pr(args->http);
+  /* We're done with the HTTP stage, so we call the `on_finish` */
+  if (p->p.settings->on_finish)
+    p->p.settings->on_finish(p->p.settings);
+  /* Copy the Websocket setting arguments to the HTTP settings `udata` */
+  p->p.settings->udata = malloc(sizeof(*args));
+  ((websocket_settings_s *)(p->p.settings->udata))[0] = *args;
+  /* Set callbacks */
+  p->p.settings->on_finish = http1_websocket_client_on_hangup;   /* unknown */
+  p->p.settings->on_upgrade = http1_websocket_client_on_upgrade; /* sucess */
+  p->p.settings->on_response = http1_websocket_client_on_failed; /* failed */
+  p->p.settings->on_request = http1_websocket_client_on_failed;  /* failed */
+  /* Set headers */
+  http_set_header(args->http, HTTP_HEADER_CONNECTION,
+                  fiobj_dup(HTTP_HVALUE_WS_UPGRADE));
+  http_set_header(args->http, HTTP_HEADER_UPGRADE,
+                  fiobj_dup(HTTP_HVALUE_WEBSOCKET));
+  http_set_header(args->http, HTTP_HVALUE_WS_SEC_VERSION,
+                  fiobj_dup(HTTP_HVALUE_WS_VERSION));
+
+  /* create nonce */
+  uint64_t key[2]; /* 16 bytes */
+  key[0] = (uintptr_t)args->http ^ (uint64_t)facil_last_tick().tv_sec;
+  key[1] = (uintptr_t)args->udata ^ (uint64_t)facil_last_tick().tv_nsec;
+  FIOBJ encoded = fiobj_str_buf(26); /* we need 24 really. */
+  fio_cstr_s tmp = fiobj_obj2cstr(encoded);
+  tmp.len = fio_base64_encode(tmp.data, (char *)key, 16);
+  fiobj_str_resize(encoded, tmp.len);
+  http_set_header(args->http, HTTP_HEADER_WS_SEC_CLIENT_KEY, encoded);
+  http_finish(args->http);
+  return 0;
+  /* *we don't set the Origin header since we're not a browser... should we? */
+}
+
+static int http1_http2websocket(websocket_settings_s *args) {
+  assert(args->http);
+  http1pr_s *p = handle2pr(args->http);
+
+  if (p->is_client == 0) {
+    return http1_http2websocket_server(args);
+  }
+  return http1_http2websocket_client(args);
+}
+
+/* *****************************************************************************
+Virtual Table Decleration
+***************************************************************************** */
 
 struct http_vtable_s HTTP1_VTABLE = {
     .http_send_body = http1_send_body,
@@ -579,7 +667,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
       .max_header_size = settings->max_header_size,
       .is_client = settings->is_client,
   };
-  http_s_new(&p->request, &p->p, &HTTP1_VTABLE, settings->udata);
+  http_s_new(&p->request, &p->p, &HTTP1_VTABLE);
   facil_attach(uuid, &p->p.protocol);
   if (unread_data && unread_length <= HTTP1_READ_BUFFER) {
     memcpy(p->buf, unread_data, unread_length);

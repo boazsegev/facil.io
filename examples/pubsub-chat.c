@@ -55,8 +55,9 @@ static void on_open_websocket(ws_s *ws) {
 }
 
 /* Free the nickname, if any. */
-static void on_close_websocket(ws_s *ws) {
-  fiobj_free((FIOBJ)websocket_udata(ws));
+static void on_close_websocket(intptr_t uuid, void *udata) {
+  fiobj_free((FIOBJ)udata);
+  (void)uuid;
 }
 
 /* Copy the nickname and the data to format a nicer message. */

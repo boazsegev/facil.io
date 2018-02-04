@@ -106,7 +106,7 @@ These are the features that have been requested so far. Even if any of them are 
 |      HTTP/2       | Bo (me), help me?  |                            |
 |    HTTP Router    |                    | No RegEx. Example: `/users/(:id)` |
 |    HTTP Client    |                    | Missing SSL/TLS, cookie retention and auto-redirect(?)  |
-|  Websocket Client |                    | Currently manual using the HTTP client. |
+|  Websocket Client |                    | Missing cookie retention.  |
 |      SSL/TLS      |                    | Use `sock` R/W hooks       |
 |     PostgreSQL    |                    | Wrap `libpq.h` for events + pub/sub engine (?) |
 |     Gossip (?)    |                    | For Pub/Sub engine scaling |

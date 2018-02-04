@@ -503,14 +503,13 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
     /* unmask? */
     if (info.masked) {
       /* masked */
-      const uint32_t mask; // = ((uint32_t *)payload)[-1];
+      uint32_t mask; // = ((uint32_t *)payload)[-1];
       ((uint8_t *)(&mask))[0] = ((uint8_t *)(payload))[-4];
       ((uint8_t *)(&mask))[1] = ((uint8_t *)(payload))[-3];
       ((uint8_t *)(&mask))[2] = ((uint8_t *)(payload))[-2];
       ((uint8_t *)(&mask))[3] = ((uint8_t *)(payload))[-1];
       websocket_xmask(payload, info.packet_length, mask);
-    } else if (require_masking) {
-      /* error */
+    } else if (require_masking && info.packet_length) {
       websocket_on_protocol_error(udata);
     }
     /* call callback */

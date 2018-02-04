@@ -109,7 +109,8 @@ The Request / Response type and functions
 static const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                                  '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
-#define HTTP_INVALID_HANDLE(h) (!h || (!h->method && !h->status_str))
+#define HTTP_INVALID_HANDLE(h)                                                 \
+  (!h || (!h->method && !h->status_str && h->status))
 /**
  * Sets a response header, taking ownership of the value object, but NOT the
  * name object (so name objects could be reused in future responses).
@@ -971,30 +972,52 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
   }
   size_t len;
   char *a, *p;
-  if (!address || (len = strlen(address)) <= 7 ||
-      strncasecmp(address, "http", 4)) {
+  uint8_t is_websocket = 0;
+  uint8_t is_secure = 0;
+  FIOBJ path = FIOBJ_INVALID;
+  if (!address || (len = strlen(address)) <= 5) {
+    fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
+    errno = EINVAL;
+    return -1;
+  }
+  if (!strncasecmp(address, "ws", 2)) {
+    is_websocket = 1;
+    address += 2;
+    len -= 2;
+  } else if (len >= 7 && !strncasecmp(address, "http", 4)) {
+    address += 4;
+    len -= 4;
+  } else {
     fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
     errno = EINVAL;
     return -1;
   }
   /* parse address */
-  if (address[5] == 's') {
+  if (address[0] == 's') {
     /* TODO: SSL/TLS */
+    is_secure = 1;
     fprintf(stderr, "ERROR: http_connect doesn't support TLS/SSL "
                     "just yet.\n");
     errno = EINVAL;
     return -1;
+  } else if (len <= 3 || strncmp(address, "://", 3)) {
+    fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
+    errno = EINVAL;
+    return -1;
   } else {
-    len -= 7;
+    len -= 3;
+    address += 3;
     a = malloc(len + 1);
     if (!a) {
       perror("FATAL ERROR: http_connect couldn't allocate memory "
              "for address parsing");
     }
-    memcpy(a, address + 7, len + 1);
+    memcpy(a, address, len + 1);
   }
   p = memchr(a, '/', len);
   if (p) {
+    if (len - (p - a))
+      path = fiobj_str_new(p, len - (p - a));
     len = p - a;
     *p = 0;
   }
@@ -1012,7 +1035,7 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
       }
     }
   } else {
-    if (address[5] == 's')
+    if (is_secure)
       p = "443";
     else
       p = "80";
@@ -1023,21 +1046,77 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
     arg_settings.timeout = 30;
   http_settings_s *settings = http_settings_new(arg_settings);
   settings->is_client = 1;
+  if (!arg_settings.ws_timeout)
+    settings->ws_timeout = 0; /* allow server to dictate timeout */
+  if (!arg_settings.timeout)
+    settings->timeout = 0; /* allow server to dictate timeout */
   http_s *h = malloc(sizeof(*h));
   HTTP_ASSERT(h, "HTTP Client handler allocation failed");
-  http_s_new(h, 0, http1_vtable(), arg_settings.udata);
+  http_s_new(h, 0, http1_vtable());
+  h->udata = arg_settings.udata;
   h->status = 0;
+  h->path = path;
   settings->udata = h;
   http_set_header2(h, (fio_cstr_s){.data = "host", .len = 4},
                    (fio_cstr_s){.data = a, .len = len});
-  intptr_t ret =
-      facil_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
-                    .on_connect = http_on_open_client, .udata = settings);
+  intptr_t ret;
+  if (is_websocket) {
+    /* force HTTP/1.1 */
+    ret =
+        facil_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
+                      .on_connect = http_on_open_client, .udata = settings);
+    (void)0;
+  } else {
+    /* Allow for any HTTP version */
+    ret =
+        facil_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
+                      .on_connect = http_on_open_client, .udata = settings);
+    (void)0;
+  }
   free(a);
   return ret;
 }
 #define http_connect(address, ...)                                             \
   http_connect((address), (struct http_settings_s){__VA_ARGS__})
+
+/* *****************************************************************************
+HTTP Websocket Connect
+***************************************************************************** */
+
+#undef http_upgrade2ws
+static void on_websocket_http_connected(http_s *h) {
+  websocket_settings_s *s = h->udata;
+  h->udata = http_settings(h)->udata = NULL;
+  s->http = h;
+  if (!h->path) {
+    fprintf(stderr, "WARNING: (websocket client) path not specified in "
+                    "address, assuming root!\n");
+    h->path = fiobj_str_new("/", 1);
+  }
+  http_upgrade2ws(*s);
+  free(s);
+}
+
+static void on_websocket_http_connection_finished(http_settings_s *settings) {
+  websocket_settings_s *s = settings->udata;
+  if (s) {
+    if (s->on_close)
+      s->on_close(0, s->udata);
+    free(s);
+  }
+}
+
+#undef websocket_connect
+int websocket_connect(const char *address, websocket_settings_s settings) {
+  websocket_settings_s *s = malloc(sizeof(*s));
+  *s = settings;
+  return http_connect(address, .on_request = on_websocket_http_connected,
+                      .on_response = on_websocket_http_connected,
+                      .on_finish = on_websocket_http_connection_finished,
+                      .ws_timeout = 3, .udata = s);
+}
+#define websocket_connect(address, ...)                                        \
+  websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
 
 /* *****************************************************************************
 HTTP GET and POST parsing helpers

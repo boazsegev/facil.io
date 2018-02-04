@@ -394,7 +394,19 @@ int http_listen(const char *port, const char *binding, struct http_settings_s);
  * response.
  *
  * `address` should contain a full URL style address for the server. i.e.:
+ *
  *           "http:/www.example.com:8080/"
+ *
+ * If an `address` includes a path or query data, they will be automatically
+ * attached (both of them) to the HTTP handl'es `path` property. i.e.
+ *
+ *           "http:/www.example.com:8080/my_path?foo=bar"
+ *           // will result in:
+ *           fiobj_obj2cstr(h->path).data; //=> "/my_path?foo=bar"
+ *
+ * To open a Websocket connection, it's possible to use the `ws` protocol
+ * signature. However, it would be better to use the `websocket_connect`
+ * function instead.
  *
  * Returns -1 on error and 0 on success. the `on_finish` callback is always
  * called.
@@ -488,14 +500,30 @@ typedef struct {
   /**
    * The (optional) on_close callback will be called once a websocket connection
    * is terminated or failed to be established.
+   *
+   * The `uuid` is the connection's unique ID that can identify the Websocket. A
+   * value of `uuid == 0` indicates the Websocket connection wasn't established
+   * (an error occured).
+   *
+   * The `udata` is the user data as set during the upgrade or using the
+   * `websocket_udata_set` function.
    */
-  void (*on_close)(ws_s *ws);
+  void (*on_close)(intptr_t uuid, void *udata);
   /** Opaque user data. */
   void *udata;
 } websocket_settings_s;
 
 /**
  * Upgrades an HTTP/1.1 connection to a Websocket connection.
+ *
+ * This function will end the HTTP stage of the connection and attempt to
+ * "upgrade" to a Websockets connection.
+ *
+ * Thie `http_s` handle will be invalid after this call and the `udata` will be
+ * set to the new Websocket `udata`.
+ *
+ * A client connection's `on_finish` callback will be called (since the HTTP
+ * stage has finished).
  */
 int http_upgrade2ws(websocket_settings_s);
 
@@ -514,6 +542,22 @@ int http_upgrade2ws(websocket_settings_s);
  */
 #define http_upgrade2ws(...)                                                   \
   http_upgrade2ws((websocket_settings_s){__VA_ARGS__})
+
+/**
+ * Connects to a Websocket service according to the provided address.
+ *
+ * This is a somewhat naive connector object, it doesn't perform any
+ * authentication or other logical handling. However, it's quire easy to author
+ * a complext authentication logic using a combination of `http_connect` and
+ * `http_upgrade2ws`.
+ *
+ * Returns the uuid for the future websocket on success.
+ *
+ * Returns -1 on error;
+ */
+int websocket_connect(const char *address, websocket_settings_s settings);
+#define websocket_connect(address, ...)                                        \
+  websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
 
 #include "websockets.h"
 

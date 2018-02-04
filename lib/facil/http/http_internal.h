@@ -61,6 +61,7 @@ Constants that shouldn't be accessed by the users (`fiobj_dup` required).
 
 extern FIOBJ HTTP_HEADER_ACCEPT_RANGES;
 extern FIOBJ HTTP_HEADER_WS_SEC_KEY;
+extern FIOBJ HTTP_HEADER_WS_SEC_CLIENT_KEY;
 extern FIOBJ HTTP_HVALUE_BYTES;
 extern FIOBJ HTTP_HVALUE_CLOSE;
 extern FIOBJ HTTP_HVALUE_GZIP;
@@ -76,7 +77,7 @@ HTTP request/response object management
 ***************************************************************************** */
 
 static inline void http_s_new(http_s *h, http_protocol_s *owner,
-                              http_vtable_s *vtbl, void *udata) {
+                              http_vtable_s *vtbl) {
   *h = (http_s){
       .private_data =
           {
@@ -87,11 +88,10 @@ static inline void http_s_new(http_s *h, http_protocol_s *owner,
       .headers = fiobj_hash_new(),
       .received_at = facil_last_tick(),
       .status = 200,
-      .udata = udata,
   };
 }
 
-static inline void http_s_clear(http_s *h, void *udata, uint8_t log) {
+static inline void http_s_clear(http_s *h, uint8_t log) {
   if (log && h->status && !h->status_str)
     http_write_log(h);
   fiobj_free(h->method);
@@ -114,8 +114,6 @@ static inline void http_s_clear(http_s *h, void *udata, uint8_t log) {
       .headers = h->headers,
       .received_at = facil_last_tick(),
       .status = 200,
-      .udata = udata,
-
   };
 }
 
