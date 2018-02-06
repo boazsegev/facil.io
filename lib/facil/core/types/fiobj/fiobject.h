@@ -31,11 +31,11 @@ extern "C" {
 Core Types
 ***************************************************************************** */
 
-typedef enum {
+typedef enum fiobj_type_enum {
   FIOBJ_T_NUMBER = 0x01,
   FIOBJ_T_NULL = 0x06,
-  FIOBJ_T_TRUE = 0x0106,
-  FIOBJ_T_FALSE = 0x0206,
+  FIOBJ_T_TRUE = 0x16,
+  FIOBJ_T_FALSE = 0x26,
   FIOBJ_T_FLOAT,
   FIOBJ_T_STRING,
   FIOBJ_T_ARRAY,
