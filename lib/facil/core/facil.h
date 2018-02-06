@@ -20,6 +20,15 @@ regarding the server state (start / finish / listen messages).
 */
 #define FACIL_PRINT_STATE 1
 #endif
+
+#ifndef FACIL_CPU_CORES_LIMIT
+/**
+If facil.io detects more CPU cores than the number of cores stated in the
+FACIL_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
+detected to the assigned limit.
+*/
+#define FACIL_CPU_CORES_LIMIT 120
+#endif
 /* *****************************************************************************
 Required facil libraries
 ***************************************************************************** */

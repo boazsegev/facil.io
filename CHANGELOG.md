@@ -6,6 +6,18 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
+### Ver. 0.6.0.beta.5
+
+Released fixes for issues related to the [TechEmpower Framework Benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks) 80 core startup.
+
+**Fix**: fixed error handling during cluster mode startup, making sure facil.io fails to start.
+
+**Update**: capped maximum core detection value to 120 cores. Any value larger than 120 will raise a warning and the cap (120) will be used.
+
+### Ver. 0.6.0.beta.4
+
+Released after stress testing and memory leakage testing.
+
 ### Ver. 0.6.0.beta.3
 
 **Breaking Change**: (`websockets`) the websocket `on_close` callback signature had changed to allow it to be called on connection/upgrade failures as well (easier `udata` cleanup).

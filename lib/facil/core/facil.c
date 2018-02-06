@@ -1142,9 +1142,10 @@ static void cluster_on_open(intptr_t fd, void *udata) {
 
 static void cluster_on_new_peer(intptr_t srv, protocol_s *pr) {
   intptr_t client = sock_accept(srv);
-  if (client == -1)
-    fprintf(stderr, "ERROR: (facil.io cluster) couldn't accept connection\n");
-  else {
+  if (client == -1) {
+    // fprintf(stderr,
+    // "ERROR: (facil.io cluster) couldn't accept connection\n");
+  } else {
     cluster_on_open(client, NULL);
   }
   (void)pr;
@@ -1163,9 +1164,9 @@ static void cluster_on_listening_ping(intptr_t srv, protocol_s *pr) {
   (void)pr;
 }
 
-static void cluster_on_start(void) {
+static int cluster_on_start(void) {
   if (facil_data->active <= 1)
-    return;
+    return 0;
   if (facil_parent_pid() == getpid()) {
     facil_cluster_data.client_mode = 0;
     if (facil_attach(facil_cluster_data.root, &facil_cluster_data.listening)) {
@@ -1193,8 +1194,10 @@ static void cluster_on_start(void) {
           "FATAL ERROR: (facil.io cluster) couldn't connect to cluster socket");
       fprintf(stderr, "         socket: %s\n", facil_cluster_data.cluster_name);
       facil_stop();
+      return -1;
     }
   }
+  return 0;
 }
 
 static int facil_cluster_init(void) {
@@ -1439,7 +1442,10 @@ static void facil_worker_startup(uint8_t sentinel) {
     }
   }
   /* called after connection cleanup, as it will close any connections. */
-  cluster_on_start();
+  if (cluster_on_start()) {
+    facil_data->thread_pool = NULL;
+    return;
+  }
   /* called after `evio_create` but before actually reacting to events. */
   facil_data->need_review = 1;
   defer(facil_cycle, NULL, NULL);
@@ -1495,7 +1501,8 @@ static void *facil_sentinel_worker_thread(void *arg) {
   pid_t child = facil_fork();
   if (child == -1) {
     perror("FATAL ERROR: couldn't spawn workers at startup");
-    kill(0, SIGINT);
+    kill(facil_parent_pid(), SIGINT);
+    facil_stop();
     return NULL;
   } else if (child) {
     int status;
@@ -1522,7 +1529,11 @@ static void *facil_sentinel_worker_thread(void *arg) {
       defer_clear_queue();
     }
     facil_worker_startup(0);
-    defer_pool_wait(facil_data->thread_pool);
+    if (facil_data->thread_pool)
+      defer_pool_wait(facil_data->thread_pool);
+    else if (facil_parent_pid() != getpid()) {
+      kill(facil_parent_pid(), SIGINT);
+    }
     facil_data->thread_pool = NULL;
     facil_worker_cleanup();
     exit(0);
@@ -1534,6 +1545,9 @@ static void *facil_sentinel_worker_thread(void *arg) {
 static void facil_sentinel_task(void *arg1, void *arg2) {
   void *thrd = defer_new_thread(facil_sentinel_worker_thread, arg1);
   defer_free_thread(thrd);
+  if (facil_parent_pid() == getpid())
+    facil_cluster_data.listening.on_data(facil_cluster_data.root,
+                                         &facil_cluster_data.listening);
   (void)arg1;
   (void)arg2;
 }
@@ -1620,6 +1634,15 @@ void facil_run(struct facil_run_args args) {
       args.threads = args.processes = (int16_t)cpu_count;
   } else if (args.threads < 0 || args.processes < 0) {
     ssize_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+#if FACIL_CPU_CORES_LIMIT
+    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
+      fprintf(stderr,
+              "WARNING: facil.io detected %zu cores. Capping number of cores "
+              "at %zu\n",
+              cpu_count, (size_t)FACIL_CPU_CORES_LIMIT);
+      cpu_count = FACIL_CPU_CORES_LIMIT;
+    }
+#endif
     if (cpu_count > 0) {
       if (args.threads < 0)
         args.threads = (int16_t)cpu_count;
@@ -1652,15 +1675,20 @@ void facil_run(struct facil_run_args args) {
       }
       exit(-1);
     }
-    for (int i = 0; i < args.processes; ++i) {
+    for (int i = 0; i < args.processes && facil_data->active; ++i) {
       facil_sentinel_task(NULL, NULL);
     }
     facil_worker_startup(1);
   } else {
     facil_worker_startup(0);
   }
-  defer_pool_wait(facil_data->thread_pool);
+  if (facil_data->thread_pool)
+    defer_pool_wait(facil_data->thread_pool);
   facil_data->thread_pool = NULL;
+  if (args.processes > 1) {
+    facil_stop();
+    kill(0, SIGINT);
+  }
   facil_worker_cleanup();
 }
 
