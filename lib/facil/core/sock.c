@@ -301,15 +301,6 @@ finish:
     return 0;
   init_exit = 1;
   atexit(clear_sock_lib);
-  /* the library is server oriented, we should avoid long TIME_WAIT values */
-  // {
-  //   size_t new_val = 1;
-  //   size_t new_val_size = sizeof(new_val);
-  //   size_t old_val = 1;
-  //   size_t old_val_size = sizeof(old_val);
-  //   sysctlbyname("net.inet.tcp.msl", &old_val, &old_val_size, &new_val,
-  //                new_val_size);
-  // }
   return 0;
 }
 

@@ -10,9 +10,9 @@ Coming Soon...
 
 **Breaking Change**: (`websockets`) the websocket `on_close` callback signature had changed to allow it to be called on connection/upgrade failures as well (easier `udata` cleanup).
 
-**Fix** (`facil`): fixes an issue introduced in the beta.2 version, where deferred events that where scheduled before `facil_run` was called would only be called for the parent process.
+**Fix** (`facil`): fixes an issue introduced in the beta.2 version, where deferred events that where scheduled before a call to `facil_run` would only be called for the parent process. Now these events would perform as intended (once in the root process and once in each worker process).
 
-**Fix** (`facil`): updates the logical assumption about open connections, to make sure any open connections are closed when re-spawning a child worker (this should effect internal extensions only, since active connections aren't handled by the root process except).
+**Fix** (`facil`): updates the logical assumption about open connections, to make sure any open connections are closed when re-spawning a child worker. This shift the connection assumption from unsafe (forked connections should be closed by extensions) to safe (reconnection should be handled by extension). This change should effect internal extensions only, since active connections aren't handled by the root process in clustered mode.
 
 **Change** (`websocket`): the protocol is now more forgiving in cases where clients don't mask empty messages.
 

@@ -145,6 +145,23 @@ static const uint8_t is_hex[] = {
     0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0,
     0,  0,  0,  0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0};
 
+/*
+Stops seeking a String:
+['\\', '"']
+*/
+static const uint8_t string_seek_stop[] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
 /* *****************************************************************************
 JSON String Helper - Seeking to the end of a string
 ***************************************************************************** */
@@ -154,7 +171,7 @@ JSON String Helper - Seeking to the end of a string
  */
 static inline int seek2marker(uint8_t **buffer,
                               register const uint8_t *const limit) {
-  if (**buffer == '"' || **buffer == '\\')
+  if (string_seek_stop[**buffer])
     return 1;
 
 #if !__x86_64__ && !__aarch64__
@@ -168,7 +185,7 @@ static inline int seek2marker(uint8_t **buffer,
         (uint8_t *)(((uintptr_t)(*buffer) & (~(uintptr_t)7)) + 8);
     if (limit >= alignment) {
       while (*buffer < alignment) {
-        if (**buffer == '"' || **buffer == '\\')
+        if (string_seek_stop[**buffer])
           return 1;
         *buffer += 1;
       }
@@ -196,8 +213,27 @@ static inline int seek2marker(uint8_t **buffer,
 #if !__x86_64__ && !__aarch64__
 finish:
 #endif
+  if (*buffer + 4 <= limit) {
+    if (string_seek_stop[(*buffer)[0]]) {
+      // *buffer += 0;
+      return 1;
+    }
+    if (string_seek_stop[(*buffer)[1]]) {
+      *buffer += 1;
+      return 1;
+    }
+    if (string_seek_stop[(*buffer)[2]]) {
+      *buffer += 2;
+      return 1;
+    }
+    if (string_seek_stop[(*buffer)[3]]) {
+      *buffer += 3;
+      return 1;
+    }
+    *buffer += 4;
+  }
   while (*buffer < limit) {
-    if (**buffer == '"' || **buffer == '\\')
+    if (string_seek_stop[**buffer])
       return 1;
     (*buffer)++;
   }
@@ -228,196 +264,200 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
     return 0;
   uint8_t *pos = (uint8_t *)buffer;
   const uint8_t *limit = pos + length;
-  do {
-    while (pos < limit && JSON_SEPERATOR[*pos])
-      ++pos;
-    if (pos == limit)
+read_next_object:
+  while (pos < limit && JSON_SEPERATOR[*pos])
+    ++pos;
+  if (pos == limit)
+    goto stop;
+  switch (*pos) {
+  case '"': {
+    uint8_t *tmp = pos + 1;
+    if (seek2eos(&tmp, limit) == 0)
       goto stop;
-    switch (*pos) {
-    case '"': {
-      uint8_t *tmp = pos + 1;
-      if (seek2eos(&tmp, limit) == 0)
+    if (parser->key) {
+      uint8_t *key = tmp + 1;
+      while (key < limit && JSON_SEPERATOR[*key])
+        ++key;
+      if (key >= limit)
         goto stop;
-      if (parser->key) {
-        uint8_t *key = tmp + 1;
-        while (key < limit && JSON_SEPERATOR[*key])
-          ++key;
-        if (key >= limit)
-          goto stop;
-        if (*key != ':')
-          goto error;
-        ++pos;
-        on_string(parser, pos, (uintptr_t)(tmp - pos));
-        pos = key + 1;
-        parser->key = 0;
-        continue /* skip tests */;
-      } else {
-        ++pos;
-        on_string(parser, pos, (uintptr_t)(tmp - pos));
-        pos = tmp + 1;
-      }
-      break;
+      if (*key != ':')
+        goto error;
+      ++pos;
+      on_string(parser, pos, (uintptr_t)(tmp - pos));
+      pos = key + 1;
+      parser->key = 0;
+      goto read_next_object; /* skip tests */
+      ;
+    } else {
+      ++pos;
+      on_string(parser, pos, (uintptr_t)(tmp - pos));
+      pos = tmp + 1;
     }
-    case '{':
-      if (parser->key) {
+    break;
+  }
+  case '{':
+    if (parser->key) {
 #if DEBUG
-        fprintf(stderr, "ERROR: JSON key can't be a Hash.\n");
+      fprintf(stderr, "ERROR: JSON key can't be a Hash.\n");
 #endif
-        goto error;
-      }
-      ++parser->depth;
-      if (parser->depth >= JSON_MAX_DEPTH)
-        goto error;
-      parser->dict = (parser->dict << 1) | 1;
-      ++pos;
-      if (on_start_object(parser))
-        goto error;
-      break;
-    case '}':
-      if ((parser->dict & 1) == 0) {
+      goto error;
+    }
+    ++parser->depth;
+    if (parser->depth >= JSON_MAX_DEPTH)
+      goto error;
+    parser->dict = (parser->dict << 1) | 1;
+    ++pos;
+    if (on_start_object(parser))
+      goto error;
+    break;
+  case '}':
+    if ((parser->dict & 1) == 0) {
 #if DEBUG
-        fprintf(stderr, "ERROR: JSON dictionary closure error.\n");
+      fprintf(stderr, "ERROR: JSON dictionary closure error.\n");
 #endif
-        goto error;
-      }
-      if (!parser->key) {
+      goto error;
+    }
+    if (!parser->key) {
 #if DEBUG
-        fprintf(stderr, "ERROR: JSON dictionary closure missing key value.\n");
-        goto error;
+      fprintf(stderr, "ERROR: JSON dictionary closure missing key value.\n");
+      goto error;
 #endif
-        on_null(parser); /* append NULL and recuperate from error. */
-      }
-      --parser->depth;
-      ++pos;
-      parser->dict = (parser->dict >> 1);
-      on_end_object(parser);
-      break;
-    case '[':
-      if (parser->key) {
+      on_null(parser); /* append NULL and recuperate from error. */
+    }
+    --parser->depth;
+    ++pos;
+    parser->dict = (parser->dict >> 1);
+    on_end_object(parser);
+    break;
+  case '[':
+    if (parser->key) {
 #if DEBUG
-        fprintf(stderr, "ERROR: JSON key can't be an array.\n");
+      fprintf(stderr, "ERROR: JSON key can't be an array.\n");
 #endif
-        goto error;
-      }
-      ++parser->depth;
-      if (parser->depth >= JSON_MAX_DEPTH)
-        goto error;
-      ++pos;
-      parser->dict = (parser->dict << 1);
-      if (on_start_array(parser))
-        goto error;
-      break;
-    case ']':
-      if ((parser->dict & 1))
-        goto error;
-      --parser->depth;
-      ++pos;
-      parser->dict = (parser->dict >> 1);
-      on_end_array(parser);
-      break;
-    case 't':
-      if (pos + 3 >= limit)
-        goto stop;
-      if (pos[1] == 'r' && pos[2] == 'u' && pos[3] == 'e')
-        on_true(parser);
-      else
-        goto error;
-      pos += 4;
-      break;
-    case 'N': /* overflow */
-    case 'n':
-      if (pos + 2 <= limit && (pos[1] | 32) == 'a' && (pos[2] | 32) == 'n')
-        goto numeral;
-      if (pos + 3 >= limit)
-        goto stop;
-      if (pos[1] == 'u' && pos[2] == 'l' && pos[3] == 'l')
-        on_null(parser);
-      else
-        goto error;
-      pos += 4;
-      break;
-    case 'f':
-      if (pos + 4 >= limit)
-        goto stop;
-      if (pos + 4 < limit && pos[1] == 'a' && pos[2] == 'l' && pos[3] == 's' &&
-          pos[4] == 'e')
-        on_false(parser);
-      else
-        goto error;
-      pos += 5;
-      break;
-    case '-': /* overflow */
-    case '0': /* overflow */
-    case '1': /* overflow */
-    case '2': /* overflow */
-    case '3': /* overflow */
-    case '4': /* overflow */
-    case '5': /* overflow */
-    case '6': /* overflow */
-    case '7': /* overflow */
-    case '8': /* overflow */
-    case '9': /* overflow */
-    case '.': /* overflow */
-    case 'e': /* overflow */
-    case 'E': /* overflow */
-    case 'x': /* overflow */
-    case 'i': /* overflow */
-    case 'I': /* overflow */
-    numeral : {
-      uint8_t *tmp = NULL;
-      long long i = strtoll((char *)pos, (char **)&tmp, 0);
+      goto error;
+    }
+    ++parser->depth;
+    if (parser->depth >= JSON_MAX_DEPTH)
+      goto error;
+    ++pos;
+    parser->dict = (parser->dict << 1);
+    if (on_start_array(parser))
+      goto error;
+    break;
+  case ']':
+    if ((parser->dict & 1))
+      goto error;
+    --parser->depth;
+    ++pos;
+    parser->dict = (parser->dict >> 1);
+    on_end_array(parser);
+    break;
+  case 't':
+    if (pos + 3 >= limit)
+      goto stop;
+    if (pos[1] == 'r' && pos[2] == 'u' && pos[3] == 'e')
+      on_true(parser);
+    else
+      goto error;
+    pos += 4;
+    break;
+  case 'N': /* overflow */
+  case 'n':
+    if (pos + 2 <= limit && (pos[1] | 32) == 'a' && (pos[2] | 32) == 'n')
+      goto numeral;
+    if (pos + 3 >= limit)
+      goto stop;
+    if (pos[1] == 'u' && pos[2] == 'l' && pos[3] == 'l')
+      on_null(parser);
+    else
+      goto error;
+    pos += 4;
+    break;
+  case 'f':
+    if (pos + 4 >= limit)
+      goto stop;
+    if (pos + 4 < limit && pos[1] == 'a' && pos[2] == 'l' && pos[3] == 's' &&
+        pos[4] == 'e')
+      on_false(parser);
+    else
+      goto error;
+    pos += 5;
+    break;
+  case '-': /* overflow */
+  case '0': /* overflow */
+  case '1': /* overflow */
+  case '2': /* overflow */
+  case '3': /* overflow */
+  case '4': /* overflow */
+  case '5': /* overflow */
+  case '6': /* overflow */
+  case '7': /* overflow */
+  case '8': /* overflow */
+  case '9': /* overflow */
+  case '.': /* overflow */
+  case 'e': /* overflow */
+  case 'E': /* overflow */
+  case 'x': /* overflow */
+  case 'i': /* overflow */
+  case 'I': /* overflow */
+  numeral : {
+    uint8_t *tmp = NULL;
+    long long i = strtoll((char *)pos, (char **)&tmp, 0);
+    if (tmp > limit)
+      goto stop;
+    if (!tmp || JSON_NUMERAL[*tmp]) {
+      double f = strtod((char *)pos, (char **)&tmp);
       if (tmp > limit)
         goto stop;
-      if (!tmp || JSON_NUMERAL[*tmp]) {
-        double f = strtod((char *)pos, (char **)&tmp);
-        if (tmp > limit)
-          goto stop;
-        if (!tmp || JSON_NUMERAL[*tmp])
-          goto error;
-        on_float(parser, f);
-        pos = tmp;
-      } else {
-        on_number(parser, i);
-        pos = tmp;
-      }
-      break;
+      if (!tmp || JSON_NUMERAL[*tmp])
+        goto error;
+      on_float(parser, f);
+      pos = tmp;
+    } else {
+      on_number(parser, i);
+      pos = tmp;
     }
-    case '#': /* Ruby style comment */
-    {
+    break;
+  }
+  case '#': /* Ruby style comment */
+  {
+    uint8_t *tmp = memchr(pos, '\n', (uintptr_t)(limit - pos));
+    if (!tmp)
+      goto stop;
+    pos = tmp + 1;
+    goto read_next_object; /* skip tests */
+    ;
+  }
+  case '/': /* C style / Javascript style comment */
+    if (pos[1] == '*') {
+      if (pos + 4 > limit)
+        goto stop;
+      uint8_t *tmp = pos + 3; /* avoid this: /*/
+      do {
+        tmp = memchr(tmp, '/', (uintptr_t)(limit - tmp));
+      } while (tmp && tmp[-1] != '*');
+      if (!tmp)
+        goto stop;
+      pos = tmp + 1;
+    } else if (pos[1] == '/') {
       uint8_t *tmp = memchr(pos, '\n', (uintptr_t)(limit - pos));
       if (!tmp)
         goto stop;
       pos = tmp + 1;
-      continue /* skip tests */;
-    }
-    case '/': /* C style / Javascript style comment */
-      if (pos[1] == '*') {
-        if (pos + 4 > limit)
-          goto stop;
-        uint8_t *tmp = pos + 3; /* avoid this: /*/
-        do {
-          tmp = memchr(tmp, '/', (uintptr_t)(limit - tmp));
-        } while (tmp && tmp[-1] != '*');
-        if (!tmp)
-          goto stop;
-        pos = tmp + 1;
-      } else if (pos[1] == '/') {
-        uint8_t *tmp = memchr(pos, '\n', (uintptr_t)(limit - pos));
-        if (!tmp)
-          goto stop;
-        pos = tmp + 1;
-      } else
-        goto error;
-      continue /* skip tests */;
-    default:
+    } else
       goto error;
-    }
-    if (parser->depth == 0) {
-      on_json(parser);
-      goto stop;
-    }
-    parser->key = (parser->dict & 1);
-  } while (pos < limit);
+    goto read_next_object; /* skip tests */
+    ;
+  default:
+    goto error;
+  }
+  if (parser->depth == 0) {
+    on_json(parser);
+    goto stop;
+  }
+  parser->key = (parser->dict & 1);
+  if (pos < limit)
+    goto read_next_object;
 stop:
   return (size_t)((uintptr_t)pos - (uintptr_t)buffer);
 error:
@@ -1151,7 +1191,6 @@ void fiobj_test_json(void) {
               "JSON direct G clef String incorrect %s !\n",
               fiobj_obj2cstr(o).data);
   fiobj_free(o);
-
   fiobj_json2obj(&o, "\"Hello\\u0000World\"", 19);
   TEST_ASSERT(FIOBJ_TYPE_IS(o, FIOBJ_T_STRING),
               "JSON NUL containing String incorrect type! %p => %s\n",

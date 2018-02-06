@@ -402,6 +402,8 @@ FIO_INLINE const char *fiobj_type_name(const FIOBJ o) {
     return "Number";
   if (FIOBJ_IS_ALLOCATED(o))
     return FIOBJECT2VTBL(o)->class_name;
+  if (!o)
+    return "NULL";
   return "Primitive";
 }
 
