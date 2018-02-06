@@ -23,6 +23,10 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 
 #include "fio_siphash.h"
 
+#if !defined(__GNUC__)
+#define __attribute__(x) /* :-( */
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -31,7 +35,7 @@ extern "C" {
 Core Types
 ***************************************************************************** */
 
-typedef enum fiobj_type_enum {
+typedef enum __attribute__((packed)) {
   FIOBJ_T_NUMBER = 0x01,
   FIOBJ_T_NULL = 0x06,
   FIOBJ_T_TRUE = 0x16,
