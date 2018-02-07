@@ -353,7 +353,6 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
   if (!info && !obj)
     return NULL;
   while (!info) {
-    fprintf(stderr, "no info\n");
     fio_hash_rehash(hash);
     info = fio_hash_seek_pos_(hash, key);
   }
