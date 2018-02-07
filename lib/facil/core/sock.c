@@ -674,6 +674,11 @@ intptr_t sock_listen(const char *address, const char *port) {
       int optval = 1;
       setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
     }
+    // allow listening ports to be opened from different processes
+    {
+      int optval = 1;
+      setsockopt(srvfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+    }
     // bind the address to the socket
     {
       int bound = 0;
@@ -721,7 +726,6 @@ intptr_t sock_accept(intptr_t srv_uuid) {
   struct sockaddr_in6 addrinfo;
   socklen_t addrlen = sizeof(addrinfo);
   int client;
-  int one = 1;
 #ifdef SOCK_NONBLOCK
   client = accept4(sock_uuid2fd(srv_uuid), (struct sockaddr *)&addrinfo,
                    &addrlen, SOCK_NONBLOCK);
@@ -734,7 +738,11 @@ intptr_t sock_accept(intptr_t srv_uuid) {
     return -1;
   sock_set_non_block(client);
 #endif
-  setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+  // avoid the TCP delay algorithm.
+  {
+    int optval = 1;
+    setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
+  }
   clear_fd(client, 1);
   fdinfo(client).addrinfo = addrinfo;
   fdinfo(client).addrlen = addrlen;
