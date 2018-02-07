@@ -10,3 +10,5 @@ docs/_site
 .gitignore
 .DS_Store
 .gitmodules
+
+callgrind*
