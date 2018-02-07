@@ -39,12 +39,12 @@ String Type
 
 typedef struct {
   fiobj_object_header_s head;
+  uint64_t hash;
   uint8_t is_small;
   uint8_t frozen;
   uint8_t slen;
   intptr_t len;
   uintptr_t capa;
-  uint64_t hash;
   char *str;
 } fiobj_str_s;
 
@@ -500,12 +500,17 @@ size_t fiobj_str_join(FIOBJ dest, FIOBJ obj) {
  */
 uint64_t fiobj_str_hash(FIOBJ o) {
   assert(FIOBJ_TYPE_IS(o, FIOBJ_T_STRING));
-  if (obj2str(o)->is_small) {
-    return fio_siphash(STR_INTENAL_STR(o), STR_INTENAL_LEN(o));
-  } else if (obj2str(o)->hash) {
+  // if (obj2str(o)->is_small) {
+  //   return fio_siphash(STR_INTENAL_STR(o), STR_INTENAL_LEN(o));
+  // } else
+  if (obj2str(o)->hash) {
     return obj2str(o)->hash;
   }
-  obj2str(o)->hash = fio_siphash(obj2str(o)->str, obj2str(o)->len);
+  if (obj2str(o)->is_small) {
+    obj2str(o)->hash = fio_siphash(STR_INTENAL_STR(o), STR_INTENAL_LEN(o));
+  } else {
+    obj2str(o)->hash = fio_siphash(obj2str(o)->str, obj2str(o)->len);
+  }
   return obj2str(o)->hash;
 }
 
