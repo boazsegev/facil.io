@@ -145,8 +145,8 @@ endif
 # Updated flags and final values
 
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
-CFLAGS= -g -std=c11 -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
-CPPFLAGS= -std=c++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CFLAGS:= $(CFLAGS) -g -std=c11 -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CPPFLAGS:= $(CPPFLAGS) -std=c++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 LINKER_FLAGS=$(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFALGS_DEPENDENCY=-MT $@ -MMD -MP
 
