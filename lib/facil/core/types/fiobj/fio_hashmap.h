@@ -70,7 +70,7 @@ License: MIT
 
 #ifndef FIO_HASH_INITIAL_CAPACITY
 /* MUST be a power of 2 */
-#define FIO_HASH_INITIAL_CAPACITY 8
+#define FIO_HASH_INITIAL_CAPACITY 4
 #endif
 
 #ifndef FIO_HASH_MAX_MAP_SEEK
@@ -97,6 +97,10 @@ typedef struct fio_hash_s fio_hash_s;
 
 /** Allocates and initializes internal data and resources. */
 FIO_FUNC void fio_hash_new(fio_hash_s *hash);
+
+/** Allocates and initializes internal data and resources with the requested
+ * capacity. */
+FIO_FUNC void fio_hash_new2(fio_hash_s *hash, size_t capa);
 
 /** Deallocates any internal resources. */
 FIO_FUNC void fio_hash_free(fio_hash_s *hash);
@@ -260,14 +264,15 @@ struct fio_hash_s {
 Hash allocation / deallocation.
 ***************************************************************************** */
 
-FIO_FUNC void fio_hash_new(fio_hash_s *h) {
+/** Allocates and initializes internal data and resources with the requested
+ * capacity. */
+FIO_FUNC void fio_hash_new__internal__safe_capa(fio_hash_s *h, size_t capa) {
   *h = (fio_hash_s){
-      .mask = (FIO_HASH_INITIAL_CAPACITY - 1),
-      .map = (fio_hash_data_s *)FIO_HASH_CALLOC(sizeof(*h->map),
-                                                FIO_HASH_INITIAL_CAPACITY),
-      .ordered = (fio_hash_data_ordered_s *)FIO_HASH_CALLOC(
-          sizeof(*h->ordered), FIO_HASH_INITIAL_CAPACITY),
-      .capa = FIO_HASH_INITIAL_CAPACITY,
+      .mask = (capa - 1),
+      .map = (fio_hash_data_s *)FIO_HASH_CALLOC(sizeof(*h->map), capa),
+      .ordered =
+          (fio_hash_data_ordered_s *)FIO_HASH_CALLOC(sizeof(*h->ordered), capa),
+      .capa = capa,
   };
   if (!h->map || !h->ordered) {
     perror("ERROR: Hash Table couldn't allocate memory");
@@ -275,6 +280,19 @@ FIO_FUNC void fio_hash_new(fio_hash_s *h) {
   }
   h->ordered[0] =
       (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
+}
+
+/** Allocates and initializes internal data and resources with the requested
+ * capacity. */
+FIO_FUNC void fio_hash_new2(fio_hash_s *h, size_t capa) {
+  size_t act_capa = 1;
+  while (act_capa < capa)
+    act_capa = act_capa << 1;
+  fio_hash_new__internal__safe_capa(h, act_capa);
+}
+
+FIO_FUNC void fio_hash_new(fio_hash_s *h) {
+  fio_hash_new__internal__safe_capa(h, FIO_HASH_INITIAL_CAPACITY);
 }
 
 FIO_FUNC void fio_hash_free(fio_hash_s *h) {
