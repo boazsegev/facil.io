@@ -139,7 +139,7 @@ static void deferred_on_ready(void *arg, void *arg2) {
   }
   pr->on_ready((intptr_t)arg, pr);
   if (sock_has_pending((intptr_t)arg))
-    evio_add(sock_uuid2fd((intptr_t)arg), arg);
+    evio_add_write(sock_uuid2fd((intptr_t)arg), arg);
   protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   return;
 postpone:
@@ -161,7 +161,7 @@ static void deferred_on_data(void *arg, void *arg2) {
   pr->on_data((intptr_t)arg, pr);
   protocol_unlock(pr, FIO_PR_LOCK_TASK);
   if (!spn_trylock(&uuid_data(arg).scheduled)) {
-    evio_add(sock_uuid2fd((intptr_t)arg), arg);
+    evio_add_read(sock_uuid2fd((intptr_t)arg), arg);
   }
   // else
   //   fprintf(stderr, "skipped evio_add\n");

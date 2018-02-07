@@ -105,7 +105,8 @@ void evio_remove(int fd) {
   epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, fd, &chevent);
 }
 
-static int evio_add2(int fd, void *callback_arg, uint32_t events, int ep_fd) {
+static inline int evio_add2(int fd, void *callback_arg, uint32_t events,
+                            int ep_fd) {
   struct epoll_event chevent;
   errno = 0;
   chevent = (struct epoll_event){
@@ -135,6 +136,26 @@ int evio_add(int fd, void *callback_arg) {
                 evio_fd[2]) == -1)
     return -1;
   return 0;
+}
+
+/**
+Adds a file descriptor to the polling object (ONE SHOT), to be polled for
+incoming data (`evio_on_data` wil be called).
+*/
+int evio_add_read(int fd, void *callback_arg) {
+  return evio_add2(fd, callback_arg,
+                   (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                   evio_fd[1]);
+}
+
+/**
+Adds a file descriptor to the polling object (ONE SHOT), to be polled for
+outgoing buffer readiness data (`evio_on_ready` wil be called).
+*/
+int evio_add_write(int fd, void *callback_arg) {
+  return evio_add2(fd, callback_arg,
+                   (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                   evio_fd[2]);
 }
 
 /**

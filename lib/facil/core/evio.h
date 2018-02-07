@@ -92,12 +92,31 @@ Adding and removing normal file descriptors (ONE SHOT).
 */
 
 /**
-Adds a file descriptor to the polling object (ONE SHOT).
+Adds a file descriptor to the polling object (ONE SHOT), both for read / write
+readiness.
 
 Returns -1 on error, otherwise return value is system dependent and can be
 safely ignored.
 */
 int evio_add(int fd, void *callback_arg);
+
+/**
+Adds a file descriptor to the polling object (ONE SHOT), to be polled for
+incoming data (`evio_on_data` wil be called).
+
+Returns -1 on error, otherwise return value is system dependent and can be
+safely ignored.
+*/
+int evio_add_read(int fd, void *callback_arg);
+
+/**
+Adds a file descriptor to the polling object (ONE SHOT), to be polled for
+outgoing buffer readiness data (`evio_on_ready` wil be called).
+
+Returns -1 on error, otherwise return value is system dependent and can be
+safely ignored.
+*/
+int evio_add_write(int fd, void *callback_arg);
 
 /**
 Removes a file descriptor from the polling object.

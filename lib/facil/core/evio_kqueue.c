@@ -83,6 +83,28 @@ int evio_add(int fd, void *callback_arg) {
 }
 
 /**
+Adds a file descriptor to the polling object (ONE SHOT), to be polled for
+incoming data (`evio_on_data` wil be called).
+*/
+int evio_add_read(int fd, void *callback_arg) {
+  struct kevent chevent[1];
+  EV_SET(chevent, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0, 0, callback_arg);
+  return kevent(evio_fd, chevent, 1, NULL, 0, NULL);
+}
+
+/**
+Adds a file descriptor to the polling object (ONE SHOT), to be polled for
+outgoing buffer readiness data (`evio_on_ready` wil be called).
+*/
+int evio_add_write(int fd, void *callback_arg) {
+  struct kevent chevent[1];
+  EV_SET(chevent, fd, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0, 0, callback_arg);
+  return kevent(evio_fd, chevent, 1, NULL, 0, NULL);
+}
+
+/**
 Creates a timer file descriptor, system dependent.
 */
 int evio_open_timer() {
