@@ -1353,7 +1353,10 @@ static void facil_cycle(void *arg, void *ignr) {
   }
   if (!facil_data->active)
     return;
-  if (facil_data->need_review) {
+  static time_t last_to_review = 0;
+  if (facil_data->need_review &&
+      facil_data->last_cycle.tv_sec != last_to_review) {
+    last_to_review = facil_data->last_cycle.tv_sec;
     facil_data->need_review = 0;
     defer(facil_review_timeout, (void *)0, NULL);
   }
