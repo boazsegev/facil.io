@@ -15,19 +15,25 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #ifndef FACIL_PRINT_STATE
 /**
-When FACIL_PRINT_STATE is set to 1, facil.io will print out common messages
-regarding the server state (start / finish / listen messages).
-*/
+ * When FACIL_PRINT_STATE is set to 1, facil.io will print out common messages
+ * regarding the server state (start / finish / listen messages).
+ */
 #define FACIL_PRINT_STATE 1
 #endif
 
 #ifndef FACIL_CPU_CORES_LIMIT
 /**
-If facil.io detects more CPU cores than the number of cores stated in the
-FACIL_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
-detected to the assigned limit.
-*/
-#define FACIL_CPU_CORES_LIMIT 120
+ * If facil.io detects more CPU cores than the number of cores stated in the
+ * FACIL_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
+ * detected to the assigned limit.
+ *
+ * The default autot-detection cap is at 7 cores, for the simple reason that
+ * system wide memory allocation locks start to exhibit negative effects
+ * somewhere around this point.
+ *
+ * The does NOT effect manually set worker values.
+ */
+#define FACIL_CPU_CORES_LIMIT 7
 #endif
 /* *****************************************************************************
 Required facil libraries
