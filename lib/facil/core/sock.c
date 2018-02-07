@@ -121,22 +121,31 @@ static void sock_packet_free_cb(void *task, void *buffer) {
   t->task(buffer);
 }
 
+static void sock_packet_free_attempt(void *packet_, void *ignr) {
+  if (spn_trylock(&packet_pool.lock)) {
+    defer(sock_packet_free_attempt, packet_, ignr);
+    return;
+  }
+  packet_s *packet = packet_;
+  packet->next = packet_pool.next;
+  packet_pool.next = packet;
+  spn_unlock(&packet_pool.lock);
+}
+
 static inline void sock_packet_free(packet_s *packet) {
   defer(sock_packet_free_cb, (void *)((uintptr_t)packet->free_func),
         packet->buffer);
   if (packet >= packet_pool.mem &&
       packet <= packet_pool.mem + (BUFFER_PACKET_POOL - 1)) {
-    spn_lock(&packet_pool.lock);
-    packet->next = packet_pool.next;
-    packet_pool.next = packet;
-    spn_unlock(&packet_pool.lock);
+    defer(sock_packet_free_attempt, packet, NULL);
   } else
     free(packet);
 }
 
 static inline packet_s *sock_packet_new(void) {
   packet_s *packet;
-  spn_lock(&packet_pool.lock);
+  if (spn_trylock(&packet_pool.lock))
+    goto no_lock;
   packet = packet_pool.next;
   if (packet == NULL)
     goto none_in_pool;
@@ -147,6 +156,7 @@ none_in_pool:
   if (!packet_pool.init)
     goto init;
   spn_unlock(&packet_pool.lock);
+no_lock:
   packet = malloc(sizeof(*packet));
   if (!packet) {
     perror("FATAL ERROR: memory allocation failed");
