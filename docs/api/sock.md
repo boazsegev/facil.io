@@ -9,11 +9,15 @@ This documentation is incomplete. I would love your help to finish it up. Until 
 
 ## Overview
 
-The `sock` linrary was born to solve [many concerns](sock_why) that pop up when using the system sockets API directly.
+The `sock` library was born to solve [many concerns](sock_why) that pop up when using the system sockets API directly.
+
+On systems that have unreasonably high open file limits, the sock library will artificially limit the open socket count to a reasonably high default that can be adjusted during compile time using the `LIB_SOCK_MAX_CAPACITY` macro (currently, 131,072 open files).
 
 It supports TCP/IP sockets as well as unix doamin sockets. Pipes can also be attached to the library.
 
 The `sock.h` API can be divided into a few different categories:
+
+- Limits
 
 - General helper functions
 

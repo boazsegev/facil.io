@@ -44,6 +44,14 @@ Hash Creation
  */
 FIOBJ fiobj_hash_new(void);
 
+/**
+ * Creates a mutable empty Hash object with an initial capacity of `capa`. Use
+ * `fiobj_free` when done.
+ *
+ * This allows optimizations for larger (or smaller) collections.
+ */
+FIOBJ fiobj_hash_new2(size_t capa);
+
 /* *****************************************************************************
 Hash properties and state
 ***************************************************************************** */

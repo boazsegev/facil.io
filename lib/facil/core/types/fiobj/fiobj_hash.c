@@ -156,6 +156,24 @@ FIOBJ fiobj_hash_new(void) {
 }
 
 /**
+ * Creates a mutable empty Hash object with an initial capacity of `capa`. Use
+ * `fiobj_free` when done.
+ *
+ * Notice that these Hash objects are designed for smaller collections and
+ * retain order of object insertion.
+ */
+FIOBJ fiobj_hash_new2(size_t capa) {
+  fiobj_hash_s *h = malloc(sizeof(*h));
+  if (!h) {
+    perror("ERROR: fiobj hash couldn't allocate memory");
+    exit(errno);
+  }
+  *h = (fiobj_hash_s){.head = {.ref = 1, .type = FIOBJ_T_HASH}};
+  fio_hash_new2(&h->hash, capa);
+  return (FIOBJ)h | FIOBJECT_HASH_FLAG;
+}
+
+/**
  * Returns a temporary theoretical Hash map capacity.
  * This could be used for testig performance and memory consumption.
  */
@@ -340,7 +358,21 @@ void fiobj_test_hash(void) {
               "full compare didn't get value back");
   TEST_ASSERT(fiobj_hash_get2(o, fiobj_obj2hash(str_key)) == fiobj_true(),
               "hash compare didn't get value back");
+
+  FIOBJ o2 = fiobj_hash_new2(1);
+  TEST_ASSERT(obj2hash(o2)->hash.capa == 1,
+              "Hash capacity should be initialized to 1! %zu != 1\n",
+              (size_t)obj2hash(o2)->hash.capa);
+  fiobj_hash_set(o2, str_key, fiobj_true());
+  TEST_ASSERT(fiobj_hash_is_eq(o, o2), "Hashes not equal at core! %zu != %zu\n",
+              fiobj_hash_count(o), fiobj_hash_count(o2));
+  TEST_ASSERT(fiobj_iseq(o, o2), "Hashes not equal!\n");
+  TEST_ASSERT(obj2hash(o2)->hash.capa == 1,
+              "Hash capacity should be 1! %zu != 1\n",
+              (size_t)obj2hash(o2)->hash.capa);
+
   fiobj_hash_delete(o, str_key);
+
   TEST_ASSERT(fiobj_hash_get2(o, fiobj_obj2hash(str_key)) == 0,
               "item wasn't deleted!");
   fiobj_free(

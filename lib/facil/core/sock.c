@@ -270,6 +270,8 @@ static void clear_sock_lib(void) {
 
 static inline int initialize_sock_lib(size_t capacity) {
   static uint8_t init_exit = 0;
+  if (capacity > LIB_SOCK_MAX_CAPACITY)
+    capacity = LIB_SOCK_MAX_CAPACITY;
   if (sock_data_store.capacity >= capacity)
     goto finish;
   struct fd_data_s *new_collection =
@@ -339,6 +341,10 @@ clear:
   }
   return 0;
 reinitialize:
+  if (fd >= LIB_SOCK_MAX_CAPACITY) {
+    close(fd);
+    return -1;
+  }
   if (initialize_sock_lib(fd << 1))
     return -1;
   goto clear;
@@ -577,20 +583,18 @@ ssize_t sock_max_capacity(void) {
 
     if (!setrlimit(RLIMIT_NOFILE, &rlim))
       getrlimit(RLIMIT_NOFILE, &rlim);
+    flim = rlim.rlim_cur;
   }
 #if DEBUG
   fprintf(stderr,
           "libsock capacity initialization:\n"
           "*    Meximum open files %lu out of %lu\n",
-          (unsigned long)rlim.rlim_cur, (unsigned long)rlim.rlim_max);
+          (unsigned long)flim, (unsigned long)rlim.rlim_max);
 #endif
-  // if the current limit is higher than it was, update
-  if (flim < ((ssize_t)rlim.rlim_cur))
-    flim = rlim.rlim_cur;
   // initialize library to maximum capacity
   initialize_sock_lib(flim);
   // return what we have
-  return flim;
+  return sock_data_store.capacity;
 }
 
 /* *****************************************************************************
@@ -712,7 +716,8 @@ intptr_t sock_listen(const char *address, const char *port) {
     close(srvfd);
     return -1;
   }
-  clear_fd(srvfd, 1);
+  if (clear_fd(srvfd, 1))
+    return -1;
   return fd2uuid(srvfd);
 }
 
@@ -753,7 +758,8 @@ intptr_t sock_accept(intptr_t srv_uuid) {
     int optval = 1;
     setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
   }
-  clear_fd(client, 1);
+  if (clear_fd(client, 1))
+    return -1;
   fdinfo(client).addrinfo = addrinfo;
   fdinfo(client).addrlen = addrlen;
   return fd2uuid(client);
@@ -822,7 +828,8 @@ intptr_t sock_connect(char *address, char *port) {
       close(fd);
       return -1;
     }
-    clear_fd(fd, 1);
+    if (clear_fd(fd, 1))
+      return -1;
   } else {
     // setup the address
     struct addrinfo hints;
@@ -859,7 +866,8 @@ intptr_t sock_connect(char *address, char *port) {
   connection_requested:
 
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-    clear_fd(fd, 1);
+    if (clear_fd(fd, 1))
+      return -1;
     fdinfo(fd).addrinfo = *((struct sockaddr_in6 *)addrinfo->ai_addr);
     fdinfo(fd).addrlen = addrinfo->ai_addrlen;
     freeaddrinfo(addrinfo);
@@ -887,7 +895,8 @@ response in the background while a disconnection and a new connection occur on
 the same `fd`).
 */
 intptr_t sock_open(int fd) {
-  clear_fd(fd, 1);
+  if (clear_fd(fd, 1))
+    return -1;
   return fd2uuid(fd);
 }
 
@@ -1273,7 +1282,7 @@ void sock_libtest(void) {
           count == BUFFER_PACKET_POOL ? "PASS" : "FAIL",
           (unsigned long)BUFFER_PACKET_POOL, (unsigned long)count);
   printf("Allocated sock capacity %lu X %lu\n",
-         (unsigned long)sock_max_capacity(),
+         (unsigned long)sock_data_store.capacity,
          (unsigned long)sizeof(struct fd_data_s));
 }
 #endif

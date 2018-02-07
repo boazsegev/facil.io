@@ -6,6 +6,15 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
+### Ver. 0.6.0.beta.6
+
+This beta release updates some default values to make them more reasonable for common use cases.
+
+These values, such as the `LIB_SOCK_MAX_CAPACITY` and the `FIO_HASH_INITIAL_CAPACITY` can be updated during compile time.
+
+Some of these default values can be bypassed during runtime by using specific function calls (such as `fio_hash_new2`).
+
+
 ### Ver. 0.6.0.beta.5
 
 Released fixes for issues related to the [TechEmpower Framework Benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks) 80 core startup.

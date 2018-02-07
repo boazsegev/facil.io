@@ -12,7 +12,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #ifndef LIB_SOCK_MAX_CAPACITY
 /** The maximum `fd` value `sock.h` should support. */
-#define LIB_SOCK_MAX_CAPACITY 4194304
+#define LIB_SOCK_MAX_CAPACITY 131072
 #endif
 /** \file
  * The `sock.h` is a non-blocking socket helper library, using a user level
