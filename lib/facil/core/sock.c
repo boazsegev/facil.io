@@ -758,6 +758,18 @@ intptr_t sock_accept(intptr_t srv_uuid) {
     int optval = 1;
     setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
   }
+  // handle socket buffers.
+  {
+    int optval = 0;
+    socklen_t size = (socklen_t)sizeof(optval);
+    if (!getsockopt(client, SOL_SOCKET, SO_SNDBUF, &optval, &size) &&
+        optval <= 131072) {
+      optval = 131072;
+      setsockopt(client, SOL_SOCKET, SO_SNDBUF, &optval, sizeof(optval));
+      optval = 131072;
+      setsockopt(client, SOL_SOCKET, SO_RCVBUF, &optval, sizeof(optval));
+    }
+  }
   if (clear_fd(client, 1))
     return -1;
   fdinfo(client).addrinfo = addrinfo;
