@@ -18,6 +18,8 @@ Some of these default values can be bypassed during runtime by using specific fu
 
 Other notable performance changes include the short string hash cashing (shortening the FIOBJ short-string capacity in exchange for reducing `fio_siphash` calls).
 
+These are lessons learned from the TechEmpower benchmarks... although they will not be reflected in the Round 15 results.
+
 ### Ver. 0.6.0.beta.5
 
 Released fixes for issues related to the [TechEmpower Framework Benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks) 80 core startup.
