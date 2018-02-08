@@ -8,12 +8,15 @@ Coming Soon...
 
 ### Ver. 0.6.0.beta.6
 
-This beta release updates some default values to make them more reasonable for common use cases.
+This beta release is a performance oriented release and includes mostly performance related changes.
 
-These values, such as the `LIB_SOCK_MAX_CAPACITY` and the `FIO_HASH_INITIAL_CAPACITY` can be updated during compile time.
+This release updates some default values to make them more reasonable for common use cases and to help minimize memory consumption.
+
+These values, such as the `LIB_SOCK_MAX_CAPACITY`, `FIO_HASH_INITIAL_CAPACITY` and the `FIOBJ_ARRAY_DEFAULT_CAPA` values, can be updated during compile time.
 
 Some of these default values can be bypassed during runtime by using specific function calls (such as `fio_hash_new2`).
 
+Other notable performance changes include the short string hash cashing (shortening the FIOBJ short-string capacity in exchange for reducing `fio_siphash` calls).
 
 ### Ver. 0.6.0.beta.5
 
