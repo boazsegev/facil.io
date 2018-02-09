@@ -115,13 +115,14 @@ static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
         fiobj_hash_set(arg_type, arg_name, fiobj_null());
         break;
       case CLI_NUM:
-        fiobj_str_write2(help_str, "\t\x1B[1m-%s\x1B[0m\x1B[2 ###\x1B[0m\t%s\n",
+        fiobj_str_write2(help_str,
+                         "\t\x1B[1m-%s\x1B[0m\x1B[2m ###\x1B[0m\t%s\n",
                          fiobj_obj2cstr(arg_name).data, desc);
         fiobj_hash_set(arg_type, arg_name, fiobj_true());
         break;
       case CLI_STR:
         fiobj_str_write2(help_str,
-                         "\t\x1B[1m-%s\x1B[0m\x1B[2 <val>\x1B[0m\t%s\n",
+                         "\t\x1B[1m-%s\x1B[0m\x1B[2m <val>\x1B[0m\t%s\n",
                          fiobj_obj2cstr(arg_name).data, desc);
         fiobj_hash_set(arg_type, arg_name, fiobj_false());
         break;
