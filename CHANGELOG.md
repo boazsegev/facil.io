@@ -6,9 +6,11 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
+### Ver. 0.6.0.beta.7
+
 **Fix**: (`redis`) fixed an issue where the command queue (for busy pipelined Redis commands and for reconnection) would send the last message repeatedly instead of sending the messages in the queue.
 
-**Fix**: (`facil`) Fixed a possible memory leak related to `facil_connect` and failed connections to localhost and improved some cleanup logic.
+**Fix**: (`facil`) Fixed a possible memory leak related to `facil_connect` and failed connections to localhost. Improved process exit cleanup.
 
 **Fix**: (`pubsub`) improved process exit cleanup.
 
