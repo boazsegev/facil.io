@@ -196,7 +196,6 @@ int main(int argc, char const *argv[]) {
   facil_run(.threads = threads, .processes = workers);
 
   if (PUBSUB_DEFAULT_ENGINE != PUBSUB_CLUSTER_ENGINE) {
-    fprintf(stderr, "* Destroying Redis engine.\n");
     redis_engine_destroy(PUBSUB_DEFAULT_ENGINE);
     PUBSUB_DEFAULT_ENGINE = (pubsub_engine_s *)PUBSUB_CLUSTER_ENGINE;
   }
