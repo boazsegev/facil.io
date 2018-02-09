@@ -243,16 +243,16 @@ static void redis_on_sub_connect_fail(intptr_t uuid, void *pr) {
 static void redis_deferred_connect(void *r_, void *is_pub) {
   redis_engine_s *r = r_;
   if (is_pub) {
-    r->pub_data.uuid = facil_connect(.address = r->address, .port = r->port,
-                                     .on_connect = redis_on_pub_connect,
-                                     .udata = &r->pub_data.protocol,
-                                     .on_fail = redis_on_pub_connect_fail);
+    facil_connect(.address = r->address, .port = r->port,
+                  .on_connect = redis_on_pub_connect,
+                  .udata = &r->pub_data.protocol,
+                  .on_fail = redis_on_pub_connect_fail);
 
   } else {
-    r->sub_data.uuid = facil_connect(.address = r->address, .port = r->port,
-                                     .on_connect = redis_on_sub_connect,
-                                     .udata = &r->sub_data.protocol,
-                                     .on_fail = redis_on_sub_connect_fail);
+    facil_connect(.address = r->address, .port = r->port,
+                  .on_connect = redis_on_sub_connect,
+                  .udata = &r->sub_data.protocol,
+                  .on_fail = redis_on_sub_connect_fail);
   }
 }
 
