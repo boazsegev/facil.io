@@ -239,7 +239,7 @@ struct fio_hash_s {
 #undef FIO_HASH_FOR_LOOP
 #define FIO_HASH_FOR_LOOP(hash, container)                                     \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
-       container && !FIO_HASH_KEY_ISINVALID(container->key); ++container)
+       container && (container < (hash)->ordered + (hash)->pos); ++container)
 
 #undef FIO_HASH_FOR_FREE
 #define FIO_HASH_FOR_FREE(hash, container)                                     \
@@ -251,7 +251,7 @@ struct fio_hash_s {
 #undef FIO_HASH_FOR_EMPTY
 #define FIO_HASH_FOR_EMPTY(hash, container)                                    \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
-       (container && !FIO_HASH_KEY_ISINVALID(container->key)) ||               \
+       (container && (container < (hash)->ordered + (hash)->pos)) ||           \
        (memset((hash)->map, 0, (hash)->capa * sizeof(*(hash)->map)),           \
         ((hash)->pos = (hash)->count = 0));                                    \
        FIO_HASH_KEY_DESTROY(container->key),                                   \
@@ -270,8 +270,8 @@ FIO_FUNC void fio_hash_new__internal__safe_capa(fio_hash_s *h, size_t capa) {
   *h = (fio_hash_s){
       .mask = (capa - 1),
       .map = (fio_hash_data_s *)FIO_HASH_CALLOC(sizeof(*h->map), capa),
-      .ordered = (fio_hash_data_ordered_s *)FIO_HASH_CALLOC(sizeof(*h->ordered),
-                                                            capa + 1),
+      .ordered =
+          (fio_hash_data_ordered_s *)FIO_HASH_CALLOC(sizeof(*h->ordered), capa),
       .capa = capa,
   };
   if (!h->map || !h->ordered) {
@@ -345,7 +345,7 @@ FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key) {
 FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
                                void *obj) {
   /* ensure some space */
-  if (obj && hash->pos + 1 > hash->capa)
+  if (obj && hash->pos >= hash->capa)
     fio_hash_rehash(hash);
 
   /* find where the object belongs in the map */
@@ -376,8 +376,8 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
     /* manage counters and mark end position */
     hash->count++;
     hash->pos++;
-    hash->ordered[hash->pos] =
-        (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
+    // hash->ordered[hash->pos] =
+    //     (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
     return NULL;
   }
 
@@ -451,7 +451,7 @@ retry_rehashing:
     /* the ordered list doesn't care about initialized memory, so realloc */
     /* will be faster. */
     h->ordered = (fio_hash_data_ordered_s *)FIO_HASH_REALLOC(
-        h->ordered, (h->capa + 1) * sizeof(*h->ordered));
+        h->ordered, (h->capa) * sizeof(*h->ordered));
     if (!h->ordered) {
       perror("HashMap Reallocation Failed");
       exit(errno);
@@ -496,8 +496,8 @@ retry_rehashing:
       ++reader;
     }
     h->pos = writer;
-    h->ordered[h->pos] =
-        (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
+    // h->ordered[h->pos] =
+    //     (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
   }
 }
 
