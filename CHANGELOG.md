@@ -14,6 +14,8 @@ Coming Soon...
 
 **Fix**: (`pubsub`) improved process exit cleanup.
 
+**Fix**: (`fio_cli`) fixed text coloring on terminal output.
+
 ### Ver. 0.6.0.beta.6
 
 This beta release is a performance oriented release and includes mostly performance related changes.
