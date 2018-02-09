@@ -880,7 +880,7 @@ intptr_t sock_connect(char *address, char *port) {
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     if (clear_fd(fd, 1))
       return -1;
-    fdinfo(fd).addrinfo = *((struct sockaddr_in6 *)addrinfo->ai_addr);
+    memcpy(&fdinfo(fd).addrinfo, addrinfo->ai_addr, addrinfo->ai_addrlen);
     fdinfo(fd).addrlen = addrinfo->ai_addrlen;
     freeaddrinfo(addrinfo);
   }

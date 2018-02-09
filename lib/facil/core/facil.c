@@ -282,6 +282,8 @@ static void mock_idle(void) {}
 void pubsub_cluster_init(void) {}
 #pragma weak pubsub_cluster_on_fork
 void pubsub_cluster_on_fork(void) {}
+#pragma weak pubsub_cluster_cleanup
+void pubsub_cluster_cleanup(void) {}
 
 /* perform initialization for external services. */
 static void facil_external_init(void) {
@@ -303,12 +305,17 @@ static void facil_external_root_init(void) {
   pubsub_cluster_init();
 }
 /* perform cleanup for external services. */
-static void facil_external_root_cleanup(void) { http_lib_cleanup(); }
+static void facil_external_root_cleanup(void) {
+  http_lib_cleanup();
+  pubsub_cluster_cleanup();
+}
 
 /* *****************************************************************************
 Initialization and Cleanup
 ***************************************************************************** */
 static spn_lock_i facil_libinit_lock = SPN_LOCK_INIT;
+
+static void facil_cluster_cleanup(void); /* cluster data cleanup */
 
 static void facil_libcleanup(void) {
   /* free memory */
@@ -318,9 +325,11 @@ static void facil_libcleanup(void) {
            sizeof(*facil_data) + ((size_t)facil_data->capacity *
                                   sizeof(struct connection_data_s)));
     facil_external_root_cleanup();
+    facil_cluster_cleanup();
     facil_data = NULL;
   }
   spn_unlock(&facil_libinit_lock);
+  defer_perform(); /* perform any lingering cleanup tasks */
 }
 
 static void facil_lib_init(void) {
@@ -599,6 +608,7 @@ intptr_t facil_connect(struct facil_connect_args opt) {
   uuid = connector->uuid = sock_connect(opt.address, opt.port);
   /* check for errors, always invoke the on_fail if required */
   if (uuid == -1) {
+    free(connector);
     goto error;
   }
   if (facil_attach(uuid, &connector->protocol) == -1) {
@@ -1277,6 +1287,10 @@ int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg) {
   return 0;
 }
 
+static void facil_cluster_cleanup(void) {
+  fio_hash_free(&facil_cluster_data.handlers);
+  fio_hash_free(&facil_cluster_data.clients);
+}
 /* *****************************************************************************
 Running the server
 ***************************************************************************** */

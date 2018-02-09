@@ -2103,8 +2103,10 @@ void http_mimetype_clear(void) {
     return;
   FIO_HASH_FOR_LOOP(&mime_types, obj) { fiobj_free((FIOBJ)obj->obj); }
   fio_hash_free(&mime_types);
+  mime_types = (fio_hash_s)FIO_HASH_INIT;
   last_date_added = 0;
   fiobj_free(current_date);
+  current_date = FIOBJ_INVALID;
 }
 
 /**

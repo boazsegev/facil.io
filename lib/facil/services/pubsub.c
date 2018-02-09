@@ -689,6 +689,18 @@ void pubsub_cluster_on_fork(void) {
   }
 }
 
+void pubsub_cluster_cleanup(void) {
+  FIO_HASH_FOR_FREE(&clients, pos) { pubsub_client_destroy(pos->obj); }
+  fio_hash_free(&engines);
+  fio_hash_free(&channels);
+  fio_hash_free(&patterns);
+  clients = (fio_hash_s)FIO_HASH_INIT;
+  engines = (fio_hash_s)FIO_HASH_INIT;
+  channels = (fio_hash_s)FIO_HASH_INIT;
+  patterns = (fio_hash_s)FIO_HASH_INIT;
+  lock = SPN_LOCK_INIT;
+}
+
 /* *****************************************************************************
 Glob Matching Helper
 ***************************************************************************** */

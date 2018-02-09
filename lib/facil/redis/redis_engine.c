@@ -101,6 +101,7 @@ static void redis_perform_callback(void *e, void *cmd_) {
   if (cmd->callback)
     cmd->callback(e, reply, cmd->udata);
   fiobj_free(reply);
+  // fprintf(stderr, "Handled: %s\n", cmd->cmd);
   free(cmd);
 }
 
@@ -112,7 +113,7 @@ static void redis_send_cmd_queue(void *r_, void *ignr) {
   spn_lock(&r->lock);
   if (r->sent == 0 && fio_ls_embd_any(&r->callbacks)) {
     redis_commands_s *cmd =
-        FIO_LS_EMBD_OBJ(redis_commands_s, node, r->callbacks.next);
+        FIO_LS_EMBD_OBJ(redis_commands_s, node, r->callbacks.prev);
     intptr_t uuid = r->pub_data.uuid;
     r->sent = 1;
     spn_unlock(&r->lock);
@@ -208,8 +209,10 @@ static void redis_on_sub_connect(intptr_t uuid, void *pr) {
                 .dealloc = SOCK_DEALLOC_NOOP);
   facil_set_timeout(uuid, r->ping_int);
   pubsub_engine_resubscribe(&r->en);
-  if (!r->pub_data.uuid)
+  if (!r->pub_data.uuid) {
+    spn_add(&r->ref, 1);
     redis_on_pub_connect_fail(uuid, pr);
+  }
   fprintf(stderr, "INFO: (redis %d) subscription connection established.\n",
           (int)getpid());
 }
@@ -217,18 +220,21 @@ static void redis_on_sub_connect(intptr_t uuid, void *pr) {
 static void redis_deferred_connect(void *r_, void *is_pub);
 static void redis_on_pub_connect_fail(intptr_t uuid, void *pr) {
   redis_engine_s *r = prot2redis(pr);
-  if (facil_parent_pid() == getpid() && !r->sub_data.uuid)
+  if ((facil_parent_pid() == getpid() && !r->sub_data.uuid) || r->flag == 0) {
+    redis_free(r);
     return;
+  }
   r->pub_data.uuid = 0;
   /* we defer publishing by a cycle, so subsciptions race a bit faster */
   defer(redis_deferred_connect, r, (void *)1);
   (void)uuid;
 }
 static void redis_on_sub_connect_fail(intptr_t uuid, void *pr) {
-  if (facil_parent_pid() != getpid()) {
+  redis_engine_s *r = prot2redis(pr);
+  if (facil_parent_pid() != getpid() || r->flag == 0) {
+    redis_free(r);
     return;
   }
-  redis_engine_s *r = prot2redis(pr);
   r->sub_data.uuid = 0;
   defer(redis_deferred_connect, r, (void *)0);
   (void)uuid;
@@ -237,16 +243,16 @@ static void redis_on_sub_connect_fail(intptr_t uuid, void *pr) {
 static void redis_deferred_connect(void *r_, void *is_pub) {
   redis_engine_s *r = r_;
   if (is_pub) {
-    facil_connect(.address = r->address, .port = r->port,
-                  .on_connect = redis_on_pub_connect,
-                  .udata = &r->pub_data.protocol,
-                  .on_fail = redis_on_pub_connect_fail);
+    r->pub_data.uuid = facil_connect(.address = r->address, .port = r->port,
+                                     .on_connect = redis_on_pub_connect,
+                                     .udata = &r->pub_data.protocol,
+                                     .on_fail = redis_on_pub_connect_fail);
 
   } else {
-    facil_connect(.address = r->address, .port = r->port,
-                  .on_connect = redis_on_sub_connect,
-                  .udata = &r->sub_data.protocol,
-                  .on_fail = redis_on_sub_connect_fail);
+    r->sub_data.uuid = facil_connect(.address = r->address, .port = r->port,
+                                     .on_connect = redis_on_sub_connect,
+                                     .udata = &r->sub_data.protocol,
+                                     .on_fail = redis_on_sub_connect_fail);
   }
 }
 
@@ -387,8 +393,8 @@ static int redis_on_publish(const pubsub_engine_s *eng, FIOBJ channel,
   else
     msg = fiobj_dup(msg);
 
-  fio_cstr_s ch_str = fiobj_obj2cstr(channel);
   fio_cstr_s msg_str = fiobj_obj2cstr(msg);
+  fio_cstr_s ch_str = fiobj_obj2cstr(channel);
 
   redis_commands_s *cmd = malloc(sizeof(*cmd) + ch_str.len + msg_str.len + 96);
   *cmd = (redis_commands_s){.cmd_len = 0};
@@ -402,6 +408,7 @@ static int redis_on_publish(const pubsub_engine_s *eng, FIOBJ channel,
   *buf++ = '\r';
   *buf++ = '\n';
   *buf++ = '$';
+  msg_str = fiobj_obj2cstr(msg);
   buf += fio_ltoa(buf, msg_str.len, 10);
   *buf++ = '\r';
   *buf++ = '\n';
@@ -475,7 +482,7 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
                       .on_shutdown = redis_on_shutdown,
                   },
           },
-      .ref = 3,
+      .ref = 2, /* either sub or pub + user handle */
   };
   memcpy(r->port, args.port, port_len);
   r->port[port_len] = 0;
@@ -497,10 +504,13 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
   /* we don't need to listen for messages from each process, we publish to the
    * cluster and the channel list is synchronized.
    */
-  defer((void (*)(void *, void *))redis_on_sub_connect_fail, 0,
-        &r->sub_data.protocol);
-  defer((void (*)(void *, void *))redis_on_pub_connect_fail, 0,
-        &r->pub_data.protocol);
+  if (facil_parent_pid() == getpid()) {
+    defer((void (*)(void *, void *))redis_on_sub_connect_fail, 0,
+          &r->sub_data.protocol);
+  } else {
+    defer((void (*)(void *, void *))redis_on_pub_connect_fail, 0,
+          &r->pub_data.protocol);
+  }
   return &r->en;
 }
 
