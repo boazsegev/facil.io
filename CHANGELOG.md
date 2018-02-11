@@ -8,6 +8,12 @@ Coming Soon...
 
 ### Ver. 0.6.0.beta.7
 
+**Fix**: (`websockets`) fixed an issue with client pinging would break the protocol in a way that would result in either loss of data or disconnections.
+
+**Fix**: (`websockets`) removed the debugging ping (3 seconds interval ping) from the Websocket client. Pings can be sent manually or by setting the connection's timeout using `facil_set_timeout`.
+
+**Fix**: (`websockets`) made sure the client mask is never zero by setting a few non-random bits.
+
 **Fix**: (`redis`) fixed an issue where the command queue (for busy pipelined Redis commands and for reconnection) would send the last message repeatedly instead of sending the messages in the queue.
 
 **Fix**: (`facil`) Fixed a possible memory leak related to `facil_connect` and failed connections to localhost. Improved process exit cleanup.
@@ -15,6 +21,10 @@ Coming Soon...
 **Fix**: (`pubsub`) improved process exit cleanup.
 
 **Fix**: (`fio_cli`) fixed text coloring on terminal output.
+
+**Fix**: (`fio_hash`) fixed looping logic to remove the need for the "data-end" marker optimizing allocations in a very small way.
+
+**Update**: (`websockets`) added a client example using the terminal IO for Websocket text communication.
 
 ### Ver. 0.6.0.beta.6
 
