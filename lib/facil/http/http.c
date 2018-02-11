@@ -1113,7 +1113,7 @@ int websocket_connect(const char *address, websocket_settings_s settings) {
   return http_connect(address, .on_request = on_websocket_http_connected,
                       .on_response = on_websocket_http_connected,
                       .on_finish = on_websocket_http_connection_finished,
-                      .ws_timeout = 3, .udata = s);
+                      .udata = s);
 }
 #define websocket_connect(address, ...)                                        \
   websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
