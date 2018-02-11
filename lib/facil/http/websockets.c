@@ -212,7 +212,7 @@ The Websocket Protocol implementation
 static void ws_ping(intptr_t fd, protocol_s *ws) {
   (void)(ws);
   if (((ws_s *)ws)->is_client) {
-    sock_write2(.uuid = fd, .buffer = "\x89\x80mask", .length = 2,
+    sock_write2(.uuid = fd, .buffer = "\x89\x80mask", .length = 6,
                 .dealloc = SOCK_DEALLOC_NOOP);
   } else {
     sock_write2(.uuid = fd, .buffer = "\x89\x00", .length = 2,
