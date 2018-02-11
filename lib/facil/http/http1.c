@@ -163,7 +163,6 @@ static FIOBJ headers2str(http_s *h) {
 
   fiobj_each1(h->private_data.out_headers, 0, write_header, &w);
   fiobj_str_write(w.dest, "\r\n", 2);
-  fprintf(stderr, "Sending:\n%s\n", fiobj_obj2cstr(w.dest).data);
   return w.dest;
 }
 
