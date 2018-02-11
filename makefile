@@ -30,7 +30,7 @@ LINKER_LIBS_EXT=
 OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
 WARNINGS= -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
-# any extra include folders, space seperated list
+# any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
 FLAGS:= 
@@ -138,6 +138,13 @@ ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_
   $(info * Detected the zlib library, setting HAVE_ZLIB)
 	FLAGS:=$(FLAGS) HAVE_ZLIB
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
+endif
+
+# add PostgreSQL library flags
+ifeq ($(shell printf "\#include <libpq-fe.h>\\nint main(void) {}\n" | $(CC) $(INCLUDE_STR) -lpg -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+  $(info * Detected the PostgreSQL library, setting HAVE_POSTGRESQL)
+	FLAGS:=$(FLAGS) HAVE_POSTGRESQL
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
 endif
 
 
