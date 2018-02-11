@@ -163,6 +163,7 @@ static FIOBJ headers2str(http_s *h) {
 
   fiobj_each1(h->private_data.out_headers, 0, write_header, &w);
   fiobj_str_write(w.dest, "\r\n", 2);
+  fprintf(stderr, "Sending:\n%s\n", fiobj_obj2cstr(w.dest).data);
   return w.dest;
 }
 
@@ -385,6 +386,12 @@ static int http1_http2websocket_client(websocket_settings_s *args) {
   http_set_header(args->http, HTTP_HVALUE_WS_SEC_VERSION,
                   fiobj_dup(HTTP_HVALUE_WS_VERSION));
 
+  /* we don't set the Origin header since we're not a browser... should we? */
+  // http_set_header(
+  //     args->http, HTTP_HEADER_ORIGIN,
+  //     fiobj_dup(fiobj_hash_get2(args->http->private_data.out_headers,
+  //                               fiobj_obj2hash(HTTP_HEADER_HOST))));
+
   /* create nonce */
   uint64_t key[2]; /* 16 bytes */
   key[0] = (uintptr_t)args->http ^ (uint64_t)facil_last_tick().tv_sec;
@@ -396,7 +403,6 @@ static int http1_http2websocket_client(websocket_settings_s *args) {
   http_set_header(args->http, HTTP_HEADER_WS_SEC_CLIENT_KEY, encoded);
   http_finish(args->http);
   return 0;
-  /* *we don't set the Origin header since we're not a browser... should we? */
 }
 
 static int http1_http2websocket(websocket_settings_s *args) {
