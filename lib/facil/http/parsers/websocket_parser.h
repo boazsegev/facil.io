@@ -18,6 +18,9 @@ must be implemented by the including file (the callbacks).
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#if DEBUG
+#include <stdio.h>
+#endif
 /* *****************************************************************************
 API - Message Wrapping
 ***************************************************************************** */
@@ -396,7 +399,7 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
 static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
                                       unsigned char opcode, unsigned char first,
                                       unsigned char last, unsigned char rsv) {
-  uint32_t mask = rand() + 0x01020408;
+  uint32_t mask = rand() | 0x01020408;
   ((uint8_t *)target)[0] = 0 |
                            /* opcode */ (((first ? opcode : 0) & 15)) |
                            /* rsv */ ((rsv & 7) << 4) |
@@ -510,6 +513,9 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       ((uint8_t *)(&mask))[3] = ((uint8_t *)(payload))[-1];
       websocket_xmask(payload, info.packet_length, mask);
     } else if (require_masking && info.packet_length) {
+#if DEBUG
+      fprintf(stderr, "ERROR: Websocket protocol error - unmasked data.\n");
+#endif
       websocket_on_protocol_error(udata);
     }
     /* call callback */
@@ -542,6 +548,10 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       websocket_on_protocol_pong(udata, payload, info.packet_length);
       break;
     default:
+#if DEBUG
+      fprintf(stderr, "ERROR: Websocket protocol error - unknown opcode %u\n",
+              (unsigned int)(pos[0] & 15));
+#endif
       websocket_on_protocol_error(udata);
     }
     /* step forward */
