@@ -257,8 +257,11 @@ error:
  * Frees the memory asociated with a thread indentifier (allows the thread to
  * run it's course, just the identifier is freed).
  */
-#pragma weak defer_join_thread
-void defer_free_thread(void *p_thr) { free(p_thr); }
+#pragma weak defer_free_thread
+void defer_free_thread(void *p_thr) {
+  pthread_detach(*((pthread_t *)p_thr));
+  free(p_thr);
+}
 
 #pragma weak defer_join_thread
 int defer_join_thread(void *p_thr) {
@@ -283,7 +286,7 @@ void *defer_new_thread(void *(*thread_func)(void *), void *arg) {
   return NULL;
 }
 
-#pragma weak defer_join_thread
+#pragma weak defer_free_thread
 void defer_free_thread(void *p_thr) { void(p_thr); }
 
 #pragma weak defer_join_thread
