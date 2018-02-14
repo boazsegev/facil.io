@@ -79,13 +79,13 @@ License: MIT
 #endif
 
 #ifndef FIO_HASH_REALLOC /* NULL ptr indicates new allocation */
-#define FIO_HASH_REALLOC(ptr, size) realloc((ptr), (size))
+#define FIO_HASH_REALLOC(ptr, original_size, size) realloc((ptr), (size))
 #endif
 #ifndef FIO_HASH_CALLOC
 #define FIO_HASH_CALLOC(size, count) calloc((size), (count))
 #endif
 #ifndef FIO_HASH_FREE
-#define FIO_HASH_FREE(ptr) free((ptr))
+#define FIO_HASH_FREE(ptr, size) free((ptr))
 #endif
 
 /* *****************************************************************************
@@ -296,8 +296,8 @@ FIO_FUNC void fio_hash_new(fio_hash_s *h) {
 }
 
 FIO_FUNC void fio_hash_free(fio_hash_s *h) {
-  FIO_HASH_FREE(h->map);
-  FIO_HASH_FREE(h->ordered);
+  FIO_HASH_FREE(h->map, h->capa);
+  FIO_HASH_FREE(h->ordered, h->capa);
   *h = (fio_hash_s){.map = NULL};
 }
 
@@ -441,8 +441,8 @@ retry_rehashing:
   {
     /* It's better to reallocate using calloc than manually zero out memory */
     /* Maybe there's enough zeroed out pages available in the system */
+    FIO_HASH_FREE(h->map, h->capa);
     h->capa = h->mask + 1;
-    FIO_HASH_FREE(h->map);
     h->map = (fio_hash_data_s *)FIO_HASH_CALLOC(sizeof(*h->map), h->capa);
     if (!h->map) {
       perror("HashMap Allocation Failed");
@@ -451,7 +451,8 @@ retry_rehashing:
     /* the ordered list doesn't care about initialized memory, so realloc */
     /* will be faster. */
     h->ordered = (fio_hash_data_ordered_s *)FIO_HASH_REALLOC(
-        h->ordered, (h->capa) * sizeof(*h->ordered));
+        h->ordered, (h->capa >> 1) * sizeof(*h->ordered),
+        (h->capa) * sizeof(*h->ordered));
     if (!h->ordered) {
       perror("HashMap Reallocation Failed");
       exit(errno);
