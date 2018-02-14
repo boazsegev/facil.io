@@ -1163,9 +1163,9 @@ static void cluster_on_new_peer(intptr_t srv, protocol_s *pr) {
 static void cluster_on_listening_close(intptr_t srv, protocol_s *pr) {
   if (facil_parent_pid() == getpid()) {
     unlink(facil_cluster_data.cluster_name);
-    if (facil_cluster_data.root == srv)
-      facil_cluster_data.root = -1;
   }
+  if (facil_cluster_data.root == srv)
+    facil_cluster_data.root = -1;
   (void)srv;
   (void)pr;
 }
@@ -1185,12 +1185,6 @@ static int cluster_on_start(void) {
   } else {
     facil_cluster_data.client_mode = 1;
     fio_hash_free(&facil_cluster_data.clients);
-    // FIO_HASH_FOR_FREE(&facil_cluster_data.clients, pos) {
-    //   if (!pos->obj)
-    //     continue;
-    //   close(sock_uuid2fd(pos->key));
-    //   sock_force_close(pos->key);
-    // }
     facil_cluster_data.clients = (fio_hash_s)FIO_HASH_INIT;
     if (facil_cluster_data.root != -1) {
       close(sock_uuid2fd(facil_cluster_data.root)); /* prevent `shutdown` */
