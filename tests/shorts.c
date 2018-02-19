@@ -1,6 +1,7 @@
 #include "facil.h"
 #include "fio_base64.h"
 #include "fio_hashmap.h"
+#include "fio_mem.h"
 #include "fio_random.h"
 #include "fio_sha1.h"
 #include "fio_sha2.h"
@@ -21,6 +22,7 @@ int main(void) {
                   "===          facil.io's optimized code "
                   "is faster\n\n");
 #endif
+  fio_malloc_test();
   fio_hash_test();
   fiobj_test();
   defer_test();
