@@ -20,6 +20,52 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fio_mem.h"
 
 /* *****************************************************************************
+Memory Copying by 16 byte units
+***************************************************************************** */
+
+#if 0 && __SIZEOF_INT128__
+static inline void fio_memcpy(__uint128_t *__restrict dest,
+                              __uint128_t *__restrict src, size_t units) {
+  // while (units >= 4) {
+  //   dest[0] = src[0];
+  //   dest[1] = src[1];
+  //   dest[2] = src[2];
+  //   dest[3] = src[3];
+  //   dest += 4;
+  //   src += 4;
+  //   units -= 4;
+  // }
+  while (units) {
+    dest[0] = src[0];
+    dest += 1;
+    src += 1;
+    units -= 1;
+  }
+}
+#else
+static inline void fio_memcpy(uint64_t *__restrict dest,
+                              uint64_t *__restrict src, size_t units) {
+  // while (units >= 2) {
+  //   dest[0] = src[0];
+  //   dest[1] = src[1];
+  //   dest[2] = src[2];
+  //   dest[3] = src[3];
+  //   dest += 4;
+  //   src += 4;
+  //   units -= 2;
+  // }
+  while (units) {
+    dest[0] = src[0];
+    dest[1] = src[1];
+    dest += 2;
+    src += 2;
+    units -= 1;
+  }
+}
+
+#endif
+
+/* *****************************************************************************
 System Memory wrappers
 ***************************************************************************** */
 
@@ -86,7 +132,8 @@ static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
       result = sys_alloc(new_len, 1);
       if (!result)
         return NULL;
-      memcpy(result, mem, prev_len);
+      fio_memcpy(result, mem, prev_len >> 4);
+      // memcpy(result, mem, prev_len);
     }
 #endif
     return result;
@@ -106,11 +153,10 @@ Data Types
 
 /* The basic block header. Starts a 64Kib memory block */
 typedef struct block_s {
-  uint16_t ref;     /* reference count (per memory page) */
-  uint16_t pos;     /* position into the block */
-  uint16_t max;     /* available memory count */
-  uint16_t pad;     /* memory padding */
-  uint8_t page_num; /* 0 for block head, 1-15 for an internal memory page */
+  uint16_t ref; /* reference count (per memory page) */
+  uint16_t pos; /* position into the block */
+  uint16_t max; /* available memory count */
+  uint16_t pad; /* memory padding */
 } block_s;
 
 /* a per-CPU core "arena" for memory allocations  */
@@ -192,7 +238,9 @@ static inline void block_free(block_s *blk) {
     /* TODO: return memory to the system */
     spn_sub(&memory.count, 1);
     sys_free(blk, MEMORY_BLOCK_SIZE);
+    return;
   }
+  memset(blk, 0, MEMORY_BLOCK_SIZE);
   spn_lock(&memory.lock);
   fio_ls_embd_push(&memory.available, (fio_ls_embd_s *)blk);
   spn_unlock(&memory.lock);
@@ -206,13 +254,16 @@ static inline block_s *block_new(void) {
   spn_unlock(&memory.lock);
   if (blk) {
     spn_sub(&memory.count, 1);
+    ((uintptr_t *)blk)[0] = 0;
+    ((uintptr_t *)blk)[1] = 0;
     return block_init(blk);
   }
   /* TODO: collect memory from the system */
   blk = sys_alloc(MEMORY_BLOCK_SIZE, 0);
   if (!blk)
     return NULL;
-  return block_init(blk);
+  block_init(blk);
+  return blk;
 }
 
 static inline void *block_slice(uint16_t units) {
@@ -312,11 +363,8 @@ void *fio_malloc(size_t size) {
 }
 
 void *fio_calloc(size_t size, size_t count) {
-  if (!size || !count)
-    return NULL;
-  void *mem = fio_malloc(size * count);
-  memset(mem, 0, size * count);
-  return mem;
+  size = size * count;
+  return fio_malloc(size); // memory is pre-initialized by mmap or pool.
 }
 
 void fio_free(void *ptr) {
@@ -337,12 +385,15 @@ void *fio_realloc(void *ptr, size_t new_size) {
     return fio_malloc(new_size);
   if ((uintptr_t)ptr & MEMORY_BLOCK_MASK) {
     /* allocated within block - don't even try to expand the allocation */
-    const size_t max_old = (MEMORY_BLOCK_SIZE - sizeof(block_s)) -
-                           ((uintptr_t)ptr & MEMORY_BLOCK_MASK);
+    const size_t max_old =
+        MEMORY_BLOCK_SIZE - ((uintptr_t)ptr & MEMORY_BLOCK_MASK);
+    /* ceiling for 16 byte alignement, translated to 16 byte units */
     void *new_mem = fio_malloc(new_size);
     if (!new_mem)
       return NULL;
-    memcpy(new_mem, ptr, max_old > new_size ? new_size : max_old);
+    new_size = ((new_size >> 4) + (!!(new_size & 15))) << 4;
+    // memcpy(new_mem, ptr, (max_old > new_size ? new_size : max_old));
+    fio_memcpy(new_mem, ptr, (max_old > new_size ? new_size : max_old) >> 4);
     block_slice_free(ptr);
     return new_mem;
   }

@@ -10,7 +10,7 @@ Feel free to copy, use and enjoy according to the license provided.
  * This is a custom memory allocator the utilizes memory pools to allow for
  * concurrent memory allocations across threads.
  *
- * Allocated memory is always aligned on a 16 byte boundary.
+ * Allocated memory is always zeroed out and aligned on a 16 byte boundary.
  *
  * The memory allocator assumes high turn-around rates (fast
  * allocation/deallocation) and short life spans (memory is freed shortly after
