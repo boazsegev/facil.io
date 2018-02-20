@@ -106,7 +106,7 @@ static void sys_free(void *mem, size_t len) { munmap(mem, len); }
 static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
   if (new_len > prev_len) {
 #ifdef __linux__
-    void *result = mremap(mem, prev_len, new_len, 0);
+    void *result = mremap(mem, prev_len, new_len, MREMAP_MAYMOVE);
     if (result == MAP_FAILED)
       return NULL;
 #else
