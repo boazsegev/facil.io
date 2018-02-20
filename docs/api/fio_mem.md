@@ -25,7 +25,7 @@ These assumptions allow the allocator to ignore fragmentation within a memory "b
 
 This allocator should NOT be used for objects with a long life-span, because even a single persistent object will prevent the re-use of the whole memory block (128Kb by default) from which it was allocated.
 
-This documentation is incomplete. I would love your help to finish it up. Until that time, please read the documentation in [the `fio_mem.h` header file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/types/fiobj/fiobj_ary.h).
+This documentation is incomplete. I would love your help to finish it up. Until that time, please read the documentation in [the `fio_mem.h` header file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/types/fiobj/fio_mem.h).
 
 ### example
 
