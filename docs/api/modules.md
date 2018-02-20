@@ -17,11 +17,13 @@ facil.io's API is divided into different modules, each of them belonging to one 
 
     * [The `sock` library](sock) - an abstraction layer over POSIX sockets, which solves many of the issues and pitfalls related to socket programming.
 
-    * [The `defer` library](defer) - a simple event / action queue. It;s used internally but can be used directly as well.    
+    * [The `defer` library](defer) - a simple event / action queue. It's used internally but can be used directly as well.    
 
     * [The `evio` library](evio) - the evented *one-shot* I/O module. This module is mostly for internal uses and shouldn't be accessed directly. It's API, although stable, should be considered volatile.
 
     * [The `FIOBJ` object library](fiobj) - a dynamic type system designed for handling network data (which is, by nature, dynamic).    
+
+    * [The `fio_mem` library](fio_mem) - a simple concurrent memory allocator optimized for typical network use-cases. It can be disabled or replaced with jemalloc / tcmalloc and friends.
 
 * The Extension Modules:
 
