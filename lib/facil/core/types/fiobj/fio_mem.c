@@ -258,20 +258,28 @@ static inline block_s *block_new(void) {
 static inline void *block_slice(uint16_t units) {
   block_s *blk = arena_last_used->block;
   if (!blk) {
+    /* arena is empty */
     blk = block_new();
     arena_last_used->block = blk;
   } else if (blk->pos + units > blk->max) {
-    /* not enough memory in the block */
+    /* not enough memory in the block - rotate */
     block_free(blk);
     blk = block_new();
     arena_last_used->block = blk;
   }
   if (!blk) {
+    /* no system memory available? */
     return NULL;
   }
+  /* slice block starting at blk->pos and increase reference count */
   const void *mem = (void *)((uintptr_t)blk + ((uintptr_t)blk->pos << 4));
   spn_add(&blk->ref, 1);
   blk->pos += units;
+  if (blk->pos >= blk->max) {
+    /* block was fully utilized, clear arena */
+    block_free(blk);
+    arena_last_used->block = NULL;
+  }
   return (void *)mem;
 }
 
@@ -475,6 +483,7 @@ void fio_malloc_test(void) {
   TEST_ASSERT(mem[0] == 'a', "allocate memory wasn't written to!\n");
   mem = fio_realloc(mem, 1);
   TEST_ASSERT(mem[0] == 'a', "fio_realloc memory wasn't copied!\n");
+  TEST_ASSERT(arena_last_used, "arena_last_used wasn't initialized!\n");
   block_s *b = arena_last_used->block;
   size_t count = 2;
   do {
