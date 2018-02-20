@@ -12,9 +12,9 @@ Feel free to copy, use and enjoy according to the license provided.
  *
  * Allocated memory is always zeroed out and aligned on a 16 byte boundary.
  *
- * The memory allocator assumes high turn-around rates (fast
- * allocation/deallocation) and short life spans (memory is freed shortly after
- * it was allocated).
+ * The memory allocator assumes multiple concurrent allocation/deallocation,
+ * short life spans (memory is freed shortly after it was allocated) and small
+ * allocations (realloc almost always copies data).
  *
  * These assumptions allow the allocator to ignore fragmentation within a
  * memory "block", waiting for the whole "block" to be freed before it's memory
@@ -22,10 +22,11 @@ Feel free to copy, use and enjoy according to the license provided.
  *
  * This allocator should NOT be used for objects with a long life-span, because
  * even a single persistent object will prevent the re-use of the whole memory
- * block (64Kb by default) from which it was allocated.
+ * block (128Kb by default) from which it was allocated.
  *
- * A memory "block" includes 16 pages of memory (a page is assumed to be 4,096
- * bytes in length).
+ * A memory "block" can include any number of memory pages of memory (up to
+ * almost 1Mb of memory). However, the default value, set by MEMORY_BLOCK_SIZE,
+ * is either 12Kb or 64Kb (see source code).
  *
  * Each block includes a header that uses reference counters and position
  * markers.
@@ -39,13 +40,13 @@ Feel free to copy, use and enjoy according to the license provided.
  * Except for the position marker (`pos`) that acts the same as `sbrk`, there's
  * no way to know which "slices" are allocated and which "slices" are available.
  *
- * Small allocations (less than 60Kb) are never allocated on a block
- * boundary. If a memory allocation is aligned by a whole block, the memory was
- * allocated directly using `mmap` (and it uses a whole page, 4096 bytes, as a
- * header).
+ * Small allocations are difrinciated by their memory alignment. If a memory
+ * allocation is placed 8 bytes after whole block alignment, the memory was
+ * allocated directly using `mmap` (and it might be using a whole page, 4096
+ * bytes, as a header!).
  *
  * The allocator uses `mmap` when requesting memory from the system and for
- * allocations bigger than block-page (60Kb).
+ * allocations bigger than MEMORY_BLOCK_ALLOC_LIMIT (a quarter of a block).
  */
 #define H_FIO_MEM_H
 

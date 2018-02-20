@@ -5,11 +5,13 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 
-#define MEMORY_BLOCK_SIZE ((uintptr_t)1 << 16)    /* 65,536 bytes == 64Kb*/
-#define MEMORY_BLOCK_MASK (MEMORY_BLOCK_SIZE - 1) /* 0xFFFF bytes */
-#define MEMORY_BLOCK_SLICES (MEMORY_BLOCK_SIZE >> 4)
+#define MEMORY_BLOCK_SIZE ((uintptr_t)1 << 16)       /* 65,536 bytes == 64Kb */
+#define MEMORY_BLOCK_MASK (MEMORY_BLOCK_SIZE - 1)    /* 0xFFFF bytes */
+#define MEMORY_BLOCK_SLICES (MEMORY_BLOCK_SIZE >> 4) /* 16 byte slices */
+#define MEMORY_BLOCK_ALLOC_LIMIT (MEMORY_BLOCK_SIZE >> 2) /* block / 4 */
 
 #include "spnlock.inc"
+#include <stdint.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -19,22 +21,17 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fio_llist.h"
 #include "fio_mem.h"
 
+#if !defined(__clang__) && !defined(__GNUC__)
+#define __thread _Thread_value
+#endif
+
 /* *****************************************************************************
 Memory Copying by 16 byte units
 ***************************************************************************** */
 
-#if 0 && __SIZEOF_INT128__
+#if __SIZEOF_INT128__
 static inline void fio_memcpy(__uint128_t *__restrict dest,
                               __uint128_t *__restrict src, size_t units) {
-  // while (units >= 4) {
-  //   dest[0] = src[0];
-  //   dest[1] = src[1];
-  //   dest[2] = src[2];
-  //   dest[3] = src[3];
-  //   dest += 4;
-  //   src += 4;
-  //   units -= 4;
-  // }
   while (units) {
     dest[0] = src[0];
     dest += 1;
@@ -45,15 +42,6 @@ static inline void fio_memcpy(__uint128_t *__restrict dest,
 #else
 static inline void fio_memcpy(uint64_t *__restrict dest,
                               uint64_t *__restrict src, size_t units) {
-  // while (units >= 2) {
-  //   dest[0] = src[0];
-  //   dest[1] = src[1];
-  //   dest[2] = src[2];
-  //   dest[3] = src[3];
-  //   dest += 4;
-  //   src += 4;
-  //   units -= 2;
-  // }
   while (units) {
     dest[0] = src[0];
     dest[1] = src[1];
@@ -77,37 +65,38 @@ System Memory wrappers
  * page allocation header. align_shift MUST be either 0 (normal) or 1 (single
  * page header). Other values might cause errors.
  */
-static inline void *sys_alloc(size_t len, uint8_t align_shift) {
+static inline void *sys_alloc(size_t len, uint8_t is_indi) {
   void *result;
-  if (align_shift == 0) {
+  static void *next_alloc = NULL;
 /* hope for the best? */
 #ifdef MAP_ALIGNED
-    result = mmap(NULL, len, PROT_READ | PROT_WRITE | PROT_EXEC,
-                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_ALIGNED(MEMORY_BLOCK_SIZE),
-                  -1, 0);
-#else
-    result = mmap(NULL, len, PROT_READ | PROT_WRITE | PROT_EXEC,
-                  MAP_PRIVATE | MAP_ANONYMOUS, -1, MEMORY_BLOCK_SIZE);
-#endif
-    if (result == MAP_FAILED)
-      return NULL;
-    if (!((uintptr_t)result & MEMORY_BLOCK_MASK))
-      return result;
-    munmap(result, len);
-  }
   result =
-      mmap(NULL, len + MEMORY_BLOCK_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
-           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+      mmap(next_alloc, len, PROT_READ | PROT_WRITE | PROT_EXEC,
+           MAP_PRIVATE | MAP_ANONYMOUS | MAP_ALIGNED(MEMORY_BLOCK_SIZE), -1, 0);
+#else
+  result = mmap(next_alloc, len, PROT_READ | PROT_WRITE | PROT_EXEC,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+#endif
   if (result == MAP_FAILED)
     return NULL;
-  const uintptr_t offset =
-      (MEMORY_BLOCK_SIZE - ((uintptr_t)result & MEMORY_BLOCK_MASK)) -
-      (align_shift << 12);
-  if (offset) {
-    munmap(result, offset);
-    result = (void *)((uintptr_t)result + offset);
+  if (((uintptr_t)result & MEMORY_BLOCK_MASK)) {
+    munmap(result, len);
+    result =
+        mmap(NULL, len + MEMORY_BLOCK_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
+             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (result == MAP_FAILED)
+      return NULL;
+    const uintptr_t offset =
+        (MEMORY_BLOCK_SIZE - ((uintptr_t)result & MEMORY_BLOCK_MASK));
+    if (offset) {
+      munmap(result, offset);
+      result = (void *)((uintptr_t)result + offset);
+    }
+    munmap((void *)((uintptr_t)result + len), MEMORY_BLOCK_SIZE - offset);
   }
-  munmap((void *)((uintptr_t)result + len), MEMORY_BLOCK_SIZE - offset);
+  next_alloc =
+      (void *)((uintptr_t)result + MEMORY_BLOCK_SIZE +
+               (is_indi * ((uintptr_t)1 << 30))); /* add 1TB for realloc */
   return result;
 }
 
@@ -201,7 +190,7 @@ static inline arena_s *arena_lock(arena_s *preffered) {
   } while (1);
 }
 
-static _Thread_local arena_s *arena_last_used;
+static __thread arena_s *arena_last_used;
 
 static void arena_enter(void) { arena_last_used = arena_lock(arena_last_used); }
 
@@ -221,7 +210,7 @@ static inline block_s *block_init(void *blk_) {
   block_s *blk = blk_;
   *blk = (block_s){
       .ref = 1,
-      .pos = (1 + (sizeof(block_s) >> 4)),
+      .pos = (2 + (sizeof(block_s) >> 4)),
       .max = (MEMORY_BLOCK_SLICES - 1) -
              (sizeof(block_s) >> 4), /* count available units of 16 bytes */
   };
@@ -293,6 +282,32 @@ static inline void block_slice_free(void *mem) {
 }
 
 /* *****************************************************************************
+Non-Block allocations (direct from the system)
+***************************************************************************** */
+
+static inline void *big_alloc(size_t size) {
+  size = sys_round_size(size + 16);
+  size_t *mem = sys_alloc(size, 1);
+  *mem = size;
+  return (void *)(((uintptr_t)mem) + 16);
+}
+
+static inline void big_free(void *ptr) {
+  size_t *mem = (void *)(((uintptr_t)ptr) - 16);
+  sys_free(mem, *mem);
+}
+
+static inline void *big_realloc(void *ptr, size_t new_size) {
+  size_t *mem = (void *)(((uintptr_t)ptr) - 16);
+  new_size = sys_round_size(new_size + 16);
+  mem = sys_realloc(mem, *mem, new_size);
+  if (!mem)
+    return NULL;
+  *mem = new_size;
+  return (void *)(((uintptr_t)mem) + 16);
+}
+
+/* *****************************************************************************
 Library Initialization (initialize arenas and allocate a block for each CPU)
 ***************************************************************************** */
 
@@ -347,12 +362,9 @@ Memory allocation / deacclocation API
 void *fio_malloc(size_t size) {
   if (!size)
     return NULL;
-  if (size >= (MEMORY_BLOCK_SIZE - 4095)) {
+  if (size >= MEMORY_BLOCK_ALLOC_LIMIT) {
     /* system allocation - must be block aligned */
-    size = sys_round_size(size) + 4096;
-    void *mem = sys_alloc(size, 1);
-    *(uintptr_t *)(mem) = size;
-    return (void *)((uintptr_t)mem + 4096);
+    return big_alloc(size);
   }
   /* ceiling for 16 byte alignement, translated to 16 byte units */
   size = (size >> 4) + (!!(size & 15));
@@ -370,41 +382,34 @@ void *fio_calloc(size_t size, size_t count) {
 void fio_free(void *ptr) {
   if (!ptr)
     return;
-  if ((uintptr_t)ptr & MEMORY_BLOCK_MASK) {
-    /* allocated within block */
-    block_slice_free(ptr);
+  if (((uintptr_t)ptr & MEMORY_BLOCK_MASK) == 16) {
+    /* big allocation - direct from the system */
+    big_free(ptr);
     return;
   }
-  /* big allocation - direct from the system */
-  uintptr_t *mem = (uintptr_t *)((uintptr_t)ptr - 4096);
-  sys_free(mem, *mem);
+  /* allocated within block */
+  block_slice_free(ptr);
 }
 
 void *fio_realloc(void *ptr, size_t new_size) {
   if (!ptr)
     return fio_malloc(new_size);
-  if ((uintptr_t)ptr & MEMORY_BLOCK_MASK) {
-    /* allocated within block - don't even try to expand the allocation */
-    const size_t max_old =
-        MEMORY_BLOCK_SIZE - ((uintptr_t)ptr & MEMORY_BLOCK_MASK);
-    /* ceiling for 16 byte alignement, translated to 16 byte units */
-    void *new_mem = fio_malloc(new_size);
-    if (!new_mem)
-      return NULL;
-    new_size = ((new_size >> 4) + (!!(new_size & 15))) << 4;
-    // memcpy(new_mem, ptr, (max_old > new_size ? new_size : max_old));
-    fio_memcpy(new_mem, ptr, (max_old > new_size ? new_size : max_old) >> 4);
-    block_slice_free(ptr);
-    return new_mem;
+  if (((uintptr_t)ptr & MEMORY_BLOCK_MASK) == 16) {
+    /* big reallocation - direct from the system */
+    return big_realloc(ptr, new_size);
   }
-  /* big reallocation - direct from the system */
-  uintptr_t *mem = (uintptr_t *)((uintptr_t)ptr - 4096);
-  new_size = sys_round_size(new_size) + 4096;
-  mem = sys_realloc(mem, (size_t)*mem, new_size);
-  if (!mem)
+  /* allocated within block - don't even try to expand the allocation */
+  const size_t max_old =
+      MEMORY_BLOCK_SIZE - ((uintptr_t)ptr & MEMORY_BLOCK_MASK);
+  /* ceiling for 16 byte alignement, translated to 16 byte units */
+  void *new_mem = fio_malloc(new_size);
+  if (!new_mem)
     return NULL;
-  *mem = new_size;
-  return (void *)((uintptr_t)mem + 4096);
+  new_size = ((new_size >> 4) + (!!(new_size & 15))) << 4;
+  // memcpy(new_mem, ptr, (max_old > new_size ? new_size : max_old));
+  fio_memcpy(new_mem, ptr, (max_old > new_size ? new_size : max_old) >> 4);
+  block_slice_free(ptr);
+  return new_mem;
 }
 
 /* *****************************************************************************
@@ -459,19 +464,13 @@ void fio_malloc_test(void) {
   TEST_ASSERT(mem2[0] = 'a' && mem2[MEMORY_BLOCK_SIZE - 1] == 'z',
               "Reaclloc data was lost!");
   sys_free(mem2, MEMORY_BLOCK_SIZE * 2);
-  mem = sys_alloc(MEMORY_BLOCK_SIZE, 1);
-  TEST_ASSERT(
-      ((uintptr_t)mem & MEMORY_BLOCK_MASK) == (MEMORY_BLOCK_SIZE - 4096),
-      "Memory allocation not aligned to a page behind MEMORY_BLOCK_SIZE! (%p)",
-      (void *)mem);
-  sys_free(mem, MEMORY_BLOCK_SIZE);
   fprintf(stderr, "=== Testing facil.io memory allocator's internal data.\n");
   TEST_ASSERT(arenas, "Missing arena data - library not initialized!");
   mem = fio_malloc(1);
   TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
   TEST_ASSERT(!((uintptr_t)mem & 15), "fio_malloc memory not aligned!\n");
-  TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK),
-              "fio_malloc memory divisable by block size!\n");
+  TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK) != 16,
+              "small fio_malloc memory indicates system allocation!\n");
   mem[0] = 'a';
   TEST_ASSERT(mem[0] == 'a', "allocate memory wasn't written to!\n");
   mem = fio_realloc(mem, 1);
@@ -485,37 +484,37 @@ void fio_malloc_test(void) {
     TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
     TEST_ASSERT(!((uintptr_t)mem & 15),
                 "fio_malloc memory not aligned at allocation #%zu!\n", count);
-    TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK),
-                "fio_malloc memory divisable by block size!\n");
+    TEST_ASSERT((((uintptr_t)mem & MEMORY_BLOCK_MASK) != 16),
+                "fio_malloc memory indicates system allocation!\n");
     mem[0] = 'a';
     ++count;
   } while (arena_last_used->block == b);
   fio_free(mem);
-  fprintf(
-      stderr,
-      "* Performed %zu allocation out of expected %zu allocations per block.\n",
-      count, (size_t)((MEMORY_BLOCK_SLICES - 1) - (sizeof(block_s) >> 4)));
+  fprintf(stderr,
+          "* Performed %zu allocations out of expected %zu allocations per "
+          "block.\n",
+          count, (size_t)((MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4)));
   TEST_ASSERT(fio_ls_embd_any(&memory.available),
               "memory pool empty (memory block wasn't freed)!\n");
   TEST_ASSERT(memory.count, "memory.count == 0 (memory block not counted)!\n");
-  mem = fio_calloc(4096, 7);
-  TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK),
-              "fio_calloc (7 pages) memory divisable by block size!\n");
+  mem = fio_calloc(MEMORY_BLOCK_ALLOC_LIMIT - 64, 1);
+  TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK) != 16,
+              "fio_calloc (under limit) memory alignment error!\n");
   mem2 = fio_malloc(1);
   mem2[0] = 'a';
   fio_free(mem2);
-  for (int i = 0; i < (4096 * 7); ++i) {
+  for (uintptr_t i = 0; i < (MEMORY_BLOCK_ALLOC_LIMIT - 64); ++i) {
     TEST_ASSERT(mem[i] == 0,
                 "calloc returned memory that wasn't initialized?!\n");
   }
   fio_free(mem);
 
   mem = fio_malloc(MEMORY_BLOCK_SIZE);
-  TEST_ASSERT(!((uintptr_t)mem & MEMORY_BLOCK_MASK),
+  TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK) == 16,
               "fio_malloc (big) memory isn't aligned!\n");
   mem = fio_realloc(mem, MEMORY_BLOCK_SIZE * 2);
   fio_free(mem);
-  TEST_ASSERT(!((uintptr_t)mem & MEMORY_BLOCK_MASK),
+  TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK) == 16,
               "fio_realloc (big) memory isn't aligned!\n");
 
   fprintf(stderr, "* passed.\n");
