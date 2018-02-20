@@ -420,6 +420,7 @@ void *fio_realloc2(void *ptr, size_t original_size, size_t new_size) {
   if (!new_mem)
     return NULL;
   new_size = ((new_size >> 4) + (!!(new_size & 15))) << 4;
+  original_size = ((original_size >> 4) + (!!(original_size & 15))) << 4;
   // memcpy(new_mem, ptr, (original_size > new_size ? new_size :
   //        original_size));
   fio_memcpy(new_mem, ptr,
