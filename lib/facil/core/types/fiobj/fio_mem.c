@@ -507,9 +507,11 @@ void fio_malloc_test(void) {
               "memory pool empty (memory block wasn't freed)!\n");
   TEST_ASSERT(memory.count, "memory.count == 0 (memory block not counted)!\n");
   mem = fio_calloc(MEMORY_BLOCK_ALLOC_LIMIT - 64, 1);
+  TEST_ASSERT(mem, "failed to allocate MEMORY_BLOCK_ALLOC_LIMIT - 64 bytes!\n");
   TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK) != 16,
               "fio_calloc (under limit) memory alignment error!\n");
   mem2 = fio_malloc(1);
+  TEST_ASSERT(mem2, "fio_malloc(1) failed to allocate memory!\n");
   mem2[0] = 'a';
   fio_free(mem2);
   for (uintptr_t i = 0; i < (MEMORY_BLOCK_ALLOC_LIMIT - 64); ++i) {
@@ -519,9 +521,11 @@ void fio_malloc_test(void) {
   fio_free(mem);
 
   mem = fio_malloc(MEMORY_BLOCK_SIZE);
+  TEST_ASSERT(mem, "fio_malloc failed to MEMORY_BLOCK_SIZE bytes!\n");
   TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK) == 16,
               "fio_malloc (big) memory isn't aligned!\n");
   mem = fio_realloc(mem, MEMORY_BLOCK_SIZE * 2);
+  TEST_ASSERT(mem, "fio_realloc (big) failed on MEMORY_BLOCK_SIZE X2 bytes!\n");
   fio_free(mem);
   TEST_ASSERT(((uintptr_t)mem & MEMORY_BLOCK_MASK) == 16,
               "fio_realloc (big) memory isn't aligned!\n");
