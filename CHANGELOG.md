@@ -6,6 +6,10 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
+### Ver. 0.6.0.beta.8
+
+**Update**: Moving towards a custom memory allocator (`fio_mem.h`) optimized for small concurrent short-lived allocations (anything over 16Kb and reallocations start to take a toll). It can replace the system's `malloc` function family when `FIO_OVERRIDE_MALLOC` is defined. To use tcmalloc or jemalloc, define `FIO_FORCE_MALLOC` to prevent `fio_mem` from compiling.
+
 ### Ver. 0.6.0.beta.7
 
 **Fix**: (`websockets`) fixed an issue with client pinging would break the protocol in a way that would result in either loss of data or disconnections.

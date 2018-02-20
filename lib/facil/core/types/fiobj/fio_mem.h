@@ -47,6 +47,14 @@ Feel free to copy, use and enjoy according to the license provided.
  *
  * The allocator uses `mmap` when requesting memory from the system and for
  * allocations bigger than MEMORY_BLOCK_ALLOC_LIMIT (a quarter of a block).
+ *
+ * To replace the system's `malloc` function family compile with the
+ * `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
+ *
+ * When using tcmalloc or jemalloc, define `FIO_FORCE_MALLOC` to prevent
+ * `fio_mem` from compiling (`-FIO_FORCE_MALLOC`). Function wrappers will be
+ * compiled just in case, so calls to `fio_malloc` will be routed to `malloc`.
+ *
  */
 #define H_FIO_MEM_H
 
