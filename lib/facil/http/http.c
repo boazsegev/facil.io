@@ -17,6 +17,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "fio_mem.h"
+
 /* *****************************************************************************
 Small Helpers
 ***************************************************************************** */
@@ -703,7 +705,7 @@ static void http_resume_wrapper(intptr_t uuid, protocol_s *p_, void *arg) {
   if (http->task)
     http->task(h);
   vtbl->http_on_resume(h, p);
-  free(http);
+  fio_free(http);
   (void)uuid;
 }
 
@@ -712,7 +714,7 @@ static void http_resume_fallback_wrapper(intptr_t uuid, void *arg) {
   http_pause_handle_s *http = arg;
   if (http->fallback)
     http->fallback(http->udata);
-  free(http);
+  fio_free(http);
   (void)uuid;
 }
 
@@ -725,7 +727,7 @@ void http_pause(http_s *h, void (*task)(void *http)) {
   }
   http_protocol_s *p = (http_protocol_s *)h->private_data.flag;
   http_vtable_s *vtbl = (http_vtable_s *)h->private_data.vtbl;
-  http_pause_handle_s *http = malloc(sizeof(*http));
+  http_pause_handle_s *http = fio_malloc(sizeof(*http));
   *http = (http_pause_handle_s){
       .uuid = p->uuid, .h = h, .udata = h->udata,
   };
@@ -940,7 +942,7 @@ static void http_on_client_failed(intptr_t uuid, void *set_) {
   http_s *h = set->udata;
   set->udata = h->udata;
   http_s_destroy(h, 0);
-  free(h);
+  fio_free(h);
   if (set->on_finish)
     set->on_finish(set);
   free((void *)set->public_folder);
@@ -1007,7 +1009,7 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
   } else {
     len -= 3;
     address += 3;
-    a = malloc(len + 1);
+    a = fio_malloc(len + 1);
     if (!a) {
       perror("FATAL ERROR: http_connect couldn't allocate memory "
              "for address parsing");
@@ -1050,7 +1052,7 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
     settings->ws_timeout = 0; /* allow server to dictate timeout */
   if (!arg_settings.timeout)
     settings->timeout = 0; /* allow server to dictate timeout */
-  http_s *h = malloc(sizeof(*h));
+  http_s *h = fio_malloc(sizeof(*h));
   HTTP_ASSERT(h, "HTTP Client handler allocation failed");
   http_s_new(h, 0, http1_vtable());
   h->udata = arg_settings.udata;
@@ -1073,7 +1075,7 @@ int http_connect(const char *address, struct http_settings_s arg_settings) {
                       .on_connect = http_on_open_client, .udata = settings);
     (void)0;
   }
-  free(a);
+  fio_free(a);
   return ret;
 }
 #define http_connect(address, ...)                                             \

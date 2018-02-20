@@ -5,6 +5,9 @@ License: MIT
 
 #include "fiobject.h"
 
+#define FIO_OVERRIDE_MALLOC 1
+#include "fio_mem.h"
+
 #include "fio_ary.h"
 #include <assert.h>
 

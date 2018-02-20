@@ -11,6 +11,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fio_hashmap.h"
 #include "fiobj4sock.h"
 
+#include "fio_mem.h"
+
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -839,7 +841,7 @@ static void cluster_deferred_handler(void *msg_data_, void *ignr) {
   data->on_message(data->filter, data->channel, data->msg);
   fiobj_free(data->channel);
   fiobj_free(data->msg);
-  free(data);
+  fio_free(data);
   (void)ignr;
 }
 
@@ -850,7 +852,7 @@ static void cluster_forward_msg2handlers(cluster_pr_s *c) {
   spn_unlock(&facil_cluster_data.lock);
   // fprintf(stderr, "handler for %d: %p\n", c->filter, target_);
   if (target_) {
-    cluster_msg_data_s *data = malloc(sizeof(*data));
+    cluster_msg_data_s *data = fio_malloc(sizeof(*data));
     if (!data) {
       perror("FATAL ERROR: (facil.io cluster) couldn't allocate memory");
       exit(errno);
@@ -1847,10 +1849,10 @@ struct task {
 };
 
 static inline struct task *alloc_facil_task(void) {
-  return malloc(sizeof(struct task));
+  return fio_malloc(sizeof(struct task));
 }
 
-static inline void free_facil_task(struct task *task) { free(task); }
+static inline void free_facil_task(struct task *task) { fio_free(task); }
 
 static void mock_on_task_done(intptr_t uuid, void *arg) {
   (void)uuid;

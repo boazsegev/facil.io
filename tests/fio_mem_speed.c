@@ -1,9 +1,11 @@
 #include "fio_mem.h"
+#include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
-#define TEST_CYCLES_START 1
+#define TEST_CYCLES_START 128
 #define TEST_CYCLES_END 256
 #define REPEAT_LIB_TEST 0
 
@@ -12,10 +14,12 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
                                  void *(*realloc_func)(void *, size_t),
                                  void (*free_func)(void *)) {
   size_t clock_alloc = 0, clock_realloc = 0, clock_free = 0, clock_calloc = 0,
-         fio_optimized = 0, errors = 0;
+         fio_optimized = 0, fio_optimized2 = 0, errors = 0;
   for (int i = TEST_CYCLES_START; i < TEST_CYCLES_END; ++i) {
     void **pointers = calloc_func(sizeof(*pointers), 4096);
     clock_t start;
+
+    /* malloc */
     start = clock();
     for (int j = 0; j < 4096; ++j) {
       pointers[j] = malloc_func(i << 4);
@@ -28,6 +32,7 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
     }
     clock_alloc += clock() - start;
 
+    /* realloc */
     start = clock();
     for (int j = 0; j < 4096; ++j) {
       void *tmp = realloc_func(pointers[j], i << 5);
@@ -39,6 +44,7 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
     }
     clock_realloc += clock() - start;
 
+    /* free (testing) */
     start = clock();
     for (int j = 0; j < 4096; ++j) {
       free_func(pointers[j]);
@@ -46,6 +52,7 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
     }
     clock_free += clock() - start;
 
+    /* calloc */
     start = clock();
     for (int j = 0; j < 4096; ++j) {
       pointers[j] = calloc_func(16, i);
@@ -58,10 +65,12 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
     }
     clock_calloc += clock() - start;
 
+    /* free (no test) */
     for (int j = 0; j < 4096; ++j) {
       free_func(pointers[j]);
     }
 
+    /* facil.io use-case */
     start = clock();
     for (int j = 0; j < 4096; ++j) {
       pointers[j] = malloc_func(i << 4);
@@ -77,6 +86,20 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
     }
     fio_optimized += clock() - start;
 
+    /* facil.io use-case */
+    start = clock();
+    for (int j = 0; j < 4096; ++j) {
+      pointers[j] = malloc_func(i << 4);
+      if (i) {
+        if (!pointers[j])
+          ++errors;
+        else
+          ((char *)pointers[j])[0] = '1';
+      }
+      free_func(pointers[j]);
+    }
+    fio_optimized2 += clock() - start;
+
     free_func(pointers);
   }
   clock_alloc /= TEST_CYCLES_END - TEST_CYCLES_START;
@@ -84,14 +107,33 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
   clock_free /= TEST_CYCLES_END - TEST_CYCLES_START;
   clock_calloc /= TEST_CYCLES_END - TEST_CYCLES_START;
   fio_optimized /= TEST_CYCLES_END - TEST_CYCLES_START;
+  fio_optimized2 /= TEST_CYCLES_END - TEST_CYCLES_START;
   fprintf(stderr, "* Avrg. clock count for malloc: %zu\n", clock_alloc);
   fprintf(stderr, "* Avrg. clock count for calloc: %zu\n", clock_calloc);
   fprintf(stderr, "* Avrg. clock count for realloc: %zu\n", clock_realloc);
   fprintf(stderr, "* Avrg. clock count for free: %zu\n", clock_free);
-  fprintf(stderr, "* Avrg. clock count for a facil.io use-case round: %zu\n",
+  fprintf(stderr,
+          "* Avrg. clock count for a facil.io use-case round"
+          " (slow free): %zu\n",
           fio_optimized);
-  fprintf(stderr, "* errors: %zu\n", errors);
+  fprintf(stderr,
+          "* Avrg. clock count for a facil.io use-case 2 round"
+          " (short life): %zu\n",
+          fio_optimized2);
+  fprintf(stderr, "* Failed allocations: %zu\n", errors);
   return clock_alloc + clock_realloc + clock_free + clock_calloc;
+}
+
+void *test_system_malloc(void *ignr) {
+  (void)ignr;
+  uintptr_t result = test_mem_functions(malloc, calloc, realloc, free);
+  return (void *)result;
+}
+void *test_facil_malloc(void *ignr) {
+  (void)ignr;
+  uintptr_t result =
+      test_mem_functions(fio_malloc, fio_calloc, fio_realloc, fio_free);
+  return (void *)result;
 }
 
 int main(void) {
@@ -99,14 +141,27 @@ int main(void) {
   fprintf(stderr, "\n=== WARNING: performance tests using the DEBUG mode are "
                   "invalid. \n");
 #endif
+  pthread_t thread2;
+  void *thrd_result;
+
+  /* test system allocations */
   fprintf(stderr,
           "===== Performance Testing system memory allocator (please wait):\n");
+  pthread_create(&thread2, NULL, test_system_malloc, NULL);
   size_t system = test_mem_functions(malloc, calloc, realloc, free);
+  pthread_join(thread2, &thrd_result);
+  system += (uintptr_t)thrd_result;
+  fprintf(stderr, "Total Cycles: %zu\n", system);
+
   fprintf(
       stderr,
       "\n===== Performance Testing facil.io memory allocator (please wait):\n");
+  pthread_create(&thread2, NULL, test_facil_malloc, NULL);
   size_t fio =
       test_mem_functions(fio_malloc, fio_calloc, fio_realloc, fio_free);
+  pthread_join(thread2, &thrd_result);
+  fio += (uintptr_t)thrd_result;
+  fprintf(stderr, "Total Cycles: %zu\n", fio);
 
   if (REPEAT_LIB_TEST) {
     fprintf(stderr, "\n===== Testing facil.io memory allocator %zu times\n",

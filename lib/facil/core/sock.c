@@ -31,6 +31,9 @@ Includes and state
 #include <sys/types.h>
 #include <sys/un.h>
 
+#define FIO_OVERRIDE_MALLOC 1
+#include "fio_mem.h"
+
 /* *****************************************************************************
 OS Sendfile settings.
 */
@@ -305,13 +308,13 @@ static inline int initialize_sock_lib(size_t capacity) {
 #endif
 
 finish:
+  if (init_exit)
+    return 0;
+  init_exit = 1;
   packet_pool.lock = SPN_LOCK_INIT;
   for (size_t i = 0; i < sock_data_store.capacity; ++i) {
     sock_data_store.fds[i].lock = SPN_LOCK_INIT;
   }
-  if (init_exit)
-    return 0;
-  init_exit = 1;
   atexit(clear_sock_lib);
   return 0;
 }

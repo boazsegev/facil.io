@@ -18,6 +18,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdlib.h>
 #include <string.h>
 
+#include "fio_mem.h"
+
 /* used later on */
 static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
                              size_t pat_len);
@@ -451,7 +453,7 @@ static void msg_wrapper_free(msg_wrapper_s *m) {
     return;
   fiobj_free(m->channel);
   fiobj_free(m->msg);
-  free(m);
+  fio_free(m);
 }
 
 /* calls a client's `on_message` callback */
@@ -495,7 +497,7 @@ void pubsub_en_process_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
 int pubsub_en_process_publish(const pubsub_engine_s *eng, FIOBJ channel,
                               FIOBJ msg) {
   uint64_t channel_hash = fiobj_obj2hash(channel);
-  msg_wrapper_s *m = malloc(sizeof(*m));
+  msg_wrapper_s *m = fio_malloc(sizeof(*m));
   int ret = -1;
   if (!m) {
     perror("FATAL ERROR: (pubsub) couldn't allocate message wrapper");

@@ -24,9 +24,9 @@ Feel free to copy, use and enjoy according to the license provided.
  * even a single persistent object will prevent the re-use of the whole memory
  * block (128Kb by default) from which it was allocated.
  *
- * A memory "block" can include any number of memory pages of memory (up to
- * almost 1Mb of memory). However, the default value, set by MEMORY_BLOCK_SIZE,
- * is either 12Kb or 64Kb (see source code).
+ * A memory "block" can include any number of memory pages that are a multiple
+ * of 2 (up to 1Mb of memory). However, the default value, set by
+ * MEMORY_BLOCK_SIZE, is either 12Kb or 64Kb (set at end of header).
  *
  * Each block includes a header that uses reference counters and position
  * markers.
@@ -52,22 +52,13 @@ Feel free to copy, use and enjoy according to the license provided.
  * `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
  *
  * When using tcmalloc or jemalloc, define `FIO_FORCE_MALLOC` to prevent
- * `fio_mem` from compiling (`-FIO_FORCE_MALLOC`). Function wrappers will be
+ * `fio_mem` from compiling (`-DFIO_FORCE_MALLOC`). Function wrappers will be
  * compiled just in case, so calls to `fio_malloc` will be routed to `malloc`.
  *
  */
 #define H_FIO_MEM_H
 
 #include <stdlib.h>
-
-/** If defined, `malloc` will be used instead of the fio_malloc functions */
-#ifdef FIO_FORCE_MALLOC
-#define fio_malloc(size) malloc((size))
-#define fio_calloc(size, count) calloc((size), (count))
-#define fio_free(ptr) free((ptr))
-#define fio_realloc(ptr, new_size) realloc((ptr), (new_size))
-#define fio_malloc_test()
-#else
 
 /** Allocates memory using a per-CPU core block memory pool. */
 void *fio_malloc(size_t size);
@@ -85,8 +76,32 @@ void fio_free(void *ptr);
  */
 void *fio_realloc(void *ptr, size_t new_size);
 
+/**
+ * Re-allocates memory. An attept to avoid copying the data is made only for
+ * memory allocations larger than 64Kb.
+ *
+ * This variation is slightly faster as it might copy less data
+ */
+void *fio_realloc2(void *ptr, size_t original_size, size_t new_size);
+
 /** Tests the facil.io memory allocator. */
 void fio_malloc_test(void);
+
+/** If defined, `malloc` will be used instead of the fio_malloc functions */
+#if FIO_FORCE_MALLOC
+#define fio_malloc(size) malloc((size))
+#define fio_calloc(size, count) calloc((size), (count))
+#define fio_free(ptr) free((ptr))
+#define fio_realloc(ptr, new_size) realloc((ptr), (new_size))
+#define fio_realloc2(ptr, old_size, new_size) realloc((ptr), (new_size))
+#define fio_malloc_test()
+
+/* allows local override as well as global override */
+#elif FIO_OVERRIDE_MALLOC
+#define malloc(size) fio_malloc((size))
+#define free(ptr) fio_free((ptr))
+#define realloc(ptr, size) fio_realloc((ptr), (size))
+#define calloc(size, count) fio_calloc(size, count)
 
 #endif
 
@@ -96,6 +111,20 @@ void fio_malloc_test(void);
  * memory is returned to the system.
  */
 #define FIO_MEM_MAX_BLOCKS_PER_CORE 32 /* approx. 2Mb per CPU core */
+#endif
+
+/** Allocator default settings. */
+#ifndef FIO_MEMORY_BLOCK_SIZE
+#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << 16) /* 16 == 64Kb */
+#endif
+#ifndef FIO_MEMORY_BLOCK_MASK
+#define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1) /* 0b111... */
+#endif
+#ifndef FIO_MEMORY_BLOCK_SLICES
+#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16b slices */
+#endif
+#ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
+#define FIO_MEMORY_BLOCK_ALLOC_LIMIT ((FIO_MEMORY_BLOCK_SIZE >> 2) + 4096)
 #endif
 
 #endif /* H_FIO_MEM_H */

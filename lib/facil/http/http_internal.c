@@ -6,6 +6,8 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #include "http_internal.h"
 
+#include "fio_mem.h"
+
 #include "http1.h"
 
 static uint64_t http_upgrade_hash = 0;
@@ -69,7 +71,7 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   if (!uuid || !settings || !error)
     return -1;
   protocol_s *pr = http1_new(uuid, settings, NULL, 0);
-  http_s *r = malloc(sizeof(*r));
+  http_s *r = fio_malloc(sizeof(*r));
   HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
   http_s_new(r, (http_protocol_s *)pr, http1_vtable());
   int ret = http_send_error(r, error);

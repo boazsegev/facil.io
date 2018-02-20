@@ -5,6 +5,14 @@ License: MIT
 
 #include "fiobject.h"
 
+#define FIO_OVERRIDE_MALLOC 1
+#include "fio_mem.h"
+
+#if !FIO_FORCE_MALLOC
+#define FIO_HASH_REALLOC(ptr, original_size, size)                             \
+  fio_realloc2((ptr), (original_size), (size))
+#endif
+
 #include "fiobj_hash.h"
 
 #include <assert.h>

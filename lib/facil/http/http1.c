@@ -9,13 +9,16 @@ License: MIT
 #include "http_internal.h"
 #include "websockets.h"
 
-#include "fio_ary.h"
+// #include "fio_ary.h"
 #include "fio_base64.h"
 #include "fio_sha1.h"
 #include "fiobj.h"
 
 #include <assert.h>
 #include <stddef.h>
+
+#define FIO_OVERRIDE_MALLOC 1
+#include "fio_mem.h"
 
 /* *****************************************************************************
 The HTTP/1.1 Protocol Object
@@ -55,7 +58,7 @@ static inline void http1_after_finish(http_s *h) {
   http_s_clear(h, p->p.settings->log);
   if (h != &p->request) {
     http_s_destroy(h, 0);
-    free(h);
+    fio_free(h);
   }
   if (p->close)
     sock_close(p->p.uuid);
@@ -293,7 +296,7 @@ static void http1_websocket_client_on_upgrade(http_s *h, char *proto,
   p->stop = 1;
   websocket_attach(uuid, set, args, p->parser.state.next,
                    p->buf_len - (intptr_t)(p->parser.state.next - p->buf));
-  free(args);
+  fio_free(args);
   (void)proto;
   (void)len;
 }
@@ -301,7 +304,7 @@ static void http1_websocket_client_on_failed(http_s *h) {
   websocket_settings_s *s = h->udata;
   if (s->on_close)
     s->on_close(0, s->udata);
-  free(h->udata);
+  fio_free(h->udata);
   h->udata = http_settings(h)->udata = NULL;
 }
 static void http1_websocket_client_on_hangup(http_settings_s *settings) {
@@ -309,7 +312,7 @@ static void http1_websocket_client_on_hangup(http_settings_s *settings) {
   if (s) {
     if (s->on_close)
       s->on_close(0, settings->udata);
-    free(settings->udata);
+    fio_free(settings->udata);
     settings->udata = NULL;
   }
 }
@@ -370,7 +373,7 @@ static int http1_http2websocket_client(websocket_settings_s *args) {
   if (p->p.settings->on_finish)
     p->p.settings->on_finish(p->p.settings);
   /* Copy the Websocket setting arguments to the HTTP settings `udata` */
-  p->p.settings->udata = malloc(sizeof(*args));
+  p->p.settings->udata = fio_malloc(sizeof(*args));
   ((websocket_settings_s *)(p->p.settings->udata))[0] = *args;
   /* Set callbacks */
   p->p.settings->on_finish = http1_websocket_client_on_hangup;   /* unknown */
@@ -658,7 +661,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
                       void *unread_data, size_t unread_length) {
   if (unread_data && unread_length > HTTP1_READ_BUFFER)
     return NULL;
-  http1pr_s *p = malloc(sizeof(*p) + HTTP1_READ_BUFFER);
+  http1pr_s *p = fio_malloc(sizeof(*p) + HTTP1_READ_BUFFER);
   HTTP_ASSERT(p, "HTTP/1.1 protocol allocation failed");
   *p = (http1pr_s){
       .p.protocol =
@@ -687,7 +690,7 @@ void http1_destroy(protocol_s *pr) {
   http1pr_s *p = (http1pr_s *)pr;
   http1_pr2handle(p).status = 0;
   http_s_destroy(&http1_pr2handle(p), 0);
-  free(p);
+  fio_free(p);
 }
 
 /* *****************************************************************************

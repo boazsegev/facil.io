@@ -11,6 +11,9 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 
 #include "fio_ary.h"
 
+#define FIO_OVERRIDE_MALLOC 1
+#include "fio_mem.h"
+
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>

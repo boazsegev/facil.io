@@ -22,6 +22,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <string.h>
 #include <strings.h>
 
+#include "fio_mem.h"
+
 #include "websocket_parser.h"
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
@@ -373,7 +375,8 @@ void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
 /*******************************************************************************
 Writing to the Websocket
 */
-#define WS_MAX_FRAME_SIZE 65532 // should be less then `unsigned short`
+#define WS_MAX_FRAME_SIZE                                                      \
+  (FIO_MEMORY_BLOCK_ALLOC_LIMIT - 4096) // should be less then `unsigned short`
 
 // clang-format off
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
@@ -408,12 +411,12 @@ Writing to the Websocket
 static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
                                  char first, char last, char client) {
   if (len <= WS_MAX_FRAME_SIZE) {
-    void *buff = malloc(len + 16);
+    void *buff = fio_malloc(len + 16);
     len = (client ? websocket_client_wrap(buff, data, len, (text ? 1 : 2),
                                           first, last, 0)
                   : websocket_server_wrap(buff, data, len, (text ? 1 : 2),
                                           first, last, 0));
-    sock_write2(.uuid = fd, .buffer = buff, .length = len);
+    sock_write2(.uuid = fd, .buffer = buff, .length = len, .dealloc = fio_free);
   } else {
     /* frame fragmentation is better for large data then large frames */
     while (len > WS_MAX_FRAME_SIZE) {

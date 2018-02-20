@@ -29,6 +29,9 @@ License: MIT
 #include <string.h>
 #include <sys/stat.h>
 
+#define FIO_OVERRIDE_MALLOC 1
+#include "fio_mem.h"
+
 #ifndef PATH_MAX
 #define PATH_MAX PAGE_SIZE
 #endif

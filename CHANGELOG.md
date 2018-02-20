@@ -8,7 +8,7 @@ Coming Soon...
 
 ### Ver. 0.6.0.beta.8
 
-**Update**: Moving towards a custom memory allocator (`fio_mem.h`) optimized for small concurrent short-lived allocations (anything over 16Kb and reallocations start to take a toll). It can replace the system's `malloc` function family when `FIO_OVERRIDE_MALLOC` is defined. To use tcmalloc or jemalloc, define `FIO_FORCE_MALLOC` to prevent `fio_mem` from compiling.
+**Update**: Added an experimental custom memory allocator (`fio_mem.h`) optimized for small concurrent short-lived allocations (anything over 16Kb and reallocations start to take a toll). It can replace the system's `malloc` function family when `FIO_OVERRIDE_MALLOC` is defined. To use tcmalloc or jemalloc, define `FIO_FORCE_MALLOC` to prevent `fio_mem` from compiling.
 
 ### Ver. 0.6.0.beta.7
 
