@@ -100,8 +100,8 @@ static fio_cstr_s fio_str2str(const FIOBJ o) { return fiobj_str_get_cstr(o); }
 
 static void fiobj_str_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
   if (obj2str(o)->is_small == 0 && obj2str(o)->capa)
-    free(obj2str(o)->str);
-  free(FIOBJ2PTR(o));
+    fio_free(obj2str(o)->str);
+  fio_free(FIOBJ2PTR(o));
   (void)task;
   (void)arg;
 }
@@ -148,7 +148,7 @@ FIOBJ fiobj_str_buf(size_t capa) {
   else
     capa = PAGE_SIZE;
 
-  fiobj_str_s *s = malloc(sizeof(*s));
+  fiobj_str_s *s = fio_malloc(sizeof(*s));
   if (!s) {
     perror("ERROR: fiobj string couldn't allocate memory");
     exit(errno);
@@ -171,7 +171,7 @@ FIOBJ fiobj_str_buf(size_t capa) {
             },
         .len = 0,
         .capa = capa,
-        .str = malloc(capa),
+        .str = fio_malloc(capa),
     };
     if (!s->str) {
       perror("ERROR: fiobj string couldn't allocate buffer memory");
@@ -197,7 +197,7 @@ FIOBJ fiobj_str_new(const char *str, size_t len) {
  * object, so `free` will be called by the `fiobj` library as needed.
  */
 FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity) {
-  fiobj_str_s *s = malloc(sizeof(*s));
+  fiobj_str_s *s = fio_malloc(sizeof(*s));
   if (!s) {
     perror("ERROR: fiobj string couldn't allocate memory");
     exit(errno);
@@ -230,7 +230,7 @@ FIOBJ fiobj_str_static(const char *str, size_t len) {
   if (len < STR_INTENAL_CAPA)
     return fiobj_str_new(str, len);
 #endif
-  fiobj_str_s *s = malloc(sizeof(*s));
+  fiobj_str_s *s = fio_malloc(sizeof(*s));
   if (!s) {
     perror("ERROR: fiobj string couldn't allocate memory");
     exit(errno);
@@ -366,7 +366,7 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
       return STR_INTENAL_CAPA;
     if (size >> 12)
       size = ((size >> 12) + 1) << 12;
-    char *mem = malloc(size);
+    char *mem = fio_malloc(size);
     if (!mem) {
       perror("FATAL ERROR: Couldn't allocate larger String memory");
       exit(errno);
@@ -394,7 +394,7 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
 
   if (obj2str(str)->capa == 0) {
     /* a static string */
-    char *mem = malloc(size);
+    char *mem = fio_malloc(size);
     if (!mem) {
       perror("FATAL ERROR: Couldn't allocate new String memory");
       exit(errno);
@@ -403,7 +403,8 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
     obj2str(str)->str = mem;
   } else {
     /* it's better to crash than live without memory... */
-    obj2str(str)->str = realloc(obj2str(str)->str, size);
+    obj2str(str)->str =
+        fio_realloc2(obj2str(str)->str, obj2str(str)->len + 1, size);
     if (!obj2str(str)->str) {
       perror("FATAL ERROR: Couldn't (re)allocate String memory");
       exit(errno);
@@ -436,8 +437,10 @@ void fiobj_str_minimize(FIOBJ str) {
   assert(FIOBJ_TYPE_IS(str, FIOBJ_T_STRING));
   if (obj2str(str)->frozen || obj2str(str)->is_small || obj2str(str)->capa == 0)
     return;
+  const size_t old_size = obj2str(str)->capa;
   obj2str(str)->capa = obj2str(str)->len + 1;
-  obj2str(str)->str = realloc(obj2str(str)->str, obj2str(str)->capa);
+  obj2str(str)->str =
+      fio_realloc2(obj2str(str)->str, old_size, obj2str(str)->capa);
   return;
 }
 
