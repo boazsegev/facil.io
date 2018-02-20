@@ -276,7 +276,8 @@ static inline void *block_slice(uint16_t units) {
   spn_add(&blk->ref, 1);
   blk->pos += units;
   if (blk->pos >= blk->max) {
-    /* block was fully utilized, clear arena */
+    /* it's true that a 16 bytes slice remains, but statistically... */
+    /* ... the block was fully utilized, clear arena */
     block_free(blk);
     arena_last_used->block = NULL;
   }
@@ -330,11 +331,11 @@ static void __attribute__((constructor)) fio_mem_init(void) {
   ssize_t cpu_count = 8; /* fallback */
 #endif
   memory.cores = cpu_count;
-  const uintptr_t arenas_block_size =
-      sizeof(uintptr_t) + (sys_round_size(sizeof(*arenas) * cpu_count));
-  uintptr_t *arenas_block = sys_alloc(arenas_block_size, 0);
-  *arenas_block = arenas_block_size;
-  arenas = (void *)(arenas_block + 1);
+  arenas = big_alloc(sizeof(*arenas) * cpu_count);
+  if (!arenas) {
+    perror("FATAL ERROR: Couldn't initialize memory allocator");
+    exit(errno);
+  }
   arena_s *arena = arenas;
   for (size_t i = 0; i < memory.cores; ++i) {
     arena->block = block_new();
@@ -357,9 +358,7 @@ static void __attribute__((destructor)) fio_mem_destroy(void) {
   while ((b = (void *)fio_ls_embd_pop(&memory.available))) {
     sys_free(b, MEMORY_BLOCK_SIZE);
   }
-  uintptr_t *arenas_block = (void *)arenas;
-  --arenas_block;
-  sys_free(arenas_block, *arenas_block);
+  big_free(arenas);
   arenas = NULL;
 }
 
@@ -461,6 +460,7 @@ void fio_malloc_test(void) {
 
   fprintf(stderr, "=== Testing facil.io memory allocator's system calls\n");
   char *mem = sys_alloc(MEMORY_BLOCK_SIZE, 0);
+  TEST_ASSERT(mem, "sys_alloc failed to allocate memory!\n");
   TEST_ASSERT(!((uintptr_t)mem & MEMORY_BLOCK_MASK),
               "Memory allocation not aligned to MEMORY_BLOCK_SIZE!");
   mem[0] = 'a';
@@ -502,7 +502,8 @@ void fio_malloc_test(void) {
   fprintf(stderr,
           "* Performed %zu allocations out of expected %zu allocations per "
           "block.\n",
-          count, (size_t)((MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4)));
+          count,
+          (size_t)((MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4) - 1));
   TEST_ASSERT(fio_ls_embd_any(&memory.available),
               "memory pool empty (memory block wasn't freed)!\n");
   TEST_ASSERT(memory.count, "memory.count == 0 (memory block not counted)!\n");

@@ -5,6 +5,7 @@
 
 #define TEST_CYCLES_START 1
 #define TEST_CYCLES_END 256
+#define REPEAT_LIB_TEST 0
 
 static size_t test_mem_functions(void *(*malloc_func)(size_t),
                                  void *(*calloc_func)(size_t, size_t),
@@ -98,10 +99,22 @@ int main(void) {
   fprintf(stderr, "\n=== WARNING: performance tests using the DEBUG mode are "
                   "invalid. \n");
 #endif
-  fprintf(stderr, "===== Testing system memory allocator (please wait):\n");
+  fprintf(stderr,
+          "===== Performance Testing system memory allocator (please wait):\n");
   size_t system = test_mem_functions(malloc, calloc, realloc, free);
-  fprintf(stderr, "\n===== Testing facil.io memory allocator (please wait):\n");
+  fprintf(
+      stderr,
+      "\n===== Performance Testing facil.io memory allocator (please wait):\n");
   size_t fio =
       test_mem_functions(fio_malloc, fio_calloc, fio_realloc, fio_free);
+
+  if (REPEAT_LIB_TEST) {
+    fprintf(stderr, "\n===== Testing facil.io memory allocator %zu times\n",
+            (size_t)REPEAT_LIB_TEST);
+    for (size_t i = 0; i < REPEAT_LIB_TEST; ++i) {
+      fio_malloc_test();
+    }
+  }
+
   return fio > system;
 }
