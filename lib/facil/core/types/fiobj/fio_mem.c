@@ -158,7 +158,7 @@ typedef struct {
 static struct {
   size_t active_size;      /* active array size */
   fio_ls_embd_s available; /* free list for memory blocks */
-  size_t count;            /* free list counter */
+  intptr_t count;          /* free list counter */
   size_t cores;            /* the number of detected CPU cores*/
   spn_lock_i lock;         /* a global lock */
 } memory = {
@@ -226,7 +226,7 @@ static inline void block_free(block_s *blk) {
     return;
 
   if (spn_add(&memory.count, 1) >
-      (FIO_MEM_MAX_BLOCKS_PER_CORE * memory.cores)) {
+      (intptr_t)(FIO_MEM_MAX_BLOCKS_PER_CORE * memory.cores)) {
     /* TODO: return memory to the system */
     spn_sub(&memory.count, 1);
     sys_free(blk, FIO_MEMORY_BLOCK_SIZE);
@@ -334,15 +334,17 @@ static void __attribute__((constructor)) fio_mem_init(void) {
   ssize_t cpu_count = 8; /* fallback */
 #endif
   memory.cores = cpu_count;
+  memory.count = 0 - (intptr_t)cpu_count;
   arenas = big_alloc(sizeof(*arenas) * cpu_count);
   if (!arenas) {
     perror("FATAL ERROR: Couldn't initialize memory allocator");
     exit(errno);
   }
-  arena_s *arena = arenas;
-  for (size_t i = 0; i < memory.cores; ++i) {
-    arena->block = block_new();
-    ++arena;
+  size_t pre_pool = cpu_count > 32 ? 32 : cpu_count;
+  for (size_t i = 0; i < pre_pool; ++i) {
+    void *block = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
+    if (block)
+      fio_ls_embd_push(&memory.available, block);
   }
 }
 
