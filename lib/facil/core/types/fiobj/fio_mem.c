@@ -105,7 +105,7 @@ static void sys_free(void *mem, size_t len) { munmap(mem, len); }
 
 static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
   if (new_len > prev_len) {
-#ifdef __linux__
+#if defined(__linux__) && defined(MREMAP_MAYMOVE)
     void *result = mremap(mem, prev_len, new_len, MREMAP_MAYMOVE);
     if (result == MAP_FAILED)
       return NULL;
@@ -127,7 +127,7 @@ static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
 #endif
     return result;
   }
-  if (prev_len + 4096 < new_len)
+  if (new_len + 4096 < prev_len) /* more than a single dangling page */
     munmap((void *)((uintptr_t)mem + new_len), prev_len - new_len);
   return mem;
 }
