@@ -98,10 +98,10 @@ void fio_malloc_test(void);
 
 /* allows local override as well as global override */
 #elif FIO_OVERRIDE_MALLOC
-#define malloc(size) fio_malloc((size))
-#define free(ptr) fio_free((ptr))
-#define realloc(ptr, size) fio_realloc((ptr), (size))
-#define calloc(size, count) fio_calloc(size, count)
+#define malloc fio_malloc
+#define free fio_free
+#define realloc fio_realloc
+#define calloc fio_calloc
 
 #endif
 
