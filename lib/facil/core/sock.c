@@ -31,7 +31,6 @@ Includes and state
 #include <sys/types.h>
 #include <sys/un.h>
 
-#define FIO_OVERRIDE_MALLOC 1
 #include "fio_mem.h"
 
 /* *****************************************************************************
@@ -142,7 +141,7 @@ static inline void sock_packet_free(packet_s *packet) {
       packet <= packet_pool.mem + (BUFFER_PACKET_POOL - 1)) {
     defer(sock_packet_free_attempt, packet, NULL);
   } else
-    free(packet);
+    fio_free(packet);
 }
 
 static inline packet_s *sock_packet_new(void) {
@@ -160,7 +159,7 @@ none_in_pool:
     goto init;
   spn_unlock(&packet_pool.lock);
 no_lock:
-  packet = malloc(sizeof(*packet));
+  packet = fio_malloc(sizeof(*packet));
   if (!packet) {
     perror("FATAL ERROR: memory allocation failed");
     exit(errno);
