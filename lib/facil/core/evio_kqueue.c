@@ -174,4 +174,16 @@ int evio_review(const int timeout_millisec) {
   return active_count;
 }
 
+#include <poll.h>
+
+/** Waits up to `timeout_millisec` for events. No events are signaled. */
+int evio_wait(const int timeout_millisec) {
+  if (evio_fd < 0)
+    return -1;
+  struct pollfd pollfd = {
+      .fd = evio_fd, .events = POLLIN,
+  };
+  return poll(&pollfd, 1, timeout_millisec);
+}
+
 #endif /* system dependent code */
