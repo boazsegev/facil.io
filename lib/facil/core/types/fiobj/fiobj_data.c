@@ -250,7 +250,7 @@ static inline int swallow_ch(uint8_t **buffer, register uint8_t *const limit,
   if (**buffer == c)
     return 1;
 
-#if !defined(__x86_64__)
+#if !ALLOW_UNALIGNED_MEMORY_ACCESS || !defined(__x86_64__)
   /* too short for this mess */
   if ((uintptr_t)limit <= 16 + ((uintptr_t)*buffer & (~(uintptr_t)7)))
     goto finish;

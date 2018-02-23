@@ -1811,7 +1811,9 @@ static const char *GMT_STR = "GMT";
 size_t http_date2str(char *target, struct tm *tmbuf) {
   char *pos = target;
   uint16_t tmp;
-  *(uint32_t *)pos = *((uint32_t *)DAY_NAMES[tmbuf->tm_wday]);
+  pos[0] = DAY_NAMES[tmbuf->tm_wday][0];
+  pos[1] = DAY_NAMES[tmbuf->tm_wday][1];
+  pos[2] = DAY_NAMES[tmbuf->tm_wday][2];
   pos[3] = ',';
   pos[4] = ' ';
   pos += 5;
@@ -1825,7 +1827,10 @@ size_t http_date2str(char *target, struct tm *tmbuf) {
     pos += 2;
   }
   *(pos++) = ' ';
-  *(uint32_t *)pos = *((uint32_t *)MONTH_NAMES[tmbuf->tm_mon]);
+  pos[0] = MONTH_NAMES[tmbuf->tm_mon][0];
+  pos[1] = MONTH_NAMES[tmbuf->tm_mon][1];
+  pos[2] = MONTH_NAMES[tmbuf->tm_mon][2];
+  pos[3] = ' ';
   pos += 4;
   // write year.
   pos += fio_ltoa(pos, tmbuf->tm_year + 1900, 10);
@@ -1843,7 +1848,10 @@ size_t http_date2str(char *target, struct tm *tmbuf) {
   pos[7] = '0' + (tmbuf->tm_sec - (tmp * 10));
   pos += 8;
   pos[0] = ' ';
-  *((uint32_t *)(pos + 1)) = *((uint32_t *)GMT_STR);
+  pos[1] = GMT_STR[0];
+  pos[2] = GMT_STR[1];
+  pos[3] = GMT_STR[2];
+  pos[4] = 0;
   pos += 4;
   return pos - target;
 }
@@ -1851,7 +1859,9 @@ size_t http_date2str(char *target, struct tm *tmbuf) {
 size_t http_date2rfc2822(char *target, struct tm *tmbuf) {
   char *pos = target;
   uint16_t tmp;
-  *(uint32_t *)pos = *((uint32_t *)DAY_NAMES[tmbuf->tm_wday]);
+  pos[0] = DAY_NAMES[tmbuf->tm_wday][0];
+  pos[1] = DAY_NAMES[tmbuf->tm_wday][1];
+  pos[2] = DAY_NAMES[tmbuf->tm_wday][2];
   pos[3] = ',';
   pos[4] = ' ';
   pos += 5;
@@ -1865,7 +1875,9 @@ size_t http_date2rfc2822(char *target, struct tm *tmbuf) {
     pos += 2;
   }
   *(pos++) = '-';
-  *(uint32_t *)pos = *((uint32_t *)MONTH_NAMES[tmbuf->tm_mon]);
+  pos[0] = MONTH_NAMES[tmbuf->tm_mon][0];
+  pos[1] = MONTH_NAMES[tmbuf->tm_mon][1];
+  pos[2] = MONTH_NAMES[tmbuf->tm_mon][2];
   pos += 3;
   *(pos++) = '-';
   // write year.
@@ -1884,7 +1896,10 @@ size_t http_date2rfc2822(char *target, struct tm *tmbuf) {
   pos[7] = '0' + (tmbuf->tm_sec - (tmp * 10));
   pos += 8;
   pos[0] = ' ';
-  *((uint32_t *)(pos + 1)) = *((uint32_t *)GMT_STR);
+  pos[1] = GMT_STR[0];
+  pos[2] = GMT_STR[1];
+  pos[3] = GMT_STR[2];
+  pos[4] = 0;
   pos += 4;
   return pos - target;
 }
@@ -1892,7 +1907,9 @@ size_t http_date2rfc2822(char *target, struct tm *tmbuf) {
 size_t http_date2rfc2109(char *target, struct tm *tmbuf) {
   char *pos = target;
   uint16_t tmp;
-  *(uint32_t *)pos = *((uint32_t *)DAY_NAMES[tmbuf->tm_wday]);
+  pos[0] = DAY_NAMES[tmbuf->tm_wday][0];
+  pos[1] = DAY_NAMES[tmbuf->tm_wday][1];
+  pos[2] = DAY_NAMES[tmbuf->tm_wday][2];
   pos[3] = ',';
   pos[4] = ' ';
   pos += 5;
@@ -1906,7 +1923,9 @@ size_t http_date2rfc2109(char *target, struct tm *tmbuf) {
     pos += 2;
   }
   *(pos++) = ' ';
-  *(uint32_t *)pos = *((uint32_t *)MONTH_NAMES[tmbuf->tm_mon]);
+  pos[0] = MONTH_NAMES[tmbuf->tm_mon][0];
+  pos[1] = MONTH_NAMES[tmbuf->tm_mon][1];
+  pos[2] = MONTH_NAMES[tmbuf->tm_mon][2];
   pos += 4;
   // write year.
   pos += fio_ltoa(pos, tmbuf->tm_year + 1900, 10);

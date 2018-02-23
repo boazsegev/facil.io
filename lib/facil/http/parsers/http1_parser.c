@@ -17,6 +17,10 @@ Feel free to copy, use and enjoy according to the license provided.
 Seeking for characters in a string
 ***************************************************************************** */
 
+#ifndef ALLOW_UNALIGNED_MEMORY_ACCESS
+#define ALLOW_UNALIGNED_MEMORY_ACCESS 0
+#endif
+
 #if FIO_MEMCHAR
 
 /**
@@ -33,7 +37,7 @@ static inline int seek2ch(uint8_t **buffer, register uint8_t *const limit,
     return 1;
   }
 
-#if !defined(__x86_64__)
+#if !ALLOW_UNALIGNED_MEMORY_ACCESS || !defined(__x86_64__)
   /* too short for this mess */
   if ((uintptr_t)limit <= 16 + ((uintptr_t)*buffer & (~(uintptr_t)7)))
     goto finish;
@@ -149,11 +153,13 @@ inline static int consume_request_line(struct http1_fio_parser_args_s *args,
   if (args->on_method(args->parser, (char *)start, tmp - start))
     return -1;
   tmp = start = tmp + 1;
-  if (((uint32_t *)start)[0] == (((uint32_t *)"http")[0])) {
-    if (((uint32_t *)(start + 3))[0] == (((uint32_t *)"p://")[0])) {
+  if (start[0] == 'h' && start[1] == 't' && start[2] == 't' &&
+      start[3] == 'p') {
+    if (start[4] == ':' && start[5] == '/' && start[6] == '/') {
       /* Request URI is in long form... emulate Host header instead. */
       tmp = host_end = host_start = (start += 7);
-    } else if (((uint64_t *)start)[0] == (((uint64_t *)"https://")[0])) {
+    } else if (start[4] == 's' && start[5] == ':' && start[6] == '/' &&
+               start[7] == '/') {
       /* Secure request is in long form... emulate Host header instead. */
       tmp = host_end = host_start = (start += 8);
     } else
@@ -193,6 +199,7 @@ start_version:
     return -1;
   if (args->on_http_version(args->parser, (char *)start, end - start))
     return -1;
+  /* */
   if (host_start && args->on_header(args->parser, "host", 4, (char *)host_start,
                                     host_end - host_start))
     return -1;
@@ -214,7 +221,8 @@ inline static int consume_header(struct http1_fio_parser_args_s *args,
   if (start_value[0] == ' ') {
     start_value++;
   };
-#if HTTP_HEADERS_LOWERCASE
+#if ALLOW_UNALIGNED_MEMORY_ACCESS && HTTP_HEADERS_LOWERCASE
+  /* enable this section to test unaligned memory access */
   if ((end_name - start) == 14 &&
       *((uint64_t *)start) == *((uint64_t *)"content-") &&
       *((uint64_t *)(start + 6)) == *((uint64_t *)"t-length")) {

@@ -174,7 +174,7 @@ static inline int seek2marker(uint8_t **buffer,
   if (string_seek_stop[**buffer])
     return 1;
 
-#if !__x86_64__ && !__aarch64__
+#if !ALLOW_UNALIGNED_MEMORY_ACCESS || (!__x86_64__ && !__aarch64__)
   /* too short for this mess */
   if ((uintptr_t)limit <= 8 + ((uintptr_t)*buffer & (~(uintptr_t)7)))
     goto finish;
@@ -210,7 +210,7 @@ static inline int seek2marker(uint8_t **buffer,
       break;
     }
   }
-#if !__x86_64__ && !__aarch64__
+#if !ALLOW_UNALIGNED_MEMORY_ACCESS || (!__x86_64__ && !__aarch64__)
 finish:
 #endif
   if (*buffer + 4 <= limit) {
