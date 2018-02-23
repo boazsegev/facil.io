@@ -569,7 +569,7 @@ static const char *HTTP1_SERVICE_STR = "http1_protocol_facil_io";
 static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
   ssize_t i = 0;
   size_t org_len = p->buf_len;
-  int pipeline_limit = 4;
+  int pipeline_limit = 8;
   do {
     i = http1_fio_parser(.parser = &p->parser,
                          .buffer = p->buf + (org_len - p->buf_len),
