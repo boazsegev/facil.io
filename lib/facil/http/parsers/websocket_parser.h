@@ -148,20 +148,6 @@ void websocket_xmask(void *msg, uint64_t len, uint32_t mask) {
   if (len > 7) {
     { /* XOR any unaligned memory (4 byte alignment) */
       const uintptr_t offset = 4 - ((uintptr_t)msg & 3);
-      // switch (offset) {
-      // case 3:
-      //   ((uint8_t *)msg)[2] ^= ((uint8_t *)(&mask))[2];
-      // /* fallthrough */
-      // case 2:
-      //   ((uint8_t *)msg)[1] ^= ((uint8_t *)(&mask))[1];
-      // /* fallthrough */
-      // case 1:
-      //   ((uint8_t *)msg)[0] ^= ((uint8_t *)(&mask))[0];
-      //   /* rotate mask and move pointer to first 4 byte alignment */
-      //   mask = (mask << (offset << 3)) | (mask >> ((4 - offset) << 3));
-      //   msg = (void *)((uintptr_t)msg + offset);
-      //   len -= offset;
-      // }
       switch (offset) {
       case 3:
         ((uint8_t *)msg)[2] ^= ((uint8_t *)(&mask))[2];
@@ -462,8 +448,9 @@ Message unwrapping
 inline static struct websocket_packet_info_s
 websocket_buffer_peek(void *buffer, uint64_t len) {
   if (len < 2) {
-    return (struct websocket_packet_info_s){0 /* packet */, 2 /* head */,
-                                            0 /* masked? */};
+    const struct websocket_packet_info_s info = {0 /* packet */, 2 /* head */,
+                                                 0 /* masked? */};
+    return info;
   }
   const uint8_t mask_f = (((uint8_t *)buffer)[1] >> 7) & 1;
   const uint8_t mask_l = (mask_f << 2);
