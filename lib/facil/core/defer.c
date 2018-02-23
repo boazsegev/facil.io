@@ -20,10 +20,10 @@ Compile time settings
 ***************************************************************************** */
 
 #ifndef DEFER_THROTTLE
-#define DEFER_THROTTLE 524287UL
+#define DEFER_THROTTLE 1048574UL
 #endif
 #ifndef DEFER_THROTTLE_LIMIT
-#define DEFER_THROTTLE_LIMIT 1572864UL
+#define DEFER_THROTTLE_LIMIT 2097148UL
 #endif
 
 #ifndef DEFER_QUEUE_BLOCK_COUNT
@@ -308,6 +308,8 @@ void defer_thread_wait(pool_pt pool, void *p_thr) {
   size_t throttle = (pool->count) * DEFER_THROTTLE;
   if (!throttle || throttle > DEFER_THROTTLE_LIMIT)
     throttle = DEFER_THROTTLE_LIMIT;
+  if (throttle == DEFER_THROTTLE)
+    throttle <<= 1;
   throttle_thread(throttle);
   (void)p_thr;
 }
