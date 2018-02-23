@@ -149,28 +149,32 @@ postpone:
   (void)arg2;
 }
 
-static void deferred_on_data(void *arg, void *arg2) {
-  if (!uuid_data(arg).protocol) {
+static void deferred_on_data(void *uuid, void *arg2) {
+  if (!uuid_data(uuid).protocol) {
     return;
   }
-  protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_TASK);
+  protocol_s *pr = protocol_try_lock(sock_uuid2fd(uuid), FIO_PR_LOCK_TASK);
   if (!pr) {
     if (errno == EBADF)
       return;
     goto postpone;
   }
-  spn_unlock(&uuid_data(arg).scheduled);
-  pr->on_data((intptr_t)arg, pr);
+  spn_unlock(&uuid_data(uuid).scheduled);
+  pr->on_data((intptr_t)uuid, pr);
   protocol_unlock(pr, FIO_PR_LOCK_TASK);
-  if (!spn_trylock(&uuid_data(arg).scheduled)) {
-    evio_add_read(sock_uuid2fd((intptr_t)arg), arg);
+  if (!spn_trylock(&uuid_data(uuid).scheduled)) {
+    evio_add_read(sock_uuid2fd((intptr_t)uuid), uuid);
   }
-  // else
-  //   fprintf(stderr, "skipped evio_add\n");
   return;
 postpone:
-  defer(deferred_on_data, arg, NULL);
-  (void)arg2;
+  if (arg2) {
+    /* the event is being forced, so force rescheduling */
+    defer(deferred_on_data, (void *)uuid, (void *)1);
+  } else {
+    /* the protocol was locked, so there might not be any need for the event */
+    evio_add_read(sock_uuid2fd((intptr_t)uuid), uuid);
+  }
+  return;
 }
 
 static void deferred_ping(void *arg, void *arg2) {
@@ -215,7 +219,7 @@ void facil_force_event(intptr_t uuid, enum facil_io_event ev) {
   switch (ev) {
   case FIO_EVENT_ON_DATA:
     spn_trylock(&uuid_data(uuid).scheduled);
-    evio_on_data((void *)uuid);
+    defer(deferred_on_data, (void *)uuid, (void *)1);
     break;
   case FIO_EVENT_ON_TIMEOUT:
     defer(deferred_ping, (void *)uuid, NULL);
@@ -1348,8 +1352,9 @@ static void facil_cycle(void *arg, void *ignr) {
     if (events < 0) {
       goto error;
     }
-    if (events > 0)
+    if (events > 0) {
       idle = 1;
+    }
   } else {
     events = evio_review(512);
     if (events < 0)
@@ -1377,6 +1382,15 @@ error:
     defer(facil_cycle, arg, ignr);
   (void)1;
 }
+
+/** use evio_review instead of micro sleeping */
+// void defer_thread_wait(pool_pt pool, void *p_thr) {
+//   evio_wait(2000);
+//   if (!defer_has_queue())
+//     throttle_thread(1UL);
+//   (void)p_thr;
+//   (void)pool;
+// }
 
 /**
 OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
