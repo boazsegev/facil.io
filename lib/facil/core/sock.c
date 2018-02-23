@@ -135,8 +135,14 @@ static void sock_packet_free_attempt(void *packet_, void *ignr) {
 }
 
 static inline void sock_packet_free(packet_s *packet) {
-  defer(sock_packet_free_cb, (void *)((uintptr_t)packet->free_func),
-        packet->buffer);
+  if (packet->free_func == fio_free) {
+    fio_free(packet->buffer);
+  } else if (packet->free_func == free) {
+    free(packet->buffer);
+  } else {
+    defer(sock_packet_free_cb, (void *)((uintptr_t)packet->free_func),
+          packet->buffer);
+  }
   if (packet >= packet_pool.mem &&
       packet <= packet_pool.mem + (BUFFER_PACKET_POOL - 1)) {
     defer(sock_packet_free_attempt, packet, NULL);
