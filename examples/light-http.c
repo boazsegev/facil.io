@@ -29,17 +29,13 @@ fast (and sometimes faster) when serving static files.
 /* include the core library, without any extensions */
 #include "facil.h"
 
+#define FIO_OVERRIDE_MALLOC 1
+#include "fio_mem.h"
+
 #include "fio_cli.h"
 #include "fiobj.h"
+#include "http.h" /* for date/time helper */
 #include "http1_parser.h"
-
-/* a simple HTTP/1.1 response */
-static char HTTP_RESPONSE[] = "HTTP/1.1 200 OK\r\n"
-                              "Content-Length: 14\r\n"
-                              "Connection: keep-alive\r\n"
-                              "Content-Type: text/plain\r\n"
-                              "\r\n"
-                              "A Quick Hello!";
 
 /* our header buffer size */
 #define MAX_HTTP_HEADER_LENGTH 16384
@@ -76,15 +72,33 @@ typedef struct {
   ((fast_http_s *)((uintptr_t)(parser) -                                       \
                    (uintptr_t)(&((fast_http_s *)(0))->parser)))
 
+void fast_http_send_response(intptr_t uuid, int status, fio_cstr_s status_str,
+                             size_t header_count, fio_cstr_s headers[][2],
+                             fio_cstr_s body);
 /* *****************************************************************************
 The HTTP/1.1 Request Handler - change this to whateve you feel like.
 ***************************************************************************** */
 
 int on_http_request(fast_http_s *http) {
   /* handle a request for `http->path` */
-  sock_write2(.uuid = http->uuid, .buffer = HTTP_RESPONSE,
-              .length = sizeof(HTTP_RESPONSE) - 1,
-              .dealloc = SOCK_DEALLOC_NOOP);
+  if (1) {
+    /* a simple HTTP/1.1 response */
+    static char HTTP_RESPONSE[] = "HTTP/1.1 200 OK\r\n"
+                                  "Content-Length: 13\r\n"
+                                  "Connection: keep-alive\r\n"
+                                  "Content-Type: text/plain\r\n"
+                                  "\r\n"
+                                  "Hello Wolrld!";
+    sock_write2(.uuid = http->uuid, .buffer = HTTP_RESPONSE,
+                .length = sizeof(HTTP_RESPONSE) - 1,
+                .dealloc = SOCK_DEALLOC_NOOP);
+  } else {
+    fast_http_send_response(
+        http->uuid, 200, (fio_cstr_s){.len = 2, .data = "OK"}, 1,
+        (fio_cstr_s[][2]){{{.len = 12, .data = "Content-Type"},
+                           {.len = 10, .data = "text/plain"}}},
+        (fio_cstr_s){.len = 13, .data = "Hello Wolrld!"});
+  }
   return 0;
 }
 
@@ -307,4 +321,63 @@ void fast_http_on_close(intptr_t uuid, protocol_s *pr) {
   /* free our protocol data and resources */
   free(pr);
   (void)uuid;
+}
+
+/* *****************************************************************************
+Fast HTTP response handling
+***************************************************************************** */
+
+void fast_http_send_response(intptr_t uuid, int status, fio_cstr_s status_str,
+                             size_t header_count, fio_cstr_s headers[][2],
+                             fio_cstr_s body) {
+  static size_t date_len = 0;
+  char tmp[40];
+  if (!date_len) {
+    date_len = http_time2str(tmp, facil_last_tick().tv_sec);
+  }
+
+  size_t content_length_len = fio_ltoa(tmp, body.len, 10);
+  size_t total_len = 9 + 4 + 15 + content_length_len + 2 + status_str.len + 2 +
+                     date_len + 7 + 2 + body.len;
+  for (size_t i = 0; i < header_count; ++i) {
+    total_len += headers[i][0].len + 1 + headers[i][1].len + 2;
+  }
+  if (status < 100 || status > 999)
+    status = 500;
+  char *response = malloc(total_len);
+  memcpy(response, "HTTP/1.1 ", 9);
+  fio_ltoa(response + 9, status, 10);
+  char *pos = response + 9 + 3;
+  *pos++ = ' ';
+  memcpy(pos, status_str.data, status_str.len);
+  pos += status_str.len;
+  *pos++ = '\r';
+  *pos++ = '\n';
+  memcpy(pos, "Date:", 5);
+  pos += 5;
+  pos += http_time2str(pos, facil_last_tick().tv_sec);
+  *pos++ = '\r';
+  *pos++ = '\n';
+  memcpy(pos, "Content-Length:", 15);
+  pos += 15;
+  memcpy(pos, tmp, content_length_len);
+  pos += content_length_len;
+  *pos++ = '\r';
+  *pos++ = '\n';
+
+  for (size_t i = 0; i < header_count; ++i) {
+    memcpy(pos, headers[i][0].data, headers[i][0].len);
+    pos += headers[i][0].len;
+    *pos++ = ':';
+    memcpy(pos, headers[i][1].data, headers[i][1].len);
+    pos += headers[i][1].len;
+    *pos++ = '\r';
+    *pos++ = '\n';
+  }
+  *pos++ = '\r';
+  *pos++ = '\n';
+  if (body.data)
+    memcpy(pos, body.data, body.len);
+  sock_write2(.uuid = uuid, .buffer = response, .length = total_len,
+              .dealloc = free);
 }
