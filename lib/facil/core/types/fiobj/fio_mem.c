@@ -29,29 +29,78 @@ Feel free to copy, use and enjoy according to the license provided.
 Memory Copying by 16 byte units
 ***************************************************************************** */
 
-#if __SIZEOF_INT128__
+#if __SIZEOF_INT128__ == 9 /* a 128bit type exists... but tests favor 64bit */
 static inline void fio_memcpy(__uint128_t *__restrict dest,
                               __uint128_t *__restrict src, size_t units) {
-  while (units) {
-    dest[0] = src[0];
-    dest += 1;
-    src += 1;
-    units -= 1;
-  }
-}
-#else
-static inline void fio_memcpy(uint64_t *__restrict dest,
-                              uint64_t *__restrict src, size_t units) {
-  while (units) {
-    dest[0] = src[0];
-    dest[1] = src[1];
-    dest += 2;
-    src += 2;
-    units -= 1;
-  }
-}
-
+  const uint8_t q = 1;
+#elif SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
+static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
+                              size_t units) {
+  const uint8_t q = 2;
+#elif SIZE_MAX == 0xFFFFFFFF         /* 32 bit size_t */
+static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
+                              size_t units) {
+  const uint8_t q = 4;
+#else                                /* unknow... assume 16 bit? */
+static inline void fio_memcpy(uint16_t *__restrict dest,
+                              uint16_t *__restrict src, size_t units) {
+  const uint8_t q = 8;
 #endif
+  while (units) {
+    switch (units) { /* unroll loop */
+    default:
+      dest[0] = src[0];
+      dest[1] = src[1];
+      dest[2] = src[2];
+      dest[3] = src[3];
+      dest[4] = src[4];
+      dest[5] = src[5];
+      dest[6] = src[6];
+      dest[7] = src[7];
+      dest[8] = src[8];
+      dest[9] = src[9];
+      dest[10] = src[10];
+      dest[11] = src[11];
+      dest[12] = src[12];
+      dest[13] = src[13];
+      dest[14] = src[14];
+      dest[15] = src[15];
+      units -= (16 / q);
+      break;
+    case 15: /* fallthrough */
+      *(dest++) = *(src++);
+    case 14: /* fallthrough */
+      *(dest++) = *(src++);
+    case 13: /* fallthrough */
+      *(dest++) = *(src++);
+    case 12: /* fallthrough */
+      *(dest++) = *(src++);
+    case 11: /* fallthrough */
+      *(dest++) = *(src++);
+    case 10: /* fallthrough */
+      *(dest++) = *(src++);
+    case 9: /* fallthrough */
+      *(dest++) = *(src++);
+    case 8: /* fallthrough */
+      *(dest++) = *(src++);
+    case 7: /* fallthrough */
+      *(dest++) = *(src++);
+    case 6: /* fallthrough */
+      *(dest++) = *(src++);
+    case 5: /* fallthrough */
+      *(dest++) = *(src++);
+    case 4: /* fallthrough */
+      *(dest++) = *(src++);
+    case 3: /* fallthrough */
+      *(dest++) = *(src++);
+    case 2: /* fallthrough */
+      *(dest++) = *(src++);
+    case 1: /* fallthrough */
+      *(dest++) = *(src++);
+      units = 0;
+    }
+  }
+}
 
 /* *****************************************************************************
 System Memory wrappers

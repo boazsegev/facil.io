@@ -121,7 +121,7 @@ void fio_malloc_test(void);
 #define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1) /* 0b111... */
 #endif
 #ifndef FIO_MEMORY_BLOCK_SLICES
-#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16b slices */
+#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B slices */
 #endif
 #ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
 /* defaults to 37.5% of the block */
