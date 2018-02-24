@@ -8,7 +8,11 @@ Coming Soon...
 
 ### Ver. 0.6.0.beta.8
 
-**Update**: Added an experimental custom memory allocator (`fio_mem.h`) optimized for small concurrent short-lived allocations (anything over 16Kb and reallocations start to take a toll). It can replace the system's `malloc` function family when `FIO_OVERRIDE_MALLOC` is defined. To use tcmalloc or jemalloc, define `FIO_FORCE_MALLOC` to prevent `fio_mem` from compiling.
+**Fix**: (`defer`) the `defer_free_thread` symbol is now correctly marked as weak, allowing the function to be overridden.
+
+**Update**: Added an experimental custom memory allocator (`fio_mem.h`) optimized for small concurrent short-lived allocations (anything over 16Kb and reallocations start to take a toll). It can replace the system's `malloc` function family when `FIO_OVERRIDE_MALLOC` is defined. To use `tcmalloc` or `jemalloc`, define `FIO_FORCE_MALLOC` to prevent `fio_mem` from compiling.
+
+**Update**: minor optimizations, `fio_malloc` incorporation and documentation updates.
 
 ### Ver. 0.6.0.beta.7
 
