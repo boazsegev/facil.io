@@ -45,62 +45,59 @@ static inline void fio_memcpy(uint16_t *__restrict dest,
                               uint16_t *__restrict src, size_t units) {
   units = units << 3;
 #endif
-  while (units) {
-    switch (units) { /* unroll loop */
-    default:
-      dest[0] = src[0];
-      dest[1] = src[1];
-      dest[2] = src[2];
-      dest[3] = src[3];
-      dest[4] = src[4];
-      dest[5] = src[5];
-      dest[6] = src[6];
-      dest[7] = src[7];
-      dest[8] = src[8];
-      dest[9] = src[9];
-      dest[10] = src[10];
-      dest[11] = src[11];
-      dest[12] = src[12];
-      dest[13] = src[13];
-      dest[14] = src[14];
-      dest[15] = src[15];
-      dest += 16;
-      src += 16;
-      units -= 16;
-      break;
-    case 15:
-      *(dest++) = *(src++); /* fallthrough */
-    case 14:
-      *(dest++) = *(src++); /* fallthrough */
-    case 13:
-      *(dest++) = *(src++); /* fallthrough */
-    case 12:
-      *(dest++) = *(src++); /* fallthrough */
-    case 11:
-      *(dest++) = *(src++); /* fallthrough */
-    case 10:
-      *(dest++) = *(src++); /* fallthrough */
-    case 9:
-      *(dest++) = *(src++); /* fallthrough */
-    case 8:
-      *(dest++) = *(src++); /* fallthrough */
-    case 7:
-      *(dest++) = *(src++); /* fallthrough */
-    case 6:
-      *(dest++) = *(src++); /* fallthrough */
-    case 5:
-      *(dest++) = *(src++); /* fallthrough */
-    case 4:
-      *(dest++) = *(src++); /* fallthrough */
-    case 3:
-      *(dest++) = *(src++); /* fallthrough */
-    case 2:
-      *(dest++) = *(src++); /* fallthrough */
-    case 1:
-      *(dest++) = *(src++);
-      units = 0;
-      break;
-    }
+  while (units >= 16) { /* unroll loop */
+    dest[0] = src[0];
+    dest[1] = src[1];
+    dest[2] = src[2];
+    dest[3] = src[3];
+    dest[4] = src[4];
+    dest[5] = src[5];
+    dest[6] = src[6];
+    dest[7] = src[7];
+    dest[8] = src[8];
+    dest[9] = src[9];
+    dest[10] = src[10];
+    dest[11] = src[11];
+    dest[12] = src[12];
+    dest[13] = src[13];
+    dest[14] = src[14];
+    dest[15] = src[15];
+    dest += 16;
+    src += 16;
+    units -= 16;
+  }
+  switch (units) {
+  case 15:
+    *(dest++) = *(src++); /* fallthrough */
+  case 14:
+    *(dest++) = *(src++); /* fallthrough */
+  case 13:
+    *(dest++) = *(src++); /* fallthrough */
+  case 12:
+    *(dest++) = *(src++); /* fallthrough */
+  case 11:
+    *(dest++) = *(src++); /* fallthrough */
+  case 10:
+    *(dest++) = *(src++); /* fallthrough */
+  case 9:
+    *(dest++) = *(src++); /* fallthrough */
+  case 8:
+    *(dest++) = *(src++); /* fallthrough */
+  case 7:
+    *(dest++) = *(src++); /* fallthrough */
+  case 6:
+    *(dest++) = *(src++); /* fallthrough */
+  case 5:
+    *(dest++) = *(src++); /* fallthrough */
+  case 4:
+    *(dest++) = *(src++); /* fallthrough */
+  case 3:
+    *(dest++) = *(src++); /* fallthrough */
+  case 2:
+    *(dest++) = *(src++); /* fallthrough */
+  case 1:
+    *(dest++) = *(src++);
+    units = 0;
   }
 }
 
@@ -483,7 +480,7 @@ void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length) {
 void *fio_realloc(void *ptr, size_t new_size) {
   const size_t max_old =
       FIO_MEMORY_BLOCK_SIZE - ((uintptr_t)ptr & FIO_MEMORY_BLOCK_MASK);
-  return fio_realloc2(ptr, max_old, new_size);
+  return fio_realloc2(ptr, new_size, max_old);
 }
 
 /* *****************************************************************************
