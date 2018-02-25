@@ -156,6 +156,8 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
       cookie.value_len >= 131072)
     return -1;
 
+  static int warn_illegal = 0;
+
   /* write name and value while auto-correcting encoding issues */
   size_t capa = cookie.name_len + cookie.value_len + 128;
   size_t len = 0;
@@ -166,10 +168,13 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
       size_t tmp = 0;
       while (tmp < cookie.name_len) {
         if (invalid_cookie_name_char[(uint8_t)cookie.name[tmp]]) {
-          fprintf(stderr,
-                  "WARNING: illigal char 0x%.2x in cookie name (in %s)\n"
-                  "         automatic %% encoding applied\n",
-                  cookie.name[tmp], cookie.name);
+          if (!warn_illegal) {
+            ++warn_illegal;
+            fprintf(stderr,
+                    "WARNING: illegal char 0x%.2x in cookie name (in %s)\n"
+                    "         automatic %% encoding applied\n",
+                    cookie.name[tmp], cookie.name);
+          }
           t.data[len++] = '%';
           t.data[len++] = hex_chars[(cookie.name[tmp] >> 4) & 0x0F];
           t.data[len++] = hex_chars[cookie.name[tmp] & 0x0F];
@@ -187,10 +192,13 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
       size_t tmp = 0;
       while (cookie.name[tmp]) {
         if (invalid_cookie_name_char[(uint8_t)cookie.name[tmp]]) {
-          fprintf(stderr,
-                  "WARNING: illigal char 0x%.2x in cookie name (in %s)\n"
-                  "         automatic %% encoding applied\n",
-                  cookie.name[tmp], cookie.name);
+          if (!warn_illegal) {
+            ++warn_illegal;
+            fprintf(stderr,
+                    "WARNING: illegal char 0x%.2x in cookie name (in %s)\n"
+                    "         automatic %% encoding applied\n",
+                    cookie.name[tmp], cookie.name);
+          }
           t.data[len++] = '%';
           t.data[len++] = hex_chars[(cookie.name[tmp] >> 4) & 0x0F];
           t.data[len++] = hex_chars[cookie.name[tmp] & 0x0F];
@@ -212,10 +220,13 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
       size_t tmp = 0;
       while (tmp < cookie.value_len) {
         if (invalid_cookie_value_char[(uint8_t)cookie.value[tmp]]) {
-          fprintf(stderr,
-                  "WARNING: illigal char 0x%.2x in cookie value (in %s)\n"
-                  "         automatic %% encoding applied\n",
-                  cookie.value[tmp], cookie.name);
+          if (!warn_illegal) {
+            ++warn_illegal;
+            fprintf(stderr,
+                    "WARNING: illegal char 0x%.2x in cookie value (in %s)\n"
+                    "         automatic %% encoding applied\n",
+                    cookie.value[tmp], cookie.name);
+          }
           t.data[len++] = '%';
           t.data[len++] = hex_chars[(cookie.value[tmp] >> 4) & 0x0F];
           t.data[len++] = hex_chars[cookie.value[tmp] & 0x0F];
@@ -233,10 +244,13 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
       size_t tmp = 0;
       while (cookie.value[tmp]) {
         if (invalid_cookie_value_char[(uint8_t)cookie.value[tmp]]) {
-          fprintf(stderr,
-                  "WARNING: illigal char 0x%.2x in cookie value (in %s)\n"
-                  "         automatic %% encoding applied\n",
-                  cookie.value[tmp], cookie.name);
+          if (!warn_illegal) {
+            ++warn_illegal;
+            fprintf(stderr,
+                    "WARNING: illegal char 0x%.2x in cookie value (in %s)\n"
+                    "         automatic %% encoding applied\n",
+                    cookie.value[tmp], cookie.name);
+          }
           t.data[len++] = '%';
           t.data[len++] = hex_chars[(cookie.value[tmp] >> 4) & 0x0F];
           t.data[len++] = hex_chars[cookie.value[tmp] & 0x0F];
@@ -254,6 +268,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   } else
     cookie.max_age = -1;
   t.data[len++] = ';';
+  t.data[len++] = ' ';
 
   if (h->status_str || !h->status) { /* on first request status == 0 */
     static uint64_t cookie_hash;
@@ -274,21 +289,26 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
     fiobj_str_capa_assert(c, capa);
     t = fiobj_obj2cstr(c);
   }
-  memcpy(t.data + len, "Max-Age=", 8);
-  len += 8;
-  len += fio_ltoa(t.data + len, cookie.max_age, 10);
-  t.data[len++] = ';';
+  if (cookie.max_age) {
+    memcpy(t.data + len, "Max-Age=", 8);
+    len += 8;
+    len += fio_ltoa(t.data + len, cookie.max_age, 10);
+    t.data[len++] = ';';
+    t.data[len++] = ' ';
+  }
   fiobj_str_resize(c, len);
 
   if (cookie.domain && cookie.domain_len) {
     fiobj_str_write(c, "domain=", 7);
     fiobj_str_write(c, cookie.domain, cookie.domain_len);
     fiobj_str_write(c, ";", 1);
+    t.data[len++] = ' ';
   }
   if (cookie.path && cookie.path_len) {
     fiobj_str_write(c, "path=", 5);
     fiobj_str_write(c, cookie.path, cookie.path_len);
     fiobj_str_write(c, ";", 1);
+    t.data[len++] = ' ';
   }
   if (cookie.http_only) {
     fiobj_str_write(c, "HttpOnly;", 9);
@@ -403,7 +423,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
     if (!tmp)
       goto no_gzip_support;
     fio_cstr_s ac_str = fiobj_obj2cstr(tmp);
-    if (!strstr(ac_str.data, "gzip"))
+    if (!ac_str.data || !strstr(ac_str.data, "gzip"))
       goto no_gzip_support;
     if (s.data[s.len - 3] != '.' || s.data[s.len - 2] != 'g' ||
         s.data[s.len - 1] != 'z') {
@@ -1195,6 +1215,94 @@ void http_parse_query(http_s *h) {
     q.len -= (uintptr_t)(cut - q.data);
     q.data = cut;
   } while (q.len);
+}
+
+static inline void http_parse_cookies_cookie_str(FIOBJ dest, FIOBJ str,
+                                                 uint8_t is_url_encoded) {
+  if (!FIOBJ_TYPE_IS(str, FIOBJ_T_STRING))
+    return;
+  fio_cstr_s s = fiobj_obj2cstr(str);
+  while (s.length) {
+    if (s.data[0] == ' ') {
+      ++s.data;
+      --s.len;
+      continue;
+    }
+    char *cut = memchr(s.data, '=', s.len);
+    if (!cut)
+      cut = s.data;
+    char *cut2 = memchr(cut, ';', s.len - (cut - s.data));
+    if (!cut2)
+      cut2 = s.data + s.len;
+    http_add2hash(dest, s.data, cut - s.data, cut + 1, (cut2 - (cut + 1)),
+                  is_url_encoded);
+    if ((size_t)((cut2 + 1) - s.data) > s.length)
+      s.length = 0;
+    else
+      s.length -= ((cut2 + 1) - s.data);
+    s.data = cut2 + 1;
+  }
+}
+static inline void http_parse_cookies_setcookie_str(FIOBJ dest, FIOBJ str,
+                                                    uint8_t is_url_encoded) {
+  if (!FIOBJ_TYPE_IS(str, FIOBJ_T_STRING))
+    return;
+  fio_cstr_s s = fiobj_obj2cstr(str);
+  char *cut = memchr(s.data, '=', s.len);
+  if (!cut)
+    cut = s.data;
+  char *cut2 = memchr(cut, ';', s.len - (cut - s.data));
+  if (!cut2)
+    cut2 = s.data + s.len;
+  if (cut2 > cut)
+    http_add2hash(dest, s.data, cut - s.data, cut + 1, (cut2 - (cut + 1)),
+                  is_url_encoded);
+}
+
+/** Parses any Cookie / Set-Cookie headers, using the `http_add2hash` scheme. */
+void http_parse_cookies(http_s *h, uint8_t is_url_encoded) {
+  if (!h->headers)
+    return;
+  if (h->cookies && fiobj_hash_count(h->cookies)) {
+    fprintf(stderr,
+            "WARNING: (http) attempting to parse cookies more than once.\n");
+    return;
+  }
+  static uint64_t setcookie_header_hash;
+  if (!setcookie_header_hash)
+    setcookie_header_hash = fiobj_obj2hash(HTTP_HEADER_SET_COOKIE);
+  FIOBJ c = fiobj_hash_get2(h->headers, fiobj_obj2hash(HTTP_HEADER_COOKIE));
+  if (c) {
+    if (!h->cookies)
+      h->cookies = fiobj_hash_new();
+    if (FIOBJ_TYPE_IS(c, FIOBJ_T_ARRAY)) {
+      /* Array of Strings */
+      size_t count = fiobj_ary_count(c);
+      for (size_t i = 0; i < count; ++i) {
+        http_parse_cookies_cookie_str(
+            h->cookies, fiobj_ary_index(c, (int64_t)i), is_url_encoded);
+      }
+    } else {
+      /* single string */
+      http_parse_cookies_cookie_str(h->cookies, c, is_url_encoded);
+    }
+  }
+  c = fiobj_hash_get2(h->headers, fiobj_obj2hash(HTTP_HEADER_SET_COOKIE));
+  if (c) {
+    if (!h->cookies)
+      h->cookies = fiobj_hash_new();
+    if (FIOBJ_TYPE_IS(c, FIOBJ_T_ARRAY)) {
+      /* Array of Strings */
+      size_t count = fiobj_ary_count(c);
+      for (size_t i = 0; i < count; ++i) {
+        http_parse_cookies_setcookie_str(
+            h->cookies, fiobj_ary_index(c, (int64_t)i), is_url_encoded);
+      }
+    } else {
+      /* single string */
+      http_parse_cookies_setcookie_str(h->cookies, c, is_url_encoded);
+    }
+  }
 }
 
 /**
