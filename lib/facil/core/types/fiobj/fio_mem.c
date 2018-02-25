@@ -548,6 +548,7 @@ void fio_malloc_test(void) {
   fprintf(stderr, "=== Testing facil.io memory allocator's internal data.\n");
   TEST_ASSERT(arenas, "Missing arena data - library not initialized!");
   TEST_ASSERT(fio_malloc(0) == NULL, "fio_malloc 0 bytes should be NULL!\n");
+  fio_free(NULL); /* fio_free(NULL) shouldn't crash... */
   mem = fio_malloc(1);
   TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
   TEST_ASSERT(!((uintptr_t)mem & 15), "fio_malloc memory not aligned!\n");
