@@ -12,6 +12,7 @@ set(facil.io_SOURCES
   lib/facil/core/facil.c
   lib/facil/core/sock.c
   lib/facil/core/types/fiobj/fio_base64.c
+  lib/facil/core/types/fiobj/fio_mem.c
   lib/facil/core/types/fiobj/fio_random.c
   lib/facil/core/types/fiobj/fio_sha1.c
   lib/facil/core/types/fiobj/fio_sha2.c
