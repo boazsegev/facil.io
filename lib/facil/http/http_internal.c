@@ -17,6 +17,21 @@ void http_on_request_handler______internal(http_s *h,
   if (!http_upgrade_hash)
     http_upgrade_hash = fio_siphash("upgrade", 7);
   h->udata = settings->udata;
+
+  static uint64_t host_hash = 0;
+  if (!host_hash)
+    host_hash = fio_siphash("host", 4);
+
+  if (1) {
+    /* test for Host header and avoid duplicates */
+    FIOBJ tmp = fiobj_hash_get2(h->headers, host_hash);
+    if (!tmp)
+      http_send_error(h, 400);
+    if (FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY)) {
+      fiobj_hash_set(h->headers, HTTP_HEADER_HOST, fiobj_ary_pop(tmp));
+    }
+  }
+
   FIOBJ t = fiobj_hash_get2(h->headers, http_upgrade_hash);
   if (t == FIOBJ_INVALID) {
     if (settings->public_folder) {
@@ -26,19 +41,6 @@ void http_on_request_handler______internal(http_s *h,
                           path_str.len)) {
         return;
       }
-    }
-    static uint64_t host_hash = 0;
-    if (!host_hash)
-      host_hash = fio_siphash("host", 4);
-    {
-      FIOBJ tmp = fiobj_hash_get2(h->headers, host_hash);
-      if (FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY)) {
-        FIOBJ sym = fiobj_str_new("host", 4);
-        fiobj_hash_set(h->headers, sym, fiobj_ary_pop(tmp));
-        fiobj_free(sym);
-      }
-      if (!tmp)
-        http_send_error(h, 400);
     }
     settings->on_request(h);
     return;
