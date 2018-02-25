@@ -96,6 +96,13 @@ static inline void http_s_clear(http_s *h, uint8_t log) {
     http_write_log(h);
   fiobj_free(h->method);
   fiobj_free(h->status_str);
+  // fiobj_hash_clear(h->private_data.out_headers);
+  // fiobj_hash_clear(h->headers);
+  fiobj_free(h->private_data.out_headers);
+  fiobj_free(h->headers);
+  h->private_data.out_headers = fiobj_hash_new();
+  h->headers = fiobj_hash_new();
+
   fiobj_hash_clear(h->private_data.out_headers);
   fiobj_hash_clear(h->headers);
   fiobj_free(h->version);
