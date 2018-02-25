@@ -32,19 +32,18 @@ Memory Copying by 16 byte units
 #if __SIZEOF_INT128__ == 9 /* a 128bit type exists... but tests favor 64bit */
 static inline void fio_memcpy(__uint128_t *__restrict dest,
                               __uint128_t *__restrict src, size_t units) {
-  const uint8_t q = 1;
 #elif SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
 static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
                               size_t units) {
-  const uint8_t q = 2;
+  units = units << 1;
 #elif SIZE_MAX == 0xFFFFFFFF         /* 32 bit size_t */
 static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
                               size_t units) {
-  const uint8_t q = 4;
+  units = units << 2;
 #else                                /* unknow... assume 16 bit? */
 static inline void fio_memcpy(uint16_t *__restrict dest,
                               uint16_t *__restrict src, size_t units) {
-  const uint8_t q = 8;
+  units = units << 3;
 #endif
   while (units) {
     switch (units) { /* unroll loop */
@@ -65,39 +64,42 @@ static inline void fio_memcpy(uint16_t *__restrict dest,
       dest[13] = src[13];
       dest[14] = src[14];
       dest[15] = src[15];
-      units -= (16 / q);
+      dest += 16;
+      src += 16;
+      units -= 16;
       break;
-    case 15: /* fallthrough */
-      *(dest++) = *(src++);
-    case 14: /* fallthrough */
-      *(dest++) = *(src++);
-    case 13: /* fallthrough */
-      *(dest++) = *(src++);
-    case 12: /* fallthrough */
-      *(dest++) = *(src++);
-    case 11: /* fallthrough */
-      *(dest++) = *(src++);
-    case 10: /* fallthrough */
-      *(dest++) = *(src++);
-    case 9: /* fallthrough */
-      *(dest++) = *(src++);
-    case 8: /* fallthrough */
-      *(dest++) = *(src++);
-    case 7: /* fallthrough */
-      *(dest++) = *(src++);
-    case 6: /* fallthrough */
-      *(dest++) = *(src++);
-    case 5: /* fallthrough */
-      *(dest++) = *(src++);
-    case 4: /* fallthrough */
-      *(dest++) = *(src++);
-    case 3: /* fallthrough */
-      *(dest++) = *(src++);
-    case 2: /* fallthrough */
-      *(dest++) = *(src++);
-    case 1: /* fallthrough */
+    case 15:
+      *(dest++) = *(src++); /* fallthrough */
+    case 14:
+      *(dest++) = *(src++); /* fallthrough */
+    case 13:
+      *(dest++) = *(src++); /* fallthrough */
+    case 12:
+      *(dest++) = *(src++); /* fallthrough */
+    case 11:
+      *(dest++) = *(src++); /* fallthrough */
+    case 10:
+      *(dest++) = *(src++); /* fallthrough */
+    case 9:
+      *(dest++) = *(src++); /* fallthrough */
+    case 8:
+      *(dest++) = *(src++); /* fallthrough */
+    case 7:
+      *(dest++) = *(src++); /* fallthrough */
+    case 6:
+      *(dest++) = *(src++); /* fallthrough */
+    case 5:
+      *(dest++) = *(src++); /* fallthrough */
+    case 4:
+      *(dest++) = *(src++); /* fallthrough */
+    case 3:
+      *(dest++) = *(src++); /* fallthrough */
+    case 2:
+      *(dest++) = *(src++); /* fallthrough */
+    case 1:
       *(dest++) = *(src++);
       units = 0;
+      break;
     }
   }
 }
@@ -296,8 +298,7 @@ static inline block_s *block_new(void) {
   spn_unlock(&memory.lock);
   if (blk) {
     spn_sub(&memory.count, 1);
-    ((uintptr_t *)blk)[0] = 0;
-    ((uintptr_t *)blk)[1] = 0;
+    *(fio_ls_embd_s *)blk = (fio_ls_embd_s){.next = NULL};
     return block_init(blk);
   }
   /* TODO: collect memory from the system */
@@ -437,8 +438,7 @@ void *fio_malloc(size_t size) {
 }
 
 void *fio_calloc(size_t size, size_t count) {
-  size = size * count;
-  return fio_malloc(size); // memory is pre-initialized by mmap or pool.
+  return fio_malloc(size * count); // memory is pre-initialized by mmap or pool.
 }
 
 void fio_free(void *ptr) {
@@ -459,7 +459,7 @@ void fio_free(void *ptr) {
  *
  * This variation is slightly faster as it might copy less data
  */
-void *fio_realloc2(void *ptr, size_t original_size, size_t new_size) {
+void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length) {
   if (!ptr)
     return fio_malloc(new_size);
   if (((uintptr_t)ptr & FIO_MEMORY_BLOCK_MASK) == 16) {
@@ -471,12 +471,11 @@ void *fio_realloc2(void *ptr, size_t original_size, size_t new_size) {
   void *new_mem = fio_malloc(new_size);
   if (!new_mem)
     return NULL;
-  new_size = ((new_size >> 4) + (!!(new_size & 15))) << 4;
-  original_size = ((original_size >> 4) + (!!(original_size & 15))) << 4;
-  // memcpy(new_mem, ptr, (original_size > new_size ? new_size :
-  //        original_size));
-  fio_memcpy(new_mem, ptr,
-             (original_size > new_size ? new_size : original_size) >> 4);
+  new_size = ((new_size >> 4) + (!!(new_size & 15)));
+  copy_length = ((copy_length >> 4) + (!!(copy_length & 15)));
+  // memcpy(new_mem, ptr, (copy_length > new_size ? new_size : copy_length) <<
+  // 4);
+  fio_memcpy(new_mem, ptr, (copy_length > new_size ? new_size : copy_length));
   block_slice_free(ptr);
   return new_mem;
 }
@@ -570,7 +569,11 @@ void fio_malloc_test(void) {
                 "fio_malloc memory not aligned at allocation #%zu!\n", count);
     TEST_ASSERT((((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16),
                 "fio_malloc memory indicates system allocation!\n");
+#if __x86_64__
+    fio_memcpy((size_t *)mem, (size_t *)"0123456789abcdefg", 1);
+#else
     mem[0] = 'a';
+#endif
     ++count;
   } while (arena_last_used->block == b);
   fio_free(mem);
@@ -582,6 +585,27 @@ void fio_malloc_test(void) {
   TEST_ASSERT(fio_ls_embd_any(&memory.available),
               "memory pool empty (memory block wasn't freed)!\n");
   TEST_ASSERT(memory.count, "memory.count == 0 (memory block not counted)!\n");
+
+  /* rotate block again */
+  b = arena_last_used->block;
+  mem = fio_realloc(mem, 1);
+  do {
+    mem2 = mem;
+    mem = fio_malloc(1);
+    fio_free(mem2); /* make sure we hold on to the block, so it rotates */
+    TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
+    TEST_ASSERT(!((uintptr_t)mem & 15),
+                "fio_malloc memory not aligned at allocation #%zu!\n", count);
+    TEST_ASSERT((((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16),
+                "fio_malloc memory indicates system allocation!\n");
+#if __x86_64__
+    fio_memcpy((size_t *)mem, (size_t *)"0123456789abcdefg", 1);
+#else
+    mem[0] = 'a';
+#endif
+    ++count;
+  } while (arena_last_used->block == b);
+
   mem = fio_calloc(FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64, 1);
   TEST_ASSERT(mem,
               "failed to allocate FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64 bytes!\n");
@@ -590,7 +614,7 @@ void fio_malloc_test(void) {
   mem2 = fio_malloc(1);
   TEST_ASSERT(mem2, "fio_malloc(1) failed to allocate memory!\n");
   mem2[0] = 'a';
-  fio_free(mem2);
+
   for (uintptr_t i = 0; i < (FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64); ++i) {
     TEST_ASSERT(mem[i] == 0,
                 "calloc returned memory that wasn't initialized?!\n");

@@ -80,9 +80,9 @@ void *fio_realloc(void *ptr, size_t new_size);
  * Re-allocates memory. An attept to avoid copying the data is made only for
  * memory allocations larger than 64Kb.
  *
- * This variation is slightly faster as it might copy less data
+ * This variation is slightly faster as it might copy less data.
  */
-void *fio_realloc2(void *ptr, size_t original_size, size_t new_size);
+void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
 
 /** Tests the facil.io memory allocator. */
 void fio_malloc_test(void);
