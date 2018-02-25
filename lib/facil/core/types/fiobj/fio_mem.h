@@ -12,13 +12,17 @@ Feel free to copy, use and enjoy according to the license provided.
  *
  * Allocated memory is always zeroed out and aligned on a 16 byte boundary.
  *
- * The memory allocator assumes multiple concurrent allocation/deallocation,
- * short life spans (memory is freed shortly after it was allocated) and small
- * allocations (realloc almost always copies data).
+ * Reallocated memory is always aligned on a 16 byte boundary but it might be
+ * filled with junk data after the valid data (this is true also for
+ * `fio_realloc2`).
  *
- * These assumptions allow the allocator to ignore fragmentation within a
- * memory "block", waiting for the whole "block" to be freed before it's memory
- * is recycled.
+ * The memory allocator assumes multiple concurrent allocation/deallocation,
+ * short life spans (memory is freed shortly, but not immediately, after it was
+ * allocated) and we small allocations (realloc almost always copies data).
+ *
+ * These assumptions allow the allocator to avoid lock contention by ignoring
+ * fragmentation within a memory "block" and waiting for the whole "block" to be
+ * freed before it's memory is recycled (no "free list").
  *
  * This allocator should NOT be used for objects with a long life-span, because
  * even a single persistent object will prevent the re-use of the whole memory
@@ -26,7 +30,7 @@ Feel free to copy, use and enjoy according to the license provided.
  *
  * A memory "block" can include any number of memory pages that are a multiple
  * of 2 (up to 1Mb of memory). However, the default value, set by
- * MEMORY_BLOCK_SIZE, is either 12Kb or 64Kb (set at end of header).
+ * MEMORY_BLOCK_SIZE, is either 128Kb (set at th end of this header).
  *
  * Each block includes a header that uses reference counters and position
  * markers.
@@ -35,18 +39,18 @@ Feel free to copy, use and enjoy according to the license provided.
  * multiples of 16).
  *
  * The reference counter (`ref`) counts how many pointers reference memory in
- * the block (including the "arean" that "owns" the block).
+ * the block (including the "arena" that "owns" the block).
  *
  * Except for the position marker (`pos`) that acts the same as `sbrk`, there's
  * no way to know which "slices" are allocated and which "slices" are available.
  *
- * Small allocations are difrinciated by their memory alignment. If a memory
+ * Small allocations are differentiated by their memory alignment. If a memory
  * allocation is placed 8 bytes after whole block alignment, the memory was
- * allocated directly using `mmap` (and it might be using a whole page, 4096
- * bytes, as a header!).
+ * allocated directly using `mmap` (and it might be using a whole page more than
+ * request, just because it needed that extra header space!).
  *
  * The allocator uses `mmap` when requesting memory from the system and for
- * allocations bigger than MEMORY_BLOCK_ALLOC_LIMIT (a quarter of a block).
+ * allocations bigger than MEMORY_BLOCK_ALLOC_LIMIT (37.5% of the block).
  *
  * To replace the system's `malloc` function family compile with the
  * `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
