@@ -150,7 +150,7 @@ static inline void *sys_alloc(size_t len, uint8_t is_indi) {
 }
 
 /* frees memory using `munmap`. requires exact, page aligned, `len` */
-static void sys_free(void *mem, size_t len) { munmap(mem, len); }
+static inline void sys_free(void *mem, size_t len) { munmap(mem, len); }
 
 static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
   if (new_len > prev_len) {
@@ -547,6 +547,7 @@ void fio_malloc_test(void) {
   sys_free(mem2, FIO_MEMORY_BLOCK_SIZE * 2);
   fprintf(stderr, "=== Testing facil.io memory allocator's internal data.\n");
   TEST_ASSERT(arenas, "Missing arena data - library not initialized!");
+  TEST_ASSERT(fio_malloc(0) == NULL, "fio_malloc 0 bytes should be NULL!\n");
   mem = fio_malloc(1);
   TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
   TEST_ASSERT(!((uintptr_t)mem & 15), "fio_malloc memory not aligned!\n");
