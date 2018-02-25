@@ -9,8 +9,8 @@ License: MIT
 #include "fio_mem.h"
 
 #if !FIO_FORCE_MALLOC
-#define FIO_HASH_REALLOC(ptr, original_size, size)                             \
-  fio_realloc2((ptr), (original_size), (size))
+#define FIO_HASH_REALLOC(ptr, original_size, size, valid_data_length)          \
+  fio_realloc2((ptr), (size), (valid_data_length))
 #endif
 
 #include "fiobj_hash.h"
@@ -67,7 +67,7 @@ static void fiobj_hash_dealloc(FIOBJ o, void (*task)(FIOBJ, void *),
   free(FIOBJ2PTR(o));
 }
 
-static __thread FIOBJ each_at_key = 0;
+static __thread FIOBJ each_at_key = FIOBJ_INVALID;
 
 static size_t fiobj_hash_each1(FIOBJ o, const size_t start_at,
                                int (*task)(FIOBJ obj, void *arg), void *arg) {
@@ -79,6 +79,10 @@ static size_t fiobj_hash_each1(FIOBJ o, const size_t start_at,
     /* no holes in the hash, we can work as we please. */
     for (count = start_at; count < hash->count; ++count) {
       each_at_key = hash->ordered[count].key.key;
+      // fprintf(stderr, "each_at_key: %p, hash %p, org %p, obj %p\n",
+      //         (void *)each_at_key, (void *)hash->ordered[count].key.hash,
+      //         (void *)hash->ordered[count].key.key,
+      //         (void *)hash->ordered[count].obj);
       if (task((FIOBJ)hash->ordered[count].obj, arg) == -1) {
         ++count;
         goto end;
@@ -86,14 +90,14 @@ static size_t fiobj_hash_each1(FIOBJ o, const size_t start_at,
     }
   } else {
     fio_hash_data_ordered_s *i;
-    for (i = hash->ordered;
-         count < start_at && i && !FIO_HASH_KEY_ISINVALID(i->key); ++i) {
+    const fio_hash_data_ordered_s *stop = hash->ordered + hash->pos;
+    for (i = hash->ordered; count < start_at && i && i < stop; ++i) {
       /* counting */
       if (!i->obj)
         continue;
       ++count;
     }
-    for (; i && !FIO_HASH_KEY_ISINVALID(i->key); ++i) {
+    for (; i && i < stop; ++i) {
       /* performing */
       if (!i->obj)
         continue;
