@@ -7,7 +7,7 @@
 
 #define TEST_CYCLES_START 128
 #define TEST_CYCLES_END 256
-#define TEST_CYCLES_REPEAT 4
+#define TEST_CYCLES_REPEAT 3
 #define REPEAT_LIB_TEST 0
 
 static size_t test_mem_functions(void *(*malloc_func)(size_t),
@@ -174,8 +174,10 @@ int main(void) {
   if (REPEAT_LIB_TEST) {
     fprintf(stderr, "\n===== Testing facil.io memory allocator %zu times\n",
             (size_t)REPEAT_LIB_TEST);
-    for (size_t i = 0; i < REPEAT_LIB_TEST; ++i) {
+    size_t count = REPEAT_LIB_TEST;
+    while (count) {
       fio_malloc_test();
+      --count;
     }
   }
 
