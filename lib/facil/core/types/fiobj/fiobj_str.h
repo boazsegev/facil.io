@@ -47,10 +47,13 @@ static inline __attribute__((unused)) FIOBJ fiobj_str_copy(FIOBJ src) {
 /**
  * Creates a String object. Remember to use `fiobj_free`.
  *
- * The ownership of the memory indicated by `str` will now "move" to the object,
- * so `free` will be called by the `fiobj` library as needed.
+ * The ownership of the memory indicated by `str` will now "move" to the object.
+ *
+ * The original memory MUST be allocated using `fio_malloc` (NOT the system's
+ * `malloc`) and it will be freed by the `fiobj` library using `fio_free`.
  */
 FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity);
+
 /**
  * Returns a thread-static temporary string. Avoid calling `fiobj_dup` or
  * `fiobj_free`.
