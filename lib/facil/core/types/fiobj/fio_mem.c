@@ -166,12 +166,13 @@ static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
       result = mem;
     } else {
       /* copy and free */
-      munmap(result, new_len - prev_len);
-      result = sys_alloc(new_len, 1);
+      munmap(result, new_len - prev_len); /* free the failed attempt */
+      result = sys_alloc(new_len, 1);     /* allocate new memory */
       if (!result)
         return NULL;
-      fio_memcpy(result, mem, prev_len >> 4);
+      fio_memcpy(result, mem, prev_len >> 4); /* copy data */
       // memcpy(result, mem, prev_len);
+      munmap(mem, prev_len); /* free original memory */
     }
 #endif
     return result;
