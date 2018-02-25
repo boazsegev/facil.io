@@ -232,7 +232,8 @@ static inline arena_s *arena_lock(arena_s *preffered) {
   do {
     arena_s *arena = preffered;
     for (size_t i = (size_t)(arena - arenas); i < memory.cores; ++i) {
-      if (arena != preffered && !spn_trylock(&arena->lock))
+      if ((preffered == arenas || arena != preffered) &&
+          !spn_trylock(&arena->lock))
         return arena;
       ++arena;
     }
