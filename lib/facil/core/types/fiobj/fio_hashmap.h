@@ -79,8 +79,8 @@ License: MIT
 #endif
 
 #ifndef FIO_HASH_REALLOC /* NULL ptr indicates new allocation */
-#define FIO_HASH_REALLOC(ptr, original_size, size, valid_data_length)          \
-  realloc((ptr), (size))
+#define FIO_HASH_REALLOC(ptr, original_size, new_size, valid_data_length)      \
+  realloc((ptr), (new_size))
 #endif
 #ifndef FIO_HASH_CALLOC
 #define FIO_HASH_CALLOC(size, count) calloc((size), (count))

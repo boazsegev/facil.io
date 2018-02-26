@@ -506,9 +506,9 @@ void *fio_calloc(size_t size, size_t count) { return calloc(size, count); }
 void fio_free(void *ptr) { free(ptr); }
 
 void *fio_realloc(void *ptr, size_t new_size) { return realloc(ptr, new_size); }
-void *fio_realloc2(void *ptr, size_t new_size, size_t vali_len) {
+void *fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
   return realloc(ptr, new_size);
-  (void)old_size;
+  (void)valid_len;
 }
 
 #endif
