@@ -392,8 +392,16 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
     /* it was a delete operation */
     if (info->obj == hash->ordered + hash->pos - 1) {
       /* we removed the last ordered element, no need to keep any holes. */
-      fio_hash_pop(hash, NULL);
+      --hash->pos;
+      FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
+      hash->ordered[hash->pos] = (fio_hash_data_ordered_s){.obj = NULL};
       *info = (fio_hash_data_s){.obj = NULL};
+      if (!hash->ordered[hash->pos - 1].obj) {
+        fio_hash_pop(hash, NULL);
+      } else {
+        --hash->count;
+      }
+
       return (void *)old;
     }
     --hash->count;
@@ -414,8 +422,8 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
 FIO_FUNC void *fio_hash_pop(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key) {
   if (!hash->pos)
     return NULL;
-  --hash->pos;
-  --hash->count;
+  --(hash->pos);
+  --(hash->count);
   void *old = hash->ordered[hash->pos].obj;
   /* removing hole from hashtable is possible because it's the last element */
   fio_hash_data_s *info =
@@ -433,8 +441,8 @@ FIO_FUNC void *fio_hash_pop(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key) {
     FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
   hash->ordered[hash->pos] = (fio_hash_data_ordered_s){.obj = NULL};
   /* remove any holes from the top (top is kept tight) */
-  --hash->pos;
   while (hash->pos && hash->ordered[hash->pos - 1].obj == NULL) {
+    --(hash->pos);
     fio_hash_data_s *info =
         fio_hash_seek_pos_(hash, hash->ordered[hash->pos].key);
     if (!info) {
@@ -443,11 +451,9 @@ FIO_FUNC void *fio_hash_pop(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key) {
               "FATAL ERROR: (fio_hash) unexpected missing container (2).\n");
       exit(-1);
     }
-    *info = (fio_hash_data_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
+    *info = (fio_hash_data_s){.obj = NULL};
     FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
-    hash->ordered[hash->pos] =
-        (fio_hash_data_ordered_s){.key = FIO_HASH_KEY_INVALID, .obj = NULL};
-    --hash->pos;
+    hash->ordered[hash->pos] = (fio_hash_data_ordered_s){.obj = NULL};
   }
   return old;
 }
@@ -635,6 +641,29 @@ FIO_FUNC void fio_hash_test(void) {
     uintptr_t old = (uintptr_t)fio_hash_insert(&h, i, NULL);
     TEST_ASSERT(old == i, "Removal didn't return old value.");
     TEST_ASSERT(!(fio_hash_find(&h, i)), "Removal failed (still exists).");
+  }
+  if (1) {
+    size_t count = h.count;
+    size_t pos = h.pos;
+    fio_hash_insert(&h, 1, (void *)1);
+    TEST_ASSERT(
+        count + 1 == h.count,
+        "Readding a removed item should increase count by 1 (%zu + 1 != %zu).",
+        count, (size_t)h.count);
+    TEST_ASSERT(
+        pos == h.pos,
+        "Readding a removed item shouldn't change the position marker!");
+    TEST_ASSERT(fio_hash_find(&h, 1) == (void *)1,
+                "Readding a removed item should update the item (%p != 1)!",
+                fio_hash_find(&h, 1));
+    fio_hash_insert(&h, 1, NULL);
+    TEST_ASSERT(count == h.count,
+                "Re-removing an item should decrease count (%zu != %zu).",
+                count, (size_t)h.count);
+    TEST_ASSERT(pos == h.pos,
+                "Re-removing an item shouldn't effect the position marker!");
+    TEST_ASSERT(!fio_hash_find(&h, 1),
+                "Re-removing a re-added item should update the item!");
   }
   {
     fprintf(stderr, "* Testing for %lu / 2 holes\n", FIO_HASHMAP_TEXT_COUNT);
