@@ -12,11 +12,13 @@ Coming Soon...
 
 **Fix**: (`http`) fixes an issue where cookies without an explicit age would be marked for immediate deletion (instead of the expected "session" lifetime).
 
-**Fix**: (`http`) fixes an issue where a missing or corrupt `accept-encoding` header could cause a segmentation fault.
+**Fix**: (`http`) fixes a potential issue where a missing or corrupt `accept-encoding` header could cause a segmentation fault.
 
 **Fix**: (`http`) fixes an issue where a cookie encoding errors would reported repeatedly.
 
 **Fix**: (`fio_hash`) fixes an issue where resubmitting a removed object wouldn't increase the object count.
+
+**Fix**: (`fiobj`) fixes an issue where testing specific number objects if they are a FIOBJ_T_HASH or a FIOBJ_T_STRING, using `FIOBJ_TYPE_IS` will give a false positive.
 
 **Update**: Added an experimental custom memory allocator (`fio_mem.h`) optimized for small concurrent short-lived allocations (anything over 16Kb and reallocations start to take a toll). It can replace the system's `malloc` function family when `FIO_OVERRIDE_MALLOC` is defined. To use `tcmalloc` or `jemalloc`, define `FIO_FORCE_MALLOC` to prevent `fio_mem` from compiling.
 
