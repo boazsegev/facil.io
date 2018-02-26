@@ -437,7 +437,6 @@ void fiobj_str_minimize(FIOBJ str) {
   assert(FIOBJ_TYPE_IS(str, FIOBJ_T_STRING));
   if (obj2str(str)->frozen || obj2str(str)->is_small || obj2str(str)->capa == 0)
     return;
-  const size_t old_size = obj2str(str)->capa;
   obj2str(str)->capa = obj2str(str)->len + 1;
   obj2str(str)->str = fio_realloc(obj2str(str)->str, obj2str(str)->capa);
   return;
