@@ -404,7 +404,7 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
   } else {
     /* it's better to crash than live without memory... */
     obj2str(str)->str =
-        fio_realloc2(obj2str(str)->str, obj2str(str)->len + 1, size);
+        fio_realloc2(obj2str(str)->str, size, obj2str(str)->len + 1);
     if (!obj2str(str)->str) {
       perror("FATAL ERROR: Couldn't (re)allocate String memory");
       exit(errno);
@@ -439,8 +439,7 @@ void fiobj_str_minimize(FIOBJ str) {
     return;
   const size_t old_size = obj2str(str)->capa;
   obj2str(str)->capa = obj2str(str)->len + 1;
-  obj2str(str)->str =
-      fio_realloc2(obj2str(str)->str, old_size, obj2str(str)->capa);
+  obj2str(str)->str = fio_realloc(obj2str(str)->str, obj2str(str)->capa);
   return;
 }
 

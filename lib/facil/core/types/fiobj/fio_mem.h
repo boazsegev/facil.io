@@ -97,7 +97,7 @@ void fio_malloc_test(void);
 #define fio_calloc(size, count) calloc((size), (count))
 #define fio_free(ptr) free((ptr))
 #define fio_realloc(ptr, new_size) realloc((ptr), (new_size))
-#define fio_realloc2(ptr, old_size, new_size) realloc((ptr), (new_size))
+#define fio_realloc2(ptr, new_size, old_data_len) realloc((ptr), (new_size))
 #define fio_malloc_test()
 
 /* allows local override as well as global override */
