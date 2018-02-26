@@ -237,7 +237,7 @@ Object Type Identification
 #endif
 
 #define FIOBJ_IS_ALLOCATED(o)                                                  \
-  ((o) && ((o)&1) == 0 &&                                                      \
+  ((o) && ((o)&FIOBJECT_NUMBER_FLAG) == 0 &&                                   \
    ((o)&FIOBJECT_PRIMITIVE_FLAG) != FIOBJECT_PRIMITIVE_FLAG)
 #define FIOBJ2PTR(o) ((void *)((o)&FIOBJECT_TYPE_MASK))
 
@@ -266,21 +266,22 @@ FIO_INLINE size_t fiobj_type_is(FIOBJ o, fiobj_type_enum type) {
     return (o & FIOBJECT_NUMBER_FLAG) ||
            ((fiobj_type_enum *)o)[0] == FIOBJ_T_NUMBER;
   case FIOBJ_T_NULL:
-    return o == fiobj_null() || o == (uintptr_t)(NULL);
+    return !o || o == fiobj_null();
   case FIOBJ_T_TRUE:
     return o == fiobj_true();
   case FIOBJ_T_FALSE:
     return o == fiobj_false();
   case FIOBJ_T_STRING:
-    return (FIOBJECT_STRING_FLAG &&
+    return (FIOBJECT_STRING_FLAG && (o & FIOBJECT_NUMBER_FLAG) == 0 &&
             (o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_STRING_FLAG) ||
-           (FIOBJECT_STRING_FLAG == 0 &&
+           (FIOBJECT_STRING_FLAG == 0 && FIOBJ_IS_ALLOCATED(o) &&
             ((fiobj_type_enum *)FIOBJ2PTR(o))[0] == FIOBJ_T_STRING);
   case FIOBJ_T_HASH:
-    return (FIOBJECT_HASH_FLAG &&
-            (o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_HASH_FLAG) ||
-           (FIOBJECT_HASH_FLAG == 0 &&
-            ((fiobj_type_enum *)FIOBJ2PTR(o))[0] == FIOBJ_T_HASH);
+    if (FIOBJECT_HASH_FLAG) {
+      return ((o & FIOBJECT_NUMBER_FLAG) == 0 &&
+              (o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_HASH_FLAG);
+    }
+  /* fallthrough */
   case FIOBJ_T_FLOAT:
   case FIOBJ_T_ARRAY:
   case FIOBJ_T_DATA:
