@@ -327,15 +327,15 @@ static void facil_libcleanup(void) {
   /* free memory */
   spn_lock(&facil_libinit_lock);
   if (facil_data) {
+    facil_external_root_cleanup();
+    facil_cluster_cleanup();
+    defer_perform(); /* perform any lingering cleanup tasks */
     munmap(facil_data,
            sizeof(*facil_data) + ((size_t)facil_data->capacity *
                                   sizeof(struct connection_data_s)));
-    facil_external_root_cleanup();
-    facil_cluster_cleanup();
     facil_data = NULL;
   }
   spn_unlock(&facil_libinit_lock);
-  defer_perform(); /* perform any lingering cleanup tasks */
 }
 
 static void facil_lib_init(void) {
@@ -382,8 +382,9 @@ static void facil_stop(void) {
   if (!facil_data)
     return;
   facil_data->active = 0;
-  if (facil_data->thread_pool)
-    defer_pool_stop(facil_data->thread_pool);
+  pool_pt pool = facil_data->thread_pool;
+  facil_data->thread_pool = NULL;
+  defer_pool_stop(pool);
 }
 
 /* *****************************************************************************
@@ -1527,7 +1528,7 @@ static void *facil_sentinel_worker_thread(void *arg) {
   errno = 0;
   pid_t child = facil_fork();
   if (child == -1) {
-    perror("FATAL ERROR: couldn't spawn workers at startup");
+    perror("FATAL ERROR: couldn't spawn worker.");
     kill(facil_parent_pid(), SIGINT);
     facil_stop();
     return NULL;
