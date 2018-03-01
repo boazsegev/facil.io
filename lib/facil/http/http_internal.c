@@ -976,7 +976,7 @@ void http_lib_init(void) {
   REGISTER_MIME("stl", "application/vnd.ms-pki.stl");
   REGISTER_MIME("str", "application/vnd.pg.format");
   REGISTER_MIME("stw", "application/vnd.sun.xml.writer.template");
-  REGISTER_MIME("sub", "image/vnd.dvb.subtitle");
+  // REGISTER_MIME("sub", "image/vnd.dvb.subtitle");
   REGISTER_MIME("sub", "text/vnd.dvb.subtitle");
   REGISTER_MIME("sus", "application/vnd.sus-calendar");
   REGISTER_MIME("susp", "application/vnd.sus-calendar");
@@ -1120,7 +1120,7 @@ void http_lib_init(void) {
   REGISTER_MIME("wmv", "video/x-ms-wmv");
   REGISTER_MIME("wmx", "video/x-ms-wmx");
   REGISTER_MIME("wmz", "application/x-ms-wmz");
-  REGISTER_MIME("wmz", "application/x-msmetafile");
+  // REGISTER_MIME("wmz", "application/x-msmetafile");
   REGISTER_MIME("woff", "application/font-woff");
   REGISTER_MIME("wpd", "application/vnd.wordperfect");
   REGISTER_MIME("wpl", "application/vnd.ms-wpl");

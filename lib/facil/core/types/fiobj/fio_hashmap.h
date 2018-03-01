@@ -182,7 +182,7 @@ FIO_FUNC inline size_t fio_hash_each(fio_hash_s *hash, const size_t start_at,
 /**
  * A macro for a `for` loop that will iterate over all the hashed objects (in
  * order) and empties the hash, later calling `fio_hash_free` to free the hash
- * (but not the comtainer).
+ * (but not the container).
  *
  * `hash` a pointer to the hash table variable and `i` is a temporary variable
  * name to be created for iteration.

@@ -502,18 +502,26 @@ fio_cstr_s fio_ftocstr(double);
  * A type error results in NULL (i.e. object isn't a String).
  */
 FIO_INLINE fio_cstr_s fiobj_obj2cstr(const FIOBJ o) {
-  if (!o)
-    return (fio_cstr_s){.buffer = (void *)"null", .len = 4};
+  if (!o) {
+    fio_cstr_s ret = {{4}, {(void *)"null"}};
+    return ret;
+  }
   if (o & FIOBJECT_NUMBER_FLAG)
     return fio_ltocstr(((intptr_t)o) >> 1);
   if ((o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_PRIMITIVE_FLAG) {
     switch ((fiobj_type_enum)o) {
-    case FIOBJ_T_NULL:
-      return (fio_cstr_s){.buffer = (void *)"null", .len = 4};
-    case FIOBJ_T_FALSE:
-      return (fio_cstr_s){.buffer = (void *)"false", .len = 5};
-    case FIOBJ_T_TRUE:
-      return (fio_cstr_s){.buffer = (void *)"true", .len = 4};
+    case FIOBJ_T_NULL: {
+      fio_cstr_s ret = {{4}, {(void *)"null"}};
+      return ret;
+    }
+    case FIOBJ_T_FALSE: {
+      fio_cstr_s ret = {{5}, {(void *)"false"}};
+      return ret;
+    }
+    case FIOBJ_T_TRUE: {
+      fio_cstr_s ret = {{4}, {(void *)"true"}};
+      return ret;
+    }
     default:
       break;
     }

@@ -792,6 +792,7 @@ static void http_on_upgrade_fallback(http_s *h, char *p, size_t i) {
 static void http_on_response_fallback(http_s *h) { http_send_error(h, 400); }
 
 http_settings_s *http_settings_new(http_settings_s arg_settings) {
+  /* TODO: improve locality by unifying malloc to a single call */
   if (!arg_settings.on_request)
     arg_settings.on_request = http_on_request_fallback;
   if (!arg_settings.on_response)
@@ -843,6 +844,11 @@ http_settings_s *http_settings_new(http_settings_s arg_settings) {
   }
   return settings;
 }
+
+static void http_settings_free(http_settings_s *s) {
+  free((void *)s->public_folder);
+  free(s);
+}
 /* *****************************************************************************
 Listening to HTTP connections
 ***************************************************************************** */
@@ -870,8 +876,7 @@ static void http_on_finish(intptr_t uuid, void *set) {
   if (settings->on_finish)
     settings->on_finish(settings);
 
-  free((void *)settings->public_folder);
-  free(settings);
+  http_settings_free(settings);
   (void)uuid;
 }
 
@@ -932,8 +937,7 @@ static void http_on_close_client(intptr_t uuid, protocol_s *protocol) {
     set->on_finish(set);
 
   original[0](uuid, protocol);
-  free((void *)set->public_folder);
-  free(set);
+  http_settings_free(set);
 }
 
 static void http_on_open_client(intptr_t uuid, void *set_) {
@@ -965,8 +969,7 @@ static void http_on_client_failed(intptr_t uuid, void *set_) {
   fio_free(h);
   if (set->on_finish)
     set->on_finish(set);
-  free((void *)set->public_folder);
-  free(set);
+  http_settings_free(set);
   (void)uuid;
 }
 
@@ -1116,7 +1119,7 @@ static void on_websocket_http_connected(http_s *h) {
     h->path = fiobj_str_new("/", 1);
   }
   http_upgrade2ws(*s);
-  free(s);
+  fio_free(s);
 }
 
 static void on_websocket_http_connection_finished(http_settings_s *settings) {
@@ -1124,13 +1127,13 @@ static void on_websocket_http_connection_finished(http_settings_s *settings) {
   if (s) {
     if (s->on_close)
       s->on_close(0, s->udata);
-    free(s);
+    fio_free(s);
   }
 }
 
 #undef websocket_connect
 int websocket_connect(const char *address, websocket_settings_s settings) {
-  websocket_settings_s *s = malloc(sizeof(*s));
+  websocket_settings_s *s = fio_malloc(sizeof(*s));
   *s = settings;
   return http_connect(address, .on_request = on_websocket_http_connected,
                       .on_response = on_websocket_http_connected,
@@ -2211,6 +2214,13 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
     fio_hash_new(&mime_types);
   uintptr_t hash = fio_siphash(file_ext, file_ext_len);
   FIOBJ old = (FIOBJ)fio_hash_insert(&mime_types, hash, (void *)mime_type_str);
+#if DEBUG
+  if (old) {
+    fprintf(stderr, "WARNING: mime-type collision: %.*s was %s, now %s\n",
+            (int)file_ext_len, file_ext, fiobj_obj2cstr(old).data,
+            fiobj_obj2cstr(mime_type_str).data);
+  }
+#endif
   fiobj_free(old);
 }
 
@@ -2230,12 +2240,15 @@ FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
 void http_mimetype_clear(void) {
   if (!mime_types.map)
     return;
-  FIO_HASH_FOR_LOOP(&mime_types, obj) { fiobj_free((FIOBJ)obj->obj); }
-  fio_hash_free(&mime_types);
+  /* rotate data and reinitialize state */
+  fio_hash_s old = mime_types;
   mime_types = (fio_hash_s)FIO_HASH_INIT;
-  last_date_added = 0;
-  fiobj_free(current_date);
+  FIOBJ old_date = current_date;
   current_date = FIOBJ_INVALID;
+  last_date_added = 0;
+  /* free ols memory / objects */
+  FIO_HASH_FOR_FREE(&old, obj) { fiobj_free((FIOBJ)obj->obj); }
+  fiobj_free(old_date);
 }
 
 /**
