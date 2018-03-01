@@ -337,6 +337,8 @@ static void *defer_worker_thread(void *pool_) {
 
 /** Signals a running thread pool to stop. Returns immediately. */
 void defer_pool_stop(pool_pt pool) {
+  if (!pool)
+    return;
   pool->flag = 0;
   for (size_t i = 0; i < pool->count; ++i) {
     defer_thread_signal();
