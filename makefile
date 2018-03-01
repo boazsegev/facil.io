@@ -153,7 +153,7 @@ endif
 
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 CFLAGS:= $(CFLAGS) -g -std=c11 -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
-CPPFLAGS:= $(CPPFLAGS) -std=c++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CPPFLAGS:= $(CPPFLAGS) -std=gnu++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 LINKER_FLAGS=$(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFALGS_DEPENDENCY=-MT $@ -MMD -MP
 
@@ -187,11 +187,21 @@ $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 	$(eval CCL = $(CPP))
 	@$(DISAMS) $@ > $@.s
 
+$(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
+	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	$(eval CCL = $(CPP))
+	@$(DISAMS) $@ > $@.s
+
+
 else
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	$(eval CCL = $(CPP))
+
+$(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
 	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
 	$(eval CCL = $(CPP))
 endif
