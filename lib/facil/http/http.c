@@ -1656,16 +1656,19 @@ int http_parse_body(http_s *h) {
   }
   if (content_type.len >= 16 &&
       !strncasecmp("application/json", content_type.data, 16)) {
+    content_type = fiobj_obj2cstr(h->body);
     if (h->params)
       return -1;
-    content_type = fiobj_obj2cstr(h->body);
     if (fiobj_json2obj(&h->params, content_type.data, content_type.len) == 0)
       return -1;
     if (FIOBJ_TYPE_IS(h->params, FIOBJ_T_HASH))
       return 0;
-    fiobj_free(h->params);
-    h->params = FIOBJ_INVALID;
-    return -1;
+    FIOBJ tmp = h->params;
+    FIOBJ key = fiobj_str_new("JSON", 4);
+    h->params = fiobj_hash_new2(4);
+    fiobj_hash_set(h->params, key, tmp);
+    fiobj_free(key);
+    return 0;
   }
 
   http_fio_mime_s p = {.h = h};

@@ -572,10 +572,26 @@ HTTP GET and POST parsing helpers
  * * application/x-www-form-urlencoded
  * * application/json
  * * multipart/form-data
+ *
+ * This should be called before `http_parse_query`, in order to support JSON
+ * data.
+ *
+ * If the JSON data isn't an object, it will be saved under the key "JSON" in
+ * the `params` hash.
+ *
+ * If the `multipart/form-data` type contains JSON files, they will NOT be
+ * parsed (they will behave like any other file, with `data`, `type` and
+ * `filename` keys assigned). This allows non-object JSON data (such as array)
+ * to be handled by the app.
  */
 int http_parse_body(http_s *h);
 
-/** Parses the query part of an HTTP request/response. Uses `http_add2hash`. */
+/**
+ * Parses the query part of an HTTP request/response. Uses `http_add2hash`.
+ *
+ * This should be called after the `http_parse_body` function, just in case the
+ * body is JSON that doesn't have an object at it's root.
+ */
 void http_parse_query(http_s *h);
 
 /** Parses any Cookie / Set-Cookie headers, using the `http_add2hash` scheme. */
