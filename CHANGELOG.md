@@ -18,7 +18,7 @@ Coming Soon...
 
 **Fix**: (`fio_hash`) fixes an issue where resubmitting a removed object wouldn't increase the object count.
 
-**Fix**: (`fiobj`) fixes an issue where testing specific number objects if they are a FIOBJ_T_HASH or a FIOBJ_T_STRING, using `FIOBJ_TYPE_IS` will give a false positive.
+**Fix**: (`fiobj`) fixes an issue where testing the type of specific FIOBJ_T_NUMBER objects using `FIOBJ_TYPE_IS` would return a false positive for the types FIOBJ_T_HASH or FIOBJ_T_STRING.
 
 **Update**: Added an experimental custom memory allocator (`fio_mem.h`) optimized for small concurrent short-lived allocations (anything over 16Kb and reallocations start to take a toll). It can replace the system's `malloc` function family when `FIO_OVERRIDE_MALLOC` is defined. To use `tcmalloc` or `jemalloc`, define `FIO_FORCE_MALLOC` to prevent `fio_mem` from compiling.
 
