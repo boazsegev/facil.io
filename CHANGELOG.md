@@ -6,6 +6,8 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
+**Update**: (`facil`) Hot restart is now available for cluster mode. By sending the `SIGUSR1` signal to the program, facil.io will shutdown any worker processes and re-spawn new workers, allowing for a hot restart feature. 
+
 ### Ver. 0.6.0.beta.8
 
 **Fix**: (`defer`) the `defer_free_thread` symbol is now correctly marked as weak, allowing the function to be overridden.

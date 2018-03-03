@@ -1,10 +1,10 @@
+#ifndef H_HTTP_H
 /*
 Copyright: Boaz Segev, 2016-2018
 License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef H_HTTP_H
 #define H_HTTP_H
 
 #include "facil.h"

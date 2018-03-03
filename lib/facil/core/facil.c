@@ -14,6 +14,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fio_mem.h"
 
 #include <errno.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -922,6 +923,20 @@ static inline void cluster_send2traget(uint32_t ch_len, uint32_t msg_len,
   }
 }
 
+static inline void facil_cluster_signal_children(void) {
+  cluster_send2traget(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL);
+  uint8_t msg[16];
+  cluster_uint2str(msg, 0);
+  cluster_uint2str(msg + 4, 0);
+  cluster_uint2str(msg + 8, CLUSTER_MESSAGE_SHUTDOWN);
+  cluster_uint2str(msg + 12, 0);
+  FIO_HASH_FOR_LOOP(&facil_cluster_data.clients, i) {
+    if (i->obj) {
+      write(sock_uuid2fd(i->key), msg, 16);
+    }
+  }
+}
+
 static void cluster_on_client_message(cluster_pr_s *c, intptr_t uuid) {
   switch ((enum cluster_message_type_e)c->type) {
   case CLUSTER_MESSAGE_JSON: {
@@ -1537,16 +1552,31 @@ static void *facil_sentinel_worker_thread(void *arg) {
     waitpid(child, &status, 0);
 #if DEBUG
     if (facil_data->active) { /* !WIFEXITED(status) || WEXITSTATUS(status) */
-      fprintf(stderr,
-              "FATAL ERROR: Child worker (%d) crashed. Stopping services in "
-              "DEBUG mode.\n",
-              child);
+      if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+        fprintf(stderr,
+                "FATAL ERROR: Child worker (%d) crashed. Stopping services in "
+                "DEBUG mode.\n",
+                child);
+      } else {
+        fprintf(
+            stderr,
+            "INFO (FATAL): Child worker (%d) shutdown. Stopping services in "
+            "DEBUG mode.\n",
+            child);
+      }
       kill(0, SIGINT);
     }
 #else
     if (facil_data->active) {
-      fprintf(stderr, "ERROR: Child worker (%d) crashed. Respawning worker.\n",
-              child);
+      if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+        fprintf(stderr,
+                "ERROR: Child worker (%d) crashed. Respawning worker.\n",
+                child);
+      } else {
+        fprintf(stderr,
+                "INFO: Child worker (%d) shutdown. Respawning worker.\n",
+                child);
+      }
       defer(facil_sentinel_task, (void *)1, NULL);
     }
 #endif
@@ -1570,6 +1600,21 @@ static void *facil_sentinel_worker_thread(void *arg) {
   return NULL;
 }
 
+#if FIO_SENTINEL_USE_PTHREAD
+static void facil_sentinel_task(void *arg1, void *arg2) {
+  pthread_t sentinel;
+  if (pthread_create(&sentinel, NULL, facil_sentinel_worker_thread, arg1)) {
+    perror("FATAL ERROR: couldn't start sentinel thread");
+    exit(errno);
+  }
+  pthread_detach(sentinel);
+  if (facil_parent_pid() == getpid())
+    facil_cluster_data.listening.on_data(facil_cluster_data.root,
+                                         &facil_cluster_data.listening);
+  (void)arg1;
+  (void)arg2;
+}
+#else
 static void facil_sentinel_task(void *arg1, void *arg2) {
   void *thrd = defer_new_thread(facil_sentinel_worker_thread, arg1);
   defer_free_thread(thrd);
@@ -1579,12 +1624,21 @@ static void facil_sentinel_task(void *arg1, void *arg2) {
   (void)arg1;
   (void)arg2;
 }
+#endif
 
 /* handles the SIGINT and SIGTERM signals by shutting down workers */
 static void sig_int_handler(int sig) {
-  if (sig != SIGINT && sig != SIGTERM)
-    return;
-  facil_stop();
+  switch (sig) {
+  case SIGUSR1:
+    facil_cluster_signal_children();
+    break;
+  case SIGINT:  /* fallthrough */
+  case SIGTERM: /* fallthrough */
+    facil_stop();
+    break;
+  default:
+    break;
+  }
 }
 
 /* handles the SIGINT and SIGTERM signals by shutting down workers */
@@ -1602,6 +1656,11 @@ static void facil_setp_signal_handler(void) {
   };
 
   if (sigaction(SIGTERM, &act, &old)) {
+    perror("couldn't set signal handler");
+    return;
+  };
+
+  if (sigaction(SIGUSR1, &act, &old)) {
     perror("couldn't set signal handler");
     return;
   };
