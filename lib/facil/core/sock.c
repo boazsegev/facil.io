@@ -1120,10 +1120,11 @@ void sock_force_close(intptr_t uuid) {
     return;
   // fprintf(stderr,
   //         "ERROR: `sock_force_close` called"
-  //         " for %p with errno %d\n",
-  //         (void *)uuid, errno);
+  //         " for %p (fd: %u) with errno %d\n",
+  //         (void *)uuid, (unsigned int)sock_uuid2fd(uuid) , errno);
   // perror("errno");
-  shutdown(sock_uuid2fd(uuid), SHUT_RDWR);
+  // // We might avoid shutdown, it has side-effects that aren't always clear
+  // shutdown(sock_uuid2fd(uuid), SHUT_RDWR);
   close(sock_uuid2fd(uuid));
   clear_fd(sock_uuid2fd(uuid), 0);
 }

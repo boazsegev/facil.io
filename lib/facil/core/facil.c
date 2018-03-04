@@ -1219,11 +1219,7 @@ static int cluster_on_start(void) {
     fio_hash_free(&facil_cluster_data.clients);
     facil_cluster_data.clients = (fio_hash_s)FIO_HASH_INIT;
     if (facil_cluster_data.root != -1) {
-      /* prevent `shutdown` */
-      const int fd = sock_hijack(facil_cluster_data.root);
-      if (fd >= 0)
-        close(fd);
-      sock_on_close(facil_cluster_data.root);
+      sock_force_close(facil_cluster_data.root);
     }
     facil_cluster_data.root =
         facil_connect(.address = facil_cluster_data.cluster_name,
@@ -1480,12 +1476,10 @@ static void facil_worker_startup(uint8_t sentinel) {
         else {
           /* prevent normal connections from being shared across workers */
           intptr_t uuid = sock_fd2uuid(i);
-          /* play nice in non-facil.io environments */
-          if (sock_hijack(uuid) >= 0)
-            close(i); /* use `close` to avoid signaling peer */
-          fd_data(i).protocol->on_close(
-              uuid, fd_data(i).protocol); /* manually invoke close event */
-          clear_connection_data_unsafe(uuid, NULL); /* cleanup */
+          if (uuid >= 0)
+            sock_force_close(uuid);
+          else
+            sock_on_close(uuid);
         }
       }
     }
