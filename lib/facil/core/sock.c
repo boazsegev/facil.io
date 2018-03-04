@@ -313,13 +313,13 @@ static inline int initialize_sock_lib(size_t capacity) {
 #endif
 
 finish:
-  if (init_exit)
-    return 0;
-  init_exit = 1;
   packet_pool.lock = SPN_LOCK_INIT;
   for (size_t i = 0; i < sock_data_store.capacity; ++i) {
     sock_data_store.fds[i].lock = SPN_LOCK_INIT;
   }
+  if (init_exit)
+    return 0;
+  init_exit = 1;
   atexit(clear_sock_lib);
   return 0;
 }
@@ -344,7 +344,7 @@ clear:
   }
   old_data.rw_hooks->on_close(((fd << 8) | old_data.counter), old_data.rw_hooks,
                               old_data.rw_udata);
-  if (old_data.open || (old_data.rw_hooks != &SOCK_DEFAULT_HOOKS)) {
+  if (old_data.open) {
     sock_on_close((fd << 8) | old_data.counter);
   }
   return 0;
@@ -918,6 +918,24 @@ intptr_t sock_open(int fd) {
   if (clear_fd(fd, 1))
     return -1;
   return fd2uuid(fd);
+}
+
+/**
+ * `sock_hijack` is the reverse of the `sock_open` function, removing the
+ * connection from the `sock` library and clearing it's data without closing it
+ * (`sock_on_close` will NOT be called).
+ *
+ * Returns the original `fd` for the socket. On error returns -1.
+ */
+int sock_hijack(intptr_t uuid) {
+  const int fd = sock_uuid2fd(uuid);
+  if (validate_uuid(uuid) && fdinfo(fd).open) {
+    fprintf(stderr, "WARNING: SOCK HIJACK FAILING!\n");
+    return -1;
+  }
+  fdinfo(fd).open = 0;
+  clear_fd(fd, 0);
+  return fd;
 }
 
 /** Returns the information available about the socket's peer address. */

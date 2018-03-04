@@ -400,12 +400,22 @@ sock_sendfile(intptr_t uuid, intptr_t source_fd, off_t offset, size_t length) {
  * `sock_flash` will automatically be called.
  */
 void sock_close(intptr_t uuid);
+
 /**
  * `sock_force_close` closes the connection immediately, without adhering to any
  * protocol restrictions and without sending any remaining data in the
  * connection buffer.
  */
 void sock_force_close(intptr_t uuid);
+
+/**
+ * `sock_hijack` is the reverse of the `sock_open` function, removing the
+ * connection from the `sock` library and clearing it's data without closing it
+ * (`sock_on_close` will NOT be called).
+ *
+ * Returns the original `fd` for the socket. On error returns -1.
+ */
+int sock_hijack(intptr_t uuid);
 
 /* *****************************************************************************
 Direct user level buffer API.
@@ -420,11 +430,13 @@ Direct user level buffer API.
  * error or when the connection is closed.
  */
 ssize_t sock_flush(intptr_t uuid);
+
 /**
  * `sock_flush_strong` performs the same action as `sock_flush` but returns only
  * after all the data was sent. This is a "busy" wait, polling isn't performed.
  */
 void sock_flush_strong(intptr_t uuid);
+
 /**
  * Calls `sock_flush` for each file descriptor that's buffer isn't empty.
  */

@@ -739,8 +739,13 @@ int facil_run_every(size_t milliseconds, size_t repetitions,
   if (protocol == NULL)
     goto error;
   facil_attach(uuid, (protocol_s *)protocol);
-  if (evio_isactive() && evio_set_timer(fd, (void *)uuid, milliseconds) == -1)
-    goto error;
+  if (evio_isactive() && evio_set_timer(fd, (void *)uuid, milliseconds) == -1) {
+    /* don't goto error because the protocol is attached. */
+    const int old = errno;
+    sock_close(uuid);
+    errno = old;
+    return -1;
+  }
   return 0;
 error:
   if (uuid != -1) {
@@ -1209,8 +1214,11 @@ static int cluster_on_start(void) {
     fio_hash_free(&facil_cluster_data.clients);
     facil_cluster_data.clients = (fio_hash_s)FIO_HASH_INIT;
     if (facil_cluster_data.root != -1) {
-      close(sock_uuid2fd(facil_cluster_data.root)); /* prevent `shutdown` */
-      sock_force_close(facil_cluster_data.root);
+      /* prevent `shutdown` */
+      const int fd = sock_hijack(facil_cluster_data.root);
+      if (fd >= 0)
+        close(fd);
+      sock_on_close(facil_cluster_data.root);
     }
     facil_cluster_data.root =
         facil_connect(.address = facil_cluster_data.cluster_name,
@@ -1466,8 +1474,13 @@ static void facil_worker_startup(uint8_t sentinel) {
           timer_on_server_start(i);
         else {
           /* prevent normal connections from being shared across workers */
-          close(i);
-          sock_force_close(sock_fd2uuid(i));
+          intptr_t uuid = sock_fd2uuid(i);
+          /* play nice in non-facil.io environments */
+          if (sock_hijack(uuid) >= 0)
+            close(i); /* use `close` to avoid signaling peer */
+          fd_data(i).protocol->on_close(
+              uuid, fd_data(i).protocol); /* manually invoke close event */
+          clear_connection_data_unsafe(uuid, NULL); /* cleanup */
         }
       }
     }
