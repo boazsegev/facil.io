@@ -937,7 +937,12 @@ static inline void facil_cluster_signal_children(void) {
   cluster_uint2str(msg + 12, 0);
   FIO_HASH_FOR_LOOP(&facil_cluster_data.clients, i) {
     if (i->obj) {
-      write(sock_uuid2fd(i->key), msg, 16);
+      int attempt = write(sock_uuid2fd(i->key), msg, 16);
+      if (attempt > 0 && attempt != 16) {
+        fwrite("FATAL ERROR: Couldn't perform hot restart\n", 42, 1, stderr);
+        kill(0, SIGINT);
+        return;
+      }
     }
   }
 }
