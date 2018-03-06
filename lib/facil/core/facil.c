@@ -63,13 +63,6 @@ static struct facil_data_s {
 #define uuid_data(uuid) fd_data(sock_uuid2fd((uuid)))
 // #define uuid_prt_meta(uuid) prt_meta(uuid_data((uuid)).protocol)
 
-static inline void clear_connection_data_unsafe(intptr_t uuid,
-                                                protocol_s *protocol) {
-  uuid_data(uuid) =
-      (struct connection_data_s){.active = facil_data->last_cycle.tv_sec,
-                                 .protocol = protocol,
-                                 .lock = uuid_data(uuid).lock};
-}
 /** locks a connection's protocol returns a pointer that need to be unlocked. */
 inline static protocol_s *protocol_try_lock(intptr_t fd,
                                             enum facil_protocol_lock_e type) {
@@ -248,9 +241,12 @@ Socket callbacks
 ***************************************************************************** */
 
 void sock_on_close(intptr_t uuid) {
+  // fprintf(stderr, "INFO: facil.io, on-close called for %u (set to %p)\n",
+  //         (unsigned int)sock_uuid2fd(uuid), (void
+  //         *)uuid_data(uuid).protocol);
   spn_lock(&uuid_data(uuid).lock);
   protocol_s *old_protocol = uuid_data(uuid).protocol;
-  clear_connection_data_unsafe(uuid, NULL);
+  uuid_data(uuid) = (struct connection_data_s){.lock = uuid_data(uuid).lock};
   spn_unlock(&uuid_data(uuid).lock);
   if (old_protocol)
     defer(deferred_on_close, (void *)uuid, old_protocol);
@@ -742,7 +738,7 @@ int facil_run_every(size_t milliseconds, size_t repetitions,
   if (evio_isactive() && evio_set_timer(fd, (void *)uuid, milliseconds) == -1) {
     /* don't goto error because the protocol is attached. */
     const int old = errno;
-    sock_close(uuid);
+    sock_force_close(uuid);
     errno = old;
     return -1;
   }
@@ -1638,7 +1634,7 @@ static void facil_sentinel_task(void *arg1, void *arg2) {
 }
 #endif
 
-/* handles the SIGINT and SIGTERM signals by shutting down workers */
+/* handles the SIGUSR1, SIGINT and SIGTERM signals. */
 static void sig_int_handler(int sig) {
   switch (sig) {
   case SIGUSR1:
@@ -1653,7 +1649,7 @@ static void sig_int_handler(int sig) {
   }
 }
 
-/* handles the SIGINT and SIGTERM signals by shutting down workers */
+/* setup handling for the SIGUSR1, SIGPIPE, SIGINT and SIGTERM signals. */
 static void facil_setp_signal_handler(void) {
   /* setup signal handling */
   struct sigaction act, old;
