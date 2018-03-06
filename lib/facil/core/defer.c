@@ -305,7 +305,8 @@ void defer_thread_throttle(unsigned long microsec) { return; }
  */
 #pragma weak defer_thread_wait
 void defer_thread_wait(pool_pt pool, void *p_thr) {
-  size_t throttle = (pool->count) * DEFER_THROTTLE;
+  size_t throttle =
+      pool ? ((pool->count) * DEFER_THROTTLE) : DEFER_THROTTLE_LIMIT;
   if (!throttle || throttle > DEFER_THROTTLE_LIMIT)
     throttle = DEFER_THROTTLE_LIMIT;
   if (throttle == DEFER_THROTTLE)
