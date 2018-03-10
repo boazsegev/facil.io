@@ -181,6 +181,8 @@ static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
   return mem;
 }
 
+/** Rounds up any size to the nearest page alignment (assumes 4096 bytes per
+ * page) */
 static inline size_t sys_round_size(size_t size) {
   return (size & (~4095)) + (4096 * (!!(size & 4095)));
 }
