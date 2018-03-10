@@ -51,9 +51,10 @@ static int evio_fd[3] = {-1, -1, -1};
 /** Closes the `epoll` / `kqueue` object, releasing it's resources. */
 void evio_close() {
   for (int i = 0; i < 3; ++i) {
-    if (evio_fd[i] != -1)
+    if (evio_fd[i] != -1) {
       close(evio_fd[i]);
-    evio_fd[i] = -1;
+      evio_fd[i] = -1;
+    }
   }
 }
 
