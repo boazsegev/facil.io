@@ -33,7 +33,7 @@ Feel free to copy, use and enjoy according to the license provided.
  *
  * The does NOT effect manually set worker values.
  */
-#define FACIL_CPU_CORES_LIMIT 7
+#define FACIL_CPU_CORES_LIMIT 8
 #endif
 
 #ifndef FIO_DEDICATED_SYSTEM
