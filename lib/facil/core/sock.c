@@ -1119,9 +1119,9 @@ void sock_force_close(intptr_t uuid) {
   if (validate_uuid(uuid))
     return;
   // fprintf(stderr,
-  //         "ERROR: `sock_force_close` called"
+  //         "INFO: (%d) `sock_force_close` called"
   //         " for %p (fd: %u) with errno %d\n",
-  //         (void *)uuid, (unsigned int)sock_uuid2fd(uuid) , errno);
+  //         getpid(), (void *)uuid, (unsigned int)sock_uuid2fd(uuid), errno);
   // perror("errno");
   // // We might avoid shutdown, it has side-effects that aren't always clear
   // shutdown(sock_uuid2fd(uuid), SHUT_RDWR);
