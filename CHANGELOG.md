@@ -6,7 +6,11 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
+**Fix**: (`facil`) Fix CPU limit detection.
+
 **Update**: (`facil`) Hot restart is now available for cluster mode. By sending the `SIGUSR1` signal to the program, facil.io will shutdown any worker processes and re-spawn new workers, allowing for a hot restart feature. 
+
+**Update**: (`facil`) Dedicated system mode can be toggled by setting the `FIO_DEDICATED_SYSTEM` macro during compile time. When `FIO_DEDICATED_SYSTEM` is set, facil.io will assume all the CPU cores are available and it will activate threads sooner. When `FIO_DEDICATED_SYSTEM` is defined as 0, facil.io will limit thread to protect against slow user code (rather than attempt concurrent IO).
 
 ### Ver. 0.6.0.beta.8
 

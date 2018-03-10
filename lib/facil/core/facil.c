@@ -190,6 +190,19 @@ postpone:
 }
 
 /* *****************************************************************************
+Overriding `defer` to use `evio` when waiting for events
+***************************************************************************** */
+
+/* if the FIO_DEDICATED_SYSTEM is defined threads are activated more often. */
+#if FIO_DEDICATED_SYSTEM
+void defer_thread_wait(pool_pt pool, void *p_thr) {
+  (void)pool;
+  (void)p_thr;
+  evio_wait(500);
+}
+#endif
+
+/* *****************************************************************************
 Event Handlers (evio)
 ***************************************************************************** */
 static void sock_flush_defer(void *arg, void *ignored) {
@@ -1713,6 +1726,25 @@ pid_t facil_parent_pid(void) {
   return facil_data->parent;
 }
 
+static inline size_t facil_detect_cpu_cores(void){
+  ssize_t cpu_count = 0;
+  #ifdef _SC_NPROCESSORS_ONLN
+    cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+#if FACIL_CPU_CORES_LIMIT
+    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
+      fprintf(stderr,
+              "INFO: Detected %zu cores. Capping auto-detection of cores "
+              "to %zu.\n"
+              "      To increase auto-detection limit, recompile with:\n"
+              "             -DFACIL_CPU_CORES_LIMIT=%zu \n",
+              cpu_count, (size_t)FACIL_CPU_CORES_LIMIT, cpu_count);
+      cpu_count = FACIL_CPU_CORES_LIMIT;
+    }
+#endif
+#endif
+    return cpu_count;
+}
+
 #undef facil_run
 void facil_run(struct facil_run_args args) {
   signal(SIGPIPE, SIG_IGN);
@@ -1722,22 +1754,10 @@ void facil_run(struct facil_run_args args) {
     args.on_idle = mock_idle;
   if (!args.on_finish)
     args.on_finish = mock_idle;
-#ifdef _SC_NPROCESSORS_ONLN
   if (!args.threads && !args.processes) {
-    ssize_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
-    if (cpu_count > 0)
-      args.threads = args.processes = (int16_t)cpu_count;
+      args.threads = args.processes = (int16_t)facil_detect_cpu_cores();
   } else if (args.threads < 0 || args.processes < 0) {
-    ssize_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
-#if FACIL_CPU_CORES_LIMIT
-    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
-      fprintf(stderr,
-              "WARNING: facil.io detected %zu cores. Capping number of cores "
-              "at %zu\n",
-              cpu_count, (size_t)FACIL_CPU_CORES_LIMIT);
-      cpu_count = FACIL_CPU_CORES_LIMIT;
-    }
-#endif
+    ssize_t cpu_count = facil_detect_cpu_cores();
     if (cpu_count > 0) {
       if (args.threads < 0)
         args.threads = (int16_t)cpu_count;
@@ -1745,7 +1765,6 @@ void facil_run(struct facil_run_args args) {
         args.processes = (int16_t)cpu_count;
     }
   }
-#endif
 
   if (args.processes <= 0)
     args.processes = 1;

@@ -27,14 +27,26 @@ Feel free to copy, use and enjoy according to the license provided.
  * FACIL_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
  * detected to the assigned limit.
  *
- * The default autot-detection cap is at 7 cores, for the simple reason that
- * system wide memory allocation locks start to exhibit negative effects
- * somewhere around this point.
+ * The default auto-detection cap is set at 8 cores. The number is arbitrary
+ * (historically the number 7 was used after testing `malloc` race conditions on
+ * a MacBook Pro).
  *
  * The does NOT effect manually set worker values.
  */
 #define FACIL_CPU_CORES_LIMIT 7
 #endif
+
+#ifndef FIO_DEDICATED_SYSTEM
+/**
+ * If FIO_DEDICATED_SYSTEM is true, facil.io assumes that the whole system is at
+ * it's service and that no other process is using the CPU cores.
+ *
+ * Accordingly, facil.io will activate the threads more often in an attempt to
+ * utilize all the cores.
+ */
+#define FIO_DEDICATED_SYSTEM 0
+#endif
+
 /* *****************************************************************************
 Required facil libraries
 ***************************************************************************** */
