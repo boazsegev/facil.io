@@ -145,7 +145,7 @@ static inline void sock_packet_free(packet_s *packet) {
   }
   if (packet >= packet_pool.mem &&
       packet <= packet_pool.mem + (BUFFER_PACKET_POOL - 1)) {
-    defer(sock_packet_free_attempt, packet, NULL);
+    sock_packet_free_attempt(packet, NULL);
   } else
     fio_free(packet);
 }
@@ -1308,8 +1308,10 @@ void sock_libtest(void) {
     sock_close(uuid);
   }
   sock_max_capacity();
-  packet_s *packet = sock_packet_new();
-  sock_packet_free(packet);
+  for (int i = 0; i < 4; ++i) {
+    packet_s *packet = sock_packet_new();
+    sock_packet_free(packet);
+  }
   packet_s *head, *pos;
   pos = head = packet_pool.next;
   size_t count = 0;
