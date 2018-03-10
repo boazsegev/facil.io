@@ -1726,23 +1726,23 @@ pid_t facil_parent_pid(void) {
   return facil_data->parent;
 }
 
-static inline size_t facil_detect_cpu_cores(void){
+static inline size_t facil_detect_cpu_cores(void) {
   ssize_t cpu_count = 0;
-  #ifdef _SC_NPROCESSORS_ONLN
-    cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+#ifdef _SC_NPROCESSORS_ONLN
+  cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
 #if FACIL_CPU_CORES_LIMIT
-    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
-      fprintf(stderr,
-              "INFO: Detected %zu cores. Capping auto-detection of cores "
-              "to %zu.\n"
-              "      To increase auto-detection limit, recompile with:\n"
-              "             -DFACIL_CPU_CORES_LIMIT=%zu \n",
-              cpu_count, (size_t)FACIL_CPU_CORES_LIMIT, cpu_count);
-      cpu_count = FACIL_CPU_CORES_LIMIT;
-    }
+  if (cpu_count > FACIL_CPU_CORES_LIMIT) {
+    fprintf(stderr,
+            "INFO: Detected %zu cores. Capping auto-detection of cores "
+            "to %zu.\n"
+            "      To increase auto-detection limit, recompile with:\n"
+            "             -DFACIL_CPU_CORES_LIMIT=%zu \n",
+            cpu_count, (size_t)FACIL_CPU_CORES_LIMIT, cpu_count);
+    cpu_count = FACIL_CPU_CORES_LIMIT;
+  }
 #endif
 #endif
-    return cpu_count;
+  return cpu_count;
 }
 
 #undef facil_run
@@ -1755,7 +1755,7 @@ void facil_run(struct facil_run_args args) {
   if (!args.on_finish)
     args.on_finish = mock_idle;
   if (!args.threads && !args.processes) {
-      args.threads = args.processes = (int16_t)facil_detect_cpu_cores();
+    args.threads = args.processes = (int16_t)facil_detect_cpu_cores();
   } else if (args.threads < 0 || args.processes < 0) {
     ssize_t cpu_count = facil_detect_cpu_cores();
     if (cpu_count > 0) {
