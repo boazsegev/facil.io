@@ -32,12 +32,15 @@ Global data and system independant code
 ***************************************************************************** */
 
 static int evio_fd = -1;
+static pid_t owner_pid = 0;
 
 /** Closes the `epoll` / `kqueue` object, releasing it's resources. */
 void evio_close() {
-  if (evio_fd != -1)
+  /* the file descriptor is never inherited by fork */
+  if (evio_fd != -1 && owner_pid == getpid()) {
     close(evio_fd);
-  evio_fd = -1;
+    evio_fd = -1;
+  }
 }
 
 /**
@@ -54,6 +57,7 @@ Creates the `epoll` or `kqueue` object.
 */
 intptr_t evio_create() {
   evio_close();
+  owner_pid = getpid();
   return evio_fd = kqueue();
 }
 
