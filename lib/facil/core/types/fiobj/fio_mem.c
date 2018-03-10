@@ -6,14 +6,15 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 
 #include "spnlock.inc"
+#include <errno.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
 #if !FIO_FORCE_MALLOC
 
-#include "fio_llist.h"
 #include "fio_mem.h"
 
 #if !defined(__clang__) && !defined(__GNUC__)
@@ -207,15 +208,13 @@ typedef struct {
 
 /* The memory allocators persistent state */
 static struct {
-  size_t active_size;      /* active array size */
-  fio_ls_embd_s available; /* free list for memory blocks */
-  intptr_t count;          /* free list counter */
-  size_t cores;            /* the number of detected CPU cores*/
-  spn_lock_i lock;         /* a global lock */
+  size_t active_size; /* active array size */
+  block_s *available; /* free list for memory blocks */
+  intptr_t count;     /* free list counter */
+  size_t cores;       /* the number of detected CPU cores*/
+  spn_lock_i lock;    /* a global lock */
 } memory = {
-    .cores = 1,
-    .available = FIO_LS_INIT(memory.available),
-    .lock = SPN_LOCK_INIT,
+    .cores = 1, .lock = SPN_LOCK_INIT,
 };
 
 /* The per-CPU arena array. */
@@ -286,19 +285,27 @@ static inline void block_free(block_s *blk) {
   }
   memset(blk, 0, FIO_MEMORY_BLOCK_SIZE);
   spn_lock(&memory.lock);
-  fio_ls_embd_push(&memory.available, (fio_ls_embd_s *)blk);
+  *(block_s **)blk = memory.available;
+  memory.available = (block_s *)blk;
   spn_unlock(&memory.lock);
 }
 
 /* intializes the block header for an available block of memory. */
 static inline block_s *block_new(void) {
-  block_s *blk;
-  spn_lock(&memory.lock);
-  blk = (block_s *)fio_ls_embd_pop(&memory.available);
-  spn_unlock(&memory.lock);
+  block_s *blk = NULL;
+
+  if (memory.available) {
+    spn_lock(&memory.lock);
+    blk = (block_s *)memory.available;
+    if (blk) {
+      memory.available = ((block_s **)blk)[0];
+    }
+    spn_unlock(&memory.lock);
+  }
   if (blk) {
     spn_sub(&memory.count, 1);
-    *(fio_ls_embd_s *)blk = (fio_ls_embd_s){.next = NULL};
+    ((block_s **)blk)[0] = NULL;
+    ((block_s **)blk)[1] = NULL;
     return block_init(blk);
   }
   /* TODO: collect memory from the system */
@@ -394,8 +401,9 @@ static void __attribute__((constructor)) fio_mem_init(void) {
   size_t pre_pool = cpu_count > 32 ? 32 : cpu_count;
   for (size_t i = 0; i < pre_pool; ++i) {
     void *block = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
-    if (block)
-      fio_ls_embd_push(&memory.available, block);
+    if (block) {
+      block_free(block);
+    }
   }
 }
 
@@ -410,8 +418,9 @@ static void __attribute__((destructor)) fio_mem_destroy(void) {
     arena->block = NULL;
     ++arena;
   }
-  block_s *b;
-  while ((b = (void *)fio_ls_embd_pop(&memory.available))) {
+  while (memory.available) {
+    block_s *b = memory.available;
+    memory.available = *(block_s **)b;
     sys_free(b, FIO_MEMORY_BLOCK_SIZE);
   }
   big_free(arenas);
@@ -582,7 +591,7 @@ void fio_malloc_test(void) {
           "block.\n",
           count,
           (size_t)((FIO_MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4) - 1));
-  TEST_ASSERT(fio_ls_embd_any(&memory.available),
+  TEST_ASSERT(memory.available,
               "memory pool empty (memory block wasn't freed)!\n");
   TEST_ASSERT(memory.count, "memory.count == 0 (memory block not counted)!\n");
 
