@@ -128,8 +128,8 @@ critical_error:
 static inline task_s pop_task(void) {
   task_s ret = (task_s){.func = NULL};
   queue_block_s *to_free = NULL;
-  /* lock the state machine, to grab/create a task and place it at the tail
-  */ spn_lock(&deferred.lock);
+  /* lock the state machine, grab/create a task and place it at the tail */
+  spn_lock(&deferred.lock);
 
   /* empty? */
   if (deferred.reader->write == deferred.reader->read &&
@@ -305,14 +305,27 @@ void defer_thread_throttle(unsigned long microsec) { return; }
  */
 #pragma weak defer_thread_wait
 void defer_thread_wait(pool_pt pool, void *p_thr) {
-  size_t throttle =
-      pool ? ((pool->count) * DEFER_THROTTLE) : DEFER_THROTTLE_LIMIT;
-  if (!throttle || throttle > DEFER_THROTTLE_LIMIT)
-    throttle = DEFER_THROTTLE_LIMIT;
-  if (throttle == DEFER_THROTTLE)
-    throttle <<= 1;
-  throttle_thread(throttle);
-  (void)p_thr;
+  if (0) {
+    /* keeps threads active (concurrent), but reduces performance */
+    _Thread_local static size_t static_throttle = 1;
+    if (static_throttle < DEFER_THROTTLE_LIMIT)
+      static_throttle = (static_throttle << 1);
+    throttle_thread(static_throttle);
+    if (defer_has_queue())
+      static_throttle = 1;
+    (void)p_thr;
+    (void)pool;
+  } else {
+    /* Protects against slow user code, but mostly a single active thread */
+    size_t throttle =
+        pool ? ((pool->count) * DEFER_THROTTLE) : DEFER_THROTTLE_LIMIT;
+    if (!throttle || throttle > DEFER_THROTTLE_LIMIT)
+      throttle = DEFER_THROTTLE_LIMIT;
+    if (throttle == DEFER_THROTTLE)
+      throttle <<= 1;
+    throttle_thread(throttle);
+    (void)p_thr;
+  }
 }
 
 /**
