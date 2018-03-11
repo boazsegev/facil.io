@@ -307,7 +307,7 @@ void defer_thread_throttle(unsigned long microsec) { return; }
 void defer_thread_wait(pool_pt pool, void *p_thr) {
   if (0) {
     /* keeps threads active (concurrent), but reduces performance */
-    _Thread_local static size_t static_throttle = 1;
+    static __thread size_t static_throttle = 1;
     if (static_throttle < DEFER_THROTTLE_LIMIT)
       static_throttle = (static_throttle << 1);
     throttle_thread(static_throttle);
