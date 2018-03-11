@@ -13,7 +13,27 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/mman.h>
 #include <unistd.h>
 
-#if !FIO_FORCE_MALLOC
+/* *****************************************************************************
+If FIO_FORCE_MALLOC is set, use glibc / library malloc
+***************************************************************************** */
+#if FIO_FORCE_MALLOC
+
+void *fio_malloc(size_t size) { return malloc(size); }
+
+void *fio_calloc(size_t size, size_t count) { return calloc(size, count); }
+
+void fio_free(void *ptr) { free(ptr); }
+
+void *fio_realloc(void *ptr, size_t new_size) { return realloc(ptr, new_size); }
+void *fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
+  return realloc(ptr, new_size);
+  (void)valid_len;
+}
+
+/* *****************************************************************************
+facil.io malloc implementation
+***************************************************************************** */
+#else
 
 #include "fio_mem.h"
 
@@ -30,7 +50,7 @@ Feel free to copy, use and enjoy according to the license provided.
 Memory Copying by 16 byte units
 ***************************************************************************** */
 
-#if __SIZEOF_INT128__ == 9 /* a 128bit type exists... but tests favor 64bit */
+#if __SIZEOF_INT128__ == 9           /* a 128bit type exists... but tests favor 64bit */
 static inline void fio_memcpy(__uint128_t *__restrict dest,
                               __uint128_t *__restrict src, size_t units) {
 #elif SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
@@ -504,23 +524,6 @@ void *calloc(size_t size, size_t count) { return fio_calloc(size, count); }
 void free(void *ptr) { fio_free(ptr); }
 void *realloc(void *ptr, size_t new_size) { return fio_realloc(ptr, new_size); }
 #endif
-
-/* *****************************************************************************
-FIO_FORCE_MALLOC - use glibc / library malloc
-***************************************************************************** */
-#else
-
-void *fio_malloc(size_t size) { return malloc(size); }
-
-void *fio_calloc(size_t size, size_t count) { return calloc(size, count); }
-
-void fio_free(void *ptr) { free(ptr); }
-
-void *fio_realloc(void *ptr, size_t new_size) { return realloc(ptr, new_size); }
-void *fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
-  return realloc(ptr, new_size);
-  (void)valid_len;
-}
 
 #endif
 
