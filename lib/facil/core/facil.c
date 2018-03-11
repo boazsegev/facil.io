@@ -1762,7 +1762,8 @@ void facil_run(struct facil_run_args args) {
     ssize_t cpu_count = facil_detect_cpu_cores();
 
     if (args.threads <= 0 && args.processes <= 0 &&
-        args.threads != args.processes) {
+        args.threads != args.processes &&
+        (args.threads + args.processes < -1)) {
       /* Both options are negative, allowing to adjust resources by ratio */
       if (args.processes < args.threads) {
         int16_t tmp = args.threads;
