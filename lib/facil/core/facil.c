@@ -1755,17 +1755,36 @@ void facil_run(struct facil_run_args args) {
   if (!args.on_finish)
     args.on_finish = mock_idle;
   if (!args.threads && !args.processes) {
+    /* both options set to 0 - default to cores*cores matrix */
     args.threads = args.processes = (int16_t)facil_detect_cpu_cores();
   } else if (args.threads < 0 || args.processes < 0) {
+    /* Set any option that is less than 0 be equal to cores/value */
     ssize_t cpu_count = facil_detect_cpu_cores();
+
+    if (args.threads <= 0 && args.processes <= 0 &&
+        args.threads != args.processes) {
+      /* Both options are negative, allowing to adjust resources by ratio */
+      if (args.processes < args.threads) {
+        int16_t tmp = args.threads;
+        args.threads = args.processes;
+        args.processes = tmp;
+      }
+      if (args.processes == 0)
+        args.processes = -1;
+      args.threads = args.threads / args.processes;
+      if (args.threads == 0)
+        args.threads = -1;
+      args.processes = 0 - args.threads;
+    }
+
     if (cpu_count > 0) {
       if (args.threads < 0)
-        args.threads = (int16_t)cpu_count;
+        args.threads = (int16_t)(cpu_count / (args.threads * -1));
       if (args.processes < 0)
-        args.processes = (int16_t)cpu_count;
+        args.processes = (int16_t)(cpu_count / (args.processes * -1));
     }
   }
-
+  /* make sure we have at least one process and at least one thread */
   if (args.processes <= 0)
     args.processes = 1;
   if (args.threads <= 0)
