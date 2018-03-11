@@ -1376,8 +1376,9 @@ static void perform_idle(void *arg, void *ignr) {
   (void)ignr;
 }
 
-static void facil_cycle(void *arg, void *ignr) {
+static void facil_cycle(void *ignr, void *ignr2) {
   (void)ignr;
+  (void)ignr2;
   static int idle = 0;
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   int events;
@@ -1396,7 +1397,7 @@ static void facil_cycle(void *arg, void *ignr) {
     if (events > 0) {
       idle = 1;
     } else if (idle) {
-      defer(perform_idle, arg, ignr);
+      defer(perform_idle, ignr, ignr2);
       idle = 0;
     }
   }
@@ -1409,22 +1410,13 @@ static void facil_cycle(void *arg, void *ignr) {
     facil_data->need_review = 0;
     defer(facil_review_timeout, (void *)0, NULL);
   }
-  defer(facil_cycle, arg, ignr);
+  defer(facil_cycle, ignr, ignr2);
   return;
 error:
   if (facil_data->active)
-    defer(facil_cycle, arg, ignr);
+    defer(facil_cycle, ignr, ignr2);
   (void)1;
 }
-
-/** use evio_review instead of micro sleeping */
-// void defer_thread_wait(pool_pt pool, void *p_thr) {
-//   evio_wait(2000);
-//   if (!defer_has_queue())
-//     throttle_thread(1UL);
-//   (void)p_thr;
-//   (void)pool;
-// }
 
 /**
 OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
