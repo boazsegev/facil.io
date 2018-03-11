@@ -278,9 +278,25 @@ Core API
 ***************************************************************************** */
 
 struct facil_run_args {
-  /** The number of threads to run in the thread pool. Has "smart" defaults. */
+  /**
+   * The number of threads to run in the thread pool. Has "smart" defaults.
+   *
+   *
+   * A positive value will indicate a set number of threads (or processes).
+   *
+   * Zeros and negative values are fun and have complex behaviour. For example:
+   *
+   * * Negative values indicate a fraction of the number of CPU cores. i.e.
+   *   -2 will normally indicate "half" (1/2) the number of cores.
+   *
+   * * If `processes` is also either zero or a negative value and
+   *   unequal to `threads`, the numbers will be calculated as a ratio,
+   *   indicating the cores should be divided between processes and threads
+   *   according to the calculated ratio (best attempt).
+   *
+   */
   int16_t threads;
-  /** The number of processes to run (including this one). "smart" defaults. */
+  /** The number of processes to run (including this one). See `threads`. */
   int16_t processes;
   /** called if the event loop in cycled with no pending events. */
   void (*on_idle)(void);
