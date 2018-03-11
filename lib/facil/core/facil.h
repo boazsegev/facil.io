@@ -27,11 +27,15 @@ Feel free to copy, use and enjoy according to the license provided.
  * FACIL_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
  * detected to the assigned limit.
  *
+ * This is only relevant to automated values, when running facil.io with zero
+ * threads and processes, which invokes a large matrix of workers and threads
+ * (see {facil_run})
+ *
  * The default auto-detection cap is set at 8 cores. The number is arbitrary
  * (historically the number 7 was used after testing `malloc` race conditions on
  * a MacBook Pro).
  *
- * The does NOT effect manually set worker values.
+ * The does NOT effect manually set (non-zero) worker/thread values.
  */
 #define FACIL_CPU_CORES_LIMIT 8
 #endif
@@ -284,16 +288,16 @@ struct facil_run_args {
    *
    * A positive value will indicate a set number of threads (or processes).
    *
-   * Zeros and negative values are fun and have complex behaviour. For example:
+   * Zeros and negative values are fun and include an interesting shorthand:
    *
    * * Negative values indicate a fraction of the number of CPU cores. i.e.
    *   -2 will normally indicate "half" (1/2) the number of cores.
    *
-   * * If `processes` is also either zero or a negative value and
-   *   unequal to `threads`, the numbers will be calculated as a ratio,
-   *   indicating the cores should be divided between processes and threads
-   *   according to the calculated ratio (best attempt).
-   *
+   * * If the other option (i.e. `.processes` when setting `.threads`) is zero,
+   *   it will be automatically updated to reflect the option's absolute value.
+   *   i.e.:
+   *   if .threads == -2 and .processes == 0,
+   *   than facil.io will run 2 processes with (cores/2) threads per process.
    */
   int16_t threads;
   /** The number of processes to run (including this one). See `threads`. */

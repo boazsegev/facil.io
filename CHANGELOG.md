@@ -6,7 +6,7 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
-**Fix**: (`facil`) Fix CPU limit detection.
+**Fix**: (`facil`) Fix CPU limit detection. Negative values are now meaningful (fraction of CPU cores, so -2 == cores/2). Zero values are replaced by facil.io.
 
 **Update**: (`facil`) Hot restart is now available for cluster mode. By sending the `SIGUSR1` signal to the program, facil.io will shutdown any worker processes and re-spawn new workers, allowing for a hot restart feature. 
 
