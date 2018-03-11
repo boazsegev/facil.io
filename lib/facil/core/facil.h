@@ -47,6 +47,10 @@ Feel free to copy, use and enjoy according to the license provided.
  *
  * Accordingly, facil.io will activate the threads more often in an attempt to
  * utilize all the cores.
+ *
+ * If FIO_DEDICATED_SYSTEM is false, threads will be used for non-prallel
+ * concurrency and processes will be used for parallelism. Otherwise, both
+ * threads and processes will be used for prallel concurrency.
  */
 #define FIO_DEDICATED_SYSTEM 0
 #endif
