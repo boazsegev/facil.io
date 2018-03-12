@@ -422,6 +422,7 @@ static void __attribute__((constructor)) fio_mem_init(void) {
   for (size_t i = 0; i < pre_pool; ++i) {
     void *block = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
     if (block) {
+      block_init(block);
       block_free(block);
     }
   }
