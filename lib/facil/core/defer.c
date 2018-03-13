@@ -26,6 +26,18 @@ Compile time settings
 #define DEFER_THROTTLE_LIMIT 2097148UL
 #endif
 
+/**
+ * The progressive throttling model makes concurrency and parallelism more
+ * likely.
+ *
+ * Otherwise threads are assumed to be intended for "fallback" in case of slow
+ * user code, where a single thread should be active most of the time and other
+ * threads are activated only when that single thread is slow to perform.
+ */
+#ifndef DEFER_THROTTLE_PROGRESSIVE
+#define DEFER_THROTTLE_PROGRESSIVE 1
+#endif
+
 #ifndef DEFER_QUEUE_BLOCK_COUNT
 #if UINTPTR_MAX <= 0xFFFFFFFF
 /* Almost a page of memory on most 32 bit machines: ((4096/4)-4)/3 */
@@ -305,7 +317,7 @@ void defer_thread_throttle(unsigned long microsec) { return; }
  */
 #pragma weak defer_thread_wait
 void defer_thread_wait(pool_pt pool, void *p_thr) {
-  if (0) {
+  if (DEFER_THROTTLE_PROGRESSIVE) {
     /* keeps threads active (concurrent), but reduces performance */
     static __thread size_t static_throttle = 1;
     if (static_throttle < DEFER_THROTTLE_LIMIT)

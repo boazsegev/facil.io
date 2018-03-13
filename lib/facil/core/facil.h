@@ -42,17 +42,34 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #ifndef FIO_DEDICATED_SYSTEM
 /**
+ * If FIO_DEDICATED_SYSTEM is false, threads will be used (mostly) for
+ * non-prallel concurrency (protection against slow user code / high load) and
+ * processes will be used for parallelism. Otherwise, both threads and processes
+ * will be used for prallel concurrency (at the expense of increased polling).
+ *
  * If FIO_DEDICATED_SYSTEM is true, facil.io assumes that the whole system is at
  * it's service and that no other process is using the CPU cores.
  *
- * Accordingly, facil.io will activate the threads more often in an attempt to
- * utilize all the cores.
+ * Accordingly, facil.io will poll the IO more often in an attempt to activate
+ * the threads and utilize all the cores whenever events occur.
  *
- * If FIO_DEDICATED_SYSTEM is false, threads will be used for non-prallel
- * concurrency and processes will be used for parallelism. Otherwise, both
- * threads and processes will be used for prallel concurrency.
+ * My tests show that the non-polling approach is faster, but it may be system
+ * specific.
  */
 #define FIO_DEDICATED_SYSTEM 0
+#endif
+
+#ifndef FACIL_DISABLE_HOT_RESTART
+/**
+ * Disables the hot restart reaction to the SIGUSR1 signal
+ *
+ * The hot restart will attempt to shut down all workers, and spawn new workers,
+ * cleaning up any data cached by any of the workers.
+ *
+ * It's quite useless unless the workers are running their own VMs which are
+ * initialized in the listening socket's `on_start` callback.
+ */
+#define FACIL_DISABLE_HOT_RESTART 0
 #endif
 
 /* *****************************************************************************
@@ -204,10 +221,13 @@ struct facil_listen_args {
   /** Opaque user data. */
   void *udata;
   /**
-   * Called when the server starts, allowing for further initialization, such as
-   * timed event scheduling.
+   * Called when the server starts (or a worker process is respawned), allowing
+   * for further initialization, such as timed event scheduling or VM
+   * initialization.
    *
-   * This will be called seperately for every process. */
+   * This will be called seperately for every worker process whenever it is
+   * spawned.
+   */
   void (*on_start)(intptr_t uuid, void *udata);
   /**
    * Called when the server is done, usable for cleanup.

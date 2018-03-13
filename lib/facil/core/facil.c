@@ -1646,9 +1646,11 @@ static void facil_sentinel_task(void *arg1, void *arg2) {
 /* handles the SIGUSR1, SIGINT and SIGTERM signals. */
 static void sig_int_handler(int sig) {
   switch (sig) {
+#if !FACIL_DISABLE_HOT_RESTART
   case SIGUSR1:
     facil_cluster_signal_children();
     break;
+#endif
   case SIGINT:  /* fallthrough */
   case SIGTERM: /* fallthrough */
     facil_stop();
@@ -1676,11 +1678,12 @@ static void facil_setp_signal_handler(void) {
     perror("couldn't set signal handler");
     return;
   };
-
+#if !FACIL_DISABLE_HOT_RESTART
   if (sigaction(SIGUSR1, &act, &old)) {
     perror("couldn't set signal handler");
     return;
   };
+#endif
 
   act.sa_handler = SIG_IGN;
   if (sigaction(SIGPIPE, &act, &old)) {

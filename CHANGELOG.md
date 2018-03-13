@@ -10,9 +10,11 @@ Coming Soon...
 
 **Fix**: (`facil`) Fix CPU limit detection. Negative values are now meaningful (fraction of CPU cores, so -2 == cores/2). Zero values are replaced by facil.io.
 
-**Update**: (`facil`) Hot restart is now available for cluster mode. By sending the `SIGUSR1` signal to the program, facil.io will shutdown any worker processes and re-spawn new workers, allowing for a hot restart feature. 
+**Update**: (`facil`) Hot restart is now available for cluster mode. By sending the `SIGUSR1` signal to the program, facil.io will shutdown any worker processes and re-spawn new workers, allowing for a hot restart feature. Disable using `FACIL_DISABLE_HOT_RESTART`
 
 **Update**: (`facil`) Dedicated system mode can be toggled by setting the `FIO_DEDICATED_SYSTEM` macro during compile time. When `FIO_DEDICATED_SYSTEM` is set, facil.io will assume all the CPU cores are available and it will activate threads sooner. When `FIO_DEDICATED_SYSTEM` is defined as 0, facil.io will limit thread to protect against slow user code (rather than attempt concurrent IO).
+
+**Update**: (`fio_mem`) replaced the double linked list logic with a single linked list to make the library more independent as well as reduce some operations.
 
 ### Ver. 0.6.0.beta.8
 
@@ -217,7 +219,17 @@ Migration isn't difficult, but is not transparent either.
 
 **Refactoring**: (`fiobj`) moved the underlying Dynamic Array and Hash Table logic into single file libraries that support `void *` pointers, allowing the same logic to be used for any C object collection (as well as the facil.io objects).
 
-### Ver. 0.5.9
+---
+
+### Ver. 0.5.10 (backported)
+
+**Fix** (backported): (`facil` / `pubsub`) fixed an issue where cluster messages would be corrupted when passed in high succession. Credit to Dmitry Davydov (@haukot) for exposing this issue through the Iodine server implementation (the Ruby port).
+
+It should be noted that this doesn't fix the core weakness related to large cluster or pub/sub messages, which is caused by a design weakness in the `pipe` implementation (in some kernels).
+
+The only solution for large message corruption is to use the new pub/sub engine introduced in the facil.io 0.6.x release branch, which utilizes Unix Sockets instead of pipes.
+
+### Ver. 0.5.9 (backported)
 
 **Fix** (backported from 0.6.0): (`websocket_parser`) The websocket parser had a memory offset and alignment handling issue in it's unmasking (XOR) logic and the new memory alignment protection code. The issue would impact the parser in rare occasions when multiple messages where pipelined in the internal buffer and their length produced an odd alignment (the issue would occur with very fast clients, or a very stressed server).
 
