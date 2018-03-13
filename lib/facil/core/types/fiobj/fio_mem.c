@@ -332,8 +332,8 @@ static inline block_s *block_new(void) {
   blk = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
   if (!blk)
     return NULL;
-  block_init(blk);
-  return blk;
+  return block_init(blk);
+  ;
 }
 
 static inline void *block_slice(uint16_t units) {
