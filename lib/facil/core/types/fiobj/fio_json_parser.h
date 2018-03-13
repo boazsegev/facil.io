@@ -609,11 +609,11 @@ fio_json_unescape_str(void *dest, const char *source, size_t length) {
     /* we can't leverage unaligned memory access, so we read the buffer twice */
     uint8_t *tmp = memchr(reader, '\\', (size_t)(stop - reader));
     if (!tmp) {
-      memcpy(writer, reader, (size_t)(stop - reader));
+      memmove(writer, reader, (size_t)(stop - reader));
       writer += (size_t)(stop - reader);
       goto finish;
     }
-    memcpy(writer, reader, (size_t)(tmp - reader));
+    memmove(writer, reader, (size_t)(tmp - reader));
     writer += (size_t)(tmp - reader);
     reader = tmp;
 #else
