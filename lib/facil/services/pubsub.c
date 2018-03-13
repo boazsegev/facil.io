@@ -579,24 +579,31 @@ Cluster Engine
 /* Must subscribe channel. Failures are ignored. */
 void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                  uint8_t use_pattern) {
-  facil_cluster_send((use_pattern ? PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER
-                                  : PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER),
-                     channel, FIOBJ_INVALID);
+  if (facil_is_running()) {
+    facil_cluster_send((use_pattern ? PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER
+                                    : PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER),
+                       channel, FIOBJ_INVALID);
+  }
   (void)eng;
 }
 
 /* Must unsubscribe channel. Failures are ignored. */
 void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
                                    uint8_t use_pattern) {
-  facil_cluster_send((use_pattern ? PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER
-                                  : PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER),
-                     channel, FIOBJ_INVALID);
+  if (facil_is_running()) {
+    facil_cluster_send((use_pattern
+                            ? PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER
+                            : PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER),
+                       channel, FIOBJ_INVALID);
+  }
   (void)eng;
 }
 /** Should return 0 on success and -1 on failure. */
 int pubsub_en_cluster_publish(const pubsub_engine_s *eng, FIOBJ channel,
                               FIOBJ msg) {
-  facil_cluster_send(PUBSUB_FACIL_CLUSTER_CHANNEL_FILTER, channel, msg);
+  if (facil_is_running()) {
+    facil_cluster_send(PUBSUB_FACIL_CLUSTER_CHANNEL_FILTER, channel, msg);
+  }
   return PUBSUB_PROCESS_ENGINE->publish(PUBSUB_PROCESS_ENGINE, channel, msg);
   (void)eng;
 }
