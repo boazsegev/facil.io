@@ -514,7 +514,9 @@ static void websocket_on_unsubscribe(void *u1, void *u2) {
   free(d);
 }
 
-static void websocket_on_pubsub_message_direct(pubsub_message_s *msg) {
+static inline void
+websocket_on_pubsub_message_direct_internal(pubsub_message_s *msg,
+                                            uint8_t txt) {
   protocol_s *pr =
       facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
   if (!pr) {
@@ -523,39 +525,36 @@ static void websocket_on_pubsub_message_direct(pubsub_message_s *msg) {
     pubsub_defer(msg);
     return;
   }
-  fio_cstr_s tmp = fiobj_obj2cstr(msg->message);
-  websocket_write(
-      (ws_s *)pr, tmp.data, tmp.len,
-      tmp.len >= (2 << 14) ? 0 : validate_utf8((uint8_t *)tmp.data, tmp.len));
+  FIOBJ message;
+  fio_cstr_s tmp;
+  if (FIOBJ_TYPE_IS(msg->message, FIOBJ_T_STRING)) {
+    message = fiobj_dup(msg->message);
+    tmp = fiobj_obj2cstr(message);
+    if (txt == 2) {
+      /* unknown text state */
+      txt =
+          (tmp.len >= (2 << 14) ? 0
+                                : validate_utf8((uint8_t *)tmp.data, tmp.len));
+    }
+  } else {
+    message = fiobj_obj2json(msg->message, 0);
+    tmp = fiobj_obj2cstr(message);
+  }
+  websocket_write((ws_s *)pr, tmp.data, tmp.len, txt & 1);
   facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+  fiobj_free(message);
+}
+
+static void websocket_on_pubsub_message_direct(pubsub_message_s *msg) {
+  websocket_on_pubsub_message_direct_internal(msg, 2);
 }
 
 static void websocket_on_pubsub_message_direct_txt(pubsub_message_s *msg) {
-  protocol_s *pr =
-      facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
-  if (!pr) {
-    if (errno == EBADF)
-      return;
-    pubsub_defer(msg);
-    return;
-  }
-  fio_cstr_s tmp = fiobj_obj2cstr(msg->message);
-  websocket_write((ws_s *)pr, tmp.data, tmp.len, 1);
-  facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+  websocket_on_pubsub_message_direct_internal(msg, 1);
 }
 
 static void websocket_on_pubsub_message_direct_bin(pubsub_message_s *msg) {
-  protocol_s *pr =
-      facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
-  if (!pr) {
-    if (errno == EBADF)
-      return;
-    pubsub_defer(msg);
-    return;
-  }
-  fio_cstr_s tmp = fiobj_obj2cstr(msg->message);
-  websocket_write((ws_s *)pr, tmp.data, tmp.len, 0);
-  facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+  websocket_on_pubsub_message_direct_internal(msg, 0);
 }
 
 static void websocket_on_pubsub_message(pubsub_message_s *msg) {
