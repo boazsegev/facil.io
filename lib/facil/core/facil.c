@@ -1815,7 +1815,7 @@ void facil_run(struct facil_run_args args) {
 /**
  * returns true (1) if the facil.io engine is already running.
  */
-int facil_is_running(void) { return facil_data->active > 0; }
+int facil_is_running(void) { return (facil_data && facil_data->active > 0); }
 
 /* *****************************************************************************
 Setting the protocol
