@@ -2,7 +2,11 @@
 
 ### Ver. 0.5.10
 
-**Fix**: (`facil` / `pubsub`) fixed an issue where cluster messages would be corrupted when passed in high succession. This doesn't fix the core weakness related to long messages (caused by a design weakness in the `pipe` implementation which was replaced by facil.io 0.6.0).
+**Fix**: (`facil` / `pubsub`) fixed an issue where cluster messages would be corrupted when passed in high succession. Credit to Dmitry Davydov (@haukot) for exposing this issue through the Iodine server implementation (the Ruby port).
+
+It should be noted that this doesn't fix the core weakness related to large cluster or pub/sub messages, which is caused by a design weakness in the `pipe` implementation (in some kernels).
+
+The only solution for large message corruption is to use the new pub/sub engine introduced in the facil.io 0.6.x release branch, which utilizes Unix Sockets instead of pipes.
 
 ### Ver. 0.5.9
 
