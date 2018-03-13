@@ -3,7 +3,8 @@ experimental
 html/
 public_www/
 Dockerfile
-
+docs/_site/
+/src/
 libdump
 
 dev/*

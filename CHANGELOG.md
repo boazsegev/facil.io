@@ -1,5 +1,9 @@
 # Change Log
 
+### Ver. 0.5.10
+
+**Fix**: (`facil` / `pubsub`) fixed an issue where cluster messages would be corrupted when passed in high succession. This doesn't fix the core weakness related to long messages (caused by a design weakness in the `pipe` implementation which was replaced by facil.io 0.6.0).
+
 ### Ver. 0.5.9
 
 **Fix**: (`websocket_parser`) The websocket parser had a memory offset and alignment handling issue in it's unmasking (XOR) logic and the new memory alignment protection code. The issue would impact the parser in rare occasions when multiple messages where pipelined in the internal buffer and their length produced an odd alignment (the issue would occur with very fast clients, or a very stressed server).
