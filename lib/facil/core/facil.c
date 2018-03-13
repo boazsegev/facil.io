@@ -337,7 +337,7 @@ static spn_lock_i facil_libinit_lock = SPN_LOCK_INIT;
 
 static void facil_cluster_cleanup(void); /* cluster data cleanup */
 
-static void __attribute__((destructor)) facil_libcleanup(void) {
+static void facil_libcleanup(void) {
   /* free memory */
   spn_lock(&facil_libinit_lock);
   if (facil_data) {
@@ -352,7 +352,7 @@ static void __attribute__((destructor)) facil_libcleanup(void) {
   spn_unlock(&facil_libinit_lock);
 }
 
-static void __attribute__((constructor)) facil_lib_init(void) {
+static void facil_lib_init(void) {
   ssize_t capa = sock_max_capacity();
   if (capa < 0) {
     perror("ERROR: socket capacity unknown / failure");
@@ -372,9 +372,7 @@ static void __attribute__((constructor)) facil_lib_init(void) {
   memset(facil_data, 0, mem_size);
   *facil_data = (struct facil_data_s){.capacity = capa, .parent = getpid()};
   facil_external_root_init();
-#if !defined(__clang__) && !defined(__GNUC__) /* no destructor attribute */
   atexit(facil_libcleanup);
-#endif
 #ifdef DEBUG
   if (FACIL_PRINT_STATE)
     fprintf(stderr,
