@@ -1,29 +1,25 @@
 /**
-In this example we will author a fast HTTP server, using a slightly simpler
-design than the facil.io 0.5.x design.
+In this example we will author an HTTP server with a smaller memory footprint,
+using a similar (yet somewhat simplified) design to the one implemented in the
+facil.io 0.5.0 version.
 
-The speed (and design) comes at a cost - the HTTP request is harder to parse and
-harder to handle as we get into the application stage, which means that it could
-get slower for a full application vs. when authoring a proxy.
+This simplified design can be effective when authoring a proxy / CGI type of
+module, however it comes with a few inconviniences, such as a rigid HTTP header
+limit and a harder to use data structure, making it a poor choice for a full
+application module.
+
+Once we srart adding header recognition and seeking, the balance begins to tip
+in favor of a more complex data structure which might perform poorly on simpler
+benchmarks (i.e. "Hello World") but improve real-world application performance.
+
+For example, facil.io 0.6.x is slower than nginX for "Hello World" but can be as
+fast (and sometimes faster) when serving static files.
 
 Benchmark with keep-alive:
 
    ab -c 200 -t 4 -n 1000000 -k http://127.0.0.1:3000/
    wrk -c200 -d4 -t1 http://localhost:3000/
 
-As mentioned, the high speeds have their disadvantages.
-
-For example, HTTP versions and Connection directives are ignored, so clients
-that don't support "keep-alive" will have to wait for the connection to timeout:
-
-   ab -c 200 -t 4 -n 1000000 http://127.0.0.1:3000/
-
-Once we srart adding header recognnition and seeking, the balance begins to tip
-in favor of more complex data structures, that will inhibit "hello world"
-performance but improve real-world application performance.
-
-For example, facil.io 0.6.x is slower than nginX for "Hello World" but can be as
-fast (and sometimes faster) when serving static files.
 */
 
 /* include the core library, without any extensions */
@@ -65,24 +61,24 @@ typedef struct {
   size_t buf_reader; /* internal: marks the read position in the buffer */
   size_t buf_writer; /* internal: marks the write position in the buffer */
   uint8_t reset; /* used internally to mark when some buffer can be deleted */
-} fast_http_s;
+} light_http_s;
 
-/* turns a parser pointer into a `fast_http_s` pointer using it's offset */
+/* turns a parser pointer into a `light_http_s` pointer using it's offset */
 #define parser2pr(parser)                                                      \
-  ((fast_http_s *)((uintptr_t)(parser) -                                       \
-                   (uintptr_t)(&((fast_http_s *)(0))->parser)))
+  ((light_http_s *)((uintptr_t)(parser) -                                      \
+                    (uintptr_t)(&((light_http_s *)(0))->parser)))
 
-void fast_http_send_response(intptr_t uuid, int status, fio_cstr_s status_str,
-                             size_t header_count, fio_cstr_s headers[][2],
-                             fio_cstr_s body);
+void light_http_send_response(intptr_t uuid, int status, fio_cstr_s status_str,
+                              size_t header_count, fio_cstr_s headers[][2],
+                              fio_cstr_s body);
 /* *****************************************************************************
 The HTTP/1.1 Request Handler - change this to whateve you feel like.
 ***************************************************************************** */
 
-int on_http_request(fast_http_s *http) {
+int on_http_request(light_http_s *http) {
   /* handle a request for `http->path` */
   if (1) {
-    /* a simple HTTP/1.1 response */
+    /* a simple, hardcoded HTTP/1.1 response */
     static char HTTP_RESPONSE[] = "HTTP/1.1 200 OK\r\n"
                                   "Content-Length: 13\r\n"
                                   "Connection: keep-alive\r\n"
@@ -93,7 +89,8 @@ int on_http_request(fast_http_s *http) {
                 .length = sizeof(HTTP_RESPONSE) - 1,
                 .dealloc = SOCK_DEALLOC_NOOP);
   } else {
-    fast_http_send_response(
+    /* an allocated, dynamic, HTTP/1.1 response */
+    light_http_send_response(
         http->uuid, 200, (fio_cstr_s){.len = 2, .data = "OK"}, 1,
         (fio_cstr_s[][2]){{{.len = 12, .data = "Content-Type"},
                            {.len = 10, .data = "text/plain"}}},
@@ -107,7 +104,7 @@ Listening for Connections (main)
 ***************************************************************************** */
 
 /* we're referencing this function, but defining it later on. */
-void fast_http_on_open(intptr_t uuid, void *udata);
+void light_http_on_open(intptr_t uuid, void *udata);
 
 /* our main function / starting point */
 int main(int argc, char const *argv[]) {
@@ -124,7 +121,7 @@ int main(int argc, char const *argv[]) {
     fio_cli_set_int("t", 1);
   /* try to listen on port 3000. */
   if (facil_listen(.port = fio_cli_get_str("p"), .address = NULL,
-                   .on_open = fast_http_on_open, .udata = NULL))
+                   .on_open = light_http_on_open, .udata = NULL))
     perror("FATAL ERROR: Couldn't open listening socket"), exit(errno);
   /* run facil with 1 working thread - this blocks until we're done. */
   facil_run(.threads = fio_cli_get_int("t"), .processes = fio_cli_get_int("w"));
@@ -137,7 +134,7 @@ The HTTP/1.1 Parsing Callbacks - we need to implememnt everything for the parser
 ***************************************************************************** */
 
 /** called when a request was received. */
-int fast_http1_on_request(http1_parser_s *parser) {
+int light_http1_on_request(http1_parser_s *parser) {
   int ret = on_http_request(parser2pr(parser));
   fiobj_free(parser2pr(parser)->body);
   parser2pr(parser)->body = FIOBJ_INVALID;
@@ -146,14 +143,14 @@ int fast_http1_on_request(http1_parser_s *parser) {
 }
 
 /** called when a response was received, this is for HTTP clients (error). */
-int fast_http1_on_response(http1_parser_s *parser) {
+int light_http1_on_response(http1_parser_s *parser) {
   return -1;
   (void)parser;
 }
 
 /** called when a request method is parsed. */
-int fast_http1_on_method(http1_parser_s *parser, char *method,
-                         size_t method_len) {
+int light_http1_on_method(http1_parser_s *parser, char *method,
+                          size_t method_len) {
   parser2pr(parser)->method = method;
   return 0;
   (void)method_len;
@@ -161,8 +158,8 @@ int fast_http1_on_method(http1_parser_s *parser, char *method,
 
 /** called when a response status is parsed. the status_str is the string
  * without the prefixed numerical status indicator.*/
-int fast_http1_on_status(http1_parser_s *parser, size_t status,
-                         char *status_str, size_t len) {
+int light_http1_on_status(http1_parser_s *parser, size_t status,
+                          char *status_str, size_t len) {
   return -1;
   (void)parser;
   (void)status;
@@ -170,27 +167,28 @@ int fast_http1_on_status(http1_parser_s *parser, size_t status,
   (void)len;
 }
 /** called when a request path (excluding query) is parsed. */
-int fast_http1_on_path(http1_parser_s *parser, char *path, size_t path_len) {
+int light_http1_on_path(http1_parser_s *parser, char *path, size_t path_len) {
   parser2pr(parser)->path = path;
   return 0;
   (void)path_len;
 }
 /** called when a request path (excluding query) is parsed. */
-int fast_http1_on_query(http1_parser_s *parser, char *query, size_t query_len) {
+int light_http1_on_query(http1_parser_s *parser, char *query,
+                         size_t query_len) {
   parser2pr(parser)->query = query;
   return 0;
   (void)query_len;
 }
 /** called when a the HTTP/1.x version is parsed. */
-int fast_http1_on_http_version(http1_parser_s *parser, char *version,
-                               size_t len) {
+int light_http1_on_http_version(http1_parser_s *parser, char *version,
+                                size_t len) {
   parser2pr(parser)->http_version = version;
   return 0;
   (void)len;
 }
 /** called when a header is parsed. */
-int fast_http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
-                         char *data, size_t data_len) {
+int light_http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
+                          char *data, size_t data_len) {
   if (parser2pr(parser)->header_count >= MAX_HTTP_HEADER_COUNT)
     return -1;
   parser2pr(parser)->headers[parser2pr(parser)->header_count] = name;
@@ -202,8 +200,8 @@ int fast_http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
 }
 
 /** called when a body chunk is parsed. */
-int fast_http1_on_body_chunk(http1_parser_s *parser, char *data,
-                             size_t data_len) {
+int light_http1_on_body_chunk(http1_parser_s *parser, char *data,
+                              size_t data_len) {
   if (parser->state.content_length >= MAX_HTTP_BODY_MAX)
     return -1;
   if (!parser2pr(parser)->body)
@@ -215,7 +213,7 @@ int fast_http1_on_body_chunk(http1_parser_s *parser, char *data,
 }
 
 /** called when a protocol error occured. */
-int fast_http1_on_error(http1_parser_s *parser) {
+int light_http1_on_error(http1_parser_s *parser) {
   /* close the connection */
   sock_close(parser2pr(parser)->uuid);
   return 0;
@@ -225,12 +223,12 @@ The Protocol Callbacks
 ***************************************************************************** */
 
 /* facil.io callbacks we want to handle */
-void fast_http_on_open(intptr_t uuid, void *udata);
-void fast_http_on_data(intptr_t uuid, protocol_s *pr);
-void fast_http_on_close(intptr_t uuid, protocol_s *pr);
+void light_http_on_open(intptr_t uuid, void *udata);
+void light_http_on_data(intptr_t uuid, protocol_s *pr);
+void light_http_on_close(intptr_t uuid, protocol_s *pr);
 
 /* this will be called when a connection is opened. */
-void fast_http_on_open(intptr_t uuid, void *udata) {
+void light_http_on_open(intptr_t uuid, void *udata) {
   /*
    * we should allocate a protocol object for this connection.
    *
@@ -239,12 +237,12 @@ void fast_http_on_open(intptr_t uuid, void *udata) {
    *
    * NOTE: the extra length in the memory will be the R/W buffer.
    */
-  fast_http_s *p =
+  light_http_s *p =
       malloc(sizeof(*p) + MAX_HTTP_HEADER_LENGTH + MIN_HTTP_READFILE);
-  *p = (fast_http_s){
-      .protocol.service = "Fast HTTP",       /* optional protocol identifier */
-      .protocol.on_data = fast_http_on_data, /* setting the data callback */
-      .protocol.on_close = fast_http_on_close, /* setting the close callback */
+  *p = (light_http_s){
+      .protocol.service = "Fast HTTP",        /* optional protocol identifier */
+      .protocol.on_data = light_http_on_data, /* setting the data callback */
+      .protocol.on_close = light_http_on_close, /* setting the close callback */
       .uuid = uuid,
   };
   /* timeouts are important. timeouts are in seconds. */
@@ -259,9 +257,9 @@ void fast_http_on_open(intptr_t uuid, void *udata) {
 }
 
 /* this will be called when the connection has incoming data. */
-void fast_http_on_data(intptr_t uuid, protocol_s *pr) {
+void light_http_on_data(intptr_t uuid, protocol_s *pr) {
   /* We will read some / all of the data */
-  fast_http_s *h = (fast_http_s *)pr;
+  light_http_s *h = (light_http_s *)pr;
   ssize_t tmp =
       sock_read(uuid, (char *)(h + 1) + h->buf_writer,
                 (MAX_HTTP_HEADER_LENGTH + MIN_HTTP_READFILE) - h->buf_writer);
@@ -275,16 +273,16 @@ void fast_http_on_data(intptr_t uuid, protocol_s *pr) {
     tmp = http1_fio_parser(.parser = &h->parser,
                            .buffer = (char *)(h + 1) + h->buf_reader,
                            .length = h->buf_writer - h->buf_reader,
-                           .on_request = fast_http1_on_request,
-                           .on_response = fast_http1_on_response,
-                           .on_method = fast_http1_on_method,
-                           .on_status = fast_http1_on_status,
-                           .on_path = fast_http1_on_path,
-                           .on_query = fast_http1_on_query,
-                           .on_http_version = fast_http1_on_http_version,
-                           .on_header = fast_http1_on_header,
-                           .on_body_chunk = fast_http1_on_body_chunk,
-                           .on_error = fast_http1_on_error);
+                           .on_request = light_http1_on_request,
+                           .on_response = light_http1_on_response,
+                           .on_method = light_http1_on_method,
+                           .on_status = light_http1_on_status,
+                           .on_path = light_http1_on_path,
+                           .on_query = light_http1_on_query,
+                           .on_http_version = light_http1_on_http_version,
+                           .on_header = light_http1_on_header,
+                           .on_body_chunk = light_http1_on_body_chunk,
+                           .on_error = light_http1_on_error);
     if (h->body) {
       /* when reading to a body, the data is copied */
       /* keep the reading position at buf_reader. */
@@ -314,10 +312,10 @@ void fast_http_on_data(intptr_t uuid, protocol_s *pr) {
 }
 
 /* this will be called when the connection is closed. */
-void fast_http_on_close(intptr_t uuid, protocol_s *pr) {
+void light_http_on_close(intptr_t uuid, protocol_s *pr) {
   /* in case we lost connection midway */
-  fiobj_free(((fast_http_s *)pr)->body);
-  ((fast_http_s *)pr)->body = FIOBJ_INVALID;
+  fiobj_free(((light_http_s *)pr)->body);
+  ((light_http_s *)pr)->body = FIOBJ_INVALID;
   /* free our protocol data and resources */
   free(pr);
   (void)uuid;
@@ -327,9 +325,9 @@ void fast_http_on_close(intptr_t uuid, protocol_s *pr) {
 Fast HTTP response handling
 ***************************************************************************** */
 
-void fast_http_send_response(intptr_t uuid, int status, fio_cstr_s status_str,
-                             size_t header_count, fio_cstr_s headers[][2],
-                             fio_cstr_s body) {
+void light_http_send_response(intptr_t uuid, int status, fio_cstr_s status_str,
+                              size_t header_count, fio_cstr_s headers[][2],
+                              fio_cstr_s body) {
   static size_t date_len = 0;
   char tmp[40];
   if (!date_len) {

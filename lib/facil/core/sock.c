@@ -1043,6 +1043,10 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
   /* this extra work can be avoided if an error is already known to occur...
    * but the extra complexity and branching isn't worth it, considering the
    * common case should be that there's no expected error.
+   *
+   * It also important to point out that errors should handle deallocation,
+   * simplifying client-side error handling logic (this is a framework wide
+   * design choice where callbacks are passed).
    */
   packet_s *packet = sock_packet_new();
   packet->length = options.length;
