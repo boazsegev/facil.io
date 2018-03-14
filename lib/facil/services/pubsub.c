@@ -470,7 +470,7 @@ void pubsub_en_process_deferred_on_message(void *cl_, void *m_) {
                              .message = m->msg,
                              .subscription = (pubsub_sub_pt)cl,
                              .udata1 = cl->udata1,
-                             .udata2 = cl->udata1,
+                             .udata2 = cl->udata2,
                          }};
   cl->on_message(&arg.msg);
   spn_unlock(&cl->lock);

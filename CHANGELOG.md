@@ -6,6 +6,8 @@ Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/
 
 Coming Soon...
 
+**Fix**: (`pubsub`) Fixed an issue where deferred pub/sub messages would have `udata2` set to `udata1` instead of the actual correct value.
+
 **Fix**: (`facil`) Fixed the `facil_is_running()` function, which could crash if facil.io wasn't initialized before the function was called.
 
 **Fix**: (`facil`) Fix CPU limit detection. Negative values are now meaningful (fraction of CPU cores, so -2 == cores/2). Zero values are replaced by facil.io.
