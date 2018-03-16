@@ -573,10 +573,8 @@ void fio_malloc_test(void) {
   TEST_ASSERT(arena_last_used, "arena_last_used wasn't initialized!\n");
   block_s *b = arena_last_used->block;
   size_t count = 2;
+  intptr_t old_memory_pool_count = memory.count;
   do {
-    mem2 = mem;
-    mem = fio_malloc(1);
-    fio_free(mem2); /* make sure we hold on to the block, so it rotates */
     TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
     TEST_ASSERT(!((uintptr_t)mem & 15),
                 "fio_malloc memory not aligned at allocation #%zu!\n", count);
@@ -587,11 +585,11 @@ void fio_malloc_test(void) {
 #else
     mem[0] = 'a';
 #endif
+    fio_free(mem); /* make sure we hold on to the block, so it rotates */
+    mem = fio_malloc(1);
     ++count;
   } while (arena_last_used->block == b);
   {
-    intptr_t old_memory_pool_count = memory.count;
-    fio_free(mem);
     fprintf(
         stderr,
         "* Performed %zu allocations out of expected %zu allocations per "
@@ -601,7 +599,9 @@ void fio_malloc_test(void) {
     TEST_ASSERT(memory.available,
                 "memory pool empty (memory block wasn't freed)!\n");
     TEST_ASSERT(old_memory_pool_count == memory.count,
-                "memory.count == 0 (memory block not counted)!\n");
+                "memory.count == %ld (memory block not counted)!\n",
+                (long)old_memory_pool_count);
+    fio_free(mem);
   }
   /* rotate block again */
   b = arena_last_used->block;

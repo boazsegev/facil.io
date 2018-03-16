@@ -98,7 +98,7 @@ static inline __attribute__((unused)) void spn_lock(spn_lock_i *lock) {
   }
 }
 
-#if DEBUG
+#if DEBUG_SPINLOCK
 /** Busy waits for a lock, reports contention. */
 #define spn_lock(lock)                                                         \
   while (spn_trylock(lock)) {                                                  \
