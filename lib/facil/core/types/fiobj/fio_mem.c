@@ -589,16 +589,20 @@ void fio_malloc_test(void) {
 #endif
     ++count;
   } while (arena_last_used->block == b);
-  fio_free(mem);
-  fprintf(stderr,
-          "* Performed %zu allocations out of expected %zu allocations per "
-          "block.\n",
-          count,
-          (size_t)((FIO_MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4) - 1));
-  TEST_ASSERT(memory.available,
-              "memory pool empty (memory block wasn't freed)!\n");
-  TEST_ASSERT(memory.count, "memory.count == 0 (memory block not counted)!\n");
-
+  {
+    intptr_t old_memory_pool_count = memory.count;
+    fio_free(mem);
+    fprintf(
+        stderr,
+        "* Performed %zu allocations out of expected %zu allocations per "
+        "block.\n",
+        count,
+        (size_t)((FIO_MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4) - 1));
+    TEST_ASSERT(memory.available,
+                "memory pool empty (memory block wasn't freed)!\n");
+    TEST_ASSERT(old_memory_pool_count == memory.count,
+                "memory.count == 0 (memory block not counted)!\n");
+  }
   /* rotate block again */
   b = arena_last_used->block;
   mem = fio_realloc(mem, 1);
