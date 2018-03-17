@@ -353,7 +353,7 @@ typedef struct http_settings_s {
   /**
    * An HTTP/1.x connection timeout.
    *
-   * `http_listen` defaults to ~5s and `http_connect` defaults to ~30s.
+   * `http_listen` defaults to ~40s and `http_connect` defaults to ~30s.
    *
    * Note: the connection might be closed (by other side) before timeout occurs.
    */

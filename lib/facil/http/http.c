@@ -803,7 +803,7 @@ http_settings_s *http_settings_new(http_settings_s arg_settings) {
   if (!arg_settings.max_body_size)
     arg_settings.max_body_size = HTTP_DEFAULT_BODY_LIMIT;
   if (!arg_settings.timeout)
-    arg_settings.timeout = 5;
+    arg_settings.timeout = 40;
   if (!arg_settings.ws_max_msg_size)
     arg_settings.ws_max_msg_size = 262144; /** defaults to ~250KB */
   if (!arg_settings.ws_timeout)
