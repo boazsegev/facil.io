@@ -26,7 +26,7 @@ The callbacks supported by thils library:
 #define LIB_EVIO_VERSION_MINOR 2
 #define LIB_EVIO_VERSION_PATCH 0
 
-#if defined(__linux__) || defined(__CYGWIN__)
+#if defined(__linux__)
 #define EVIO_ENGINE_EPOLL 1
 #elif defined(__APPLE__) || defined(__unix__)
 #define EVIO_ENGINE_KQUEUE 1
@@ -42,7 +42,7 @@ extern "C" {
 #define EVIO_MAX_EVENTS 64
 #endif
 #ifndef EVIO_TICK
-#define EVIO_TICK 256 /** in milliseconsd */
+#define EVIO_TICK 512 /** in milliseconsd */
 #endif
 
 #if (EVIO_MAX_EVENTS & 1)

@@ -202,7 +202,7 @@ Overriding `defer` to use `evio` when waiting for events
 void defer_thread_wait(pool_pt pool, void *p_thr) {
   (void)pool;
   (void)p_thr;
-  evio_wait(500);
+  evio_wait(EVIO_TICK);
 }
 #endif
 
@@ -1395,7 +1395,7 @@ static void facil_cycle(void *ignr, void *ignr2) {
       idle = 1;
     }
   } else {
-    events = evio_review(512);
+    events = evio_review(EVIO_TICK);
     if (events < 0)
       goto error;
     if (events > 0) {
@@ -1514,11 +1514,12 @@ static void facil_worker_startup(uint8_t sentinel) {
     if (sentinel || facil_data->parent == getpid()) {
       fprintf(stderr,
               "Server is running %u %s X %u %s, press ^C to stop\n"
+              "* Detected capacity: %zd open file limit\n"
               "* Root pid: %d\n",
               facil_data->active, facil_data->active > 1 ? "workers" : "worker",
               facil_data->threads,
               facil_data->threads > 1 ? "threads" : "thread",
-              facil_data->parent);
+              facil_data->capacity, facil_data->parent);
     } else {
       defer(print_pid, NULL, NULL);
     }
@@ -1837,16 +1838,21 @@ static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
   if (!facil_data)
     facil_lib_init();
   if (protocol) {
-    if (!protocol->on_close)
+    if (!protocol->on_close) {
       protocol->on_close = mock_on_close;
-    if (!protocol->on_data)
+    }
+    if (!protocol->on_data) {
       protocol->on_data = mock_on_ev;
-    if (!protocol->on_ready)
+    }
+    if (!protocol->on_ready) {
       protocol->on_ready = mock_on_ev;
-    if (!protocol->ping)
+    }
+    if (!protocol->ping) {
       protocol->ping = mock_ping;
-    if (!protocol->on_shutdown)
+    }
+    if (!protocol->on_shutdown) {
       protocol->on_shutdown = mock_on_ev;
+    }
     prt_meta(protocol) = state;
   }
   spn_lock(&uuid_data(uuid).lock);
