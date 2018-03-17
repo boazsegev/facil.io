@@ -17,7 +17,10 @@ License: MIT
 #include <assert.h>
 #include <stddef.h>
 
-#define FIO_OVERRIDE_MALLOC 1
+/* Don't use `#define FIO_OVERRIDE_MALLOC 1`
+ * because protocol objects can have long life spans and fio_malloc is optimized
+ * for short life spans.
+ */
 #include "fio_mem.h"
 
 /* *****************************************************************************
@@ -661,7 +664,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
                       void *unread_data, size_t unread_length) {
   if (unread_data && unread_length > HTTP1_READ_BUFFER)
     return NULL;
-  http1pr_s *p = fio_malloc(sizeof(*p) + HTTP1_READ_BUFFER);
+  http1pr_s *p = malloc(sizeof(*p) + HTTP1_READ_BUFFER);
   HTTP_ASSERT(p, "HTTP/1.1 protocol allocation failed");
   *p = (http1pr_s){
       .p.protocol =
@@ -690,7 +693,7 @@ void http1_destroy(protocol_s *pr) {
   http1pr_s *p = (http1pr_s *)pr;
   http1_pr2handle(p).status = 0;
   http_s_destroy(&http1_pr2handle(p), 0);
-  fio_free(p);
+  free(p);
 }
 
 /* *****************************************************************************
