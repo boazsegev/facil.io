@@ -429,22 +429,19 @@ static void listener_ping(intptr_t uuid, protocol_s *plistener) {
 
 static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
   intptr_t new_client;
-  if ((new_client = sock_accept(uuid)) == -1) {
-    if (errno == ECONNABORTED || errno == ECONNRESET)
-      goto reschedule;
-    else if (errno != EWOULDBLOCK && errno != EAGAIN)
+  for (int i = 0; i < 4; ++i) {
+    if ((new_client = sock_accept(uuid)) == -1) {
+      if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ECONNABORTED ||
+          errno == ECONNRESET)
+        return;
       perror("ERROR: socket accept error");
-    return;
+      return;
+    }
+    // to defer or not to defer...? TODO: answer the question
+    struct ListenerProtocol *listener = (struct ListenerProtocol *)plistener;
+    defer(listener->on_open, (void *)new_client, listener->udata);
   }
-
-  // to defer or not to defer...? TODO: answer the question
-  struct ListenerProtocol *listener = (struct ListenerProtocol *)plistener;
-  defer(listener->on_open, (void *)new_client, listener->udata);
-
-reschedule:
   facil_force_event(uuid, FIO_EVENT_ON_DATA);
-  return;
-  (void)plistener;
 }
 
 static void free_listenner(void *li) { free(li); }
