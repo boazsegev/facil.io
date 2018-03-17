@@ -40,10 +40,10 @@ Compile time settings
 
 #ifndef DEFER_QUEUE_BLOCK_COUNT
 #if UINTPTR_MAX <= 0xFFFFFFFF
-/* Almost a page of memory on most 32 bit machines: ((4096/4)-4)/3 */
-#define DEFER_QUEUE_BLOCK_COUNT 340
+/* Almost a page of memory on most 32 bit machines: ((4096/4)-5)/3 */
+#define DEFER_QUEUE_BLOCK_COUNT 339
 #else
-/* Almost a page of memory on most 64 bit machines: ((4096/8)-4)/3 */
+/* Almost a page of memory on most 64 bit machines: ((4096/8)-5)/3 */
 #define DEFER_QUEUE_BLOCK_COUNT 168
 #endif
 #endif
@@ -423,52 +423,31 @@ Test
 ***************************************************************************** */
 #ifdef DEBUG
 
-#include <stdio.h>
-
 #include <pthread.h>
-#define DEFER_TEST_THREAD_COUNT 128
+#include <stdio.h>
+#include <sys/stat.h>
 
-static spn_lock_i i_lock = 0;
 static size_t i_count = 0;
+
+#define TOTAL_COUNT (512 * 1024)
 
 static void sample_task(void *unused, void *unused2) {
   (void)(unused);
   (void)(unused2);
-  spn_lock(&i_lock);
-  i_count++;
-  spn_unlock(&i_lock);
+  spn_add(&i_count, 1);
 }
 
-static void single_counter_task(void *unused, void *unused2) {
-  (void)(unused);
+static void sched_sample_task(void *count, void *unused2) {
   (void)(unused2);
-  spn_lock(&i_lock);
-  i_count++;
-  spn_unlock(&i_lock);
-  if (i_count < (1024 * 1024))
-    defer(single_counter_task, NULL, NULL);
-}
-
-static void sched_sample_task(void *unused, void *unused2) {
-  (void)(unused);
-  (void)(unused2);
-  for (size_t i = 0; i < 1024; i++) {
+  for (size_t i = 0; i < (uintptr_t)count; i++) {
     defer(sample_task, NULL, NULL);
-  }
-}
-
-static void thrd_sched(void *unused, void *unused2) {
-  for (size_t i = 0; i < (1024 / DEFER_TEST_THREAD_COUNT); i++) {
-    sched_sample_task(unused, unused2);
   }
 }
 
 static void text_task_text(void *unused, void *unused2) {
   (void)(unused);
   (void)(unused2);
-  spn_lock(&i_lock);
   fprintf(stderr, "this text should print before defer_perform returns\n");
-  spn_unlock(&i_lock);
 }
 
 static void text_task(void *a1, void *a2) {
@@ -478,14 +457,18 @@ static void text_task(void *a1, void *a2) {
 }
 
 void defer_test(void) {
+#define TEST_ASSERT(cond, ...)                                                 \
+  if (!(cond)) {                                                               \
+    fprintf(stderr, "* " __VA_ARGS__);                                         \
+    fprintf(stderr, "Testing failed.\n");                                      \
+    exit(-1);                                                                  \
+  }
+
   clock_t start, end;
   fprintf(stderr, "Starting defer testing\n");
-
-  spn_lock(&i_lock);
   i_count = 0;
-  spn_unlock(&i_lock);
   start = clock();
-  for (size_t i = 0; i < (1024 * 1024); i++) {
+  for (size_t i = 0; i < TOTAL_COUNT; i++) {
     sample_task(NULL, NULL);
   }
   end = clock();
@@ -494,87 +477,79 @@ void defer_test(void) {
           "%lu/%lu free/malloc\n",
           (unsigned long)(end - start), (unsigned long)i_count,
           (unsigned long)count_dealloc, (unsigned long)count_alloc);
+  size_t i_count_should_be = i_count;
 
-  spn_lock(&i_lock);
-  COUNT_RESET;
-  i_count = 0;
-  spn_unlock(&i_lock);
-  start = clock();
-  defer(single_counter_task, NULL, NULL);
-  defer(single_counter_task, NULL, NULL);
-  defer_perform();
-  end = clock();
-  fprintf(stderr,
-          "Defer single thread, two tasks: "
-          "%lu cycles with i_count = %lu, %lu/%lu "
-          "free/malloc\n",
-          (unsigned long)(end - start), (unsigned long)i_count,
-          (unsigned long)count_dealloc, (unsigned long)count_alloc);
+  fprintf(stderr, "\n");
 
-  spn_lock(&i_lock);
-  COUNT_RESET;
-  i_count = 0;
-  spn_unlock(&i_lock);
-  start = clock();
-  for (size_t i = 0; i < 1024; i++) {
-    defer(sched_sample_task, NULL, NULL);
-  }
-  defer_perform();
-  end = clock();
-  fprintf(stderr,
-          "Defer single thread: %lu cycles with i_count = %lu, %lu/%lu "
-          "free/malloc\n",
-          (unsigned long)(end - start), (unsigned long)i_count,
-          (unsigned long)count_dealloc, (unsigned long)count_alloc);
-
-  spn_lock(&i_lock);
-  COUNT_RESET;
-  i_count = 0;
-  spn_unlock(&i_lock);
-  start = clock();
-  pool_pt pool = defer_pool_start(DEFER_TEST_THREAD_COUNT);
-  if (pool) {
-    for (size_t i = 0; i < DEFER_TEST_THREAD_COUNT; i++) {
-      defer(thrd_sched, NULL, NULL);
+  for (int i = 1; TOTAL_COUNT >> i; ++i) {
+    COUNT_RESET;
+    i_count = 0;
+    const size_t per_task = TOTAL_COUNT >> i;
+    const size_t tasks = 1 << i;
+    start = clock();
+    for (size_t j = 0; j < tasks; ++j) {
+      defer(sched_sample_task, (void *)per_task, NULL);
     }
-    // defer((void (*)(void *))defer_pool_stop, pool);
+    defer_perform();
+    end = clock();
+    fprintf(stderr,
+            "- Defer single thread, %zu scheduling loops (%zu each):\n"
+            "    %lu cycles with i_count = %lu, %lu/%lu "
+            "free/malloc\n",
+            tasks, per_task, (unsigned long)(end - start),
+            (unsigned long)i_count, (unsigned long)count_dealloc,
+            (unsigned long)count_alloc);
+    TEST_ASSERT(i_count == i_count_should_be, "ERROR: defer count invalid\n");
+  }
+
+  ssize_t cpu_count = 8;
+#ifdef _SC_NPROCESSORS_ONLN
+  cpu_count = (sysconf(_SC_NPROCESSORS_ONLN) >> 1) | 1;
+#endif
+
+  fprintf(stderr, "\n");
+
+  for (int i = 1; TOTAL_COUNT >> i; ++i) {
+    COUNT_RESET;
+    i_count = 0;
+    const size_t per_task = TOTAL_COUNT >> i;
+    const size_t tasks = 1 << i;
+    pool_pt pool = defer_pool_start(cpu_count);
+    start = clock();
+    for (size_t j = 0; j < tasks; ++j) {
+      defer(sched_sample_task, (void *)per_task, NULL);
+    }
     defer_pool_stop(pool);
     defer_pool_wait(pool);
     end = clock();
     fprintf(stderr,
-            "Defer multi-thread (%d threads): %lu cycles with i_count = %lu, "
-            "%lu/%lu free/malloc\n",
-            DEFER_TEST_THREAD_COUNT, (unsigned long)(end - start),
+            "- Defer %zu threads, %zu scheduling loops (%zu each):\n"
+            "    %lu cycles with i_count = %lu, %lu/%lu "
+            "free/malloc\n",
+            cpu_count, tasks, per_task, (unsigned long)(end - start),
             (unsigned long)i_count, (unsigned long)count_dealloc,
             (unsigned long)count_alloc);
-  } else
-    fprintf(stderr, "Defer multi-thread: FAILED!\n");
+    TEST_ASSERT(i_count == i_count_should_be, "ERROR: defer count invalid\n");
+  }
 
-  spn_lock(&i_lock);
   COUNT_RESET;
   i_count = 0;
-  spn_unlock(&i_lock);
-  start = clock();
   for (size_t i = 0; i < 1024; i++) {
     defer(sched_sample_task, NULL, NULL);
   }
   defer_perform();
-  end = clock();
-  fprintf(stderr,
-          "Defer single thread (2): %lu cycles with i_count = %lu, %lu/%lu "
-          "free/malloc\n",
-          (unsigned long)(end - start), (unsigned long)i_count,
-          (unsigned long)count_dealloc, (unsigned long)count_alloc);
-
-  fprintf(stderr, "calling defer_perform.\n");
   defer(text_task, NULL, NULL);
+  fprintf(stderr, "calling defer_perform.\n");
   defer_perform();
   fprintf(stderr,
           "defer_perform returned. i_count = %lu, %lu/%lu free/malloc\n",
           (unsigned long)i_count, (unsigned long)count_dealloc,
           (unsigned long)count_alloc);
+
+  COUNT_RESET;
+  i_count = 0;
   defer_clear_queue();
-  fprintf(stderr, "* Defer cleared queue: %lu/%lu free/malloc\n",
+  fprintf(stderr, "* Defer cleared queue: %lu/%lu free/malloc\n\n",
           (unsigned long)count_dealloc, (unsigned long)count_alloc);
 }
 
