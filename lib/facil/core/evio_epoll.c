@@ -26,21 +26,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <time.h>
 #include <unistd.h>
 
-/** override this if not using facil.io, also change event loop */
-#ifndef sock_uuid2fd
-#define sock_uuid2fd(uuid) ((intptr_t)((uintptr_t)uuid >> 8))
-#endif
-
-/* *****************************************************************************
-Callbacks - weak versions to be overridden.
-***************************************************************************** */
-#pragma weak evio_on_data
-void __attribute__((weak)) evio_on_data(void *arg) { (void)arg; }
-#pragma weak evio_on_ready
-void __attribute__((weak)) evio_on_ready(void *arg) { (void)arg; }
-#pragma weak evio_on_error
-void __attribute__((weak)) evio_on_error(void *arg) { (void)arg; }
-
 /* *****************************************************************************
 Global data and system independant code
 ***************************************************************************** */
