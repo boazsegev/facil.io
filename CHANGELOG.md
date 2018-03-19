@@ -2,9 +2,9 @@
 
 ### Ver. 0.6.0 (`master` branch, upcoming release)
 
-Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
+Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the evio polling from level-triggered to one-shot polling, a rewrite to the facil.io dynamic object types FIOBJ, and more).
 
-Coming Soon...
+The following updates are included in this release (in addition to the beta updates):
 
 **Fix**: (`pubsub`) Fixed an issue where deferred pub/sub messages would have `udata2` set to `udata1` instead of the actual correct value.
 
