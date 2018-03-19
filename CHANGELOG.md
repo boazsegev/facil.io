@@ -18,6 +18,8 @@ Coming Soon...
 
 **Update**: (`fio_mem`) replaced the double linked list logic with a single linked list to make the library more independent as well as reduce some operations.
 
+As well as some refactoring and minor adjustments.
+
 ### Ver. 0.6.0.beta.8
 
 **Fix**: (`defer`) the `defer_free_thread` symbol is now correctly marked as weak, allowing the function to be overridden.
