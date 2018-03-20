@@ -316,6 +316,9 @@ typedef struct http_settings_s {
    * query), header names and fields.
    *
    * Defaults to 32Kib (which is about 4 times more than I would recommend).
+   *
+   * This reflects the total overall size. On HTTP/1.1, each header line (name +
+   * value pair) is also limitied to a hardcoded ~4094 bytes.
    */
   size_t max_header_size;
   /**
