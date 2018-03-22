@@ -428,9 +428,9 @@ static void listener_ping(intptr_t uuid, protocol_s *plistener) {
 }
 
 static void listener_on_data(intptr_t uuid, protocol_s *plistener) {
-  intptr_t new_client;
   for (int i = 0; i < 4; ++i) {
-    if ((new_client = sock_accept(uuid)) == -1) {
+    intptr_t new_client = sock_accept(uuid);
+    if (new_client == -1) {
       if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ECONNABORTED ||
           errno == ECONNRESET)
         return;
@@ -1752,7 +1752,7 @@ void facil_run(struct facil_run_args args) {
           "      Avoid this message by setting threads / workers manually.\n"
           "      To increase auto-detection limit, recompile with:\n"
           "             -DFACIL_CPU_CORES_LIMIT=%zu \n",
-          cpu_count, (size_t)FACIL_CPU_CORES_LIMIT, cpu_count);
+          (size_t)cpu_count, (size_t)FACIL_CPU_CORES_LIMIT, cpu_count);
       cpu_count = FACIL_CPU_CORES_LIMIT;
     }
 #endif
