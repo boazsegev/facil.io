@@ -58,10 +58,11 @@ static fio_cstr_s http1pr_status2str(uintptr_t status);
 static inline void http1_after_finish(http_s *h) {
   http1pr_s *p = handle2pr(h);
   p->stop = p->stop & (~1UL);
-  http_s_clear(h, p->p.settings->log);
   if (h != &p->request) {
     http_s_destroy(h, 0);
     fio_free(h);
+  } else {
+    http_s_clear(h, p->p.settings->log);
   }
   if (p->close)
     sock_close(p->p.uuid);
