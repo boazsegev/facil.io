@@ -396,7 +396,7 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
       FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
       hash->ordered[hash->pos] = (fio_hash_data_ordered_s){.obj = NULL};
       *info = (fio_hash_data_s){.obj = NULL};
-      if (!hash->ordered[hash->pos - 1].obj) {
+      if (hash->pos && !hash->ordered[hash->pos - 1].obj) {
         fio_hash_pop(hash, NULL);
       } else {
         --hash->count;
