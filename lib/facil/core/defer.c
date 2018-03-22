@@ -160,6 +160,11 @@ static inline task_s pop_task(void) {
       to_free = deferred.reader;
       deferred.reader = deferred.reader->next;
     } else {
+      if (deferred.reader != &static_queue && static_queue.state == 2) {
+        to_free = deferred.reader;
+        deferred.writer = &static_queue;
+        deferred.reader = &static_queue;
+      }
       deferred.reader->write = deferred.reader->read = deferred.reader->state =
           0;
     }
@@ -169,6 +174,7 @@ static inline task_s pop_task(void) {
 finish:
   if (to_free == &static_queue) {
     static_queue.state = 2;
+    static_queue.next = NULL;
   }
   spn_unlock(&deferred.lock);
 
