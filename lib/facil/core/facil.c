@@ -1752,7 +1752,7 @@ void facil_run(struct facil_run_args args) {
           "      Avoid this message by setting threads / workers manually.\n"
           "      To increase auto-detection limit, recompile with:\n"
           "             -DFACIL_CPU_CORES_LIMIT=%zu \n",
-          (size_t)cpu_count, (size_t)FACIL_CPU_CORES_LIMIT, cpu_count);
+          (size_t)cpu_count, (size_t)FACIL_CPU_CORES_LIMIT, (size_t)cpu_count);
       cpu_count = FACIL_CPU_CORES_LIMIT;
     }
 #endif

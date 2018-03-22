@@ -533,7 +533,7 @@ void defer_test(void) {
             "- Defer %zu threads, %zu scheduling loops (%zu each):\n"
             "    %lu cycles with i_count = %lu, %lu/%lu "
             "free/malloc\n",
-            cpu_count, tasks, per_task, (unsigned long)(end - start),
+            (size_t)cpu_count, tasks, per_task, (unsigned long)(end - start),
             (unsigned long)i_count, (unsigned long)count_dealloc,
             (unsigned long)count_alloc);
     TEST_ASSERT(i_count == i_count_should_be, "ERROR: defer count invalid\n");
