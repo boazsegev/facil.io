@@ -93,10 +93,10 @@ void fio_malloc_test(void);
 
 /** If defined, `malloc` will be used instead of the fio_malloc functions */
 #if FIO_FORCE_MALLOC
-#define fio_malloc(size) malloc((size))
-#define fio_calloc(size, count) calloc((size), (count))
-#define fio_free(ptr) free((ptr))
-#define fio_realloc(ptr, new_size) realloc((ptr), (new_size))
+#define fio_malloc malloc
+#define fio_calloc calloc
+#define fio_free free
+#define fio_realloc realloc
 #define fio_realloc2(ptr, new_size, old_data_len) realloc((ptr), (new_size))
 #define fio_malloc_test()
 
