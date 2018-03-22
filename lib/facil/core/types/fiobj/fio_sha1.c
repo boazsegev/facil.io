@@ -304,7 +304,7 @@ void fio_sha1_test(void) {
   int i = 0;
   sha1_s sha1;
   fprintf(stderr, "===================================\n");
-  fprintf(stderr, "fio SHA-1 struct size: %lu\n", sizeof(sha1_s));
+  fprintf(stderr, "fio SHA-1 struct size: %zu\n", sizeof(sha1_s));
   fprintf(stderr, "+ fio");
   while (sets[i].str) {
     sha1 = fio_sha1_init();

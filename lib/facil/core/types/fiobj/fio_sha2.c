@@ -686,7 +686,7 @@ void fio_sha2_test(void) {
   char *got;
   char *str = "";
   fprintf(stderr, "===================================\n");
-  fprintf(stderr, "fio SHA-2 struct size: %lu\n", sizeof(sha2_s));
+  fprintf(stderr, "fio SHA-2 struct size: %zu\n", sizeof(sha2_s));
   fprintf(stderr, "+ fio");
   // start tests
   s = fio_sha2_init(SHA_224);
@@ -777,9 +777,9 @@ void fio_sha2_test(void) {
 
 #ifdef HAVE_OPENSSL
   fprintf(stderr, "===================================\n");
-  fprintf(stderr, "fio SHA-2 struct size: %lu\n", sizeof(sha2_s));
-  fprintf(stderr, "OpenSSL SHA-2/256 struct size: %lu\n", sizeof(SHA256_CTX));
-  fprintf(stderr, "OpenSSL SHA-2/512 struct size: %lu\n", sizeof(SHA512_CTX));
+  fprintf(stderr, "fio SHA-2 struct size: %zu\n", sizeof(sha2_s));
+  fprintf(stderr, "OpenSSL SHA-2/256 struct size: %zu\n", sizeof(SHA256_CTX));
+  fprintf(stderr, "OpenSSL SHA-2/512 struct size: %zu\n", sizeof(SHA512_CTX));
   fprintf(stderr, "===================================\n");
   SHA512_CTX s2;
   SHA256_CTX s3;
