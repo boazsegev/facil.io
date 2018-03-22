@@ -118,7 +118,6 @@ static inline void fio_memcpy(uint16_t *__restrict dest,
     *(dest++) = *(src++); /* fallthrough */
   case 1:
     *(dest++) = *(src++);
-    units = 0;
   }
 }
 
