@@ -91,39 +91,6 @@ static inline void http_s_new(http_s *h, http_protocol_s *owner,
   };
 }
 
-static inline void http_s_clear(http_s *h, uint8_t log) {
-  if (log && h->status && !h->status_str)
-    http_write_log(h);
-  fiobj_free(h->method);
-  fiobj_free(h->status_str);
-  // fiobj_hash_clear(h->private_data.out_headers);
-  // fiobj_hash_clear(h->headers);
-  fiobj_free(h->private_data.out_headers);
-  fiobj_free(h->headers);
-  h->private_data.out_headers = fiobj_hash_new();
-  h->headers = fiobj_hash_new();
-
-  fiobj_hash_clear(h->private_data.out_headers);
-  fiobj_hash_clear(h->headers);
-  fiobj_free(h->version);
-  fiobj_free(h->query);
-  fiobj_free(h->path);
-  fiobj_free(h->cookies);
-  fiobj_free(h->body);
-  fiobj_free(h->params);
-  *h = (http_s){
-      .private_data =
-          {
-              .vtbl = h->private_data.vtbl,
-              .flag = h->private_data.flag,
-              .out_headers = h->private_data.out_headers,
-          },
-      .headers = h->headers,
-      .received_at = facil_last_tick(),
-      .status = 200,
-  };
-}
-
 static inline void http_s_destroy(http_s *h, uint8_t log) {
   if (log && h->status && !h->status_str)
     http_write_log(h);
@@ -138,7 +105,15 @@ static inline void http_s_destroy(http_s *h, uint8_t log) {
   fiobj_free(h->body);
   fiobj_free(h->params);
 
-  *h = (http_s){.private_data.vtbl = h->private_data.vtbl};
+  *h = (http_s){
+      .private_data.vtbl = h->private_data.vtbl,
+      .private_data.flag = h->private_data.flag,
+  };
+}
+
+static inline void http_s_clear(http_s *h, uint8_t log) {
+  http_s_destroy(h, log);
+  http_s_new(h, (http_protocol_s *)h->private_data.flag, h->private_data.vtbl);
 }
 
 /** Use this function to handle HTTP requests.*/
