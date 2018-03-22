@@ -393,6 +393,7 @@ void fiobj_test_hash(void) {
   fiobj_free(
       str_key); /* note that a copy will remain in the Hash until rehashing. */
   fiobj_free(o);
+  fiobj_free(o2);
   fprintf(stderr, "* passed.\n");
 }
 #endif

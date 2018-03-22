@@ -10,6 +10,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <errno.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/wait.h>

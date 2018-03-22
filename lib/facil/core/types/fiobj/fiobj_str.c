@@ -589,6 +589,7 @@ void fiobj_test_string(void) {
   TEST_ASSERT(fiobj_obj2num(o), "fiobj_strprintf integer error.\n");
   TEST_ASSERT(!memcmp(fiobj_obj2cstr(o).data, "42", 2),
               "fiobj_strprintf string error.\n");
+  fiobj_free(o);
 
   o = fiobj_str_buf(4);
   for (int i = 0; i < 16000; ++i) {
