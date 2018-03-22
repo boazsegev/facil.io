@@ -142,9 +142,9 @@ Create/Destroy the websocket subscription objects
 ***************************************************************************** */
 
 static inline void clear_subscriptions(ws_s *ws) {
-  void *obj = NULL;
-  while ((obj = fio_ls_pop(&ws->subscriptions)))
-    pubsub_unsubscribe(obj);
+  while (fio_ls_any(&ws->subscriptions)) {
+    pubsub_unsubscribe(fio_ls_pop(&ws->subscriptions));
+  }
 }
 
 /* *****************************************************************************
@@ -591,8 +591,8 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
                               .on_unsubscribe = args.on_unsubscribe};
 
   pubsub_sub_pt sub = pubsub_subscribe(
-          .channel = args.channel, .on_unsubscribe = websocket_on_unsubscribe,
-          .use_pattern = args.use_pattern,
+          .channel = args.channel, .use_pattern = args.use_pattern,
+          .on_unsubscribe = websocket_on_unsubscribe,
           .on_message =
               (args.on_message
                    ? websocket_on_pubsub_message
@@ -621,6 +621,7 @@ error:
 uintptr_t websocket_find_sub(struct websocket_subscribe_s args) {
   pubsub_sub_pt sub = pubsub_find_sub(
           .channel = args.channel, .use_pattern = args.use_pattern,
+          .on_unsubscribe = websocket_on_unsubscribe,
           .on_message =
               (args.on_message
                    ? websocket_on_pubsub_message
