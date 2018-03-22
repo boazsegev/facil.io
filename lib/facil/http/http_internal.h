@@ -92,8 +92,9 @@ static inline void http_s_new(http_s *h, http_protocol_s *owner,
 }
 
 static inline void http_s_destroy(http_s *h, uint8_t log) {
-  if (log && h->status && !h->status_str)
+  if (log && h->status && !h->status_str) {
     http_write_log(h);
+  }
   fiobj_free(h->method);
   fiobj_free(h->status_str);
   fiobj_free(h->private_data.out_headers);
