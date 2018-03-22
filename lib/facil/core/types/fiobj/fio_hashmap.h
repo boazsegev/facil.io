@@ -246,7 +246,7 @@ struct fio_hash_s {
 #define FIO_HASH_FOR_FREE(hash, container)                                     \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
        (container && (container < (hash)->ordered + (hash)->pos)) ||           \
-       ((fio_hash_free(hash), 0) != 0);                                        \
+       ((fio_hash_free(hash), (hash)->ordered) != NULL);                       \
        FIO_HASH_KEY_DESTROY(container->key), (++container))
 
 #undef FIO_HASH_FOR_EMPTY
