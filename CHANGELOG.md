@@ -1,6 +1,10 @@
 # Change Log
 
-### Ver. 0.6.0 (`master` branch, upcoming release)
+### Ver. 0.6.1
+
+**Fix**: (`pubsub`) fixed a possible issue where a channel name might be freed before it's callback is handled. This was overlooked during the Hash caching logic update that prevented key hashing when the last item of the ordered Hash is removed.
+
+### Ver. 0.6.0
 
 Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the evio polling from level-triggered to one-shot polling, a rewrite to the facil.io dynamic object types FIOBJ, and more).
 

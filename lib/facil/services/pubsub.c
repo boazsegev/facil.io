@@ -197,7 +197,7 @@ static client_s *pubsub_client_new(client_s client, channel_s channel) {
       exit(errno);
     }
     *ch = (channel_s){
-        .name = channel.name,
+        .name = fiobj_dup(channel.name),
         .clients = FIO_LS_INIT(ch->clients),
         .use_pattern = channel.use_pattern,
         .publish2cluster = channel.publish2cluster,
@@ -253,6 +253,7 @@ static int pubsub_client_destroy(client_s *client) {
   if (is_ch_any) {
     return 0;
   }
+  fiobj_free(ch->name);
   free(ch);
   return 0;
 }
