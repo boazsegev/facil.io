@@ -4,6 +4,10 @@
 
 **Fix**: (`pubsub`) fixed a possible issue where a channel name might be freed before it's callback is handled. This was overlooked during the Hash caching logic update that prevented key hashing when the last item of the ordered Hash is removed.
 
+**Fix**: (`hashmap`) fixed a possible memory reading issue that could occur when a Hash contains only one object and that object is removed (causing a memory read into the location just before the Hash map's address).
+
+**Fix**: (`defer`) defer now prefers the statically allocated buffer over the dynamically allocated buffer when all tasks have completed, preventing the last allocated buffer from leaking during the shutdown stage.
+
 ### Ver. 0.6.0
 
 Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the evio polling from level-triggered to one-shot polling, a rewrite to the facil.io dynamic object types FIOBJ, and more).
