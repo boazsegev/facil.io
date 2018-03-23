@@ -111,6 +111,7 @@ static fio_hash_s channels;
 static fio_hash_s clients;
 static fio_hash_s engines;
 static spn_lock_i lock = SPN_LOCK_INIT;
+static spn_lock_i engn_lock = SPN_LOCK_INIT;
 
 /* *****************************************************************************
 Channel and Client Management
@@ -246,13 +247,19 @@ static int pubsub_client_destroy(client_s *client) {
               "FATAL ERROR: (pubsub) channel database corruption detected.\n");
       exit(-1);
     }
-    pubsub_on_channel_destroy(ch);
+    if (ch_hashmap->capa > 32 && ch_hashmap->count << 1 <= ch_hashmap->pos) {
+      fio_hash_compact(ch_hashmap);
+    }
+  }
+  if (clients.count << 1 <= clients.pos) {
+    fio_hash_compact(&clients);
   }
   spn_unlock(&lock);
   client_test4free(client);
   if (is_ch_any) {
     return 0;
   }
+  pubsub_on_channel_destroy(ch);
   fiobj_free(ch->name);
   free(ch);
   return 0;
@@ -368,12 +375,14 @@ static void pubsub_on_channel_create(channel_s *ch) {
   if (ch->publish2cluster)
     PUBSUB_CLUSTER_ENGINE->subscribe(PUBSUB_CLUSTER_ENGINE, ch->name,
                                      ch->use_pattern);
+  spn_lock(&engn_lock);
   FIO_HASH_FOR_LOOP(&engines, e_) {
     if (!e_ || !e_->obj)
       continue;
     pubsub_engine_s *e = e_->obj;
     e->subscribe(e, ch->name, ch->use_pattern);
   }
+  spn_unlock(&engn_lock);
 }
 
 /* runs in lock(!) let'm all know */
@@ -381,33 +390,36 @@ static void pubsub_on_channel_destroy(channel_s *ch) {
   if (ch->publish2cluster)
     PUBSUB_CLUSTER_ENGINE->unsubscribe(PUBSUB_CLUSTER_ENGINE, ch->name,
                                        ch->use_pattern);
+  spn_lock(&engn_lock);
   FIO_HASH_FOR_LOOP(&engines, e_) {
     if (!e_ || !e_->obj)
       continue;
     pubsub_engine_s *e = e_->obj;
     e->unsubscribe(e, ch->name, ch->use_pattern);
   }
+  spn_unlock(&engn_lock);
 }
 
 /** Registers an engine, so it's callback can be called. */
 void pubsub_engine_register(pubsub_engine_s *engine) {
-  spn_lock(&lock);
+  spn_lock(&engn_lock);
   fio_hash_insert(
       &engines,
       (fio_hash_key_s){.hash = (uintptr_t)engine, .obj = FIOBJ_INVALID},
       engine);
-  spn_unlock(&lock);
+  spn_unlock(&engn_lock);
 }
 
 /** Unregisters an engine, so it could be safely destroyed. */
 void pubsub_engine_deregister(pubsub_engine_s *engine) {
-  spn_lock(&lock);
+  spn_lock(&engn_lock);
   if (PUBSUB_DEFAULT_ENGINE == engine)
     PUBSUB_DEFAULT_ENGINE = (pubsub_engine_s *)PUBSUB_CLUSTER_ENGINE;
   void *old = fio_hash_insert(
       &engines,
       (fio_hash_key_s){.hash = (uintptr_t)engine, .obj = FIOBJ_INVALID}, NULL);
-  spn_unlock(&lock);
+  fio_hash_compact(&engines);
+  spn_unlock(&engn_lock);
   if (!old)
     fprintf(stderr, "Deregister error, not registered?\n");
 }
