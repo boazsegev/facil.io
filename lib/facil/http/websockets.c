@@ -314,11 +314,11 @@ static ws_s *new_websocket(intptr_t uuid) {
   return ws;
 }
 static void destroy_ws(ws_s *ws) {
-  clear_subscriptions(ws);
   if (ws->on_close)
     ws->on_close(ws->fd, ws->udata);
   if (ws->msg)
     fiobj_free(ws->msg);
+  clear_subscriptions(ws);
   free_ws_buffer(ws, ws->buffer);
   free(ws);
 }
