@@ -239,8 +239,6 @@ static void on_shutdown(intptr_t fd, protocol_s *ws) {
     ((ws_s *)ws)->on_shutdown((ws_s *)ws);
 }
 
-/************** new implementation */
-
 static void on_data(intptr_t sockfd, protocol_s *ws_) {
   ws_s *const ws = (ws_s *)ws_;
   if (ws == NULL || ws->protocol.service != WEBSOCKET_ID_STR)
