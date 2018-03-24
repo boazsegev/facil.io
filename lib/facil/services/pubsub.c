@@ -247,12 +247,16 @@ static int pubsub_client_destroy(client_s *client) {
               "FATAL ERROR: (pubsub) channel database corruption detected.\n");
       exit(-1);
     }
-    if (ch_hashmap->capa > 32 && ch_hashmap->count << 1 <= ch_hashmap->pos) {
+    if (ch_hashmap->capa > 32 && (ch_hashmap->pos >> 1) > ch_hashmap->count) {
       fio_hash_compact(ch_hashmap);
     }
   }
-  if (clients.count << 1 <= clients.pos) {
+  if ((clients.pos >> 1) > clients.count) {
+    // fprintf(stderr, "INFO: (pubsub) reducing client hash map %zu",
+    //         (size_t)clients.capa);
     fio_hash_compact(&clients);
+    // fprintf(stderr, " => %zu (%zu clients)\n", (size_t)clients.capa,
+    //         (size_t)clients.count);
   }
   spn_unlock(&lock);
   client_test4free(client);
