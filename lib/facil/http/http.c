@@ -48,19 +48,17 @@ static inline void add_date(http_s *r) {
     mod_hash = fio_siphash("last-modified", 13);
 
   if (facil_last_tick().tv_sec > last_date_added) {
-    FIOBJ tmp = FIOBJ_INVALID;
     spn_lock(&date_lock);
     if (facil_last_tick().tv_sec > last_date_added) { /* retest inside lock */
-      tmp = fiobj_str_buf(32);
+      FIOBJ tmp = fiobj_str_buf(32);
+      FIOBJ old = current_date;
       fiobj_str_resize(tmp, http_time2str(fiobj_obj2cstr(tmp).data,
                                           facil_last_tick().tv_sec));
       last_date_added = facil_last_tick().tv_sec;
-      FIOBJ other = current_date;
       current_date = tmp;
-      tmp = other;
+      fiobj_free(old);
     }
     spn_unlock(&date_lock);
-    fiobj_free(tmp);
   }
 
   if (!fiobj_hash_get2(r->private_data.out_headers, date_hash)) {
