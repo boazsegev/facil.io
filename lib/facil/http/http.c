@@ -328,12 +328,12 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
  * AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
  */
 int http_send_body(http_s *r, void *data, uintptr_t length) {
+  if (HTTP_INVALID_HANDLE(r))
+    return -1;
   if (!length || !data) {
     http_finish(r);
     return 0;
   }
-  if (HTTP_INVALID_HANDLE(r))
-    return -1;
   add_content_length(r, length);
   add_date(r);
   return ((http_vtable_s *)r->private_data.vtbl)
