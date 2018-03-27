@@ -99,7 +99,7 @@ static int write_header(FIOBJ o, void *w_) {
   return 0;
 }
 
-static FIOBJ headers2str(http_s *h) {
+static FIOBJ headers2str(http_s *h, uintptr_t padding) {
   if (!h->method && !!h->status_str)
     return FIOBJ_INVALID;
 
@@ -108,7 +108,11 @@ static FIOBJ headers2str(http_s *h) {
     connection_hash = fio_siphash("connection", 10);
 
   struct header_writer_s w;
-  w.dest = fiobj_str_buf(0);
+  {
+    const uintptr_t header_length_guess =
+        fiobj_hash_count(h->private_data.out_headers) * 96;
+    w.dest = fiobj_str_buf(header_length_guess + padding);
+  }
   http1pr_s *p = handle2pr(h);
 
   if (p->is_client == 0) {
@@ -176,7 +180,7 @@ static FIOBJ headers2str(http_s *h) {
 /** Should send existing headers and data */
 static int http1_send_body(http_s *h, void *data, uintptr_t length) {
 
-  FIOBJ packet = headers2str(h);
+  FIOBJ packet = headers2str(h, length);
   if (!packet) {
     http1_after_finish(h);
     return -1;
@@ -189,7 +193,7 @@ static int http1_send_body(http_s *h, void *data, uintptr_t length) {
 /** Should send existing headers and file */
 static int http1_sendfile(http_s *h, int fd, uintptr_t length,
                           uintptr_t offset) {
-  FIOBJ packet = headers2str(h);
+  FIOBJ packet = headers2str(h, 0);
   if (!packet) {
     close(fd);
     http1_after_finish(h);
@@ -221,7 +225,7 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
 
 /** Should send existing headers or complete streaming */
 static void htt1p_finish(http_s *h) {
-  FIOBJ packet = headers2str(h);
+  FIOBJ packet = headers2str(h, 0);
   if (packet)
     fiobj_send_free((handle2pr(h)->p.uuid), packet);
   else {
