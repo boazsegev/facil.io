@@ -31,6 +31,10 @@ Compile Time Settings
 #define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
 #endif
 
+#ifndef HTTP_MAX_HEADER_COUNT
+#define HTTP_MAX_HEADER_COUNT 128
+#endif
+
 /** the `http_listen settings, see detils in the struct definition. */
 typedef struct http_settings_s http_settings_s;
 

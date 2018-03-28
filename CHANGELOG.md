@@ -1,5 +1,11 @@
 # Change Log
 
+### Ver. 0.6.2
+
+**Fix**: (`http`) fixed an HTTP status string output error, where status codes above 410 would degrade to status 500 (internal error) instead of printing the correct status string to the response.
+
+**Security**: (`http1`) added a hard-coded limit on the number of headers allowed per request (regardless of size). `HTTP_MAX_HEADER_COUNT` defaults to 128, which should be enough by all accounts.
+
 ### Ver. 0.6.1
 
 **Fix**: (`pubsub`) fixed a possible issue where a channel name might be freed before it's callback is handled. This was overlooked during the Hash caching logic update that prevented key hashing when the last item of the ordered Hash is removed.

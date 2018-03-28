@@ -517,15 +517,19 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
             "ERROR: (http1 parse ordering error) missing HashMap for header "
             "%s: %s\n",
             name, data);
-    {
-      http_send_error2(500, parser2http(parser)->p.uuid,
-                       parser2http(parser)->p.settings);
-      return -1;
-    }
+    http_send_error2(500, parser2http(parser)->p.uuid,
+                     parser2http(parser)->p.settings);
+    return -1;
   }
   parser2http(parser)->header_size += name_len + data_len;
   if (parser2http(parser)->header_size >=
-      parser2http(parser)->max_header_size) {
+          parser2http(parser)->max_header_size ||
+      fiobj_hash_count(http1_pr2handle(parser2http(parser)).headers) >
+          HTTP_MAX_HEADER_COUNT) {
+    if (parser2http(parser)->p.settings->log) {
+      fprintf(stderr,
+              "WARNING: (http security alert) header flood detected.\n");
+    }
     http_send_error(&http1_pr2handle(parser2http(parser)), 413);
     return -1;
   }
@@ -708,7 +712,7 @@ Protocol Data
 ***************************************************************************** */
 
 // clang-format off
-#define HTTP_SET_STATUS_STR(status, str) [status-100] = { .buffer = ("HTTP/1.1 " #status " " str "\r\n"), .length = (sizeof("HTTP/1.1 " #status " " str "\r\n") - 1) }
+#define HTTP_SET_STATUS_STR(status, str) [((status)-100)] = { .buffer = ("HTTP/1.1 " #status " " str "\r\n"), .length = (sizeof("HTTP/1.1 " #status " " str "\r\n") - 1) }
 // #undef HTTP_SET_STATUS_STR
 // clang-format on
 
@@ -779,10 +783,12 @@ static fio_cstr_s http1pr_status2str(uintptr_t status) {
       HTTP_SET_STATUS_STR(511, "Network Authentication Required"),
   };
   fio_cstr_s ret = (fio_cstr_s){.length = 0, .buffer = NULL};
-  if (status >= 100 && status < sizeof(status2str) / sizeof(status2str[0]))
+  if (status >= 100 &&
+      (status - 100) < sizeof(status2str) / sizeof(status2str[0]))
     ret = status2str[status - 100];
-  if (!ret.buffer)
+  if (!ret.buffer) {
     ret = status2str[400];
+  }
   return ret;
 }
 #undef HTTP_SET_STATUS_STR

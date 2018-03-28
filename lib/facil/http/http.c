@@ -2363,10 +2363,12 @@ fio_cstr_s http_status2str(uintptr_t status) {
       HTTP_SET_STATUS_STR(511, "Network Authentication Required"),
   };
   fio_cstr_s ret = (fio_cstr_s){.length = 0, .buffer = NULL};
-  if (status >= 100 && status < sizeof(status2str) / sizeof(status2str[0]))
+  if (status >= 100 &&
+      (status - 100) < sizeof(status2str) / sizeof(status2str[0]))
     ret = status2str[status - 100];
-  if (!ret.buffer)
+  if (!ret.buffer) {
     ret = status2str[400];
+  }
   return ret;
 }
 #undef HTTP_SET_STATUS_STR

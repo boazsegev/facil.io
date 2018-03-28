@@ -75,7 +75,7 @@ ifeq ($(OS),Darwin) # Run MacOS commands
 	# debugger
 	DB=lldb
 	# disassemble tool. Use stub to disable.
-	DISAMS=otool -tVX
+	DISAMS=otool -dtVGX
 	# documentation commands
 	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
 else
