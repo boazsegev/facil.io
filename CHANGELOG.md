@@ -6,6 +6,8 @@
 
 **Security**: (`http1`) added a hard-coded limit on the number of headers allowed per request (regardless of size). `HTTP_MAX_HEADER_COUNT` defaults to 128, which should be enough by all accounts.
 
+**Update**: (`FIOBJ`) updated the `fiobj_str_readfile` to allow for a negative `stat_at` position (calculated from the end of file of the file backwards).
+
 ### Ver. 0.6.1
 
 **Fix**: (`pubsub`) fixed a possible issue where a channel name might be freed before it's callback is handled. This was overlooked during the Hash caching logic update that prevented key hashing when the last item of the ordered Hash is removed.
