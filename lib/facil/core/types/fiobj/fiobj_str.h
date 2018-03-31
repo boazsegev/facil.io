@@ -71,14 +71,17 @@ __attribute__((format(printf, 1, 2))) FIOBJ fiobj_strprintf(const char *format,
 /** Dumps the `filename` file's contents into a new String. If `limit == 0`,
  * than the data will be read until EOF.
  *
- * If the file can't be located, opened or read, or if `start_at` is beyond the
- * EOF position, NULL is returned.
+ * If the file can't be located, opened or read, or if `start_at` is out of
+ * bounds (i.e., beyond the EOF position), FIOBJ_INVALID is returned.
+ *
+ * If `start_at` is negative, it will be computed from the end of the file.
  *
  * Remember to use `fiobj_free`.
  *
- * NOTE: Requires a UNIX system, otherwise always returns NULL.
+ * NOTE: Requires a UNIX system, otherwise always returns FIOBJ_INVALID.
  */
-FIOBJ fiobj_str_readfile(const char *filename, size_t start_at, size_t limit);
+FIOBJ fiobj_str_readfile(const char *filename, intptr_t start_at,
+                         intptr_t limit);
 
 /* *****************************************************************************
 API: Editing a String

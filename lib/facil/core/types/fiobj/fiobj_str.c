@@ -300,16 +300,17 @@ FIOBJ fiobj_str_tmp(void) {
  *
  * Remember to use `fiobj_free`.
  */
-FIOBJ fiobj_str_readfile(const char *filename, size_t start_at, size_t limit) {
+FIOBJ fiobj_str_readfile(const char *filename, intptr_t start_at,
+                         intptr_t limit) {
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
   /* POSIX implementations. */
   if (filename == NULL)
-    return 0;
+    return FIOBJ_INVALID;
   struct stat f_data;
   int file = -1;
   size_t file_path_len = strlen(filename);
   if (file_path_len == 0 || file_path_len >= PATH_MAX)
-    return 0;
+    return FIOBJ_INVALID;
 
   char real_public_path[PATH_MAX];
   real_public_path[PATH_MAX - 1] = 0;
@@ -321,30 +322,36 @@ FIOBJ fiobj_str_readfile(const char *filename, size_t start_at, size_t limit) {
     filename = real_public_path;
   }
 
-  if (stat(filename, &f_data) || f_data.st_size < 0)
-    return 0;
+  if (stat(filename, &f_data) || f_data.st_size <= 0)
+    return FIOBJ_INVALID;
 
-  if (limit <= 0 || (size_t)f_data.st_size < limit + start_at)
+  if (start_at < 0)
+    start_at = f_data.st_size + start_at;
+
+  if (start_at < 0 || start_at >= f_data.st_size)
+    return FIOBJ_INVALID;
+
+  if (limit <= 0 || f_data.st_size < (limit + start_at))
     limit = f_data.st_size - start_at;
   FIOBJ str = fiobj_str_buf(limit + 1);
   if (!str)
-    return 0;
+    return FIOBJ_INVALID;
   file = open(filename, O_RDONLY);
   if (file < 0) {
     FIOBJECT2VTBL(str)->dealloc(str, NULL, NULL);
-    return 0;
+    return FIOBJ_INVALID;
   }
   if (pread(file, fiobj_str_mem_addr(str), limit, start_at) != (ssize_t)limit) {
     FIOBJECT2VTBL(str)->dealloc(str, NULL, NULL);
     close(file);
-    return 0;
+    return FIOBJ_INVALID;
   }
   close(file);
   fiobj_str_setlen(str, limit);
   return str;
 #else
   /* TODO: consider adding non POSIX implementations. */
-  return 0;
+  return FIOBJ_INVALID;
 #endif
 }
 
