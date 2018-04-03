@@ -939,6 +939,10 @@ static inline void cluster_send2traget(uint32_t ch_len, uint32_t msg_len,
 }
 
 static inline void facil_cluster_signal_children(void) {
+  if (facil_parent_pid() != getpid()) {
+    facil_stop();
+    return;
+  }
   cluster_send2traget(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL);
   uint8_t msg[16];
   cluster_uint2str(msg, 0);
@@ -1659,7 +1663,7 @@ static void sig_int_handler(int sig) {
 }
 
 /* setup handling for the SIGUSR1, SIGPIPE, SIGINT and SIGTERM signals. */
-static void facil_setp_signal_handler(void) {
+static void facil_setup_signal_handler(void) {
   /* setup signal handling */
   struct sigaction act, old;
 
@@ -1783,7 +1787,7 @@ void facil_run(struct facil_run_args args) {
     args.threads = 1;
 
   /* listen to SIGINT / SIGTERM */
-  facil_setp_signal_handler();
+  facil_setup_signal_handler();
 
   /* activate facil, fork if needed */
   facil_data->active = (uint16_t)args.processes;

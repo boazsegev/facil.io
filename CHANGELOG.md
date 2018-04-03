@@ -2,6 +2,8 @@
 
 ### Ver. 0.6.2
 
+**Fix**: (`facil`) fixed a signaling issue where a `SIGUSR1` sent to a worker process might inadvertently shutdown the server instead or wind down the specific worker and re-spawn a new one.
+
 **Fix**: (`http`) fixed an HTTP status string output error, where status codes above 410 would degrade to status 500 (internal error) instead of printing the correct status string to the response.
 
 **Security**: (`http1`) added a hard-coded limit on the number of headers allowed per request (regardless of size). `HTTP_MAX_HEADER_COUNT` defaults to 128, which should be enough by all accounts.
