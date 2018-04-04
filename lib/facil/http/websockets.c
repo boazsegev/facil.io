@@ -214,7 +214,7 @@ The Websocket Protocol implementation
 static void ws_ping(intptr_t fd, protocol_s *ws) {
   (void)(ws);
   if (((ws_s *)ws)->is_client) {
-    sock_write2(.uuid = fd, .buffer = "\x89\x80mask", .length = 6,
+    sock_write2(.uuid = fd, .buffer = "\x89\x80MASK", .length = 6,
                 .dealloc = SOCK_DEALLOC_NOOP);
   } else {
     sock_write2(.uuid = fd, .buffer = "\x89\x00", .length = 2,
@@ -237,6 +237,13 @@ static void on_shutdown(intptr_t fd, protocol_s *ws) {
   (void)(fd);
   if (ws && ((ws_s *)ws)->on_shutdown)
     ((ws_s *)ws)->on_shutdown((ws_s *)ws);
+  if (((ws_s *)ws)->is_client) {
+    sock_write2(.uuid = fd, .buffer = "\x8a\x80MASK", .length = 6,
+                .dealloc = SOCK_DEALLOC_NOOP);
+  } else {
+    sock_write2(.uuid = fd, .buffer = "\x8a\x00", .length = 2,
+                .dealloc = SOCK_DEALLOC_NOOP);
+  }
 }
 
 static void on_data(intptr_t sockfd, protocol_s *ws_) {
