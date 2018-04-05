@@ -823,9 +823,9 @@ Cluster Messaging - using Unix Sockets
 
 #ifdef __BIG_ENDIAN__
 inline static uint32_t cluster_str2uint32(uint8_t *str) {
-  return ((str[0] & 0xFF) | (((uint32_t)str[1] << 8) & 0xFF00) |
-          (((uint32_t)str[2] << 16) & 0xFF0000) |
-          (((uint32_t)str[3] << 24) & 0xFF000000));
+  return ((str[0] & 0xFF) | ((((uint32_t)str[1]) << 8) & 0xFF00) |
+          ((((uint32_t)str[2]) << 16) & 0xFF0000) |
+          ((((uint32_t)str[3]) << 24) & 0xFF000000));
 }
 inline static void cluster_uint2str(uint8_t *dest, uint32_t i) {
   dest[0] = i & 0xFF;
@@ -835,9 +835,9 @@ inline static void cluster_uint2str(uint8_t *dest, uint32_t i) {
 }
 #else
 inline static uint32_t cluster_str2uint32(uint8_t *str) {
-  return ((((uint32_t)str[0] << 24) & 0xFF000000) |
-          (((uint32_t)str[1] << 16) & 0xFF0000) |
-          (((uint32_t)str[2] << 8) & 0xFF00) | (str[3] & 0xFF));
+  return (((((uint32_t)str[0]) << 24) & 0xFF000000) |
+          ((((uint32_t)str[1]) << 16) & 0xFF0000) |
+          ((((uint32_t)str[2]) << 8) & 0xFF00) | (str[3] & 0xFF));
 }
 inline static void cluster_uint2str(uint8_t *dest, uint32_t i) {
   dest[0] = (i >> 24) & 0xFF;
@@ -973,8 +973,7 @@ static inline void cluster_send2traget(uint32_t ch_len, uint32_t msg_len,
   if (facil_cluster_data.client_mode) {
     FIOBJ forward =
         cluster_wrap_message(ch_len, msg_len, type, id, ch_data, msg_data);
-    fiobj_send_free(facil_cluster_data.root, fiobj_dup(forward));
-    fiobj_free(forward);
+    fiobj_send_free(facil_cluster_data.root, forward);
   } else {
     cluster_send2clients(ch_len, msg_len, type, id, ch_data, msg_data, 0);
   }
@@ -1014,7 +1013,7 @@ static void cluster_on_client_message(cluster_pr_s *c, intptr_t uuid) {
       tmp = FIOBJ_INVALID;
     } else {
       fprintf(stderr,
-              "WARNING: (facil.io cluster) JSON message isn't valid JSON.\n");
+              "WARNING: (facil.io cluster) JSON channel isn't valid JSON.\n");
     }
     s = fiobj_obj2cstr(c->msg);
     if (fiobj_json2obj(&tmp, s.bytes, s.len)) {
@@ -1151,8 +1150,8 @@ static void cluster_on_data(intptr_t uuid, protocol_s *pr_) {
       if (c->exp_channel + i > c->length) {
         fiobj_str_write(c->channel, (char *)c->buffer + i,
                         (size_t)(c->length - i));
+        c->exp_channel -= (c->length - i);
         i = c->length;
-        c->exp_channel -= i;
         break;
       } else {
         fiobj_str_write(c->channel, (char *)c->buffer + i, c->exp_channel);
@@ -1163,8 +1162,8 @@ static void cluster_on_data(intptr_t uuid, protocol_s *pr_) {
     if (c->exp_msg) {
       if (c->exp_msg + i > c->length) {
         fiobj_str_write(c->msg, (char *)c->buffer + i, (size_t)(c->length - i));
+        c->exp_msg -= (c->length - i);
         i = c->length;
-        c->exp_msg -= i;
         break;
       } else {
         fiobj_str_write(c->msg, (char *)c->buffer + i, c->exp_msg);

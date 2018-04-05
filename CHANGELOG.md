@@ -12,7 +12,7 @@ It's recommended that all 0.6.0.beta, 0.6.0 and 0.6.1 upgrade to this version.
 
 **Fix**: (`facil`) fixed a signaling issue where a `SIGUSR1` sent to a worker process might inadvertently shutdown the server instead or wind down the specific worker and re-spawn a new one.
 
-**Fix**: (`pubsub`) fixed a numerous Pub/Sub memory issues (a leak and a reference counting error that freed memory prematurely).
+**Fix**: (`pubsub`, `facil`) fixed numerous cluster and Pub/Sub issues (a memory leak, a reference counting error that freed memory prematurely and message parsing errors on fragmented messages).
 
 **Fix**: (`sock`, `facil`) fixed an issue where socket buffers wouldn't be completely cleared (the `on_ready` event wouldn't be properly re-armed). This was discovered as a serious issue and upgrading to 0.6.2 is recommended.
 
