@@ -222,8 +222,6 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
   fiobj_send_free((handle2pr(h)->p.uuid), packet);
   sock_sendfile((handle2pr(h)->p.uuid), fd, offset, length);
   http1_after_finish(h);
-  fprintf(stderr, "HTTP/1 sendfine through uuid %p\n",
-          (void *)handle2pr(h)->p.uuid);
   return 0;
 }
 

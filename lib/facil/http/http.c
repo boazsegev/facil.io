@@ -1801,7 +1801,6 @@ void http_write_log(http_s *h) {
   fiobj_str_write(l, "ms\r\n", 4);
 
   buff = fiobj_obj2cstr(l);
-
   fwrite(buff.data, 1, buff.len, stderr);
   fiobj_free(l);
 }
