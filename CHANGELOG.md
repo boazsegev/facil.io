@@ -20,6 +20,8 @@ It's recommended that all 0.6.0.beta, 0.6.0 and 0.6.1 upgrade to this version.
 
 **Fix**: (`FIOBJ`) fixed the `fiobj_str_tmp` function to add thread safety (temp string should be stored in the thread's local storage, not globally accessible).
 
+**Fix**: (`redis`) fixed a race condition in the Redis engine that could prevent publishing connections from being established in worker processes.
+
 **Update**: (`FIOBJ`) updated the `fiobj_str_readfile` to allow for a negative `stat_at` position (calculated from the end of file of the file backwards).
 
 **Update**: (`facil`) strengthened the `on_shutdown` callback lock to prevent the `on_shutdown` callback from being called while the `on_data` callback (or other connection tasks) is running.

@@ -135,8 +135,9 @@ static void redis_attach_cmd(redis_engine_s *r, redis_commands_s *cmd) {
     schedule = 1;
   }
   spn_unlock(&r->lock);
-  if (schedule)
+  if (schedule) {
     defer(redis_send_cmd_queue, r, NULL);
+  }
 }
 
 static void redis_cmd_reply(redis_engine_s *r, FIOBJ reply) {
@@ -177,6 +178,8 @@ static void redis_on_auth(pubsub_engine_s *e, FIOBJ reply, void *udata) {
 
 static void redis_on_pub_connect(intptr_t uuid, void *pr) {
   redis_engine_s *r = prot2redis(pr);
+  if (r->pub_data.uuid)
+    sock_close(r->pub_data.uuid);
   r->pub_data.uuid = uuid;
 
   if (r->auth) {
@@ -232,6 +235,10 @@ static void redis_on_pub_connect_fail(intptr_t uuid, void *pr) {
 static void redis_on_sub_connect_fail(intptr_t uuid, void *pr) {
   redis_engine_s *r = prot2redis(pr);
   if (facil_parent_pid() != getpid() || r->flag == 0) {
+    if (r->flag && !r->pub_data.uuid) {
+      spn_add(&r->ref, 1);
+      redis_on_pub_connect_fail(uuid, pr);
+    }
     redis_free(r);
     return;
   }
