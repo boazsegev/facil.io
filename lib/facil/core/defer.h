@@ -90,7 +90,7 @@ int defer_pool_is_active(pool_pt pool);
  *
  * On error NULL should be returned.
  */
-void *defer_new_thread(void *(*thread_func)(void *), pool_pt pool);
+void *defer_new_thread(void *(*thread_func)(void *), void *arg);
 
 /**
  * OVERRIDE THIS to replace the default pthread implementation.

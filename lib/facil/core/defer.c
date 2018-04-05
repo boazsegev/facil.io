@@ -260,9 +260,9 @@ struct defer_pool {
 /* `weak` functions can be overloaded to change the thread implementation. */
 
 #pragma weak defer_new_thread
-void *defer_new_thread(void *(*thread_func)(void *), pool_pt arg) {
+void *defer_new_thread(void *(*thread_func)(void *), void *arg) {
   pthread_t *thread = malloc(sizeof(*thread));
-  if (thread == NULL || pthread_create(thread, NULL, thread_func, (void *)arg))
+  if (thread == NULL || pthread_create(thread, NULL, thread_func, arg))
     goto error;
   return thread;
 error:
@@ -403,7 +403,7 @@ static inline pool_pt defer_pool_initialize(unsigned int thread_count,
   while (pool->count < thread_count &&
          (pool->threads[pool->count].pool = pool) &&
          (pool->threads[pool->count].thrd = defer_new_thread(
-              defer_worker_thread, (pool_pt)(pool->threads + pool->count))))
+              defer_worker_thread, (void *)(pool->threads + pool->count))))
 
     pool->count++;
   if (pool->count == thread_count) {
