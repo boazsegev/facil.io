@@ -1195,7 +1195,7 @@ finish:
   unlock_fd(fd);
   if (touch)
     sock_touch(uuid);
-  return fdinfo(fd).packet != NULL;
+  return fdinfo(fd).packet != NULL || fdinfo(fd).close;
 error:
   unlock_fd(fd);
   // fprintf(stderr,
