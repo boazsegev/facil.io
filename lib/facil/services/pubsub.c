@@ -651,7 +651,6 @@ static void pubsub_cluster_subscribe2channel(void *ch, void *flag) {
   };
   client_s client = {.on_message = pubsub_cluster_on_message_noop};
   pubsub_client_new(client, channel);
-  fiobj_free((FIOBJ)ch);
 }
 
 /* deregisters from the channel if required */
@@ -665,7 +664,6 @@ static void pubsub_cluster_unsubscribe2channel(void *ch, void *flag) {
   client_s client = {.on_message = pubsub_cluster_on_message_noop};
   client_s *sub = pubsub_client_find(client, channel);
   pubsub_client_destroy(sub);
-  fiobj_free((FIOBJ)ch);
 }
 
 static void pubsub_cluster_facil_message(int32_t filter, FIOBJ channel,
@@ -716,7 +714,10 @@ void pubsub_cluster_on_fork(void) {
 }
 
 void pubsub_cluster_cleanup(void) {
-  FIO_HASH_FOR_FREE(&clients, pos) { pubsub_client_destroy(pos->obj); }
+  while (clients.count) {
+    pubsub_client_destroy(fio_hash_last(&clients, NULL));
+  }
+  FIO_HASH_FOR_FREE(&clients, pos) {}
   fio_hash_free(&engines);
   fio_hash_free(&channels);
   fio_hash_free(&patterns);
