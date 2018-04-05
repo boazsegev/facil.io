@@ -1452,9 +1452,8 @@ static void facil_cycle_schedule_events(void) {
 
 /* reactor pattern cycling during cleanup */
 static void facil_cycle_unwind(void *ignr, void *ignr2) {
-  facil_cycle_schedule_events();
   if (facil_data->connection_count) {
-    // fprintf(stderr, "Connection Count: %zu\n", facil_data->connection_count);
+    facil_cycle_schedule_events();
     defer(facil_cycle_unwind, ignr, ignr2);
     return;
   }
