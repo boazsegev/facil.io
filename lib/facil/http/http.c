@@ -557,6 +557,7 @@ open_file:
   file = open(s.data, O_RDONLY);
   if (file == -1) {
     fprintf(stderr, "ERROR: Couldn't open file %s!\n", s.data);
+    perror("     ");
     http_send_error(h, 500);
     return 0;
   }
