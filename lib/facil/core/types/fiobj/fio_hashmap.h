@@ -126,9 +126,20 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
  * If a pointer to `key` is provided, the element's key will be placed in it's
  * place.
  *
- * Remember that keys might have to be freed as well (`FIO_HASH_KEY_DESTROY`).
+ * Remember that keys are likely to be freed as well (`FIO_HASH_KEY_DESTROY`).
  */
 FIO_FUNC void *fio_hash_pop(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key);
+
+/**
+ * Allows a peak at the Hash's last element.
+ *
+ * If a pointer to `key` is provided, the element's key will be placed in it's
+ * place.
+ *
+ * Remember that keys might be destroyed if the Hash is altered
+ * (`FIO_HASH_KEY_DESTROY`).
+ */
+FIO_FUNC void *fio_hash_last(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key);
 
 /** Returns the number of elements currently in the Hash Table. */
 FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash);
@@ -245,7 +256,8 @@ struct fio_hash_s {
 #undef FIO_HASH_FOR_FREE
 #define FIO_HASH_FOR_FREE(hash, container)                                     \
   for (fio_hash_data_ordered_s *container = (hash)->ordered;                   \
-       (container && (container < (hash)->ordered + (hash)->pos)) ||           \
+       (container && container >= (hash)->ordered &&                           \
+        (container < (hash)->ordered + (hash)->pos)) ||                        \
        ((fio_hash_free(hash), (hash)->ordered) != NULL);                       \
        FIO_HASH_KEY_DESTROY(container->key), (++container))
 
@@ -267,7 +279,7 @@ Hash allocation / deallocation.
 
 /** Allocates and initializes internal data and resources with the requested
  * capacity. */
-FIO_FUNC void fio_hash_new__internal__safe_capa(fio_hash_s *h, size_t capa) {
+FIO_FUNC void fio_hash__new__internal__safe_capa(fio_hash_s *h, size_t capa) {
   *h = (fio_hash_s){
       .mask = (capa - 1),
       .map = (fio_hash_data_s *)FIO_HASH_CALLOC(sizeof(*h->map), capa),
@@ -289,11 +301,11 @@ FIO_FUNC void fio_hash_new2(fio_hash_s *h, size_t capa) {
   size_t act_capa = 1;
   while (act_capa < capa)
     act_capa = act_capa << 1;
-  fio_hash_new__internal__safe_capa(h, act_capa);
+  fio_hash__new__internal__safe_capa(h, act_capa);
 }
 
 FIO_FUNC void fio_hash_new(fio_hash_s *h) {
-  fio_hash_new__internal__safe_capa(h, FIO_HASH_INITIAL_CAPACITY);
+  fio_hash__new__internal__safe_capa(h, FIO_HASH_INITIAL_CAPACITY);
 }
 
 FIO_FUNC void fio_hash_free(fio_hash_s *h) {
@@ -394,8 +406,9 @@ FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
       /* we removed the last ordered element, no need to keep any holes. */
       --hash->pos;
       FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
-      hash->ordered[hash->pos] = (fio_hash_data_ordered_s){.obj = NULL};
-      *info = (fio_hash_data_s){.obj = NULL};
+      hash->ordered[hash->pos] =
+          (fio_hash_data_ordered_s){.obj = NULL, .key = FIO_HASH_KEY_INVALID};
+      *info = (fio_hash_data_s){.obj = NULL, .key = FIO_HASH_KEY_INVALID};
       if (hash->pos && !hash->ordered[hash->pos - 1].obj) {
         fio_hash_pop(hash, NULL);
       } else {
@@ -439,7 +452,8 @@ FIO_FUNC void *fio_hash_pop(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key) {
     *key = hash->ordered[hash->pos].key;
   else
     FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
-  hash->ordered[hash->pos] = (fio_hash_data_ordered_s){.obj = NULL};
+  hash->ordered[hash->pos] =
+      (fio_hash_data_ordered_s){.obj = NULL, .key = FIO_HASH_KEY_INVALID};
   /* remove any holes from the top (top is kept tight) */
   while (hash->pos && hash->ordered[hash->pos - 1].obj == NULL) {
     --(hash->pos);
@@ -453,9 +467,25 @@ FIO_FUNC void *fio_hash_pop(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key) {
     }
     *info = (fio_hash_data_s){.obj = NULL};
     FIO_HASH_KEY_DESTROY(hash->ordered[hash->pos].key);
-    hash->ordered[hash->pos] = (fio_hash_data_ordered_s){.obj = NULL};
+    hash->ordered[hash->pos] =
+        (fio_hash_data_ordered_s){.obj = NULL, .key = FIO_HASH_KEY_INVALID};
   }
   return old;
+}
+
+/**
+ * Allows a peak at the Hash's last element.
+ *
+ * If a pointer to `key` is provided, the element's key will be placed in it's
+ * place.
+ *
+ * Remember that keys might be destroyed if the Hash is altered
+ * (`FIO_HASH_KEY_DESTROY`).
+ */
+FIO_FUNC void *fio_hash_last(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key) {
+  if (key)
+    *key = hash->ordered[hash->pos - 1].key;
+  return hash->ordered[hash->pos - 1].obj;
 }
 
 /* attempts to rehash the hashmap. */
