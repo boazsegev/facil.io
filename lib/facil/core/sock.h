@@ -426,8 +426,9 @@ Direct user level buffer API.
  * descriptor and closes the underlying fd once it's marked for closure (and all
  * the data was sent).
  *
- * Return value: 0 will be returned on success and -1 will be returned on an
- * error or when the connection is closed.
+ * Return values: 1 will be returned if data remains to be flushed. 0 will be
+ * returned on success (all data was sent). -1 will be returned on an error or
+ * when the connection is closed.
  */
 ssize_t sock_flush(intptr_t uuid);
 
@@ -447,6 +448,12 @@ void sock_flush_all(void);
  * the user-land buffer.
  */
 int sock_has_pending(intptr_t uuid);
+
+/**
+ * This weak function can be overwritten when using the `defer` library.
+ * However, the function MUST call {sock_flush} at some point.
+ */
+void sock_flush_defer(void *arg, void *ignored);
 
 /* *****************************************************************************
 TLC - Transport Layer Callback.

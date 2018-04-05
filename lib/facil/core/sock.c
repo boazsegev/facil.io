@@ -77,7 +77,8 @@ int defer(void (*func)(void *, void *), void *arg, void *arg2) {
   return 0;
 }
 
-static void sock_flush_defer(void *arg, void *ignored) {
+#pragma weak sock_flush_defer
+void sock_flush_defer(void *arg, void *ignored) {
   sock_flush((intptr_t)arg);
   return;
   (void)ignored;
@@ -252,6 +253,7 @@ static struct sock_data_store {
 #define fd2uuid(fd)                                                            \
   (((uintptr_t)(fd) << 8) | (sock_data_store.fds[(fd)].counter & 0xFF))
 #define fdinfo(fd) sock_data_store.fds[(fd)]
+#define uuidinfo(fd) sock_data_store.fds[sock_uuid2fd((fd))]
 
 #define lock_fd(fd) spn_lock(&sock_data_store.fds[(fd)].lock)
 #define unlock_fd(fd) spn_unlock(&sock_data_store.fds[(fd)].lock)
@@ -1112,7 +1114,7 @@ void sock_close(intptr_t uuid) {
   if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).open)
     return;
   fdinfo(sock_uuid2fd(uuid)).close = 1;
-  sock_flush(uuid);
+  sock_flush_defer((void *)uuid, (void *)uuid);
 }
 /**
 `sock_force_close` closes the connection immediately, without adhering to any
@@ -1193,7 +1195,7 @@ finish:
   unlock_fd(fd);
   if (touch)
     sock_touch(uuid);
-  return 0;
+  return fdinfo(fd).packet != NULL;
 error:
   unlock_fd(fd);
   // fprintf(stderr,
@@ -1230,9 +1232,8 @@ Returns TRUE (non 0) if there is data waiting to be written to the socket in the
 user-land buffer.
 */
 int sock_has_pending(intptr_t uuid) {
-  return validate_uuid(uuid) == 0 && fdinfo(sock_uuid2fd(uuid)).open &&
-         (fdinfo(sock_uuid2fd(uuid)).packet ||
-          fdinfo(sock_uuid2fd(uuid)).close);
+  return validate_uuid(uuid) == 0 && uuidinfo(uuid).open &&
+         (uuidinfo(uuid).packet || uuidinfo(uuid).close);
 }
 
 /* *****************************************************************************
@@ -1243,7 +1244,7 @@ Experimental
 
 /** Gets a socket hook state (a pointer to the struct). */
 struct sock_rw_hook_s *sock_rw_hook_get(intptr_t uuid) {
-  if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).open ||
+  if (validate_uuid(uuid) || !uuidinfo(uuid).open ||
       ((void)(uuid = sock_uuid2fd(uuid)),
        fdinfo(uuid).rw_hooks == &SOCK_DEFAULT_HOOKS))
     return NULL;
@@ -1260,7 +1261,7 @@ void *sock_rw_udata(intptr_t uuid) {
 
 /** Sets a socket hook state (a pointer to the struct). */
 int sock_rw_hook_set(intptr_t uuid, sock_rw_hook_s *rw_hooks, void *udata) {
-  if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).open)
+  if (validate_uuid(uuid) || !uuidinfo(uuid).open)
     return -1;
   if (!rw_hooks->read)
     rw_hooks->read = sock_default_hooks_read;

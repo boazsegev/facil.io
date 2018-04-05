@@ -109,8 +109,6 @@ The Request / Response type and functions
 static const char hex_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                                  '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
-#define HTTP_INVALID_HANDLE(h)                                                 \
-  (!h || (!h->method && !h->status_str && h->status))
 /**
  * Sets a response header, taking ownership of the value object, but NOT the
  * name object (so name objects could be reused in future responses).

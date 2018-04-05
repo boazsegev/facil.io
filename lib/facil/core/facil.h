@@ -113,14 +113,19 @@ struct FacilIOProtocol {
    * used (not `strcmp`).
    */
   const char *service;
-  /** called when a data is available, but will not run concurrently */
+  /** Called when a data is available, but will not run concurrently */
   void (*on_data)(intptr_t uuid, protocol_s *protocol);
   /** called when the socket is ready to be written to. */
   void (*on_ready)(intptr_t uuid, protocol_s *protocol);
-  /** called when the server is shutting down,
-   * but before closing the connection. */
+  /**
+   * Called when the server is shutting down, immediately before closing the
+   * connection.
+   *
+   * The callback runs within a {FIO_PR_LOCK_TACK} lock, so it will never run
+   * concurrently wil {on_data} or other connection specific tasks.
+   */
   void (*on_shutdown)(intptr_t uuid, protocol_s *protocol);
-  /** called when the connection was closed, but will not run concurrently */
+  /** Called when the connection was closed, but will not run concurrently */
   void (*on_close)(intptr_t uuid, protocol_s *protocol);
   /** called when a connection's timeout was reached */
   void (*ping)(intptr_t uuid, protocol_s *protocol);

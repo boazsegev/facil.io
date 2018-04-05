@@ -2,13 +2,27 @@
 
 ### Ver. 0.6.2
 
+This version fixes a number of issues, including a serious issue that prevented sockets from fully flushing their buffer.
+
+This version also improved the shutdown and hot restart logic.
+
+It's recommended that all 0.6.0.beta, 0.6.0 and 0.6.1 upgrade to this version.
+
 **Fix**: (`facil`) fixed a signaling issue where a `SIGUSR1` sent to a worker process might inadvertently shutdown the server instead or wind down the specific worker and re-spawn a new one.
+
+**Fix**: (`sock`, `facil`) fixed an issue where socket buffers wouldn't be completely cleared (the `on_ready` event wouldn't be properly re-armed). This was discovered as a serious issue and upgrading to 0.6.2 is recommended.
+
+**Fix**: (`websockets`) fixed a missing "close" packet signal that should have been sent immediately after the user's `on_shutdown` callback.
 
 **Fix**: (`http`) fixed an HTTP status string output error, where status codes above 410 would degrade to status 500 (internal error) instead of printing the correct status string to the response.
 
 **Security**: (`http1`) added a hard-coded limit on the number of headers allowed per request (regardless of size). `HTTP_MAX_HEADER_COUNT` defaults to 128, which should be enough by all accounts.
 
 **Update**: (`FIOBJ`) updated the `fiobj_str_readfile` to allow for a negative `stat_at` position (calculated from the end of file of the file backwards).
+
+**Update**: (`facil`) strengthened the `on_shutdown` callback lock to prevent the `on_shutdown` callback from being called while the `on_data` callback (or other connection tasks) is running.
+
+**Update**: (`facil`) shutdown logic provides more time for socket buffers to flush (only when required).
 
 ### Ver. 0.6.1
 

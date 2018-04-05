@@ -117,6 +117,10 @@ static inline void http_s_clear(http_s *h, uint8_t log) {
   http_s_new(h, (http_protocol_s *)h->private_data.flag, h->private_data.vtbl);
 }
 
+/** tests handle validity */
+#define HTTP_INVALID_HANDLE(h)                                                 \
+  (!(h) || (!(h)->method && !(h)->status_str && (h)->status))
+
 /** Use this function to handle HTTP requests.*/
 void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings);

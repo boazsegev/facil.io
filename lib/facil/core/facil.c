@@ -52,11 +52,12 @@ struct connection_data_s {
 static struct facil_data_s {
   spn_lock_i global_lock;
   uint8_t need_review;
-  pool_pt thread_pool;
-  pid_t parent;
   uint16_t active;
   uint16_t threads;
+  pid_t parent;
+  pool_pt thread_pool;
   ssize_t capacity;
+  size_t connection_count;
   void (*on_idle)(void);
   void (*on_finish)(void);
   struct timespec last_cycle;
@@ -96,6 +97,129 @@ inline static void protocol_unlock(protocol_s *pr,
 }
 
 /* *****************************************************************************
+Internal Protocol Names
+***************************************************************************** */
+static const char *LISTENER_PROTOCOL_NAME =
+    "listening protocol __facil_internal__";
+
+static const char *CONNECTOR_PROTOCOL_NAME = "connect protocol __internal__";
+
+static const char *TIMER_PROTOCOL_NAME = "timer protocol __facil_internal__";
+
+static const char *CLUSTER_LISTEN_PROTOCOL_NAME =
+    "cluster listening protocol __facil_internal__";
+
+static const char *CLUSTER_CONNECTION_PROTOCOL_NAME =
+    "cluster connection __facil_internal__";
+
+static inline int is_counted_protocol(protocol_s *p) {
+  return p->service != TIMER_PROTOCOL_NAME &&
+         p->service != CLUSTER_LISTEN_PROTOCOL_NAME &&
+         p->service != CLUSTER_CONNECTION_PROTOCOL_NAME;
+}
+
+/* *****************************************************************************
+Event deferring (declarations)
+***************************************************************************** */
+
+static void deferred_on_close(void *uuid_, void *pr_);
+static void deferred_on_shutdown(void *arg, void *arg2);
+static void deferred_on_ready(void *arg, void *arg2);
+static void deferred_on_data(void *uuid, void *arg2);
+static void deferred_ping(void *arg, void *arg2);
+
+/* *****************************************************************************
+Overriding `defer` to use `evio` when waiting for events
+***************************************************************************** */
+
+/* if the FIO_DEDICATED_SYSTEM is defined threads are activated more often. */
+#if FIO_DEDICATED_SYSTEM
+void defer_thread_wait(pool_pt pool, void *p_thr) {
+  (void)pool;
+  (void)p_thr;
+  evio_wait(EVIO_TICK);
+}
+#endif
+
+/* *****************************************************************************
+Event Handlers (evio)
+***************************************************************************** */
+void sock_flush_defer(void *arg, void *ignored) {
+  (void)ignored;
+  switch (sock_flush((intptr_t)arg)) {
+  case 1:
+    evio_add_write(sock_uuid2fd((intptr_t)arg), (void *)arg);
+    break;
+  case 0:
+    defer(deferred_on_ready, arg, NULL);
+    break;
+  }
+}
+
+void evio_on_ready(void *arg) { defer(sock_flush_defer, arg, NULL); }
+void evio_on_close(void *arg) { sock_force_close((intptr_t)arg); }
+void evio_on_error(void *arg) { sock_force_close((intptr_t)arg); }
+void evio_on_data(void *arg) { defer(deferred_on_data, arg, NULL); }
+
+/* *****************************************************************************
+Mock Protocol Callbacks and Service Funcions
+***************************************************************************** */
+static void mock_on_ev(intptr_t uuid, protocol_s *protocol) {
+  (void)uuid;
+  (void)protocol;
+}
+
+static void mock_on_close(intptr_t uuid, protocol_s *protocol) {
+  (void)(protocol);
+  (void)(uuid);
+}
+
+static void mock_on_finish(intptr_t uuid, void *udata) {
+  (void)(udata);
+  (void)(uuid);
+}
+
+static void mock_ping(intptr_t uuid, protocol_s *protocol) {
+  (void)(protocol);
+  sock_force_close(uuid);
+}
+
+static void mock_idle(void) {}
+
+/* Support for the default pub/sub cluster engine */
+#pragma weak pubsub_cluster_init
+void pubsub_cluster_init(void) {}
+#pragma weak pubsub_cluster_on_fork
+void pubsub_cluster_on_fork(void) {}
+#pragma weak pubsub_cluster_cleanup
+void pubsub_cluster_cleanup(void) {}
+
+/* perform initialization for external services. */
+static void facil_external_init(void) {
+  sock_on_fork();
+  pubsub_cluster_on_fork();
+}
+
+/* perform cleanup for external services. */
+static void facil_external_cleanup(void) {}
+
+#pragma weak http_lib_init
+void http_lib_init(void) {}
+#pragma weak http_lib_cleanup
+void http_lib_cleanup(void) {}
+
+/* perform initialization for external services. */
+static void facil_external_root_init(void) {
+  http_lib_init();
+  pubsub_cluster_init();
+}
+/* perform cleanup for external services. */
+static void facil_external_root_cleanup(void) {
+  http_lib_cleanup();
+  pubsub_cluster_cleanup();
+}
+
+/* *****************************************************************************
 Deferred event handlers
 ***************************************************************************** */
 static void deferred_on_close(void *uuid_, void *pr_) {
@@ -112,14 +236,17 @@ static void deferred_on_shutdown(void *arg, void *arg2) {
   if (!uuid_data(arg).protocol) {
     return;
   }
-  protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_WRITE);
+  protocol_s *pr = protocol_try_lock(sock_uuid2fd(arg), FIO_PR_LOCK_TASK);
   if (!pr) {
     if (errno == EBADF)
       return;
     goto postpone;
   }
+  uuid_data(arg).active = facil_data->last_cycle.tv_sec;
+  uuid_data(arg).timeout = 8;
   pr->on_shutdown((intptr_t)arg, pr);
-  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+  pr->ping = mock_ping;
+  protocol_unlock(pr, FIO_PR_LOCK_TASK);
   sock_close((intptr_t)arg);
   return;
 postpone:
@@ -138,8 +265,6 @@ static void deferred_on_ready(void *arg, void *arg2) {
     goto postpone;
   }
   pr->on_ready((intptr_t)arg, pr);
-  if (sock_has_pending((intptr_t)arg))
-    evio_add_write(sock_uuid2fd((intptr_t)arg), arg);
   protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   return;
 postpone:
@@ -194,35 +319,6 @@ postpone:
 }
 
 /* *****************************************************************************
-Overriding `defer` to use `evio` when waiting for events
-***************************************************************************** */
-
-/* if the FIO_DEDICATED_SYSTEM is defined threads are activated more often. */
-#if FIO_DEDICATED_SYSTEM
-void defer_thread_wait(pool_pt pool, void *p_thr) {
-  (void)pool;
-  (void)p_thr;
-  evio_wait(EVIO_TICK);
-}
-#endif
-
-/* *****************************************************************************
-Event Handlers (evio)
-***************************************************************************** */
-static void sock_flush_defer(void *arg, void *ignored) {
-  (void)ignored;
-  sock_flush((intptr_t)arg);
-}
-
-void evio_on_ready(void *arg) {
-  defer(sock_flush_defer, arg, NULL);
-  defer(deferred_on_ready, arg, NULL);
-}
-void evio_on_close(void *arg) { sock_force_close((intptr_t)arg); }
-void evio_on_error(void *arg) { sock_force_close((intptr_t)arg); }
-void evio_on_data(void *arg) { defer(deferred_on_data, arg, NULL); }
-
-/* *****************************************************************************
 Forcing IO events
 ***************************************************************************** */
 
@@ -265,69 +361,17 @@ void sock_on_close(intptr_t uuid) {
   protocol_s *old_protocol = uuid_data(uuid).protocol;
   uuid_data(uuid) = (struct connection_data_s){.lock = uuid_data(uuid).lock};
   spn_unlock(&uuid_data(uuid).lock);
-  if (old_protocol)
+  if (old_protocol) {
+    if (is_counted_protocol(old_protocol)) {
+      spn_sub(&facil_data->connection_count, 1);
+    }
     defer(deferred_on_close, (void *)uuid, old_protocol);
+  }
 }
 
 void sock_touch(intptr_t uuid) {
-  uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
-}
-
-/* *****************************************************************************
-Mock Protocol Callbacks and Service Funcions
-***************************************************************************** */
-static void mock_on_ev(intptr_t uuid, protocol_s *protocol) {
-  (void)uuid;
-  (void)protocol;
-}
-
-static void mock_on_close(intptr_t uuid, protocol_s *protocol) {
-  (void)(protocol);
-  (void)(uuid);
-}
-
-static void mock_on_finish(intptr_t uuid, void *udata) {
-  (void)(udata);
-  (void)(uuid);
-}
-
-static void mock_ping(intptr_t uuid, protocol_s *protocol) {
-  (void)(protocol);
-  sock_force_close(uuid);
-}
-static void mock_idle(void) {}
-
-/* Support for the default pub/sub cluster engine */
-#pragma weak pubsub_cluster_init
-void pubsub_cluster_init(void) {}
-#pragma weak pubsub_cluster_on_fork
-void pubsub_cluster_on_fork(void) {}
-#pragma weak pubsub_cluster_cleanup
-void pubsub_cluster_cleanup(void) {}
-
-/* perform initialization for external services. */
-static void facil_external_init(void) {
-  sock_on_fork();
-  pubsub_cluster_on_fork();
-}
-
-/* perform cleanup for external services. */
-static void facil_external_cleanup(void) {}
-
-#pragma weak http_lib_init
-void http_lib_init(void) {}
-#pragma weak http_lib_cleanup
-void http_lib_cleanup(void) {}
-
-/* perform initialization for external services. */
-static void facil_external_root_init(void) {
-  http_lib_init();
-  pubsub_cluster_init();
-}
-/* perform cleanup for external services. */
-static void facil_external_root_cleanup(void) {
-  http_lib_cleanup();
-  pubsub_cluster_cleanup();
+  if (facil_data && facil_data->active)
+    uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
 }
 
 /* *****************************************************************************
@@ -370,7 +414,9 @@ static void facil_lib_init(void) {
     exit(0);
   }
   memset(facil_data, 0, mem_size);
-  *facil_data = (struct facil_data_s){.capacity = capa, .parent = getpid()};
+  *facil_data = (struct facil_data_s){
+      .capacity = capa, .parent = getpid(),
+  };
   facil_external_root_init();
   atexit(facil_libcleanup);
 #ifdef DEBUG
@@ -396,18 +442,12 @@ static void facil_stop(void) {
   if (!facil_data)
     return;
   facil_data->active = 0;
-  pool_pt pool = facil_data->thread_pool;
-  facil_data->thread_pool = NULL;
-  defer_pool_stop(pool);
 }
 
 /* *****************************************************************************
 The listenning protocol
 ***************************************************************************** */
 #undef facil_listen
-
-static const char *listener_protocol_name =
-    "listening protocol __facil_internal__";
 
 struct ListenerProtocol {
   protocol_s protocol;
@@ -482,7 +522,7 @@ listener_alloc(struct facil_listen_args settings) {
 
   if (listener) {
     *listener = (struct ListenerProtocol){
-        .protocol.service = listener_protocol_name,
+        .protocol.service = LISTENER_PROTOCOL_NAME,
         .protocol.on_data = listener_on_data,
         .protocol.on_close = listener_on_close,
         .protocol.ping = listener_ping,
@@ -565,8 +605,6 @@ int facil_listen(struct facil_listen_args settings) {
 Connect (as client)
 ***************************************************************************** */
 
-static const char *connector_protocol_name = "connect protocol __internal__";
-
 struct ConnectProtocol {
   protocol_s protocol;
   void (*on_connect)(void *uuid, void *udata);
@@ -617,7 +655,7 @@ intptr_t facil_connect(struct facil_connect_args opt) {
       .on_connect = (void (*)(void *, void *))opt.on_connect,
       .on_fail = opt.on_fail,
       .udata = opt.udata,
-      .protocol.service = connector_protocol_name,
+      .protocol.service = CONNECTOR_PROTOCOL_NAME,
       .protocol.on_data = connector_on_data,
       .protocol.on_ready = connector_on_ready,
       .protocol.on_close = connector_on_close,
@@ -661,8 +699,6 @@ typedef struct {
 
 #define prot2timer(protocol) (*((timer_protocol_s *)(protocol)))
 
-static const char *timer_protocol_name = "timer protocol __facil_internal__";
-
 static void timer_on_data(intptr_t uuid, protocol_s *protocol) {
   prot2timer(protocol).task(prot2timer(protocol).arg);
   if (prot2timer(protocol).repetitions == 0)
@@ -698,7 +734,7 @@ static inline timer_protocol_s *timer_alloc(void (*task)(void *), void *arg,
   timer_protocol_s *t = malloc(sizeof(*t));
   if (t)
     *t = (timer_protocol_s){
-        .protocol.service = timer_protocol_name,
+        .protocol.service = TIMER_PROTOCOL_NAME,
         .protocol.on_data = timer_on_data,
         .protocol.on_close = timer_on_close,
         .protocol.ping = timer_ping,
@@ -1035,8 +1071,6 @@ static void cluster_on_server_message(cluster_pr_s *c, intptr_t uuid) {
     break;
   }
   case CLUSTER_MESSAGE_SHUTDOWN:
-    facil_stop();
-    break;
   case CLUSTER_MESSAGE_ERROR:
   case CLUSTER_MESSAGE_PING:
     /* do nothing, really. */
@@ -1163,7 +1197,7 @@ static void cluster_on_open(intptr_t fd, void *udata) {
   *pr = (cluster_pr_s){
       .pr =
           {
-              .service = "facil_io_cluster_protocol",
+              .service = CLUSTER_CONNECTION_PROTOCOL_NAME,
               .on_data = cluster_on_data,
               .on_shutdown = cluster_on_shutdown,
               .on_close =
@@ -1224,11 +1258,14 @@ static int cluster_on_start(void) {
   if (facil_data->active <= 1)
     return 0;
   if (facil_parent_pid() == getpid()) {
+    /* Root process, listen to incoming cluster connections */
     facil_cluster_data.client_mode = 0;
+    facil_cluster_data.listening.service = CLUSTER_LISTEN_PROTOCOL_NAME;
     if (facil_attach(facil_cluster_data.root, &facil_cluster_data.listening)) {
       perror("FATAL ERROR: (facil.io) couldn't attach cluster socket");
     }
   } else {
+    /* Worker process, connect to Root process */
     facil_cluster_data.client_mode = 1;
     fio_hash_free(&facil_cluster_data.clients);
     facil_cluster_data.clients = (fio_hash_s)FIO_HASH_INIT;
@@ -1364,10 +1401,9 @@ unlock:
 finish:
   do {
     fd++;
-  } while (!fd_data(fd).protocol && (fd < facil_data->capacity) &&
-           facil_data->active);
+  } while (!fd_data(fd).protocol && (fd < facil_data->capacity));
 
-  if (facil_data->capacity <= fd || facil_data->active == 0) {
+  if (facil_data->capacity <= fd) {
     facil_data->need_review = 1;
     return;
   }
@@ -1381,16 +1417,15 @@ static void perform_idle(void *arg, void *ignr) {
   (void)ignr;
 }
 
-static void facil_cycle(void *ignr, void *ignr2) {
-  (void)ignr;
-  (void)ignr2;
+/* reactor pattern cycling - common */
+static void facil_cycle_schedule_events(void) {
   static int idle = 0;
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   int events;
   if (defer_has_queue()) {
     events = evio_review(0);
     if (events < 0) {
-      goto error;
+      return;
     }
     if (events > 0) {
       idle = 1;
@@ -1398,16 +1433,14 @@ static void facil_cycle(void *ignr, void *ignr2) {
   } else {
     events = evio_review(EVIO_TICK);
     if (events < 0)
-      goto error;
+      return;
     if (events > 0) {
       idle = 1;
     } else if (idle) {
-      defer(perform_idle, ignr, ignr2);
+      defer(perform_idle, NULL, NULL);
       idle = 0;
     }
   }
-  if (!facil_data->active)
-    return;
   static time_t last_to_review = 0;
   if (facil_data->need_review &&
       facil_data->last_cycle.tv_sec != last_to_review) {
@@ -1415,12 +1448,45 @@ static void facil_cycle(void *ignr, void *ignr2) {
     facil_data->need_review = 0;
     defer(facil_review_timeout, (void *)0, NULL);
   }
-  defer(facil_cycle, ignr, ignr2);
+}
+
+/* reactor pattern cycling during cleanup */
+static void facil_cycle_unwind(void *ignr, void *ignr2) {
+  facil_cycle_schedule_events();
+  if (facil_data->connection_count) {
+    // fprintf(stderr, "Connection Count: %zu\n", facil_data->connection_count);
+    defer(facil_cycle_unwind, ignr, ignr2);
+    return;
+  }
+  pool_pt pool = facil_data->thread_pool;
+  facil_data->thread_pool = NULL;
+  defer_pool_stop(pool);
   return;
-error:
-  if (facil_data->active)
+  (void)ignr;
+  (void)ignr2;
+}
+
+/* reactor pattern cycling */
+static void facil_cycle(void *ignr, void *ignr2) {
+  facil_cycle_schedule_events();
+  if (facil_data->active) {
     defer(facil_cycle, ignr, ignr2);
-  (void)1;
+    return;
+  }
+  /* switch to winding down */
+  if (FACIL_PRINT_STATE) {
+    pid_t pid = getpid();
+    if (pid != facil_data->parent)
+      fprintf(stderr, "* (%d) Detected exit signal.\n", getpid());
+    else
+      fprintf(stderr, "* Server Detected exit signal.\n");
+  }
+  pool_pt pool = facil_data->thread_pool;
+  facil_data->thread_pool = NULL;
+  defer_pool_stop(pool);
+  return;
+  (void)ignr;
+  (void)ignr2;
 }
 
 /**
@@ -1459,9 +1525,9 @@ static void facil_worker_startup(uint8_t sentinel) {
       fd_data(i).lock = SPN_LOCK_INIT;
       if (fd_data(i).protocol) {
         fd_data(i).protocol->rsv = 0;
-        if (fd_data(i).protocol->service == listener_protocol_name)
+        if (fd_data(i).protocol->service == LISTENER_PROTOCOL_NAME)
           listener_on_start(i);
-        else if (fd_data(i).protocol->service == timer_protocol_name)
+        else if (fd_data(i).protocol->service == TIMER_PROTOCOL_NAME)
           timer_on_server_start(i);
         else {
           evio_add(i, (void *)sock_fd2uuid(i));
@@ -1475,9 +1541,9 @@ static void facil_worker_startup(uint8_t sentinel) {
       fd_data(i).lock = SPN_LOCK_INIT;
       if (fd_data(i).protocol) {
         fd_data(i).protocol->rsv = 0;
-        if (fd_data(i).protocol->service == listener_protocol_name)
+        if (fd_data(i).protocol->service == LISTENER_PROTOCOL_NAME)
           listener_on_start(i);
-        else if (fd_data(i).protocol->service == timer_protocol_name)
+        else if (fd_data(i).protocol->service == TIMER_PROTOCOL_NAME)
           timer_on_server_start(i);
         else {
           /* prevent normal connections from being shared across workers */
@@ -1495,9 +1561,9 @@ static void facil_worker_startup(uint8_t sentinel) {
       fd_data(i).lock = SPN_LOCK_INIT;
       if (fd_data(i).protocol) {
         fd_data(i).protocol->rsv = 0;
-        if (fd_data(i).protocol->service == timer_protocol_name)
+        if (fd_data(i).protocol->service == TIMER_PROTOCOL_NAME)
           timer_on_server_start(i);
-        else if (fd_data(i).protocol->service != listener_protocol_name)
+        else if (fd_data(i).protocol->service != LISTENER_PROTOCOL_NAME)
           evio_add(i, (void *)sock_fd2uuid(i));
       }
     }
@@ -1527,21 +1593,38 @@ static void facil_worker_startup(uint8_t sentinel) {
   }
   facil_data->thread_pool =
       defer_pool_start((sentinel ? 1 : facil_data->threads));
+  if (facil_data->thread_pool)
+    defer_pool_wait(facil_data->thread_pool);
 }
 
 static void facil_worker_cleanup(void) {
   facil_data->active = 0;
-  fprintf(stderr, "* %d cleanning up.\n", getpid());
-  for (int i = 0; i < facil_data->capacity; i++) {
+  for (int i = 0; i <= facil_data->capacity; ++i) {
     intptr_t uuid;
     if (fd_data(i).protocol && (uuid = sock_fd2uuid(i)) >= 0) {
       defer(deferred_on_shutdown, (void *)uuid, NULL);
     }
   }
-  evio_review(100);
+  defer(facil_cycle_unwind, NULL, NULL);
+  facil_data->thread_pool = defer_pool_start(facil_data->threads);
+  if (facil_data->thread_pool) {
+    defer_pool_wait(facil_data->thread_pool);
+    facil_data->thread_pool = NULL;
+  }
+  fprintf(stderr, "* %d cleanning up.\n", getpid());
+  /* close leftovers */
+  for (int i = 0; i <= facil_data->capacity; ++i) {
+    intptr_t uuid;
+    if (fd_data(i).protocol && (uuid = sock_fd2uuid(i)) >= 0) {
+      sock_force_close(uuid);
+    }
+  }
+  evio_review(0);
   defer_perform();
   sock_flush_all();
   evio_review(0);
+  sock_flush_all();
+  defer_perform();
   sock_flush_all();
   facil_data->on_finish();
   defer_perform();
@@ -1549,6 +1632,7 @@ static void facil_worker_cleanup(void) {
   facil_external_cleanup();
 
   if (facil_data->parent == getpid()) {
+    kill(0, SIGINT);
     while (wait(NULL) != -1)
       ;
     if (FACIL_PRINT_STATE) {
@@ -1606,12 +1690,6 @@ static void *facil_sentinel_worker_thread(void *arg) {
       defer_clear_queue();
     }
     facil_worker_startup(0);
-    if (facil_data->thread_pool)
-      defer_pool_wait(facil_data->thread_pool);
-    else if (facil_parent_pid() != getpid()) {
-      kill(facil_parent_pid(), SIGINT);
-    }
-    facil_data->thread_pool = NULL;
     facil_worker_cleanup();
     exit(0);
   }
@@ -1811,13 +1889,6 @@ void facil_run(struct facil_run_args args) {
   } else {
     facil_worker_startup(0);
   }
-  if (facil_data->thread_pool)
-    defer_pool_wait(facil_data->thread_pool);
-  facil_data->thread_pool = NULL;
-  if (args.processes > 1) {
-    facil_stop();
-    kill(0, SIGINT);
-  }
   facil_worker_cleanup();
 }
 
@@ -1830,6 +1901,7 @@ int facil_is_running(void) { return (facil_data && facil_data->active > 0); }
 Setting the protocol
 ***************************************************************************** */
 
+/* managing the protocol pointer array and the `on_close` callback */
 static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
                               protocol_metadata_s state) {
   if (uuid == -1) {
@@ -1863,14 +1935,21 @@ static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
       defer(deferred_on_close, (void *)uuid, protocol);
     errno = ENOTCONN;
     return -1;
+  } else {
+    if (is_counted_protocol(protocol)) {
+      spn_add(&facil_data->connection_count, 1);
+    }
   }
   protocol_s *old_protocol = uuid_data(uuid).protocol;
   uuid_data(uuid).protocol = protocol;
   uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
   spn_unlock(&uuid_data(uuid).lock);
-  if (old_protocol)
+  if (old_protocol) {
+    if (is_counted_protocol(old_protocol)) {
+      spn_sub(&facil_data->connection_count, 1);
+    }
     defer(deferred_on_close, (void *)uuid, old_protocol);
-  else if (evio_isactive()) {
+  } else if (evio_isactive()) {
     return evio_add(sock_uuid2fd(uuid), (void *)uuid);
   }
   return 0;
@@ -1947,7 +2026,7 @@ size_t facil_count(void *service) {
     if (fd_data(i).protocol && fd_data(i).protocol->service)
       tmp = (void *)fd_data(i).protocol->service;
     spn_unlock(&fd_data(i).lock);
-    if (tmp != listener_protocol_name && tmp != timer_protocol_name &&
+    if (tmp != LISTENER_PROTOCOL_NAME && tmp != TIMER_PROTOCOL_NAME &&
         (!service || (tmp == service)))
       count++;
   }
@@ -1987,7 +2066,7 @@ static void perform_single_task(void *v_uuid, void *v_task) {
   protocol_s *pr = protocol_try_lock(sock_uuid2fd(v_uuid), task->task_type);
   if (!pr)
     goto defer;
-  if (pr->service == connector_protocol_name) {
+  if (pr->service == CONNECTOR_PROTOCOL_NAME) {
     protocol_unlock(pr, task->task_type);
     goto defer;
   }
@@ -2029,8 +2108,10 @@ static void perform_multi_task(void *v_fd, void *v_task) {
   protocol_s *pr = protocol_try_lock((intptr_t)v_fd, task->task_type);
   if (!pr)
     goto reschedule;
-  if (pr->service == task->service)
-    task->func(sock_fd2uuid((int)(intptr_t)v_fd), pr, task->arg);
+  if (pr->service == task->service) {
+    const intptr_t uuid = sock_fd2uuid((int)(intptr_t)v_fd);
+    task->func(uuid, pr, task->arg);
+  }
   protocol_unlock(pr, task->task_type);
   defer(finish_multi_task, v_fd, v_task);
   return;
