@@ -1089,15 +1089,13 @@ static void cluster_on_client_close(intptr_t uuid, protocol_s *pr_) {
   if (facil_cluster_data.root == uuid && c->type != CLUSTER_MESSAGE_SHUTDOWN &&
       facil_data->active) {
     if (FACIL_PRINT_STATE)
-      fprintf(stderr,
-              "* (%d) Parent Process crash detected, signaling for exit.\n",
-              getpid());
-    facil_stop();
+      fprintf(stderr, "* (%d) Parent Process crash detected!\n", getpid());
     unlink(facil_cluster_data.cluster_name);
   }
   fiobj_free(c->msg);
   fiobj_free(c->channel);
   free(c);
+  facil_stop();
   if (facil_cluster_data.root == uuid)
     facil_cluster_data.root = -1;
 }
