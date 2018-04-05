@@ -194,6 +194,10 @@ void pubsub_cluster_on_fork(void) {}
 #pragma weak pubsub_cluster_cleanup
 void pubsub_cluster_cleanup(void) {}
 
+/* other cleanup concern */
+#pragma weak fio_cli_end
+void fio_cli_end(void) {}
+
 /* perform initialization for external services. */
 static void facil_external_init(void) {
   sock_on_fork();
@@ -217,6 +221,7 @@ static void facil_external_root_init(void) {
 static void facil_external_root_cleanup(void) {
   http_lib_cleanup();
   pubsub_cluster_cleanup();
+  fio_cli_end();
 }
 
 /* *****************************************************************************
@@ -969,6 +974,7 @@ static inline void cluster_send2traget(uint32_t ch_len, uint32_t msg_len,
     FIOBJ forward =
         cluster_wrap_message(ch_len, msg_len, type, id, ch_data, msg_data);
     fiobj_send_free(facil_cluster_data.root, fiobj_dup(forward));
+    fiobj_free(forward);
   } else {
     cluster_send2clients(ch_len, msg_len, type, id, ch_data, msg_data, 0);
   }
@@ -1226,6 +1232,7 @@ static void cluster_on_open(intptr_t fd, void *udata) {
   if (facil_attach(fd, &pr->pr) == -1) {
     fprintf(stderr, "(%d) ", getpid());
     perror("ERROR: (facil.io cluster) couldn't attach connection");
+    facil_stop();
   }
   (void)udata;
 }
@@ -1638,6 +1645,7 @@ static void facil_worker_cleanup(void) {
 static void facil_sentinel_task(void *arg1, void *arg2);
 static void *facil_sentinel_worker_thread(void *arg) {
   errno = 0;
+  spn_lock((spn_lock_i *)arg);
   pid_t child = facil_fork();
   if (child == -1) {
     perror("FATAL ERROR: couldn't spawn worker.");
@@ -1694,11 +1702,16 @@ static void *facil_sentinel_worker_thread(void *arg) {
 #if FIO_SENTINEL_USE_PTHREAD
 static void facil_sentinel_task(void *arg1, void *arg2) {
   pthread_t sentinel;
+  spn_lock_i tmp = SPN_LOCK_INIT;
+  spn_lock(&tmp);
   if (pthread_create(&sentinel, NULL, facil_sentinel_worker_thread, arg1)) {
     perror("FATAL ERROR: couldn't start sentinel thread");
     exit(errno);
   }
   pthread_detach(sentinel);
+  spn_unlock(&tmp);
+  while (!spn_is_locked(&tmp))
+    reschedule_thread();
   if (facil_parent_pid() == getpid())
     facil_cluster_data.listening.on_data(facil_cluster_data.root,
                                          &facil_cluster_data.listening);
@@ -1707,8 +1720,13 @@ static void facil_sentinel_task(void *arg1, void *arg2) {
 }
 #else
 static void facil_sentinel_task(void *arg1, void *arg2) {
-  void *thrd = defer_new_thread(facil_sentinel_worker_thread, arg1);
+  spn_lock_i tmp = SPN_LOCK_INIT;
+  spn_lock(&tmp);
+  void *thrd = defer_new_thread(facil_sentinel_worker_thread, (void *)&tmp);
   defer_free_thread(thrd);
+  spn_unlock(&tmp);
+  while (thrd && !spn_is_locked(&tmp))
+    reschedule_thread();
   if (facil_parent_pid() == getpid())
     facil_cluster_data.listening.on_data(facil_cluster_data.root,
                                          &facil_cluster_data.listening);
