@@ -1547,10 +1547,11 @@ static void facil_worker_startup(uint8_t sentinel) {
         else {
           /* prevent normal connections from being shared across workers */
           intptr_t uuid = sock_fd2uuid(i);
-          if (uuid >= 0)
+          if (uuid >= 0) {
             sock_force_close(uuid);
-          else
+          } else {
             sock_on_close(uuid);
+          }
         }
       }
     }
