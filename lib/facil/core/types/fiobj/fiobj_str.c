@@ -279,7 +279,7 @@ __attribute__((format(printf, 1, 2))) FIOBJ fiobj_strprintf(const char *format,
  * `fiobj_free`.
  */
 FIOBJ fiobj_str_tmp(void) {
-  static fiobj_str_s tmp = {
+  static __thread fiobj_str_s tmp = {
       .head =
           {
               .ref = ((~(uint32_t)0) >> 4), .type = FIOBJ_T_STRING,
