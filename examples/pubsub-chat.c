@@ -131,8 +131,8 @@ int main(int argc, char const *argv[]) {
   const char *public_folder = NULL;
   const char *redis_address = NULL;
   const char *redis_port = "6379";
-  uint32_t threads = 1;
-  uint32_t workers = 1;
+  uint32_t threads = 0;
+  uint32_t workers = 0;
   uint8_t print_log = 0;
   CHAT_CHANNEL = fiobj_str_new("chat", 4);
 
@@ -170,8 +170,8 @@ int main(int argc, char const *argv[]) {
   if (fio_cli_get_str("redis-port"))
     redis_port = fio_cli_get_str("redis-port");
 
-  if (!threads || !workers)
-    threads = workers = 0;
+  if (!fio_cli_get_str("w") && !fio_cli_get_str("t"))
+    threads = workers = 1;
 
   /*     ****  actual code ****     */
   if (redis_address) {
