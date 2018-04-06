@@ -442,6 +442,8 @@ finish:
  *
  * If a cluster is used and this function is called for a worker, a new worker
  * will respawn.
+ *
+ * This MUST be signal safe (don't call any functions, just uswe flags).
  */
 static void facil_stop(void) {
   if (!facil_data)
@@ -938,10 +940,10 @@ static inline FIOBJ cluster_wrap_message(uint32_t ch_len, uint32_t msg_len,
   cluster_uint2str(f.bytes + 4, msg_len);
   cluster_uint2str(f.bytes + 8, type);
   cluster_uint2str(f.bytes + 12, (uint32_t)id);
-  if (ch_data) {
+  if (ch_len && ch_data) {
     memcpy(f.bytes + 16, ch_data, ch_len);
   }
-  if (msg_data) {
+  if (msg_len && msg_data) {
     memcpy(f.bytes + 16 + ch_len, msg_data, msg_len);
   }
   fiobj_str_resize(buf, ch_len + msg_len + 16);
@@ -979,27 +981,13 @@ static inline void cluster_send2traget(uint32_t ch_len, uint32_t msg_len,
   }
 }
 
+/* NOT signal safe. */
 static inline void facil_cluster_signal_children(void) {
   if (facil_parent_pid() != getpid()) {
     facil_stop();
     return;
   }
   cluster_send2traget(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL);
-  uint8_t msg[16];
-  cluster_uint2str(msg, 0);
-  cluster_uint2str(msg + 4, 0);
-  cluster_uint2str(msg + 8, CLUSTER_MESSAGE_SHUTDOWN);
-  cluster_uint2str(msg + 12, 0);
-  FIO_HASH_FOR_LOOP(&facil_cluster_data.clients, i) {
-    if (i->obj) {
-      int attempt = write(sock_uuid2fd(i->key), msg, 16);
-      if (attempt > 0 && attempt != 16) {
-        fwrite("FATAL ERROR: Couldn't perform hot restart\n", 42, 1, stderr);
-        kill(0, SIGINT);
-        return;
-      }
-    }
-  }
 }
 
 static void cluster_on_client_message(cluster_pr_s *c, intptr_t uuid) {
@@ -1101,15 +1089,20 @@ static void cluster_on_client_close(intptr_t uuid, protocol_s *pr_) {
 }
 
 static void cluster_on_server_close(intptr_t uuid, protocol_s *pr_) {
+  cluster_pr_s *c = (cluster_pr_s *)pr_;
   if (facil_cluster_data.client_mode || facil_parent_pid() != getpid()) {
-    cluster_on_client_close(uuid, pr_); /* we respawned. */
+    /* we respawned - clean up resources, but don't stop server */
+    fiobj_free(c->msg);
+    fiobj_free(c->channel);
+    free(c);
+    if (facil_cluster_data.root == uuid)
+      facil_cluster_data.root = -1;
     return;
   }
   spn_lock(&facil_cluster_data.lock);
   fio_hash_insert(&facil_cluster_data.clients, (FIO_HASH_KEY_TYPE)uuid, NULL);
   // fio_hash_compact(&facil_cluster_data.clients);
   spn_unlock(&facil_cluster_data.lock);
-  cluster_pr_s *c = (cluster_pr_s *)pr_;
   fiobj_free(c->msg);
   fiobj_free(c->channel);
   free(c);
@@ -1138,10 +1131,28 @@ static void cluster_on_data(intptr_t uuid, protocol_s *pr_) {
       c->exp_msg = cluster_str2uint32(c->buffer + i + 4);
       c->type = cluster_str2uint32(c->buffer + i + 8);
       c->filter = (int32_t)cluster_str2uint32(c->buffer + i + 12);
-      if (c->exp_channel)
+      if (c->exp_channel) {
+        if (c->exp_channel >= (1024 * 1024 * 16)) {
+          fprintf(
+              stderr,
+              "ERROR: (%d) cluster message name too long (16Mb limit): %u\n",
+              getpid(), (unsigned int)c->exp_channel);
+          facil_stop();
+          return;
+        }
         c->channel = fiobj_str_buf(c->exp_channel);
-      if (c->exp_msg)
+      }
+      if (c->exp_msg) {
+        if (c->exp_msg >= (1024 * 1024 * 64)) {
+          fprintf(
+              stderr,
+              "ERROR: (%d) cluster message data too long (64Mb limit): %u\n",
+              getpid(), (unsigned int)c->exp_msg);
+          facil_stop();
+          return;
+        }
         c->msg = fiobj_str_buf(c->exp_msg);
+      }
       i += 16;
     }
     if (c->exp_channel) {
@@ -1186,12 +1197,8 @@ static void cluster_on_data(intptr_t uuid, protocol_s *pr_) {
   (void)pr_;
 }
 static void cluster_ping(intptr_t uuid, protocol_s *pr_) {
-  static uint8_t buffer[12];
-  cluster_uint2str(buffer, (uint32_t)0);
-  cluster_uint2str(buffer + 4, CLUSTER_MESSAGE_PING);
-  cluster_uint2str(buffer + 8, 0);
-  sock_write2(.uuid = uuid, .buffer = buffer, .length = 12,
-              .dealloc = SOCK_DEALLOC_NOOP);
+  FIOBJ ping = cluster_wrap_message(0, 0, CLUSTER_MESSAGE_PING, 0, NULL, NULL);
+  fiobj_send_free(uuid, ping);
   (void)pr_;
 }
 
@@ -1375,6 +1382,19 @@ static void facil_cluster_cleanup(void) {
 Running the server
 ***************************************************************************** */
 
+volatile uint8_t facil_signal_children_flag = 0;
+
+static inline void facil_internal_poll(void) {
+  if (facil_signal_children_flag) {
+    facil_signal_children_flag = 0;
+    facil_cluster_signal_children();
+  }
+}
+
+static inline void facil_internal_poll_reset(void) {
+  facil_signal_children_flag = 0;
+}
+
 static void print_pid(void *arg, void *ignr) {
   (void)arg;
   (void)ignr;
@@ -1425,6 +1445,7 @@ static void perform_idle(void *arg, void *ignr) {
 static void facil_cycle_schedule_events(void) {
   static int idle = 0;
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
+  facil_internal_poll();
   int events;
   if (defer_has_queue()) {
     events = evio_review(0);
@@ -1517,6 +1538,7 @@ int facil_fork(void) { return (int)fork(); }
  */
 static void facil_worker_startup(uint8_t sentinel) {
   facil_cluster_data.lock = facil_data->global_lock = SPN_LOCK_INIT;
+  facil_internal_poll_reset();
   defer_on_fork();
   evio_create();
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
@@ -1603,9 +1625,11 @@ static void facil_worker_startup(uint8_t sentinel) {
 
 static void facil_worker_cleanup(void) {
   facil_data->active = 0;
+  facil_cluster_signal_children();
   for (int i = 0; i <= facil_data->capacity; ++i) {
     intptr_t uuid;
-    if (fd_data(i).protocol && (uuid = sock_fd2uuid(i)) >= 0) {
+    if (fd_data(i).protocol && is_counted_protocol(fd_data(i).protocol) &&
+        (uuid = sock_fd2uuid(i)) >= 0) {
       defer(deferred_on_shutdown, (void *)uuid, NULL);
     }
   }
@@ -1737,7 +1761,7 @@ static void sig_int_handler(int sig) {
   switch (sig) {
 #if !FACIL_DISABLE_HOT_RESTART
   case SIGUSR1:
-    facil_cluster_signal_children();
+    facil_signal_children_flag = 1;
     break;
 #endif
   case SIGINT:  /* fallthrough */
@@ -1818,6 +1842,16 @@ static inline size_t facil_detect_cpu_cores(void) {
   ssize_t cpu_count = 0;
 #ifdef _SC_NPROCESSORS_ONLN
   cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+  if (cpu_count < 0) {
+    if (FACIL_PRINT_STATE) {
+      fprintf(stderr, "WARNING: CPU core count auto-detection failed.\n");
+    }
+    return 0;
+  }
+#else
+  if (1 || FACIL_PRINT_STATE) {
+    fprintf(stderr, "WARNING: CPU core count auto-detection failed.\n");
+  }
 #endif
   return cpu_count;
 }
@@ -1857,11 +1891,11 @@ void facil_run(struct facil_run_args args) {
       int16_t threads = 0;
       if (args.threads < 0)
         threads = (int16_t)(cpu_count / (args.threads * -1));
-      if (args.threads == 0)
+      else if (args.threads == 0)
         threads = -1 * args.processes;
       if (args.processes < 0)
         args.processes = (int16_t)(cpu_count / (args.processes * -1));
-      if (args.processes == 0)
+      else if (args.processes == 0)
         args.processes = -1 * args.threads;
       args.threads = threads;
     }
