@@ -4,7 +4,7 @@
 
 This version fixes a number of issues, including a serious issue that prevented sockets from fully flushing their buffer.
 
-This version also improved the shutdown and hot restart logic.
+This version also improved the shutdown and hot restart logic and fixes numerous issues with cluster mode an pub/sub services.
 
 It's recommended that all 0.6.0.beta, 0.6.0 and 0.6.1 upgrade to this version.
 
