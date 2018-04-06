@@ -14,7 +14,7 @@ It's recommended that all 0.6.0.beta, 0.6.0 and 0.6.1 upgrade to this version.
 
 **Fix**: (`facil`) fixed a signal handling logic to make it async-safe, protecting it against possible deadlocks or cluster stream corruption.
 
-**Fix**: (`pubsub`, `facil`) fixed numerous cluster and Pub/Sub issues (a memory leak, a reference counting error that freed memory prematurely and message parsing errors on fragmented messages).
+**Fix**: (`pubsub`, `facil`) fixed numerous cluster and Pub/Sub issues (a memory leak, a reference counting error that freed memory prematurely, message parsing errors on fragmented messages and an obsolete ping formatting error).
 
 **Fix**: (`sock`, `facil`) fixed an issue where socket buffers wouldn't be completely cleared (the `on_ready` event wouldn't be properly re-armed). This was discovered as a serious issue and upgrading to 0.6.2 is recommended.
 
