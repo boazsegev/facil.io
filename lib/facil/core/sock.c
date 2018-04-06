@@ -956,17 +956,16 @@ Returns 1 if the uuid refers to a valid and open, socket.
 Returns 0 if not.
 */
 int sock_isvalid(intptr_t uuid) {
-  // if (validate_uuid(uuid)) {
-  //   fprintf(stderr, "sock is INVALID %p\n", (void *)uuid);
-  //   if ((intptr_t)uuid == -1)
-  //     fprintf(stderr, "sock value == -1 %p\n", (void *)uuid);
-  //   if (sock_data_store.capacity <= (size_t)sock_uuid2fd(uuid))
-  //     fprintf(stderr, "sock value too big %p\n", (void *)uuid);
-  //   if (fdinfo(sock_uuid2fd(uuid)).counter != (uuid & 0xFF))
-  //     fprintf(stderr, "sock counter error %p != %p\n", (void *)uuid,
-  //             (void *)(fd2uuid(sock_uuid2fd(uuid))));
-  // }
-  return validate_uuid(uuid) == 0 && fdinfo(sock_uuid2fd(uuid)).open;
+  return validate_uuid(uuid) == 0 && uuidinfo(uuid).open;
+}
+
+/**
+Returns 1 if the uuid is invalid or the socket is flagged to be closed.
+
+Returns 0 if the socket is valid, open and isn't flagged to be closed.
+*/
+int sock_isclosed(intptr_t uuid) {
+  return validate_uuid(uuid) || !uuidinfo(uuid).open || uuidinfo(uuid).close;
 }
 
 /**

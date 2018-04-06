@@ -197,6 +197,13 @@ intptr_t sock_open(int fd);
  */
 int sock_isvalid(intptr_t uuid);
 
+/**
+Returns 1 if the uuid is invalid or the socket is flagged to be closed.
+
+Returns 0 if the socket is valid, open and isn't flagged to be closed.
+*/
+int sock_isclosed(intptr_t uuid);
+
 /** The return type for the `sock_peer_addr` function. */
 typedef struct {
   uint32_t addrlen;

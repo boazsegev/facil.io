@@ -278,7 +278,7 @@ postpone:
 }
 
 static void deferred_on_data(void *uuid, void *arg2) {
-  if (!uuid_data(uuid).protocol) {
+  if (!uuid_data(uuid).protocol || sock_isclosed((intptr_t)uuid)) {
     return;
   }
   protocol_s *pr = protocol_try_lock(sock_uuid2fd(uuid), FIO_PR_LOCK_TASK);
