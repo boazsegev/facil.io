@@ -170,14 +170,24 @@ void pubsub_defer(pubsub_message_s *msg);
  *
  */
 struct pubsub_engine_s {
-  /* Must subscribe channel. Failures are ignored. */
+  /** Must subscribe channel. Failures are ignored. */
   void (*subscribe)(const pubsub_engine_s *eng, FIOBJ channel,
                     uint8_t use_pattern);
-  /* Must unsubscribe channel. Failures are ignored. */
+  /** Must unsubscribe channel. Failures are ignored. */
   void (*unsubscribe)(const pubsub_engine_s *eng, FIOBJ channel,
                       uint8_t use_pattern);
   /** Should return 0 on success and -1 on failure. */
   int (*publish)(const pubsub_engine_s *eng, FIOBJ channel, FIOBJ msg);
+  /**
+   * facil.io will call this callback whenever starting, or restarting, the
+   * reactor.
+   *
+   * This will be called when facil.io starts (the master process).
+   *
+   * This will also be called when forking, after facil.io closes all
+   * connections and claim to shut down (running all deferred event).
+   */
+  void (*on_startup)(const pubsub_engine_s *eng);
 };
 
 /** Registers an engine, so it's callback can be called. */

@@ -703,12 +703,23 @@ void pubsub_cluster_init(void) {
                             pubsub_cluster_facil_message);
 }
 
-void pubsub_cluster_on_fork(void) {
+void pubsub_cluster_on_fork_start(void) {
   lock = SPN_LOCK_INIT;
   FIO_HASH_FOR_LOOP(&clients, pos) {
     if (pos->obj) {
       client_s *c = pos->obj;
       c->lock = SPN_LOCK_INIT;
+    }
+  }
+}
+
+void pubsub_cluster_on_fork_end(void) {
+  lock = SPN_LOCK_INIT;
+  FIO_HASH_FOR_LOOP(&engines, pos) {
+    if (pos->obj) {
+      pubsub_engine_s *e = pos->obj;
+      if (e->on_startup)
+        e->on_startup(e);
     }
   }
 }

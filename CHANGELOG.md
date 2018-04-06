@@ -10,7 +10,7 @@ It's recommended that all 0.6.0.beta, 0.6.0 and 0.6.1 upgrade to this version.
 
 **Security**: (`http1`) added a hard-coded limit on the number of headers allowed per request (regardless of size). `HTTP_MAX_HEADER_COUNT` defaults to 128, which should be enough by all accounts.
 
-**Fix**: (`pubsub`, `facil`) fixed numerous cluster and Pub/Sub issues (a memory leak, a reference counting error that freed memory prematurely, message parsing errors on fragmented messages and an obsolete ping formatting error).
+**Fix**: (`pubsub`, `facil`, `redis-engine`) fixed numerous cluster and Pub/Sub issues, including support for new `on_startup` callback for `pubsub_engine_s` objects (to make handling `fork`s that much easier. This fixes a memory leak, a reference counting error that freed memory prematurely, message parsing errors on fragmented messages, an obsolete ping formatting error, and more.
 
 **Fix**: (`sock`, `facil`) fixed an issue where socket buffers wouldn't be completely cleared (the `on_ready` event wouldn't be properly re-armed). This was discovered as a serious issue and upgrading to 0.6.2 is recommended.
 
@@ -21,6 +21,8 @@ It's recommended that all 0.6.0.beta, 0.6.0 and 0.6.1 upgrade to this version.
 **Fix**: (`FIOBJ`) fixed the `fiobj_str_tmp` function to add thread safety (temp string should be stored in the thread's local storage, not globally accessible).
 
 **Fix**: (`redis`) fixed a race condition in the Redis engine that could prevent publishing connections from being established in worker processes.
+
+**Fix**: (`facil`) fixed an issue where `facil_attach` wouldn't call the `on_close` callback if the failure was due to the file descriptor being equal to -1.
 
 **Fix**: (`facil`) fixed a signaling issue where a `SIGUSR1` sent to a worker process might inadvertently shutdown the server instead or wind down the specific worker and re-spawn a new one.
 

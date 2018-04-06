@@ -181,6 +181,13 @@ static void redis_on_pub_connect(intptr_t uuid, void *pr) {
   if (r->pub_data.uuid)
     sock_close(r->pub_data.uuid);
   r->pub_data.uuid = uuid;
+  facil_attach(uuid, pr);
+  facil_set_timeout(uuid, r->ping_int);
+
+  if (!facil_is_running() || !r->flag) {
+    sock_close(uuid);
+    return;
+  }
 
   if (r->auth) {
     redis_commands_s *cmd = malloc(sizeof(*cmd) + r->auth_len);
@@ -197,8 +204,6 @@ static void redis_on_pub_connect(intptr_t uuid, void *pr) {
     r->sent = 0;
     defer(redis_send_cmd_queue, r, NULL);
   }
-  facil_attach(uuid, pr);
-  facil_set_timeout(uuid, r->ping_int);
   fprintf(stderr, "INFO: (redis %d) publishing connection established.\n",
           (int)getpid());
 }
@@ -207,10 +212,16 @@ static void redis_on_sub_connect(intptr_t uuid, void *pr) {
   redis_engine_s *r = prot2redis(pr);
   r->sub_data.uuid = uuid;
   facil_attach(uuid, pr);
+  facil_set_timeout(uuid, r->ping_int);
+
+  if (!facil_is_running() || !r->flag) {
+    sock_close(uuid);
+    return;
+  }
+
   if (r->auth)
     sock_write2(.uuid = uuid, .buffer = r->auth, .length = r->auth_len,
                 .dealloc = SOCK_DEALLOC_NOOP);
-  facil_set_timeout(uuid, r->ping_int);
   pubsub_engine_resubscribe(&r->en);
   if (!r->pub_data.uuid) {
     spn_add(&r->ref, 1);
@@ -223,7 +234,9 @@ static void redis_on_sub_connect(intptr_t uuid, void *pr) {
 static void redis_deferred_connect(void *r_, void *is_pub);
 static void redis_on_pub_connect_fail(intptr_t uuid, void *pr) {
   redis_engine_s *r = prot2redis(pr);
-  if ((facil_parent_pid() == getpid() && !r->sub_data.uuid) || r->flag == 0) {
+  if ((facil_parent_pid() == getpid() && !r->sub_data.uuid) || r->flag == 0 ||
+      !facil_is_running()) {
+    r->pub_data.uuid = 0;
     redis_free(r);
     return;
   }
@@ -234,12 +247,13 @@ static void redis_on_pub_connect_fail(intptr_t uuid, void *pr) {
 }
 static void redis_on_sub_connect_fail(intptr_t uuid, void *pr) {
   redis_engine_s *r = prot2redis(pr);
-  if (facil_parent_pid() != getpid() || r->flag == 0) {
-    if (r->flag && !r->pub_data.uuid) {
-      spn_add(&r->ref, 1);
-      redis_on_pub_connect_fail(uuid, pr);
-    }
+  if (!facil_is_running() || !r->flag) {
     redis_free(r);
+    return;
+  }
+  if (facil_parent_pid() != getpid()) {
+    /* respawned as worker */
+    redis_on_pub_connect_fail(uuid, pr);
     return;
   }
   r->sub_data.uuid = 0;
@@ -434,6 +448,20 @@ static int redis_on_publish(const pubsub_engine_s *eng, FIOBJ channel,
 Object Creation
 ***************************************************************************** */
 
+static void redis_on_startup(const pubsub_engine_s *r_) {
+  redis_engine_s *r = en2redis(r_);
+  /* start adding one connection, so add one reference. */
+  spn_add(&r->ref, 1);
+  if (facil_parent_pid() == getpid()) {
+    defer((void (*)(void *, void *))redis_on_sub_connect_fail, 0,
+          &r->sub_data.protocol);
+  } else {
+    /* workers don't need to subscribe, tha't only on the root process. */
+    defer((void (*)(void *, void *))redis_on_pub_connect_fail, 0,
+          &r->pub_data.protocol);
+  }
+}
+
 #undef redis_engine_create
 pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
   if (!args.address)
@@ -467,12 +495,14 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
               .subscribe = redis_on_subscribe,
               .unsubscribe = redis_on_unsubscribe,
               .publish = redis_on_publish,
+              .on_startup = redis_on_startup,
           },
       .pub_data =
           {
               .is_pub = 1,
               .protocol =
                   {
+                      .service = "redis engine publishing connection",
                       .on_data = redis_on_data,
                       .on_close = redis_pub_on_close,
                       .ping = redis_pub_ping,
@@ -483,13 +513,14 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
           {
               .protocol =
                   {
+                      .service = "redis engine subscribing connection",
                       .on_data = redis_on_data,
                       .on_close = redis_sub_on_close,
                       .ping = redis_sub_ping,
                       .on_shutdown = redis_on_shutdown,
                   },
           },
-      .ref = 2, /* either sub or pub + user handle */
+      .ref = 1, /* starts with only the user handle */
   };
   memcpy(r->port, args.port, port_len);
   r->port[port_len] = 0;
@@ -508,16 +539,8 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
     r->auth = NULL;
   }
   pubsub_engine_register(&r->en);
-  /* we don't need to listen for messages from each process, we publish to the
-   * cluster and the channel list is synchronized.
-   */
-  if (facil_parent_pid() == getpid()) {
-    defer((void (*)(void *, void *))redis_on_sub_connect_fail, 0,
-          &r->sub_data.protocol);
-  } else {
-    defer((void (*)(void *, void *))redis_on_pub_connect_fail, 0,
-          &r->pub_data.protocol);
-  }
+  if (facil_is_running())
+    redis_on_startup(&r->en);
   return &r->en;
 }
 
