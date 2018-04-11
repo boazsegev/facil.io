@@ -236,6 +236,10 @@ Object Type Identification
 #define FIOBJECT_TYPE_MASK (~(uintptr_t)7)
 #endif
 
+#define FIOBJ_NUMBER_SIGN_MASK ((~((uintptr_t)0)) >> 1)
+#define FIOBJ_NUMBER_SIGN_BIT (~FIOBJ_NUMBER_SIGN_MASK)
+#define FIOBJ_NUMBER_SIGN_EXCLUDE_BIT (FIOBJ_NUMBER_SIGN_BIT >> 1)
+
 #define FIOBJ_IS_ALLOCATED(o)                                                  \
   ((o) && ((o)&FIOBJECT_NUMBER_FLAG) == 0 &&                                   \
    ((o)&FIOBJECT_PRIMITIVE_FLAG) != FIOBJECT_PRIMITIVE_FLAG)
@@ -475,8 +479,13 @@ FIO_INLINE int fiobj_is_true(const FIOBJ o) {
  * A type error results in 0.
  */
 FIO_INLINE intptr_t fiobj_obj2num(const FIOBJ o) {
-  if (o & FIOBJECT_NUMBER_FLAG)
-    return (((intptr_t)o) >> 1);
+  if (o & FIOBJECT_NUMBER_FLAG) {
+    const uintptr_t sign =
+        (o & FIOBJ_NUMBER_SIGN_BIT)
+            ? (FIOBJ_NUMBER_SIGN_BIT | FIOBJ_NUMBER_SIGN_EXCLUDE_BIT)
+            : 0;
+    return (intptr_t)(((o & FIOBJ_NUMBER_SIGN_MASK) >> 1) | sign);
+  }
   if (!o || !FIOBJ_IS_ALLOCATED(o))
     return o == FIOBJ_T_TRUE;
   return FIOBJECT2VTBL(o)->to_i(o);
@@ -560,7 +569,7 @@ FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o) {
  */
 FIO_INLINE double fiobj_obj2float(const FIOBJ o) {
   if (o & FIOBJECT_NUMBER_FLAG)
-    return (double)((uintptr_t)o >> 1);
+    return (double)(fiobj_obj2num(o));
   if (!o || (o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_PRIMITIVE_FLAG)
     return (double)(o == FIOBJ_T_TRUE);
   return FIOBJECT2VTBL(o)->to_f(o);

@@ -404,6 +404,12 @@ void fiobj_test_numbers(void) {
   }
   FIOBJ i = fiobj_num_new(8);
   fprintf(stderr, "=== Testing Numbers\n");
+  fprintf(stderr, "* FIOBJ_NUMBER_SIGN_MASK == %p\n",
+          (void *)FIOBJ_NUMBER_SIGN_MASK);
+  fprintf(stderr, "* FIOBJ_NUMBER_SIGN_BIT == %p\n",
+          (void *)FIOBJ_NUMBER_SIGN_BIT);
+  fprintf(stderr, "* FIOBJ_NUMBER_SIGN_EXCLUDE_BIT == %p\n",
+          (void *)FIOBJ_NUMBER_SIGN_EXCLUDE_BIT);
   NUMTEST_ASSERT(FIOBJ_TYPE_IS(i, FIOBJ_T_NUMBER),
                  "* FIOBJ_TYPE_IS failed to return true.");
   NUMTEST_ASSERT((FIOBJ_TYPE(i) == FIOBJ_T_NUMBER),

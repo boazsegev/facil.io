@@ -102,9 +102,15 @@ FIOBJ fiobj_num_new_bignum(intptr_t num);
 
 /** Creates a Number object. Remember to use `fiobj_free`. */
 FIO_INLINE FIOBJ fiobj_num_new(intptr_t num) {
-  intptr_t i = (num << 1) | FIOBJECT_NUMBER_FLAG;
-  if ((i >> 1) == num)
-    return (FIOBJ)i;
+  if ((((uintptr_t)num &
+        (FIOBJ_NUMBER_SIGN_BIT | FIOBJ_NUMBER_SIGN_EXCLUDE_BIT)) == 0) ||
+      (((uintptr_t)num &
+        (FIOBJ_NUMBER_SIGN_BIT | FIOBJ_NUMBER_SIGN_EXCLUDE_BIT)) ==
+       (FIOBJ_NUMBER_SIGN_BIT | FIOBJ_NUMBER_SIGN_EXCLUDE_BIT))) {
+    const uintptr_t num_abs = (uintptr_t)num & FIOBJ_NUMBER_SIGN_MASK;
+    const uintptr_t num_sign = (uintptr_t)num & FIOBJ_NUMBER_SIGN_BIT;
+    return ((num_abs << 1) | num_sign | FIOBJECT_NUMBER_FLAG);
+  }
   return fiobj_num_new_bignum(num);
 }
 
