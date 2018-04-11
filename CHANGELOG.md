@@ -1,5 +1,11 @@
 # Change Log
 
+### Ver. 0.6.3
+
+**Fix**: (`http`) fixed an issue where the Content-Type header might be missing. Now a best attempt to detect the content type (using the URL) will be performed. If no content type is detected, the default RFC content type will be attached (`application/octet-stream`).
+
+**Fix**: (`FIOBJ`) fixed compiler compatibility concerns with the `fiobj_num_new` logic, removing some possibly undefined behavior.
+
 ### Ver. 0.6.2
 
 This version fixes a number of issues, including a serious issue that prevented sockets from fully flushing their buffer.

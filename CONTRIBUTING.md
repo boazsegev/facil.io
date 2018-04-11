@@ -103,12 +103,14 @@ These are the features that have been requested so far. Even if any of them are 
 |-------------------|--------------------|----------------------------|
 |   Documentation   |     🙏 Help 🙏    | Place in the `docs` folder |
 |       Tests       |    Never enough    | run through [`shorts.c`](shorts.c) but implement in source files. |
+| Early Hints HTTP/1.1 |               |                            |
 |      HTTP/2       | Bo (me), help me?  |                            |
 |    HTTP Router    |                    | No RegEx. Example: `/users/(:id)` |
 |    HTTP Client    |                    | Missing SSL/TLS, cookie retention and auto-redirect(?)  |
 |  Websocket Client |                    | Missing cookie retention.  |
 |      SSL/TLS      |                    | Use `sock` R/W hooks       |
 |     PostgreSQL    |                    | Wrap `libpq.h` for events + pub/sub engine (?) |
+|   Shutdown Delay  |                    | Per connection, set the delay for closing the connection (`pre_shutdown`?) |
 |     Gossip (?)    |                    | For Pub/Sub engine scaling |
 
 
