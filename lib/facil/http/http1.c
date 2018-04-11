@@ -722,6 +722,7 @@ static fio_cstr_s http1pr_status2str(uintptr_t status) {
       HTTP_SET_STATUS_STR(100, "Continue"),
       HTTP_SET_STATUS_STR(101, "Switching Protocols"),
       HTTP_SET_STATUS_STR(102, "Processing"),
+      HTTP_SET_STATUS_STR(103, "Early Hints"),
       HTTP_SET_STATUS_STR(200, "OK"),
       HTTP_SET_STATUS_STR(201, "Created"),
       HTTP_SET_STATUS_STR(202, "Accepted"),
