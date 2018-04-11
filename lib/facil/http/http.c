@@ -11,8 +11,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "http1.h"
 #include "http_internal.h"
 
+#include <ctype.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -29,10 +31,17 @@ static inline void add_content_length(http_s *r, uintptr_t length) {
   if (!cl_hash)
     cl_hash = fio_siphash("content-length", 14);
   if (!fiobj_hash_get2(r->private_data.out_headers, cl_hash)) {
-    static FIOBJ cl;
-    if (!cl)
-      cl = HTTP_HEADER_CONTENT_LENGTH;
-    fiobj_hash_set(r->private_data.out_headers, cl, fiobj_num_new(length));
+    fiobj_hash_set(r->private_data.out_headers, HTTP_HEADER_CONTENT_LENGTH,
+                   fiobj_num_new(length));
+  }
+}
+static inline void add_content_type(http_s *r) {
+  static uint64_t ct_hash = 0;
+  if (!ct_hash)
+    ct_hash = fio_siphash("content-type", 12);
+  if (!fiobj_hash_get2(r->private_data.out_headers, ct_hash)) {
+    fiobj_hash_set(r->private_data.out_headers, HTTP_HEADER_CONTENT_TYPE,
+                   http_mimetype_find2(r->path));
   }
 }
 
@@ -333,6 +342,7 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
     return 0;
   }
   add_content_length(r, length);
+  add_content_type(r);
   add_date(r);
   return ((http_vtable_s *)r->private_data.vtbl)
       ->http_send_body(r, data, length);
@@ -350,6 +360,7 @@ int http_sendfile(http_s *r, int fd, uintptr_t length, uintptr_t offset) {
     return -1;
   };
   add_content_length(r, length);
+  add_content_type(r);
   add_date(r);
   return ((http_vtable_s *)r->private_data.vtbl)
       ->http_sendfile(r, fd, length, offset);
@@ -2204,6 +2215,8 @@ Lookup Tables / functions
 
 static fio_hash_s mime_types;
 
+#define LONGEST_FILE_EXTENSION_LENGTH 15
+
 void http_lib_init(void); /* if library not initialized */
 
 /** Registers a Mime-Type to be associated with the file extension. */
@@ -2233,6 +2246,44 @@ FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
   }
   uintptr_t hash = fio_siphash(file_ext, file_ext_len);
   return fiobj_dup((FIOBJ)fio_hash_find(&mime_types, hash));
+}
+
+/**
+ * Finds the mime-type associated with the URL.
+ *  Remember to call `fiobj_free`.
+ */
+FIOBJ http_mimetype_find2(FIOBJ url) {
+  static __thread char buffer[LONGEST_FILE_EXTENSION_LENGTH + 1];
+  fio_cstr_s ext = {.data = NULL};
+  FIOBJ mimetype;
+  if (!url)
+    goto finish;
+  fio_cstr_s tmp = fiobj_obj2cstr(url);
+  uint8_t steps = 1;
+  while (tmp.len > steps || steps >= LONGEST_FILE_EXTENSION_LENGTH) {
+    switch (tmp.data[tmp.len - steps]) {
+    case '.':
+      --steps;
+      if (steps) {
+        ext.len = steps;
+        ext.data = buffer;
+        buffer[steps] = 0;
+        for (size_t i = 1; i <= steps; ++i) {
+          buffer[steps - i] = tolower(tmp.data[tmp.len - i]);
+        }
+      }
+    /* fallthrough */
+    case '/':
+      goto finish;
+      break;
+    }
+    ++steps;
+  }
+finish:
+  mimetype = http_mimetype_find(ext.data, ext.len);
+  if (!mimetype)
+    mimetype = fiobj_dup(HTTP_HVALUE_CONTENT_TYPE_DEFAULT);
+  return mimetype;
 }
 
 /** Clears the Mime-Type registry (it will be emoty afterthis call). */
@@ -2299,6 +2350,7 @@ fio_cstr_s http_status2str(uintptr_t status) {
       HTTP_SET_STATUS_STR(100, "Continue"),
       HTTP_SET_STATUS_STR(101, "Switching Protocols"),
       HTTP_SET_STATUS_STR(102, "Processing"),
+      HTTP_SET_STATUS_STR(103, "Early Hints"),
       HTTP_SET_STATUS_STR(200, "OK"),
       HTTP_SET_STATUS_STR(201, "Created"),
       HTTP_SET_STATUS_STR(202, "Accepted"),

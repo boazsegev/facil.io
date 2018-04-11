@@ -60,10 +60,11 @@ Constants that shouldn't be accessed by the users (`fiobj_dup` required).
 ***************************************************************************** */
 
 extern FIOBJ HTTP_HEADER_ACCEPT_RANGES;
-extern FIOBJ HTTP_HEADER_WS_SEC_KEY;
 extern FIOBJ HTTP_HEADER_WS_SEC_CLIENT_KEY;
+extern FIOBJ HTTP_HEADER_WS_SEC_KEY;
 extern FIOBJ HTTP_HVALUE_BYTES;
 extern FIOBJ HTTP_HVALUE_CLOSE;
+extern FIOBJ HTTP_HVALUE_CONTENT_TYPE_DEFAULT;
 extern FIOBJ HTTP_HVALUE_GZIP;
 extern FIOBJ HTTP_HVALUE_KEEP_ALIVE;
 extern FIOBJ HTTP_HVALUE_MAX_AGE;
