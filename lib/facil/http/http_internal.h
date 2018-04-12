@@ -7,7 +7,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_HTTP_INTERNAL_H
 #define H_HTTP_INTERNAL_H
 
+#include "spnlock.inc"
+
+#include "fio_llist.h"
 #include "http.h"
+#include "pubsub.h"
 
 #include "fiobj4sock.h"
 
@@ -45,12 +49,20 @@ struct http_vtable_s {
   void (*http_on_resume)(http_s *, http_protocol_s *);
   /** hijacks the socket aaway from the protocol. */
   intptr_t (*http_hijack)(http_s *h, fio_cstr_s *leftover);
+
+  /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
+  int (*http_upgrade2sse)(http_s *h, http_sse_s);
+  /** Writes data to an EventSource (SSE) connection. */
+  int (*http_sse_write)(http_sse_s *sse, char *event, size_t event_length,
+                        char *data, size_t length);
+  /** Closes an EventSource (SSE) connection. */
+  int (*http_sse_close)(http_sse_s *sse);
 };
 
 struct http_protocol_s {
-  protocol_s protocol;
-  intptr_t uuid;
-  http_settings_s *settings;
+  protocol_s protocol;       /* facil.io protocol */
+  intptr_t uuid;             /* socket uuid */
+  http_settings_s *settings; /* pointer to HTTP settings */
 };
 
 #define http2protocol(h) ((http_protocol_s *)h->private_data.flag)
@@ -122,6 +134,10 @@ static inline void http_s_clear(http_s *h, uint8_t log) {
 #define HTTP_INVALID_HANDLE(h)                                                 \
   (!(h) || (!(h)->method && !(h)->status_str && (h)->status))
 
+/* *****************************************************************************
+Request / Response Handlers
+***************************************************************************** */
+
 /** Use this function to handle HTTP requests.*/
 void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings);
@@ -129,6 +145,45 @@ void http_on_request_handler______internal(http_s *h,
 void http_on_response_handler______internal(http_s *h,
                                             http_settings_s *settings);
 int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings);
+
+/* *****************************************************************************
+EventSource Support (SSE)
+***************************************************************************** */
+
+typedef struct http_sse_internal_s {
+  http_sse_s sse;         /* the user SSE settings */
+  intptr_t uuid;          /* the socket's uuid */
+  http_vtable_s *vtable;  /* the protocol's vtable */
+  uintptr_t id;           /* the SSE identifier */
+  fio_ls_s subscriptions; /* Subscription List */
+  spn_lock_i lock;        /* Subscription List lock */
+  size_t ref;             /* reference count */
+} http_sse_internal_s;
+
+static inline void http_sse_init(http_sse_internal_s *sse, http_s *h,
+                                 http_sse_s args) {
+  *sse = (http_sse_internal_s){
+      .sse = args,
+      .uuid = http2protocol(h)->uuid,
+      .subscriptions = FIO_LS_INIT(sse->subscriptions),
+      .vtable = h->private_data.vtbl,
+      .ref = 1,
+  };
+}
+
+static inline void http_sse_try_free(http_sse_internal_s *sse) {
+  if (spn_sub(&sse->ref, 1))
+    return;
+  free(sse);
+}
+
+static inline void http_sse_destroy(http_sse_internal_s *sse) {
+  while (fio_ls_any(&sse->subscriptions)) {
+    void *sub = fio_ls_pop(&sse->subscriptions);
+    pubsub_unsubscribe(sub);
+  }
+  http_sse_try_free(sse);
+}
 
 /* *****************************************************************************
 Helpers

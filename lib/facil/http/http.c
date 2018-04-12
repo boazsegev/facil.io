@@ -1152,6 +1152,38 @@ int websocket_connect(const char *address, websocket_settings_s settings) {
   websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
 
 /* *****************************************************************************
+EventSource Support (SSE)
+
+Note:
+
+* `http_sse_subscribe` and `http_sse_unsubscribe` are implemented in the
+  http_internal logical unit.
+
+***************************************************************************** */
+
+#undef http_upgrade2sse
+/**
+ * Upgrades an HTTP connection to an EventSource (SSE) connection.
+ *
+ * Thie `http_s` handle will be invalid after this call.
+ *
+ * On HTTP/1.1 connections, this will preclude future requests using the same
+ * connection.
+ */
+int http_upgrade2sse(http_s *h, http_sse_s sse);
+
+/**
+ * Writes data to an EventSource (SSE) connection.
+ */
+int http_sse_write(http_sse_s *sse, char *event, size_t event_length,
+                   char *data, size_t length);
+
+/**
+ * Closes an EventSource (SSE) connection.
+ */
+int http_sse_close(http_sse_s *sse);
+
+/* *****************************************************************************
 HTTP GET and POST parsing helpers
 ***************************************************************************** */
 

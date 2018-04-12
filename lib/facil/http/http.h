@@ -453,7 +453,7 @@ sock_peer_addr_s http_peer_addr(http_s *h);
 intptr_t http_hijack(http_s *h, fio_cstr_s *leftover);
 
 /* *****************************************************************************
-Websocket Upgrade (server side)
+Websocket Upgrade (Server and Client connection establishment)
 ***************************************************************************** */
 
 /**
@@ -489,13 +489,9 @@ typedef struct {
   void (*on_open)(ws_s *ws);
   /**
    * The (optional) on_ready callback will be after a the underlying socket's
-   * buffer changes it's state from full to available.
+   * buffer changes it's state from full to empty.
    *
-   * If the socket's buffer is never full, the callback is never called.
-   *
-   * It should be noted that `libsock` manages the socket's buffer overflow and
-   * implements and augmenting user-land buffer, allowing data to be safely
-   * written to the websocket without worrying over the socket's buffer.
+   * If the socket's buffer is never used, the callback is never called.
    */
   void (*on_ready)(ws_s *ws);
   /**
@@ -534,7 +530,7 @@ typedef struct {
  */
 int http_upgrade2ws(websocket_settings_s);
 
-/** This macro allows easy access to the `websocket_upgrade` function. The macro
+/** This macro allows easy access to the `http_upgrade2ws` function. The macro
  * allows the use of named arguments, using the `websocket_settings_s` struct
  * members. i.e.:
  *
@@ -567,6 +563,129 @@ int websocket_connect(const char *address, websocket_settings_s settings);
   websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
 
 #include "websockets.h"
+
+/* *****************************************************************************
+EventSource Support (SSE)
+***************************************************************************** */
+
+/**
+ * The type for the EventSource (SSE) handle, used to identify an SSE
+ * connection.
+ */
+typedef struct http_sse_s http_sse_s;
+
+/**
+ * This struct is used for the named agruments in the `http_upgrade2sse`
+ * function and macro.
+ */
+struct http_sse_s {
+  /**
+   * The (optional) on_open callback will be called once the EventSource
+   * connection is established.
+   */
+  void (*on_open)(http_sse_s *sse);
+  /**
+   * The (optional) on_ready callback will be after a the underlying socket's
+   * buffer changes it's state to empty.
+   *
+   * If the socket's buffer is never used, the callback is never called.
+   */
+  void (*on_ready)(http_sse_s *sse);
+  /**
+   * The (optional) on_shutdown callback will be called if a connection is still
+   * open while the server is shutting down (called before `on_close`).
+   */
+  void (*on_shutdown)(http_sse_s *sse);
+  /**
+   * The (optional) on_close callback will be called once a connection is
+   * terminated or failed to be established.
+   *
+   * The `uuid` is the connection's unique ID that can identify the Websocket. A
+   * value of `uuid == 0` indicates the Websocket connection wasn't established
+   * (an error occured).
+   *
+   * The `udata` is the user data as set during the upgrade or using the
+   * `websocket_udata_set` function.
+   */
+  void (*on_close)(http_sse_s *sse);
+  /** Opaque user data. */
+  void *udata;
+};
+
+/**
+ * Upgrades an HTTP connection to an EventSource (SSE) connection.
+ *
+ * Thie `http_s` handle will be invalid after this call.
+ *
+ * On HTTP/1.1 connections, this will preclude future requests using the same
+ * connection.
+ */
+int http_upgrade2sse(http_s *h, http_sse_s);
+
+/** This macro allows easy access to the `http_upgrade2sse` function. The macro
+ * allows the use of named arguments, using the `websocket_settings_s` struct
+ * members. i.e.:
+ *
+ *     on_open_sse(sse_s * sse) {
+ *        ; // ... this is the websocket on_message callback
+ *        FIOBJ ch = (FIOBJ)sse->udata;
+ *        http_sse_subscribe(ch, NULL, NULL); // a simple echo example
+ *     }
+ *
+ *     on_upgrade(http_s* h) {
+ *        http_upgrade2sse(h, .on_open = on_open_sse);
+ *     }
+ */
+#define http_upgrade2sse(h, ...) http_upgrade2sse((h), (sse_s){__VA_ARGS__})
+
+struct http_sse_subscribe_args {
+  /** The channel namr used for the subscription. */
+  FIOBJ channel;
+  /** The optional on message callback. If missing, Data is directly writen. */
+  void (*on_message)(http_sse_s *sse, FIOBJ channel, FIOBJ msg, void *udata);
+  /** An optional callback for when a subscription is fully canceled. */
+  void (*on_unsubscribe)(void *udata);
+  /** Opaque user */
+  void *udata;
+  /** Use pattern matching for channel subscription. */
+  unsigned use_pattern : 1;
+};
+
+/**
+ * Subscribes to a channel. See {struct http_sse_subscribe_args} for possible
+ * arguments.
+ *
+ * Returns a subscription ID on success and 0 on failure.
+ *
+ * All subscriptions are automatically revoked once the connection is closed.
+ *
+ * If the connections subscribes to the same channel more than once, messages
+ * will be merged. However, another subscription ID will be assigned, and two
+ * calls to {http_sse_unsubscribe} will be required in order to unregister from
+ * the channel.
+ */
+uintptr_t http_sse_subscribe(http_sse_s *sse,
+                             struct http_sse_subscribe_args args);
+
+/** This macro allows easy access to the `http_sse_subscribe` function. */
+#define http_sse_subscribe(sse, ...)                                           \
+  http_sse_subscribe((sse), (struct http_sse_subscribe_args){__VA_ARGS__})
+
+/**
+ * Cancels a subscription and invalidates the subscription object.
+ */
+void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
+
+/**
+ * Writes data to an EventSource (SSE) connection.
+ */
+int http_sse_write(http_sse_s *sse, char *event, size_t event_length,
+                   char *data, size_t length);
+
+/**
+ * Closes an EventSource (SSE) connection.
+ */
+int http_sse_close(http_sse_s *sse);
 
 /* *****************************************************************************
 HTTP GET and POST parsing helpers

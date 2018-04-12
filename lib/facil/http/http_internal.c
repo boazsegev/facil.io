@@ -10,6 +10,10 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "http1.h"
 
+/* *****************************************************************************
+Internal Request / Response Handlers
+***************************************************************************** */
+
 static uint64_t http_upgrade_hash = 0;
 /** Use this function to handle HTTP requests.*/
 void http_on_request_handler______internal(http_s *h,
@@ -69,6 +73,10 @@ void http_on_response_handler______internal(http_s *h,
   }
 }
 
+/* *****************************************************************************
+Internal helpers
+***************************************************************************** */
+
 int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   if (!uuid || !settings || !error)
     return -1;
@@ -80,6 +88,98 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   sock_close(uuid);
   return ret;
 }
+
+/* *****************************************************************************
+EventSource Support (SSE)
+***************************************************************************** */
+
+/** The on message callback. the `*msg` pointer is to a temporary object. */
+static void http_sse_on_message(pubsub_message_s *msg) {
+  http_sse_internal_s *sse = msg->udata1;
+  struct http_sse_subscribe_args *args = msg->udata2;
+  protocol_s *pr = facil_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
+  if (!pr)
+    goto postpone;
+  if (args->on_message) {
+    args->on_message(&sse->sse, msg->channel, msg->message, args->udata);
+  } else {
+    fio_cstr_s e = fiobj_obj2cstr(msg->channel);
+    fio_cstr_s m = fiobj_obj2cstr(msg->message);
+    /* write directly */
+    sse->vtable->http_sse_write(&sse->sse, e.data, e.len, m.data, m.len);
+  }
+postpone:
+  if (errno == EBADF)
+    return;
+  pubsub_defer(msg);
+  return;
+}
+/** An optional callback for when a subscription is fully canceled. */
+static void http_sse_on_unsubscribe(void *sse_, void *args_) {
+  http_sse_internal_s *sse = sse_;
+  struct http_sse_subscribe_args *args = args_;
+  if (args->on_unsubscribe)
+    args->on_unsubscribe(args->udata);
+  free(args);
+  http_sse_try_free(sse);
+}
+
+/** This macro allows easy access to the `http_sse_subscribe` function. */
+#undef http_sse_subscribe
+/**
+ * Subscribes to a channel. See {struct http_sse_subscribe_args} for possible
+ * arguments.
+ *
+ * Returns a subscription ID on success and 0 on failure.
+ *
+ * All subscriptions are automatically revoked once the connection is closed.
+ *
+ * If the connections subscribes to the same channel more than once, messages
+ * will be merged. However, another subscription ID will be assigned, and two
+ * calls to {http_sse_unsubscribe} will be required in order to unregister from
+ * the channel.
+ */
+uintptr_t http_sse_subscribe(http_sse_s *sse_,
+                             struct http_sse_subscribe_args args) {
+  http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
+  struct http_sse_subscribe_args *udata = malloc(sizeof(udata));
+  *udata = args;
+  if (!udata)
+    return 0;
+
+  spn_add(&sse->ref, 1);
+  pubsub_sub_pt sub =
+      pubsub_subscribe(.channel = args.channel,
+                       .on_message = http_sse_on_message,
+                       .on_unsubscribe = http_sse_on_unsubscribe, .udata1 = sse,
+                       .udata2 = udata, .use_pattern = args.use_pattern);
+  if (!sub)
+    return 0;
+
+  spn_lock(&sse->lock);
+  fio_ls_push(&sse->subscriptions, sub);
+  fio_ls_s *pos = sse->subscriptions.prev;
+  spn_unlock(&sse->lock);
+  return (uintptr_t)pos;
+}
+
+/**
+ * Cancels a subscription and invalidates the subscription object.
+ */
+void http_sse_unsubscribe(http_sse_s *sse_, uintptr_t subscription) {
+  if (!subscription)
+    return;
+  http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
+  pubsub_sub_pt sub = (pubsub_sub_pt)((fio_ls_s *)subscription)->obj;
+  spn_lock(&sse->lock);
+  fio_ls_remove((fio_ls_s *)subscription);
+  spn_unlock(&sse->lock);
+  pubsub_unsubscribe(sub);
+}
+
+/* *****************************************************************************
+Library initialization
+***************************************************************************** */
 
 FIOBJ HTTP_HEADER_ACCEPT;
 FIOBJ HTTP_HEADER_ACCEPT_RANGES;
