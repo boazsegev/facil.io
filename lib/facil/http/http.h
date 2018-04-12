@@ -678,6 +678,7 @@ void http_mimetype_clear(void);
 Commonly used headers (fiobj Symbol objects)
 ***************************************************************************** */
 
+extern FIOBJ HTTP_HEADER_ACCEPT;
 extern FIOBJ HTTP_HEADER_CACHE_CONTROL;
 extern FIOBJ HTTP_HEADER_CONNECTION;
 extern FIOBJ HTTP_HEADER_CONTENT_ENCODING;

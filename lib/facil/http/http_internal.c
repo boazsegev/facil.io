@@ -81,6 +81,7 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   return ret;
 }
 
+FIOBJ HTTP_HEADER_ACCEPT;
 FIOBJ HTTP_HEADER_ACCEPT_RANGES;
 FIOBJ HTTP_HEADER_CACHE_CONTROL;
 FIOBJ HTTP_HEADER_CONNECTION;
@@ -114,6 +115,7 @@ void http_lib_cleanup(void) {
 #define HTTPLIB_RESET(x)                                                       \
   fiobj_free(x);                                                               \
   x = FIOBJ_INVALID;
+  HTTPLIB_RESET(HTTP_HEADER_ACCEPT);
   HTTPLIB_RESET(HTTP_HEADER_ACCEPT_RANGES);
   HTTPLIB_RESET(HTTP_HEADER_CACHE_CONTROL);
   HTTPLIB_RESET(HTTP_HEADER_CONNECTION);
@@ -148,6 +150,7 @@ void http_lib_cleanup(void) {
 void http_lib_init(void) {
   if (HTTP_HEADER_ACCEPT_RANGES)
     return;
+  HTTP_HEADER_ACCEPT = fiobj_str_new("accept", 6);
   HTTP_HEADER_ACCEPT_RANGES = fiobj_str_new("accept-ranges", 13);
   HTTP_HEADER_CACHE_CONTROL = fiobj_str_new("cache-control", 13);
   HTTP_HEADER_CONNECTION = fiobj_str_new("connection", 10);
@@ -981,7 +984,6 @@ void http_lib_init(void) {
   REGISTER_MIME("stl", "application/vnd.ms-pki.stl");
   REGISTER_MIME("str", "application/vnd.pg.format");
   REGISTER_MIME("stw", "application/vnd.sun.xml.writer.template");
-  // REGISTER_MIME("sub", "image/vnd.dvb.subtitle");
   REGISTER_MIME("sub", "text/vnd.dvb.subtitle");
   REGISTER_MIME("sus", "application/vnd.sus-calendar");
   REGISTER_MIME("susp", "application/vnd.sus-calendar");
