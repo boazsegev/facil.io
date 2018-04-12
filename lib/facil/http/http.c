@@ -1170,18 +1170,32 @@ Note:
  * On HTTP/1.1 connections, this will preclude future requests using the same
  * connection.
  */
-int http_upgrade2sse(http_s *h, http_sse_s sse);
+int http_upgrade2sse(http_s *h, http_sse_s sse) {
+  if (HTTP_INVALID_HANDLE(h))
+    return -1;
+  return ((http_vtable_s *)h->private_data.vtbl)->http_upgrade2sse(h, &sse);
+}
 
 /**
  * Writes data to an EventSource (SSE) connection.
  */
 int http_sse_write(http_sse_s *sse, char *event, size_t event_length,
-                   char *data, size_t length);
+                   char *data, size_t length) {
+  if (sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
+    return -1;
+  return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)
+      ->vtable->http_sse_write(sse, event, event_length, data, length);
+}
 
 /**
  * Closes an EventSource (SSE) connection.
  */
-int http_sse_close(http_sse_s *sse);
+int http_sse_close(http_sse_s *sse) {
+  if (sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
+    return -1;
+  return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)
+      ->vtable->http_sse_close(sse);
+}
 
 /* *****************************************************************************
 HTTP GET and POST parsing helpers

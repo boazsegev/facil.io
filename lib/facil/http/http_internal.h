@@ -51,10 +51,9 @@ struct http_vtable_s {
   intptr_t (*http_hijack)(http_s *h, fio_cstr_s *leftover);
 
   /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
-  int (*http_upgrade2sse)(http_s *h, http_sse_s);
+  int (*http_upgrade2sse)(http_s *h, http_sse_s *sse);
   /** Writes data to an EventSource (SSE) connection. */
-  int (*http_sse_write)(http_sse_s *sse, char *event, size_t event_length,
-                        char *data, size_t length);
+  int (*http_sse_write)(http_sse_s *sse, struct http_sse_write_args *args);
   /** Closes an EventSource (SSE) connection. */
   int (*http_sse_close)(http_sse_s *sse);
 };

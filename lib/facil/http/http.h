@@ -677,10 +677,28 @@ uintptr_t http_sse_subscribe(http_sse_s *sse,
 void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
 
 /**
- * Writes data to an EventSource (SSE) connection.
+ * Named arguments for the {http_sse_write} function.
+ *
+ * These arguments list the possible fields for the SSE event.
+ *
+ * Event fields listed here:
+ * https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
  */
-int http_sse_write(http_sse_s *sse, char *event, size_t event_length,
-                   char *data, size_t length);
+struct http_sse_write_args {
+  fio_cstr_s id;    /* (optionl) sets the `id` event property. */
+  fio_cstr_s event; /* (optionl) sets the `event` event property. */
+  fio_cstr_s data;  /* (optionl) sets the `data` event property. */
+  uintptr_t retry;  /* (optionl) sets the `retry` event property. */
+};
+
+/**
+ * Writes data to an EventSource (SSE) connection.
+ *
+ * See the {struct http_sse_write_args} for possible named arguments.
+ */
+int http_sse_write(http_sse_s *sse, struct http_sse_write_args);
+#define http_sse_write(sse, ...)                                               \
+  http_sse_write((sse), (struct http_sse_write_args){__VA_ARGS__})
 
 /**
  * Closes an EventSource (SSE) connection.
