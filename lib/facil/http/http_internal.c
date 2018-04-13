@@ -90,94 +90,6 @@ int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
 }
 
 /* *****************************************************************************
-EventSource Support (SSE)
-***************************************************************************** */
-
-/** The on message callback. the `*msg` pointer is to a temporary object. */
-static void http_sse_on_message(pubsub_message_s *msg) {
-  http_sse_internal_s *sse = msg->udata1;
-  struct http_sse_subscribe_args *args = msg->udata2;
-  protocol_s *pr = facil_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
-  if (!pr)
-    goto postpone;
-  if (args->on_message) {
-    args->on_message(&sse->sse, msg->channel, msg->message, args->udata);
-  } else {
-    fio_cstr_s e = fiobj_obj2cstr(msg->channel);
-    fio_cstr_s m = fiobj_obj2cstr(msg->message);
-    /* write directly */
-    http_sse_write(&sse->sse, .event = e, .data = m);
-  }
-postpone:
-  if (errno == EBADF)
-    return;
-  pubsub_defer(msg);
-  return;
-}
-/** An optional callback for when a subscription is fully canceled. */
-static void http_sse_on_unsubscribe(void *sse_, void *args_) {
-  http_sse_internal_s *sse = sse_;
-  struct http_sse_subscribe_args *args = args_;
-  if (args->on_unsubscribe)
-    args->on_unsubscribe(args->udata);
-  free(args);
-  http_sse_try_free(sse);
-}
-
-/** This macro allows easy access to the `http_sse_subscribe` function. */
-#undef http_sse_subscribe
-/**
- * Subscribes to a channel. See {struct http_sse_subscribe_args} for possible
- * arguments.
- *
- * Returns a subscription ID on success and 0 on failure.
- *
- * All subscriptions are automatically revoked once the connection is closed.
- *
- * If the connections subscribes to the same channel more than once, messages
- * will be merged. However, another subscription ID will be assigned, and two
- * calls to {http_sse_unsubscribe} will be required in order to unregister from
- * the channel.
- */
-uintptr_t http_sse_subscribe(http_sse_s *sse_,
-                             struct http_sse_subscribe_args args) {
-  http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
-  struct http_sse_subscribe_args *udata = malloc(sizeof(udata));
-  *udata = args;
-  if (!udata)
-    return 0;
-
-  spn_add(&sse->ref, 1);
-  pubsub_sub_pt sub =
-      pubsub_subscribe(.channel = args.channel,
-                       .on_message = http_sse_on_message,
-                       .on_unsubscribe = http_sse_on_unsubscribe, .udata1 = sse,
-                       .udata2 = udata, .use_pattern = args.use_pattern);
-  if (!sub)
-    return 0;
-
-  spn_lock(&sse->lock);
-  fio_ls_push(&sse->subscriptions, sub);
-  fio_ls_s *pos = sse->subscriptions.prev;
-  spn_unlock(&sse->lock);
-  return (uintptr_t)pos;
-}
-
-/**
- * Cancels a subscription and invalidates the subscription object.
- */
-void http_sse_unsubscribe(http_sse_s *sse_, uintptr_t subscription) {
-  if (!subscription)
-    return;
-  http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
-  pubsub_sub_pt sub = (pubsub_sub_pt)((fio_ls_s *)subscription)->obj;
-  spn_lock(&sse->lock);
-  fio_ls_remove((fio_ls_s *)subscription);
-  spn_unlock(&sse->lock);
-  pubsub_unsubscribe(sub);
-}
-
-/* *****************************************************************************
 Library initialization
 ***************************************************************************** */
 
@@ -205,6 +117,7 @@ FIOBJ HTTP_HVALUE_CONTENT_TYPE_DEFAULT;
 FIOBJ HTTP_HVALUE_GZIP;
 FIOBJ HTTP_HVALUE_KEEP_ALIVE;
 FIOBJ HTTP_HVALUE_MAX_AGE;
+FIOBJ HTTP_HVALUE_NO_CACHE;
 FIOBJ HTTP_HVALUE_WEBSOCKET;
 FIOBJ HTTP_HVALUE_WS_SEC_VERSION;
 FIOBJ HTTP_HVALUE_WS_UPGRADE;
@@ -239,6 +152,7 @@ void http_lib_cleanup(void) {
   HTTPLIB_RESET(HTTP_HVALUE_GZIP);
   HTTPLIB_RESET(HTTP_HVALUE_KEEP_ALIVE);
   HTTPLIB_RESET(HTTP_HVALUE_MAX_AGE);
+  HTTPLIB_RESET(HTTP_HVALUE_NO_CACHE);
   HTTPLIB_RESET(HTTP_HVALUE_WEBSOCKET);
   HTTPLIB_RESET(HTTP_HVALUE_WS_SEC_VERSION);
   HTTPLIB_RESET(HTTP_HVALUE_WS_UPGRADE);
@@ -250,6 +164,7 @@ void http_lib_cleanup(void) {
 void http_lib_init(void) {
   if (HTTP_HEADER_ACCEPT_RANGES)
     return;
+  fiobj_str_new("gzip", 4);
   HTTP_HEADER_ACCEPT = fiobj_str_new("accept", 6);
   HTTP_HEADER_ACCEPT_RANGES = fiobj_str_new("accept-ranges", 13);
   HTTP_HEADER_CACHE_CONTROL = fiobj_str_new("cache-control", 13);
@@ -272,9 +187,9 @@ void http_lib_init(void) {
   HTTP_HVALUE_CLOSE = fiobj_str_new("close", 5);
   HTTP_HVALUE_CONTENT_TYPE_DEFAULT =
       fiobj_str_new("application/octet-stream", 24);
-  HTTP_HVALUE_GZIP = fiobj_str_new("gzip", 4);
-  HTTP_HVALUE_KEEP_ALIVE = fiobj_str_new("keep-alive", 10);
+  HTTP_HVALUE_GZIP = HTTP_HVALUE_KEEP_ALIVE = fiobj_str_new("keep-alive", 10);
   HTTP_HVALUE_MAX_AGE = fiobj_str_new("max-age=3600", 12);
+  HTTP_HVALUE_NO_CACHE = fiobj_str_new("private, max-age=0, no-cache", 28);
   HTTP_HVALUE_WEBSOCKET = fiobj_str_new("websocket", 9);
   HTTP_HVALUE_WS_SEC_VERSION = fiobj_str_new("sec-websocket-version", 21);
   HTTP_HVALUE_WS_UPGRADE = fiobj_str_new("Upgrade", 7);
@@ -299,9 +214,11 @@ void http_lib_init(void) {
   fiobj_obj2hash(HTTP_HEADER_WS_SEC_KEY);
   fiobj_obj2hash(HTTP_HVALUE_BYTES);
   fiobj_obj2hash(HTTP_HVALUE_CLOSE);
+  fiobj_obj2hash(HTTP_HVALUE_CONTENT_TYPE_DEFAULT);
   fiobj_obj2hash(HTTP_HVALUE_GZIP);
   fiobj_obj2hash(HTTP_HVALUE_KEEP_ALIVE);
   fiobj_obj2hash(HTTP_HVALUE_MAX_AGE);
+  fiobj_obj2hash(HTTP_HVALUE_NO_CACHE);
   fiobj_obj2hash(HTTP_HVALUE_WEBSOCKET);
   fiobj_obj2hash(HTTP_HVALUE_WS_SEC_VERSION);
   fiobj_obj2hash(HTTP_HVALUE_WS_UPGRADE);
