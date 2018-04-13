@@ -79,6 +79,7 @@ extern FIOBJ HTTP_HVALUE_CONTENT_TYPE_DEFAULT;
 extern FIOBJ HTTP_HVALUE_GZIP;
 extern FIOBJ HTTP_HVALUE_KEEP_ALIVE;
 extern FIOBJ HTTP_HVALUE_MAX_AGE;
+extern FIOBJ HTTP_HVALUE_NO_CACHE;
 extern FIOBJ HTTP_HVALUE_WEBSOCKET;
 extern FIOBJ HTTP_HVALUE_WS_SEC_VERSION;
 extern FIOBJ HTTP_HVALUE_WS_UPGRADE;
@@ -159,13 +160,13 @@ typedef struct http_sse_internal_s {
   size_t ref;             /* reference count */
 } http_sse_internal_s;
 
-static inline void http_sse_init(http_sse_internal_s *sse, http_s *h,
-                                 http_sse_s args) {
+static inline void http_sse_init(http_sse_internal_s *sse, intptr_t uuid,
+                                 http_vtable_s *vtbl, http_sse_s *args) {
   *sse = (http_sse_internal_s){
-      .sse = args,
-      .uuid = http2protocol(h)->uuid,
+      .sse = *args,
+      .uuid = uuid,
       .subscriptions = FIO_LS_INIT(sse->subscriptions),
-      .vtable = h->private_data.vtbl,
+      .vtable = vtbl,
       .ref = 1,
   };
 }

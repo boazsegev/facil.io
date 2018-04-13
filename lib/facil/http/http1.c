@@ -40,6 +40,8 @@ typedef struct http1pr_s {
   uint8_t buf[];
 } http1pr_s;
 
+struct http_vtable_s HTTP1_VTABLE; /* initialized later on */
+
 /* *****************************************************************************
 Internal Helpers
 ***************************************************************************** */
@@ -433,6 +435,35 @@ EventSource Support (SSE)
 
 #undef http_upgrade2sse
 
+typedef struct {
+  protocol_s p;
+  http_sse_internal_s sse;
+} http1_sse_protocol_s;
+
+static void http1_sse_on_ready(intptr_t uuid, protocol_s *p_) {
+  http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
+  if (p->sse.sse.on_ready)
+    p->sse.sse.on_ready(&p->sse.sse);
+  (void)uuid;
+}
+static void http1_sse_on_shutdown(intptr_t uuid, protocol_s *p_) {
+  http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
+  if (p->sse.sse.on_shutdown)
+    p->sse.sse.on_shutdown(&p->sse.sse);
+  (void)uuid;
+}
+static void http1_sse_on_close(intptr_t uuid, protocol_s *p_) {
+  http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
+  if (p->sse.sse.on_close)
+    p->sse.sse.on_close(&p->sse.sse);
+  (void)uuid;
+}
+static void http1_sse_ping(intptr_t uuid, protocol_s *p_) {
+  sock_write2(.uuid = uuid, .buffer = ":ping\n\n", .length = 7,
+              .dealloc = SOCK_DEALLOC_NOOP);
+  (void)p_;
+}
+
 /**
  * Upgrades an HTTP connection to an EventSource (SSE) connection.
  *
@@ -442,7 +473,36 @@ EventSource Support (SSE)
  * connection.
  */
 static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
+  const intptr_t uuid = handle2pr(h)->p.uuid;
   http_send_error(h, 400);
+  return -1;
+  /* send response */
+  http_set_header(h, HTTP_HEADER_CONTENT_TYPE,
+                  fiobj_str_new("text/event-stream", 17));
+  http_set_header(h, HTTP_HEADER_CACHE_CONTROL,
+                  fiobj_dup(HTTP_HVALUE_NO_CACHE));
+  handle2pr(h)->stop = 1;
+  htt1p_finish(h); /* avoid the enforced content length in http_finish */
+  /* TODO: upgrade protocol to SSE */
+  http1_sse_protocol_s *sse_pr = malloc(sizeof(*sse_pr));
+  if (!sse_pr)
+    goto failed;
+  *sse_pr = (http1_sse_protocol_s){
+      .p =
+          {
+              .service = "http/1.1 internal SSE",
+              .on_ready = http1_sse_on_ready,
+              .on_shutdown = http1_sse_on_shutdown,
+              .on_close = http1_sse_on_close,
+              .ping = http1_sse_ping,
+          },
+  };
+
+  http_sse_init(&sse_pr->sse, uuid, &HTTP1_VTABLE, sse);
+  return facil_attach(uuid, &sse_pr->p);
+
+failed:
+  sock_close(handle2pr(h)->p.uuid);
   return -1;
   (void)sse;
 }

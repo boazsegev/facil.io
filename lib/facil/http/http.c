@@ -1177,6 +1177,90 @@ static inline void http_sse_copy2str(FIOBJ dest, char *prefix, size_t pre_len,
   }
 }
 
+/** The on message callback. the `*msg` pointer is to a temporary object. */
+static void http_sse_on_message(pubsub_message_s *msg) {
+  http_sse_internal_s *sse = msg->udata1;
+  struct http_sse_subscribe_args *args = msg->udata2;
+  protocol_s *pr = facil_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
+  if (!pr)
+    goto postpone;
+  if (args->on_message) {
+    args->on_message(&sse->sse, msg->channel, msg->message, args->udata);
+  } else {
+    fio_cstr_s e = fiobj_obj2cstr(msg->channel);
+    fio_cstr_s m = fiobj_obj2cstr(msg->message);
+    /* write directly */
+    http_sse_write(&sse->sse, .event = e, .data = m);
+  }
+postpone:
+  if (errno == EBADF)
+    return;
+  pubsub_defer(msg);
+  return;
+}
+/** An optional callback for when a subscription is fully canceled. */
+static void http_sse_on_unsubscribe(void *sse_, void *args_) {
+  http_sse_internal_s *sse = sse_;
+  struct http_sse_subscribe_args *args = args_;
+  if (args->on_unsubscribe)
+    args->on_unsubscribe(args->udata);
+  free(args);
+  http_sse_try_free(sse);
+}
+
+/** This macro allows easy access to the `http_sse_subscribe` function. */
+#undef http_sse_subscribe
+/**
+ * Subscribes to a channel. See {struct http_sse_subscribe_args} for possible
+ * arguments.
+ *
+ * Returns a subscription ID on success and 0 on failure.
+ *
+ * All subscriptions are automatically revoked once the connection is closed.
+ *
+ * If the connections subscribes to the same channel more than once, messages
+ * will be merged. However, another subscription ID will be assigned, and two
+ * calls to {http_sse_unsubscribe} will be required in order to unregister from
+ * the channel.
+ */
+uintptr_t http_sse_subscribe(http_sse_s *sse_,
+                             struct http_sse_subscribe_args args) {
+  http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
+  struct http_sse_subscribe_args *udata = malloc(sizeof(udata));
+  *udata = args;
+  if (!udata)
+    return 0;
+
+  spn_add(&sse->ref, 1);
+  pubsub_sub_pt sub =
+      pubsub_subscribe(.channel = args.channel,
+                       .on_message = http_sse_on_message,
+                       .on_unsubscribe = http_sse_on_unsubscribe, .udata1 = sse,
+                       .udata2 = udata, .use_pattern = args.use_pattern);
+  if (!sub)
+    return 0;
+
+  spn_lock(&sse->lock);
+  fio_ls_push(&sse->subscriptions, sub);
+  fio_ls_s *pos = sse->subscriptions.prev;
+  spn_unlock(&sse->lock);
+  return (uintptr_t)pos;
+}
+
+/**
+ * Cancels a subscription and invalidates the subscription object.
+ */
+void http_sse_unsubscribe(http_sse_s *sse_, uintptr_t subscription) {
+  if (!subscription)
+    return;
+  http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
+  pubsub_sub_pt sub = (pubsub_sub_pt)((fio_ls_s *)subscription)->obj;
+  spn_lock(&sse->lock);
+  fio_ls_remove((fio_ls_s *)subscription);
+  spn_unlock(&sse->lock);
+  pubsub_unsubscribe(sub);
+}
+
 #undef http_upgrade2sse
 /**
  * Upgrades an HTTP connection to an EventSource (SSE) connection.
@@ -1217,6 +1301,7 @@ int http_sse_write(http_sse_s *sse, struct http_sse_write_args args) {
     fiobj_free(i);
   }
   http_sse_copy2str(buf, "data: ", 6, args.data);
+  fiobj_str_write(buf, "\n", 1);
   return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)
       ->vtable->http_sse_write(sse, buf);
 }
