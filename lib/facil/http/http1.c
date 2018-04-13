@@ -428,6 +428,43 @@ static int http1_http2websocket(websocket_settings_s *args) {
 }
 
 /* *****************************************************************************
+EventSource Support (SSE)
+***************************************************************************** */
+
+#undef http_upgrade2sse
+
+/**
+ * Upgrades an HTTP connection to an EventSource (SSE) connection.
+ *
+ * Thie `http_s` handle will be invalid after this call.
+ *
+ * On HTTP/1.1 connections, this will preclude future requests using the same
+ * connection.
+ */
+static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
+  http_send_error(h, 400);
+  return -1;
+  (void)sse;
+}
+
+#undef http_sse_write
+/**
+ * Writes data to an EventSource (SSE) connection.
+ *
+ * See the {struct http_sse_write_args} for possible named arguments.
+ */
+static int http1_sse_write(http_sse_s *sse, FIOBJ str) {
+  return fiobj_send_free(((http_sse_internal_s *)sse)->uuid, str);
+}
+
+/**
+ * Closes an EventSource (SSE) connection.
+ */
+static int http1_sse_close(http_sse_s *sse) {
+  sock_close(((http_sse_internal_s *)sse)->uuid);
+  return -0;
+}
+/* *****************************************************************************
 Virtual Table Decleration
 ***************************************************************************** */
 
@@ -441,6 +478,9 @@ struct http_vtable_s HTTP1_VTABLE = {
     .http_on_resume = http1_on_resume,
     .http_hijack = http1_hijack,
     .http2websocket = http1_http2websocket,
+    .http_upgrade2sse = http1_upgrade2sse,
+    .http_sse_write = http1_sse_write,
+    .http_sse_close = http1_sse_close,
 };
 
 void *http1_vtable(void) { return (void *)&HTTP1_VTABLE; }

@@ -1161,6 +1161,22 @@ Note:
 
 ***************************************************************************** */
 
+static inline void http_sse_copy2str(FIOBJ dest, char *prefix, size_t pre_len,
+                                     fio_cstr_s data) {
+  if (!data.len)
+    return;
+  while (data.len) {
+    fiobj_str_write(dest, prefix, pre_len);
+    char *pos = data.data;
+    while (pos < data.data + data.len && *pos != '\n')
+      ++pos;
+    fiobj_str_write(dest, data.data, (uintptr_t)(pos - data.data));
+    fiobj_str_write(dest, "\n", 1);
+    data.len -= (uintptr_t)(pos - data.data);
+    data.data = pos;
+  }
+}
+
 #undef http_upgrade2sse
 /**
  * Upgrades an HTTP connection to an EventSource (SSE) connection.
@@ -1176,15 +1192,33 @@ int http_upgrade2sse(http_s *h, http_sse_s sse) {
   return ((http_vtable_s *)h->private_data.vtbl)->http_upgrade2sse(h, &sse);
 }
 
+#undef http_sse_write
 /**
  * Writes data to an EventSource (SSE) connection.
  */
-int http_sse_write(http_sse_s *sse, char *event, size_t event_length,
-                   char *data, size_t length) {
-  if (sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
+int http_sse_write(http_sse_s *sse, struct http_sse_write_args args) {
+  if (!(args.id.len + args.data.len + args.event.len) ||
+      sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
     return -1;
+
+  FIOBJ buf;
+  {
+    /* best guess at data length, ignoring missing fields and multiline data */
+    const size_t total = 4 + args.id.len + 1 + 7 + args.event.len + 1 + 6 +
+                         args.data.len + 1 + 7 + 10 + 2;
+    buf = fiobj_str_buf(total);
+  }
+  http_sse_copy2str(buf, "id: ", 4, args.id);
+  http_sse_copy2str(buf, "event: ", 7, args.event);
+  if (args.retry) {
+    FIOBJ i = fiobj_num_new(args.retry);
+    fiobj_str_write(buf, "retry: ", 7);
+    fiobj_str_join(buf, i);
+    fiobj_free(i);
+  }
+  http_sse_copy2str(buf, "data: ", 6, args.data);
   return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)
-      ->vtable->http_sse_write(sse, event, event_length, data, length);
+      ->vtable->http_sse_write(sse, buf);
 }
 
 /**

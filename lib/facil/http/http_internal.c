@@ -106,7 +106,7 @@ static void http_sse_on_message(pubsub_message_s *msg) {
     fio_cstr_s e = fiobj_obj2cstr(msg->channel);
     fio_cstr_s m = fiobj_obj2cstr(msg->message);
     /* write directly */
-    sse->vtable->http_sse_write(&sse->sse, e.data, e.len, m.data, m.len);
+    http_sse_write(&sse->sse, .event = e, .data = m);
   }
 postpone:
   if (errno == EBADF)

@@ -52,8 +52,8 @@ struct http_vtable_s {
 
   /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
   int (*http_upgrade2sse)(http_s *h, http_sse_s *sse);
-  /** Writes data to an EventSource (SSE) connection. */
-  int (*http_sse_write)(http_sse_s *sse, struct http_sse_write_args *args);
+  /** Writes data to an EventSource (SSE) connection. MUST free the FIOBJ. */
+  int (*http_sse_write)(http_sse_s *sse, FIOBJ str);
   /** Closes an EventSource (SSE) connection. */
   int (*http_sse_close)(http_sse_s *sse);
 };

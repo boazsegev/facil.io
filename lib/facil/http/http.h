@@ -688,7 +688,7 @@ struct http_sse_write_args {
   fio_cstr_s id;    /* (optionl) sets the `id` event property. */
   fio_cstr_s event; /* (optionl) sets the `event` event property. */
   fio_cstr_s data;  /* (optionl) sets the `data` event property. */
-  uintptr_t retry;  /* (optionl) sets the `retry` event property. */
+  intptr_t retry;   /* (optionl) sets the `retry` event property. */
 };
 
 /**
