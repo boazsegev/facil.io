@@ -10,6 +10,8 @@
 
 **Fix**: (`facil`) a missing `on_data` protocol callback will now call `facil_quite`, preventing the event from firing endlessly.
 
+**Update**: (`http`) the `on_upgrade` callback now supports SSE connections with `sse` protocol identifier and the `http_upgrade2sse` function.
+
 ### Ver. 0.6.2
 
 This version fixes a number of issues, including a serious issue that prevented sockets from fully flushing their buffer.
