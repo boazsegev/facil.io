@@ -2,6 +2,8 @@
 
 ### Ver. 0.6.3
 
+**Fix**: (`http`) fixed an issue where the WebSocket's `on_close` callback wouldn't be called if certain errors prevented the upgrade. Now the `on_close` callback is always called.
+
 **Fix**: (`http`) fixed an issue where the Content-Type header might be missing. Now a best attempt to detect the content type (using the URL) will be performed. If no content type is detected, the default RFC content type will be attached (`application/octet-stream`).
 
 **Fix**: (`FIOBJ`) fixed compiler compatibility concerns with the `fiobj_num_new` logic, removing some possibly undefined behavior.

@@ -636,7 +636,13 @@ int http_upgrade2sse(http_s *h, http_sse_s);
  *        http_upgrade2sse(h, .on_open = on_open_sse);
  *     }
  */
-#define http_upgrade2sse(h, ...) http_upgrade2sse((h), (sse_s){__VA_ARGS__})
+#define http_upgrade2sse(h, ...)                                               \
+  http_upgrade2sse((h), (http_sse_s){__VA_ARGS__})
+
+/**
+ * Sets the ping interval for SSE connections.
+ */
+void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
 
 struct http_sse_subscribe_args {
   /** The channel namr used for the subscription. */

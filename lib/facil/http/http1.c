@@ -437,29 +437,31 @@ EventSource Support (SSE)
 
 typedef struct {
   protocol_s p;
-  http_sse_internal_s sse;
+  http_sse_internal_s *sse;
 } http1_sse_protocol_s;
 
 static void http1_sse_on_ready(intptr_t uuid, protocol_s *p_) {
   http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
-  if (p->sse.sse.on_ready)
-    p->sse.sse.on_ready(&p->sse.sse);
+  if (p->sse->sse.on_ready)
+    p->sse->sse.on_ready(&p->sse->sse);
   (void)uuid;
 }
 static void http1_sse_on_shutdown(intptr_t uuid, protocol_s *p_) {
   http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
-  if (p->sse.sse.on_shutdown)
-    p->sse.sse.on_shutdown(&p->sse.sse);
+  if (p->sse->sse.on_shutdown)
+    p->sse->sse.on_shutdown(&p->sse->sse);
   (void)uuid;
 }
 static void http1_sse_on_close(intptr_t uuid, protocol_s *p_) {
   http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
-  if (p->sse.sse.on_close)
-    p->sse.sse.on_close(&p->sse.sse);
+  if (p->sse->sse.on_close)
+    p->sse->sse.on_close(&p->sse->sse);
+  http_sse_try_free(p->sse);
+  free(p);
   (void)uuid;
 }
 static void http1_sse_ping(intptr_t uuid, protocol_s *p_) {
-  sock_write2(.uuid = uuid, .buffer = ":ping\n\n", .length = 7,
+  sock_write2(.uuid = uuid, .buffer = ": ping\n\n", .length = 8,
               .dealloc = SOCK_DEALLOC_NOOP);
   (void)p_;
 }
@@ -474,16 +476,16 @@ static void http1_sse_ping(intptr_t uuid, protocol_s *p_) {
  */
 static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
   const intptr_t uuid = handle2pr(h)->p.uuid;
-  http_send_error(h, 400);
-  return -1;
   /* send response */
-  http_set_header(h, HTTP_HEADER_CONTENT_TYPE,
-                  fiobj_str_new("text/event-stream", 17));
+  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, HTTP_HVALUE_SSE_MIME);
   http_set_header(h, HTTP_HEADER_CACHE_CONTROL,
                   fiobj_dup(HTTP_HVALUE_NO_CACHE));
+  http_set_header(h, HTTP_HEADER_CONTENT_ENCODING,
+                  fiobj_str_new("identity", 8));
   handle2pr(h)->stop = 1;
   htt1p_finish(h); /* avoid the enforced content length in http_finish */
-  /* TODO: upgrade protocol to SSE */
+
+  /* switch protocol to SSE */
   http1_sse_protocol_s *sse_pr = malloc(sizeof(*sse_pr));
   if (!sse_pr)
     goto failed;
@@ -496,13 +498,26 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
               .on_close = http1_sse_on_close,
               .ping = http1_sse_ping,
           },
+      .sse = malloc(sizeof(*(sse_pr->sse))),
   };
 
-  http_sse_init(&sse_pr->sse, uuid, &HTTP1_VTABLE, sse);
-  return facil_attach(uuid, &sse_pr->p);
+  if (!sse_pr->sse)
+    goto failed;
+
+  http_sse_init(sse_pr->sse, uuid, &HTTP1_VTABLE, sse);
+
+  if (facil_attach(uuid, &sse_pr->p))
+    return -1;
+
+  if (sse->on_open)
+    sse->on_open(&sse_pr->sse->sse);
+
+  return 0;
 
 failed:
   sock_close(handle2pr(h)->p.uuid);
+  if (sse->on_close)
+    sse->on_close(sse);
   return -1;
   (void)sse;
 }
@@ -522,7 +537,7 @@ static int http1_sse_write(http_sse_s *sse, FIOBJ str) {
  */
 static int http1_sse_close(http_sse_s *sse) {
   sock_close(((http_sse_internal_s *)sse)->uuid);
-  return -0;
+  return 0;
 }
 /* *****************************************************************************
 Virtual Table Decleration

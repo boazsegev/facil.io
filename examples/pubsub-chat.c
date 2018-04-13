@@ -26,6 +26,22 @@ following javascript code:
     ws.onclose = function(e) { console.log("closed"); };
     ws.onopen = function(e) { e.target.send("Brut."); };
 
+It's possible to use SSE (Server-Sent-Events / EventSource) for listening in on
+the chat:
+
+    var source = new EventSource("/Watcher");
+    source.addEventListener('chat', (e) => { console.log(e.data); });
+    source.onopen = function(msg) {
+      console.log("SSE Connection open.");
+    };
+    source.onclose = function(msg) {
+      console.log("SSE Connection lost.");
+    };
+    source.onmessage = function(msg) {
+      console.log(msg.event);
+      console.log(msg.data);
+    };
+
 Remember that published messages will now be printed to the console both by
 Mitchel and Johana, which means messages will be delivered twice unless using
 two different browser windows.
@@ -81,6 +97,48 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
 }
 
 /* *****************************************************************************
+SSE Pub/Sub
+***************************************************************************** */
+
+/**
+ * The (optional) on_open callback will be called once the EventSource
+ * connection is established.
+ */
+static void sse_on_open(http_sse_s *sse) {
+  fprintf(stderr, "(%d) %s connected to the chat service using SSE.\n",
+          getpid(), fiobj_obj2cstr((FIOBJ)sse->udata).data);
+  /* a ping will be sent evet 10 seconds of inactivity */
+  http_sse_set_timout(sse, 10);
+  /* Let everyone knnow they're here */
+  http_sse_subscribe(sse, .channel = CHAT_CHANNEL);
+  FIOBJ msg = fiobj_str_buf(64);
+  fiobj_str_join(msg, (FIOBJ)sse->udata);
+  fiobj_str_write(msg, " joind the chat, but they're just listening...", 46);
+  pubsub_publish(.channel = CHAT_CHANNEL, .message = msg);
+  fiobj_free(msg);
+}
+/**
+ * The (optional) on_shutdown callback will be called if a connection is still
+ * open while the server is shutting down (called before `on_close`).
+ */
+static void sse_on_shutdown(http_sse_s *sse) {
+  http_sse_write(sse, .event = {.data = "Shutdown", .len = 8},
+                 .data = {.data = "Goodbye", .len = 7});
+}
+/**
+ * The (optional) on_close callback will be called once a connection is
+ * terminated or failed to be established.
+ *
+ * The `uuid` is the connection's unique ID that can identify the Websocket. A
+ * value of `uuid == 0` indicates the Websocket connection wasn't established
+ * (an error occured).
+ *
+ * The `udata` is the user data as set during the upgrade or using the
+ * `websocket_udata_set` function.
+ */
+static void sse_on_close(http_sse_s *sse) { fiobj_free((FIOBJ)sse->udata); }
+
+/* *****************************************************************************
 HTTP Handling (Upgrading to Websocket)
 ***************************************************************************** */
 
@@ -95,11 +153,6 @@ static void answer_http_request(http_s *h) {
 
 /* handles HTTP upgrade requests. */
 static void answer_http_upgrade(http_s *h, char *pr, size_t len) {
-  /* make sure the upgrade request is for Websockets */
-  if (pr[1] != 'e' && len != 9) {
-    http_send_error(h, 400);
-    return;
-  }
   /* Assign a nickname */
   FIOBJ nickname = FIOBJ_INVALID;
   fio_cstr_s path = fiobj_obj2cstr(h->path);
@@ -108,14 +161,24 @@ static void answer_http_upgrade(http_s *h, char *pr, size_t len) {
   } else {
     nickname = fiobj_str_new("guest", 5);
   }
-  /* attempt Websocket upgrade */
-  if (http_upgrade2ws(.http = h, .on_open = on_open_websocket,
-                      .on_close = on_close_websocket,
-                      .on_message = handle_websocket_messages,
-                      .udata = (void *)nickname)) {
-    /* if the upgrade failed, free the user's nickname. */
-    fiobj_free(nickname);
+  /* test if the upgrade request is for Websockets */
+  if (len == 9 && pr[1] == 'e') {
+    /* attempt Websocket upgrade */
+    http_upgrade2ws(.http = h, .on_open = on_open_websocket,
+                    .on_close = on_close_websocket,
+                    .on_message = handle_websocket_messages,
+                    .udata = (void *)nickname);
+    return;
   }
+  /* test if the upgrade request is for SSE */
+  if (len == 3 && pr[0] == 's') {
+    /* attempt Websocket upgrade */
+    http_upgrade2sse(h, .on_open = sse_on_open, .on_shutdown = sse_on_shutdown,
+                     .on_close = sse_on_close, .udata = (void *)nickname);
+    return;
+  }
+  /* fallback on error */
+  http_send_error(h, 400);
 }
 
 /*

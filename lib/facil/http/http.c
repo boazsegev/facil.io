@@ -682,11 +682,15 @@ int http_upgrade2ws(websocket_settings_s args) {
   if (!args.http) {
     fprintf(stderr,
             "ERROR: `http_upgrade2ws` requires a valid `http_s` handle.");
-    return -1;
+    goto error;
   }
-  if (!args.http->headers)
-    return -1;
+  if (HTTP_INVALID_HANDLE(args.http))
+    goto error;
   return ((http_vtable_s *)args.http->private_data.vtbl)->http2websocket(&args);
+error:
+  if (args.on_close)
+    args.on_close(0, args.udata);
+  return -1;
 }
 
 /* *****************************************************************************
@@ -1165,13 +1169,18 @@ static inline void http_sse_copy2str(FIOBJ dest, char *prefix, size_t pre_len,
                                      fio_cstr_s data) {
   if (!data.len)
     return;
+  const char *stop = data.data + data.len;
   while (data.len) {
     fiobj_str_write(dest, prefix, pre_len);
     char *pos = data.data;
-    while (pos < data.data + data.len && *pos != '\n')
+    while (pos < stop && *pos != '\n' && *pos != '\r')
       ++pos;
     fiobj_str_write(dest, data.data, (uintptr_t)(pos - data.data));
-    fiobj_str_write(dest, "\n", 1);
+    fiobj_str_write(dest, "\r\n", 2);
+    if (*pos == '\r')
+      ++pos;
+    if (*pos == '\n')
+      ++pos;
     data.len -= (uintptr_t)(pos - data.data);
     data.data = pos;
   }
@@ -1181,17 +1190,21 @@ static inline void http_sse_copy2str(FIOBJ dest, char *prefix, size_t pre_len,
 static void http_sse_on_message(pubsub_message_s *msg) {
   http_sse_internal_s *sse = msg->udata1;
   struct http_sse_subscribe_args *args = msg->udata2;
-  protocol_s *pr = facil_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
-  if (!pr)
-    goto postpone;
   if (args->on_message) {
+    /* perform a callback */
+    protocol_s *pr = facil_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
+    if (!pr)
+      goto postpone;
     args->on_message(&sse->sse, msg->channel, msg->message, args->udata);
-  } else {
-    fio_cstr_s e = fiobj_obj2cstr(msg->channel);
-    fio_cstr_s m = fiobj_obj2cstr(msg->message);
-    /* write directly */
-    http_sse_write(&sse->sse, .event = e, .data = m);
+    facil_protocol_unlock(pr, FIO_PR_LOCK_TASK);
+    return;
   }
+  /* write directly to HTTP stream / connection */
+  fio_cstr_s e = fiobj_obj2cstr(msg->channel);
+  fio_cstr_s m = fiobj_obj2cstr(msg->message);
+  http_sse_write(&sse->sse, .event = e, .data = m);
+
+  return;
 postpone:
   if (errno == EBADF)
     return;
@@ -1226,7 +1239,7 @@ static void http_sse_on_unsubscribe(void *sse_, void *args_) {
 uintptr_t http_sse_subscribe(http_sse_s *sse_,
                              struct http_sse_subscribe_args args) {
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
-  struct http_sse_subscribe_args *udata = malloc(sizeof(udata));
+  struct http_sse_subscribe_args *udata = malloc(sizeof(*udata));
   *udata = args;
   if (!udata)
     return 0;
@@ -1271,9 +1284,20 @@ void http_sse_unsubscribe(http_sse_s *sse_, uintptr_t subscription) {
  * connection.
  */
 int http_upgrade2sse(http_s *h, http_sse_s sse) {
-  if (HTTP_INVALID_HANDLE(h))
+  if (HTTP_INVALID_HANDLE(h)) {
+    if (sse.on_close)
+      sse.on_close(&sse);
     return -1;
+  }
   return ((http_vtable_s *)h->private_data.vtbl)->http_upgrade2sse(h, &sse);
+}
+
+/**
+ * Sets the ping interval for SSE connections.
+ */
+void http_sse_set_timout(http_sse_s *sse_, uint8_t timeout) {
+  http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
+  facil_set_timeout(sse->uuid, timeout);
 }
 
 #undef http_sse_write
@@ -1284,12 +1308,11 @@ int http_sse_write(http_sse_s *sse, struct http_sse_write_args args) {
   if (!(args.id.len + args.data.len + args.event.len) ||
       sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
     return -1;
-
   FIOBJ buf;
   {
     /* best guess at data length, ignoring missing fields and multiline data */
-    const size_t total = 4 + args.id.len + 1 + 7 + args.event.len + 1 + 6 +
-                         args.data.len + 1 + 7 + 10 + 2;
+    const size_t total = 4 + args.id.len + 2 + 7 + args.event.len + 2 + 6 +
+                         args.data.len + 2 + 7 + 10 + 4;
     buf = fiobj_str_buf(total);
   }
   http_sse_copy2str(buf, "id: ", 4, args.id);
@@ -1301,7 +1324,7 @@ int http_sse_write(http_sse_s *sse, struct http_sse_write_args args) {
     fiobj_free(i);
   }
   http_sse_copy2str(buf, "data: ", 6, args.data);
-  fiobj_str_write(buf, "\n", 1);
+  fiobj_str_write(buf, "\r\n", 2);
   return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)
       ->vtable->http_sse_write(sse, buf);
 }
