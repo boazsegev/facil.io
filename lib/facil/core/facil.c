@@ -169,6 +169,11 @@ static void mock_on_ev(intptr_t uuid, protocol_s *protocol) {
   (void)protocol;
 }
 
+static void mock_on_data(intptr_t uuid, protocol_s *protocol) {
+  facil_quite(uuid);
+  (void)protocol;
+}
+
 static void mock_on_close(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
   (void)(uuid);
@@ -1967,7 +1972,7 @@ static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
       protocol->on_close = mock_on_close;
     }
     if (!protocol->on_data) {
-      protocol->on_data = mock_on_ev;
+      protocol->on_data = mock_on_data;
     }
     if (!protocol->on_ready) {
       protocol->on_ready = mock_on_ev;
