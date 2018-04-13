@@ -30,17 +30,10 @@ It's possible to use SSE (Server-Sent-Events / EventSource) for listening in on
 the chat:
 
     var source = new EventSource("/Watcher");
-    source.addEventListener('chat', (e) => { console.log(e.data); });
-    source.onopen = function(msg) {
-      console.log("SSE Connection open.");
-    };
-    source.onclose = function(msg) {
-      console.log("SSE Connection lost.");
-    };
-    source.onmessage = function(msg) {
-      console.log(msg.event);
-      console.log(msg.data);
-    };
+    source.addEventListener('messgae', (e) => { console.log(e.data); });
+    source.addEventListener('open', (e) => { console.log("SSE Connection
+open."); }); source.addEventListener('close', (e) => { console.log("SSE
+Connection lost."); });
 
 Remember that published messages will now be printed to the console both by
 Mitchel and Johana, which means messages will be delivered twice unless using

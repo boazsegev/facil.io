@@ -294,9 +294,13 @@ HTTP Connections - Listening / Connecting / Hijacking
 
 /** The HTTP settings. */
 typedef struct http_settings_s {
-  /** SERVER REQUIRED: a callback to be performed when HTTP requests come in. */
+  /** Callback for normal HTTP requests. */
   void (*on_request)(http_s *request);
-  /** (server optional) a callback for Upgrade requests. */
+  /**
+   * Callback for Upgrade and EventSource (SSE) requests.
+   *
+   * SSE/EventSource requests set the `requested_protocol` string to `"sse"`.
+   */
   void (*on_upgrade)(http_s *request, char *requested_protocol, size_t len);
   /** CLIENT REQUIRED: a callback for the HTTP response. */
   void (*on_response)(http_s *response);

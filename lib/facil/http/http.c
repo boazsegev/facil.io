@@ -1200,9 +1200,8 @@ static void http_sse_on_message(pubsub_message_s *msg) {
     return;
   }
   /* write directly to HTTP stream / connection */
-  fio_cstr_s e = fiobj_obj2cstr(msg->channel);
   fio_cstr_s m = fiobj_obj2cstr(msg->message);
-  http_sse_write(&sse->sse, .event = e, .data = m);
+  http_sse_write(&sse->sse, .data = m);
 
   return;
 postpone:
