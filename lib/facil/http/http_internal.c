@@ -178,8 +178,6 @@ void http_lib_cleanup(void) {
 void http_lib_init(void) {
   if (HTTP_HEADER_ACCEPT_RANGES)
     return;
-  fiobj_str_new("gzip", 4);
-  fiobj_str_new("application/octet-stream", 24);
   HTTP_HEADER_ACCEPT = fiobj_str_new("accept", 6);
   HTTP_HEADER_ACCEPT_RANGES = fiobj_str_new("accept-ranges", 13);
   HTTP_HEADER_CACHE_CONTROL = fiobj_str_new("cache-control", 13);
@@ -200,8 +198,10 @@ void http_lib_init(void) {
   HTTP_HEADER_WS_SEC_KEY = fiobj_str_new("sec-websocket-accept", 20);
   HTTP_HVALUE_BYTES = fiobj_str_new("bytes", 5);
   HTTP_HVALUE_CLOSE = fiobj_str_new("close", 5);
-  HTTP_HVALUE_CONTENT_TYPE_DEFAULT = HTTP_HVALUE_GZIP = HTTP_HVALUE_KEEP_ALIVE =
-      fiobj_str_new("keep-alive", 10);
+  HTTP_HVALUE_CONTENT_TYPE_DEFAULT =
+      fiobj_str_new("application/octet-stream", 24);
+  HTTP_HVALUE_GZIP = fiobj_str_new("gzip", 4);
+  HTTP_HVALUE_KEEP_ALIVE = fiobj_str_new("keep-alive", 10);
   HTTP_HVALUE_MAX_AGE = fiobj_str_new("max-age=3600", 12);
   HTTP_HVALUE_NO_CACHE = fiobj_str_new("no-cache, max-age=0", 19);
   HTTP_HVALUE_SSE_MIME = fiobj_str_new("text/event-stream", 17);

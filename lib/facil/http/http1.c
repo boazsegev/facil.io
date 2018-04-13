@@ -456,7 +456,7 @@ static void http1_sse_on_close(intptr_t uuid, protocol_s *p_) {
   http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
   if (p->sse->sse.on_close)
     p->sse->sse.on_close(&p->sse->sse);
-  http_sse_try_free(p->sse);
+  http_sse_destroy(p->sse);
   free(p);
   (void)uuid;
 }
@@ -477,7 +477,7 @@ static void http1_sse_ping(intptr_t uuid, protocol_s *p_) {
 static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
   const intptr_t uuid = handle2pr(h)->p.uuid;
   /* send response */
-  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, HTTP_HVALUE_SSE_MIME);
+  http_set_header(h, HTTP_HEADER_CONTENT_TYPE, fiobj_dup(HTTP_HVALUE_SSE_MIME));
   http_set_header(h, HTTP_HEADER_CACHE_CONTROL,
                   fiobj_dup(HTTP_HVALUE_NO_CACHE));
   http_set_header(h, HTTP_HEADER_CONTENT_ENCODING,
