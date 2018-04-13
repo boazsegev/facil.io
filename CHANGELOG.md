@@ -6,6 +6,8 @@
 
 **Fix**: (`FIOBJ`) fixed compiler compatibility concerns with the `fiobj_num_new` logic, removing some possibly undefined behavior.
 
+**Fix**: (`facil`) a missing `on_data` protocol callback will now call `facil_quite`, preventing the event from firing endlessly.
+
 ### Ver. 0.6.2
 
 This version fixes a number of issues, including a serious issue that prevented sockets from fully flushing their buffer.
