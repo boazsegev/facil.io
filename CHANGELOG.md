@@ -1,6 +1,9 @@
 # Change Log
 
-### Ver. 0.6.3
+---
+## Future (expected / upcoming) changes
+
+### v. 0.6.3
 
 **Fix**: (`http`) fixed an issue where the WebSocket's `on_close` callback wouldn't be called if certain errors prevented the upgrade. Now the `on_close` callback is always called.
 
@@ -12,7 +15,18 @@
 
 **Update**: (`http`) the `on_upgrade` callback now supports SSE connections with `sse` protocol identifier and the `http_upgrade2sse` function.
 
-### Ver. 0.6.2
+### ABI breaking changes expected in v. 0.7.0
+
+* The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
+
+* The read/write hooks will support a `has_pending` variation (right now `sock_has_pending` ignores the r/w hook's internal cache).
+
+* The Pub/Sub system's `use_pattern` will be replaced with a function pointer, allowing for NATs and RabbitMQ pattern matching logic to be added (right now, only Redis pattern matching style is supported).
+
+---
+## Released versions
+
+### v. 0.6.2
 
 This version fixes a number of issues, including a serious issue that prevented sockets from fully flushing their buffer.
 
@@ -48,7 +62,7 @@ It's recommended that all 0.6.0.beta, 0.6.0 and 0.6.1 upgrade to this version.
 
 **Update**: (`facil`) shutdown logic provides more time for socket buffers to flush (only when required).
 
-### Ver. 0.6.1
+### v. 0.6.1
 
 **Fix**: (`pubsub`) fixed a possible issue where a channel name might be freed before it's callback is handled. This was overlooked during the Hash caching logic update that prevented key hashing when the last item of the ordered Hash is removed.
 
@@ -60,7 +74,7 @@ It's recommended that all 0.6.0.beta, 0.6.0 and 0.6.1 upgrade to this version.
 
 **Fix**: (`websocket`) subscriptions created during the on_close callback (besides indicating that the API was being abused) are now properly removed.
 
-### Ver. 0.6.0
+### v. 0.6.0
 
 Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the evio polling from level-triggered to one-shot polling, a rewrite to the facil.io dynamic object types FIOBJ, and more).
 
@@ -80,7 +94,7 @@ The following updates are included in this release (in addition to the beta upda
 
 As well as some refactoring and minor adjustments.
 
-### Ver. 0.6.0.beta.8
+### v. 0.6.0.beta.8
 
 **Fix**: (`defer`) the `defer_free_thread` symbol is now correctly marked as weak, allowing the function to be overridden.
 
@@ -100,7 +114,7 @@ As well as some refactoring and minor adjustments.
 
 **Update**: minor optimizations, `fio_malloc` incorporation and documentation updates.
 
-### Ver. 0.6.0.beta.7
+### v. 0.6.0.beta.7
 
 **Fix**: (`websockets`) fixed an issue with client pinging would break the protocol in a way that would result in either loss of data or disconnections.
 
@@ -120,7 +134,7 @@ As well as some refactoring and minor adjustments.
 
 **Update**: (`websockets`) added a client example using the terminal IO for Websocket text communication.
 
-### Ver. 0.6.0.beta.6
+### v. 0.6.0.beta.6
 
 This beta release is a performance oriented release and includes mostly performance related changes.
 
@@ -134,7 +148,7 @@ Other notable performance changes include the short string hash cashing (shorten
 
 These are lessons learned from the TechEmpower benchmarks... although they will not be reflected in the Round 15 results.
 
-### Ver. 0.6.0.beta.5
+### v. 0.6.0.beta.5
 
 Released fixes for issues related to the [TechEmpower Framework Benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks) 80 core startup.
 
@@ -142,11 +156,11 @@ Released fixes for issues related to the [TechEmpower Framework Benchmarks](http
 
 **Update**: capped maximum core detection value to 120 cores. Any value larger than 120 will raise a warning and the cap (120) will be used.
 
-### Ver. 0.6.0.beta.4
+### v. 0.6.0.beta.4
 
 Released after stress testing and memory leakage testing.
 
-### Ver. 0.6.0.beta.3
+### v. 0.6.0.beta.3
 
 **Breaking Change**: (`websockets`) the websocket `on_close` callback signature had changed to allow it to be called on connection/upgrade failures as well (easier `udata` cleanup).
 
@@ -160,7 +174,7 @@ Released after stress testing and memory leakage testing.
 
 **Minor**: some changes to the inner HTTP logic, fixed some error messages, and other minor updates.
 
-### Ver. 0.6.0.beta.2
+### v. 0.6.0.beta.2
 
 Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
 
@@ -174,7 +188,7 @@ In this beta 2 release:
 
 **Update**: (`facil`) Simplified the child worker sentinel observation logic, to use threads instead of IPC.
 
-### Ver. 0.6.0.beta
+### v. 0.6.0.beta
 
 Version 0.6.0 is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
 
@@ -186,7 +200,7 @@ In this beta 1 release:
 
 **Performance** minor improvements. For example, Header Hash Maps are now cleared and reused by HTTP/1.1 during keep-alive (instead of deallocated and reallocated).
 
-### Ver. 0.6.0.dev
+### v. 0.6.0.dev
 
 This is a major release, changing much of the extension API (HTTP, pub/sub, CLI) and some of the core API (i.e., moving the `evio` polling to One-Shot polling).
 
