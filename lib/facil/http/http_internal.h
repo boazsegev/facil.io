@@ -183,6 +183,7 @@ static inline void http_sse_destroy(http_sse_internal_s *sse) {
     void *sub = fio_ls_pop(&sse->subscriptions);
     pubsub_unsubscribe(sub);
   }
+  sse->uuid = -1;
   http_sse_try_free(sse);
 }
 

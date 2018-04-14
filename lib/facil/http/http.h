@@ -720,6 +720,18 @@ intptr_t http_sse2uuid(http_sse_s *sse);
  */
 int http_sse_close(http_sse_s *sse);
 
+/**
+ * Duplicates an SSE handle by reference, remember to http_sse_free.
+ *
+ * Returns the same object (increases a reference count, no allocation is made).
+ */
+http_sse_s *http_sse_dup(http_sse_s *sse);
+
+/**
+ * Frees an SSE handle by reference (decreases the reference count).
+ */
+void http_sse_free(http_sse_s *sse);
+
 /* *****************************************************************************
 HTTP GET and POST parsing helpers
 ***************************************************************************** */

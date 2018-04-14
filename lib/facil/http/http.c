@@ -1238,6 +1238,8 @@ static void http_sse_on_unsubscribe(void *sse_, void *args_) {
 uintptr_t http_sse_subscribe(http_sse_s *sse_,
                              struct http_sse_subscribe_args args) {
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
+  if (sse->uuid == -1)
+    return 0;
   struct http_sse_subscribe_args *udata = malloc(sizeof(*udata));
   *udata = args;
   if (!udata)
@@ -1349,6 +1351,23 @@ int http_sse_close(http_sse_s *sse) {
     return -1;
   return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)
       ->vtable->http_sse_close(sse);
+}
+
+/**
+ * Duplicates an SSE handle by reference, remember to http_sse_free.
+ *
+ * Returns the same object (increases a reference count, no allocation is made).
+ */
+http_sse_s *http_sse_dup(http_sse_s *sse) {
+  spn_add(&FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->ref, 1);
+  return sse;
+}
+
+/**
+ * Frees an SSE handle by reference (decreases the reference count).
+ */
+void http_sse_free(http_sse_s *sse) {
+  http_sse_try_free(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse));
 }
 
 /* *****************************************************************************
