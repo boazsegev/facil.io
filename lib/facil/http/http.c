@@ -1263,7 +1263,7 @@ uintptr_t http_sse_subscribe(http_sse_s *sse_,
  * Cancels a subscription and invalidates the subscription object.
  */
 void http_sse_unsubscribe(http_sse_s *sse_, uintptr_t subscription) {
-  if (!subscription)
+  if (!sse_ || !subscription)
     return;
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
   pubsub_sub_pt sub = (pubsub_sub_pt)((fio_ls_s *)subscription)->obj;
@@ -1295,6 +1295,8 @@ int http_upgrade2sse(http_s *h, http_sse_s sse) {
  * Sets the ping interval for SSE connections.
  */
 void http_sse_set_timout(http_sse_s *sse_, uint8_t timeout) {
+  if (!sse_)
+    return;
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
   facil_set_timeout(sse->uuid, timeout);
 }
@@ -1304,7 +1306,7 @@ void http_sse_set_timout(http_sse_s *sse_, uint8_t timeout) {
  * Writes data to an EventSource (SSE) connection.
  */
 int http_sse_write(http_sse_s *sse, struct http_sse_write_args args) {
-  if (!(args.id.len + args.data.len + args.event.len) ||
+  if (!sse || !(args.id.len + args.data.len + args.event.len) ||
       sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
     return -1;
   FIOBJ buf;
@@ -1329,10 +1331,21 @@ int http_sse_write(http_sse_s *sse, struct http_sse_write_args args) {
 }
 
 /**
+ * Get the connection's UUID (for facil_defer and similar use cases).
+ */
+intptr_t http_sse2uuid(http_sse_s *sse) {
+  if (!sse ||
+      sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
+    return -1;
+  return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid;
+}
+
+/**
  * Closes an EventSource (SSE) connection.
  */
 int http_sse_close(http_sse_s *sse) {
-  if (sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
+  if (!sse ||
+      sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
     return -1;
   return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)
       ->vtable->http_sse_close(sse);

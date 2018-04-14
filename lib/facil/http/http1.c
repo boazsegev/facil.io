@@ -477,6 +477,7 @@ static void http1_sse_ping(intptr_t uuid, protocol_s *p_) {
 static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
   const intptr_t uuid = handle2pr(h)->p.uuid;
   /* send response */
+  h->status = 200;
   http_set_header(h, HTTP_HEADER_CONTENT_TYPE, fiobj_dup(HTTP_HVALUE_SSE_MIME));
   http_set_header(h, HTTP_HEADER_CACHE_CONTROL,
                   fiobj_dup(HTTP_HVALUE_NO_CACHE));

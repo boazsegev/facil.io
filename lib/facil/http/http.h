@@ -711,6 +711,11 @@ int http_sse_write(http_sse_s *sse, struct http_sse_write_args);
   http_sse_write((sse), (struct http_sse_write_args){__VA_ARGS__})
 
 /**
+ * Get the connection's UUID (for facil_defer and similar use cases).
+ */
+intptr_t http_sse2uuid(http_sse_s *sse);
+
+/**
  * Closes an EventSource (SSE) connection.
  */
 int http_sse_close(http_sse_s *sse);
