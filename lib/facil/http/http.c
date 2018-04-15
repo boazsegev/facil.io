@@ -435,7 +435,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
     if (s.data[s.len - 3] != '.' || s.data[s.len - 2] != 'g' ||
         s.data[s.len - 1] != 'z') {
       fiobj_str_write(filename, ".gz", 3);
-      fio_cstr_s s = fiobj_obj2cstr(filename);
+      s = fiobj_obj2cstr(filename);
       if (!stat(s.data, &file_data) &&
           (S_ISREG(file_data.st_mode) || S_ISLNK(file_data.st_mode))) {
         is_gz = 1;
@@ -1670,49 +1670,53 @@ rebase:
 place_in_hash:
   if (name[name_len - 1] == ']')
     --name_len;
-  FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
-                      : fiobj_str_new(name, name_len);
-  FIOBJ old = fiobj_hash_replace(dest, key, val);
-  if (old) {
-    if (nested_ary) {
-      fiobj_hash_replace(dest, key, old);
-      old = fiobj_hash_new();
-      fiobj_hash_set(old, key, val);
-      fiobj_ary_push(nested_ary, old);
-    } else {
-      if (!FIOBJ_TYPE_IS(old, FIOBJ_T_ARRAY)) {
-        FIOBJ tmp = fiobj_ary_new2(4);
-        fiobj_ary_push(tmp, old);
-        old = tmp;
+  {
+    FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
+                        : fiobj_str_new(name, name_len);
+    FIOBJ old = fiobj_hash_replace(dest, key, val);
+    if (old) {
+      if (nested_ary) {
+        fiobj_hash_replace(dest, key, old);
+        old = fiobj_hash_new();
+        fiobj_hash_set(old, key, val);
+        fiobj_ary_push(nested_ary, old);
+      } else {
+        if (!FIOBJ_TYPE_IS(old, FIOBJ_T_ARRAY)) {
+          FIOBJ tmp = fiobj_ary_new2(4);
+          fiobj_ary_push(tmp, old);
+          old = tmp;
+        }
+        fiobj_ary_push(old, val);
+        fiobj_hash_replace(dest, key, old);
       }
-      fiobj_ary_push(old, val);
-      fiobj_hash_replace(dest, key, old);
     }
+    fiobj_free(key);
   }
-  fiobj_free(key);
   return 0;
 
 place_in_array:
   if (name[name_len - 1] == ']')
     --name_len;
-  uint64_t hash = fio_siphash(name, name_len);
-  FIOBJ ary = fiobj_hash_get2(dest, hash);
-  if (!ary) {
-    FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
-                        : fiobj_str_new(name, name_len);
-    ary = fiobj_ary_new2(4);
-    fiobj_hash_set(dest, key, ary);
-    fiobj_free(key);
-  } else if (!FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY)) {
-    FIOBJ tmp = fiobj_ary_new2(4);
-    fiobj_ary_push(tmp, ary);
-    ary = tmp;
-    FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
-                        : fiobj_str_new(name, name_len);
-    fiobj_hash_replace(dest, key, ary);
-    fiobj_free(key);
+  {
+    uint64_t hash = fio_siphash(name, name_len);
+    FIOBJ ary = fiobj_hash_get2(dest, hash);
+    if (!ary) {
+      FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
+                          : fiobj_str_new(name, name_len);
+      ary = fiobj_ary_new2(4);
+      fiobj_hash_set(dest, key, ary);
+      fiobj_free(key);
+    } else if (!FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY)) {
+      FIOBJ tmp = fiobj_ary_new2(4);
+      fiobj_ary_push(tmp, ary);
+      ary = tmp;
+      FIOBJ key = encoded ? http_urlstr2fiobj(name, name_len)
+                          : fiobj_str_new(name, name_len);
+      fiobj_hash_replace(dest, key, ary);
+      fiobj_free(key);
+    }
+    fiobj_ary_push(ary, val);
   }
-  fiobj_ary_push(ary, val);
   return 0;
 error:
   fiobj_free(val);

@@ -979,7 +979,7 @@ intptr_t fiobj_data_puts(FIOBJ io, void *buffer, uintptr_t length) {
   ssize_t t1 = 0, t2 = 0;
 
   if (length) {
-    ssize_t t1 = pwrite(obj2io(io)->fd, buffer, length, end);
+    t1 = pwrite(obj2io(io)->fd, buffer, length, end);
     if (t1 < 0)
       return t1;
     end += t1;

@@ -1,7 +1,10 @@
 ### Output
 # binary name and location
 NAME=demo
-OUT_ROOT=tmp
+
+ifndef DESTDIR
+DESTDIR=tmp
+endif
 
 ### Library folders
 # the .c and .cpp source files root folder - subfolders are automatically included
@@ -29,7 +32,7 @@ LINKER_LIBS_EXT=
 # optimization level.
 OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
-WARNINGS= -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
+WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
@@ -47,7 +50,7 @@ ifdef DEBUG
 	FLAGS:=$(FLAGS) DEBUG
 	# # comment the following line if you want to use a different address sanitizer or a profiling tool. 
 	OPTIMIZATION:=-O0 -march=native -fsanitize=address,undefined -fno-omit-frame-pointer 
-	# possibly useful:  -Wconversion -Wcomma -fsanitize=undefined
+	# possibly useful:  -Wconversion -Wcomma -fsanitize=undefined -Wshadow
 	# go crazy with clang: -Weverything -Wno-cast-qual -Wno-used-but-marked-unused -Wno-reserved-id-macro -Wno-padded -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-bad-function-cast -Wno-missing-prototypes
 else
 	FLAGS:=$(FLAGS) NODEBUG
@@ -75,7 +78,7 @@ ifeq ($(OS),Darwin) # Run MacOS commands
 	# debugger
 	DB=lldb
 	# disassemble tool. Use stub to disable.
-	DISAMS=otool -dtVGX
+	# DISAMS=otool -dtVGX
 	# documentation commands
 	# DOCUMENTATION=cldoc generate $(INCLUDE_STR) -- --output ./html $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*))
 else
@@ -88,7 +91,7 @@ endif
 
 #####################
 # Auto computed values
-BIN = $(OUT_ROOT)/$(NAME)
+BIN = $(DESTDIR)/$(NAME)
 
 LIBDIR_PUB = $(LIB_ROOT) $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
 LIBDIR_PRIV = $(foreach dir, $(LIB_PRIVATE_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
@@ -171,7 +174,7 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 lib: | create_tree lib_build
 
 lib_build: $(LIB_OBJS)
-	@$(CCL) -shared -o $(OUT_ROOT)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(CCL) -shared -o $(DESTDIR)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(DOCUMENTATION)
 
 

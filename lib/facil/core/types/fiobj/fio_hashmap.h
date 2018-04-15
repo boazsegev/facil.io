@@ -457,8 +457,7 @@ FIO_FUNC void *fio_hash_pop(fio_hash_s *hash, FIO_HASH_KEY_TYPE *key) {
   /* remove any holes from the top (top is kept tight) */
   while (hash->pos && hash->ordered[hash->pos - 1].obj == NULL) {
     --(hash->pos);
-    fio_hash_data_s *info =
-        fio_hash_seek_pos_(hash, hash->ordered[hash->pos].key);
+    info = fio_hash_seek_pos_(hash, hash->ordered[hash->pos].key);
     if (!info) {
       /* no info is a data corruption error. */
       fprintf(stderr,

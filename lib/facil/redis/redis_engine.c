@@ -637,7 +637,7 @@ static FIOBJ fiobj2resp_tmp(FIOBJ obj1, FIOBJ obj2) {
     FIOBJ *ary = fiobj_ary2ptr(obj2);
 
     for (size_t i = 0; i < count; ++i) {
-      fio_cstr_s s = fiobj_obj2cstr(ary[i]);
+      s = fiobj_obj2cstr(ary[i]);
       fiobj_str_write(dest, "$", 1);
       fiobj_str_join(dest, fiobj_num_tmp(s.len));
       fiobj_str_write(dest, "\r\n", 2);

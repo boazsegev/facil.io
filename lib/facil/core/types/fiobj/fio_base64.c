@@ -264,7 +264,7 @@ void fio_base64_test(void) {
   {
     char buff_b64[] = "any carnal pleasure.";
     clock_t start = clock();
-    for (size_t i = 0; i < 100000; i++) {
+    for (i = 0; i < 100000; i++) {
       size_t b64_len =
           fio_base64_encode(buffer, buff_b64, sizeof(buff_b64) - 1);
       fio_base64_decode(buff_b64, buffer, b64_len);

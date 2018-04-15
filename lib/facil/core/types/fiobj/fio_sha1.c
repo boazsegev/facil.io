@@ -338,7 +338,7 @@ void fio_sha1_test(void) {
   hash[SHA512_DIGEST_LENGTH] = 0;
   clock_t start;
   start = clock();
-  for (size_t i = 0; i < 100000; i++) {
+  for (i = 0; i < 100000; i++) {
     sha1 = fio_sha1_init();
     fio_sha1_write(&sha1, "The quick brown fox jumps over the lazy dog ", 43);
     fio_sha1_result(&sha1);
@@ -349,7 +349,7 @@ void fio_sha1_test(void) {
   hash[SHA_DIGEST_LENGTH] = 0;
   SHA_CTX o_sh1;
   start = clock();
-  for (size_t i = 0; i < 100000; i++) {
+  for (i = 0; i < 100000; i++) {
     SHA1_Init(&o_sh1);
     SHA1_Update(&o_sh1, "The quick brown fox jumps over the lazy dog", 43);
     SHA1_Final(hash, &o_sh1);

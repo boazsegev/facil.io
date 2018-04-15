@@ -124,13 +124,13 @@ static FIOBJ headers2str(http_s *h, uintptr_t padding) {
     fiobj_str_write(w.dest, t.data, t.length);
     FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, connection_hash);
     if (tmp) {
-      fio_cstr_s t = fiobj_obj2cstr(tmp);
+      t = fiobj_obj2cstr(tmp);
       if (t.data[0] == 'c' || t.data[0] == 'C')
         p->close = 1;
     } else {
       tmp = fiobj_hash_get2(h->headers, connection_hash);
       if (tmp) {
-        fio_cstr_s t = fiobj_obj2cstr(tmp);
+        t = fiobj_obj2cstr(tmp);
         if (!t.data || !t.len || t.data[0] == 'k' || t.data[0] == 'K')
           fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
         else {
@@ -138,7 +138,7 @@ static FIOBJ headers2str(http_s *h, uintptr_t padding) {
           p->close = 1;
         }
       } else {
-        fio_cstr_s t = fiobj_obj2cstr(h->version);
+        t = fiobj_obj2cstr(h->version);
         if (!p->close && t.len > 7 && t.data && t.data[5] == '1' &&
             t.data[6] == '.' && t.data[7] == '1')
           fiobj_str_write(w.dest, "connection:keep-alive\r\n", 23);
