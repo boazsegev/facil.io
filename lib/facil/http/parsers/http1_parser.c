@@ -389,7 +389,8 @@ re_eval:
     if (!(eol_len = seek2eol(&end, stop)))
       return CONSUMED;
 
-    if (((uint32_t *)start)[0] == ((uint32_t *)"HTTP")[0]) {
+    if (start[0] == 'H' && start[1] == 'T' && start[2] == 'T' &&
+        start[3] == 'P') {
       /* HTTP response */
       if (consume_response_line(args, start, end - eol_len + 1))
         goto error;
