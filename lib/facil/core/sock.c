@@ -1092,12 +1092,12 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
     unlock_fd(fd);
     goto error;
   }
+  packet->next = NULL;
   if (fdinfo(fd).packet == NULL) {
     fdinfo(fd).packet_last = &packet->next;
     fdinfo(fd).packet = packet;
   } else if (options.urgent == 0) {
     *fdinfo(fd).packet_last = packet;
-    packet->next = NULL;
     fdinfo(fd).packet_last = &packet->next;
   } else {
     packet_s **pos = &fdinfo(fd).packet;
