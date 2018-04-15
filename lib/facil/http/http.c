@@ -1241,9 +1241,9 @@ uintptr_t http_sse_subscribe(http_sse_s *sse_,
   if (sse->uuid == -1)
     return 0;
   struct http_sse_subscribe_args *udata = malloc(sizeof(*udata));
-  *udata = args;
   if (!udata)
     return 0;
+  *udata = args;
 
   spn_add(&sse->ref, 1);
   pubsub_sub_pt sub =
