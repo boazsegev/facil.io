@@ -9,6 +9,8 @@
 
 **Fix**: (`http`) fixed an issue where the Content-Type header might be missing. Now a best attempt to detect the content type (using the URL) will be performed. If no content type is detected, the default RFC content type will be attached (`application/octet-stream`).
 
+**Fix**: (`http1_parser`) fixed a possible unaligned memory access concern.
+
 **Fix**: (`FIOBJ`) fixed compiler compatibility concerns with the `fiobj_num_new` logic, removing some possibly undefined behavior.
 
 **Fix**: (`facil`) a missing `on_data` protocol callback will now call `facil_quite`, preventing the event from firing endlessly.
