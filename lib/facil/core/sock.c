@@ -235,6 +235,10 @@ struct fd_data_s {
   unsigned rsv : 5;
   /** the currently active packet to be sent. */
   packet_s *packet;
+  /** the last packet in the queue. */
+  packet_s **packet_last;
+  /** The number of pending packets that are in the queue. */
+  size_t packet_count;
   /** RW hooks. */
   sock_rw_hook_s *rw_hooks;
   /** RW udata. */
@@ -245,7 +249,7 @@ struct fd_data_s {
   socklen_t addrlen;
 };
 
-static struct sock_data_store {
+static struct sock_data_store_s {
   size_t capacity;
   struct fd_data_s *fds;
 } sock_data_store;
@@ -269,6 +273,10 @@ static inline int validate_uuid(uintptr_t uuid) {
 static inline void sock_packet_rotate_unsafe(uintptr_t fd) {
   packet_s *packet = fdinfo(fd).packet;
   fdinfo(fd).packet = packet->next;
+  if (&packet->next == fdinfo(fd).packet_last) {
+    fdinfo(fd).packet_last = &fdinfo(fd).packet;
+  }
+  --fdinfo(fd).packet_count;
   sock_packet_free(packet);
 }
 
@@ -285,16 +293,18 @@ static inline int initialize_sock_lib(size_t capacity) {
   if (sock_data_store.capacity >= capacity)
     goto finish;
   struct fd_data_s *new_collection =
-      realloc(sock_data_store.fds, sizeof(struct fd_data_s) * capacity);
+      realloc(sock_data_store.fds, sizeof(*new_collection) * capacity);
   if (!new_collection)
     return -1;
   sock_data_store.fds = new_collection;
   for (size_t i = sock_data_store.capacity; i < capacity; i++) {
-    fdinfo(i) =
-        (struct fd_data_s){.open = 0,
-                           .lock = SPN_LOCK_INIT,
-                           .rw_hooks = (sock_rw_hook_s *)&SOCK_DEFAULT_HOOKS,
-                           .counter = 0};
+    fdinfo(i) = (struct fd_data_s){
+        .open = 0,
+        .lock = SPN_LOCK_INIT,
+        .rw_hooks = (sock_rw_hook_s *)&SOCK_DEFAULT_HOOKS,
+        .packet_last = &fdinfo(i).packet,
+        .counter = 0,
+    };
   }
   sock_data_store.capacity = capacity;
 
@@ -333,11 +343,13 @@ static inline int clear_fd(uintptr_t fd, uint8_t is_open) {
 clear:
   spn_lock(&(fdinfo(fd).lock));
   struct fd_data_s old_data = fdinfo(fd);
-  sock_data_store.fds[fd] =
-      (struct fd_data_s){.open = is_open,
-                         .lock = fdinfo(fd).lock,
-                         .rw_hooks = (sock_rw_hook_s *)&SOCK_DEFAULT_HOOKS,
-                         .counter = fdinfo(fd).counter + 1};
+  sock_data_store.fds[fd] = (struct fd_data_s){
+      .open = is_open,
+      .lock = fdinfo(fd).lock,
+      .rw_hooks = (sock_rw_hook_s *)&SOCK_DEFAULT_HOOKS,
+      .counter = fdinfo(fd).counter + 1,
+      .packet_last = &sock_data_store.fds[fd].packet,
+  };
   spn_unlock(&(fdinfo(fd).lock));
   while (old_data.packet) {
     packet = old_data.packet;
@@ -1080,17 +1092,24 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
     unlock_fd(fd);
     goto error;
   }
-  packet_s **pos = &fdinfo(fd).packet;
-  if (options.urgent == 0) {
-    while (*pos)
-      pos = &(*pos)->next;
+  if (fdinfo(fd).packet == NULL) {
+    fdinfo(fd).packet_last = &packet->next;
+    fdinfo(fd).packet = packet;
+  } else if (options.urgent == 0) {
+    *fdinfo(fd).packet_last = packet;
     packet->next = NULL;
+    fdinfo(fd).packet_last = &packet->next;
   } else {
+    packet_s **pos = &fdinfo(fd).packet;
     if (*pos)
       pos = &(*pos)->next;
     packet->next = *pos;
+    *pos = packet;
+    if (!packet->next) {
+      fdinfo(fd).packet_last = &packet->next;
+    }
   }
-  *pos = packet;
+  ++fdinfo(fd).packet_count;
   unlock_fd(fd);
   sock_touch(options.uuid);
   defer(sock_flush_defer, (void *)options.uuid, NULL);
@@ -1227,12 +1246,23 @@ void sock_flush_all(void) {
 }
 
 /**
-Returns TRUE (non 0) if there is data waiting to be written to the socket in the
-user-land buffer.
+Returns the number of `sock_write` calls that are waiting in the socket's queue
+and haven't been processed.
 */
 int sock_has_pending(intptr_t uuid) {
-  return validate_uuid(uuid) == 0 && uuidinfo(uuid).open &&
-         (uuidinfo(uuid).packet || uuidinfo(uuid).close);
+  if (validate_uuid(uuid) || !uuidinfo(uuid).open)
+    return 0;
+  return (int)(uuidinfo(uuid).packet_count + uuidinfo(uuid).close);
+}
+
+/**
+ * Returns the number of `sock_write` calls that are waiting in the socket's
+ * queue and haven't been processed.
+ */
+size_t sock_pending(intptr_t uuid) {
+  if (validate_uuid(uuid) || !uuidinfo(uuid).open)
+    return 0;
+  return (uuidinfo(uuid).packet_count + uuidinfo(uuid).close);
 }
 
 /* *****************************************************************************

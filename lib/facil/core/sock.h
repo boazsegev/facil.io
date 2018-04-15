@@ -451,10 +451,20 @@ void sock_flush_strong(intptr_t uuid);
 void sock_flush_all(void);
 
 /**
- * Returns TRUE (non 0) if there is data waiting to be written to the socket in
- * the user-land buffer.
+ * Returns the number of `sock_write` calls that are waiting in the socket's
+ * queue and haven't been processed.
+ *
+ * This method will be deprecated in the 0.7.0 release. Use `sock_pending`
+ * instead.
  */
-int sock_has_pending(intptr_t uuid);
+int __attribute__((deprecated("use sock_pending instead")))
+sock_has_pending(intptr_t uuid);
+
+/**
+ * Returns the number of `sock_write` calls that are waiting in the socket's
+ * queue and haven't been processed.
+ */
+size_t sock_pending(intptr_t uuid);
 
 /**
  * This weak function can be overwritten when using the `defer` library.
