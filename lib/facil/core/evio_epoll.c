@@ -212,9 +212,9 @@ int evio_review(const int timeout_millisec) {
     return -1;
   if (internal_count == 0)
     return 0;
-  for (int i = 0; i < internal_count; ++i) {
+  for (int j = 0; j < internal_count; ++j) {
     int active_count =
-        epoll_wait(internal[i].data.fd, events, EVIO_MAX_EVENTS, 0);
+        epoll_wait(internal[j].data.fd, events, EVIO_MAX_EVENTS, 0);
     if (active_count > 0) {
       for (int i = 0; i < active_count; i++) {
         if (events[i].events & (~(EPOLLIN | EPOLLOUT))) {
