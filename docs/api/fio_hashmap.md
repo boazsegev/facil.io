@@ -36,7 +36,7 @@ typedef struct fio_hash_data_s {
   struct fio_hash_data_ordered_s *obj;
 } fio_hash_data_s;
 
-/* the information in tjhe Hash Map structure should be considered READ ONLY. */
+/* the information in the Hash Map structure should be considered READ ONLY. */
 struct fio_hash_s {
   uintptr_t count;
   uintptr_t capa;
@@ -257,7 +257,7 @@ This macro allows dynamically allocated memory to be freed (this is the compleme
 
 ### Notes
 
-If the `FIO_HASH_KEY_COPY` macro allocated memory dynamically or if there's a need to iterate over the values in the Hash Map before freeing the Hash Map (perhaps to free the object's memory), the `FIO_HASH_FOR_FREE` macro can be used to iterate over the Hash Map, free all the keys and free the Hash Map resources (it calls `fio_hash_free`).
+If the `FIO_HASH_KEY_COPY` macro allocated memory dynamically or if there's a need to iterate over the values in the Hash Map before freeing the Hash Map (perhaps to free the object's memory), the `FIO_HASH_FOR_FREE` macro can be used to iterate over the Hash Map, free all the keys and free the Hash Map resources (it ends by calling `fio_hash_free`).
 
 **Note**: These macros are localized to the specific C file in which they were defined and a specific C file can't include the `fio_hashmap.h` more than once. If a few different approaches are required, it can be performed by using different C files and offering function wrappers for the Hash Map functions (wrap `fio_hash_find`, `fio_hash_insert`, etc').
 
@@ -283,6 +283,8 @@ typedef struct {
 /* strdup is usually available... but just in case it isn't */
 static inline char *my_strdup(char *str, size_t len) {
   char *ret = malloc(len + 1);
+  if(!ret)
+    exit(-1);
   ret[len] = 0;
   memcpy(ret, str, len);
   return ret;
@@ -338,7 +340,7 @@ int main(void) {
   fio_hash_insert(&hash, key3, key3.str);
   fio_hash_insert(&hash, key2, NULL); /* deletes the key2 object  */
   fio_hash_rehash(&hash); /* forces the unused key to be destroyed */
-  fprintf(stderr, "Did we free %s?\n", key3.str);
+  fprintf(stderr, "Did we free %s?\n", key2.str);
   FIO_HASH_FOR_EMPTY(&hash, i) { (void)i->obj; }
   if (fio_hash_find(&hash, key1_copy))
     fprintf(stderr,

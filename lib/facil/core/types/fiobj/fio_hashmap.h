@@ -238,7 +238,7 @@ typedef struct fio_hash_data_s {
   struct fio_hash_data_ordered_s *obj;
 } fio_hash_data_s;
 
-/* the information in tjhe Hash Map structure should be considered READ ONLY. */
+/* the information in the Hash Map structure should be considered READ ONLY. */
 struct fio_hash_s {
   uintptr_t count;
   uintptr_t capa;

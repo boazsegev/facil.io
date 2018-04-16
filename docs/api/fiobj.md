@@ -85,7 +85,7 @@ fiobj_str_write2(str, "%s %d" , "Hello!", 42);
 // ...
 fiobj_free(str);
 
-/* for static strings, this is the best */
+/* for static strings, this is preferred */
 FIOBJ str = fiobj_str_static("Hello!", 6);
 // ...
 fiobj_free(str);
@@ -108,25 +108,20 @@ fiobj_free(ary);
 ```
 Hashes follow the same rule. However...
 
-It's important to note that Hash keys aren't transferred to the Hash (they are used to access and store data, but they are not the data itself).
+It's important to note that **Hash keys ownership isn't transferred to the Hash** (keys are used to access and store data, but they are not the data itself).
 
 When calling `fiobj_hash_set`, we are storing a *value* in the Hash, the *key* is what we use to access that value. This is why **the key's ownership remains with the calling function**. i.e.:
 
 ```c
 FIOBJ h = fiobj_hash_new();
-static __thread FIOBJ ID = NULL;
-if(!ID)
-  ID = fiobj_str_new("id", 2);
+FIOBJ key = fiobj_str_new("life", 4);
 /* By placing the Number in the Hash, it will be deallocated together with the Hash */
-fiobj_hash_set(h, ID, fiobj_num_new(42));
+fiobj_hash_set(h, key, fiobj_num_new(42));
 // ...
-fiobj_free(h); /* Although we free the Hash, the ID remains in the memory */
-
-if(0) {
-  // I assume ID will be reused, but if it's temporary, we need to free it
-  fiobj_free(ID);
-  ID = NULL;
-}
+fiobj_free(h); /* Free the Hash and it's data, but NOT the key */
+// ...
+/* eventually we need to free the key */
+fiobj_free(key);
 ```
 
 ### Passing By Reference
