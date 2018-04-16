@@ -49,7 +49,7 @@ ifdef DEBUG
   $(info * Detected DEBUG environment flag, enforcing debug mode compilation)
 	FLAGS:=$(FLAGS) DEBUG
 	# # comment the following line if you want to use a different address sanitizer or a profiling tool. 
-	OPTIMIZATION:=-O0 -march=native -fsanitize=address,undefined -fno-omit-frame-pointer 
+	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer 
 	# possibly useful:  -Wconversion -Wcomma -fsanitize=undefined -Wshadow
 	# go crazy with clang: -Weverything -Wno-cast-qual -Wno-used-but-marked-unused -Wno-reserved-id-macro -Wno-padded -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-bad-function-cast -Wno-missing-prototypes
 else
