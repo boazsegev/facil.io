@@ -5,17 +5,19 @@
 
 ### v. 0.6.3
 
-**Fix**: (`http`) fixed an issue where the WebSocket's `on_close` callback wouldn't be called if certain errors prevented the upgrade. Now the `on_close` callback is always called.
+**Fix**: (`http` / `websocket`) fixed an issue where the WebSocket's `on_close` callback wouldn't be called if certain errors prevented the upgrade. Now the `on_close` callback is always called.
 
-**Fix**: (`http`) fixed an issue where the Content-Type header might be missing. Now a best attempt to detect the content type (using the URL) will be performed. If no content type is detected, the default RFC content type will be attached (`application/octet-stream`).
+**Fix**: (`http`) fixed an issue where the Content-Type header might be missing when sending unrecognized files. Now an additional best attempt to detect the content type (this time using the URL instead of the file name) will be performed. If no content type is detected, the default RFC content type will be attached (`application/octet-stream`).
 
 **Fix**: (`http1_parser`) fixed a possible unaligned memory access concern.
 
 **Fix**: (`FIOBJ`) fixed compiler compatibility concerns with the `fiobj_num_new` logic, removing some possibly undefined behavior.
 
-**Fix**: (`facil`) a missing `on_data` protocol callback will now call `facil_quite`, preventing the event from firing endlessly.
+**Fix**: (`facil`) a missing `on_data` protocol callback (missing during `facil_attach`) will now call `facil_quite`, preventing the event from firing endlessly.
 
 **Update**: (`http`) the `on_upgrade` callback now supports SSE connections with `sse` protocol identifier and the `http_upgrade2sse` function.
+
+**Update**: (`sock`) initial support for TCP Fast Open (TFO) when listening for connections.
 
 ### ABI breaking changes expected in v. 0.7.0
 
