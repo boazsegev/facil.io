@@ -342,7 +342,7 @@ int http_send_body(http_s *r, void *data, uintptr_t length) {
     return 0;
   }
   add_content_length(r, length);
-  add_content_type(r);
+  // add_content_type(r);
   add_date(r);
   return ((http_vtable_s *)r->private_data.vtbl)
       ->http_send_body(r, data, length);
