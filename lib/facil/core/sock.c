@@ -710,11 +710,6 @@ intptr_t sock_listen(const char *address, const char *port) {
       int optval = 1;
       setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
     }
-    // allow listening ports to be opened from different processes
-    {
-      int optval = 1;
-      setsockopt(srvfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
-    }
     // bind the address to the socket
     {
       int bound = 0;
@@ -730,6 +725,14 @@ intptr_t sock_listen(const char *address, const char *port) {
         return -1;
       }
     }
+#ifdef TCP_FASTOPEN
+    // support TCP Fast Open when available
+    {
+      int optval = 128;
+      setsockopt(srvfd, servinfo->ai_protocol, TCP_FASTOPEN, &optval,
+                 sizeof(optval));
+    }
+#endif
     freeaddrinfo(servinfo);
   }
   // listen in
