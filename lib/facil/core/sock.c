@@ -1164,16 +1164,14 @@ memory copy operations.
 */
 
 /**
-`sock_flush` writes the data in the internal buffer to the underlying file
-descriptor and closes the underlying fd once it's marked for closure (and all
-the data was sent).
-
-Return value: 0 will be returned on success and -1 will be returned on an error
-or when the connection is closed.
-
-**Please Note**: when using `libreact`, the `sock_flush` will be called
-automatically when the socket is ready.
-*/
+ * `sock_flush` writes the data in the internal buffer to the underlying file
+ * descriptor and closes the underlying fd once it's marked for closure (and all
+ * the data was sent).
+ *
+ * Return values: 1 will be returned if `sock_flush` should be called again. 0
+ * will be returned if the socket was fully flushed. -1 will be returned on an
+ * error or when the connection is closed.
+ */
 ssize_t sock_flush(intptr_t uuid) {
   int fd = sock_uuid2fd(uuid);
   if (validate_uuid(uuid) || !fdinfo(fd).open)
@@ -1187,9 +1185,9 @@ retry:
   rw = fdinfo(fd).rw_hooks;
   rw_udata = fdinfo(fd).rw_udata;
   unlock_fd(fd);
-  while ((ret = rw->flush(uuid, rw_udata)) > 0)
-    if (ret > 0)
-      touch = 1;
+  while ((ret = rw->flush(uuid, rw_udata)) > 0) {
+    touch = 1;
+  }
   if (ret == -1) {
     if (errno == EINTR)
       goto retry;
@@ -1200,8 +1198,9 @@ retry:
   }
   lock_fd(fd);
   while (fdinfo(fd).packet &&
-         (ret = fdinfo(fd).packet->write_func(fd, fdinfo(fd).packet)) > 0)
+         (ret = fdinfo(fd).packet->write_func(fd, fdinfo(fd).packet)) > 0) {
     touch = 1;
+  }
   if (ret == -1) {
     if (errno == EINTR)
       goto retry;
@@ -1214,8 +1213,10 @@ retry:
     goto error;
 finish:
   unlock_fd(fd);
-  if (touch)
+  if (touch) {
     sock_touch(uuid);
+    return 1;
+  }
   return fdinfo(fd).packet != NULL || fdinfo(fd).close;
 error:
   unlock_fd(fd);

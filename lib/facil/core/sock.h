@@ -433,9 +433,9 @@ Direct user level buffer API.
  * descriptor and closes the underlying fd once it's marked for closure (and all
  * the data was sent).
  *
- * Return values: 1 will be returned if data remains to be flushed. 0 will be
- * returned on success (all data was sent). -1 will be returned on an error or
- * when the connection is closed.
+ * Return values: 1 will be returned if `sock_flush` should be called again. 0
+ * will be returned if the socket was fully flushed. -1 will be returned on an
+ * error or when the connection is closed.
  */
 ssize_t sock_flush(intptr_t uuid);
 
