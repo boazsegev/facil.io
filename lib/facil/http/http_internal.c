@@ -57,12 +57,14 @@ void http_on_request_handler______internal(http_s *h,
 
 upgrade:
   if (1) {
+    fiobj_dup(t); /* allow upgrade name access after http_finish */
     fio_cstr_s val = fiobj_obj2cstr(t);
     if (val.data[0] == 'h' && val.data[1] == '2') {
       http_send_error(h, 400);
     } else {
       settings->on_upgrade(h, val.data, val.len);
     }
+    fiobj_free(t);
     return;
   }
 eventsource:
