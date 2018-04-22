@@ -29,6 +29,9 @@ static void on_open_shootout_websocket(ws_s *ws) {
   websocket_subscribe(ws, .channel = CHANNEL_TEXT, .force_text = 1);
   websocket_subscribe(ws, .channel = CHANNEL_BINARY, .force_binary = 1);
 }
+static void on_open_shootout_websocket_sse(http_sse_s *sse) {
+  http_sse_subscribe(sse, .channel = CHANNEL_TEXT);
+}
 
 static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
                                       uint8_t is_text) {
@@ -66,10 +69,12 @@ static void answer_http_request(http_s *request) {
   http_send_body(request, "This is a Websocket-Shootout example!", 37);
 }
 static void answer_http_upgrade(http_s *request, char *target, size_t len) {
-  if (len >= 9 && target[0] == 'w')
+  if (len >= 9 && target[1] == 'e') {
     http_upgrade2ws(.http = request, .on_message = handle_websocket_messages,
                     .on_open = on_open_shootout_websocket);
-  else
+  } else if (len >= 3 && target[0] == 's') {
+    http_upgrade2sse(request, .on_open = on_open_shootout_websocket_sse);
+  } else
     http_send_error(request, 400);
 }
 
