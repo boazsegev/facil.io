@@ -35,32 +35,19 @@ Protocol object instances must be unique per connection, and so they are usually
 
 ```c
 typedef struct {
-  /**
-   * A string to identify the protocol's service (i.e. "http").
-   *
-   * The string should be a global constant, only a pointer comparison will be
-   * used (not `strcmp`).
-   */
-  const char *service;
-  /** called when a data is available, but will not run concurrently */
-  void (*on_data)(intptr_t uuid, protocol_s *protocol);
-  /** called when the socket is ready to be written to. */
-  void (*on_ready)(intptr_t uuid, protocol_s *protocol);
-  /** called when the server is shutting down,
-   * but before closing the connection. */
-  void (*on_shutdown)(intptr_t uuid, protocol_s *protocol);
-  /** called when the connection was closed, but will not run concurrently */
-  void (*on_close)(protocol_s *protocol);
-  /** called when a connection's timeout was reached */
-  void (*ping)(intptr_t uuid, protocol_s *protocol);
-  /** private metadata used by facil. */
-  size_t rsv;
+  const char *service; /** A pointer / string to identify the protocol (i.e. "http"). */
+  void (*on_data)(intptr_t uuid, protocol_s *protocol); /** called when a data is available */
+  void (*on_ready)(intptr_t uuid, protocol_s *protocol);  /** called when the socket is ready to be written to. */
+  void (*on_shutdown)(intptr_t uuid, protocol_s *protocol);  /** called when the server is shutting down */
+  void (*on_close)(protocol_s *protocol); /** called after the connection was closed */
+  void (*ping)(intptr_t uuid, protocol_s *protocol); /** called when a connection's timeout was reached */
+  size_t rsv; /** private metadata used by facil. */
 } protocol_s; ///*
 ```
 
 Protocol object instances should be initiated per connection, since `facil.io` uses a locking mechanism that prevents the same protocol object from running it's callbacks concurrently.
 
-By reviewing the HTTP and Websocket examples in the facil.io codebase, it's easy to see that easily the `protocol_s` "class" can be extended to add more data / features that might be required. "C" objects can use a typecasting stye of inheritance which comes very handy when implementing network protocols.
+By reviewing the HTTP and Websocket examples in the facil.io codebase, it's easy to see that the `protocol_s` "class" can be easily extended to add more data / features that might be required. "C" objects can use a typecasting style of inheritance which comes very handy when implementing network protocols.
 
 ---
 
