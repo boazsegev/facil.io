@@ -1,5 +1,5 @@
 ---
-title: facil.io - FIOBJ JSON API
+title: facil.io - JSON API
 toc: true
 layout: api
 ---
@@ -7,7 +7,7 @@ layout: api
 
 ## Overview
 
-Parsing, editing and outputting JSON in C can be easily accomplished using [facil.io's dynamic types](fiobj.md) (`fiobj_s`).
+Parsing, editing and outputting JSON in C can be easily accomplished using [facil.io's dynamic types](fiobj.md) (`FIOBJ`).
 
 There are [faster alternatives as well as slower alternatives out there](json_performance.html) (i.e., the Qajson4c library is probably the most balanced alternative).
 
@@ -15,7 +15,7 @@ However, `facil.io` offers the added benefit of complete parsing from JSON to ob
 
 `facil.io` also offers the added benefit of complete formatting from a framework wide object type (`FIOBJ`) to JSON. This is in contrast to some solutions that require a linked list of node structures.
 
-### example
+### Example
 
 The `facil.io` parser will parse any C string until it either consumes the whole string or completes parsing of a JSON object.
 
@@ -27,15 +27,15 @@ For example, the following program will minify (or prettify) JSON data:
 #include <string.h>
 // this is passed as an argument to `fiobj_obj2json`
 // change this to 1 to prettify.
-#define PRETTY 0
+#define PRETTY 1
 
 int main(int argc, char const *argv[]) {
   // a default string to demo
-  const char * json = u8"{\n\t\"id\":1,\n"
+  const char *json = u8"{\n\t\"id\":1,\n"
                      "\t// comments are ignored.\n"
                      "\t\"number\":42,\n"
                      "\t\"float\":42.42,\n"
-                     "\t\"string\":\"𝄞 oh yeah...\",\n"
+                     "\t\"string\":\"\\uD834\\uDD1E oh yeah...\",\n"
                      "\t\"hash\":{\n"
                      "\t\t\"nested\":true\n"
                      "\t},\n"
@@ -46,35 +46,37 @@ int main(int argc, char const *argv[]) {
     json = argv[1];
   }
   printf("\nattempting to parse:\n%s\n", json);
-  // actual code for parsing the JSON
-  FIOBJ obj;
+
+  // Parsing the JSON
+  FIOBJ obj = FIOBJ_INVALID;
   size_t consumed = fiobj_json2obj(&obj, json, strlen(json));
-
   // test for errors
-  if (!obj) {
-    printf("\nERROR: (JSON) couldn't parse data.\n");
-    exit(-1);
-  }
-  if (consumed < strlen(json)) {
-    printf( "\nWARNING: (JSON) unprocessed data remaining to be parsed...\n"
-            "                  Possibly more than one JSON object?\n");
+  if (!consumed || !obj) {
+    printf("\nERROR, couldn't parse data.\n");
     exit(-1);
   }
 
-  // format the JSON back to a String object and print it up
+  // Example use - printing some JSON data
+  FIOBJ key = fiobj_str_new("number", 6);
+  if (FIOBJ_TYPE_IS(obj, FIOBJ_T_HASH) // make sure the JSON object is a Hash
+      && fiobj_hash_get(obj, key)) {   // test for the existence of "number"
+    printf("JSON print example - the meaning of life is %zu",
+           (size_t)fiobj_obj2num(fiobj_hash_get(obj, key)));
+  }
+  fiobj_free(key);
+
+  // Formatting the JSON back to a String object and printing it up
   FIOBJ str = fiobj_obj2json(obj, PRETTY);
-
-  // print output
   printf("\nParsed JSON input was: %zu bytes"
          "\nJSON output is %zu bytes:\n\n%s\n\n",
-         consumed, fiobj_obj2cstr(str).len, fiobj_obj2cstr(str).data);
-
+         consumed, (size_t)fiobj_obj2cstr(str).len, fiobj_obj2cstr(str).data);
   // cleanup
   fiobj_free(str);
   fiobj_free(obj);
   return 0;
 }
 ```
+
 ## Constants
 
 `JSON_MAX_DEPTH` is the maximum depth for nesting. The default value is 32 (should be set during compile time).
