@@ -3,6 +3,19 @@
 ---
 ## Future (expected / upcoming) changes
 
+### ABI breaking changes expected in v. 0.7.0
+
+* The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
+
+* The read/write hooks will support a `has_pending` variation (right now `sock_has_pending` ignores the r/w hook's internal cache).
+
+* The WebSocket upgrade (`http_upgrade2ws`) will better match the SSE upgrade function (starts with the handle `http_s *` and named arguments come later).
+
+* The Pub/Sub system's `use_pattern` will be replaced with a function pointer, allowing for NATs and RabbitMQ pattern matching logic to be added (right now, only Redis pattern matching style is supported).
+
+---
+## Released versions
+
 ### v. 0.6.3
 
 **Fix**: (`fio_hashmap` / `fiobj_hash`) fixed a possible issue that could occur when compacting a severely fragmented Hash (where the length of the new storage requirements is shorter than the fragmented ordered array of data).
@@ -20,19 +33,6 @@
 **Update**: (`http`) the `on_upgrade` callback now supports SSE connections with `sse` protocol identifier and the `http_upgrade2sse` function.
 
 **Update**: (`sock`) initial support for TCP Fast Open (TFO) when listening for connections.
-
-### ABI breaking changes expected in v. 0.7.0
-
-* The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
-
-* The read/write hooks will support a `has_pending` variation (right now `sock_has_pending` ignores the r/w hook's internal cache).
-
-* The WebSocket upgrade (`http_upgrade2ws`) will better match the SSE upgrade function (starts with the handle `http_s *` and named arguments come later).
-
-* The Pub/Sub system's `use_pattern` will be replaced with a function pointer, allowing for NATs and RabbitMQ pattern matching logic to be added (right now, only Redis pattern matching style is supported).
-
----
-## Released versions
 
 ### v. 0.6.2
 
