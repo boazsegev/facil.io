@@ -622,6 +622,22 @@ FIO_FUNC inline size_t fio_hash_compact(fio_hash_s *hash) {
     return 0;
   if (hash->count == hash->pos && (hash->count << 1) >= hash->capa)
     return hash->capa;
+  /* compact ordered list */
+  {
+    size_t reader = 0;
+    size_t writer = 0;
+    while (reader < hash->pos) {
+      if (hash->ordered[reader].obj) {
+        hash->ordered[writer] = hash->ordered[reader];
+        ++writer;
+      } else {
+        FIO_HASH_KEY_DESTROY(hash->ordered[reader].key);
+      }
+      ++reader;
+    }
+    hash->pos = writer;
+  }
+  /* recalculate minimal length and rehash */
   while (hash->mask && hash->mask >= hash->count)
     hash->mask = hash->mask >> 1;
   if (hash->mask + 1 < FIO_HASH_INITIAL_CAPACITY)

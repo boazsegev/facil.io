@@ -5,6 +5,8 @@
 
 ### v. 0.6.3
 
+**Fix**: (`fio_hashmap` / `fiobj_hash`) fixed a possible issue that could occur when compacting a severely fragmented Hash (where the length of the new storage requirements is shorter than the fragmented ordered array of data).
+
 **Fix**: (`http` / `websocket`) fixed an issue where the WebSocket's `on_close` callback wouldn't be called if certain errors prevented the upgrade. Now the `on_close` callback is always called.
 
 **Fix**: (`http`) fixed an issue where the Content-Type header might be missing when sending unrecognized files. Now an additional best attempt to detect the content type (this time using the URL instead of the file name) will be performed. If no content type is detected, the default RFC content type will be attached (`application/octet-stream`).
