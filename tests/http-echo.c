@@ -20,7 +20,7 @@ static void on_request(http_s *h) {
   fiobj_obj2json2(echo, h->cookies, 1);
   char value[40];
   size_t val_len = http_time2str(value, facil_last_tick().tv_sec);
-  http_set_cookie(h, .name = "Late visit", .name_len = 10, .value = value,
+  http_set_cookie(h, .name = "Last visit", .name_len = 10, .value = value,
                   .value_len = val_len);
   fio_cstr_s body = fiobj_obj2cstr(echo);
   http_send_body(h, body.data, body.len);
