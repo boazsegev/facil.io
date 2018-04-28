@@ -1973,12 +1973,9 @@ FIOBJ http_req2str(http_s *h) {
 
 void http_write_log(http_s *h) {
   FIOBJ l = fiobj_str_buf(128);
-  static uint64_t cl_hash = 0;
-  if (!cl_hash)
-    cl_hash = fio_siphash("content-length", 14);
 
-  intptr_t bytes_sent =
-      fiobj_obj2num(fiobj_hash_get2(h->private_data.out_headers, cl_hash));
+  intptr_t bytes_sent = fiobj_obj2num(fiobj_hash_get2(
+      h->private_data.out_headers, fiobj_obj2hash(HTTP_HEADER_CONTENT_LENGTH)));
 
   struct timespec start, end;
   clock_gettime(CLOCK_REALTIME, &end);
@@ -1987,16 +1984,17 @@ void http_write_log(http_s *h) {
   fio_cstr_s buff = fiobj_obj2cstr(l);
 
   // TODO Guess IP address from headers (forwarded) where possible
-  sock_peer_addr_s addrinfo = sock_peer_addr(
-      sock_uuid2fd(((http_protocol_s *)h->private_data.flag)->uuid));
+  sock_peer_addr_s addrinfo =
+      sock_peer_addr(((http_protocol_s *)h->private_data.flag)->uuid);
   if (addrinfo.addrlen) {
     if (inet_ntop(
             addrinfo.addr->sa_family,
             addrinfo.addr->sa_family == AF_INET
                 ? (void *)&((struct sockaddr_in *)addrinfo.addr)->sin_addr
                 : (void *)&((struct sockaddr_in6 *)addrinfo.addr)->sin6_addr,
-            buff.data, 128))
+            buff.data, 128)) {
       buff.len = strlen(buff.data);
+    }
   }
   if (buff.len == 0) {
     memcpy(buff.data, "[unknown]", 9);
