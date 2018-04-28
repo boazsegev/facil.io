@@ -960,8 +960,8 @@ sock_peer_addr_s sock_peer_addr(intptr_t uuid) {
   if (validate_uuid(uuid) || !fdinfo(sock_uuid2fd(uuid)).addrlen)
     return (sock_peer_addr_s){.addr = NULL};
   return (sock_peer_addr_s){
-      .addrlen = fdinfo(sock_uuid2fd(uuid)).addrlen,
-      .addr = (struct sockaddr *)&fdinfo(sock_uuid2fd(uuid)).addrinfo,
+      .addrlen = uuidinfo(uuid).addrlen,
+      .addr = (struct sockaddr *)&uuidinfo(uuid).addrinfo,
   };
 }
 
