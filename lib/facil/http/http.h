@@ -35,6 +35,11 @@ Compile Time Settings
 #define HTTP_MAX_HEADER_COUNT 128
 #endif
 
+#ifndef HTTP_MAX_HEADER_LENGTH
+/** the default maximum length for a single header line */
+#define HTTP_MAX_HEADER_LENGTH 8192
+#endif
+
 /** the `http_listen settings, see detils in the struct definition. */
 typedef struct http_settings_s http_settings_s;
 
@@ -326,7 +331,7 @@ typedef struct http_settings_s {
    * Defaults to 32Kib (which is about 4 times more than I would recommend).
    *
    * This reflects the total overall size. On HTTP/1.1, each header line (name +
-   * value pair) is also limitied to a hardcoded ~4094 bytes.
+   * value pair) is also limitied to a hardcoded HTTP_MAX_HEADER_LENGTH bytes.
    */
   size_t max_header_size;
   /**

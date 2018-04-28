@@ -207,12 +207,7 @@ size_t fiobj_each2(FIOBJ, int (*task)(FIOBJ obj, void *arg), void *arg);
  *
  * Uses a similar algorithm to `fiobj_each2`, except adjusted to two objects.
  *
- * Hash order will be tested when comapring Hashes.
- *
- * KNOWN ISSUES:
- *
- * * Hash order will be tested as well as the Hash content, which means that
- * equal Hashes might be considered unequal if their order doesn't match.
+ * Hash objects are order sensitive. To be equal, Hash keys must match in order.
  *
  * Returns 1 if true and 0 if false.
  */

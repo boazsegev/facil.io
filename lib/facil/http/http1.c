@@ -203,7 +203,7 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
     http1_after_finish(h);
     return -1;
   }
-  if (length < HTTP1_READ_BUFFER) {
+  if (length < HTTP_MAX_HEADER_LENGTH) {
     /* optimize away small files */
     fio_cstr_s s = fiobj_obj2cstr(packet);
     fiobj_str_capa_assert(packet, s.len + length);
@@ -667,7 +667,7 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
   }
   if (!parser->state.read) {
     if (parser->state.content_length > 0 &&
-        parser->state.content_length <= HTTP1_READ_BUFFER) {
+        parser->state.content_length <= HTTP_MAX_HEADER_LENGTH) {
       http1_pr2handle(parser2http(parser)).body = fiobj_data_newstr();
     } else {
       http1_pr2handle(parser2http(parser)).body = fiobj_data_newtmpfile();
@@ -720,7 +720,7 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
     memmove(p->buf, p->buf + (org_len - p->buf_len), p->buf_len);
   }
 
-  if (p->buf_len == HTTP1_READ_BUFFER) {
+  if (p->buf_len == HTTP_MAX_HEADER_LENGTH) {
     /* no room to read... parser not consuming data */
     if (p->request.method)
       http_send_error(&p->request, 413);
@@ -743,8 +743,9 @@ static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
     return;
   }
   ssize_t i = 0;
-  if (HTTP1_READ_BUFFER - p->buf_len)
-    i = sock_read(uuid, p->buf + p->buf_len, HTTP1_READ_BUFFER - p->buf_len);
+  if (HTTP_MAX_HEADER_LENGTH - p->buf_len)
+    i = sock_read(uuid, p->buf + p->buf_len,
+                  HTTP_MAX_HEADER_LENGTH - p->buf_len);
   if (i > 0) {
     p->buf_len += i;
   }
@@ -762,7 +763,7 @@ static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
   http1pr_s *p = (http1pr_s *)protocol;
   ssize_t i;
 
-  i = sock_read(uuid, p->buf + p->buf_len, HTTP1_READ_BUFFER - p->buf_len);
+  i = sock_read(uuid, p->buf + p->buf_len, HTTP_MAX_HEADER_LENGTH - p->buf_len);
 
   if (i <= 0)
     return;
@@ -790,9 +791,9 @@ Public API
  * (if any). */
 protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
                       void *unread_data, size_t unread_length) {
-  if (unread_data && unread_length > HTTP1_READ_BUFFER)
+  if (unread_data && unread_length > HTTP_MAX_HEADER_LENGTH)
     return NULL;
-  http1pr_s *p = malloc(sizeof(*p) + HTTP1_READ_BUFFER);
+  http1pr_s *p = malloc(sizeof(*p) + HTTP_MAX_HEADER_LENGTH);
   HTTP_ASSERT(p, "HTTP/1.1 protocol allocation failed");
   *p = (http1pr_s){
       .p.protocol =
@@ -808,7 +809,7 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
   };
   http_s_new(&p->request, &p->p, &HTTP1_VTABLE);
   facil_attach(uuid, &p->p.protocol);
-  if (unread_data && unread_length <= HTTP1_READ_BUFFER) {
+  if (unread_data && unread_length <= HTTP_MAX_HEADER_LENGTH) {
     memcpy(p->buf, unread_data, unread_length);
     p->buf_len = unread_length;
     facil_force_event(uuid, FIO_EVENT_ON_DATA);
