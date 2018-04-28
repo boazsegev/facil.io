@@ -3,6 +3,10 @@
 ---
 ## Future (expected / upcoming) changes
 
+### v. 0.6.4
+
+**Fix**: (`facil.io`) fixed a race condition between pre-scheduled tasks (`defer` calls) and the worker process initialization. The race condition might have resulted in some pre-scheduled tasks not running on all the workers.
+
 ### ABI breaking changes expected in v. 0.7.0
 
 * The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""

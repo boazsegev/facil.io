@@ -52,6 +52,7 @@ struct connection_data_s {
 static struct facil_data_s {
   spn_lock_i global_lock;
   uint8_t need_review;
+  uint8_t spindown;
   uint16_t active;
   uint16_t threads;
   pid_t parent;
@@ -259,6 +260,7 @@ static void deferred_on_shutdown(void *arg, void *arg2) {
   }
   uuid_data(arg).active = facil_data->last_cycle.tv_sec;
   uuid_data(arg).timeout = 8;
+  /* TODO: 0.7.0 catch the return valuse to set timeout and maybe keep open */
   pr->on_shutdown((intptr_t)arg, pr);
   pr->ping = mock_ping;
   protocol_unlock(pr, FIO_PR_LOCK_TASK);
@@ -1000,6 +1002,7 @@ static inline void facil_cluster_signal_children(void) {
     return;
   }
   cluster_send2traget(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL);
+  /* TODO: add `on_restart` callback handler. */
 }
 
 static void cluster_on_client_message(cluster_pr_s *c, intptr_t uuid) {
@@ -1510,7 +1513,7 @@ static void facil_cycle(void *ignr, void *ignr2) {
     return;
   }
   /* switch to winding down */
-  if (facil_data->parent >= 0 && FACIL_PRINT_STATE) {
+  if (FACIL_PRINT_STATE && !facil_data->spindown) {
     pid_t pid = getpid();
     if (pid != facil_data->parent)
       fprintf(stderr, "* (%d) Detected exit signal.\n", getpid());
@@ -1609,13 +1612,12 @@ static void facil_worker_startup(uint8_t sentinel) {
   }
   /* Clear all existing events & flush `facil_cycle` out. */
   {
-    pid_t old_parent_pid = facil_data->parent;
-    facil_data->parent = -1;
+    facil_data->spindown = 1;
     uint16_t old_active = facil_data->active;
     facil_data->active = 0;
     defer_perform();
     facil_data->active = old_active;
-    facil_data->parent = old_parent_pid;
+    facil_data->spindown = 0;
   }
   /* called after connection cleanup, as it should open connections. */
   if (cluster_on_start()) {
@@ -1683,7 +1685,7 @@ static void facil_worker_cleanup(void) {
     while (wait(NULL) != -1)
       ;
     if (FACIL_PRINT_STATE) {
-      fprintf(stderr, "\n   ---  Completed Shutdown  ---\n");
+      fprintf(stderr, "\n   ---  Shutdown Complete  ---\n");
     }
   }
 }
@@ -1692,6 +1694,9 @@ static void facil_sentinel_task(void *arg1, void *arg2);
 static void *facil_sentinel_worker_thread(void *arg) {
   errno = 0;
   pid_t child = facil_fork();
+  if (arg) {
+    spn_unlock((spn_lock_i *)arg);
+  }
   if (child == -1) {
     perror("FATAL ERROR: couldn't spawn worker.");
     kill(facil_parent_pid(), SIGINT);
@@ -1727,20 +1732,15 @@ static void *facil_sentinel_worker_thread(void *arg) {
                 "INFO: Child worker (%d) shutdown. Respawning worker.\n",
                 child);
       }
-      defer(facil_sentinel_task, (void *)1, NULL);
+      defer(facil_sentinel_task, NULL, NULL);
     }
 #endif
   } else {
     defer_on_fork();
-    if (arg) {
-      /* respawn */
-      // defer_clear_queue();
-    }
     facil_worker_startup(0);
     facil_worker_cleanup();
     exit(0);
   }
-  (void)arg;
   return NULL;
 }
 
@@ -1748,15 +1748,18 @@ static void *facil_sentinel_worker_thread(void *arg) {
 static void facil_sentinel_task(void *arg1, void *arg2) {
   if (!facil_data->active)
     return;
+  spn_lock_i pre_fork_lock = SPN_LOCK_INIT;
+  spn_lock(&pre_fork_lock);
   pthread_t sentinel;
-  if (pthread_create(&sentinel, NULL, facil_sentinel_worker_thread, arg1)) {
+  if (pthread_create(&sentinel, NULL, facil_sentinel_worker_thread,
+                     (void *)&pre_fork_lock)) {
     perror("FATAL ERROR: couldn't start sentinel thread");
     exit(errno);
   }
   pthread_detach(sentinel);
-  if (facil_parent_pid() == getpid())
-    facil_cluster_data.listening.on_data(facil_cluster_data.root,
-                                         &facil_cluster_data.listening);
+  spn_lock(&pre_fork_lock); /* will wait for worker thread to release lock. */
+  facil_cluster_data.listening.on_data(facil_cluster_data.root,
+                                       &facil_cluster_data.listening);
   (void)arg1;
   (void)arg2;
 }
@@ -1764,11 +1767,14 @@ static void facil_sentinel_task(void *arg1, void *arg2) {
 static void facil_sentinel_task(void *arg1, void *arg2) {
   if (!facil_data->active)
     return;
-  void *thrd = defer_new_thread(facil_sentinel_worker_thread, arg1);
+  spn_lock_i pre_fork_lock = SPN_LOCK_INIT;
+  spn_lock(&pre_fork_lock);
+  void *thrd =
+      defer_new_thread(facil_sentinel_worker_thread, (void *)&pre_fork_lock);
   defer_free_thread(thrd);
-  if (facil_parent_pid() == getpid())
-    facil_cluster_data.listening.on_data(facil_cluster_data.root,
-                                         &facil_cluster_data.listening);
+  spn_lock(&pre_fork_lock); /* will wait for worker thread to release lock. */
+  facil_cluster_data.listening.on_data(facil_cluster_data.root,
+                                       &facil_cluster_data.listening);
   (void)arg1;
   (void)arg2;
 }

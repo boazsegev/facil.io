@@ -11,7 +11,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define H_FACIL_H
 #define FACIL_VERSION_MAJOR 0
 #define FACIL_VERSION_MINOR 6
-#define FACIL_VERSION_PATCH 3
+#define FACIL_VERSION_PATCH 4
 
 #ifndef FACIL_PRINT_STATE
 /**
