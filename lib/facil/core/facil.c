@@ -1694,7 +1694,7 @@ static void facil_sentinel_task(void *arg1, void *arg2);
 static void *facil_sentinel_worker_thread(void *arg) {
   errno = 0;
   pid_t child = facil_fork();
-  if (arg) {
+  if (arg && child) {
     spn_unlock((spn_lock_i *)arg);
   }
   if (child == -1) {
