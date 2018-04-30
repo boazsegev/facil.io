@@ -30,6 +30,8 @@ void *fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
   (void)valid_len;
 }
 
+void fio_malloc_after_fork(void) {}
+
 /* *****************************************************************************
 facil.io malloc implementation
 ***************************************************************************** */
@@ -268,6 +270,18 @@ static __thread arena_s *arena_last_used;
 static void arena_enter(void) { arena_last_used = arena_lock(arena_last_used); }
 
 static inline void arena_exit(void) { spn_unlock(&arena_last_used->lock); }
+
+/** Clears any memory locks, in case of a system call to `fork`. */
+void fio_malloc_after_fork(void) {
+  arena_last_used = NULL;
+  if (!arenas) {
+    return;
+  }
+  memory.lock = SPN_LOCK_INIT;
+  for (size_t i = 0; i < memory.cores; ++i) {
+    arenas[i].lock = SPN_LOCK_INIT;
+  }
+}
 
 /* *****************************************************************************
 Block management

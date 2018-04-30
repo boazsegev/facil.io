@@ -210,6 +210,8 @@ void fio_cli_end(void) {}
 static void facil_external_init(void) {
   sock_on_fork();
   pubsub_cluster_on_fork_start();
+  fio_malloc_after_fork();
+  defer_on_fork();
 }
 
 /* perform stage 2 initialization for external services. */
@@ -1554,7 +1556,6 @@ int facil_fork(void) { return (int)fork(); }
 static void facil_worker_startup(uint8_t sentinel) {
   facil_cluster_data.lock = facil_data->global_lock = SPN_LOCK_INIT;
   facil_internal_poll_reset();
-  defer_on_fork();
   evio_create();
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   facil_external_init();
@@ -1736,7 +1737,6 @@ static void *facil_sentinel_worker_thread(void *arg) {
     }
 #endif
   } else {
-    defer_on_fork();
     facil_worker_startup(0);
     facil_worker_cleanup();
     exit(0);

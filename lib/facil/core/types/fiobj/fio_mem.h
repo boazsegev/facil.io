@@ -88,6 +88,9 @@ void *fio_realloc(void *ptr, size_t new_size);
  */
 void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
 
+/** Clears any memory locks, in case of a system call to `fork`. */
+void fio_malloc_after_fork(void);
+
 /** Tests the facil.io memory allocator. */
 void fio_malloc_test(void);
 
@@ -99,6 +102,7 @@ void fio_malloc_test(void);
 #define fio_realloc realloc
 #define fio_realloc2(ptr, new_size, old_data_len) realloc((ptr), (new_size))
 #define fio_malloc_test()
+#define fio_malloc_after_fork
 
 /* allows local override as well as global override */
 #elif FIO_OVERRIDE_MALLOC
