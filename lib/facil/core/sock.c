@@ -27,7 +27,6 @@ Includes and state
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/sysctl.h>
 #include <sys/types.h>
 #include <sys/un.h>
 
