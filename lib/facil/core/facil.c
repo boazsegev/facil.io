@@ -449,7 +449,7 @@ static void facil_lib_init(void) {
     goto finish;
   facil_data = mmap(NULL, mem_size, PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (!facil_data) {
+  if (!facil_data || facil_data == MAP_FAILED) {
     perror("ERROR: Couldn't initialize the facil.io library");
     exit(0);
   }
