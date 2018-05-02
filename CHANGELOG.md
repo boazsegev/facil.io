@@ -9,6 +9,8 @@
 
 **Fix**: (`http`) fixed an issue with the HTTP request logging, where the peer address wasn't shown.
 
+**Fix**: (`fio_mem`, `facil`, `http`) fixed compatibility issues with Alpine Linux distro and older OS X versions (< 10.12).
+
 ### ABI breaking changes expected in v. 0.7.0
 
 * The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""

@@ -278,15 +278,18 @@ error:
  */
 #pragma weak defer_free_thread
 void defer_free_thread(void *p_thr) {
-  pthread_detach(*((pthread_t *)p_thr));
+  if (*((pthread_t *)p_thr)) {
+    pthread_detach(*((pthread_t *)p_thr));
+  }
   free(p_thr);
 }
 
 #pragma weak defer_join_thread
 int defer_join_thread(void *p_thr) {
-  if (!p_thr)
+  if (!p_thr || !(*((pthread_t *)p_thr)))
     return -1;
   pthread_join(*((pthread_t *)p_thr), NULL);
+  *((pthread_t *)p_thr) = NULL;
   defer_free_thread(p_thr);
   return 0;
 }
