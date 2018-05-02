@@ -141,18 +141,17 @@ static inline void *sys_alloc(size_t len, uint8_t is_indi) {
 /* hope for the best? */
 #ifdef MAP_ALIGNED
   result = mmap(
-      next_alloc, len, PROT_READ | PROT_WRITE | PROT_EXEC,
+      next_alloc, len, PROT_READ | PROT_WRITE,
       MAP_PRIVATE | MAP_ANONYMOUS | MAP_ALIGNED(FIO_MEMORY_BLOCK_SIZE), -1, 0);
 #else
-  result = mmap(next_alloc, len, PROT_READ | PROT_WRITE | PROT_EXEC,
+  result = mmap(next_alloc, len, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 #endif
   if (result == MAP_FAILED)
     return NULL;
   if (((uintptr_t)result & FIO_MEMORY_BLOCK_MASK)) {
     munmap(result, len);
-    result = mmap(NULL, len + FIO_MEMORY_BLOCK_SIZE,
-                  PROT_READ | PROT_WRITE | PROT_EXEC,
+    result = mmap(NULL, len + FIO_MEMORY_BLOCK_SIZE, PROT_READ | PROT_WRITE,
                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (result == MAP_FAILED)
       return NULL;
@@ -180,9 +179,9 @@ static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
     if (result == MAP_FAILED)
       return NULL;
 #else
-    void *result = mmap((void *)((uintptr_t)mem + prev_len), new_len - prev_len,
-                        PROT_READ | PROT_WRITE | PROT_EXEC,
-                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void *result =
+        mmap((void *)((uintptr_t)mem + prev_len), new_len - prev_len,
+             PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (result == (void *)((uintptr_t)mem + prev_len)) {
       result = mem;
     } else {
@@ -391,8 +390,11 @@ Non-Block allocations (direct from the system)
 static inline void *big_alloc(size_t size) {
   size = sys_round_size(size + 16);
   size_t *mem = sys_alloc(size, 1);
-  *mem = size;
-  return (void *)(((uintptr_t)mem) + 16);
+  if (mem) { /* likely */
+    *mem = size;
+    return (void *)(((uintptr_t)mem) + 16);
+  }
+  return NULL;
 }
 
 static inline void big_free(void *ptr) {
