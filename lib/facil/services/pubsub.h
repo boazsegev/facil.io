@@ -109,6 +109,13 @@ pubsub_sub_pt pubsub_find_sub(struct pubsub_subscribe_args);
   pubsub_find_sub((struct pubsub_subscribe_args){__VA_ARGS__})
 
 /**
+ * This helper returns a temporary handle to an existing subscription's channel.
+ *
+ * To keep the handle beyond the lifetime of the subscription, use `fiobj_dup`.
+ */
+FIOBJ pubsub_sub_channel(pubsub_sub_pt);
+
+/**
  * Unsubscribes from a specific subscription.
  *
  * Note: This should be called exactly the same number times as
