@@ -1090,7 +1090,7 @@ ssize_t sock_write2_fn(sock_write_info_s options) {
   if (validate_uuid(options.uuid) || !options.buffer)
     goto error;
   lock_fd(fd);
-  if (!fdinfo(fd).open) {
+  if (!fdinfo(fd).open || fdinfo(fd).close) {
     unlock_fd(fd);
     goto error;
   }

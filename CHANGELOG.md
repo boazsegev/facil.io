@@ -5,6 +5,8 @@
 
 ### v. 0.6.4
 
+**Fix**: (`sock`) fixed an issue where calls to `sock_write` could potentially add data to the outgoing queue even after `sock_close` in cases where the outgoing queue isn't empty.
+
 **Fix**: (`facil.io`) fixed a race condition between pre-scheduled tasks (`defer` calls) and the worker process initialization. The race condition might have resulted in some pre-scheduled tasks not running on all the workers.
 
 **Fix**: (`http`) fixed an issue with the HTTP request logging, where the peer address wasn't shown.
