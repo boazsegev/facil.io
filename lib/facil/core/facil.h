@@ -121,7 +121,7 @@ struct FacilIOProtocol {
    * Called when the server is shutting down, immediately before closing the
    * connection.
    *
-   * The callback runs within a {FIO_PR_LOCK_TACK} lock, so it will never run
+   * The callback runs within a {FIO_PR_LOCK_TASK} lock, so it will never run
    * concurrently wil {on_data} or other connection specific tasks.
    */
   void (*on_shutdown)(intptr_t uuid, protocol_s *protocol);
