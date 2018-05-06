@@ -11,6 +11,8 @@
 
 **Fix**: (`http`) fixed an issue with the HTTP request logging, where the peer address wasn't shown.
 
+**Fix**: (`websocket`) made sure that `on_ready` is never called before `on_open` returns.
+
 **Fix**: (`fio_mem`, `facil`, `http`) fixed compatibility issues with Alpine Linux distro and older OS X versions (< 10.12).
 
 **Fix**: (`http`) fixed the `http_date2rfc2109` method where a space wasn't written to the buffer after the month name (resulting in a junk byte).

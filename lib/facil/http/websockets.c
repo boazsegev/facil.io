@@ -9,6 +9,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fio_llist.h"
 #include "fiobj.h"
 
+#include "evio.h"
 #include "fio_base64.h"
 #include "fio_sha1.h"
 #include "http.h"
@@ -286,10 +287,13 @@ static void on_data_first(intptr_t sockfd, protocol_s *ws_) {
   if (ws->on_open)
     ws->on_open(ws);
   ws->protocol.on_data = on_data;
+  ws->protocol.on_ready = on_ready;
 
-  if (ws->length)
+  if (ws->length) {
     ws->length = websocket_consume(ws->buffer.data, ws->length, ws,
                                    (~(ws->is_client) & 1));
+  }
+  evio_add_write(sock_uuid2fd(sockfd), (void *)sockfd);
 
   facil_force_event(sockfd, FIO_EVENT_ON_DATA);
 }
@@ -310,7 +314,7 @@ static ws_s *new_websocket(intptr_t uuid) {
       .protocol.ping = ws_ping,
       .protocol.on_data = on_data_first,
       .protocol.on_close = on_close,
-      .protocol.on_ready = on_ready,
+      .protocol.on_ready = NULL /* filled in after `on_open` */,
       .protocol.on_shutdown = on_shutdown,
       .subscriptions = FIO_LS_INIT(ws->subscriptions),
       .is_client = 0,
