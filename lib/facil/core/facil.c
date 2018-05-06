@@ -1903,6 +1903,65 @@ static inline size_t facil_detect_cpu_cores(void) {
   return cpu_count;
 }
 
+/**
+ * Returns the number of expected threads / processes to be used by facil.io.
+ *
+ * The pointers should start with valid values that match the expected threads /
+ * processes values passed to `facil_run`.
+ *
+ * The data in the pointers will be overwritten with the result.
+ */
+void facil_expected_concurrency(int16_t *threads, int16_t *processes) {
+  if (!threads || !processes)
+    return;
+  if (!*threads && !*processes) {
+    /* both options set to 0 - default to cores*cores matrix */
+    ssize_t cpu_count = facil_detect_cpu_cores();
+#if FACIL_CPU_CORES_LIMIT
+    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
+      static int print_cores_warning = 1;
+      if (print_cores_warning) {
+        fprintf(
+            stderr,
+            "INFO: Detected %zu cores. Capping auto-detection of cores "
+            "to %zu.\n"
+            "      Avoid this message by setting threads / workers manually.\n"
+            "      To increase auto-detection limit, recompile with:\n"
+            "             -DFACIL_CPU_CORES_LIMIT=%zu \n",
+            (size_t)cpu_count, (size_t)FACIL_CPU_CORES_LIMIT,
+            (size_t)cpu_count);
+        print_cores_warning = 0;
+      }
+      cpu_count = FACIL_CPU_CORES_LIMIT;
+    }
+#endif
+    *threads = *processes = (int16_t)cpu_count;
+  } else if (*threads < 0 || *processes < 0) {
+    /* Set any option that is less than 0 be equal to cores/value */
+    /* Set any option equal to 0 be equal to the other option in value */
+    ssize_t cpu_count = facil_detect_cpu_cores();
+
+    if (cpu_count > 0) {
+      int16_t tmp_threads = 0;
+      if (*threads < 0)
+        tmp_threads = (int16_t)(cpu_count / (*threads * -1));
+      else if (*threads == 0)
+        tmp_threads = -1 * *processes;
+      if (*processes < 0)
+        *processes = (int16_t)(cpu_count / (*processes * -1));
+      else if (*processes == 0)
+        *processes = -1 * *threads;
+      *threads = tmp_threads;
+    }
+  }
+
+  /* make sure we have at least one process and at least one thread */
+  if (*processes <= 0)
+    *processes = 1;
+  if (*threads <= 0)
+    *threads = 1;
+}
+
 #undef facil_run
 void facil_run(struct facil_run_args args) {
   signal(SIGPIPE, SIG_IGN);
@@ -1912,47 +1971,9 @@ void facil_run(struct facil_run_args args) {
     args.on_idle = mock_idle;
   if (!args.on_finish)
     args.on_finish = mock_idle;
-  if (!args.threads && !args.processes) {
-    /* both options set to 0 - default to cores*cores matrix */
-    ssize_t cpu_count = facil_detect_cpu_cores();
-#if FACIL_CPU_CORES_LIMIT
-    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
-      fprintf(
-          stderr,
-          "INFO: Detected %zu cores. Capping auto-detection of cores "
-          "to %zu.\n"
-          "      Avoid this message by setting threads / workers manually.\n"
-          "      To increase auto-detection limit, recompile with:\n"
-          "             -DFACIL_CPU_CORES_LIMIT=%zu \n",
-          (size_t)cpu_count, (size_t)FACIL_CPU_CORES_LIMIT, (size_t)cpu_count);
-      cpu_count = FACIL_CPU_CORES_LIMIT;
-    }
-#endif
-    args.threads = args.processes = (int16_t)cpu_count;
-  } else if (args.threads < 0 || args.processes < 0) {
-    /* Set any option that is less than 0 be equal to cores/value */
-    /* Set any option equal to 0 be equal to the other option in value */
-    ssize_t cpu_count = facil_detect_cpu_cores();
 
-    if (cpu_count > 0) {
-      int16_t threads = 0;
-      if (args.threads < 0)
-        threads = (int16_t)(cpu_count / (args.threads * -1));
-      else if (args.threads == 0)
-        threads = -1 * args.processes;
-      if (args.processes < 0)
-        args.processes = (int16_t)(cpu_count / (args.processes * -1));
-      else if (args.processes == 0)
-        args.processes = -1 * args.threads;
-      args.threads = threads;
-    }
-  }
-
-  /* make sure we have at least one process and at least one thread */
-  if (args.processes <= 0)
-    args.processes = 1;
-  if (args.threads <= 0)
-    args.threads = 1;
+  /* compute actual concurrency */
+  facil_expected_concurrency(&args.threads, &args.processes);
 
   /* listen to SIGINT / SIGTERM */
   facil_setup_signal_handler();

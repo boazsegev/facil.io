@@ -336,6 +336,7 @@ struct facil_run_args {
   /** called when the server is done, to clean up any leftovers. */
   void (*on_finish)(void);
 };
+
 /**
  * Starts the facil.io event loop. This function will return after facil.io is
  * done (after shutdown).
@@ -344,6 +345,16 @@ struct facil_run_args {
  */
 void facil_run(struct facil_run_args args);
 #define facil_run(...) facil_run((struct facil_run_args){__VA_ARGS__})
+
+/**
+ * Returns the number of expected threads / processes to be used by facil.io.
+ *
+ * The pointers should start with valid values that match the expected threads /
+ * processes values passed to `facil_run`.
+ *
+ * The data in the pointers will be overwritten with the result.
+ */
+void facil_expected_concurrency(int16_t *threads, int16_t *processes);
 
 /**
  * returns true (1) if the facil.io engine is already running.
