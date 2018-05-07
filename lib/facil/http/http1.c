@@ -509,7 +509,7 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
 
   if (facil_attach(uuid, &sse_pr->p))
     return -1;
-
+  facil_set_timeout(uuid, handle2pr(h)->p.settings->ws_timeout);
   if (sse->on_open)
     sse->on_open(&sse_pr->sse->sse);
 

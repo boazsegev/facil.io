@@ -449,14 +449,17 @@ sock_peer_addr_s http_peer_addr(http_s *h);
  * It's possible to hijack the socket and than reconnect it to a new protocol
  * object.
  *
- * If any HTTP functions are called after the hijacking, the protocol object
- * might attempt to continue reading data from the buffer.
+ * It's possible to call `http_finish` immediately after calling `http_hijack`
+ * in order to send the outgoing headers.
+ *
+ * If any aditional HTTP functions are called after the hijacking, the protocol
+ * object might attempt to continue reading data from the buffer.
  *
  * Returns the underlining socket connection's uuid. If `leftover` isn't NULL,
  * it will be populated with any remaining data in the HTTP buffer (the data
- * will be automatically deallocated, so copy the data if it's required).
+ * will be automatically deallocated, so copy the data when in need).
  *
- * WARNING: this isn't a good was to handle HTTP connections, especially as
+ * WARNING: this isn't a good way to handle HTTP connections, especially as
  * HTTP/2 enters the picture.
  */
 intptr_t http_hijack(http_s *h, fio_cstr_s *leftover);
