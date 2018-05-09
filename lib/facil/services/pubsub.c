@@ -415,11 +415,24 @@ static void pubsub_on_channel_destroy(channel_s *ch) {
 
 /** Registers an engine, so it's callback can be called. */
 void pubsub_engine_register(pubsub_engine_s *engine) {
+  if (!engine) {
+    return;
+  }
   spn_lock(&engn_lock);
   fio_hash_insert(
       &engines,
       (fio_hash_key_s){.hash = (uintptr_t)engine, .obj = FIOBJ_INVALID},
       engine);
+  if (engine->subscribe) {
+    FIO_HASH_FOR_LOOP(&channels, i) {
+      channel_s *ch = i->obj;
+      engine->subscribe(engine, ch->name, 0);
+    }
+    FIO_HASH_FOR_LOOP(&patterns, i) {
+      channel_s *ch = i->obj;
+      engine->subscribe(engine, ch->name, 1);
+    }
+  }
   spn_unlock(&engn_lock);
 }
 

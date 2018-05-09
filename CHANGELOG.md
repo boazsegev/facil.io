@@ -17,6 +17,8 @@
 
 **Fix**: (`http`) fixed the `http_date2rfc2109` method where a space wasn't written to the buffer after the month name (resulting in a junk byte).
 
+**Fix**: (`pubsub`) made sure that newly registered engines get the full list of existing subscriptions (no need to call `pubsub_engine_resubscribe`).
+
 ### ABI breaking changes expected in v. 0.7.0
 
 * The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
