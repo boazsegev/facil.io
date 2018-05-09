@@ -81,10 +81,10 @@ static inline int spn_trylock(spn_lock_i *lock) {
 }
 
 /** Releases a lock. */
-static inline __attribute__((unused)) void spn_unlock(spn_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
-  *lock = 0;
+static inline __attribute__((unused)) int spn_unlock(spn_lock_i *lock) {
+  return SPN_LOCK_BUILTIN(lock, 0);
 }
+
 /** returns a lock's state (non 0 == Busy). */
 static inline __attribute__((unused)) int spn_is_locked(spn_lock_i *lock) {
   __asm__ volatile("" ::: "memory");
