@@ -289,7 +289,7 @@ int defer_join_thread(void *p_thr) {
   if (!p_thr || !(*((pthread_t *)p_thr)))
     return -1;
   pthread_join(*((pthread_t *)p_thr), NULL);
-  *((pthread_t *)p_thr) = NULL;
+  *((pthread_t *)p_thr) = (pthread_t)NULL;
   defer_free_thread(p_thr);
   return 0;
 }
