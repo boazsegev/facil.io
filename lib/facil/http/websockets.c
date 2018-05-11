@@ -664,8 +664,10 @@ The API implementation
 
 /** Returns the opaque user data associated with the websocket. */
 void *websocket_udata(ws_s *ws) { return ws->udata; }
+
 /** Returns the the process specific connection's UUID (see `libsock`). */
 intptr_t websocket_uuid(ws_s *ws) { return ws->fd; }
+
 /** Sets the opaque user data associated with the websocket.
  * Returns the old value, if any. */
 void *websocket_udata_set(ws_s *ws, void *udata) {
@@ -673,6 +675,14 @@ void *websocket_udata_set(ws_s *ws, void *udata) {
   ws->udata = udata;
   return old;
 }
+
+/**
+ * Returns 1 if the WebSocket connection is in Client mode (connected to a
+ * remote server) and 0 if the connection is in Server mode (a connection
+ * established using facil.io's HTTP server).
+ */
+uint8_t websocket_is_client(ws_s *ws) { return ws->is_client; }
+
 /** Writes data to the websocket. Returns -1 on failure (0 on success). */
 int websocket_write(ws_s *ws, void *data, size_t size, uint8_t is_text) {
   if (sock_isvalid(ws->fd)) {

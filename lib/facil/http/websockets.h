@@ -31,23 +31,30 @@ Websocket information
 void *websocket_udata(ws_s *ws);
 
 /**
-Sets the opaque user data associated with the websocket.
-
-Returns the old value, if any.
-*/
+ * Sets the opaque user data associated with the websocket.
+ *
+ * Returns the old value, if any.
+ */
 void *websocket_udata_set(ws_s *ws, void *udata);
 
 /**
-Returns the underlying socket UUID.
-
-This is only relevant for collecting the protocol object from outside of
-websocket events, as the socket shouldn't be written to.
-*/
+ * Returns the underlying socket UUID.
+ *
+ * This is only relevant for collecting the protocol object from outside of
+ * websocket events, as the socket shouldn't be written to.
+ */
 intptr_t websocket_uuid(ws_s *ws);
 
 /**
-Counts the number of websocket connections.
-*/
+ * Returns 1 if the WebSocket connection is in Client mode (connected to a
+ * remote server) and 0 if the connection is in Server mode (a connection
+ * established using facil.io's HTTP server).
+ */
+uint8_t websocket_is_client(ws_s *ws);
+
+/**
+ * Counts the number of websocket connections in this process.
+ */
 size_t websocket_count(void);
 
 /* *****************************************************************************
