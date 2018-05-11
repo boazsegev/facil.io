@@ -122,8 +122,11 @@ void fio_malloc_test(void);
 #endif
 
 /** Allocator default settings. */
+#ifndef FIO_MEMORY_BLOCK_SIZE_LOG
+#define FIO_MEMORY_BLOCK_SIZE_LOG (17) /* 17 == 128Kb */
+#endif
 #ifndef FIO_MEMORY_BLOCK_SIZE
-#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << 17) /* 17 == 128Kb */
+#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
 #endif
 #ifndef FIO_MEMORY_BLOCK_MASK
 #define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1) /* 0b111... */

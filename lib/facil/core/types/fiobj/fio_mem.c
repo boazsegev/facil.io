@@ -140,9 +140,10 @@ static inline void *sys_alloc(size_t len, uint8_t is_indi) {
   static void *next_alloc = NULL;
 /* hope for the best? */
 #ifdef MAP_ALIGNED
-  result = mmap(
-      next_alloc, len, PROT_READ | PROT_WRITE,
-      MAP_PRIVATE | MAP_ANONYMOUS | MAP_ALIGNED(FIO_MEMORY_BLOCK_SIZE), -1, 0);
+  result =
+      mmap(next_alloc, len, PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_ANONYMOUS | MAP_ALIGNED(FIO_MEMORY_BLOCK_SIZE_LOG),
+           -1, 0);
 #else
   result = mmap(next_alloc, len, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

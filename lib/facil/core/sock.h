@@ -39,6 +39,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/types.h>
 #include <unistd.h>
 
+#if defined(__FreeBSD__)
+#include <netinet/in.h>
+#include <sys/socket.h>
+#endif
+
 // clang-format off
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #   if defined(__has_include)
