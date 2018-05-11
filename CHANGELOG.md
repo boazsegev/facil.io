@@ -19,6 +19,8 @@
 
 **Fix**: (`pubsub`) made sure that newly registered engines get the full list of existing subscriptions (no need to call `pubsub_engine_resubscribe`).
 
+**Fix**: (`facil`) possible fix for protocol attachment with `NULL` protocol.
+
 ### ABI breaking changes expected in v. 0.7.0
 
 * The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
