@@ -564,8 +564,8 @@ void facil_cluster_set_handler(int32_t filter,
 
 Unknown `msg_type` values are silently ignored.
 
-The `msg_type` value can be any number less than 1,073,741,824. All values
-starting at 1,073,741,824 are reserved for internal use.
+The `msg_type` value can be any positive number less than 1,073,741,824. All
+negative values and values above 1,073,741,824 are reserved for internal use.
 
 Callbacks are invoked using an O(n) matching, where `n` is the number of
 registered callbacks.

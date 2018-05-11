@@ -135,7 +135,7 @@ static const char *CLUSTER_CONNECTION_PROTOCOL_NAME =
     "cluster connection __facil_internal__";
 
 static inline int is_counted_protocol(protocol_s *p) {
-  return p->service != TIMER_PROTOCOL_NAME &&
+  return p && p->service != TIMER_PROTOCOL_NAME &&
          p->service != CLUSTER_LISTEN_PROTOCOL_NAME &&
          p->service != CLUSTER_CONNECTION_PROTOCOL_NAME;
 }
@@ -1681,7 +1681,7 @@ static void facil_worker_cleanup(void) {
   facil_cluster_signal_children();
   for (int i = 0; i <= facil_data->capacity; ++i) {
     intptr_t uuid;
-    if (fd_data(i).protocol && is_counted_protocol(fd_data(i).protocol) &&
+    if (is_counted_protocol(fd_data(i).protocol) &&
         (uuid = sock_fd2uuid(i)) >= 0) {
       defer(deferred_on_shutdown, (void *)uuid, NULL);
     }
@@ -2063,7 +2063,7 @@ static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
       spn_sub(&facil_data->connection_count, 1);
     }
     defer(deferred_on_close, (void *)uuid, old_protocol);
-  } else if (evio_isactive()) {
+  } else if (evio_isactive() && protocol) {
     return evio_add(sock_uuid2fd(uuid), (void *)uuid);
   }
   return 0;
