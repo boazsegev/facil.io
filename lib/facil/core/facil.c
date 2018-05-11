@@ -419,6 +419,10 @@ Initialization and Cleanup
 ***************************************************************************** */
 static spn_lock_i facil_libinit_lock = SPN_LOCK_INIT;
 
+/** Rounds up any size to the nearest page alignment (assumes 4096 bytes per
+ * page) */
+#define round_size(size) (((size) & (~4095)) + (4096 * (!!((size)&4095))))
+
 static void facil_cluster_cleanup(void); /* cluster data cleanup */
 
 static void facil_libcleanup(void) {
@@ -427,10 +431,10 @@ static void facil_libcleanup(void) {
   if (facil_data) {
     facil_external_root_cleanup();
     facil_cluster_cleanup();
-    defer_perform(); /* perform any lingering cleanup tasks */
-    munmap(facil_data,
-           sizeof(*facil_data) + ((size_t)facil_data->capacity *
-                                  sizeof(struct connection_data_s)));
+    // defer_perform(); /* perform any lingering cleanup tasks? */
+    size_t mem_size = sizeof(*facil_data) + ((size_t)facil_data->capacity *
+                                             sizeof(struct connection_data_s));
+    munmap(facil_data, round_size(mem_size));
     facil_data = NULL;
   }
   spn_unlock(&facil_libinit_lock);
@@ -447,7 +451,7 @@ static void facil_lib_init(void) {
   spn_lock(&facil_libinit_lock);
   if (facil_data)
     goto finish;
-  facil_data = mmap(NULL, mem_size, PROT_READ | PROT_WRITE,
+  facil_data = mmap(NULL, round_size(mem_size), PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (!facil_data || facil_data == MAP_FAILED) {
     perror("ERROR: Couldn't initialize the facil.io library");
