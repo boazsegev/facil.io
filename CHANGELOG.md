@@ -3,6 +3,19 @@
 ---
 ## Future (expected / upcoming) changes
 
+### ABI breaking changes expected in v. 0.7.0
+
+* The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
+
+* The read/write hooks will support a `has_pending` variation (right now `sock_has_pending` ignores the r/w hook's internal cache).
+
+* The WebSocket upgrade (`http_upgrade2ws`) will better match the SSE upgrade function (starts with the handle `http_s *` and named arguments come later).
+
+* The Pub/Sub system's `use_pattern` will be replaced with a function pointer, allowing for NATs and RabbitMQ pattern matching logic to be added (right now, only Redis pattern matching style is supported).
+
+---
+## Released versions
+
 ### v. 0.6.4
 
 **Fix**: (`sock`) fixed an issue where calls to `sock_write` could potentially add data to the outgoing queue even after `sock_close` in cases where the outgoing queue isn't empty.
@@ -20,19 +33,6 @@
 **Fix**: (`pubsub`) made sure that newly registered engines get the full list of existing subscriptions (no need to call `pubsub_engine_resubscribe`).
 
 **Fix**: (`facil`) possible fix for protocol attachment with `NULL` protocol.
-
-### ABI breaking changes expected in v. 0.7.0
-
-* The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
-
-* The read/write hooks will support a `has_pending` variation (right now `sock_has_pending` ignores the r/w hook's internal cache).
-
-* The WebSocket upgrade (`http_upgrade2ws`) will better match the SSE upgrade function (starts with the handle `http_s *` and named arguments come later).
-
-* The Pub/Sub system's `use_pattern` will be replaced with a function pointer, allowing for NATs and RabbitMQ pattern matching logic to be added (right now, only Redis pattern matching style is supported).
-
----
-## Released versions
 
 ### v. 0.6.3
 
