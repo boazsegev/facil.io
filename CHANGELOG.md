@@ -9,8 +9,6 @@
 
 * The Protocol object's `on_shutdown` callback will return a `uint8_t`, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
 
-* The read/write hooks will support a `has_pending` variation (right now `sock_has_pending` ignores the r/w hook's internal cache).
-
 * The WebSocket upgrade (`http_upgrade2ws`) will better match the SSE upgrade function (starts with the handle `http_s *` and named arguments come later).
 
 * The Pub/Sub system's `use_pattern` will be replaced with a function pointer, allowing for NATs and RabbitMQ pattern matching logic to be added (right now, only Redis pattern matching style is supported).

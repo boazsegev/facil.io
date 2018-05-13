@@ -209,6 +209,13 @@ static void mock_ping(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
   sock_force_close(uuid);
 }
+static void mock_ping2(intptr_t uuid, protocol_s *protocol) {
+  (void)(protocol);
+  protocol->ping = mock_ping;
+  uuid_data(uuid).active = facil_last_tick().tv_sec;
+  uuid_data(uuid).timeout = 8;
+  sock_close(uuid);
+}
 
 /* Support for the default pub/sub cluster engine */
 #pragma weak pubsub_cluster_init
@@ -380,12 +387,18 @@ static void deferred_on_shutdown(void *arg, void *arg2) {
     goto postpone;
   }
   uuid_data(arg).active = facil_data->last_cycle.tv_sec;
-  uuid_data(arg).timeout = 8;
   /* TODO: 0.7.0 catch the return valuse to set timeout and maybe keep open */
-  pr->on_shutdown((intptr_t)arg, pr);
-  pr->ping = mock_ping;
-  protocol_unlock(pr, FIO_PR_LOCK_TASK);
-  sock_close((intptr_t)arg);
+  uint8_t r = pr->on_shutdown((intptr_t)arg, pr);
+  if (r) {
+    uuid_data(arg).timeout = r;
+    pr->ping = mock_ping2;
+    protocol_unlock(pr, FIO_PR_LOCK_TASK);
+  } else {
+    uuid_data(arg).timeout = 8;
+    pr->ping = mock_ping;
+    protocol_unlock(pr, FIO_PR_LOCK_TASK);
+    sock_close((intptr_t)arg);
+  }
   return;
 postpone:
   defer(deferred_on_shutdown, arg, NULL);
