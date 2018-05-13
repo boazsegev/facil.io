@@ -5,8 +5,11 @@ License: MIT
 */
 
 /**
- * A simple ordered Hash Table implementation, with a minimal API and zero hash
- * collision protection.
+ * A simple ordered Hash Table implementation, with a minimal API.
+ *
+ * Keys types are adjustable using macros. A single C file is limited to a
+ * single key type. Keys can be strings, integers, anything. By default, keys
+ * are uint64_t.
  *
  * Unique keys are required. Full key collisions aren't handled, instead the old
  * value is replaced and returned.

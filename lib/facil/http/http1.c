@@ -446,10 +446,11 @@ static void http1_sse_on_ready(intptr_t uuid, protocol_s *p_) {
     p->sse->sse.on_ready(&p->sse->sse);
   (void)uuid;
 }
-static void http1_sse_on_shutdown(intptr_t uuid, protocol_s *p_) {
+static uint8_t http1_sse_on_shutdown(intptr_t uuid, protocol_s *p_) {
   http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
   if (p->sse->sse.on_shutdown)
     p->sse->sse.on_shutdown(&p->sse->sse);
+  return 0;
   (void)uuid;
 }
 static void http1_sse_on_close(intptr_t uuid, protocol_s *p_) {

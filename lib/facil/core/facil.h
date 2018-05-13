@@ -10,8 +10,8 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #define H_FACIL_H
 #define FACIL_VERSION_MAJOR 0
-#define FACIL_VERSION_MINOR 6
-#define FACIL_VERSION_PATCH 4
+#define FACIL_VERSION_MINOR 7
+#define FACIL_VERSION_PATCH 0
 
 #ifndef FACIL_PRINT_STATE
 /**
@@ -124,7 +124,7 @@ struct FacilIOProtocol {
    * The callback runs within a {FIO_PR_LOCK_TASK} lock, so it will never run
    * concurrently wil {on_data} or other connection specific tasks.
    */
-  void (*on_shutdown)(intptr_t uuid, protocol_s *protocol);
+  uint8_t (*on_shutdown)(intptr_t uuid, protocol_s *protocol);
   /** Called when the connection was closed, but will not run concurrently */
   void (*on_close)(intptr_t uuid, protocol_s *protocol);
   /** called when a connection's timeout was reached */
@@ -329,12 +329,12 @@ struct facil_run_args {
    *   than facil.io will run 2 processes with (cores/2) threads per process.
    */
   int16_t threads;
-  /** The number of processes to run (including this one). See `threads`. */
-  int16_t processes;
-  /** called if the event loop in cycled with no pending events. */
-  void (*on_idle)(void);
-  /** called when the server is done, to clean up any leftovers. */
-  void (*on_finish)(void);
+  union {
+    /** The number of worker processes to run. See `threads`. */
+    int16_t workers;
+    /** alias to `workers`. See `threads`. */
+    int16_t processes;
+  };
 };
 
 /**
@@ -406,7 +406,7 @@ uint8_t facil_get_timeout(intptr_t uuid);
 enum facil_io_event {
   FIO_EVENT_ON_DATA,
   FIO_EVENT_ON_READY,
-  FIO_EVENT_ON_TIMEOUT,
+  FIO_EVENT_ON_TIMEOUT
 };
 /** Schedules an IO event, even id it did not occur. */
 void facil_force_event(intptr_t uuid, enum facil_io_event);
@@ -423,6 +423,43 @@ void facil_force_event(intptr_t uuid, enum facil_io_event);
  * function might quitely fail.
  */
 void facil_quite(intptr_t uuid);
+
+/* *****************************************************************************
+Core Callbacks for fork, start up, idle and clean up events
+
+To call a function after `fork` has complete, simply add it to the normal queue
+using `defer`.
+***************************************************************************** */
+
+typedef enum {
+  /* Called before the facil.io master process forks. */
+  FIO_CALL_BEFORE_FORK,
+  /* Called after the facil.io master process forks. */
+  FIO_CALL_AFTER_FORK,
+  /* Called by a worker process right after forking. */
+  FIO_CALL_IN_CHILD,
+  /* Called when starting up the server. */
+  FIO_CALL_ON_START,
+  /* Called when facil.io enters idling mode. */
+  FIO_CALL_ON_IDLE,
+  /* Called before starting the shutdown sequence. */
+  FIO_CALL_ON_SHUTDOWN,
+  /* Called just before finishing up. */
+  FIO_CALL_ON_FINISH
+} callback_type_e;
+
+/** Adds a callback to the list of callbacks to be called for the event. */
+void facil_core_callback_add(callback_type_e, void (*func)(void *), void *arg);
+
+/** Removes a callback from the list of callbacks to be called for the event. */
+int facil_core_callback_remove(callback_type_e, void (*func)(void *),
+                               void *arg);
+
+/** Forces all the existing callbacks to run, as if the event occured. */
+void facil_core_callback_force(callback_type_e);
+
+/** Clears all the existing callbacks for the event. */
+void facil_core_callback_clear(callback_type_e);
 
 /* *****************************************************************************
 Helper API

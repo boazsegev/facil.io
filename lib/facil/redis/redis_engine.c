@@ -334,9 +334,10 @@ static void redis_sub_on_close(intptr_t uuid, protocol_s *pr) {
   }
 }
 
-static void redis_on_shutdown(intptr_t uuid, protocol_s *pr) {
+static uint8_t redis_on_shutdown(intptr_t uuid, protocol_s *pr) {
   sock_write2(.uuid = uuid, .buffer = "*1\r\n$4\r\nQUIT\r\n", .length = 14,
               .dealloc = SOCK_DEALLOC_NOOP);
+  return 0;
   (void)pr;
 }
 

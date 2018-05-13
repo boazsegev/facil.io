@@ -11,22 +11,31 @@
     perror("");                                                                \
   } while (0);
 
-static void handle_cluster_test(void *msg, uint32_t len) {
-  fprintf(stderr, "%.*s\n", (int)len, msg);
+static void handle_cluster_test(int32_t filter, FIOBJ ch, FIOBJ msg) {
+  fprintf(stderr, "(%d) %s: %s\n", filter, fiobj_obj2cstr(ch).data,
+          fiobj_obj2cstr(msg).data);
 }
 
 static void send_cluster_msg(void *a1) {
   (void)a1;
   fprintf(stderr, "* Sending a cluster message.\n");
-  facil_cluster_send(7, "Cluster is alive.", 18);
+  FIOBJ ch = fiobj_str_new("Cluster Test", 12);
+  FIOBJ msg = fiobj_str_new("okay", 4);
+  facil_cluster_send(7, ch, msg);
+  fiobj_free(ch);
+  fiobj_free(msg);
 }
 
 static void defered_test_cluster(void *a1, void *a2) {
   (void)a1;
   (void)a2;
-  facil_cluster_set_handler(7, handle_cluster_test);
-  if (!defer_fork_pid())
+  if (facil_parent_pid() == getpid()) {
     facil_run_every(5000, -1, send_cluster_msg, NULL, NULL);
+  }
+}
+
+static void perform_callback(void *cb_str) {
+  fprintf(stderr, "(%d) %s\n", getpid(), (char *)cb_str);
 }
 
 static void test_cluster(void) {
@@ -48,6 +57,26 @@ static void test_cluster(void) {
   print_error_code(ENOENT);
 
   defer(defered_test_cluster, NULL, NULL);
+}
+
+int main(void) {
+  facil_core_callback_add(FIO_CALL_BEFORE_FORK, perform_callback,
+                          "Before fork");
+  facil_core_callback_add(FIO_CALL_AFTER_FORK, perform_callback, "After fork");
+  facil_core_callback_add(FIO_CALL_IN_CHILD, perform_callback,
+                          "Just the child");
+  facil_core_callback_add(FIO_CALL_ON_START, perform_callback, "Starting up");
+  facil_core_callback_add(FIO_CALL_ON_SHUTDOWN, perform_callback,
+                          "Shutting down");
+  facil_core_callback_add(FIO_CALL_ON_FINISH, perform_callback, "Done.");
+  facil_core_callback_add(FIO_CALL_ON_IDLE, perform_callback, "idling.");
+
+  facil_cluster_set_handler(7, handle_cluster_test);
+
+  test_cluster();
+  facil_run(.threads = 2, .workers = 4);
+
+  return 0;
 }
 
 #endif

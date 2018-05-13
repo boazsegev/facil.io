@@ -5,7 +5,9 @@
 
 ### ABI breaking changes expected in v. 0.7.0
 
-* The `on_shutdown` callback will return an unsigned int, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
+* The `on_idle` and `on_finish` settings in `facil_run` were removed, replaced by the more flexible `facil_core_callback_add` approach.
+
+* The Protocol object's `on_shutdown` callback will return a `uint8_t`, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
 
 * The read/write hooks will support a `has_pending` variation (right now `sock_has_pending` ignores the r/w hook's internal cache).
 

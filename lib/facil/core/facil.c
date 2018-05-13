@@ -9,6 +9,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "evio.h"
 #include "facil.h"
 #include "fio_hashmap.h"
+#include "fio_llist.h"
 #include "fiobj4sock.h"
 
 #include "fio_mem.h"
@@ -80,8 +81,6 @@ static struct facil_data_s {
   pool_pt thread_pool;
   ssize_t capacity;
   size_t connection_count;
-  void (*on_idle)(void);
-  void (*on_finish)(void);
   struct timespec last_cycle;
   struct connection_data_s conn[];
 } * facil_data;
@@ -200,9 +199,9 @@ static void mock_on_close(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
   (void)(uuid);
 }
-
-static void mock_on_finish(intptr_t uuid, void *udata) {
-  (void)(udata);
+static uint8_t mock_on_shutdown(intptr_t uuid, protocol_s *protocol) {
+  return 0;
+  (void)(protocol);
   (void)(uuid);
 }
 
@@ -210,8 +209,6 @@ static void mock_ping(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
   sock_force_close(uuid);
 }
-
-static void mock_idle(void) {}
 
 /* Support for the default pub/sub cluster engine */
 #pragma weak pubsub_cluster_init
@@ -226,6 +223,107 @@ void pubsub_cluster_cleanup(void) {}
 /* other cleanup concern */
 #pragma weak fio_cli_end
 void fio_cli_end(void) {}
+
+/* *****************************************************************************
+Core Callbacks for forking / starting up / cleaning up
+***************************************************************************** */
+
+typedef struct {
+  fio_ls_embd_s node;
+  void (*func)(void *);
+  void *arg;
+} callback_data_s;
+
+typedef struct {
+  spn_lock_i lock;
+  fio_ls_embd_s callbacks;
+} callback_collection_s;
+
+static callback_collection_s callback_collection[FIO_CALL_ON_FINISH + 1];
+
+static inline void facil_core_callback_ensure(callback_collection_s *c) {
+  if (c->callbacks.next)
+    return;
+  c->callbacks = (fio_ls_embd_s)FIO_LS_INIT(c->callbacks);
+}
+
+/** Adds a callback to the list of callbacks to be called for the event. */
+void facil_core_callback_add(callback_type_e c_type, void (*func)(void *),
+                             void *arg) {
+  if (!func || (int)c_type < 0 || c_type > FIO_CALL_ON_FINISH)
+    return;
+  spn_lock(&callback_collection[c_type].lock);
+  facil_core_callback_ensure(&callback_collection[c_type]);
+  callback_data_s *tmp = malloc(sizeof(*tmp));
+  *tmp = (callback_data_s){.func = func, .arg = arg};
+  fio_ls_embd_push(&callback_collection[c_type].callbacks, &tmp->node);
+  spn_unlock(&callback_collection[c_type].lock);
+}
+
+/** Removes a callback from the list of callbacks to be called for the event. */
+int facil_core_callback_remove(callback_type_e c_type, void (*func)(void *),
+                               void *arg) {
+  if ((int)c_type < 0 || c_type > FIO_CALL_ON_FINISH)
+    return -1;
+  spn_lock(&callback_collection[c_type].lock);
+  FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
+    callback_data_s *tmp = (FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
+    if (tmp->func == func && tmp->arg == arg) {
+      fio_ls_embd_remove(&tmp->node);
+      free(tmp);
+      goto success;
+    }
+  }
+  spn_unlock(&callback_collection[c_type].lock);
+  return -1;
+success:
+  spn_unlock(&callback_collection[c_type].lock);
+  return -0;
+}
+
+/** Forces all the existing callbacks to run, as if the event occured. */
+void facil_core_callback_force(callback_type_e c_type) {
+  if ((int)c_type < 0 || c_type > FIO_CALL_ON_FINISH)
+    return;
+  /* copy collection */
+  fio_ls_embd_s copy = FIO_LS_INIT(copy);
+  spn_lock(&callback_collection[c_type].lock);
+  facil_core_callback_ensure(&callback_collection[c_type]);
+  FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
+    callback_data_s *tmp = fio_malloc(sizeof(*tmp));
+    *tmp = *(FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
+    fio_ls_embd_push(&copy, &tmp->node);
+  }
+  spn_unlock(&callback_collection[c_type].lock);
+  /* run callbacks + free data */
+  while (fio_ls_embd_any(&copy)) {
+    callback_data_s *tmp =
+        FIO_LS_EMBD_OBJ(callback_data_s, node, fio_ls_embd_shift(&copy));
+    if (tmp->func) {
+      tmp->func(tmp->arg);
+    }
+    fio_free(tmp);
+  }
+}
+
+/** Clears all the existing callbacks for the event. */
+void facil_core_callback_clear(callback_type_e c_type) {
+  if ((int)c_type < 0 || c_type > FIO_CALL_ON_FINISH)
+    return;
+  spn_lock(&callback_collection[c_type].lock);
+  facil_core_callback_ensure(&callback_collection[c_type]);
+  while (fio_ls_embd_any(&callback_collection[c_type].callbacks)) {
+    callback_data_s *tmp = FIO_LS_EMBD_OBJ(
+        callback_data_s, node,
+        fio_ls_embd_shift(&callback_collection[c_type].callbacks));
+    free(tmp);
+  }
+  spn_unlock(&callback_collection[c_type].lock);
+}
+
+/* *****************************************************************************
+External initialization / deconstruction
+***************************************************************************** */
 
 /* perform initialization for external services. */
 static void facil_external_init(void) {
@@ -534,7 +632,9 @@ static void free_listenner(void *li) { free(li); }
 
 static void listener_on_close(intptr_t uuid, protocol_s *plistener) {
   struct ListenerProtocol *listener = (void *)plistener;
-  listener->on_finish(uuid, listener->udata);
+  if (listener->on_finish) {
+    listener->on_finish(uuid, listener->udata);
+  }
   if (FACIL_PRINT_STATE && facil_data->parent == getpid()) {
     if (listener->port) {
       fprintf(stderr, "* Stopped listening on port %s\n", listener->port);
@@ -551,10 +651,6 @@ static void listener_on_close(intptr_t uuid, protocol_s *plistener) {
 
 static inline struct ListenerProtocol *
 listener_alloc(struct facil_listen_args settings) {
-  if (!settings.on_start)
-    settings.on_start = mock_on_finish;
-  if (!settings.on_finish)
-    settings.on_finish = mock_on_finish;
   size_t port_len = 0;
   size_t addr_len = 0;
   if (settings.port) {
@@ -607,7 +703,9 @@ inline static void listener_on_start(int fd) {
   // call the on_init callback
   struct ListenerProtocol *listener =
       (struct ListenerProtocol *)uuid_data(uuid).protocol;
-  listener->on_start(uuid, listener->udata);
+  if (listener->on_start) {
+    listener->on_start(uuid, listener->udata);
+  }
 }
 
 /**
@@ -1150,9 +1248,10 @@ static void cluster_on_server_close(intptr_t uuid, protocol_s *pr_) {
   free(c);
 }
 
-static void cluster_on_shutdown(intptr_t uuid, protocol_s *pr_) {
+static uint8_t cluster_on_shutdown(intptr_t uuid, protocol_s *pr_) {
   cluster_send2traget(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL);
   facil_force_event(uuid, FIO_EVENT_ON_READY);
+  return 0;
   (void)pr_;
   (void)uuid;
 }
@@ -1478,7 +1577,7 @@ reschedule:
 }
 
 static void perform_idle(void *arg, void *ignr) {
-  facil_data->on_idle();
+  facil_core_callback_force(FIO_CALL_ON_IDLE);
   (void)arg;
   (void)ignr;
 }
@@ -1584,6 +1683,7 @@ static void facil_worker_startup(uint8_t sentinel) {
   evio_create();
   clock_gettime(CLOCK_REALTIME, &facil_data->last_cycle);
   facil_external_init();
+  facil_core_callback_force(FIO_CALL_ON_START);
   if (facil_data->active == 1) {
     /* single process */
     for (int i = 0; i < facil_data->capacity; i++) {
@@ -1679,6 +1779,7 @@ static void facil_worker_startup(uint8_t sentinel) {
 static void facil_worker_cleanup(void) {
   facil_data->active = 0;
   facil_cluster_signal_children();
+  facil_core_callback_force(FIO_CALL_ON_SHUTDOWN);
   for (int i = 0; i <= facil_data->capacity; ++i) {
     intptr_t uuid;
     if (is_counted_protocol(fd_data(i).protocol) &&
@@ -1701,9 +1802,7 @@ static void facil_worker_cleanup(void) {
     }
   }
   defer_perform();
-  if (facil_data->on_finish) {
-    facil_data->on_finish();
-  }
+  facil_core_callback_force(FIO_CALL_ON_FINISH);
   defer_perform();
   evio_close();
   facil_external_cleanup();
@@ -1718,13 +1817,14 @@ static void facil_worker_cleanup(void) {
   }
 }
 
+static spn_lock_i fio_fork_lock = SPN_LOCK_INIT;
+
 static void facil_sentinel_task(void *arg1, void *arg2);
 static void *facil_sentinel_worker_thread(void *arg) {
   errno = 0;
   pid_t child = facil_fork();
-  if (arg && child) {
-    spn_unlock((spn_lock_i *)arg);
-  }
+  /* release fork lock. */
+  spn_unlock(&fio_fork_lock);
   if (child == -1) {
     perror("FATAL ERROR: couldn't spawn worker.");
     kill(facil_parent_pid(), SIGINT);
@@ -1751,6 +1851,8 @@ static void *facil_sentinel_worker_thread(void *arg) {
     }
 #else
     if (facil_data->active) {
+      /* don't call any functions while forking. */
+      spn_lock(&fio_fork_lock);
       if (!WIFEXITED(status) || WEXITSTATUS(status)) {
         fprintf(stderr,
                 "ERROR: Child worker (%d) crashed. Respawning worker.\n",
@@ -1761,32 +1863,37 @@ static void *facil_sentinel_worker_thread(void *arg) {
                 child);
       }
       defer(facil_sentinel_task, NULL, NULL);
+      spn_unlock(&fio_fork_lock);
     }
 #endif
   } else {
+    facil_core_callback_force(FIO_CALL_AFTER_FORK);
+    facil_core_callback_force(FIO_CALL_IN_CHILD);
     facil_worker_startup(0);
     facil_worker_cleanup();
     exit(0);
   }
   return NULL;
+  (void)arg;
 }
 
 #if FIO_SENTINEL_USE_PTHREAD
 static void facil_sentinel_task(void *arg1, void *arg2) {
   if (!facil_data->active)
     return;
-  spn_lock_i pre_fork_lock = SPN_LOCK_INIT;
-  spn_lock(&pre_fork_lock);
+  spn_lock(&fio_fork_lock);
   pthread_t sentinel;
   if (pthread_create(&sentinel, NULL, facil_sentinel_worker_thread,
-                     (void *)&pre_fork_lock)) {
+                     (void *)&fio_fork_lock)) {
     perror("FATAL ERROR: couldn't start sentinel thread");
     exit(errno);
   }
   pthread_detach(sentinel);
-  spn_lock(&pre_fork_lock); /* will wait for worker thread to release lock. */
+  spn_lock(&fio_fork_lock); /* will wait for worker thread to release lock. */
+  spn_unlock(&fio_fork_lock);
   facil_cluster_data.listening.on_data(facil_cluster_data.root,
                                        &facil_cluster_data.listening);
+  facil_core_callback_force(FIO_CALL_AFTER_FORK);
   (void)arg1;
   (void)arg2;
 }
@@ -1794,12 +1901,14 @@ static void facil_sentinel_task(void *arg1, void *arg2) {
 static void facil_sentinel_task(void *arg1, void *arg2) {
   if (!facil_data->active)
     return;
-  spn_lock_i pre_fork_lock = SPN_LOCK_INIT;
-  spn_lock(&pre_fork_lock);
+  facil_core_callback_force(FIO_CALL_BEFORE_FORK);
+  spn_lock(&fio_fork_lock); /* will wait for worker thread to release lock. */
   void *thrd =
-      defer_new_thread(facil_sentinel_worker_thread, (void *)&pre_fork_lock);
+      defer_new_thread(facil_sentinel_worker_thread, (void *)&fio_fork_lock);
   defer_free_thread(thrd);
-  spn_lock(&pre_fork_lock); /* will wait for worker thread to release lock. */
+  spn_lock(&fio_fork_lock); /* will wait for worker thread to release lock. */
+  spn_unlock(&fio_fork_lock);
+  facil_core_callback_force(FIO_CALL_AFTER_FORK);
   facil_cluster_data.listening.on_data(facil_cluster_data.root,
                                        &facil_cluster_data.listening);
   (void)arg1;
@@ -1969,12 +2078,9 @@ void facil_expected_concurrency(int16_t *threads, int16_t *processes) {
 #undef facil_run
 void facil_run(struct facil_run_args args) {
   signal(SIGPIPE, SIG_IGN);
-  if (!facil_data)
+  if (!facil_data) {
     facil_lib_init();
-  if (!args.on_idle)
-    args.on_idle = mock_idle;
-  if (!args.on_finish)
-    args.on_finish = mock_idle;
+  }
 
   /* compute actual concurrency */
   facil_expected_concurrency(&args.threads, &args.processes);
@@ -1985,8 +2091,6 @@ void facil_run(struct facil_run_args args) {
   /* activate facil, fork if needed */
   facil_data->active = (uint16_t)args.processes;
   facil_data->threads = (uint16_t)args.threads;
-  facil_data->on_finish = args.on_finish;
-  facil_data->on_idle = args.on_idle;
   /* initialize cluster */
   if (args.processes > 1) {
     if (facil_cluster_init()) {
@@ -2035,7 +2139,7 @@ static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
       protocol->ping = mock_ping;
     }
     if (!protocol->on_shutdown) {
-      protocol->on_shutdown = mock_on_ev;
+      protocol->on_shutdown = mock_on_shutdown;
     }
     prt_meta(protocol) = state;
   }
