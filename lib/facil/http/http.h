@@ -8,6 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define H_HTTP_H
 
 #include "facil.h"
+#include "pubsub.h"
 
 #include <time.h>
 
@@ -482,8 +483,6 @@ typedef struct ws_s ws_s;
  * function and macro.
  */
 typedef struct {
-  /** REQUIRED: The `http_s` to be initiating the websocket connection.*/
-  http_s *http;
   /**
    * The (optional) on_message callback will be called whenever a websocket
    * message is received for this connection.
@@ -540,7 +539,7 @@ typedef struct {
  * A client connection's `on_finish` callback will be called (since the HTTP
  * stage has finished).
  */
-int http_upgrade2ws(websocket_settings_s);
+int http_upgrade2ws(http_s *http, websocket_settings_s);
 
 /** This macro allows easy access to the `http_upgrade2ws` function. The macro
  * allows the use of named arguments, using the `websocket_settings_s` struct
@@ -555,8 +554,8 @@ int http_upgrade2ws(websocket_settings_s);
  *        http_upgrade2ws( .http = h, .on_message = on_message);
  *     }
  */
-#define http_upgrade2ws(...)                                                   \
-  http_upgrade2ws((websocket_settings_s){__VA_ARGS__})
+#define http_upgrade2ws(http, ...)                                             \
+  http_upgrade2ws((http), (websocket_settings_s){__VA_ARGS__})
 
 /**
  * Connects to a Websocket service according to the provided address.
@@ -665,8 +664,8 @@ struct http_sse_subscribe_args {
   void (*on_unsubscribe)(void *udata);
   /** Opaque user */
   void *udata;
-  /** Use pattern matching for channel subscription. */
-  unsigned use_pattern : 1;
+  /** A callback for pattern matching. */
+  pubsub_match_fn match;
 };
 
 /**
@@ -930,9 +929,34 @@ ssize_t http_decode_url(char *dest, const char *url_data, size_t length);
 /** Decodes the "path" part of a request, no buffer overflow protection. */
 ssize_t http_decode_path_unsafe(char *dest, const char *url_data);
 
-/** Decodes the "path" part of an HTTP request, no buffer overflow protection.
+/**
+ * Decodes the "path" part of an HTTP request, no buffer overflow protection.
  */
 ssize_t http_decode_path(char *dest, const char *url_data, size_t length);
+
+/* *****************************************************************************
+HTTP URL parsing
+***************************************************************************** */
+
+/** the result returned by `http_url_parse` */
+typedef struct {
+  fio_cstr_s scheme;
+  fio_cstr_s user;
+  fio_cstr_s password;
+  fio_cstr_s host;
+  fio_cstr_s port;
+  fio_cstr_s path;
+  fio_cstr_s query;
+  fio_cstr_s target;
+} http_url_s;
+
+/**
+ * Parses the URI returning it's components and their lengths.
+ *
+ * The returned string are NOT NUL terminated, they are merely locations within
+ * the original string.
+ */
+http_url_s http_url_parse(char *url, size_t length);
 
 /* support C++ */
 #ifdef __cplusplus

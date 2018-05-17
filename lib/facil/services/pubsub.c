@@ -21,8 +21,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "fio_mem.h"
 
 /* used later on */
-static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
-                             size_t pat_len);
+static int pubsub_glob_match(FIOBJ pattern, FIOBJ channel);
+
+const pubsub_match_fn PUBSUB_MATCH_GLOB = pubsub_glob_match;
 
 #define PUBSUB_FACIL_CLUSTER_CHANNEL_FILTER ((int32_t)-1)
 #define PUBSUB_FACIL_CLUSTER_PATTERN_FILTER ((int32_t)-2)
@@ -101,8 +102,8 @@ typedef struct {
   /** The channel name. */
   FIOBJ name;
   /** Use pattern matching for channel subscription. */
-  unsigned use_pattern : 1;
-  /** Use pattern matching for channel subscription. */
+  pubsub_match_fn match;
+  /** forward to cluster / process. */
   unsigned publish2cluster : 1;
 } channel_s;
 
@@ -187,7 +188,7 @@ static client_s *pubsub_client_new(client_s client, channel_s channel) {
       &clients, (fio_hash_key_s){.hash = client_hash, .obj = channel.name}, cl);
 
   /* test for existing channel */
-  fio_hash_s *ch_hashmap = (channel.use_pattern ? &patterns : &channels);
+  fio_hash_s *ch_hashmap = (channel.match ? &patterns : &channels);
   channel_s *ch = fio_hash_find(
       ch_hashmap, (fio_hash_key_s){.hash = channel_hash, .obj = channel.name});
   if (!ch) {
@@ -200,7 +201,7 @@ static client_s *pubsub_client_new(client_s client, channel_s channel) {
     *ch = (channel_s){
         .name = fiobj_dup(channel.name),
         .clients = FIO_LS_INIT(ch->clients),
-        .use_pattern = channel.use_pattern,
+        .match = channel.match,
         .publish2cluster = channel.publish2cluster,
     };
     fio_hash_insert(ch_hashmap,
@@ -222,7 +223,7 @@ static int pubsub_client_destroy(client_s *client) {
     return -1;
   channel_s *ch = client->parent;
 
-  fio_hash_s *ch_hashmap = (ch->use_pattern ? &patterns : &channels);
+  fio_hash_s *ch_hashmap = (ch->match ? &patterns : &channels);
   uint64_t channel_hash = fiobj_obj2hash(ch->name);
   uint64_t client_hash = client_compute_hash(*client);
   uint8_t is_ch_any;
@@ -299,7 +300,7 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
   channel_s channel = {
       .name = args.channel,
       .clients = FIO_LS_INIT(channel.clients),
-      .use_pattern = args.use_pattern,
+      .match = args.match,
       .publish2cluster = 1,
   };
   client_s client = {.on_message = args.on_message,
@@ -322,7 +323,7 @@ pubsub_sub_pt pubsub_subscribe(struct pubsub_subscribe_args args) {
  */
 #undef pubsub_find_sub
 pubsub_sub_pt pubsub_find_sub(struct pubsub_subscribe_args args) {
-  channel_s channel = {.name = args.channel, .use_pattern = args.use_pattern};
+  channel_s channel = {.name = args.channel, .match = args.match};
   client_s client = {.on_message = args.on_message,
                      .on_unsubscribe = args.on_unsubscribe,
                      .udata1 = args.udata1,
@@ -387,13 +388,13 @@ Engine handling and Management
 static void pubsub_on_channel_create(channel_s *ch) {
   if (ch->publish2cluster)
     PUBSUB_CLUSTER_ENGINE->subscribe(PUBSUB_CLUSTER_ENGINE, ch->name,
-                                     ch->use_pattern);
+                                     ch->match);
   spn_lock(&engn_lock);
   FIO_HASH_FOR_LOOP(&engines, e_) {
     if (!e_ || !e_->obj)
       continue;
     pubsub_engine_s *e = e_->obj;
-    e->subscribe(e, ch->name, ch->use_pattern);
+    e->subscribe(e, ch->name, ch->match);
   }
   spn_unlock(&engn_lock);
 }
@@ -402,13 +403,13 @@ static void pubsub_on_channel_create(channel_s *ch) {
 static void pubsub_on_channel_destroy(channel_s *ch) {
   if (ch->publish2cluster)
     PUBSUB_CLUSTER_ENGINE->unsubscribe(PUBSUB_CLUSTER_ENGINE, ch->name,
-                                       ch->use_pattern);
+                                       ch->match);
   spn_lock(&engn_lock);
   FIO_HASH_FOR_LOOP(&engines, e_) {
     if (!e_ || !e_->obj)
       continue;
     pubsub_engine_s *e = e_->obj;
-    e->unsubscribe(e, ch->name, ch->use_pattern);
+    e->unsubscribe(e, ch->name, ch->match);
   }
   spn_unlock(&engn_lock);
 }
@@ -426,11 +427,11 @@ void pubsub_engine_register(pubsub_engine_s *engine) {
   if (engine->subscribe) {
     FIO_HASH_FOR_LOOP(&channels, i) {
       channel_s *ch = i->obj;
-      engine->subscribe(engine, ch->name, 0);
+      engine->subscribe(engine, ch->name, NULL);
     }
     FIO_HASH_FOR_LOOP(&patterns, i) {
       channel_s *ch = i->obj;
-      engine->subscribe(engine, ch->name, 1);
+      engine->subscribe(engine, ch->name, ch->match);
     }
   }
   spn_unlock(&engn_lock);
@@ -463,11 +464,11 @@ void pubsub_engine_resubscribe(pubsub_engine_s *eng) {
   spn_lock(&lock);
   FIO_HASH_FOR_LOOP(&channels, i) {
     channel_s *ch = i->obj;
-    eng->subscribe(eng, ch->name, 0);
+    eng->subscribe(eng, ch->name, NULL);
   }
   FIO_HASH_FOR_LOOP(&patterns, i) {
     channel_s *ch = i->obj;
-    eng->subscribe(eng, ch->name, 1);
+    eng->subscribe(eng, ch->name, ch->match);
   }
   spn_unlock(&lock);
 }
@@ -519,18 +520,18 @@ void pubsub_en_process_deferred_on_message(void *cl_, void *m_) {
 
 /* Must subscribe channel. Failures are ignored. */
 void pubsub_en_process_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
-                                 uint8_t use_pattern) {
+                                 pubsub_match_fn match) {
   (void)eng;
   (void)channel;
-  (void)use_pattern;
+  (void)match;
 }
 
 /* Must unsubscribe channel. Failures are ignored. */
 void pubsub_en_process_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
-                                   uint8_t use_pattern) {
+                                   pubsub_match_fn match) {
   (void)eng;
   (void)channel;
-  (void)use_pattern;
+  (void)match;
 }
 /** Should return 0 on success and -1 on failure. */
 int pubsub_en_process_publish(const pubsub_engine_s *eng, FIOBJ channel,
@@ -560,13 +561,11 @@ int pubsub_en_process_publish(const pubsub_engine_s *eng, FIOBJ channel,
     }
   }
   /* test for pattern match */
-  fio_cstr_s ch_str = fiobj_obj2cstr(channel);
-  FIO_HASH_FOR_LOOP(&patterns, ch_) {
-    channel_s *ch = (channel_s *)ch_->obj;
-    fio_cstr_s tmp = fiobj_obj2cstr(ch->name);
-    if (pubsub_glob_match(ch_str.bytes, ch_str.len, tmp.bytes, tmp.len)) {
+  FIO_HASH_FOR_LOOP(&patterns, pat_) {
+    channel_s *pat = (channel_s *)pat_->obj;
+    if (pat->match(pat->name, channel)) {
       ret = 0;
-      FIO_LS_EMBD_FOR(&ch->clients, cl_) {
+      FIO_LS_EMBD_FOR(&pat->clients, cl_) {
         client_s *cl = FIO_LS_EMBD_OBJ(client_s, node, cl_);
         spn_add(&m->ref, 1);
         spn_add(&cl->ref, 1);
@@ -617,23 +616,34 @@ Cluster Engine
 
 /* Must subscribe channel. Failures are ignored. */
 void pubsub_en_cluster_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
-                                 uint8_t use_pattern) {
+                                 pubsub_match_fn match) {
   if (facil_is_running()) {
-    facil_cluster_send((use_pattern ? PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER
-                                    : PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER),
-                       channel, FIOBJ_INVALID);
+    if (match) {
+      FIOBJ m2obj = fiobj_num_new((uintptr_t)match);
+      facil_cluster_send(PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER, channel,
+                         m2obj);
+      fiobj_free(m2obj);
+    } else {
+      facil_cluster_send(PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER, channel,
+                         FIOBJ_INVALID);
+    }
   }
   (void)eng;
 }
 
 /* Must unsubscribe channel. Failures are ignored. */
 void pubsub_en_cluster_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
-                                   uint8_t use_pattern) {
+                                   pubsub_match_fn match) {
   if (facil_is_running()) {
-    facil_cluster_send((use_pattern
-                            ? PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER
-                            : PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER),
-                       channel, FIOBJ_INVALID);
+    if (match) {
+      FIOBJ m2obj = fiobj_num_new((uintptr_t)match);
+      facil_cluster_send(PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER, channel,
+                         m2obj);
+      fiobj_free(m2obj);
+    } else {
+      facil_cluster_send(PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER, channel,
+                         FIOBJ_INVALID);
+    }
   }
   (void)eng;
 }
@@ -664,11 +674,11 @@ Cluster Initialization and Messaging Protocol
 static void pubsub_cluster_on_message_noop(pubsub_message_s *msg) { (void)msg; }
 
 /* registers to the channel  */
-static void pubsub_cluster_subscribe2channel(void *ch, void *flag) {
+static void pubsub_cluster_subscribe2channel(void *ch, pubsub_match_fn match) {
   channel_s channel = {
       .name = (FIOBJ)ch,
       .clients = FIO_LS_INIT(channel.clients),
-      .use_pattern = ((uintptr_t)flag & 1),
+      .match = match,
       .publish2cluster = 0,
   };
   client_s client = {.on_message = pubsub_cluster_on_message_noop};
@@ -676,11 +686,12 @@ static void pubsub_cluster_subscribe2channel(void *ch, void *flag) {
 }
 
 /* deregisters from the channel if required */
-static void pubsub_cluster_unsubscribe2channel(void *ch, void *flag) {
+static void pubsub_cluster_unsubscribe2channel(void *ch,
+                                               pubsub_match_fn match) {
   channel_s channel = {
       .name = (FIOBJ)ch,
       .clients = FIO_LS_INIT(channel.clients),
-      .use_pattern = ((uintptr_t)flag & 1),
+      .match = match,
       .publish2cluster = 0,
   };
   client_s client = {.on_message = pubsub_cluster_on_message_noop};
@@ -697,16 +708,18 @@ static void pubsub_cluster_facil_message(int32_t filter, FIOBJ channel,
     PUBSUB_PROCESS_ENGINE->publish(PUBSUB_PROCESS_ENGINE, channel, message);
     break;
   case PUBSUB_FACIL_CLUSTER_CHANNEL_SUB_FILTER:
-    pubsub_cluster_subscribe2channel((void *)channel, 0);
+    pubsub_cluster_subscribe2channel((void *)channel, NULL);
     break;
   case PUBSUB_FACIL_CLUSTER_PATTERN_SUB_FILTER:
-    pubsub_cluster_subscribe2channel((void *)channel, (void *)1);
+    pubsub_cluster_subscribe2channel((void *)channel,
+                                     (pubsub_match_fn)fiobj_obj2num(message));
     break;
   case PUBSUB_FACIL_CLUSTER_CHANNEL_UNSUB_FILTER:
-    pubsub_cluster_unsubscribe2channel((void *)channel, 0);
+    pubsub_cluster_unsubscribe2channel((void *)channel, NULL);
     break;
   case PUBSUB_FACIL_CLUSTER_PATTERN_UNSUB_FILTER:
-    pubsub_cluster_unsubscribe2channel((void *)channel, (void *)1);
+    pubsub_cluster_unsubscribe2channel((void *)channel,
+                                       (pubsub_match_fn)fiobj_obj2num(message));
     break;
   }
   (void)filter;
@@ -766,8 +779,7 @@ Glob Matching Helper
 ***************************************************************************** */
 
 /** A binary glob matching helper. Returns 1 on match, otherwise returns 0. */
-static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
-                             size_t pat_len) {
+static int pubsub_glob_match(FIOBJ pattern, FIOBJ channel) {
   /* adapted and rewritten, with thankfulness, from the code at:
    * https://github.com/opnfv/kvmfornfv/blob/master/kernel/lib/glob.c
    *
@@ -775,6 +787,8 @@ static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
    * Copyright 2015 Open Platform for NFV Project, Inc. and its contributors
    * Under the MIT license.
    */
+  fio_cstr_s ch = fiobj_obj2cstr(channel);
+  fio_cstr_s pat = fiobj_obj2cstr(pattern);
 
   /*
    * Backtrack to previous * on mismatch and retry starting one
@@ -782,36 +796,36 @@ static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
    * (no exception for /), it can be easily proved that there's
    * never a need to backtrack multiple levels.
    */
-  uint8_t *back_pat = NULL, *back_str = data;
-  size_t back_pat_len = 0, back_str_len = data_len;
+  uint8_t *back_pat = NULL, *back_str = ch.bytes;
+  size_t back_pat_len = 0, back_str_len = ch.len;
 
   /*
    * Loop over each token (character or class) in pat, matching
    * it against the remaining unmatched tail of str.  Return false
    * on mismatch, or true after matching the trailing nul bytes.
    */
-  while (data_len) {
-    uint8_t c = *data++;
-    uint8_t d = *pattern++;
-    data_len--;
-    pat_len--;
+  while (ch.len) {
+    uint8_t c = *ch.bytes++;
+    uint8_t d = *pat.bytes++;
+    ch.len--;
+    pat.len--;
 
     switch (d) {
     case '?': /* Wildcard: anything goes */
       break;
 
     case '*':       /* Any-length wildcard */
-      if (!pat_len) /* Optimize trailing * case */
+      if (!pat.len) /* Optimize trailing * case */
         return 1;
-      back_pat = pattern;
-      back_pat_len = pat_len;
-      back_str = --data; /* Allow zero-length match */
-      back_str_len = ++data_len;
+      back_pat = pat.bytes;
+      back_pat_len = pat.len;
+      back_str = --ch.bytes; /* Allow zero-length match */
+      back_str_len = ++ch.len;
       break;
 
     case '[': { /* Character class */
-      uint8_t match = 0, inverted = (*pattern == '^');
-      uint8_t *cls = pattern + inverted;
+      uint8_t match = 0, inverted = (*pat.bytes == '^');
+      uint8_t *cls = pat.bytes + inverted;
       uint8_t a = *cls++;
 
       /*
@@ -837,13 +851,13 @@ static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
 
       if (match == inverted)
         goto backtrack;
-      pat_len -= cls - pattern;
-      pattern = cls;
+      pat.len -= cls - pat.bytes;
+      pat.bytes = cls;
 
     } break;
     case '\\':
-      d = *pattern++;
-      pat_len--;
+      d = *pat.bytes++;
+      pat.len--;
     /*FALLTHROUGH*/
     default: /* Literal character */
       if (c == d)
@@ -852,11 +866,11 @@ static int pubsub_glob_match(uint8_t *data, size_t data_len, uint8_t *pattern,
       if (!back_pat)
         return 0; /* No point continuing */
       /* Try again from last *, one character later in str. */
-      pattern = back_pat;
-      data = ++back_str;
-      data_len = --back_str_len;
-      pat_len = back_pat_len;
+      pat.bytes = back_pat;
+      ch.bytes = ++back_str;
+      ch.len = --back_str_len;
+      pat.len = back_pat_len;
     }
   }
-  return !data_len && !pat_len;
+  return !ch.len && !pat.len;
 }

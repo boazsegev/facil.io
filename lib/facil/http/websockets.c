@@ -234,7 +234,7 @@ static void on_ready(intptr_t fduuid, protocol_s *ws) {
     ((ws_s *)ws)->on_ready((ws_s *)ws);
 }
 
-static void on_shutdown(intptr_t fd, protocol_s *ws) {
+static uint8_t on_shutdown(intptr_t fd, protocol_s *ws) {
   (void)(fd);
   if (ws && ((ws_s *)ws)->on_shutdown)
     ((ws_s *)ws)->on_shutdown((ws_s *)ws);
@@ -245,6 +245,7 @@ static void on_shutdown(intptr_t fd, protocol_s *ws) {
     sock_write2(.uuid = fd, .buffer = "\x8a\x00", .length = 2,
                 .dealloc = SOCK_DEALLOC_NOOP);
   }
+  return 0;
 }
 
 static void on_data(intptr_t sockfd, protocol_s *ws_) {
@@ -600,7 +601,7 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
                               .on_unsubscribe = args.on_unsubscribe};
 
   pubsub_sub_pt sub = pubsub_subscribe(
-          .channel = args.channel, .use_pattern = args.use_pattern,
+          .channel = args.channel, .match = args.match,
           .on_unsubscribe = websocket_on_unsubscribe,
           .on_message =
               (args.on_message
@@ -629,7 +630,7 @@ error:
 #undef websocket_find_sub
 uintptr_t websocket_find_sub(struct websocket_subscribe_s args) {
   pubsub_sub_pt sub = pubsub_find_sub(
-          .channel = args.channel, .use_pattern = args.use_pattern,
+          .channel = args.channel, .match = args.match,
           .on_unsubscribe = websocket_on_unsubscribe,
           .on_message =
               (args.on_message

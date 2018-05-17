@@ -699,15 +699,15 @@ int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
  * Upgrades an HTTP/1.1 connection to a Websocket connection.
  */
 #undef http_upgrade2ws
-int http_upgrade2ws(websocket_settings_s args) {
-  if (!args.http) {
+int http_upgrade2ws(http_s *h, websocket_settings_s args) {
+  if (!h) {
     fprintf(stderr,
             "ERROR: `http_upgrade2ws` requires a valid `http_s` handle.");
     goto error;
   }
-  if (HTTP_INVALID_HANDLE(args.http))
+  if (HTTP_INVALID_HANDLE(h))
     goto error;
-  return ((http_vtable_s *)args.http->private_data.vtbl)->http2websocket(&args);
+  return ((http_vtable_s *)h->private_data.vtbl)->http2websocket(h, &args);
 error:
   if (args.on_close)
     args.on_close(0, args.udata);
@@ -1145,13 +1145,12 @@ HTTP Websocket Connect
 static void on_websocket_http_connected(http_s *h) {
   websocket_settings_s *s = h->udata;
   h->udata = http_settings(h)->udata = NULL;
-  s->http = h;
   if (!h->path) {
     fprintf(stderr, "WARNING: (websocket client) path not specified in "
                     "address, assuming root!\n");
     h->path = fiobj_str_new("/", 1);
   }
-  http_upgrade2ws(*s);
+  http_upgrade2ws(h, *s);
   fio_free(s);
 }
 
@@ -1271,7 +1270,7 @@ uintptr_t http_sse_subscribe(http_sse_s *sse_,
       pubsub_subscribe(.channel = args.channel,
                        .on_message = http_sse_on_message,
                        .on_unsubscribe = http_sse_on_unsubscribe, .udata1 = sse,
-                       .udata2 = udata, .use_pattern = args.use_pattern);
+                       .udata2 = udata, .match = args.match);
   if (!sub)
     return 0;
 
@@ -2449,6 +2448,135 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data) {
   }
   *pos = 0;
   return pos - dest;
+}
+/* *****************************************************************************
+HTTP URL parsing
+***************************************************************************** */
+
+// /** the result returned by `http_url_parse` */
+// typedef struct {
+//   fio_cstr_s scheme;
+//   fio_cstr_s user;
+//   fio_cstr_s password;
+//   fio_cstr_s host;
+//   fio_cstr_s port;
+//   fio_cstr_s path;
+//   fio_cstr_s query;
+//   fio_cstr_s target;
+// } http_url_s;
+
+/**
+ * Parses the URI returning it's components and their lengths.
+ *
+ * The returned string are NOT NUL terminated, they are merely locations within
+ * the original string.
+ */
+http_url_s http_url_parse(char *url, size_t length) {
+  http_url_s result = {.scheme = url};
+  //     uint8_t flag = 1;
+  //     uint8_t counter = 0;
+  //     for (size_t i = 0; i < l; i++) {
+  //       if (counter > 4)
+  //         goto finish;
+  //       if (str[i] == ':' && str[i + 1] == '/' && str[i + 2] == '/') {
+  //         pointers[counter++] = str + i + 3;
+  //         i = i + 2;
+  //         flag = 0;
+  //         continue;
+  //       }
+  //       if (str[i] == '@' && counter == 1 - flag) {
+  //         rb_raise(rb_eArgError, "malformed URL");
+  //       }
+  //       if (str[i] == ':' || str[i] == '@') {
+  //         pointers[counter++] = str + i + 1;
+  //         continue;
+  //       }
+  //       if (str[i] == '/') {
+  //         end = str + i;
+  //         break;
+  //       }
+  //     }
+  //     if (flag) {
+  //       if (counter > 3) {
+  //         rb_raise(rb_eArgError, "malformed URL");
+  //       }
+  //       /* move pointers one step forward and set 0 to str... */
+  //       char *pointers_2[5];
+  //       for (size_t i = 0; i < counter; ++i) {
+  //         pointers_2[i + 1] = pointers[i];
+  //       }
+  //       pointers_2[0] = str;
+  //       ++counter;
+  //       for (size_t i = 0; i < counter; ++i) {
+  //         pointers[i] = pointers_2[i];
+  //       }
+  //     }
+  //     /* review results */
+  //     switch (counter) {
+  //     case 1:
+  //       /* redis://localhost */
+  //       if (pointers[0] == end) {
+  //         goto finish;
+  //       }
+  //       address = fiobj_str_new(pointers[0], end - pointers[0]);
+  //       break;
+  //     case 2:
+  //       /* redis://localhost:6379 */
+  //       if (pointers[1] - pointers[0] - 1 == 0) {
+  //         goto finish;
+  //       }
+  //       address = fiobj_str_new(pointers[0], pointers[1] - pointers[0] - 1);
+  //       if (pointers[1] != end) {
+  //         port = fiobj_str_new(pointers[1], end - pointers[1]);
+  //       }
+  //       break;
+  //     case 3:
+  //       /* redis://redis:password@localhost */
+  //       if (pointers[2] - pointers[1] - 1 == 0 || end - pointers[2] == 0) {
+  //         goto finish;
+  //       }
+  //       address = fiobj_str_new(pointers[2], end - pointers[2]);
+  //       auth = fiobj_str_new(pointers[1], pointers[2] - pointers[1] - 1);
+  //       break;
+  //     case 4:
+  //       /* redis://redis:password@localhost:6379 */
+  //       if (pointers[2] - pointers[1] - 1 == 0 ||
+  //           pointers[3] - pointers[2] - 1 == 0 || end - pointers[3] == 0) {
+  //         goto finish;
+  //       }
+  //       port = fiobj_str_new(pointers[3], end - pointers[3]);
+  //       address = fiobj_str_new(pointers[2], pointers[3] - pointers[2] - 1);
+  //       auth = fiobj_str_new(pointers[1], pointers[2] - pointers[1] - 1);
+  //       break;
+  //     default:
+  //       goto finish;
+  //     }
+  //   }
+  //   fprintf(
+  //       stderr,
+  //       "INFO: Initializing Redis engine for address: %s - port: %s -  auth
+  //       %s\n", fiobj_obj2cstr(address).data, fiobj_obj2cstr(port).data,
+  //       fiobj_obj2cstr(auth).data);
+  //   /* create engine */
+  //   e->engine = redis_engine_create(
+  //           .address = fiobj_obj2cstr(address)
+  //           .data,
+  //           .port = (port == FIOBJ_INVALID ? "6379" :
+  //           fiobj_obj2cstr(port).data), .ping_interval = ping, .auth = (auth
+  //           == FIOBJ_INVALID ? NULL : fiobj_obj2cstr(auth).data), .auth_len =
+  //           (auth == FIOBJ_INVALID ? 0 : fiobj_obj2cstr(auth).len));
+  //   if (!e->engine) {
+  //     e->engine = &e->do_not_touch;
+  //   } else {
+  //     e->dealloc = redis_engine_destroy;
+  //   }
+
+  // finish:
+  //   fiobj_free(port);
+  //   fiobj_free(address);
+  //   fiobj_free(auth);
+
+  return result;
 }
 
 /* *****************************************************************************

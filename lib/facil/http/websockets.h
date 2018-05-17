@@ -117,8 +117,8 @@ struct websocket_subscribe_s {
   void (*on_unsubscribe)(void *udata);
   /** User opaque data, passed along to the notification. */
   void *udata;
-  /** Use pattern matching for channel subscription. */
-  unsigned use_pattern : 1;
+  /** An optional callback for pattern matching. */
+  pubsub_match_fn match;
   /**
    * When using client forwarding (no `on_message` callback), this indicates if
    * messages should be sent to the client as binary blobs, which is the safest

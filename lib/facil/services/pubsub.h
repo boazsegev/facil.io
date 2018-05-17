@@ -37,7 +37,15 @@ typedef struct pubsub_sub_s *pubsub_sub_pt;
 /** A pub/sub engine data structure. See details later on. */
 typedef struct pubsub_engine_s pubsub_engine_s;
 
-/** The default pub/sub engine.
+/**
+ * Pattern matching callback type - should return 0 unless channel matches
+ * pattern.
+ */
+typedef int (*pubsub_match_fn)(FIOBJ pattern, FIOBJ channel);
+
+/**
+ * The default pub/sub engine.
+ *
  * This engine performs pub/sub within a group of processes (process cluster).
  *
  * The process cluser is initialized by the `facil_run` command with `processes`
@@ -53,6 +61,9 @@ extern pubsub_engine_s const *PUBSUB_PROCESS_ENGINE;
  * the whole process cluster.
  */
 extern pubsub_engine_s *PUBSUB_DEFAULT_ENGINE;
+
+/** A blob matching callback for pattern matching, similar to Redis matching. */
+extern const pubsub_match_fn PUBSUB_MATCH_GLOB;
 
 /** Publishing and on_message callback arguments. */
 typedef struct pubsub_message_s {
@@ -83,7 +94,7 @@ struct pubsub_subscribe_args {
   /** Opaque user data#2 .. using two allows allocation to be avoided. */
   void *udata2;
   /** Use pattern matching for channel subscription. */
-  unsigned use_pattern : 1;
+  pubsub_match_fn match;
 };
 
 /**
@@ -179,10 +190,10 @@ void pubsub_defer(pubsub_message_s *msg);
 struct pubsub_engine_s {
   /** Must subscribe channel. Failures are ignored. */
   void (*subscribe)(const pubsub_engine_s *eng, FIOBJ channel,
-                    uint8_t use_pattern);
+                    pubsub_match_fn match);
   /** Must unsubscribe channel. Failures are ignored. */
   void (*unsubscribe)(const pubsub_engine_s *eng, FIOBJ channel,
-                      uint8_t use_pattern);
+                      pubsub_match_fn match);
   /** Should return 0 on success and -1 on failure. */
   int (*publish)(const pubsub_engine_s *eng, FIOBJ channel, FIOBJ msg);
   /**

@@ -39,7 +39,7 @@ struct http_vtable_s {
   int (*const http_push_data)(http_s *h, void *data, uintptr_t length,
                               FIOBJ mime_type);
   /** Upgrades a connection to Websockets. */
-  int (*const http2websocket)(websocket_settings_s *arg);
+  int (*const http2websocket)(http_s *h, websocket_settings_s *arg);
   /** Push for files. */
   int (*const http_push_file)(http_s *h, FIOBJ filename, FIOBJ mime_type);
   /** Pauses the request / response handling. */

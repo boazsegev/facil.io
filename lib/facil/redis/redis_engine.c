@@ -366,12 +366,12 @@ Engine Callbacks
 ***************************************************************************** */
 
 static void redis_on_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
-                               uint8_t use_pattern) {
+                               pubsub_match_fn match) {
   redis_engine_s *r = en2redis(eng);
   if (r->sub_data.uuid) {
     fio_cstr_s ch_str = fiobj_obj2cstr(channel);
     FIOBJ cmd = fiobj_str_buf(96 + ch_str.len);
-    if (use_pattern)
+    if (match == PUBSUB_MATCH_GLOB)
       fiobj_str_write(cmd, "*2\r\n$10\r\nPSUBSCRIBE\r\n$", 22);
     else
       fiobj_str_write(cmd, "*2\r\n$9\r\nSUBSCRIBE\r\n$", 20);
@@ -387,12 +387,12 @@ static void redis_on_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
   }
 }
 static void redis_on_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
-                                 uint8_t use_pattern) {
+                                 pubsub_match_fn match) {
   redis_engine_s *r = en2redis(eng);
   if (r->sub_data.uuid) {
     fio_cstr_s ch_str = fiobj_obj2cstr(channel);
     FIOBJ cmd = fiobj_str_buf(96 + ch_str.len);
-    if (use_pattern)
+    if (match == PUBSUB_MATCH_GLOB)
       fiobj_str_write(cmd, "*2\r\n$12\r\nPUNSUBSCRIBE\r\n$", 24);
     else
       fiobj_str_write(cmd, "*2\r\n$11\r\nUNSUBSCRIBE\r\n$", 23);

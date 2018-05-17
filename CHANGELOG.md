@@ -7,11 +7,11 @@
 
 * The `on_idle` and `on_finish` settings in `facil_run` were removed, replaced by the more flexible `facil_core_callback_add` approach.
 
-* The Protocol object's `on_shutdown` callback will return a `uint8_t`, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate ""
+* The Protocol object's `on_shutdown` callback will return a `uint8_t`, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate immediate socket closure and an 8 second timeout for outgoing buffer flushing.
+
+* The Pub/Sub system's `use_pattern` was replaced with the optional callback argument `match` (a function pointer), allowing for NATs and RabbitMQ pattern matching logic to be added (right now, only Redis pattern matching style is supported).
 
 * The WebSocket upgrade (`http_upgrade2ws`) will better match the SSE upgrade function (starts with the handle `http_s *` and named arguments come later).
-
-* The Pub/Sub system's `use_pattern` will be replaced with a function pointer, allowing for NATs and RabbitMQ pattern matching logic to be added (right now, only Redis pattern matching style is supported).
 
 ---
 ## Released versions
