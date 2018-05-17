@@ -2453,129 +2453,181 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data) {
 HTTP URL parsing
 ***************************************************************************** */
 
-// /** the result returned by `http_url_parse` */
-// typedef struct {
-//   fio_cstr_s scheme;
-//   fio_cstr_s user;
-//   fio_cstr_s password;
-//   fio_cstr_s host;
-//   fio_cstr_s port;
-//   fio_cstr_s path;
-//   fio_cstr_s query;
-//   fio_cstr_s target;
-// } http_url_s;
-
 /**
- * Parses the URI returning it's components and their lengths.
+ * Parses the URI returning it's components and their lengths (no decoding
+ * performed, doesn't accept decoded URIs).
  *
  * The returned string are NOT NUL terminated, they are merely locations within
  * the original string.
+ *
+ * This function expects any of the follwing formats:
+ *
+ * * `/complete_path?query#target`
+ *
+ *   i.e.: /index.html?page=1#list
+ *
+ * * `host:port/complete_path?query#target`
+ *
+ *   i.e.:
+ *      example.com/index.html
+ *      example.com:8080/index.html
+ *
+ * * `schema://user:password@host:port/path?query#target`
+ *
+ *   i.e.: http://example.com/index.html?page=1#list
+ *
+ * Invalid formats might produce unexpected results. No error testing performed.
  */
-http_url_s http_url_parse(char *url, size_t length) {
-  http_url_s result = {.scheme = {.data = url, .len = length}};
-  //     uint8_t flag = 1;
-  //     uint8_t counter = 0;
-  //     for (size_t i = 0; i < l; i++) {
-  //       if (counter > 4)
-  //         goto finish;
-  //       if (str[i] == ':' && str[i + 1] == '/' && str[i + 2] == '/') {
-  //         pointers[counter++] = str + i + 3;
-  //         i = i + 2;
-  //         flag = 0;
-  //         continue;
-  //       }
-  //       if (str[i] == '@' && counter == 1 - flag) {
-  //         rb_raise(rb_eArgError, "malformed URL");
-  //       }
-  //       if (str[i] == ':' || str[i] == '@') {
-  //         pointers[counter++] = str + i + 1;
-  //         continue;
-  //       }
-  //       if (str[i] == '/') {
-  //         end = str + i;
-  //         break;
-  //       }
-  //     }
-  //     if (flag) {
-  //       if (counter > 3) {
-  //         rb_raise(rb_eArgError, "malformed URL");
-  //       }
-  //       /* move pointers one step forward and set 0 to str... */
-  //       char *pointers_2[5];
-  //       for (size_t i = 0; i < counter; ++i) {
-  //         pointers_2[i + 1] = pointers[i];
-  //       }
-  //       pointers_2[0] = str;
-  //       ++counter;
-  //       for (size_t i = 0; i < counter; ++i) {
-  //         pointers[i] = pointers_2[i];
-  //       }
-  //     }
-  //     /* review results */
-  //     switch (counter) {
-  //     case 1:
-  //       /* redis://localhost */
-  //       if (pointers[0] == end) {
-  //         goto finish;
-  //       }
-  //       address = fiobj_str_new(pointers[0], end - pointers[0]);
-  //       break;
-  //     case 2:
-  //       /* redis://localhost:6379 */
-  //       if (pointers[1] - pointers[0] - 1 == 0) {
-  //         goto finish;
-  //       }
-  //       address = fiobj_str_new(pointers[0], pointers[1] - pointers[0] - 1);
-  //       if (pointers[1] != end) {
-  //         port = fiobj_str_new(pointers[1], end - pointers[1]);
-  //       }
-  //       break;
-  //     case 3:
-  //       /* redis://redis:password@localhost */
-  //       if (pointers[2] - pointers[1] - 1 == 0 || end - pointers[2] == 0) {
-  //         goto finish;
-  //       }
-  //       address = fiobj_str_new(pointers[2], end - pointers[2]);
-  //       auth = fiobj_str_new(pointers[1], pointers[2] - pointers[1] - 1);
-  //       break;
-  //     case 4:
-  //       /* redis://redis:password@localhost:6379 */
-  //       if (pointers[2] - pointers[1] - 1 == 0 ||
-  //           pointers[3] - pointers[2] - 1 == 0 || end - pointers[3] == 0) {
-  //         goto finish;
-  //       }
-  //       port = fiobj_str_new(pointers[3], end - pointers[3]);
-  //       address = fiobj_str_new(pointers[2], pointers[3] - pointers[2] - 1);
-  //       auth = fiobj_str_new(pointers[1], pointers[2] - pointers[1] - 1);
-  //       break;
-  //     default:
-  //       goto finish;
-  //     }
-  //   }
-  //   fprintf(
-  //       stderr,
-  //       "INFO: Initializing Redis engine for address: %s - port: %s -  auth
-  //       %s\n", fiobj_obj2cstr(address).data, fiobj_obj2cstr(port).data,
-  //       fiobj_obj2cstr(auth).data);
-  //   /* create engine */
-  //   e->engine = redis_engine_create(
-  //           .address = fiobj_obj2cstr(address)
-  //           .data,
-  //           .port = (port == FIOBJ_INVALID ? "6379" :
-  //           fiobj_obj2cstr(port).data), .ping_interval = ping, .auth = (auth
-  //           == FIOBJ_INVALID ? NULL : fiobj_obj2cstr(auth).data), .auth_len =
-  //           (auth == FIOBJ_INVALID ? 0 : fiobj_obj2cstr(auth).len));
-  //   if (!e->engine) {
-  //     e->engine = &e->do_not_touch;
-  //   } else {
-  //     e->dealloc = redis_engine_destroy;
-  //   }
+http_url_s http_url_parse(const char *url, size_t length) {
+  const char *end = url + length;
+  http_url_s result = {.scheme = {.data = (char *)url, .len = 0}};
+  if (length == 0) {
+    return result;
+  }
+  if (url[0] == '/') {
+    result.scheme.data = NULL;
+    goto parse_path;
+  }
+  /* test for scheme */
+  while (url < end && *url != ':' && *url != '/' && *url != '@') {
+    ++url;
+  }
+  result.scheme.length = url - result.scheme.data;
+  if (url + 3 >= end || url[1] != '/' || url[2] != '/') { /* host only? */
+    url = result.scheme.data;
+    result.scheme = (fio_cstr_s){.data = NULL};
+    goto after_scheme;
+  }
 
-  // finish:
-  //   fiobj_free(port);
-  //   fiobj_free(address);
-  //   fiobj_free(auth);
+  url += 3;
 
+after_scheme:
+  result.user.data = (char *)url;
+  while (url < end) {
+    switch (*url) {
+    case '/':
+      /* no user name or password (or port) */
+      result.host.data = result.user.data;
+      result.user.data = NULL;
+      result.host.length = url - result.host.data;
+      goto parse_path;
+      break;
+    case '@':
+      /* user name only, no password */
+      result.user.length = url - result.user.data;
+      ++url;
+      goto parse_host;
+      break;
+    case ':':
+      /* user name and password (or host:port...) */
+      result.user.length = url - result.user.data;
+      ++url;
+      goto parse_password;
+      break;
+    default:
+      ++url;
+      break;
+    }
+  }
+  if (url == end) { /* possibily: http://example.com  */
+    result.host.data = result.user.data;
+    result.user.data = NULL;
+    result.host.length = url - result.host.data;
+    return result;
+  }
+
+parse_password:
+  result.password.data = (char *)url;
+  while (url < end) {
+    switch (*url) {
+    case '/':
+      /* this wasn't a user:password, but host:port */
+      result.host = result.user;
+      result.port = result.password;
+      result.port.length = url - result.port.data;
+      result.user = result.password = (fio_cstr_s){.data = NULL};
+      goto parse_path;
+      break;
+    case '@':
+      /* done */
+      result.password.length = url - result.password.data;
+      ++url;
+      goto after_pass;
+    default:
+      ++url;
+      break;
+    }
+  }
+after_pass:
+  if (url == end) { /* possibily: http://example.com:port  */
+    result.host = result.user;
+    result.port = result.password;
+    result.port.length = url - result.port.data;
+    result.user = result.password = (fio_cstr_s){.data = NULL};
+    return result;
+  }
+parse_host:
+  /* host:port parsing */
+  result.host.data = (char *)url;
+  while (url < end) {
+    switch (*url) {
+    case '/':
+      /* host only */
+      result.host.length = url - result.host.data;
+      goto parse_path;
+      break;
+    case ':':
+      /* done */
+      result.host.length = url - result.host.data;
+      ++url;
+      goto after_host;
+      break;
+    default:
+      ++url;
+      break;
+    }
+  }
+after_host:
+
+  if (url == end) { /* scheme://host only? */
+    result.host.length = end - result.host.data;
+    return result;
+  }
+  result.port.data = (char *)url;
+  while (url < end && *url != '/') {
+    ++url;
+  }
+  result.port.length = url - result.port.data;
+
+  if (url == end) { /* scheme://host:port only? */
+    return result;
+  }
+
+  if (url == end) { /* scheme://host only? */
+    return result;
+  }
+/* path, query and target parsing */
+parse_path:
+  result.path.data = (char *)url;
+  while (url < end && *url != '?') {
+    ++url;
+  }
+  result.path.length = url - result.path.data;
+  if (url == end) {
+    return result;
+  }
+  ++url;
+  result.query.data = (char *)url;
+  while (url < end && *url != '#') {
+    ++url;
+  }
+  result.query.length = url - result.query.data;
+  if (url == end) {
+    return result;
+  }
+  ++url;
+  result.target.data = (char *)url;
+  result.target.length = end - result.target.data;
   return result;
 }
 
@@ -2793,3 +2845,15 @@ fio_cstr_s http_status2str(uintptr_t status) {
   return ret;
 }
 #undef HTTP_SET_STATUS_STR
+
+#if DEBUG
+void http_tests(void) {
+  fprintf(stderr, "=== Testing HTTP helpers\n");
+#define TEST_ASSERT(cond, ...)                                                 \
+  if (!(cond)) {                                                               \
+    fprintf(stderr, "* " __VA_ARGS__);                                         \
+    fprintf(stderr, "Testing failed.\n");                                      \
+    exit(-1);                                                                  \
+  }
+}
+#endif

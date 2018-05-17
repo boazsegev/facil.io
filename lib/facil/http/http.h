@@ -951,12 +951,37 @@ typedef struct {
 } http_url_s;
 
 /**
- * Parses the URI returning it's components and their lengths.
+ * Parses the URI returning it's components and their lengths (no decoding
+ * performed, doesn't accept decoded URIs).
  *
  * The returned string are NOT NUL terminated, they are merely locations within
  * the original string.
+ *
+ * This function expects any of the follwing formats:
+ *
+ * * `/complete_path?query#target`
+ *
+ *   i.e.: /index.html?page=1#list
+ *
+ * * `host:port/complete_path?query#target`
+ *
+ *   i.e.:
+ *      example.com
+ *      example.com/index.html
+ *      user:1234@example.com:8080
+ *      example.com:8080/index.html
+ *
+ * * `schema://user:password@host:port/path?query#target`
+ *
+ *   i.e.: http://example.com/index.html?page=1#list
+ *
+ * Invalid formats might produce unexpected results. No error testing performed.
  */
-http_url_s http_url_parse(char *url, size_t length);
+http_url_s http_url_parse(const char *url, size_t length);
+
+#if DEBUG
+void http_tests(void);
+#endif
 
 /* support C++ */
 #ifdef __cplusplus

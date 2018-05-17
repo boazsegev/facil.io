@@ -5,6 +5,7 @@
 #include "fio_random.h"
 #include "fio_sha1.h"
 #include "fio_sha2.h"
+#include "http.h"
 
 int main(void) {
 #if DEBUG
@@ -27,6 +28,7 @@ int main(void) {
   fiobj_test();
   defer_test();
   sock_libtest();
+  http_tests();
 #else
   fprintf(stderr, "DEBUG must be set to access tests.\n");
   exit(-1);
