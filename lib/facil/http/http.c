@@ -2472,7 +2472,7 @@ HTTP URL parsing
  * the original string.
  */
 http_url_s http_url_parse(char *url, size_t length) {
-  http_url_s result = {.scheme = url};
+  http_url_s result = {.scheme = {.data = url, .len = length}};
   //     uint8_t flag = 1;
   //     uint8_t counter = 0;
   //     for (size_t i = 0; i < l; i++) {
