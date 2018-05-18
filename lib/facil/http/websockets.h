@@ -82,9 +82,6 @@ to the process cluster (all the processes in `facil_run`).
 To publish to a channel, use the API provided in {pubsub.h}.
 ***************************************************************************** */
 
-/** Pub/sub engine type. Engine documentation is in `pubsub.h` */
-typedef struct pubsub_engine_s pubsub_engine_s;
-
 /** Incoming pub/sub messages will be passed along using this data structure. */
 typedef struct {
   /** the websocket receiving the message. */

@@ -299,7 +299,7 @@ HTTP Connections - Listening / Connecting / Hijacking
 ***************************************************************************** */
 
 /** The HTTP settings. */
-typedef struct http_settings_s {
+struct http_settings_s {
   /** Callback for normal HTTP requests. */
   void (*on_request)(http_s *request);
   /**
@@ -387,7 +387,7 @@ typedef struct http_settings_s {
   uint8_t log;
   /** a read only flag set automatically to indicate the protocol's mode. */
   uint8_t is_client;
-} http_settings_s;
+};
 
 /**
  * Listens to HTTP connections at the specified `port`.
