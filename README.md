@@ -85,6 +85,8 @@ Credit to @benjcal for suggesting the script.
 
 The `make libdump` command will dump all the relevant files in a single folder called `libdump`, and you can copy them all or divide them into header ands source files.
 
+It's also possible to compile the facil.io library separately using the `make lib` command.
+
 ### Using `facil.io` as a CMake submodule
 
 [facil.io](http://facil.io) also supports both `git` and CMake submodules. Credit to @OwenDelahoy (PR#8).
