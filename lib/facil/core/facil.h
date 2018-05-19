@@ -35,7 +35,7 @@ Feel free to copy, use and enjoy according to the license provided.
  * (historically the number 7 was used after testing `malloc` race conditions on
  * a MacBook Pro).
  *
- * The does NOT effect manually set (non-zero) worker/thread values.
+ * This does NOT effect manually set (non-zero) worker/thread values.
  */
 #define FACIL_CPU_CORES_LIMIT 8
 #endif
