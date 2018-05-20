@@ -18,19 +18,31 @@ Feel free to copy, use and enjoy according to the license provided.
  *
  * The memory allocator assumes multiple concurrent allocation/deallocation,
  * short life spans (memory is freed shortly, but not immediately, after it was
- * allocated) and we small allocations (realloc almost always copies data).
+ * allocated) and well as small allocations (realloc almost always copies data).
  *
  * These assumptions allow the allocator to avoid lock contention by ignoring
  * fragmentation within a memory "block" and waiting for the whole "block" to be
  * freed before it's memory is recycled (no "free list").
  *
+ * An "arena" is allocated per-CPU core (there's no dynamic allocation of
+ * arenas), allowing threads to minimize lock contention by cycling through the
+ * arenas until a free arena is detected.
+ *
+ * There should be a free arena at any given time (statistically speaking) and
+ * the thread will only be deferred in the unlikely event in which there's no
+ * available arena.
+ *
+ * Since there's no "free list" management, which could require two threads to
+ * access the same arena at the same time, contention is minimal and memory
+ * "leaks" are more expensive (as well as small long-life objects).
+ *
  * This allocator should NOT be used for objects with a long life-span, because
  * even a single persistent object will prevent the re-use of the whole memory
- * block (128Kb by default) from which it was allocated.
+ * block from which it was allocated (see FIO_MEMORY_BLOCK_SIZE for size).
  *
  * A memory "block" can include any number of memory pages that are a multiple
  * of 2 (up to 1Mb of memory). However, the default value, set by
- * MEMORY_BLOCK_SIZE, is either 128Kb (set at th end of this header).
+ * FIO_MEMORY_BLOCK_SIZE_LOG, is either 32Kb (set at the end of this header).
  *
  * Each block includes a header that uses reference counters and position
  * markers.
@@ -38,7 +50,7 @@ Feel free to copy, use and enjoy according to the license provided.
  * The position marker (`pos`) marks the next available byte (counted in
  * multiples of 16).
  *
- * The reference counter (`ref`) counts how many pointers reference memory in
+ * The reference counter (`ref`) counts how many allocations reference memory in
  * the block (including the "arena" that "owns" the block).
  *
  * Except for the position marker (`pos`) that acts the same as `sbrk`, there's
@@ -64,12 +76,17 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <stdlib.h>
 
-/** Allocates memory using a per-CPU core block memory pool. */
+/**
+ * Allocates memory using a per-CPU core block memory pool.
+ * Memory is zeroed out.
+ */
 void *fio_malloc(size_t size);
 
-/** Allocates memory using a per-CPU core block memory pool. memory is zeroed
- * out. */
-void *fio_calloc(size_t size, size_t count);
+/**
+ * Allocates memory using a per-CPU core block memory pool.
+ * Memory is zeroed out.
+ */
+void *fio_calloc(size_t size_per_unit, size_t unit_count);
 
 /** Frees memory that was allocated using this library. */
 void fio_free(void *ptr);
@@ -113,17 +130,9 @@ void fio_malloc_test(void);
 
 #endif
 
-#ifndef FIO_MEM_MAX_BLOCKS_PER_CORE
-/**
- * The maximum number of available memory blocks that will be pooled before
- * memory is returned to the system.
- */
-#define FIO_MEM_MAX_BLOCKS_PER_CORE 32 /* approx. 2Mb per CPU core */
-#endif
-
 /** Allocator default settings. */
 #ifndef FIO_MEMORY_BLOCK_SIZE_LOG
-#define FIO_MEMORY_BLOCK_SIZE_LOG (17) /* 17 == 128Kb */
+#define FIO_MEMORY_BLOCK_SIZE_LOG (15) /*15 == 32Kb, 16 == 64Kb, 17 == 128Kb*/
 #endif
 #ifndef FIO_MEMORY_BLOCK_SIZE
 #define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
@@ -132,12 +141,21 @@ void fio_malloc_test(void);
 #define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1) /* 0b111... */
 #endif
 #ifndef FIO_MEMORY_BLOCK_SLICES
-#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B/slice */
+#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B slices */
 #endif
 #ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
-/* defaults to 37.5% of the block */
+/* defaults to 37.5% of the block, after which `mmap` is used instead */
 #define FIO_MEMORY_BLOCK_ALLOC_LIMIT                                           \
   ((FIO_MEMORY_BLOCK_SIZE >> 2) + (FIO_MEMORY_BLOCK_SIZE >> 3))
+#endif
+
+#ifndef FIO_MEM_MAX_BLOCKS_PER_CORE
+/**
+ * The maximum number of available memory blocks that will be pooled before
+ * memory is returned to the system.
+ */
+#define FIO_MEM_MAX_BLOCKS_PER_CORE                                            \
+  (1 << (22 - FIO_MEMORY_BLOCK_SIZE_LOG)) /* 22 == 4Mb per CPU core (1<<22) */
 #endif
 
 #endif /* H_FIO_MEM_H */
