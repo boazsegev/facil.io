@@ -532,6 +532,19 @@ void *fio_realloc(void *ptr, size_t new_size) {
   return fio_realloc2(ptr, new_size, max_old);
 }
 
+/**
+ * Allocates memory directly using `mmap`, this is prefered for larger objects
+ * that have a long lifetime.
+ *
+ * `fio_free` can be used for deallocating the memory.
+ */
+void *fio_mmap(size_t size) {
+  if (!size) {
+    return NULL;
+  }
+  return big_alloc(size);
+}
+
 /* *****************************************************************************
 FIO_OVERRIDE_MALLOC - override glibc / library malloc
 ***************************************************************************** */

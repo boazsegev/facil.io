@@ -79,12 +79,17 @@ Feel free to copy, use and enjoy according to the license provided.
 /**
  * Allocates memory using a per-CPU core block memory pool.
  * Memory is zeroed out.
+ *
+ * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (12,288 bytes when using 32Kb
+ * blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
  */
 void *fio_malloc(size_t size);
 
 /**
- * Allocates memory using a per-CPU core block memory pool.
- * Memory is zeroed out.
+ * same as calling `fio_malloc(size_per_unit * unit_count)`;
+ *
+ * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (12,288 bytes when using 32Kb
+ * blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
  */
 void *fio_calloc(size_t size_per_unit, size_t unit_count);
 
@@ -105,6 +110,17 @@ void *fio_realloc(void *ptr, size_t new_size);
  */
 void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
 
+/**
+ * Allocates memory directly using `mmap`, this is prefered for objects that
+ * both require almost a page of memory (or more) and expect a long lifetime.
+ *
+ * However, since this allocation will invoke the system call (`mmap`), it will
+ * be inherently slower.
+ *
+ * `fio_free` can be used for deallocating the memory.
+ */
+void *fio_mmap(size_t size);
+
 /** Clears any memory locks, in case of a system call to `fork`. */
 void fio_malloc_after_fork(void);
 
@@ -115,11 +131,12 @@ void fio_malloc_test(void);
 #if FIO_FORCE_MALLOC
 #define fio_malloc malloc
 #define fio_calloc calloc
+#define fio_mmap malloc
 #define fio_free free
 #define fio_realloc realloc
 #define fio_realloc2(ptr, new_size, old_data_len) realloc((ptr), (new_size))
 #define fio_malloc_test()
-#define fio_malloc_after_fork
+#define fio_malloc_after_fork()
 
 /* allows local override as well as global override */
 #elif FIO_OVERRIDE_MALLOC
