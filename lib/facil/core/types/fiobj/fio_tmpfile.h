@@ -18,7 +18,7 @@ License: MIT
 #include <sys/types.h>
 #include <unistd.h>
 
-int fio_tmpfile(void) {
+static inline int fio_tmpfile(void) {
   // create a temporary file to contain the data.
   int fd = 0;
 #ifdef P_tmpdir
