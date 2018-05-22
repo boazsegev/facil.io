@@ -88,7 +88,7 @@ extern "C" {
 Core object types
 ***************************************************************************** */
 
-typedef struct FacilIOProtocol protocol_s;
+typedef struct protocol_s protocol_s;
 /**************************************************************************/ /**
 * The Protocol
 
@@ -105,7 +105,7 @@ converted to the original file descriptor when in need.
 This allows facil.io to prevent old connection handles from sending data
 to new connections after a file descriptor is "recycled" by the OS.
 */
-struct FacilIOProtocol {
+struct protocol_s {
   /**
    * A string to identify the protocol's service (i.e. "http").
    *
@@ -123,6 +123,17 @@ struct FacilIOProtocol {
    *
    * The callback runs within a {FIO_PR_LOCK_TASK} lock, so it will never run
    * concurrently wil {on_data} or other connection specific tasks.
+   *
+   * The `on_shutdown` callback should return 0 to close the socket or a number
+   * between 1..254 to delay the socket closure by that amount of time.
+   *
+   * Once the socket wass marked for closure, facil.io will allow 8 seconds for
+   * all the data to be sent before forcfully closing the socket (regardless of
+   * state).
+   *
+   * If the `on_shutdown` returns 255, the socket is ignored and it will be
+   * abruptly terminated when all other sockets have finished their graceful
+   * shutdown procedure.
    */
   uint8_t (*on_shutdown)(intptr_t uuid, protocol_s *protocol);
   /** Called when the connection was closed, but will not run concurrently */
@@ -357,9 +368,11 @@ void facil_run(struct facil_run_args args);
 void facil_expected_concurrency(int16_t *threads, int16_t *processes);
 
 /**
- * returns true (1) if the facil.io engine is already running.
+ * Returns the number of worker processes if facil.io is running.
+ *
+ * (1 is returned when in single process mode, otherwise the number of workers)
  */
-int facil_is_running(void);
+int16_t facil_is_running(void);
 
 /**
 OVERRIDE THIS to replace the default `fork` implementation or to inject hooks
@@ -368,6 +381,9 @@ into the forking function.
 Behaves like the system's `fork`.
 */
 int facil_fork(void);
+
+/** returns facil.io's parent (root) process pid. */
+pid_t facil_parent_pid(void);
 
 /**
  * Attaches (or updates) a protocol object to a socket UUID.
@@ -432,9 +448,11 @@ using `defer`.
 ***************************************************************************** */
 
 typedef enum {
-  /* Called before the facil.io master process forks. */
+  /* Called once right after facil_run is called. */
+  FIO_CALL_PRE_START,
+  /* Called before each time the facil.io master process forks to a worker. */
   FIO_CALL_BEFORE_FORK,
-  /* Called after the facil.io master process forks. */
+  /* Called after each time facil.io forks (both in parent and workers). */
   FIO_CALL_AFTER_FORK,
   /* Called by a worker process right after forking. */
   FIO_CALL_IN_CHILD,
@@ -444,8 +462,14 @@ typedef enum {
   FIO_CALL_ON_IDLE,
   /* Called before starting the shutdown sequence. */
   FIO_CALL_ON_SHUTDOWN,
-  /* Called just before finishing up. */
-  FIO_CALL_ON_FINISH
+  /* Called just before finishing up (both on chlid and parent processes). */
+  FIO_CALL_ON_FINISH,
+  /* Called by each worker the moment it detects the master process crashed. */
+  FIO_CALL_ON_PARENT_CRUSH,
+  /* Called by the parent (master) after a worker process crashed. */
+  FIO_CALL_ON_CHILD_CRUSH,
+  /* An alternative to the system's at_exit. */
+  FIO_CALL_AT_EXIT
 } callback_type_e;
 
 /** Adds a callback to the list of callbacks to be called for the event. */
@@ -573,14 +597,11 @@ int facil_each(struct facil_each_args_s args);
 #define facil_each(...) facil_each((struct facil_each_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
- * Cluster specific API - local cluster messaging.
+ * Cluster Messages API
  *
- * Facil supports message process clustering, so that a multi-process
- * application can easily send and receive messages across process boundries.
+ * Facil supports a message oriented API for use for Inter Process Communication
+ * (IPC), publish/subscribe patterns, horizontal scaling and similar use-cases.
  **************************************************************************** */
-
-/** returns facil.io's parent (root) process pid. */
-pid_t facil_parent_pid(void);
 
 /**
 Sets a callback / handler for a message of type `msg_type`.
