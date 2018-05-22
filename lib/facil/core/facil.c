@@ -133,12 +133,6 @@ static const char *CLUSTER_LISTEN_PROTOCOL_NAME =
 static const char *CLUSTER_CONNECTION_PROTOCOL_NAME =
     "cluster connection __facil_internal__";
 
-static inline int is_counted_protocol(protocol_s *p) {
-  return p && p->service != TIMER_PROTOCOL_NAME &&
-         p->service != CLUSTER_LISTEN_PROTOCOL_NAME &&
-         p->service != CLUSTER_CONNECTION_PROTOCOL_NAME;
-}
-
 /* *****************************************************************************
 Event deferring (declarations)
 ***************************************************************************** */
@@ -205,14 +199,22 @@ static uint8_t mock_on_shutdown(intptr_t uuid, protocol_s *protocol) {
   (void)(uuid);
 }
 
+static uint8_t mock_on_shutdown_internal(intptr_t uuid, protocol_s *protocol) {
+  return 0;
+  (void)(protocol);
+  (void)(uuid);
+}
+
 static void mock_ping(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
   sock_force_close(uuid);
 }
 static void mock_ping2(intptr_t uuid, protocol_s *protocol) {
   (void)(protocol);
-  protocol->ping = mock_ping;
   uuid_data(uuid).active = facil_last_tick().tv_sec;
+  if (uuid_data(uuid).timeout == 255)
+    return;
+  protocol->ping = mock_ping;
   uuid_data(uuid).timeout = 8;
   sock_close(uuid);
 }
@@ -290,7 +292,7 @@ success:
 
 /** Forces all the existing callbacks to run, as if the event occured. */
 void facil_core_callback_force(callback_type_e c_type) {
-  if ((int)c_type < 0 || c_type > FIO_CALL_ON_FINISH)
+  if ((int)c_type < 0 || c_type > FIO_CALL_AT_EXIT)
     return;
   /* copy collection */
   fio_ls_embd_s copy = FIO_LS_INIT(copy);
@@ -335,9 +337,9 @@ External initialization / deconstruction
 /* perform initialization for external services. */
 static void facil_external_init(void) {
   sock_on_fork();
-  pubsub_cluster_on_fork_start();
   fio_malloc_after_fork();
   defer_on_fork();
+  pubsub_cluster_on_fork_start();
 }
 
 /* perform stage 2 initialization for external services. */
@@ -393,6 +395,9 @@ static void deferred_on_shutdown(void *arg, void *arg2) {
     uuid_data(arg).timeout = r;
     pr->ping = mock_ping2;
     protocol_unlock(pr, FIO_PR_LOCK_TASK);
+    if (r == 255) {
+      spn_sub(&facil_data->connection_count, 1);
+    }
   } else {
     uuid_data(arg).timeout = 8;
     pr->ping = mock_ping;
@@ -509,14 +514,14 @@ void sock_on_close(intptr_t uuid) {
   //         (unsigned int)sock_uuid2fd(uuid), (void
   //         *)uuid_data(uuid).protocol);
   spn_lock(&uuid_data(uuid).lock);
-  protocol_s *old_protocol = uuid_data(uuid).protocol;
+  struct connection_data_s old_data = uuid_data(uuid);
   uuid_data(uuid) = (struct connection_data_s){.lock = uuid_data(uuid).lock};
   spn_unlock(&uuid_data(uuid).lock);
-  if (old_protocol) {
-    if (is_counted_protocol(old_protocol)) {
+  if (old_data.protocol) {
+    if (facil_data->active || old_data.timeout != 255) {
       spn_sub(&facil_data->connection_count, 1);
     }
-    defer(deferred_on_close, (void *)uuid, old_protocol);
+    defer(deferred_on_close, (void *)uuid, old_data.protocol);
   }
 }
 
@@ -539,6 +544,7 @@ static void facil_cluster_cleanup(void); /* cluster data cleanup */
 static void facil_libcleanup(void) {
   /* free memory */
   spn_lock(&facil_libinit_lock);
+  facil_core_callback_force(FIO_CALL_AT_EXIT);
   if (facil_data) {
     facil_external_root_cleanup();
     facil_cluster_cleanup();
@@ -680,6 +686,7 @@ listener_alloc(struct facil_listen_args settings) {
         .protocol.service = LISTENER_PROTOCOL_NAME,
         .protocol.on_data = listener_on_data,
         .protocol.on_close = listener_on_close,
+        .protocol.on_shutdown = mock_on_shutdown_internal,
         .protocol.ping = listener_ping,
         .on_open = (void (*)(void *, void *))settings.on_open,
         .udata = settings.udata,
@@ -896,6 +903,7 @@ static inline timer_protocol_s *timer_alloc(void (*task)(void *), void *arg,
         .protocol.service = TIMER_PROTOCOL_NAME,
         .protocol.on_data = timer_on_data,
         .protocol.on_close = timer_on_close,
+        .protocol.on_shutdown = mock_on_shutdown_internal,
         .protocol.ping = timer_ping,
         .arg = arg,
         .task = task,
@@ -1231,6 +1239,7 @@ static void cluster_on_client_close(intptr_t uuid, protocol_s *pr_) {
       facil_data->active) {
     if (FACIL_PRINT_STATE)
       fprintf(stderr, "* (%d) Parent Process crash detected!\n", getpid());
+    facil_core_callback_force(FIO_CALL_ON_PARENT_CRUSH);
     unlink(facil_cluster_data.cluster_name);
   }
   fiobj_free(c->msg);
@@ -1264,7 +1273,7 @@ static void cluster_on_server_close(intptr_t uuid, protocol_s *pr_) {
 static uint8_t cluster_on_shutdown(intptr_t uuid, protocol_s *pr_) {
   cluster_send2traget(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL);
   facil_force_event(uuid, FIO_EVENT_ON_READY);
-  return 0;
+  return 255;
   (void)pr_;
   (void)uuid;
 }
@@ -1795,8 +1804,7 @@ static void facil_worker_cleanup(void) {
   facil_core_callback_force(FIO_CALL_ON_SHUTDOWN);
   for (int i = 0; i <= facil_data->capacity; ++i) {
     intptr_t uuid;
-    if (is_counted_protocol(fd_data(i).protocol) &&
-        (uuid = sock_fd2uuid(i)) >= 0) {
+    if ((uuid = sock_fd2uuid(i)) >= 0) {
       defer(deferred_on_shutdown, (void *)uuid, NULL);
     }
   }
@@ -1853,6 +1861,7 @@ static void *facil_sentinel_worker_thread(void *arg) {
                 "FATAL ERROR: Child worker (%d) crashed. Stopping services in "
                 "DEBUG mode.\n",
                 child);
+        facil_core_callback_force(FIO_CALL_ON_CHILD_CRUSH);
       } else {
         fprintf(
             stderr,
@@ -1870,6 +1879,7 @@ static void *facil_sentinel_worker_thread(void *arg) {
         fprintf(stderr,
                 "ERROR: Child worker (%d) crashed. Respawning worker.\n",
                 child);
+        facil_core_callback_force(FIO_CALL_ON_CHILD_CRUSH);
       } else {
         fprintf(stderr,
                 "INFO: Child worker (%d) shutdown. Respawning worker.\n",
@@ -2104,6 +2114,10 @@ void facil_run(struct facil_run_args args) {
   /* activate facil, fork if needed */
   facil_data->active = (uint16_t)args.processes;
   facil_data->threads = (uint16_t)args.threads;
+
+  /* call any pre-start callbacks*/
+  facil_core_callback_force(FIO_CALL_PRE_START);
+
   /* initialize cluster */
   if (args.processes > 1) {
     if (facil_cluster_init()) {
@@ -2125,9 +2139,11 @@ void facil_run(struct facil_run_args args) {
 }
 
 /**
- * returns true (1) if the facil.io engine is already running.
+ * Returns the number of worker processes if facil.io is running.
+ *
+ * (1 is returned when in single process mode, otherwise the number of workers)
  */
-int facil_is_running(void) { return (facil_data && facil_data->active > 0); }
+int16_t facil_is_running(void) { return (facil_data ? facil_data->active : 0); }
 
 /* *****************************************************************************
 Setting the protocol
@@ -2167,19 +2183,15 @@ static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
       errno = ENOTCONN;
     return -1;
   } else {
-    if (is_counted_protocol(protocol)) {
-      spn_add(&facil_data->connection_count, 1);
-    }
+    spn_add(&facil_data->connection_count, 1);
   }
-  protocol_s *old_protocol = uuid_data(uuid).protocol;
+  struct connection_data_s old_data = uuid_data(uuid);
   uuid_data(uuid).protocol = protocol;
   uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
   spn_unlock(&uuid_data(uuid).lock);
-  if (old_protocol) {
-    if (is_counted_protocol(old_protocol)) {
-      spn_sub(&facil_data->connection_count, 1);
-    }
-    defer(deferred_on_close, (void *)uuid, old_protocol);
+  if (old_data.protocol) {
+    spn_sub(&facil_data->connection_count, 1);
+    defer(deferred_on_close, (void *)uuid, old_data.protocol);
   } else if (evio_isactive() && protocol) {
     return evio_add(sock_uuid2fd(uuid), (void *)uuid);
   }
