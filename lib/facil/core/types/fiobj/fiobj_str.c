@@ -371,8 +371,10 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
   if (obj2str(str)->is_small) {
     if (size <= STR_INTENAL_CAPA)
       return STR_INTENAL_CAPA;
-    if (size >> 12)
+    if ((size >> 12) >= 4) {
+      /* align to page boundary ? */
       size = ((size >> 12) + 1) << 12;
+    }
     char *mem = fio_malloc(size);
     if (!mem) {
       perror("FATAL ERROR: Couldn't allocate larger String memory");
@@ -393,11 +395,16 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
   if (obj2str(str)->capa >= size)
     return obj2str(str)->capa;
 
-  /* large strings should increase memory by page size (assumes 4096 pages) */
-  if (size >> 12)
+  if ((size >> 12) >= 4) {
+    /* large strings should increase memory by page size (assumes 4096 pages) */
     size = ((size >> 12) + 1) << 12;
-  else if (size < (obj2str(str)->capa << 1))
-    size = obj2str(str)->capa << 1; /* grow in steps */
+  } else if (size < (obj2str(str)->capa + 32)) {
+    /* Minimal growth is 32 byte */
+    size = obj2str(str)->capa + 32;
+  } else if (size >= 32) {
+    /* Minimal growth is 32 byte */
+    size = ((size >> 5) + 1) << 5;
+  }
 
   if (obj2str(str)->capa == 0) {
     /* a static string */
