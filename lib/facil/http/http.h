@@ -394,10 +394,12 @@ struct http_settings_s {
  *
  * Leave as NULL to ignore IP binding.
  *
- * Returns -1 on error and 0 on success. the `on_finish` callback is always
- * called.
+ * Returns -1 on error and the socket's uuid on success.
+ *
+ * the `on_finish` callback is always called.
  */
-int http_listen(const char *port, const char *binding, struct http_settings_s);
+intptr_t http_listen(const char *port, const char *binding,
+                     struct http_settings_s);
 /** Listens to HTTP connections at the specified `port` and `binding`. */
 #define http_listen(port, binding, ...)                                        \
   http_listen((port), (binding), (struct http_settings_s){__VA_ARGS__})
@@ -425,10 +427,11 @@ int http_listen(const char *port, const char *binding, struct http_settings_s);
  * signature. However, it would be better to use the `websocket_connect`
  * function instead.
  *
- * Returns -1 on error and 0 on success. the `on_finish` callback is always
- * called.
+ * Returns -1 on error and the socket's uuid on success.
+ *
+ * The `on_finish` callback is always called.
  */
-int http_connect(const char *address, struct http_settings_s);
+intptr_t http_connect(const char *address, struct http_settings_s);
 #define http_connect(address, ...)                                             \
   http_connect((address), (struct http_settings_s){__VA_ARGS__})
 

@@ -114,7 +114,7 @@ int main(int argc, char const *argv[]) {
 
   // RedisEngine = redis_engine_create(.address = "localhost", .port = "6379");
   if (http_listen(port, NULL, .on_request = http_hello_on_request,
-                  .log = print_log, .public_folder = public_folder))
+                  .log = print_log, .public_folder = public_folder) == -1)
     perror("Couldn't initiate Hello World service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 

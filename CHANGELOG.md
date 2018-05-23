@@ -9,7 +9,11 @@
 
 * The `on_idle` and `on_finish` settings in `facil_run` were removed, replaced by the more flexible `facil_core_callback_add` approach.
 
+* The `facil_listen` and `http_listen` functions now return the listening socket's uuid (much like `facil_connect` and `http_connect` did).
+
 * The Protocol's `on_shutdown` callback is now expected to return a `uint8_t`, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate immediate socket closure and an 8 second timeout for outgoing buffer flushing.
+
+* The cluster messaging system and the Pub/Sub system were both refactored.
 
 * The Pub/Sub system's `use_pattern` was replaced with the optional callback argument `match` (a function pointer), allowing for custom pattern matching approaches (such as implementing NATs and RabbitMQ pattern matching). The previous glob matching approach (Redis compatible) is available using the provided `PUBSUB_MATCH_GLOB` function pointer.
 

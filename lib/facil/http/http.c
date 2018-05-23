@@ -921,8 +921,8 @@ static void http_on_finish(intptr_t uuid, void *set) {
  * Returns -1 on error and 0 on success.
  */
 #undef http_listen
-int http_listen(const char *port, const char *binding,
-                struct http_settings_s arg_settings) {
+intptr_t http_listen(const char *port, const char *binding,
+                     struct http_settings_s arg_settings) {
   if (arg_settings.on_request == NULL) {
     fprintf(stderr, "ERROR: http_listen requires the .on_request parameter "
                     "to be set\n");
@@ -1021,7 +1021,8 @@ static void http_on_client_failed(intptr_t uuid, void *set_) {
  * called.
  */
 #undef http_connect
-int http_connect(const char *address, struct http_settings_s arg_settings) {
+intptr_t http_connect(const char *address,
+                      struct http_settings_s arg_settings) {
   if (!arg_settings.on_response && !arg_settings.on_upgrade) {
     fprintf(stderr, "ERROR: http_connect requires either an on_response "
                     " or an on_upgrade callback.\n");

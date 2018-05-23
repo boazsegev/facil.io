@@ -247,7 +247,7 @@ int main(int argc, char const *argv[]) {
 
   if (http_listen(port, NULL, .on_request = answer_http_request,
                   .on_upgrade = answer_http_upgrade, .log = print_log,
-                  .public_folder = public_folder))
+                  .public_folder = public_folder) == -1)
     perror("Couldn't initiate Websocket service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 

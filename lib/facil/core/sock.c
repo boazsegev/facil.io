@@ -1149,7 +1149,7 @@ void sock_force_close(intptr_t uuid) {
   //         " for %p (fd: %u) with errno %d\n",
   //         getpid(), (void *)uuid, (unsigned int)sock_uuid2fd(uuid), errno);
   // perror("errno");
-  // // We might avoid shutdown, it has side-effects that aren't always clear
+  // We might avoid shutdown, it has side-effects that aren't always clear
   // shutdown(sock_uuid2fd(uuid), SHUT_RDWR);
   close(sock_uuid2fd(uuid));
   clear_fd(sock_uuid2fd(uuid), 0);

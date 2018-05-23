@@ -252,8 +252,12 @@ struct facil_listen_args {
   void (*on_finish)(intptr_t uuid, void *udata);
 };
 
-/** Schedule a network service on a listening socket. */
-int facil_listen(struct facil_listen_args args);
+/**
+ * Schedule a network service on a listening socket.
+ *
+ * Returns the listening socket or -1 (on error).
+ */
+intptr_t facil_listen(struct facil_listen_args args);
 
 /**
  * Schedule a network service on a listening socket.
@@ -353,6 +357,9 @@ struct facil_run_args {
  * done (after shutdown).
  *
  * See the `struct facil_run_args` details for any possible named arguments.
+ *
+ * This method blocks the current thread until the server is stopped (when a
+ * SIGINT/SIGTERM is received).
  */
 void facil_run(struct facil_run_args args);
 #define facil_run(...) facil_run((struct facil_run_args){__VA_ARGS__})

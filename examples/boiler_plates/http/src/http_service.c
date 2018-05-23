@@ -15,7 +15,7 @@ void initialize_http_service(void) {
                   .max_body_size = fio_cli_get_int("maxbd"),
                   .public_folder = fio_cli_get_str("public"),
                   .log = fio_cli_get_int("log"),
-                  .timeout = fio_cli_get_int("keep-alive"))) {
+                  .timeout = fio_cli_get_int("keep-alive")) == -1) {
     /* listen failed ?*/
     perror("ERROR: facil couldn't initialize HTTP service (already running?)");
     exit(1);
