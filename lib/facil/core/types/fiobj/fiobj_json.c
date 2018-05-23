@@ -264,7 +264,7 @@ typedef struct {
   uint8_t pretty;
 } obj2json_data_s;
 
-static int fiobj_fiobj_obj2json_task(FIOBJ o, void *data_) {
+static int fiobj_obj2json_task(FIOBJ o, void *data_) {
   obj2json_data_s *data = data_;
   uint8_t add_seperator = 1;
   if (fiobj_hash_key_in_loop()) {
@@ -413,23 +413,23 @@ FIOBJ fiobj_obj2json2(FIOBJ dest, FIOBJ o, uint8_t pretty) {
     fiobj_str_write(dest, "null", 4);
     return 0;
   }
-  fio_ary_s stack;
+  fio_ary_s stack = FIO_ARY_INIT;
   obj2json_data_s data = {
       .dest = dest, .stack = &stack, .pretty = pretty, .count = 1,
   };
   if (!o || !FIOBJ_IS_ALLOCATED(o) || !FIOBJECT2VTBL(o)->each) {
-    fiobj_fiobj_obj2json_task(o, &data);
+    fiobj_obj2json_task(o, &data);
     return dest;
   }
   fio_ary_new(&stack, 0);
-  fiobj_each2(o, fiobj_fiobj_obj2json_task, &data);
+  fiobj_each2(o, fiobj_obj2json_task, &data);
   fio_ary_free(&stack);
   return dest;
 }
 
 /* Formats an object into a JSON string. Remember to `fiobj_free`. */
 FIOBJ fiobj_obj2json(FIOBJ obj, uint8_t pretty) {
-  return fiobj_obj2json2(fiobj_str_buf(0), obj, pretty);
+  return fiobj_obj2json2(fiobj_str_buf(128), obj, pretty);
 }
 
 /* *****************************************************************************
