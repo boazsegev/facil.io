@@ -327,20 +327,21 @@ FIO_FUNC inline uintptr_t fio_hash_map_cuckoo_steps(uintptr_t step) {
 /* seeks the hash's position in the map */
 FIO_FUNC fio_hash_data_s *fio_hash_seek_pos_(fio_hash_s *hash,
                                              FIO_HASH_KEY_TYPE key) {
+  const uint64_t hashed_key = FIO_HASH_KEY2UINT(key);
   /* TODO: consider implementing Robing Hood reordering during seek? */
-  fio_hash_data_s *pos = hash->map + (FIO_HASH_KEY2UINT(key) & hash->mask);
+  fio_hash_data_s *pos = hash->map + (hashed_key & hash->mask);
   uintptr_t i = 0;
   const uintptr_t limit = hash->capa > FIO_HASH_MAX_MAP_SEEK
                               ? FIO_HASH_MAX_MAP_SEEK
                               : ((hash->capa >> 1) | 1);
   while (i < limit) {
     if (FIO_HASH_KEY_ISINVALID(pos->key) ||
-        (FIO_HASH_KEY2UINT(pos->key) == FIO_HASH_KEY2UINT(key) &&
+        (FIO_HASH_KEY2UINT(pos->key) == hashed_key &&
          FIO_HASH_COMPARE_KEYS(pos->key, key)))
       return pos;
-    pos = hash->map + (((FIO_HASH_KEY2UINT(key) & hash->mask) +
-                        fio_hash_map_cuckoo_steps(i++)) &
-                       hash->mask);
+    pos = hash->map +
+          (((hashed_key & hash->mask) + fio_hash_map_cuckoo_steps(i++)) &
+           hash->mask);
   }
   return NULL;
 }
