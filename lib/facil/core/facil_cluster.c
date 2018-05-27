@@ -22,6 +22,10 @@
  * Types
  **************************************************************************** */
 #ifndef H_FACIL_CLUSTER_H
+
+/** An opaque subscription type. */
+typedef struct subscription_s subscription_s;
+
 /** This contains message metadata, set by message extensions. */
 typedef struct facil_msg_metadata_s {
   size_t type_id;
@@ -36,6 +40,10 @@ typedef struct facil_msg_s {
   FIOBJ channel;
   /** The actual message. */
   FIOBJ msg;
+  /** The `udata1` argument associated with the subscription. */
+  void *udata1;
+  /** The `udata1` argument associated with the subscription. */
+  void *udata2;
   /** Metadata can be set by message extensions. */
   facil_msg_metadata_s *meta;
 } facil_msg_s;
@@ -45,6 +53,47 @@ typedef struct facil_msg_s {
  * pattern.
  */
 typedef int (*facil_match_fn)(FIOBJ pattern, FIOBJ channel);
+
+/** possible arguments for the facil_subscribe method. */
+typedef struct {
+  /**
+   * If `filter` is set, all messages that match the filter's numerical value
+   * will be forwarded to the subscription's callback.
+   *
+   * Subscriptions can either require a match by filter or match by channel.
+   * This will match the subscription by filter.
+   */
+  uint32_t filter;
+  /**
+   * If `channel` is set, all messages where `filter == 0` and the channel is an
+   * exact match will be forwarded to the subscription's callback.
+   *
+   * Subscriptions can either require a match by filter or match by channel.
+   * This will match the subscription by channel (only messages with no `filter`
+   * will be received.
+   */
+  FIOBJ channel;
+  /**
+   * The the `match` function allows pattern matching for channel names.
+   *
+   * When using a match function, the channel name is considered to be a pattern
+   * and each pub/sub message (a message where filter == 0) will be tested
+   * against that pattern.
+   *
+   * Using pattern subscriptions extensively could become a performance concern,
+   * since channel names are tested against each distinct pattern rather than
+   * using a hashmap for possible name matching.
+   */
+  facil_match_fn match;
+  /**
+   * The callback will be called for each message forwarded to the subscription.
+   */
+  void (*callback)(facil_msg_s *msg);
+  /** The udata values are ignored and made available to the callback. */
+  void *udata1;
+  /** The udata values are ignored and made available to the callback. */
+  void *udata2;
+} subscribe_args_s;
 
 /**
  * Signals all workers to shutdown, which might invoke a respawning of the
@@ -60,7 +109,319 @@ void facil_cluster_signal_children(void);
  * Data Structures - Clients / Subscriptions data
  **************************************************************************** */
 
+typedef enum cluster_message_type_e {
+  CLUSTER_MESSAGE_FORWARD,
+  CLUSTER_MESSAGE_JSON,
+  CLUSTER_MESSAGE_SHUTDOWN,
+  CLUSTER_MESSAGE_ERROR,
+  CLUSTER_MESSAGE_PING,
+} cluster_message_type_e;
+
+#define FIO_HASH_KEY_TYPE FIOBJ
+#define FIO_HASH_KEY_INVALID FIOBJ_INVALID
+#define FIO_HASH_KEY2UINT(key) (fiobj_obj2hash((key)))
+#define FIO_HASH_COMPARE_KEYS(k1, k2) (fiobj_iseq((k1), (k2)))
+#define FIO_HASH_KEY_ISINVALID(key) ((key) == FIOBJ_INVALID)
+#define FIO_HASH_KEY_COPY(key) (fiobj_dup((key)))
+#define FIO_HASH_KEY_DESTROY(key) fiobj_free((key))
+
 #include "fio_hashmap.h"
+
+typedef struct {
+  fio_hash_s channels;
+  spn_lock_i lock;
+} collection_s;
+
+typedef struct {
+  FIOBJ id;
+  fio_ls_embd_s subscriptions;
+  collection_s *parent;
+  spn_lock_i lock;
+} channel_s;
+
+typedef struct {
+  channel_s ch;
+  facil_match_fn match;
+} pattern_s;
+
+struct subscription_s {
+  fio_ls_embd_s node;
+  channel_s *parent;
+  void (*callback)(facil_msg_s *msg);
+  void *udata1;
+  void *udata2;
+  /** reference counter. */
+  uintptr_t ref;
+  /** prevents the callback from running concurrently for multiple messages. */
+  spn_lock_i lock;
+};
+
+typedef struct {
+  facil_msg_s msg;
+  uintptr_t ref;
+} facil_msg_internal_s;
+
+#define COLLECTION_INIT                                                        \
+  { .channels = FIO_HASH_INIT, .lock = SPN_LOCK_INIT }
+
+struct {
+  collection_s filters;
+  collection_s pubsub;
+  collection_s patterns;
+} postoffice = {
+    .filters = COLLECTION_INIT,
+    .pubsub = COLLECTION_INIT,
+    .patterns = COLLECTION_INIT,
+};
+
+/* *****************************************************************************
+ * Freeing subscriptions / channels
+ **************************************************************************** */
+
+/* to be used for reference counting (subtructing) */
+static inline void subscription_free(subscription_s *s) {
+  if (spn_sub(&s->ref, 1)) {
+    return;
+  }
+  fio_free(s);
+}
+/* to be used for reference counting (increasing) */
+static inline subscription_s *subscription_dup(subscription_s *s) {
+  spn_add(&s->ref, 1);
+  return s;
+}
+
+/* free a channel (if it's empty) */
+static inline void channel_destroy(channel_s *c) {
+  spn_lock(&c->parent->lock);
+  if (fio_ls_embd_any(&c->subscriptions)) {
+    spn_unlock(&c->parent->lock);
+    return;
+  }
+  fio_hash_insert(&c->parent->channels, c->id, NULL);
+  if ((fio_hash_count(&c->parent->channels) << 1) <=
+          fio_hash_capa(&c->parent->channels) &&
+      fio_hash_capa(&c->parent->channels) > 512) {
+    fio_hash_compact(&c->parent->channels);
+  }
+  spn_unlock(&c->parent->lock);
+  fio_free(c);
+}
+
+/* cancel a subscription */
+static void subscription_destroy(void *s_, void *ignore) {
+  subscription_s *s = s_;
+  if (spn_trylock(&s->parent->lock)) {
+    defer(subscription_destroy, s_, ignore);
+    return;
+  }
+  fio_ls_embd_remove(&s->node);
+  if (fio_ls_embd_is_empty(&s->parent->subscriptions)) {
+    channel_destroy(s->parent);
+  }
+  spn_unlock(&s->parent->lock);
+  subscription_free(s);
+  (void)ignore;
+}
+
+/* *****************************************************************************
+ * Creating subscriptions
+ **************************************************************************** */
+
+/** Creates a new subscription object, returning NULL on error. */
+static inline subscription_s *subscription_create(subscribe_args_s args) {
+  if (!args.channel && !args.filter) {
+    return NULL;
+  }
+  collection_s *collection;
+  if (args.filter) {
+    /* either a filter OR a channel can be subscribed to. */
+    args.channel = fiobj_num_new((uintptr_t)args.filter << 2);
+    collection = &postoffice.filters;
+  } else {
+    if (args.match) {
+      collection = &postoffice.patterns;
+    } else {
+      collection = &postoffice.pubsub;
+    }
+    if (FIOBJ_TYPE_IS(args.channel, FIOBJ_T_STRING)) {
+      /* Hash values are cached, so it can be computed outside the lock */
+      fiobj_str_freeze(args.channel);
+      fiobj_obj2hash(args.channel);
+    }
+  }
+  /* allocate and initialize subscription object */
+  subscription_s *s = fio_malloc(sizeof(*s));
+  if (!s) {
+    perror("FATAL ERROR: (pubsub) can't allocate memory for subscription");
+    exit(errno);
+  }
+  *s = (subscription_s){
+      .node = (fio_ls_embd_s)FIO_LS_INIT(s->node),
+      .parent = NULL,
+      .callback = args.callback,
+      .udata1 = args.udata1,
+      .udata2 = args.udata2,
+      .ref = 1,
+      .lock = SPN_LOCK_INIT,
+  };
+  /* seek existing channel or create one */
+  spn_lock(&collection->lock);
+  channel_s *ch = fio_hash_find(&collection->channels, args.channel);
+  if (!ch) {
+    if (args.match) {
+      /* pattern subscriptions */
+      ch = fio_malloc(sizeof(pattern_s));
+      if (!ch) {
+        perror("FATAL ERROR: (pubsub) can't allocate memory for pattern");
+        exit(errno);
+      }
+      ((pattern_s *)ch)->match = args.match;
+    } else {
+      /* channel subscriptions */
+      ch = fio_malloc(sizeof(*ch));
+      if (!ch) {
+        perror("FATAL ERROR: (pubsub) can't allocate memory for channel");
+        exit(errno);
+      }
+    }
+    *ch = (channel_s){
+        .id = fiobj_dup(args.channel),
+        .subscriptions = (fio_ls_embd_s)FIO_LS_INIT(ch->subscriptions),
+        .parent = collection,
+        .lock = SPN_LOCK_INIT,
+    };
+  }
+  /* add subscription to filter / channel / pattern */
+  spn_lock(&ch->lock);
+  fio_ls_embd_push(&ch->subscriptions, &s->node);
+  spn_unlock(&ch->lock);
+  spn_unlock(&collection->lock);
+  if (args.filter) {
+    fiobj_free(args.channel);
+  }
+  return s;
+}
+
+/* *****************************************************************************
+ * Publishing to the subsriptions
+ **************************************************************************** */
+
+/** frees the internal message data */
+static inline void internal_message_free(facil_msg_internal_s *msg) {
+  if (spn_sub(&msg->ref, 1))
+    return;
+  fiobj_free(msg->msg.channel);
+  fiobj_free(msg->msg.msg);
+  fio_free(msg);
+}
+
+/* defers the callback (mark only) */
+static inline void defer_subscription_callback(facil_msg_s *msg_) {
+  facil_msg_internal_s *msg = (facil_msg_internal_s *)msg_;
+  msg->ref = 1;
+}
+
+/* performs the actual callback */
+static void perform_subscription_callback(void *s_, void *msg_) {
+  subscription_s *s = s_;
+  if (spn_trylock(&s->lock)) {
+    defer(perform_subscription_callback, s_, msg_);
+    return;
+  }
+  facil_msg_internal_s *msg = (facil_msg_internal_s *)msg_;
+  facil_msg_internal_s m;
+  m.msg = msg->msg;
+  m.ref = 0;
+  m.msg.udata1 = s->udata1;
+  m.msg.udata2 = s->udata2;
+  s->callback((facil_msg_s *)&m);
+  spn_unlock(&s->lock);
+  if (m.ref) {
+    defer(perform_subscription_callback, s_, msg_);
+    return;
+  }
+  internal_message_free(msg);
+  subscription_free(s);
+}
+
+/* publishes a message to a channel, managing the reference counts */
+static void publish2channel(channel_s *ch, facil_msg_internal_s *msg) {
+  if (!ch) {
+    return;
+  }
+  spn_lock(&ch->lock);
+  FIO_LS_EMBD_FOR(&ch->subscriptions, pos) {
+    subscription_s *s = FIO_LS_EMBD_OBJ(subscription_s, node, pos);
+    if (!s) {
+      continue;
+    }
+    subscription_dup(s);
+    spn_add(&msg->ref, 1);
+    defer(perform_subscription_callback, s, msg);
+  }
+  spn_unlock(&ch->lock);
+}
+
+static void publish2process(int32_t filter, FIOBJ channel, FIOBJ msg,
+                            cluster_message_type_e type) {
+  facil_msg_internal_s *m = fio_malloc(sizeof(*m));
+  if (!m) {
+    perror("FATAL ERROR: (pubsub) can't allocate memory for message data");
+    exit(errno);
+  }
+  *m = (facil_msg_internal_s){
+      .msg =
+          {
+              .filter = filter,
+              .channel = fiobj_dup(channel),
+              .msg = fiobj_dup(msg),
+
+          },
+      .ref = 1,
+  };
+  if (type == CLUSTER_MESSAGE_JSON) {
+    FIOBJ json = FIOBJ_INVALID;
+    fio_cstr_s str = fiobj_obj2cstr(msg);
+    fiobj_json2obj(&json, str.data, str.length);
+    if (json) {
+      fiobj_free(msg);
+      m->msg.msg = json;
+    }
+  } else {
+  }
+  if (filter) {
+    FIOBJ key = fiobj_num_new((uintptr_t)filter << 2);
+    spn_lock(&postoffice.filters.lock);
+    channel_s *ch = fio_hash_find(&postoffice.filters.channels, key);
+    publish2channel(ch, m);
+    spn_unlock(&postoffice.filters.lock);
+    internal_message_free(m);
+    return;
+  }
+  /* exact match */
+  spn_lock(&postoffice.pubsub.lock);
+  channel_s *ch = fio_hash_find(&postoffice.pubsub.channels, channel);
+  publish2channel(ch, m);
+  spn_unlock(&postoffice.pubsub.lock);
+  /* test patterns */
+  spn_lock(&postoffice.patterns.lock);
+  FIO_HASH_FOR_LOOP(&postoffice.patterns.channels, p) {
+    if (!p->obj) {
+      continue;
+    }
+    pattern_s *pattern = p->obj;
+    if (pattern->match(pattern->ch.id, channel)) {
+      publish2channel(&pattern->ch, m);
+    }
+  }
+  spn_unlock(&postoffice.patterns.lock);
+  internal_message_free(m);
+}
+
+/* *****************************************************************************
+ * Data Structures - Core Structures
+ **************************************************************************** */
 
 #define CLUSTER_READ_BUFFER 16384
 
@@ -78,10 +439,6 @@ typedef struct cluster_pr_s {
   uint32_t length;
   uint8_t buffer[CLUSTER_READ_BUFFER];
 } cluster_pr_s;
-
-/* *****************************************************************************
- * Data Structures - Core Structures
- **************************************************************************** */
 
 struct cluster_data_s {
   intptr_t listener;
@@ -184,6 +541,15 @@ static void cluster_forward_msg2handlers(cluster_pr_s *c) {
         .msg = fiobj_dup(c->msg),
         .filter = c->filter,
     };
+    if ((cluster_message_type_e)c->type == CLUSTER_MESSAGE_JSON) {
+      FIOBJ json = FIOBJ_INVALID;
+      fio_cstr_s str = fiobj_obj2cstr(c->msg);
+      fiobj_json2obj(&json, str.data, str.length);
+      if (json) {
+        fiobj_free(c->msg);
+        data->msg = json;
+      }
+    }
     defer(cluster_deferred_handler, data, NULL);
   }
 }
@@ -217,14 +583,6 @@ inline static void cluster_uint2str(uint8_t *dest, uint32_t i) {
   dest[3] = i & 0xFF;
 }
 #endif
-
-enum cluster_message_type_e {
-  CLUSTER_MESSAGE_FORWARD,
-  CLUSTER_MESSAGE_JSON,
-  CLUSTER_MESSAGE_SHUTDOWN,
-  CLUSTER_MESSAGE_ERROR,
-  CLUSTER_MESSAGE_PING,
-};
 
 typedef struct cluster_msg_s {
   facil_msg_s message;
@@ -413,11 +771,24 @@ static void cluster_server_sender(FIOBJ data) {
 
 static void cluster_server_handler(struct cluster_pr_s *pr) {
   /* what to do? */
-  fio_cstr_s cs = fiobj_obj2cstr(pr->channel);
-  fio_cstr_s ms = fiobj_obj2cstr(pr->msg);
-  cluster_server_sender(cluster_wrap_message(cs.len, ms.len, pr->type,
-                                             pr->filter, cs.bytes, ms.bytes));
-  cluster_forward_msg2handlers(pr);
+  switch ((cluster_message_type_e)pr->type) {
+  case CLUSTER_MESSAGE_FORWARD: /* fallthrough */
+  case CLUSTER_MESSAGE_JSON: {
+    fio_cstr_s cs = fiobj_obj2cstr(pr->channel);
+    fio_cstr_s ms = fiobj_obj2cstr(pr->msg);
+    cluster_server_sender(cluster_wrap_message(cs.len, ms.len, pr->type,
+                                               pr->filter, cs.bytes, ms.bytes));
+    publish2process(pr->filter, pr->channel, pr->msg,
+                    (cluster_message_type_e)pr->type);
+    cluster_forward_msg2handlers(pr);
+    break;
+  }
+  case CLUSTER_MESSAGE_SHUTDOWN: /* fallthrough */
+  case CLUSTER_MESSAGE_ERROR:    /* fallthrough */
+  case CLUSTER_MESSAGE_PING:     /* fallthrough */
+  default:
+    break;
+  }
 }
 
 /** Called when a ne client is available */
@@ -508,7 +879,20 @@ static void facil_cluster_cleanup(void *ignore) {
 
 static void cluster_client_handler(struct cluster_pr_s *pr) {
   /* what to do? */
-  cluster_forward_msg2handlers(pr);
+  switch ((cluster_message_type_e)pr->type) {
+  case CLUSTER_MESSAGE_FORWARD: /* fallthrough */
+  case CLUSTER_MESSAGE_JSON:
+    publish2process(pr->filter, pr->channel, pr->msg,
+                    (cluster_message_type_e)pr->type);
+    cluster_forward_msg2handlers(pr);
+    break;
+  case CLUSTER_MESSAGE_SHUTDOWN:
+    kill(getpid(), SIGINT);
+  case CLUSTER_MESSAGE_ERROR: /* fallthrough */
+  case CLUSTER_MESSAGE_PING:  /* fallthrough */
+  default:
+    break;
+  }
 }
 static void cluster_client_sender(FIOBJ data) {
   fiobj_send_free(cluster_data.client, data);
@@ -589,7 +973,7 @@ void __attribute__((constructor)) facil_cluster_initialize(void) {
 }
 
 /* *****************************************************************************
- * External API
+ * External API (old)
  **************************************************************************** */
 
 void facil_cluster_set_handler(int32_t filter,
@@ -614,8 +998,12 @@ int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg) {
     fiobj_dup(msg);
   } else {
     type = CLUSTER_MESSAGE_JSON;
-    ch = fiobj_obj2json(ch, 0);
-    msg = fiobj_obj2json(msg, 0);
+    if (ch) {
+      ch = fiobj_obj2json(ch, 0);
+    }
+    if (msg) {
+      msg = fiobj_obj2json(msg, 0);
+    }
   }
   fio_cstr_s cs = fiobj_obj2cstr(ch);
   fio_cstr_s ms = fiobj_obj2cstr(msg);
@@ -630,6 +1018,12 @@ int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg) {
   fiobj_free(msg);
   return 0;
 }
+
+/* *****************************************************************************
+ * External API
+ **************************************************************************** */
+
+void facil_message_defer(facil_msg_s *msg) { defer_subscription_callback(msg); }
 
 /* NOT signal safe. */
 void facil_cluster_signal_children(void) {
