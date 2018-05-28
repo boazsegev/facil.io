@@ -26,10 +26,21 @@
 /** An opaque subscription type. */
 typedef struct subscription_s subscription_s;
 
+/** A pub/sub engine data structure. See details later on. */
+typedef struct pubsub_engine_s pubsub_engine_s;
+
 /** This contains message metadata, set by message extensions. */
 typedef struct facil_msg_metadata_s {
+  /** The type ID should be used to identify the metadata's actual structure. */
   size_t type_id;
+  /** The next metadata information linked with the message. */
   struct facil_msg_metadata_s *next;
+  /**
+   * This method will be called by facil.io to cleanup the metadata resources.
+   *
+   * Don't alter / call this method, this data is reserved.
+   */
+  void (*on_finish)(struct facil_msg_metadata_s *self);
 } facil_msg_metadata_s;
 
 /** Message structure, with an integer filter as well as a channel filter. */
@@ -47,6 +58,18 @@ typedef struct facil_msg_s {
   /** Metadata can be set by message extensions. */
   facil_msg_metadata_s *meta;
 } facil_msg_s;
+
+/** Publishing and on_message callback arguments. */
+typedef struct facil_publish_args_s {
+  /** The pub/sub engine that should be used to farward this message. */
+  pubsub_engine_s const *engine;
+  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
+  int32_t filter;
+  /** The pub/sub target channnel. */
+  FIOBJ channel;
+  /** The pub/sub message. */
+  FIOBJ message;
+} facil_publish_args_s;
 
 /**
  * Pattern matching callback type - should return 0 unless channel matches
@@ -94,6 +117,69 @@ typedef struct {
   /** The udata values are ignored and made available to the callback. */
   void *udata2;
 } subscribe_args_s;
+
+/**
+ * facil.io can be linked with external Pub/Sub services using "engines".
+ *
+ * Only unfiltered messages and subscriptions (where filter == 0) will be
+ * forwarded to external Pub/Sub services.
+ *
+ * Engines MUST provide the listed function pointers and should be registered
+ * using the `pubsub_engine_register` function.
+ *
+ * Engines should deregister, before being destroyed, by using the
+ * `pubsub_engine_deregister` function.
+ *
+ * When an engine received a message to publish, it should call the
+ * `pubsub_publish` function with the engine to which the message is forwarded.
+ * i.e.:
+ *
+ *       pubsub_publish(
+ *           .engine = FACIL_PROCESS_ENGINE,
+ *           .channel = channel_name,
+ *           .message = msg_body );
+ *
+ * Engines MUST NOT free any of the FIOBJ objects they receive.
+ *
+ */
+struct pubsub_engine_s {
+  /** Should subscribe channel. Failures are ignored. */
+  void (*subscribe)(const pubsub_engine_s *eng, FIOBJ channel,
+                    facil_match_fn match);
+  /** Should unsubscribe channel. Failures are ignored. */
+  void (*unsubscribe)(const pubsub_engine_s *eng, FIOBJ channel,
+                      facil_match_fn match);
+  /** Should return 0 on success and -1 on failure. */
+  int (*publish)(const pubsub_engine_s *eng, FIOBJ channel, FIOBJ msg);
+  /**
+   * facil.io will call this callback whenever starting, or restarting, the
+   * reactor.
+   *
+   * This will be called when facil.io starts (the master process).
+   *
+   * This will also be called when forking, after facil.io closes all
+   * connections and claim to shut down (running all deferred event).
+   */
+  void (*on_startup)(const pubsub_engine_s *eng);
+};
+
+/** Attaches an engine, so it's callback can be called by facil.io. */
+void facil_pubsub_attach(pubsub_engine_s *engine);
+
+/** Detaches an engine, so it could be safely destroyed. */
+void facil_pubsub_detach(pubsub_engine_s *engine);
+
+/**
+ * Engines can ask facil.io to call the `subscribe` callback for all active
+ * channels.
+ *
+ * This allows engines that lost their connection to their Pub/Sub service to
+ * resubscribe all the currently active channels with the new connection.
+ *
+ * CAUTION: This is an evented task... try not to free the engine's memory while
+ * resubscriptions are under way...
+ */
+void facil_pubsub_reattach(pubsub_engine_s *eng);
 
 /**
  * Signals all workers to shutdown, which might invoke a respawning of the
@@ -160,6 +246,16 @@ typedef struct {
   facil_msg_s msg;
   uintptr_t ref;
 } facil_msg_internal_s;
+
+typedef struct {
+  cluster_message_type_e type;
+  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
+  int32_t filter;
+  /** A channel name, allowing for pub/sub patterns. */
+  FIOBJ channel;
+  /** The actual message. */
+  FIOBJ msg;
+} facil_msg_str_s;
 
 #define COLLECTION_INIT                                                        \
   { .channels = FIO_HASH_INIT, .lock = SPN_LOCK_INIT }
@@ -230,7 +326,7 @@ static void subscription_destroy(void *s_, void *ignore) {
 
 /** Creates a new subscription object, returning NULL on error. */
 static inline subscription_s *subscription_create(subscribe_args_s args) {
-  if (!args.channel && !args.filter) {
+  if (!args.callback || (!args.channel && !args.filter)) {
     return NULL;
   }
   collection_s *collection;
@@ -417,6 +513,59 @@ static void publish2process(int32_t filter, FIOBJ channel, FIOBJ msg,
   }
   spn_unlock(&postoffice.patterns.lock);
   internal_message_free(m);
+}
+
+/** Prepares the message to be published. */
+static inline facil_msg_str_s prepare_message(int32_t filter, FIOBJ ch,
+                                              FIOBJ msg) {
+  facil_msg_str_s m = {
+      .channel = ch,
+      .msg = msg,
+      .type = CLUSTER_MESSAGE_FORWARD,
+      .filter = filter,
+  };
+  if ((!ch || FIOBJ_TYPE_IS(ch, FIOBJ_T_STRING)) &&
+      (!msg || FIOBJ_TYPE_IS(msg, FIOBJ_T_STRING))) {
+    /* nothing to do */
+  } else {
+    m.type = CLUSTER_MESSAGE_JSON;
+    if (ch) {
+      m.channel = fiobj_obj2json(ch, 0);
+    }
+    if (msg) {
+      m.msg = fiobj_obj2json(msg, 0);
+    }
+  }
+  fiobj_dup(m.channel);
+  fiobj_dup(m.msg);
+  return m;
+}
+
+static void facil_send2cluster(int32_t filter, FIOBJ ch, FIOBJ msg,
+                               cluster_message_type_e type);
+static void cluster_client_sender(FIOBJ data);
+static void cluster_server_sender(FIOBJ data);
+// cluster_server_sender(cluster_wrap_message(cs.len, ms.len, pr->type,
+//                                            pr->filter, cs.bytes, ms.bytes));
+
+static inline void publish_msg2all(int32_t filter, FIOBJ ch, FIOBJ msg) {
+  facil_msg_str_s m = prepare_message(filter, ch, msg);
+  facil_send2cluster(m.filter, m.channel, m.msg, m.type);
+  publish2process(m.filter, m.channel, m.msg, m.type);
+  fiobj_free(m.channel);
+  fiobj_free(m.msg);
+}
+static inline void publish_msg2local(int32_t filter, FIOBJ ch, FIOBJ msg) {
+  facil_msg_str_s m = prepare_message(filter, ch, msg);
+  publish2process(m.filter, m.channel, m.msg, m.type);
+  fiobj_free(m.channel);
+  fiobj_free(m.msg);
+}
+static inline void publish_msg2cluster(int32_t filter, FIOBJ ch, FIOBJ msg) {
+  facil_msg_str_s m = prepare_message(filter, ch, msg);
+  facil_send2cluster(m.filter, m.channel, m.msg, m.type);
+  fiobj_free(m.channel);
+  fiobj_free(m.msg);
 }
 
 /* *****************************************************************************
@@ -945,6 +1094,23 @@ static void facil_connect2cluster(void *ignore) {
   (void)ignore;
 }
 
+static void facil_send2cluster(int32_t filter, FIOBJ ch, FIOBJ msg,
+                               cluster_message_type_e type) {
+  if (!facil_is_running()) {
+    fprintf(stderr, "ERROR: cluster inactive, can't send message.\n");
+    return;
+  }
+  fio_cstr_s cs = fiobj_obj2cstr(ch);
+  fio_cstr_s ms = fiobj_obj2cstr(msg);
+  if (cluster_data.client > 0) {
+    cluster_client_sender(
+        cluster_wrap_message(cs.len, ms.len, type, filter, cs.bytes, ms.bytes));
+  } else {
+    cluster_server_sender(
+        cluster_wrap_message(cs.len, ms.len, type, filter, cs.bytes, ms.bytes));
+  }
+}
+
 /* *****************************************************************************
  * Initialization
  **************************************************************************** */
@@ -1020,12 +1186,14 @@ int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg) {
 }
 
 /* *****************************************************************************
+ * pub/sub engines
+ **************************************************************************** */
+
+/* *****************************************************************************
  * External API
  **************************************************************************** */
 
-void facil_message_defer(facil_msg_s *msg) { defer_subscription_callback(msg); }
-
-/* NOT signal safe. */
+/** Signals children (or self) to shutdown) - NOT signal safe. */
 void facil_cluster_signal_children(void) {
   if (facil_parent_pid() != getpid()) {
     kill(getpid(), SIGINT);
@@ -1034,3 +1202,112 @@ void facil_cluster_signal_children(void) {
   cluster_server_sender(
       cluster_wrap_message(0, 0, CLUSTER_MESSAGE_SHUTDOWN, 0, NULL, NULL));
 }
+
+/**
+ * Subscribes to either a filter OR a channel (never both).
+ *
+ * Returns a subscription pointer on success or NULL on failure.
+ *
+ * See `subscribe_args_s` for details.
+ */
+subscription_s *facil_subscribe(subscribe_args_s args) {
+  return subscription_create(args);
+}
+
+/**
+ * Subscribes to a channel (enforces filter == 0).
+ *
+ * Returns a subscription pointer on success or NULL on failure.
+ *
+ * See `subscribe_args_s` for details.
+ */
+subscription_s *facil_subscribe_pubsub(subscribe_args_s args) {
+  args.filter = 0;
+  return subscription_create(args);
+}
+
+/**
+ * This helper returns a temporary handle to an existing subscription's channel
+ * or filter.
+ *
+ * To keep the handle beyond the lifetime of the subscription, use `fiobj_dup`.
+ */
+FIOBJ facil_subscription_channel(subscription_s *subscription) {
+  return subscription->parent->id;
+}
+
+/**
+ * Cancels an existing subscriptions (actual effects might be delayed).
+ */
+void facil_unsubscribe(subscription_s *subscription) {
+  subscription_destroy(subscription, NULL);
+}
+
+/**
+ * Publishes a message to the relevant subscribers (if any) using the prescribed
+ * engine.
+ *
+ * See `facil_publish_args_s` for details.
+ *
+ * By default the message is sent using the FACIL_PUBSUB_CLUSTER engine (all
+ * processes, including the calling process).
+ *
+ * To limit the message only to other processes (exclude the calling process),
+ * use the FACIL_PUBSUB_SIBLINGS engine.
+ *
+ * To limit the message only to the calling process, use the
+ * FACIL_PUBSUB_PROCESS engine.
+ */
+void facil_publish_pubsub(facil_publish_args_s args) {
+  if (args.filter != 0) {
+    args.engine;
+  }
+}
+
+/**
+ * Publishes a message to the relevant subscribers (if any).
+ *
+ * See `facil_publish_args_s` for details.
+ *
+ * By default the message is sent using the FACIL_PUBSUB_CLUSTER engine (all
+ * processes, including the calling process).
+ *
+ * To limit the message only to other processes (exclude the calling process),
+ * use the FACIL_PUBSUB_SIBLINGS engine.
+ *
+ * To limit the message only to the calling process, use the
+ * FACIL_PUBSUB_PROCESS engine.
+ */
+void facil_publish(facil_publish_args_s args) {
+  if (args.filter == 0) {
+    facil_publish_pubsub(args);
+    return;
+  }
+}
+
+/**
+ * Defers the current callback, so it will be called again for the message.
+ */
+void facil_message_defer(facil_msg_s *msg) { defer_subscription_callback(msg); }
+
+/* *****************************************************************************
+ * Pub/Sub Engine (extension) API
+ **************************************************************************** */
+
+/** Attaches an engine, so it's callback can be called by facil.io. */
+void facil_pubsub_attach(pubsub_engine_s *engine);
+
+/** Detaches an engine, so it could be safely destroyed. */
+void facil_pubsub_detach(pubsub_engine_s *engine);
+
+/**
+ * Engines can ask facil.io to call the `subscribe` callback for all active
+ * channels.
+ *
+ * This allows engines that lost their connection to their Pub/Sub service to
+ * resubscribe all the currently active channels with the new connection.
+ *
+ * CAUTION: This is an evented task... try not to free the engine's memory while
+ * resubscriptions are under way...
+ */
+void facil_pubsub_reattach(pubsub_engine_s *eng);
