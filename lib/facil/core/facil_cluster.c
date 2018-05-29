@@ -29,6 +29,15 @@ typedef struct subscription_s subscription_s;
 /** A pub/sub engine data structure. See details later on. */
 typedef struct pubsub_engine_s pubsub_engine_s;
 
+/** The default engine (settable). */
+extern pubsub_engine_s *FACIL_PUBSUB_DEFAULT;
+/** Used to publish the message except within the current process. */
+extern const pubsub_engine_s *FACIL_PUBSUB_SIBLINGS;
+/** used to publish the message only within the current process. */
+extern const pubsub_engine_s *FACIL_PUBSUB_PROCESS;
+/** used to publish the message to all clients in the cluster. */
+extern const pubsub_engine_s *FACIL_PUBSUB_CLUSTER;
+
 /** This contains message metadata, set by message extensions. */
 typedef struct facil_msg_metadata_s {
   /** The type ID should be used to identify the metadata's actual structure. */
@@ -264,11 +273,40 @@ struct {
   collection_s filters;
   collection_s pubsub;
   collection_s patterns;
+  collection_s engines;
 } postoffice = {
     .filters = COLLECTION_INIT,
     .pubsub = COLLECTION_INIT,
     .patterns = COLLECTION_INIT,
 };
+
+/* *****************************************************************************
+Engine handling and Management
+***************************************************************************** */
+
+/* runs in lock(!) let'm all know */
+static void pubsub_on_channel_create(channel_s *ch, facil_match_fn match) {
+  spn_lock(&postoffice.engines.lock);
+  FIO_HASH_FOR_LOOP(&postoffice.engines.channels, e_) {
+    if (!e_ || !e_->obj)
+      continue;
+    pubsub_engine_s *e = e_->obj;
+    e->subscribe(e, ch->id, match);
+  }
+  spn_unlock(&postoffice.engines.lock);
+}
+
+/* runs in lock(!) let'm all know */
+static void pubsub_on_channel_destroy(channel_s *ch, facil_match_fn match) {
+  spn_lock(&postoffice.engines.lock);
+  FIO_HASH_FOR_LOOP(&postoffice.engines.channels, e_) {
+    if (!e_ || !e_->obj)
+      continue;
+    pubsub_engine_s *e = e_->obj;
+    e->unsubscribe(e, ch->id, match);
+  }
+  spn_unlock(&postoffice.engines.lock);
+}
 
 /* *****************************************************************************
  * Freeing subscriptions / channels
@@ -543,11 +581,8 @@ static inline facil_msg_str_s prepare_message(int32_t filter, FIOBJ ch,
 
 static void facil_send2cluster(int32_t filter, FIOBJ ch, FIOBJ msg,
                                cluster_message_type_e type);
-static void cluster_client_sender(FIOBJ data);
-static void cluster_server_sender(FIOBJ data);
-// cluster_server_sender(cluster_wrap_message(cs.len, ms.len, pr->type,
-//                                            pr->filter, cs.bytes, ms.bytes));
 
+/** Publishes a message to all processes (including this one) */
 static inline void publish_msg2all(int32_t filter, FIOBJ ch, FIOBJ msg) {
   facil_msg_str_s m = prepare_message(filter, ch, msg);
   facil_send2cluster(m.filter, m.channel, m.msg, m.type);
@@ -555,12 +590,16 @@ static inline void publish_msg2all(int32_t filter, FIOBJ ch, FIOBJ msg) {
   fiobj_free(m.channel);
   fiobj_free(m.msg);
 }
+
+/** Publishes a message within the current process (only this one) */
 static inline void publish_msg2local(int32_t filter, FIOBJ ch, FIOBJ msg) {
   facil_msg_str_s m = prepare_message(filter, ch, msg);
   publish2process(m.filter, m.channel, m.msg, m.type);
   fiobj_free(m.channel);
   fiobj_free(m.msg);
 }
+
+/** Publishes a message to other processes (excluding this one) */
 static inline void publish_msg2cluster(int32_t filter, FIOBJ ch, FIOBJ msg) {
   facil_msg_str_s m = prepare_message(filter, ch, msg);
   facil_send2cluster(m.filter, m.channel, m.msg, m.type);
@@ -1295,10 +1334,47 @@ void facil_message_defer(facil_msg_s *msg) { defer_subscription_callback(msg); }
  **************************************************************************** */
 
 /** Attaches an engine, so it's callback can be called by facil.io. */
-void facil_pubsub_attach(pubsub_engine_s *engine);
+void facil_pubsub_attach(pubsub_engine_s *engine) {
+  if (!engine) {
+    return;
+  }
+  FIOBJ key = fiobj_num_new((intptr_t)engine);
+  spn_lock(&postoffice.engines.lock);
+  fio_hash_insert(&postoffice.engines.channels, key, engine);
+  spn_unlock(&postoffice.engines.lock);
+  if (engine->subscribe) {
+    spn_lock(&postoffice.pubsub.lock);
+    FIO_HASH_FOR_LOOP(&postoffice.pubsub.channels, i) {
+      channel_s *ch = i->obj;
+      engine->subscribe(engine, ch->id, NULL);
+    }
+    spn_unlock(&postoffice.pubsub.lock);
+    spn_lock(&postoffice.patterns.lock);
+    FIO_HASH_FOR_LOOP(&postoffice.patterns.channels, i) {
+      channel_s *ch = i->obj;
+      engine->subscribe(engine, ch->id, ((pattern_s *)ch)->match);
+    }
+    spn_unlock(&postoffice.patterns.lock);
+  }
+  fiobj_free(key);
+}
 
 /** Detaches an engine, so it could be safely destroyed. */
-void facil_pubsub_detach(pubsub_engine_s *engine);
+void facil_pubsub_detach(pubsub_engine_s *engine) {
+  if (FACIL_PUBSUB_DEFAULT == engine) {
+    FACIL_PUBSUB_DEFAULT = (pubsub_engine_s *)FACIL_PUBSUB_CLUSTER;
+  }
+  FIOBJ key = fiobj_num_new((intptr_t)engine);
+  spn_lock(&postoffice.engines.lock);
+  void *old = fio_hash_insert(&postoffice.engines.channels, key, NULL);
+
+  fio_hash_compact(&postoffice.engines.channels);
+  spn_unlock(&postoffice.engines.lock);
+  fiobj_free(key);
+  if (!old) {
+    fprintf(stderr, "ERROR: (pubsub) detachment error, not registered?\n");
+  }
+}
 
 /**
  * Engines can ask facil.io to call the `subscribe` callback for all active
@@ -1310,4 +1386,19 @@ void facil_pubsub_detach(pubsub_engine_s *engine);
  * CAUTION: This is an evented task... try not to free the engine's memory while
  * resubscriptions are under way...
  */
-void facil_pubsub_reattach(pubsub_engine_s *eng);
+void facil_pubsub_reattach(pubsub_engine_s *engine) {
+  if (engine->subscribe) {
+    spn_lock(&postoffice.pubsub.lock);
+    FIO_HASH_FOR_LOOP(&postoffice.pubsub.channels, i) {
+      channel_s *ch = i->obj;
+      engine->subscribe(engine, ch->id, NULL);
+    }
+    spn_unlock(&postoffice.pubsub.lock);
+    spn_lock(&postoffice.patterns.lock);
+    FIO_HASH_FOR_LOOP(&postoffice.patterns.channels, i) {
+      channel_s *ch = i->obj;
+      engine->subscribe(engine, ch->id, ((pattern_s *)ch)->match);
+    }
+    spn_unlock(&postoffice.patterns.lock);
+  }
+}
