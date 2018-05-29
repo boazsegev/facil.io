@@ -280,6 +280,15 @@ struct {
     .patterns = COLLECTION_INIT,
 };
 
+/** The default engine (settable). */
+pubsub_engine_s *FACIL_PUBSUB_DEFAULT = (pubsub_engine_s *)0;
+/** used to publish the message to all clients in the cluster. */
+const pubsub_engine_s *FACIL_PUBSUB_CLUSTER = (pubsub_engine_s *)0;
+/** used to publish the message only within the current process. */
+const pubsub_engine_s *FACIL_PUBSUB_PROCESS = (pubsub_engine_s *)1;
+/** Used to publish the message except within the current process. */
+const pubsub_engine_s *FACIL_PUBSUB_SIBLINGS = (pubsub_engine_s *)2;
+
 /* *****************************************************************************
 Engine handling and Management
 ***************************************************************************** */
