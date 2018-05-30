@@ -5,10 +5,10 @@
  * (IPC), publish/subscribe patterns, horizontal scaling and similar use-cases.
  **************************************************************************** */
 
+// #include "facil_cluster.h"
+
 #include "fio_mem.h"
 #include "spnlock.inc"
-
-// #include "facil_cluster.h"
 
 #include "facil.h"
 
@@ -29,14 +29,14 @@ typedef struct subscription_s subscription_s;
 /** A pub/sub engine data structure. See details later on. */
 typedef struct pubsub_engine_s pubsub_engine_s;
 
-/** The default engine (settable). */
+/** The default engine (settable). Initial default is FACIL_PUBSUB_CLUSTER. */
 extern pubsub_engine_s *FACIL_PUBSUB_DEFAULT;
+/** Used to publish the message to all clients in the cluster. */
+#define FACIL_PUBSUB_CLUSTER ((pubsub_engine_s *)1)
+/** Used to publish the message only within the current process. */
+#define FACIL_PUBSUB_PROCESS ((pubsub_engine_s *)2)
 /** Used to publish the message except within the current process. */
-extern const pubsub_engine_s *FACIL_PUBSUB_SIBLINGS;
-/** used to publish the message only within the current process. */
-extern const pubsub_engine_s *FACIL_PUBSUB_PROCESS;
-/** used to publish the message to all clients in the cluster. */
-extern const pubsub_engine_s *FACIL_PUBSUB_CLUSTER;
+#define FACIL_PUBSUB_SIBLINGS ((pubsub_engine_s *)3)
 
 /** This contains message metadata, set by message extensions. */
 typedef struct facil_msg_metadata_s {
@@ -68,18 +68,6 @@ typedef struct facil_msg_s {
   facil_msg_metadata_s *meta;
 } facil_msg_s;
 
-/** Publishing and on_message callback arguments. */
-typedef struct facil_publish_args_s {
-  /** The pub/sub engine that should be used to farward this message. */
-  pubsub_engine_s const *engine;
-  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
-  int32_t filter;
-  /** The pub/sub target channnel. */
-  FIOBJ channel;
-  /** The pub/sub message. */
-  FIOBJ message;
-} facil_publish_args_s;
-
 /**
  * Pattern matching callback type - should return 0 unless channel matches
  * pattern.
@@ -95,7 +83,7 @@ typedef struct {
    * Subscriptions can either require a match by filter or match by channel.
    * This will match the subscription by filter.
    */
-  uint32_t filter;
+  int32_t filter;
   /**
    * If `channel` is set, all messages where `filter == 0` and the channel is an
    * exact match will be forwarded to the subscription's callback.
@@ -126,6 +114,73 @@ typedef struct {
   /** The udata values are ignored and made available to the callback. */
   void *udata2;
 } subscribe_args_s;
+
+/** Publishing and on_message callback arguments. */
+typedef struct facil_publish_args_s {
+  /** The pub/sub engine that should be used to farward this message. */
+  pubsub_engine_s const *engine;
+  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
+  int32_t filter;
+  /** The pub/sub target channnel. */
+  FIOBJ channel;
+  /** The pub/sub message. */
+  FIOBJ message;
+} facil_publish_args_s;
+
+/**
+ * Subscribes to either a filter OR a channel (never both).
+ *
+ * Returns a subscription pointer on success or NULL on failure.
+ *
+ * See `subscribe_args_s` for details.
+ */
+subscription_s *facil_subscribe(subscribe_args_s args);
+
+/**
+ * Subscribes to a channel (enforces filter == 0).
+ *
+ * Returns a subscription pointer on success or NULL on failure.
+ *
+ * See `subscribe_args_s` for details.
+ */
+subscription_s *facil_subscribe_pubsub(subscribe_args_s args);
+
+/**
+ * Cancels an existing subscriptions (actual effects might be delayed).
+ */
+void facil_unsubscribe(subscription_s *subscription);
+
+/**
+ * This helper returns a temporary handle to an existing subscription's channel
+ * or filter.
+ *
+ * To keep the handle beyond the lifetime of the subscription, use `fiobj_dup`.
+ */
+FIOBJ facil_subscription_channel(subscription_s *subscription);
+
+/**
+ * Publishes a message to the relevant subscribers (if any).
+ *
+ * See `facil_publish_args_s` for details.
+ *
+ * By default the message is sent using the FACIL_PUBSUB_CLUSTER engine (all
+ * processes, including the calling process).
+ *
+ * To limit the message only to other processes (exclude the calling process),
+ * use the FACIL_PUBSUB_SIBLINGS engine.
+ *
+ * To limit the message only to the calling process, use the
+ * FACIL_PUBSUB_PROCESS engine.
+ *
+ * To publish messages to the pub/sub layer, the `.filter` argument MUST be
+ * equal to 0 or missing.
+ */
+void facil_publish(facil_publish_args_s args);
+
+/**
+ * Defers the current callback, so it will be called again for the message.
+ */
+void facil_message_defer(facil_msg_s *msg);
 
 /**
  * facil.io can be linked with external Pub/Sub services using "engines".
@@ -282,12 +337,6 @@ struct {
 
 /** The default engine (settable). */
 pubsub_engine_s *FACIL_PUBSUB_DEFAULT = (pubsub_engine_s *)0;
-/** used to publish the message to all clients in the cluster. */
-const pubsub_engine_s *FACIL_PUBSUB_CLUSTER = (pubsub_engine_s *)0;
-/** used to publish the message only within the current process. */
-const pubsub_engine_s *FACIL_PUBSUB_PROCESS = (pubsub_engine_s *)1;
-/** Used to publish the message except within the current process. */
-const pubsub_engine_s *FACIL_PUBSUB_SIBLINGS = (pubsub_engine_s *)2;
 
 /* *****************************************************************************
 Engine handling and Management
@@ -348,6 +397,8 @@ static inline void channel_destroy(channel_s *c) {
     fio_hash_compact(&c->parent->channels);
   }
   spn_unlock(&c->parent->lock);
+  pubsub_on_channel_destroy(
+      c, (c->parent == &postoffice.patterns ? ((pattern_s *)c)->match : NULL));
   fio_free(c);
 }
 
@@ -379,7 +430,7 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
   collection_s *collection;
   if (args.filter) {
     /* either a filter OR a channel can be subscribed to. */
-    args.channel = fiobj_num_new((uintptr_t)args.filter << 2);
+    args.channel = fiobj_num_new((uintptr_t)args.filter);
     collection = &postoffice.filters;
   } else {
     if (args.match) {
@@ -434,6 +485,10 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
         .parent = collection,
         .lock = SPN_LOCK_INIT,
     };
+    fio_hash_insert(&collection->channels, args.channel, ch);
+    if (!args.filter) {
+      pubsub_on_channel_create(ch, args.match);
+    }
   }
   /* add subscription to filter / channel / pattern */
   spn_lock(&ch->lock);
@@ -534,7 +589,7 @@ static void publish2process(int32_t filter, FIOBJ channel, FIOBJ msg,
   } else {
   }
   if (filter) {
-    FIOBJ key = fiobj_num_new((uintptr_t)filter << 2);
+    FIOBJ key = fiobj_num_new((uintptr_t)filter);
     spn_lock(&postoffice.filters.lock);
     channel_s *ch = fio_hash_find(&postoffice.filters.channels, key);
     publish2channel(ch, m);
@@ -1190,46 +1245,34 @@ void __attribute__((constructor)) facil_cluster_initialize(void) {
  * External API (old)
  **************************************************************************** */
 
+static void facil_old_handler_callback(facil_msg_s *m) {
+  void (*on_message)(int32_t, FIOBJ, FIOBJ) =
+      (void (*)(int32_t, FIOBJ, FIOBJ))m->udata1;
+  on_message(m->filter, m->channel, m->msg);
+}
+
 void facil_cluster_set_handler(int32_t filter,
                                void (*on_message)(int32_t id, FIOBJ ch,
                                                   FIOBJ msg)) {
-  spn_lock(&cluster_data.lock);
-  fio_hash_insert(&cluster_data.subscribers, (uint64_t)filter,
-                  (void *)(uintptr_t)on_message);
-  spn_unlock(&cluster_data.lock);
+  subscribe_args_s args = {
+      .filter = filter,
+      .callback = facil_old_handler_callback,
+      .udata1 = (void *)on_message,
+  };
+  subscription_s *s = facil_subscribe(args);
+  if (!s) {
+    fprintf(stderr, "ERROR: subscription failed!\n");
+  }
 }
 
 int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg) {
-  if (!facil_is_running()) {
-    fprintf(stderr, "ERROR: cluster inactive, can't send message.\n");
-    return -1;
-  }
-  uint32_t type = CLUSTER_MESSAGE_FORWARD;
-
-  if ((!ch || FIOBJ_TYPE_IS(ch, FIOBJ_T_STRING)) &&
-      (!msg || FIOBJ_TYPE_IS(msg, FIOBJ_T_STRING))) {
-    fiobj_dup(ch);
-    fiobj_dup(msg);
-  } else {
-    type = CLUSTER_MESSAGE_JSON;
-    if (ch) {
-      ch = fiobj_obj2json(ch, 0);
-    }
-    if (msg) {
-      msg = fiobj_obj2json(msg, 0);
-    }
-  }
-  fio_cstr_s cs = fiobj_obj2cstr(ch);
-  fio_cstr_s ms = fiobj_obj2cstr(msg);
-  if (cluster_data.client > 0) {
-    cluster_client_sender(
-        cluster_wrap_message(cs.len, ms.len, type, filter, cs.bytes, ms.bytes));
-  } else {
-    cluster_server_sender(
-        cluster_wrap_message(cs.len, ms.len, type, filter, cs.bytes, ms.bytes));
-  }
-  fiobj_free(ch);
-  fiobj_free(msg);
+  facil_publish_args_s args = {
+      .channel = ch,
+      .engine = FACIL_PUBSUB_SIBLINGS,
+      .message = msg,
+      .filter = filter,
+  };
+  facil_publish(args);
   return 0;
 }
 
@@ -1292,27 +1335,6 @@ void facil_unsubscribe(subscription_s *subscription) {
 }
 
 /**
- * Publishes a message to the relevant subscribers (if any) using the prescribed
- * engine.
- *
- * See `facil_publish_args_s` for details.
- *
- * By default the message is sent using the FACIL_PUBSUB_CLUSTER engine (all
- * processes, including the calling process).
- *
- * To limit the message only to other processes (exclude the calling process),
- * use the FACIL_PUBSUB_SIBLINGS engine.
- *
- * To limit the message only to the calling process, use the
- * FACIL_PUBSUB_PROCESS engine.
- */
-void facil_publish_pubsub(facil_publish_args_s args) {
-  if (args.filter != 0) {
-    args.engine;
-  }
-}
-
-/**
  * Publishes a message to the relevant subscribers (if any).
  *
  * See `facil_publish_args_s` for details.
@@ -1325,10 +1347,32 @@ void facil_publish_pubsub(facil_publish_args_s args) {
  *
  * To limit the message only to the calling process, use the
  * FACIL_PUBSUB_PROCESS engine.
+ *
+ * To publish messages to the pub/sub layer, the `.filter` argument MUST be
+ * equal to 0 or missing.
  */
 void facil_publish(facil_publish_args_s args) {
-  if (args.filter == 0) {
-    facil_publish_pubsub(args);
+  if (!args.engine) {
+    args.engine = args.engine = FACIL_PUBSUB_DEFAULT;
+  }
+  switch ((uintptr_t)args.engine) {
+  case 0UL: /* fallthrough */
+  case 1UL: // ((uintptr_t)FACIL_PUBSUB_CLUSTER):
+    publish_msg2all(args.filter, args.channel, args.message);
+    break;
+  case 2UL: // ((uintptr_t)FACIL_PUBSUB_PROCESS):
+    publish_msg2local(args.filter, args.channel, args.message);
+    break;
+  case 3UL: // ((uintptr_t)FACIL_PUBSUB_SIBLINGS):
+    publish_msg2cluster(args.filter, args.channel, args.message);
+    break;
+  default:
+    if (args.filter != 0) {
+      fprintf(stderr, "ERROR: (pub/sub) pub/sub engines can only be used for "
+                      "pub/sub messages (no filter).\n");
+      return;
+    }
+    args.engine->publish(args.engine, args.channel, args.message);
     return;
   }
 }
@@ -1371,7 +1415,10 @@ void facil_pubsub_attach(pubsub_engine_s *engine) {
 /** Detaches an engine, so it could be safely destroyed. */
 void facil_pubsub_detach(pubsub_engine_s *engine) {
   if (FACIL_PUBSUB_DEFAULT == engine) {
-    FACIL_PUBSUB_DEFAULT = (pubsub_engine_s *)FACIL_PUBSUB_CLUSTER;
+    FACIL_PUBSUB_DEFAULT = FACIL_PUBSUB_CLUSTER;
+  }
+  if (postoffice.engines.channels.count == 0) {
+    return;
   }
   FIOBJ key = fiobj_num_new((intptr_t)engine);
   spn_lock(&postoffice.engines.lock);

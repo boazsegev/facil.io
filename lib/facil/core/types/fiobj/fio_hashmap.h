@@ -361,9 +361,14 @@ FIO_FUNC inline void *fio_hash_find(fio_hash_s *hash, FIO_HASH_KEY_TYPE key) {
  */
 FIO_FUNC void *fio_hash_insert(fio_hash_s *hash, FIO_HASH_KEY_TYPE key,
                                void *obj) {
+  /* nothing to do if there's nothing to do. */
+  if (!obj && !hash->count) {
+    return NULL;
+  }
   /* ensure some space */
-  if (obj && hash->pos >= hash->capa)
+  if (obj && hash->pos >= hash->capa) {
     fio_hash_rehash(hash);
+  }
 
   /* find where the object belongs in the map */
   fio_hash_data_s *info = fio_hash_seek_pos_(hash, key);
