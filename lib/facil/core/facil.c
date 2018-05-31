@@ -383,16 +383,18 @@ static void deferred_on_shutdown(void *arg, void *arg2) {
     goto postpone;
   }
   uuid_data(arg).active = facil_data->last_cycle.tv_sec;
-  /* TODO: 0.7.0 catch the return valuse to set timeout and maybe keep open */
   uint8_t r = pr->on_shutdown((intptr_t)arg, pr);
   if (r) {
-    uuid_data(arg).timeout = r;
+    if (r == 255) {
+      uuid_data(arg).timeout = 0;
+    } else {
+      spn_add(&facil_data->connection_count, 1);
+      uuid_data(arg).timeout = r;
+    }
     pr->ping = mock_ping2;
     protocol_unlock(pr, FIO_PR_LOCK_TASK);
-    if (r == 255) {
-      spn_sub(&facil_data->connection_count, 1);
-    }
   } else {
+    spn_add(&facil_data->connection_count, 1);
     uuid_data(arg).timeout = 8;
     pr->ping = mock_ping;
     protocol_unlock(pr, FIO_PR_LOCK_TASK);
@@ -512,10 +514,10 @@ void sock_on_close(intptr_t uuid) {
   uuid_data(uuid) = (struct connection_data_s){.lock = uuid_data(uuid).lock};
   spn_unlock(&uuid_data(uuid).lock);
   if (old_data.protocol) {
-    if (facil_data->active || old_data.timeout != 255) {
+    defer(deferred_on_close, (void *)uuid, old_data.protocol);
+    if (facil_data->active == 0 && old_data.timeout) {
       spn_sub(&facil_data->connection_count, 1);
     }
-    defer(deferred_on_close, (void *)uuid, old_data.protocol);
   }
 }
 
@@ -1607,15 +1609,12 @@ static int facil_attach_state(intptr_t uuid, protocol_s *protocol,
     else
       errno = ENOTCONN;
     return -1;
-  } else {
-    spn_add(&facil_data->connection_count, 1);
   }
   struct connection_data_s old_data = uuid_data(uuid);
   uuid_data(uuid).protocol = protocol;
   uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
   spn_unlock(&uuid_data(uuid).lock);
   if (old_data.protocol) {
-    spn_sub(&facil_data->connection_count, 1);
     defer(deferred_on_close, (void *)uuid, old_data.protocol);
   } else if (evio_isactive() && protocol) {
     return evio_add(sock_uuid2fd(uuid), (void *)uuid);
@@ -1641,9 +1640,9 @@ int facil_attach_locked(intptr_t uuid, protocol_s *protocol) {
   }
 }
 
-/** Sets a timeout for a specific connection (if active). */
+/** Sets a timeout for a specific connection (only when running and valid). */
 void facil_set_timeout(intptr_t uuid, uint8_t timeout) {
-  if (sock_isvalid(uuid)) {
+  if (sock_isvalid(uuid) && facil_data && facil_data->active) {
     uuid_data(uuid).active = facil_data->last_cycle.tv_sec;
     uuid_data(uuid).timeout = timeout;
   }
