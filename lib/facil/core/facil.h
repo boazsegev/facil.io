@@ -420,7 +420,7 @@ int facil_attach(intptr_t uuid, protocol_s *protocol);
  */
 int facil_attach_locked(intptr_t uuid, protocol_s *protocol);
 
-/** Sets a timeout for a specific connection (if active). */
+/** Sets a timeout for a specific connection (only when running and valid). */
 void facil_set_timeout(intptr_t uuid, uint8_t timeout);
 
 /** Gets a timeout for a specific connection. Returns 0 if none. */
@@ -546,7 +546,7 @@ int facil_run_every(size_t milliseconds, size_t repetitions,
 enum facil_protocol_lock_e {
   FIO_PR_LOCK_TASK = 0,
   FIO_PR_LOCK_WRITE = 1,
-  FIO_PR_LOCK_STATE = 2,
+  FIO_PR_LOCK_STATE = 2
 };
 
 /** Named arguments for the `facil_defer` function. */
@@ -604,10 +604,50 @@ int facil_each(struct facil_each_args_s args);
 #define facil_each(...) facil_each((struct facil_each_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
+Lower Level API - for special circumstances, use with care under .
+***************************************************************************** */
+
+/**
+ * This function allows out-of-task access to a connection's `protocol_s` object
+ * by attempting to aquire a locked pointer.
+ *
+ * CAREFUL: mostly, the protocol object will be locked and a pointer will be
+ * sent to the connection event's callback. However, if you need access to the
+ * protocol object from outside a running connection task, you might need to
+ * lock the protocol to prevent it from being closed / freed in the background.
+ *
+ * facil.io uses three different locks:
+ *
+ * * FIO_PR_LOCK_TASK locks the protocol for normal tasks (i.e. `on_data`,
+ * `facil_defer`, `facil_every`).
+ *
+ * * FIO_PR_LOCK_WRITE locks the protocol for high priority `sock_write`
+ * oriented tasks (i.e. `ping`, `on_ready`).
+ *
+ * * FIO_PR_LOCK_STATE locks the protocol for quick operations that need to copy
+ * data from the protoccol's data stracture.
+ *
+ * IMPORTANT: Remember to call `facil_protocol_unlock` using the same lock type.
+ *
+ * Returns NULL on error (lock busy == EWOULDBLOCK, connection invalid == EBADF)
+ * and a pointer to a protocol object on success.
+ *
+ * On error, consider calling `facil_defer` or `defer` instead of busy waiting.
+ * Busy waiting SHOULD be avoided whenever possible.
+ */
+protocol_s *facil_protocol_try_lock(intptr_t uuid, enum facil_protocol_lock_e);
+/** Don't unlock what you don't own... see `facil_protocol_try_lock` for
+ * details. */
+void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock_e);
+
+/* *****************************************************************************
  * Cluster Messages API
  *
  * Facil supports a message oriented API for use for Inter Process Communication
  * (IPC), publish/subscribe patterns, horizontal scaling and similar use-cases.
+ *
+ * The API is provided in the facil_cluster.h file.
+ *
  **************************************************************************** */
 
 /**
@@ -636,43 +676,6 @@ Callbacks are invoked using an O(n) matching, where `n` is the number of
 registered callbacks.
 */
 int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg);
-
-/* *****************************************************************************
-Lower Level API - for special circumstances, use with care under .
-***************************************************************************** */
-
-/**
- * This function allows out-of-task access to a connection's `protocol_s` object
- * by attempting to lock it.
- *
- * CAREFUL: mostly, the protocol object will be locked and a pointer will be
- * sent to the connection event's callback. However, if you need access to the
- * protocol object from outside a running connection task, you might need to
- * lock the protocol to prevent it from being closed in the background.
- *
- * facil.io uses three different locks:
- *
- * * FIO_PR_LOCK_TASK locks the protocol from normal tasks (i.e. `on_data`,
- * `facil_defer`, `facil_every`).
- *
- * * FIO_PR_LOCK_WRITE locks the protocol for high priority `sock_write`
- * oriented tasks (i.e. `ping`, `on_ready`).
- *
- * * FIO_PR_LOCK_STATE locks the protocol for quick operations that need to copy
- * data from the protoccol's data stracture.
- *
- * IMPORTANT: Remember to call `facil_protocol_unlock` using the same lock type.
- *
- * Returns NULL on error (lock busy == EWOULDBLOCK, connection invalid == EBADF)
- * and a pointer to a protocol object on success.
- *
- * On error, consider calling `facil_defer` or `defer` instead of busy waiting.
- * Busy waiting SHOULD be avoided whenever possible.
- */
-protocol_s *facil_protocol_try_lock(intptr_t uuid, enum facil_protocol_lock_e);
-/** Don't unlock what you don't own... see `facil_protocol_try_lock` for
- * details. */
-void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock_e);
 
 #ifdef __cplusplus
 } /* extern "C" */
