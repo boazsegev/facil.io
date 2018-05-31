@@ -1265,7 +1265,7 @@ void __attribute__((constructor)) facil_cluster_initialize(void) {
 
 static void facil_old_handler_callback(facil_msg_s *m) {
   void (*on_message)(int32_t, FIOBJ, FIOBJ) =
-      (void (*)(int32_t, FIOBJ, FIOBJ))m->udata1;
+      (void (*)(int32_t, FIOBJ, FIOBJ))(uintptr_t)m->udata1;
   on_message(m->filter, m->channel, m->msg);
 }
 
@@ -1275,7 +1275,7 @@ void facil_cluster_set_handler(int32_t filter,
   subscribe_args_s args = {
       .filter = filter,
       .callback = facil_old_handler_callback,
-      .udata1 = (void *)on_message,
+      .udata1 = (void *)(uintptr_t)on_message,
   };
   subscription_s *s = facil_subscribe(args);
   if (!s) {
@@ -1371,7 +1371,7 @@ void facil_unsubscribe(subscription_s *subscription) {
  */
 void facil_publish(facil_publish_args_s args) {
   if (!args.engine) {
-    args.engine = args.engine = FACIL_PUBSUB_DEFAULT;
+    args.engine = FACIL_PUBSUB_DEFAULT;
   }
   switch ((uintptr_t)args.engine) {
   case 0UL: /* fallthrough */
