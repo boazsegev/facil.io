@@ -747,7 +747,7 @@ FIO_FUNC void fio_hash_test(void) {
   fprintf(stderr, "* Compacting Hash to %lu\n", FIO_HASHMAP_TEXT_COUNT >> 1);
   fio_hash_compact(&h);
   {
-    fprintf(stderr, "* Testing that %lu items are continues\n",
+    fprintf(stderr, "* Testing that %lu items are continuous\n",
             FIO_HASHMAP_TEXT_COUNT >> 1);
     uintptr_t i = 0;
     FIO_HASH_FOR_LOOP(&h, pos) {
