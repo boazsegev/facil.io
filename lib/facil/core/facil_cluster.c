@@ -109,6 +109,8 @@ typedef struct {
    * The callback will be called for each message forwarded to the subscription.
    */
   void (*callback)(facil_msg_s *msg);
+  /** An optional callback for when a subscription is fully canceled. */
+  void (*on_unsubscribe)(void *udata1, void *udata2);
   /** The udata values are ignored and made available to the callback. */
   void *udata1;
   /** The udata values are ignored and made available to the callback. */
@@ -146,7 +148,8 @@ subscription_s *facil_subscribe(subscribe_args_s args);
 subscription_s *facil_subscribe_pubsub(subscribe_args_s args);
 
 /**
- * Cancels an existing subscriptions (actual effects might be delayed).
+ * Cancels an existing subscriptions - actual effects might be delayed, for
+ * example, if the subscription's callback is running in another thread.
  */
 void facil_unsubscribe(subscription_s *subscription);
 
@@ -298,6 +301,7 @@ struct subscription_s {
   fio_ls_embd_s node;
   channel_s *parent;
   void (*callback)(facil_msg_s *msg);
+  void (*on_unsubscribe)(void *udata1, void *udata2);
   void *udata1;
   void *udata2;
   /** reference counter. */
@@ -336,7 +340,7 @@ struct {
 };
 
 /** The default engine (settable). */
-pubsub_engine_s *FACIL_PUBSUB_DEFAULT = (pubsub_engine_s *)0;
+pubsub_engine_s *FACIL_PUBSUB_DEFAULT = FACIL_PUBSUB_CLUSTER;
 
 /* *****************************************************************************
 Engine handling and Management
@@ -375,12 +379,19 @@ static inline void subscription_free(subscription_s *s) {
   if (spn_sub(&s->ref, 1)) {
     return;
   }
+  if (s->on_unsubscribe) {
+    s->on_unsubscribe(s->udata1, s->udata2);
+  }
   fio_free(s);
 }
 /* to be used for reference counting (increasing) */
 static inline subscription_s *subscription_dup(subscription_s *s) {
   spn_add(&s->ref, 1);
   return s;
+}
+static void subscription_free_later(void *s, void *ignr) {
+  subscription_free(s);
+  (void)ignr;
 }
 
 /* free a channel (if it's empty) */
@@ -485,7 +496,11 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
         .parent = collection,
         .lock = SPN_LOCK_INIT,
     };
-    fio_hash_insert(&collection->channels, args.channel, ch);
+    subscription_s *old =
+        fio_hash_insert(&collection->channels, args.channel, ch);
+    if (old && old->on_unsubscribe) {
+      defer(subscription_free_later, old, NULL);
+    }
     if (!args.filter) {
       pubsub_on_channel_create(ch, args.match);
     }
@@ -498,6 +513,7 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
   if (args.filter) {
     fiobj_free(args.channel);
   }
+
   return s;
 }
 
