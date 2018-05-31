@@ -7,14 +7,16 @@
 
 // #include "facil_cluster.h"
 
-#include "fio_mem.h"
 #include "spnlock.inc"
 
 #include "facil.h"
+#include "fio_mem.h"
 
 #include "fio_llist.h"
 #include "fio_tmpfile.h"
 #include "fiobj4sock.h"
+
+#include <sys/types.h>
 
 #include <signal.h>
 
