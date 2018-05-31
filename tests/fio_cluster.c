@@ -60,16 +60,16 @@ static void test_cluster(void) {
 }
 
 int main(void) {
-  // facil_core_callback_add(FIO_CALL_BEFORE_FORK, perform_callback,
-  //                         "Before fork");
-  // facil_core_callback_add(FIO_CALL_AFTER_FORK, perform_callback, "After
-  // fork"); facil_core_callback_add(FIO_CALL_IN_CHILD, perform_callback,
-  //                         "Just the child");
-  // facil_core_callback_add(FIO_CALL_ON_START, perform_callback, "Starting
-  // up"); facil_core_callback_add(FIO_CALL_ON_SHUTDOWN, perform_callback,
-  //                         "Shutting down");
-  // facil_core_callback_add(FIO_CALL_ON_FINISH, perform_callback, "Done.");
-  // facil_core_callback_add(FIO_CALL_ON_IDLE, perform_callback, "idling.");
+  facil_core_callback_add(FIO_CALL_BEFORE_FORK, perform_callback,
+                          "Before fork");
+  facil_core_callback_add(FIO_CALL_AFTER_FORK, perform_callback, "After fork ");
+  facil_core_callback_add(FIO_CALL_IN_CHILD, perform_callback,
+                          "Just the child");
+  facil_core_callback_add(FIO_CALL_ON_START, perform_callback, "Starting up ");
+  facil_core_callback_add(FIO_CALL_ON_SHUTDOWN, perform_callback,
+                          "Shutting down");
+  facil_core_callback_add(FIO_CALL_ON_FINISH, perform_callback, "Done.");
+  facil_core_callback_add(FIO_CALL_ON_IDLE, perform_callback, "idling.");
 
   facil_cluster_set_handler(7, handle_cluster_test);
 
