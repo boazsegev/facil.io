@@ -12,8 +12,12 @@
   } while (0);
 
 static void handle_cluster_test(int32_t filter, FIOBJ ch, FIOBJ msg) {
-  fprintf(stderr, "(%d) %s: %s\n", filter, fiobj_obj2cstr(ch).data,
-          fiobj_obj2cstr(msg).data);
+  if (filter == 7) {
+    fprintf(stderr, "(%d) %s: %s\n", filter, fiobj_obj2cstr(ch).data,
+            fiobj_obj2cstr(msg).data);
+  } else {
+    fprintf(stderr, "ERROR: (cluster) filter mismatch!\n");
+  }
 }
 
 static void send_cluster_msg(void *a1) {
@@ -22,6 +26,7 @@ static void send_cluster_msg(void *a1) {
   FIOBJ ch = fiobj_str_new("Cluster Test", 12);
   FIOBJ msg = fiobj_str_new("okay", 4);
   facil_cluster_send(7, ch, msg);
+  facil_cluster_send(6, ch, msg);
   fiobj_free(ch);
   fiobj_free(msg);
 }
