@@ -441,6 +441,9 @@ static inline void channel_destroy(channel_s *c) {
 
 /* cancel a subscription */
 static void subscription_destroy(void *s_, void *ignore) {
+  if (!s_) { /* ignore NULL subscriptions. */
+    return;
+  }
   subscription_s *s = s_;
   if (spn_trylock(&s->parent->lock)) {
     defer(subscription_destroy, s_, ignore);
@@ -448,9 +451,11 @@ static void subscription_destroy(void *s_, void *ignore) {
   }
   fio_ls_embd_remove(&s->node);
   if (fio_ls_embd_is_empty(&s->parent->subscriptions)) {
+    spn_unlock(&s->parent->lock);
     channel_destroy(s->parent);
+  } else {
+    spn_unlock(&s->parent->lock);
   }
-  spn_unlock(&s->parent->lock);
   subscription_free(s);
   (void)ignore;
 }
@@ -532,6 +537,7 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
     }
   }
   /* add subscription to filter / channel / pattern */
+  s->parent = ch;
   spn_lock(&ch->lock);
   fio_ls_embd_push(&ch->subscriptions, &s->node);
   spn_unlock(&ch->lock);
@@ -539,7 +545,6 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
   if (args.filter) {
     fiobj_free(args.channel);
   }
-
   return s;
 }
 
@@ -1235,52 +1240,75 @@ static void facil_connect_after_fork(void *ignore) {
   (void)ignore;
 }
 
+static void facil_cluster_in_child(void *ignore) {
+  postoffice.patterns.lock = SPN_LOCK_INIT;
+  postoffice.pubsub.lock = SPN_LOCK_INIT;
+  postoffice.filters.lock = SPN_LOCK_INIT;
+  postoffice.engines.lock = SPN_LOCK_INIT;
+  postoffice.meta.lock = SPN_LOCK_INIT;
+  FIO_HASH_FOR_LOOP(&postoffice.patterns.channels, pos) {
+    ((channel_s *)pos->obj)->lock = SPN_LOCK_INIT;
+  }
+  FIO_HASH_FOR_LOOP(&postoffice.pubsub.channels, pos) {
+    ((channel_s *)pos->obj)->lock = SPN_LOCK_INIT;
+  }
+  FIO_HASH_FOR_LOOP(&postoffice.filters.channels, pos) {
+    ((channel_s *)pos->obj)->lock = SPN_LOCK_INIT;
+  }
+  (void)ignore;
+}
+
 static void facil_cluster_at_exit(void *ignore) {
+  /* unlock all */
+  facil_cluster_in_child(NULL);
   /* clear subscriptions of all types */
-  FIO_HASH_FOR_FREE(&postoffice.patterns.channels, pos) {
-    if (pos->obj) {
-      channel_s *ch = pos->obj;
-      while (fio_ls_embd_any(&ch->subscriptions)) {
-        subscription_s *sub = sub =
-            FIO_LS_EMBD_OBJ(subscription_s, node, (&ch->subscriptions.next));
-        facil_unsubscribe(sub);
-      }
+  while (fio_hash_count(&postoffice.patterns.channels)) {
+    channel_s *ch = fio_hash_last(&postoffice.patterns.channels, NULL);
+    while (fio_ls_embd_any(&ch->subscriptions)) {
+      subscription_s *sub = sub =
+          FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
+      facil_unsubscribe(sub);
     }
   }
-  FIO_HASH_FOR_FREE(&postoffice.pubsub.channels, pos) {
-    if (pos->obj) {
-      channel_s *ch = pos->obj;
-      while (fio_ls_embd_any(&ch->subscriptions)) {
-        subscription_s *sub = sub =
-            FIO_LS_EMBD_OBJ(subscription_s, node, (&ch->subscriptions.next));
-        facil_unsubscribe(sub);
-      }
+  while (fio_hash_count(&postoffice.pubsub.channels)) {
+    channel_s *ch = fio_hash_last(&postoffice.pubsub.channels, NULL);
+    while (fio_ls_embd_any(&ch->subscriptions)) {
+      subscription_s *sub = sub =
+          FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
+      facil_unsubscribe(sub);
     }
   }
-  FIO_HASH_FOR_FREE(&postoffice.filters.channels, pos) {
-    if (pos->obj) {
-      channel_s *ch = pos->obj;
-      while (fio_ls_embd_any(&ch->subscriptions)) {
-        subscription_s *sub = sub =
-            FIO_LS_EMBD_OBJ(subscription_s, node, (&ch->subscriptions.next));
-        facil_unsubscribe(sub);
-      }
+  while (fio_hash_count(&postoffice.filters.channels)) {
+    channel_s *ch = fio_hash_last(&postoffice.filters.channels, NULL);
+    while (fio_ls_embd_any(&ch->subscriptions)) {
+      subscription_s *sub = sub =
+          FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
+      facil_unsubscribe(sub);
     }
   }
+
+  FIO_HASH_FOR_FREE(&postoffice.patterns.channels, pos) { (void)pos; }
+  FIO_HASH_FOR_FREE(&postoffice.pubsub.channels, pos) { (void)pos; }
+  FIO_HASH_FOR_FREE(&postoffice.filters.channels, pos) { (void)pos; }
+
   /* clear engines */
   FACIL_PUBSUB_DEFAULT = FACIL_PUBSUB_CLUSTER;
   while (fio_hash_count(&postoffice.engines.channels)) {
     facil_pubsub_detach(fio_hash_last(&postoffice.engines.channels, NULL));
   }
-  fio_hash_free(&postoffice.engines.channels); /* possible only with pop */
+  FIO_HASH_FOR_FREE(&postoffice.engines.channels, pos) { (void)pos; }
+
   /* clear meta hooks */
-  FIO_HASH_FOR_FREE(&postoffice.meta.channels, pos){};
+  FIO_HASH_FOR_FREE(&postoffice.meta.channels, pos) { (void)pos; }
+  /* perform newly created tasks */
+  defer_perform();
   (void)ignore;
 }
 
 void __attribute__((constructor)) facil_cluster_initialize(void) {
   facil_core_callback_add(FIO_CALL_PRE_START, facil_listen2cluster, NULL);
   facil_core_callback_add(FIO_CALL_AFTER_FORK, facil_connect_after_fork, NULL);
+  facil_core_callback_add(FIO_CALL_IN_CHILD, facil_cluster_in_child, NULL);
   facil_core_callback_add(FIO_CALL_ON_START, facil_connect2cluster, NULL);
   facil_core_callback_add(FIO_CALL_ON_FINISH, facil_cluster_cleanup, NULL);
   facil_core_callback_add(FIO_CALL_AT_EXIT, facil_cluster_at_exit, NULL);
