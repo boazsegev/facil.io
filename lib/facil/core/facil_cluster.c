@@ -20,10 +20,10 @@
 
 #include <signal.h>
 
-/* *****************************************************************************
- * Types
- **************************************************************************** */
 #ifndef H_FACIL_CLUSTER_H
+/* *****************************************************************************
+ * Cluster Messages and Pub/Sub
+ **************************************************************************** */
 
 /** An opaque subscription type. */
 typedef struct subscription_s subscription_s;
@@ -44,14 +44,16 @@ extern pubsub_engine_s *FACIL_PUBSUB_DEFAULT;
 typedef struct facil_msg_metadata_s {
   /** The type ID should be used to identify the metadata's actual structure. */
   size_t type_id;
-  /** The next metadata information linked with the message. */
-  struct facil_msg_metadata_s *next;
   /**
    * This method will be called by facil.io to cleanup the metadata resources.
    *
    * Don't alter / call this method, this data is reserved.
    */
   void (*on_finish)(struct facil_msg_metadata_s *self);
+  /** The pointer to be returned by the `facil_message_metadata` function. */
+  void *metadata;
+  /** RESERVED for internal use (Metadata linked list). */
+  struct facil_msg_metadata_s *next;
 } facil_msg_metadata_s;
 
 /** Message structure, with an integer filter as well as a channel filter. */
@@ -66,8 +68,6 @@ typedef struct facil_msg_s {
   void *udata1;
   /** The `udata1` argument associated with the subscription. */
   void *udata2;
-  /** Metadata can be set by message extensions. */
-  facil_msg_metadata_s *meta;
 } facil_msg_s;
 
 /**
@@ -182,10 +182,40 @@ FIOBJ facil_subscription_channel(subscription_s *subscription);
  */
 void facil_publish(facil_publish_args_s args);
 
+/** Finds the message's metadata by it's type ID. Returns the data or NULL. */
+void *facil_message_metadata(facil_msg_s *msg, size_t type_id);
+
 /**
  * Defers the current callback, so it will be called again for the message.
  */
 void facil_message_defer(facil_msg_s *msg);
+
+/**
+ * Signals all workers to shutdown, which might invoke a respawning of the
+ * workers unless the shutdown signal was received.
+ *
+ * NOT signal safe.
+ */
+void facil_cluster_signal_children(void);
+
+/* *****************************************************************************
+ * Cluster / Pub/Sub Middleware and Extensions ("Engines")
+ **************************************************************************** */
+
+/**
+ * It's possible to attach metadata to facil.io messages before they are
+ * published.
+ *
+ * This allows, for example, messages to be encoded as network packets for
+ * outgoing protocols (i.e., encoding for WebSocket transmissions), improving
+ * performance in large network based broadcasting.
+ *
+ * The callback should return a pointer to a valid metadata object.
+ *
+ * To remove a callback, set the `remove` flag to true (`1`).
+ */
+void facil_message_metadata_set(
+    facil_msg_metadata_s *(*callback)(facil_msg_s *msg), int remove);
 
 /**
  * facil.io can be linked with external Pub/Sub services using "engines".
@@ -250,14 +280,6 @@ void facil_pubsub_detach(pubsub_engine_s *engine);
  */
 void facil_pubsub_reattach(pubsub_engine_s *eng);
 
-/**
- * Signals all workers to shutdown, which might invoke a respawning of the
- * workers unless the shutdown signal was received.
- *
- * NOT signal safe.
- */
-void facil_cluster_signal_children(void);
-
 #endif
 
 /* *****************************************************************************
@@ -314,6 +336,7 @@ struct subscription_s {
 
 typedef struct {
   facil_msg_s msg;
+  facil_msg_metadata_s *meta;
   uintptr_t ref;
 } facil_msg_internal_s;
 
@@ -335,6 +358,7 @@ struct {
   collection_s pubsub;
   collection_s patterns;
   collection_s engines;
+  collection_s meta;
 } postoffice = {
     .filters = COLLECTION_INIT,
     .pubsub = COLLECTION_INIT,
@@ -527,6 +551,14 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
 static inline void internal_message_free(facil_msg_internal_s *msg) {
   if (spn_sub(&msg->ref, 1))
     return;
+  facil_msg_metadata_s *meta = msg->meta;
+  while (meta) {
+    facil_msg_metadata_s *tmp = meta;
+    meta = meta->next;
+    if (tmp->on_finish) {
+      tmp->on_finish(tmp);
+    }
+  }
   fiobj_free(msg->msg.channel);
   fiobj_free(msg->msg.msg);
   fio_free(msg);
@@ -536,6 +568,15 @@ static inline void internal_message_free(facil_msg_internal_s *msg) {
 static inline void defer_subscription_callback(facil_msg_s *msg_) {
   facil_msg_internal_s *msg = (facil_msg_internal_s *)msg_;
   msg->ref = 1;
+}
+
+/** Finds the message's metadata by it's type ID. */
+void *facil_message_metadata(facil_msg_s *msg, size_t type_id) {
+  facil_msg_metadata_s *exists = ((facil_msg_internal_s *)msg)->meta;
+  while (exists && exists->type_id != type_id) {
+    exists = exists->next;
+  }
+  return exists->metadata;
 }
 
 /* performs the actual callback */
@@ -548,6 +589,7 @@ static void perform_subscription_callback(void *s_, void *msg_) {
   facil_msg_internal_s *msg = (facil_msg_internal_s *)msg_;
   facil_msg_internal_s m;
   m.msg = msg->msg;
+  m.meta = msg->meta;
   m.ref = 0;
   m.msg.udata1 = s->udata1;
   m.msg.udata2 = s->udata2;
@@ -737,7 +779,6 @@ static void cluster_data_cleanup(int delete_file) {
   cluster_data = (struct cluster_data_s){
       .lock = SPN_LOCK_INIT,
       .clients = (fio_ls_s)FIO_LS_INIT(cluster_data.clients),
-      .subscribers = cluster_data.subscribers,
   };
 }
 
@@ -772,56 +813,6 @@ static int cluster_init(void) {
   /* remove if existing */
   unlink(cluster_data.name);
   return 0;
-}
-
-/* *****************************************************************************
- * Data Structures - Handler / Subscription management
- **************************************************************************** */
-
-typedef struct {
-  void (*on_message)(int32_t filter, FIOBJ, FIOBJ);
-  FIOBJ channel;
-  FIOBJ msg;
-  int32_t filter;
-} cluster_msg_data_s;
-
-static void cluster_deferred_handler(void *msg_data_, void *ignr) {
-  cluster_msg_data_s *data = msg_data_;
-  data->on_message(data->filter, data->channel, data->msg);
-  fiobj_free(data->channel);
-  fiobj_free(data->msg);
-  fio_free(data);
-  (void)ignr;
-}
-
-static void cluster_forward_msg2handlers(cluster_pr_s *c) {
-  spn_lock(&cluster_data.lock);
-  void *target_ =
-      fio_hash_find(&cluster_data.subscribers, (FIO_HASH_KEY_TYPE)c->filter);
-  spn_unlock(&cluster_data.lock);
-  if (target_) {
-    cluster_msg_data_s *data = fio_malloc(sizeof(*data));
-    if (!data) {
-      perror("FATAL ERROR: (facil.io cluster) couldn't allocate memory");
-      exit(errno);
-    }
-    *data = (cluster_msg_data_s){
-        .on_message = ((cluster_msg_data_s *)(&target_))->on_message,
-        .channel = fiobj_dup(c->channel),
-        .msg = fiobj_dup(c->msg),
-        .filter = c->filter,
-    };
-    if ((cluster_message_type_e)c->type == CLUSTER_MESSAGE_JSON) {
-      FIOBJ json = FIOBJ_INVALID;
-      fio_cstr_s str = fiobj_obj2cstr(c->msg);
-      fiobj_json2obj(&json, str.data, str.length);
-      if (json) {
-        fiobj_free(c->msg);
-        data->msg = json;
-      }
-    }
-    defer(cluster_deferred_handler, data, NULL);
-  }
 }
 
 /* *****************************************************************************
@@ -1050,7 +1041,6 @@ static void cluster_server_handler(struct cluster_pr_s *pr) {
                                                pr->filter, cs.bytes, ms.bytes));
     publish2process(pr->filter, pr->channel, pr->msg,
                     (cluster_message_type_e)pr->type);
-    cluster_forward_msg2handlers(pr);
     break;
   }
   case CLUSTER_MESSAGE_SHUTDOWN: /* fallthrough */
@@ -1154,7 +1144,6 @@ static void cluster_client_handler(struct cluster_pr_s *pr) {
   case CLUSTER_MESSAGE_JSON:
     publish2process(pr->filter, pr->channel, pr->msg,
                     (cluster_message_type_e)pr->type);
-    cluster_forward_msg2handlers(pr);
     break;
   case CLUSTER_MESSAGE_SHUTDOWN:
     kill(getpid(), SIGINT);
@@ -1247,7 +1236,45 @@ static void facil_connect_after_fork(void *ignore) {
 }
 
 static void facil_cluster_at_exit(void *ignore) {
-  fio_hash_free(&cluster_data.subscribers);
+  /* clear subscriptions of all types */
+  FIO_HASH_FOR_FREE(&postoffice.patterns.channels, pos) {
+    if (pos->obj) {
+      channel_s *ch = pos->obj;
+      while (fio_ls_embd_any(&ch->subscriptions)) {
+        subscription_s *sub = sub =
+            FIO_LS_EMBD_OBJ(subscription_s, node, (&ch->subscriptions.next));
+        facil_unsubscribe(sub);
+      }
+    }
+  }
+  FIO_HASH_FOR_FREE(&postoffice.pubsub.channels, pos) {
+    if (pos->obj) {
+      channel_s *ch = pos->obj;
+      while (fio_ls_embd_any(&ch->subscriptions)) {
+        subscription_s *sub = sub =
+            FIO_LS_EMBD_OBJ(subscription_s, node, (&ch->subscriptions.next));
+        facil_unsubscribe(sub);
+      }
+    }
+  }
+  FIO_HASH_FOR_FREE(&postoffice.filters.channels, pos) {
+    if (pos->obj) {
+      channel_s *ch = pos->obj;
+      while (fio_ls_embd_any(&ch->subscriptions)) {
+        subscription_s *sub = sub =
+            FIO_LS_EMBD_OBJ(subscription_s, node, (&ch->subscriptions.next));
+        facil_unsubscribe(sub);
+      }
+    }
+  }
+  /* clear engines */
+  FACIL_PUBSUB_DEFAULT = FACIL_PUBSUB_CLUSTER;
+  while (fio_hash_count(&postoffice.engines.channels)) {
+    facil_pubsub_detach(fio_hash_last(&postoffice.engines.channels, NULL));
+  }
+  fio_hash_free(&postoffice.engines.channels); /* possible only with pop */
+  /* clear meta hooks */
+  FIO_HASH_FOR_FREE(&postoffice.meta.channels, pos){};
   (void)ignore;
 }
 
@@ -1374,7 +1401,7 @@ void facil_publish(facil_publish_args_s args) {
     args.engine = FACIL_PUBSUB_DEFAULT;
   }
   switch ((uintptr_t)args.engine) {
-  case 0UL: /* fallthrough */
+  case 0UL: /* fallthrough (missing default) */
   case 1UL: // ((uintptr_t)FACIL_PUBSUB_CLUSTER):
     publish_msg2all(args.filter, args.channel, args.message);
     break;
@@ -1441,13 +1468,16 @@ void facil_pubsub_detach(pubsub_engine_s *engine) {
   FIOBJ key = fiobj_num_new((intptr_t)engine);
   spn_lock(&postoffice.engines.lock);
   void *old = fio_hash_insert(&postoffice.engines.channels, key, NULL);
-
   fio_hash_compact(&postoffice.engines.channels);
   spn_unlock(&postoffice.engines.lock);
   fiobj_free(key);
+#if DEBUG
   if (!old) {
-    fprintf(stderr, "ERROR: (pubsub) detachment error, not registered?\n");
+    fprintf(stderr, "WARNING: (pubsub) detachment error, not registered?\n");
   }
+#else
+  (void)old;
+#endif
 }
 
 /**
