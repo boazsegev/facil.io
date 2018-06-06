@@ -9,14 +9,14 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #define H_FIO_BASE64_H
 /* *****************************************************************************
 C++ extern
-*/
+***************************************************************************** */
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
-/* ***************************************************************************
-Base64 encoding
-*/
+/* *****************************************************************************
+Base64 (URL) encoding
+***************************************************************************** */
 
 /**
 This will encode a byte array (data) of a specified length (len) and
@@ -37,6 +37,11 @@ A NULL terminator char is NOT written to the target buffer.
 int fio_base64_encode(char *target, const char *data, int len);
 
 /**
+Same as fio_base64_encode, but using Base64URL encoding.
+*/
+int fio_base64url_encode(char *target, const char *data, int len);
+
+/**
 This will decode a Base64 encoded string of a specified length (len) and
 place the decoded data into the target byte buffer (target).
 
@@ -54,6 +59,17 @@ be, at least, `base64_len/4*3 + 3` long.
 
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
+
+Note:
+====
+
+The decoder is variation agnostic (will decode Base64, Base64 URL and Base64 XML
+variations) and will attempt it's best to ignore invalid data, (in order to
+support the MIME Base64 variation in RFC 2045).
+
+This comes at the cost of error
+checking, so the encoding isn't validated and invalid input might produce
+surprising results.
 */
 int fio_base64_decode(char *target, char *encoded, int base64_len);
 
@@ -63,7 +79,7 @@ void fio_base64_test(void);
 
 /* *****************************************************************************
 C++ extern finish
-*/
+***************************************************************************** */
 #if defined(__cplusplus)
 }
 #endif
