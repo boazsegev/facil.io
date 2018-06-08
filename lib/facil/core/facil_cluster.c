@@ -40,22 +40,6 @@ extern pubsub_engine_s *FACIL_PUBSUB_DEFAULT;
 /** Used to publish the message except within the current process. */
 #define FACIL_PUBSUB_SIBLINGS ((pubsub_engine_s *)3)
 
-/** This contains message metadata, set by message extensions. */
-typedef struct facil_msg_metadata_s {
-  /** The type ID should be used to identify the metadata's actual structure. */
-  size_t type_id;
-  /**
-   * This method will be called by facil.io to cleanup the metadata resources.
-   *
-   * Don't alter / call this method, this data is reserved.
-   */
-  void (*on_finish)(struct facil_msg_metadata_s *self);
-  /** The pointer to be returned by the `facil_message_metadata` function. */
-  void *metadata;
-  /** RESERVED for internal use (Metadata linked list). */
-  struct facil_msg_metadata_s *next;
-} facil_msg_metadata_s;
-
 /** Message structure, with an integer filter as well as a channel filter. */
 typedef struct facil_msg_s {
   /** A unique message type. Negative values are reserved, 0 == pub/sub. */
@@ -183,7 +167,7 @@ FIOBJ facil_subscription_channel(subscription_s *subscription);
 void facil_publish(facil_publish_args_s args);
 
 /** Finds the message's metadata by it's type ID. Returns the data or NULL. */
-void *facil_message_metadata(facil_msg_s *msg, size_t type_id);
+void *facil_message_metadata(facil_msg_s *msg, intptr_t type_id);
 
 /**
  * Defers the current callback, so it will be called again for the message.
@@ -202,6 +186,23 @@ void facil_cluster_signal_children(void);
  * Cluster / Pub/Sub Middleware and Extensions ("Engines")
  **************************************************************************** */
 
+/** Contains message metadata, set by message extensions. */
+typedef struct facil_msg_metadata_s facil_msg_metadata_s;
+struct facil_msg_metadata_s {
+  /** The type ID should be used to identify the metadata's actual structure. */
+  intptr_t type_id;
+  /**
+   * This method will be called by facil.io to cleanup the metadata resources.
+   *
+   * Don't alter / call this method, this data is reserved.
+   */
+  void (*on_finish)(facil_msg_s *msg, facil_msg_metadata_s *self);
+  /** The pointer to be returned by the `facil_message_metadata` function. */
+  void *metadata;
+  /** RESERVED for internal use (Metadata linked list). */
+  facil_msg_metadata_s *next;
+};
+
 /**
  * It's possible to attach metadata to facil.io messages before they are
  * published.
@@ -212,10 +213,16 @@ void facil_cluster_signal_children(void);
  *
  * The callback should return a pointer to a valid metadata object.
  *
+ * Since the cluster messaging system serializes objects to JSON (unless both
+ * the channel and the data are String objects), the pre-serialized data is
+ * available to the callback as the `raw_ch` and `raw_msg` arguments.
+ *
  * To remove a callback, set the `remove` flag to true (`1`).
  */
 void facil_message_metadata_set(
-    facil_msg_metadata_s *(*callback)(facil_msg_s *msg), int remove);
+    facil_msg_metadata_s *(*callback)(facil_msg_s *msg, FIOBJ raw_ch,
+                                      FIOBJ raw_msg),
+    int remove);
 
 /**
  * facil.io can be linked with external Pub/Sub services using "engines".
@@ -302,12 +309,17 @@ typedef enum cluster_message_type_e {
 #define FIO_HASH_KEY_COPY(key) (fiobj_dup((key)))
 #define FIO_HASH_KEY_DESTROY(key) fiobj_free((key))
 
+#include "fio_ary.h"
 #include "fio_hashmap.h"
 
 typedef struct {
   fio_hash_s channels;
   spn_lock_i lock;
 } collection_s;
+typedef struct {
+  fio_ary_s ary;
+  spn_lock_i lock;
+} collection_ary_s;
 
 typedef struct {
   FIOBJ id;
@@ -358,7 +370,7 @@ struct {
   collection_s pubsub;
   collection_s patterns;
   collection_s engines;
-  collection_s meta;
+  collection_ary_s meta;
 } postoffice = {
     .filters = COLLECTION_INIT,
     .pubsub = COLLECTION_INIT,
@@ -561,7 +573,7 @@ static inline void internal_message_free(facil_msg_internal_s *msg) {
     facil_msg_metadata_s *tmp = meta;
     meta = meta->next;
     if (tmp->on_finish) {
-      tmp->on_finish(tmp);
+      tmp->on_finish(&msg->msg, tmp);
     }
   }
   fiobj_free(msg->msg.channel);
@@ -576,7 +588,7 @@ static inline void defer_subscription_callback(facil_msg_s *msg_) {
 }
 
 /** Finds the message's metadata by it's type ID. */
-void *facil_message_metadata(facil_msg_s *msg, size_t type_id) {
+void *facil_message_metadata(facil_msg_s *msg, intptr_t type_id) {
   facil_msg_metadata_s *exists = ((facil_msg_internal_s *)msg)->meta;
   while (exists && exists->type_id != type_id) {
     exists = exists->next;
@@ -592,12 +604,17 @@ static void perform_subscription_callback(void *s_, void *msg_) {
     return;
   }
   facil_msg_internal_s *msg = (facil_msg_internal_s *)msg_;
-  facil_msg_internal_s m;
-  m.msg = msg->msg;
-  m.meta = msg->meta;
-  m.ref = 0;
-  m.msg.udata1 = s->udata1;
-  m.msg.udata2 = s->udata2;
+  facil_msg_internal_s m = {
+      .msg =
+          {
+              .channel = msg->msg.channel,
+              .msg = msg->msg.msg,
+              .udata1 = s->udata1,
+              .udata2 = s->udata2,
+          },
+      .meta = msg->meta,
+      .ref = 0,
+  };
   s->callback((facil_msg_s *)&m);
   spn_unlock(&s->lock);
   if (m.ref) {
@@ -610,7 +627,7 @@ static void perform_subscription_callback(void *s_, void *msg_) {
 
 /* publishes a message to a channel, managing the reference counts */
 static void publish2channel(channel_s *ch, facil_msg_internal_s *msg) {
-  if (!ch) {
+  if (!ch || !msg) {
     return;
   }
   spn_lock(&ch->lock);
@@ -644,13 +661,38 @@ static void publish2process(int32_t filter, FIOBJ channel, FIOBJ msg,
       .ref = 1,
   };
   if (type == CLUSTER_MESSAGE_JSON) {
-    FIOBJ json = FIOBJ_INVALID;
-    fio_cstr_s str = fiobj_obj2cstr(msg);
-    fiobj_json2obj(&json, str.data, str.length);
-    if (json) {
-      fiobj_free(msg);
-      m->msg.msg = json;
+    FIOBJ org_ch = m->msg.channel;
+    FIOBJ org_msg = m->msg.msg;
+    if (org_ch) {
+      fio_cstr_s str = fiobj_obj2cstr(org_ch);
+      fiobj_json2obj(&m->msg.channel, str.data, str.length);
     }
+    if (org_msg) {
+      fio_cstr_s str = fiobj_obj2cstr(org_msg);
+      fiobj_json2obj(&m->msg.msg, str.data, str.length);
+    }
+    if (!m->msg.channel) {
+      m->msg.channel = fiobj_dup(org_ch);
+    }
+    if (!m->msg.msg) {
+      m->msg.msg = fiobj_dup(org_msg);
+    }
+    spn_lock(&postoffice.meta.lock);
+    FIO_ARY_FOR(&postoffice.meta.ary, pos) {
+      if (pos.obj == NULL)
+        continue;
+      facil_msg_metadata_s *ret =
+          ((facil_msg_metadata_s * (*)(facil_msg_s * msg, FIOBJ raw_ch,
+                                       FIOBJ raw_msg))(uintptr_t)pos.obj)(
+              &m->msg, org_ch, org_msg);
+      if (ret) {
+        ret->next = m->meta;
+        m->meta = ret;
+      }
+    }
+    spn_unlock(&postoffice.meta.lock);
+    fiobj_free(org_ch);
+    fiobj_free(org_msg);
   } else {
   }
   if (filter) {
@@ -1299,7 +1341,7 @@ static void facil_cluster_at_exit(void *ignore) {
   FIO_HASH_FOR_FREE(&postoffice.engines.channels, pos) { (void)pos; }
 
   /* clear meta hooks */
-  FIO_HASH_FOR_FREE(&postoffice.meta.channels, pos) { (void)pos; }
+  fio_ary_free(&postoffice.meta.ary);
   /* perform newly created tasks */
   defer_perform();
   (void)ignore;
@@ -1454,6 +1496,38 @@ void facil_publish(facil_publish_args_s args) {
  * Defers the current callback, so it will be called again for the message.
  */
 void facil_message_defer(facil_msg_s *msg) { defer_subscription_callback(msg); }
+
+/* *****************************************************************************
+ * MetaData (extension) API
+ **************************************************************************** */
+
+/**
+ * It's possible to attach metadata to facil.io messages before they are
+ * published.
+ *
+ * This allows, for example, messages to be encoded as network packets for
+ * outgoing protocols (i.e., encoding for WebSocket transmissions), improving
+ * performance in large network based broadcasting.
+ *
+ * The callback should return a pointer to a valid metadata object.
+ *
+ * Since the cluster messaging system serializes objects to JSON (unless both
+ * the channel and the data are String objects), the pre-serialized data is
+ * available to the callback as the `raw_ch` and `raw_msg` arguments.
+ *
+ * To remove a callback, set the `remove` flag to true (`1`).
+ */
+void facil_message_metadata_set(
+    facil_msg_metadata_s *(*callback)(facil_msg_s *msg, FIOBJ raw_ch,
+                                      FIOBJ raw_msg),
+    int remove) {
+  spn_lock(&postoffice.meta.lock);
+  fio_ary_remove2(&postoffice.meta.ary, (void *)(uintptr_t)callback);
+  if (!remove) {
+    fio_ary_push(&postoffice.meta.ary, (void *)(uintptr_t)callback);
+  }
+  spn_unlock(&postoffice.meta.lock);
+}
 
 /* *****************************************************************************
  * Pub/Sub Engine (extension) API
