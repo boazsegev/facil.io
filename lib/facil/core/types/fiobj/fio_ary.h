@@ -92,6 +92,11 @@ FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary);
  */
 FIO_FUNC inline FIO_ARY_TYPE fio_ary_index(fio_ary_s *ary, intptr_t pos);
 
+/**
+ * Returns the index of the object or -1 if the object wasn't found.
+ */
+FIO_FUNC inline intptr_t fio_ary_find(fio_ary_s *ary, FIO_ARY_TYPE data);
+
 /** alias for `fiobj_ary_index` */
 #define fio_ary_entry(a, p) fiobj_ary_index((a), (p))
 
@@ -124,13 +129,21 @@ FIO_FUNC inline int fio_ary_unshift(fio_ary_s *ary, FIO_ARY_TYPE data);
 FIO_FUNC inline FIO_ARY_TYPE fio_ary_shift(fio_ary_s *ary);
 
 /**
- * Removes an object from the, MOVING all the objects to prevent "holes" in the
- * data.
+ * Removes an object from the array, MOVING all the other objects to prevent
+ * "holes" in the data.
+ *
+ * Returns the removed object or FIO_ARY_TYPE_INVALID (on error).
+ */
+FIO_FUNC inline FIO_ARY_TYPE fio_ary_remove(fio_ary_s *ary, intptr_t index);
+
+/**
+ * Removes an object from the array, if it exists, MOVING all the other objects
+ * to prevent "holes" in the data.
  *
  * Returns -1 if the object wasn't found or 0 if the object was successfully
  * removed.
  */
-FIO_FUNC inline int fio_ary_remove(fio_ary_s *ary, FIO_ARY_TYPE data);
+FIO_FUNC inline int fio_ary_remove2(fio_ary_s *ary, FIO_ARY_TYPE data);
 
 /**
  * Iteration using a callback for each entry in the array.
@@ -297,6 +310,23 @@ FIO_FUNC inline FIO_ARY_TYPE fio_ary_index(fio_ary_s *ary, intptr_t pos) {
 #define fio_ary_entry(a, p) fiobj_ary_index((a), (p))
 
 /**
+ * Returns the index of the object or -1 if the object wasn't found.
+ */
+FIO_FUNC inline intptr_t fio_ary_find(fio_ary_s *ary, FIO_ARY_TYPE data) {
+  if (!ary || ary->start == ary->end || !ary->arry) {
+    return -1;
+  }
+  size_t pos = ary->start;
+  const size_t end = ary->end;
+  while (pos < end && !FIO_ARY_TYPE_COMPARE(data, ary->arry[pos])) {
+    ++pos;
+  }
+  if (pos == end)
+    return -1;
+  return pos;
+}
+
+/**
  * Sets an object at the requested position.
  *
  * Returns the old value, if any.
@@ -391,26 +421,50 @@ FIO_FUNC inline FIO_ARY_TYPE fio_ary_shift(fio_ary_s *ary) {
 }
 
 /**
- * Removes an object from the, MOVING all the other objects to prevent "holes"
- * in the data.
+ * Removes an object from the array, MOVING all the other objects to prevent
+ * "holes" in the data.
+ *
+ * Returns the removed object or FIO_ARY_TYPE_INVALID (on error).
+ */
+FIO_FUNC inline FIO_ARY_TYPE fio_ary_remove(fio_ary_s *ary, intptr_t index) {
+  if (!ary || ary->start == ary->end || !ary->arry) {
+    return FIO_ARY_TYPE_INVALID;
+  }
+  if (index < 0) {
+    index = (ary->end - ary->start) + index;
+    if (index < 0) {
+      return FIO_ARY_TYPE_INVALID;
+    }
+  }
+  --ary->end;
+  FIO_ARY_TYPE old = ary->arry[(size_t)index];
+  const size_t len = (ary->end - ary->start);
+  while ((size_t)index < len) {
+    ary->arry[ary->start + (size_t)index] =
+        ary->arry[ary->start + (size_t)index + 1];
+    ++index;
+  }
+  return old;
+}
+
+/**
+ * Removes an object from the array, if it exists, MOVING all the other objects
+ * to prevent "holes" in the data.
  *
  * Returns -1 if the object wasn't found or 0 if the object was successfully
  * removed.
  */
-FIO_FUNC inline int fio_ary_remove(fio_ary_s *ary, FIO_ARY_TYPE data) {
-  if (!ary || ary->start == ary->end || !ary->arry) {
+FIO_FUNC inline int fio_ary_remove2(fio_ary_s *ary, FIO_ARY_TYPE data) {
+  intptr_t index = fio_ary_find(ary, data);
+  if (index == -1) {
     return -1;
   }
-  size_t pos = ary->start;
-  const size_t end = ary->end;
-  while (pos < end && !FIO_ARY_TYPE_COMPARE(data, ary->arry[pos])) {
-    ++pos;
-  }
-  if (pos == end)
-    return -1;
   --ary->end;
-  while (pos < end - 1) {
-    ary->arry[pos] = ary->arry[pos + 1];
+  const size_t len = (ary->end - ary->start);
+  while ((size_t)index < len) {
+    ary->arry[ary->start + (size_t)index] =
+        ary->arry[ary->start + (size_t)index + 1];
+    ++index;
   }
   return 0;
 }

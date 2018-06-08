@@ -8,6 +8,10 @@ License: MIT
 #define FIO_OVERRIDE_MALLOC 1
 #include "fio_mem.h"
 
+#define FIO_ARY_TYPE FIOBJ
+#define FIO_ARY_TYPE_INVALID FIOBJ_INVALID
+#define FIO_ARY_TYPE_COMPARE(a, b) (fiobj_iseq((a), (b)))
+
 #include "fio_ary.h"
 #include <assert.h>
 
@@ -41,8 +45,7 @@ static void fiobj_ary_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
 
 static size_t fiobj_ary_each1(FIOBJ o, size_t start_at,
                               int (*task)(FIOBJ obj, void *arg), void *arg) {
-  return fio_ary_each(&obj2ary(o)->ary, start_at, (int (*)(void *, void *))task,
-                      arg);
+  return fio_ary_each(&obj2ary(o)->ary, start_at, task, arg);
 }
 
 static size_t fiobj_ary_is_eq(const FIOBJ self, const FIOBJ other) {
@@ -144,7 +147,7 @@ FIOBJ fiobj_ary_index(FIOBJ ary, int64_t pos) {
  */
 void fiobj_ary_set(FIOBJ ary, FIOBJ obj, int64_t pos) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
-  FIOBJ old = (FIOBJ)fio_ary_set(&obj2ary(ary)->ary, (void *)obj, pos);
+  FIOBJ old = (FIOBJ)fio_ary_set(&obj2ary(ary)->ary, obj, pos);
   fiobj_free(old);
 }
 
@@ -157,7 +160,7 @@ Array push / shift API
  */
 void fiobj_ary_push(FIOBJ ary, FIOBJ obj) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
-  fio_ary_push(&obj2ary(ary)->ary, (void *)obj);
+  fio_ary_push(&obj2ary(ary)->ary, obj);
 }
 
 /** Pops an object from the end of the Array. */
@@ -172,13 +175,69 @@ FIOBJ fiobj_ary_pop(FIOBJ ary) {
  */
 void fiobj_ary_unshift(FIOBJ ary, FIOBJ obj) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
-  fio_ary_unshift(&obj2ary(ary)->ary, (void *)obj);
+  fio_ary_unshift(&obj2ary(ary)->ary, obj);
 }
 
 /** Shifts an object from the beginning of the Array. */
 FIOBJ fiobj_ary_shift(FIOBJ ary) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
   return (FIOBJ)fio_ary_shift(&obj2ary(ary)->ary);
+}
+
+/* *****************************************************************************
+Array Find / Remove / Replace
+***************************************************************************** */
+
+/**
+ * Replaces the object at a specific position, returning the old object -
+ * remember to `fiobj_free` the old object.
+ */
+FIOBJ fiobj_ary_replace(FIOBJ ary, FIOBJ obj, int64_t pos) {
+  assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
+  FIOBJ old = fiobj_ary_index(ary, pos);
+  fiobj_ary_set(ary, obj, pos);
+  return old;
+}
+
+/**
+ * Finds the index of a specifide object (if any). Returns -1 if the object
+ * isn't found.
+ */
+int64_t fiobj_ary_find(FIOBJ ary, FIOBJ data) {
+  assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
+  return (int64_t)fio_ary_find(&obj2ary(ary)->ary, data);
+}
+
+/**
+ * Removes the object at the index (if valid), changing the index of any
+ * following objects.
+ *
+ * Returns 0 on success or -1 (if no object or out of bounds).
+ */
+int fiobj_ary_remove(FIOBJ ary, int64_t pos) {
+  assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
+  FIOBJ old = (FIOBJ)fio_ary_remove(&obj2ary(ary)->ary, (intptr_t)pos);
+  if (!old) {
+    return -1;
+  }
+  fiobj_free(old);
+  return 0;
+}
+
+/**
+ * Removes the first instance of an object from the Array (if any), changing the
+ * index of any following objects.
+ *
+ * Returns 0 on success or -1 (if the object wasn't found).
+ */
+int fiobj_ary_remove2(FIOBJ ary, FIOBJ data) {
+  assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
+  int found = fio_ary_remove2(&obj2ary(ary)->ary, data);
+  if (found == -1) {
+    return -1;
+  }
+  fiobj_free(data);
+  return 0;
 }
 
 /* *****************************************************************************
@@ -240,6 +299,36 @@ void fiobj_test_array(void) {
   fiobj_ary_unshift(a, fiobj_false());
   TEST_ASSERT(fiobj_ary_count(a) == 5, "Array unshift error\n");
   TEST_ASSERT(fiobj_ary_shift(a) == fiobj_false(), "Array shift value error\n");
+  TEST_ASSERT(fiobj_ary_replace(a, fiobj_true(), -2) == fiobj_false(),
+              "Array replace didn't return correct value\n");
+
+  FIO_ARY_FOR(&obj2ary(a)->ary, pos) {
+    if (pos.obj) {
+      fprintf(stderr, "%lu) %s\n", pos.i, fiobj_obj2cstr((FIOBJ)pos.obj).data);
+    }
+  }
+
+  TEST_ASSERT(fiobj_ary_index(a, -2) == fiobj_true(),
+              "Array index retrival error for index -2 (should be true)\n");
+  TEST_ASSERT(fiobj_ary_count(a) == 4, "Array size error\n");
+  fiobj_ary_remove(a, -2);
+  TEST_ASSERT(fiobj_ary_count(a) == 3, "Array remove error\n");
+
+  FIO_ARY_FOR(&obj2ary(a)->ary, pos) {
+    if (pos.obj) {
+      fprintf(stderr, "%lu) %s\n", pos.i, fiobj_obj2cstr((FIOBJ)pos.obj).data);
+    }
+  }
+
+  fiobj_ary_remove2(a, fiobj_true());
+  TEST_ASSERT(fiobj_ary_count(a) == 2, "Array remove2 error\n");
+  TEST_ASSERT(fiobj_ary_index(a, 0) == fiobj_null(),
+              "Array index 0 should be null - %s\n",
+              fiobj_obj2cstr(fiobj_ary_index(a, 0)).data);
+  TEST_ASSERT(fiobj_ary_index(a, 1) == fiobj_true(),
+              "Array index 0 should be true - %s\n",
+              fiobj_obj2cstr(fiobj_ary_index(a, 0)).data);
+
   fiobj_free(a);
   fprintf(stderr, "* passed.\n");
 }
