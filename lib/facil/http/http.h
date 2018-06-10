@@ -8,7 +8,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #define H_HTTP_H
 
 #include "facil.h"
-#include "pubsub.h"
 
 #include <time.h>
 
@@ -668,7 +667,7 @@ struct http_sse_subscribe_args {
   /** Opaque user */
   void *udata;
   /** A callback for pattern matching. */
-  pubsub_match_fn match;
+  facil_match_fn match;
 };
 
 /**

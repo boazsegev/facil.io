@@ -650,32 +650,308 @@ void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock_e);
  *
  **************************************************************************** */
 
+/* *****************************************************************************
+ * Cluster Messages and Pub/Sub
+ **************************************************************************** */
+
+/** An opaque subscription type. */
+typedef struct subscription_s subscription_s;
+
+/** A pub/sub engine data structure. See details later on. */
+typedef struct pubsub_engine_s pubsub_engine_s;
+
+/** The default engine (settable). Initial default is FACIL_PUBSUB_CLUSTER. */
+extern pubsub_engine_s *FACIL_PUBSUB_DEFAULT;
+/** Used to publish the message to all clients in the cluster. */
+#define FACIL_PUBSUB_CLUSTER ((pubsub_engine_s *)1)
+/** Used to publish the message only within the current process. */
+#define FACIL_PUBSUB_PROCESS ((pubsub_engine_s *)2)
+/** Used to publish the message except within the current process. */
+#define FACIL_PUBSUB_SIBLINGS ((pubsub_engine_s *)3)
+
+/** Message structure, with an integer filter as well as a channel filter. */
+typedef struct facil_msg_s {
+  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
+  int32_t filter;
+  /** A channel name, allowing for pub/sub patterns. */
+  FIOBJ channel;
+  /** The actual message. */
+  FIOBJ msg;
+  /** The `udata1` argument associated with the subscription. */
+  void *udata1;
+  /** The `udata1` argument associated with the subscription. */
+  void *udata2;
+} facil_msg_s;
+
 /**
-Sets a callback / handler for a message of type `msg_type`.
+ * Pattern matching callback type - should return 0 unless channel matches
+ * pattern.
+ */
+typedef int (*facil_match_fn)(FIOBJ pattern, FIOBJ channel);
 
-Callbacks are invoked using an O(n) matching, where `n` is the number of
-registered callbacks.
+extern facil_match_fn FACIL_MATCH_GLOB;
 
-The `msg_type` value can be any positive number up to 2^31-1 (2,147,483,647).
-All values less than 0 are reserved for internal use.
-*/
-void facil_cluster_set_handler(int32_t filter,
-                               void (*on_message)(int32_t filter, FIOBJ ch,
-                                                  FIOBJ msg));
-/** Sends a message of type `msg_type` to the **other** cluster processes.
+/** possible arguments for the facil_subscribe method. */
+typedef struct {
+  /**
+   * If `filter` is set, all messages that match the filter's numerical value
+   * will be forwarded to the subscription's callback.
+   *
+   * Subscriptions can either require a match by filter or match by channel.
+   * This will match the subscription by filter.
+   */
+  int32_t filter;
+  /**
+   * If `channel` is set, all messages where `filter == 0` and the channel is an
+   * exact match will be forwarded to the subscription's callback.
+   *
+   * Subscriptions can either require a match by filter or match by channel.
+   * This will match the subscription by channel (only messages with no `filter`
+   * will be received.
+   */
+  FIOBJ channel;
+  /**
+   * The the `match` function allows pattern matching for channel names.
+   *
+   * When using a match function, the channel name is considered to be a pattern
+   * and each pub/sub message (a message where filter == 0) will be tested
+   * against that pattern.
+   *
+   * Using pattern subscriptions extensively could become a performance concern,
+   * since channel names are tested against each distinct pattern rather than
+   * using a hashmap for possible name matching.
+   */
+  facil_match_fn match;
+  /**
+   * The callback will be called for each message forwarded to the subscription.
+   */
+  void (*on_message)(facil_msg_s *msg);
+  /** An optional callback for when a subscription is fully canceled. */
+  void (*on_unsubscribe)(void *udata1, void *udata2);
+  /** The udata values are ignored and made available to the callback. */
+  void *udata1;
+  /** The udata values are ignored and made available to the callback. */
+  void *udata2;
+} subscribe_args_s;
 
-`msg_type` should match a message type used when calling
-`facil_cluster_set_handler` to set the appropriate callback.
+/** Publishing and on_message callback arguments. */
+typedef struct facil_publish_args_s {
+  /** The pub/sub engine that should be used to farward this message. */
+  pubsub_engine_s const *engine;
+  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
+  int32_t filter;
+  /** The pub/sub target channnel. */
+  FIOBJ channel;
+  /** The pub/sub message. */
+  FIOBJ message;
+} facil_publish_args_s;
 
-Unknown `msg_type` values are silently ignored.
+/**
+ * Subscribes to either a filter OR a channel (never both).
+ *
+ * Returns a subscription pointer on success or NULL on failure.
+ *
+ * See `subscribe_args_s` for details.
+ */
+subscription_s *facil_subscribe(subscribe_args_s args);
+/**
+ * Subscribes to either a filter OR a channel (never both).
+ *
+ * Returns a subscription pointer on success or NULL on failure.
+ *
+ * See `subscribe_args_s` for details.
+ */
+#define facil_subscribe(...) facil_subscribe((subscribe_args_s){__VA_ARGS__})
 
-The `msg_type` value can be any positive number less than 1,073,741,824. All
-negative values and values above 1,073,741,824 are reserved for internal use.
+/**
+ * Subscribes to a channel (enforces filter == 0).
+ *
+ * Returns a subscription pointer on success or NULL on failure.
+ *
+ * See `subscribe_args_s` for details.
+ */
+subscription_s *facil_subscribe_pubsub(subscribe_args_s args);
+/**
+ * Subscribes to a channel (enforces filter == 0).
+ *
+ * Returns a subscription pointer on success or NULL on failure.
+ *
+ * See `subscribe_args_s` for details.
+ */
+#define facil_subscribe_pubsub(...)                                            \
+  facil_subscribe_pubsub((subscribe_args_s){__VA_ARGS__})
 
-Callbacks are invoked using an O(n) matching, where `n` is the number of
-registered callbacks.
-*/
-int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg);
+/**
+ * Cancels an existing subscriptions - actual effects might be delayed, for
+ * example, if the subscription's callback is running in another thread.
+ */
+void facil_unsubscribe(subscription_s *subscription);
+
+/**
+ * This helper returns a temporary handle to an existing subscription's channel
+ * or filter.
+ *
+ * To keep the handle beyond the lifetime of the subscription, use `fiobj_dup`.
+ */
+FIOBJ facil_subscription_channel(subscription_s *subscription);
+
+/**
+ * Publishes a message to the relevant subscribers (if any).
+ *
+ * See `facil_publish_args_s` for details.
+ *
+ * By default the message is sent using the FACIL_PUBSUB_CLUSTER engine (all
+ * processes, including the calling process).
+ *
+ * To limit the message only to other processes (exclude the calling process),
+ * use the FACIL_PUBSUB_SIBLINGS engine.
+ *
+ * To limit the message only to the calling process, use the
+ * FACIL_PUBSUB_PROCESS engine.
+ *
+ * To publish messages to the pub/sub layer, the `.filter` argument MUST be
+ * equal to 0 or missing.
+ */
+void facil_publish(facil_publish_args_s args);
+/**
+ * Publishes a message to the relevant subscribers (if any).
+ *
+ * See `facil_publish_args_s` for details.
+ *
+ * By default the message is sent using the FACIL_PUBSUB_CLUSTER engine (all
+ * processes, including the calling process).
+ *
+ * To limit the message only to other processes (exclude the calling process),
+ * use the FACIL_PUBSUB_SIBLINGS engine.
+ *
+ * To limit the message only to the calling process, use the
+ * FACIL_PUBSUB_PROCESS engine.
+ *
+ * To publish messages to the pub/sub layer, the `.filter` argument MUST be
+ * equal to 0 or missing.
+ */
+#define facil_publish(...) facil_publish((facil_publish_args_s){__VA_ARGS__})
+
+/** Finds the message's metadata by it's type ID. Returns the data or NULL. */
+void *facil_message_metadata(facil_msg_s *msg, intptr_t type_id);
+
+/**
+ * Defers the current callback, so it will be called again for the message.
+ */
+void facil_message_defer(facil_msg_s *msg);
+
+/**
+ * Signals all workers to shutdown, which might invoke a respawning of the
+ * workers unless the shutdown signal was received.
+ *
+ * NOT signal safe.
+ */
+void facil_cluster_signal_children(void);
+
+/* *****************************************************************************
+ * Cluster / Pub/Sub Middleware and Extensions ("Engines")
+ **************************************************************************** */
+
+/** Contains message metadata, set by message extensions. */
+typedef struct facil_msg_metadata_s facil_msg_metadata_s;
+struct facil_msg_metadata_s {
+  /** The type ID should be used to identify the metadata's actual structure. */
+  intptr_t type_id;
+  /**
+   * This method will be called by facil.io to cleanup the metadata resources.
+   *
+   * Don't alter / call this method, this data is reserved.
+   */
+  void (*on_finish)(facil_msg_s *msg, facil_msg_metadata_s *self);
+  /** The pointer to be returned by the `facil_message_metadata` function. */
+  void *metadata;
+  /** RESERVED for internal use (Metadata linked list). */
+  facil_msg_metadata_s *next;
+};
+
+/**
+ * It's possible to attach metadata to facil.io messages before they are
+ * published.
+ *
+ * This allows, for example, messages to be encoded as network packets for
+ * outgoing protocols (i.e., encoding for WebSocket transmissions), improving
+ * performance in large network based broadcasting.
+ *
+ * The callback should return a pointer to a valid metadata object.
+ *
+ * Since the cluster messaging system serializes objects to JSON (unless both
+ * the channel and the data are String objects), the pre-serialized data is
+ * available to the callback as the `raw_ch` and `raw_msg` arguments.
+ *
+ * To remove a callback, set the `remove` flag to true (`1`).
+ */
+void facil_message_metadata_set(
+    facil_msg_metadata_s *(*callback)(facil_msg_s *msg, FIOBJ raw_ch,
+                                      FIOBJ raw_msg),
+    int remove);
+
+/**
+ * facil.io can be linked with external Pub/Sub services using "engines".
+ *
+ * Only unfiltered messages and subscriptions (where filter == 0) will be
+ * forwarded to external Pub/Sub services.
+ *
+ * Engines MUST provide the listed function pointers and should be registered
+ * using the `pubsub_engine_register` function.
+ *
+ * Engines should deregister, before being destroyed, by using the
+ * `pubsub_engine_deregister` function.
+ *
+ * When an engine received a message to publish, it should call the
+ * `pubsub_publish` function with the engine to which the message is forwarded.
+ * i.e.:
+ *
+ *       pubsub_publish(
+ *           .engine = FACIL_PROCESS_ENGINE,
+ *           .channel = channel_name,
+ *           .message = msg_body );
+ *
+ * Engines MUST NOT free any of the FIOBJ objects they receive.
+ *
+ */
+struct pubsub_engine_s {
+  /** Should subscribe channel. Failures are ignored. */
+  void (*subscribe)(const pubsub_engine_s *eng, FIOBJ channel,
+                    facil_match_fn match);
+  /** Should unsubscribe channel. Failures are ignored. */
+  void (*unsubscribe)(const pubsub_engine_s *eng, FIOBJ channel,
+                      facil_match_fn match);
+  /** Should return 0 on success and -1 on failure. */
+  int (*publish)(const pubsub_engine_s *eng, FIOBJ channel, FIOBJ msg);
+  /**
+   * facil.io will call this callback whenever starting, or restarting, the
+   * reactor.
+   *
+   * This will be called when facil.io starts (the master process).
+   *
+   * This will also be called when forking, after facil.io closes all
+   * connections and claim to shut down (running all deferred event).
+   */
+  void (*on_startup)(const pubsub_engine_s *eng);
+};
+
+/** Attaches an engine, so it's callback can be called by facil.io. */
+void facil_pubsub_attach(pubsub_engine_s *engine);
+
+/** Detaches an engine, so it could be safely destroyed. */
+void facil_pubsub_detach(pubsub_engine_s *engine);
+
+/**
+ * Engines can ask facil.io to call the `subscribe` callback for all active
+ * channels.
+ *
+ * This allows engines that lost their connection to their Pub/Sub service to
+ * resubscribe all the currently active channels with the new connection.
+ *
+ * CAUTION: This is an evented task... try not to free the engine's memory while
+ * resubscriptions are under way...
+ */
+void facil_pubsub_reattach(pubsub_engine_s *eng);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -20,274 +20,9 @@
 
 #include <signal.h>
 
-#ifndef H_FACIL_CLUSTER_H
-/* *****************************************************************************
- * Cluster Messages and Pub/Sub
- **************************************************************************** */
-
-/** An opaque subscription type. */
-typedef struct subscription_s subscription_s;
-
-/** A pub/sub engine data structure. See details later on. */
-typedef struct pubsub_engine_s pubsub_engine_s;
-
-/** The default engine (settable). Initial default is FACIL_PUBSUB_CLUSTER. */
-extern pubsub_engine_s *FACIL_PUBSUB_DEFAULT;
-/** Used to publish the message to all clients in the cluster. */
-#define FACIL_PUBSUB_CLUSTER ((pubsub_engine_s *)1)
-/** Used to publish the message only within the current process. */
-#define FACIL_PUBSUB_PROCESS ((pubsub_engine_s *)2)
-/** Used to publish the message except within the current process. */
-#define FACIL_PUBSUB_SIBLINGS ((pubsub_engine_s *)3)
-
-/** Message structure, with an integer filter as well as a channel filter. */
-typedef struct facil_msg_s {
-  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
-  int32_t filter;
-  /** A channel name, allowing for pub/sub patterns. */
-  FIOBJ channel;
-  /** The actual message. */
-  FIOBJ msg;
-  /** The `udata1` argument associated with the subscription. */
-  void *udata1;
-  /** The `udata1` argument associated with the subscription. */
-  void *udata2;
-} facil_msg_s;
-
-/**
- * Pattern matching callback type - should return 0 unless channel matches
- * pattern.
- */
-typedef int (*facil_match_fn)(FIOBJ pattern, FIOBJ channel);
-
-/** possible arguments for the facil_subscribe method. */
-typedef struct {
-  /**
-   * If `filter` is set, all messages that match the filter's numerical value
-   * will be forwarded to the subscription's callback.
-   *
-   * Subscriptions can either require a match by filter or match by channel.
-   * This will match the subscription by filter.
-   */
-  int32_t filter;
-  /**
-   * If `channel` is set, all messages where `filter == 0` and the channel is an
-   * exact match will be forwarded to the subscription's callback.
-   *
-   * Subscriptions can either require a match by filter or match by channel.
-   * This will match the subscription by channel (only messages with no `filter`
-   * will be received.
-   */
-  FIOBJ channel;
-  /**
-   * The the `match` function allows pattern matching for channel names.
-   *
-   * When using a match function, the channel name is considered to be a pattern
-   * and each pub/sub message (a message where filter == 0) will be tested
-   * against that pattern.
-   *
-   * Using pattern subscriptions extensively could become a performance concern,
-   * since channel names are tested against each distinct pattern rather than
-   * using a hashmap for possible name matching.
-   */
-  facil_match_fn match;
-  /**
-   * The callback will be called for each message forwarded to the subscription.
-   */
-  void (*callback)(facil_msg_s *msg);
-  /** An optional callback for when a subscription is fully canceled. */
-  void (*on_unsubscribe)(void *udata1, void *udata2);
-  /** The udata values are ignored and made available to the callback. */
-  void *udata1;
-  /** The udata values are ignored and made available to the callback. */
-  void *udata2;
-} subscribe_args_s;
-
-/** Publishing and on_message callback arguments. */
-typedef struct facil_publish_args_s {
-  /** The pub/sub engine that should be used to farward this message. */
-  pubsub_engine_s const *engine;
-  /** A unique message type. Negative values are reserved, 0 == pub/sub. */
-  int32_t filter;
-  /** The pub/sub target channnel. */
-  FIOBJ channel;
-  /** The pub/sub message. */
-  FIOBJ message;
-} facil_publish_args_s;
-
-/**
- * Subscribes to either a filter OR a channel (never both).
- *
- * Returns a subscription pointer on success or NULL on failure.
- *
- * See `subscribe_args_s` for details.
- */
-subscription_s *facil_subscribe(subscribe_args_s args);
-
-/**
- * Subscribes to a channel (enforces filter == 0).
- *
- * Returns a subscription pointer on success or NULL on failure.
- *
- * See `subscribe_args_s` for details.
- */
-subscription_s *facil_subscribe_pubsub(subscribe_args_s args);
-
-/**
- * Cancels an existing subscriptions - actual effects might be delayed, for
- * example, if the subscription's callback is running in another thread.
- */
-void facil_unsubscribe(subscription_s *subscription);
-
-/**
- * This helper returns a temporary handle to an existing subscription's channel
- * or filter.
- *
- * To keep the handle beyond the lifetime of the subscription, use `fiobj_dup`.
- */
-FIOBJ facil_subscription_channel(subscription_s *subscription);
-
-/**
- * Publishes a message to the relevant subscribers (if any).
- *
- * See `facil_publish_args_s` for details.
- *
- * By default the message is sent using the FACIL_PUBSUB_CLUSTER engine (all
- * processes, including the calling process).
- *
- * To limit the message only to other processes (exclude the calling process),
- * use the FACIL_PUBSUB_SIBLINGS engine.
- *
- * To limit the message only to the calling process, use the
- * FACIL_PUBSUB_PROCESS engine.
- *
- * To publish messages to the pub/sub layer, the `.filter` argument MUST be
- * equal to 0 or missing.
- */
-void facil_publish(facil_publish_args_s args);
-
-/** Finds the message's metadata by it's type ID. Returns the data or NULL. */
-void *facil_message_metadata(facil_msg_s *msg, intptr_t type_id);
-
-/**
- * Defers the current callback, so it will be called again for the message.
- */
-void facil_message_defer(facil_msg_s *msg);
-
-/**
- * Signals all workers to shutdown, which might invoke a respawning of the
- * workers unless the shutdown signal was received.
- *
- * NOT signal safe.
- */
-void facil_cluster_signal_children(void);
-
-/* *****************************************************************************
- * Cluster / Pub/Sub Middleware and Extensions ("Engines")
- **************************************************************************** */
-
-/** Contains message metadata, set by message extensions. */
-typedef struct facil_msg_metadata_s facil_msg_metadata_s;
-struct facil_msg_metadata_s {
-  /** The type ID should be used to identify the metadata's actual structure. */
-  intptr_t type_id;
-  /**
-   * This method will be called by facil.io to cleanup the metadata resources.
-   *
-   * Don't alter / call this method, this data is reserved.
-   */
-  void (*on_finish)(facil_msg_s *msg, facil_msg_metadata_s *self);
-  /** The pointer to be returned by the `facil_message_metadata` function. */
-  void *metadata;
-  /** RESERVED for internal use (Metadata linked list). */
-  facil_msg_metadata_s *next;
-};
-
-/**
- * It's possible to attach metadata to facil.io messages before they are
- * published.
- *
- * This allows, for example, messages to be encoded as network packets for
- * outgoing protocols (i.e., encoding for WebSocket transmissions), improving
- * performance in large network based broadcasting.
- *
- * The callback should return a pointer to a valid metadata object.
- *
- * Since the cluster messaging system serializes objects to JSON (unless both
- * the channel and the data are String objects), the pre-serialized data is
- * available to the callback as the `raw_ch` and `raw_msg` arguments.
- *
- * To remove a callback, set the `remove` flag to true (`1`).
- */
-void facil_message_metadata_set(
-    facil_msg_metadata_s *(*callback)(facil_msg_s *msg, FIOBJ raw_ch,
-                                      FIOBJ raw_msg),
-    int remove);
-
-/**
- * facil.io can be linked with external Pub/Sub services using "engines".
- *
- * Only unfiltered messages and subscriptions (where filter == 0) will be
- * forwarded to external Pub/Sub services.
- *
- * Engines MUST provide the listed function pointers and should be registered
- * using the `pubsub_engine_register` function.
- *
- * Engines should deregister, before being destroyed, by using the
- * `pubsub_engine_deregister` function.
- *
- * When an engine received a message to publish, it should call the
- * `pubsub_publish` function with the engine to which the message is forwarded.
- * i.e.:
- *
- *       pubsub_publish(
- *           .engine = FACIL_PROCESS_ENGINE,
- *           .channel = channel_name,
- *           .message = msg_body );
- *
- * Engines MUST NOT free any of the FIOBJ objects they receive.
- *
- */
-struct pubsub_engine_s {
-  /** Should subscribe channel. Failures are ignored. */
-  void (*subscribe)(const pubsub_engine_s *eng, FIOBJ channel,
-                    facil_match_fn match);
-  /** Should unsubscribe channel. Failures are ignored. */
-  void (*unsubscribe)(const pubsub_engine_s *eng, FIOBJ channel,
-                      facil_match_fn match);
-  /** Should return 0 on success and -1 on failure. */
-  int (*publish)(const pubsub_engine_s *eng, FIOBJ channel, FIOBJ msg);
-  /**
-   * facil.io will call this callback whenever starting, or restarting, the
-   * reactor.
-   *
-   * This will be called when facil.io starts (the master process).
-   *
-   * This will also be called when forking, after facil.io closes all
-   * connections and claim to shut down (running all deferred event).
-   */
-  void (*on_startup)(const pubsub_engine_s *eng);
-};
-
-/** Attaches an engine, so it's callback can be called by facil.io. */
-void facil_pubsub_attach(pubsub_engine_s *engine);
-
-/** Detaches an engine, so it could be safely destroyed. */
-void facil_pubsub_detach(pubsub_engine_s *engine);
-
-/**
- * Engines can ask facil.io to call the `subscribe` callback for all active
- * channels.
- *
- * This allows engines that lost their connection to their Pub/Sub service to
- * resubscribe all the currently active channels with the new connection.
- *
- * CAUTION: This is an evented task... try not to free the engine's memory while
- * resubscriptions are under way...
- */
-void facil_pubsub_reattach(pubsub_engine_s *eng);
-
-#endif
+#undef facil_subscribe
+#undef facil_subscribe_pubsub
+#undef facil_publish
 
 /* *****************************************************************************
  * Data Structures - Clients / Subscriptions data
@@ -336,7 +71,7 @@ typedef struct {
 struct subscription_s {
   fio_ls_embd_s node;
   channel_s *parent;
-  void (*callback)(facil_msg_s *msg);
+  void (*on_message)(facil_msg_s *msg);
   void (*on_unsubscribe)(void *udata1, void *udata2);
   void *udata1;
   void *udata2;
@@ -478,7 +213,7 @@ static void subscription_destroy(void *s_, void *ignore) {
 
 /** Creates a new subscription object, returning NULL on error. */
 static inline subscription_s *subscription_create(subscribe_args_s args) {
-  if (!args.callback || (!args.channel && !args.filter)) {
+  if (!args.on_message || (!args.channel && !args.filter)) {
     return NULL;
   }
   collection_s *collection;
@@ -507,7 +242,7 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
   *s = (subscription_s){
       .node = (fio_ls_embd_s)FIO_LS_INIT(s->node),
       .parent = NULL,
-      .callback = args.callback,
+      .on_message = args.on_message,
       .udata1 = args.udata1,
       .udata2 = args.udata2,
       .ref = 1,
@@ -609,13 +344,14 @@ static void perform_subscription_callback(void *s_, void *msg_) {
           {
               .channel = msg->msg.channel,
               .msg = msg->msg.msg,
+              .filter = msg->msg.filter,
               .udata1 = s->udata1,
               .udata2 = s->udata2,
           },
       .meta = msg->meta,
       .ref = 0,
   };
-  s->callback((facil_msg_s *)&m);
+  s->on_message((facil_msg_s *)&m);
   spn_unlock(&s->lock);
   if (m.ref) {
     defer(perform_subscription_callback, s_, msg_);
@@ -1357,45 +1093,6 @@ void __attribute__((constructor)) facil_cluster_initialize(void) {
 }
 
 /* *****************************************************************************
- * External API (old)
- **************************************************************************** */
-
-static void facil_old_handler_callback(facil_msg_s *m) {
-  void (*on_message)(int32_t, FIOBJ, FIOBJ) =
-      (void (*)(int32_t, FIOBJ, FIOBJ))(uintptr_t)m->udata1;
-  on_message(m->filter, m->channel, m->msg);
-}
-
-void facil_cluster_set_handler(int32_t filter,
-                               void (*on_message)(int32_t id, FIOBJ ch,
-                                                  FIOBJ msg)) {
-  subscribe_args_s args = {
-      .filter = filter,
-      .callback = facil_old_handler_callback,
-      .udata1 = (void *)(uintptr_t)on_message,
-  };
-  subscription_s *s = facil_subscribe(args);
-  if (!s) {
-    fprintf(stderr, "ERROR: subscription failed!\n");
-  }
-}
-
-int facil_cluster_send(int32_t filter, FIOBJ ch, FIOBJ msg) {
-  facil_publish_args_s args = {
-      .channel = ch,
-      .engine = FACIL_PUBSUB_SIBLINGS,
-      .message = msg,
-      .filter = filter,
-  };
-  facil_publish(args);
-  return 0;
-}
-
-/* *****************************************************************************
- * pub/sub engines
- **************************************************************************** */
-
-/* *****************************************************************************
  * External API
  **************************************************************************** */
 
@@ -1608,3 +1305,106 @@ void facil_pubsub_reattach(pubsub_engine_s *engine) {
     spn_unlock(&postoffice.patterns.lock);
   }
 }
+
+/* *****************************************************************************
+ * Glob Matching
+ **************************************************************************** */
+
+/** A binary glob matching helper. Returns 1 on match, otherwise returns 0. */
+static int pubsub_glob_match(FIOBJ pattern, FIOBJ channel) {
+  /* adapted and rewritten, with thankfulness, from the code at:
+   * https://github.com/opnfv/kvmfornfv/blob/master/kernel/lib/glob.c
+   *
+   * Original version's copyright:
+   * Copyright 2015 Open Platform for NFV Project, Inc. and its contributors
+   * Under the MIT license.
+   */
+  fio_cstr_s ch = fiobj_obj2cstr(channel);
+  fio_cstr_s pat = fiobj_obj2cstr(pattern);
+
+  /*
+   * Backtrack to previous * on mismatch and retry starting one
+   * character later in the string.  Because * matches all characters
+   * (no exception for /), it can be easily proved that there's
+   * never a need to backtrack multiple levels.
+   */
+  uint8_t *back_pat = NULL, *back_str = ch.bytes;
+  size_t back_pat_len = 0, back_str_len = ch.len;
+
+  /*
+   * Loop over each token (character or class) in pat, matching
+   * it against the remaining unmatched tail of str.  Return false
+   * on mismatch, or true after matching the trailing nul bytes.
+   */
+  while (ch.len) {
+    uint8_t c = *ch.bytes++;
+    uint8_t d = *pat.bytes++;
+    ch.len--;
+    pat.len--;
+
+    switch (d) {
+    case '?': /* Wildcard: anything goes */
+      break;
+
+    case '*':       /* Any-length wildcard */
+      if (!pat.len) /* Optimize trailing * case */
+        return 1;
+      back_pat = pat.bytes;
+      back_pat_len = pat.len;
+      back_str = --ch.bytes; /* Allow zero-length match */
+      back_str_len = ++ch.len;
+      break;
+
+    case '[': { /* Character class */
+      uint8_t match = 0, inverted = (*pat.bytes == '^');
+      uint8_t *cls = pat.bytes + inverted;
+      uint8_t a = *cls++;
+
+      /*
+       * Iterate over each span in the character class.
+       * A span is either a single character a, or a
+       * range a-b.  The first span may begin with ']'.
+       */
+      do {
+        uint8_t b = a;
+
+        if (cls[0] == '-' && cls[1] != ']') {
+          b = cls[1];
+
+          cls += 2;
+          if (a > b) {
+            uint8_t tmp = a;
+            a = b;
+            b = tmp;
+          }
+        }
+        match |= (a <= c && c <= b);
+      } while ((a = *cls++) != ']');
+
+      if (match == inverted)
+        goto backtrack;
+      pat.len -= cls - pat.bytes;
+      pat.bytes = cls;
+
+    } break;
+    case '\\':
+      d = *pat.bytes++;
+      pat.len--;
+    /*FALLTHROUGH*/
+    default: /* Literal character */
+      if (c == d)
+        break;
+    backtrack:
+      if (!back_pat)
+        return 0; /* No point continuing */
+      /* Try again from last *, one character later in str. */
+      pat.bytes = back_pat;
+      ch.bytes = ++back_str;
+      ch.len = --back_str_len;
+      pat.len = back_pat_len;
+    }
+  }
+  return !ch.len && !pat.len;
+}
+
+facil_match_fn FACIL_MATCH_GLOB = pubsub_glob_match;

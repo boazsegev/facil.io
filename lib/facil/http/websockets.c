@@ -15,7 +15,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include "http.h"
 #include "http_internal.h"
 
-#include "pubsub.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <stdio.h>
@@ -144,7 +143,7 @@ Create/Destroy the websocket subscription objects
 
 static inline void clear_subscriptions(ws_s *ws) {
   while (fio_ls_any(&ws->subscriptions)) {
-    pubsub_unsubscribe(fio_ls_pop(&ws->subscriptions));
+    facil_unsubscribe(fio_ls_pop(&ws->subscriptions));
   }
 }
 
@@ -524,21 +523,20 @@ static void websocket_on_unsubscribe(void *u1, void *u2) {
   free(d);
 }
 
-static inline void
-websocket_on_pubsub_message_direct_internal(pubsub_message_s *msg,
-                                            uint8_t txt) {
+static inline void websocket_on_pubsub_message_direct_internal(facil_msg_s *msg,
+                                                               uint8_t txt) {
   protocol_s *pr =
       facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_WRITE);
   if (!pr) {
     if (errno == EBADF)
       return;
-    pubsub_defer(msg);
+    facil_message_defer(msg);
     return;
   }
   FIOBJ message;
   fio_cstr_s tmp;
-  if (FIOBJ_TYPE_IS(msg->message, FIOBJ_T_STRING)) {
-    message = fiobj_dup(msg->message);
+  if (FIOBJ_TYPE_IS(msg->msg, FIOBJ_T_STRING)) {
+    message = fiobj_dup(msg->msg);
     tmp = fiobj_obj2cstr(message);
     if (txt == 2) {
       /* unknown text state */
@@ -547,7 +545,7 @@ websocket_on_pubsub_message_direct_internal(pubsub_message_s *msg,
                                 : validate_utf8((uint8_t *)tmp.data, tmp.len));
     }
   } else {
-    message = fiobj_obj2json(msg->message, 0);
+    message = fiobj_obj2json(msg->msg, 0);
     tmp = fiobj_obj2cstr(message);
   }
   websocket_write((ws_s *)pr, tmp.data, tmp.len, txt & 1);
@@ -555,35 +553,32 @@ websocket_on_pubsub_message_direct_internal(pubsub_message_s *msg,
   fiobj_free(message);
 }
 
-static void websocket_on_pubsub_message_direct(pubsub_message_s *msg) {
+static void websocket_on_pubsub_message_direct(facil_msg_s *msg) {
   websocket_on_pubsub_message_direct_internal(msg, 2);
 }
 
-static void websocket_on_pubsub_message_direct_txt(pubsub_message_s *msg) {
+static void websocket_on_pubsub_message_direct_txt(facil_msg_s *msg) {
   websocket_on_pubsub_message_direct_internal(msg, 1);
 }
 
-static void websocket_on_pubsub_message_direct_bin(pubsub_message_s *msg) {
+static void websocket_on_pubsub_message_direct_bin(facil_msg_s *msg) {
   websocket_on_pubsub_message_direct_internal(msg, 0);
 }
 
-static void websocket_on_pubsub_message(pubsub_message_s *msg) {
+static void websocket_on_pubsub_message(facil_msg_s *msg) {
   protocol_s *pr =
       facil_protocol_try_lock((intptr_t)msg->udata1, FIO_PR_LOCK_TASK);
   if (!pr) {
     if (errno == EBADF)
       return;
-    pubsub_defer(msg);
+    facil_message_defer(msg);
     return;
   }
   websocket_sub_data_s *d = msg->udata2;
 
   if (d->on_message)
     d->on_message((websocket_pubsub_notification_s){
-        .ws = (ws_s *)pr,
-        .subscription_id = (intptr_t)msg->subscription,
-        .channel = msg->channel,
-        .message = msg->message,
+        .ws = (ws_s *)pr, .channel = msg->channel, .message = msg->msg,
     });
   facil_protocol_unlock(pr, FIO_PR_LOCK_TASK);
 }
@@ -600,7 +595,7 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
                               .on_message = args.on_message,
                               .on_unsubscribe = args.on_unsubscribe};
 
-  pubsub_sub_pt sub = pubsub_subscribe(
+  subscription_s *sub = facil_subscribe(
           .channel = args.channel, .match = args.match,
           .on_unsubscribe = websocket_on_unsubscribe,
           .on_message =
@@ -625,36 +620,10 @@ error:
 }
 
 /**
- * Returns the existing subscription's ID (if exists) or 0 (no subscription).
- */
-#undef websocket_find_sub
-uintptr_t websocket_find_sub(struct websocket_subscribe_s args) {
-  pubsub_sub_pt sub = pubsub_find_sub(
-          .channel = args.channel, .match = args.match,
-          .on_unsubscribe = websocket_on_unsubscribe,
-          .on_message =
-              (args.on_message
-                   ? websocket_on_pubsub_message
-                   : args.force_binary
-                         ? websocket_on_pubsub_message_direct_bin
-                         : args.force_text
-                               ? websocket_on_pubsub_message_direct_txt
-                               : websocket_on_pubsub_message_direct),
-          .udata1 = (void *)args.ws->fd, .udata2 = args.udata);
-  if (!sub)
-    return 0;
-  FIO_LS_FOR(&args.ws->subscriptions, pos) {
-    if (pos->obj == sub)
-      return (uintptr_t)pos;
-  }
-  return 0;
-}
-
-/**
  * Unsubscribes from a channel.
  */
 void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id) {
-  pubsub_unsubscribe((pubsub_sub_pt)((fio_ls_s *)subscription_id)->obj);
+  facil_unsubscribe((subscription_s *)((fio_ls_s *)subscription_id)->obj);
   fio_ls_remove((fio_ls_s *)subscription_id);
   (void)ws;
 }

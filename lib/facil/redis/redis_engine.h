@@ -7,8 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_REDIS_ENGINE_H
 #define H_REDIS_ENGINE_H
 
-#include "fiobj.h"
-#include "pubsub.h"
+#include "facil.h"
 
 /* support C++ */
 #ifdef __cplusplus

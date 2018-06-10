@@ -11,12 +11,12 @@
     perror("");                                                                \
   } while (0);
 
-static void handle_cluster_test(int32_t filter, FIOBJ ch, FIOBJ msg) {
-  if (filter == 7) {
-    fprintf(stderr, "(%d) %s: %s\n", filter, fiobj_obj2cstr(ch).data,
-            fiobj_obj2cstr(msg).data);
+static void handle_cluster_test(facil_msg_s *m) {
+  if (m->filter == 7) {
+    fprintf(stderr, "(%d) %s: %s\n", m->filter, fiobj_obj2cstr(m->channel).data,
+            fiobj_obj2cstr(m->msg).data);
   } else {
-    fprintf(stderr, "ERROR: (cluster) filter mismatch!\n");
+    fprintf(stderr, "ERROR: (cluster) filter mismatch (%d)!\n", m->filter);
   }
 }
 
@@ -25,8 +25,8 @@ static void send_cluster_msg(void *a1) {
   fprintf(stderr, "* Sending a cluster message.\n");
   FIOBJ ch = fiobj_str_new("Cluster Test", 12);
   FIOBJ msg = fiobj_str_new("okay", 4);
-  facil_cluster_send(7, ch, msg);
-  facil_cluster_send(6, ch, msg);
+  facil_publish(.filter = 7, .channel = ch, .message = msg);
+  facil_publish(.filter = 6, .channel = ch, .message = msg);
   fiobj_free(ch);
   fiobj_free(msg);
 }
@@ -76,7 +76,7 @@ int main(void) {
   facil_core_callback_add(FIO_CALL_ON_FINISH, perform_callback, "Done.");
   facil_core_callback_add(FIO_CALL_ON_IDLE, perform_callback, "idling.");
 
-  facil_cluster_set_handler(7, handle_cluster_test);
+  facil_subscribe(.filter = 7, .on_message = handle_cluster_test);
 
   test_cluster();
   facil_run(.threads = 2, .workers = 4);

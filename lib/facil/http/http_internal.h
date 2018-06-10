@@ -11,7 +11,6 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include "fio_llist.h"
 #include "http.h"
-#include "pubsub.h"
 
 #include "fiobj4sock.h"
 
@@ -181,7 +180,7 @@ static inline void http_sse_try_free(http_sse_internal_s *sse) {
 static inline void http_sse_destroy(http_sse_internal_s *sse) {
   while (fio_ls_any(&sse->subscriptions)) {
     void *sub = fio_ls_pop(&sse->subscriptions);
-    pubsub_unsubscribe(sub);
+    facil_unsubscribe(sub);
   }
   sse->uuid = -1;
   http_sse_try_free(sse);

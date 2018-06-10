@@ -86,8 +86,6 @@ To publish to a channel, use the API provided in {pubsub.h}.
 typedef struct {
   /** the websocket receiving the message. */
   ws_s *ws;
-  /** the Websocket pub/sub subscription ID. */
-  uintptr_t subscription_id;
   /** the channel where the message was published. */
   FIOBJ channel;
   /** the published message. */
@@ -115,7 +113,7 @@ struct websocket_subscribe_s {
   /** User opaque data, passed along to the notification. */
   void *udata;
   /** An optional callback for pattern matching. */
-  pubsub_match_fn match;
+  facil_match_fn match;
   /**
    * When using client forwarding (no `on_message` callback), this indicates if
    * messages should be sent to the client as binary blobs, which is the safest
@@ -154,17 +152,6 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args);
 
 #define websocket_subscribe(wbsckt, ...)                                       \
   websocket_subscribe((struct websocket_subscribe_s){.ws = wbsckt, __VA_ARGS__})
-
-/**
- * Finds an existing subscription (in case the subscription ID wasn't saved).
- * See {struct websocket_subscribe_s} for possible arguments.
- *
- * Returns the existing subscription's ID (if exists) or 0 (no subscription).
- */
-uintptr_t websocket_find_sub(struct websocket_subscribe_s args);
-
-#define websocket_find_sub(wbsckt, ...)                                        \
-  websocket_find_sub((struct websocket_subscribe_s){.ws = wbsckt, __VA_ARGS__})
 
 /**
  * Unsubscribes from a channel.

@@ -1208,7 +1208,7 @@ static inline void http_sse_copy2str(FIOBJ dest, char *prefix, size_t pre_len,
 }
 
 /** The on message callback. the `*msg` pointer is to a temporary object. */
-static void http_sse_on_message(pubsub_message_s *msg) {
+static void http_sse_on_message(facil_msg_s *msg) {
   http_sse_internal_s *sse = msg->udata1;
   struct http_sse_subscribe_args *args = msg->udata2;
   if (args->on_message) {
@@ -1216,19 +1216,19 @@ static void http_sse_on_message(pubsub_message_s *msg) {
     protocol_s *pr = facil_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
     if (!pr)
       goto postpone;
-    args->on_message(&sse->sse, msg->channel, msg->message, args->udata);
+    args->on_message(&sse->sse, msg->channel, msg->msg, args->udata);
     facil_protocol_unlock(pr, FIO_PR_LOCK_TASK);
     return;
   }
   /* write directly to HTTP stream / connection */
-  fio_cstr_s m = fiobj_obj2cstr(msg->message);
+  fio_cstr_s m = fiobj_obj2cstr(msg->msg);
   http_sse_write(&sse->sse, .data = m);
 
   return;
 postpone:
   if (errno == EBADF)
     return;
-  pubsub_defer(msg);
+  facil_message_defer(msg);
   return;
 }
 /** An optional callback for when a subscription is fully canceled. */
@@ -1267,11 +1267,12 @@ uintptr_t http_sse_subscribe(http_sse_s *sse_,
   *udata = args;
 
   spn_add(&sse->ref, 1);
-  pubsub_sub_pt sub =
-      pubsub_subscribe(.channel = args.channel,
-                       .on_message = http_sse_on_message,
-                       .on_unsubscribe = http_sse_on_unsubscribe, .udata1 = sse,
-                       .udata2 = udata, .match = args.match);
+  subscription_s *sub =
+      facil_subscribe_pubsub(.channel = args.channel,
+                             .on_message = http_sse_on_message,
+                             .on_unsubscribe = http_sse_on_unsubscribe,
+                             .udata1 = sse, .udata2 = udata,
+                             .match = args.match);
   if (!sub)
     return 0;
 
@@ -1289,11 +1290,11 @@ void http_sse_unsubscribe(http_sse_s *sse_, uintptr_t subscription) {
   if (!sse_ || !subscription)
     return;
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
-  pubsub_sub_pt sub = (pubsub_sub_pt)((fio_ls_s *)subscription)->obj;
+  subscription_s *sub = (subscription_s *)((fio_ls_s *)subscription)->obj;
   spn_lock(&sse->lock);
   fio_ls_remove((fio_ls_s *)subscription);
   spn_unlock(&sse->lock);
-  pubsub_unsubscribe(sub);
+  facil_unsubscribe(sub);
 }
 
 #undef http_upgrade2sse

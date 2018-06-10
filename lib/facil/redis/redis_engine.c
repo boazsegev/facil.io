@@ -222,7 +222,7 @@ static void redis_on_sub_connect(intptr_t uuid, void *pr) {
   if (r->auth)
     sock_write2(.uuid = uuid, .buffer = r->auth, .length = r->auth_len,
                 .dealloc = SOCK_DEALLOC_NOOP);
-  pubsub_engine_resubscribe(&r->en);
+  facil_pubsub_reattach(&r->en);
   if (!r->pub_data.uuid) {
     spn_add(&r->ref, 1);
     redis_on_pub_connect_fail(uuid, pr);
@@ -366,12 +366,12 @@ Engine Callbacks
 ***************************************************************************** */
 
 static void redis_on_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
-                               pubsub_match_fn match) {
+                               facil_match_fn match) {
   redis_engine_s *r = en2redis(eng);
   if (r->sub_data.uuid) {
     fio_cstr_s ch_str = fiobj_obj2cstr(channel);
     FIOBJ cmd = fiobj_str_buf(96 + ch_str.len);
-    if (match == PUBSUB_MATCH_GLOB)
+    if (match == FACIL_MATCH_GLOB)
       fiobj_str_write(cmd, "*2\r\n$10\r\nPSUBSCRIBE\r\n$", 22);
     else
       fiobj_str_write(cmd, "*2\r\n$9\r\nSUBSCRIBE\r\n$", 20);
@@ -387,12 +387,12 @@ static void redis_on_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
   }
 }
 static void redis_on_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
-                                 pubsub_match_fn match) {
+                                 facil_match_fn match) {
   redis_engine_s *r = en2redis(eng);
   if (r->sub_data.uuid) {
     fio_cstr_s ch_str = fiobj_obj2cstr(channel);
     FIOBJ cmd = fiobj_str_buf(96 + ch_str.len);
-    if (match == PUBSUB_MATCH_GLOB)
+    if (match == FACIL_MATCH_GLOB)
       fiobj_str_write(cmd, "*2\r\n$12\r\nPUNSUBSCRIBE\r\n$", 24);
     else
       fiobj_str_write(cmd, "*2\r\n$11\r\nUNSUBSCRIBE\r\n$", 23);
@@ -539,14 +539,14 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
   } else {
     r->auth = NULL;
   }
-  pubsub_engine_register(&r->en);
+  facil_pubsub_detach(&r->en);
   if (facil_is_running())
     redis_on_startup(&r->en);
   return &r->en;
 }
 
 void redis_engine_destroy(pubsub_engine_s *e) {
-  if (e == PUBSUB_CLUSTER_ENGINE || e == PUBSUB_PROCESS_ENGINE) {
+  if ((uintptr_t)e < 4) {
     fprintf(stderr, "WARNING: (redis free) trying to distroy one of the "
                     "core engines\n");
     return;
@@ -558,7 +558,7 @@ void redis_engine_destroy(pubsub_engine_s *e) {
         "FATAL ERROR: (redis) engine pointer incorrect, protection failure.\n");
     exit(-1);
   }
-  pubsub_engine_deregister(&r->en);
+  facil_pubsub_detach(&r->en);
   r->flag = 0;
   if (r->pub_data.uuid)
     sock_close(r->pub_data.uuid);
@@ -584,7 +584,7 @@ intptr_t redis_engine_send(pubsub_engine_s *engine, FIOBJ command, FIOBJ data,
                            void (*callback)(pubsub_engine_s *e, FIOBJ reply,
                                             void *udata),
                            void *udata) {
-  if (engine == PUBSUB_CLUSTER_ENGINE || engine == PUBSUB_PROCESS_ENGINE) {
+  if ((uintptr_t)engine < 4) {
     fprintf(stderr, "WARNING: (redis send) trying to use one of the "
                     "core engines\n");
     return -1;
@@ -720,14 +720,13 @@ static int resp_on_message(resp_parser_s *parser) {
       if (tmp.len == 7) { /* "message"  */
         fiobj_free(r->last_ch);
         r->last_ch = fiobj_dup(fiobj_ary_index(msg, 1));
-        pubsub_publish(.channel = r->last_ch,
-                       .message = fiobj_ary_index(msg, 2),
-                       .engine = PUBSUB_CLUSTER_ENGINE);
+        facil_publish(.channel = r->last_ch, .message = fiobj_ary_index(msg, 2),
+                      .engine = FACIL_PUBSUB_CLUSTER);
       } else if (tmp.len == 8) { /* "pmessage" */
         if (!fiobj_iseq(r->last_ch, fiobj_ary_index(msg, 2)))
-          pubsub_publish(.channel = fiobj_ary_index(msg, 2),
-                         .message = fiobj_ary_index(msg, 3),
-                         .engine = PUBSUB_CLUSTER_ENGINE);
+          facil_publish(.channel = fiobj_ary_index(msg, 2),
+                        .message = fiobj_ary_index(msg, 3),
+                        .engine = FACIL_PUBSUB_CLUSTER);
       }
     }
   }
