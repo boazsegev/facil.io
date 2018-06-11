@@ -328,7 +328,10 @@ void *facil_message_metadata(facil_msg_s *msg, intptr_t type_id) {
   while (exists && exists->type_id != type_id) {
     exists = exists->next;
   }
-  return exists->metadata;
+  if (exists) {
+    return exists->metadata;
+  }
+  return NULL;
 }
 
 /* performs the actual callback */
@@ -379,6 +382,31 @@ static void publish2channel(channel_s *ch, facil_msg_internal_s *msg) {
   spn_unlock(&ch->lock);
 }
 
+static inline void call_meta_callbacks(facil_msg_internal_s *m, FIOBJ ch_raw,
+                                       FIOBJ msg_raw) {
+  if (fio_ary_count(&postoffice.meta.ary) == 0) {
+    return;
+  }
+  /* don't call user code within a lock - copy the array */
+  fio_ary_s cpy = FIO_ARY_INIT;
+  spn_lock(&postoffice.meta.lock);
+  fio_ary_concat(&cpy, &postoffice.meta.ary);
+  spn_unlock(&postoffice.meta.lock);
+  FIO_ARY_FOR(&cpy, pos) {
+    if (pos.obj == NULL)
+      continue;
+    facil_msg_metadata_s *ret =
+        ((facil_msg_metadata_s * (*)(facil_msg_s * msg, FIOBJ raw_ch,
+                                     FIOBJ raw_msg))(uintptr_t)pos.obj)(
+            &m->msg, ch_raw, msg_raw);
+    if (ret) {
+      ret->next = m->meta;
+      m->meta = ret;
+    }
+  }
+  fio_ary_free(&cpy);
+}
+
 static void publish2process(int32_t filter, FIOBJ channel, FIOBJ msg,
                             cluster_message_type_e type) {
   facil_msg_internal_s *m = fio_malloc(sizeof(*m));
@@ -413,23 +441,15 @@ static void publish2process(int32_t filter, FIOBJ channel, FIOBJ msg,
     if (!m->msg.msg) {
       m->msg.msg = fiobj_dup(org_msg);
     }
-    spn_lock(&postoffice.meta.lock);
-    FIO_ARY_FOR(&postoffice.meta.ary, pos) {
-      if (pos.obj == NULL)
-        continue;
-      facil_msg_metadata_s *ret =
-          ((facil_msg_metadata_s * (*)(facil_msg_s * msg, FIOBJ raw_ch,
-                                       FIOBJ raw_msg))(uintptr_t)pos.obj)(
-              &m->msg, org_ch, org_msg);
-      if (ret) {
-        ret->next = m->meta;
-        m->meta = ret;
-      }
+    if (filter == 0) {
+      call_meta_callbacks(m, org_ch, org_msg);
     }
-    spn_unlock(&postoffice.meta.lock);
     fiobj_free(org_ch);
     fiobj_free(org_msg);
   } else {
+    if (filter == 0) {
+      call_meta_callbacks(m, FIOBJ_INVALID, FIOBJ_INVALID);
+    }
   }
   if (filter) {
     FIOBJ key = fiobj_num_new((uintptr_t)filter);
@@ -984,6 +1004,14 @@ static void facil_connect2cluster(void *ignore) {
                       .on_connect = facil_cluster_on_connect,
                       .on_fail = facil_cluster_on_fail);
   }
+  spn_lock(&postoffice.engines.lock);
+  FIO_HASH_FOR_LOOP(&postoffice.engines.channels, pos) {
+    if (!pos->obj) {
+      continue;
+    }
+    ((pubsub_engine_s *)pos->obj)->on_startup(pos->obj);
+  }
+  spn_unlock(&postoffice.engines.lock);
   (void)ignore;
 }
 
@@ -1199,8 +1227,8 @@ void facil_message_defer(facil_msg_s *msg) { defer_subscription_callback(msg); }
  **************************************************************************** */
 
 /**
- * It's possible to attach metadata to facil.io messages before they are
- * published.
+ * It's possible to attach metadata to facil.io pub/sub messages (filter == 0)
+ * before they are published.
  *
  * This allows, for example, messages to be encoded as network packets for
  * outgoing protocols (i.e., encoding for WebSocket transmissions), improving

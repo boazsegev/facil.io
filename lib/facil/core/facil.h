@@ -646,7 +646,7 @@ void facil_protocol_unlock(protocol_s *pr, enum facil_protocol_lock_e);
  * Facil supports a message oriented API for use for Inter Process Communication
  * (IPC), publish/subscribe patterns, horizontal scaling and similar use-cases.
  *
- * The API is provided in the facil_cluster.h file.
+ * The API is implemented in the facil_cluster.c file.
  *
  **************************************************************************** */
 
@@ -719,7 +719,7 @@ typedef struct {
    *
    * Using pattern subscriptions extensively could become a performance concern,
    * since channel names are tested against each distinct pattern rather than
-   * using a hashmap for possible name matching.
+   * leveraging a hashmap for possible name matching.
    */
   facil_match_fn match;
   /**
@@ -870,18 +870,20 @@ struct facil_msg_metadata_s {
 };
 
 /**
- * It's possible to attach metadata to facil.io messages before they are
- * published.
+ * It's possible to attach metadata to facil.io pub/sub messages (filter == 0)
+ * before they are published.
  *
  * This allows, for example, messages to be encoded as network packets for
  * outgoing protocols (i.e., encoding for WebSocket transmissions), improving
  * performance in large network based broadcasting.
  *
- * The callback should return a pointer to a valid metadata object.
+ * The callback should return a pointer to a valid metadata object that remains
+ * valid until the object's `on_finish` callback is called.
  *
- * Since the cluster messaging system serializes objects to JSON (unless both
- * the channel and the data are String objects), the pre-serialized data is
- * available to the callback as the `raw_ch` and `raw_msg` arguments.
+ * Since the cluster messaging system automatically serializes some objects to
+ * JSON (unless both the channel and the data are String objects or missing),
+ * the pre-serialized data is available to the callback as the `raw_ch` and
+ * `raw_msg` arguments.
  *
  * To remove a callback, set the `remove` flag to true (`1`).
  */

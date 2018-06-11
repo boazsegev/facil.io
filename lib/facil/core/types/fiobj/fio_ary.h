@@ -77,6 +77,13 @@ FIO_FUNC inline void fio_ary_new(fio_ary_s *ary, size_t capa);
 /** Frees the array's internal data. */
 FIO_FUNC inline void fio_ary_free(fio_ary_s *ary);
 
+/**
+ * Adds all the items in the `src` Array to the end of the `dest` Array.
+ *
+ * The `src` Array remain untouched.
+ */
+FIO_FUNC inline void fio_ary_concat(fio_ary_s *dest, fio_ary_s *src);
+
 /** Returns the number of elements in the Array. */
 FIO_FUNC inline size_t fio_ary_count(fio_ary_s *ary);
 
@@ -255,7 +262,7 @@ FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, intptr_t needed) {
   if (needed >= 0) /* we're done, realloc grows the top of the address space*/
     return;
 
-  /* move everything to the max, since  memmove could get expensive  */
+  /* move everything to the max, since memmove could get expensive  */
   size_t len = ary->end - ary->start;
   memmove((ary->arry + ary->capa) - len, ary->arry + ary->start,
           len * sizeof(*ary->arry));
@@ -265,6 +272,26 @@ FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, intptr_t needed) {
 /** Creates a mutable empty Array object with the requested capacity. */
 FIO_FUNC inline void fiobj_ary_init(fio_ary_s *ary) {
   *ary = (fio_ary_s){.arry = NULL};
+}
+
+/* *****************************************************************************
+Array concat API
+***************************************************************************** */
+
+/**
+ * Adds all the items in the `src` Array to the end of the `dest` Array.
+ *
+ * The `src` Array remain untouched.
+ */
+FIO_FUNC inline void fio_ary_concat(fio_ary_s *dest, fio_ary_s *src) {
+  if (!dest || !src || src->start == src->end)
+    return;
+  const intptr_t len = src->end - src->start;
+  fio_ary_getmem(dest, len);
+  memcpy((void *)((uintptr_t)dest->arry + (sizeof(*dest->arry) * dest->end)),
+         (void *)((uintptr_t)src->arry + (sizeof(*dest->arry) * src->start)),
+         (len * sizeof(*dest->arry)));
+  dest->end += len;
 }
 
 /* *****************************************************************************
