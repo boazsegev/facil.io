@@ -668,6 +668,8 @@ extern pubsub_engine_s *FACIL_PUBSUB_DEFAULT;
 #define FACIL_PUBSUB_PROCESS ((pubsub_engine_s *)2)
 /** Used to publish the message except within the current process. */
 #define FACIL_PUBSUB_SIBLINGS ((pubsub_engine_s *)3)
+/** Used to publish the message exclusively to the root / master process. */
+#define FACIL_PUBSUB_ROOT ((pubsub_engine_s *)4)
 
 /** Message structure, with an integer filter as well as a channel filter. */
 typedef struct facil_msg_s {
@@ -954,6 +956,9 @@ void facil_pubsub_detach(pubsub_engine_s *engine);
  * resubscriptions are under way...
  */
 void facil_pubsub_reattach(pubsub_engine_s *eng);
+
+/** Returns true (1) if the engine is attached to the system. */
+int facil_pubsub_is_attached(pubsub_engine_s *engine);
 
 #ifdef __cplusplus
 } /* extern "C" */

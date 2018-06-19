@@ -31,6 +31,8 @@
 typedef enum cluster_message_type_e {
   CLUSTER_MESSAGE_FORWARD,
   CLUSTER_MESSAGE_JSON,
+  CLUSTER_MESSAGE_ROOT,
+  CLUSTER_MESSAGE_ROOT_JSON,
   CLUSTER_MESSAGE_SHUTDOWN,
   CLUSTER_MESSAGE_ERROR,
   CLUSTER_MESSAGE_PING,
@@ -276,7 +278,7 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
     };
     subscription_s *old =
         fio_hash_insert(&collection->channels, args.channel, ch);
-    if (old && old->on_unsubscribe) {
+    if (old) {
       defer(subscription_free_later, old, NULL);
     }
     if (!args.filter) {
@@ -533,6 +535,20 @@ static inline void publish_msg2cluster(int32_t filter, FIOBJ ch, FIOBJ msg) {
   fiobj_free(m.channel);
   fiobj_free(m.msg);
 }
+
+/** Publishes a message exclusively to the root process */
+static inline void publish_msg2root(int32_t filter, FIOBJ ch, FIOBJ msg) {
+  if (facil_parent_pid() == getpid()) {
+    publish_msg2local(filter, ch, msg);
+  } else {
+    facil_msg_str_s m = prepare_message(filter, ch, msg);
+    m.type = (m.type == CLUSTER_MESSAGE_JSON ? CLUSTER_MESSAGE_ROOT_JSON
+                                             : CLUSTER_MESSAGE_ROOT);
+    facil_send2cluster(m.filter, m.channel, m.msg, m.type);
+  }
+}
+
+// FACIL_PUBSUB_ROOT
 
 /* *****************************************************************************
  * Data Structures - Core Structures
@@ -846,6 +862,13 @@ static void cluster_server_handler(struct cluster_pr_s *pr) {
                     (cluster_message_type_e)pr->type);
     break;
   }
+
+  case CLUSTER_MESSAGE_ROOT_JSON:
+    pr->type = CLUSTER_MESSAGE_JSON; /* fallthrough */
+  case CLUSTER_MESSAGE_ROOT:
+    publish2process(pr->filter, pr->channel, pr->msg,
+                    (cluster_message_type_e)pr->type);
+    break;
   case CLUSTER_MESSAGE_SHUTDOWN: /* fallthrough */
   case CLUSTER_MESSAGE_ERROR:    /* fallthrough */
   case CLUSTER_MESSAGE_PING:     /* fallthrough */
@@ -950,8 +973,10 @@ static void cluster_client_handler(struct cluster_pr_s *pr) {
     break;
   case CLUSTER_MESSAGE_SHUTDOWN:
     kill(getpid(), SIGINT);
-  case CLUSTER_MESSAGE_ERROR: /* fallthrough */
-  case CLUSTER_MESSAGE_PING:  /* fallthrough */
+  case CLUSTER_MESSAGE_ERROR:     /* fallthrough */
+  case CLUSTER_MESSAGE_PING:      /* fallthrough */
+  case CLUSTER_MESSAGE_ROOT:      /* fallthrough */
+  case CLUSTER_MESSAGE_ROOT_JSON: /* fallthrough */
   default:
     break;
   }
@@ -1206,6 +1231,9 @@ void facil_publish(facil_publish_args_s args) {
   case 3UL: // ((uintptr_t)FACIL_PUBSUB_SIBLINGS):
     publish_msg2cluster(args.filter, args.channel, args.message);
     break;
+  case 4UL: // ((uintptr_t)FACIL_PUBSUB_ROOT):
+    publish_msg2root(args.filter, args.channel, args.message);
+    break;
   default:
     if (args.filter != 0) {
       fprintf(stderr, "ERROR: (pub/sub) pub/sub engines can only be used for "
@@ -1334,6 +1362,19 @@ void facil_pubsub_reattach(pubsub_engine_s *engine) {
   }
 }
 
+/** Returns true (1) if the engine is attached to the system. */
+int facil_pubsub_is_attached(pubsub_engine_s *engine) {
+  if (!engine) {
+    return 0;
+  }
+  FIOBJ key = fiobj_num_new((intptr_t)engine);
+  spn_lock(&postoffice.engines.lock);
+  int ret = (fio_hash_find(&postoffice.engines.channels, key) != NULL);
+  spn_unlock(&postoffice.engines.lock);
+  fiobj_free(key);
+  return ret;
+}
+
 /* *****************************************************************************
  * Glob Matching
  **************************************************************************** */
@@ -1352,9 +1393,8 @@ static int pubsub_glob_match(FIOBJ pattern, FIOBJ channel) {
 
   /*
    * Backtrack to previous * on mismatch and retry starting one
-   * character later in the string.  Because * matches all characters
-   * (no exception for /), it can be easily proved that there's
-   * never a need to backtrack multiple levels.
+   * character later in the string.  Because * matches all characters,
+   * there's never a need to backtrack multiple levels.
    */
   uint8_t *back_pat = NULL, *back_str = ch.bytes;
   size_t back_pat_len = 0, back_str_len = ch.len;
@@ -1418,7 +1458,7 @@ static int pubsub_glob_match(FIOBJ pattern, FIOBJ channel) {
     case '\\':
       d = *pat.bytes++;
       pat.len--;
-    /*FALLTHROUGH*/
+    /* FALLTHROUGH */
     default: /* Literal character */
       if (c == d)
         break;
