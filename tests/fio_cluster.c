@@ -4,6 +4,46 @@
 #include "facil.h"
 #include <errno.h>
 
+/* *****************************************************************************
+ * monitor pub/sub engine
+ **************************************************************************** */
+
+/** Should subscribe channel. Failures are ignored. */
+static void monitor_subscribe(const pubsub_engine_s *eng, FIOBJ channel,
+                              facil_match_fn match) {
+  fprintf(stderr, "* (%d) subscribed to: %s\n", getpid(),
+          fiobj_obj2cstr(channel).data);
+  (void)eng;
+  (void)match;
+}
+/** Should unsubscribe channel. Failures are ignored. */
+static void monitor_unsubscribe(const pubsub_engine_s *eng, FIOBJ channel,
+                                facil_match_fn match) {
+  fprintf(stderr, "* (%d) unsubscribed to: %s\n", getpid(),
+          fiobj_obj2cstr(channel).data);
+  (void)eng;
+  (void)match;
+}
+/** Should return 0 on success and -1 on failure. */
+static int monitor_publish(const pubsub_engine_s *eng, FIOBJ channel,
+                           FIOBJ msg) {
+  fprintf(stderr, "* (%d) publish to: %s\n", getpid(),
+          fiobj_obj2cstr(channel).data);
+  (void)eng;
+  (void)msg;
+  return 0;
+}
+
+static pubsub_engine_s monitor = {
+    .subscribe = monitor_subscribe,
+    .unsubscribe = monitor_unsubscribe,
+    .publish = monitor_publish,
+};
+
+/* *****************************************************************************
+ * general
+ **************************************************************************** */
+
 #define print_error_code(code)                                                 \
   do {                                                                         \
     errno = (code);                                                            \
@@ -42,6 +82,12 @@ static void defered_test_cluster(void *a1, void *a2) {
 static void perform_callback(void *cb_str) {
   fprintf(stderr, "(%d) %s\n", getpid(), (char *)cb_str);
 }
+static void perform_after_fork(void *cb_str) {
+  perform_callback(cb_str);
+  facil_pubsub_attach(&monitor);
+  facil_subscribe(.channel = fiobj_str_new("my channel", 10),
+                  .on_message = handle_cluster_test);
+}
 
 static void test_cluster(void) {
   print_error_code(EBADF);
@@ -67,7 +113,8 @@ static void test_cluster(void) {
 int main(void) {
   facil_core_callback_add(FIO_CALL_BEFORE_FORK, perform_callback,
                           "Before fork");
-  facil_core_callback_add(FIO_CALL_AFTER_FORK, perform_callback, "After fork ");
+  facil_core_callback_add(FIO_CALL_AFTER_FORK, perform_after_fork,
+                          "After fork ");
   facil_core_callback_add(FIO_CALL_IN_CHILD, perform_callback,
                           "Just the child");
   facil_core_callback_add(FIO_CALL_ON_START, perform_callback, "Starting up ");

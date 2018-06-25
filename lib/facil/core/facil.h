@@ -917,6 +917,10 @@ void facil_message_metadata_set(
  *
  * Engines MUST NOT free any of the FIOBJ objects they receive.
  *
+ * NOTE: engine callbacks are called within the pattern / channel lock. Pub/Sub
+ * registration function should NOT be called by the engine, or a deadlock might
+ * occure.
+ *
  */
 struct pubsub_engine_s {
   /** Should subscribe channel. Failures are ignored. */

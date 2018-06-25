@@ -33,6 +33,10 @@ typedef enum cluster_message_type_e {
   CLUSTER_MESSAGE_JSON,
   CLUSTER_MESSAGE_ROOT,
   CLUSTER_MESSAGE_ROOT_JSON,
+  CLUSTER_MESSAGE_PUBSUB_SUB,
+  CLUSTER_MESSAGE_PUBSUB_UNSUB,
+  CLUSTER_MESSAGE_PATTERN_SUB,
+  CLUSTER_MESSAGE_PATTERN_UNSUB,
   CLUSTER_MESSAGE_SHUTDOWN,
   CLUSTER_MESSAGE_ERROR,
   CLUSTER_MESSAGE_PING,
@@ -121,6 +125,10 @@ pubsub_engine_s *FACIL_PUBSUB_DEFAULT = FACIL_PUBSUB_CLUSTER;
 Engine handling and Management
 ***************************************************************************** */
 
+/* implemented later, informs root process about subscriptions */
+static inline void inform_root_about_channel(FIOBJ ch, facil_match_fn match,
+                                             int add);
+
 /* runs in lock(!) let'm all know */
 static void pubsub_on_channel_create(channel_s *ch, facil_match_fn match) {
   spn_lock(&postoffice.engines.lock);
@@ -131,6 +139,7 @@ static void pubsub_on_channel_create(channel_s *ch, facil_match_fn match) {
     e->subscribe(e, ch->id, match);
   }
   spn_unlock(&postoffice.engines.lock);
+  inform_root_about_channel(ch->id, match, 1);
 }
 
 /* runs in lock(!) let'm all know */
@@ -143,6 +152,7 @@ static void pubsub_on_channel_destroy(channel_s *ch, facil_match_fn match) {
     e->unsubscribe(e, ch->id, match);
   }
   spn_unlock(&postoffice.engines.lock);
+  inform_root_about_channel(ch->id, match, 0);
 }
 
 /* *****************************************************************************
@@ -164,10 +174,10 @@ static inline subscription_s *subscription_dup(subscription_s *s) {
   spn_add(&s->ref, 1);
   return s;
 }
-static void subscription_free_later(void *s, void *ignr) {
-  subscription_free(s);
-  (void)ignr;
-}
+// static void subscription_free_later(void *s, void *ignr) {
+//   subscription_free(s);
+//   (void)ignr;
+// }
 
 /* free a channel (if it's empty) */
 static inline void channel_destroy(channel_s *c) {
@@ -276,11 +286,7 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
         .parent = collection,
         .lock = SPN_LOCK_INIT,
     };
-    subscription_s *old =
-        fio_hash_insert(&collection->channels, args.channel, ch);
-    if (old) {
-      defer(subscription_free_later, old, NULL);
-    }
+    fio_hash_insert(&collection->channels, args.channel, ch);
     if (!args.filter) {
       pubsub_on_channel_create(ch, args.match);
     }
@@ -562,6 +568,8 @@ typedef struct cluster_pr_s {
   FIOBJ msg;
   void (*handler)(struct cluster_pr_s *pr);
   void (*sender)(FIOBJ data);
+  collection_s pubsub;
+  collection_s patterns;
   intptr_t uuid;
   uint32_t exp_channel;
   uint32_t exp_msg;
@@ -809,6 +817,8 @@ static void cluster_on_close(intptr_t uuid, protocol_s *pr_) {
   }
   fiobj_free(c->msg);
   fiobj_free(c->channel);
+  FIO_HASH_FOR_FREE(&c->pubsub.channels, pos) { (void)pos; }
+  FIO_HASH_FOR_FREE(&c->patterns.channels, pos) { (void)pos; }
   fio_free(c);
   (void)uuid;
 }
@@ -831,6 +841,12 @@ cluster_alloc(intptr_t uuid, void (*handler)(struct cluster_pr_s *pr),
   p->uuid = uuid;
   p->handler = handler;
   p->sender = sender;
+  p->pubsub = (collection_s){
+      .channels = FIO_HASH_INIT, .lock = SPN_LOCK_INIT,
+  };
+  p->patterns = (collection_s){
+      .channels = FIO_HASH_INIT, .lock = SPN_LOCK_INIT,
+  };
   return &p->protocol;
 }
 
@@ -852,6 +868,7 @@ static void cluster_server_sender(FIOBJ data) {
 static void cluster_server_handler(struct cluster_pr_s *pr) {
   /* what to do? */
   switch ((cluster_message_type_e)pr->type) {
+
   case CLUSTER_MESSAGE_FORWARD: /* fallthrough */
   case CLUSTER_MESSAGE_JSON: {
     fio_cstr_s cs = fiobj_obj2cstr(pr->channel);
@@ -863,12 +880,44 @@ static void cluster_server_handler(struct cluster_pr_s *pr) {
     break;
   }
 
+  case CLUSTER_MESSAGE_PUBSUB_SUB:
+    spn_lock(&pr->pubsub.lock);
+    fio_hash_insert(&pr->pubsub.channels, pr->channel, (void *)1);
+    spn_unlock(&pr->pubsub.lock);
+    break;
+
+  case CLUSTER_MESSAGE_PUBSUB_UNSUB:
+    spn_lock(&pr->pubsub.lock);
+    fio_hash_insert(&pr->pubsub.channels, pr->channel, NULL);
+    spn_unlock(&pr->pubsub.lock);
+    break;
+
+  case CLUSTER_MESSAGE_PATTERN_SUB:
+    spn_lock(&pr->patterns.lock);
+    {
+      void *match;
+      fio_cstr_s s = fiobj_obj2cstr(pr->msg);
+      for (size_t i = 0; i < sizeof(void *); ++i) {
+        ((uint8_t *)(&match))[i] = s.bytes[i];
+      }
+      fio_hash_insert(&pr->patterns.channels, pr->channel, (void *)match);
+    }
+    spn_unlock(&pr->patterns.lock);
+    break;
+
+  case CLUSTER_MESSAGE_PATTERN_UNSUB:
+    spn_lock(&pr->patterns.lock);
+    fio_hash_insert(&pr->patterns.channels, pr->channel, NULL);
+    spn_unlock(&pr->patterns.lock);
+    break;
+
   case CLUSTER_MESSAGE_ROOT_JSON:
     pr->type = CLUSTER_MESSAGE_JSON; /* fallthrough */
   case CLUSTER_MESSAGE_ROOT:
     publish2process(pr->filter, pr->channel, pr->msg,
                     (cluster_message_type_e)pr->type);
     break;
+
   case CLUSTER_MESSAGE_SHUTDOWN: /* fallthrough */
   case CLUSTER_MESSAGE_ERROR:    /* fallthrough */
   case CLUSTER_MESSAGE_PING:     /* fallthrough */
@@ -961,7 +1010,8 @@ static void facil_cluster_cleanup(void *ignore) {
 
 /* *****************************************************************************
  * Worker (client) IPC connections
- **************************************************************************** */
+ ****************************************************************************
+ */
 
 static void cluster_client_handler(struct cluster_pr_s *pr) {
   /* what to do? */
@@ -973,10 +1023,14 @@ static void cluster_client_handler(struct cluster_pr_s *pr) {
     break;
   case CLUSTER_MESSAGE_SHUTDOWN:
     kill(getpid(), SIGINT);
-  case CLUSTER_MESSAGE_ERROR:     /* fallthrough */
-  case CLUSTER_MESSAGE_PING:      /* fallthrough */
-  case CLUSTER_MESSAGE_ROOT:      /* fallthrough */
-  case CLUSTER_MESSAGE_ROOT_JSON: /* fallthrough */
+  case CLUSTER_MESSAGE_ERROR:         /* fallthrough */
+  case CLUSTER_MESSAGE_PING:          /* fallthrough */
+  case CLUSTER_MESSAGE_ROOT:          /* fallthrough */
+  case CLUSTER_MESSAGE_ROOT_JSON:     /* fallthrough */
+  case CLUSTER_MESSAGE_PUBSUB_SUB:    /* fallthrough */
+  case CLUSTER_MESSAGE_PUBSUB_UNSUB:  /* fallthrough */
+  case CLUSTER_MESSAGE_PATTERN_SUB:   /* fallthrough */
+  case CLUSTER_MESSAGE_PATTERN_UNSUB: /* fallthrough */
   default:
     break;
   }
@@ -1034,7 +1088,8 @@ static void facil_connect2cluster(void *ignore) {
     if (!pos->obj) {
       continue;
     }
-    ((pubsub_engine_s *)pos->obj)->on_startup(pos->obj);
+    if (((pubsub_engine_s *)pos->obj)->on_startup)
+      ((pubsub_engine_s *)pos->obj)->on_startup(pos->obj);
   }
   spn_unlock(&postoffice.engines.lock);
   (void)ignore;
@@ -1058,8 +1113,34 @@ static void facil_send2cluster(int32_t filter, FIOBJ ch, FIOBJ msg,
 }
 
 /* *****************************************************************************
+ * Propegation
+ ****************************************************************************
+ */
+
+static inline void inform_root_about_channel(FIOBJ ch, facil_match_fn match,
+                                             int add) {
+  if (!cluster_data.client || !ch)
+    return;
+  fio_cstr_s ch_str = fiobj_obj2cstr(ch);
+
+  FIOBJ m;
+  if (match) {
+    m = cluster_wrap_message(
+        ch_str.length, sizeof(facil_match_fn),
+        (add ? CLUSTER_MESSAGE_PATTERN_SUB : CLUSTER_MESSAGE_PATTERN_UNSUB), 0,
+        ch_str.bytes, (uint8_t *)&match);
+  } else {
+    m = cluster_wrap_message(
+        ch_str.length, 0,
+        (add ? CLUSTER_MESSAGE_PUBSUB_SUB : CLUSTER_MESSAGE_PUBSUB_UNSUB), 0,
+        ch_str.bytes, NULL);
+  }
+}
+
+/* *****************************************************************************
  * Initialization
- **************************************************************************** */
+ ****************************************************************************
+ */
 
 static void facil_connect_after_fork(void *ignore) {
   if (facil_parent_pid() == getpid()) {
@@ -1147,7 +1228,8 @@ void __attribute__((constructor)) facil_cluster_initialize(void) {
 
 /* *****************************************************************************
  * External API
- **************************************************************************** */
+ ****************************************************************************
+ */
 
 /** Signals children (or self) to shutdown) - NOT signal safe. */
 void facil_cluster_signal_children(void) {
@@ -1183,10 +1265,11 @@ subscription_s *facil_subscribe_pubsub(subscribe_args_s args) {
 }
 
 /**
- * This helper returns a temporary handle to an existing subscription's channel
- * or filter.
+ * This helper returns a temporary handle to an existing subscription's
+ * channel or filter.
  *
- * To keep the handle beyond the lifetime of the subscription, use `fiobj_dup`.
+ * To keep the handle beyond the lifetime of the subscription, use
+ * `fiobj_dup`.
  */
 FIOBJ facil_subscription_channel(subscription_s *subscription) {
   return subscription->parent->id;
@@ -1252,7 +1335,8 @@ void facil_message_defer(facil_msg_s *msg) { defer_subscription_callback(msg); }
 
 /* *****************************************************************************
  * MetaData (extension) API
- **************************************************************************** */
+ ****************************************************************************
+ */
 
 /**
  * It's possible to attach metadata to facil.io pub/sub messages (filter == 0)
@@ -1284,7 +1368,8 @@ void facil_message_metadata_set(
 
 /* *****************************************************************************
  * Pub/Sub Engine (extension) API
- **************************************************************************** */
+ ****************************************************************************
+ */
 
 /** Attaches an engine, so it's callback can be called by facil.io. */
 void facil_pubsub_attach(pubsub_engine_s *engine) {
@@ -1342,8 +1427,8 @@ void facil_pubsub_detach(pubsub_engine_s *engine) {
  * This allows engines that lost their connection to their Pub/Sub service to
  * resubscribe all the currently active channels with the new connection.
  *
- * CAUTION: This is an evented task... try not to free the engine's memory while
- * resubscriptions are under way...
+ * CAUTION: This is an evented task... try not to free the engine's memory
+ * while resubscriptions are under way...
  */
 void facil_pubsub_reattach(pubsub_engine_s *engine) {
   if (engine->subscribe) {
@@ -1377,7 +1462,8 @@ int facil_pubsub_is_attached(pubsub_engine_s *engine) {
 
 /* *****************************************************************************
  * Glob Matching
- **************************************************************************** */
+ ****************************************************************************
+ */
 
 /** A binary glob matching helper. Returns 1 on match, otherwise returns 0. */
 static int pubsub_glob_match(FIOBJ pattern, FIOBJ channel) {
