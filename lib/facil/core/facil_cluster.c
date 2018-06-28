@@ -1089,6 +1089,24 @@ void facil_cluster_on_connect(intptr_t uuid, void *udata) {
     kill(facil_parent_pid(), SIGINT);
     exit(errno);
   }
+  /* inform root about all existing channels */
+  spn_lock(&postoffice.pubsub.lock);
+  FIO_HASH_FOR_LOOP(&postoffice.pubsub.channels, pos) {
+    if (!pos->obj) {
+      continue;
+    }
+    inform_root_about_channel(((channel_s *)pos->obj)->id, NULL, 1);
+  }
+  spn_unlock(&postoffice.pubsub.lock);
+  spn_lock(&postoffice.patterns.lock);
+  FIO_HASH_FOR_LOOP(&postoffice.patterns.channels, pos) {
+    if (!pos->obj) {
+      continue;
+    }
+    inform_root_about_channel(((pattern_s *)pos->obj)->ch.id,
+                              ((pattern_s *)pos->obj)->match, 1);
+  }
+  spn_unlock(&postoffice.patterns.lock);
   (void)udata;
 }
 /**
@@ -1191,13 +1209,25 @@ static void facil_cluster_in_child(void *ignore) {
   postoffice.filters.lock = SPN_LOCK_INIT;
   postoffice.engines.lock = SPN_LOCK_INIT;
   postoffice.meta.lock = SPN_LOCK_INIT;
+  fio_hash_compact(&postoffice.patterns.channels);
+  fio_hash_compact(&postoffice.pubsub.channels);
+  fio_hash_compact(&postoffice.filters.channels);
   FIO_HASH_FOR_LOOP(&postoffice.patterns.channels, pos) {
+    if (!pos->obj) {
+      continue;
+    }
     ((channel_s *)pos->obj)->lock = SPN_LOCK_INIT;
   }
   FIO_HASH_FOR_LOOP(&postoffice.pubsub.channels, pos) {
+    if (!pos->obj) {
+      continue;
+    }
     ((channel_s *)pos->obj)->lock = SPN_LOCK_INIT;
   }
   FIO_HASH_FOR_LOOP(&postoffice.filters.channels, pos) {
+    if (!pos->obj) {
+      continue;
+    }
     ((channel_s *)pos->obj)->lock = SPN_LOCK_INIT;
   }
   (void)ignore;
@@ -1416,12 +1446,18 @@ void facil_pubsub_attach(pubsub_engine_s *engine) {
   if (engine->subscribe) {
     spn_lock(&postoffice.pubsub.lock);
     FIO_HASH_FOR_LOOP(&postoffice.pubsub.channels, i) {
+      if (!i->obj) {
+        continue;
+      }
       channel_s *ch = i->obj;
       engine->subscribe(engine, ch->id, NULL);
     }
     spn_unlock(&postoffice.pubsub.lock);
     spn_lock(&postoffice.patterns.lock);
     FIO_HASH_FOR_LOOP(&postoffice.patterns.channels, i) {
+      if (!i->obj) {
+        continue;
+      }
       channel_s *ch = i->obj;
       engine->subscribe(engine, ch->id, ((pattern_s *)ch)->match);
     }
@@ -1467,12 +1503,18 @@ void facil_pubsub_reattach(pubsub_engine_s *engine) {
   if (engine->subscribe) {
     spn_lock(&postoffice.pubsub.lock);
     FIO_HASH_FOR_LOOP(&postoffice.pubsub.channels, i) {
+      if (!i->obj) {
+        continue;
+      }
       channel_s *ch = i->obj;
       engine->subscribe(engine, ch->id, NULL);
     }
     spn_unlock(&postoffice.pubsub.lock);
     spn_lock(&postoffice.patterns.lock);
     FIO_HASH_FOR_LOOP(&postoffice.patterns.channels, i) {
+      if (!i->obj) {
+        continue;
+      }
       channel_s *ch = i->obj;
       engine->subscribe(engine, ch->id, ((pattern_s *)ch)->match);
     }

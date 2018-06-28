@@ -75,7 +75,7 @@ static void defered_test_cluster(void *a1, void *a2) {
   (void)a1;
   (void)a2;
   if (facil_parent_pid() == getpid()) {
-    facil_run_every(5000, -1, send_cluster_msg, NULL, NULL);
+    facil_run_every(5000, 0, send_cluster_msg, NULL, NULL);
   }
 }
 
@@ -85,8 +85,16 @@ static void perform_callback(void *cb_str) {
 static void perform_after_fork(void *cb_str) {
   perform_callback(cb_str);
   facil_pubsub_attach(&monitor);
-  facil_subscribe(.channel = fiobj_str_new("my channel", 10),
-                  .on_message = handle_cluster_test);
+}
+
+static void perform_on_start(void *cb_str) {
+  perform_callback(cb_str);
+  FIOBJ ch = fiobj_str_new("my channel", 10);
+  facil_subscribe(.channel = ch, .on_message = handle_cluster_test);
+  fiobj_free(ch);
+  ch = fiobj_strprintf("%d", getpid());
+  facil_subscribe(.channel = ch, .on_message = handle_cluster_test);
+  fiobj_free(ch);
 }
 
 static void test_cluster(void) {
@@ -117,7 +125,7 @@ int main(void) {
                           "After fork ");
   facil_core_callback_add(FIO_CALL_IN_CHILD, perform_callback,
                           "Just the child");
-  facil_core_callback_add(FIO_CALL_ON_START, perform_callback, "Starting up ");
+  facil_core_callback_add(FIO_CALL_ON_START, perform_on_start, "Starting up ");
   facil_core_callback_add(FIO_CALL_ON_SHUTDOWN, perform_callback,
                           "Shutting down");
   facil_core_callback_add(FIO_CALL_ON_FINISH, perform_callback, "Done.");
@@ -126,6 +134,8 @@ int main(void) {
   facil_subscribe(.filter = 7, .on_message = handle_cluster_test);
 
   test_cluster();
+  facil_run_every(4000, 0, (void (*)(void *))facil_pubsub_reattach, &monitor,
+                  NULL);
   facil_run(.threads = 2, .workers = 4);
 
   return 0;
