@@ -943,7 +943,16 @@ struct pubsub_engine_s {
   void (*on_startup)(const pubsub_engine_s *eng);
 };
 
-/** Attaches an engine, so it's callback can be called by facil.io. */
+/**
+ * Attaches an engine, so it's callback can be called by facil.io.
+ *
+ * The `subscribe` callback will be called for every existing channel.
+ *
+ * NOTE: the root (master) process will call `subscribe` for any channel in any
+ * process, while all the other processes will call `subscribe` only for their
+ * own chasnnel. This allows engines to use the root (master) process as an
+ * exclusive subscription proccess.
+ */
 void facil_pubsub_attach(pubsub_engine_s *engine);
 
 /** Detaches an engine, so it could be safely destroyed. */
@@ -958,6 +967,11 @@ void facil_pubsub_detach(pubsub_engine_s *engine);
  *
  * CAUTION: This is an evented task... try not to free the engine's memory while
  * resubscriptions are under way...
+ *
+ * NOTE: the root (master) process will call `subscribe` for any channel in any
+ * process, while all the other processes will call `subscribe` only for their
+ * own chasnnel. This allows engines to use the root (master) process as an
+ * exclusive subscription proccess.
  */
 void facil_pubsub_reattach(pubsub_engine_s *eng);
 

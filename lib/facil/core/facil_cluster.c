@@ -817,8 +817,16 @@ static void cluster_on_close(intptr_t uuid, protocol_s *pr_) {
   }
   fiobj_free(c->msg);
   fiobj_free(c->channel);
-  FIO_HASH_FOR_FREE(&c->pubsub.channels, pos) { (void)pos; }
-  FIO_HASH_FOR_FREE(&c->patterns.channels, pos) { (void)pos; }
+  FIO_HASH_FOR_FREE(&c->pubsub.channels, pos) {
+    if (pos->obj) {
+      subscription_destroy(pos->obj, NULL);
+    }
+  }
+  FIO_HASH_FOR_FREE(&c->patterns.channels, pos) {
+    if (pos->obj) {
+      subscription_destroy(pos->obj, NULL);
+    }
+  }
   fio_free(c);
   (void)uuid;
 }
@@ -854,6 +862,11 @@ cluster_alloc(intptr_t uuid, void (*handler)(struct cluster_pr_s *pr),
  * Master (server) IPC Connections
  **************************************************************************** */
 
+/**
+ * A mock pub/sub callback for external subscriptions.
+ */
+static void mock_on_message(facil_msg_s *msg) { (void)msg; }
+
 static void cluster_server_sender(FIOBJ data) {
   spn_lock(&cluster_data.lock);
   FIO_LS_FOR(&cluster_data.clients, pos) {
@@ -880,36 +893,55 @@ static void cluster_server_handler(struct cluster_pr_s *pr) {
     break;
   }
 
-  case CLUSTER_MESSAGE_PUBSUB_SUB:
+  case CLUSTER_MESSAGE_PUBSUB_SUB: {
+    subscription_s *s = subscription_create((subscribe_args_s){
+        .on_message = mock_on_message, .match = NULL, .channel = pr->channel});
     spn_lock(&pr->pubsub.lock);
-    fio_hash_insert(&pr->pubsub.channels, pr->channel, (void *)1);
+    s = fio_hash_insert(&pr->pubsub.channels, pr->channel, s);
     spn_unlock(&pr->pubsub.lock);
-    break;
-
-  case CLUSTER_MESSAGE_PUBSUB_UNSUB:
-    spn_lock(&pr->pubsub.lock);
-    fio_hash_insert(&pr->pubsub.channels, pr->channel, NULL);
-    spn_unlock(&pr->pubsub.lock);
-    break;
-
-  case CLUSTER_MESSAGE_PATTERN_SUB:
-    spn_lock(&pr->patterns.lock);
-    {
-      void *match;
-      fio_cstr_s s = fiobj_obj2cstr(pr->msg);
-      for (size_t i = 0; i < sizeof(void *); ++i) {
-        ((uint8_t *)(&match))[i] = s.bytes[i];
-      }
-      fio_hash_insert(&pr->patterns.channels, pr->channel, (void *)match);
+    if (s) {
+      subscription_destroy(s, NULL);
     }
-    spn_unlock(&pr->patterns.lock);
     break;
+  }
+  case CLUSTER_MESSAGE_PUBSUB_UNSUB: {
+    spn_lock(&pr->pubsub.lock);
+    subscription_s *s =
+        fio_hash_insert(&pr->pubsub.channels, pr->channel, NULL);
+    spn_unlock(&pr->pubsub.lock);
+    if (s) {
+      subscription_destroy(s, NULL);
+    }
+    break;
+  }
 
-  case CLUSTER_MESSAGE_PATTERN_UNSUB:
+  case CLUSTER_MESSAGE_PATTERN_SUB: {
+    void *match;
+    fio_cstr_s m = fiobj_obj2cstr(pr->msg);
+    for (size_t i = 0; i < sizeof(void *); ++i) {
+      ((uint8_t *)(&match))[i] = m.bytes[i];
+    }
+    subscription_s *s = subscription_create((subscribe_args_s){
+        .on_message = mock_on_message, .match = NULL, .channel = pr->channel});
     spn_lock(&pr->patterns.lock);
-    fio_hash_insert(&pr->patterns.channels, pr->channel, NULL);
+    s = fio_hash_insert(&pr->patterns.channels, pr->channel, s);
     spn_unlock(&pr->patterns.lock);
+    if (s) {
+      subscription_destroy(s, NULL);
+    }
     break;
+  }
+
+  case CLUSTER_MESSAGE_PATTERN_UNSUB: {
+    spn_lock(&pr->pubsub.lock);
+    subscription_s *s =
+        fio_hash_insert(&pr->patterns.channels, pr->channel, NULL);
+    spn_unlock(&pr->pubsub.lock);
+    if (s) {
+      subscription_destroy(s, NULL);
+    }
+    break;
+  }
 
   case CLUSTER_MESSAGE_ROOT_JSON:
     pr->type = CLUSTER_MESSAGE_JSON; /* fallthrough */
@@ -1135,6 +1167,7 @@ static inline void inform_root_about_channel(FIOBJ ch, facil_match_fn match,
         (add ? CLUSTER_MESSAGE_PUBSUB_SUB : CLUSTER_MESSAGE_PUBSUB_UNSUB), 0,
         ch_str.bytes, NULL);
   }
+  cluster_client_sender(m);
 }
 
 /* *****************************************************************************
