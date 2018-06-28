@@ -260,8 +260,11 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
       .ref = 1,
       .lock = SPN_LOCK_INIT,
   };
-  /* seek existing channel or create one */
+  /* seek existing channel or create one (and prevent memory bloat) */
   spn_lock(&collection->lock);
+  if (fio_hash_is_fragmented(&collection->channels)) {
+    fio_hash_compact(&collection->channels);
+  }
   channel_s *ch = fio_hash_find(&collection->channels, args.channel);
   if (!ch) {
     if (args.match) {

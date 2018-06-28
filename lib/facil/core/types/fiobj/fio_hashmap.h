@@ -154,6 +154,11 @@ FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash);
 FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash);
 
 /**
+ * Returns non-zero if the hash is fragmented (more than 50% holes).
+ */
+FIO_FUNC inline size_t fio_hash_is_fragmented(const fio_hash_s *hash);
+
+/**
  * Attempts to minimize memory usage by removing empty spaces caused by deleted
  * items and rehashing the Hash Map.
  *
@@ -618,6 +623,13 @@ FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash) {
   if (!hash)
     return 0;
   return hash->capa;
+}
+
+/**
+ * Returns non-zero if the hash is fragmented (more than 50% holes).
+ */
+FIO_FUNC inline size_t fio_hash_is_fragmented(const fio_hash_s *hash) {
+  return (hash->pos > (hash->count << 1));
 }
 
 /**
