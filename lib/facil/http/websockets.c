@@ -375,7 +375,7 @@ void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
     memcpy(ws->buffer.data, data, length);
     ws->length = length;
   }
-  // update the protocol object, cleanning up the old one
+  // update the protocol object, cleaning up the old one
   facil_attach(uuid, (protocol_s *)ws);
   // allow the on_open and on_data to take over the control.
   facil_force_event(uuid, FIO_EVENT_ON_DATA);

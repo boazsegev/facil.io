@@ -1251,7 +1251,7 @@ static void facil_worker_cleanup(void) {
     defer_pool_wait(facil_data->thread_pool);
     facil_data->thread_pool = NULL;
   }
-  fprintf(stderr, "* %d cleanning up.\n", getpid());
+  fprintf(stderr, "* %d cleaning up.\n", getpid());
   /* close leftovers */
   for (int i = 0; i <= facil_data->capacity; ++i) {
     intptr_t uuid;
