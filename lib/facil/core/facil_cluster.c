@@ -1014,6 +1014,10 @@ static void facil_listen2cluster(void *ignore) {
     exit(errno);
   }
   protocol_s *p = malloc(sizeof(*p));
+  if (!p) {
+    perror("FATAL ERROR: (facil.io) couldn't allocate cluster server");
+    exit(errno);
+  }
   *p = (protocol_s){
       .service = "_facil.io_listen4cluster_",
       .on_data = cluster_listen_accept,
@@ -1021,10 +1025,6 @@ static void facil_listen2cluster(void *ignore) {
       .ping = cluster_listen_ping,
       .on_close = cluster_listen_on_close,
   };
-  if (!p) {
-    perror("FATAL ERROR: (facil.io) couldn't allocate cluster server");
-    exit(errno);
-  }
   if (facil_attach(cluster_data.listener, p)) {
     perror(
         "FATAL ERROR: (facil.io) couldn't attach cluster server to facil.io");
@@ -1243,7 +1243,7 @@ static void facil_cluster_at_exit(void *ignore) {
   while (fio_hash_count(&postoffice.patterns.channels)) {
     channel_s *ch = fio_hash_last(&postoffice.patterns.channels, NULL);
     while (fio_ls_embd_any(&ch->subscriptions)) {
-      subscription_s *sub = sub =
+      subscription_s *sub =
           FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
       facil_unsubscribe(sub);
     }
