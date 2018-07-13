@@ -626,7 +626,7 @@ FIO_FUNC inline void fio_ary_test(void) {
     mem[0].i = i + 1;
     TEST_ASSERT(fio_ary_find(&ary, mem[0].obj) == i,
                 "Wrong object index - ary[%zd] != %zu",
-                fio_ary_find(&ary, mem[0].obj), mem[0].i);
+                (ssize_t)fio_ary_find(&ary, mem[0].obj), (size_t)mem[0].i);
     mem[0].obj = fio_ary_index(&ary, i);
     TEST_ASSERT(mem[0].i == (uintptr_t)(i + 1),
                 "Wrong object returned from fio_ary_index - ary[%d] != %d", i,
@@ -659,7 +659,7 @@ FIO_FUNC inline void fio_ary_test(void) {
               (size_t)fio_ary_count(&ary));
   TEST_ASSERT(fio_ary_find(&ary, mem[0].obj) == -1,
               "fio_ary_find should have failed after fio_ary_remove (%zd)",
-              fio_ary_find(&ary, mem[0].obj));
+              (ssize_t)fio_ary_find(&ary, mem[0].obj));
   mem[0].i = 2;
   TEST_ASSERT(fio_ary_find(&ary, mem[0].obj) == 0,
               "fio_ary_remove didn't clear holes from Array (%zu)",
