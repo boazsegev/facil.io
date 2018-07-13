@@ -41,7 +41,6 @@ two different browser windows.
 */
 
 #include "fio_cli.h"
-#include "pubsub.h"
 #include "redis_engine.h"
 #include "websockets.h"
 
@@ -80,8 +79,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   fiobj_str_write(msg, ": ", 2);
   fiobj_str_write(msg, data, size);
   /* Publish to the chat channel */
-  if (pubsub_publish(.channel = CHAT_CHANNEL, .message = msg))
-    fprintf(stderr, "Failed to publish\n");
+  facil_publish(.channel = CHAT_CHANNEL, .message = msg);
   /* free any temporary objects */
   fiobj_free(msg);
   /* we didn't use these for this `on_message` callback implementation */
@@ -107,7 +105,7 @@ static void sse_on_open(http_sse_s *sse) {
   FIOBJ msg = fiobj_str_buf(64);
   fiobj_str_join(msg, (FIOBJ)sse->udata);
   fiobj_str_write(msg, " joind the chat, but they're just listening...", 46);
-  pubsub_publish(.channel = CHAT_CHANNEL, .message = msg);
+  facil_publish(.channel = CHAT_CHANNEL, .message = msg);
   fiobj_free(msg);
 }
 /**
@@ -157,10 +155,9 @@ static void answer_http_upgrade(http_s *h, char *pr, size_t len) {
   /* test if the upgrade request is for Websockets */
   if (len == 9 && pr[1] == 'e') {
     /* attempt Websocket upgrade */
-    http_upgrade2ws(.http = h, .on_open = on_open_websocket,
-                    .on_close = on_close_websocket,
-                    .on_message = handle_websocket_messages,
-                    .udata = (void *)nickname);
+    http_upgrade2ws(
+        h, .on_open = on_open_websocket, .on_close = on_close_websocket,
+        .on_message = handle_websocket_messages, .udata = (void *)nickname);
     return;
   }
   /* test if the upgrade request is for SSE */
@@ -232,10 +229,10 @@ int main(int argc, char const *argv[]) {
   /*     ****  actual code ****     */
   if (redis_address) {
     fprintf(stderr, "* Connecting to Redis for Pub/Sub.\n");
-    PUBSUB_DEFAULT_ENGINE =
+    FACIL_PUBSUB_DEFAULT =
         redis_engine_create(.address = redis_address, .port = redis_port,
                             .ping_interval = 40);
-    if (!PUBSUB_DEFAULT_ENGINE) {
+    if (!FACIL_PUBSUB_DEFAULT) {
       perror("\nERROR: couldn't initialize Redis engine.\n");
       exit(-2);
     }
@@ -251,9 +248,9 @@ int main(int argc, char const *argv[]) {
     perror("Couldn't initiate Websocket service"), exit(1);
   facil_run(.threads = threads, .processes = workers);
 
-  if (PUBSUB_DEFAULT_ENGINE != PUBSUB_CLUSTER_ENGINE) {
-    redis_engine_destroy(PUBSUB_DEFAULT_ENGINE);
-    PUBSUB_DEFAULT_ENGINE = (pubsub_engine_s *)PUBSUB_CLUSTER_ENGINE;
+  if (FACIL_PUBSUB_DEFAULT != FACIL_PUBSUB_CLUSTER) {
+    redis_engine_destroy(FACIL_PUBSUB_DEFAULT);
+    FACIL_PUBSUB_DEFAULT = FACIL_PUBSUB_CLUSTER;
   }
   fiobj_free(CHAT_CHANNEL);
   fio_cli_end();
