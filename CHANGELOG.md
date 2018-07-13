@@ -23,7 +23,6 @@
 
 **Fix**: (`facil`) fixed a typo in the shutdown output. Credit to @bjeanes (Bo Jeanes) for the Iodine#39 PR.
 
-
 ---
 ## Released versions
 
