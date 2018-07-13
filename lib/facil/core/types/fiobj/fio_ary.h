@@ -350,7 +350,7 @@ FIO_FUNC inline intptr_t fio_ary_find(fio_ary_s *ary, FIO_ARY_TYPE data) {
   }
   if (pos == end)
     return -1;
-  return pos;
+  return (pos - ary->start);
 }
 
 /**
