@@ -207,8 +207,10 @@ FIO_FUNC inline void fio_ary_new(fio_ary_s *ary, size_t capa) {
   }
 }
 FIO_FUNC inline void fio_ary_free(fio_ary_s *ary) {
-  if (ary)
+  if (ary) {
     free(ary->arry);
+  }
+  *ary = FIO_ARY_INIT;
 }
 
 /* *****************************************************************************
@@ -219,13 +221,18 @@ Array memory management
 FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, intptr_t needed) {
   /* we have enough memory, but we need to re-organize it. */
   if (needed == -1) {
+    if (ary->start > 0) {
+      return;
+    }
     if (ary->end < ary->capa) {
       /* since allocation can be cheaper than memmove (depending on size),
        * we'll just shove everything to the end...
        */
       size_t len = ary->end - ary->start;
-      memmove(ary->arry + ary->capa - len, ary->arry + ary->start,
-              len * sizeof(*ary->arry));
+      if (len) {
+        memmove(ary->arry + ary->capa - len, ary->arry + ary->start,
+                len * sizeof(*ary->arry));
+      }
       ary->start = ary->capa - len;
       ary->end = ary->capa;
       return;
@@ -236,7 +243,9 @@ FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, intptr_t needed) {
   } else if (needed == 1 && ary->start >= (ary->capa >> 1)) {
     /* FIFO support optimizes smaller FIFO ranges over bloating allocations. */
     size_t len = ary->end - ary->start;
-    memmove(ary->arry + 2, ary->arry + ary->start, len * sizeof(*ary->arry));
+    if (len) {
+      memmove(ary->arry + 2, ary->arry + ary->start, len * sizeof(*ary->arry));
+    }
     ary->start = 2;
     ary->end = len + 2;
     return;
@@ -344,7 +353,7 @@ FIO_FUNC inline intptr_t fio_ary_find(fio_ary_s *ary, FIO_ARY_TYPE data) {
     return -1;
   }
   size_t pos = ary->start;
-  const size_t end = ary->end;
+  register const size_t end = ary->end;
   while (pos < end && !FIO_ARY_TYPE_COMPARE(data, ary->arry[pos])) {
     ++pos;
   }
@@ -427,8 +436,7 @@ FIO_FUNC inline FIO_ARY_TYPE fio_ary_pop(fio_ary_s *ary) {
 FIO_FUNC inline int fio_ary_unshift(fio_ary_s *ary, FIO_ARY_TYPE data) {
   if (!ary->arry)
     fio_ary_new(ary, 0);
-  else if (!ary->start)
-    fio_ary_getmem(ary, -1);
+  fio_ary_getmem(ary, -1);
   ary->start -= 1;
   ary->arry[ary->start] = data;
   return 0;
@@ -464,11 +472,11 @@ FIO_FUNC inline FIO_ARY_TYPE fio_ary_remove(fio_ary_s *ary, intptr_t index) {
     }
   }
   --ary->end;
+  index += ary->start;
   FIO_ARY_TYPE old = ary->arry[(size_t)index];
-  const size_t len = (ary->end - ary->start);
+  register const size_t len = ary->end;
   while ((size_t)index < len) {
-    ary->arry[ary->start + (size_t)index] =
-        ary->arry[ary->start + (size_t)index + 1];
+    ary->arry[(size_t)index] = ary->arry[(size_t)index + 1];
     ++index;
   }
   return old;
@@ -486,11 +494,11 @@ FIO_FUNC inline int fio_ary_remove2(fio_ary_s *ary, FIO_ARY_TYPE data) {
   if (index == -1) {
     return -1;
   }
+  index += ary->start;
   --ary->end;
-  const size_t len = (ary->end - ary->start);
+  register const size_t len = ary->end;
   while ((size_t)index < len) {
-    ary->arry[ary->start + (size_t)index] =
-        ary->arry[ary->start + (size_t)index + 1];
+    ary->arry[(size_t)index] = ary->arry[(size_t)index + 1];
     ++index;
   }
   return 0;
@@ -545,6 +553,127 @@ FIO_FUNC inline void fio_ary_compact(fio_ary_s *ary) {
   }
   ary->end = (size_t)(pos - ary->arry);
 }
+
+/* *****************************************************************************
+Testing
+***************************************************************************** */
+
+#if DEBUG
+#include <stdio.h>
+#define TEST_LIMIT 1016
+#define TEST_ASSERT(cond, ...)                                                 \
+  if (!(cond)) {                                                               \
+    fprintf(stderr, "* " __VA_ARGS__);                                         \
+    fprintf(stderr, "\nTesting failed.\n");                                    \
+    exit(-1);                                                                  \
+  }
+/**
+ * Removes any FIO_ARY_TYPE_INVALID  *pointers* from an Array, keeping all other
+ * data in the array.
+ *
+ * This action is O(n) where n in the length of the array.
+ * It could get expensive.
+ */
+FIO_FUNC inline void fio_ary_test(void) {
+  union {
+    FIO_ARY_TYPE obj;
+    uintptr_t i;
+  } mem[TEST_LIMIT];
+  fio_ary_s ary = FIO_ARY_INIT;
+  fprintf(stderr, "=== Testing Core Array features (fio_ary.h)\n");
+
+  for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
+    mem[i].i = i + 1;
+    fio_ary_push(&ary, mem[i].obj);
+  }
+  fprintf(stderr,
+          "* Array populated using `push` with %zu items,\n"
+          "  with capacity limit of %zu and start index %zu\n",
+          (size_t)fio_ary_count(&ary), (size_t)fio_ary_capa(&ary), ary.start);
+  TEST_ASSERT(fio_ary_count(&ary) == TEST_LIMIT,
+              "Wrong object count for array %zu", (size_t)fio_ary_count(&ary));
+  for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
+    mem[0].obj = fio_ary_shift(&ary);
+    TEST_ASSERT(mem[0].i == i + 1, "Array shift value error");
+  }
+
+  fio_ary_free(&ary);
+  TEST_ASSERT(!ary.arry, "Array not reset after fio_ary_free");
+
+  for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
+    mem[i].i = TEST_LIMIT - i;
+    fio_ary_unshift(&ary, mem[i].obj);
+  }
+  fprintf(stderr,
+          "* Array populated using `unshift` with %zu items,\n"
+          "  with capacity limit of %zu and start index %zu\n",
+          (size_t)fio_ary_count(&ary), (size_t)fio_ary_capa(&ary), ary.start);
+  TEST_ASSERT(fio_ary_count(&ary) == TEST_LIMIT,
+              "Wrong object count for array %zu", (size_t)fio_ary_count(&ary));
+  for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
+    mem[0].obj = fio_ary_pop(&ary);
+    TEST_ASSERT(mem[0].i == TEST_LIMIT - i, "Array pop value error");
+  }
+  fio_ary_free(&ary);
+  TEST_ASSERT(!ary.arry, "Array not reset after fio_ary_free");
+
+  for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
+    mem[i].i = TEST_LIMIT - i;
+    fio_ary_unshift(&ary, mem[i].obj);
+  }
+
+  for (int i = 0; i < TEST_LIMIT; ++i) {
+    mem[0].i = i + 1;
+    TEST_ASSERT(fio_ary_find(&ary, mem[0].obj) == i,
+                "Wrong object index - ary[%zd] != %zu",
+                fio_ary_find(&ary, mem[0].obj), mem[0].i);
+    mem[0].obj = fio_ary_index(&ary, i);
+    TEST_ASSERT(mem[0].i == (uintptr_t)(i + 1),
+                "Wrong object returned from fio_ary_index - ary[%d] != %d", i,
+                i + 1);
+  }
+
+  TEST_ASSERT((mem[0].obj = fio_ary_pop(&ary)), "Couldn't pop element.");
+  TEST_ASSERT(mem[0].i == TEST_LIMIT, "Element value error (%zu).",
+              (size_t)mem[0].i);
+  TEST_ASSERT(fio_ary_count(&ary) == TEST_LIMIT - 1,
+              "Wrong object count after pop %zu", (size_t)fio_ary_count(&ary));
+
+  mem[0].i = (TEST_LIMIT >> 1);
+  TEST_ASSERT(!fio_ary_remove2(&ary, mem[0].obj),
+              "Couldn't fio_ary_remove2 object from Array (%zu)",
+              (size_t)mem[0].i);
+  TEST_ASSERT(fio_ary_count(&ary) == TEST_LIMIT - 2,
+              "Wrong object count after remove2 %zu",
+              (size_t)fio_ary_count(&ary));
+  mem[0].i = (TEST_LIMIT >> 1) + 1;
+  TEST_ASSERT(fio_ary_find(&ary, mem[0].obj) != (TEST_LIMIT >> 1) + 1,
+              "fio_ary_remove2 didn't clear holes from Array (%zu)",
+              (size_t)fio_ary_find(&ary, mem[0].obj));
+
+  mem[0].obj = fio_ary_remove(&ary, 0);
+  TEST_ASSERT(mem[0].i == 1, "Couldn't fio_ary_remove object from Array (%zd)",
+              (ssize_t)mem[0].i);
+  TEST_ASSERT(fio_ary_count(&ary) == TEST_LIMIT - 3,
+              "Wrong object count after remove %zu",
+              (size_t)fio_ary_count(&ary));
+  TEST_ASSERT(fio_ary_find(&ary, mem[0].obj) == -1,
+              "fio_ary_find should have failed after fio_ary_remove (%zd)",
+              fio_ary_find(&ary, mem[0].obj));
+  mem[0].i = 2;
+  TEST_ASSERT(fio_ary_find(&ary, mem[0].obj) == 0,
+              "fio_ary_remove didn't clear holes from Array (%zu)",
+              (size_t)fio_ary_find(&ary, mem[0].obj));
+
+  fio_ary_free(&ary);
+}
+#undef TEST_LIMIT
+#undef TEST_ASSERT
+#endif
+
+/* *****************************************************************************
+Done
+***************************************************************************** */
 
 #ifdef __cplusplus
 #undef register

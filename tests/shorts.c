@@ -1,4 +1,5 @@
 #include "facil.h"
+#include "fio_ary.h"
 #include "fio_base64.h"
 #include "fio_hashmap.h"
 #include "fio_mem.h"
@@ -24,6 +25,7 @@ int main(void) {
                   "is faster\n\n");
 #endif
   fio_malloc_test();
+  fio_ary_test();
   fio_hash_test();
   fiobj_test();
   defer_test();
