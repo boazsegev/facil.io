@@ -1251,7 +1251,7 @@ static void facil_cluster_at_exit(void *ignore) {
   while (fio_hash_count(&postoffice.pubsub.channels)) {
     channel_s *ch = fio_hash_last(&postoffice.pubsub.channels, NULL);
     while (fio_ls_embd_any(&ch->subscriptions)) {
-      subscription_s *sub = sub =
+      subscription_s *sub =
           FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
       facil_unsubscribe(sub);
     }
@@ -1259,7 +1259,7 @@ static void facil_cluster_at_exit(void *ignore) {
   while (fio_hash_count(&postoffice.filters.channels)) {
     channel_s *ch = fio_hash_last(&postoffice.filters.channels, NULL);
     while (fio_ls_embd_any(&ch->subscriptions)) {
-      subscription_s *sub = sub =
+      subscription_s *sub =
           FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
       facil_unsubscribe(sub);
     }
