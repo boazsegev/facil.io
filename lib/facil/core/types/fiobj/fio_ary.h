@@ -666,6 +666,33 @@ FIO_FUNC inline void fio_ary_test(void) {
               (size_t)fio_ary_find(&ary, mem[0].obj));
 
   fio_ary_free(&ary);
+
+  fio_ary_s ary2 = FIO_ARY_INIT;
+  for (uintptr_t i = 0; i < (TEST_LIMIT >> 1); ++i) {
+    mem[i].i = ((TEST_LIMIT >> 1) << 1) - i;
+    fio_ary_unshift(&ary2, mem[i].obj);
+    mem[i].i = (TEST_LIMIT >> 1) - i;
+    fio_ary_unshift(&ary, mem[i].obj);
+  }
+  fio_ary_concat(&ary, &ary2);
+  fio_ary_free(&ary2);
+  TEST_ASSERT(fio_ary_count(&ary) == ((TEST_LIMIT >> 1) << 1),
+              "Wrong object count after fio_ary_concat %zu",
+              (size_t)fio_ary_count(&ary));
+  for (int i = 0; i < ((TEST_LIMIT >> 1) << 1); ++i) {
+    mem[0].obj = fio_ary_index(&ary, i);
+    TEST_ASSERT(
+        mem[0].i == (uintptr_t)(i + 1),
+        "Wrong object returned from fio_ary_index after concat - ary[%d] != %d",
+        i, i + 1);
+  }
+  mem[1].i = 0;
+  while ((mem[0].obj = fio_ary_pop(&ary))) {
+    ++mem[1].i;
+  }
+  TEST_ASSERT(mem[1].i == ((TEST_LIMIT >> 1) << 1),
+              "fio_ary_pop overflow (%zu)?", (size_t)mem[1].i);
+  fio_ary_free(&ary);
 }
 #undef TEST_LIMIT
 #undef TEST_ASSERT
