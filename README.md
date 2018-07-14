@@ -17,9 +17,15 @@
 
 You can read more about [facil.io](http://facil.io) on the [facil.io](http://facil.io) website.
 
-### Running on `facil.io`
+### Important to Note
 
-* [Iodine, a Ruby HTTP/Websockets Ruby application server](https://github.com/boazsegev/iodine) is powered by `facil.io`.
+The master branch on the `git` repo is the development branch and is likely to be broken at any given time (especially when working on major revisions, as I am at the moment).
+
+Please select a release version for any production needs.
+
+### Who's running on `facil.io`
+
+* [Iodine, a Ruby HTTP/Websockets Ruby application server](https://github.com/boazsegev/iodine) is powered by `facil.io` - so everyone using the iodine server is running on facil.io.
 
 * Are you using `facil.io`? Let me know!
 
