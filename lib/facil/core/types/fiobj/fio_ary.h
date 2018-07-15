@@ -240,7 +240,7 @@ FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, intptr_t needed) {
     /* add some breathing room for future `unshift`s */
     needed = 0 - ((ary->capa < 1024) ? (ary->capa >> 1) : 1024);
 
-  } else if (needed == 1 && ary->start >= (ary->capa >> 1)) {
+  } else if (needed == 1 && ary->start && ary->start >= (ary->capa >> 1)) {
     /* FIFO support optimizes smaller FIFO ranges over bloating allocations. */
     size_t len = ary->end - ary->start;
     if (len) {
@@ -254,6 +254,9 @@ FIO_FUNC void fio_ary_getmem(fio_ary_s *ary, intptr_t needed) {
   /* alocate using exponential growth, up to single page size. */
   size_t updated_capa = ary->capa;
   size_t minimum = ary->capa + ((needed < 0) ? (0 - needed) : needed);
+  if (!updated_capa) {
+    updated_capa = 1;
+  }
   while (updated_capa <= minimum)
     updated_capa =
         (updated_capa <= 4096) ? (updated_capa << 1) : (updated_capa + 4096);
@@ -297,9 +300,11 @@ FIO_FUNC inline void fio_ary_concat(fio_ary_s *dest, fio_ary_s *src) {
     return;
   const intptr_t len = src->end - src->start;
   fio_ary_getmem(dest, len);
-  memcpy((void *)((uintptr_t)dest->arry + (sizeof(*dest->arry) * dest->end)),
-         (void *)((uintptr_t)src->arry + (sizeof(*dest->arry) * src->start)),
+  memcpy(dest->arry + dest->end, src->arry + src->start,
          (len * sizeof(*dest->arry)));
+  // memcpy((void *)((uintptr_t)dest->arry + (sizeof(*dest->arry) * dest->end)),
+  //        (void *)((uintptr_t)src->arry + (sizeof(*dest->arry) * src->start)),
+  //        (len * sizeof(*dest->arry)));
   dest->end += len;
 }
 
