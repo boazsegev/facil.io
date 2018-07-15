@@ -677,7 +677,7 @@ FIO_FUNC void fio_hash_test(void) {
 #define TEST_ASSERT(cond, ...)                                                 \
   if (!(cond)) {                                                               \
     fprintf(stderr, "* " __VA_ARGS__);                                         \
-    fprintf(stderr, "Testing failed.\n");                                      \
+    fprintf(stderr, "\n !!! Testing failed !!!\n");                            \
     exit(-1);                                                                  \
   }
   fio_hash_s h = {.capa = 0};
@@ -714,13 +714,13 @@ FIO_FUNC void fio_hash_test(void) {
     fio_hash_insert(&h, 1, (void *)1);
     TEST_ASSERT(
         count + 1 == h.count,
-        "Readding a removed item should increase count by 1 (%zu + 1 != %zu).",
+        "Re-adding a removed item should increase count by 1 (%zu + 1 != %zu).",
         count, (size_t)h.count);
     TEST_ASSERT(
         pos == h.pos,
-        "Readding a removed item shouldn't change the position marker!");
+        "Re-adding a removed item shouldn't change the position marker!");
     TEST_ASSERT(fio_hash_find(&h, 1) == (void *)1,
-                "Readding a removed item should update the item (%p != 1)!",
+                "Re-adding a removed item should update the item (%p != 1)!",
                 fio_hash_find(&h, 1));
     fio_hash_insert(&h, 1, NULL);
     TEST_ASSERT(count == h.count,
@@ -769,12 +769,45 @@ FIO_FUNC void fio_hash_test(void) {
     }
     TEST_ASSERT(i == h.count, "count error (%lu != %lu).", i, h.count);
   }
+
   fio_hash_free(&h);
-  fprintf(stderr, "* passed... without testing that FIO_HASH_KEY_DESTROY is "
-                  "called only once.\n");
+  TEST_ASSERT(!h.map && !h.ordered && !h.pos && !h.capa,
+              "Hash not re-initialized after fio_hash_free");
+
+  fio_hash_new2(&h, FIO_HASHMAP_TEXT_COUNT);
+  for (unsigned long i = 1; i < FIO_HASHMAP_TEXT_COUNT; ++i) {
+    fio_hash_insert(&h, i, (void *)i);
+    TEST_ASSERT((i == (uintptr_t)fio_hash_find(&h, i)),
+                "insertion (2nd round) != find");
+  }
+  for (unsigned long i = 1; i < FIO_HASHMAP_TEXT_COUNT; i += 2) {
+    uintptr_t old = (uintptr_t)fio_hash_insert(&h, i, NULL);
+    TEST_ASSERT(old == i, "Removal didn't return old value.");
+    TEST_ASSERT(!(fio_hash_find(&h, i)), "Removal failed (still exists).");
+  }
+  fio_hash_rehash(&h);
+  {
+    fprintf(stderr,
+            "* Testing that %lu items are continuous (after rehashing)\n",
+            FIO_HASHMAP_TEXT_COUNT >> 1);
+    uintptr_t i = 0;
+    FIO_HASH_FOR_LOOP(&h, pos) {
+      TEST_ASSERT(pos->obj, "Found a hole after compact.");
+      TEST_ASSERT(pos->key == (uintptr_t)pos->obj, "Key and value mismatch.");
+      ++i;
+    }
+    TEST_ASSERT(i == h.count, "count error (%lu != %lu) post rehash.", i,
+                h.count);
+  }
+  fio_hash_free(&h);
 }
+
+#undef TEST_ASSERT
 #endif /* DEBUG Testing */
 
+#undef FIO_HASH_REALLOC
+#undef FIO_HASH_CALLOC
+#undef FIO_HASH_FREE
 #undef FIO_FUNC
 
 #endif /* H_FIO_SIMPLE_HASH_H */

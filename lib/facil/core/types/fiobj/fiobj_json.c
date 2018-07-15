@@ -442,7 +442,7 @@ void fiobj_test_json(void) {
 #define TEST_ASSERT(cond, ...)                                                 \
   if (!(cond)) {                                                               \
     fprintf(stderr, "* " __VA_ARGS__);                                         \
-    fprintf(stderr, "Testing failed.\n");                                      \
+    fprintf(stderr, "\n !!! Testing failed !!!\n");                            \
     exit(-1);                                                                  \
   }
   char json_str[] = "{\"array\":[1,2,3,\"boom\"],\"my\":{\"secret\":42},"

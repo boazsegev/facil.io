@@ -564,7 +564,7 @@ Testing
 #define TEST_ASSERT(cond, ...)                                                 \
   if (!(cond)) {                                                               \
     fprintf(stderr, "* " __VA_ARGS__);                                         \
-    fprintf(stderr, "\nTesting failed.\n");                                    \
+    fprintf(stderr, "\n !!! Testing failed !!!\n");                            \
     exit(-1);                                                                  \
   }
 /**
