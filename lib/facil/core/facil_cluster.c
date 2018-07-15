@@ -321,7 +321,7 @@ static inline void internal_message_free(facil_msg_internal_s *msg) {
     if (tmp->on_finish) {
       tmp->on_finish(&msg->msg, tmp->metadata);
     }
-    fio_free(meta);
+    fio_free(tmp);
   }
   fiobj_free(msg->msg.channel);
   fiobj_free(msg->msg.msg);
