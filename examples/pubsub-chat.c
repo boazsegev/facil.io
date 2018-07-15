@@ -242,6 +242,8 @@ int main(int argc, char const *argv[]) {
            "using native-local pub/sub engine.\n");
   }
 
+  websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_TEXT, 1);
+
   if (http_listen(port, NULL, .on_request = answer_http_request,
                   .on_upgrade = answer_http_upgrade, .log = print_log,
                   .public_folder = public_folder) == -1)
@@ -255,3 +257,16 @@ int main(int argc, char const *argv[]) {
   fiobj_free(CHAT_CHANNEL);
   fio_cli_end();
 }
+
+/* *****************************************************************************
+While Redis is broken
+***************************************************************************** */
+
+#define NIL
+#pragma weak redis_engine_create
+pubsub_engine_s *redis_engine_create NIL(struct redis_engine_create_args a) {
+  (void)a;
+  return NULL;
+}
+#pragma weak redis_engine_destroy
+void redis_engine_destroy(pubsub_engine_s *a) { (void)a; }

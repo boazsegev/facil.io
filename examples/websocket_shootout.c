@@ -17,7 +17,6 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 
 */
 
-#include "pubsub.h"
 #include "websockets.h"
 
 #include <string.h>
@@ -40,7 +39,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   (void)(size);
   if (data[0] == 'b') {
     FIOBJ msg = fiobj_str_new(data, size);
-    pubsub_publish(.channel = CHANNEL_BINARY, .message = msg);
+    facil_publish(.channel = CHANNEL_BINARY, .message = msg);
     fiobj_free(msg);
     // fwrite(".", 1, 1, stderr);
     data[0] = 'r';
@@ -48,7 +47,7 @@ static void handle_websocket_messages(ws_s *ws, char *data, size_t size,
   } else if (data[9] == 'b') {
     // fwrite(".", 1, 1, stderr);
     FIOBJ msg = fiobj_str_new(data, size);
-    pubsub_publish(.channel = CHANNEL_TEXT, .message = msg);
+    facil_publish(.channel = CHANNEL_TEXT, .message = msg);
     fiobj_free(msg);
     /* send result */
     size = size + (25 - 19);
@@ -70,7 +69,7 @@ static void answer_http_request(http_s *request) {
 }
 static void answer_http_upgrade(http_s *request, char *target, size_t len) {
   if (len >= 9 && target[1] == 'e') {
-    http_upgrade2ws(.http = request, .on_message = handle_websocket_messages,
+    http_upgrade2ws(request, .on_message = handle_websocket_messages,
                     .on_open = on_open_shootout_websocket);
   } else if (len >= 3 && target[0] == 's') {
     http_upgrade2sse(request, .on_open = on_open_shootout_websocket_sse);
@@ -107,6 +106,8 @@ int main(int argc, char const *argv[]) {
   fio_cli_accept_str("public www",
                      "A public folder for serve an HTTP static file service.");
   fio_cli_accept_bool("log v", "Turns logging on.");
+  fio_cli_accept_bool("optimize o",
+                      "Turns WebSocket broadcast optimizations on.");
 
   if (fio_cli_get_str("p"))
     port = fio_cli_get_str("p");
@@ -123,8 +124,18 @@ int main(int argc, char const *argv[]) {
   /*     ****  actual code ****     */
   if (http_listen(port, NULL, .on_request = answer_http_request,
                   .on_upgrade = answer_http_upgrade, .log = print_log,
-                  .public_folder = public_folder) == -1)
-    perror("Couldn't initiate Websocket Shootout service"), exit(1);
+                  .public_folder = public_folder) == -1) {
+    perror("Couldn't initiate Websocket Shootout service");
+    exit(1);
+  }
+  /* optimize websocket pub/sub for multi-client broadcasts */
+  if (fio_cli_get_int("o")) {
+    fprintf(stderr, "* Turning on WebSocket broadcast optimizations.\n");
+    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
+    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_TEXT, 1);
+    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_BINARY, 1);
+  }
+
   facil_run(.threads = threads, .processes = workers);
   // free global resources.
   fiobj_free(CHANNEL_TEXT);

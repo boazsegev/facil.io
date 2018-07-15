@@ -505,6 +505,120 @@ static inline uint32_t validate_utf8(uint8_t *str, size_t len) {
   }
   return state == 0;
 }
+
+/* *****************************************************************************
+Multi-client broadcast optimizations
+***************************************************************************** */
+
+static void websocket_optimize_free(facil_msg_s *msg, void *metadata) {
+  fiobj_free((FIOBJ)metadata);
+  (void)msg;
+}
+
+static inline facil_msg_metadata_s websocket_optimize(fio_cstr_s msg,
+                                                      unsigned char opcode) {
+  FIOBJ out = fiobj_str_buf(msg.len + 10);
+  fiobj_str_resize(out,
+                   websocket_server_wrap(fiobj_obj2cstr(out).data, msg.data,
+                                         msg.len, opcode, 1, 1, 0));
+  facil_msg_metadata_s ret = {
+      .on_finish = websocket_optimize_free, .metadata = (void *)out,
+  };
+  return ret;
+}
+static facil_msg_metadata_s
+websocket_optimize_generic(facil_msg_s *msg, FIOBJ raw_ch, FIOBJ raw_msg) {
+  fio_cstr_s tmp = fiobj_obj2cstr(raw_msg);
+  unsigned char opcode = 2;
+  if (tmp.len <= (2 << 19) && validate_utf8((uint8_t *)tmp.data, tmp.len)) {
+    opcode = 1;
+  }
+  facil_msg_metadata_s ret = websocket_optimize(tmp, opcode);
+  ret.type_id = WEBSOCKET_OPTIMIZE_PUBSUB;
+  return ret;
+  (void)msg;
+  (void)raw_ch;
+}
+
+static facil_msg_metadata_s
+websocket_optimize_text(facil_msg_s *msg, FIOBJ raw_ch, FIOBJ raw_msg) {
+  fio_cstr_s tmp = fiobj_obj2cstr(raw_msg);
+  facil_msg_metadata_s ret = websocket_optimize(tmp, 1);
+  ret.type_id = WEBSOCKET_OPTIMIZE_PUBSUB_TEXT;
+  return ret;
+  (void)msg;
+  (void)raw_ch;
+}
+
+static facil_msg_metadata_s
+websocket_optimize_binary(facil_msg_s *msg, FIOBJ raw_ch, FIOBJ raw_msg) {
+  fio_cstr_s tmp = fiobj_obj2cstr(raw_msg);
+  facil_msg_metadata_s ret = websocket_optimize(tmp, 2);
+  ret.type_id = WEBSOCKET_OPTIMIZE_PUBSUB_BINARY;
+  return ret;
+  (void)msg;
+  (void)raw_ch;
+}
+
+/**
+ * Enables (or disables) broadcast optimizations.
+ *
+ * When using WebSocket pub/sub system is originally optimized for either
+ * non-direct transmission (messages are handled by callbacks) or direct
+ * transmission to 1-3 clients per channel (on avarage), meaning that the
+ * majority of the messages are meant for a single recipient (or multiple
+ * callback recipients) and only some are expected to be directly transmitted to
+ * a group.
+ *
+ * However, when most messages are intended for direct transmission to more than
+ * 3 clients (on avarage), certain optimizations can be made to improve memory
+ * consumption (minimize duplication or WebSocket network data).
+ *
+ * This function allows enablement (or disablement) of these optimizations.
+ * These optimizations include:
+ *
+ * * WEBSOCKET_OPTIMIZE_PUBSUB - optimize all direct transmission messages,
+ *                               best attempt to detect Text vs. Binary data.
+ * * WEBSOCKET_OPTIMIZE_PUBSUB_TEXT - optimize direct pub/sub text messages.
+ * * WEBSOCKET_OPTIMIZE_PUBSUB_BINARY - optimize direct pub/sub binary messages.
+ *
+ * Note: to disable an optimization it should be disabled the same amount of
+ * times it was enabled - multiple optimization enablements for the same type
+ * are merged, but reference counted (disabled when reference is zero).
+ */
+void websocket_optimize4broadcasts(intptr_t type, int enable) {
+  static intptr_t generic = 0;
+  static intptr_t text = 0;
+  static intptr_t binary = 0;
+  facil_msg_metadata_s (*callback)(facil_msg_s *, FIOBJ, FIOBJ);
+  intptr_t *counter;
+  switch ((0 - type)) {
+  case (0 - WEBSOCKET_OPTIMIZE_PUBSUB):
+    counter = &generic;
+    callback = websocket_optimize_generic;
+    break;
+  case (0 - WEBSOCKET_OPTIMIZE_PUBSUB_TEXT):
+    counter = &text;
+    callback = websocket_optimize_text;
+    break;
+  case (0 - WEBSOCKET_OPTIMIZE_PUBSUB_BINARY):
+    counter = &binary;
+    callback = websocket_optimize_binary;
+    break;
+  default:
+    return;
+  }
+  if (enable) {
+    if (spn_add(counter, 1) == 1) {
+      facil_message_metadata_set(callback, 1);
+    }
+  } else {
+    if (spn_sub(counter, 1) == 0) {
+      facil_message_metadata_set(callback, 0);
+    }
+  }
+}
+
 /* *****************************************************************************
 Subscription handling
 ***************************************************************************** */
@@ -533,7 +647,28 @@ static inline void websocket_on_pubsub_message_direct_internal(facil_msg_s *msg,
     facil_message_defer(msg);
     return;
   }
-  FIOBJ message;
+  FIOBJ message = FIOBJ_INVALID;
+  FIOBJ pre_wrapped = FIOBJ_INVALID;
+  switch (txt) {
+  case 0:
+    pre_wrapped =
+        (FIOBJ)facil_message_metadata(msg, WEBSOCKET_OPTIMIZE_PUBSUB_BINARY);
+    break;
+  case 1:
+    pre_wrapped =
+        (FIOBJ)facil_message_metadata(msg, WEBSOCKET_OPTIMIZE_PUBSUB_TEXT);
+    break;
+  case 2:
+    pre_wrapped = (FIOBJ)facil_message_metadata(msg, WEBSOCKET_OPTIMIZE_PUBSUB);
+    break;
+  default:
+    break;
+  }
+  if (pre_wrapped) {
+    // fprintf(stderr, "INFO: WebSocket Pub/Sub optimized for broadcast\n");
+    fiobj_send_free((intptr_t)msg->udata1, fiobj_dup(pre_wrapped));
+    goto finish;
+  }
   fio_cstr_s tmp;
   if (FIOBJ_TYPE_IS(msg->msg, FIOBJ_T_STRING)) {
     message = fiobj_dup(msg->msg);
@@ -549,8 +684,9 @@ static inline void websocket_on_pubsub_message_direct_internal(facil_msg_s *msg,
     tmp = fiobj_obj2cstr(message);
   }
   websocket_write((ws_s *)pr, tmp.data, tmp.len, txt & 1);
-  facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   fiobj_free(message);
+finish:
+  facil_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
 }
 
 static void websocket_on_pubsub_message_direct(facil_msg_s *msg) {

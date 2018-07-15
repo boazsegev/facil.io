@@ -163,6 +163,41 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args);
  */
 void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id);
 
+/** Optimize generic broadcasts, for use in websocket_optimize4broadcasts. */
+#define WEBSOCKET_OPTIMIZE_PUBSUB (-32)
+/** Optimize text broadcasts, for use in websocket_optimize4broadcasts. */
+#define WEBSOCKET_OPTIMIZE_PUBSUB_TEXT (-33)
+/** Optimize binary broadcasts, for use in websocket_optimize4broadcasts. */
+#define WEBSOCKET_OPTIMIZE_PUBSUB_BINARY (-34)
+
+/**
+ * Enables (or disables) broadcast optimizations.
+ *
+ * When using WebSocket pub/sub system is originally optimized for either
+ * non-direct transmission (messages are handled by callbacks) or direct
+ * transmission to 1-3 clients per channel (on avarage), meaning that the
+ * majority of the messages are meant for a single recipient (or multiple
+ * callback recipients) and only some are expected to be directly transmitted to
+ * a group.
+ *
+ * However, when most messages are intended for direct transmission to more than
+ * 3 clients (on avarage), certain optimizations can be made to improve memory
+ * consumption (minimize duplication or WebSocket network data).
+ *
+ * This function allows enablement (or disablement) of these optimizations.
+ * These optimizations include:
+ *
+ * * WEBSOCKET_OPTIMIZE_PUBSUB - optimize all direct transmission messages,
+ *                               best attempt to detect Text vs. Binary data.
+ * * WEBSOCKET_OPTIMIZE_PUBSUB_TEXT - optimize direct pub/sub text messages.
+ * * WEBSOCKET_OPTIMIZE_PUBSUB_BINARY - optimize direct pub/sub binary messages.
+ *
+ * Note: to disable an optimization it should be disabled the same amount of
+ * times it was enabled - multiple optimization enablements for the same type
+ * are merged, but reference counted (disabled when reference is zero).
+ */
+void websocket_optimize4broadcasts(intptr_t type, int enable);
+
 /* *****************************************************************************
 Websocket Tasks - within a single process scope, NOT and entire cluster
 ***************************************************************************** */
