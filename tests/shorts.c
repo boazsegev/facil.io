@@ -11,18 +11,18 @@
 int main(void) {
 #if DEBUG
 #if HAVE_OPENSSL && !NODEBUG
-  fprintf(stderr, "\n=== WARNING: performance tests should be ignored,\n"
-                  "===          facil.io's optimized code "
-                  "is faster\n");
+  fprintf(stderr, "\n=== NOTICE: performance tests should be ignored,\n"
+                  "===          facil.io's is running in DEBUG mode while "
+                  "OpenSSL isn't.\n");
 #endif
   fio_base64_test();
   fio_sha1_test();
   fio_sha2_test();
   fio_random_test();
 #if HAVE_OPENSSL && !NODEBUG
-  fprintf(stderr, "=== WARNING: performance tests should be ignored,\n"
-                  "===          facil.io's optimized code "
-                  "is faster\n\n");
+  fprintf(stderr, "=== NOTICE: performance tests should be ignored,\n"
+                  "===          facil.io's is running in DEBUG mode while "
+                  "OpenSSL isn't.\n\n");
 #endif
   fio_malloc_test();
   fio_ary_test();
