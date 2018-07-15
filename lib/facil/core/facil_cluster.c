@@ -319,8 +319,9 @@ static inline void internal_message_free(facil_msg_internal_s *msg) {
     facil_msg_metadata_s *tmp = meta;
     meta = meta->next;
     if (tmp->on_finish) {
-      tmp->on_finish(&msg->msg, tmp);
+      tmp->on_finish(&msg->msg, tmp->metadata);
     }
+    fio_free(meta);
   }
   fiobj_free(msg->msg.channel);
   fiobj_free(msg->msg.msg);
@@ -398,7 +399,7 @@ static inline void call_meta_callbacks(facil_msg_internal_s *m, FIOBJ ch_raw,
   if (fio_ary_count(&postoffice.meta.ary) == 0) {
     return;
   }
-  /* don't call user code within a lock - copy the array */
+  /* don't call user code within a lock - copy the array :-( */
   fio_ary_s cpy = FIO_ARY_INIT;
   spn_lock(&postoffice.meta.lock);
   fio_ary_concat(&cpy, &postoffice.meta.ary);
@@ -406,14 +407,17 @@ static inline void call_meta_callbacks(facil_msg_internal_s *m, FIOBJ ch_raw,
   FIO_ARY_FOR(&cpy, pos) {
     if (pos.obj == NULL)
       continue;
-    facil_msg_metadata_s *ret =
-        ((facil_msg_metadata_s * (*)(facil_msg_s * msg, FIOBJ raw_ch,
-                                     FIOBJ raw_msg))(uintptr_t)pos.obj)(
-            &m->msg, ch_raw, msg_raw);
-    if (ret) {
-      ret->next = m->meta;
-      m->meta = ret;
+
+    facil_msg_metadata_s *ret = fio_malloc(sizeof(*ret));
+    if (!ret) {
+      perror("FATAL ERROR: (pubsub) couldn't allocate memory for metadata");
+      exit(errno);
     }
+    *ret = ((facil_msg_metadata_s(*)(facil_msg_s * msg, FIOBJ raw_ch,
+                                     FIOBJ raw_msg))(uintptr_t)pos.obj)(
+        &m->msg, ch_raw, msg_raw);
+    ret->next = m->meta;
+    m->meta = ret;
   }
   fio_ary_free(&cpy);
 }
@@ -459,7 +463,7 @@ static void publish2process(int32_t filter, FIOBJ channel, FIOBJ msg,
     fiobj_free(org_msg);
   } else {
     if (filter == 0) {
-      call_meta_callbacks(m, FIOBJ_INVALID, FIOBJ_INVALID);
+      call_meta_callbacks(m, m->msg.channel, m->msg.msg);
     }
   }
   if (filter) {
@@ -556,8 +560,6 @@ static inline void publish_msg2root(int32_t filter, FIOBJ ch, FIOBJ msg) {
     facil_send2cluster(m.filter, m.channel, m.msg, m.type);
   }
 }
-
-// FACIL_PUBSUB_ROOT
 
 /* *****************************************************************************
  * Data Structures - Core Structures
@@ -1421,12 +1423,12 @@ void facil_message_defer(facil_msg_s *msg) { defer_subscription_callback(msg); }
  * To remove a callback, set the `remove` flag to true (`1`).
  */
 void facil_message_metadata_set(
-    facil_msg_metadata_s *(*callback)(facil_msg_s *msg, FIOBJ raw_ch,
-                                      FIOBJ raw_msg),
-    int remove) {
+    facil_msg_metadata_s (*callback)(facil_msg_s *msg, FIOBJ raw_ch,
+                                     FIOBJ raw_msg),
+    int enable) {
   spn_lock(&postoffice.meta.lock);
   fio_ary_remove2(&postoffice.meta.ary, (void *)(uintptr_t)callback);
-  if (!remove) {
+  if (enable) {
     fio_ary_push(&postoffice.meta.ary, (void *)(uintptr_t)callback);
   }
   spn_unlock(&postoffice.meta.lock);
@@ -1544,7 +1546,7 @@ int facil_pubsub_is_attached(pubsub_engine_s *engine) {
  */
 
 /** A binary glob matching helper. Returns 1 on match, otherwise returns 0. */
-static int pubsub_glob_match(FIOBJ pattern, FIOBJ channel) {
+static int facil_glob_match(FIOBJ pattern, FIOBJ channel) {
   /* adapted and rewritten, with thankfulness, from the code at:
    * https://github.com/opnfv/kvmfornfv/blob/master/kernel/lib/glob.c
    *
@@ -1639,4 +1641,4 @@ static int pubsub_glob_match(FIOBJ pattern, FIOBJ channel) {
   return !ch.len && !pat.len;
 }
 
-facil_match_fn FACIL_MATCH_GLOB = pubsub_glob_match;
+facil_match_fn FACIL_MATCH_GLOB = facil_glob_match;

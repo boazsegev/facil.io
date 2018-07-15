@@ -833,6 +833,8 @@ void facil_publish(facil_publish_args_s args);
  * equal to 0 or missing.
  */
 #define facil_publish(...) facil_publish((facil_publish_args_s){__VA_ARGS__})
+/** for backwards compatibility */
+#define pubsub_publish facil_publish
 
 /** Finds the message's metadata by it's type ID. Returns the data or NULL. */
 void *facil_message_metadata(facil_msg_s *msg, intptr_t type_id);
@@ -857,14 +859,18 @@ void facil_cluster_signal_children(void);
 /** Contains message metadata, set by message extensions. */
 typedef struct facil_msg_metadata_s facil_msg_metadata_s;
 struct facil_msg_metadata_s {
-  /** The type ID should be used to identify the metadata's actual structure. */
+  /**
+   * The type ID should be used to identify the metadata's actual structure.
+   *
+   * Negative ID values are reserved for internal use.
+   */
   intptr_t type_id;
   /**
    * This method will be called by facil.io to cleanup the metadata resources.
    *
    * Don't alter / call this method, this data is reserved.
    */
-  void (*on_finish)(facil_msg_s *msg, facil_msg_metadata_s *self);
+  void (*on_finish)(facil_msg_s *msg, void *metadata);
   /** The pointer to be returned by the `facil_message_metadata` function. */
   void *metadata;
   /** RESERVED for internal use (Metadata linked list). */
@@ -890,9 +896,9 @@ struct facil_msg_metadata_s {
  * To remove a callback, set the `remove` flag to true (`1`).
  */
 void facil_message_metadata_set(
-    facil_msg_metadata_s *(*callback)(facil_msg_s *msg, FIOBJ raw_ch,
-                                      FIOBJ raw_msg),
-    int remove);
+    facil_msg_metadata_s (*callback)(facil_msg_s *msg, FIOBJ raw_ch,
+                                     FIOBJ raw_msg),
+    int enable);
 
 /**
  * facil.io can be linked with external Pub/Sub services using "engines".
