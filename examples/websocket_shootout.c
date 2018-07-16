@@ -17,16 +17,37 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 
 */
 
+#include "spnlock.inc"
 #include "websockets.h"
 
 #include <string.h>
 
+#ifdef __APPLE__
+#include <dlfcn.h>
+#endif
+
 FIOBJ CHANNEL_TEXT;
 FIOBJ CHANNEL_BINARY;
 
+static size_t sub_count;
+static size_t unsub_count;
+
+static void on_websocket_unsubscribe(void *udata) {
+  (void)udata;
+  spn_add(&unsub_count, 1);
+}
+
+static void print_subscription_balance(void *a) {
+  fprintf(stderr, "* subscribe / on_unsubscribe count (%s): %zu / %zu\n",
+          (char *)a, sub_count, unsub_count);
+}
+
 static void on_open_shootout_websocket(ws_s *ws) {
-  websocket_subscribe(ws, .channel = CHANNEL_TEXT, .force_text = 1);
-  websocket_subscribe(ws, .channel = CHANNEL_BINARY, .force_binary = 1);
+  spn_add(&sub_count, 2);
+  websocket_subscribe(ws, .channel = CHANNEL_TEXT, .force_text = 1,
+                      .on_unsubscribe = on_websocket_unsubscribe);
+  websocket_subscribe(ws, .channel = CHANNEL_BINARY, .force_binary = 1,
+                      .on_unsubscribe = on_websocket_unsubscribe);
 }
 static void on_open_shootout_websocket_sse(http_sse_s *sse) {
   http_sse_subscribe(sse, .channel = CHANNEL_TEXT);
@@ -135,6 +156,19 @@ int main(int argc, char const *argv[]) {
     websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_TEXT, 1);
     websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_BINARY, 1);
   }
+
+#ifdef __APPLE__
+  /* patch for dealing with the High Sierra `fork` limitations */
+  void *obj_c_runtime = dlopen("Foundation.framework/Foundation", RTLD_LAZY);
+  (void)obj_c_runtime;
+#endif
+
+  facil_core_callback_add(FIO_CALL_ON_SHUTDOWN, print_subscription_balance,
+                          "on shutdown");
+  facil_core_callback_add(FIO_CALL_ON_FINISH, print_subscription_balance,
+                          "on finish");
+  facil_core_callback_add(FIO_CALL_AT_EXIT, print_subscription_balance,
+                          "at exit");
 
   facil_run(.threads = threads, .processes = workers);
   // free global resources.
