@@ -23,6 +23,7 @@ create object types.
 #endif
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
