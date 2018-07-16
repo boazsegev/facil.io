@@ -193,8 +193,12 @@ FIOBJ fiobj_str_new(const char *str, size_t len) {
 /**
  * Creates a String object. Remember to use `fiobj_free`.
  *
- * The ownership of the memory indicated by `str` will now "move" to the
- * object, so `free` will be called by the `fiobj` library as needed.
+ * It's possible to wrap a previosly allocated memory block in a FIOBJ String
+ * object, as long as it was allocated using `fio_malloc`.
+ *
+ * The ownership of the memory indicated by `str` will "move" to the object and
+ * will be freed (using `fio_free`) once the object's reference count drops to
+ * zero.
  */
 FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity) {
   fiobj_str_s *s = fio_malloc(sizeof(*s));

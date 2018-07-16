@@ -47,10 +47,16 @@ static inline __attribute__((unused)) FIOBJ fiobj_str_copy(FIOBJ src) {
 /**
  * Creates a String object. Remember to use `fiobj_free`.
  *
- * The ownership of the memory indicated by `str` will now "move" to the object.
+ * It's possible to wrap a previosly allocated memory block in a FIOBJ String
+ * object, as long as it was allocated using `fio_malloc`.
  *
- * The original memory MUST be allocated using `fio_malloc` (NOT the system's
- * `malloc`) and it will be freed by the `fiobj` library using `fio_free`.
+ * The ownership of the memory indicated by `str` will "move" to the object and
+ * will be freed (using `fio_free`) once the object's reference count drops to
+ * zero.
+ *
+ * Note: The original memory MUST be allocated using `fio_malloc` (NOT the
+ *       system's `malloc`) and it will be freed by the `fio_mem` library using
+ *       `fio_free`.
  */
 FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity);
 
