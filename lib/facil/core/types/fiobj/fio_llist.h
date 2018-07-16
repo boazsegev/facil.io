@@ -162,12 +162,12 @@ FIO_FUNC inline void fio_ls_unshift(fio_ls_s *pos, const void *obj) {
 
 /** Removes an object from the list's head. */
 FIO_FUNC inline void *fio_ls_pop(fio_ls_s *list) {
-  return fio_ls_remove(list->next);
+  return fio_ls_remove(list->prev);
 }
 
 /** Removes an object from the list's tail. */
 FIO_FUNC inline void *fio_ls_shift(fio_ls_s *list) {
-  return fio_ls_remove(list->prev);
+  return fio_ls_remove(list->next);
 }
 
 /** Tests if the list is empty. */
@@ -214,12 +214,12 @@ FIO_FUNC inline void fio_ls_embd_unshift(fio_ls_embd_s *dest,
 
 /** Removes a node from the list's head. */
 FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_pop(fio_ls_embd_s *list) {
-  return fio_ls_embd_remove(list->next);
+  return fio_ls_embd_remove(list->prev);
 }
 
 /** Removes a node from the list's tail. */
 FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_shift(fio_ls_embd_s *list) {
-  return fio_ls_embd_remove(list->prev);
+  return fio_ls_embd_remove(list->next);
 }
 
 /** Tests if the list is empty. */
@@ -236,6 +236,130 @@ FIO_FUNC inline int fio_ls_embd_any(fio_ls_embd_s *list) {
 #define FIO_LS_EMBD_FOR(list, node)                                            \
   for (fio_ls_embd_s *node = (list)->next; node != (list); node = node->next)
 
+/* *****************************************************************************
+Testing
+***************************************************************************** */
+#if DEBUG
+#include <stdio.h>
+#define TEST_LIMIT 1016
+#define TEST_ASSERT(cond, ...)                                                 \
+  if (!(cond)) {                                                               \
+    fprintf(stderr, "* " __VA_ARGS__);                                         \
+    fprintf(stderr, "\n !!! Testing failed !!!\n");                            \
+    exit(-1);                                                                  \
+  }
+/**
+ * Removes any FIO_ARY_TYPE_INVALID  *pointers* from an Array, keeping all other
+ * data in the array.
+ *
+ * This action is O(n) where n in the length of the array.
+ * It could get expensive.
+ */
+FIO_FUNC inline void fio_llist_test(void) {
+  fio_ls_s list = FIO_LS_INIT(list);
+  size_t counter;
+  fprintf(stderr, "=== Testing Core Linked List features (fio_llist.h)\n");
+  /* test push/pop */
+  for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
+    fio_ls_push(&list, (void *)i);
+  }
+  TEST_ASSERT(fio_ls_any(&list), "List should be populated after fio_ls_push");
+  counter = 0;
+  while (fio_ls_any(&list)) {
+    TEST_ASSERT(counter < TEST_LIMIT,
+                "`fio_ls_any` didn't return false when expected %p<=%p=>%p",
+                (void *)list.prev, (void *)&list, (void *)list.next);
+    size_t tmp = (size_t)fio_ls_pop(&list);
+    TEST_ASSERT(tmp == counter, "`fio_ls_pop` value error (%zu != %zu)", tmp,
+                counter);
+    ++counter;
+  }
+  TEST_ASSERT(counter == TEST_LIMIT, "List item count error (%zu != %zu)",
+              counter, (size_t)TEST_LIMIT);
+  /* test shift/unshift */
+  for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
+    fio_ls_unshift(&list, (void *)i);
+  }
+  TEST_ASSERT(fio_ls_any(&list),
+              "List should be populated after fio_ls_unshift");
+  counter = 0;
+  while (!fio_ls_is_empty(&list)) {
+    TEST_ASSERT(counter < TEST_LIMIT,
+                "`fio_ls_is_empty` didn't return true when expected %p<=%p=>%p",
+                (void *)list.prev, (void *)&list, (void *)list.next);
+    size_t tmp = (size_t)fio_ls_shift(&list);
+    TEST_ASSERT(tmp == counter, "`fio_ls_shift` value error (%zu != %zu)", tmp,
+                counter);
+    ++counter;
+  }
+  TEST_ASSERT(counter == TEST_LIMIT, "List item count error (%zu != %zu)",
+              counter, (size_t)TEST_LIMIT);
+
+  /* Re-test for embeded list */
+
+  struct fio_ls_test_s {
+    size_t i;
+    fio_ls_embd_s node;
+  };
+
+  fio_ls_embd_s emlist = FIO_LS_INIT(emlist);
+
+  /* test push/pop */
+  for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
+    struct fio_ls_test_s *n = malloc(sizeof(*n));
+    n->i = i;
+    fio_ls_embd_push(&emlist, &n->node);
+  }
+  TEST_ASSERT(fio_ls_embd_any(&emlist),
+              "List should be populated after fio_ls_embd_push");
+  counter = 0;
+  while (fio_ls_embd_any(&emlist)) {
+    TEST_ASSERT(
+        counter < TEST_LIMIT,
+        "`fio_ls_embd_any` didn't return false when expected %p<=%p=>%p",
+        (void *)emlist.prev, (void *)&emlist, (void *)emlist.next);
+    struct fio_ls_test_s *n =
+        FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_pop(&emlist));
+    TEST_ASSERT(n->i == counter, "`fio_ls_embd_pop` value error (%zu != %zu)",
+                n->i, counter);
+    free(n);
+    ++counter;
+  }
+  TEST_ASSERT(counter == TEST_LIMIT, "List item count error (%zu != %zu)",
+              counter, (size_t)TEST_LIMIT);
+  /* test shift/unshift */
+  for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
+    struct fio_ls_test_s *n = malloc(sizeof(*n));
+    n->i = i;
+    fio_ls_embd_unshift(&emlist, &n->node);
+  }
+  TEST_ASSERT(fio_ls_embd_any(&emlist),
+              "List should be populated after fio_ls_embd_unshift");
+  counter = 0;
+  while (!fio_ls_embd_is_empty(&emlist)) {
+    TEST_ASSERT(
+        counter < TEST_LIMIT,
+        "`fio_ls_embd_is_empty` didn't return true when expected %p<=%p=>%p",
+        (void *)emlist.prev, (void *)&emlist, (void *)emlist.next);
+    struct fio_ls_test_s *n =
+        FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_shift(&emlist));
+    TEST_ASSERT(n->i == counter, "`fio_ls_embd_shift` value error (%zu != %zu)",
+                n->i, counter);
+    free(n);
+    ++counter;
+  }
+  TEST_ASSERT(counter == TEST_LIMIT, "List item count error (%zu != %zu)",
+              counter, (size_t)TEST_LIMIT);
+  fprintf(stderr, "* passed.\n");
+}
+
+#undef TEST_LIMIT
+#undef TEST_ASSERT
+#endif
+
+/* *****************************************************************************
+Done
+***************************************************************************** */
 #undef FIO_FUNC
 
 #endif

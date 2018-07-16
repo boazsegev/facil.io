@@ -2,6 +2,7 @@
 #include "fio_ary.h"
 #include "fio_base64.h"
 #include "fio_hashmap.h"
+#include "fio_llist.h"
 #include "fio_mem.h"
 #include "fio_random.h"
 #include "fio_sha1.h"
@@ -25,6 +26,7 @@ int main(void) {
                   "OpenSSL isn't.\n\n");
 #endif
   fio_malloc_test();
+  fio_llist_test();
   fio_ary_test();
   fio_hash_test();
   fiobj_test();
