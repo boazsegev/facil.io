@@ -255,6 +255,7 @@ static inline subscription_s *subscription_create(subscribe_args_s args) {
       .node = (fio_ls_embd_s)FIO_LS_INIT(s->node),
       .parent = NULL,
       .on_message = args.on_message,
+      .on_unsubscribe = args.on_unsubscribe,
       .udata1 = args.udata1,
       .udata2 = args.udata2,
       .ref = 1,
