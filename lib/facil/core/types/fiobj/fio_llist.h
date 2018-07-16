@@ -127,6 +127,19 @@ FIO_FUNC inline int fio_ls_embd_any(fio_ls_embd_s *list);
 Independent Implementation
 ***************************************************************************** */
 
+/** Removes an object from the containing node. */
+FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node) {
+  if (node->next == node) {
+    /* never remove the list's head */
+    return NULL;
+  }
+  const void *ret = node->obj;
+  node->next->prev = node->prev;
+  node->prev->next = node->next;
+  free(node);
+  return (void *)ret;
+}
+
 /** Adds an object to the list's head. */
 FIO_FUNC inline void fio_ls_push(fio_ls_s *pos, const void *obj) {
   /* prepare item */
@@ -149,35 +162,12 @@ FIO_FUNC inline void fio_ls_unshift(fio_ls_s *pos, const void *obj) {
 
 /** Removes an object from the list's head. */
 FIO_FUNC inline void *fio_ls_pop(fio_ls_s *list) {
-  if (list->next == list)
-    return NULL;
-  fio_ls_s *item = list->next;
-  const void *ret = item->obj;
-  list->next = item->next;
-  list->next->prev = list;
-  free(item);
-  return (void *)ret;
+  return fio_ls_remove(list->next);
 }
 
 /** Removes an object from the list's tail. */
 FIO_FUNC inline void *fio_ls_shift(fio_ls_s *list) {
-  if (list->prev == list)
-    return NULL;
-  fio_ls_s *item = list->prev;
-  const void *ret = item->obj;
-  list->prev = item->prev;
-  list->prev->next = list;
-  free(item);
-  return (void *)ret;
-}
-
-/** Removes an object from the containing node. */
-FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node) {
-  const void *ret = node->obj;
-  node->next->prev = node->prev;
-  node->prev->next = node->next;
-  free(node);
-  return (void *)ret;
+  return fio_ls_remove(list->prev);
 }
 
 /** Tests if the list is empty. */
@@ -196,6 +186,17 @@ FIO_FUNC inline int fio_ls_any(fio_ls_s *list) { return list->next != list; }
 Embeded List Implementation
 ***************************************************************************** */
 
+/** Removes a node from the containing node. */
+FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node) {
+  if (node->next == node) {
+    /* never remove the list's head */
+    return NULL;
+  }
+  node->next->prev = node->prev;
+  node->prev->next = node->next;
+  return node;
+}
+
 /** Adds a node to the list's head. */
 FIO_FUNC inline void fio_ls_embd_push(fio_ls_embd_s *dest,
                                       fio_ls_embd_s *node) {
@@ -213,29 +214,12 @@ FIO_FUNC inline void fio_ls_embd_unshift(fio_ls_embd_s *dest,
 
 /** Removes a node from the list's head. */
 FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_pop(fio_ls_embd_s *list) {
-  if (list->next == list)
-    return NULL;
-  fio_ls_embd_s *item = list->next;
-  list->next = item->next;
-  list->next->prev = list;
-  return item;
+  return fio_ls_embd_remove(list->next);
 }
 
 /** Removes a node from the list's tail. */
 FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_shift(fio_ls_embd_s *list) {
-  if (list->prev == list)
-    return NULL;
-  fio_ls_embd_s *item = list->prev;
-  list->prev = item->prev;
-  list->prev->next = list;
-  return item;
-}
-
-/** Removes a node from the containing node. */
-FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node) {
-  node->next->prev = node->prev;
-  node->prev->next = node->next;
-  return node;
+  return fio_ls_embd_remove(list->prev);
 }
 
 /** Tests if the list is empty. */
