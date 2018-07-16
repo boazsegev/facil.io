@@ -226,6 +226,9 @@ static void subscription_destroy(void *s_, void *ignore) {
 /** Creates a new subscription object, returning NULL on error. */
 static inline subscription_s *subscription_create(subscribe_args_s args) {
   if (!args.on_message || (!args.channel && !args.filter)) {
+    if (args.on_unsubscribe) {
+      args.on_unsubscribe(args.udata1, args.udata2);
+    }
     return NULL;
   }
   collection_s *collection;

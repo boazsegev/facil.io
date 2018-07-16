@@ -632,8 +632,9 @@ typedef struct {
 static void websocket_on_unsubscribe(void *u1, void *u2) {
   websocket_sub_data_s *d = u2;
   (void)u1;
-  if (d->on_unsubscribe)
+  if (d->on_unsubscribe) {
     d->on_unsubscribe(d->udata);
+  }
   free(d);
 }
 
@@ -727,10 +728,15 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
   if (!args.ws)
     goto error;
   websocket_sub_data_s *d = malloc(sizeof(*d));
-  *d = (websocket_sub_data_s){.udata = args.udata,
-                              .on_message = args.on_message,
-                              .on_unsubscribe = args.on_unsubscribe};
-
+  if (!d) {
+    websocket_close(args.ws);
+    goto error;
+  }
+  *d = (websocket_sub_data_s){
+      .udata = args.udata,
+      .on_message = args.on_message,
+      .on_unsubscribe = args.on_unsubscribe,
+  };
   subscription_s *sub = facil_subscribe(
           .channel = args.channel, .match = args.match,
           .on_unsubscribe = websocket_on_unsubscribe,
@@ -744,7 +750,7 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
                                : websocket_on_pubsub_message_direct),
           .udata1 = (void *)args.ws->fd, .udata2 = d);
   if (!sub) {
-    free(d);
+    /* don't free `d`, return (`d` freed by callback) */
     return 0;
   }
   fio_ls_push(&args.ws->subscriptions, sub);
