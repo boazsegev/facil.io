@@ -184,27 +184,29 @@ static void mock_on_data(intptr_t uuid, protocol_s *protocol) {
 }
 
 static void mock_on_close(intptr_t uuid, protocol_s *protocol) {
-  (void)(protocol);
-  (void)(uuid);
+  (void)protocol;
+  (void)uuid;
 }
 static uint8_t mock_on_shutdown(intptr_t uuid, protocol_s *protocol) {
   return 0;
-  (void)(protocol);
-  (void)(uuid);
+  (void)protocol;
+  (void)uuid;
 }
 
 static uint8_t mock_on_shutdown_internal(intptr_t uuid, protocol_s *protocol) {
   return 0;
-  (void)(protocol);
-  (void)(uuid);
+  (void)protocol;
+  (void)uuid;
 }
 
 static void mock_ping(intptr_t uuid, protocol_s *protocol) {
-  (void)(protocol);
+  (void)protocol;
+
   sock_force_close(uuid);
 }
 static void mock_ping2(intptr_t uuid, protocol_s *protocol) {
-  (void)(protocol);
+  (void)protocol;
+
   uuid_data(uuid).active = facil_last_tick().tv_sec;
   if (uuid_data(uuid).timeout == 255)
     return;
