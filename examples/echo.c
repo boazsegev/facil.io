@@ -12,9 +12,8 @@ ws.onopen = function(e) { ws.send("Echo This!"); };
 
 */
 
-#include "pubsub.h"
+#include "fio_cli.h"
 #include "websockets.h"
-
 #include <string.h>
 
 /* *****************************************************************************
@@ -50,11 +49,17 @@ static void on_http_upgrade(http_s *h, char *target, size_t len) {
     http_send_error(h, 400);
     return;
   }
-  http_upgrade2ws(.http = h, .on_message = handle_websocket_messages,
+  http_upgrade2ws(h, .on_message = handle_websocket_messages,
                   .on_shutdown = on_server_shutdown, .udata = NULL);
 }
 
-#include "fio_cli.h"
+/* *****************************************************************************
+Command Line Arguments
+***************************************************************************** */
+
+/* *****************************************************************************
+Main function
+***************************************************************************** */
 
 /*
 Read available command line details using "-?".
@@ -67,49 +72,51 @@ Read available command line details using "-?".
 int main(int argc, char const *argv[]) {
   const char *port = "3000";
   const char *public_folder = NULL;
-  uint32_t threads = 1;
-  uint32_t workers = 1;
+  uint32_t threads = 0;
+  uint32_t workers = 0;
   uint8_t print_log = 0;
 
   /*     ****  Command line arguments ****     */
   fio_cli_start(
-      argc, argv,
+      argc, argv, 0,
       "This is a facil.io example application.\n"
-      "\nThis example demonstrates Pub/Sub using a Chat application.\n"
-      "Optional Redis support is also demonstrated.\n"
-      "\nThe following arguments are supported:");
-  fio_cli_accept_num(
-      "threads t",
-      "The number of threads to use. Default uses smart selection.");
-  fio_cli_accept_num(
-      "workers w",
-      "The number of processes to use. Default uses smart selection.");
-  fio_cli_accept_num("port p", "The port number to listen to.");
-  fio_cli_accept_str("public www",
-                     "A public folder for serve an HTTP static file service.");
-  fio_cli_accept_bool("log v", "Turns logging on.");
-
-  if (fio_cli_get_str("p"))
-    port = fio_cli_get_str("p");
-  if (fio_cli_get_str("www")) {
-    public_folder = fio_cli_get_str("www");
+      "\nThis example demonstrates a simple WebSocket echo server.\n"
+      "\nThe following arguments are supported:",
+      "-threads -t The number of threads to use. Default uses smart selection.",
+      FIO_CLI_TYPE_INT,
+      "-workers -w The number of processes to use. Default uses smart "
+      "selection.",
+      FIO_CLI_TYPE_INT, "-port -p The port number to listen to.",
+      FIO_CLI_TYPE_INT,
+      "-public -www A public folder for serve an HTTP static file service.",
+      "-log -v Turns logging on.", FIO_CLI_TYPE_BOOL);
+  if (fio_cli_get("-p"))
+    port = fio_cli_get("-p");
+  if (fio_cli_get("-www")) {
+    public_folder = fio_cli_get("-www");
     fprintf(stderr, "* serving static files from:%s\n", public_folder);
   }
-  if (fio_cli_get_str("t"))
-    threads = fio_cli_get_int("t");
-  if (fio_cli_get_str("w"))
-    workers = fio_cli_get_int("w");
-  print_log = fio_cli_get_int("v");
+  if (fio_cli_get("-t"))
+    threads = fio_cli_get_i("-t");
+  if (fio_cli_get("-w"))
+    workers = fio_cli_get_i("-w");
+  print_log = fio_cli_get_bool("-v");
+  fio_cli_end();
 
-  if (!threads || !workers)
-    threads = workers = 0;
+  if (!threads && !workers) {
+    threads = workers = 1;
+  }
 
   /*     ****  actual code ****     */
   if (http_listen(port, NULL, .on_request = on_http_request,
                   .on_upgrade = on_http_upgrade, .log = print_log,
-                  .public_folder = public_folder) == -1)
-    perror("Couldn't initiate Websocket service"), exit(1);
+                  .public_folder = public_folder) == -1) {
+    perror("Couldn't initiate Websocket service");
+    exit(1);
+  }
   facil_run(.threads = threads, .processes = workers);
-
-  fio_cli_end();
 }
+
+/* *****************************************************************************
+Main function
+***************************************************************************** */

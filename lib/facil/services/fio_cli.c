@@ -5,419 +5,381 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #include "fio_cli.h"
-#include "fiobj.h"
 
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 /* *****************************************************************************
-State (static data)
+CLI Data Stores
 ***************************************************************************** */
 
-/* static variables are automatically initialized to 0, which is what we need.*/
-static int FIO_CLI_ARGC;
-static const char **FIO_CLI_ARGV;
-static FIOBJ arg_aliases; /* a hash for translating aliases */
-static FIOBJ arg_type;    /* a with information about each argument */
-static FIOBJ parsed;      /* a with information about each argument */
-static FIOBJ help_str;    /* The CLI help string */
-static FIOBJ info_str;    /* The CLI information string */
-static int is_parsed;
-static int ignore_unknown;
+typedef struct {
+  size_t len;
+  const char *data;
+} cstr_s;
 
-const char DEFAULT_CLI_INFO[] =
-    "This application accepts any of the following possible arguments:";
+#define FIO_HASH_KEY_TYPE cstr_s
+#define FIO_HASH_KEY_INVALID                                                   \
+  (cstr_s) { .len = 0 }
+#define FIO_HASH_KEY2UINT(key) ((key).len)
+#define FIO_HASH_COMPARE_KEYS(k1, k2)                                          \
+  (((k1).data == (k2).data) ||                                                 \
+   ((k1).data && (k2).data && !memcmp((k1).data, (k2).data, (k1).len)))
+#define FIO_HASH_KEY_ISINVALID(key) ((key).len == 0 && (key).data == NULL)
+#define FIO_HASH_KEY_COPY(key) (key)
+#define FIO_HASH_KEY_DESTROY(key) ((void)0)
+
+#include "fio_hashmap.h"
+
+static fio_hash_s fio_aliases = FIO_HASH_INIT;
+static fio_hash_s fio_values = FIO_HASH_INIT;
+static size_t fio_cli_unknown_count = 0;
+
+typedef struct {
+  int allow_unknown;
+  int pos;
+  int unknown_count;
+  char const *description;
+  char const **names;
+} parser_data_s;
+
+/** this will allow the function definition fio_cli_start to avoid the MACRO */
+#define AVOID_MACRO
+
 /* *****************************************************************************
-Error / Help handling - printing the information and exiting.
+CLI Parsing
 ***************************************************************************** */
 
-/** Tells the CLI helper to ignore invalid command line arguments. */
-void fio_cli_ignore_unknown(void) { ignore_unknown = 1; }
+static void fio_cli_map_line2alias(char const *line) {
+  cstr_s n = {.data = line};
+  while (n.data[0] == '-') {
+    while (n.data[n.len] && n.data[n.len] != ' ' && n.data[n.len] != ',') {
+      ++n.len;
+    }
+    char const *old = fio_hash_insert(&fio_aliases, n, (void *)line);
+    while (n.data[n.len] && (n.data[n.len] == ' ' || n.data[n.len] == ',')) {
+      ++n.len;
+    }
+    n.data += n.len;
+    n.len = 0;
+    if (old) {
+      fprintf(stderr,
+              "WARNING: CLI argument name conflict detected\n"
+              "         The following two directives conflict:\n"
+              "\t%s\n\t%s\n",
+              old, line);
+    }
+  }
+}
 
-static void fio_cli_handle_error(void) {
-  if (ignore_unknown)
+char const *fio_cli_get_line_type(parser_data_s *parser, void *line) {
+  if (!line) {
+    return NULL;
+  }
+  char const **pos = parser->names;
+  while (*pos) {
+    switch ((intptr_t)*pos) {
+    case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
+    case /* FIO_CLI_TYPE_BOOL */ 0x2:   /* fallthrough */
+    case /* FIO_CLI_TYPE_INT */ 0x3:    /* fallthrough */
+      ++pos;
+      continue;
+    }
+    if (line == *pos) {
+      goto found;
+    }
+    ++pos;
+  }
+  return NULL;
+found:
+  switch ((size_t)pos[1]) {
+  case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
+  case /* FIO_CLI_TYPE_BOOL */ 0x2:   /* fallthrough */
+  case /* FIO_CLI_TYPE_INT */ 0x3:    /* fallthrough */
+    return pos[1];
+  }
+  return NULL;
+}
+
+static void fio_cli_set_arg(cstr_s arg, char const *value, void *line,
+                            parser_data_s *parser) {
+  /* handle unknown argument */
+  if (!line || !arg.len) {
+    if (!value) {
+      /*wtf?*/
+      return;
+    }
+    if (!strcmp(value, "-?") || !strcasecmp(value, "-h") ||
+        !strcasecmp(value, "-help") || !strcasecmp(value, "--help")) {
+      goto print_help;
+    }
+    cstr_s n = {.len = ++parser->unknown_count};
+    fio_hash_insert(&fio_values, n, (void *)value);
+    if (!parser->allow_unknown) {
+      goto error;
+    }
     return;
-  fio_cstr_s info = fiobj_obj2cstr(info_str);
-  fio_cstr_s args = fiobj_obj2cstr(help_str);
-  fprintf(stdout,
-          "\n"
-          "%s\n"
-          "%s\n"
-          "Use any of the following input formats:\n"
-          "\t-arg <value>\t-arg=<value>\t-arg<value>\n"
-          "\n"
-          "Use the -h, -help or -? to get this information again.\n"
-          "\n",
-          info.data, args.data);
+  }
+
+  /* validate data types */
+  char const *type = fio_cli_get_line_type(parser, line);
+  switch ((size_t)type) {
+  case /* FIO_CLI_TYPE_BOOL */ 0x2:
+    if (value &&
+        (value == arg.data + arg.len ||
+         (value == arg.data + arg.len + 1 && arg.data[arg.len] == '='))) {
+      goto error;
+    }
+    value = "1";
+    break;
+  case /* FIO_CLI_TYPE_INT */ 0x3: /* fallthrough */
+  {
+    if (!value)
+      goto error;
+    char const *tmp = value;
+    if (*tmp == '-' || *tmp == '+') {
+      ++tmp;
+    }
+    if (!*tmp) {
+      goto error;
+    }
+    while (*tmp && *tmp >= '0' && *tmp <= '9') {
+      ++tmp;
+    }
+    if (*tmp) {
+      goto error;
+    }
+  }
+  case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
+    break;
+  }
+
+  /* add values using all aliases possible */
+  {
+    cstr_s n = {.data = line};
+    while (n.data[0] == '-') {
+      while (n.data[n.len] && n.data[n.len] != ' ' && n.data[n.len] != ',') {
+        ++n.len;
+      }
+      fio_hash_insert(&fio_values, n, (void *)value);
+      while (n.data[n.len] && (n.data[n.len] == ' ' || n.data[n.len] == ',')) {
+        ++n.len;
+      }
+      n.data += n.len;
+      n.len = 0;
+    }
+  }
+
+  /* handle aditional argv progress (if value is on separate argv) */
+  if (type != FIO_CLI_TYPE_BOOL && value && value != arg.data + arg.len &&
+      !arg.data[arg.len]) {
+    /* advance the position marker more than once? */
+    ++parser->pos;
+  }
+  return;
+
+error: /* handle errors*/
+  /* TODO! */
+  fprintf(
+      stderr,
+      "\n\r\x1B[31mError:\x1B[0m unsupported argument %.*s with value %s\n\n",
+      (int)arg.len, arg.data, value ? value : "(null)");
+print_help:
+  fprintf(stderr, "\n%s\n\n",
+          parser->description ? parser->description
+                              : "This application accepts any of the following "
+                                "possible arguments:");
+  /* print out each line's arguments */
+  char const **pos = parser->names;
+  while (*pos) {
+    switch ((intptr_t)*pos) {
+    case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
+    case /* FIO_CLI_TYPE_BOOL */ 0x2:   /* fallthrough */
+    case /* FIO_CLI_TYPE_INT */ 0x3:    /* fallthrough */
+      ++pos;
+      continue;
+    }
+    type = FIO_CLI_TYPE_STRING;
+    switch ((intptr_t)pos[1]) {
+    case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
+    case /* FIO_CLI_TYPE_BOOL */ 0x2:   /* fallthrough */
+    case /* FIO_CLI_TYPE_INT */ 0x3:    /* fallthrough */
+      type = pos[1];
+    }
+    /* print line @ pos, starting with main argument name */
+    int alias_count = 0;
+    int first_len = 0;
+    size_t tmp = 0;
+    char const *const p = *pos;
+    while (p[tmp] == '-') {
+      while (p[tmp] && p[tmp] != ' ' && p[tmp] != ',') {
+        if (!alias_count)
+          ++first_len;
+        ++tmp;
+      }
+      ++alias_count;
+      while (p[tmp] && (p[tmp] == ' ' || p[tmp] == ',')) {
+        ++tmp;
+      }
+    }
+    switch ((size_t)type) {
+    case /* FIO_CLI_TYPE_STRING */ 0x1:
+      fprintf(stderr, "\t\x1B[1m%.*s\x1B[0m\x1B[2m <val>\x1B[0m\t%s\n",
+              first_len, p, p + tmp);
+      break;
+    case /* FIO_CLI_TYPE_BOOL */ 0x2:
+      fprintf(stderr, "\t\x1B[1m%.*s\x1B[0m      \t%s\n", first_len, p,
+              p + tmp);
+      break;
+    case /* FIO_CLI_TYPE_INT */ 0x3:
+      fprintf(stderr, "\t\x1B[1m%.*s\x1B[0m\x1B[2m ###  \x1B[0m\t%s\n",
+              first_len, p, p + tmp);
+      break;
+    }
+    /* print aliase information */
+    tmp = first_len;
+    while (p[tmp] && (p[tmp] == ' ' || p[tmp] == ',')) {
+      ++tmp;
+    }
+    while (p[tmp] == '-') {
+      const size_t start = tmp;
+      while (p[tmp] && p[tmp] != ' ' && p[tmp] != ',') {
+        ++tmp;
+      }
+      switch ((size_t)type) {
+      case /* FIO_CLI_TYPE_STRING */ 0x1:
+        fprintf(stderr,
+                "\t\x1B[1m%.*s\x1B[0m\x1B[2m <val>\x1B[0m\t(same as "
+                "\x1B[1m%.*s\x1B[0m)\n",
+                (int)(tmp - start), p + start, first_len, p);
+        break;
+      case /* FIO_CLI_TYPE_BOOL */ 0x2:
+        fprintf(stderr,
+                "\t\x1B[1m%.*s\x1B[0m      \t(same as \x1B[1m%.*s\x1B[0m)\n",
+                (int)(tmp - start), p + start, first_len, p);
+        break;
+      case /* FIO_CLI_TYPE_INT */ 0x3:
+        fprintf(stderr,
+                "\t\x1B[1m%.*s\x1B[0m\x1B[2m ###  \x1B[0m\t(same as "
+                "\x1B[1m%.*s\x1B[0m)\n",
+                (int)(tmp - start), p + start, first_len, p);
+        break;
+      }
+    }
+
+    ++pos;
+  }
+  fprintf(stderr, "\nUse any of the following input formats:\n"
+                  "\t-arg <value>\t-arg=<value>\t-arg<value>\n"
+                  "\n"
+                  "Use the -h, -help or -? to get this information again.\n"
+                  "\n");
   fio_cli_end();
   exit(0);
 }
 
-/* *****************************************************************************
-Initializing the CLI data
-***************************************************************************** */
+void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int allow_unknown,
+                               char const *description, char const **names) {
+  parser_data_s parser = {
+      .allow_unknown = allow_unknown,
+      .description = description,
+      .names = names,
+      .pos = 0,
+  };
 
-static void fio_cli_init(void) {
-  /* if init is called after parsing, discard previous result */
-  if (parsed) {
-    fiobj_free(parsed);
-    parsed = FIOBJ_INVALID;
+  if (fio_hash_count(&fio_values)) {
+    fio_cli_end();
   }
-  /* avoid overwriting existing data */
-  if (arg_aliases)
-    return;
-  arg_aliases = fiobj_hash_new();
-  arg_type = fiobj_hash_new();
-  help_str = fiobj_str_buf(1024);
-  if (!info_str) /* might exist through `fio_cli_start` */
-    info_str = fiobj_str_new(DEFAULT_CLI_INFO, sizeof(DEFAULT_CLI_INFO) - 1);
-}
 
-/* *****************************************************************************
-Matching arguments to C string
-***************************************************************************** */
+  /* prepare aliases hash map */
 
-/* returns the primamry symbol for the argument, of NULL (if none) */
-static inline FIOBJ fio_cli_get_name(const char *str, size_t len) {
-  const uint64_t key = fio_siphash(str, len);
-  return fiobj_hash_get2(arg_aliases, key);
-}
-
-/* *****************************************************************************
-Setting an argument's type and alias.
-***************************************************************************** */
-typedef enum { CLI_BOOL, CLI_NUM, CLI_STR } cli_type;
-static void fio_cli_set(const char *aliases, const char *desc, cli_type type) {
-  fio_cli_init();
-  const char *start = aliases;
-  FIOBJ arg_name = FIOBJ_INVALID;
-
-  while (1) {
-    /* get rid of any white space or commas */
-    while (start[0] == ' ' || start[0] == ',')
-      start++;
-    /* we're done */
-    if (!start[0])
-      return;
-    size_t len = 0;
-    /* find the length of the argument name */
-    while (start[len] != 0 && start[len] != ' ' && start[len] != ',')
-      len++;
-
-    if (!arg_name) {
-      /* this is the main identifier */
-      arg_name = fiobj_str_new(start, len);
-      /* add to aliases hash */
-      fiobj_hash_set(arg_aliases, arg_name, arg_name);
-      /* add the help section and set type*/
-      switch (type) {
-      case CLI_BOOL:
-        fiobj_str_write2(help_str, "\t\x1B[1m-%s\x1B[0m\t\t%s\n",
-                         fiobj_obj2cstr(arg_name).data, desc);
-        fiobj_hash_set(arg_type, arg_name, fiobj_null());
-        break;
-      case CLI_NUM:
-        fiobj_str_write2(help_str,
-                         "\t\x1B[1m-%s\x1B[0m\x1B[2m ###\x1B[0m\t%s\n",
-                         fiobj_obj2cstr(arg_name).data, desc);
-        fiobj_hash_set(arg_type, arg_name, fiobj_true());
-        break;
-      case CLI_STR:
-        fiobj_str_write2(help_str,
-                         "\t\x1B[1m-%s\x1B[0m\x1B[2m <val>\x1B[0m\t%s\n",
-                         fiobj_obj2cstr(arg_name).data, desc);
-        fiobj_hash_set(arg_type, arg_name, fiobj_false());
-        break;
-      }
-    } else {
-      /* this is an alias */
-      FIOBJ tmp = fiobj_str_new(start, len);
-      /* add to aliases hash */
-      fiobj_hash_set(arg_aliases, tmp, fiobj_dup(arg_name));
-      /* add to description + free it*/
-      fiobj_str_write2(help_str, "\t\t\x1B[1m-%s\x1B[0m\tsame as -%s\n",
-                       fiobj_obj2cstr(tmp).data, fiobj_obj2cstr(arg_name).data);
-      fiobj_free(tmp);
-    }
-    start += len;
-  }
-}
-
-/* *****************************************************************************
-parsing the arguments
-***************************************************************************** */
-
-static void fio_cli_parse(void) {
-  if (!FIO_CLI_ARGC || !FIO_CLI_ARGV) {
-    fprintf(
-        stderr,
-        "ERROR: (fio_cli) fio_cli_get_* "
-        "can only be called after `fio_cli_start` and before `fio_cli_end`\n");
-    exit(-1);
-  }
-  if (!arg_aliases) {
-    fprintf(stderr, "WARNING: (fio_cli) fio_cli_get_* "
-                    "should only be called after `fio_cli_accept_*`\n");
-    return;
-  }
-  if (parsed)
-    return;
-  parsed = fiobj_hash_new();
-  // {
-  //   FIOBJ json = fiobj_obj2json(arg_aliases, 1);
-  //   fprintf(stderr, "%s\n", fiobj_obj2cstr(json).data);
-  //   fiobj_free(json);
-  //   json = fiobj_obj2json(arg_type, 1);
-  //   fprintf(stderr, "%s\n", fiobj_obj2cstr(json).data);
-  //   fiobj_free(json);
-  // }
-
-  const char *start;
-  FIOBJ arg_name;
-
-  /* ignore the first element, it's the program's name. */
-  for (int i = 1; i < FIO_CLI_ARGC; i++) {
-    /* test for errors or help requests */
-    if (FIO_CLI_ARGV[i][0] != '-' || FIO_CLI_ARGV[i][1] == 0) {
-      if (ignore_unknown)
-        continue;
-      start = FIO_CLI_ARGV[i];
-      goto error;
-    }
-    if ((FIO_CLI_ARGV[i][1] == '?' && FIO_CLI_ARGV[i][2] == 0) ||
-        (FIO_CLI_ARGV[i][1] == 'h' &&
-         (FIO_CLI_ARGV[i][2] == 0 ||
-          (FIO_CLI_ARGV[i][2] == 'e' && FIO_CLI_ARGV[i][3] == 'l' &&
-           FIO_CLI_ARGV[i][4] == 'p' && FIO_CLI_ARGV[i][5] == 0)))) {
-      fio_cli_handle_error();
+  char const **line = names;
+  while (*line) {
+    switch ((intptr_t)*line) {
+    case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
+    case /* FIO_CLI_TYPE_BOOL */ 0x2:   /* fallthrough */
+    case /* FIO_CLI_TYPE_INT */ 0x3:    /* fallthrough */
+      ++line;
       continue;
     }
-    /* we walk the name backwards, so `name` is tested before `n` */
-    start = FIO_CLI_ARGV[i] + 1;
-    size_t len = strlen(start);
-    while (len && !(arg_name = fio_cli_get_name(start, len))) {
-      --len;
-    }
-    if (!len)
-      goto error;
-    /* at this point arg_name is a handle to the argument's Symbol */
-    FIOBJ type = fiobj_hash_get(arg_type, arg_name);
-    if (FIOBJ_TYPE_IS(type, FIOBJ_T_NULL)) {
-      /* type is BOOL, no further processing required */
-      start = "1";
-      len = 1;
-      goto set_arg;
-    }
-    if (start[len] == 0) {
-      i++;
-      if (i == FIO_CLI_ARGC)
-        goto error;
-      start = FIO_CLI_ARGV[i];
-    } else if (start[len] == '=') {
-      start = start + len + 1;
-    } else
-      start = start + len;
-    len = 0;
-    if (FIOBJ_TYPE_IS(type, FIOBJ_T_FALSE)) /* no restrictions on data  */
-      goto set_arg;
-    /* test that the argument is numerical */
-    if (start[len] == '-') /* negative number? */
-      len++;
-    while (start[len] >= '0' && start[len] <= '9')
-      len++;
-    if (start[len] == '.') { /* float number? */
-      while (start[len] >= '0' && start[len] <= '9')
-        len++;
-    }
-    if (start[len]) /* if there's data left, this aint a number. */
-      goto error;
-  set_arg:
-    fiobj_hash_set(parsed, arg_name, fiobj_str_new(start, strlen(start)));
-    continue;
-  error:
-    fprintf(stderr, "\n\t*** Argument Error: %s ***\n", start);
-    fio_cli_handle_error();
+    fio_cli_map_line2alias(*line);
+    ++line;
   }
+
+  /* parse existing arguments */
+
+  while ((++parser.pos) < argc) {
+    char const *value = NULL;
+    cstr_s n = {.data = argv[parser.pos], .len = strlen(argv[parser.pos])};
+    if (parser.pos + 1 < argc) {
+      value = argv[parser.pos + 1];
+    }
+    void *l = NULL;
+    while (n.len && !(l = fio_hash_find(&fio_aliases, n))) {
+      --n.len;
+      value = n.data + n.len;
+    }
+    if (n.len && value && value[0] == '=') {
+      ++value;
+    }
+    // fprintf(stderr, "Setting %.*s to %s\n", (int)n.len, n.data, value);
+    fio_cli_set_arg(n, value, l, &parser);
+  }
+
+  /* Cleanup and save state for API */
+  fio_hash_free(&fio_aliases);
+  fio_cli_unknown_count = parser.unknown_count;
 }
 
+void fio_cli_end(void) {
+  fio_hash_free(&fio_values);
+  fio_hash_free(&fio_aliases);
+  fio_cli_unknown_count = 0;
+}
 /* *****************************************************************************
-CLI API
+CLI Data Access
 ***************************************************************************** */
 
-/** Initialize the CLI helper */
-void fio_cli_start(int argc, const char **argv, const char *info) {
-  FIO_CLI_ARGV = argv;
-  FIO_CLI_ARGC = argc;
-  if (info_str)
-    fiobj_free(info_str);
-  if (info) {
-    info_str = fiobj_str_new(info, strlen(info));
-  } else {
-    info_str = fiobj_str_new(DEFAULT_CLI_INFO, sizeof(DEFAULT_CLI_INFO) - 1);
-  }
-}
-
-/** Clears the memory and resources used by the CLI helper */
-void fio_cli_end(void) {
-#define free_and_reset(o)                                                      \
-  do {                                                                         \
-    fiobj_free((o));                                                           \
-    o = FIOBJ_INVALID;                                                         \
-  } while (0);
-
-  free_and_reset(arg_aliases);
-  free_and_reset(arg_type);
-  free_and_reset(help_str);
-  free_and_reset(info_str);
-  if (parsed)
-    free_and_reset(parsed);
-
-#undef free_and_reset
-
-  FIO_CLI_ARGC = 0;
-  FIO_CLI_ARGV = NULL;
-  is_parsed = 0;
-}
-
-/**
- * Sets a CLI acceptable argument of type Number (both `int` and `float`).
- *
- * The `aliases` string sets aliases for the same argument. i.e. "string
- * s".
- *
- * The first alias will be the name available for `fio_cli_get_*`
- * functions.
- *
- * The `desc` string will be printed if `-?`, `-h` of `-help` are used.
- *
- * The function will crash the application on failure, printing an error
- * message.
- */
-void fio_cli_accept_num(const char *aliases, const char *desc) {
-  fio_cli_set(aliases, desc, CLI_NUM);
-}
-
-/**
- * Sets a CLI acceptable argument of type String.
- *
- * The `aliases` string sets aliases for the same argument. i.e. "string s".
- *
- * The first alias will be the name used
- *
- * The `desc` string will be printed if `-?`, `-h` of `-help` are used.
- *
- * The function will crash the application on failure, printing an error
- * message.
- */
-void fio_cli_accept_str(const char *aliases, const char *desc) {
-  fio_cli_set(aliases, desc, CLI_STR);
-}
-
-/**
- * Sets a CLI acceptable argument of type Bool (true if exists).
- *
- * The `aliases` string sets aliases for the same argument. i.e. "string s".
- *
- * The first alias will be the name available for `fio_cli_get_*` functions.
- *
- * The `desc` string will be printed if `-?`, `-h` of `-help` are used.
- *
- * The function will crash the application on failure, printing an error
- * message.
- */
-void fio_cli_accept_bool(const char *aliases, const char *desc) {
-  fio_cli_set(aliases, desc, CLI_BOOL);
-}
-
-/**
- * Returns a C String containing the value of the received argument, or NULL
- * if none.
- */
-const char *fio_cli_get_str(const char *opt) {
-  fio_cli_parse();
-  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
-  if (!name)
+/** Returns the argument's value as a NUL terminated C String. */
+char const *fio_cli_get(char const *name) {
+  cstr_s n = {.data = name, .len = strlen(name)};
+  if (!fio_hash_count(&fio_values)) {
     return NULL;
-  FIOBJ result = fiobj_hash_get(parsed, name);
-  if (!result)
-    return NULL;
-  return fiobj_obj2cstr(result).data;
-}
-
-/**
- * Returns an Integer containing the parsed value of the argument.
- *
- * For boolean values, the value will be 0 for FALSE and 1 for TRUE.
- */
-int fio_cli_get_int(const char *opt) {
-  fio_cli_parse();
-  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
-  if (!name)
-    return 0;
-  FIOBJ result = fiobj_hash_get(parsed, name);
-  if (!result)
-    return 0;
-  return (int)fiobj_obj2num(result);
-}
-
-/**
- * Returns a Float containing the parsed value of the argument.
- *
- * For boolean values, the value will be 0 for FALSE and 1 for TRUE.
- */
-double fio_cli_get_float(const char *opt) {
-  fio_cli_parse();
-  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
-  if (!name)
-    return 0;
-  FIOBJ result = fiobj_hash_get(parsed, name);
-  if (!result)
-    return 0;
-  return fiobj_obj2float(result);
-}
-
-/**
- * Overrides the existing value of the argument with the requested C String.
- *
- * Boolean that were set to TRUE have the string "1".
- */
-void fio_cli_set_str(const char *opt, const char *value) {
-  fio_cli_parse();
-  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
-  if (!name) {
-    fprintf(stderr, "ERROR: facil.io's CLI helper can only override values for "
-                    "valid options\n");
-    exit(-1);
   }
-  fiobj_hash_set(parsed, name, fiobj_str_new(value, strlen(value)));
+  return fio_hash_find(&fio_values, n);
+}
+
+/** Returns the argument's value as an integer. */
+int fio_cli_get_i(char const *name) {
+  char const *val = fio_cli_get(name);
+  if (!val)
+    return 0;
+  int ret = 0;
+  int invert = 0;
+  while (*val == '-' || *val == '+') {
+    if (*val == '-') {
+      invert += 1;
+    }
+    ++val;
+  }
+  while (*val) {
+    ret = (ret * 10) + (*val - '0');
+    ++val;
+  }
+  if ((invert & 1)) {
+    ret = 0 - ret;
+  }
+  return ret;
 }
 
 /**
- * Overrides the existing value of the argument with the requested Integer.
+ * Sets the argument's value as a NUL terminated C String (no copy!).
  *
- * For boolean values, the value will be 0 for FALSE and 1 for TRUE.
+ * Note: this does NOT copy the C strings to memory. Memory should be kept
+ * alive until `fio_cli_end` is called.
  */
-void fio_cli_set_int(const char *opt, int value) {
-  fio_cli_parse();
-  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
-  if (!name) {
-    fprintf(stderr, "ERROR: facil.io's CLI helper can only override values for "
-                    "valid options\n");
-    exit(-1);
-  }
-  fiobj_hash_set(parsed, name, fiobj_num_new(value));
-}
-
-/**
- * Overrides the existing value of the argument with the requested Float.
- *
- * For boolean values, the value will be 0 for FALSE and 1 for TRUE.
- */
-void fio_cli_set_float(const char *opt, double value) {
-  fio_cli_parse();
-  FIOBJ name = fio_cli_get_name(opt, strlen(opt));
-  if (!name) {
-    fprintf(stderr, "ERROR: facil.io's CLI helper can only override values for "
-                    "valid options\n");
-    exit(-1);
-  }
-  fiobj_hash_set(parsed, name, fiobj_float_new(value));
+void fio_cli_set(char const *name, char const *value) {
+  cstr_s n = (cstr_s){.data = name, .len = strlen(name)};
+  fio_hash_insert(&fio_values, n, (void *)value);
 }

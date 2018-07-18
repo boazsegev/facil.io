@@ -113,34 +113,43 @@ int main(int argc, char const *argv[]) {
   CHANNEL_BINARY = fiobj_str_new("CHANNEL_BINARY", 14);
 
   /*     ****  Command line arguments ****     */
-  fio_cli_start(argc, argv,
-                "This is a facil.io example application.\n"
-                "\nThis example conforms to the "
-                "Websocket Shootout requirements at:\n"
-                "https://github.com/hashrocket/websocket-shootout\n"
-                "\nThe following arguments are supported:");
-  fio_cli_accept_num("threads t",
-                     "The number of threads to use. System dependent default.");
-  fio_cli_accept_num(
-      "workers w", "The number of processes to use. System dependent default.");
-  fio_cli_accept_num("port p", "The port number to listen to.");
-  fio_cli_accept_str("public www",
-                     "A public folder for serve an HTTP static file service.");
-  fio_cli_accept_bool("log v", "Turns logging on.");
-  fio_cli_accept_bool("optimize o",
-                      "Turns WebSocket broadcast optimizations on.");
+  fio_cli_start(
+      argc, argv, 0,
+      "This is a facil.io example application.\n"
+      "\nThis example conforms to the "
+      "Websocket Shootout requirements at:\n"
+      "https://github.com/hashrocket/websocket-shootout\n"
+      "\nThe following arguments are supported:",
+      "-threads -t The number of threads to use. System dependent default.",
+      FIO_CLI_TYPE_INT,
+      "-workers -w The number of processes to use. System dependent default.",
+      FIO_CLI_TYPE_INT, "-port -p The port number to listen to.",
+      FIO_CLI_TYPE_INT,
+      "-public -www A public folder for serve an HTTP static file service.",
+      "-log -v Turns logging on.", FIO_CLI_TYPE_BOOL,
+      "-optimize -o Turns WebSocket broadcast optimizations on.",
+      FIO_CLI_TYPE_BOOL);
 
-  if (fio_cli_get_str("p"))
-    port = fio_cli_get_str("p");
-  if (fio_cli_get_str("www")) {
-    public_folder = fio_cli_get_str("www");
+  if (fio_cli_get("-p"))
+    port = fio_cli_get("-p");
+  if (fio_cli_get("-www")) {
+    public_folder = fio_cli_get("-www");
     fprintf(stderr, "* serving static files from:%s\n", public_folder);
   }
-  if (fio_cli_get_str("t"))
-    threads = fio_cli_get_int("t");
-  if (fio_cli_get_str("w"))
-    workers = fio_cli_get_int("w");
-  print_log = fio_cli_get_int("v");
+  if (fio_cli_get_i("-t"))
+    threads = fio_cli_get_i("-t");
+  if (fio_cli_get_i("-w"))
+    workers = fio_cli_get_i("-w");
+  print_log = fio_cli_get_i("-v");
+
+  /* optimize websocket pub/sub for multi-client broadcasts */
+  if (fio_cli_get_i("-o")) {
+    fprintf(stderr, "* Turning on WebSocket broadcast optimizations.\n");
+    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
+    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_TEXT, 1);
+    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_BINARY, 1);
+  }
+  fio_cli_end();
 
   /*     ****  actual code ****     */
   if (http_listen(port, NULL, .on_request = answer_http_request,
@@ -149,13 +158,6 @@ int main(int argc, char const *argv[]) {
     perror("Couldn't initiate Websocket Shootout service");
     exit(1);
   }
-  /* optimize websocket pub/sub for multi-client broadcasts */
-  if (fio_cli_get_int("o")) {
-    fprintf(stderr, "* Turning on WebSocket broadcast optimizations.\n");
-    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
-    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_TEXT, 1);
-    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_BINARY, 1);
-  }
 
 #ifdef __APPLE__
   /* patch for dealing with the High Sierra `fork` limitations */
@@ -163,16 +165,17 @@ int main(int argc, char const *argv[]) {
   (void)obj_c_runtime;
 #endif
 
+#if DEBUG
   facil_core_callback_add(FIO_CALL_ON_SHUTDOWN, print_subscription_balance,
                           "on shutdown");
   facil_core_callback_add(FIO_CALL_ON_FINISH, print_subscription_balance,
                           "on finish");
   facil_core_callback_add(FIO_CALL_AT_EXIT, print_subscription_balance,
                           "at exit");
+#endif
 
   facil_run(.threads = threads, .processes = workers);
   // free global resources.
   fiobj_free(CHANNEL_TEXT);
   fiobj_free(CHANNEL_BINARY);
-  fio_cli_end();
 }

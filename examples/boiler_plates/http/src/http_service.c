@@ -10,12 +10,12 @@ static void on_http_request(http_s *h) {
 /* starts a listeninng socket for HTTP connections. */
 void initialize_http_service(void) {
   /* listen for inncoming connections */
-  if (http_listen(fio_cli_get_str("port"), fio_cli_get_str("address"),
+  if (http_listen(fio_cli_get("-port"), fio_cli_get("-address"),
                   .on_request = on_http_request,
-                  .max_body_size = fio_cli_get_int("maxbd"),
-                  .public_folder = fio_cli_get_str("public"),
-                  .log = fio_cli_get_int("log"),
-                  .timeout = fio_cli_get_int("keep-alive")) == -1) {
+                  .max_body_size = fio_cli_get_i("-maxbd"),
+                  .public_folder = fio_cli_get("-public"),
+                  .log = fio_cli_get_bool("-log"),
+                  .timeout = fio_cli_get_i("-keep-alive")) == -1) {
     /* listen failed ?*/
     perror("ERROR: facil couldn't initialize HTTP service (already running?)");
     exit(1);

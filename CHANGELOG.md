@@ -19,6 +19,8 @@
 
 * The WebSocket upgrade (`http_upgrade2ws`) now matches the SSE upgrade function (starts with the handle `http_s *` and named arguments come later).
 
+* The CLI API and implementation was completely rewritten. The new code is slightly more monolithic, but should waste less memory with a simpler API (got rid of some persistent data).
+
 **Update**: (`fio_mem`) updated the allocator defaults to lower the price of a longer life allocation. Reminder: the `fio_mem` was designed for short/medium allocation life-spans _or_ large allocations (as they directly map to `mmap`). Now 16Kb will be considered a larger allocation and the price of holding on to memory is lower (less fragmentation).
 
 **Fix**: (`facil`) fixed a typo in the shutdown output. Credit to @bjeanes (Bo Jeanes) for the Iodine#39 PR.
