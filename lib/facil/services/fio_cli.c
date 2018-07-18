@@ -10,6 +10,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+
 /* *****************************************************************************
 CLI Data Stores
 ***************************************************************************** */
