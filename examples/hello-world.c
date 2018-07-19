@@ -57,26 +57,24 @@ int main(int argc, char const *argv[]) {
   uint8_t print_log = 0;
 
   /*     ****  Command line arguments ****     */
-  fio_cli_start(argc, argv,
-                "This is a facil.io example application.\n\n"
-                "This example offers a simple \"Hello World\" server "
-                "used for benchmarking.\n\n"
-                "The following arguments are supported:\n");
+  fio_cli_start(
+      argc, argv, 0,
+      "This is a facil.io example application.\n\n"
+      "This example offers a simple \"Hello World\" server "
+      "used for benchmarking.\n\n"
+      "The following arguments are supported:",
+      "-port -p port number to listen to. defaults port 3000", FIO_CLI_TYPE_INT,
+      "-workers -w number of processes to use.", FIO_CLI_TYPE_INT,
+      "-threads -t number of threads per process.", FIO_CLI_TYPE_INT,
+      "-log -v verobse, logs to a file at the ./tmp folder.", FIO_CLI_TYPE_BOOL,
+      "-public -www public folder, for static file service.");
 
-  fio_cli_accept_num("port p", "the port to listen to, defaults to 3000.");
-  fio_cli_accept_num("threads t", "number of threads.");
-  fio_cli_accept_num("workers w", "number of processes.");
-  fio_cli_accept_str("public www", "public folder for static file service.");
-  fio_cli_accept_bool("log v", "verobse, logs to a file at the ./tmp folder.");
-
-  if (fio_cli_get_int("log"))
-    print_log = 1;
-  if (!fio_cli_get_str("port"))
-    fio_cli_set_str("port", "3000");
-  const char *port = fio_cli_get_str("port");
-  const uint32_t threads = fio_cli_get_int("t");
-  const uint32_t workers = fio_cli_get_int("w");
-  const char *public_folder = fio_cli_get_str("www");
+  fio_cli_set_default("-port", "3000");
+  print_log = fio_cli_get_bool("-log");
+  const char *port = fio_cli_get("-port");
+  const uint32_t threads = fio_cli_get_i("-t");
+  const uint32_t workers = fio_cli_get_i("-w");
+  const char *public_folder = fio_cli_get("-www");
 
   /*     ****  logging  ****     */
 

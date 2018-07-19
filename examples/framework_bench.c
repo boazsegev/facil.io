@@ -3,7 +3,7 @@ This is a short implementation fo the TechEmpower Framework Benchmarks. See:
 http://frameworkbenchmarks.readthedocs.io/en/latest/
 
 At the moment it's incomplete and only answers the plaintext and json tests
-using the full HTTP framework stack (without any DB support.
+using the full HTTP framework stack (without any DB support).
 */
 #include "http.h"
 
@@ -69,18 +69,18 @@ int main(int argc, char const *argv[]) {
   JSON_VALUE = fiobj_str_new("Hello, World!", 13);
 
   /* Test for static file service */
-  const char *public_folder = fio_cli_get_str("www");
+  const char *public_folder = fio_cli_get("-www");
   if (public_folder) {
     fprintf(stderr, "* serving static files from:%s\n", public_folder);
   }
 
   /* listen to HTTP connections */
-  http_listen(fio_cli_get_str("port"), fio_cli_get_str("address"),
+  http_listen(fio_cli_get("-port"), fio_cli_get("-address"),
               .on_request = route_perform, .public_folder = public_folder,
-              .log = fio_cli_get_int("log"));
+              .log = fio_cli_get_bool("-log"));
 
   /* Start the facil.io reactor */
-  facil_run(.threads = fio_cli_get_int("t"), .processes = fio_cli_get_int("w"));
+  facil_run(.threads = fio_cli_get_i("-t"), .processes = fio_cli_get_i("-w"));
 
   /* perform cleanup */
   cleanup();
@@ -117,38 +117,36 @@ CLI
 
 /* initialize CLI helper and manage it's default options */
 static void cli_init(int argc, char const *argv[]) {
-  fio_cli_start(argc, argv,
-                "This is a facil.io framework benchmark application.\n"
-                "\nFor details about the benchmarks visit:\n"
-                "http://frameworkbenchmarks.readthedocs.io/en/latest/\n"
-                "\nThe following arguments are supported:");
-  fio_cli_accept_num("threads t",
-                     "The number of threads to use. System dependent default.");
-  fio_cli_accept_num(
-      "workers w", "The number of processes to use. System dependent default.");
-  fio_cli_accept_num(
-      "port p", "The port number to listen to (set to 0 for Unix Sockets.");
-  fio_cli_accept_str("address b", "The address to bind to.");
-  fio_cli_accept_str("public www",
-                     "A public folder for serve an HTTP static file service.");
-  fio_cli_accept_bool("log v", "Turns logging on (logs to terminal).");
-  fio_cli_accept_str("database db", "The database adrress.");
-  fio_cli_accept_num("database-port dbp", "The database port.");
+  fio_cli_start(
+      argc, argv, 0,
+      "This is a facil.io framework benchmark application.\n"
+      "\nFor details about the benchmarks visit:\n"
+      "http://frameworkbenchmarks.readthedocs.io/en/latest/\n"
+      "\nThe following arguments are supported:",
+      "-threads -t The number of threads to use. System dependent default.",
+      FIO_CLI_TYPE_INT,
+      "-workers -w The number of processes to use. System dependent default.",
+      FIO_CLI_TYPE_INT,
+      "-port -p The port number to listen to (set to 0 for Unix Sockets.",
+      FIO_CLI_TYPE_INT, "-address -b The address to bind to.",
+      "-public -www A public folder for serve an HTTP static file service.",
+      "-log -v Turns logging on (logs to terminal).", FIO_CLI_TYPE_BOOL,
+      "-database -db The database adrress (URL).");
 
   /* setup default port */
-  if (!fio_cli_get_str("p"))
-    fio_cli_set_str("p", "8080");
+  if (!fio_cli_get("-p")) {
+    fio_cli_set("-p", "8080");
+    fio_cli_set("-port", "8080");
+  }
 
   /* setup database address */
-  if (!fio_cli_get_str("db")) {
+  if (!fio_cli_get("-db")) {
     char *database = getenv("DBHOST");
     if (!database)
       database = "localhost";
-    fio_cli_set_str("db", database);
+    fio_cli_set("-db", database);
+    fio_cli_set("-database", database);
   }
-  /* setup database port - default for Redis */
-  if (!fio_cli_get_str("dbp"))
-    fio_cli_set_str("dbp", "6379");
 }
 
 /* *****************************************************************************

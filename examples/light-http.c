@@ -109,23 +109,23 @@ void light_http_on_open(intptr_t uuid, void *udata);
 /* our main function / starting point */
 int main(int argc, char const *argv[]) {
   /* A simple CLI interface. */
-  fio_cli_start(argc, argv, "Fast HTTP example for the facil.io framework.");
-  fio_cli_accept_str("port p", "Port to bind to.");
-  fio_cli_accept_str("workers w", "Number of workers (processes).");
-  fio_cli_accept_str("threads t", "Number of threads.");
+  fio_cli_start(argc, argv, 0,
+                "Custom HTTP example for the facil.io framework.",
+                "-port -p Port to bind to. Default: 3000", FIO_CLI_TYPE_INT,
+                "-workers -w Number of workers (processes).", FIO_CLI_TYPE_INT,
+                "-threads -t Number of threads.", FIO_CLI_TYPE_INT);
   /* Default to port 3000. */
-  if (!fio_cli_get_str("p"))
-    fio_cli_set_str("p", "3000");
+  fio_cli_set_default("-p", "3000");
   /* Default to single thread. */
-  if (!fio_cli_get_int("t"))
-    fio_cli_set_int("t", 1);
+  fio_cli_set_default("-t", "1");
   /* try to listen on port 3000. */
-  if (facil_listen(.port = fio_cli_get_str("p"), .address = NULL,
-                   .on_open = light_http_on_open, .udata = NULL))
+  if (facil_listen(.port = fio_cli_get("-p"), .address = NULL,
+                   .on_open = light_http_on_open, .udata = NULL) == -1)
     perror("FATAL ERROR: Couldn't open listening socket"), exit(errno);
   /* run facil with 1 working thread - this blocks until we're done. */
-  facil_run(.threads = fio_cli_get_int("t"), .processes = fio_cli_get_int("w"));
-  /* that's it */
+  facil_run(.threads = fio_cli_get_i("-t"), .processes = fio_cli_get_i("-w"));
+  /* clean up */
+  fio_cli_end();
   return 0;
 }
 

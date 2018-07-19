@@ -16,8 +16,11 @@ extern "C" {
 CLI API
 ***************************************************************************** */
 
+/** Indicates the previous CLI argument should be a String (default). */
 #define FIO_CLI_TYPE_STRING ((char *)0x1)
+/** Indicates the previous CLI argument is a Boolean value. */
 #define FIO_CLI_TYPE_BOOL ((char *)0x2)
+/** Indicates the previous CLI argument should be an Integer (numerical). */
 #define FIO_CLI_TYPE_INT ((char *)0x3)
 
 /**
@@ -91,6 +94,12 @@ int fio_cli_get_i(char const *name);
 
 /** Thie MACRO returns the argument's value as a boolean. */
 #define fio_cli_get_bool(name) (fio_cli_get((name)) != NULL)
+
+/** Returns the number of unrecognized argument. */
+unsigned int fio_cli_unknown_count(void);
+
+/** Returns the unrecognized argument using a 0 based `index`. */
+char const *fio_cli_unknown(unsigned int index);
 
 /**
  * Sets the argument's value as a NUL terminated C String (no copy!).

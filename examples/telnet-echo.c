@@ -21,9 +21,10 @@ static void echo_ping(intptr_t uuid, protocol_s *prt) {
   sock_write(uuid, "Server: Are you there?\n", 23);
 }
 // performed during server shutdown, before closing the socket.
-static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
+static uint8_t echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
   (void)prt;
   sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
+  return 0;
 }
 // performed after the socket was closed and the currently running task had
 // completed.

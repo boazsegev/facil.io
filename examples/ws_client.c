@@ -12,7 +12,6 @@ To try it out, after compiling (assuming `tmp/demo` is the compiled file):
 
 */
 #include "http.h"
-#include "pubsub.h"
 
 #include <signal.h>
 

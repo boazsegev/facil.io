@@ -36,7 +36,7 @@ typedef struct {
 
 static fio_hash_s fio_aliases = FIO_HASH_INIT;
 static fio_hash_s fio_values = FIO_HASH_INIT;
-static size_t fio_cli_unknown_count = 0;
+static size_t fio_unknown_count = 0;
 
 typedef struct {
   int allow_unknown;
@@ -119,6 +119,7 @@ static void fio_cli_set_arg(cstr_s arg, char const *value, void *line,
     cstr_s n = {.len = ++parser->unknown_count};
     fio_hash_insert(&fio_values, n, (void *)value);
     if (!parser->allow_unknown) {
+      arg.len = 0;
       goto error;
     }
     return;
@@ -183,10 +184,10 @@ static void fio_cli_set_arg(cstr_s arg, char const *value, void *line,
 
 error: /* handle errors*/
   /* TODO! */
-  fprintf(
-      stderr,
-      "\n\r\x1B[31mError:\x1B[0m unsupported argument %.*s with value %s\n\n",
-      (int)arg.len, arg.data, value ? value : "(null)");
+  fprintf(stderr,
+          "\n\r\x1B[31mError:\x1B[0m unsupported argument %.*s %s %s\n\n",
+          (int)arg.len, arg.data, arg.len ? "with value" : "",
+          value ? value : "(null)");
 print_help:
   fprintf(stderr, "\n%s\n\n",
           parser->description ? parser->description
@@ -331,13 +332,13 @@ void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int allow_unknown,
 
   /* Cleanup and save state for API */
   fio_hash_free(&fio_aliases);
-  fio_cli_unknown_count = parser.unknown_count;
+  fio_unknown_count = parser.unknown_count;
 }
 
 void fio_cli_end(void) {
   fio_hash_free(&fio_values);
   fio_hash_free(&fio_aliases);
-  fio_cli_unknown_count = 0;
+  fio_unknown_count = 0;
 }
 /* *****************************************************************************
 CLI Data Access
@@ -373,6 +374,20 @@ int fio_cli_get_i(char const *name) {
     ret = 0 - ret;
   }
   return ret;
+}
+
+/** Returns the number of unrecognized argument. */
+unsigned int fio_cli_unknown_count(void) {
+  return (unsigned int)fio_unknown_count;
+}
+
+/** Returns the unrecognized argument using a 0 based `index`. */
+char const *fio_cli_unknown(unsigned int index) {
+  if (!fio_hash_count(&fio_values) || !fio_unknown_count) {
+    return NULL;
+  }
+  cstr_s n = {.data = NULL, .len = index + 1};
+  return fio_hash_find(&fio_values, n);
 }
 
 /**

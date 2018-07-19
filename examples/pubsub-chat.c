@@ -182,8 +182,7 @@ Read available command line details using "-?".
 int main(int argc, char const *argv[]) {
   const char *port = "3000";
   const char *public_folder = NULL;
-  const char *redis_address = NULL;
-  const char *redis_port = "6379";
+  const char *redis_url = NULL;
   uint32_t threads = 0;
   uint32_t workers = 0;
   uint8_t print_log = 0;
@@ -191,46 +190,46 @@ int main(int argc, char const *argv[]) {
 
   /*     ****  Command line arguments ****     */
   fio_cli_start(
-      argc, argv,
+      argc, argv, 0,
       "This is a facil.io example application.\n"
       "\nThis example demonstrates Pub/Sub using a Chat application.\n"
       "Optional Redis support is also demonstrated.\n"
-      "\nThe following arguments are supported:");
-  fio_cli_accept_num("threads t",
-                     "The number of threads to use. System dependent default.");
-  fio_cli_accept_num(
-      "workers w", "The number of processes to use. System dependent default.");
-  fio_cli_accept_num("port p", "The port number to listen to.");
-  fio_cli_accept_str("public www",
-                     "A public folder for serve an HTTP static file service.");
-  fio_cli_accept_bool("log v", "Turns logging on.");
-  fio_cli_accept_str("redis r", "An optional Redis server's address.");
-  fio_cli_accept_str("redis-port rp",
-                     "An optional Redis server's port. Defaults to 6379.");
+      "\nThe following arguments are supported:",
+      "-port -p port number to listen to. defaults port 3000", FIO_CLI_TYPE_INT,
+      "-workers -w number of processes to use.", FIO_CLI_TYPE_INT,
+      "-threads -t number of threads per process.", FIO_CLI_TYPE_INT,
+      "-log -v request verbosity (logging).", FIO_CLI_TYPE_BOOL,
+      "-public -www public folder, for static file service.",
+      "-redis -r an optional Redis URL server address. i.e.: "
+      "redis://user:password@localhost:6379/");
+  fio_cli_set_default("-p", "3000");
+  fio_cli_set_default("-port", "3000");
 
-  if (fio_cli_get_str("p"))
-    port = fio_cli_get_str("p");
-  if (fio_cli_get_str("www")) {
-    public_folder = fio_cli_get_str("www");
+  port = fio_cli_get("-p");
+  if (fio_cli_get("-www")) {
+    public_folder = fio_cli_get("-www");
     fprintf(stderr, "* serving static files from:%s\n", public_folder);
   }
-  if (fio_cli_get_str("t"))
-    threads = fio_cli_get_int("t");
-  if (fio_cli_get_str("w"))
-    workers = fio_cli_get_int("w");
-  print_log = fio_cli_get_int("v");
-  redis_address = fio_cli_get_str("redis");
-  if (fio_cli_get_str("redis-port"))
-    redis_port = fio_cli_get_str("redis-port");
+  threads = fio_cli_get_i("-t");
+  workers = fio_cli_get_i("-w");
+  print_log = fio_cli_get_bool("-v");
+  redis_url = fio_cli_get("-redis");
+  fio_cli_end();
 
-  if (!fio_cli_get_str("w") && !fio_cli_get_str("t"))
+  if (!threads && !workers)
     threads = workers = 1;
 
   /*     ****  actual code ****     */
-  if (redis_address) {
+  if (redis_url) {
     fprintf(stderr, "* Connecting to Redis for Pub/Sub.\n");
+    http_url_s url = http_url_parse(redis_url, strlen(redis_url));
+    if (!url.port.data) {
+      url.port.data = "6379";
+      url.port.len = 4;
+    }
+
     FACIL_PUBSUB_DEFAULT =
-        redis_engine_create(.address = redis_address, .port = redis_port,
+        redis_engine_create(.address = url.host.data, .port = url.port.data,
                             .ping_interval = 40);
     if (!FACIL_PUBSUB_DEFAULT) {
       perror("\nERROR: couldn't initialize Redis engine.\n");
@@ -255,7 +254,6 @@ int main(int argc, char const *argv[]) {
     FACIL_PUBSUB_DEFAULT = FACIL_PUBSUB_CLUSTER;
   }
   fiobj_free(CHAT_CHANNEL);
-  fio_cli_end();
 }
 
 /* *****************************************************************************
