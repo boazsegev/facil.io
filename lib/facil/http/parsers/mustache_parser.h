@@ -49,6 +49,7 @@ typedef enum mustache_error_en {
   MUSTACHE_ERR_CLOSURE_MISMATCH,
   MUSTACHE_ERR_FILE_NOT_FOUND,
   MUSTACHE_ERR_FILE_TOO_BIG,
+  MUSTACHE_ERR_FILE_NAME_TOO_LONG,
   MUSTACHE_ERR_EMPTY_TEMPLATE,
   MUSTACHE_ERR_UNKNOWN,
   MUSTACHE_ERR_USER_ERROR,
@@ -500,7 +501,7 @@ mustache_s *(mustache_parse)(mustache_parse_args_s args) {
     }
     args.path_len = len;
   } else {
-    path_capa = args.path_len + 1 + args.filename_len + 1;
+    path_capa = args.path_len + 1 + args.filename_len + 9 + 1;
     path = malloc(path_capa);
     if (!path) {
       perror("FATAL ERROR: couldn't allocate memory for path resolution");
@@ -518,7 +519,7 @@ mustache_s *(mustache_parse)(mustache_parse_args_s args) {
 #define PATH2FULL(filename, filename_len)                                      \
   do {                                                                         \
     if (path_capa < (filename_len) + args.path_len + 1) {                      \
-      path_capa = (filename_len) + args.path_len + 1;                          \
+      path_capa = (filename_len) + args.path_len + 9 + 1;                      \
       path = realloc(path, path_capa);                                         \
       if (!path) {                                                             \
         perror("FATAL ERROR: couldn't allocate memory for path resolution");   \
@@ -526,8 +527,19 @@ mustache_s *(mustache_parse)(mustache_parse_args_s args) {
       }                                                                        \
     }                                                                          \
     memcpy(path + args.path_len, (filename), (filename_len));                  \
-    path[args.path_len + filename_len] = 0;                                    \
+    path[args.path_len + (filename_len)] = 0;                                  \
   } while (0);
+
+  /* append a filename to the path, managing the C string memory and length */
+#define PATH2FULL_WITH_EXT(filename, filename_len)                             \
+  do {                                                                         \
+    memcpy(path + args.path_len, (filename), (filename_len));                  \
+    memcpy(path + args.path_len + (filename_len), ".mustache", 9);             \
+    path[args.path_len + (filename_len) + 9] = 0;                              \
+  } while (0);
+#define GET_FILENAME(filename)                                                 \
+  (((filename)[0] == '/' || (filename)[0] == '\\') ? (path + args.path_len)    \
+                                                   : path)
 
   /*
    * We need a dynamic array to hold the list of instructions...
@@ -608,16 +620,28 @@ mustache_s *(mustache_parse)(mustache_parse_args_s args) {
 #define LOAD_TEMPLATE(filename, filname_len)                                   \
   do {                                                                         \
     const size_t f_len = (filname_len);                                        \
-    PATH2FULL((filename), f_len);                                              \
-    struct stat f_data;                                                        \
-    if (stat(path, &f_data) || f_data.st_size <= 0) {                          \
-      if (args.err) {                                                          \
-        *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                               \
-      }                                                                        \
+    if (f_len >= ((uint32_t)1 << 16)) {                                        \
+      *args.err = MUSTACHE_ERR_FILE_NAME_TOO_LONG;                             \
       goto error;                                                              \
     }                                                                          \
+    PATH2FULL((filename), f_len);                                              \
+    struct stat f_data;                                                        \
+    {                                                                          \
+      /* test file name with and without the .mustache extension */            \
+      int stat_result = stat(GET_FILENAME((filename)), &f_data);               \
+      if (stat_result == -1) {                                                 \
+        PATH2FULL_WITH_EXT((filename), f_len);                                 \
+        stat_result = stat(GET_FILENAME((filename)), &f_data);                 \
+      }                                                                        \
+      if (stat_result == -1) {                                                 \
+        if (args.err) {                                                        \
+          *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                             \
+        }                                                                      \
+        goto error;                                                            \
+      }                                                                        \
+    }                                                                          \
     if (f_data.st_size >= ((uint32_t)1 << 24)) {                               \
-      *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                                 \
+      *args.err = MUSTACHE_ERR_FILE_TOO_BIG;                                   \
       goto error;                                                              \
     }                                                                          \
     /* the data segment's new length after loading the the template */         \
@@ -657,7 +681,7 @@ mustache_s *(mustache_parse)(mustache_parse_args_s args) {
     /* copy filename */                                                        \
     memcpy(data + data_len + 4 + 3 + 3, filename, f_len);                      \
     /* open file and dump it into the data segment after the new header */     \
-    int fd = open(path, O_RDONLY);                                             \
+    int fd = open(GET_FILENAME((filename)), O_RDONLY);                         \
     if (fd == -1) {                                                            \
       if (args.err) {                                                          \
         *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                               \
@@ -968,6 +992,8 @@ error:
   return NULL;
 
 #undef PATH2FULL
+#undef PATH2FULL_WITH_EXT
+#undef GET_FILENAME
 #undef LOAD_TEMPLATE
 #undef PUSH_INSTRUCTION
 #undef IGNORE_WHITESPACE
