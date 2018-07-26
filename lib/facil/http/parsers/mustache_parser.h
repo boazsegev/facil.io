@@ -4,20 +4,49 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#ifndef H_MUSTACHE_PARSER_H
+#ifndef H_MUSTACHE_LOADR_H
 /**
  * A mustache parser using a callback systems that allows this implementation to
  * be framework agnostic (i.e., can be used with any JSON library).
  *
- * The API has two functions:
+ * The API has three functions:
  *
- * 1. `mustache_parse` converts a template file into instructions.
- * 2. `mustache_format` calls the callbacks according to the given instructions.
+ * 1. `mustache_load` loads a template file, converting it to instruction data.
+ * 2. `mustache_build` calls any callbacks according to the loaded instructions.
+ * 3. `mustache_free` frees the instruction and data memory (the template).
+ *
+ * The template is loaded and converted to an instruction array using
+ * `mustache_load`. This loads any nested templates / partials as well.
+ *
+ * The resulting instruction array (`mustache_s *`) is composed of three memory
+ * segments: header segment, instruction array segment and data segment.
+ *
+ * The instruction array (`mustache_s *`) can be used to build actual output
+ * data using the `mustache_build` function.
+ *
+ * The `mustache_build` function accepts two opaque pointers for user data
+ * (`udata` and `udata2`) that can be used by the callbacks for data input and
+ * data output.
+ *
+ * The `mustache_build` function is thread safe and many threads can build
+ * content based on the same template.
+ *
+ * While the build function is performed, the following callback might be
+ * called:
+ *
+ * * `mustache_on_arg` - called to output an argument's value .
+ * * `mustache_on_text` - called to output raw text.
+ * * `mustache_on_section_test` - called when a section is tested for validity.
+ * * `mustache_on_section_start` - called when entering a named section.
+ * * `mustache_on_formatting_error` - called when a formatting error occured.
+ *
+ * Once the template is no longer needed, it's easy to free the template using
+ * the `mustache_free` function (which, at the moment, simply calls `free`).
  *
  * For details about mustache templating scheme, see: https://mustache.github.io
  *
  */
-#define H_MUSTACHE_PARSER_H
+#define H_MUSTACHE_LOADR_H
 
 #include <stdint.h>
 #include <stdio.h>
@@ -55,7 +84,7 @@ typedef enum mustache_error_en {
   MUSTACHE_ERR_USER_ERROR,
 } mustache_error_en;
 
-/** Arguments for the `mustache_parse` function. */
+/** Arguments for the `mustache_load` function. */
 typedef struct {
   /** The root folder for any related partials (included templates). */
   char const *path;
@@ -65,12 +94,12 @@ typedef struct {
   size_t filename_len;
   /** Parsing error reporting (can be NULL). */
   mustache_error_en *err;
-} mustache_parse_args_s;
-static mustache_s *mustache_parse(mustache_parse_args_s args);
+} mustache_load_args_s;
+static mustache_s *mustache_load(mustache_load_args_s args);
 
-#define mustache_parse(...) mustache_parse((mustache_parse_args_s){__VA_ARGS__})
+#define mustache_load(...) mustache_load((mustache_load_args_s){__VA_ARGS__})
 
-/** Arguments for the `mustache_format` function. */
+/** Arguments for the `mustache_build` function. */
 typedef struct {
   /** The parsed template (an instruction collection). */
   mustache_s *mustache;
@@ -86,11 +115,10 @@ typedef struct {
   void *udata2;
   /** Formatting error reporting (can be NULL). */
   mustache_error_en *err;
-} mustache_format_args_s;
-static int mustache_format(mustache_format_args_s args);
+} mustache_build_args_s;
+static int mustache_build(mustache_build_args_s args);
 
-#define mustache_format(...)                                                   \
-  mustache_format((mustache_format_args_s){__VA_ARGS__})
+#define mustache_build(...) mustache_build((mustache_build_args_s){__VA_ARGS__})
 
 /** free the mustache template */
 static void inline mustache_free(mustache_s *mustache) { free(mustache); }
@@ -258,7 +286,7 @@ Calling the instrustion list (using the template engine)
  * the complementing MUSTACHE_SECTION_END instruction, allowing for easy jumps
  * in cases where a section is skipped or in cases of a recursive template.
  */
-int(mustache_format)(mustache_format_args_s args) {
+int(mustache_build)(mustache_build_args_s args) {
   /* extract the instruction array and data segment from the mustache_s */
   mustache__instruction_s *pos =
       (mustache__instruction_s *)(sizeof(*args.mustache) +
@@ -469,7 +497,7 @@ Building the instrustion list (parsing the template)
 ***************************************************************************** */
 
 /* The parsing implementation, converts a template to an instruction array */
-mustache_s *(mustache_parse)(mustache_parse_args_s args) {
+mustache_s *(mustache_load)(mustache_load_args_s args) {
   /* Make sure the args string length is set and prepare the path name */
   char *path = NULL;
   uint32_t path_capa = 0;
@@ -998,4 +1026,4 @@ error:
 #undef PUSH_INSTRUCTION
 #undef IGNORE_WHITESPACE
 }
-#endif
+#endif /* H_MUSTACHE_LOADR_H */
