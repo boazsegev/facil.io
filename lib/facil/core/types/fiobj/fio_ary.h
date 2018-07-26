@@ -209,8 +209,8 @@ FIO_FUNC inline void fio_ary_new(fio_ary_s *ary, size_t capa) {
 FIO_FUNC inline void fio_ary_free(fio_ary_s *ary) {
   if (ary) {
     free(ary->arry);
+    *ary = FIO_ARY_INIT;
   }
-  *ary = FIO_ARY_INIT;
 }
 
 /* *****************************************************************************
