@@ -1,3 +1,5 @@
+#include "tests/mustache.c.h"
+
 #include "facil.h"
 #include "fio_ary.h"
 #include "fio_base64.h"
@@ -8,7 +10,6 @@
 #include "fio_sha1.h"
 #include "fio_sha2.h"
 #include "http.h"
-#include "tests/mustache.c.h"
 
 int main(void) {
 #if DEBUG
