@@ -27,10 +27,6 @@ static const size_t callback_max =
 
 static void mustache_test_callback(mustache_section_s *section,
                                    enum cb_type_e expected) {
-  if (callback_count >= callback_max) {
-    fprintf(stderr, "CRITICAL ERROR: mustache wtf?!\n");
-    exit(-1);
-  }
   if (callback_expected[callback_count].cb_type == CB_ERROR) {
     fprintf(stderr, "FAILED: mustache callback count overflow\n");
     exit(-1);
@@ -147,6 +143,7 @@ static inline void mustache_print_instructions(mustache_s *m) {
 }
 
 void mustache_test(void) {
+  fprintf(stderr, "=== Testing Mustache parser (mustache_parser.h)\n");
   char const *template =
       "Hi there{{#user}}{{name}}{{/user}}{{> mustache_test_partial }}";
   char const *partial = "{{& raw1}}{{{raw2}}}{{^negative}}"
