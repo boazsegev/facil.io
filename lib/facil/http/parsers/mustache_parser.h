@@ -48,6 +48,12 @@ Feel free to copy, use and enjoy according to the license provided.
  */
 #define H_MUSTACHE_LOADR_H
 
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#endif /* __unix__ */
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
