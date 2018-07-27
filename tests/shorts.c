@@ -8,6 +8,7 @@
 #include "fio_sha1.h"
 #include "fio_sha2.h"
 #include "http.h"
+#include "tests/mustache.c.h"
 
 int main(void) {
 #if DEBUG
@@ -25,6 +26,7 @@ int main(void) {
                   "===          facil.io's is running in DEBUG mode while "
                   "OpenSSL isn't.\n\n");
 #endif
+  mustache_test();
   fio_malloc_test();
   fio_llist_test();
   fio_ary_test();
