@@ -719,9 +719,9 @@ FIO_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
     data[data_len + 4 + 2 + 2] = ((uint32_t)new_len >> 1) & 0xFF;              \
     data[data_len + 4 + 2 + 3] = ((uint32_t)new_len) & 0xFF;                   \
     /* copy filename */                                                        \
-    memcpy(data + data_len + 4 + 3 + 3, filename, f_len);                      \
+    memcpy(data + data_len + 4 + 3 + 3, path + args.path_len, f_len);          \
     /* open file and dump it into the data segment after the new header */     \
-    int fd = open(GET_FILENAME((filename)), O_RDONLY);                         \
+    int fd = open(GET_FILENAME((path + args.path_len)), O_RDONLY);             \
     if (fd == -1) {                                                            \
       if (args.err) {                                                          \
         *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                               \
