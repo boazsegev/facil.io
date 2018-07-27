@@ -37,7 +37,7 @@ static void mustache_on_formatting_error(void *udata, void *udata2) {
 
 static inline void save2file(char const *filename, char const *data,
                              size_t length) {
-  int fd = open(filename, O_CREAT | O_RDWR);
+  int fd = open(filename, O_CREAT | O_RDWR, 0);
   if (fd == -1) {
     perror("Couldn't open / create file for template testing");
     exit(-1);
