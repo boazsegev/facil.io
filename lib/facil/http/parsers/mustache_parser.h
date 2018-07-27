@@ -372,7 +372,7 @@ FIO_FUNC int(mustache_build)(mustache_build_args_s args) {
       /* find the end of the section */
       mustache__instruction_s *section_end = start + pos->data.len;
 
-      /* test for template (partial) section */
+      /* test for template (partial) section (nameless) */
       if (pos->data.start == 0) {
         section_stack[nesting_pos].end = section_end - start;
         section_stack[nesting_pos].start = pos - start;
@@ -427,6 +427,9 @@ FIO_FUNC int(mustache_build)(mustache_build_args_s args) {
       ++section_stack[nesting_pos].count;
       if (section_stack[nesting_pos].index > section_stack[nesting_pos].count) {
         pos = start + section_stack[nesting_pos].start;
+        if (nesting_pos) { /* revert to old udata values */
+          section_stack[nesting_pos].sec = section_stack[nesting_pos - 1].sec;
+        }
         if (mustache_on_section_start(&section_stack[nesting_pos].sec,
                                       data + pos->data.start,
                                       strlen(data + pos->data.start),

@@ -1,32 +1,93 @@
 #include "mustache_parser.h"
 
+static size_t callback_count = 0;
+
+static struct {
+  enum cb_type_e {
+    CB_ERROR,
+    CB_ON_TEXT,
+    CB_ON_ARG,
+    CB_ON_ARG_UNESCAPE,
+    CB_ON_TEST,
+    CB_ON_START,
+  } cb_type;
+  void *udata;
+} callback_expected[] = {
+    {CB_ON_TEXT, (void *)0},         {CB_ON_TEST, (void *)0},
+    {CB_ON_START, (void *)0},        {CB_ON_ARG, (void *)1},
+    {CB_ON_START, (void *)0},        {CB_ON_ARG, (void *)1},
+    {CB_ON_ARG_UNESCAPE, (void *)0}, {CB_ON_ARG_UNESCAPE, (void *)0},
+    {CB_ON_TEST, (void *)0},         {CB_ON_START, (void *)0},
+    {CB_ON_ARG_UNESCAPE, (void *)1}, {CB_ON_ARG_UNESCAPE, (void *)1},
+    {CB_ON_TEST, (void *)1},         {CB_ERROR, NULL},
+};
+
+static const size_t callback_max =
+    sizeof(callback_expected) / sizeof(callback_expected[0]);
+
+static void mustache_test_callback(mustache_section_s *section,
+                                   enum cb_type_e expected) {
+  if (callback_count >= callback_max) {
+    fprintf(stderr, "CRITICAL ERROR: mustache wtf?!\n");
+    exit(-1);
+  }
+  if (callback_expected[callback_count].cb_type == CB_ERROR) {
+    fprintf(stderr, "FAILED: mustache callback count overflow\n");
+    exit(-1);
+  }
+
+  if (callback_expected[callback_count].cb_type != expected) {
+    fprintf(stderr,
+            "FAILED: mustache callback type mismatch (count: %zu, expected %u, "
+            "got %u)\n",
+            callback_count, callback_expected[callback_count].cb_type,
+            expected);
+    exit(-1);
+  }
+  if (callback_expected[callback_count].udata != section->udata) {
+    fprintf(stderr,
+            "FAILED: mustache callback udata mismatch (count: %zu, expected "
+            "%p, got %p)\n",
+            callback_count, callback_expected[callback_count].udata,
+            section->udata);
+    exit(-1);
+  }
+  ++callback_count;
+}
+
 static int mustache_on_arg(mustache_section_s *section, const char *name,
                            uint32_t name_len, unsigned char escape) {
-  fprintf(stderr, "Adding %sargument %.*s to section %p\n",
-          escape ? "escaped " : "", (int)name_len, name, section->udata);
+  mustache_test_callback(section, escape ? CB_ON_ARG : CB_ON_ARG_UNESCAPE);
+  (void)name;
+  (void)name_len;
   return 0;
 }
 
 static int mustache_on_text(mustache_section_s *section, const char *data,
                             uint32_t data_len) {
-  fprintf(stderr, "Adding text (to section %p): %.*s\n", section->udata,
-          (int)data_len, data);
+  mustache_test_callback(section, CB_ON_TEXT);
+  (void)data;
+  (void)data_len;
   return 0;
 }
 
 static int32_t mustache_on_section_test(mustache_section_s *section,
                                         const char *name, uint32_t name_len) {
-  section->udata = (void *)((uintptr_t)section->udata + 1);
-  fprintf(stderr, "Staring section %p (%.*s)\n", section->udata, (int)name_len,
-          name);
-  return 1;
+  mustache_test_callback(section, CB_ON_TEST);
+  (void)name;
+  (void)name_len;
+  static int ret = 1;
+  return (ret-- == 1 ? 2 : (ret + 1));
 }
 
 static int mustache_on_section_start(mustache_section_s *section,
                                      char const *name, uint32_t name_len,
                                      uint32_t index) {
-  fprintf(stderr, "Section %p (%.*s) index == %u\n", section->udata,
-          (int)name_len, name, index);
+  mustache_test_callback(section, CB_ON_START);
+  section->udata = (void *)((uintptr_t)section->udata + 1);
+  (void)index;
+  (void)name;
+  (void)name_len;
   return 0;
 }
 
@@ -131,6 +192,11 @@ void mustache_test(void) {
                 ary[0].instruction, expected[i]);
   }
   mustache_build(m, .udata = NULL);
+  TEST_ASSERT(callback_count + 1 == callback_max,
+              "Callback count error %zu != %zu", callback_count + 1,
+              callback_max);
+  TEST_ASSERT(callback_expected[callback_count].cb_type == CB_ERROR,
+              "Callback type error on finish");
   /* cleanup */
   mustache_free(m);
 }
