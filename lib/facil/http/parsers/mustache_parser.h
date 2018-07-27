@@ -48,23 +48,21 @@ Feel free to copy, use and enjoy according to the license provided.
  */
 #define H_MUSTACHE_LOADR_H
 
-#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#endif /* __unix__ */
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
 
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #if !defined(MUSTACHE_NESTING_LIMIT) || !MUSTACHE_NESTING_LIMIT
 #undef MUSTACHE_NESTING_LIMIT
@@ -134,7 +132,7 @@ FIO_FUNC int mustache_build(mustache_build_args_s args);
       (mustache_build_args_s){.mustache = (mustache_s_ptr), __VA_ARGS__})
 
 /** free the mustache template */
-FIO_FUNC void inline mustache_free(mustache_s *mustache) { free(mustache); }
+inline FIO_FUNC void mustache_free(mustache_s *mustache) { free(mustache); }
 
 /* *****************************************************************************
 Client Callbacks - MUST be implemented by the including file
