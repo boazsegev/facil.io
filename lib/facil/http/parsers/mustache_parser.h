@@ -64,6 +64,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #undef MUSTACHE_NESTING_LIMIT
 #define MUSTACHE_NESTING_LIMIT 64
 #endif
+
+#ifndef FIO_FUNC
+#define FIO_FUNC static __attribute__((unused))
+#endif
+
 /* *****************************************************************************
 Mustache API Functions and Arguments
 ***************************************************************************** */
@@ -95,7 +100,7 @@ typedef struct {
   /** Parsing error reporting (can be NULL). */
   mustache_error_en *err;
 } mustache_load_args_s;
-static mustache_s *mustache_load(mustache_load_args_s args);
+FIO_FUNC mustache_s *mustache_load(mustache_load_args_s args);
 
 #define mustache_load(...) mustache_load((mustache_load_args_s){__VA_ARGS__})
 
@@ -116,12 +121,14 @@ typedef struct {
   /** Formatting error reporting (can be NULL). */
   mustache_error_en *err;
 } mustache_build_args_s;
-static int mustache_build(mustache_build_args_s args);
+FIO_FUNC int mustache_build(mustache_build_args_s args);
 
-#define mustache_build(...) mustache_build((mustache_build_args_s){__VA_ARGS__})
+#define mustache_build(mustache_s_ptr, ...)                                    \
+  mustache_build(                                                              \
+      (mustache_build_args_s){.mustache = (mustache_s_ptr), __VA_ARGS__})
 
 /** free the mustache template */
-static void inline mustache_free(mustache_s *mustache) { free(mustache); }
+FIO_FUNC void inline mustache_free(mustache_s *mustache) { free(mustache); }
 
 /* *****************************************************************************
 Client Callbacks - MUST be implemented by the including file
@@ -286,7 +293,7 @@ Calling the instrustion list (using the template engine)
  * the complementing MUSTACHE_SECTION_END instruction, allowing for easy jumps
  * in cases where a section is skipped or in cases of a recursive template.
  */
-int(mustache_build)(mustache_build_args_s args) {
+FIO_FUNC int(mustache_build)(mustache_build_args_s args) {
   /* extract the instruction array and data segment from the mustache_s */
   mustache__instruction_s *pos =
       (mustache__instruction_s *)(sizeof(*args.mustache) +
@@ -380,9 +387,14 @@ int(mustache_build)(mustache_build_args_s args) {
         }
         goto error;
       }
-      if (pos->instruction == MUSTACHE_SECTION_START_INV && val == 0) {
-        /* perform once for inverted sections */
-        val = 1;
+      if (pos->instruction == MUSTACHE_SECTION_START_INV) {
+        if (val == 0) {
+          /* perform once for inverted sections */
+          val = 1;
+        } else {
+          /* or don't perform */
+          val = 0;
+        }
       }
 
       if (val == 0) {
@@ -497,7 +509,7 @@ Building the instrustion list (parsing the template)
 ***************************************************************************** */
 
 /* The parsing implementation, converts a template to an instruction array */
-mustache_s *(mustache_load)(mustache_load_args_s args) {
+FIO_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   /* Make sure the args string length is set and prepare the path name */
   char *path = NULL;
   uint32_t path_capa = 0;
@@ -851,6 +863,7 @@ mustache_s *(mustache_load)(mustache_load_args_s args) {
         break;
 
       case '^': /*overflow*/
+        escape_str = 0;
       case '#':
         /* start section (or inverted section) */
         ++beg;
@@ -869,7 +882,9 @@ mustache_s *(mustache_load)(mustache_load_args_s args) {
         section_stack[section_depth].name.start = beg - data;
         section_stack[section_depth].name.len = (end - beg) + 1;
         ++section_depth;
-        PUSH_INSTRUCTION(.instruction = MUSTACHE_SECTION_START,
+        PUSH_INSTRUCTION(.instruction =
+                             (escape_str ? MUSTACHE_SECTION_START
+                                         : MUSTACHE_SECTION_START_INV),
                          .data = {
                              .start = beg - data,
                              .len = (end - beg) + 1,
@@ -940,7 +955,12 @@ mustache_s *(mustache_load)(mustache_load_args_s args) {
                          });
         break;
 
-      case '{': /*overflow*/
+      case '{':
+        /* step the read position forward if the ending was '}}}' */
+        if ((data + template_stack[stack_pos].data_pos)[0] == '}') {
+          ++template_stack[stack_pos].data_pos;
+        }
+        /*overflow*/
       case '&': /*overflow*/
         /* unescaped variable data */
         escape_str = 0;
@@ -1026,4 +1046,6 @@ error:
 #undef PUSH_INSTRUCTION
 #undef IGNORE_WHITESPACE
 }
+
+#undef FIO_FUNC
 #endif /* H_MUSTACHE_LOADR_H */
