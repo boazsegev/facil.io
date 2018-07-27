@@ -17,8 +17,8 @@ static int mustache_on_text(mustache_section_s *section, const char *data,
 static int32_t mustache_on_section_test(mustache_section_s *section,
                                         const char *name, uint32_t name_len) {
   section->udata = (void *)((uintptr_t)section->udata + 1);
-  fprintf(stderr, "Staring section %p (%.*s) with 4 loops\n", section->udata,
-          (int)name_len, name);
+  fprintf(stderr, "Staring section %p (%.*s)\n", section->udata, (int)name_len,
+          name);
   return 1;
 }
 
