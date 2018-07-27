@@ -89,7 +89,7 @@ void mustache_test(void) {
   char const *template =
       "Hi there{{#user}}{{name}}{{/user}}{{> mustache_test_partial }}";
   char const *partial = "{{& raw1}}{{{raw2}}}{{^negative}}"
-                        "{{> mustache_test_partial }}{{/negative}}";
+                        "{{> mustache_test_partial }}{{=<< >>=}}<</negative>>";
   char const *template_name = "mustache_test_template.mustache";
   char const *partial_name = "mustache_test_partial.mustache";
   save2file(template_name, template, strlen(template));
