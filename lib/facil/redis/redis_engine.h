@@ -17,13 +17,11 @@ extern "C" {
 /** possible arguments for the `redis_engine_create` function call */
 struct redis_engine_create_args {
   /** Redis server's address */
-  const char *address;
+  fio_cstr_s address;
   /** Redis server's port */
-  const char *port;
+  fio_cstr_s port;
   /** Redis server's password, if any */
-  const char *auth;
-  /** Redis server's password length (if any). */
-  size_t auth_len;
+  fio_cstr_s auth;
   /** A `ping` will be sent every `ping_interval` interval or inactivity. */
   uint8_t ping_interval;
 };

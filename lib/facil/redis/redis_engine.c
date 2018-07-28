@@ -465,21 +465,20 @@ static void redis_on_startup(const pubsub_engine_s *r_) {
 
 #undef redis_engine_create
 pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
-  if (!args.address)
+  if (!args.address.data)
     return NULL;
-  if (!args.port)
-    args.port = "6379";
-  size_t port_len = 0;
-  size_t address_len = 0;
-  if (args.auth && !args.auth_len)
-    args.auth_len = strlen(args.auth);
-  if (args.address)
-    address_len = strlen(args.address);
-  if (args.port)
-    port_len = strlen(args.port);
+  if (!args.port.data)
+    args.port.data = "6379";
+  if (args.address.data && !args.address.len)
+    args.address.len = strlen(args.address.data);
+  if (args.port.data && !args.port.len)
+    args.port.len = strlen(args.port.data);
+  if (args.auth.data && !args.auth.len)
+    args.auth.len = strlen(args.auth.data);
   redis_engine_s *r =
       malloc(sizeof(*r) + REDIS_READ_BUFFER + REDIS_READ_BUFFER + 2 +
-             address_len + port_len + (args.auth_len ? args.auth_len + 32 : 0));
+             args.address.len + args.port.len +
+             (args.auth.len ? args.auth.len + 32 : 0));
   *r = (redis_engine_s){
       .id_protection = 15,
       .flag = 1,
@@ -487,10 +486,10 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
       .callbacks = FIO_LS_INIT(r->callbacks),
       .port = (char *)r->buf + (REDIS_READ_BUFFER + REDIS_READ_BUFFER),
       .address = (char *)r->buf + (REDIS_READ_BUFFER + REDIS_READ_BUFFER) +
-                 port_len + 1,
+                 args.port.len + 1,
       .auth = (char *)r->buf + (REDIS_READ_BUFFER + REDIS_READ_BUFFER) +
-              port_len + address_len + 2,
-      .auth_len = args.auth_len,
+              args.port.len + args.address.len + 2,
+      .auth_len = args.auth.len,
       .en =
           {
               .subscribe = redis_on_subscribe,
@@ -523,19 +522,21 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
           },
       .ref = 1, /* starts with only the user handle */
   };
-  memcpy(r->port, args.port, port_len);
-  r->port[port_len] = 0;
-  memcpy(r->address, args.address, address_len);
-  r->address[address_len] = 0;
-  if (args.auth) {
+  memcpy(r->port, args.port.data, args.port.len);
+  r->port[args.port.len] = 0;
+  memcpy(r->address, args.address.data, args.address.len);
+  r->address[args.address.len] = 0;
+  if (args.auth.data) {
     char *pos = r->auth;
-    pos = memcpy(pos, "*2\r\n$4\r\nAUTH\r\n$", 15);
-    pos += fio_ltoa(pos, args.auth_len, 10);
+    memcpy(pos, "*2\r\n$4\r\nAUTH\r\n$", 15);
+    pos += 15;
+    pos += fio_ltoa(pos, args.auth.len, 10);
     *pos++ = '\r';
     *pos++ = '\n';
-    pos = memcpy(pos, args.auth, args.auth_len);
+    memcpy(pos, args.auth.data, args.auth.len);
+    pos += args.auth.len;
     pos[0] = 0;
-    args.auth_len = (uintptr_t)pos - (uintptr_t)r->auth;
+    r->auth_len = (uintptr_t)pos - (uintptr_t)r->auth;
   } else {
     r->auth = NULL;
   }
