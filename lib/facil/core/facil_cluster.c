@@ -859,10 +859,12 @@ cluster_alloc(intptr_t uuid, void (*handler)(struct cluster_pr_s *pr),
   p->handler = handler;
   p->sender = sender;
   p->pubsub = (collection_s){
-      .channels = FIO_HASH_INIT, .lock = SPN_LOCK_INIT,
+      .channels = FIO_HASH_INIT,
+      .lock = SPN_LOCK_INIT,
   };
   p->patterns = (collection_s){
-      .channels = FIO_HASH_INIT, .lock = SPN_LOCK_INIT,
+      .channels = FIO_HASH_INIT,
+      .lock = SPN_LOCK_INIT,
   };
   return &p->protocol;
 }

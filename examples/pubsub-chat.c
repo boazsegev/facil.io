@@ -227,10 +227,17 @@ int main(int argc, char const *argv[]) {
       url.port.data = "6379";
       url.port.len = 4;
     }
+    fprintf(stderr, "Redis address: %s (%zu) : %s\n", url.host.data,
+            url.host.len, url.port.data);
+    FIOBJ r_address = fiobj_str_new(url.host.data, url.host.len);
+    FIOBJ r_port = fiobj_str_new(url.port.data, url.port.len);
 
     FACIL_PUBSUB_DEFAULT =
-        redis_engine_create(.address = url.host.data, .port = url.port.data,
+        redis_engine_create(.address = fiobj_obj2cstr(r_address).data,
+                            .port = fiobj_obj2cstr(r_port).data,
                             .ping_interval = 40);
+    fiobj_free(r_address);
+    fiobj_free(r_port);
     if (!FACIL_PUBSUB_DEFAULT) {
       perror("\nERROR: couldn't initialize Redis engine.\n");
       exit(-2);
