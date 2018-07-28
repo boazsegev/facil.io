@@ -457,7 +457,7 @@ static void redis_on_startup(const pubsub_engine_s *r_) {
     defer((void (*)(void *, void *))redis_on_sub_connect_fail, 0,
           &r->sub_data.protocol);
   } else {
-    /* workers don't need to subscribe, tha't only on the root process. */
+    /* workers don't need to subscribe, that's only on the root process. */
     defer((void (*)(void *, void *))redis_on_pub_connect_fail, 0,
           &r->pub_data.protocol);
   }
@@ -539,7 +539,7 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args args) {
   } else {
     r->auth = NULL;
   }
-  facil_pubsub_detach(&r->en);
+  facil_pubsub_attach(&r->en);
   if (facil_is_running())
     redis_on_startup(&r->en);
   return &r->en;
