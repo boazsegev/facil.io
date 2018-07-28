@@ -571,7 +571,8 @@ static void facil_lib_init(void) {
   }
   memset(facil_data, 0, mem_size);
   *facil_data = (struct facil_data_s){
-      .capacity = capa, .parent = getpid(),
+      .capacity = capa,
+      .parent = getpid(),
   };
   facil_external_root_init();
   atexit(facil_libcleanup);
@@ -1509,10 +1510,15 @@ void facil_expected_concurrency(int16_t *threads, int16_t *processes) {
     }
 #endif
     *threads = *processes = (int16_t)cpu_count;
+    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
+      /* leave a core available for the kernel */
+      --(*processes);
+    }
   } else if (*threads < 0 || *processes < 0) {
     /* Set any option that is less than 0 be equal to cores/value */
     /* Set any option equal to 0 be equal to the other option in value */
     ssize_t cpu_count = facil_detect_cpu_cores();
+    size_t cpu_adjust = (*processes <= 0 ? 1 : 0);
 
     if (cpu_count > 0) {
       int16_t tmp_threads = 0;
@@ -1520,11 +1526,18 @@ void facil_expected_concurrency(int16_t *threads, int16_t *processes) {
         tmp_threads = (int16_t)(cpu_count / (*threads * -1));
       else if (*threads == 0)
         tmp_threads = -1 * *processes;
+      else
+        tmp_threads = *threads;
       if (*processes < 0)
         *processes = (int16_t)(cpu_count / (*processes * -1));
       else if (*processes == 0)
         *processes = -1 * *threads;
       *threads = tmp_threads;
+      if (cpu_adjust && (*processes * tmp_threads) >= cpu_count &&
+          cpu_count > FACIL_CPU_CORES_LIMIT) {
+        /* leave a core available for the kernel */
+        --*processes;
+      }
     }
   }
 

@@ -31,7 +31,7 @@ void initialize_cli(int argc, char const *argv[]) {
     char *tmp = getenv("PORT");
     if (!tmp)
       tmp = "3000";
-    /* Set default */
+    /* Set default (unlike cmd line arguments, aliases are manually set) */
     fio_cli_set("-p", tmp);
     fio_cli_set("-port", tmp);
   }
