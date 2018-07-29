@@ -18,51 +18,62 @@ Feel free to copy, use and enjoy according to the license provided.
  *
  * The memory allocator assumes multiple concurrent allocation/deallocation,
  * short life spans (memory is freed shortly, but not immediately, after it was
- * allocated) and well as small allocations (realloc almost always copies data).
+ * allocated) as well as small allocations (realloc almost always copies data).
  *
  * These assumptions allow the allocator to avoid lock contention by ignoring
  * fragmentation within a memory "block" and waiting for the whole "block" to be
- * freed before it's memory is recycled (no "free list").
+ * freed before it's memory is recycled (no per-allocation "free list").
  *
- * An "arena" is allocated per-CPU core (there's no dynamic allocation of
- * arenas), allowing threads to minimize lock contention by cycling through the
- * arenas until a free arena is detected.
+ * An "arena" is allocated per-CPU core during initialization - there's no
+ * dynamic allocation of arenas. This allows threads to minimize lock contention
+ * by cycling through the arenas until a free arena is detected.
  *
  * There should be a free arena at any given time (statistically speaking) and
  * the thread will only be deferred in the unlikely event in which there's no
  * available arena.
  *
- * Since there's no "free list" management, which could require two threads to
- * access the same arena at the same time, contention is minimal and memory
- * "leaks" are more expensive (as well as small long-life objects).
+ * By avoiding the "free-list", the need for allocation "headers" is also
+ * avoided and allocations are performed with practically zero overhead (about
+ * 32 bytes overhead per 32KB memory, that's 1 bit per 1Kb).
+ *
+ * However, the lack of a "free list" means that memory "leaks" are more
+ * expensive and small long-life allocations could cause fragmentation if
+ * performed periodically (rather than performed during startup).
  *
  * This allocator should NOT be used for objects with a long life-span, because
  * even a single persistent object will prevent the re-use of the whole memory
  * block from which it was allocated (see FIO_MEMORY_BLOCK_SIZE for size).
  *
+ * Some more details:
+ *
+ * Allocation and deallocations and (usually) managed by "blocks".
+ *
  * A memory "block" can include any number of memory pages that are a multiple
- * of 2 (up to 1Mb of memory). However, the default value, set by
- * FIO_MEMORY_BLOCK_SIZE_LOG, is either 32Kb (set at the end of this header).
+ * of 2 (up to 1Mb of memory). However, the default value, set by the value of
+ * FIO_MEMORY_BLOCK_SIZE_LOG, is 32Kb (see value at the end of this header).
  *
- * Each block includes a header that uses reference counters and position
- * markers.
+ * Each block includes a 32 byte header that uses reference counters and
+ * position markers (24 bytes are required padding).
  *
- * The position marker (`pos`) marks the next available byte (counted in
- * multiples of 16).
+ * The block's position marker (`pos`) marks the next available byte (counted in
+ * multiples of 16 bytes).
  *
- * The reference counter (`ref`) counts how many allocations reference memory in
- * the block (including the "arena" that "owns" the block).
+ * The block's reference counter (`ref`) counts how many allocations reference
+ * memory in the block (including the "arena" that "owns" the block).
  *
  * Except for the position marker (`pos`) that acts the same as `sbrk`, there's
  * no way to know which "slices" are allocated and which "slices" are available.
  *
- * Small allocations are differentiated by their memory alignment. If a memory
- * allocation is placed 8 bytes after whole block alignment, the memory was
- * allocated directly using `mmap` (and it might be using a whole page more than
- * request, just because it needed that extra header space!).
- *
  * The allocator uses `mmap` when requesting memory from the system and for
  * allocations bigger than MEMORY_BLOCK_ALLOC_LIMIT (37.5% of the block).
+ *
+ * Small allocations are differentiated from big allocations by their memory
+ * alignment.
+ *
+ * If a memory allocation is placed 16 bytes after whole block alignment (within
+ * a block's padding zone), the memory was allocated directly using `mmap` as a
+ * "big allocation". The 16 bytes include an 8 byte header and an 8 byte
+ * padding.
  *
  * To replace the system's `malloc` function family compile with the
  * `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
