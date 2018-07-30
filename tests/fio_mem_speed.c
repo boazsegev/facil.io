@@ -122,11 +122,11 @@ static size_t test_mem_functions(void *(*malloc_func)(size_t),
           clock_free2);
   fprintf(stderr,
           "* Avrg. clock count for a facil.io use-case round"
-          " (slow free): %zu\n",
+          " (medium-short life): %zu\n",
           fio_optimized);
   fprintf(stderr,
-          "* Avrg. clock count for a facil.io use-case 2 round"
-          " (short life): %zu\n",
+          "* Avrg. clock count for a zero-life span"
+          " (malloc-free): %zu\n",
           fio_optimized2);
   fprintf(stderr, "* Failed allocations: %zu\n", errors);
   return clock_alloc + clock_realloc + clock_free + clock_calloc + clock_free2;

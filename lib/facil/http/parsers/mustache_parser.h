@@ -52,6 +52,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define _GNU_SOURCE
 #endif
 
+#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -766,8 +767,7 @@ FIO_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   } while (0);
 
 #define IGNORE_WHITESPACE(str, step)                                           \
-  while (*(str) == ' ' || *(str) == '\t' || *(str) == '\r' ||                  \
-         *(str) == '\n') {                                                     \
+  while (isspace(*(str))) {                                                    \
     (str) += (step);                                                           \
   }
 
@@ -848,8 +848,7 @@ FIO_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         }
         {
           char *div = beg;
-          while (div < end && *div != ' ' && *div != '\t' && *div != '\r' &&
-                 *div != '\n') {
+          while (div < end && !isspace(*div)) {
             ++div;
           }
           if (div == end) {

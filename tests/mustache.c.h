@@ -196,4 +196,5 @@ void mustache_test(void) {
               "Callback type error on finish");
   /* cleanup */
   mustache_free(m);
+  fprintf(stderr, "* passed.\n");
 }
