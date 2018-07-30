@@ -4,6 +4,14 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <time.h>
+#endif /* __unix__ */
+
 #include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -125,13 +133,6 @@ static inline void fio_memcpy(uint16_t *__restrict dest,
 /* *****************************************************************************
 Spinlock for the few locks we need (atomic reference counting & free blocks)
 ***************************************************************************** */
-#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-#include <time.h>
-#endif /* __unix__ */
-#include <stdlib.h>
 
 /* manage the way threads "wait" for the lock to release */
 #if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
