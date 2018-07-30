@@ -5,6 +5,7 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #include <errno.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -533,6 +534,7 @@ static void __attribute__((constructor)) fio_mem_init(void) {
       block_free(block);
     }
   }
+  pthread_atfork(NULL, NULL, fio_malloc_after_fork);
 }
 
 static void __attribute__((destructor)) fio_mem_destroy(void) {
@@ -562,6 +564,8 @@ Memory allocation / deacclocation API
 void *fio_malloc(size_t size) {
   if (!size)
     return NULL;
+  if (!arenas)
+    fio_mem_init();
   if (size >= FIO_MEMORY_BLOCK_ALLOC_LIMIT) {
     /* system allocation - must be block aligned */
     return big_alloc(size);
@@ -591,8 +595,8 @@ void fio_free(void *ptr) {
 }
 
 /**
- * Re-allocates memory. An attept to avoid copying the data is made only for
- * memory allocations larger than 64Kb.
+ * Re-allocates memory. An attept to avoid copying the data is made only for big
+ * memory allocations.
  *
  * This variation is slightly faster as it might copy less data
  */

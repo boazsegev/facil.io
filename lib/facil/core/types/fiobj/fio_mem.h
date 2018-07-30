@@ -108,14 +108,14 @@ void *fio_calloc(size_t size_per_unit, size_t unit_count);
 void fio_free(void *ptr);
 
 /**
- * Re-allocates memory. An attept to avoid copying the data is made only for
- * memory allocations larger than 64Kb.
+ * Re-allocates memory. An attept to avoid copying the data is made only for big
+ * memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
  */
 void *fio_realloc(void *ptr, size_t new_size);
 
 /**
- * Re-allocates memory. An attept to avoid copying the data is made only for
- * memory allocations larger than 64Kb.
+ * Re-allocates memory. An attept to avoid copying the data is made only for big
+ * memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
  *
  * This variation is slightly faster as it might copy less data.
  */
