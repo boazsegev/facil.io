@@ -5,29 +5,32 @@ License: MIT
 */
 
 /**
- * A Dynamic String for ease of use and binary strings.
+ * A Dynamic String C library for ease of use and binary strings.
  *
  * The string is a simple byte string which is compatible with binary data (NUL
-is a valid byte).
+ * is a valid byte).
  *
- * Use:
-
-fio_str_s str = FIO_STR_INIT;    // a container can be placed on the stack.
-fio_str_write(&str, "hello", 5); // add / remove / read data...
-fio_str_free(&str)               // free any resources, not the container.
-
+ * Example use:
+ *
+ *     fio_str_s str = FIO_STR_INIT;    // container on the stack.
+ *     fio_str_write(&str, "hello", 5); // add / remove / read data...
+ *     fio_str_free(&str)               // free the data, not the container.
+ *
+ * Should work with 32bit and 64bit architectures.
  */
 #define H_FIO_STRING_H
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <errno.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
 
 #ifndef FIO_FUNC
 #define FIO_FUNC static __attribute__((unused))
@@ -49,13 +52,21 @@ fio_str_free(&str)               // free any resources, not the container.
 String API - Initialization and Destruction
 ***************************************************************************** */
 
+/**
+ * The `fio_str_s` type should be considered opaque when possible.
+ *
+ * The type's attributes should be accessed using the accessor functions:
+ * `fio_str_len`, `fio_str_data`, `fio_str_capa`, `fio_str_state`, etc'.
+ *
+ * When accessing the type's
+ */
 typedef struct {
-  uint8_t small;
-  uint8_t frozen;
-  uint8_t reserved[sizeof(size_t) - (sizeof(uint8_t) * 2)];
-  size_t capa;
-  size_t len;
-  char *data;
+  uint8_t small;  /* Flag indicating the String is small and self-contained */
+  uint8_t frozen; /* Flag indicating the String is frozen (don't edit) */
+  uint8_t reserved[sizeof(size_t) - (sizeof(uint8_t) * 2)]; /* padding */
+  size_t capa; /* Known capacity for longer Strings */
+  size_t len;  /* String length for longer Strings */
+  char *data;  /* Data for longer Strings */
 } fio_str_s;
 
 /**
@@ -92,7 +103,7 @@ typedef struct {
  * Frees the String's resources and _reinitializes the container_.
  *
  * Note: if the container isn't allocated on the stack, it should be freed
- * separately using `free(s)`.
+ *       separately using `free(s)`.
  */
 inline FIO_FUNC void fio_str_free(fio_str_s *s);
 
@@ -106,7 +117,7 @@ typedef struct {
   char *data;
 } fio_str_state_s;
 
-/** Returns the String's state (capacity, length and pointer). */
+/** Returns the String's complete state (capacity, length and pointer). */
 inline FIO_FUNC fio_str_state_s fio_str_state(const fio_str_s *s);
 
 /** Returns the String's length in bytes. */
@@ -120,34 +131,6 @@ inline FIO_FUNC uint8_t *fio_str_bytes(fio_str_s *s);
 
 /** Returns the String's existing capacity (allocated memory). */
 inline FIO_FUNC size_t fio_str_capa(fio_str_s *s);
-
-/* *****************************************************************************
-String API - Memory management and resizing
-***************************************************************************** */
-
-/** Performs a best attempt at minimizing memory consumption. */
-inline FIO_FUNC void fio_str_compact(fio_str_s *s);
-
-/**
- * Requires the String to have at least `needed` capacity. Returns the current
- * state of the String.
- */
-FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed);
-
-/**
- * Sets the new String size without reallocating any memory (limited by
- * existing capacity).
- *
- * Returns the updated state of the String.
- *
- * Note: When shrinking, any existing data beyond the new size may be corrupted.
- */
-inline FIO_FUNC fio_str_state_s fio_str_resize(fio_str_s *s, size_t size);
-
-/**
- * Clears the string (retaining the existing capacity).
- */
-#define fio_str_clear(s) fio_str_resize((s), 0)
 
 /* *****************************************************************************
 String API - Content Manipulation
@@ -183,9 +166,51 @@ inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
                                                 size_t src_len);
 
 /**
+ * Writes to the String using a vprintf like interface.
+ *
+ * Data is written to the end of the String.
+ */
+fio_str_state_s fio_str_vprintf(fio_str_s *s, const char *format, va_list argv);
+
+/**
+ * Writes to the String using a printf like interface.
+ *
+ * Data is written to the end of the String.
+ */
+fio_str_state_s fio_str_printf(fio_str_s *s, const char *format, ...);
+
+/**
  * Prevents further manipulations to the String's content.
  */
 inline FIO_FUNC void fio_str_freeze(fio_str_s *s);
+
+/* *****************************************************************************
+String API - Memory management and resizing
+***************************************************************************** */
+
+/** Performs a best attempt at minimizing memory consumption. */
+inline FIO_FUNC void fio_str_compact(fio_str_s *s);
+
+/**
+ * Requires the String to have at least `needed` capacity. Returns the current
+ * state of the String.
+ */
+FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed);
+
+/**
+ * Sets the new String size without reallocating any memory (limited by
+ * existing capacity).
+ *
+ * Returns the updated state of the String.
+ *
+ * Note: When shrinking, any existing data beyond the new size may be corrupted.
+ */
+inline FIO_FUNC fio_str_state_s fio_str_resize(fio_str_s *s, size_t size);
+
+/**
+ * Clears the string (retaining the existing capacity).
+ */
+#define fio_str_clear(s) fio_str_resize((s), 0)
 
 /* *****************************************************************************
 
@@ -438,6 +463,30 @@ inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
   return fio_str_resize(s, new_size);
 }
 
+/** Writes to the String using a vprintf like interface. */
+__attribute__((format(printf, 2, 0))) fio_str_state_s
+fio_str_vprintf(fio_str_s *s, const char *format, va_list argv) {
+  va_list argv_cpy;
+  va_copy(argv_cpy, argv);
+  int len = vsnprintf(NULL, 0, format, argv_cpy);
+  va_end(argv_cpy);
+  if (len <= 0)
+    return fio_str_state(s);
+  fio_str_state_s state = fio_str_resize(s, len + fio_str_len(s));
+  vsnprintf(state.data + (state.len - len), len + 1, format, argv);
+  return state;
+}
+
+/** Writes to the String using a printf like interface. */
+__attribute__((format(printf, 2, 3))) fio_str_state_s
+fio_str_printf(fio_str_s *s, const char *format, ...) {
+  va_list argv;
+  va_start(argv, format);
+  fio_str_state_s state = fio_str_vprintf(s, format, argv);
+  va_end(argv);
+  return state;
+}
+
 /**
  * Prevents further manipulations to the String's content.
  */
@@ -570,6 +619,9 @@ FIO_FUNC inline void fio_str_test(void) {
         "Frozen String capacity changed (allowed, but shouldn't happen)!");
     str.frozen = 0;
   }
+  fio_str_printf(&str, " %u", 42);
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World! 42"),
+              "`fio_str_printf` data error (%s)!", fio_str_data(&str));
 
   fio_str_free(&str);
   fprintf(stderr, "* passed.\n");
