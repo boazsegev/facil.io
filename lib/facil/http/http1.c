@@ -2,7 +2,7 @@
 Copyright: Boaz Segev, 2017
 License: MIT
 */
-#include "spnlock.inc"
+#include "spnlock.h"
 
 #include "http1.h"
 #include "http1_parser.h"

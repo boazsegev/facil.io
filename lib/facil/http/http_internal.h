@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_HTTP_INTERNAL_H
 #define H_HTTP_INTERNAL_H
 
-#include "spnlock.inc"
+#include "spnlock.h"
 
 #include "fio_llist.h"
 #include "http.h"

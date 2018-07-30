@@ -7,7 +7,7 @@
 
 // #include "facil_cluster.h"
 
-#include "spnlock.inc"
+#include "spnlock.h"
 
 #include "facil.h"
 #include "fio_mem.h"

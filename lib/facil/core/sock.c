@@ -9,7 +9,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 
 #include "sock.h"
-#include "spnlock.inc"
+#include "spnlock.h"
 /* *****************************************************************************
 Includes and state
 ***************************************************************************** */
@@ -116,7 +116,9 @@ static struct {
 
 void SOCK_DEALLOC_NOOP(void *arg) { (void)arg; }
 
-typedef struct func_s { void (*task)(void *); } func_s;
+typedef struct func_s {
+  void (*task)(void *);
+} func_s;
 
 static void sock_packet_free_cb(void *task, void *buffer) {
   func_s *t = (void *)&task;

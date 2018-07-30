@@ -4,7 +4,7 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "spnlock.inc"
+#include "spnlock.h"
 
 #include "evio.h"
 #include "facil.h"

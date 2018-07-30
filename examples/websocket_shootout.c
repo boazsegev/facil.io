@@ -17,7 +17,7 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 
 */
 
-#include "spnlock.inc"
+#include "spnlock.h"
 #include "websockets.h"
 
 #include <string.h>

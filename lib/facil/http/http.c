@@ -5,7 +5,7 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 
-#include "spnlock.inc"
+#include "spnlock.h"
 
 #include "fio_base64.h"
 #include "http1.h"
@@ -782,7 +782,9 @@ void http_pause(http_s *h, void (*task)(void *http)) {
   http_vtable_s *vtbl = (http_vtable_s *)h->private_data.vtbl;
   http_pause_handle_s *http = fio_malloc(sizeof(*http));
   *http = (http_pause_handle_s){
-      .uuid = p->uuid, .h = h, .udata = h->udata,
+      .uuid = p->uuid,
+      .h = h,
+      .udata = h->udata,
   };
   vtbl->http_on_pause(h, p);
   defer(http_pause_wrapper, http, (void *)((uintptr_t)task));

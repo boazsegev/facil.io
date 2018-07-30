@@ -4,7 +4,7 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "spnlock.inc"
+#include "spnlock.h"
 
 #include "fio_llist.h"
 #include "fiobj.h"
@@ -522,7 +522,8 @@ static inline facil_msg_metadata_s websocket_optimize(fio_cstr_s msg,
                    websocket_server_wrap(fiobj_obj2cstr(out).data, msg.data,
                                          msg.len, opcode, 1, 1, 0));
   facil_msg_metadata_s ret = {
-      .on_finish = websocket_optimize_free, .metadata = (void *)out,
+      .on_finish = websocket_optimize_free,
+      .metadata = (void *)out,
   };
   return ret;
 }
@@ -715,7 +716,9 @@ static void websocket_on_pubsub_message(facil_msg_s *msg) {
 
   if (d->on_message)
     d->on_message((websocket_pubsub_notification_s){
-        .ws = (ws_s *)pr, .channel = msg->channel, .message = msg->msg,
+        .ws = (ws_s *)pr,
+        .channel = msg->channel,
+        .message = msg->msg,
     });
   facil_protocol_unlock(pr, FIO_PR_LOCK_TASK);
 }
