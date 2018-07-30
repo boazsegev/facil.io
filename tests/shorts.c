@@ -9,6 +9,7 @@
 #include "fio_random.h"
 #include "fio_sha1.h"
 #include "fio_sha2.h"
+#include "fio_str.h"
 #include "http.h"
 
 int main(void) {
@@ -30,6 +31,7 @@ int main(void) {
   mustache_test();
   fio_malloc_test();
   fio_llist_test();
+  fio_str_test();
   fio_ary_test();
   fio_hash_test();
   fiobj_test();

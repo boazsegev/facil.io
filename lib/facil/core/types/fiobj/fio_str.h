@@ -167,21 +167,20 @@ inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
                                                fio_str_s const *src);
 
 /**
- * Pastes data to the specified location in the string, overwriting existing
- * data.
+ * Replaces the data in the String - replacing `old_len` bytes starting at
+ * `start_pos`, with the data at `src` (`src_len` bytes long).
  *
- * Negative `pos` values are calculated backwards, `-1` == end of String.
- */
-inline FIO_FUNC fio_str_state_s fio_str_overwrite(fio_str_s *s, void *src,
-                                                  size_t src_len, intptr_t pos);
-
-/**
- * Pastes data to the specified location in the string, moving existing data.
+ * Negative `start_pos` values are calculated backwards, `-1` == end of String.
  *
- * Negative `pos` values are calculated backwards, `-1` == end of String.
+ * When `old_len` is zero, the function will insert the data at `start_pos`.
+ *
+ * If `src_len == 0` than `src` will be ignored and the data marked for
+ * replacement will be erased.
  */
-inline FIO_FUNC fio_str_state_s fio_str_insert(fio_str_s *s, void *src,
-                                               size_t src_len, intptr_t pos);
+inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
+                                                intptr_t start_pos,
+                                                size_t old_len, void *src,
+                                                size_t src_len);
 
 /**
  * Prevents further manipulations to the String's content.
@@ -382,62 +381,61 @@ inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
   memcpy(state.data + state.len - src_state.len, src_state.data, src_state.len);
   return state;
 }
-/**
- * Pastes data to the specified location in the string, overwriting existing
- * data.
- */
-inline FIO_FUNC fio_str_state_s fio_str_overwrite(fio_str_s *s, void *src,
-                                                  size_t src_len,
-                                                  intptr_t pos) {
-  if (!s || !src_len || !src || s->frozen)
-    return fio_str_state(s);
-  if (pos < 0) {
-    /* backwards position indexing */
-    pos += s->len + 1;
-    if (pos < 0)
-      pos = 0;
-  }
-
-  fio_str_state_s state = fio_str_state(s);
-
-  if ((size_t)pos > state.len)
-    pos = state.len; /* prevent overflow */
-
-  if (pos + src_len > state.len) {
-    state = fio_str_resize(s, (pos + src_len));
-  }
-  memcpy(state.data + pos, src, src_len);
-  if (pos + src_len > s->len)
-    s->len = pos + src_len;
-  return state;
-}
 
 /**
- * Pastes data to the specified location in the string, moving existing data.
+ * Replaces the data in the String - replacing `old_len` bytes starting at
+ * `start_pos`, with the data at `src` (`src_len` bytes long).
  *
- * Negative `pos` values allow for reverse positioning (-1 == end of String).
+ * Negative `start_pos` values are calculated backwards, `-1` == end of String.
+ *
+ * When `old_len` is zero, the function will insert the data at `start_pos`.
+ *
+ * If `src_len == 0` than `src` will be ignored and the data marked for
+ * replacement will be erased.
  */
-inline FIO_FUNC fio_str_state_s fio_str_insert(fio_str_s *s, void *src,
-                                               size_t src_len, intptr_t pos) {
-  if (!s || !src_len || !src || s->frozen)
-    return fio_str_state(s);
-  if (pos < 0) {
+inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
+                                                intptr_t start_pos,
+                                                size_t old_len, void *src,
+                                                size_t src_len) {
+  fio_str_state_s state = fio_str_state(s);
+  if (!s || s->frozen || (!old_len && !src_len))
+    return state;
+
+  if (start_pos < 0) {
     /* backwards position indexing */
-    pos += s->len + 1;
-    if (pos < 0)
-      pos = 0;
+    start_pos += s->len + 1;
+    if (start_pos < 0)
+      start_pos = 0;
   }
 
-  fio_str_state_s state = fio_str_resize(s, src_len + fio_str_len(s));
-
-  if ((size_t)pos > (state.len - src_len))
-    pos = (state.len - src_len); /* prevent overflow */
-
-  if ((size_t)pos != state.len) {
-    memmove(state.data + pos + src_len, state.data + pos, src_len);
+  if (start_pos + old_len >= state.len) {
+    /* old_len overflows the end of the String */
+    if (s->small || !s->data) {
+      s->small = 1 | ((size_t)((start_pos << 1) & 0xFF));
+    } else {
+      s->len = start_pos;
+    }
+    return fio_str_write(s, src, src_len);
   }
-  memcpy(state.data + pos, src, src_len);
-  return state;
+
+  /* data replacement is now always in the middle (or start) of the String */
+  const size_t new_size = state.len + (src_len - old_len);
+
+  if (old_len != src_len) {
+    /* there's an offset requiring an adjustment */
+    if (old_len < src_len) {
+      /* make room for new data */
+      const size_t offset = src_len - old_len;
+      state = fio_str_resize(s, state.len + offset);
+    }
+    memmove(state.data + start_pos + src_len, state.data + start_pos + old_len,
+            (state.len - start_pos) - old_len);
+  }
+  if (src_len) {
+    memcpy(state.data + start_pos, src, src_len);
+  }
+
+  return fio_str_resize(s, new_size);
 }
 
 /**
@@ -520,17 +518,29 @@ FIO_FUNC inline void fio_str_test(void) {
   TEST_ASSERT(!strcmp(fio_str_data(&str), "World!"),
               "Long String `write` error (%s)!", fio_str_data(&str));
 
-  fio_str_insert(&str, "Hello ", 6, 0);
+  fio_str_replace(&str, 0, 0, "Hello ", 6);
   TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello World!"),
               "Long String `insert` error (%s)!", fio_str_data(&str));
 
+  fio_str_resize(&str, 6);
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello "),
+              "Long String `resize` clipping error (%s)!", fio_str_data(&str));
+
+  fio_str_replace(&str, 6, 0, "My World!", 9);
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello My World!"),
+              "Long String `replace` error when testing overflow (%s)!",
+              fio_str_data(&str));
+
   str.capa = str.len;
-  fio_str_overwrite(&str, "Big World!", 10, 6);
+  fio_str_replace(&str, -10, 2, "Big", 3);
   TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World!"),
-              "Long String `overwrite` error (%s)!", fio_str_data(&str));
+              "Long String `replace` error when testing splicing (%s)!",
+              fio_str_data(&str));
+
   TEST_ASSERT(fio_str_capa(&str) == strlen("Hello Big World!"),
               "Long String `overwrite` capacity update error (%zu != %zu)!",
               fio_str_capa(&str), strlen("Hello Big World!"));
+
   if (str.len < FIO_STR_SMALL_CAPA) {
     fio_str_compact(&str);
     TEST_ASSERT(str.small, "Compacting didn't change String to small!");
@@ -545,12 +555,11 @@ FIO_FUNC inline void fio_str_test(void) {
     fprintf(stderr, "* skipped `compact` test!\n");
   }
 
-  fio_str_freeze(&str);
   {
+    fio_str_freeze(&str);
     fio_str_state_s old_state = fio_str_state(&str);
     fio_str_write(&str, "more data to be written here", 28);
-    fio_str_insert(&str, "more data to be written here", 28, -1);
-    fio_str_overwrite(&str, "more data to be written here", 28, -1);
+    fio_str_replace(&str, 2, 1, "more data to be written here", 28);
     fio_str_state_s new_state = fio_str_state(&str);
     TEST_ASSERT(old_state.len == new_state.len,
                 "Frozen String length changed!");
@@ -559,6 +568,7 @@ FIO_FUNC inline void fio_str_test(void) {
     TEST_ASSERT(
         old_state.capa == new_state.capa,
         "Frozen String capacity changed (allowed, but shouldn't happen)!");
+    str.frozen = 0;
   }
 
   fio_str_free(&str);
