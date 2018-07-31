@@ -156,7 +156,7 @@ String API - Content Manipulation and Review
  * Writes data at the end of the String (similar to `fio_str_insert` with the
  * argument `pos == -1`).
  */
-inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, void *src,
+inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, const void *src,
                                               size_t src_len);
 
 /**
@@ -178,7 +178,7 @@ inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
  */
 inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
                                                 intptr_t start_pos,
-                                                size_t old_len, void *src,
+                                                size_t old_len, const void *src,
                                                 size_t src_len);
 
 /**
@@ -186,14 +186,15 @@ inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
  *
  * Data is written to the end of the String.
  */
-fio_str_state_s fio_str_vprintf(fio_str_s *s, const char *format, va_list argv);
+FIO_FUNC fio_str_state_s fio_str_vprintf(fio_str_s *s, const char *format,
+                                         va_list argv);
 
 /**
  * Writes to the String using a printf like interface.
  *
  * Data is written to the end of the String.
  */
-fio_str_state_s fio_str_printf(fio_str_s *s, const char *format, ...);
+FIO_FUNC fio_str_state_s fio_str_printf(fio_str_s *s, const char *format, ...);
 
 /**
  * Prevents further manipulations to the String's content.
@@ -203,7 +204,7 @@ inline FIO_FUNC void fio_str_freeze(fio_str_s *s);
 /**
  * Binary comparison returns `1` if both strings are equal and `0` if not.
  */
-inline FIO_FUNC int fio_str_iseq(fio_str_s *str1, fio_str_s *str2);
+inline FIO_FUNC int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2);
 
 /* *****************************************************************************
 String API - Memory management
@@ -421,7 +422,7 @@ Implementation - Content Manipulation and Review
  * Writes data at the end of the String (similar to `fio_str_insert` with the
  * argument `pos == -1`).
  */
-inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, void *src,
+inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, const void *src,
                                               size_t src_len) {
   if (!s || !src_len || !src || s->frozen)
     return fio_str_state(s);
@@ -459,7 +460,7 @@ inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
  */
 inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
                                                 intptr_t start_pos,
-                                                size_t old_len, void *src,
+                                                size_t old_len, const void *src,
                                                 size_t src_len) {
   fio_str_state_s state = fio_str_state(s);
   if (!s || s->frozen || (!old_len && !src_len))
@@ -503,7 +504,7 @@ inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
 }
 
 /** Writes to the String using a vprintf like interface. */
-__attribute__((format(printf, 2, 0))) fio_str_state_s
+FIO_FUNC __attribute__((format(printf, 2, 0))) fio_str_state_s
 fio_str_vprintf(fio_str_s *s, const char *format, va_list argv) {
   va_list argv_cpy;
   va_copy(argv_cpy, argv);
@@ -517,7 +518,7 @@ fio_str_vprintf(fio_str_s *s, const char *format, va_list argv) {
 }
 
 /** Writes to the String using a printf like interface. */
-__attribute__((format(printf, 2, 3))) fio_str_state_s
+FIO_FUNC __attribute__((format(printf, 2, 3))) fio_str_state_s
 fio_str_printf(fio_str_s *s, const char *format, ...) {
   va_list argv;
   va_start(argv, format);
@@ -538,7 +539,7 @@ inline FIO_FUNC void fio_str_freeze(fio_str_s *s) {
 /**
  * Binary comparison returns `1` if both strings are equal and `0` if not.
  */
-inline FIO_FUNC int fio_str_iseq(fio_str_s *str1, fio_str_s *str2) {
+inline FIO_FUNC int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2) {
   if (str1 == str2)
     return 1;
   if (!str1 || !str2)
