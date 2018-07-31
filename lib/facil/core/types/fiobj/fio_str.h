@@ -133,8 +133,23 @@ inline FIO_FUNC uint8_t *fio_str_bytes(fio_str_s *s);
 /** Returns the String's existing capacity (allocated memory). */
 inline FIO_FUNC size_t fio_str_capa(fio_str_s *s);
 
+/**
+ * Sets the new String size without reallocating any memory (limited by
+ * existing capacity).
+ *
+ * Returns the updated state of the String.
+ *
+ * Note: When shrinking, any existing data beyond the new size may be corrupted.
+ */
+inline FIO_FUNC fio_str_state_s fio_str_resize(fio_str_s *s, size_t size);
+
+/**
+ * Clears the string (retaining the existing capacity).
+ */
+#define fio_str_clear(s) fio_str_resize((s), 0)
+
 /* *****************************************************************************
-String API - Content Manipulation
+String API - Content Manipulation and Review
 ***************************************************************************** */
 
 /**
@@ -185,8 +200,13 @@ fio_str_state_s fio_str_printf(fio_str_s *s, const char *format, ...);
  */
 inline FIO_FUNC void fio_str_freeze(fio_str_s *s);
 
+/**
+ * Binary comparison returns `1` if both strings are equal and `0` if not.
+ */
+inline FIO_FUNC int fio_str_iseq(fio_str_s *str1, fio_str_s *str2);
+
 /* *****************************************************************************
-String API - Memory management and resizing
+String API - Memory management
 ***************************************************************************** */
 
 /** Performs a best attempt at minimizing memory consumption. */
@@ -197,21 +217,6 @@ inline FIO_FUNC void fio_str_compact(fio_str_s *s);
  * state of the String.
  */
 FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed);
-
-/**
- * Sets the new String size without reallocating any memory (limited by
- * existing capacity).
- *
- * Returns the updated state of the String.
- *
- * Note: When shrinking, any existing data beyond the new size may be corrupted.
- */
-inline FIO_FUNC fio_str_state_s fio_str_resize(fio_str_s *s, size_t size);
-
-/**
- * Clears the string (retaining the existing capacity).
- */
-#define fio_str_clear(s) fio_str_resize((s), 0)
 
 /* *****************************************************************************
 
@@ -279,80 +284,6 @@ inline FIO_FUNC size_t fio_str_capa(fio_str_s *s) {
   return (s->small || !s->data) ? (FIO_STR_SMALL_CAPA - 1) : s->capa;
 }
 
-/* *****************************************************************************
-Implementation - Memory management and resizing
-***************************************************************************** */
-
-/** Performs a best attempt at minimizing memory consumption. */
-inline FIO_FUNC void fio_str_compact(fio_str_s *s) {
-  if (!s || (s->small || !s->data))
-    return;
-  char *tmp;
-  if (s->len < FIO_STR_SMALL_CAPA)
-    goto shrink2small;
-  tmp = realloc(s->data, s->len + 1);
-  FIO_ASSERT_ALLOC(tmp);
-  s->data = tmp;
-  s->capa = s->len;
-  return;
-
-shrink2small:
-  tmp = s->data;
-  size_t len = s->len;
-  *s = (fio_str_s){.small = (uint8_t)(((len << 1) | 1) & 0xFF),
-                   .frozen = s->frozen};
-  if (len) {
-    memcpy(((fio_str__small_s *)s)->data, tmp, len + 1);
-  }
-  free(tmp);
-}
-
-/* *****************************************************************************
-String data
-***************************************************************************** */
-
-/**
- * Requires the String to have at least `needed` capacity. Returns the current
- * state of the String.
- */
-FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
-  if (!s)
-    return (fio_str_state_s){.capa = 0};
-  char *tmp;
-  if (s->small || !s->data) {
-    goto is_small;
-  }
-  if (needed > s->capa) {
-    s->capa = needed;
-    tmp = (char *)realloc(s->data, s->capa + 1);
-    FIO_ASSERT_ALLOC(tmp);
-    s->data = tmp;
-    s->data[s->capa] = 0;
-  }
-  return (fio_str_state_s){.capa = s->capa, .len = s->len, .data = s->data};
-
-is_small:
-  if (needed < FIO_STR_SMALL_CAPA) {
-    return (fio_str_state_s){.capa = (FIO_STR_SMALL_CAPA - 1),
-                             .len = (size_t)(s->small >> 1),
-                             .data = ((fio_str__small_s *)s)->data};
-  }
-  tmp = (char *)malloc(needed + 1);
-  FIO_ASSERT_ALLOC(tmp);
-  if ((size_t)(s->small >> 1)) {
-    memcpy(tmp, ((fio_str__small_s *)s)->data, (size_t)(s->small >> 1) + 1);
-  } else {
-    tmp[0] = 0;
-  }
-  *s = (fio_str_s){
-      .small = 0,
-      .capa = needed,
-      .len = (size_t)(s->small >> 1),
-      .data = tmp,
-  };
-  return (fio_str_state_s){.capa = needed, .len = s->len, .data = s->data};
-}
-
 /**
  * Sets the new String size without reallocating any memory (limited by
  * existing capacity).
@@ -379,7 +310,81 @@ inline FIO_FUNC fio_str_state_s fio_str_resize(fio_str_s *s, size_t size) {
 }
 
 /* *****************************************************************************
-Implementation - Content Manipulation
+Implementation - Memory management
+***************************************************************************** */
+
+/**
+ * Requires the String to have at least `needed` capacity. Returns the current
+ * state of the String.
+ */
+FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
+  if (!s)
+    return (fio_str_state_s){.capa = 0};
+  char *tmp;
+  if (s->small || !s->data) {
+    goto is_small;
+  }
+  if (needed > s->capa) {
+    tmp = (char *)realloc(s->data, needed + 1);
+    FIO_ASSERT_ALLOC(tmp);
+    s->capa = needed;
+    s->data = tmp;
+    s->data[needed] = 0;
+  }
+  return (fio_str_state_s){.capa = s->capa, .len = s->len, .data = s->data};
+
+is_small:
+  /* small string (string data is within the container) */
+  if (needed < FIO_STR_SMALL_CAPA) {
+    return (fio_str_state_s){.capa = (FIO_STR_SMALL_CAPA - 1),
+                             .len = (size_t)(s->small >> 1),
+                             .data = ((fio_str__small_s *)s)->data};
+  }
+  tmp = (char *)malloc(needed + 1);
+  FIO_ASSERT_ALLOC(tmp);
+  const size_t existing_len = (size_t)((s->small >> 1) & 0xFF);
+  if (existing_len) {
+    memcpy(tmp, ((fio_str__small_s *)s)->data, existing_len + 1);
+  } else {
+    tmp[0] = 0;
+  }
+  *s = (fio_str_s){
+      .small = 0,
+      .capa = needed,
+      .len = existing_len,
+      .data = tmp,
+  };
+  return (fio_str_state_s){
+      .capa = needed, .len = existing_len, .data = s->data};
+}
+
+/** Performs a best attempt at minimizing memory consumption. */
+inline FIO_FUNC void fio_str_compact(fio_str_s *s) {
+  if (!s || (s->small || !s->data))
+    return;
+  char *tmp;
+  if (s->len < FIO_STR_SMALL_CAPA)
+    goto shrink2small;
+  tmp = realloc(s->data, s->len + 1);
+  FIO_ASSERT_ALLOC(tmp);
+  s->data = tmp;
+  s->capa = s->len;
+  return;
+
+shrink2small:
+  /* move the string into the container */
+  tmp = s->data;
+  size_t len = s->len;
+  *s = (fio_str_s){.small = (uint8_t)(((len << 1) | 1) & 0xFF),
+                   .frozen = s->frozen};
+  if (len) {
+    memcpy(((fio_str__small_s *)s)->data, tmp, len + 1);
+  }
+  free(tmp);
+}
+
+/* *****************************************************************************
+Implementation - Content Manipulation and Review
 ***************************************************************************** */
 
 /**
@@ -498,6 +503,19 @@ inline FIO_FUNC void fio_str_freeze(fio_str_s *s) {
   if (!s)
     return;
   s->frozen = 1;
+}
+
+/**
+ * Binary comparison returns `1` if both strings are equal and `0` if not.
+ */
+inline FIO_FUNC int fio_str_iseq(fio_str_s *str1, fio_str_s *str2) {
+  if (str1 == str2)
+    return 1;
+  if (!str1 || !str2)
+    return 0;
+  fio_str_state_s s1 = fio_str_state(str1);
+  fio_str_state_s s2 = fio_str_state(str2);
+  return (s1.len == s2.len && !memcmp(s1.data, s2.data, s1.len));
 }
 
 /* *****************************************************************************
@@ -626,6 +644,22 @@ FIO_FUNC inline void fio_str_test(void) {
   fio_str_printf(&str, " %u", 42);
   TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World! 42"),
               "`fio_str_printf` data error (%s)!", fio_str_data(&str));
+
+  {
+    fio_str_s str2 = FIO_STR_INIT;
+    fio_str_concat(&str2, &str);
+    TEST_ASSERT(fio_str_iseq(&str, &str2),
+                "`fio_str_concat` error, strings not equal (%s != %s)!",
+                fio_str_data(&str), fio_str_data(&str2));
+    fio_str_write(&str2, ":extra data", 11);
+    TEST_ASSERT(
+        !fio_str_iseq(&str, &str2),
+        "`fio_str_write` error after copy, strings equal ((%zu)%s == (%zu)%s)!",
+        fio_str_len(&str), fio_str_data(&str), fio_str_len(&str2),
+        fio_str_data(&str2));
+
+    fio_str_free(&str2);
+  }
 
   fio_str_free(&str);
   fprintf(stderr, "* passed.\n");
