@@ -472,6 +472,12 @@ void fiobj_test_string(void) {
               "16K fiobj_str_write capa not enough.\n");
   fiobj_free(o);
 
+  o = fiobj_str_readfile(__FILE__, 0, 0);
+  TEST_ASSERT(!memcmp(fiobj_obj2cstr(o).data, "/*", 2),
+              "`fiobj_str_readfile` error, start of file doesn't match:\n%s",
+              fiobj_obj2cstr(o).data);
+  fiobj_free(o);
+
   fprintf(stderr, "* passed.\n");
 }
 #endif
