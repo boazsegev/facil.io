@@ -1,4 +1,4 @@
-# The libraries used by facil.io 
+# Libraries offered by facil.io 
 
 The facil.io framework is based on a modular design, which means many of the modules can be extracted and used independently as separate libraries.
 
@@ -12,9 +12,11 @@ Please note that this isn't a comprehensive list (for example, the Base64 librar
 
 ### Types:
 
-Most type libraries are designed to handle common tasks, such as memory management and error checking.
+These type libraries are designed to make many common tasks easy while offering an easy to use API.
 
-They are all designed to use a data container (that can be allocated either on the stack or on the heap) as well as dynamic memory management.
+They are all designed to use a data container (that can be allocated either on the stack or on the heap) as well as dynamic memory management, for maximum flexibility.
+
+And although they often prefer ease of use over performance, they are very libraries.
 
 * [Dynamic String Library](lib/facil/core/types/fiobj/fio_str.h): this library is easy to use and helps with authoring binary and C Strings.
 
@@ -35,6 +37,8 @@ They are all designed to use a data container (that can be allocated either on t
     fio_str_free(str);
     free(str);
     ```
+
+    It should be noted that short Strings (up to 30 bytes on 64bit machines) will be stored within the container without additional memory allocations, improving performance for many common use cases.
 
 * [Dynamic Array Library](lib/facil/core/types/fiobj/fio_ary.h): was designed to make dynamic arrays easy to handle.
 
@@ -100,4 +104,4 @@ I wrote it to solve an issue I had with memory fragmentation and race conditions
 
 The allocator doesn't return all the memory to the system. Instead, there's a memory pool that is retained, improving concurrency even across process borders by minimizing system calls.
 
-More details can be found in [the header file `fio_mem.h`](lib/facil/core/types/fiobj/fio_mem.h) and the implementation file [`fio_mem.c`](lib/facil/core/types/fiobj/fio_mem.c).
+More details can be found in [the header file `fio_mem.h`](lib/facil/core/types/fiobj/fio_mem.h) and [the implementation file `fio_mem.c`](lib/facil/core/types/fiobj/fio_mem.c).
