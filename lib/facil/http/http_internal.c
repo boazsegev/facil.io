@@ -244,7 +244,7 @@ void http_lib_init(void) {
 
 #define REGISTER_MIME(ext, type)                                               \
   http_mimetype_register(ext, sizeof(ext) - 1,                                 \
-                         fiobj_str_static(type, sizeof(type) - 1))
+                         fiobj_str_new(type, sizeof(type) - 1))
 
   REGISTER_MIME("123", "application/vnd.lotus-1-2-3");
   REGISTER_MIME("3dml", "text/vnd.in3d.3dml");

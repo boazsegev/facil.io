@@ -154,7 +154,9 @@ static FIOBJ fiobj_data_alloc(void *buffer, int fd) {
   fiobj_data_s *io = malloc(sizeof(*io));
   REQUIRE_MEM(io);
   *io = (fiobj_data_s){
-      .head = {.ref = 1, .type = FIOBJ_T_DATA}, .buffer = buffer, .fd = fd,
+      .head = {.ref = 1, .type = FIOBJ_T_DATA},
+      .buffer = buffer,
+      .fd = fd,
   };
   return (FIOBJ)io;
 }
@@ -506,7 +508,8 @@ static fio_cstr_s fiobj_data_read_str(FIOBJ io, intptr_t length) {
   if (obj2io(io)->pos > obj2io(io)->len)
     obj2io(io)->pos = obj2io(io)->len;
   return (fio_cstr_s){
-      .buffer = (obj2io(io)->buffer + pos), .length = (obj2io(io)->pos - pos),
+      .buffer = (obj2io(io)->buffer + pos),
+      .length = (obj2io(io)->pos - pos),
   };
 }
 
@@ -677,7 +680,8 @@ static fio_cstr_s fiobj_data_read2ch_file(FIOBJ io, uint8_t token) {
       obj2io(io)->pos = delta;
       obj2io(io)->fpos += delta;
       return (fio_cstr_s){
-          .buffer = obj2io(io)->buffer, .length = delta,
+          .buffer = obj2io(io)->buffer,
+          .length = delta,
       };
     }
   }
@@ -820,10 +824,12 @@ static fio_cstr_s fiobj_data_pread_str(FIOBJ io, intptr_t start_at,
     length = obj2io(io)->len - start_at;
   if (length == 0)
     return (fio_cstr_s){
-        .buffer = NULL, .length = 0,
+        .buffer = NULL,
+        .length = 0,
     };
   return (fio_cstr_s){
-      .buffer = obj2io(io)->buffer + start_at, .length = length,
+      .buffer = obj2io(io)->buffer + start_at,
+      .length = length,
   };
 }
 static fio_cstr_s fiobj_data_pread_slice(FIOBJ io, intptr_t start_at,
@@ -838,7 +844,8 @@ static fio_cstr_s fiobj_data_pread_slice(FIOBJ io, intptr_t start_at,
     length = obj2io(io)->len - start_at;
   if (length == 0)
     return (fio_cstr_s){
-        .buffer = NULL, .length = 0,
+        .buffer = NULL,
+        .length = 0,
     };
   return fiobj_data_pread(obj2io(io)->parent, start_at, length);
 }
@@ -854,7 +861,8 @@ static fio_cstr_s fiobj_data_pread_file(FIOBJ io, intptr_t start_at,
     length = size - start_at;
   if (length == 0)
     return (fio_cstr_s){
-        .buffer = NULL, .length = 0,
+        .buffer = NULL,
+        .length = 0,
     };
   obj2io(io)->len = 0;
   obj2io(io)->pos = 0;
@@ -862,12 +870,14 @@ static fio_cstr_s fiobj_data_pread_file(FIOBJ io, intptr_t start_at,
   ssize_t tmp = pread(obj2io(io)->fd, obj2io(io)->buffer, length, start_at);
   if (tmp <= 0) {
     return (fio_cstr_s){
-        .buffer = NULL, .length = 0,
+        .buffer = NULL,
+        .length = 0,
     };
   }
   obj2io(io)->buffer[tmp] = 0;
   return (fio_cstr_s){
-      .buffer = obj2io(io)->buffer, .length = tmp,
+      .buffer = obj2io(io)->buffer,
+      .length = tmp,
   };
 }
 /**
@@ -882,7 +892,8 @@ fio_cstr_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length) {
   if (!io || !FIOBJ_TYPE_IS(io, FIOBJ_T_DATA)) {
     errno = EFAULT;
     return (fio_cstr_s){
-        .buffer = NULL, .length = 0,
+        .buffer = NULL,
+        .length = 0,
     };
   }
 
@@ -1000,7 +1011,7 @@ void fiobj_data_test(void) {
   if (filename)
     text = fiobj_str_readfile(filename, 0, 0);
   else
-    text = fiobj_str_static("Line 1\r\nLine 2\nLine 3 unended", 29);
+    text = fiobj_str_new("Line 1\r\nLine 2\nLine 3 unended", 29);
   FIOBJ strio = fiobj_data_newstr();
   fprintf(stderr, "* `newstr` passed.\n");
   FIOBJ fdio = fiobj_data_newtmpfile();

@@ -26,18 +26,6 @@ FIOBJ fiobj_str_new(const char *str, size_t len);
  */
 FIOBJ fiobj_str_buf(size_t capa);
 
-/**
- * Creates a static String object from a static C string. Remember `fiobj_free`.
- *
- * This variation avoids allocating memory for an existing static String.
- *
- * The object still needs to be frees, but the string isn't copied and isn't
- * freed.
- *
- * NOTICE: static strings can't be written to.
- */
-FIOBJ fiobj_str_static(const char *str, size_t len);
-
 /** Creates a copy from an existing String. Remember to use `fiobj_free`. */
 static inline __attribute__((unused)) FIOBJ fiobj_str_copy(FIOBJ src) {
   fio_cstr_s s = fiobj_obj2cstr(src);
