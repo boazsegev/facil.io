@@ -24,6 +24,12 @@ License: MIT
 #define _GNU_SOURCE
 #endif
 
+#if defined(__unix__) || defined(__APPLE__) || defined(__linux__)
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
 #include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -149,6 +155,46 @@ inline FIO_FUNC fio_str_state_s fio_str_resize(fio_str_s *s, size_t size);
 #define fio_str_clear(s) fio_str_resize((s), 0)
 
 /* *****************************************************************************
+String API - Memory management
+***************************************************************************** */
+
+/**
+ * Performs a best attempt at minimizing memory consumption.
+ *
+ * Actual effects depend on the underlying memory allocator and it's
+ * implementation. Not all allocators will free any memory.
+ */
+inline FIO_FUNC void fio_str_compact(fio_str_s *s);
+
+/**
+ * Requires the String to have at least `needed` capacity. Returns the current
+ * state of the String.
+ */
+FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed);
+
+/* *****************************************************************************
+String API - UTF-8 support
+***************************************************************************** */
+
+/** Returns 1 if the String is UTF-8 valid and 0 if not. */
+inline FIO_FUNC size_t fio_str_utf8_valid(fio_str_s *s);
+
+/** Returns the String's length in UTF-8 characters. */
+FIO_FUNC size_t fio_str_utf8_len(fio_str_s *s);
+
+/**
+ * Takes a UTF-8 character slice information (UTF-8 position and length) and
+ * returns the raw byte slice information.
+ *
+ * If the String isn't UTF-8 valid from it's begining until the end of the
+ * requested slice, than the returned values will be all 0 (0 length, 0
+ * capacity, and a `NULL` pointer).
+ */
+// NOT IMPLEMENTED YET (TODO)
+// FIO_FUNC fio_str_state_s fio_str_utf8_slice(fio_str_s *s, intptr_t pos,
+//                                             size_t len);
+
+/* *****************************************************************************
 String API - Content Manipulation and Review
 ***************************************************************************** */
 
@@ -197,6 +243,20 @@ FIO_FUNC fio_str_state_s fio_str_vprintf(fio_str_s *s, const char *format,
 FIO_FUNC fio_str_state_s fio_str_printf(fio_str_s *s, const char *format, ...);
 
 /**
+ * Opens the file `filename` and pastes it's contents (or a slice ot it) at the
+ * end of the String. If `limit == 0`, than the data will be read until EOF.
+ *
+ * If the file can't be located, opened or read, or if `start_at` is beyond
+ * the EOF position, NULL is returned in the state's `data` field.
+ *
+ * Works on POSIX only.
+ */
+inline FIO_FUNC fio_str_state_s fio_str_fread(fio_str_s *s,
+                                              const char *filename,
+                                              intptr_t start_at,
+                                              intptr_t limit);
+
+/**
  * Prevents further manipulations to the String's content.
  */
 inline FIO_FUNC void fio_str_freeze(fio_str_s *s);
@@ -205,19 +265,6 @@ inline FIO_FUNC void fio_str_freeze(fio_str_s *s);
  * Binary comparison returns `1` if both strings are equal and `0` if not.
  */
 inline FIO_FUNC int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2);
-
-/* *****************************************************************************
-String API - Memory management
-***************************************************************************** */
-
-/** Performs a best attempt at minimizing memory consumption. */
-inline FIO_FUNC void fio_str_compact(fio_str_s *s);
-
-/**
- * Requires the String to have at least `needed` capacity. Returns the current
- * state of the String.
- */
-FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed);
 
 /* *****************************************************************************
 
@@ -415,6 +462,117 @@ shrink2small:
 }
 
 /* *****************************************************************************
+Implementation - UTF-8 support
+***************************************************************************** */
+
+/**
+ * Maps the last 5 bits in a byte (0b11111xxx) to a UTF-8 codepoint length.
+ *
+ * Codepoint length 0 == error.
+ *
+ * The first valid length can be any value between 1 to 4.
+ *
+ * An intermidiate (second, third or forth) valid length must be 5.
+ *
+ * To map was populated using the following Ruby script:
+ *
+ *      map = []; 32.times { map << 0 }; (0..0b1111).each {|i| map[i] = 1} ;
+ *      (0b10000..0b10111).each {|i| map[i] = 5} ;
+ *      (0b11000..0b11011).each {|i| map[i] = 2} ;
+ *      (0b11100..0b11101).each {|i| map[i] = 3} ; map[0b11110] = 4; map;
+ */
+static uint8_t fio_str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                                     1, 1, 1, 1, 1, 5, 5, 5, 5, 5, 5,
+                                     5, 5, 2, 2, 2, 2, 3, 3, 4, 0};
+
+/**
+ * Adds up to `steps` UTF-8 "steps" (characters) to `ptr`. On error, `ptr` will
+ * be bigger than the limit marker `end`.
+ *
+ * `counter` should be a `size_t` variable. At the end of the MACRO, the
+ * `counter` variable will contain the number of steps actually traversed
+ * (might be less than `steps`).
+ */
+#define FIO_STR_UTF8_STEP(ptr, end, steps, counter)                            \
+  for ((counter) = 0; (counter) < (steps) && (ptr) < (end); ++(counter)) {     \
+    switch (fio_str_utf8_map[((uint8_t *)(ptr))[0] >> 3]) {                    \
+    case 1:                                                                    \
+      ++(ptr);                                                                 \
+      break;                                                                   \
+    case 2:                                                                    \
+      if (((ptr) + 2 > (end)) ||                                               \
+          fio_str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5)                   \
+        (ptr) = (end);                                                         \
+      (ptr) += 2;                                                              \
+      break;                                                                   \
+    case 3:                                                                    \
+      if (((ptr) + 3 > (end)) ||                                               \
+          fio_str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5 ||                 \
+          fio_str_utf8_map[((uint8_t *)(ptr))[2] >> 3] != 5)                   \
+        (ptr) = (end);                                                         \
+      (ptr) += 3;                                                              \
+      break;                                                                   \
+    case 4:                                                                    \
+      if (((ptr) + 4 > (end)) ||                                               \
+          fio_str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5 ||                 \
+          fio_str_utf8_map[((uint8_t *)(ptr))[2] >> 3] != 5 ||                 \
+          fio_str_utf8_map[((uint8_t *)(ptr))[3] >> 3] != 5)                   \
+        (ptr) = (end);                                                         \
+      (ptr) += 4;                                                              \
+      break;                                                                   \
+    default:                                                                   \
+      (ptr) = (end) + 5;                                                       \
+      break;                                                                   \
+    }                                                                          \
+  };
+
+/** Returns 1 if the String is UTF-8 valid and 0 if not. */
+inline FIO_FUNC size_t fio_str_utf8_valid(fio_str_s *s) {
+  if (!s)
+    return 0;
+  fio_str_state_s state = fio_str_state(s);
+  if (!state.len)
+    return 1;
+  char *const end = state.data + state.len;
+  size_t utf8len;
+  FIO_STR_UTF8_STEP(state.data, end, state.len, utf8len);
+  return state.data == end;
+}
+
+/** Returns the String's length in UTF-8 characters. */
+FIO_FUNC size_t fio_str_utf8_len(fio_str_s *s) {
+  fio_str_state_s state = fio_str_state(s);
+  if (!state.len)
+    return 0;
+  char *const end = state.data + state.len;
+  size_t utf8len;
+  FIO_STR_UTF8_STEP(state.data, end, state.len, utf8len);
+  if (state.data != end) {
+    /* invalid */
+    return 0;
+  }
+  return utf8len;
+}
+
+/**
+ * Takes a UTF-8 character slice information (UTF-8 position and length) and
+ * returns the raw byte slice information.
+ *
+ * If the String isn't UTF-8 valid from it's begining until the end of the
+ * requested slice, than the returned `data` value in the `state_s` will be
+ * `NULL`.
+ */
+FIO_FUNC fio_str_state_s fio_str_utf8_slice(fio_str_s *s, intptr_t pos,
+                                            size_t len) {
+  fio_str_state_s state = fio_str_state(s);
+  state.data = NULL;
+  state.len = state.capa = 0;
+  return state;
+  (void)pos;
+  (void)len;
+}
+
+/* *****************************************************************************
 Implementation - Content Manipulation and Review
 ***************************************************************************** */
 
@@ -525,6 +683,89 @@ fio_str_printf(fio_str_s *s, const char *format, ...) {
   fio_str_state_s state = fio_str_vprintf(s, format, argv);
   va_end(argv);
   return state;
+}
+
+/**
+ * Opens the file `filename` and pastes it's contents (or a slice ot it) at the
+ * end of the String. If `limit == 0`, than the data will be read until EOF.
+ *
+ * If the file can't be located, opened or read, or if `start_at` is beyond
+ * the EOF position, NULL is returned in the state's `data` field.
+ */
+inline FIO_FUNC fio_str_state_s fio_str_fread(fio_str_s *s,
+                                              const char *filename,
+                                              intptr_t start_at,
+                                              intptr_t limit) {
+  fio_str_state_s state = {.data = NULL};
+#if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
+  /* POSIX implementations. */
+  if (filename == NULL)
+    return state;
+  struct stat f_data;
+  int file = -1;
+  char *path = NULL;
+  size_t path_len = 0;
+
+  if (filename[0] == '~' && (filename[1] == '/' || filename[1] == '\\')) {
+    char *home = getenv("HOME");
+    if (home) {
+      size_t filename_len = strlen(filename);
+      size_t home_len = strlen(home);
+      if ((home_len + filename_len) >= (1 << 16)) {
+        /* too long */
+        return state;
+      }
+      if (home[home_len - 1] == '/' || home[home_len - 1] == '\\')
+        --home_len;
+      path_len = home_len + filename_len - 1;
+      path = malloc(path_len + 1);
+      FIO_ASSERT_ALLOC(path);
+      memcpy(path, home, home_len);
+      memcpy(path + home_len, filename + 1, filename_len);
+      path[path_len] = 0;
+      filename = path;
+    }
+  }
+
+  if (stat(filename, &f_data)) {
+    goto finish;
+  }
+
+  if (f_data.st_size <= 0 || start_at >= f_data.st_size) {
+    state = fio_str_state(s);
+    goto finish;
+  }
+
+  file = open(filename, O_RDONLY);
+  if (-1 == file)
+    goto finish;
+
+  if (start_at < 0) {
+    start_at = f_data.st_size + start_at;
+    if (start_at < 0)
+      start_at = 0;
+  }
+
+  if (limit <= 0 || f_data.st_size < (limit + start_at))
+    limit = f_data.st_size - start_at;
+
+  const size_t org_len = fio_str_len(s);
+  state = fio_str_resize(s, org_len + limit);
+  if (pread(file, state.data + org_len, limit, start_at) != (ssize_t)limit) {
+    close(file);
+    fio_str_resize(s, org_len);
+    state.data = NULL;
+    state.len = state.capa = 0;
+    goto finish;
+  }
+  close(file);
+finish:
+  free(path);
+  return state;
+#else
+  /* TODO: consider adding non POSIX implementations. */
+  return state;
+#endif
 }
 
 /**
@@ -694,6 +935,24 @@ FIO_FUNC inline void fio_str_test(void) {
   }
 
   fio_str_free(&str);
+
+  {
+    fio_str_state_s state = fio_str_fread(&str, __FILE__, 0, 0);
+    TEST_ASSERT(state.data,
+                "`fio_str_fread` error, no data was read for file %s!",
+                __FILE__);
+    TEST_ASSERT(!memcmp(state.data, "#ifndef H_FIO_STRING_H", 22),
+                "`fio_str_fread` content error, header mismatch!\n %s",
+                state.data);
+    TEST_ASSERT(
+        fio_str_utf8_valid(&str),
+        "`fio_str_utf8_valid` error, code in this file should be valid!");
+    TEST_ASSERT(fio_str_utf8_len(&str) &&
+                    (fio_str_utf8_len(&str) <= fio_str_len(&str)) &&
+                    (fio_str_utf8_len(&str) >= (fio_str_len(&str)) >> 1),
+                "`fio_str_utf8_len` error, invalid value (%zu / %zu!",
+                fio_str_utf8_len(&str), fio_str_len(&str));
+  }
   fprintf(stderr, "* passed.\n");
 }
 #undef TEST_ASSERT

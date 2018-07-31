@@ -231,35 +231,6 @@ FIOBJ fiobj_str_readfile(const char *filename, intptr_t start_at,
                          intptr_t limit) {
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
   /* POSIX implementations. */
-  if (filename == NULL)
-    return FIOBJ_INVALID;
-  struct stat f_data;
-  int file = -1;
-  size_t file_path_len = strlen(filename);
-  if (file_path_len == 0 || file_path_len >= PATH_MAX)
-    return FIOBJ_INVALID;
-
-  char real_public_path[PATH_MAX];
-  real_public_path[PATH_MAX - 1] = 0;
-
-  if (filename[0] == '~' && getenv("HOME") && file_path_len < PATH_MAX) {
-    strcpy(real_public_path, getenv("HOME"));
-    memcpy(real_public_path + strlen(real_public_path), filename + 1,
-           file_path_len);
-    filename = real_public_path;
-  }
-
-  if (stat(filename, &f_data) || f_data.st_size <= 0)
-    return FIOBJ_INVALID;
-
-  if (start_at < 0)
-    start_at = f_data.st_size + start_at;
-
-  if (start_at < 0 || start_at >= f_data.st_size)
-    return FIOBJ_INVALID;
-
-  if (limit <= 0 || f_data.st_size < (limit + start_at))
-    limit = f_data.st_size - start_at;
   fiobj_str_s *s = fio_malloc(sizeof(*s));
   if (!s) {
     perror("ERROR: fiobj string couldn't allocate memory");
@@ -273,26 +244,12 @@ FIOBJ fiobj_str_readfile(const char *filename, intptr_t start_at,
           },
       .str = FIO_STR_INIT,
   };
-  if (f_data.st_size == 0)
-    goto finish;
-
-  fio_str_state_s state = fio_str_resize(&s->str, limit);
-
-  file = open(filename, O_RDONLY);
-  if (file < 0) {
-    goto failed;
+  fio_str_state_s state = fio_str_fread(&s->str, filename, start_at, limit);
+  if (!state.data) {
+    free(s);
+    return FIOBJ_INVALID;
   }
-  if (pread(file, state.data, limit, start_at) != (ssize_t)limit) {
-    close(file);
-    goto failed;
-  }
-  close(file);
-finish:
   return ((uintptr_t)s | FIOBJECT_STRING_FLAG);
-failed:
-  fio_str_free(&s->str);
-  free(s);
-  return FIOBJ_INVALID;
 
 #else
   /* TODO: consider adding non POSIX implementations. */
