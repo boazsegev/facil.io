@@ -671,6 +671,7 @@ void http_lib_init(void) {
   REGISTER_MIME("maker", "application/vnd.framemaker");
   REGISTER_MIME("man", "text/troff");
   REGISTER_MIME("mar", "application/octet-stream");
+  REGISTER_MIME("markdown", "text/markdown");
   REGISTER_MIME("mathml", "application/mathml+xml");
   REGISTER_MIME("mb", "application/mathematica");
   REGISTER_MIME("mbk", "application/vnd.mobius.mbk");
@@ -678,6 +679,7 @@ void http_lib_init(void) {
   REGISTER_MIME("mc1", "application/vnd.medcalcdata");
   REGISTER_MIME("mcd", "application/vnd.mcd");
   REGISTER_MIME("mcurl", "text/vnd.curl.mcurl");
+  REGISTER_MIME("md", "text/markdown");
   REGISTER_MIME("mdb", "application/x-msaccess");
   REGISTER_MIME("mdi", "image/vnd.ms-modi");
   REGISTER_MIME("me", "text/troff");
