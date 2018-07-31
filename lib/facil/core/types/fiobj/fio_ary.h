@@ -5,10 +5,11 @@ License: MIT
 */
 
 /**
- * A Dynamic Array for general use (void * pointers).
+ * A Dynamic Array for general use (for void * pointers or a predefined type).
  *
  * It's possible to switch from the default `void *` type to any type by
- * defining the `FIO_ARY_TYPE` and `FIO_ARY_TYPE_COMPARE(a,b)` macros.
+ * defining the `FIO_ARY_TYPE`, `FIO_ARY_TYPE_COMPARE(a,b)` and
+ * `FIO_ARY_TYPE_INVALID` macros.
  *
  * However, this will effect ALL the arrays that share the same translation unit
  * (the same *.c file).
@@ -17,12 +18,12 @@ License: MIT
  * pointer casting.
  *
  * Use:
-
-fio_ary_s ary;                   // a container can be placed on the stack.
-fio_ary_new(&ary);               // initialize the container
-fio_ary_push(&ary, (void*)1 );   // add / remove / read data...
-fio_ary_free(&ary)               // free any resources, not the container.
-
+ *
+ *     fio_ary_s ary;            // a container can be placed on the stack.
+ *     fio_ary_new(&ary);        // initialize the container
+ *     fio_ary_push(&ary, (void*)1 );  // add / remove / read data...
+ *     fio_ary_free(&ary)        // free any resources, not the container.
+ *
  */
 #define H_FIO_ARRAY_H
 

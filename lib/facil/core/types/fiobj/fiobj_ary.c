@@ -38,7 +38,7 @@ VTable
 ***************************************************************************** */
 
 static void fiobj_ary_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
-  FIO_ARY_FOR(&obj2ary(o)->ary, i) { task((FIOBJ)i.obj, arg); }
+  FIO_ARY_FOR(&obj2ary(o)->ary, i) { task(i.obj, arg); }
   fio_ary_free(&obj2ary(o)->ary);
   free(FIOBJ2PTR(o));
 }
@@ -95,7 +95,8 @@ static FIOBJ fiobj_ary_alloc(size_t capa, size_t start_at) {
   *ary = (fiobj_ary_s){
       .head =
           {
-              .ref = 1, .type = FIOBJ_T_ARRAY,
+              .ref = 1,
+              .type = FIOBJ_T_ARRAY,
           },
   };
   fio_ary_new(&ary->ary, capa);
@@ -139,7 +140,7 @@ FIOBJ *fiobj_ary2ptr(FIOBJ ary) {
  */
 FIOBJ fiobj_ary_index(FIOBJ ary, int64_t pos) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
-  return (FIOBJ)fio_ary_index(&obj2ary(ary)->ary, pos);
+  return fio_ary_index(&obj2ary(ary)->ary, pos);
 }
 
 /**
@@ -147,7 +148,7 @@ FIOBJ fiobj_ary_index(FIOBJ ary, int64_t pos) {
  */
 void fiobj_ary_set(FIOBJ ary, FIOBJ obj, int64_t pos) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
-  FIOBJ old = (FIOBJ)fio_ary_set(&obj2ary(ary)->ary, obj, pos);
+  FIOBJ old = fio_ary_set(&obj2ary(ary)->ary, obj, pos);
   fiobj_free(old);
 }
 
@@ -166,7 +167,7 @@ void fiobj_ary_push(FIOBJ ary, FIOBJ obj) {
 /** Pops an object from the end of the Array. */
 FIOBJ fiobj_ary_pop(FIOBJ ary) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
-  return (FIOBJ)fio_ary_pop(&obj2ary(ary)->ary);
+  return fio_ary_pop(&obj2ary(ary)->ary);
 }
 
 /**
@@ -181,7 +182,7 @@ void fiobj_ary_unshift(FIOBJ ary, FIOBJ obj) {
 /** Shifts an object from the beginning of the Array. */
 FIOBJ fiobj_ary_shift(FIOBJ ary) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
-  return (FIOBJ)fio_ary_shift(&obj2ary(ary)->ary);
+  return fio_ary_shift(&obj2ary(ary)->ary);
 }
 
 /* *****************************************************************************
@@ -216,7 +217,7 @@ int64_t fiobj_ary_find(FIOBJ ary, FIOBJ data) {
  */
 int fiobj_ary_remove(FIOBJ ary, int64_t pos) {
   assert(ary && FIOBJ_TYPE_IS(ary, FIOBJ_T_ARRAY));
-  FIOBJ old = (FIOBJ)fio_ary_remove(&obj2ary(ary)->ary, (intptr_t)pos);
+  FIOBJ old = fio_ary_remove(&obj2ary(ary)->ary, (intptr_t)pos);
   if (!old) {
     return -1;
   }
@@ -304,7 +305,7 @@ void fiobj_test_array(void) {
 
   FIO_ARY_FOR(&obj2ary(a)->ary, pos) {
     if (pos.obj) {
-      fprintf(stderr, "%lu) %s\n", pos.i, fiobj_obj2cstr((FIOBJ)pos.obj).data);
+      fprintf(stderr, "%lu) %s\n", pos.i, fiobj_obj2cstr(pos.obj).data);
     }
   }
 
@@ -316,7 +317,7 @@ void fiobj_test_array(void) {
 
   FIO_ARY_FOR(&obj2ary(a)->ary, pos) {
     if (pos.obj) {
-      fprintf(stderr, "%lu) %s\n", pos.i, fiobj_obj2cstr((FIOBJ)pos.obj).data);
+      fprintf(stderr, "%lu) %s\n", pos.i, fiobj_obj2cstr(pos.obj).data);
     }
   }
 
