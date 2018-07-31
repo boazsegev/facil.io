@@ -314,6 +314,34 @@ Implementation - Memory management
 ***************************************************************************** */
 
 /**
+ * Rounds up allocated capacity to the closest 2 words byte boundary (leaving 1
+ * byte space for the NUL byte).
+ *
+ * This shouldn't effect actual allocation size and should only minimize the
+ * effects of the memory allocator's alignment rounding scheme.
+ *
+ * To clarify:
+ *
+ * Memory allocators are required to allocate memory on the minimal alignment
+ * required by the largest type (`long double`), which usually results in memory
+ * allocations using this alignment as a minimal spacing.
+ *
+ * For example, on 64 bit architectures, it's likely that `malloc(18)` will
+ * allocate the same amount of memory as `malloc(32)` due to alignment.
+ *
+ * In fact, on some allocators (i.e., jemalloc), spacing increases for larger
+ * allocations - meaning the allocator will round up to more than 16 bytes, as
+ * noted here: http://jemalloc.net/jemalloc.3.html#size_classes
+ *
+ * Note that this increased spacing, doesn't occure with facil.io's `fio_mem.h`
+ * allocator, since it uses 16 byte alignment right up until allocations are
+ * routed directly to `mmap` (due to their size, usually over 12KB).
+ */
+#define ROUND_UP_CAPA_2WORDS(num)                                              \
+  (((num + 1) & (sizeof(long double) - 1))                                     \
+       ? ((num + 1) | (sizeof(long double) - 1))                               \
+       : (num))
+/**
  * Requires the String to have at least `needed` capacity. Returns the current
  * state of the String.
  */
@@ -325,6 +353,7 @@ FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
     goto is_small;
   }
   if (needed > s->capa) {
+    needed = ROUND_UP_CAPA_2WORDS(needed);
     tmp = (char *)realloc(s->data, needed + 1);
     FIO_ASSERT_ALLOC(tmp);
     s->capa = needed;
@@ -340,6 +369,7 @@ is_small:
                              .len = (size_t)(s->small >> 1),
                              .data = ((fio_str__small_s *)s)->data};
   }
+  needed = ROUND_UP_CAPA_2WORDS(needed);
   tmp = (char *)malloc(needed + 1);
   FIO_ASSERT_ALLOC(tmp);
   const size_t existing_len = (size_t)((s->small >> 1) & 0xFF);
@@ -566,10 +596,10 @@ FIO_FUNC inline void fio_str_test(void) {
   TEST_ASSERT(!strcmp(fio_str_data(&str), "Worl"),
               "Small String write error (%s)!", fio_str_data(&str));
 
-  fio_str_capa_assert(&str, sizeof(fio_str_s));
+  fio_str_capa_assert(&str, sizeof(fio_str_s) - 1);
   TEST_ASSERT(!str.small,
               "Long String reporting as small after capacity update!");
-  TEST_ASSERT(fio_str_capa(&str) == sizeof(fio_str_s),
+  TEST_ASSERT(fio_str_capa(&str) == sizeof(fio_str_s) - 1,
               "Long String capacity update error (%zu != %zu)!",
               fio_str_capa(&str), sizeof(fio_str_s));
   TEST_ASSERT(
@@ -608,9 +638,10 @@ FIO_FUNC inline void fio_str_test(void) {
               "Long String `replace` error when testing splicing (%s)!",
               fio_str_data(&str));
 
-  TEST_ASSERT(fio_str_capa(&str) == strlen("Hello Big World!"),
-              "Long String `overwrite` capacity update error (%zu != %zu)!",
-              fio_str_capa(&str), strlen("Hello Big World!"));
+  TEST_ASSERT(
+      fio_str_capa(&str) == ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")),
+      "Long String `fio_str_replace` capacity update error (%zu != %zu)!",
+      fio_str_capa(&str), ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")));
 
   if (str.len < FIO_STR_SMALL_CAPA) {
     fio_str_compact(&str);
@@ -677,5 +708,6 @@ Done
 
 #undef FIO_FUNC
 #undef FIO_ASSERT_ALLOC
+#undef ROUND_UP_CAPA_2WORDS
 
 #endif
