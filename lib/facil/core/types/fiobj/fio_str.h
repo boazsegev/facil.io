@@ -479,19 +479,20 @@ Implementation - UTF-8 support
  *      map = []; 32.times { map << 0 }; (0..0b1111).each {|i| map[i] = 1} ;
  *      (0b10000..0b10111).each {|i| map[i] = 5} ;
  *      (0b11000..0b11011).each {|i| map[i] = 2} ;
- *      (0b11100..0b11101).each {|i| map[i] = 3} ; map[0b11110] = 4; map;
+ *      (0b11100..0b11101).each {|i| map[i] = 3} ;
+ *      map[0b11110] = 4; map;
  */
 static uint8_t fio_str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                                      1, 1, 1, 1, 1, 5, 5, 5, 5, 5, 5,
                                      5, 5, 2, 2, 2, 2, 3, 3, 4, 0};
 
 /**
- * Adds up to `steps` UTF-8 "steps" (characters) to `ptr`. On error, `ptr` will
+ * Advances the `ptr` up to UTF-8 characters (`steps`). On error, `ptr` will
  * be bigger than the limit marker `end`.
  *
- * `counter` should be a `size_t` variable. At the end of the MACRO, the
- * `counter` variable will contain the number of steps actually traversed
- * (might be less than `steps`).
+ * `counter` should be a numerical variable (`size_t`). At the end of the MACRO,
+ * the `counter` variable will contain the number of "steps" (UTF-8 characters)
+ * actually traversed (might be less than `steps`).
  */
 #define FIO_STR_UTF8_STEP(ptr, end, steps, counter)                            \
   for ((counter) = 0; (counter) < (steps) && (ptr) < (end); ++(counter)) {     \
