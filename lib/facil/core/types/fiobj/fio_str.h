@@ -37,6 +37,7 @@ License: MIT
 #endif
 
 #ifndef FIO_ASSERT_ALLOC
+/** Tests for an allocation failure. The behavior can be overridden. */
 #define FIO_ASSERT_ALLOC(ptr)                                                  \
   if (!(ptr)) {                                                                \
     perror("FATAL ERROR: no memory (for string allocation)");                  \
@@ -286,16 +287,17 @@ Implementation - Memory management and resizing
 inline FIO_FUNC void fio_str_compact(fio_str_s *s) {
   if (!s || (s->small || !s->data))
     return;
+  char *tmp;
   if (s->len < FIO_STR_SMALL_CAPA)
     goto shrink2small;
-  s->data = realloc(s->data, s->len + 1);
-  FIO_ASSERT_ALLOC(s->data);
+  tmp = realloc(s->data, s->len + 1);
+  FIO_ASSERT_ALLOC(tmp);
+  s->data = tmp;
   s->capa = s->len;
   return;
 
 shrink2small:
-  (void)s;
-  char *tmp = s->data;
+  tmp = s->data;
   size_t len = s->len;
   *s = (fio_str_s){.small = (uint8_t)(((len << 1) | 1) & 0xFF),
                    .frozen = s->frozen};
@@ -316,13 +318,15 @@ String data
 FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
   if (!s)
     return (fio_str_state_s){.capa = 0};
+  char *tmp;
   if (s->small || !s->data) {
     goto is_small;
   }
   if (needed > s->capa) {
     s->capa = needed;
-    s->data = (char *)realloc(s->data, s->capa + 1);
-    FIO_ASSERT_ALLOC(s->data);
+    tmp = (char *)realloc(s->data, s->capa + 1);
+    FIO_ASSERT_ALLOC(tmp);
+    s->data = tmp;
     s->data[s->capa] = 0;
   }
   return (fio_str_state_s){.capa = s->capa, .len = s->len, .data = s->data};
@@ -333,7 +337,7 @@ is_small:
                              .len = (size_t)(s->small >> 1),
                              .data = ((fio_str__small_s *)s)->data};
   }
-  char *tmp = (char *)malloc(needed + 1);
+  tmp = (char *)malloc(needed + 1);
   FIO_ASSERT_ALLOC(tmp);
   if ((size_t)(s->small >> 1)) {
     memcpy(tmp, ((fio_str__small_s *)s)->data, (size_t)(s->small >> 1) + 1);
