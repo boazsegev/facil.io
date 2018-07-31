@@ -213,8 +213,9 @@ FIOBJ fiobj_str_tmp(void) {
               .ref = ((~(uint32_t)0) >> 4),
               .type = FIOBJ_T_STRING,
           },
-      .str = FIO_STR_INIT,
+      .str = {.small = 1},
   };
+  tmp.str.frozen = 0;
   return ((uintptr_t)&tmp | FIOBJECT_STRING_FLAG);
 }
 
