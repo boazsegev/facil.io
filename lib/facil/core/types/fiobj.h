@@ -17,6 +17,7 @@ License: MIT
 
 #if DEBUG
 FIO_INLINE void fiobj_test(void) {
+  fprintf(stderr, "\n=== FIOBJ Tests ===\n\n");
   fiobj_test_string();
   fiobj_test_numbers();
   fiobj_test_array();
@@ -24,6 +25,7 @@ FIO_INLINE void fiobj_test(void) {
   fiobj_test_core();
   fiobj_data_test();
   fiobj_test_json();
+  fprintf(stderr, "=== FIOBJ Done ===\n\n");
 }
 #else
 FIO_INLINE void fiobj_test(void) {
