@@ -9,11 +9,9 @@ rm -R tests 2>/dev/null
 rm -R scripts/new 2>/dev/null
 rm Doxyfile 2>/dev/null
 rm CMakeLists.txt 2>/dev/null
-rm CHANGELOG.md
-rm README.md
-rm CONTRIBUTING.md
-rm LICENSE
-rm NOTICE
+rm *.md 2>/dev/null
+rm LICENSE 2>/dev/null
+rm NOTICE 2>/dev/null
 mv ./examples/boiler_plates/http/* ./
 rm -R ./examples/boiler_plates  2>/dev/null
 
