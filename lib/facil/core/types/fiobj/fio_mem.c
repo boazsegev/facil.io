@@ -246,8 +246,9 @@ static inline void *sys_alloc(size_t len, uint8_t is_indi) {
     munmap(result, len);
     result = mmap(NULL, len + FIO_MEMORY_BLOCK_SIZE, PROT_READ | PROT_WRITE,
                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (result == MAP_FAILED)
+    if (result == MAP_FAILED) {
       return NULL;
+    }
     const uintptr_t offset =
         (FIO_MEMORY_BLOCK_SIZE - ((uintptr_t)result & FIO_MEMORY_BLOCK_MASK));
     if (offset) {
@@ -281,8 +282,9 @@ static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
       /* copy and free */
       munmap(result, new_len - prev_len); /* free the failed attempt */
       result = sys_alloc(new_len, 1);     /* allocate new memory */
-      if (!result)
+      if (!result) {
         return NULL;
+      }
       fio_memcpy(result, mem, prev_len >> 4); /* copy data */
       // memcpy(result, mem, prev_len);
       munmap(mem, prev_len); /* free original memory */
@@ -333,6 +335,9 @@ static struct {
 
 /* The per-CPU arena array. */
 static arena_s *arenas;
+
+/* The per-CPU arena array. */
+static long double on_malloc_zero;
 
 /* *****************************************************************************
 Per-CPU Arena management
@@ -456,6 +461,7 @@ static inline void *block_slice(uint16_t units) {
   }
   if (!blk) {
     /* no system memory available? */
+    errno = ENOMEM;
     return NULL;
   }
   /* slice block starting at blk->pos and increase reference count */
@@ -484,10 +490,11 @@ Non-Block allocations (direct from the system)
 static inline void *big_alloc(size_t size) {
   size = sys_round_size(size + 16);
   size_t *mem = sys_alloc(size, 1);
-  if (mem) { /* likely */
-    *mem = size;
-    return (void *)(((uintptr_t)mem) + 16);
-  }
+  if (!mem)
+    goto error;
+  *mem = size;
+  return (void *)(((uintptr_t)mem) + 16);
+error:
   return NULL;
 }
 
@@ -501,9 +508,11 @@ static inline void *big_realloc(void *ptr, size_t new_size) {
   new_size = sys_round_size(new_size + 16);
   mem = sys_realloc(mem, *mem, new_size);
   if (!mem)
-    return NULL;
+    goto error;
   *mem = new_size;
   return (void *)(((uintptr_t)mem) + 16);
+error:
+  return NULL;
 }
 
 /* *****************************************************************************
@@ -563,10 +572,14 @@ Memory allocation / deacclocation API
 ***************************************************************************** */
 
 void *fio_malloc(size_t size) {
-  if (!size)
-    return NULL;
+#if FIO_OVERRIDE_MALLOC
   if (!arenas)
     fio_mem_init();
+#endif
+  if (!size) {
+    /* changed behavior prevents "allocation failed" test for `malloc(0)` */
+    return (void *)(&on_malloc_zero);
+  }
   if (size >= FIO_MEMORY_BLOCK_ALLOC_LIMIT) {
     /* system allocation - must be block aligned */
     return big_alloc(size);
@@ -584,7 +597,7 @@ void *fio_calloc(size_t size, size_t count) {
 }
 
 void fio_free(void *ptr) {
-  if (!ptr)
+  if (!ptr || ptr == (void *)&on_malloc_zero)
     return;
   if (((uintptr_t)ptr & FIO_MEMORY_BLOCK_MASK) == 16) {
     /* big allocation - direct from the system */
@@ -602,8 +615,11 @@ void fio_free(void *ptr) {
  * This variation is slightly faster as it might copy less data
  */
 void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length) {
-  if (!ptr)
+  if (!ptr || ptr == (void *)&on_malloc_zero)
     return fio_malloc(new_size);
+  if (!new_size) {
+    goto zero_size;
+  }
   if (((uintptr_t)ptr & FIO_MEMORY_BLOCK_MASK) == 16) {
     /* big reallocation - direct from the system */
     return big_realloc(ptr, new_size);
@@ -620,6 +636,9 @@ void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length) {
   fio_memcpy(new_mem, ptr, (copy_length > new_size ? new_size : copy_length));
   block_slice_free(ptr);
   return new_mem;
+zero_size:
+  fio_free(ptr);
+  return malloc(0);
 }
 
 void *fio_realloc(void *ptr, size_t new_size) {
@@ -684,7 +703,6 @@ void fio_malloc_test(void) {
   sys_free(mem2, FIO_MEMORY_BLOCK_SIZE * 2);
   fprintf(stderr, "=== Testing facil.io memory allocator's internal data.\n");
   TEST_ASSERT(arenas, "Missing arena data - library not initialized!");
-  TEST_ASSERT(fio_malloc(0) == NULL, "fio_malloc 0 bytes should be NULL!\n");
   fio_free(NULL); /* fio_free(NULL) shouldn't crash... */
   mem = fio_malloc(1);
   TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
@@ -773,6 +791,12 @@ void fio_malloc_test(void) {
   fio_free(mem);
   TEST_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) == 16,
               "fio_realloc (big) memory isn't aligned!\n");
+
+  {
+    void *m0 = fio_malloc(0);
+    void *rm0 = fio_realloc(m0, 16);
+    TEST_ASSERT(m0 != rm0, "fio_realloc(fio_malloc(0), 16) failed!\n");
+  }
 
   fprintf(stderr, "* passed.\n");
 }
