@@ -487,45 +487,61 @@ static uint8_t fio_str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                                      5, 5, 2, 2, 2, 2, 3, 3, 4, 0};
 
 /**
- * Advances the `ptr` up to UTF-8 characters (`steps`). On error, `ptr` will
- * be bigger than the limit marker `end`.
+ * Advances the `ptr` by one utf-8 character, placing the value of the UTF-8
+ * character into the i32 variable (which must be a signed integer with 32bits
+ * or more). On error, `i32` will be equal to `-1` and `ptr` will not step
+ * forwards.
  *
- * `counter` should be a numerical variable (`size_t`). At the end of the MACRO,
- * the `counter` variable will contain the number of "steps" (UTF-8 characters)
- * actually traversed (might be less than `steps`).
+ * The `end` value is only used for overflow protection.
  */
-#define FIO_STR_UTF8_STEP(ptr, end, steps, counter)                            \
-  for ((counter) = 0; (counter) < (steps) && (ptr) < (end); ++(counter)) {     \
+#define FIO_STR_UTF8_CODE_POINT(ptr, end, i32)                                 \
+  do {                                                                         \
     switch (fio_str_utf8_map[((uint8_t *)(ptr))[0] >> 3]) {                    \
     case 1:                                                                    \
+      (i32) = ((uint8_t *)(ptr))[0];                                           \
       ++(ptr);                                                                 \
       break;                                                                   \
     case 2:                                                                    \
       if (((ptr) + 2 > (end)) ||                                               \
-          fio_str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5)                   \
-        (ptr) = (end);                                                         \
+          fio_str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5) {                 \
+        (i32) = -1;                                                            \
+        break;                                                                 \
+      }                                                                        \
+      (i32) =                                                                  \
+          ((((uint8_t *)(ptr))[0] & 31) << 6) | (((uint8_t *)(ptr))[1] & 63);  \
       (ptr) += 2;                                                              \
       break;                                                                   \
     case 3:                                                                    \
       if (((ptr) + 3 > (end)) ||                                               \
           fio_str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5 ||                 \
-          fio_str_utf8_map[((uint8_t *)(ptr))[2] >> 3] != 5)                   \
-        (ptr) = (end);                                                         \
+          fio_str_utf8_map[((uint8_t *)(ptr))[2] >> 3] != 5) {                 \
+        (i32) = -1;                                                            \
+        break;                                                                 \
+      }                                                                        \
+      (i32) = ((((uint8_t *)(ptr))[0] & 15) << 12) |                           \
+              ((((uint8_t *)(ptr))[1] & 63) << 6) |                            \
+              (((uint8_t *)(ptr))[2] & 63);                                    \
       (ptr) += 3;                                                              \
       break;                                                                   \
     case 4:                                                                    \
       if (((ptr) + 4 > (end)) ||                                               \
           fio_str_utf8_map[((uint8_t *)(ptr))[1] >> 3] != 5 ||                 \
           fio_str_utf8_map[((uint8_t *)(ptr))[2] >> 3] != 5 ||                 \
-          fio_str_utf8_map[((uint8_t *)(ptr))[3] >> 3] != 5)                   \
-        (ptr) = (end);                                                         \
+          fio_str_utf8_map[((uint8_t *)(ptr))[3] >> 3] != 5) {                 \
+        (i32) = -1;                                                            \
+        break;                                                                 \
+      }                                                                        \
+      (i32) = ((((uint8_t *)(ptr))[0] & 7) << 18) |                            \
+              ((((uint8_t *)(ptr))[1] & 63) << 12) |                           \
+              ((((uint8_t *)(ptr))[2] & 63) << 6) |                            \
+              (((uint8_t *)(ptr))[3] & 63);                                    \
       (ptr) += 4;                                                              \
       break;                                                                   \
     default:                                                                   \
-      (ptr) = (end) + 5;                                                       \
+      (i32) = -1;                                                              \
       break;                                                                   \
     }                                                                          \
-  };
+  } while (0);
 
 /** Returns 1 if the String is UTF-8 valid and 0 if not. */
 inline FIO_FUNC size_t fio_str_utf8_valid(fio_str_s *s) {
@@ -535,9 +551,11 @@ inline FIO_FUNC size_t fio_str_utf8_valid(fio_str_s *s) {
   if (!state.len)
     return 1;
   char *const end = state.data + state.len;
-  size_t utf8len;
-  FIO_STR_UTF8_STEP(state.data, end, state.len, utf8len);
-  return state.data == end;
+  int32_t c = 0;
+  do {
+    FIO_STR_UTF8_CODE_POINT(state.data, end, c);
+  } while (c > 0 && state.data < end);
+  return state.data == end && c >= 0;
 }
 
 /** Returns the String's length in UTF-8 characters. */
@@ -545,10 +563,14 @@ FIO_FUNC size_t fio_str_utf8_len(fio_str_s *s) {
   fio_str_state_s state = fio_str_state(s);
   if (!state.len)
     return 0;
-  char *const end = state.data + state.len;
-  size_t utf8len;
-  FIO_STR_UTF8_STEP(state.data, end, state.len, utf8len);
-  if (state.data != end) {
+  char *end = state.data + state.len;
+  size_t utf8len = 0;
+  int32_t c = 0;
+  do {
+    ++utf8len;
+    FIO_STR_UTF8_CODE_POINT(state.data, end, c);
+  } while (c > 0 && state.data < end);
+  if (state.data != end || c == -1) {
     /* invalid */
     return 0;
   }
@@ -957,6 +979,8 @@ FIO_FUNC inline void fio_str_test(void) {
   fprintf(stderr, "* passed.\n");
 }
 #undef TEST_ASSERT
+#else
+#define fio_str_test()
 #endif
 
 /* *****************************************************************************
@@ -970,5 +994,5 @@ Done
 #undef FIO_FUNC
 #undef FIO_ASSERT_ALLOC
 #undef ROUND_UP_CAPA_2WORDS
-
+#undef FIO_STR_UTF8_CODE_POINT
 #endif
