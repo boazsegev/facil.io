@@ -183,16 +183,31 @@ inline FIO_FUNC size_t fio_str_utf8_valid(fio_str_s *s);
 FIO_FUNC size_t fio_str_utf8_len(fio_str_s *s);
 
 /**
- * Takes a UTF-8 character slice information (UTF-8 position and length) and
- * returns the raw byte slice information.
+ * Takes a UTF-8 character selection information (UTF-8 position and length) and
+ * updates the same variables so they reference the raw byte slice information.
  *
- * If the String isn't UTF-8 valid from it's begining until the end of the
- * requested slice, than the returned values will be all 0 (0 length, 0
- * capacity, and a `NULL` pointer).
+ * If the String isn't UTF-8 valid up to the requested selection, than `pos`
+ * will be updated to `-1` otherwise values are always positive.
+ *
+ * The returned `len` value may be shorter than the original if there wasn't
+ * enough data left to accomodate the requested length. When a `len` value of
+ * `0` is returned, this means that `pos` marks the end of the String.
+ *
+ * Returns -1 on error and 0 on success.
  */
-// NOT IMPLEMENTED YET (TODO)
-// FIO_FUNC fio_str_state_s fio_str_utf8_slice(fio_str_s *s, intptr_t pos,
-//                                             size_t len);
+FIO_FUNC int fio_str_utf8_select(fio_str_s *s, intptr_t *pos, size_t *len);
+
+/**
+ * Advances the `ptr` by one utf-8 character, placing the value of the UTF-8
+ * character into the i32 variable (which must be a signed integer with 32bits
+ * or more). On error, `i32` will be equal to `-1` and `ptr` will not step
+ * forwards.
+ *
+ * The `end` value is only used for overflow protection.
+ *
+ * This helper macro is used internally but left exposed for external use.
+ */
+#define FIO_STR_UTF8_CODE_POINT(ptr, end, i32)
 
 /* *****************************************************************************
 String API - Content Manipulation and Review
@@ -486,6 +501,7 @@ static uint8_t fio_str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                                      1, 1, 1, 1, 1, 5, 5, 5, 5, 5, 5,
                                      5, 5, 2, 2, 2, 2, 3, 3, 4, 0};
 
+#undef FIO_STR_UTF8_CODE_POINT
 /**
  * Advances the `ptr` by one utf-8 character, placing the value of the UTF-8
  * character into the i32 variable (which must be a signed integer with 32bits
@@ -578,21 +594,102 @@ FIO_FUNC size_t fio_str_utf8_len(fio_str_s *s) {
 }
 
 /**
- * Takes a UTF-8 character slice information (UTF-8 position and length) and
- * returns the raw byte slice information.
+ * Takes a UTF-8 character selection information (UTF-8 position and length) and
+ * updates the same variables so they reference the raw byte slice information.
  *
- * If the String isn't UTF-8 valid from it's begining until the end of the
- * requested slice, than the returned `data` value in the `state_s` will be
- * `NULL`.
+ * If the String isn't UTF-8 valid up to the requested selection, than `pos`
+ * will be updated to `-1` otherwise values are always positive.
+ *
+ * The returned `len` value may be shorter than the original if there wasn't
+ * enough data left to accomodate the requested length. When a `len` value of
+ * `0` is returned, this means that `pos` marks the end of the String.
+ *
+ * Returns -1 on error and 0 on success.
  */
-FIO_FUNC fio_str_state_s fio_str_utf8_slice(fio_str_s *s, intptr_t pos,
-                                            size_t len) {
+FIO_FUNC int fio_str_utf8_select(fio_str_s *s, intptr_t *pos, size_t *len) {
   fio_str_state_s state = fio_str_state(s);
-  state.data = NULL;
-  state.len = state.capa = 0;
-  return state;
-  (void)pos;
-  (void)len;
+  if (!state.data)
+    goto error;
+  if (!state.len || *pos == -1)
+    goto at_end;
+
+  int32_t c = 0;
+  char *p = state.data;
+  char *const end = state.data + state.len;
+  size_t start;
+
+  if (*pos) {
+    if ((*pos) > 0) {
+      start = *pos;
+      while (start && p < end && c >= 0) {
+        FIO_STR_UTF8_CODE_POINT(p, end, c);
+        --start;
+      }
+      if (c == -1)
+        goto error;
+      if (start || p >= end)
+        goto at_end;
+      *pos = p - state.data;
+    } else {
+      /* walk backwards */
+      p = state.data + state.len - 1;
+      c = 0;
+      ++*pos;
+      do {
+        switch (fio_str_utf8_map[((uint8_t *)p)[0] >> 3]) {
+        case 5:
+          ++c;
+          break;
+        case 4:
+          if (c != 3)
+            goto error;
+          c = 0;
+          break;
+        case 3:
+          if (c != 2)
+            goto error;
+          c = 0;
+          break;
+        case 2:
+          if (c != 1)
+            goto error;
+          c = 0;
+          break;
+        case 1:
+          if (c)
+            goto error;
+          break;
+        default:
+          goto error;
+        }
+        ++(*pos);
+        --p;
+      } while (p > state.data && *pos);
+      if (c)
+        goto error;
+      *pos = (p - state.data);
+    }
+  }
+
+  /* find end */
+  start = *len;
+  while (start && p < end && c >= 0) {
+    FIO_STR_UTF8_CODE_POINT(p, end, c);
+    --start;
+  }
+  if (c == -1 || p > end)
+    goto error;
+  *len = p - (state.data + (*pos));
+  return 0;
+
+at_end:
+  *pos = state.len;
+  *len = 0;
+  return 0;
+error:
+  *pos = -1;
+  *len = 0;
+  return -1;
 }
 
 /* *****************************************************************************
@@ -975,6 +1072,36 @@ FIO_FUNC inline void fio_str_test(void) {
                     (fio_str_utf8_len(&str) >= (fio_str_len(&str)) >> 1),
                 "`fio_str_utf8_len` error, invalid value (%zu / %zu!",
                 fio_str_utf8_len(&str), fio_str_len(&str));
+    {
+      intptr_t pos = -10;
+      size_t len = 20;
+
+      TEST_ASSERT(
+          fio_str_utf8_select(&str, &pos, &len) == 0,
+          "`fio_str_utf8_select` returned error for negative pos! (%zd, %zu)",
+          (ssize_t)pos, len);
+      TEST_ASSERT(
+          pos == (intptr_t)state.len - 10,
+          "`fio_str_utf8_select` error, negative position invalid! (%zd)",
+          (ssize_t)pos);
+      TEST_ASSERT(
+          len == 10,
+          "`fio_str_utf8_select` error, trancated length invalid! (%zu)",
+          (ssize_t)len);
+      pos = 10;
+      len = 20;
+      TEST_ASSERT(fio_str_utf8_select(&str, &pos, &len) == 0,
+                  "`fio_str_utf8_select` returned error! (%zd, %zu)",
+                  (ssize_t)pos, len);
+      TEST_ASSERT(pos == 10,
+                  "`fio_str_utf8_select` error, position invalid! (%zd)",
+                  (ssize_t)pos);
+      TEST_ASSERT(len == 20,
+                  "`fio_str_utf8_select` error, length invalid! (%zu)",
+                  (ssize_t)len);
+    }
+
+    fio_str_free(&str);
   }
   fprintf(stderr, "* passed.\n");
 }
@@ -994,5 +1121,4 @@ Done
 #undef FIO_FUNC
 #undef FIO_ASSERT_ALLOC
 #undef ROUND_UP_CAPA_2WORDS
-#undef FIO_STR_UTF8_CODE_POINT
 #endif
