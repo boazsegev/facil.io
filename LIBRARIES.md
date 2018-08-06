@@ -1,4 +1,4 @@
-# Libraries offered by facil.io 
+# Independent libraries offered by facil.io 
 
 The facil.io framework is based on a modular design, which means many of the modules can be extracted and used independently as separate libraries.
 
