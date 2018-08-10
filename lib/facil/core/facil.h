@@ -159,10 +159,10 @@ These settings will be used to setup listening sockets.
 i.e.
 
 ```c
+#include "facil.h"
+
 // A callback to be called whenever data is available on the socket
-static void echo_on_data(intptr_t uuid,
-                         protocol_s *prt
-                         ) {
+static void echo_on_data(intptr_t uuid, protocol_s *prt) {
   (void)prt; // we can ignore the unused argument
   // echo buffer
   char buffer[1024] = {'E', 'c', 'h', 'o', ':', ' '};
@@ -189,38 +189,41 @@ static void echo_ping(intptr_t uuid, protocol_s *prt) {
 
 // A callback called if the server is shutting down...
 // ... while the connection is still open
-static void echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
+static uint8_t echo_on_shutdown(intptr_t uuid, protocol_s *prt) {
   (void)prt; // we can ignore the unused argument
   sock_write(uuid, "Echo server shutting down\nGoodbye.\n", 35);
+  return 0;
+}
+
+static void echo_on_close(intptr_t uuid, protocol_s *proto) {
+  free(proto);
+  (void)uuid;
 }
 
 // A callback called for new connections
-static protocol_s *echo_on_open(intptr_t uuid, void *udata) {
+static void echo_on_open(intptr_t uuid, void *udata) {
   (void)udata; // ignore this
   // Protocol objects MUST always be dynamically allocated.
   protocol_s *echo_proto = malloc(sizeof(*echo_proto));
-  *echo_proto = (protocol_s){
-      .service = "echo",
-      .on_data = echo_on_data,
-      .on_shutdown = echo_on_shutdown,
-      .on_close = (void (*)(protocol_s *))free, // simply free when done
-      .ping = echo_ping};
-
+  *echo_proto = (protocol_s){.service = "echo",
+                             .on_data = echo_on_data,
+                             .on_shutdown = echo_on_shutdown,
+                             .on_close = echo_on_close,
+                             .ping = echo_ping};
+  facil_attach(uuid, echo_proto);
   sock_write(uuid, "Echo Service: Welcome\n", 22);
   facil_set_timeout(uuid, 5);
-  return echo_proto;
 }
 
 int main() {
   // Setup a listening socket
-  if (facil_listen(.port = "8888", .on_open = echo_on_open)) {
-      perror("No listening socket available on port 8888");
-      exit(-1);
+  if (facil_listen(.port = "8888", .on_open = echo_on_open) == -1) {
+    perror("No listening socket available on port 8888");
+    exit(-1);
   }
   // Run the server and hang until a stop signal is received.
   facil_run(.threads = 4, .processes = 1);
 }
-
 ```
 */
 struct facil_listen_args {

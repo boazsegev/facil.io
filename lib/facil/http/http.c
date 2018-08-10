@@ -408,12 +408,14 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
   /* create filename string */
   FIOBJ filename = fiobj_str_tmp();
   if (prefix && prefix_len) {
+    /* start with prefix path */
     if (encoded && prefix[prefix_len - 1] == '/' && encoded[0] == '/')
       --prefix_len;
     fiobj_str_capa_assert(filename, prefix_len + encoded_len + 4);
     fiobj_str_write(filename, prefix, prefix_len);
   }
   {
+    /* decode filename in cases where it's URL encoded */
     fio_cstr_s tmp = fiobj_obj2cstr(filename);
     if (encoded) {
       char *pos = (char *)encoded;

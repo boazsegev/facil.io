@@ -20,7 +20,10 @@ API: Creating a String Object
 /** Creates a String object. Remember to use `fiobj_free`. */
 FIOBJ fiobj_str_new(const char *str, size_t len);
 
-/** Creates a buffer String object. capa includes NUL.
+/**
+ * Creates a String object with pre-allocation for Strings up to `capa` long.
+ *
+ * If `capa` is zero, a whole memory page will be allocated.
  *
  * Remember to use `fiobj_free`.
  */
