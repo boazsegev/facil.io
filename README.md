@@ -1,4 +1,41 @@
-<div style="width: 100%; text-align:center; padding: 0; padding-bottom: 0.5em; border-radius: 1em; background: #EBECEE;"><div style="width: 100%; text-align:center; padding: 0; margin: 0; padding-top: 1.8em; padding-bottom: 1.8em; border-radius: 1em; background: #396db5; background: -moz-radial-gradient(center, ellipse cover, #396db5 0%, #39356c 100%); background: -webkit-radial-gradient(center, ellipse cover, #396db5 0%,#39356c 100%); background: radial-gradient(ellipse at center, #396db5 0%,#39356c 100%); filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#396db5', endColorstr='#39356c',GradientType=1 );"><img src='docs/assets/logo/readme_top.svg' style=' margin: auto; width: 10em; display: block;text-align: center;vertical-align: middle;' /></div><p style="margin: 0.4em; font-family: Courier; font-weight: bold; font-size: 1.5em; font-stretch: expanded;">A Micro-Framework for Web Applications</p></div>
+<style>
+  .top_wrapper {
+    width: 100%;
+    text-align:center;
+    padding: 0;
+    padding-bottom: 0.5em;
+    border-radius: 1em;
+    background: #EBECEE;
+  }
+  .top_grad {
+    width: 100%;
+    text-align:center;
+    padding: 0; margin: 0;
+    padding-top: 1.8em; padding-bottom: 1.8em;
+    border-radius: 1em; 
+    background: #396db5; 
+    background: -moz-radial-gradient(center, ellipse cover, #396db5 0%, #39356c 100%);
+    background: -webkit-radial-gradient(center, ellipse cover, #396db5 0%,#39356c 100%);
+    background: radial-gradient(ellipse at center, #396db5 0%,#39356c 100%);
+    filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#396db5', endColorstr='#39356c',GradientType=1 );
+  }
+  .top_img {
+    margin: auto;
+    width: 10em;
+    display: block;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .top_tagline {
+    margin: 0.4em;
+    font-family: Courier;
+    font-weight: bold;
+    font-size: 1.5em;
+    font-stretch: expanded;
+  }
+
+</style>
+<div class='top_wrapper'><div class='top_grad'><img src='docs/assets/logo/readme_top.svg' class='top_img' /></div><p class='top_tagline'>A Micro-Framework for Web Applications</p></div>
 
 [![GitHub](https://img.shields.io/badge/Open%20Source-MIT-blue.svg)](https://github.com/boazsegev/facil.io)
 [![Build Status](https://travis-ci.org/boazsegev/facil.io.svg?branch=master)](https://travis-ci.org/boazsegev/facil.io)
