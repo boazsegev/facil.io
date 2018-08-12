@@ -1,4 +1,5 @@
-# facil.io - a micro-framework for C web applications
+<p align="center"><img src="https://s33.postimg.cc/5d7j1nacf/Readme_1.jpg"></p>
+
 [![GitHub](https://img.shields.io/badge/Open%20Source-MIT-blue.svg)](https://github.com/boazsegev/facil.io)
 [![Build Status](https://travis-ci.org/boazsegev/facil.io.svg?branch=master)](https://travis-ci.org/boazsegev/facil.io)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/2abeba588afb444ca6d92e68ccfbe36b)](https://www.codacy.com/app/boazsegev/facil.io?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=boazsegev/facil.io&amp;utm_campaign=Badge_Grade)
@@ -134,3 +135,5 @@ Hit me up if you want to:
 * If you want to help promote the library, that would be great as well. Perhaps publish [benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks)) or share your story.
 
 * Writing documentation into the `facil.io` website would be great. I keep the source code documentation fairly updated, but the documentation should be copied to the `docs` folder to get the documentation website up and running.
+
+<p align="center"><img src="https://s33.postimg.cc/seo47ha0v/Readme_2.jpg"></p>
