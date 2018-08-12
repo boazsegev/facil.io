@@ -1,5 +1,4 @@
-<p align="center"><img src="https://s33.postimg.cc/5d7j1nacf/Readme_1.jpg"></p>
-
+<div style="width: 100%; text-align:center; padding: 0; padding-bottom: 0.5em; border-radius: 1em; background: #EBECEE;"><div style="width: 100%; text-align:center; padding: 0; margin: 0; padding-top: 1.8em; padding-bottom: 1.8em; border-radius: 1em; background: #396db5; background: -moz-radial-gradient(center, ellipse cover, #396db5 0%, #39356c 100%); background: -webkit-radial-gradient(center, ellipse cover, #396db5 0%,#39356c 100%); background: radial-gradient(ellipse at center, #396db5 0%,#39356c 100%); filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#396db5', endColorstr='#39356c',GradientType=1 );"><img src='docs/assets/logo/readme_top.svg' style=' margin: auto; width: 10em; display: block;text-align: center;vertical-align: middle;' /></div><p style="margin: 0.4em; font-family: Courier; font-weight: bold; font-size: 1.5em; font-stretch: expanded;">A Micro-Framework for Web Applications</p></div>
 [![GitHub](https://img.shields.io/badge/Open%20Source-MIT-blue.svg)](https://github.com/boazsegev/facil.io)
 [![Build Status](https://travis-ci.org/boazsegev/facil.io.svg?branch=master)](https://travis-ci.org/boazsegev/facil.io)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/2abeba588afb444ca6d92e68ccfbe36b)](https://www.codacy.com/app/boazsegev/facil.io?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=boazsegev/facil.io&amp;utm_campaign=Badge_Grade)
@@ -136,4 +135,4 @@ Hit me up if you want to:
 
 * Writing documentation into the `facil.io` website would be great. I keep the source code documentation fairly updated, but the documentation should be copied to the `docs` folder to get the documentation website up and running.
 
-<p align="center"><img src="https://s33.postimg.cc/seo47ha0v/Readme_2.jpg"></p>
+<div style='border-bottom: 3px solid #324B85; padding:0; padding-top: 1em; padding-bottom: 1em; width: 100%; background: linear-gradient(rgba(192, 192, 192, 0),rgba(192, 192, 192, 0.4));'><img src='docs/assets/logo/readme_bottom.svg' style=' margin: auto; width: 4em; display: block;text-align: center;vertical-align: middle;' /></div>
