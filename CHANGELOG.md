@@ -25,6 +25,8 @@
 
 **Fix**: (`facil`) fixed a typo in the shutdown output. Credit to @bjeanes (Bo Jeanes) for the Iodine#39 PR.
 
+**Logo**: Logo created by @area55git ([Area55](https://github.com/area55git))
+
 ---
 ## Released versions
 
