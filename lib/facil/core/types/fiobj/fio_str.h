@@ -12,11 +12,12 @@ License: MIT
  *
  * Example use:
  *
- *     fio_str_s str = FIO_STR_INIT;    // container on the stack.
- *     fio_str_write(&str, "hello", 5); // add / remove / read data...
- *     fio_str_free(&str)               // free the data, not the container.
+ *     fio_str_s str = FIO_STR_INIT;             // container on the stack.
+ *     fio_str_write(&str, "hello", 5);          // add / remove / read data...
+ *     printf("String: %s", fio_str_data(&str)); // print data
+ *     fio_str_free(&str)                 // free the data - NOT the container.
  *
- * Should work with 32bit and 64bit architectures.
+ * Should work with both 32bit and 64bit architectures.
  */
 #define H_FIO_STRING_H
 
@@ -51,21 +52,20 @@ License: MIT
   }
 #endif
 
-#ifdef __cplusplus
-#define register
-#endif
-
 /* *****************************************************************************
 String API - Initialization and Destruction
 ***************************************************************************** */
 
 /**
- * The `fio_str_s` type should be considered opaque when possible.
+ * The `fio_str_s` type should be considered opaque.
  *
- * The type's attributes should be accessed using the accessor functions:
- * `fio_str_len`, `fio_str_data`, `fio_str_capa`, `fio_str_state`, etc'.
+ * The type's attributes should be accessed ONLY through the accessor functions:
+ * `fio_str_state`, `fio_str_len`, `fio_str_data`, `fio_str_capa`, etc'.
  *
- * When accessing the type's
+ * Note: when the `small` flag is present, the structure is ignored and used as
+ * raw memory for a small String (no aditional allocation). This changes the
+ * String's behavior drastically and requires that the accessor functions be
+ * used.
  */
 typedef struct {
   uint8_t small;  /* Flag indicating the String is small and self-contained */
@@ -118,10 +118,11 @@ inline FIO_FUNC void fio_str_free(fio_str_s *s);
 String API - String state (data pointers, length, capacity, etc')
 ***************************************************************************** */
 
+/** String state information. */
 typedef struct {
-  size_t capa;
-  size_t len;
-  char *data;
+  size_t capa; /* Buffer capacity. */
+  size_t len;  /* String length. */
+  char *data;  /* String's first byte. */
 } fio_str_state_s;
 
 /** Returns the String's complete state (capacity, length and pointer). */
@@ -134,9 +135,9 @@ inline FIO_FUNC size_t fio_str_len(fio_str_s *s);
 inline FIO_FUNC char *fio_str_data(fio_str_s *s);
 
 /** Returns a byte pointer (`uint8_t *`) to the String's unsigned content. */
-inline FIO_FUNC uint8_t *fio_str_bytes(fio_str_s *s);
+#define fio_str_bytes(s) ((uint8_t *)fio_str_data((s)))
 
-/** Returns the String's existing capacity (allocated memory). */
+/** Returns the String's existing capacity (total used & available memory). */
 inline FIO_FUNC size_t fio_str_capa(fio_str_s *s);
 
 /**
@@ -335,11 +336,6 @@ inline FIO_FUNC size_t fio_str_len(fio_str_s *s) {
 /** Returns a pointer (`char *`) to the String's content. */
 inline FIO_FUNC char *fio_str_data(fio_str_s *s) {
   return (s->small || !s->data) ? (((fio_str__small_s *)s)->data) : s->data;
-}
-
-/** Returns a byte pointer (`uint8_t *`) to the String's unsigned content. */
-inline FIO_FUNC uint8_t *fio_str_bytes(fio_str_s *s) {
-  return (uint8_t *)fio_str_data(s);
 }
 
 /** Returns the String's existing capacity (allocated memory). */
@@ -1113,10 +1109,6 @@ FIO_FUNC inline void fio_str_test(void) {
 /* *****************************************************************************
 Done
 ***************************************************************************** */
-
-#ifdef __cplusplus
-#undef register
-#endif
 
 #undef FIO_FUNC
 #undef FIO_ASSERT_ALLOC
