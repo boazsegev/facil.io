@@ -1087,7 +1087,7 @@ FIO_FUNC inline void fio_str_test(void) {
           (ssize_t)pos);
       TEST_ASSERT(
           len == 10,
-          "`fio_str_utf8_select` error, trancated length invalid! (%zu)",
+          "`fio_str_utf8_select` error, trancated length invalid! (%zd)",
           (ssize_t)len);
       pos = 10;
       len = 20;
@@ -1098,7 +1098,7 @@ FIO_FUNC inline void fio_str_test(void) {
                   "`fio_str_utf8_select` error, position invalid! (%zd)",
                   (ssize_t)pos);
       TEST_ASSERT(len == 20,
-                  "`fio_str_utf8_select` error, length invalid! (%zu)",
+                  "`fio_str_utf8_select` error, length invalid! (%zd)",
                   (ssize_t)len);
     }
   }
@@ -1120,7 +1120,7 @@ FIO_FUNC inline void fio_str_test(void) {
                 (ssize_t)pos);
     TEST_ASSERT(len == 4, /* last utf-8 char is 4 byte long */
                 "`fio_str_utf8_select` error, trancated length invalid on "
-                "UTF-8 data! (%zu)",
+                "UTF-8 data! (%zd)",
                 (ssize_t)len);
     pos = 1;
     len = 20;
