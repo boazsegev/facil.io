@@ -640,29 +640,33 @@ FIO_FUNC int fio_str_utf8_select(fio_str_s *s, intptr_t *pos, size_t *len) {
           if (c != 3)
             goto error;
           c = 0;
+          ++(*pos);
           break;
         case 3:
           if (c != 2)
             goto error;
           c = 0;
+          ++(*pos);
           break;
         case 2:
           if (c != 1)
             goto error;
           c = 0;
+          ++(*pos);
           break;
         case 1:
           if (c)
             goto error;
+          ++(*pos);
           break;
         default:
           goto error;
         }
-        ++(*pos);
         --p;
       } while (p > state.data && *pos);
       if (c)
         goto error;
+      ++p; /* There's always an extra back-step */
       *pos = (p - state.data);
     }
   }
@@ -1069,7 +1073,8 @@ FIO_FUNC inline void fio_str_test(void) {
                 "`fio_str_utf8_len` error, invalid value (%zu / %zu!",
                 fio_str_utf8_len(&str), fio_str_len(&str));
     {
-      intptr_t pos = -10;
+      /* String content == whole file (this file) */
+      intptr_t pos = -11;
       size_t len = 20;
 
       TEST_ASSERT(
@@ -1077,7 +1082,7 @@ FIO_FUNC inline void fio_str_test(void) {
           "`fio_str_utf8_select` returned error for negative pos! (%zd, %zu)",
           (ssize_t)pos, len);
       TEST_ASSERT(
-          pos == (intptr_t)state.len - 10,
+          pos == (intptr_t)state.len - 10, /* no UTF-8 bytes in this file */
           "`fio_str_utf8_select` error, negative position invalid! (%zd)",
           (ssize_t)pos);
       TEST_ASSERT(
@@ -1096,9 +1101,53 @@ FIO_FUNC inline void fio_str_test(void) {
                   "`fio_str_utf8_select` error, length invalid! (%zu)",
                   (ssize_t)len);
     }
-
-    fio_str_free(&str);
   }
+  fio_str_free(&str);
+  {
+
+    const char *utf8_sample = /* three hearts, small-big-small*/
+        "\xf0\x9f\x92\x95\xe2\x9d\xa4\xef\xb8\x8f\xf0\x9f\x92\x95";
+    fio_str_write(&str, utf8_sample, strlen(utf8_sample));
+    intptr_t pos = -2;
+    size_t len = 2;
+    TEST_ASSERT(fio_str_utf8_select(&str, &pos, &len) == 0,
+                "`fio_str_utf8_select` returned error for negative pos on "
+                "UTF-8 data! (%zd, %zu)",
+                (ssize_t)pos, len);
+    TEST_ASSERT(pos == (intptr_t)fio_str_len(&str) - 4, /* 4 byte emoji */
+                "`fio_str_utf8_select` error, negative position invalid on "
+                "UTF-8 data! (%zd)",
+                (ssize_t)pos);
+    TEST_ASSERT(len == 4, /* last utf-8 char is 4 byte long */
+                "`fio_str_utf8_select` error, trancated length invalid on "
+                "UTF-8 data! (%zu)",
+                (ssize_t)len);
+    pos = 1;
+    len = 20;
+    TEST_ASSERT(
+        fio_str_utf8_select(&str, &pos, &len) == 0,
+        "`fio_str_utf8_select` returned error on UTF-8 data! (%zd, %zu)",
+        (ssize_t)pos, len);
+    TEST_ASSERT(
+        pos == 4,
+        "`fio_str_utf8_select` error, position invalid on UTF-8 data! (%zd)",
+        (ssize_t)pos);
+    TEST_ASSERT(
+        len == 10,
+        "`fio_str_utf8_select` error, length invalid on UTF-8 data! (%zu)",
+        (ssize_t)len);
+    pos = 1;
+    len = 3;
+    TEST_ASSERT(
+        fio_str_utf8_select(&str, &pos, &len) == 0,
+        "`fio_str_utf8_select` returned error on UTF-8 data (2)! (%zd, %zu)",
+        (ssize_t)pos, len);
+    TEST_ASSERT(
+        len == 10, /* 3 UTF-8 chars: 4 byte + 4 byte + 2 byte codes == 10 */
+        "`fio_str_utf8_select` error, length invalid on UTF-8 data! (%zu)",
+        (ssize_t)len);
+  }
+  fio_str_free(&str);
   fprintf(stderr, "* passed.\n");
 }
 #undef TEST_ASSERT
