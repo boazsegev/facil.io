@@ -174,7 +174,7 @@ inline FIO_FUNC void fio_str_compact(fio_str_s *s);
 FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed);
 
 /* *****************************************************************************
-String API - UTF-8 support
+String API - UTF-8 State
 ***************************************************************************** */
 
 /** Returns 1 if the String is UTF-8 valid and 0 if not. */
@@ -223,6 +223,8 @@ inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, const void *src,
 
 /**
  * Appens the `src` String to the end of the `dest` String.
+ *
+ * If `src` is empty, the resulting Strings will be equal.
  */
 inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
                                                fio_str_s const *src);
@@ -473,7 +475,7 @@ shrink2small:
 }
 
 /* *****************************************************************************
-Implementation - UTF-8 support
+Implementation - UTF-8 State
 ***************************************************************************** */
 
 /**
