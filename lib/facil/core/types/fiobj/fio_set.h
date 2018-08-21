@@ -122,11 +122,13 @@ License: MIT
 #endif
 
 /** test for a pre-defined hash type */
-#if !defined(FIO_SET_HASH_TYPE) || !defined(FIO_SET_COMPARE_HASH) ||           \
-    !defined(FIO_SET_HASH_INVALID)
+#if !defined(FIO_SET_HASH_TYPE) || !defined(FIO_SET_HASH_INVALID)
 #define FIO_SET_HASH_TYPE uint64_t
-#define FIO_SET_COMPARE_HASH(h1, h2) (h1 == h2)
 #define FIO_SET_HASH_INVALID 0
+#endif
+
+#ifndef FIO_SET_COMPARE_HASH
+#define FIO_SET_COMPARE_HASH(h1, h2) (h1 == h2)
 #endif
 
 /* MUST be a power of 2 */
@@ -547,7 +549,7 @@ FIO_FUNC void FIO_SET_NAME(test)(void) {
     FIO_SET_OBJECT_TYPE obj;
     uintptr_t i;
   } obj_mem;
-  memset(&obj_mem, sizeof(obj_mem), 0);
+  memset(&obj_mem, 0, sizeof(obj_mem));
 
   TEST_ASSERT(FIO_SET_NAME(count)(&s) == 0,
               "empty set should have zero objects");
