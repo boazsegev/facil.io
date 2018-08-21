@@ -128,12 +128,13 @@ ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCL
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else
-ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
+else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+  $(info * Detected the BearSSL source library, setting HAVE_BEARSSL)
+	FLAGS:=$(FLAGS) HAVE_BEARSSL
+else ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
-endif
 endif
 
 # add ZLib library flags
