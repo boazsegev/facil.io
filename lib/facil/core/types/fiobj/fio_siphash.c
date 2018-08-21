@@ -106,3 +106,29 @@ uint64_t fio_siphash(const void *data, size_t len) {
 #undef hash_map_SipRound
   return v0;
 }
+
+#if defined(DEBUG) && DEBUG == 1
+#include <stdio.h>
+#include <time.h>
+
+// clang-format off
+#if defined(HAVE_OPENSSL)
+#  include <openssl/sha.h>
+#endif
+// clang-format on
+
+void fio_siphash_test(void) {
+
+  uint64_t result = 0;
+  clock_t start;
+  start = clock();
+  for (size_t i = 0; i < 100000; i++) {
+    char *data = "The quick brown fox jumps over the lazy dog ";
+    __asm__ volatile("" ::: "memory");
+    result += fio_siphash(data, 43);
+  }
+  fprintf(stderr, "fio 100K SipHash: %lf (result: %p)\n",
+          (double)(clock() - start) / CLOCKS_PER_SEC, (void *)result);
+  fprintf(stderr, "===================================\n");
+}
+#endif

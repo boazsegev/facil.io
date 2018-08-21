@@ -15,4 +15,10 @@
  */
 uint64_t fio_siphash(const void *data, size_t len);
 
+#if defined(DEBUG) && DEBUG
+void fio_siphash_test(void);
+#else
+#define fio_siphash_test()
 #endif
+
+#endif /* H_FIO_SIPHASH_H */

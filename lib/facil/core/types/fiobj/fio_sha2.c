@@ -543,7 +543,7 @@ finalization will only be performed the first time this function is called.
 */
 char *fio_sha2_result(sha2_s *s) {
   if (s->type & 1) {
-/* 512 bits derived hashing */
+    /* 512 bits derived hashing */
 
 #if defined(HAS_UINT128)
     size_t in_buffer = s->length.i & 127;
@@ -560,8 +560,8 @@ char *fio_sha2_result(sha2_s *s) {
     } else {
       s->buffer[111] = sha2_padding[0];
     }
-/* store the length in BITS - alignment should be promised by struct */
-/* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
+    /* store the length in BITS - alignment should be promised by struct */
+    /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
 
 #if defined(HAS_UINT128)
     s->length.i = s->length.i << 3;
@@ -812,6 +812,10 @@ void fio_sha2_test(void) {
   fprintf(stderr, "fio 100K SHA-2/256: %lf\n",
           (double)(clock() - start) / CLOCKS_PER_SEC);
 
+  hash[SHA256_DIGEST_LENGTH] = 0;
+  SHA256_Init(&s3);
+  SHA256_Update(&s3, "The quick brown fox jumps over the lazy dog", 43);
+  SHA256_Final(hash, &s3);
   hash[SHA256_DIGEST_LENGTH] = 0;
   start = clock();
   for (size_t i = 0; i < 100000; i++) {
