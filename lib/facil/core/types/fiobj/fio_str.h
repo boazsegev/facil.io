@@ -1146,7 +1146,7 @@ FIO_FUNC inline void fio_str_test(void) {
         (ssize_t)pos, len);
     TEST_ASSERT(
         len == 10, /* 3 UTF-8 chars: 4 byte + 4 byte + 2 byte codes == 10 */
-        "`fio_str_utf8_select` error, length invalid on UTF-8 data! (%zu)",
+        "`fio_str_utf8_select` error, length invalid on UTF-8 data! (%zd)",
         (ssize_t)len);
   }
   fio_str_free(&str);
