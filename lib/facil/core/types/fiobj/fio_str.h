@@ -937,7 +937,7 @@ FIO_FUNC inline void fio_str_test(void) {
   fprintf(stderr,
           "* Self-Contained String Capacity (FIO_STR_SMALL_CAPA): %zu\n",
           FIO_STR_SMALL_CAPA);
-  fio_str_s str = FIO_STR_INIT;
+  fio_str_s str = {.small = 0}; /* test zeroed out memory */
   TEST_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
               "Small String capacity reporting error!");
   TEST_ASSERT(fio_str_len(&str) == 0, "Small String length reporting error!");
