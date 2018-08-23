@@ -8,8 +8,8 @@ License: MIT
  *
  * ##  What is a Set?
  *
- * A Set (also reffered to as a "Bag") is simple data-storage that promises the
- * data in the Set is unique (no two objects are equal).
+ * A Set (also reffered to as a "Bag") is a data-storage that promises the data
+ * in the Set is unique (no two objects are equal).
  *
  * ##  What is it used for?
  *
@@ -27,27 +27,32 @@ License: MIT
  *
  * Duplicates of the hash value (but not the objects) are placed in a mapping
  * array to improve cache locality when seeking for existing objects - only full
- * hash collisions prompt an identity test.
+ * hash identity prompts an object identity test (to test for full collisions).
  *
  * The Set's object types are adjustable using macros. By default, Objects are a
  * `void *` type. This makes it easy to implement more complex data structures
- * that are derived from the Set (such as HashMaps or caching schemes).
+ * that are derived from the Set (such as HashMaps or caching schemes), but it
+ * also means that objects aren't tested for identity (since `void *` data is
+ * opaque and unknown).
  *
- * The Set also requires each object to have a unique hash integer value that
- * will be used for mapping the objects for quick access. By default, hash
- * values are a `uint64_t` type.
+ * The Set requires each object to have a unique hash integer value that will be
+ * used for mapping the objects for quick access. By default, hash values are a
+ * `uintptr_t` type.
  *
  * Partial hash collisions are handled by seeking forward and attempting to find
  * a close enough spot. If a close enough spot isn't found, rehashing is
  * initiated and memory consumption increases.
  *
- * Full hash collisions could break the Set after objects are removed (deleted)
- * from the Set, because the object is removed and equality tests can't be
- * performed. However, facil.io's implementation automatically protects against
- * this scenarion by detecting collisions and rehashing the Set when required.
+ * The Set is protected against full hash collisions only when the
+ * FIO_SET_COMPARE_OBJ(o1, o2) macro is defined. Otherwise collisions are the
+ * same as object identity.
  *
- * The file was written to be compatible with C++ as well as C, hence some
- * pointer casting.
+ * facil.io's implementation automatically protects against full collisions
+ * without the need to keep any removed objects alive. This is performed by
+ * detecting collisions and rehashing the Set when required.
+ *
+ * The file was written to be mostly compatible with C++ as well as C, hence
+ * some pointer casting.
  */
 #define H_FIO_SIMPLE_SET_H
 
@@ -68,51 +73,47 @@ License: MIT
 /**
  * By defining ALL THREE of the following macros, hashing collision protection
  * can be adjusted:
- * * FIO_SET_HASH_TYPE              - the type of the hash value. Should be an
- *                                    integer value.
+ * * FIO_SET_HASH_TYPE              - the type of the hash value.
+ * * FIO_SET_HASH2UINTPTR(hash)     - converts the hash value to a uintptr_t.
  * * FIO_SET_COMPARE_HASH(h1, h2)   - compares two hash values (1 == equal).
- * * FIO_SET_HASH_INVALID           - an invalid Hash value (defaults to 0).
+ * * FIO_SET_HASH_INVALID           - an invalid Hash value, all bytes are 0.
+ *
+ * Note: FIO_SET_HASH_TYPE should, normaly be left alone (uintptr_t is enough).
+ *       Also, the hash value 0 is reserved to indicate an empty slot.
  *
  * By defining ALL of the following macros, the Set's type and functionality can
  * be adjusted:
  * * FIO_SET_NAME(name)             - allows a prefixe to be added to name.
  * * FIO_SET_OBJECT_TYPE            - the type used for set objects.
- * * FIO_SET_OBJECT_INVALID         - an invalid object, it's bytes set to zero.
- * * FIO_SET_OBJ2HASH(obj)          - converts an object to a hash value number.
  *
  * The following macros allow further control over the Set's behavior:
  * * FIO_SET_COMPARE_OBJ(o1, o2)    - compares two objects (1 == equal).
- * * FIO_SET_OBJ_ISINVALID(obj)     - tests for an invalid object.
  * * FIO_SET_OBJ_COPY(obj)          - creates a persistent copy of the object.
  * * FIO_SET_OBJ_DESTROY(obj)       - destroys (or frees) the object's copy.
  *
  * Note: FIO_SET_NAME(name) defaults to: fio_ptr_set_##name`.
  *
- * Note: FIO_SET_OBJ2HASH must never be 0 for valid objects.
+ * Note: FIO_SET_COMPARE_OBJ will be used to compare against invalid as well as
+ *       valid objects. Invalid objects have their bytes all zero.
+ *       FIO_SET_OBJ_DESTROY should zero out unused objects or somehow mark them
+ *       as invalid.
  *
- * Note: FIO_SET_COMPARE will be used to compare against
- *       FIO_SET_OBJECT_INVALID as well as valid keys.
- *
- * Note: Before freeing the Set, FIO_SET_OBJ_DESTROY should be called for
- *       every object. This is NOT automatic. see the FIO_SET_FOR_LOOP(h) macro.
+ * Note: Before freeing the Set, FIO_SET_OBJ_DESTROY will be automatically
+ *       called for every existing object.
  */
-#if !defined(FIO_SET_OBJECT_TYPE) || !defined(FIO_SET_NAME) ||                 \
-    !defined(FIO_SET_OBJ2HASH) || !defined(FIO_SET_OBJECT_INVALID)
+#ifndef FIO_SET_NAME
 #define FIO_SET_NAME(name) fio_ptr_set_##name
+#endif
+
+#if !defined(FIO_SET_OBJECT_TYPE)
 #define FIO_SET_OBJECT_TYPE void *
-#define FIO_SET_OBJECT_INVALID NULL
-#define FIO_SET_OBJ2HASH(obj) ((FIO_SET_HASH_TYPE)(obj))
 #elif !defined(FIO_SET_NO_TEST)
 #define FIO_SET_NO_TEST 1
 #endif
 
+/* The default Set has opaque objects that can't be compared */
 #if !defined(FIO_SET_COMPARE_OBJ)
-#define FIO_SET_COMPARE_OBJ(o1, o2) ((o1) == (o2))
-#endif
-
-#if !defined(FIO_SET_OBJ_ISINVALID)
-#define FIO_SET_OBJ_ISINVALID(obj)                                             \
-  FIO_SET_COMPARE_OBJ((obj), FIO_SET_OBJECT_INVALID)
+#define FIO_SET_COMPARE_OBJ(o1, o2) (1)
 #endif
 
 /** test for a pre-defined object copy */
@@ -121,12 +122,22 @@ License: MIT
 #define FIO_SET_OBJ_DESTROY(obj) ((void)0)
 #endif
 
-/** test for a pre-defined hash type */
-#if !defined(FIO_SET_HASH_TYPE) || !defined(FIO_SET_HASH_INVALID)
-#define FIO_SET_HASH_TYPE uint64_t
-#define FIO_SET_HASH_INVALID 0
+/** test for a pre-defined hash value type */
+#ifndef FIO_SET_HASH_TYPE
+#define FIO_SET_HASH_TYPE uintptr_t
 #endif
 
+/** test for a pre-defined hash to integer conversion */
+#ifndef FIO_SET_HASH2UINTPTR
+#define FIO_SET_HASH2UINTPTR(hash) ((uintptr_t)(hash))
+#endif
+
+/** test for a pre-defined invalid hash value (all bytes are 0) */
+#ifndef FIO_SET_HASH_INVALID
+#define FIO_SET_HASH_INVALID ((FIO_SET_HASH_TYPE)0)
+#endif
+
+/** test for a pre-defined hash comparison */
 #ifndef FIO_SET_COMPARE_HASH
 #define FIO_SET_COMPARE_HASH(h1, h2) (h1 == h2)
 #endif
@@ -166,19 +177,24 @@ FIO_FUNC void FIO_SET_NAME(free)(FIO_SET_NAME(s) * set);
 
 /** Locates an object in the Set, if it exists. */
 FIO_FUNC inline FIO_SET_OBJECT_TYPE *
-    FIO_SET_NAME(find)(FIO_SET_NAME(s) * set, FIO_SET_OBJECT_TYPE obj);
+    FIO_SET_NAME(find)(FIO_SET_NAME(s) * set,
+                       const FIO_SET_HASH_TYPE hash_value,
+                       FIO_SET_OBJECT_TYPE obj);
 
 /**
  * Inserts an object to the Set, rehashing if required, returning the new
  * object's pointer.
  */
-FIO_FUNC FIO_SET_OBJECT_TYPE *FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set,
-                                                   FIO_SET_OBJECT_TYPE obj);
+FIO_FUNC FIO_SET_OBJECT_TYPE *
+    FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set,
+                         const FIO_SET_HASH_TYPE hash_value,
+                         FIO_SET_OBJECT_TYPE obj);
 
 /**
  * Removes an object from the Set, rehashing if required.
  */
 FIO_FUNC void FIO_SET_NAME(remove)(FIO_SET_NAME(s) * set,
+                                   const FIO_SET_HASH_TYPE hash_value,
                                    FIO_SET_OBJECT_TYPE obj);
 
 /**
@@ -238,13 +254,13 @@ FIO_FUNC void FIO_SET_NAME(rehash)(FIO_SET_NAME(s) * set);
  * `pos->hash` is the hashing value and `pos->obj` is the object's data.
  *
  * Since the Set might have "holes" (objects that were removed), it is important
- * to skip any `FIO_SET_OBJ_ISINVALID(pos->obj)`.
+ * to skip any `FIO_SET_COMPARE_HASH(pos->hash, FIO_SET_HASH_INVALID)`.
  */
 #define FIO_SET_FOR_LOOP(set, pos)
 #endif
 
 /* *****************************************************************************
-Hash Table Internal Data Structures
+Set Internal Data Structures
 ***************************************************************************** */
 
 typedef struct FIO_SET_NAME(_ordered_s_) {
@@ -279,8 +295,9 @@ Internal Helpers
 
 /** Locates an object's map position in the Set, if it exists. */
 FIO_FUNC inline FIO_SET_NAME(_map_s_) *
-    FIO_SET_NAME(_find_map_pos_)(FIO_SET_NAME(s) * set, FIO_SET_OBJECT_TYPE obj,
-                                 const FIO_SET_HASH_TYPE hashed_obj) {
+    FIO_SET_NAME(_find_map_pos_)(FIO_SET_NAME(s) * set,
+                                 const FIO_SET_HASH_TYPE hash_value,
+                                 FIO_SET_OBJECT_TYPE obj) {
   if (!set->map)
     return NULL;
 
@@ -289,36 +306,44 @@ FIO_FUNC inline FIO_SET_NAME(_map_s_) *
     FIO_SET_NAME(rehash)(set);
   }
 
-  FIO_SET_NAME(_map_s_) *pos = set->map + (hashed_obj & set->mask);
-  uintptr_t i = 0;
-  const uintptr_t limit = set->capa > FIO_SET_MAX_MAP_SEEK
+  FIO_SET_NAME(_map_s_) *pos =
+      set->map + (FIO_SET_HASH2UINTPTR(hash_value) & set->mask);
+  const uintptr_t limit = set->capa > (FIO_SET_MAX_MAP_SEEK << 2)
                               ? FIO_SET_MAX_MAP_SEEK
-                              : ((set->capa >> 1) | 1);
-  while (i < limit) {
-    if (FIO_SET_COMPARE_HASH(FIO_SET_HASH_INVALID, pos->hash) && !pos->pos)
+                              : ((set->capa >> 2) | 1);
+  if (FIO_SET_COMPARE_HASH(FIO_SET_HASH_INVALID, pos->hash))
+    return pos;
+  if (FIO_SET_COMPARE_HASH(pos->hash, hash_value)) {
+    if (!pos->pos || FIO_SET_COMPARE_OBJ(pos->pos->obj, obj))
       return pos;
-    if (pos->hash == hashed_obj) {
+    set->has_collisions = 1;
+  }
+  uintptr_t i = 1;
+  while (i < limit) {
+    pos = set->map + ((FIO_SET_HASH2UINTPTR(hash_value) + (i * 3)) & set->mask);
+    if (FIO_SET_COMPARE_HASH(FIO_SET_HASH_INVALID, pos->hash))
+      return pos;
+    if (FIO_SET_COMPARE_HASH(pos->hash, hash_value)) {
       if (!pos->pos || FIO_SET_COMPARE_OBJ(pos->pos->obj, obj))
         return pos;
       set->has_collisions = 1;
     }
-    pos = set->map + (((hashed_obj & set->mask) + ((i++) * 3)) & set->mask);
+    ++i;
   }
   return NULL;
+  (void)obj; /* in cases where FIO_SET_COMPARE_OBJ does nothing */
 }
 
 /** Removes "holes" from the Set's internal Array - MUST re-hash afterwards. */
 FIO_FUNC inline void FIO_SET_NAME(_compact_ordered_array_)(FIO_SET_NAME(s) *
                                                            set) {
-  if (!set->ordered || !set->pos || set->count == set->pos)
+  if (set->count == set->pos)
     return;
   FIO_SET_NAME(_ordered_s_) *reader = set->ordered;
   FIO_SET_NAME(_ordered_s_) *writer = set->ordered;
   const FIO_SET_NAME(_ordered_s_) *end = set->ordered + set->pos;
   for (; reader && (reader < end); ++reader) {
-    if (FIO_SET_COMPARE_HASH(reader->hash, FIO_SET_HASH_INVALID) ||
-        FIO_SET_OBJ_ISINVALID(reader->obj)) {
-      FIO_SET_OBJ_DESTROY(reader->obj);
+    if (FIO_SET_COMPARE_HASH(reader->hash, FIO_SET_HASH_INVALID)) {
       continue;
     }
     *writer = *reader;
@@ -337,6 +362,13 @@ Set Implementation
 
 /** Deallocates any internal resources. Doesn't free any objects! */
 FIO_FUNC void FIO_SET_NAME(free)(FIO_SET_NAME(s) * s) {
+  /* destroy existing valid objects */
+  const FIO_SET_NAME(_ordered_s_) *const end = s->ordered + s->pos;
+  for (FIO_SET_NAME(_ordered_s_) *pos = s->ordered; pos && pos < end; ++pos) {
+    if (!FIO_SET_COMPARE_HASH(FIO_SET_HASH_INVALID, pos->hash)) {
+      FIO_SET_OBJ_DESTROY(pos->obj);
+    }
+  }
   FIO_SET_FREE(s->map, s->capa * sizeof(*s->map));
   FIO_SET_FREE(s->ordered, s->capa * sizeof(*s->ordered));
   *s = (FIO_SET_NAME(s)){.map = NULL};
@@ -344,10 +376,10 @@ FIO_FUNC void FIO_SET_NAME(free)(FIO_SET_NAME(s) * s) {
 
 /** Locates an object in the Set, if it exists. */
 FIO_FUNC inline FIO_SET_OBJECT_TYPE *
-FIO_SET_NAME(find)(FIO_SET_NAME(s) * set, FIO_SET_OBJECT_TYPE obj) {
-  const FIO_SET_HASH_TYPE hashed_obj = FIO_SET_OBJ2HASH(obj);
+FIO_SET_NAME(find)(FIO_SET_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
+                   FIO_SET_OBJECT_TYPE obj) {
   FIO_SET_NAME(_map_s_) *pos =
-      FIO_SET_NAME(_find_map_pos_)(set, obj, hashed_obj);
+      FIO_SET_NAME(_find_map_pos_)(set, hash_value, obj);
   if (!pos || !pos->pos)
     return NULL;
   return &pos->pos->obj;
@@ -357,9 +389,10 @@ FIO_SET_NAME(find)(FIO_SET_NAME(s) * set, FIO_SET_OBJECT_TYPE obj) {
  * Inserts an object to the Set, rehashing if required, returning the new
  * object's pointer.
  */
-FIO_FUNC FIO_SET_OBJECT_TYPE *FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set,
-                                                   FIO_SET_OBJECT_TYPE obj) {
-  if (FIO_SET_OBJ_ISINVALID(obj))
+FIO_FUNC FIO_SET_OBJECT_TYPE *
+FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
+                     FIO_SET_OBJECT_TYPE obj) {
+  if (FIO_SET_COMPARE_HASH(hash_value, FIO_SET_HASH_INVALID))
     return NULL;
 
   /* automatic fragmentation protection */
@@ -367,13 +400,12 @@ FIO_FUNC FIO_SET_OBJECT_TYPE *FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set,
     FIO_SET_NAME(rehash)(set);
 
   /* locate future position, rehashing until a position is available */
-  const FIO_SET_HASH_TYPE hashed_obj = FIO_SET_OBJ2HASH(obj);
   FIO_SET_NAME(_map_s_) *pos =
-      FIO_SET_NAME(_find_map_pos_)(set, obj, hashed_obj);
+      FIO_SET_NAME(_find_map_pos_)(set, hash_value, obj);
   while (!pos) {
     set->mask = (set->mask << 1) | 1;
     FIO_SET_NAME(rehash)(set);
-    pos = FIO_SET_NAME(_find_map_pos_)(set, obj, hashed_obj);
+    pos = FIO_SET_NAME(_find_map_pos_)(set, hash_value, obj);
   }
 
   /* overwriting / new */
@@ -388,8 +420,8 @@ FIO_FUNC FIO_SET_OBJECT_TYPE *FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set,
   }
 
   /* store object at position */
-  pos->hash = hashed_obj;
-  pos->pos->hash = hashed_obj;
+  pos->hash = hash_value;
+  pos->pos->hash = hash_value;
   pos->pos->obj = FIO_SET_OBJ_COPY(obj);
   return &pos->pos->obj;
 }
@@ -398,24 +430,24 @@ FIO_FUNC FIO_SET_OBJECT_TYPE *FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set,
  * Removes an object from the Set, rehashing if required.
  */
 FIO_FUNC void FIO_SET_NAME(remove)(FIO_SET_NAME(s) * set,
+                                   const FIO_SET_HASH_TYPE hash_value,
                                    FIO_SET_OBJECT_TYPE obj) {
-  if (FIO_SET_OBJ_ISINVALID(obj))
+  if (FIO_SET_COMPARE_HASH(hash_value, FIO_SET_HASH_INVALID))
     return;
-  const FIO_SET_HASH_TYPE hashed_obj = FIO_SET_OBJ2HASH(obj);
   FIO_SET_NAME(_map_s_) *pos =
-      FIO_SET_NAME(_find_map_pos_)(set, obj, hashed_obj);
+      FIO_SET_NAME(_find_map_pos_)(set, hash_value, obj);
   if (!pos || !pos->pos)
     return;
   FIO_SET_OBJ_DESTROY(pos->pos->obj);
   --set->count;
-  pos->pos->obj = FIO_SET_OBJECT_INVALID;
   pos->pos->hash = FIO_SET_HASH_INVALID;
   if (pos->pos == set->pos + set->ordered - 1) {
     do {
       --set->pos;
-    } while (set->pos && FIO_SET_OBJ_ISINVALID(set->ordered[set->pos - 1].obj));
+    } while (set->pos && FIO_SET_COMPARE_HASH(set->ordered[set->pos - 1].hash,
+                                              FIO_SET_HASH_INVALID));
   }
-  pos->pos = NULL; /* leave pos->hash to mark "hole" */
+  pos->pos = NULL; /* leave pos->hash set to mark "hole" */
 }
 
 /**
@@ -438,12 +470,12 @@ FIO_FUNC void FIO_SET_NAME(pop)(FIO_SET_NAME(s) * set) {
   if (!set->ordered || !set->pos)
     return;
   FIO_SET_OBJ_DESTROY(set->ordered[set->pos - 1].obj);
-  set->ordered[set->pos - 1].obj = FIO_SET_OBJECT_INVALID;
   set->ordered[set->pos - 1].hash = FIO_SET_HASH_INVALID;
   --(set->count);
   do {
     --(set->pos);
-  } while (set->pos && FIO_SET_OBJ_ISINVALID(set->ordered[set->pos - 1].obj));
+  } while (set->pos && FIO_SET_COMPARE_HASH(set->ordered[set->pos - 1].hash,
+                                            FIO_SET_HASH_INVALID));
 }
 
 /** Returns the number of objects currently in the Set. */
@@ -522,7 +554,7 @@ restart:
   for (FIO_SET_NAME(_ordered_s_) *pos = set->ordered; pos && (pos < end);
        ++pos) {
     FIO_SET_NAME(_map_s_) *mp =
-        FIO_SET_NAME(_find_map_pos_)(set, pos->obj, pos->hash);
+        FIO_SET_NAME(_find_map_pos_)(set, pos->hash, pos->obj);
     if (!mp) {
       set->mask = (set->mask << 1) | 1;
       goto restart;
@@ -531,6 +563,10 @@ restart:
     mp->hash = pos->hash;
   }
 }
+
+/* *****************************************************************************
+Testing
+***************************************************************************** */
 
 #if DEBUG && !FIO_SET_NO_TEST
 #define FIO_SET_TEXT_COUNT 524288UL
@@ -561,16 +597,16 @@ FIO_FUNC void FIO_SET_NAME(test)(void) {
 
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
     obj_mem.i = i;
-    FIO_SET_NAME(insert)(&s, obj_mem.obj);
-    TEST_ASSERT(FIO_SET_NAME(find)(&s, obj_mem.obj),
+    FIO_SET_NAME(insert)(&s, i, obj_mem.obj);
+    TEST_ASSERT(FIO_SET_NAME(find)(&s, i, obj_mem.obj),
                 "find failed after insert");
-    obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.obj);
+    obj_mem.obj = *FIO_SET_NAME(find)(&s, i, obj_mem.obj);
     TEST_ASSERT(i == obj_mem.i, "insertion != find");
   }
   fprintf(stderr, "* Seeking %lu items\n", FIO_SET_TEXT_COUNT);
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
     obj_mem.i = i;
-    obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.obj);
+    obj_mem.obj = *FIO_SET_NAME(find)(&s, i, obj_mem.obj);
     TEST_ASSERT((i == obj_mem.i), "insertion != find (seek)");
   }
   {
@@ -587,8 +623,8 @@ FIO_FUNC void FIO_SET_NAME(test)(void) {
   fprintf(stderr, "* Removing odd items from %lu items\n", FIO_SET_TEXT_COUNT);
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; i += 2) {
     obj_mem.i = i;
-    FIO_SET_NAME(remove)(&s, obj_mem.obj);
-    TEST_ASSERT(!(FIO_SET_NAME(find)(&s, obj_mem.obj)),
+    FIO_SET_NAME(remove)(&s, i, obj_mem.obj);
+    TEST_ASSERT(!(FIO_SET_NAME(find)(&s, i, obj_mem.obj)),
                 "Removal failed (still exists).");
   }
   {
@@ -596,8 +632,7 @@ FIO_FUNC void FIO_SET_NAME(test)(void) {
     uintptr_t i = 1;
     FIO_SET_FOR_LOOP(&s, pos) {
       obj_mem.obj = pos->obj;
-      if (FIO_SET_OBJ_ISINVALID(pos->obj)) {
-        TEST_ASSERT(obj_mem.i == 0, "deleted object still has value.");
+      if (FIO_SET_COMPARE_HASH(pos->hash, FIO_SET_HASH_INVALID)) {
         TEST_ASSERT((i & 1) == 1, "deleted object wasn't odd");
       } else {
         TEST_ASSERT(obj_mem.i == i, "deleted object value mismatch %lu != %lu",
@@ -622,22 +657,22 @@ FIO_FUNC void FIO_SET_NAME(test)(void) {
     }
     if (1) {
       obj_mem.i = 1;
-      FIO_SET_NAME(remove)(&s, obj_mem.obj);
+      FIO_SET_NAME(remove)(&s, obj_mem.i, obj_mem.obj);
       size_t count = s.count;
-      FIO_SET_NAME(insert)(&s, obj_mem.obj);
+      FIO_SET_NAME(insert)(&s, obj_mem.i, obj_mem.obj);
       TEST_ASSERT(count + 1 == s.count,
                   "Re-adding a removed item should increase count by 1 (%zu + "
                   "1 != %zu).",
                   count, (size_t)s.count);
-      obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.obj);
+      obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj);
       TEST_ASSERT(obj_mem.i == 1,
                   "Re-adding a removed item should update the item (%p != 1)!",
-                  (void *)FIO_SET_NAME(find)(&s, obj_mem.obj));
-      FIO_SET_NAME(remove)(&s, obj_mem.obj);
+                  (void *)FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj));
+      FIO_SET_NAME(remove)(&s, obj_mem.i, obj_mem.obj);
       TEST_ASSERT(count == s.count,
                   "Re-removing an item should decrease count (%zu != %zu).",
                   count, (size_t)s.count);
-      TEST_ASSERT(!FIO_SET_NAME(find)(&s, obj_mem.obj),
+      TEST_ASSERT(!FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj),
                   "Re-removing a re-added item should update the item!");
     }
   }
@@ -648,7 +683,7 @@ FIO_FUNC void FIO_SET_NAME(test)(void) {
             FIO_SET_TEXT_COUNT >> 1);
     uintptr_t i = 0;
     FIO_SET_FOR_LOOP(&s, pos) {
-      TEST_ASSERT(!FIO_SET_OBJ_ISINVALID(pos->obj),
+      TEST_ASSERT(!FIO_SET_COMPARE_HASH(pos->hash, FIO_SET_HASH_INVALID),
                   "Found a hole after compact.");
       ++i;
     }
@@ -668,10 +703,10 @@ FIO_FUNC void FIO_SET_NAME(test)(void) {
 
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
     obj_mem.i = i;
-    FIO_SET_NAME(insert)(&s, obj_mem.obj);
-    TEST_ASSERT(FIO_SET_NAME(find)(&s, obj_mem.obj),
+    FIO_SET_NAME(insert)(&s, obj_mem.i, obj_mem.obj);
+    TEST_ASSERT(FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj),
                 "find failed after insert (2nd round)");
-    obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.obj);
+    obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj);
     TEST_ASSERT(i == obj_mem.i, "insertion (2nd round) != find");
     TEST_ASSERT(i == s.count, "count error (%lu != %lu) post insertion.", i,
                 s.count);
@@ -683,13 +718,12 @@ FIO_FUNC void FIO_SET_NAME(test)(void) {
 #endif /* DEBUG Testing */
 
 #undef FIO_SET_OBJECT_TYPE
-#undef FIO_SET_OBJECT_INVALID
-#undef FIO_SET_OBJ2HASH
 #undef FIO_SET_COMPARE_OBJ
 #undef FIO_SET_COMPARE_OBJ
 #undef FIO_SET_OBJ_COPY
 #undef FIO_SET_OBJ_DESTROY
 #undef FIO_SET_HASH_TYPE
+#undef FIO_SET_HASH2UINTPTR
 #undef FIO_SET_COMPARE_HASH
 #undef FIO_SET_HASH_INVALID
 #undef FIO_SET_MAX_MAP_SEEK
