@@ -88,7 +88,7 @@ License: MIT
  *
  * The following macros allow further control over the Set's behavior:
  * * FIO_SET_COMPARE_OBJ(o1, o2)    - compares two objects (1 == equal).
- * * FIO_SET_OBJ_COPY(obj)          - creates a persistent copy of the object.
+ * * FIO_SET_OBJ_COPY(dest, obj)    - creates a persistent copy of the object.
  * * FIO_SET_OBJ_DESTROY(obj)       - destroys (or frees) the object's copy.
  *
  * Note: FIO_SET_NAME(name) defaults to: fio_ptr_set_##name`.
@@ -116,9 +116,13 @@ License: MIT
 #define FIO_SET_COMPARE_OBJ(o1, o2) (1)
 #endif
 
-/** test for a pre-defined object copy */
-#if !defined(FIO_SET_OBJ_COPY) || !defined(FIO_SET_OBJ_DESTROY)
-#define FIO_SET_OBJ_COPY(obj) (obj)
+/** object copy required? */
+#ifndef FIO_SET_OBJ_COPY
+#define FIO_SET_OBJ_COPY(dest, obj) ((dest) = (obj))
+#endif
+
+/** object destruction required? */
+#ifndef FIO_SET_OBJ_DESTROY
 #define FIO_SET_OBJ_DESTROY(obj) ((void)0)
 #endif
 
@@ -142,11 +146,6 @@ License: MIT
 #define FIO_SET_COMPARE_HASH(h1, h2) (h1 == h2)
 #endif
 
-/* MUST be a power of 2 */
-#ifndef FIO_SET_MAX_MAP_SEEK
-#define FIO_SET_MAX_MAP_SEEK (256)
-#endif
-
 /* Customizable memory management */
 #ifndef FIO_SET_REALLOC /* NULL ptr indicates new allocation */
 #define FIO_SET_REALLOC(ptr, original_size, new_size, valid_data_length)       \
@@ -157,6 +156,16 @@ License: MIT
 #endif
 #ifndef FIO_SET_FREE
 #define FIO_SET_FREE(ptr, size) free((ptr))
+#endif
+
+/* The maximum number of bins to rotate when partial collisions occure */
+#ifndef FIO_SET_MAX_MAP_SEEK
+#define FIO_SET_MAX_MAP_SEEK (96)
+#endif
+
+/* Prime numbers are better */
+#ifndef FIO_SET_CUCKOO_STEPS
+#define FIO_SET_CUCKOO_STEPS 11
 #endif
 
 /* *****************************************************************************
@@ -182,20 +191,35 @@ FIO_FUNC inline FIO_SET_OBJECT_TYPE *
                        FIO_SET_OBJECT_TYPE obj);
 
 /**
- * Inserts an object to the Set, rehashing if required, returning the new
- * object's pointer.
+ * Inserts an object to the Set, rehashing if required, returning the new (or
+ * old) object's pointer.
+ *
+ * If the object already exists in the set, no action is performed (the old
+ * object is returned).
  */
-FIO_FUNC FIO_SET_OBJECT_TYPE *
+FIO_FUNC inline FIO_SET_OBJECT_TYPE *
     FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set,
                          const FIO_SET_HASH_TYPE hash_value,
                          FIO_SET_OBJECT_TYPE obj);
 
 /**
+ * Inserts an object to the Set, rehashing if required, returning the new
+ * object's pointer.
+ *
+ * If the object already exists in the set, it will be destroyed and
+ * overwritten.
+ */
+FIO_FUNC inline FIO_SET_OBJECT_TYPE *
+    FIO_SET_NAME(overwrite)(FIO_SET_NAME(s) * set,
+                            const FIO_SET_HASH_TYPE hash_value,
+                            FIO_SET_OBJECT_TYPE obj);
+
+/**
  * Removes an object from the Set, rehashing if required.
  */
-FIO_FUNC void FIO_SET_NAME(remove)(FIO_SET_NAME(s) * set,
-                                   const FIO_SET_HASH_TYPE hash_value,
-                                   FIO_SET_OBJECT_TYPE obj);
+FIO_FUNC inline void FIO_SET_NAME(remove)(FIO_SET_NAME(s) * set,
+                                          const FIO_SET_HASH_TYPE hash_value,
+                                          FIO_SET_OBJECT_TYPE obj);
 
 /**
  * Allows a peak at the Set's last element.
@@ -209,7 +233,7 @@ FIO_FUNC inline FIO_SET_OBJECT_TYPE *FIO_SET_NAME(last)(FIO_SET_NAME(s) * set);
  * Allows the Hash to be momenterally used as a stack, destroying the last
  * object added (`FIO_SET_OBJ_DESTROY`).
  */
-FIO_FUNC void FIO_SET_NAME(pop)(FIO_SET_NAME(s) * set);
+FIO_FUNC inline void FIO_SET_NAME(pop)(FIO_SET_NAME(s) * set);
 
 /** Returns the number of object currently in the Set. */
 FIO_FUNC inline size_t FIO_SET_NAME(count)(const FIO_SET_NAME(s) * set);
@@ -298,29 +322,15 @@ FIO_FUNC inline FIO_SET_NAME(_map_s_) *
     FIO_SET_NAME(_find_map_pos_)(FIO_SET_NAME(s) * set,
                                  const FIO_SET_HASH_TYPE hash_value,
                                  FIO_SET_OBJECT_TYPE obj) {
-  if (!set->map)
-    return NULL;
+  if (set->map) {
+    /* make sure collisions don't effect seeking */
+    if (set->has_collisions && set->pos != set->count) {
+      FIO_SET_NAME(rehash)(set);
+    }
 
-  /* make sure collisions don't effect seeking */
-  if (set->has_collisions && set->pos != set->count) {
-    FIO_SET_NAME(rehash)(set);
-  }
-
-  FIO_SET_NAME(_map_s_) *pos =
-      set->map + (FIO_SET_HASH2UINTPTR(hash_value) & set->mask);
-  const uintptr_t limit = set->capa > (FIO_SET_MAX_MAP_SEEK << 2)
-                              ? FIO_SET_MAX_MAP_SEEK
-                              : ((set->capa >> 2) | 1);
-  if (FIO_SET_COMPARE_HASH(FIO_SET_HASH_INVALID, pos->hash))
-    return pos;
-  if (FIO_SET_COMPARE_HASH(pos->hash, hash_value)) {
-    if (!pos->pos || FIO_SET_COMPARE_OBJ(pos->pos->obj, obj))
-      return pos;
-    set->has_collisions = 1;
-  }
-  uintptr_t i = 1;
-  while (i < limit) {
-    pos = set->map + ((FIO_SET_HASH2UINTPTR(hash_value) + (i * 3)) & set->mask);
+    /* O(1) access to object */
+    FIO_SET_NAME(_map_s_) *pos =
+        set->map + (FIO_SET_HASH2UINTPTR(hash_value) & set->mask);
     if (FIO_SET_COMPARE_HASH(FIO_SET_HASH_INVALID, pos->hash))
       return pos;
     if (FIO_SET_COMPARE_HASH(pos->hash, hash_value)) {
@@ -328,11 +338,29 @@ FIO_FUNC inline FIO_SET_NAME(_map_s_) *
         return pos;
       set->has_collisions = 1;
     }
-    ++i;
+
+    /* Handle partial / full collisions with cuckoo steps O(x) access time */
+    uintptr_t i = FIO_SET_CUCKOO_STEPS;
+    const uintptr_t limit =
+        FIO_SET_CUCKOO_STEPS * (set->capa > (FIO_SET_MAX_MAP_SEEK << 2)
+                                    ? FIO_SET_MAX_MAP_SEEK
+                                    : (set->capa >> 2));
+    while (i < limit) {
+      pos = set->map + ((FIO_SET_HASH2UINTPTR(hash_value) + i) & set->mask);
+      if (FIO_SET_COMPARE_HASH(FIO_SET_HASH_INVALID, pos->hash))
+        return pos;
+      if (FIO_SET_COMPARE_HASH(pos->hash, hash_value)) {
+        if (!pos->pos || FIO_SET_COMPARE_OBJ(pos->pos->obj, obj))
+          return pos;
+        set->has_collisions = 1;
+      }
+      i += FIO_SET_CUCKOO_STEPS;
+    }
   }
   return NULL;
   (void)obj; /* in cases where FIO_SET_COMPARE_OBJ does nothing */
 }
+#undef FIO_SET_CUCKOO_STEPS
 
 /** Removes "holes" from the Set's internal Array - MUST re-hash afterwards. */
 FIO_FUNC inline void FIO_SET_NAME(_compact_ordered_array_)(FIO_SET_NAME(s) *
@@ -350,12 +378,72 @@ FIO_FUNC inline void FIO_SET_NAME(_compact_ordered_array_)(FIO_SET_NAME(s) *
     ++writer;
   }
   /* fix any possible counting errors as well as resetting position */
-  if (set->count != (uintptr_t)(writer - set->ordered))
-    fprintf(stderr, "ERROR: Set length counting error detected %zu != %zu.\n",
-            (size_t)set->count, (size_t)(writer - set->ordered));
   set->pos = set->count = (writer - set->ordered);
 }
 
+/** (Re)allocates the set's internal, invalidatint the mapping (must rehash) */
+FIO_FUNC inline void FIO_SET_NAME(_reallocate_set_mem_)(FIO_SET_NAME(s) * set) {
+  FIO_SET_FREE(set->map, set->capa * sizeof(*set->map));
+  set->map = (FIO_SET_NAME(_map_s_) *)FIO_SET_CALLOC(sizeof(*set->map),
+                                                     (set->mask + 1));
+  set->ordered = (FIO_SET_NAME(_ordered_s_) *)FIO_SET_REALLOC(
+      set->ordered, (set->capa * sizeof(*set->ordered)),
+      ((set->mask + 1) * sizeof(*set->ordered)),
+      (set->pos * sizeof(*set->ordered)));
+  if (!set->map || !set->ordered) {
+    perror("FATAL ERROR: couldn't allocate memory for Set data");
+    exit(errno);
+  }
+  set->capa = set->mask + 1;
+}
+
+/**
+ * Inserts an object to the Set, rehashing if required, returning the new
+ * object's pointer.
+ *
+ * If the object already exists in the set, it will be destroyed and
+ * overwritten.
+ */
+FIO_FUNC inline FIO_SET_OBJECT_TYPE *
+FIO_SET_NAME(_insert_or_overwrite_)(FIO_SET_NAME(s) * set,
+                                    const FIO_SET_HASH_TYPE hash_value,
+                                    FIO_SET_OBJECT_TYPE obj, int overwrite) {
+  if (FIO_SET_COMPARE_HASH(hash_value, FIO_SET_HASH_INVALID))
+    return NULL;
+
+  /* automatic fragmentation protection */
+  if (FIO_SET_NAME(is_fragmented)(set))
+    FIO_SET_NAME(rehash)(set);
+
+  /* locate future position, rehashing until a position is available */
+  FIO_SET_NAME(_map_s_) *pos =
+      FIO_SET_NAME(_find_map_pos_)(set, hash_value, obj);
+
+  while (!pos) {
+    set->mask = (set->mask << 1) | 1;
+    FIO_SET_NAME(rehash)(set);
+    pos = FIO_SET_NAME(_find_map_pos_)(set, hash_value, obj);
+  }
+
+  /* overwriting / new */
+  if (pos->pos) {
+    /* overwrite existing object */
+    if (!overwrite)
+      return &pos->pos->obj;
+    FIO_SET_OBJ_DESTROY(pos->pos->obj);
+  } else {
+    /* insert into new slot */
+    pos->pos = set->ordered + set->pos;
+    ++set->pos;
+    ++set->count;
+  }
+  /* store object at position */
+  pos->hash = hash_value;
+  pos->pos->hash = hash_value;
+  FIO_SET_OBJ_COPY(pos->pos->obj, obj);
+
+  return &pos->pos->obj;
+}
 /* *****************************************************************************
 Set Implementation
 ***************************************************************************** */
@@ -369,6 +457,7 @@ FIO_FUNC void FIO_SET_NAME(free)(FIO_SET_NAME(s) * s) {
       FIO_SET_OBJ_DESTROY(pos->obj);
     }
   }
+  /* free ordered array and hash mapping */
   FIO_SET_FREE(s->map, s->capa * sizeof(*s->map));
   FIO_SET_FREE(s->ordered, s->capa * sizeof(*s->ordered));
   *s = (FIO_SET_NAME(s)){.map = NULL};
@@ -389,49 +478,32 @@ FIO_SET_NAME(find)(FIO_SET_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
  * Inserts an object to the Set, rehashing if required, returning the new
  * object's pointer.
  */
-FIO_FUNC FIO_SET_OBJECT_TYPE *
+FIO_FUNC inline FIO_SET_OBJECT_TYPE *
 FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                      FIO_SET_OBJECT_TYPE obj) {
-  if (FIO_SET_COMPARE_HASH(hash_value, FIO_SET_HASH_INVALID))
-    return NULL;
+  return FIO_SET_NAME(_insert_or_overwrite_)(set, hash_value, obj, 0);
+}
 
-  /* automatic fragmentation protection */
-  if (FIO_SET_NAME(is_fragmented)(set))
-    FIO_SET_NAME(rehash)(set);
-
-  /* locate future position, rehashing until a position is available */
-  FIO_SET_NAME(_map_s_) *pos =
-      FIO_SET_NAME(_find_map_pos_)(set, hash_value, obj);
-  while (!pos) {
-    set->mask = (set->mask << 1) | 1;
-    FIO_SET_NAME(rehash)(set);
-    pos = FIO_SET_NAME(_find_map_pos_)(set, hash_value, obj);
-  }
-
-  /* overwriting / new */
-  if (pos->pos) {
-    /* overwrite existing object */
-    FIO_SET_OBJ_DESTROY(pos->pos->obj);
-  } else {
-    /* insert into new slot */
-    pos->pos = set->ordered + set->pos;
-    ++set->pos;
-    ++set->count;
-  }
-
-  /* store object at position */
-  pos->hash = hash_value;
-  pos->pos->hash = hash_value;
-  pos->pos->obj = FIO_SET_OBJ_COPY(obj);
-  return &pos->pos->obj;
+/**
+ * Inserts an object to the Set, rehashing if required, returning the new
+ * object's pointer.
+ *
+ * If the object already exists in the set, it will be destroyed and
+ * overwritten.
+ */
+FIO_FUNC inline FIO_SET_OBJECT_TYPE *
+FIO_SET_NAME(overwrite)(FIO_SET_NAME(s) * set,
+                        const FIO_SET_HASH_TYPE hash_value,
+                        FIO_SET_OBJECT_TYPE obj) {
+  return FIO_SET_NAME(_insert_or_overwrite_)(set, hash_value, obj, 1);
 }
 
 /**
  * Removes an object from the Set, rehashing if required.
  */
-FIO_FUNC void FIO_SET_NAME(remove)(FIO_SET_NAME(s) * set,
-                                   const FIO_SET_HASH_TYPE hash_value,
-                                   FIO_SET_OBJECT_TYPE obj) {
+FIO_FUNC inline void FIO_SET_NAME(remove)(FIO_SET_NAME(s) * set,
+                                          const FIO_SET_HASH_TYPE hash_value,
+                                          FIO_SET_OBJECT_TYPE obj) {
   if (FIO_SET_COMPARE_HASH(hash_value, FIO_SET_HASH_INVALID))
     return;
   FIO_SET_NAME(_map_s_) *pos =
@@ -513,7 +585,7 @@ FIO_FUNC inline size_t FIO_SET_NAME(capa_require)(FIO_SET_NAME(s) * set,
  */
 FIO_FUNC inline size_t FIO_SET_NAME(is_fragmented)(const FIO_SET_NAME(s) *
                                                    set) {
-  return (set->count && ((set->pos - set->count) > (set->count >> 1)));
+  return ((set->pos - set->count) > (set->count >> 1));
 }
 
 /**
@@ -535,32 +607,21 @@ FIO_FUNC inline size_t FIO_SET_NAME(compact)(FIO_SET_NAME(s) * set) {
 /** Forces a rehashing of the Set. */
 FIO_FUNC void FIO_SET_NAME(rehash)(FIO_SET_NAME(s) * set) {
   FIO_SET_NAME(_compact_ordered_array_)(set);
-  FIO_SET_NAME(_ordered_s_) * end;
   set->has_collisions = 0;
 restart:
-  FIO_SET_FREE(set->map, set->capa * sizeof(*set->map));
-  set->map = (FIO_SET_NAME(_map_s_) *)FIO_SET_CALLOC(sizeof(*set->map),
-                                                     (set->mask + 1));
-  set->ordered = (FIO_SET_NAME(_ordered_s_) *)FIO_SET_REALLOC(
-      set->ordered, set->capa * sizeof(*set->ordered),
-      (set->mask + 1) * sizeof(*set->ordered),
-      set->pos * sizeof(*set->ordered));
-  if (!set->map || !set->ordered) {
-    perror("FATAL ERROR: couldn't allocate memory for Set data");
-    exit(errno);
-  }
-  set->capa = set->mask + 1;
-  end = set->ordered + set->pos;
-  for (FIO_SET_NAME(_ordered_s_) *pos = set->ordered; pos && (pos < end);
-       ++pos) {
-    FIO_SET_NAME(_map_s_) *mp =
-        FIO_SET_NAME(_find_map_pos_)(set, pos->hash, pos->obj);
-    if (!mp) {
-      set->mask = (set->mask << 1) | 1;
-      goto restart;
+  FIO_SET_NAME(_reallocate_set_mem_)(set);
+  {
+    FIO_SET_NAME(_ordered_s_) const *const end = set->ordered + set->pos;
+    for (FIO_SET_NAME(_ordered_s_) *pos = set->ordered; pos < end; ++pos) {
+      FIO_SET_NAME(_map_s_) *mp =
+          FIO_SET_NAME(_find_map_pos_)(set, pos->hash, pos->obj);
+      if (!mp) {
+        set->mask = (set->mask << 1) | 1;
+        goto restart;
+      }
+      mp->pos = pos;
+      mp->hash = pos->hash;
     }
-    mp->pos = pos;
-    mp->hash = pos->hash;
   }
 }
 
@@ -659,7 +720,7 @@ FIO_FUNC void FIO_SET_NAME(test)(void) {
       obj_mem.i = 1;
       FIO_SET_NAME(remove)(&s, obj_mem.i, obj_mem.obj);
       size_t count = s.count;
-      FIO_SET_NAME(insert)(&s, obj_mem.i, obj_mem.obj);
+      FIO_SET_NAME(overwrite)(&s, obj_mem.i, obj_mem.obj);
       TEST_ASSERT(count + 1 == s.count,
                   "Re-adding a removed item should increase count by 1 (%zu + "
                   "1 != %zu).",
