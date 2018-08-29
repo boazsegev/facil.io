@@ -4,6 +4,7 @@ public_www/
 Dockerfile
 libdump
 docs/_site
+lib/bearssl/
 
 /src/
 

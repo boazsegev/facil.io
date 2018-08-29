@@ -1,6 +1,8 @@
 ### Output
 # binary name and location
-NAME=demo
+ifndef NAME
+NAME=app
+endif
 
 ifndef DESTDIR
 DESTDIR=tmp
@@ -90,6 +92,11 @@ else
 endif
 
 #####################
+# automatic library adjustments for addon libraries
+LIB_PRIVATE_SUBFOLDERS:=$(LIB_PRIVATE_SUBFOLDERS) $(if $(wildcard lib/bearssl),bearssl)
+
+
+#####################
 # Auto computed values
 BIN = $(DESTDIR)/$(NAME)
 
@@ -123,14 +130,14 @@ ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
 
-# add BearSSL/OpenSSL library flags
-ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+# add BearSSL/OpenSSL library flags (exclusive)
+ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+  $(info * Detected the BearSSL source library, setting HAVE_BEARSSL)
+	FLAGS:=$(FLAGS) HAVE_BEARSSL
+else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
-  $(info * Detected the BearSSL source library, setting HAVE_BEARSSL)
-	FLAGS:=$(FLAGS) HAVE_BEARSSL
 else ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL
@@ -242,8 +249,8 @@ test_build: $(LIB_OBJS)
 
 .PHONY : clean
 clean:
-	-@rm $(BIN) 2> /dev/null || echo "" >> /dev/null
-	-@rm -R $(TMP_ROOT) 2> /dev/null || echo "" >> /dev/null
+	-@rm -f $(BIN) 2> /dev/null || echo "" >> /dev/null
+	-@rm -R -f $(TMP_ROOT) 2> /dev/null || echo "" >> /dev/null
 	-@mkdir -p $(BUILDTREE) 
 
 .PHONY : run
@@ -259,6 +266,28 @@ db: | clean
 .PHONY : create_tree
 create_tree:
 	-@mkdir -p $(BUILDTREE) 2> /dev/null
+
+
+########
+## Installer Tasks
+
+.PHONY : add/bearssl
+add/bearssl: | remove/bearssl
+	-@echo " "	
+	-@echo "* Cloning BearSSL and copying source files to lib/bearssl."
+	-@echo "  Please review the BearSSL license."
+	@git clone https://www.bearssl.org/git/BearSSL tmp/bearssl
+	@mkdir lib/bearssl 
+	-@find tmp/bearssl/src -name "*.*" -exec mv "{}" lib/bearssl \;
+	-@find tmp/bearssl/inc -name "*.*" -exec mv "{}" lib/bearssl \;
+	-@make clean
+
+.PHONY : remove/bearssl
+remove/bearssl:
+	-@echo "* Removing existing BearSSL source files."
+	-@rm -R -f lib/bearssl 2> /dev/null || echo "" >> /dev/null
+	-@make clean
+
 
 ########
 ## Helper Tasks
