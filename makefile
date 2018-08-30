@@ -247,7 +247,7 @@ test/optimized: | clean
 
 .PHONY : test_build_and_run
 test_build_and_run: | create_tree test_add_flags test_build
-	$(BIN)
+	@$(BIN)
 
 .PHONY : test_add_flags
 test_add_flags: 
