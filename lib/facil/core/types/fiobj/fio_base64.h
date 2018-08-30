@@ -45,12 +45,13 @@ int fio_base64url_encode(char *target, const char *data, int len);
 This will decode a Base64 encoded string of a specified length (len) and
 place the decoded data into the target byte buffer (target).
 
-The target buffer MUST have enough room for the expected data.
+The target buffer MUST have enough room for 2 bytes in addition to the expected
+data (NUL byte + padding test).
 
-A NULL byte will be appended to the target buffer. The function will return
-the number of bytes written to the target buffer.
+A NUL byte will be appended to the target buffer. The function will return
+the number of bytes written to the target buffer (excluding the NUL byte).
 
-If the target buffer is NULL, the encoded string will be destructively edited
+If the target buffer is NUL, the encoded string will be destructively edited
 and the decoded data will be placed in the original string's buffer.
 
 Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
@@ -58,7 +59,7 @@ the raw data's length isn't devisable by 3. Hence, the target buffer should
 be, at least, `base64_len/4*3 + 3` long.
 
 Returns the number of bytes actually written to the target buffer (excluding
-the NULL terminator byte).
+the NUL terminator byte).
 
 Note:
 ====

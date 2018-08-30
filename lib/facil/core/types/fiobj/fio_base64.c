@@ -155,15 +155,16 @@ int fio_base64_decode(char *target, char *encoded, int base64_len) {
   int written = 0;
   char tmp1, tmp2, tmp3, tmp4;
   // skip unknown data at end
-  while (base64_len && !base64_decodes[*(uint8_t *)encoded]) {
+  while (base64_len &&
+         !base64_decodes[*(uint8_t *)(encoded + (base64_len - 1))]) {
     base64_len--;
   }
+  // skip unknown data
+  while (base64_len && !base64_decodes[*(uint8_t *)encoded]) {
+    base64_len--;
+    encoded++;
+  }
   while (base64_len >= 4) {
-    // skip unknown data
-    while (base64_len && !base64_decodes[*(uint8_t *)encoded]) {
-      base64_len--;
-      encoded++;
-    }
     if (!base64_len) {
       return written;
     }
@@ -292,12 +293,38 @@ static void fio_base64_speed_test(void) {
     }
     end = clock();
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio Base64",
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio Base64 Encode",
               (double)(sizeof(buffer) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
     }
-    cycles <<= 1;
+    cycles <<= 2;
+  }
+
+  /* decoding */
+  const int encoded_len =
+      fio_base64_encode(result, buffer, (int)(sizeof(buffer) - 2));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    fio_base64_decode(buffer, result, encoded_len);
+    __asm__ volatile("" ::: "memory");
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      fio_base64_decode(buffer, result, encoded_len);
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio Base64 Decode",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 2;
   }
 }
 
@@ -340,14 +367,12 @@ void fio_base64_test(void) {
               ":\n--- fio Base64 Test FAILED!\nstring: %s\nlength: %lu\n "
               "expected: %s\ngot: %s\n\n",
               sets[i].str, strlen(sets[i].str), sets[i].base64, buffer);
-      break;
+      exit(-1);
     }
     i++;
   }
   if (!sets[i].str)
     fprintf(stderr, " Base64 encode passed.\n");
-
-  fio_base64_speed_test();
 
   i = 0;
   fprintf(stderr, "+ fio");
@@ -358,11 +383,14 @@ void fio_base64_test(void) {
               ":\n--- fio Base64 Test FAILED!\nbase64: %s\nexpected: "
               "%s\ngot: %s\n\n",
               sets[i].base64, sets[i].str, buffer);
-      return;
+      exit(-1);
     }
     i++;
   }
   fprintf(stderr, " Base64 decode passed.\n");
+
+  fio_base64_speed_test();
+
   {
     char buff_b64[] = "any carnal pleasure.";
     clock_t start = clock();
