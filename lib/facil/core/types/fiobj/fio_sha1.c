@@ -282,8 +282,74 @@ SHA-1 testing
 // clang-format off
 #if defined(HAVE_OPENSSL)
 #  include <openssl/sha.h>
-#endif
 // clang-format on
+
+static void fio_sha1_open_ssl_speed_test(void) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  uint8_t result[65];
+  SHA_CTX o_sh1;
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    SHA1_Init(&o_sh1);
+    SHA1_Update(&o_sh1, buffer, sizeof(buffer));
+    SHA1_Final(result, &o_sh1);
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    SHA1_Init(&o_sh1);
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      SHA1_Update(&o_sh1, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    SHA1_Final(result, &o_sh1);
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "OpenSSL SHA-1",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 1;
+  }
+}
+#endif
+
+static void fio_sha1_speed_test(void) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  uint8_t result[65];
+  sha1_s sha1;
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    sha1 = fio_sha1_init();
+    fio_sha1_write(&sha1, buffer, sizeof(buffer));
+    memcpy(result, fio_sha1_result(&sha1), 65);
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    sha1 = fio_sha1_init();
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      fio_sha1_write(&sha1, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    fio_sha1_result(&sha1);
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SHA-1",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 1;
+  }
+}
 
 void fio_sha1_test(void) {
   struct {
@@ -325,8 +391,18 @@ void fio_sha1_test(void) {
     i++;
   }
   fprintf(stderr, " SHA-1 passed.\n");
+#if NODEBUG
+  fio_sha1_speed_test();
+#else
+  fprintf(stderr, "fio SHA1 speed test skipped (debug mode is slow)\n");
+#endif
 
 #ifdef HAVE_OPENSSL
+#if NODEBUG
+  fio_sha1_open_ssl_speed_test();
+#else
+  fprintf(stderr, "OpenSSL SHA1 speed test skipped (debug mode is slow)\n");
+#endif
   fprintf(stderr, "===================================\n");
   fprintf(stderr, "fio SHA-1 struct size: %lu\n",
           (unsigned long)sizeof(sha1_s));

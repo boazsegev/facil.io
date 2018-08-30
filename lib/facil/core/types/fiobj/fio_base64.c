@@ -272,6 +272,35 @@ Base64 Testing
 #include <string.h>
 #include <time.h>
 
+static void fio_base64_speed_test(void) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  char buffer[8192];
+  char result[8192 * 2];
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    fio_base64_encode(result, buffer, sizeof(buffer));
+    memcpy(buffer, result, sizeof(buffer));
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      fio_base64_encode(result, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio Base64",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 1;
+  }
+}
+
 void fio_base64_test(void) {
   struct {
     char *str;
@@ -302,6 +331,7 @@ void fio_base64_test(void) {
   };
   int i = 0;
   char buffer[1024];
+  fprintf(stderr, "===================================\n");
   fprintf(stderr, "+ fio");
   while (sets[i].str) {
     fio_base64_encode(buffer, sets[i].str, strlen(sets[i].str));
@@ -316,6 +346,8 @@ void fio_base64_test(void) {
   }
   if (!sets[i].str)
     fprintf(stderr, " Base64 encode passed.\n");
+
+  fio_base64_speed_test();
 
   i = 0;
   fprintf(stderr, "+ fio");

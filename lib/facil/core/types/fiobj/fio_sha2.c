@@ -680,6 +680,72 @@ static char *sha2_variant_names[] = {
 #endif
 // clang-format on
 
+static void fio_sha2_speed_test(sha2_variant var, const char *var_name) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  uint8_t result[65];
+  sha2_s sha2;
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    sha2 = fio_sha2_init(var);
+    fio_sha2_write(&sha2, buffer, sizeof(buffer));
+    memcpy(result, fio_sha2_result(&sha2), 65);
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    sha2 = fio_sha2_init(var);
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      fio_sha2_write(&sha2, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    fio_sha2_result(&sha2);
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", var_name,
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 1;
+  }
+}
+
+static void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
+                                        int (*update)(), int (*final)(),
+                                        void *sha) {
+  /* test adapted from BearSSL code with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  uint8_t result[1024];
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    init(sha);
+    update(sha, buffer, sizeof(buffer));
+    final(result, sha);
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 2048;;) {
+    clock_t start, end;
+    init(sha);
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      update(sha, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    final(result, sha);
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", var_name,
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 1;
+  }
+}
 void fio_sha2_test(void) {
   sha2_s s;
   char *expect;
@@ -772,10 +838,26 @@ void fio_sha2_test(void) {
   got = fio_sha2_result(&s);
   if (strcmp(expect, got))
     goto error;
-
   fprintf(stderr, " SHA-2 passed.\n");
 
+#if NODEBUG
+  fio_sha2_speed_test(SHA_224, "fio SHA-224");
+  fio_sha2_speed_test(SHA_256, "fio SHA-256");
+  fio_sha2_speed_test(SHA_384, "fio SHA-384");
+  fio_sha2_speed_test(SHA_512, "fio SHA-512");
+#else
+  fprintf(stderr, "fio SHA-2 speed test skipped (debug mode is slow)\n");
+#endif
+
 #ifdef HAVE_OPENSSL
+  {
+    SHA512_CTX s2;
+    SHA256_CTX s3;
+    fio_sha2_openssl_speed_test("OpenSSL SHA512", SHA512_Init, SHA512_Update,
+                                SHA512_Final, &s2);
+    fio_sha2_openssl_speed_test("OpenSSL SHA256", SHA256_Init, SHA256_Update,
+                                SHA256_Final, &s3);
+  }
   fprintf(stderr, "===================================\n");
   fprintf(stderr, "fio SHA-2 struct size: %zu\n", sizeof(sha2_s));
   fprintf(stderr, "OpenSSL SHA-2/256 struct size: %zu\n", sizeof(SHA256_CTX));
@@ -820,6 +902,7 @@ void fio_sha2_test(void) {
   start = clock();
   for (size_t i = 0; i < 100000; i++) {
     SHA256_Init(&s3);
+
     SHA256_Update(&s3, "The quick brown fox jumps over the lazy dog", 43);
     SHA256_Final(hash, &s3);
   }
@@ -842,5 +925,7 @@ error:
   while (*got)
     fprintf(stderr, "%02x", *(got++) & 0xFF);
   fprintf(stderr, "\n");
+  (void)fio_sha2_speed_test;
+  (void)fio_sha2_openssl_speed_test;
 }
 #endif
