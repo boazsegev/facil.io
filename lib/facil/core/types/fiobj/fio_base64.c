@@ -10,8 +10,11 @@ Feel free to copy, use and enjoy in accordance with to the license(s).
 #endif
 #include "fio_base64.h"
 
+#include <ctype.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
+
 /* ****************************************************************************
 Base64 encoding
 ***************************************************************************** */
@@ -144,6 +147,9 @@ be, at least, `base64_len/4*3 + 3` long.
 
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
+
+If an error occured, returns the number of bytes written up to the error. Test
+`errno` for error (will be set to ERANGE).
 */
 int fio_base64_decode(char *target, char *encoded, int base64_len) {
   if (!target)
@@ -159,8 +165,8 @@ int fio_base64_decode(char *target, char *encoded, int base64_len) {
          !base64_decodes[*(uint8_t *)(encoded + (base64_len - 1))]) {
     base64_len--;
   }
-  // skip unknown data
-  while (base64_len && !base64_decodes[*(uint8_t *)encoded]) {
+  // skip white space
+  while (base64_len && isspace((*(uint8_t *)encoded))) {
     base64_len--;
     encoded++;
   }
@@ -169,33 +175,13 @@ int fio_base64_decode(char *target, char *encoded, int base64_len) {
       return written;
     }
     tmp1 = *(encoded++);
-    // skip unknown data
-    while (base64_len && !base64_decodes[*(uint8_t *)encoded]) {
-      base64_len--;
-      encoded++;
-    }
-    if (!base64_len) {
-      goto oops1;
-    }
     tmp2 = *(encoded++);
-    // skip unknown data
-    while (base64_len && !base64_decodes[*(uint8_t *)encoded]) {
-      base64_len--;
-      encoded++;
-    }
-    if (!base64_len) {
-      goto oops2;
-    }
     tmp3 = *(encoded++);
-    // skip unknown data
-    while (base64_len && !base64_decodes[*(uint8_t *)encoded]) {
-      base64_len--;
-      encoded++;
-    }
-    if (!base64_len) {
-      goto oops3;
-    }
     tmp4 = *(encoded++);
+    if (!tmp1 || !tmp2 || !tmp3 || !tmp4) {
+      errno = ERANGE;
+      goto finish;
+    }
     *(target++) = (BITVAL((size_t)tmp1) << 2) | (BITVAL((size_t)tmp2) >> 4);
     *(target++) = (BITVAL((size_t)tmp2) << 4) | (BITVAL((size_t)tmp3) >> 2);
     *(target++) = (BITVAL((size_t)tmp3) << 6) | (BITVAL((size_t)tmp4));
@@ -203,8 +189,8 @@ int fio_base64_decode(char *target, char *encoded, int base64_len) {
     base64_len -= 4;
     // count written bytes
     written += 3;
-    // skip unknown data
-    while (base64_len && !base64_decodes[*(uint8_t *)encoded]) {
+    // skip white space
+    while (base64_len && isspace((*(uint8_t *)encoded))) {
       base64_len--;
       encoded++;
     }
@@ -237,6 +223,7 @@ int fio_base64_decode(char *target, char *encoded, int base64_len) {
     written += 3;
     break;
   }
+finish:
   if (encoded[-1] == '=') {
     target--;
     written--;
@@ -244,24 +231,10 @@ int fio_base64_decode(char *target, char *encoded, int base64_len) {
       target--;
       written--;
     }
+    if (written < 0)
+      written = 0;
   }
   *target = 0;
-  return written;
-
-oops1:
-  *(target++) = BITVAL((size_t)tmp1);
-  written += 1;
-  return written;
-oops2:
-  *(target++) = (BITVAL((size_t)tmp1) << 2) | (BITVAL((size_t)tmp2) >> 6);
-  *(target++) = (BITVAL((size_t)tmp2) << 4);
-  written += 2;
-  return written;
-oops3:
-  *(target++) = (BITVAL((size_t)tmp1) << 2) | (BITVAL((size_t)tmp2) >> 6);
-  *(target++) = (BITVAL((size_t)tmp2) << 4) | (BITVAL((size_t)tmp3) >> 2);
-  *(target++) = BITVAL((size_t)tmp3) << 6;
-  written += 3;
   return written;
 }
 
@@ -273,6 +246,7 @@ Base64 Testing
 #include <string.h>
 #include <time.h>
 
+#if NODEBUG
 static void fio_base64_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   char buffer[8192];
@@ -301,7 +275,7 @@ static void fio_base64_speed_test(void) {
     cycles <<= 2;
   }
 
-  /* decoding */
+  /* speed test decoding */
   const int encoded_len =
       fio_base64_encode(result, buffer, (int)(sizeof(buffer) - 2));
   /* warmup */
@@ -320,13 +294,14 @@ static void fio_base64_speed_test(void) {
     end = clock();
     if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
       fprintf(stderr, "%-20s %8.2f MB/s\n", "fio Base64 Decode",
-              (double)(sizeof(buffer) * cycles) /
+              (double)(encoded_len * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
     }
     cycles <<= 2;
   }
 }
+#endif
 
 void fio_base64_test(void) {
   struct {
@@ -389,7 +364,12 @@ void fio_base64_test(void) {
   }
   fprintf(stderr, " Base64 decode passed.\n");
 
+#if NODEBUG
   fio_base64_speed_test();
+#else
+  fprintf(stderr,
+          "* Base64 speed test skipped (debug speeds are always slow).\n");
+#endif
 
   {
     char buff_b64[] = "any carnal pleasure.";
