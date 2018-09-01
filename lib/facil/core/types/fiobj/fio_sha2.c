@@ -850,6 +850,8 @@ void fio_sha2_test(void) {
 #endif
 
 #ifdef HAVE_OPENSSL
+
+#if NODEBUG
   {
     SHA512_CTX s2;
     SHA256_CTX s3;
@@ -858,6 +860,7 @@ void fio_sha2_test(void) {
     fio_sha2_openssl_speed_test("OpenSSL SHA256", SHA256_Init, SHA256_Update,
                                 SHA256_Final, &s3);
   }
+#endif
   fprintf(stderr, "===================================\n");
   fprintf(stderr, "fio SHA-2 struct size: %zu\n", sizeof(sha2_s));
   fprintf(stderr, "OpenSSL SHA-2/256 struct size: %zu\n", sizeof(SHA256_CTX));

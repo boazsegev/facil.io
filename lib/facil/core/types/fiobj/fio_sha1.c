@@ -284,6 +284,7 @@ SHA-1 testing
 #  include <openssl/sha.h>
 // clang-format on
 
+#if NODEBUG
 static void fio_sha1_open_ssl_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
@@ -317,7 +318,9 @@ static void fio_sha1_open_ssl_speed_test(void) {
   }
 }
 #endif
+#endif
 
+#if NODEBUG
 static void fio_sha1_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
@@ -350,6 +353,7 @@ static void fio_sha1_speed_test(void) {
     cycles <<= 1;
   }
 }
+#endif
 
 void fio_sha1_test(void) {
   struct {
