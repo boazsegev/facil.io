@@ -13,6 +13,15 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FACIL_VERSION_MINOR 7
 #define FACIL_VERSION_PATCH 0
 
+/* Automatically convert version data to a string constant*/
+#define FACIL_VERSION_STR_FROM_MACRO_STEP2(major, minor, patch)                \
+#major "." #minor "." #patch
+#define FACIL_VERSION_STR_FROM_MACRO_STEP1(major, minor, patch)                \
+  FACIL_VERSION_STR_FROM_MACRO_STEP2(major, minor, patch)
+#define FACIL_VERSION_STRING                                                   \
+  FACIL_VERSION_STR_FROM_MACRO_STEP1(FACIL_VERSION_MAJOR, FACIL_VERSION_MINOR, \
+                                     FACIL_VERSION_PATCH)
+
 #ifndef FACIL_PRINT_STATE
 /**
  * When FACIL_PRINT_STATE is set to 1, facil.io will print out common messages
