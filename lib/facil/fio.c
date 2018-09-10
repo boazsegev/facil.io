@@ -9204,6 +9204,8 @@ void fio_test_random(void) {
           "+ created 8Mb using 8,192 Bytes "
           "Random %lu CPU clock count ~%.2fMb/s\n",
           end - start, (8.0) / (((double)(end - start)) / CLOCKS_PER_SEC));
+  (void)buffer1;
+  (void)buffer2;
 #endif
 }
 
