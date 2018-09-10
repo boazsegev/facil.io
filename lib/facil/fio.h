@@ -1605,7 +1605,15 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine);
 
 
 
+
+
+
+
               Atomic Operations and Spin Locking Helper Functions
+
+
+
+
 
 
 
@@ -1650,13 +1658,6 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine);
 #error Required builtin "__sync_add_and_fetch" not found.
 #endif
 
-/** Nanosleep seems to be the most effective and efficient thread rescheduler.
- */
-FIO_FUNC inline void fio_reschedule_thread(void);
-
-/** Nanosleep the thread - a blocking throttle. */
-FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
-
 /** An atomic based spinlock. */
 typedef uint8_t volatile fio_lock_i;
 
@@ -1674,6 +1675,14 @@ FIO_FUNC inline int fio_is_locked(fio_lock_i *lock);
 
 /** Busy waits for the spinlock (CAREFUL). */
 FIO_FUNC inline void fio_lock(fio_lock_i *lock);
+
+/**
+ * Nanosleep seems to be the most effective and efficient thread rescheduler.
+ */
+FIO_FUNC inline void fio_reschedule_thread(void);
+
+/** Nanosleep the thread - a blocking throttle. */
+FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
 
 /* *****************************************************************************
 
@@ -2205,7 +2214,8 @@ C++ extern end
 
 ***************************************************************************** */
 
-/** Nanosleep seems to be the most effective and efficient thread rescheduler.
+/**
+ * Nanosleep seems to be the most effective and efficient thread rescheduler.
  */
 FIO_FUNC inline void fio_reschedule_thread(void) {
   const struct timespec tm = {.tv_nsec = 1};
@@ -2218,18 +2228,6 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec) {
                               .tv_sec = (nano_sec / 1000000000)};
   nanosleep(&tm, NULL);
 }
-
-/** returns 0 if the lock was aquired and -1 on failure. */
-FIO_FUNC inline int fio_trylock(fio_lock_i *lock);
-
-/** Releases a spinlock. Releasing an unaquired lock will break it. */
-FIO_FUNC inline void fio_unlock(fio_lock_i *lock);
-
-/** Returns a spinlock's state (non 0 == Busy). */
-FIO_FUNC inline int fio_is_locked(fio_lock_i *lock);
-
-/** Busy waits for the spinlock (CAREFUL). */
-FIO_FUNC inline void fio_lock(fio_lock_i *lock);
 
 /** An atomic based spinlock. */
 typedef uint8_t volatile fio_lock_i;

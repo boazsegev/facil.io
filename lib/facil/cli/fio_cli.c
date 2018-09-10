@@ -4,6 +4,8 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+#include <fio.h>
+
 #include "fio_cli.h"
 
 #include <stdint.h>
