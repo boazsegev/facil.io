@@ -2738,16 +2738,17 @@ inline FIO_FUNC int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2);
 String Implementation - state (data pointers, length, capacity, etc')
 ***************************************************************************** */
 
-/* the capacity when the string is stored in the container itself */
-#define FIO_STR_SMALL_CAPA                                                     \
-  (sizeof(fio_str_s) - (size_t)(&((fio_str_s *)0)->reserved))
-
 typedef struct {
   volatile uint32_t ref; /* reference counter for fio_str_dup */
   uint8_t small;  /* Flag indicating the String is small and self-contained */
   uint8_t frozen; /* Flag indicating the String is frozen (don't edit) */
-  char data[1];
 } fio_str__small_s;
+
+#define FIO_STR_SMALL_DATA(s) ((char *)((&(s)->frozen) + 1))
+
+/* the capacity when the string is stored in the container itself */
+#define FIO_STR_SMALL_CAPA                                                     \
+  (sizeof(fio_str_s) - (size_t)((&((fio_str_s *)0)->frozen) + 1))
 
 /** Returns the String's state (capacity, length and pointer). */
 inline FIO_FUNC fio_str_info_s fio_str_info(const fio_str_s *s) {
@@ -2757,7 +2758,7 @@ inline FIO_FUNC fio_str_info_s fio_str_info(const fio_str_s *s) {
              ? (fio_str_info_s){.capa =
                                     (s->frozen ? 0 : (FIO_STR_SMALL_CAPA - 1)),
                                 .len = (size_t)(s->small >> 1),
-                                .data = ((fio_str__small_s *)s)->data}
+                                .data = FIO_STR_SMALL_DATA(s)}
              : (fio_str_info_s){.capa = (s->frozen ? 0 : s->capa),
                                 .len = s->len,
                                 .data = s->data};
@@ -2832,7 +2833,7 @@ inline FIO_FUNC size_t fio_str_len(fio_str_s *s) {
 
 /** Returns a pointer (`char *`) to the String's content. */
 inline FIO_FUNC char *fio_str_data(fio_str_s *s) {
-  return (s->small || !s->data) ? (((fio_str__small_s *)s)->data) : s->data;
+  return (s->small || !s->data) ? FIO_STR_SMALL_DATA(s) : s->data;
 }
 
 /** Returns the String's existing capacity (allocated memory). */
@@ -2857,10 +2858,10 @@ inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size) {
   fio_str_capa_assert(s, size);
   if (s->small || !s->data) {
     s->small = (uint8_t)(((size << 1) | 1) & 0xFF);
-    ((fio_str__small_s *)s)->data[size] = 0;
+    FIO_STR_SMALL_DATA(s)[size] = 0;
     return (fio_str_info_s){.capa = (FIO_STR_SMALL_CAPA - 1),
                             .len = size,
-                            .data = ((fio_str__small_s *)s)->data};
+                            .data = FIO_STR_SMALL_DATA(s)};
   }
   s->len = size;
   s->data[size] = 0;
@@ -2943,14 +2944,14 @@ is_small:
   if (needed < FIO_STR_SMALL_CAPA) {
     return (fio_str_info_s){.capa = (s->frozen ? 0 : (FIO_STR_SMALL_CAPA - 1)),
                             .len = (size_t)(s->small >> 1),
-                            .data = ((fio_str__small_s *)s)->data};
+                            .data = FIO_STR_SMALL_DATA(s)};
   }
   needed = ROUND_UP_CAPA_2WORDS(needed);
   tmp = (char *)fio_malloc(needed + 1);
   FIO_ASSERT_ALLOC(tmp);
   const size_t existing_len = (size_t)((s->small >> 1) & 0xFF);
   if (existing_len) {
-    memcpy(tmp, ((fio_str__small_s *)s)->data, existing_len + 1);
+    memcpy(tmp, FIO_STR_SMALL_DATA(s), existing_len + 1);
   } else {
     tmp[0] = 0;
   }
@@ -2986,7 +2987,7 @@ shrink2small:
   *s = (fio_str_s){.small = (uint8_t)(((len << 1) | 1) & 0xFF),
                    .frozen = s->frozen};
   if (len) {
-    memcpy(((fio_str__small_s *)s)->data, tmp, len + 1);
+    memcpy(FIO_STR_SMALL_DATA(s), tmp, len + 1);
   }
   fio_free(tmp);
 }
@@ -3471,6 +3472,7 @@ inline FIO_FUNC ssize_t fio_str_send_free(const intptr_t uuid,
 }
 
 #undef ROUND_UP_CAPA_2WORDS
+#undef FIO_STR_SMALL_DATA
 
 #endif /* H_FIO_STR_H */
 /* *****************************************************************************
