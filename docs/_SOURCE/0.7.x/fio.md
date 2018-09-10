@@ -407,7 +407,7 @@ int main() {
 ### Cluster Messages and Pub/Sub
 ### Cluster / Pub/Sub Middleware and Extensions ("Engines")
 
-## Atomic Operations Helper Functions
+## Atomic Operations and Spin Locking Helper Functions
 
 ## Converting Numbers to Strings (and back)
 ## Strings to Numbers
@@ -1573,22 +1573,23 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine);
 
 
 
-                     Atomic Operations Helper Functions
+                     Atomic Operations and Spin Locking Helper Functions
 **************************************************************************** */
+
 
 /* C11 Atomics are defined? */
 #if defined(__ATOMIC_RELAXED)
 /** An atomic exchange operation, ruturns previous value */
 #define fio_atomic_xchange(p_obj, value)                                       \
- __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
+  __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic addition operation */
 #define fio_atomic_add(p_obj, value)                                           \
- __atomic_add_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+  __atomic_add_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic subtraction operation */
 #define fio_atomic_sub(p_obj, value)                                           \
- __atomic_sub_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+  __atomic_sub_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
 /* Note: __ATOMIC_SEQ_CST is probably safer and __ATOMIC_ACQ_REL may be faster
-/
+ */
 
 /* Select the correct compiler builtin method. */
 #elif __has_builtin(__sync_add_and_fetch)
@@ -1610,6 +1611,32 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine);
 #else
 #error Required builtin "__sync_add_and_fetch" not found.
 #endif
+
+/** Nanosleep seems to be the most effective and efficient thread rescheduler.
+ */
+FIO_FUNC inline void fio_reschedule_thread(void);
+
+/** Nanosleep the thread - a blocking throttle. */
+FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
+
+/** An atomic based spinlock. */
+typedef uint8_t volatile fio_lock_i;
+
+/** The initail value of an unlocked spinlock. */
+#define FIO_LOCK_INIT 0
+
+/** returns 0 if the lock was aquired and -1 on failure. */
+FIO_FUNC inline int fio_trylock(fio_lock_i *lock);
+
+/** Releases a spinlock. Releasing an unaquired lock will break it. */
+FIO_FUNC inline void fio_unlock(fio_lock_i *lock);
+
+/** Returns a spinlock's state (non 0 == Busy). */
+FIO_FUNC inline int fio_is_locked(fio_lock_i *lock);
+
+/** Busy waits for the spinlock (CAREFUL). */
+FIO_FUNC inline void fio_lock(fio_lock_i *lock);
+
 
 /* *****************************************************************************
 
