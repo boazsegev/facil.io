@@ -25,7 +25,7 @@ $radius: 0.4em;
 html, body
 {
     width: 100%; height: 100%;
-    background-color: #f0f0f0;
+    background-color: #eaeaf3;
     color: #202020;
     overflow-x: hidden;
     box-sizing: border-box;
@@ -146,8 +146,8 @@ h4 {
             text-align:center;
             margin: 0.2em;
             @include border-radius;
-            border: 1px solid #e0e0e0;
-            background-color: #e0e0e0;
+            border: 1px solid #e0e0ff;
+            background-color: #dadaf0;
             color: #020202;
             text-decoration: none;
             &:hover
@@ -263,8 +263,8 @@ h4 {
 
         @include border-radius;
 
-        background-color: #CE8A8A;
-        background-color: rgba(255, 255, 255, 0.6);
+        background-color: #8A8ACE;
+        background-color: rgba(200, 200, 248, 0.6);
     }
     transition: transform 0.3s ease;
     -webkit-transition: transform 0.3s ease;
@@ -275,8 +275,8 @@ h4 {
     left: initial;
     position: fixed;
     top: 0; right: 0;
-    background-color: rgb(250, 250, 250);
-    background-color: rgba(255, 255, 255, 0.92);
+    background-color: rgb(240, 240, 255);
+    background-color: rgba(240, 240, 255, 0.92);
     border: none;
     border-left: 1px solid;
     border-bottom: 1px solid;
@@ -523,7 +523,7 @@ body.light
 {
   @import 'github';
   pre {
-    background: #fff;    
+    background: #f5f5ff;    
   }
 }
 

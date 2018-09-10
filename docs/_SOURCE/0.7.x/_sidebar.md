@@ -1,11 +1,6 @@
 ## Version 0.7.x
 
 * [Overview](/0.7.x/index)
-* [API Overview](/0.7.x/api)
-* [The Modules](/0.7.x/modules)
-
-## Core API
-
 * [facil.io core](/0.7.x/fio)
 * [Version and compilation macros](/0.7.x/fio#version-and-compilation-related-macros)
 
