@@ -76,7 +76,7 @@ html
             nav#side_bar == self['page']['sidebar']
             #md_container
                 == yield
-                a#sign href='/'
+            a#sign href='/'
         - if @flash && @flash[:notice]
             #notice
                 a.notice_close onclick='hide_notice()' X

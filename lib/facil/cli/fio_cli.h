@@ -92,7 +92,7 @@ char const *fio_cli_get(char const *name);
 /** Returns the argument's value as an integer. */
 int fio_cli_get_i(char const *name);
 
-/** Thie MACRO returns the argument's value as a boolean. */
+/** This MACRO returns the argument's value as a boolean. */
 #define fio_cli_get_bool(name) (fio_cli_get((name)) != NULL)
 
 /** Returns the number of unrecognized argument. */

@@ -40,15 +40,17 @@ void on_request(http_s *request) {
 
 ## facil.io - more than a powerful HTTP/Websockets server library.
 
-[facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, a [native Pub/Sub solution](pubsub.md), an optional Redis pub/sub engine, support for custom protocols and some nifty tidbits.
+[facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, a [native Pub/Sub solution](), an optional Redis pub/sub engine, support for custom protocols and some nifty tidbits.
 
 [facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.
 
-[facil.io](http://facil.io) provides high performance TCP/IP network services to Linux / BSD (and macOS) by using an evented design that was tested to provide an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
+[facil.io](http://facil.io) provides high performance TCP/IP network services by using an evented design that was tested to provide an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
 
 [facil.io](http://facil.io) prefers a TCP/IP specialized solution over a generic one (although it can be easily adopted for Unix sockets, UDP and other approaches).
 
-[facil.io](http://facil.io) includes a number of libraries that work together for a common goal. Some of the libraries (i.e., some [core types](api/types.md) the thread-pool library `defer`, the socket library `sock`, the evented IO core `evio` and the [parsers]() can be used independently while others are designed to work together using a modular approach.
+[facil.io](http://facil.io)'s core library is an extensible two-file library (`fio.h` and `fio.c`), making it easy to incorporate into any project. The additional bundled extensions are built using the core API, which means writing new extensions is easy. 
+
+[facil.io](http://facil.io) should work on Linux / BSD / macOS (and possibly CYGWIN) and is continuously tested on both Linux and macOS.
 
 I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
 
@@ -186,52 +188,4 @@ The code in this project is heavily commented and the header files could (and pr
 
 However, experience shows that a quick reference guide is immensely helpful and that Doxygen documentation is ... well ... less helpful and harder to navigate (I'll leave it at that for now).
 
-The documentation in this folder includes:
-
-* A [Getting Started Guide](getting_started.md) with example for WebApps utilizing the HTTP / Websocket protocols as well as a custom protocol.
-
-* A [quick guide to `facil.io`'s dynamic type library](fiobj.md) with quick examples get you started.
-
-* The core [`facil.io` API documentation](facil.md).
-
-    This documents the main library API and should be used when writing custom protocols. This API is (mostly) redundant when using the `http` or `websockets` protocol extensions.
-
-* The [`http` extension API documentation]() (Please help me write this).
-
-    The `http` protocol extension allows quick access to the HTTP protocol necessary for writing web applications.
-
-    Although the `libserver` API is still accessible, the `http_request_s` and `http_response_s` objects and API provide abstractions for the higher level HTTP protocol and should be preferred.
-
-* The [`websockets` extension API documentation]() (Please help me write this).
-
-    The `websockets` protocol extension allows quick access to the HTTP and Websockets protocols necessary for writing real-time web applications.
-
-    Although the `libserver` API is still accessible, the `http_request_s`, `http_response_s` and `ws_s` objects and API provide abstractions for the higher level HTTP and Websocket protocols and should be preferred.
-
-* Core documentation that documents the libraries used internally.
-
-    The core documentation can be safely ignored by anyone using the `facil.io`, `http` or `websockets` frameworks.
-
-    The core libraries include (coming soon):
-
-    * [`defer`](./defer.md) - A simple event-loop with the added functionality of a thread pool and `fork`ing support.
-
-    * [`sock`](./sock.md) - A sockets library that resolves common issues such as fd collisions and user land buffer.
-
-    * [`evio`](./evio.md) - an edge triggered `kqueue` / `epoll` abstraction / wrapper with an overridable callback design, allowing fast access to these APIs while maintaining portability enhancing ease of use (at the expense of complexity).
-
----
-
-## Forking, Contributing and all that Jazz
-
-Sure, why not. If you can add Solaris or Windows support to `evio`, that could mean `facil.io` would become available for use on these platforms as well (as well as the HTTP protocol implementation and all the niceties that implies).
-
-If you encounter any issues, open an issue (or, even better, a pull request with a fix) - that would be great :-)
-
-Hit me up if you want to:
-
-* Help me write HPACK / HTTP2 protocol support.
-
-* Help me design / write a generic HTTP routing helper library for the `http_s` struct.
-
-* If you want to help integrate an SSL/TLS library into `facil`, that would be great.
+I hope you find the documentation on this website helpful.

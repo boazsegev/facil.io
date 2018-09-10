@@ -65,6 +65,18 @@ h2, h3, h4, h5, h6 {
     margin-top:1.2em;
 }
 
+h2 {
+    margin-top:1.4em;
+}
+h4 {
+    font-size:1.4em;
+    padding-left:1em;
+    margin-left:2em;
+    // border-left: 2px #888 solid;
+    pre, code {
+    }
+}
+
 .bordered, pre
 {
     box-sizing: border-box;
@@ -73,15 +85,6 @@ h2, h3, h4, h5, h6 {
     padding: 1em;
     overflow: scroll;
     z-index: 50;
-}
-
-h4 {
-    font-size:1.4em;
-    padding-left:1em;
-    margin-left:2em;
-    // border-left: 2px #888 solid;
-    pre, code {
-    }
 }
 
 #version_data {text-align: center; font-size: 1.1em;}
