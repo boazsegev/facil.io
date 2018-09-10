@@ -12,6 +12,6 @@ rm CMakeLists.txt 2>/dev/null
 rm *.md 2>/dev/null
 rm LICENSE 2>/dev/null
 rm NOTICE 2>/dev/null
-mv ./examples/boiler_plates/http/* ./
-rm -R ./examples/boiler_plates  2>/dev/null
+mv ./examples/boiler_plate/* ./
+rm -R ./examples/boiler_plate  2>/dev/null
 

@@ -1,0 +1,9434 @@
+/* *****************************************************************************
+Copyright: Boaz Segev, 2018
+License: MIT
+
+Feel free to copy, use and enjoy according to the license provided.
+***************************************************************************** */
+
+#define FIO_INCLUDE_STR
+#define FIO_INCLUDE_LINKED_LIST
+
+#include <fio.h>
+
+#include <ctype.h>
+#include <errno.h>
+#include <pthread.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+
+#include <sys/ioctl.h>
+#include <sys/resource.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/wait.h>
+
+#include <arpa/inet.h>
+
+/* force poll for testing? */
+#ifndef FIO_ENGINE_POLL
+#define FIO_ENGINE_POLL 0
+#endif
+
+#define FIO_IGNORE_MACRO
+
+#if !FIO_ENGINE_POLL && !FIO_ENGINE_EPOLL && !FIO_ENGINE_KQUEUE
+#if defined(__linux__)
+#define FIO_ENGINE_EPOLL 1
+#elif defined(__APPLE__) || defined(__unix__)
+#define FIO_ENGINE_KQUEUE 1
+#else
+#define FIO_ENGINE_POLL 1
+#endif
+#endif
+
+#if FIO_ENGINE_EPOLL
+#include <sys/epoll.h>
+
+#elif FIO_ENGINE_KQUEUE
+
+#include <sys/event.h>
+#elif FIO_ENGINE_POLL
+#include <poll.h>
+#endif
+
+/* for kqueue and epoll only */
+#ifndef FIO_POLL_MAX_EVENTS
+#define FIO_POLL_MAX_EVENTS 64
+#endif
+
+#ifndef FIO_POLL_TICK
+#define FIO_POLL_TICK 1000
+#endif
+
+#ifndef DEBUG_SPINLOCK
+#define DEBUG_SPINLOCK 0
+#endif
+
+/* *****************************************************************************
+TODO:
+
+* Cluster
+
+***************************************************************************** */
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+                               Locks and patches
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+Atomic operations and spin locking - required for thread safety
+***************************************************************************** */
+
+/* nanosleep seems to be the most effective and efficient reschedule */
+FIO_FUNC inline void reschedule_thread(void) {
+  const struct timespec tm = {.tv_nsec = 1};
+  nanosleep(&tm, NULL);
+}
+FIO_FUNC inline void throttle_thread(size_t nano_sec) {
+  const struct timespec tm = {.tv_nsec = (nano_sec % 1000000000),
+                              .tv_sec = (nano_sec / 1000000000)};
+  nanosleep(&tm, NULL);
+}
+
+/** locks use a single byte */
+typedef uint8_t volatile fio_lock_i;
+
+/** The initail value of an unlocked spinlock. */
+#define FIO_LOCK_INIT 0
+
+/** returns 0 if the lock was aquired and -1 on failure. */
+static inline int fio_trylock(fio_lock_i *lock) {
+  __asm__ volatile("" ::: "memory");
+  fio_lock_i ret = fio_atomic_xchange(lock, 1);
+  __asm__ volatile("" ::: "memory");
+  return ret;
+}
+
+/** Releases a lock. Releasing an unaquired lock will break it. */
+static inline __attribute__((unused)) void fio_unlock(fio_lock_i *lock) {
+  __asm__ volatile("" ::: "memory");
+  fio_atomic_xchange(lock, 0);
+}
+
+/** returns a lock's state (non 0 == Busy). */
+static inline __attribute__((unused)) int fio_is_locked(fio_lock_i *lock) {
+  __asm__ volatile("" ::: "memory");
+  return *lock;
+}
+
+/** Busy waits for the lock. */
+static inline __attribute__((unused)) void fio_lock(fio_lock_i *lock) {
+  while (fio_trylock(lock)) {
+    reschedule_thread();
+  }
+}
+
+#if DEBUG_SPINLOCK
+
+/** Busy waits for a lock, reports contention. */
+static inline __attribute__((unused)) void
+fio_lock_dbg(fio_lock_i *lock, const char *file, int line) {
+  size_t lock_cycle_count = 0;
+  while (fio_trylock(lock)) {
+    if (lock_cycle_count >= 8 &&
+        (lock_cycle_count == 8 || !(lock_cycle_count & 511)))
+      fprintf(stderr, "INFO: fio-spinlock spin %s:%d round %zu\n", file, line,
+              lock_cycle_count);
+    ++lock_cycle_count;
+    reschedule_thread();
+  }
+  if (lock_cycle_count >= 8)
+    fprintf(stderr, "INFO: fio-spinlock spin %s:%d total = %zu\n", file, line,
+            lock_cycle_count);
+}
+#define fio_lock(lock) fio_lock_dbg((lock), __FILE__, __LINE__)
+
+static int fio_trylock_dbg(fio_lock_i *lock, const char *file, int line) {
+  static int last_line = 0;
+  static size_t count = 0;
+  int result = fio_trylock(lock);
+  if (!result) {
+    count = 0;
+    last_line = 0;
+  } else if (line == last_line) {
+    ++count;
+    if (count >= 2)
+      fprintf(stderr, "INFO: trying fio-spinlock %s:%d attempt %zu\n", file,
+              line, count);
+  } else {
+    count = 0;
+    last_line = line;
+  }
+  return result;
+}
+#define fio_trylock(lock) fio_trylock_dbg((lock), __FILE__, __LINE__)
+
+#endif /* DEBUG */
+
+/* *****************************************************************************
+Patch for OSX version < 10.12 from https://stackoverflow.com/a/9781275/4025095
+***************************************************************************** */
+#if defined(__MACH__) && !defined(CLOCK_REALTIME)
+#include <sys/time.h>
+#define CLOCK_REALTIME 0
+#define clock_gettime patch_clock_gettime
+// clock_gettime is not implemented on older versions of OS X (< 10.12).
+// If implemented, CLOCK_REALTIME will have already been defined.
+static inline int patch_clock_gettime(int clk_id, struct timespec *t) {
+  struct timeval now;
+  int rv = gettimeofday(&now, NULL);
+  if (rv)
+    return rv;
+  t->tv_sec = now.tv_sec;
+  t->tv_nsec = now.tv_usec * 1000;
+  return 0;
+  (void)clk_id;
+}
+#endif
+
+/* *****************************************************************************
+Event deferring (declarations)
+***************************************************************************** */
+
+static void deferred_on_close(void *uuid_, void *pr_);
+static void deferred_on_shutdown(void *arg, void *arg2);
+static void deferred_on_ready(void *arg, void *arg2);
+static void deferred_on_data(void *uuid, void *arg2);
+static void deferred_ping(void *arg, void *arg2);
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+                       State Machine Data Structures
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/** User-space socket buffer data */
+typedef struct fio_packet_s fio_packet_s;
+struct fio_packet_s {
+  fio_packet_s *next;
+  int (*write_func)(int fd, struct fio_packet_s *packet);
+  void (*dealloc)(void *buffer);
+  union {
+    void *buffer;
+    intptr_t fd;
+  } data;
+  uintptr_t offset;
+  uintptr_t length;
+};
+
+/** Connection data (fd_data) */
+typedef struct {
+  /* current data to be send */
+  fio_packet_s *packet;
+  /** the last packet in the queue. */
+  fio_packet_s **packet_last;
+  /** The number of pending packets that are in the queue. */
+  size_t packet_count;
+  /* Data sent so far */
+  size_t sent;
+  /* fd protocol */
+  fio_protocol_s *protocol;
+  /* timer handler */
+  time_t active;
+  /* timeout settings */
+  uint8_t timeout;
+  /* indicates that the fd should be considered scheduled (added to poll) */
+  fio_lock_i scheduled;
+  /* protocol lock */
+  fio_lock_i protocol_lock;
+  /* used to convert `fd` to `uuid` and validate connections */
+  uint8_t counter;
+  /* socket lock */
+  fio_lock_i sock_lock;
+  /** Connection is open */
+  uint8_t open;
+  /** indicated that the connection should be closed. */
+  uint8_t close;
+  /** peer address length */
+  uint8_t addr_len;
+  /** peer address length */
+  uint8_t addr[48];
+  /** RW hooks. */
+  fio_rw_hook_s *rw_hooks;
+  /** RW udata. */
+  void *rw_udata;
+
+} fio_fd_data_s;
+
+typedef struct {
+  struct timespec last_cycle;
+  /* connection capacity */
+  uint32_t capa;
+  /* connections counted towards shutdown (NOT while running) */
+  uint32_t connection_count;
+  /* thread list */
+  fio_ls_s thread_ids;
+  /* active workers */
+  uint16_t workers;
+  /* timer handler */
+  uint16_t threads;
+  /* timeout review loop flag */
+  uint8_t need_review;
+  /* spinning down proccess */
+  uint8_t volatile active;
+  /* worker proccess flag - true also for single process */
+  uint8_t is_worker;
+  /* polling and global lock */
+  fio_lock_i lock;
+  /* The highest active fd with a protocol object */
+  uint32_t max_protocol_fd;
+  /* timer handler */
+  pid_t parent;
+#if FIO_ENGINE_POLL
+  struct pollfd *poll;
+#endif
+  fio_fd_data_s info[];
+} fio_data_s;
+
+fio_data_s *fio_data = NULL;
+
+/* used for protocol locking by task type. */
+typedef struct {
+  fio_lock_i locks[3];
+  unsigned rsv : 8;
+} protocol_metadata_s;
+
+/* used for accessing the protocol locking in a safe byte aligned way. */
+union protocol_metadata_union_u {
+  size_t opaque;
+  protocol_metadata_s meta;
+};
+
+static inline void fio_packet_free(fio_packet_s *packet) {
+  packet->dealloc(packet->data.buffer);
+  fio_free(packet);
+}
+static inline fio_packet_s *fio_packet_alloc(void) {
+  fio_packet_s *packet = fio_malloc(sizeof(*packet));
+  FIO_ASSERT_ALLOC(packet);
+  return packet;
+}
+
+#define fd_data(fd) (fio_data->info[(uintptr_t)(fd)])
+#define uuid_data(uuid) fd_data(fio_uuid2fd((uuid)))
+#define fd2uuid(fd)                                                            \
+  ((intptr_t)((((uintptr_t)(fd)) << 8) | fd_data((fd)).counter))
+
+/* set the minimal max_protocol_fd */
+static void fio_max_fd_min(uint32_t fd) {
+  fio_lock(&fio_data->lock);
+  if (fio_data->max_protocol_fd < fd)
+    fio_data->max_protocol_fd = fd;
+  fio_unlock(&fio_data->lock);
+}
+
+/* set the minimal max_protocol_fd */
+static void fio_max_fd_shrink(void) {
+  fio_lock(&fio_data->lock);
+  uint32_t fd = fio_data->max_protocol_fd;
+  while (fd && fd_data(fd).protocol == NULL)
+    --fd;
+  fio_data->max_protocol_fd = fd;
+  fio_unlock(&fio_data->lock);
+}
+
+/* resets connection data, marking it as either open or closed. */
+static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
+  fio_packet_s *packet;
+  fio_protocol_s *protocol;
+  fio_lock(&(fd_data(fd).sock_lock));
+  packet = fd_data(fd).packet;
+  protocol = fd_data(fd).protocol;
+  fd_data(fd) = (fio_fd_data_s){
+      .open = is_open,
+      .sock_lock = fd_data(fd).sock_lock,
+      .protocol_lock = fd_data(fd).protocol_lock,
+      .rw_hooks = (fio_rw_hook_s *)&FIO_DEFAULT_RW_HOOKS,
+      .counter = fd_data(fd).counter + 1,
+      .packet_last = &fd_data(fd).packet,
+  };
+  fio_unlock(&(fd_data(fd).sock_lock));
+  while (packet) {
+    fio_packet_s *tmp = packet;
+    packet = packet->next;
+    fio_packet_free(tmp);
+  }
+  if (protocol && protocol->on_close) {
+    fio_defer(deferred_on_close, (void *)fd2uuid(fd), protocol);
+  }
+  if (is_open)
+    fio_max_fd_min(fd);
+  return 0;
+}
+
+static inline void fio_mark_time(void) {
+  clock_gettime(CLOCK_REALTIME, &fio_data->last_cycle);
+}
+
+/* *****************************************************************************
+Accessing / Validating the data
+***************************************************************************** */
+
+/* Macro for accessing the protocol locking / metadata. */
+#define prt_meta(prt) (((union protocol_metadata_union_u *)(&(prt)->rsv))->meta)
+
+/**
+ * Returns the maximum number of open files facil.io can handle per worker
+ * process.
+ *
+ * Total OS limits might apply as well but aren't shown.
+ *
+ * The value of 0 indicates either that the facil.io library wasn't initialized
+ * yet or that it's resources were released.
+ */
+size_t fio_capa(void) {
+  if (fio_data)
+    return fio_data->capa;
+  return 0;
+}
+
+/** locks a connection's protocol returns a pointer that need to be unlocked. */
+inline static fio_protocol_s *protocol_try_lock(intptr_t fd,
+                                                enum fio_protocol_lock_e type) {
+  errno = 0;
+  if (fio_trylock(&fd_data(fd).protocol_lock))
+    goto would_block;
+  fio_protocol_s *pr = fd_data(fd).protocol;
+  if (!pr) {
+    fio_unlock(&fd_data(fd).protocol_lock);
+    goto invalid;
+  }
+  if (fio_trylock(&prt_meta(pr).locks[type])) {
+    fio_unlock(&fd_data(fd).protocol_lock);
+    goto would_block;
+  }
+  fio_unlock(&fd_data(fd).protocol_lock);
+  return pr;
+would_block:
+  errno = EWOULDBLOCK;
+  return NULL;
+invalid:
+  errno = EBADF;
+  return NULL;
+}
+/** See `fio_protocol_try_lock` for details. */
+inline static void protocol_unlock(fio_protocol_s *pr,
+                                   enum fio_protocol_lock_e type) {
+  fio_unlock(&prt_meta(pr).locks[type]);
+}
+
+/** returns 1 if the UUID is valid and 0 if it isn't. */
+inline static size_t uuid_is_valid(uintptr_t uuid) {
+  if (uuid == (uintptr_t)-1 || (uintptr_t)fio_uuid2fd(uuid) >= fio_data->capa ||
+      (uuid & 0xFF) != uuid_data(uuid).counter)
+    return 0;
+  return 1;
+}
+
+/* public API. */
+fio_protocol_s *fio_protocol_try_lock(intptr_t uuid,
+                                      enum fio_protocol_lock_e type) {
+  if (!uuid_is_valid(uuid)) {
+    errno = EBADF;
+    return NULL;
+  }
+  return protocol_try_lock(fio_uuid2fd(uuid), type);
+}
+
+/* public API. */
+void fio_protocol_unlock(fio_protocol_s *pr, enum fio_protocol_lock_e type) {
+  protocol_unlock(pr, type);
+}
+
+/* public API. */
+intptr_t fio_fd2uuid(int fd) {
+  if (fd < 0 || (size_t)fd >= fio_data->capa)
+    return -1;
+  if (!fd_data(fd).open) {
+    fio_lock(&fd_data(fd).protocol_lock);
+    fio_clear_fd(fd, 1);
+    fio_unlock(&fd_data(fd).protocol_lock);
+  }
+  return fd2uuid(fd);
+}
+
+/* public API. */
+int fio_is_valid(intptr_t uuid) { return uuid_is_valid(uuid); }
+
+/* public API. */
+int fio_is_closed(intptr_t uuid) {
+  return !uuid_is_valid(uuid) || !uuid_data(uuid).open || uuid_data(uuid).close;
+}
+
+void fio_stop(void) { fio_data->active = 0; }
+
+/* public API. */
+int16_t fio_is_running(void) { return fio_data && fio_data->active; }
+
+/* public API. */
+struct timespec fio_last_tick(void) {
+  return fio_data->last_cycle;
+}
+
+#define touchfd(fd) fd_data((fd)).active = fio_data->last_cycle.tv_sec
+
+/* public API. */
+void fio_touch(intptr_t uuid) {
+  if (uuid_is_valid(uuid))
+    touchfd(fio_uuid2fd(uuid));
+}
+
+/* public API. */
+fio_str_info_s fio_peer_addr(intptr_t uuid) {
+  if (fio_is_closed(uuid) || !uuid_data(uuid).addr_len)
+    return (fio_str_info_s){.data = NULL, .len = 0, .capa = 0};
+  return (fio_str_info_s){.data = (char *)uuid_data(uuid).addr,
+                          .len = uuid_data(uuid).addr_len,
+                          .capa = 0};
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+                                     Timers
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+typedef struct {
+  fio_ls_embd_s node;
+  struct timespec due;
+  size_t interval; /*in ms */
+  size_t repetitions;
+  void (*task)(void *);
+  void *arg;
+  void (*on_finish)(void *);
+} fio_timer_s;
+
+fio_ls_embd_s fio_timers = FIO_LS_INIT(fio_timers);
+
+static fio_lock_i fio_timer_lock = FIO_LOCK_INIT;
+
+static struct timespec fio_timer_calc_due(size_t interval) {
+  struct timespec now = fio_last_tick();
+  if (interval > 1000) {
+    now.tv_sec += interval / 1000;
+    interval -= interval / 1000;
+  }
+  now.tv_nsec += (interval * 1000000UL);
+  if (now.tv_nsec > 1000000000L) {
+    now.tv_nsec -= 1000000000L;
+    now.tv_sec += 1;
+  }
+  return now;
+}
+
+static size_t fio_timer_calc_first_interval(void) {
+  if (fio_defer_has_queue())
+    return 0;
+  if (fio_ls_embd_is_empty(&fio_timers)) {
+    return FIO_POLL_TICK;
+  }
+  struct timespec now = fio_last_tick();
+  struct timespec due =
+      FIO_LS_EMBD_OBJ(fio_timer_s, node, fio_timers.next)->due;
+  if (due.tv_sec < now.tv_sec ||
+      (due.tv_sec == now.tv_sec && due.tv_nsec <= now.tv_nsec))
+    return 0;
+  size_t interval = 1000L * (due.tv_sec - now.tv_sec);
+  if (due.tv_nsec >= now.tv_nsec) {
+    interval += (due.tv_nsec - now.tv_nsec) / 1000000L;
+  } else {
+    interval -= (now.tv_nsec - due.tv_nsec) / 1000000L;
+  }
+  if (interval > FIO_POLL_TICK)
+    interval = FIO_POLL_TICK;
+  return interval;
+}
+
+/* simple a<=>b if "a" is bigger a negative result is returned, eq == 0. */
+static int fio_timer_compare(struct timespec a, struct timespec b) {
+  if (a.tv_sec == b.tv_sec) {
+    if (a.tv_nsec < b.tv_nsec)
+      return 1;
+    if (a.tv_nsec > b.tv_nsec)
+      return -1;
+    return 0;
+  }
+  if (a.tv_sec < b.tv_sec)
+    return 1;
+  return -1;
+}
+
+static void fio_timer_schedule(fio_timer_s *timer) {
+  timer->due = fio_timer_calc_due(timer->interval);
+  // fio_ls_embd_s *pos = &fio_timers;
+  fio_lock(&fio_timer_lock);
+  FIO_LS_EMBD_FOR(&fio_timers, node) {
+    fio_timer_s *t2 = FIO_LS_EMBD_OBJ(fio_timer_s, node, node);
+    if (fio_timer_compare(timer->due, t2->due) >= 0) {
+      fio_ls_embd_unshift(node, &timer->node);
+      goto finish;
+    }
+  }
+  fio_ls_embd_unshift(&fio_timers, &timer->node);
+finish:
+  fio_unlock(&fio_timer_lock);
+}
+
+static void fio_timer_perform_single(void *timer_, void *ignr) {
+  fio_timer_s *timer = timer_;
+  timer->task(timer->arg);
+  if (!timer->repetitions || fio_atomic_sub(&timer->repetitions, 1))
+    goto reschedule;
+  if (timer->on_finish)
+    timer->on_finish(timer->arg);
+  free(timer);
+  return;
+  (void)ignr;
+reschedule:
+  fio_timer_schedule(timer);
+}
+
+/** schedules all timers that are due to be performed. */
+static void fio_timer_perform(void) {
+  struct timespec now = fio_last_tick();
+  fio_lock(&fio_timer_lock);
+  while (fio_ls_embd_any(&fio_timers) &&
+         fio_timer_compare(
+             FIO_LS_EMBD_OBJ(fio_timer_s, node, fio_timers.next)->due, now) >=
+             0) {
+    fio_ls_embd_s *tmp = fio_ls_embd_remove(fio_timers.next);
+    fio_defer(fio_timer_perform_single, FIO_LS_EMBD_OBJ(fio_timer_s, node, tmp),
+              NULL);
+  }
+  fio_unlock(&fio_timer_lock);
+}
+
+static void fio_timer_clear_all(void) {
+  fio_lock(&fio_timer_lock);
+  while (fio_ls_embd_any(&fio_timers)) {
+    fio_timer_s *timer =
+        FIO_LS_EMBD_OBJ(fio_timer_s, node, fio_ls_embd_pop(&fio_timers));
+    if (timer->on_finish)
+      timer->on_finish(timer->arg);
+    free(timer);
+  }
+  fio_unlock(&fio_timer_lock);
+}
+
+/**
+ * Creates a timer to run a task at the specified interval.
+ *
+ * The task will repeat `repetitions` times. If `repetitions` is set to 0, task
+ * will repeat forever.
+ *
+ * Returns -1 on error.
+ *
+ * The `on_finish` handler is always called (even on error).
+ */
+int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
+                  void *arg, void (*on_finish)(void *)) {
+  if (!task || (milliseconds == 0 && !repetitions))
+    return -1;
+  fio_timer_s *timer = malloc(sizeof(*timer));
+  FIO_ASSERT_ALLOC(timer);
+  fio_mark_time();
+  *timer = (fio_timer_s){
+      .due = fio_timer_calc_due(milliseconds),
+      .interval = milliseconds,
+      .repetitions = repetitions,
+      .task = task,
+      .arg = arg,
+      .on_finish = on_finish,
+  };
+  fio_timer_schedule(timer);
+  return 0;
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                             Task Management
+
+                  Task / Event schduling and execution
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#ifndef DEFER_THROTTLE
+#define DEFER_THROTTLE 2097148UL
+#endif
+#ifndef FIO_DEFER_THROTTLE_LIMIT
+#define FIO_DEFER_THROTTLE_LIMIT 268434944UL
+#endif
+
+/**
+ * The progressive throttling model makes concurrency and parallelism more
+ * likely.
+ *
+ * Otherwise threads are assumed to be intended for "fallback" in case of slow
+ * user code, where a single thread should be active most of the time and other
+ * threads are activated only when that single thread is slow to perform.
+ */
+#ifndef DEFER_THROTTLE_PROGRESSIVE
+#define DEFER_THROTTLE_PROGRESSIVE 1
+#endif
+
+#ifndef DEFER_QUEUE_BLOCK_COUNT
+#if UINTPTR_MAX <= 0xFFFFFFFF
+/* Almost a page of memory on most 32 bit machines: ((4096/4)-8)/3 */
+#define DEFER_QUEUE_BLOCK_COUNT 338
+#else
+/* Almost a page of memory on most 64 bit machines: ((4096/8)-8)/3 */
+#define DEFER_QUEUE_BLOCK_COUNT 168
+#endif
+#endif
+
+/* task node data */
+typedef struct {
+  void (*func)(void *, void *);
+  void *arg1;
+  void *arg2;
+} fio_defer_task_s;
+
+/* task queue block */
+typedef struct fio_defer_queue_block_s fio_defer_queue_block_s;
+
+struct fio_defer_queue_block_s {
+  fio_defer_task_s tasks[DEFER_QUEUE_BLOCK_COUNT];
+  fio_defer_queue_block_s *next;
+  size_t write;
+  size_t read;
+  unsigned char state;
+};
+
+static fio_defer_queue_block_s fio_defer_static_queue;
+
+/* the state machine - this holds all the data about the task queue and pool */
+static struct {
+  /* a lock for the state machine, used for multi-threading support */
+  fio_lock_i lock;
+  /* current active block to pop tasks */
+  fio_defer_queue_block_s *reader;
+  /* current active block to push tasks */
+  fio_defer_queue_block_s *writer;
+} deferred = {.reader = &fio_defer_static_queue,
+              .writer = &fio_defer_static_queue};
+
+/* *****************************************************************************
+Internal Task API
+***************************************************************************** */
+
+#if DEBUG
+static size_t fio_defer_count_alloc, fio_defer_count_dealloc;
+#define COUNT_ALLOC fio_atomic_add(&fio_defer_count_alloc, 1)
+#define COUNT_DEALLOC fio_atomic_add(&fio_defer_count_dealloc, 1)
+#define COUNT_RESET                                                            \
+  do {                                                                         \
+    fio_defer_count_alloc = fio_defer_count_dealloc = 0;                       \
+  } while (0)
+#else
+#define COUNT_ALLOC
+#define COUNT_DEALLOC
+#define COUNT_RESET
+#endif
+
+static inline void fio_defer_push_task(fio_defer_task_s task) {
+  fio_lock(&deferred.lock);
+
+  /* test if full */
+  if (deferred.writer->state &&
+      deferred.writer->write == deferred.writer->read) {
+    /* return to static buffer or allocate new buffer */
+    if (fio_defer_static_queue.state == 2) {
+      deferred.writer->next = &fio_defer_static_queue;
+    } else {
+      deferred.writer->next = fio_malloc(sizeof(*deferred.writer->next));
+      COUNT_ALLOC;
+      if (!deferred.writer->next)
+        goto critical_error;
+    }
+    deferred.writer = deferred.writer->next;
+    deferred.writer->write = 0;
+    deferred.writer->read = 0;
+    deferred.writer->state = 0;
+    deferred.writer->next = NULL;
+  }
+
+  /* place task and finish */
+  deferred.writer->tasks[deferred.writer->write++] = task;
+  /* cycle buffer */
+  if (deferred.writer->write == DEFER_QUEUE_BLOCK_COUNT) {
+    deferred.writer->write = 0;
+    deferred.writer->state = 1;
+  }
+  fio_unlock(&deferred.lock);
+  return;
+
+critical_error:
+  fio_unlock(&deferred.lock);
+  FIO_ASSERT_ALLOC(NULL)
+}
+
+static inline fio_defer_task_s fio_defer_pop_task(void) {
+  fio_defer_task_s ret = (fio_defer_task_s){.func = NULL};
+  fio_defer_queue_block_s *to_free = NULL;
+  /* lock the state machine, grab/create a task and place it at the tail */
+  fio_lock(&deferred.lock);
+
+  /* empty? */
+  if (deferred.reader->write == deferred.reader->read &&
+      !deferred.reader->state)
+    goto finish;
+  /* collect task */
+  ret = deferred.reader->tasks[deferred.reader->read++];
+  /* cycle */
+  if (deferred.reader->read == DEFER_QUEUE_BLOCK_COUNT) {
+    deferred.reader->read = 0;
+    deferred.reader->state = 0;
+  }
+  /* did we finish the queue in the buffer? */
+  if (deferred.reader->write == deferred.reader->read) {
+    if (deferred.reader->next) {
+      to_free = deferred.reader;
+      deferred.reader = deferred.reader->next;
+    } else {
+      if (deferred.reader != &fio_defer_static_queue &&
+          fio_defer_static_queue.state == 2) {
+        to_free = deferred.reader;
+        deferred.writer = &fio_defer_static_queue;
+        deferred.reader = &fio_defer_static_queue;
+      }
+      deferred.reader->write = deferred.reader->read = deferred.reader->state =
+          0;
+    }
+  }
+
+finish:
+  if (to_free == &fio_defer_static_queue) {
+    fio_defer_static_queue.state = 2;
+    fio_defer_static_queue.next = NULL;
+  }
+  fio_unlock(&deferred.lock);
+
+  if (to_free && to_free != &fio_defer_static_queue) {
+    fio_free(to_free);
+    COUNT_DEALLOC;
+  }
+  return ret;
+}
+
+/* same as fio_defer_clear_queue , just inlined */
+static inline void fio_defer_clear_tasks(void) {
+  fio_lock(&deferred.lock);
+  while (deferred.reader) {
+    fio_defer_queue_block_s *tmp = deferred.reader;
+    deferred.reader = deferred.reader->next;
+    if (tmp != &fio_defer_static_queue) {
+      COUNT_DEALLOC;
+      free(tmp);
+    }
+  }
+  fio_defer_static_queue = (fio_defer_queue_block_s){.next = NULL};
+  deferred.reader = deferred.writer = &fio_defer_static_queue;
+  fio_unlock(&deferred.lock);
+}
+
+static void fio_defer_on_fork(void) { deferred.lock = FIO_LOCK_INIT; }
+
+#define fio_defer_push_task(...)                                               \
+  fio_defer_push_task((fio_defer_task_s){__VA_ARGS__})
+
+/* *****************************************************************************
+External Task API
+***************************************************************************** */
+
+/** Defer an execution of a function for later. */
+int fio_defer(void (*func)(void *, void *), void *arg1, void *arg2) {
+  /* must have a task to defer */
+  if (!func)
+    goto call_error;
+  fio_defer_push_task(.func = func, .arg1 = arg1, .arg2 = arg2);
+  return 0;
+
+call_error:
+  return -1;
+}
+
+/** Performs all deferred functions until the queue had been depleted. */
+void fio_defer_perform(void) {
+  for (;;) {
+    fio_defer_task_s task = fio_defer_pop_task();
+    if (!task.func)
+      return;
+    task.func(task.arg1, task.arg2);
+  }
+}
+
+/** Returns true if there are deferred functions waiting for execution. */
+int fio_defer_has_queue(void) {
+  return deferred.reader != deferred.writer ||
+         deferred.reader->write != deferred.reader->read;
+}
+
+/** Clears the queue. */
+void fio_defer_clear_queue(void) { fio_defer_clear_tasks(); }
+
+static void fio_defer_thread_wait(void);
+static void *fio_defer_cycle(void *ignr) {
+  do {
+    fio_defer_perform();
+    fio_defer_thread_wait();
+  } while (fio_is_running());
+  return ignr;
+}
+
+/* thread pool type */
+typedef struct {
+  size_t thread_count;
+  void *threads[];
+} fio_defer_thread_pool_s;
+
+/* joins a thread pool */
+static void fio_defer_thread_pool_join(fio_defer_thread_pool_s *pool) {
+  for (size_t i = 0; i < pool->thread_count; ++i) {
+    fio_thread_join(pool->threads[i]);
+  }
+  free(pool);
+}
+
+/* creates a thread pool */
+static fio_defer_thread_pool_s *fio_defer_thread_pool_new(size_t count) {
+  if (!count)
+    count = 1;
+  fio_defer_thread_pool_s *pool =
+      malloc(sizeof(*pool) + (count * sizeof(void *)));
+  FIO_ASSERT_ALLOC(pool);
+  pool->thread_count = count;
+  for (size_t i = 0; i < count; ++i) {
+    pool->threads[i] = fio_thread_new(fio_defer_cycle, NULL);
+    if (!pool->threads[i]) {
+      pool->thread_count = i;
+      goto error;
+    }
+  }
+  return pool;
+error:
+  fprintf(stderr, "CRITICAL ERROR: couldn't spawn threads for thread pool, "
+                  "attempting shutdown.\n");
+  fio_stop();
+  fio_defer_thread_pool_join(pool);
+  return NULL;
+}
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+                         Default Thread / Fork handler
+
+                           And Concurrency Helpers
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/**
+OVERRIDE THIS to replace the default `fork` implementation.
+
+Behaves like the system's `fork`.
+*/
+#pragma weak fio_fork
+int __attribute__((weak)) fio_fork(void) { return fork(); }
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Accepts a pointer to a function and a single argument that should be executed
+ * within a new thread.
+ *
+ * The function should allocate memory for the thread object and return a
+ * pointer to the allocated memory that identifies the thread.
+ *
+ * On error NULL should be returned.
+ */
+#pragma weak fio_thread_new
+void *__attribute__((weak))
+fio_thread_new(void *(*thread_func)(void *), void *arg) {
+  pthread_t *thread = malloc(sizeof(*thread));
+  FIO_ASSERT_ALLOC(thread);
+  if (pthread_create(thread, NULL, thread_func, arg))
+    goto error;
+  return thread;
+error:
+  free(thread);
+  return NULL;
+}
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Frees the memory asociated with a thread indentifier (allows the thread to
+ * run it's course, just the identifier is freed).
+ */
+#pragma weak fio_thread_free
+void __attribute__((weak)) fio_thread_free(void *p_thr) {
+  if (*((pthread_t *)p_thr)) {
+    pthread_detach(*((pthread_t *)p_thr));
+  }
+  free(p_thr);
+}
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Accepts a pointer returned from `fio_thread_new` (should also free any
+ * allocated memory) and joins the associated thread.
+ *
+ * Return value is ignored.
+ */
+#pragma weak fio_thread_join
+int __attribute__((weak)) fio_thread_join(void *p_thr) {
+  if (!p_thr || !(*((pthread_t *)p_thr)))
+    return -1;
+  pthread_join(*((pthread_t *)p_thr), NULL);
+  *((pthread_t *)p_thr) = (pthread_t)NULL;
+  free(p_thr);
+  return 0;
+}
+
+static size_t fio_poll(void);
+/**
+ * A thread entering this function should wait for new evennts.
+ */
+static void fio_defer_thread_wait(void) {
+#if FIO_ENGINE_POLL
+  fio_poll();
+  return;
+#endif
+  if (FIO_DEFER_THROTTLE_PROGRESSIVE) {
+    /* keeps threads active (concurrent), but reduces performance */
+    static __thread size_t static_throttle = 262143UL;
+    if (static_throttle < FIO_DEFER_THROTTLE_LIMIT)
+      static_throttle = (static_throttle << 1);
+    throttle_thread(static_throttle);
+    if (fio_defer_has_queue())
+      static_throttle = 1;
+  } else {
+    /* Protects against slow user code, but mostly a single active thread */
+    size_t throttle = fio_data->threads ? ((fio_data->threads) * DEFER_THROTTLE)
+                                        : FIO_DEFER_THROTTLE_LIMIT;
+    if (throttle > FIO_DEFER_THROTTLE_LIMIT)
+      throttle = FIO_DEFER_THROTTLE_LIMIT;
+    throttle_thread(throttle);
+  }
+}
+
+/* *****************************************************************************
+Concurrency Helpers
+***************************************************************************** */
+
+volatile uint8_t fio_signal_children_flag = 0;
+
+/*
+ * Zombie Reaping
+ * With thanks to Dr Graham D Shaw.
+ * http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
+ */
+static void reap_child_handler(int sig) {
+  (void)(sig);
+  int old_errno = errno;
+  while (waitpid(-1, NULL, WNOHANG) > 0)
+    ;
+  errno = old_errno;
+}
+
+/* initializes zombie reaping for the process */
+void fio_reap_children(void) {
+  struct sigaction sa;
+  sa.sa_handler = reap_child_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+  if (sigaction(SIGCHLD, &sa, 0) == -1) {
+    perror("Child reaping initialization failed");
+    kill(0, SIGINT);
+    exit(errno);
+  }
+}
+
+/* handles the SIGUSR1, SIGINT and SIGTERM signals. */
+static void sig_int_handler(int sig) {
+  switch (sig) {
+#if !FIO_DISABLE_HOT_RESTART
+  case SIGUSR1:
+    fio_signal_children_flag = 1;
+    break;
+#endif
+  case SIGINT:  /* fallthrough */
+  case SIGTERM: /* fallthrough */
+    fio_stop();
+    break;
+  default:
+    break;
+  }
+}
+
+/* setup handling for the SIGUSR1, SIGPIPE, SIGINT and SIGTERM signals. */
+static void fio_signal_handler_setup(void) {
+  /* setup signal handling */
+  struct sigaction act, old;
+
+  act.sa_handler = sig_int_handler;
+  sigemptyset(&act.sa_mask);
+  act.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+
+  if (sigaction(SIGINT, &act, &old)) {
+    perror("couldn't set signal handler");
+    return;
+  };
+
+  if (sigaction(SIGTERM, &act, &old)) {
+    perror("couldn't set signal handler");
+    return;
+  };
+#if !FIO_DISABLE_HOT_RESTART
+  if (sigaction(SIGUSR1, &act, &old)) {
+    perror("couldn't set signal handler");
+    return;
+  };
+#endif
+
+  act.sa_handler = SIG_IGN;
+  if (sigaction(SIGPIPE, &act, &old)) {
+    perror("couldn't set signal handler");
+    return;
+  };
+}
+static void fio_signal_handler_reset(void) {
+  struct sigaction act, old;
+
+  act.sa_handler = SIG_DFL;
+  sigemptyset(&act.sa_mask);
+  sigaction(SIGINT, &act, &old);
+  sigaction(SIGTERM, &act, &old);
+#if !FIO_DISABLE_HOT_RESTART
+  sigaction(SIGUSR1, &act, &old);
+#endif
+  sigaction(SIGPIPE, &act, &old);
+}
+
+/**
+ * Returns 1 if the current process is a worker process or a single proccess.
+ *
+ * Otherwise returns 0.
+ *
+ * NOTE: When cluster mode is off, the root process is also the worker proccess.
+ *       This means that simgle process instances don't automatically respawn
+ *       after critical errors.
+ */
+int fio_is_worker(void) { return fio_data->is_worker; }
+
+/** returns facil.io's parent (root) process pid. */
+pid_t fio_parent_pid(void) { return fio_data->parent; }
+
+static inline size_t fio_detect_cpu_cores(void) {
+  ssize_t cpu_count = 0;
+#ifdef _SC_NPROCESSORS_ONLN
+  cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+  if (cpu_count < 0) {
+    if (FIO_PRINT_STATE) {
+      fprintf(stderr, "WARNING: CPU core count auto-detection failed.\n");
+    }
+    return 0;
+  }
+#else
+  if (1 || FIO_PRINT_STATE) {
+    fprintf(stderr, "WARNING: CPU core count auto-detection failed.\n");
+  }
+#endif
+  return cpu_count;
+}
+
+/**
+ * Returns the number of expected threads / processes to be used by facil.io.
+ *
+ * The pointers should start with valid values that match the expected threads /
+ * processes values passed to `fio_run`.
+ *
+ * The data in the pointers will be overwritten with the result.
+ */
+void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
+  if (!threads || !processes)
+    return;
+  if (!*threads && !*processes) {
+    /* both options set to 0 - default to cores*cores matrix */
+    ssize_t cpu_count = fio_detect_cpu_cores();
+#if FACIL_CPU_CORES_LIMIT
+    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
+      static int print_cores_warning = 1;
+      if (print_cores_warning) {
+        fprintf(
+            stderr,
+            "INFO: Detected %zu cores. Capping auto-detection of cores "
+            "to %zu.\n"
+            "      Avoid this message by setting threads / workers manually.\n"
+            "      To increase auto-detection limit, recompile with:\n"
+            "             -DFACIL_CPU_CORES_LIMIT=%zu \n",
+            (size_t)cpu_count, (size_t)FACIL_CPU_CORES_LIMIT,
+            (size_t)cpu_count);
+        print_cores_warning = 0;
+      }
+      cpu_count = FACIL_CPU_CORES_LIMIT;
+    }
+#endif
+    *threads = *processes = (int16_t)cpu_count;
+    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
+      /* leave a core available for the kernel */
+      --(*processes);
+    }
+  } else if (*threads < 0 || *processes < 0) {
+    /* Set any option that is less than 0 be equal to cores/value */
+    /* Set any option equal to 0 be equal to the other option in value */
+    ssize_t cpu_count = fio_detect_cpu_cores();
+    size_t cpu_adjust = (*processes <= 0 ? 1 : 0);
+
+    if (cpu_count > 0) {
+      int16_t tmp_threads = 0;
+      if (*threads < 0)
+        tmp_threads = (int16_t)(cpu_count / (*threads * -1));
+      else if (*threads == 0)
+        tmp_threads = -1 * *processes;
+      else
+        tmp_threads = *threads;
+      if (*processes < 0)
+        *processes = (int16_t)(cpu_count / (*processes * -1));
+      else if (*processes == 0)
+        *processes = -1 * *threads;
+      *threads = tmp_threads;
+      if (cpu_adjust && (*processes * tmp_threads) >= cpu_count &&
+          cpu_count > FACIL_CPU_CORES_LIMIT) {
+        /* leave a core available for the kernel */
+        --*processes;
+      }
+    }
+  }
+
+  /* make sure we have at least one process and at least one thread */
+  if (*processes <= 0)
+    *processes = 1;
+  if (*threads <= 0)
+    *threads = 1;
+}
+
+static fio_lock_i fio_fork_lock = FIO_LOCK_INIT;
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       Polling State Machine - epoll
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if FIO_ENGINE_EPOLL
+
+/**
+ * Returns a C string detailing the IO engine selected during compilation.
+ *
+ * Valid values are "kqueue", "epoll" and "poll".
+ */
+char const *fio_engine(void) { return "epoll"; }
+
+/* epoll tester, in and out */
+static int evio_fd[3] = {-1, -1, -1};
+
+static void fio_poll_close(void) {
+  for (int i = 0; i < 3; ++i) {
+    if (evio_fd[i] != -1) {
+      close(evio_fd[i]);
+      evio_fd[i] = -1;
+    }
+  }
+}
+
+static void fio_poll_init(void) {
+  fio_poll_close();
+  for (int i = 0; i < 3; ++i) {
+    evio_fd[i] = epoll_create1(EPOLL_CLOEXEC);
+    if (evio_fd[i] == -1)
+      goto error;
+  }
+  for (int i = 1; i < 3; ++i) {
+    struct epoll_event chevent = {
+        .events = (EPOLLOUT | EPOLLIN),
+        .data.fd = evio_fd[i],
+    };
+    if (epoll_ctl(evio_fd[0], EPOLL_CTL_ADD, evio_fd[i], &chevent) == -1)
+      goto error;
+  }
+  return;
+error:
+#if DEBUB
+  perror("ERROR: (evoid) failed to initialize");
+#endif
+  fio_poll_close();
+  exit(errno);
+  return;
+}
+
+static inline int fio_poll_add2(int fd, uint32_t events, int ep_fd) {
+  struct epoll_event chevent;
+  int ret;
+  do {
+    errno = 0;
+    chevent = (struct epoll_event){
+        .events = events,
+        .data.fd = fd,
+    };
+    ret = epoll_ctl(ep_fd, EPOLL_CTL_MOD, fd, &chevent);
+    if (ret == -1 && errno == ENOENT) {
+      errno = 0;
+      chevent = (struct epoll_event){
+          .events = events,
+          .data.fd = fd,
+      };
+      ret = epoll_ctl(ep_fd, EPOLL_CTL_ADD, fd, &chevent);
+    }
+  } while (errno == EINTR);
+
+  return ret;
+}
+
+static inline void fio_poll_add_read(intptr_t fd) {
+  fio_poll_add2(fd, (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                evio_fd[1]);
+  return;
+}
+
+static inline void fio_poll_add_write(intptr_t fd) {
+  fio_poll_add2(fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                evio_fd[2]);
+  return;
+}
+
+static inline void fio_poll_add(intptr_t fd) {
+  if (fio_poll_add2(fd, (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                    evio_fd[1]) == -1)
+    return;
+  fio_poll_add2(fd, (EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLONESHOT),
+                evio_fd[2]);
+  return;
+}
+
+FIO_FUNC inline void fio_poll_remove_fd(intptr_t fd) {
+  struct epoll_event chevent = {.events = (EPOLLOUT | EPOLLIN), .data.fd = fd};
+  epoll_ctl(evio_fd[1], EPOLL_CTL_DEL, fd, &chevent);
+  epoll_ctl(evio_fd[2], EPOLL_CTL_DEL, fd, &chevent);
+}
+
+static size_t fio_poll(void) {
+  int timeout_millisec = fio_timer_calc_first_interval();
+  struct epoll_event internal[2];
+  struct epoll_event events[FIO_POLL_MAX_EVENTS];
+  int total = 0;
+  /* wait for events and handle them */
+  int internal_count = epoll_wait(evio_fd[0], internal, 2, timeout_millisec);
+  if (internal_count == 0)
+    return internal_count;
+  for (int j = 0; j < internal_count; ++j) {
+    int active_count =
+        epoll_wait(internal[j].data.fd, events, FIO_POLL_MAX_EVENTS, 0);
+    if (active_count > 0) {
+      for (int i = 0; i < active_count; i++) {
+        if (events[i].events & (~(EPOLLIN | EPOLLOUT))) {
+          // errors are hendled as disconnections (on_close)
+          fio_force_close(fd2uuid(events[i].data.fd));
+        } else {
+          // no error, then it's an active event(s)
+          if (events[i].events & EPOLLOUT) {
+            fio_defer(deferred_on_ready, (void *)fd2uuid(events[i].data.fd),
+                      NULL);
+          }
+          if (events[i].events & EPOLLIN)
+            fio_defer(deferred_on_data, (void *)fd2uuid(events[i].data.fd),
+                      NULL);
+        }
+      } // end for loop
+      total += active_count;
+    }
+  }
+  return total;
+}
+
+#endif
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       Polling State Machine - kqueue
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#if FIO_ENGINE_KQUEUE
+
+/**
+ * Returns a C string detailing the IO engine selected during compilation.
+ *
+ * Valid values are "kqueue", "epoll" and "poll".
+ */
+char const *fio_engine(void) { return "kqueue"; }
+
+static int evio_fd = -1;
+
+static void fio_poll_close(void) { close(evio_fd); }
+
+static void fio_poll_init(void) {
+  fio_poll_close();
+  evio_fd = kqueue();
+  if (evio_fd == -1) {
+    fprintf(stderr, "FATAL ERROR: couldn't open kqueue.\n");
+    exit(errno);
+  }
+}
+
+static inline void fio_poll_add_read(intptr_t fd) {
+  struct kevent chevent[1];
+  EV_SET(chevent, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0, 0, ((void *)fd));
+  do {
+    errno = 0;
+    kevent(evio_fd, chevent, 1, NULL, 0, NULL);
+  } while (errno == EINTR);
+  return;
+}
+
+static inline void fio_poll_add_write(intptr_t fd) {
+  struct kevent chevent[1];
+  EV_SET(chevent, fd, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0, 0, ((void *)fd));
+  do {
+    errno = 0;
+    kevent(evio_fd, chevent, 1, NULL, 0, NULL);
+  } while (errno == EINTR);
+  return;
+}
+
+static inline void fio_poll_add(intptr_t fd) {
+  struct kevent chevent[2];
+  EV_SET(chevent, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT,
+         0, 0, ((void *)fd));
+  EV_SET(chevent + 1, fd, EVFILT_WRITE,
+         EV_ADD | EV_ENABLE | EV_CLEAR | EV_ONESHOT, 0, 0, ((void *)fd));
+  do {
+    errno = 0;
+    kevent(evio_fd, chevent, 2, NULL, 0, NULL);
+  } while (errno == EINTR);
+  return;
+}
+
+FIO_FUNC inline void fio_poll_remove_fd(intptr_t fd) {
+  if (evio_fd < 0)
+    return;
+  struct kevent chevent[3];
+  EV_SET(chevent, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+  EV_SET(chevent + 1, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+  EV_SET(chevent + 2, fd, EVFILT_TIMER, EV_DELETE, 0, 0, NULL);
+  do {
+    errno = 0;
+    kevent(evio_fd, chevent, 3, NULL, 0, NULL);
+  } while (errno == EINTR);
+}
+
+static size_t fio_poll(void) {
+  if (evio_fd < 0)
+    return -1;
+  int timeout_millisec = fio_timer_calc_first_interval();
+  struct kevent events[FIO_POLL_MAX_EVENTS];
+
+  const struct timespec timeout = {
+      .tv_sec = (timeout_millisec / 1000),
+      .tv_nsec = ((timeout_millisec & (~1023UL)) * 1000000)};
+  /* wait for events and handle them */
+  int active_count =
+      kevent(evio_fd, NULL, 0, events, FIO_POLL_MAX_EVENTS, &timeout);
+
+  if (active_count > 0) {
+    for (int i = 0; i < active_count; i++) {
+      // test for event(s) type
+      if (events[i].filter == EVFILT_READ) {
+        fio_defer(deferred_on_data, (void *)fd2uuid(events[i].udata), NULL);
+      }
+      // connection errors should be reported after `read` in case there's data
+      // left in the buffer... not that the edge case matters.
+      if (events[i].flags & (EV_EOF | EV_ERROR)) {
+        // errors are hendled as disconnections (on_close)
+        // fprintf(stderr, "%p: %s\n", events[i].udata,
+        //         (events[i].flags & EV_EOF)
+        //             ? "EV_EOF"
+        //             : (events[i].flags & EV_ERROR) ? "EV_ERROR" : "WTF?");
+        fio_force_close(fd2uuid(events[i].udata));
+      } else if (events[i].filter == EVFILT_WRITE) {
+        // we can only write if there's no error in the socket
+        fio_defer(deferred_on_ready, (void *)fd2uuid(events[i].udata), NULL);
+      }
+    }
+  } else if (active_count < 0) {
+    if (errno == EINTR)
+      return 0;
+    return -1;
+  }
+  return active_count;
+}
+
+#endif
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       Polling State Machine - poll
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+#if FIO_ENGINE_POLL
+
+/**
+ * Returns a C string detailing the IO engine selected during compilation.
+ *
+ * Valid values are "kqueue", "epoll" and "poll".
+ */
+char const *fio_engine(void) { return "poll"; }
+
+#define FIO_POLL_READ_EVENTS (POLLPRI | POLLIN)
+#define FIO_POLL_WRITE_EVENTS (POLLOUT)
+
+static void fio_poll_close(void) {}
+
+static void fio_poll_init(void) {}
+
+static inline void fio_poll_remove_fd(int fd) {
+  fio_data->poll[fd].fd = -1;
+  fio_data->poll[fd].events = 0;
+}
+
+static inline void fio_poll_add_read(int fd) {
+  fio_data->poll[fd].fd = fd;
+  fio_data->poll[fd].events |= FIO_POLL_READ_EVENTS;
+}
+
+static inline void fio_poll_add_write(int fd) {
+  fio_data->poll[fd].fd = fd;
+  fio_data->poll[fd].events |= FIO_POLL_WRITE_EVENTS;
+}
+
+static inline void fio_poll_add(int fd) {
+  fio_data->poll[fd].fd = fd;
+  fio_data->poll[fd].events = FIO_POLL_READ_EVENTS | FIO_POLL_WRITE_EVENTS;
+}
+
+static inline void fio_poll_remove_read(int fd) {
+  fio_lock(&fio_data->lock);
+  if (fio_data->poll[fd].events & FIO_POLL_WRITE_EVENTS)
+    fio_data->poll[fd].events = FIO_POLL_WRITE_EVENTS;
+  else {
+    fio_poll_remove_fd(fd);
+  }
+  fio_unlock(&fio_data->lock);
+}
+
+static inline void fio_poll_remove_write(int fd) {
+  fio_lock(&fio_data->lock);
+  if (fio_data->poll[fd].events & FIO_POLL_READ_EVENTS)
+    fio_data->poll[fd].events = FIO_POLL_READ_EVENTS;
+  else {
+    fio_poll_remove_fd(fd);
+  }
+  fio_unlock(&fio_data->lock);
+}
+
+/** returns non-zero if events were scheduled, 0 if idle */
+static size_t fio_poll(void) {
+  /* shrink fd poll range */
+  size_t end = fio_data->capa;
+  size_t start = 0;
+  struct pollfd *list = NULL;
+  fio_lock(&fio_data->lock);
+  while (start < end && fio_data->poll[start].fd == -1)
+    ++start;
+  while (start < end && fio_data->poll[end - 1].fd == -1)
+    --end;
+  if (start != end) {
+    /* copy poll list for multi-threaded poll */
+    list = fio_malloc(sizeof(struct pollfd) * end);
+    memcpy(list + start, fio_data->poll + start,
+           (sizeof(struct pollfd)) * (end - start));
+  }
+  fio_unlock(&fio_data->lock);
+
+  int timeout = fio_timer_calc_first_interval();
+  size_t count = 0;
+
+  if (start == end) {
+    throttle_thread((timeout * 1000000UL));
+  } else if (poll(list + start, end - start, timeout) == -1) {
+    goto finish;
+  }
+  for (size_t i = start; i < end; ++i) {
+    if (list[i].revents) {
+      touchfd(i);
+      ++count;
+      if (list[i].revents & FIO_POLL_READ_EVENTS) {
+        // fprintf(stderr, "Poll Read %zu => %p\n", i, (void *)fd2uuid(i));
+        fio_poll_remove_read(i);
+        fio_defer(deferred_on_data, (void *)fd2uuid(i), NULL);
+      }
+      if (list[i].revents & FIO_POLL_WRITE_EVENTS) {
+        // fprintf(stderr, "Poll Write %zu => %p\n", i, (void *)fd2uuid(i));
+        fio_poll_remove_write(i);
+        fio_defer(deferred_on_ready, (void *)fd2uuid(i), NULL);
+      }
+      if (list[i].revents & (POLLHUP | POLLERR)) {
+        // fprintf(stderr, "Poll Hangup %zu => %p\n", i, (void *)fd2uuid(i));
+        fio_poll_remove_fd(i);
+        fio_force_close(fd2uuid(i));
+      }
+      if (list[i].revents & POLLNVAL) {
+        // fprintf(stderr, "Poll Invalid %zu => %p\n", i, (void *)fd2uuid(i));
+        fio_poll_remove_fd(i);
+        fio_lock(&fd_data(i).protocol_lock);
+        fio_clear_fd(i, 0);
+        fio_unlock(&fd_data(i).protocol_lock);
+      }
+    }
+  }
+finish:
+  fio_free(list);
+  return count;
+}
+
+#endif /* FIO_ENGINE_POLL */
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+                         IO Callbacks / Event Handling
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+Mock Protocol Callbacks and Service Funcions
+***************************************************************************** */
+static void mock_on_ev(intptr_t uuid, fio_protocol_s *protocol) {
+  (void)uuid;
+  (void)protocol;
+}
+
+static void mock_on_data(intptr_t uuid, fio_protocol_s *protocol) {
+  fio_suspend(uuid);
+  (void)protocol;
+}
+
+static uint8_t mock_on_shutdown(intptr_t uuid, fio_protocol_s *protocol) {
+  return 0;
+  (void)protocol;
+  (void)uuid;
+}
+
+static uint8_t mock_on_shutdown_eternal(intptr_t uuid,
+                                        fio_protocol_s *protocol) {
+  return 255;
+  (void)protocol;
+  (void)uuid;
+}
+
+static void mock_ping(intptr_t uuid, fio_protocol_s *protocol) {
+  (void)protocol;
+  fio_force_close(uuid);
+}
+static void mock_ping2(intptr_t uuid, fio_protocol_s *protocol) {
+  (void)protocol;
+
+  uuid_data(uuid).active = fio_last_tick().tv_sec;
+  if (uuid_data(uuid).timeout == 255)
+    return;
+  protocol->ping = mock_ping;
+  uuid_data(uuid).timeout = 8;
+  fio_close(uuid);
+}
+
+FIO_FUNC void mock_ping_eternal(intptr_t uuid, fio_protocol_s *protocol) {
+  (void)protocol;
+  fio_touch(uuid);
+}
+
+// static fio_protocol_s FIO_MOCK_PROTOCOL = {
+//     .on_data = mock_on_data,
+//     .on_ready = mock_on_ev,
+//     .on_shutdown = mock_on_shutdown,
+//     .on_close = mock_on_ev,
+//     .ping = mock_ping_eternal,
+// };
+
+/* *****************************************************************************
+Deferred event handlers
+***************************************************************************** */
+static void deferred_on_close(void *uuid_, void *pr_) {
+  fio_protocol_s *pr = pr_;
+  if (pr->rsv)
+    goto postpone;
+  pr->on_close((intptr_t)uuid_, pr);
+  return;
+postpone:
+  fio_defer(deferred_on_close, uuid_, pr_);
+}
+
+static void deferred_on_shutdown(void *arg, void *arg2) {
+  if (!uuid_data(arg).protocol) {
+    return;
+  }
+  fio_protocol_s *pr = protocol_try_lock(fio_uuid2fd(arg), FIO_PR_LOCK_TASK);
+  if (!pr) {
+    if (errno == EBADF)
+      return;
+    goto postpone;
+  }
+  uuid_data(arg).active = fio_data->last_cycle.tv_sec;
+  uint8_t r = pr->on_shutdown ? pr->on_shutdown((intptr_t)arg, pr) : 0;
+  if (r) {
+    if (r == 255) {
+      uuid_data(arg).timeout = 0;
+    } else {
+      fio_atomic_add(&fio_data->connection_count, 1);
+      uuid_data(arg).timeout = r;
+    }
+    pr->ping = mock_ping2;
+    protocol_unlock(pr, FIO_PR_LOCK_TASK);
+  } else {
+    fio_atomic_add(&fio_data->connection_count, 1);
+    uuid_data(arg).timeout = 8;
+    pr->ping = mock_ping;
+    protocol_unlock(pr, FIO_PR_LOCK_TASK);
+    fio_close((intptr_t)arg);
+  }
+  return;
+postpone:
+  fio_defer(deferred_on_shutdown, arg, NULL);
+  (void)arg2;
+}
+
+static void deferred_on_ready(void *arg, void *arg2) {
+  errno = 0;
+  if (fio_flush((intptr_t)arg) > 0 || errno == EWOULDBLOCK) {
+    fio_poll_add_write(fio_uuid2fd(arg));
+    return;
+  }
+  if (!uuid_data(arg).protocol) {
+    return;
+  }
+  fio_protocol_s *pr = protocol_try_lock(fio_uuid2fd(arg), FIO_PR_LOCK_WRITE);
+  if (!pr) {
+    if (errno == EBADF)
+      return;
+    goto postpone;
+  }
+  pr->on_ready((intptr_t)arg, pr);
+  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+  return;
+postpone:
+  fio_defer(deferred_on_ready, arg, NULL);
+  (void)arg2;
+}
+
+static void deferred_on_data(void *uuid, void *arg2) {
+  if (!uuid_data(uuid).protocol || fio_is_closed((intptr_t)uuid)) {
+    return;
+  }
+  fio_protocol_s *pr = protocol_try_lock(fio_uuid2fd(uuid), FIO_PR_LOCK_TASK);
+  if (!pr) {
+    if (errno == EBADF) {
+      return;
+    }
+    goto postpone;
+  }
+  fio_unlock(&uuid_data(uuid).scheduled);
+  pr->on_data((intptr_t)uuid, pr);
+  protocol_unlock(pr, FIO_PR_LOCK_TASK);
+  if (!fio_trylock(&uuid_data(uuid).scheduled)) {
+    fio_poll_add_read(fio_uuid2fd((intptr_t)uuid));
+  }
+  return;
+postpone:
+  if (arg2) {
+    /* the event is being forced, so force rescheduling */
+    fio_defer(deferred_on_data, (void *)uuid, (void *)1);
+  } else {
+    /* the protocol was locked, so there might not be any need for the event */
+    fio_poll_add_read(fio_uuid2fd((intptr_t)uuid));
+  }
+  return;
+}
+
+static void deferred_ping(void *arg, void *arg2) {
+  if (!uuid_data(arg).protocol ||
+      (uuid_data(arg).timeout &&
+       (uuid_data(arg).timeout >
+        (fio_data->last_cycle.tv_sec - uuid_data(arg).active)))) {
+    return;
+  }
+  fio_protocol_s *pr = protocol_try_lock(fio_uuid2fd(arg), FIO_PR_LOCK_WRITE);
+  if (!pr)
+    goto postpone;
+  pr->ping((intptr_t)arg, pr);
+  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+  return;
+postpone:
+  fio_defer(deferred_ping, arg, NULL);
+  (void)arg2;
+}
+
+/* *****************************************************************************
+Forcing / Suspending IO events
+***************************************************************************** */
+
+void fio_force_event(intptr_t uuid, enum fio_io_event ev) {
+  switch (ev) {
+  case FIO_EVENT_ON_DATA:
+    fio_trylock(&uuid_data(uuid).scheduled);
+    fio_defer(deferred_on_data, (void *)uuid, (void *)1);
+    break;
+  case FIO_EVENT_ON_TIMEOUT:
+    fio_defer(deferred_ping, (void *)uuid, NULL);
+    break;
+  case FIO_EVENT_ON_READY:
+    fio_defer(deferred_on_ready, (void *)uuid, NULL);
+    break;
+  }
+}
+
+void fio_suspend(intptr_t uuid) {
+  if (uuid_is_valid(uuid))
+    fio_trylock(&uuid_data(uuid).scheduled);
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+                               IO Socket Layer
+
+                     Read / Write / Accept / Connect / etc'
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+Internal socket initialization functions
+***************************************************************************** */
+
+/**
+Sets a socket to non blocking state.
+
+This function is called automatically for the new socket, when using
+`fio_accept` or `fio_connect`.
+*/
+int fio_set_non_block(int fd) {
+/* If they have O_NONBLOCK, use the Posix way to do it */
+#if defined(O_NONBLOCK)
+  /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
+  int flags;
+  if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+    flags = 0;
+  // printf("flags initial value was %d\n", flags);
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#elif defined(FIONBIO)
+  /* Otherwise, use the old way of doing it */
+  static int flags = 1;
+  return ioctl(fd, FIONBIO, &flags);
+#else
+#error No functions / argumnet macros for non-blocking sockets.
+#endif
+}
+
+static void fio_tcp_addr_cpy(int fd, int family, struct sockaddr *addrinfo) {
+  if (family != AF_INET && family != AF_INET6) {
+    fprintf(stderr, "FAMILY ERROR!\n");
+  }
+  const char *result =
+      inet_ntop(family,
+                family == AF_INET
+                    ? (void *)&(((struct sockaddr_in *)addrinfo)->sin_addr)
+                    : (void *)&(((struct sockaddr_in6 *)addrinfo)->sin6_addr),
+                (char *)fd_data(fd).addr, sizeof(fd_data(fd).addr));
+  if (result) {
+    fd_data(fd).addr_len = strlen((char *)fd_data(fd).addr);
+  } else {
+    fd_data(fd).addr_len = 0;
+    fd_data(fd).addr[0] = 0;
+  }
+}
+
+/**
+ * `fio_accept` accepts a new socket connection from a server socket - see the
+ * server flag on `fio_socket`.
+ *
+ * NOTE: this function does NOT attach the socket to the IO reactor -see
+ * `fio_attach`.
+ */
+intptr_t fio_accept(intptr_t srv_uuid) {
+  struct sockaddr_in6 addrinfo[2]; /* grab a slice of stack (aligned) */
+  socklen_t addrlen = sizeof(addrinfo);
+  int client;
+#ifdef SOCK_NONBLOCK
+  client = accept4(fio_uuid2fd(srv_uuid), (struct sockaddr *)addrinfo, &addrlen,
+                   SOCK_NONBLOCK);
+  if (client <= 0)
+    return -1;
+#else
+  client = accept(fio_uuid2fd(srv_uuid), (struct sockaddr *)addrinfo, &addrlen);
+  if (client <= 0)
+    return -1;
+  if (fio_set_non_block(client) == -1) {
+    close(client);
+    return -1;
+  }
+#endif
+  // avoid the TCP delay algorithm.
+  {
+    int optval = 1;
+    setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
+  }
+  // handle socket buffers.
+  {
+    int optval = 0;
+    socklen_t size = (socklen_t)sizeof(optval);
+    if (!getsockopt(client, SOL_SOCKET, SO_SNDBUF, &optval, &size) &&
+        optval <= 131072) {
+      optval = 131072;
+      setsockopt(client, SOL_SOCKET, SO_SNDBUF, &optval, sizeof(optval));
+      optval = 131072;
+      setsockopt(client, SOL_SOCKET, SO_RCVBUF, &optval, sizeof(optval));
+    }
+  }
+
+  fio_lock(&fd_data(client).protocol_lock);
+  fio_clear_fd(client, 1);
+  fio_unlock(&fd_data(client).protocol_lock);
+  /* copy peer address */
+  if (((struct sockaddr *)addrinfo)->sa_family == AF_UNIX) {
+    fd_data(client).addr_len = uuid_data(srv_uuid).addr_len;
+    if (uuid_data(srv_uuid).addr_len) {
+      memcpy(fd_data(client).addr, uuid_data(srv_uuid).addr,
+             uuid_data(srv_uuid).addr_len + 1);
+    }
+  } else {
+    fio_tcp_addr_cpy(client, ((struct sockaddr *)addrinfo)->sa_family,
+                     (struct sockaddr *)addrinfo);
+  }
+
+  return fd2uuid(client);
+}
+
+/* Creates a Unix socket - returning it's uuid (or -1) */
+static intptr_t fio_unix_socket(const char *address, uint8_t server) {
+  /* Unix socket */
+  if (!address) {
+    errno = EINVAL;
+    fprintf(stderr,
+            "ERROR: (fio) a Unix socket requires a valid address."
+            "             Specify port for TCP/IP socket or change address.\n");
+    return -1;
+  }
+  struct sockaddr_un addr = {0};
+  size_t addr_len = strlen(address);
+  if (addr_len >= sizeof(addr.sun_path)) {
+    fprintf(stderr, "ERROR: (fio) a Unix socket address too long.\n");
+    errno = ENAMETOOLONG;
+    return -1;
+  }
+  addr.sun_family = AF_UNIX;
+  memcpy(addr.sun_path, address, addr_len + 1); /* copy the NUL byte. */
+#if defined(__APPLE__)
+  addr.sun_len = addr_len;
+#endif
+  // get the file descriptor
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd == -1) {
+    return -1;
+  }
+  if (fio_set_non_block(fd) == -1) {
+    close(fd);
+    return -1;
+  }
+  if (server) {
+    unlink(addr.sun_path);
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+      close(fd);
+      return -1;
+    }
+    if (listen(fd, SOMAXCONN) < 0) {
+      // perror("couldn't start listening");
+      close(fd);
+      return -1;
+    }
+    /* chmod for foriegn connections */
+    fchmod(fd, 0777);
+  } else {
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1 &&
+        errno != EINPROGRESS) {
+      close(fd);
+      return -1;
+    }
+  }
+  fio_lock(&fd_data(fd).protocol_lock);
+  fio_clear_fd(fd, 1);
+  fio_unlock(&fd_data(fd).protocol_lock);
+  if (addr_len < sizeof(fd_data(fd).addr)) {
+    memcpy(fd_data(fd).addr, address, addr_len + 1); /* copy the NUL byte. */
+    fd_data(fd).addr_len = addr_len;
+  }
+  return fd2uuid(fd);
+}
+
+/* Creates a TCP/IP socket - returning it's uuid (or -1) */
+static intptr_t fio_tcp_socket(const char *address, const char *port,
+                               uint8_t server) {
+  /* TCP/IP socket */
+  // setup the address
+  struct addrinfo hints = {0};
+  struct addrinfo *addrinfo;       // will point to the results
+  memset(&hints, 0, sizeof hints); // make sure the struct is empty
+  hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
+  hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+  hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
+  if (getaddrinfo(address, port, &hints, &addrinfo)) {
+    // perror("addr err");
+    return -1;
+  }
+  // get the file descriptor
+  int fd =
+      socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
+  if (fd <= 0) {
+    freeaddrinfo(addrinfo);
+    return -1;
+  }
+  // make sure the socket is non-blocking
+  if (fio_set_non_block(fd) < 0) {
+    freeaddrinfo(addrinfo);
+    close(fd);
+    return -1;
+  }
+  if (server) {
+    {
+      // avoid the "address taken"
+      int optval = 1;
+      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    }
+    // bind the address to the socket
+    int bound = 0;
+    for (struct addrinfo *i = addrinfo; i != NULL; i = i->ai_next) {
+      if (!bind(fd, i->ai_addr, i->ai_addrlen))
+        bound = 1;
+    }
+    if (!bound) {
+      // perror("bind err");
+      freeaddrinfo(addrinfo);
+      close(fd);
+      return -1;
+    }
+#ifdef TCP_FASTOPEN
+    {
+      // support TCP Fast Open when available
+      int optval = 128;
+      setsockopt(fd, addrinfo->ai_protocol, TCP_FASTOPEN, &optval,
+                 sizeof(optval));
+    }
+#endif
+    if (listen(fd, SOMAXCONN) < 0) {
+      freeaddrinfo(addrinfo);
+      close(fd);
+      return -1;
+    }
+  } else {
+    int one = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    errno = 0;
+    for (struct addrinfo *i = addrinfo; i; i = i->ai_next) {
+      if (connect(fd, i->ai_addr, i->ai_addrlen) == 0 || errno == EINPROGRESS)
+        goto socket_okay;
+    }
+    freeaddrinfo(addrinfo);
+    close(fd);
+    return -1;
+  }
+socket_okay:
+  fio_lock(&fd_data(fd).protocol_lock);
+  fio_clear_fd(fd, 1);
+  fio_unlock(&fd_data(fd).protocol_lock);
+  fio_tcp_addr_cpy(fd, addrinfo->ai_family, (void *)addrinfo);
+  freeaddrinfo(addrinfo);
+  return fd2uuid(fd);
+}
+
+/* PUBLIC API: opens a server or client socket */
+intptr_t fio_socket(const char *address, const char *port, uint8_t server) {
+  intptr_t uuid;
+  if (!port || *port == 0 || (port[0] == '0' && port[1] == 0)) {
+    do {
+      errno = 0;
+      uuid = fio_unix_socket(address, server);
+    } while (errno == EINTR);
+  } else {
+    do {
+      errno = 0;
+      uuid = fio_tcp_socket(address, port, server);
+    } while (errno == EINTR);
+  }
+  return uuid;
+}
+
+/* *****************************************************************************
+Internal socket flushing related functions
+***************************************************************************** */
+
+#ifndef BUFFER_FILE_READ_SIZE
+#define BUFFER_FILE_READ_SIZE 49152
+#endif
+
+#ifndef USE_SENDFILE
+
+#if defined(__linux__) /* linux sendfile works  */
+#include <sys/sendfile.h>
+#define USE_SENDFILE 1
+#elif defined(__unix__) /* BSD sendfile should work, but isn't tested */
+#include <sys/uio.h>
+#define USE_SENDFILE 1
+#elif defined(__APPLE__) /* Is the apple sendfile still broken? */
+#include <sys/uio.h>
+#define USE_SENDFILE 1
+#else /* sendfile might not be available - always set to 0 */
+#define USE_SENDFILE 0
+#endif
+
+#endif
+
+static void fio_sock_perform_close_fd(intptr_t fd) { close(fd); }
+
+static inline void fio_sock_packet_rotate_unsafe(uintptr_t fd) {
+  fio_packet_s *packet = fd_data(fd).packet;
+  fd_data(fd).packet = packet->next;
+  if (!packet->next) {
+    fd_data(fd).packet_last = &fd_data(fd).packet;
+    fd_data(fd).packet_count = 0;
+  } else if (&packet->next == fd_data(fd).packet_last) {
+    fd_data(fd).packet_last = &fd_data(fd).packet;
+    fio_atomic_sub(&fd_data(fd).packet_count, 1);
+  }
+  fio_packet_free(packet);
+}
+
+static int fio_sock_write_buffer(int fd, fio_packet_s *packet) {
+  int written = fd_data(fd).rw_hooks->write(
+      fd2uuid(fd), fd_data(fd).rw_udata,
+      ((uint8_t *)packet->data.buffer + packet->offset), packet->length);
+  if (written > 0) {
+    packet->length -= written;
+    packet->offset += written;
+    if (!packet->length)
+      fio_sock_packet_rotate_unsafe(fd);
+  }
+  return written;
+}
+
+static int fio_sock_write_from_fd(int fd, fio_packet_s *packet) {
+  ssize_t asked = 0;
+  ssize_t sent = 0;
+  ssize_t total = 0;
+  char buff[BUFFER_FILE_READ_SIZE];
+  do {
+    packet->offset += sent;
+    packet->length -= sent;
+  retry:
+    asked = (packet->length < BUFFER_FILE_READ_SIZE)
+                ? pread(packet->data.fd, buff, packet->length, packet->offset)
+                : pread(packet->data.fd, buff, BUFFER_FILE_READ_SIZE,
+                        packet->offset);
+    if (asked <= 0)
+      goto read_error;
+    sent = fd_data(fd).rw_hooks->write(fd2uuid(fd), fd_data(fd).rw_udata, buff,
+                                       asked);
+  } while (sent == asked && packet->length);
+  if (sent >= 0) {
+    packet->offset += sent;
+    packet->length -= sent;
+    total += sent;
+    if (!packet->length) {
+      fio_sock_packet_rotate_unsafe(fd);
+      return 1;
+    }
+  }
+  return total;
+
+read_error:
+  if (sent == 0) {
+    fio_sock_packet_rotate_unsafe(fd);
+    return 1;
+  }
+  if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+    goto retry;
+  return -1;
+}
+
+#if USE_SENDFILE && defined(__linux__) /* linux sendfile API */
+
+static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
+  ssize_t sent;
+  sent = sendfile64(fd, packet->data.fd, &packet->offset, packet->length);
+  if (sent < 0)
+    return -1;
+  packet->length -= sent;
+  if (!packet->length)
+    fio_sock_packet_rotate_unsafe(fd);
+  return sent;
+}
+
+#elif USE_SENDFILE &&                                                          \
+    (defined(__APPLE__) || defined(__unix__)) /* BSD / Apple API */
+
+static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
+  off_t act_sent = 0;
+  ssize_t ret = 0;
+  while (packet->length) {
+    act_sent = packet->length;
+#if defined(__APPLE__)
+    ret = sendfile(packet->data.fd, fd, packet->offset, &act_sent, NULL, 0);
+#else
+    ret = sendfile(packet->data.fd, fd, packet->offset, (size_t)act_sent, NULL,
+                   &act_sent, 0);
+#endif
+    if (ret < 0)
+      goto error;
+    packet->length -= act_sent;
+    packet->offset += act_sent;
+  }
+  fio_sock_packet_rotate_unsafe(fd);
+  return act_sent;
+error:
+  if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+    packet->length -= act_sent;
+    packet->offset += act_sent;
+  }
+  return -1;
+}
+
+#else
+static int (*sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
+    sock_write_from_fd;
+
+#endif
+
+/* *****************************************************************************
+Socket / Connection Functions
+***************************************************************************** */
+
+/**
+ * Returns the information available about the socket's peer address.
+ *
+ * If no information is available, the struct will be initialized with zero
+ * (`addr == NULL`).
+ * The information is only available when the socket was accepted using
+ * `fio_accept` or opened using `fio_connect`.
+ */
+
+/**
+ * `fio_read` attempts to read up to count bytes from the socket into the
+ * buffer starting at `buffer`.
+ *
+ * `fio_read`'s return values are wildly different then the native return
+ * values and they aim at making far simpler sense.
+ *
+ * `fio_read` returns the number of bytes read (0 is a valid return value which
+ * simply means that no bytes were read from the buffer).
+ *
+ * On a fatal connection error that leads to the connection being closed (or if
+ * the connection is already closed), `fio_read` returns -1.
+ *
+ * The value 0 is the valid value indicating no data was read.
+ *
+ * Data might be available in the kernel's buffer while it is not available to
+ * be read using `fio_read` (i.e., when using a transport layer, such as TLS).
+ */
+ssize_t fio_read(intptr_t uuid, void *buffer, size_t count) {
+  if (!uuid_is_valid(uuid) || !uuid_data(uuid).open) {
+    errno = EBADF;
+    return -1;
+  }
+  if (count == 0)
+    return 0;
+  fio_lock(&uuid_data(uuid).sock_lock);
+  ssize_t (*rw_read)(intptr_t, void *, void *, size_t) =
+      uuid_data(uuid).rw_hooks->read;
+  void *udata = uuid_data(uuid).rw_udata;
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  int old_errno = errno;
+  ssize_t ret;
+retry_int:
+  ret = rw_read(uuid, udata, buffer, count);
+  if (ret > 0) {
+    fio_touch(uuid);
+    return ret;
+  }
+  if (ret < 0 && errno == EINTR)
+    goto retry_int;
+  if (ret < 0 &&
+      (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOTCONN)) {
+    errno = old_errno;
+    return 0;
+  }
+  fio_force_close(uuid);
+  return -1;
+}
+
+/**
+ * `fio_write2_fn` is the actual function behind the macro `fio_write2`.
+ */
+ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
+  if (!uuid_is_valid(uuid))
+    goto error;
+
+  /* create packet */
+  fio_packet_s *packet = fio_packet_alloc();
+  *packet = (fio_packet_s){
+      .length = options.length,
+      .offset = options.offset,
+      .data.buffer = (void *)options.data.buffer,
+  };
+  if (options.is_fd) {
+    packet->write_func = (uuid_data(uuid).rw_hooks == &FIO_DEFAULT_RW_HOOKS)
+                             ? fio_sock_sendfile_from_fd
+                             : fio_sock_write_from_fd;
+    packet->dealloc =
+        (options.after.dealloc ? options.after.dealloc
+                               : (void (*)(void *))fio_sock_perform_close_fd);
+  } else {
+    packet->write_func = fio_sock_write_buffer;
+    packet->dealloc = (options.after.dealloc ? options.after.dealloc : free);
+  }
+  /* add packet to outgoing list */
+  fio_lock(&uuid_data(uuid).sock_lock);
+  if (!uuid_is_valid(uuid)) {
+    goto locked_error;
+  }
+  if (options.urgent == 0) {
+    *uuid_data(uuid).packet_last = packet;
+    uuid_data(uuid).packet_last = &packet->next;
+  } else {
+    fio_packet_s **pos = &uuid_data(uuid).packet;
+    if (*pos)
+      pos = &(*pos)->next;
+    packet->next = *pos;
+    *pos = packet;
+    if (!packet->next) {
+      uuid_data(uuid).packet_last = &packet->next;
+    }
+  }
+  fio_unlock(&uuid_data(uuid).sock_lock);
+
+  fio_atomic_add(&uuid_data(uuid).packet_count, 1);
+  fio_poll_add_write(fio_uuid2fd(uuid));
+  return 0;
+locked_error:
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  fio_packet_free(packet);
+  errno = EBADF;
+  return -1;
+error:
+  if (options.after.dealloc) {
+    options.after.dealloc((void *)options.data.buffer);
+  }
+  errno = EBADF;
+  return -1;
+}
+
+/** A noop function for fio_write2 in cases not deallocation is required. */
+void FIO_DEALLOC_NOOP(void *arg) { (void)arg; }
+
+/**
+ * Returns the number of `fio_write` calls that are waiting in the socket's
+ * queue and haven't been processed.
+ */
+size_t fio_pending(intptr_t uuid) {
+  if (!uuid_is_valid(uuid))
+    return 0;
+  return uuid_data(uuid).packet_count;
+}
+
+/**
+ * `fio_close` marks the connection for disconnection once all the data was
+ * sent. The actual disconnection will be managed by the `fio_flush` function.
+ *
+ * `fio_flash` will be automatically scheduled.
+ */
+void fio_close(intptr_t uuid) {
+  if (!uuid_is_valid(uuid)) {
+    errno = EBADF;
+    return;
+  }
+  if (uuid_data(uuid).packet) {
+    uuid_data(uuid).close = 1;
+    fio_poll_add_write(fio_uuid2fd(uuid));
+    return;
+  }
+  fio_force_close(uuid);
+}
+
+/**
+ * `fio_force_close` closes the connection immediately, without adhering to any
+ * protocol restrictions and without sending any remaining data in the
+ * connection buffer.
+ */
+void fio_force_close(intptr_t uuid) {
+  if (!uuid_is_valid(uuid)) {
+    errno = EBADF;
+    return;
+  }
+  /* clear away any packets in case we want to cut the connection short */
+  fio_packet_s *packet;
+  fio_lock(&uuid_data(uuid).sock_lock);
+  packet = uuid_data(uuid).packet;
+  uuid_data(uuid).packet = NULL;
+  uuid_data(uuid).packet_last = &uuid_data(uuid).packet;
+  uuid_data(uuid).sent = 0;
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  while (packet) {
+    fio_packet_s *tmp = packet;
+    packet = packet->next;
+    fio_packet_free(tmp);
+  }
+  /* check for rw-hooks termination packet */
+  if (uuid_data(uuid).open &&
+      uuid_data(uuid).rw_hooks->close(uuid, uuid_data(uuid).rw_udata)) {
+    fio_touch(uuid);
+    fio_poll_add_write(fio_uuid2fd(uuid));
+    return;
+  }
+  fio_lock(&uuid_data(uuid).protocol_lock);
+  fio_clear_fd(fio_uuid2fd(uuid), 0);
+  fio_unlock(&uuid_data(uuid).protocol_lock);
+  close(fio_uuid2fd(uuid)); /* again? yes, the hooks might be unreliable */
+#if FIO_ENGINE_POLL
+  fio_poll_remove_fd(fio_uuid2fd(uuid));
+#endif
+  if (fio_data->connection_count)
+    fio_atomic_sub(&fio_data->connection_count, 1);
+}
+
+/**
+ * `fio_flush` attempts to write any remaining data in the internal buffer to
+ * the underlying file descriptor and closes the underlying file descriptor once
+ * if it's marked for closure (and all the data was sent).
+ *
+ * Return values: 1 will be returned if data remains in the buffer. 0
+ * will be returned if the buffer was fully drained. -1 will be returned on an
+ * error or when the connection is closed.
+ */
+ssize_t fio_flush(intptr_t uuid) {
+  if (!uuid_is_valid(uuid)) {
+    errno = EBADF;
+    return -1;
+  }
+  ssize_t flushed;
+  int tmp;
+  /* start critical section */
+  if (fio_trylock(&uuid_data(uuid).sock_lock))
+    goto would_block;
+
+  flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
+  if (flushed < 0) {
+    goto test_errno;
+  }
+  if (flushed) {
+    goto flushed;
+  }
+
+  if (uuid_data(uuid).packet) {
+    tmp = uuid_data(uuid).packet->write_func(fio_uuid2fd(uuid),
+                                             uuid_data(uuid).packet);
+    if (tmp == 0) {
+      errno = ECONNRESET;
+      fio_unlock(&uuid_data(uuid).sock_lock);
+      goto closed;
+    } else if (tmp < 0) {
+      goto test_errno;
+    }
+  }
+
+  /* end critical section */
+  fio_unlock(&uuid_data(uuid).sock_lock);
+
+  /* test for fio_close marker */
+  if (!uuid_data(uuid).packet && uuid_data(uuid).close)
+    goto closed;
+
+  /* return state */
+  return uuid_data(uuid).open && uuid_data(uuid).packet != NULL;
+
+would_block:
+  errno = EWOULDBLOCK;
+  return -1;
+closed:
+  uuid_data(uuid).close = 1;
+  fio_force_close(uuid);
+  return -1;
+test_errno:
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOTCONN ||
+      errno == EINPROGRESS || errno == ENOSPC || errno == EINTR) {
+    return 1;
+  }
+  return 0;
+
+  return -1;
+flushed:
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  return 1;
+}
+
+/* *****************************************************************************
+Connection Read / Write Hooks, for overriding the system calls
+***************************************************************************** */
+
+static ssize_t fio_hooks_default_read(intptr_t uuid, void *udata, void *buf,
+                                      size_t count) {
+  return read(fio_uuid2fd(uuid), buf, count);
+  (void)(udata);
+}
+static ssize_t fio_hooks_default_write(intptr_t uuid, void *udata,
+                                       const void *buf, size_t count) {
+  return write(fio_uuid2fd(uuid), buf, count);
+  (void)(udata);
+}
+
+static ssize_t fio_hooks_default_close(intptr_t uuid, void *udata) {
+  close(fio_uuid2fd(uuid));
+  return 0;
+  (void)udata;
+}
+
+static ssize_t fio_hooks_default_flush(intptr_t uuid, void *udata) {
+  return 0;
+  (void)(uuid);
+  (void)(udata);
+}
+
+const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS = {
+    .read = fio_hooks_default_read,
+    .write = fio_hooks_default_write,
+    .flush = fio_hooks_default_flush,
+    .close = fio_hooks_default_close,
+};
+/** Sets a socket hook state (a pointer to the struct). */
+int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
+  if (fio_is_closed(uuid))
+    return -1;
+  if (!rw_hooks->read)
+    rw_hooks->read = fio_hooks_default_read;
+  if (!rw_hooks->write)
+    rw_hooks->write = fio_hooks_default_write;
+  if (!rw_hooks->flush)
+    rw_hooks->flush = fio_hooks_default_flush;
+  if (!rw_hooks->close)
+    rw_hooks->close = fio_hooks_default_close;
+  uuid = fio_uuid2fd(uuid);
+  fio_lock(&fd_data(uuid).sock_lock);
+  fd_data(uuid).rw_hooks = rw_hooks;
+  fd_data(uuid).rw_udata = udata;
+  fio_unlock(&fd_data(uuid).sock_lock);
+  return 0;
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+                           IO Protocols and Attachment
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+Setting the protocol
+***************************************************************************** */
+
+/* managing the protocol pointer array and the `on_close` callback */
+static int fio_attach_task(void *uuid_, void *protocol_) {
+  intptr_t uuid = (intptr_t)uuid_;
+  fio_protocol_s *protocol = (fio_protocol_s *)protocol_;
+  if (protocol) {
+    if (!protocol->on_close) {
+      protocol->on_close = mock_on_ev;
+    }
+    if (!protocol->on_data) {
+      protocol->on_data = mock_on_data;
+    }
+    if (!protocol->on_ready) {
+      protocol->on_ready = mock_on_ev;
+    }
+    if (!protocol->ping) {
+      protocol->ping = mock_ping;
+    }
+    if (!protocol->on_shutdown) {
+      protocol->on_shutdown = mock_on_shutdown;
+    }
+    prt_meta(protocol) = (protocol_metadata_s){.rsv = 0};
+  }
+  fio_lock(&uuid_data(uuid).protocol_lock);
+  if (!uuid_is_valid(uuid)) {
+    goto invalid_uuid;
+  }
+  fio_protocol_s *old_pr = uuid_data(uuid).protocol;
+  uuid_data(uuid).open = 1;
+  uuid_data(uuid).protocol = protocol;
+  uuid_data(uuid).active = fio_data->last_cycle.tv_sec;
+  fio_unlock(&uuid_data(uuid).protocol_lock);
+  if (old_pr) {
+    fio_defer(deferred_on_close, (void *)uuid, old_pr);
+  } else if (protocol) {
+    fio_poll_add(fio_uuid2fd(uuid));
+  }
+  return 0;
+
+invalid_uuid:
+  fio_unlock(&uuid_data(uuid).protocol_lock);
+  if (protocol)
+    fio_defer(deferred_on_close, (void *)uuid, protocol);
+  if (uuid == -1)
+    errno = EBADF;
+  else
+    errno = ENOTCONN;
+  return -1;
+}
+
+/** Attaches (or updates) a protocol object to a socket UUID.
+ * Returns -1 on error and 0 on success.
+ */
+void fio_attach(intptr_t uuid, fio_protocol_s *protocol) {
+  fio_attach_task((void *)uuid, protocol);
+}
+/** Attaches (or updates) a protocol object to a socket UUID.
+ * Returns -1 on error and 0 on success.
+ */
+void fio_attach_fd(int fd, fio_protocol_s *protocol) {
+  fio_attach_task((void *)fio_fd2uuid(fd), protocol);
+}
+
+/** Sets a timeout for a specific connection (only when running and valid). */
+void fio_set_timeout(intptr_t uuid, uint8_t timeout) {
+  if (uuid_is_valid(uuid)) {
+    uuid_data(uuid).active = fio_data->last_cycle.tv_sec;
+    uuid_data(uuid).timeout = timeout;
+  }
+}
+/** Gets a timeout for a specific connection. Returns 0 if there's no set
+ * timeout or the connection is inactive. */
+uint8_t fio_get_timeout(intptr_t uuid) { return uuid_data(uuid).timeout; }
+
+/* *****************************************************************************
+Core Callbacks for forking / starting up / cleaning up
+***************************************************************************** */
+
+typedef struct {
+  fio_ls_embd_s node;
+  void (*func)(void *);
+  void *arg;
+} callback_data_s;
+
+typedef struct {
+  fio_lock_i lock;
+  fio_ls_embd_s callbacks;
+} callback_collection_s;
+
+static callback_collection_s callback_collection[FIO_CALL_NEVER + 1];
+
+static inline void fio_state_callback_ensure(callback_collection_s *c) {
+  if (c->callbacks.next)
+    return;
+  c->callbacks = (fio_ls_embd_s)FIO_LS_INIT(c->callbacks);
+}
+
+/** Adds a callback to the list of callbacks to be called for the event. */
+void fio_state_callback_add(callback_type_e c_type, void (*func)(void *),
+                            void *arg) {
+  if (c_type == FIO_CALL_ON_INITIALIZE && fio_data) {
+    func(arg);
+    return;
+  }
+  if (!func || (int)c_type < 0 || c_type > FIO_CALL_NEVER)
+    return;
+  fio_lock(&callback_collection[c_type].lock);
+  fio_state_callback_ensure(&callback_collection[c_type]);
+  callback_data_s *tmp = malloc(sizeof(*tmp));
+  FIO_ASSERT_ALLOC(tmp);
+  *tmp = (callback_data_s){.func = func, .arg = arg};
+  fio_ls_embd_push(&callback_collection[c_type].callbacks, &tmp->node);
+  fio_unlock(&callback_collection[c_type].lock);
+}
+
+/** Removes a callback from the list of callbacks to be called for the event. */
+int fio_state_callback_remove(callback_type_e c_type, void (*func)(void *),
+                              void *arg) {
+  if ((int)c_type < 0 || c_type > FIO_CALL_NEVER)
+    return -1;
+  fio_lock(&callback_collection[c_type].lock);
+  FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
+    callback_data_s *tmp = (FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
+    if (tmp->func == func && tmp->arg == arg) {
+      fio_ls_embd_remove(&tmp->node);
+      free(tmp);
+      goto success;
+    }
+  }
+  fio_unlock(&callback_collection[c_type].lock);
+  return -1;
+success:
+  fio_unlock(&callback_collection[c_type].lock);
+  return -0;
+}
+
+/** Forces all the existing callbacks to run, as if the event occured. */
+void fio_state_callback_force(callback_type_e c_type) {
+  if ((int)c_type < 0 || c_type > FIO_CALL_NEVER)
+    return;
+  /* copy collection */
+  fio_ls_embd_s copy = FIO_LS_INIT(copy);
+  fio_lock(&callback_collection[c_type].lock);
+  fio_state_callback_ensure(&callback_collection[c_type]);
+  FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
+    callback_data_s *tmp = fio_malloc(sizeof(*tmp));
+    FIO_ASSERT_ALLOC(tmp);
+    *tmp = *(FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
+    fio_ls_embd_push(&copy, &tmp->node);
+  }
+  fio_unlock(&callback_collection[c_type].lock);
+  /* run callbacks + free data */
+  while (fio_ls_embd_any(&copy)) {
+    callback_data_s *tmp =
+        FIO_LS_EMBD_OBJ(callback_data_s, node, fio_ls_embd_shift(&copy));
+    if (tmp->func) {
+      tmp->func(tmp->arg);
+    }
+    fio_free(tmp);
+  }
+}
+
+/** Clears all the existing callbacks for the event. */
+void fio_state_callback_clear(callback_type_e c_type) {
+  if ((int)c_type < 0 || c_type > FIO_CALL_NEVER)
+    return;
+  fio_lock(&callback_collection[c_type].lock);
+  fio_state_callback_ensure(&callback_collection[c_type]);
+  while (fio_ls_embd_any(&callback_collection[c_type].callbacks)) {
+    callback_data_s *tmp = FIO_LS_EMBD_OBJ(
+        callback_data_s, node,
+        fio_ls_embd_shift(&callback_collection[c_type].callbacks));
+    free(tmp);
+  }
+  fio_unlock(&callback_collection[c_type].lock);
+}
+
+void fio_state_callback_on_fork(void) {
+  for (size_t i = 0; i < (FIO_CALL_NEVER + 1); ++i) {
+    callback_collection[i].lock = FIO_LOCK_INIT;
+  }
+}
+void fio_state_callback_clear_all(void) {
+  for (size_t i = 0; i < (FIO_CALL_NEVER + 1); ++i) {
+    fio_state_callback_clear((callback_type_e)i);
+  }
+}
+
+/* *****************************************************************************
+Initialize the library
+***************************************************************************** */
+
+static void fio_malloc_after_fork(void);
+static void fio_pubsub_on_fork(void);
+
+static void fio_mem_destroy(void);
+static void __attribute__((destructor)) fio_lib_destroy(void) {
+  fio_state_callback_force(FIO_CALL_AT_EXIT);
+  fio_state_callback_clear_all();
+  fio_defer_perform();
+  fio_poll_close();
+  fio_timer_clear_all();
+  fio_free(fio_data);
+  /* memory library destruction must be last */
+  fio_mem_destroy();
+#if DEBUG
+  fprintf(stderr, "* (%d) facil.io resources released, exit complete.\n",
+          getpid());
+#endif
+}
+
+/* Called within a child proccess after it starts. */
+static void fio_on_fork(void) {
+  fio_data->lock = FIO_LOCK_INIT;
+  fio_defer_on_fork();
+  fio_malloc_after_fork();
+  fio_poll_init();
+  fio_state_callback_on_fork();
+  fio_pubsub_on_fork();
+  fio_timer_lock = FIO_LOCK_INIT;
+  fio_max_fd_shrink();
+  const size_t limit = fio_data->capa;
+  for (size_t i = 0; i < limit; ++i) {
+    fd_data(i).sock_lock = FIO_LOCK_INIT;
+    fd_data(i).protocol_lock = FIO_LOCK_INIT;
+    if (fd_data(i).protocol) {
+      fd_data(i).protocol->rsv = 0;
+      fio_force_close(fd2uuid(i));
+    }
+  }
+  uint16_t old_active = fio_data->active;
+  fio_data->active = 0;
+  fio_defer_perform();
+  fio_data->active = old_active;
+  fio_data->is_worker = 1;
+}
+
+static void fio_mem_init(void);
+static void fio_cluster_init(void);
+static void fio_pubsub_initialize(void);
+static void __attribute__((constructor)) fio_lib_init(void) {
+  /* initialize memory allocator */
+  fio_mem_init();
+  /* initialize polling engine */
+  fio_poll_init();
+  /* initialize the cluster engine */
+  fio_pubsub_initialize();
+  /* detect socket capacity */
+  ssize_t capa = 0;
+  {
+#ifdef _SC_OPEN_MAX
+    capa = sysconf(_SC_OPEN_MAX);
+#elif defined(FOPEN_MAX)
+    capa = FOPEN_MAX;
+#endif
+    // try to maximize limits - collect max and set to max
+    struct rlimit rlim = {.rlim_max = 0};
+    if (getrlimit(RLIMIT_NOFILE, &rlim) == -1) {
+      fprintf(stderr, "WARNING: `getrlimit` failed in `sock_max_capacity`.\n");
+    } else {
+      // #if defined(__APPLE__) /* Apple's getrlimit is broken. */
+      //     rlim.rlim_cur = rlim.rlim_max >= FOPEN_MAX ? FOPEN_MAX :
+      //     rlim.rlim_max;
+      // #else
+      rlim.rlim_cur = rlim.rlim_max;
+      // #endif
+
+      if (rlim.rlim_cur > FIO_MAX_SOCK_CAPACITY)
+        rlim.rlim_cur = FIO_MAX_SOCK_CAPACITY;
+
+      if (!setrlimit(RLIMIT_NOFILE, &rlim))
+        getrlimit(RLIMIT_NOFILE, &rlim);
+      capa = rlim.rlim_cur;
+    }
+#if DEBUG
+#if FIO_ENGINE_POLL
+    fprintf(stderr,
+            "facil.io " FIO_VERSION_STRING " capacity initialization:\n"
+            "*    Meximum open files %zu out of %zu\n"
+            "*    Allocating %zu bytes for state handling.\n"
+            "*    %zu bytes per connection + %zu for state handling.\n",
+            capa, (size_t)rlim.rlim_max,
+            (sizeof(*fio_data) + (capa * (sizeof(*fio_data->poll))) +
+             (capa * (sizeof(*fio_data->info)))),
+            (sizeof(*fio_data->poll) + sizeof(*fio_data->info)),
+            sizeof(*fio_data));
+#else
+    fprintf(stderr,
+            "facil.io " FIO_VERSION_STRING " capacity initialization:\n"
+            "*    Meximum open files %zu out of %zu\n"
+            "*    Allocating %zu bytes for state handling.\n"
+            "*    %zu bytes per connection + %zu for state handling.\n",
+            capa, (size_t)rlim.rlim_max,
+            (sizeof(*fio_data) + (capa * (sizeof(*fio_data->info)))),
+            (sizeof(*fio_data->info)), sizeof(*fio_data));
+#endif
+#endif
+  }
+
+#if FIO_ENGINE_POLL
+  /* allocate and initialize main data structures by detected capacity */
+  fio_data = fio_mmap(sizeof(*fio_data) + (capa * (sizeof(*fio_data->poll))) +
+                      (capa * (sizeof(*fio_data->info))));
+  FIO_ASSERT_ALLOC(fio_data);
+  fio_data->capa = capa;
+  fio_data->poll =
+      (void *)((uintptr_t)(fio_data + 1) + (sizeof(fio_data->info[0]) * capa));
+#else
+  /* allocate and initialize main data structures by detected capacity */
+  fio_data = fio_mmap(sizeof(*fio_data) + (capa * (sizeof(*fio_data->info))));
+  FIO_ASSERT_ALLOC(fio_data);
+  fio_data->capa = capa;
+#endif
+  fio_data->parent = getpid();
+  fio_data->connection_count = 0;
+
+  for (ssize_t i = 0; i < capa; ++i) {
+    fio_clear_fd(i, 0);
+#if FIO_ENGINE_POLL
+    fio_data->poll[i].fd = -1;
+#endif
+  }
+
+  /* call initialization callbacks */
+  fio_state_callback_force(FIO_CALL_ON_INITIALIZE);
+  fio_state_callback_clear(FIO_CALL_ON_INITIALIZE);
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+                             Running the IO Reactor
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+static void fio_cluster_signal_children(void);
+
+static void fio_review_timeout(void *arg, void *ignr) {
+  // TODO: Fix review for connections with no protocol?
+  (void)ignr;
+  fio_protocol_s *tmp;
+  time_t review = fio_data->last_cycle.tv_sec;
+  intptr_t fd = (intptr_t)arg;
+
+  uint16_t timeout = fd_data(fd).timeout;
+  if (!timeout)
+    timeout = 300; /* enforced timout settings */
+
+  if (!fd_data(fd).protocol || (fd_data(fd).active + timeout >= review))
+    goto finish;
+  tmp = protocol_try_lock(fd, FIO_PR_LOCK_STATE);
+  if (!tmp)
+    goto reschedule;
+  if (prt_meta(tmp).locks[FIO_PR_LOCK_TASK] ||
+      prt_meta(tmp).locks[FIO_PR_LOCK_WRITE])
+    goto unlock;
+  fio_defer(deferred_ping, (void *)fio_fd2uuid((int)fd), NULL);
+unlock:
+  protocol_unlock(tmp, FIO_PR_LOCK_STATE);
+finish:
+  do {
+    fd++;
+  } while (!fd_data(fd).protocol && (fd <= fio_data->max_protocol_fd));
+
+  if (fio_data->max_protocol_fd <= fd) {
+    fio_data->need_review = 1;
+    return;
+  }
+reschedule:
+  fio_defer(fio_review_timeout, (void *)fd, NULL);
+}
+
+static void fio_perform_idle(void *arg, void *ignr) {
+  fio_state_callback_force(FIO_CALL_ON_IDLE);
+  (void)arg;
+  (void)ignr;
+}
+
+/* reactor pattern cycling - common actions */
+static void fio_cycle_schedule_events(void) {
+  static int idle = 0;
+  static time_t last_to_review = 0;
+  fio_mark_time();
+  fio_timer_perform();
+  fio_max_fd_shrink();
+  if (fio_signal_children_flag) {
+    fio_signal_children_flag = 0;
+    fio_cluster_signal_children();
+  }
+  int events = fio_poll();
+  if (events < 0) {
+    return;
+  }
+  if (events > 0) {
+    idle = 1;
+  } else {
+    /* events == 0 */
+    if (idle) {
+      fio_defer(fio_perform_idle, NULL, NULL);
+      idle = 0;
+    }
+  }
+  if (fio_data->need_review && fio_data->last_cycle.tv_sec != last_to_review) {
+    last_to_review = fio_data->last_cycle.tv_sec;
+    fio_data->need_review = 0;
+    fio_defer(fio_review_timeout, (void *)0, NULL);
+  }
+}
+
+/* reactor pattern cycling during cleanup */
+static void fio_cycle_unwind(void *ignr, void *ignr2) {
+  if (fio_data->connection_count) {
+    fio_cycle_schedule_events();
+    fio_defer(fio_cycle_unwind, ignr, ignr2);
+    return;
+  }
+  fio_stop();
+  return;
+}
+
+/* reactor pattern cycling */
+static void fio_cycle(void *ignr, void *ignr2) {
+  fio_cycle_schedule_events();
+  if (fio_data->active) {
+    fio_defer(fio_cycle, ignr, ignr2);
+    return;
+  }
+  return;
+}
+
+/* TODO: fixme */
+static void fio_worker_startup(void) {
+  /* Call the on_start callbacks for worker processes. */
+  if (fio_data->active == 1 || fio_data->is_worker) {
+    fio_state_callback_force(FIO_CALL_ON_START);
+    fio_state_callback_clear(FIO_CALL_ON_START);
+  }
+
+  if (fio_data->active == 1) {
+    /* Single Process - the root is also a worker */
+    fio_data->is_worker = 1;
+  } else if (fio_data->is_worker) {
+    /* Worker Process */
+    if (FIO_PRINT_STATE) {
+      fprintf(stderr, "* %d is running.\n", getpid());
+    }
+  } else {
+    /* Root Process should run in single thread mode */
+    fio_data->threads = 1;
+  }
+
+  /* the cycle task will loop by re-scheduling until it's time to finish */
+  fio_defer(fio_cycle, NULL, NULL);
+
+  /* A single thread doesn't need a pool. */
+  if (fio_data->threads > 1) {
+    fio_defer_thread_pool_join(fio_defer_thread_pool_new(fio_data->threads));
+  } else {
+    fio_defer_perform();
+  }
+}
+
+/* TODO: fixme */
+static void fio_worker_cleanup(void) {
+  /* switch to winding down */
+  if (FIO_PRINT_STATE) {
+    if (fio_data->is_worker)
+      fprintf(stderr, "* (%d) detected exit signal.\n", getpid());
+    else
+      fprintf(stderr, "* Server Detected exit signal.\n");
+  }
+  fio_state_callback_force(FIO_CALL_ON_SHUTDOWN);
+  for (size_t i = 0; i <= fio_data->max_protocol_fd; ++i) {
+    if (fd_data(i).protocol) {
+      fio_defer(deferred_on_shutdown, (void *)fd2uuid(i), NULL);
+    }
+  }
+  fio_defer(fio_cycle_unwind, NULL, NULL);
+  fio_defer_perform();
+  for (size_t i = 0; i <= fio_data->max_protocol_fd; ++i) {
+    if (fd_data(i).protocol || fd_data(i).open) {
+      fio_force_close(fd2uuid(i));
+    }
+  }
+  fio_defer_perform();
+  fio_state_callback_force(FIO_CALL_ON_FINISH);
+  fio_defer_perform();
+  if (!fio_data->is_worker) {
+    kill(0, SIGINT);
+    while (wait(NULL) != -1)
+      ;
+  }
+  fio_defer_perform();
+  if (FIO_PRINT_STATE) {
+    if (fio_data->parent == getpid()) {
+      fprintf(stderr, "\n   ---  Shutdown Complete  ---\n");
+    } else if (FIO_PRINT_STATE) {
+      fprintf(stderr, "* (%d) cleanup complete.\n", getpid());
+    }
+  }
+}
+
+static void fio_sentinel_task(void *arg1, void *arg2);
+static void *fio_sentinel_worker_thread(void *arg) {
+  errno = 0;
+  pid_t child = fio_fork();
+  /* release fork lock. */
+  fio_unlock(&fio_fork_lock);
+  if (child == -1) {
+    perror("FATAL ERROR: couldn't spawn worker.");
+    kill(fio_parent_pid(), SIGINT);
+    fio_stop();
+    return NULL;
+  } else if (child) {
+    int status;
+    waitpid(child, &status, 0);
+#if DEBUG
+    if (fio_data->active) { /* !WIFEXITED(status) || WEXITSTATUS(status) */
+      if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+        fprintf(stderr,
+                "FATAL ERROR: Child worker (%d) crashed. Stopping services in "
+                "DEBUG mode.\n",
+                child);
+        fio_state_callback_force(FIO_CALL_ON_CHILD_CRUSH);
+      } else {
+        fprintf(
+            stderr,
+            "INFO (FATAL): Child worker (%d) shutdown. Stopping services in "
+            "DEBUG mode.\n",
+            child);
+      }
+      kill(0, SIGINT);
+    }
+#else
+    if (fio_data->active) {
+      /* don't call any functions while forking. */
+      fio_lock(&fio_fork_lock);
+      if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+        fprintf(stderr,
+                "ERROR: Child worker (%d) crashed. Respawning worker.\n",
+                child);
+        fio_state_callback_force(FIO_CALL_ON_CHILD_CRUSH);
+      } else {
+        fprintf(stderr,
+                "INFO: Child worker (%d) shutdown. Respawning worker.\n",
+                child);
+      }
+      fio_defer(fio_sentinel_task, NULL, NULL);
+      fio_unlock(&fio_fork_lock);
+    }
+#endif
+  } else {
+    fio_on_fork();
+    fio_state_callback_force(FIO_CALL_AFTER_FORK);
+    fio_state_callback_force(FIO_CALL_IN_CHILD);
+    fio_worker_startup();
+    fio_worker_cleanup();
+    exit(0);
+  }
+  return NULL;
+  (void)arg;
+}
+
+static void fio_sentinel_task(void *arg1, void *arg2) {
+  if (!fio_data->active)
+    return;
+  fio_state_callback_force(FIO_CALL_BEFORE_FORK);
+  fio_lock(&fio_fork_lock); /* will wait for worker thread to release lock. */
+  void *thrd =
+      fio_thread_new(fio_sentinel_worker_thread, (void *)&fio_fork_lock);
+  fio_thread_free(thrd);
+  fio_lock(&fio_fork_lock);   /* will wait for worker thread to release lock. */
+  fio_unlock(&fio_fork_lock); /* release lock for next fork. */
+  fio_state_callback_force(FIO_CALL_AFTER_FORK);
+  (void)arg1;
+  (void)arg2;
+}
+
+FIO_FUNC void fio_start_(void) {} /* marker for SublimeText3 jump feature */
+
+/**
+ * Starts the facil.io event loop. This function will return after facil.io is
+ * done (after shutdown).
+ *
+ * See the `struct fio_start_args` details for any possible named arguments.
+ *
+ * This method blocks the current thread until the server is stopped (when a
+ * SIGINT/SIGTERM is received).
+ */
+void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
+  fio_expected_concurrency(&args.threads, &args.workers);
+  fio_signal_handler_setup();
+
+  fio_data->workers = (uint16_t)args.workers;
+  fio_data->threads = (uint16_t)args.threads;
+  fio_data->active = 1;
+
+  fio_state_callback_force(FIO_CALL_PRE_START);
+
+  if (FIO_PRINT_STATE) {
+    fprintf(stderr,
+            "Server is running %u %s X %u %s with facil.io " FIO_VERSION_STRING
+            " (%s)\n"
+            "* Detected capacity: %d open file limit\n"
+            "* Root pid: %d\n"
+            "* Press ^C to stop\n",
+            fio_data->workers, fio_data->workers > 1 ? "workers" : "worker",
+            fio_data->threads, fio_data->threads > 1 ? "threads" : "thread",
+            fio_engine(), fio_data->capa, fio_data->parent);
+  }
+
+  if (args.workers > 1) {
+    for (int i = 0; i < args.workers && fio_data->active; ++i) {
+      fio_sentinel_task(NULL, NULL);
+    }
+  }
+  fio_worker_startup();
+  fio_worker_cleanup();
+  fio_signal_handler_reset();
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       Converting Numbers to Strings (and back)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+Strings to Numbers
+***************************************************************************** */
+
+/**
+ * A helper function that converts between String data to a signed int64_t.
+ *
+ * Numbers are assumed to be in base 10. Octal (`0###`), Hex (`0x##`/`x##`) and
+ * binary (`0b##`/ `b##`) are recognized as well. For binary Most Significant
+ * Bit must come first.
+ *
+ * The most significant differance between this function and `strtol` (aside of
+ * API design), is the added support for binary representations.
+ */
+int64_t fio_atol(char **pstr) {
+  /* No binary representation in strtol */
+  char *str = *pstr;
+  uint64_t result = 0;
+  uint8_t invert = 0;
+  while (str[0] == '-') {
+    invert ^= 1;
+    ++str;
+  }
+  if (str[0] == 'B' || str[0] == 'b' ||
+      (str[0] == '0' && (str[1] == 'b' || str[1] == 'B'))) {
+    /* base 2 */
+    if (str[0] == '0')
+      str++;
+    str++;
+    while (str[0] == '0' || str[0] == '1') {
+      result = (result << 1) | (str[0] == '1');
+      str++;
+    }
+  } else if (str[0] == 'x' || str[0] == 'X' ||
+             (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
+    /* base 16 */
+    uint8_t tmp;
+    if (str[0] == '0')
+      str++;
+    str++;
+    for (;;) {
+      if (str[0] >= '0' && str[0] <= '9')
+        tmp = str[0] - '0';
+      else if (str[0] >= 'A' && str[0] <= 'F')
+        tmp = str[0] - ('A' - 10);
+      else if (str[0] >= 'a' && str[0] <= 'f')
+        tmp = str[0] - ('a' - 10);
+      else
+        goto finish;
+      result = (result << 4) | tmp;
+      str++;
+    }
+  } else if (str[0] == '0') {
+    ++str;
+    /* base 8 */
+    const char *end = str;
+    while (end[0] >= '0' && end[0] <= '7' && (uintptr_t)(end - str) < 22)
+      end++;
+    if ((uintptr_t)(end - str) > 21) /* TODO: fix too large for a number */
+      return 0;
+
+    while (str < end) {
+      result = (result * 8) + (str[0] - '0');
+      str++;
+    }
+  } else {
+    /* base 10 */
+    const char *end = str;
+    while (end[0] >= '0' && end[0] <= '9' && (uintptr_t)(end - str) < 22)
+      end++;
+    if ((uintptr_t)(end - str) > 21) /* too large for a number */
+      return 0;
+
+    while (str < end) {
+      result = (result * 10) + (str[0] - '0');
+      str++;
+    }
+  }
+finish:
+  if (invert)
+    result = 0 - result;
+  *pstr = str;
+  return (int64_t)result;
+}
+
+/** A helper function that convers between String data to a signed double. */
+double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
+
+/* *****************************************************************************
+Numbers to Strings
+***************************************************************************** */
+
+/**
+ * A helper function that writes a signed int64_t to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 68 bytes
+ * available (for base 2).
+ *
+ * Offers special support for base 2 (binary), base 8 (octal), base 10 and base
+ * 16 (hex). An unsupported base will silently default to base 10. Prefixes
+ * are automatically added (i.e., "0x" for hex and "0b" for base 2).
+ *
+ * Returns the number of bytes actually written (excluding the NUL
+ * terminator).
+ */
+size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
+  const char notation[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                           '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+
+  size_t len = 0;
+  char buf[48]; /* we only need up to 20 for base 10, but base 3 needs 41... */
+
+  if (!num)
+    goto zero;
+
+  switch (base) {
+  case 1:
+  case 2:
+    /* Base 2 */
+    {
+      uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
+      uint8_t i = 0;    /* counting bits */
+      dest[len++] = '0';
+      dest[len++] = 'b';
+
+      while ((i < 64) && (n & 0x8000000000000000) == 0) {
+        n = n << 1;
+        i++;
+      }
+      /* make sure the Binary representation doesn't appear signed. */
+      if (i) {
+        dest[len++] = '0';
+      }
+      /* write to dest. */
+      while (i < 64) {
+        dest[len++] = ((n & 0x8000000000000000) ? '1' : '0');
+        n = n << 1;
+        i++;
+      }
+      dest[len] = 0;
+      return len;
+    }
+  case 8:
+    /* Base 8 */
+    {
+      uint64_t l = 0;
+      if (num < 0) {
+        dest[len++] = '-';
+        num = 0 - num;
+      }
+      dest[len++] = '0';
+
+      while (num) {
+        buf[l++] = '0' + (num & 7);
+        num = num >> 3;
+      }
+      while (l) {
+        --l;
+        dest[len++] = buf[l];
+      }
+      dest[len] = 0;
+      return len;
+    }
+
+  case 16:
+    /* Base 16 */
+    {
+      uint64_t n = num; /* avoid bit shifting inconsistencies with signed bit */
+      uint8_t i = 0;    /* counting bits */
+      dest[len++] = '0';
+      dest[len++] = 'x';
+      while (i < 8 && (n & 0xFF00000000000000) == 0) {
+        n = n << 8;
+        i++;
+      }
+      /* make sure the Hex representation doesn't appear signed. */
+      if (i && (n & 0x8000000000000000)) {
+        dest[len++] = '0';
+        dest[len++] = '0';
+      }
+      /* write the damn thing */
+      while (i < 8) {
+        uint8_t tmp = (n & 0xF000000000000000) >> 60;
+        dest[len++] = notation[tmp];
+        tmp = (n & 0x0F00000000000000) >> 56;
+        dest[len++] = notation[tmp];
+        i++;
+        n = n << 8;
+      }
+      dest[len] = 0;
+      return len;
+    }
+  case 3:
+  case 4:
+  case 5:
+  case 6:
+  case 7:
+  case 9:
+    /* rare bases */
+    if (num < 0) {
+      dest[len++] = '-';
+      num = 0 - num;
+    }
+    uint64_t l = 0;
+    while (num) {
+      uint64_t t = num / base;
+      buf[l++] = '0' + (num - (t * base));
+      num = t;
+    }
+    while (l) {
+      --l;
+      dest[len++] = buf[l];
+    }
+    dest[len] = 0;
+    return len;
+
+  default:
+    break;
+  }
+  /* Base 10, the default base */
+
+  if (num < 0) {
+    dest[len++] = '-';
+    num = 0 - num;
+  }
+  uint64_t l = 0;
+  while (num) {
+    uint64_t t = num / 10;
+    buf[l++] = '0' + (num - (t * 10));
+    num = t;
+  }
+  while (l) {
+    --l;
+    dest[len++] = buf[l];
+  }
+  dest[len] = 0;
+  return len;
+
+zero:
+  switch (base) {
+  case 1:
+  case 2:
+    dest[len++] = '0';
+    dest[len++] = 'b';
+  case 16:
+    dest[len++] = '0';
+    dest[len++] = 'x';
+    dest[len++] = '0';
+  }
+  dest[len++] = '0';
+  dest[len] = 0;
+  return len;
+}
+
+/**
+ * A helper function that convers between a double to a string.
+ *
+ * No overflow guard is provided, make sure there's at least 130 bytes
+ * available (for base 2).
+ *
+ * Supports base 2, base 10 and base 16. An unsupported base will silently
+ * default to base 10. Prefixes aren't added (i.e., no "0x" or "0b" at the
+ * beginning of the string).
+ *
+ * Returns the number of bytes actually written (excluding the NUL
+ * terminator).
+ */
+size_t fio_ftoa(char *dest, double num, uint8_t base) {
+  if (base == 2 || base == 16) {
+    /* handle the binary / Hex representation the same as if it were an
+     * int64_t
+     */
+    int64_t *i = (void *)&num;
+    return fio_ltoa(dest, *i, base);
+  }
+
+  size_t written = sprintf(dest, "%g", num);
+  uint8_t need_zero = 1;
+  char *start = dest;
+  while (*start) {
+    if (*start == ',') // locale issues?
+      *start = '.';
+    if (*start == '.' || *start == 'e') {
+      need_zero = 0;
+      break;
+    }
+    start++;
+  }
+  if (need_zero) {
+    dest[written++] = '.';
+    dest[written++] = '0';
+  }
+  return written;
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       Listening to Incoming Connections
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+The listening protocol (use the facil.io API to make a socket and attach it)
+***************************************************************************** */
+
+typedef struct {
+  fio_protocol_s pr;
+  intptr_t uuid;
+  void *udata;
+  void (*on_open)(intptr_t uuid, void *udata);
+  void (*on_start)(intptr_t uuid, void *udata);
+  void (*on_finish)(intptr_t uuid, void *udata);
+  char *port;
+  char *addr;
+  size_t port_len;
+  size_t addr_len;
+} fio_listen_protocol_s;
+
+static void fio_listen_cleanup_task(void *pr_) {
+  fio_listen_protocol_s *pr = pr_;
+  if (pr->on_finish) {
+    pr->on_finish(pr->uuid, pr->udata);
+  }
+  fio_force_close(pr->uuid);
+  free(pr_);
+}
+
+static void fio_listen_on_startup(void *pr_) {
+  fio_state_callback_remove(FIO_CALL_ON_SHUTDOWN, fio_listen_cleanup_task, pr_);
+  fio_listen_protocol_s *pr = pr_;
+  fio_attach(pr->uuid, &pr->pr);
+  if (FIO_PRINT_STATE) {
+    if (pr->port_len)
+      fprintf(stderr, "* (%d) started listening on port %s\n", getpid(),
+              pr->port);
+    else
+      fprintf(stderr, "* (%d) started listening on Unix Socket at %s\n",
+              getpid(), pr->addr);
+  }
+}
+
+static void fio_listen_on_close(intptr_t uuid, fio_protocol_s *pr_) {
+  fio_listen_cleanup_task(pr_);
+  (void)uuid;
+}
+
+static void fio_listen_on_data(intptr_t uuid, fio_protocol_s *pr_) {
+  fio_listen_protocol_s *pr = (fio_listen_protocol_s *)pr_;
+  for (int i = 0; i < 4; ++i) {
+    intptr_t client = fio_accept(uuid);
+    if (client == -1)
+      return;
+    pr->on_open(client, pr->udata);
+  }
+}
+
+/**
+ * Schedule a network service on a listening socket.
+ *
+ * Returns the listening socket or -1 (on error).
+ */
+intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
+  // ...
+  if (!args.on_open || (!args.address && !args.port)) {
+    errno = EINVAL;
+    goto error;
+  }
+  size_t addr_len = 0;
+  size_t port_len = 0;
+  if (args.address)
+    addr_len = strlen(args.address);
+  if (args.port)
+    port_len = strlen(args.port);
+  const intptr_t uuid = fio_socket(args.address, args.port, 1);
+  if (uuid == -1)
+    goto error;
+
+  fio_listen_protocol_s *pr = malloc(sizeof(*pr) + addr_len + port_len +
+                                     ((addr_len + port_len) ? 2 : 0));
+  FIO_ASSERT_ALLOC(pr);
+  *pr = (fio_listen_protocol_s){
+      .pr =
+          {
+              .on_close = fio_listen_on_close,
+              .ping = mock_ping_eternal,
+              .on_data = fio_listen_on_data,
+          },
+      .uuid = uuid,
+      .udata = args.udata,
+      .on_open = args.on_open,
+      .on_start = args.on_start,
+      .on_finish = args.on_finish,
+      .addr_len = addr_len,
+      .port_len = port_len,
+      .addr = (char *)(pr + 1),
+      .port = ((char *)(pr + 1) + addr_len + 1),
+  };
+
+  if (addr_len)
+    memcpy(pr->addr, args.address, addr_len + 1);
+  if (port_len)
+    memcpy(pr->port, args.port, port_len + 1);
+
+  if (fio_is_running()) {
+    fio_attach(pr->uuid, &pr->pr);
+  } else {
+    fio_state_callback_add(FIO_CALL_ON_START, fio_listen_on_startup, pr);
+    fio_state_callback_add(FIO_CALL_ON_SHUTDOWN, fio_listen_cleanup_task, pr);
+  }
+
+  if (FIO_PRINT_STATE) {
+    if (args.port)
+      fprintf(stderr, "* Listening on port %s\n", args.port);
+    else
+      fprintf(stderr, "* Listening on Unix Socket at %s\n", args.address);
+  }
+
+  return uuid;
+error:
+  if (args.on_finish) {
+    args.on_finish(-1, args.udata);
+  }
+  return -1;
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                   Connecting to remote servers as a client
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/* *****************************************************************************
+The connection protocol (use the facil.io API to make a socket and attach it)
+***************************************************************************** */
+
+typedef struct {
+  fio_protocol_s pr;
+  intptr_t uuid;
+  void *udata;
+  void (*on_connect)(intptr_t uuid, void *udata);
+  void (*on_fail)(intptr_t uuid, void *udata);
+} fio_connect_protocol_s;
+
+static void fio_connect_on_close(intptr_t uuid, fio_protocol_s *pr_) {
+  fio_connect_protocol_s *pr = (fio_connect_protocol_s *)pr_;
+  if (pr->on_fail)
+    pr->on_fail(uuid, pr->udata);
+  fio_free(pr);
+  (void)uuid;
+}
+
+static void fio_connect_on_ready(intptr_t uuid, fio_protocol_s *pr_) {
+  fio_connect_protocol_s *pr = (fio_connect_protocol_s *)pr_;
+  pr->pr.on_ready = mock_on_ev;
+  pr->on_fail = NULL;
+  pr->on_connect(uuid, pr->udata);
+  fio_poll_add(fio_uuid2fd(uuid));
+  (void)uuid;
+}
+
+intptr_t fio_connect FIO_IGNORE_MACRO(struct fio_connect_args args) {
+  if (!args.on_connect || (!args.address && !args.port)) {
+    errno = EINVAL;
+    goto error;
+  }
+  const intptr_t uuid = fio_socket(args.address, args.port, 0);
+  if (uuid == -1)
+    goto error;
+  fio_set_timeout(uuid, args.timeout);
+
+  fio_connect_protocol_s *pr = fio_malloc(sizeof(*pr));
+  FIO_ASSERT_ALLOC(pr);
+  *pr = (fio_connect_protocol_s){
+      .pr =
+          {
+              .on_ready = fio_connect_on_ready,
+              .on_close = fio_connect_on_close,
+          },
+      .uuid = uuid,
+      .udata = args.udata,
+      .on_connect = args.on_connect,
+      .on_fail = args.on_fail,
+  };
+  fio_attach(uuid, &pr->pr);
+  return uuid;
+error:
+  if (args.on_fail)
+    args.on_fail(-1, args.udata);
+  return -1;
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       Cluster Messaging Implementation
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+#if FIO_PUBSUB_SUPPORT
+
+/* *****************************************************************************
+ * Data Structures - Channel / Subscriptions data
+ **************************************************************************** */
+
+typedef enum fio_cluster_message_type_e {
+  FIO_CLUSTER_MSG_FORWARD,
+  FIO_CLUSTER_MSG_JSON,
+  FIO_CLUSTER_MSG_ROOT,
+  FIO_CLUSTER_MSG_ROOT_JSON,
+  FIO_CLUSTER_MSG_PUBSUB_SUB,
+  FIO_CLUSTER_MSG_PUBSUB_UNSUB,
+  FIO_CLUSTER_MSG_PATTERN_SUB,
+  FIO_CLUSTER_MSG_PATTERN_UNSUB,
+  FIO_CLUSTER_MSG_SHUTDOWN,
+  FIO_CLUSTER_MSG_ERROR,
+  FIO_CLUSTER_MSG_PING,
+} fio_cluster_message_type_e;
+
+typedef struct fio_collection_s fio_collection_s;
+
+typedef struct {
+  fio_str_s id; /* MUST be on top, so the *channel == *string */
+  fio_ls_embd_s subscriptions;
+  fio_collection_s *parent;
+  fio_lock_i lock;
+} channel_s;
+
+typedef struct {
+  channel_s ch; /* MUST be on top, so *channel == *pattern */
+  fio_match_fn match;
+} pattern_s;
+
+typedef struct subscription_s {
+  fio_ls_embd_s node;
+  channel_s *parent;
+  void (*on_message)(fio_msg_s *msg);
+  void (*on_unsubscribe)(void *udata1, void *udata2);
+  void *udata1;
+  void *udata2;
+  /** reference counter. */
+  uintptr_t ref;
+  /** prevents the callback from running concurrently for multiple messages. */
+  fio_lock_i lock;
+} subscription_s;
+
+#define FIO_SET_NAME fio_ch_set
+#define FIO_SET_OBJ_TYPE channel_s *
+#define FIO_SET_OBJ_COMPARE(o1, o2) fio_str_iseq(&(o1)->id, &(o2)->id)
+#define FIO_SET_OBJ_DESTROY(obj) fio_str_free2(&(obj)->id)
+#include <fio.h>
+
+#define FIO_SET_NAME fio_meta_set
+#define FIO_SET_OBJ_TYPE fio_msg_metadata_fn
+#define FIO_SET_OBJ_COMPARE(k1, k2) ((k1) == (k2))
+#include <fio.h>
+
+#define FIO_SET_NAME fio_engine_set
+#define FIO_SET_OBJ_TYPE pubsub_engine_s *
+#define FIO_SET_OBJ_COMPARE(k1, k2) ((k1) == (k2))
+#include <fio.h>
+
+struct fio_collection_s {
+  fio_ch_set_s channels;
+  fio_lock_i lock;
+};
+
+#define COLLECTION_INIT                                                        \
+  { .channels = FIO_SET_INIT, .lock = FIO_LOCK_INIT }
+
+struct {
+  fio_collection_s filters;
+  fio_collection_s pubsub;
+  fio_collection_s patterns;
+  struct {
+    fio_engine_set_s set;
+    fio_lock_i lock;
+  } engines;
+  struct {
+    fio_meta_set_s set;
+    fio_lock_i lock;
+  } meta;
+} fio_postoffice = {
+    .filters = COLLECTION_INIT,
+    .pubsub = COLLECTION_INIT,
+    .patterns = COLLECTION_INIT,
+    .engines.lock = FIO_LOCK_INIT,
+    .meta.lock = FIO_LOCK_INIT,
+};
+
+/** used to contain the message before it's passed to the handler */
+typedef struct {
+  fio_msg_s msg;
+  fio_msg_metadata_s *meta;
+  size_t marker;
+} fio_msg_client_s;
+
+/** used to contain the message internally while publishing */
+typedef struct {
+  fio_msg_metadata_s *meta;
+  fio_str_s *channel; /* reference counted, use fio_str_free2 */
+  fio_str_s *data;    /* reference counted, use fio_str_free2 */
+  uintptr_t ref;      /* internal reference counter */
+  int32_t filter;
+  int8_t is_json;
+} fio_msg_internal_s;
+
+/** The default engine (settable). */
+pubsub_engine_s *FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
+
+/* *****************************************************************************
+Cluster forking handler
+***************************************************************************** */
+
+static void fio_pubsub_on_fork(void) {
+  fio_postoffice.filters.lock = FIO_LOCK_INIT;
+  fio_postoffice.pubsub.lock = FIO_LOCK_INIT;
+  fio_postoffice.patterns.lock = FIO_LOCK_INIT;
+  fio_postoffice.engines.lock = FIO_LOCK_INIT;
+  fio_postoffice.meta.lock = FIO_LOCK_INIT;
+  FIO_SET_FOR_LOOP(&fio_postoffice.filters.channels, pos) {
+    if (!pos->hash)
+      continue;
+    pos->obj->lock = FIO_LOCK_INIT;
+    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
+      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
+    }
+  }
+  FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
+    if (!pos->hash)
+      continue;
+    pos->obj->lock = FIO_LOCK_INIT;
+    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
+      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
+    }
+  }
+  FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
+    if (!pos->hash)
+      continue;
+    pos->obj->lock = FIO_LOCK_INIT;
+    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
+      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
+    }
+  }
+}
+
+/* *****************************************************************************
+Channel Subscription Management
+***************************************************************************** */
+
+static void pubsub_on_channel_create(channel_s *ch, fio_match_fn match);
+static void pubsub_on_channel_destroy(channel_s *ch, fio_match_fn match);
+
+/* some comon tasks extracted */
+static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
+                                                      uint64_t hashed,
+                                                      fio_collection_s *c) {
+  fio_lock(&c->lock);
+  ch = *fio_ch_set_insert(&c->channels, hashed, ch);
+  fio_str_dup(&ch->id);
+  fio_lock(&ch->lock);
+  fio_unlock(&c->lock);
+  return ch;
+}
+
+/** Creates / finds a filter channel, adds a reference count and locks it. */
+static channel_s *fio_filter_dup_lock(uint32_t filter) {
+  channel_s *ch = fio_malloc(sizeof(*ch));
+  FIO_ASSERT_ALLOC(ch);
+  *ch = (channel_s){
+      .id = FIO_STR_INIT,
+      .subscriptions = FIO_LS_INIT(ch->subscriptions),
+      .parent = &fio_postoffice.filters,
+      .lock = FIO_LOCK_INIT,
+  };
+  fio_str_write(&ch->id, &filter, sizeof(filter));
+  fio_str_freeze(&ch->id);
+  return fio_filter_dup_lock_internal(ch, filter, &fio_postoffice.filters);
+}
+
+/** Creates / finds a pubsub channel, adds a reference count and locks it. */
+static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
+  channel_s *ch = fio_malloc(sizeof(*ch));
+  FIO_ASSERT_ALLOC(ch);
+  *ch = (channel_s){
+      .id = FIO_STR_INIT,
+      .subscriptions = FIO_LS_INIT(ch->subscriptions),
+      .parent = &fio_postoffice.pubsub,
+      .lock = FIO_LOCK_INIT,
+  };
+  fio_str_write(&ch->id, name.data, name.len);
+  // fio_str_freeze(&ch->id);
+  uint64_t hashed_name = fio_str_hash(&ch->id);
+  ch = fio_filter_dup_lock_internal(ch, hashed_name, &fio_postoffice.pubsub);
+  if (fio_ls_embd_is_empty(&ch->subscriptions)) {
+    pubsub_on_channel_create(ch, NULL);
+  }
+  return ch;
+}
+
+/** Creates / finds a pattern channel, adds a reference count and locks it. */
+static channel_s *fio_channel_match_dup_lock(fio_str_info_s name,
+                                             fio_match_fn match) {
+  pattern_s *ch = fio_malloc(sizeof(*ch));
+  FIO_ASSERT_ALLOC(ch);
+  *ch = (pattern_s){
+      .ch =
+          {
+              .id = FIO_STR_INIT,
+              .subscriptions = FIO_LS_INIT(ch->ch.subscriptions),
+              .parent = &fio_postoffice.patterns,
+              .lock = FIO_LOCK_INIT,
+          },
+      .match = match,
+  };
+  fio_str_write(&ch->ch.id, name.data, name.len);
+  fio_str_freeze(&ch->ch.id);
+  uint64_t hashed_name = fio_str_hash(&ch->ch.id) ^ ((uintptr_t)match);
+  ch = (pattern_s *)fio_filter_dup_lock_internal(&ch->ch, hashed_name,
+                                                 &fio_postoffice.patterns);
+  if (fio_ls_embd_is_empty(&ch->ch.subscriptions)) {
+    pubsub_on_channel_create(&ch->ch, match);
+  }
+  return &ch->ch;
+}
+
+/* to be used for reference counting (subtructing) */
+static inline void fio_subscription_free(subscription_s *s) {
+  if (fio_atomic_sub(&s->ref, 1)) {
+    return;
+  }
+  if (s->on_unsubscribe) {
+    s->on_unsubscribe(s->udata1, s->udata2);
+  }
+  fio_str_free2((fio_str_s *)s->parent);
+  fio_free(s);
+}
+
+/** Subscribes to a filter, pub/sub channle or patten */
+subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
+  if (!args.on_message)
+    return NULL;
+  channel_s *ch;
+  subscription_s *s = fio_malloc(sizeof(*s));
+  FIO_ASSERT_ALLOC(s);
+  *s = (subscription_s){
+      .on_message = args.on_message,
+      .on_unsubscribe = args.on_unsubscribe,
+      .udata1 = args.udata1,
+      .udata2 = args.udata2,
+      .ref = 1,
+      .lock = FIO_LOCK_INIT,
+  };
+  if (args.filter) {
+    ch = fio_filter_dup_lock(args.filter);
+  } else if (args.match) {
+    ch = fio_channel_match_dup_lock(args.channel, args.match);
+  } else {
+    ch = fio_channel_dup_lock(args.channel);
+  }
+  s->parent = ch;
+  fio_ls_embd_push(&ch->subscriptions, &s->node);
+  fio_unlock((&ch->lock));
+  return s;
+}
+
+/** Unsubscribes from a filter, pub/sub channle or patten */
+void fio_unsubscribe(subscription_s *s) {
+  channel_s *ch = s->parent;
+  fio_match_fn match = NULL;
+  uint8_t removed = 0;
+  fio_lock(&ch->lock);
+  fio_ls_embd_remove(&s->node);
+  /* check if channel is done for */
+  if (fio_ls_embd_is_empty(&ch->subscriptions)) {
+    fio_collection_s *c = ch->parent;
+    uint64_t hashed = fio_str_hash(&ch->id);
+    if (c == &fio_postoffice.patterns) {
+      pattern_s *pat = (pattern_s *)ch;
+      hashed ^= ((uintptr_t)pat->match);
+    }
+    /* lock collection */
+    fio_lock(&c->lock);
+    /* test again within lock */
+    if (fio_ls_embd_is_empty(&ch->subscriptions)) {
+      fio_ch_set_remove(&c->channels, hashed, ch);
+      removed = 1;
+    }
+    fio_unlock(&c->lock);
+  }
+  fio_unlock(&ch->lock);
+  if (removed) {
+    if (ch->parent == &fio_postoffice.patterns) {
+      match = ((pattern_s *)(ch))->match;
+    }
+    pubsub_on_channel_destroy(ch, match);
+  }
+
+  /* promise the subscription will be inactive */
+  fio_lock(&s->lock);
+  s->on_message = NULL;
+  fio_unlock(&s->lock);
+
+  fio_subscription_free(s);
+}
+
+/**
+ * This helper returns a temporary String with the subscription's channel (or a
+ * string representing the filter).
+ *
+ * To keep the string beyond the lifetime of the subscription, copy the string.
+ */
+fio_str_info_s fio_subscription_channel(subscription_s *subscription) {
+  return fio_str_info(&subscription->parent->id);
+}
+
+/* *****************************************************************************
+Engine handling and Management
+***************************************************************************** */
+
+/* implemented later, informs root process about pub/sub subscriptions */
+static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
+                                                         fio_match_fn match,
+                                                         int add);
+
+/* runs in lock(!) let'm all know */
+static void pubsub_on_channel_create(channel_s *ch, fio_match_fn match) {
+  fio_lock(&fio_postoffice.engines.lock);
+  FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
+    if (!pos->hash)
+      continue;
+    pos->obj->subscribe(pos->obj, fio_str_info(&ch->id), match);
+  }
+  fio_unlock(&fio_postoffice.engines.lock);
+  fio_cluster_inform_root_about_channel(ch, match, 1);
+}
+
+/* runs in lock(!) let'm all know */
+static void pubsub_on_channel_destroy(channel_s *ch, fio_match_fn match) {
+  fio_lock(&fio_postoffice.engines.lock);
+  FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
+    if (!pos->hash)
+      continue;
+    pos->obj->unsubscribe(pos->obj, fio_str_info(&ch->id), match);
+  }
+  fio_unlock(&fio_postoffice.engines.lock);
+  fio_cluster_inform_root_about_channel(ch, match, 0);
+}
+
+/**
+ * Attaches an engine, so it's callback can be called by facil.io.
+ *
+ * The `subscribe` callback will be called for every existing channel.
+ *
+ * NOTE: the root (master) process will call `subscribe` for any channel in any
+ * process, while all the other processes will call `subscribe` only for their
+ * own chasnnel. This allows engines to use the root (master) process as an
+ * exclusive subscription proccess.
+ */
+void fio_pubsub_attach(pubsub_engine_s *engine) {
+  fio_lock(&fio_postoffice.engines.lock);
+  fio_engine_set_insert(&fio_postoffice.engines.set, (uintptr_t)engine, engine);
+  fio_unlock(&fio_postoffice.engines.lock);
+  fio_pubsub_reattach(engine);
+}
+
+/** Detaches an engine, so it could be safely destroyed. */
+void fio_pubsub_detach(pubsub_engine_s *engine) {
+  fio_lock(&fio_postoffice.engines.lock);
+  fio_engine_set_remove(&fio_postoffice.engines.set, (uintptr_t)engine, engine);
+  fio_unlock(&fio_postoffice.engines.lock);
+}
+
+/** Returns true (1) if the engine is attached to the system. */
+int fio_pubsub_is_attached(pubsub_engine_s *engine) {
+  pubsub_engine_s **addr;
+  fio_lock(&fio_postoffice.engines.lock);
+  addr = fio_engine_set_find(&fio_postoffice.engines.set, (uintptr_t)engine,
+                             engine);
+  fio_unlock(&fio_postoffice.engines.lock);
+  return addr != NULL;
+}
+
+/**
+ * Engines can ask facil.io to call the `subscribe` callback for all active
+ * channels.
+ *
+ * This allows engines that lost their connection to their Pub/Sub service to
+ * resubscribe all the currently active channels with the new connection.
+ *
+ * CAUTION: This is an evented task... try not to free the engine's memory while
+ * resubscriptions are under way...
+ *
+ * NOTE: the root (master) process will call `subscribe` for any channel in any
+ * process, while all the other processes will call `subscribe` only for their
+ * own chasnnel. This allows engines to use the root (master) process as an
+ * exclusive subscription proccess.
+ */
+void fio_pubsub_reattach(pubsub_engine_s *eng) {
+  fio_lock(&fio_postoffice.pubsub.lock);
+  FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
+    if (!pos->hash)
+      continue;
+    eng->subscribe(eng, fio_str_info(&pos->obj->id), NULL);
+  }
+  fio_unlock(&fio_postoffice.pubsub.lock);
+  fio_lock(&fio_postoffice.patterns.lock);
+  FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
+    if (!pos->hash)
+      continue;
+    eng->subscribe(eng, fio_str_info(&pos->obj->id),
+                   ((pattern_s *)pos->obj)->match);
+  }
+  fio_unlock(&fio_postoffice.patterns.lock);
+}
+
+/* *****************************************************************************
+ * Message Metadata handling
+ **************************************************************************** */
+
+static inline void fio_call_meta_callbacks(fio_msg_internal_s *m,
+                                           fio_str_info_s ch,
+                                           fio_str_info_s msg,
+                                           uint8_t is_json) {
+  uintptr_t len;
+  fio_meta_set__ordered_s_ *cpy = NULL;
+  fio_lock(&fio_postoffice.meta.lock);
+  /* don't call user code within a lock - copy the array :-( */
+  len = fio_postoffice.meta.set.pos;
+  if (len && fio_meta_set_count(&fio_postoffice.meta.set)) {
+    cpy = fio_malloc(sizeof(*cpy) * len);
+    FIO_ASSERT_ALLOC(cpy);
+    memcpy(cpy, fio_postoffice.meta.set.ordered, sizeof(*cpy) * len);
+  }
+  fio_unlock(&fio_postoffice.meta.lock);
+  if (!cpy) {
+    return;
+  }
+  for (uintptr_t i = 0; i < len; ++i) {
+    if (!cpy[i].hash)
+      continue;
+    fio_msg_metadata_s *meta = fio_malloc(sizeof(*m));
+    FIO_ASSERT_ALLOC(meta);
+    *meta = cpy[i].obj(ch, msg, is_json);
+    if (meta->metadata) {
+      meta->next = m->meta;
+      m->meta = meta;
+    } else {
+      fio_free(meta);
+    }
+  }
+  fio_free(cpy);
+}
+
+void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
+                                       int enable) {
+  fio_lock(&fio_postoffice.meta.lock);
+  if (enable)
+    fio_meta_set_insert(&fio_postoffice.meta.set, (uintptr_t)callback,
+                        callback);
+  else
+    fio_meta_set_remove(&fio_postoffice.meta.set, (uintptr_t)callback,
+                        callback);
+  fio_unlock(&fio_postoffice.meta.lock);
+}
+
+/** Finds the message's metadata by it's type ID. */
+void *fio_message_metadata(fio_msg_s *msg, intptr_t type_id) {
+  fio_msg_metadata_s *exists = ((fio_msg_client_s *)msg)->meta;
+  while (exists && exists->type_id != type_id) {
+    exists = exists->next;
+  }
+  if (exists) {
+    return exists->metadata;
+  }
+  return NULL;
+}
+
+/* *****************************************************************************
+ * Publishing to the subsriptions
+ **************************************************************************** */
+
+/* common internal tasks */
+static channel_s *fio_channel_find_dup_internal(fio_str_s *s, uint64_t hashed,
+                                                fio_collection_s *c) {
+  fio_lock(&c->lock);
+  channel_s **pch = fio_ch_set_find(&c->channels, hashed, (channel_s *)s);
+  if (!pch) {
+    fio_unlock(&c->lock);
+    return NULL;
+  }
+  channel_s *ch = *pch;
+  fio_str_dup((fio_str_s *)ch);
+  fio_unlock(&c->lock);
+  return ch;
+}
+
+/** Finds a filter channel, increasing it's reference count if it exists. */
+static channel_s *fio_filter_find_dup(uint32_t filter) {
+  fio_str_s tmp = FIO_STR_INIT_EXISTING((char *)&filter, sizeof(filter),
+                                        0); /* don't free */
+  channel_s *ch =
+      fio_channel_find_dup_internal(&tmp, filter, &fio_postoffice.filters);
+  return ch;
+}
+
+/** Finds a pubsub channel, increasing it's reference count if it exists. */
+static channel_s *fio_channel_find_dup(fio_str_info_s name) {
+  fio_str_s tmp =
+      FIO_STR_INIT_EXISTING(name.data, name.len, 0); /* don't free */
+  uint64_t hashed_name = fio_str_hash(&tmp);
+  channel_s *ch =
+      fio_channel_find_dup_internal(&tmp, hashed_name, &fio_postoffice.pubsub);
+  return ch;
+}
+
+/** frees the internal message data */
+static inline void fio_pubsub_internal_message_free(fio_msg_internal_s *msg) {
+  if (fio_atomic_sub(&msg->ref, 1))
+    return;
+  if (msg->meta) {
+    fio_msg_metadata_s *meta = msg->meta;
+    fio_str_info_s ch_info = fio_str_info(msg->channel);
+    fio_str_info_s msg_info = fio_str_info(msg->data);
+    do {
+      fio_msg_metadata_s *tmp = meta;
+      meta = meta->next;
+      if (tmp->on_finish) {
+        fio_msg_s tmp_msg = {
+            .channel = ch_info,
+            .msg = msg_info,
+        };
+        tmp->on_finish(&tmp_msg, tmp->metadata);
+      }
+      fio_free(tmp);
+    } while (meta);
+  }
+  fio_str_free2(msg->channel);
+  fio_str_free2(msg->data);
+  fio_free(msg);
+}
+
+/* defers the callback (mark only) */
+void fio_message_defer(fio_msg_s *msg_) {
+  fio_msg_client_s *cl = (fio_msg_client_s *)msg_;
+  cl->marker = 1;
+}
+
+/* performs the actual callback */
+static void fio_perform_subscription_callback(void *s_, void *msg_) {
+  subscription_s *s = s_;
+  if (fio_trylock(&s->lock)) {
+    fio_defer(fio_perform_subscription_callback, s_, msg_);
+    return;
+  }
+  fio_msg_internal_s *msg = (fio_msg_internal_s *)msg_;
+  fio_msg_client_s m = {
+      .msg =
+          {
+              .channel = fio_str_info(msg->channel),
+              .msg = fio_str_info(msg->data),
+              .filter = msg->filter,
+              .udata1 = s->udata1,
+              .udata2 = s->udata2,
+          },
+      .meta = msg->meta,
+      .marker = 0,
+  };
+  if (s->on_message) {
+    /* the on_message callback is removed when a subscription is canceled. */
+    s->on_message(&m.msg);
+  }
+  fio_unlock(&s->lock);
+  if (m.marker) {
+    fio_defer(fio_perform_subscription_callback, s_, msg_);
+    return;
+  }
+  fio_pubsub_internal_message_free(msg);
+  fio_subscription_free(s);
+}
+
+/** UNSAFE! publishes a message to a channel, managing the reference counts */
+static void fio_publish2channel(channel_s *ch, fio_msg_internal_s *msg) {
+  if (!ch || !msg) {
+    return;
+  }
+  FIO_LS_EMBD_FOR(&ch->subscriptions, pos) {
+    subscription_s *s = FIO_LS_EMBD_OBJ(subscription_s, node, pos);
+    if (!s) {
+      continue;
+    }
+    fio_atomic_add(&s->ref, 1);
+    fio_atomic_add(&msg->ref, 1);
+    fio_defer(fio_perform_subscription_callback, s, msg);
+  }
+  fio_pubsub_internal_message_free(msg);
+}
+static void fio_publish2channel_task(void *ch_, void *msg) {
+  channel_s *ch = ch_;
+  if (fio_trylock(&ch->lock)) {
+    fio_defer(fio_publish2channel_task, ch, msg);
+    return;
+  }
+  fio_publish2channel(ch, msg);
+  fio_unlock(&ch->lock);
+}
+
+/** Publishes the message to the current process and frees the strings. */
+static void fio_publish2process(int32_t filter, fio_str_s *ch_name,
+                                fio_str_s *msg, uint8_t is_json) {
+  channel_s *ch;
+  fio_str_info_s ch_name_info = fio_str_info(ch_name);
+  fio_str_info_s msg_info = fio_str_info(msg);
+  if (filter) {
+    ch = fio_filter_find_dup(filter);
+    if (!ch) {
+      /* normally these functions are called by the internal_message_free */
+      fio_str_free2(ch_name);
+      fio_str_free2(msg);
+      return;
+    }
+  } else {
+    ch = fio_channel_find_dup(ch_name_info);
+  }
+  fio_msg_internal_s *m = fio_malloc(sizeof(*m));
+  FIO_ASSERT_ALLOC(m);
+  *m = (fio_msg_internal_s){
+      .filter = filter,
+      .channel = ch_name,
+      .data = msg,
+      .is_json = is_json,
+      .ref = 1,
+  };
+  if (filter == 0) {
+    fio_call_meta_callbacks(m, ch_name_info, msg_info, is_json);
+  }
+  /* exact match */
+  if (ch) {
+    fio_atomic_add(&m->ref, 1);
+    fio_defer(fio_publish2channel_task, ch, m);
+  }
+  if (filter == 0) {
+    /* pattern matching match */
+    fio_lock(&fio_postoffice.patterns.lock);
+    FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, p) {
+      if (!p->hash) {
+        continue;
+      }
+      pattern_s *pattern = (pattern_s *)p->obj;
+      if (pattern->match(fio_str_info(&pattern->ch.id), ch_name_info)) {
+        fio_atomic_add(&m->ref, 1);
+        fio_publish2channel(&pattern->ch, m);
+      }
+    }
+    fio_unlock(&fio_postoffice.patterns.lock);
+  }
+  fio_pubsub_internal_message_free(m);
+}
+
+/* *****************************************************************************
+ * Data Structures - Core Structures
+ **************************************************************************** */
+
+#define CLUSTER_READ_BUFFER 16384
+
+#define FIO_SET_NAME fio_sub_hash
+#define FIO_SET_OBJ_TYPE subscription_s *
+#define FIO_SET_KEY_TYPE fio_str_s
+#define FIO_SET_KEY_COPY(k1, k2)                                               \
+  (k1) = FIO_STR_INIT;                                                         \
+  fio_str_concat(&(k1), &(k2))
+#define FIO_SET_KEY_DESTROY(key) fio_str_free(&(key))
+#define FIO_SET_OBJ_DESTROY(obj) fio_unsubscribe(obj)
+#include <fio.h>
+
+typedef struct cluster_pr_s {
+  fio_protocol_s protocol;
+  fio_str_s *channel;
+  fio_str_s *msg;
+  void (*handler)(struct cluster_pr_s *pr);
+  void (*sender)(fio_str_s *data, intptr_t avoid_uuid);
+  fio_sub_hash_s pubsub;
+  fio_sub_hash_s patterns;
+  intptr_t uuid;
+  uint32_t exp_channel;
+  uint32_t exp_msg;
+  uint32_t type;
+  int32_t filter;
+  uint32_t length;
+  fio_lock_i lock;
+  uint8_t buffer[CLUSTER_READ_BUFFER];
+} cluster_pr_s;
+
+struct cluster_data_s {
+  intptr_t uuid;
+  fio_ls_s clients;
+  fio_lock_i lock;
+  char name[128];
+} cluster_data = {.clients = FIO_LS_INIT(cluster_data.clients),
+                  .lock = FIO_LOCK_INIT};
+
+static void fio_cluster_data_cleanup(int delete_file) {
+  if (delete_file && cluster_data.name[0]) {
+#if DEBUG
+    fprintf(stderr, "* INFO: (%d) CLUSTER UNLINKING\n", getpid());
+#endif
+    unlink(cluster_data.name);
+  }
+  while (fio_ls_any(&cluster_data.clients)) {
+    intptr_t uuid = (intptr_t)fio_ls_pop(&cluster_data.clients);
+    if (uuid > 0) {
+      fio_close(uuid);
+    }
+  }
+  cluster_data = (struct cluster_data_s){
+      .lock = FIO_LOCK_INIT,
+      .clients = (fio_ls_s)FIO_LS_INIT(cluster_data.clients),
+  };
+}
+
+static void fio_cluster_cleanup(void *ignore) {
+  /* cleanup the cluster data */
+  fio_cluster_data_cleanup(fio_parent_pid() == getpid());
+  (void)ignore;
+}
+
+static void fio_cluster_init(void) {
+  fio_cluster_data_cleanup(0);
+  /* create a unique socket name */
+  char *tmp_folder = getenv("TMPDIR");
+  uint32_t tmp_folder_len = 0;
+  if (!tmp_folder || ((tmp_folder_len = (uint32_t)strlen(tmp_folder)) > 100)) {
+#ifdef P_tmpdir
+    tmp_folder = P_tmpdir;
+    if (tmp_folder)
+      tmp_folder_len = (uint32_t)strlen(tmp_folder);
+#else
+    tmp_folder = "/tmp/";
+    tmp_folder_len = 5;
+#endif
+  }
+  if (tmp_folder_len >= 100) {
+    tmp_folder_len = 0;
+  }
+  if (tmp_folder_len) {
+    memcpy(cluster_data.name, tmp_folder, tmp_folder_len);
+    if (cluster_data.name[tmp_folder_len - 1] != '/')
+      cluster_data.name[tmp_folder_len++] = '/';
+  }
+  memcpy(cluster_data.name + tmp_folder_len, "facil-io-sock-", 14);
+  tmp_folder_len += 14;
+  tmp_folder_len += snprintf(cluster_data.name + tmp_folder_len,
+                             127 - tmp_folder_len, "%d", getpid());
+  cluster_data.name[tmp_folder_len] = 0;
+
+  /* remove if existing */
+  unlink(cluster_data.name);
+  /* add cleanup callback */
+  fio_state_callback_add(FIO_CALL_AT_EXIT, fio_cluster_cleanup, NULL);
+}
+
+/* *****************************************************************************
+ * Cluster Protocol callbacks
+ **************************************************************************** */
+
+#ifdef __BIG_ENDIAN__
+inline static uint32_t fio_cluster_str2uint32(uint8_t *str) {
+  return ((str[0] & 0xFF) | ((((uint32_t)str[1]) << 8) & 0xFF00) |
+          ((((uint32_t)str[2]) << 16) & 0xFF0000) |
+          ((((uint32_t)str[3]) << 24) & 0xFF000000));
+}
+inline static void fio_cluster_uint2str(uint8_t *dest, uint32_t i) {
+  dest[0] = i & 0xFF;
+  dest[1] = (i >> 8) & 0xFF;
+  dest[2] = (i >> 16) & 0xFF;
+  dest[3] = (i >> 24) & 0xFF;
+}
+#else
+inline static uint32_t fio_cluster_str2uint32(uint8_t *str) {
+  return (((((uint32_t)str[0]) << 24) & 0xFF000000) |
+          ((((uint32_t)str[1]) << 16) & 0xFF0000) |
+          ((((uint32_t)str[2]) << 8) & 0xFF00) | (str[3] & 0xFF));
+}
+inline static void fio_cluster_uint2str(uint8_t *dest, uint32_t i) {
+  dest[0] = (i >> 24) & 0xFF;
+  dest[1] = (i >> 16) & 0xFF;
+  dest[2] = (i >> 8) & 0xFF;
+  dest[3] = i & 0xFF;
+}
+#endif
+
+typedef struct cluster_msg_s {
+  fio_msg_s message;
+  size_t ref;
+} cluster_msg_s;
+
+static inline fio_str_s *
+fio_cluster_wrap_message(uint32_t ch_len, uint32_t msg_len, uint32_t type,
+                         int32_t filter, void *ch_data, void *msg_data) {
+  fio_str_s *buf = fio_str_new2();
+  fio_str_info_s i = fio_str_resize(buf, ch_len + msg_len + 16);
+  fio_cluster_uint2str((uint8_t *)i.data, ch_len);
+  fio_cluster_uint2str((uint8_t *)(i.data + 4), msg_len);
+  fio_cluster_uint2str((uint8_t *)(i.data + 8), type);
+  fio_cluster_uint2str((uint8_t *)(i.data + 12), (uint32_t)filter);
+  if (ch_len && ch_data) {
+    memcpy((i.data + 16), ch_data, ch_len);
+  }
+  if (msg_len && msg_data) {
+    memcpy((i.data + 16 + ch_len), msg_data, msg_len);
+  }
+  return buf;
+}
+
+static inline void fio_cluster_protocol_free(void *pr) { fio_free(pr); }
+
+static uint8_t fio_cluster_on_shutdown(intptr_t uuid, fio_protocol_s *pr_) {
+  cluster_pr_s *p = (cluster_pr_s *)pr_;
+  p->sender(
+      fio_cluster_wrap_message(0, 0, FIO_CLUSTER_MSG_SHUTDOWN, 0, NULL, NULL),
+      -1);
+  return 255;
+  (void)pr_;
+  (void)uuid;
+}
+
+static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
+  cluster_pr_s *c = (cluster_pr_s *)pr_;
+  ssize_t i =
+      fio_read(uuid, c->buffer + c->length, CLUSTER_READ_BUFFER - c->length);
+  if (i <= 0)
+    return;
+  c->length += i;
+  i = 0;
+  do {
+    if (!c->exp_channel && !c->exp_msg) {
+      if (c->length - i < 16)
+        break;
+      c->exp_channel = fio_cluster_str2uint32(c->buffer + i);
+      c->exp_msg = fio_cluster_str2uint32(c->buffer + i + 4);
+      c->type = fio_cluster_str2uint32(c->buffer + i + 8);
+      c->filter = (int32_t)fio_cluster_str2uint32(c->buffer + i + 12);
+      if (c->exp_channel) {
+        if (c->exp_channel >= (1024 * 1024 * 16)) {
+          fprintf(stderr,
+                  "FATAL ERROR: (%d) cluster message name too long (16Mb "
+                  "limit): %u\n",
+                  getpid(), (unsigned int)c->exp_channel);
+          exit(1);
+          return;
+        }
+        c->channel = fio_str_new2();
+        fio_str_capa_assert(c->channel, c->exp_channel);
+      }
+      if (c->exp_msg) {
+        if (c->exp_msg >= (1024 * 1024 * 64)) {
+          fprintf(stderr,
+                  "FATAL ERROR: (%d) cluster message data too long (64Mb "
+                  "limit): %u\n",
+                  getpid(), (unsigned int)c->exp_msg);
+          exit(1);
+          return;
+        }
+        c->msg = fio_str_new2();
+        fio_str_capa_assert(c->msg, c->exp_msg);
+      }
+      i += 16;
+    }
+    if (c->exp_channel) {
+      if (c->exp_channel + i > c->length) {
+        fio_str_write(c->channel, (char *)c->buffer + i,
+                      (size_t)(c->length - i));
+        c->exp_channel -= (c->length - i);
+        i = c->length;
+        break;
+      } else {
+        fio_str_write(c->channel, (char *)c->buffer + i, c->exp_channel);
+        i += c->exp_channel;
+        c->exp_channel = 0;
+      }
+    }
+    if (c->exp_msg) {
+      if (c->exp_msg + i > c->length) {
+        fio_str_write(c->msg, (char *)c->buffer + i, (size_t)(c->length - i));
+        c->exp_msg -= (c->length - i);
+        i = c->length;
+        break;
+      } else {
+        fio_str_write(c->msg, (char *)c->buffer + i, c->exp_msg);
+        i += c->exp_msg;
+        c->exp_msg = 0;
+      }
+    }
+    c->handler(c);
+    fio_str_free2(c->msg);
+    fio_str_free2(c->channel);
+    c->msg = NULL;
+    c->channel = NULL;
+  } while (c->length > i);
+  c->length -= i;
+  if (c->length && i) {
+    memmove(c->buffer, c->buffer + i, c->length);
+  }
+  (void)pr_;
+}
+
+static void fio_cluster_ping(intptr_t uuid, fio_protocol_s *pr_) {
+  fio_str_send_free(uuid, fio_cluster_wrap_message(0, 0, FIO_CLUSTER_MSG_PING,
+                                                   0, NULL, NULL));
+  (void)pr_;
+}
+
+static void fio_cluster_on_close(intptr_t uuid, fio_protocol_s *pr_) {
+  cluster_pr_s *c = (cluster_pr_s *)pr_;
+  if (!fio_data->is_worker) {
+    /* a child was lost, respawning is handled elsewhere. */
+    fio_lock(&cluster_data.lock);
+    FIO_LS_FOR(&cluster_data.clients, pos) {
+      if (pos->obj == (void *)uuid) {
+        fio_ls_remove(pos);
+        break;
+      }
+    }
+    fio_unlock(&cluster_data.lock);
+  } else if (fio_data->active) {
+    /* no shutdown message received - parent crashed. */
+    if (c->type != FIO_CLUSTER_MSG_SHUTDOWN && fio_is_running()) {
+      if (FIO_PRINT_STATE) {
+        fprintf(stderr, "* FATAL ERROR: (%d) Parent Process crash detected!\n",
+                getpid());
+      }
+      fio_state_callback_force(FIO_CALL_ON_PARENT_CRUSH);
+      fio_state_callback_clear(FIO_CALL_ON_PARENT_CRUSH);
+      fio_cluster_data_cleanup(1);
+      kill(getpid(), SIGINT);
+    }
+  }
+  fio_str_free2(c->msg);
+  fio_str_free2(c->channel);
+  c->msg = NULL;
+  c->channel = NULL;
+  fio_cluster_protocol_free(c);
+  (void)uuid;
+}
+
+static inline fio_protocol_s *
+fio_cluster_protocol_alloc(intptr_t uuid,
+                           void (*handler)(struct cluster_pr_s *pr),
+                           void (*sender)(fio_str_s *data, intptr_t auuid)) {
+  cluster_pr_s *p = fio_mmap(sizeof(*p));
+  if (!p) {
+    perror("FATAL ERROR: Cluster protocol allocation failed");
+    exit(errno);
+  }
+  p->protocol = (fio_protocol_s){
+      .ping = fio_cluster_ping,
+      .on_close = fio_cluster_on_close,
+      .on_shutdown = fio_cluster_on_shutdown,
+      .on_data = fio_cluster_on_data,
+  };
+  p->uuid = uuid;
+  p->handler = handler;
+  p->sender = sender;
+  p->pubsub = (fio_sub_hash_s)FIO_SET_INIT;
+  p->patterns = (fio_sub_hash_s)FIO_SET_INIT;
+  p->lock = FIO_LOCK_INIT;
+  return &p->protocol;
+}
+
+/* *****************************************************************************
+ * Master (server) IPC Connections
+ **************************************************************************** */
+
+/**
+ * A mock pub/sub callback for external subscriptions.
+ */
+static void fio_mock_on_message(fio_msg_s *msg) { (void)msg; }
+
+static void fio_cluster_server_sender(fio_str_s *data, intptr_t avoid_uuid) {
+  fio_lock(&cluster_data.lock);
+  FIO_LS_FOR(&cluster_data.clients, pos) {
+    if ((intptr_t)pos->obj != -1) {
+      if ((intptr_t)pos->obj != avoid_uuid) {
+        fio_str_send_free((intptr_t)pos->obj, fio_str_dup(data));
+      }
+    }
+  }
+  fio_unlock(&cluster_data.lock);
+  fio_str_free2(data);
+}
+
+static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
+  /* what to do? */
+  switch ((fio_cluster_message_type_e)pr->type) {
+
+  case FIO_CLUSTER_MSG_FORWARD: /* fallthrough */
+  case FIO_CLUSTER_MSG_JSON: {
+    fio_str_info_s cs = fio_str_info(pr->channel);
+    fio_str_info_s ms = fio_str_info(pr->msg);
+    fio_cluster_server_sender(fio_cluster_wrap_message(cs.len, ms.len, pr->type,
+                                                       pr->filter, cs.data,
+                                                       ms.data),
+                              pr->uuid);
+    fio_publish2process(
+        pr->filter, fio_str_dup(pr->channel), fio_str_dup(pr->msg),
+        (fio_cluster_message_type_e)pr->type == FIO_CLUSTER_MSG_JSON);
+    break;
+  }
+
+  case FIO_CLUSTER_MSG_PUBSUB_SUB: {
+    subscription_s *s =
+        fio_subscribe(.on_message = fio_mock_on_message, .match = NULL,
+                      .channel = fio_str_info(pr->channel));
+    fio_lock(&pr->lock);
+    fio_sub_hash_insert(&pr->pubsub, fio_str_hash(pr->channel), *pr->channel,
+                        s);
+    fio_unlock(&pr->lock);
+    break;
+  }
+  case FIO_CLUSTER_MSG_PUBSUB_UNSUB: {
+    fio_lock(&pr->lock);
+    fio_sub_hash_remove(&pr->pubsub, fio_str_hash(pr->channel), *pr->channel);
+    fio_unlock(&pr->lock);
+    break;
+  }
+
+  case FIO_CLUSTER_MSG_PATTERN_SUB: {
+    uintptr_t match;
+    fio_str_info_s m = fio_str_info(pr->msg);
+    for (size_t i = 0; i < sizeof(void *); ++i) {
+      ((char *)(&match))[i] = m.data[i];
+    }
+    subscription_s *s = fio_subscribe(.on_message = fio_mock_on_message,
+                                      .match = (fio_match_fn)match,
+                                      .channel = fio_str_info(pr->channel));
+    fio_lock(&pr->lock);
+    fio_sub_hash_insert(&pr->patterns, fio_str_hash(pr->channel), *pr->channel,
+                        s);
+    fio_unlock(&pr->lock);
+    break;
+  }
+
+  case FIO_CLUSTER_MSG_PATTERN_UNSUB: {
+    fio_lock(&pr->lock);
+    fio_sub_hash_remove(&pr->patterns, fio_str_hash(pr->channel), *pr->channel);
+    fio_unlock(&pr->lock);
+    break;
+  }
+
+  case FIO_CLUSTER_MSG_ROOT_JSON:
+    pr->type = FIO_CLUSTER_MSG_JSON; /* fallthrough */
+  case FIO_CLUSTER_MSG_ROOT:
+    fio_publish2process(
+        pr->filter, fio_str_dup(pr->channel), fio_str_dup(pr->msg),
+        (fio_cluster_message_type_e)pr->type == FIO_CLUSTER_MSG_JSON);
+    break;
+
+  case FIO_CLUSTER_MSG_SHUTDOWN: /* fallthrough */
+  case FIO_CLUSTER_MSG_ERROR:    /* fallthrough */
+  case FIO_CLUSTER_MSG_PING:     /* fallthrough */
+  default:
+    break;
+  }
+}
+
+/** Called when a ne client is available */
+static void fio_cluster_listen_accept(intptr_t uuid, fio_protocol_s *protocol) {
+  (void)protocol;
+  /* prevent `accept` backlog in parent */
+  intptr_t client;
+  while ((client = fio_accept(uuid)) != -1) {
+    fio_attach(client,
+               fio_cluster_protocol_alloc(client, fio_cluster_server_handler,
+                                          fio_cluster_server_sender));
+    fio_lock(&cluster_data.lock);
+    fio_ls_push(&cluster_data.clients, (void *)client);
+    fio_unlock(&cluster_data.lock);
+  }
+}
+
+/** Called when the connection was closed, but will not run concurrently */
+static void fio_cluster_listen_on_close(intptr_t uuid,
+                                        fio_protocol_s *protocol) {
+  free(protocol);
+  cluster_data.uuid = -1;
+  if (fio_parent_pid() == getpid()) {
+#if DEBUG
+    fprintf(stderr, "* INFO: (%d) stopped listening for cluster connections\n",
+            getpid());
+#endif
+    if (fio_data->active)
+      kill(0, SIGINT);
+  }
+  (void)uuid;
+}
+
+static void fio_listen2cluster(void *ignore) {
+  /* this is called for each `fork`, but we only need this to run once. */
+  fio_lock(&cluster_data.lock);
+  fio_cluster_init();
+  cluster_data.uuid = fio_socket(cluster_data.name, NULL, 1);
+  fio_unlock(&cluster_data.lock);
+  if (cluster_data.uuid < 0) {
+    perror("FATAL ERROR: (facil.io cluster) failed to open cluster socket.\n"
+           "             check file permissions");
+    exit(errno);
+  }
+  fio_protocol_s *p = malloc(sizeof(*p));
+  FIO_ASSERT_ALLOC(p);
+  *p = (fio_protocol_s){
+      .on_data = fio_cluster_listen_accept,
+      .on_shutdown = mock_on_shutdown_eternal,
+      .ping = mock_ping_eternal,
+      .on_close = fio_cluster_listen_on_close,
+  };
+#if DEBUG
+  fprintf(stderr, "* INFO: (%d) Listening to cluster: %s\n", getpid(),
+          cluster_data.name);
+#endif
+  fio_attach(cluster_data.uuid, p);
+  (void)ignore;
+}
+
+/* *****************************************************************************
+ * Worker (client) IPC connections
+ ****************************************************************************
+ */
+
+static void fio_cluster_client_handler(struct cluster_pr_s *pr) {
+  /* what to do? */
+  switch ((fio_cluster_message_type_e)pr->type) {
+  case FIO_CLUSTER_MSG_FORWARD: /* fallthrough */
+    fio_publish2process(pr->filter, fio_str_dup(pr->channel),
+                        fio_str_dup(pr->msg), 0);
+    break;
+  case FIO_CLUSTER_MSG_JSON:
+    fio_publish2process(pr->filter, fio_str_dup(pr->channel),
+                        fio_str_dup(pr->msg), 1);
+    break;
+  case FIO_CLUSTER_MSG_SHUTDOWN:
+    fio_stop();
+    kill(getpid(), SIGINT);
+  case FIO_CLUSTER_MSG_ERROR:         /* fallthrough */
+  case FIO_CLUSTER_MSG_PING:          /* fallthrough */
+  case FIO_CLUSTER_MSG_ROOT:          /* fallthrough */
+  case FIO_CLUSTER_MSG_ROOT_JSON:     /* fallthrough */
+  case FIO_CLUSTER_MSG_PUBSUB_SUB:    /* fallthrough */
+  case FIO_CLUSTER_MSG_PUBSUB_UNSUB:  /* fallthrough */
+  case FIO_CLUSTER_MSG_PATTERN_SUB:   /* fallthrough */
+  case FIO_CLUSTER_MSG_PATTERN_UNSUB: /* fallthrough */
+
+  default:
+    break;
+  }
+}
+static void fio_cluster_client_sender(fio_str_s *data, intptr_t ignr_) {
+  fio_str_send_free(cluster_data.uuid, data);
+  (void)ignr_;
+}
+
+/** The address of the server we are connecting to. */
+// char *address;
+/** The port on the server we are connecting to. */
+// char *port;
+/**
+ * The `on_connect` callback should return a pointer to a protocol object
+ * that will handle any connection related events.
+ *
+ * Should either call `facil_attach` or close the connection.
+ */
+void fio_cluster_on_connect(intptr_t uuid, void *udata) {
+  cluster_data.uuid = uuid;
+
+  /* inform root about all existing channels */
+  fio_lock(&fio_postoffice.pubsub.lock);
+  FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
+    if (!pos->hash) {
+      continue;
+    }
+    fio_cluster_inform_root_about_channel(pos->obj, NULL, 1);
+  }
+  fio_unlock(&fio_postoffice.pubsub.lock);
+  fio_lock(&fio_postoffice.patterns.lock);
+  FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
+    if (!pos->hash) {
+      continue;
+    }
+    fio_cluster_inform_root_about_channel(pos->obj,
+                                          ((pattern_s *)pos->obj)->match, 1);
+  }
+  fio_unlock(&fio_postoffice.patterns.lock);
+
+  fio_attach(uuid, fio_cluster_protocol_alloc(uuid, fio_cluster_client_handler,
+                                              fio_cluster_client_sender));
+  (void)udata;
+}
+/**
+ * The `on_fail` is called when a socket fails to connect. The old sock UUID
+ * is passed along.
+ */
+void fio_cluster_on_fail(intptr_t uuid, void *udata) {
+  perror("FATAL ERROR: (facil.io) unknown cluster connection error");
+  kill(fio_parent_pid(), SIGINT);
+  exit(errno ? errno : 1);
+  (void)udata;
+  (void)uuid;
+}
+/** Opaque user data. */
+// void *udata;
+/** A non-system timeout after which connection is assumed to have failed. */
+// uint8_t timeout;
+
+static void fio_connect2cluster(void *ignore) {
+  if (fio_parent_pid() != getpid()) {
+    /* this is called for each child, but not for single a process worker. */
+    cluster_data.uuid = fio_connect(.address = cluster_data.name, .port = NULL,
+                                    .on_connect = fio_cluster_on_connect,
+                                    .on_fail = fio_cluster_on_fail);
+  }
+  fio_lock(&fio_postoffice.engines.lock);
+  FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
+    if (!pos->hash) {
+      continue;
+    }
+    if (pos->obj->on_startup)
+      pos->obj->on_startup(pos->obj);
+  }
+  fio_unlock(&fio_postoffice.engines.lock);
+  (void)ignore;
+}
+
+static void fio_send2cluster(int32_t filter, fio_str_info_s ch,
+                             fio_str_info_s msg, uint8_t is_json) {
+  if (!fio_is_running()) {
+    fprintf(stderr, "ERROR: cluster inactive, can't send message.\n");
+    return;
+  }
+  if (fio_data->workers == 1) {
+    /* nowhere to send to */
+    return;
+  }
+  if (fio_is_worker()) {
+    fio_cluster_client_sender(
+        fio_cluster_wrap_message(
+            ch.len, msg.len,
+            (is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD), filter,
+            ch.data, msg.data),
+        -1);
+  } else {
+    fio_cluster_server_sender(
+        fio_cluster_wrap_message(
+            ch.len, msg.len,
+            (is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD), filter,
+            ch.data, msg.data),
+        -1);
+  }
+}
+
+/* *****************************************************************************
+ * Propegation
+ **************************************************************************** */
+
+static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
+                                                         fio_match_fn match,
+                                                         int add) {
+  if (!fio_data->is_worker || fio_data->workers == 1 || !cluster_data.uuid ||
+      !ch)
+    return;
+  fio_str_info_s ch_name = fio_str_info(&ch->id);
+  fio_str_info_s msg = {.data = NULL, .len = 0};
+#if DEBUG && FIO_PRINT_STATE
+  fprintf(stderr, "* (%d) informing root about: %s (%zu) msg type %d\n",
+          getpid(), ch_name.data, ch_name.len,
+          (match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
+                        : FIO_CLUSTER_MSG_PATTERN_UNSUB)
+                 : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
+                        : FIO_CLUSTER_MSG_PUBSUB_UNSUB)));
+#endif
+  if (match) {
+    msg.data = (char *)&match;
+    msg.len = sizeof(match);
+  }
+
+  fio_cluster_client_sender(
+      fio_cluster_wrap_message(ch_name.len, msg.len,
+                               (match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
+                                             : FIO_CLUSTER_MSG_PATTERN_UNSUB)
+                                      : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
+                                             : FIO_CLUSTER_MSG_PUBSUB_UNSUB)),
+                               0, ch_name.data, msg.data),
+      -1);
+}
+
+/* *****************************************************************************
+ * Initialization
+ **************************************************************************** */
+
+static void fio_connect_after_fork(void *ignore) {
+  if (fio_parent_pid() == getpid()) {
+    /* prevent `accept` backlog in parent */
+    fio_cluster_listen_accept(cluster_data.uuid, NULL);
+  } else {
+    /* this is called for each child. */
+  }
+  (void)ignore;
+}
+
+static void fio_cluster_at_exit(void *ignore) {
+  /* unlock all */
+  fio_pubsub_on_fork();
+  /* clear subscriptions of all types */
+  while (fio_ch_set_count(&fio_postoffice.patterns.channels)) {
+    channel_s *ch = *fio_ch_set_last(&fio_postoffice.patterns.channels);
+    while (fio_ls_embd_any(&ch->subscriptions)) {
+      subscription_s *sub =
+          FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
+      fio_unsubscribe(sub);
+    }
+    fio_ch_set_pop(&fio_postoffice.patterns.channels);
+  }
+
+  while (fio_ch_set_count(&fio_postoffice.pubsub.channels)) {
+    channel_s *ch = *fio_ch_set_last(&fio_postoffice.pubsub.channels);
+    while (fio_ls_embd_any(&ch->subscriptions)) {
+      subscription_s *sub =
+          FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
+      fio_unsubscribe(sub);
+    }
+    fio_ch_set_pop(&fio_postoffice.pubsub.channels);
+  }
+
+  while (fio_ch_set_count(&fio_postoffice.filters.channels)) {
+    channel_s *ch = *fio_ch_set_last(&fio_postoffice.filters.channels);
+    while (fio_ls_embd_any(&ch->subscriptions)) {
+      subscription_s *sub =
+          FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
+      fio_unsubscribe(sub);
+    }
+    fio_ch_set_pop(&fio_postoffice.filters.channels);
+  }
+  fio_ch_set_free(&fio_postoffice.filters.channels);
+  fio_ch_set_free(&fio_postoffice.patterns.channels);
+  fio_ch_set_free(&fio_postoffice.pubsub.channels);
+
+  /* clear engines */
+  FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
+  while (fio_engine_set_count(&fio_postoffice.engines.set)) {
+    fio_pubsub_detach(*fio_engine_set_last(&fio_postoffice.engines.set));
+    fio_engine_set_last(&fio_postoffice.engines.set);
+  }
+  fio_engine_set_free(&fio_postoffice.engines.set);
+
+  /* clear meta hooks */
+  fio_meta_set_free(&fio_postoffice.meta.set);
+  /* perform newly created tasks */
+  fio_defer_perform();
+  (void)ignore;
+}
+
+static void fio_pubsub_initialize(void) {
+  fio_cluster_init();
+  fio_state_callback_add(FIO_CALL_PRE_START, fio_listen2cluster, NULL);
+  fio_state_callback_add(FIO_CALL_AFTER_FORK, fio_connect_after_fork, NULL);
+  fio_state_callback_add(FIO_CALL_ON_START, fio_connect2cluster, NULL);
+  fio_state_callback_add(FIO_CALL_ON_FINISH, fio_cluster_cleanup, NULL);
+  fio_state_callback_add(FIO_CALL_AT_EXIT, fio_cluster_at_exit, NULL);
+}
+
+/* *****************************************************************************
+ * External API
+ **************************************************************************** */
+
+/** Signals children (or self) to shutdown) - NOT signal safe. */
+static void fio_cluster_signal_children(void) {
+  if (fio_parent_pid() != getpid()) {
+    kill(getpid(), SIGINT);
+    return;
+  }
+  fio_cluster_server_sender(
+      fio_cluster_wrap_message(0, 0, FIO_CLUSTER_MSG_SHUTDOWN, 0, NULL, NULL),
+      -1);
+}
+
+/**
+ * Publishes a message to the relevant subscribers (if any).
+ *
+ * See `facil_publish_args_s` for details.
+ *
+ * By default the message is sent using the FACIL_PUBSUB_CLUSTER engine (all
+ * processes, including the calling process).
+ *
+ * To limit the message only to other processes (exclude the calling process),
+ * use the FACIL_PUBSUB_SIBLINGS engine.
+ *
+ * To limit the message only to the calling process, use the
+ * FACIL_PUBSUB_PROCESS engine.
+ *
+ * To publish messages to the pub/sub layer, the `.filter` argument MUST be
+ * equal to 0 or missing.
+ */
+void fio_publish FIO_IGNORE_MACRO(fio_publish_args_s args) {
+  if (!args.engine) {
+    args.engine = FIO_PUBSUB_DEFAULT;
+  }
+  fio_str_s *ch;
+  fio_str_s *msg;
+  switch ((uintptr_t)args.engine) {
+  case 0UL: /* fallthrough (missing default) */
+  case 1UL: // ((uintptr_t)FACIL_PUBSUB_CLUSTER):
+    ch = fio_str_new2();
+    msg = fio_str_new2();
+    fio_str_write(ch, args.channel.data, args.channel.len);
+    fio_str_write(msg, args.message.data, args.message.len);
+    fio_send2cluster(args.filter, args.channel, args.message, args.is_json);
+    fio_publish2process(args.filter, ch, msg, args.is_json);
+    break;
+  case 2UL: // ((uintptr_t)FACIL_PUBSUB_PROCESS):
+    ch = fio_str_new2();
+    msg = fio_str_new2();
+    fio_str_write(ch, args.channel.data, args.channel.len);
+    fio_str_write(msg, args.message.data, args.message.len);
+    fio_publish2process(args.filter, ch, msg, args.is_json);
+    break;
+  case 3UL: // ((uintptr_t)FACIL_PUBSUB_SIBLINGS):
+    fio_send2cluster(args.filter, args.channel, args.message, args.is_json);
+    break;
+  case 4UL: // ((uintptr_t)FACIL_PUBSUB_ROOT):
+    if (fio_data->is_worker == 0 || fio_data->workers == 1) {
+      ch = fio_str_new2();
+      msg = fio_str_new2();
+      fio_str_write(ch, args.channel.data, args.channel.len);
+      fio_str_write(msg, args.message.data, args.message.len);
+      fio_publish2process(args.filter, ch, msg, args.is_json);
+    } else {
+      fio_cluster_client_sender(
+          fio_cluster_wrap_message(
+              args.channel.len, args.message.len,
+              (args.is_json ? FIO_CLUSTER_MSG_ROOT_JSON : FIO_CLUSTER_MSG_ROOT),
+              args.filter, args.channel.data, args.message.data),
+          -1);
+    }
+    break;
+  default:
+    if (args.filter != 0) {
+      fprintf(stderr, "ERROR: (pub/sub) pub/sub engines can only be used for "
+                      "pub/sub messages (no filter).\n");
+      return;
+    }
+    args.engine->publish(args.engine, args.channel, args.message, args.is_json);
+  }
+  // fio_str_free2(ch);
+  // fio_str_free2(msg);
+  return;
+}
+
+/* *****************************************************************************
+ * Glob Matching
+ **************************************************************************** */
+
+/** A binary glob matching helper. Returns 1 on match, otherwise returns 0. */
+static int fio_glob_match(fio_str_info_s pat, fio_str_info_s ch) {
+  /* adapted and rewritten, with thankfulness, from the code at:
+   * https://github.com/opnfv/kvmfornfv/blob/master/kernel/lib/glob.c
+   *
+   * Original version's copyright:
+   * Copyright 2015 Open Platform for NFV Project, Inc. and its contributors
+   * Under the MIT license.
+   */
+
+  /*
+   * Backtrack to previous * on mismatch and retry starting one
+   * character later in the string.  Because * matches all characters,
+   * there's never a need to backtrack multiple levels.
+   */
+  uint8_t *back_pat = NULL, *back_str = (uint8_t *)ch.data;
+  size_t back_pat_len = 0, back_str_len = ch.len;
+
+  /*
+   * Loop over each token (character or class) in pat, matching
+   * it against the remaining unmatched tail of str.  Return false
+   * on mismatch, or true after matching the trailing nul bytes.
+   */
+  while (ch.len) {
+    uint8_t c = *(uint8_t *)ch.data++;
+    uint8_t d = *(uint8_t *)pat.data++;
+    ch.len--;
+    pat.len--;
+
+    switch (d) {
+    case '?': /* Wildcard: anything goes */
+      break;
+
+    case '*':       /* Any-length wildcard */
+      if (!pat.len) /* Optimize trailing * case */
+        return 1;
+      back_pat = (uint8_t *)pat.data;
+      back_pat_len = pat.len;
+      back_str = (uint8_t *)--ch.data; /* Allow zero-length match */
+      back_str_len = ++ch.len;
+      break;
+
+    case '[': { /* Character class */
+      uint8_t match = 0, inverted = (*(uint8_t *)pat.data == '^');
+      uint8_t *cls = (uint8_t *)pat.data + inverted;
+      uint8_t a = *cls++;
+
+      /*
+       * Iterate over each span in the character class.
+       * A span is either a single character a, or a
+       * range a-b.  The first span may begin with ']'.
+       */
+      do {
+        uint8_t b = a;
+
+        if (cls[0] == '-' && cls[1] != ']') {
+          b = cls[1];
+
+          cls += 2;
+          if (a > b) {
+            uint8_t tmp = a;
+            a = b;
+            b = tmp;
+          }
+        }
+        match |= (a <= c && c <= b);
+      } while ((a = *cls++) != ']');
+
+      if (match == inverted)
+        goto backtrack;
+      pat.len -= cls - (uint8_t *)pat.data;
+      pat.data = (char *)cls;
+
+    } break;
+    case '\\':
+      d = *(uint8_t *)pat.data++;
+      pat.len--;
+    /* FALLTHROUGH */
+    default: /* Literal character */
+      if (c == d)
+        break;
+    backtrack:
+      if (!back_pat)
+        return 0; /* No point continuing */
+      /* Try again from last *, one character later in str. */
+      pat.data = (char *)back_pat;
+      ch.data = (char *)++back_str;
+      ch.len = --back_str_len;
+      pat.len = back_pat_len;
+    }
+  }
+  return !ch.len && !pat.len;
+}
+
+fio_match_fn FIO_MATCH_GLOB = fio_glob_match;
+
+#else /* FIO_PUBSUB_SUPPORT */
+
+static void fio_pubsub_on_fork(void) {}
+static void fio_cluster_init(void) {}
+static void fio_cluster_signal_children(void) {}
+
+#endif /* FIO_PUBSUB_SUPPORT */
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                   Memory Allocator Details & Implementation
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+#ifndef FIO_MEMORY_BLOCK_SIZE
+#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
+#endif
+#ifndef FIO_MEMORY_BLOCK_MASK
+#define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1) /* 0b111... */
+#endif
+#ifndef FIO_MEMORY_BLOCK_SLICES
+#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B slices */
+#endif
+
+/* *****************************************************************************
+If FIO_FORCE_MALLOC is set, use glibc / library malloc
+***************************************************************************** */
+#if FIO_FORCE_MALLOC
+
+void *fio_malloc(size_t size) { return malloc(size); }
+
+void *fio_calloc(size_t size, size_t count) { return calloc(size, count); }
+
+void fio_free(void *ptr) { free(ptr); }
+
+void *fio_realloc(void *ptr, size_t new_size) { return realloc(ptr, new_size); }
+void *fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
+  return realloc(ptr, new_size);
+  (void)valid_len;
+}
+/** Clears any memory locks, in case of a system call to `fork`. */
+static void fio_malloc_after_fork(void) {}
+
+#else
+/* *****************************************************************************
+facil.io malloc implementation
+***************************************************************************** */
+
+#if !defined(__clang__) && !defined(__GNUC__)
+#define __thread _Thread_value
+#endif
+
+#undef malloc
+#undef calloc
+#undef free
+#undef realloc
+
+/* *****************************************************************************
+Memory Copying by 16 byte units
+***************************************************************************** */
+
+#if __SIZEOF_INT128__ == 9 /* a 128bit type exists... but tests favor 64bit */
+static inline void fio_memcpy(__uint128_t *__restrict dest,
+                              __uint128_t *__restrict src, size_t units) {
+#elif SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
+static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
+                              size_t units) {
+  units = units << 1;
+#elif SIZE_MAX == 0xFFFFFFFF         /* 32 bit size_t */
+static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
+                              size_t units) {
+  units = units << 2;
+#else                                /* unknow... assume 16 bit? */
+static inline void fio_memcpy(uint16_t *__restrict dest,
+                              uint16_t *__restrict src, size_t units) {
+  units = units << 3;
+#endif
+  while (units >= 16) { /* unroll loop */
+    dest[0] = src[0];
+    dest[1] = src[1];
+    dest[2] = src[2];
+    dest[3] = src[3];
+    dest[4] = src[4];
+    dest[5] = src[5];
+    dest[6] = src[6];
+    dest[7] = src[7];
+    dest[8] = src[8];
+    dest[9] = src[9];
+    dest[10] = src[10];
+    dest[11] = src[11];
+    dest[12] = src[12];
+    dest[13] = src[13];
+    dest[14] = src[14];
+    dest[15] = src[15];
+    dest += 16;
+    src += 16;
+    units -= 16;
+  }
+  switch (units) {
+  case 15:
+    *(dest++) = *(src++); /* fallthrough */
+  case 14:
+    *(dest++) = *(src++); /* fallthrough */
+  case 13:
+    *(dest++) = *(src++); /* fallthrough */
+  case 12:
+    *(dest++) = *(src++); /* fallthrough */
+  case 11:
+    *(dest++) = *(src++); /* fallthrough */
+  case 10:
+    *(dest++) = *(src++); /* fallthrough */
+  case 9:
+    *(dest++) = *(src++); /* fallthrough */
+  case 8:
+    *(dest++) = *(src++); /* fallthrough */
+  case 7:
+    *(dest++) = *(src++); /* fallthrough */
+  case 6:
+    *(dest++) = *(src++); /* fallthrough */
+  case 5:
+    *(dest++) = *(src++); /* fallthrough */
+  case 4:
+    *(dest++) = *(src++); /* fallthrough */
+  case 3:
+    *(dest++) = *(src++); /* fallthrough */
+  case 2:
+    *(dest++) = *(src++); /* fallthrough */
+  case 1:
+    *(dest++) = *(src++);
+  }
+}
+
+/* *****************************************************************************
+System Memory wrappers
+***************************************************************************** */
+
+/*
+ * allocates memory using `mmap`, but enforces block size alignment.
+ * requires page aligned `len`.
+ *
+ * `align_shift` is used to move the memory page alignment to allow for a single
+ * page allocation header. align_shift MUST be either 0 (normal) or 1 (single
+ * page header). Other values might cause errors.
+ */
+static inline void *sys_alloc(size_t len, uint8_t is_indi) {
+  void *result;
+  static void *next_alloc = NULL;
+/* hope for the best? */
+#ifdef MAP_ALIGNED
+  result =
+      mmap(next_alloc, len, PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_ANONYMOUS | MAP_ALIGNED(FIO_MEMORY_BLOCK_SIZE_LOG),
+           -1, 0);
+#else
+  result = mmap(next_alloc, len, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+#endif
+  if (result == MAP_FAILED)
+    return NULL;
+  if (((uintptr_t)result & FIO_MEMORY_BLOCK_MASK)) {
+    munmap(result, len);
+    result = mmap(NULL, len + FIO_MEMORY_BLOCK_SIZE, PROT_READ | PROT_WRITE,
+                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (result == MAP_FAILED) {
+      return NULL;
+    }
+    const uintptr_t offset =
+        (FIO_MEMORY_BLOCK_SIZE - ((uintptr_t)result & FIO_MEMORY_BLOCK_MASK));
+    if (offset) {
+      munmap(result, offset);
+      result = (void *)((uintptr_t)result + offset);
+    }
+    munmap((void *)((uintptr_t)result + len), FIO_MEMORY_BLOCK_SIZE - offset);
+  }
+  next_alloc =
+      (void *)((uintptr_t)result + FIO_MEMORY_BLOCK_SIZE +
+               (is_indi * ((uintptr_t)1 << 30))); /* add 1TB for realloc */
+  return result;
+}
+
+/* frees memory using `munmap`. requires exact, page aligned, `len` */
+static inline void sys_free(void *mem, size_t len) { munmap(mem, len); }
+
+static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
+  if (new_len > prev_len) {
+#if defined(__linux__) && defined(MREMAP_MAYMOVE)
+    void *result = mremap(mem, prev_len, new_len, MREMAP_MAYMOVE);
+    if (result == MAP_FAILED)
+      return NULL;
+#else
+    void *result =
+        mmap((void *)((uintptr_t)mem + prev_len), new_len - prev_len,
+             PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (result == (void *)((uintptr_t)mem + prev_len)) {
+      result = mem;
+    } else {
+      /* copy and free */
+      munmap(result, new_len - prev_len); /* free the failed attempt */
+      result = sys_alloc(new_len, 1);     /* allocate new memory */
+      if (!result) {
+        return NULL;
+      }
+      fio_memcpy(result, mem, prev_len >> 4); /* copy data */
+      // memcpy(result, mem, prev_len);
+      munmap(mem, prev_len); /* free original memory */
+    }
+#endif
+    return result;
+  }
+  if (new_len + 4096 < prev_len) /* more than a single dangling page */
+    munmap((void *)((uintptr_t)mem + new_len), prev_len - new_len);
+  return mem;
+}
+
+/** Rounds up any size to the nearest page alignment (assumes 4096 bytes per
+ * page) */
+static inline size_t sys_round_size(size_t size) {
+  return (size & (~4095)) + (4096 * (!!(size & 4095)));
+}
+
+/* *****************************************************************************
+Data Types
+***************************************************************************** */
+
+/* The basic block header. Starts a 32Kib memory block */
+typedef struct block_s {
+  uint16_t ref; /* reference count (per memory page) */
+  uint16_t pos; /* position into the block */
+  uint16_t max; /* available memory count */
+  uint16_t pad; /* memory padding */
+} block_s;
+
+/* a per-CPU core "arena" for memory allocations  */
+typedef struct {
+  block_s *block;
+  fio_lock_i lock;
+} arena_s;
+
+/* The memory allocators persistent state */
+static struct {
+  size_t active_size; /* active array size */
+  block_s *available; /* free list for memory blocks */
+  intptr_t count;     /* free list counter */
+  size_t cores;       /* the number of detected CPU cores*/
+  fio_lock_i lock;    /* a global lock */
+} memory = {
+    .cores = 1,
+    .lock = FIO_LOCK_INIT,
+};
+
+/* The per-CPU arena array. */
+static arena_s *arenas;
+
+/* The per-CPU arena array. */
+static long double on_malloc_zero;
+
+/* *****************************************************************************
+Per-CPU Arena management
+***************************************************************************** */
+
+/* returned a locked arena. Attempts the preffered arena first. */
+static inline arena_s *arena_lock(arena_s *preffered) {
+  if (!preffered)
+    preffered = arenas;
+  if (!fio_trylock(&preffered->lock))
+    return preffered;
+  do {
+    arena_s *arena = preffered;
+    for (size_t i = (size_t)(arena - arenas); i < memory.cores; ++i) {
+      if ((preffered == arenas || arena != preffered) &&
+          !fio_trylock(&arena->lock))
+        return arena;
+      ++arena;
+    }
+    if (preffered == arenas)
+      reschedule_thread();
+    preffered = arenas;
+  } while (1);
+}
+
+static __thread arena_s *arena_last_used;
+
+static void arena_enter(void) { arena_last_used = arena_lock(arena_last_used); }
+
+static inline void arena_exit(void) { fio_unlock(&arena_last_used->lock); }
+
+/** Clears any memory locks, in case of a system call to `fork`. */
+static void fio_malloc_after_fork(void) {
+  arena_last_used = NULL;
+  if (!arenas) {
+    return;
+  }
+  memory.lock = FIO_LOCK_INIT;
+  for (size_t i = 0; i < memory.cores; ++i) {
+    arenas[i].lock = FIO_LOCK_INIT;
+  }
+}
+
+/* *****************************************************************************
+Block management
+***************************************************************************** */
+
+// static inline block_s **block_find(void *mem_) {
+//   const uintptr_t mem = (uintptr_t)mem_;
+//   block_s *blk = memory.active;
+// }
+
+/* intializes the block header for an available block of memory. */
+static inline block_s *block_init(void *blk_) {
+  block_s *blk = blk_;
+  *blk = (block_s){
+      .ref = 1,
+      .pos = (2 + (sizeof(block_s) >> 4)),
+      .max = (FIO_MEMORY_BLOCK_SLICES - 1) -
+             (sizeof(block_s) >> 4), /* count available units of 16 bytes */
+  };
+  return blk;
+}
+
+/* intializes the block header for an available block of memory. */
+static inline void block_free(block_s *blk) {
+  if (fio_atomic_sub(&blk->ref, 1))
+    return;
+
+  if (fio_atomic_add(&memory.count, 1) >
+      (intptr_t)(FIO_MEM_MAX_BLOCKS_PER_CORE * memory.cores)) {
+    /* return memory to the system */
+    fio_atomic_sub(&memory.count, 1);
+    sys_free(blk, FIO_MEMORY_BLOCK_SIZE);
+    return;
+  }
+  memset(blk, 0, FIO_MEMORY_BLOCK_SIZE);
+  fio_lock(&memory.lock);
+  *(block_s **)blk = memory.available;
+  memory.available = (block_s *)blk;
+  fio_unlock(&memory.lock);
+}
+
+/* intializes the block header for an available block of memory. */
+static inline block_s *block_new(void) {
+  block_s *blk = NULL;
+
+  if (memory.available) {
+    fio_lock(&memory.lock);
+    blk = (block_s *)memory.available;
+    if (blk) {
+      memory.available = ((block_s **)blk)[0];
+    }
+    fio_unlock(&memory.lock);
+  }
+  if (blk) {
+    fio_atomic_sub(&memory.count, 1);
+    ((block_s **)blk)[0] = NULL;
+    ((block_s **)blk)[1] = NULL;
+    return block_init(blk);
+  }
+  /* collect memory from the system */
+  blk = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
+  if (!blk)
+    return NULL;
+  return block_init(blk);
+  ;
+}
+
+static inline void *block_slice(uint16_t units) {
+  block_s *blk = arena_last_used->block;
+  if (!blk) {
+    /* arena is empty */
+    blk = block_new();
+    arena_last_used->block = blk;
+  } else if (blk->pos + units > blk->max) {
+    /* not enough memory in the block - rotate */
+    block_free(blk);
+    blk = block_new();
+    arena_last_used->block = blk;
+  }
+  if (!blk) {
+    /* no system memory available? */
+    errno = ENOMEM;
+    return NULL;
+  }
+  /* slice block starting at blk->pos and increase reference count */
+  const void *mem = (void *)((uintptr_t)blk + ((uintptr_t)blk->pos << 4));
+  fio_atomic_add(&blk->ref, 1);
+  blk->pos += units;
+  if (blk->pos >= blk->max) {
+    /* it's true that a 16 bytes slice remains, but statistically... */
+    /* ... the block was fully utilized, clear arena */
+    block_free(blk);
+    arena_last_used->block = NULL;
+  }
+  return (void *)mem;
+}
+
+static inline void block_slice_free(void *mem) {
+  /* locate block boundary */
+  block_s *blk = (block_s *)((uintptr_t)mem & (~FIO_MEMORY_BLOCK_MASK));
+  block_free(blk);
+}
+
+/* *****************************************************************************
+Non-Block allocations (direct from the system)
+***************************************************************************** */
+
+static inline void *big_alloc(size_t size) {
+  size = sys_round_size(size + 16);
+  size_t *mem = sys_alloc(size, 1);
+  if (!mem)
+    goto error;
+  *mem = size;
+  return (void *)(((uintptr_t)mem) + 16);
+error:
+  return NULL;
+}
+
+static inline void big_free(void *ptr) {
+  size_t *mem = (void *)(((uintptr_t)ptr) - 16);
+  sys_free(mem, *mem);
+}
+
+static inline void *big_realloc(void *ptr, size_t new_size) {
+  size_t *mem = (void *)(((uintptr_t)ptr) - 16);
+  new_size = sys_round_size(new_size + 16);
+  mem = sys_realloc(mem, *mem, new_size);
+  if (!mem)
+    goto error;
+  *mem = new_size;
+  return (void *)(((uintptr_t)mem) + 16);
+error:
+  return NULL;
+}
+
+/* *****************************************************************************
+Allocator Initialization (initialize arenas and allocate a block for each CPU)
+***************************************************************************** */
+
+static void fio_mem_init(void) {
+  if (arenas)
+    return;
+
+#ifdef _SC_NPROCESSORS_ONLN
+  ssize_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+#else
+#warning Dynamic CPU core count is unavailable - assuming 8 cores for memory allocation pools.
+  ssize_t cpu_count = 8; /* fallback */
+#endif
+  memory.cores = cpu_count;
+  memory.count = 0 - (intptr_t)cpu_count;
+  arenas = big_alloc(sizeof(*arenas) * cpu_count);
+  if (!arenas) {
+    perror("FATAL ERROR: Couldn't initialize memory allocator");
+    exit(errno);
+  }
+  size_t pre_pool = cpu_count > 32 ? 32 : cpu_count;
+  for (size_t i = 0; i < pre_pool; ++i) {
+    void *block = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
+    if (block) {
+      block_init(block);
+      block_free(block);
+    }
+  }
+  pthread_atfork(NULL, NULL, fio_malloc_after_fork);
+}
+
+static void fio_mem_destroy(void) {
+  if (!arenas)
+    return;
+
+  arena_s *arena = arenas;
+  for (size_t i = 0; i < memory.cores; ++i) {
+    if (arena->block)
+      block_free(arena->block);
+    arena->block = NULL;
+    ++arena;
+  }
+  while (memory.available) {
+    block_s *b = memory.available;
+    memory.available = *(block_s **)b;
+    sys_free(b, FIO_MEMORY_BLOCK_SIZE);
+  }
+  big_free(arenas);
+  arenas = NULL;
+}
+
+/* *****************************************************************************
+Memory allocation / deacclocation API
+***************************************************************************** */
+
+void *fio_malloc(size_t size) {
+#if FIO_OVERRIDE_MALLOC
+  if (!arenas)
+    fio_mem_init();
+#endif
+  if (!size) {
+    /* changed behavior prevents "allocation failed" test for `malloc(0)` */
+    return (void *)(&on_malloc_zero);
+  }
+  if (size >= FIO_MEMORY_BLOCK_ALLOC_LIMIT) {
+    /* system allocation - must be block aligned */
+    return big_alloc(size);
+  }
+  /* ceiling for 16 byte alignement, translated to 16 byte units */
+  size = (size >> 4) + (!!(size & 15));
+  arena_enter();
+  void *mem = block_slice(size);
+  arena_exit();
+  return mem;
+}
+
+void *fio_calloc(size_t size, size_t count) {
+  return fio_malloc(size * count); // memory is pre-initialized by mmap or pool.
+}
+
+void fio_free(void *ptr) {
+  if (!ptr || ptr == (void *)&on_malloc_zero)
+    return;
+  if (((uintptr_t)ptr & FIO_MEMORY_BLOCK_MASK) == 16) {
+    /* big allocation - direct from the system */
+    big_free(ptr);
+    return;
+  }
+  /* allocated within block */
+  block_slice_free(ptr);
+}
+
+/**
+ * Re-allocates memory. An attept to avoid copying the data is made only for big
+ * memory allocations.
+ *
+ * This variation is slightly faster as it might copy less data
+ */
+void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length) {
+  if (!ptr || ptr == (void *)&on_malloc_zero)
+    return fio_malloc(new_size);
+  if (!new_size) {
+    goto zero_size;
+  }
+  if (((uintptr_t)ptr & FIO_MEMORY_BLOCK_MASK) == 16) {
+    /* big reallocation - direct from the system */
+    return big_realloc(ptr, new_size);
+  }
+  /* allocated within block - don't even try to expand the allocation */
+  /* ceiling for 16 byte alignement, translated to 16 byte units */
+  void *new_mem = fio_malloc(new_size);
+  if (!new_mem)
+    return NULL;
+  new_size = ((new_size >> 4) + (!!(new_size & 15)));
+  copy_length = ((copy_length >> 4) + (!!(copy_length & 15)));
+  // memcpy(new_mem, ptr, (copy_length > new_size ? new_size : copy_length) <<
+  // 4);
+  fio_memcpy(new_mem, ptr, (copy_length > new_size ? new_size : copy_length));
+  block_slice_free(ptr);
+  return new_mem;
+zero_size:
+  fio_free(ptr);
+  return malloc(0);
+}
+
+void *fio_realloc(void *ptr, size_t new_size) {
+  const size_t max_old =
+      FIO_MEMORY_BLOCK_SIZE - ((uintptr_t)ptr & FIO_MEMORY_BLOCK_MASK);
+  return fio_realloc2(ptr, new_size, max_old);
+}
+
+/**
+ * Allocates memory directly using `mmap`, this is prefered for larger objects
+ * that have a long lifetime.
+ *
+ * `fio_free` can be used for deallocating the memory.
+ */
+void *fio_mmap(size_t size) {
+  if (!size) {
+    return NULL;
+  }
+  return big_alloc(size);
+}
+
+/* *****************************************************************************
+FIO_OVERRIDE_MALLOC - override glibc / library malloc
+***************************************************************************** */
+#if FIO_OVERRIDE_MALLOC
+void *malloc(size_t size) { return fio_malloc(size); }
+void *calloc(size_t size, size_t count) { return fio_calloc(size, count); }
+void free(void *ptr) { fio_free(ptr); }
+void *realloc(void *ptr, size_t new_size) { return fio_realloc(ptr, new_size); }
+#endif
+
+#endif
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+                      Random Generator Functions
+
+
+
+
+
+
+
+***************************************************************************** */
+
+static inline void fio_random_data(fio_sha2_s *sha2) {
+  struct {
+#ifdef RUSAGE_SELF
+    struct rusage rusage;
+#endif
+    struct timespec clk;
+    time_t the_time;
+    uint64_t more[8];
+  } junk_data;
+#ifdef RUSAGE_SELF
+  getrusage(RUSAGE_SELF, &junk_data.rusage);
+#endif
+  clock_gettime(CLOCK_REALTIME, &junk_data.clk);
+  time(&junk_data.the_time);
+  fio_sha2_write(sha2, &junk_data, sizeof(junk_data));
+  fio_sha2_result(sha2);
+}
+
+uint64_t fio_rand64(void) {
+  fio_sha2_s sha2 = fio_sha2_init(SHA_512);
+  fio_random_data(&sha2);
+  return sha2.digest.i64[0];
+}
+
+void fio_rand_bytes(void *target, size_t length) {
+  fio_sha2_s sha2 = fio_sha2_init(SHA_512);
+  fio_random_data(&sha2);
+
+  while (length >= 64) {
+    memcpy(target, sha2.digest.str, 64);
+    length -= 64;
+    target = (void *)((uintptr_t)target + 64);
+    fio_random_data(&sha2);
+  }
+  if (length) {
+    memcpy(target, sha2.digest.str, length);
+  }
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+                             Hash Functions and Base64
+
+                  SipHash / SHA-1 / SHA-2 / Base64 / Hex encoding
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/** 32Bit left rotation, inlined. */
+#define left_rotate32(i, bits)                                                 \
+  (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> (32 - (bits))))
+/** 32Bit right rotation, inlined. */
+#define right_rotate32(i, bits)                                                \
+  (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << (32 - (bits))))
+/** 64Bit left rotation, inlined. */
+#define left_rotate64(i, bits)                                                 \
+  (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
+/** 64Bit right rotation, inlined. */
+#define right_rotate64(i, bits)                                                \
+  (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << (64 - (bits))))
+/** unknown size element - left rotation, inlined. */
+#define left_rotate(i, bits) (((i) << (bits)) | ((i) >> (sizeof((i)) - (bits))))
+/** unknown size element - right rotation, inlined. */
+#define right_rotate(i, bits)                                                  \
+  (((i) >> (bits)) | ((i) << (sizeof((i)) - (bits))))
+/** inplace byte swap 16 bit integer */
+#if __has_builtin(__builtin_bswap16)
+#define bswap16(i)                                                             \
+  do {                                                                         \
+    (i) = __builtin_bswap16((uint16_t)i);                                      \
+  } while (0);
+#else
+#define bswap16(i)                                                             \
+  do {                                                                         \
+    (i) = (((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8);                           \
+  } while (0);
+#endif
+/** inplace byte swap 32 bit integer */
+#if __has_builtin(__builtin_bswap32)
+#define bswap32(i)                                                             \
+  do {                                                                         \
+    (i) = __builtin_bswap32((uint32_t)i);                                      \
+  } while (0);
+#else
+#define bswap32(i)                                                             \
+  do {                                                                         \
+    (i) = (((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |                       \
+          (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24);                \
+  } while (0);
+#endif
+/** inplace byte swap 64 bit integer */
+#if __has_builtin(__builtin_bswap64)
+#define bswap64(i)                                                             \
+  do {                                                                         \
+    (i) = __builtin_bswap64((uint64_t)i);                                      \
+  } while (0);
+#else
+#define bswap64(i)                                                             \
+  do {                                                                         \
+    (i) = (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                    \
+          (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |             \
+          (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |     \
+          (((i)&0xFF000000000000ULL) >> 40) |                                  \
+          (((i)&0xFF00000000000000ULL) >> 56);                                 \
+  } while (0);
+#endif
+
+#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) &&                 \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ /* Big Endian */
+
+/* the algorithm was designed as little endian... so, byte swap 64 bit. */
+#define sip_local64(i)                                                         \
+  (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                            \
+      (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                 \
+      (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |         \
+      (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56)
+/** Converts a 4 byte string to a uint32_t word. careful with alignment! */
+#define str2word32(c) (*((uint32_t *)(c)))
+#define str2word64(c) (*((uint64_t *)(c)))
+
+#else /* Little Endian */
+
+/* no need */
+#define sip_local64(i) (i)
+/**
+Converts a 4 byte string to a Big Endian uint32_t word. (ignores alignment!)
+*/
+#define str2word32(c)                                                          \
+  (((*((uint32_t *)(c))) & 0xFFUL) << 24) |                                    \
+      (((*((uint32_t *)(c))) & 0xFF00UL) << 8) |                               \
+      (((*((uint32_t *)(c))) & 0xFF0000UL) >> 8) |                             \
+      (((*((uint32_t *)(c))) & 0xFF000000UL) >> 24)
+#define str2word64(c)                                                          \
+  (((*((uint64_t *)(c))) & 0xFFULL) << 56) |                                   \
+      (((*((uint64_t *)(c))) & 0xFF00ULL) << 40) |                             \
+      (((*((uint64_t *)(c))) & 0xFF0000ULL) << 24) |                           \
+      (((*((uint64_t *)(c))) & 0xFF000000ULL) << 8) |                          \
+      (((*((uint64_t *)(c))) & 0xFF00000000ULL) >> 8) |                        \
+      (((*((uint64_t *)(c))) & 0xFF0000000000ULL) >> 24) |                     \
+      (((*((uint64_t *)(c))) & 0xFF000000000000ULL) >> 40) |                   \
+      (((*((uint64_t *)(c))) & 0xFF00000000000000ULL) >> 56);
+#define str2word(c)                                                            \
+  (((*((uint32_t *)(c))) & 0xFFUL) << 24) |                                    \
+      (((*((uint32_t *)(c))) & 0xFF00UL) << 8) |                               \
+      (((*((uint32_t *)(c))) & 0xFF0000UL) >> 8) |                             \
+      (((*((uint32_t *)(c))) & 0xFF000000UL) >> 24)
+#endif
+
+/* *****************************************************************************
+SipHash
+***************************************************************************** */
+
+static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
+                                      size_t y) {
+  /* initialize the 4 words */
+  uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL);
+  uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL);
+  uint64_t v2 = (0x0706050403020100ULL ^ 0x6c7967656e657261ULL);
+  uint64_t v3 = (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL);
+  const uint64_t *w64 = data;
+  uint8_t len_mod = len & 255;
+  union {
+    uint64_t i;
+    uint8_t str[8];
+  } word;
+
+#define hash_map_SipRound                                                      \
+  do {                                                                         \
+    v2 += v3;                                                                  \
+    v3 = left_rotate64(v3, 16) ^ v2;                                           \
+    v0 += v1;                                                                  \
+    v1 = left_rotate64(v1, 13) ^ v0;                                           \
+    v0 = left_rotate64(v0, 32);                                                \
+    v2 += v1;                                                                  \
+    v0 += v3;                                                                  \
+    v1 = left_rotate64(v1, 17) ^ v2;                                           \
+    v3 = left_rotate64(v3, 21) ^ v0;                                           \
+    v2 = left_rotate64(v2, 32);                                                \
+  } while (0);
+
+  while (len >= 8) {
+    word.i = sip_local64(*w64);
+    v3 ^= word.i;
+    /* Sip Rounds */
+    for (size_t i = 0; i < x; ++i) {
+      hash_map_SipRound;
+    }
+    v0 ^= word.i;
+    w64 += 1;
+    len -= 8;
+  }
+  word.i = 0;
+  uint8_t *pos = word.str;
+  uint8_t *w8 = (void *)w64;
+  switch (len) { /* fallthrough is intentional */
+  case 7:
+    pos[6] = w8[6];
+    /* fallthrough */
+  case 6:
+    pos[5] = w8[5];
+    /* fallthrough */
+  case 5:
+    pos[4] = w8[4];
+    /* fallthrough */
+  case 4:
+    pos[3] = w8[3];
+    /* fallthrough */
+  case 3:
+    pos[2] = w8[2];
+    /* fallthrough */
+  case 2:
+    pos[1] = w8[1];
+    /* fallthrough */
+  case 1:
+    pos[0] = w8[0];
+  }
+  word.str[7] = len_mod;
+
+  /* last round */
+  v3 ^= word.i;
+  hash_map_SipRound;
+  hash_map_SipRound;
+  v0 ^= word.i;
+  /* Finalization */
+  v2 ^= 0xff;
+  /* d iterations of SipRound */
+  for (size_t i = 0; i < y; ++i) {
+    hash_map_SipRound;
+  }
+  hash_map_SipRound;
+  hash_map_SipRound;
+  hash_map_SipRound;
+  hash_map_SipRound;
+  /* XOR it all together */
+  v0 ^= v1 ^ v2 ^ v3;
+#undef hash_map_SipRound
+  return v0;
+}
+
+uint64_t fio_siphash24(const void *data, size_t len) {
+  return fio_siphash_xy(data, len, 2, 4);
+}
+
+uint64_t fio_siphash13(const void *data, size_t len) {
+  return fio_siphash_xy(data, len, 1, 3);
+}
+
+/* *****************************************************************************
+SHA-1
+***************************************************************************** */
+
+static const uint8_t sha1_padding[64] = {0x80, 0};
+
+/**
+Process the buffer once full.
+*/
+static inline void fio_sha1_perform_all_rounds(fio_sha1_s *s,
+                                               const uint8_t *buffer) {
+  /* collect data */
+  uint32_t a = s->digest.i[0];
+  uint32_t b = s->digest.i[1];
+  uint32_t c = s->digest.i[2];
+  uint32_t d = s->digest.i[3];
+  uint32_t e = s->digest.i[4];
+  uint32_t t, w[16];
+  /* copy data to words, performing byte swapping as needed */
+  w[0] = str2word32(buffer);
+  w[1] = str2word32(buffer + 4);
+  w[2] = str2word32(buffer + 8);
+  w[3] = str2word32(buffer + 12);
+  w[4] = str2word32(buffer + 16);
+  w[5] = str2word32(buffer + 20);
+  w[6] = str2word32(buffer + 24);
+  w[7] = str2word32(buffer + 28);
+  w[8] = str2word32(buffer + 32);
+  w[9] = str2word32(buffer + 36);
+  w[10] = str2word32(buffer + 40);
+  w[11] = str2word32(buffer + 44);
+  w[12] = str2word32(buffer + 48);
+  w[13] = str2word32(buffer + 52);
+  w[14] = str2word32(buffer + 56);
+  w[15] = str2word32(buffer + 60);
+  /* perform rounds */
+#undef perform_single_round
+#define perform_single_round(num)                                              \
+  t = left_rotate32(a, 5) + e + w[num] + ((b & c) | ((~b) & d)) + 0x5A827999;  \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
+  a = t;
+
+#define perform_four_rounds(i)                                                 \
+  perform_single_round(i);                                                     \
+  perform_single_round(i + 1);                                                 \
+  perform_single_round(i + 2);                                                 \
+  perform_single_round(i + 3);
+
+  perform_four_rounds(0);
+  perform_four_rounds(4);
+  perform_four_rounds(8);
+  perform_four_rounds(12);
+
+#undef perform_single_round
+#define perform_single_round(i)                                                \
+  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
+                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
+                            1);                                                \
+  t = left_rotate32(a, 5) + e + w[(i)&15] + ((b & c) | ((~b) & d)) +           \
+      0x5A827999;                                                              \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
+  a = t;
+
+  perform_four_rounds(16);
+
+#undef perform_single_round
+#define perform_single_round(i)                                                \
+  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
+                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
+                            1);                                                \
+  t = left_rotate32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0x6ED9EBA1;          \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
+  a = t;
+
+  perform_four_rounds(20);
+  perform_four_rounds(24);
+  perform_four_rounds(28);
+  perform_four_rounds(32);
+  perform_four_rounds(36);
+
+#undef perform_single_round
+#define perform_single_round(i)                                                \
+  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
+                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
+                            1);                                                \
+  t = left_rotate32(a, 5) + e + w[(i)&15] + ((b & (c | d)) | (c & d)) +        \
+      0x8F1BBCDC;                                                              \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
+  a = t;
+
+  perform_four_rounds(40);
+  perform_four_rounds(44);
+  perform_four_rounds(48);
+  perform_four_rounds(52);
+  perform_four_rounds(56);
+#undef perform_single_round
+#define perform_single_round(i)                                                \
+  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
+                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
+                            1);                                                \
+  t = left_rotate32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0xCA62C1D6;          \
+  e = d;                                                                       \
+  d = c;                                                                       \
+  c = left_rotate32(b, 30);                                                    \
+  b = a;                                                                       \
+  a = t;
+  perform_four_rounds(60);
+  perform_four_rounds(64);
+  perform_four_rounds(68);
+  perform_four_rounds(72);
+  perform_four_rounds(76);
+
+  /* store data */
+  s->digest.i[4] += e;
+  s->digest.i[3] += d;
+  s->digest.i[2] += c;
+  s->digest.i[1] += b;
+  s->digest.i[0] += a;
+}
+
+/**
+Initialize or reset the `sha1` object. This must be performed before hashing
+data using sha1.
+*/
+fio_sha1_s fio_sha1_init(void) {
+  return (fio_sha1_s){.digest.i[0] = 0x67452301,
+                      .digest.i[1] = 0xefcdab89,
+                      .digest.i[2] = 0x98badcfe,
+                      .digest.i[3] = 0x10325476,
+                      .digest.i[4] = 0xc3d2e1f0};
+}
+
+/**
+Writes data to the sha1 buffer.
+*/
+void fio_sha1_write(fio_sha1_s *s, const void *data, size_t len) {
+  size_t in_buffer = s->length & 63;
+  size_t partial = 64 - in_buffer;
+  s->length += len;
+  if (partial > len) {
+    memcpy(s->buffer + in_buffer, data, len);
+    return;
+  }
+  if (in_buffer) {
+    memcpy(s->buffer + in_buffer, data, partial);
+    len -= partial;
+    data = (void *)((uintptr_t)data + partial);
+    fio_sha1_perform_all_rounds(s, s->buffer);
+  }
+  while (len >= 64) {
+    fio_sha1_perform_all_rounds(s, data);
+    data = (void *)((uintptr_t)data + 64);
+    len -= 64;
+  }
+  if (len) {
+    memcpy(s->buffer + in_buffer, data, len);
+  }
+  return;
+}
+
+char *fio_sha1_result(fio_sha1_s *s) {
+  size_t in_buffer = s->length & 63;
+  if (in_buffer > 55) {
+    memcpy(s->buffer + in_buffer, sha1_padding, 64 - in_buffer);
+    fio_sha1_perform_all_rounds(s, s->buffer);
+    memcpy(s->buffer, sha1_padding + 1, 56);
+  } else if (in_buffer != 55) {
+    memcpy(s->buffer + in_buffer, sha1_padding, 56 - in_buffer);
+  } else {
+    s->buffer[55] = sha1_padding[0];
+  }
+  /* store the length in BITS - alignment should be promised by struct */
+  /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
+  uint64_t *len = (uint64_t *)(s->buffer + 56);
+  *len = s->length << 3;
+#ifndef __BIG_ENDIAN__
+  bswap64(*len);
+#endif
+  fio_sha1_perform_all_rounds(s, s->buffer);
+
+/* change back to little endian, if required */
+#ifndef __BIG_ENDIAN__
+  bswap32(s->digest.i[0]);
+  bswap32(s->digest.i[1]);
+  bswap32(s->digest.i[2]);
+  bswap32(s->digest.i[3]);
+  bswap32(s->digest.i[4]);
+#endif
+  // fprintf(stderr, "result requested, in hex, is:");
+  // for (size_t i = 0; i < 20; i++)
+  //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
+  // fprintf(stderr, "\r\n");
+  return (char *)s->digest.str;
+}
+
+#undef perform_single_round
+
+/* *****************************************************************************
+SHA-2
+***************************************************************************** */
+
+static const uint8_t sha2_padding[128] = {0x80, 0};
+
+/* SHA-224 and SHA-256 constants */
+static uint32_t sha2_256_words[] = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+
+/* SHA-512 and friends constants */
+static uint64_t sha2_512_words[] = {
+    0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f,
+    0xe9b5dba58189dbbc, 0x3956c25bf348b538, 0x59f111f1b605d019,
+    0x923f82a4af194f9b, 0xab1c5ed5da6d8118, 0xd807aa98a3030242,
+    0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
+    0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235,
+    0xc19bf174cf692694, 0xe49b69c19ef14ad2, 0xefbe4786384f25e3,
+    0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65, 0x2de92c6f592b0275,
+    0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5,
+    0x983e5152ee66dfab, 0xa831c66d2db43210, 0xb00327c898fb213f,
+    0xbf597fc7beef0ee4, 0xc6e00bf33da88fc2, 0xd5a79147930aa725,
+    0x06ca6351e003826f, 0x142929670a0e6e70, 0x27b70a8546d22ffc,
+    0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed, 0x53380d139d95b3df,
+    0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6,
+    0x92722c851482353b, 0xa2bfe8a14cf10364, 0xa81a664bbc423001,
+    0xc24b8b70d0f89791, 0xc76c51a30654be30, 0xd192e819d6ef5218,
+    0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8,
+    0x19a4c116b8d2d0c8, 0x1e376c085141ab53, 0x2748774cdf8eeb99,
+    0x34b0bcb5e19b48a8, 0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb,
+    0x5b9cca4f7763e373, 0x682e6ff3d6b2b8a3, 0x748f82ee5defb2fc,
+    0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec,
+    0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915,
+    0xc67178f2e372532b, 0xca273eceea26619c, 0xd186b8c721c0c207,
+    0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178, 0x06f067aa72176fba,
+    0x0a637dc5a2c898a6, 0x113f9804bef90dae, 0x1b710b35131c471b,
+    0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc,
+    0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a,
+    0x5fcb6fab3ad6faec, 0x6c44198c4a475817};
+
+/* Specific Macros for the SHA-2 processing */
+
+#define Ch(x, y, z) (((x) & (y)) ^ ((~(x)) & z))
+#define Maj(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+
+#define Eps0_32(x)                                                             \
+  (right_rotate32((x), 2) ^ right_rotate32((x), 13) ^ right_rotate32((x), 22))
+#define Eps1_32(x)                                                             \
+  (right_rotate32((x), 6) ^ right_rotate32((x), 11) ^ right_rotate32((x), 25))
+#define Omg0_32(x)                                                             \
+  (right_rotate32((x), 7) ^ right_rotate32((x), 18) ^ (((x) >> 3)))
+#define Omg1_32(x)                                                             \
+  (right_rotate32((x), 17) ^ right_rotate32((x), 19) ^ (((x) >> 10)))
+
+#define Eps0_64(x)                                                             \
+  (right_rotate64((x), 28) ^ right_rotate64((x), 34) ^ right_rotate64((x), 39))
+#define Eps1_64(x)                                                             \
+  (right_rotate64((x), 14) ^ right_rotate64((x), 18) ^ right_rotate64((x), 41))
+#define Omg0_64(x)                                                             \
+  (right_rotate64((x), 1) ^ right_rotate64((x), 8) ^ (((x) >> 7)))
+#define Omg1_64(x)                                                             \
+  (right_rotate64((x), 19) ^ right_rotate64((x), 61) ^ (((x) >> 6)))
+
+/**
+Process the buffer once full.
+*/
+static inline void fio_sha2_perform_all_rounds(fio_sha2_s *s,
+                                               const uint8_t *data) {
+  if (s->type & 1) { /* 512 derived type */
+    // process values for the 64bit words
+    uint64_t a = s->digest.i64[0];
+    uint64_t b = s->digest.i64[1];
+    uint64_t c = s->digest.i64[2];
+    uint64_t d = s->digest.i64[3];
+    uint64_t e = s->digest.i64[4];
+    uint64_t f = s->digest.i64[5];
+    uint64_t g = s->digest.i64[6];
+    uint64_t h = s->digest.i64[7];
+    uint64_t t1, t2, w[80];
+    w[0] = str2word64(data);
+    w[1] = str2word64(data + 8);
+    w[2] = str2word64(data + 16);
+    w[3] = str2word64(data + 24);
+    w[4] = str2word64(data + 32);
+    w[5] = str2word64(data + 40);
+    w[6] = str2word64(data + 48);
+    w[7] = str2word64(data + 56);
+    w[8] = str2word64(data + 64);
+    w[9] = str2word64(data + 72);
+    w[10] = str2word64(data + 80);
+    w[11] = str2word64(data + 88);
+    w[12] = str2word64(data + 96);
+    w[13] = str2word64(data + 104);
+    w[14] = str2word64(data + 112);
+    w[15] = str2word64(data + 120);
+
+#undef perform_single_round
+#define perform_single_round(i)                                                \
+  t1 = h + Eps1_64(e) + Ch(e, f, g) + sha2_512_words[i] + w[i];                \
+  t2 = Eps0_64(a) + Maj(a, b, c);                                              \
+  h = g;                                                                       \
+  g = f;                                                                       \
+  f = e;                                                                       \
+  e = d + t1;                                                                  \
+  d = c;                                                                       \
+  c = b;                                                                       \
+  b = a;                                                                       \
+  a = t1 + t2;
+
+#define perform_4rounds(i)                                                     \
+  perform_single_round(i);                                                     \
+  perform_single_round(i + 1);                                                 \
+  perform_single_round(i + 2);                                                 \
+  perform_single_round(i + 3);
+
+    perform_4rounds(0);
+    perform_4rounds(4);
+    perform_4rounds(8);
+    perform_4rounds(12);
+
+#undef perform_single_round
+#define perform_single_round(i)                                                \
+  w[i] = Omg1_64(w[i - 2]) + w[i - 7] + Omg0_64(w[i - 15]) + w[i - 16];        \
+  t1 = h + Eps1_64(e) + Ch(e, f, g) + sha2_512_words[i] + w[i];                \
+  t2 = Eps0_64(a) + Maj(a, b, c);                                              \
+  h = g;                                                                       \
+  g = f;                                                                       \
+  f = e;                                                                       \
+  e = d + t1;                                                                  \
+  d = c;                                                                       \
+  c = b;                                                                       \
+  b = a;                                                                       \
+  a = t1 + t2;
+
+    perform_4rounds(16);
+    perform_4rounds(20);
+    perform_4rounds(24);
+    perform_4rounds(28);
+    perform_4rounds(32);
+    perform_4rounds(36);
+    perform_4rounds(40);
+    perform_4rounds(44);
+    perform_4rounds(48);
+    perform_4rounds(52);
+    perform_4rounds(56);
+    perform_4rounds(60);
+    perform_4rounds(64);
+    perform_4rounds(68);
+    perform_4rounds(72);
+    perform_4rounds(76);
+
+    s->digest.i64[0] += a;
+    s->digest.i64[1] += b;
+    s->digest.i64[2] += c;
+    s->digest.i64[3] += d;
+    s->digest.i64[4] += e;
+    s->digest.i64[5] += f;
+    s->digest.i64[6] += g;
+    s->digest.i64[7] += h;
+    return;
+  } else {
+    // process values for the 32bit words
+    uint32_t a = s->digest.i32[0];
+    uint32_t b = s->digest.i32[1];
+    uint32_t c = s->digest.i32[2];
+    uint32_t d = s->digest.i32[3];
+    uint32_t e = s->digest.i32[4];
+    uint32_t f = s->digest.i32[5];
+    uint32_t g = s->digest.i32[6];
+    uint32_t h = s->digest.i32[7];
+    uint32_t t1, t2, w[64];
+
+    w[0] = str2word32(data);
+    w[1] = str2word32(data + 4);
+    w[2] = str2word32(data + 8);
+    w[3] = str2word32(data + 12);
+    w[4] = str2word32(data + 16);
+    w[5] = str2word32(data + 20);
+    w[6] = str2word32(data + 24);
+    w[7] = str2word32(data + 28);
+    w[8] = str2word32(data + 32);
+    w[9] = str2word32(data + 36);
+    w[10] = str2word32(data + 40);
+    w[11] = str2word32(data + 44);
+    w[12] = str2word32(data + 48);
+    w[13] = str2word32(data + 52);
+    w[14] = str2word32(data + 56);
+    w[15] = str2word32(data + 60);
+
+#undef perform_single_round
+#define perform_single_round(i)                                                \
+  t1 = h + Eps1_32(e) + Ch(e, f, g) + sha2_256_words[i] + w[i];                \
+  t2 = Eps0_32(a) + Maj(a, b, c);                                              \
+  h = g;                                                                       \
+  g = f;                                                                       \
+  f = e;                                                                       \
+  e = d + t1;                                                                  \
+  d = c;                                                                       \
+  c = b;                                                                       \
+  b = a;                                                                       \
+  a = t1 + t2;
+
+    perform_4rounds(0);
+    perform_4rounds(4);
+    perform_4rounds(8);
+    perform_4rounds(12);
+
+#undef perform_single_round
+#define perform_single_round(i)                                                \
+  w[i] = Omg1_32(w[i - 2]) + w[i - 7] + Omg0_32(w[i - 15]) + w[i - 16];        \
+  t1 = h + Eps1_32(e) + Ch(e, f, g) + sha2_256_words[i] + w[i];                \
+  t2 = Eps0_32(a) + Maj(a, b, c);                                              \
+  h = g;                                                                       \
+  g = f;                                                                       \
+  f = e;                                                                       \
+  e = d + t1;                                                                  \
+  d = c;                                                                       \
+  c = b;                                                                       \
+  b = a;                                                                       \
+  a = t1 + t2;
+
+    perform_4rounds(16);
+    perform_4rounds(20);
+    perform_4rounds(24);
+    perform_4rounds(28);
+    perform_4rounds(32);
+    perform_4rounds(36);
+    perform_4rounds(40);
+    perform_4rounds(44);
+    perform_4rounds(48);
+    perform_4rounds(52);
+    perform_4rounds(56);
+    perform_4rounds(60);
+
+    s->digest.i32[0] += a;
+    s->digest.i32[1] += b;
+    s->digest.i32[2] += c;
+    s->digest.i32[3] += d;
+    s->digest.i32[4] += e;
+    s->digest.i32[5] += f;
+    s->digest.i32[6] += g;
+    s->digest.i32[7] += h;
+  }
+}
+
+/**
+Initialize/reset the SHA-2 object.
+
+SHA-2 is actually a family of functions with different variants. When
+initializing the SHA-2 container, you must select the variant you intend to
+apply. The following are valid options (see the fio_sha2_variant_e enum):
+
+- SHA_512 (== 0)
+- SHA_384
+- SHA_512_224
+- SHA_512_256
+- SHA_256
+- SHA_224
+
+*/
+fio_sha2_s fio_sha2_init(fio_sha2_variant_e variant) {
+  if (variant == SHA_256) {
+    return (fio_sha2_s){
+        .type = SHA_256,
+        .digest.i32[0] = 0x6a09e667,
+        .digest.i32[1] = 0xbb67ae85,
+        .digest.i32[2] = 0x3c6ef372,
+        .digest.i32[3] = 0xa54ff53a,
+        .digest.i32[4] = 0x510e527f,
+        .digest.i32[5] = 0x9b05688c,
+        .digest.i32[6] = 0x1f83d9ab,
+        .digest.i32[7] = 0x5be0cd19,
+    };
+  } else if (variant == SHA_384) {
+    return (fio_sha2_s){
+        .type = SHA_384,
+        .digest.i64[0] = 0xcbbb9d5dc1059ed8,
+        .digest.i64[1] = 0x629a292a367cd507,
+        .digest.i64[2] = 0x9159015a3070dd17,
+        .digest.i64[3] = 0x152fecd8f70e5939,
+        .digest.i64[4] = 0x67332667ffc00b31,
+        .digest.i64[5] = 0x8eb44a8768581511,
+        .digest.i64[6] = 0xdb0c2e0d64f98fa7,
+        .digest.i64[7] = 0x47b5481dbefa4fa4,
+    };
+  } else if (variant == SHA_512) {
+    return (fio_sha2_s){
+        .type = SHA_512,
+        .digest.i64[0] = 0x6a09e667f3bcc908,
+        .digest.i64[1] = 0xbb67ae8584caa73b,
+        .digest.i64[2] = 0x3c6ef372fe94f82b,
+        .digest.i64[3] = 0xa54ff53a5f1d36f1,
+        .digest.i64[4] = 0x510e527fade682d1,
+        .digest.i64[5] = 0x9b05688c2b3e6c1f,
+        .digest.i64[6] = 0x1f83d9abfb41bd6b,
+        .digest.i64[7] = 0x5be0cd19137e2179,
+    };
+  } else if (variant == SHA_224) {
+    return (fio_sha2_s){
+        .type = SHA_224,
+        .digest.i32[0] = 0xc1059ed8,
+        .digest.i32[1] = 0x367cd507,
+        .digest.i32[2] = 0x3070dd17,
+        .digest.i32[3] = 0xf70e5939,
+        .digest.i32[4] = 0xffc00b31,
+        .digest.i32[5] = 0x68581511,
+        .digest.i32[6] = 0x64f98fa7,
+        .digest.i32[7] = 0xbefa4fa4,
+    };
+  } else if (variant == SHA_512_224) {
+    return (fio_sha2_s){
+        .type = SHA_512_224,
+        .digest.i64[0] = 0x8c3d37c819544da2,
+        .digest.i64[1] = 0x73e1996689dcd4d6,
+        .digest.i64[2] = 0x1dfab7ae32ff9c82,
+        .digest.i64[3] = 0x679dd514582f9fcf,
+        .digest.i64[4] = 0x0f6d2b697bd44da8,
+        .digest.i64[5] = 0x77e36f7304c48942,
+        .digest.i64[6] = 0x3f9d85a86a1d36c8,
+        .digest.i64[7] = 0x1112e6ad91d692a1,
+    };
+  } else if (variant == SHA_512_256) {
+    return (fio_sha2_s){
+        .type = SHA_512_256,
+        .digest.i64[0] = 0x22312194fc2bf72c,
+        .digest.i64[1] = 0x9f555fa3c84c64c2,
+        .digest.i64[2] = 0x2393b86b6f53b151,
+        .digest.i64[3] = 0x963877195940eabd,
+        .digest.i64[4] = 0x96283ee2a88effe3,
+        .digest.i64[5] = 0xbe5e1e2553863992,
+        .digest.i64[6] = 0x2b0199fc2c85b8aa,
+        .digest.i64[7] = 0x0eb72ddc81c52ca2,
+    };
+  }
+  fprintf(stderr, "SHA2 ERROR - variant unknown\n");
+  exit(2);
+}
+
+/**
+Writes data to the SHA-2 buffer.
+*/
+void fio_sha2_write(fio_sha2_s *s, const void *data, size_t len) {
+  size_t in_buffer;
+  size_t partial;
+  if (s->type & 1) { /* 512 type derived */
+#if defined(HAS_UINT128)
+    in_buffer = s->length.i & 127;
+    s->length.i += len;
+#else
+    in_buffer = s->length.words[0] & 127;
+    if (s->length.words[0] + len < s->length.words[0]) {
+      /* we are at wraping around the 64bit limit */
+      s->length.words[1] = (s->length.words[1] << 1) | 1;
+    }
+    s->length.words[0] += len;
+#endif
+    partial = 128 - in_buffer;
+
+    if (partial > len) {
+      memcpy(s->buffer + in_buffer, data, len);
+      return;
+    }
+    if (in_buffer) {
+      memcpy(s->buffer + in_buffer, data, partial);
+      len -= partial;
+      data = (void *)((uintptr_t)data + partial);
+      fio_sha2_perform_all_rounds(s, s->buffer);
+    }
+    while (len >= 128) {
+      fio_sha2_perform_all_rounds(s, data);
+      data = (void *)((uintptr_t)data + 128);
+      len -= 128;
+    }
+    if (len) {
+      memcpy(s->buffer + in_buffer, data, len);
+    }
+    return;
+  }
+  /* else... NOT 512 bits derived (64bit base) */
+
+  in_buffer = s->length.words[0] & 63;
+  partial = 64 - in_buffer;
+
+  s->length.words[0] += len;
+
+  if (partial > len) {
+    memcpy(s->buffer + in_buffer, data, len);
+    return;
+  }
+  if (in_buffer) {
+    memcpy(s->buffer + in_buffer, data, partial);
+    len -= partial;
+    data = (void *)((uintptr_t)data + partial);
+    fio_sha2_perform_all_rounds(s, s->buffer);
+  }
+  while (len >= 64) {
+    fio_sha2_perform_all_rounds(s, data);
+    data = (void *)((uintptr_t)data + 64);
+    len -= 64;
+  }
+  if (len) {
+    memcpy(s->buffer + in_buffer, data, len);
+  }
+  return;
+}
+
+/**
+Finalizes the SHA-2 hash, returning the Hashed data.
+
+`sha2_result` can be called for the same object multiple times, but the
+finalization will only be performed the first time this function is called.
+*/
+char *fio_sha2_result(fio_sha2_s *s) {
+  if (s->type & 1) {
+    /* 512 bits derived hashing */
+
+#if defined(HAS_UINT128)
+    size_t in_buffer = s->length.i & 127;
+#else
+    size_t in_buffer = s->length.words[0] & 127;
+#endif
+
+    if (in_buffer > 111) {
+      memcpy(s->buffer + in_buffer, sha2_padding, 128 - in_buffer);
+      fio_sha2_perform_all_rounds(s, s->buffer);
+      memcpy(s->buffer, sha2_padding + 1, 112);
+    } else if (in_buffer != 111) {
+      memcpy(s->buffer + in_buffer, sha2_padding, 112 - in_buffer);
+    } else {
+      s->buffer[111] = sha2_padding[0];
+    }
+    /* store the length in BITS - alignment should be promised by struct */
+    /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
+
+#if defined(HAS_UINT128)
+    s->length.i = s->length.i << 3;
+#else
+    s->length.words[1] = (s->length.words[1] << 3) | (s->length.words[0] >> 61);
+    s->length.words[0] = s->length.words[0] << 3;
+#endif
+
+#ifndef __BIG_ENDIAN__
+    bswap64(s->length.words[0]);
+    bswap64(s->length.words[1]);
+    {
+      uint_fast64_t tmp = s->length.words[0];
+      s->length.words[0] = s->length.words[1];
+      s->length.words[1] = tmp;
+    }
+#endif
+
+#if defined(HAS_UINT128)
+    __uint128_t *len = (__uint128_t *)(s->buffer + 112);
+    *len = s->length.i;
+#else
+    uint64_t *len = (uint64_t *)(s->buffer + 112);
+    len[0] = s->length.words[0];
+    len[1] = s->length.words[1];
+#endif
+    fio_sha2_perform_all_rounds(s, s->buffer);
+
+/* change back to little endian, if required */
+#ifndef __BIG_ENDIAN__
+    bswap64(s->digest.i64[0]);
+    bswap64(s->digest.i64[1]);
+    bswap64(s->digest.i64[2]);
+    bswap64(s->digest.i64[3]);
+    bswap64(s->digest.i64[4]);
+    bswap64(s->digest.i64[5]);
+    bswap64(s->digest.i64[6]);
+    bswap64(s->digest.i64[7]);
+#endif
+    // set NULL bytes for SHA_224
+    if (s->type == SHA_512_224)
+      s->digest.str[28] = 0;
+    // set NULL bytes for SHA_256
+    else if (s->type == SHA_512_256)
+      s->digest.str[32] = 0;
+    // set NULL bytes for SHA_384
+    else if (s->type == SHA_384)
+      s->digest.str[48] = 0;
+    s->digest.str[64] = 0; /* sometimes the optimizer messes the NUL sequence */
+    // fprintf(stderr, "result requested, in hex, is:");
+    // for (size_t i = 0; i < 20; i++)
+    //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
+    // fprintf(stderr, "\r\n");
+    return (char *)s->digest.str;
+  }
+
+  size_t in_buffer = s->length.words[0] & 63;
+  if (in_buffer > 55) {
+    memcpy(s->buffer + in_buffer, sha2_padding, 64 - in_buffer);
+    fio_sha2_perform_all_rounds(s, s->buffer);
+    memcpy(s->buffer, sha2_padding + 1, 56);
+  } else if (in_buffer != 55) {
+    memcpy(s->buffer + in_buffer, sha2_padding, 56 - in_buffer);
+  } else {
+    s->buffer[55] = sha2_padding[0];
+  }
+  /* store the length in BITS - alignment should be promised by struct */
+  /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
+  uint64_t *len = (uint64_t *)(s->buffer + 56);
+  *len = s->length.words[0] << 3;
+#ifndef __BIG_ENDIAN__
+  bswap64(*len);
+#endif
+  fio_sha2_perform_all_rounds(s, s->buffer);
+
+/* change back to little endian, if required */
+#ifndef __BIG_ENDIAN__
+
+  bswap32(s->digest.i32[0]);
+  bswap32(s->digest.i32[1]);
+  bswap32(s->digest.i32[2]);
+  bswap32(s->digest.i32[3]);
+  bswap32(s->digest.i32[4]);
+  bswap32(s->digest.i32[5]);
+  bswap32(s->digest.i32[6]);
+  bswap32(s->digest.i32[7]);
+
+#endif
+  // set NULL bytes for SHA_224
+  if (s->type == SHA_224)
+    s->digest.str[28] = 0;
+  // fprintf(stderr, "SHA-2 result requested, in hex, is:");
+  // for (size_t i = 0; i < (s->type_512 ? 64 : 32); i++)
+  //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
+  // fprintf(stderr, "\r\n");
+  return (char *)s->digest.str;
+}
+
+#undef perform_single_round
+
+/* ****************************************************************************
+Base64 encoding
+***************************************************************************** */
+
+/** the base64 encoding array */
+static const char base64_encodes_original[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+
+/** the base64 encoding array */
+static const char base64_encodes_url[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_=";
+
+/**
+A base64 decoding array.
+
+Generation script (Ruby):
+
+a = []; a[255] = 0
+s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=".bytes;
+s.length.times {|i| a[s[i]] = i };
+s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,".bytes;
+s.length.times {|i| a[s[i]] = i };
+s = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".bytes;
+s.length.times {|i| a[s[i]] = i }; a.map!{ |i| i.to_i }; a
+
+*/
+static unsigned base64_decodes[] = {
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  62, 63, 62, 0,  63, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+    61, 0,  0,  0,  64, 0,  0,  0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 0,  0,  0,  0,
+    63, 0,  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+    43, 44, 45, 46, 47, 48, 49, 50, 51, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,
+};
+#define BITVAL(x) (base64_decodes[(x)] & 63)
+
+/*
+ * The actual encoding logic. The map can be switched for encoding variations.
+ */
+static inline int fio_base64_encode_internal(char *target, const char *data,
+                                             int len,
+                                             const char *base64_encodes) {
+  /* walk backwards, allowing fo inplace decoding (target == data) */
+  int groups = len / 3;
+  const int mod = len - (groups * 3);
+  const int target_size = (groups + (mod != 0)) * 4;
+  char *writer = target + target_size - 1;
+  const char *reader = data + len - 1;
+  writer[1] = 0;
+  switch (mod) {
+  case 2: {
+    char tmp2 = *(reader--);
+    char tmp1 = *(reader--);
+    *(writer--) = '=';
+    *(writer--) = base64_encodes[((tmp2 & 15) << 2)];
+    *(writer--) = base64_encodes[((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15)];
+    *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
+  } break;
+  case 1: {
+    char tmp1 = *(reader--);
+    *(writer--) = '=';
+    *(writer--) = '=';
+    *(writer--) = base64_encodes[(tmp1 & 3) << 4];
+    *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
+  } break;
+  }
+  while (groups) {
+    groups--;
+    const char tmp3 = *(reader--);
+    const char tmp2 = *(reader--);
+    const char tmp1 = *(reader--);
+    *(writer--) = base64_encodes[tmp3 & 63];
+    *(writer--) = base64_encodes[((tmp2 & 15) << 2) | ((tmp3 >> 6) & 3)];
+    *(writer--) = base64_encodes[(((tmp1 & 3) << 4) | ((tmp2 >> 4) & 15))];
+    *(writer--) = base64_encodes[(tmp1 >> 2) & 63];
+  }
+  return target_size;
+}
+
+/**
+This will encode a byte array (data) of a specified length (len) and
+place the encoded data into the target byte buffer (target). The target buffer
+MUST have enough room for the expected data.
+
+Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
+the raw data's length isn't devisable by 3.
+
+Always assume the target buffer should have room enough for (len*4/3 + 4)
+bytes.
+
+Returns the number of bytes actually written to the target buffer
+(including the Base64 required padding and excluding a NULL terminator).
+
+A NULL terminator char is NOT written to the target buffer.
+*/
+int fio_base64_encode(char *target, const char *data, int len) {
+  return fio_base64_encode_internal(target, data, len, base64_encodes_original);
+}
+
+/**
+Same as fio_base64_encode, but using Base64URL encoding.
+*/
+int fio_base64url_encode(char *target, const char *data, int len) {
+  return fio_base64_encode_internal(target, data, len, base64_encodes_url);
+}
+
+/**
+This will decode a Base64 encoded string of a specified length (len) and
+place the decoded data into the target byte buffer (target).
+
+The target buffer MUST have enough room for the expected data.
+
+A NULL byte will be appended to the target buffer. The function will return
+the number of bytes written to the target buffer.
+
+If the target buffer is NULL, the encoded string will be destructively edited
+and the decoded data will be placed in the original string's buffer.
+
+Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if
+the raw data's length isn't devisable by 3. Hence, the target buffer should
+be, at least, `base64_len/4*3 + 3` long.
+
+Returns the number of bytes actually written to the target buffer (excluding
+the NULL terminator byte).
+
+If an error occured, returns the number of bytes written up to the error. Test
+`errno` for error (will be set to ERANGE).
+*/
+int fio_base64_decode(char *target, char *encoded, int base64_len) {
+  if (!target)
+    target = encoded;
+  if (base64_len <= 0) {
+    target[0] = 0;
+    return 0;
+  }
+  int written = 0;
+  uint8_t tmp1, tmp2, tmp3, tmp4;
+  // skip unknown data at end
+  while (base64_len &&
+         !base64_decodes[*(uint8_t *)(encoded + (base64_len - 1))]) {
+    base64_len--;
+  }
+  // skip white space
+  while (base64_len && isspace((*(uint8_t *)encoded))) {
+    base64_len--;
+    encoded++;
+  }
+  while (base64_len >= 4) {
+    if (!base64_len) {
+      return written;
+    }
+    tmp1 = *(uint8_t *)(encoded++);
+    tmp2 = *(uint8_t *)(encoded++);
+    tmp3 = *(uint8_t *)(encoded++);
+    tmp4 = *(uint8_t *)(encoded++);
+    if (!base64_decodes[tmp1] || !base64_decodes[tmp2] ||
+        !base64_decodes[tmp3] || !base64_decodes[tmp4]) {
+      errno = ERANGE;
+      goto finish;
+    }
+    *(target++) = (BITVAL(tmp1) << 2) | (BITVAL(tmp2) >> 4);
+    *(target++) = (BITVAL(tmp2) << 4) | (BITVAL(tmp3) >> 2);
+    *(target++) = (BITVAL(tmp3) << 6) | (BITVAL(tmp4));
+    // make sure we don't loop forever.
+    base64_len -= 4;
+    // count written bytes
+    written += 3;
+    // skip white space
+    while (base64_len && isspace((*encoded))) {
+      base64_len--;
+      encoded++;
+    }
+  }
+  // deal with the "tail" of the mis-encoded stream - this shouldn't happen
+  tmp1 = 0;
+  tmp2 = 0;
+  tmp3 = 0;
+  tmp4 = 0;
+  switch (base64_len) {
+  case 1:
+    tmp1 = *(uint8_t *)(encoded++);
+    if (!base64_decodes[tmp1]) {
+      errno = ERANGE;
+      goto finish;
+    }
+    *(target++) = BITVAL(tmp1);
+    written += 1;
+    break;
+  case 2:
+    tmp1 = *(uint8_t *)(encoded++);
+    tmp2 = *(uint8_t *)(encoded++);
+    if (!base64_decodes[tmp1] || !base64_decodes[tmp2]) {
+      errno = ERANGE;
+      goto finish;
+    }
+    *(target++) = (BITVAL(tmp1) << 2) | (BITVAL(tmp2) >> 6);
+    *(target++) = (BITVAL(tmp2) << 4);
+    written += 2;
+    break;
+  case 3:
+    tmp1 = *(uint8_t *)(encoded++);
+    tmp2 = *(uint8_t *)(encoded++);
+    tmp3 = *(uint8_t *)(encoded++);
+    if (!base64_decodes[tmp1] || !base64_decodes[tmp2] ||
+        !base64_decodes[tmp3]) {
+      errno = ERANGE;
+      goto finish;
+    }
+    *(target++) = (BITVAL(tmp1) << 2) | (BITVAL(tmp2) >> 6);
+    *(target++) = (BITVAL(tmp2) << 4) | (BITVAL(tmp3) >> 2);
+    *(target++) = BITVAL(tmp3) << 6;
+    written += 3;
+    break;
+  }
+finish:
+  if (encoded[-1] == '=') {
+    target--;
+    written--;
+    if (encoded[-2] == '=') {
+      target--;
+      written--;
+    }
+    if (written < 0)
+      written = 0;
+  }
+  *target = 0;
+  return written;
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                     Testing
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+#if DEBUG
+#define TEST_ASSERT(cond, ...)                                                 \
+  if (!(cond)) {                                                               \
+    fprintf(stderr, "* " __VA_ARGS__);                                         \
+    fprintf(stderr, "\n !!! Testing failed !!!\n");                            \
+    exit(-1);                                                                  \
+  }
+
+#define FIO_LLIST_TEST_LIMIT 1016
+
+// clang-format off
+#if defined(HAVE_OPENSSL)
+#  include <openssl/sha.h>
+#endif
+// clang-format on
+
+/* *****************************************************************************
+Testing Linked Lists
+***************************************************************************** */
+
+/**
+ * Tests linked list functionality.
+ */
+#ifndef H_FIO_LINKED_LIST_H
+#define fio_llist_test()
+#else
+FIO_FUNC inline void fio_llist_test(void) {
+  fio_ls_s list = FIO_LS_INIT(list);
+  size_t counter;
+  fprintf(stderr, "=== Testing Core Linked List features (fio_ls and "
+                  "fio_ls_embs functions)\n");
+  /* test push/pop */
+  for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
+    fio_ls_push(&list, (void *)i);
+  }
+  TEST_ASSERT(fio_ls_any(&list), "List should be populated after fio_ls_push");
+  counter = 0;
+  while (fio_ls_any(&list)) {
+    TEST_ASSERT(counter < FIO_LLIST_TEST_LIMIT,
+                "`fio_ls_any` didn't return false when expected %p<=%p=>%p",
+                (void *)list.prev, (void *)&list, (void *)list.next);
+    size_t tmp = (size_t)fio_ls_pop(&list);
+    TEST_ASSERT(tmp == counter, "`fio_ls_pop` value error (%zu != %zu)", tmp,
+                counter);
+    ++counter;
+  }
+  TEST_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
+              "List item count error (%zu != %zu)", counter,
+              (size_t)FIO_LLIST_TEST_LIMIT);
+  /* test shift/unshift */
+  for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
+    fio_ls_unshift(&list, (void *)i);
+  }
+  TEST_ASSERT(fio_ls_any(&list),
+              "List should be populated after fio_ls_unshift");
+  counter = 0;
+  while (!fio_ls_is_empty(&list)) {
+    TEST_ASSERT(counter < FIO_LLIST_TEST_LIMIT,
+                "`fio_ls_is_empty` didn't return true when expected %p<=%p=>%p",
+                (void *)list.prev, (void *)&list, (void *)list.next);
+    size_t tmp = (size_t)fio_ls_shift(&list);
+    TEST_ASSERT(tmp == counter, "`fio_ls_shift` value error (%zu != %zu)", tmp,
+                counter);
+    ++counter;
+  }
+  TEST_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
+              "List item count error (%zu != %zu)", counter,
+              (size_t)FIO_LLIST_TEST_LIMIT);
+
+  /* Re-test for embeded list */
+
+  struct fio_ls_test_s {
+    size_t i;
+    fio_ls_embd_s node;
+  };
+
+  fio_ls_embd_s emlist = FIO_LS_INIT(emlist);
+
+  /* test push/pop */
+  for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
+    struct fio_ls_test_s *n = malloc(sizeof(*n));
+    FIO_ASSERT_ALLOC(n);
+    n->i = i;
+    fio_ls_embd_push(&emlist, &n->node);
+  }
+  TEST_ASSERT(fio_ls_embd_any(&emlist),
+              "List should be populated after fio_ls_embd_push");
+  counter = 0;
+  while (fio_ls_embd_any(&emlist)) {
+    TEST_ASSERT(
+        counter < FIO_LLIST_TEST_LIMIT,
+        "`fio_ls_embd_any` didn't return false when expected %p<=%p=>%p",
+        (void *)emlist.prev, (void *)&emlist, (void *)emlist.next);
+    struct fio_ls_test_s *n =
+        FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_pop(&emlist));
+    TEST_ASSERT(n->i == counter, "`fio_ls_embd_pop` value error (%zu != %zu)",
+                n->i, counter);
+    free(n);
+    ++counter;
+  }
+  TEST_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
+              "List item count error (%zu != %zu)", counter,
+              (size_t)FIO_LLIST_TEST_LIMIT);
+  /* test shift/unshift */
+  for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
+    struct fio_ls_test_s *n = malloc(sizeof(*n));
+    FIO_ASSERT_ALLOC(n)
+    n->i = i;
+    fio_ls_embd_unshift(&emlist, &n->node);
+  }
+  TEST_ASSERT(fio_ls_embd_any(&emlist),
+              "List should be populated after fio_ls_embd_unshift");
+  counter = 0;
+  while (!fio_ls_embd_is_empty(&emlist)) {
+    TEST_ASSERT(
+        counter < FIO_LLIST_TEST_LIMIT,
+        "`fio_ls_embd_is_empty` didn't return true when expected %p<=%p=>%p",
+        (void *)emlist.prev, (void *)&emlist, (void *)emlist.next);
+    struct fio_ls_test_s *n =
+        FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_shift(&emlist));
+    TEST_ASSERT(n->i == counter, "`fio_ls_embd_shift` value error (%zu != %zu)",
+                n->i, counter);
+    free(n);
+    ++counter;
+  }
+  TEST_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
+              "List item count error (%zu != %zu)", counter,
+              (size_t)FIO_LLIST_TEST_LIMIT);
+  fprintf(stderr, "* passed.\n");
+}
+#endif
+
+/* *****************************************************************************
+Testing Strings
+***************************************************************************** */
+
+#ifndef H_FIO_STR_H
+#define fio_str_test()
+#else
+
+/**
+ * Tests the fio_str functionality.
+ */
+FIO_FUNC inline void fio_str_test(void) {
+#define ROUND_UP_CAPA_2WORDS(num)                                              \
+  (((num + 1) & (sizeof(long double) - 1))                                     \
+       ? ((num + 1) | (sizeof(long double) - 1))                               \
+       : (num))
+  fprintf(stderr, "=== Testing Core String features (fio_str_s functions)\n");
+  fprintf(stderr, "* String container size: %zu\n", sizeof(fio_str_s));
+  fprintf(stderr,
+          "* Self-Contained String Capacity (FIO_STR_SMALL_CAPA): %zu\n",
+          FIO_STR_SMALL_CAPA);
+  fio_str_s str = {.small = 0}; /* test zeroed out memory */
+  TEST_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
+              "Small String capacity reporting error!");
+  TEST_ASSERT(fio_str_len(&str) == 0, "Small String length reporting error!");
+  TEST_ASSERT(fio_str_data(&str) ==
+                  (char *)((uintptr_t)(&str + 1) - FIO_STR_SMALL_CAPA),
+              "Small String pointer reporting error (%zd offset)!",
+              (ssize_t)(((char *)((uintptr_t)(&str + 1) - FIO_STR_SMALL_CAPA)) -
+                        fio_str_data(&str)));
+  fio_str_write(&str, "World", 4);
+  TEST_ASSERT(str.small,
+              "Small String writing error - not small on small write!");
+  TEST_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
+              "Small String capacity reporting error after write!");
+  TEST_ASSERT(fio_str_len(&str) == 4,
+              "Small String length reporting error after write!");
+  TEST_ASSERT(fio_str_data(&str) ==
+                  (char *)((uintptr_t)(&str + 1) - FIO_STR_SMALL_CAPA),
+              "Small String pointer reporting error after write!");
+  TEST_ASSERT(strlen(fio_str_data(&str)) == 4,
+              "Small String NUL missing after write (%zu)!",
+              strlen(fio_str_data(&str)));
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Worl"),
+              "Small String write error (%s)!", fio_str_data(&str));
+  TEST_ASSERT(
+      fio_str_data(&str) == fio_str_info(&str).data,
+      "Small String `fio_str_data` != `fio_str_info(s).data` (%p != %p)",
+      (void *)fio_str_data(&str), (void *)fio_str_info(&str).data);
+
+  fio_str_capa_assert(&str, sizeof(fio_str_s) - 1);
+  TEST_ASSERT(!str.small,
+              "Long String reporting as small after capacity update!");
+  TEST_ASSERT(fio_str_capa(&str) == sizeof(fio_str_s) - 1,
+              "Long String capacity update error (%zu != %zu)!",
+              fio_str_capa(&str), sizeof(fio_str_s));
+  TEST_ASSERT(fio_str_data(&str) == fio_str_info(&str).data,
+              "Long String `fio_str_data` != `fio_str_info(s).data` (%p != %p)",
+              (void *)fio_str_data(&str), (void *)fio_str_info(&str).data);
+
+  TEST_ASSERT(
+      fio_str_len(&str) == 4,
+      "Long String length changed during conversion from small string (%zu)!",
+      fio_str_len(&str));
+  TEST_ASSERT(fio_str_data(&str) == str.data,
+              "Long String pointer reporting error after capacity update!");
+  TEST_ASSERT(strlen(fio_str_data(&str)) == 4,
+              "Long String NUL missing after capacity update (%zu)!",
+              strlen(fio_str_data(&str)));
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Worl"),
+              "Long String value changed after capacity update (%s)!",
+              fio_str_data(&str));
+
+  fio_str_write(&str, "d!", 2);
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "World!"),
+              "Long String `write` error (%s)!", fio_str_data(&str));
+
+  fio_str_replace(&str, 0, 0, "Hello ", 6);
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello World!"),
+              "Long String `insert` error (%s)!", fio_str_data(&str));
+
+  fio_str_resize(&str, 6);
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello "),
+              "Long String `resize` clipping error (%s)!", fio_str_data(&str));
+
+  fio_str_replace(&str, 6, 0, "My World!", 9);
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello My World!"),
+              "Long String `replace` error when testing overflow (%s)!",
+              fio_str_data(&str));
+
+  str.capa = str.len;
+  fio_str_replace(&str, -10, 2, "Big", 3);
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World!"),
+              "Long String `replace` error when testing splicing (%s)!",
+              fio_str_data(&str));
+
+  TEST_ASSERT(
+      fio_str_capa(&str) == ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")),
+      "Long String `fio_str_replace` capacity update error (%zu != %zu)!",
+      fio_str_capa(&str), ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")));
+
+  if (str.len < FIO_STR_SMALL_CAPA) {
+    fio_str_compact(&str);
+    TEST_ASSERT(str.small, "Compacting didn't change String to small!");
+    TEST_ASSERT(fio_str_len(&str) == strlen("Hello Big World!"),
+                "Compacting altered String length! (%zu != %zu)!",
+                fio_str_len(&str), strlen("Hello Big World!"));
+    TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World!"),
+                "Compact data error (%s)!", fio_str_data(&str));
+    TEST_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
+                "Compacted String capacity reporting error!");
+  } else {
+    fprintf(stderr, "* skipped `compact` test!\n");
+  }
+
+  {
+    fio_str_freeze(&str);
+    fio_str_info_s old_state = fio_str_info(&str);
+    fio_str_write(&str, "more data to be written here", 28);
+    fio_str_replace(&str, 2, 1, "more data to be written here", 28);
+    fio_str_info_s new_state = fio_str_info(&str);
+    TEST_ASSERT(old_state.len == new_state.len,
+                "Frozen String length changed!");
+    TEST_ASSERT(old_state.data == new_state.data,
+                "Frozen String pointer changed!");
+    TEST_ASSERT(
+        old_state.capa == new_state.capa,
+        "Frozen String capacity changed (allowed, but shouldn't happen)!");
+    str.frozen = 0;
+  }
+  fio_str_printf(&str, " %u", 42);
+  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World! 42"),
+              "`fio_str_printf` data error (%s)!", fio_str_data(&str));
+
+  {
+    fio_str_s str2 = FIO_STR_INIT;
+    fio_str_concat(&str2, &str);
+    TEST_ASSERT(fio_str_iseq(&str, &str2),
+                "`fio_str_concat` error, strings not equal (%s != %s)!",
+                fio_str_data(&str), fio_str_data(&str2));
+    fio_str_write(&str2, ":extra data", 11);
+    TEST_ASSERT(
+        !fio_str_iseq(&str, &str2),
+        "`fio_str_write` error after copy, strings equal ((%zu)%s == (%zu)%s)!",
+        fio_str_len(&str), fio_str_data(&str), fio_str_len(&str2),
+        fio_str_data(&str2));
+
+    fio_str_free(&str2);
+  }
+
+  fio_str_free(&str);
+
+  fio_str_write_i(&str, -42);
+  TEST_ASSERT(fio_str_len(&str) == 3 && !memcmp("-42", fio_str_data(&str), 3),
+              "fio_str_write_i output error ((%zu) %s != -42)",
+              fio_str_len(&str), fio_str_data(&str));
+  fio_str_free(&str);
+
+  {
+    fprintf(stderr, "* testing `fio_str_fread`, and reference counting.\n");
+    fio_str_s *s = fio_str_new2();
+    TEST_ASSERT(s && s->small,
+                "`fio_str_new2` error, string not initialized (%p)!",
+                (void *)s);
+    fio_str_s *s2 = fio_str_dup(s);
+
+    TEST_ASSERT(s2 == s, "`fio_str_dup` error, should return self!");
+    TEST_ASSERT(s->ref == 1,
+                "`fio_str_dup` error, reference counter not incremented!");
+
+    fio_str_info_s state = fio_str_fread(s, __FILE__, 0, 0);
+
+    TEST_ASSERT(state.data,
+                "`fio_str_fread` error, no data was read for file %s!",
+                __FILE__);
+
+    TEST_ASSERT(!memcmp(state.data,
+                        "/* "
+                        "******************************************************"
+                        "***********************",
+                        80),
+                "`fio_str_fread` content error, header mismatch!\n %s",
+                state.data);
+    TEST_ASSERT(
+        fio_str_utf8_valid(s),
+        "`fio_str_utf8_valid` error, code in this file should be valid!");
+    TEST_ASSERT(fio_str_utf8_len(s) &&
+                    (fio_str_utf8_len(s) <= fio_str_len(s)) &&
+                    (fio_str_utf8_len(s) >= (fio_str_len(s)) >> 1),
+                "`fio_str_utf8_len` error, invalid value (%zu / %zu!",
+                fio_str_utf8_len(s), fio_str_len(s));
+
+    fio_str_free2(s2);
+    TEST_ASSERT(s->ref == 0,
+                "`fio_str_free2` error, reference counter not subtracted!");
+    TEST_ASSERT(s->small == 0, "`fio_str_free2` error, strring reinitialized!");
+    TEST_ASSERT(
+        fio_str_data(s) == state.data,
+        "`fio_str_free2` error, data freed while references exist! (%p != %p)",
+        (void *)fio_str_data(s), (void *)state.data);
+
+    if (1) {
+      /* String content == whole file (this file) */
+      intptr_t pos = -11;
+      size_t len = 20;
+
+      TEST_ASSERT(
+          fio_str_utf8_select(s, &pos, &len) == 0,
+          "`fio_str_utf8_select` returned error for negative pos! (%zd, %zu)",
+          (ssize_t)pos, len);
+      TEST_ASSERT(
+          pos == (intptr_t)state.len - 10, /* no UTF-8 bytes in this file */
+          "`fio_str_utf8_select` error, negative position invalid! (%zd)",
+          (ssize_t)pos);
+      TEST_ASSERT(
+          len == 10,
+          "`fio_str_utf8_select` error, trancated length invalid! (%zd)",
+          (ssize_t)len);
+      pos = 10;
+      len = 20;
+      TEST_ASSERT(fio_str_utf8_select(s, &pos, &len) == 0,
+                  "`fio_str_utf8_select` returned error! (%zd, %zu)",
+                  (ssize_t)pos, len);
+      TEST_ASSERT(pos == 10,
+                  "`fio_str_utf8_select` error, position invalid! (%zd)",
+                  (ssize_t)pos);
+      TEST_ASSERT(len == 20,
+                  "`fio_str_utf8_select` error, length invalid! (%zd)",
+                  (ssize_t)len);
+    }
+    fio_str_free2(s);
+  }
+  fio_str_free(&str);
+  if (1) {
+
+    const char *utf8_sample = /* three hearts, small-big-small*/
+        "\xf0\x9f\x92\x95\xe2\x9d\xa4\xef\xb8\x8f\xf0\x9f\x92\x95";
+    fio_str_write(&str, utf8_sample, strlen(utf8_sample));
+    intptr_t pos = -2;
+    size_t len = 2;
+    TEST_ASSERT(fio_str_utf8_select(&str, &pos, &len) == 0,
+                "`fio_str_utf8_select` returned error for negative pos on "
+                "UTF-8 data! (%zd, %zu)",
+                (ssize_t)pos, len);
+    TEST_ASSERT(pos == (intptr_t)fio_str_len(&str) - 4, /* 4 byte emoji */
+                "`fio_str_utf8_select` error, negative position invalid on "
+                "UTF-8 data! (%zd)",
+                (ssize_t)pos);
+    TEST_ASSERT(len == 4, /* last utf-8 char is 4 byte long */
+                "`fio_str_utf8_select` error, trancated length invalid on "
+                "UTF-8 data! (%zd)",
+                (ssize_t)len);
+    pos = 1;
+    len = 20;
+    TEST_ASSERT(
+        fio_str_utf8_select(&str, &pos, &len) == 0,
+        "`fio_str_utf8_select` returned error on UTF-8 data! (%zd, %zu)",
+        (ssize_t)pos, len);
+    TEST_ASSERT(
+        pos == 4,
+        "`fio_str_utf8_select` error, position invalid on UTF-8 data! (%zd)",
+        (ssize_t)pos);
+    TEST_ASSERT(
+        len == 10,
+        "`fio_str_utf8_select` error, length invalid on UTF-8 data! (%zd)",
+        (ssize_t)len);
+    pos = 1;
+    len = 3;
+    TEST_ASSERT(
+        fio_str_utf8_select(&str, &pos, &len) == 0,
+        "`fio_str_utf8_select` returned error on UTF-8 data (2)! (%zd, %zu)",
+        (ssize_t)pos, len);
+    TEST_ASSERT(
+        len == 10, /* 3 UTF-8 chars: 4 byte + 4 byte + 2 byte codes == 10 */
+        "`fio_str_utf8_select` error, length invalid on UTF-8 data! (%zd)",
+        (ssize_t)len);
+  }
+  fio_str_free(&str);
+  if (1) {
+    str = FIO_STR_INIT_STATIC("Welcome");
+    TEST_ASSERT(fio_str_capa(&str) == 0, "Static string capacity non-zero.");
+    TEST_ASSERT(fio_str_len(&str) > 0,
+                "Static string length should be automatically calculated.");
+    TEST_ASSERT(str.dealloc == NULL,
+                "Static string deallocation function should be NULL.");
+    fio_free(&str);
+    str = FIO_STR_INIT_STATIC("Welcome");
+    fio_str_info_s state = fio_str_write(&str, " Home", 5);
+    TEST_ASSERT(state.capa > 0, "Static string not converted to non-static.");
+    fio_free(&str);
+  }
+  fprintf(stderr, "* passed.\n");
+}
+#endif
+
+/* *****************************************************************************
+Testing Memory Allocator
+***************************************************************************** */
+
+void fio_malloc_test(void) {
+  fprintf(stderr, "=== Testing facil.io memory allocator's system calls\n");
+  char *mem = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
+  TEST_ASSERT(mem, "sys_alloc failed to allocate memory!\n");
+  TEST_ASSERT(!((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK),
+              "Memory allocation not aligned to FIO_MEMORY_BLOCK_SIZE!");
+  mem[0] = 'a';
+  mem[FIO_MEMORY_BLOCK_SIZE - 1] = 'z';
+  fprintf(stderr, "* Testing reallocation from %p\n", (void *)mem);
+  char *mem2 =
+      sys_realloc(mem, FIO_MEMORY_BLOCK_SIZE, FIO_MEMORY_BLOCK_SIZE * 2);
+  if (mem == mem2)
+    fprintf(stderr, "* Performed system realloc without copy :-)\n");
+  TEST_ASSERT(mem2[0] = 'a' && mem2[FIO_MEMORY_BLOCK_SIZE - 1] == 'z',
+              "Reaclloc data was lost!");
+  sys_free(mem2, FIO_MEMORY_BLOCK_SIZE * 2);
+  fprintf(stderr, "=== Testing facil.io memory allocator's internal data.\n");
+  TEST_ASSERT(arenas, "Missing arena data - library not initialized!");
+  fio_free(NULL); /* fio_free(NULL) shouldn't crash... */
+  mem = fio_malloc(1);
+  TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
+  TEST_ASSERT(!((uintptr_t)mem & 15), "fio_malloc memory not aligned!\n");
+  TEST_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16,
+              "small fio_malloc memory indicates system allocation!\n");
+  mem[0] = 'a';
+  TEST_ASSERT(mem[0] == 'a', "allocate memory wasn't written to!\n");
+  mem = fio_realloc(mem, 1);
+  TEST_ASSERT(mem[0] == 'a', "fio_realloc memory wasn't copied!\n");
+  TEST_ASSERT(arena_last_used, "arena_last_used wasn't initialized!\n");
+  block_s *b = arena_last_used->block;
+  size_t count = 2;
+  intptr_t old_memory_pool_count = memory.count;
+  do {
+    TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
+    TEST_ASSERT(!((uintptr_t)mem & 15),
+                "fio_malloc memory not aligned at allocation #%zu!\n", count);
+    TEST_ASSERT((((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16),
+                "fio_malloc memory indicates system allocation!\n");
+#if __x86_64__
+    fio_memcpy((size_t *)mem, (size_t *)"0123456789abcdefg", 1);
+#else
+    mem[0] = 'a';
+#endif
+    fio_free(mem); /* make sure we hold on to the block, so it rotates */
+    mem = fio_malloc(1);
+    ++count;
+  } while (arena_last_used->block == b);
+  {
+    fprintf(
+        stderr,
+        "* Performed %zu allocations out of expected %zu allocations per "
+        "block.\n",
+        count,
+        (size_t)((FIO_MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4) - 1));
+    TEST_ASSERT(memory.available,
+                "memory pool empty (memory block wasn't freed)!\n");
+    TEST_ASSERT(old_memory_pool_count == memory.count,
+                "memory.count == %ld (memory block not counted)!\n",
+                (long)old_memory_pool_count);
+    fio_free(mem);
+  }
+  /* rotate block again */
+  b = arena_last_used->block;
+  mem = fio_realloc(mem, 1);
+  do {
+    mem2 = mem;
+    mem = fio_malloc(1);
+    fio_free(mem2); /* make sure we hold on to the block, so it rotates */
+    TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
+    TEST_ASSERT(!((uintptr_t)mem & 15),
+                "fio_malloc memory not aligned at allocation #%zu!\n", count);
+    TEST_ASSERT((((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16),
+                "fio_malloc memory indicates system allocation!\n");
+#if __x86_64__
+    fio_memcpy((size_t *)mem, (size_t *)"0123456789abcdefg", 1);
+#else
+    mem[0] = 'a';
+#endif
+    ++count;
+  } while (arena_last_used->block == b);
+
+  mem = fio_calloc(FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64, 1);
+  TEST_ASSERT(mem,
+              "failed to allocate FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64 bytes!\n");
+  TEST_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16,
+              "fio_calloc (under limit) memory alignment error!\n");
+  mem2 = fio_malloc(1);
+  TEST_ASSERT(mem2, "fio_malloc(1) failed to allocate memory!\n");
+  mem2[0] = 'a';
+
+  for (uintptr_t i = 0; i < (FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64); ++i) {
+    TEST_ASSERT(mem[i] == 0,
+                "calloc returned memory that wasn't initialized?!\n");
+  }
+  fio_free(mem);
+
+  mem = fio_malloc(FIO_MEMORY_BLOCK_SIZE);
+  TEST_ASSERT(mem, "fio_malloc failed to FIO_MEMORY_BLOCK_SIZE bytes!\n");
+  TEST_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) == 16,
+              "fio_malloc (big) memory isn't aligned!\n");
+  mem = fio_realloc(mem, FIO_MEMORY_BLOCK_SIZE * 2);
+  TEST_ASSERT(mem,
+              "fio_realloc (big) failed on FIO_MEMORY_BLOCK_SIZE X2 bytes!\n");
+  fio_free(mem);
+  TEST_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) == 16,
+              "fio_realloc (big) memory isn't aligned!\n");
+
+  {
+    void *m0 = fio_malloc(0);
+    void *rm0 = fio_realloc(m0, 16);
+    TEST_ASSERT(m0 != rm0, "fio_realloc(fio_malloc(0), 16) failed!\n");
+  }
+  {
+    mem = fio_mmap(512);
+    TEST_ASSERT(mem, "fio_mmap allocation failed!\n");
+    fio_free(mem);
+  }
+
+  fprintf(stderr, "* passed.\n");
+}
+
+/* *****************************************************************************
+Testing Core Callback add / remove / ensure
+***************************************************************************** */
+
+static void fio_state_callback_test_task(void *pi) {
+  ((uintptr_t *)pi)[0] += 1;
+}
+
+static void fio_state_callback_test(void) {
+  fprintf(stderr, "=== Testing facil.io workflow state callback system\n");
+  uintptr_t result = 0;
+  uintptr_t other = 0;
+  fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_test_task, &result);
+  TEST_ASSERT(callback_collection[FIO_CALL_NEVER].callbacks.next,
+              "Callback list failed to initialize.");
+  fio_state_callback_force(FIO_CALL_NEVER);
+  TEST_ASSERT(result == 1, "Callback wasn't called!");
+  fio_state_callback_force(FIO_CALL_NEVER);
+  TEST_ASSERT(result == 2, "Callback wasn't called (second time)!");
+  fio_state_callback_remove(FIO_CALL_NEVER, fio_state_callback_test_task,
+                            &result);
+  fio_state_callback_force(FIO_CALL_NEVER);
+  TEST_ASSERT(result == 2, "Callback wasn't removed!");
+  fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_test_task, &result);
+  fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_test_task, &other);
+  fio_state_callback_clear(FIO_CALL_NEVER);
+  fio_state_callback_force(FIO_CALL_NEVER);
+  TEST_ASSERT(result == 2 && other == 0, "Callbacks werent cleared!");
+  fprintf(stderr, "* passed.\n");
+}
+
+/* *****************************************************************************
+Testing fio_timers
+***************************************************************************** */
+
+static void fio_timer_test_task(void *arg) { ++(((size_t *)arg)[0]); }
+
+static void fio_timer_test(void) {
+  fprintf(stderr, "=== Testing facil.io timer system\n");
+  size_t result = 0;
+  const size_t total = 5;
+  fio_data->active = 1;
+  TEST_ASSERT(fio_timers.next, "Timers not initialized!");
+  TEST_ASSERT(fio_run_every(0, 0, fio_timer_test_task, NULL, NULL) == -1,
+              "Timers without an interval should be an error.");
+  TEST_ASSERT(fio_run_every(1000, 0, NULL, NULL, NULL) == -1,
+              "Timers without a task should be an error.");
+  TEST_ASSERT(fio_run_every(900, total, fio_timer_test_task, &result,
+                            fio_timer_test_task) == 0,
+              "Timer creation failure.");
+  TEST_ASSERT(fio_ls_embd_any(&fio_timers),
+              "Timer scheduling failure - no timer in list.");
+  TEST_ASSERT(fio_timer_calc_first_interval() >= 898 &&
+                  fio_timer_calc_first_interval() <= 902,
+              "next timer calculation error %zu",
+              fio_timer_calc_first_interval());
+
+  fio_ls_embd_s *first = fio_timers.next;
+  TEST_ASSERT(fio_run_every(10000, total, fio_timer_test_task, &result,
+                            fio_timer_test_task) == 0,
+              "Timer creation failure (second timer).");
+  TEST_ASSERT(fio_timers.next == first, "Timer Ordering error!");
+
+  TEST_ASSERT(fio_timer_calc_first_interval() >= 898 &&
+                  fio_timer_calc_first_interval() <= 902,
+              "next timer calculation error (after added timer) %zu",
+              fio_timer_calc_first_interval());
+
+  fio_data->last_cycle.tv_nsec += 800;
+  fio_timer_perform();
+  fio_defer_perform();
+  TEST_ASSERT(result == 0, "Timer filtering error (%zu != 0)\n", result);
+
+  for (size_t i = 0; i < total; ++i) {
+    fio_data->last_cycle.tv_sec += 1;
+    // fio_data->last_cycle.tv_nsec += 1;
+    fio_timer_perform();
+    fio_defer_perform();
+    TEST_ASSERT(((i != total - 1 && result == i + 1) ||
+                 (i == total - 1 && result == total + 1)),
+                "Timer running and rescheduling error (%zu != %zu)\n", result,
+                i + 1);
+    TEST_ASSERT(fio_timers.next == first || i == total - 1,
+                "Timer Ordering error on cycle %zu!", i);
+  }
+
+  fio_data->last_cycle.tv_sec += 10;
+  fio_timer_perform();
+  fio_defer_perform();
+  TEST_ASSERT(result == total + 2, "Timer # 2 error (%zu != %zu)\n", result,
+              total + 2);
+  fio_data->active = 0;
+  fio_timer_clear_all();
+  fio_defer_clear_tasks();
+  fprintf(stderr, "* passed.\n");
+}
+
+/* *****************************************************************************
+Testing listening socket
+***************************************************************************** */
+
+static void fio_socket_test(void) {
+  /* initialize unix socket name */
+  fio_str_s sock_name = FIO_STR_INIT;
+#ifdef P_tmpdir
+  fio_str_write(&sock_name, P_tmpdir, strlen(P_tmpdir));
+  if (fio_str_len(&sock_name) &&
+      fio_str_data(&sock_name)[fio_str_len(&sock_name) - 1] == '/')
+    fio_str_resize(&sock_name, fio_str_len(&sock_name) - 1);
+#else
+  fio_str_write(&sock_name, "/tmp", 4);
+#endif
+  fio_str_printf(&sock_name, "/fio_test_sock-%d.sock", getpid());
+
+  fprintf(stderr, "=== Testing facil.io listening socket creation (partial "
+                  "testing only).\n");
+  fprintf(stderr, "* testing on TCP/IP port 8765 and Unix socket: %s\n",
+          fio_str_data(&sock_name));
+  intptr_t uuid = fio_socket(fio_str_data(&sock_name), NULL, 1);
+  TEST_ASSERT(uuid != -1, "Failed to open unix socket\n");
+  TEST_ASSERT(uuid_data(uuid).open, "Unix socket not initialized");
+  intptr_t client1 = fio_socket(fio_str_data(&sock_name), NULL, 0);
+  TEST_ASSERT(client1 != -1, "Failed to connect to unix socket.");
+  intptr_t client2 = fio_accept(uuid);
+  TEST_ASSERT(client2 != -1, "Failed to accept unix socket connection.");
+  fprintf(stderr, "* Unix server addr %s\n", fio_peer_addr(uuid).data);
+  fprintf(stderr, "* Unix client1 addr %s\n", fio_peer_addr(client1).data);
+  fprintf(stderr, "* Unix client2 addr %s\n", fio_peer_addr(client2).data);
+  {
+    char tmp_buf[28];
+    ssize_t r = -1;
+    ssize_t timer_junk;
+    fio_write(client1, "Hello World", 11);
+    if (!uuid_data(client1).packet)
+      unlink(__FILE__ ".sock");
+    TEST_ASSERT(uuid_data(client1).packet, "fio_write error, no packet!")
+    /* prevent poll from hanging */
+    fio_run_every(5, 1, fio_timer_test_task, &timer_junk, fio_timer_test_task);
+    errno = EAGAIN;
+    for (size_t i = 0; i < 100 && r <= 0 &&
+                       (r == 0 || errno == EAGAIN || errno == EWOULDBLOCK);
+         ++i) {
+      fio_poll();
+      fio_defer_perform();
+      reschedule_thread();
+      errno = 0;
+      r = fio_read(client2, tmp_buf, 28);
+    }
+    if (!(r > 0 && r <= 28) || memcmp("Hello World", tmp_buf, r)) {
+      perror("* ernno");
+      unlink(__FILE__ ".sock");
+    }
+    TEST_ASSERT(r > 0 && r <= 28,
+                "Failed to read from unix socket " __FILE__ ".sock %zd", r);
+    TEST_ASSERT(!memcmp("Hello World", tmp_buf, r),
+                "Unix socket Read/Write cycle error (%zd: %.*s)", r, (int)r,
+                tmp_buf);
+    fprintf(stderr, "* Unix socket Read/Write cycle passed: %.*s\n", (int)r,
+            tmp_buf);
+    fio_data->last_cycle.tv_sec += 10;
+    fio_timer_clear_all();
+  }
+
+  fio_force_close(client1);
+  fio_force_close(client2);
+  fio_force_close(uuid);
+  unlink(fio_str_data(&sock_name));
+  /* free unix socket name */
+  fio_str_free(&sock_name);
+
+  uuid = fio_socket(NULL, "8765", 1);
+  TEST_ASSERT(uuid != -1, "Failed to open TCP/IP socket on port 8765");
+  TEST_ASSERT(uuid_data(uuid).open, "TCP/IP socket not initialized");
+  fprintf(stderr, "* TCP/IP server addr %s\n", fio_peer_addr(uuid).data);
+  client1 = fio_socket("Localhost", "8765", 0);
+  TEST_ASSERT(client1 != -1, "Failed to connect to TCP/IP socket on port 8765");
+  fprintf(stderr, "* TCP/IP client1 addr %s\n", fio_peer_addr(client1).data);
+  errno = EAGAIN;
+  for (size_t i = 0; i < 100 && (errno == EAGAIN || errno == EWOULDBLOCK);
+       ++i) {
+    errno = 0;
+    reschedule_thread();
+    client2 = fio_accept(uuid);
+  }
+  if (client2 == -1)
+    perror("accept error");
+  TEST_ASSERT(client2 != -1,
+              "Failed to accept TCP/IP socket connection on port 8765");
+  fprintf(stderr, "* TCP/IP client2 addr %s\n", fio_peer_addr(client2).data);
+  fio_force_close(client1);
+  fio_force_close(client2);
+  fio_force_close(uuid);
+  fio_timer_clear_all();
+  fio_defer_clear_tasks();
+  fprintf(stderr, "* passed.\n");
+}
+
+/* *****************************************************************************
+Testing listening socket
+***************************************************************************** */
+
+static void fio_cycle_test_task(void *arg) {
+  fio_stop();
+  (void)arg;
+}
+static void fio_cycle_test_task2(void *arg) {
+  fprintf(stderr, "* facil.io cycling test fatal error!\n");
+  exit(-1);
+  (void)arg;
+}
+
+static void fio_cycle_test(void) {
+  fprintf(stderr,
+          "=== Testing facil.io cycling logic (partial - only tests timers)\n");
+  fio_mark_time();
+  fio_timer_clear_all();
+  struct timespec start = fio_last_tick();
+  fio_run_every(1000, 1, fio_cycle_test_task, NULL, NULL);
+  fio_run_every(10000, 1, fio_cycle_test_task2, NULL, NULL);
+  fio_start(.threads = 1, .workers = 1);
+  struct timespec end = fio_last_tick();
+  fio_timer_clear_all();
+  TEST_ASSERT(end.tv_sec == start.tv_sec + 1 || end.tv_sec == start.tv_sec + 2,
+              "facil.io cycling error?");
+  fprintf(stderr, "* passed.\n");
+}
+/* *****************************************************************************
+Testing fio_defer task system
+***************************************************************************** */
+
+#define FIO_DEFER_TOTAL_COUNT (512 * 1024)
+
+#define FIO_DEFER_TEST_PRINT 0
+
+static void sample_task(void *i_count, void *unused2) {
+  (void)(unused2);
+  fio_atomic_add((uintptr_t *)i_count, 1);
+}
+
+static void sched_sample_task(void *count, void *i_count) {
+  for (size_t i = 0; i < (uintptr_t)count; i++) {
+    fio_defer(sample_task, i_count, NULL);
+  }
+}
+
+static void fio_defer_test(void) {
+  const size_t cpu_cores = fio_detect_cpu_cores();
+  TEST_ASSERT(cpu_cores, "couldn't detect CPU cores!");
+  uintptr_t i_count;
+  clock_t start, end;
+  fprintf(stderr, "=== Testing facil.io task scheduling (fio_defer)\n");
+  TEST_ASSERT(!fio_defer_has_queue(), "facil.io queue always active.")
+  i_count = 0;
+  start = clock();
+  for (size_t i = 0; i < FIO_DEFER_TOTAL_COUNT; i++) {
+    sample_task(&i_count, NULL);
+  }
+  end = clock();
+  if (FIO_DEFER_TEST_PRINT) {
+    fprintf(stderr,
+            "Deferless (direct call) counter: %lu cycles with i_count = %lu, "
+            "%lu/%lu free/malloc\n",
+            (unsigned long)(end - start), (unsigned long)i_count,
+            (unsigned long)fio_defer_count_dealloc,
+            (unsigned long)fio_defer_count_alloc);
+  }
+  size_t i_count_should_be = i_count;
+
+  if (FIO_DEFER_TEST_PRINT) {
+    fprintf(stderr, "\n");
+  }
+
+  for (size_t i = 1; FIO_DEFER_TOTAL_COUNT >> i; ++i) {
+    i_count = 0;
+    const size_t per_task = FIO_DEFER_TOTAL_COUNT >> i;
+    const size_t tasks = 1 << i;
+    start = clock();
+    for (size_t j = 0; j < tasks; ++j) {
+      fio_defer(sched_sample_task, (void *)per_task, &i_count);
+    }
+    TEST_ASSERT(fio_defer_has_queue(), "facil.io queue not marked.")
+    fio_defer_thread_pool_join(fio_defer_thread_pool_new((i % cpu_cores) + 1));
+    end = clock();
+    if (FIO_DEFER_TEST_PRINT) {
+      fprintf(stderr,
+              "- Defer %zu threads, %zu scheduling loops (%zu each):\n"
+              "    %lu cycles with i_count = %lu, %lu/%lu "
+              "free/malloc\n",
+              ((i % cpu_cores) + 1), tasks, per_task,
+              (unsigned long)(end - start), (unsigned long)i_count,
+              (unsigned long)fio_defer_count_dealloc,
+              (unsigned long)fio_defer_count_alloc);
+    } else {
+      fprintf(stderr, ".");
+    }
+    TEST_ASSERT(i_count == i_count_should_be, "ERROR: defer count invalid\n");
+    TEST_ASSERT(fio_defer_count_dealloc == fio_defer_count_alloc,
+                "defer deallocation vs. allocation error, %zu != %zu",
+                fio_defer_count_dealloc, fio_defer_count_alloc);
+  }
+  TEST_ASSERT(deferred.writer == &fio_defer_static_queue,
+              "defer library didn't release dynamic queue (should be static)");
+  fprintf(stderr, "\n* passed.\n");
+}
+
+/* *****************************************************************************
+Set data-structure Testing
+***************************************************************************** */
+
+#define FIO_SET_TEXT_COUNT 524288UL
+
+#define FIO_SET_NAME fio_hashmap_test
+#define FIO_SET_OBJ_TYPE uintptr_t
+
+#include <fio.h>
+#define FIO_SET_NAME(s) fio_hashmap_test_##s
+
+FIO_FUNC void fio_set_test(void) {
+  FIO_SET_NAME(s) s = FIO_SET_INIT;
+  fprintf(
+      stderr,
+      "=== Testing Core ordered Set (re-including fio.h with FIO_SET_NAME)\n");
+  fprintf(stderr, "* Inserting %lu items\n", FIO_SET_TEXT_COUNT);
+  union {
+    uintptr_t obj;
+    uintptr_t i;
+  } obj_mem;
+  memset(&obj_mem, 0, sizeof(obj_mem));
+
+  TEST_ASSERT(FIO_SET_NAME(count)(&s) == 0,
+              "empty set should have zero objects");
+  TEST_ASSERT(FIO_SET_NAME(capa)(&s) == 0, "empty set should have no capacity");
+  TEST_ASSERT(!FIO_SET_NAME(is_fragmented)(&s),
+              "empty set shouldn't be considered fragmented");
+  TEST_ASSERT(!FIO_SET_NAME(last)(&s),
+              "empty set shouldn't have a last object");
+
+  for (uintptr_t i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
+    obj_mem.i = i;
+    FIO_SET_NAME(insert)(&s, i, obj_mem.obj);
+    TEST_ASSERT(FIO_SET_NAME(find)(&s, i, obj_mem.obj),
+                "find failed after insert");
+    obj_mem.obj = *FIO_SET_NAME(find)(&s, i, obj_mem.obj);
+    TEST_ASSERT(i == obj_mem.i, "insertion != find");
+  }
+  fprintf(stderr, "* Seeking %lu items\n", FIO_SET_TEXT_COUNT);
+  for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
+    obj_mem.i = i;
+    obj_mem.obj = *FIO_SET_NAME(find)(&s, i, obj_mem.obj);
+    TEST_ASSERT((i == obj_mem.i), "insertion != find (seek)");
+  }
+  {
+    fprintf(stderr, "* Testing order for %lu items\n", FIO_SET_TEXT_COUNT);
+    uintptr_t i = 1;
+    FIO_SET_FOR_LOOP(&s, pos) {
+      obj_mem.obj = pos->obj;
+      TEST_ASSERT(obj_mem.i == i, "object order mismatch %lu != %lu.",
+                  (unsigned long)i, (unsigned long)obj_mem.i);
+      ++i;
+    }
+  }
+
+  fprintf(stderr, "* Removing odd items from %lu items\n", FIO_SET_TEXT_COUNT);
+  for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; i += 2) {
+    obj_mem.i = i;
+    FIO_SET_NAME(remove)(&s, i, obj_mem.obj);
+    TEST_ASSERT(!(FIO_SET_NAME(find)(&s, i, obj_mem.obj)),
+                "Removal failed (still exists).");
+  }
+  {
+    fprintf(stderr, "* Testing for %lu / 2 holes\n", FIO_SET_TEXT_COUNT);
+    uintptr_t i = 1;
+    FIO_SET_FOR_LOOP(&s, pos) {
+      obj_mem.obj = pos->obj;
+      if (pos->hash == 0) {
+        TEST_ASSERT((i & 1) == 1, "deleted object wasn't odd");
+      } else {
+        TEST_ASSERT(obj_mem.i == i, "deleted object value mismatch %lu != %lu",
+                    (unsigned long)i, (unsigned long)obj_mem.i);
+      }
+      ++i;
+    }
+    {
+      fprintf(stderr, "* Poping two elements (testing pop through holes)\n");
+      TEST_ASSERT(FIO_SET_NAME(last)(&s),
+                  "Pop `last` 1 failed - no last object");
+      obj_mem.obj = *FIO_SET_NAME(last)(&s);
+      uintptr_t tmp_i = obj_mem.i;
+      TEST_ASSERT(obj_mem.obj, "Pop `last` 1 failed to collect object");
+      FIO_SET_NAME(pop)(&s);
+      TEST_ASSERT(FIO_SET_NAME(last)(&s),
+                  "Pop `last` 2 failed - no last object");
+      obj_mem.obj = *FIO_SET_NAME(last)(&s);
+      TEST_ASSERT(obj_mem.i != tmp_i,
+                  "Pop `last` 2 same as `last` 1 - failed to collect object");
+      FIO_SET_NAME(pop)(&s);
+    }
+    if (1) {
+      obj_mem.i = 1;
+      FIO_SET_NAME(remove)(&s, obj_mem.i, obj_mem.obj);
+      size_t count = s.count;
+      FIO_SET_NAME(overwrite)(&s, obj_mem.i, obj_mem.obj);
+      TEST_ASSERT(count + 1 == s.count,
+                  "Re-adding a removed item should increase count by 1 (%zu + "
+                  "1 != %zu).",
+                  count, (size_t)s.count);
+      obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj);
+      TEST_ASSERT(obj_mem.i == 1,
+                  "Re-adding a removed item should update the item (%p != 1)!",
+                  (void *)FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj));
+      FIO_SET_NAME(remove)(&s, obj_mem.i, obj_mem.obj);
+      TEST_ASSERT(count == s.count,
+                  "Re-removing an item should decrease count (%zu != %zu).",
+                  count, (size_t)s.count);
+      TEST_ASSERT(!FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj),
+                  "Re-removing a re-added item should update the item!");
+    }
+  }
+  fprintf(stderr, "* Compacting HashMap to %lu\n", FIO_SET_TEXT_COUNT >> 1);
+  FIO_SET_NAME(compact)(&s);
+  {
+    fprintf(stderr, "* Testing that %lu items are continuous\n",
+            FIO_SET_TEXT_COUNT >> 1);
+    uintptr_t i = 0;
+    FIO_SET_FOR_LOOP(&s, pos) {
+      TEST_ASSERT(pos->hash != 0, "Found a hole after compact.");
+      ++i;
+    }
+    TEST_ASSERT(i == s.count, "count error (%lu != %lu).", i, s.count);
+  }
+
+  FIO_SET_NAME(free)(&s);
+  TEST_ASSERT(!s.map && !s.ordered && !s.pos && !s.capa,
+              "HashMap not re-initialized after free.");
+
+  FIO_SET_NAME(capa_require)(&s, FIO_SET_TEXT_COUNT);
+
+  TEST_ASSERT(
+      s.map && s.ordered && !s.pos && s.capa >= FIO_SET_TEXT_COUNT,
+      "capa_require changes state in a bad way (%p, %p, %zu, %zu ?>= %zu)",
+      (void *)s.map, (void *)s.ordered, s.pos, s.capa, FIO_SET_TEXT_COUNT);
+
+  for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
+    obj_mem.i = i;
+    FIO_SET_NAME(insert)(&s, obj_mem.i, obj_mem.obj);
+    TEST_ASSERT(FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj),
+                "find failed after insert (2nd round)");
+    obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj);
+    TEST_ASSERT(i == obj_mem.i, "insertion (2nd round) != find");
+    TEST_ASSERT(i == s.count, "count error (%lu != %lu) post insertion.", i,
+                s.count);
+  }
+  FIO_SET_NAME(free)(&s);
+}
+#undef FIO_SET_NAME
+
+/* *****************************************************************************
+SipHash tests
+***************************************************************************** */
+
+static void fio_siphash_speed_test(void) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  uint64_t hash = 0;
+  for (size_t i = 0; i < 4; i++) {
+    hash += fio_siphash24(buffer, sizeof(buffer));
+    memcpy(buffer, &hash, sizeof(hash));
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (uint64_t cycles = 8192;;) {
+    clock_t start, end;
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      hash += fio_siphash24(buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    memcpy(buffer, &hash, sizeof(hash));
+    if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
+        cycles >= ((uint64_t)1 << 62)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SipHash24",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 2;
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (uint64_t cycles = 8192;;) {
+    clock_t start, end;
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      hash += fio_siphash13(buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    memcpy(buffer, &hash, sizeof(hash));
+    if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
+        cycles >= ((uint64_t)1 << 62)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SipHash13",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 2;
+  }
+}
+
+void fio_siphash_test(void) {
+  fprintf(stderr, "===================================\n");
+#if NODEBUG
+  fio_siphash_speed_test();
+#else
+  fprintf(stderr, "fio SipHash speed test skipped (debug mode is slow)\n");
+  (void)fio_siphash_speed_test;
+#endif
+}
+
+/* *****************************************************************************
+SHA-1 tests
+***************************************************************************** */
+
+static void fio_sha1_speed_test(void) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  uint8_t result[65];
+  fio_sha1_s sha1;
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    sha1 = fio_sha1_init();
+    fio_sha1_write(&sha1, buffer, sizeof(buffer));
+    memcpy(result, fio_sha1_result(&sha1), 65);
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    sha1 = fio_sha1_init();
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      fio_sha1_write(&sha1, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    fio_sha1_result(&sha1);
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SHA-1",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 1;
+  }
+}
+
+#ifdef HAVE_OPENSSL
+static void fio_sha1_open_ssl_speed_test(void) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  uint8_t result[65];
+  SHA_CTX o_sh1;
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    SHA1_Init(&o_sh1);
+    SHA1_Update(&o_sh1, buffer, sizeof(buffer));
+    SHA1_Final(result, &o_sh1);
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    SHA1_Init(&o_sh1);
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      SHA1_Update(&o_sh1, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    SHA1_Final(result, &o_sh1);
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "OpenSSL SHA-1",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 1;
+  }
+}
+#endif
+
+void fio_sha1_test(void) {
+  // clang-format off
+  struct {
+    char *str;
+    uint8_t hash[21];
+  } sets[] = {
+      {"The quick brown fox jumps over the lazy dog",
+       {0x2f, 0xd4, 0xe1, 0xc6, 0x7a, 0x2d, 0x28, 0xfc, 0xed, 0x84, 0x9e,
+        0xe1, 0xbb, 0x76, 0xe7, 0x39, 0x1b, 0x93, 0xeb, 0x12, 0}}, // a set with
+                                                                   // a string
+      {"",
+       {
+           0xda, 0x39, 0xa3, 0xee, 0x5e, 0x6b, 0x4b, 0x0d, 0x32, 0x55,
+           0xbf, 0xef, 0x95, 0x60, 0x18, 0x90, 0xaf, 0xd8, 0x07, 0x09,
+       }},        // an empty set
+      {NULL, {0}} // Stop
+  };
+  // clang-format on
+  int i = 0;
+  fio_sha1_s sha1;
+  fprintf(stderr, "===================================\n");
+  fprintf(stderr, "fio SHA-1 struct size: %zu\n", sizeof(fio_sha1_s));
+  fprintf(stderr, "+ fio");
+  while (sets[i].str) {
+    sha1 = fio_sha1_init();
+    fio_sha1_write(&sha1, sets[i].str, strlen(sets[i].str));
+    if (strcmp(fio_sha1_result(&sha1), (char *)sets[i].hash)) {
+      fprintf(stderr, ":\n--- fio SHA-1 Test FAILED!\nstring: %s\nexpected: ",
+              sets[i].str);
+      char *p = (char *)sets[i].hash;
+      while (*p)
+        fprintf(stderr, "%02x", *(p++) & 0xFF);
+      fprintf(stderr, "\ngot: ");
+      p = fio_sha1_result(&sha1);
+      while (*p)
+        fprintf(stderr, "%02x", *(p++) & 0xFF);
+      fprintf(stderr, "\n");
+      TEST_ASSERT(0, "SHA-1 failure.");
+      return;
+    }
+    i++;
+  }
+  fprintf(stderr, " SHA-1 passed.\n");
+#if NODEBUG
+  fio_sha1_speed_test();
+#else
+  fprintf(stderr, "fio SHA1 speed test skipped (debug mode is slow)\n");
+  (void)fio_sha1_speed_test;
+#endif
+
+#ifdef HAVE_OPENSSL
+
+#if NODEBUG
+  fio_sha1_open_ssl_speed_test();
+#else
+  fprintf(stderr, "OpenSSL SHA1 speed test skipped (debug mode is slow)\n");
+  (void)fio_sha1_open_ssl_speed_test;
+#endif
+  fprintf(stderr, "===================================\n");
+  fprintf(stderr, "fio SHA-1 struct size: %lu\n",
+          (unsigned long)sizeof(fio_sha1_s));
+  fprintf(stderr, "OpenSSL SHA-1 struct size: %lu\n",
+          (unsigned long)sizeof(SHA_CTX));
+  fprintf(stderr, "===================================\n");
+#endif /* HAVE_OPENSSL */
+}
+
+/* *****************************************************************************
+SHA-2 tests
+***************************************************************************** */
+
+static char *sha2_variant_names[] = {
+    "unknown", "SHA_512",     "SHA_256", "SHA_512_256",
+    "SHA_224", "SHA_512_224", "none",    "SHA_384",
+};
+
+static void fio_sha2_speed_test(fio_sha2_variant_e var, const char *var_name) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  uint8_t result[65];
+  fio_sha2_s sha2;
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    sha2 = fio_sha2_init(var);
+    fio_sha2_write(&sha2, buffer, sizeof(buffer));
+    memcpy(result, fio_sha2_result(&sha2), 65);
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    sha2 = fio_sha2_init(var);
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      fio_sha2_write(&sha2, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    fio_sha2_result(&sha2);
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", var_name,
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 1;
+  }
+}
+
+static void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
+                                        int (*update)(), int (*final)(),
+                                        void *sha) {
+  /* test adapted from BearSSL code with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  uint8_t result[1024];
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    init(sha);
+    update(sha, buffer, sizeof(buffer));
+    final(result, sha);
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 2048;;) {
+    clock_t start, end;
+    init(sha);
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      update(sha, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    final(result, sha);
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", var_name,
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 1;
+  }
+}
+void fio_sha2_test(void) {
+  fio_sha2_s s;
+  char *expect;
+  char *got;
+  char *str = "";
+  fprintf(stderr, "===================================\n");
+  fprintf(stderr, "fio SHA-2 struct size: %zu\n", sizeof(fio_sha2_s));
+  fprintf(stderr, "+ fio");
+  // start tests
+  s = fio_sha2_init(SHA_224);
+  fio_sha2_write(&s, str, 0);
+  expect = "\xd1\x4a\x02\x8c\x2a\x3a\x2b\xc9\x47\x61\x02\xbb\x28\x82\x34\xc4"
+           "\x15\xa2\xb0\x1f\x82\x8e\xa6\x2a\xc5\xb3\xe4\x2f";
+  got = fio_sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  s = fio_sha2_init(SHA_256);
+  fio_sha2_write(&s, str, 0);
+  expect =
+      "\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\x27"
+      "\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55";
+  got = fio_sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  s = fio_sha2_init(SHA_384);
+  fio_sha2_write(&s, str, 0);
+  expect = "\x38\xb0\x60\xa7\x51\xac\x96\x38\x4c\xd9\x32\x7e"
+           "\xb1\xb1\xe3\x6a\x21\xfd\xb7\x11\x14\xbe\x07\x43\x4c\x0c"
+           "\xc7\xbf\x63\xf6\xe1\xda\x27\x4e\xde\xbf\xe7\x6f\x65\xfb"
+           "\xd5\x1a\xd2\xf1\x48\x98\xb9\x5b";
+  got = fio_sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  s = fio_sha2_init(SHA_512);
+  fio_sha2_write(&s, str, 0);
+  expect = "\xcf\x83\xe1\x35\x7e\xef\xb8\xbd\xf1\x54\x28\x50\xd6\x6d"
+           "\x80\x07\xd6\x20\xe4\x05\x0b\x57\x15\xdc\x83\xf4\xa9\x21"
+           "\xd3\x6c\xe9\xce\x47\xd0\xd1\x3c\x5d\x85\xf2\xb0\xff\x83"
+           "\x18\xd2\x87\x7e\xec\x2f\x63\xb9\x31\xbd\x47\x41\x7a\x81"
+           "\xa5\x38\x32\x7a\xf9\x27\xda\x3e";
+  got = fio_sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  s = fio_sha2_init(SHA_512_224);
+  fio_sha2_write(&s, str, 0);
+  expect = "\x6e\xd0\xdd\x02\x80\x6f\xa8\x9e\x25\xde\x06\x0c\x19\xd3"
+           "\xac\x86\xca\xbb\x87\xd6\xa0\xdd\xd0\x5c\x33\x3b\x84\xf4";
+  got = fio_sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  s = fio_sha2_init(SHA_512_256);
+  fio_sha2_write(&s, str, 0);
+  expect = "\xc6\x72\xb8\xd1\xef\x56\xed\x28\xab\x87\xc3\x62\x2c\x51\x14\x06"
+           "\x9b\xdd\x3a\xd7\xb8\xf9\x73\x74\x98\xd0\xc0\x1e\xce\xf0\x96\x7a";
+  got = fio_sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  s = fio_sha2_init(SHA_512);
+  str = "god is a rotten tomato";
+  fio_sha2_write(&s, str, strlen(str));
+  expect = "\x61\x97\x4d\x41\x9f\x77\x45\x21\x09\x4e\x95\xa3\xcb\x4d\xe4\x79"
+           "\x26\x32\x2f\x2b\xe2\x62\x64\x5a\xb4\x5d\x3f\x73\x69\xef\x46\x20"
+           "\xb2\xd3\xce\xda\xa9\xc2\x2c\xac\xe3\xf9\x02\xb2\x20\x5d\x2e\xfd"
+           "\x40\xca\xa0\xc1\x67\xe0\xdc\xdf\x60\x04\x3e\x4e\x76\x87\x82\x74";
+  got = fio_sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  // s = fio_sha2_init(SHA_256);
+  // str = "The quick brown fox jumps over the lazy dog";
+  // fio_sha2_write(&s, str, strlen(str));
+  // expect =
+  //     "\xd7\xa8\xfb\xb3\x07\xd7\x80\x94\x69\xca\x9a\xbc\xb0\x08\x2e\x4f"
+  //     "\x8d\x56\x51\xe4\x6d\x3c\xdb\x76\x2d\x02\xd0\xbf\x37\xc9\xe5\x92";
+  // got = fio_sha2_result(&s);
+  // if (strcmp(expect, got))
+  //   goto error;
+
+  s = fio_sha2_init(SHA_224);
+  str = "The quick brown fox jumps over the lazy dog";
+  fio_sha2_write(&s, str, strlen(str));
+  expect = "\x73\x0e\x10\x9b\xd7\xa8\xa3\x2b\x1c\xb9\xd9\xa0\x9a\xa2"
+           "\x32\x5d\x24\x30\x58\x7d\xdb\xc0\xc3\x8b\xad\x91\x15\x25";
+  got = fio_sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+  fprintf(stderr, " SHA-2 passed.\n");
+
+#if NODEBUG
+  fio_sha2_speed_test(SHA_224, "fio SHA-224");
+  fio_sha2_speed_test(SHA_256, "fio SHA-256");
+  fio_sha2_speed_test(SHA_384, "fio SHA-384");
+  fio_sha2_speed_test(SHA_512, "fio SHA-512");
+#else
+  fprintf(stderr, "fio SHA-2 speed test skipped (debug mode is slow)\n");
+#endif
+
+#ifdef HAVE_OPENSSL
+
+#if NODEBUG
+  {
+    SHA512_CTX s2;
+    SHA256_CTX s3;
+    fio_sha2_openssl_speed_test("OpenSSL SHA512", SHA512_Init, SHA512_Update,
+                                SHA512_Final, &s2);
+    fio_sha2_openssl_speed_test("OpenSSL SHA256", SHA256_Init, SHA256_Update,
+                                SHA256_Final, &s3);
+  }
+#endif
+  fprintf(stderr, "===================================\n");
+  fprintf(stderr, "fio SHA-2 struct size: %zu\n", sizeof(fio_sha2_s));
+  fprintf(stderr, "OpenSSL SHA-2/256 struct size: %zu\n", sizeof(SHA256_CTX));
+  fprintf(stderr, "OpenSSL SHA-2/512 struct size: %zu\n", sizeof(SHA512_CTX));
+  fprintf(stderr, "===================================\n");
+#endif /* HAVE_OPENSSL */
+
+  return;
+
+error:
+  fprintf(stderr,
+          ":\n--- fio SHA-2 Test FAILED!\ntype: "
+          "%s (%d)\nstring %s\nexpected:\n",
+          sha2_variant_names[s.type], s.type, str);
+  while (*expect)
+    fprintf(stderr, "%02x", *(expect++) & 0xFF);
+  fprintf(stderr, "\ngot:\n");
+  while (*got)
+    fprintf(stderr, "%02x", *(got++) & 0xFF);
+  fprintf(stderr, "\n");
+  (void)fio_sha2_speed_test;
+  (void)fio_sha2_openssl_speed_test;
+  TEST_ASSERT(0, "SHA-2 failure.");
+}
+
+/* *****************************************************************************
+Base64 tests
+***************************************************************************** */
+
+static void fio_base64_speed_test(void) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  char buffer[8192];
+  char result[8192 * 2];
+  memset(buffer, 'T', sizeof(buffer));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    fio_base64_encode(result, buffer, sizeof(buffer));
+    memcpy(buffer, result, sizeof(buffer));
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      fio_base64_encode(result, buffer, sizeof(buffer));
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio Base64 Encode",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 2;
+  }
+
+  /* speed test decoding */
+  const int encoded_len =
+      fio_base64_encode(result, buffer, (int)(sizeof(buffer) - 2));
+  /* warmup */
+  for (size_t i = 0; i < 4; i++) {
+    fio_base64_decode(buffer, result, encoded_len);
+    __asm__ volatile("" ::: "memory");
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (size_t cycles = 8192;;) {
+    clock_t start, end;
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      fio_base64_decode(buffer, result, encoded_len);
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    if ((end - start) >= (2 * CLOCKS_PER_SEC)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio Base64 Decode",
+              (double)(encoded_len * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 2;
+  }
+}
+
+void fio_base64_test(void) {
+  struct {
+    char *str;
+    char *base64;
+  } sets[] = {
+      {"Man is distinguished, not only by his reason, but by this singular "
+       "passion from other animals, which is a lust of the mind, that by a "
+       "perseverance of delight in the continued "
+       "and indefatigable generation "
+       "of knowledge, exceeds the short vehemence of any carnal pleasure.",
+       "TWFuIGlzIGRpc3Rpbmd1aXNoZWQsIG5vdCBvbmx5IGJ5IGhpcyByZWFzb24sIGJ1dCBieSB"
+       "0aGlzIHNpbmd1bGFyIHBhc3Npb24gZnJvbSBvdGhlciBhbmltYWxzLCB3aGljaCBpcyBhIG"
+       "x1c3Qgb2YgdGhlIG1pbmQsIHRoYXQgYnkgYSBwZXJzZXZlcmFuY2Ugb2YgZGVsaWdodCBpb"
+       "iB0aGUgY29udGludWVkIGFuZCBpbmRlZmF0aWdhYmxlIGdlbmVyYXRpb24gb2Yga25vd2xl"
+       "ZGdlLCBleGNlZWRzIHRoZSBzaG9ydCB2ZWhlbWVuY2Ugb2YgYW55IGNhcm5hbCBwbGVhc3V"
+       "yZS4="},
+      {"any carnal pleasure.", "YW55IGNhcm5hbCBwbGVhc3VyZS4="},
+      {"any carnal pleasure", "YW55IGNhcm5hbCBwbGVhc3VyZQ=="},
+      {"any carnal pleasur", "YW55IGNhcm5hbCBwbGVhc3Vy"},
+      {"", ""},
+      {"f", "Zg=="},
+      {"fo", "Zm8="},
+      {"foo", "Zm9v"},
+      {"foob", "Zm9vYg=="},
+      {"fooba", "Zm9vYmE="},
+      {"foobar", "Zm9vYmFy"},
+      { NULL,
+        NULL } // Stop
+  };
+  int i = 0;
+  char buffer[1024];
+  fprintf(stderr, "===================================\n");
+  fprintf(stderr, "+ fio");
+  while (sets[i].str) {
+    fio_base64_encode(buffer, sets[i].str, strlen(sets[i].str));
+    if (strcmp(buffer, sets[i].base64)) {
+      fprintf(stderr,
+              ":\n--- fio Base64 Test FAILED!\nstring: %s\nlength: %lu\n "
+              "expected: %s\ngot: %s\n\n",
+              sets[i].str, strlen(sets[i].str), sets[i].base64, buffer);
+      TEST_ASSERT(0, "Base64 failure.");
+    }
+    i++;
+  }
+  if (!sets[i].str)
+    fprintf(stderr, " Base64 encode passed.\n");
+
+  i = 0;
+  fprintf(stderr, "+ fio");
+  while (sets[i].str) {
+    fio_base64_decode(buffer, sets[i].base64, strlen(sets[i].base64));
+    if (strcmp(buffer, sets[i].str)) {
+      fprintf(stderr,
+              ":\n--- fio Base64 Test FAILED!\nbase64: %s\nexpected: "
+              "%s\ngot: %s\n\n",
+              sets[i].base64, sets[i].str, buffer);
+      TEST_ASSERT(0, "Base64 failure.");
+    }
+    i++;
+  }
+  fprintf(stderr, " Base64 decode passed.\n");
+
+#if NODEBUG
+  fio_base64_speed_test();
+#else
+  fprintf(stderr,
+          "* Base64 speed test skipped (debug speeds are always slow).\n");
+  (void)fio_base64_speed_test;
+#endif
+}
+
+/*******************************************************************************
+Random Testing
+***************************************************************************** */
+
+void fio_test_random(void) {
+  fprintf(stderr, "=== Testing random generator\n");
+  uint64_t rnd = fio_rand64();
+  TEST_ASSERT((rnd != fio_rand64() && rnd != fio_rand64()),
+              "fio_rand64 returned the same result three times in a row.");
+#if NODEBUG
+  uint64_t buffer1[8];
+  uint8_t buffer2[8192];
+  clock_t start, end;
+  start = clock();
+  for (size_t i = 0; i < (8388608 / (64 / 8)); i++) {
+    buffer1[i & 7] = fio_rand64();
+    __asm__ volatile("" ::: "memory");
+  }
+  end = clock();
+  fprintf(stderr,
+          "+ Random generator available\n+ created 8Mb using 64bits "
+          "Random %lu CPU clock count ~%.2fMb/s\n",
+          end - start, (8.0) / (((double)(end - start)) / CLOCKS_PER_SEC));
+  start = clock();
+  for (size_t i = 0; i < (8388608 / (8192)); i++) {
+    fio_rand_bytes(buffer2, 8192);
+    __asm__ volatile("" ::: "memory");
+  }
+  end = clock();
+  fprintf(stderr,
+          "+ created 8Mb using 8,192 Bytes "
+          "Random %lu CPU clock count ~%.2fMb/s\n",
+          end - start, (8.0) / (((double)(end - start)) / CLOCKS_PER_SEC));
+#endif
+}
+
+/* *****************************************************************************
+Poll (not kqueue or epoll) tests
+***************************************************************************** */
+#if FIO_ENGINE_POLL
+static void fio_poll_test(void) {
+  fprintf(stderr, "=== Testing poll add / remove fd\n");
+  fio_poll_add(5);
+  TEST_ASSERT(fio_data->start == 5,
+              "fio_poll_add didn't update start position (%u)",
+              fio_data->start);
+  TEST_ASSERT(fio_data->end == 6,
+              "fio_poll_add didn't update end position (%u)", fio_data->end);
+  TEST_ASSERT(fio_data->poll[5].fd == 5,
+              "fio_poll_add didn't set used fd data");
+  TEST_ASSERT(fio_data->poll[5].events ==
+                  (FIO_POLL_READ_EVENTS | FIO_POLL_WRITE_EVENTS),
+              "fio_poll_add didn't set used fd flags");
+  fio_poll_add(7);
+  TEST_ASSERT(fio_data->poll[6].fd == -1,
+              "fio_poll_add didn't reset unused fd data %d",
+              fio_data->poll[6].fd);
+  fio_poll_add(6);
+  fio_poll_remove_fd(6);
+  TEST_ASSERT(fio_data->poll[6].fd == -1,
+              "fio_poll_remove_fd didn't reset unused fd data");
+  TEST_ASSERT(fio_data->poll[6].events == 0,
+              "fio_poll_remove_fd didn't reset unused fd flags");
+  fio_poll_remove_read(7);
+  TEST_ASSERT(fio_data->poll[7].events == (FIO_POLL_WRITE_EVENTS),
+              "fio_poll_remove_read didn't remove read flags");
+  fio_poll_add_read(7);
+  fio_poll_remove_write(7);
+  TEST_ASSERT(fio_data->poll[7].events == (FIO_POLL_READ_EVENTS),
+              "fio_poll_remove_write didn't remove read flags");
+  fio_poll_add_write(7);
+  fio_poll_remove_read(7);
+  TEST_ASSERT(fio_data->poll[7].events == (FIO_POLL_WRITE_EVENTS),
+              "fio_poll_add_write didn't add the write flag?");
+  fio_poll_remove_write(7);
+  TEST_ASSERT(fio_data->poll[7].fd == -1,
+              "fio_poll_remove (both) didn't reset unused fd data");
+  TEST_ASSERT(fio_data->poll[7].events == 0,
+              "fio_poll_remove (both) didn't reset unused fd flags");
+  TEST_ASSERT(fio_data->end == 6,
+              "fio_poll_remove (both) didn't update end position (%u)",
+              fio_data->end);
+  fio_poll_remove_fd(5);
+  fprintf(stderr, "\n* passed.\n");
+}
+#else
+#define fio_poll_test()
+#endif
+
+/* *****************************************************************************
+Pub/Sub partial tests
+***************************************************************************** */
+
+#if FIO_PUBSUB_SUPPORT
+
+static void fio_pubsub_test_on_message(fio_msg_s *msg) { (void)msg; }
+static void fio_pubsub_test_on_unsubscribe(void *udata1, void *udata2) {
+  (void)udata1;
+  (void)udata2;
+}
+
+static void fio_pubsub_test(void) {
+  fprintf(stderr, "=== Testing pub/sub (partial)\n");
+  subscription_s *s = fio_subscribe(.filter = 1, .on_message = NULL);
+  TEST_ASSERT(!s, "fio_subscribe should fail without a callback");
+  char buffer[8];
+  fio_cluster_uint2str((uint8_t *)buffer + 1, 42);
+  TEST_ASSERT(
+      fio_cluster_str2uint32((uint8_t *)buffer + 1) == 42,
+      "fio_cluster_uint2str / fio_cluster_str2uint32 not reversible (42)!");
+  fio_cluster_uint2str((uint8_t *)buffer, 4);
+  TEST_ASSERT(
+      fio_cluster_str2uint32((uint8_t *)buffer) == 4,
+      "fio_cluster_uint2str / fio_cluster_str2uint32 not reversible (4)!");
+  // subscription_s *s = fio_subscribe(.filter = 1, .on_message = NULL);
+  // TEST_ASSERT(!s, "fio_subscribe should fail without either a filter of a ");
+  (void)fio_pubsub_test_on_message;
+  (void)fio_pubsub_test_on_unsubscribe;
+}
+#else
+#define fio_pubsub_test()
+#endif
+
+/* *****************************************************************************
+String 2 Number and Number 2 String (partial) testing
+***************************************************************************** */
+
+#if NODEBUG
+#define FIO_ATOL_TEST_MAX_CYCLES 3145728
+#else
+#define FIO_ATOL_TEST_MAX_CYCLES 4096
+#endif
+static void fio_atol_test(void) {
+  fprintf(stderr, "=== Testing fio_ltoa and fio_atol (partial)\n");
+#ifndef NODEBUG
+  fprintf(stderr,
+          "Note: No optimizations - facil.io performance will be slow.\n");
+#endif
+  fprintf(stderr,
+          "      Test with make test/optimized for realistic results.\n");
+  time_t start, end;
+
+  char number_hex[128] = "0xe5d4c3b2a1908770"; /* hex with embedded sign */
+  // char number_hex[128] = "-0x1a2b3c4d5e6f7890";
+  char number[128] = "-1885667171979196560";
+  intptr_t expect = -1885667171979196560;
+  intptr_t result = 0;
+
+  result = 0;
+
+  start = clock();
+  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
+    __asm__ volatile("" ::: "memory");
+    char *pos = number;
+    result = fio_atol(&pos);
+    __asm__ volatile("" ::: "memory");
+  }
+  end = clock();
+  TEST_ASSERT(result == expect,
+              "fio_atol with base 10 returned wrong result (%ld != %ld)",
+              expect, result);
+  fprintf(stderr, "fio_atol base 10 (%ld): %zd CPU cycles\n", result,
+          end - start);
+
+  result = 0;
+  start = clock();
+  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
+    __asm__ volatile("" ::: "memory");
+    result = strtol(number, NULL, 0);
+    __asm__ volatile("" ::: "memory");
+  }
+  end = clock();
+  fprintf(stderr, "native strtol base 10 (%ld): %zd CPU cycles\n", result,
+          end - start);
+
+  result = 0;
+  start = clock();
+  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
+    __asm__ volatile("" ::: "memory");
+    char *pos = number_hex;
+    result = fio_atol(&pos);
+    __asm__ volatile("" ::: "memory");
+  }
+  end = clock();
+  TEST_ASSERT(result == expect,
+              "fio_atol with base 16 returned wrong result (%ld != %ld)",
+              expect, result);
+  fprintf(stderr, "fio_atol base 16 (%ld): %zd CPU cycles\n", result,
+          end - start);
+
+  result = 0;
+  start = clock();
+  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
+    __asm__ volatile("" ::: "memory");
+    result = strtol(number_hex, NULL, 0);
+    __asm__ volatile("" ::: "memory");
+  }
+  end = clock();
+  fprintf(stderr, "native strtol base 16 (%ld): %zd CPU cycles%s\n", result,
+          end - start, (result != expect ? " (!?stdlib overflow?!)" : ""));
+
+  result = 0;
+  start = clock();
+  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
+    __asm__ volatile("" ::: "memory");
+    fio_ltoa(number, expect, 10);
+    __asm__ volatile("" ::: "memory");
+  }
+  end = clock();
+  {
+    char *buf = number;
+    TEST_ASSERT(fio_atol(&buf) == expect,
+                "fio_ltoa with base 10 returned wrong result (%s != %ld)",
+                number, expect);
+  }
+  fprintf(stderr, "fio_ltoa base 10 (%s): %zd CPU cycles\n", number,
+          end - start);
+
+  result = 0;
+  start = clock();
+  for (size_t i = 0; i < FIO_ATOL_TEST_MAX_CYCLES; ++i) {
+    __asm__ volatile("" ::: "memory");
+    sprintf(number, "%ld", expect);
+    __asm__ volatile("" ::: "memory");
+  }
+  end = clock();
+  fprintf(stderr, "native sprintf base 10 (%s): %zd CPU cycles\n", number,
+          end - start);
+}
+
+/* *****************************************************************************
+Run all tests
+***************************************************************************** */
+
+void fio_test(void) {
+  TEST_ASSERT(fio_capa(), "facil.io initialization error!");
+  fio_malloc_test();
+  fio_state_callback_test();
+  fio_str_test();
+  fio_atol_test();
+  fio_llist_test();
+  fio_defer_test();
+  fio_timer_test();
+  fio_poll_test();
+  fio_socket_test();
+  fio_cycle_test();
+  fio_set_test();
+  fio_siphash_test();
+  fio_sha1_test();
+  fio_sha2_test();
+  fio_base64_test();
+  fio_test_random();
+  fio_pubsub_test();
+  (void)fio_sentinel_task;
+  (void)deferred_on_shutdown;
+  (void)fio_poll;
+}
+
+#undef TEST_ASSERT
+#else
+#define fio_test()
+#endif

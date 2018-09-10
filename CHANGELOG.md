@@ -3,27 +3,49 @@
 ---
 ## Future (expected / upcoming) changes
 
-### ABI breaking changes expected in v. 0.7.0
+### API and ABI breaking changes expected in v. 0.7.0
 
-**API Breaking Changes**:
+**Breaking Changes**!
 
-* The `on_idle` and `on_finish` settings in `facil_run` were removed, replaced by the more flexible `facil_core_callback_add` approach.
+A lot of the code was re-written and re-organized, minimizing the name space used by the core library and consolidating the core library into a two file library (`fio.h` and `fio.c`).
 
-* The `facil_listen` and `http_listen` functions now return the listening socket's uuid (much like `facil_connect` and `http_connect` did).
+This translated directly to **breaking the API and ABI and bumping the version number**.
 
-* The Protocol's `on_shutdown` callback is now expected to return a `uint8_t`, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate immediate socket closure and an 8 second timeout for outgoing buffer flushing.
+This should make the library easier to copy and use as well as minimize possible name collisions (at the price of maintaining a monolithic file as the core library).
+
+**These are the main changes**:
+
+* Extracted the FIOBJ library from the core library, making it an add-on that could used by the extensions (such as the HTTP extension) rather than a core requirement.
+
+* Condensed the core library and it's namespace to two files (`fio.h` and `fio.c`) - replaced all `facil_` function names with `fio_` to accommodate the new namespace.
+
+    ...why?
+
+    It's a choice to sacrifice ease of maintainability in favor of ease of use.
+
+    Although two files are more difficult to maintain than 10 files (assuming it's the same amount of code)... it seems that two files are easier for other developers to copy and paste into their projects.
+
+* Added poll support to allow for performance testing and CYGWIN compatibility. The system epoll/kqueue calls should perform better for higher loads, but now you can see for yourself.
+
+* Timers are now in user space, allowing for more timers and less kernel dependencies.
+
+* The `on_idle` and `on_finish` settings in `facil_run` (now `facil_start`) were removed, replaced by the more flexible `fio_state_callback_add` approach.
+
+* The `fio_listen` and `http_listen` functions now return the listening socket's uuid (much like `fio_connect` and `http_connect` did).
+
+* The Protocol's `on_shutdown` callback is now expected to return a `uint8_t`, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate immediate socket closure with an 8 second timeout for outgoing buffer flushing.
 
 * The cluster messaging system and the Pub/Sub system were both refactored and **the API changed**. This change cascades to effect all the Pub/Sub system elements.
 
-* The Pub/Sub system's `use_pattern` was replaced with the optional callback argument `match` (a function pointer), allowing for custom pattern matching approaches (such as implementing NATs and RabbitMQ pattern matching). The previous glob matching approach (Redis compatible) is available using the provided `PUBSUB_MATCH_GLOB` function pointer.
+* The Pub/Sub system's `use_pattern` was replaced with the optional callback argument `match` (a function pointer), allowing for custom pattern matching approaches (such as implementing NATs and RabbitMQ pattern matching). The previous glob matching approach (Redis compatible) is available using the provided `FIO_MATCH_GLOB` function pointer.
 
 * The WebSocket upgrade (`http_upgrade2ws`) now matches the SSE upgrade function (starts with the handle `http_s *` and named arguments come later).
 
 * The CLI API and implementation was completely rewritten. The new code is slightly more monolithic, but should waste less memory with a simpler API (got rid of some persistent data).
 
-**Update**: (`fio_mem`) updated the allocator defaults to lower the price of a longer life allocation. Reminder: the `fio_mem` was designed for short/medium allocation life-spans _or_ large allocations (as they directly map to `mmap`). Now 16Kb will be considered a larger allocation and the price of holding on to memory is lower (less fragmentation).
+**Update**: (`fio_mem` => `fio.h`) updated the allocator defaults to lower the price of a longer life allocation. Reminder: the allocator was designed for short/medium allocation life-spans _or_ large allocations (as they directly map to `mmap`). Now 16Kb will be considered a larger allocation and the price of holding on to memory is lower (less fragmentation).
 
-**Fix**: (`facil`) fixed a typo in the shutdown output. Credit to @bjeanes (Bo Jeanes) for the Iodine#39 PR.
+**Fix**: (`fio`) fixed a typo in the shutdown output. Credit to @bjeanes (Bo Jeanes) for the Iodine#39 PR.
 
 **Logo**: Logo created by @area55git ([Area55](https://github.com/area55git))
 

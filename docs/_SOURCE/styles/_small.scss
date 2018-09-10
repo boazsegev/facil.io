@@ -1,0 +1,224 @@
+//media only screen and (max-device-width : 768px)
+
+@media only screen and (max-width : 768px) {
+
+body
+{
+    &:after
+    {
+        content: ' ';
+        display: block;
+        position: absolute;
+        top: 0; left: 0;
+        width: 100%;
+        height: 6em;
+        z-index: 90;
+        background-color: rgba(240, 240, 240, 0.88);
+        filter: blur(10px);
+        -webkit-filter: blur(10px);
+        pointer-events: none;
+    }
+    -webkit-overflow-scrolling: auto;
+}
+
+code, pre
+{
+    overflow: hidden;
+    word-wrap: break-word;
+    pointer-events: none;
+}
+#output
+{
+    pointer-events: none;
+}
+#md_container
+{
+    padding: 7em 0.5em;
+    display: inline-block;
+    margin-left: 0;
+    width: 100%;
+    height: 100%;
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+}
+.toc
+{
+    &:after
+    {
+        content: 'TOC';
+        width:3em;
+        top: 0;
+    }
+    // padding-top: 3em;
+    top: 6em;
+    height: 75%;
+    right: 0;
+}
+#logo
+{
+    top:0.3em;
+    @include border-radius;
+    // background-color: rgb(240,240,240);
+    // background-color: rgba(240, 240, 240, 0.64);
+}
+#sign
+{
+    position:fixed;
+    right: 1em; bottom:0;
+    z-index:250;
+}
+
+#show_sidebar, #show_nav
+{
+    display: block;
+    position: fixed;
+    top: 5em; left:0;
+    overflow: visible;
+    transform: translateX(999999px);
+    z-index: 900;
+    &:after
+    {
+        transform: translateX(-999999px);
+        content: "|||";
+        font-size: 1.4em;
+        display: block;
+        box-sizing: border-box;
+        padding: 0.3em 0.5em;
+        text-align: center;
+        @include border-radius;
+        background-color: rgb(128,128,128);
+        background-color: rgba(64, 64, 64, 0.64);
+        position: absolute;
+        left: 0; top:0;
+        transition: transform 0.3s ease, opacity 0.3s ease;
+        -webkit-transition: transform 0.3s ease, opacity 0.3s ease;
+        -moz-transition: transform 0.3s ease, opacity 0.3s ease;
+        -o-transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+    &:checked
+    {
+        &:after
+        {
+            transform: translateX(-999999px) rotate(-90deg);
+            background-color: rgba(64, 32, 64, 0.64);
+        }
+    }
+}
+#ruby_lang
+{
+    transform: translateX(200px);
+}
+#side_bar
+{
+    display: block;
+    width: 100%; height: 100%;
+    padding-top: 9em;
+    padding-bottom: 1em;
+    z-index: 400;
+    position: fixed;
+    top:0; left:0;
+    overflow: scroll;
+    background-color: rgb(240,240,240);
+    background-color: rgba(240, 240, 240, 0.9);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    -webkit-transition: transform 0.3s ease, opacity 0.3s ease;
+    -moz-transition: transform 0.3s ease, opacity 0.3s ease;
+    -o-transition: transform 0.3s ease, opacity 0.3s ease;
+}
+#show_sidebar:checked+#side_bar
+{
+    transform: translateX(0);
+}
+#show_nav
+{
+    display: block;
+    position: fixed;
+    top: 0.2em; right:0; left:initial;
+    &:after
+    {
+        right:0; left:initial;
+    }
+    &:checked
+    {
+        &:after
+        {
+            transform: translateX(-999999px) rotate(90deg);
+        }
+    }
+}
+#top_nav
+{
+    display: block;
+    position: fixed;
+    z-index: 500;
+    width: 100%;
+    height: auto;
+    padding: 1em;
+    margin: 0;
+    padding-bottom: 5em;
+    background-color: rgb(240,240,240);
+    background-color: rgba(240, 240, 240, 0.9);
+    transform: translateX(100%);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    -webkit-transition: transform 0.3s ease, opacity 0.3s ease;
+    -moz-transition: transform 0.3s ease, opacity 0.3s ease;
+    -o-transition: transform 0.3s ease, opacity 0.3s ease;
+    ul
+    {
+        padding: 0;
+        box-sizing: border-box;
+    }
+    li
+    {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        a
+        {
+            display: block;
+            width: 100%;
+            margin: 0.5em 0;
+            min-width: initial;
+            padding: 0.2em 1em;
+            text-align:center;
+            box-sizing: border-box;
+        }
+    }
+
+}
+#show_nav:checked+#top_nav
+{
+    transform: translateX(0);
+}
+
+
+
+
+//Demo code
+#tagline
+{
+    margin-top: 7em;
+    font-size: 1.1em;
+}
+
+// Dark Theme
+body.dark
+{
+    &:after
+    {
+        background-color: rgba(32, 32, 32, 0.88);
+    }
+    // #logo
+    // {
+    //     background-color: transparent;
+    // }
+
+    #top_nav, #side_bar
+    {
+        background-color: rgb(32,32,32);
+        background-color: rgba(32, 32, 32, 0.9);
+    }
+}
+
+}

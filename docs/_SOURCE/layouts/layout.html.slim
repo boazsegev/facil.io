@@ -1,0 +1,106 @@
+doctype html
+html
+    head
+        meta charset="utf-8"
+        meta http-equiv="X-UA-Compatible" content="IE=edge"
+        meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport"
+        title== self['page']['title'] || "Plezi - a Ruby framework for real-time web applications, with native Websockets, RESTful routing and CRUD support"
+        meta name="description" content=(self['page']['title'] || SCHEMA_ABOUT)
+        link href='https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla' rel='stylesheet' type='text/css'
+        / link href='/assets/javascripts/styles/monokai_sublime.css' rel='stylesheet' type='text/css'
+        script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"
+
+        / CSS
+        link href='/styles/main.css' rel='stylesheet' type='text/css'
+
+        / script src="/assets/javascripts/websocket.js"
+
+
+        / Schema.org data
+        script type="application/ld+json" == SCHEMA_ORG
+        / icons
+        / link rel="apple-touch-icon" sizes="57x57" href="/apple-touch-icon-57x57.png"
+        / link rel="apple-touch-icon" sizes="60x60" href="/apple-touch-icon-60x60.png"
+        / link rel="apple-touch-icon" sizes="72x72" href="/apple-touch-icon-72x72.png"
+        / link rel="apple-touch-icon" sizes="76x76" href="/apple-touch-icon-76x76.png"
+        / link rel="apple-touch-icon" sizes="114x114" href="/apple-touch-icon-114x114.png"
+        / link rel="apple-touch-icon" sizes="120x120" href="/apple-touch-icon-120x120.png"
+        / link rel="apple-touch-icon" sizes="144x144" href="/apple-touch-icon-144x144.png"
+        / link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png"
+        / link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180x180.png"
+        / link rel="icon" type="image/png" href="/favicon-32x32.png" sizes="32x32"
+        / link rel="icon" type="image/png" href="/favicon-194x194.png" sizes="194x194"
+        / link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96"
+        / link rel="icon" type="image/png" href="/android-chrome-192x192.png" sizes="192x192"
+        / link rel="icon" type="image/png" href="/favicon-16x16.png" sizes="16x16"
+        / link rel="manifest" href="/manifest.json"
+        / link rel="mask-icon" href="/safari-pinned-tab.svg" color="#b60003"
+        meta name="apple-mobile-web-app-title" content="facil.io"
+        meta name="application-name" content="facil.io - the C Web Application Framework"
+        meta name="msapplication-TileColor" content="#b91d47"
+        meta name="msapplication-TileImage" content="/mstile-144x144.png"
+        meta name="theme-color" content="#ffffff"
+
+    body
+        a#logo href='/'
+        input#show_nav type='checkbox'
+        nav#top_nav
+            ul
+                li
+                    a href='/0.7.x' Latest Docs
+                li
+                    a href='https://github.com/boazsegev/facil.io' target='_blank' Source Code
+                li
+                    a#theme href='javascript: change_themes();' Night Theme
+                    javascript:
+                        function change_themes() {
+                            if(localStorage.getItem("theme") == 'dark') {
+                                localStorage.setItem("theme", "light");
+                            } else {
+                                localStorage.setItem("theme", "dark");
+                            }
+                            $('body')[0].className = localStorage.getItem("theme");
+                            set_theme_link();
+                            $('#show_nav').attr('checked', false);
+                            return false;
+                        };
+                        function set_theme_link() {
+                            $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+                            }
+                        $('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+                        set_theme_link();
+        - if !self['page']['sidebar']
+           #md_container == yield
+        - else
+            input#show_sidebar type='checkbox'
+            nav#side_bar == self['page']['sidebar']
+            #md_container
+                == yield
+                a#sign href='/'
+        - if @flash && @flash[:notice]
+            #notice
+                a.notice_close onclick='hide_notice()' X
+                div#notice_text
+                    pre= @flash[:notice]
+        - else
+            #notice.hidden
+                a.notice_close onclick='hide_notice()' X
+                div#notice_text
+        / Highlight code
+        / script src="/javascripts/highlight.pack.js"
+        javascript:
+            // hljs.initHighlighting();
+            function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+            function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+            $('#toc').on("touchstart", function (e) { return true; } );
+            $('#toc').on("hover", function (e) { return true; } );
+            // Google Analytics
+            // if(location.hostname != "localhost") {
+            //     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+            //         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+            //         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+            //         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+            //     ga('create', 'UA-69931401-1', 'auto');
+            //     ga('send', 'pageview');
+            // }

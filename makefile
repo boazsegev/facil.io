@@ -12,7 +12,7 @@ endif
 # the .c and .cpp source files root folder - subfolders are automatically included
 LIB_ROOT=lib
 # publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=facil/core facil/core/types facil/core/types/fiobj facil/services facil/http facil/http/parsers facil/redis
+LIB_PUBLIC_SUBFOLDERS=facil facil/fiobj facil/cli facil/http facil/http/parsers facil/redis
 # privately used subfolders in the lib root (this distinction is for CMake)
 LIB_PRIVATE_SUBFOLDERS= 
 
@@ -57,6 +57,22 @@ ifdef DEBUG
 else
 	FLAGS:=$(FLAGS) NODEBUG
 endif
+
+# add FIO_PRINT_STATE flag if requested
+ifdef FIO_PRINT
+	FLAGS:=$(FLAGS) FIO_PRINT_STATE=$(FIO_PRINT)
+endif
+
+# add FIO_ENGINE_POLL flag if requested
+ifdef FIO_POLL
+	FLAGS:=$(FLAGS) FIO_ENGINE_POLL=$(FIO_POLL)
+endif
+
+# add FIO_PUBSUB_SUPPORT flag if requested
+ifdef FIO_PUBSUB_SUPPORT
+	FLAGS:=$(FLAGS) FIO_PUBSUB_SUPPORT=$(FIO_PUBSUB_SUPPORT)
+endif
+
 
 
 # c compiler
@@ -240,13 +256,19 @@ test: | clean
 	-@rm -R $(TMP_ROOT) 2> /dev/null
 
 .PHONY : test/optimized
-test/optimized: | clean 
-	@$(MAKE) test_build_and_run
+test/optimized: | clean test_add_speed_flags create_tree $(LIB_OBJS)
+	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(BIN)
 	-@rm $(BIN) 2> /dev/null
 	-@rm -R $(TMP_ROOT) 2> /dev/null
 
+.PHONY : test/ci
+test/ci:| clean 
+	@DEBUG=1 $(MAKE) test_build_and_run
+
 .PHONY : test_build_and_run
-test_build_and_run: | create_tree test_add_flags test_build
+test_build_and_run: | create_tree test_add_flags test/build
 	@$(BIN)
 
 .PHONY : test_add_flags
@@ -254,10 +276,10 @@ test_add_flags:
 	$(eval CFLAGS:=-coverage $(CFLAGS) -DDEBUG=1 -Werror)
 	$(eval LINKER_FLAGS:=-coverage -DDEBUG=1 $(LINKER_FLAGS))
 
-.PHONY : test_build
-test_build: $(LIB_OBJS)
-	@$(CC) -c ./tests/shorts.c -o $(TMP_ROOT)/shorts.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/shorts.o $(OPTIMIZATION) $(LINKER_FLAGS)
+.PHONY : test/build
+test/build: $(LIB_OBJS)
+	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
 
 .PHONY : clean
 clean:
