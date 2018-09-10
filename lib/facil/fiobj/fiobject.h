@@ -24,10 +24,13 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 #include "fio_siphash.h"
 
 #if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
-#define __attribute__(...)   /* :-( */
-#define __has_include(...) 0 /* :-( */
-#define __has_builtin(...) 0 /* :-( */
-#define FIO_GNUC_BYPASS
+#define __attribute__(...)
+#define __has_include(...) 0
+#define __has_builtin(...) 0
+#define FIO_GNUC_BYPASS 1
+#elif !defined(__clang__) && __GNUC__ < 5
+#define __has_builtin(...) 0
+#define FIO_GNUC_BYPASS 1
 #endif
 
 #ifdef __cplusplus

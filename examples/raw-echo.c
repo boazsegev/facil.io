@@ -75,8 +75,7 @@ The main echo protocol creation callback
 static void echo_on_open(intptr_t uuid, void *udata) {
   // Protocol objects MUST be dynamically allocated when multi-threading.
   fio_protocol_s *echo_proto = malloc(sizeof(*echo_proto));
-  *echo_proto = (fio_protocol_s){.service = "echo",
-                                 .on_data = echo_on_data,
+  *echo_proto = (fio_protocol_s){.on_data = echo_on_data,
                                  .on_shutdown = echo_on_shutdown,
                                  .on_close = echo_on_close,
                                  .ping = echo_ping};

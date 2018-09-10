@@ -88,8 +88,7 @@ static void chat_on_open(intptr_t uuid, void *udata) {
       fio_subscribe(.on_message = chat_message, .udata1 = (void *)uuid,
                     .channel = {.data = "chat", .len = 4});
   *proto = (chat_protocol_s){
-      .pr = {.service = "chat",
-             .on_data = chat_on_data,
+      .pr = {.on_data = chat_on_data,
              .on_shutdown = chat_on_shutdown,
              .on_close = chat_on_close,
              .ping = chat_ping},

@@ -244,8 +244,7 @@ void light_http_on_open(intptr_t uuid, void *udata) {
   light_http_s *p =
       malloc(sizeof(*p) + MAX_HTTP_HEADER_LENGTH + MIN_HTTP_READFILE);
   *p = (light_http_s){
-      .protocol.service = "Fast HTTP",        /* optional protocol identifier */
-      .protocol.on_data = light_http_on_data, /* setting the data callback */
+      .protocol.on_data = light_http_on_data,   /* setting the data callback */
       .protocol.on_close = light_http_on_close, /* setting the close callback */
       .uuid = uuid,
       .body = FIO_STR_INIT,

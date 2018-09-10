@@ -2398,7 +2398,8 @@ read_error:
 
 static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
   ssize_t sent;
-  sent = sendfile64(fd, packet->data.fd, &packet->offset, packet->length);
+  sent =
+      sendfile64(fd, packet->data.fd, (off_t)&packet->offset, packet->length);
   if (sent < 0)
     return -1;
   packet->length -= sent;
