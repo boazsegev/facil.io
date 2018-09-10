@@ -71,123 +71,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 
 /* *****************************************************************************
-TODO:
-
-* Cluster
-
-***************************************************************************** */
-
-/* *****************************************************************************
-Section Start Marker
-
-
-
-
-
-
-
-                               Locks and patches
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/* *****************************************************************************
-Atomic operations and spin locking - required for thread safety
-***************************************************************************** */
-
-/* nanosleep seems to be the most effective and efficient reschedule */
-FIO_FUNC inline void reschedule_thread(void) {
-  const struct timespec tm = {.tv_nsec = 1};
-  nanosleep(&tm, NULL);
-}
-FIO_FUNC inline void throttle_thread(size_t nano_sec) {
-  const struct timespec tm = {.tv_nsec = (nano_sec % 1000000000),
-                              .tv_sec = (nano_sec / 1000000000)};
-  nanosleep(&tm, NULL);
-}
-
-/** locks use a single byte */
-typedef uint8_t volatile fio_lock_i;
-
-/** The initail value of an unlocked spinlock. */
-#define FIO_LOCK_INIT 0
-
-/** returns 0 if the lock was aquired and -1 on failure. */
-static inline int fio_trylock(fio_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
-  fio_lock_i ret = fio_atomic_xchange(lock, 1);
-  __asm__ volatile("" ::: "memory");
-  return ret;
-}
-
-/** Releases a lock. Releasing an unaquired lock will break it. */
-static inline __attribute__((unused)) void fio_unlock(fio_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
-  fio_atomic_xchange(lock, 0);
-}
-
-/** returns a lock's state (non 0 == Busy). */
-static inline __attribute__((unused)) int fio_is_locked(fio_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
-  return *lock;
-}
-
-/** Busy waits for the lock. */
-static inline __attribute__((unused)) void fio_lock(fio_lock_i *lock) {
-  while (fio_trylock(lock)) {
-    reschedule_thread();
-  }
-}
-
-#if DEBUG_SPINLOCK
-
-/** Busy waits for a lock, reports contention. */
-static inline __attribute__((unused)) void
-fio_lock_dbg(fio_lock_i *lock, const char *file, int line) {
-  size_t lock_cycle_count = 0;
-  while (fio_trylock(lock)) {
-    if (lock_cycle_count >= 8 &&
-        (lock_cycle_count == 8 || !(lock_cycle_count & 511)))
-      fprintf(stderr, "INFO: fio-spinlock spin %s:%d round %zu\n", file, line,
-              lock_cycle_count);
-    ++lock_cycle_count;
-    reschedule_thread();
-  }
-  if (lock_cycle_count >= 8)
-    fprintf(stderr, "INFO: fio-spinlock spin %s:%d total = %zu\n", file, line,
-            lock_cycle_count);
-}
-#define fio_lock(lock) fio_lock_dbg((lock), __FILE__, __LINE__)
-
-static int fio_trylock_dbg(fio_lock_i *lock, const char *file, int line) {
-  static int last_line = 0;
-  static size_t count = 0;
-  int result = fio_trylock(lock);
-  if (!result) {
-    count = 0;
-    last_line = 0;
-  } else if (line == last_line) {
-    ++count;
-    if (count >= 2)
-      fprintf(stderr, "INFO: trying fio-spinlock %s:%d attempt %zu\n", file,
-              line, count);
-  } else {
-    count = 0;
-    last_line = line;
-  }
-  return result;
-}
-#define fio_trylock(lock) fio_trylock_dbg((lock), __FILE__, __LINE__)
-
-#endif /* DEBUG */
-
-/* *****************************************************************************
 Patch for OSX version < 10.12 from https://stackoverflow.com/a/9781275/4025095
 ***************************************************************************** */
 #if defined(__MACH__) && !defined(CLOCK_REALTIME)
@@ -1114,7 +997,7 @@ static void fio_defer_thread_wait(void) {
     static __thread size_t static_throttle = 262143UL;
     if (static_throttle < FIO_DEFER_THROTTLE_LIMIT)
       static_throttle = (static_throttle << 1);
-    throttle_thread(static_throttle);
+    fio_throttle_thread(static_throttle);
     if (fio_defer_has_queue())
       static_throttle = 1;
   } else {
@@ -1123,7 +1006,7 @@ static void fio_defer_thread_wait(void) {
                                         : FIO_DEFER_THROTTLE_LIMIT;
     if (throttle > FIO_DEFER_THROTTLE_LIMIT)
       throttle = FIO_DEFER_THROTTLE_LIMIT;
-    throttle_thread(throttle);
+    fio_throttle_thread(throttle);
   }
 }
 
@@ -1741,7 +1624,7 @@ static size_t fio_poll(void) {
   size_t count = 0;
 
   if (start == end) {
-    throttle_thread((timeout * 1000000UL));
+    fio_throttle_thread((timeout * 1000000UL));
   } else if (poll(list + start, end - start, timeout) == -1) {
     goto finish;
   }
@@ -5960,7 +5843,7 @@ static inline arena_s *arena_lock(arena_s *preffered) {
       ++arena;
     }
     if (preffered == arenas)
-      reschedule_thread();
+      fio_reschedule_thread();
     preffered = arenas;
   } while (1);
 }
@@ -8311,7 +8194,7 @@ static void fio_socket_test(void) {
          ++i) {
       fio_poll();
       fio_defer_perform();
-      reschedule_thread();
+      fio_reschedule_thread();
       errno = 0;
       r = fio_read(client2, tmp_buf, 28);
     }
@@ -8348,7 +8231,7 @@ static void fio_socket_test(void) {
   for (size_t i = 0; i < 100 && (errno == EAGAIN || errno == EWOULDBLOCK);
        ++i) {
     errno = 0;
-    reschedule_thread();
+    fio_reschedule_thread();
     client2 = fio_accept(uuid);
   }
   if (client2 == -1)

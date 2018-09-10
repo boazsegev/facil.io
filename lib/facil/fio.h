@@ -33,7 +33,7 @@ Table of contents:
 * Cluster Messages and Pub/Sub
 * Cluster / Pub/Sub Middleware and Extensions ("Engines")
 *
-* Atomic Operations Helper Functions
+* Atomic Operations and Spin Locking Helper Functions
 *
 * Converting Numbers to Strings (and back)
 * Strings to Numbers
@@ -45,6 +45,8 @@ Table of contents:
 * Base64 (URL) encoding
 *
 * Memory Allocator Details
+*
+* Spin locking Implementation
 *
 ******** facil.io Data Types (String, Set / HashMap, Linked Lists, etc')
 *
@@ -169,9 +171,11 @@ Version and helper macros
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
@@ -1601,7 +1605,7 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine);
 
 
 
-                      Atomic Operations Helper Functions
+              Atomic Operations and Spin Locking Helper Functions
 
 
 
@@ -1645,6 +1649,31 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine);
 #else
 #error Required builtin "__sync_add_and_fetch" not found.
 #endif
+
+/** Nanosleep seems to be the most effective and efficient thread rescheduler.
+ */
+FIO_FUNC inline void fio_reschedule_thread(void);
+
+/** Nanosleep the thread - a blocking throttle. */
+FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
+
+/** An atomic based spinlock. */
+typedef uint8_t volatile fio_lock_i;
+
+/** The initail value of an unlocked spinlock. */
+#define FIO_LOCK_INIT 0
+
+/** returns 0 if the lock was aquired and -1 on failure. */
+FIO_FUNC inline int fio_trylock(fio_lock_i *lock);
+
+/** Releases a spinlock. Releasing an unaquired lock will break it. */
+FIO_FUNC inline void fio_unlock(fio_lock_i *lock);
+
+/** Returns a spinlock's state (non 0 == Busy). */
+FIO_FUNC inline int fio_is_locked(fio_lock_i *lock);
+
+/** Busy waits for the spinlock (CAREFUL). */
+FIO_FUNC inline void fio_lock(fio_lock_i *lock);
 
 /* *****************************************************************************
 
@@ -2153,6 +2182,128 @@ C++ extern end
 #define FIO_MEM_MAX_BLOCKS_PER_CORE                                            \
   (1 << (22 - FIO_MEMORY_BLOCK_SIZE_LOG)) /* 22 == 4Mb per CPU core (1<<22) */
 #endif
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+                           Spin locking Implementation
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/** Nanosleep seems to be the most effective and efficient thread rescheduler.
+ */
+FIO_FUNC inline void fio_reschedule_thread(void) {
+  const struct timespec tm = {.tv_nsec = 1};
+  nanosleep(&tm, NULL);
+}
+
+/** Nanosleep the thread - a blocking throttle. */
+FIO_FUNC inline void fio_throttle_thread(size_t nano_sec) {
+  const struct timespec tm = {.tv_nsec = (nano_sec % 1000000000),
+                              .tv_sec = (nano_sec / 1000000000)};
+  nanosleep(&tm, NULL);
+}
+
+/** returns 0 if the lock was aquired and -1 on failure. */
+FIO_FUNC inline int fio_trylock(fio_lock_i *lock);
+
+/** Releases a spinlock. Releasing an unaquired lock will break it. */
+FIO_FUNC inline void fio_unlock(fio_lock_i *lock);
+
+/** Returns a spinlock's state (non 0 == Busy). */
+FIO_FUNC inline int fio_is_locked(fio_lock_i *lock);
+
+/** Busy waits for the spinlock (CAREFUL). */
+FIO_FUNC inline void fio_lock(fio_lock_i *lock);
+
+/** An atomic based spinlock. */
+typedef uint8_t volatile fio_lock_i;
+
+/** The initail value of an unlocked spinlock. */
+#define FIO_LOCK_INIT 0
+
+/** returns 0 if the lock was aquired and -1 on failure. */
+FIO_FUNC inline int fio_trylock(fio_lock_i *lock) {
+  __asm__ volatile("" ::: "memory");
+  fio_lock_i ret = fio_atomic_xchange(lock, 1);
+  __asm__ volatile("" ::: "memory");
+  return ret;
+}
+
+/** Releases a spinlock. Releasing an unaquired lock will break it. */
+FIO_FUNC inline void fio_unlock(fio_lock_i *lock) {
+  __asm__ volatile("" ::: "memory");
+  fio_atomic_xchange(lock, 0);
+}
+
+/** Returns a spinlock's state (non 0 == Busy). */
+FIO_FUNC inline int fio_is_locked(fio_lock_i *lock) {
+  __asm__ volatile("" ::: "memory");
+  return *lock;
+}
+
+/** Busy waits for the spinlock (CAREFUL). */
+FIO_FUNC inline void fio_lock(fio_lock_i *lock) {
+  while (fio_trylock(lock)) {
+    fio_reschedule_thread();
+  }
+}
+
+#if DEBUG_SPINLOCK
+/** Busy waits for a lock, reports contention. */
+FIO_FUNC inline void fio_lock_dbg(fio_lock_i *lock, const char *file,
+                                  int line) {
+  size_t lock_cycle_count = 0;
+  while (fio_trylock(lock)) {
+    if (lock_cycle_count >= 8 &&
+        (lock_cycle_count == 8 || !(lock_cycle_count & 511)))
+      fprintf(stderr, "INFO: fio-spinlock spin %s:%d round %zu\n", file, line,
+              lock_cycle_count);
+    ++lock_cycle_count;
+    fio_reschedule_thread();
+  }
+  if (lock_cycle_count >= 8)
+    fprintf(stderr, "INFO: fio-spinlock spin %s:%d total = %zu\n", file, line,
+            lock_cycle_count);
+}
+#define fio_lock(lock) fio_lock_dbg((lock), __FILE__, __LINE__)
+
+FIO_FUNC inline int fio_trylock_dbg(fio_lock_i *lock, const char *file,
+                                    int line) {
+  static int last_line = 0;
+  static size_t count = 0;
+  int result = fio_trylock(lock);
+  if (!result) {
+    count = 0;
+    last_line = 0;
+  } else if (line == last_line) {
+    ++count;
+    if (count >= 2)
+      fprintf(stderr, "INFO: trying fio-spinlock %s:%d attempt %zu\n", file,
+              line, count);
+  } else {
+    count = 0;
+    last_line = line;
+  }
+  return result;
+}
+#define fio_trylock(lock) fio_trylock_dbg((lock), __FILE__, __LINE__)
+#endif /* DEBUG_SPINLOCK */
 
 #endif /* H_FACIL_IO_H */
 
