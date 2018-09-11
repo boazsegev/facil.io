@@ -58,7 +58,7 @@ h1, h2, h3, h4, h5, h6
     font-family: $title_font;
     padding: 0.2em;
     margin: 0;
-    color:#202080;
+    color:#2020a0;
 }
 h1 {text-align: center;}
 h2, h3, h4, h5, h6 {
@@ -232,6 +232,8 @@ h4 {
             @include border-radius;
             color: #020202;
             text-decoration: none;
+            box-sizing:border-box;
+            // border-bottom: 1px solid;
             &:visited
             {
                 &:after
@@ -255,6 +257,7 @@ h4 {
                     padding: 0.2em 0;
                 }
                 text-shadow: -3px 3px 2px rgba(150, 150, 150, 0.72);
+                // border-bottom: 1px solid;
             }
             &:active
             {
