@@ -4876,8 +4876,8 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
 }
 
 static void fio_cluster_ping(intptr_t uuid, fio_protocol_s *pr_) {
-  fio_str_send_free(uuid, fio_cluster_wrap_message(0, 0, FIO_CLUSTER_MSG_PING,
-                                                   0, NULL, NULL));
+  fio_str_send_free2(uuid, fio_cluster_wrap_message(0, 0, FIO_CLUSTER_MSG_PING,
+                                                    0, NULL, NULL));
   (void)pr_;
 }
 
@@ -4952,7 +4952,7 @@ static void fio_cluster_server_sender(fio_str_s *data, intptr_t avoid_uuid) {
   FIO_LS_FOR(&cluster_data.clients, pos) {
     if ((intptr_t)pos->obj != -1) {
       if ((intptr_t)pos->obj != avoid_uuid) {
-        fio_str_send_free((intptr_t)pos->obj, fio_str_dup(data));
+        fio_str_send_free2((intptr_t)pos->obj, fio_str_dup(data));
       }
     }
   }
@@ -5125,7 +5125,7 @@ static void fio_cluster_client_handler(struct cluster_pr_s *pr) {
   }
 }
 static void fio_cluster_client_sender(fio_str_s *data, intptr_t ignr_) {
-  fio_str_send_free(cluster_data.uuid, data);
+  fio_str_send_free2(cluster_data.uuid, data);
   (void)ignr_;
 }
 
