@@ -58,11 +58,12 @@ h1, h2, h3, h4, h5, h6
     font-family: $title_font;
     padding: 0.2em;
     margin: 0;
+    color:#202080;
 }
 h1 {text-align: center;}
 h2, h3, h4, h5, h6 {
     text-align: left;
-    margin-top:1.2em;
+    margin-top:1.4em;
 }
 
 h2 {
@@ -70,10 +71,17 @@ h2 {
 }
 h4 {
     font-size:1.4em;
-    padding-left:1em;
-    margin-left:2em;
+    // margin-left:2em;
     // border-left: 2px #888 solid;
     pre, code {
+    }
+    &:after {
+        content: ' ';
+        width: 31%;
+        position:relative;
+        top: 0.2em;
+        display:block;
+        border-bottom: 1px solid #99a;
     }
 }
 
@@ -467,6 +475,14 @@ body.dark, .dark input
         &:visited
         {
             color: #eef;
+        }
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color:#fad0d0;
+    }
+    h2, h3, h4 {
+        &:after {
+            border-bottom: 1px solid #caa;
         }
     }
     #top_nav
