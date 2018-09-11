@@ -1,8 +1,16 @@
 ## Version 0.7.x
 
 * [Overview](/0.7.x/index)
+
+## Core Library
 * [facil.io core](/0.7.x/fio)
+* [Protocol Management](/0.7.x/fio#connection-protocol-management)
+* [Running the IO reactor](/0.7.x/fio#running-facil-io)
+* [Connection Functions](/0.7.x/fio#socket-connection-functions)
+* [Memory allocation](/0.7.x/fio#the-custom-memory-allocator)
 * [Version and compilation macros](/0.7.x/fio#version-and-compilation-related-macros)
+
+
 
 ## Helpers
 

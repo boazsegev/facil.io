@@ -100,6 +100,12 @@ h4 {
     p {
         margin: 0;
         padding: 0.5em;
+        code {
+            padding:0 0.1em;
+            letter-spacing: 1px;
+            font-weight:100;
+            color: #800;
+        }
     }
     pre
     {
@@ -109,7 +115,7 @@ h4 {
         margin-left:2%;
         box-sizing: border-box;
     }
-    code
+    pre code
     {
         display:block;
         width:100%;
@@ -481,6 +487,14 @@ body.dark, .dark input
         }
     }
 
+    #md_container
+    {
+        p {
+            code {
+                color: #bfafef;
+            }
+        }
+    }
     #logo:after
     {
         background-image: url('/logo/facil-io-side-light.svg');
@@ -529,6 +543,7 @@ body.dark, .dark input
 body.light
 {
   @import 'github';
+  // #md_container p code,
   pre {
     background: #f5f5ff;    
   }
@@ -537,6 +552,7 @@ body.light
 body.dark
 {
   @import 'railscasts';
+  // #md_container p code,
   pre {
     background: #322; 
   }

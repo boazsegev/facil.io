@@ -196,9 +196,9 @@ typedef struct {
   uint16_t threads;
   /* timeout review loop flag */
   uint8_t need_review;
-  /* spinning down proccess */
+  /* spinning down process */
   uint8_t volatile active;
-  /* worker proccess flag - true also for single process */
+  /* worker process flag - true also for single process */
   uint8_t is_worker;
   /* polling and global lock */
   fio_lock_i lock;
@@ -1104,12 +1104,12 @@ static void fio_signal_handler_reset(void) {
 }
 
 /**
- * Returns 1 if the current process is a worker process or a single proccess.
+ * Returns 1 if the current process is a worker process or a single process.
  *
  * Otherwise returns 0.
  *
- * NOTE: When cluster mode is off, the root process is also the worker proccess.
- *       This means that simgle process instances don't automatically respawn
+ * NOTE: When cluster mode is off, the root process is also the worker process.
+ *       This means that single process instances don't automatically respawn
  *       after critical errors.
  */
 int fio_is_worker(void) { return fio_data->is_worker; }
@@ -2890,7 +2890,7 @@ static void __attribute__((destructor)) fio_lib_destroy(void) {
 #endif
 }
 
-/* Called within a child proccess after it starts. */
+/* Called within a child process after it starts. */
 static void fio_on_fork(void) {
   fio_data->lock = FIO_LOCK_INIT;
   fio_defer_on_fork();
@@ -4326,7 +4326,7 @@ static void pubsub_on_channel_destroy(channel_s *ch, fio_match_fn match) {
  * NOTE: the root (master) process will call `subscribe` for any channel in any
  * process, while all the other processes will call `subscribe` only for their
  * own chasnnel. This allows engines to use the root (master) process as an
- * exclusive subscription proccess.
+ * exclusive subscription process.
  */
 void fio_pubsub_attach(pubsub_engine_s *engine) {
   fio_lock(&fio_postoffice.engines.lock);
@@ -4365,7 +4365,7 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine) {
  * NOTE: the root (master) process will call `subscribe` for any channel in any
  * process, while all the other processes will call `subscribe` only for their
  * own chasnnel. This allows engines to use the root (master) process as an
- * exclusive subscription proccess.
+ * exclusive subscription process.
  */
 void fio_pubsub_reattach(pubsub_engine_s *eng) {
   fio_lock(&fio_postoffice.pubsub.lock);

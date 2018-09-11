@@ -12,82 +12,39 @@ The header can be included more than once to produce multiple types of Hash Maps
 
 These extra features are detailed at the end of this file.
 
-## Version and Compilation Related Macros
-
-The following macros effect facil.io's compilation and can be used to validate the API version exposed by the library.
-
-### Version Macros
-
-The version macros relate the version for both facil.io's core library and it's bundled extensions.
-
-#### `FIO_VERSION_MAJOR`
-
-The major version macro is currently zero (0), since the facil.io library's API should still be considered unstable.
-
-In the future, API breaking changes will cause this number to change.
-
-#### `FIO_VERSION_MINOR`
-
-The minor version normally represents new feature or substantial changes that don't effect existing API.
-
-However, as long as facil.io's major version is zero (0), API breaking changes will cause the minor version (rather than the major version) to change.
-
-#### `FIO_VERSION_PATCH`
-
-The patch version is usually indicative to bug fixes.
-
-However, as long as facil.io's major version is zero (0), new feature or substantial changes will cause the patch version to change.
-
-#### `FIO_VERSION_STRING`
-
-This macro translates to facil.io's literal string. It can be used, for example, like this:
-
-```c
-printf("Running facil.io version" FIO_VERSION_STRING "\r\n");
-```
-
-## Other Macros that effect facil.io's behavior / compilation
-
-The facil.io core library has some hard coded values that can be adjusted by defining the following macros during compile time.
-
-#### `FIO_MAX_SOCK_CAPACITY`
-
-This macro define the maximum hard coded number of connections per worker process.
-
-To be more accurate, this number represents the highest `fd` value allowed by library functions.
-
-If the soft coded OS limit is higher than this number, than this limit will be enforced instead.
-
-
-#### `FACIL_CPU_CORES_LIMIT`
-
-The facil.io startup procedure allows for auto-CPU core detection.
-
-Sometimes it would make sense to limit this auto-detection to a lower number, such as on systems with more than 32 cores.
-
-This is only relevant to automated values, when running facil.io with zero threads and processes, which invokes a large matrix of workers and threads (see [facil_start](#facil_start)).
-
-This does NOT effect manually set (non-zero) worker/thread values.
-
-#### `FIO_DEFER_THROTTLE_PROGRESSIVE`
-
-The progressive throttling model makes concurrency and parallelism more likely.
-
-Otherwise threads are assumed to be intended for "fallback" in case of slow user code, where a single thread should be active most of the time and other threads are activated only when that single thread is slow to perform. 
-
-By default, `FIO_DEFER_THROTTLE_PROGRESSIVE` is true (1).
-
-#### `FIO_PRINT_STATE`
-
-When this macro is true (1), facil.io will print some state massages to stderr (startup / shutdown messages, etc').
-
-By default this macro is set to true.
-
-#### `FIO_PUBSUB_SUPPORT`
-
-If true (1), compiles the facil.io pub/sub API .
-
 ## The Custom Memory Allocator
+
+facil.io includes a custom memory allocator designed for network application use.
+
+Allocated memory is always zeroed out and aligned on a 16 byte boundary.
+
+Reallocated memory is always aligned on a 16 byte boundary but it might be filled with junk data after the valid data (this can be minimized by using [`fio_realloc2`](#fio_realloc2)).
+
+The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations (anything over 12Kb is forwarded to `mmap`).
+
+This allocator should prevent memory fragmentation when allocating memory for shot / medium object life-spans (classic network use).
+
+**Note**: this custom allocator could increase memory fragmentation if long-life allocations are performed periodically (rather than performed during startup). Use [`fio_mmap`](#fio_mmap) or the system's `malloc` for long-term allocations.
+
+### Memory Allocator Overview
+
+The easiest and fastest allocator that can be written will simply allocate memory on top of the stack (using the historic `sbrk` instruction) and never free the memory.
+
+This memory allocator works using a similar design using rotating block of 32Kb which is only freed once all the references to the block were freed.
+
+The allocator utilizes memory pools and per-CPU bins to allow for concurrent memory allocations across threads and minimize lock contention.
+
+To replace the system's `malloc` function family compile with the `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
+
+When using tcmalloc or jemalloc, consider defining `FIO_FORCE_MALLOC` to prevent facil.io's custom allocator from compiling (`-DFIO_FORCE_MALLOC`).
+
+More details in the `fio.h` header.
+
+### The Memory Allocator's API
+
+The functions were designed to be a drop in replacement to the system's memory allocation functions (`malloc`, `free` and friends).
+
+Where some improvement could be made, it was made using an added function name to add improved functionality (such as `fio_realloc2`).
 
 #### `fio_malloc`
 
@@ -155,11 +112,86 @@ be inherently slower.
 
 `fio_free` can be used for deallocating the memory.
 
-## Connection Callback (Protocol) Management
+## Version and Compilation Related Macros
 
-The facil.io library is an evented library and the `fio_protocol_s` structure is at the core of the network evented design.
+The following macros effect facil.io's compilation and can be used to validate the API version exposed by the library.
 
-This section describes the protocol structure and how it can be attached to a network or local connection.
+### Version Macros
+
+The version macros relate the version for both facil.io's core library and it's bundled extensions.
+
+#### `FIO_VERSION_MAJOR`
+
+The major version macro is currently zero (0), since the facil.io library's API should still be considered unstable.
+
+In the future, API breaking changes will cause this number to change.
+
+#### `FIO_VERSION_MINOR`
+
+The minor version normally represents new feature or substantial changes that don't effect existing API.
+
+However, as long as facil.io's major version is zero (0), API breaking changes will cause the minor version (rather than the major version) to change.
+
+#### `FIO_VERSION_PATCH`
+
+The patch version is usually indicative to bug fixes.
+
+However, as long as facil.io's major version is zero (0), new feature or substantial changes will cause the patch version to change.
+
+#### `FIO_VERSION_STRING`
+
+This macro translates to facil.io's literal string. It can be used, for example, like this:
+
+```c
+printf("Running facil.io version" FIO_VERSION_STRING "\r\n");
+```
+
+### Other Macros that effect facil.io's behavior / compilation
+
+The facil.io core library has some hard coded values that can be adjusted by defining the following macros during compile time.
+
+#### `FIO_MAX_SOCK_CAPACITY`
+
+This macro define the maximum hard coded number of connections per worker process.
+
+To be more accurate, this number represents the highest `fd` value allowed by library functions.
+
+If the soft coded OS limit is higher than this number, than this limit will be enforced instead.
+
+
+#### `FACIL_CPU_CORES_LIMIT`
+
+The facil.io startup procedure allows for auto-CPU core detection.
+
+Sometimes it would make sense to limit this auto-detection to a lower number, such as on systems with more than 32 cores.
+
+This is only relevant to automated values, when running facil.io with zero threads and processes, which invokes a large matrix of workers and threads (see [facil_start](#facil_start)).
+
+This does NOT effect manually set (non-zero) worker/thread values.
+
+#### `FIO_DEFER_THROTTLE_PROGRESSIVE`
+
+The progressive throttling model makes concurrency and parallelism more likely.
+
+Otherwise threads are assumed to be intended for "fallback" in case of slow user code, where a single thread should be active most of the time and other threads are activated only when that single thread is slow to perform. 
+
+By default, `FIO_DEFER_THROTTLE_PROGRESSIVE` is true (1).
+
+#### `FIO_PRINT_STATE`
+
+When this macro is true (1), facil.io will print some state massages to stderr (startup / shutdown messages, etc').
+
+By default this macro is set to true.
+
+#### `FIO_PUBSUB_SUPPORT`
+
+If true (1), compiles the facil.io pub/sub API .
+
+## Connection (Protocol) Management
+
+This section includes information about listening to incoming connections, connecting to remote machines and managing the protocol callback system.
+
+The facil.io library is an evented library and the `fio_protocol_s` structure is at the core of the network evented design, so we'll start with the Protocol object.
 
 ### The `fio_protocol_s` structure
 
@@ -303,7 +335,56 @@ The value of 0 indicates either that the facil.io library wasn't initialized
 yet or that it's resources were already released.
 
 
-## Listening to incoming connections
+#### `fio_set_timeout`
+
+```c
+void fio_set_timeout(intptr_t uuid, uint8_t timeout);
+```
+
+
+Sets a timeout for a specific connection (only when running and valid).
+
+#### `fio_get_timeout`
+
+```c
+uint8_t fio_get_timeout(intptr_t uuid);
+```
+
+Gets a timeout for a specific connection. Returns 0 if none.
+
+#### `fio_touch`
+
+```c
+void fio_touch(intptr_t uuid);
+```
+
+"Touches" a socket connection, resetting it's timeout counter.
+
+#### `fio_force_event`
+
+```c
+void fio_force_event(intptr_t uuid, enum fio_io_event);
+```
+
+Schedules an IO event, even if it did not occur.
+
+Possible events are:
+
+* `FIO_EVENT_ON_DATA` - as if data is available to be read.
+* `FIO_EVENT_ON_READY` - as if the connection can be written to (if there's data in the buffer, `fio_flush` will be called).
+* `FIO_EVENT_ON_TIMEOUT` - as if the connection timed out (`ping`).
+
+#### `fio_suspend`
+
+```c
+void fio_suspend(intptr_t uuid);
+```
+
+Temporarily prevents `on_data` events from firing.
+
+Note: the function will work as expected when called within the protocol's `on_data` callback and the `uuid` refers to a valid socket. Otherwise the function might quietly fail.
+
+### Listening to incoming connections
 
 Listening to incoming connections is pretty straight forward and performed using the [`facil_listen`](#facil_listen) function.
 
@@ -388,15 +469,636 @@ int main() {
 }
 ```
 
+#### `fio_listen`
+
+```c
+intptr_t fio_listen(struct fio_listen_args args);
+#define fio_listen(...) fio_listen((struct fio_listen_args){__VA_ARGS__})
+```
+
+The `fio_listen` function is shadowed by the `fio_listen` MACRO, which allows the function to accept "named arguments", as shown above in the example code:
+
+```c
+ if (fio_listen(.port = "3000", .on_open = echo_on_open) == -1) {
+   perror("No listening socket available on port 3000");
+   exit(-1);
+ }
+
+```
+
+The following arguments are supported:
+
+* `on_open`:
+
+    This callback will be called whenever a new connection is accepted. It **must** either call [`fio_attach`](#fio_attach) or close the connection.
+
+    The callback should accept the new connection's uuid and a void pointer (the optional `udata` pointer one passed to `fio_listen`)
+
+        // callback example:
+        void on_open(intptr_t uuid, void *udata);
+
+* `port`:
+
+    The network service / port. A NULL or "0" port indicates a Unix socket should be used.
+
+        // type:
+        const char *port;
+
+* `address`:
+
+    The socket binding address. Defaults to the recommended NULL (recommended for TCP/IP).
+
+        // type:
+        const char *address;
+
+* `udata`:
+
+    Opaque user data. This will be passed along to the `on_open` callback.
+
+        // type:
+        void *udata;
+
+
+* `on_start`:
+
+    A callback to be called when the server starts (or a worker process is re-spawned), allowing for further initialization, such as timed event scheduling or VM initialization.
+
+        // callback example:
+        void on_start(intptr_t uuid, void *udata);
+
+
+* `on_finish`:
+
+    A callback to be called for every process once the listening socket is closed.
+
+        // callback example:
+        void on_finish(intptr_t uuid, void *udata);
+
+
+
+### Connecting to remote servers as a client
+
+Establishing a client connection is about as easy as setting up a listening socket, and follows, give or take, the same procedure.
+
+#### `fio_connect`
+
+```c
+intptr_t fio_connect(struct fio_connect_args args);
+#define fio_connect(...) fio_connect((struct fio_connect_args){__VA_ARGS__})
+```
+
+The `fio_connect` function is shadowed by the `fio_connect` MACRO, which allows the function to accept "named arguments", similar to [`fio_listen](#fio_listen).
+
+The following arguments are supported:
+
+* `port`:
+
+    The remote network service / port. A NULL or "0" port indicates a Unix socket connection should be attempted.
+
+        // type:
+        const char *port;
+
+* `address`:
+
+    The remote (or Unix socket) address. Defaults to the recommended NULL (recommended for TCP/IP).
+
+        // type:
+        const char *address;
+
+* `on_connect`:
+
+    This callback will be called once the new connection is established. It **must** either call [`fio_attach`](#fio_attach) or close the connection.
+
+    The callback should accept the new connection's uuid and a void pointer (the optional `udata` pointer one passed to `fio_connect`)
+
+        // callback example:
+        void on_connect(intptr_t uuid, void *udata);
+
+* `on_connect`:
+
+    This callback will be called when a socket fails to connect. It's often a good place for cleanup.
+
+    The callback should accept the attempted connection's uuid (might be -1) and a void pointer (the optional `udata` pointer one passed to `fio_connect`)
+
+        // callback example:
+        void on_connect(intptr_t uuid, void *udata);
+
+
+* `udata`:
+
+    Opaque user data. This will be passed along to the `on_connect` or `on_fail` callback.
+
+        // type:
+        void *udata;
+
+* `timeout`:
+
+    A non-system timeout after which connection is assumed to have failed.
+
+        // type:
+        uint8_t timeout;
+
+
+## Running facil.io
+
+The facil.io IO reactor can be started in single-threaded, multi-threaded, forked (multi-process) and hybrid (forked + multi-threads) modes.
+
+In cluster mode (when running more than a single process), a crashed worker process will be automatically re-spawned and "hot restart" is enabled (using the USR1 signal).
+
+#### `fio_start`
+
+```c
+void fio_start(struct fio_start_args args);
+#define fio_start(...) fio_start((struct fio_start_args){__VA_ARGS__})
+```
+
+Starts the facil.io event loop. This function will return after facil.io is done (after shutdown).
+
+This method blocks the current thread until the server is stopped (when a SIGINT/SIGTERM is received).
+
+The `fio_start` function is shadowed by the `fio_start` MACRO, which allows the function to accept "named arguments", i.e.:
+
+```c
+fio_start(.threads = 4, .workers = 2);
+```
+
+The following arguments are supported:
+
+* `threads`:
+
+    The number of threads to run in the thread pool.
+
+        // type:
+        int16_t threads;
+
+* `workers`:
+
+    The number of worker processes to run (in addition to a root process)
+
+    This invokes facil.io's cluster mode, where a crashed worker will be automatically re-spawned and "hot restart" is enabled (using the USR1 signal).
+
+        // type:
+        int16_t workers;
+
+Negative thread / worker values indicate a fraction of the number of CPU cores. i.e., -2 will normally indicate "half" (1/2) the number of cores.
+
+If the other option (i.e. `.workers` when setting `.threads`) is zero, it will be automatically updated to reflect the option's absolute value. i.e.: if .threads == -2 and .workers == 0, than facil.io will run 2 worker processes with (cores/2) threads per process.
+
+#### `fio_stop`
+
+```c
+void fio_stop(void);
+```
+
+Attempts to stop the facil.io application. This only works within the Root
+process. A worker process will simply re-spawn itself (hot-restart).
+
+#### `fio_expected_concurrency`
+
+```c
+void fio_expected_concurrency(int16_t *threads, int16_t *workers);
+```
+
+Returns the number of expected threads / processes to be used by facil.io.
+
+The pointers should start with valid values that match the expected threads /
+processes values passed to `fio_start`.
+
+The data in the pointers will be overwritten with the result.
+
+#### `fio_is_running`
+
+```c
+int16_t fio_is_running(void);
+```
+
+Returns the number of worker processes if facil.io is running (1 is returned when in single process mode, otherwise the number of workers).
+
+Returns 0 if facil.io isn't running or is winding down (during shutdown).
+
+#### `fio_is_worker`
+
+```c
+int fio_is_worker(void);
+```
+
+Returns 1 if the current process is a worker process or a single process.
+
+Otherwise returns 0.
+
+NOTE: When cluster mode is off, the root process is also the worker process. This means that single process instances don't automatically re-spawn after critical errors.
+
+
+#### `fio_parent_pid`
+
+```c
+pid_t fio_parent_pid(void);
+```
+
+Returns facil.io's parent (root) process pid.
+
+#### `fio_reap_children`
+
+```c
+void fio_reap_children(void);
+```
+
+Initializes zombie reaping for the process. Call before `fio_start` to enable
+global zombie reaping.
+
+#### `fio_last_tick`
+
+```c
+struct timespec fio_last_tick(void);
+```
+
+Returns the last time facil.io reviewed any pending IO events.
+
+#### `fio_engine`
+
+```c
+char const *fio_engine(void);
+```
+
+Returns a C string detailing the IO engine selected during compilation.
+
+Valid values are "kqueue", "epoll" and "poll".
+
+## Socket / Connection Functions
+
+### Creating, closing and testing sockets
+
+#### `fio_socket`
+
+```c
+intptr_t fio_socket(const char *address, const char *port, uint8_t is_server);
+```
+
+Creates a TCP/IP or Unix socket and returns it's unique identifier.
+
+For TCP/IP server sockets (`is_server` is `1`), a NULL `address` variable is recommended. Use "localhost" or "127.0.0.1" to limit access to the server application.
+
+For TCP/IP client sockets (`is_server` is `0`), a remote `address` and `port` combination will be required
+
+For Unix server or client sockets, set the `port` variable to NULL or `0` (and the `is_server` to `1`).
+
+Returns -1 on error. Any other value is a valid unique identifier.
+
+Note: facil.io uses unique identifiers to protect sockets from collisions. However these identifiers can be converted to the underlying file descriptor using the [`fio_uuid2fd`](#fio_uuid2fd) macro.
+
+
+#### `fio_accept`
+
+```c
+intptr_t fio_accept(intptr_t srv_uuid);
+```
+
+`fio_accept` accepts a new socket connection from a server socket - see the server flag on [`fio_socket`](#fio_socket).
+
+NOTE: this function does NOT attach the socket to the IO reactor - see [`fio_attach`](#fio_attach).
+
+#### `fio_is_valid`
+
+```c
+int fio_is_valid(intptr_t uuid);
+```
+
+Returns 1 if the uuid refers to a valid and open, socket.
+
+Returns 0 if not.
+
+#### `fio_is_closed`
+
+```c
+int fio_is_closed(intptr_t uuid);
+```
+
+Returns 1 if the uuid is invalid or the socket is flagged to be closed.
+
+Returns 0 if the socket is valid, open and isn't flagged to be closed.
+
+#### `fio_close`
+
+```c
+void fio_close(intptr_t uuid);
+```
+
+`fio_close` marks the connection for disconnection once all the data was sent. The actual disconnection will be managed by the [`fio_flush`](#fio_flush) function.
+
+[`fio_flash`](#fio_flash) will be automatically scheduled.
+
+#### `fio_force_close`
+
+```c
+void fio_force_close(intptr_t uuid);
+```
+
+`fio_force_close` closes the connection immediately, without adhering to any protocol restrictions and without sending any remaining data in the connection buffer.
+
+#### `fio_peer_addr`
+
+```c
+fio_str_info_s fio_peer_addr(intptr_t uuid);
+```
+
+Returns the information available about the socket's peer address.
+
+If no information is available, the structure will be initialized with zero (`.data == NULL`).
+
+The information is only available when the socket was accepted using `fio_accept` or opened using `fio_connect`.
+
+#### The `fio_str_info_s` return value
+
+```c
+typedef struct fio_str_info_s {
+  size_t capa; /* Buffer capacity, if the string is writable. */
+  size_t len;  /* String length. */
+  char *data;  /* Pointer to the string's first byte. */
+} fio_str_info_s;
+```
+
+A string information type, reports information about a C string.
+
+### Reading / Writing
+
+#### `fio_read`
+
+```c
+ssize_t fio_read(intptr_t uuid, void *buffer, size_t count);
+```
+
+`fio_read` attempts to read up to count bytes from the socket into the buffer starting at `buffer`.
+
+`fio_read`'s return values are wildly different then the native return values and they aim at making far simpler sense.
+
+`fio_read` returns the number of bytes read (0 is a valid return value which simply means that no bytes were read from the buffer).
+
+On a fatal connection error that leads to the connection being closed (or if the connection is already closed), `fio_read` returns -1.
+
+The value 0 is the valid value indicating no data was read.
+
+Data might be available in the kernel's buffer while it is not available to be read using `fio_read` (i.e., when using a transport layer, such as TLS, with Read/Write hooks).
+
+
+#### `fio_write2`
+
+```c
+ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options);
+#define fio_write2(uuid, ...)                                                  \
+ fio_write2_fn(uuid, (fio_write_args_s){__VA_ARGS__})
+```
+
+Schedules data to be written to the socket.
+
+`fio_write2` is similar to `fio_write`, except that it allows far more flexibility.
+
+NOTE: The data is "moved" to the ownership of the socket, not copied. By default, `free` (not `fio_free` will be called to deallocate the data. This can be controlled by the `.after.dealloc` function pointer argument.
+
+
+The following arguments are supported (in addition to the `uuid` argument):
+
+* `data.buffer` OR `data.fd`:
+
+    The data to be sent. This can be either a block of memory or a file descriptor.
+
+        // type:
+        union {
+           /** The in-memory data to be sent. */
+           const void *buffer;
+           /** The data to be sent, if this is a file. */
+           const intptr_t fd;
+        } data;
+
+* `after.dealloc` OR `after.close`:
+
+    The deallocation function. This function will be called to either free the memory of close the file once the data was sent.
+
+    The default for memory is the system's `free` and for files the system `close` is called (using a wrapper function).
+
+    A no-operation (do nothing) function is provided for sending static data: `FIO_DEALLOC_NOOP`. Use this: `.after.dealloc = FIO_DEALLOC_NOOP`
+
+    Note: connection library functions MUST NEVER be called by a callback, or a deadlock might occur.
+
+        // type:
+        union {
+          void (*dealloc)(void *buffer);
+          void (*close)(intptr_t fd);
+        } after;
+
+* `length`:
+
+    The length (size) of the buffer, or the amount of data to be sent from the file descriptor.
+
+        // type:
+        uintptr_t length;
+
+* `offset`:
+
+    Starting point offset from the buffer or file descriptor's beginning.
+
+        // type:
+        uintptr_t offset;
+
+* `urgent`:
+
+    The data will be sent as soon as possible, moving forward in the connection's queue as much as possible without fragmenting other `fio_write2` calls.
+
+        // type:
+        unsigned urgent : 1;
+
+* `is_fd`:
+
+    The `data` union contains the value of a file descriptor (`intptr_t`). i.e.: `.data.fd = fd` or `.data.buffer = (void*)fd;`
+
+        // type:
+        unsigned is_fd : 1;
+
+
+
+
+On error, -1 will be returned. Otherwise returns 0.
+
+
+#### `fio_write`
+
+```c
+inline static ssize_t fio_write(const intptr_t uuid, const void *buffer,
+                                 const size_t length);
+```
+
+`fio_write` copies `legnth` data from the buffer and schedules the data to
+be sent over the socket.
+
+On error, -1 will be returned. Otherwise returns 0.
+
+Returns the same values as `fio_write2` and is equivalent to:
+
+```c
+inline FIO_FUNC ssize_t fio_write(const intptr_t uuid, const void *buffer,
+                                 const size_t length) {
+ if (!length || !buffer)
+   return 0;
+ void *cpy = fio_malloc(length);
+ if (!cpy)
+   return -1;
+ memcpy(cpy, buffer, length);
+ return fio_write2(uuid, .data.buffer = cpy, .length = length,
+                   .after.dealloc = fio_free);
+}
+```
+
+
+#### `fio_sendfile`
+
+```c
+inline static ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd,
+                                    off_t offset, size_t length);
+```
+
+Sends data from a file as if it were a single atomic packet (sends up to `length` bytes or until EOF is reached).
+
+Once the file was sent, the `source_fd` will be closed using `close`.
+
+The file will be buffered to the socket chunk by chunk, so that memory consumption is capped. The system's `sendfile` might be used if conditions permit.
+
+`offset` dictates the starting point for the data to be sent and length sets the maximum amount of data to be sent.
+
+Returns -1 and closes the file on error. Returns 0 on success.
+
+Returns the same values as `fio_write2` and is equivalent to:
+
+```c
+inline FIO_FUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd,
+                                    off_t offset, size_t length) {
+ return fio_write2(uuid, .data.fd = source_fd, .length = length, .is_fd = 1,
+                   .offset = offset);
+}
+```
+
+#### `fio_pending`
+
+```c
+size_t fio_pending(intptr_t uuid);
+```
+
+Returns the number of `fio_write` calls that are waiting in the connection's queue and haven't been processed.
+
+#### `fio_flush`
+
+```c
+ssize_t fio_flush(intptr_t uuid);
+```
+
+`fio_flush` attempts to write any remaining data in the internal buffer to the underlying file descriptor and closes the underlying file descriptor once if it's marked for closure (and all the data was sent).
+
+Return values: 1 will be returned if data remains in the buffer. 0 will be returned if the buffer was fully drained. -1 will be returned on an error or when the connection is closed.
+
+`errno` will be set to EWOULDBLOCK if the socket's lock is busy.
+
+
+#### `fio_flush_strong`
+
+```c
+#define fio_flush_strong(uuid)                                                \
+ do {                                                                         \
+   errno = 0;                                                                 \
+ } while (fio_flush(uuid) > 0 || errno == EWOULDBLOCK)
+```
+
+Blocks until all the data was flushed from the buffer.
+
+#### `fio_uuid2fd`
+
+```c
+#define fio_uuid2fd(uuid) ((int)((uintptr_t)uuid >> 8))
+```
+
+Convert between a facil.io connection's identifier (uuid) and system's fd.
+
+#### `fio_fd2uuid`
+
+```c
+intptr_t fio_fd2uuid(int fd);
+```
+
+`fio_fd2uuid` takes an existing file decriptor `fd` and returns it's active `uuid`.
+
+If the file descriptor is marked as closed (wasn't opened / registered with facil.io) the function returns -1;
+
+If the file descriptor was closed directly (not using `fio_close`) or the closure event hadn't been processed, a false positive will be possible.
+
+This is not an issue, since the use of an invalid fd will result in the registry being updated and the fd being closed.
+
+Returns -1 on error. Returns a valid socket (non-random) UUID.
+
+### Lower-Level: Read / Write / Close Hooks
+
+facil.io's behavior can be altered to support complex networking needs, such as SSL/TLS integration.
+
+This can be achieved using connection hooks for the common read/write/close operations.
+
+To do so, a `fio_rw_hook_s` object must be created (a static object can be used as well).
+
+```c
+typedef struct fio_rw_hook_s {
+ ssize_t (*read)(intptr_t uuid, void *udata, void *buf, size_t count);
+ ssize_t (*write)(intptr_t uuid, void *udata, const void *buf, size_t count);
+ ssize_t (*close)(intptr_t uuid, void *udata);
+ ssize_t (*flush)(intptr_t uuid, void *udata);
+} fio_rw_hook_s;
+```
+
+* The `read` hook callback:
+
+    This callback should implement the reading function from the file descriptor. It must behave the same as the system's `read` call, including the setting `errno` to `EAGAIN` / `EWOULDBLOCK`.
+
+    Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
+
+* The `write` hook callback:
+
+    This callback should implement the writing function to the file descriptor. It must behave like the file system's `write` call, including the setting `errno` to `EAGAIN` / `EWOULDBLOCK`.
+
+    Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
+
+* The `close` hook callback:
+
+    The `close` callback should close the underlying socket / file descriptor. It should also be used to release any resources associated with the connection's read/write hooks.
+
+    If the function returns a non-zero value, it will be called again after an attempt to flush the socket and any pending outgoing buffer.
+
+    Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
+
+* The `flush` hook callback:
+
+    When implemented, this function will be called to flush any data remaining in the read/write hook's internal buffer.
+
+    The function should return the number of bytes remaining in the internal buffer (0 is a valid response) or -1 (on error).
+
+    Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
+
+
+#### `fio_rw_hook_set`
+
+```c
+int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata);
+```
+
+Sets a connection's hook callback object (`fio_rw_hook_s`).
+
+Returns 0 on success or -1 on error (closed / invalid `uuid`).
+
+#### `FIO_DEFAULT_RW_HOOKS`
+
+```c
+extern const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS;
+```
+
+The default Read/Write hooks used for system Read/Write (`udata` == NULL).
+
+
 ---
 
 
-
-### Listening to Incoming Connections
-### Connecting to remote servers as a client
-## Starting the IO reactor and reviewing it's state
-## Socket / Connection Functions
-### Connection Read / Write Hooks, for overriding the system calls
 ## Concurrency overridable functions
 ## Connection Task scheduling
 ## Event / Task scheduling
@@ -457,552 +1159,7 @@ typedef struct fio_str_info_s {
  char *data;  /* String's first byte. */
 } fio_str_info_s;
 
-/* *****************************************************************************
-Listening to Incoming Connections
-***************************************************************************** */
 
-/* Arguments for the fio_listen function */
-struct fio_listen_args {
- /**
-Called whenever a new connection is accepted.
-
-Should either call `fio_attach` or close the connection.
-/
- void (*on_open)(intptr_t uuid, void *udata);
- /** The network service / port. Defaults to "3000". */
- const char *port;
- /** The socket binding address. Defaults to the recommended NULL. */
- const char *address;
- /** Opaque user data. */
- void *udata;
- /**
-Called when the server starts (or a worker process is respawned), allowing
-for further initialization, such as timed event scheduling or VM
-initialization.
-
-This will be called seperately for every worker process whenever it is
-spawned.
-/
- void (*on_start)(intptr_t uuid, void *udata);
- /**
-Called when the server is done, usable for cleanup.
-
-This will be called seperately for every process. */
- void (*on_finish)(intptr_t uuid, void *udata);
-};
-
-/**
-Sets up a network service on a listening socket.
-
-Returns the listening socket's uuid or -1 (on error).
-
-See the `fio_listen` Macro for details.
-/
-intptr_t fio_listen(struct fio_listen_args args);
-
-/************************************************************************ */ /**
-Listening to Incoming Connections
-===
-
-
-*/
-#define fio_listen(...) fio_listen((struct fio_listen_args){__VA_ARGS__})
-
-/* *****************************************************************************
-Connecting to remote servers as a client
-***************************************************************************** */
-
-/**
-Named arguments for the `server_connect` function, that allows non-blocking
-connections to be established.
-*/
-struct fio_connect_args {
- /** The address of the server we are connecting to. */
- const char *address;
- /** The port on the server we are connecting to. */
- const char *port;
- /**
-The `on_connect` callback should return a pointer to a protocol object
-that will handle any connection related events.
-
-Should either call `fio_attach` or close the connection.
-/
- void (*on_connect)(intptr_t uuid, void *udata);
- /**
-The `on_fail` is called when a socket fails to connect. The old sock UUID
-is passed along.
-/
- void (*on_fail)(intptr_t uuid, void *udata);
- /** Opaque user data. */
- void *udata;
- /** A non-system timeout after which connection is assumed to have failed. */
- uint8_t timeout;
-};
-
-/**
-Creates a client connection (in addition or instead of the server).
-
-See the `struct fio_listen_args` details for any possible named arguments.
-`.address` should be the address of the server.
-`.port` the server's port.
-`.udata`opaque user data.
-`.on_connect` called once a connection was established.
-
-   Should return a pointer to a `fio_protocol_s` object, to handle connection
-   callbacks.
-`.on_fail` called if a connection failed to establish.
-
-(experimental: untested)
-*/
-intptr_t fio_connect(struct fio_connect_args);
-#define fio_connect(...) fio_connect((struct fio_connect_args){__VA_ARGS__})
-
-/* *****************************************************************************
-Starting the IO reactor and reviewing it's state
-***************************************************************************** */
-
-struct fio_start_args {
- /**
-The number of threads to run in the thread pool. Has "smart" defaults.
-
-
-A positive value will indicate a set number of threads (or workers).
-
-Zeros and negative values are fun and include an interesting shorthand:
-
-* Negative values indicate a fraction of the number of CPU cores. i.e.
-  -2 will normally indicate "half" (1/2) the number of cores.
-
-* If the other option (i.e. `.workers` when setting `.threads`) is zero,
-  it will be automatically updated to reflect the option's absolute value.
-  i.e.:
-  if .threads == -2 and .workers == 0,
-  than facil.io will run 2 worker processes with (cores/2) threads per
-  process.
-/
- int16_t threads;
- /** The number of worker processes to run. See `threads`. */
- int16_t workers;
-};
-
-/**
-Starts the facil.io event loop. This function will return after facil.io is
-done (after shutdown).
-
-See the `struct fio_start_args` details for any possible named arguments.
-
-This method blocks the current thread until the server is stopped (when a
-SIGINT/SIGTERM is received).
-/
-void fio_start(struct fio_start_args args);
-#define fio_start(...) fio_start((struct fio_start_args){__VA_ARGS__})
-
-/**
-Attempts to stop the facil.io application. This only works within the Root
-proccess. A worker process will simply respawn itself.
-/
-void fio_stop(void);
-
-/**
-Returns the number of expected threads / processes to be used by facil.io.
-
-The pointers should start with valid values that match the expected threads /
-processes values passed to `fio_start`.
-
-The data in the pointers will be overwritten with the result.
-/
-void fio_expected_concurrency(int16_t *threads, int16_t *workers);
-
-/**
-Returns the number of worker processes if facil.io is running.
-
-(1 is returned when in single process mode, otherwise the number of workers)
-/
-int16_t fio_is_running(void);
-
-/**
-Returns 1 if the current process is a worker process or a single proccess.
-
-Otherwise returns 0.
-
-NOTE: When cluster mode is off, the root process is also the worker proccess.
-      This means that simgle process instances don't automatically respawn
-      after critical errors.
-/
-int fio_is_worker(void);
-
-/** Returns facil.io's parent (root) process pid. */
-pid_t fio_parent_pid(void);
-
-/**
-Initializes zombie reaping for the process. Call before `fio_start` to enable
-global zombie reaping.
-/
-void fio_reap_children(void);
-
-/**
-Returns the last time the server reviewed any pending IO events.
-/
-struct timespec fio_last_tick(void);
-
-/**
-Returns a C string detailing the IO engine selected during compilation.
-
-Valid values are "kqueue", "epoll" and "poll".
-/
-char const *fio_engine(void);
-
-/* *****************************************************************************
-Socket / Connection Functions
-***************************************************************************** */
-
-/**
-Creates a Unix or a TCP/IP socket and returns it's unique idetifier.
-
-For TCP/IP server sockets (`is_server` is `1`), a NULL `address` variable is
-recommended. Use "localhost" or "127.0.0.1" to limit access to the server
-application.
-
-For TCP/IP client sockets (`is_server` is `0`), a remote `address` and `port`
-combination will be required
-
-For Unix server or client sockets, set the `port` variable to NULL or `0`.
-
-Returns -1 on error. Any other value is a valid unique idetifier.
-
-Note: facil.io uses unique identifiers to protect sockets from collisions.
-      However these identifiers can be convertd to the underlying file
-      descriptor using the `fio_uuid2fd` macro.
-/
-intptr_t fio_socket(const char *address, const char *port, uint8_t is_server);
-
-/**
-`fio_accept` accepts a new socket connection from a server socket - see the
-server flag on `fio_socket`.
-
-NOTE: this function does NOT attach the socket to the IO reactor - see
-`fio_attach`.
-/
-intptr_t fio_accept(intptr_t srv_uuid);
-
-/**
-Returns 1 if the uuid refers to a valid and open, socket.
-
-Returns 0 if not.
-/
-int fio_is_valid(intptr_t uuid);
-
-/**
-Returns 1 if the uuid is invalid or the socket is flagged to be closed.
-
-Returns 0 if the socket is valid, open and isn't flagged to be closed.
-/
-int fio_is_closed(intptr_t uuid);
-
-/**
-`fio_close` marks the connection for disconnection once all the data was
-sent. The actual disconnection will be managed by the `fio_flush` function.
-
-`fio_flash` will be automatically scheduled.
-/
-void fio_close(intptr_t uuid);
-
-/**
-`fio_force_close` closes the connection immediately, without adhering to any
-protocol restrictions and without sending any remaining data in the
-connection buffer.
-/
-void fio_force_close(intptr_t uuid);
-
-/** Sets a timeout for a specific connection (only when running and valid). */
-void fio_set_timeout(intptr_t uuid, uint8_t timeout);
-
-/** Gets a timeout for a specific connection. Returns 0 if none. */
-uint8_t fio_get_timeout(intptr_t uuid);
-
-/**
-"Touches" a socket connection, resetting it's timeout counter.
-/
-void fio_touch(intptr_t uuid);
-
-enum fio_io_event {
- FIO_EVENT_ON_DATA,
- FIO_EVENT_ON_READY,
- FIO_EVENT_ON_TIMEOUT
-};
-/** Schedules an IO event, even if it did not occur. */
-void fio_force_event(intptr_t uuid, enum fio_io_event);
-
-/**
-Temporarily prevents `on_data` events from firing.
-
-The `on_data` event will be automatically rescheduled when (if) the socket's
-outgoing buffer fills up or when `fio_force_event` is called with
-`FIO_EVENT_ON_DATA`.
-
-Note: the function will work as expected when called within the protocol's
-`on_data` callback and the `uuid` refers to a valid socket. Otherwise the
-function might quitely fail.
-/
-void fio_suspend(intptr_t uuid);
-
-/**
-Returns the information available about the socket's peer address.
-
-If no information is available, the struct will be initialized with zero
-(`addr == NULL`).
-The information is only available when the socket was accepted using
-`fio_accept` or opened using `fio_connect`.
-/
-fio_str_info_s fio_peer_addr(intptr_t uuid);
-
-/**
-`fio_read` attempts to read up to count bytes from the socket into the
-buffer starting at `buffer`.
-
-`fio_read`'s return values are wildly different then the native return
-values and they aim at making far simpler sense.
-
-`fio_read` returns the number of bytes read (0 is a valid return value which
-simply means that no bytes were read from the buffer).
-
-On a fatal connection error that leads to the connection being closed (or if
-the connection is already closed), `fio_read` returns -1.
-
-The value 0 is the valid value indicating no data was read.
-
-Data might be available in the kernel's buffer while it is not available to
-be read using `fio_read` (i.e., when using a transport layer, such as TLS).
-/
-ssize_t fio_read(intptr_t uuid, void *buffer, size_t count);
-
-/** The following structure is used for `fio_write2_fn` function arguments. */
-typedef struct {
- union {
-   /** The in-memory data to be sent. */
-   const void *buffer;
-   /** The data to be sent, if this is a file. */
-   const intptr_t fd;
- } data;
- union {
-   /**
-This deallocation callback will be called when the packet is finished
-with the buffer if the `move` flags is set.
-
-If no deallocation callback is `free` will be used.
-
-Note: `sock` library functions MUST NEVER be called by a callback, or a
-deadlock might occur.
-/
-   void (*dealloc)(void *buffer);
-   /**
-This is an alternative deallocation callback accessor (same memory space
-as `dealloc`) for conveniently setting the file `close` callback.
-
-Note: `sock` library functions MUST NEVER be called by a callback, or a
-deadlock might occur.
-/
-   void (*close)(intptr_t fd);
- } after;
- /** The length (size) of the buffer, or the amount of data to be sent from the
-file descriptor.
-/
- uintptr_t length;
- /** Starting point offset from the buffer or file descriptor's beginning. */
- uintptr_t offset;
- /** The packet will be sent as soon as possible. */
- unsigned urgent : 1;
- /**
-The data union contains the value of a file descriptor (`int`). i.e.:
- `.data.fd = fd` or `.data.buffer = (void*)fd;`
-/
- unsigned is_fd : 1;
- /** for internal use */
- unsigned rsv : 1;
- /** for internal use */
- unsigned rsv2 : 1;
-} fio_write_args_s;
-
-/**
-`fio_write2_fn` is the actual function behind the macro `fio_write2`.
-/
-ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options);
-
-/**
-Schedules data to be written to the socket.
-
-`fio_write2` is similar to `fio_write`, except that it allows far more
-flexibility.
-
-On error, -1 will be returned. Otherwise returns 0.
-
-See the `fio_write_args_s` structure for details.
-
-NOTE: The data is "moved" to the ownership of the socket, not copied. The
-data will be deallocated according to the `.after.dealloc` function.
-/
-#define fio_write2(uuid, ...)                                                  \
- fio_write2_fn(uuid, (fio_write_args_s){__VA_ARGS__})
-
-/** A noop function for fio_write2 in cases not deallocation is required. */
-void FIO_DEALLOC_NOOP(void *arg);
-#define FIO_CLOSE_NOOP ((void (*)(intptr_t))FIO_DEALLOC_NOOP)
-
-/**
-`fio_write` copies `legnth` data from the buffer and schedules the data to
-be sent over the socket.
-
-The data isn't necessarily written to the socket. The actual writing to the
-socket is handled by the IO reactor.
-
-On error, -1 will be returned. Otherwise returns 0.
-
-Returns the same values as `fio_write2`.
-/
-// ssize_t fio_write(uintptr_t uuid, void *buffer, size_t legnth);
-inline FIO_FUNC ssize_t fio_write(const intptr_t uuid, const void *buffer,
-                                 const size_t length) {
- if (!length || !buffer)
-   return 0;
-#ifdef H_FIO_MEM_H
- void *cpy = fio_malloc(length);
-#else
- void *cpy = malloc(length);
-#endif
- if (!cpy)
-   return -1;
- memcpy(cpy, buffer, length);
-#ifdef H_FIO_MEM_H
- return fio_write2(uuid, .data.buffer = cpy, .length = length,
-                   .after.dealloc = fio_free);
-#else
- return fio_write2(uuid, .data.buffer = cpy, .length = length,
-                   .after.dealloc = free);
-#endif
-}
-
-/**
-Sends data from a file as if it were a single atomic packet (sends up to
-length bytes or until EOF is reached).
-
-Once the file was sent, the `source_fd` will be closed using `close`.
-
-The file will be buffered to the socket chunk by chunk, so that memory
-consumption is capped. The system's `sendfile` might be used if conditions
-permit.
-
-`offset` dictates the starting point for te data to be sent and length sets
-the maximum amount of data to be sent.
-
-Returns -1 and closes the file on error. Returns 0 on success.
-/
-inline FIO_FUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd,
-                                    off_t offset, size_t length) {
- return fio_write2(uuid, .data.fd = source_fd, .length = length, .is_fd = 1,
-                   .offset = offset);
-}
-
-/**
-Returns the number of `fio_write` calls that are waiting in the socket's
-queue and haven't been processed.
-/
-size_t fio_pending(intptr_t uuid);
-
-/**
-`fio_flush` attempts to write any remaining data in the internal buffer to
-the underlying file descriptor and closes the underlying file descriptor once
-if it's marked for closure (and all the data was sent).
-
-Return values: 1 will be returned if data remains in the buffer. 0
-will be returned if the buffer was fully drained. -1 will be returned on an
-error or when the connection is closed.
-
-errno will be set to EWOULDBLOCK if the socket's lock is busy.
-/
-ssize_t fio_flush(intptr_t uuid);
-
-/** Blocks until all the data was flushed frim the buffer */
-#define fio_flush_strong(uuid)                                                 \
- do {                                                                         \
-   errno = 0;                                                                 \
- } while (fio_flush(uuid) > 0 || errno == EWOULDBLOCK)
-
-/** Convert between a facil.io connection's idetifier (uuid) and system's fd. */
-#define fio_uuid2fd(uuid) ((int)((uintptr_t)uuid >> 8))
-
-/**
-* `fio_fd2uuid` takes an existing file decriptor `fd` and returns it's active
-* `uuid`.
-If the file descriptor is marked as closed (wasn't opened / registered with
-* `libsock`) the function returns -1;
-*
-* If the file descriptor was closed remotely (or not using `libsock`), a false
-* positive will be possible. This is not an issue, since the use of an invalid
-fd
-* will result in the registry being updated and the fd being closed.
-*
-* Returns -1 on error. Returns a valid socket (non-random) UUID.
-*/
-intptr_t fio_fd2uuid(int fd);
-
-/* *****************************************************************************
-Connection Read / Write Hooks, for overriding the system calls
-***************************************************************************** */
-
-/**
-The following struct is used for setting a the read/write hooks that will
-replace the default system calls to `recv` and `write`.
-
-Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
-deadlock might occur.
-/
-typedef struct fio_rw_hook_s {
- /**
-Implement reading from a file descriptor. Should behave like the file
-system `read` call, including the setup or errno to EAGAIN / EWOULDBLOCK.
-
-Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
-deadlock might occur.
-/
- ssize_t (*read)(intptr_t uuid, void *udata, void *buf, size_t count);
- /**
-Implement writing to a file descriptor. Should behave like the file system
-`write` call.
-
-Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
-deadlock might occur.
-/
- ssize_t (*write)(intptr_t uuid, void *udata, const void *buf, size_t count);
- /**
-The `close` callback should close the underlying socket / file descriptor.
-It should also be used to release any resources associated with the
-connection's read/write hooks.
-
-If the function returns a non-zero value, it will be called again after an
-attempt to flush the socket and any pending outgoing buffer.
-
-Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
-deadlock might occur.
-*/
- ssize_t (*close)(intptr_t uuid, void *udata);
- /**
-When implemented, this function will be called to flush any data remaining
-in the internal buffer.
-
-The function should return the number of bytes remaining in the internal
-buffer (0 is a valid response) on -1 (on error).
-
-Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
-deadlock might occur.
-/
- ssize_t (*flush)(intptr_t uuid, void *udata);
-} fio_rw_hook_s;
-
-/** Sets a socket hook state (a pointer to the struct). */
-int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata);
-
-/** The default Read/Write hooks used for system Read/Write (udata == NULL). */
-extern const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS;
 
 /* *****************************************************************************
 Concurrency overridable functions
@@ -1536,7 +1693,7 @@ The `subscribe` callback will be called for every existing channel.
 NOTE: the root (master) process will call `subscribe` for any channel in any
 process, while all the other processes will call `subscribe` only for their
 own chasnnel. This allows engines to use the root (master) process as an
-exclusive subscription proccess.
+exclusive subscription process.
 /
 void fio_pubsub_attach(pubsub_engine_s *engine);
 
@@ -1556,7 +1713,7 @@ resubscriptions are under way...
 NOTE: the root (master) process will call `subscribe` for any channel in any
 process, while all the other processes will call `subscribe` only for their
 own chasnnel. This allows engines to use the root (master) process as an
-exclusive subscription proccess.
+exclusive subscription process.
 /
 void fio_pubsub_reattach(pubsub_engine_s *eng);
 
