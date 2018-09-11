@@ -187,6 +187,71 @@ By default this macro is set to true.
 
 If true (1), compiles the facil.io pub/sub API .
 
+## Weak functions
+
+Weak functions are functions that can be over-ridden during the compilation / linking stage.
+
+This provides control over some operations such as thread creation and process forking, which could be important when integrating facil.io into a VM engine such as Ruby or JavaScript.
+
+### Forking
+
+#### `fio_fork`
+
+```c
+int fio_fork(void);
+```
+
+OVERRIDE THIS to replace the default `fork` implementation.
+
+Should behaves like the system's `fork`.
+
+Current implementation simply calls [`fork`](http://man7.org/linux/man-pages/man2/fork.2.html).
+
+
+### Thread Creation
+
+#### `fio_thread_new`
+
+```c
+void *fio_thread_new(void *(*thread_func)(void *), void *arg);
+```
+
+OVERRIDE THIS to replace the default `pthread` implementation.
+
+Accepts a pointer to a function and a single argument that should be executed
+within a new thread.
+
+The function should allocate memory for the thread object and return a
+pointer to the allocated memory that identifies the thread.
+
+On error NULL should be returned.
+
+The default implementation returns a `pthread_t *`.
+
+#### `fio_thread_free`
+
+```c
+void fio_thread_free(void *p_thr);
+```
+
+OVERRIDE THIS to replace the default `pthread` implementation.
+
+Frees the memory associated with a thread identifier (allows the thread to
+run it's course, just the identifier is freed).
+
+#### `fio_thread_join`
+
+```c
+int fio_thread_join(void *p_thr);
+```
+
+OVERRIDE THIS to replace the default `pthread` implementation.
+
+Accepts a pointer returned from `fio_thread_new` (should also free any
+allocated memory) and joins the associated thread.
+
+Return value is ignored.
+
 ## Connection (Protocol) Management
 
 This section includes information about listening to incoming connections, connecting to remote machines and managing the protocol callback system.
@@ -312,7 +377,7 @@ Attaches (or updates) a protocol object to a file descriptor (fd).
 
 The new protocol object can be NULL, which will detach ("hijack") the socket.
 
-The `fd` can be one created outside of facil.io.
+The `fd` can be one created outside of facil.io if it was set in to non-blocking mode (see [`fio_set_non_block`](#fio_set_non_block)).
 
 The old protocol's `on_close` (if any) will be scheduled.
 
@@ -599,6 +664,42 @@ The following arguments are supported:
         uint8_t timeout;
 
 
+### Manual Protocol Locking
+
+#### `fio_protocol_try_lock`
+
+```c
+fio_protocol_s *fio_protocol_try_lock(intptr_t uuid, enum fio_protocol_lock_e);
+```
+
+This function allows out-of-task access to a connection's `fio_protocol_s` object by attempting to acquire a locked pointer.
+
+CAREFUL: mostly, the protocol object will be locked and a pointer will be sent to the connection event's callback. However, if you need access to the protocol object from outside a running connection task, you might need to lock the protocol to prevent it from being closed / freed in the background.
+
+facil.io uses three different locks (see [`fio_defer_io_task`](#fio_defer_io_task) for more information):
+
+* `FIO_PR_LOCK_TASK` locks the protocol for normal tasks (i.e. `on_data`).
+
+* `FIO_PR_LOCK_WRITE` locks the protocol for high priority `fio_write`
+oriented tasks (i.e. `ping`, `on_ready`).
+
+* `FIO_PR_LOCK_STATE` locks the protocol for quick operations that need to copy
+data from the protocol's data structure.
+
+IMPORTANT: Remember to call [`fio_protocol_unlock`](fio_protocol_unlock) using the same lock type.
+
+Returns a pointer to a protocol object on success and NULL on error and setting `errno` (lock busy == `EWOULDBLOCK`, connection invalid == `EBADF`).
+
+On error, consider calling `fio_defer` or `fio_defer_io_task` instead of busy waiting. Busy waiting SHOULD be avoided whenever possible.
+
+#### `fio_protocol_unlock`
+
+```c
+void fio_protocol_unlock(fio_protocol_s *pr, enum fio_protocol_lock_e);
+```
+
+Don't unlock what you didn't lock with `fio_protocol_try_lock`... see [`fio_protocol_try_lock`](#fio_protocol_try_lock) for details.
+
 ## Running facil.io
 
 The facil.io IO reactor can be started in single-threaded, multi-threaded, forked (multi-process) and hybrid (forked + multi-threads) modes.
@@ -794,6 +895,19 @@ void fio_force_close(intptr_t uuid);
 ```
 
 `fio_force_close` closes the connection immediately, without adhering to any protocol restrictions and without sending any remaining data in the connection buffer.
+
+#### `fio_set_non_block`
+
+```c
+int fio_set_non_block(int fd);
+```
+
+Sets a socket to non blocking state.
+
+This function is called automatically for the new socket, when using
+`fio_socket`, `fio_accept`, `fio_listen` or `fio_connect`.
+
+Call this function before attaching an `fd` that was created outside of facil.io.
 
 #### `fio_peer_addr`
 
@@ -1095,14 +1209,199 @@ extern const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS;
 
 The default Read/Write hooks used for system Read/Write (`udata` == NULL).
 
+## Event / Task scheduling
+
+facil.io allows a number of ways to schedule events / tasks:
+
+* Queue - schedules an event / task to be performed as soon as possible.
+
+* Timer - the event / task will be scheduled in the Queue after the designated period.
+
+* State - the event / task will be called during a specific change in facil.io's state (starting up, cleaning up, etc').
+
+### The Task Queue Functions
+
+#### `fio_defer`
+
+```c
+int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2);
+```
+
+Defers a task's execution.
+
+The task will be executed after all currently scheduled tasks (placed at the end of the scheduling queue).
+
+Tasks are functions of the type `void task(void *, void *)`, they return nothing (void) and accept two opaque `void *` pointers, user-data 1 (`udata1`) and user-data 2 (`udata2`).
+
+Returns -1 or error, 0 on success.
+
+#### `fio_defer_perform`
+
+```c
+void fio_defer_perform(void);
+```
+
+Performs all deferred tasks.
+
+#### `fio_defer_has_queue`
+
+```c
+int fio_defer_has_queue(void);
+```
+
+Returns true if there are deferred functions waiting for execution.
+
+
+### Timer Functions
+
+#### `fio_run_every`
+
+```c
+int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
+                 void *arg, void (*on_finish)(void *));
+```
+
+Creates a timer to run a task at the specified interval.
+
+Timer tasks accept only a single user data pointer (`udata` ).
+
+The task will repeat `repetitions` times. If `repetitions` is set to 0, task
+will repeat forever.
+
+The `on_finish` handler is always called (even on error).
+
+Returns -1 on error.
+
+### Connection task scheduling
+
+Connection tasks are performed within one of the connection's locks (`FIO_PR_LOCK_TASK`, `FIO_PR_LOCK_WRITE`, `FIO_PR_LOCK_STATE`), assuring a measure of safety.
+
+#### `fio_defer_io_task`
+
+```c
+void fio_defer_io_task(intptr_t uuid, fio_defer_iotask_args_s args);
+#define fio_defer_io_task(uuid, ...)                                           \
+ fio_defer_connection_task((uuid), (fio_defer_iotask_args_s){__VA_ARGS__})
+```
+
+This function schedules an IO task using the specified lock type.
+
+This function is shadowed by a macro, allowing it to accept named arguments, much like [fio_start](#fio_start). The following arguments are recognized:
+
+* `type`:
+
+    The type of lock that should be used to protect the IO task. Defaults to `FIO_PR_LOCK_TASK` (see later).
+
+        // type:
+        enum fio_protocol_lock_e type;
+
+* `task`:
+
+    The task (function) to be performed. The tasks accepts the connection's `uuid`, a pointer to the protocol object and the opaque `udata` pointer passed to `fio_defer_io_task`.
+
+        // Callback example:
+        void task(intptr_t uuid, fio_protocol_s *, void *udata);
+
+* `fallback`:
+
+    A fallback task (function) to be performed in cases where the `uuid` isn't valid by the time the task should be executed. The fallback task accepts the connection's `uuid` and the opaque `udata` pointer passed to `fio_defer_io_task`.
+
+        // Callback example:
+        void fallback(intptr_t uuid, void *udata);
+
+
+* `udata`:
+
+    An opaque pointer that's passed along to the task.
+
+        // type:
+        void *udata;
+
+Lock types are one of the following:
+
+* `FIO_PR_LOCK_TASK` - a task lock locks might change data owned by the protocol object. This task is used for tasks such as `on_data`.
+
+* `FIO_PR_LOCK_WRITE` - a lock that promises only to use static data (data that tasks never changes) in order to write to the underlying socket. This lock is used for tasks such as `on_ready` and `ping`
+
+* `FIO_PR_LOCK_STATE` - a lock that promises only to retrieve static data (data that tasks never changes), performing no actions. This usually isn't used for client side code (used internally by facil) and is only meant for very short locks.
+
+
+### Startup / State Tasks (fork, start up, idle, etc')
+
+#### `callback_type_e`- State callback timing type
+
+The `fio_state_callback_*` functions manage callbacks for a specific timing. Valid timings values are:
+ 
+ * `FIO_CALL_ON_INITIALIZE`: Called once during library initialization.
+ 
+ * `FIO_CALL_PRE_START`: Called once before starting up the IO reactor.
+ 
+ * `FIO_CALL_BEFORE_FORK`: Called before each time the IO reactor forks a new worker.
+ 
+ * `FIO_CALL_AFTER_FORK`: Called after each fork (both in parent and workers).
+ 
+ * `FIO_CALL_IN_CHILD`: Called by a worker process right after forking.
+ 
+ * `FIO_CALL_ON_START`: Called every time a *Worker* proceess starts.
+ 
+ * `FIO_CALL_ON_IDLE`: Called when facil.io enters idling mode.
+ 
+ * `FIO_CALL_ON_SHUTDOWN`: Called before starting the shutdown sequence.
+ 
+ * `FIO_CALL_ON_FINISH`: Called just before finishing up (both on chlid and parent processes).
+ 
+ * `FIO_CALL_ON_PARENT_CRUSH`: Called by each worker the moment it detects the master process crashed.
+ 
+ * `FIO_CALL_ON_CHILD_CRUSH`: Called by the parent (master) after a worker process crashed.
+ 
+ * `FIO_CALL_AT_EXIT`: An alternative to the system's at_exit.
+ 
+#### `fio_state_callback_add`
+
+```c
+void fio_state_callback_add(callback_type_e, void (*func)(void *), void *arg);
+```
+
+Adds a callback to the list of callbacks to be called for the event.
+
+#### `fio_state_callback_remove`
+
+```c
+int fio_state_callback_remove(callback_type_e, void (*func)(void *), void *arg);
+```
+
+Removes a callback from the list of callbacks to be called for the event.
+
+#### `fio_state_callback_force`
+
+```c
+void fio_state_callback_force(callback_type_e);
+```
+
+Forces all the existing callbacks to run, as if the event occurred.
+
+#### `fio_state_callback_clear`
+
+```c
+void fio_state_callback_clear(callback_type_e);
+```
+
+Clears all the existing callbacks for the event.
+
+
+
+
+
+
+
+
+
+
+
+
 
 ---
 
-
-## Concurrency overridable functions
-## Connection Task scheduling
-## Event / Task scheduling
-## Startup / State Callbacks (fork, start up, idle, etc')
 ## Lower Level API - for special circumstances, use with care under
 
 ## Cluster Messages API
@@ -1148,243 +1447,7 @@ The default Read/Write hooks used for system Read/Write (`udata` == NULL).
 ## Set / HashMap Implementation
 
 
-/* *****************************************************************************
-Helper String Information Type
-***************************************************************************** */
-
-/** A string information type, reports information about a C string. */
-typedef struct fio_str_info_s {
- size_t capa; /* Buffer capacity, if the string is writable. */
- size_t len;  /* String length. */
- char *data;  /* String's first byte. */
-} fio_str_info_s;
-
-
-
-/* *****************************************************************************
-Concurrency overridable functions
-
-These functions can be overridden so as to adjust for different environments.
-***************************************************************************** */
-
-/**
-OVERRIDE THIS to replace the default `fork` implementation.
-
-Behaves like the system's `fork`.
-*/
-int fio_fork(void);
-
-/**
-OVERRIDE THIS to replace the default pthread implementation.
-
-Accepts a pointer to a function and a single argument that should be executed
-within a new thread.
-
-The function should allocate memory for the thread object and return a
-pointer to the allocated memory that identifies the thread.
-
-On error NULL should be returned.
-/
-void *fio_thread_new(void *(*thread_func)(void *), void *arg);
-
-/**
-OVERRIDE THIS to replace the default pthread implementation.
-
-Frees the memory asociated with a thread indentifier (allows the thread to
-run it's course, just the identifier is freed).
-/
-void fio_thread_free(void *p_thr);
-
-/**
-OVERRIDE THIS to replace the default pthread implementation.
-
-Accepts a pointer returned from `fio_thread_new` (should also free any
-allocated memory) and joins the associated thread.
-
-Return value is ignored.
-/
-int fio_thread_join(void *p_thr);
-
-/* *****************************************************************************
-Connection Task scheduling
-***************************************************************************** */
-
-/**
-This is used to lock the protocol againste concurrency collisions and
-concurent memory deallocation.
-
-However, there are three levels of protection that allow non-coliding tasks
-to protect the protocol object from being deallocated while in use:
-
-* `FIO_PR_LOCK_TASK` - a task lock locks might change data owned by the
-   protocol object. This task is used for tasks such as `on_data` and
-   (usually) `fio_defer`.
-
-* `FIO_PR_LOCK_WRITE` - a lock that promises only to use static data (data
-   that tasks never changes) in order to write to the underlying socket.
-   This lock is used for tasks such as `on_ready` and `ping`
-
-* `FIO_PR_LOCK_STATE` - a lock that promises only to retrive static data
-   (data that tasks never changes), performing no actions. This usually
-   isn't used for client side code (used internally by facil) and is only
-    meant for very short locks.
-/
-enum fio_protocol_lock_e {
- FIO_PR_LOCK_TASK = 0,
- FIO_PR_LOCK_WRITE = 1,
- FIO_PR_LOCK_STATE = 2
-};
-
-/** Named arguments for the `fio_defer` function. */
-typedef struct {
- /** The type of task to be performed. Defaults to `FIO_PR_LOCK_TASK` but could
-also be seto to `FIO_PR_LOCK_WRITE`. */
- enum fio_protocol_lock_e type;
- /** The task (function) to be performed. This is required. */
- void (*task)(intptr_t uuid, fio_protocol_s *, void *udata);
- /** An opaque user data that will be passed along to the task. */
- void *udata;
- /** A fallback task, in case the connection was lost. Good for cleanup. */
- void (*fallback)(intptr_t uuid, void *udata);
-} fio_defer_iotask_args_s;
-
-/**
-Schedules a protected connection task. The task will run within the
-connection's lock.
-
-If an error ocuurs or the connection is closed before the task can run, the
-`fallback` task wil be called instead, allowing for resource cleanup.
-/
-void fio_defer_io_task(intptr_t uuid, fio_defer_iotask_args_s args);
-#define fio_defer_io_task(uuid, ...)                                           \
- fio_defer_connection_task((uuid), (fio_defer_iotask_args_s){__VA_ARGS__})
-
-/* *****************************************************************************
-Event / Task scheduling
-***************************************************************************** */
-
-/**
-Defers a task's execution.
-
-Tasks are functions of the type `void task(void *, void *)`, they return
-nothing (void) and accept two opaque `void *` pointers, user-data 1
-(`udata1`) and user-data 2 (`udata2`).
-
-Returns -1 or error, 0 on success.
-/
-int fio_defer(void (*task)(void *, void *), void *udata1, void *udata2);
-
-/**
-Creates a timer to run a task at the specified interval.
-
-The task will repeat `repetitions` times. If `repetitions` is set to 0, task
-will repeat forever.
-
-Returns -1 on error.
-
-The `on_finish` handler is always called (even on error).
-/
-int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
-                 void *arg, void (*on_finish)(void *));
-
-/**
-Performs all deffered tasks.
-/
-void fio_defer_perform(void);
-
-/** Returns true if there are deferred functions waiting for execution. */
-int fio_defer_has_queue(void);
-
-/* *****************************************************************************
-Startup / State Callbacks (fork, start up, idle, etc')
-***************************************************************************** */
-
-/** a callback type signifier */
-typedef enum {
- /** Called once during library initialization. */
- FIO_CALL_ON_INITIALIZE,
- /** Called once before starting up the IO reactor. */
- FIO_CALL_PRE_START,
- /** Called before each time the IO reactor forks a new worker. */
- FIO_CALL_BEFORE_FORK,
- /** Called after each fork (both in parent and workers). */
- FIO_CALL_AFTER_FORK,
- /** Called by a worker process right after forking. */
- FIO_CALL_IN_CHILD,
- /** Called every time a *Worker* proceess starts. */
- FIO_CALL_ON_START,
- /** Called when facil.io enters idling mode. */
- FIO_CALL_ON_IDLE,
- /** Called before starting the shutdown sequence. */
- FIO_CALL_ON_SHUTDOWN,
- /** Called just before finishing up (both on chlid and parent processes). */
- FIO_CALL_ON_FINISH,
- /** Called by each worker the moment it detects the master process crashed. */
- FIO_CALL_ON_PARENT_CRUSH,
- /** Called by the parent (master) after a worker process crashed. */
- FIO_CALL_ON_CHILD_CRUSH,
- /** An alternative to the system's at_exit. */
- FIO_CALL_AT_EXIT,
- /** used for testing. */
- FIO_CALL_NEVER
-} callback_type_e;
-
-/** Adds a callback to the list of callbacks to be called for the event. */
-void fio_state_callback_add(callback_type_e, void (*func)(void *), void *arg);
-
-/** Removes a callback from the list of callbacks to be called for the event. */
-int fio_state_callback_remove(callback_type_e, void (*func)(void *), void *arg);
-
-/** Forces all the existing callbacks to run, as if the event occured. */
-void fio_state_callback_force(callback_type_e);
-
-/** Clears all the existing callbacks for the event. */
-void fio_state_callback_clear(callback_type_e);
-
-/* *****************************************************************************
-Lower Level API - for special circumstances, use with care.
-***************************************************************************** */
-
-/**
-This function allows out-of-task access to a connection's `fio_protocol_s`
-object by attempting to aquire a locked pointer.
-
-CAREFUL: mostly, the protocol object will be locked and a pointer will be
-sent to the connection event's callback. However, if you need access to the
-protocol object from outside a running connection task, you might need to
-lock the protocol to prevent it from being closed / freed in the background.
-
-facil.io uses three different locks:
-
-* FIO_PR_LOCK_TASK locks the protocol for normal tasks (i.e. `on_data`,
-`fio_defer`, `fio_every`).
-
-* FIO_PR_LOCK_WRITE locks the protocol for high priority `fio_write`
-oriented tasks (i.e. `ping`, `on_ready`).
-
-* FIO_PR_LOCK_STATE locks the protocol for quick operations that need to copy
-data from the protoccol's data stracture.
-
-IMPORTANT: Remember to call `fio_protocol_unlock` using the same lock type.
-
-Returns NULL on error (lock busy == EWOULDBLOCK, connection invalid == EBADF)
-and a pointer to a protocol object on success.
-
-On error, consider calling `fio_defer` or `defer` instead of busy waiting.
-Busy waiting SHOULD be avoided whenever possible.
-/
-fio_protocol_s *fio_protocol_try_lock(intptr_t uuid, enum fio_protocol_lock_e);
-/** Don't unlock what you don't own... see `fio_protocol_try_lock` for
-details. */
-void fio_protocol_unlock(fio_protocol_s *pr, enum fio_protocol_lock_e);
-
-/**
-Sets a socket to non blocking state.
-
-This function is called automatically for the new socket, when using
-`fio_accept` or `fio_connect`.
-*/
-int fio_set_non_block(int fd);
+---
 
 /* *****************************************************************************
 Cluster Messages API
@@ -1782,10 +1845,10 @@ typedef uint8_t volatile fio_lock_i;
 /** The initail value of an unlocked spinlock. */
 #define FIO_LOCK_INIT 0
 
-/** returns 0 if the lock was aquired and -1 on failure. */
+/** returns 0 if the lock was acquired and -1 on failure. */
 FIO_FUNC inline int fio_trylock(fio_lock_i *lock);
 
-/** Releases a spinlock. Releasing an unaquired lock will break it. */
+/** Releases a spinlock. Releasing an unacquired lock will break it. */
 FIO_FUNC inline void fio_unlock(fio_lock_i *lock);
 
 /** Returns a spinlock's state (non 0 == Busy). */
@@ -2707,7 +2770,7 @@ FIO_FUNC fio_str_info_s fio_str_capa_assert(fio_str_s *s, size_t needed);
 `fio_str_send_free` send the fio_str_s using `fio_write2`, freeing both the
 String and the container once the data was sent
 /
-inline FIO_FUNC ssize_t fio_str_send_free(const intptr_t uuid,
+inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
                                          const fio_str_s *str);
 
 /* *****************************************************************************
@@ -3557,7 +3620,7 @@ inline FIO_FUNC int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2) {
 `fio_str_send_free` send the fio_str_s using `fio_write2`, freeing the String
 once the data was sent
 /
-inline FIO_FUNC ssize_t fio_str_send_free(const intptr_t uuid,
+inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
                                          const fio_str_s *str) {
  if (!str)
    return 0;

@@ -503,7 +503,7 @@ static int fio_timer_compare(struct timespec a, struct timespec b) {
   return -1;
 }
 
-static void fio_timer_schedule(fio_timer_s *timer) {
+static void fio_timer_add_order(fio_timer_s *timer) {
   timer->due = fio_timer_calc_due(timer->interval);
   // fio_ls_embd_s *pos = &fio_timers;
   fio_lock(&fio_timer_lock);
@@ -530,11 +530,11 @@ static void fio_timer_perform_single(void *timer_, void *ignr) {
   return;
   (void)ignr;
 reschedule:
-  fio_timer_schedule(timer);
+  fio_timer_add_order(timer);
 }
 
 /** schedules all timers that are due to be performed. */
-static void fio_timer_perform(void) {
+static void fio_timer_schedule(void) {
   struct timespec now = fio_last_tick();
   fio_lock(&fio_timer_lock);
   while (fio_ls_embd_any(&fio_timers) &&
@@ -585,7 +585,7 @@ int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
       .arg = arg,
       .on_finish = on_finish,
   };
-  fio_timer_schedule(timer);
+  fio_timer_add_order(timer);
   return 0;
 }
 
@@ -954,7 +954,7 @@ error:
 /**
  * OVERRIDE THIS to replace the default pthread implementation.
  *
- * Frees the memory asociated with a thread indentifier (allows the thread to
+ * Frees the memory associated with a thread identifier (allows the thread to
  * run it's course, just the identifier is freed).
  */
 #pragma weak fio_thread_free
@@ -2815,7 +2815,7 @@ success:
   return -0;
 }
 
-/** Forces all the existing callbacks to run, as if the event occured. */
+/** Forces all the existing callbacks to run, as if the event occurred. */
 void fio_state_callback_force(callback_type_e c_type) {
   if ((int)c_type < 0 || c_type > FIO_CALL_NEVER)
     return;
@@ -3085,7 +3085,7 @@ static void fio_cycle_schedule_events(void) {
   static int idle = 0;
   static time_t last_to_review = 0;
   fio_mark_time();
-  fio_timer_perform();
+  fio_timer_schedule();
   fio_max_fd_shrink();
   if (fio_signal_children_flag) {
     fio_signal_children_flag = 0;
@@ -7330,7 +7330,7 @@ be, at least, `base64_len/4*3 + 3` long.
 Returns the number of bytes actually written to the target buffer (excluding
 the NULL terminator byte).
 
-If an error occured, returns the number of bytes written up to the error. Test
+If an error occurred, returns the number of bytes written up to the error. Test
 `errno` for error (will be set to ERANGE).
 */
 int fio_base64_decode(char *target, char *encoded, int base64_len) {
@@ -8119,14 +8119,14 @@ static void fio_timer_test(void) {
               fio_timer_calc_first_interval());
 
   fio_data->last_cycle.tv_nsec += 800;
-  fio_timer_perform();
+  fio_timer_schedule();
   fio_defer_perform();
   TEST_ASSERT(result == 0, "Timer filtering error (%zu != 0)\n", result);
 
   for (size_t i = 0; i < total; ++i) {
     fio_data->last_cycle.tv_sec += 1;
     // fio_data->last_cycle.tv_nsec += 1;
-    fio_timer_perform();
+    fio_timer_schedule();
     fio_defer_perform();
     TEST_ASSERT(((i != total - 1 && result == i + 1) ||
                  (i == total - 1 && result == total + 1)),
@@ -8137,7 +8137,7 @@ static void fio_timer_test(void) {
   }
 
   fio_data->last_cycle.tv_sec += 10;
-  fio_timer_perform();
+  fio_timer_schedule();
   fio_defer_perform();
   TEST_ASSERT(result == total + 2, "Timer # 2 error (%zu != %zu)\n", result,
               total + 2);

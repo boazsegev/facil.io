@@ -1066,7 +1066,7 @@ void *fio_thread_new(void *(*thread_func)(void *), void *arg);
 /**
  * OVERRIDE THIS to replace the default pthread implementation.
  *
- * Frees the memory asociated with a thread indentifier (allows the thread to
+ * Frees the memory associated with a thread identifier (allows the thread to
  * run it's course, just the identifier is freed).
  */
 void fio_thread_free(void *p_thr);
@@ -1087,20 +1087,19 @@ Connection Task scheduling
 
 /**
  * This is used to lock the protocol againste concurrency collisions and
- * concurent memory deallocation.
+ * concurrent memory deallocation.
  *
  * However, there are three levels of protection that allow non-coliding tasks
  * to protect the protocol object from being deallocated while in use:
  *
  * * `FIO_PR_LOCK_TASK` - a task lock locks might change data owned by the
- *    protocol object. This task is used for tasks such as `on_data` and
- *    (usually) `fio_defer`.
+ *    protocol object. This task is used for tasks such as `on_data`.
  *
  * * `FIO_PR_LOCK_WRITE` - a lock that promises only to use static data (data
  *    that tasks never changes) in order to write to the underlying socket.
  *    This lock is used for tasks such as `on_ready` and `ping`
  *
- * * `FIO_PR_LOCK_STATE` - a lock that promises only to retrive static data
+ * * `FIO_PR_LOCK_STATE` - a lock that promises only to retrieve static data
  *    (data that tasks never changes), performing no actions. This usually
  *    isn't used for client side code (used internally by facil) and is only
  *     meant for very short locks.
@@ -1164,7 +1163,7 @@ int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
                   void *arg, void (*on_finish)(void *));
 
 /**
- * Performs all deffered tasks.
+ * Performs all deferred tasks.
  */
 void fio_defer_perform(void);
 
@@ -1211,7 +1210,7 @@ void fio_state_callback_add(callback_type_e, void (*func)(void *), void *arg);
 /** Removes a callback from the list of callbacks to be called for the event. */
 int fio_state_callback_remove(callback_type_e, void (*func)(void *), void *arg);
 
-/** Forces all the existing callbacks to run, as if the event occured. */
+/** Forces all the existing callbacks to run, as if the event occurred. */
 void fio_state_callback_force(callback_type_e);
 
 /** Clears all the existing callbacks for the event. */
@@ -1223,7 +1222,7 @@ Lower Level API - for special circumstances, use with care.
 
 /**
  * This function allows out-of-task access to a connection's `fio_protocol_s`
- * object by attempting to aquire a locked pointer.
+ * object by attempting to acquire a locked pointer.
  *
  * CAREFUL: mostly, the protocol object will be locked and a pointer will be
  * sent to the connection event's callback. However, if you need access to the
@@ -1239,7 +1238,7 @@ Lower Level API - for special circumstances, use with care.
  * oriented tasks (i.e. `ping`, `on_ready`).
  *
  * * FIO_PR_LOCK_STATE locks the protocol for quick operations that need to copy
- * data from the protoccol's data stracture.
+ * data from the protocol's data structure.
  *
  * IMPORTANT: Remember to call `fio_protocol_unlock` using the same lock type.
  *
@@ -1665,10 +1664,10 @@ typedef uint8_t volatile fio_lock_i;
 /** The initail value of an unlocked spinlock. */
 #define FIO_LOCK_INIT 0
 
-/** returns 0 if the lock was aquired and -1 on failure. */
+/** returns 0 if the lock was acquired and -1 on failure. */
 FIO_FUNC inline int fio_trylock(fio_lock_i *lock);
 
-/** Releases a spinlock. Releasing an unaquired lock will break it. */
+/** Releases a spinlock. Releasing an unacquired lock will break it. */
 FIO_FUNC inline void fio_unlock(fio_lock_i *lock);
 
 /** Returns a spinlock's state (non 0 == Busy). */
@@ -2236,7 +2235,7 @@ typedef uint8_t volatile fio_lock_i;
 /** The initail value of an unlocked spinlock. */
 #define FIO_LOCK_INIT 0
 
-/** returns 0 if the lock was aquired and -1 on failure. */
+/** returns 0 if the lock was acquired and -1 on failure. */
 FIO_FUNC inline int fio_trylock(fio_lock_i *lock) {
   __asm__ volatile("" ::: "memory");
   fio_lock_i ret = fio_atomic_xchange(lock, 1);
@@ -2244,7 +2243,7 @@ FIO_FUNC inline int fio_trylock(fio_lock_i *lock) {
   return ret;
 }
 
-/** Releases a spinlock. Releasing an unaquired lock will break it. */
+/** Releases a spinlock. Releasing an unacquired lock will break it. */
 FIO_FUNC inline void fio_unlock(fio_lock_i *lock) {
   __asm__ volatile("" ::: "memory");
   fio_atomic_xchange(lock, 0);
