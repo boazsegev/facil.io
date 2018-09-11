@@ -21,11 +21,11 @@ body
     -webkit-overflow-scrolling: auto;
 }
 
-code, pre
+code
 {
-    overflow: hidden;
-    word-wrap: break-word;
-    pointer-events: none;
+    // overflow: scroll !important;
+    // word-wrap: break-word;
+    // pointer-events: none;
 }
 #output
 {

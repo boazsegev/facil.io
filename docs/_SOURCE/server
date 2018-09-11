@@ -318,17 +318,11 @@ end
 end
 
 # Copy the updated CHANGELOG.md file to the source folder
-begin
-FileUtils.cp(File.join(STATIC_ROOT, '..', 'CHANGELOG.md'), File.join(SOURCE_ROOT, 'changelog.md'))  
-rescue
-end
+FileUtils.cp(File.join(STATIC_ROOT, '..', 'CHANGELOG.md'), File.join(SOURCE_ROOT, 'changelog.md')) rescue nil
 # "Bake" the templates and copy the data
 APP.bake_all
 # Remove the changelog from the source folder
-begin
-FileUtils.rm(File.join(SOURCE_ROOT, 'changelog.md'))
-rescue
-end
+FileUtils.rm(File.join(SOURCE_ROOT, 'changelog.md')) rescue nil
 
 
 # Setup iodine to serve static files and to run the Rack application `APP` 

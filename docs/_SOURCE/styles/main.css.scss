@@ -83,7 +83,7 @@ h4 {
     border: 1px solid;
     @include border-radius;
     padding: 1em;
-    overflow: scroll;
+    overflow: hidden;
     z-index: 50;
 }
 
@@ -103,11 +103,18 @@ h4 {
     }
     pre
     {
-        margin-right: 2em;
+        overflow: hidden;
+        position:relative;
+        width:96%;
+        margin-left:2%;
+        box-sizing: border-box;
     }
-    pre, code
+    code
     {
-        overflow: scroll !important;
+        display:block;
+        width:100%;
+        overflow: scroll;
+        box-sizing: border-box;
     }
 }
 // Navigation
