@@ -2687,6 +2687,16 @@ inline FIO_FUNC int fio_str_free(fio_str_s *s);
  */
 FIO_FUNC void fio_str_free2(fio_str_s *s);
 
+/**
+ * `fio_str_send_free2` sends the fio_str_s using `fio_write2`, freeing both the
+ * String and the container once the data was sent
+ *
+ * As the naming indicates, the String is assumed to have been allocated using
+ * `fio_str_new2` or `fio_malloc`.
+ */
+inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
+                                           const fio_str_s *str);
+
 /* *****************************************************************************
 String API - String state (data pointers, length, capacity, etc')
 ***************************************************************************** */
@@ -2753,13 +2763,6 @@ FIO_FUNC void fio_str_compact(fio_str_s *s);
  * state of the String.
  */
 FIO_FUNC fio_str_info_s fio_str_capa_assert(fio_str_s *s, size_t needed);
-
-/**
- * `fio_str_send_free` send the fio_str_s using `fio_write2`, freeing both the
- * String and the container once the data was sent
- */
-inline FIO_FUNC ssize_t fio_str_send_free(const intptr_t uuid,
-                                          const fio_str_s *str);
 
 /* *****************************************************************************
 String API - UTF-8 State
@@ -3608,11 +3611,14 @@ inline FIO_FUNC int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2) {
 }
 
 /**
- * `fio_str_send_free` send the fio_str_s using `fio_write2`, freeing the String
- * once the data was sent
+ * `fio_str_send_free2` sends the fio_str_s using `fio_write2`, freeing the
+ * String once the data was sent
+ *
+ * As the naming indicates, the String is assumed to have been allocated using
+ * `fio_str_new2` or `fio_malloc`.
  */
-inline FIO_FUNC ssize_t fio_str_send_free(const intptr_t uuid,
-                                          const fio_str_s *str) {
+inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
+                                           const fio_str_s *str) {
   if (!str)
     return 0;
   fio_str_info_s state = fio_str_info(str);

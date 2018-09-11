@@ -9151,16 +9151,20 @@ Pub/Sub partial tests
 
 #if FIO_PUBSUB_SUPPORT
 
-static void fio_pubsub_test_on_message(fio_msg_s *msg) { (void)msg; }
+static void fio_pubsub_test_on_message(fio_msg_s *msg) {
+  fio_atomic_add((uintptr_t *)msg->udata1, 1);
+}
 static void fio_pubsub_test_on_unsubscribe(void *udata1, void *udata2) {
-  (void)udata1;
+  fio_atomic_add((uintptr_t *)udata1, 1);
   (void)udata2;
 }
 
 static void fio_pubsub_test(void) {
   fprintf(stderr, "=== Testing pub/sub (partial)\n");
   subscription_s *s = fio_subscribe(.filter = 1, .on_message = NULL);
-  TEST_ASSERT(!s, "fio_subscribe should fail without a callback");
+  uintptr_t counter = 0;
+  uintptr_t expect = 0;
+  TEST_ASSERT(!s, "fio_subscribe should fail without a callback!");
   char buffer[8];
   fio_cluster_uint2str((uint8_t *)buffer + 1, 42);
   TEST_ASSERT(
@@ -9170,8 +9174,38 @@ static void fio_pubsub_test(void) {
   TEST_ASSERT(
       fio_cluster_str2uint32((uint8_t *)buffer) == 4,
       "fio_cluster_uint2str / fio_cluster_str2uint32 not reversible (4)!");
-  // subscription_s *s = fio_subscribe(.filter = 1, .on_message = NULL);
-  // TEST_ASSERT(!s, "fio_subscribe should fail without either a filter of a ");
+  s = fio_subscribe(.filter = 1, .udata1 = &counter,
+                    .on_message = fio_pubsub_test_on_message,
+                    .on_unsubscribe = fio_pubsub_test_on_unsubscribe);
+  TEST_ASSERT(s, "fio_subscribe FAILED on filtered subscription.");
+  fio_publish(.filter = 1);
+  ++expect;
+  fio_defer_perform();
+  TEST_ASSERT(counter == expect, "publishing failed to filter 1!");
+  fio_publish(.filter = 2);
+  fio_defer_perform();
+  TEST_ASSERT(counter == expect, "publishing to filter 2 arrived at filter 1!");
+  fio_unsubscribe(s);
+  ++expect;
+  fio_defer_perform();
+  TEST_ASSERT(counter == expect, "unsubscribe wasn't called for filter 1!");
+  s = fio_subscribe(.channel = {0, 4, "name"}, .udata1 = &counter,
+                    .on_message = fio_pubsub_test_on_message,
+                    .on_unsubscribe = fio_pubsub_test_on_unsubscribe);
+  TEST_ASSERT(s, "fio_subscribe FAILED on named subscription.");
+  fio_publish(.channel = {0, 4, "name"});
+  ++expect;
+  fio_defer_perform();
+  TEST_ASSERT(counter == expect, "publishing failed to named channel!");
+  fio_publish(.channel = {0, 4, "none"});
+  fio_defer_perform();
+  TEST_ASSERT(counter == expect,
+              "publishing arrived to named channel with wrong name!");
+  fio_unsubscribe(s);
+  ++expect;
+  fio_defer_perform();
+  TEST_ASSERT(counter == expect,
+              "unsubscribe wasn't called for named channel!");
   (void)fio_pubsub_test_on_message;
   (void)fio_pubsub_test_on_unsubscribe;
 }
