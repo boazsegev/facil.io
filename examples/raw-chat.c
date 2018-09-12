@@ -26,11 +26,6 @@ Interface library (fio_cli.h).
 Chat connection callbacks
 ***************************************************************************** */
 
-typedef struct {
-  fio_protocol_s pr;
-  subscription_s *s;
-} chat_protocol_s;
-
 // A callback to be called whenever data is available on the socket
 static void chat_on_data(intptr_t uuid, fio_protocol_s *prt) {
   // echo buffer
@@ -61,8 +56,6 @@ static uint8_t chat_on_shutdown(intptr_t uuid, fio_protocol_s *prt) {
 
 static void chat_on_close(intptr_t uuid, fio_protocol_s *proto) {
   fprintf(stderr, "Connection %p closed.\n", (void *)proto);
-  chat_protocol_s *p = (chat_protocol_s *)proto;
-  fio_unsubscribe(p->s);
   fio_free(proto);
   (void)uuid;
 }
@@ -74,30 +67,35 @@ The main chat pub/sub callback
 static void chat_message(fio_msg_s *msg) {
   fio_write((intptr_t)msg->udata1, msg->msg.data, msg->msg.len);
 }
+
 /* *****************************************************************************
 The main chat protocol creation callback
 ***************************************************************************** */
 
 // A callback called for new connections
 static void chat_on_open(intptr_t uuid, void *udata) {
-  // Protocol objects MUST be dynamically allocated when multi-threading.
-  chat_protocol_s *proto = fio_malloc(sizeof(*proto));
+  /* Create and attach a protocol object */
+  fio_protocol_s *proto = fio_malloc(sizeof(*proto));
+  *proto = (fio_protocol_s){
+      .on_data = chat_on_data,
+      .on_shutdown = chat_on_shutdown,
+      .on_close = chat_on_close,
+      .ping = chat_ping,
+  };
+  fio_attach(uuid, proto);
+  fio_set_timeout(uuid, 10);
+  fprintf(stderr, "* (%d) new Connection %p received from %s\n", getpid(),
+          (void *)proto, fio_peer_addr(uuid).data);
+  /* Send a Welcome message to the client */
   fio_write2(uuid, .data.buffer = "Chat Service: Welcome\n", .length = 22,
              .after.dealloc = FIO_DEALLOC_NOOP);
+
+  /* Subscribe client to chat channel */
   subscription_s *s =
       fio_subscribe(.on_message = chat_message, .udata1 = (void *)uuid,
                     .channel = {.data = "chat", .len = 4});
-  *proto = (chat_protocol_s){
-      .pr = {.on_data = chat_on_data,
-             .on_shutdown = chat_on_shutdown,
-             .on_close = chat_on_close,
-             .ping = chat_ping},
-      .s = s,
-  };
-  fprintf(stderr, "* (%d) new Connection %p received from %s\n", getpid(),
-          (void *)proto, fio_peer_addr(uuid).data);
-  fio_attach(uuid, &proto->pr);
-  fio_set_timeout(uuid, 10);
+  /* Link the subscription's life-time to the connection */
+  fio_uuid_link(uuid, s, (void (*)(void *))fio_unsubscribe);
   (void)udata; // ignore this
 }
 

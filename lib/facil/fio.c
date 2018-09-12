@@ -4061,7 +4061,6 @@ typedef struct subscription_s {
   void (*on_unsubscribe)(void *udata1, void *udata2);
   void *udata1;
   void *udata2;
-  uintptr_t uuid;
   /** reference counter. */
   uintptr_t ref;
   /** prevents the callback from running concurrently for multiple messages. */
@@ -4261,13 +4260,6 @@ static inline void fio_subscription_free(subscription_s *s) {
   fio_free(s);
 }
 
-static void fio_unsubscribe_linked(void *s_) {
-  subscription_s *s = s_;
-  s->uuid = 0;
-  fio_unsubscribe(s);
-  fio_subscription_free(s);
-}
-
 /** Subscribes to a filter, pub/sub channle or patten */
 subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
   if (!args.on_message)
@@ -4293,23 +4285,14 @@ subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
   s->parent = ch;
   fio_ls_embd_push(&ch->subscriptions, &s->node);
   fio_unlock((&ch->lock));
-  if (args.uuid) {
-    fio_atomic_add(&s->ref, 1);
-    s->uuid = args.uuid;
-    fio_uuid_link(args.uuid, s, fio_unsubscribe_linked);
-  }
   return s;
 }
 
 /** Unsubscribes from a filter, pub/sub channle or patten */
 void fio_unsubscribe(subscription_s *s) {
-  fio_lock(&s->lock);
-  if (s->unsubscribed)
+  if (fio_trylock(&s->unsubscribed))
     goto finish;
-  if (s->uuid) {
-    fio_uuid_unlink(s->uuid, s);
-    s->uuid = 0;
-  }
+  fio_lock(&s->lock);
   channel_s *ch = s->parent;
   fio_match_fn match = NULL;
   uint8_t removed = 0;
@@ -4342,10 +4325,8 @@ void fio_unsubscribe(subscription_s *s) {
 
   /* promise the subscription will be inactive */
   s->on_message = NULL;
-finish:
-  s->unsubscribed = 1;
   fio_unlock(&s->lock);
-
+finish:
   fio_subscription_free(s);
 }
 
@@ -4607,7 +4588,6 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
               .filter = msg->filter,
               .udata1 = s->udata1,
               .udata2 = s->udata2,
-              .uuid = s->uuid,
           },
       .meta = msg->meta,
       .marker = 0,

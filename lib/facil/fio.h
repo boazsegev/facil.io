@@ -1348,8 +1348,6 @@ typedef struct fio_msg_s {
   void *udata1;
   /** The `udata1` argument associated with the subscription. */
   void *udata2;
-  /** The `uuid` associated with the subscription, if any. */
-  intptr_t uuid;
   /** flag indicating if the message is JSON data or binary/text. */
   uint8_t is_json;
 } fio_msg_s;
@@ -1403,8 +1401,6 @@ typedef struct {
   void *udata1;
   /** The udata values are ignored and made available to the callback. */
   void *udata2;
-  /** Optionally links a subscription to a UUID, if set. */
-  intptr_t uuid;
 } subscribe_args_s;
 
 /** Publishing and on_message callback arguments. */

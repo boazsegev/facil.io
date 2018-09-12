@@ -1252,16 +1252,6 @@ The function accepts the following named arguments:
         // callback example:
         void (*on_unsubscribe)(void *udata1, void *udata2);
 
-* `uuid`:
-
-    If `uuid` is set, the subscription will be automatically canceled once `uuid` is closed.
-
-    However, the subscription handle is still valid and will need to be freed by calling `fio_unsubscribe` (again).
-
-        // type:
-        intptr_t uuid;
-
-
 * `udata1` and `udata2`:
 
     These are the opaque user data pointers passed to `on_message` and `on_unsubscribe`.
@@ -1298,6 +1288,7 @@ typedef struct fio_msg_s {
 
 * `udata1` and `udata2` are the opaque user data pointers passed to `fio_subscribe` during the subscription.
 
+**Note**: is a subscription object is no longer required, i.e., if `fio_unsubscribe` will only be called once a connection was closed or facil.io is shutting down, consider using [`fio_uuid_link`](#fio_uuid_link) or [`fio_state_callback_add`](#fio_state_callback_add) to control the subscription's lifetime.
 
 #### `fio_subscription_channel`
 
