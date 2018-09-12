@@ -6,11 +6,9 @@ sidebar: 0.7.x/_sidebar.md
 
 The core library types and functions can be found in the header `fio.h`.
 
-The header is well documented and very long, and by the same nature, so it this documentation.
+The header is well documented and very long, and as a result, so is this documentation.
 
-The header can be included more than once to produce multiple types of Hash Maps or data Sets. As well as to include some of it's optional features such as the String helpers and the linked list types.
-
-These extra features are detailed at the end of this file.
+The header can be included more than once to produce multiple types of Hash Maps or data Sets. As well as to include some of it's optional features such as the binary String helpers and the linked list types.
 
 ## Connection (Protocol) Management
 
@@ -796,8 +794,8 @@ On error, -1 will be returned. Otherwise returns 0.
 #### `fio_write`
 
 ```c
-inline static ssize_t fio_write(const intptr_t uuid, const void *buffer,
-                                 const size_t length);
+inline ssize_t fio_write(const intptr_t uuid, const void *buffer,
+                         const size_t length);
 ```
 
 `fio_write` copies `legnth` data from the buffer and schedules the data to
@@ -808,8 +806,8 @@ On error, -1 will be returned. Otherwise returns 0.
 Returns the same values as `fio_write2` and is equivalent to:
 
 ```c
-inline FIO_FUNC ssize_t fio_write(const intptr_t uuid, const void *buffer,
-                                 const size_t length) {
+inline ssize_t fio_write(const intptr_t uuid, const void *buffer,
+                         const size_t length) {
  if (!length || !buffer)
    return 0;
  void *cpy = fio_malloc(length);
@@ -826,7 +824,7 @@ inline FIO_FUNC ssize_t fio_write(const intptr_t uuid, const void *buffer,
 
 ```c
 inline static ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd,
-                                    off_t offset, size_t length);
+                                   off_t offset, size_t length);
 ```
 
 Sends data from a file as if it were a single atomic packet (sends up to `length` bytes or until EOF is reached).
@@ -842,7 +840,7 @@ Returns -1 and closes the file on error. Returns 0 on success.
 Returns the same values as `fio_write2` and is equivalent to:
 
 ```c
-inline FIO_FUNC ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd,
+inline ssize_t fio_sendfile(intptr_t uuid, intptr_t source_fd,
                                     off_t offset, size_t length) {
  return fio_write2(uuid, .data.fd = source_fd, .length = length, .is_fd = 1,
                    .offset = offset);
@@ -1689,7 +1687,7 @@ fio_ls_s my_list = FIO_LS_INIT(my_list);
 #### `fio_ls_push`
 
 ```c
-FIO_FUNC inline void fio_ls_push(fio_ls_s *pos, const void *obj);
+inline void fio_ls_push(fio_ls_s *pos, const void *obj);
 ```
 
 Adds an object to the list's head.
@@ -1697,7 +1695,7 @@ Adds an object to the list's head.
 #### `fio_ls_unshift`
 
 ```c
-FIO_FUNC inline void fio_ls_unshift(fio_ls_s *pos, const void *obj);
+inline void fio_ls_unshift(fio_ls_s *pos, const void *obj);
 ```
 
 Adds an object to the list's tail.
@@ -1705,7 +1703,7 @@ Adds an object to the list's tail.
 #### `fio_ls_pop`
 
 ```c
-FIO_FUNC inline void *fio_ls_pop(fio_ls_s *list);
+inline void *fio_ls_pop(fio_ls_s *list);
 ```
 
 Removes an object from the list's head.
@@ -1713,7 +1711,7 @@ Removes an object from the list's head.
 #### `fio_ls_shift`
 
 ```c
-FIO_FUNC inline void *fio_ls_shift(fio_ls_s *list);
+inline void *fio_ls_shift(fio_ls_s *list);
 ```
 
 Removes an object from the list's tail.
@@ -1721,7 +1719,7 @@ Removes an object from the list's tail.
 #### `fio_ls_remove`
 
 ```c
-FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node);
+inline void *fio_ls_remove(fio_ls_s *node);
 ```
 
 Removes a node from the list, returning the contained object.
@@ -1729,7 +1727,7 @@ Removes a node from the list, returning the contained object.
 #### `fio_ls_is_empty`
 
 ```c
-FIO_FUNC inline int fio_ls_is_empty(fio_ls_s *list);
+inline int fio_ls_is_empty(fio_ls_s *list);
 ```
 
 Tests if the list is empty.
@@ -1737,7 +1735,7 @@ Tests if the list is empty.
 #### `fio_ls_any`
 
 ```c
-FIO_FUNC inline int fio_ls_any(fio_ls_s *list);
+inline int fio_ls_any(fio_ls_s *list);
 ```
 
 Tests if the list is NOT empty (contains any nodes).
@@ -1925,7 +1923,7 @@ The `capacity` value should exclude the NUL character (if exists).
 #### `fio_str_new2`
 
 ```c
-inline FIO_FUNC fio_str_s *fio_str_new2(void);
+inline fio_str_s *fio_str_new2(void);
 ```
 
 Allocates a new fio_str_s object on the heap and initializes it.
@@ -1938,7 +1936,7 @@ NOTE: This makes the allocation and reference counting logic more intuitive.
 #### `fio_str_new_copy2`
 
 ```c
-inline FIO_FUNC fio_str_s *fio_str_new_copy2(fio_str_s *src);
+inline fio_str_s *fio_str_new_copy2(fio_str_s *src);
 ```
 
 Allocates a new fio_str_s object on the heap, initializes it and copies the
@@ -1949,7 +1947,7 @@ Use `fio_str_free2` to free the new string's data and it's container.
 #### `fio_str_dup`
 
 ```c
-inline FIO_FUNC fio_str_s *fio_str_dup(fio_str_s *s);
+inline fio_str_s *fio_str_dup(fio_str_s *s);
 ```
 
 Adds a references to the current String object and returns itself.
@@ -1961,7 +1959,7 @@ The original's String's container should remain in scope (if on the stack) or re
 #### `fio_str_free`
 
 ```c
-inline FIO_FUNC int fio_str_free(fio_str_s *s);
+inline int fio_str_free(fio_str_s *s);
 ```
 
 Frees the String's resources and reinitializes the container.
@@ -1975,7 +1973,7 @@ references (see fio_str_dup).
 #### `fio_str_free2`
 
 ```c
-FIO_FUNC void fio_str_free2(fio_str_s *s);
+void fio_str_free2(fio_str_s *s);
 ```
 
 Frees the String's resources AS WELL AS the container.
@@ -1985,8 +1983,8 @@ Note: the container is freed using `fio_free`, make sure `fio_malloc` was used t
 #### `fio_str_send_free2`
 
 ```c
-inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
-                                         const fio_str_s *str);
+inline ssize_t fio_str_send_free2(const intptr_t uuid,
+                                  const fio_str_s *str);
 ```
 
 `fio_str_send_free2` sends the fio_str_s using `fio_write2`, freeing both the String and the container once the data was sent.
@@ -2010,7 +2008,7 @@ Using this approach is safer than accessing the String data directly, since the 
 #### `fio_str_info`
 
 ```c
-inline FIO_FUNC fio_str_info_s fio_str_info(const fio_str_s *s);
+inline fio_str_info_s fio_str_info(const fio_str_s *s);
 ```
 
 Returns the String's complete state (capacity, length and pointer). 
@@ -2018,7 +2016,7 @@ Returns the String's complete state (capacity, length and pointer).
 #### `fio_str_len`
 
 ```c
-inline FIO_FUNC size_t fio_str_len(fio_str_s *s);
+inline size_t fio_str_len(fio_str_s *s);
 ```
 
 Returns the String's length in bytes.
@@ -2026,7 +2024,7 @@ Returns the String's length in bytes.
 #### `fio_str_data`
 
 ```c
-inline FIO_FUNC char *fio_str_data(fio_str_s *s);
+inline char *fio_str_data(fio_str_s *s);
 ```
 
 Returns a pointer (`char *`) to the String's content.
@@ -2042,7 +2040,7 @@ Returns a byte pointer (`uint8_t *`) to the String's unsigned content.
 #### `fio_str_capa`
 
 ```c
-inline FIO_FUNC size_t fio_str_capa(fio_str_s *s);
+inline size_t fio_str_capa(fio_str_s *s);
 ```
 
 Returns the String's existing capacity (total used & available memory).
@@ -2050,7 +2048,7 @@ Returns the String's existing capacity (total used & available memory).
 #### `fio_str_resize`
 
 ```c
-inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size);
+inline fio_str_info_s fio_str_resize(fio_str_s *s, size_t size);
 ```
 
 Sets the new String size without reallocating any memory (limited by existing capacity).
@@ -2070,7 +2068,7 @@ Clears the string (retaining the existing capacity).
 #### `fio_str_hash`
 
 ```c
-inline FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s);
+inline uint64_t fio_str_hash(const fio_str_s *s);
 ```
 
 Returns the string's SipHash value (Uses SipHash 1-3).
@@ -2080,7 +2078,7 @@ Returns the string's SipHash value (Uses SipHash 1-3).
 #### `fio_str_compact`
 
 ```c
-FIO_FUNC void fio_str_compact(fio_str_s *s);
+void fio_str_compact(fio_str_s *s);
 ```
 
 Performs a best attempt at minimizing memory consumption.
@@ -2090,7 +2088,7 @@ Actual effects depend on the underlying memory allocator and it's implementation
 #### `fio_str_capa_assert`
 
 ```c
-FIO_FUNC fio_str_info_s fio_str_capa_assert(fio_str_s *s, size_t needed);
+fio_str_info_s fio_str_capa_assert(fio_str_s *s, size_t needed);
 ```
 
 Requires the String to have at least `needed` capacity (including existing data).
@@ -2102,7 +2100,7 @@ Returns the current state of the String.
 #### `fio_str_utf8_valid`
 
 ```c
-FIO_FUNC size_t fio_str_utf8_valid(fio_str_s *s);
+size_t fio_str_utf8_valid(fio_str_s *s);
 ```
 
 Returns 1 if the String is UTF-8 valid and 0 if not.
@@ -2110,7 +2108,7 @@ Returns 1 if the String is UTF-8 valid and 0 if not.
 #### `fio_str_utf8_len`
 
 ```c
-FIO_FUNC size_t fio_str_utf8_len(fio_str_s *s);
+size_t fio_str_utf8_len(fio_str_s *s);
 ```
 
 Returns the String's length in UTF-8 characters.
@@ -2118,7 +2116,7 @@ Returns the String's length in UTF-8 characters.
 #### `fio_str_utf8_select`
 
 ```c
-FIO_FUNC int fio_str_utf8_select(fio_str_s *s, intptr_t *pos, size_t *len);
+int fio_str_utf8_select(fio_str_s *s, intptr_t *pos, size_t *len);
 ```
 
 Takes a UTF-8 character selection information (UTF-8 position and length) and updates the same variables so they reference the raw byte slice information.
@@ -2146,8 +2144,8 @@ This helper macro is used internally but left exposed for external use.
 #### `fio_str_write`
 
 ```c
-inline FIO_FUNC fio_str_info_s fio_str_write(fio_str_s *s, const void *src,
-                                            size_t src_len);
+inline fio_str_info_s fio_str_write(fio_str_s *s, const void *src,
+                                    size_t src_len);
 ```
 
 Writes data at the end of the String (similar to `fio_str_insert` with the argument `pos == -1`).
@@ -2156,7 +2154,7 @@ Writes data at the end of the String (similar to `fio_str_insert` with the argum
 #### `fio_str_write_i`
 
 ```c
-inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num);
+inline fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num);
 
 ```
 
@@ -2165,8 +2163,8 @@ Writes a number at the end of the String using normal base 10 notation.
 #### `fio_str_concat`
 
 ```c
-inline FIO_FUNC fio_str_info_s fio_str_concat(fio_str_s *dest,
-                                             fio_str_s const *src);
+inline fio_str_info_s fio_str_concat(fio_str_s *dest,
+                                     fio_str_s const *src);
 ```
 
 Appens the `src` String to the end of the `dest` String.
@@ -2176,9 +2174,9 @@ If `dest` is empty, the resulting Strings will be equal.
 #### `fio_str_replace`
 
 ```c
-FIO_FUNC fio_str_info_s fio_str_replace(fio_str_s *s, intptr_t start_pos,
-                                       size_t old_len, const void *src,
-                                       size_t src_len);
+fio_str_info_s fio_str_replace(fio_str_s *s, intptr_t start_pos,
+                               size_t old_len, const void *src,
+                               size_t src_len);
 ```
 
 Replaces the data in the String - replacing `old_len` bytes starting at `start_pos`, with the data at `src` (`src_len` bytes long).
@@ -2192,8 +2190,8 @@ If `src_len == 0` than `src` will be ignored and the data marked for replacement
 #### `fio_str_vprintf`
 
 ```c
-FIO_FUNC fio_str_info_s fio_str_vprintf(fio_str_s *s, const char *format,
-                                       va_list argv);
+fio_str_info_s fio_str_vprintf(fio_str_s *s, const char *format,
+                               va_list argv);
 ```
 
 Writes to the String using a vprintf like interface.
@@ -2203,7 +2201,7 @@ Data is written to the end of the String.
 #### `fio_str_printf`
 
 ```c
-FIO_FUNC fio_str_info_s fio_str_printf(fio_str_s *s, const char *format, ...);
+fio_str_info_s fio_str_printf(fio_str_s *s, const char *format, ...);
 ```
 
 Writes to the String using a printf like interface.
@@ -2213,8 +2211,8 @@ Data is written to the end of the String.
 #### `fio_str_fread`
 
 ```c
-FIO_FUNC fio_str_info_s fio_str_fread(fio_str_s *s, const char *filename,
-                                     intptr_t start_at, intptr_t limit);
+fio_str_info_s fio_str_fread(fio_str_s *s, const char *filename,
+                             intptr_t start_at, intptr_t limit);
 ```
 
 Opens the file `filename` and pastes it's contents (or a slice ot it) at the
@@ -2228,7 +2226,7 @@ Works on POSIX only.
 #### `fio_str_freeze`
 
 ```c
-inline FIO_FUNC void fio_str_freeze(fio_str_s *s);
+inline void fio_str_freeze(fio_str_s *s);
 ```
 
 Prevents further manipulations to the String's content.
@@ -2236,7 +2234,7 @@ Prevents further manipulations to the String's content.
 #### `fio_str_iseq`
 
 ```c
-inline FIO_FUNC int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2);
+inline int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2);
 ```
 
 Binary comparison returns `1` if both strings are equal and `0` if not.
@@ -2437,7 +2435,7 @@ Initializes the Set or the Hash Map.
 #### `FIO_NAME(free)`
 
 ```c
-FIO_FUNC void FIO_NAME(free)(FIO_NAME(s) * set);
+void FIO_NAME(free)(FIO_NAME(s) * set);
 ```
 
 Deallocates any internal resources.
@@ -2449,7 +2447,7 @@ These functions are defined if the Set defined is a Hash Map (`FIO_SET_KEY_TYPE`
 #### `FIO_NAME(find)` (Hash Map)
 
 ```c
-FIO_FUNC inline FIO_SET_OBJ_TYPE *
+inline FIO_SET_OBJ_TYPE *
    FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                   FIO_SET_KEY_TYPE key);
 ```
@@ -2460,10 +2458,10 @@ NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 #### `FIO_NAME(insert)` (Hash Map)
 
 ```c
-FIO_FUNC inline void FIO_NAME(insert)(FIO_NAME(s) * set,
-                                     const FIO_SET_HASH_TYPE hash_value,
-                                     FIO_SET_KEY_TYPE key,
-                                     FIO_SET_OBJ_TYPE obj);
+inline void FIO_NAME(insert)(FIO_NAME(s) * set,
+                             const FIO_SET_HASH_TYPE hash_value,
+                             FIO_SET_KEY_TYPE key,
+                             FIO_SET_OBJ_TYPE obj);
 ```
 
 Inserts an object to the Set only if it's missing, rehashing if required, returning the new (or old) object's pointer.
@@ -2475,9 +2473,9 @@ NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 #### `FIO_NAME(remove)` (Hash Map)
 
 ```c
-FIO_FUNC inline void FIO_NAME(remove)(FIO_NAME(s) * set,
-                                     const FIO_SET_HASH_TYPE hash_value,
-                                     FIO_SET_KEY_TYPE key);
+inline void FIO_NAME(remove)(FIO_NAME(s) * set,
+                     const FIO_SET_HASH_TYPE hash_value,
+                     FIO_SET_KEY_TYPE key);
 ```
 
 Removes an object from the Set, rehashing if required.
@@ -2491,7 +2489,7 @@ These functions are defined if the Set is a pure Set (not a Hash Map).
 #### `FIO_NAME(find)` (Set)
 
 ```c
-FIO_FUNC inline FIO_SET_OBJ_TYPE *
+inline FIO_SET_OBJ_TYPE *
    FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                   FIO_SET_OBJ_TYPE obj);
 ```
@@ -2502,7 +2500,7 @@ NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 #### `FIO_NAME(insert)` (Set)
 
 ```c
-FIO_FUNC inline FIO_SET_OBJ_TYPE *
+inline FIO_SET_OBJ_TYPE *
    FIO_NAME(insert)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                     FIO_SET_OBJ_TYPE obj);
 ```
@@ -2517,7 +2515,7 @@ NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 #### `FIO_NAME(overwrite)`
 
 ```c
-FIO_FUNC inline FIO_SET_OBJ_TYPE *
+inline FIO_SET_OBJ_TYPE *
    FIO_NAME(overwrite)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                        FIO_SET_OBJ_TYPE obj);
 ```
@@ -2531,9 +2529,9 @@ NOTE: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
 #### `FIO_NAME(remove)` (Set)
 
 ```c
-FIO_FUNC inline void FIO_NAME(remove)(FIO_NAME(s) * set,
-                                     const FIO_SET_HASH_TYPE hash_value,
-                                     FIO_SET_OBJ_TYPE obj);
+inline void FIO_NAME(remove)(FIO_NAME(s) * set,
+                             const FIO_SET_HASH_TYPE hash_value,
+                             FIO_SET_OBJ_TYPE obj);
 ```
 
 Removes an object from the Set, rehashing if required.
@@ -2545,7 +2543,7 @@ NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 #### `FIO_NAME(last)`
 
 ```c
-FIO_FUNC inline FIO_SET_TYPE *FIO_NAME(last)(FIO_NAME(s) * set);
+inline FIO_SET_TYPE *FIO_NAME(last)(FIO_NAME(s) * set);
 ```
 
 Allows a peak at the Set's last element.
@@ -2555,7 +2553,7 @@ Remember that objects might be destroyed if the Set is altered (`FIO_SET_OBJ_DES
 #### `FIO_NAME(pop)`
 
 ```c
-FIO_FUNC inline void FIO_NAME(pop)(FIO_NAME(s) * set);
+inline void FIO_NAME(pop)(FIO_NAME(s) * set);
 ```
 
 Allows the Hash to be momentarily used as a stack, destroying the last object added (`FIO_SET_OBJ_DESTROY` / `FIO_SET_KEY_DESTROY`).
@@ -2563,7 +2561,7 @@ Allows the Hash to be momentarily used as a stack, destroying the last object ad
 #### `FIO_NAME(count)`
 
 ```c
-FIO_FUNC inline size_t FIO_NAME(count)(const FIO_NAME(s) * set);
+inline size_t FIO_NAME(count)(const FIO_NAME(s) * set);
 ```
 
 Returns the number of object currently in the Set.
@@ -2571,7 +2569,7 @@ Returns the number of object currently in the Set.
 #### `FIO_NAME(capa)`
 
 ```c
-FIO_FUNC inline size_t FIO_NAME(capa)(const FIO_NAME(s) * set);
+inline size_t FIO_NAME(capa)(const FIO_NAME(s) * set);
 ```
 
 Returns a temporary theoretical Set capacity.
@@ -2581,8 +2579,8 @@ This could be used for testing performance and memory consumption.
 #### `FIO_NAME(capa_require)`
 
 ```c
-FIO_FUNC inline size_t FIO_NAME(capa_require)(FIO_NAME(s) * set,
-                                             size_t min_capa);
+inline size_t FIO_NAME(capa_require)(FIO_NAME(s) * set,
+                                     size_t min_capa);
 ```
 
 Requires that a Set contains the minimal requested theoretical capacity.
@@ -2593,7 +2591,7 @@ Returns the actual (temporary) theoretical capacity.
 #### `FIO_NAME(is_fragmented)`
 
 ```c
-FIO_FUNC inline size_t FIO_NAME(is_fragmented)(const FIO_NAME(s) * set);
+inline size_t FIO_NAME(is_fragmented)(const FIO_NAME(s) * set);
 ```
 
 Returns non-zero if the Set is fragmented (more than 50% holes).
@@ -2601,7 +2599,7 @@ Returns non-zero if the Set is fragmented (more than 50% holes).
 #### `FIO_NAME(compact)`
 
 ```c
-FIO_FUNC inline size_t FIO_NAME(compact)(FIO_NAME(s) * set);
+inline size_t FIO_NAME(compact)(FIO_NAME(s) * set);
 ```
 
 Attempts to minimize memory usage by removing empty spaces caused by deleted items and rehashing the Set.
@@ -2611,7 +2609,7 @@ Returns the updated Set capacity.
 #### `FIO_NAME(rehash)`
 
 ```c
-FIO_FUNC void FIO_NAME(rehash)(FIO_NAME(s) * set);
+void FIO_NAME(rehash)(FIO_NAME(s) * set);
 ```
 
 Forces a rehashing of the Set.
@@ -2925,7 +2923,7 @@ The `fio_sha1_s` structure's content should be ignored.
 #### `fio_sha1`
 
 ```c
-inline FIO_FUNC char *fio_sha1(fio_sha1_s *s, const void *data, size_t len)
+inline char *fio_sha1(fio_sha1_s *s, const void *data, size_t len)
 ```
 
 A SHA1 helper function that performs initialization, writing and finalizing.
@@ -3011,8 +3009,8 @@ Finalizes the SHA-2 hash, returning the Hashed data.
 #### `fio_sha2_512`
 
 ```c
-inline FIO_FUNC char *fio_sha2_512(fio_sha2_s *s, const void *data,
-                                  size_t len);
+inline char *fio_sha2_512(fio_sha2_s *s, const void *data,
+                          size_t len);
 ```
 
 A SHA-2 helper function that performs initialization, writing and finalizing.
@@ -3022,8 +3020,8 @@ Uses the SHA2 512 variant.
 #### `fio_sha2_256`
 
 ```c
-inline FIO_FUNC char *fio_sha2_256(fio_sha2_s *s, const void *data,
-                                  size_t len) {
+inline char *fio_sha2_256(fio_sha2_s *s, const void *data,
+                          size_t len);
 ```
 
 A SHA-2 helper function that performs initialization, writing and finalizing.
@@ -3033,8 +3031,8 @@ Uses the SHA2 256 variant.
 #### `fio_sha2_256`
 
 ```c
-inline FIO_FUNC char *fio_sha2_384(fio_sha2_s *s, const void *data,
-                                  size_t len) {
+inline char *fio_sha2_384(fio_sha2_s *s, const void *data,
+                          size_t len);
 ```
 
 A SHA-2 helper function that performs initialization, writing and finalizing.
