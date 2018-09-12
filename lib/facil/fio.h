@@ -48,7 +48,7 @@ Table of contents:
 *
 * Spin locking Implementation
 *
-******** facil.io Data Types (String, Set / HashMap, Linked Lists, etc')
+******** facil.io Data Types (String, Set / Hash Map, Linked Lists, etc')
 *
 * These types can be included by defining the macros and (re)including fio.h.
 *
@@ -79,11 +79,11 @@ Table of contents:
 *
 *            #ifdef FIO_SET_NAME - can be included more than once
 *
-* Set / HashMap Data-Store
-* Set / HashMap API
-* Set / HashMap Internal Data Structures
-* Set / HashMap Internal Helpers
-* Set / HashMap Implementation
+* Set / Hash Map Data-Store
+* Set / Hash Map API
+* Set / Hash Map Internal Data Structures
+* Set / Hash Map Internal Helpers
+* Set / Hash Map Implementation
 *
 ***************************************************************************** */
 
@@ -969,6 +969,50 @@ ssize_t fio_flush(intptr_t uuid);
  */
 intptr_t fio_fd2uuid(int fd);
 
+/**
+ * `fio_fd2uuid` takes an existing file decriptor `fd` and returns it's active
+ * `uuid`.
+ *
+ * If the file descriptor is marked as closed (wasn't opened / registered with
+ * facil.io) the function returns -1;
+ *
+ * If the file descriptor was closed directly (not using `fio_close`) or the
+ * closure event hadn't been processed, a false positive will be possible. This
+ * is not an issue, since the use of an invalid fd will result in the registry
+ * being updated and the fd being closed.
+ *
+ * Returns -1 on error. Returns a valid socket (non-random) UUID.
+ */
+intptr_t fio_fd2uuid(int fd);
+
+/* *****************************************************************************
+Connection Object Links
+***************************************************************************** */
+
+/**
+ * Links an object to a connection's lifetime, calling the `on_close` callback
+ * once the connection has died.
+ *
+ * If the `uuid` is invalid, the `on_close` callback will be called immediately.
+ *
+ * NOTE: the `on_close` callback will be called with high priority. Long tasks
+ * should be deferred.
+ */
+void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj));
+
+/**
+ * Un-links an object from the connection's lifetime, so it's `on_close`
+ * callback will NOT be called.
+ *
+ * Returns 0 on success and -1 if the object couldn't be found, setting `errno`
+ * to `EBADF` if the `uuid` was invalid and `ENOTCONN` if the object wasn't
+ * found (wasn't linked).
+ *
+ * NOTICE: a failure likely means that the object's `on_close` callback was
+ * already called!
+ */
+int fio_uuid_unlink(intptr_t uuid, void *obj);
+
 /* *****************************************************************************
 Connection Read / Write Hooks, for overriding the system calls
 ***************************************************************************** */
@@ -1304,6 +1348,8 @@ typedef struct fio_msg_s {
   void *udata1;
   /** The `udata1` argument associated with the subscription. */
   void *udata2;
+  /** The `uuid` associated with the subscription, if any. */
+  intptr_t uuid;
   /** flag indicating if the message is JSON data or binary/text. */
   uint8_t is_json;
 } fio_msg_s;
@@ -1357,6 +1403,8 @@ typedef struct {
   void *udata1;
   /** The udata values are ignored and made available to the callback. */
   void *udata2;
+  /** Optionally links a subscription to a UUID, if set. */
+  intptr_t uuid;
 } subscribe_args_s;
 
 /** Publishing and on_message callback arguments. */
@@ -3650,7 +3698,7 @@ inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
 
 
 
-                               Set / HashMap Data-Store
+                               Set / Hash Map Data-Store
 
 
 
@@ -3667,24 +3715,24 @@ inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
 #ifdef FIO_SET_NAME
 
 /**
- * A simple ordered Set / HashMap implementation, with a minimal API.
+ * A simple ordered Set / Hash Map implementation, with a minimal API.
  *
- * A Set is basically a HashMap where the keys are also the values, it's often
+ * A Set is basically a Hash Map where the keys are also the values, it's often
  * used for caching objects.
  *
  * The Set's object type and behavior is controlled by the FIO_SET_OBJ_* marcos.
  *
- * A HashMap is basically a set where the objects in the Set are key-value
+ * A Hash Map is basically a set where the objects in the Set are key-value
  * couplets and only the keys are tested when searching the Set.
  *
- * To create a Set or a HashMap, the macro FIO_SET_NAME must be defined. i.e.:
+ * To create a Set or a Hash Map, the macro FIO_SET_NAME must be defined. i.e.:
  *
  *         #define FIO_SET_NAME fio_cstr_set
  *         #define FIO_SET_OBJ_TYPE char *
  *         #define FIO_SET_OBJ_COMPARE(k1, k2) (!strcmp((k1), (k2)))
  *         #include <fio.h>
  *
- * To create a HashMap, rather than a pure Set, the macro FIO_SET_KET_TYPE must
+ * To create a Hash Map, rather than a pure Set, the macro FIO_SET_KET_TYPE must
  * be defined. i.e.:
  *
  *         #define FIO_SET_KEY_TYPE char *
@@ -3716,7 +3764,7 @@ inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
  *         #define FIO_SET_OBJ_COMPARE(k1, k2) (fio_str_iseq((k1), (k2)))
  *         #define FIO_SET_OBJ_COPY(key) fio_str_dup((key))
  *         #define FIO_SET_OBJ_DESTROY(key) fio_str_free2((key))
- *         #include <fio.h> // creates the fio_str_hash_s HashMap and functions
+ *         #include <fio.h> // creates the fio_str_hash_s Hash Map and functions
  *
  * The default integer Hash used is a pointer length type (uintptr_t). This can
  * be changed by defining ALL of the following macros:
@@ -3827,7 +3875,7 @@ typedef struct {
 #define FIO_SET_KEY_DESTROY(obj) ((void)0)
 #endif
 
-/* The default HashMap-Set has will use straight euqality operators */
+/* The default Hash Map-Set has will use straight euqality operators */
 #if !defined(FIO_SET_KEY_COMPARE)
 #define FIO_SET_KEY_COMPARE(o1, o2) ((o1) == (o2))
 #endif
@@ -3845,7 +3893,7 @@ typedef struct {
     FIO_SET_OBJ_DESTROY((couplet).obj);                                        \
   } while (0);
 
-#else /* a pure Set, not a HashMap*/
+#else /* a pure Set, not a Hash Map*/
 /** Internal macros for object actions in Set mode */
 #define FIO_SET_COMPARE(o1, o2) FIO_SET_OBJ_COMPARE((o1), (o2))
 #define FIO_SET_COPY(dest, obj) FIO_SET_OBJ_COPY((dest), (obj))
@@ -3854,7 +3902,7 @@ typedef struct {
 #endif
 
 /* *****************************************************************************
-Set / HashMap API
+Set / Hash Map API
 ***************************************************************************** */
 
 /** The Set container type. By default: fio_ptr_set_s */
@@ -3874,7 +3922,7 @@ FIO_FUNC void FIO_NAME(free)(FIO_NAME(s) * set);
 /**
  *Locates an object in the Set, if it exists.
  *
- * NOTE: This is the function's HashMap variant. See FIO_SET_KEY_TYPE.
+ * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
  */
 FIO_FUNC inline FIO_SET_OBJ_TYPE *
     FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
@@ -3887,7 +3935,7 @@ FIO_FUNC inline FIO_SET_OBJ_TYPE *
  * If the object already exists in the set, no action is performed (the old
  * object is returned).
  *
- * NOTE: This is the function's HashMap variant. See FIO_SET_KEY_TYPE.
+ * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
  */
 FIO_FUNC inline void FIO_NAME(insert)(FIO_NAME(s) * set,
                                       const FIO_SET_HASH_TYPE hash_value,
@@ -3897,11 +3945,13 @@ FIO_FUNC inline void FIO_NAME(insert)(FIO_NAME(s) * set,
 /**
  * Removes an object from the Set, rehashing if required.
  *
- * NOTE: This is the function's HashMap variant. See FIO_SET_KEY_TYPE.
+ * Returns 0 on success and -1 if the object wasn't found.
+ *
+ * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
  */
-FIO_FUNC inline void FIO_NAME(remove)(FIO_NAME(s) * set,
-                                      const FIO_SET_HASH_TYPE hash_value,
-                                      FIO_SET_KEY_TYPE key);
+FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
+                                     const FIO_SET_HASH_TYPE hash_value,
+                                     FIO_SET_KEY_TYPE key);
 
 #else
 
@@ -3944,11 +3994,13 @@ FIO_FUNC inline FIO_SET_OBJ_TYPE *
 /**
  * Removes an object from the Set, rehashing if required.
  *
+ * Returns 0 on success and -1 if the object wasn't found.
+ *
  * NOTE: This is the function's pure Set variant (no FIO_SET_KEY_TYPE).
  */
-FIO_FUNC inline void FIO_NAME(remove)(FIO_NAME(s) * set,
-                                      const FIO_SET_HASH_TYPE hash_value,
-                                      FIO_SET_OBJ_TYPE obj);
+FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
+                                     const FIO_SET_HASH_TYPE hash_value,
+                                     FIO_SET_OBJ_TYPE obj);
 
 #endif
 /**
@@ -4008,15 +4060,15 @@ FIO_FUNC void FIO_NAME(rehash)(FIO_NAME(s) * set);
  *
  * `pos->hash` is the hashing value and `pos->obj` is the object's data.
  *
- * Since the Set might have "holes" (objects that were removed), it is
- * important to skip any `FIO_SET_HASH_COMPARE(pos->hash,
- * FIO_SET_HASH_INVALID)`.
+ * NOTICE: Since the Set might have "holes" (objects that were removed), it is
+ * important to skip any `pos->hash == 0` or the equivalent of
+ * `FIO_SET_HASH_COMPARE(pos->hash, FIO_SET_HASH_INVALID)`.
  */
 #define FIO_SET_FOR_LOOP(set, pos)
 #endif
 
 /* *****************************************************************************
-Set / HashMap Internal Data Structures
+Set / Hash Map Internal Data Structures
 ***************************************************************************** */
 
 typedef struct FIO_NAME(_ordered_s_) {
@@ -4046,7 +4098,7 @@ struct FIO_NAME(s) {
        container && (container < ((set)->ordered + (set)->pos)); ++container)
 
 /* *****************************************************************************
-Set / HashMap Internal Helpers
+Set / Hash Map Internal Helpers
 ***************************************************************************** */
 
 /** Locates an object's map position in the Set, if it exists. */
@@ -4186,7 +4238,7 @@ FIO_NAME(_insert_or_overwrite_)(FIO_NAME(s) * set,
 }
 
 /* *****************************************************************************
-Set / HashMap Implementation
+Set / Hash Map Implementation
 ***************************************************************************** */
 
 /** Deallocates any internal resources. Doesn't free any objects! */
@@ -4211,7 +4263,7 @@ FIO_FUNC void FIO_NAME(free)(FIO_NAME(s) * s) {
 /**
  * Locates an object in the Set, if it exists.
  *
- * NOTE: This is the function's HashMap variant. See FIO_SET_KEY_TYPE.
+ * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
  */
 FIO_FUNC inline FIO_SET_OBJ_TYPE *
 FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
@@ -4230,7 +4282,7 @@ FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
  * If the object already exists in the set, no action is performed (the old
  * object is returned).
  *
- * NOTE: This is the function's HashMap variant. See FIO_SET_KEY_TYPE.
+ * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
  */
 FIO_FUNC inline void FIO_NAME(insert)(FIO_NAME(s) * set,
                                       const FIO_SET_HASH_TYPE hash_value,
@@ -4285,16 +4337,16 @@ FIO_NAME(overwrite)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
  */
 #ifdef FIO_SET_KEY_TYPE
 
-FIO_FUNC inline void FIO_NAME(remove)(FIO_NAME(s) * set,
-                                      const FIO_SET_HASH_TYPE hash_value,
-                                      FIO_SET_KEY_TYPE key) {
+FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
+                                     const FIO_SET_HASH_TYPE hash_value,
+                                     FIO_SET_KEY_TYPE key) {
 #else
-FIO_FUNC inline void FIO_NAME(remove)(FIO_NAME(s) * set,
-                                      const FIO_SET_HASH_TYPE hash_value,
-                                      FIO_SET_OBJ_TYPE obj) {
+FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
+                                     const FIO_SET_HASH_TYPE hash_value,
+                                     FIO_SET_OBJ_TYPE obj) {
 #endif
   if (FIO_SET_HASH_COMPARE(hash_value, FIO_SET_HASH_INVALID))
-    return;
+    return -1;
 #ifdef FIO_SET_KEY_TYPE
   FIO_NAME(_map_s_) *pos =
       FIO_NAME(_find_map_pos_)(set, hash_value, (FIO_SET_TYPE){.key = key});
@@ -4302,7 +4354,7 @@ FIO_FUNC inline void FIO_NAME(remove)(FIO_NAME(s) * set,
   FIO_NAME(_map_s_) *pos = FIO_NAME(_find_map_pos_)(set, hash_value, obj);
 #endif
   if (!pos || !pos->pos)
-    return;
+    return -1;
   FIO_SET_DESTROY(pos->pos->obj);
   --set->count;
   pos->pos->hash = FIO_SET_HASH_INVALID;
@@ -4313,6 +4365,7 @@ FIO_FUNC inline void FIO_NAME(remove)(FIO_NAME(s) * set,
                                               FIO_SET_HASH_INVALID));
   }
   pos->pos = NULL; /* leave pos->hash set to mark "hole" */
+  return 0;
 }
 
 /**

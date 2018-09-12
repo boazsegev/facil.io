@@ -129,6 +129,12 @@ Section Start Marker
 
 ***************************************************************************** */
 
+typedef void (*fio_uuid_link_fn)(void *);
+#define FIO_SET_NAME fio_uuid_links
+#define FIO_SET_OBJ_TYPE fio_uuid_link_fn
+#define FIO_SET_OBJ_COMPARE(o1, o2) 1
+#include <fio.h>
+
 /** User-space socket buffer data */
 typedef struct fio_packet_s fio_packet_s;
 struct fio_packet_s {
@@ -179,7 +185,8 @@ typedef struct {
   fio_rw_hook_s *rw_hooks;
   /** RW udata. */
   void *rw_udata;
-
+  /* Objects linked to the UUID */
+  fio_uuid_links_s links;
 } fio_fd_data_s;
 
 typedef struct {
@@ -263,7 +270,9 @@ static void fio_max_fd_shrink(void) {
 static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   fio_packet_s *packet;
   fio_protocol_s *protocol;
+  fio_uuid_links_s links;
   fio_lock(&(fd_data(fd).sock_lock));
+  links = fd_data(fd).links;
   packet = fd_data(fd).packet;
   protocol = fd_data(fd).protocol;
   fd_data(fd) = (fio_fd_data_s){
@@ -279,6 +288,12 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
     fio_packet_s *tmp = packet;
     packet = packet->next;
     fio_packet_free(tmp);
+  }
+  if (fio_uuid_links_count(&links)) {
+    FIO_SET_FOR_LOOP(&links, pos) {
+      if (pos->hash)
+        pos->obj((void *)pos->hash);
+    }
   }
   if (protocol && protocol->on_close) {
     fio_defer(deferred_on_close, (void *)fd2uuid(fd), protocol);
@@ -412,6 +427,43 @@ fio_str_info_s fio_peer_addr(intptr_t uuid) {
   return (fio_str_info_s){.data = (char *)uuid_data(uuid).addr,
                           .len = uuid_data(uuid).addr_len,
                           .capa = 0};
+}
+
+/* public API. */
+void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj)) {
+  if (!uuid_is_valid(uuid))
+    goto invalid;
+  fio_lock(&uuid_data(uuid).sock_lock);
+  if (!uuid_is_valid(uuid))
+    goto locked_invalid;
+  fio_uuid_links_overwrite(&uuid_data(uuid).links, (uintptr_t)obj, on_close);
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  return;
+locked_invalid:
+  fio_unlock(&uuid_data(uuid).sock_lock);
+invalid:
+  errno = EBADF;
+  on_close(obj);
+}
+
+/* public API. */
+int fio_uuid_unlink(intptr_t uuid, void *obj) {
+  if (!uuid_is_valid(uuid))
+    goto invalid;
+  fio_lock(&uuid_data(uuid).sock_lock);
+  if (!uuid_is_valid(uuid))
+    goto locked_invalid;
+  /* default object comparison is always true */
+  int ret = fio_uuid_links_remove(&uuid_data(uuid).links, (uintptr_t)obj, NULL);
+  if (ret)
+    errno = ENOTCONN;
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  return ret;
+locked_invalid:
+  fio_unlock(&uuid_data(uuid).sock_lock);
+invalid:
+  errno = EBADF;
+  return -1;
 }
 
 /* *****************************************************************************
@@ -4009,10 +4061,12 @@ typedef struct subscription_s {
   void (*on_unsubscribe)(void *udata1, void *udata2);
   void *udata1;
   void *udata2;
+  uintptr_t uuid;
   /** reference counter. */
   uintptr_t ref;
   /** prevents the callback from running concurrently for multiple messages. */
   fio_lock_i lock;
+  fio_lock_i unsubscribed;
 } subscription_s;
 
 #define FIO_SET_NAME fio_ch_set
@@ -4207,6 +4261,13 @@ static inline void fio_subscription_free(subscription_s *s) {
   fio_free(s);
 }
 
+static void fio_unsubscribe_linked(void *s_) {
+  subscription_s *s = s_;
+  s->uuid = 0;
+  fio_unsubscribe(s);
+  fio_subscription_free(s);
+}
+
 /** Subscribes to a filter, pub/sub channle or patten */
 subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
   if (!args.on_message)
@@ -4232,11 +4293,23 @@ subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
   s->parent = ch;
   fio_ls_embd_push(&ch->subscriptions, &s->node);
   fio_unlock((&ch->lock));
+  if (args.uuid) {
+    fio_atomic_add(&s->ref, 1);
+    s->uuid = args.uuid;
+    fio_uuid_link(args.uuid, s, fio_unsubscribe_linked);
+  }
   return s;
 }
 
 /** Unsubscribes from a filter, pub/sub channle or patten */
 void fio_unsubscribe(subscription_s *s) {
+  fio_lock(&s->lock);
+  if (s->unsubscribed)
+    goto finish;
+  if (s->uuid) {
+    fio_uuid_unlink(s->uuid, s);
+    s->uuid = 0;
+  }
   channel_s *ch = s->parent;
   fio_match_fn match = NULL;
   uint8_t removed = 0;
@@ -4268,8 +4341,9 @@ void fio_unsubscribe(subscription_s *s) {
   }
 
   /* promise the subscription will be inactive */
-  fio_lock(&s->lock);
   s->on_message = NULL;
+finish:
+  s->unsubscribed = 1;
   fio_unlock(&s->lock);
 
   fio_subscription_free(s);
@@ -4533,6 +4607,7 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
               .filter = msg->filter,
               .udata1 = s->udata1,
               .udata2 = s->udata2,
+              .uuid = s->uuid,
           },
       .meta = msg->meta,
       .marker = 0,
@@ -9142,6 +9217,34 @@ static void fio_poll_test(void) {
 #endif
 
 /* *****************************************************************************
+Test UUID Linking
+***************************************************************************** */
+
+static void fio_uuid_link_test_on_close(void *obj) {
+  fio_atomic_add((uintptr_t *)obj, 1);
+}
+
+static void fio_uuid_link_test(void) {
+  fprintf(stderr, "=== Testing fio_uuid_link\n");
+  uintptr_t called = 0;
+  uintptr_t removed = 0;
+  intptr_t uuid = fio_socket(NULL, "8765", 1);
+  TEST_ASSERT(uuid != -1, "fio_uuid_link_test failed to create a socket!");
+  fio_uuid_link(uuid, &called, fio_uuid_link_test_on_close);
+  TEST_ASSERT(called == 0,
+              "fio_uuid_link failed - on_close callback called too soon!");
+  fio_uuid_link(uuid, &removed, fio_uuid_link_test_on_close);
+  fio_uuid_unlink(uuid, &removed);
+  fio_close(uuid);
+  fio_defer_perform();
+  TEST_ASSERT(called,
+              "fio_uuid_link failed - on_close callback wasn't called!");
+  TEST_ASSERT(called, "fio_uuid_unlink failed - on_close callback was called "
+                      "(wasn't removed)!");
+  fprintf(stderr, "* passed.\n");
+}
+
+/* *****************************************************************************
 Pub/Sub partial tests
 ***************************************************************************** */
 
@@ -9331,6 +9434,7 @@ void fio_test(void) {
   fio_timer_test();
   fio_poll_test();
   fio_socket_test();
+  fio_uuid_link_test();
   fio_cycle_test();
   fio_set_test();
   fio_siphash_test();

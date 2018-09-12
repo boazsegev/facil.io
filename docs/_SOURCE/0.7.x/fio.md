@@ -903,6 +903,33 @@ This is not an issue, since the use of an invalid fd will result in the registry
 
 Returns -1 on error. Returns a valid socket (non-random) UUID.
 
+### Connection Object Links
+
+Connection object links can links an object to a connection's lifetime rather than it's Protocol's lifetime.
+
+This is can be useful and is used internally by the `fio_subscribe` function to attach subscriptions to connections (when requested).
+
+
+#### `fio_uuid_link`
+
+```c
+void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj));
+```
+
+Links an object to a connection's lifetime, calling the `on_close` callback once the connection has died.
+
+If the `uuid` is invalid, the `on_close` callback will be called immediately.
+
+*NOTE*: the `on_close` callback will be called with high priority. Long tasks should be deferred using [`fio_defer`](#fio_defer).
+
+#### `fio_uuid_unlink`
+
+```c
+void fio_uuid_unlink(intptr_t uuid, void *obj);
+```
+
+Un-links an object from the connection's lifetime, so it's `on_close` callback will NOT be called.
+
 ### Lower-Level: Read / Write / Close Hooks
 
 facil.io's behavior can be altered to support complex networking needs, such as SSL/TLS integration.
@@ -1224,6 +1251,16 @@ The function accepts the following named arguments:
 
         // callback example:
         void (*on_unsubscribe)(void *udata1, void *udata2);
+
+* `uuid`:
+
+    If `uuid` is set, the subscription will be automatically canceled once `uuid` is closed.
+
+    However, the subscription handle is still valid and will need to be freed by calling `fio_unsubscribe` (again).
+
+        // type:
+        intptr_t uuid;
+
 
 * `udata1` and `udata2`:
 
@@ -2420,7 +2457,7 @@ i.e., if `FIO_SET_NAME == foo` than `FIO_SET_NAME(s) == foo_s`.
 
 ### Set / Hash Map Initialization
 
-#### `FIO_SET_NAME(s)`
+#### `FIO_NAME(s)`
 
 The Set's / Hash Map's type name. It's content should be considered opaque.
 
@@ -2473,12 +2510,14 @@ NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 #### `FIO_NAME(remove)` (Hash Map)
 
 ```c
-inline void FIO_NAME(remove)(FIO_NAME(s) * set,
+inline int FIO_NAME(remove)(FIO_NAME(s) * set,
                      const FIO_SET_HASH_TYPE hash_value,
                      FIO_SET_KEY_TYPE key);
 ```
 
 Removes an object from the Set, rehashing if required.
+
+Returns 0 on success and -1 if the object wasn't found.
 
 NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
@@ -2529,12 +2568,14 @@ NOTE: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
 #### `FIO_NAME(remove)` (Set)
 
 ```c
-inline void FIO_NAME(remove)(FIO_NAME(s) * set,
+inline int FIO_NAME(remove)(FIO_NAME(s) * set,
                              const FIO_SET_HASH_TYPE hash_value,
                              FIO_SET_OBJ_TYPE obj);
 ```
 
 Removes an object from the Set, rehashing if required.
+
+Returns 0 on success and -1 if the object wasn't found.
 
 NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 
@@ -2627,7 +2668,7 @@ A macro for a `for` loop that iterates over all the Set's objects (in order).
 
 `pos->hash` is the hashing value and `pos->obj` is the object's data.
 
-Since the Set might have "holes" (objects that were removed), it is important to skip any `FIO_SET_HASH_COMPARE(pos->hash, FIO_SET_HASH_INVALID)`.
+**Important**: Since the Set might have "holes" (objects that were removed), it is important to skip any `pos->hash == 0` or the equivalent of `FIO_SET_HASH_COMPARE(pos->hash, FIO_SET_HASH_INVALID)`.
 
 ## General Helpers
 
