@@ -29,7 +29,7 @@ Table of contents:
 * Startup / State Callbacks (fork, start up, idle, etc')
 * Lower Level API - for special circumstances, use with care under
 *
-* Cluster Messages API
+* Pub/Sub / Cluster Messages API
 * Cluster Messages and Pub/Sub
 * Cluster / Pub/Sub Middleware and Extensions ("Engines")
 *
@@ -1262,12 +1262,10 @@ This function is called automatically for the new socket, when using
 int fio_set_non_block(int fd);
 
 /* *****************************************************************************
- * Cluster Messages API
+ * Pub/Sub / Cluster Messages API
  *
  * Facil supports a message oriented API for use for Inter Process Communication
  * (IPC), publish/subscribe patterns, horizontal scaling and similar use-cases.
- *
- * The API is implemented in the fio_cluster.c file.
  *
  **************************************************************************** */
 #if FIO_PUBSUB_SUPPORT
@@ -1372,7 +1370,7 @@ typedef struct {
 
 /** Publishing and on_message callback arguments. */
 typedef struct fio_publish_args_s {
-  /** The pub/sub engine that should be used to farward this message. */
+  /** The pub/sub engine that should be used to forward this message. */
   pubsub_engine_s const *engine;
   /** A unique message type. Negative values are reserved, 0 == pub/sub. */
   int32_t filter;
@@ -1545,9 +1543,9 @@ struct pubsub_engine_s {
   /** Should unsubscribe channel. Failures are ignored. */
   void (*unsubscribe)(const pubsub_engine_s *eng, fio_str_info_s channel,
                       fio_match_fn match);
-  /** Should return 0 on success and -1 on failure. */
-  int (*publish)(const pubsub_engine_s *eng, fio_str_info_s channel,
-                 fio_str_info_s msg, uint8_t is_json);
+  /** Should publish a message through the engine. Failures are ignored. */
+  void (*publish)(const pubsub_engine_s *eng, fio_str_info_s channel,
+                  fio_str_info_s msg, uint8_t is_json);
   /**
    * facil.io will call this callback whenever starting, or restarting, the IO
    * reactor.
@@ -1567,7 +1565,7 @@ struct pubsub_engine_s {
  *
  * NOTE: the root (master) process will call `subscribe` for any channel in any
  * process, while all the other processes will call `subscribe` only for their
- * own chasnnel. This allows engines to use the root (master) process as an
+ * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
 void fio_pubsub_attach(pubsub_engine_s *engine);
@@ -1587,7 +1585,7 @@ void fio_pubsub_detach(pubsub_engine_s *engine);
  *
  * NOTE: the root (master) process will call `subscribe` for any channel in any
  * process, while all the other processes will call `subscribe` only for their
- * own chasnnel. This allows engines to use the root (master) process as an
+ * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
 void fio_pubsub_reattach(pubsub_engine_s *eng);

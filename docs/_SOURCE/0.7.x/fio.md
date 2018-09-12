@@ -1388,352 +1388,342 @@ void fio_state_callback_clear(callback_type_e);
 
 Clears all the existing callbacks for the event.
 
+## Pub/Sub Services
 
-
-
-
-
-
-
-
-
-
-
+facil.io supports a message oriented API for use for Inter Process Communication (IPC), publish/subscribe patterns, horizontal scaling and similar use-cases.
 
 ---
 
-## Lower Level API - for special circumstances, use with care under
-
-## Cluster Messages API
-### Cluster Messages and Pub/Sub
-### Cluster / Pub/Sub Middleware and Extensions ("Engines")
-
-## Atomic Operations and Spin Locking Helper Functions
-
-## Converting Numbers to Strings (and back)
-## Strings to Numbers
-## Numbers to Strings
-
-## Random Generator Functions
-
-## Hashing and Base64 Helpers
-### SipHash
-### SHA-1
-### SHA-2
-### Base64 (URL) encoding
-
-## Memory Allocator Details
-
-#ifdef FIO_INCLUDE_LINKED_LIST
-
-## Linked List Helpers
-## Independent Linked List API
-## Embedded Linked List API
+### Subscription Control
 
 
-#ifdef FIO_INCLUDE_STR
-## String Helpers
-## String API - Initialization and Destruction
-## String API - String state (data pointers, length, capacity, etc')
-## String API - Memory management
-## String API - UTF-8 State
-## String Implementation - Content Manipulation and Review
+#### `fio_subscribe`
 
-#ifdef FIO_SET_NAME - can be included more than once
-## Set / HashMap Data-Store
-## Set / HashMap API
-## Set / HashMap Internal Data Structures
-## Set / HashMap Internal Helpers
-## Set / HashMap Implementation
+```c
+subscription_s *fio_subscribe(subscribe_args_s args);
+#define fio_subscribe(...) fio_subscribe((subscribe_args_s){__VA_ARGS__})
+```
+
+This function subscribes to either a numerical "filter" or a named channel (but not both).
+
+The `fio_subscribe` function is shadowed by the `fio_subscribe` MACRO, which allows the function to accept "named arguments", as shown in the following example:
+
+```c
+static void my_message_handler(fio_msg_s *msg); 
+//...
+subscription_s * s = fio_subscribe(.channel = {.data="name", .len = 4},
+                                   .on_message = my_message_handler);
+```
 
 
----
+The function accepts the following named arguments:
 
-/* *****************************************************************************
-Cluster Messages API
 
-Facil supports a message oriented API for use for Inter Process Communication
-(IPC), publish/subscribe patterns, horizontal scaling and similar use-cases.
+* `filter`:
 
-The API is implemented in the fio_cluster.c file.
+    If `filter` is set, all messages that match the filter's numerical value will be forwarded to the subscription's callback.
 
-*************************************************************************** */
-#if FIO_PUBSUB_SUPPORT
+    Subscriptions can either require a match by filter or match by channel. This will match the subscription by filter.
 
-/* *****************************************************************************
-Cluster Messages and Pub/Sub
-*************************************************************************** */
+    **NOTE**: filter based messages are considered internal. They aren't shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks (both subjects are covered later on).
 
-/** An opaque subscription type. */
-typedef struct subscription_s subscription_s;
+        // type:
+        int32_t filter;
 
-/** A pub/sub engine data structure. See details later on. */
-typedef struct pubsub_engine_s pubsub_engine_s;
+* `channel`:
 
-/** The default engine (settable). Initial default is FIO_PUBSUB_CLUSTER. */
-extern pubsub_engine_s *FIO_PUBSUB_DEFAULT;
-/** Used to publish the message to all clients in the cluster. */
-#define FIO_PUBSUB_CLUSTER ((pubsub_engine_s *)1)
-/** Used to publish the message only within the current process. */
-#define FIO_PUBSUB_PROCESS ((pubsub_engine_s *)2)
-/** Used to publish the message except within the current process. */
-#define FIO_PUBSUB_SIBLINGS ((pubsub_engine_s *)3)
-/** Used to publish the message exclusively to the root / master process. */
-#define FIO_PUBSUB_ROOT ((pubsub_engine_s *)4)
+    If `filter == 0` (or unset), than the subscription will be made using `channel` binary name matching. Note that and empty string (NULL pointer and 0 length) is a valid channel name.
 
-/** Message structure, with an integer filter as well as a channel filter. */
+    Subscriptions can either require a match by filter or match by channel. This will match the subscription by channel (only messages with no `filter` will be received).
+
+        // type:
+        fio_str_info_s channel;
+
+
+* `match`:
+
+    If an optional `match` callback is provided, pattern matching will be used as an alternative to exact channel name matching.
+
+    A single matching function is bundled with facil.io (`FIO_MATCH_GLOB`), which follows the Redis matching logic.
+
+    This is significantly slower, as no HashMap can be used to locate a match - each message published to a channel will be tested for a match against each pattern.
+
+        // callback example:
+        int foo_bar_match_fn(fio_str_info_s pattern, fio_str_info_s channel)''
+        // type:
+        typedef int (*fio_match_fn)(fio_str_info_s pattern, fio_str_info_s channel);
+        fio_match_fn match;
+        extern fio_match_fn FIO_MATCH_GLOB;
+
+* `on_message`:
+
+    The callback will be called for each message forwarded to the subscription.
+
+        // callback example:
+        void on_message(fio_msg_s *msg);
+
+* `on_unsubscribe`:
+
+    The callback will be called once the subscription is canceled, allowing it's resources to be freed.
+
+        // callback example:
+        void (*on_unsubscribe)(void *udata1, void *udata2);
+
+* `udata1` and `udata2`:
+
+    These are the opaque user data pointers passed to `on_message` and `on_unsubscribe`.
+
+        // type:
+        void *udata1;
+        void *udata2;
+
+
+The function returns a pointer to the opaque subscription type `subscription_s`.
+
+On error, `NULL` will be returned and the `on_unsubscribe` callback will be called.
+
+The `on_message` should accept a pointer to the `fio_msg_s` type:
+
+```c
 typedef struct fio_msg_s {
- /** A unique message type. Negative values are reserved, 0 == pub/sub. */
  int32_t filter;
- /**
-A channel name, allowing for pub/sub patterns.
-
-NOTE: the channel and msg strings should be considered immutable. The .capa
-field might be used for internal data.
-/
  fio_str_info_s channel;
- /**
-The actual message.
-
-NOTE: the channel and msg strings should be considered immutable. The .capa
-field might be used for internal data.
-*/
  fio_str_info_s msg;
- /** The `udata1` argument associated with the subscription. */
  void *udata1;
- /** The `udata1` argument associated with the subscription. */
  void *udata2;
- /** flag indicating if the message is JSON data or binary/text. */
  uint8_t is_json;
 } fio_msg_s;
+```
 
-/**
-Pattern matching callback type - should return 0 unless channel matches
-pattern.
-/
-typedef int (*fio_match_fn)(fio_str_info_s pattern, fio_str_info_s channel);
+* `filter` is the numerical filter (if any) used in the `fio_subscribe` and `fio_publish` functions. Negative values are reserved and 0 == channel name matching.
 
-extern fio_match_fn FIO_MATCH_GLOB;
+* `channel` is an immutable binary string containing the channel name given to `fio_publish`. See the [`fio_str_info_s` return value](`#the-fio_str_info_s-return-value`) for details.
 
-/** possible arguments for the fio_subscribe method. */
-typedef struct {
- /**
-If `filter` is set, all messages that match the filter's numerical value
-will be forwarded to the subscription's callback.
+* `msg` is an immutable binary string containing the message data given to `fio_publish`. See the [`fio_str_info_s` return value](`#the-fio_str_info_s-return-value`) for details.
 
-Subscriptions can either require a match by filter or match by channel.
-This will match the subscription by filter.
-/
- int32_t filter;
- /**
-If `channel` is set, all messages where `filter == 0` and the channel is an
-exact match will be forwarded to the subscription's callback.
+* `is_json` is a binary flag (1 or 0) that marks the message as JSON. This is the flag passed as passed to the `fio_publish` function.
 
-Subscriptions can either require a match by filter or match by channel.
-This will match the subscription by channel (only messages with no `filter`
-will be received.
-/
- fio_str_info_s channel;
- /**
-The the `match` function allows pattern matching for channel names.
+* `udata1` and `udata2` are the opaque user data pointers passed to `fio_subscribe` during the subscription.
 
-When using a match function, the channel name is considered to be a pattern
-and each pub/sub message (a message where filter == 0) will be tested
-against that pattern.
 
-Using pattern subscriptions extensively could become a performance concern,
-since channel names are tested against each distinct pattern rather than
-leveraging a hashmap for possible name matching.
-/
- fio_match_fn match;
- /**
-The callback will be called for each message forwarded to the subscription.
-/
- void (*on_message)(fio_msg_s *msg);
- /** An optional callback for when a subscription is fully canceled. */
- void (*on_unsubscribe)(void *udata1, void *udata2);
- /** The udata values are ignored and made available to the callback. */
- void *udata1;
- /** The udata values are ignored and made available to the callback. */
- void *udata2;
-} subscribe_args_s;
+#### `fio_subscription_channel`
 
-/** Publishing and on_message callback arguments. */
-typedef struct fio_publish_args_s {
- /** The pub/sub engine that should be used to farward this message. */
- pubsub_engine_s const *engine;
- /** A unique message type. Negative values are reserved, 0 == pub/sub. */
- int32_t filter;
- /** The pub/sub target channnel. */
- fio_str_info_s channel;
- /** The pub/sub message. */
- fio_str_info_s message;
- /** flag indicating if the message is JSON data or binary/text. */
- uint8_t is_json;
-} fio_publish_args_s;
+```c
+fio_str_info_s fio_subscription_channel(subscription_s *subscription);
+```
 
-/**
-Subscribes to either a filter OR a channel (never both).
-
-Returns a subscription pointer on success or NULL on failure.
-
-See `subscribe_args_s` for details.
-/
-subscription_s *fio_subscribe(subscribe_args_s args);
-/**
-Subscribes to either a filter OR a channel (never both).
-
-Returns a subscription pointer on success or NULL on failure.
-
-See `subscribe_args_s` for details.
-/
-#define fio_subscribe(...) fio_subscribe((subscribe_args_s){__VA_ARGS__})
-
-/**
-Cancels an existing subscriptions - actual effects might be delayed, for
-example, if the subscription's callback is running in another thread.
-/
-void fio_unsubscribe(subscription_s *subscription);
-
-/**
-This helper returns a temporary String with the subscription's channel (or a
+This helper returns a temporary String with the subscription's channel (or a binary
 string representing the filter).
 
 To keep the string beyond the lifetime of the subscription, copy the string.
-/
-fio_str_info_s fio_subscription_channel(subscription_s *subscription);
 
-/**
-Publishes a message to the relevant subscribers (if any).
+#### `fio_message_defer`
 
-See `fio_publish_args_s` for details.
-
-By default the message is sent using the FIO_PUBSUB_CLUSTER engine (all
-processes, including the calling process).
-
-To limit the message only to other processes (exclude the calling process),
-use the FIO_PUBSUB_SIBLINGS engine.
-
-To limit the message only to the calling process, use the
-FIO_PUBSUB_PROCESS engine.
-
-To publish messages to the pub/sub layer, the `.filter` argument MUST be
-equal to 0 or missing.
-/
-void fio_publish(fio_publish_args_s args);
-/**
-Publishes a message to the relevant subscribers (if any).
-
-See `fio_publish_args_s` for details.
-
-By default the message is sent using the FIO_PUBSUB_CLUSTER engine (all
-processes, including the calling process).
-
-To limit the message only to other processes (exclude the calling process),
-use the FIO_PUBSUB_SIBLINGS engine.
-
-To limit the message only to the calling process, use the
-FIO_PUBSUB_PROCESS engine.
-
-To publish messages to the pub/sub layer, the `.filter` argument MUST be
-equal to 0 or missing.
-/
-#define fio_publish(...) fio_publish((fio_publish_args_s){__VA_ARGS__})
-/** for backwards compatibility */
-#define pubsub_publish fio_publish
-
-/** Finds the message's metadata by it's type ID. Returns the data or NULL. */
-void *fio_message_metadata(fio_msg_s *msg, intptr_t type_id);
-
-/**
-Defers the current callback, so it will be called again for the message.
-/
+```c
 void fio_message_defer(fio_msg_s *msg);
+```
 
-/* *****************************************************************************
-Cluster / Pub/Sub Middleware and Extensions ("Engines")
-*************************************************************************** */
+Defers the subscription's callback handler, so the subscription will be called again for the same message.
 
-/** Contains message metadata, set by message extensions. */
-typedef struct fio_msg_metadata_s fio_msg_metadata_s;
-struct fio_msg_metadata_s {
- /**
-The type ID should be used to identify the metadata's actual structure.
+A classic use case allows facil.io to handle other events while waiting on a lock / mutex to become available in a multi-threaded environment.
 
-Negative ID values are reserved for internal use.
-/
- intptr_t type_id;
- /**
-This method will be called by facil.io to cleanup the metadata resources.
+#### `fio_unsubscribe`
 
-Don't alter / call this method, this data is reserved.
-/
- void (*on_finish)(fio_msg_s *msg, void *metadata);
- /** The pointer to be disclosed to the `fio_message_metadata` function. */
- void *metadata;
- /** RESERVED for internal use (Metadata linked list). */
- fio_msg_metadata_s *next;
-};
+```c
+void fio_unsubscribe(subscription_s *subscription);
+```
 
-/**
-Pub/Sub Metadata callback type.
-/
-typedef fio_msg_metadata_s (*fio_msg_metadata_fn)(fio_str_info_s ch,
-                                                 fio_str_info_s msg,
-                                                 uint8_t is_json);
+Cancels an existing subscription.
 
-/**
-It's possible to attach metadata to facil.io pub/sub messages (filter == 0)
-before they are published.
+This function will block if a subscription task is running on a different thread.
+
+The subscription task won't be called after the function returns.
+
+### Publishing messages
+
+#### `fio_publish`
+
+```c
+void fio_publish(fio_publish_args_s args);
+```
+
+This function publishes a message to either a numerical "filter" or a named channel (but not both).
+
+The message can be a `NULL` or an empty message.
+
+The `fio_publish` function is shadowed by the `fio_publish` MACRO, which allows the function to accept "named arguments", as shown in the following example:
+
+```c
+fio_publish(.channel = {.data="name", .len = 4},
+            .message = {.data = "foo", .len = 3});
+```
+
+The function accepts the following named arguments:
+
+
+* `filter`:
+
+    If `filter` is set, all messages that match the filter's numerical value will be forwarded to the subscription's callback.
+
+    Subscriptions can either require a match by filter or match by channel. This will match the subscription by filter.
+
+        // type:
+        int32_t filter;
+
+* `channel`:
+
+    If `filter == 0` (or unset), than the subscription will be made using `channel` binary name matching. Note that and empty string (NULL pointer and 0 length) is a valid channel name.
+
+    Subscriptions can either require a match by filter or match by channel. This will match the subscription by channel (only messages with no `filter` will be received).
+
+        // type:
+        fio_str_info_s channel;
+
+
+* `message`:
+
+    The message data to be sent.
+
+        // type:
+        fio_str_info_s message;
+
+* `is_json`:
+
+    A flag indicating if the message is JSON data or binary/text.
+
+        // type:
+        uint8_t is_json;
+
+
+* `engine`:
+
+    The pub/sub engine that should be used to forward this message (see later). Defaults to `FIO_PUBSUB_DEFAULT` (or `FIO_PUBSUB_CLUSTER`).
+
+    Pub/Sub engines dictate the behavior of the pub/sub instructions. The possible internal pub/sub engines are:
+
+    * `FIO_PUBSUB_CLUSTER` - used to publish the message to all clients in the cluster.
+
+    * `FIO_PUBSUB_PROCESS` - used to publish the message only within the current process.
+
+    * `FIO_PUBSUB_SIBLINGS` - used to publish the message except within the current process.
+
+    * `FIO_PUBSUB_ROOT` - used to publish the message exclusively to the root / master process.
+    
+    The default pub/sub can be changed globally by assigning a new default engine to the `FIO_PUBSUB_DEFAULT` global variable.
+
+        // type:
+        pubsub_engine_s const *engine;
+        // default engine:
+        extern pubsub_engine_s *FIO_PUBSUB_DEFAULT;
+
+### Pub/Sub Message MiddleWare Meta-Data
+
+It's possible to attach meta-data to facil.io pub/sub messages before they are published.
+
+This is only available for named channels (filter == 0).
 
 This allows, for example, messages to be encoded as network packets for
 outgoing protocols (i.e., encoding for WebSocket transmissions), improving
 performance in large network based broadcasting.
 
-The callback should return a valid metadata object. If the `.metadata` field
-returned is NULL than the result will be ignored.
+**NOTE**: filter based messages are considered internal. They aren't shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.
+
+#### `fio_message_metadata`
+
+```c
+void *fio_message_metadata(fio_msg_s *msg, intptr_t type_id);
+```
+
+Finds the message's meta-data by the meta-data's type ID. Returns the data or NULL.
+
+#### `fio_message_metadata_callback_set`
+
+```c
+// The function:
+void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
+                                      int enable);
+// The callback type:
+typedef fio_msg_metadata_s (*fio_msg_metadata_fn)(fio_str_info_s ch,
+                                                 fio_str_info_s msg,
+                                                 uint8_t is_json);
+// Example callback
+fio_msg_metadata_s foo_metadata(fio_str_info_s ch,
+                                fio_str_info_s msg,
+                                uint8_t is_json);
+```
+
+The callback should return a `fio_msg_metadata_s` object. The object looks like this:
+
+```c
+typedef struct fio_msg_metadata_s fio_msg_metadata_s;
+struct fio_msg_metadata_s {
+ /** A type ID used to identify the meta-data. Negative values are reserved. */
+ intptr_t type_id;
+ /** Called by facil.io to cleanup the meta-data resources. */
+ void (*on_finish)(fio_msg_s *msg, void *metadata);
+ /** The pointer to be disclosed to the subscription client. */
+ void *metadata;
+ /** RESERVED for internal use (Metadata linked list): */
+ fio_msg_metadata_s *next;
+};
+```
+
+If the the returned `.metadata` field is NULL than the result will be ignored.
 
 To remove a callback, set the `enable` flag to false (`0`).
 
-The cluster messaging system allows some messages to be flagged as JSON and
-this flag is available to the metadata callback.
-/
-void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
-                                      int enable);
+The cluster messaging system allows some messages to be flagged as JSON and this flag is available to the meta-data callback.
 
-/**
-facil.io can be linked with external Pub/Sub services using "engines".
+### External Pub/Sub Services
 
-Only unfiltered messages and subscriptions (where filter == 0) will be
-forwarded to external Pub/Sub services.
+facil.io can be linked with external Pub/Sub services using "engines" (`pubsub_engine_s`).
 
-Engines MUST provide the listed function pointers and should be attached
-using the `fio_pubsub_attach` function.
+Pub/Sub engines dictate the behavior of the pub/sub instructions. 
 
-Engines should disconnect / detach, before being destroyed, by using the
-`fio_pubsub_detach` function.
+This allows for an application to connect to a service such as Redis or NATs for horizontal pub/sub scaling.
 
-When an engine received a message to publish, it should call the
-`pubsub_publish` function with the engine to which the message is forwarded.
-i.e.:
+A [Redis engine](redis) is bundled as part of the facio.io extensions but isn't part of the core library.
 
-      pubsub_publish(
-          .engine = FIO_PROCESS_ENGINE,
-          .channel = channel_name,
-          .message = msg_body );
+The default engine can be set using the `FIO_PUBSUB_DEFAULT` global variable. It's initial default is `FIO_PUBSUB_CLUSTER` (see [`fio_publish`](#fio_publish)).
 
-IMPORTANT: The `subscribe` and `unsubscribe` callbacks are called from within
-           an internal lock. They MUST NEVER call pub/sub functions except by
-           exiting the lock using `fio_defer`.
-/
+**NOTE**: filter based messages are considered internal. They aren't shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.
+
+Engines MUST provide the listed function pointers and should be attached using the `fio_pubsub_attach` function.
+
+Engines should disconnect / detach, before being destroyed, by using the `fio_pubsub_detach` function.
+
+When an engine received a message to publish, it should call the `fio_publish` function with the engine to which the message is forwarded. i.e.:
+
+```c
+fio_publish(
+    .engine = FIO_PROCESS_ENGINE,
+    .channel = {0, 4, "name"},
+    .message = {0, 4, "data"} );
+```
+
+
+#### `fio_pubsub_attach`
+
+```c
+void fio_pubsub_attach(pubsub_engine_s *engine);
+```
+
+Attaches an engine, so it's callbacks can be called by facil.io.
+
+The `subscribe` callback will be called for every existing channel.
+
+The engine type deefines the following callback:
+
+* `subscribe` - Should subscribe channel. Failures are ignored.
+* `unsubscribe` - Should unsubscribe channel. Failures are ignored.
+* `publish` - Should publish a message through the engine. Failures are ignored.
+* `on_startup` - Should publish a message through the engine. Failures are ignored.
 struct pubsub_engine_s {
- /** Should subscribe channel. Failures are ignored. */
  void (*subscribe)(const pubsub_engine_s *eng, fio_str_info_s channel,
                    fio_match_fn match);
- /** Should unsubscribe channel. Failures are ignored. */
  void (*unsubscribe)(const pubsub_engine_s *eng, fio_str_info_s channel,
                      fio_match_fn match);
- /** Should return 0 on success and -1 on failure. */
+ /**  */
  int (*publish)(const pubsub_engine_s *eng, fio_str_info_s channel,
                 fio_str_info_s msg, uint8_t is_json);
  /**
@@ -1748,17 +1738,18 @@ connections and claim to shut down (running all deferred event).
  void (*on_startup)(const pubsub_engine_s *eng);
 };
 
-/**
-Attaches an engine, so it's callback can be called by facil.io.
+**NOTE**: the root (master) process will call `subscribe` for any channel **in any process**, while all the other processes will call `subscribe` only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.
 
-The `subscribe` callback will be called for every existing channel.
 
-NOTE: the root (master) process will call `subscribe` for any channel in any
-process, while all the other processes will call `subscribe` only for their
-own chasnnel. This allows engines to use the root (master) process as an
-exclusive subscription process.
-/
-void fio_pubsub_attach(pubsub_engine_s *engine);
+**IMPORTANT**: The `subscribe` and `unsubscribe` callbacks are called from within an internal lock. They MUST NEVER call pub/sub functions except by exiting the lock using `fio_defer`.
+
+
+
+
+
+
+
+
 
 /** Detaches an engine, so it could be safely destroyed. */
 void fio_pubsub_detach(pubsub_engine_s *engine);
@@ -1775,7 +1766,7 @@ resubscriptions are under way...
 
 NOTE: the root (master) process will call `subscribe` for any channel in any
 process, while all the other processes will call `subscribe` only for their
-own chasnnel. This allows engines to use the root (master) process as an
+own channels. This allows engines to use the root (master) process as an
 exclusive subscription process.
 /
 void fio_pubsub_reattach(pubsub_engine_s *eng);
@@ -1783,18 +1774,9 @@ void fio_pubsub_reattach(pubsub_engine_s *eng);
 /** Returns true (1) if the engine is attached to the system. */
 int fio_pubsub_is_attached(pubsub_engine_s *engine);
 
-#endif /* FIO_PUBSUB_SUPPORT */
 
-/* *****************************************************************************
+## Atomic Operations and Spin Locking
 
-
-
-
-
-
-
-                     Atomic Operations and Spin Locking Helper Functions
-**************************************************************************** */
 
 
 /* C11 Atomics are defined? */
@@ -1856,6 +1838,65 @@ FIO_FUNC inline int fio_is_locked(fio_lock_i *lock);
 
 /** Busy waits for the spinlock (CAREFUL). */
 FIO_FUNC inline void fio_lock(fio_lock_i *lock);
+
+
+
+
+
+
+
+---
+
+## Converting Numbers to Strings (and back)
+## Strings to Numbers
+## Numbers to Strings
+
+## Random Generator Functions
+
+## Hashing and Base64 Helpers
+### SipHash
+### SHA-1
+### SHA-2
+### Base64 (URL) encoding
+
+## Memory Allocator Details
+
+#ifdef FIO_INCLUDE_LINKED_LIST
+
+## Linked List Helpers
+## Independent Linked List API
+## Embedded Linked List API
+
+
+#ifdef FIO_INCLUDE_STR
+## String Helpers
+## String API - Initialization and Destruction
+## String API - String state (data pointers, length, capacity, etc')
+## String API - Memory management
+## String API - UTF-8 State
+## String Implementation - Content Manipulation and Review
+
+#ifdef FIO_SET_NAME - can be included more than once
+## Set / HashMap Data-Store
+## Set / HashMap API
+## Set / HashMap Internal Data Structures
+## Set / HashMap Internal Helpers
+## Set / HashMap Implementation
+
+
+---
+
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+                     Atomic Operations and Spin Locking Helper Functions
+**************************************************************************** */
 
 
 /* *****************************************************************************

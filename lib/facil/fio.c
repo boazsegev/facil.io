@@ -4325,7 +4325,7 @@ static void pubsub_on_channel_destroy(channel_s *ch, fio_match_fn match) {
  *
  * NOTE: the root (master) process will call `subscribe` for any channel in any
  * process, while all the other processes will call `subscribe` only for their
- * own chasnnel. This allows engines to use the root (master) process as an
+ * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
 void fio_pubsub_attach(pubsub_engine_s *engine) {
@@ -4364,7 +4364,7 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine) {
  *
  * NOTE: the root (master) process will call `subscribe` for any channel in any
  * process, while all the other processes will call `subscribe` only for their
- * own chasnnel. This allows engines to use the root (master) process as an
+ * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
 void fio_pubsub_reattach(pubsub_engine_s *eng) {
