@@ -59,6 +59,10 @@ h1, h2, h3, h4, h5, h6
     padding: 0.2em;
     margin: 0;
     color:#2020a0;
+    a {
+        color: inherit;
+        text-decoration: none;
+    }
 }
 h1 {text-align: center;}
 h2, h3, h4, h5, h6 {
@@ -207,6 +211,15 @@ h4 {
         display: inline-block;
         width: 100%;
         box-sizing: border-box;
+        a {
+            color: inherit;
+            text-decoration: none;            
+            &:hover {
+                color:000;
+                text-shadow: -3px 3px 2px rgba(150, 150, 150, 0.72);
+                text-decoration:underline;
+            }
+        }
     }
     ul
     {
@@ -544,6 +557,18 @@ body.dark, .dark input
     }
     #side_bar
     {
+        h2, h3, h4
+        {
+            a {
+                color: inherit;
+                text-decoration: none;            
+                &:hover {
+                    color:000;
+                    text-shadow: -3px 3px 2px rgba(150, 150, 150, 0.72);
+                    text-decoration:underline;
+                }
+            }
+        }
         li
         {
             a

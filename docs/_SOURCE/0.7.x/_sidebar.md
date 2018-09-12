@@ -1,9 +1,6 @@
-## Version 0.7.x
+## [Version 0.7.x](/0.7.x/index)
 
-* [Overview](/0.7.x/index)
-
-## Core Library
-* [facil.io core](/0.7.x/fio)
+### [Core Library](/0.7.x/fio)
 * [Protocol Management](/0.7.x/fio#connection-protocol-management)
 * [Running the IO reactor](/0.7.x/fio#running-facil-io)
 * [Connection Functions](/0.7.x/fio#socket-connection-functions)
@@ -19,13 +16,12 @@
 
 
 
-## Helpers
+### [Extensions](/0.7.x/extensions)
 
 * [CLI (command line)](/0.7.x/fio_cli)
 
-## The FIOBJ types
+### [The FIOBJ types](/0.7.x/fiobj)
 
-* [Overview](/0.7.x/fiobj)
 * [Primitives](/0.7.x/fiobj_primitives)
 * [Numbers](/0.7.x/fiobj_numbers)
 * [Strings](/0.7.x/fiobj_str)

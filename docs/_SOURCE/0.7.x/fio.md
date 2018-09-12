@@ -1148,7 +1148,7 @@ Clears all the existing callbacks for the event.
 
 ## Pub/Sub Services
 
-facil.io supports a message oriented API for use for Inter Process Communication (IPC), publish/subscribe patterns, horizontal scaling and similar use-cases.
+facil.io supports a [Publish–Subscribe Pattern](https://en.wikipedia.org/wiki/Publish–subscribe_pattern) API which can be used for Inter Process Communication (IPC), messaging, horizontal scaling and similar use-cases.
 
 ### Subscription Control
 
