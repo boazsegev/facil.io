@@ -895,21 +895,12 @@ inline FIO_FUNC ssize_t fio_write(const intptr_t uuid, const void *buffer,
                                   const size_t length) {
   if (!length || !buffer)
     return 0;
-#ifdef H_FIO_MEM_H
   void *cpy = fio_malloc(length);
-#else
-  void *cpy = malloc(length);
-#endif
   if (!cpy)
     return -1;
   memcpy(cpy, buffer, length);
-#ifdef H_FIO_MEM_H
   return fio_write2(uuid, .data.buffer = cpy, .length = length,
                     .after.dealloc = fio_free);
-#else
-  return fio_write2(uuid, .data.buffer = cpy, .length = length,
-                    .after.dealloc = free);
-#endif
 }
 
 /**
