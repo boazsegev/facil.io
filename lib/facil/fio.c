@@ -3370,7 +3370,7 @@ Strings to Numbers
  * binary (`0b##`/ `b##`) are recognized as well. For binary Most Significant
  * Bit must come first.
  *
- * The most significant differance between this function and `strtol` (aside of
+ * The most significant difference between this function and `strtol` (aside of
  * API design), is the added support for binary representations.
  */
 int64_t fio_atol(char **pstr) {
@@ -3444,7 +3444,7 @@ finish:
   return (int64_t)result;
 }
 
-/** A helper function that convers between String data to a signed double. */
+/** A helper function that converts between String data to a signed double. */
 double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
 
 /* *****************************************************************************
@@ -3614,7 +3614,7 @@ zero:
 }
 
 /**
- * A helper function that convers between a double to a string.
+ * A helper function that converts between a double to a string.
  *
  * No overflow guard is provided, make sure there's at least 130 bytes
  * available (for base 2).
@@ -5176,10 +5176,6 @@ void fio_cluster_on_fail(intptr_t uuid, void *udata) {
   (void)udata;
   (void)uuid;
 }
-/** Opaque user data. */
-// void *udata;
-/** A non-system timeout after which connection is assumed to have failed. */
-// uint8_t timeout;
 
 static void fio_connect2cluster(void *ignore) {
   if (fio_parent_pid() != getpid()) {

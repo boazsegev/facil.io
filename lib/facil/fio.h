@@ -1623,7 +1623,7 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine);
 
 /* C11 Atomics are defined? */
 #if defined(__ATOMIC_RELAXED)
-/** An atomic exchange operation, ruturns previous value */
+/** An atomic exchange operation, returns previous value */
 #define fio_atomic_xchange(p_obj, value)                                       \
   __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
 /** An atomic addition operation */
@@ -1718,12 +1718,12 @@ Strings to Numbers
  * binary (`0b##`/ `b##`) are recognized as well. For binary Most Significant
  * Bit must come first.
  *
- * The most significant differance between this function and `strtol` (aside of
+ * The most significant difference between this function and `strtol` (aside of
  * API design), is the added support for binary representations.
  */
 int64_t fio_atol(char **pstr);
 
-/** A helper function that convers between String data to a signed double. */
+/** A helper function that converts between String data to a signed double. */
 double fio_atof(char **pstr);
 
 /* *****************************************************************************
@@ -1746,7 +1746,7 @@ Numbers to Strings
 size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
 
 /**
- * A helper function that convers between a double to a string.
+ * A helper function that converts between a double to a string.
  *
  * No overflow guard is provided, make sure there's at least 130 bytes
  * available (for base 2).
@@ -2373,7 +2373,7 @@ FIO_FUNC inline int fio_ls_any(fio_ls_s *list);
 /**
  * Iterates through the list using a `for` loop.
  *
- * Access the data with `pos->obj` (`pos` can be named however you pleas..
+ * Access the data with `pos->obj` (`pos` can be named however you please).
  */
 #define FIO_LS_FOR(list, pos)
 
@@ -2406,7 +2406,7 @@ FIO_FUNC inline int fio_ls_embd_any(fio_ls_embd_s *list);
 /**
  * Iterates through the list using a `for` loop.
  *
- * Access the data with `pos->obj` (`pos` can be named however you pleas..
+ * Access the data with `pos->obj` (`pos` can be named however you please).
  */
 #define FIO_LS_EMBD_FOR(list, node)
 
@@ -2654,6 +2654,14 @@ typedef struct {
 inline FIO_FUNC fio_str_s *fio_str_new2(void);
 
 /**
+ * Allocates a new fio_str_s object on the heap, initializes it and copies the
+ * original (`src`) string into the new string.
+ *
+ * Use `fio_str_free2` to free the new string's data and it's container.
+ */
+inline FIO_FUNC fio_str_s *fio_str_new_copy2(fio_str_s *src);
+
+/**
  * Adds a references to the current String object and returns itself.
  *
  * NOTE: Nothing is copied, reference Strings are referencing the same String.
@@ -2740,7 +2748,6 @@ inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size);
 /**
  * Returns the string's siphash value (Uses SipHash 1-3).
  */
-/** Returns the String's complete state (capacity, length and pointer).  */
 inline FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s);
 
 /* *****************************************************************************
@@ -2817,7 +2824,7 @@ inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num);
 /**
  * Appens the `src` String to the end of the `dest` String.
  *
- * If `src` is empty, the resulting Strings will be equal.
+ * If `dest` is empty, the resulting Strings will be equal.
  */
 inline FIO_FUNC fio_str_info_s fio_str_concat(fio_str_s *dest,
                                               fio_str_s const *src);
@@ -2926,6 +2933,18 @@ inline FIO_FUNC fio_str_s *fio_str_new2(void) {
   FIO_ASSERT_ALLOC(str);
   *str = FIO_STR_INIT;
   return str;
+}
+
+/**
+ * Allocates a new fio_str_s object on the heap, initializes it and copies the
+ * original (`src`) string into the new string.
+ *
+ * Use `fio_str_free2` to free the new string's data and it's container.
+ */
+inline FIO_FUNC fio_str_s *fio_str_new_copy2(fio_str_s *src) {
+  fio_str_s *cpy = fio_str_new2();
+  fio_str_concat(cpy, src);
+  return cpy;
 }
 
 /**
@@ -3664,7 +3683,7 @@ inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
  *
  * The Set's object type and behavior is controlled by the FIO_SET_OBJ_* marcos.
  *
- * A HashMap is bessically a set where the objects in the Set are key-value
+ * A HashMap is basically a set where the objects in the Set are key-value
  * couplets and only the keys are tested when searching the Set.
  *
  * To create a Set or a HashMap, the macro FIO_SET_NAME must be defined. i.e.:
@@ -3950,7 +3969,7 @@ FIO_FUNC inline void FIO_NAME(remove)(FIO_NAME(s) * set,
 FIO_FUNC inline FIO_SET_TYPE *FIO_NAME(last)(FIO_NAME(s) * set);
 
 /**
- * Allows the Hash to be momenterally used as a stack, destroying the last
+ * Allows the Hash to be momentarily used as a stack, destroying the last
  * object added (`FIO_SET_OBJ_DESTROY` / `FIO_SET_KEY_DESTROY`).
  */
 FIO_FUNC inline void FIO_NAME(pop)(FIO_NAME(s) * set);
@@ -4318,7 +4337,7 @@ FIO_FUNC inline FIO_SET_TYPE *FIO_NAME(last)(FIO_NAME(s) * set) {
 }
 
 /**
- * Allows the Hash to be momenterally used as a stack, destroying the last
+ * Allows the Hash to be momentarily used as a stack, destroying the last
  * object added (`FIO_SET_OBJ_DESTROY` / `FIO_SET_KEY_DESTROY`).
  */
 FIO_FUNC void FIO_NAME(pop)(FIO_NAME(s) * set) {

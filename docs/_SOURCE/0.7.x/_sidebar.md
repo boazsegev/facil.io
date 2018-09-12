@@ -8,8 +8,14 @@
 * [Running the IO reactor](/0.7.x/fio#running-facil-io)
 * [Connection Functions](/0.7.x/fio#socket-connection-functions)
 * [Event / Task Scheduling](/0.7.x/fio#event-task-scheduling)
-* [Memory allocation](/0.7.x/fio#the-custom-memory-allocator)
-* [Version and compilation macros](/0.7.x/fio#version-and-compilation-related-macros)
+* [Pub/Sub Services](/0.7.x/fio#pub-sub-services)
+* [Memory Allocation](/0.7.x/fio#the-custom-memory-allocator)
+* [General Helpers](/0.7.x/fio#general-helpers)
+* [Linked Lists](/0.7.x/fio#linked-lists)
+* [String Helpers](/0.7.x/fio#string-helpers)
+* [Sets / Hash Maps](/0.7.x/fio#sets-hash-maps)
+* [Compilation Macros](/0.7.x/fio#version-and-compilation-related-macros)
+* [Weak Functions](/0.7.x/fio#weak-functions)
 
 
 
