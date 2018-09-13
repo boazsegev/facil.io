@@ -1577,11 +1577,11 @@ This allocator should prevent memory fragmentation when allocating memory for sh
 
 ### Memory Allocator Overview
 
-The easiest and fastest allocator that can be written will simply allocate memory on top of the stack (using the historic `sbrk` instruction) and never free the memory.
+The easiest and fastest allocator that can be written will simply claim memory at top of the stack (using the historic `sbrk` instruction) and never free the memory.
 
-This memory allocator works using a similar design using rotating block of 32Kb which is only freed once all the references to the block were freed.
+This memory allocator works using a similar design using rotating blocks of 32Kb which are only freed once all the references to the block are freed.
 
-The allocator utilizes memory pools and per-CPU bins to allow for concurrent memory allocations across threads and minimize lock contention.
+The allocator utilizes memory pools and per-CPU bins to allow for concurrent memory allocations across threads and to minimize lock contention.
 
 To replace the system's `malloc` function family compile with the `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
 

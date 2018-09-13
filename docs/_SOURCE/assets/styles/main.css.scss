@@ -386,7 +386,7 @@ h4 {
         display: block;
         width: 100%; height: 100%;
         background-repeat: no-repeat;
-        background-image: url('/logo/facil-io.svg');
+        background-image: url('/assets/logo/facil-io.svg');
         background-size: 100% 100%;
     }
 }
@@ -403,7 +403,7 @@ h4 {
         display: block;
         width: 100%; height: 100%;
         background-repeat: no-repeat;
-        background-image: url('/logo/facil-io-side.svg');
+        background-image: url('/assets/logo/facil-io-side.svg');
         background-size: 100% 100%;
     }
 }
@@ -529,11 +529,11 @@ body.dark, .dark input
     }
     #logo:after
     {
-        background-image: url('/logo/facil-io-side-light.svg');
+        background-image: url('/assets/logo/facil-io-side-light.svg');
     }
     #sign:after
     {
-        background-image: url('/logo/facil-io-light.svg');
+        background-image: url('/assets/logo/facil-io-light.svg');
     }
 
     .toc

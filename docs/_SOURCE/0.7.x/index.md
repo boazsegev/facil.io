@@ -1,6 +1,7 @@
 ---
 title: facil.io - a mini-framework for C web applications
 sidebar: 0.7.x/_sidebar.md
+toc: false
 ---
 # {{ page.title }}
 
