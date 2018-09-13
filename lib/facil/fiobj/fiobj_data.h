@@ -23,10 +23,10 @@ extern "C" {
 #endif
 
 /* *****************************************************************************
-Creating the IO object
+Creating the Data Stream object
 ***************************************************************************** */
 
-/** Creates a new local in-memory IO object */
+/** Creates a new local in-memory Data Stream object */
 FIOBJ fiobj_data_newstr(void);
 
 /**
@@ -37,20 +37,20 @@ FIOBJ fiobj_data_newstr(void);
 FIOBJ fiobj_data_newstr2(void *buffer, uintptr_t length,
                          void (*dealloc)(void *));
 
-/** Creates a new local tempfile IO object */
+/** Creates a new local tempfile Data Stream object */
 FIOBJ fiobj_data_newtmpfile(void);
 
-/** Creates a new local file IO object */
+/** Creates a new local file Data Stream object */
 FIOBJ fiobj_data_newfd(int fd);
 
 /** Creates a slice from an existing Data object. */
 FIOBJ fiobj_data_slice(FIOBJ parent, intptr_t offset, uintptr_t length);
 
 /* *****************************************************************************
-Saving the IO object
+Saving the Data Stream object
 ***************************************************************************** */
 
-/** Creates a new local file IO object */
+/** Creates a new local file Data Stream object */
 int fiobj_data_save(FIOBJ io, const char *filename);
 
 /* *****************************************************************************
@@ -65,7 +65,7 @@ Reading API
  * input backwards (0 == EOF).
  *
  * The C string object will be invalidate the next time a function call to the
- * IO object is made.
+ * Data Stream object is made.
  */
 fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length);
 
@@ -78,7 +78,7 @@ fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length);
  * stream might be loaded into the memory.
  *
  * The C string object will be invalidate the next time a function call to the
- * IO object is made.
+ * Data Stream object is made.
  */
 fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token);
 
@@ -93,7 +93,7 @@ fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token);
  * might be loaded into the memory.
  *
  * The C string object will be invalidate the next time a function call to the
- * IO object is made.
+ * Data Stream object is made.
  */
 #define fiobj_data_gets(io) fiobj_data_read2ch((io), '\n');
 
@@ -118,7 +118,7 @@ void fiobj_data_seek(FIOBJ io, intptr_t position);
  * position is ignored and unchanged.
  *
  * The C string object will be invalidate the next time a function call to the
- * IO object is made.
+ * Data Stream object is made.
  */
 fio_cstr_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length);
 
@@ -127,29 +127,31 @@ Writing API
 ***************************************************************************** */
 
 /**
- * Writes `length` bytes at the end of the IO stream, ignoring the reading
- * position.
+ * Writes `length` bytes at the end of the Data Stream stream, ignoring the
+ * reading position.
  *
  * Behaves and returns the same value as the system call `write`.
  */
 intptr_t fiobj_data_write(FIOBJ io, void *buffer, uintptr_t length);
 
 /**
- * Writes `length` bytes at the end of the IO stream, ignoring the reading
- * position, adding an EOL marker ("\r\n") to the end of the stream.
+ * Writes `length` bytes at the end of the Data Stream stream, ignoring the
+ * reading position, adding an EOL marker ("\r\n") to the end of the stream.
  *
  * Behaves and returns the same value as the system call `write`.
  */
 intptr_t fiobj_data_puts(FIOBJ io, void *buffer, uintptr_t length);
 
 /**
- * Makes sure the IO object isn't attached to a static or external string.
+ * Makes sure the Data Stream object isn't attached to a static or external
+ * string.
  *
- * If the IO object is attached to a static or external string, the data will be
- * copied to a new memory block.
+ * If the Data Stream object is attached to a static or external string, the
+ * data will be copied to a new memory block.
  *
- * If the IO object is a slice from another IO object, the data will be copied
- * and the type of IO object (memory vs. tmpfile) will be inherited.
+ * If the Data Stream object is a slice from another Data Stream object, the
+ * data will be copied and the type of Data Stream object (memory vs. tmpfile)
+ * will be inherited.
  */
 void fiobj_data_assert_dynamic(FIOBJ io);
 

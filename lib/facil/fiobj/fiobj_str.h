@@ -63,11 +63,8 @@ API: Editing a String
 /**
  * Prevents the String object from being changed.
  *
- * When a String is used as a key for a Hash, it is automatically frozenn to
+ * When a String is used as a key for a Hash, it is automatically frozen to
  * prevent the Hash from becoming broken.
- *
- * A call to `fiobj_str_hash` or `fiobj_obj2hash` will automactically freeze the
- * String.
  */
 void fiobj_str_freeze(FIOBJ str);
 
@@ -78,7 +75,7 @@ void fiobj_str_freeze(FIOBJ str);
  */
 size_t fiobj_str_capa_assert(FIOBJ str, size_t size);
 
-/** Return's a String's capacity, if any. This should include the NUL byte. */
+/** Returns a String's capacity, if any. This should include the NUL byte. */
 size_t fiobj_str_capa(FIOBJ str);
 
 /** Resizes a String object, allocating more memory if required. */
@@ -153,9 +150,6 @@ API: String Values
 
 /**
  * Calculates a String's SipHash value for possible use as a HashMap key.
- *
- * Hashing the String's value automatically freezes the string, preventing
- * future changes.
  */
 uint64_t fiobj_str_hash(FIOBJ o);
 

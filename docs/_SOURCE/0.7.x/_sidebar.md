@@ -28,4 +28,5 @@
 * [Strings](/0.7.x/fiobj_str)
 * [Array](/0.7.x/fiobj_ary)
 * [HashMap](/0.7.x/fiobj_hash)
+* [Data Streams](/0.7.x/fiobj_data)
 * [JSON](/0.7.x/fiobj_json)
