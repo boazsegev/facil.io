@@ -2276,9 +2276,9 @@ inline int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2);
 
 Binary comparison returns `1` if both strings are equal and `0` if not.
 
-## Sets / Hash Maps
+## Hash Maps / Sets
 
-facil.io includes a simple ordered Set / Hash Map implementation, with a minimal API.
+facil.io includes a simple ordered Hash Map / Set implementation, with a minimal API.
 
 A Set is basically a Hash Map where the keys are also the values, it's often used for caching objects while a Hash Map is used to find one object using another.
 
@@ -2666,7 +2666,11 @@ A macro for a `for` loop that iterates over all the Set's objects (in order).
 
 `set` is a pointer to the Set variable and `pos` is a temporary variable name to be created for iteration.
 
-`pos->hash` is the hashing value and `pos->obj` is the object's data.
+`pos->hash` is the hashing value.
+
+For Hash Maps, `pos->obj` is a key / value couplet, requiring a selection of `pos->obj.key` / `pos->obj.obj`.
+
+For Pure Sets. the `pos->obj` is the actual object data.
 
 **Important**: Since the Set might have "holes" (objects that were removed), it is important to skip any `pos->hash == 0` or the equivalent of `FIO_SET_HASH_COMPARE(pos->hash, FIO_SET_HASH_INVALID)`.
 
