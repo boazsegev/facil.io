@@ -365,5 +365,5 @@ void light_http_send_response(intptr_t uuid, int status,
   fio_str_write(response, "\r\n", 2);
   if (body.len && body.data)
     fio_str_write(response, body.data, body.len);
-  fio_str_send_free(uuid, response);
+  fio_str_send_free2(uuid, response);
 }

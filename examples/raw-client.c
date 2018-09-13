@@ -80,7 +80,7 @@ static void on_data(intptr_t uuid, fio_protocol_s *protocol) {
   ret = fio_read(uuid, buffer, MAX_BYTES_READ_PER_CYCLE);
   while (ret > 0) {
     buffer[ret] = 0;
-    printf("%s", buffer); /* NUL bytes recieved are a known issue */
+    printf("%s", buffer); /* NUL bytes on binary streams are normal */
     ret = fio_read(uuid, buffer, MAX_BYTES_READ_PER_CYCLE);
   }
 
@@ -144,8 +144,7 @@ int main(int argc, char const *argv[]) {
   fio_cli_start(argc, argv, 1, "use:\n\tclient <args> hostname port",
                 "-v -verbous mode.", FIO_CLI_TYPE_BOOL);
   if (fio_cli_unknown_count() == 0 || fio_cli_unknown_count() > 2) {
-    printf("Argument error. use:\n\tclient <args> hostname port\nFor help "
-           "use:\n\tclient -?\n");
+    printf("Argument error. For help type:   client -?\n");
     exit(0);
   }
   if (fio_cli_get_bool("-v")) {
