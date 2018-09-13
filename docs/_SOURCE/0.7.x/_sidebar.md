@@ -22,6 +22,7 @@
 
 ### [The FIOBJ types](/0.7.x/fiobj)
 
+* [Core Functions](/0.7.x/fiobj_core)
 * [Primitives](/0.7.x/fiobj_primitives)
 * [Numbers](/0.7.x/fiobj_numbers)
 * [Strings](/0.7.x/fiobj_str)

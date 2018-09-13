@@ -38,7 +38,7 @@ websocket_wrapped_len(uint64_t len);
  * * msg:    the message to be wrapped.
  * * len:    the message length.
  * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
- * * first:  set to 1 if `msg` points the begining of the message.
+ * * first:  set to 1 if `msg` points the beginning of the message.
  * * last:   set to 1 if `msg + len` ends the message.
  * * client: set to 1 to use client mode (data  masking).
  *
@@ -68,7 +68,7 @@ websocket_server_wrap(void *target, void *msg, uint64_t len,
  * * msg:    the message to be wrapped.
  * * len:    the message length.
  * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
- * * first:  set to 1 if `msg` points the begining of the message.
+ * * first:  set to 1 if `msg` points the beginning of the message.
  * * last:   set to 1 if `msg + len` ends the message.
  * * client: set to 1 to use client mode (data  masking).
  *
@@ -121,7 +121,7 @@ websocket_buffer_peek(void *buffer, uint64_t len);
  * Returns the remaining data in the existing buffer (can be 0).
  *
  * Notice: if there's any data in the buffer that can't be parsed
- * just yet, `memmove` is used to place the data at the begining of the buffer.
+ * just yet, `memmove` is used to place the data at the beginning of the buffer.
  */
 inline static __attribute__((unused)) uint64_t
 websocket_consume(void *buffer, uint64_t len, void *udata,
@@ -316,7 +316,7 @@ static inline uint64_t websocket_wrapped_len(uint64_t len) {
  * * msg:    the message to be wrapped.
  * * len:    the message length.
  * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
- * * first:  set to 1 if `msg` points the begining of the message.
+ * * first:  set to 1 if `msg` points the beginning of the message.
  * * last:   set to 1 if `msg + len` ends the message.
  * * client: set to 1 to use client mode (data  masking).
  *
@@ -376,7 +376,7 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
  * * msg:    the message to be wrapped.
  * * len:    the message length.
  * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
- * * first:  set to 1 if `msg` points the begining of the message.
+ * * first:  set to 1 if `msg` points the beginning of the message.
  * * last:   set to 1 if `msg + len` ends the message.
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) +

@@ -271,7 +271,7 @@ typedef struct mustache__instruction_s {
   } instruction;
   /** the data the instruction acts upon */
   struct {
-    /** The offset from the begining of the data segment. */
+    /** The offset from the beginning of the data segment. */
     uint32_t start;
     /** The length of the data. */
     uint32_t len;

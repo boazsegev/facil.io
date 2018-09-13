@@ -36,7 +36,7 @@ size_t fiobj_ary_count(FIOBJ ary);
 size_t fiobj_ary_capa(FIOBJ ary);
 
 /**
- * Returns a TEMPORARY pointer to the begining of the array.
+ * Returns a TEMPORARY pointer to the beginning of the array.
  *
  * This pointer can be used for sorting and other direct access operations as
  * long as no other actions (insertion/deletion) are performed on the array.
@@ -50,7 +50,7 @@ FIOBJ *fiobj_ary2ptr(FIOBJ ary);
  *
  *     fiobj_dup(fiobj_ary_index(array, 0));
  *
- * Negative values are retrived from the end of the array. i.e., `-1`
+ * Negative values are retrieved from the end of the array. i.e., `-1`
  * is the last item.
  */
 FIOBJ fiobj_ary_index(FIOBJ ary, int64_t pos);
@@ -75,7 +75,7 @@ void fiobj_ary_push(FIOBJ ary, FIOBJ obj);
 FIOBJ fiobj_ary_pop(FIOBJ ary);
 
 /**
- * Unshifts an object to the begining of the Array. This could be
+ * Unshifts an object to the beginning of the Array. This could be
  * expensive.
  */
 void fiobj_ary_unshift(FIOBJ ary, FIOBJ obj);

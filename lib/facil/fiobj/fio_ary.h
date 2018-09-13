@@ -95,7 +95,7 @@ FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary);
  * Returns the object placed in the Array, if any. Returns FIO_ARY_TYPE_INVALID
  * if no data or if the index is out of bounds.
  *
- * Negative values are retrived from the end of the array. i.e., `-1`
+ * Negative values are retrieved from the end of the array. i.e., `-1`
  * is the last item.
  */
 FIO_FUNC inline FIO_ARY_TYPE fio_ary_index(fio_ary_s *ary, intptr_t pos);
@@ -328,7 +328,7 @@ FIO_FUNC inline size_t fio_ary_capa(fio_ary_s *ary) { return ary->capa; }
  *
  *     fiobj_dup(fiobj_ary_index(array, 0));
  *
- * Negative values are retrived from the end of the array. i.e., `-1`
+ * Negative values are retrieved from the end of the array. i.e., `-1`
  * is the last item.
  */
 FIO_FUNC inline FIO_ARY_TYPE fio_ary_index(fio_ary_s *ary, intptr_t pos) {
@@ -435,7 +435,7 @@ FIO_FUNC inline FIO_ARY_TYPE fio_ary_pop(fio_ary_s *ary) {
 }
 
 /**
- * Unshifts an object to the begining of the Array. Returns -1 on error.
+ * Unshifts an object to the beginning of the Array. Returns -1 on error.
  *
  * This could be expensive, causing `memmove`.
  */

@@ -4,16 +4,34 @@ sidebar: 0.7.x/_sidebar.md
 ---
 # {{ page.title }}
 
-## Overview
+The following Primitive types are defined:
 
-This documentation is incomplete. I would love your help to finish it up. Until that time, please read the documentation in [the `fiobject.h` header file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/types/fiobj/fiobject.h).
+#### `fiobj_null`
 
-### example
+```c
+FIOBJ fiobj_null(void);
+```
 
-## Constants
+A `null` primitive object.
 
-## Types
+Although primitive objects aren't dynamically allocated, it's good practice to call `fiobj_free` to "deallocate" them all the same.
 
-## Functions
+#### `fiobj_true`
 
-## Important Notes
+```c
+FIOBJ fiobj_true(void);
+```
+
+A `null` primitive object.
+
+Although primitive objects aren't dynamically allocated, it's good practice to call `fiobj_free` to "deallocate" them all the same.
+
+#### `fiobj_false`
+
+```c
+FIOBJ fiobj_false(void);
+```
+
+A `null` primitive object.
+
+Although primitive objects aren't dynamically allocated, it's good practice to call `fiobj_free` to "deallocate" them all the same.

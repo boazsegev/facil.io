@@ -95,8 +95,10 @@ Generic Object API
 FIO_INLINE const char *fiobj_type_name(const FIOBJ obj);
 
 /**
- * Heruistic copy with a preference for copy reference(!) to minimize
- * allocations. reference count.
+ * Heuristic copy with a preference for copy reference(!) to minimize
+ * allocations.
+ *
+ * Always returns the value passed along.
  */
 FIO_INLINE FIOBJ fiobj_dup(FIOBJ);
 
@@ -160,7 +162,7 @@ FIO_INLINE fio_cstr_s fiobj_obj2cstr(const FIOBJ obj);
  * Calculates an Objects's SipHash value for possible use as a HashMap key.
  *
  * The Object MUST answer to the fiobj_obj2cstr, or the result is unusable. In
- * other waords, Hash Objects and Arrays can NOT be used for Hash keys.
+ * other words, Hash Objects and Arrays can NOT be used for Hash keys.
  */
 FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o);
 
@@ -173,10 +175,8 @@ FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o);
  *
  * The callback task function must accept an object and an opaque user pointer.
  *
- * Hash objects pass along a `FIOBJ_T_COUPLET` object, containing
- * references for both the key and the object. Keys shouldn't be altered once
- * placed as a key (or the Hash will break). Collections (Arrays / Hashes) can't
- * be used as keeys.
+ * Hash objects pass along only the value object. The keys can be accessed using
+ * the `fiobj_hash_key_in_loop` function.
  *
  * If the callback returns -1, the loop is broken. Any other value is ignored.
  *
@@ -545,7 +545,7 @@ uint64_t fiobj_str_hash(FIOBJ o);
  * Calculates an Objects's SipHash value for possible use as a HashMap key.
  *
  * The Object MUST answer to the fiobj_obj2cstr, or the result is unusable. In
- * other waords, Hash Objects and Arrays can NOT be used for Hash keys.
+ * other words, Hash Objects and Arrays can NOT be used for Hash keys.
  */
 FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o) {
   if (FIOBJ_TYPE_IS(o, FIOBJ_T_STRING))
