@@ -251,6 +251,19 @@ size_t fiobj_str_write(FIOBJ dest, const char *data, size_t len) {
 }
 
 /**
+ * Writes a number at the end of the String using normal base 10 notation.
+ *
+ * Returns the new length of the String
+ */
+size_t fiobj_str_write_i(FIOBJ dest, int64_t num) {
+  assert(FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
+  if (obj2str(dest)->str.frozen)
+    return 0;
+  obj2str(dest)->hash = 0;
+  return fio_str_write_i(&obj2str(dest)->str, num).len;
+}
+
+/**
  * Writes data at the end of the string, resizing the string as required.
  * Returns the new length of the String
  */

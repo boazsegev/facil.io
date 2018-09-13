@@ -74,18 +74,8 @@ FIOBJ str = fiobj_str_new("Hello!", 6);
 fiobj_free(str);
 
 /* for more complex cases, printf style is supported */
-FIOBJ str = fiobj_strprintf("%s %d" , "Hello!", 42)
-// ...
-fiobj_free(str);
-
-/* or */
-FIOBJ str = fiobj_str_buf(0);
-fiobj_str_write2(str, "%s %d" , "Hello!", 42);
-// ...
-fiobj_free(str);
-
-/* for static strings, this is preferred */
-FIOBJ str = fiobj_str_static("Hello!", 6);
+FIOBJ str = fiobj_str_buf(1); // note that 0 == whole memory page
+fiobj_str_printf("%s %d" , "Hello!", 42)
 // ...
 fiobj_free(str);
 ```

@@ -144,6 +144,17 @@ Writes data at the end of the string, resizing the string as required.
 
 Returns the new length of the String.
 
+
+#### `fiobj_str_write_i`
+
+```c
+size_t fiobj_str_write_i(FIOBJ dest, int64_t num)
+```
+
+Writes a number at the end of the String using normal base 10 notation.
+
+Returns the new length of the String
+
 #### `fiobj_str_printf`
 
 ```c

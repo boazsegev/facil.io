@@ -102,6 +102,13 @@ void fiobj_str_clear(FIOBJ str);
 size_t fiobj_str_write(FIOBJ dest, const char *data, size_t len);
 
 /**
+ * Writes a number at the end of the String using normal base 10 notation.
+ *
+ * Returns the new length of the String
+ */
+size_t fiobj_str_write_i(FIOBJ dest, int64_t num);
+
+/**
  * Writes data at the end of the string using a printf like interface, resizing
  * the string as required. Returns the new length of the String
  */
