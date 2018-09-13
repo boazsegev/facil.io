@@ -130,6 +130,7 @@ module APP
 
   # Converts templates to static pages and saves the pages to the static location.
   def self.bake_all
+    @sitemap.clear
     # things that need to be rendered
     @extensions.keys.each do |k|
       Dir[File.join SOURCE_ROOT, '**', "*#{k}"].each do |pt|
@@ -138,6 +139,7 @@ module APP
           env = {PATH_INFO => pt[SOURCE_ROOT.length..(-1-k.length)]}
           APP.call(env)
           puts "INFO: pre-baked: #{env[PATH_INFO]}"
+          @sitemap << env[PATH_INFO]
         rescue => e
           puts "WARN: couldn't pre-bake #{pt}: #{e.message}"
           raise e
@@ -152,11 +154,17 @@ module APP
           target = pt[SOURCE_ROOT.length..-1]
           bake target, IO.binread(pt)
           puts "INFO: copied #{pt} to #{target}"
+          # @sitemap << target
         rescue => e
           puts "WARN: bake copy failed at #{pt}: #{e.message}"
         end
       end
     end
+    # output sitemap
+    out = "<html><body><ul><li><a href=\"/index\">/</a></li>".dup
+    @sitemap.each {|url| out << "<li><a href=\"#{url[0...-5]}\">#{url[0...-5]}</a></li>\r\n" if File.extname(url) == ".html" }
+    out << "</ul></body></html>"
+    IO.binwrite File.join(STATIC_ROOT, "sitemap.html"), out
   end
 
 # define different Rack application methods, depending on the environment.
