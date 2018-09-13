@@ -265,7 +265,7 @@ finish:
   return (int64_t)result;
 }
 
-/** A helper function that convers between String data to a signed double. */
+/** A helper function that converts between String data to a signed double. */
 #pragma weak fio_atof
 double __attribute__((weak)) fio_atof(char **pstr) {
   return strtold(*pstr, pstr);
@@ -439,7 +439,7 @@ zero:
 }
 
 /**
- * A helper function that convers between a double to a string.
+ * A helper function that converts between a double to a string.
  *
  * No overflow guard is provided, make sure there's at least 130 bytes
  * available (for base 2).

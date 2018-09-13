@@ -190,7 +190,7 @@ FIOBJ fiobj_hash_new2(size_t capa) {
 
 /**
  * Returns a temporary theoretical Hash map capacity.
- * This could be used for testig performance and memory consumption.
+ * This could be used for testing performance and memory consumption.
  */
 size_t fiobj_hash_capa(const FIOBJ hash) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
@@ -321,7 +321,7 @@ FIOBJ fiobj_hash_get(const FIOBJ hash, FIOBJ key) {
  * This function takes a `uintptr_t` Hash value (see `fio_siphash`) to
  * perform a lookup in the HashMap.
  *
- * Returns NULL if no object is asociated with this hashed key value.
+ * Returns NULL if no object is associated with this hashed key value.
  */
 FIOBJ fiobj_hash_get2(const FIOBJ hash, uint64_t key_hash) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));

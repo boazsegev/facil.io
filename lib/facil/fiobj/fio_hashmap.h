@@ -617,7 +617,7 @@ FIO_FUNC inline size_t fio_hash_count(const fio_hash_s *hash) {
 
 /**
  * Returns a temporary theoretical Hash map capacity.
- * This could be used for testig performance and memory consumption.
+ * This could be used for testing performance and memory consumption.
  */
 FIO_FUNC inline size_t fio_hash_capa(const fio_hash_s *hash) {
   if (!hash)

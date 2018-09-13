@@ -51,16 +51,16 @@ typedef struct {
   uint8_t cmd[];
 } redis_commands_s;
 
-/** converst from a `pubsub_engine_s` to a `redis_engine_s`. */
+/** converts from a `pubsub_engine_s` to a `redis_engine_s`. */
 #define en2redis(e) FIO_LS_EMBD_OBJ(redis_engine_s, en, (e))
 
-/** converst from a `protocol_s` to a `redis_engine_s`. */
+/** converts from a `protocol_s` to a `redis_engine_s`. */
 #define prot2redis(prot)                                                       \
   ((FIO_LS_EMBD_OBJ(struct redis_engine_internal_s, protocol, (prot))->is_pub) \
        ? FIO_LS_EMBD_OBJ(redis_engine_s, pub_data.protocol, (pr))              \
        : FIO_LS_EMBD_OBJ(redis_engine_s, sub_data.protocol, (pr)))
 
-/** converst from a `resp_parser_s` to the internal data structure. */
+/** converts from a `resp_parser_s` to the internal data structure. */
 #define parser2data(prsr)                                                      \
   FIO_LS_EMBD_OBJ(struct redis_engine_internal_s, parser, (prsr))
 

@@ -58,7 +58,7 @@ Hash properties and state
 
 /**
  * Returns a temporary theoretical Hash map capacity.
- * This could be used for testig performance and memory consumption.
+ * This could be used for testing performance and memory consumption.
  */
 size_t fiobj_hash_capa(const FIOBJ hash);
 
@@ -150,7 +150,7 @@ FIOBJ fiobj_hash_get(const FIOBJ hash, FIOBJ key);
  * perform a lookup in the HashMap, which is slightly faster than the other
  * variations.
  *
- * Returns FIOBJ_INVALID if no object is asociated with this hashed key value.
+ * Returns FIOBJ_INVALID if no object is associated with this hashed key value.
  */
 FIOBJ fiobj_hash_get2(const FIOBJ hash, uint64_t key_hash);
 
