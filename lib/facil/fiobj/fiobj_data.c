@@ -1008,9 +1008,10 @@ void fiobj_data_test(void) {
   FIOBJ text;
   fio_cstr_s s1, s2;
   fprintf(stderr, "=== testing fiobj_data\n");
-  if (filename)
-    text = fiobj_str_readfile(filename, 0, 0);
-  else
+  if (filename) {
+    text = fiobj_str_buf(0);
+    fiobj_str_readfile(text, filename, 0, 0);
+  } else
     text = fiobj_str_new("Line 1\r\nLine 2\nLine 3 unended", 29);
   FIOBJ strio = fiobj_data_newstr();
   fprintf(stderr, "* `newstr` passed.\n");

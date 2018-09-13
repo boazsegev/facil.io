@@ -2864,6 +2864,9 @@ inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num);
 inline FIO_FUNC fio_str_info_s fio_str_concat(fio_str_s *dest,
                                               fio_str_s const *src);
 
+/** Alias for fio_str_concat */
+#define fio_str_join(dest, src) fio_str_concat((dest), (src))
+
 /**
  * Replaces the data in the String - replacing `old_len` bytes starting at
  * `start_pos`, with the data at `src` (`src_len` bytes long).
@@ -2903,8 +2906,8 @@ FIO_FUNC fio_str_info_s fio_str_printf(fio_str_s *s, const char *format, ...);
  *
  * Works on POSIX only.
  */
-FIO_FUNC fio_str_info_s fio_str_fread(fio_str_s *s, const char *filename,
-                                      intptr_t start_at, intptr_t limit);
+FIO_FUNC fio_str_info_s fio_str_readfile(fio_str_s *s, const char *filename,
+                                         intptr_t start_at, intptr_t limit);
 
 /**
  * Prevents further manipulations to the String's content.
@@ -3437,6 +3440,8 @@ inline FIO_FUNC fio_str_info_s fio_str_write(fio_str_s *s, const void *src,
  * Writes a number at the end of the String using normal base 10 notation.
  */
 inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num) {
+  if (!s || s->frozen)
+    return fio_str_info(s);
   char buf[22];
   uint64_t l = 0;
   uint8_t neg;
@@ -3563,8 +3568,8 @@ fio_str_printf(fio_str_s *s, const char *format, ...) {
  * If the file can't be located, opened or read, or if `start_at` is beyond
  * the EOF position, NULL is returned in the state's `data` field.
  */
-FIO_FUNC fio_str_info_s fio_str_fread(fio_str_s *s, const char *filename,
-                                      intptr_t start_at, intptr_t limit) {
+FIO_FUNC fio_str_info_s fio_str_readfile(fio_str_s *s, const char *filename,
+                                         intptr_t start_at, intptr_t limit) {
   fio_str_info_s state = {.data = NULL};
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__) ||           \
     defined(__CYGWIN__)

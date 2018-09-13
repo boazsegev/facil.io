@@ -2199,6 +2199,15 @@ Appens the `src` String to the end of the `dest` String.
 
 If `dest` is empty, the resulting Strings will be equal.
 
+
+#### `fio_str_join`
+
+```c
+#define fio_str_join(dest, src) fio_str_concat((dest), (src))
+```
+
+Alias for [`fio_str_concat`](#fio_str_concat).
+
 #### `fio_str_replace`
 
 ```c
@@ -2236,10 +2245,10 @@ Writes to the String using a printf like interface.
 
 Data is written to the end of the String.
 
-#### `fio_str_fread`
+#### `fio_str_readfile`
 
 ```c
-fio_str_info_s fio_str_fread(fio_str_s *s, const char *filename,
+fio_str_info_s fio_str_readfile(fio_str_s *s, const char *filename,
                              intptr_t start_at, intptr_t limit);
 ```
 

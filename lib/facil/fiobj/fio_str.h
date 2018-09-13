@@ -225,12 +225,19 @@ inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, const void *src,
                                               size_t src_len);
 
 /**
+ * Writes a number at the end of the String using normal base 10 notation.
+ */
+inline FIO_FUNC fio_str_state_s fio_str_write_i(fio_str_s *s, int64_t num);
+
+/**
  * Appens the `src` String to the end of the `dest` String.
  *
  * If `src` is empty, the resulting Strings will be equal.
  */
 inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
                                                fio_str_s const *src);
+/** Alias for fio_str_concat */
+#define fio_str_join(dest, src) fio_str_concat((dest), (src))
 
 /**
  * Replaces the data in the String - replacing `old_len` bytes starting at
@@ -272,10 +279,10 @@ FIO_FUNC fio_str_state_s fio_str_printf(fio_str_s *s, const char *format, ...);
  *
  * Works on POSIX only.
  */
-inline FIO_FUNC fio_str_state_s fio_str_fread(fio_str_s *s,
-                                              const char *filename,
-                                              intptr_t start_at,
-                                              intptr_t limit);
+inline FIO_FUNC fio_str_state_s fio_str_readfile(fio_str_s *s,
+                                                 const char *filename,
+                                                 intptr_t start_at,
+                                                 intptr_t limit);
 
 /**
  * Prevents further manipulations to the String's content.
@@ -718,6 +725,35 @@ inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, const void *src,
 }
 
 /**
+ * Writes a number at the end of the String using normal base 10 notation.
+ */
+inline FIO_FUNC fio_str_state_s fio_str_write_i(fio_str_s *s, int64_t num) {
+  if (!s || s->frozen)
+    return fio_str_state(s);
+  char buf[22];
+  uint64_t l = 0;
+  uint8_t neg;
+  if ((neg = (num < 0))) {
+    num = 0 - num;
+    neg = 1;
+  }
+  while (num) {
+    uint64_t t = num / 10;
+    buf[l++] = '0' + (num - (t * 10));
+    num = t;
+  }
+  if (neg) {
+    buf[l++] = '-';
+  }
+  fio_str_state_s i = fio_str_resize(s, fio_str_len(s) + l);
+
+  while (l) {
+    --l;
+    i.data[i.len - (l + 1)] = buf[l];
+  }
+  return i;
+}
+/**
  * Appens the `src` String to the end of the `dest` String.
  */
 inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
@@ -820,10 +856,10 @@ fio_str_printf(fio_str_s *s, const char *format, ...) {
  * If the file can't be located, opened or read, or if `start_at` is beyond
  * the EOF position, NULL is returned in the state's `data` field.
  */
-inline FIO_FUNC fio_str_state_s fio_str_fread(fio_str_s *s,
-                                              const char *filename,
-                                              intptr_t start_at,
-                                              intptr_t limit) {
+inline FIO_FUNC fio_str_state_s fio_str_readfile(fio_str_s *s,
+                                                 const char *filename,
+                                                 intptr_t start_at,
+                                                 intptr_t limit) {
   fio_str_state_s state = {.data = NULL};
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
   /* POSIX implementations. */
@@ -1065,12 +1101,12 @@ FIO_FUNC inline void fio_str_test(void) {
   fio_str_free(&str);
 
   {
-    fio_str_state_s state = fio_str_fread(&str, __FILE__, 0, 0);
+    fio_str_state_s state = fio_str_readfile(&str, __FILE__, 0, 0);
     TEST_ASSERT(state.data,
-                "`fio_str_fread` error, no data was read for file %s!",
+                "`fio_str_readfile` error, no data was read for file %s!",
                 __FILE__);
     TEST_ASSERT(!memcmp(state.data, "#ifndef H_FIO_STRING_H", 22),
-                "`fio_str_fread` content error, header mismatch!\n %s",
+                "`fio_str_readfile` content error, header mismatch!\n %s",
                 state.data);
     TEST_ASSERT(
         fio_str_utf8_valid(&str),

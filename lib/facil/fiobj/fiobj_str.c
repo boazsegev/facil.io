@@ -176,32 +176,6 @@ FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity) {
   return ((uintptr_t)s | FIOBJECT_STRING_FLAG);
 }
 
-/** Creates a String object using a printf like interface. */
-__attribute__((format(printf, 1, 0))) FIOBJ fiobj_strvprintf(const char *format,
-                                                             va_list argv) {
-  FIOBJ str = FIOBJ_INVALID;
-  va_list argv_cpy;
-  va_copy(argv_cpy, argv);
-  int len = vsnprintf(NULL, 0, format, argv_cpy);
-  va_end(argv_cpy);
-  if (len < 0)
-    return str;
-  str = fiobj_str_new("", 0);
-  if (len == 0)
-    return str;
-  fio_str_state_s state = fio_str_resize(&obj2str(str)->str, len);
-  vsnprintf(state.data, len + 1, format, argv);
-  return str;
-}
-__attribute__((format(printf, 1, 2))) FIOBJ fiobj_strprintf(const char *format,
-                                                            ...) {
-  va_list argv;
-  va_start(argv, format);
-  FIOBJ str = fiobj_strvprintf(format, argv);
-  va_end(argv);
-  return str;
-}
-
 /**
  * Returns a thread-static temporary string. Avoid calling `fiobj_dup` or
  * `fiobj_free`.
@@ -216,45 +190,8 @@ FIOBJ fiobj_str_tmp(void) {
       .str = {.small = 1},
   };
   tmp.str.frozen = 0;
+  fio_str_resize(&tmp.str, 0);
   return ((uintptr_t)&tmp | FIOBJECT_STRING_FLAG);
-}
-
-/** Dumps the `filename` file's contents into a new String. If `limit == 0`,
- * than the data will be read until EOF.
- *
- * If the file can't be located, opened or read, or if `start_at` is beyond
- * the EOF position, NULL is returned.
- *
- * Remember to use `fiobj_free`.
- */
-FIOBJ fiobj_str_readfile(const char *filename, intptr_t start_at,
-                         intptr_t limit) {
-#if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
-  /* POSIX implementations. */
-  fiobj_str_s *s = fio_malloc(sizeof(*s));
-  if (!s) {
-    perror("ERROR: fiobj string couldn't allocate memory");
-    exit(errno);
-  }
-  *s = (fiobj_str_s){
-      .head =
-          {
-              .ref = 1,
-              .type = FIOBJ_T_STRING,
-          },
-      .str = FIO_STR_INIT,
-  };
-  fio_str_state_s state = fio_str_fread(&s->str, filename, start_at, limit);
-  if (!state.data) {
-    free(s);
-    return FIOBJ_INVALID;
-  }
-  return ((uintptr_t)s | FIOBJECT_STRING_FLAG);
-
-#else
-  /* TODO: consider adding non POSIX implementations. */
-  return FIOBJ_INVALID;
-#endif
 }
 
 /** Prevents the String object from being changed. */
@@ -288,7 +225,7 @@ void fiobj_str_resize(FIOBJ str, size_t size) {
 }
 
 /** Deallocates any unnecessary memory (if supported by OS). */
-void fiobj_str_minimize(FIOBJ str) {
+void fiobj_str_compact(FIOBJ str) {
   assert(FIOBJ_TYPE_IS(str, FIOBJ_T_STRING));
   fio_str_compact(&obj2str(str)->str);
   return;
@@ -312,11 +249,12 @@ size_t fiobj_str_write(FIOBJ dest, const char *data, size_t len) {
   obj2str(dest)->hash = 0;
   return fio_str_write(&obj2str(dest)->str, data, len).len;
 }
+
 /**
  * Writes data at the end of the string, resizing the string as required.
  * Returns the new length of the String
  */
-size_t fiobj_str_write2(FIOBJ dest, const char *format, ...) {
+size_t fiobj_str_printf(FIOBJ dest, const char *format, ...) {
   assert(FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
   if (obj2str(dest)->str.frozen)
     return 0;
@@ -327,11 +265,36 @@ size_t fiobj_str_write2(FIOBJ dest, const char *format, ...) {
   va_end(argv);
   return state.len;
 }
+
+size_t fiobj_str_vprintf(FIOBJ dest, const char *format, va_list argv) {
+  assert(FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
+  if (obj2str(dest)->str.frozen)
+    return 0;
+  obj2str(dest)->hash = 0;
+  fio_str_state_s state = fio_str_vprintf(&obj2str(dest)->str, format, argv);
+  return state.len;
+}
+
+/** Dumps the `filename` file's contents at the end of a String. If `limit ==
+ * 0`, than the data will be read until EOF.
+ *
+ * If the file can't be located, opened or read, or if `start_at` is beyond
+ * the EOF position, NULL is returned.
+ *
+ * Remember to use `fiobj_free`.
+ */
+size_t fiobj_str_readfile(FIOBJ dest, const char *filename, intptr_t start_at,
+                          intptr_t limit) {
+  fio_str_state_s state =
+      fio_str_readfile(&obj2str(dest)->str, filename, start_at, limit);
+  return state.len;
+}
+
 /**
  * Writes data at the end of the string, resizing the string as required.
  * Returns the new length of the String
  */
-size_t fiobj_str_join(FIOBJ dest, FIOBJ obj) {
+size_t fiobj_str_concat(FIOBJ dest, FIOBJ obj) {
   assert(FIOBJ_TYPE_IS(dest, FIOBJ_T_STRING));
   if (obj2str(dest)->str.frozen)
     return 0;
@@ -412,7 +375,8 @@ void fiobj_test_string(void) {
               (unsigned long)fiobj_obj2cstr(o).len, fiobj_obj2cstr(o).data);
   fiobj_free(o);
 
-  o = fiobj_strprintf("%u", 42);
+  o = fiobj_str_buf(1);
+  fiobj_str_printf(o, "%u", 42);
   TEST_ASSERT(fio_str_len(&obj2str(o)->str) == 2,
               "fiobj_strprintf length error.\n");
   TEST_ASSERT(fiobj_obj2num(o), "fiobj_strprintf integer error.\n");
@@ -430,7 +394,9 @@ void fiobj_test_string(void) {
               "16K fiobj_str_write capa not enough.\n");
   fiobj_free(o);
 
-  o = fiobj_str_readfile(__FILE__, 0, 0);
+  o = fiobj_str_buf(0);
+  TEST_ASSERT(fiobj_str_readfile(o, __FILE__, 0, 0),
+              "`fiobj_str_readfile` - file wasn't read!");
   TEST_ASSERT(!memcmp(fiobj_obj2cstr(o).data, "/*", 2),
               "`fiobj_str_readfile` error, start of file doesn't match:\n%s",
               fiobj_obj2cstr(o).data);

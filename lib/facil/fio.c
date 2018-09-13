@@ -7840,7 +7840,7 @@ FIO_FUNC inline void fio_str_test(void) {
   fio_str_free(&str);
 
   {
-    fprintf(stderr, "* testing `fio_str_fread`, and reference counting.\n");
+    fprintf(stderr, "* testing `fio_str_readfile`, and reference counting.\n");
     fio_str_s *s = fio_str_new2();
     TEST_ASSERT(s && s->small,
                 "`fio_str_new2` error, string not initialized (%p)!",
@@ -7851,10 +7851,10 @@ FIO_FUNC inline void fio_str_test(void) {
     TEST_ASSERT(s->ref == 1,
                 "`fio_str_dup` error, reference counter not incremented!");
 
-    fio_str_info_s state = fio_str_fread(s, __FILE__, 0, 0);
+    fio_str_info_s state = fio_str_readfile(s, __FILE__, 0, 0);
 
     TEST_ASSERT(state.data,
-                "`fio_str_fread` error, no data was read for file %s!",
+                "`fio_str_readfile` error, no data was read for file %s!",
                 __FILE__);
 
     TEST_ASSERT(!memcmp(state.data,
@@ -7862,7 +7862,7 @@ FIO_FUNC inline void fio_str_test(void) {
                         "******************************************************"
                         "***********************",
                         80),
-                "`fio_str_fread` content error, header mismatch!\n %s",
+                "`fio_str_readfile` content error, header mismatch!\n %s",
                 state.data);
     TEST_ASSERT(
         fio_str_utf8_valid(s),

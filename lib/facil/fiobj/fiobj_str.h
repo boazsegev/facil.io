@@ -46,8 +46,7 @@ static inline __attribute__((unused)) FIOBJ fiobj_str_copy(FIOBJ src) {
  * zero.
  *
  * Note: The original memory MUST be allocated using `fio_malloc` (NOT the
- *       system's `malloc`) and it will be freed by the `fio_mem` library using
- *       `fio_free`.
+ *       system's `malloc`) and it will be freed using `fio_free`.
  */
 FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity);
 
@@ -56,29 +55,6 @@ FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity);
  * `fiobj_free`.
  */
 FIOBJ fiobj_str_tmp(void);
-
-/** Creates a String object using a printf like interface. */
-__attribute__((format(printf, 1, 0))) FIOBJ fiobj_strvprintf(const char *format,
-                                                             va_list argv);
-
-/** Creates a String object using a printf like interface. */
-__attribute__((format(printf, 1, 2))) FIOBJ fiobj_strprintf(const char *format,
-                                                            ...);
-
-/** Dumps the `filename` file's contents into a new String. If `limit == 0`,
- * than the data will be read until EOF.
- *
- * If the file can't be located, opened or read, or if `start_at` is out of
- * bounds (i.e., beyond the EOF position), FIOBJ_INVALID is returned.
- *
- * If `start_at` is negative, it will be computed from the end of the file.
- *
- * Remember to use `fiobj_free`.
- *
- * NOTE: Requires a UNIX system, otherwise always returns FIOBJ_INVALID.
- */
-FIOBJ fiobj_str_readfile(const char *filename, intptr_t start_at,
-                         intptr_t limit);
 
 /* *****************************************************************************
 API: Editing a String
@@ -108,8 +84,16 @@ size_t fiobj_str_capa(FIOBJ str);
 /** Resizes a String object, allocating more memory if required. */
 void fiobj_str_resize(FIOBJ str, size_t size);
 
-/** Deallocates any unnecessary memory (if supported by OS). */
-void fiobj_str_minimize(FIOBJ str);
+/**
+ * Performs a best attempt at minimizing memory consumption.
+ *
+ * Actual effects depend on the underlying memory allocator and it's
+ * implementation. Not all allocators will free any memory.
+ */
+void fiobj_str_compact(FIOBJ str);
+
+/** Alias for `fiobj_str_compact`. */
+#define fiobj_str_minimize(str) fiobj_str_compact((str))
 
 /** Empties a String's data. */
 void fiobj_str_clear(FIOBJ str);
@@ -121,11 +105,20 @@ void fiobj_str_clear(FIOBJ str);
 size_t fiobj_str_write(FIOBJ dest, const char *data, size_t len);
 
 /**
- * Writes data at the end of the string, resizing the string as required.
- * Returns the new length of the String
+ * Writes data at the end of the string using a printf like interface, resizing
+ * the string as required. Returns the new length of the String
  */
 __attribute__((format(printf, 2, 3))) size_t
-fiobj_str_write2(FIOBJ dest, const char *format, ...);
+fiobj_str_printf(FIOBJ dest, const char *format, ...);
+
+/**
+ * Writes data at the end of the string using a vprintf like interface, resizing
+ * the string as required.
+ *
+ * Returns the new length of the String
+ */
+__attribute__((format(printf, 2, 0))) size_t
+fiobj_str_vprintf(FIOBJ dest, const char *format, va_list argv);
 
 /**
  * Writes data at the end of the string, resizing the string as required.
@@ -134,7 +127,25 @@ fiobj_str_write2(FIOBJ dest, const char *format, ...);
  *
  * Returns the new length of the String.
  */
-size_t fiobj_str_join(FIOBJ dest, FIOBJ source);
+size_t fiobj_str_concat(FIOBJ dest, FIOBJ source);
+#define fiobj_str_join(dest, src) fiobj_str_concat((dest), (src))
+
+/**
+ * Dumps the `filename` file's contents at the end of the String.
+ *
+ * If `limit == 0`, than the data will be read until EOF.
+ *
+ * If the file can't be located, opened or read, or if `start_at` is out of
+ * bounds (i.e., beyond the EOF position), FIOBJ_INVALID is returned.
+ *
+ * If `start_at` is negative, it will be computed from the end of the file.
+ *
+ * Remember to use `fiobj_free`.
+ *
+ * NOTE: Requires a UNIX system, otherwise always returns FIOBJ_INVALID.
+ */
+size_t fiobj_str_readfile(FIOBJ dest, const char *filename, intptr_t start_at,
+                          intptr_t limit);
 
 /* *****************************************************************************
 API: String Values
