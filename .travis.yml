@@ -2,6 +2,7 @@ language: c
 script:
   - make vars
   - make test/optimized
+  - export LSAN_OPTIONS=verbosity=1:log_threads=1
   - make test/ci
 os:
   - linux
