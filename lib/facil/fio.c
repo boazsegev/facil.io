@@ -9240,6 +9240,9 @@ static void fio_pubsub_test_on_unsubscribe(void *udata1, void *udata2) {
 
 static void fio_pubsub_test(void) {
   fprintf(stderr, "=== Testing pub/sub (partial)\n");
+  fio_data->active = 1;
+  fio_data->is_worker = 1;
+  fio_data->workers = 1;
   subscription_s *s = fio_subscribe(.filter = 1, .on_message = NULL);
   uintptr_t counter = 0;
   uintptr_t expect = 0;
@@ -9285,6 +9288,9 @@ static void fio_pubsub_test(void) {
   fio_defer_perform();
   TEST_ASSERT(counter == expect,
               "unsubscribe wasn't called for named channel!");
+  fio_data->is_worker = 0;
+  fio_data->active = 0;
+  fio_data->workers = 0;
   (void)fio_pubsub_test_on_message;
   (void)fio_pubsub_test_on_unsubscribe;
 }
