@@ -185,6 +185,16 @@ ifeq ($(shell printf "\#include <libpq-fe.h>\\nint main(void) {}\n" | $(CC) $(IN
 endif
 
 
+# Set Endian Flag
+ifeq ($(shell printf "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[0]);}\n" | $(CC) -xc -o endian_test - >> /dev/null 2> /dev/null ; ./endian_test >> /dev/null 2> /dev/null; echo $$?; rm endian_test 2> /dev/null), 0)
+  $(info * Detected Big Endian mode)
+	FLAGS:=$(FLAGS) __BIG_ENDIAN__
+else
+  $(info * Assuming Little Endian mode)
+	FLAGS:=$(FLAGS) __BIG_ENDIAN__=0
+endif
+
+
 #####################
 # Updated flags and final values
 
