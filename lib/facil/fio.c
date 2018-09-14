@@ -7040,7 +7040,7 @@ char *fio_sha2_result(fio_sha2_s *s) {
     s->length.words[0] = fio_lton64(s->length.words[0]);
     s->length.words[1] = fio_lton64(s->length.words[1]);
 
-#ifndef __BIG_ENDIAN__
+#if !__BIG_ENDIAN__
     {
       uint_fast64_t tmp = s->length.words[0];
       s->length.words[0] = s->length.words[1];
