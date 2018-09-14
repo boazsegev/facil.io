@@ -1,5 +1,6 @@
 language: c
 script:
+  - make vars
   - make test/optimized
   - make test/ci
 os:

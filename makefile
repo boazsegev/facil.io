@@ -275,6 +275,10 @@ test/optimized: | clean test_add_speed_flags create_tree $(LIB_OBJS)
 
 .PHONY : test/ci
 test/ci:| clean 
+	@DEBUG=1 $(MAKE) test_build_and_run
+
+.PHONY : test/c99
+test/c99:| clean 
 	@CSTD=c99 DEBUG=1 $(MAKE) test_build_and_run
 
 .PHONY : test_build_and_run
