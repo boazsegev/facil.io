@@ -31,7 +31,7 @@ FIOBJ fiobj_str_buf(size_t capa);
 
 /** Creates a copy from an existing String. Remember to use `fiobj_free`. */
 static inline __attribute__((unused)) FIOBJ fiobj_str_copy(FIOBJ src) {
-  fio_cstr_s s = fiobj_obj2cstr(src);
+  fio_str_info_s s = fiobj_obj2cstr(src);
   return fiobj_str_new(s.data, s.len);
 }
 

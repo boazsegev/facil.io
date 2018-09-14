@@ -56,7 +56,7 @@ For example:
 ```c
 /* this will work */
 FIOBJ str = fiobj_str_buf(6); /* automatically adds room for the NUL terminator */
-fio_cstr_s raw_str = fiobj_obj2cstr(str);
+fio_str_info_s raw_str = fiobj_obj2cstr(str);
 memcpy(raw_str.buffer, "Hello!", 6);
 fiobj_str_resize(str, 6);
 // ...

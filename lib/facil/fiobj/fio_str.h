@@ -121,15 +121,18 @@ inline FIO_FUNC void fio_str_free(fio_str_s *s);
 String API - String state (data pointers, length, capacity, etc')
 ***************************************************************************** */
 
-/** String state information. */
-typedef struct {
-  size_t capa; /* Buffer capacity. */
+#ifndef FIO_STR_INFO_TYPE
+/** A string information type, reports information about a C string. */
+typedef struct fio_str_info_s {
+  size_t capa; /* Buffer capacity, if the string is writable. */
   size_t len;  /* String length. */
   char *data;  /* String's first byte. */
-} fio_str_state_s;
+} fio_str_info_s;
+#define FIO_STR_INFO_TYPE
+#endif
 
 /** Returns the String's complete state (capacity, length and pointer). */
-inline FIO_FUNC fio_str_state_s fio_str_state(const fio_str_s *s);
+inline FIO_FUNC fio_str_info_s fio_str_state(const fio_str_s *s);
 
 /** Returns the String's length in bytes. */
 inline FIO_FUNC size_t fio_str_len(fio_str_s *s);
@@ -151,7 +154,7 @@ inline FIO_FUNC size_t fio_str_capa(fio_str_s *s);
  *
  * Note: When shrinking, any existing data beyond the new size may be corrupted.
  */
-inline FIO_FUNC fio_str_state_s fio_str_resize(fio_str_s *s, size_t size);
+inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size);
 
 /**
  * Clears the string (retaining the existing capacity).
@@ -174,7 +177,7 @@ inline FIO_FUNC void fio_str_compact(fio_str_s *s);
  * Requires the String to have at least `needed` capacity. Returns the current
  * state of the String.
  */
-FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed);
+FIO_FUNC fio_str_info_s fio_str_capa_assert(fio_str_s *s, size_t needed);
 
 /* *****************************************************************************
 String API - UTF-8 State
@@ -221,21 +224,21 @@ String API - Content Manipulation and Review
  * Writes data at the end of the String (similar to `fio_str_insert` with the
  * argument `pos == -1`).
  */
-inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, const void *src,
-                                              size_t src_len);
+inline FIO_FUNC fio_str_info_s fio_str_write(fio_str_s *s, const void *src,
+                                             size_t src_len);
 
 /**
  * Writes a number at the end of the String using normal base 10 notation.
  */
-inline FIO_FUNC fio_str_state_s fio_str_write_i(fio_str_s *s, int64_t num);
+inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num);
 
 /**
  * Appens the `src` String to the end of the `dest` String.
  *
  * If `src` is empty, the resulting Strings will be equal.
  */
-inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
-                                               fio_str_s const *src);
+inline FIO_FUNC fio_str_info_s fio_str_concat(fio_str_s *dest,
+                                              fio_str_s const *src);
 /** Alias for fio_str_concat */
 #define fio_str_join(dest, src) fio_str_concat((dest), (src))
 
@@ -250,25 +253,24 @@ inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
  * If `src_len == 0` than `src` will be ignored and the data marked for
  * replacement will be erased.
  */
-inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
-                                                intptr_t start_pos,
-                                                size_t old_len, const void *src,
-                                                size_t src_len);
+inline FIO_FUNC fio_str_info_s fio_str_replace(fio_str_s *s, intptr_t start_pos,
+                                               size_t old_len, const void *src,
+                                               size_t src_len);
 
 /**
  * Writes to the String using a vprintf like interface.
  *
  * Data is written to the end of the String.
  */
-FIO_FUNC fio_str_state_s fio_str_vprintf(fio_str_s *s, const char *format,
-                                         va_list argv);
+FIO_FUNC fio_str_info_s fio_str_vprintf(fio_str_s *s, const char *format,
+                                        va_list argv);
 
 /**
  * Writes to the String using a printf like interface.
  *
  * Data is written to the end of the String.
  */
-FIO_FUNC fio_str_state_s fio_str_printf(fio_str_s *s, const char *format, ...);
+FIO_FUNC fio_str_info_s fio_str_printf(fio_str_s *s, const char *format, ...);
 
 /**
  * Opens the file `filename` and pastes it's contents (or a slice ot it) at the
@@ -279,10 +281,10 @@ FIO_FUNC fio_str_state_s fio_str_printf(fio_str_s *s, const char *format, ...);
  *
  * Works on POSIX only.
  */
-inline FIO_FUNC fio_str_state_s fio_str_readfile(fio_str_s *s,
-                                                 const char *filename,
-                                                 intptr_t start_at,
-                                                 intptr_t limit);
+inline FIO_FUNC fio_str_info_s fio_str_readfile(fio_str_s *s,
+                                                const char *filename,
+                                                intptr_t start_at,
+                                                intptr_t limit);
 
 /**
  * Prevents further manipulations to the String's content.
@@ -317,17 +319,17 @@ typedef struct {
 } fio_str__small_s;
 
 /** Returns the String's state (capacity, length and pointer). */
-inline FIO_FUNC fio_str_state_s fio_str_state(const fio_str_s *s) {
+inline FIO_FUNC fio_str_info_s fio_str_state(const fio_str_s *s) {
   if (!s)
-    return (fio_str_state_s){.capa = 0};
+    return (fio_str_info_s){.capa = 0};
   return (s->small || !s->data)
-             ? (fio_str_state_s){.capa =
-                                     (s->frozen ? 0 : (FIO_STR_SMALL_CAPA - 1)),
-                                 .len = (size_t)(s->small >> 1),
-                                 .data = ((fio_str__small_s *)s)->data}
-             : (fio_str_state_s){.capa = (s->frozen ? 0 : s->capa),
-                                 .len = s->len,
-                                 .data = s->data};
+             ? (fio_str_info_s){.capa =
+                                    (s->frozen ? 0 : (FIO_STR_SMALL_CAPA - 1)),
+                                .len = (size_t)(s->small >> 1),
+                                .data = ((fio_str__small_s *)s)->data}
+             : (fio_str_info_s){.capa = (s->frozen ? 0 : s->capa),
+                                .len = s->len,
+                                .data = s->data};
 }
 
 /**
@@ -365,7 +367,7 @@ inline FIO_FUNC size_t fio_str_capa(fio_str_s *s) {
  *
  * Note: When shrinking, any existing data beyond the new size may be corrupted.
  */
-inline FIO_FUNC fio_str_state_s fio_str_resize(fio_str_s *s, size_t size) {
+inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size) {
   if (!s || s->frozen) {
     return fio_str_state(s);
   }
@@ -373,13 +375,13 @@ inline FIO_FUNC fio_str_state_s fio_str_resize(fio_str_s *s, size_t size) {
   if (s->small || !s->data) {
     s->small = (uint8_t)(((size << 1) | 1) & 0xFF);
     ((fio_str__small_s *)s)->data[size] = 0;
-    return (fio_str_state_s){.capa = (FIO_STR_SMALL_CAPA - 1),
-                             .len = size,
-                             .data = ((fio_str__small_s *)s)->data};
+    return (fio_str_info_s){.capa = (FIO_STR_SMALL_CAPA - 1),
+                            .len = size,
+                            .data = ((fio_str__small_s *)s)->data};
   }
   s->len = size;
   s->data[size] = 0;
-  return (fio_str_state_s){.capa = s->capa, .len = size, .data = s->data};
+  return (fio_str_info_s){.capa = s->capa, .len = size, .data = s->data};
 }
 
 /* *****************************************************************************
@@ -418,9 +420,9 @@ Implementation - Memory management
  * Requires the String to have at least `needed` capacity. Returns the current
  * state of the String.
  */
-FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
+FIO_FUNC fio_str_info_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
   if (!s)
-    return (fio_str_state_s){.capa = 0};
+    return (fio_str_info_s){.capa = 0};
   char *tmp;
   if (s->small || !s->data) {
     goto is_small;
@@ -433,15 +435,15 @@ FIO_FUNC fio_str_state_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
     s->data = tmp;
     s->data[needed] = 0;
   }
-  return (fio_str_state_s){
+  return (fio_str_info_s){
       .capa = (s->frozen ? 0 : s->capa), .len = s->len, .data = s->data};
 
 is_small:
   /* small string (string data is within the container) */
   if (needed < FIO_STR_SMALL_CAPA) {
-    return (fio_str_state_s){.capa = (s->frozen ? 0 : (FIO_STR_SMALL_CAPA - 1)),
-                             .len = (size_t)(s->small >> 1),
-                             .data = ((fio_str__small_s *)s)->data};
+    return (fio_str_info_s){.capa = (s->frozen ? 0 : (FIO_STR_SMALL_CAPA - 1)),
+                            .len = (size_t)(s->small >> 1),
+                            .data = ((fio_str__small_s *)s)->data};
   }
   needed = ROUND_UP_CAPA_2WORDS(needed);
   tmp = (char *)malloc(needed + 1);
@@ -458,7 +460,7 @@ is_small:
       .len = existing_len,
       .data = tmp,
   };
-  return (fio_str_state_s){
+  return (fio_str_info_s){
       .capa = (s->frozen ? 0 : needed), .len = existing_len, .data = s->data};
 }
 
@@ -574,7 +576,7 @@ static uint8_t fio_str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 inline FIO_FUNC size_t fio_str_utf8_valid(fio_str_s *s) {
   if (!s)
     return 0;
-  fio_str_state_s state = fio_str_state(s);
+  fio_str_info_s state = fio_str_state(s);
   if (!state.len)
     return 1;
   char *const end = state.data + state.len;
@@ -587,7 +589,7 @@ inline FIO_FUNC size_t fio_str_utf8_valid(fio_str_s *s) {
 
 /** Returns the String's length in UTF-8 characters. */
 FIO_FUNC size_t fio_str_utf8_len(fio_str_s *s) {
-  fio_str_state_s state = fio_str_state(s);
+  fio_str_info_s state = fio_str_state(s);
   if (!state.len)
     return 0;
   char *end = state.data + state.len;
@@ -618,7 +620,7 @@ FIO_FUNC size_t fio_str_utf8_len(fio_str_s *s) {
  * Returns -1 on error and 0 on success.
  */
 FIO_FUNC int fio_str_utf8_select(fio_str_s *s, intptr_t *pos, size_t *len) {
-  fio_str_state_s state = fio_str_state(s);
+  fio_str_info_s state = fio_str_state(s);
   if (!state.data)
     goto error;
   if (!state.len || *pos == -1)
@@ -715,11 +717,11 @@ Implementation - Content Manipulation and Review
  * Writes data at the end of the String (similar to `fio_str_insert` with the
  * argument `pos == -1`).
  */
-inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, const void *src,
-                                              size_t src_len) {
+inline FIO_FUNC fio_str_info_s fio_str_write(fio_str_s *s, const void *src,
+                                             size_t src_len) {
   if (!s || !src_len || !src || s->frozen)
     return fio_str_state(s);
-  fio_str_state_s state = fio_str_resize(s, src_len + fio_str_len(s));
+  fio_str_info_s state = fio_str_resize(s, src_len + fio_str_len(s));
   memcpy(state.data + (state.len - src_len), src, src_len);
   return state;
 }
@@ -727,7 +729,7 @@ inline FIO_FUNC fio_str_state_s fio_str_write(fio_str_s *s, const void *src,
 /**
  * Writes a number at the end of the String using normal base 10 notation.
  */
-inline FIO_FUNC fio_str_state_s fio_str_write_i(fio_str_s *s, int64_t num) {
+inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num) {
   if (!s || s->frozen)
     return fio_str_state(s);
   char buf[22];
@@ -745,7 +747,7 @@ inline FIO_FUNC fio_str_state_s fio_str_write_i(fio_str_s *s, int64_t num) {
   if (neg) {
     buf[l++] = '-';
   }
-  fio_str_state_s i = fio_str_resize(s, fio_str_len(s) + l);
+  fio_str_info_s i = fio_str_resize(s, fio_str_len(s) + l);
 
   while (l) {
     --l;
@@ -756,14 +758,14 @@ inline FIO_FUNC fio_str_state_s fio_str_write_i(fio_str_s *s, int64_t num) {
 /**
  * Appens the `src` String to the end of the `dest` String.
  */
-inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
-                                               fio_str_s const *src) {
+inline FIO_FUNC fio_str_info_s fio_str_concat(fio_str_s *dest,
+                                              fio_str_s const *src) {
   if (!dest || !src || dest->frozen)
     return fio_str_state(dest);
-  fio_str_state_s src_state = fio_str_state(src);
+  fio_str_info_s src_state = fio_str_state(src);
   if (!src_state.len)
     return fio_str_state(dest);
-  fio_str_state_s state =
+  fio_str_info_s state =
       fio_str_resize(dest, src_state.len + fio_str_len(dest));
   memcpy(state.data + state.len - src_state.len, src_state.data, src_state.len);
   return state;
@@ -780,11 +782,10 @@ inline FIO_FUNC fio_str_state_s fio_str_concat(fio_str_s *dest,
  * If `src_len == 0` than `src` will be ignored and the data marked for
  * replacement will be erased.
  */
-inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
-                                                intptr_t start_pos,
-                                                size_t old_len, const void *src,
-                                                size_t src_len) {
-  fio_str_state_s state = fio_str_state(s);
+inline FIO_FUNC fio_str_info_s fio_str_replace(fio_str_s *s, intptr_t start_pos,
+                                               size_t old_len, const void *src,
+                                               size_t src_len) {
+  fio_str_info_s state = fio_str_state(s);
   if (!s || s->frozen || (!old_len && !src_len))
     return state;
 
@@ -826,7 +827,7 @@ inline FIO_FUNC fio_str_state_s fio_str_replace(fio_str_s *s,
 }
 
 /** Writes to the String using a vprintf like interface. */
-FIO_FUNC __attribute__((format(printf, 2, 0))) fio_str_state_s
+FIO_FUNC __attribute__((format(printf, 2, 0))) fio_str_info_s
 fio_str_vprintf(fio_str_s *s, const char *format, va_list argv) {
   va_list argv_cpy;
   va_copy(argv_cpy, argv);
@@ -834,17 +835,17 @@ fio_str_vprintf(fio_str_s *s, const char *format, va_list argv) {
   va_end(argv_cpy);
   if (len <= 0)
     return fio_str_state(s);
-  fio_str_state_s state = fio_str_resize(s, len + fio_str_len(s));
+  fio_str_info_s state = fio_str_resize(s, len + fio_str_len(s));
   vsnprintf(state.data + (state.len - len), len + 1, format, argv);
   return state;
 }
 
 /** Writes to the String using a printf like interface. */
-FIO_FUNC __attribute__((format(printf, 2, 3))) fio_str_state_s
+FIO_FUNC __attribute__((format(printf, 2, 3))) fio_str_info_s
 fio_str_printf(fio_str_s *s, const char *format, ...) {
   va_list argv;
   va_start(argv, format);
-  fio_str_state_s state = fio_str_vprintf(s, format, argv);
+  fio_str_info_s state = fio_str_vprintf(s, format, argv);
   va_end(argv);
   return state;
 }
@@ -856,11 +857,11 @@ fio_str_printf(fio_str_s *s, const char *format, ...) {
  * If the file can't be located, opened or read, or if `start_at` is beyond
  * the EOF position, NULL is returned in the state's `data` field.
  */
-inline FIO_FUNC fio_str_state_s fio_str_readfile(fio_str_s *s,
-                                                 const char *filename,
-                                                 intptr_t start_at,
-                                                 intptr_t limit) {
-  fio_str_state_s state = {.data = NULL};
+inline FIO_FUNC fio_str_info_s fio_str_readfile(fio_str_s *s,
+                                                const char *filename,
+                                                intptr_t start_at,
+                                                intptr_t limit) {
+  fio_str_info_s state = {.data = NULL};
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
   /* POSIX implementations. */
   if (filename == NULL)
@@ -949,8 +950,8 @@ inline FIO_FUNC int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2) {
     return 1;
   if (!str1 || !str2)
     return 0;
-  fio_str_state_s s1 = fio_str_state(str1);
-  fio_str_state_s s2 = fio_str_state(str2);
+  fio_str_info_s s1 = fio_str_state(str1);
+  fio_str_info_s s2 = fio_str_state(str2);
   return (s1.len == s2.len && !memcmp(s1.data, s2.data, s1.len));
 }
 
@@ -1065,10 +1066,10 @@ FIO_FUNC inline void fio_str_test(void) {
 
   {
     fio_str_freeze(&str);
-    fio_str_state_s old_state = fio_str_state(&str);
+    fio_str_info_s old_state = fio_str_state(&str);
     fio_str_write(&str, "more data to be written here", 28);
     fio_str_replace(&str, 2, 1, "more data to be written here", 28);
-    fio_str_state_s new_state = fio_str_state(&str);
+    fio_str_info_s new_state = fio_str_state(&str);
     TEST_ASSERT(old_state.len == new_state.len,
                 "Frozen String length changed!");
     TEST_ASSERT(old_state.data == new_state.data,
@@ -1101,7 +1102,7 @@ FIO_FUNC inline void fio_str_test(void) {
   fio_str_free(&str);
 
   {
-    fio_str_state_s state = fio_str_readfile(&str, __FILE__, 0, 0);
+    fio_str_info_s state = fio_str_readfile(&str, __FILE__, 0, 0);
     TEST_ASSERT(state.data,
                 "`fio_str_readfile` error, no data was read for file %s!",
                 __FILE__);

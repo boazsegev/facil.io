@@ -2,7 +2,7 @@
 Copyright: Boaz Segev, 2017
 License: MIT
 */
-#include "spnlock.h"
+#include <fio.h>
 
 #include "http1.h"
 #include "http1_parser.h"
@@ -10,25 +10,17 @@ License: MIT
 #include "websockets.h"
 
 // #include "fio_ary.h"
-#include "fio_base64.h"
-#include "fio_sha1.h"
 #include "fiobj.h"
 
 #include <assert.h>
 #include <stddef.h>
-
-/* Don't use `#define FIO_OVERRIDE_MALLOC 1`
- * because protocol objects can have long life spans and fio_malloc is optimized
- * for short life spans.
- */
-#include "fio_mem.h"
 
 /* *****************************************************************************
 The HTTP/1.1 Protocol Object
 ***************************************************************************** */
 
 typedef struct http1pr_s {
-  http_protocol_s p;
+  http_fio_protocol_s p;
   http1_parser_s parser;
   http_s request;
   uintptr_t buf_len;
@@ -54,7 +46,7 @@ inline static void h1_reset(http1pr_s *p) { p->header_size = 0; }
 #define http1_pr2handle(pr) (((http1pr_s *)(pr))->request)
 #define handle2pr(h) ((http1pr_s *)h->private_data.flag)
 
-static fio_cstr_s http1pr_status2str(uintptr_t status);
+static fio_str_info_s http1pr_status2str(uintptr_t status);
 
 /* cleanup an HTTP/1.1 handler object */
 static inline void http1_after_finish(http_s *h) {
@@ -67,7 +59,7 @@ static inline void http1_after_finish(http_s *h) {
     http_s_clear(h, p->p.settings->log);
   }
   if (p->close)
-    sock_close(p->p.uuid);
+    fio_close(p->p.uuid);
 }
 
 /* *****************************************************************************
@@ -90,8 +82,8 @@ static int write_header(FIOBJ o, void *w_) {
     fiobj_each1(o, 0, write_header, w);
     return 0;
   }
-  fio_cstr_s name = fiobj_obj2cstr(w->name);
-  fio_cstr_s str = fiobj_obj2cstr(o);
+  fio_str_info_s name = fiobj_obj2cstr(w->name);
+  fio_str_info_s str = fiobj_obj2cstr(o);
   if (!str.data)
     return 0;
   fiobj_str_capa_assert(w->dest,
@@ -120,7 +112,7 @@ static FIOBJ headers2str(http_s *h, uintptr_t padding) {
   http1pr_s *p = handle2pr(h);
 
   if (p->is_client == 0) {
-    fio_cstr_s t = http1pr_status2str(h->status);
+    fio_str_info_s t = http1pr_status2str(h->status);
     fiobj_str_write(w.dest, t.data, t.length);
     FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, connection_hash);
     if (tmp) {
@@ -205,14 +197,14 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
   }
   if (length < HTTP_MAX_HEADER_LENGTH) {
     /* optimize away small files */
-    fio_cstr_s s = fiobj_obj2cstr(packet);
+    fio_str_info_s s = fiobj_obj2cstr(packet);
     fiobj_str_capa_assert(packet, s.len + length);
     s = fiobj_obj2cstr(packet);
     intptr_t i = pread(fd, s.data + s.len, length, offset);
     if (i < 0) {
       close(fd);
       fiobj_send_free((handle2pr(h)->p.uuid), packet);
-      sock_close((handle2pr(h)->p.uuid));
+      fio_close((handle2pr(h)->p.uuid));
       return -1;
     }
     close(fd);
@@ -257,38 +249,38 @@ static int http1_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
 /**
  * Called befor a pause task,
  */
-void http1_on_pause(http_s *h, http_protocol_s *pr) {
+void http1_on_pause(http_s *h, http_fio_protocol_s *pr) {
   ((http1pr_s *)pr)->stop = 1;
-  facil_quite(pr->uuid);
+  fio_quite(pr->uuid);
   (void)h;
 }
 
 /**
  * called after the resume task had completed.
  */
-void http1_on_resume(http_s *h, http_protocol_s *pr) {
+void http1_on_resume(http_s *h, http_fio_protocol_s *pr) {
   if (!((http1pr_s *)pr)->stop) {
-    facil_force_event(pr->uuid, FIO_EVENT_ON_DATA);
+    fio_force_event(pr->uuid, FIO_EVENT_ON_DATA);
   }
   (void)h;
 }
 
-intptr_t http1_hijack(http_s *h, fio_cstr_s *leftover) {
+intptr_t http1_hijack(http_s *h, fio_str_info_s *leftover) {
   if (leftover) {
     intptr_t len =
         handle2pr(h)->buf_len -
         (intptr_t)(handle2pr(h)->parser.state.next - handle2pr(h)->buf);
     if (len) {
-      *leftover =
-          (fio_cstr_s){.len = len, .bytes = handle2pr(h)->parser.state.next};
+      *leftover = (fio_str_info_s){.len = len,
+                                   .bytes = handle2pr(h)->parser.state.next};
     } else {
-      *leftover = (fio_cstr_s){.len = 0, .data = NULL};
+      *leftover = (fio_str_info_s){.len = 0, .data = NULL};
     }
   }
 
   handle2pr(h)->stop = 3;
   intptr_t uuid = handle2pr(h)->p.uuid;
-  facil_attach(uuid, NULL);
+  fio_attach(uuid, NULL);
   return uuid;
 }
 
@@ -341,7 +333,7 @@ static int http1_http2websocket_server(http_s *h, websocket_settings_s *args) {
   FIOBJ tmp = fiobj_hash_get2(h->headers, sec_version);
   if (!tmp)
     goto bad_request;
-  fio_cstr_s stmp = fiobj_obj2cstr(tmp);
+  fio_str_info_s stmp = fiobj_obj2cstr(tmp);
   if (stmp.length != 2 || stmp.data[0] != '1' || stmp.data[1] != '3')
     goto bad_request;
 
@@ -403,10 +395,10 @@ static int http1_http2websocket_client(http_s *h, websocket_settings_s *args) {
 
   /* create nonce */
   uint64_t key[2]; /* 16 bytes */
-  key[0] = (uintptr_t)h ^ (uint64_t)facil_last_tick().tv_sec;
-  key[1] = (uintptr_t)args->udata ^ (uint64_t)facil_last_tick().tv_nsec;
+  key[0] = (uintptr_t)h ^ (uint64_t)fio_last_tick().tv_sec;
+  key[1] = (uintptr_t)args->udata ^ (uint64_t)fio_last_tick().tv_nsec;
   FIOBJ encoded = fiobj_str_buf(26); /* we need 24 really. */
-  fio_cstr_s tmp = fiobj_obj2cstr(encoded);
+  fio_str_info_s tmp = fiobj_obj2cstr(encoded);
   tmp.len = fio_base64_encode(tmp.data, (char *)key, 16);
   fiobj_str_resize(encoded, tmp.len);
   http_set_header(h, HTTP_HEADER_WS_SEC_CLIENT_KEY, encoded);
@@ -431,32 +423,32 @@ EventSource Support (SSE)
 #undef http_upgrade2sse
 
 typedef struct {
-  protocol_s p;
+  fio_protocol_s p;
   http_sse_internal_s *sse;
-} http1_sse_protocol_s;
+} http1_sse_fio_protocol_s;
 
-static void http1_sse_on_ready(intptr_t uuid, protocol_s *p_) {
-  http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
+static void http1_sse_on_ready(intptr_t uuid, fio_protocol_s *p_) {
+  http1_sse_fio_protocol_s *p = (http1_sse_fio_protocol_s *)p_;
   if (p->sse->sse.on_ready)
     p->sse->sse.on_ready(&p->sse->sse);
   (void)uuid;
 }
-static uint8_t http1_sse_on_shutdown(intptr_t uuid, protocol_s *p_) {
-  http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
+static uint8_t http1_sse_on_shutdown(intptr_t uuid, fio_protocol_s *p_) {
+  http1_sse_fio_protocol_s *p = (http1_sse_fio_protocol_s *)p_;
   if (p->sse->sse.on_shutdown)
     p->sse->sse.on_shutdown(&p->sse->sse);
   return 0;
   (void)uuid;
 }
-static void http1_sse_on_close(intptr_t uuid, protocol_s *p_) {
-  http1_sse_protocol_s *p = (http1_sse_protocol_s *)p_;
+static void http1_sse_on_close(intptr_t uuid, fio_protocol_s *p_) {
+  http1_sse_fio_protocol_s *p = (http1_sse_fio_protocol_s *)p_;
   if (p->sse->sse.on_close)
     p->sse->sse.on_close(&p->sse->sse);
   http_sse_destroy(p->sse);
   free(p);
   (void)uuid;
 }
-static void http1_sse_ping(intptr_t uuid, protocol_s *p_) {
+static void http1_sse_ping(intptr_t uuid, fio_protocol_s *p_) {
   sock_write2(.uuid = uuid, .buffer = ": ping\n\n", .length = 8,
               .dealloc = SOCK_DEALLOC_NOOP);
   (void)p_;
@@ -483,10 +475,10 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
   htt1p_finish(h); /* avoid the enforced content length in http_finish */
 
   /* switch protocol to SSE */
-  http1_sse_protocol_s *sse_pr = malloc(sizeof(*sse_pr));
+  http1_sse_fio_protocol_s *sse_pr = malloc(sizeof(*sse_pr));
   if (!sse_pr)
     goto failed;
-  *sse_pr = (http1_sse_protocol_s){
+  *sse_pr = (http1_sse_fio_protocol_s){
       .p =
           {
               .service = "http/1.1 internal SSE",
@@ -503,16 +495,16 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
 
   http_sse_init(sse_pr->sse, uuid, &HTTP1_VTABLE, sse);
 
-  if (facil_attach(uuid, &sse_pr->p))
+  if (fio_attach(uuid, &sse_pr->p))
     return -1;
-  facil_set_timeout(uuid, handle2pr(h)->p.settings->ws_timeout);
+  fio_set_timeout(uuid, handle2pr(h)->p.settings->ws_timeout);
   if (sse->on_open)
     sse->on_open(&sse_pr->sse->sse);
 
   return 0;
 
 failed:
-  sock_close(handle2pr(h)->p.uuid);
+  fio_close(handle2pr(h)->p.uuid);
   if (sse->on_close)
     sse->on_close(sse);
   return -1;
@@ -533,7 +525,7 @@ static int http1_sse_write(http_sse_s *sse, FIOBJ str) {
  * Closes an EventSource (SSE) connection.
  */
 static int http1_sse_close(http_sse_s *sse) {
-  sock_close(((http_sse_internal_s *)sse)->uuid);
+  fio_close(((http_sse_internal_s *)sse)->uuid);
   return 0;
 }
 /* *****************************************************************************
@@ -675,7 +667,7 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
 
 /** called when a protocol error occured. */
 static int http1_on_error(http1_parser_s *parser) {
-  sock_close(parser2http(parser)->p.uuid);
+  fio_close(parser2http(parser)->p.uuid);
   return -1;
 }
 
@@ -690,7 +682,7 @@ Connection Callbacks
  * The string should be a global constant, only a pointer comparison will be
  * used (not `strcmp`).
  */
-static const char *HTTP1_SERVICE_STR = "http1_protocol_facil_io";
+static const char *HTTP1_SERVICE_STR = "http1_protocol_fio_io";
 
 static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
   ssize_t i = 0;
@@ -727,15 +719,15 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
   }
 
   if (!pipeline_limit) {
-    facil_force_event(uuid, FIO_EVENT_ON_DATA);
+    fio_force_event(uuid, FIO_EVENT_ON_DATA);
   }
 }
 
 /** called when a data is available, but will not run concurrently */
-static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
+static void http1_on_data(intptr_t uuid, fio_protocol_s *protocol) {
   http1pr_s *p = (http1pr_s *)protocol;
   if (p->stop) {
-    facil_quite(uuid);
+    fio_quite(uuid);
     return;
   }
   ssize_t i = 0;
@@ -749,13 +741,13 @@ static void http1_on_data(intptr_t uuid, protocol_s *protocol) {
 }
 
 /** called when the connection was closed, but will not run concurrently */
-static void http1_on_close(intptr_t uuid, protocol_s *protocol) {
+static void http1_on_close(intptr_t uuid, fio_protocol_s *protocol) {
   http1_destroy(protocol);
   (void)uuid;
 }
 
 /** called when a data is available for the first time */
-static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
+static void http1_on_data_first_time(intptr_t uuid, fio_protocol_s *protocol) {
   http1pr_s *p = (http1pr_s *)protocol;
   ssize_t i;
 
@@ -770,7 +762,7 @@ static void http1_on_data_first_time(intptr_t uuid, protocol_s *protocol) {
   if (i >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
     fprintf(stderr,
             "ERROR: unsupported HTTP/2 attempeted using prior knowledge.\n");
-    sock_close(uuid);
+    fio_close(uuid);
     return;
   }
 
@@ -785,8 +777,8 @@ Public API
 
 /** Creates an HTTP1 protocol object and handles any unread data in the buffer
  * (if any). */
-protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
-                      void *unread_data, size_t unread_length) {
+fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
+                          void *unread_data, size_t unread_length) {
   if (unread_data && unread_length > HTTP_MAX_HEADER_LENGTH)
     return NULL;
   http1pr_s *p = malloc(sizeof(*p) + HTTP_MAX_HEADER_LENGTH);
@@ -804,17 +796,17 @@ protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
       .is_client = settings->is_client,
   };
   http_s_new(&p->request, &p->p, &HTTP1_VTABLE);
-  facil_attach(uuid, &p->p.protocol);
+  fio_attach(uuid, &p->p.protocol);
   if (unread_data && unread_length <= HTTP_MAX_HEADER_LENGTH) {
     memcpy(p->buf, unread_data, unread_length);
     p->buf_len = unread_length;
-    facil_force_event(uuid, FIO_EVENT_ON_DATA);
+    fio_force_event(uuid, FIO_EVENT_ON_DATA);
   }
   return &p->p.protocol;
 }
 
 /** Manually destroys the HTTP1 protocol object. */
-void http1_destroy(protocol_s *pr) {
+void http1_destroy(fio_protocol_s *pr) {
   http1pr_s *p = (http1pr_s *)pr;
   http1_pr2handle(p).status = 0;
   http_s_destroy(&http1_pr2handle(p), 0);
@@ -830,8 +822,8 @@ Protocol Data
 // #undef HTTP_SET_STATUS_STR
 // clang-format on
 
-static fio_cstr_s http1pr_status2str(uintptr_t status) {
-  static fio_cstr_s status2str[] = {
+static fio_str_info_s http1pr_status2str(uintptr_t status) {
+  static fio_str_info_s status2str[] = {
       HTTP_SET_STATUS_STR(100, "Continue"),
       HTTP_SET_STATUS_STR(101, "Switching Protocols"),
       HTTP_SET_STATUS_STR(102, "Processing"),
@@ -897,7 +889,7 @@ static fio_cstr_s http1pr_status2str(uintptr_t status) {
       HTTP_SET_STATUS_STR(510, "Not Extended"),
       HTTP_SET_STATUS_STR(511, "Network Authentication Required"),
   };
-  fio_cstr_s ret = (fio_cstr_s){.length = 0, .buffer = NULL};
+  fio_str_info_s ret = (fio_str_info_s){.length = 0, .buffer = NULL};
   if (status >= 100 &&
       (status - 100) < sizeof(status2str) / sizeof(status2str[0]))
     ret = status2str[status - 100];

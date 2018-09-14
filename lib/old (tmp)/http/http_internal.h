@@ -7,9 +7,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_HTTP_INTERNAL_H
 #define H_HTTP_INTERNAL_H
 
-#include "spnlock.h"
+#define FIO_INCLUDE_LINKED_LIST
+#include "fio.h"
 
-#include "fio_llist.h"
 #include "http.h"
 
 #include "fiobj4sock.h"
@@ -21,7 +21,7 @@ Feel free to copy, use and enjoy according to the license provided.
 Types
 ***************************************************************************** */
 
-typedef struct http_protocol_s http_protocol_s;
+typedef struct http_fio_protocol_s http_fio_protocol_s;
 typedef struct http_vtable_s http_vtable_s;
 
 struct http_vtable_s {
@@ -42,12 +42,12 @@ struct http_vtable_s {
   /** Push for files. */
   int (*const http_push_file)(http_s *h, FIOBJ filename, FIOBJ mime_type);
   /** Pauses the request / response handling. */
-  void (*http_on_pause)(http_s *, http_protocol_s *);
+  void (*http_on_pause)(http_s *, http_fio_protocol_s *);
 
   /** Resumes a request / response handling. */
-  void (*http_on_resume)(http_s *, http_protocol_s *);
+  void (*http_on_resume)(http_s *, http_fio_protocol_s *);
   /** hijacks the socket aaway from the protocol. */
-  intptr_t (*http_hijack)(http_s *h, fio_cstr_s *leftover);
+  intptr_t (*http_hijack)(http_s *h, fio_str_info_s *leftover);
 
   /** Upgrades an HTTP connection to an EventSource (SSE) connection. */
   int (*http_upgrade2sse)(http_s *h, http_sse_s *sse);
@@ -57,13 +57,13 @@ struct http_vtable_s {
   int (*http_sse_close)(http_sse_s *sse);
 };
 
-struct http_protocol_s {
-  protocol_s protocol;       /* facil.io protocol */
+struct http_fio_protocol_s {
+  fio_protocol_s protocol;   /* facil.io protocol */
   intptr_t uuid;             /* socket uuid */
   http_settings_s *settings; /* pointer to HTTP settings */
 };
 
-#define http2protocol(h) ((http_protocol_s *)h->private_data.flag)
+#define http2protocol(h) ((http_fio_protocol_s *)h->private_data.flag)
 
 /* *****************************************************************************
 Constants that shouldn't be accessed by the users (`fiobj_dup` required).
@@ -89,7 +89,7 @@ extern FIOBJ HTTP_HVALUE_WS_VERSION;
 HTTP request/response object management
 ***************************************************************************** */
 
-static inline void http_s_new(http_s *h, http_protocol_s *owner,
+static inline void http_s_new(http_s *h, http_fio_protocol_s *owner,
                               http_vtable_s *vtbl) {
   *h = (http_s){
       .private_data =
@@ -99,7 +99,7 @@ static inline void http_s_new(http_s *h, http_protocol_s *owner,
               .out_headers = fiobj_hash_new(),
           },
       .headers = fiobj_hash_new(),
-      .received_at = facil_last_tick(),
+      .received_at = fio_last_tick(),
       .status = 200,
   };
 }
@@ -127,7 +127,8 @@ static inline void http_s_destroy(http_s *h, uint8_t log) {
 
 static inline void http_s_clear(http_s *h, uint8_t log) {
   http_s_destroy(h, log);
-  http_s_new(h, (http_protocol_s *)h->private_data.flag, h->private_data.vtbl);
+  http_s_new(h, (http_fio_protocol_s *)h->private_data.flag,
+             h->private_data.vtbl);
 }
 
 /** tests handle validity */
@@ -156,7 +157,7 @@ typedef struct http_sse_internal_s {
   http_vtable_s *vtable;  /* the protocol's vtable */
   uintptr_t id;           /* the SSE identifier */
   fio_ls_s subscriptions; /* Subscription List */
-  spn_lock_i lock;        /* Subscription List lock */
+  fio_lock_i lock;        /* Subscription List lock */
   size_t ref;             /* reference count */
 } http_sse_internal_s;
 
@@ -172,7 +173,7 @@ static inline void http_sse_init(http_sse_internal_s *sse, intptr_t uuid,
 }
 
 static inline void http_sse_try_free(http_sse_internal_s *sse) {
-  if (spn_sub(&sse->ref, 1))
+  if (fio_atomic_sub(&sse->ref, 1))
     return;
   free(sse);
 }
@@ -180,7 +181,7 @@ static inline void http_sse_try_free(http_sse_internal_s *sse) {
 static inline void http_sse_destroy(http_sse_internal_s *sse) {
   while (fio_ls_any(&sse->subscriptions)) {
     void *sub = fio_ls_pop(&sse->subscriptions);
-    facil_unsubscribe(sub);
+    fio_unsubscribe(sub);
   }
   sse->uuid = -1;
   http_sse_try_free(sse);

@@ -50,16 +50,17 @@ typedef struct {
 
 #define obj2str(o) ((fiobj_str_s *)(FIOBJ2PTR(o)))
 
-static inline fio_cstr_s fiobj_str_get_cstr(const FIOBJ o) {
-  fio_str_state_s state = fio_str_state(&obj2str(o)->str);
-  return (fio_cstr_s){.buffer = state.data, .len = state.len};
+static inline fio_str_info_s fiobj_str_get_cstr(const FIOBJ o) {
+  return fio_str_state(&obj2str(o)->str);
 }
 
 /* *****************************************************************************
 String VTables
 ***************************************************************************** */
 
-static fio_cstr_s fio_str2str(const FIOBJ o) { return fiobj_str_get_cstr(o); }
+static fio_str_info_s fio_str2str(const FIOBJ o) {
+  return fiobj_str_get_cstr(o);
+}
 
 static void fiobj_str_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
   fio_str_free(&obj2str(o)->str);
@@ -206,7 +207,7 @@ size_t fiobj_str_capa_assert(FIOBJ str, size_t size) {
   assert(FIOBJ_TYPE_IS(str, FIOBJ_T_STRING));
   if (obj2str(str)->str.frozen)
     return 0;
-  fio_str_state_s state = fio_str_capa_assert(&obj2str(str)->str, size);
+  fio_str_info_s state = fio_str_capa_assert(&obj2str(str)->str, size);
   return state.capa;
 }
 
@@ -274,7 +275,7 @@ size_t fiobj_str_printf(FIOBJ dest, const char *format, ...) {
   obj2str(dest)->hash = 0;
   va_list argv;
   va_start(argv, format);
-  fio_str_state_s state = fio_str_vprintf(&obj2str(dest)->str, format, argv);
+  fio_str_info_s state = fio_str_vprintf(&obj2str(dest)->str, format, argv);
   va_end(argv);
   return state.len;
 }
@@ -284,7 +285,7 @@ size_t fiobj_str_vprintf(FIOBJ dest, const char *format, va_list argv) {
   if (obj2str(dest)->str.frozen)
     return 0;
   obj2str(dest)->hash = 0;
-  fio_str_state_s state = fio_str_vprintf(&obj2str(dest)->str, format, argv);
+  fio_str_info_s state = fio_str_vprintf(&obj2str(dest)->str, format, argv);
   return state.len;
 }
 
@@ -298,7 +299,7 @@ size_t fiobj_str_vprintf(FIOBJ dest, const char *format, va_list argv) {
  */
 size_t fiobj_str_readfile(FIOBJ dest, const char *filename, intptr_t start_at,
                           intptr_t limit) {
-  fio_str_state_s state =
+  fio_str_info_s state =
       fio_str_readfile(&obj2str(dest)->str, filename, start_at, limit);
   return state.len;
 }
@@ -312,7 +313,7 @@ size_t fiobj_str_concat(FIOBJ dest, FIOBJ obj) {
   if (obj2str(dest)->str.frozen)
     return 0;
   obj2str(dest)->hash = 0;
-  fio_cstr_s o = fiobj_obj2cstr(obj);
+  fio_str_info_s o = fiobj_obj2cstr(obj);
   if (o.len == 0)
     return fio_str_len(&obj2str(dest)->str);
   return fio_str_write(&obj2str(dest)->str, o.data, o.len).len;
@@ -329,7 +330,7 @@ uint64_t fiobj_str_hash(FIOBJ o) {
   if (obj2str(o)->hash) {
     return obj2str(o)->hash;
   }
-  fio_str_state_s state = fio_str_state(&obj2str(o)->str);
+  fio_str_info_s state = fio_str_state(&obj2str(o)->str);
   obj2str(o)->hash = fio_siphash(state.data, state.len);
   return obj2str(o)->hash;
 }

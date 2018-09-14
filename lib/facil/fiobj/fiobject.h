@@ -62,20 +62,15 @@ typedef uintptr_t FIOBJ;
 #define FIOBJ_IS_NULL(obj) (!obj || obj == (FIOBJ)FIOBJ_T_NULL)
 #define FIOBJ_INVALID 0
 
-/** A string information type, reports anformation about a C string. */
-typedef struct {
-  union {
-    size_t len;
-    size_t length;
-  };
-  union {
-    void *buffer;
-    uint8_t *bytes;
-    char *data;
-    char *value;
-    char *name;
-  };
-} fio_cstr_s;
+#ifndef FIO_STR_INFO_TYPE
+/** A String information type, reports information about a C string. */
+typedef struct fio_str_info_s {
+  size_t capa; /* Buffer capacity, if the string is writable. */
+  size_t len;  /* String length. */
+  char *data;  /* String's first byte. */
+} fio_str_info_s;
+#define FIO_STR_INFO_TYPE
+#endif
 
 /* *****************************************************************************
 Primitives
@@ -144,7 +139,7 @@ FIO_INLINE intptr_t fiobj_obj2num(const FIOBJ obj);
 FIO_INLINE double fiobj_obj2float(const FIOBJ obj);
 
 /**
- * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
+ * Returns a C String (NUL terminated) using the `fio_str_info_s` data type.
  *
  * The Sting in binary safe and might contain NUL bytes in the middle as well as
  * a terminating NUL.
@@ -156,7 +151,7 @@ FIO_INLINE double fiobj_obj2float(const FIOBJ obj);
  *
  * A type error results in NULL (i.e. object isn't a String).
  */
-FIO_INLINE fio_cstr_s fiobj_obj2cstr(const FIOBJ obj);
+FIO_INLINE fio_str_info_s fiobj_obj2cstr(const FIOBJ obj);
 
 /**
  * Calculates an Objects's SipHash value for possible use as a HashMap key.
@@ -316,7 +311,7 @@ typedef struct {
   size_t (*const each)(FIOBJ, size_t start_at, int (*task)(FIOBJ, void *),
                        void *);
   /* object value as String */
-  fio_cstr_s (*const to_str)(const FIOBJ);
+  fio_str_info_s (*const to_str)(const FIOBJ);
   /* object value as Integer */
   intptr_t (*const to_i)(const FIOBJ);
   /* object value as Float */
@@ -493,13 +488,13 @@ FIO_INLINE intptr_t fiobj_obj2num(const FIOBJ o) {
 }
 
 /** Converts a number to a temporary, thread safe, C string object */
-fio_cstr_s fio_ltocstr(long);
+fio_str_info_s fio_ltocstr(long);
 
 /** Converts a float to a temporary, thread safe, C string object */
-fio_cstr_s fio_ftocstr(double);
+fio_str_info_s fio_ftocstr(double);
 
 /**
- * Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
+ * Returns a C String (NUL terminated) using the `fio_str_info_s` data type.
  *
  * The Sting in binary safe and might contain NUL bytes in the middle as well as
  * a terminating NUL.
@@ -511,9 +506,9 @@ fio_cstr_s fio_ftocstr(double);
  *
  * A type error results in NULL (i.e. object isn't a String).
  */
-FIO_INLINE fio_cstr_s fiobj_obj2cstr(const FIOBJ o) {
+FIO_INLINE fio_str_info_s fiobj_obj2cstr(const FIOBJ o) {
   if (!o) {
-    fio_cstr_s ret = {{4}, {(void *)"null"}};
+    fio_str_info_s ret = {0, 4, (char *)"null"};
     return ret;
   }
   if (o & FIOBJECT_NUMBER_FLAG)
@@ -521,15 +516,15 @@ FIO_INLINE fio_cstr_s fiobj_obj2cstr(const FIOBJ o) {
   if ((o & FIOBJECT_PRIMITIVE_FLAG) == FIOBJECT_PRIMITIVE_FLAG) {
     switch ((fiobj_type_enum)o) {
     case FIOBJ_T_NULL: {
-      fio_cstr_s ret = {{4}, {(void *)"null"}};
+      fio_str_info_s ret = {0, 4, (char *)"null"};
       return ret;
     }
     case FIOBJ_T_FALSE: {
-      fio_cstr_s ret = {{5}, {(void *)"false"}};
+      fio_str_info_s ret = {0, 5, (char *)"false"};
       return ret;
     }
     case FIOBJ_T_TRUE: {
-      fio_cstr_s ret = {{4}, {(void *)"true"}};
+      fio_str_info_s ret = {0, 4, (char *)"true"};
       return ret;
     }
     default:
@@ -552,8 +547,8 @@ FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o) {
     return fiobj_str_hash(o);
   if (!FIOBJ_IS_ALLOCATED(o))
     return (uint64_t)o;
-  fio_cstr_s s = fiobj_obj2cstr(o);
-  return fio_siphash(s.buffer, s.len);
+  fio_str_info_s s = fiobj_obj2cstr(o);
+  return fio_siphash(s.data, s.len);
 }
 
 /**

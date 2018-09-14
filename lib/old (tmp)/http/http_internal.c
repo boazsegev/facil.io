@@ -6,8 +6,6 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #include "http_internal.h"
 
-#include "fio_mem.h"
-
 #include "http1.h"
 
 /* *****************************************************************************
@@ -45,7 +43,7 @@ void http_on_request_handler______internal(http_s *h,
           HTTP_HVALUE_SSE_MIME))
     goto eventsource;
   if (settings->public_folder) {
-    fio_cstr_s path_str = fiobj_obj2cstr(h->path);
+    fio_str_info_s path_str = fiobj_obj2cstr(h->path);
     if (!http_sendfile2(h, settings->public_folder,
                         settings->public_folder_length, path_str.data,
                         path_str.len)) {
@@ -58,7 +56,7 @@ void http_on_request_handler______internal(http_s *h,
 upgrade:
   if (1) {
     fiobj_dup(t); /* allow upgrade name access after http_finish */
-    fio_cstr_s val = fiobj_obj2cstr(t);
+    fio_str_info_s val = fiobj_obj2cstr(t);
     if (val.data[0] == 'h' && val.data[1] == '2') {
       http_send_error(h, 400);
     } else {
@@ -82,7 +80,7 @@ void http_on_response_handler______internal(http_s *h,
     settings->on_response(h);
     return;
   } else {
-    fio_cstr_s val = fiobj_obj2cstr(t);
+    fio_str_info_s val = fiobj_obj2cstr(t);
     settings->on_upgrade(h, val.data, val.len);
   }
 }
@@ -94,12 +92,12 @@ Internal helpers
 int http_send_error2(size_t error, intptr_t uuid, http_settings_s *settings) {
   if (!uuid || !settings || !error)
     return -1;
-  protocol_s *pr = http1_new(uuid, settings, NULL, 0);
+  fio_protocol_s *pr = http1_new(uuid, settings, NULL, 0);
   http_s *r = fio_malloc(sizeof(*r));
   HTTP_ASSERT(pr, "Couldn't allocate response object for error report.")
-  http_s_new(r, (http_protocol_s *)pr, http1_vtable());
+  http_s_new(r, (http_fio_protocol_s *)pr, http1_vtable());
   int ret = http_send_error(r, error);
-  sock_close(uuid);
+  fio_close(uuid);
   return ret;
 }
 

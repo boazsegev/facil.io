@@ -266,9 +266,9 @@ size_t fiobject___noop_is_eq(const FIOBJ o1, const FIOBJ o2) {
   return 0;
 }
 
-fio_cstr_s fiobject___noop_to_str(const FIOBJ o) {
+fio_str_info_s fiobject___noop_to_str(const FIOBJ o) {
   (void)o;
-  return (fio_cstr_s){.len = 0, .data = NULL};
+  return (fio_str_info_s){.len = 0, .data = NULL};
 }
 intptr_t fiobject___noop_to_i(const FIOBJ o) {
   (void)o;

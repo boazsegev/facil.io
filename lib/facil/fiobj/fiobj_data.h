@@ -67,7 +67,7 @@ Reading API
  * The C string object will be invalidate the next time a function call to the
  * Data Stream object is made.
  */
-fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length);
+fio_str_info_s fiobj_data_read(FIOBJ io, intptr_t length);
 
 /**
  * Reads until the `token` byte is encountered or until the end of the stream.
@@ -80,7 +80,7 @@ fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length);
  * The C string object will be invalidate the next time a function call to the
  * Data Stream object is made.
  */
-fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token);
+fio_str_info_s fiobj_data_read2ch(FIOBJ io, uint8_t token);
 
 /**
  * Reads a line (until the '\n' byte is encountered) or until the end of the
@@ -120,7 +120,7 @@ void fiobj_data_seek(FIOBJ io, intptr_t position);
  * The C string object will be invalidate the next time a function call to the
  * Data Stream object is made.
  */
-fio_cstr_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length);
+fio_str_info_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length);
 
 /* *****************************************************************************
 Writing API

@@ -2289,14 +2289,14 @@ The Set's object type and behavior is controlled by the FIO_SET_OBJ_* marcos.
 To create a Set or a Hash Map, the macro FIO_SET_NAME must be defined. i.e.:
 
 ```c
-#define FIO_SET_NAME fio_cstr_set
+#define FIO_SET_NAME fio_str_info_set
 #define FIO_SET_OBJ_TYPE char *
 #define FIO_SET_OBJ_COMPARE(k1, k2) (!strcmp((k1), (k2)))
 #include <fio.h>
 // ...
-fio_cstr_set_s my_set = FIO_SET_INIT; // note type name matches FIO_SET_NAME
+fio_str_info_set_s my_set = FIO_SET_INIT; // note type name matches FIO_SET_NAME
 uint64_t hash = fio_siphash("foo", 3);
-fio_cstr_set_insert(&my_set, hash, "foo"); // note function name
+fio_str_info_set_insert(&my_set, hash, "foo"); // note function name
 ```
 
 This can be performed a number of times, defining a different Set / Hash Map each time.

@@ -66,7 +66,7 @@ static size_t fiobj_ary_is_true(const FIOBJ ary) {
   return fiobj_ary_count(ary) > 0;
 }
 
-fio_cstr_s fiobject___noop_to_str(const FIOBJ o);
+fio_str_info_s fiobject___noop_to_str(const FIOBJ o);
 intptr_t fiobject___noop_to_i(const FIOBJ o);
 double fiobject___noop_to_f(const FIOBJ o);
 

@@ -82,10 +82,10 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base);
 size_t fio_ftoa(char *dest, double num, uint8_t base);
 
 /** Converts a number to a temporary, thread safe, C string object */
-fio_cstr_s fio_ltocstr(long);
+fio_str_info_s fio_ltocstr(long);
 
 /** Converts a float to a temporary, thread safe, C string object */
-fio_cstr_s fio_ftocstr(double);
+fio_str_info_s fio_ftocstr(double);
 
 /* *****************************************************************************
 Pointer Wrapping Helper MACROs (uses integers)

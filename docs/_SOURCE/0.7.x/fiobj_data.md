@@ -68,7 +68,7 @@ Creates a new local file Data Stream object.
 #### `fiobj_data_read`
 
 ```c
-fio_cstr_s fiobj_data_read(FIOBJ io, intptr_t length);
+fio_str_info_s fiobj_data_read(FIOBJ io, intptr_t length);
 ```
 
 Reads up to `length` bytes and returns a temporary(!) buffer object (not NUL terminated).
@@ -80,7 +80,7 @@ The C string object will be invalidate the next time a function call to the Data
 #### `fiobj_data_read2ch`
 
 ```c
-fio_cstr_s fiobj_data_read2ch(FIOBJ io, uint8_t token);
+fio_str_info_s fiobj_data_read2ch(FIOBJ io, uint8_t token);
 ```
 
 Reads until the `token` byte is encountered or until the end of the stream.
@@ -133,7 +133,7 @@ Moves the reading position to the requested position.
 #### `fiobj_data_pread`
 
 ```c
-fio_cstr_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length);
+fio_str_info_s fiobj_data_pread(FIOBJ io, intptr_t start_at, uintptr_t length);
 ```
 
 Reads up to `length` bytes starting at `start_at` position and returns a temporary(!) buffer object (not NUL terminated) string object. The reading position is ignored and unchanged.

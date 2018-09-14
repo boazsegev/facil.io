@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license specified.
 #ifndef H_WEBSOCKET_PARSER_H
 /**\file
 
-A single file Websocket message parser and Websocket message wrapper, decoupled
+A single file WebSocket message parser and WebSocket message wrapper, decoupled
 from any IO layer.
 
 Notice that this header file library includes static funnction declerations that
@@ -30,7 +30,7 @@ static inline __attribute__((unused)) uint64_t
 websocket_wrapped_len(uint64_t len);
 
 /**
- * Wraps a Websocket server message and writes it to the target buffer.
+ * Wraps a WebSocket server message and writes it to the target buffer.
  *
  * The `first` and `last` flags can be used to support message fragmentation.
  *
@@ -60,7 +60,7 @@ websocket_server_wrap(void *target, void *msg, uint64_t len,
                       unsigned char last, unsigned char rsv);
 
 /**
- * Wraps a Websocket client message and writes it to the target buffer.
+ * Wraps a WebSocket client message and writes it to the target buffer.
  *
  * The `first` and `last` flags can be used to support message fragmentation.
  *
@@ -308,7 +308,7 @@ static inline uint64_t websocket_wrapped_len(uint64_t len) {
 }
 
 /**
- * Wraps a Websocket server message and writes it to the target buffer.
+ * Wraps a WebSocket server message and writes it to the target buffer.
  *
  * The `first` and `last` flags can be used to support message fragmentation.
  *
@@ -368,7 +368,7 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
 }
 
 /**
- * Wraps a Websocket client message and writes it to the target buffer.
+ * Wraps a WebSocket client message and writes it to the target buffer.
  *
  * The `first` and `last` flags can be used to support message fragmentation.
  *
@@ -501,7 +501,7 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       websocket_xmask(payload, info.packet_length, mask);
     } else if (require_masking && info.packet_length) {
 #if DEBUG
-      fprintf(stderr, "ERROR: Websocket protocol error - unmasked data.\n");
+      fprintf(stderr, "ERROR: WebSocket protocol error - unmasked data.\n");
 #endif
       websocket_on_protocol_error(udata);
     }
@@ -536,7 +536,7 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       break;
     default:
 #if DEBUG
-      fprintf(stderr, "ERROR: Websocket protocol error - unknown opcode %u\n",
+      fprintf(stderr, "ERROR: WebSocket protocol error - unknown opcode %u\n",
               (unsigned int)(pos[0] & 15));
 #endif
       websocket_on_protocol_error(udata);

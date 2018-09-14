@@ -77,7 +77,7 @@ Supports pub/sub engines (see {pubsub.h}) that can connect to a backend service
 such as Redis.
 
 The default pub/sub engine (if `NULL` or unspecified) will publish the messages
-to the process cluster (all the processes in `facil_run`).
+to the process cluster (all the processes in `fio_run`).
 
 To publish to a channel, use the API provided in {pubsub.h}.
 ***************************************************************************** */
@@ -113,7 +113,7 @@ struct websocket_subscribe_s {
   /** User opaque data, passed along to the notification. */
   void *udata;
   /** An optional callback for pattern matching. */
-  facil_match_fn match;
+  fio_match_fn match;
   /**
    * When using client forwarding (no `on_message` callback), this indicates if
    * messages should be sent to the client as binary blobs, which is the safest

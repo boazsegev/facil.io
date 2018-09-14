@@ -223,12 +223,15 @@ extern "C" {
 Helper String Information Type
 ***************************************************************************** */
 
+#ifndef FIO_STR_INFO_TYPE
 /** A string information type, reports information about a C string. */
 typedef struct fio_str_info_s {
   size_t capa; /* Buffer capacity, if the string is writable. */
   size_t len;  /* String length. */
   char *data;  /* String's first byte. */
 } fio_str_info_s;
+#define FIO_STR_INFO_TYPE
+#endif
 
 /* *****************************************************************************
 Memory pool / custom allocator for short lived objects
@@ -1167,7 +1170,7 @@ typedef struct {
  */
 void fio_defer_io_task(intptr_t uuid, fio_defer_iotask_args_s args);
 #define fio_defer_io_task(uuid, ...)                                           \
-  fio_defer_connection_task((uuid), (fio_defer_iotask_args_s){__VA_ARGS__})
+  fio_defer_io_task((uuid), (fio_defer_iotask_args_s){__VA_ARGS__})
 
 /* *****************************************************************************
 Event / Task scheduling

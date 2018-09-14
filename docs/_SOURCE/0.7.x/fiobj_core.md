@@ -134,10 +134,10 @@ A type error results in 0.
 #### `fiobj_obj2cstr`
 
 ```c
-fio_cstr_s fiobj_obj2cstr(const FIOBJ obj);
+fio_str_info_s fiobj_obj2cstr(const FIOBJ obj);
 ```
 
-Returns a C String (NUL terminated) using the `fio_cstr_s` data type.
+Returns a C String (NUL terminated) using the `fio_str_info_s` data type.
 
 The Sting in binary safe and might contain NUL bytes in the middle as well as
 a terminating NUL.

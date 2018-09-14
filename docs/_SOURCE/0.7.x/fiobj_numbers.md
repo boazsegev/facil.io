@@ -110,7 +110,7 @@ Returns the number of bytes actually written (excluding the NUL terminator).
 #### `fio_ltocstr`
 
 ```c
-fio_cstr_s fio_ltocstr(long);
+fio_str_info_s fio_ltocstr(long);
 ```
 
 Converts a number to a temporary, thread local, C string object
@@ -120,7 +120,7 @@ The `fio_str_s` object is only valid until the function is called again within t
 #### `fio_ftocstr`
 
 ```c
-fio_cstr_s fio_ftocstr(double);
+fio_str_info_s fio_ftocstr(double);
 ```
 Converts a float to a temporary, thread local, C string object
 

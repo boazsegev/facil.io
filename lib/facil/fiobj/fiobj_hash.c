@@ -133,7 +133,7 @@ static size_t fiobj_hash_is_true(const FIOBJ o) {
   return fiobj_hash_count(o) != 0;
 }
 
-fio_cstr_s fiobject___noop_to_str(const FIOBJ o);
+fio_str_info_s fiobject___noop_to_str(const FIOBJ o);
 intptr_t fiobject___noop_to_i(const FIOBJ o);
 double fiobject___noop_to_f(const FIOBJ o);
 

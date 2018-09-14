@@ -41,7 +41,7 @@ Implemented as:
 
 ```c
 static inline FIOBJ fiobj_str_copy(FIOBJ src) {
-  fio_cstr_s s = fiobj_obj2cstr(src);
+  fio_str_info_s s = fiobj_obj2cstr(src);
   return fiobj_str_new(s.data, s.len);
 }
 ```

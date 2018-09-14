@@ -41,17 +41,17 @@ void on_request(http_s *request) {
 
 ## facil.io - more than a powerful HTTP/Websockets server library.
 
-[facil.io](http://facil.io) is a C mini-framework for web applications and includes a fast HTTP and Websocket server, a [native Pub/Sub solution](), an optional Redis pub/sub engine, support for custom protocols and some nifty tidbits.
+[facil.io](http://facil.io) is an evented Network library written in C. It provides high performance TCP/IP network services by using an evented design that was tested to provide an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
+
+[facil.io](http://facil.io) includes a mini-framework for Web Applications, with a fast HTTP / WebSocket server, integrated Pub/Sub, optional Redis connectivity, easy JSON handling and more nifty tidbits.
 
 [facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.
 
-[facil.io](http://facil.io) provides high performance TCP/IP network services by using an evented design that was tested to provide an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
-
-[facil.io](http://facil.io) prefers a TCP/IP specialized solution over a generic one (although it can be easily adopted for Unix sockets, UDP and other approaches).
-
-[facil.io](http://facil.io)'s core library is an extensible two-file library (`fio.h` and `fio.c`), making it easy to incorporate into any project. The additional bundled extensions are built using the core API, which means writing new extensions is easy. 
-
 [facil.io](http://facil.io) should work on Linux / BSD / macOS (and possibly CYGWIN) and is continuously tested on both Linux and macOS.
+
+[facil.io](http://facil.io) is a source code library, making it easy to incorporate into any project. The API was designed for simplicity and extendability, which means writing new extensions and custom network protocols is easy.
+
+[facil.io](http://facil.io)'s core library is a two-file library (`fio.h` and `fio.c`), making it easy to incorporate networking solutions into any project.
 
 I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
 
@@ -136,8 +136,8 @@ HTTP Handling (Upgrading to Websocket)
 
 /* Answers simple HTTP requests */
 static void answer_http_request(http_s *h) {
-  http_set_header2(h, (fio_cstr_s){.name = "Server", .len = 6},
-                   (fio_cstr_s){.value = "facil.example", .len = 13});
+  http_set_header2(h, (fio_str_info_s){.name = "Server", .len = 6},
+                   (fio_str_info_s){.value = "facil.example", .len = 13});
   http_set_header(h, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
   /* this both sends the response and frees the http handler. */
   http_send_body(h, "This is a simple Websocket chatroom example.", 44);
@@ -151,7 +151,7 @@ static void answer_http_upgrade(http_s *h, char *target, size_t len) {
     return;
   }
   struct nickname *n = NULL;
-  fio_cstr_s path = fiobj_obj2cstr(h->path);
+  fio_str_info_s path = fiobj_obj2cstr(h->path);
   if (path.len > 1) {
     n = malloc(path.len + sizeof(*n));
     n->len = path.len - 1;

@@ -7,7 +7,9 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #define H_HTTP_H
 
-#include "facil.h"
+#include <fio.h>
+
+#include <fiobj.h>
 
 #include <time.h>
 
@@ -151,7 +153,7 @@ int http_set_header(http_s *h, FIOBJ name, FIOBJ value);
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_header2(http_s *h, fio_cstr_s name, fio_cstr_s value);
+int http_set_header2(http_s *h, fio_str_info_s name, fio_str_info_s value);
 
 /**
  * Sets a response cookie, taking ownership of the value object, but NOT the
@@ -444,7 +446,7 @@ struct http_settings_s *http_settings(http_s *h);
 /**
  * Returns the direct address of the connected peer (likely an intermediary).
  */
-sock_peer_addr_s http_peer_addr(http_s *h);
+fio_str_info_s http_peer_addr(http_s *h);
 
 /**
  * Hijacks the socket away from the HTTP protocol and away from facil.io.
@@ -465,7 +467,7 @@ sock_peer_addr_s http_peer_addr(http_s *h);
  * WARNING: this isn't a good way to handle HTTP connections, especially as
  * HTTP/2 enters the picture.
  */
-intptr_t http_hijack(http_s *h, fio_cstr_s *leftover);
+intptr_t http_hijack(http_s *h, fio_str_info_s *leftover);
 
 /* *****************************************************************************
 Websocket Upgrade (Server and Client connection establishment)
@@ -658,30 +660,22 @@ int http_upgrade2sse(http_s *h, http_sse_s);
 void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
 
 struct http_sse_subscribe_args {
-  /** The channel namr used for the subscription. */
-  FIOBJ channel;
-  /** The optional on message callback. If missing, Data is directly writen. */
-  void (*on_message)(http_sse_s *sse, FIOBJ channel, FIOBJ msg, void *udata);
-  /** An optional callback for when a subscription is fully canceled. */
-  void (*on_unsubscribe)(void *udata);
-  /** Opaque user */
-  void *udata;
+  /** The channel name used for the subscription. */
+  fio_str_info_s channel;
   /** A callback for pattern matching. */
-  facil_match_fn match;
+  fio_match_fn match;
 };
 
 /**
- * Subscribes to a channel. See {struct http_sse_subscribe_args} for possible
- * arguments.
+ * Subscribes to a channel for direct message deliverance. See {struct
+ * http_sse_subscribe_args} for possible arguments.
  *
  * Returns a subscription ID on success and 0 on failure.
  *
- * All subscriptions are automatically revoked once the connection is closed.
+ * To unsubscripbe from the channel, use `http_sse_unsubscribe` (NOT
+ * `fio_unsubscribe`).
  *
- * If the connections subscribes to the same channel more than once, messages
- * will be merged. However, another subscription ID will be assigned, and two
- * calls to {http_sse_unsubscribe} will be required in order to unregister from
- * the channel.
+ * All subscriptions are automatically cleared once the connection is closed.
  */
 uintptr_t http_sse_subscribe(http_sse_s *sse,
                              struct http_sse_subscribe_args args);
@@ -704,10 +698,10 @@ void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
  * https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
  */
 struct http_sse_write_args {
-  fio_cstr_s id;    /* (optionl) sets the `id` event property. */
-  fio_cstr_s event; /* (optionl) sets the `event` event property. */
-  fio_cstr_s data;  /* (optionl) sets the `data` event property. */
-  intptr_t retry;   /* (optionl) sets the `retry` event property. */
+  fio_str_info_s id;    /* (optionl) sets the `id` event property. */
+  fio_str_info_s event; /* (optionl) sets the `event` event property. */
+  fio_str_info_s data;  /* (optionl) sets the `data` event property. */
+  intptr_t retry;       /* (optionl) sets the `retry` event property. */
 };
 
 /**
@@ -720,7 +714,7 @@ int http_sse_write(http_sse_s *sse, struct http_sse_write_args);
   http_sse_write((sse), (struct http_sse_write_args){__VA_ARGS__})
 
 /**
- * Get the connection's UUID (for facil_defer and similar use cases).
+ * Get the connection's UUID (for `fio_defer_io_task`, pub/sub, etc').
  */
 intptr_t http_sse2uuid(http_sse_s *sse);
 
@@ -822,7 +816,7 @@ HTTP Status Strings and Mime-Type helpers
 ***************************************************************************** */
 
 /** Returns a human readable string related to the HTTP status number. */
-fio_cstr_s http_status2str(uintptr_t status);
+fio_str_info_s http_status2str(uintptr_t status);
 
 /** Registers a Mime-Type to be associated with the file extension. */
 void http_mimetype_register(char *file_ext, size_t file_ext_len,
@@ -942,14 +936,14 @@ HTTP URL parsing
 
 /** the result returned by `http_url_parse` */
 typedef struct {
-  fio_cstr_s scheme;
-  fio_cstr_s user;
-  fio_cstr_s password;
-  fio_cstr_s host;
-  fio_cstr_s port;
-  fio_cstr_s path;
-  fio_cstr_s query;
-  fio_cstr_s target;
+  fio_str_info_s scheme;
+  fio_str_info_s user;
+  fio_str_info_s password;
+  fio_str_info_s host;
+  fio_str_info_s port;
+  fio_str_info_s path;
+  fio_str_info_s query;
+  fio_str_info_s target;
 } http_url_s;
 
 /**
