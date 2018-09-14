@@ -1812,7 +1812,7 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
    ((uint32_t)0 + ((uint8_t *)(c))[0]))
 /** Converts a byte stream to a 64 bit number. */
 #define fio_str2u64(c)                                                         \
-  ((((uint64_t)0 + ((uint8_t *)(c))[7]) << 54) |                               \
+  ((((uint64_t)0 + ((uint8_t *)(c))[7]) << 56) |                               \
    (((uint64_t)0 + ((uint8_t *)(c))[6]) << 48) |                               \
    (((uint64_t)0 + ((uint8_t *)(c))[5]) << 40) |                               \
    (((uint64_t)0 + ((uint8_t *)(c))[4]) << 32) |                               \
