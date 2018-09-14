@@ -2,9 +2,9 @@ language: c
 script:
   - make vars
   - DEBUG=1 make vars
-  - make test/optimized
+  - # make test/optimized
   - make clean
-  - LSAN_OPTIONS=verbosity=1:log_threads=1 make test/ci
+  - make test/ci
 os:
   - linux
   - osx
