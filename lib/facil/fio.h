@@ -1779,7 +1779,7 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
 #define __BIG_ENDIAN__ 1
 #elif !defined(__BIG_ENDIAN__) && !defined(__BYTE_ORDER__) &&                  \
     !defined(__LITTLE_ENDIAN__)
-#error Couldn't detect byte order on this system.
+#error Could not detect byte order on this system.
 #endif
 
 #if __BIG_ENDIAN__
