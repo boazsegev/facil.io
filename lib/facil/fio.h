@@ -34,6 +34,7 @@ Table of contents:
 * Cluster / Pub/Sub Middleware and Extensions ("Engines")
 *
 * Atomic Operations and Spin Locking Helper Functions
+* Byte Swapping and Network Order
 *
 * Converting Numbers to Strings (and back)
 * Strings to Numbers
@@ -1719,6 +1720,142 @@ FIO_FUNC inline void fio_reschedule_thread(void);
 
 /** Nanosleep the thread - a blocking throttle. */
 FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+                         Byte Swapping and Network Order
+                       (Big Endian v.s Little Endian etc')
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/** inplace byte swap 16 bit integer */
+#if __has_builtin(__builtin_bswap16)
+#define fio_bswap16(i) __builtin_bswap16((uint16_t)(i))
+#else
+#define fio_bswap16(i) ((((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8))
+#endif
+/** inplace byte swap 32 bit integer */
+#if __has_builtin(__builtin_bswap32)
+#define fio_bswap32(i) __builtin_bswap32((uint32_t)(i));
+#else
+#define fio_bswap32(i)                                                         \
+  ((((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) | (((i)&0xFF0000UL) >> 8) |    \
+   (((i)&0xFF000000UL) >> 24))
+#endif
+/** inplace byte swap 64 bit integer */
+#if __has_builtin(__builtin_bswap64)
+#define fio_bswap64(i) __builtin_bswap64((uint64_t)(i));
+#else
+#define fio_bswap64(i)                                                         \
+  ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                           \
+   (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                    \
+   (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |            \
+   (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
+#endif
+
+#if (defined(__BIG_ENDIAN__) && __BIG_ENDIAN__) || /*                          \
+  (defined(BIG_ENDIAN) && BIG_ENDIAN) || */                                    \
+    (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#define __BIG_ENDIAN__ 1
+#warning Byte Order is big endian!
+#elif !defined(__BIG_ENDIAN__) && !defined(BIG_ENDIAN) &&                      \
+    !defined(__BYTE_ORDER__) && !defined(__LITTLE_ENDIAN__)
+#error Couldn't detect byte order on this system.
+#endif
+
+#if __BIG_ENDIAN__
+
+/** Local byte order to Network byte order, 16 bit integer */
+#define fio_lton16(i) (i)
+/** Local byte order to Network byte order, 32 bit integer */
+#define fio_lton32(i) (i)
+/** Local byte order to Network byte order, 62 bit integer */
+#define fio_lton64(i) (i)
+
+/** Network byte order to Local byte order, 16 bit integer */
+#define fio_ntol16(i) (i)
+/** Network byte order to Local byte order, 32 bit integer */
+#define fio_ntol32(i) (i)
+/** Network byte order to Local byte order, 62 bit integer */
+#define fio_ntol64(i) (i)
+
+/** Converts a byte stream to a 16 bit number. */
+#define fio_str2u16(c)                                                         \
+  ((((uint16_t)0 + ((uint8_t *)(c))[1]) << 8) |                                \
+   ((uint16_t)0 + ((uint8_t *)(c))[0]))
+/** Converts a byte stream to a 32 bit number. */
+#define fio_str2u32(c)                                                         \
+  ((((uint32_t)0 + ((uint8_t *)(c))[3]) << 24) |                               \
+   (((uint32_t)0 + ((uint8_t *)(c))[2]) << 16) |                               \
+   (((uint32_t)0 + ((uint8_t *)(c))[1]) << 8) |                                \
+   ((uint32_t)0 + ((uint8_t *)(c))[0]))
+/** Converts a byte stream to a 64 bit number. */
+#define fio_str2u64(c)                                                         \
+  ((((uint64_t)0 + ((uint8_t *)(c))[7]) << 54) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[6]) << 48) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[5]) << 40) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[4]) << 32) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[3]) << 24) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[2]) << 16) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[1]) << 8) |                                \
+   ((uint64_t)0 + ((uint8_t *)(c))[0]))
+
+#else /* Little Endian */
+
+/** Local byte order to Network byte order, 16 bit integer */
+#define fio_lton16(i) fio_bswap16((i))
+/** Local byte order to Network byte order, 32 bit integer */
+#define fio_lton32(i) fio_bswap32((i))
+/** Local byte order to Network byte order, 62 bit integer */
+#define fio_lton64(i) fio_bswap64((i))
+
+/** Network byte order to Local byte order, 16 bit integer */
+#define fio_ntol16(i) fio_bswap16((i))
+/** Network byte order to Local byte order, 32 bit integer */
+#define fio_ntol32(i) fio_bswap32((i))
+/** Network byte order to Local byte order, 62 bit integer */
+#define fio_ntol64(i) fio_bswap64((i))
+
+/** Converts a byte stream to a 16 bit number. */
+#define fio_str2u16(c)                                                         \
+  ((((uint16_t)0 + ((uint8_t *)(c))[0]) << 8) |                                \
+   ((uint16_t)0 + ((uint8_t *)(c))[1]))
+/** Converts a byte stream to a 32 bit number. */
+#define fio_str2u32(c)                                                         \
+  ((((uint32_t)0 + ((uint8_t *)(c))[0]) << 24) |                               \
+   (((uint32_t)0 + ((uint8_t *)(c))[1]) << 16) |                               \
+   (((uint32_t)0 + ((uint8_t *)(c))[2]) << 8) |                                \
+   ((uint32_t)0 + ((uint8_t *)(c))[3]))
+/** Converts a byte stream to a 64 bit number. */
+#define fio_str2u64(c)                                                         \
+  ((((uint64_t)0 + ((uint8_t *)(c))[0]) << 56) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[1]) << 48) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[2]) << 40) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[3]) << 32) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[4]) << 24) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[5]) << 16) |                               \
+   (((uint64_t)0 + ((uint8_t *)(c))[6]) << 8) |                                \
+   ((uint64_t)0 + ((uint8_t *)(c))[7]))
+#endif
 
 /* *****************************************************************************
 

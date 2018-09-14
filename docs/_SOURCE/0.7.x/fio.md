@@ -2782,6 +2782,108 @@ inline void fio_throttle_thread(size_t nano_sec);
 
 A blocking throttle using `nanosleep`.
 
+
+### Byte Ordering Helpers (Network vs. Local)
+
+Different byte ordering schemes often effect network applications, especially when sending binary data.
+
+The 16 bit number might be represented as `0xaf00` on one machine and as `0x00af` on another.
+
+These helpers help concert between network byte ordering (Big Endian) to a local byte ordering scheme.
+
+These helpers also help extract numerical content from a binary string.
+
+#### `fio_lton16`
+
+```c
+#define fio_lton16(i) /* system specific */
+```
+
+Local byte order to Network byte order, 16 bit integer.
+#### `fio_lton32`
+
+```c
+#define fio_lton32(i) /* system specific */
+```
+
+Local byte order to Network byte order, 32 bit integer.
+#### `fio_lton64`
+
+```c
+#define fio_lton64(i) /* system specific */
+```
+
+Local byte order to Network byte order, 62 bit integer.
+
+#### `fio_ntol16`
+
+```c
+#define fio_ntol16(i) /* system specific */
+```
+
+Network byte order to Local byte order, 16 bit integer.
+#### `fio_ntol32`
+
+```c
+#define fio_ntol32(i) /* system specific */
+```
+
+Network byte order to Local byte order, 32 bit integer.
+#### `fio_ntol64`
+
+```c
+#define fio_ntol64(i) /* system specific */
+```
+
+Network byte order to Local byte order, 62 bit integer.
+#### `fio_str2u16`
+
+```c
+#define fio_str2u16(c) /* system specific */
+```
+
+Reads a 16 bit number from a byte stream.
+
+#### `fio_str2u32`
+
+```c
+#define fio_str2u32(c) /* system specific */
+```
+
+Reads a 32 bit number from a byte stream.
+
+#### `fio_str2u64`
+
+```c
+#define fio_str2u64(c) /* system specific */
+```
+
+Reads a 64 bit number from a byte stream.
+
+#### `fio_bswap16`
+
+```c
+#define fio_bswap16(i) /* system specific */
+```
+
+Swaps the byte order in a 16 bit integer.
+
+#### `fio_bswap32`
+
+```c
+#define fio_bswap32(i) /* system specific */
+```
+
+Swaps the byte order in a 32 bit integer.
+
+#### `fio_bswap64`
+
+```c
+#define fio_bswap64(i) /* system specific */
+```
+
+Swaps the byte order in a 64 bit integer.
+
 ### Strings to Numbers
 
 #### `fio_atol`

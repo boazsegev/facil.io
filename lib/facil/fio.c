@@ -12,6 +12,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <pthread.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -4789,31 +4790,14 @@ static void fio_cluster_init(void) {
  * Cluster Protocol callbacks
  **************************************************************************** */
 
-#ifdef __BIG_ENDIAN__
-inline static uint32_t fio_cluster_str2uint32(uint8_t *str) {
-  return ((str[0] & 0xFF) | ((((uint32_t)str[1]) << 8) & 0xFF00) |
-          ((((uint32_t)str[2]) << 16) & 0xFF0000) |
-          ((((uint32_t)str[3]) << 24) & 0xFF000000));
-}
 inline static void fio_cluster_uint2str(uint8_t *dest, uint32_t i) {
-  dest[0] = i & 0xFF;
-  dest[1] = (i >> 8) & 0xFF;
-  dest[2] = (i >> 16) & 0xFF;
-  dest[3] = (i >> 24) & 0xFF;
+  i = fio_lton32(i);
+  memcpy(dest, &i, 4);
+  // dest[0] = i & 0xFF;
+  // dest[1] = (i >> 8) & 0xFF;
+  // dest[2] = (i >> 16) & 0xFF;
+  // dest[3] = (i >> 24) & 0xFF;
 }
-#else
-inline static uint32_t fio_cluster_str2uint32(uint8_t *str) {
-  return (((((uint32_t)str[0]) << 24) & 0xFF000000) |
-          ((((uint32_t)str[1]) << 16) & 0xFF0000) |
-          ((((uint32_t)str[2]) << 8) & 0xFF00) | (str[3] & 0xFF));
-}
-inline static void fio_cluster_uint2str(uint8_t *dest, uint32_t i) {
-  dest[0] = (i >> 24) & 0xFF;
-  dest[1] = (i >> 16) & 0xFF;
-  dest[2] = (i >> 8) & 0xFF;
-  dest[3] = i & 0xFF;
-}
-#endif
 
 typedef struct cluster_msg_s {
   fio_msg_s message;
@@ -4862,10 +4846,10 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
     if (!c->exp_channel && !c->exp_msg) {
       if (c->length - i < 16)
         break;
-      c->exp_channel = fio_cluster_str2uint32(c->buffer + i);
-      c->exp_msg = fio_cluster_str2uint32(c->buffer + i + 4);
-      c->type = fio_cluster_str2uint32(c->buffer + i + 8);
-      c->filter = (int32_t)fio_cluster_str2uint32(c->buffer + i + 12);
+      c->exp_channel = fio_str2u32(c->buffer + i);
+      c->exp_msg = fio_str2u32(c->buffer + i + 4);
+      c->type = fio_str2u32(c->buffer + i + 8);
+      c->filter = (int32_t)fio_str2u32(c->buffer + i + 12);
       if (c->exp_channel) {
         if (c->exp_channel >= (1024 * 1024 * 16)) {
           fprintf(stderr,
@@ -6298,108 +6282,31 @@ Section Start Marker
 ***************************************************************************** */
 
 /** 32Bit left rotation, inlined. */
-#define left_rotate32(i, bits)                                                 \
+#define fio_lrot32(i, bits)                                                    \
   (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> (32 - (bits))))
 /** 32Bit right rotation, inlined. */
-#define right_rotate32(i, bits)                                                \
+#define fio_rrot32(i, bits)                                                    \
   (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << (32 - (bits))))
 /** 64Bit left rotation, inlined. */
-#define left_rotate64(i, bits)                                                 \
+#define fio_lrot64(i, bits)                                                    \
   (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
 /** 64Bit right rotation, inlined. */
-#define right_rotate64(i, bits)                                                \
+#define fio_rrot64(i, bits)                                                    \
   (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << (64 - (bits))))
 /** unknown size element - left rotation, inlined. */
-#define left_rotate(i, bits) (((i) << (bits)) | ((i) >> (sizeof((i)) - (bits))))
+#define fio_lrot(i, bits) (((i) << (bits)) | ((i) >> (sizeof((i)) - (bits))))
 /** unknown size element - right rotation, inlined. */
-#define right_rotate(i, bits)                                                  \
-  (((i) >> (bits)) | ((i) << (sizeof((i)) - (bits))))
-/** inplace byte swap 16 bit integer */
-#if __has_builtin(__builtin_bswap16)
-#define bswap16(i)                                                             \
-  do {                                                                         \
-    (i) = __builtin_bswap16((uint16_t)i);                                      \
-  } while (0);
-#else
-#define bswap16(i)                                                             \
-  do {                                                                         \
-    (i) = (((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8);                           \
-  } while (0);
-#endif
-/** inplace byte swap 32 bit integer */
-#if __has_builtin(__builtin_bswap32)
-#define bswap32(i)                                                             \
-  do {                                                                         \
-    (i) = __builtin_bswap32((uint32_t)i);                                      \
-  } while (0);
-#else
-#define bswap32(i)                                                             \
-  do {                                                                         \
-    (i) = (((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) |                       \
-          (((i)&0xFF0000UL) >> 8) | (((i)&0xFF000000UL) >> 24);                \
-  } while (0);
-#endif
-/** inplace byte swap 64 bit integer */
-#if __has_builtin(__builtin_bswap64)
-#define bswap64(i)                                                             \
-  do {                                                                         \
-    (i) = __builtin_bswap64((uint64_t)i);                                      \
-  } while (0);
-#else
-#define bswap64(i)                                                             \
-  do {                                                                         \
-    (i) = (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                    \
-          (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |             \
-          (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |     \
-          (((i)&0xFF000000000000ULL) >> 40) |                                  \
-          (((i)&0xFF00000000000000ULL) >> 56);                                 \
-  } while (0);
-#endif
-
-#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) &&                 \
-    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ /* Big Endian */
-
-/* the algorithm was designed as little endian... so, byte swap 64 bit. */
-#define sip_local64(i)                                                         \
-  (((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                            \
-      (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                 \
-      (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |         \
-      (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56)
-/** Converts a 4 byte string to a uint32_t word. careful with alignment! */
-#define str2word32(c) (*((uint32_t *)(c)))
-#define str2word64(c) (*((uint64_t *)(c)))
-
-#else /* Little Endian */
-
-/* no need */
-#define sip_local64(i) (i)
-/**
-Converts a 4 byte string to a Big Endian uint32_t word. (ignores alignment!)
-*/
-#define str2word32(c)                                                          \
-  (((*((uint32_t *)(c))) & 0xFFUL) << 24) |                                    \
-      (((*((uint32_t *)(c))) & 0xFF00UL) << 8) |                               \
-      (((*((uint32_t *)(c))) & 0xFF0000UL) >> 8) |                             \
-      (((*((uint32_t *)(c))) & 0xFF000000UL) >> 24)
-#define str2word64(c)                                                          \
-  (((*((uint64_t *)(c))) & 0xFFULL) << 56) |                                   \
-      (((*((uint64_t *)(c))) & 0xFF00ULL) << 40) |                             \
-      (((*((uint64_t *)(c))) & 0xFF0000ULL) << 24) |                           \
-      (((*((uint64_t *)(c))) & 0xFF000000ULL) << 8) |                          \
-      (((*((uint64_t *)(c))) & 0xFF00000000ULL) >> 8) |                        \
-      (((*((uint64_t *)(c))) & 0xFF0000000000ULL) >> 24) |                     \
-      (((*((uint64_t *)(c))) & 0xFF000000000000ULL) >> 40) |                   \
-      (((*((uint64_t *)(c))) & 0xFF00000000000000ULL) >> 56);
-#define str2word(c)                                                            \
-  (((*((uint32_t *)(c))) & 0xFFUL) << 24) |                                    \
-      (((*((uint32_t *)(c))) & 0xFF00UL) << 8) |                               \
-      (((*((uint32_t *)(c))) & 0xFF0000UL) >> 8) |                             \
-      (((*((uint32_t *)(c))) & 0xFF000000UL) >> 24)
-#endif
+#define fio_rrot(i, bits) (((i) >> (bits)) | ((i) << (sizeof((i)) - (bits))))
 
 /* *****************************************************************************
 SipHash
 ***************************************************************************** */
+
+#if __BIG_ENDIAN__ /* SipHash is Little Endian */
+#define sip_local64(i) fio_bswap64((i))
+#else
+#define sip_local64(i) (i)
+#endif
 
 static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
                                       size_t y) {
@@ -6418,15 +6325,15 @@ static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
 #define hash_map_SipRound                                                      \
   do {                                                                         \
     v2 += v3;                                                                  \
-    v3 = left_rotate64(v3, 16) ^ v2;                                           \
+    v3 = fio_lrot64(v3, 16) ^ v2;                                              \
     v0 += v1;                                                                  \
-    v1 = left_rotate64(v1, 13) ^ v0;                                           \
-    v0 = left_rotate64(v0, 32);                                                \
+    v1 = fio_lrot64(v1, 13) ^ v0;                                              \
+    v0 = fio_lrot64(v0, 32);                                                   \
     v2 += v1;                                                                  \
     v0 += v3;                                                                  \
-    v1 = left_rotate64(v1, 17) ^ v2;                                           \
-    v3 = left_rotate64(v3, 21) ^ v0;                                           \
-    v2 = left_rotate64(v2, 32);                                                \
+    v1 = fio_lrot64(v1, 17) ^ v2;                                              \
+    v3 = fio_lrot64(v3, 21) ^ v0;                                              \
+    v2 = fio_lrot64(v2, 32);                                                   \
   } while (0);
 
   while (len >= 8) {
@@ -6515,29 +6422,29 @@ static inline void fio_sha1_perform_all_rounds(fio_sha1_s *s,
   uint32_t e = s->digest.i[4];
   uint32_t t, w[16];
   /* copy data to words, performing byte swapping as needed */
-  w[0] = str2word32(buffer);
-  w[1] = str2word32(buffer + 4);
-  w[2] = str2word32(buffer + 8);
-  w[3] = str2word32(buffer + 12);
-  w[4] = str2word32(buffer + 16);
-  w[5] = str2word32(buffer + 20);
-  w[6] = str2word32(buffer + 24);
-  w[7] = str2word32(buffer + 28);
-  w[8] = str2word32(buffer + 32);
-  w[9] = str2word32(buffer + 36);
-  w[10] = str2word32(buffer + 40);
-  w[11] = str2word32(buffer + 44);
-  w[12] = str2word32(buffer + 48);
-  w[13] = str2word32(buffer + 52);
-  w[14] = str2word32(buffer + 56);
-  w[15] = str2word32(buffer + 60);
+  w[0] = fio_str2u32(buffer);
+  w[1] = fio_str2u32(buffer + 4);
+  w[2] = fio_str2u32(buffer + 8);
+  w[3] = fio_str2u32(buffer + 12);
+  w[4] = fio_str2u32(buffer + 16);
+  w[5] = fio_str2u32(buffer + 20);
+  w[6] = fio_str2u32(buffer + 24);
+  w[7] = fio_str2u32(buffer + 28);
+  w[8] = fio_str2u32(buffer + 32);
+  w[9] = fio_str2u32(buffer + 36);
+  w[10] = fio_str2u32(buffer + 40);
+  w[11] = fio_str2u32(buffer + 44);
+  w[12] = fio_str2u32(buffer + 48);
+  w[13] = fio_str2u32(buffer + 52);
+  w[14] = fio_str2u32(buffer + 56);
+  w[15] = fio_str2u32(buffer + 60);
   /* perform rounds */
 #undef perform_single_round
 #define perform_single_round(num)                                              \
-  t = left_rotate32(a, 5) + e + w[num] + ((b & c) | ((~b) & d)) + 0x5A827999;  \
+  t = fio_lrot32(a, 5) + e + w[num] + ((b & c) | ((~b) & d)) + 0x5A827999;     \
   e = d;                                                                       \
   d = c;                                                                       \
-  c = left_rotate32(b, 30);                                                    \
+  c = fio_lrot32(b, 30);                                                       \
   b = a;                                                                       \
   a = t;
 
@@ -6554,14 +6461,13 @@ static inline void fio_sha1_perform_all_rounds(fio_sha1_s *s,
 
 #undef perform_single_round
 #define perform_single_round(i)                                                \
-  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
-                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
-                            1);                                                \
-  t = left_rotate32(a, 5) + e + w[(i)&15] + ((b & c) | ((~b) & d)) +           \
-      0x5A827999;                                                              \
+  w[(i)&15] = fio_lrot32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^                  \
+                          w[(i - 14) & 15] ^ w[(i - 16) & 15]),                \
+                         1);                                                   \
+  t = fio_lrot32(a, 5) + e + w[(i)&15] + ((b & c) | ((~b) & d)) + 0x5A827999;  \
   e = d;                                                                       \
   d = c;                                                                       \
-  c = left_rotate32(b, 30);                                                    \
+  c = fio_lrot32(b, 30);                                                       \
   b = a;                                                                       \
   a = t;
 
@@ -6569,13 +6475,13 @@ static inline void fio_sha1_perform_all_rounds(fio_sha1_s *s,
 
 #undef perform_single_round
 #define perform_single_round(i)                                                \
-  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
-                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
-                            1);                                                \
-  t = left_rotate32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0x6ED9EBA1;          \
+  w[(i)&15] = fio_lrot32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^                  \
+                          w[(i - 14) & 15] ^ w[(i - 16) & 15]),                \
+                         1);                                                   \
+  t = fio_lrot32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0x6ED9EBA1;             \
   e = d;                                                                       \
   d = c;                                                                       \
-  c = left_rotate32(b, 30);                                                    \
+  c = fio_lrot32(b, 30);                                                       \
   b = a;                                                                       \
   a = t;
 
@@ -6587,14 +6493,14 @@ static inline void fio_sha1_perform_all_rounds(fio_sha1_s *s,
 
 #undef perform_single_round
 #define perform_single_round(i)                                                \
-  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
-                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
-                            1);                                                \
-  t = left_rotate32(a, 5) + e + w[(i)&15] + ((b & (c | d)) | (c & d)) +        \
+  w[(i)&15] = fio_lrot32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^                  \
+                          w[(i - 14) & 15] ^ w[(i - 16) & 15]),                \
+                         1);                                                   \
+  t = fio_lrot32(a, 5) + e + w[(i)&15] + ((b & (c | d)) | (c & d)) +           \
       0x8F1BBCDC;                                                              \
   e = d;                                                                       \
   d = c;                                                                       \
-  c = left_rotate32(b, 30);                                                    \
+  c = fio_lrot32(b, 30);                                                       \
   b = a;                                                                       \
   a = t;
 
@@ -6605,13 +6511,13 @@ static inline void fio_sha1_perform_all_rounds(fio_sha1_s *s,
   perform_four_rounds(56);
 #undef perform_single_round
 #define perform_single_round(i)                                                \
-  w[(i)&15] = left_rotate32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^               \
-                             w[(i - 14) & 15] ^ w[(i - 16) & 15]),             \
-                            1);                                                \
-  t = left_rotate32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0xCA62C1D6;          \
+  w[(i)&15] = fio_lrot32((w[(i - 3) & 15] ^ w[(i - 8) & 15] ^                  \
+                          w[(i - 14) & 15] ^ w[(i - 16) & 15]),                \
+                         1);                                                   \
+  t = fio_lrot32(a, 5) + e + w[(i)&15] + (b ^ c ^ d) + 0xCA62C1D6;             \
   e = d;                                                                       \
   d = c;                                                                       \
-  c = left_rotate32(b, 30);                                                    \
+  c = fio_lrot32(b, 30);                                                       \
   b = a;                                                                       \
   a = t;
   perform_four_rounds(60);
@@ -6683,23 +6589,16 @@ char *fio_sha1_result(fio_sha1_s *s) {
   /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
   uint64_t *len = (uint64_t *)(s->buffer + 56);
   *len = s->length << 3;
-#ifndef __BIG_ENDIAN__
-  bswap64(*len);
-#endif
+  *len = fio_lton64(*len);
   fio_sha1_perform_all_rounds(s, s->buffer);
 
-/* change back to little endian, if required */
-#ifndef __BIG_ENDIAN__
-  bswap32(s->digest.i[0]);
-  bswap32(s->digest.i[1]);
-  bswap32(s->digest.i[2]);
-  bswap32(s->digest.i[3]);
-  bswap32(s->digest.i[4]);
-#endif
-  // fprintf(stderr, "result requested, in hex, is:");
-  // for (size_t i = 0; i < 20; i++)
-  //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
-  // fprintf(stderr, "\r\n");
+  /* change back to little endian */
+  s->digest.i[0] = fio_ntol32(s->digest.i[0]);
+  s->digest.i[1] = fio_ntol32(s->digest.i[1]);
+  s->digest.i[2] = fio_ntol32(s->digest.i[2]);
+  s->digest.i[3] = fio_ntol32(s->digest.i[3]);
+  s->digest.i[4] = fio_ntol32(s->digest.i[4]);
+
   return (char *)s->digest.str;
 }
 
@@ -6761,22 +6660,18 @@ static uint64_t sha2_512_words[] = {
 #define Maj(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
 
 #define Eps0_32(x)                                                             \
-  (right_rotate32((x), 2) ^ right_rotate32((x), 13) ^ right_rotate32((x), 22))
+  (fio_rrot32((x), 2) ^ fio_rrot32((x), 13) ^ fio_rrot32((x), 22))
 #define Eps1_32(x)                                                             \
-  (right_rotate32((x), 6) ^ right_rotate32((x), 11) ^ right_rotate32((x), 25))
-#define Omg0_32(x)                                                             \
-  (right_rotate32((x), 7) ^ right_rotate32((x), 18) ^ (((x) >> 3)))
-#define Omg1_32(x)                                                             \
-  (right_rotate32((x), 17) ^ right_rotate32((x), 19) ^ (((x) >> 10)))
+  (fio_rrot32((x), 6) ^ fio_rrot32((x), 11) ^ fio_rrot32((x), 25))
+#define Omg0_32(x) (fio_rrot32((x), 7) ^ fio_rrot32((x), 18) ^ (((x) >> 3)))
+#define Omg1_32(x) (fio_rrot32((x), 17) ^ fio_rrot32((x), 19) ^ (((x) >> 10)))
 
 #define Eps0_64(x)                                                             \
-  (right_rotate64((x), 28) ^ right_rotate64((x), 34) ^ right_rotate64((x), 39))
+  (fio_rrot64((x), 28) ^ fio_rrot64((x), 34) ^ fio_rrot64((x), 39))
 #define Eps1_64(x)                                                             \
-  (right_rotate64((x), 14) ^ right_rotate64((x), 18) ^ right_rotate64((x), 41))
-#define Omg0_64(x)                                                             \
-  (right_rotate64((x), 1) ^ right_rotate64((x), 8) ^ (((x) >> 7)))
-#define Omg1_64(x)                                                             \
-  (right_rotate64((x), 19) ^ right_rotate64((x), 61) ^ (((x) >> 6)))
+  (fio_rrot64((x), 14) ^ fio_rrot64((x), 18) ^ fio_rrot64((x), 41))
+#define Omg0_64(x) (fio_rrot64((x), 1) ^ fio_rrot64((x), 8) ^ (((x) >> 7)))
+#define Omg1_64(x) (fio_rrot64((x), 19) ^ fio_rrot64((x), 61) ^ (((x) >> 6)))
 
 /**
 Process the buffer once full.
@@ -6794,22 +6689,22 @@ static inline void fio_sha2_perform_all_rounds(fio_sha2_s *s,
     uint64_t g = s->digest.i64[6];
     uint64_t h = s->digest.i64[7];
     uint64_t t1, t2, w[80];
-    w[0] = str2word64(data);
-    w[1] = str2word64(data + 8);
-    w[2] = str2word64(data + 16);
-    w[3] = str2word64(data + 24);
-    w[4] = str2word64(data + 32);
-    w[5] = str2word64(data + 40);
-    w[6] = str2word64(data + 48);
-    w[7] = str2word64(data + 56);
-    w[8] = str2word64(data + 64);
-    w[9] = str2word64(data + 72);
-    w[10] = str2word64(data + 80);
-    w[11] = str2word64(data + 88);
-    w[12] = str2word64(data + 96);
-    w[13] = str2word64(data + 104);
-    w[14] = str2word64(data + 112);
-    w[15] = str2word64(data + 120);
+    w[0] = fio_str2u64(data);
+    w[1] = fio_str2u64(data + 8);
+    w[2] = fio_str2u64(data + 16);
+    w[3] = fio_str2u64(data + 24);
+    w[4] = fio_str2u64(data + 32);
+    w[5] = fio_str2u64(data + 40);
+    w[6] = fio_str2u64(data + 48);
+    w[7] = fio_str2u64(data + 56);
+    w[8] = fio_str2u64(data + 64);
+    w[9] = fio_str2u64(data + 72);
+    w[10] = fio_str2u64(data + 80);
+    w[11] = fio_str2u64(data + 88);
+    w[12] = fio_str2u64(data + 96);
+    w[13] = fio_str2u64(data + 104);
+    w[14] = fio_str2u64(data + 112);
+    w[15] = fio_str2u64(data + 120);
 
 #undef perform_single_round
 #define perform_single_round(i)                                                \
@@ -6887,22 +6782,22 @@ static inline void fio_sha2_perform_all_rounds(fio_sha2_s *s,
     uint32_t h = s->digest.i32[7];
     uint32_t t1, t2, w[64];
 
-    w[0] = str2word32(data);
-    w[1] = str2word32(data + 4);
-    w[2] = str2word32(data + 8);
-    w[3] = str2word32(data + 12);
-    w[4] = str2word32(data + 16);
-    w[5] = str2word32(data + 20);
-    w[6] = str2word32(data + 24);
-    w[7] = str2word32(data + 28);
-    w[8] = str2word32(data + 32);
-    w[9] = str2word32(data + 36);
-    w[10] = str2word32(data + 40);
-    w[11] = str2word32(data + 44);
-    w[12] = str2word32(data + 48);
-    w[13] = str2word32(data + 52);
-    w[14] = str2word32(data + 56);
-    w[15] = str2word32(data + 60);
+    w[0] = fio_str2u32(data);
+    w[1] = fio_str2u32(data + 4);
+    w[2] = fio_str2u32(data + 8);
+    w[3] = fio_str2u32(data + 12);
+    w[4] = fio_str2u32(data + 16);
+    w[5] = fio_str2u32(data + 20);
+    w[6] = fio_str2u32(data + 24);
+    w[7] = fio_str2u32(data + 28);
+    w[8] = fio_str2u32(data + 32);
+    w[9] = fio_str2u32(data + 36);
+    w[10] = fio_str2u32(data + 40);
+    w[11] = fio_str2u32(data + 44);
+    w[12] = fio_str2u32(data + 48);
+    w[13] = fio_str2u32(data + 52);
+    w[14] = fio_str2u32(data + 56);
+    w[15] = fio_str2u32(data + 60);
 
 #undef perform_single_round
 #define perform_single_round(i)                                                \
@@ -7060,17 +6955,12 @@ void fio_sha2_write(fio_sha2_s *s, const void *data, size_t len) {
   size_t in_buffer;
   size_t partial;
   if (s->type & 1) { /* 512 type derived */
-#if defined(HAS_UINT128)
-    in_buffer = s->length.i & 127;
-    s->length.i += len;
-#else
     in_buffer = s->length.words[0] & 127;
     if (s->length.words[0] + len < s->length.words[0]) {
       /* we are at wraping around the 64bit limit */
       s->length.words[1] = (s->length.words[1] << 1) | 1;
     }
     s->length.words[0] += len;
-#endif
     partial = 128 - in_buffer;
 
     if (partial > len) {
@@ -7131,11 +7021,7 @@ char *fio_sha2_result(fio_sha2_s *s) {
   if (s->type & 1) {
     /* 512 bits derived hashing */
 
-#if defined(HAS_UINT128)
-    size_t in_buffer = s->length.i & 127;
-#else
     size_t in_buffer = s->length.words[0] & 127;
-#endif
 
     if (in_buffer > 111) {
       memcpy(s->buffer + in_buffer, sha2_padding, 128 - in_buffer);
@@ -7149,16 +7035,12 @@ char *fio_sha2_result(fio_sha2_s *s) {
     /* store the length in BITS - alignment should be promised by struct */
     /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
 
-#if defined(HAS_UINT128)
-    s->length.i = s->length.i << 3;
-#else
     s->length.words[1] = (s->length.words[1] << 3) | (s->length.words[0] >> 61);
     s->length.words[0] = s->length.words[0] << 3;
-#endif
+    s->length.words[0] = fio_lton64(s->length.words[0]);
+    s->length.words[1] = fio_lton64(s->length.words[1]);
 
 #ifndef __BIG_ENDIAN__
-    bswap64(s->length.words[0]);
-    bswap64(s->length.words[1]);
     {
       uint_fast64_t tmp = s->length.words[0];
       s->length.words[0] = s->length.words[1];
@@ -7166,39 +7048,38 @@ char *fio_sha2_result(fio_sha2_s *s) {
     }
 #endif
 
-#if defined(HAS_UINT128)
-    __uint128_t *len = (__uint128_t *)(s->buffer + 112);
-    *len = s->length.i;
-#else
     uint64_t *len = (uint64_t *)(s->buffer + 112);
     len[0] = s->length.words[0];
     len[1] = s->length.words[1];
-#endif
     fio_sha2_perform_all_rounds(s, s->buffer);
 
-/* change back to little endian, if required */
-#ifndef __BIG_ENDIAN__
-    bswap64(s->digest.i64[0]);
-    bswap64(s->digest.i64[1]);
-    bswap64(s->digest.i64[2]);
-    bswap64(s->digest.i64[3]);
-    bswap64(s->digest.i64[4]);
-    bswap64(s->digest.i64[5]);
-    bswap64(s->digest.i64[6]);
-    bswap64(s->digest.i64[7]);
-#endif
-    // set NULL bytes for SHA_224
-    if (s->type == SHA_512_224)
+    /* change back to little endian */
+    s->digest.i64[0] = fio_ntol64(s->digest.i64[0]);
+    s->digest.i64[1] = fio_ntol64(s->digest.i64[1]);
+    s->digest.i64[2] = fio_ntol64(s->digest.i64[2]);
+    s->digest.i64[3] = fio_ntol64(s->digest.i64[3]);
+    s->digest.i64[4] = fio_ntol64(s->digest.i64[4]);
+    s->digest.i64[5] = fio_ntol64(s->digest.i64[5]);
+    s->digest.i64[6] = fio_ntol64(s->digest.i64[6]);
+    s->digest.i64[7] = fio_ntol64(s->digest.i64[7]);
+    // set NULL bytes for SHA-2 Type
+    switch (s->type) {
+    case SHA_512_224:
       s->digest.str[28] = 0;
-    // set NULL bytes for SHA_256
-    else if (s->type == SHA_512_256)
+      break;
+    case SHA_512_256:
       s->digest.str[32] = 0;
-    // set NULL bytes for SHA_384
-    else if (s->type == SHA_384)
+      break;
+    case SHA_384:
       s->digest.str[48] = 0;
-    s->digest.str[64] = 0; /* sometimes the optimizer messes the NUL sequence */
+      break;
+    default:
+      s->digest.str[64] =
+          0; /* sometimes the optimizer messes the NUL sequence */
+      break;
+    }
     // fprintf(stderr, "result requested, in hex, is:");
-    // for (size_t i = 0; i < 20; i++)
+    // for (size_t i = 0; i < ((s->type & 1) ? 64 : 32); i++)
     //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
     // fprintf(stderr, "\r\n");
     return (char *)s->digest.str;
@@ -7218,29 +7099,25 @@ char *fio_sha2_result(fio_sha2_s *s) {
   /* this must the number in BITS, encoded as a BIG ENDIAN 64 bit number */
   uint64_t *len = (uint64_t *)(s->buffer + 56);
   *len = s->length.words[0] << 3;
-#ifndef __BIG_ENDIAN__
-  bswap64(*len);
-#endif
+  *len = fio_lton64(*len);
   fio_sha2_perform_all_rounds(s, s->buffer);
 
-/* change back to little endian, if required */
-#ifndef __BIG_ENDIAN__
+  /* change back to little endian, if required */
 
-  bswap32(s->digest.i32[0]);
-  bswap32(s->digest.i32[1]);
-  bswap32(s->digest.i32[2]);
-  bswap32(s->digest.i32[3]);
-  bswap32(s->digest.i32[4]);
-  bswap32(s->digest.i32[5]);
-  bswap32(s->digest.i32[6]);
-  bswap32(s->digest.i32[7]);
+  s->digest.i32[0] = fio_ntol32(s->digest.i32[0]);
+  s->digest.i32[1] = fio_ntol32(s->digest.i32[1]);
+  s->digest.i32[2] = fio_ntol32(s->digest.i32[2]);
+  s->digest.i32[3] = fio_ntol32(s->digest.i32[3]);
+  s->digest.i32[4] = fio_ntol32(s->digest.i32[4]);
+  s->digest.i32[5] = fio_ntol32(s->digest.i32[5]);
+  s->digest.i32[6] = fio_ntol32(s->digest.i32[6]);
+  s->digest.i32[7] = fio_ntol32(s->digest.i32[7]);
 
-#endif
   // set NULL bytes for SHA_224
   if (s->type == SHA_224)
     s->digest.str[28] = 0;
   // fprintf(stderr, "SHA-2 result requested, in hex, is:");
-  // for (size_t i = 0; i < (s->type_512 ? 64 : 32); i++)
+  // for (size_t i = 0; i < ((s->type & 1) ? 64 : 32); i++)
   //   fprintf(stderr, "%02x", (unsigned int)(s->digest.str[i] & 0xFF));
   // fprintf(stderr, "\r\n");
   return (char *)s->digest.str;
@@ -8861,16 +8738,6 @@ void fio_sha2_test(void) {
   if (strcmp(expect, got))
     goto error;
 
-  s = fio_sha2_init(SHA_384);
-  fio_sha2_write(&s, str, 0);
-  expect = "\x38\xb0\x60\xa7\x51\xac\x96\x38\x4c\xd9\x32\x7e"
-           "\xb1\xb1\xe3\x6a\x21\xfd\xb7\x11\x14\xbe\x07\x43\x4c\x0c"
-           "\xc7\xbf\x63\xf6\xe1\xda\x27\x4e\xde\xbf\xe7\x6f\x65\xfb"
-           "\xd5\x1a\xd2\xf1\x48\x98\xb9\x5b";
-  got = fio_sha2_result(&s);
-  if (strcmp(expect, got))
-    goto error;
-
   s = fio_sha2_init(SHA_512);
   fio_sha2_write(&s, str, 0);
   expect = "\xcf\x83\xe1\x35\x7e\xef\xb8\xbd\xf1\x54\x28\x50\xd6\x6d"
@@ -8878,6 +8745,16 @@ void fio_sha2_test(void) {
            "\xd3\x6c\xe9\xce\x47\xd0\xd1\x3c\x5d\x85\xf2\xb0\xff\x83"
            "\x18\xd2\x87\x7e\xec\x2f\x63\xb9\x31\xbd\x47\x41\x7a\x81"
            "\xa5\x38\x32\x7a\xf9\x27\xda\x3e";
+  got = fio_sha2_result(&s);
+  if (strcmp(expect, got))
+    goto error;
+
+  s = fio_sha2_init(SHA_384);
+  fio_sha2_write(&s, str, 0);
+  expect = "\x38\xb0\x60\xa7\x51\xac\x96\x38\x4c\xd9\x32\x7e"
+           "\xb1\xb1\xe3\x6a\x21\xfd\xb7\x11\x14\xbe\x07\x43\x4c\x0c"
+           "\xc7\xbf\x63\xf6\xe1\xda\x27\x4e\xde\xbf\xe7\x6f\x65\xfb"
+           "\xd5\x1a\xd2\xf1\x48\x98\xb9\x5b";
   got = fio_sha2_result(&s);
   if (strcmp(expect, got))
     goto error;
@@ -9249,13 +9126,11 @@ static void fio_pubsub_test(void) {
   TEST_ASSERT(!s, "fio_subscribe should fail without a callback!");
   char buffer[8];
   fio_cluster_uint2str((uint8_t *)buffer + 1, 42);
-  TEST_ASSERT(
-      fio_cluster_str2uint32((uint8_t *)buffer + 1) == 42,
-      "fio_cluster_uint2str / fio_cluster_str2uint32 not reversible (42)!");
+  TEST_ASSERT(fio_str2u32((uint8_t *)buffer + 1) == 42,
+              "fio_cluster_uint2str / fio_str2u32 not reversible (42)!");
   fio_cluster_uint2str((uint8_t *)buffer, 4);
-  TEST_ASSERT(
-      fio_cluster_str2uint32((uint8_t *)buffer) == 4,
-      "fio_cluster_uint2str / fio_cluster_str2uint32 not reversible (4)!");
+  TEST_ASSERT(fio_str2u32((uint8_t *)buffer) == 4,
+              "fio_cluster_uint2str / fio_str2u32 not reversible (4)!");
   s = fio_subscribe(.filter = 1, .udata1 = &counter,
                     .on_message = fio_pubsub_test_on_message,
                     .on_unsubscribe = fio_pubsub_test_on_unsubscribe);
@@ -9411,6 +9286,8 @@ Run all tests
 
 void fio_test(void) {
   TEST_ASSERT(fio_capa(), "facil.io initialization error!");
+  fio_sha1_test();
+  fio_sha2_test();
   fio_malloc_test();
   fio_state_callback_test();
   fio_str_test();
