@@ -1,5 +1,7 @@
 language: c
-script: make test_build_and_run
+script:
+  - make test/optimized
+  - make test/ci
 os:
   - linux
   - osx

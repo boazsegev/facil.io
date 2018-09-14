@@ -137,7 +137,15 @@ A type error results in 0.
 fio_str_info_s fiobj_obj2cstr(const FIOBJ obj);
 ```
 
-Returns a C String (NUL terminated) using the `fio_str_info_s` data type.
+Returns a C String (NUL terminated) using the `fio_str_info_s` data type:
+
+```c
+typedef struct fio_str_info_s {
+  size_t capa; /* String capacity, if the string is writable. (only FIOBJ_T_STRING) */
+  size_t len;  /* String length. */
+  char *data;  /* String's first byte. */
+} fio_str_info_s;
+```
 
 The Sting in binary safe and might contain NUL bytes in the middle as well as
 a terminating NUL.

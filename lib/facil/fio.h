@@ -2265,12 +2265,6 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec) {
   nanosleep(&tm, NULL);
 }
 
-/** An atomic based spinlock. */
-typedef uint8_t volatile fio_lock_i;
-
-/** The initail value of an unlocked spinlock. */
-#define FIO_LOCK_INIT 0
-
 /** returns 0 if the lock was acquired and -1 on failure. */
 FIO_FUNC inline int fio_trylock(fio_lock_i *lock) {
   __asm__ volatile("" ::: "memory");

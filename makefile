@@ -84,6 +84,16 @@ ifndef CPP
 	CPP=g++
 endif
 
+# c standard
+ifndef CSTD
+	CSTD:=c11
+endif
+# c++ standard
+ifndef CPPSTD
+	CPPSTD:=gnu++11
+endif
+
+
 ##############
 ## OS specific data - compiler, assembler etc.
 
@@ -179,8 +189,8 @@ endif
 # Updated flags and final values
 
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
-CFLAGS:= $(CFLAGS) -g -std=c11 -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
-CPPFLAGS:= $(CPPFLAGS) -std=gnu++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CPPFLAGS:= $(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 LINKER_FLAGS=$(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFALGS_DEPENDENCY=-MT $@ -MMD -MP
 
@@ -265,7 +275,7 @@ test/optimized: | clean test_add_speed_flags create_tree $(LIB_OBJS)
 
 .PHONY : test/ci
 test/ci:| clean 
-	@DEBUG=1 $(MAKE) test_build_and_run
+	@CSTD=c99 DEBUG=1 $(MAKE) test_build_and_run
 
 .PHONY : test_build_and_run
 test_build_and_run: | create_tree test_add_flags test/build

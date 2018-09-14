@@ -4054,7 +4054,7 @@ typedef struct {
   fio_match_fn match;
 } pattern_s;
 
-typedef struct subscription_s {
+struct subscription_s {
   fio_ls_embd_s node;
   channel_s *parent;
   void (*on_message)(fio_msg_s *msg);
@@ -4066,7 +4066,7 @@ typedef struct subscription_s {
   /** prevents the callback from running concurrently for multiple messages. */
   fio_lock_i lock;
   fio_lock_i unsubscribed;
-} subscription_s;
+};
 
 #define FIO_SET_NAME fio_ch_set
 #define FIO_SET_OBJ_TYPE channel_s *
