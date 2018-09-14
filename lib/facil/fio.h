@@ -1772,8 +1772,9 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
    (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
 #endif
 
-#if (defined(__BIG_ENDIAN__) && __BIG_ENDIAN__) || /*                          \
-  (defined(BIG_ENDIAN) && BIG_ENDIAN) || */                                    \
+#if (defined(__BIG_ENDIAN__) && __BIG_ENDIAN__) ||                             \
+    (defined(__LITTLE_ENDIAN__) &&                                             \
+     !__LITTLE_ENDIAN__) || /*(defined(BIG_ENDIAN) && BIG_ENDIAN) ||   */      \
     (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 #define __BIG_ENDIAN__ 1
 #warning Byte Order is big endian!
