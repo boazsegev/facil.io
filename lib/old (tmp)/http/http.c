@@ -1270,10 +1270,9 @@ uintptr_t http_sse_subscribe(http_sse_s *sse_,
 
   fio_atomic_add(&sse->ref, 1);
   subscription_s *sub =
-      fio_subscribe_pubsub(.channel = args.channel,
-                           .on_message = http_sse_on_message,
-                           .on_unsubscribe = http_sse_on_unsubscribe,
-                           .udata1 = sse, .udata2 = udata, .match = args.match);
+      fio_subscribe(.channel = args.channel, .on_message = http_sse_on_message,
+                    .on_unsubscribe = http_sse_on_unsubscribe, .udata1 = sse,
+                    .udata2 = udata, .match = args.match);
   if (!sub)
     return 0;
 

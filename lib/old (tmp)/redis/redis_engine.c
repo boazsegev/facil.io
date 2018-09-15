@@ -119,7 +119,7 @@ static void redis_send_cmd_queue(void *r_, void *ignr) {
     spn_unlock(&r->lock);
     // fprintf(stderr, "Sending: %s\n", cmd->cmd);
     sock_write2(.uuid = uuid, .buffer = cmd->cmd, .length = cmd->cmd_len,
-                .dealloc = SOCK_DEALLOC_NOOP);
+                .dealloc = FIO_DEALLOC_NOOP);
   } else {
     r->sent = 0;
     spn_unlock(&r->lock);
@@ -199,7 +199,7 @@ static void redis_on_pub_connect(intptr_t uuid, void *pr) {
     r->sent = 1;
     spn_unlock(&r->lock);
     sock_write2(.uuid = uuid, .buffer = cmd->cmd, .length = cmd->cmd_len,
-                .dealloc = SOCK_DEALLOC_NOOP);
+                .dealloc = FIO_DEALLOC_NOOP);
   } else {
     r->sent = 0;
     defer(redis_send_cmd_queue, r, NULL);
@@ -221,7 +221,7 @@ static void redis_on_sub_connect(intptr_t uuid, void *pr) {
 
   if (r->auth)
     sock_write2(.uuid = uuid, .buffer = r->auth, .length = r->auth_len,
-                .dealloc = SOCK_DEALLOC_NOOP);
+                .dealloc = FIO_DEALLOC_NOOP);
   facil_pubsub_reattach(&r->en);
   if (!r->pub_data.uuid) {
     spn_add(&r->ref, 1);
@@ -291,8 +291,8 @@ static void redis_on_data(intptr_t uuid, protocol_s *pr) {
   } else {
     buf = r->buf;
   }
-  ssize_t i = sock_read(uuid, buf + internal->buf_pos,
-                        REDIS_READ_BUFFER - internal->buf_pos);
+  ssize_t i = fio_read(uuid, buf + internal->buf_pos,
+                       REDIS_READ_BUFFER - internal->buf_pos);
   if (i <= 0)
     return;
   internal->buf_pos += i;
@@ -336,14 +336,14 @@ static void redis_sub_on_close(intptr_t uuid, protocol_s *pr) {
 
 static uint8_t redis_on_shutdown(intptr_t uuid, protocol_s *pr) {
   sock_write2(.uuid = uuid, .buffer = "*1\r\n$4\r\nQUIT\r\n", .length = 14,
-              .dealloc = SOCK_DEALLOC_NOOP);
+              .dealloc = FIO_DEALLOC_NOOP);
   return 0;
   (void)pr;
 }
 
 static void redis_sub_ping(intptr_t uuid, protocol_s *pr) {
   sock_write2(.uuid = uuid, .buffer = "*1\r\n$4\r\nPING\r\n", .length = 14,
-              .dealloc = SOCK_DEALLOC_NOOP);
+              .dealloc = FIO_DEALLOC_NOOP);
   (void)pr;
 }
 

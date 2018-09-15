@@ -87,9 +87,9 @@ typedef struct {
   /** the websocket receiving the message. */
   ws_s *ws;
   /** the channel where the message was published. */
-  FIOBJ channel;
+  fio_str_info_s channel;
   /** the published message. */
-  FIOBJ message;
+  fio_str_info_s message;
   /** user opaque data. */
   void *udata;
 } websocket_pubsub_notification_s;

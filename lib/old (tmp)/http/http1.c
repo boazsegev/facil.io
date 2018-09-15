@@ -449,8 +449,8 @@ static void http1_sse_on_close(intptr_t uuid, fio_protocol_s *p_) {
   (void)uuid;
 }
 static void http1_sse_ping(intptr_t uuid, fio_protocol_s *p_) {
-  sock_write2(.uuid = uuid, .buffer = ": ping\n\n", .length = 8,
-              .dealloc = SOCK_DEALLOC_NOOP);
+  fio_write2(uuid, .data.buffer = ": ping\n\n", .length = 8,
+             .after.dealloc = FIO_DEALLOC_NOOP);
   (void)p_;
 }
 
@@ -481,7 +481,6 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
   *sse_pr = (http1_sse_fio_protocol_s){
       .p =
           {
-              .service = "http/1.1 internal SSE",
               .on_ready = http1_sse_on_ready,
               .on_shutdown = http1_sse_on_shutdown,
               .on_close = http1_sse_on_close,
@@ -494,13 +493,10 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
     goto failed;
 
   http_sse_init(sse_pr->sse, uuid, &HTTP1_VTABLE, sse);
-
-  if (fio_attach(uuid, &sse_pr->p))
-    return -1;
   fio_set_timeout(uuid, handle2pr(h)->p.settings->ws_timeout);
   if (sse->on_open)
     sse->on_open(&sse_pr->sse->sse);
-
+  fio_attach(uuid, &sse_pr->p);
   return 0;
 
 failed:
@@ -732,8 +728,8 @@ static void http1_on_data(intptr_t uuid, fio_protocol_s *protocol) {
   }
   ssize_t i = 0;
   if (HTTP_MAX_HEADER_LENGTH - p->buf_len)
-    i = sock_read(uuid, p->buf + p->buf_len,
-                  HTTP_MAX_HEADER_LENGTH - p->buf_len);
+    i = fio_read(uuid, p->buf + p->buf_len,
+                 HTTP_MAX_HEADER_LENGTH - p->buf_len);
   if (i > 0) {
     p->buf_len += i;
   }
@@ -751,7 +747,7 @@ static void http1_on_data_first_time(intptr_t uuid, fio_protocol_s *protocol) {
   http1pr_s *p = (http1pr_s *)protocol;
   ssize_t i;
 
-  i = sock_read(uuid, p->buf + p->buf_len, HTTP_MAX_HEADER_LENGTH - p->buf_len);
+  i = fio_read(uuid, p->buf + p->buf_len, HTTP_MAX_HEADER_LENGTH - p->buf_len);
 
   if (i <= 0)
     return;

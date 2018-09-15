@@ -127,11 +127,6 @@ struct ws_s {
   uint8_t is_client;
 };
 
-/**
-The Websocket Protocol Identifying String. Used for the `each` function.
-*/
-char *WEBSOCKET_ID_STR = "websockets";
-
 /* *****************************************************************************
 Create/Destroy the websocket subscription objects
 ***************************************************************************** */
@@ -175,14 +170,14 @@ static void websocket_on_protocol_ping(void *ws_p, void *msg_, uint64_t len) {
     len = (((ws_s *)ws)->is_client
                ? websocket_client_wrap(buff, msg_, len, 10, 1, 1, 0)
                : websocket_server_wrap(buff, msg_, len, 10, 1, 1, 0));
-    sock_write2(.uuid = ws->fd, .buffer = buff, .length = len);
+    fio_write2(ws->fd, .data.buffer = buff, .length = len);
   } else {
     if (((ws_s *)ws)->is_client) {
-      sock_write2(.uuid = ws->fd, .buffer = "\x89\x80mask", .length = 2,
-                  .dealloc = SOCK_DEALLOC_NOOP);
+      fio_write2(ws->fd, .data.buffer = "\x89\x80mask", .length = 2,
+                 .after.dealloc = FIO_DEALLOC_NOOP);
     } else {
-      sock_write2(.uuid = ws->fd, .buffer = "\x89\x00", .length = 2,
-                  .dealloc = SOCK_DEALLOC_NOOP);
+      fio_write2(ws->fd, .data.buffer = "\x89\x00", .length = 2,
+                 .after.dealloc = FIO_DEALLOC_NOOP);
     }
   }
 }
@@ -209,11 +204,11 @@ The Websocket Protocol implementation
 static void ws_ping(intptr_t fd, fio_protocol_s *ws) {
   (void)(ws);
   if (((ws_s *)ws)->is_client) {
-    sock_write2(.uuid = fd, .buffer = "\x89\x80MASK", .length = 6,
-                .dealloc = SOCK_DEALLOC_NOOP);
+    fio_write2(fd, .data.buffer = "\x89\x80MASK", .length = 6,
+               .after.dealloc = FIO_DEALLOC_NOOP);
   } else {
-    sock_write2(.uuid = fd, .buffer = "\x89\x00", .length = 2,
-                .dealloc = SOCK_DEALLOC_NOOP);
+    fio_write2(fd, .data.buffer = "\x89\x00", .length = 2,
+               .after.dealloc = FIO_DEALLOC_NOOP);
   }
 }
 
@@ -224,7 +219,7 @@ static void on_close(intptr_t uuid, fio_protocol_s *_ws) {
 
 static void on_ready(intptr_t fduuid, fio_protocol_s *ws) {
   (void)(fduuid);
-  if (ws && ws->service == WEBSOCKET_ID_STR && ((ws_s *)ws)->on_ready)
+  if (((ws_s *)ws)->on_ready)
     ((ws_s *)ws)->on_ready((ws_s *)ws);
 }
 
@@ -233,18 +228,18 @@ static uint8_t on_shutdown(intptr_t fd, fio_protocol_s *ws) {
   if (ws && ((ws_s *)ws)->on_shutdown)
     ((ws_s *)ws)->on_shutdown((ws_s *)ws);
   if (((ws_s *)ws)->is_client) {
-    sock_write2(.uuid = fd, .buffer = "\x8a\x80MASK", .length = 6,
-                .dealloc = SOCK_DEALLOC_NOOP);
+    fio_write2(fd, .data.buffer = "\x8a\x80MASK", .length = 6,
+               .after.dealloc = FIO_DEALLOC_NOOP);
   } else {
-    sock_write2(.uuid = fd, .buffer = "\x8a\x00", .length = 2,
-                .dealloc = SOCK_DEALLOC_NOOP);
+    fio_write2(fd, .data.buffer = "\x8a\x00", .length = 2,
+               .after.dealloc = FIO_DEALLOC_NOOP);
   }
   return 0;
 }
 
 static void on_data(intptr_t sockfd, fio_protocol_s *ws_) {
   ws_s *const ws = (ws_s *)ws_;
-  if (ws == NULL || ws->protocol.service != WEBSOCKET_ID_STR)
+  if (ws == NULL)
     return;
   struct websocket_packet_info_s info =
       websocket_buffer_peek(ws->buffer.data, ws->length);
@@ -266,8 +261,8 @@ static void on_data(intptr_t sockfd, fio_protocol_s *ws_) {
     }
   }
 
-  const ssize_t len = sock_read(sockfd, (uint8_t *)ws->buffer.data + ws->length,
-                                ws->buffer.size - ws->length);
+  const ssize_t len = fio_read(sockfd, (uint8_t *)ws->buffer.data + ws->length,
+                               ws->buffer.size - ws->length);
   if (len <= 0) {
     return;
   }
@@ -288,9 +283,8 @@ static void on_data_first(intptr_t sockfd, fio_protocol_s *ws_) {
     ws->length = websocket_consume(ws->buffer.data, ws->length, ws,
                                    (~(ws->is_client) & 1));
   }
-  evio_add_write(fio_uuid2fd(sockfd), (void *)sockfd);
-
   fio_force_event(sockfd, FIO_EVENT_ON_DATA);
+  fio_force_event(sockfd, FIO_EVENT_ON_READY);
 }
 
 /* later */
@@ -305,7 +299,6 @@ static ws_s *new_websocket(intptr_t uuid) {
   // allocate the protocol object
   ws_s *ws = malloc(sizeof(*ws));
   *ws = (ws_s){
-      .protocol.service = WEBSOCKET_ID_STR,
       .protocol.ping = ws_ping,
       .protocol.on_data = on_data_first,
       .protocol.on_close = on_close,
@@ -420,7 +413,8 @@ static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
                                           first, last, 0)
                   : websocket_server_wrap(buff, data, len, (text ? 1 : 2),
                                           first, last, 0));
-    sock_write2(.uuid = fd, .buffer = buff, .length = len, .dealloc = fio_free);
+    fio_write2(fd, .data.buffer = buff, .length = len,
+               .after.dealloc = fio_free);
   } else {
     /* frame fragmentation is better for large data then large frames */
     while (len > WS_MAX_FRAME_SIZE) {
@@ -736,7 +730,7 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
       .on_unsubscribe = args.on_unsubscribe,
   };
   subscription_s *sub = fio_subscribe(
-          .channel = args.channel, .match = args.match,
+          .channel = fiobj_obj2cstr(args.channel), .match = args.match,
           .on_unsubscribe = websocket_on_unsubscribe,
           .on_message =
               (args.on_message
@@ -803,171 +797,8 @@ int websocket_write(ws_s *ws, void *data, size_t size, uint8_t is_text) {
 }
 /** Closes a websocket connection. */
 void websocket_close(ws_s *ws) {
-  sock_write2(.uuid = ws->fd, .buffer = "\x88\x00", .length = 2,
-              .dealloc = SOCK_DEALLOC_NOOP);
+  fio_write2(ws->fd, .data.buffer = "\x88\x00", .length = 2,
+             .after.dealloc = FIO_DEALLOC_NOOP);
   fio_close(ws->fd);
   return;
-}
-
-/**
-Counts the number of websocket connections.
-*/
-size_t websocket_count(void) { return fio_count(WEBSOCKET_ID_STR); }
-
-/*******************************************************************************
-Each Implementation
-*/
-
-/** A task container. */
-struct WSTask {
-  void (*task)(ws_s *, void *);
-  void (*on_finish)(ws_s *, void *);
-  void *arg;
-};
-/** Performs a task on each websocket connection that shares the same process
- */
-static void perform_ws_task(intptr_t fd, fio_protocol_s *ws_, void *tsk_) {
-  (void)(fd);
-  struct WSTask *tsk = tsk_;
-  tsk->task((ws_s *)(ws_), tsk->arg);
-}
-/** clears away a wesbocket task. */
-static void finish_ws_task(intptr_t fd, void *arg) {
-  struct WSTask *tsk = arg;
-  if (tsk->on_finish) {
-    fio_protocol_s *ws = fio_protocol_try_lock(fd, FIO_PR_LOCK_TASK);
-    if (!ws && errno != EBADF) {
-      fio_defer((void (*)(void *, void *))finish_ws_task, (void *)fd, arg);
-      return;
-    }
-    tsk->on_finish((ws_s *)ws, tsk->arg);
-    if (ws)
-      fio_protocol_unlock(ws, FIO_PR_LOCK_TASK);
-  }
-  free(tsk);
-}
-
-/**
-Performs a task on each websocket connection that shares the same process
-(except the originating `ws_s` connection which is allowed to be NULL).
- */
-#undef websocket_each
-void __attribute__((deprecated))
-websocket_each(struct websocket_each_args_s args) {
-  struct WSTask *tsk = malloc(sizeof(*tsk));
-  tsk->arg = args.arg;
-  tsk->on_finish = args.on_finish;
-  tsk->task = args.task;
-  fio_each(.origin = (args.origin ? args.origin->fd : -1),
-           .service = WEBSOCKET_ID_STR, .task = perform_ws_task, .arg = tsk,
-           .on_complete = finish_ws_task);
-}
-/*******************************************************************************
-Multi-Write (direct broadcast) Implementation
-*/
-struct websocket_multi_write {
-  uint8_t (*if_callback)(ws_s *ws_to, void *arg);
-  void (*on_finished)(ws_s *ws_origin, void *arg);
-  intptr_t origin;
-  void *arg;
-  fio_lock_i lock;
-  /* ... we need to have padding for pointer arithmatics... */
-  uint8_t as_client;
-  /* ... we need to have padding for pointer arithmatics... */
-  size_t count;
-  size_t length;
-  uint8_t buffer[]; /* starts on border alignment */
-};
-
-static void ws_mw_defered_on_finish_fb(intptr_t fd, void *arg) {
-  (void)(fd);
-  struct websocket_multi_write *fin = arg;
-  if (fin->on_finished)
-    fin->on_finished(NULL, fin->arg);
-  free(fin);
-}
-static void ws_mw_defered_on_finish(intptr_t fd, fio_protocol_s *ws,
-                                    void *arg) {
-  (void)fd;
-  struct websocket_multi_write *fin = arg;
-  if (fin->on_finished) {
-    fin->on_finished((ws_s *)ws, fin->arg);
-  }
-  free(fin);
-}
-
-static void ws_reduce_or_free_multi_write(void *buff) {
-  struct websocket_multi_write *mw = (void *)((uintptr_t)buff - sizeof(*mw));
-  fio_lock(&mw->lock);
-  mw->count -= 1;
-  if (!mw->count) {
-    fio_unlock(&mw->lock);
-    if (mw->on_finished) {
-      fio_defer_io_task(mw->origin, .task = ws_mw_defered_on_finish, .arg = mw,
-                        .fallback = ws_mw_defered_on_finish_fb,
-                        .type = FIO_PR_LOCK_WRITE);
-    } else
-      free(mw);
-  } else
-    fio_unlock(&mw->lock);
-}
-
-static void ws_finish_multi_write(intptr_t fd, void *arg) {
-  struct websocket_multi_write *multi = arg;
-  (void)(fd);
-  ws_reduce_or_free_multi_write(multi->buffer);
-}
-
-static void ws_direct_multi_write(intptr_t fd, fio_protocol_s *_ws, void *arg) {
-  struct websocket_multi_write *multi = arg;
-  if (((ws_s *)(_ws))->is_client != multi->as_client)
-    return;
-  fio_lock(&multi->lock);
-  multi->count += 1;
-  fio_unlock(&multi->lock);
-  sock_write2(.uuid = fd, .buffer = multi->buffer, .length = multi->length,
-              .dealloc = ws_reduce_or_free_multi_write);
-}
-
-static void ws_check_multi_write(intptr_t fd, fio_protocol_s *_ws, void *arg) {
-  struct websocket_multi_write *multi = arg;
-  if (((ws_s *)(_ws))->is_client != multi->as_client)
-    return;
-  if (multi->if_callback((void *)_ws, multi->arg))
-    ws_direct_multi_write(fd, _ws, arg);
-}
-
-#undef websocket_write_each
-int __attribute__((deprecated))
-websocket_write_each(struct websocket_write_each_args_s args) {
-  if (!args.data || !args.length)
-    return -1;
-  struct websocket_multi_write *multi =
-      malloc(sizeof(*multi) + args.length + 16 /* max head size + 2 */);
-  if (!multi) {
-    if (args.on_finished)
-      fio_defer((void (*)(void *, void *))args.on_finished, NULL, args.arg);
-    return -1;
-  }
-  *multi = (struct websocket_multi_write){
-      .length =
-          (args.as_client
-               ? websocket_client_wrap(multi->buffer, args.data, args.length,
-                                       args.is_text ? 1 : 2, 1, 1, 0)
-               : websocket_server_wrap(multi->buffer, args.data, args.length,
-                                       args.is_text ? 1 : 2, 1, 1, 0)),
-      .if_callback = args.filter,
-      .on_finished = args.on_finished,
-      .arg = args.arg,
-      .origin = (args.origin ? args.origin->fd : -1),
-      .as_client = args.as_client,
-      .lock = FIO_LOCK_INIT,
-      .count = 1,
-  };
-
-  fio_each(.origin = multi->origin, .service = WEBSOCKET_ID_STR,
-           .task_type = FIO_PR_LOCK_WRITE,
-           .task = (args.filter ? ws_check_multi_write : ws_direct_multi_write),
-           .arg = multi, .on_complete = ws_finish_multi_write);
-  return 0;
 }
