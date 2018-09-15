@@ -2,7 +2,7 @@
 In this example we will author an HTTP server with a smaller memory footprint
 and a simplified design.
 
-This simplified design gainins performance at the price of ease of use and
+This simplified design gains performance at the price of ease of use and
 flexibility.
 
 This design can be effective for some applications, however it suffers form a

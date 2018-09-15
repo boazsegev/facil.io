@@ -8,7 +8,7 @@ int main(int argc, char const *argv[]) {
   initialize_http_service();
 
   /* start facil */
-  facil_run(.threads = fio_cli_get_i("-t"), .processes = fio_cli_get_i("-w"));
+  fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));
 
   /* cleanup CLI, see "cli.c" */
   free_cli();
