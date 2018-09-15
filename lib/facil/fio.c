@@ -4790,15 +4790,6 @@ static void fio_cluster_init(void) {
  * Cluster Protocol callbacks
  **************************************************************************** */
 
-inline static void fio_cluster_uint2str(uint8_t *dest, uint32_t i) {
-  i = fio_lton32(i);
-  memcpy(dest, &i, 4);
-  // dest[0] = i & 0xFF;
-  // dest[1] = (i >> 8) & 0xFF;
-  // dest[2] = (i >> 16) & 0xFF;
-  // dest[3] = (i >> 24) & 0xFF;
-}
-
 typedef struct cluster_msg_s {
   fio_msg_s message;
   size_t ref;
@@ -4809,10 +4800,10 @@ fio_cluster_wrap_message(uint32_t ch_len, uint32_t msg_len, uint32_t type,
                          int32_t filter, void *ch_data, void *msg_data) {
   fio_str_s *buf = fio_str_new2();
   fio_str_info_s i = fio_str_resize(buf, ch_len + msg_len + 16);
-  fio_cluster_uint2str((uint8_t *)i.data, ch_len);
-  fio_cluster_uint2str((uint8_t *)(i.data + 4), msg_len);
-  fio_cluster_uint2str((uint8_t *)(i.data + 8), type);
-  fio_cluster_uint2str((uint8_t *)(i.data + 12), (uint32_t)filter);
+  fio_u2str32((uint8_t *)i.data, ch_len);
+  fio_u2str32((uint8_t *)(i.data + 4), msg_len);
+  fio_u2str32((uint8_t *)(i.data + 8), type);
+  fio_u2str32((uint8_t *)(i.data + 12), (uint32_t)filter);
   if (ch_len && ch_data) {
     memcpy((i.data + 16), ch_data, ch_len);
   }
@@ -9125,12 +9116,12 @@ static void fio_pubsub_test(void) {
   uintptr_t expect = 0;
   TEST_ASSERT(!s, "fio_subscribe should fail without a callback!");
   char buffer[8];
-  fio_cluster_uint2str((uint8_t *)buffer + 1, 42);
+  fio_u2str32((uint8_t *)buffer + 1, 42);
   TEST_ASSERT(fio_str2u32((uint8_t *)buffer + 1) == 42,
-              "fio_cluster_uint2str / fio_str2u32 not reversible (42)!");
-  fio_cluster_uint2str((uint8_t *)buffer, 4);
+              "fio_u2str32 / fio_str2u32 not reversible (42)!");
+  fio_u2str32((uint8_t *)buffer, 4);
   TEST_ASSERT(fio_str2u32((uint8_t *)buffer) == 4,
-              "fio_cluster_uint2str / fio_str2u32 not reversible (4)!");
+              "fio_u2str32 / fio_str2u32 not reversible (4)!");
   s = fio_subscribe(.filter = 1, .udata1 = &counter,
                     .on_message = fio_pubsub_test_on_message,
                     .on_unsubscribe = fio_pubsub_test_on_unsubscribe);

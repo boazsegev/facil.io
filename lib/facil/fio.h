@@ -1857,6 +1857,35 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
    ((uint64_t)0 + ((uint8_t *)(c))[7]))
 #endif
 
+/** Writes a local 16 bit number to an unaligned buffer in network order. */
+#define fio_u2str16(buffer, i)                                                 \
+  do {                                                                         \
+    ((uint8_t *)(buffer))[0] = ((uint16_t)(i) >> 8) & 0xFF;                    \
+    ((uint8_t *)(buffer))[1] = ((uint16_t)(i)) & 0xFF;                         \
+  } while (0);
+
+/** Writes a local 32 bit number to an unaligned buffer in network order. */
+#define fio_u2str32(buffer, i)                                                 \
+  do {                                                                         \
+    ((uint8_t *)(buffer))[0] = ((uint32_t)(i) >> 24) & 0xFF;                   \
+    ((uint8_t *)(buffer))[1] = ((uint32_t)(i) >> 16) & 0xFF;                   \
+    ((uint8_t *)(buffer))[2] = ((uint32_t)(i) >> 8) & 0xFF;                    \
+    ((uint8_t *)(buffer))[3] = ((uint32_t)(i)) & 0xFF;                         \
+  } while (0);
+
+/** Writes a local 64 bit number to an unaligned buffer in network order. */
+#define fio_u2str64(buffer, i)                                                 \
+  do {                                                                         \
+    ((uint8_t *)(buffer))[0] = ((uint64_t)(i) >> 56) & 0xFF;                   \
+    ((uint8_t *)(buffer))[1] = ((uint64_t)(i) >> 48) & 0xFF;                   \
+    ((uint8_t *)(buffer))[2] = ((uint64_t)(i) >> 40) & 0xFF;                   \
+    ((uint8_t *)(buffer))[3] = ((uint64_t)(i) >> 32) & 0xFF;                   \
+    ((uint8_t *)(buffer))[4] = ((uint64_t)(i) >> 24) & 0xFF;                   \
+    ((uint8_t *)(buffer))[5] = ((uint64_t)(i) >> 16) & 0xFF;                   \
+    ((uint8_t *)(buffer))[6] = ((uint64_t)(i) >> 8) & 0xFF;                    \
+    ((uint8_t *)(buffer))[7] = ((uint64_t)(i)) & 0xFF;                         \
+  } while (0);
+
 /* *****************************************************************************
 
 

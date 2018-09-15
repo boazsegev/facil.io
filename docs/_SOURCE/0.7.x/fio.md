@@ -2815,27 +2815,6 @@ Local byte order to Network byte order, 32 bit integer.
 
 Local byte order to Network byte order, 62 bit integer.
 
-#### `fio_ntol16`
-
-```c
-#define fio_ntol16(i) /* system specific */
-```
-
-Network byte order to Local byte order, 16 bit integer.
-#### `fio_ntol32`
-
-```c
-#define fio_ntol32(i) /* system specific */
-```
-
-Network byte order to Local byte order, 32 bit integer.
-#### `fio_ntol64`
-
-```c
-#define fio_ntol64(i) /* system specific */
-```
-
-Network byte order to Local byte order, 62 bit integer.
 #### `fio_str2u16`
 
 ```c
@@ -2865,6 +2844,59 @@ Using this function makes it easy to avoid unaligned memory access issues.
 Reads a 64 bit number from an unaligned network ordered byte stream.
 
 Using this function makes it easy to avoid unaligned memory access issues.
+
+
+#### `fio_u2str16`
+
+```c
+#define fio_u2str16(buffer, i)  /* simple byte value assignment using network order */
+```
+
+Writes a local 16 bit number to an unaligned buffer in network order.
+
+No error checks or buffer tests are performed - make sure the buffer has at least 2 bytes available.
+
+#### `fio_u2str32`
+
+```c
+#define fio_u2str32(buffer, i) /* simple byte value assignment using network order */
+```
+
+Writes a local 32 bit number to an unaligned buffer in network order.
+
+No error checks or buffer tests are performed - make sure the buffer has at least 4 bytes available.
+
+#### `fio_u2str64`
+
+```c
+#define fio_u2str64(buffer, i) /* simple byte value assignment using network order */
+```
+
+Writes a local 64 bit number to an unaligned buffer in network order.
+
+No error checks or buffer tests are performed - make sure the buffer has at least 8 bytes available.
+
+#### `fio_ntol16`
+
+```c
+#define fio_ntol16(i) /* system specific */
+```
+
+Network byte order to Local byte order, 16 bit integer.
+#### `fio_ntol32`
+
+```c
+#define fio_ntol32(i) /* system specific */
+```
+
+Network byte order to Local byte order, 32 bit integer.
+#### `fio_ntol64`
+
+```c
+#define fio_ntol64(i) /* system specific */
+```
+
+Network byte order to Local byte order, 62 bit integer.
 
 #### `fio_bswap16`
 
