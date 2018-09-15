@@ -1364,7 +1364,15 @@ typedef int (*fio_match_fn)(fio_str_info_s pattern, fio_str_info_s channel);
 
 extern fio_match_fn FIO_MATCH_GLOB;
 
-/** possible arguments for the fio_subscribe method. */
+/**
+ * Possible arguments for the fio_subscribe method.
+ *
+ * NOTICE: passing protocol objects to the `udata` is not safe. This is because
+ * protocol objects might be destroyed or invalidated according to both network
+ * events (socket closure) and internal changes (i.e., `fio_attach` being
+ * called). The preferred way is to add the `uuid` to the `udata` field and call
+ * `fio_protocol_try_lock`.
+ */
 typedef struct {
   /**
    * If `filter` is set, all messages that match the filter's numerical value

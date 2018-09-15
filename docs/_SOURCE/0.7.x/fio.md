@@ -1288,7 +1288,10 @@ typedef struct fio_msg_s {
 
 * `udata1` and `udata2` are the opaque user data pointers passed to `fio_subscribe` during the subscription.
 
-**Note**: is a subscription object is no longer required, i.e., if `fio_unsubscribe` will only be called once a connection was closed or facil.io is shutting down, consider using [`fio_uuid_link`](#fio_uuid_link) or [`fio_state_callback_add`](#fio_state_callback_add) to control the subscription's lifetime.
+**Note (1)**: if a subscription object is no longer required, i.e., if `fio_unsubscribe` will only be called once a connection was closed or once facil.io is shutting down, consider using [`fio_uuid_link`](#fio_uuid_link) or [`fio_state_callback_add`](#fio_state_callback_add) to control the subscription's lifetime.
+
+
+**Note (2)**: passing protocol object pointers to the `udata` is not safe, since protocol objects might be destroyed or invalidated due to either network events (socket closure) or internal changes (i.e., `fio_attach` being called). The preferred way is to add the `uuid` to the `udata` field and call [`fio_protocol_try_lock`](#fio_protocol_try_lock) to access the protocol object.
 
 #### `fio_subscription_channel`
 
