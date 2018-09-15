@@ -2921,6 +2921,57 @@ void fio_state_callback_clear_all(void) {
 }
 
 /* *****************************************************************************
+IO bound tasks
+***************************************************************************** */
+
+// typedef struct {
+//   enum fio_protocol_lock_e type;
+//   void (*task)(intptr_t uuid, fio_protocol_s *, void *udata);
+//   void *udata;
+//   void (*fallback)(intptr_t uuid, void *udata);
+// } fio_defer_iotask_args_s;
+
+static void fio_io_task_perform(void *uuid_, void *args_) {
+  fio_defer_iotask_args_s *args = args_;
+  intptr_t uuid = (intptr_t)uuid_;
+  fio_protocol_s *pr = fio_protocol_try_lock(uuid, args->type);
+  if (!pr)
+    goto postpone;
+  args->task(uuid, pr, args->udata);
+  fio_protocol_unlock(pr, args->type);
+  fio_free(args);
+  return;
+postpone:
+  if (errno == EBADF) {
+    if (args->fallback)
+      args->fallback(uuid, args->udata);
+    fio_free(args);
+    return;
+  }
+  fio_defer(fio_io_task_perform, uuid_, args_);
+}
+/**
+ * Schedules a protected connection task. The task will run within the
+ * connection's lock.
+ *
+ * If an error ocuurs or the connection is closed before the task can run, the
+ * `fallback` task wil be called instead, allowing for resource cleanup.
+ */
+void fio_defer_io_task FIO_IGNORE_MACRO(intptr_t uuid,
+                                        fio_defer_iotask_args_s args) {
+  if (!args.task) {
+    if (args.fallback)
+      fio_defer((void (*)(void *, void *))args.fallback, (void *)uuid,
+                args.udata);
+    return;
+  }
+  fio_defer_iotask_args_s *cpy = fio_malloc(sizeof(*cpy));
+  FIO_ASSERT_ALLOC(cpy);
+  *cpy = args;
+  fio_defer(fio_io_task_perform, (void *)uuid, cpy);
+}
+
+/* *****************************************************************************
 Initialize the library
 ***************************************************************************** */
 
@@ -5607,16 +5658,6 @@ Section Start Marker
 
 
 ***************************************************************************** */
-
-#ifndef FIO_MEMORY_BLOCK_SIZE
-#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
-#endif
-#ifndef FIO_MEMORY_BLOCK_MASK
-#define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1) /* 0b111... */
-#endif
-#ifndef FIO_MEMORY_BLOCK_SLICES
-#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B slices */
-#endif
 
 /* *****************************************************************************
 If FIO_FORCE_MALLOC is set, use glibc / library malloc

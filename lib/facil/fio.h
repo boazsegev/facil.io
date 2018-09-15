@@ -2379,7 +2379,7 @@ C++ extern end
  * When using tcmalloc or jemalloc, it's possible to define `FIO_FORCE_MALLOC`
  * to prevent the facil.io allocator from compiling (`-DFIO_FORCE_MALLOC`).
  */
-#define H_FIO_MEM_H
+#define H_FIO_MEM_H /* prevent fiobj conflicts */
 
 /** Allocator default settings. */
 
@@ -2387,6 +2387,15 @@ C++ extern end
 #ifndef FIO_MEMORY_BLOCK_SIZE_LOG
 #define FIO_MEMORY_BLOCK_SIZE_LOG (15)
 #endif
+
+/* dounb't change these - they are derived from FIO_MEMORY_BLOCK_SIZE_LOG */
+#undef FIO_MEMORY_BLOCK_SIZE
+#undef FIO_MEMORY_BLOCK_MASK
+#undef FIO_MEMORY_BLOCK_SLICES
+#define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1)    /* 0b111... */
+#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B slices */
+#define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
+
 #ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
 /* defaults to 37.5% of the block, after which `mmap` is used instead */
 #define FIO_MEMORY_BLOCK_ALLOC_LIMIT                                           \
