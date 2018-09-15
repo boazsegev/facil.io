@@ -9286,8 +9286,6 @@ Run all tests
 
 void fio_test(void) {
   TEST_ASSERT(fio_capa(), "facil.io initialization error!");
-  fio_sha1_test();
-  fio_sha2_test();
   fio_malloc_test();
   fio_state_callback_test();
   fio_str_test();

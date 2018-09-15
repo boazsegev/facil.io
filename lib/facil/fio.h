@@ -1798,17 +1798,17 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
 /** Network byte order to Local byte order, 62 bit integer */
 #define fio_ntol64(i) (i)
 
-/** Converts a byte stream to a 16 bit number. */
+/** Converts an unaligned network ordered byte stream to a 16 bit number. */
 #define fio_str2u16(c)                                                         \
   ((((uint16_t)0 + ((uint8_t *)(c))[1]) << 8) |                                \
    ((uint16_t)0 + ((uint8_t *)(c))[0]))
-/** Converts a byte stream to a 32 bit number. */
+/** Converts an unaligned network ordered byte stream to a 32 bit number. */
 #define fio_str2u32(c)                                                         \
   ((((uint32_t)0 + ((uint8_t *)(c))[3]) << 24) |                               \
    (((uint32_t)0 + ((uint8_t *)(c))[2]) << 16) |                               \
    (((uint32_t)0 + ((uint8_t *)(c))[1]) << 8) |                                \
    ((uint32_t)0 + ((uint8_t *)(c))[0]))
-/** Converts a byte stream to a 64 bit number. */
+/** Converts an unaligned network ordered byte stream to a 64 bit number. */
 #define fio_str2u64(c)                                                         \
   ((((uint64_t)0 + ((uint8_t *)(c))[7]) << 56) |                               \
    (((uint64_t)0 + ((uint8_t *)(c))[6]) << 48) |                               \
@@ -1835,17 +1835,17 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
 /** Network byte order to Local byte order, 62 bit integer */
 #define fio_ntol64(i) fio_bswap64((i))
 
-/** Converts a byte stream to a 16 bit number. */
+/** Converts an unaligned network ordered byte stream to a 16 bit number. */
 #define fio_str2u16(c)                                                         \
   ((((uint16_t)0 + ((uint8_t *)(c))[0]) << 8) |                                \
    ((uint16_t)0 + ((uint8_t *)(c))[1]))
-/** Converts a byte stream to a 32 bit number. */
+/** Converts an unaligned network ordered byte stream to a 32 bit number. */
 #define fio_str2u32(c)                                                         \
   ((((uint32_t)0 + ((uint8_t *)(c))[0]) << 24) |                               \
    (((uint32_t)0 + ((uint8_t *)(c))[1]) << 16) |                               \
    (((uint32_t)0 + ((uint8_t *)(c))[2]) << 8) |                                \
    ((uint32_t)0 + ((uint8_t *)(c))[3]))
-/** Converts a byte stream to a 64 bit number. */
+/** Converts an unaligned network ordered byte stream to a 64 bit number. */
 #define fio_str2u64(c)                                                         \
   ((((uint64_t)0 + ((uint8_t *)(c))[0]) << 56) |                               \
    (((uint64_t)0 + ((uint8_t *)(c))[1]) << 48) |                               \

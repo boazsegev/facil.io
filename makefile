@@ -186,12 +186,14 @@ endif
 
 
 # Set Endian Flag
-ifeq ($(shell printf "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[0]);}\n" | $(CC) -xc -o endian_test - >> /dev/null 2> /dev/null ; ./endian_test >> /dev/null 2> /dev/null; echo $$?; rm endian_test 2> /dev/null), 0)
-  $(info * Detected Big Endian mode)
+ifeq ($(shell printf "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[sizeof(i)-1]);}\n" | $(CC) -xc -o _fio___endian_test - >> /dev/null 2> /dev/null ; ./_fio___endian_test >> /dev/null 2> /dev/null; echo $$?; rm _fio___endian_test 2> /dev/null), 1)
+  $(info * Detected Big Endian byte order.)
 	FLAGS:=$(FLAGS) __BIG_ENDIAN__
-else
-  $(info * Assuming Little Endian mode)
+else ifeq ($(shell printf "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[0]);}\n" | $(CC) -xc -o _fio___endian_test - >> /dev/null 2> /dev/null ; ./_fio___endian_test >> /dev/null 2> /dev/null; echo $$?; rm _fio___endian_test 2> /dev/null), 1)
+  $(info * Detected Little Endian byte order.)
 	FLAGS:=$(FLAGS) __BIG_ENDIAN__=0
+else
+  $(info * Byte ordering (endianness) detection failed)
 endif
 
 

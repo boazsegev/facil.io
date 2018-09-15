@@ -2842,7 +2842,9 @@ Network byte order to Local byte order, 62 bit integer.
 #define fio_str2u16(c) /* system specific */
 ```
 
-Reads a 16 bit number from a byte stream.
+Reads a 16 bit number from an unaligned network ordered byte stream.
+
+Using this function makes it easy to avoid unaligned memory access issues.
 
 #### `fio_str2u32`
 
@@ -2850,7 +2852,9 @@ Reads a 16 bit number from a byte stream.
 #define fio_str2u32(c) /* system specific */
 ```
 
-Reads a 32 bit number from a byte stream.
+Reads a 32 bit number from an unaligned network ordered byte stream.
+
+Using this function makes it easy to avoid unaligned memory access issues.
 
 #### `fio_str2u64`
 
@@ -2858,7 +2862,9 @@ Reads a 32 bit number from a byte stream.
 #define fio_str2u64(c) /* system specific */
 ```
 
-Reads a 64 bit number from a byte stream.
+Reads a 64 bit number from an unaligned network ordered byte stream.
+
+Using this function makes it easy to avoid unaligned memory access issues.
 
 #### `fio_bswap16`
 
