@@ -113,7 +113,7 @@ static FIOBJ headers2str(http_s *h, uintptr_t padding) {
 
   if (p->is_client == 0) {
     fio_str_info_s t = http1pr_status2str(h->status);
-    fiobj_str_write(w.dest, t.data, t.length);
+    fiobj_str_write(w.dest, t.data, t.len);
     FIOBJ tmp = fiobj_hash_get2(h->private_data.out_headers, connection_hash);
     if (tmp) {
       t = fiobj_obj2cstr(tmp);
@@ -214,7 +214,7 @@ static int http1_sendfile(http_s *h, int fd, uintptr_t length,
     return 0;
   }
   fiobj_send_free((handle2pr(h)->p.uuid), packet);
-  sock_sendfile((handle2pr(h)->p.uuid), fd, offset, length);
+  fio_sendfile((handle2pr(h)->p.uuid), fd, offset, length);
   http1_after_finish(h);
   return 0;
 }
@@ -251,7 +251,7 @@ static int http1_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
  */
 void http1_on_pause(http_s *h, http_fio_protocol_s *pr) {
   ((http1pr_s *)pr)->stop = 1;
-  fio_quite(pr->uuid);
+  fio_suspend(pr->uuid);
   (void)h;
 }
 
@@ -271,8 +271,8 @@ intptr_t http1_hijack(http_s *h, fio_str_info_s *leftover) {
         handle2pr(h)->buf_len -
         (intptr_t)(handle2pr(h)->parser.state.next - handle2pr(h)->buf);
     if (len) {
-      *leftover = (fio_str_info_s){.len = len,
-                                   .bytes = handle2pr(h)->parser.state.next};
+      *leftover = (fio_str_info_s){
+          .len = len, .data = (char *)handle2pr(h)->parser.state.next};
     } else {
       *leftover = (fio_str_info_s){.len = 0, .data = NULL};
     }
@@ -334,7 +334,7 @@ static int http1_http2websocket_server(http_s *h, websocket_settings_s *args) {
   if (!tmp)
     goto bad_request;
   fio_str_info_s stmp = fiobj_obj2cstr(tmp);
-  if (stmp.length != 2 || stmp.data[0] != '1' || stmp.data[1] != '3')
+  if (stmp.len != 2 || stmp.data[0] != '1' || stmp.data[1] != '3')
     goto bad_request;
 
   tmp = fiobj_hash_get2(h->headers, sec_key);
@@ -342,7 +342,7 @@ static int http1_http2websocket_server(http_s *h, websocket_settings_s *args) {
     goto bad_request;
   stmp = fiobj_obj2cstr(tmp);
 
-  sha1_s sha1 = fio_sha1_init();
+  fio_sha1_s sha1 = fio_sha1_init();
   fio_sha1_write(&sha1, stmp.data, stmp.len);
   fio_sha1_write(&sha1, ws_key_accpt_str, sizeof(ws_key_accpt_str) - 1);
   tmp = fiobj_str_buf(32);
@@ -672,14 +672,6 @@ Connection Callbacks
 *****************************************************************************
 */
 
-/**
- * A string to identify the protocol's service (i.e. "http").
- *
- * The string should be a global constant, only a pointer comparison will be
- * used (not `strcmp`).
- */
-static const char *HTTP1_SERVICE_STR = "http1_protocol_fio_io";
-
 static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
   ssize_t i = 0;
   size_t org_len = p->buf_len;
@@ -723,7 +715,7 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
 static void http1_on_data(intptr_t uuid, fio_protocol_s *protocol) {
   http1pr_s *p = (http1pr_s *)protocol;
   if (p->stop) {
-    fio_quite(uuid);
+    fio_suspend(uuid);
     return;
   }
   ssize_t i = 0;
@@ -782,7 +774,6 @@ fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
   *p = (http1pr_s){
       .p.protocol =
           {
-              .service = HTTP1_SERVICE_STR,
               .on_data = http1_on_data_first_time,
               .on_close = http1_on_close,
           },
@@ -814,7 +805,7 @@ Protocol Data
 ***************************************************************************** */
 
 // clang-format off
-#define HTTP_SET_STATUS_STR(status, str) [((status)-100)] = { .buffer = ("HTTP/1.1 " #status " " str "\r\n"), .length = (sizeof("HTTP/1.1 " #status " " str "\r\n") - 1) }
+#define HTTP_SET_STATUS_STR(status, str) [((status)-100)] = { .data = ("HTTP/1.1 " #status " " str "\r\n"), .len = (sizeof("HTTP/1.1 " #status " " str "\r\n") - 1) }
 // #undef HTTP_SET_STATUS_STR
 // clang-format on
 
@@ -885,11 +876,11 @@ static fio_str_info_s http1pr_status2str(uintptr_t status) {
       HTTP_SET_STATUS_STR(510, "Not Extended"),
       HTTP_SET_STATUS_STR(511, "Network Authentication Required"),
   };
-  fio_str_info_s ret = (fio_str_info_s){.length = 0, .buffer = NULL};
+  fio_str_info_s ret = (fio_str_info_s){.len = 0, .data = NULL};
   if (status >= 100 &&
       (status - 100) < sizeof(status2str) / sizeof(status2str[0]))
     ret = status2str[status - 100];
-  if (!ret.buffer) {
+  if (!ret.data) {
     ret = status2str[400];
   }
   return ret;

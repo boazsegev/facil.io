@@ -241,7 +241,7 @@ Message wrapping
 /** stub byte swap 64 bit integer from pointer */
 static inline uint64_t netpiswap64(uint8_t *i) {
   uint64_t ret = 0;
-  uint8_t *const pret = &ret;
+  uint8_t *const pret = (uint8_t *)&ret;
   pret[7] = i[7];
   pret[6] = i[6];
   pret[5] = i[5];

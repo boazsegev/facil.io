@@ -5,12 +5,13 @@ license: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 #define FIO_INCLUDE_LINKED_LIST
-#include "fio.h"
+#define FIO_INCLUDE_STR
+#include <fio.h>
 
-#include "fiobj.h"
+#include <fiobj.h>
 
-#include "http.h"
-#include "http_internal.h"
+#include <http.h>
+#include <http_internal.h>
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -375,36 +376,6 @@ Writing to the Websocket
 #define WS_MAX_FRAME_SIZE                                                      \
   (FIO_MEMORY_BLOCK_ALLOC_LIMIT - 4096) // should be less then `unsigned short`
 
-// clang-format off
-#if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
-#   if defined(__has_include)
-#     if __has_include(<endian.h>)
-#      include <endian.h>
-#     elif __has_include(<sys/endian.h>)
-#      include <sys/endian.h>
-#     endif
-#   endif
-#   if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__) && \
-                __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#      define __BIG_ENDIAN__
-#   endif
-#endif
-// clang-format on
-
-#ifdef __BIG_ENDIAN__
-/** byte swap 64 bit integer */
-#define bswap64(i) (i)
-
-#else
-// TODO: check for __builtin_bswap64
-/** byte swap 64 bit integer */
-#define bswap64(i)                                                             \
-  ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                           \
-   (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                    \
-   (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |            \
-   (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
-#endif
-
 static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
                                  char first, char last, char client) {
   if (len <= WS_MAX_FRAME_SIZE) {
@@ -429,73 +400,6 @@ static void websocket_write_impl(intptr_t fd, void *data, size_t len, char text,
 }
 
 /* *****************************************************************************
-UTF-8 testing. This part was practically copied from:
-https://stackoverflow.com/a/22135005/4025095
-and
-http://bjoern.hoehrmann.de/utf-8/decoder/dfa
-***************************************************************************** */
-/* Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de> */
-/* See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details. */
-
-#define UTF8_ACCEPT 0
-#define UTF8_REJECT 1
-
-static const uint8_t utf8d[] = {
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0, // 00..1f
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0, // 20..3f
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0, // 40..5f
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,   0,   0,   0,   0,   0, // 60..7f
-    1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,
-    1,   1,   1,   1,   1,   9,   9,   9,   9,   9,   9,
-    9,   9,   9,   9,   9,   9,   9,   9,   9,   9, // 80..9f
-    7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,
-    7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,
-    7,   7,   7,   7,   7,   7,   7,   7,   7,   7, // a0..bf
-    8,   8,   2,   2,   2,   2,   2,   2,   2,   2,   2,
-    2,   2,   2,   2,   2,   2,   2,   2,   2,   2,   2,
-    2,   2,   2,   2,   2,   2,   2,   2,   2,   2, // c0..df
-    0xa, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3,
-    0x3, 0x3, 0x4, 0x3, 0x3, // e0..ef
-    0xb, 0x6, 0x6, 0x6, 0x5, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8,
-    0x8, 0x8, 0x8, 0x8, 0x8, // f0..ff
-    0x0, 0x1, 0x2, 0x3, 0x5, 0x8, 0x7, 0x1, 0x1, 0x1, 0x4,
-    0x6, 0x1, 0x1, 0x1, 0x1, // s0..s0
-    1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,
-    1,   1,   1,   1,   1,   1,   0,   1,   1,   1,   1,
-    1,   0,   1,   0,   1,   1,   1,   1,   1,   1, // s1..s2
-    1,   2,   1,   1,   1,   1,   1,   2,   1,   2,   1,
-    1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,
-    1,   2,   1,   1,   1,   1,   1,   1,   1,   1, // s3..s4
-    1,   2,   1,   1,   1,   1,   1,   1,   1,   2,   1,
-    1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,
-    1,   3,   1,   3,   1,   1,   1,   1,   1,   1, // s5..s6
-    1,   3,   1,   1,   1,   1,   1,   3,   1,   3,   1,
-    1,   1,   1,   1,   1,   1,   3,   1,   1,   1,   1,
-    1,   1,   1,   1,   1,   1,   1,   1,   1,   1, // s7..s8
-};
-
-static inline uint32_t validate_utf8(uint8_t *str, size_t len) {
-  uint32_t state = 0;
-  while (len) {
-    uint32_t type = utf8d[*str];
-    state = utf8d[256 + state * 16 + type];
-    if (state == UTF8_REJECT)
-      return 0;
-    len--;
-    str++;
-  }
-  return state == 0;
-}
-
-/* *****************************************************************************
 Multi-client broadcast optimizations
 ***************************************************************************** */
 
@@ -516,38 +420,40 @@ static inline fio_msg_metadata_s websocket_optimize(fio_str_info_s msg,
   };
   return ret;
 }
-static fio_msg_metadata_s
-websocket_optimize_generic(fio_msg_s *msg, FIOBJ raw_ch, FIOBJ raw_msg) {
-  fio_str_info_s tmp = fiobj_obj2cstr(raw_msg);
+static fio_msg_metadata_s websocket_optimize_generic(fio_str_info_s ch,
+                                                     fio_str_info_s msg,
+                                                     uint8_t is_json) {
+  fio_str_s tmp = FIO_STR_INIT_EXISTING(ch.data, ch.len, 0); // don't free
+  tmp.dealloc = NULL;
   unsigned char opcode = 2;
-  if (tmp.len <= (2 << 19) && validate_utf8((uint8_t *)tmp.data, tmp.len)) {
+  if (tmp.len <= (2 << 19) && fio_str_utf8_valid(&tmp)) {
     opcode = 1;
   }
-  fio_msg_metadata_s ret = websocket_optimize(tmp, opcode);
+  fio_msg_metadata_s ret = websocket_optimize(msg, opcode);
   ret.type_id = WEBSOCKET_OPTIMIZE_PUBSUB;
   return ret;
-  (void)msg;
-  (void)raw_ch;
+  (void)ch;
+  (void)is_json;
 }
 
-static fio_msg_metadata_s websocket_optimize_text(fio_msg_s *msg, FIOBJ raw_ch,
-                                                  FIOBJ raw_msg) {
-  fio_str_info_s tmp = fiobj_obj2cstr(raw_msg);
-  fio_msg_metadata_s ret = websocket_optimize(tmp, 1);
+static fio_msg_metadata_s websocket_optimize_text(fio_str_info_s ch,
+                                                  fio_str_info_s msg,
+                                                  uint8_t is_json) {
+  fio_msg_metadata_s ret = websocket_optimize(msg, 1);
   ret.type_id = WEBSOCKET_OPTIMIZE_PUBSUB_TEXT;
   return ret;
-  (void)msg;
-  (void)raw_ch;
+  (void)ch;
+  (void)is_json;
 }
 
-static fio_msg_metadata_s
-websocket_optimize_binary(fio_msg_s *msg, FIOBJ raw_ch, FIOBJ raw_msg) {
-  fio_str_info_s tmp = fiobj_obj2cstr(raw_msg);
-  fio_msg_metadata_s ret = websocket_optimize(tmp, 2);
+static fio_msg_metadata_s websocket_optimize_binary(fio_str_info_s ch,
+                                                    fio_str_info_s msg,
+                                                    uint8_t is_json) {
+  fio_msg_metadata_s ret = websocket_optimize(msg, 2);
   ret.type_id = WEBSOCKET_OPTIMIZE_PUBSUB_BINARY;
   return ret;
-  (void)msg;
-  (void)raw_ch;
+  (void)ch;
+  (void)is_json;
 }
 
 /**
@@ -580,7 +486,7 @@ void websocket_optimize4broadcasts(intptr_t type, int enable) {
   static intptr_t generic = 0;
   static intptr_t text = 0;
   static intptr_t binary = 0;
-  fio_msg_metadata_s (*callback)(fio_msg_s *, FIOBJ, FIOBJ);
+  fio_msg_metadata_s (*callback)(fio_str_info_s, fio_str_info_s, uint8_t);
   intptr_t *counter;
   switch ((0 - type)) {
   case (0 - WEBSOCKET_OPTIMIZE_PUBSUB):
@@ -600,11 +506,11 @@ void websocket_optimize4broadcasts(intptr_t type, int enable) {
   }
   if (enable) {
     if (fio_atomic_add(counter, 1) == 1) {
-      fio_message_metadata_set(callback, 1);
+      fio_message_metadata_callback_set(callback, 1);
     }
   } else {
     if (fio_atomic_sub(counter, 1) == 0) {
-      fio_message_metadata_set(callback, 0);
+      fio_message_metadata_callback_set(callback, 0);
     }
   }
 }
@@ -660,21 +566,13 @@ static inline void websocket_on_pubsub_message_direct_internal(fio_msg_s *msg,
     fiobj_send_free((intptr_t)msg->udata1, fiobj_dup(pre_wrapped));
     goto finish;
   }
-  fio_str_info_s tmp;
-  if (FIOBJ_TYPE_IS(msg->msg, FIOBJ_T_STRING)) {
-    message = fiobj_dup(msg->msg);
-    tmp = fiobj_obj2cstr(message);
-    if (txt == 2) {
-      /* unknown text state */
-      txt =
-          (tmp.len >= (2 << 14) ? 0
-                                : validate_utf8((uint8_t *)tmp.data, tmp.len));
-    }
-  } else {
-    message = fiobj_obj2json(msg->msg, 0);
-    tmp = fiobj_obj2cstr(message);
+  if (txt == 2) {
+    /* unknown text state */
+    fio_str_s tmp =
+        FIO_STR_INIT_EXISTING(msg->msg.data, msg->msg.len, 0); // don't free
+    txt = (tmp.len >= (2 << 14) ? 0 : fio_str_utf8_valid(&tmp));
   }
-  websocket_write((ws_s *)pr, tmp.data, tmp.len, txt & 1);
+  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len, txt & 1);
   fiobj_free(message);
 finish:
   fio_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
@@ -789,7 +687,7 @@ uint8_t websocket_is_client(ws_s *ws) { return ws->is_client; }
 
 /** Writes data to the websocket. Returns -1 on failure (0 on success). */
 int websocket_write(ws_s *ws, void *data, size_t size, uint8_t is_text) {
-  if (sock_isvalid(ws->fd)) {
+  if (fio_is_valid(ws->fd)) {
     websocket_write_impl(ws->fd, data, size, is_text, 1, 1, ws->is_client);
     return 0;
   }

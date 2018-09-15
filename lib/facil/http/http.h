@@ -662,6 +662,13 @@ void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
 struct http_sse_subscribe_args {
   /** The channel name used for the subscription. */
   fio_str_info_s channel;
+  /** The optional on message callback. If missing, Data is directly writen. */
+  void (*on_message)(http_sse_s *sse, fio_str_info_s channel,
+                     fio_str_info_s msg, void *udata);
+  /** An optional callback for when a subscription is fully canceled. */
+  void (*on_unsubscribe)(void *udata);
+  /** Opaque user */
+  void *udata;
   /** A callback for pattern matching. */
   fio_match_fn match;
 };

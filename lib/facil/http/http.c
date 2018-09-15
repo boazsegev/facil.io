@@ -157,10 +157,10 @@ int http_set_header(http_s *r, FIOBJ name, FIOBJ value) {
  * Returns -1 on error and 0 on success.
  */
 int http_set_header2(http_s *r, fio_str_info_s n, fio_str_info_s v) {
-  if (HTTP_INVALID_HANDLE(r) || !n.data || !n.length || (v.data && !v.length))
+  if (HTTP_INVALID_HANDLE(r) || !n.data || !n.len || (v.data && !v.len))
     return -1;
-  FIOBJ tmp = fiobj_str_new(n.data, n.length);
-  int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.length));
+  FIOBJ tmp = fiobj_str_new(n.data, n.len);
+  int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.len));
   fiobj_free(tmp);
   return ret;
 }
@@ -426,7 +426,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
         if (*pos == '%') {
           // decode hex value
           // this is a percent encoded value.
-          if (hex2byte(tmp.bytes + tmp.len, (uint8_t *)pos + 1))
+          if (hex2byte((uint8_t *)tmp.data + tmp.len, (uint8_t *)pos + 1))
             return -1;
           tmp.len++;
           pos += 3;
@@ -1213,25 +1213,25 @@ static inline void http_sse_copy2str(FIOBJ dest, char *prefix, size_t pre_len,
 static void http_sse_on_message(fio_msg_s *msg) {
   http_sse_internal_s *sse = msg->udata1;
   struct http_sse_subscribe_args *args = msg->udata2;
-  if (args->on_message) {
-    /* perform a callback */
-    fio_protocol_s *pr = fio_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
-    if (!pr)
-      goto postpone;
-    args->on_message(&sse->sse, msg->channel, msg->msg, args->udata);
-    fio_protocol_unlock(pr, FIO_PR_LOCK_TASK);
-    return;
-  }
-  /* write directly to HTTP stream / connection */
-  fio_str_info_s m = fiobj_obj2cstr(msg->msg);
-  http_sse_write(&sse->sse, .data = m);
-
+  /* perform a callback */
+  fio_protocol_s *pr = fio_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
+  if (!pr)
+    goto postpone;
+  args->on_message(&sse->sse, msg->channel, msg->msg, args->udata);
+  fio_protocol_unlock(pr, FIO_PR_LOCK_TASK);
   return;
 postpone:
   if (errno == EBADF)
     return;
   fio_message_defer(msg);
   return;
+}
+
+static void http_sse_on_message__direct(http_sse_s *sse, fio_str_info_s channel,
+                                        fio_str_info_s msg, void *udata) {
+  http_sse_write(sse, .data = msg);
+  (void)udata;
+  (void)channel;
 }
 /** An optional callback for when a subscription is fully canceled. */
 static void http_sse_on_unsubscribe(void *sse_, void *args_) {
@@ -1263,9 +1263,10 @@ uintptr_t http_sse_subscribe(http_sse_s *sse_,
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
   if (sse->uuid == -1)
     return 0;
+  if (!args.on_message)
+    args.on_message = http_sse_on_message__direct;
   struct http_sse_subscribe_args *udata = malloc(sizeof(*udata));
-  if (!udata)
-    return 0;
+  FIO_ASSERT_ALLOC(udata);
   *udata = args;
 
   fio_atomic_add(&sse->ref, 1);
@@ -1474,7 +1475,7 @@ static inline void http_parse_cookies_cookie_str(FIOBJ dest, FIOBJ str,
   if (!FIOBJ_TYPE_IS(str, FIOBJ_T_STRING))
     return;
   fio_str_info_s s = fiobj_obj2cstr(str);
-  while (s.length) {
+  while (s.len) {
     if (s.data[0] == ' ') {
       ++s.data;
       --s.len;
@@ -1488,10 +1489,10 @@ static inline void http_parse_cookies_cookie_str(FIOBJ dest, FIOBJ str,
       cut2 = s.data + s.len;
     http_add2hash(dest, s.data, cut - s.data, cut + 1, (cut2 - (cut + 1)),
                   is_url_encoded);
-    if ((size_t)((cut2 + 1) - s.data) > s.length)
-      s.length = 0;
+    if ((size_t)((cut2 + 1) - s.data) > s.len)
+      s.len = 0;
     else
-      s.length -= ((cut2 + 1) - s.data);
+      s.len -= ((cut2 + 1) - s.data);
     s.data = cut2 + 1;
   }
 }
@@ -2488,7 +2489,7 @@ http_url_s http_url_parse(const char *url, size_t length) {
   while (url < end && *url != ':' && *url != '/' && *url != '@') {
     ++url;
   }
-  result.scheme.length = url - result.scheme.data;
+  result.scheme.len = url - result.scheme.data;
   if (url + 3 >= end || url[1] != '/' || url[2] != '/') { /* host only? */
     url = result.scheme.data;
     result.scheme = (fio_str_info_s){.data = NULL};
@@ -2505,18 +2506,18 @@ after_scheme:
       /* no user name or password (or port) */
       result.host.data = result.user.data;
       result.user.data = NULL;
-      result.host.length = url - result.host.data;
+      result.host.len = url - result.host.data;
       goto parse_path;
       break;
     case '@':
       /* user name only, no password */
-      result.user.length = url - result.user.data;
+      result.user.len = url - result.user.data;
       ++url;
       goto parse_host;
       break;
     case ':':
       /* user name and password (or host:port...) */
-      result.user.length = url - result.user.data;
+      result.user.len = url - result.user.data;
       ++url;
       goto parse_password;
       break;
@@ -2528,7 +2529,7 @@ after_scheme:
   if (url == end) { /* possibily: http://example.com  */
     result.host.data = result.user.data;
     result.user.data = NULL;
-    result.host.length = url - result.host.data;
+    result.host.len = url - result.host.data;
     return result;
   }
 
@@ -2540,13 +2541,13 @@ parse_password:
       /* this wasn't a user:password, but host:port */
       result.host = result.user;
       result.port = result.password;
-      result.port.length = url - result.port.data;
+      result.port.len = url - result.port.data;
       result.user = result.password = (fio_str_info_s){.data = NULL};
       goto parse_path;
       break;
     case '@':
       /* done */
-      result.password.length = url - result.password.data;
+      result.password.len = url - result.password.data;
       ++url;
       goto after_pass;
     default:
@@ -2558,7 +2559,7 @@ after_pass:
   if (url == end) { /* possibily: http://example.com:port  */
     result.host = result.user;
     result.port = result.password;
-    result.port.length = url - result.port.data;
+    result.port.len = url - result.port.data;
     result.user = result.password = (fio_str_info_s){.data = NULL};
     return result;
   }
@@ -2569,12 +2570,12 @@ parse_host:
     switch (*url) {
     case '/':
       /* host only */
-      result.host.length = url - result.host.data;
+      result.host.len = url - result.host.data;
       goto parse_path;
       break;
     case ':':
       /* done */
-      result.host.length = url - result.host.data;
+      result.host.len = url - result.host.data;
       ++url;
       goto after_host;
       break;
@@ -2586,14 +2587,14 @@ parse_host:
 after_host:
 
   if (url == end) { /* scheme://host only? */
-    result.host.length = end - result.host.data;
+    result.host.len = end - result.host.data;
     return result;
   }
   result.port.data = (char *)url;
   while (url < end && *url != '/') {
     ++url;
   }
-  result.port.length = url - result.port.data;
+  result.port.len = url - result.port.data;
 
   if (url == end) { /* scheme://host:port only? */
     return result;
@@ -2608,7 +2609,7 @@ parse_path:
   while (url < end && *url != '?') {
     ++url;
   }
-  result.path.length = url - result.path.data;
+  result.path.len = url - result.path.data;
   if (url == end) {
     return result;
   }
@@ -2617,13 +2618,13 @@ parse_path:
   while (url < end && *url != '#') {
     ++url;
   }
-  result.query.length = url - result.query.data;
+  result.query.len = url - result.query.data;
   if (url == end) {
     return result;
   }
   ++url;
   result.target.data = (char *)url;
-  result.target.length = end - result.target.data;
+  result.target.len = end - result.target.data;
   return result;
 }
 
@@ -2760,7 +2761,7 @@ static char invalid_cookie_value_char[256] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
 // clang-format off
-#define HTTP_SET_STATUS_STR(status, str) [status-100] = { .buffer = (str), .length = (sizeof(str) - 1) }
+#define HTTP_SET_STATUS_STR(status, str) [status-100] = { .data = (str), .len = (sizeof(str) - 1) }
 // clang-format on
 
 /** Returns the status as a C string struct */
@@ -2831,11 +2832,11 @@ fio_str_info_s http_status2str(uintptr_t status) {
       HTTP_SET_STATUS_STR(510, "Not Extended"),
       HTTP_SET_STATUS_STR(511, "Network Authentication Required"),
   };
-  fio_str_info_s ret = (fio_str_info_s){.length = 0, .buffer = NULL};
+  fio_str_info_s ret = (fio_str_info_s){.len = 0, .data = NULL};
   if (status >= 100 &&
       (status - 100) < sizeof(status2str) / sizeof(status2str[0]))
     ret = status2str[status - 100];
-  if (!ret.buffer) {
+  if (!ret.data) {
     ret = status2str[400];
   }
   return ret;
