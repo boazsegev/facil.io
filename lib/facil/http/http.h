@@ -495,7 +495,7 @@ typedef struct {
    * overwritten once the function exits (it cannot be saved for later, but it
    * can be copied).
    */
-  void (*on_message)(ws_s *ws, char *data, size_t size, uint8_t is_text);
+  void (*on_message)(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
   /**
    * The (optional) on_open callback will be called once the websocket
    * connection is established and before is is registered with `facil`, so no
@@ -620,9 +620,9 @@ struct http_sse_s {
    * (an error occured).
    *
    * The `udata` is the user data as set during the upgrade or using the
-   * `websocket_udata_set` function.
+   * `http_upgrade2sse` function.
    */
-  void (*on_close)(http_sse_s *sse);
+  void (*on_close)(intptr_t uuid, void *udata);
   /** Opaque user data. */
   void *udata;
 };

@@ -927,6 +927,7 @@ static void http_on_finish(intptr_t uuid, void *set) {
 #undef http_listen
 intptr_t http_listen(const char *port, const char *binding,
                      struct http_settings_s arg_settings) {
+  http_lib_init();
   if (arg_settings.on_request == NULL) {
     fprintf(stderr, "ERROR: http_listen requires the .on_request parameter "
                     "to be set\n");
@@ -1033,6 +1034,7 @@ intptr_t http_connect(const char *address,
     errno = EINVAL;
     return -1;
   }
+  http_lib_init();
   size_t len;
   char *a, *p;
   uint8_t is_websocket = 0;
@@ -1310,7 +1312,7 @@ void http_sse_unsubscribe(http_sse_s *sse_, uintptr_t subscription) {
 int http_upgrade2sse(http_s *h, http_sse_s sse) {
   if (HTTP_INVALID_HANDLE(h)) {
     if (sse.on_close)
-      sse.on_close(&sse);
+      sse.on_close(-1, sse.udata);
     return -1;
   }
   return ((http_vtable_s *)h->private_data.vtbl)->http_upgrade2sse(h, &sse);
@@ -2008,7 +2010,7 @@ void http_write_log(http_s *h) {
 
   {
     // TODO Guess IP address from headers (forwarded) where possible
-    fio_str_info_s peer = fio_peer_addr(h->private_data.flag);
+    fio_str_info_s peer = fio_peer_addr(http2protocol(h)->uuid);
     fiobj_str_write(l, peer.data, peer.len);
   }
   fio_str_info_s buff = fiobj_obj2cstr(l);

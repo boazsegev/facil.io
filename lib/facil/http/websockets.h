@@ -62,7 +62,7 @@ Websocket Connection Management (write / close)
 ***************************************************************************** */
 
 /** Writes data to the websocket. Returns -1 on failure (0 on success). */
-int websocket_write(ws_s *ws, void *data, size_t size, uint8_t is_text);
+int websocket_write(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
 /** Closes a websocket connection. */
 void websocket_close(ws_s *ws);
 
@@ -99,7 +99,7 @@ struct websocket_subscribe_s {
   /** the websocket receiving the message. REQUIRED. */
   ws_s *ws;
   /** the channel where the message was published. */
-  FIOBJ channel;
+  fio_str_info_s channel;
   /**
    * The callback that handles pub/sub notifications.
    *
@@ -197,72 +197,6 @@ void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id);
  * are merged, but reference counted (disabled when reference is zero).
  */
 void websocket_optimize4broadcasts(intptr_t type, int enable);
-
-/* *****************************************************************************
-Websocket Tasks - within a single process scope, NOT and entire cluster
-***************************************************************************** */
-
-/** The named arguments for `websocket_each` */
-struct websocket_each_args_s {
-  /** The websocket originating the task. It will be excluded for the loop. */
-  ws_s *origin;
-  /** The task (function) to be performed. This is required. */
-  void (*task)(ws_s *ws_target, void *arg);
-  /** User opaque data to be passed along. */
-  void *arg;
-  /** The on_finish callback is always called. Good for cleanup. */
-  void (*on_finish)(ws_s *origin, void *arg);
-};
-/**
- * DEPRECATION NOTICE: this function will be removed in favor of pub/sub logic.
- *
- * Performs a task on each websocket connection that shares the same process
- * (except the originating `ws_s` connection which is allowed to be NULL).
- */
-void __attribute__((deprecated))
-websocket_each(struct websocket_each_args_s args);
-#define websocket_each(...)                                                    \
-  websocket_each((struct websocket_each_args_s){__VA_ARGS__})
-
-/**
- * DEPRECATION NOTICE: this function will be removed in favor of pub/sub logic.
- *
- * The Arguments passed to the `websocket_write_each` function / macro are
- * defined here, for convinience of calling the function.
- */
-struct websocket_write_each_args_s {
-  /** The originating websocket client will be excluded from the `write`.
-   * Can be NULL. */
-  ws_s *origin;
-  /** The data to be written to the websocket - required(!) */
-  void *data;
-  /** The length of the data to be written to the websocket - required(!) */
-  size_t length;
-  /** Text mode vs. binary mode. Defaults to binary mode. */
-  uint8_t is_text;
-  /** Set to 1 to send the data to websockets where this application is the
-   * client. Defaults to 0 (the data is sent to all clients where this
-   * application is the server). */
-  uint8_t as_client;
-  /** A filter callback, allowing us to exclude some clients.
-   * Should return 1 to send data and 0 to exclude. */
-  uint8_t (*filter)(ws_s *ws_to, void *arg);
-  /** A callback called once all the data was sent. */
-  void (*on_finished)(ws_s *ws_origin, void *arg);
-  /** A user specified argumernt passed to each of the callbacks. */
-  void *arg;
-};
-/**
-Writes data to each websocket connection that shares the same process
-(except the originating `ws_s` connection which is allowed to be NULL).
-
-Accepts a sing `struct websocket_write_each_args_s` argument. See the struct
-details for possible arguments.
- */
-int __attribute__((deprecated))
-websocket_write_each(struct websocket_write_each_args_s args);
-#define websocket_write_each(...)                                              \
-  websocket_write_each((struct websocket_write_each_args_s){__VA_ARGS__})
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -442,8 +442,6 @@ static uint8_t http1_sse_on_shutdown(intptr_t uuid, fio_protocol_s *p_) {
 }
 static void http1_sse_on_close(intptr_t uuid, fio_protocol_s *p_) {
   http1_sse_fio_protocol_s *p = (http1_sse_fio_protocol_s *)p_;
-  if (p->sse->sse.on_close)
-    p->sse->sse.on_close(&p->sse->sse);
   http_sse_destroy(p->sse);
   free(p);
   (void)uuid;
@@ -502,7 +500,7 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
 failed:
   fio_close(handle2pr(h)->p.uuid);
   if (sse->on_close)
-    sse->on_close(sse);
+    sse->on_close(-1, sse->udata);
   return -1;
   (void)sse;
 }

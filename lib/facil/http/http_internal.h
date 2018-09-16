@@ -8,7 +8,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define H_HTTP_INTERNAL_H
 
 #define FIO_INCLUDE_LINKED_LIST
-#include "fio.h"
+#include <fio.h>
 
 #include "http.h"
 
@@ -17,6 +17,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <arpa/inet.h>
 #include <errno.h>
 
+/* *****************************************************************************
+Library initialization
+***************************************************************************** */
+void http_lib_init(void);
 /* *****************************************************************************
 Types
 ***************************************************************************** */
@@ -183,6 +187,8 @@ static inline void http_sse_destroy(http_sse_internal_s *sse) {
     void *sub = fio_ls_pop(&sse->subscriptions);
     fio_unsubscribe(sub);
   }
+  if (sse->sse.on_close)
+    sse->sse.on_close(sse->uuid, sse->sse.udata);
   sse->uuid = -1;
   http_sse_try_free(sse);
 }

@@ -105,7 +105,7 @@ struct ws_s {
   /** connection data */
   intptr_t fd;
   /** callbacks */
-  void (*on_message)(ws_s *ws, char *data, size_t size, uint8_t is_text);
+  void (*on_message)(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
   void (*on_shutdown)(ws_s *ws);
   void (*on_ready)(ws_s *ws);
   void (*on_open)(ws_s *ws);
@@ -147,7 +147,8 @@ static void websocket_on_unwrapped(void *ws_p, void *msg, uint64_t len,
                                    unsigned char rsv) {
   ws_s *ws = ws_p;
   if (last && first) {
-    ws->on_message(ws, msg, len, (uint8_t)text);
+    ws->on_message(ws, (fio_str_info_s){.data = msg, .len = len},
+                   (uint8_t)text);
     return;
   }
   if (first) {
@@ -158,8 +159,7 @@ static void websocket_on_unwrapped(void *ws_p, void *msg, uint64_t len,
   }
   fiobj_str_write(ws->msg, msg, len);
   if (last) {
-    fio_str_info_s s = fiobj_obj2cstr(ws->msg);
-    ws->on_message(ws, (char *)s.data, s.len, ws->is_text);
+    ws->on_message(ws, fiobj_obj2cstr(ws->msg), ws->is_text);
   }
 
   (void)rsv;
@@ -572,7 +572,7 @@ static inline void websocket_on_pubsub_message_direct_internal(fio_msg_s *msg,
         FIO_STR_INIT_EXISTING(msg->msg.data, msg->msg.len, 0); // don't free
     txt = (tmp.len >= (2 << 14) ? 0 : fio_str_utf8_valid(&tmp));
   }
-  websocket_write((ws_s *)pr, msg->msg.data, msg->msg.len, txt & 1);
+  websocket_write((ws_s *)pr, msg->msg, txt & 1);
   fiobj_free(message);
 finish:
   fio_protocol_unlock(pr, FIO_PR_LOCK_WRITE);
@@ -628,7 +628,7 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
       .on_unsubscribe = args.on_unsubscribe,
   };
   subscription_s *sub = fio_subscribe(
-          .channel = fiobj_obj2cstr(args.channel), .match = args.match,
+          .channel = args.channel, .match = args.match,
           .on_unsubscribe = websocket_on_unsubscribe,
           .on_message =
               (args.on_message
@@ -686,9 +686,10 @@ void *websocket_udata_set(ws_s *ws, void *udata) {
 uint8_t websocket_is_client(ws_s *ws) { return ws->is_client; }
 
 /** Writes data to the websocket. Returns -1 on failure (0 on success). */
-int websocket_write(ws_s *ws, void *data, size_t size, uint8_t is_text) {
+int websocket_write(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   if (fio_is_valid(ws->fd)) {
-    websocket_write_impl(ws->fd, data, size, is_text, 1, 1, ws->is_client);
+    websocket_write_impl(ws->fd, msg.data, msg.len, is_text, 1, 1,
+                         ws->is_client);
     return 0;
   }
   return -1;
