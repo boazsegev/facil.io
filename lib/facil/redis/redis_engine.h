@@ -7,7 +7,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_REDIS_ENGINE_H
 #define H_REDIS_ENGINE_H
 
-#include "facil.h"
+#include <fio.h>
+#include <fiobj.h>
 
 /* support C++ */
 #ifdef __cplusplus
@@ -17,11 +18,11 @@ extern "C" {
 /** possible arguments for the `redis_engine_create` function call */
 struct redis_engine_create_args {
   /** Redis server's address */
-  fio_cstr_s address;
+  fio_str_info_s address;
   /** Redis server's port */
-  fio_cstr_s port;
+  fio_str_info_s port;
   /** Redis server's password, if any */
-  fio_cstr_s auth;
+  fio_str_info_s auth;
   /** A `ping` will be sent every `ping_interval` interval or inactivity. */
   uint8_t ping_interval;
 };
