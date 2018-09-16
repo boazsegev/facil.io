@@ -19,6 +19,10 @@ Feel free to copy, use and enjoy according to the license provided.
  */
 #define H_RESP_PARSER_H
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
