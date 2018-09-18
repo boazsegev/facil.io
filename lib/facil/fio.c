@@ -115,7 +115,7 @@ Section Start Marker
 
 
 
-                       State Machine Data Structures
+                       Main State Machine Data Structures
 
 
 
@@ -234,6 +234,30 @@ union protocol_metadata_union_u {
   protocol_metadata_s meta;
 };
 
+#define fd_data(fd) (fio_data->info[(uintptr_t)(fd)])
+#define uuid_data(uuid) fd_data(fio_uuid2fd((uuid)))
+#define fd2uuid(fd)                                                            \
+  ((intptr_t)((((uintptr_t)(fd)) << 8) | fd_data((fd)).counter))
+
+/**
+ * Returns the maximum number of open files facil.io can handle per worker
+ * process.
+ *
+ * Total OS limits might apply as well but aren't shown.
+ *
+ * The value of 0 indicates either that the facil.io library wasn't initialized
+ * yet or that it's resources were released.
+ */
+size_t fio_capa(void) {
+  if (fio_data)
+    return fio_data->capa;
+  return 0;
+}
+
+/* *****************************************************************************
+Packet allocation (for socket's user-buffer)
+***************************************************************************** */
+
 static inline void fio_packet_free(fio_packet_s *packet) {
   packet->dealloc(packet->data.buffer);
   fio_free(packet);
@@ -244,13 +268,14 @@ static inline fio_packet_s *fio_packet_alloc(void) {
   return packet;
 }
 
-#define fd_data(fd) (fio_data->info[(uintptr_t)(fd)])
-#define uuid_data(uuid) fd_data(fio_uuid2fd((uuid)))
-#define fd2uuid(fd)                                                            \
-  ((intptr_t)((((uintptr_t)(fd)) << 8) | fd_data((fd)).counter))
+/* *****************************************************************************
+Core Connection Data Clearing
+***************************************************************************** */
 
 /* set the minimal max_protocol_fd */
 static void fio_max_fd_min(uint32_t fd) {
+  if (fio_data->max_protocol_fd > fd)
+    return;
   fio_lock(&fio_data->lock);
   if (fio_data->max_protocol_fd < fd)
     fio_data->max_protocol_fd = fd;
@@ -304,31 +329,12 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   return 0;
 }
 
-static inline void fio_mark_time(void) {
-  clock_gettime(CLOCK_REALTIME, &fio_data->last_cycle);
-}
-
 /* *****************************************************************************
-Accessing / Validating the data
+Protocol Locking and UUID validation
 ***************************************************************************** */
 
 /* Macro for accessing the protocol locking / metadata. */
 #define prt_meta(prt) (((union protocol_metadata_union_u *)(&(prt)->rsv))->meta)
-
-/**
- * Returns the maximum number of open files facil.io can handle per worker
- * process.
- *
- * Total OS limits might apply as well but aren't shown.
- *
- * The value of 0 indicates either that the facil.io library wasn't initialized
- * yet or that it's resources were released.
- */
-size_t fio_capa(void) {
-  if (fio_data)
-    return fio_data->capa;
-  return 0;
-}
 
 /** locks a connection's protocol returns a pointer that need to be unlocked. */
 inline static fio_protocol_s *protocol_try_lock(intptr_t fd,
@@ -383,6 +389,10 @@ void fio_protocol_unlock(fio_protocol_s *pr, enum fio_protocol_lock_e type) {
   protocol_unlock(pr, type);
 }
 
+/* *****************************************************************************
+UUID validation and state
+***************************************************************************** */
+
 /* public API. */
 intptr_t fio_fd2uuid(int fd) {
   if (fd < 0 || (size_t)fd >= fio_data->capa)
@@ -429,6 +439,10 @@ fio_str_info_s fio_peer_addr(intptr_t uuid) {
                           .len = uuid_data(uuid).addr_len,
                           .capa = 0};
 }
+
+/* *****************************************************************************
+UUID attachments (linking objects to the UUID's lifetime)
+***************************************************************************** */
 
 /* public API. */
 void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj)) {
@@ -505,6 +519,12 @@ fio_ls_embd_s fio_timers = FIO_LS_INIT(fio_timers);
 
 static fio_lock_i fio_timer_lock = FIO_LOCK_INIT;
 
+/** Marks the current time as facil.io's cycle time */
+static inline void fio_mark_time(void) {
+  clock_gettime(CLOCK_REALTIME, &fio_data->last_cycle);
+}
+
+/** Calculates the due time for a task, given it's interval */
 static struct timespec fio_timer_calc_due(size_t interval) {
   struct timespec now = fio_last_tick();
   if (interval > 1000) {
@@ -519,6 +539,8 @@ static struct timespec fio_timer_calc_due(size_t interval) {
   return now;
 }
 
+/** Returns the number of miliseconds until the next event, up to FIO_POLL_TICK
+ */
 static size_t fio_timer_calc_first_interval(void) {
   if (fio_defer_has_queue())
     return 0;
@@ -556,6 +578,7 @@ static int fio_timer_compare(struct timespec a, struct timespec b) {
   return -1;
 }
 
+/** Places a timer in an ordered linked list. */
 static void fio_timer_add_order(fio_timer_s *timer) {
   timer->due = fio_timer_calc_due(timer->interval);
   // fio_ls_embd_s *pos = &fio_timers;
@@ -572,6 +595,7 @@ finish:
   fio_unlock(&fio_timer_lock);
 }
 
+/** Performs a timer task and re-adds it to the queue (or cleans it up) */
 static void fio_timer_perform_single(void *timer_, void *ignr) {
   fio_timer_s *timer = timer_;
   timer->task(timer->arg);
@@ -1175,15 +1199,11 @@ static inline size_t fio_detect_cpu_cores(void) {
 #ifdef _SC_NPROCESSORS_ONLN
   cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
   if (cpu_count < 0) {
-    if (FIO_PRINT_STATE) {
-      fprintf(stderr, "WARNING: CPU core count auto-detection failed.\n");
-    }
+    FIO_LOG_STATE("WARNING: CPU core count auto-detection failed.\n");
     return 0;
   }
 #else
-  if (1 || FIO_PRINT_STATE) {
-    fprintf(stderr, "WARNING: CPU core count auto-detection failed.\n");
-  }
+  FIO_LOG_STATE("WARNING: CPU core count auto-detection failed.\n");
 #endif
   return cpu_count;
 }
@@ -1792,17 +1812,10 @@ FIO_FUNC void mock_ping_eternal(intptr_t uuid, fio_protocol_s *protocol) {
   fio_touch(uuid);
 }
 
-// static fio_protocol_s FIO_MOCK_PROTOCOL = {
-//     .on_data = mock_on_data,
-//     .on_ready = mock_on_ev,
-//     .on_shutdown = mock_on_shutdown,
-//     .on_close = mock_on_ev,
-//     .ping = mock_ping_eternal,
-// };
-
 /* *****************************************************************************
-Deferred event handlers
+Deferred event handlers - these tasks safely forward the events to the Protocol
 ***************************************************************************** */
+
 static void deferred_on_close(void *uuid_, void *pr_) {
   fio_protocol_s *pr = pr_;
   if (pr->rsv)
@@ -2002,9 +2015,6 @@ int fio_set_non_block(int fd) {
 }
 
 static void fio_tcp_addr_cpy(int fd, int family, struct sockaddr *addrinfo) {
-  if (family != AF_INET && family != AF_INET6) {
-    fprintf(stderr, "FAMILY ERROR!\n");
-  }
   const char *result =
       inet_ntop(family,
                 family == AF_INET
@@ -2989,8 +2999,8 @@ static void __attribute__((destructor)) fio_lib_destroy(void) {
   /* memory library destruction must be last */
   fio_mem_destroy();
 #if DEBUG
-  fprintf(stderr, "* (%d) facil.io resources released, exit complete.\n",
-          getpid());
+  FIO_LOG_STATE("* (%d) facil.io resources released, exit complete.\n",
+                getpid());
 #endif
 }
 
@@ -3059,25 +3069,23 @@ static void __attribute__((constructor)) fio_lib_init(void) {
     }
 #if DEBUG
 #if FIO_ENGINE_POLL
-    fprintf(stderr,
-            "facil.io " FIO_VERSION_STRING " capacity initialization:\n"
-            "*    Meximum open files %zu out of %zu\n"
-            "*    Allocating %zu bytes for state handling.\n"
-            "*    %zu bytes per connection + %zu for state handling.\n",
-            capa, (size_t)rlim.rlim_max,
-            (sizeof(*fio_data) + (capa * (sizeof(*fio_data->poll))) +
-             (capa * (sizeof(*fio_data->info)))),
-            (sizeof(*fio_data->poll) + sizeof(*fio_data->info)),
-            sizeof(*fio_data));
+    FIO_LOG_STATE("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
+                  "*    Meximum open files %zu out of %zu\n"
+                  "*    Allocating %zu bytes for state handling.\n"
+                  "*    %zu bytes per connection + %zu for state handling.\n",
+                  capa, (size_t)rlim.rlim_max,
+                  (sizeof(*fio_data) + (capa * (sizeof(*fio_data->poll))) +
+                   (capa * (sizeof(*fio_data->info)))),
+                  (sizeof(*fio_data->poll) + sizeof(*fio_data->info)),
+                  sizeof(*fio_data));
 #else
-    fprintf(stderr,
-            "facil.io " FIO_VERSION_STRING " capacity initialization:\n"
-            "*    Meximum open files %zu out of %zu\n"
-            "*    Allocating %zu bytes for state handling.\n"
-            "*    %zu bytes per connection + %zu for state handling.\n",
-            capa, (size_t)rlim.rlim_max,
-            (sizeof(*fio_data) + (capa * (sizeof(*fio_data->info)))),
-            (sizeof(*fio_data->info)), sizeof(*fio_data));
+    FIO_LOG_STATE("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
+                  "*    Meximum open files %zu out of %zu\n"
+                  "*    Allocating %zu bytes for state handling.\n"
+                  "*    %zu bytes per connection + %zu for state handling.\n",
+                  capa, (size_t)rlim.rlim_max,
+                  (sizeof(*fio_data) + (capa * (sizeof(*fio_data->info)))),
+                  (sizeof(*fio_data->info)), sizeof(*fio_data));
 #endif
 #endif
   }
@@ -3249,9 +3257,7 @@ static void fio_worker_startup(void) {
     fio_data->is_worker = 1;
   } else if (fio_data->is_worker) {
     /* Worker Process */
-    if (FIO_PRINT_STATE) {
-      fprintf(stderr, "* %d is running.\n", getpid());
-    }
+    FIO_LOG_STATE("* %d is running.\n", getpid());
   } else {
     /* Root Process should run in single thread mode */
     fio_data->threads = 1;
@@ -3271,12 +3277,10 @@ static void fio_worker_startup(void) {
 /* TODO: fixme */
 static void fio_worker_cleanup(void) {
   /* switch to winding down */
-  if (FIO_PRINT_STATE) {
-    if (fio_data->is_worker)
-      fprintf(stderr, "* (%d) detected exit signal.\n", getpid());
-    else
-      fprintf(stderr, "* Server Detected exit signal.\n");
-  }
+  if (fio_data->is_worker)
+    FIO_LOG_STATE("* (%d) detected exit signal.\n", getpid());
+  else
+    FIO_LOG_STATE("* Server Detected exit signal.\n");
   fio_state_callback_force(FIO_CALL_ON_SHUTDOWN);
   for (size_t i = 0; i <= fio_data->max_protocol_fd; ++i) {
     if (fd_data(i).protocol) {
@@ -3299,12 +3303,10 @@ static void fio_worker_cleanup(void) {
       ;
   }
   fio_defer_perform();
-  if (FIO_PRINT_STATE) {
-    if (fio_data->parent == getpid()) {
-      fprintf(stderr, "\n   ---  Shutdown Complete  ---\n");
-    } else if (FIO_PRINT_STATE) {
-      fprintf(stderr, "* (%d) cleanup complete.\n", getpid());
-    }
+  if (fio_data->parent == getpid()) {
+    FIO_LOG_STATE("\n   ---  Shutdown Complete  ---\n");
+  } else {
+    FIO_LOG_STATE("* (%d) cleanup complete.\n", getpid());
   }
 }
 
@@ -3325,10 +3327,10 @@ static void *fio_sentinel_worker_thread(void *arg) {
 #if DEBUG
     if (fio_data->active) { /* !WIFEXITED(status) || WEXITSTATUS(status) */
       if (!WIFEXITED(status) || WEXITSTATUS(status)) {
-        fprintf(stderr,
-                "FATAL ERROR: Child worker (%d) crashed. Stopping services in "
-                "DEBUG mode.\n",
-                child);
+        FIO_LOG_STATE(
+            "FATAL ERROR: Child worker (%d) crashed. Stopping services in "
+            "DEBUG mode.\n",
+            child);
         fio_state_callback_force(FIO_CALL_ON_CHILD_CRUSH);
       } else {
         fprintf(
@@ -3349,9 +3351,8 @@ static void *fio_sentinel_worker_thread(void *arg) {
                 child);
         fio_state_callback_force(FIO_CALL_ON_CHILD_CRUSH);
       } else {
-        fprintf(stderr,
-                "INFO: Child worker (%d) shutdown. Respawning worker.\n",
-                child);
+        FIO_LOG_STATE("INFO: Child worker (%d) shutdown. Respawning worker.\n",
+                      child);
       }
       fio_defer(fio_sentinel_task, NULL, NULL);
       fio_unlock(&fio_fork_lock);
@@ -3405,17 +3406,15 @@ void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
 
   fio_state_callback_force(FIO_CALL_PRE_START);
 
-  if (FIO_PRINT_STATE) {
-    fprintf(stderr,
-            "Server is running %u %s X %u %s with facil.io " FIO_VERSION_STRING
-            " (%s)\n"
-            "* Detected capacity: %d open file limit\n"
-            "* Root pid: %d\n"
-            "* Press ^C to stop\n",
-            fio_data->workers, fio_data->workers > 1 ? "workers" : "worker",
-            fio_data->threads, fio_data->threads > 1 ? "threads" : "thread",
-            fio_engine(), fio_data->capa, fio_data->parent);
-  }
+  FIO_LOG_STATE(
+      "Server is running %u %s X %u %s with facil.io " FIO_VERSION_STRING
+      " (%s)\n"
+      "* Detected capacity: %d open file limit\n"
+      "* Root pid: %d\n"
+      "* Press ^C to stop\n",
+      fio_data->workers, fio_data->workers > 1 ? "workers" : "worker",
+      fio_data->threads, fio_data->threads > 1 ? "threads" : "thread",
+      fio_engine(), fio_data->capa, fio_data->parent);
 
   if (args.workers > 1) {
     for (int i = 0; i < args.workers && fio_data->active; ++i) {
@@ -3824,14 +3823,11 @@ static void fio_listen_on_startup(void *pr_) {
   fio_state_callback_remove(FIO_CALL_ON_SHUTDOWN, fio_listen_cleanup_task, pr_);
   fio_listen_protocol_s *pr = pr_;
   fio_attach(pr->uuid, &pr->pr);
-  if (FIO_PRINT_STATE) {
-    if (pr->port_len)
-      fprintf(stderr, "* (%d) started listening on port %s\n", getpid(),
-              pr->port);
-    else
-      fprintf(stderr, "* (%d) started listening on Unix Socket at %s\n",
-              getpid(), pr->addr);
-  }
+  if (pr->port_len)
+    FIO_LOG_STATE("* (%d) started listening on port %s\n", getpid(), pr->port);
+  else
+    FIO_LOG_STATE("* (%d) started listening on Unix Socket at %s\n", getpid(),
+                  pr->addr);
 }
 
 static void fio_listen_on_close(intptr_t uuid, fio_protocol_s *pr_) {
@@ -3903,12 +3899,10 @@ intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
     fio_state_callback_add(FIO_CALL_ON_SHUTDOWN, fio_listen_cleanup_task, pr);
   }
 
-  if (FIO_PRINT_STATE) {
-    if (args.port)
-      fprintf(stderr, "* Listening on port %s\n", args.port);
-    else
-      fprintf(stderr, "* Listening on Unix Socket at %s\n", args.address);
-  }
+  if (args.port)
+    FIO_LOG_STATE("* Listening on port %s\n", args.port);
+  else
+    FIO_LOG_STATE("* Listening on Unix Socket at %s\n", args.address);
 
   return uuid;
 error:
@@ -4780,7 +4774,7 @@ struct cluster_data_s {
 static void fio_cluster_data_cleanup(int delete_file) {
   if (delete_file && cluster_data.name[0]) {
 #if DEBUG
-    fprintf(stderr, "* INFO: (%d) CLUSTER UNLINKING\n", getpid());
+    FIO_LOG_STATE("* INFO: (%d) CLUSTER UNLINKING\n", getpid());
 #endif
     unlink(cluster_data.name);
   }
@@ -4977,10 +4971,8 @@ static void fio_cluster_on_close(intptr_t uuid, fio_protocol_s *pr_) {
   } else if (fio_data->active) {
     /* no shutdown message received - parent crashed. */
     if (c->type != FIO_CLUSTER_MSG_SHUTDOWN && fio_is_running()) {
-      if (FIO_PRINT_STATE) {
-        fprintf(stderr, "* FATAL ERROR: (%d) Parent Process crash detected!\n",
-                getpid());
-      }
+      FIO_LOG_STATE("* FATAL ERROR: (%d) Parent Process crash detected!\n",
+                    getpid());
       fio_state_callback_force(FIO_CALL_ON_PARENT_CRUSH);
       fio_state_callback_clear(FIO_CALL_ON_PARENT_CRUSH);
       fio_cluster_data_cleanup(1);
@@ -5001,7 +4993,7 @@ fio_cluster_protocol_alloc(intptr_t uuid,
                            void (*sender)(fio_str_s *data, intptr_t auuid)) {
   cluster_pr_s *p = fio_mmap(sizeof(*p));
   if (!p) {
-    perror("FATAL ERROR: Cluster protocol allocation failed");
+    FIO_LOG_STATE("FATAL ERROR: Cluster protocol allocation failed");
     exit(errno);
   }
   p->protocol = (fio_protocol_s){
@@ -5137,8 +5129,8 @@ static void fio_cluster_listen_on_close(intptr_t uuid,
   cluster_data.uuid = -1;
   if (fio_parent_pid() == getpid()) {
 #if DEBUG
-    fprintf(stderr, "* INFO: (%d) stopped listening for cluster connections\n",
-            getpid());
+    FIO_LOG_STATE("* INFO: (%d) stopped listening for cluster connections\n",
+                  getpid());
 #endif
     if (fio_data->active)
       kill(0, SIGINT);
@@ -5166,8 +5158,8 @@ static void fio_listen2cluster(void *ignore) {
       .on_close = fio_cluster_listen_on_close,
   };
 #if DEBUG
-  fprintf(stderr, "* INFO: (%d) Listening to cluster: %s\n", getpid(),
-          cluster_data.name);
+  FIO_LOG_STATE("* INFO: (%d) Listening to cluster: %s\n", getpid(),
+                cluster_data.name);
 #endif
   fio_attach(cluster_data.uuid, p);
   (void)ignore;
@@ -5280,7 +5272,7 @@ static void fio_connect2cluster(void *ignore) {
 static void fio_send2cluster(int32_t filter, fio_str_info_s ch,
                              fio_str_info_s msg, uint8_t is_json) {
   if (!fio_is_running()) {
-    fprintf(stderr, "ERROR: cluster inactive, can't send message.\n");
+    FIO_LOG_STATE("ERROR: cluster inactive, can't send message.\n");
     return;
   }
   if (fio_data->workers == 1) {
@@ -5316,13 +5308,13 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
     return;
   fio_str_info_s ch_name = fio_str_info(&ch->id);
   fio_str_info_s msg = {.data = NULL, .len = 0};
-#if DEBUG && FIO_PRINT_STATE
-  fprintf(stderr, "* (%d) informing root about: %s (%zu) msg type %d\n",
-          getpid(), ch_name.data, ch_name.len,
-          (match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
-                        : FIO_CLUSTER_MSG_PATTERN_UNSUB)
-                 : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
-                        : FIO_CLUSTER_MSG_PUBSUB_UNSUB)));
+#if DEBUG
+  FIO_LOG_STATE("* (%d) informing root about: %s (%zu) msg type %d\n", getpid(),
+                ch_name.data, ch_name.len,
+                (match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
+                              : FIO_CLUSTER_MSG_PATTERN_UNSUB)
+                       : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
+                              : FIO_CLUSTER_MSG_PUBSUB_UNSUB)));
 #endif
   if (match) {
     msg.data = (char *)&match;
@@ -6976,7 +6968,7 @@ fio_sha2_s fio_sha2_init(fio_sha2_variant_e variant) {
         .digest.i64[7] = 0x0eb72ddc81c52ca2,
     };
   }
-  fprintf(stderr, "SHA2 ERROR - variant unknown\n");
+  fprintf(stderr, "FATAL ERROR: SHA-2 ERROR - variant unknown\n");
   exit(2);
 }
 

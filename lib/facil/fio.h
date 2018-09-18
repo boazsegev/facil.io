@@ -212,6 +212,12 @@ Version and helper macros
 #include <sys/socket.h>
 #endif
 
+#if FIO_PRINT_STATE
+#define FIO_LOG_STATE(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define FIO_LOG_STATE(...)
+#endif
+
 /* *****************************************************************************
 C++ extern start
 ***************************************************************************** */
