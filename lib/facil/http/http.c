@@ -1032,7 +1032,7 @@ intptr_t http_connect(const char *address,
     fprintf(stderr, "ERROR: http_connect requires either an on_response "
                     " or an on_upgrade callback.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   }
   http_lib_init();
   size_t len;
@@ -1043,8 +1043,9 @@ intptr_t http_connect(const char *address,
   if (!address || (len = strlen(address)) <= 5) {
     fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   }
+  // TODO: use http_url_parse
   if (!strncasecmp(address, "ws", 2)) {
     is_websocket = 1;
     address += 2;
@@ -1055,7 +1056,7 @@ intptr_t http_connect(const char *address,
   } else {
     fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   }
   /* parse address */
   if (address[0] == 's') {
@@ -1064,11 +1065,11 @@ intptr_t http_connect(const char *address,
     fprintf(stderr, "ERROR: http_connect doesn't support TLS/SSL "
                     "just yet.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   } else if (len <= 3 || strncmp(address, "://", 3)) {
     fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   } else {
     len -= 3;
     address += 3;
@@ -1138,6 +1139,10 @@ intptr_t http_connect(const char *address,
   }
   fio_free(a);
   return ret;
+on_error:
+  if (arg_settings.on_finish)
+    arg_settings.on_finish(&arg_settings);
+  return -1;
 }
 #define http_connect(address, ...)                                             \
   http_connect((address), (struct http_settings_s){__VA_ARGS__})
