@@ -2744,7 +2744,7 @@ Setting the protocol
 ***************************************************************************** */
 
 /* managing the protocol pointer array and the `on_close` callback */
-static int fio_attach_task(void *uuid_, void *protocol_) {
+static int fio_attach__internal(void *uuid_, void *protocol_) {
   intptr_t uuid = (intptr_t)uuid_;
   fio_protocol_s *protocol = (fio_protocol_s *)protocol_;
   if (protocol) {
@@ -2796,13 +2796,13 @@ invalid_uuid:
  * Returns -1 on error and 0 on success.
  */
 void fio_attach(intptr_t uuid, fio_protocol_s *protocol) {
-  fio_attach_task((void *)uuid, protocol);
+  fio_attach__internal((void *)uuid, protocol);
 }
 /** Attaches (or updates) a protocol object to a socket UUID.
  * Returns -1 on error and 0 on success.
  */
 void fio_attach_fd(int fd, fio_protocol_s *protocol) {
-  fio_attach_task((void *)fio_fd2uuid(fd), protocol);
+  fio_attach__internal((void *)fio_fd2uuid(fd), protocol);
 }
 
 /** Sets a timeout for a specific connection (only when running and valid). */

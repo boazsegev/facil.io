@@ -42,7 +42,7 @@ Compile Time Settings
 #define HTTP_MAX_HEADER_LENGTH 8192
 #endif
 
-/** the `http_listen settings, see detils in the struct definition. */
+/** the `http_listen settings, see details in the struct definition. */
 typedef struct http_settings_s http_settings_s;
 
 /* *****************************************************************************
