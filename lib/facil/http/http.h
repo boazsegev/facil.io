@@ -116,18 +116,18 @@ This struct is used together with the `http_response_set_cookie`. i.e.:
 */
 typedef struct {
   /** The cookie's name (Symbol). */
-  char *name;
+  const char *name;
   /** The cookie's value (leave blank to delete cookie). */
-  char *value;
+  const char *value;
   /** The cookie's domain (optional). */
-  char *domain;
+  const char *domain;
   /** The cookie's path (optional). */
-  char *path;
-  /** The cookie name's size in bytes or a terminating NULL will be assumed.*/
+  const char *path;
+  /** The cookie name's size in bytes or a terminating NUL will be assumed.*/
   size_t name_len;
-  /** The cookie value's size in bytes or a terminating NULL will be assumed.*/
+  /** The cookie value's size in bytes or a terminating NUL will be assumed.*/
   size_t value_len;
-  /** The cookie domain's size in bytes or a terminating NULL will be assumed.*/
+  /** The cookie domain's size in bytes or a terminating NUL will be assumed.*/
   size_t domain_len;
   /** The cookie path's size in bytes or a terminating NULL will be assumed.*/
   size_t path_len;
@@ -156,13 +156,12 @@ int http_set_header(http_s *h, FIOBJ name, FIOBJ value);
 int http_set_header2(http_s *h, fio_str_info_s name, fio_str_info_s value);
 
 /**
- * Sets a response cookie, taking ownership of the value object, but NOT the
- * name object (so name objects could be reused in future responses).
+ * Sets a response cookie.
  *
  * Returns -1 on error and 0 on success.
  *
  * Note: Long cookie names and long cookie values will be considered a security
- * vaiolation and an error will be returned. It should be noted that most
+ * violation and an error will be returned. It should be noted that most
  * proxies and servers will refuse long cookie names or values and many impose
  * total header lengths (including cookies) of ~8Kib.
  */
@@ -437,9 +436,7 @@ intptr_t http_connect(const char *address, struct http_settings_s);
   http_connect((address), (struct http_settings_s){__VA_ARGS__})
 
 /**
- * Returns the settings used to setup the connection.
- *
- * Returns -1 on error and 0 on success.
+ * Returns the settings used to setup the connection or NULL on error.
  */
 struct http_settings_s *http_settings(http_s *h);
 
@@ -457,7 +454,7 @@ fio_str_info_s http_peer_addr(http_s *h);
  * It's possible to call `http_finish` immediately after calling `http_hijack`
  * in order to send the outgoing headers.
  *
- * If any aditional HTTP functions are called after the hijacking, the protocol
+ * If any additional HTTP functions are called after the hijacking, the protocol
  * object might attempt to continue reading data from the buffer.
  *
  * Returns the underlining socket connection's uuid. If `leftover` isn't NULL,

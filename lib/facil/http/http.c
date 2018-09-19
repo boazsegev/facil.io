@@ -176,8 +176,9 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   HTTP_ASSERT(h, "Can't set cookie for NULL HTTP handler!");
 #endif
   if (HTTP_INVALID_HANDLE(h) || cookie.name_len >= 32768 ||
-      cookie.value_len >= 131072)
+      cookie.value_len >= 131072) {
     return -1;
+  }
 
   static int warn_illegal = 0;
 

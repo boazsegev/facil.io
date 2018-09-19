@@ -179,7 +179,7 @@ static void fio_cli_set_arg(cstr_s arg, char const *value, char const *line,
     }
   }
 
-  /* handle aditional argv progress (if value is on separate argv) */
+  /* handle additional argv progress (if value is on separate argv) */
   if (type != FIO_CLI_TYPE_BOOL && value && value != arg.data + arg.len &&
       !arg.data[arg.len]) {
     /* advance the position marker more than once? */

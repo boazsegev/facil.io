@@ -179,6 +179,13 @@ The `on_finish` callback is always called (even on errors).
 
 ## Connecting to HTTP as a Client
 
+#### `http_connect`
+
+```c
+intptr_t http_connect(const char *address, struct http_settings_s);
+#define http_connect(address, ...)                                             \
+  http_connect((address), (struct http_settings_s){__VA_ARGS__})
+```
 
 Connects to an HTTP server as a client.
 
@@ -204,10 +211,6 @@ Returns -1 on error and the socket's uuid on success.
 
 The `on_finish` callback is always called.
  
-intptr_t http_connect(const char *address, struct http_settings_s);
-#define http_connect(address, ...)                                             \
-  http_connect((address), (struct http_settings_s){__VA_ARGS__})
-
 ## Miscellaneous 
 
 ### Compile Time Settings
@@ -283,7 +286,7 @@ For example:
 FIOBJ host = fiobj_hash_get(h->headers, HTTP_HEADER_HOST);
 ```
 
-#### `received_at`
+#### `h->received_at`
 
 ```c
 struct timespec received_at;
@@ -291,7 +294,7 @@ struct timespec received_at;
 
 A time merker indicating when the request was received. 
 
-#### `method`
+#### `h->method`
 
 ```c
 FIOBJ method;
@@ -301,7 +304,7 @@ A [FIOBJ String](fiobj_str) containing the HTTP method string.
 
 facil.io accepts non-standard methods as well as the standard GET, PUT, POST, etc' HTTP methods. 
 
-#### `status`
+#### `h->status`
 
 ```c
 uintptr_t status;
@@ -311,7 +314,7 @@ The status used for the response (or if the object is a response).
 
 When sending a request, the status should be set to 0.
 
-#### `status_str`
+#### `h->status_str`
 
 ```c
 FIOBJ status_str;
@@ -319,7 +322,7 @@ FIOBJ status_str;
 
 A [FIOBJ String](fiobj_str) containing the HTTP status string, for response objects (client mode response).
 
-#### `version`
+#### `h->version`
 
 ```c
 FIOBJ version;
@@ -327,7 +330,7 @@ FIOBJ version;
 
 A [FIOBJ String](fiobj_str) containing the HTTP version string, if any.
 
-#### `path`
+#### `h->path`
 
 ```c
 FIOBJ path;
@@ -335,7 +338,7 @@ FIOBJ path;
 
 A [FIOBJ String](fiobj_str) containing the request path string, if any.
 
-#### `query`
+#### `h->query`
 
 ```c
 FIOBJ query;
@@ -343,7 +346,7 @@ FIOBJ query;
 
 A [FIOBJ String](fiobj_str) containing the request query string, if any.
 
-#### `headers`
+#### `h->headers`
 
 ```c
 FIOBJ headers;
@@ -353,7 +356,7 @@ A [FIOBJ Hash Map](fiobj_hash) containing the received header data as either a [
 
 When a header is received multiple times (such as cookie headers), an Array of Strings will be used instead of a single String.
 
-#### `cookies`
+#### `h->cookies`
 
 ```c
 FIOBJ cookies;
@@ -363,7 +366,7 @@ A placeholder for a hash of cookie data.
 
 The [FIOBJ Hash Map](fiobj_hash) will be initialized when parsing the request using [`http_parse_cookies`](#http_parse_cookies).
 
-#### `params`
+#### `h->params`
 
 ```c
 FIOBJ params;
@@ -373,7 +376,7 @@ A placeholder for a hash of request data.
 
 The [FIOBJ Hash Map](fiobj_hash) will be initialized when parsing the request using [`http_parse_body`](#http_parse_body) and [`http_parse_query`](#http_parse_query).
 
-#### `body`
+#### `h->body`
 
 ```c
 FIOBJ body;
@@ -381,7 +384,7 @@ FIOBJ body;
 
 A [FIOBJ Data](fiobj_data) reader for body data (might be a temporary file, a string or NULL).
 
-#### `udata`
+#### `h->udata`
 
 ```c
 void *udata;
@@ -389,7 +392,7 @@ void *udata;
 
 An opaque user data pointer, which can be used **before** calling [`http_defer`](#http_defer) in order to retain persistent application information across events.
 
-#### `private_data`
+#### `h->private_data`
 
 ```c
 struct {
@@ -405,191 +408,293 @@ The out headers are set using the [`http_set_header`](#http_set_header), [`http_
 
 Reading the outgoing headers is possible by directly accessing the [Hash Map](fiobj_hash) data. However, writing data to the Hash should be avoided.
 
+### Connection Information
 
----
+#### `http_settings`
 
-
-Returns the settings used to setup the connection.
- *
-Returns -1 on error and 0 on success.
- 
+```c
 struct http_settings_s *http_settings(http_s *h);
+```
 
+Returns the settings used to setup the connection or NULL on error.
 
-Returns the direct address of the connected peer (likely an intermediary).
- 
+#### `http_peer_addr`
+
+```c
 fio_str_info_s http_peer_addr(http_s *h);
+```
+
+Returns the direct address of the connected peer (most possibly an intermediary / proxy server).
+
+NOTE: it is my hope that a future variation of this function will return a best guess at the actual client's address
 
 
-Hijacks the socket away from the HTTP protocol and away from facil.io.
- *
-It's possible to hijack the socket and than reconnect it to a new protocol
-object.
- *
-It's possible to call `http_finish` immediately after calling `http_hijack`
-in order to send the outgoing headers.
- *
-If any aditional HTTP functions are called after the hijacking, the protocol
-object might attempt to continue reading data from the buffer.
- *
-Returns the underlining socket connection's uuid. If `leftover` isn't NULL,
-it will be populated with any remaining data in the HTTP buffer (the data
-will be automatically deallocated, so copy the data when in need).
- *
-WARNING: this isn't a good way to handle HTTP connections, especially as
-HTTP/2 enters the picture.
- 
-intptr_t http_hijack(http_s *h, fio_str_info_s *leftover);
+### Setting Headers and Cookies
 
+#### `http_set_header`
 
-
----
-
-the `http_listen settings, see details in the structure definition. 
-typedef struct http_settings_s http_settings_s;
-
-
-
-* This is a helper for setting cookie data.
-
-This struct is used together with the `http_response_set_cookie`. i.e.:
-
-      http_response_set_cookie(response,
-        .name = "my_cookie",
-        .value = "data" );
-
-
-typedef struct {
-  /** The cookie's name (Symbol). 
-  char *name;
-  /** The cookie's value (leave blank to delete cookie). 
-  char *value;
-  /** The cookie's domain (optional). 
-  char *domain;
-  /** The cookie's path (optional). 
-  char *path;
-  /** The cookie name's size in bytes or a terminating NULL will be assumed.
-  size_t name_len;
-  /** The cookie value's size in bytes or a terminating NULL will be assumed.
-  size_t value_len;
-  /** The cookie domain's size in bytes or a terminating NULL will be assumed.
-  size_t domain_len;
-  /** The cookie path's size in bytes or a terminating NULL will be assumed.
-  size_t path_len;
-  /** Max Age (how long should the cookie persist), in seconds (0 == session).
-  int max_age;
-  /** Limit cookie to secure connections.
-  unsigned secure : 1;
-  /** Limit cookie to HTTP (intended to prevent javascript access/hijacking).
-  unsigned http_only : 1;
-} http_cookie_args_s;
-
-
-Sets a response header, taking ownership of the value object, but NOT the
-name object (so name objects could be reused in future responses).
- *
-Returns -1 on error and 0 on success.
- 
+```c
 int http_set_header(http_s *h, FIOBJ name, FIOBJ value);
+```
 
+Sets an outgoing header, taking ownership of the value object, but NOT the name object (so name objects could be reused in future responses).
 
-Sets a response header, taking ownership of the value object, but NOT the
-name object (so name objects could be reused in future responses).
- *
 Returns -1 on error and 0 on success.
  
+#### `http_set_header2`
+
+```c
 int http_set_header2(http_s *h, fio_str_info_s name, fio_str_info_s value);
+```
 
+Sets an outgoing header, copying the data.
 
-Sets a response cookie, taking ownership of the value object, but NOT the
-name object (so name objects could be reused in future responses).
- *
 Returns -1 on error and 0 on success.
- *
-Note: Long cookie names and long cookie values will be considered a security
-vaiolation and an error will be returned. It should be noted that most
-proxies and servers will refuse long cookie names or values and many impose
-total header lengths (including cookies) of ~8Kib.
- 
+
+
+#### `http_set_cookie`
+
+```c
 int http_set_cookie(http_s *h, http_cookie_args_s);
 #define http_set_cookie(http___handle, ...)                                    \
   http_set_cookie((http___handle), (http_cookie_args_s){__VA_ARGS__})
+```
 
+Sets an outgoing **response** cookie.
 
-Sends the response headers and body.
- *
-**Note**: The body is *copied* to the HTTP stream and it's memory should be
-freed by the calling function.
- *
+To set a *request* cookie, simply add the data to a header named `"cookie"`.
+
+The `http_set_cookie` function is shadowed by the `http_set_cookie` MACRO, which allows the function to accept "named arguments", i.e.:
+
+```c
+http_set_cookie(request, .name = "my_cookie", .value = "data");
+```
+
+In addition to the handle argument (`http_s *`), the following arguments are supported:
+
+* `name`:
+
+     The cookie's name (Symbol).
+
+        // type:
+        const char *name;
+
+* `value`:
+
+     The cookie's value. Leave the value blank (NULL) to delete cookie.
+
+        // type:
+        const char *value;
+
+* `domain`:
+
+     The cookie's domain (optional).
+
+        // type:
+        const char *domain;
+
+* `path`:
+
+     The cookie's path (optional).
+
+        // type:
+        const char *path;
+
+* `name_len`:
+
+     The cookie name's length in bytes or a terminating NUL will be assumed.
+
+        // type:
+        size_t name_len;
+
+* `value_len`:
+
+     The cookie value's length in bytes or a terminating NULL will be assumed.
+
+        // type:
+        size_t value_len;
+
+* `domain_len`:
+
+     The cookie domain's length in bytes or a terminating NULL will be assumed.
+
+        // type:
+        size_t domain_len;
+
+* `path_len`:
+
+     The cookie path's length in bytes or a terminating NULL will be assumed.
+
+        // type:
+       size_t path_len;
+
+* `max_age`:
+
+     Max Age (how long should the cookie persist), in seconds (0 == session).
+
+        // type:
+       int max_age;
+
+* `secure`:
+
+     Limit cookie to secure connections.
+
+        // type:
+       unsigned secure : 1;
+
+* `path_len`:
+
+     Limit cookie to HTTP (intended to prevent JavaScript access/hijacking).
+
+        // type:
+       unsigned http_only : 1;
+
 Returns -1 on error and 0 on success.
- *
-AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
- 
-int http_send_body(http_s *h, void *data, uintptr_t length);
+
+**Note**: Long cookie names and long cookie values will be considered a security violation and an error will be returned. It should be noted that most proxies and servers will refuse long cookie names or values and many impose total header lengths (including cookies) of ~8Kib.
 
 
-Sends the response headers and the specified file (the response's body).
- *
-The file is closed automatically.
- *
-Returns -1 on error and 0 on success.
- *
-AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
- 
-int http_sendfile(http_s *h, int fd, uintptr_t length, uintptr_t offset);
+### Sending a Response / Request
 
 
-Sends the response headers and the specified file (the response's body).
- *
-The `local` and `encoded` strings will be joined into a single string that
-represent the file name. Either or both of these strings can be empty.
- *
-The `encoded` string will be URL decoded while the `local` string will used
-as is.
- *
-Returns 0 on success. A success value WILL CONSUME the `http_s` handle (it
-will become invalid).
- *
-Returns -1 on error (The `http_s` handle should still be used).
- 
-int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
-                   const char *encoded, size_t encoded_len);
+#### `http_finish`
 
-
-Sends an HTTP error response.
- *
-Returns -1 on error and 0 on success.
- *
-AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
- *
-The `uuid` and `settings` arguments are only required if the `http_s` handle
-is NULL.
- 
-int http_send_error(http_s *h, size_t error_code);
-
+```c
+void http_finish(http_s *h);
+```
 
 Sends the response headers for a header only response.
- *
-AFTER THIS FUNCTION IS CALLED, THE `http_s` OBJECT IS NO LONGER VALID.
- 
-void http_finish(http_s *h);
 
+**Important**: After this function is called, the `http_s` object is no longer valid.
+ 
+
+#### `http_send_body`
+
+```c
+int http_send_body(http_s *h, void *data, uintptr_t length);
+```
+
+Sends the response headers and body.
+
+**Note**: The body is *copied* to the HTTP stream and it's memory should be
+freed by the calling function.
+
+Returns -1 on error and 0 on success.
+
+**Important**: After this function is called, the `http_s` object is no longer valid.
+
+
+#### `http_sendfile`
+
+```c
+int http_sendfile(http_s *h, int fd, uintptr_t length, uintptr_t offset);
+```
+
+Sends the response headers and the specified file (the response's body).
+
+The file is closed automatically.
+
+Returns -1 on error and 0 on success.
+
+**Important**: After this function is called, the `http_s` object is no longer valid.
+ 
+#### `http_sendfile2`
+
+```c
+int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
+                   const char *encoded, size_t encoded_len);
+```
+
+Sends the response headers and the specified file (the response's body).
+
+The `local` and `encoded` strings will be joined into a single string that represent the file name. Either or both of these strings can be empty.
+
+The `encoded` string will be URL decoded while the `local` string will used as is.
+
+Returns 0 on success. A success value WILL CONSUME the `http_s` handle (it will become invalid).
+
+Returns -1 on error (The `http_s` handle should still be used).
+ 
+**Important**: After this function is called, the `http_s` object is no longer valid.
+
+
+#### `http_send_error`
+
+```c
+int http_send_error(http_s *h, size_t error_code);
+```
+
+Sends an HTTP error response.
+
+Returns -1 on error and 0 on success.
+
+**Important**: After this function is called, the `http_s` object is no longer valid.
+
+<!-- The `uuid` and `settings` arguments are only required if the `http_s` handle is NULL. -->
+
+### Push Promise (future HTTP/2 support)
+
+**Note**: HTTP/2 isn't implemented yet and these functions will simply fail.
+
+#### `http_push_data`
+
+```c
+int http_push_data(http_s *h, void *data, uintptr_t length, FIOBJ mime_type);
+```
 
 Pushes a data response when supported (HTTP/2 only).
- *
-Returns -1 on error and 0 on success.
- 
-int http_push_data(http_s *h, void *data, uintptr_t length, FIOBJ mime_type);
 
+Returns -1 on error and 0 on success.
+
+
+#### `http_push_file`
+
+```c
+int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
+```
 
 Pushes a file response when supported (HTTP/2 only).
- *
-If `mime_type` is NULL, an attempt at automatic detection using `filename`
-will be made.
- *
+
+If `mime_type` is NULL, an attempt at automatic detection using `filename` will be made.
+
 Returns -1 on error and 0 on success.
+
+### Connection Hijacking
+
+#### `http_hijack`
+
+```c
+intptr_t http_hijack(http_s *h, fio_str_info_s *leftover);
+```
+
+
+Hijacks the socket away from the HTTP protocol and away from facil.io.
+
+It's possible to hijack the socket and than reconnect it to a new protocol object.
+
+It's possible to call `http_finish` immediately after calling `http_hijack` in order to send any outgoing headers before the hijacking is complete.
+
+If any additional HTTP functions are called after the hijacking, the protocol object might attempt to continue reading data from the buffer.
+
+Returns the underlining socket connection's uuid. If `leftover` isn't NULL, it will be populated with any remaining data in the HTTP buffer (the data will be automatically deallocated, so copy the data when in need).
+
+**WARNING**: this isn't a good way to handle HTTP connections, especially as HTTP/2 enters the picture. To implement Server Sent Events consider calling [`http_upgrade2sse`](#http_upgrade2sse) instead.
  
-int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
+
+#### ``
+
+```c
+```
+
+
+
+---
+
+
+
+
+
+
 
 *****************************************************************************
 HTTP evented API (pause / resume HTTp handling)

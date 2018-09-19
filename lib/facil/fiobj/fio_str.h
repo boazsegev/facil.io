@@ -66,7 +66,7 @@ String API - Initialization and Destruction
  * `fio_str_state`, `fio_str_len`, `fio_str_data`, `fio_str_capa`, etc'.
  *
  * Note: when the `small` flag is present, the structure is ignored and used as
- * raw memory for a small String (no aditional allocation). This changes the
+ * raw memory for a small String (no additional allocation). This changes the
  * String's behavior drastically and requires that the accessor functions be
  * used.
  */
