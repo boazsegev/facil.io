@@ -4,10 +4,211 @@ sidebar: 0.7.x/_sidebar.md
 ---
 # {{ page.title }}
 
-facil.io includes an HTTP / WebSocket server and framework that could be used to author HTTP / WebSocket services, including REST applications, micro-services, etc'.
+facil.io includes an HTTP/1.1 and WebSocket server / framework that could be used to author HTTP and WebSocket services, including REST applications, micro-services, etc'.
+
+Note that, currently, only HTTP/1.1 is supported. Support for HTTP/2 is planned for future versions and could be implemented as a custom protocol until such time.
+
+## Listening to HTTP Connections
 
 
-## General
+#### `http_listen`
+
+```c
+intptr_t http_listen(const char *port, const char *binding,
+                     struct http_settings_s);
+Listens to HTTP connections at the specified `port` and `binding`. 
+#define http_listen(port, binding, ...)                                        \
+  http_listen((port), (binding), (struct http_settings_s){__VA_ARGS__})
+```
+
+The `http_listen` function is shadowed by the `http_listen` MACRO, which allows the function to accept "named arguments", i.e.:
+
+```c
+/* Assuming we defined the HTTP request handler: */
+static void on_http_request(http_s *h);
+// ... 
+if (http_listen("3000", NULL,
+            .on_request = on_http_request,
+            .public_folder = "www" ) == -1) {
+    perror("No listening socket available on port 3000");
+    exit(-1);
+}
+```
+
+In addition to the `port` and `address` argument (explained in [`fio_listen`](fio#fio_listen)), the following arguments are supported:
+
+* `on_request`:
+
+    Callback for normal HTTP requests.
+
+        // callback example:
+        void on_request(http_s *request);
+
+* `on_request`:
+
+    Callback for Upgrade and EventSource (SSE) requests.
+
+    Server Sent Events (SSE) / EventSource requests set the `requested_protocol` string to `"sse"`. Other protocols (i.e., WebSockets) are represented exactly the same was as the client requested them (be aware or lower case vs. capitalized representations).
+
+        // callback example:
+        void on_upgrade(http_s *request, char *requested_protocol, size_t len);
+
+* `on_request`:
+
+    This callback is ignored for HTTP server mode and is only called when a response (not a request) is received. On server connections, this would normally indicate a protocol error.
+
+        // callback example:
+        void on_response(http_s *response);
+
+* `on_finish`:
+
+    This (optional) callback will be called when the HTTP service closes. The `setting` pointer will point to the named arguments passed to the `http_listen` function.
+
+        // callback example:
+        void on_finish(struct http_settings_s *settings);
+
+* `udata`:
+
+     Opaque user data. facil.io will ignore this field, but you can use it.
+
+        // type:
+        void *udata;
+
+* `public_folder`:
+
+    A public folder for file transfers - allows to circumvent any application layer logic and simply serve static files.
+
+    The static file service supports automatic `gz` pre-compressed file alternatives.
+
+        // type:
+        const char *public_folder;
+
+* `public_folder_length`:
+
+    The length of the public_folder string.
+
+        // type:
+        size_t public_folder_length;
+
+* `max_header_size`:
+
+    The maximum number of bytes allowed for the request string (method, path, query), header names and fields.
+
+    Defaults to 32Kib (which is about 4 times more than I would recommend).
+
+    This reflects the total overall size. On HTTP/1.1, each header line (name + value pair) is also limited to a hard-coded HTTP_MAX_HEADER_LENGTH bytes.
+
+        // type:
+        size_t max_header_size;
+
+* `max_body_size`:
+
+    The maximum size, in bytes, for an HTTP request's body (posting / downloading).
+
+    Defaults to 50Mb (1024 * 1024 * 50).
+
+        // type:
+        size_t max_body_size;
+
+* `max_clients`:
+
+    The maximum number of clients that are allowed to connect concurrently. This value's default setting is usually for the best.
+
+    The default value is computed according to the server's capacity, leaving some breathing room for other network and disk operations.
+
+    Note: clients, by the nature of socket programming, are counted according to their internal file descriptor (`fd`) value. Open files and other sockets count towards a server's limit.
+
+        // type:
+        intptr_t max_clients;
+
+* `ws_max_msg_size`:
+
+    The maximum WebSocket message size/buffer (in bytes) for WebSocket connections. Defaults to 250KB (250 * 1024).
+
+        // type:
+        size_t ws_max_msg_size;
+
+* `timeout`:
+
+    The maximum WebSocket message size/buffer (in bytes) for WebSocket connections. Defaults to 250KB (250 * 1024).
+
+        // type:
+        uint8_t timeout;
+
+* `ws_timeout`:
+
+    Timeout for the WebSocket connections, a ping will be sent whenever the timeout is reached.
+
+    Defaults to 40 seconds.
+
+    Connections are only closed when a ping cannot be sent (the network layer fails). Pongs are ignored.
+
+        // type:
+        uint8_t ws_timeout;
+
+* `log`:
+
+    Logging flag - set to TRUE to log HTTP requests.
+
+    Defaults to 0 (false).
+
+        // type:
+        uint8_t log;
+
+* `is_client`:
+
+    A read only flag set automatically to indicate the protocol's mode.
+
+    This is ignored by the `http_listen` function but can be accessed through the `on_finish` callback and the [`http_settings`](#http_settings) function.
+
+* `reserved*`:
+
+    Reserved for future use.
+
+        // type:
+        intptr_t reserved1;
+        intptr_t reserved2;
+        intptr_t reserved3;
+        intptr_t reserved4;
+
+
+Returns -1 on error and the socket's `uuid` on success.
+
+The `on_finish` callback is always called (even on errors).
+ 
+
+## Connecting to HTTP as a Client
+
+
+Connects to an HTTP server as a client.
+
+This function accepts the same arguments as the [`http_listen`](#http_listen) function (though some of hem will not be relevant for a client connection).
+
+Upon a successful connection, the `on_response` callback is called with an empty `http_s*` handler (status == 0).
+
+Use the HTTP Handler API to set it's content and send the request to the server. The second time the `on_response` function is called, the `http_s` handle will contain the actual response.
+ 
+The `address` argument should contain a full URL style address for the server. i.e.:
+ 
+          "http:/www.example.com:8080/"
+
+If an `address` includes a path or query data, they will be automatically attached (both of them) to the HTTP handle's `path` property. i.e.
+ 
+         "http:/www.example.com:8080/my_path?foo=bar"
+         // will result in:
+         fiobj_obj2cstr(h->path).data; //=> "/my_path?foo=bar"
+ 
+To open a WebSocket connection, it's possible to use the `ws` protocol signature. However, it would be better to use the [`websocket_connect`](#websocket_connect) function instead.
+
+Returns -1 on error and the socket's uuid on success.
+
+The `on_finish` callback is always called.
+ 
+intptr_t http_connect(const char *address, struct http_settings_s);
+#define http_connect(address, ...)                                             \
+  http_connect((address), (struct http_settings_s){__VA_ARGS__})
+
+## Miscellaneous 
 
 ### Compile Time Settings
 
@@ -73,23 +274,14 @@ The `http_s` data in NOT thread safe and can only be accessed safely from within
 
 ### HTTP Handle Data Access
 
-HTTP data can be accessed using the HTTP handle structure fields
+HTTP data can be accessed using the HTTP handle structure fields.
 
-#### `private_data`
+For example:
 
 ```c
-struct {
-    void *vtbl;
-    uintptr_t flag;
-    FIOBJ out_headers;
-} private_data;
+/* Collects a temporary reference to the Host header. Don't free the reference.*/
+FIOBJ host = fiobj_hash_get(h->headers, HTTP_HEADER_HOST);
 ```
-
-Private data shouldn't be accessed directly. However, if you need to access the data, limit yourself to the `out_headers` field. The `vtbl` and `flag` should **never* be altered as.
-
-The out headers are set using the [`http_set_header`](#http_set_header), [`http_set_header2`](#http_set_header2), and [`http_set_cookie`](#http_set_cookie) functions.
-
-Reading the outgoing headers is possible by directly accessing the [Hash Map](fiobj_hash) data. However, writing data to the Hash should be avoided.
 
 #### `received_at`
 
@@ -195,7 +387,60 @@ A [FIOBJ Data](fiobj_data) reader for body data (might be a temporary file, a st
 void *udata;
 ```
 
-An opaque user data pointer, to be used BEFORE calling [`http_defer`](#http_defer).
+An opaque user data pointer, which can be used **before** calling [`http_defer`](#http_defer) in order to retain persistent application information across events.
+
+#### `private_data`
+
+```c
+struct {
+    void *vtbl;
+    uintptr_t flag;
+    FIOBJ out_headers;
+} private_data;
+```
+
+Private data shouldn't be accessed directly. However, if you need to access the data, limit yourself to the `out_headers` field. The `vtbl` and `flag` should **never* be altered as.
+
+The out headers are set using the [`http_set_header`](#http_set_header), [`http_set_header2`](#http_set_header2), and [`http_set_cookie`](#http_set_cookie) functions.
+
+Reading the outgoing headers is possible by directly accessing the [Hash Map](fiobj_hash) data. However, writing data to the Hash should be avoided.
+
+
+---
+
+
+Returns the settings used to setup the connection.
+ *
+Returns -1 on error and 0 on success.
+ 
+struct http_settings_s *http_settings(http_s *h);
+
+
+Returns the direct address of the connected peer (likely an intermediary).
+ 
+fio_str_info_s http_peer_addr(http_s *h);
+
+
+Hijacks the socket away from the HTTP protocol and away from facil.io.
+ *
+It's possible to hijack the socket and than reconnect it to a new protocol
+object.
+ *
+It's possible to call `http_finish` immediately after calling `http_hijack`
+in order to send the outgoing headers.
+ *
+If any aditional HTTP functions are called after the hijacking, the protocol
+object might attempt to continue reading data from the buffer.
+ *
+Returns the underlining socket connection's uuid. If `leftover` isn't NULL,
+it will be populated with any remaining data in the HTTP buffer (the data
+will be automatically deallocated, so copy the data when in need).
+ *
+WARNING: this isn't a good way to handle HTTP connections, especially as
+HTTP/2 enters the picture.
+ 
+intptr_t http_hijack(http_s *h, fio_str_info_s *leftover);
+
 
 
 ---
@@ -395,179 +640,7 @@ old value.
  
 void *http_paused_udata_set(void *http, void *udata);
 
-*****************************************************************************
-HTTP Connections - Listening / Connecting / Hijacking
-***************************************************************************** 
 
-The HTTP settings. 
-struct http_settings_s {
-  /** Callback for normal HTTP requests. 
-  void (*on_request)(http_s *request);
-  /**
-   * Callback for Upgrade and EventSource (SSE) requests.
-   *
-   * SSE/EventSource requests set the `requested_protocol` string to `"sse"`.
-   
-  void (*on_upgrade)(http_s *request, char *requested_protocol, size_t len);
-  /** CLIENT REQUIRED: a callback for the HTTP response. 
-  void (*on_response)(http_s *response);
-  /** (optional) the callback to be performed when the HTTP service closes. 
-  void (*on_finish)(struct http_settings_s *settings);
-  /** Opaque user data. Facil.io will ignore this field, but you can use it. 
-  void *udata;
-  /**
-   * A public folder for file transfers - allows to circumvent any application
-   * layer logic and simply serve static files.
-   *
-   * Supports automatic `gz` pre-compressed alternatives.
-   
-  const char *public_folder;
-  /**
-   * The length of the public_folder string.
-   
-  size_t public_folder_length;
-  /**
-   * The maximum number of bytes allowed for the request string (method, path,
-   * query), header names and fields.
-   *
-   * Defaults to 32Kib (which is about 4 times more than I would recommend).
-   *
-   * This reflects the total overall size. On HTTP/1.1, each header line (name +
-   * value pair) is also limitied to a hardcoded HTTP_MAX_HEADER_LENGTH bytes.
-   
-  size_t max_header_size;
-  /**
-   * The maximum size of an HTTP request's body (posting / downloading).
-   *
-   * Defaults to ~ 50Mb.
-   
-  size_t max_body_size;
-  /**
-   * The maximum number of clients that are allowed to connect concurrently.
-   *
-   * This value's default setting is usually for the best.
-   *
-   * The default value is computed according to the server's capacity, leaving
-   * some breathing room for other network and disk operations.
-   *
-   * Note: clients, by the nature of socket programming, are counted according
-   *       to their internal file descriptor (`fd`) value. Open files and other
-   *       sockets count towards a server's limit.
-   
-  intptr_t max_clients;
-  /** reserved for future use. 
-  intptr_t reserved1;
-  /** reserved for future use. 
-  intptr_t reserved2;
-  /** reserved for future use. 
-  intptr_t reserved3;
-  /** reserved for future use. 
-  intptr_t reserved4;
-  /**
-   * The maximum websocket message size/buffer (in bytes) for Websocket
-   * connections. Defaults to ~250KB.
-   
-  size_t ws_max_msg_size;
-  /**
-   * An HTTP/1.x connection timeout.
-   *
-   * `http_listen` defaults to ~40s and `http_connect` defaults to ~30s.
-   *
-   * Note: the connection might be closed (by other side) before timeout occurs.
-   
-  uint8_t timeout;
-  /**
-   * Timeout for the websocket connections, a ping will be sent whenever the
-   * timeout is reached. Defaults to 40 seconds.
-   *
-   * Connections are only closed when a ping cannot be sent (the network layer
-   * fails). Pongs are ignored.
-   
-  uint8_t ws_timeout;
-  /** Logging flag - set to TRUE to log HTTP requests. 
-  uint8_t log;
-  /** a read only flag set automatically to indicate the protocol's mode. 
-  uint8_t is_client;
-};
-
-
-Listens to HTTP connections at the specified `port`.
- *
-Leave as NULL to ignore IP binding.
- *
-Returns -1 on error and the socket's uuid on success.
- *
-the `on_finish` callback is always called.
- 
-intptr_t http_listen(const char *port, const char *binding,
-                     struct http_settings_s);
-Listens to HTTP connections at the specified `port` and `binding`. 
-#define http_listen(port, binding, ...)                                        \
-  http_listen((port), (binding), (struct http_settings_s){__VA_ARGS__})
-
-
-Connects to an HTTP server as a client.
- *
-Upon a successful connection, the `on_response` callback is called with an
-empty `http_s*` handler (status == 0). Use the same API to set it's content
-and send the request to the server. The next`on_response` will contain the
-response.
- *
-`address` should contain a full URL style address for the server. i.e.:
- *
-         "http:/www.example.com:8080/"
- *
-If an `address` includes a path or query data, they will be automatically
-attached (both of them) to the HTTP handl'es `path` property. i.e.
- *
-         "http:/www.example.com:8080/my_path?foo=bar"
-         // will result in:
-         fiobj_obj2cstr(h->path).data; //=> "/my_path?foo=bar"
- *
-To open a Websocket connection, it's possible to use the `ws` protocol
-signature. However, it would be better to use the `websocket_connect`
-function instead.
- *
-Returns -1 on error and the socket's uuid on success.
- *
-The `on_finish` callback is always called.
- 
-intptr_t http_connect(const char *address, struct http_settings_s);
-#define http_connect(address, ...)                                             \
-  http_connect((address), (struct http_settings_s){__VA_ARGS__})
-
-
-Returns the settings used to setup the connection.
- *
-Returns -1 on error and 0 on success.
- 
-struct http_settings_s *http_settings(http_s *h);
-
-
-Returns the direct address of the connected peer (likely an intermediary).
- 
-fio_str_info_s http_peer_addr(http_s *h);
-
-
-Hijacks the socket away from the HTTP protocol and away from facil.io.
- *
-It's possible to hijack the socket and than reconnect it to a new protocol
-object.
- *
-It's possible to call `http_finish` immediately after calling `http_hijack`
-in order to send the outgoing headers.
- *
-If any aditional HTTP functions are called after the hijacking, the protocol
-object might attempt to continue reading data from the buffer.
- *
-Returns the underlining socket connection's uuid. If `leftover` isn't NULL,
-it will be populated with any remaining data in the HTTP buffer (the data
-will be automatically deallocated, so copy the data when in need).
- *
-WARNING: this isn't a good way to handle HTTP connections, especially as
-HTTP/2 enters the picture.
- 
-intptr_t http_hijack(http_s *h, fio_str_info_s *leftover);
 
 *****************************************************************************
 Websocket Upgrade (Server and Client connection establishment)

@@ -306,7 +306,6 @@ The `fio_listen` function is shadowed by the `fio_listen` MACRO, which allows th
    perror("No listening socket available on port 3000");
    exit(-1);
  }
-
 ```
 
 The following arguments are supported:
