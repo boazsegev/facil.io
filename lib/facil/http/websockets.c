@@ -461,13 +461,13 @@ static fio_msg_metadata_s websocket_optimize_binary(fio_str_info_s ch,
  *
  * When using WebSocket pub/sub system is originally optimized for either
  * non-direct transmission (messages are handled by callbacks) or direct
- * transmission to 1-3 clients per channel (on avarage), meaning that the
+ * transmission to 1-3 clients per channel (on average), meaning that the
  * majority of the messages are meant for a single recipient (or multiple
  * callback recipients) and only some are expected to be directly transmitted to
  * a group.
  *
  * However, when most messages are intended for direct transmission to more than
- * 3 clients (on avarage), certain optimizations can be made to improve memory
+ * 3 clients (on average), certain optimizations can be made to improve memory
  * consumption (minimize duplication or WebSocket network data).
  *
  * This function allows enablement (or disablement) of these optimizations.
@@ -520,7 +520,8 @@ Subscription handling
 ***************************************************************************** */
 
 typedef struct {
-  void (*on_message)(websocket_pubsub_notification_s notification);
+  void (*on_message)(ws_s *ws, fio_str_info_s channel, fio_str_info_s msg,
+                     void *udata);
   void (*on_unsubscribe)(void *udata);
   void *udata;
 } websocket_sub_data_s;
@@ -602,11 +603,7 @@ static void websocket_on_pubsub_message(fio_msg_s *msg) {
   websocket_sub_data_s *d = msg->udata2;
 
   if (d->on_message)
-    d->on_message((websocket_pubsub_notification_s){
-        .ws = (ws_s *)pr,
-        .channel = msg->channel,
-        .message = msg->msg,
-    });
+    d->on_message((ws_s *)pr, msg->channel, msg->msg, d->udata);
   fio_protocol_unlock(pr, FIO_PR_LOCK_TASK);
 }
 
@@ -665,7 +662,7 @@ The API implementation
 */
 
 /** Returns the opaque user data associated with the websocket. */
-void *websocket_udata(ws_s *ws) { return ws->udata; }
+void *websocket_udata_get(ws_s *ws) { return ws->udata; }
 
 /** Returns the the process specific connection's UUID (see `libsock`). */
 intptr_t websocket_uuid(ws_s *ws) { return ws->fd; }

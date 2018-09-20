@@ -14,11 +14,6 @@ Feel free to copy, use and enjoy according to the license provided.
 extern "C" {
 #endif
 
-/**
-The protocol / service identifier.
-*/
-extern char *WEBSOCKET_ID_STR;
-
 /** used internally: attaches the Websocket protocol to the socket. */
 void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
                       websocket_settings_s *args, void *data, size_t length);
@@ -28,7 +23,7 @@ Websocket information
 ***************************************************************************** */
 
 /** Returns the opaque user data associated with the websocket. */
-void *websocket_udata(ws_s *ws);
+void *websocket_udata_get(ws_s *ws);
 
 /**
  * Sets the opaque user data associated with the websocket.
@@ -51,11 +46,6 @@ intptr_t websocket_uuid(ws_s *ws);
  * established using facil.io's HTTP server).
  */
 uint8_t websocket_is_client(ws_s *ws);
-
-/**
- * Counts the number of websocket connections in this process.
- */
-size_t websocket_count(void);
 
 /* *****************************************************************************
 Websocket Connection Management (write / close)
@@ -82,18 +72,6 @@ to the process cluster (all the processes in `fio_run`).
 To publish to a channel, use the API provided in {pubsub.h}.
 ***************************************************************************** */
 
-/** Incoming pub/sub messages will be passed along using this data structure. */
-typedef struct {
-  /** the websocket receiving the message. */
-  ws_s *ws;
-  /** the channel where the message was published. */
-  fio_str_info_s channel;
-  /** the published message. */
-  fio_str_info_s message;
-  /** user opaque data. */
-  void *udata;
-} websocket_pubsub_notification_s;
-
 /** Possible arguments for the {websocket_subscribe} function. */
 struct websocket_subscribe_s {
   /** the websocket receiving the message. REQUIRED. */
@@ -105,7 +83,8 @@ struct websocket_subscribe_s {
    *
    * Default: send directly to websocket client.
    */
-  void (*on_message)(websocket_pubsub_notification_s notification);
+  void (*on_message)(ws_s *ws, fio_str_info_s channel, fio_str_info_s msg,
+                     void *udata);
   /**
    * An optional cleanup callback for the `udata`.
    */
@@ -175,13 +154,13 @@ void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id);
  *
  * When using WebSocket pub/sub system is originally optimized for either
  * non-direct transmission (messages are handled by callbacks) or direct
- * transmission to 1-3 clients per channel (on avarage), meaning that the
+ * transmission to 1-3 clients per channel (on average), meaning that the
  * majority of the messages are meant for a single recipient (or multiple
  * callback recipients) and only some are expected to be directly transmitted to
  * a group.
  *
  * However, when most messages are intended for direct transmission to more than
- * 3 clients (on avarage), certain optimizations can be made to improve memory
+ * 3 clients (on average), certain optimizations can be made to improve memory
  * consumption (minimize duplication or WebSocket network data).
  *
  * This function allows enablement (or disablement) of these optimizations.

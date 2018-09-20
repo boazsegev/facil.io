@@ -184,7 +184,7 @@ WebSockets Callbacks
 
 static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   // Add the Nickname to the message
-  FIOBJ str = fiobj_str_copy((FIOBJ)websocket_udata(ws));
+  FIOBJ str = fiobj_str_copy((FIOBJ)websocket_udata_get(ws));
   fiobj_str_write(str, ": ", 2);
   fiobj_str_write(str, msg.data, msg.len);
   // publish
@@ -198,7 +198,7 @@ static void ws_on_open(ws_s *ws) {
   websocket_subscribe(ws, .channel = CHAT_CANNEL);
   websocket_write(
       ws, (fio_str_info_s){.data = "Welcome to the chat-room.", .len = 25}, 1);
-  FIOBJ tmp = fiobj_str_copy((FIOBJ)websocket_udata(ws));
+  FIOBJ tmp = fiobj_str_copy((FIOBJ)websocket_udata_get(ws));
   fiobj_str_write(tmp, " joind the chat.", 16);
   fio_publish(.channel = CHAT_CANNEL, .message = fiobj_obj2cstr(tmp));
   fiobj_free(tmp);

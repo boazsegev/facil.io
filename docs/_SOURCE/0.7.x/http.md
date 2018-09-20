@@ -802,8 +802,303 @@ Writes a log line to `stderr` about the request / response object.
 
 This function is called automatically if the `.log` setting is enabled.
 
-## EventSource / Server Sent Events (SSE)
+## WebSockets
 
+### WebSocket Upgrade From HTTP (Server)
+
+#### `http_upgrade2ws`
+
+```c
+int http_upgrade2ws(http_s *http, websocket_settings_s);
+#define http_upgrade2ws(http, ...)                                             \
+  http_upgrade2ws((http), (websocket_settings_s){__VA_ARGS__})
+```
+
+Upgrades an HTTP/1.1 connection to a WebSocket connection.
+
+The `http_upgrade2ws` function is shadowed by the `http_upgrade2ws` MACRO, which allows the function to accept "named arguments".
+
+In addition to the `http_s` argument, the following named arguments can be used:
+
+* `on_open`:
+
+    The (optional) `on_open` callback will be called once the WebSocket connection is established and before is is registered with `facil`, so no `on_message` events are raised before `on_open` returns.
+
+        // callback example:
+        void on_open(ws_s *ws);
+ 
+* `on_message`:
+
+    The (optional) `on_message` callback will be called whenever a webSocket message is received for this connection.
+
+    The data received points to the WebSocket's message buffer and it will be overwritten once the function exits (it cannot be saved for later, but it can be copied).
+
+        // callback example:
+        void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
+
+* `on_ready`:
+
+    The (optional) `on_ready` callback will be after a the underlying socket's buffer changes it's state from full to empty.
+
+    If the socket's buffer is never used, the callback is never called.
+
+        // callback example:
+        void on_ready(ws_s *ws);
+ 
+* `on_shutdown`:
+
+    The (optional) on_shutdown callback will be called if a WebSocket connection is still open while the server is shutting down (called before `on_close`).
+
+        // callback example:
+        void on_shutdown(ws_s *ws);
+ 
+* `on_close`:
+
+    The `uuid` is the connection's unique ID that can identify the WebSocket. A value of `uuid == -1` indicates the WebSocket connection wasn't established (an error occurred).
+
+    The `udata` is the user data as set during the upgrade or using the `websocket_udata_set` function.
+
+        // callback example:
+        void on_close(intptr_t uuid, void *udata);
+ 
+
+* `udata`:
+
+    Opaque user data.
+
+        // type:
+        void *udata;
+
+This function will end the HTTP stage of the connection and attempt to "upgrade" to a WebSockets connection.
+
+The `http_s` handle will be invalid after this call and the `udata` will be set to the new WebSocket `udata`.
+
+A client connection's `on_finish` callback will be called (since the HTTP stage has finished).
+
+Returns 0 on success or -1 on error.
+
+**NOTE**:
+
+The type used by some of the callbacks (`ws_s`) is an opaque WebSocket handle and has no relationship with the named arguments used in this function cal. It is only used to identify a WebSocket connection.
+
+Similar to an `http_s` handle, it is only valid within the scope of the specific connection (the callbacks / tasks) and shouldn't be stored or accessed otherwise.
+
+### WebSocket Connections (Client)
+
+#### `websocket_connect`
+
+```c
+int websocket_connect(const char *url, websocket_settings_s settings);
+#define websocket_connect(url, ...)                                        \
+  websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
+```
+
+Connects to a WebSocket service according to the provided address.
+
+This is a somewhat naive connector object, it doesn't perform any authentication or other logical handling. However, it's quire easy to author a complext authentication logic using a combination of `http_connect` and `http_upgrade2ws`.
+
+In addition to the `url` address, this function accepts the same named arguments as [`http_upgrade2ws`](#http_upgrade2ws).
+
+Returns the `uuid` for the future WebSocket on success.
+
+Returns -1 on error;
+
+### WebSocket Connection Management (write / close)
+
+#### `websocket_write`
+
+```c
+int websocket_write(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
+```
+
+Writes data to the WebSocket. Returns -1 on failure (0 on success).
+
+#### `websocket_close`
+
+```c
+void websocket_close(ws_s *ws);
+```
+
+Closes a WebSocket connection. */
+
+### WebSocket Pub/Sub
+
+#### `websocket_subscribe`
+
+```c
+uintptr_t websocket_subscribe(struct websocket_subscribe_s args);
+#define websocket_subscribe(, ...)                                       \
+  websocket_subscribe((struct websocket_subscribe_s){.ws = ws_handle, __VA_ARGS__})
+```
+
+Subscribes to a pub/sub channel for, allowing for direct message deliverance when the `on_message` callback is missing.
+
+To unsubscribe from the channel, use [`websocket_unsubscribe`](websocket_unsubscribe) (NOT
+`fio_unsubscribe`).
+
+The `websocket_subscribe` function is shadowed by the `websocket_subscribe` MACRO, which allows the function to accept "named arguments".
+
+In addition to the `ws_s *` argument, the following named arguments can be used:
+
+* `channel`:
+
+    The channel name used for the subscription. If missing, an empty string is assumed to be the channel name.
+
+        // type:
+        fio_str_info_s channel;
+ 
+* `on_message`:
+
+    An optional callback to be called when a pub/sub message is received.
+
+    If missing, Data is directly written to the WebSocket connection.
+
+        // callback example:
+        void on_message(ws_s *ws, fio_str_info_s channel,
+                     fio_str_info_s msg, void *udata);
+
+* `on_unsubscribe`:
+
+    An optional callback to be called after the subscription was canceled. This should be used for any required cleanup.
+
+        // callback example:
+        void on_unsubscribe(void *udata);
+
+* `match`:
+
+    A callback for pattern matching, as described in [`fio_subscribe`](fio#fio_subscribe).
+
+    Note that only the `FIO_MATCH_GLOB` matching function (or NULL for no pattern matching) is safe to use with the Redis extension.
+
+        // callback example:
+        int foo_bar_match_fn(fio_str_info_s pattern, fio_str_info_s channel);
+        // type:
+        fio_match_fn match;
+
+* `udata`:
+
+    Opaque user data.
+
+        // type:
+        void *udata;
+
+* `force_binary`:
+
+    When using direct message forwarding (no `on_message` callback), this indicates if messages should be sent to the client as binary blobs, which is the safest approach.
+
+    By default, facil.io will test for UTF-8 data validity and send the data as text if it's a valid UTF-8. Messages above ~32Kb might be assumed to be binary rather than tested.
+
+        // type:
+        unsigned force_binary : 1;
+
+* `force_text`:
+
+    When using direct message forwarding (no `on_message` callback), this indicates if messages should be sent to the client as UTF-8 text.
+
+    By default, facil.io will test for UTF-8 data validity and send the data as text if it's a valid UTF-8. Messages above ~32Kb might be assumed to be binary rather than tested.
+
+    `force_binary` has precedence over `force_text`.
+
+        // type:
+        unsigned force_text : 1;
+
+
+Returns a subscription ID on success and 0 on failure.
+
+All subscriptions are automatically canceled and freed once the WebSocket is closed.
+
+#### `websocket_unsubscribe`
+
+```c
+void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id);
+```
+
+Unsubscribes from a channel.
+
+Failures are silent.
+
+All subscriptions are automatically revoked once the WebSocket is closed. So
+only use this function to unsubscribe while the WebSocket is open.
+
+#### `websocket_optimize4broadcasts`
+
+```c
+void websocket_optimize4broadcasts(intptr_t type, int enable);
+```
+
+Enables (or disables) any of the following broadcast optimizations:
+
+* `WEBSOCKET_OPTIMIZE_PUBSUB` - Optimize generic Pub/Sub WebSocket broadcasts.
+
+        #define WEBSOCKET_OPTIMIZE_PUBSUB (-32)
+
+* `WEBSOCKET_OPTIMIZE_PUBSUB_TEXT` - Optimize text Pub/Sub WebSocket broadcasts.
+
+        #define WEBSOCKET_OPTIMIZE_PUBSUB_TEXT (-33)
+
+* `WEBSOCKET_OPTIMIZE_PUBSUB_BINARY` - Optimize binary Pub/Sub WebSocket broadcasts.
+
+        #define WEBSOCKET_OPTIMIZE_PUBSUB_BINARY (-34)
+
+
+When using WebSocket pub/sub system is originally optimized for either non-direct transmission (messages are handled by callbacks) or direct transmission to 1-3 clients per channel (on average), meaning that the majority of the messages are meant for a single recipient (or multiple callback recipients) and only some are expected to be directly transmitted to a group.
+
+However, when most messages are intended for direct transmission to more than 3 clients (on average), certain optimizations can be made to improve memory consumption (minimize duplication or WebSocket network data).
+
+**Note**: to disable an optimization it should be disabled the same amount of times it was enabled - multiple optimization enablements for the same type are merged, but reference counted (disabled when reference is zero).
+
+### WebSocket Data
+
+#### `websocket_udata_get`
+
+```c
+void *websocket_udata_get(ws_s *ws);
+```
+
+Returns the opaque user data associated with the WebSocket.
+
+
+#### `websocket_udata_set`
+
+```c
+void *websocket_udata_set(ws_s *ws, void *udata);
+```
+
+Sets the opaque user data associated with the WebSocket.
+
+Returns the old value, if any.
+
+#### `websocket_uuid`
+
+```c
+intptr_t websocket_uuid(ws_s *ws);
+```
+
+
+Returns the underlying socket UUID.
+
+This is only relevant for collecting the protocol object from outside of WebSocket events, as the socket shouldn't be written to.
+
+#### `websocket_is_client`
+
+```c
+uint8_t websocket_is_client(ws_s *ws);
+```
+
+Returns 1 if the WebSocket connection is in Client mode (connected to a remote server) and 0 if the connection is in Server mode (a connection established using facil.io's HTTP server).
+
+### WebSocket Helpers
+
+#### `websocket_attach`
+
+```c
+void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
+                      websocket_settings_s *args, void *data, size_t length);
+```
+
+Used **internally**: attaches the WebSocket protocol to the uuid.
+
+## EventSource / Server Sent Events (SSE)
 
 ### EventSource (SSE) Connection Management
 
@@ -908,7 +1203,7 @@ uintptr_t http_sse_subscribe(http_sse_s *sse,
   http_sse_subscribe((sse), (struct http_sse_subscribe_args){__VA_ARGS__})
 ```
 
-Subscribes to a channel for direct message deliverance.
+Subscribes to a pub/sub channel for, allowing for direct message deliverance when the `on_message` callback is missing.
 
 To unsubscribe from the channel, use [`http_sse_unsubscribe`](http_sse_unsubscribe) (NOT
 `fio_unsubscribe`).
@@ -1049,119 +1344,6 @@ void http_sse_free(http_sse_s *sse);
 ```
 
 Frees an SSE handle by reference (decreases the reference count).
-
-## WebSockets
-
-### WebSocket Upgrade From HTTP (Server)
-
-#### `http_upgrade2ws`
-
-```c
-int http_upgrade2ws(http_s *http, websocket_settings_s);
-#define http_upgrade2ws(http, ...)                                             \
-  http_upgrade2ws((http), (websocket_settings_s){__VA_ARGS__})
-```
-
-Upgrades an HTTP/1.1 connection to a WebSocket connection.
-
-The `http_upgrade2ws` function is shadowed by the `http_upgrade2ws` MACRO, which allows the function to accept "named arguments".
-
-In addition to the `http_s` argument, the following named arguments can be used:
-
-* `on_open`:
-
-    The (optional) `on_open` callback will be called once the WebSocket connection is established and before is is registered with `facil`, so no `on_message` events are raised before `on_open` returns.
-
-        // callback example:
-        void on_open(ws_s *ws);
- 
-* `on_message`:
-
-    The (optional) `on_message` callback will be called whenever a webSocket message is received for this connection.
-
-    The data received points to the WebSocket's message buffer and it will be overwritten once the function exits (it cannot be saved for later, but it can be copied).
-
-        // callback example:
-        void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
-
-* `on_ready`:
-
-    The (optional) `on_ready` callback will be after a the underlying socket's buffer changes it's state from full to empty.
-
-    If the socket's buffer is never used, the callback is never called.
-
-        // callback example:
-        void on_ready(ws_s *ws);
- 
-* `on_shutdown`:
-
-    The (optional) on_shutdown callback will be called if a WebSocket connection is still open while the server is shutting down (called before `on_close`).
-
-        // callback example:
-        void on_shutdown(ws_s *ws);
- 
-* `on_close`:
-
-    The `uuid` is the connection's unique ID that can identify the WebSocket. A value of `uuid == -1` indicates the WebSocket connection wasn't established (an error occurred).
-
-    The `udata` is the user data as set during the upgrade or using the `websocket_udata_set` function.
-
-        // callback example:
-        void on_close(intptr_t uuid, void *udata);
- 
-
-* `udata`:
-
-    Opaque user data.
-
-        // type:
-        void *udata;
-
-This function will end the HTTP stage of the connection and attempt to "upgrade" to a WebSockets connection.
-
-The `http_s` handle will be invalid after this call and the `udata` will be set to the new WebSocket `udata`.
-
-A client connection's `on_finish` callback will be called (since the HTTP stage has finished).
-
-Returns 0 on success or -1 on error.
-
-**NOTE**:
-
-The type used by some of the callbacks (`ws_s`) is an opaque WebSocket handle and has no relationship with the named arguments used in this function cal. It is only used to identify a WebSocket connection.
-
-Similar to an `http_s` handle, it is only valid within the scope of the specific connection (the callbacks / tasks) and shouldn't be stored or accessed otherwise.
-
-### WebSocket Connections (Client)
-
-#### `websocket_connect`
-
-```c
-int websocket_connect(const char *url, websocket_settings_s settings);
-#define websocket_connect(url, ...)                                        \
-  websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
-```
-
-Connects to a WebSocket service according to the provided address.
-
-This is a somewhat naive connector object, it doesn't perform any authentication or other logical handling. However, it's quire easy to author a complext authentication logic using a combination of `http_connect` and `http_upgrade2ws`.
-
-In addition to the `url` address, this function accepts the same named arguments as [`http_upgrade2ws`](#http_upgrade2ws).
-
-Returns the `uuid` for the future WebSocket on success.
-
-Returns -1 on error;
-
----
-
-TODO: Add WebSocket functions 
-
-#### ``
-
-```c
-```
-
-
----
 
 ## Miscellaneous 
 
