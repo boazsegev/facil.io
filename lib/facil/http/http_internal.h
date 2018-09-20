@@ -188,7 +188,7 @@ static inline void http_sse_destroy(http_sse_internal_s *sse) {
     fio_unsubscribe(sub);
   }
   if (sse->sse.on_close)
-    sse->sse.on_close(sse->uuid, sse->sse.udata);
+    sse->sse.on_close(&sse->sse);
   sse->uuid = -1;
   http_sse_try_free(sse);
 }

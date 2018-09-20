@@ -720,26 +720,22 @@ error:
 /* *****************************************************************************
 Pause / Resume
 ***************************************************************************** */
-typedef struct {
+struct http_pause_handle_s {
   uintptr_t uuid;
   http_s *h;
   void *udata;
   void (*task)(http_s *);
   void (*fallback)(void *);
-} http_pause_handle_s;
+};
 
 /** Returns the `udata` associated with the paused opaque handle */
-void *http_paused_udata_get(void *http_) {
-  const http_pause_handle_s *http = http_;
-  return http->udata;
-}
+void *http_paused_udata_get(http_pause_handle_s *http) { return http->udata; }
 
 /**
  * Sets the `udata` associated with the paused opaque handle, returning the
  * old value.
  */
-void *http_paused_udata_set(void *http_, void *udata) {
-  http_pause_handle_s *http = http_;
+void *http_paused_udata_set(http_pause_handle_s *http, void *udata) {
   void *old = http->udata;
   http->udata = udata;
   return old;
@@ -777,7 +773,7 @@ static void http_resume_fallback_wrapper(intptr_t uuid, void *arg) {
 /**
  * Defers the request / response handling for later.
  */
-void http_pause(http_s *h, void (*task)(void *http)) {
+void http_pause(http_s *h, void (*task)(http_pause_handle_s *http)) {
   if (HTTP_INVALID_HANDLE(h)) {
     return;
   }
@@ -796,11 +792,10 @@ void http_pause(http_s *h, void (*task)(void *http)) {
 /**
  * Defers the request / response handling for later.
  */
-void http_resume(void *http_, void (*task)(http_s *h),
+void http_resume(http_pause_handle_s *http, void (*task)(http_s *h),
                  void (*fallback)(void *udata)) {
-  if (!http_)
+  if (!http)
     return;
-  http_pause_handle_s *http = http_;
   http->task = task;
   http->fallback = fallback;
   fio_defer_io_task(http->uuid, .udata = http, .type = FIO_PR_LOCK_TASK,
@@ -1318,7 +1313,7 @@ void http_sse_unsubscribe(http_sse_s *sse_, uintptr_t subscription) {
 int http_upgrade2sse(http_s *h, http_sse_s sse) {
   if (HTTP_INVALID_HANDLE(h)) {
     if (sse.on_close)
-      sse.on_close(-1, sse.udata);
+      sse.on_close(&sse);
     return -1;
   }
   return ((http_vtable_s *)h->private_data.vtbl)->http_upgrade2sse(h, &sse);
@@ -1576,10 +1571,10 @@ void http_parse_cookies(http_s *h, uint8_t is_url_encoded) {
  * * "name[][key]" references a nested Hash within an array. Hash keys will be
  *   unique (repeating a key advances the hash).
  * * These rules can be nested (i.e. "name[][key1][][key2]...")
- * * "name[][]" is an error (there's no way for the parser to analyse
- *    dimentions)
+ * * "name[][]" is an error (there's no way for the parser to analyze
+ *    dimensions)
  *
- * Note: names can't begine with "[" or end with "]" as these are reserved
+ * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
 int http_add2hash2(FIOBJ dest, char *name, size_t name_len, FIOBJ val,
@@ -1765,10 +1760,10 @@ error:
  * * "name[][key]" references a nested Hash within an array. Hash keys will be
  *   unique (repeating a key advances the hash).
  * * These rules can be nested (i.e. "name[][key1][][key2]...")
- * * "name[][]" is an error (there's no way for the parser to analyse
- *    dimentions)
+ * * "name[][]" is an error (there's no way for the parser to analyze
+ *    dimensions)
  *
- * Note: names can't begine with "[" or end with "]" as these are reserved
+ * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
 int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
@@ -2323,14 +2318,14 @@ size_t http_date2rfc2109(char *target, struct tm *tmbuf) {
 /**
  * Prints Unix time to a HTTP time formatted string.
  *
- * This variation implements chached results for faster processeing, at the
+ * This variation implements cached results for faster processing, at the
  * price of a less accurate string.
  */
 size_t http_time2str(char *target, const time_t t) {
   /* pre-print time every 1 or 2 seconds or so. */
   static __thread time_t cached_tick;
   static __thread char cached_httpdate[48];
-  static __thread size_t chached_len;
+  static __thread size_t cached_len;
   time_t last_tick = fio_last_tick().tv_sec;
   if ((t | 7) < last_tick) {
     /* this is a custom time, not "now", pass through */
@@ -2342,10 +2337,10 @@ size_t http_time2str(char *target, const time_t t) {
     struct tm tm;
     cached_tick = last_tick; /* refresh every second */
     http_gmtime(last_tick, &tm);
-    chached_len = http_date2str(cached_httpdate, &tm);
+    cached_len = http_date2str(cached_httpdate, &tm);
   }
-  memcpy(target, cached_httpdate, chached_len);
-  return chached_len;
+  memcpy(target, cached_httpdate, cached_len);
+  return cached_len;
 }
 
 /* Credit to Jonathan Leffler for the idea of a unified conditional */
@@ -2465,7 +2460,7 @@ HTTP URL parsing
  * The returned string are NOT NUL terminated, they are merely locations within
  * the original string.
  *
- * This function expects any of the follwing formats:
+ * This function expects any of the following formats:
  *
  * * `/complete_path?query#target`
  *

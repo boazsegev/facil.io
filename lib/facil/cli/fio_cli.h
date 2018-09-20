@@ -38,7 +38,7 @@ CLI API
  * * FIO_CLI_TYPE_INT    - integer argument ('-', '+', '0'-'9' chars accepted).
  *
  * Argument names MUST start with the '-' character. The first word starting
- * without the '-' character will begine the description for the CLI argument.
+ * without the '-' character will begin the description for the CLI argument.
  *
  * The arguments "-?", "-h", "-help" and "--help" are automatically handled
  * unless overridden.

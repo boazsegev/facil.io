@@ -500,7 +500,7 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
 failed:
   fio_close(handle2pr(h)->p.uuid);
   if (sse->on_close)
-    sse->on_close(-1, sse->udata);
+    sse->on_close(sse);
   return -1;
   (void)sse;
 }

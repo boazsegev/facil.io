@@ -211,41 +211,6 @@ Returns -1 on error and the socket's uuid on success.
 
 The `on_finish` callback is always called.
  
-## Miscellaneous 
-
-### Compile Time Settings
-
-#### `HTTP_BUSY_UNLESS_HAS_FDS`
-
-```c
-#define HTTP_BUSY_UNLESS_HAS_FDS 64
-```
-
-When a new connection is accepted, it will be immediately declined with a 503 service unavailable (server busy) response unless the following number of file descriptors is available.
-
-#### `HTTP_DEFAULT_BODY_LIMIT`
-
-```c
-#define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
-```
-
-The default limit on HTTP message length (in bytes). A different limit can be set during runtime as part of the `http_listen` function call.
-
-#### `HTTP_MAX_HEADER_COUNT`
-
-```c
-#define HTTP_MAX_HEADER_COUNT 128
-```
-
-The maximum (hard coded) number of headers per HTTP request, after which the request is considered malicious and the connection is abruptly closed.
-
-#### `HTTP_MAX_HEADER_LENGTH`
-
-```c
-#define HTTP_MAX_HEADER_LENGTH 8192
-```
-
-the default maximum length for a single header line 
 
 ## The HTTP Data Handle (Request / Response)
 
@@ -659,14 +624,151 @@ If `mime_type` is NULL, an attempt at automatic detection using `filename` will 
 
 Returns -1 on error and 0 on success.
 
-### Connection Hijacking
+### Rescheduling the HTTP event
+
+#### `http_pause`
+
+```c
+void http_pause(http_s *h, void (*task)(http_pause_handle_s *http));
+```
+
+Pauses the request / response handling and INVALIDATES the current `http_s` handle (no `http` functions can be called).
+
+The `http_resume` function MUST be called (at some point) using the opaque `http` pointer given to the callback `task`.
+
+The opaque `http_pause_handle_s` pointer is only valid for a single call to `http_resume` and can't be used by any regular `http` function (it's a different data type).
+
+Note: the current `http_s` handle will become invalid once this function is called and it's data might be deallocated, invalid or used by a different thread.
+
+#### `http_resume`
+
+```c
+void http_resume(http_pause_handle_s *http, void (*task)(http_s *h),
+                 void (*fallback)(void *udata));
+```
+
+Resumes a request / response handling within a task and INVALIDATES the current `http_s` handle.
+
+The `task` MUST call one of the `http_send_*`, `http_finish`, or `http_pause`functions.
+
+The (optional) `fallback` will receive the opaque `udata` that was stored in the HTTP handle and can be used for cleanup.
+
+Note: `http_resume` can only be called after calling `http_pause` and entering it's task.
+
+Note: the current `http_s` handle will become invalid once this function is called and it's data might be deallocated, invalidated or used by a different thread.
+ 
+#### `http_paused_udata_get`
+
+```c
+void *http_paused_udata_get(http_pause_handle_s *http);
+```
+
+Returns the `udata` associated with the paused opaque handle 
+
+#### `http_paused_udata_set`
+
+```c
+void *http_paused_udata_set(http_pause_handle_s *http, void *udata);
+```
+
+Sets the `udata` associated with the paused opaque handle, returning the old value.
+ 
+### Deeper HTTP Data Parsing
+
+The HTTP extension's initial HTTP parser parses the protocol, but not the HTTP data. This allows improved performance when parsing the data isn't necessary.
+
+However, sometimes an application will want to parse a requests (or a response's) content, cookies or query parameters, converting it into a complex object.
+
+This allows an application to convert a String data such as `"user[name]=Joe"` to a nested Hash Map, where the `params` Hash Map's key `user` maps to a nested Hash Map with the key `name` (and the value `"Joe"`, as described by [`http_add2hash`](#http_add2hash))).
+
+#### `http_parse_body`
+
+```c
+int http_parse_body(http_s *h);
+```
+
+Attempts to decode the request's body using the [`http_add2hash`](#http_add2hash) scheme.
+
+Supported body types include:
+
+* application/x-www-form-urlencoded
+
+* application/json
+
+* multipart/form-data
+
+This should be called before `http_parse_query`, in order to support JSON data.
+
+If the JSON data isn't an object, it will be saved under the key "JSON" in the `params` hash.
+
+If the `multipart/form-data` type contains JSON files, they will NOT be parsed (they will behave like any other file, with `data`, `type` and `filename` keys assigned). This allows non-object JSON data (such as array) to be handled by the app.
+
+#### `http_parse_query`
+
+```c
+void http_parse_query(http_s *h);
+```
+
+Parses the query part of an HTTP request/response. Uses [`http_add2hash`](#http_add2hash).
+
+This should be called after the `http_parse_body` function, just in case the
+body is a JSON object that doesn't have a Hash Map at it's root.
+
+#### `http_parse_cookies`
+
+```c
+void http_parse_cookies(http_s *h, uint8_t is_url_encoded);
+```
+
+Parses any Cookie / Set-Cookie headers, using the [`http_add2hash`](#http_add2hash) scheme. 
+
+#### `http_add2hash`
+
+```c
+int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
+                  size_t value_len, uint8_t encoded);
+```
+
+Adds a named parameter to the hash, converting a string to an object and resolving nesting references and URL decoding if required. i.e.:
+
+* "name[]" references a nested Array (nested in the Hash).
+
+* "name[key]" references a nested Hash.
+
+* "name[][key]" references a nested Hash within an array. Hash keys will be unique (repeating a key advances the array).
+
+* These rules can be nested (i.e. "name[][key1][][key2]...")
+
+* "name[][]" is an error (there's no way for the parser to analyze dimensions)
+
+Note: names can't begin with `"["` or end with `"]"` as these are reserved characters.
+ 
+
+#### `http_add2hash2`
+
+```c
+int http_add2hash2(FIOBJ dest, char *name, size_t name_len, FIOBJ value,
+                   uint8_t encoded);
+```
+
+Same as [`http_add2hash`](#http_add2hash), using an existing object.
+
+
+### Miscellaneous HTTP Helpers
+
+#### `http_status2str`
+
+```c
+fio_str_info_s http_status2str(uintptr_t status);
+```
+
+Returns a human readable string representing the HTTP status number. 
 
 #### `http_hijack`
 
 ```c
 intptr_t http_hijack(http_s *h, fio_str_info_s *leftover);
 ```
-
 
 Hijacks the socket away from the HTTP protocol and away from facil.io.
 
@@ -679,7 +781,261 @@ If any additional HTTP functions are called after the hijacking, the protocol ob
 Returns the underlining socket connection's uuid. If `leftover` isn't NULL, it will be populated with any remaining data in the HTTP buffer (the data will be automatically deallocated, so copy the data when in need).
 
 **WARNING**: this isn't a good way to handle HTTP connections, especially as HTTP/2 enters the picture. To implement Server Sent Events consider calling [`http_upgrade2sse`](#http_upgrade2sse) instead.
+
+#### `http_req2str`
+
+```c
+FIOBJ http_req2str(http_s *h);
+```
+
+Returns a String object representing the unparsed HTTP request (HTTP version
+is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
  
+
+#### `http_write_log`
+
+```c
+void http_write_log(http_s *h);
+```
+
+Writes a log line to `stderr` about the request / response object.
+
+This function is called automatically if the `.log` setting is enabled.
+
+## EventSource / Server Sent Events (SSE)
+
+#### `http_upgrade2sse`
+
+```c
+int http_upgrade2sse(http_s *h, http_sse_s);
+#define http_upgrade2sse(h, ...)                                               \
+  http_upgrade2sse((h), (http_sse_s){__VA_ARGS__})
+```
+
+Upgrades an HTTP connection to an EventSource (SSE) connection.
+
+The `http_s` handle will be invalid after this call.
+
+On HTTP/1.1 connections, this will preclude future requests using the same connection.
+
+The `http_upgrade2sse` function is shadowed by the `http_upgrade2sse` MACRO, which allows the function to accept "named arguments", much like `http_listen`. i.e.:
+
+```c
+on_open_sse(sse_s * sse) {
+  http_sse_subscribe(sse, .channel = CHANNEL_NAME); // a simple subscription example
+}
+on_upgrade(http_s* h) {
+  http_upgrade2sse(h, .on_open = on_open_sse);
+}
+```
+
+In addition to the `http_s` argument, the following arguments are supported:
+
+* `on_open`:
+
+    The (optional) `on_open` callback will be called once the EventSource connection is established.
+
+    The `http_sse_s` pointer passed to the callback contains a copy of the named arguments passed to the `http_upgrade2sse` function.
+
+        // callback example:
+        void on_open(http_sse_s *sse);
+
+* `on_ready`:
+
+    The (optional) `on_ready` callback will be called every time the underlying socket's buffer changes it's state to empty.
+
+    If the socket's buffer is never used, the callback might never get called.
+
+    The `http_sse_s` pointer passed to the callback contains a copy of the named arguments passed to the `http_upgrade2sse` function.
+
+        // callback example:
+        void on_ready(http_sse_s *sse);
+
+* `on_shutdown`:
+
+    The (optional) `on_shutdown` callback will be called if a connection is still open while the server is shutting down (called before `on_close`).
+
+    The `http_sse_s` pointer passed to the callback contains a copy of the named arguments passed to the `http_upgrade2sse` function.
+
+        // callback example:
+        void on_shutdown(http_sse_s *sse);
+
+* `on_close`:
+
+    The (optional) `on_close` callback will be called once a connection is terminated or failed to be established.
+
+    The `udata` passed to the `http_upgrade2sse` function is available through the `http_sse_s` pointer (`sse->udata`).
+
+        // callback example:
+        void on_close(http_sse_s *sse);
+
+* `udata`:
+
+    Opaque user data.
+
+        // type:
+        void *udata;
+ 
+
+#### `http_sse_set_timout`
+
+```c
+void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
+```
+
+Sets the ping interval for SSE connections.
+
+#### `http_sse_subscribe`
+
+```c
+uintptr_t http_sse_subscribe(http_sse_s *sse,
+                             struct http_sse_subscribe_args args);
+#define http_sse_subscribe(sse, ...)                                           \
+  http_sse_subscribe((sse), (struct http_sse_subscribe_args){__VA_ARGS__})
+```
+
+Subscribes to a channel for direct message deliverance.
+
+To unsubscribe from the channel, use [`http_sse_unsubscribe`](http_sse_unsubscribe) (NOT
+`fio_unsubscribe`).
+
+All subscriptions are automatically canceled and freed once the connection is closed.
+
+The `http_sse_subscribe` function is shadowed by the `http_sse_subscribe` MACRO, which allows the function to accept "named arguments".
+
+In addition to the `sse` argument, the following named arguments can be used:
+
+* `channel`:
+
+    The channel name used for the subscription. If missing, an empty string is assumed to be the channel name.
+
+        // type:
+        fio_str_info_s channel;
+ 
+* `on_message`:
+
+    An optional callback to be called when a pub/sub message is received.
+
+    If missing, Data is directly written to the HTTP connection.
+
+        // callback example:
+        void on_message(http_sse_s *sse, fio_str_info_s channel,
+                     fio_str_info_s msg, void *udata);
+
+* `on_unsubscribe`:
+
+    An optional callback for when a subscription is fully canceled (the subscription's `udata` can be freed).
+
+    If missing, Data is directly written to the HTTP connection.
+
+        // callback example:
+        void on_unsubscribe(void *udata);
+
+* `udata`:
+
+    A callback for pattern matching, as described in [`fio_subscribe`](fio#fio_subscribe).
+
+        // type:
+        fio_match_fn match;
+ 
+* `udata`:
+
+    Opaque user data.
+
+        // type:
+        void *udata;
+ 
+
+
+Returns a subscription ID on success and 0 on failure.
+
+#### `http_sse_unsubscribe`
+
+```c
+void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
+```
+
+Cancels a subscription and invalidates the subscription object.
+
+#### `http_sse_write`
+
+```c
+int http_sse_write(http_sse_s *sse, struct http_sse_write_args);
+#define http_sse_write(sse, ...)                                               \
+  http_sse_write((sse), (struct http_sse_write_args){__VA_ARGS__})
+```
+
+Writes data to an EventSource (SSE) connection.
+
+The `http_sse_write` function is shadowed by the `http_sse_write` MACRO, which allows the function to accept "named arguments".
+
+In addition to the `sse` argument, the following named arguments can be used:
+
+ 
+* `id`:
+
+    Sets the `id` event property (optional).
+
+        // type:
+        fio_str_info_s id;
+ 
+* `event`:
+
+    Sets the `event` event property (optional).
+
+        // type:
+        fio_str_info_s event;
+ 
+* `data`:
+
+    Sets the `data` event property (optional).
+
+        // type:
+        fio_str_info_s data;
+ 
+* `retry`:
+
+    Sets the `retry` event property (optional).
+
+        // type:
+        fio_str_info_s retry;
+ 
+
+Event field details can be found on the [Mozilla developer website](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events).
+
+#### `http_sse2uuid`
+
+```c
+intptr_t http_sse2uuid(http_sse_s *sse);
+```
+
+Get the connection's UUID (for `fio_defer_io_task`, pub/sub, etc').
+
+#### `http_sse_close`
+
+```c
+int http_sse_close(http_sse_s *sse);
+```
+
+Closes an EventSource (SSE) connection.
+
+#### `http_sse_dup`
+
+```c
+http_sse_s *http_sse_dup(http_sse_s *sse);
+```
+
+Duplicates an SSE handle by reference, remember to http_sse_free.
+
+Returns the same object (increases a reference count, no allocation is made). 
+
+#### `http_sse_free`
+
+```c
+void http_sse_free(http_sse_s *sse);
+```
+
+Frees an SSE handle by reference (decreases the reference count).
 
 #### ``
 
@@ -687,64 +1043,351 @@ Returns the underlining socket connection's uuid. If `leftover` isn't NULL, it w
 ```
 
 
-
 ---
 
+## Miscellaneous 
 
+### Mime-Type helpers
 
+#### `http_mimetype_register`
 
+```c
+void http_mimetype_register(char *file_ext, size_t file_ext_len,
+                            FIOBJ mime_type_str);
+```
 
+Registers a Mime-Type to be associated with a file extension.
 
+File extension names should exclude the dot (`'.'`) marking the beginning of the extension. i.e., use `"jpg"`, `"html"`, etc' (**not** `".jpg"`).
 
-*****************************************************************************
-HTTP evented API (pause / resume HTTp handling)
-***************************************************************************** 
+#### `http_mimetype_find`
 
+```c
+FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len);
+```
 
-Pauses the request / response handling and INVALIDATES the current `http_s`
-handle (no `http` functions can be called).
- *
-The `http_resume` function MUST be called (at some point) using the opaque
-`http` pointer given to the callback `task`.
- *
-The opaque `http` pointer is only valid for a single call to `http_resume`
-and can't be used by any other `http` function (it's a different data type).
- *
-Note: the currecnt `http_s` handle will become invalid once this function is
-  called and it's data might be deallocated, invalid or used by a different
-  thread.
+Finds the mime-type associated with the file extension, returning a String on success and FIOBJ_INVALID on failure.
+
+Remember to call `fiobj_free`.
+
+#### `http_mimetype_find2`
+
+```c
+FIOBJ http_mimetype_find2(FIOBJ url);
+```
+
+Returns the mime-type associated with the URL or the default mime-type for
+HTTP.
+
+Remember to call `fiobj_free`.
+
+#### `http_mimetype_clear`
+
+```c
+void http_mimetype_clear(void);
+```
+
+Clears the Mime-Type registry (it will be empty after this call). 
+
+### Time / Date Helpers
+
+#### `http_gmtime`
+
+```c
+struct tm *http_gmtime(time_t timer, struct tm *tmbuf);
+```
+
+A faster (yet less localized) alternative to `gmtime_r`.
+
+See the libc `gmtime_r` documentation for details.
+
+Falls back to `gmtime_r` for dates before epoch.
+
+#### `http_date2str`
+
+```c
+size_t http_date2str(char *target, struct tm *tmbuf);
+```
+
+Writes an HTTP date string to the `target` buffer.
+
+This requires ~32 bytes of space to be available at the target buffer (unless
+it's a super funky year, 32 bytes is about 3 more than you need).
+
+Returns the number of bytes actually written.
+
+#### `http_date2rfc2109`
+
+```c
+size_t http_date2rfc2109(char *target, struct tm *tmbuf);
+```
+
+An alternative, RFC 2109 date representation. Requires 
+
+#### `http_date2rfc2822`
+
+```c
+size_t http_date2rfc2822(char *target, struct tm *tmbuf);
+```
+
+An alternative, RFC 2822 date representation. 
+
+#### `http_time2str`
+
+```c
+size_t http_time2str(char *target, const time_t t);
+```
+
+Prints Unix time to a HTTP time formatted string.
+
+This variation implements cached results for faster processing, at the price of a less accurate string.
+
+### URL Parsing
+
+#### `http_url_parse`
+
+```c
+http_url_s http_url_parse(const char *url, size_t length);
+```
+
+Parses the URI returning it's components and their lengths - no decoding
+performed, doesn't accept decoded URIs.
+
+the result returned by `http_url_parse` is a `http_url_s` structure:
+
+```c
+typedef struct {
+  fio_str_info_s scheme;
+  fio_str_info_s user;
+  fio_str_info_s password;
+  fio_str_info_s host;
+  fio_str_info_s port;
+  fio_str_info_s path;
+  fio_str_info_s query;
+  fio_str_info_s target;
+} http_url_s;
+```
+
+The returned string are NOT NUL terminated, they are merely locations within the original string.
+
+This function expects any of the following formats:
+
+* `/complete_path?query#target`
+
+    i.e.:
+
+    * /index.html?page=1#list
+
+* `host:port/complete_path?query#target`
+
+    i.e.:
+
+    * example.com
+    * example.com/index.html
+    * user:1234@example.com:8080
+    * example.com:8080/index.html
+
+* `schema://user:password@host:port/path?query#target`
+
+     i.e.:
+
+     * http://example.com/index.html?page=1#list
+
+Invalid formats might produce unexpected results. No error testing is performed.
  
-void http_pause(http_s *h, void (*task)(void *http));
+### URL String Decoding
 
+#### `http_decode_url_unsafe`
 
-Resumes a request / response handling within a task and INVALIDATES the
-current `http_s` handle.
- *
-The `task` MUST call one of the `http_send_*`, `http_finish`, or
-`http_pause`functions.
- *
-The (optional) `fallback` will receive the opaque `udata` that was stored in
-the HTTP handle and can be used for cleanup.
- *
-Note: `http_resume` can only be called after calling `http_pause` and
-entering it's task.
- *
-Note: the current `http_s` handle will become invalid once this function is
-  called and it's data might be deallocated, invalidated or used by a
-  different thread.
- 
-void http_resume(void *http, void (*task)(http_s *h),
-                 void (*fallback)(void *udata));
+```c
+ssize_t http_decode_url_unsafe(char *dest, const char *url_data);
+```
 
-Returns the `udata` associated with the paused opaque handle 
-void *http_paused_udata_get(void *http);
+Decodes a URL encoded string, **no** buffer overflow protection. 
 
+#### `http_decode_url`
 
-Sets the `udata` associated with the paused opaque handle, returning the
-old value.
- 
-void *http_paused_udata_set(void *http, void *udata);
+```c
+ssize_t http_decode_url(char *dest, const char *url_data, size_t length);
+```
 
+Decodes a URL encoded string (query / form data), **no** buffer overflow protection.
+
+#### `http_decode_path_unsafe`
+
+```c
+ssize_t http_decode_path_unsafe(char *dest, const char *url_data);
+```
+
+Decodes the "path" part of a request, **no** buffer overflow protection. 
+
+#### `http_decode_path`
+
+```c
+ssize_t http_decode_path(char *dest, const char *url_data, size_t length);
+```
+
+Decodes the "path" part of an HTTP request, no buffer overflow protection.
+
+### Commonly Used Header Constants
+
+Some headers are so commonly used, that the HTTP extension pre-allocates memory and objects to represent these headers.
+
+Avoid freeing these headers, as the HTTP extension expects them to remain allocated until the application quits.
+
+#### `HTTP_HEADER_ACCEPT`
+
+```c
+extern FIOBJ HTTP_HEADER_ACCEPT;
+```
+
+Represents the HTTP Header `"Accept"`.
+
+#### `HTTP_HEADER_CACHE_CONTROL`
+
+```c
+extern FIOBJ HTTP_HEADER_CACHE_CONTROL;
+```
+
+Represents the HTTP Header `"Cache-Control"`.
+
+#### `HTTP_HEADER_CONNECTION`
+
+```c
+extern FIOBJ HTTP_HEADER_CONNECTION;
+```
+
+Represents the HTTP Header `"Connection"`.
+
+#### `HTTP_HEADER_CONTENT_ENCODING`
+
+```c
+extern FIOBJ HTTP_HEADER_CONTENT_ENCODING;
+```
+
+Represents the HTTP Header `"Content-Encoding"`.
+
+#### `HTTP_HEADER_CONTENT_LENGTH`
+
+```c
+extern FIOBJ HTTP_HEADER_CONTENT_LENGTH;
+```
+
+Represents the HTTP Header `"Content-Length"`.
+
+#### `HTTP_HEADER_CONTENT_RANGE`
+
+```c
+extern FIOBJ HTTP_HEADER_CONTENT_RANGE;
+```
+
+Represents the HTTP Header `"Content-Range"`.
+
+#### `HTTP_HEADER_CONTENT_TYPE`
+
+```c
+extern FIOBJ HTTP_HEADER_CONTENT_TYPE;
+```
+
+Represents the HTTP Header `"Content-Type"`.
+
+#### `HTTP_HEADER_COOKIE`
+
+```c
+extern FIOBJ HTTP_HEADER_COOKIE;
+```
+
+Represents the HTTP Header `"Cookie"`.
+
+#### `HTTP_HEADER_DATE`
+
+```c
+extern FIOBJ HTTP_HEADER_DATE;
+```
+
+Represents the HTTP Header `"Date"`.
+
+#### `HTTP_HEADER_ETAG`
+
+```c
+extern FIOBJ HTTP_HEADER_ETAG;
+```
+
+Represents the HTTP Header `"Etag"`.
+
+#### `HTTP_HEADER_HOST`
+
+```c
+extern FIOBJ HTTP_HEADER_HOST;
+```
+
+Represents the HTTP Header `"Host"`.
+
+#### `HTTP_HEADER_LAST_MODIFIED`
+
+```c
+extern FIOBJ HTTP_HEADER_LAST_MODIFIED;
+```
+
+Represents the HTTP Header `"Last-Modified"`.
+
+#### `HTTP_HEADER_ORIGIN`
+
+```c
+extern FIOBJ HTTP_HEADER_ORIGIN;
+```
+
+Represents the HTTP Header `"Origin"`.
+
+#### `HTTP_HEADER_SET_COOKIE`
+
+```c
+extern FIOBJ HTTP_HEADER_SET_COOKIE;
+```
+
+Represents the HTTP Header `"Set-Cookie"`.
+
+#### `HTTP_HEADER_UPGRADE`
+
+```c
+extern FIOBJ HTTP_HEADER_UPGRADE;
+```
+
+Represents the HTTP Header `"Upgrade"`.
+
+### Compile Time Settings
+
+#### `HTTP_BUSY_UNLESS_HAS_FDS`
+
+```c
+#define HTTP_BUSY_UNLESS_HAS_FDS 64
+```
+
+When a new connection is accepted, it will be immediately declined with a 503 service unavailable (server busy) response unless the following number of file descriptors is available.
+
+#### `HTTP_DEFAULT_BODY_LIMIT`
+
+```c
+#define HTTP_DEFAULT_BODY_LIMIT (1024 * 1024 * 50)
+```
+
+The default limit on HTTP message length (in bytes). A different limit can be set during runtime as part of the `http_listen` function call.
+
+#### `HTTP_MAX_HEADER_COUNT`
+
+```c
+#define HTTP_MAX_HEADER_COUNT 128
+```
+
+The maximum (hard coded) number of headers per HTTP request, after which the request is considered malicious and the connection is abruptly closed.
+
+#### `HTTP_MAX_HEADER_LENGTH`
+
+```c
+#define HTTP_MAX_HEADER_LENGTH 8192
+```
+
+the default maximum length for a single header line 
 
 
 *****************************************************************************
@@ -761,7 +1404,7 @@ accessed otherwise.
 typedef struct ws_s ws_s;
 
 
-This struct is used for the named agruments in the `http_upgrade2ws`
+This struct is used for the named arguments in the `http_upgrade2ws`
 function and macro.
  
 typedef struct {
@@ -856,406 +1499,3 @@ int websocket_connect(const char *address, websocket_settings_s settings);
   websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
 
 #include "websockets.h"
-
-*****************************************************************************
-EventSource Support (SSE)
-***************************************************************************** 
-
-
-The type for the EventSource (SSE) handle, used to identify an SSE
-connection.
- 
-typedef struct http_sse_s http_sse_s;
-
-
-This struct is used for the named agruments in the `http_upgrade2sse`
-function and macro.
- 
-struct http_sse_s {
-  /**
-   * The (optional) on_open callback will be called once the EventSource
-   * connection is established.
-   
-  void (*on_open)(http_sse_s *sse);
-  /**
-   * The (optional) on_ready callback will be after a the underlying socket's
-   * buffer changes it's state to empty.
-   *
-   * If the socket's buffer is never used, the callback is never called.
-   
-  void (*on_ready)(http_sse_s *sse);
-  /**
-   * The (optional) on_shutdown callback will be called if a connection is still
-   * open while the server is shutting down (called before `on_close`).
-   
-  void (*on_shutdown)(http_sse_s *sse);
-  /**
-   * The (optional) on_close callback will be called once a connection is
-   * terminated or failed to be established.
-   *
-   * The `uuid` is the connection's unique ID that can identify the Websocket. A
-   * value of `uuid == 0` indicates the Websocket connection wasn't established
-   * (an error occured).
-   *
-   * The `udata` is the user data as set during the upgrade or using the
-   * `http_upgrade2sse` function.
-   
-  void (*on_close)(intptr_t uuid, void *udata);
-  /** Opaque user data. 
-  void *udata;
-};
-
-
-Upgrades an HTTP connection to an EventSource (SSE) connection.
- *
-Thie `http_s` handle will be invalid after this call.
- *
-On HTTP/1.1 connections, this will preclude future requests using the same
-connection.
- 
-int http_upgrade2sse(http_s *h, http_sse_s);
-
-This macro allows easy access to the `http_upgrade2sse` function. The macro
-allows the use of named arguments, using the `websocket_settings_s` struct
-members. i.e.:
- *
-   on_open_sse(sse_s * sse) {
-      ; // ... this is the websocket on_message callback
-      FIOBJ ch = (FIOBJ)sse->udata;
-      http_sse_subscribe(ch, NULL, NULL); // a simple echo example
-   }
- *
-   on_upgrade(http_s* h) {
-      http_upgrade2sse(h, .on_open = on_open_sse);
-   }
- 
-#define http_upgrade2sse(h, ...)                                               \
-  http_upgrade2sse((h), (http_sse_s){__VA_ARGS__})
-
-
-Sets the ping interval for SSE connections.
- 
-void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
-
-struct http_sse_subscribe_args {
-  /** The channel name used for the subscription. 
-  fio_str_info_s channel;
-  /** The optional on message callback. If missing, Data is directly writen. 
-  void (*on_message)(http_sse_s *sse, fio_str_info_s channel,
-                     fio_str_info_s msg, void *udata);
-  /** An optional callback for when a subscription is fully canceled. 
-  void (*on_unsubscribe)(void *udata);
-  /** Opaque user 
-  void *udata;
-  /** A callback for pattern matching. 
-  fio_match_fn match;
-};
-
-
-Subscribes to a channel for direct message deliverance. See {struct
-http_sse_subscribe_args} for possible arguments.
- *
-Returns a subscription ID on success and 0 on failure.
- *
-To unsubscripbe from the channel, use `http_sse_unsubscribe` (NOT
-`fio_unsubscribe`).
- *
-All subscriptions are automatically cleared once the connection is closed.
- 
-uintptr_t http_sse_subscribe(http_sse_s *sse,
-                             struct http_sse_subscribe_args args);
-
-This macro allows easy access to the `http_sse_subscribe` function. 
-#define http_sse_subscribe(sse, ...)                                           \
-  http_sse_subscribe((sse), (struct http_sse_subscribe_args){__VA_ARGS__})
-
-
-Cancels a subscription and invalidates the subscription object.
- 
-void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
-
-
-Named arguments for the {http_sse_write} function.
- *
-These arguments list the possible fields for the SSE event.
- *
-Event fields listed here:
-https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
- 
-struct http_sse_write_args {
-  fio_str_info_s id;    /* (optionl) sets the `id` event property. 
-  fio_str_info_s event; /* (optionl) sets the `event` event property. 
-  fio_str_info_s data;  /* (optionl) sets the `data` event property. 
-  intptr_t retry;       /* (optionl) sets the `retry` event property. 
-};
-
-
-Writes data to an EventSource (SSE) connection.
- *
-See the {struct http_sse_write_args} for possible named arguments.
- 
-int http_sse_write(http_sse_s *sse, struct http_sse_write_args);
-#define http_sse_write(sse, ...)                                               \
-  http_sse_write((sse), (struct http_sse_write_args){__VA_ARGS__})
-
-
-Get the connection's UUID (for `fio_defer_io_task`, pub/sub, etc').
- 
-intptr_t http_sse2uuid(http_sse_s *sse);
-
-
-Closes an EventSource (SSE) connection.
- 
-int http_sse_close(http_sse_s *sse);
-
-
-Duplicates an SSE handle by reference, remember to http_sse_free.
- *
-Returns the same object (increases a reference count, no allocation is made).
- 
-http_sse_s *http_sse_dup(http_sse_s *sse);
-
-
-Frees an SSE handle by reference (decreases the reference count).
- 
-void http_sse_free(http_sse_s *sse);
-
-*****************************************************************************
-HTTP GET and POST parsing helpers
-***************************************************************************** 
-
-
-Attempts to decode the request's body.
- *
-Supported Types include:
-* application/x-www-form-urlencoded
-* application/json
-* multipart/form-data
- *
-This should be called before `http_parse_query`, in order to support JSON
-data.
- *
-If the JSON data isn't an object, it will be saved under the key "JSON" in
-the `params` hash.
- *
-If the `multipart/form-data` type contains JSON files, they will NOT be
-parsed (they will behave like any other file, with `data`, `type` and
-`filename` keys assigned). This allows non-object JSON data (such as array)
-to be handled by the app.
- 
-int http_parse_body(http_s *h);
-
-
-Parses the query part of an HTTP request/response. Uses `http_add2hash`.
- *
-This should be called after the `http_parse_body` function, just in case the
-body is JSON that doesn't have an object at it's root.
- 
-void http_parse_query(http_s *h);
-
-Parses any Cookie / Set-Cookie headers, using the `http_add2hash` scheme. 
-void http_parse_cookies(http_s *h, uint8_t is_url_encoded);
-
-
-Adds a named parameter to the hash, converting a string to an object and
-resolving nesting references and URL decoding if required.
- *
-i.e.:
- *
-* "name[]" references a nested Array (nested in the Hash).
-* "name[key]" references a nested Hash.
-* "name[][key]" references a nested Hash within an array. Hash keys will be
- unique (repeating a key advances the hash).
-* These rules can be nested (i.e. "name[][key1][][key2]...")
-* "name[][]" is an error (there's no way for the parser to analyse
-  dimentions)
- *
-Note: names can't begine with "[" or end with "]" as these are reserved
-     characters.
- 
-int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
-                  size_t value_len, uint8_t encoded);
-
-
-Adds a named parameter to the hash, using an existing object and resolving
-nesting references.
- *
-i.e.:
- *
-* "name[]" references a nested Array (nested in the Hash).
-* "name[key]" references a nested Hash.
-* "name[][key]" references a nested Hash within an array. Hash keys will be
- unique (repeating a key advances the hash).
-* These rules can be nested (i.e. "name[][key1][][key2]...")
-* "name[][]" is an error (there's no way for the parser to analyse
-  dimentions)
- *
-Note: names can't begine with "[" or end with "]" as these are reserved
-     characters.
- 
-int http_add2hash2(FIOBJ dest, char *name, size_t name_len, FIOBJ value,
-                   uint8_t encoded);
-
-*****************************************************************************
-HTTP Status Strings and Mime-Type helpers
-***************************************************************************** 
-
-Returns a human readable string related to the HTTP status number. 
-fio_str_info_s http_status2str(uintptr_t status);
-
-Registers a Mime-Type to be associated with the file extension. 
-void http_mimetype_register(char *file_ext, size_t file_ext_len,
-                            FIOBJ mime_type_str);
-
-
-Finds the mime-type associated with the file extension, returning a String on
-success and FIOBJ_INVALID on failure.
- *
-Remember to call `fiobj_free`.
- 
-FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len);
-
-
-Returns the mime-type associated with the URL or the default mime-type for
-HTTP.
- *
-Remember to call `fiobj_free`.
- 
-FIOBJ http_mimetype_find2(FIOBJ url);
-
-Clears the Mime-Type registry (it will be emoty afterthis call). 
-void http_mimetype_clear(void);
-
-*****************************************************************************
-Commonly used headers (fiobj Symbol objects)
-***************************************************************************** 
-
-extern FIOBJ HTTP_HEADER_ACCEPT;
-extern FIOBJ HTTP_HEADER_CACHE_CONTROL;
-extern FIOBJ HTTP_HEADER_CONNECTION;
-extern FIOBJ HTTP_HEADER_CONTENT_ENCODING;
-extern FIOBJ HTTP_HEADER_CONTENT_LENGTH;
-extern FIOBJ HTTP_HEADER_CONTENT_RANGE;
-extern FIOBJ HTTP_HEADER_CONTENT_TYPE;
-extern FIOBJ HTTP_HEADER_COOKIE;
-extern FIOBJ HTTP_HEADER_DATE;
-extern FIOBJ HTTP_HEADER_ETAG;
-extern FIOBJ HTTP_HEADER_HOST;
-extern FIOBJ HTTP_HEADER_LAST_MODIFIED;
-extern FIOBJ HTTP_HEADER_ORIGIN;
-extern FIOBJ HTTP_HEADER_SET_COOKIE;
-extern FIOBJ HTTP_HEADER_UPGRADE;
-
-*****************************************************************************
-HTTP General Helper functions that could be used globally
-***************************************************************************** 
-
-
-Returns a String object representing the unparsed HTTP request (HTTP version
-is capped at HTTP/1.1). Mostly usable for proxy usage and debugging.
- 
-FIOBJ http_req2str(http_s *h);
-
-
-Writes a log line to `stderr` about the request / response object.
- *
-This function is called automatically if the `.log` setting is enabled.
- 
-void http_write_log(http_s *h);
-*****************************************************************************
-HTTP Time related helper functions that could be used globally
-***************************************************************************** 
-
-
-A faster (yet less localized) alternative to `gmtime_r`.
-
-See the libc `gmtime_r` documentation for details.
-
-Falls back to `gmtime_r` for dates before epoch.
-
-struct tm *http_gmtime(time_t timer, struct tm *tmbuf);
-
-
-Writes an HTTP date string to the `target` buffer.
-
-This requires ~32 bytes of space to be available at the target buffer (unless
-it's a super funky year, 32 bytes is about 3 more than you need).
-
-Returns the number of bytes actually written.
-
-size_t http_date2str(char *target, struct tm *tmbuf);
-An alternative, RFC 2109 date representation. Requires 
-size_t http_date2rfc2109(char *target, struct tm *tmbuf);
-An alternative, RFC 2822 date representation. 
-size_t http_date2rfc2822(char *target, struct tm *tmbuf);
-
-
-Prints Unix time to a HTTP time formatted string.
- *
-This variation implements chached results for faster processeing, at the
-price of a less accurate string.
- 
-size_t http_time2str(char *target, const time_t t);
-
-*****************************************************************************
-HTTP URL decoding helper functions that might be used globally
-***************************************************************************** 
-
-Decodes a URL encoded string, no buffer overflow protection. 
-ssize_t http_decode_url_unsafe(char *dest, const char *url_data);
-
-Decodes a URL encoded string (query / form data). 
-ssize_t http_decode_url(char *dest, const char *url_data, size_t length);
-
-Decodes the "path" part of a request, no buffer overflow protection. 
-ssize_t http_decode_path_unsafe(char *dest, const char *url_data);
-
-
-Decodes the "path" part of an HTTP request, no buffer overflow protection.
- 
-ssize_t http_decode_path(char *dest, const char *url_data, size_t length);
-
-*****************************************************************************
-HTTP URL parsing
-***************************************************************************** 
-
-the result returned by `http_url_parse` 
-typedef struct {
-  fio_str_info_s scheme;
-  fio_str_info_s user;
-  fio_str_info_s password;
-  fio_str_info_s host;
-  fio_str_info_s port;
-  fio_str_info_s path;
-  fio_str_info_s query;
-  fio_str_info_s target;
-} http_url_s;
-
-
-Parses the URI returning it's components and their lengths (no decoding
-performed, doesn't accept decoded URIs).
- *
-The returned string are NOT NUL terminated, they are merely locations within
-the original string.
- *
-This function expects any of the follwing formats:
- *
-* `/complete_path?query#target`
- *
- i.e.: /index.html?page=1#list
- *
-* `host:port/complete_path?query#target`
- *
- i.e.:
-    example.com
-    example.com/index.html
-    user:1234@example.com:8080
-    example.com:8080/index.html
- *
-* `schema://user:password@host:port/path?query#target`
- *
- i.e.: http://example.com/index.html?page=1#list
- *
-Invalid formats might produce unexpected results. No error testing performed.
- 
-http_url_s http_url_parse(const char *url, size_t length);

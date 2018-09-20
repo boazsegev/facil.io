@@ -74,7 +74,7 @@ The following optional type requirements are:
 
 
 Argument names MUST start with the '-' character. The first word starting
-without the '-' character will begine the description for the CLI argument.
+without the '-' character will begin the description for the CLI argument.
 
 The arguments "-?", "-h", "-help" and "--help" are automatically handled
 unless overridden.

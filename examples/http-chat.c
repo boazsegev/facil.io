@@ -109,7 +109,7 @@ HTTP Upgrade Handling
 
 /* Server Sent Event Handlers */
 static void sse_on_open(http_sse_s *sse);
-static void sse_on_close(intptr_t uuid, void *udata);
+static void sse_on_close(http_sse_s *sse);
 
 /* WebSocket Handlers */
 static void ws_on_open(ws_s *ws);
@@ -169,13 +169,13 @@ static void sse_on_open(http_sse_s *sse) {
   fiobj_free(tmp);
 }
 
-static void sse_on_close(intptr_t uuid, void *udata) {
+static void sse_on_close(http_sse_s *sse) {
   /* Let everyone know we left the chat */
-  fiobj_str_write((FIOBJ)udata, " left the chat.", 15);
-  fio_publish(.channel = CHAT_CANNEL, .message = fiobj_obj2cstr((FIOBJ)udata));
+  fiobj_str_write((FIOBJ)sse->udata, " left the chat.", 15);
+  fio_publish(.channel = CHAT_CANNEL,
+              .message = fiobj_obj2cstr((FIOBJ)sse->udata));
   /* free the nickname */
-  fiobj_free((FIOBJ)udata);
-  (void)uuid; // we don't use the ID
+  fiobj_free((FIOBJ)sse->udata);
 }
 
 /* *****************************************************************************
