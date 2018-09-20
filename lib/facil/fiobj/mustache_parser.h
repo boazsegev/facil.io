@@ -38,7 +38,7 @@ Feel free to copy, use and enjoy according to the license provided.
  * * `mustache_on_text` - called to output raw text.
  * * `mustache_on_section_test` - called when a section is tested for validity.
  * * `mustache_on_section_start` - called when entering a named section.
- * * `mustache_on_formatting_error` - called when a formatting error occured.
+ * * `mustache_on_formatting_error` - called when a formatting error occurred.
  *
  * Once the template is no longer needed, it's easy to free the template using
  * the `mustache_free` function (which, at the moment, simply calls `free`).
@@ -221,7 +221,7 @@ static int32_t mustache_on_section_test(mustache_section_s *section,
  * Called when entering a nested section.
  *
  * `index` is a zero based index indicating the number of repetitions that
- * occured so far (same as the array index for arrays).
+ * occurred so far (same as the array index for arrays).
  *
  * A return value of -1 will stop processing with an error.
  *

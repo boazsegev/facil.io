@@ -57,7 +57,7 @@ typedef struct http1_parser_s {
 /**
  * Available options for the parsing function.
  *
- * Callbacks should return 0 unless an error occured.
+ * Callbacks should return 0 unless an error occurred.
  */
 struct http1_fio_parser_args_s {
   /** REQUIRED: the parser object that manages the parser's state. */
@@ -90,7 +90,7 @@ struct http1_fio_parser_args_s {
   /** called when a body chunk is parsed. */
   int (*const on_body_chunk)(http1_parser_s *parser, char *data,
                              size_t data_len);
-  /** called when a protocol error occured. */
+  /** called when a protocol error occurred. */
   int (*const on_error)(http1_parser_s *parser);
 };
 

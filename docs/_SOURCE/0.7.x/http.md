@@ -804,6 +804,9 @@ This function is called automatically if the `.log` setting is enabled.
 
 ## EventSource / Server Sent Events (SSE)
 
+
+### EventSource (SSE) Connection Management
+
 #### `http_upgrade2sse`
 
 ```c
@@ -885,6 +888,17 @@ void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
 
 Sets the ping interval for SSE connections.
 
+
+#### `http_sse_close`
+
+```c
+int http_sse_close(http_sse_s *sse);
+```
+
+Closes an EventSource (SSE) connection.
+
+### EventSource (SSE) Pub/Sub
+
 #### `http_sse_subscribe`
 
 ```c
@@ -931,10 +945,14 @@ In addition to the `sse` argument, the following named arguments can be used:
         // callback example:
         void on_unsubscribe(void *udata);
 
-* `udata`:
+* `match`:
 
     A callback for pattern matching, as described in [`fio_subscribe`](fio#fio_subscribe).
 
+    Note that only the `FIO_MATCH_GLOB` matching function (or NULL for no pattern matching) is safe to use with the Redis extension.
+
+        // callback example:
+        int foo_bar_match_fn(fio_str_info_s pattern, fio_str_info_s channel);
         // type:
         fio_match_fn match;
  
@@ -946,7 +964,6 @@ In addition to the `sse` argument, the following named arguments can be used:
         void *udata;
  
 
-
 Returns a subscription ID on success and 0 on failure.
 
 #### `http_sse_unsubscribe`
@@ -956,6 +973,8 @@ void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
 ```
 
 Cancels a subscription and invalidates the subscription object.
+
+### Writing to the EventSource (SSE) Connection
 
 #### `http_sse_write`
 
@@ -1003,6 +1022,8 @@ In addition to the `sse` argument, the following named arguments can be used:
 
 Event field details can be found on the [Mozilla developer website](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events).
 
+### EventSource (SSE) Helpers
+
 #### `http_sse2uuid`
 
 ```c
@@ -1010,14 +1031,6 @@ intptr_t http_sse2uuid(http_sse_s *sse);
 ```
 
 Get the connection's UUID (for `fio_defer_io_task`, pub/sub, etc').
-
-#### `http_sse_close`
-
-```c
-int http_sse_close(http_sse_s *sse);
-```
-
-Closes an EventSource (SSE) connection.
 
 #### `http_sse_dup`
 
@@ -1036,6 +1049,111 @@ void http_sse_free(http_sse_s *sse);
 ```
 
 Frees an SSE handle by reference (decreases the reference count).
+
+## WebSockets
+
+### WebSocket Upgrade From HTTP (Server)
+
+#### `http_upgrade2ws`
+
+```c
+int http_upgrade2ws(http_s *http, websocket_settings_s);
+#define http_upgrade2ws(http, ...)                                             \
+  http_upgrade2ws((http), (websocket_settings_s){__VA_ARGS__})
+```
+
+Upgrades an HTTP/1.1 connection to a WebSocket connection.
+
+The `http_upgrade2ws` function is shadowed by the `http_upgrade2ws` MACRO, which allows the function to accept "named arguments".
+
+In addition to the `http_s` argument, the following named arguments can be used:
+
+* `on_open`:
+
+    The (optional) `on_open` callback will be called once the WebSocket connection is established and before is is registered with `facil`, so no `on_message` events are raised before `on_open` returns.
+
+        // callback example:
+        void on_open(ws_s *ws);
+ 
+* `on_message`:
+
+    The (optional) `on_message` callback will be called whenever a webSocket message is received for this connection.
+
+    The data received points to the WebSocket's message buffer and it will be overwritten once the function exits (it cannot be saved for later, but it can be copied).
+
+        // callback example:
+        void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
+
+* `on_ready`:
+
+    The (optional) `on_ready` callback will be after a the underlying socket's buffer changes it's state from full to empty.
+
+    If the socket's buffer is never used, the callback is never called.
+
+        // callback example:
+        void on_ready(ws_s *ws);
+ 
+* `on_shutdown`:
+
+    The (optional) on_shutdown callback will be called if a WebSocket connection is still open while the server is shutting down (called before `on_close`).
+
+        // callback example:
+        void on_shutdown(ws_s *ws);
+ 
+* `on_close`:
+
+    The `uuid` is the connection's unique ID that can identify the WebSocket. A value of `uuid == -1` indicates the WebSocket connection wasn't established (an error occurred).
+
+    The `udata` is the user data as set during the upgrade or using the `websocket_udata_set` function.
+
+        // callback example:
+        void on_close(intptr_t uuid, void *udata);
+ 
+
+* `udata`:
+
+    Opaque user data.
+
+        // type:
+        void *udata;
+
+This function will end the HTTP stage of the connection and attempt to "upgrade" to a WebSockets connection.
+
+The `http_s` handle will be invalid after this call and the `udata` will be set to the new WebSocket `udata`.
+
+A client connection's `on_finish` callback will be called (since the HTTP stage has finished).
+
+Returns 0 on success or -1 on error.
+
+**NOTE**:
+
+The type used by some of the callbacks (`ws_s`) is an opaque WebSocket handle and has no relationship with the named arguments used in this function cal. It is only used to identify a WebSocket connection.
+
+Similar to an `http_s` handle, it is only valid within the scope of the specific connection (the callbacks / tasks) and shouldn't be stored or accessed otherwise.
+
+### WebSocket Connections (Client)
+
+#### `websocket_connect`
+
+```c
+int websocket_connect(const char *url, websocket_settings_s settings);
+#define websocket_connect(url, ...)                                        \
+  websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
+```
+
+Connects to a WebSocket service according to the provided address.
+
+This is a somewhat naive connector object, it doesn't perform any authentication or other logical handling. However, it's quire easy to author a complext authentication logic using a combination of `http_connect` and `http_upgrade2ws`.
+
+In addition to the `url` address, this function accepts the same named arguments as [`http_upgrade2ws`](#http_upgrade2ws).
+
+Returns the `uuid` for the future WebSocket on success.
+
+Returns -1 on error;
+
+---
+
+TODO: Add WebSocket functions 
 
 #### ``
 
@@ -1388,114 +1506,3 @@ The maximum (hard coded) number of headers per HTTP request, after which the req
 ```
 
 the default maximum length for a single header line 
-
-
-*****************************************************************************
-Websocket Upgrade (Server and Client connection establishment)
-***************************************************************************** 
-
-
-The type for a Websocket handle, used to identify a Websocket connection.
- *
-Similar to an `http_s` handle, it is only valid within the scope of the
-specific connection (the callbacks / tasks) and shouldn't be stored or
-accessed otherwise.
- 
-typedef struct ws_s ws_s;
-
-
-This struct is used for the named arguments in the `http_upgrade2ws`
-function and macro.
- 
-typedef struct {
-  /**
-   * The (optional) on_message callback will be called whenever a websocket
-   * message is received for this connection.
-   *
-   * The data received points to the websocket's message buffer and it will be
-   * overwritten once the function exits (it cannot be saved for later, but it
-   * can be copied).
-   
-  void (*on_message)(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
-  /**
-   * The (optional) on_open callback will be called once the websocket
-   * connection is established and before is is registered with `facil`, so no
-   * `on_message` events are raised before `on_open` returns.
-   
-  void (*on_open)(ws_s *ws);
-  /**
-   * The (optional) on_ready callback will be after a the underlying socket's
-   * buffer changes it's state from full to empty.
-   *
-   * If the socket's buffer is never used, the callback is never called.
-   
-  void (*on_ready)(ws_s *ws);
-  /**
-   * The (optional) on_shutdown callback will be called if a websocket
-   * connection is still open while the server is shutting down (called before
-   * `on_close`).
-   
-  void (*on_shutdown)(ws_s *ws);
-  /**
-   * The (optional) on_close callback will be called once a websocket connection
-   * is terminated or failed to be established.
-   *
-   * The `uuid` is the connection's unique ID that can identify the Websocket. A
-   * value of `uuid == 0` indicates the Websocket connection wasn't established
-   * (an error occured).
-   *
-   * The `udata` is the user data as set during the upgrade or using the
-   * `websocket_udata_set` function.
-   
-  void (*on_close)(intptr_t uuid, void *udata);
-  /** Opaque user data. 
-  void *udata;
-} websocket_settings_s;
-
-
-Upgrades an HTTP/1.1 connection to a Websocket connection.
- *
-This function will end the HTTP stage of the connection and attempt to
-"upgrade" to a Websockets connection.
- *
-Thie `http_s` handle will be invalid after this call and the `udata` will be
-set to the new Websocket `udata`.
- *
-A client connection's `on_finish` callback will be called (since the HTTP
-stage has finished).
- 
-int http_upgrade2ws(http_s *http, websocket_settings_s);
-
-This macro allows easy access to the `http_upgrade2ws` function. The macro
-allows the use of named arguments, using the `websocket_settings_s` struct
-members. i.e.:
- *
-   on_message(ws_s * ws, char * data, size_t size, int is_text) {
-      ; // ... this is the websocket on_message callback
-      websocket_write(ws, data, size, is_text); // a simple echo example
-   }
- *
-   on_upgrade(http_s* h) {
-      http_upgrade2ws( .http = h, .on_message = on_message);
-   }
- 
-#define http_upgrade2ws(http, ...)                                             \
-  http_upgrade2ws((http), (websocket_settings_s){__VA_ARGS__})
-
-
-Connects to a Websocket service according to the provided address.
- *
-This is a somewhat naive connector object, it doesn't perform any
-authentication or other logical handling. However, it's quire easy to author
-a complext authentication logic using a combination of `http_connect` and
-`http_upgrade2ws`.
- *
-Returns the uuid for the future websocket on success.
- *
-Returns -1 on error;
- 
-int websocket_connect(const char *address, websocket_settings_s settings);
-#define websocket_connect(address, ...)                                        \
-  websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
-
-#include "websockets.h"

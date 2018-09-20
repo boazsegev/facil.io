@@ -659,7 +659,7 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
   return 0;
 }
 
-/** called when a protocol error occured. */
+/** called when a protocol error occurred. */
 static int http1_on_error(http1_parser_s *parser) {
   fio_close(parser2http(parser)->p.uuid);
   return -1;

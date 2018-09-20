@@ -216,7 +216,7 @@ int light_http1_on_body_chunk(http1_parser_s *parser, char *data,
   return 0;
 }
 
-/** called when a protocol error occured. */
+/** called when a protocol error occurred. */
 int light_http1_on_error(http1_parser_s *parser) {
   /* close the connection */
   fio_close(parser2pr(parser)->uuid);

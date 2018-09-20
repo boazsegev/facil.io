@@ -1231,7 +1231,7 @@ The function accepts the following named arguments:
     This is significantly slower, as no Hash Map can be used to locate a match - each message published to a channel will be tested for a match against each pattern.
 
         // callback example:
-        int foo_bar_match_fn(fio_str_info_s pattern, fio_str_info_s channel)''
+        int foo_bar_match_fn(fio_str_info_s pattern, fio_str_info_s channel);
         // type:
         typedef int (*fio_match_fn)(fio_str_info_s pattern, fio_str_info_s channel);
         fio_match_fn match;

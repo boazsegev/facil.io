@@ -519,7 +519,7 @@ typedef struct {
    *
    * The `uuid` is the connection's unique ID that can identify the Websocket. A
    * value of `uuid == 0` indicates the Websocket connection wasn't established
-   * (an error occured).
+   * (an error occurred).
    *
    * The `udata` is the user data as set during the upgrade or using the
    * `websocket_udata_set` function.

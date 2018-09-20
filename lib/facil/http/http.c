@@ -713,7 +713,7 @@ int http_upgrade2ws(http_s *h, websocket_settings_s args) {
   return ((http_vtable_s *)h->private_data.vtbl)->http2websocket(h, &args);
 error:
   if (args.on_close)
-    args.on_close(0, args.udata);
+    args.on_close(-1, args.udata);
   return -1;
 }
 
