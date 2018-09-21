@@ -159,6 +159,14 @@ Version and helper macros
 #define FIO_PUBSUB_SUPPORT 1
 #endif
 
+#ifndef FIO_IGNORE_MACRO
+/**
+ * This is used internally to ignor macros that shadow functions (avoiding named
+ * arguments when required.
+ */
+#define FIO_IGNORE_MACRO
+#endif
+
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -703,6 +711,13 @@ int16_t fio_is_running(void);
  *       after critical errors.
  */
 int fio_is_worker(void);
+
+/**
+ * Returns 1 if the current process is the master (root) process.
+ *
+ * Otherwise returns 0.
+ */
+int fio_is_master(void);
 
 /** Returns facil.io's parent (root) process pid. */
 pid_t fio_parent_pid(void);
@@ -1599,16 +1614,6 @@ struct pubsub_engine_s {
   /** Should publish a message through the engine. Failures are ignored. */
   void (*publish)(const pubsub_engine_s *eng, fio_str_info_s channel,
                   fio_str_info_s msg, uint8_t is_json);
-  /**
-   * facil.io will call this callback whenever starting, or restarting, the IO
-   * reactor.
-   *
-   * This will be called when facil.io starts (the master process).
-   *
-   * This will also be called when forking, after facil.io closes all
-   * connections and claim to shut down (running all deferred event).
-   */
-  void (*on_startup)(const pubsub_engine_s *eng);
 };
 
 /**

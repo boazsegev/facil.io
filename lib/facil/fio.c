@@ -36,8 +36,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_ENGINE_POLL 0
 #endif
 
-#define FIO_IGNORE_MACRO
-
 #if !FIO_ENGINE_POLL && !FIO_ENGINE_EPOLL && !FIO_ENGINE_KQUEUE
 #if defined(__linux__)
 #define FIO_ENGINE_EPOLL 1
@@ -1190,6 +1188,15 @@ static void fio_signal_handler_reset(void) {
  *       after critical errors.
  */
 int fio_is_worker(void) { return fio_data->is_worker; }
+
+/**
+ * Returns 1 if the current process is the master (root) process.
+ *
+ * Otherwise returns 0.
+ */
+int fio_is_master(void) {
+  return fio_data->is_worker == 0 || fio_data->workers == 1;
+}
 
 /** returns facil.io's parent (root) process pid. */
 pid_t fio_parent_pid(void) { return fio_data->parent; }
@@ -4336,6 +4343,8 @@ subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
 
 /** Unsubscribes from a filter, pub/sub channle or patten */
 void fio_unsubscribe(subscription_s *s) {
+  if (!s)
+    return;
   if (fio_trylock(&s->unsubscribed))
     goto finish;
   fio_lock(&s->lock);
@@ -5251,21 +5260,10 @@ void fio_cluster_on_fail(intptr_t uuid, void *udata) {
 }
 
 static void fio_connect2cluster(void *ignore) {
-  if (fio_parent_pid() != getpid()) {
-    /* this is called for each child, but not for single a process worker. */
-    cluster_data.uuid = fio_connect(.address = cluster_data.name, .port = NULL,
-                                    .on_connect = fio_cluster_on_connect,
-                                    .on_fail = fio_cluster_on_fail);
-  }
-  fio_lock(&fio_postoffice.engines.lock);
-  FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
-    if (!pos->hash) {
-      continue;
-    }
-    if (pos->obj->on_startup)
-      pos->obj->on_startup(pos->obj);
-  }
-  fio_unlock(&fio_postoffice.engines.lock);
+  /* this is called for each child, but not for single a process worker. */
+  cluster_data.uuid = fio_connect(.address = cluster_data.name, .port = NULL,
+                                  .on_connect = fio_cluster_on_connect,
+                                  .on_fail = fio_cluster_on_fail);
   (void)ignore;
 }
 
@@ -5401,7 +5399,7 @@ static void fio_pubsub_initialize(void) {
   fio_cluster_init();
   fio_state_callback_add(FIO_CALL_PRE_START, fio_listen2cluster, NULL);
   fio_state_callback_add(FIO_CALL_AFTER_FORK, fio_connect_after_fork, NULL);
-  fio_state_callback_add(FIO_CALL_ON_START, fio_connect2cluster, NULL);
+  fio_state_callback_add(FIO_CALL_IN_CHILD, fio_connect2cluster, NULL);
   fio_state_callback_add(FIO_CALL_ON_FINISH, fio_cluster_cleanup, NULL);
   fio_state_callback_add(FIO_CALL_AT_EXIT, fio_cluster_at_exit, NULL);
 }

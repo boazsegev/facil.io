@@ -59,7 +59,8 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args);
  * Redis connection's protocol (best case scenario, a disconnection will occur
  * before and messages are lost).
  */
-intptr_t redis_engine_send(pubsub_engine_s *engine, FIOBJ command, FIOBJ data,
+intptr_t redis_engine_send(pubsub_engine_s *engine, fio_str_info_s command,
+                           FIOBJ data,
                            void (*callback)(pubsub_engine_s *e, FIOBJ reply,
                                             void *udata),
                            void *udata);
