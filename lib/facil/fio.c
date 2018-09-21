@@ -1229,8 +1229,8 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
   if (!*threads && !*processes) {
     /* both options set to 0 - default to cores*cores matrix */
     ssize_t cpu_count = fio_detect_cpu_cores();
-#if FACIL_CPU_CORES_LIMIT
-    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
+#if FIO_CPU_CORES_LIMIT
+    if (cpu_count > FIO_CPU_CORES_LIMIT) {
       static int print_cores_warning = 1;
       if (print_cores_warning) {
         fprintf(
@@ -1239,16 +1239,15 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
             "to %zu.\n"
             "      Avoid this message by setting threads / workers manually.\n"
             "      To increase auto-detection limit, recompile with:\n"
-            "             -DFACIL_CPU_CORES_LIMIT=%zu \n",
-            (size_t)cpu_count, (size_t)FACIL_CPU_CORES_LIMIT,
-            (size_t)cpu_count);
+            "             -DFIO_CPU_CORES_LIMIT=%zu \n",
+            (size_t)cpu_count, (size_t)FIO_CPU_CORES_LIMIT, (size_t)cpu_count);
         print_cores_warning = 0;
       }
-      cpu_count = FACIL_CPU_CORES_LIMIT;
+      cpu_count = FIO_CPU_CORES_LIMIT;
     }
 #endif
     *threads = *processes = (int16_t)cpu_count;
-    if (cpu_count > FACIL_CPU_CORES_LIMIT) {
+    if (cpu_count > FIO_CPU_CORES_LIMIT) {
       /* leave a core available for the kernel */
       --(*processes);
     }
@@ -1272,7 +1271,7 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
         *processes = -1 * *threads;
       *threads = tmp_threads;
       if (cpu_adjust && (*processes * tmp_threads) >= cpu_count &&
-          cpu_count > FACIL_CPU_CORES_LIMIT) {
+          cpu_count > FIO_CPU_CORES_LIMIT) {
         /* leave a core available for the kernel */
         --*processes;
       }
@@ -5424,27 +5423,29 @@ static void fio_cluster_signal_children(void) {
  *
  * See `facil_publish_args_s` for details.
  *
- * By default the message is sent using the FACIL_PUBSUB_CLUSTER engine (all
+ * By default the message is sent using the FIO_PUBSUB_CLUSTER engine (all
  * processes, including the calling process).
  *
  * To limit the message only to other processes (exclude the calling process),
- * use the FACIL_PUBSUB_SIBLINGS engine.
+ * use the FIO_PUBSUB_SIBLINGS engine.
  *
  * To limit the message only to the calling process, use the
- * FACIL_PUBSUB_PROCESS engine.
+ * FIO_PUBSUB_PROCESS engine.
  *
  * To publish messages to the pub/sub layer, the `.filter` argument MUST be
  * equal to 0 or missing.
  */
 void fio_publish FIO_IGNORE_MACRO(fio_publish_args_s args) {
-  if (!args.engine) {
+  if (args.filter && !args.engine) {
+    args.engine = FIO_PUBSUB_CLUSTER;
+  } else if (!args.engine) {
     args.engine = FIO_PUBSUB_DEFAULT;
   }
   fio_str_s *ch;
   fio_str_s *msg;
   switch ((uintptr_t)args.engine) {
   case 0UL: /* fallthrough (missing default) */
-  case 1UL: // ((uintptr_t)FACIL_PUBSUB_CLUSTER):
+  case 1UL: // ((uintptr_t)FIO_PUBSUB_CLUSTER):
     ch = fio_str_new2();
     msg = fio_str_new2();
     fio_str_write(ch, args.channel.data, args.channel.len);
@@ -5452,17 +5453,17 @@ void fio_publish FIO_IGNORE_MACRO(fio_publish_args_s args) {
     fio_send2cluster(args.filter, args.channel, args.message, args.is_json);
     fio_publish2process(args.filter, ch, msg, args.is_json);
     break;
-  case 2UL: // ((uintptr_t)FACIL_PUBSUB_PROCESS):
+  case 2UL: // ((uintptr_t)FIO_PUBSUB_PROCESS):
     ch = fio_str_new2();
     msg = fio_str_new2();
     fio_str_write(ch, args.channel.data, args.channel.len);
     fio_str_write(msg, args.message.data, args.message.len);
     fio_publish2process(args.filter, ch, msg, args.is_json);
     break;
-  case 3UL: // ((uintptr_t)FACIL_PUBSUB_SIBLINGS):
+  case 3UL: // ((uintptr_t)FIO_PUBSUB_SIBLINGS):
     fio_send2cluster(args.filter, args.channel, args.message, args.is_json);
     break;
-  case 4UL: // ((uintptr_t)FACIL_PUBSUB_ROOT):
+  case 4UL: // ((uintptr_t)FIO_PUBSUB_ROOT):
     if (fio_data->is_worker == 0 || fio_data->workers == 1) {
       ch = fio_str_new2();
       msg = fio_str_new2();
@@ -9153,6 +9154,36 @@ static void fio_uuid_link_test(void) {
 }
 
 /* *****************************************************************************
+Byte Order Testing
+***************************************************************************** */
+
+static void fio_str2u_test(void) {
+  fprintf(stderr, "=== Testing fio_u2strX and fio_u2strX functions.\n");
+  char buffer[32];
+  for (int64_t i = -1024; i < 1024; ++i) {
+    fio_u2str64(buffer, i);
+    __asm__ volatile("" ::: "memory");
+    TEST_ASSERT((int64_t)fio_str2u64(buffer) == i,
+                "fio_u2str64 / fio_str2u64  mismatch %zd != %zd",
+                (ssize_t)fio_str2u64(buffer), (ssize_t)i);
+  }
+  for (int32_t i = -1024; i < 1024; ++i) {
+    fio_u2str32(buffer, i);
+    __asm__ volatile("" ::: "memory");
+    TEST_ASSERT((int32_t)fio_str2u32(buffer) == i,
+                "fio_u2str32 / fio_str2u32  mismatch %zd != %zd",
+                (ssize_t)(fio_str2u32(buffer)), (ssize_t)i);
+  }
+  for (int16_t i = -1024; i < 1024; ++i) {
+    fio_u2str16(buffer, i);
+    __asm__ volatile("" ::: "memory");
+    TEST_ASSERT((int16_t)fio_str2u16(buffer) == i,
+                "fio_u2str16 / fio_str2u16  mismatch %zd != %zd",
+                (ssize_t)(fio_str2u16(buffer)), (ssize_t)i);
+  }
+}
+
+/* *****************************************************************************
 Pub/Sub partial tests
 ***************************************************************************** */
 
@@ -9341,6 +9372,7 @@ void fio_test(void) {
   fio_state_callback_test();
   fio_str_test();
   fio_atol_test();
+  fio_str2u_test();
   fio_llist_test();
   fio_defer_test();
   fio_timer_test();

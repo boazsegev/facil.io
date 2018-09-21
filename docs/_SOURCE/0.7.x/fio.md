@@ -3287,7 +3287,7 @@ To be more accurate, this number represents the highest `fd` value allowed by li
 If the soft coded OS limit is higher than this number, than this limit will be enforced instead.
 
 
-#### `FACIL_CPU_CORES_LIMIT`
+#### `FIO_CPU_CORES_LIMIT`
 
 The facil.io startup procedure allows for auto-CPU core detection.
 

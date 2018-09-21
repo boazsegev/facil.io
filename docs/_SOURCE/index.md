@@ -16,6 +16,42 @@ toc: false
 
 I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
 
+### A Web application in C? It's as easy as...
+
+```c
+#include "http.h" /* the HTTP facil.io extension */
+
+// We'll use this callback in `http_listen`, to handles HTTP requests
+void on_request(http_s *request);
+
+// These will contain pre-allocated values that we will use often
+FIOBJ HTTP_HEADER_X_DATA;
+
+// Listen to HTTP requests and start facil.io
+int main(void) {
+  // allocating values we use often
+  HTTP_HEADER_X_DATA = fiobj_str_new("X-Data", 6);
+  // listen on port 3000 and any available network binding (NULL == 0.0.0.0)
+  http_listen("3000", NULL, .on_request = on_request, .log = 1);
+  // start the server
+  fio_start(.threads = 1);
+  // deallocating the common values
+  fiobj_free(HTTP_HEADER_X_DATA);
+}
+
+// Easy HTTP handling
+void on_request(http_s *request) {
+  http_set_cookie(request, .name = "my_cookie", .name_len = 9, .value = "data",
+                  .value_len = 4);
+  http_set_header(request, HTTP_HEADER_CONTENT_TYPE,
+                  http_mimetype_find("txt", 3));
+  http_set_header(request, HTTP_HEADER_X_DATA, fiobj_str_new("my data", 7));
+  http_send_body(request, "Hello World!\r\n", 14);
+}
+```
+
+*(Written on version 0.7.0)*
+
 ### Creating a Web Application Using the Latest Release
 
 Using the latest release is often the best / safest choice.
@@ -38,43 +74,6 @@ Either copy the source code files from the master branch to an existing / new pr
 export FIO_BRANCH=master
 bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
 ```
-
-### A Web application in C? It's as easy as...
-
-Written on version 0.6.4:
-
-```c
-#include "http.h" /* the HTTP facil.io extension */
-
-// We'll use this callback in `http_listen`, to handles HTTP requests
-void on_request(http_s *request);
-
-// These will contain pre-allocated values that we will use often
-FIOBJ HTTP_HEADER_X_DATA;
-
-// Listen to HTTP requests and start facil.io
-int main(int argc, char const **argv) {
-  // allocating values we use often
-  HTTP_HEADER_X_DATA = fiobj_str_static("X-Data", 6);
-  // listen on port 3000 and any available network binding (NULL == 0.0.0.0)
-  http_listen("3000", NULL, .on_request = on_request, .log = 1);
-  // start the server
-  facil_run(.threads = 1);
-  // deallocating the common values
-  fiobj_free(HTTP_HEADER_X_DATA);
-}
-
-// Easy HTTP handling
-void on_request(http_s *request) {
-  http_set_cookie(request, .name = "my_cookie", .name_len = 9, .value = "data",
-                  .value_len = 4);
-  http_set_header(request, HTTP_HEADER_CONTENT_TYPE,
-                  http_mimetype_find("txt", 3));
-  http_set_header(request, HTTP_HEADER_X_DATA, fiobj_str_new("my data", 7));
-  http_send_body(request, "Hello World!\r\n", 14);
-}
-```
-
 
 ---
 

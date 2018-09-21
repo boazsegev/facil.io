@@ -114,10 +114,10 @@ Version and helper macros
 #define FIO_MAX_SOCK_CAPACITY 131072
 #endif
 
-#ifndef FACIL_CPU_CORES_LIMIT
+#ifndef FIO_CPU_CORES_LIMIT
 /**
  * If facil.io detects more CPU cores than the number of cores stated in the
- * FACIL_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
+ * FIO_CPU_CORES_LIMIT, it will assume an error and cap the number of cores
  * detected to the assigned limit.
  *
  * This is only relevant to automated values, when running facil.io with zero
@@ -130,7 +130,7 @@ Version and helper macros
  *
  * This does NOT effect manually set (non-zero) worker/thread values.
  */
-#define FACIL_CPU_CORES_LIMIT 8
+#define FIO_CPU_CORES_LIMIT 8
 #endif
 
 #ifndef FIO_DEFER_THROTTLE_PROGRESSIVE
@@ -1832,24 +1832,24 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
 
 /** Converts an unaligned network ordered byte stream to a 16 bit number. */
 #define fio_str2u16(c)                                                         \
-  ((((uint16_t)0 + ((uint8_t *)(c))[1]) << 8) |                                \
-   ((uint16_t)0 + ((uint8_t *)(c))[0]))
+  ((uint16_t)((((uint16_t)0 + ((uint8_t *)(c))[1]) << 8) |                     \
+              ((uint16_t)0 + ((uint8_t *)(c))[0])))
 /** Converts an unaligned network ordered byte stream to a 32 bit number. */
 #define fio_str2u32(c)                                                         \
-  ((((uint32_t)0 + ((uint8_t *)(c))[3]) << 24) |                               \
-   (((uint32_t)0 + ((uint8_t *)(c))[2]) << 16) |                               \
-   (((uint32_t)0 + ((uint8_t *)(c))[1]) << 8) |                                \
-   ((uint32_t)0 + ((uint8_t *)(c))[0]))
+  ((uint32_t)((((uint32_t)0 + ((uint8_t *)(c))[3]) << 24) |                    \
+              (((uint32_t)0 + ((uint8_t *)(c))[2]) << 16) |                    \
+              (((uint32_t)0 + ((uint8_t *)(c))[1]) << 8) |                     \
+              ((uint32_t)0 + ((uint8_t *)(c))[0])))
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
 #define fio_str2u64(c)                                                         \
-  ((((uint64_t)0 + ((uint8_t *)(c))[7]) << 56) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[6]) << 48) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[5]) << 40) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[4]) << 32) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[3]) << 24) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[2]) << 16) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[1]) << 8) |                                \
-   ((uint64_t)0 + ((uint8_t *)(c))[0]))
+  ((uint64_t)((((uint64_t)0 + ((uint8_t *)(c))[7]) << 56) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[6]) << 48) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[5]) << 40) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[4]) << 32) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[3]) << 24) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[2]) << 16) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[1]) << 8) |                     \
+              ((uint64_t)0 + ((uint8_t *)(c))[0])))
 
 #else /* Little Endian */
 
@@ -1869,24 +1869,24 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
 
 /** Converts an unaligned network ordered byte stream to a 16 bit number. */
 #define fio_str2u16(c)                                                         \
-  ((((uint16_t)0 + ((uint8_t *)(c))[0]) << 8) |                                \
-   ((uint16_t)0 + ((uint8_t *)(c))[1]))
+  ((uint16_t)((((uint16_t)0 + ((uint8_t *)(c))[0]) << 8) |                     \
+              ((uint16_t)0 + ((uint8_t *)(c))[1])))
 /** Converts an unaligned network ordered byte stream to a 32 bit number. */
 #define fio_str2u32(c)                                                         \
-  ((((uint32_t)0 + ((uint8_t *)(c))[0]) << 24) |                               \
-   (((uint32_t)0 + ((uint8_t *)(c))[1]) << 16) |                               \
-   (((uint32_t)0 + ((uint8_t *)(c))[2]) << 8) |                                \
-   ((uint32_t)0 + ((uint8_t *)(c))[3]))
+  ((uint32_t)((((uint32_t)0 + ((uint8_t *)(c))[0]) << 24) |                    \
+              (((uint32_t)0 + ((uint8_t *)(c))[1]) << 16) |                    \
+              (((uint32_t)0 + ((uint8_t *)(c))[2]) << 8) |                     \
+              ((uint32_t)0 + ((uint8_t *)(c))[3])))
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
 #define fio_str2u64(c)                                                         \
-  ((((uint64_t)0 + ((uint8_t *)(c))[0]) << 56) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[1]) << 48) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[2]) << 40) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[3]) << 32) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[4]) << 24) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[5]) << 16) |                               \
-   (((uint64_t)0 + ((uint8_t *)(c))[6]) << 8) |                                \
-   ((uint64_t)0 + ((uint8_t *)(c))[7]))
+  ((uint64_t)((((uint64_t)0 + ((uint8_t *)(c))[0]) << 56) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[1]) << 48) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[2]) << 40) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[3]) << 32) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[4]) << 24) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[5]) << 16) |                    \
+              (((uint64_t)0 + ((uint8_t *)(c))[6]) << 8) |                     \
+              ((uint64_t)0 + ((uint8_t *)(c))[7])))
 #endif
 
 /** Writes a local 16 bit number to an unaligned buffer in network order. */
