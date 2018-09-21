@@ -226,6 +226,12 @@ Version and helper macros
 #define FIO_LOG_STATE(...)
 #endif
 
+#if DEBUG
+#define FIO_LOG_DEBUG(...) FIO_LOG_STATE("[DEBUG] " __VA_ARGS__)
+#else
+#define FIO_LOG_DEBUG(...)
+#endif
+
 /* *****************************************************************************
 C++ extern start
 ***************************************************************************** */
@@ -1270,7 +1276,14 @@ void fio_state_callback_add(callback_type_e, void (*func)(void *), void *arg);
 /** Removes a callback from the list of callbacks to be called for the event. */
 int fio_state_callback_remove(callback_type_e, void (*func)(void *), void *arg);
 
-/** Forces all the existing callbacks to run, as if the event occurred. */
+/**
+ * Forces all the existing callbacks to run, as if the event occurred.
+ *
+ * Callbacks are called from last to first (last callback executes first).
+ *
+ * During an event, changes to the callback list are ignored (callbacks can't
+ * remove other callbacks for the same event).
+ */
 void fio_state_callback_force(callback_type_e);
 
 /** Clears all the existing callbacks for the event. */
@@ -2572,38 +2585,6 @@ typedef struct fio_ls_s {
   { .next = &(name), .prev = &(name) }
 
 /* *****************************************************************************
-Independent Linked List API
-***************************************************************************** */
-
-/** Adds an object to the list's head. */
-FIO_FUNC inline void fio_ls_push(fio_ls_s *pos, const void *obj);
-
-/** Adds an object to the list's tail. */
-FIO_FUNC inline void fio_ls_unshift(fio_ls_s *pos, const void *obj);
-
-/** Removes an object from the list's head. */
-FIO_FUNC inline void *fio_ls_pop(fio_ls_s *list);
-
-/** Removes an object from the list's tail. */
-FIO_FUNC inline void *fio_ls_shift(fio_ls_s *list);
-
-/** Removes a node from the list, returning the contained object. */
-FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node);
-
-/** Tests if the list is empty. */
-FIO_FUNC inline int fio_ls_is_empty(fio_ls_s *list);
-
-/** Tests if the list is NOT empty (contains any nodes). */
-FIO_FUNC inline int fio_ls_any(fio_ls_s *list);
-
-/**
- * Iterates through the list using a `for` loop.
- *
- * Access the data with `pos->obj` (`pos` can be named however you please).
- */
-#define FIO_LS_FOR(list, pos)
-
-/* *****************************************************************************
 Embedded Linked List API
 ***************************************************************************** */
 
@@ -2649,6 +2630,38 @@ FIO_FUNC inline int fio_ls_embd_any(fio_ls_embd_s *list);
   ((type *)((uintptr_t)(plist) - (uintptr_t)(&(((type *)0)->member))))
 
 /* *****************************************************************************
+Independent Linked List API
+***************************************************************************** */
+
+/** Adds an object to the list's head. */
+FIO_FUNC inline void fio_ls_push(fio_ls_s *pos, const void *obj);
+
+/** Adds an object to the list's tail. */
+FIO_FUNC inline void fio_ls_unshift(fio_ls_s *pos, const void *obj);
+
+/** Removes an object from the list's head. */
+FIO_FUNC inline void *fio_ls_pop(fio_ls_s *list);
+
+/** Removes an object from the list's tail. */
+FIO_FUNC inline void *fio_ls_shift(fio_ls_s *list);
+
+/** Removes a node from the list, returning the contained object. */
+FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node);
+
+/** Tests if the list is empty. */
+FIO_FUNC inline int fio_ls_is_empty(fio_ls_s *list);
+
+/** Tests if the list is NOT empty (contains any nodes). */
+FIO_FUNC inline int fio_ls_any(fio_ls_s *list);
+
+/**
+ * Iterates through the list using a `for` loop.
+ *
+ * Access the data with `pos->obj` (`pos` can be named however you please).
+ */
+#define FIO_LS_FOR(list, pos)
+
+/* *****************************************************************************
 
 
                              Linked List Helpers
@@ -2657,6 +2670,60 @@ FIO_FUNC inline int fio_ls_embd_any(fio_ls_embd_s *list);
 
 
 ***************************************************************************** */
+
+/* *****************************************************************************
+Embeded Linked List Implementation
+***************************************************************************** */
+
+/** Removes a node from the containing node. */
+FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node) {
+  if (node->next == node) {
+    /* never remove the list's head */
+    return NULL;
+  }
+  node->next->prev = node->prev;
+  node->prev->next = node->next;
+  return node;
+}
+
+/** Adds a node to the list's head. */
+FIO_FUNC inline void fio_ls_embd_push(fio_ls_embd_s *dest,
+                                      fio_ls_embd_s *node) {
+  node->prev = dest->prev;
+  node->next = dest;
+  dest->prev->next = node;
+  dest->prev = node;
+}
+
+/** Adds a node to the list's tail. */
+FIO_FUNC inline void fio_ls_embd_unshift(fio_ls_embd_s *dest,
+                                         fio_ls_embd_s *node) {
+  fio_ls_embd_push(dest->next, node);
+}
+
+/** Removes a node from the list's head. */
+FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_pop(fio_ls_embd_s *list) {
+  return fio_ls_embd_remove(list->prev);
+}
+
+/** Removes a node from the list's tail. */
+FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_shift(fio_ls_embd_s *list) {
+  return fio_ls_embd_remove(list->next);
+}
+
+/** Tests if the list is empty. */
+FIO_FUNC inline int fio_ls_embd_is_empty(fio_ls_embd_s *list) {
+  return list->next == list;
+}
+
+/** Tests if the list is NOT empty (contains any nodes). */
+FIO_FUNC inline int fio_ls_embd_any(fio_ls_embd_s *list) {
+  return list->next != list;
+}
+
+#undef FIO_LS_EMBD_FOR
+#define FIO_LS_EMBD_FOR(list, node)                                            \
+  for (fio_ls_embd_s *node = (list)->next; node != (list); node = node->next)
 
 /* *****************************************************************************
 Independent Linked List Implementation
@@ -2696,12 +2763,12 @@ FIO_FUNC inline void fio_ls_unshift(fio_ls_s *pos, const void *obj) {
 
 /** Removes an object from the list's head. */
 FIO_FUNC inline void *fio_ls_pop(fio_ls_s *list) {
-  return fio_ls_remove(list->next);
+  return fio_ls_remove(list->prev);
 }
 
 /** Removes an object from the list's tail. */
 FIO_FUNC inline void *fio_ls_shift(fio_ls_s *list) {
-  return fio_ls_remove(list->prev);
+  return fio_ls_remove(list->next);
 }
 
 /** Tests if the list is empty. */
@@ -2715,60 +2782,6 @@ FIO_FUNC inline int fio_ls_any(fio_ls_s *list) { return list->next != list; }
 #undef FIO_LS_FOR
 #define FIO_LS_FOR(list, pos)                                                  \
   for (fio_ls_s *pos = (list)->next; pos != (list); pos = pos->next)
-
-/* *****************************************************************************
-Embeded Linked List Implementation
-***************************************************************************** */
-
-/** Removes a node from the containing node. */
-FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node) {
-  if (node->next == node) {
-    /* never remove the list's head */
-    return NULL;
-  }
-  node->next->prev = node->prev;
-  node->prev->next = node->next;
-  return node;
-}
-
-/** Adds a node to the list's head. */
-FIO_FUNC inline void fio_ls_embd_push(fio_ls_embd_s *dest,
-                                      fio_ls_embd_s *node) {
-  node->prev = dest->prev;
-  node->next = dest;
-  dest->prev->next = node;
-  dest->prev = node;
-}
-
-/** Adds a node to the list's tail. */
-FIO_FUNC inline void fio_ls_embd_unshift(fio_ls_embd_s *dest,
-                                         fio_ls_embd_s *node) {
-  fio_ls_embd_push(dest->next, node);
-}
-
-/** Removes a node from the list's head. */
-FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_pop(fio_ls_embd_s *list) {
-  return fio_ls_embd_remove(list->next);
-}
-
-/** Removes a node from the list's tail. */
-FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_shift(fio_ls_embd_s *list) {
-  return fio_ls_embd_remove(list->prev);
-}
-
-/** Tests if the list is empty. */
-FIO_FUNC inline int fio_ls_embd_is_empty(fio_ls_embd_s *list) {
-  return list->next == list;
-}
-
-/** Tests if the list is NOT empty (contains any nodes). */
-FIO_FUNC inline int fio_ls_embd_any(fio_ls_embd_s *list) {
-  return list->next != list;
-}
-
-#undef FIO_LS_EMBD_FOR
-#define FIO_LS_EMBD_FOR(list, node)                                            \
-  for (fio_ls_embd_s *node = (list)->next; node != (list); node = node->next)
 
 #endif /* FIO_INCLUDE_LINKED_LIST */
 

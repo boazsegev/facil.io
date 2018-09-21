@@ -1112,6 +1112,12 @@ Lock types are one of the following:
 
 ### Startup / State Tasks (fork, start up, idle, etc')
 
+facil.io allows callbacks to be called when certain events occur (such as before and after forking etc').
+
+Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.
+
+During an event, changes to the callback list are ignored (callbacks can't remove other callbacks for the same event).
+
 #### `callback_type_e`- State callback timing type
 
 The `fio_state_callback_*` functions manage callbacks for a specific timing. Valid timings values are:
@@ -1148,6 +1154,8 @@ void fio_state_callback_add(callback_type_e, void (*func)(void *), void *arg);
 
 Adds a callback to the list of callbacks to be called for the event.
 
+Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.
+
 #### `fio_state_callback_remove`
 
 ```c
@@ -1155,6 +1163,8 @@ int fio_state_callback_remove(callback_type_e, void (*func)(void *), void *arg);
 ```
 
 Removes a callback from the list of callbacks to be called for the event.
+
+Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.
 
 #### `fio_state_callback_force`
 
@@ -1164,13 +1174,17 @@ void fio_state_callback_force(callback_type_e);
 
 Forces all the existing callbacks to run, as if the event occurred.
 
+Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.
+
+During an event, changes to the callback list are ignored (callbacks can't remove other callbacks for the same event).
+
 #### `fio_state_callback_clear`
 
 ```c
 void fio_state_callback_clear(callback_type_e);
 ```
 
-Clears all the existing callbacks for the event.
+Clears all the existing callbacks for the event (doesn't effect a currently firing event).
 
 ## Pub/Sub Services
 

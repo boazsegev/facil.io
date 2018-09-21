@@ -133,9 +133,17 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
   }
   /* Test for upgrade protocol (websocket vs. sse) */
   if (len == 3 && requested_protocol[1] == 's') {
+    if (fio_cli_get_bool("-v")) {
+      fprintf(stderr, "* (%d) new SSE connection: %s.\n", getpid(),
+              fiobj_obj2cstr(nickname).data);
+    }
     http_upgrade2sse(h, .on_open = sse_on_open, .on_close = sse_on_close,
                      .udata = (void *)nickname);
   } else if (len == 9 && requested_protocol[1] == 'e') {
+    if (fio_cli_get_bool("-v")) {
+      fprintf(stderr, "* (%d) new WebSocket connection: %s.\n", getpid(),
+              fiobj_obj2cstr(nickname).data);
+    }
     http_upgrade2ws(h, .on_message = ws_on_message, .on_open = ws_on_open,
                     .on_shutdown = ws_on_shutdown, .on_close = ws_on_close,
                     .udata = (void *)nickname);
@@ -228,6 +236,8 @@ Redis initialization
 static void initialize_redis(void) {
   if (!fio_cli_get("-redis") || !strlen(fio_cli_get("-redis")))
     return;
+  FIO_LOG_STATE("* Initializing Redis connection to %s\n",
+                fio_cli_get("-redis"));
   http_url_s info =
       http_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
   pubsub_engine_s *e =

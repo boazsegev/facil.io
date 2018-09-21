@@ -2903,7 +2903,7 @@ void fio_state_callback_force(callback_type_e c_type) {
   /* run callbacks + free data */
   while (fio_ls_embd_any(&copy)) {
     callback_data_s *tmp =
-        FIO_LS_EMBD_OBJ(callback_data_s, node, fio_ls_embd_shift(&copy));
+        FIO_LS_EMBD_OBJ(callback_data_s, node, fio_ls_embd_pop(&copy));
     if (tmp->func) {
       tmp->func(tmp->arg);
     }
@@ -3254,12 +3254,12 @@ static void fio_cycle(void *ignr, void *ignr2) {
 /* TODO: fixme */
 static void fio_worker_startup(void) {
   /* Call the on_start callbacks for worker processes. */
-  if (fio_data->active == 1 || fio_data->is_worker) {
+  if (fio_data->workers == 1 || fio_data->is_worker) {
     fio_state_callback_force(FIO_CALL_ON_START);
     fio_state_callback_clear(FIO_CALL_ON_START);
   }
 
-  if (fio_data->active == 1) {
+  if (fio_data->workers == 1) {
     /* Single Process - the root is also a worker */
     fio_data->is_worker = 1;
   } else if (fio_data->is_worker) {
@@ -7479,25 +7479,32 @@ FIO_FUNC inline void fio_llist_test(void) {
   size_t counter;
   fprintf(stderr, "=== Testing Core Linked List features (fio_ls and "
                   "fio_ls_embs functions)\n");
-  /* test push/pop */
+  /* test push/shift */
   for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
     fio_ls_push(&list, (void *)i);
   }
   TEST_ASSERT(fio_ls_any(&list), "List should be populated after fio_ls_push");
   counter = 0;
+  FIO_LS_FOR(&list, pos) {
+    TEST_ASSERT((size_t)pos->obj == counter,
+                "`FIO_LS_FOR` value error (%zu != %zu)", (size_t)pos->obj,
+                counter);
+    ++counter;
+  }
+  counter = 0;
   while (fio_ls_any(&list)) {
     TEST_ASSERT(counter < FIO_LLIST_TEST_LIMIT,
                 "`fio_ls_any` didn't return false when expected %p<=%p=>%p",
                 (void *)list.prev, (void *)&list, (void *)list.next);
-    size_t tmp = (size_t)fio_ls_pop(&list);
-    TEST_ASSERT(tmp == counter, "`fio_ls_pop` value error (%zu != %zu)", tmp,
+    size_t tmp = (size_t)fio_ls_shift(&list);
+    TEST_ASSERT(tmp == counter, "`fio_ls_shift` value error (%zu != %zu)", tmp,
                 counter);
     ++counter;
   }
   TEST_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
               "List item count error (%zu != %zu)", counter,
               (size_t)FIO_LLIST_TEST_LIMIT);
-  /* test shift/unshift */
+  /* test unshift/pop */
   for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
     fio_ls_unshift(&list, (void *)i);
   }
@@ -7508,8 +7515,8 @@ FIO_FUNC inline void fio_llist_test(void) {
     TEST_ASSERT(counter < FIO_LLIST_TEST_LIMIT,
                 "`fio_ls_is_empty` didn't return true when expected %p<=%p=>%p",
                 (void *)list.prev, (void *)&list, (void *)list.next);
-    size_t tmp = (size_t)fio_ls_shift(&list);
-    TEST_ASSERT(tmp == counter, "`fio_ls_shift` value error (%zu != %zu)", tmp,
+    size_t tmp = (size_t)fio_ls_pop(&list);
+    TEST_ASSERT(tmp == counter, "`fio_ls_pop` value error (%zu != %zu)", tmp,
                 counter);
     ++counter;
   }
@@ -7526,7 +7533,7 @@ FIO_FUNC inline void fio_llist_test(void) {
 
   fio_ls_embd_s emlist = FIO_LS_INIT(emlist);
 
-  /* test push/pop */
+  /* test push/shift */
   for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
     struct fio_ls_test_s *n = malloc(sizeof(*n));
     FIO_ASSERT_ALLOC(n);
@@ -7536,14 +7543,21 @@ FIO_FUNC inline void fio_llist_test(void) {
   TEST_ASSERT(fio_ls_embd_any(&emlist),
               "List should be populated after fio_ls_embd_push");
   counter = 0;
+  FIO_LS_EMBD_FOR(&emlist, pos) {
+    TEST_ASSERT(FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, pos)->i == counter,
+                "`FIO_LS_EMBD_FOR` value error (%zu != %zu)",
+                FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, pos)->i, counter);
+    ++counter;
+  }
+  counter = 0;
   while (fio_ls_embd_any(&emlist)) {
     TEST_ASSERT(
         counter < FIO_LLIST_TEST_LIMIT,
         "`fio_ls_embd_any` didn't return false when expected %p<=%p=>%p",
         (void *)emlist.prev, (void *)&emlist, (void *)emlist.next);
     struct fio_ls_test_s *n =
-        FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_pop(&emlist));
-    TEST_ASSERT(n->i == counter, "`fio_ls_embd_pop` value error (%zu != %zu)",
+        FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_shift(&emlist));
+    TEST_ASSERT(n->i == counter, "`fio_ls_embd_shift` value error (%zu != %zu)",
                 n->i, counter);
     free(n);
     ++counter;
@@ -7567,8 +7581,8 @@ FIO_FUNC inline void fio_llist_test(void) {
         "`fio_ls_embd_is_empty` didn't return true when expected %p<=%p=>%p",
         (void *)emlist.prev, (void *)&emlist, (void *)emlist.next);
     struct fio_ls_test_s *n =
-        FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_shift(&emlist));
-    TEST_ASSERT(n->i == counter, "`fio_ls_embd_shift` value error (%zu != %zu)",
+        FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_pop(&emlist));
+    TEST_ASSERT(n->i == counter, "`fio_ls_embd_pop` value error (%zu != %zu)",
                 n->i, counter);
     free(n);
     ++counter;
@@ -8008,6 +8022,15 @@ static void fio_state_callback_test_task(void *pi) {
   ((uintptr_t *)pi)[0] += 1;
 }
 
+#define FIO_STATE_TEST_COUNT 10
+static void fio_state_callback_order_test_task(void *pi) {
+  static uintptr_t start = FIO_STATE_TEST_COUNT;
+  --start;
+  TEST_ASSERT((uintptr_t)pi == start,
+              "Callback order error, expecting %zu, got %zu", (size_t)start,
+              (size_t)pi);
+}
+
 static void fio_state_callback_test(void) {
   fprintf(stderr, "=== Testing facil.io workflow state callback system\n");
   uintptr_t result = 0;
@@ -8028,9 +8051,15 @@ static void fio_state_callback_test(void) {
   fio_state_callback_clear(FIO_CALL_NEVER);
   fio_state_callback_force(FIO_CALL_NEVER);
   TEST_ASSERT(result == 2 && other == 0, "Callbacks werent cleared!");
+  for (uintptr_t i = 0; i < FIO_STATE_TEST_COUNT; ++i) {
+    fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_order_test_task,
+                           (void *)i);
+  }
+  fio_state_callback_force(FIO_CALL_NEVER);
+  fio_state_callback_clear(FIO_CALL_NEVER);
   fprintf(stderr, "* passed.\n");
 }
-
+#undef FIO_STATE_TEST_COUNT
 /* *****************************************************************************
 Testing fio_timers
 ***************************************************************************** */

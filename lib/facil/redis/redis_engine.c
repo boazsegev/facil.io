@@ -7,6 +7,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #define FIO_INCLUDE_LINKED_LIST
 #define FIO_INCLUDE_STR
+// #define DEBUG 1
 #include <fio.h>
 
 #include "fiobj.h"
@@ -185,7 +186,6 @@ static int resp_on_parser_error(resp_parser_s *parser) {
 static int resp_on_message(resp_parser_s *parser) {
   struct redis_engine_internal_s *i = parser2data(parser);
   FIOBJ msg = i->ary ? i->ary : i->str;
-  FIO_LOG_STATE("INFO: (redis) parser message.\n");
   i->on_message(i, msg);
   /* cleanup */
   fiobj_free(msg);
@@ -296,7 +296,7 @@ static void redis_perform_callback(void *e, void *cmd_) {
   if (cmd->callback)
     cmd->callback(e, reply, cmd->udata);
   fiobj_free(reply);
-  FIO_LOG_STATE("Handled: %s\n", cmd->cmd);
+  FIO_LOG_DEBUG("Handled: %s\n", cmd->cmd);
   fio_free(cmd);
 }
 
@@ -306,7 +306,7 @@ static void redis_attach_cmd(redis_engine_s *r, redis_commands_s *cmd) {
   fio_ls_embd_push(&r->queue, &cmd->node);
   fio_write2(r->pub_data.uuid, .data.buffer = cmd->cmd, .length = cmd->cmd_len,
              .after.dealloc = FIO_DEALLOC_NOOP);
-  FIO_LOG_STATE("(%d) Sending (%zu bytes):\n%s\n", getpid(), cmd->cmd_len,
+  FIO_LOG_DEBUG("(%d) Sending (%zu bytes):\n%s\n", getpid(), cmd->cmd_len,
                 cmd->cmd);
   fio_unlock(&r->lock);
 }
@@ -650,7 +650,7 @@ static void redis_on_publish_root(const pubsub_engine_s *eng,
   *buf++ = '\r';
   *buf++ = '\n';
   *buf = 0;
-  // FIO_LOG_STATE("(%d) Publishing:\n%s\n", getpid(), cmd->cmd);
+  FIO_LOG_DEBUG("(%d) Publishing:\n%s\n", getpid(), cmd->cmd);
   cmd->cmd_len = (uintptr_t)buf - (uintptr_t)(cmd + 1);
   redis_attach_cmd(r, cmd);
   return;
@@ -673,9 +673,16 @@ static void redis_on_mock_subscribe_child(const pubsub_engine_s *eng,
 static void redis_on_publish_child(const pubsub_engine_s *eng,
                                    fio_str_info_s channel, fio_str_info_s msg,
                                    uint8_t is_json) {
+  /* attach engine data to channel (prepend) */
+  fio_str_s tmp = FIO_STR_INIT;
+  /* by using fio_str_s, short names are allocated on the stack */
+  fio_str_info_s tmp_info = fio_str_resize(&tmp, channel.len + 8);
+  fio_u2str64(tmp_info.data, (uint64_t)eng);
+  memcpy(tmp_info.data + 8, channel.data, channel.len);
   /* forward publication request to Root */
-  fio_publish(.filter = -1, .channel = channel, .message = msg,
+  fio_publish(.filter = -1, .channel = tmp_info, .message = msg,
               .engine = FIO_PUBSUB_ROOT, .is_json = is_json);
+  fio_str_free(&tmp);
   (void)eng;
 }
 
@@ -685,6 +692,17 @@ Root Publication Handler
 
 /* listens to filter -1 and publishes and messages */
 static void redis_on_internal_publish(fio_msg_s *msg) {
+  if (msg->channel.len < 8)
+    return; /* internal error, unexpected data */
+  void *en = (void *)fio_str2u64(msg->channel.data);
+  if (en != msg->udata1)
+    return; /* should be delivered by a different engine */
+  /* step after the engine data */
+  msg->channel.len -= 8;
+  msg->channel.data += 8;
+  /* forward to publishing */
+  FIO_LOG_DEBUG("Forwarding to engine %p, on channel %s\n", msg->udata1,
+                msg->channel.data);
   redis_on_publish_root(msg->udata1, msg->channel, msg->msg, msg->is_json);
 }
 
@@ -784,11 +802,6 @@ static void redis_on_facil_start(void *r_) {
   }
 }
 static void redis_on_facil_shutdown(void *r_) {
-  redis_engine_s *r = r_;
-  r->flag = 0;
-}
-
-static void redis_on_facil_stop(void *r_) {
   redis_engine_s *r = r_;
   r->flag = 0;
 }
@@ -899,7 +912,6 @@ FIO_IGNORE_MACRO(struct redis_engine_create_args args) {
   redis_on_facil_start(r);
   fio_state_callback_add(FIO_CALL_IN_CHILD, redis_on_engine_fork, r);
   fio_state_callback_add(FIO_CALL_ON_SHUTDOWN, redis_on_facil_shutdown, r);
-  fio_state_callback_add(FIO_CALL_ON_FINISH, redis_on_facil_stop, r);
   /* if restarting */
   fio_state_callback_add(FIO_CALL_PRE_START, redis_on_facil_start, r);
 
@@ -916,7 +928,7 @@ void redis_engine_destroy(pubsub_engine_s *engine) {
   fio_pubsub_detach(&r->en);
   fio_state_callback_remove(FIO_CALL_IN_CHILD, redis_on_engine_fork, r);
   fio_state_callback_remove(FIO_CALL_ON_SHUTDOWN, redis_on_facil_shutdown, r);
-  fio_state_callback_remove(FIO_CALL_ON_FINISH, redis_on_facil_stop, r);
   fio_state_callback_remove(FIO_CALL_PRE_START, redis_on_facil_start, r);
+  FIO_LOG_DEBUG("Redis engine destroyed %p\n", (void *)r);
   redis_free(r);
 }
