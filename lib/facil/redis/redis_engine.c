@@ -44,7 +44,7 @@ typedef struct {
   fio_ls_embd_s queue;
   fio_lock_i lock;
   uint8_t ping_int;
-  uint8_t flag;
+  volatile uint8_t flag;
   uint8_t buf[];
 } redis_engine_s;
 
@@ -59,7 +59,7 @@ typedef struct {
 /** converts from a publishing protocol to an `redis_engine_s`. */
 #define pub2redis(pr) FIO_LS_EMBD_OBJ(redis_engine_s, pub_data, (pr))
 /** converts from a subscribing protocol to an `redis_engine_s`. */
-#define sub2redis(pr) FIO_LS_EMBD_OBJ(redis_engine_s, pub_data, (pr))
+#define sub2redis(pr) FIO_LS_EMBD_OBJ(redis_engine_s, sub_data, (pr))
 
 /** converts from a `resp_parser_s` to the internal data structure. */
 #define parser2data(prsr)                                                      \
@@ -185,6 +185,7 @@ static int resp_on_parser_error(resp_parser_s *parser) {
 static int resp_on_message(resp_parser_s *parser) {
   struct redis_engine_internal_s *i = parser2data(parser);
   FIOBJ msg = i->ary ? i->ary : i->str;
+  FIO_LOG_STATE("INFO: (redis) parser message.\n");
   i->on_message(i, msg);
   /* cleanup */
   fiobj_free(msg);
@@ -295,7 +296,7 @@ static void redis_perform_callback(void *e, void *cmd_) {
   if (cmd->callback)
     cmd->callback(e, reply, cmd->udata);
   fiobj_free(reply);
-  // FIO_LOG_STATE( "Handled: %s\n", cmd->cmd);
+  FIO_LOG_STATE("Handled: %s\n", cmd->cmd);
   fio_free(cmd);
 }
 
@@ -305,6 +306,8 @@ static void redis_attach_cmd(redis_engine_s *r, redis_commands_s *cmd) {
   fio_ls_embd_push(&r->queue, &cmd->node);
   fio_write2(r->pub_data.uuid, .data.buffer = cmd->cmd, .length = cmd->cmd_len,
              .after.dealloc = FIO_DEALLOC_NOOP);
+  FIO_LOG_STATE("(%d) Sending (%zu bytes):\n%s\n", getpid(), cmd->cmd_len,
+                cmd->cmd);
   fio_unlock(&r->lock);
 }
 
@@ -402,8 +405,7 @@ Connection Callbacks (fio_protocol_s) and Engine
 ***************************************************************************** */
 
 /** defined later - connects to Redis */
-static inline void redis_connect(redis_engine_s *r,
-                                 struct redis_engine_internal_s *i);
+static void redis_connect(void *r, void *i);
 
 /** Called when a data is available, but will not run concurrently */
 static void redis_on_data(intptr_t uuid, fio_protocol_s *pr) {
@@ -439,20 +441,25 @@ static void redis_on_close(intptr_t uuid, fio_protocol_s *pr) {
     r->last_ch = FIOBJ_INVALID;
     if (r->flag) {
       /* reconnection for subscription connection. */
+      if (uuid != -1) {
+        FIO_LOG_STATE("WARNING: (redis %d) subscription connection lost. "
+                      "Reconnecting...\n",
+                      (int)getpid());
+      }
       fio_atomic_sub(&r->ref, 1);
-      redis_connect(r, internal);
+      fio_defer(redis_connect, r, internal);
     } else {
       redis_free(r);
     }
   } else {
     r = pub2redis(pr);
-    if ((r->flag && r->sub_data.uuid != -1) || fio_ls_embd_any(&r->queue)) {
-      /* reconnection for publication / command connection. */
-      fio_atomic_sub(&r->ref, 1);
-      redis_connect(r, internal);
-    } else {
-      redis_free(r);
+    if (r->flag && uuid != -1) {
+      FIO_LOG_STATE("WARNING: (redis %d) publication connection lost. "
+                    "Reconnecting...\n",
+                    (int)getpid());
     }
+    fio_close(r->sub_data.uuid);
+    redis_free(r);
   }
   (void)uuid;
 }
@@ -505,24 +512,23 @@ static void redis_on_auth(pubsub_engine_s *e, FIOBJ reply, void *udata) {
 static void redis_on_connect(intptr_t uuid, void *i_) {
   struct redis_engine_internal_s *i = i_;
   redis_engine_s *r;
-  if (i->uuid != uuid) {
-    goto mismatch;
-  }
+  i->uuid = uuid;
 
   if (i->on_message == resp_on_sub_message) {
     r = sub2redis(i);
-    if (r->auth)
+    if (r->auth_len) {
       fio_write2(uuid, .data.buffer = r->auth, .length = r->auth_len,
                  .after.dealloc = FIO_DEALLOC_NOOP);
+    }
     fio_pubsub_reattach(&r->en);
     if (r->pub_data.uuid == -1) {
-      redis_connect(r, &r->pub_data);
+      fio_defer(redis_connect, r, &r->pub_data);
     }
     FIO_LOG_STATE("INFO: (redis %d) subscription connection established.\n",
                   (int)getpid());
   } else {
     r = pub2redis(i);
-    if (r->auth) {
+    if (r->auth_len) {
       redis_commands_s *cmd = fio_malloc(sizeof(*cmd) + r->auth_len);
       *cmd =
           (redis_commands_s){.cmd_len = r->auth_len, .callback = redis_on_auth};
@@ -534,27 +540,21 @@ static void redis_on_connect(intptr_t uuid, void *i_) {
     fio_lock(&r->lock);
     FIO_LS_EMBD_FOR(&r->queue, node) {
       redis_commands_s *cmd = FIO_LS_EMBD_OBJ(redis_commands_s, node, node);
+      FIO_LOG_STATE("(%d) Sending (%zu bytes):\n%s\n", getpid(), cmd->cmd_len,
+                    cmd->cmd);
       fio_write2(uuid, .data.buffer = cmd->cmd, .length = cmd->cmd_len,
                  .after.dealloc = FIO_DEALLOC_NOOP);
     }
     fio_unlock(&r->lock);
-    FIO_LOG_STATE("INFO: (redis %d) publicastion connection established.\n",
+    FIO_LOG_STATE("INFO: (redis %d) publication connection established.\n",
                   (int)getpid());
   }
 
-  fio_set_timeout(uuid, r->ping_int);
   i->protocol.rsv = 0;
   fio_attach(uuid, &i->protocol);
+  fio_set_timeout(uuid, r->ping_int);
 
   return;
-mismatch:
-  fio_close(uuid);
-  if (i->on_message == resp_on_sub_message) {
-    r = sub2redis(i);
-  } else {
-    r = pub2redis(i);
-  }
-  redis_free(r);
 }
 
 static void redis_on_connect_failed(intptr_t uuid, void *i_) {
@@ -564,8 +564,11 @@ static void redis_on_connect_failed(intptr_t uuid, void *i_) {
   (void)uuid;
 }
 
-static inline void redis_connect(redis_engine_s *r,
-                                 struct redis_engine_internal_s *i) {
+static void redis_connect(void *r_, void *i_) {
+  redis_engine_s *r = r_;
+  struct redis_engine_internal_s *i = i_;
+  if (r->flag == 0 || i->uuid != -1)
+    return;
   fio_atomic_add(&r->ref, 1);
   i->uuid = fio_connect(.address = r->address, .port = r->port,
                         .on_connect = redis_on_connect, .udata = i,
@@ -586,13 +589,14 @@ static void redis_on_subscribe_root(const pubsub_engine_s *eng,
       fiobj_str_write(cmd, "*2\r\n$10\r\nPSUBSCRIBE\r\n$", 22);
     else
       fiobj_str_write(cmd, "*2\r\n$9\r\nSUBSCRIBE\r\n$", 20);
-    fiobj_str_join(cmd, fiobj_num_tmp(channel.len));
+    fiobj_str_write_i(cmd, channel.len);
     fiobj_str_write(cmd, "\r\n", 2);
     fiobj_str_write(cmd, channel.data, channel.len);
     fiobj_str_write(cmd, "\r\n", 2);
     // {
     //   fio_str_info_s s = fiobj_obj2cstr(cmd);
-    //   fprintf(stderr, "%s\n", s.data);
+    //   fprintf(stderr, "(%d) Sending Subscription (%p):\n%s\n", getpid(),
+    //           (void *)r->sub_data.uuid, s.data);
     // }
     fiobj_send_free(r->sub_data.uuid, cmd);
   }
@@ -614,8 +618,9 @@ static void redis_on_unsubscribe_root(const pubsub_engine_s *eng,
     fio_str_write(cmd, channel.data, channel.len);
     fio_str_write(cmd, "\r\n", 2);
     // {
-    //   fio_str_info_s s = fiobj_obj2cstr(cmd);
-    //   fprintf(stderr, "%s\n", s.data);
+    //   fio_str_info_s s = fio_str_info(cmd);
+    //   fprintf(stderr, "(%d) Cancel Subscription (%p):\n%s\n", getpid(),
+    //           (void *)r->sub_data.uuid, s.data);
     // }
     fio_str_send_free2(r->sub_data.uuid, cmd);
   }
@@ -645,7 +650,7 @@ static void redis_on_publish_root(const pubsub_engine_s *eng,
   *buf++ = '\r';
   *buf++ = '\n';
   *buf = 0;
-  // fprintf(stderr, "%s\n", cmd->cmd);
+  // FIO_LOG_STATE("(%d) Publishing:\n%s\n", getpid(), cmd->cmd);
   cmd->cmd_len = (uintptr_t)buf - (uintptr_t)(cmd + 1);
   redis_attach_cmd(r, cmd);
   return;
@@ -775,7 +780,7 @@ static void redis_on_facil_start(void *r_) {
   redis_engine_s *r = r_;
   r->flag = 1;
   if (!fio_is_valid(r->sub_data.uuid)) {
-    redis_connect(r, &r->sub_data);
+    fio_defer(redis_connect, r, &r->sub_data);
   }
 }
 static void redis_on_facil_shutdown(void *r_) {
@@ -823,8 +828,16 @@ FIO_IGNORE_MACRO(struct redis_engine_create_args args) {
     args.address.len = strlen(args.address.data);
   if (!args.port.len && args.port.data)
     args.port.len = strlen(args.port.data);
-  if (!args.auth.len && args.auth.data)
+  if (!args.auth.len && args.auth.data) {
     args.auth.len = strlen(args.auth.data);
+  }
+
+  if (!args.address.data || !args.address.len) {
+    args.address = (fio_str_info_s){.len = 9, .data = "localhost"};
+  }
+  if (!args.port.data || !args.port.len) {
+    args.port = (fio_str_info_s){.len = 4, .data = "6379"};
+  }
   redis_engine_s *r =
       fio_malloc(sizeof(*r) + args.port.len + 1 + args.address.len + 1 +
                  args.auth.len + 1 + (REDIS_READ_BUFFER * 2));
@@ -871,13 +884,17 @@ FIO_IGNORE_MACRO(struct redis_engine_create_args args) {
       .address = ((char *)(r + 1) + 0),
       .port = ((char *)(r + 1) + args.address.len + 1),
       .auth = ((char *)(r + 1) + args.address.len + args.port.len + 2),
-      .auth_len = args.port.len,
+      .auth_len = args.auth.len,
       .ref = 1,
       .queue = FIO_LS_INIT(r->queue),
       .lock = FIO_LOCK_INIT,
       .ping_int = args.ping_interval,
       .flag = 1,
   };
+  memcpy(r->address, args.address.data, args.address.len);
+  memcpy(r->port, args.port.data, args.port.len);
+  if (args.auth.len)
+    memcpy(r->auth, args.auth.data, args.auth.len);
   fio_pubsub_attach(&r->en);
   redis_on_facil_start(r);
   fio_state_callback_add(FIO_CALL_IN_CHILD, redis_on_engine_fork, r);

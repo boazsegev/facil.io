@@ -59,6 +59,7 @@ two different browser windows.
 /* Include the CLI and HTTP / WebSockets extensions (and the FIOBJ library) */
 #include <fio_cli.h>
 #include <http.h>
+#include <redis_engine.h>
 
 /* *****************************************************************************
 The main function
@@ -70,9 +71,12 @@ static void on_http_request(http_s *h);
 static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len);
 /* Command Line Arguments Management */
 static void initialize_cli(int argc, char const *argv[]);
+/* Initializes Redis, if set by command line arguments */
+static void initialize_redis(void);
 
 int main(int argc, char const *argv[]) {
   initialize_cli(argc, argv);
+  initialize_redis();
   /* optimize WebSocket pub/sub for multi-connection broadcasting */
   websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
   /* listen for inncoming connections */
@@ -216,6 +220,23 @@ static void ws_on_close(intptr_t uuid, void *udata) {
   /* free the nickname */
   fiobj_free((FIOBJ)udata);
   (void)uuid; // we don't use the ID
+}
+
+/* *****************************************************************************
+Redis initialization
+***************************************************************************** */
+static void initialize_redis(void) {
+  if (!fio_cli_get("-redis") || !strlen(fio_cli_get("-redis")))
+    return;
+  http_url_s info =
+      http_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
+  pubsub_engine_s *e =
+      redis_engine_create(.address = info.host, .port = info.port,
+                          .auth = info.password);
+  if (e)
+    fio_state_callback_add(FIO_CALL_ON_FINISH,
+                           (void (*)(void *))redis_engine_destroy, e);
+  FIO_PUBSUB_DEFAULT = e;
 }
 
 /* *****************************************************************************

@@ -584,11 +584,11 @@ static void fio_timer_add_order(fio_timer_s *timer) {
   FIO_LS_EMBD_FOR(&fio_timers, node) {
     fio_timer_s *t2 = FIO_LS_EMBD_OBJ(fio_timer_s, node, node);
     if (fio_timer_compare(timer->due, t2->due) >= 0) {
-      fio_ls_embd_unshift(node, &timer->node);
+      fio_ls_embd_push(node, &timer->node);
       goto finish;
     }
   }
-  fio_ls_embd_unshift(&fio_timers, &timer->node);
+  fio_ls_embd_push(&fio_timers, &timer->node);
 finish:
   fio_unlock(&fio_timer_lock);
 }

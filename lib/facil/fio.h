@@ -2683,26 +2683,25 @@ FIO_FUNC inline void fio_ls_push(fio_ls_s *pos, const void *obj) {
     perror("ERROR: simple list couldn't allocate memory");
     exit(errno);
   }
-  *item = (fio_ls_s){.prev = pos, .next = pos->next, .obj = obj};
+  *item = (fio_ls_s){.prev = pos->prev, .next = pos, .obj = obj};
   /* inject item */
-  pos->next->prev = item;
-  pos->next = item;
+  pos->prev->next = item;
+  pos->prev = item;
 }
 
 /** Adds an object to the list's tail. */
 FIO_FUNC inline void fio_ls_unshift(fio_ls_s *pos, const void *obj) {
-  pos = pos->prev;
-  fio_ls_push(pos, obj);
+  fio_ls_push(pos->next, obj);
 }
 
 /** Removes an object from the list's head. */
 FIO_FUNC inline void *fio_ls_pop(fio_ls_s *list) {
-  return fio_ls_remove(list->prev);
+  return fio_ls_remove(list->next);
 }
 
 /** Removes an object from the list's tail. */
 FIO_FUNC inline void *fio_ls_shift(fio_ls_s *list) {
-  return fio_ls_remove(list->next);
+  return fio_ls_remove(list->prev);
 }
 
 /** Tests if the list is empty. */
@@ -2735,26 +2734,26 @@ FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node) {
 /** Adds a node to the list's head. */
 FIO_FUNC inline void fio_ls_embd_push(fio_ls_embd_s *dest,
                                       fio_ls_embd_s *node) {
-  node->next = dest->next;
-  node->prev = dest;
-  dest->next->prev = node;
-  dest->next = node;
+  node->prev = dest->prev;
+  node->next = dest;
+  dest->prev->next = node;
+  dest->prev = node;
 }
 
 /** Adds a node to the list's tail. */
 FIO_FUNC inline void fio_ls_embd_unshift(fio_ls_embd_s *dest,
                                          fio_ls_embd_s *node) {
-  fio_ls_embd_push(dest->prev, node);
+  fio_ls_embd_push(dest->next, node);
 }
 
 /** Removes a node from the list's head. */
 FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_pop(fio_ls_embd_s *list) {
-  return fio_ls_embd_remove(list->prev);
+  return fio_ls_embd_remove(list->next);
 }
 
 /** Removes a node from the list's tail. */
 FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_shift(fio_ls_embd_s *list) {
-  return fio_ls_embd_remove(list->next);
+  return fio_ls_embd_remove(list->prev);
 }
 
 /** Tests if the list is empty. */
