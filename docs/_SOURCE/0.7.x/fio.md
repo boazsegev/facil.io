@@ -1412,9 +1412,9 @@ The function accepts the following named arguments:
     The default pub/sub can be changed globally by assigning a new default engine to the `FIO_PUBSUB_DEFAULT` global variable.
 
         // type:
-        pubsub_engine_s const *engine;
+        fio_pubsub_engine_s const *engine;
         // default engine:
-        extern pubsub_engine_s *FIO_PUBSUB_DEFAULT;
+        extern fio_pubsub_engine_s *FIO_PUBSUB_DEFAULT;
 
 ### Pub/Sub Message MiddleWare Meta-Data
 
@@ -1476,7 +1476,7 @@ The cluster messaging system allows some messages to be flagged as JSON and this
 
 ### External Pub/Sub Services
 
-facil.io can be linked with external Pub/Sub services using "engines" (`pubsub_engine_s`).
+facil.io can be linked with external Pub/Sub services using "engines" (`fio_pubsub_engine_s`).
 
 Pub/Sub engines dictate the behavior of the pub/sub instructions. 
 
@@ -1505,38 +1505,32 @@ fio_publish(
 #### `fio_pubsub_attach`
 
 ```c
-void fio_pubsub_attach(pubsub_engine_s *engine);
+void fio_pubsub_attach(fio_pubsub_engine_s *engine);
 ```
 
 Attaches an engine, so it's callbacks can be called by facil.io.
 
 The `subscribe` callback will be called for every existing channel.
 
-The engine type deefines the following callback:
+The engine type defines the following callback:
 
 * `subscribe` - Should subscribe channel. Failures are ignored.
+
+        void subscribe(const fio_pubsub_engine_s *eng,
+                       fio_str_info_s channel,
+                       fio_match_fn match);
+
 * `unsubscribe` - Should unsubscribe channel. Failures are ignored.
+
+        void unsubscribe(const fio_pubsub_engine_s *eng,
+                         fio_str_info_s channel,
+                         fio_match_fn match);
+
 * `publish` - Should publish a message through the engine. Failures are ignored.
-* `on_startup` - Should publish a message through the engine. Failures are ignored.
-struct pubsub_engine_s {
- void (*subscribe)(const pubsub_engine_s *eng, fio_str_info_s channel,
-                   fio_match_fn match);
- void (*unsubscribe)(const pubsub_engine_s *eng, fio_str_info_s channel,
-                     fio_match_fn match);
- /**  */
- int (*publish)(const pubsub_engine_s *eng, fio_str_info_s channel,
-                fio_str_info_s msg, uint8_t is_json);
- /**
-facil.io will call this callback whenever starting, or restarting, the IO
-reactor.
 
-This will be called when facil.io starts (the master process).
-
-This will also be called when forking, after facil.io closes all
-connections and claim to shut down (running all deferred event).
-/
- void (*on_startup)(const pubsub_engine_s *eng);
-};
+        int publish(const fio_pubsub_engine_s *eng,
+                    fio_str_info_s channel,
+                    fio_str_info_s msg, uint8_t is_json);
 
 **NOTE**: the root (master) process will call `subscribe` for any channel **in any process**, while all the other processes will call `subscribe` only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.
 
@@ -1546,7 +1540,7 @@ connections and claim to shut down (running all deferred event).
 #### `fio_pubsub_detach`
 
 ```c
-void fio_pubsub_detach(pubsub_engine_s *engine);
+void fio_pubsub_detach(fio_pubsub_engine_s *engine);
 ```
 
 Detaches an engine, so it could be safely destroyed.
@@ -1554,7 +1548,7 @@ Detaches an engine, so it could be safely destroyed.
 #### `fio_pubsub_reattach`
 
 ```c
-void fio_pubsub_reattach(pubsub_engine_s *eng);
+void fio_pubsub_reattach(fio_pubsub_engine_s *eng);
 ```
 
 Engines can ask facil.io to call the `subscribe` callback for all active channels.
@@ -1571,7 +1565,7 @@ CAUTION: This is an evented task... try not to free the engine's memory while re
 #### `fio_pubsub_is_attached`
 
 ```c
-int fio_pubsub_is_attached(pubsub_engine_s *engine);
+int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 ```
 
 Returns true (1) if the engine is attached to the system.

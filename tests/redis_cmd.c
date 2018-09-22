@@ -3,7 +3,8 @@
 
 static fio_lock_i global_lock = FIO_LOCK_INIT;
 
-static void ask4data_callback(pubsub_engine_s *e, FIOBJ reply, void *udata) {
+static void ask4data_callback(fio_pubsub_engine_s *e, FIOBJ reply,
+                              void *udata) {
 
   if (udata != (void *)0x01)
     fprintf(stderr, "CRITICAL ERROR: redis callback udata mismatch (got %p)\n",
@@ -62,7 +63,7 @@ static void start_shutdown(void *ignr) {
 }
 
 int main(void) {
-  pubsub_engine_s *r = redis_engine_create(.ping_interval = 1);
+  fio_pubsub_engine_s *r = redis_engine_create(.ping_interval = 1);
   FIO_PUBSUB_DEFAULT = r;
   fio_run_every(10000, 1, start_shutdown, NULL, NULL);
   fio_state_callback_add(FIO_CALL_AFTER_FORK, after_fork, NULL);

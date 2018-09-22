@@ -28,7 +28,7 @@ struct redis_engine_create_args {
 };
 
 /**
- * See the {pubsub.h} file for documentation about engines.
+ * See the {fio.h} file for documentation about engines.
  *
  * The engine is active only after facil.io starts running.
  *
@@ -42,7 +42,7 @@ struct redis_engine_create_args {
  * callbacks have been called (or facil.io exits)... If the engine is destroyed
  * midway, memory leaks might occur (and little puppies might cry).
  */
-pubsub_engine_s *redis_engine_create(struct redis_engine_create_args);
+fio_pubsub_engine_s *redis_engine_create(struct redis_engine_create_args);
 #define redis_engine_create(...)                                               \
   redis_engine_create((struct redis_engine_create_args){__VA_ARGS__})
 
@@ -59,8 +59,8 @@ pubsub_engine_s *redis_engine_create(struct redis_engine_create_args);
  * Redis connection's protocol (best case scenario, a disconnection will occur
  * before and messages are lost).
  */
-intptr_t redis_engine_send(pubsub_engine_s *engine, FIOBJ command,
-                           void (*callback)(pubsub_engine_s *e, FIOBJ reply,
+intptr_t redis_engine_send(fio_pubsub_engine_s *engine, FIOBJ command,
+                           void (*callback)(fio_pubsub_engine_s *e, FIOBJ reply,
                                             void *udata),
                            void *udata);
 
@@ -69,7 +69,7 @@ intptr_t redis_engine_send(pubsub_engine_s *engine, FIOBJ command,
  *
  * function names speak for themselves ;-)
  */
-void redis_engine_destroy(pubsub_engine_s *engine);
+void redis_engine_destroy(fio_pubsub_engine_s *engine);
 
 /* support C++ */
 #ifdef __cplusplus

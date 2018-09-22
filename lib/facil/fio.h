@@ -1351,18 +1351,18 @@ int fio_set_non_block(int fd);
 typedef struct subscription_s subscription_s;
 
 /** A pub/sub engine data structure. See details later on. */
-typedef struct pubsub_engine_s pubsub_engine_s;
+typedef struct fio_pubsub_engine_s fio_pubsub_engine_s;
 
 /** The default engine (settable). Initial default is FIO_PUBSUB_CLUSTER. */
-extern pubsub_engine_s *FIO_PUBSUB_DEFAULT;
+extern fio_pubsub_engine_s *FIO_PUBSUB_DEFAULT;
 /** Used to publish the message to all clients in the cluster. */
-#define FIO_PUBSUB_CLUSTER ((pubsub_engine_s *)1)
+#define FIO_PUBSUB_CLUSTER ((fio_pubsub_engine_s *)1)
 /** Used to publish the message only within the current process. */
-#define FIO_PUBSUB_PROCESS ((pubsub_engine_s *)2)
+#define FIO_PUBSUB_PROCESS ((fio_pubsub_engine_s *)2)
 /** Used to publish the message except within the current process. */
-#define FIO_PUBSUB_SIBLINGS ((pubsub_engine_s *)3)
+#define FIO_PUBSUB_SIBLINGS ((fio_pubsub_engine_s *)3)
 /** Used to publish the message exclusively to the root / master process. */
-#define FIO_PUBSUB_ROOT ((pubsub_engine_s *)4)
+#define FIO_PUBSUB_ROOT ((fio_pubsub_engine_s *)4)
 
 /** Message structure, with an integer filter as well as a channel filter. */
 typedef struct fio_msg_s {
@@ -1452,7 +1452,7 @@ typedef struct {
 /** Publishing and on_message callback arguments. */
 typedef struct fio_publish_args_s {
   /** The pub/sub engine that should be used to forward this message. */
-  pubsub_engine_s const *engine;
+  fio_pubsub_engine_s const *engine;
   /** A unique message type. Negative values are reserved, 0 == pub/sub. */
   int32_t filter;
   /** The pub/sub target channnel. */
@@ -1617,15 +1617,15 @@ void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
  *            an internal lock. They MUST NEVER call pub/sub functions except by
  *            exiting the lock using `fio_defer`.
  */
-struct pubsub_engine_s {
+struct fio_pubsub_engine_s {
   /** Should subscribe channel. Failures are ignored. */
-  void (*subscribe)(const pubsub_engine_s *eng, fio_str_info_s channel,
+  void (*subscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel,
                     fio_match_fn match);
   /** Should unsubscribe channel. Failures are ignored. */
-  void (*unsubscribe)(const pubsub_engine_s *eng, fio_str_info_s channel,
+  void (*unsubscribe)(const fio_pubsub_engine_s *eng, fio_str_info_s channel,
                       fio_match_fn match);
   /** Should publish a message through the engine. Failures are ignored. */
-  void (*publish)(const pubsub_engine_s *eng, fio_str_info_s channel,
+  void (*publish)(const fio_pubsub_engine_s *eng, fio_str_info_s channel,
                   fio_str_info_s msg, uint8_t is_json);
 };
 
@@ -1639,10 +1639,10 @@ struct pubsub_engine_s {
  * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
-void fio_pubsub_attach(pubsub_engine_s *engine);
+void fio_pubsub_attach(fio_pubsub_engine_s *engine);
 
 /** Detaches an engine, so it could be safely destroyed. */
-void fio_pubsub_detach(pubsub_engine_s *engine);
+void fio_pubsub_detach(fio_pubsub_engine_s *engine);
 
 /**
  * Engines can ask facil.io to call the `subscribe` callback for all active
@@ -1659,10 +1659,10 @@ void fio_pubsub_detach(pubsub_engine_s *engine);
  * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
-void fio_pubsub_reattach(pubsub_engine_s *eng);
+void fio_pubsub_reattach(fio_pubsub_engine_s *eng);
 
 /** Returns true (1) if the engine is attached to the system. */
-int fio_pubsub_is_attached(pubsub_engine_s *engine);
+int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 
 #endif /* FIO_PUBSUB_SUPPORT */
 

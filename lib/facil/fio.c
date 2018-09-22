@@ -4134,7 +4134,7 @@ struct subscription_s {
 #include <fio.h>
 
 #define FIO_SET_NAME fio_engine_set
-#define FIO_SET_OBJ_TYPE pubsub_engine_s *
+#define FIO_SET_OBJ_TYPE fio_pubsub_engine_s *
 #define FIO_SET_OBJ_COMPARE(k1, k2) ((k1) == (k2))
 #include <fio.h>
 
@@ -4184,7 +4184,7 @@ typedef struct {
 } fio_msg_internal_s;
 
 /** The default engine (settable). */
-pubsub_engine_s *FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
+fio_pubsub_engine_s *FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
 
 /* *****************************************************************************
 Cluster forking handler
@@ -4439,7 +4439,7 @@ static void pubsub_on_channel_destroy(channel_s *ch, fio_match_fn match) {
  * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
-void fio_pubsub_attach(pubsub_engine_s *engine) {
+void fio_pubsub_attach(fio_pubsub_engine_s *engine) {
   fio_lock(&fio_postoffice.engines.lock);
   fio_engine_set_insert(&fio_postoffice.engines.set, (uintptr_t)engine, engine);
   fio_unlock(&fio_postoffice.engines.lock);
@@ -4447,15 +4447,15 @@ void fio_pubsub_attach(pubsub_engine_s *engine) {
 }
 
 /** Detaches an engine, so it could be safely destroyed. */
-void fio_pubsub_detach(pubsub_engine_s *engine) {
+void fio_pubsub_detach(fio_pubsub_engine_s *engine) {
   fio_lock(&fio_postoffice.engines.lock);
   fio_engine_set_remove(&fio_postoffice.engines.set, (uintptr_t)engine, engine);
   fio_unlock(&fio_postoffice.engines.lock);
 }
 
 /** Returns true (1) if the engine is attached to the system. */
-int fio_pubsub_is_attached(pubsub_engine_s *engine) {
-  pubsub_engine_s **addr;
+int fio_pubsub_is_attached(fio_pubsub_engine_s *engine) {
+  fio_pubsub_engine_s **addr;
   fio_lock(&fio_postoffice.engines.lock);
   addr = fio_engine_set_find(&fio_postoffice.engines.set, (uintptr_t)engine,
                              engine);
@@ -4478,7 +4478,7 @@ int fio_pubsub_is_attached(pubsub_engine_s *engine) {
  * own channels. This allows engines to use the root (master) process as an
  * exclusive subscription process.
  */
-void fio_pubsub_reattach(pubsub_engine_s *eng) {
+void fio_pubsub_reattach(fio_pubsub_engine_s *eng) {
   fio_lock(&fio_postoffice.pubsub.lock);
   FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
     if (!pos->hash)

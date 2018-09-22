@@ -22,7 +22,7 @@ The Redis Engine and Callbacks Object
 ***************************************************************************** */
 
 typedef struct {
-  pubsub_engine_s en;
+  fio_pubsub_engine_s en;
   struct redis_engine_internal_s {
     fio_protocol_s protocol;
     intptr_t uuid;
@@ -52,7 +52,7 @@ typedef struct {
 
 typedef struct {
   fio_ls_embd_s node;
-  void (*callback)(pubsub_engine_s *e, FIOBJ reply, void *udata);
+  void (*callback)(fio_pubsub_engine_s *e, FIOBJ reply, void *udata);
   void *udata;
   size_t cmd_len;
   uint8_t cmd[];
@@ -474,7 +474,7 @@ static void redis_pub_ping(intptr_t uuid, fio_protocol_s *pr) {
 Connecting to Redis
 ***************************************************************************** */
 
-static void redis_on_auth(pubsub_engine_s *e, FIOBJ reply, void *udata) {
+static void redis_on_auth(fio_pubsub_engine_s *e, FIOBJ reply, void *udata) {
   if (FIOBJ_TYPE_IS(reply, FIOBJ_T_TRUE)) {
     fio_str_info_s s = fiobj_obj2cstr(reply);
     FIO_LOG_STATE("WARNING: (redis) Authentication FAILED.\n"
@@ -556,7 +556,7 @@ static void redis_connect(void *r_, void *i_) {
 Engine / Bridge Callbacks (Root Process)
 ***************************************************************************** */
 
-static void redis_on_subscribe_root(const pubsub_engine_s *eng,
+static void redis_on_subscribe_root(const fio_pubsub_engine_s *eng,
                                     fio_str_info_s channel,
                                     fio_match_fn match) {
   redis_engine_s *r = (redis_engine_s *)eng;
@@ -579,7 +579,7 @@ static void redis_on_subscribe_root(const pubsub_engine_s *eng,
   }
 }
 
-static void redis_on_unsubscribe_root(const pubsub_engine_s *eng,
+static void redis_on_unsubscribe_root(const fio_pubsub_engine_s *eng,
                                       fio_str_info_s channel,
                                       fio_match_fn match) {
   redis_engine_s *r = (redis_engine_s *)eng;
@@ -603,7 +603,7 @@ static void redis_on_unsubscribe_root(const pubsub_engine_s *eng,
   }
 }
 
-static void redis_on_publish_root(const pubsub_engine_s *eng,
+static void redis_on_publish_root(const fio_pubsub_engine_s *eng,
                                   fio_str_info_s channel, fio_str_info_s msg,
                                   uint8_t is_json) {
   redis_engine_s *r = (redis_engine_s *)eng;
@@ -638,7 +638,7 @@ static void redis_on_publish_root(const pubsub_engine_s *eng,
 Engine / Bridge Stub Callbacks (Child Process)
 ***************************************************************************** */
 
-static void redis_on_mock_subscribe_child(const pubsub_engine_s *eng,
+static void redis_on_mock_subscribe_child(const fio_pubsub_engine_s *eng,
                                           fio_str_info_s channel,
                                           fio_match_fn match) {
   /* do nothing, root process is notified about (un)subscriptions by facil.io */
@@ -647,7 +647,7 @@ static void redis_on_mock_subscribe_child(const pubsub_engine_s *eng,
   (void)match;
 }
 
-static void redis_on_publish_child(const pubsub_engine_s *eng,
+static void redis_on_publish_child(const fio_pubsub_engine_s *eng,
                                    fio_str_info_s channel, fio_str_info_s msg,
                                    uint8_t is_json) {
   /* attach engine data to channel (prepend) */
@@ -688,9 +688,10 @@ Sending commands using the Root connection
 ***************************************************************************** */
 
 /* callback from the Redis reply */
-static void redis_forward_reply(pubsub_engine_s *e, FIOBJ reply, void *udata) {
+static void redis_forward_reply(fio_pubsub_engine_s *e, FIOBJ reply,
+                                void *udata) {
   uint8_t *data = udata;
-  pubsub_engine_s *engine = (pubsub_engine_s *)fio_str2u64(data + 0);
+  fio_pubsub_engine_s *engine = (fio_pubsub_engine_s *)fio_str2u64(data + 0);
   void *callback = (void *)fio_str2u64(data + 8);
   if (engine != e || !callback) {
     FIO_LOG_DEBUG("Redis reply not forwarded (callback: %p)\n", callback);
@@ -706,8 +707,8 @@ static void redis_forward_reply(pubsub_engine_s *e, FIOBJ reply, void *udata) {
 /* listens to channel -2 for commands that need to be sent (only ROOT) */
 static void redis_on_internal_cmd(fio_msg_s *msg) {
   // void*(void *)fio_str2u64(msg->msg.data);
-  pubsub_engine_s *engine =
-      (pubsub_engine_s *)fio_str2u64(msg->channel.data + 0);
+  fio_pubsub_engine_s *engine =
+      (fio_pubsub_engine_s *)fio_str2u64(msg->channel.data + 0);
   if (engine != msg->udata1) {
     return;
   }
@@ -724,8 +725,8 @@ static void redis_on_internal_cmd(fio_msg_s *msg) {
 
 /* Listens on filter `-10 -getpid()` for incoming reply data */
 static void redis_on_internal_reply(fio_msg_s *msg) {
-  pubsub_engine_s *engine =
-      (pubsub_engine_s *)fio_str2u64(msg->channel.data + 0);
+  fio_pubsub_engine_s *engine =
+      (fio_pubsub_engine_s *)fio_str2u64(msg->channel.data + 0);
   if (engine != msg->udata1) {
     FIO_LOG_DEBUG("Redis reply not forwarded (engine mismatch: %p != %p)\n",
                   (void *)engine, msg->udata1);
@@ -733,16 +734,16 @@ static void redis_on_internal_reply(fio_msg_s *msg) {
   }
   FIOBJ reply;
   fiobj_json2obj(&reply, msg->msg.data, msg->msg.len);
-  void (*callback)(pubsub_engine_s *, FIOBJ, void *) = (void (*)(
-      pubsub_engine_s *, FIOBJ, void *))fio_str2u64(msg->channel.data + 8);
+  void (*callback)(fio_pubsub_engine_s *, FIOBJ, void *) = (void (*)(
+      fio_pubsub_engine_s *, FIOBJ, void *))fio_str2u64(msg->channel.data + 8);
   void *udata = (void *)fio_str2u64(msg->channel.data + 16);
   callback(engine, reply, udata);
   fiobj_free(reply);
 }
 
 /* publishes a Redis command to Root's filter -2 */
-intptr_t redis_engine_send(pubsub_engine_s *engine, FIOBJ command,
-                           void (*callback)(pubsub_engine_s *e, FIOBJ reply,
+intptr_t redis_engine_send(fio_pubsub_engine_s *engine, FIOBJ command,
+                           void (*callback)(fio_pubsub_engine_s *e, FIOBJ reply,
                                             void *udata),
                            void *udata) {
   if ((uintptr_t)engine < 4) {
@@ -799,7 +800,7 @@ static void redis_on_engine_fork(void *r_) {
         FIO_LS_EMBD_OBJ(redis_commands_s, node, fio_ls_embd_pop(&r->queue));
     fio_free(cmd);
   }
-  r->en = (pubsub_engine_s){
+  r->en = (fio_pubsub_engine_s){
       .subscribe = redis_on_mock_subscribe_child,
       .unsubscribe = redis_on_mock_subscribe_child,
       .publish = redis_on_publish_child,
@@ -814,7 +815,7 @@ static void redis_on_engine_fork(void *r_) {
                     .on_message = redis_on_internal_reply, .udata1 = r);
 }
 
-pubsub_engine_s *redis_engine_create
+fio_pubsub_engine_s *redis_engine_create
 FIO_IGNORE_MACRO(struct redis_engine_create_args args) {
   if (getpid() != fio_parent_pid()) {
     fprintf(stderr, "FATAL ERROR: (redis) Redis engine initialization can only "
@@ -905,7 +906,7 @@ FIO_IGNORE_MACRO(struct redis_engine_create_args args) {
 Redis Engine Destruction
 ***************************************************************************** */
 
-void redis_engine_destroy(pubsub_engine_s *engine) {
+void redis_engine_destroy(fio_pubsub_engine_s *engine) {
   redis_engine_s *r = (redis_engine_s *)engine;
   r->flag = 0;
   fio_pubsub_detach(&r->en);

@@ -240,7 +240,7 @@ static void initialize_redis(void) {
                 fio_cli_get("-redis"));
   http_url_s info =
       http_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
-  pubsub_engine_s *e =
+  fio_pubsub_engine_s *e =
       redis_engine_create(.address = info.host, .port = info.port,
                           .auth = info.password);
   if (e)

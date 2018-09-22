@@ -207,7 +207,7 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
         parser->expecting = 0;
         --parser->obj_countdown;
         if (parser->obj_countdown <= 0) {
-          parser->obj_countdown = 0;
+          parser->obj_countdown = 1;
           if (resp_on_message(parser))
             goto finish;
         }
@@ -306,7 +306,7 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
     }
     pos = eol + 1;
     if (parser->obj_countdown <= 0 && !parser->expecting) {
-      parser->obj_countdown = 0;
+      parser->obj_countdown = 1;
       resp_on_message(parser);
     }
   }
