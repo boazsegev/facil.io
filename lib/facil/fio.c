@@ -3712,10 +3712,12 @@ zero:
   case 2:
     dest[len++] = '0';
     dest[len++] = 'b';
+    break;
   case 16:
     dest[len++] = '0';
     dest[len++] = 'x';
     dest[len++] = '0';
+    break;
   }
   dest[len++] = '0';
   dest[len] = 0;
@@ -5206,6 +5208,12 @@ static void fio_cluster_client_handler(struct cluster_pr_s *pr) {
   }
 }
 static void fio_cluster_client_sender(fio_str_s *data, intptr_t ignr_) {
+  if (!uuid_is_valid(cluster_data.uuid) && fio_data->active) {
+    /* delay message delivery until we have a vaild uuid */
+    fio_defer((void (*)(void *, void *))fio_cluster_client_sender, data,
+              (void *)ignr_);
+    return;
+  }
   fio_str_send_free2(cluster_data.uuid, data);
   (void)ignr_;
 }
@@ -5276,15 +5284,15 @@ static void fio_send2cluster(int32_t filter, fio_str_info_s ch,
     /* nowhere to send to */
     return;
   }
-  if (fio_is_worker()) {
-    fio_cluster_client_sender(
+  if (fio_is_master()) {
+    fio_cluster_server_sender(
         fio_cluster_wrap_message(
             ch.len, msg.len,
             (is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD), filter,
             ch.data, msg.data),
         -1);
   } else {
-    fio_cluster_server_sender(
+    fio_cluster_client_sender(
         fio_cluster_wrap_message(
             ch.len, msg.len,
             (is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD), filter,
@@ -9360,6 +9368,10 @@ static void fio_atol_test(void) {
   end = clock();
   fprintf(stderr, "native sprintf base 10 (%s): %zd CPU cycles\n", number,
           end - start);
+  TEST_ASSERT(fio_ltoa(number, 0, 0) == 1,
+              "base 10 zero should be single char.");
+  TEST_ASSERT(memcmp(number, "0", 2) == 0, "base 10 zero should be \"0\" (%s).",
+              number);
 }
 
 /* *****************************************************************************

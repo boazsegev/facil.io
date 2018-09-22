@@ -1,20 +1,20 @@
-/*
-Copyright: Boaz segev, 2016-2017
-License: MIT
+.---
+title: facil.io - The Redis Extension
+sidebar: 0.7.x/_sidebar.md
+---
+# {{ page.title }}
 
-Feel free to copy, use and enjoy according to the license provided.
-*/
-#ifndef H_REDIS_ENGINE_H
-#define H_REDIS_ENGINE_H
+facil.io includes a Redis Pub/Sub extension that makes it easy to scale pub/sub applications horizontally.
 
-#include <fio.h>
-#include <fiobj.h>
+The extension was written to minimize Redis connections and load, meaning that each facil.io cluster will use only two connections (one for subscriptions and another for publishing).
 
-/* support C++ */
-#ifdef __cplusplus
-extern "C" {
-#endif
+The redis extension includes a RESP parser authored as a single file library (`resp_parser.h`), which can be used independently from the rest of facil.io. This was necessary to keep the extension licensed under the MIT license.
 
+Undocumented yet... coming soon.
+
+
+### from the Header file:
+```c
 /** possible arguments for the `redis_engine_create` function call */
 struct redis_engine_create_args {
   /** Redis server's address, defaults to localhost. */
@@ -70,10 +70,4 @@ intptr_t redis_engine_send(pubsub_engine_s *engine, FIOBJ command,
  * function names speak for themselves ;-)
  */
 void redis_engine_destroy(pubsub_engine_s *engine);
-
-/* support C++ */
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* H_REDIS_ENGINE_H */
+```

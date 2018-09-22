@@ -733,6 +733,9 @@ inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num) {
   if (!s || s->frozen)
     return fio_str_state(s);
   char buf[22];
+  fio_str_info_s i;
+  if (!num)
+    goto zero;
   uint64_t l = 0;
   uint8_t neg;
   if ((neg = (num < 0))) {
@@ -747,12 +750,17 @@ inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num) {
   if (neg) {
     buf[l++] = '-';
   }
-  fio_str_info_s i = fio_str_resize(s, fio_str_len(s) + l);
+  i = fio_str_resize(s, fio_str_len(s) + l);
 
   while (l) {
     --l;
     i.data[i.len - (l + 1)] = buf[l];
   }
+  return i;
+
+zero:
+  i = fio_str_resize(s, fio_str_len(s) + 1);
+  i.data[i.len - 1] = '0';
   return i;
 }
 /**
