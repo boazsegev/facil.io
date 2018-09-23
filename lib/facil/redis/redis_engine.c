@@ -105,7 +105,7 @@ static inline void redis_free(redis_engine_s *r) {
 Simple RESP formatting
 ***************************************************************************** */
 
-static void inline fiobj2resp2(FIOBJ dest, FIOBJ obj) {
+inline static void fiobj2resp2(FIOBJ dest, FIOBJ obj) {
   if (fiobj_hash_key_in_loop())
     fiobj2resp2(dest, fiobj_hash_key_in_loop());
   fio_str_info_s s;
