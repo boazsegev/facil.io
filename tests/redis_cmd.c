@@ -44,12 +44,21 @@ static void after_fork(void *ignr) {
   }
   if (fio_trylock(&global_lock) == 0) {
     /* runs only once */
-    fio_run_every(4000, 1, ask4data, NULL, NULL);
+    fio_run_every(2000, 1, ask4data, NULL, NULL);
   }
   FIOBJ data = fiobj_ary_new();
   fiobj_ary_push(data, fiobj_str_new("LPUSH", 5));
   fiobj_ary_push(data, fiobj_str_new("pids", 4));
-  fiobj_ary_push(data, fiobj_num_new(getpid()));
+  if (0) {
+    /* nested arrays... but lists can't contain them */
+    FIOBJ tmp = fiobj_ary_new2(2);
+    fiobj_ary_push(tmp, fiobj_str_new("worker pid", 10));
+    fiobj_ary_push(tmp, fiobj_str_copy(fiobj_num_tmp(getpid())));
+    fiobj_ary_push(data, tmp);
+  } else {
+    /* lists contain only Strings, so we need a string */
+    fiobj_ary_push(data, fiobj_str_copy(fiobj_num_tmp(getpid())));
+  }
   redis_engine_send(FIO_PUBSUB_DEFAULT, data, NULL, NULL);
   fiobj_free(data);
   fprintf(stderr, "* (%d) Sent info to redis.\n", getpid());

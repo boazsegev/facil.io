@@ -30,8 +30,9 @@ typedef struct {
     void (*on_message)(struct redis_engine_internal_s *parser, FIOBJ msg);
     FIOBJ str;
     FIOBJ ary;
-    uintptr_t ary_count;
-    uintptr_t buf_pos;
+    uint32_t ary_count;
+    uint16_t buf_pos;
+    uint16_t nesting;
   } pub_data, sub_data;
   subscription_s *publication_forwarder;
   subscription_s *cmd_forwarder;
@@ -76,6 +77,7 @@ static inline void redis_internal_reset(struct redis_engine_internal_s *i) {
   fiobj_free(i->ary);
   i->ary = FIOBJ_INVALID;
   i->ary_count = 0;
+  i->nesting = 0;
   i->uuid = -1;
 }
 
@@ -111,11 +113,6 @@ static void inline fiobj2resp2(FIOBJ dest, FIOBJ obj) {
   case FIOBJ_T_NULL:
     fiobj_str_write(dest, "$-1\r\n", 5);
     break;
-  // case FIOBJ_T_NUMBER: /* Are Numbers not good for commands? */
-  //   fiobj_str_write(dest, ":", 1);
-  //   fiobj_str_write_i(dest, fiobj_obj2num(obj));
-  //   fiobj_str_write(dest, "\r\n", 2);
-  //   break;
   case FIOBJ_T_ARRAY:
     fiobj_str_write(dest, "*", 1);
     fiobj_str_write_i(dest, fiobj_ary_count(obj));
@@ -132,7 +129,16 @@ static void inline fiobj2resp2(FIOBJ dest, FIOBJ obj) {
   case FIOBJ_T_FALSE:
     fiobj_str_write(dest, "$4\r\nfalse\r\n", 11);
     break;
-  case FIOBJ_T_NUMBER:  /* overflow */
+#if 0
+    /* Numbers aren't as good for commands as one might think... */
+  case FIOBJ_T_NUMBER:
+    fiobj_str_write(dest, ":", 1);
+    fiobj_str_write_i(dest, fiobj_obj2num(obj));
+    fiobj_str_write(dest, "\r\n", 2);
+    break;
+#else
+  case FIOBJ_T_NUMBER: /* overflow */
+#endif
   case FIOBJ_T_FLOAT:   /* overflow */
   case FIOBJ_T_UNKNOWN: /* overflow */
   case FIOBJ_T_STRING:  /* overflow */
@@ -197,11 +203,15 @@ static int resp_on_message(resp_parser_s *parser) {
 /** a local helper to add parsed objects to the data store. */
 static inline void resp_add_obj(struct redis_engine_internal_s *dest, FIOBJ o) {
   if (dest->ary) {
-    if (!dest->ary_count)
-      FIO_LOG_STATE(
-          "ERROR: (redis) array overflow indicates a protocol error.\n");
     fiobj_ary_push(dest->ary, o);
     --dest->ary_count;
+    if (!dest->ary_count && dest->nesting) {
+      FIOBJ tmp = fiobj_ary_shift(dest->ary);
+      dest->ary_count = fiobj_obj2num(tmp);
+      fiobj_free(tmp);
+      dest->ary = fiobj_ary_shift(dest->ary);
+      --dest->nesting;
+    }
   }
   dest->str = o;
 }
@@ -275,12 +285,14 @@ static int resp_on_err_msg(resp_parser_s *parser, void *data, size_t len) {
 static int resp_on_start_array(resp_parser_s *parser, size_t array_len) {
   struct redis_engine_internal_s *i = parser2data(parser);
   if (i->ary) {
-    /* this is an error ... */
-    FIO_LOG_STATE("ERROR: (redis) RESP protocol violation "
-                  "(array within array).\n");
-    return -1;
+    ++i->nesting;
+    FIOBJ tmp = fiobj_ary_new2(array_len + 2);
+    fiobj_ary_push(tmp, fiobj_num_new(i->ary_count));
+    fiobj_ary_push(tmp, fiobj_num_new(i->ary));
+    i->ary = tmp;
+  } else {
+    i->ary = fiobj_ary_new2(array_len + 2);
   }
-  i->ary = fiobj_ary_new2(array_len);
   i->ary_count = array_len;
   return 0;
 }

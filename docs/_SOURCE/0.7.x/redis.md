@@ -10,11 +10,6 @@ The extension was written to minimize Redis connections and load, allowing more 
 
 This requires that each facil.io cluster consume less resources - only two connections per cluster instead of two connections per process (as might be common on other implementations).
 
-In addition, the Redis extension includes a RESP parser authored as a single file library (`resp_parser.h`), which can be used independently from the rest of facil.io. This was originally coded in order keep the licensing scheme simple.
-
-Undocumented yet... coming soon.
-
-
 ## Connecting facil.io to Redis
 
 By using the [Core Library's External Pub/Sub Services API](fio#external-pub-sub-services), it's easy to connect an application to a Redis Server. i.e.:
@@ -29,6 +24,8 @@ fio_state_callback_add(FIO_CALL_AT_EXIT,
                            (void (*)(void *))redis_engine_destroy, r);
 FIO_PUBSUB_DEFAULT = r;
 ```
+
+### Connection Management
 
 #### `redis_engine_create`
 
@@ -81,7 +78,9 @@ void redis_engine_destroy(fio_pubsub_engine_s *engine);
 
 Detaches and destroys a Redis Pub/Sub engine from facil.io.
 
-#### ``
+### Sending Redis Database Commands
+
+#### `redis_engine_send`
 
 ```c
 intptr_t redis_engine_send(fio_pubsub_engine_s *engine,
@@ -100,3 +99,94 @@ The message will be resent on network failures, until a response validates the f
 **Note**: Avoid calling Pub/Sub commands using this function, as it could violate the Redis connection's protocol and could prevent the communication from resuming.
  
 **Note2**: The Redis extension is designed for resource conservation, not speed. This might not be the best way to use Redis as a database and should be considered available for occasional use rather than heavy use.
+
+
+### The RESP parser
+
+The Redis extension includes a RESP parser authored as a single file library (`resp_parser.h`), which can be used independently from the rest of facil.io.
+
+The parser was originally coded in order keep the licensing scheme simple and avoid a debate about MIT licensing vs. BSD-3-clause requirements.
+
+#### `resp_parse`
+
+```c
+static size_t resp_parse(resp_parser_s *parser,
+                         const void *buffer,
+                         size_t length);
+```
+
+Parses a RESP content stream, invoking any RESP related callbacks as required.
+
+The `resp_parse` will review the data and call any of the following callback, depending on the RESP protocol's state:
+
+* `resp_on_message` - a local static callback, called when the RESP message was completely parsed.
+
+        static int resp_on_message(resp_parser_s *parser);
+
+* `resp_on_number` - a local static callback, called when a Number object is parsed.
+
+        static int resp_on_number(resp_parser_s *parser, int64_t num);
+* `resp_on_okay` - a local static callback, called when a OK message is received.
+
+        static int resp_on_okay(resp_parser_s *parser);
+* `resp_on_null` - a local static callback, called when NULL is received.
+
+        static int resp_on_null(resp_parser_s *parser);
+
+* `resp_on_start_string` - a local static callback, called when a String should be allocated.
+
+    `str_len` is the expected number of bytes that will fill the final string object, without any NUL byte marker (the string might be binary).
+
+    If this function returns any value besides 0, parsing is stopped.
+
+        static int resp_on_start_string(resp_parser_s *parser, size_t str_len);
+
+* `resp_on_string_chunk` - a local static callback, called as String objects are streamed. 
+
+        static int resp_on_string_chunk(resp_parser_s *parser, void *data, size_t len);
+
+* `resp_on_end_string` - a local static callback, called when a String object had finished streaming. 
+
+        static int resp_on_end_string(resp_parser_s *parser);
+
+* `resp_on_err_msg` - a local static callback, called an error message is received. 
+
+        static int resp_on_err_msg(resp_parser_s *parser, void *data, size_t len);
+
+
+* a local static callback, called when an Array should be allocated.
+
+    `array_len` is the expected number of objects that will fill the Array object.
+    There's no `resp_on_end_array` callback since the RESP protocol, simply count back from `array_len`.
+
+    However, be aware that a client/server might send nested Arrays in some rare cases.
+
+    If this function returns any value besides 0, parsing is stopped.
+
+        static int resp_on_start_array(resp_parser_s *parser, size_t array_len);
+
+* `resp_on_parser_error` - a local static callback, called when a parser / protocol error occurs. 
+
+        static int resp_on_parser_error(resp_parser_s *parser);
+
+
+
+Returns the number of bytes to be resent. i.e., for a return value 5, the last 5 bytes in the buffer need to be resent to the parser.
+
+Data consumed can be safely overwritten (assuming it isn't used by the parsing implementation).
+
+**NOTE**:
+
+The `resp_parser_s` type should be considered opaque, without any user related data.
+
+To attach data to the parser, include the parser within a container `struct`, i.e.:
+
+```c
+typedef struct {
+  /* place parser at top for pointer casting simplicity*/
+  resp_parser_s parser;
+  /* place user data after the parser */
+  void * udata;
+} my_parser_s;
+```
+ 
