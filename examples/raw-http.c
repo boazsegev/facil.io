@@ -250,7 +250,7 @@ void light_http_on_open(intptr_t uuid, void *udata) {
       .body = FIO_STR_INIT,
   };
   /* timeouts are important. timeouts are in seconds. */
-  fio_set_timeout(uuid, 5);
+  fio_timeout_set(uuid, 5);
   /*
    * this is a very IMPORTANT function call,
    * it attaches the protocol to the socket.

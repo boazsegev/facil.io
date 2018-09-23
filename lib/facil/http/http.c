@@ -888,7 +888,7 @@ Listening to HTTP connections
 
 static void http_on_open(intptr_t uuid, void *set) {
   static uint8_t at_capa;
-  fio_set_timeout(uuid, ((http_settings_s *)set)->timeout);
+  fio_timeout_set(uuid, ((http_settings_s *)set)->timeout);
   if (fio_uuid2fd(uuid) >= ((http_settings_s *)set)->max_clients) {
     if (!at_capa)
       fprintf(stderr, "WARNING: HTTP server at capacity\n");
@@ -978,7 +978,7 @@ static void http_on_open_client(intptr_t uuid, void *set_) {
   http_settings_s *set = set_;
   http_s *h = set->udata;
   set->udata = h->udata;
-  fio_set_timeout(uuid, set->timeout);
+  fio_timeout_set(uuid, set->timeout);
   fio_protocol_s *pr = http1_new(uuid, set, NULL, 0);
   if (!pr) {
     fio_close(uuid);
@@ -1326,7 +1326,7 @@ void http_sse_set_timout(http_sse_s *sse_, uint8_t timeout) {
   if (!sse_)
     return;
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
-  fio_set_timeout(sse->uuid, timeout);
+  fio_timeout_set(sse->uuid, timeout);
 }
 
 #undef http_sse_write

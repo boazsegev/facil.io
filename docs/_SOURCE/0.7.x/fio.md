@@ -158,19 +158,19 @@ The value of 0 indicates either that the facil.io library wasn't initialized
 yet or that it's resources were already released.
 
 
-#### `fio_set_timeout`
+#### `fio_timeout_set`
 
 ```c
-void fio_set_timeout(intptr_t uuid, uint8_t timeout);
+void fio_timeout_set(intptr_t uuid, uint8_t timeout);
 ```
 
 
 Sets a timeout for a specific connection (only when running and valid).
 
-#### `fio_get_timeout`
+#### `fio_timeout_get`
 
 ```c
-uint8_t fio_get_timeout(intptr_t uuid);
+uint8_t fio_timeout_get(intptr_t uuid);
 ```
 
 Gets a timeout for a specific connection. Returns 0 if none.
@@ -278,7 +278,7 @@ echo_proto = (fio_protocol_s){.service = "echo",
  fio_attach(uuid, echo_proto);
  fio_write2(uuid, .data.buffer = "Echo Service: Welcome\n", .length = 22,
             .after.dealloc = FIO_DEALLOC_NOOP);
- fio_set_timeout(uuid, 5);
+ fio_timeout_set(uuid, 5);
 }
 
 int main() {
@@ -2351,6 +2351,7 @@ be defined. i.e.:
 This allows the FIO_SET_KEY_* macros to be defined as well. For example:
 
 ```c
+#define FIO_SET_NAME fio_str_hash
 #define FIO_SET_KEY_TYPE char *
 #define FIO_SET_KEY_COMPARE(k1, k2) (!strcmp((k1), (k2)))
 #define FIO_SET_OBJ_TYPE char *

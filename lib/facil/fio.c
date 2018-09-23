@@ -2812,7 +2812,7 @@ void fio_attach_fd(int fd, fio_protocol_s *protocol) {
 }
 
 /** Sets a timeout for a specific connection (only when running and valid). */
-void fio_set_timeout(intptr_t uuid, uint8_t timeout) {
+void fio_timeout_set(intptr_t uuid, uint8_t timeout) {
   if (uuid_is_valid(uuid)) {
     uuid_data(uuid).active = fio_data->last_cycle.tv_sec;
     uuid_data(uuid).timeout = timeout;
@@ -2820,7 +2820,7 @@ void fio_set_timeout(intptr_t uuid, uint8_t timeout) {
 }
 /** Gets a timeout for a specific connection. Returns 0 if there's no set
  * timeout or the connection is inactive. */
-uint8_t fio_get_timeout(intptr_t uuid) { return uuid_data(uuid).timeout; }
+uint8_t fio_timeout_get(intptr_t uuid) { return uuid_data(uuid).timeout; }
 
 /* *****************************************************************************
 Core Callbacks for forking / starting up / cleaning up
@@ -3993,7 +3993,7 @@ intptr_t fio_connect FIO_IGNORE_MACRO(struct fio_connect_args args) {
   const intptr_t uuid = fio_socket(args.address, args.port, 0);
   if (uuid == -1)
     goto error;
-  fio_set_timeout(uuid, args.timeout);
+  fio_timeout_set(uuid, args.timeout);
 
   fio_connect_protocol_s *pr = fio_malloc(sizeof(*pr));
   FIO_ASSERT_ALLOC(pr);

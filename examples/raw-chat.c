@@ -83,7 +83,7 @@ static void chat_on_open(intptr_t uuid, void *udata) {
       .ping = chat_ping,
   };
   fio_attach(uuid, proto);
-  fio_set_timeout(uuid, 10);
+  fio_timeout_set(uuid, 10);
   fprintf(stderr, "* (%d) new Connection %p received from %s\n", getpid(),
           (void *)proto, fio_peer_addr(uuid).data);
   /* Send a Welcome message to the client */

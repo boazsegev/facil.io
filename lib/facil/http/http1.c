@@ -491,7 +491,7 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
     goto failed;
 
   http_sse_init(sse_pr->sse, uuid, &HTTP1_VTABLE, sse);
-  fio_set_timeout(uuid, handle2pr(h)->p.settings->ws_timeout);
+  fio_timeout_set(uuid, handle2pr(h)->p.settings->ws_timeout);
   if (sse->on_open)
     sse->on_open(&sse_pr->sse->sse);
   fio_attach(uuid, &sse_pr->p);

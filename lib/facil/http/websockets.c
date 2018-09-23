@@ -344,10 +344,10 @@ void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
     // buffer limits
     ws->max_msg_size = http_settings->ws_max_msg_size;
     // update the timeout
-    fio_set_timeout(uuid, http_settings->ws_timeout);
+    fio_timeout_set(uuid, http_settings->ws_timeout);
   } else {
     ws->max_msg_size = (1024 * 256);
-    fio_set_timeout(uuid, 40);
+    fio_timeout_set(uuid, 40);
   }
 
   if (data && length) {

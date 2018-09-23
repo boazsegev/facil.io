@@ -427,10 +427,10 @@ void fio_attach_fd(int fd, fio_protocol_s *protocol);
 size_t fio_capa(void);
 
 /** Sets a timeout for a specific connection (only when running and valid). */
-void fio_set_timeout(intptr_t uuid, uint8_t timeout);
+void fio_timeout_set(intptr_t uuid, uint8_t timeout);
 
 /** Gets a timeout for a specific connection. Returns 0 if none. */
-uint8_t fio_get_timeout(intptr_t uuid);
+uint8_t fio_timeout_get(intptr_t uuid);
 
 /**
  * "Touches" a socket connection, resetting it's timeout counter.
@@ -574,7 +574,7 @@ static void echo_on_open(intptr_t uuid, void *udata) {
   fio_attach(uuid, echo_proto);
   fio_write2(uuid, .data.buffer = "Echo Service: Welcome\n", .length = 22,
              .after.dealloc = FIO_DEALLOC_NOOP);
-  fio_set_timeout(uuid, 5);
+  fio_timeout_set(uuid, 5);
 }
 
 int main() {

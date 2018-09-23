@@ -84,7 +84,7 @@ static void echo_on_open(intptr_t uuid, void *udata) {
   fio_attach(uuid, echo_proto);
   fio_write2(uuid, .data.buffer = "Echo Service: Welcome\n", .length = 22,
              .after.dealloc = FIO_DEALLOC_NOOP);
-  fio_set_timeout(uuid, 5);
+  fio_timeout_set(uuid, 5);
   (void)udata; // ignore this
 }
 

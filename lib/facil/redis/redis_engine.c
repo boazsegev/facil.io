@@ -541,7 +541,7 @@ static void redis_on_connect(intptr_t uuid, void *i_) {
 
   i->protocol.rsv = 0;
   fio_attach(uuid, &i->protocol);
-  fio_set_timeout(uuid, r->ping_int);
+  fio_timeout_set(uuid, r->ping_int);
 
   return;
 }
