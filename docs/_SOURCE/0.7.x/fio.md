@@ -878,6 +878,13 @@ Return values: 1 will be returned if data remains in the buffer. 0 will be retur
 
 Blocks until all the data was flushed from the buffer.
 
+#### `fio_flush_all`
+
+```c
+void fio_flush_all(void);
+```
+`fio_flush_all` attempts flush all the open connections.
+
 #### `fio_uuid2fd`
 
 ```c
@@ -894,7 +901,7 @@ intptr_t fio_fd2uuid(int fd);
 
 `fio_fd2uuid` takes an existing file decriptor `fd` and returns it's active `uuid`.
 
-If the file descriptor is marked as closed (wasn't opened / registered with facil.io) the function returns -1;
+If the file descriptor was closed, **it will be registered as open**.
 
 If the file descriptor was closed directly (not using `fio_close`) or the closure event hadn't been processed, a false positive will be possible.
 

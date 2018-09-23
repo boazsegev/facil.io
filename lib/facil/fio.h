@@ -980,7 +980,11 @@ ssize_t fio_flush(intptr_t uuid);
     errno = 0;                                                                 \
   } while (fio_flush(uuid) > 0 || errno == EWOULDBLOCK)
 
-/** Convert between a facil.io connection's identifier (uuid) and system's fd.
+/** `fio_flush_all` attempts flush all the open connections. */
+void fio_flush_all(void);
+
+/**
+ * Convert between a facil.io connection's identifier (uuid) and system's fd.
  */
 #define fio_uuid2fd(uuid) ((int)((uintptr_t)uuid >> 8))
 
@@ -988,8 +992,7 @@ ssize_t fio_flush(intptr_t uuid);
  * `fio_fd2uuid` takes an existing file decriptor `fd` and returns it's active
  * `uuid`.
  *
- * If the file descriptor is marked as closed (wasn't opened / registered with
- * facil.io) the function returns -1;
+ * If the file descriptor was closed, __it will be registered as open__.
  *
  * If the file descriptor was closed directly (not using `fio_close`) or the
  * closure event hadn't been processed, a false positive will be possible. This
