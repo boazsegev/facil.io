@@ -4186,9 +4186,9 @@ typedef struct {
 /** used to contain the message internally while publishing */
 typedef struct {
   fio_msg_metadata_s *meta;
-  fio_str_s *channel; /* reference counted, use fio_str_free2 */
-  fio_str_s *data;    /* reference counted, use fio_str_free2 */
-  uintptr_t ref;      /* internal reference counter */
+  fio_str_info_s channel;
+  fio_str_info_s data;
+  uintptr_t ref; /* internal reference counter */
   int32_t filter;
   int8_t is_json;
 } fio_msg_internal_s;
@@ -4531,7 +4531,7 @@ static inline void fio_call_meta_callbacks(fio_msg_internal_s *m,
   for (uintptr_t i = 0; i < len; ++i) {
     if (!cpy[i].hash)
       continue;
-    fio_msg_metadata_s *meta = fio_malloc(sizeof(*m));
+    fio_msg_metadata_s *meta = fio_malloc(sizeof(*meta));
     FIO_ASSERT_ALLOC(meta);
     *meta = cpy[i].obj(ch, msg, is_json);
     if (meta->metadata) {
@@ -4607,29 +4607,30 @@ static channel_s *fio_channel_find_dup(fio_str_info_s name) {
 }
 
 /** frees the internal message data */
-static inline void fio_pubsub_internal_message_free(fio_msg_internal_s *msg) {
+static inline void fio_msg_internal_free(fio_msg_internal_s *msg) {
   if (fio_atomic_sub(&msg->ref, 1))
     return;
   if (msg->meta) {
     fio_msg_metadata_s *meta = msg->meta;
-    fio_str_info_s ch_info = fio_str_info(msg->channel);
-    fio_str_info_s msg_info = fio_str_info(msg->data);
     do {
       fio_msg_metadata_s *tmp = meta;
       meta = meta->next;
       if (tmp->on_finish) {
         fio_msg_s tmp_msg = {
-            .channel = ch_info,
-            .msg = msg_info,
+            .channel = msg->channel,
+            .msg = msg->data,
         };
         tmp->on_finish(&tmp_msg, tmp->metadata);
       }
       fio_free(tmp);
     } while (meta);
   }
-  fio_str_free2(msg->channel);
-  fio_str_free2(msg->data);
   fio_free(msg);
+}
+/* add reference count to fio_msg_internal_s */
+static inline fio_msg_internal_s *fio_msg_internal_dup(fio_msg_internal_s *m) {
+  fio_atomic_add(&m->ref, 1);
+  return m;
 }
 
 /* defers the callback (mark only) */
@@ -4649,8 +4650,8 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
   fio_msg_client_s m = {
       .msg =
           {
-              .channel = fio_str_info(msg->channel),
-              .msg = fio_str_info(msg->data),
+              .channel = msg->channel,
+              .msg = msg->data,
               .filter = msg->filter,
               .udata1 = s->udata1,
               .udata2 = s->udata2,
@@ -4667,7 +4668,7 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
     fio_defer(fio_perform_subscription_callback, s_, msg_);
     return;
   }
-  fio_pubsub_internal_message_free(msg);
+  fio_msg_internal_free(msg);
   fio_subscription_free(s);
 }
 
@@ -4685,7 +4686,7 @@ static void fio_publish2channel(channel_s *ch, fio_msg_internal_s *msg) {
     fio_atomic_add(&msg->ref, 1);
     fio_defer(fio_perform_subscription_callback, s, msg);
   }
-  fio_pubsub_internal_message_free(msg);
+  fio_msg_internal_free(msg);
 }
 static void fio_publish2channel_task(void *ch_, void *msg) {
   channel_s *ch = ch_;
@@ -4698,40 +4699,24 @@ static void fio_publish2channel_task(void *ch_, void *msg) {
 }
 
 /** Publishes the message to the current process and frees the strings. */
-static void fio_publish2process(int32_t filter, fio_str_s *ch_name,
-                                fio_str_s *msg, uint8_t is_json) {
+static void fio_publish2process(fio_msg_internal_s *m) {
   channel_s *ch;
-  fio_str_info_s ch_name_info = fio_str_info(ch_name);
-  fio_str_info_s msg_info = fio_str_info(msg);
-  if (filter) {
-    ch = fio_filter_find_dup(filter);
+  if (m->filter) {
+    ch = fio_filter_find_dup(m->filter);
     if (!ch) {
-      /* normally these functions are called by the internal_message_free */
-      fio_str_free2(ch_name);
-      fio_str_free2(msg);
       return;
     }
   } else {
-    ch = fio_channel_find_dup(ch_name_info);
+    ch = fio_channel_find_dup(m->channel);
   }
-  fio_msg_internal_s *m = fio_malloc(sizeof(*m));
-  FIO_ASSERT_ALLOC(m);
-  *m = (fio_msg_internal_s){
-      .filter = filter,
-      .channel = ch_name,
-      .data = msg,
-      .is_json = is_json,
-      .ref = 1,
-  };
-  if (filter == 0) {
-    fio_call_meta_callbacks(m, ch_name_info, msg_info, is_json);
+  if (m->filter == 0) {
+    fio_call_meta_callbacks(m, m->channel, m->data, m->is_json);
   }
   /* exact match */
   if (ch) {
-    fio_atomic_add(&m->ref, 1);
-    fio_defer(fio_publish2channel_task, ch, m);
+    fio_defer(fio_publish2channel_task, ch, fio_msg_internal_dup(m));
   }
-  if (filter == 0) {
+  if (m->filter == 0) {
     /* pattern matching match */
     fio_lock(&fio_postoffice.patterns.lock);
     FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, p) {
@@ -4739,14 +4724,14 @@ static void fio_publish2process(int32_t filter, fio_str_s *ch_name,
         continue;
       }
       pattern_s *pattern = (pattern_s *)p->obj;
-      if (pattern->match(fio_str_info(&pattern->ch.id), ch_name_info)) {
-        fio_atomic_add(&m->ref, 1);
-        fio_publish2channel(&pattern->ch, m);
+      if (pattern->match(fio_str_info(&pattern->ch.id), m->channel)) {
+        fio_defer(fio_publish2channel_task, &pattern->ch,
+                  fio_msg_internal_dup(m));
       }
     }
     fio_unlock(&fio_postoffice.patterns.lock);
   }
-  fio_pubsub_internal_message_free(m);
+  fio_msg_internal_free(m);
 }
 
 /* *****************************************************************************
@@ -4767,8 +4752,7 @@ static void fio_publish2process(int32_t filter, fio_str_s *ch_name,
 
 typedef struct cluster_pr_s {
   fio_protocol_s protocol;
-  fio_str_s *channel;
-  fio_str_s *msg;
+  fio_msg_internal_s *msg;
   void (*handler)(struct cluster_pr_s *pr);
   void (*sender)(fio_str_s *data, intptr_t avoid_uuid);
   fio_sub_hash_s pubsub;
@@ -4794,7 +4778,7 @@ struct cluster_data_s {
 static void fio_cluster_data_cleanup(int delete_file) {
   if (delete_file && cluster_data.name[0]) {
 #if DEBUG
-    FIO_LOG_STATE("* INFO: (%d) CLUSTER UNLINKING\n", getpid());
+    FIO_LOG_STATE("* INFO: (%d) unlinking cluster's Unix socket.\n", getpid());
 #endif
     unlink(cluster_data.name);
   }
@@ -4915,8 +4899,6 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
           exit(1);
           return;
         }
-        c->channel = fio_str_new2();
-        fio_str_capa_assert(c->channel, c->exp_channel);
       }
       if (c->exp_msg) {
         if (c->exp_msg >= (1024 * 1024 * 64)) {
@@ -4927,41 +4909,52 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
           exit(1);
           return;
         }
-        c->msg = fio_str_new2();
-        fio_str_capa_assert(c->msg, c->exp_msg);
       }
+      c->msg =
+          fio_malloc(sizeof(*c->msg) + c->exp_msg + 1 + c->exp_channel + 1);
+      FIO_ASSERT_ALLOC(c->msg);
+      *c->msg = (fio_msg_internal_s){
+          .filter = c->filter,
+          .channel = {.data = (char *)(c->msg + 1), .len = c->exp_channel},
+          .data = {.data = ((char *)(c->msg + 1) + c->exp_channel + 1),
+                   .len = c->exp_msg},
+          .is_json = c->type == FIO_CLUSTER_MSG_JSON ||
+                     c->type == FIO_CLUSTER_MSG_ROOT_JSON,
+          .ref = 1,
+      };
       i += 16;
     }
     if (c->exp_channel) {
       if (c->exp_channel + i > c->length) {
-        fio_str_write(c->channel, (char *)c->buffer + i,
-                      (size_t)(c->length - i));
+        memcpy(c->msg->channel.data + (c->msg->channel.len - c->exp_channel),
+               (char *)c->buffer + i, (size_t)(c->length - i));
         c->exp_channel -= (c->length - i);
         i = c->length;
         break;
       } else {
-        fio_str_write(c->channel, (char *)c->buffer + i, c->exp_channel);
+        memcpy(c->msg->channel.data + (c->msg->channel.len - c->exp_channel),
+               (char *)c->buffer + i, (size_t)(c->exp_channel));
         i += c->exp_channel;
         c->exp_channel = 0;
       }
     }
     if (c->exp_msg) {
       if (c->exp_msg + i > c->length) {
-        fio_str_write(c->msg, (char *)c->buffer + i, (size_t)(c->length - i));
+        memcpy(c->msg->data.data + (c->msg->data.len - c->exp_msg),
+               (char *)c->buffer + i, (size_t)(c->length - i));
         c->exp_msg -= (c->length - i);
         i = c->length;
         break;
       } else {
-        fio_str_write(c->msg, (char *)c->buffer + i, c->exp_msg);
+        memcpy(c->msg->data.data + (c->msg->data.len - c->exp_msg),
+               (char *)c->buffer + i, (size_t)(c->exp_msg));
         i += c->exp_msg;
         c->exp_msg = 0;
       }
     }
     c->handler(c);
-    fio_str_free2(c->msg);
-    fio_str_free2(c->channel);
+    fio_msg_internal_free(c->msg);
     c->msg = NULL;
-    c->channel = NULL;
   } while (c->length > i);
   c->length -= i;
   if (c->length && i) {
@@ -4999,10 +4992,9 @@ static void fio_cluster_on_close(intptr_t uuid, fio_protocol_s *pr_) {
       kill(getpid(), SIGINT);
     }
   }
-  fio_str_free2(c->msg);
-  fio_str_free2(c->channel);
+  if (c->msg)
+    fio_msg_internal_free(c->msg);
   c->msg = NULL;
-  c->channel = NULL;
   fio_cluster_protocol_free(c);
   (void)uuid;
 }
@@ -5059,54 +5051,53 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
 
   case FIO_CLUSTER_MSG_FORWARD: /* fallthrough */
   case FIO_CLUSTER_MSG_JSON: {
-    fio_str_info_s cs = fio_str_info(pr->channel);
-    fio_str_info_s ms = fio_str_info(pr->msg);
-    fio_cluster_server_sender(fio_cluster_wrap_message(cs.len, ms.len, pr->type,
-                                                       pr->filter, cs.data,
-                                                       ms.data),
-                              pr->uuid);
-    fio_publish2process(
-        pr->filter, fio_str_dup(pr->channel), fio_str_dup(pr->msg),
-        (fio_cluster_message_type_e)pr->type == FIO_CLUSTER_MSG_JSON);
+    fio_cluster_server_sender(
+        fio_cluster_wrap_message(pr->msg->channel.len, pr->msg->data.len,
+                                 pr->type, pr->msg->filter,
+                                 pr->msg->channel.data, pr->msg->data.data),
+        pr->uuid);
+    fio_publish2process(fio_msg_internal_dup(pr->msg));
     break;
   }
 
   case FIO_CLUSTER_MSG_PUBSUB_SUB: {
     subscription_s *s =
         fio_subscribe(.on_message = fio_mock_on_message, .match = NULL,
-                      .channel = fio_str_info(pr->channel));
+                      .channel = pr->msg->channel);
+    fio_str_s tmp = FIO_STR_INIT_EXISTING(
+        pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_insert(&pr->pubsub, fio_str_hash(pr->channel), *pr->channel,
-                        s);
+    fio_sub_hash_insert(&pr->pubsub, fio_str_hash(&tmp), tmp, s);
     fio_unlock(&pr->lock);
     break;
   }
   case FIO_CLUSTER_MSG_PUBSUB_UNSUB: {
+    fio_str_s tmp = FIO_STR_INIT_EXISTING(
+        pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_remove(&pr->pubsub, fio_str_hash(pr->channel), *pr->channel);
+    fio_sub_hash_remove(&pr->pubsub, fio_str_hash(&tmp), tmp);
     fio_unlock(&pr->lock);
     break;
   }
 
   case FIO_CLUSTER_MSG_PATTERN_SUB: {
-    uintptr_t match;
-    fio_str_info_s m = fio_str_info(pr->msg);
-    for (size_t i = 0; i < sizeof(void *); ++i) {
-      ((char *)(&match))[i] = m.data[i];
-    }
+    uintptr_t match = fio_str2u64(pr->msg->data.data);
     subscription_s *s = fio_subscribe(.on_message = fio_mock_on_message,
                                       .match = (fio_match_fn)match,
-                                      .channel = fio_str_info(pr->channel));
+                                      .channel = pr->msg->channel);
+    fio_str_s tmp = FIO_STR_INIT_EXISTING(
+        pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_insert(&pr->patterns, fio_str_hash(pr->channel), *pr->channel,
-                        s);
+    fio_sub_hash_insert(&pr->patterns, fio_str_hash(&tmp), tmp, s);
     fio_unlock(&pr->lock);
     break;
   }
 
   case FIO_CLUSTER_MSG_PATTERN_UNSUB: {
+    fio_str_s tmp = FIO_STR_INIT_EXISTING(
+        pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_remove(&pr->patterns, fio_str_hash(pr->channel), *pr->channel);
+    fio_sub_hash_remove(&pr->patterns, fio_str_hash(&tmp), tmp);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5114,9 +5105,7 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
   case FIO_CLUSTER_MSG_ROOT_JSON:
     pr->type = FIO_CLUSTER_MSG_JSON; /* fallthrough */
   case FIO_CLUSTER_MSG_ROOT:
-    fio_publish2process(
-        pr->filter, fio_str_dup(pr->channel), fio_str_dup(pr->msg),
-        (fio_cluster_message_type_e)pr->type == FIO_CLUSTER_MSG_JSON);
+    fio_publish2process(fio_msg_internal_dup(pr->msg));
     break;
 
   case FIO_CLUSTER_MSG_SHUTDOWN: /* fallthrough */
@@ -5187,19 +5176,14 @@ static void fio_listen2cluster(void *ignore) {
 
 /* *****************************************************************************
  * Worker (client) IPC connections
- ****************************************************************************
- */
+ **************************************************************************** */
 
 static void fio_cluster_client_handler(struct cluster_pr_s *pr) {
   /* what to do? */
   switch ((fio_cluster_message_type_e)pr->type) {
   case FIO_CLUSTER_MSG_FORWARD: /* fallthrough */
-    fio_publish2process(pr->filter, fio_str_dup(pr->channel),
-                        fio_str_dup(pr->msg), 0);
-    break;
   case FIO_CLUSTER_MSG_JSON:
-    fio_publish2process(pr->filter, fio_str_dup(pr->channel),
-                        fio_str_dup(pr->msg), 1);
+    fio_publish2process(fio_msg_internal_dup(pr->msg));
     break;
   case FIO_CLUSTER_MSG_SHUTDOWN:
     fio_stop();
@@ -5331,8 +5315,10 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
                        : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
                               : FIO_CLUSTER_MSG_PUBSUB_UNSUB)));
 #endif
+  char buf[8] = {0};
   if (match) {
-    msg.data = (char *)&match;
+    fio_u2str64(buf, (uint64_t)match);
+    msg.data = buf;
     msg.len = sizeof(match);
   }
 
@@ -5436,6 +5422,23 @@ static void fio_cluster_signal_children(void) {
       -1);
 }
 
+static void fio_publish2process2(int32_t filter, fio_str_info_s ch_name,
+                                 fio_str_info_s msg, uint8_t is_json) {
+  fio_msg_internal_s *m =
+      fio_malloc(sizeof(*m) + ch_name.len + 1 + msg.len + 1);
+  FIO_ASSERT_ALLOC(m);
+  *m = (fio_msg_internal_s){
+      .filter = filter,
+      .channel = {.data = (char *)(m + 1), .len = ch_name.len},
+      .data = {.data = ((char *)(m + 1) + ch_name.len + 1), .len = msg.len},
+      .is_json = is_json,
+      .ref = 1,
+  };
+  memcpy(m->channel.data, ch_name.data, ch_name.len);
+  memcpy(m->data.data, msg.data, msg.len);
+  fio_publish2process(m);
+}
+
 /**
  * Publishes a message to the relevant subscribers (if any).
  *
@@ -5459,35 +5462,22 @@ void fio_publish FIO_IGNORE_MACRO(fio_publish_args_s args) {
   } else if (!args.engine) {
     args.engine = FIO_PUBSUB_DEFAULT;
   }
-  fio_str_s *ch;
-  fio_str_s *msg;
   switch ((uintptr_t)args.engine) {
   case 0UL: /* fallthrough (missing default) */
   case 1UL: // ((uintptr_t)FIO_PUBSUB_CLUSTER):
-    ch = fio_str_new2();
-    msg = fio_str_new2();
-    fio_str_write(ch, args.channel.data, args.channel.len);
-    fio_str_write(msg, args.message.data, args.message.len);
     fio_send2cluster(args.filter, args.channel, args.message, args.is_json);
-    fio_publish2process(args.filter, ch, msg, args.is_json);
+    fio_publish2process2(args.filter, args.channel, args.message, args.is_json);
     break;
   case 2UL: // ((uintptr_t)FIO_PUBSUB_PROCESS):
-    ch = fio_str_new2();
-    msg = fio_str_new2();
-    fio_str_write(ch, args.channel.data, args.channel.len);
-    fio_str_write(msg, args.message.data, args.message.len);
-    fio_publish2process(args.filter, ch, msg, args.is_json);
+    fio_publish2process2(args.filter, args.channel, args.message, args.is_json);
     break;
   case 3UL: // ((uintptr_t)FIO_PUBSUB_SIBLINGS):
     fio_send2cluster(args.filter, args.channel, args.message, args.is_json);
     break;
   case 4UL: // ((uintptr_t)FIO_PUBSUB_ROOT):
     if (fio_data->is_worker == 0 || fio_data->workers == 1) {
-      ch = fio_str_new2();
-      msg = fio_str_new2();
-      fio_str_write(ch, args.channel.data, args.channel.len);
-      fio_str_write(msg, args.message.data, args.message.len);
-      fio_publish2process(args.filter, ch, msg, args.is_json);
+      fio_publish2process2(args.filter, args.channel, args.message,
+                           args.is_json);
     } else {
       fio_cluster_client_sender(
           fio_cluster_wrap_message(
