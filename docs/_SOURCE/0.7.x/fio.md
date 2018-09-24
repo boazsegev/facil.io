@@ -2956,7 +2956,7 @@ Octal (`0###`), Hex (`0x##`/`x##`) and binary (`0b##`/ `b##`) are recognized as 
 
 The most significant difference between this function and `strtol` (aside of API design and speed), is the added support for binary representations.
 
-#### `fio_throttle_thread`
+#### `fio_atof`
 
 ```c
 double fio_atof(char **pstr);
