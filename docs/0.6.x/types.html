@@ -1,0 +1,220 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - Core Types</title><meta content="facil.io - Core Types" name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-6-x"><a href="/0.6.x/index">Version 0.6.x</a></h2>
+
+<ul>
+<li><a href="/0.6.x/api">API Overview</a></li>
+<li><a href="/0.6.x/modules">The Modules</a></li>
+</ul>
+
+<h3 id="core-api"><a href="/0.6.x/facil">Core API</a></h3>
+
+<ul>
+<li><a href="/0.6.x/defer">Event scheduling</a></li>
+<li><a href="/0.6.x/evio">Low Level Polling</a></li>
+<li><a href="/0.6.x/sock">Low Level Sockets</a></li>
+<li><a href="/0.6.x/fio_mem">Memory Allocation</a></li>
+</ul>
+
+<h3 id="extensions">Extensions</h3>
+
+<ul>
+<li><a href="/0.6.x/http">HTTP</a></li>
+<li><a href="/0.6.x/websockets">WebSockets</a></li>
+<li><a href="/0.6.x/pubsub">Pub/Sub</a></li>
+<li><a href="/0.6.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.6.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.6.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.6.x/fiobj_str">Strings</a></li>
+<li><a href="/0.6.x/fiobj_ary">Array</a></li>
+<li><a href="/0.6.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.6.x/fiobj_json">JSON</a></li>
+</ul>
+
+<h3 id="core-types"><a href="/0.6.x/types">Core Types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fio_ary">C Arrays</a></li>
+<li><a href="/0.6.x/fio_hashmap">C HashMap</a></li>
+<li><a href="/0.6.x/fio_llist">Linked Lists</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#core-types-in-facil-io">Core types in facil.io</a>
+<ul>
+<li>
+<a href="#core-types-overview">Core types overview</a>
+<ul>
+<li>
+<a href="#memory-ownership">Memory Ownership</a>
+</li>
+<li>
+<a href="#type-memory-management">Type Memory Management</a>
+</li>
+<li>
+<a href="#core-types-api">Core Types API</a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div><h1 id="core-types-in-facil-io">Core types in facil.io</h1>
+
+<p>At it&#39;s core, facil.io utilizes a number of core types that make it easier to develop network applications.</p>
+
+<p>These types are divided into three categories:</p>
+
+<ol>
+<li><p>Core types: <a href="fio_ary">dynamic arrays</a>, <a href="fio_hashmap">hash maps</a> and <a href="fio_llist">linked lists</a>.</p></li>
+<li><p>Core Object types: the <a href="fiobj">facil.io object types (<code>FIOBJ</code>)</a>.</p></li>
+<li><p>Network / API specific types: these are specific types that are used in specific function calls or situations, such as <code>protocol_s</code>, <code>http_s</code> etc&#39;.</p>
+
+<p>These types will be documented along with their specific API / extension in the <a href="modules">Modules</a> section. </p></li>
+</ol>
+
+<p>Here I will provide an overview for the first two categories, core types and objects.</p>
+
+<h2 id="core-types-overview">Core types overview</h2>
+
+<p>Many tasks in C could require a Linked List, a Dynamic Array or a Hashmap.</p>
+
+<p>This is why facil.io includes these three core types as single file libraries that use macros and inline-functions.</p>
+
+<p>These core types are fairly easy to use and the single file libraries are well documented.</p>
+
+<h3 id="memory-ownership">Memory Ownership</h3>
+
+<p>Note that unlike the FIOBJ object system, facil.io&#39;s core types don&#39;t have prior information about the memory model of the objects they store.</p>
+
+<p>For this reason, although objects are stored within a <code>fio_ls_s</code>, <code>fio_ary_s</code> or <code>fio_hash_s</code>, they should be freed manually once they are ejected from their container.</p>
+
+<p>On the other hand, FIOBJ Arrays and Hashmaps know the FIOBJ memory model and can (and will) free any objects they hold when appropriate.</p>
+
+<h3 id="type-memory-management">Type Memory Management</h3>
+
+<p>All the core types are divided into two parts:</p>
+
+<ol>
+<li><p>A container which must be initialized (and perhaps destroyed).</p></li>
+<li><p>Internal data that must be allocated and deallocated.</p></li>
+</ol>
+
+<p>The container could be placed on the stack as well as allocated on the heap.</p>
+
+<p>For example, here&#39;s an array with a container placed on the stack:</p>
+<pre><code class='highlight'><span class="cp">#include "fio_ary.h"
+</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// The array container.</span>
+  <span class="n">fio_ary_s</span> <span class="n">ary</span><span class="p">;</span>
+  <span class="c1">// allocate and initialize internal data</span>
+  <span class="n">fio_ary_new</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ary</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+  <span class="c1">// perform some actions</span>
+  <span class="n">fio_ary_push</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ary</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="mi">1</span><span class="p">);</span>
+  <span class="n">FIO_ARY_FOR</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ary</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"index: %lu == %lu</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span><span class="n">pos</span><span class="p">.</span><span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span><span class="n">pos</span><span class="p">.</span><span class="n">obj</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="c1">// free the internal data to avoid memory leaks</span>
+  <span class="n">fio_ary_free</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ary</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre>
+<p>Here&#39;s the same example, with the array container dynamically allocated:</p>
+<pre><code class='highlight'><span class="cp">#include "fio_ary.h"
+</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
+  <span class="c1">// The array container.</span>
+  <span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">ary</span><span class="p">));</span>
+  <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">ary</span><span class="p">)</span>
+    <span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+  <span class="c1">// allocate and initialize internal data</span>
+  <span class="n">fio_ary_new</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+  <span class="c1">// perform some actions</span>
+  <span class="n">fio_ary_push</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="mi">1</span><span class="p">);</span>
+  <span class="n">FIO_ARY_FOR</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"index: %lu == %lu</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span><span class="n">pos</span><span class="p">.</span><span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span><span class="n">pos</span><span class="p">.</span><span class="n">obj</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="c1">// free the internal data to avoid memory leaks</span>
+  <span class="n">fio_ary_free</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
+  <span class="n">free</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre>
+<h3 id="core-types-api">Core Types API</h3>
+
+<p>The API for the core types is documented within the source files. To read more about each type click the links here:</p>
+
+<ol>
+<li><p><a href="fio_ary">Dynamic Arrays</a></p></li>
+<li><p><a href="fio_hashmap">HashMaps</a></p></li>
+<li><p><a href="fio_llist">Linked Lists</a>.</p></li>
+</ol>
+</div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>

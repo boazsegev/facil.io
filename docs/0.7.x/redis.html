@@ -1,0 +1,305 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - The Redis Extension</title><meta content="facil.io - The Redis Extension" name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-7-x"><a href="/0.7.x/index">Version 0.7.x</a></h2>
+
+<h3 id="core-library"><a href="/0.7.x/fio">Core Library</a></h3>
+
+<ul>
+<li><a href="/0.7.x/fio#connection-protocol-management">Protocol Management</a></li>
+<li><a href="/0.7.x/fio#running-facil-io">Running the IO reactor</a></li>
+<li><a href="/0.7.x/fio#socket-connection-functions">Connection Functions</a></li>
+<li><a href="/0.7.x/fio#event-task-scheduling">Event / Task Scheduling</a></li>
+<li><a href="/0.7.x/fio#pub-sub-services">Pub/Sub Services</a></li>
+<li><a href="/0.7.x/fio#the-custom-memory-allocator">Memory Allocation</a></li>
+<li><a href="/0.7.x/fio#general-helpers">General Helpers</a></li>
+<li><a href="/0.7.x/fio#linked-lists">Linked Lists</a></li>
+<li><a href="/0.7.x/fio#string-helpers">String Helpers</a></li>
+<li><a href="/0.7.x/fio#hash-maps-sets">Hash Maps / Sets</a></li>
+<li><a href="/0.7.x/fio#version-and-compilation-related-macros">Compilation Macros</a></li>
+<li><a href="/0.7.x/fio#weak-functions">Weak Functions</a></li>
+</ul>
+
+<h3 id="extensions"><a href="/0.7.x/extensions">Extensions</a></h3>
+
+<ul>
+<li><a href="/0.7.x/http">HTTP / WebSockets</a></li>
+<li><a href="/0.7.x/redis">Redis (client)</a></li>
+<li><a href="/0.7.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.7.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.7.x/fiobj_core">Core Functions</a></li>
+<li><a href="/0.7.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.7.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.7.x/fiobj_str">Strings</a></li>
+<li><a href="/0.7.x/fiobj_ary">Array</a></li>
+<li><a href="/0.7.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.7.x/fiobj_data">Data Streams</a></li>
+<li><a href="/0.7.x/fiobj_json">JSON</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#facil-io-the-redis-extension">facil.io - The Redis Extension</a>
+<ul>
+<li>
+<a href="#connecting-facil-io-to-redis">Connecting facil.io to Redis</a>
+<ul>
+<li>
+<a href="#connection-management">Connection Management</a>
+<ul>
+<li>
+<a href="#redis_engine_create"><code>redis_engine_create</code></a>
+</li>
+<li>
+<a href="#redis_engine_destroy"><code>redis_engine_destroy</code></a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#sending-redis-database-commands">Sending Redis Database Commands</a>
+<ul>
+<li>
+<a href="#redis_engine_send"><code>redis_engine_send</code></a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#the-resp-parser">The RESP parser</a>
+<ul>
+<li>
+<a href="#resp_parse"><code>resp_parse</code></a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div><h1 id="facil-io-the-redis-extension">facil.io - The Redis Extension</h1>
+
+<p>facil.io includes a Redis Pub/Sub extension that makes it easy to scale pub/sub applications horizontally.</p>
+
+<p>The extension was written to minimize Redis connections and load, allowing more clusters to connect to a Redis server.</p>
+
+<p>This requires that each facil.io cluster consume less resources - only two connections per cluster instead of two connections per process (as might be common on other implementations).</p>
+
+<h2 id="connecting-facil-io-to-redis">Connecting facil.io to Redis</h2>
+
+<p>By using the <a href="fio#external-pub-sub-services">Core Library&#39;s External Pub/Sub Services API</a>, it&#39;s easy to connect an application to a Redis Server. i.e.:</p>
+<pre><code class='highlight'><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">r</span> <span class="o">=</span> <span class="n">redis_engine_create</span><span class="p">(.</span><span class="n">address</span><span class="p">.</span><span class="n">data</span> <span class="o">=</span> <span class="s">"localhost"</span><span class="p">);</span>
+<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">r</span><span class="p">){</span>
+    <span class="n">perror</span><span class="p">(</span><span class="s">"Couldn't initialize Redis"</span><span class="p">);</span>
+    <span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="n">fio_state_callback_add</span><span class="p">(</span><span class="n">FIO_CALL_AT_EXIT</span><span class="p">,</span>
+                           <span class="p">(</span><span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">))</span><span class="n">redis_engine_destroy</span><span class="p">,</span> <span class="n">r</span><span class="p">);</span>
+<span class="n">FIO_PUBSUB_DEFAULT</span> <span class="o">=</span> <span class="n">r</span><span class="p">;</span>
+</code></pre>
+<h3 id="connection-management">Connection Management</h3>
+
+<h4 id="redis_engine_create"><code>redis_engine_create</code></h4>
+<pre><code class='highlight'><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">redis_engine_create</span><span class="p">(</span><span class="k">struct</span> <span class="n">redis_engine_create_args</span><span class="p">);</span>
+<span class="cp">#define redis_engine_create(...)                                               \
+  redis_engine_create((struct redis_engine_create_args){__VA_ARGS__})
+</span></code></pre>
+<p>Creates and attaches a Redis &quot;engine&quot;, which connects to an external Redis service and manages Pub/Sub communication with that service.</p>
+
+<p>The <code>redis_engine_create</code> function is shadowed by the <code>redis_engine_create</code> MACRO, which allows the function to accept &quot;named arguments&quot;, as shown in the above example.</p>
+
+<p>Th possible named arguments for the <code>redis_engine_create</code> function call are:</p>
+
+<ul>
+<li><p><code>address</code></p>
+
+<p>Redis server&#39;s address, defaults to <code>&quot;localhost&quot;</code>.</p>
+<pre><code class='highlight'><span class="n">fio_str_info_s</span> <span class="n">address</span><span class="p">;</span>
+</code></pre></li>
+<li><p><code>port</code></p>
+
+<p>Redis server&#39;s port, defaults to <code>&quot;6379&quot;</code>.</p>
+<pre><code class='highlight'><span class="n">fio_str_info_s</span> <span class="n">port</span><span class="p">;</span>
+</code></pre></li>
+<li><p><code>auth</code></p>
+
+<p>Redis server&#39;s password, if any. */</p>
+<pre><code class='highlight'><span class="n">fio_str_info_s</span> <span class="n">auth</span><span class="p">;</span>
+</code></pre></li>
+<li><p><code>ping_interval</code></p>
+
+<p>A <code>ping</code> will be sent every <code>ping_interval</code> interval or inactivity. */</p>
+<pre><code class='highlight'><span class="kt">uint8_t</span> <span class="n">ping_interval</span><span class="p">;</span>
+</code></pre></li>
+</ul>
+
+<p>The fio_fio_pubsub_engine_s is active only after facil.io starts running.</p>
+
+<p>A <code>ping</code> will be sent every <code>ping_interval</code> interval or inactivity. The default value (0) will fallback to facil.io&#39;s maximum time of inactivity (5 minutes) before polling on the connection&#39;s protocol.</p>
+
+<p><strong>Note</strong>: The Redis engine can only be initialized <em>before</em> facil.io starts up, during the setup stage within the root process. Attempting to initialize a Redis engine while the application is running might not work (and requires a hot restart for any child processes).</p>
+
+<h4 id="redis_engine_destroy"><code>redis_engine_destroy</code></h4>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">redis_engine_destroy</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">);</span>
+</code></pre>
+<p>Detaches and destroys a Redis Pub/Sub engine from facil.io.</p>
+
+<h3 id="sending-redis-database-commands">Sending Redis Database Commands</h3>
+
+<h4 id="redis_engine_send"><code>redis_engine_send</code></h4>
+<pre><code class='highlight'><span class="kt">intptr_t</span> <span class="n">redis_engine_send</span><span class="p">(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">engine</span><span class="p">,</span>
+                           <span class="n">FIOBJ</span> <span class="n">command</span><span class="p">,</span>
+                           <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">callback</span><span class="p">)(</span><span class="n">fio_pubsub_engine_s</span> <span class="o">*</span><span class="n">e</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">reply</span><span class="p">,</span>
+                                            <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">),</span>
+                           <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+</code></pre>
+<p>Sends a Redis command through the engine&#39;s connection.</p>
+
+<p>The response will be sent back using the optional callback. <code>udata</code> is passed along untouched.</p>
+
+<p>The message will be resent on network failures, until a response validates the fact that the command was sent (or the engine is destroyed).</p>
+
+<p><strong>Note</strong>: Avoid calling Pub/Sub commands using this function, as it could violate the Redis connection&#39;s protocol and could prevent the communication from resuming.</p>
+
+<p><strong>Note2</strong>: The Redis extension is designed for resource conservation, not speed. This might not be the best way to use Redis as a database and should be considered available for occasional use rather than heavy use.</p>
+
+<h3 id="the-resp-parser">The RESP parser</h3>
+
+<p>The Redis extension includes a RESP parser authored as a single file library (<code>resp_parser.h</code>), which can be used independently from the rest of facil.io.</p>
+
+<p>The parser was originally coded in order keep the licensing scheme simple and avoid a debate about MIT licensing vs. BSD-3-clause requirements.</p>
+
+<h4 id="resp_parse"><code>resp_parse</code></h4>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">size_t</span> <span class="n">resp_parse</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span>
+                         <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">,</span>
+                         <span class="kt">size_t</span> <span class="n">length</span><span class="p">);</span>
+</code></pre>
+<p>Parses a RESP content stream, invoking any RESP related callbacks as required.</p>
+
+<p>The <code>resp_parse</code> will review the data and call any of the following callback, depending on the RESP protocol&#39;s state:</p>
+
+<ul>
+<li><p><code>resp_on_message</code> - a local static callback, called when the RESP message was completely parsed.</p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_message</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+</code></pre></li>
+<li><p><code>resp_on_number</code> - a local static callback, called when a Number object is parsed.</p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_number</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">num</span><span class="p">);</span>
+</code></pre></li>
+<li><p><code>resp_on_okay</code> - a local static callback, called when a OK message is received.</p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_okay</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+</code></pre></li>
+<li><p><code>resp_on_null</code> - a local static callback, called when NULL is received.</p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_null</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+</code></pre></li>
+<li><p><code>resp_on_start_string</code> - a local static callback, called when a String should be allocated.</p>
+
+<p><code>str_len</code> is the expected number of bytes that will fill the final string object, without any NUL byte marker (the string might be binary).</p>
+
+<p>If this function returns any value besides 0, parsing is stopped.</p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_start_string</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">str_len</span><span class="p">);</span>
+</code></pre></li>
+<li><p><code>resp_on_string_chunk</code> - a local static callback, called as String objects are streamed. </p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_string_chunk</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+</code></pre></li>
+<li><p><code>resp_on_end_string</code> - a local static callback, called when a String object had finished streaming. </p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_end_string</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+</code></pre></li>
+<li><p><code>resp_on_err_msg</code> - a local static callback, called an error message is received. </p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_err_msg</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+</code></pre></li>
+<li><p>a local static callback, called when an Array should be allocated.</p>
+
+<p><code>array_len</code> is the expected number of objects that will fill the Array object.
+There&#39;s no <code>resp_on_end_array</code> callback since the RESP protocol, simply count back from <code>array_len</code>.</p>
+
+<p>However, be aware that a client/server might send nested Arrays in some rare cases.</p>
+
+<p>If this function returns any value besides 0, parsing is stopped.</p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_start_array</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">array_len</span><span class="p">);</span>
+</code></pre></li>
+<li><p><code>resp_on_parser_error</code> - a local static callback, called when a parser / protocol error occurs. </p>
+<pre><code class='highlight'><span class="k">static</span> <span class="kt">int</span> <span class="n">resp_on_parser_error</span><span class="p">(</span><span class="n">resp_parser_s</span> <span class="o">*</span><span class="n">parser</span><span class="p">);</span>
+</code></pre></li>
+</ul>
+
+<p>Returns the number of bytes to be resent. i.e., for a return value 5, the last 5 bytes in the buffer need to be resent to the parser.</p>
+
+<p>Data consumed can be safely overwritten (assuming it isn&#39;t used by the parsing implementation).</p>
+
+<p><strong>NOTE</strong>:</p>
+
+<p>The <code>resp_parser_s</code> type should be considered opaque, without any user related data.</p>
+
+<p>To attach data to the parser, include the parser within a container <code>struct</code>, i.e.:</p>
+<pre><code class='highlight'><span class="k">typedef</span> <span class="k">struct</span> <span class="p">{</span>
+  <span class="cm">/* place parser at top for pointer casting simplicity*/</span>
+  <span class="n">resp_parser_s</span> <span class="n">parser</span><span class="p">;</span>
+  <span class="cm">/* place user data after the parser */</span>
+  <span class="kt">void</span> <span class="o">*</span> <span class="n">udata</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">my_parser_s</span><span class="p">;</span>
+</code></pre></div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>

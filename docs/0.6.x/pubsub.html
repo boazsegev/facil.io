@@ -1,0 +1,196 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - Native Pub/Sub</title><meta content="facil.io - Native Pub/Sub" name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-6-x"><a href="/0.6.x/index">Version 0.6.x</a></h2>
+
+<ul>
+<li><a href="/0.6.x/api">API Overview</a></li>
+<li><a href="/0.6.x/modules">The Modules</a></li>
+</ul>
+
+<h3 id="core-api"><a href="/0.6.x/facil">Core API</a></h3>
+
+<ul>
+<li><a href="/0.6.x/defer">Event scheduling</a></li>
+<li><a href="/0.6.x/evio">Low Level Polling</a></li>
+<li><a href="/0.6.x/sock">Low Level Sockets</a></li>
+<li><a href="/0.6.x/fio_mem">Memory Allocation</a></li>
+</ul>
+
+<h3 id="extensions">Extensions</h3>
+
+<ul>
+<li><a href="/0.6.x/http">HTTP</a></li>
+<li><a href="/0.6.x/websockets">WebSockets</a></li>
+<li><a href="/0.6.x/pubsub">Pub/Sub</a></li>
+<li><a href="/0.6.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.6.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.6.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.6.x/fiobj_str">Strings</a></li>
+<li><a href="/0.6.x/fiobj_ary">Array</a></li>
+<li><a href="/0.6.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.6.x/fiobj_json">JSON</a></li>
+</ul>
+
+<h3 id="core-types"><a href="/0.6.x/types">Core Types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fio_ary">C Arrays</a></li>
+<li><a href="/0.6.x/fio_hashmap">C HashMap</a></li>
+<li><a href="/0.6.x/fio_llist">Linked Lists</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#facil-io-native-pub-sub">facil.io - Native Pub/Sub</a>
+<ul>
+<li>
+<a href="#connection-based-vs-non-connection-based-pub-sub">Connection based vs. non-connection based Pub/Sub</a>
+</li>
+<li>
+<a href="#connecting-redis-as-a-pub-sub-service">Connecting Redis as a Pub/Sub Service</a>
+</li>
+<li>
+<a href="#connecting-a-custom-pub-sub-service">Connecting a custom Pub/Sub Service</a>
+</li>
+<li>
+<a href="#details-and-limitations">Details and Limitations:</a>
+</li>
+</ul>
+</li>
+</ul>
+</div><h1 id="facil-io-native-pub-sub">facil.io - Native Pub/Sub</h1>
+
+<p>The facil.io framework offers a native Pub/Sub implementation which can be found in the &quot;services&quot; folder.</p>
+
+<p>This Pub/Sub implementation covers the whole process cluster and it can be easily scaled by using Redis (which isn&#39;t required except for horizontal scaling).</p>
+
+<h2 id="connection-based-vs-non-connection-based-pub-sub">Connection based vs. non-connection based Pub/Sub</h2>
+
+<p>The Websockets extension allows for connection based subscription in adition to the regular Pub/Sub subscriptions.</p>
+
+<p>When using connection based subscription, the connection&#39;s <code>on_close</code> callback will automatically unsubscribes from any existing subscriptions.</p>
+
+<p>This allows messages to be be either forwarded directly to the client or handled by a server-side callback.</p>
+
+<p>An example for this approach can be seen in the <a href="index.md#an-easy-chatroom-example">chatroom example</a> using the <code>websocket_subscribe</code> function. The same function could have been used with a server-side callback.</p>
+
+<p>A non-connection based Pub/Sub allows a local event to fire whenever a message arrives.</p>
+
+<p>This event allows the server to react to certain channels, allowing remotely published events (by clients or through Redis) to invoke server routines.</p>
+
+<p>This approach uses the <code>pubsub_subscribe</code> function directly rather than a connection related function.</p>
+
+<h2 id="connecting-redis-as-a-pub-sub-service">Connecting Redis as a Pub/Sub Service</h2>
+
+<p>A built-in Redis engine is bundled with facil.io (it can be removed safely by deleting the folder).</p>
+
+<p>It&#39;s simple to add Redis for multi-machine clustering by creating a Redis engine and setting it as the default engine.</p>
+
+<p>i.e.:</p>
+<pre><code class='highlight'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">PUBSUB_DEFAULT_ENGINE</span> <span class="o">=</span>
+      <span class="n">redis_engine_create</span><span class="p">(</span><span class="cm">/** Redis server's address */</span>
+                              <span class="p">.</span><span class="n">address</span> <span class="o">=</span> <span class="s">"localhost"</span><span class="p">,</span> <span class="p">.</span><span class="n">ping_interval</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span> <span class="p">);</span>
+  <span class="cm">/* code */</span>
+  <span class="n">facil_run</span><span class="p">(</span><span class="cm">/* settings */</span><span class="p">);</span>
+  <span class="n">redis_engine_destroy</span><span class="p">(</span><span class="n">PUBSUB_DEFAULT_ENGINE</span><span class="p">);</span>
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre>
+<h2 id="connecting-a-custom-pub-sub-service">Connecting a custom Pub/Sub Service</h2>
+
+<p>It&#39;s possible. The documentation is available within the header file <code>pubsub.h</code> (using <code>pubsub_engine_s</code>).</p>
+
+<p>Notice, that the <code>on_subscribe</code> will be called for all the channels in the process cluster, so it&#39;s possible to connect to the external pub/sub service from a single process (minimizing network traffic) and to publish to the whole cluster.</p>
+
+<p>Also, be aware that messages arrive <strong>at least</strong> once. When using pattern matching, messages might arrive far more than once (i.e., if the service sends two copies, one for the channel and one for the pattern, the cluster might receive four copies, due to internal pattern matching).</p>
+
+<p>Also, see known issues for lost messages when connection is disrupted (this might be pub/sub service specific).</p>
+
+<h2 id="details-and-limitations">Details and Limitations:</h2>
+
+<ul>
+<li><p>facil.io v.0.6.x uses a Hash table for the Pub/Sub channels (replacing the <a href="https://en.wikipedia.org/wiki/Trie">4 bit trie</a> approach from facil.io v.0.5.x).</p>
+
+<p>This means that hash collision (using SipHash) might cause excessive <code>memcmp</code> calls.</p>
+
+<p>Pattern publishing (which isn&#39;t supported by Redis and shouldn&#39;t be confused with pattern subscriptions) was deprecated due to the change in data structure.</p></li>
+<li><p>The Redis client engine does <em>not</em> support multiple databases. This is both becasue <a href="https://redis.io/topics/pubsub#database-amp-scoping">database scoping is ignored by Redis during pub/sub</a> and because <a href="https://redis.io/topics/cluster-spec">Redis Cluster doesn&#39;t support multiple databases</a>. This indicated that multiple database support just isn&#39;t worth the extra effort.</p></li>
+</ul>
+
+<p>It&#39;s possible to manually send commands to the Redis client and overcome this issue, but disconnections will require resetting the database.</p>
+
+<ul>
+<li><p>The Redis client engine will use a single Redis connection <strong>per process</strong> (for publishing) + a single connection <strong>per cluster</strong> (for subscriptions).</p>
+
+<p>Note that <strong>outgoing</strong> messages are guarantied to be published <strong>at least</strong> once (automatic network error recovery)... however, <strong>incoming</strong> messages might be lost due to network connectivity issues (nothing I can do about this, it&#39;s on the Redis server side).</p></li>
+</ul>
+</div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>

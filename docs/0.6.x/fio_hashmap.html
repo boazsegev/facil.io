@@ -1,0 +1,499 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - Core Hash Map Type</title><meta content="facil.io - Core Hash Map Type" name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-6-x"><a href="/0.6.x/index">Version 0.6.x</a></h2>
+
+<ul>
+<li><a href="/0.6.x/api">API Overview</a></li>
+<li><a href="/0.6.x/modules">The Modules</a></li>
+</ul>
+
+<h3 id="core-api"><a href="/0.6.x/facil">Core API</a></h3>
+
+<ul>
+<li><a href="/0.6.x/defer">Event scheduling</a></li>
+<li><a href="/0.6.x/evio">Low Level Polling</a></li>
+<li><a href="/0.6.x/sock">Low Level Sockets</a></li>
+<li><a href="/0.6.x/fio_mem">Memory Allocation</a></li>
+</ul>
+
+<h3 id="extensions">Extensions</h3>
+
+<ul>
+<li><a href="/0.6.x/http">HTTP</a></li>
+<li><a href="/0.6.x/websockets">WebSockets</a></li>
+<li><a href="/0.6.x/pubsub">Pub/Sub</a></li>
+<li><a href="/0.6.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.6.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.6.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.6.x/fiobj_str">Strings</a></li>
+<li><a href="/0.6.x/fiobj_ary">Array</a></li>
+<li><a href="/0.6.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.6.x/fiobj_json">JSON</a></li>
+</ul>
+
+<h3 id="core-types"><a href="/0.6.x/types">Core Types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fio_ary">C Arrays</a></li>
+<li><a href="/0.6.x/fio_hashmap">C HashMap</a></li>
+<li><a href="/0.6.x/fio_llist">Linked Lists</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#a-simple-hash-map">A Simple Hash Map</a>
+<ul>
+<li>
+<a href="#overview">Overview</a>
+</li>
+<li>
+<a href="#types">Types</a>
+</li>
+<li>
+<a href="#functions">Functions</a>
+<ul>
+<li>
+<a href="#fio_hash_new"><code>fio_hash_new</code></a>
+</li>
+<li>
+<a href="#fio_hash_free"><code>fio_hash_free</code></a>
+</li>
+<li>
+<a href="#fio_hash_insert"><code>fio_hash_insert</code></a>
+</li>
+<li>
+<a href="#fio_hash_find"><code>fio_hash_find</code></a>
+</li>
+<li>
+<a href="#fio_hash_count"><code>fio_hash_count</code></a>
+</li>
+<li>
+<a href="#fio_hash_capa"><code>fio_hash_capa</code></a>
+</li>
+<li>
+<a href="#fio_hash_compact"><code>fio_hash_compact</code></a>
+</li>
+<li>
+<a href="#fio_hash_rehash"><code>fio_hash_rehash</code></a>
+</li>
+<li>
+<a href="#fio_hash_each"><code>fio_hash_each</code></a>
+</li>
+<li>
+<a href="#fio_hash_for_loop"><code>FIO_HASH_FOR_LOOP</code></a>
+</li>
+<li>
+<a href="#fio_hash_for_free"><code>FIO_HASH_FOR_FREE</code></a>
+</li>
+<li>
+<a href="#fio_hash_for_empty"><code>FIO_HASH_FOR_EMPTY</code></a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#collision-protection">Collision protection</a>
+<ul>
+<li>
+<a href="#fio_hash_key_type"><code>FIO_HASH_KEY_TYPE</code></a>
+</li>
+<li>
+<a href="#fio_hash_key_invalid"><code>FIO_HASH_KEY_INVALID</code></a>
+</li>
+<li>
+<a href="#fio_hash_key2uint-key"><code>FIO_HASH_KEY2UINT(key)</code></a>
+</li>
+<li>
+<a href="#fio_hash_compare_keys-k1-k2"><code>FIO_HASH_COMPARE_KEYS(k1, k2)</code></a>
+</li>
+<li>
+<a href="#fio_hash_key_isinvalid-key"><code>FIO_HASH_KEY_ISINVALID(key)</code></a>
+</li>
+<li>
+<a href="#fio_hash_key_copy-key"><code>FIO_HASH_KEY_COPY(key)</code></a>
+</li>
+<li>
+<a href="#fio_hash_key_destroy-key"><code>FIO_HASH_KEY_DESTROY(key)</code></a>
+</li>
+<li>
+<a href="#notes">Notes</a>
+</li>
+<li>
+<a href="#example">Example</a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div><h1 id="a-simple-hash-map">A Simple Hash Map</h1>
+
+<h2 id="overview">Overview</h2>
+
+<p>The Hash Map core type offers an ordered key-value map with a very simple API.</p>
+
+<p>The Hash Map is ordered by order of insertion.</p>
+
+<p>The core Hash Map type is provided in a single file library <code>fio_hashmap.h</code>, which allows it&#39;s functions to be inlined for maximum performance (similarly to macros).</p>
+
+<p>The Hash Map defaults to <code>uint64_t</code> keys, meaning that matching is performed using a simple integer comparison. However, <a href="#collision-protection">this could be changed by defining macros <strong>before</strong> including the library file for increased collision protection</a>.</p>
+
+<p>Much like the Array in <a href="types.md">the introduction to the simple core types</a>, Hash Map containers can be placed on the stack as well as allocated dynamically.</p>
+
+<h2 id="types">Types</h2>
+
+<p>The Core Hash uses the <code>fio_hash_s</code> type.</p>
+
+<p>The data in in the <code>fio_hash_s</code> type should be considered <em>opaque</em> and shouldn&#39;t be accessed directly. Functional access should be preferred.</p>
+
+<p>The <code>fio_hash_s</code> utilizes two arrays using internal data types that contain duplicates of the Hash key data, maximizing memory locality for Hash Map operations and minimizing cache misses to increase performance.</p>
+<pre><code class='highlight'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">fio_hash_data_ordered_s</span> <span class="p">{</span>
+  <span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">;</span> <span class="cm">/* another copy for memory cache locality */</span>
+  <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">fio_hash_data_ordered_s</span><span class="p">;</span>
+
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">fio_hash_data_s</span> <span class="p">{</span>
+  <span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">;</span> <span class="cm">/* another copy for memory cache locality */</span>
+  <span class="k">struct</span> <span class="n">fio_hash_data_ordered_s</span> <span class="o">*</span><span class="n">obj</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">fio_hash_data_s</span><span class="p">;</span>
+
+<span class="cm">/* the information in the Hash Map structure should be considered READ ONLY. */</span>
+<span class="k">struct</span> <span class="n">fio_hash_s</span> <span class="p">{</span>
+  <span class="kt">uintptr_t</span> <span class="n">count</span><span class="p">;</span>
+  <span class="kt">uintptr_t</span> <span class="n">capa</span><span class="p">;</span>
+  <span class="kt">uintptr_t</span> <span class="n">pos</span><span class="p">;</span>
+  <span class="kt">uintptr_t</span> <span class="n">mask</span><span class="p">;</span>
+  <span class="n">fio_hash_data_ordered_s</span> <span class="o">*</span><span class="n">ordered</span><span class="p">;</span>
+  <span class="n">fio_hash_data_s</span> <span class="o">*</span><span class="n">map</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre>
+<h2 id="functions">Functions</h2>
+
+<h3 id="fio_hash_new"><code>fio_hash_new</code></h3>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_hash_new</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre>
+<p>Allocates and initializes internal data and resources.</p>
+
+<p>It&#39;s important to call this function before using the Hash Map.</p>
+
+<p>Lazy initialization of the Hash Map is possible by initializing the <code>fio_hash_s</code> to 0 (the default for static variables).</p>
+
+<h3 id="fio_hash_free"><code>fio_hash_free</code></h3>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_hash_free</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre>
+<p>Deallocates any internal resources.</p>
+
+<p>It is critical that this function is called to prevent memory leaks. <strong>However</strong>, this function is not enough to prevent memory leaks - custom keys (if any) and object data should also be deallocated (see also <code>FIO_HASH_FOR_FREE</code>).</p>
+
+<h3 id="fio_hash_insert"><code>fio_hash_insert</code></h3>
+<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_hash_insert</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span>
+                      <span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span>
+                      <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">)</span><span class="err">`</span>
+</code></pre>
+<p>Inserts an object to the Hash Map Table, rehashing if required, returning the old object if it exists.</p>
+
+<p>Set <code>obj</code> to NULL to remove an existing object (the existing object will be returned).</p>
+
+<p>The <code>FIO_HASH_KEY_TYPE</code> defaults to <code>uint64_t</code>, <a href="#collision-protection">this could be changed by defining macros <strong>before</strong> including the library file for increased collision protection</a>.</p>
+
+<h3 id="fio_hash_find"><code>fio_hash_find</code></h3>
+<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_hash_find</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span> <span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">)</span>
+</code></pre>
+<p>Locates an object in the Hash Map Table according to the hash key value.</p>
+
+<h3 id="fio_hash_count"><code>fio_hash_count</code></h3>
+<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_hash_count</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre>
+<p>Returns the number of elements currently in the Hash Table.</p>
+
+<h3 id="fio_hash_capa"><code>fio_hash_capa</code></h3>
+<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_hash_capa</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre>
+<p>Returns a temporary theoretical Hash map capacity.</p>
+
+<p>This could be used for testing performance and memory consumption.</p>
+
+<h3 id="fio_hash_compact"><code>fio_hash_compact</code></h3>
+<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_hash_compact</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre>
+<p>Attempts to minimize memory usage by removing empty spaces caused by deleted
+items (freeing their custom keys, if any) and rehashing the Hash Map.</p>
+
+<p>Returns the updated hash map capacity.</p>
+
+<h3 id="fio_hash_rehash"><code>fio_hash_rehash</code></h3>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_hash_rehash</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre>
+<p>Forces a rehashing of the hash, increasing memory consumption as well as minimizing internal collisions (possibly improving seek times).</p>
+
+<p>This function is called automatically when needed, it&#39;s unlikely that you should want to call the function yourself.</p>
+
+<h3 id="fio_hash_each"><code>fio_hash_each</code></h3>
+<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_hash_each</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span>
+                     <span class="k">const</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
+                     <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span>
+                                 <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">,</span>
+                                 <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">),</span>
+                     <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
+</code></pre>
+<p>Iteration using a callback for each entry in the Hash Table.</p>
+
+<p>The callback task function must accept the hash key, the entry data and an
+opaque user pointer:</p>
+<pre><code class='highlight'><span class="kt">int</span> <span class="nf">example_task</span><span class="p">(</span><span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">)</span> <span class="p">{</span><span class="k">return</span> <span class="mi">0</span><span class="p">;}</span>
+</code></pre>
+<p>If the callback returns -1, the loop is broken. Any other value is ignored.</p>
+
+<p>Returns the relative &quot;stop&quot; position, i.e., the number of items processed +
+the starting point.</p>
+
+<h3 id="fio_hash_for_loop"><code>FIO_HASH_FOR_LOOP</code></h3>
+<pre><code class='highlight'><span class="n">FIO_HASH_FOR_LOOP</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+</code></pre>
+<p>A macro for a <code>for</code> loop that iterates over all the hashed objects (in
+order).</p>
+
+<p><code>hash</code> a pointer to the hash table variable and <code>i</code> is a temporary variable
+name to be created for iteration.</p>
+
+<p><code>i-&gt;key</code> is the key and <code>i-&gt;obj</code> is the hashed data.</p>
+
+<p>The <code>i</code> variable can be names differently (i.e. <code>FIO_HASH_FOR_LOOP(hash, pos)</code> for <code>pos-&gt;key</code> and <code>pos-&gt;obj</code>).</p>
+
+<h3 id="fio_hash_for_free"><code>FIO_HASH_FOR_FREE</code></h3>
+<pre><code class='highlight'><span class="n">FIO_HASH_FOR_FREE</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+</code></pre>
+<p>A macro for a <code>for</code> loop that will iterate over all the hashed objects (in
+order) and empties the hash, later calling <code>fio_hash_free</code> to free the hash.</p>
+
+<p><code>hash</code> a pointer to the hash table variable and <code>i</code> is a temporary variable
+name to be created for iteration.</p>
+
+<p><code>i-&gt;key</code> is the key and <code>i-&gt;obj</code> is the hashed data.</p>
+
+<p>Free the objects and the Hash Map container manually (if required). Custom keys will be freed automatically when using this macro.</p>
+
+<h3 id="fio_hash_for_empty"><code>FIO_HASH_FOR_EMPTY</code></h3>
+<pre><code class='highlight'><span class="n">FIO_HASH_FOR_EMPTY</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+</code></pre>
+<p>A macro for a <code>for</code> loop that iterates over all the hashed objects (in
+order) and empties the hash.</p>
+
+<p>This will also reallocate the map&#39;s memory (to zero out the data), so if this
+is performed before calling <code>fio_hash_free</code>, use <code>FIO_HASH_FOR_FREE</code> instead.</p>
+
+<p><code>hash</code> a pointer to the hash table variable and <code>i</code> is a temporary variable
+name to be created for iteration.</p>
+
+<p><code>i-&gt;key</code> is the key and <code>i-&gt;obj</code> is the hashed data.</p>
+
+<p>Free the objects and the Hash Map container manually (if required). Custom keys will be freed automatically when using this macro.</p>
+
+<h2 id="collision-protection">Collision protection</h2>
+
+<p>The Hash Map is collision resistant as long as it&#39;s keys are truly unique.</p>
+
+<p>If there&#39;s a chance that the default <code>uint64_t</code> key type will not be be able to uniquely identify a key, the following macros should <strong>all</strong> be defined, <strong>before</strong> including the <code>fio_hashmap.h</code> file in the <code>.c</code> file, allowing the default key system to be replaced:</p>
+
+<h3 id="fio_hash_key_type"><code>FIO_HASH_KEY_TYPE</code></h3>
+
+<p>This macro sets the type used for keys.</p>
+
+<h3 id="fio_hash_key_invalid"><code>FIO_HASH_KEY_INVALID</code></h3>
+
+<p>Empty slots in the Hash Map are initialized so all their bytes are zero.</p>
+
+<p>This macro should signify a static key that has all it&#39;s byte set to zero, making it an invalid key (it cannot be used, and objects placed in that slot will be lost).</p>
+
+<h3 id="fio_hash_key2uint-key"><code>FIO_HASH_KEY2UINT(key)</code></h3>
+
+<p>This macro should convert the key to a unique unsigned number.</p>
+
+<p>This, in effect, should return the hash value for the key and cannot be zero.</p>
+
+<p>The value is used to determine the location of the key in the map (prior to any collisions) and a good hash will minimize collisions.</p>
+
+<h3 id="fio_hash_compare_keys-k1-k2"><code>FIO_HASH_COMPARE_KEYS(k1, k2)</code></h3>
+
+<p>This macro should compare two keys, excluding their hash values (which were compared using the <code>FIO_HASH_KEY2UINT</code> macro).</p>
+
+<h3 id="fio_hash_key_isinvalid-key"><code>FIO_HASH_KEY_ISINVALID(key)</code></h3>
+
+<p>Should evaluate as true if the key is an invalid key (all it&#39;s bytes set to zero).</p>
+
+<h3 id="fio_hash_key_copy-key"><code>FIO_HASH_KEY_COPY(key)</code></h3>
+
+<p>Keys might contain temporary data (such as strings). To allow the Hash Map to test the key even after the temporary data is out of scope, ac opy needs to be created.</p>
+
+<p>This macro should return a FIO_HASH_KEY_TYPE object that contains only persistent data. This could achieved by allocating some of the data using <code>malloc</code>.</p>
+
+<h3 id="fio_hash_key_destroy-key"><code>FIO_HASH_KEY_DESTROY(key)</code></h3>
+
+<p>When the Hash Map is re-hashed, old keys belonging to removed objects are cleared away and need to be destroyed.</p>
+
+<p>This macro allows dynamically allocated memory to be freed (this is the complement of <code>FIO_HASH_KEY_COPY</code>).</p>
+
+<p><strong>Note</strong>: This macro must not end a statement (shouldn&#39;t use the <code>;</code> marker) or code blocks (<code>{}</code>). For multiple actions consider using inline functions.</p>
+
+<h3 id="notes">Notes</h3>
+
+<p>If the <code>FIO_HASH_KEY_COPY</code> macro allocated memory dynamically or if there&#39;s a need to iterate over the values in the Hash Map before freeing the Hash Map (perhaps to free the object&#39;s memory), the <code>FIO_HASH_FOR_FREE</code> macro can be used to iterate over the Hash Map, free all the keys and free the Hash Map resources (it ends by calling <code>fio_hash_free</code>).</p>
+
+<p><strong>Note</strong>: These macros are localized to the specific C file in which they were defined and a specific C file can&#39;t include the <code>fio_hashmap.h</code> more than once. If a few different approaches are required, it can be performed by using different C files and offering function wrappers for the Hash Map functions (wrap <code>fio_hash_find</code>, <code>fio_hash_insert</code>, etc&#39;).</p>
+
+<h3 id="example">Example</h3>
+
+<p>In this example collisions are forced by setting the <code>hash</code> and string length to be equal for all keys, this demonstrates how defining these macros can secure the hash against String key collisions.</p>
+
+<p>(another example can be found in the <code>pubsub.c</code> source code) </p>
+<pre><code class='highlight'><span class="cp">#define _GNU_SOURCE
+#include &lt;stdint.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+</span>
+<span class="cm">/* the hash key type for string keys */</span>
+<span class="k">typedef</span> <span class="k">struct</span> <span class="p">{</span>
+  <span class="kt">size_t</span> <span class="n">hash</span><span class="p">;</span>
+  <span class="kt">size_t</span> <span class="n">len</span><span class="p">;</span>
+  <span class="kt">char</span> <span class="o">*</span><span class="n">str</span><span class="p">;</span>
+<span class="p">}</span> <span class="n">fio_hash_key_s</span><span class="p">;</span>
+
+<span class="cm">/* strdup is usually available... but just in case it isn't */</span>
+<span class="k">static</span> <span class="kr">inline</span> <span class="kt">char</span> <span class="o">*</span><span class="nf">my_strdup</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">str</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">)</span> <span class="p">{</span>
+  <span class="kt">char</span> <span class="o">*</span><span class="n">ret</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="n">len</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+  <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">ret</span><span class="p">)</span>
+    <span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+  <span class="n">ret</span><span class="p">[</span><span class="n">len</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">memcpy</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span> <span class="n">str</span><span class="p">,</span> <span class="n">len</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="cm">/* define the macro to set the key type */</span>
+<span class="cp">#define FIO_HASH_KEY_TYPE fio_hash_key_s
+</span>
+<span class="cm">/* the macro that returns the key's hash value */</span>
+<span class="cp">#define FIO_HASH_KEY2UINT(key) ((key).hash)
+</span>
+<span class="cm">/* Compare the keys using length testing and `memcmp` */</span>
+<span class="cp">#define FIO_HASH_COMPARE_KEYS(k1, k2)                                          \
+  ((k1).str == (k2).str ||                                                     \
+   ((k1).len == (k2).len &amp;&amp; !memcmp((k1).str, (k2).str, (k2).len)))
+</span>
+<span class="cm">/* an "all bytes are zero" invalid key */</span>
+<span class="cp">#define FIO_HASH_KEY_INVALID ((fio_hash_key_s){.hash = 0})
+</span>
+<span class="cm">/* tests if a key is the invalid key */</span>
+<span class="cp">#define FIO_HASH_KEY_ISINVALID(key) ((key).str == NULL)
+</span>
+<span class="cm">/* creates a persistent copy of the key's string */</span>
+<span class="cp">#define FIO_HASH_KEY_COPY(key)                                                 \
+  ((fio_hash_key_s){.hash = (key).hash,                                        \
+                    .len = (key).len,                                          \
+                    .str = my_strdup((key).str, (key).len)})
+</span>
+<span class="cm">/* frees the allocated string, remove the `fprintf` in production */</span>
+<span class="cp">#define FIO_HASH_KEY_DESTROY(key)                                              \
+  (fprintf(stderr, "freeing %s\n", (key).str), free((key).str))
+</span>
+<span class="cp">#include "fio_hashmap.h"
+</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">fio_hash_s</span> <span class="n">hash</span><span class="p">;</span>
+  <span class="n">fio_hash_key_s</span> <span class="n">key1</span> <span class="o">=</span> <span class="p">{.</span><span class="n">hash</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">len</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span> <span class="p">.</span><span class="n">str</span> <span class="o">=</span> <span class="s">"hello"</span><span class="p">};</span>
+  <span class="n">fio_hash_key_s</span> <span class="n">key1_copy</span> <span class="o">=</span> <span class="p">{.</span><span class="n">hash</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">len</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span> <span class="p">.</span><span class="n">str</span> <span class="o">=</span> <span class="s">"hello"</span><span class="p">};</span>
+  <span class="n">fio_hash_key_s</span> <span class="n">key2</span> <span class="o">=</span> <span class="p">{.</span><span class="n">hash</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">len</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span> <span class="p">.</span><span class="n">str</span> <span class="o">=</span> <span class="s">"Hello"</span><span class="p">};</span>
+  <span class="n">fio_hash_key_s</span> <span class="n">key3</span> <span class="o">=</span> <span class="p">{.</span><span class="n">hash</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">len</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span> <span class="p">.</span><span class="n">str</span> <span class="o">=</span> <span class="s">"Hell0"</span><span class="p">};</span>
+  <span class="n">fio_hash_new</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">);</span>
+  <span class="n">fio_hash_insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key1</span><span class="p">,</span> <span class="n">key1</span><span class="p">.</span><span class="n">str</span><span class="p">);</span>
+  <span class="n">key1</span><span class="p">.</span><span class="n">str</span> <span class="o">=</span> <span class="s">"oops"</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">fio_hash_find</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key1</span><span class="p">))</span>
+    <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span>
+            <span class="s">"ERROR: string comparison should have failed, instead got: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
+            <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">fio_hash_find</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key1</span><span class="p">));</span>
+  <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">fio_hash_find</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key1_copy</span><span class="p">))</span>
+    <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"Hash string comparison passed for %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
+            <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">fio_hash_find</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key1_copy</span><span class="p">));</span>
+
+  <span class="n">fio_hash_insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key2</span><span class="p">,</span> <span class="n">key2</span><span class="p">.</span><span class="n">str</span><span class="p">);</span>
+  <span class="n">fio_hash_insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key3</span><span class="p">,</span> <span class="n">key3</span><span class="p">.</span><span class="n">str</span><span class="p">);</span>
+  <span class="n">fio_hash_insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key2</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span> <span class="cm">/* deletes the key2 object  */</span>
+  <span class="n">fio_hash_rehash</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">);</span> <span class="cm">/* forces the unused key to be destroyed */</span>
+  <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"Did we free %s?</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">key2</span><span class="p">.</span><span class="n">str</span><span class="p">);</span>
+  <span class="n">FIO_HASH_FOR_EMPTY</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="p">{</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">i</span><span class="o">-&gt;</span><span class="n">obj</span><span class="p">;</span> <span class="p">}</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">fio_hash_find</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key1_copy</span><span class="p">))</span>
+    <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span>
+            <span class="s">"ERROR: string comparison should have failed, instead got: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
+            <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">fio_hash_find</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key1</span><span class="p">));</span>
+  <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"reinserting stuff</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">fio_hash_insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key2</span><span class="p">,</span> <span class="n">key2</span><span class="p">.</span><span class="n">str</span><span class="p">);</span>
+  <span class="n">fio_hash_insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key3</span><span class="p">,</span> <span class="n">key3</span><span class="p">.</span><span class="n">str</span><span class="p">);</span>
+  <span class="n">FIO_HASH_FOR_FREE</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="p">{</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">i</span><span class="o">-&gt;</span><span class="n">obj</span><span class="p">;</span> <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>

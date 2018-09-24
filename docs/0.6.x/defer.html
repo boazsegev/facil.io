@@ -1,0 +1,166 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - lib defer, an event scheduling and thread pool library in C.</title><meta content="facil.io - lib defer, an event scheduling and thread pool library in C." name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-6-x"><a href="/0.6.x/index">Version 0.6.x</a></h2>
+
+<ul>
+<li><a href="/0.6.x/api">API Overview</a></li>
+<li><a href="/0.6.x/modules">The Modules</a></li>
+</ul>
+
+<h3 id="core-api"><a href="/0.6.x/facil">Core API</a></h3>
+
+<ul>
+<li><a href="/0.6.x/defer">Event scheduling</a></li>
+<li><a href="/0.6.x/evio">Low Level Polling</a></li>
+<li><a href="/0.6.x/sock">Low Level Sockets</a></li>
+<li><a href="/0.6.x/fio_mem">Memory Allocation</a></li>
+</ul>
+
+<h3 id="extensions">Extensions</h3>
+
+<ul>
+<li><a href="/0.6.x/http">HTTP</a></li>
+<li><a href="/0.6.x/websockets">WebSockets</a></li>
+<li><a href="/0.6.x/pubsub">Pub/Sub</a></li>
+<li><a href="/0.6.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.6.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.6.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.6.x/fiobj_str">Strings</a></li>
+<li><a href="/0.6.x/fiobj_ary">Array</a></li>
+<li><a href="/0.6.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.6.x/fiobj_json">JSON</a></li>
+</ul>
+
+<h3 id="core-types"><a href="/0.6.x/types">Core Types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fio_ary">C Arrays</a></li>
+<li><a href="/0.6.x/fio_hashmap">C HashMap</a></li>
+<li><a href="/0.6.x/fio_llist">Linked Lists</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#defer-an-event-scheduling-library-in-c"><code>defer</code> - An event scheduling library in C.</a>
+</li>
+</ul>
+</div><h1 id="defer-an-event-scheduling-library-in-c"><code>defer</code> - An event scheduling library in C.</h1>
+
+<p><code>defer</code> is a simple thread pool library that defaults to POSIX threads (and could be easily ported to any thread system).</p>
+
+<p>It uses a combination of micro-sleep and spin-locks for load-balancing across threads, making it more performant then the conditional variable approach as well as more portable.</p>
+
+<p>Unlike most thread pool libraries, <code>defer</code> allows for two pointers to be passed to each task, allowing greater versatility and optimizations. For example, <code>facil.io</code> uses this approach to perform interactions between objects without requiring any additional allocations (which is very important for larger object collections).</p>
+
+<p>The library is conveniently documented inside it&#39;s <code>defer.h</code> file.</p>
+
+<p><code>defer</code> can run in a single thread mode, without using a thread pool:</p>
+<pre><code class='highlight'><span class="cp">#include "defer.h"
+#include &lt;stdio.h&gt;
+</span><span class="c1">// an example task</span>
+<span class="kt">void</span> <span class="nf">say_hi</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span> <span class="n">arg1</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span> <span class="n">arg2</span><span class="p">)</span> <span class="p">{</span>
+  <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">arg2</span><span class="p">;</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"%s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span> <span class="p">)</span><span class="n">arg1</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// an example usage</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">defer</span><span class="p">(</span><span class="n">say_hi</span><span class="p">,</span> <span class="s">"Hello There!"</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Running all scheduled tasks...</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">defer_perform</span><span class="p">();</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Done.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre>
+<p>Or using a thread pool:</p>
+<pre><code class='highlight'><span class="cp">#include "defer.h"
+#include &lt;stdint.h&gt;
+#include &lt;stdio.h&gt;
+</span><span class="c1">// an example task</span>
+<span class="kt">void</span> <span class="nf">say_hi</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span> <span class="n">arg1</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span> <span class="n">arg2</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"%s (%lu)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span> <span class="p">)</span><span class="n">arg1</span><span class="p">,</span> <span class="p">(</span><span class="kt">uintptr_t</span><span class="p">)</span><span class="n">arg2</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// an example usage</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">uintptr_t</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">64</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">defer</span><span class="p">(</span><span class="n">say_hi</span><span class="p">,</span> <span class="s">"Hello There!"</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="n">i</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Starting thread pool...</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">pool_pt</span> <span class="n">pool</span> <span class="o">=</span> <span class="n">defer_pool_start</span><span class="p">(</span><span class="mi">8</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Signaling thread pool to finish...</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">defer_pool_stop</span><span class="p">(</span><span class="n">pool</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"... Waiting for thread pool to finish.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">defer_pool_wait</span><span class="p">(</span><span class="n">pool</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Done.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre>
+<p>This is actually most of the API right there, but if you need more details you can find them in the <a href="https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/defer.h"><code>defer.h</code> header file</a>.</p>
+</div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>
