@@ -7,8 +7,8 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <fio.h>
 
-#include "http1.h"
-#include "http_internal.h"
+#include <http1.h>
+#include <http_internal.h>
 
 #include <ctype.h>
 #include <fcntl.h>
@@ -1775,7 +1775,7 @@ int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
 /* *****************************************************************************
 HTTP Body Parsing
 ***************************************************************************** */
-#include "http_mime_parser.h"
+#include <http_mime_parser.h>
 
 typedef struct {
   http_mime_parser_s p;
@@ -2634,7 +2634,7 @@ parse_path:
 /* *****************************************************************************
 Lookup Tables / functions
 ***************************************************************************** */
-#include "fio_hashmap.h"
+#include <fio_hashmap.h>
 
 static fio_hash_s mime_types;
 

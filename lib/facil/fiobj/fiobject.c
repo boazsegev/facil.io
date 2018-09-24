@@ -7,9 +7,9 @@ License: MIT
 This facil.io core library provides wrappers around complex and (or) dynamic
 types, abstracting some complexity and making dynamic type related tasks easier.
 */
-#include "fiobject.h"
+#include <fiobject.h>
 
-#include "fio_ary.h"
+#include <fio_ary.h>
 
 #include <stdarg.h>
 #include <stdint.h>
@@ -52,7 +52,7 @@ fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
 void *__attribute__((weak)) fio_mmap(size_t size) { return fio_malloc(size); }
 
 #define FIO_OVERRIDE_MALLOC 1
-#include "fiobj_mem.h"
+#include <fiobj_mem.h>
 
 /* *****************************************************************************
 the `fiobj_each2` function
@@ -180,7 +180,7 @@ void fiobj_free_complex_object(FIOBJ o) {
 /* *****************************************************************************
 Is Equal?
 ***************************************************************************** */
-#include "fiobj_hash.h"
+#include <fiobj_hash.h>
 
 static inline int fiobj_iseq_simple(const FIOBJ o, const FIOBJ o2) {
   if (o == o2)
@@ -281,8 +281,8 @@ double fiobject___noop_to_f(const FIOBJ o) {
 
 #if DEBUG
 
-#include "fiobj_ary.h"
-#include "fiobj_numbers.h"
+#include <fiobj_ary.h>
+#include <fiobj_numbers.h>
 
 static int fiobject_test_task(FIOBJ o, void *arg) {
   ++((uintptr_t *)arg)[0];

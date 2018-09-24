@@ -16,11 +16,11 @@ License: MIT
 #define PAGE_SIZE 4096
 #endif
 
-#include "fiobject.h"
+#include <fiobject.h>
 
-#include "fio_siphash.h"
-#include "fiobj_numbers.h"
-#include "fiobj_str.h"
+#include <fio_siphash.h>
+#include <fiobj_numbers.h>
+#include <fiobj_str.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -30,9 +30,9 @@ License: MIT
 #include <sys/stat.h>
 
 #define FIO_OVERRIDE_MALLOC 1
-#include "fiobj_mem.h"
+#include <fiobj_mem.h>
 
-#include "fio_str.h"
+#include <fio_str.h>
 
 #ifndef PATH_MAX
 #define PATH_MAX PAGE_SIZE

@@ -3,16 +3,16 @@ Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 
-#include "fiobject.h"
+#include <fiobject.h>
 
 #define FIO_OVERRIDE_MALLOC 1
-#include "fiobj_mem.h"
+#include <fiobj_mem.h>
 
 #define FIO_ARY_TYPE FIOBJ
 #define FIO_ARY_TYPE_INVALID FIOBJ_INVALID
 #define FIO_ARY_TYPE_COMPARE(a, b) (fiobj_iseq((a), (b)))
+#include <fio_ary.h>
 
-#include "fio_ary.h"
 #include <assert.h>
 
 #ifndef FIOBJ_ARRAY_DEFAULT_CAPA

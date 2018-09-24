@@ -21,7 +21,7 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "fio_siphash.h"
+#include <fio_siphash.h>
 
 #if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
 #define __attribute__(...)

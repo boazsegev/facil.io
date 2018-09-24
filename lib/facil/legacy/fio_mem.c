@@ -40,7 +40,7 @@ facil.io malloc implementation
 ***************************************************************************** */
 #else
 
-#include "fio_mem.h"
+#include <fio_mem.h>
 
 #if !defined(__clang__) && !defined(__GNUC__)
 #define __thread _Thread_value

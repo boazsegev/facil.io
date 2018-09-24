@@ -3,11 +3,11 @@ Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 
-#include "fiobj_numbers.h"
-#include "fiobject.h"
+#include <fiobj_numbers.h>
+#include <fiobject.h>
 
 #define FIO_OVERRIDE_MALLOC 1
-#include "fiobj_mem.h"
+#include <fiobj_mem.h>
 
 #include <assert.h>
 #include <errno.h>

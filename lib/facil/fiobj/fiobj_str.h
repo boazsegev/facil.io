@@ -5,7 +5,7 @@ License: MIT
 */
 #define H_FIOBJ_STR_H
 
-#include "fiobject.h"
+#include <fiobject.h>
 
 #ifdef __cplusplus
 extern "C" {

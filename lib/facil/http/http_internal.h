@@ -10,9 +10,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_INCLUDE_LINKED_LIST
 #include <fio.h>
 
-#include "http.h"
+#include <http.h>
 
-#include "fiobj4sock.h"
+#include <fiobj4sock.h>
 
 #include <arpa/inet.h>
 #include <errno.h>

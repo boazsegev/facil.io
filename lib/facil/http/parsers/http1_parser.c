@@ -8,7 +8,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #define __GNU_SOURCE
 #endif
 
-#include "http1_parser.h"
+#include <http1_parser.h>
+
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>

@@ -575,7 +575,7 @@ int websocket_connect(const char *address, websocket_settings_s settings);
 #define websocket_connect(address, ...)                                        \
   websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
 
-#include "websockets.h"
+#include <websockets.h>
 
 /* *****************************************************************************
 EventSource Support (SSE)

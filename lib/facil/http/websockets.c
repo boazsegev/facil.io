@@ -20,7 +20,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <string.h>
 #include <strings.h>
 
-#include "websocket_parser.h"
+#include <websocket_parser.h>
 
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #include <endian.h>

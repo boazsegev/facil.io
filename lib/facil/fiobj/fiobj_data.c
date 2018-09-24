@@ -17,9 +17,9 @@ License: MIT
  * Writing is always performed at the end of the stream / memory buffer,
  * ignoring the current seek position.
  */
-#include "fiobj_data.h"
-#include "fio_tmpfile.h"
-#include "fiobj_str.h"
+#include <fio_tmpfile.h>
+#include <fiobj_data.h>
+#include <fiobj_str.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -30,7 +30,7 @@ License: MIT
 #include <unistd.h>
 
 #define FIO_OVERRIDE_MALLOC 1
-#include "fiobj_mem.h"
+#include <fiobj_mem.h>
 
 /* *****************************************************************************
 Numbers Type
@@ -1153,7 +1153,7 @@ void fiobj_data_test(void) {
 #endif
 
 #else /* require POSIX */
-#include "fiobj_data.h"
+#include <fiobj_data.h>
 
 /** Creates a new local in-memory IO object */
 FIOBJ fiobj_data_newstr(void) { return FIOBJ_INVALID; }

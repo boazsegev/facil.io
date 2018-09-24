@@ -16,7 +16,7 @@ License: MIT
  */
 #define H_FIOBJ_IO_H
 
-#include "fiobject.h"
+#include <fiobject.h>
 
 #ifdef __cplusplus
 extern "C" {

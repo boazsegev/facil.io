@@ -3,17 +3,17 @@ Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 
-#include "fiobject.h"
+#include <fiobject.h>
 
 #define FIO_OVERRIDE_MALLOC 1
-#include "fiobj_mem.h"
+#include <fiobj_mem.h>
 
 #if !FIO_FORCE_MALLOC
 #define FIO_HASH_REALLOC(ptr, original_size, size, valid_data_length)          \
   fio_realloc2((ptr), (size), (valid_data_length))
 #endif
 
-#include "fiobj_hash.h"
+#include <fiobj_hash.h>
 
 #include <assert.h>
 
@@ -38,7 +38,7 @@ static void hash_key_free(hash_key_s key) { fiobj_free(key.key); }
 #define FIO_HASH_KEY_COPY(k) hash_key_copy(k)
 #define FIO_HASH_KEY_DESTROY(k) hash_key_free(k)
 
-#include "fio_hashmap.h"
+#include <fio_hashmap.h>
 
 #include <errno.h>
 

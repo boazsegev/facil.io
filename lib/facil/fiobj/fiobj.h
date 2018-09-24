@@ -5,15 +5,15 @@ License: MIT
 #ifndef H_FIOBJ_H
 #define H_FIOBJ_H
 
-#include "fiobj_ary.h"
-#include "fiobj_data.h"
-#include "fiobj_hash.h"
-#include "fiobj_json.h"
-#include "fiobj_numbers.h"
-#include "fiobj_str.h"
-#include "fiobject.h"
+#include <fiobj_ary.h>
+#include <fiobj_data.h>
+#include <fiobj_hash.h>
+#include <fiobj_json.h>
+#include <fiobj_numbers.h>
+#include <fiobj_str.h>
+#include <fiobject.h>
 
-#include "fio_siphash.h"
+#include <fio_siphash.h>
 
 #if DEBUG
 FIO_INLINE void fiobj_test(void) {

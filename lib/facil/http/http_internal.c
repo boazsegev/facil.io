@@ -4,9 +4,9 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#include "http_internal.h"
+#include <http_internal.h>
 
-#include "http1.h"
+#include <http1.h>
 
 /* *****************************************************************************
 Internal Request / Response Handlers

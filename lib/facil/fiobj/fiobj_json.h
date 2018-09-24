@@ -6,11 +6,11 @@ Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 
-#include "fiobj_ary.h"
-#include "fiobj_hash.h"
-#include "fiobj_numbers.h"
-#include "fiobj_str.h"
-#include "fiobject.h"
+#include <fiobj_ary.h>
+#include <fiobj_hash.h>
+#include <fiobj_numbers.h>
+#include <fiobj_str.h>
+#include <fiobject.h>
 
 #ifdef __cplusplus
 extern "C" {
