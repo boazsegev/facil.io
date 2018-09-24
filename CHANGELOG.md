@@ -1,6 +1,5 @@
 # Change Log
 
----
 ## Future (expected / upcoming) changes
 
 ### API and ABI breaking changes expected in v. 0.7.0
@@ -51,7 +50,6 @@ This should make the library easier to copy and use as well as minimize possible
 
 **Documentation**: A new website!
 
----
 ## Released versions
 
 ### v. 0.6.4
