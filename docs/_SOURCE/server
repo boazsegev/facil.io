@@ -162,7 +162,7 @@ module APP
     end
     # output sitemap
     out = "".dup
-    @sitemap.each {|url| out << "#{url[0...-5]}\r\n" if File.extname(url) == ".html" }
+    @sitemap.each {|url| out << "http://facil.io#{url[0...-5]}\r\n" if File.extname(url) == ".html" }
     out << "\r\n"
     IO.binwrite File.join(STATIC_ROOT, "sitemap.txt"), out
   end
