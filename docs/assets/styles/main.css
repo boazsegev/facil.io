@@ -326,7 +326,7 @@ h4 {
     height: 100%;
     background-repeat: no-repeat;
     background-image: url("/assets/logo/facil-io.svg");
-    background-size: 100% 100%; }
+    background-size: contain; }
 
 #logo {
   position: fixed;
@@ -343,7 +343,7 @@ h4 {
     height: 100%;
     background-repeat: no-repeat;
     background-image: url("/assets/logo/facil-io-side.svg");
-    background-size: 100% 100%; }
+    background-size: contain; }
 
 #notice {
   z-index: 99999;
