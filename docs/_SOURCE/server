@@ -161,10 +161,10 @@ module APP
       end
     end
     # output sitemap
-    out = "<html><body><ul><li><a href=\"/index\">/</a></li>".dup
-    @sitemap.each {|url| out << "<li><a href=\"#{url[0...-5]}\">#{url[0...-5]}</a></li>\r\n" if File.extname(url) == ".html" }
-    out << "</ul></body></html>"
-    IO.binwrite File.join(STATIC_ROOT, "sitemap.html"), out
+    out = "".dup
+    @sitemap.each {|url| out << "#{url[0...-5]}\r\n" if File.extname(url) == ".html" }
+    out << "\r\n"
+    IO.binwrite File.join(STATIC_ROOT, "sitemap.txt"), out
   end
 
 # define different Rack application methods, depending on the environment.
