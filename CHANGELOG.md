@@ -29,7 +29,7 @@ This should make the library easier to copy and use as well as minimize possible
 
 * Timers are now in user space, allowing for more timers and less kernel dependencies.
 
-* The `on_idle` and `on_finish` settings in `facil_run` (now `facil_start`) were removed, replaced by the more flexible `fio_state_callback_add` approach.
+* The `on_idle` and `on_finish` settings in `facil_run` (now `fio_start`) were removed, replaced by the more flexible `fio_state_callback_add` approach.
 
 * The `fio_listen` and `http_listen` functions now return the listening socket's `uuid` (much like `fio_connect` and `http_connect` did).
 

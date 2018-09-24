@@ -270,7 +270,7 @@
 <p>Although two files are more difficult to maintain than 10 files (assuming it&#39;s the same amount of code)... it seems that two files are easier for other developers to copy and paste into their projects.</p></li>
 <li><p>Added poll support to allow for performance testing and CYGWIN compatibility. The system epoll/kqueue calls should perform better for higher loads, but now you can see for yourself.</p></li>
 <li><p>Timers are now in user space, allowing for more timers and less kernel dependencies.</p></li>
-<li><p>The <code>on_idle</code> and <code>on_finish</code> settings in <code>facil_run</code> (now <code>facil_start</code>) were removed, replaced by the more flexible <code>fio_state_callback_add</code> approach.</p></li>
+<li><p>The <code>on_idle</code> and <code>on_finish</code> settings in <code>facil_run</code> (now <code>fio_start</code>) were removed, replaced by the more flexible <code>fio_state_callback_add</code> approach.</p></li>
 <li><p>The <code>fio_listen</code> and <code>http_listen</code> functions now return the listening socket&#39;s <code>uuid</code> (much like <code>fio_connect</code> and <code>http_connect</code> did).</p></li>
 <li><p>The Protocol&#39;s <code>on_shutdown</code> callback is now expected to return a <code>uint8_t</code>, hinting at a requested timeout before the socket is forcefully closed. A return value of 0 will indicate immediate socket closure with an 8 second timeout for outgoing buffer flushing.</p></li>
 <li><p>The cluster messaging system and the Pub/Sub system were both refactored, <strong>the API changed</strong> and the FIOBJ dependency was removed. This change cascades to effect all the Pub/Sub system elements.</p></li>

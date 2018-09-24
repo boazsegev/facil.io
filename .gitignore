@@ -13,3 +13,4 @@ lib/bearssl/
 .gitmodules
 
 callgrind*
+docs/assets/styles/main.css.map
