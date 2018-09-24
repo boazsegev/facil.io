@@ -5,9 +5,8 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 */
 
-#include "spnlock.h"
+#include <fio.h>
 
-#include "fio_base64.h"
 #include "http1.h"
 #include "http_internal.h"
 
@@ -18,8 +17,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include "fio_mem.h"
 
 /* *****************************************************************************
 Patch for OSX version < 10.12 from https://stackoverflow.com/a/9781275/4025095
@@ -68,7 +65,7 @@ static inline void add_content_type(http_s *r) {
 
 static FIOBJ current_date;
 static time_t last_date_added;
-static spn_lock_i date_lock;
+static fio_lock_i date_lock;
 static inline void add_date(http_s *r) {
   static uint64_t date_hash = 0;
   if (!date_hash)
@@ -77,18 +74,18 @@ static inline void add_date(http_s *r) {
   if (!mod_hash)
     mod_hash = fio_siphash("last-modified", 13);
 
-  if (facil_last_tick().tv_sec > last_date_added) {
-    spn_lock(&date_lock);
-    if (facil_last_tick().tv_sec > last_date_added) { /* retest inside lock */
+  if (fio_last_tick().tv_sec > last_date_added) {
+    fio_lock(&date_lock);
+    if (fio_last_tick().tv_sec > last_date_added) { /* retest inside lock */
       FIOBJ tmp = fiobj_str_buf(32);
       FIOBJ old = current_date;
-      fiobj_str_resize(tmp, http_time2str(fiobj_obj2cstr(tmp).data,
-                                          facil_last_tick().tv_sec));
-      last_date_added = facil_last_tick().tv_sec;
+      fiobj_str_resize(
+          tmp, http_time2str(fiobj_obj2cstr(tmp).data, fio_last_tick().tv_sec));
+      last_date_added = fio_last_tick().tv_sec;
       current_date = tmp;
       fiobj_free(old);
     }
-    spn_unlock(&date_lock);
+    fio_unlock(&date_lock);
   }
 
   if (!fiobj_hash_get2(r->private_data.out_headers, date_hash)) {
@@ -119,8 +116,8 @@ static int write_header(FIOBJ o, void *w_) {
     fiobj_each1(o, 0, write_header, w);
     return 0;
   }
-  fio_cstr_s name = fiobj_obj2cstr(w->name);
-  fio_cstr_s str = fiobj_obj2cstr(o);
+  fio_str_info_s name = fiobj_obj2cstr(w->name);
+  fio_str_info_s str = fiobj_obj2cstr(o);
   if (!str.data)
     return 0;
   fiobj_str_write(w->dest, name.data, name.len);
@@ -159,11 +156,11 @@ int http_set_header(http_s *r, FIOBJ name, FIOBJ value) {
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_header2(http_s *r, fio_cstr_s n, fio_cstr_s v) {
-  if (HTTP_INVALID_HANDLE(r) || !n.data || !n.length || (v.data && !v.length))
+int http_set_header2(http_s *r, fio_str_info_s n, fio_str_info_s v) {
+  if (HTTP_INVALID_HANDLE(r) || !n.data || !n.len || (v.data && !v.len))
     return -1;
-  FIOBJ tmp = fiobj_str_new(n.data, n.length);
-  int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.length));
+  FIOBJ tmp = fiobj_str_new(n.data, n.len);
+  int ret = http_set_header(r, tmp, fiobj_str_new(v.data, v.len));
   fiobj_free(tmp);
   return ret;
 }
@@ -179,8 +176,9 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   HTTP_ASSERT(h, "Can't set cookie for NULL HTTP handler!");
 #endif
   if (HTTP_INVALID_HANDLE(h) || cookie.name_len >= 32768 ||
-      cookie.value_len >= 131072)
+      cookie.value_len >= 131072) {
     return -1;
+  }
 
   static int warn_illegal = 0;
 
@@ -188,7 +186,7 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   size_t capa = cookie.name_len + cookie.value_len + 128;
   size_t len = 0;
   FIOBJ c = fiobj_str_buf(capa);
-  fio_cstr_s t = fiobj_obj2cstr(c);
+  fio_str_info_s t = fiobj_obj2cstr(c);
   if (cookie.name) {
     if (cookie.name_len) {
       size_t tmp = 0;
@@ -416,7 +414,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
   }
   {
     /* decode filename in cases where it's URL encoded */
-    fio_cstr_s tmp = fiobj_obj2cstr(filename);
+    fio_str_info_s tmp = fiobj_obj2cstr(filename);
     if (encoded) {
       char *pos = (char *)encoded;
       const char *end = encoded + encoded_len;
@@ -429,7 +427,7 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
         if (*pos == '%') {
           // decode hex value
           // this is a percent encoded value.
-          if (hex2byte(tmp.bytes + tmp.len, (uint8_t *)pos + 1))
+          if (hex2byte((uint8_t *)tmp.data + tmp.len, (uint8_t *)pos + 1))
             return -1;
           tmp.len++;
           pos += 3;
@@ -447,12 +445,12 @@ int http_sendfile2(http_s *h, const char *prefix, size_t prefix_len,
   int file = -1;
   uint8_t is_gz = 0;
 
-  fio_cstr_s s = fiobj_obj2cstr(filename);
+  fio_str_info_s s = fiobj_obj2cstr(filename);
   {
     FIOBJ tmp = fiobj_hash_get2(h->headers, accept_enc_hash);
     if (!tmp)
       goto no_gzip_support;
-    fio_cstr_s ac_str = fiobj_obj2cstr(tmp);
+    fio_str_info_s ac_str = fiobj_obj2cstr(tmp);
     if (!ac_str.data || !strstr(ac_str.data, "gzip"))
       goto no_gzip_support;
     if (s.data[s.len - 3] != '.' || s.data[s.len - 2] != 'g' ||
@@ -519,7 +517,7 @@ found_file:
         /* range ahead... */
         if (FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY))
           tmp = fiobj_ary_index(tmp, 0);
-        fio_cstr_s range = fiobj_obj2cstr(tmp);
+        fio_str_info_s range = fiobj_obj2cstr(tmp);
         if (!range.data || memcmp("bytes=", range.data, 6))
           goto open_file;
         char *pos = range.data + 6;
@@ -550,11 +548,14 @@ found_file:
         }
         h->status = 206;
 
-        http_set_header(h, HTTP_HEADER_CONTENT_RANGE,
-                        fiobj_strprintf("bytes %lu-%lu/%lu",
-                                        (unsigned long)start_at,
-                                        (unsigned long)(start_at + length - 1),
-                                        (unsigned long)file_data.st_size));
+        {
+          FIOBJ cranges = fiobj_str_buf(1);
+          fiobj_str_printf(cranges, "bytes %lu-%lu/%lu",
+                           (unsigned long)start_at,
+                           (unsigned long)(start_at + length - 1),
+                           (unsigned long)file_data.st_size);
+          http_set_header(h, HTTP_HEADER_CONTENT_RANGE, cranges);
+        }
         http_set_header(h, HTTP_HEADER_ACCEPT_RANGES,
                         fiobj_dup(HTTP_HVALUE_BYTES));
       }
@@ -565,8 +566,8 @@ found_file:
   switch (s.len) {
   case 7:
     if (!strncasecmp("options", s.data, 7)) {
-      http_set_header2(h, (fio_cstr_s){.data = "allow", .len = 5},
-                       (fio_cstr_s){.data = "GET, HEAD", .len = 9});
+      http_set_header2(h, (fio_str_info_s){.data = "allow", .len = 5},
+                       (fio_str_info_s){.data = "GET, HEAD", .len = 9});
       h->status = 200;
       http_finish(h);
       return 0;
@@ -652,7 +653,7 @@ int http_send_error(http_s *r, size_t error) {
                      http2protocol(r)->settings->public_folder_length, buffer,
                      pos)) {
     http_set_header(r, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
-    fio_cstr_s t = http_status2str(error);
+    fio_str_info_s t = http_status2str(error);
     http_send_body(r, t.data, t.len);
   }
   return 0;
@@ -677,7 +678,7 @@ void http_finish(http_s *r) {
  * Returns -1 on error and 0 on success.
  */
 int http_push_data(http_s *r, void *data, uintptr_t length, FIOBJ mime_type) {
-  if (!r || !(http_protocol_s *)r->private_data.flag)
+  if (!r || !(http_fio_protocol_s *)r->private_data.flag)
     return -1;
   return ((http_vtable_s *)r->private_data.vtbl)
       ->http_push_data(r, data, length, mime_type);
@@ -712,33 +713,29 @@ int http_upgrade2ws(http_s *h, websocket_settings_s args) {
   return ((http_vtable_s *)h->private_data.vtbl)->http2websocket(h, &args);
 error:
   if (args.on_close)
-    args.on_close(0, args.udata);
+    args.on_close(-1, args.udata);
   return -1;
 }
 
 /* *****************************************************************************
 Pause / Resume
 ***************************************************************************** */
-typedef struct {
+struct http_pause_handle_s {
   uintptr_t uuid;
   http_s *h;
   void *udata;
   void (*task)(http_s *);
   void (*fallback)(void *);
-} http_pause_handle_s;
+};
 
 /** Returns the `udata` associated with the paused opaque handle */
-void *http_paused_udata_get(void *http_) {
-  const http_pause_handle_s *http = http_;
-  return http->udata;
-}
+void *http_paused_udata_get(http_pause_handle_s *http) { return http->udata; }
 
 /**
  * Sets the `udata` associated with the paused opaque handle, returning the
  * old value.
  */
-void *http_paused_udata_set(void *http_, void *udata) {
-  http_pause_handle_s *http = http_;
+void *http_paused_udata_set(http_pause_handle_s *http, void *udata) {
   void *old = http->udata;
   http->udata = udata;
   return old;
@@ -751,8 +748,8 @@ static void http_pause_wrapper(void *h_, void *task_) {
 }
 
 /* perform the resume task within of the connection's lock */
-static void http_resume_wrapper(intptr_t uuid, protocol_s *p_, void *arg) {
-  http_protocol_s *p = (http_protocol_s *)p_;
+static void http_resume_wrapper(intptr_t uuid, fio_protocol_s *p_, void *arg) {
+  http_fio_protocol_s *p = (http_fio_protocol_s *)p_;
   http_pause_handle_s *http = arg;
   http_s *h = http->h;
   h->udata = http->udata;
@@ -776,11 +773,11 @@ static void http_resume_fallback_wrapper(intptr_t uuid, void *arg) {
 /**
  * Defers the request / response handling for later.
  */
-void http_pause(http_s *h, void (*task)(void *http)) {
+void http_pause(http_s *h, void (*task)(http_pause_handle_s *http)) {
   if (HTTP_INVALID_HANDLE(h)) {
     return;
   }
-  http_protocol_s *p = (http_protocol_s *)h->private_data.flag;
+  http_fio_protocol_s *p = (http_fio_protocol_s *)h->private_data.flag;
   http_vtable_s *vtbl = (http_vtable_s *)h->private_data.vtbl;
   http_pause_handle_s *http = fio_malloc(sizeof(*http));
   *http = (http_pause_handle_s){
@@ -789,28 +786,27 @@ void http_pause(http_s *h, void (*task)(void *http)) {
       .udata = h->udata,
   };
   vtbl->http_on_pause(h, p);
-  defer(http_pause_wrapper, http, (void *)((uintptr_t)task));
+  fio_defer(http_pause_wrapper, http, (void *)((uintptr_t)task));
 }
 
 /**
  * Defers the request / response handling for later.
  */
-void http_resume(void *http_, void (*task)(http_s *h),
+void http_resume(http_pause_handle_s *http, void (*task)(http_s *h),
                  void (*fallback)(void *udata)) {
-  if (!http_)
+  if (!http)
     return;
-  http_pause_handle_s *http = http_;
   http->task = task;
   http->fallback = fallback;
-  facil_defer(.uuid = http->uuid, .arg = http, .type = FIO_PR_LOCK_TASK,
-              .task = http_resume_wrapper,
-              .fallback = http_resume_fallback_wrapper);
+  fio_defer_io_task(http->uuid, .udata = http, .type = FIO_PR_LOCK_TASK,
+                    .task = http_resume_wrapper,
+                    .fallback = http_resume_fallback_wrapper);
 }
 
 /**
  * Hijacks the socket away from the HTTP protocol and away from facil.io.
  */
-intptr_t http_hijack(http_s *h, fio_cstr_s *leftover) {
+intptr_t http_hijack(http_s *h, fio_str_info_s *leftover) {
   if (!h)
     return -1;
   return ((http_vtable_s *)h->private_data.vtbl)->http_hijack(h, leftover);
@@ -848,9 +844,9 @@ http_settings_s *http_settings_new(http_settings_s arg_settings) {
   if (!arg_settings.max_header_size)
     arg_settings.max_header_size = 32 * 1024; /* defaults to 32Kib seconds */
   if (arg_settings.max_clients <= 0 ||
-      arg_settings.max_clients + HTTP_BUSY_UNLESS_HAS_FDS >
-          sock_max_capacity()) {
-    arg_settings.max_clients = sock_max_capacity();
+      (size_t)(arg_settings.max_clients + HTTP_BUSY_UNLESS_HAS_FDS) >
+          fio_capa()) {
+    arg_settings.max_clients = fio_capa();
     if ((ssize_t)arg_settings.max_clients - HTTP_BUSY_UNLESS_HAS_FDS > 0)
       arg_settings.max_clients -= HTTP_BUSY_UNLESS_HAS_FDS;
   }
@@ -892,19 +888,19 @@ Listening to HTTP connections
 
 static void http_on_open(intptr_t uuid, void *set) {
   static uint8_t at_capa;
-  facil_set_timeout(uuid, ((http_settings_s *)set)->timeout);
-  if (sock_uuid2fd(uuid) >= ((http_settings_s *)set)->max_clients) {
+  fio_timeout_set(uuid, ((http_settings_s *)set)->timeout);
+  if (fio_uuid2fd(uuid) >= ((http_settings_s *)set)->max_clients) {
     if (!at_capa)
       fprintf(stderr, "WARNING: HTTP server at capacity\n");
     at_capa = 1;
     http_send_error2(uuid, 503, set);
-    sock_close(uuid);
+    fio_close(uuid);
     return;
   }
   at_capa = 0;
-  protocol_s *pr = http1_new(uuid, set, NULL, 0);
+  fio_protocol_s *pr = http1_new(uuid, set, NULL, 0);
   if (!pr)
-    sock_close(uuid);
+    fio_close(uuid);
 }
 
 static void http_on_finish(intptr_t uuid, void *set) {
@@ -927,6 +923,7 @@ static void http_on_finish(intptr_t uuid, void *set) {
 #undef http_listen
 intptr_t http_listen(const char *port, const char *binding,
                      struct http_settings_s arg_settings) {
+  http_lib_init();
   if (arg_settings.on_request == NULL) {
     fprintf(stderr, "ERROR: http_listen requires the .on_request parameter "
                     "to be set\n");
@@ -937,9 +934,9 @@ intptr_t http_listen(const char *port, const char *binding,
   http_settings_s *settings = http_settings_new(arg_settings);
   settings->is_client = 0;
 
-  return facil_listen(.port = port, .address = binding,
-                      .on_finish = http_on_finish, .on_open = http_on_open,
-                      .udata = settings);
+  return fio_listen(.port = port, .address = binding,
+                    .on_finish = http_on_finish, .on_open = http_on_open,
+                    .udata = settings);
 }
 /** Listens to HTTP connections at the specified `port` and `binding`. */
 #define http_listen(port, binding, ...)                                        \
@@ -951,25 +948,25 @@ intptr_t http_listen(const char *port, const char *binding,
  * Returns NULL on error (i.e., connection was lost).
  */
 struct http_settings_s *http_settings(http_s *r) {
-  return ((http_protocol_s *)r->private_data.flag)->settings;
+  return ((http_fio_protocol_s *)r->private_data.flag)->settings;
 }
 
 /**
  * Returns the direct address of the connected peer (likely an intermediary).
  */
-sock_peer_addr_s http_peer_addr(http_s *h) {
-  return sock_peer_addr(((http_protocol_s *)h->private_data.flag)->uuid);
+fio_str_info_s http_peer_addr(http_s *h) {
+  return fio_peer_addr(((http_fio_protocol_s *)h->private_data.flag)->uuid);
 }
 
 /* *****************************************************************************
 HTTP client connections
 ***************************************************************************** */
 
-static void http_on_close_client(intptr_t uuid, protocol_s *protocol) {
-  http_protocol_s *p = (http_protocol_s *)protocol;
+static void http_on_close_client(intptr_t uuid, fio_protocol_s *protocol) {
+  http_fio_protocol_s *p = (http_fio_protocol_s *)protocol;
   http_settings_s *set = p->settings;
-  void (**original)(intptr_t, protocol_s *) =
-      (void (**)(intptr_t, protocol_s *))(set + 1);
+  void (**original)(intptr_t, fio_protocol_s *) =
+      (void (**)(intptr_t, fio_protocol_s *))(set + 1);
   if (set->on_finish)
     set->on_finish(set);
 
@@ -981,15 +978,15 @@ static void http_on_open_client(intptr_t uuid, void *set_) {
   http_settings_s *set = set_;
   http_s *h = set->udata;
   set->udata = h->udata;
-  facil_set_timeout(uuid, set->timeout);
-  protocol_s *pr = http1_new(uuid, set, NULL, 0);
+  fio_timeout_set(uuid, set->timeout);
+  fio_protocol_s *pr = http1_new(uuid, set, NULL, 0);
   if (!pr) {
-    sock_close(uuid);
+    fio_close(uuid);
     return;
   }
   { /* store the original on_close at the end of the struct, we wrap it. */
-    void (**original)(intptr_t, protocol_s *) =
-        (void (**)(intptr_t, protocol_s *))(set + 1);
+    void (**original)(intptr_t, fio_protocol_s *) =
+        (void (**)(intptr_t, fio_protocol_s *))(set + 1);
     *original = pr->on_close;
     pr->on_close = http_on_close_client;
   }
@@ -1031,8 +1028,9 @@ intptr_t http_connect(const char *address,
     fprintf(stderr, "ERROR: http_connect requires either an on_response "
                     " or an on_upgrade callback.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   }
+  http_lib_init();
   size_t len;
   char *a, *p;
   uint8_t is_websocket = 0;
@@ -1041,8 +1039,9 @@ intptr_t http_connect(const char *address,
   if (!address || (len = strlen(address)) <= 5) {
     fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   }
+  // TODO: use http_url_parse
   if (!strncasecmp(address, "ws", 2)) {
     is_websocket = 1;
     address += 2;
@@ -1053,7 +1052,7 @@ intptr_t http_connect(const char *address,
   } else {
     fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   }
   /* parse address */
   if (address[0] == 's') {
@@ -1062,11 +1061,11 @@ intptr_t http_connect(const char *address,
     fprintf(stderr, "ERROR: http_connect doesn't support TLS/SSL "
                     "just yet.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   } else if (len <= 3 || strncmp(address, "://", 3)) {
     fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
     errno = EINVAL;
-    return -1;
+    goto on_error;
   } else {
     len -= 3;
     address += 3;
@@ -1120,24 +1119,26 @@ intptr_t http_connect(const char *address,
   h->status = 0;
   h->path = path;
   settings->udata = h;
-  http_set_header2(h, (fio_cstr_s){.data = "host", .len = 4},
-                   (fio_cstr_s){.data = a, .len = len});
+  http_set_header2(h, (fio_str_info_s){.data = "host", .len = 4},
+                   (fio_str_info_s){.data = a, .len = len});
   intptr_t ret;
   if (is_websocket) {
     /* force HTTP/1.1 */
-    ret =
-        facil_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
+    ret = fio_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
                       .on_connect = http_on_open_client, .udata = settings);
     (void)0;
   } else {
     /* Allow for any HTTP version */
-    ret =
-        facil_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
+    ret = fio_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
                       .on_connect = http_on_open_client, .udata = settings);
     (void)0;
   }
   fio_free(a);
   return ret;
+on_error:
+  if (arg_settings.on_finish)
+    arg_settings.on_finish(&arg_settings);
+  return -1;
 }
 #define http_connect(address, ...)                                             \
   http_connect((address), (struct http_settings_s){__VA_ARGS__})
@@ -1191,7 +1192,7 @@ Note:
 ***************************************************************************** */
 
 static inline void http_sse_copy2str(FIOBJ dest, char *prefix, size_t pre_len,
-                                     fio_cstr_s data) {
+                                     fio_str_info_s data) {
   if (!data.len)
     return;
   const char *stop = data.data + data.len;
@@ -1212,28 +1213,28 @@ static inline void http_sse_copy2str(FIOBJ dest, char *prefix, size_t pre_len,
 }
 
 /** The on message callback. the `*msg` pointer is to a temporary object. */
-static void http_sse_on_message(facil_msg_s *msg) {
+static void http_sse_on_message(fio_msg_s *msg) {
   http_sse_internal_s *sse = msg->udata1;
   struct http_sse_subscribe_args *args = msg->udata2;
-  if (args->on_message) {
-    /* perform a callback */
-    protocol_s *pr = facil_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
-    if (!pr)
-      goto postpone;
-    args->on_message(&sse->sse, msg->channel, msg->msg, args->udata);
-    facil_protocol_unlock(pr, FIO_PR_LOCK_TASK);
-    return;
-  }
-  /* write directly to HTTP stream / connection */
-  fio_cstr_s m = fiobj_obj2cstr(msg->msg);
-  http_sse_write(&sse->sse, .data = m);
-
+  /* perform a callback */
+  fio_protocol_s *pr = fio_protocol_try_lock(sse->uuid, FIO_PR_LOCK_TASK);
+  if (!pr)
+    goto postpone;
+  args->on_message(&sse->sse, msg->channel, msg->msg, args->udata);
+  fio_protocol_unlock(pr, FIO_PR_LOCK_TASK);
   return;
 postpone:
   if (errno == EBADF)
     return;
-  facil_message_defer(msg);
+  fio_message_defer(msg);
   return;
+}
+
+static void http_sse_on_message__direct(http_sse_s *sse, fio_str_info_s channel,
+                                        fio_str_info_s msg, void *udata) {
+  http_sse_write(sse, .data = msg);
+  (void)udata;
+  (void)channel;
 }
 /** An optional callback for when a subscription is fully canceled. */
 static void http_sse_on_unsubscribe(void *sse_, void *args_) {
@@ -1265,25 +1266,24 @@ uintptr_t http_sse_subscribe(http_sse_s *sse_,
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
   if (sse->uuid == -1)
     return 0;
+  if (!args.on_message)
+    args.on_message = http_sse_on_message__direct;
   struct http_sse_subscribe_args *udata = malloc(sizeof(*udata));
-  if (!udata)
-    return 0;
+  FIO_ASSERT_ALLOC(udata);
   *udata = args;
 
-  spn_add(&sse->ref, 1);
+  fio_atomic_add(&sse->ref, 1);
   subscription_s *sub =
-      facil_subscribe_pubsub(.channel = args.channel,
-                             .on_message = http_sse_on_message,
-                             .on_unsubscribe = http_sse_on_unsubscribe,
-                             .udata1 = sse, .udata2 = udata,
-                             .match = args.match);
+      fio_subscribe(.channel = args.channel, .on_message = http_sse_on_message,
+                    .on_unsubscribe = http_sse_on_unsubscribe, .udata1 = sse,
+                    .udata2 = udata, .match = args.match);
   if (!sub)
     return 0;
 
-  spn_lock(&sse->lock);
+  fio_lock(&sse->lock);
   fio_ls_push(&sse->subscriptions, sub);
   fio_ls_s *pos = sse->subscriptions.prev;
-  spn_unlock(&sse->lock);
+  fio_unlock(&sse->lock);
   return (uintptr_t)pos;
 }
 
@@ -1295,10 +1295,10 @@ void http_sse_unsubscribe(http_sse_s *sse_, uintptr_t subscription) {
     return;
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
   subscription_s *sub = (subscription_s *)((fio_ls_s *)subscription)->obj;
-  spn_lock(&sse->lock);
+  fio_lock(&sse->lock);
   fio_ls_remove((fio_ls_s *)subscription);
-  spn_unlock(&sse->lock);
-  facil_unsubscribe(sub);
+  fio_unlock(&sse->lock);
+  fio_unsubscribe(sub);
 }
 
 #undef http_upgrade2sse
@@ -1326,7 +1326,7 @@ void http_sse_set_timout(http_sse_s *sse_, uint8_t timeout) {
   if (!sse_)
     return;
   http_sse_internal_s *sse = FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse_);
-  facil_set_timeout(sse->uuid, timeout);
+  fio_timeout_set(sse->uuid, timeout);
 }
 
 #undef http_sse_write
@@ -1335,7 +1335,7 @@ void http_sse_set_timout(http_sse_s *sse_, uint8_t timeout) {
  */
 int http_sse_write(http_sse_s *sse, struct http_sse_write_args args) {
   if (!sse || !(args.id.len + args.data.len + args.event.len) ||
-      sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
+      fio_is_closed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
     return -1;
   FIOBJ buf;
   {
@@ -1359,11 +1359,11 @@ int http_sse_write(http_sse_s *sse, struct http_sse_write_args args) {
 }
 
 /**
- * Get the connection's UUID (for facil_defer and similar use cases).
+ * Get the connection's UUID (for fio_defer and similar use cases).
  */
 intptr_t http_sse2uuid(http_sse_s *sse) {
   if (!sse ||
-      sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
+      fio_is_closed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
     return -1;
   return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid;
 }
@@ -1373,7 +1373,7 @@ intptr_t http_sse2uuid(http_sse_s *sse) {
  */
 int http_sse_close(http_sse_s *sse) {
   if (!sse ||
-      sock_isclosed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
+      fio_is_closed(FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->uuid))
     return -1;
   return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)
       ->vtable->http_sse_close(sse);
@@ -1385,7 +1385,7 @@ int http_sse_close(http_sse_s *sse) {
  * Returns the same object (increases a reference count, no allocation is made).
  */
 http_sse_s *http_sse_dup(http_sse_s *sse) {
-  spn_add(&FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->ref, 1);
+  fio_atomic_add(&FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)->ref, 1);
   return sse;
 }
 
@@ -1450,7 +1450,7 @@ void http_parse_query(http_s *h) {
     return;
   if (!h->params)
     h->params = fiobj_hash_new();
-  fio_cstr_s q = fiobj_obj2cstr(h->query);
+  fio_str_info_s q = fiobj_obj2cstr(h->query);
   do {
     char *cut = memchr(q.data, '&', q.len);
     if (!cut)
@@ -1477,8 +1477,8 @@ static inline void http_parse_cookies_cookie_str(FIOBJ dest, FIOBJ str,
                                                  uint8_t is_url_encoded) {
   if (!FIOBJ_TYPE_IS(str, FIOBJ_T_STRING))
     return;
-  fio_cstr_s s = fiobj_obj2cstr(str);
-  while (s.length) {
+  fio_str_info_s s = fiobj_obj2cstr(str);
+  while (s.len) {
     if (s.data[0] == ' ') {
       ++s.data;
       --s.len;
@@ -1492,10 +1492,10 @@ static inline void http_parse_cookies_cookie_str(FIOBJ dest, FIOBJ str,
       cut2 = s.data + s.len;
     http_add2hash(dest, s.data, cut - s.data, cut + 1, (cut2 - (cut + 1)),
                   is_url_encoded);
-    if ((size_t)((cut2 + 1) - s.data) > s.length)
-      s.length = 0;
+    if ((size_t)((cut2 + 1) - s.data) > s.len)
+      s.len = 0;
     else
-      s.length -= ((cut2 + 1) - s.data);
+      s.len -= ((cut2 + 1) - s.data);
     s.data = cut2 + 1;
   }
 }
@@ -1503,7 +1503,7 @@ static inline void http_parse_cookies_setcookie_str(FIOBJ dest, FIOBJ str,
                                                     uint8_t is_url_encoded) {
   if (!FIOBJ_TYPE_IS(str, FIOBJ_T_STRING))
     return;
-  fio_cstr_s s = fiobj_obj2cstr(str);
+  fio_str_info_s s = fiobj_obj2cstr(str);
   char *cut = memchr(s.data, '=', s.len);
   if (!cut)
     cut = s.data;
@@ -1571,10 +1571,10 @@ void http_parse_cookies(http_s *h, uint8_t is_url_encoded) {
  * * "name[][key]" references a nested Hash within an array. Hash keys will be
  *   unique (repeating a key advances the hash).
  * * These rules can be nested (i.e. "name[][key1][][key2]...")
- * * "name[][]" is an error (there's no way for the parser to analyse
- *    dimentions)
+ * * "name[][]" is an error (there's no way for the parser to analyze
+ *    dimensions)
  *
- * Note: names can't begine with "[" or end with "]" as these are reserved
+ * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
 int http_add2hash2(FIOBJ dest, char *name, size_t name_len, FIOBJ val,
@@ -1760,10 +1760,10 @@ error:
  * * "name[][key]" references a nested Hash within an array. Hash keys will be
  *   unique (repeating a key advances the hash).
  * * These rules can be nested (i.e. "name[][key1][][key2]...")
- * * "name[][]" is an error (there's no way for the parser to analyse
- *    dimentions)
+ * * "name[][]" is an error (there's no way for the parser to analyze
+ *    dimensions)
  *
- * Note: names can't begine with "[" or end with "]" as these are reserved
+ * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
 int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
@@ -1780,7 +1780,7 @@ HTTP Body Parsing
 typedef struct {
   http_mime_parser_s p;
   http_s *h;
-  fio_cstr_s buffer;
+  fio_str_info_s buffer;
   size_t pos;
   size_t partial_offset;
   size_t partial_length;
@@ -1802,7 +1802,7 @@ static void http_mime_parser_on_data(http_mime_parser_s *parser, void *name,
   }
   FIOBJ n = fiobj_str_new(name, name_len);
   fiobj_str_write(n, "[data]", 6);
-  fio_cstr_s tmp = fiobj_obj2cstr(n);
+  fio_str_info_s tmp = fiobj_obj2cstr(n);
   http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
                 value, value_len, 0);
   fiobj_str_resize(n, name_len);
@@ -1831,7 +1831,8 @@ static void http_mime_parser_on_partial_start(
     return;
 
   fiobj_str_write(http_mime_parser2fio(parser)->partial_name, "[type]", 6);
-  fio_cstr_s tmp = fiobj_obj2cstr(http_mime_parser2fio(parser)->partial_name);
+  fio_str_info_s tmp =
+      fiobj_obj2cstr(http_mime_parser2fio(parser)->partial_name);
   http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
                 mimetype, mimetype_len, 0);
 
@@ -1860,7 +1861,8 @@ static void http_mime_parser_on_partial_data(http_mime_parser_s *parser,
 /** Called when the partial data is complete. */
 static void http_mime_parser_on_partial_end(http_mime_parser_s *parser) {
 
-  fio_cstr_s tmp = fiobj_obj2cstr(http_mime_parser2fio(parser)->partial_name);
+  fio_str_info_s tmp =
+      fiobj_obj2cstr(http_mime_parser2fio(parser)->partial_name);
   http_add2hash2(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
                  fiobj_data_slice(http_mime_parser2fio(parser)->h->body,
                                   http_mime_parser2fio(parser)->partial_offset,
@@ -1897,7 +1899,7 @@ int http_parse_body(http_s *h) {
   if (!content_type_hash)
     content_type_hash = fio_siphash("content-type", 12);
   FIOBJ ct = fiobj_hash_get2(h->headers, content_type_hash);
-  fio_cstr_s content_type = fiobj_obj2cstr(ct);
+  fio_str_info_s content_type = fiobj_obj2cstr(ct);
   if (content_type.len < 16)
     return -1;
   if (content_type.len >= 33 &&
@@ -1975,7 +1977,7 @@ FIOBJ http_req2str(http_s *h) {
       fiobj_str_join(w.dest, h->query);
     }
     {
-      fio_cstr_s t = fiobj_obj2cstr(h->version);
+      fio_str_info_s t = fiobj_obj2cstr(h->version);
       if (t.len < 6 || t.data[5] != '1')
         fiobj_str_write(w.dest, " HTTP/1.1\r\n", 10);
       else {
@@ -1990,7 +1992,7 @@ FIOBJ http_req2str(http_s *h) {
   fiobj_str_write(w.dest, "\r\n", 2);
   if (h->body) {
     // fiobj_data_seek(h->body, 0);
-    // fio_cstr_s t = fiobj_data_read(h->body, 0);
+    // fio_str_info_s t = fiobj_data_read(h->body, 0);
     // fiobj_str_write(w.dest, t.data, t.len);
     fiobj_str_join(w.dest, h->body);
   }
@@ -2005,23 +2007,15 @@ void http_write_log(http_s *h) {
 
   struct timespec start, end;
   clock_gettime(CLOCK_REALTIME, &end);
-  start = facil_last_tick();
+  start = fio_last_tick();
 
-  fio_cstr_s buff = fiobj_obj2cstr(l);
-
-  // TODO Guess IP address from headers (forwarded) where possible
-  sock_peer_addr_s addrinfo =
-      sock_peer_addr(((http_protocol_s *)h->private_data.flag)->uuid);
-  if (addrinfo.addrlen) {
-    if (inet_ntop(
-            addrinfo.addr->sa_family,
-            addrinfo.addr->sa_family == AF_INET
-                ? (void *)&((struct sockaddr_in *)addrinfo.addr)->sin_addr
-                : (void *)&((struct sockaddr_in6 *)addrinfo.addr)->sin6_addr,
-            buff.data, 128)) {
-      buff.len = strlen(buff.data);
-    }
+  {
+    // TODO Guess IP address from headers (forwarded) where possible
+    fio_str_info_s peer = fio_peer_addr(http2protocol(h)->uuid);
+    fiobj_str_write(l, peer.data, peer.len);
   }
+  fio_str_info_s buff = fiobj_obj2cstr(l);
+
   if (buff.len == 0) {
     memcpy(buff.data, "[unknown]", 9);
     buff.len = 9;
@@ -2031,9 +2025,9 @@ void http_write_log(http_s *h) {
   fiobj_str_resize(l, buff.len);
   {
     FIOBJ date;
-    spn_lock(&date_lock);
+    fio_lock(&date_lock);
     date = fiobj_dup(current_date);
-    spn_unlock(&date_lock);
+    fio_unlock(&date_lock);
     fiobj_str_join(l, current_date);
     fiobj_free(date);
   }
@@ -2324,15 +2318,15 @@ size_t http_date2rfc2109(char *target, struct tm *tmbuf) {
 /**
  * Prints Unix time to a HTTP time formatted string.
  *
- * This variation implements chached results for faster processeing, at the
+ * This variation implements cached results for faster processing, at the
  * price of a less accurate string.
  */
 size_t http_time2str(char *target, const time_t t) {
   /* pre-print time every 1 or 2 seconds or so. */
   static __thread time_t cached_tick;
   static __thread char cached_httpdate[48];
-  static __thread size_t chached_len;
-  time_t last_tick = facil_last_tick().tv_sec;
+  static __thread size_t cached_len;
+  time_t last_tick = fio_last_tick().tv_sec;
   if ((t | 7) < last_tick) {
     /* this is a custom time, not "now", pass through */
     struct tm tm;
@@ -2343,10 +2337,10 @@ size_t http_time2str(char *target, const time_t t) {
     struct tm tm;
     cached_tick = last_tick; /* refresh every second */
     http_gmtime(last_tick, &tm);
-    chached_len = http_date2str(cached_httpdate, &tm);
+    cached_len = http_date2str(cached_httpdate, &tm);
   }
-  memcpy(target, cached_httpdate, chached_len);
-  return chached_len;
+  memcpy(target, cached_httpdate, cached_len);
+  return cached_len;
 }
 
 /* Credit to Jonathan Leffler for the idea of a unified conditional */
@@ -2466,7 +2460,7 @@ HTTP URL parsing
  * The returned string are NOT NUL terminated, they are merely locations within
  * the original string.
  *
- * This function expects any of the follwing formats:
+ * This function expects any of the following formats:
  *
  * * `/complete_path?query#target`
  *
@@ -2498,10 +2492,10 @@ http_url_s http_url_parse(const char *url, size_t length) {
   while (url < end && *url != ':' && *url != '/' && *url != '@') {
     ++url;
   }
-  result.scheme.length = url - result.scheme.data;
+  result.scheme.len = url - result.scheme.data;
   if (url + 3 >= end || url[1] != '/' || url[2] != '/') { /* host only? */
     url = result.scheme.data;
-    result.scheme = (fio_cstr_s){.data = NULL};
+    result.scheme = (fio_str_info_s){.data = NULL};
     goto after_scheme;
   }
 
@@ -2515,18 +2509,18 @@ after_scheme:
       /* no user name or password (or port) */
       result.host.data = result.user.data;
       result.user.data = NULL;
-      result.host.length = url - result.host.data;
+      result.host.len = url - result.host.data;
       goto parse_path;
       break;
     case '@':
       /* user name only, no password */
-      result.user.length = url - result.user.data;
+      result.user.len = url - result.user.data;
       ++url;
       goto parse_host;
       break;
     case ':':
       /* user name and password (or host:port...) */
-      result.user.length = url - result.user.data;
+      result.user.len = url - result.user.data;
       ++url;
       goto parse_password;
       break;
@@ -2538,7 +2532,7 @@ after_scheme:
   if (url == end) { /* possibily: http://example.com  */
     result.host.data = result.user.data;
     result.user.data = NULL;
-    result.host.length = url - result.host.data;
+    result.host.len = url - result.host.data;
     return result;
   }
 
@@ -2550,13 +2544,13 @@ parse_password:
       /* this wasn't a user:password, but host:port */
       result.host = result.user;
       result.port = result.password;
-      result.port.length = url - result.port.data;
-      result.user = result.password = (fio_cstr_s){.data = NULL};
+      result.port.len = url - result.port.data;
+      result.user = result.password = (fio_str_info_s){.data = NULL};
       goto parse_path;
       break;
     case '@':
       /* done */
-      result.password.length = url - result.password.data;
+      result.password.len = url - result.password.data;
       ++url;
       goto after_pass;
     default:
@@ -2568,8 +2562,8 @@ after_pass:
   if (url == end) { /* possibily: http://example.com:port  */
     result.host = result.user;
     result.port = result.password;
-    result.port.length = url - result.port.data;
-    result.user = result.password = (fio_cstr_s){.data = NULL};
+    result.port.len = url - result.port.data;
+    result.user = result.password = (fio_str_info_s){.data = NULL};
     return result;
   }
 parse_host:
@@ -2579,12 +2573,12 @@ parse_host:
     switch (*url) {
     case '/':
       /* host only */
-      result.host.length = url - result.host.data;
+      result.host.len = url - result.host.data;
       goto parse_path;
       break;
     case ':':
       /* done */
-      result.host.length = url - result.host.data;
+      result.host.len = url - result.host.data;
       ++url;
       goto after_host;
       break;
@@ -2596,14 +2590,14 @@ parse_host:
 after_host:
 
   if (url == end) { /* scheme://host only? */
-    result.host.length = end - result.host.data;
+    result.host.len = end - result.host.data;
     return result;
   }
   result.port.data = (char *)url;
   while (url < end && *url != '/') {
     ++url;
   }
-  result.port.length = url - result.port.data;
+  result.port.len = url - result.port.data;
 
   if (url == end) { /* scheme://host:port only? */
     return result;
@@ -2618,7 +2612,7 @@ parse_path:
   while (url < end && *url != '?') {
     ++url;
   }
-  result.path.length = url - result.path.data;
+  result.path.len = url - result.path.data;
   if (url == end) {
     return result;
   }
@@ -2627,13 +2621,13 @@ parse_path:
   while (url < end && *url != '#') {
     ++url;
   }
-  result.query.length = url - result.query.data;
+  result.query.len = url - result.query.data;
   if (url == end) {
     return result;
   }
   ++url;
   result.target.data = (char *)url;
-  result.target.length = end - result.target.data;
+  result.target.len = end - result.target.data;
   return result;
 }
 
@@ -2683,11 +2677,11 @@ FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
  */
 FIOBJ http_mimetype_find2(FIOBJ url) {
   static __thread char buffer[LONGEST_FILE_EXTENSION_LENGTH + 1];
-  fio_cstr_s ext = {.data = NULL};
+  fio_str_info_s ext = {.data = NULL};
   FIOBJ mimetype;
   if (!url)
     goto finish;
-  fio_cstr_s tmp = fiobj_obj2cstr(url);
+  fio_str_info_s tmp = fiobj_obj2cstr(url);
   uint8_t steps = 1;
   while (tmp.len > steps || steps >= LONGEST_FILE_EXTENSION_LENGTH) {
     switch (tmp.data[tmp.len - steps]) {
@@ -2770,12 +2764,12 @@ static char invalid_cookie_value_char[256] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
 // clang-format off
-#define HTTP_SET_STATUS_STR(status, str) [status-100] = { .buffer = (str), .length = (sizeof(str) - 1) }
+#define HTTP_SET_STATUS_STR(status, str) [status-100] = { .data = (str), .len = (sizeof(str) - 1) }
 // clang-format on
 
 /** Returns the status as a C string struct */
-fio_cstr_s http_status2str(uintptr_t status) {
-  static const fio_cstr_s status2str[] = {
+fio_str_info_s http_status2str(uintptr_t status) {
+  static const fio_str_info_s status2str[] = {
       HTTP_SET_STATUS_STR(100, "Continue"),
       HTTP_SET_STATUS_STR(101, "Switching Protocols"),
       HTTP_SET_STATUS_STR(102, "Processing"),
@@ -2841,11 +2835,11 @@ fio_cstr_s http_status2str(uintptr_t status) {
       HTTP_SET_STATUS_STR(510, "Not Extended"),
       HTTP_SET_STATUS_STR(511, "Network Authentication Required"),
   };
-  fio_cstr_s ret = (fio_cstr_s){.length = 0, .buffer = NULL};
+  fio_str_info_s ret = (fio_str_info_s){.len = 0, .data = NULL};
   if (status >= 100 &&
       (status - 100) < sizeof(status2str) / sizeof(status2str[0]))
     ret = status2str[status - 100];
-  if (!ret.buffer) {
+  if (!ret.data) {
     ret = status2str[400];
   }
   return ret;

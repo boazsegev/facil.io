@@ -7,7 +7,7 @@ Feel free to copy, use and enjoy according to the license specified.
 #ifndef H_WEBSOCKET_PARSER_H
 /**\file
 
-A single file Websocket message parser and Websocket message wrapper, decoupled
+A single file WebSocket message parser and WebSocket message wrapper, decoupled
 from any IO layer.
 
 Notice that this header file library includes static funnction declerations that
@@ -30,7 +30,7 @@ static inline __attribute__((unused)) uint64_t
 websocket_wrapped_len(uint64_t len);
 
 /**
- * Wraps a Websocket server message and writes it to the target buffer.
+ * Wraps a WebSocket server message and writes it to the target buffer.
  *
  * The `first` and `last` flags can be used to support message fragmentation.
  *
@@ -38,7 +38,7 @@ websocket_wrapped_len(uint64_t len);
  * * msg:    the message to be wrapped.
  * * len:    the message length.
  * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
- * * first:  set to 1 if `msg` points the begining of the message.
+ * * first:  set to 1 if `msg` points the beginning of the message.
  * * last:   set to 1 if `msg + len` ends the message.
  * * client: set to 1 to use client mode (data  masking).
  *
@@ -60,7 +60,7 @@ websocket_server_wrap(void *target, void *msg, uint64_t len,
                       unsigned char last, unsigned char rsv);
 
 /**
- * Wraps a Websocket client message and writes it to the target buffer.
+ * Wraps a WebSocket client message and writes it to the target buffer.
  *
  * The `first` and `last` flags can be used to support message fragmentation.
  *
@@ -68,7 +68,7 @@ websocket_server_wrap(void *target, void *msg, uint64_t len,
  * * msg:    the message to be wrapped.
  * * len:    the message length.
  * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
- * * first:  set to 1 if `msg` points the begining of the message.
+ * * first:  set to 1 if `msg` points the beginning of the message.
  * * last:   set to 1 if `msg + len` ends the message.
  * * client: set to 1 to use client mode (data  masking).
  *
@@ -121,7 +121,7 @@ websocket_buffer_peek(void *buffer, uint64_t len);
  * Returns the remaining data in the existing buffer (can be 0).
  *
  * Notice: if there's any data in the buffer that can't be parsed
- * just yet, `memmove` is used to place the data at the begining of the buffer.
+ * just yet, `memmove` is used to place the data at the beginning of the buffer.
  */
 inline static __attribute__((unused)) uint64_t
 websocket_consume(void *buffer, uint64_t len, void *udata,
@@ -241,7 +241,7 @@ Message wrapping
 /** stub byte swap 64 bit integer from pointer */
 static inline uint64_t netpiswap64(uint8_t *i) {
   uint64_t ret = 0;
-  uint8_t *const pret = &ret;
+  uint8_t *const pret = (uint8_t *)&ret;
   pret[7] = i[7];
   pret[6] = i[6];
   pret[5] = i[5];
@@ -308,7 +308,7 @@ static inline uint64_t websocket_wrapped_len(uint64_t len) {
 }
 
 /**
- * Wraps a Websocket server message and writes it to the target buffer.
+ * Wraps a WebSocket server message and writes it to the target buffer.
  *
  * The `first` and `last` flags can be used to support message fragmentation.
  *
@@ -316,7 +316,7 @@ static inline uint64_t websocket_wrapped_len(uint64_t len) {
  * * msg:    the message to be wrapped.
  * * len:    the message length.
  * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
- * * first:  set to 1 if `msg` points the begining of the message.
+ * * first:  set to 1 if `msg` points the beginning of the message.
  * * last:   set to 1 if `msg + len` ends the message.
  * * client: set to 1 to use client mode (data  masking).
  *
@@ -368,7 +368,7 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
 }
 
 /**
- * Wraps a Websocket client message and writes it to the target buffer.
+ * Wraps a WebSocket client message and writes it to the target buffer.
  *
  * The `first` and `last` flags can be used to support message fragmentation.
  *
@@ -376,7 +376,7 @@ static uint64_t websocket_server_wrap(void *target, void *msg, uint64_t len,
  * * msg:    the message to be wrapped.
  * * len:    the message length.
  * * opcode: set to 1 for UTF-8 message, 2 for binary, etc'.
- * * first:  set to 1 if `msg` points the begining of the message.
+ * * first:  set to 1 if `msg` points the beginning of the message.
  * * last:   set to 1 if `msg + len` ends the message.
  *
  * Returns the number of bytes written. Always `websocket_wrapped_len(len) +
@@ -501,7 +501,7 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       websocket_xmask(payload, info.packet_length, mask);
     } else if (require_masking && info.packet_length) {
 #if DEBUG
-      fprintf(stderr, "ERROR: Websocket protocol error - unmasked data.\n");
+      fprintf(stderr, "ERROR: WebSocket protocol error - unmasked data.\n");
 #endif
       websocket_on_protocol_error(udata);
     }
@@ -536,7 +536,7 @@ static uint64_t websocket_consume(void *buffer, uint64_t len, void *udata,
       break;
     default:
 #if DEBUG
-      fprintf(stderr, "ERROR: Websocket protocol error - unknown opcode %u\n",
+      fprintf(stderr, "ERROR: WebSocket protocol error - unknown opcode %u\n",
               (unsigned int)(pos[0] & 15));
 #endif
       websocket_on_protocol_error(udata);

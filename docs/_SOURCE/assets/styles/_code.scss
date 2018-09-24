@@ -1,0 +1,15 @@
+body.light
+{
+  @import 'github'
+  pre {
+    background: #eee;    
+  }
+}
+
+body.dark
+{
+  @import 'railscasts'
+  pre {
+    background: #322; 
+  }
+}

@@ -1,0 +1,303 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - a Dynamic Type System using facil.io objects.</title><meta content="facil.io - a Dynamic Type System using facil.io objects." name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-7-x"><a href="/0.7.x/index">Version 0.7.x</a></h2>
+
+<h3 id="core-library"><a href="/0.7.x/fio">Core Library</a></h3>
+
+<ul>
+<li><a href="/0.7.x/fio#connection-protocol-management">Protocol Management</a></li>
+<li><a href="/0.7.x/fio#running-facil-io">Running the IO reactor</a></li>
+<li><a href="/0.7.x/fio#socket-connection-functions">Connection Functions</a></li>
+<li><a href="/0.7.x/fio#event-task-scheduling">Event / Task Scheduling</a></li>
+<li><a href="/0.7.x/fio#pub-sub-services">Pub/Sub Services</a></li>
+<li><a href="/0.7.x/fio#the-custom-memory-allocator">Memory Allocation</a></li>
+<li><a href="/0.7.x/fio#general-helpers">General Helpers</a></li>
+<li><a href="/0.7.x/fio#linked-lists">Linked Lists</a></li>
+<li><a href="/0.7.x/fio#string-helpers">String Helpers</a></li>
+<li><a href="/0.7.x/fio#hash-maps-sets">Hash Maps / Sets</a></li>
+<li><a href="/0.7.x/fio#version-and-compilation-related-macros">Compilation Macros</a></li>
+<li><a href="/0.7.x/fio#weak-functions">Weak Functions</a></li>
+</ul>
+
+<h3 id="extensions"><a href="/0.7.x/extensions">Extensions</a></h3>
+
+<ul>
+<li><a href="/0.7.x/http">HTTP / WebSockets</a></li>
+<li><a href="/0.7.x/redis">Redis (client)</a></li>
+<li><a href="/0.7.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.7.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.7.x/fiobj_core">Core Functions</a></li>
+<li><a href="/0.7.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.7.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.7.x/fiobj_str">Strings</a></li>
+<li><a href="/0.7.x/fiobj_ary">Array</a></li>
+<li><a href="/0.7.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.7.x/fiobj_data">Data Streams</a></li>
+<li><a href="/0.7.x/fiobj_json">JSON</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#dynamic-type-system-facil-io-objects-fiobj">Dynamic Type System: facil.io objects (<code>FIOBJ</code>)</a>
+<ul>
+<li>
+<a href="#overview">Overview</a>
+<ul>
+<li>
+<a href="#why-we-need-dynamic-types">Why we need dynamic types?</a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#api-considerations">API Considerations</a>
+<ul>
+<li>
+<a href="#functional-access">Functional Access</a>
+</li>
+<li>
+<a href="#ownership-follows-nesting">Ownership Follows Nesting</a>
+</li>
+<li>
+<a href="#passing-by-reference">Passing By Reference</a>
+</li>
+<li>
+<a href="#cyclic-nesting-errors">Cyclic Nesting Errors</a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#independence">Independence</a>
+</li>
+</ul>
+</li>
+</ul>
+</div><h1 id="dynamic-type-system-facil-io-objects-fiobj">Dynamic Type System: facil.io objects (<code>FIOBJ</code>)</h1>
+
+<p>In this page you will find a general overview. For detailed API information please visit the Core or Type pages.</p>
+
+<h2 id="overview">Overview</h2>
+
+<p><code>facil.io</code> offers a dynamic type system that makes it a breeze to mix object types together.</p>
+
+<p>This dynamic type system is an independent module within the <code>facil.io</code> core and can be used separately.</p>
+
+<p>The <code>FIOBJ</code> type API is divided by it&#39;s inner types (tested using <code>FIOBJ_TYPE(obj)</code> or <code>FIOBJ_TYPE_IS(obj, type)</code>):</p>
+
+<ul>
+<li><a href="fiobj_core">Core and Generic API</a></li>
+<li><a href="fiobj_primitives">Primitive Types</a></li>
+<li><a href="fiobj_numbers">Number / Float</a></li>
+<li><a href="fiobj_str">String</a></li>
+<li><a href="fiobj_ary">Array</a></li>
+<li><a href="fiobj_hash">Hash</a></li>
+<li><a href="fiobj_data">Data</a></li>
+<li><a href="fiobj_json">JSON</a></li>
+</ul>
+
+<h3 id="why-we-need-dynamic-types">Why we need dynamic types?</h3>
+
+<p>C doesn&#39;t lend itself easily to the dynamic types that are often used in languages such as Javascript. This makes it harder to use an optimized C backend (server) when the frontend (client / browser) expects multi-type responses such as JSON objects.</p>
+
+<p>To resolve this difference in expectations, <code>facil.io</code> offers the <code>FIOBJ</code> type system.</p>
+
+<p>This is an opaque type that can be tested using <code>FIOBJ_TYPE(obj)</code> or <code>FIOBJ_TYPE_IS(obj, type)</code>.</p>
+
+<p>This offers the following advantages (among others):</p>
+
+<ul>
+<li><p>Saves you precious development time.</p></li>
+<li><p>Allows deep integration with <code>facil.io</code> services, reducing the need to translate from one type to another.</p></li>
+<li><p>Allows for &quot;typeless&quot; actions, such as collection iteration (<code>fiobj_each2</code>), simple conversion (<code>fiobj_obj2num</code> and <code>fiobj_obj2cstr</code>), deallocation (<code>fiobj_free</code>). reference counting (<code>fiobj_dup</code>) and equality checks (<code>fiobj_iseq</code>).</p></li>
+<li><p>Offers JSON parsing and formatting to and from <code>FIOBJ</code>.</p></li>
+<li><p>Offers non-recursive iteration.</p></li>
+</ul>
+
+<h2 id="api-considerations">API Considerations</h2>
+
+<p>This is a short summery regarding the API and it&#39;s use. The <code>fiobj_*</code> API is well documented in the header files, so only main guidelines are mentioned.</p>
+
+<h3 id="functional-access">Functional Access</h3>
+
+<p>All object access should be functional, or using the macros provided. Although this requirement can be circumvented, using the functional interface should be preferred.</p>
+
+<p>For example:</p>
+<pre><code class='highlight'><span class="cm">/* this will work */</span>
+<span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_buf</span><span class="p">(</span><span class="mi">6</span><span class="p">);</span> <span class="cm">/* automatically adds room for the NUL terminator */</span>
+<span class="n">fio_str_info_s</span> <span class="n">raw_str</span> <span class="o">=</span> <span class="n">fiobj_obj2cstr</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+<span class="n">memcpy</span><span class="p">(</span><span class="n">raw_str</span><span class="p">.</span><span class="n">buffer</span><span class="p">,</span> <span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+<span class="n">fiobj_str_resize</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+<span class="c1">// ...</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+
+<span class="cm">/* this is better */</span>
+<span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_buf</span><span class="p">(</span><span class="mi">6</span><span class="p">);</span>
+<span class="n">fiobj_str_write</span><span class="p">(</span><span class="n">str</span><span class="p">,</span> <span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+<span class="c1">// ...</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+
+<span class="cm">/* for simple strings, one line will do */</span>
+<span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+<span class="c1">// ...</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+
+<span class="cm">/* for more complex cases, printf style is supported */</span>
+<span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_buf</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span> <span class="c1">// note that 0 == whole memory page</span>
+<span class="n">fiobj_str_printf</span><span class="p">(</span><span class="s">"%s %d"</span> <span class="p">,</span> <span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">42</span><span class="p">)</span>
+<span class="c1">// ...</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+</code></pre>
+<h3 id="ownership-follows-nesting">Ownership Follows Nesting</h3>
+
+<p>An object&#39;s memory should <em>always</em> be managed by it&#39;s &quot;owner&quot;. This usually means the calling function.</p>
+
+<p><em>However</em>, when an object is nested within another object (i.e., placed in an Array or set as the <em>value</em> for a Hash or an HTTP header), <strong>the ownership of the object is transferred</strong>.</p>
+
+<p>In the following example, the String nested within the Array is freed when the Array is freed:</p>
+<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
+<span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+<span class="n">fiobj_ary_push</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="n">str</span><span class="p">);</span>
+<span class="c1">// ...</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
+</code></pre>
+<p>Hashes follow the same rule. However...</p>
+
+<p>It&#39;s important to note that <strong>Hash keys ownership isn&#39;t transferred to the Hash</strong> (keys are used to access and store data, but they are not the data itself).</p>
+
+<p>When calling <code>fiobj_hash_set</code>, we are storing a <em>value</em> in the Hash, the <em>key</em> is what we use to access that value. This is why <strong>the key&#39;s ownership remains with the calling function</strong>. i.e.:</p>
+<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">h</span> <span class="o">=</span> <span class="n">fiobj_hash_new</span><span class="p">();</span>
+<span class="n">FIOBJ</span> <span class="n">key</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"life"</span><span class="p">,</span> <span class="mi">4</span><span class="p">);</span>
+<span class="cm">/* By placing the Number in the Hash, it will be deallocated together with the Hash */</span>
+<span class="n">fiobj_hash_set</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">fiobj_num_new</span><span class="p">(</span><span class="mi">42</span><span class="p">));</span>
+<span class="c1">// ...</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">h</span><span class="p">);</span> <span class="cm">/* Free the Hash and it's data, but NOT the key */</span>
+<span class="c1">// ...</span>
+<span class="cm">/* eventually we need to free the key */</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">key</span><span class="p">);</span>
+</code></pre>
+<h3 id="passing-by-reference">Passing By Reference</h3>
+
+<p>All objects are passed along by reference. The <code>dup</code> (duplication) process simply increases the reference count.</p>
+
+<p>This is a very powerful tool. In the following example, <code>str2</code> is a &quot;copy&quot; <strong>by reference</strong> of <code>str</code>. By editing <code>str2</code> we&#39;re also editing <code>str</code>:</p>
+<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+<span class="n">FIOBJ</span> <span class="n">str2</span> <span class="o">=</span> <span class="n">fiobj_dup</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+<span class="cm">/* We'll edit str2 to say "Hello There!" instead of "Hello!" */</span>
+<span class="n">fiobj_str_resize</span><span class="p">(</span><span class="n">str2</span><span class="p">,</span> <span class="mi">5</span><span class="p">);</span>
+<span class="n">fiobj_str_write</span><span class="p">(</span><span class="n">str2</span><span class="p">,</span> <span class="s">" There!"</span><span class="p">,</span> <span class="mi">7</span><span class="p">);</span>
+<span class="cm">/* This prints "Hello There!" because str was edited by reference! */</span>
+<span class="n">printf</span><span class="p">(</span><span class="s">"%s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">fiobj_obj2cstr</span><span class="p">(</span><span class="n">str</span><span class="p">).</span><span class="n">data</span><span class="p">);</span>
+<span class="cm">/* we need to free both references to free the memory */</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">str2</span><span class="p">);</span>
+</code></pre>
+<p>An independent copy can be created using an object&#39;s specific copy function. This example  create a new, independent, object instead of referencing the old one:</p>
+<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+<span class="cm">/* create a copy instead of a reference */</span>
+<span class="n">FIOBJ</span> <span class="n">str2</span> <span class="o">=</span> <span class="n">fiobj_str_copy</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+<span class="cm">/* this is the same as */</span>
+<span class="n">FIOBJ</span> <span class="n">str3</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="n">fiobj_obj2cstr</span><span class="p">(</span><span class="n">str</span><span class="p">).</span><span class="n">data</span><span class="p">,</span> <span class="n">fiobj_obj2cstr</span><span class="p">(</span><span class="n">str</span><span class="p">).</span><span class="n">len</span><span class="p">);</span>
+<span class="c1">// ...</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">str2</span><span class="p">);</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">str3</span><span class="p">);</span>
+</code></pre>
+<p>Copy by reference produces a deep reference adjustment, so Arrays and Hashes can be safely copied by reference.</p>
+<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
+<span class="n">fiobj_ary_push</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">));</span>
+<span class="n">FIOBJ</span> <span class="n">ary_copy</span> <span class="o">=</span> <span class="n">fiobj_dup</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
+<span class="c1">// ...</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
+<span class="c1">// all the items in ary2 are still accessible.</span>
+<span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"%s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">fiobj_obj2cstr</span><span class="p">(</span> <span class="n">fiobj_ary_index</span><span class="p">(</span><span class="n">ary_copy</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">).</span><span class="n">buffer</span> <span class="p">);</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">ary_copy</span><span class="p">);</span>
+</code></pre>
+<h3 id="cyclic-nesting-errors">Cyclic Nesting Errors</h3>
+
+<p>Cyclic protection is unsupported mostly because of performance concerns, but also because cyclic nesting is impractical for network applications (for example, how would a cyclic object be formatted into JSON?).  </p>
+
+<p>Cyclic nesting should be avoided. For example, the following code will crash:</p>
+<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
+<span class="n">FIOBJ</span> <span class="n">ary2</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
+<span class="c1">// cyclic nesting</span>
+<span class="n">fiobj_ary_push</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="n">ary2</span><span class="p">);</span>
+<span class="n">fiobj_ary_push</span><span class="p">(</span><span class="n">ary2</span><span class="p">,</span> <span class="n">ary</span><span class="p">);</span>
+<span class="c1">// free might crash or produce unexpected results</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
+<span class="c1">// each2 will cycle forever</span>
+<span class="n">fiobj_each2</span><span class="p">(</span><span class="n">ary2</span><span class="p">,</span> <span class="p">...);</span>
+</code></pre>
+<h2 id="independence">Independence</h2>
+
+<p>The <code>FIOBJ</code> module is independent and can be extracted from <code>facil.io</code> by copying the <code>fiobj.h</code> file (under <code>lib/facil/core/types</code>) and all the files in the <code>lib/facil/core/types/fiobj</code> folder.</p>
+
+<p>Place these files in your project and use to your heart&#39;s content.</p>
+
+<p>The module is licensed under the same MIT license offered by the rest of the <code>facil.io</code> source code.</p>
+</div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>

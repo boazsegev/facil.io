@@ -19,6 +19,10 @@ Feel free to copy, use and enjoy according to the license provided.
  */
 #define H_RESP_PARSER_H
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -177,6 +181,8 @@ Parsing RESP requests
  */
 static size_t resp_parse(resp_parser_s *parser, const void *buffer,
                          size_t length) {
+  if (!parser->obj_countdown)
+    parser->obj_countdown = 1; /* always expect something... */
   uint8_t *pos = (uint8_t *)buffer;
   const uint8_t *stop = pos + length;
   while (pos < stop) {
@@ -201,7 +207,7 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
         parser->expecting = 0;
         --parser->obj_countdown;
         if (parser->obj_countdown <= 0) {
-          parser->obj_countdown = 0;
+          parser->obj_countdown = 1;
           if (resp_on_message(parser))
             goto finish;
         }
@@ -224,13 +230,13 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
         goto finish;
       }
       resp_on_string_chunk(parser, (void *)(pos + 1),
-                           (size_t)((uintptr_t)eol - (uintptr_t)pos - 2));
+                           (size_t)((uintptr_t)eol - (uintptr_t)pos - 1));
       resp_on_end_string(parser);
       --parser->obj_countdown;
       break;
     case '-':
       resp_on_err_msg(parser, pos,
-                      (size_t)((uintptr_t)eol - (uintptr_t)pos - 2));
+                      (size_t)((uintptr_t)eol - (uintptr_t)pos - 1));
       --parser->obj_countdown;
       break;
     case '*': /* fallthrough */
@@ -276,7 +282,6 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
       case '*':
         if (i < 0) {
           resp_on_null(parser);
-          --parser->obj_countdown;
         } else {
           if (resp_on_start_array(parser, i)) {
             pos = eol + 1;
@@ -284,6 +289,7 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
           }
           parser->obj_countdown += i;
         }
+        --parser->obj_countdown;
         break;
       }
     } break;
@@ -300,7 +306,7 @@ static size_t resp_parse(resp_parser_s *parser, const void *buffer,
     }
     pos = eol + 1;
     if (parser->obj_countdown <= 0 && !parser->expecting) {
-      parser->obj_countdown = 0;
+      parser->obj_countdown = 1;
       resp_on_message(parser);
     }
   }

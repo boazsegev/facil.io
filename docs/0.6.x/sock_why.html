@@ -1,0 +1,261 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - lib sock - a making sockets in C easy to use.</title><meta content="facil.io - lib sock - a making sockets in C easy to use." name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-6-x"><a href="/0.6.x/index">Version 0.6.x</a></h2>
+
+<ul>
+<li><a href="/0.6.x/api">API Overview</a></li>
+<li><a href="/0.6.x/modules">The Modules</a></li>
+</ul>
+
+<h3 id="core-api"><a href="/0.6.x/facil">Core API</a></h3>
+
+<ul>
+<li><a href="/0.6.x/defer">Event scheduling</a></li>
+<li><a href="/0.6.x/evio">Low Level Polling</a></li>
+<li><a href="/0.6.x/sock">Low Level Sockets</a></li>
+<li><a href="/0.6.x/fio_mem">Memory Allocation</a></li>
+</ul>
+
+<h3 id="extensions">Extensions</h3>
+
+<ul>
+<li><a href="/0.6.x/http">HTTP</a></li>
+<li><a href="/0.6.x/websockets">WebSockets</a></li>
+<li><a href="/0.6.x/pubsub">Pub/Sub</a></li>
+<li><a href="/0.6.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.6.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.6.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.6.x/fiobj_str">Strings</a></li>
+<li><a href="/0.6.x/fiobj_ary">Array</a></li>
+<li><a href="/0.6.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.6.x/fiobj_json">JSON</a></li>
+</ul>
+
+<h3 id="core-types"><a href="/0.6.x/types">Core Types</a></h3>
+
+<ul>
+<li><a href="/0.6.x/fio_ary">C Arrays</a></li>
+<li><a href="/0.6.x/fio_hashmap">C HashMap</a></li>
+<li><a href="/0.6.x/fio_llist">Linked Lists</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#a-simple-socket-library-for-non-blocking-sockets">A Simple Socket Library for non-blocking Sockets</a>
+<ul>
+<li>
+<ul>
+<li>
+<ul>
+<li>
+<a href="#the-story-of-the-partial-write">The Story Of The Partial <code>write</code></a>
+</li>
+<li>
+<a href="#the-sendfile-experience">The <code>sendfile</code> Experience</a>
+</li>
+<li>
+<a href="#postponing-the-timeout">Postponing The Timeout</a>
+</li>
+<li>
+<a href="#the-lost-on_close-event">The Lost <code>on_close</code> Event</a>
+</li>
+<li>
+<a href="#uuids">UUIDs & The File Descriptor Collision Security Risk</a>
+</li>
+<li>
+<a href="#tcp-ip-and-unix-sockets-as-default">TCP/IP and Unix Sockets as default</a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div><h1 id="a-simple-socket-library-for-non-blocking-sockets">A Simple Socket Library for non-blocking Sockets</h1>
+
+<p>This library aims to:</p>
+
+<ul>
+<li><p>Resolve the file descriptor collision security risk.</p></li>
+<li><p>Resolve issues with partial writes and concurrent write operations by implementing a user land buffer and a spinlock.</p></li>
+<li><p>Provide <code>sendfile</code> alternatives when sending big data stored on the disk - <code>sendfile</code> being broken on some system and lacking support for TLS.</p></li>
+<li><p>Provide a solution to the fact that closing a connection locally (using <code>close</code>) will prevent event loops and socket polling systems (<code>epoll</code>/<code>kqueue</code>) from raising the <code>on_hup</code> / <code>on_close</code> event. <code>libsock</code> provides support for local closure notification - this is done by defining an optional <code>reactor_on_close(intptr_t uuid)</code> overridable function.</p></li>
+<li><p>Provide support for timeout a management callback for server architectures that require the timeout to be reset (&quot;touched&quot;) whenever a read/write occurs - this is done by defining an optional <code>sock_touch(intptr_t uuid)</code> callback.</p></li>
+</ul>
+
+<p><code>libsock</code> requires only the following three files from this repository: <a href="../src/spnlock.h"><code>src/spnlock.h</code></a>,  <a href="../src/libsock.h"><code>src/libsock.h</code></a> and <a href="../src/libsock.c"><code>src/libsock.c</code></a>.</p>
+
+<h4 id="the-story-of-the-partial-write">The Story Of The Partial <code>write</code></h4>
+
+<p>For some unknown reason, there is this little tidbit of information for the <code>write</code> function family that is always written in the documentation and is commonly ignored by first time network programmers:</p>
+
+<blockquote>
+<p>On success, <strong>the number of bytes written</strong> is returned (zero indicates nothing was written). On error, -1 is returned, and errno is set appropriately.</p>
+</blockquote>
+
+<p>It is often missed that the number of bytes actually written might be smaller then the amount we wanted to write.</p>
+
+<p>For this reason, <code>libsock</code> implements a user land buffer. All calls to <code>sock_write</code> promise to write the whole of the data (careful) unless a connection issue causes them to fail.</p>
+
+<p>The only caveat is for very large amounts of data that exceed the available user land buffer (which you can change from the default ~16Mib), since <code>libsock</code> will keep flushing all the sockets (it won&#39;t return from the <code>sock_write</code> function call) until the data can be fully written to the user-land buffer.</p>
+
+<p>However, this isn&#39;t normally an issue, since files can be sent at practically no cost when using <code>libsock</code> and large amounts of data are normally handled by files (temporary or otherwise).</p>
+
+<h4 id="the-sendfile-experience">The <code>sendfile</code> Experience</h4>
+
+<p>The <code>sendfile</code> directive is cool, it allows us to send data directly from a file to a socket, no copying required (although the kernel might or might not copy data).</p>
+
+<p>However, the <code>sendfile</code> function call is useless when working with TLS connections, as the TLS implementation is performed in the application layer, meaning that the data needs to be encrypted in the application layer... So, no <code>sendfile</code> for TLS connections :-(</p>
+
+<p>Another issue is that <a href="https://blog.phusion.nl/2015/06/04/the-brokenness-of-the-sendfile-system-call/"><code>sendfile</code> is broken / unavailable on some systems</a>...</p>
+
+<p><code>libsock</code> Provides a dual solution for this:</p>
+
+<ol>
+<li><p>On systems where <code>sendfile</code> is available, it will be used if no TLS or other read/write hook had been defined.</p></li>
+<li><p>Where <code>sendfile</code> can&#39;t be used, <code>libsock</code> will write the file to the socket (or TLS), loading up to ~16Kb of data at a time.</p>
+
+<p>The same file (fd) can be sent to multiple clients at once (keeping it open in the application&#39;s cache) or automatically closed once it was sent.</p></li>
+</ol>
+
+<p>This abstraction of the <code>sendfile</code> system call elevates the headache related with managing resources when sending big files.</p>
+
+<h4 id="postponing-the-timeout">Postponing The Timeout</h4>
+
+<p>Often, server applications need to implement a timeout review procedure that checks for stale connections.</p>
+
+<p>However, this requires that the server architecture to implement a &quot;write&quot; and &quot;read&quot; logic (if only to set or reset the timeout for the connection) and somehow enforce this API, so that timeout events don&#39;t fire prematurely.</p>
+
+<p><code>libsock</code> saves us this extra work by providing an optional callback that allows server architectures to update their timeout state without implementing the whole &quot;read/write&quot; API stack.</p>
+
+<p>By providing a <code>sock_touch</code> function that can be overwritten (a weak symbol function), the server architecture need only implement the <code>sock_touch</code> function to update any internal data structure or linked list, and <code>libsock</code> takes care of the rest.</p>
+
+<p>This means that on any successful <code>sock_read</code>, <code>sock_write</code> or <code>sock_flush</code>, where data was written to the socket layer, <code>sock_touch</code> is called.</p>
+
+<h4 id="the-lost-on_close-event">The Lost <code>on_close</code> Event</h4>
+
+<p>When polling using <code>kqueue</code> / <code>epoll</code> / the evented library of your choice, it is normal for locally closed sockets (when we call <code>close</code>) to close quietly, with no event being raised.</p>
+
+<p>This can be annoying at times and often means that a wrapper is supplied for the <code>close</code> function and hopes are that no one calls <code>close</code> directly.</p>
+
+<p>However, whenever a connection is closed using <code>libsock</code>, a callback <code>reactor_on_close(intptr_t)</code> is called.</p>
+
+<p>This is supported by two facts: 1. because <code>sock_close</code> acts as a wrapper, calling the callback after closing the connection; 2. because connections are identified using a UUID (not an <code>fd</code>), making calls to <code>close</code> harder (though possible).</p>
+
+<p><code>sock_close</code> will always call the <code>reactor_on_close</code> callback, where you can call the function of your choice and presto: a local <code>close</code> will evoke the <code>on_close</code> event callback for the evented library of your choice.</p>
+
+<p>The <code>reactor_on_close</code> name was chosen to have <code>libsock</code> work with <code>libreact</code>. This is a convenience, not a requirement.</p>
+
+<p>It should be noted that a default <code>reactor_on_close</code> is provided, so there&#39;s no need to write one if you don&#39;t need one.</p>
+
+<h4 id="uuids-the-file-descriptor-collision-security-risk">UUIDs &amp; The File Descriptor Collision Security Risk</h4>
+
+<p>These things happen, whether we&#39;re using threads or evented programming techniques, the more optimized our code the more likely that we are exposed to file description collision risks.</p>
+
+<p>Here is a quick example:</p>
+
+<ul>
+<li><p>Bob connects to his bank to get a bank statement on line.</p></li>
+<li><p>Bob receives the file descriptor 12 for the new connection and submits a request to the server.</p></li>
+<li><p>A request to the bank&#39;s database is performed in a non-blocking manner (evented, threaded, whatever you fancy). But, due to system stress or design or complexity, it will take a longer time to execute.</p></li>
+<li><p>Bob&#39;s connection is dropped for some reason and file descriptor 12 is released by the system.</p></li>
+<li><p>Alice connects to the server and receives the (now available) file descriptor 12 for the new connection (Alice can even negotiate a valid TLS connection at this point).</p></li>
+<li><p>The database response arrives and the information is sent to the file descriptor.</p></li>
+<li><p>Alice gets Bob&#39;s bank statement.</p></li>
+</ul>
+
+<p>... Hmmm... bad.</p>
+
+<p>The risk might seem unlikely, but it exists. These possible collisions in read/write operations are one of the main reasons why operating systems hold on to a closed socket&#39;s file descriptor for a bit longer than they need (often a minute or two).</p>
+
+<p>Hence: <code>sock.h</code> uses connection UUIDs to map to the underlying file descriptors.</p>
+
+<p>These UUIDs are the C standard <code>intptr_t</code> type, which means that they are easy to handle, store and move around. The UUIDs are a simple system local scheme and shouldn&#39;t be shared among systems or processes (collision risks). The only certainly invalid UUID is <code>-1</code> (depending on the system&#39;s byte-ordering scheme).</p>
+
+<p>In our example:</p>
+
+<ul>
+<li><p>Bob connects to his bank to get a bank statement on line.</p></li>
+<li><p>Bob receives the file descriptor 12, mapped to the connection UUID 0x114.</p></li>
+<li><p>[...] everything the same until Bob&#39;s connection drops.</p></li>
+<li><p>Alice connects to the server and receives the (now available) file descriptor 12 for the new connection. The connection is mapped to the UUID 0x884.</p></li>
+<li><p>The database response arrives but isn&#39;t sent because the write operation fails (invalid UUID 0x114).</p></li>
+</ul>
+
+<p>So, using <code>sock.h</code>, Alice will <strong>not</strong> receive Bob&#39;s bank statement.</p>
+
+<h4 id="tcp-ip-and-unix-sockets-as-default">TCP/IP and Unix Sockets as default</h4>
+
+<p><code>sock.h</code> defaults to TCP/IP and Unix Domain sockets, so calls to <code>sock_listen</code> and <code>sock_connect</code> will assume one or the other (if no port is assigned, it is assumed to be a Unix Domain socket).</p>
+
+<p>However, importing other socket types (such as pipes) should be possible by using the <code>sock_open(fd)</code> function, that imports an existing file descriptor into <code>sock.h</code>, assigning this file descriptor a valid UUID.</p>
+</div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>

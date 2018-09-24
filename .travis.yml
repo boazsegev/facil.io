@@ -1,5 +1,9 @@
 language: c
-script: make test_build_and_run
+script:
+  - make vars
+  - DEBUG=1 make vars
+  - make test/optimized
+  - ASAN_OPTIONS=detect_leaks=0 make test/ci
 os:
   - linux
   - osx

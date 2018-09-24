@@ -1,0 +1,613 @@
+/* Color Scheme */
+
+    // background-color: $darkest_color;
+    // color: $lightest_color;
+
+// $mid_color: #814040;  // Main Primary color */
+// $lightest_color: #CE8A8A;
+// $light_color: #AB5E5E;
+// $dark_color: #732626;
+// $darkest_color: #541010;
+
+/* fonts */
+$title_font: 'Montserrat', sans-serif;
+$main_font: 'Karla', sans-serif;
+$menu_font: 'Quicksand', sans-serif;
+/* radius */
+$radius: 0.4em;
+@mixin border-radius {
+  -webkit-border-radius: $radius;
+     -moz-border-radius: $radius;
+      -ms-border-radius: $radius;
+          border-radius: $radius;
+}
+
+html, body
+{
+    width: 100%; height: 100%;
+    background-color: #eaeaf3;
+    color: #202020;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    font-family: $main_font;
+    font-size: 1em;
+    padding:0; margin: 0;
+    overflow: hidden;
+}
+body
+{
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+}
+input
+{
+    background-color: #e0e0e0;
+    color: #202020;
+    font-size: 1em;
+    @include border-radius;
+    border: 1px solid;
+    outline: 0;
+    padding: 0.3em 1em;
+}
+input[type=submit]
+{
+    margin: 0 0 0 1em;
+}
+h1, h2, h3, h4, h5, h6
+{
+    font-family: $title_font;
+    padding: 0.2em;
+    margin: 0;
+    color:#2020a0;
+    a {
+        color: inherit;
+        text-decoration: none;
+    }
+}
+h1 {text-align: center;}
+h2, h3, h4, h5, h6 {
+    text-align: left;
+    margin-top:1.4em;
+}
+
+h2 {
+    margin-top:1.4em;
+}
+h4 {
+    font-size:1.4em;
+    // margin-left:2em;
+    // border-left: 2px #888 solid;
+    pre, code {
+    }
+    &:after {
+        content: ' ';
+        width: 31%;
+        position:relative;
+        top: 0.2em;
+        display:block;
+        border-bottom: 1px solid #99a;
+    }
+}
+
+.bordered, pre
+{
+    box-sizing: border-box;
+    border: 1px solid;
+    @include border-radius;
+    padding: 1em;
+    overflow: hidden;
+    z-index: 50;
+}
+
+#version_data {text-align: center; font-size: 1.1em;}
+
+#md_container
+{
+    box-sizing: border-box;
+    padding: 1em;
+    padding-bottom: 4em;
+    display: inline-block;
+    margin-left: 20%;
+    width: 79%;
+    p {
+        margin: 0;
+        padding: 0.5em;
+        code {
+            padding:0 0.1em;
+            letter-spacing: 1px;
+            font-weight:100;
+            color: #800;
+        }
+    }
+    h3 {
+        padding-top: 3em;
+    }
+    h2 {
+        padding-top: 3em;
+        border-top: 1px solid;
+
+    }
+    pre
+    {
+        overflow: hidden;
+        position:relative;
+        width:96%;
+        margin-left:2%;
+        box-sizing: border-box;
+    }
+    pre code
+    {
+        display:block;
+        width:100%;
+        overflow: scroll;
+        box-sizing: border-box;
+    }
+}
+// Navigation
+
+#top_nav
+{
+    font-family: $menu_font;
+    display: block;
+    width: 100%; height: 5em;
+    border-bottom: 1px solid;
+    box-sizing: border-box;
+    ul
+    {
+        box-sizing: border-box;
+        display: block;
+        width: 100%;
+        height: 100%;
+        margin: 0; padding:0;
+        padding-left: 12em;
+    }
+    li
+    {
+        display: inline-block;
+        position: relative;
+        top:2em;
+        a
+        {
+            transition:all 0.3s ease;
+            -webkit-transition:all 0.3s ease;
+            -moz-transition:all 0.3s ease;
+            -o-transition:all 0.3s ease;
+            white-space: nowrap;
+            display: inline-block;
+            min-width: 7em;
+            padding: 0.5em 1em;
+            text-align:center;
+            margin: 0.2em;
+            @include border-radius;
+            border: 1px solid #e0e0ff;
+            background-color: #dadaf0;
+            color: #020202;
+            text-decoration: none;
+            &:hover
+            {
+                background-color: #fff;
+                color: #000;
+            }
+        }
+    }
+}
+
+#show_nav
+{
+    transform: translateX(999999px);
+    display: hidden;
+}
+#show_sidebar
+{
+    transform: translateX(999999px);
+    display: hidden;
+}
+#side_bar
+{
+    display: block;
+    position: fixed;
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+    left:0; top:7em;
+    width: 20%; height:100%;
+    padding-bottom: 9em;
+    padding-top:0;
+    padding-left: 0.5em;
+    border-right: 1px solid;
+    box-sizing: border-box;
+    h1, h2, h3 {
+        display: inline-block;
+        width: 100%;
+        box-sizing: border-box;
+        a {
+            color: inherit;
+            text-decoration: none;            
+            &:hover {
+                color:000;
+                text-shadow: -3px 3px 2px rgba(150, 150, 150, 0.72);
+                text-decoration:underline;
+            }
+        }
+    }
+    ul
+    {
+        display: inline-block;
+        width: 100%;
+        margin: 0; padding:0;
+        z-index: +100;
+    }
+    li
+    {
+        a
+        {
+            transition:all 0.3s ease;
+            -webkit-transition:all 0.3s ease;
+            -moz-transition:all 0.3s ease;
+            -o-transition:all 0.3s ease;
+            display: inline-block;
+            position: relative;
+            min-width: 7em;
+            padding: 0.2em 1em;
+            text-align:left;
+            margin: 0.2em;
+            @include border-radius;
+            color: #020202;
+            text-decoration: none;
+            box-sizing:border-box;
+            // border-bottom: 1px solid;
+            &:visited
+            {
+                &:after
+                {
+                    display: block;
+                    position: absolute;
+                    top: 0; left:0;
+                    content: '';
+                    padding: 0.2em 0;
+                }
+            }
+            &:hover
+            {
+                color: #000;
+                &:after
+                {
+                    display: block;
+                    position: absolute;
+                    top: 0; left:0;
+                    content: '>';
+                    padding: 0.2em 0;
+                }
+                text-shadow: -3px 3px 2px rgba(150, 150, 150, 0.72);
+                // border-bottom: 1px solid;
+            }
+            &:active
+            {
+                text-shadow: -3px 0px 2px rgba(150, 150, 150, 0.72);
+            }
+        }
+    }
+}
+
+.toc
+{
+    &:after
+    {
+        content: 'Table of Contents';
+        z-index: 125;
+        position: absolute;
+        top: 1em; left: 0;
+        width: 10em;
+        text-align: center;
+        font-size: 1.2em;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease, opacity 0.3s ease;
+        -webkit-transition: transform 0.3s ease, opacity 0.3s ease;
+        -moz-transition: transform 0.3s ease, opacity 0.3s ease;
+        -o-transition: transform 0.3s ease, opacity 0.3s ease;
+        opacity: 1;
+
+        @include border-radius;
+
+        background-color: #8A8ACE;
+        background-color: rgba(200, 200, 248, 0.6);
+    }
+    transition: transform 0.3s ease;
+    -webkit-transition: transform 0.3s ease;
+    -moz-transition: transform 0.3s ease;
+    -o-transition: transform 0.3s ease;
+    transform: translateX(100%);
+    z-index: 150;
+    left: initial;
+    position: fixed;
+    top: 0; right: 0;
+    background-color: rgb(240, 240, 255);
+    background-color: rgba(240, 240, 255, 0.92);
+    border: none;
+    border-left: 1px solid;
+    border-bottom: 1px solid;
+    @include border-radius;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    display: inline-block;
+    height:100%;
+    & > ul
+    {
+        padding: 1em 0.5em;
+        margin: 0;
+        height:100%;
+        box-sizing: border-box;
+        overflow-y: scroll;
+        -webkit-overflow-scrolling: touch;
+        display: block;
+    }
+    &:hover, &:focus, &:active
+    {
+        transform: translateX(0);
+        &:after
+        {
+            transform: translateX(0);
+            opacity: 0;
+            // background-color: transparent;
+        }
+    }
+    li
+    {
+        display: block;
+    }
+    a
+    {
+        display: inline-block;
+        position: relative;
+        min-width: 7em;
+        padding: 0.2em 1em;
+        text-align:left;
+        margin: 0.2em;
+        @include border-radius;
+        color: #020202;
+        text-decoration: none;
+        &:hover
+        {
+            color: #000;
+            &:after
+            {
+                display: block;
+                position: absolute;
+                top: 0; left:0;
+                content: '>';
+                padding: 0.2em 0;
+            }
+        }
+    }
+
+}
+
+#sign
+{
+    height: 5em; width: 8.2em;
+    position:absolute;
+    right: 1em; bottom:0.5em;
+    z-index:250;
+    &:after
+    {
+        content: ' ';
+        display: block;
+        width: 100%; height: 100%;
+        background-repeat: no-repeat;
+        background-image: url('/assets/logo/facil-io.svg');
+        background-size: 100% 100%;
+    }
+}
+#logo
+{
+    position: fixed;
+    top: 0.5em; left: 0.5em;
+    display: block;
+    height: 6em; width: 10em;
+    z-index: 9999;
+    &:after
+    {
+        content: ' ';
+        display: block;
+        width: 100%; height: 100%;
+        background-repeat: no-repeat;
+        background-image: url('/assets/logo/facil-io-side.svg');
+        background-size: 100% 100%;
+    }
+}
+#notice
+{
+    z-index: 99999;
+    position: absolute;
+    top: 0; left: 0;
+    background-color: rgba(255, 255, 255, 0.7);
+    box-sizing: border-box;
+    padding: 1em 0;
+    text-align: center;
+    height: 100px; width: 100%;
+    overflow-y: auto;
+    color: #000; font-weight: bold;
+    .notice_close
+    {
+        display:block;
+        position: absolute;
+        top:0; left:0;
+        padding:0.5em;
+        height:100%;
+        width:5em;
+        text-align:left;
+        cursor: pointer;
+        border-right:1px solid #933;
+        color: #000;
+        &:hover
+        {
+            color: #900;
+            background-color: rgba(0, 0, 0, 0.25);
+        }
+    }
+
+    transition:All 0.25s ease;
+    -webkit-transition:All 0.25s ease;
+    -moz-transition:All 0.25s ease;
+    -o-transition:All 0.25s ease;
+    -ms-transition:All 0.25s ease;
+    transform-origin: 0 50%;
+    -webkit-transform-origin: 50% 0; /* Chrome, Safari, Opera */
+    -ms-transform-origin: 50% 0; /* IE 9 */
+    -moz-transform-origin: 50% 0;
+    -o-transform-origin: 50% 0;
+    transform: scale(1, 1);
+    -webkit-transform: scale(1, 1);
+    -moz-transform: scale(1, 1);
+    -o-transform: scale(1, 1);
+    -ms-transform: scale(1, 1);
+    &.hidden
+    {
+        transform: scale(1, 0);
+        -webkit-transform: scale(1, 0);
+        -moz-transform: scale(1, 0);
+        -o-transform: scale(1, 0);
+        -ms-transform: scale(1, 0);
+    }
+}
+
+#ruby_lang
+{
+    position: fixed;
+    top: 1em; right: 1em;
+    display: block;
+    height: 5em; width: auto;
+    z-index: 9999;
+    img
+    {
+        height: 100%;
+    }
+}
+/*  Dark Theme Changes */
+body.dark, .dark input
+{
+    background-color: #202020;
+    color: #e0e0e0;
+    mark
+    {
+      background-color: #403020;
+      color: #e0e0e0;
+    }
+    a
+    {
+        color: #ddf;
+        &:visited
+        {
+            color: #eef;
+        }
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color:#fad0d0;
+    }
+    h2, h3, h4 {
+        &:after {
+            border-bottom: 1px solid #caa;
+        }
+    }
+    #top_nav
+    {
+        li
+        {
+            a
+            {
+                border: 1px solid #CE8A8A;
+                background-color: #541010;
+                color: #CE8A8A;
+                &:hover
+                {
+                    background-color: #732626;
+                    color: #CE8A8A;
+                }
+            }
+        }
+    }
+
+    #md_container
+    {
+        p {
+            code {
+                color: #bfafef;
+            }
+        }
+    }
+    #logo:after
+    {
+        background-image: url('/assets/logo/facil-io-side-light.svg');
+    }
+    #sign:after
+    {
+        background-image: url('/assets/logo/facil-io-light.svg');
+    }
+
+    .toc
+    {
+        background-color: rgb(64, 64, 64);
+        background-color: rgba(64, 64, 64, 0.94);
+        &:after
+        {
+
+            background-color: rgb(0,0,0);
+            background-color: rgba(128, 128, 128, 0.6);
+        }
+        a
+        {
+            color: #e0e0e0;
+            &:hover
+            {
+                color: #fff;
+            }
+        }
+    }
+    #side_bar
+    {
+        h2, h3, h4
+        {
+            a {
+                color: inherit;
+                text-decoration: none;            
+                &:hover {
+                    color:000;
+                    text-shadow: -3px 3px 2px rgba(150, 150, 150, 0.72);
+                    text-decoration:underline;
+                }
+            }
+        }
+        li
+        {
+            a
+            {
+                color: #e0e0e0;
+                &:hover
+                {
+                    color: #fff;
+                }
+            }
+        }
+    }
+
+}
+
+body.light
+{
+  @import 'github';
+  // #md_container p code,
+  pre {
+    background: #f5f5ff;    
+  }
+}
+
+body.dark
+{
+  @import 'railscasts';
+  // #md_container p code,
+  pre {
+    background: #322; 
+  }
+}
+
+@import 'small';

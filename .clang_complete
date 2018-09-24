@@ -1,9 +1,7 @@
 -Ilib/
 -Ilib/facil
--Ilib/facil/core
--Ilib/facil/core/types
--Ilib/facil/core/types/fiobj
--Ilib/facil/services
+-Ilib/facil/fiobj
+-Ilib/facil/cli
 -Ilib/facil/http/
 -Ilib/facil/http/parsers
 -Ilib/facil/redis

@@ -17,13 +17,13 @@ License: MIT
 
 /** Creates an HTTP1 protocol object and handles any unread data in the buffer
  * (if any). */
-protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
-                      void *unread_data, size_t unread_length);
+fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
+                          void *unread_data, size_t unread_length);
 
 /** Manually destroys the HTTP1 protocol object. */
-void http1_destroy(protocol_s *);
+void http1_destroy(fio_protocol_s *);
 
 /** returns the HTTP/1.1 protocol's VTable. */
-void * http1_vtable(void);
+void *http1_vtable(void);
 
 #endif

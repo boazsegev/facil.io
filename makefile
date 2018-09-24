@@ -12,7 +12,7 @@ endif
 # the .c and .cpp source files root folder - subfolders are automatically included
 LIB_ROOT=lib
 # publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=facil/core facil/core/types facil/core/types/fiobj facil/services facil/http facil/http/parsers facil/redis
+LIB_PUBLIC_SUBFOLDERS=facil facil/fiobj facil/cli facil/http facil/http/parsers facil/redis
 # privately used subfolders in the lib root (this distinction is for CMake)
 LIB_PRIVATE_SUBFOLDERS= 
 
@@ -58,6 +58,22 @@ else
 	FLAGS:=$(FLAGS) NODEBUG
 endif
 
+# add FIO_PRINT_STATE flag if requested
+ifdef FIO_PRINT
+	FLAGS:=$(FLAGS) FIO_PRINT_STATE=$(FIO_PRINT)
+endif
+
+# add FIO_ENGINE_POLL flag if requested
+ifdef FIO_POLL
+	FLAGS:=$(FLAGS) FIO_ENGINE_POLL=$(FIO_POLL)
+endif
+
+# add FIO_PUBSUB_SUPPORT flag if requested
+ifdef FIO_PUBSUB_SUPPORT
+	FLAGS:=$(FLAGS) FIO_PUBSUB_SUPPORT=$(FIO_PUBSUB_SUPPORT)
+endif
+
+
 
 # c compiler
 ifndef CC
@@ -67,6 +83,16 @@ endif
 ifndef CPP
 	CPP=g++
 endif
+
+# c standard
+ifndef CSTD
+	CSTD:=c11
+endif
+# c++ standard
+ifndef CPPSTD
+	CPPSTD:=gnu++11
+endif
+
 
 ##############
 ## OS specific data - compiler, assembler etc.
@@ -159,12 +185,24 @@ ifeq ($(shell printf "\#include <libpq-fe.h>\\nint main(void) {}\n" | $(CC) $(IN
 endif
 
 
+# Set Endian Flag
+ifeq ($(shell printf "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[sizeof(i)-1]);}\n" | $(CC) -xc -o _fio___endian_test - >> /dev/null 2> /dev/null ; ./_fio___endian_test >> /dev/null 2> /dev/null; echo $$?; rm _fio___endian_test 2> /dev/null), 1)
+  $(info * Detected Big Endian byte order.)
+	FLAGS:=$(FLAGS) __BIG_ENDIAN__
+else ifeq ($(shell printf "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[0]);}\n" | $(CC) -xc -o _fio___endian_test - >> /dev/null 2> /dev/null ; ./_fio___endian_test >> /dev/null 2> /dev/null; echo $$?; rm _fio___endian_test 2> /dev/null), 1)
+  $(info * Detected Little Endian byte order.)
+	FLAGS:=$(FLAGS) __BIG_ENDIAN__=0
+else
+  $(info * Byte ordering (endianness) detection failed)
+endif
+
+
 #####################
 # Updated flags and final values
 
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
-CFLAGS:= $(CFLAGS) -g -std=c11 -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
-CPPFLAGS:= $(CPPFLAGS) -std=gnu++11 -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
+CPPFLAGS:= $(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 LINKER_FLAGS=$(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFALGS_DEPENDENCY=-MT $@ -MMD -MP
 
@@ -240,13 +278,23 @@ test: | clean
 	-@rm -R $(TMP_ROOT) 2> /dev/null
 
 .PHONY : test/optimized
-test/optimized: | clean 
-	@$(MAKE) test_build_and_run
+test/optimized: | clean test_add_speed_flags create_tree $(LIB_OBJS)
+	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(BIN)
 	-@rm $(BIN) 2> /dev/null
 	-@rm -R $(TMP_ROOT) 2> /dev/null
 
+.PHONY : test/ci
+test/ci:| clean 
+	@DEBUG=1 $(MAKE) test_build_and_run
+
+.PHONY : test/c99
+test/c99:| clean 
+	@CSTD=c99 DEBUG=1 $(MAKE) test_build_and_run
+
 .PHONY : test_build_and_run
-test_build_and_run: | create_tree test_add_flags test_build
+test_build_and_run: | create_tree test_add_flags test/build
 	@$(BIN)
 
 .PHONY : test_add_flags
@@ -254,10 +302,10 @@ test_add_flags:
 	$(eval CFLAGS:=-coverage $(CFLAGS) -DDEBUG=1 -Werror)
 	$(eval LINKER_FLAGS:=-coverage -DDEBUG=1 $(LINKER_FLAGS))
 
-.PHONY : test_build
-test_build: $(LIB_OBJS)
-	@$(CC) -c ./tests/shorts.c -o $(TMP_ROOT)/shorts.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/shorts.o $(OPTIMIZATION) $(LINKER_FLAGS)
+.PHONY : test/build
+test/build: $(LIB_OBJS)
+	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
 
 .PHONY : clean
 clean:

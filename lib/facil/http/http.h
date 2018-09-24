@@ -7,7 +7,9 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #define H_HTTP_H
 
-#include "facil.h"
+#include <fio.h>
+
+#include <fiobj.h>
 
 #include <time.h>
 
@@ -40,7 +42,7 @@ Compile Time Settings
 #define HTTP_MAX_HEADER_LENGTH 8192
 #endif
 
-/** the `http_listen settings, see detils in the struct definition. */
+/** the `http_listen settings, see details in the struct definition. */
 typedef struct http_settings_s http_settings_s;
 
 /* *****************************************************************************
@@ -114,18 +116,18 @@ This struct is used together with the `http_response_set_cookie`. i.e.:
 */
 typedef struct {
   /** The cookie's name (Symbol). */
-  char *name;
+  const char *name;
   /** The cookie's value (leave blank to delete cookie). */
-  char *value;
+  const char *value;
   /** The cookie's domain (optional). */
-  char *domain;
+  const char *domain;
   /** The cookie's path (optional). */
-  char *path;
-  /** The cookie name's size in bytes or a terminating NULL will be assumed.*/
+  const char *path;
+  /** The cookie name's size in bytes or a terminating NUL will be assumed.*/
   size_t name_len;
-  /** The cookie value's size in bytes or a terminating NULL will be assumed.*/
+  /** The cookie value's size in bytes or a terminating NUL will be assumed.*/
   size_t value_len;
-  /** The cookie domain's size in bytes or a terminating NULL will be assumed.*/
+  /** The cookie domain's size in bytes or a terminating NUL will be assumed.*/
   size_t domain_len;
   /** The cookie path's size in bytes or a terminating NULL will be assumed.*/
   size_t path_len;
@@ -151,16 +153,15 @@ int http_set_header(http_s *h, FIOBJ name, FIOBJ value);
  *
  * Returns -1 on error and 0 on success.
  */
-int http_set_header2(http_s *h, fio_cstr_s name, fio_cstr_s value);
+int http_set_header2(http_s *h, fio_str_info_s name, fio_str_info_s value);
 
 /**
- * Sets a response cookie, taking ownership of the value object, but NOT the
- * name object (so name objects could be reused in future responses).
+ * Sets a response cookie.
  *
  * Returns -1 on error and 0 on success.
  *
  * Note: Long cookie names and long cookie values will be considered a security
- * vaiolation and an error will be returned. It should be noted that most
+ * violation and an error will be returned. It should be noted that most
  * proxies and servers will refuse long cookie names or values and many impose
  * total header lengths (including cookies) of ~8Kib.
  */
@@ -248,6 +249,7 @@ int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type);
 HTTP evented API (pause / resume HTTp handling)
 ***************************************************************************** */
 
+typedef struct http_pause_handle_s http_pause_handle_s;
 /**
  * Pauses the request / response handling and INVALIDATES the current `http_s`
  * handle (no `http` functions can be called).
@@ -258,11 +260,11 @@ HTTP evented API (pause / resume HTTp handling)
  * The opaque `http` pointer is only valid for a single call to `http_resume`
  * and can't be used by any other `http` function (it's a different data type).
  *
- * Note: the currecnt `http_s` handle will become invalid once this function is
+ * Note: the current `http_s` handle will become invalid once this function is
  *    called and it's data might be deallocated, invalid or used by a different
  *    thread.
  */
-void http_pause(http_s *h, void (*task)(void *http));
+void http_pause(http_s *h, void (*task)(http_pause_handle_s *http));
 
 /**
  * Resumes a request / response handling within a task and INVALIDATES the
@@ -281,17 +283,17 @@ void http_pause(http_s *h, void (*task)(void *http));
  *    called and it's data might be deallocated, invalidated or used by a
  *    different thread.
  */
-void http_resume(void *http, void (*task)(http_s *h),
+void http_resume(http_pause_handle_s *http, void (*task)(http_s *h),
                  void (*fallback)(void *udata));
 
 /** Returns the `udata` associated with the paused opaque handle */
-void *http_paused_udata_get(void *http);
+void *http_paused_udata_get(http_pause_handle_s *http);
 
 /**
  * Sets the `udata` associated with the paused opaque handle, returning the
  * old value.
  */
-void *http_paused_udata_set(void *http, void *udata);
+void *http_paused_udata_set(http_pause_handle_s *http, void *udata);
 
 /* *****************************************************************************
 HTTP Connections - Listening / Connecting / Hijacking
@@ -435,16 +437,14 @@ intptr_t http_connect(const char *address, struct http_settings_s);
   http_connect((address), (struct http_settings_s){__VA_ARGS__})
 
 /**
- * Returns the settings used to setup the connection.
- *
- * Returns -1 on error and 0 on success.
+ * Returns the settings used to setup the connection or NULL on error.
  */
 struct http_settings_s *http_settings(http_s *h);
 
 /**
  * Returns the direct address of the connected peer (likely an intermediary).
  */
-sock_peer_addr_s http_peer_addr(http_s *h);
+fio_str_info_s http_peer_addr(http_s *h);
 
 /**
  * Hijacks the socket away from the HTTP protocol and away from facil.io.
@@ -455,7 +455,7 @@ sock_peer_addr_s http_peer_addr(http_s *h);
  * It's possible to call `http_finish` immediately after calling `http_hijack`
  * in order to send the outgoing headers.
  *
- * If any aditional HTTP functions are called after the hijacking, the protocol
+ * If any additional HTTP functions are called after the hijacking, the protocol
  * object might attempt to continue reading data from the buffer.
  *
  * Returns the underlining socket connection's uuid. If `leftover` isn't NULL,
@@ -465,7 +465,7 @@ sock_peer_addr_s http_peer_addr(http_s *h);
  * WARNING: this isn't a good way to handle HTTP connections, especially as
  * HTTP/2 enters the picture.
  */
-intptr_t http_hijack(http_s *h, fio_cstr_s *leftover);
+intptr_t http_hijack(http_s *h, fio_str_info_s *leftover);
 
 /* *****************************************************************************
 Websocket Upgrade (Server and Client connection establishment)
@@ -481,7 +481,7 @@ Websocket Upgrade (Server and Client connection establishment)
 typedef struct ws_s ws_s;
 
 /**
- * This struct is used for the named agruments in the `http_upgrade2ws`
+ * This struct is used for the named arguments in the `http_upgrade2ws`
  * function and macro.
  */
 typedef struct {
@@ -493,7 +493,7 @@ typedef struct {
    * overwritten once the function exits (it cannot be saved for later, but it
    * can be copied).
    */
-  void (*on_message)(ws_s *ws, char *data, size_t size, uint8_t is_text);
+  void (*on_message)(ws_s *ws, fio_str_info_s msg, uint8_t is_text);
   /**
    * The (optional) on_open callback will be called once the websocket
    * connection is established and before is is registered with `facil`, so no
@@ -519,7 +519,7 @@ typedef struct {
    *
    * The `uuid` is the connection's unique ID that can identify the Websocket. A
    * value of `uuid == 0` indicates the Websocket connection wasn't established
-   * (an error occured).
+   * (an error occurred).
    *
    * The `udata` is the user data as set during the upgrade or using the
    * `websocket_udata_set` function.
@@ -588,7 +588,7 @@ EventSource Support (SSE)
 typedef struct http_sse_s http_sse_s;
 
 /**
- * This struct is used for the named agruments in the `http_upgrade2sse`
+ * This struct is used for the named arguments in the `http_upgrade2sse`
  * function and macro.
  */
 struct http_sse_s {
@@ -613,12 +613,8 @@ struct http_sse_s {
    * The (optional) on_close callback will be called once a connection is
    * terminated or failed to be established.
    *
-   * The `uuid` is the connection's unique ID that can identify the Websocket. A
-   * value of `uuid == 0` indicates the Websocket connection wasn't established
-   * (an error occured).
-   *
-   * The `udata` is the user data as set during the upgrade or using the
-   * `websocket_udata_set` function.
+   * The `udata` passed to the `http_upgrade2sse` function is available
+   * through the `http_sse_s` pointer (`sse->udata`).
    */
   void (*on_close)(http_sse_s *sse);
   /** Opaque user data. */
@@ -628,7 +624,7 @@ struct http_sse_s {
 /**
  * Upgrades an HTTP connection to an EventSource (SSE) connection.
  *
- * Thie `http_s` handle will be invalid after this call.
+ * The `http_s` handle will be invalid after this call.
  *
  * On HTTP/1.1 connections, this will preclude future requests using the same
  * connection.
@@ -640,9 +636,7 @@ int http_upgrade2sse(http_s *h, http_sse_s);
  * members. i.e.:
  *
  *     on_open_sse(sse_s * sse) {
- *        ; // ... this is the websocket on_message callback
- *        FIOBJ ch = (FIOBJ)sse->udata;
- *        http_sse_subscribe(ch, NULL, NULL); // a simple echo example
+ *        http_sse_subscribe(sse, .channel = CHANNEL_NAME);
  *     }
  *
  *     on_upgrade(http_s* h) {
@@ -658,30 +652,29 @@ int http_upgrade2sse(http_s *h, http_sse_s);
 void http_sse_set_timout(http_sse_s *sse, uint8_t timeout);
 
 struct http_sse_subscribe_args {
-  /** The channel namr used for the subscription. */
-  FIOBJ channel;
+  /** The channel name used for the subscription. */
+  fio_str_info_s channel;
   /** The optional on message callback. If missing, Data is directly writen. */
-  void (*on_message)(http_sse_s *sse, FIOBJ channel, FIOBJ msg, void *udata);
+  void (*on_message)(http_sse_s *sse, fio_str_info_s channel,
+                     fio_str_info_s msg, void *udata);
   /** An optional callback for when a subscription is fully canceled. */
   void (*on_unsubscribe)(void *udata);
   /** Opaque user */
   void *udata;
   /** A callback for pattern matching. */
-  facil_match_fn match;
+  fio_match_fn match;
 };
 
 /**
- * Subscribes to a channel. See {struct http_sse_subscribe_args} for possible
- * arguments.
+ * Subscribes to a channel for direct message deliverance. See {struct
+ * http_sse_subscribe_args} for possible arguments.
  *
  * Returns a subscription ID on success and 0 on failure.
  *
- * All subscriptions are automatically revoked once the connection is closed.
+ * To unsubscripbe from the channel, use `http_sse_unsubscribe` (NOT
+ * `fio_unsubscribe`).
  *
- * If the connections subscribes to the same channel more than once, messages
- * will be merged. However, another subscription ID will be assigned, and two
- * calls to {http_sse_unsubscribe} will be required in order to unregister from
- * the channel.
+ * All subscriptions are automatically cleared once the connection is closed.
  */
 uintptr_t http_sse_subscribe(http_sse_s *sse,
                              struct http_sse_subscribe_args args);
@@ -704,10 +697,10 @@ void http_sse_unsubscribe(http_sse_s *sse, uintptr_t subscription);
  * https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
  */
 struct http_sse_write_args {
-  fio_cstr_s id;    /* (optionl) sets the `id` event property. */
-  fio_cstr_s event; /* (optionl) sets the `event` event property. */
-  fio_cstr_s data;  /* (optionl) sets the `data` event property. */
-  intptr_t retry;   /* (optionl) sets the `retry` event property. */
+  fio_str_info_s id;    /* (optional) sets the `id` event property. */
+  fio_str_info_s event; /* (optional) sets the `event` event property. */
+  fio_str_info_s data;  /* (optional) sets the `data` event property. */
+  intptr_t retry;       /* (optional) sets the `retry` event property. */
 };
 
 /**
@@ -720,7 +713,7 @@ int http_sse_write(http_sse_s *sse, struct http_sse_write_args);
   http_sse_write((sse), (struct http_sse_write_args){__VA_ARGS__})
 
 /**
- * Get the connection's UUID (for facil_defer and similar use cases).
+ * Get the connection's UUID (for `fio_defer_io_task`, pub/sub, etc').
  */
 intptr_t http_sse2uuid(http_sse_s *sse);
 
@@ -788,10 +781,10 @@ void http_parse_cookies(http_s *h, uint8_t is_url_encoded);
  * * "name[][key]" references a nested Hash within an array. Hash keys will be
  *   unique (repeating a key advances the hash).
  * * These rules can be nested (i.e. "name[][key1][][key2]...")
- * * "name[][]" is an error (there's no way for the parser to analyse
- *    dimentions)
+ * * "name[][]" is an error (there's no way for the parser to analyze
+ *    dimensions)
  *
- * Note: names can't begine with "[" or end with "]" as these are reserved
+ * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
 int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
@@ -806,12 +799,12 @@ int http_add2hash(FIOBJ dest, char *name, size_t name_len, char *value,
  * * "name[]" references a nested Array (nested in the Hash).
  * * "name[key]" references a nested Hash.
  * * "name[][key]" references a nested Hash within an array. Hash keys will be
- *   unique (repeating a key advances the hash).
+ *   unique (repeating a key advances the array).
  * * These rules can be nested (i.e. "name[][key1][][key2]...")
- * * "name[][]" is an error (there's no way for the parser to analyse
- *    dimentions)
+ * * "name[][]" is an error (there's no way for the parser to analyze
+ *    dimensions)
  *
- * Note: names can't begine with "[" or end with "]" as these are reserved
+ * Note: names can't begin with "[" or end with "]" as these are reserved
  *       characters.
  */
 int http_add2hash2(FIOBJ dest, char *name, size_t name_len, FIOBJ value,
@@ -822,7 +815,7 @@ HTTP Status Strings and Mime-Type helpers
 ***************************************************************************** */
 
 /** Returns a human readable string related to the HTTP status number. */
-fio_cstr_s http_status2str(uintptr_t status);
+fio_str_info_s http_status2str(uintptr_t status);
 
 /** Registers a Mime-Type to be associated with the file extension. */
 void http_mimetype_register(char *file_ext, size_t file_ext_len,
@@ -844,7 +837,7 @@ FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len);
  */
 FIOBJ http_mimetype_find2(FIOBJ url);
 
-/** Clears the Mime-Type registry (it will be emoty afterthis call). */
+/** Clears the Mime-Type registry (it will be empty after this call). */
 void http_mimetype_clear(void);
 
 /* *****************************************************************************
@@ -913,7 +906,7 @@ size_t http_date2rfc2822(char *target, struct tm *tmbuf);
 /**
  * Prints Unix time to a HTTP time formatted string.
  *
- * This variation implements chached results for faster processeing, at the
+ * This variation implements cached results for faster processing, at the
  * price of a less accurate string.
  */
 size_t http_time2str(char *target, const time_t t);
@@ -942,14 +935,14 @@ HTTP URL parsing
 
 /** the result returned by `http_url_parse` */
 typedef struct {
-  fio_cstr_s scheme;
-  fio_cstr_s user;
-  fio_cstr_s password;
-  fio_cstr_s host;
-  fio_cstr_s port;
-  fio_cstr_s path;
-  fio_cstr_s query;
-  fio_cstr_s target;
+  fio_str_info_s scheme;
+  fio_str_info_s user;
+  fio_str_info_s password;
+  fio_str_info_s host;
+  fio_str_info_s port;
+  fio_str_info_s path;
+  fio_str_info_s query;
+  fio_str_info_s target;
 } http_url_s;
 
 /**
@@ -959,7 +952,7 @@ typedef struct {
  * The returned string are NOT NUL terminated, they are merely locations within
  * the original string.
  *
- * This function expects any of the follwing formats:
+ * This function expects any of the following formats:
  *
  * * `/complete_path?query#target`
  *
