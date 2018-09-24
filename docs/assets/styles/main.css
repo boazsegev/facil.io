@@ -314,7 +314,7 @@ h4 {
 
 #sign {
   height: 5em;
-  width: 8.2em;
+  width: 5em;
   position: absolute;
   right: 1em;
   bottom: 0.5em;
@@ -330,11 +330,11 @@ h4 {
 
 #logo {
   position: fixed;
-  top: 0.5em;
+  top: 1em;
   left: 0.5em;
   display: block;
   height: 6em;
-  width: 10em;
+  width: 11em;
   z-index: 9999; }
   #logo:after {
     content: ' ';
