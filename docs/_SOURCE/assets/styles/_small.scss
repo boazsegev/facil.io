@@ -56,7 +56,8 @@ code
 }
 #logo
 {
-    top:0.3em;
+    top:0.5em;
+    height: 4em;
     @include border-radius;
     // background-color: rgb(240,240,240);
     // background-color: rgba(240, 240, 240, 0.64);
@@ -64,7 +65,7 @@ code
 #sign
 {
     position:fixed;
-    right: 1em; bottom:0;
+    right: 0.5em; bottom:0.5em;
     z-index:250;
 }
 

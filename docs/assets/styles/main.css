@@ -1134,7 +1134,8 @@ body.dark {
       top: 0; }
 
   #logo {
-    top: 0.3em;
+    top: 0.5em;
+    height: 4em;
     -webkit-border-radius: 0.4em;
     -moz-border-radius: 0.4em;
     -ms-border-radius: 0.4em;
@@ -1142,8 +1143,8 @@ body.dark {
 
   #sign {
     position: fixed;
-    right: 1em;
-    bottom: 0;
+    right: 0.5em;
+    bottom: 0.5em;
     z-index: 250; }
 
   #show_sidebar, #show_nav {

@@ -69,7 +69,8 @@ API: Editing a String
 void fiobj_str_freeze(FIOBJ str);
 
 /**
- * Confirms the requested capacity is available and allocates as required.
+ * Confirms the String allows for the requested capacity (counting used space as
+ * well as free space).
  *
  * Returns updated capacity.
  */
