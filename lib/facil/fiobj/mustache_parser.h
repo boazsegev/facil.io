@@ -25,7 +25,7 @@ Feel free to copy, use and enjoy according to the license provided.
  * data using the `mustache_build` function.
  *
  * The `mustache_build` function accepts two opaque pointers for user data
- * (`udata` and `udata2`) that can be used by the callbacks for data input and
+ * (`udata1` and `udata2`) that can be used by the callbacks for data input and
  * data output.
  *
  * The `mustache_build` function is thread safe and many threads can build
@@ -127,7 +127,7 @@ typedef struct {
    * the parent's udata value. Updated values will propegate to child sections
    * but won't effect parent sections.
    */
-  void *udata;
+  void *udata1;
   /** Opaque user data (recommended for output handling)- children will inherit
    * the parent's udata value. Updated values will propegate to child sections
    * but won't effect parent sections.
@@ -169,7 +169,7 @@ typedef struct mustache_section_s {
    * the parent's udata value. Updated values will propegate to child sections
    * but won't effect parent sections.
    */
-  void *udata;
+  void *udata1;
   /** Opaque user data (recommended for output handling)- children will inherit
    * the parent's udata value. Updated values will propegate to child sections
    * but won't effect parent sections.
@@ -236,7 +236,7 @@ static int mustache_on_section_start(mustache_section_s *section,
 /**
  * Called for cleanup in case of error.
  */
-static void mustache_on_formatting_error(void *udata, void *udata2);
+static void mustache_on_formatting_error(void *udata1, void *udata2);
 
 /* *****************************************************************************
 
@@ -329,7 +329,7 @@ FIO_FUNC int(mustache_build)(mustache_build_args_s args) {
 
   /* first section (section 0) data */
   section_stack[0].sec = (mustache_section_s){
-      .udata = args.udata,
+      .udata1 = args.udata1,
       .udata2 = args.udata2,
   };
   section_stack[0].end = 0;
@@ -518,7 +518,7 @@ FIO_FUNC int(mustache_build)(mustache_build_args_s args) {
 
   return 0;
 error:
-  mustache_on_formatting_error(args.udata, args.udata2);
+  mustache_on_formatting_error(args.udata1, args.udata2);
   return -1;
 }
 

@@ -11,7 +11,7 @@ static struct {
     CB_ON_TEST,
     CB_ON_START,
   } cb_type;
-  void *udata;
+  void *udata1;
 } callback_expected[] = {
     {CB_ON_TEXT, (void *)0},         {CB_ON_TEST, (void *)0},
     {CB_ON_START, (void *)0},        {CB_ON_ARG, (void *)1},
@@ -40,12 +40,12 @@ static void mustache_test_callback(mustache_section_s *section,
             expected);
     exit(-1);
   }
-  if (callback_expected[callback_count].udata != section->udata) {
+  if (callback_expected[callback_count].udata1 != section->udata1) {
     fprintf(stderr,
-            "FAILED: mustache callback udata mismatch (count: %zu, expected "
+            "FAILED: mustache callback udata1 mismatch (count: %zu, expected "
             "%p, got %p)\n",
-            callback_count, callback_expected[callback_count].udata,
-            section->udata);
+            callback_count, callback_expected[callback_count].udata1,
+            section->udata1);
     exit(-1);
   }
   ++callback_count;
@@ -80,15 +80,15 @@ static int mustache_on_section_start(mustache_section_s *section,
                                      char const *name, uint32_t name_len,
                                      uint32_t index) {
   mustache_test_callback(section, CB_ON_START);
-  section->udata = (void *)((uintptr_t)section->udata + 1);
+  section->udata1 = (void *)((uintptr_t)section->udata1 + 1);
   (void)index;
   (void)name;
   (void)name_len;
   return 0;
 }
 
-static void mustache_on_formatting_error(void *udata, void *udata2) {
-  (void)udata;
+static void mustache_on_formatting_error(void *udata1, void *udata2) {
+  (void)udata1;
   (void)udata2;
 }
 
@@ -188,7 +188,7 @@ void mustache_test(void) {
                 "Mustache instraction[%u] error, type %u != %u\n", i,
                 ary[0].instruction, expected[i]);
   }
-  mustache_build(m, .udata = NULL);
+  mustache_build(m, .udata1 = NULL);
   TEST_ASSERT(callback_count + 1 == callback_max,
               "Callback count error %zu != %zu", callback_count + 1,
               callback_max);
