@@ -1,3 +1,4 @@
+#include "fio.h"
 #include "mustache_parser.h"
 
 static size_t callback_count = 0;
@@ -167,33 +168,27 @@ void mustache_test(void) {
       MUSTACHE_SECTION_END,
   };
 
-#define TEST_ASSERT(cond, ...)                                                 \
-  if (!(cond)) {                                                               \
-    fprintf(stderr, "* " __VA_ARGS__);                                         \
-    fprintf(stderr, "\n !!! Testing failed !!!\n");                            \
-    exit(-1);                                                                  \
-  }
-  TEST_ASSERT(m, "Mustache template loading failed with error %u\n", err);
+  FIO_ASSERT(m, "Mustache template loading failed with error %u\n", err);
 
   fprintf(stderr, "* template loaded, testing template instruction array.\n");
   mustache_print_instructions(m);
   mustache__instruction_s *ary = (mustache__instruction_s *)(m + 1);
 
-  TEST_ASSERT(m->u.read_only.intruction_count == 13,
-              "Mustache template instruction count error %u\n",
-              m->u.read_only.intruction_count);
+  FIO_ASSERT(m->u.read_only.intruction_count == 13,
+             "Mustache template instruction count error %u\n",
+             m->u.read_only.intruction_count);
 
   for (uint16_t i = 0; i < 13; ++i) {
-    TEST_ASSERT(ary[i].instruction == expected[i],
-                "Mustache instraction[%u] error, type %u != %u\n", i,
-                ary[0].instruction, expected[i]);
+    FIO_ASSERT(ary[i].instruction == expected[i],
+               "Mustache instraction[%u] error, type %u != %u\n", i,
+               ary[0].instruction, expected[i]);
   }
   mustache_build(m, .udata1 = NULL);
-  TEST_ASSERT(callback_count + 1 == callback_max,
-              "Callback count error %zu != %zu", callback_count + 1,
-              callback_max);
-  TEST_ASSERT(callback_expected[callback_count].cb_type == CB_ERROR,
-              "Callback type error on finish");
+  FIO_ASSERT(callback_count + 1 == callback_max,
+             "Callback count error %zu != %zu", callback_count + 1,
+             callback_max);
+  FIO_ASSERT(callback_expected[callback_count].cb_type == CB_ERROR,
+             "Callback type error on finish");
   /* cleanup */
   mustache_free(m);
   fprintf(stderr, "* passed.\n");

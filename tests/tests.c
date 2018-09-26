@@ -18,11 +18,11 @@ void resp_test(void) {
   const char array_x3_i[] = "*3\r\n$3\r\nfoo\r\n$-1\r\n$3\r\nbar\r\n:-42\r\n";
   resp_parser_s parser;
   memset(&parser, 0, sizeof(parser));
-  TEST_ASSERT(!resp_parse(&parser, OK, sizeof(OK) - 1),
-              "RESP parser didn't parse the whole of the OK response data.");
-  TEST_ASSERT(!resp_parse(&parser, array_x3_i, sizeof(array_x3_i) - 1),
-              "RESP parser didn't parse the whole of the Array response data "
-              "(or parsed more).");
+  FIO_ASSERT(!resp_parse(&parser, OK, sizeof(OK) - 1),
+             "RESP parser didn't parse the whole of the OK response data.");
+  FIO_ASSERT(!resp_parse(&parser, array_x3_i, sizeof(array_x3_i) - 1),
+             "RESP parser didn't parse the whole of the Array response data "
+             "(or parsed more).");
 }
 
 static int resp_on_number(resp_parser_s *parser, int64_t num) {

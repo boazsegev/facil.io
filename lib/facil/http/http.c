@@ -2634,6 +2634,13 @@ parse_path:
 /* *****************************************************************************
 Lookup Tables / functions
 ***************************************************************************** */
+
+#define FIO_SET_NAME fio_fiobj_set
+#define FIO_SET_OBJ_TYPE FIOBJ
+#define FIO_SET_OBJ_COPY(dest, o) (dest) = fiobj_dup((o))
+#define FIO_SET_OBJ_DESTROY(o) fiobj_free((o))
+#include <fio.h>
+
 #include <fio_hashmap.h>
 
 static fio_hash_s mime_types;

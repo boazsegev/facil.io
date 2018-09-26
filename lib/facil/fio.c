@@ -7458,14 +7458,6 @@ Section Start Marker
 ***************************************************************************** */
 
 #if DEBUG
-#define TEST_ASSERT(cond, ...)                                                 \
-  if (!(cond)) {                                                               \
-    fprintf(stderr, "* " __VA_ARGS__);                                         \
-    fprintf(stderr, "\n !!! Testing failed !!!\n");                            \
-    exit(-1);                                                                  \
-  }
-
-#define FIO_LLIST_TEST_LIMIT 1016
 
 // clang-format off
 #if defined(HAVE_OPENSSL)
@@ -7476,6 +7468,8 @@ Section Start Marker
 /* *****************************************************************************
 Testing Linked Lists
 ***************************************************************************** */
+
+#define FIO_LLIST_TEST_LIMIT 1016
 
 /**
  * Tests linked list functionality.
@@ -7492,46 +7486,46 @@ FIO_FUNC inline void fio_llist_test(void) {
   for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
     fio_ls_push(&list, (void *)i);
   }
-  TEST_ASSERT(fio_ls_any(&list), "List should be populated after fio_ls_push");
+  FIO_ASSERT(fio_ls_any(&list), "List should be populated after fio_ls_push");
   counter = 0;
   FIO_LS_FOR(&list, pos) {
-    TEST_ASSERT((size_t)pos->obj == counter,
-                "`FIO_LS_FOR` value error (%zu != %zu)", (size_t)pos->obj,
-                counter);
+    FIO_ASSERT((size_t)pos->obj == counter,
+               "`FIO_LS_FOR` value error (%zu != %zu)", (size_t)pos->obj,
+               counter);
     ++counter;
   }
   counter = 0;
   while (fio_ls_any(&list)) {
-    TEST_ASSERT(counter < FIO_LLIST_TEST_LIMIT,
-                "`fio_ls_any` didn't return false when expected %p<=%p=>%p",
-                (void *)list.prev, (void *)&list, (void *)list.next);
+    FIO_ASSERT(counter < FIO_LLIST_TEST_LIMIT,
+               "`fio_ls_any` didn't return false when expected %p<=%p=>%p",
+               (void *)list.prev, (void *)&list, (void *)list.next);
     size_t tmp = (size_t)fio_ls_shift(&list);
-    TEST_ASSERT(tmp == counter, "`fio_ls_shift` value error (%zu != %zu)", tmp,
-                counter);
+    FIO_ASSERT(tmp == counter, "`fio_ls_shift` value error (%zu != %zu)", tmp,
+               counter);
     ++counter;
   }
-  TEST_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
-              "List item count error (%zu != %zu)", counter,
-              (size_t)FIO_LLIST_TEST_LIMIT);
+  FIO_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
+             "List item count error (%zu != %zu)", counter,
+             (size_t)FIO_LLIST_TEST_LIMIT);
   /* test unshift/pop */
   for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
     fio_ls_unshift(&list, (void *)i);
   }
-  TEST_ASSERT(fio_ls_any(&list),
-              "List should be populated after fio_ls_unshift");
+  FIO_ASSERT(fio_ls_any(&list),
+             "List should be populated after fio_ls_unshift");
   counter = 0;
   while (!fio_ls_is_empty(&list)) {
-    TEST_ASSERT(counter < FIO_LLIST_TEST_LIMIT,
-                "`fio_ls_is_empty` didn't return true when expected %p<=%p=>%p",
-                (void *)list.prev, (void *)&list, (void *)list.next);
+    FIO_ASSERT(counter < FIO_LLIST_TEST_LIMIT,
+               "`fio_ls_is_empty` didn't return true when expected %p<=%p=>%p",
+               (void *)list.prev, (void *)&list, (void *)list.next);
     size_t tmp = (size_t)fio_ls_pop(&list);
-    TEST_ASSERT(tmp == counter, "`fio_ls_pop` value error (%zu != %zu)", tmp,
-                counter);
+    FIO_ASSERT(tmp == counter, "`fio_ls_pop` value error (%zu != %zu)", tmp,
+               counter);
     ++counter;
   }
-  TEST_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
-              "List item count error (%zu != %zu)", counter,
-              (size_t)FIO_LLIST_TEST_LIMIT);
+  FIO_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
+             "List item count error (%zu != %zu)", counter,
+             (size_t)FIO_LLIST_TEST_LIMIT);
 
   /* Re-test for embeded list */
 
@@ -7549,31 +7543,30 @@ FIO_FUNC inline void fio_llist_test(void) {
     n->i = i;
     fio_ls_embd_push(&emlist, &n->node);
   }
-  TEST_ASSERT(fio_ls_embd_any(&emlist),
-              "List should be populated after fio_ls_embd_push");
+  FIO_ASSERT(fio_ls_embd_any(&emlist),
+             "List should be populated after fio_ls_embd_push");
   counter = 0;
   FIO_LS_EMBD_FOR(&emlist, pos) {
-    TEST_ASSERT(FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, pos)->i == counter,
-                "`FIO_LS_EMBD_FOR` value error (%zu != %zu)",
-                FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, pos)->i, counter);
+    FIO_ASSERT(FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, pos)->i == counter,
+               "`FIO_LS_EMBD_FOR` value error (%zu != %zu)",
+               FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, pos)->i, counter);
     ++counter;
   }
   counter = 0;
   while (fio_ls_embd_any(&emlist)) {
-    TEST_ASSERT(
-        counter < FIO_LLIST_TEST_LIMIT,
-        "`fio_ls_embd_any` didn't return false when expected %p<=%p=>%p",
-        (void *)emlist.prev, (void *)&emlist, (void *)emlist.next);
+    FIO_ASSERT(counter < FIO_LLIST_TEST_LIMIT,
+               "`fio_ls_embd_any` didn't return false when expected %p<=%p=>%p",
+               (void *)emlist.prev, (void *)&emlist, (void *)emlist.next);
     struct fio_ls_test_s *n =
         FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_shift(&emlist));
-    TEST_ASSERT(n->i == counter, "`fio_ls_embd_shift` value error (%zu != %zu)",
-                n->i, counter);
+    FIO_ASSERT(n->i == counter, "`fio_ls_embd_shift` value error (%zu != %zu)",
+               n->i, counter);
     free(n);
     ++counter;
   }
-  TEST_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
-              "List item count error (%zu != %zu)", counter,
-              (size_t)FIO_LLIST_TEST_LIMIT);
+  FIO_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
+             "List item count error (%zu != %zu)", counter,
+             (size_t)FIO_LLIST_TEST_LIMIT);
   /* test shift/unshift */
   for (uintptr_t i = 0; i < FIO_LLIST_TEST_LIMIT; ++i) {
     struct fio_ls_test_s *n = malloc(sizeof(*n));
@@ -7581,24 +7574,24 @@ FIO_FUNC inline void fio_llist_test(void) {
     n->i = i;
     fio_ls_embd_unshift(&emlist, &n->node);
   }
-  TEST_ASSERT(fio_ls_embd_any(&emlist),
-              "List should be populated after fio_ls_embd_unshift");
+  FIO_ASSERT(fio_ls_embd_any(&emlist),
+             "List should be populated after fio_ls_embd_unshift");
   counter = 0;
   while (!fio_ls_embd_is_empty(&emlist)) {
-    TEST_ASSERT(
+    FIO_ASSERT(
         counter < FIO_LLIST_TEST_LIMIT,
         "`fio_ls_embd_is_empty` didn't return true when expected %p<=%p=>%p",
         (void *)emlist.prev, (void *)&emlist, (void *)emlist.next);
     struct fio_ls_test_s *n =
         FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, fio_ls_embd_pop(&emlist));
-    TEST_ASSERT(n->i == counter, "`fio_ls_embd_pop` value error (%zu != %zu)",
-                n->i, counter);
+    FIO_ASSERT(n->i == counter, "`fio_ls_embd_pop` value error (%zu != %zu)",
+               n->i, counter);
     free(n);
     ++counter;
   }
-  TEST_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
-              "List item count error (%zu != %zu)", counter,
-              (size_t)FIO_LLIST_TEST_LIMIT);
+  FIO_ASSERT(counter == FIO_LLIST_TEST_LIMIT,
+             "List item count error (%zu != %zu)", counter,
+             (size_t)FIO_LLIST_TEST_LIMIT);
   fprintf(stderr, "* passed.\n");
 }
 #endif
@@ -7625,95 +7618,94 @@ FIO_FUNC inline void fio_str_test(void) {
           "* Self-Contained String Capacity (FIO_STR_SMALL_CAPA): %zu\n",
           FIO_STR_SMALL_CAPA);
   fio_str_s str = {.small = 0}; /* test zeroed out memory */
-  TEST_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
-              "Small String capacity reporting error!");
-  TEST_ASSERT(fio_str_len(&str) == 0, "Small String length reporting error!");
-  TEST_ASSERT(fio_str_data(&str) ==
-                  (char *)((uintptr_t)(&str + 1) - FIO_STR_SMALL_CAPA),
-              "Small String pointer reporting error (%zd offset)!",
-              (ssize_t)(((char *)((uintptr_t)(&str + 1) - FIO_STR_SMALL_CAPA)) -
-                        fio_str_data(&str)));
+  FIO_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
+             "Small String capacity reporting error!");
+  FIO_ASSERT(fio_str_len(&str) == 0, "Small String length reporting error!");
+  FIO_ASSERT(fio_str_data(&str) ==
+                 (char *)((uintptr_t)(&str + 1) - FIO_STR_SMALL_CAPA),
+             "Small String pointer reporting error (%zd offset)!",
+             (ssize_t)(((char *)((uintptr_t)(&str + 1) - FIO_STR_SMALL_CAPA)) -
+                       fio_str_data(&str)));
   fio_str_write(&str, "World", 4);
-  TEST_ASSERT(str.small,
-              "Small String writing error - not small on small write!");
-  TEST_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
-              "Small String capacity reporting error after write!");
-  TEST_ASSERT(fio_str_len(&str) == 4,
-              "Small String length reporting error after write!");
-  TEST_ASSERT(fio_str_data(&str) ==
-                  (char *)((uintptr_t)(&str + 1) - FIO_STR_SMALL_CAPA),
-              "Small String pointer reporting error after write!");
-  TEST_ASSERT(strlen(fio_str_data(&str)) == 4,
-              "Small String NUL missing after write (%zu)!",
-              strlen(fio_str_data(&str)));
-  TEST_ASSERT(!strcmp(fio_str_data(&str), "Worl"),
-              "Small String write error (%s)!", fio_str_data(&str));
-  TEST_ASSERT(
-      fio_str_data(&str) == fio_str_info(&str).data,
-      "Small String `fio_str_data` != `fio_str_info(s).data` (%p != %p)",
-      (void *)fio_str_data(&str), (void *)fio_str_info(&str).data);
+  FIO_ASSERT(str.small,
+             "Small String writing error - not small on small write!");
+  FIO_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
+             "Small String capacity reporting error after write!");
+  FIO_ASSERT(fio_str_len(&str) == 4,
+             "Small String length reporting error after write!");
+  FIO_ASSERT(fio_str_data(&str) ==
+                 (char *)((uintptr_t)(&str + 1) - FIO_STR_SMALL_CAPA),
+             "Small String pointer reporting error after write!");
+  FIO_ASSERT(strlen(fio_str_data(&str)) == 4,
+             "Small String NUL missing after write (%zu)!",
+             strlen(fio_str_data(&str)));
+  FIO_ASSERT(!strcmp(fio_str_data(&str), "Worl"),
+             "Small String write error (%s)!", fio_str_data(&str));
+  FIO_ASSERT(fio_str_data(&str) == fio_str_info(&str).data,
+             "Small String `fio_str_data` != `fio_str_info(s).data` (%p != %p)",
+             (void *)fio_str_data(&str), (void *)fio_str_info(&str).data);
 
   fio_str_capa_assert(&str, sizeof(fio_str_s) - 1);
-  TEST_ASSERT(!str.small,
-              "Long String reporting as small after capacity update!");
-  TEST_ASSERT(fio_str_capa(&str) == sizeof(fio_str_s) - 1,
-              "Long String capacity update error (%zu != %zu)!",
-              fio_str_capa(&str), sizeof(fio_str_s));
-  TEST_ASSERT(fio_str_data(&str) == fio_str_info(&str).data,
-              "Long String `fio_str_data` != `fio_str_info(s).data` (%p != %p)",
-              (void *)fio_str_data(&str), (void *)fio_str_info(&str).data);
+  FIO_ASSERT(!str.small,
+             "Long String reporting as small after capacity update!");
+  FIO_ASSERT(fio_str_capa(&str) == sizeof(fio_str_s) - 1,
+             "Long String capacity update error (%zu != %zu)!",
+             fio_str_capa(&str), sizeof(fio_str_s));
+  FIO_ASSERT(fio_str_data(&str) == fio_str_info(&str).data,
+             "Long String `fio_str_data` != `fio_str_info(s).data` (%p != %p)",
+             (void *)fio_str_data(&str), (void *)fio_str_info(&str).data);
 
-  TEST_ASSERT(
+  FIO_ASSERT(
       fio_str_len(&str) == 4,
       "Long String length changed during conversion from small string (%zu)!",
       fio_str_len(&str));
-  TEST_ASSERT(fio_str_data(&str) == str.data,
-              "Long String pointer reporting error after capacity update!");
-  TEST_ASSERT(strlen(fio_str_data(&str)) == 4,
-              "Long String NUL missing after capacity update (%zu)!",
-              strlen(fio_str_data(&str)));
-  TEST_ASSERT(!strcmp(fio_str_data(&str), "Worl"),
-              "Long String value changed after capacity update (%s)!",
-              fio_str_data(&str));
+  FIO_ASSERT(fio_str_data(&str) == str.data,
+             "Long String pointer reporting error after capacity update!");
+  FIO_ASSERT(strlen(fio_str_data(&str)) == 4,
+             "Long String NUL missing after capacity update (%zu)!",
+             strlen(fio_str_data(&str)));
+  FIO_ASSERT(!strcmp(fio_str_data(&str), "Worl"),
+             "Long String value changed after capacity update (%s)!",
+             fio_str_data(&str));
 
   fio_str_write(&str, "d!", 2);
-  TEST_ASSERT(!strcmp(fio_str_data(&str), "World!"),
-              "Long String `write` error (%s)!", fio_str_data(&str));
+  FIO_ASSERT(!strcmp(fio_str_data(&str), "World!"),
+             "Long String `write` error (%s)!", fio_str_data(&str));
 
   fio_str_replace(&str, 0, 0, "Hello ", 6);
-  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello World!"),
-              "Long String `insert` error (%s)!", fio_str_data(&str));
+  FIO_ASSERT(!strcmp(fio_str_data(&str), "Hello World!"),
+             "Long String `insert` error (%s)!", fio_str_data(&str));
 
   fio_str_resize(&str, 6);
-  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello "),
-              "Long String `resize` clipping error (%s)!", fio_str_data(&str));
+  FIO_ASSERT(!strcmp(fio_str_data(&str), "Hello "),
+             "Long String `resize` clipping error (%s)!", fio_str_data(&str));
 
   fio_str_replace(&str, 6, 0, "My World!", 9);
-  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello My World!"),
-              "Long String `replace` error when testing overflow (%s)!",
-              fio_str_data(&str));
+  FIO_ASSERT(!strcmp(fio_str_data(&str), "Hello My World!"),
+             "Long String `replace` error when testing overflow (%s)!",
+             fio_str_data(&str));
 
   str.capa = str.len;
   fio_str_replace(&str, -10, 2, "Big", 3);
-  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World!"),
-              "Long String `replace` error when testing splicing (%s)!",
-              fio_str_data(&str));
+  FIO_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World!"),
+             "Long String `replace` error when testing splicing (%s)!",
+             fio_str_data(&str));
 
-  TEST_ASSERT(
+  FIO_ASSERT(
       fio_str_capa(&str) == ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")),
       "Long String `fio_str_replace` capacity update error (%zu != %zu)!",
       fio_str_capa(&str), ROUND_UP_CAPA_2WORDS(strlen("Hello Big World!")));
 
   if (str.len < FIO_STR_SMALL_CAPA) {
     fio_str_compact(&str);
-    TEST_ASSERT(str.small, "Compacting didn't change String to small!");
-    TEST_ASSERT(fio_str_len(&str) == strlen("Hello Big World!"),
-                "Compacting altered String length! (%zu != %zu)!",
-                fio_str_len(&str), strlen("Hello Big World!"));
-    TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World!"),
-                "Compact data error (%s)!", fio_str_data(&str));
-    TEST_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
-                "Compacted String capacity reporting error!");
+    FIO_ASSERT(str.small, "Compacting didn't change String to small!");
+    FIO_ASSERT(fio_str_len(&str) == strlen("Hello Big World!"),
+               "Compacting altered String length! (%zu != %zu)!",
+               fio_str_len(&str), strlen("Hello Big World!"));
+    FIO_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World!"),
+               "Compact data error (%s)!", fio_str_data(&str));
+    FIO_ASSERT(fio_str_capa(&str) == FIO_STR_SMALL_CAPA - 1,
+               "Compacted String capacity reporting error!");
   } else {
     fprintf(stderr, "* skipped `compact` test!\n");
   }
@@ -7724,27 +7716,26 @@ FIO_FUNC inline void fio_str_test(void) {
     fio_str_write(&str, "more data to be written here", 28);
     fio_str_replace(&str, 2, 1, "more data to be written here", 28);
     fio_str_info_s new_state = fio_str_info(&str);
-    TEST_ASSERT(old_state.len == new_state.len,
-                "Frozen String length changed!");
-    TEST_ASSERT(old_state.data == new_state.data,
-                "Frozen String pointer changed!");
-    TEST_ASSERT(
+    FIO_ASSERT(old_state.len == new_state.len, "Frozen String length changed!");
+    FIO_ASSERT(old_state.data == new_state.data,
+               "Frozen String pointer changed!");
+    FIO_ASSERT(
         old_state.capa == new_state.capa,
         "Frozen String capacity changed (allowed, but shouldn't happen)!");
     str.frozen = 0;
   }
   fio_str_printf(&str, " %u", 42);
-  TEST_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World! 42"),
-              "`fio_str_printf` data error (%s)!", fio_str_data(&str));
+  FIO_ASSERT(!strcmp(fio_str_data(&str), "Hello Big World! 42"),
+             "`fio_str_printf` data error (%s)!", fio_str_data(&str));
 
   {
     fio_str_s str2 = FIO_STR_INIT;
     fio_str_concat(&str2, &str);
-    TEST_ASSERT(fio_str_iseq(&str, &str2),
-                "`fio_str_concat` error, strings not equal (%s != %s)!",
-                fio_str_data(&str), fio_str_data(&str2));
+    FIO_ASSERT(fio_str_iseq(&str, &str2),
+               "`fio_str_concat` error, strings not equal (%s != %s)!",
+               fio_str_data(&str), fio_str_data(&str2));
     fio_str_write(&str2, ":extra data", 11);
-    TEST_ASSERT(
+    FIO_ASSERT(
         !fio_str_iseq(&str, &str2),
         "`fio_str_write` error after copy, strings equal ((%zu)%s == (%zu)%s)!",
         fio_str_len(&str), fio_str_data(&str), fio_str_len(&str2),
@@ -7756,50 +7747,48 @@ FIO_FUNC inline void fio_str_test(void) {
   fio_str_free(&str);
 
   fio_str_write_i(&str, -42);
-  TEST_ASSERT(fio_str_len(&str) == 3 && !memcmp("-42", fio_str_data(&str), 3),
-              "fio_str_write_i output error ((%zu) %s != -42)",
-              fio_str_len(&str), fio_str_data(&str));
+  FIO_ASSERT(fio_str_len(&str) == 3 && !memcmp("-42", fio_str_data(&str), 3),
+             "fio_str_write_i output error ((%zu) %s != -42)",
+             fio_str_len(&str), fio_str_data(&str));
   fio_str_free(&str);
 
   {
     fprintf(stderr, "* testing `fio_str_readfile`, and reference counting.\n");
     fio_str_s *s = fio_str_new2();
-    TEST_ASSERT(s && s->small,
-                "`fio_str_new2` error, string not initialized (%p)!",
-                (void *)s);
+    FIO_ASSERT(s && s->small,
+               "`fio_str_new2` error, string not initialized (%p)!", (void *)s);
     fio_str_s *s2 = fio_str_dup(s);
 
-    TEST_ASSERT(s2 == s, "`fio_str_dup` error, should return self!");
-    TEST_ASSERT(s->ref == 1,
-                "`fio_str_dup` error, reference counter not incremented!");
+    FIO_ASSERT(s2 == s, "`fio_str_dup` error, should return self!");
+    FIO_ASSERT(s->ref == 1,
+               "`fio_str_dup` error, reference counter not incremented!");
 
     fio_str_info_s state = fio_str_readfile(s, __FILE__, 0, 0);
 
-    TEST_ASSERT(state.data,
-                "`fio_str_readfile` error, no data was read for file %s!",
-                __FILE__);
+    FIO_ASSERT(state.data,
+               "`fio_str_readfile` error, no data was read for file %s!",
+               __FILE__);
 
-    TEST_ASSERT(!memcmp(state.data,
-                        "/* "
-                        "******************************************************"
-                        "***********************",
-                        80),
-                "`fio_str_readfile` content error, header mismatch!\n %s",
-                state.data);
-    TEST_ASSERT(
+    FIO_ASSERT(!memcmp(state.data,
+                       "/* "
+                       "******************************************************"
+                       "***********************",
+                       80),
+               "`fio_str_readfile` content error, header mismatch!\n %s",
+               state.data);
+    FIO_ASSERT(
         fio_str_utf8_valid(s),
         "`fio_str_utf8_valid` error, code in this file should be valid!");
-    TEST_ASSERT(fio_str_utf8_len(s) &&
-                    (fio_str_utf8_len(s) <= fio_str_len(s)) &&
-                    (fio_str_utf8_len(s) >= (fio_str_len(s)) >> 1),
-                "`fio_str_utf8_len` error, invalid value (%zu / %zu!",
-                fio_str_utf8_len(s), fio_str_len(s));
+    FIO_ASSERT(fio_str_utf8_len(s) && (fio_str_utf8_len(s) <= fio_str_len(s)) &&
+                   (fio_str_utf8_len(s) >= (fio_str_len(s)) >> 1),
+               "`fio_str_utf8_len` error, invalid value (%zu / %zu!",
+               fio_str_utf8_len(s), fio_str_len(s));
 
     fio_str_free2(s2);
-    TEST_ASSERT(s->ref == 0,
-                "`fio_str_free2` error, reference counter not subtracted!");
-    TEST_ASSERT(s->small == 0, "`fio_str_free2` error, strring reinitialized!");
-    TEST_ASSERT(
+    FIO_ASSERT(s->ref == 0,
+               "`fio_str_free2` error, reference counter not subtracted!");
+    FIO_ASSERT(s->small == 0, "`fio_str_free2` error, strring reinitialized!");
+    FIO_ASSERT(
         fio_str_data(s) == state.data,
         "`fio_str_free2` error, data freed while references exist! (%p != %p)",
         (void *)fio_str_data(s), (void *)state.data);
@@ -7809,29 +7798,28 @@ FIO_FUNC inline void fio_str_test(void) {
       intptr_t pos = -11;
       size_t len = 20;
 
-      TEST_ASSERT(
+      FIO_ASSERT(
           fio_str_utf8_select(s, &pos, &len) == 0,
           "`fio_str_utf8_select` returned error for negative pos! (%zd, %zu)",
           (ssize_t)pos, len);
-      TEST_ASSERT(
+      FIO_ASSERT(
           pos == (intptr_t)state.len - 10, /* no UTF-8 bytes in this file */
           "`fio_str_utf8_select` error, negative position invalid! (%zd)",
           (ssize_t)pos);
-      TEST_ASSERT(
-          len == 10,
-          "`fio_str_utf8_select` error, trancated length invalid! (%zd)",
-          (ssize_t)len);
+      FIO_ASSERT(len == 10,
+                 "`fio_str_utf8_select` error, trancated length invalid! (%zd)",
+                 (ssize_t)len);
       pos = 10;
       len = 20;
-      TEST_ASSERT(fio_str_utf8_select(s, &pos, &len) == 0,
-                  "`fio_str_utf8_select` returned error! (%zd, %zu)",
-                  (ssize_t)pos, len);
-      TEST_ASSERT(pos == 10,
-                  "`fio_str_utf8_select` error, position invalid! (%zd)",
-                  (ssize_t)pos);
-      TEST_ASSERT(len == 20,
-                  "`fio_str_utf8_select` error, length invalid! (%zd)",
-                  (ssize_t)len);
+      FIO_ASSERT(fio_str_utf8_select(s, &pos, &len) == 0,
+                 "`fio_str_utf8_select` returned error! (%zd, %zu)",
+                 (ssize_t)pos, len);
+      FIO_ASSERT(pos == 10,
+                 "`fio_str_utf8_select` error, position invalid! (%zd)",
+                 (ssize_t)pos);
+      FIO_ASSERT(len == 20,
+                 "`fio_str_utf8_select` error, length invalid! (%zd)",
+                 (ssize_t)len);
     }
     fio_str_free2(s);
   }
@@ -7843,39 +7831,38 @@ FIO_FUNC inline void fio_str_test(void) {
     fio_str_write(&str, utf8_sample, strlen(utf8_sample));
     intptr_t pos = -2;
     size_t len = 2;
-    TEST_ASSERT(fio_str_utf8_select(&str, &pos, &len) == 0,
-                "`fio_str_utf8_select` returned error for negative pos on "
-                "UTF-8 data! (%zd, %zu)",
-                (ssize_t)pos, len);
-    TEST_ASSERT(pos == (intptr_t)fio_str_len(&str) - 4, /* 4 byte emoji */
-                "`fio_str_utf8_select` error, negative position invalid on "
-                "UTF-8 data! (%zd)",
-                (ssize_t)pos);
-    TEST_ASSERT(len == 4, /* last utf-8 char is 4 byte long */
-                "`fio_str_utf8_select` error, trancated length invalid on "
-                "UTF-8 data! (%zd)",
-                (ssize_t)len);
+    FIO_ASSERT(fio_str_utf8_select(&str, &pos, &len) == 0,
+               "`fio_str_utf8_select` returned error for negative pos on "
+               "UTF-8 data! (%zd, %zu)",
+               (ssize_t)pos, len);
+    FIO_ASSERT(pos == (intptr_t)fio_str_len(&str) - 4, /* 4 byte emoji */
+               "`fio_str_utf8_select` error, negative position invalid on "
+               "UTF-8 data! (%zd)",
+               (ssize_t)pos);
+    FIO_ASSERT(len == 4, /* last utf-8 char is 4 byte long */
+               "`fio_str_utf8_select` error, trancated length invalid on "
+               "UTF-8 data! (%zd)",
+               (ssize_t)len);
     pos = 1;
     len = 20;
-    TEST_ASSERT(
-        fio_str_utf8_select(&str, &pos, &len) == 0,
-        "`fio_str_utf8_select` returned error on UTF-8 data! (%zd, %zu)",
-        (ssize_t)pos, len);
-    TEST_ASSERT(
+    FIO_ASSERT(fio_str_utf8_select(&str, &pos, &len) == 0,
+               "`fio_str_utf8_select` returned error on UTF-8 data! (%zd, %zu)",
+               (ssize_t)pos, len);
+    FIO_ASSERT(
         pos == 4,
         "`fio_str_utf8_select` error, position invalid on UTF-8 data! (%zd)",
         (ssize_t)pos);
-    TEST_ASSERT(
+    FIO_ASSERT(
         len == 10,
         "`fio_str_utf8_select` error, length invalid on UTF-8 data! (%zd)",
         (ssize_t)len);
     pos = 1;
     len = 3;
-    TEST_ASSERT(
+    FIO_ASSERT(
         fio_str_utf8_select(&str, &pos, &len) == 0,
         "`fio_str_utf8_select` returned error on UTF-8 data (2)! (%zd, %zu)",
         (ssize_t)pos, len);
-    TEST_ASSERT(
+    FIO_ASSERT(
         len == 10, /* 3 UTF-8 chars: 4 byte + 4 byte + 2 byte codes == 10 */
         "`fio_str_utf8_select` error, length invalid on UTF-8 data! (%zd)",
         (ssize_t)len);
@@ -7883,15 +7870,15 @@ FIO_FUNC inline void fio_str_test(void) {
   fio_str_free(&str);
   if (1) {
     str = FIO_STR_INIT_STATIC("Welcome");
-    TEST_ASSERT(fio_str_capa(&str) == 0, "Static string capacity non-zero.");
-    TEST_ASSERT(fio_str_len(&str) > 0,
-                "Static string length should be automatically calculated.");
-    TEST_ASSERT(str.dealloc == NULL,
-                "Static string deallocation function should be NULL.");
+    FIO_ASSERT(fio_str_capa(&str) == 0, "Static string capacity non-zero.");
+    FIO_ASSERT(fio_str_len(&str) > 0,
+               "Static string length should be automatically calculated.");
+    FIO_ASSERT(str.dealloc == NULL,
+               "Static string deallocation function should be NULL.");
     fio_free(&str);
     str = FIO_STR_INIT_STATIC("Welcome");
     fio_str_info_s state = fio_str_write(&str, " Home", 5);
-    TEST_ASSERT(state.capa > 0, "Static string not converted to non-static.");
+    FIO_ASSERT(state.capa > 0, "Static string not converted to non-static.");
     fio_free(&str);
   }
   fprintf(stderr, "* passed.\n");
@@ -7905,9 +7892,9 @@ Testing Memory Allocator
 void fio_malloc_test(void) {
   fprintf(stderr, "=== Testing facil.io memory allocator's system calls\n");
   char *mem = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
-  TEST_ASSERT(mem, "sys_alloc failed to allocate memory!\n");
-  TEST_ASSERT(!((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK),
-              "Memory allocation not aligned to FIO_MEMORY_BLOCK_SIZE!");
+  FIO_ASSERT(mem, "sys_alloc failed to allocate memory!\n");
+  FIO_ASSERT(!((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK),
+             "Memory allocation not aligned to FIO_MEMORY_BLOCK_SIZE!");
   mem[0] = 'a';
   mem[FIO_MEMORY_BLOCK_SIZE - 1] = 'z';
   fprintf(stderr, "* Testing reallocation from %p\n", (void *)mem);
@@ -7915,31 +7902,31 @@ void fio_malloc_test(void) {
       sys_realloc(mem, FIO_MEMORY_BLOCK_SIZE, FIO_MEMORY_BLOCK_SIZE * 2);
   if (mem == mem2)
     fprintf(stderr, "* Performed system realloc without copy :-)\n");
-  TEST_ASSERT(mem2[0] = 'a' && mem2[FIO_MEMORY_BLOCK_SIZE - 1] == 'z',
-              "Reaclloc data was lost!");
+  FIO_ASSERT(mem2[0] = 'a' && mem2[FIO_MEMORY_BLOCK_SIZE - 1] == 'z',
+             "Reaclloc data was lost!");
   sys_free(mem2, FIO_MEMORY_BLOCK_SIZE * 2);
   fprintf(stderr, "=== Testing facil.io memory allocator's internal data.\n");
-  TEST_ASSERT(arenas, "Missing arena data - library not initialized!");
+  FIO_ASSERT(arenas, "Missing arena data - library not initialized!");
   fio_free(NULL); /* fio_free(NULL) shouldn't crash... */
   mem = fio_malloc(1);
-  TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
-  TEST_ASSERT(!((uintptr_t)mem & 15), "fio_malloc memory not aligned!\n");
-  TEST_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16,
-              "small fio_malloc memory indicates system allocation!\n");
+  FIO_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
+  FIO_ASSERT(!((uintptr_t)mem & 15), "fio_malloc memory not aligned!\n");
+  FIO_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16,
+             "small fio_malloc memory indicates system allocation!\n");
   mem[0] = 'a';
-  TEST_ASSERT(mem[0] == 'a', "allocate memory wasn't written to!\n");
+  FIO_ASSERT(mem[0] == 'a', "allocate memory wasn't written to!\n");
   mem = fio_realloc(mem, 1);
-  TEST_ASSERT(mem[0] == 'a', "fio_realloc memory wasn't copied!\n");
-  TEST_ASSERT(arena_last_used, "arena_last_used wasn't initialized!\n");
+  FIO_ASSERT(mem[0] == 'a', "fio_realloc memory wasn't copied!\n");
+  FIO_ASSERT(arena_last_used, "arena_last_used wasn't initialized!\n");
   block_s *b = arena_last_used->block;
   size_t count = 2;
   intptr_t old_memory_pool_count = memory.count;
   do {
-    TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
-    TEST_ASSERT(!((uintptr_t)mem & 15),
-                "fio_malloc memory not aligned at allocation #%zu!\n", count);
-    TEST_ASSERT((((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16),
-                "fio_malloc memory indicates system allocation!\n");
+    FIO_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
+    FIO_ASSERT(!((uintptr_t)mem & 15),
+               "fio_malloc memory not aligned at allocation #%zu!\n", count);
+    FIO_ASSERT((((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16),
+               "fio_malloc memory indicates system allocation!\n");
 #if __x86_64__
     fio_memcpy((size_t *)mem, (size_t *)"0123456789abcdefg", 1);
 #else
@@ -7956,11 +7943,11 @@ void fio_malloc_test(void) {
         "block.\n",
         count,
         (size_t)((FIO_MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4) - 1));
-    TEST_ASSERT(memory.available,
-                "memory pool empty (memory block wasn't freed)!\n");
-    TEST_ASSERT(old_memory_pool_count == memory.count,
-                "memory.count == %ld (memory block not counted)!\n",
-                (long)old_memory_pool_count);
+    FIO_ASSERT(memory.available,
+               "memory pool empty (memory block wasn't freed)!\n");
+    FIO_ASSERT(old_memory_pool_count == memory.count,
+               "memory.count == %ld (memory block not counted)!\n",
+               (long)old_memory_pool_count);
     fio_free(mem);
   }
   /* rotate block again */
@@ -7970,11 +7957,11 @@ void fio_malloc_test(void) {
     mem2 = mem;
     mem = fio_malloc(1);
     fio_free(mem2); /* make sure we hold on to the block, so it rotates */
-    TEST_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
-    TEST_ASSERT(!((uintptr_t)mem & 15),
-                "fio_malloc memory not aligned at allocation #%zu!\n", count);
-    TEST_ASSERT((((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16),
-                "fio_malloc memory indicates system allocation!\n");
+    FIO_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
+    FIO_ASSERT(!((uintptr_t)mem & 15),
+               "fio_malloc memory not aligned at allocation #%zu!\n", count);
+    FIO_ASSERT((((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16),
+               "fio_malloc memory indicates system allocation!\n");
 #if __x86_64__
     fio_memcpy((size_t *)mem, (size_t *)"0123456789abcdefg", 1);
 #else
@@ -7984,39 +7971,39 @@ void fio_malloc_test(void) {
   } while (arena_last_used->block == b);
 
   mem = fio_calloc(FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64, 1);
-  TEST_ASSERT(mem,
-              "failed to allocate FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64 bytes!\n");
-  TEST_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16,
-              "fio_calloc (under limit) memory alignment error!\n");
+  FIO_ASSERT(mem,
+             "failed to allocate FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64 bytes!\n");
+  FIO_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16,
+             "fio_calloc (under limit) memory alignment error!\n");
   mem2 = fio_malloc(1);
-  TEST_ASSERT(mem2, "fio_malloc(1) failed to allocate memory!\n");
+  FIO_ASSERT(mem2, "fio_malloc(1) failed to allocate memory!\n");
   mem2[0] = 'a';
 
   for (uintptr_t i = 0; i < (FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64); ++i) {
-    TEST_ASSERT(mem[i] == 0,
-                "calloc returned memory that wasn't initialized?!\n");
+    FIO_ASSERT(mem[i] == 0,
+               "calloc returned memory that wasn't initialized?!\n");
   }
   fio_free(mem);
 
   mem = fio_malloc(FIO_MEMORY_BLOCK_SIZE);
-  TEST_ASSERT(mem, "fio_malloc failed to FIO_MEMORY_BLOCK_SIZE bytes!\n");
-  TEST_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) == 16,
-              "fio_malloc (big) memory isn't aligned!\n");
+  FIO_ASSERT(mem, "fio_malloc failed to FIO_MEMORY_BLOCK_SIZE bytes!\n");
+  FIO_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) == 16,
+             "fio_malloc (big) memory isn't aligned!\n");
   mem = fio_realloc(mem, FIO_MEMORY_BLOCK_SIZE * 2);
-  TEST_ASSERT(mem,
-              "fio_realloc (big) failed on FIO_MEMORY_BLOCK_SIZE X2 bytes!\n");
+  FIO_ASSERT(mem,
+             "fio_realloc (big) failed on FIO_MEMORY_BLOCK_SIZE X2 bytes!\n");
   fio_free(mem);
-  TEST_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) == 16,
-              "fio_realloc (big) memory isn't aligned!\n");
+  FIO_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) == 16,
+             "fio_realloc (big) memory isn't aligned!\n");
 
   {
     void *m0 = fio_malloc(0);
     void *rm0 = fio_realloc(m0, 16);
-    TEST_ASSERT(m0 != rm0, "fio_realloc(fio_malloc(0), 16) failed!\n");
+    FIO_ASSERT(m0 != rm0, "fio_realloc(fio_malloc(0), 16) failed!\n");
   }
   {
     mem = fio_mmap(512);
-    TEST_ASSERT(mem, "fio_mmap allocation failed!\n");
+    FIO_ASSERT(mem, "fio_mmap allocation failed!\n");
     fio_free(mem);
   }
 
@@ -8035,9 +8022,9 @@ static void fio_state_callback_test_task(void *pi) {
 static void fio_state_callback_order_test_task(void *pi) {
   static uintptr_t start = FIO_STATE_TEST_COUNT;
   --start;
-  TEST_ASSERT((uintptr_t)pi == start,
-              "Callback order error, expecting %zu, got %zu", (size_t)start,
-              (size_t)pi);
+  FIO_ASSERT((uintptr_t)pi == start,
+             "Callback order error, expecting %zu, got %zu", (size_t)start,
+             (size_t)pi);
 }
 
 static void fio_state_callback_test(void) {
@@ -8045,21 +8032,21 @@ static void fio_state_callback_test(void) {
   uintptr_t result = 0;
   uintptr_t other = 0;
   fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_test_task, &result);
-  TEST_ASSERT(callback_collection[FIO_CALL_NEVER].callbacks.next,
-              "Callback list failed to initialize.");
+  FIO_ASSERT(callback_collection[FIO_CALL_NEVER].callbacks.next,
+             "Callback list failed to initialize.");
   fio_state_callback_force(FIO_CALL_NEVER);
-  TEST_ASSERT(result == 1, "Callback wasn't called!");
+  FIO_ASSERT(result == 1, "Callback wasn't called!");
   fio_state_callback_force(FIO_CALL_NEVER);
-  TEST_ASSERT(result == 2, "Callback wasn't called (second time)!");
+  FIO_ASSERT(result == 2, "Callback wasn't called (second time)!");
   fio_state_callback_remove(FIO_CALL_NEVER, fio_state_callback_test_task,
                             &result);
   fio_state_callback_force(FIO_CALL_NEVER);
-  TEST_ASSERT(result == 2, "Callback wasn't removed!");
+  FIO_ASSERT(result == 2, "Callback wasn't removed!");
   fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_test_task, &result);
   fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_test_task, &other);
   fio_state_callback_clear(FIO_CALL_NEVER);
   fio_state_callback_force(FIO_CALL_NEVER);
-  TEST_ASSERT(result == 2 && other == 0, "Callbacks werent cleared!");
+  FIO_ASSERT(result == 2 && other == 0, "Callbacks werent cleared!");
   for (uintptr_t i = 0; i < FIO_STATE_TEST_COUNT; ++i) {
     fio_state_callback_add(FIO_CALL_NEVER, fio_state_callback_order_test_task,
                            (void *)i);
@@ -8080,55 +8067,55 @@ static void fio_timer_test(void) {
   size_t result = 0;
   const size_t total = 5;
   fio_data->active = 1;
-  TEST_ASSERT(fio_timers.next, "Timers not initialized!");
-  TEST_ASSERT(fio_run_every(0, 0, fio_timer_test_task, NULL, NULL) == -1,
-              "Timers without an interval should be an error.");
-  TEST_ASSERT(fio_run_every(1000, 0, NULL, NULL, NULL) == -1,
-              "Timers without a task should be an error.");
-  TEST_ASSERT(fio_run_every(900, total, fio_timer_test_task, &result,
-                            fio_timer_test_task) == 0,
-              "Timer creation failure.");
-  TEST_ASSERT(fio_ls_embd_any(&fio_timers),
-              "Timer scheduling failure - no timer in list.");
-  TEST_ASSERT(fio_timer_calc_first_interval() >= 898 &&
-                  fio_timer_calc_first_interval() <= 902,
-              "next timer calculation error %zu",
-              fio_timer_calc_first_interval());
+  FIO_ASSERT(fio_timers.next, "Timers not initialized!");
+  FIO_ASSERT(fio_run_every(0, 0, fio_timer_test_task, NULL, NULL) == -1,
+             "Timers without an interval should be an error.");
+  FIO_ASSERT(fio_run_every(1000, 0, NULL, NULL, NULL) == -1,
+             "Timers without a task should be an error.");
+  FIO_ASSERT(fio_run_every(900, total, fio_timer_test_task, &result,
+                           fio_timer_test_task) == 0,
+             "Timer creation failure.");
+  FIO_ASSERT(fio_ls_embd_any(&fio_timers),
+             "Timer scheduling failure - no timer in list.");
+  FIO_ASSERT(fio_timer_calc_first_interval() >= 898 &&
+                 fio_timer_calc_first_interval() <= 902,
+             "next timer calculation error %zu",
+             fio_timer_calc_first_interval());
 
   fio_ls_embd_s *first = fio_timers.next;
-  TEST_ASSERT(fio_run_every(10000, total, fio_timer_test_task, &result,
-                            fio_timer_test_task) == 0,
-              "Timer creation failure (second timer).");
-  TEST_ASSERT(fio_timers.next == first, "Timer Ordering error!");
+  FIO_ASSERT(fio_run_every(10000, total, fio_timer_test_task, &result,
+                           fio_timer_test_task) == 0,
+             "Timer creation failure (second timer).");
+  FIO_ASSERT(fio_timers.next == first, "Timer Ordering error!");
 
-  TEST_ASSERT(fio_timer_calc_first_interval() >= 898 &&
-                  fio_timer_calc_first_interval() <= 902,
-              "next timer calculation error (after added timer) %zu",
-              fio_timer_calc_first_interval());
+  FIO_ASSERT(fio_timer_calc_first_interval() >= 898 &&
+                 fio_timer_calc_first_interval() <= 902,
+             "next timer calculation error (after added timer) %zu",
+             fio_timer_calc_first_interval());
 
   fio_data->last_cycle.tv_nsec += 800;
   fio_timer_schedule();
   fio_defer_perform();
-  TEST_ASSERT(result == 0, "Timer filtering error (%zu != 0)\n", result);
+  FIO_ASSERT(result == 0, "Timer filtering error (%zu != 0)\n", result);
 
   for (size_t i = 0; i < total; ++i) {
     fio_data->last_cycle.tv_sec += 1;
     // fio_data->last_cycle.tv_nsec += 1;
     fio_timer_schedule();
     fio_defer_perform();
-    TEST_ASSERT(((i != total - 1 && result == i + 1) ||
-                 (i == total - 1 && result == total + 1)),
-                "Timer running and rescheduling error (%zu != %zu)\n", result,
-                i + 1);
-    TEST_ASSERT(fio_timers.next == first || i == total - 1,
-                "Timer Ordering error on cycle %zu!", i);
+    FIO_ASSERT(((i != total - 1 && result == i + 1) ||
+                (i == total - 1 && result == total + 1)),
+               "Timer running and rescheduling error (%zu != %zu)\n", result,
+               i + 1);
+    FIO_ASSERT(fio_timers.next == first || i == total - 1,
+               "Timer Ordering error on cycle %zu!", i);
   }
 
   fio_data->last_cycle.tv_sec += 10;
   fio_timer_schedule();
   fio_defer_perform();
-  TEST_ASSERT(result == total + 2, "Timer # 2 error (%zu != %zu)\n", result,
-              total + 2);
+  FIO_ASSERT(result == total + 2, "Timer # 2 error (%zu != %zu)\n", result,
+             total + 2);
   fio_data->active = 0;
   fio_timer_clear_all();
   fio_defer_clear_tasks();
@@ -8157,12 +8144,12 @@ static void fio_socket_test(void) {
   fprintf(stderr, "* testing on TCP/IP port 8765 and Unix socket: %s\n",
           fio_str_data(&sock_name));
   intptr_t uuid = fio_socket(fio_str_data(&sock_name), NULL, 1);
-  TEST_ASSERT(uuid != -1, "Failed to open unix socket\n");
-  TEST_ASSERT(uuid_data(uuid).open, "Unix socket not initialized");
+  FIO_ASSERT(uuid != -1, "Failed to open unix socket\n");
+  FIO_ASSERT(uuid_data(uuid).open, "Unix socket not initialized");
   intptr_t client1 = fio_socket(fio_str_data(&sock_name), NULL, 0);
-  TEST_ASSERT(client1 != -1, "Failed to connect to unix socket.");
+  FIO_ASSERT(client1 != -1, "Failed to connect to unix socket.");
   intptr_t client2 = fio_accept(uuid);
-  TEST_ASSERT(client2 != -1, "Failed to accept unix socket connection.");
+  FIO_ASSERT(client2 != -1, "Failed to accept unix socket connection.");
   fprintf(stderr, "* Unix server addr %s\n", fio_peer_addr(uuid).data);
   fprintf(stderr, "* Unix client1 addr %s\n", fio_peer_addr(client1).data);
   fprintf(stderr, "* Unix client2 addr %s\n", fio_peer_addr(client2).data);
@@ -8173,7 +8160,7 @@ static void fio_socket_test(void) {
     fio_write(client1, "Hello World", 11);
     if (!uuid_data(client1).packet)
       unlink(__FILE__ ".sock");
-    TEST_ASSERT(uuid_data(client1).packet, "fio_write error, no packet!")
+    FIO_ASSERT(uuid_data(client1).packet, "fio_write error, no packet!")
     /* prevent poll from hanging */
     fio_run_every(5, 1, fio_timer_test_task, &timer_junk, fio_timer_test_task);
     errno = EAGAIN;
@@ -8190,11 +8177,11 @@ static void fio_socket_test(void) {
       perror("* ernno");
       unlink(__FILE__ ".sock");
     }
-    TEST_ASSERT(r > 0 && r <= 28,
-                "Failed to read from unix socket " __FILE__ ".sock %zd", r);
-    TEST_ASSERT(!memcmp("Hello World", tmp_buf, r),
-                "Unix socket Read/Write cycle error (%zd: %.*s)", r, (int)r,
-                tmp_buf);
+    FIO_ASSERT(r > 0 && r <= 28,
+               "Failed to read from unix socket " __FILE__ ".sock %zd", r);
+    FIO_ASSERT(!memcmp("Hello World", tmp_buf, r),
+               "Unix socket Read/Write cycle error (%zd: %.*s)", r, (int)r,
+               tmp_buf);
     fprintf(stderr, "* Unix socket Read/Write cycle passed: %.*s\n", (int)r,
             tmp_buf);
     fio_data->last_cycle.tv_sec += 10;
@@ -8209,11 +8196,11 @@ static void fio_socket_test(void) {
   fio_str_free(&sock_name);
 
   uuid = fio_socket(NULL, "8765", 1);
-  TEST_ASSERT(uuid != -1, "Failed to open TCP/IP socket on port 8765");
-  TEST_ASSERT(uuid_data(uuid).open, "TCP/IP socket not initialized");
+  FIO_ASSERT(uuid != -1, "Failed to open TCP/IP socket on port 8765");
+  FIO_ASSERT(uuid_data(uuid).open, "TCP/IP socket not initialized");
   fprintf(stderr, "* TCP/IP server addr %s\n", fio_peer_addr(uuid).data);
   client1 = fio_socket("Localhost", "8765", 0);
-  TEST_ASSERT(client1 != -1, "Failed to connect to TCP/IP socket on port 8765");
+  FIO_ASSERT(client1 != -1, "Failed to connect to TCP/IP socket on port 8765");
   fprintf(stderr, "* TCP/IP client1 addr %s\n", fio_peer_addr(client1).data);
   errno = EAGAIN;
   for (size_t i = 0; i < 100 && (errno == EAGAIN || errno == EWOULDBLOCK);
@@ -8224,8 +8211,8 @@ static void fio_socket_test(void) {
   }
   if (client2 == -1)
     perror("accept error");
-  TEST_ASSERT(client2 != -1,
-              "Failed to accept TCP/IP socket connection on port 8765");
+  FIO_ASSERT(client2 != -1,
+             "Failed to accept TCP/IP socket connection on port 8765");
   fprintf(stderr, "* TCP/IP client2 addr %s\n", fio_peer_addr(client2).data);
   fio_force_close(client1);
   fio_force_close(client2);
@@ -8260,8 +8247,8 @@ static void fio_cycle_test(void) {
   fio_start(.threads = 1, .workers = 1);
   struct timespec end = fio_last_tick();
   fio_timer_clear_all();
-  TEST_ASSERT(end.tv_sec == start.tv_sec + 1 || end.tv_sec == start.tv_sec + 2,
-              "facil.io cycling error?");
+  FIO_ASSERT(end.tv_sec == start.tv_sec + 1 || end.tv_sec == start.tv_sec + 2,
+             "facil.io cycling error?");
   fprintf(stderr, "* passed.\n");
 }
 /* *****************************************************************************
@@ -8285,11 +8272,11 @@ static void sched_sample_task(void *count, void *i_count) {
 
 static void fio_defer_test(void) {
   const size_t cpu_cores = fio_detect_cpu_cores();
-  TEST_ASSERT(cpu_cores, "couldn't detect CPU cores!");
+  FIO_ASSERT(cpu_cores, "couldn't detect CPU cores!");
   uintptr_t i_count;
   clock_t start, end;
   fprintf(stderr, "=== Testing facil.io task scheduling (fio_defer)\n");
-  TEST_ASSERT(!fio_defer_has_queue(), "facil.io queue always active.")
+  FIO_ASSERT(!fio_defer_has_queue(), "facil.io queue always active.")
   i_count = 0;
   start = clock();
   for (size_t i = 0; i < FIO_DEFER_TOTAL_COUNT; i++) {
@@ -8318,7 +8305,7 @@ static void fio_defer_test(void) {
     for (size_t j = 0; j < tasks; ++j) {
       fio_defer(sched_sample_task, (void *)per_task, &i_count);
     }
-    TEST_ASSERT(fio_defer_has_queue(), "facil.io queue not marked.")
+    FIO_ASSERT(fio_defer_has_queue(), "facil.io queue not marked.")
     fio_defer_thread_pool_join(fio_defer_thread_pool_new((i % cpu_cores) + 1));
     end = clock();
     if (FIO_DEFER_TEST_PRINT) {
@@ -8333,13 +8320,13 @@ static void fio_defer_test(void) {
     } else {
       fprintf(stderr, ".");
     }
-    TEST_ASSERT(i_count == i_count_should_be, "ERROR: defer count invalid\n");
-    TEST_ASSERT(fio_defer_count_dealloc == fio_defer_count_alloc,
-                "defer deallocation vs. allocation error, %zu != %zu",
-                fio_defer_count_dealloc, fio_defer_count_alloc);
+    FIO_ASSERT(i_count == i_count_should_be, "ERROR: defer count invalid\n");
+    FIO_ASSERT(fio_defer_count_dealloc == fio_defer_count_alloc,
+               "defer deallocation vs. allocation error, %zu != %zu",
+               fio_defer_count_dealloc, fio_defer_count_alloc);
   }
-  TEST_ASSERT(deferred.writer == &fio_defer_static_queue,
-              "defer library didn't release dynamic queue (should be static)");
+  FIO_ASSERT(deferred.writer == &fio_defer_static_queue,
+             "defer library didn't release dynamic queue (should be static)");
   fprintf(stderr, "\n* passed.\n");
 }
 
@@ -8367,35 +8354,34 @@ FIO_FUNC void fio_set_test(void) {
   } obj_mem;
   memset(&obj_mem, 0, sizeof(obj_mem));
 
-  TEST_ASSERT(FIO_SET_NAME(count)(&s) == 0,
-              "empty set should have zero objects");
-  TEST_ASSERT(FIO_SET_NAME(capa)(&s) == 0, "empty set should have no capacity");
-  TEST_ASSERT(!FIO_SET_NAME(is_fragmented)(&s),
-              "empty set shouldn't be considered fragmented");
-  TEST_ASSERT(!FIO_SET_NAME(last)(&s),
-              "empty set shouldn't have a last object");
+  FIO_ASSERT(FIO_SET_NAME(count)(&s) == 0,
+             "empty set should have zero objects");
+  FIO_ASSERT(FIO_SET_NAME(capa)(&s) == 0, "empty set should have no capacity");
+  FIO_ASSERT(!FIO_SET_NAME(is_fragmented)(&s),
+             "empty set shouldn't be considered fragmented");
+  FIO_ASSERT(!FIO_SET_NAME(last)(&s), "empty set shouldn't have a last object");
 
   for (uintptr_t i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
     obj_mem.i = i;
     FIO_SET_NAME(insert)(&s, i, obj_mem.obj);
-    TEST_ASSERT(FIO_SET_NAME(find)(&s, i, obj_mem.obj),
-                "find failed after insert");
+    FIO_ASSERT(FIO_SET_NAME(find)(&s, i, obj_mem.obj),
+               "find failed after insert");
     obj_mem.obj = *FIO_SET_NAME(find)(&s, i, obj_mem.obj);
-    TEST_ASSERT(i == obj_mem.i, "insertion != find");
+    FIO_ASSERT(i == obj_mem.i, "insertion != find");
   }
   fprintf(stderr, "* Seeking %lu items\n", FIO_SET_TEXT_COUNT);
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
     obj_mem.i = i;
     obj_mem.obj = *FIO_SET_NAME(find)(&s, i, obj_mem.obj);
-    TEST_ASSERT((i == obj_mem.i), "insertion != find (seek)");
+    FIO_ASSERT((i == obj_mem.i), "insertion != find (seek)");
   }
   {
     fprintf(stderr, "* Testing order for %lu items\n", FIO_SET_TEXT_COUNT);
     uintptr_t i = 1;
     FIO_SET_FOR_LOOP(&s, pos) {
       obj_mem.obj = pos->obj;
-      TEST_ASSERT(obj_mem.i == i, "object order mismatch %lu != %lu.",
-                  (unsigned long)i, (unsigned long)obj_mem.i);
+      FIO_ASSERT(obj_mem.i == i, "object order mismatch %lu != %lu.",
+                 (unsigned long)i, (unsigned long)obj_mem.i);
       ++i;
     }
   }
@@ -8404,8 +8390,8 @@ FIO_FUNC void fio_set_test(void) {
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; i += 2) {
     obj_mem.i = i;
     FIO_SET_NAME(remove)(&s, i, obj_mem.obj);
-    TEST_ASSERT(!(FIO_SET_NAME(find)(&s, i, obj_mem.obj)),
-                "Removal failed (still exists).");
+    FIO_ASSERT(!(FIO_SET_NAME(find)(&s, i, obj_mem.obj)),
+               "Removal failed (still exists).");
   }
   {
     fprintf(stderr, "* Testing for %lu / 2 holes\n", FIO_SET_TEXT_COUNT);
@@ -8413,26 +8399,26 @@ FIO_FUNC void fio_set_test(void) {
     FIO_SET_FOR_LOOP(&s, pos) {
       obj_mem.obj = pos->obj;
       if (pos->hash == 0) {
-        TEST_ASSERT((i & 1) == 1, "deleted object wasn't odd");
+        FIO_ASSERT((i & 1) == 1, "deleted object wasn't odd");
       } else {
-        TEST_ASSERT(obj_mem.i == i, "deleted object value mismatch %lu != %lu",
-                    (unsigned long)i, (unsigned long)obj_mem.i);
+        FIO_ASSERT(obj_mem.i == i, "deleted object value mismatch %lu != %lu",
+                   (unsigned long)i, (unsigned long)obj_mem.i);
       }
       ++i;
     }
     {
       fprintf(stderr, "* Poping two elements (testing pop through holes)\n");
-      TEST_ASSERT(FIO_SET_NAME(last)(&s),
-                  "Pop `last` 1 failed - no last object");
+      FIO_ASSERT(FIO_SET_NAME(last)(&s),
+                 "Pop `last` 1 failed - no last object");
       obj_mem.obj = *FIO_SET_NAME(last)(&s);
       uintptr_t tmp_i = obj_mem.i;
-      TEST_ASSERT(obj_mem.obj, "Pop `last` 1 failed to collect object");
+      FIO_ASSERT(obj_mem.obj, "Pop `last` 1 failed to collect object");
       FIO_SET_NAME(pop)(&s);
-      TEST_ASSERT(FIO_SET_NAME(last)(&s),
-                  "Pop `last` 2 failed - no last object");
+      FIO_ASSERT(FIO_SET_NAME(last)(&s),
+                 "Pop `last` 2 failed - no last object");
       obj_mem.obj = *FIO_SET_NAME(last)(&s);
-      TEST_ASSERT(obj_mem.i != tmp_i,
-                  "Pop `last` 2 same as `last` 1 - failed to collect object");
+      FIO_ASSERT(obj_mem.i != tmp_i,
+                 "Pop `last` 2 same as `last` 1 - failed to collect object");
       FIO_SET_NAME(pop)(&s);
     }
     if (1) {
@@ -8440,20 +8426,20 @@ FIO_FUNC void fio_set_test(void) {
       FIO_SET_NAME(remove)(&s, obj_mem.i, obj_mem.obj);
       size_t count = s.count;
       FIO_SET_NAME(overwrite)(&s, obj_mem.i, obj_mem.obj);
-      TEST_ASSERT(count + 1 == s.count,
-                  "Re-adding a removed item should increase count by 1 (%zu + "
-                  "1 != %zu).",
-                  count, (size_t)s.count);
+      FIO_ASSERT(count + 1 == s.count,
+                 "Re-adding a removed item should increase count by 1 (%zu + "
+                 "1 != %zu).",
+                 count, (size_t)s.count);
       obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj);
-      TEST_ASSERT(obj_mem.i == 1,
-                  "Re-adding a removed item should update the item (%p != 1)!",
-                  (void *)FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj));
+      FIO_ASSERT(obj_mem.i == 1,
+                 "Re-adding a removed item should update the item (%p != 1)!",
+                 (void *)FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj));
       FIO_SET_NAME(remove)(&s, obj_mem.i, obj_mem.obj);
-      TEST_ASSERT(count == s.count,
-                  "Re-removing an item should decrease count (%zu != %zu).",
-                  count, (size_t)s.count);
-      TEST_ASSERT(!FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj),
-                  "Re-removing a re-added item should update the item!");
+      FIO_ASSERT(count == s.count,
+                 "Re-removing an item should decrease count (%zu != %zu).",
+                 count, (size_t)s.count);
+      FIO_ASSERT(!FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj),
+                 "Re-removing a re-added item should update the item!");
     }
   }
   fprintf(stderr, "* Compacting HashMap to %lu\n", FIO_SET_TEXT_COUNT >> 1);
@@ -8463,19 +8449,19 @@ FIO_FUNC void fio_set_test(void) {
             FIO_SET_TEXT_COUNT >> 1);
     uintptr_t i = 0;
     FIO_SET_FOR_LOOP(&s, pos) {
-      TEST_ASSERT(pos->hash != 0, "Found a hole after compact.");
+      FIO_ASSERT(pos->hash != 0, "Found a hole after compact.");
       ++i;
     }
-    TEST_ASSERT(i == s.count, "count error (%lu != %lu).", i, s.count);
+    FIO_ASSERT(i == s.count, "count error (%lu != %lu).", i, s.count);
   }
 
   FIO_SET_NAME(free)(&s);
-  TEST_ASSERT(!s.map && !s.ordered && !s.pos && !s.capa,
-              "HashMap not re-initialized after free.");
+  FIO_ASSERT(!s.map && !s.ordered && !s.pos && !s.capa,
+             "HashMap not re-initialized after free.");
 
   FIO_SET_NAME(capa_require)(&s, FIO_SET_TEXT_COUNT);
 
-  TEST_ASSERT(
+  FIO_ASSERT(
       s.map && s.ordered && !s.pos && s.capa >= FIO_SET_TEXT_COUNT,
       "capa_require changes state in a bad way (%p, %p, %zu, %zu ?>= %zu)",
       (void *)s.map, (void *)s.ordered, s.pos, s.capa, FIO_SET_TEXT_COUNT);
@@ -8483,12 +8469,12 @@ FIO_FUNC void fio_set_test(void) {
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
     obj_mem.i = i;
     FIO_SET_NAME(insert)(&s, obj_mem.i, obj_mem.obj);
-    TEST_ASSERT(FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj),
-                "find failed after insert (2nd round)");
+    FIO_ASSERT(FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj),
+               "find failed after insert (2nd round)");
     obj_mem.obj = *FIO_SET_NAME(find)(&s, obj_mem.i, obj_mem.obj);
-    TEST_ASSERT(i == obj_mem.i, "insertion (2nd round) != find");
-    TEST_ASSERT(i == s.count, "count error (%lu != %lu) post insertion.", i,
-                s.count);
+    FIO_ASSERT(i == obj_mem.i, "insertion (2nd round) != find");
+    FIO_ASSERT(i == s.count, "count error (%lu != %lu) post insertion.", i,
+               s.count);
   }
   FIO_SET_NAME(free)(&s);
 }
@@ -8667,7 +8653,7 @@ void fio_sha1_test(void) {
       while (*p)
         fprintf(stderr, "%02x", *(p++) & 0xFF);
       fprintf(stderr, "\n");
-      TEST_ASSERT(0, "SHA-1 failure.");
+      FIO_ASSERT(0, "SHA-1 failure.");
       return;
     }
     i++;
@@ -8909,7 +8895,7 @@ error:
   fprintf(stderr, "\n");
   (void)fio_sha2_speed_test;
   (void)fio_sha2_openssl_speed_test;
-  TEST_ASSERT(0, "SHA-2 failure.");
+  FIO_ASSERT(0, "SHA-2 failure.");
 }
 
 /* *****************************************************************************
@@ -9011,7 +8997,7 @@ void fio_base64_test(void) {
               ":\n--- fio Base64 Test FAILED!\nstring: %s\nlength: %lu\n "
               "expected: %s\ngot: %s\n\n",
               sets[i].str, strlen(sets[i].str), sets[i].base64, buffer);
-      TEST_ASSERT(0, "Base64 failure.");
+      FIO_ASSERT(0, "Base64 failure.");
     }
     i++;
   }
@@ -9027,7 +9013,7 @@ void fio_base64_test(void) {
               ":\n--- fio Base64 Test FAILED!\nbase64: %s\nexpected: "
               "%s\ngot: %s\n\n",
               sets[i].base64, sets[i].str, buffer);
-      TEST_ASSERT(0, "Base64 failure.");
+      FIO_ASSERT(0, "Base64 failure.");
     }
     i++;
   }
@@ -9049,8 +9035,8 @@ Random Testing
 void fio_test_random(void) {
   fprintf(stderr, "=== Testing random generator\n");
   uint64_t rnd = fio_rand64();
-  TEST_ASSERT((rnd != fio_rand64() && rnd != fio_rand64()),
-              "fio_rand64 returned the same result three times in a row.");
+  FIO_ASSERT((rnd != fio_rand64() && rnd != fio_rand64()),
+             "fio_rand64 returned the same result three times in a row.");
 #if NODEBUG
   uint64_t buffer1[8];
   uint8_t buffer2[8192];
@@ -9087,45 +9073,43 @@ Poll (not kqueue or epoll) tests
 static void fio_poll_test(void) {
   fprintf(stderr, "=== Testing poll add / remove fd\n");
   fio_poll_add(5);
-  TEST_ASSERT(fio_data->start == 5,
-              "fio_poll_add didn't update start position (%u)",
-              fio_data->start);
-  TEST_ASSERT(fio_data->end == 6,
-              "fio_poll_add didn't update end position (%u)", fio_data->end);
-  TEST_ASSERT(fio_data->poll[5].fd == 5,
-              "fio_poll_add didn't set used fd data");
-  TEST_ASSERT(fio_data->poll[5].events ==
-                  (FIO_POLL_READ_EVENTS | FIO_POLL_WRITE_EVENTS),
-              "fio_poll_add didn't set used fd flags");
+  FIO_ASSERT(fio_data->start == 5,
+             "fio_poll_add didn't update start position (%u)", fio_data->start);
+  FIO_ASSERT(fio_data->end == 6, "fio_poll_add didn't update end position (%u)",
+             fio_data->end);
+  FIO_ASSERT(fio_data->poll[5].fd == 5, "fio_poll_add didn't set used fd data");
+  FIO_ASSERT(fio_data->poll[5].events ==
+                 (FIO_POLL_READ_EVENTS | FIO_POLL_WRITE_EVENTS),
+             "fio_poll_add didn't set used fd flags");
   fio_poll_add(7);
-  TEST_ASSERT(fio_data->poll[6].fd == -1,
-              "fio_poll_add didn't reset unused fd data %d",
-              fio_data->poll[6].fd);
+  FIO_ASSERT(fio_data->poll[6].fd == -1,
+             "fio_poll_add didn't reset unused fd data %d",
+             fio_data->poll[6].fd);
   fio_poll_add(6);
   fio_poll_remove_fd(6);
-  TEST_ASSERT(fio_data->poll[6].fd == -1,
-              "fio_poll_remove_fd didn't reset unused fd data");
-  TEST_ASSERT(fio_data->poll[6].events == 0,
-              "fio_poll_remove_fd didn't reset unused fd flags");
+  FIO_ASSERT(fio_data->poll[6].fd == -1,
+             "fio_poll_remove_fd didn't reset unused fd data");
+  FIO_ASSERT(fio_data->poll[6].events == 0,
+             "fio_poll_remove_fd didn't reset unused fd flags");
   fio_poll_remove_read(7);
-  TEST_ASSERT(fio_data->poll[7].events == (FIO_POLL_WRITE_EVENTS),
-              "fio_poll_remove_read didn't remove read flags");
+  FIO_ASSERT(fio_data->poll[7].events == (FIO_POLL_WRITE_EVENTS),
+             "fio_poll_remove_read didn't remove read flags");
   fio_poll_add_read(7);
   fio_poll_remove_write(7);
-  TEST_ASSERT(fio_data->poll[7].events == (FIO_POLL_READ_EVENTS),
-              "fio_poll_remove_write didn't remove read flags");
+  FIO_ASSERT(fio_data->poll[7].events == (FIO_POLL_READ_EVENTS),
+             "fio_poll_remove_write didn't remove read flags");
   fio_poll_add_write(7);
   fio_poll_remove_read(7);
-  TEST_ASSERT(fio_data->poll[7].events == (FIO_POLL_WRITE_EVENTS),
-              "fio_poll_add_write didn't add the write flag?");
+  FIO_ASSERT(fio_data->poll[7].events == (FIO_POLL_WRITE_EVENTS),
+             "fio_poll_add_write didn't add the write flag?");
   fio_poll_remove_write(7);
-  TEST_ASSERT(fio_data->poll[7].fd == -1,
-              "fio_poll_remove (both) didn't reset unused fd data");
-  TEST_ASSERT(fio_data->poll[7].events == 0,
-              "fio_poll_remove (both) didn't reset unused fd flags");
-  TEST_ASSERT(fio_data->end == 6,
-              "fio_poll_remove (both) didn't update end position (%u)",
-              fio_data->end);
+  FIO_ASSERT(fio_data->poll[7].fd == -1,
+             "fio_poll_remove (both) didn't reset unused fd data");
+  FIO_ASSERT(fio_data->poll[7].events == 0,
+             "fio_poll_remove (both) didn't reset unused fd flags");
+  FIO_ASSERT(fio_data->end == 6,
+             "fio_poll_remove (both) didn't update end position (%u)",
+             fio_data->end);
   fio_poll_remove_fd(5);
   fprintf(stderr, "\n* passed.\n");
 }
@@ -9146,18 +9130,17 @@ static void fio_uuid_link_test(void) {
   uintptr_t called = 0;
   uintptr_t removed = 0;
   intptr_t uuid = fio_socket(NULL, "8765", 1);
-  TEST_ASSERT(uuid != -1, "fio_uuid_link_test failed to create a socket!");
+  FIO_ASSERT(uuid != -1, "fio_uuid_link_test failed to create a socket!");
   fio_uuid_link(uuid, &called, fio_uuid_link_test_on_close);
-  TEST_ASSERT(called == 0,
-              "fio_uuid_link failed - on_close callback called too soon!");
+  FIO_ASSERT(called == 0,
+             "fio_uuid_link failed - on_close callback called too soon!");
   fio_uuid_link(uuid, &removed, fio_uuid_link_test_on_close);
   fio_uuid_unlink(uuid, &removed);
   fio_close(uuid);
   fio_defer_perform();
-  TEST_ASSERT(called,
-              "fio_uuid_link failed - on_close callback wasn't called!");
-  TEST_ASSERT(called, "fio_uuid_unlink failed - on_close callback was called "
-                      "(wasn't removed)!");
+  FIO_ASSERT(called, "fio_uuid_link failed - on_close callback wasn't called!");
+  FIO_ASSERT(called, "fio_uuid_unlink failed - on_close callback was called "
+                     "(wasn't removed)!");
   fprintf(stderr, "* passed.\n");
 }
 
@@ -9171,23 +9154,23 @@ static void fio_str2u_test(void) {
   for (int64_t i = -1024; i < 1024; ++i) {
     fio_u2str64(buffer, i);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT((int64_t)fio_str2u64(buffer) == i,
-                "fio_u2str64 / fio_str2u64  mismatch %zd != %zd",
-                (ssize_t)fio_str2u64(buffer), (ssize_t)i);
+    FIO_ASSERT((int64_t)fio_str2u64(buffer) == i,
+               "fio_u2str64 / fio_str2u64  mismatch %zd != %zd",
+               (ssize_t)fio_str2u64(buffer), (ssize_t)i);
   }
   for (int32_t i = -1024; i < 1024; ++i) {
     fio_u2str32(buffer, i);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT((int32_t)fio_str2u32(buffer) == i,
-                "fio_u2str32 / fio_str2u32  mismatch %zd != %zd",
-                (ssize_t)(fio_str2u32(buffer)), (ssize_t)i);
+    FIO_ASSERT((int32_t)fio_str2u32(buffer) == i,
+               "fio_u2str32 / fio_str2u32  mismatch %zd != %zd",
+               (ssize_t)(fio_str2u32(buffer)), (ssize_t)i);
   }
   for (int16_t i = -1024; i < 1024; ++i) {
     fio_u2str16(buffer, i);
     __asm__ volatile("" ::: "memory");
-    TEST_ASSERT((int16_t)fio_str2u16(buffer) == i,
-                "fio_u2str16 / fio_str2u16  mismatch %zd != %zd",
-                (ssize_t)(fio_str2u16(buffer)), (ssize_t)i);
+    FIO_ASSERT((int16_t)fio_str2u16(buffer) == i,
+               "fio_u2str16 / fio_str2u16  mismatch %zd != %zd",
+               (ssize_t)(fio_str2u16(buffer)), (ssize_t)i);
   }
 }
 
@@ -9213,46 +9196,45 @@ static void fio_pubsub_test(void) {
   subscription_s *s = fio_subscribe(.filter = 1, .on_message = NULL);
   uintptr_t counter = 0;
   uintptr_t expect = 0;
-  TEST_ASSERT(!s, "fio_subscribe should fail without a callback!");
+  FIO_ASSERT(!s, "fio_subscribe should fail without a callback!");
   char buffer[8];
   fio_u2str32((uint8_t *)buffer + 1, 42);
-  TEST_ASSERT(fio_str2u32((uint8_t *)buffer + 1) == 42,
-              "fio_u2str32 / fio_str2u32 not reversible (42)!");
+  FIO_ASSERT(fio_str2u32((uint8_t *)buffer + 1) == 42,
+             "fio_u2str32 / fio_str2u32 not reversible (42)!");
   fio_u2str32((uint8_t *)buffer, 4);
-  TEST_ASSERT(fio_str2u32((uint8_t *)buffer) == 4,
-              "fio_u2str32 / fio_str2u32 not reversible (4)!");
+  FIO_ASSERT(fio_str2u32((uint8_t *)buffer) == 4,
+             "fio_u2str32 / fio_str2u32 not reversible (4)!");
   s = fio_subscribe(.filter = 1, .udata1 = &counter,
                     .on_message = fio_pubsub_test_on_message,
                     .on_unsubscribe = fio_pubsub_test_on_unsubscribe);
-  TEST_ASSERT(s, "fio_subscribe FAILED on filtered subscription.");
+  FIO_ASSERT(s, "fio_subscribe FAILED on filtered subscription.");
   fio_publish(.filter = 1);
   ++expect;
   fio_defer_perform();
-  TEST_ASSERT(counter == expect, "publishing failed to filter 1!");
+  FIO_ASSERT(counter == expect, "publishing failed to filter 1!");
   fio_publish(.filter = 2);
   fio_defer_perform();
-  TEST_ASSERT(counter == expect, "publishing to filter 2 arrived at filter 1!");
+  FIO_ASSERT(counter == expect, "publishing to filter 2 arrived at filter 1!");
   fio_unsubscribe(s);
   ++expect;
   fio_defer_perform();
-  TEST_ASSERT(counter == expect, "unsubscribe wasn't called for filter 1!");
+  FIO_ASSERT(counter == expect, "unsubscribe wasn't called for filter 1!");
   s = fio_subscribe(.channel = {0, 4, "name"}, .udata1 = &counter,
                     .on_message = fio_pubsub_test_on_message,
                     .on_unsubscribe = fio_pubsub_test_on_unsubscribe);
-  TEST_ASSERT(s, "fio_subscribe FAILED on named subscription.");
+  FIO_ASSERT(s, "fio_subscribe FAILED on named subscription.");
   fio_publish(.channel = {0, 4, "name"});
   ++expect;
   fio_defer_perform();
-  TEST_ASSERT(counter == expect, "publishing failed to named channel!");
+  FIO_ASSERT(counter == expect, "publishing failed to named channel!");
   fio_publish(.channel = {0, 4, "none"});
   fio_defer_perform();
-  TEST_ASSERT(counter == expect,
-              "publishing arrived to named channel with wrong name!");
+  FIO_ASSERT(counter == expect,
+             "publishing arrived to named channel with wrong name!");
   fio_unsubscribe(s);
   ++expect;
   fio_defer_perform();
-  TEST_ASSERT(counter == expect,
-              "unsubscribe wasn't called for named channel!");
+  FIO_ASSERT(counter == expect, "unsubscribe wasn't called for named channel!");
   fio_data->is_worker = 0;
   fio_data->active = 0;
   fio_data->workers = 0;
@@ -9298,9 +9280,9 @@ static void fio_atol_test(void) {
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
-  TEST_ASSERT(result == expect,
-              "fio_atol with base 10 returned wrong result (%ld != %ld)",
-              expect, result);
+  FIO_ASSERT(result == expect,
+             "fio_atol with base 10 returned wrong result (%ld != %ld)", expect,
+             result);
   fprintf(stderr, "fio_atol base 10 (%ld): %zd CPU cycles\n", result,
           end - start);
 
@@ -9324,9 +9306,9 @@ static void fio_atol_test(void) {
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
-  TEST_ASSERT(result == expect,
-              "fio_atol with base 16 returned wrong result (%ld != %ld)",
-              expect, result);
+  FIO_ASSERT(result == expect,
+             "fio_atol with base 16 returned wrong result (%ld != %ld)", expect,
+             result);
   fprintf(stderr, "fio_atol base 16 (%ld): %zd CPU cycles\n", result,
           end - start);
 
@@ -9351,9 +9333,9 @@ static void fio_atol_test(void) {
   end = clock();
   {
     char *buf = number;
-    TEST_ASSERT(fio_atol(&buf) == expect,
-                "fio_ltoa with base 10 returned wrong result (%s != %ld)",
-                number, expect);
+    FIO_ASSERT(fio_atol(&buf) == expect,
+               "fio_ltoa with base 10 returned wrong result (%s != %ld)",
+               number, expect);
   }
   fprintf(stderr, "fio_ltoa base 10 (%s): %zd CPU cycles\n", number,
           end - start);
@@ -9368,10 +9350,10 @@ static void fio_atol_test(void) {
   end = clock();
   fprintf(stderr, "native sprintf base 10 (%s): %zd CPU cycles\n", number,
           end - start);
-  TEST_ASSERT(fio_ltoa(number, 0, 0) == 1,
-              "base 10 zero should be single char.");
-  TEST_ASSERT(memcmp(number, "0", 2) == 0, "base 10 zero should be \"0\" (%s).",
-              number);
+  FIO_ASSERT(fio_ltoa(number, 0, 0) == 1,
+             "base 10 zero should be single char.");
+  FIO_ASSERT(memcmp(number, "0", 2) == 0, "base 10 zero should be \"0\" (%s).",
+             number);
 }
 
 /* *****************************************************************************
@@ -9379,7 +9361,7 @@ Run all tests
 ***************************************************************************** */
 
 void fio_test(void) {
-  TEST_ASSERT(fio_capa(), "facil.io initialization error!");
+  FIO_ASSERT(fio_capa(), "facil.io initialization error!");
   fio_malloc_test();
   fio_state_callback_test();
   fio_str_test();
@@ -9404,7 +9386,7 @@ void fio_test(void) {
   (void)fio_poll;
 }
 
-#undef TEST_ASSERT
+#undef FIO_ASSERT
 #else
 #define fio_test()
 #endif

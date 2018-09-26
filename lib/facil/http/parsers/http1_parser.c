@@ -358,7 +358,7 @@ inline static int consume_body(struct http1_fio_parser_args_s *args,
 /* *****************************************************************************
 HTTP/1.1 parsre function
 ***************************************************************************** */
-#ifdef DEBUG
+#if DEBUG
 #include <assert.h>
 #else
 #define DEBUG 0

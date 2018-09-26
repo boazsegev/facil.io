@@ -97,15 +97,13 @@ Version and helper macros
 #define FIO_VERSION_PATCH 0
 
 /* Automatically convert version data to a string constant - ignore these two */
-#define FIO_VERSION_STR_FROM_MACRO_STEP2(major, minor, patch)                  \
-#major "." #minor "." #patch
-#define FIO_VERSION_STR_FROM_MACRO_STEP1(major, minor, patch)                  \
-  FIO_VERSION_STR_FROM_MACRO_STEP2(major, minor, patch)
+#define FIO_MACRO2STR_STEP2(macro) #macro
+#define FIO_MACRO2STR(macro) FIO_MACRO2STR_STEP2(macro)
 
 /** The facil.io version as a String literal */
 #define FIO_VERSION_STRING                                                     \
-  FIO_VERSION_STR_FROM_MACRO_STEP1(FIO_VERSION_MAJOR, FIO_VERSION_MINOR,       \
-                                   FIO_VERSION_PATCH)
+  FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
+  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
 
 #ifndef FIO_MAX_SOCK_CAPACITY
 /**
@@ -227,9 +225,22 @@ Version and helper macros
 #endif
 
 #if DEBUG
-#define FIO_LOG_DEBUG(...) FIO_LOG_STATE("[DEBUG] " __VA_ARGS__)
+#define FIO_LOG_DEBUG(...) FIO_LOG_STATE("INFO [DEBUG]: " __VA_ARGS__)
+// #define FIO_ASSERT(cond, ...)                                                  \
+//   if (!(cond)) {                                                               \
+//     fprintf(stderr, "FATAL [DEBUG] (" __FILE__                                 \
+//                     ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__);            \
+//     exit(-1);                                                                  \
+//   }
+#define FIO_ASSERT(cond, ...)                                                  \
+  if (!(cond)) {                                                               \
+    fprintf(stderr, "FATAL [DEBUG] (" __FILE__                                 \
+                    ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__);            \
+    exit(-1);                                                                  \
+  }
 #else
 #define FIO_LOG_DEBUG(...)
+#define FIO_ASSERT(...)
 #endif
 
 /* *****************************************************************************
