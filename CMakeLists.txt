@@ -10,6 +10,7 @@ set(facil.io_SOURCES
   lib/facil/fiobj/fiobj_data.c
   lib/facil/fiobj/fiobj_hash.c
   lib/facil/fiobj/fiobj_json.c
+  lib/facil/fiobj/fiobj_mustache.c
   lib/facil/fiobj/fiobj_numbers.c
   lib/facil/fiobj/fiobj_str.c
   lib/facil/fiobj/fiobject.c
