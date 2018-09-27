@@ -1,8 +1,10 @@
+
+#include "tests/mustache.c.h"
+
 #include <fio.h>
 #include <fiobj.h>
 
 #include "resp_parser.h"
-#include "tests/mustache.c.h"
 
 void resp_test(void);
 

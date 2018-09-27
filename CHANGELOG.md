@@ -46,6 +46,8 @@ This should make the library easier to copy and use as well as minimize possible
 
 **Fix**: (`fio`) fixed a typo in the shutdown output. Credit to @bjeanes (Bo Jeanes) for the Iodine#39 PR.
 
+**Feature**: (`FIOBJ`) added [mustache template support](http://mustache.github.io).
+
 **Logo**: Logo created by @area55git ([Area55](https://github.com/area55git))
 
 **Documentation**: A new website!

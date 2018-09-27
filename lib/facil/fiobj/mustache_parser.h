@@ -9,6 +9,10 @@ Feel free to copy, use and enjoy according to the license provided.
  * A mustache parser using a callback systems that allows this implementation to
  * be framework agnostic (i.e., can be used with any JSON library).
  *
+ * When including the mustache parser within an iumplementation file,
+ * `INCLUDE_MUSTACHE_IMPLEMENTATION` must be defined as 1. This allows the
+ * header's types to be exposed within a containing header.
+ *
  * The API has three functions:
  *
  * 1. `mustache_load` loads a template file, converting it to instruction data.
@@ -80,8 +84,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_GNUC_BYPASS 1
 #endif
 
-#ifndef FIO_FUNC
-#define FIO_FUNC static __attribute__((unused))
+#ifndef MUSTACHE_FUNC
+#define MUSTACHE_FUNC static __attribute__((unused))
 #endif
 
 /* *****************************************************************************
@@ -115,9 +119,24 @@ typedef struct {
   /** Parsing error reporting (can be NULL). */
   mustache_error_en *err;
 } mustache_load_args_s;
-FIO_FUNC mustache_s *mustache_load(mustache_load_args_s args);
+
+/**
+ * Allows this header to be included within another header while limiting
+ * exposure.
+ *
+ * before including the header within an implementation faile, define
+ * INCLUDE_MUSTACHE_IMPLEMENTATION as 1.
+ */
+#if INCLUDE_MUSTACHE_IMPLEMENTATION
+
+MUSTACHE_FUNC mustache_s *mustache_load(mustache_load_args_s args);
 
 #define mustache_load(...) mustache_load((mustache_load_args_s){__VA_ARGS__})
+
+/** free the mustache template */
+inline MUSTACHE_FUNC void mustache_free(mustache_s *mustache) {
+  free(mustache);
+}
 
 /** Arguments for the `mustache_build` function. */
 typedef struct {
@@ -136,14 +155,11 @@ typedef struct {
   /** Formatting error reporting (can be NULL). */
   mustache_error_en *err;
 } mustache_build_args_s;
-FIO_FUNC int mustache_build(mustache_build_args_s args);
+MUSTACHE_FUNC int mustache_build(mustache_build_args_s args);
 
 #define mustache_build(mustache_s_ptr, ...)                                    \
   mustache_build(                                                              \
       (mustache_build_args_s){.mustache = (mustache_s_ptr), __VA_ARGS__})
-
-/** free the mustache template */
-inline FIO_FUNC void mustache_free(mustache_s *mustache) { free(mustache); }
 
 /* *****************************************************************************
 Client Callbacks - MUST be implemented by the including file
@@ -308,7 +324,7 @@ Calling the instrustion list (using the template engine)
  * the complementing MUSTACHE_SECTION_END instruction, allowing for easy jumps
  * in cases where a section is skipped or in cases of a recursive template.
  */
-FIO_FUNC int(mustache_build)(mustache_build_args_s args) {
+MUSTACHE_FUNC int(mustache_build)(mustache_build_args_s args) {
   /* extract the instruction array and data segment from the mustache_s */
   mustache__instruction_s *pos =
       (mustache__instruction_s *)(sizeof(*args.mustache) +
@@ -527,7 +543,7 @@ Building the instrustion list (parsing the template)
 ***************************************************************************** */
 
 /* The parsing implementation, converts a template to an instruction array */
-FIO_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
+MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   /* Make sure the args string length is set and prepare the path name */
   char *path = NULL;
   uint32_t path_capa = 0;
@@ -1063,5 +1079,7 @@ error:
 #undef IGNORE_WHITESPACE
 }
 
-#undef FIO_FUNC
+#endif /* INCLUDE_MUSTACHE_IMPLEMENTATION */
+
+#undef MUSTACHE_FUNC
 #endif /* H_MUSTACHE_LOADR_H */

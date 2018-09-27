@@ -1,4 +1,6 @@
 #include "fio.h"
+
+#define INCLUDE_MUSTACHE_IMPLEMENTATION 1
 #include "mustache_parser.h"
 
 static size_t callback_count = 0;
