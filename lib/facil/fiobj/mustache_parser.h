@@ -110,11 +110,9 @@ typedef enum mustache_error_en {
 
 /** Arguments for the `mustache_load` function. */
 typedef struct {
-  /** The root folder for any related partials (included templates). */
-  char const *path;
-  size_t path_len;
-  /** The template's data (it's content, not a file name). */
+  /** The root template's file name. */
   char const *filename;
+  /** The file name's length. */
   size_t filename_len;
   /** Parsing error reporting (can be NULL). */
   mustache_error_en *err;
@@ -547,73 +545,31 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   /* Make sure the args string length is set and prepare the path name */
   char *path = NULL;
   uint32_t path_capa = 0;
+  uint32_t path_len = 0;
   if (args.filename && !args.filename_len) {
     args.filename_len = strlen(args.filename);
   }
-  if (args.path && !args.path_len) {
-    args.path_len = strlen(args.path);
-  }
 
   /* copy the path data (and resolve) into writable memory  */
-  if (args.path && args.path[0] == '~' && getenv("HOME")) {
+  if (args.filename[0] == '~' && args.filename[1] == '/' && getenv("HOME")) {
     const char *home = getenv("HOME");
-    uint32_t len = strlen(home);
-    path_capa = len + 1 + args.path_len + 1 + args.filename_len + 1;
+    path_len = strlen(home);
+    path_capa =
+        path_len + 1 + args.filename_len + 1 + 9 + 1; /* + file extension */
     path = malloc(path_capa);
     if (!path) {
       perror("FATAL ERROR: couldn't allocate memory for path resolution");
       exit(errno);
     }
-    memcpy(path, home, len);
-    if (path[len - 1] != '/') {
-      path[len++] = '/';
+    memcpy(path, home, path_len);
+    if (path[path_len - 1] != '/') {
+      path[path_len++] = '/';
     }
-    memcpy(path + len, args.path, args.path_len);
-    len += args.path_len;
-    if (path[len - 1] != '/') {
-      path[len++] = '/';
-    }
-    args.path_len = len;
-  } else {
-    path_capa = args.path_len + 1 + args.filename_len + 9 + 1;
-    path = malloc(path_capa);
-    if (!path) {
-      perror("FATAL ERROR: couldn't allocate memory for path resolution");
-      exit(errno);
-    }
-    if (args.path_len) {
-      memcpy(path, args.path, args.path_len);
-      if (path[args.path_len - 1] != '/') {
-        path[args.path_len++] = '/';
-      }
-    }
+    memcpy(path + path_len, args.filename + 2, args.filename_len);
+    args.filename_len += path_len;
+    args.filename = path;
   }
-
-  /* append a filename to the path, managing the C string memory and length */
-#define PATH2FULL(filename, filename_len)                                      \
-  do {                                                                         \
-    if (path_capa < (filename_len) + args.path_len + 1) {                      \
-      path_capa = (filename_len) + args.path_len + 9 + 1;                      \
-      path = realloc(path, path_capa);                                         \
-      if (!path) {                                                             \
-        perror("FATAL ERROR: couldn't allocate memory for path resolution");   \
-        exit(errno);                                                           \
-      }                                                                        \
-    }                                                                          \
-    memcpy(path + args.path_len, (filename), (filename_len));                  \
-    path[args.path_len + (filename_len)] = 0;                                  \
-  } while (0);
-
-  /* append a filename to the path, managing the C string memory and length */
-#define PATH2FULL_WITH_EXT(filename, filename_len)                             \
-  do {                                                                         \
-    memcpy(path + args.path_len, (filename), (filename_len));                  \
-    memcpy(path + args.path_len + (filename_len), ".mustache", 9);             \
-    path[args.path_len + (filename_len) + 9] = 0;                              \
-  } while (0);
-#define GET_FILENAME(filename)                                                 \
-  (((filename)[0] == '/' || (filename)[0] == '\\') ? (path + args.path_len)    \
-                                                   : path)
+  /* divide faile name from the root path to the file */
 
   /*
    * We need a dynamic array to hold the list of instructions...
@@ -636,7 +592,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   instructions->head.u.read_only.intruction_count = 0;
   instructions->head.u.read_only.data_length = 32;
   uint32_t data_len = 0;
-  char *data = NULL;
+  uint8_t *data = NULL;
 
 /* We define a dynamic array handling macro, using 32 instruction chunks  */
 #define PUSH_INSTRUCTION(...)                                                  \
@@ -662,9 +618,9 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   /* Note: templates can be recursive. */
   int32_t stack_pos = 0;
   struct {
-    char *delimiter_start;  /* currunt instruction start delimiter */
-    char *delimiter_end;    /* currunt instruction end delimiter */
-    uint32_t data_start;    /* template starting position (with header) */
+    uint8_t *delimiter_start; /* currunt instruction start delimiter */
+    uint8_t *delimiter_end;   /* currunt instruction end delimiter */
+    uint32_t data_start;      /* template starting position (with header) */
     uint32_t data_pos;      /* data reading position (how much was consumed) */
     uint32_t data_end;      /* data ending position (for this template) */
     uint16_t del_start_len; /* delimiter length (start) */
@@ -673,8 +629,8 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   template_stack[0].data_start = 0;
   template_stack[0].data_pos = 0;
   template_stack[0].data_end = 0;
-  template_stack[0].delimiter_start = "{{";
-  template_stack[0].delimiter_end = "}}";
+  template_stack[0].delimiter_start = (uint8_t *)"{{";
+  template_stack[0].delimiter_end = (uint8_t *)"}}";
   template_stack[0].del_start_len = 2;
   template_stack[0].del_end_len = 2;
 
@@ -690,22 +646,63 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
     uint32_t instruction_pos;
   } section_stack[MUSTACHE_NESTING_LIMIT];
 
-/* We define a dynamic template loading macro to manage memory details */
-#define LOAD_TEMPLATE(filename, filname_len)                                   \
+#define SECTION2FILENAME() (data + template_stack[stack_pos].data_start + 10)
+#define SECTION2FLEN()                                                         \
+  ((((uint8_t *)data + template_stack[stack_pos].data_start + 4)[0] << 1) |    \
+   (((uint8_t *)data + template_stack[stack_pos].data_start + 4)[1]))
+
+  /* append a filename to the path, managing the C string memory and length */
+#define PATH2FULL(folder, folder_len, filename, filename_len)                  \
   do {                                                                         \
-    const size_t f_len = (filname_len);                                        \
-    if (f_len >= ((uint32_t)1 << 16)) {                                        \
+    if (path_capa < (filename_len) + (folder_len) + 9 + 1) {                   \
+      path_capa = (filename_len) + (folder_len) + 9 + 1;                       \
+      path = realloc(path, path_capa);                                         \
+      if (!path) {                                                             \
+        perror("FATAL ERROR: couldn't allocate memory for path resolution");   \
+        exit(errno);                                                           \
+      }                                                                        \
+    }                                                                          \
+    if ((folder_len) && (filename)[0] != '/') {                                \
+      memcpy(path, (folder), (folder_len));                                    \
+      path_len = (folder_len);                                                 \
+    } else {                                                                   \
+      path_len = 0;                                                            \
+    }                                                                          \
+    if (path != (char *)(filename))                                            \
+      memcpy(path + path_len, (filename), (filename_len));                     \
+    path_len += (filename_len);                                                \
+    path[path_len] = 0;                                                        \
+  } while (0);
+
+  /* append a filename to the path, managing the C string memory and length */
+#define PATH_WITH_EXT()                                                        \
+  do {                                                                         \
+    memcpy(path + path_len, ".mustache", 9);                                   \
+    path[path_len + 9] = 0; /* keep path_len the same */                       \
+  } while (0);
+
+/* We define a dynamic template loading macro to manage memory details */
+#define LOAD_TEMPLATE(root, root_len, filename, filname_len)                   \
+  do {                                                                         \
+    /* find root filename's path start */                                      \
+    int32_t root_len_tmp = (root_len);                                         \
+    while (root_len_tmp && (((char *)(root))[root_len_tmp - 1] != '/' ||       \
+                            (root_len_tmp > 1 &&                               \
+                             ((char *)(root))[root_len_tmp - 2] == '\\'))) {   \
+      --root_len_tmp;                                                          \
+    }                                                                          \
+    if ((filname_len) + root_len_tmp >= ((uint32_t)1 << 16)) {                 \
       *args.err = MUSTACHE_ERR_FILE_NAME_TOO_LONG;                             \
       goto error;                                                              \
     }                                                                          \
-    PATH2FULL((filename), f_len);                                              \
+    PATH2FULL((root), root_len_tmp, (filename), (filname_len));                \
     struct stat f_data;                                                        \
     {                                                                          \
       /* test file name with and without the .mustache extension */            \
-      int stat_result = stat(GET_FILENAME((filename)), &f_data);               \
+      int stat_result = stat(path, &f_data);                                   \
       if (stat_result == -1) {                                                 \
-        PATH2FULL_WITH_EXT((filename), f_len);                                 \
-        stat_result = stat(GET_FILENAME((filename)), &f_data);                 \
+        PATH_WITH_EXT();                                                       \
+        stat_result = stat(path, &f_data);                                     \
       }                                                                        \
       if (stat_result == -1) {                                                 \
         if (args.err) {                                                        \
@@ -725,7 +722,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
     /*  | template name (filename) | ...[template data]... */                  \
     /* this allows template data to be reused when repeating a template */     \
     const uint32_t new_len =                                                   \
-        data_len + 4 + 3 + 3 + f_len + f_data.st_size + 1;                     \
+        data_len + 4 + 2 + 4 + path_len + f_data.st_size + 1;                  \
     /* reallocate memory */                                                    \
     data = realloc(data, new_len);                                             \
     if (!data) {                                                               \
@@ -745,25 +742,25 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
     /* Add section start marker (to support recursion or repeated partials) */ \
     PUSH_INSTRUCTION(.instruction = MUSTACHE_SECTION_START);                   \
     /* save filename length */                                                 \
-    data[data_len + 4 + 0] = (f_len >> 1) & 0xFF;                              \
-    data[data_len + 4 + 1] = f_len & 0xFF;                                     \
+    data[data_len + 4 + 0] = (path_len >> 1) & 0xFF;                           \
+    data[data_len + 4 + 1] = path_len & 0xFF;                                  \
     /* save data length ("next" pointer) */                                    \
     data[data_len + 4 + 2 + 0] = ((uint32_t)new_len >> 3) & 0xFF;              \
     data[data_len + 4 + 2 + 1] = ((uint32_t)new_len >> 2) & 0xFF;              \
     data[data_len + 4 + 2 + 2] = ((uint32_t)new_len >> 1) & 0xFF;              \
     data[data_len + 4 + 2 + 3] = ((uint32_t)new_len) & 0xFF;                   \
     /* copy filename */                                                        \
-    memcpy(data + data_len + 4 + 3 + 3, path + args.path_len, f_len);          \
+    memcpy(data + data_len + 4 + 2 + 4, path, path_len);                       \
     /* open file and dump it into the data segment after the new header */     \
-    int fd = open(GET_FILENAME((path + args.path_len)), O_RDONLY);             \
+    int fd = open(path, O_RDONLY);                                             \
     if (fd == -1) {                                                            \
       if (args.err) {                                                          \
         *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                               \
       }                                                                        \
       goto error;                                                              \
     }                                                                          \
-    if (pread(fd, (data + data_len + 4 + 3 + 3 + f_len), f_data.st_size, 0) != \
-        (ssize_t)f_data.st_size) {                                             \
+    if (pread(fd, (data + data_len + 4 + 3 + 3 + path_len), f_data.st_size,    \
+              0) != (ssize_t)f_data.st_size) {                                 \
       if (args.err) {                                                          \
         *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                               \
       }                                                                        \
@@ -781,10 +778,10 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
     /* increase the data stack pointer and setup new stack frame */            \
     ++stack_pos;                                                               \
     template_stack[stack_pos].data_start = data_len;                           \
-    template_stack[stack_pos].data_pos = data_len + 4 + 3 + 3 + f_len;         \
+    template_stack[stack_pos].data_pos = data_len + 4 + 3 + 3 + path_len;      \
     template_stack[stack_pos].data_end = new_len - 1;                          \
-    template_stack[stack_pos].delimiter_start = "{{";                          \
-    template_stack[stack_pos].delimiter_end = "}}";                            \
+    template_stack[stack_pos].delimiter_start = (uint8_t *)"{{";               \
+    template_stack[stack_pos].delimiter_end = (uint8_t *)"}}";                 \
     template_stack[stack_pos].del_start_len = 2;                               \
     template_stack[stack_pos].del_end_len = 2;                                 \
     /* update new data segment length and add NUL marker */                    \
@@ -798,7 +795,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   }
 
   /* Our first template to load is the root template */
-  LOAD_TEMPLATE(args.filename, strlen(args.filename));
+  LOAD_TEMPLATE(NULL, 0, args.filename, args.filename_len);
 
   /*** As long as the stack has templated to parse - parse the template ***/
   while (stack_pos) {
@@ -806,9 +803,10 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
     while (template_stack[stack_pos].data_pos <
            template_stack[stack_pos].data_end) {
       /* start parsing at current position */
-      char *const start = data + template_stack[stack_pos].data_pos;
+      uint8_t *const start = data + template_stack[stack_pos].data_pos;
       /* find the next instruction (beg == beginning) */
-      char *beg = strstr(start, template_stack[stack_pos].delimiter_start);
+      uint8_t *beg = (uint8_t *)strstr(
+          (char *)start, (char *)template_stack[stack_pos].delimiter_start);
       if (!beg || beg >= data + template_stack[stack_pos].data_end) {
         /* no instructions left, only text */
         PUSH_INSTRUCTION(.instruction = MUSTACHE_WRITE_TEXT,
@@ -830,8 +828,9 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
       }
       beg[0] = 0; /* mark the end of any text segment or string, just in case */
       /* find the ending of the instruction */
-      char *end = strstr(beg + template_stack[stack_pos].del_start_len,
-                         template_stack[stack_pos].delimiter_end);
+      uint8_t *end = (uint8_t *)strstr(
+          (char *)beg + template_stack[stack_pos].del_start_len,
+          (char *)template_stack[stack_pos].delimiter_end);
       if (!end || end >= data + template_stack[stack_pos].data_end) {
         /* delimiter not closed */
         if (args.err) {
@@ -873,8 +872,8 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
           goto error;
         }
         {
-          char *div = beg;
-          while (div < end && !isspace(*div)) {
+          uint8_t *div = beg;
+          while (div < end && !isspace(*(char *)div)) {
             ++div;
           }
           if (div == end) {
@@ -932,8 +931,8 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         ++end;
         end[0] = 0;
         {
-          char *loaded = data;
-          char *const data_end = data + data_len;
+          uint8_t *loaded = data;
+          uint8_t *const data_end = data + data_len;
           while (loaded < data_end) {
             uint32_t const fn_len =
                 ((loaded[4] & 0xFF) << 1) | (loaded[5] & 0xFF);
@@ -954,7 +953,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
             break;
           }
           if (loaded >= data_end) {
-            LOAD_TEMPLATE(beg, (end - beg));
+            LOAD_TEMPLATE(SECTION2FILENAME(), SECTION2FLEN(), beg, (end - beg));
           }
         }
         break;
@@ -1072,8 +1071,9 @@ error:
   return NULL;
 
 #undef PATH2FULL
-#undef PATH2FULL_WITH_EXT
-#undef GET_FILENAME
+#undef PATH_WITH_EXT
+#undef SECTION2FILENAME
+#undef SECTION2FLEN
 #undef LOAD_TEMPLATE
 #undef PUSH_INSTRUCTION
 #undef IGNORE_WHITESPACE

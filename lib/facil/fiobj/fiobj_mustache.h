@@ -10,12 +10,9 @@
  *
  * Returns a pointer to the instruction array.
  *
- * The `folder` argument should contain the template's root folder which would
- * also be used to search for any required partial templates.
- *
  * The `filename` argument should contain the template's file name.
  */
-mustache_s *fiobj_mustache_load(fio_str_info_s folder, fio_str_info_s filename);
+mustache_s *fiobj_mustache_load(fio_str_info_s filename);
 
 /** Free the mustache template */
 void fiobj_mustache_free(mustache_s *mustache);

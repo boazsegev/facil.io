@@ -16,10 +16,8 @@
  *
  * The `filename` argument should contain the template's file name.
  */
-mustache_s *fiobj_mustache_load(fio_str_info_s folder,
-                                fio_str_info_s filename) {
-  return mustache_load(.path = folder.data, .path_len = folder.len,
-                       .filename = filename.data, .filename_len = filename.len);
+mustache_s *fiobj_mustache_load(fio_str_info_s filename) {
+  return mustache_load(.filename = filename.data, .filename_len = filename.len);
 }
 
 /** Free the mustache template */
@@ -239,6 +237,10 @@ static void mustache_on_formatting_error(void *udata1, void *udata2) {
   (void)udata2;
 }
 
+/* *****************************************************************************
+Testing
+***************************************************************************** */
+
 #if DEBUG
 static inline void mustache_save2file(char const *filename, char const *data,
                                       size_t length) {
@@ -269,8 +271,7 @@ void fiobj_mustache_test(void) {
   mustache_save2file(template_name, template, strlen(template));
   // mustache_error_en err = MUSTACHE_OK;
   mustache_s *m =
-      fiobj_mustache_load((fio_str_info_s){.data = NULL},
-                          (fio_str_info_s){.data = (char *)template_name});
+      fiobj_mustache_load((fio_str_info_s){.data = (char *)template_name});
   unlink(template_name);
   TEST_ASSERT(m, "fiobj_mustache_load failed.\n");
   FIOBJ data = fiobj_hash_new();
