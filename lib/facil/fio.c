@@ -5259,7 +5259,8 @@ void fio_cluster_on_connect(intptr_t uuid, void *udata) {
 void fio_cluster_on_fail(intptr_t uuid, void *udata) {
   perror("FATAL ERROR: (facil.io) unknown cluster connection error");
   kill(fio_parent_pid(), SIGINT);
-  exit(errno ? errno : 1);
+  fio_stop();
+  // exit(errno ? errno : 1);
   (void)udata;
   (void)uuid;
 }
