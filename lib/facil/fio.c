@@ -411,7 +411,10 @@ int fio_is_closed(intptr_t uuid) {
   return !uuid_is_valid(uuid) || !uuid_data(uuid).open || uuid_data(uuid).close;
 }
 
-void fio_stop(void) { fio_data->active = 0; }
+void fio_stop(void) {
+  if (fio_data)
+    fio_data->active = 0;
+}
 
 /* public API. */
 int16_t fio_is_running(void) { return fio_data && fio_data->active; }
