@@ -226,12 +226,6 @@ Version and helper macros
 
 #if DEBUG
 #define FIO_LOG_DEBUG(...) FIO_LOG_STATE("INFO [DEBUG]: " __VA_ARGS__)
-// #define FIO_ASSERT(cond, ...)                                                  \
-//   if (!(cond)) {                                                               \
-//     fprintf(stderr, "FATAL [DEBUG] (" __FILE__                                 \
-//                     ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__);            \
-//     exit(-1);                                                                  \
-//   }
 #define FIO_ASSERT(cond, ...)                                                  \
   if (!(cond)) {                                                               \
     fprintf(stderr, "FATAL [DEBUG] (" __FILE__                                 \
