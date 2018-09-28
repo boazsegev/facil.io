@@ -662,7 +662,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         exit(errno);                                                           \
       }                                                                        \
     }                                                                          \
-    if ((folder_len) && (filename)[0] != '/') {                                \
+    if ((folder) && (folder_len) && (filename)[0] != '/') {                    \
       memcpy(path, (folder), (folder_len));                                    \
       path_len = (folder_len);                                                 \
     } else {                                                                   \
