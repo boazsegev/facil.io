@@ -3294,7 +3294,7 @@ static void fio_worker_startup(void) {
   }
 }
 
-/* TODO: fixme */
+/* performs all clean-up / shutdown requirements except for the exit sequence */
 static void fio_worker_cleanup(void) {
   /* switch to winding down */
   if (fio_data->is_worker)
@@ -3323,6 +3323,7 @@ static void fio_worker_cleanup(void) {
       ;
   }
   fio_defer_perform();
+  fio_signal_handler_reset();
   if (fio_data->parent == getpid()) {
     FIO_LOG_STATE("\n   ---  Shutdown Complete  ---\n");
   } else {
@@ -3443,7 +3444,6 @@ void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
   }
   fio_worker_startup();
   fio_worker_cleanup();
-  fio_signal_handler_reset();
 }
 
 /* *****************************************************************************
