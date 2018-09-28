@@ -662,7 +662,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         exit(errno);                                                           \
       }                                                                        \
     }                                                                          \
-    if ((folder) && (folder_len) && (filename)[0] != '/') {                    \
+    if (path != (char *)(folder) && (folder_len) && (filename)[0] != '/') {    \
       memcpy(path, (folder), (folder_len));                                    \
       path_len = (folder_len);                                                 \
     } else {                                                                   \
@@ -795,7 +795,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   }
 
   /* Our first template to load is the root template */
-  LOAD_TEMPLATE(NULL, 0, args.filename, args.filename_len);
+  LOAD_TEMPLATE(path, 0, args.filename, args.filename_len);
 
   /*** As long as the stack has templated to parse - parse the template ***/
   while (stack_pos) {
