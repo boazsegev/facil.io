@@ -3006,6 +3006,7 @@ static void fio_pubsub_on_fork(void);
 
 static void fio_mem_destroy(void);
 static void __attribute__((destructor)) fio_lib_destroy(void) {
+  fio_data->active = 0;
   fio_state_callback_force(FIO_CALL_AT_EXIT);
   fio_state_callback_clear_all();
   fio_defer_perform();

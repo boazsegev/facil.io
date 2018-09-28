@@ -57,20 +57,25 @@ a = []
 ('a'.ord..'z'.ord).each {|i| a[i] = i.chr }
 ('A'.ord..'Z'.ord).each {|i| a[i] = i.chr }
 ('0'.ord..'9'.ord).each {|i| a[i] = i.chr }
-b = a.map {|s| s.length }
-p a, b
-*/
+a['<'.ord] = "&lt;"
+a['>'.ord] = "&gt;"
+a['&'.ord] = "&amp;"
+a['"'.ord] = "&quot;"
 
+b = a.map {|s| s.length }
+puts "static char *html_escape_strs[] = {", a.to_s.slice(1..-2) ,"};",
+     "static uint8_t html_escape_len[] = {", b.to_s.slice(1..-2),"};"
+*/
 static char *html_escape_strs[] = {
     "&#x00;", "&#x01;", "&#x02;", "&#x03;", "&#x04;", "&#x05;", "&#x06;",
     "&#x07;", "&#x08;", "&#x09;", "&#x0a;", "&#x0b;", "&#x0c;", "&#x0d;",
     "&#x0e;", "&#x0f;", "&#x10;", "&#x11;", "&#x12;", "&#x13;", "&#x14;",
     "&#x15;", "&#x16;", "&#x17;", "&#x18;", "&#x19;", "&#x1a;", "&#x1b;",
-    "&#x1c;", "&#x1d;", "&#x1e;", "&#x1f;", "&#x20;", "&#x21;", "&#x22;",
-    "&#x23;", "&#x24;", "&#x25;", "&#x26;", "&#x27;", "&#x28;", "&#x29;",
+    "&#x1c;", "&#x1d;", "&#x1e;", "&#x1f;", "&#x20;", "&#x21;", "&quot;",
+    "&#x23;", "&#x24;", "&#x25;", "&amp;",  "&#x27;", "&#x28;", "&#x29;",
     "&#x2a;", "&#x2b;", "&#x2c;", "&#x2d;", "&#x2e;", "&#x2f;", "0",
     "1",      "2",      "3",      "4",      "5",      "6",      "7",
-    "8",      "9",      "&#x3a;", "&#x3b;", "&#x3c;", "&#x3d;", "&#x3e;",
+    "8",      "9",      "&#x3a;", "&#x3b;", "&lt;",   "&#x3d;", "&gt;",
     "&#x3f;", "&#x40;", "A",      "B",      "C",      "D",      "E",
     "F",      "G",      "H",      "I",      "J",      "K",      "L",
     "M",      "N",      "O",      "P",      "Q",      "R",      "S",
@@ -99,10 +104,10 @@ static char *html_escape_strs[] = {
     "&#xee;", "&#xef;", "&#xf0;", "&#xf1;", "&#xf2;", "&#xf3;", "&#xf4;",
     "&#xf5;", "&#xf6;", "&#xf7;", "&#xf8;", "&#xf9;", "&#xfa;", "&#xfb;",
     "&#xfc;", "&#xfd;", "&#xfe;", "&#xff;"};
-uint8_t html_escape_len[] = {
+static uint8_t html_escape_len[] = {
     6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-    6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6, 6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1, 1,
+    6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6, 6, 4, 6, 4, 6, 6, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6, 6, 6, 6, 6,
     6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
@@ -151,13 +156,14 @@ static int mustache_on_arg(mustache_section_s *section, const char *name,
   fio_str_info_s str = fiobj_obj2cstr(o);
   if (!str.len)
     return 0;
-  fiobj_str_capa_assert((FIOBJ)section->udata1,
-                        fiobj_obj2cstr((FIOBJ)section->udata1).len +
-                            (6 * str.len));
+  fio_str_info_s i = fiobj_obj2cstr(o);
+  i.capa = fiobj_str_capa_assert((FIOBJ)section->udata1, i.len + str.len + 64);
   do {
-    fiobj_str_write((FIOBJ)section->udata1,
-                    html_escape_strs[(uint8_t)str.data[0]],
-                    html_escape_len[(uint8_t)str.data[0]]);
+    if (i.len + 6 >= i.capa)
+      i.capa = fiobj_str_capa_assert((FIOBJ)section->udata1, i.capa + 64);
+    i.len = fiobj_str_write((FIOBJ)section->udata1,
+                            html_escape_strs[(uint8_t)str.data[0]],
+                            html_escape_len[(uint8_t)str.data[0]]);
     --str.len;
     ++str.data;
   } while (str.len);
