@@ -2,7 +2,7 @@
 title: facil.io - FIOBJ String API
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 See the [core FIOBJ functions](`fiobj_core`) for accessing the String data ([`fiobj_obj2cstr`](fiobj_core#fiobj_obj2cstr)) and freeing the String object ([`fiobj_free`](fiobj_core#fiobj_free)).
 

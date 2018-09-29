@@ -3,7 +3,7 @@ title: facil.io - a mini-framework for C web applications
 sidebar: 0.7.x/_sidebar.md
 toc: false
 ---
-# {{ page.title }}
+# {{{title}}}
 
 A Web application in C? It's as easy as:
 

@@ -2,7 +2,7 @@
 title: facil.io - FIOBJ Generic Functions
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 Some `FIOBJ` functions can be called for any `FIOBJ` object, regardless of their type.
 

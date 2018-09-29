@@ -2,7 +2,7 @@
 title: facil.io - JSON API
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 ## Overview
 

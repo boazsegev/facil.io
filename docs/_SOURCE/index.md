@@ -2,7 +2,7 @@
 title: facil.io - The C Web Application Framework
 toc: false
 ---
-# {{ page.title }}
+# {{{ title }}}
 
 * [facil.io](http://facil.io) is an evented Network library written in C. It provides high performance TCP/IP network services by using an evented design that was tested to provide an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
 

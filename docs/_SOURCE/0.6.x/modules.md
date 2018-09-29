@@ -2,7 +2,7 @@
 title: facil.io - core API and extensions
 sidebar: 0.6.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 facil.io's API is divided into different modules, each of them belonging to one of two groups:
 

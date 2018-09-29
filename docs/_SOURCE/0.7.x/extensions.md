@@ -2,7 +2,7 @@
 title: facil.io - core API and extensions
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{ title }}}
 
 facil.io's [core library](fio) (the `fio.h` and `fio.c` files) is a stand alone two-file library, which can be easily used in different projects.
 

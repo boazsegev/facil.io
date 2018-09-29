@@ -2,7 +2,7 @@
 title: facil.io - FIOBJ Numbers API
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 ### Numbers API (Integers)
 

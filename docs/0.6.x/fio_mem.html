@@ -153,7 +153,7 @@ function set_theme_link() {
     }
 $('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
 set_theme_link();
-function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); };
 function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
 $('#toc').on("touchstart", function (e) { return true; } );
 $('#toc').on("hover", function (e) { return true; } );

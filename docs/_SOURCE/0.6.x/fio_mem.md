@@ -2,7 +2,7 @@
 title: facil.io - Fast Concurrent Memory Allocator
 sidebar: 0.6.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 The system's memory allocator is usually highly optimized and very performant. In fact, for most cases, it should probably be preferred.
 

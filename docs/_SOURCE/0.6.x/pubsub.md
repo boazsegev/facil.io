@@ -2,7 +2,7 @@
 title: facil.io - Native Pub/Sub
 sidebar: 0.6.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 The facil.io framework offers a native Pub/Sub implementation which can be found in the "services" folder.
 

@@ -2,7 +2,7 @@
 title: facil.io - Websockets API
 sidebar: 0.6.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 The facil.io framework offers an HTTP/1.1 and Websocket implementation which can be found in the "http" folder.
 

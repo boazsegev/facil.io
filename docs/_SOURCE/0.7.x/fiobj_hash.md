@@ -2,7 +2,7 @@
 title: facil.io - FIOBJ Hash Map API
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 ### Hash Creation
 

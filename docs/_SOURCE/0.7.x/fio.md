@@ -2,7 +2,7 @@
 title: facil.io - 0.7.x Core Library Documentation
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 The core library types and functions can be found in the header `fio.h`.
 

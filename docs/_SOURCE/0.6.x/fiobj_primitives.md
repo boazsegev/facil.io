@@ -2,7 +2,7 @@
 title: facil.io - FIOBJ Primitives
 sidebar: 0.6.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 The following Primitive types are defined:
 

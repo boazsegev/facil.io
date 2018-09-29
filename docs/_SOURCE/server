@@ -10,15 +10,19 @@
 # I wouldn't recommend trying to read the code, it will only give you a headache...
 #
 # ...even I'm not sure what it does or how. I just threw it together to have something that works.
+#
+#    P.S.
+#   =====
+#
+#  I'm using an unreleased version of the 'iodine' gem. Install the gem from GitHub to use the script
 
 
 # Gems and stuff we use in this script
 require 'redcarpet'
-require 'mustache'
 require 'erb'
 require 'slim'
 require 'sass'
-require 'iodine'
+require 'iodine'  # edge version from GitHub!
 require 'fileutils'
 require 'yaml'
 require 'set'
@@ -174,7 +178,7 @@ if ENV['RACK_ENV'] == 'production'
     puts "WARN: render was requested for #{env[PATH_INFO]}" unless env.keys.length == 1
     if (File.directory?( "#{STATIC_ROOT}#{env[PATH_INFO]}"))
       if (env[PATH_INFO][-1] == '/')
-        env[PATH_INFO] << 'index.html'.freeze 
+        env[PATH_INFO] << 'index.html'.freeze
       else
         env[PATH_INFO] << '/index.html'.freeze
       end
@@ -187,7 +191,7 @@ else
   def self.call env
     if (File.directory?( "#{STATIC_ROOT}#{env[PATH_INFO]}"))
       if (env[PATH_INFO][-1] == '/')
-        env[PATH_INFO] << 'index.html'.freeze 
+        env[PATH_INFO] << 'index.html'.freeze
       else
         env[PATH_INFO] << '/index.html'.freeze
       end
@@ -245,7 +249,7 @@ end
     vars = {}
     front = data.match YAML_FRONT_MATTER_REGEXP
     if(front)
-      vars = YAML.safe_load(front[1], SAFE_TYPES)
+      vars = YAML.safe_load(front[1], SAFE_TYPES) || {}
       data = front.post_match
     end
     # some sane defaults, even if there's no fron matter
@@ -256,7 +260,7 @@ end
     end
     # try mustache template rendering before rendering the Markdown
     begin
-      data = Mustache.render(data, 'page' => vars)
+      data = Iodine::Mustache.render(name, vars, data)
     rescue Exception => e
       puts "mustache error: #{name}"
       p vars
@@ -282,7 +286,7 @@ end
       end
       # Return the layout with the data
       block = proc { data }
-      @extensions[File.extname(layout)].call(layout, {'page' => vars}, block)
+      @extensions[File.extname(layout)].call(layout, vars, block)
     else
       # Return the data as is (no layout)
       data
@@ -293,9 +297,9 @@ end
   @extensions['.slim'] = proc do |name, vars, block|
     engine = (Slim::Template.new { IO.binread(name).force_encoding(::Encoding::UTF_8) })
     if(block)
-      engine.render(vars, &block)
+      engine.render((vars || {}), &block)
     else
-      engine.render(vars)
+      engine.render((vars || {}))
     end
   end
 
@@ -333,7 +337,7 @@ APP.bake_all
 FileUtils.rm(File.join(SOURCE_ROOT, 'changelog.md')) rescue nil
 
 
-# Setup iodine to serve static files and to run the Rack application `APP` 
+# Setup iodine to serve static files and to run the Rack application `APP`
 Iodine.listen2http app: APP, log: true, public: ((ENV['RACK_ENV'] == 'production') ? STATIC_ROOT : SOURCE_ROOT)
 # If no threads / processes were setup, use half the cores for multi-threading and a single process
 if(Iodine.threads == 0 && Iodine.workers == 0)

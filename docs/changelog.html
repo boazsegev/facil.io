@@ -281,6 +281,8 @@
 
 <p><strong>Fix</strong>: (<code>fio</code>) fixed a typo in the shutdown output. Credit to @bjeanes (Bo Jeanes) for the Iodine#39 PR.</p>
 
+<p><strong>Feature</strong>: (<code>FIOBJ</code>) added <a href="http://mustache.github.io">mustache template support</a>.</p>
+
 <p><strong>Logo</strong>: Logo created by @area55git (<a href="https://github.com/area55git">Area55</a>)</p>
 
 <p><strong>Documentation</strong>: A new website!</p>
@@ -1196,7 +1198,7 @@ function set_theme_link() {
     }
 $('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
 set_theme_link();
-function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); };
 function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
 $('#toc').on("touchstart", function (e) { return true; } );
 $('#toc').on("hover", function (e) { return true; } );

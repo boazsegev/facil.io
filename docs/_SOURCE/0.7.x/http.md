@@ -2,7 +2,7 @@
 title: facil.io - 0.7.x HTTP / WebSockets Server Documentation
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 facil.io includes an HTTP/1.1 and WebSocket server / framework that could be used to author HTTP and WebSocket services, including REST applications, micro-services, etc'.
 

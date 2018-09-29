@@ -2,7 +2,7 @@
 title: facil.io - The Redis Extension
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 facil.io includes a Redis Pub/Sub extension that makes it easy to scale pub/sub applications horizontally.
 

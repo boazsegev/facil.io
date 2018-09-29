@@ -2,7 +2,7 @@
 title: facil.io - API
 sidebar: 0.6.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 Although the facil.io includes extensive documentation within the source file, it's often helpful to have an overview the explains about a framework's idioms and general approach.
 

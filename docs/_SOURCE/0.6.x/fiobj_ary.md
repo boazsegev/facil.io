@@ -2,7 +2,7 @@
 title: facil.io - FIOBJ Array API
 sidebar: 0.6.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 ### Array creation API
 

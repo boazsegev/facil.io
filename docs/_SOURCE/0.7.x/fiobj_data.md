@@ -2,7 +2,7 @@
 title: facil.io - The FIOBJ Data Stream Type
 sidebar: 0.7.x/_sidebar.md
 ---
-# {{ page.title }}
+# {{{title}}}
 
 ### Creating the Data Stream object
 

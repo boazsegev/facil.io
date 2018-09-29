@@ -14,10 +14,10 @@
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
 <li>
-<a href="#internal-error-500">Internal error 500</a>
+<a href="#internal-error-500">Internal Error (500)</a>
 </li>
 </ul>
-</div><h1 id="internal-error-500">Internal error 500</h1>
+</div><h1 id="internal-error-500">Internal Error (500)</h1>
 
 <p>Sorry, something happened. Please try again in a couple of minutes.</p>
 
@@ -74,7 +74,7 @@ function set_theme_link() {
     }
 $('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
 set_theme_link();
-function show_notice() { document.getElementById("notice").classList.remove('hidden'); }; 
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); };
 function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
 $('#toc').on("touchstart", function (e) { return true; } );
 $('#toc').on("hover", function (e) { return true; } );
