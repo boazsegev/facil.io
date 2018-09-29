@@ -151,12 +151,33 @@ void mustache_test(void) {
       "Hi there{{#user}}{{name}}{{/user}}{{> mustache_test_partial }}";
   char const *partial = "{{& raw1}}{{{raw2}}}{{^negative}}"
                         "{{> mustache_test_partial }}{{=<< >>=}}<</negative>>";
+  char const *partial2 = "{{& raw1}}{{{raw2}}}{{^negative}}"
+                         "{{=<< >>=}}<</negative>>";
   char const *template_name = "mustache_test_template.mustache";
   char const *partial_name = "mustache_test_partial.mustache";
   save2file(template_name, template, strlen(template));
   save2file(partial_name, partial, strlen(partial));
   mustache_error_en err = MUSTACHE_OK;
   mustache_s *m = mustache_load(.filename = template_name, .err = &err);
+  if (!m) {
+    unlink(template_name);
+    unlink(partial_name);
+    FIO_ASSERT(m, "Mustache template loading from file failed with error %u\n",
+               err);
+  }
+  mustache_free(m);
+  m = mustache_load(.data = partial2, .data_len = strlen(partial2),
+                    .err = &err);
+  if (!m) {
+    unlink(template_name);
+    unlink(partial_name);
+    FIO_ASSERT(
+        m, "Mustache template loading partial as data failed with error %u\n",
+        err);
+  }
+  mustache_free(m);
+  m = mustache_load(.filename = template_name, .data = template,
+                    .data_len = strlen(template), .err = &err);
   unlink(template_name);
   unlink(partial_name);
 

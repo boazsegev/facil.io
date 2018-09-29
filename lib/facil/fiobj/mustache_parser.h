@@ -114,6 +114,10 @@ typedef struct {
   char const *filename;
   /** The file name's length. */
   size_t filename_len;
+  /** If data and data_len are set, they will be used as the file's contents. */
+  char const *data;
+  /** If data and data_len are set, they will be used as the file's contents. */
+  size_t data_len;
   /** Parsing error reporting (can be NULL). */
   mustache_error_en *err;
 } mustache_load_args_s;
@@ -551,7 +555,8 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   }
 
   /* copy the path data (and resolve) into writable memory  */
-  if (args.filename[0] == '~' && args.filename[1] == '/' && getenv("HOME")) {
+  if (args.filename && args.filename[0] == '~' && args.filename[1] == '/' &&
+      getenv("HOME")) {
     const char *home = getenv("HOME");
     path_len = strlen(home);
     path_capa =
@@ -569,7 +574,6 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
     args.filename_len += path_len;
     args.filename = path;
   }
-  /* divide faile name from the root path to the file */
 
   /*
    * We need a dynamic array to hold the list of instructions...
@@ -759,7 +763,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
       }                                                                        \
       goto error;                                                              \
     }                                                                          \
-    if (pread(fd, (data + data_len + 4 + 3 + 3 + path_len), f_data.st_size,    \
+    if (pread(fd, (data + data_len + 4 + 2 + 4 + path_len), f_data.st_size,    \
               0) != (ssize_t)f_data.st_size) {                                 \
       if (args.err) {                                                          \
         *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                               \
@@ -794,8 +798,48 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
     (str) += (step);                                                           \
   }
 
-  /* Our first template to load is the root template */
-  LOAD_TEMPLATE(path, 0, args.filename, args.filename_len);
+  if (args.data_len) {
+    /* allocate data segment */
+    data_len = 4 + 2 + 4 + args.data_len + args.filename_len + 1;
+    data = malloc(data_len);
+    if (!data) {
+      perror("FATAL ERROR: couldn't reallocate memory for mustache "
+             "data segment");
+      exit(errno);
+    }
+    /* save instruction position length into template header */
+    data[0] = (instructions->head.u.read_only.intruction_count >> 3) & 0xFF;
+    data[1] = (instructions->head.u.read_only.intruction_count >> 2) & 0xFF;
+    data[2] = (instructions->head.u.read_only.intruction_count >> 1) & 0xFF;
+    data[3] = (instructions->head.u.read_only.intruction_count) & 0xFF;
+    /* Add section start marker (to support recursion or repeated partials) */
+    PUSH_INSTRUCTION(.instruction = MUSTACHE_SECTION_START);
+    /* save filename length */
+    data[4 + 0] = (args.filename_len >> 1) & 0xFF;
+    data[4 + 1] = args.filename_len & 0xFF;
+    /* save data length ("next" pointer) */
+    data[4 + 2 + 0] = ((uint32_t)data_len >> 3) & 0xFF;
+    data[4 + 2 + 1] = ((uint32_t)data_len >> 2) & 0xFF;
+    data[4 + 2 + 2] = ((uint32_t)data_len >> 1) & 0xFF;
+    data[4 + 2 + 3] = ((uint32_t)data_len) & 0xFF;
+    /* copy filename */
+    if (args.filename && args.filename_len)
+      memcpy(data + 4 + 2 + 4, args.filename, args.filename_len);
+    /* copy data */
+    memcpy(data + 4 + 2 + 4 + args.filename_len, args.data, args.data_len);
+    ++stack_pos;
+    template_stack[stack_pos].data_start = 0;
+    template_stack[stack_pos].data_pos = 4 + 3 + 3 + args.filename_len;
+    template_stack[stack_pos].data_end = data_len - 1;
+    template_stack[stack_pos].delimiter_start = (uint8_t *)"{{";
+    template_stack[stack_pos].delimiter_end = (uint8_t *)"}}";
+    template_stack[stack_pos].del_start_len = 2;
+    template_stack[stack_pos].del_end_len = 2;
+    data[data_len - 1] = 0;
+  } else {
+    /* Our first template to load is the root template */
+    LOAD_TEMPLATE(path, 0, args.filename, args.filename_len);
+  }
 
   /*** As long as the stack has templated to parse - parse the template ***/
   while (stack_pos) {
