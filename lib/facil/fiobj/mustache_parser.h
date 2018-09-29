@@ -79,7 +79,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define __has_include(...) 0
 #define __has_builtin(...) 0
 #define FIO_GNUC_BYPASS 1
-#elif !defined(__clang__) && __GNUC__ < 5
+#elif !defined(__clang__) && !defined(__has_builtin)
 #define __has_builtin(...) 0
 #define FIO_GNUC_BYPASS 1
 #endif
