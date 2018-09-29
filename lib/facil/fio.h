@@ -3792,7 +3792,7 @@ FIO_FUNC fio_str_info_s fio_str_readfile(fio_str_s *s, const char *filename,
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__) ||           \
     defined(__CYGWIN__)
   /* POSIX implementations. */
-  if (filename == NULL)
+  if (filename == NULL || !s)
     return state;
   struct stat f_data;
   int file = -1;

@@ -7768,6 +7768,7 @@ FIO_FUNC inline void fio_str_test(void) {
     FIO_ASSERT(s->ref == 1,
                "`fio_str_dup` error, reference counter not incremented!");
 
+    fprintf(stderr, "* reading a file.\n");
     fio_str_info_s state = fio_str_readfile(s, __FILE__, 0, 0);
 
     FIO_ASSERT(state.data,
@@ -7781,6 +7782,7 @@ FIO_FUNC inline void fio_str_test(void) {
                        80),
                "`fio_str_readfile` content error, header mismatch!\n %s",
                state.data);
+    fprintf(stderr, "* testing UTF-8 validation and length.\n");
     FIO_ASSERT(
         fio_str_utf8_valid(s),
         "`fio_str_utf8_valid` error, code in this file should be valid!");
@@ -7789,6 +7791,7 @@ FIO_FUNC inline void fio_str_test(void) {
                "`fio_str_utf8_len` error, invalid value (%zu / %zu!",
                fio_str_utf8_len(s), fio_str_len(s));
 
+    fprintf(stderr, "* reviewing reference counting `fio_str_free2` (1/2).\n");
     fio_str_free2(s2);
     FIO_ASSERT(s->ref == 0,
                "`fio_str_free2` error, reference counter not subtracted!");
@@ -7802,6 +7805,7 @@ FIO_FUNC inline void fio_str_test(void) {
       /* String content == whole file (this file) */
       intptr_t pos = -11;
       size_t len = 20;
+      fprintf(stderr, "* testing UTF-8 positioning.\n");
 
       FIO_ASSERT(
           fio_str_utf8_select(s, &pos, &len) == 0,
@@ -7826,6 +7830,7 @@ FIO_FUNC inline void fio_str_test(void) {
                  "`fio_str_utf8_select` error, length invalid! (%zd)",
                  (ssize_t)len);
     }
+    fprintf(stderr, "* reviewing reference counting `fio_str_free2` (2/2).\n");
     fio_str_free2(s);
   }
   fio_str_free(&str);
