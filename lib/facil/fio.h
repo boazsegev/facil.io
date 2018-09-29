@@ -3845,11 +3845,9 @@ FIO_FUNC fio_str_info_s fio_str_readfile(fio_str_s *s, const char *filename,
   const size_t org_len = fio_str_len(s);
   state = fio_str_resize(s, org_len + limit);
   if (pread(file, state.data + org_len, limit, start_at) != (ssize_t)limit) {
-    close(file);
     fio_str_resize(s, org_len);
     state.data = NULL;
     state.len = state.capa = 0;
-    goto finish;
   }
   close(file);
 finish:

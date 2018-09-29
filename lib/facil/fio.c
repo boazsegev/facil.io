@@ -7609,6 +7609,14 @@ Testing Strings
 #define fio_str_test()
 #else
 
+static int fio_str_test_dealloc_counter = 0;
+
+FIO_FUNC void fio_str_test_dealloc(void *s) {
+  FIO_ASSERT(!fio_str_test_dealloc_counter,
+             "fio_str_s reference count error!\n");
+  fio_free(s);
+}
+
 /**
  * Tests the fio_str functionality.
  */
@@ -7764,12 +7772,16 @@ FIO_FUNC inline void fio_str_test(void) {
                "`fio_str_new2` error, string not initialized (%p)!", (void *)s);
     fio_str_s *s2 = fio_str_dup(s);
 
+    ++fio_str_test_dealloc_counter;
+
     FIO_ASSERT(s2 == s, "`fio_str_dup` error, should return self!");
     FIO_ASSERT(s->ref == 1,
                "`fio_str_dup` error, reference counter not incremented!");
 
     fprintf(stderr, "* reading a file.\n");
     fio_str_info_s state = fio_str_readfile(s, __FILE__, 0, 0);
+    if (!s->small) /* attach deallocation test */
+      s->dealloc = fio_str_test_dealloc;
 
     FIO_ASSERT(state.data,
                "`fio_str_readfile` error, no data was read for file %s!",
@@ -7793,6 +7805,7 @@ FIO_FUNC inline void fio_str_test(void) {
 
     fprintf(stderr, "* reviewing reference counting `fio_str_free2` (1/2).\n");
     fio_str_free2(s2);
+    --fio_str_test_dealloc_counter;
     FIO_ASSERT(s->ref == 0,
                "`fio_str_free2` error, reference counter not subtracted!");
     FIO_ASSERT(s->small == 0, "`fio_str_free2` error, strring reinitialized!");
