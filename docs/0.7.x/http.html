@@ -1571,6 +1571,16 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 
 <h3 id="mime-type-helpers">Mime-Type helpers</h3>
 
+<p>The HTTP extension allows for easy conversion between file extensions and known Mime-Types.</p>
+
+<p>Many known file extensions are registered by the HTTP extension during startup. However, it&#39;s also possible to add/register more Mime-Types during the setup stage.</p>
+
+<p>NOTE:</p>
+
+<p>The Mime-Type helpers are designed to allow for concurrent read access. By design, they are <strong>not</strong> thread safe.</p>
+
+<p>It is recommended (and assumed) that all the calls to <code>http_mimetype_register</code> are performed during the setup stage (before calling <code>fio_start</code>).</p>
+
 <h4 id="http_mimetype_register"><code>http_mimetype_register</code></h4>
 <pre><code class='highlight'><span class="kt">void</span> <span class="n">http_mimetype_register</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">file_ext</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">file_ext_len</span><span class="p">,</span>
                             <span class="n">FIOBJ</span> <span class="n">mime_type_str</span><span class="p">);</span>

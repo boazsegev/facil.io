@@ -1349,6 +1349,16 @@ Frees an SSE handle by reference (decreases the reference count).
 
 ### Mime-Type helpers
 
+The HTTP extension allows for easy conversion between file extensions and known Mime-Types.
+
+Many known file extensions are registered by the HTTP extension during startup. However, it's also possible to add/register more Mime-Types during the setup stage.
+
+NOTE:
+
+The Mime-Type helpers are designed to allow for concurrent read access. By design, they are **not** thread safe.
+
+It is recommended (and assumed) that all the calls to `http_mimetype_register` are performed during the setup stage (before calling `fio_start`).
+
 #### `http_mimetype_register`
 
 ```c
