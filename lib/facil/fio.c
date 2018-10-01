@@ -7928,8 +7928,19 @@ void fio_malloc_test(void) {
   FIO_ASSERT(mem[0] == 'a', "fio_realloc memory wasn't copied!\n");
   FIO_ASSERT(arena_last_used, "arena_last_used wasn't initialized!\n");
   block_s *b = arena_last_used->block;
-  size_t count = 2;
+
+  /* move arena to block's start */
+  while (arena_last_used->block == b) {
+    mem = fio_malloc(1);
+    FIO_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
+    fio_free(mem);
+  }
+  /* make sure a block is assigned */
+  fio_free(fio_malloc(1));
+  b = arena_last_used->block;
+  size_t count = 1;
   intptr_t old_memory_pool_count = memory.count;
+  /* count allocations within block */
   do {
     FIO_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
     FIO_ASSERT(!((uintptr_t)mem & 15),
