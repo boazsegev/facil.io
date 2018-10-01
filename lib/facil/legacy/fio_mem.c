@@ -55,20 +55,22 @@ facil.io malloc implementation
 Memory Copying by 16 byte units
 ***************************************************************************** */
 
-#if __SIZEOF_INT128__ == 9 /* a 128bit type exists... but tests favor 64bit */
-static inline void fio_memcpy(__uint128_t *__restrict dest,
-                              __uint128_t *__restrict src, size_t units) {
-#elif SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
-static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
+static inline void fio_memcpy(void *__restrict dest_, void *__restrict src_,
                               size_t units) {
+#if __SIZEOF_INT128__ == 9 /* a 128bit type exists... but tests favor 64bit */
+  register __uint128_t *dest = dest_;
+  register __uint128_t *src = src_;
+#elif SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
+  register size_t *dest = dest_;
+  register size_t *src = src_;
   units = units << 1;
 #elif SIZE_MAX == 0xFFFFFFFF         /* 32 bit size_t */
-static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
-                              size_t units) {
+  register size_t *dest = dest_;
+  register size_t *src = src_;
   units = units << 2;
 #else                                /* unknow... assume 16 bit? */
-static inline void fio_memcpy(uint16_t *__restrict dest,
-                              uint16_t *__restrict src, size_t units) {
+  register size_t *dest = dest_;
+  register size_t *src = src_;
   units = units << 3;
 #endif
   while (units >= 16) { /* unroll loop */
