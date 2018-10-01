@@ -14,7 +14,7 @@ LIB_ROOT=lib
 # publicly used subfolders in the lib root
 LIB_PUBLIC_SUBFOLDERS=facil facil/fiobj facil/cli facil/http facil/http/parsers facil/redis
 # privately used subfolders in the lib root (this distinction is for CMake)
-LIB_PRIVATE_SUBFOLDERS= 
+LIB_PRIVATE_SUBFOLDERS=
 
 ### Development folders
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`.
@@ -38,7 +38,7 @@ WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
 # any extra include folders, space seperated list. (i.e. `pg_config --includedir`)
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
-FLAGS:= 
+FLAGS:=
 
 ### Helpers
 # The library details for CMake incorporation. Can be safely removed.
@@ -50,8 +50,8 @@ DUMP_LIB=libdump
 ifdef DEBUG
   $(info * Detected DEBUG environment flag, enforcing debug mode compilation)
 	FLAGS:=$(FLAGS) DEBUG
-	# # comment the following line if you want to use a different address sanitizer or a profiling tool. 
-	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer 
+	# # comment the following line if you want to use a different address sanitizer or a profiling tool.
+	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
 	# possibly useful:  -Wconversion -Wcomma -fsanitize=undefined -Wshadow
 	# go crazy with clang: -Weverything -Wno-cast-qual -Wno-used-but-marked-unused -Wno-reserved-id-macro -Wno-padded -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-bad-function-cast -Wno-missing-prototypes
 else
@@ -228,8 +228,8 @@ lib_build: $(LIB_OBJS)
 
 ifdef DISAMS
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
-	@$(DISAMS) $@ > $@.s 
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
 	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
@@ -244,14 +244,14 @@ $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
 
 else
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
 	$(eval CCL = $(CPP))
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
 	$(eval CCL = $(CPP))
 endif
 
@@ -261,36 +261,36 @@ $(TMP_ROOT)/%.d: ;
 
 .PHONY : test/speed
 test/speed: | test_add_speed_flags $(LIB_OBJS)
-	@$(CC) -c ./tests/speeds.c -o $(TMP_ROOT)/speeds.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CC) -c ./tests/speeds.c -o $(TMP_ROOT)/speeds.o $(CFALGS_DEPENDENCY) $(CFLAGS)
 	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/speeds.o $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(BIN)
 
 .PHONY : test_add_speed_flags
-test_add_speed_flags: 
+test_add_speed_flags:
 	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1)
 	$(eval LINKER_FLAGS:=-DDEBUG=1 $(LINKER_FLAGS))
 
 
-.PHONY : test 
-test: | clean 
+.PHONY : test
+test: | clean
 	@DEBUG=1 $(MAKE) test_build_and_run
 	-@rm $(BIN) 2> /dev/null
 	-@rm -R $(TMP_ROOT) 2> /dev/null
 
 .PHONY : test/optimized
 test/optimized: | clean test_add_speed_flags create_tree $(LIB_OBJS)
-	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS)
 	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(BIN)
 	-@rm $(BIN) 2> /dev/null
 	-@rm -R $(TMP_ROOT) 2> /dev/null
 
 .PHONY : test/ci
-test/ci:| clean 
+test/ci:| clean
 	@DEBUG=1 $(MAKE) test_build_and_run
 
 .PHONY : test/c99
-test/c99:| clean 
+test/c99:| clean
 	@CSTD=c99 DEBUG=1 $(MAKE) test_build_and_run
 
 .PHONY : test_build_and_run
@@ -298,20 +298,20 @@ test_build_and_run: | create_tree test_add_flags test/build
 	@$(BIN)
 
 .PHONY : test_add_flags
-test_add_flags: 
+test_add_flags:
 	$(eval CFLAGS:=-coverage $(CFLAGS) -DDEBUG=1 -Werror)
 	$(eval LINKER_FLAGS:=-coverage -DDEBUG=1 $(LINKER_FLAGS))
 
 .PHONY : test/build
 test/build: $(LIB_OBJS)
-	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS) 
+	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS)
 	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
 
 .PHONY : clean
 clean:
 	-@rm -f $(BIN) 2> /dev/null || echo "" >> /dev/null
 	-@rm -R -f $(TMP_ROOT) 2> /dev/null || echo "" >> /dev/null
-	-@mkdir -p $(BUILDTREE) 
+	-@mkdir -p $(BUILDTREE)
 
 .PHONY : run
 run: | build
@@ -333,11 +333,11 @@ create_tree:
 
 .PHONY : add/bearssl
 add/bearssl: | remove/bearssl
-	-@echo " "	
+	-@echo " "
 	-@echo "* Cloning BearSSL and copying source files to lib/bearssl."
 	-@echo "  Please review the BearSSL license."
 	@git clone https://www.bearssl.org/git/BearSSL tmp/bearssl
-	@mkdir lib/bearssl 
+	@mkdir lib/bearssl
 	-@find tmp/bearssl/src -name "*.*" -exec mv "{}" lib/bearssl \;
 	-@find tmp/bearssl/inc -name "*.*" -exec mv "{}" lib/bearssl \;
 	-@make clean
@@ -363,26 +363,26 @@ ifeq ($(LIBDIR_PRIV),)
 .PHONY : libdump
 libdump: cmake
 	-@rm -R $(DUMP_LIB) 2> /dev/null
-	-@mkdir $(DUMP_LIB) 
-	-@mkdir $(DUMP_LIB)/src 
-	-@mkdir $(DUMP_LIB)/include 
-	-@mkdir $(DUMP_LIB)/all  # except README.md files 
+	-@mkdir $(DUMP_LIB)
+	-@mkdir $(DUMP_LIB)/src
+	-@mkdir $(DUMP_LIB)/include
+	-@mkdir $(DUMP_LIB)/all  # except README.md files
 	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^m]*)) $(DUMP_LIB)/all 2> /dev/null
 	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*)) $(DUMP_LIB)/include 2> /dev/null
-	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src 2> /dev/null	
+	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src 2> /dev/null
 
 else
 
 .PHONY : libdump
 libdump: cmake
 	-@rm -R $(DUMP_LIB) 2> /dev/null
-	-@mkdir $(DUMP_LIB) 
-	-@mkdir $(DUMP_LIB)/src 
-	-@mkdir $(DUMP_LIB)/include 
-	-@mkdir $(DUMP_LIB)/all  # except README.md files 
+	-@mkdir $(DUMP_LIB)
+	-@mkdir $(DUMP_LIB)/src
+	-@mkdir $(DUMP_LIB)/include
+	-@mkdir $(DUMP_LIB)/all  # except README.md files
 	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^m]*)) $(DUMP_LIB)/all 2> /dev/null
 	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*)) $(DUMP_LIB)/include 2> /dev/null
-	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src 2> /dev/null	
+	-@cp -n $(foreach dir,$(LIBDIR_PUB), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src 2> /dev/null
 	-@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^m]*)) $(DUMP_LIB)/all 2> /dev/null
 	-@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.h*)) $(DUMP_LIB)/include 2> /dev/null
 	-@cp -n $(foreach dir,$(LIBDIR_PRIV), $(wildcard $(addsuffix /, $(basename $(dir)))*.[^hm]*)) $(DUMP_LIB)/src 2> /dev/null
