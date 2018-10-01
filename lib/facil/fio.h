@@ -11,82 +11,83 @@ Feel free to copy, use and enjoy according to the license provided.
 #define H_FACIL_IO_H
 
 /* *****************************************************************************
-Table of contents:
-=================
-* Version and helper macros
-* Helper String Information Type
-* Memory pool / custom allocator for short lived objects
-*
-* Connection Callback (Protocol) Management
-* Listening to Incoming Connections
-* Connecting to remote servers as a client
-* Starting the IO reactor and reviewing it's state
-* Socket / Connection Functions
-* Connection Read / Write Hooks, for overriding the system calls
-* Concurrency overridable functions
-* Connection Task scheduling
-* Event / Task scheduling
-* Startup / State Callbacks (fork, start up, idle, etc')
-* Lower Level API - for special circumstances, use with care under
-*
-* Pub/Sub / Cluster Messages API
-* Cluster Messages and Pub/Sub
-* Cluster / Pub/Sub Middleware and Extensions ("Engines")
-*
-* Atomic Operations and Spin Locking Helper Functions
-* Byte Swapping and Network Order
-*
-* Converting Numbers to Strings (and back)
-* Strings to Numbers
-* Numbers to Strings* Random Generator Functions
-*
-* SipHash
-* SHA-1
-* SHA-2
-* Base64 (URL) encoding
-*
-* Memory Allocator Details
-*
-* Spin locking Implementation
-*
-******** facil.io Data Types (String, Set / Hash Map, Linked Lists, etc')
-*
-* These types can be included by defining the macros and (re)including fio.h.
-*
-*
-*
-*                      #ifdef FIO_INCLUDE_LINKED_LIST
-*
-* Linked List Helpers
-* Independent Linked List API
-* Embedded Linked List API* Independent Linked List Implementation
-* Embeded Linked List Implementation
-*
-*
-*
-*                      #ifdef FIO_INCLUDE_STR
-*
-* String Helpers
-* String API - Initialization and Destruction
-* String API - String state (data pointers, length, capacity, etc')
-* String API - Memory management
-* String API - UTF-8 State
-* String Implementation - state (data pointers, length, capacity, etc')
-* String Implementation - Memory management
-* String Implementation - UTF-8 State
-* String Implementation - Content Manipulation and Review
-*
-*
-*
-*            #ifdef FIO_SET_NAME - can be included more than once
-*
-* Set / Hash Map Data-Store
-* Set / Hash Map API
-* Set / Hash Map Internal Data Structures
-* Set / Hash Map Internal Helpers
-* Set / Hash Map Implementation
-*
-***************************************************************************** */
+ * Table of contents (find by subject):
+ * =================
+ * Version and helper macros
+ * Helper String Information Type
+ * Memory pool / custom allocator for short lived objects
+ *
+ * Connection Callback (Protocol) Management
+ * Listening to Incoming Connections
+ * Connecting to remote servers as a client
+ * Starting the IO reactor and reviewing it's state
+ * Socket / Connection Functions
+ * Connection Read / Write Hooks, for overriding the system calls
+ * Concurrency overridable functions
+ * Connection Task scheduling
+ * Event / Task scheduling
+ * Startup / State Callbacks (fork, start up, idle, etc')
+ * Lower Level API - for special circumstances, use with care under
+ *
+ * Pub/Sub / Cluster Messages API
+ * Cluster Messages and Pub/Sub
+ * Cluster / Pub/Sub Middleware and Extensions ("Engines")
+ *
+ * Atomic Operations and Spin Locking Helper Functions
+ * Byte Swapping and Network Order
+ *
+ * Converting Numbers to Strings (and back)
+ * Strings to Numbers
+ * Numbers to Strings* Random Generator Functions
+ *
+ * SipHash
+ * SHA-1
+ * SHA-2
+ * Base64 (URL) encoding
+ *
+ * Memory Allocator Details
+ *
+ * Spin locking Implementation
+ *
+ ******** facil.io Data Types (String, Set / Hash Map, Linked Lists, etc')
+ *
+ * These types can be included by defining the macros and (re)including fio.h.
+ *
+ *
+ *
+ *                      #ifdef FIO_INCLUDE_LINKED_LIST
+ *
+ * Linked List Helpers
+ * Independent Linked List API
+ * Embedded Linked List API* Independent Linked List Implementation
+ * Embeded Linked List Implementation
+ *
+ *
+ *
+ *                      #ifdef FIO_INCLUDE_STR
+ *
+ * String Helpers
+ * String API - Initialization and Destruction
+ * String API - String state (data pointers, length, capacity, etc')
+ * String API - Memory management
+ * String API - UTF-8 State
+ * String Implementation - state (data pointers, length, capacity, etc')
+ * String Implementation - Memory management
+ * String Implementation - UTF-8 State
+ * String Implementation - Content Manipulation and Review
+ *
+ *
+ *
+ *            #ifdef FIO_SET_NAME - can be included more than once
+ *
+ * Set / Hash Map Data-Store
+ * Set / Hash Map API
+ * Set / Hash Map Internal Data Structures
+ * Set / Hash Map Internal Helpers
+ * Set / Hash Map Implementation
+ *
+ *****************************************************************************
+ */
 
 /* *****************************************************************************
 Version and helper macros
@@ -308,10 +309,16 @@ void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
  */
 void *fio_mmap(size_t size);
 
+/**
+ * When forking is called manually, call this function to reset the facil.io
+ * memory allocator's locks.
+ */
+void fio_malloc_after_fork(void);
+
 #if FIO_FORCE_MALLOC
-#define fio_malloc malloc
+#define fio_malloc(size) calloc(size, 1)
 #define fio_calloc calloc
-#define fio_mmap malloc
+#define fio_mmap(size) calloc(size, 1)
 #define fio_free free
 #define fio_realloc realloc
 #define fio_realloc2(ptr, new_size, old_data_len) realloc((ptr), (new_size))
@@ -2424,9 +2431,9 @@ C++ extern end
 #undef FIO_MEMORY_BLOCK_SIZE
 #undef FIO_MEMORY_BLOCK_MASK
 #undef FIO_MEMORY_BLOCK_SLICES
-#define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1)    /* 0b111... */
-#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B slices */
 #define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
+#define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1)    /* 0b0...1... */
+#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B slices */
 
 #ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
 /* defaults to 37.5% of the block, after which `mmap` is used instead */
@@ -2834,10 +2841,16 @@ String API - Initialization and Destruction
  * used.
  */
 typedef struct {
+#if !FIO_STR_NO_REF
   volatile uint32_t ref; /* reference counter for fio_str_dup */
+#endif
   uint8_t small;  /* Flag indicating the String is small and self-contained */
   uint8_t frozen; /* Flag indicating the String is frozen (don't edit) */
-  uint8_t reserved[10];    /* Align struct on 16 byte allocator boundary */
+#if FIO_STR_NO_REF
+  uint8_t reserved[14]; /* Align struct on 16 byte allocator boundary */
+#else
+  uint8_t reserved[10]; /* Align struct on 16 byte allocator boundary */
+#endif
   uint64_t capa;           /* Known capacity for longer Strings */
   uint64_t len;            /* String length for longer Strings */
   void (*dealloc)(void *); /* Data deallocation function (NULL for static) */
@@ -2909,6 +2922,9 @@ inline FIO_FUNC fio_str_s *fio_str_new_copy2(fio_str_s *src);
 
 /**
  * Adds a references to the current String object and returns itself.
+ *
+ * If refecrence counting was disabled (FIO_STR_NO_REF was defined), returns a
+ * copy of the String (free with `fio_str_free2`).
  *
  * NOTE: Nothing is copied, reference Strings are referencing the same String.
  *       Editing one reference will effect the other.
@@ -3145,7 +3161,9 @@ String Implementation - state (data pointers, length, capacity, etc')
 ***************************************************************************** */
 
 typedef struct {
+#if !FIO_STR_NO_REF
   volatile uint32_t ref; /* reference counter for fio_str_dup */
+#endif
   uint8_t small;  /* Flag indicating the String is small and self-contained */
   uint8_t frozen; /* Flag indicating the String is frozen (don't edit) */
 } fio_str__small_s;
@@ -3199,6 +3217,9 @@ inline FIO_FUNC fio_str_s *fio_str_new_copy2(fio_str_s *src) {
 /**
  * Adds a references to the current String object and returns itself.
  *
+ * If refecrence counting was disabled (FIO_STR_NO_REF was defined), returns a
+ * copy of the String (free with `fio_str_free2`).
+ *
  * NOTE: Nothing is copied, reference Strings are referencing the same String.
  *       Editing one reference will effect the other.
  *
@@ -3207,9 +3228,15 @@ inline FIO_FUNC fio_str_s *fio_str_new_copy2(fio_str_s *src) {
  *       were freed using `fio_str_free` / `fio_str_free2` or discarded.
  */
 inline FIO_FUNC fio_str_s *fio_str_dup(fio_str_s *s) {
+#if FIO_STR_NO_REF
+  fio_str_s *s2 = fio_str_new2();
+  fio_str_concat(s2, s);
+  return s2;
+#else
   if (s)
     fio_atomic_add(&s->ref, 1);
   return s;
+#endif
 }
 
 /**
@@ -3222,7 +3249,11 @@ inline FIO_FUNC fio_str_s *fio_str_dup(fio_str_s *s) {
  * references (see fio_str_dup).
  */
 inline FIO_FUNC int fio_str_free(fio_str_s *s) {
+#if FIO_STR_NO_REF
+  if (1) {
+#else
   if (s && fio_atomic_sub(&s->ref, 1) == (uint32_t)-1) {
+#endif
     if (!s->small && s->dealloc)
       s->dealloc(s->data);
     *s = FIO_STR_INIT;
@@ -3373,6 +3404,15 @@ is_small:
   } else {
     tmp[0] = 0;
   }
+#if FIO_STR_NO_REF
+  *s = (fio_str_s){
+      .small = 0,
+      .capa = needed,
+      .len = existing_len,
+      .dealloc = fio_free,
+      .data = tmp,
+  };
+#else
   *s = (fio_str_s){
       .ref = s->ref,
       .small = 0,
@@ -3381,6 +3421,7 @@ is_small:
       .dealloc = fio_free,
       .data = tmp,
   };
+#endif
   return (fio_str_info_s){
       .capa = (s->frozen ? 0 : needed), .len = existing_len, .data = s->data};
 }

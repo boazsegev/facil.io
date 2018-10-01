@@ -2633,33 +2633,36 @@ parse_path:
 Lookup Tables / functions
 ***************************************************************************** */
 
-#define FIO_SET_NAME fio_fiobj_set
+#define FIO_SET_NAME fio_mime_set
 #define FIO_SET_OBJ_TYPE FIOBJ
+#define FIO_SET_OBJ_COMPARE(o1, o2) (1)
 #define FIO_SET_OBJ_COPY(dest, o) (dest) = fiobj_dup((o))
 #define FIO_SET_OBJ_DESTROY(o) fiobj_free((o))
+
 #include <fio.h>
 
-#include <fio_hashmap.h>
-
-static fio_hash_s mime_types;
+static fio_mime_set_s mime_types = FIO_SET_INIT;
 
 #define LONGEST_FILE_EXTENSION_LENGTH 15
 
 /** Registers a Mime-Type to be associated with the file extension. */
 void http_mimetype_register(char *file_ext, size_t file_ext_len,
                             FIOBJ mime_type_str) {
-  if (!mime_types.map)
-    fio_hash_new(&mime_types);
   uintptr_t hash = fio_siphash(file_ext, file_ext_len);
-  FIOBJ old = (FIOBJ)fio_hash_insert(&mime_types, hash, (void *)mime_type_str);
-#if DEBUG
-  if (old) {
-    fprintf(stderr, "WARNING: mime-type collision: %.*s was %s, now %s\n",
-            (int)file_ext_len, file_ext, fiobj_obj2cstr(old).data,
-            fiobj_obj2cstr(mime_type_str).data);
+  if (mime_type_str == FIOBJ_INVALID) {
+    fio_mime_set_remove(&mime_types, hash, FIOBJ_INVALID);
+  } else {
+    FIOBJ *old = fio_mime_set_find(&mime_types, hash, FIOBJ_INVALID);
+    if (old && *old != FIOBJ_INVALID) {
+      fprintf(stderr, "WARNING: mime-type collision: %.*s was %s, now %s\n",
+              (int)file_ext_len, file_ext, fiobj_obj2cstr(*old).data,
+              fiobj_obj2cstr(mime_type_str).data);
+      fiobj_free(*old);
+      *old = mime_type_str;
+    } else {
+      fio_mime_set_overwrite(&mime_types, hash, mime_type_str);
+    }
   }
-#endif
-  fiobj_free(old);
 }
 
 /**
@@ -2667,11 +2670,11 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
  *  Remember to call `fiobj_free`.
  */
 FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
-  if (!mime_types.map) {
-    return FIOBJ_INVALID;
-  }
   uintptr_t hash = fio_siphash(file_ext, file_ext_len);
-  return fiobj_dup((FIOBJ)fio_hash_find(&mime_types, hash));
+  FIOBJ *result = fio_mime_set_find(&mime_types, hash, FIOBJ_INVALID);
+  if (result)
+    return fiobj_dup(*result);
+  return FIOBJ_INVALID;
 }
 
 /**
@@ -2712,19 +2715,12 @@ finish:
   return mimetype;
 }
 
-/** Clears the Mime-Type registry (it will be emoty afterthis call). */
+/** Clears the Mime-Type registry (it will be empty afterthis call). */
 void http_mimetype_clear(void) {
-  if (!mime_types.map)
-    return;
-  /* rotate data and reinitialize state */
-  fio_hash_s old = mime_types;
-  mime_types = (fio_hash_s)FIO_HASH_INIT;
-  FIOBJ old_date = current_date;
+  fio_mime_set_free(&mime_types);
+  fiobj_free(current_date);
   current_date = FIOBJ_INVALID;
   last_date_added = 0;
-  /* free ols memory / objects */
-  FIO_HASH_FOR_FREE(&old, obj) { fiobj_free((FIOBJ)obj->obj); }
-  fiobj_free(old_date);
 }
 
 /**

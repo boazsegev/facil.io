@@ -69,6 +69,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #define DEBUG_SPINLOCK 0
 #endif
 
+#if !defined(__clang__) && !defined(__GNUC__)
+#define __thread _Thread_value
+#endif
+
 /* *****************************************************************************
 Patch for OSX version < 10.12 from https://stackoverflow.com/a/9781275/4025095
 ***************************************************************************** */
@@ -218,7 +222,7 @@ typedef struct {
   fio_fd_data_s info[];
 } fio_data_s;
 
-fio_data_s *fio_data = NULL;
+static fio_data_s *fio_data = NULL;
 
 /* used for protocol locking by task type. */
 typedef struct {
@@ -516,7 +520,7 @@ typedef struct {
   void (*on_finish)(void *);
 } fio_timer_s;
 
-fio_ls_embd_s fio_timers = FIO_LS_INIT(fio_timers);
+static fio_ls_embd_s fio_timers = FIO_LS_INIT(fio_timers);
 
 static fio_lock_i fio_timer_lock = FIO_LOCK_INIT;
 
@@ -3004,7 +3008,6 @@ void fio_defer_io_task FIO_IGNORE_MACRO(intptr_t uuid,
 Initialize the library
 ***************************************************************************** */
 
-static void fio_malloc_after_fork(void);
 static void fio_pubsub_on_fork(void);
 
 static void fio_mem_destroy(void);
@@ -4160,7 +4163,7 @@ struct fio_collection_s {
 #define COLLECTION_INIT                                                        \
   { .channels = FIO_SET_INIT, .lock = FIO_LOCK_INIT }
 
-struct {
+static struct {
   fio_collection_s filters;
   fio_collection_s pubsub;
   fio_collection_s patterns;
@@ -4771,7 +4774,7 @@ typedef struct cluster_pr_s {
   uint8_t buffer[CLUSTER_READ_BUFFER];
 } cluster_pr_s;
 
-struct cluster_data_s {
+static struct cluster_data_s {
   intptr_t uuid;
   fio_ls_s clients;
   fio_lock_i lock;
@@ -5226,7 +5229,7 @@ static void fio_cluster_client_sender(fio_str_s *data, intptr_t ignr_) {
  *
  * Should either call `facil_attach` or close the connection.
  */
-void fio_cluster_on_connect(intptr_t uuid, void *udata) {
+static void fio_cluster_on_connect(intptr_t uuid, void *udata) {
   cluster_data.uuid = uuid;
 
   /* inform root about all existing channels */
@@ -5256,7 +5259,7 @@ void fio_cluster_on_connect(intptr_t uuid, void *udata) {
  * The `on_fail` is called when a socket fails to connect. The old sock UUID
  * is passed along.
  */
-void fio_cluster_on_fail(intptr_t uuid, void *udata) {
+static void fio_cluster_on_fail(intptr_t uuid, void *udata) {
   perror("FATAL ERROR: (facil.io) unknown cluster connection error");
   kill(fio_parent_pid(), SIGINT);
   fio_stop();
@@ -5663,57 +5666,32 @@ Section Start Marker
 
 ***************************************************************************** */
 
-/* *****************************************************************************
-If FIO_FORCE_MALLOC is set, use glibc / library malloc
-***************************************************************************** */
 #if FIO_FORCE_MALLOC
-
-void *fio_malloc(size_t size) { return malloc(size); }
-
-void *fio_calloc(size_t size, size_t count) { return calloc(size, count); }
-
-void fio_free(void *ptr) { free(ptr); }
-
-void *fio_realloc(void *ptr, size_t new_size) { return realloc(ptr, new_size); }
-void *fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
-  return realloc(ptr, new_size);
-  (void)valid_len;
-}
-/** Clears any memory locks, in case of a system call to `fork`. */
-static void fio_malloc_after_fork(void) {}
+void fio_mem_destroy(void) {}
+void fio_mem_init(void) {}
 
 #else
-/* *****************************************************************************
-facil.io malloc implementation
-***************************************************************************** */
-
-#if !defined(__clang__) && !defined(__GNUC__)
-#define __thread _Thread_value
-#endif
-
-#undef malloc
-#undef calloc
-#undef free
-#undef realloc
 
 /* *****************************************************************************
 Memory Copying by 16 byte units
 ***************************************************************************** */
 
-#if __SIZEOF_INT128__ == 9 /* a 128bit type exists... but tests favor 64bit */
-static inline void fio_memcpy(__uint128_t *__restrict dest,
-                              __uint128_t *__restrict src, size_t units) {
-#elif SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
-static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
+static inline void fio_memcpy(void *__restrict dest_, void *__restrict src_,
                               size_t units) {
+#if __SIZEOF_INT128__ == 9 /* a 128bit type exists... but tests favor 64bit */
+  register __uint128_t *dest = dest_;
+  register __uint128_t *src = src_;
+#elif SIZE_MAX == 0xFFFFFFFFFFFFFFFF /* 64 bit size_t */
+  register size_t *dest = dest_;
+  register size_t *src = src_;
   units = units << 1;
 #elif SIZE_MAX == 0xFFFFFFFF         /* 32 bit size_t */
-static inline void fio_memcpy(size_t *__restrict dest, size_t *__restrict src,
-                              size_t units) {
+  register size_t *dest = dest_;
+  register size_t *src = src_;
   units = units << 2;
 #else                                /* unknow... assume 16 bit? */
-static inline void fio_memcpy(uint16_t *__restrict dest,
-                              uint16_t *__restrict src, size_t units) {
+  register size_t *dest = dest_;
+  register size_t *src = src_;
   units = units << 3;
 #endif
   while (units >= 16) { /* unroll loop */
@@ -5926,7 +5904,7 @@ static void arena_enter(void) { arena_last_used = arena_lock(arena_last_used); }
 static inline void arena_exit(void) { fio_unlock(&arena_last_used->lock); }
 
 /** Clears any memory locks, in case of a system call to `fork`. */
-static void fio_malloc_after_fork(void) {
+void fio_malloc_after_fork(void) {
   arena_last_used = NULL;
   if (!arenas) {
     return;
@@ -5972,7 +5950,7 @@ static inline void block_free(block_s *blk) {
   }
   memset(blk, 0, FIO_MEMORY_BLOCK_SIZE);
   fio_lock(&memory.lock);
-  *(block_s **)blk = memory.available;
+  ((block_s **)blk)[0] = memory.available;
   memory.available = (block_s *)blk;
   fio_unlock(&memory.lock);
 }
@@ -5983,13 +5961,15 @@ static inline block_s *block_new(void) {
 
   if (memory.available) {
     fio_lock(&memory.lock);
-    blk = (block_s *)memory.available;
+    blk = memory.available;
     if (blk) {
       memory.available = ((block_s **)blk)[0];
     }
     fio_unlock(&memory.lock);
   }
   if (blk) {
+    FIO_ASSERT(((uintptr_t)blk & FIO_MEMORY_BLOCK_MASK) == 0,
+               "Memory allocator error! double `fio_free`?\n");
     fio_atomic_sub(&memory.count, 1);
     ((block_s **)blk)[0] = NULL;
     ((block_s **)blk)[1] = NULL;
@@ -6003,6 +5983,7 @@ static inline block_s *block_new(void) {
   ;
 }
 
+/* allocates memory from within a block - called within an arena's lock */
 static inline void *block_slice(uint16_t units) {
   block_s *blk = arena_last_used->block;
   if (!blk) {
@@ -6025,7 +6006,6 @@ static inline void *block_slice(uint16_t units) {
   fio_atomic_add(&blk->ref, 1);
   blk->pos += units;
   if (blk->pos >= blk->max) {
-    /* it's true that a 16 bytes slice remains, but statistically... */
     /* ... the block was fully utilized, clear arena */
     block_free(blk);
     arena_last_used->block = NULL;
@@ -6033,6 +6013,7 @@ static inline void *block_slice(uint16_t units) {
   return (void *)mem;
 }
 
+/* handle's a bock's reference count - called without a lock */
 static inline void block_slice_free(void *mem) {
   /* locate block boundary */
   block_s *blk = (block_s *)((uintptr_t)mem & (~FIO_MEMORY_BLOCK_MASK));
@@ -6043,6 +6024,7 @@ static inline void block_slice_free(void *mem) {
 Non-Block allocations (direct from the system)
 ***************************************************************************** */
 
+/* allocates directly from the system adding size header - no lock required. */
 static inline void *big_alloc(size_t size) {
   size = sys_round_size(size + 16);
   size_t *mem = sys_alloc(size, 1);
@@ -6054,11 +6036,13 @@ error:
   return NULL;
 }
 
+/* reads size header and frees memory back to the system */
 static inline void big_free(void *ptr) {
   size_t *mem = (void *)(((uintptr_t)ptr) - 16);
   sys_free(mem, *mem);
 }
 
+/* reallocates memory using the system, resetting the size header */
 static inline void *big_realloc(void *ptr, size_t new_size) {
   size_t *mem = (void *)(((uintptr_t)ptr) - 16);
   new_size = sys_round_size(new_size + 16);
@@ -6107,16 +6091,14 @@ static void fio_mem_destroy(void) {
   if (!arenas)
     return;
 
-  arena_s *arena = arenas;
   for (size_t i = 0; i < memory.cores; ++i) {
-    if (arena->block)
-      block_free(arena->block);
-    arena->block = NULL;
-    ++arena;
+    if (arenas[i].block)
+      block_free(arenas[i].block);
+    arenas[i].block = NULL;
   }
   while (memory.available) {
     block_s *b = memory.available;
-    memory.available = *(block_s **)b;
+    memory.available = ((block_s **)b)[0];
     sys_free(b, FIO_MEMORY_BLOCK_SIZE);
   }
   big_free(arenas);
@@ -7615,6 +7597,7 @@ FIO_FUNC void fio_str_test_dealloc(void *s) {
   FIO_ASSERT(!fio_str_test_dealloc_counter,
              "fio_str_s reference count error!\n");
   fio_free(s);
+  fprintf(stderr, "* reference counting `fio_str_free2` pass.\n");
 }
 
 /**
@@ -7898,11 +7881,11 @@ FIO_FUNC inline void fio_str_test(void) {
                "Static string length should be automatically calculated.");
     FIO_ASSERT(str.dealloc == NULL,
                "Static string deallocation function should be NULL.");
-    fio_free(&str);
+    fio_str_free(&str);
     str = FIO_STR_INIT_STATIC("Welcome");
     fio_str_info_s state = fio_str_write(&str, " Home", 5);
     FIO_ASSERT(state.capa > 0, "Static string not converted to non-static.");
-    fio_free(&str);
+    fio_str_free(&str);
   }
   fprintf(stderr, "* passed.\n");
 }
@@ -7912,6 +7895,9 @@ FIO_FUNC inline void fio_str_test(void) {
 Testing Memory Allocator
 ***************************************************************************** */
 
+#if FIO_FORCE_MALLOC
+#define fio_malloc_test()
+#else
 void fio_malloc_test(void) {
   fprintf(stderr, "=== Testing facil.io memory allocator's system calls\n");
   char *mem = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
@@ -8032,6 +8018,7 @@ void fio_malloc_test(void) {
 
   fprintf(stderr, "* passed.\n");
 }
+#endif
 
 /* *****************************************************************************
 Testing Core Callback add / remove / ensure
@@ -8574,14 +8561,14 @@ SHA-1 tests
 static void fio_sha1_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
-  uint8_t result[65];
+  uint8_t result[21];
   fio_sha1_s sha1;
   memset(buffer, 'T', sizeof(buffer));
   /* warmup */
   for (size_t i = 0; i < 4; i++) {
     sha1 = fio_sha1_init();
     fio_sha1_write(&sha1, buffer, sizeof(buffer));
-    memcpy(result, fio_sha1_result(&sha1), 65);
+    memcpy(result, fio_sha1_result(&sha1), 21);
   }
   /* loop until test runs for more than 2 seconds */
   for (size_t cycles = 8192;;) {
@@ -8608,7 +8595,7 @@ static void fio_sha1_speed_test(void) {
 static void fio_sha1_open_ssl_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
-  uint8_t result[65];
+  uint8_t result[21];
   SHA_CTX o_sh1;
   memset(buffer, 'T', sizeof(buffer));
   /* warmup */
@@ -9006,8 +8993,7 @@ void fio_base64_test(void) {
       {"foob", "Zm9vYg=="},
       {"fooba", "Zm9vYmE="},
       {"foobar", "Zm9vYmFy"},
-      { NULL,
-        NULL } // Stop
+      {NULL, NULL} // Stop
   };
   int i = 0;
   char buffer[1024];
