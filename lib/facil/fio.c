@@ -7939,7 +7939,6 @@ void fio_malloc_test(void) {
   fio_free(fio_malloc(1));
   b = arena_last_used->block;
   size_t count = 1;
-  intptr_t old_memory_pool_count = memory.count;
   /* count allocations within block */
   do {
     FIO_ASSERT(mem, "fio_malloc failed to allocate memory!\n");
@@ -7963,12 +7962,13 @@ void fio_malloc_test(void) {
         "block.\n",
         count,
         (size_t)((FIO_MEMORY_BLOCK_SLICES - 2) - (sizeof(block_s) >> 4) - 1));
+    intptr_t old_memory_pool_count = memory.count;
+    fio_free(mem);
     FIO_ASSERT(memory.available,
                "memory pool empty (memory block wasn't freed)!\n");
-    FIO_ASSERT(old_memory_pool_count == memory.count,
+    FIO_ASSERT(old_memory_pool_count == memory.count + 1,
                "memory.count == %ld (memory block not counted)!\n",
                (long)old_memory_pool_count);
-    fio_free(mem);
   }
   /* rotate block again */
   b = arena_last_used->block;
