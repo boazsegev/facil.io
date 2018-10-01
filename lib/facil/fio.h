@@ -4178,7 +4178,7 @@ FIO_FUNC void FIO_NAME(free)(FIO_NAME(s) * set);
 #ifdef FIO_SET_KEY_TYPE
 
 /**
- *Locates an object in the Set, if it exists.
+ * Locates an object in the Hash Map, if it exists.
  *
  * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
  */
@@ -4187,13 +4187,15 @@ FIO_FUNC inline FIO_SET_OBJ_TYPE *
                    FIO_SET_KEY_TYPE key);
 
 /**
- * Inserts an object to the Set only if it's missing, rehashing if required,
- * returning the new (or old) object's pointer.
+ * Inserts an object to the Hash Map, rehashing if required, returning the new
+ * object's location using a pointer.
  *
- * If the object already exists in the set, no action is performed (the old
- * object is returned).
+ * If an object already exists in the Hash Map with the same key, it will be
+ * destroyed.
  *
- * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
+ * NOTE 1: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
+ *
+ * NOTE 2: This is equivelant to calling the `insert2` with `old` set to NULL.
  */
 FIO_FUNC inline void FIO_NAME(insert)(FIO_NAME(s) * set,
                                       const FIO_SET_HASH_TYPE hash_value,
@@ -4201,7 +4203,24 @@ FIO_FUNC inline void FIO_NAME(insert)(FIO_NAME(s) * set,
                                       FIO_SET_OBJ_TYPE obj);
 
 /**
- * Removes an object from the Set, rehashing if required.
+ * Inserts an object to the Hash Map, rehashing if required, returning the new
+ * object's location using a pointer.
+ *
+ * If an object already exists in the Hash Map, it will be destroyed.
+ *
+ * If `old` is set, the existing object (if any) will be copied to the location
+ * pointed to by `old` before it is destroyed.
+ *
+ * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
+ */
+FIO_FUNC inline void FIO_NAME(insert2)(FIO_NAME(s) * set,
+                                       const FIO_SET_HASH_TYPE hash_value,
+                                       FIO_SET_KEY_TYPE key,
+                                       FIO_SET_OBJ_TYPE obj,
+                                       FIO_SET_OBJ_TYPE *old);
+
+/**
+ * Removes an object from the Hash Map, rehashing if required.
  *
  * Returns 0 on success and -1 if the object wasn't found.
  *
@@ -4248,6 +4267,17 @@ FIO_FUNC inline FIO_SET_OBJ_TYPE *
 FIO_FUNC inline FIO_SET_OBJ_TYPE *
     FIO_NAME(overwrite)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                         FIO_SET_OBJ_TYPE obj);
+
+/**
+ * The same as `overwrite`, only it copies the old object (if any) to the
+ * location pointed to by `old`.
+ *
+ * When setting `old` to NULL, the function behaves the same as `overwrite`.
+ */
+FIO_FUNC FIO_SET_OBJ_TYPE *FIO_NAME(replace)(FIO_NAME(s) * set,
+                                             const FIO_SET_HASH_TYPE hash_value,
+                                             FIO_SET_OBJ_TYPE obj,
+                                             FIO_SET_OBJ_TYPE *old);
 
 /**
  * Removes an object from the Set, rehashing if required.
@@ -4446,10 +4476,9 @@ FIO_FUNC inline void FIO_NAME(_reallocate_set_mem_)(FIO_NAME(s) * set) {
  * If the object already exists in the set, it will be destroyed and
  * overwritten.
  */
-FIO_FUNC inline FIO_SET_TYPE *
-FIO_NAME(_insert_or_overwrite_)(FIO_NAME(s) * set,
-                                const FIO_SET_HASH_TYPE hash_value,
-                                FIO_SET_TYPE obj, int overwrite) {
+FIO_FUNC inline FIO_SET_TYPE *FIO_NAME(_insert_or_overwrite_)(
+    FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value, FIO_SET_TYPE obj,
+    int overwrite, FIO_SET_OBJ_TYPE *old) {
   if (FIO_SET_HASH_COMPARE(hash_value, FIO_SET_HASH_INVALID))
     return NULL;
 
@@ -4474,11 +4503,17 @@ FIO_NAME(_insert_or_overwrite_)(FIO_NAME(s) * set,
       return &pos->pos->obj;
     }
 #ifdef FIO_SET_KEY_TYPE
+    if (old) {
+      FIO_SET_OBJ_COPY((*old), pos->pos->obj.obj);
+    }
     /* no need to recreate the key object, just the value object */
     FIO_SET_OBJ_DESTROY(pos->pos->obj.obj);
     FIO_SET_OBJ_COPY(pos->pos->obj.obj, obj.obj);
     return &pos->pos->obj;
 #else
+    if (old) {
+      FIO_SET_COPY((*old), pos->pos->obj);
+    }
     FIO_SET_DESTROY(pos->pos->obj);
 #endif
   } else {
@@ -4523,9 +4558,9 @@ FIO_FUNC void FIO_NAME(free)(FIO_NAME(s) * s) {
  *
  * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
  */
-FIO_FUNC inline FIO_SET_OBJ_TYPE *
-FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
-               FIO_SET_KEY_TYPE key) {
+FIO_FUNC FIO_SET_OBJ_TYPE *FIO_NAME(find)(FIO_NAME(s) * set,
+                                          const FIO_SET_HASH_TYPE hash_value,
+                                          FIO_SET_KEY_TYPE key) {
   FIO_NAME(_map_s_) *pos =
       FIO_NAME(_find_map_pos_)(set, hash_value, (FIO_SET_TYPE){.key = key});
   if (!pos || !pos->pos)
@@ -4534,28 +4569,45 @@ FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
 }
 
 /**
- * Inserts an object to the Set only if it's missing, rehashing if required,
- * returning the new (or old) object's pointer.
+ * Inserts an object to the Hash Map, rehashing if required, returning the new
+ * object's location using a pointer.
  *
- * If the object already exists in the set, no action is performed (the old
- * object is returned).
+ * If the object already exists in the set, it will be destroyed.
  *
  * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
  */
-FIO_FUNC inline void FIO_NAME(insert)(FIO_NAME(s) * set,
-                                      const FIO_SET_HASH_TYPE hash_value,
-                                      FIO_SET_KEY_TYPE key,
-                                      FIO_SET_OBJ_TYPE obj) {
+FIO_FUNC void FIO_NAME(insert)(FIO_NAME(s) * set,
+                               const FIO_SET_HASH_TYPE hash_value,
+                               FIO_SET_KEY_TYPE key, FIO_SET_OBJ_TYPE obj) {
   FIO_NAME(_insert_or_overwrite_)
-  (set, hash_value, (FIO_SET_TYPE){.key = key, .obj = obj}, 1);
+  (set, hash_value, (FIO_SET_TYPE){.key = key, .obj = obj}, 1, NULL);
+}
+
+/**
+ * Inserts an object to the Hash Map, rehashing if required, returning the new
+ * object's location using a pointer.
+ *
+ * If an object already exists in the Hash Map, it will be destroyed.
+ *
+ * If `old` is set, the existing object (if any) will be copied to the location
+ * pointed to by `old` before it is destroyed.
+ *
+ * NOTE: This is the function's Hash Map variant. See FIO_SET_KEY_TYPE.
+ */
+FIO_FUNC void FIO_NAME(insert2)(FIO_NAME(s) * set,
+                                const FIO_SET_HASH_TYPE hash_value,
+                                FIO_SET_KEY_TYPE key, FIO_SET_OBJ_TYPE obj,
+                                FIO_SET_OBJ_TYPE *old) {
+  FIO_NAME(_insert_or_overwrite_)
+  (set, hash_value, (FIO_SET_TYPE){.key = key, .obj = obj}, 1, old);
 }
 
 #else
 
 /** Locates an object in the Set, if it exists. */
-FIO_FUNC inline FIO_SET_OBJ_TYPE *
-FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
-               FIO_SET_OBJ_TYPE obj) {
+FIO_FUNC FIO_SET_OBJ_TYPE *FIO_NAME(find)(FIO_NAME(s) * set,
+                                          const FIO_SET_HASH_TYPE hash_value,
+                                          FIO_SET_OBJ_TYPE obj) {
   FIO_NAME(_map_s_) *pos = FIO_NAME(_find_map_pos_)(set, hash_value, obj);
   if (!pos || !pos->pos)
     return NULL;
@@ -4569,10 +4621,10 @@ FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
  * If the object already exists in the set, than the new object will be
  * destroyed and the old object's address will be returned.
  */
-FIO_FUNC inline FIO_SET_OBJ_TYPE *
-FIO_NAME(insert)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
-                 FIO_SET_OBJ_TYPE obj) {
-  return FIO_NAME(_insert_or_overwrite_)(set, hash_value, obj, 0);
+FIO_FUNC FIO_SET_OBJ_TYPE *FIO_NAME(insert)(FIO_NAME(s) * set,
+                                            const FIO_SET_HASH_TYPE hash_value,
+                                            FIO_SET_OBJ_TYPE obj) {
+  return FIO_NAME(_insert_or_overwrite_)(set, hash_value, obj, 0, NULL);
 }
 
 /**
@@ -4582,10 +4634,23 @@ FIO_NAME(insert)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
  * If the object already exists in the set, it will be destroyed and
  * overwritten.
  */
-FIO_FUNC inline FIO_SET_OBJ_TYPE *
+FIO_FUNC FIO_SET_OBJ_TYPE *
 FIO_NAME(overwrite)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                     FIO_SET_OBJ_TYPE obj) {
-  return FIO_NAME(_insert_or_overwrite_)(set, hash_value, obj, 1);
+  return FIO_NAME(_insert_or_overwrite_)(set, hash_value, obj, 1, NULL);
+}
+
+/**
+ * The same as `overwrite`, only it copies the old object (if any) to the
+ * location pointed to by `old`.
+ *
+ * When setting `old` to NULL, the function behaves the same as `overwrite`.
+ */
+FIO_FUNC FIO_SET_OBJ_TYPE *FIO_NAME(replace)(FIO_NAME(s) * set,
+                                             const FIO_SET_HASH_TYPE hash_value,
+                                             FIO_SET_OBJ_TYPE obj,
+                                             FIO_SET_OBJ_TYPE *old) {
+  return FIO_NAME(_insert_or_overwrite_)(set, hash_value, obj, 1, old);
 }
 
 #endif
@@ -4595,13 +4660,13 @@ FIO_NAME(overwrite)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
  */
 #ifdef FIO_SET_KEY_TYPE
 
-FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
-                                     const FIO_SET_HASH_TYPE hash_value,
-                                     FIO_SET_KEY_TYPE key) {
+FIO_FUNC int FIO_NAME(remove)(FIO_NAME(s) * set,
+                              const FIO_SET_HASH_TYPE hash_value,
+                              FIO_SET_KEY_TYPE key) {
 #else
-FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
-                                     const FIO_SET_HASH_TYPE hash_value,
-                                     FIO_SET_OBJ_TYPE obj) {
+FIO_FUNC int FIO_NAME(remove)(FIO_NAME(s) * set,
+                              const FIO_SET_HASH_TYPE hash_value,
+                              FIO_SET_OBJ_TYPE obj) {
 #endif
   if (FIO_SET_HASH_COMPARE(hash_value, FIO_SET_HASH_INVALID))
     return -1;

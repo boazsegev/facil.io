@@ -2519,9 +2519,27 @@ inline void FIO_NAME(insert)(FIO_NAME(s) * set,
                              FIO_SET_OBJ_TYPE obj);
 ```
 
-Inserts an object to the Set only if it's missing, rehashing if required, returning the new (or old) object's pointer.
+Inserts an object to the Hash Map, rehashing if required, returning the new object's location using a pointer.
 
-If the object already exists in the set, no action is performed (the old object is returned).
+If an object already exists in the Hash Map, it will be destroyed.
+
+NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
+
+#### `FIO_NAME(insert2)` (Hash Map)
+
+```c
+inline void FIO_NAME(insert2)(FIO_NAME(s) * set,
+                             const FIO_SET_HASH_TYPE hash_value,
+                             FIO_SET_KEY_TYPE key,
+                             FIO_SET_OBJ_TYPE obj,
+                             FIO_SET_OBJ_TYPE *old);
+```
+
+Inserts an object to the Hash Map, rehashing if required, returning the new object's location using a pointer.
+
+If an object already exists in the Hash Map, it will be destroyed.
+
+If `old` isn't NULL, the existing object (if any) will be copied to the location pointed to by `old` before it is destroyed.
 
 NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
@@ -2569,7 +2587,7 @@ If the object already exists in the set, than the new object will be destroyed a
 
 NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 
-#### `FIO_NAME(overwrite)`
+#### `FIO_NAME(overwrite)` (Set)
 
 ```c
 inline FIO_SET_OBJ_TYPE *
@@ -2580,6 +2598,21 @@ inline FIO_SET_OBJ_TYPE *
 Inserts an object to the Set, rehashing if required, returning the new object's pointer.
 
 If the object already exists in the set, it will be destroyed and overwritten.
+
+NOTE: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
+
+#### `FIO_NAME(replace)` (Set)
+
+```c
+inline FIO_SET_OBJ_TYPE *FIO_NAME(replace)(FIO_NAME(s) * set,
+                                             const FIO_SET_HASH_TYPE hash_value,
+                                             FIO_SET_OBJ_TYPE obj,
+                                             FIO_SET_OBJ_TYPE *old);
+```
+
+The same as [`overwrite`](#fio_name-overwrite-set), only it copies the old object (if any) to the location pointed to by `old`.
+
+When setting `old` to NULL, the function behaves the same as `overwrite`.
 
 NOTE: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
 
