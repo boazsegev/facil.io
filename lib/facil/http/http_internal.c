@@ -136,8 +136,15 @@ FIOBJ HTTP_HVALUE_WS_UPGRADE;
 FIOBJ HTTP_HVALUE_WS_VERSION;
 FIOBJ HTTP_HVALUE_SSE_MIME;
 
-static void http_lib_cleanup(void *ignr) {
-  (void)ignr;
+static void http_lib_init(void *ignr_);
+static void http_lib_cleanup(void *ignr_);
+static __attribute__((constructor)) void http_lib_constructor(void) {
+  fio_state_callback_add(FIO_CALL_ON_INITIALIZE, http_lib_init, NULL);
+  fio_state_callback_add(FIO_CALL_AT_EXIT, http_lib_cleanup, NULL);
+}
+
+static void http_lib_cleanup(void *ignr_) {
+  (void)ignr_;
   http_mimetype_clear();
 #define HTTPLIB_RESET(x)                                                       \
   fiobj_free(x);                                                               \
@@ -176,10 +183,10 @@ static void http_lib_cleanup(void *ignr) {
 #undef HTTPLIB_RESET
 }
 
-void http_lib_init(void) {
+static void http_lib_init(void *ignr_) {
+  (void)ignr_;
   if (HTTP_HEADER_ACCEPT_RANGES)
     return;
-  fio_state_callback_add(FIO_CALL_AT_EXIT, http_lib_cleanup, NULL);
   HTTP_HEADER_ACCEPT = fiobj_str_new("accept", 6);
   HTTP_HEADER_ACCEPT_RANGES = fiobj_str_new("accept-ranges", 13);
   HTTP_HEADER_CACHE_CONTROL = fiobj_str_new("cache-control", 13);

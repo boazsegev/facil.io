@@ -824,7 +824,7 @@ static void http_on_upgrade_fallback(http_s *h, char *p, size_t i) {
 }
 static void http_on_response_fallback(http_s *h) { http_send_error(h, 400); }
 
-http_settings_s *http_settings_new(http_settings_s arg_settings) {
+static http_settings_s *http_settings_new(http_settings_s arg_settings) {
   /* TODO: improve locality by unifying malloc to a single call */
   if (!arg_settings.on_request)
     arg_settings.on_request = http_on_request_fallback;
@@ -923,7 +923,6 @@ static void http_on_finish(intptr_t uuid, void *set) {
 #undef http_listen
 intptr_t http_listen(const char *port, const char *binding,
                      struct http_settings_s arg_settings) {
-  http_lib_init();
   if (arg_settings.on_request == NULL) {
     fprintf(stderr, "ERROR: http_listen requires the .on_request parameter "
                     "to be set\n");
@@ -1030,7 +1029,6 @@ intptr_t http_connect(const char *address,
     errno = EINVAL;
     goto on_error;
   }
-  http_lib_init();
   size_t len;
   char *a, *p;
   uint8_t is_websocket = 0;
@@ -2647,8 +2645,6 @@ static fio_hash_s mime_types;
 
 #define LONGEST_FILE_EXTENSION_LENGTH 15
 
-void http_lib_init(void); /* if library not initialized */
-
 /** Registers a Mime-Type to be associated with the file extension. */
 void http_mimetype_register(char *file_ext, size_t file_ext_len,
                             FIOBJ mime_type_str) {
@@ -2672,7 +2668,7 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
  */
 FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
   if (!mime_types.map) {
-    http_lib_init();
+    return FIOBJ_INVALID;
   }
   uintptr_t hash = fio_siphash(file_ext, file_ext_len);
   return fiobj_dup((FIOBJ)fio_hash_find(&mime_types, hash));

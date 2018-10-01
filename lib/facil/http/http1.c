@@ -248,7 +248,7 @@ static int http1_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
 /**
  * Called befor a pause task,
  */
-void http1_on_pause(http_s *h, http_fio_protocol_s *pr) {
+static void http1_on_pause(http_s *h, http_fio_protocol_s *pr) {
   ((http1pr_s *)pr)->stop = 1;
   fio_suspend(pr->uuid);
   (void)h;
@@ -257,14 +257,14 @@ void http1_on_pause(http_s *h, http_fio_protocol_s *pr) {
 /**
  * called after the resume task had completed.
  */
-void http1_on_resume(http_s *h, http_fio_protocol_s *pr) {
+static void http1_on_resume(http_s *h, http_fio_protocol_s *pr) {
   if (!((http1pr_s *)pr)->stop) {
     fio_force_event(pr->uuid, FIO_EVENT_ON_DATA);
   }
   (void)h;
 }
 
-intptr_t http1_hijack(http_s *h, fio_str_info_s *leftover) {
+static intptr_t http1_hijack(http_s *h, fio_str_info_s *leftover) {
   if (leftover) {
     intptr_t len =
         handle2pr(h)->buf_len -

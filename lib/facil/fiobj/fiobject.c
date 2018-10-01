@@ -196,7 +196,7 @@ static inline int fiobj_iseq_simple(const FIOBJ o, const FIOBJ o2) {
   return 1;
 }
 
-int fiobj_iseq____internal_complex__task(FIOBJ o, void *ary_) {
+static int fiobj_iseq____internal_complex__task(FIOBJ o, void *ary_) {
   fio_ary_s *ary = ary_;
   fio_ary_push(ary, (void *)o);
   if (fiobj_hash_key_in_loop())
