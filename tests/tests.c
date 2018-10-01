@@ -3,6 +3,7 @@
 
 #include <fio.h>
 #include <fiobj.h>
+#include <http.h>
 
 #include "resp_parser.h"
 
@@ -12,6 +13,7 @@ int main(void) {
   fio_test();
   mustache_test();
   fiobj_test();
+  http_tests();
   resp_test();
 }
 

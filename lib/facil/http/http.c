@@ -2633,10 +2633,12 @@ parse_path:
 Lookup Tables / functions
 ***************************************************************************** */
 
+static FIOBJ tmp_cpy_obj(FIOBJ o) { return fiobj_dup(o); }
+
 #define FIO_SET_NAME fio_mime_set
 #define FIO_SET_OBJ_TYPE FIOBJ
 #define FIO_SET_OBJ_COMPARE(o1, o2) (1)
-#define FIO_SET_OBJ_COPY(dest, o) (dest) = fiobj_dup((o))
+#define FIO_SET_OBJ_COPY(dest, o) (dest) = tmp_cpy_obj((o))
 #define FIO_SET_OBJ_DESTROY(o) fiobj_free((o))
 
 #include <fio.h>
@@ -2652,15 +2654,13 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
   if (mime_type_str == FIOBJ_INVALID) {
     fio_mime_set_remove(&mime_types, hash, FIOBJ_INVALID);
   } else {
-    FIOBJ *old = fio_mime_set_find(&mime_types, hash, FIOBJ_INVALID);
-    if (old && *old != FIOBJ_INVALID) {
+    FIOBJ old = FIOBJ_INVALID;
+    fio_mime_set_replace(&mime_types, hash, mime_type_str, &old);
+    if (old != FIOBJ_INVALID) {
       fprintf(stderr, "WARNING: mime-type collision: %.*s was %s, now %s\n",
-              (int)file_ext_len, file_ext, fiobj_obj2cstr(*old).data,
+              (int)file_ext_len, file_ext, fiobj_obj2cstr(old).data,
               fiobj_obj2cstr(mime_type_str).data);
-      fiobj_free(*old);
-      *old = mime_type_str;
-    } else {
-      fio_mime_set_overwrite(&mime_types, hash, mime_type_str);
+      fiobj_free(old);
     }
   }
 }
@@ -2848,11 +2848,8 @@ fio_str_info_s http_status2str(uintptr_t status) {
 #if DEBUG
 void http_tests(void) {
   fprintf(stderr, "=== Testing HTTP helpers\n");
-#define TEST_ASSERT(cond, ...)                                                 \
-  if (!(cond)) {                                                               \
-    fprintf(stderr, "* " __VA_ARGS__);                                         \
-    fprintf(stderr, "Testing failed.\n");                                      \
-    exit(-1);                                                                  \
-  }
+  FIOBJ html_mime = http_mimetype_find("html", 4);
+  FIO_ASSERT(html_mime,
+             "HTML mime-type not found! Mime-Type registry invalid!\n");
 }
 #endif
