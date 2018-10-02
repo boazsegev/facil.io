@@ -2909,12 +2909,39 @@ void fio_state_callback_force(callback_type_e c_type) {
   fio_ls_embd_s copy = FIO_LS_INIT(copy);
   fio_lock(&callback_collection[c_type].lock);
   fio_state_callback_ensure(&callback_collection[c_type]);
-  FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
-    callback_data_s *tmp = fio_malloc(sizeof(*tmp));
-    FIO_ASSERT_ALLOC(tmp);
-    *tmp = *(FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
-    fio_ls_embd_push(&copy, &tmp->node);
+  switch (c_type) {            /* the difference between `unshift` and `push` */
+  case FIO_CALL_ON_INITIALIZE: /* overflow */
+  case FIO_CALL_PRE_START:     /* overflow */
+  case FIO_CALL_BEFORE_FORK:   /* overflow */
+  case FIO_CALL_AFTER_FORK:    /* overflow */
+  case FIO_CALL_IN_CHILD:      /* overflow */
+  case FIO_CALL_IN_MASTER:     /* overflow */
+  case FIO_CALL_ON_START:      /* overflow */
+  case FIO_CALL_ON_IDLE:       /* overflow */
+    FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
+      callback_data_s *tmp = fio_malloc(sizeof(*tmp));
+      FIO_ASSERT_ALLOC(tmp);
+      *tmp = *(FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
+      fio_ls_embd_unshift(&copy, &tmp->node);
+    }
+    break;
+
+  case FIO_CALL_ON_SHUTDOWN:     /* overflow */
+  case FIO_CALL_ON_FINISH:       /* overflow */
+  case FIO_CALL_ON_PARENT_CRUSH: /* overflow */
+  case FIO_CALL_ON_CHILD_CRUSH:  /* overflow */
+  case FIO_CALL_AT_EXIT:         /* overflow */
+  case FIO_CALL_NEVER:           /* overflow */
+  default:
+    FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
+      callback_data_s *tmp = fio_malloc(sizeof(*tmp));
+      FIO_ASSERT_ALLOC(tmp);
+      *tmp = *(FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
+      fio_ls_embd_push(&copy, &tmp->node);
+    }
+    break;
   }
+
   fio_unlock(&callback_collection[c_type].lock);
   /* run callbacks + free data */
   while (fio_ls_embd_any(&copy)) {
