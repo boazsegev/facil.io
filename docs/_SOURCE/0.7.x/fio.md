@@ -1137,11 +1137,13 @@ The `fio_state_callback_*` functions manage callbacks for a specific timing. Val
  
  * `FIO_CALL_AFTER_FORK`: Called after each fork (both in parent and workers).
  
- * `FIO_CALL_IN_CHILD`: Called by a worker process right after forking.
+ * `FIO_CALL_IN_CHILD`: Called by a worker process right after forking (and after `FIO_CALL_AFTER_FORK`).
  
+ * `FIO_CALL_IN_MASTER`: Called by the root / master process after forking (and after `FIO_CALL_AFTER_FORK`).
+
  * `FIO_CALL_ON_START`: Called every time a *Worker* proceess starts.
  
- * `FIO_CALL_ON_IDLE`: Called when facil.io enters idling mode.
+ * `FIO_CALL_ON_IDLE`: Called when facil.io enters idling mode (idle callbacks might be performed out of order).
  
  * `FIO_CALL_ON_SHUTDOWN`: Called before starting the shutdown sequence.
  
@@ -1153,6 +1155,14 @@ The `fio_state_callback_*` functions manage callbacks for a specific timing. Val
  
  * `FIO_CALL_AT_EXIT`: An alternative to the system's at_exit.
  
+Callbacks will be called using logical order for build-up and tear-down.
+
+During initialization related events, FIFO will be used (first in/scheduled, first out/executed).
+
+During shut-down related tasks, LIFO will be used (last in/scheduled, first out/executed).
+
+Idling callbacks are scheduled rather than performed during the event, so they might be performed out of order or concurrently when running in multi-threaded mode.
+
 #### `fio_state_callback_add`
 
 ```c
@@ -1161,7 +1171,7 @@ void fio_state_callback_add(callback_type_e, void (*func)(void *), void *arg);
 
 Adds a callback to the list of callbacks to be called for the event.
 
-Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.
+Callbacks will be called using logical order for build-up and tear-down, according to the event's context.
 
 #### `fio_state_callback_remove`
 
@@ -1171,7 +1181,7 @@ int fio_state_callback_remove(callback_type_e, void (*func)(void *), void *arg);
 
 Removes a callback from the list of callbacks to be called for the event.
 
-Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.
+Callbacks will be called using logical order for build-up and tear-down, according to the event's context.
 
 #### `fio_state_callback_force`
 
@@ -1181,7 +1191,7 @@ void fio_state_callback_force(callback_type_e);
 
 Forces all the existing callbacks to run, as if the event occurred.
 
-Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.
+Callbacks will be called using logical order for build-up and tear-down, according to the event's context.
 
 During an event, changes to the callback list are ignored (callbacks can't remove other callbacks for the same event).
 

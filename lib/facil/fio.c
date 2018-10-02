@@ -2856,6 +2856,10 @@ typedef struct {
 
 static callback_collection_s callback_collection[FIO_CALL_NEVER + 1];
 
+static void fio_state_on_idle_perform(void *task, void *arg) {
+  ((void (*)(void *))task)(arg);
+}
+
 static inline void fio_state_callback_ensure(callback_collection_s *c) {
   if (c->callbacks.next)
     return;
@@ -2917,12 +2921,19 @@ void fio_state_callback_force(callback_type_e c_type) {
   case FIO_CALL_IN_CHILD:      /* overflow */
   case FIO_CALL_IN_MASTER:     /* overflow */
   case FIO_CALL_ON_START:      /* overflow */
-  case FIO_CALL_ON_IDLE:       /* overflow */
     FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
       callback_data_s *tmp = fio_malloc(sizeof(*tmp));
       FIO_ASSERT_ALLOC(tmp);
       *tmp = *(FIO_LS_EMBD_OBJ(callback_data_s, node, pos));
       fio_ls_embd_unshift(&copy, &tmp->node);
+    }
+    break;
+
+  case FIO_CALL_ON_IDLE: /* idle callbacks are orderless and evented */
+    FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
+      callback_data_s *tmp = FIO_LS_EMBD_OBJ(callback_data_s, node, pos);
+      fio_defer(fio_state_on_idle_perform, (void *)(uintptr_t)tmp->func,
+                tmp->arg);
     }
     break;
 
