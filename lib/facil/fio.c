@@ -3405,6 +3405,7 @@ static void fio_sentinel_task(void *arg1, void *arg2) {
   fio_lock(&fio_fork_lock);   /* will wait for worker thread to release lock. */
   fio_unlock(&fio_fork_lock); /* release lock for next fork. */
   fio_state_callback_force(FIO_CALL_AFTER_FORK);
+  fio_state_callback_force(FIO_CALL_IN_MASTER);
   (void)arg1;
   (void)arg2;
 }

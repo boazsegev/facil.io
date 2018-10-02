@@ -1267,6 +1267,8 @@ typedef enum {
   FIO_CALL_AFTER_FORK,
   /** Called by a worker process right after forking. */
   FIO_CALL_IN_CHILD,
+  /** Called by the master process after spawning a worker (after forking). */
+  FIO_CALL_IN_MASTER,
   /** Called every time a *Worker* proceess starts. */
   FIO_CALL_ON_START,
   /** Called when facil.io enters idling mode. */
