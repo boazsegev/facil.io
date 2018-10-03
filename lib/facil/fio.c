@@ -4417,6 +4417,7 @@ void fio_unsubscribe(subscription_s *s) {
     if (c == &fio_postoffice.patterns) {
       pattern_s *pat = (pattern_s *)ch;
       hashed ^= ((uintptr_t)pat->match);
+      match = ((pattern_s *)(ch))->match;
     }
     /* lock collection */
     fio_lock(&c->lock);
@@ -4429,9 +4430,6 @@ void fio_unsubscribe(subscription_s *s) {
   }
   fio_unlock(&ch->lock);
   if (removed) {
-    if (ch->parent == &fio_postoffice.patterns) {
-      match = ((pattern_s *)(ch))->match;
-    }
     pubsub_on_channel_destroy(ch, match);
   }
 
