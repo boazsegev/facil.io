@@ -136,7 +136,7 @@ Create/Destroy the websocket subscription objects
 static inline void clear_subscriptions(ws_s *ws) {
   fio_lock(&ws->sub_lock);
   while (fio_ls_any(&ws->subscriptions)) {
-    fio_ls_pop(&ws->subscriptions);
+    fio_unsubscribe(fio_ls_pop(&ws->subscriptions));
   }
   fio_unlock(&ws->sub_lock);
 }
@@ -643,7 +643,6 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
   fio_lock(&args.ws->sub_lock);
   fio_ls_push(&args.ws->subscriptions, sub);
   fio_unlock(&args.ws->sub_lock);
-  fio_uuid_link(args.ws->fd, sub, (void (*)(void *))fio_unsubscribe);
 
   return (uintptr_t)args.ws->subscriptions.prev;
 error:
@@ -656,7 +655,6 @@ error:
  * Unsubscribes from a channel.
  */
 void websocket_unsubscribe(ws_s *ws, uintptr_t subscription_id) {
-  fio_uuid_unlink(ws->fd, (subscription_s *)((fio_ls_s *)subscription_id)->obj);
   fio_unsubscribe((subscription_s *)((fio_ls_s *)subscription_id)->obj);
   fio_lock(&ws->sub_lock);
   fio_ls_remove((fio_ls_s *)subscription_id);
