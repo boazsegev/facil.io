@@ -950,6 +950,7 @@ typedef struct fio_rw_hook_s {
  ssize_t (*write)(intptr_t uuid, void *udata, const void *buf, size_t count);
  ssize_t (*close)(intptr_t uuid, void *udata);
  ssize_t (*flush)(intptr_t uuid, void *udata);
+ void (*cleanup)(void *udata);
 } fio_rw_hook_s;
 ```
 
@@ -967,7 +968,7 @@ typedef struct fio_rw_hook_s {
 
 * The `close` hook callback:
 
-    The `close` callback should close the underlying socket / file descriptor. It should also be used to release any resources associated with the connection's read/write hooks.
+    The `close` callback should close the underlying socket / file descriptor.
 
     If the function returns a non-zero value, it will be called again after an attempt to flush the socket and any pending outgoing buffer.
 
@@ -980,6 +981,10 @@ typedef struct fio_rw_hook_s {
     The function should return the number of bytes remaining in the internal buffer (0 is a valid response) or -1 (on error).
 
     Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
+
+* The `cleanup` hook callback:
+
+    Called when the hook is removed from the `uuid`, either because of a call to `fio_rw_hook_set` or because the connection was closed.
 
 
 #### `fio_rw_hook_set`

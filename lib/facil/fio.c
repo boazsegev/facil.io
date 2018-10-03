@@ -304,11 +304,15 @@ static void fio_max_fd_shrink(void) {
 static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   fio_packet_s *packet;
   fio_protocol_s *protocol;
+  fio_rw_hook_s *rw_hooks;
+  void *rw_udata;
   fio_uuid_links_s links;
   fio_lock(&(fd_data(fd).sock_lock));
   links = fd_data(fd).links;
   packet = fd_data(fd).packet;
   protocol = fd_data(fd).protocol;
+  rw_hooks = fd_data(fd).rw_hooks;
+  rw_udata = fd_data(fd).rw_udata;
   fd_data(fd) = (fio_fd_data_s){
       .open = is_open,
       .sock_lock = fd_data(fd).sock_lock,
@@ -318,6 +322,8 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
       .packet_last = &fd_data(fd).packet,
   };
   fio_unlock(&(fd_data(fd).sock_lock));
+  if (rw_hooks && rw_hooks->cleanup)
+    rw_hooks->cleanup(rw_udata);
   while (packet) {
     fio_packet_s *tmp = packet;
     packet = packet->next;
@@ -376,12 +382,10 @@ inline static void protocol_unlock(fio_protocol_s *pr,
 }
 
 /** returns 1 if the UUID is valid and 0 if it isn't. */
-inline static size_t uuid_is_valid(uintptr_t uuid) {
-  if (uuid == (uintptr_t)-1 || (uintptr_t)fio_uuid2fd(uuid) >= fio_data->capa ||
-      (uuid & 0xFF) != uuid_data(uuid).counter)
-    return 0;
-  return 1;
-}
+#define uuid_is_valid(uuid)                                                    \
+  ((intptr_t)(uuid) != -1 &&                                                   \
+   ((uint32_t)fio_uuid2fd((uuid))) < fio_data->capa &&                         \
+   ((uintptr_t)(uuid)&0xFF) == uuid_data((uuid)).counter)
 
 /* public API. */
 fio_protocol_s *fio_protocol_try_lock(intptr_t uuid,
@@ -1441,7 +1445,7 @@ static size_t fio_poll(void) {
       for (int i = 0; i < active_count; i++) {
         if (events[i].events & (~(EPOLLIN | EPOLLOUT))) {
           // errors are hendled as disconnections (on_close)
-          fio_force_close(fd2uuid(events[i].data.fd));
+          fio_force_close(fd2uuid());
         } else {
           // no error, then it's an active event(s)
           if (events[i].events & EPOLLOUT) {
@@ -1588,6 +1592,7 @@ static size_t fio_poll(void) {
         //         (events[i].flags & EV_EOF)
         //             ? "EV_EOF"
         //             : (events[i].flags & EV_ERROR) ? "EV_ERROR" : "WTF?");
+        // uuid_data(events[i].udata).open = 0;
         fio_force_close(fd2uuid(events[i].udata));
       } else if (events[i].filter == EVFILT_WRITE) {
         // we can only write if there's no error in the socket
@@ -2571,7 +2576,7 @@ void fio_force_close(intptr_t uuid) {
     errno = EBADF;
     return;
   }
-  /* clear away any packets in case we want to cut the connection short */
+  /* clear away any packets in case we want to cut the connection short. */
   fio_packet_s *packet;
   fio_lock(&uuid_data(uuid).sock_lock);
   packet = uuid_data(uuid).packet;
@@ -2710,12 +2715,16 @@ static ssize_t fio_hooks_default_flush(intptr_t uuid, void *udata) {
   (void)(udata);
 }
 
+static void fio_hooks_default_cleanup(void *udata) { (void)(udata); }
+
 const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS = {
     .read = fio_hooks_default_read,
     .write = fio_hooks_default_write,
     .flush = fio_hooks_default_flush,
     .close = fio_hooks_default_close,
+    .cleanup = fio_hooks_default_cleanup,
 };
+
 /** Sets a socket hook state (a pointer to the struct). */
 int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
   if (fio_is_closed(uuid))
@@ -2728,11 +2737,19 @@ int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
     rw_hooks->flush = fio_hooks_default_flush;
   if (!rw_hooks->close)
     rw_hooks->close = fio_hooks_default_close;
+  if (!rw_hooks->cleanup)
+    rw_hooks->cleanup = fio_hooks_default_cleanup;
   uuid = fio_uuid2fd(uuid);
+  fio_rw_hook_s *old_rw_hooks;
+  void *old_udata;
   fio_lock(&fd_data(uuid).sock_lock);
+  old_rw_hooks = fd_data(uuid).rw_hooks;
+  old_udata = fd_data(uuid).rw_udata;
   fd_data(uuid).rw_hooks = rw_hooks;
   fd_data(uuid).rw_udata = udata;
   fio_unlock(&fd_data(uuid).sock_lock);
+  if (old_rw_hooks && old_rw_hooks->cleanup)
+    old_rw_hooks->cleanup(old_udata);
   return 0;
 }
 
@@ -4319,7 +4336,7 @@ static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
       .lock = FIO_LOCK_INIT,
   };
   fio_str_write(&ch->id, name.data, name.len);
-  // fio_str_freeze(&ch->id);
+  fio_str_freeze(&ch->id);
   uint64_t hashed_name = fio_str_hash(&ch->id);
   ch = fio_filter_dup_lock_internal(ch, hashed_name, &fio_postoffice.pubsub);
   if (fio_ls_embd_is_empty(&ch->subscriptions)) {
@@ -4718,9 +4735,6 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
 
 /** UNSAFE! publishes a message to a channel, managing the reference counts */
 static void fio_publish2channel(channel_s *ch, fio_msg_internal_s *msg) {
-  if (!ch || !msg) {
-    return;
-  }
   FIO_LS_EMBD_FOR(&ch->subscriptions, pos) {
     subscription_s *s = FIO_LS_EMBD_OBJ(subscription_s, node, pos);
     if (!s) {
@@ -4734,12 +4748,18 @@ static void fio_publish2channel(channel_s *ch, fio_msg_internal_s *msg) {
 }
 static void fio_publish2channel_task(void *ch_, void *msg) {
   channel_s *ch = ch_;
+  if (!ch_)
+    return;
+  if (!msg)
+    goto finish;
   if (fio_trylock(&ch->lock)) {
     fio_defer(fio_publish2channel_task, ch, msg);
     return;
   }
   fio_publish2channel(ch, msg);
   fio_unlock(&ch->lock);
+finish:
+  fio_str_free(&ch->id);
 }
 
 /** Publishes the message to the current process and frees the strings. */
@@ -4758,7 +4778,8 @@ static void fio_publish2process(fio_msg_internal_s *m) {
   }
   /* exact match */
   if (ch) {
-    fio_defer(fio_publish2channel_task, ch, fio_msg_internal_dup(m));
+    fio_defer(fio_publish2channel_task, fio_str_dup(&ch->id),
+              fio_msg_internal_dup(m));
   }
   if (m->filter == 0) {
     /* pattern matching match */
@@ -4769,7 +4790,7 @@ static void fio_publish2process(fio_msg_internal_s *m) {
       }
       pattern_s *pattern = (pattern_s *)p->obj;
       if (pattern->match(fio_str_info(&pattern->ch.id), m->channel)) {
-        fio_defer(fio_publish2channel_task, &pattern->ch,
+        fio_defer(fio_publish2channel_task, fio_str_dup(&pattern->ch.id),
                   fio_msg_internal_dup(m));
       }
     }

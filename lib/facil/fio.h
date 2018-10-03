@@ -1175,8 +1175,6 @@ typedef struct fio_rw_hook_s {
   ssize_t (*write)(intptr_t uuid, void *udata, const void *buf, size_t count);
   /**
    * The `close` callback should close the underlying socket / file descriptor.
-   * It should also be used to release any resources associated with the
-   * connection's read/write hooks.
    *
    * If the function returns a non-zero value, it will be called again after an
    * attempt to flush the socket and any pending outgoing buffer.
@@ -1196,6 +1194,10 @@ typedef struct fio_rw_hook_s {
    * deadlock might occur.
    */
   ssize_t (*flush)(intptr_t uuid, void *udata);
+  /**
+   * Called to perform cleanup after the socket was closed.
+   * */
+  void (*cleanup)(void *udata);
 } fio_rw_hook_s;
 
 /** Sets a socket hook state (a pointer to the struct). */
