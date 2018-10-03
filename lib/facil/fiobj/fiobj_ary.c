@@ -6,7 +6,7 @@ License: MIT
 #include <fiobject.h>
 
 #define FIO_OVERRIDE_MALLOC 1
-#include <fiobj_mem.h>
+#include <fio.h>
 
 #define FIO_ARY_TYPE FIOBJ
 #define FIO_ARY_TYPE_INVALID FIOBJ_INVALID

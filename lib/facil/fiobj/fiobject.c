@@ -9,6 +9,8 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 */
 #include <fiobject.h>
 
+#include <fio.h>
+
 #include <fio_ary.h>
 
 #include <stdarg.h>
@@ -51,8 +53,17 @@ fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
 #pragma weak fio_mmap
 void *__attribute__((weak)) fio_mmap(size_t size) { return fio_malloc(size); }
 
+/** The logging level */
+#if DEBUG
+#pragma weak FIO_LOG_LEVEL
+size_t __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
+#else
+#pragma weak FIO_LOG_LEVEL
+size_t __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_INFO;
+#endif
+
 #define FIO_OVERRIDE_MALLOC 1
-#include <fiobj_mem.h>
+#include <fio.h>
 
 /* *****************************************************************************
 the `fiobj_each2` function

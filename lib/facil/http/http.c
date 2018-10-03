@@ -1030,7 +1030,7 @@ intptr_t http_connect(const char *address,
   uint8_t is_secure = 0;
   FIOBJ path = FIOBJ_INVALID;
   if (!address || (len = strlen(address)) <= 5) {
-    FIO_LOG_ERROR("http_connect requires a valid address.\n");
+    FIO_LOG_ERROR("http_connect requires a valid address.");
     errno = EINVAL;
     goto on_error;
   }
@@ -1043,7 +1043,7 @@ intptr_t http_connect(const char *address,
     address += 4;
     len -= 4;
   } else {
-    FIO_LOG_ERROR("http_connect requires a valid address.\n");
+    FIO_LOG_ERROR("http_connect requires a valid address.");
     errno = EINVAL;
     goto on_error;
   }
@@ -1051,12 +1051,11 @@ intptr_t http_connect(const char *address,
   if (address[0] == 's') {
     /* TODO: SSL/TLS */
     is_secure = 1;
-    FIO_LOG_ERROR("http_connect doesn't support TLS/SSL "
-                  "just yet.\n");
+    FIO_LOG_ERROR("http_connect doesn't support TLS/SSL just yet.");
     errno = EINVAL;
     goto on_error;
   } else if (len <= 3 || strncmp(address, "://", 3)) {
-    FIO_LOG_ERROR("http_connect requires a valid address.\n");
+    FIO_LOG_ERROR("http_connect requires a valid address.");
     errno = EINVAL;
     goto on_error;
   } else {

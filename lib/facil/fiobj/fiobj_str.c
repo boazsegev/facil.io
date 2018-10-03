@@ -30,9 +30,9 @@ License: MIT
 #include <sys/stat.h>
 
 #define FIO_OVERRIDE_MALLOC 1
-#include <fiobj_mem.h>
-
-#include <fio_str.h>
+#define FIO_INCLUDE_STR
+#define FIO_STR_NO_REF
+#include <fio.h>
 
 #ifndef PATH_MAX
 #define PATH_MAX PAGE_SIZE
@@ -51,7 +51,7 @@ typedef struct {
 #define obj2str(o) ((fiobj_str_s *)(FIOBJ2PTR(o)))
 
 static inline fio_str_info_s fiobj_str_get_cstr(const FIOBJ o) {
-  return fio_str_state(&obj2str(o)->str);
+  return fio_str_info(&obj2str(o)->str);
 }
 
 /* *****************************************************************************
@@ -330,7 +330,7 @@ uint64_t fiobj_str_hash(FIOBJ o) {
   if (obj2str(o)->hash) {
     return obj2str(o)->hash;
   }
-  fio_str_info_s state = fio_str_state(&obj2str(o)->str);
+  fio_str_info_s state = fio_str_info(&obj2str(o)->str);
   obj2str(o)->hash = fio_siphash(state.data, state.len);
   return obj2str(o)->hash;
 }

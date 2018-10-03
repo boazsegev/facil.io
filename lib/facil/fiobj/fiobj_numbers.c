@@ -7,7 +7,7 @@ License: MIT
 #include <fiobject.h>
 
 #define FIO_OVERRIDE_MALLOC 1
-#include <fiobj_mem.h>
+#include <fio.h>
 
 #include <assert.h>
 #include <errno.h>

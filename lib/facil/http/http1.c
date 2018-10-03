@@ -764,7 +764,7 @@ fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
   if (unread_data && unread_length > HTTP_MAX_HEADER_LENGTH)
     return NULL;
   http1pr_s *p = malloc(sizeof(*p) + HTTP_MAX_HEADER_LENGTH);
-  FIO_ASSERT(p, "HTTP/1.1 protocol allocation failed");
+  FIO_ASSERT_ALLOC(p);
   *p = (http1pr_s){
       .p.protocol =
           {

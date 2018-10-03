@@ -182,8 +182,7 @@ RESP parser callbacks
 /** a local static callback, called when a parser / protocol error occurs. */
 static int resp_on_parser_error(resp_parser_s *parser) {
   struct redis_engine_internal_s *i = parser2data(parser);
-  FIO_LOG_STATE(
-      "ERROR: (redis) parser error - attempting to restart connection.\n");
+  FIO_LOG_ERROR("(redis) parser error - attempting to restart connection.\n");
   fio_close(i->uuid);
   return -1;
 }

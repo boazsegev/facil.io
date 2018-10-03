@@ -30,7 +30,7 @@ License: MIT
 #include <unistd.h>
 
 #define FIO_OVERRIDE_MALLOC 1
-#include <fiobj_mem.h>
+#include <fio.h>
 
 /* *****************************************************************************
 Numbers Type

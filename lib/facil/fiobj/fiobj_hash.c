@@ -5,40 +5,33 @@ License: MIT
 
 #include <fiobject.h>
 
-#define FIO_OVERRIDE_MALLOC 1
-#include <fiobj_mem.h>
-
-#if !FIO_FORCE_MALLOC
-#define FIO_HASH_REALLOC(ptr, original_size, size, valid_data_length)          \
-  fio_realloc2((ptr), (size), (valid_data_length))
-#endif
-
-#include <fiobj_hash.h>
-
 #include <assert.h>
+#include <fiobj_hash.h>
+#define FIO_SET_CALLOC(size, count) fio_calloc((size), (count))
+#define FIO_SET_REALLOC(ptr, original_size, size, valid_data_length)           \
+  fio_realloc2((ptr), (size), (valid_data_length))
+#define FIO_SET_FREE(ptr, size) fio_free((ptr))
+#define FIO_SET_NAME fio_hash
+#define FIO_SET_KEY_TYPE FIOBJ
+#define FIO_SET_KEY_COMPARE(o1, o2)                                            \
+  ((o2) == ((FIOBJ)-1) || (o1) == ((FIOBJ)-1) || fiobj_iseq((o1), (o2)))
+#define FIO_SET_KEY_COPY(dest, obj) ((dest) = fiobj_dup((obj)))
+#define FIO_SET_KEY_DESTROY(obj)                                               \
+  do {                                                                         \
+    fiobj_free((obj));                                                         \
+    (obj) = FIOBJ_INVALID;                                                     \
+  } while (0)
+#define FIO_SET_OBJ_TYPE FIOBJ
+#define FIO_SET_OBJ_COMPARE(o1, o2) fiobj_iseq((o1), (o2))
+#define FIO_SET_OBJ_COPY(dest, obj) ((dest) = fiobj_dup((obj)))
+#define FIO_SET_OBJ_DESTROY(obj)                                               \
+  do {                                                                         \
+    fiobj_free((obj));                                                         \
+    (obj) = FIOBJ_INVALID;                                                     \
+  } while (0)
 
-typedef struct {
-  uint64_t hash;
-  FIOBJ key;
-} hash_key_s;
-
-static hash_key_s hash_key_copy(hash_key_s key) {
-  fiobj_dup(key.key);
-  fiobj_str_freeze(key.key);
-  return key;
-}
-static void hash_key_free(hash_key_s key) { fiobj_free(key.key); }
-
-#define FIO_HASH_KEY_TYPE hash_key_s
-#define FIO_HASH_KEY_INVALID ((hash_key_s){.hash = 0})
-#define FIO_HASH_KEY2UINT(k) ((k).hash)
-#define FIO_HASH_COMPARE_KEYS(k1, k2)                                          \
-  (!(k2).key || fiobj_iseq((k1).key, (k2).key))
-#define FIO_HASH_KEY_ISINVALID(k) ((k).hash == 0 && (k).key == 0)
-#define FIO_HASH_KEY_COPY(k) hash_key_copy(k)
-#define FIO_HASH_KEY_DESTROY(k) hash_key_free(k)
-
-#include <fio_hashmap.h>
+#define FIO_OVERRIDE_MALLOC 1
+#include <fio.h>
 
 #include <errno.h>
 
@@ -63,13 +56,21 @@ Hash alloc + VTable
 
 static void fiobj_hash_dealloc(FIOBJ o, void (*task)(FIOBJ, void *),
                                void *arg) {
-  FIO_HASH_FOR_FREE(&obj2hash(o)->hash, i) { task((FIOBJ)i->obj, arg); }
+  FIO_SET_FOR_LOOP(&obj2hash(o)->hash, i) {
+    if (i->obj.key)
+      task((FIOBJ)i->obj.obj, arg);
+    fiobj_free((FIOBJ)i->obj.key);
+    i->obj.key = FIOBJ_INVALID;
+    i->obj.obj = FIOBJ_INVALID;
+  }
+  obj2hash(o)->hash.count = 0;
+  fio_hash_free(&obj2hash(o)->hash);
   free(FIOBJ2PTR(o));
 }
 
 static __thread FIOBJ each_at_key = FIOBJ_INVALID;
 
-static size_t fiobj_hash_each1(FIOBJ o, const size_t start_at,
+static size_t fiobj_hash_each1(FIOBJ o, size_t start_at,
                                int (*task)(FIOBJ obj, void *arg), void *arg) {
   assert(o && FIOBJ_TYPE_IS(o, FIOBJ_T_HASH));
   FIOBJ old_each_at_key = each_at_key;
@@ -78,32 +79,28 @@ static size_t fiobj_hash_each1(FIOBJ o, const size_t start_at,
   if (hash->count == hash->pos) {
     /* no holes in the hash, we can work as we please. */
     for (count = start_at; count < hash->count; ++count) {
-      each_at_key = hash->ordered[count].key.key;
-      // fprintf(stderr, "each_at_key: %p, hash %p, org %p, obj %p\n",
-      //         (void *)each_at_key, (void *)hash->ordered[count].key.hash,
-      //         (void *)hash->ordered[count].key.key,
-      //         (void *)hash->ordered[count].obj);
-      if (task((FIOBJ)hash->ordered[count].obj, arg) == -1) {
+      each_at_key = hash->ordered[count].obj.key;
+      if (task((FIOBJ)hash->ordered[count].obj.obj, arg) == -1) {
         ++count;
         goto end;
       }
     }
   } else {
-    fio_hash_data_ordered_s *i;
-    const fio_hash_data_ordered_s *stop = hash->ordered + hash->pos;
-    for (i = hash->ordered; count < start_at && i && i < stop; ++i) {
+    size_t pos = 0;
+    for (; pos < start_at && pos < hash->pos; ++pos) {
       /* counting */
-      if (!i->obj)
-        continue;
-      ++count;
+      if (hash->ordered[pos].obj.key == FIOBJ_INVALID)
+        ++start_at;
+      else
+        ++count;
     }
-    for (; i && i < stop; ++i) {
+    for (; pos < hash->pos; ++pos) {
       /* performing */
-      if (!i->obj)
+      if (hash->ordered[pos].obj.key == FIOBJ_INVALID)
         continue;
       ++count;
-      each_at_key = i->key.key;
-      if (task((FIOBJ)i->obj, arg) == -1)
+      each_at_key = hash->ordered[pos].obj.key;
+      if (task((FIOBJ)hash->ordered[pos].obj.obj, arg) == -1)
         break;
     }
   }
@@ -161,12 +158,9 @@ Hash API
  */
 FIOBJ fiobj_hash_new(void) {
   fiobj_hash_s *h = malloc(sizeof(*h));
-  if (!h) {
-    perror("ERROR: fiobj hash couldn't allocate memory");
-    exit(errno);
-  }
-  *h = (fiobj_hash_s){.head = {.ref = 1, .type = FIOBJ_T_HASH}};
-  fio_hash_new(&h->hash);
+  FIO_ASSERT_ALLOC(h);
+  *h = (fiobj_hash_s){.head = {.ref = 1, .type = FIOBJ_T_HASH},
+                      .hash = FIO_SET_INIT};
   return (FIOBJ)h | FIOBJECT_HASH_FLAG;
 }
 
@@ -179,12 +173,10 @@ FIOBJ fiobj_hash_new(void) {
  */
 FIOBJ fiobj_hash_new2(size_t capa) {
   fiobj_hash_s *h = malloc(sizeof(*h));
-  if (!h) {
-    perror("ERROR: fiobj hash couldn't allocate memory");
-    exit(errno);
-  }
-  *h = (fiobj_hash_s){.head = {.ref = 1, .type = FIOBJ_T_HASH}};
-  fio_hash_new2(&h->hash, capa);
+  FIO_ASSERT_ALLOC(h);
+  *h = (fiobj_hash_s){.head = {.ref = 1, .type = FIOBJ_T_HASH},
+                      .hash = FIO_SET_INIT};
+  fio_hash_capa_require(&h->hash, capa);
   return (FIOBJ)h | FIOBJECT_HASH_FLAG;
 }
 
@@ -205,9 +197,9 @@ size_t fiobj_hash_capa(const FIOBJ hash) {
  */
 int fiobj_hash_set(FIOBJ hash, FIOBJ key, FIOBJ obj) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  hash_key_s k = {.hash = fiobj_obj2hash(key), .key = key};
-  FIOBJ old = (FIOBJ)fio_hash_insert(&obj2hash(hash)->hash, k, (void *)obj);
-  fiobj_free(old);
+  if (FIOBJ_TYPE_IS(key, FIOBJ_T_STRING))
+    fiobj_str_freeze(key);
+  fio_hash_insert(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, obj);
   return 0;
 }
 
@@ -223,14 +215,13 @@ int fiobj_hash_set(FIOBJ hash, FIOBJ key, FIOBJ obj) {
  */
 FIOBJ fiobj_hash_pop(FIOBJ hash, FIOBJ *key) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  hash_key_s k = {.hash = 0, .key = FIOBJ_INVALID};
-  FIOBJ old = (FIOBJ)fio_hash_pop(&obj2hash(hash)->hash, &k);
-  if (!old)
+  FIOBJ old;
+  if (!fio_hash_last(&obj2hash(hash)->hash))
     return FIOBJ_INVALID;
+  old = fiobj_dup(fio_hash_last(&obj2hash(hash)->hash)->obj);
   if (key)
-    *key = k.key;
-  else
-    fiobj_free(k.key);
+    *key = fiobj_dup(fio_hash_last(&obj2hash(hash)->hash)->key);
+  fio_hash_pop(&obj2hash(hash)->hash);
   return old;
 }
 
@@ -245,21 +236,19 @@ FIOBJ fiobj_hash_pop(FIOBJ hash, FIOBJ *key) {
  */
 FIOBJ fiobj_hash_replace(FIOBJ hash, FIOBJ key, FIOBJ obj) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  hash_key_s k = {.hash = fiobj_obj2hash(key), .key = key};
-  FIOBJ old = (FIOBJ)fio_hash_insert(&obj2hash(hash)->hash, k, (void *)obj);
+  FIOBJ old = FIOBJ_INVALID;
+  fio_hash_insert2(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, obj, &old);
   return old;
 }
 
 /**
- * Removes a key-value pair from the Hash, if it exists, returning the old
- * object (instead of freeing it).
+ * Removes a key-value pair from the Hash, if it exists.
  */
 FIOBJ fiobj_hash_remove(FIOBJ hash, FIOBJ key) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  return (FIOBJ)fio_hash_insert(
-      &obj2hash(hash)->hash,
-      (hash_key_s){.hash = fiobj_obj2hash(key), .key = key}, NULL);
+  FIOBJ old = FIOBJ_INVALID;
+  fio_hash_remove2(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, &old);
+  return old;
 }
 
 /**
@@ -268,8 +257,9 @@ FIOBJ fiobj_hash_remove(FIOBJ hash, FIOBJ key) {
  */
 FIOBJ fiobj_hash_remove2(FIOBJ hash, uint64_t hash_value) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  return (FIOBJ)fio_hash_insert(&obj2hash(hash)->hash,
-                                (hash_key_s){.hash = hash_value}, NULL);
+  FIOBJ old = FIOBJ_INVALID;
+  fio_hash_remove2(&obj2hash(hash)->hash, hash_value, -1, &old);
+  return old;
 }
 
 /**
@@ -279,11 +269,7 @@ FIOBJ fiobj_hash_remove2(FIOBJ hash, uint64_t hash_value) {
  * Returns -1 on type error or if the object never existed.
  */
 int fiobj_hash_delete(FIOBJ hash, FIOBJ key) {
-  FIOBJ old = fiobj_hash_remove(hash, key);
-  if (!old)
-    return -1;
-  fiobj_free(old);
-  return 0;
+  return fiobj_hash_remove(hash, key);
 }
 
 /**
@@ -297,11 +283,7 @@ int fiobj_hash_delete(FIOBJ hash, FIOBJ key) {
  * Returns -1 on type error or if the object never existed.
  */
 int fiobj_hash_delete2(FIOBJ hash, uint64_t key_hash) {
-  FIOBJ old = fiobj_hash_remove2(hash, key_hash);
-  if (!old)
-    return -1;
-  fiobj_free(old);
-  return 0;
+  return fio_hash_remove(&obj2hash(hash)->hash, key_hash, -1);
 }
 
 /**
@@ -310,9 +292,10 @@ int fiobj_hash_delete2(FIOBJ hash, uint64_t key_hash) {
  */
 FIOBJ fiobj_hash_get(const FIOBJ hash, FIOBJ key) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  return (FIOBJ)fio_hash_find(
-      &obj2hash(hash)->hash,
-      (hash_key_s){.hash = fiobj_obj2hash(key), .key = key});
+  FIOBJ *old = fio_hash_find(&obj2hash(hash)->hash, fiobj_obj2hash(key), key);
+  if (old)
+    return *old;
+  return FIOBJ_INVALID;
 }
 
 /**
@@ -325,9 +308,10 @@ FIOBJ fiobj_hash_get(const FIOBJ hash, FIOBJ key) {
  */
 FIOBJ fiobj_hash_get2(const FIOBJ hash, uint64_t key_hash) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  return (FIOBJ)fio_hash_find(&obj2hash(hash)->hash, (hash_key_s){
-                                                         .hash = key_hash,
-                                                     });
+  FIOBJ *old = fio_hash_find(&obj2hash(hash)->hash, key_hash, -1);
+  if (old)
+    return *old;
+  return FIOBJ_INVALID;
 }
 
 /**
@@ -335,8 +319,7 @@ FIOBJ fiobj_hash_get2(const FIOBJ hash, uint64_t key_hash) {
  */
 int fiobj_hash_haskey(const FIOBJ hash, FIOBJ key) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  hash_key_s k = {.hash = fiobj_obj2hash(key), .key = key};
-  return (FIOBJ)fio_hash_find(&obj2hash(hash)->hash, k) != 0;
+  return fio_hash_find(&obj2hash(hash)->hash, fiobj_obj2hash(key), key) != NULL;
 }
 
 /**
@@ -344,7 +327,7 @@ int fiobj_hash_haskey(const FIOBJ hash, FIOBJ key) {
  */
 void fiobj_hash_clear(const FIOBJ hash) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  FIO_HASH_FOR_EMPTY(&obj2hash(hash)->hash, i) { fiobj_free((FIOBJ)i->obj); }
+  fio_hash_free(&obj2hash(hash)->hash);
 }
 
 /* *****************************************************************************
@@ -374,16 +357,16 @@ void fiobj_test_hash(void) {
   TEST_ASSERT(fiobj_hash_get2(o, fiobj_obj2hash(str_key)) == fiobj_true(),
               "hash compare didn't get value back");
 
-  FIOBJ o2 = fiobj_hash_new2(1);
-  TEST_ASSERT(obj2hash(o2)->hash.capa == 1,
-              "Hash capacity should be initialized to 1! %zu != 1\n",
+  FIOBJ o2 = fiobj_hash_new2(3);
+  TEST_ASSERT(obj2hash(o2)->hash.capa >= 3,
+              "Hash capacity should be larger than 3! %zu != 4\n",
               (size_t)obj2hash(o2)->hash.capa);
   fiobj_hash_set(o2, str_key, fiobj_true());
   TEST_ASSERT(fiobj_hash_is_eq(o, o2), "Hashes not equal at core! %zu != %zu\n",
               fiobj_hash_count(o), fiobj_hash_count(o2));
   TEST_ASSERT(fiobj_iseq(o, o2), "Hashes not equal!\n");
-  TEST_ASSERT(obj2hash(o2)->hash.capa == 1,
-              "Hash capacity should be 1! %zu != 1\n",
+  TEST_ASSERT(obj2hash(o2)->hash.capa > 3,
+              "Hash capacity should be larger than 3! %zu != 4\n",
               (size_t)obj2hash(o2)->hash.capa);
 
   fiobj_hash_delete(o, str_key);

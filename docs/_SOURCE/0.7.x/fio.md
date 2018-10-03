@@ -2567,6 +2567,23 @@ Returns 0 on success and -1 if the object wasn't found.
 
 NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
+#### `FIO_NAME(remove2)` (Hash Map)
+
+```c
+inline int FIO_NAME(remove2)(FIO_NAME(s) * set,
+                     const FIO_SET_HASH_TYPE hash_value,
+                     FIO_SET_KEY_TYPE key
+                     FIO_SET_OBJ_TYPE *old);
+```
+
+Removes an object from the Set, rehashing if required.
+
+Returns 0 on success and -1 if the object wasn't found.
+
+If `old` isn't `NULL`, than the existing object (if any) would be copied to the location pointed to by `old`.
+
+NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
+
 ### Set Find / Insert
 
 These functions are defined if the Set is a pure Set (not a Hash Map).
