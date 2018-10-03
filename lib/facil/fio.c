@@ -1445,7 +1445,7 @@ static size_t fio_poll(void) {
       for (int i = 0; i < active_count; i++) {
         if (events[i].events & (~(EPOLLIN | EPOLLOUT))) {
           // errors are hendled as disconnections (on_close)
-          fio_force_close(fd2uuid());
+          fio_force_close(fd2uuid(events[i].data.fd));
         } else {
           // no error, then it's an active event(s)
           if (events[i].events & EPOLLOUT) {
