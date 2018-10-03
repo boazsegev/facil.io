@@ -23,7 +23,7 @@ License: MIT
   } while (0)
 #define FIO_SET_OBJ_TYPE FIOBJ
 #define FIO_SET_OBJ_COMPARE(o1, o2) fiobj_iseq((o1), (o2))
-#define FIO_SET_OBJ_COPY(dest, obj) ((dest) = fiobj_dup((obj)))
+#define FIO_SET_OBJ_COPY(dest, obj) ((dest) = (obj)) /* take ownership */
 #define FIO_SET_OBJ_DESTROY(obj)                                               \
   do {                                                                         \
     fiobj_free((obj));                                                         \

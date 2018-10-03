@@ -329,6 +329,7 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
         pos->obj((void *)pos->hash);
     }
   }
+  fio_uuid_links_free(&links);
   if (protocol && protocol->on_close) {
     fio_defer(deferred_on_close, (void *)fd2uuid(fd), protocol);
   }
@@ -4368,7 +4369,7 @@ static inline void fio_subscription_free(subscription_s *s) {
 /** Subscribes to a filter, pub/sub channle or patten */
 subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
   if (!args.on_message)
-    return NULL;
+    goto error;
   channel_s *ch;
   subscription_s *s = fio_malloc(sizeof(*s));
   FIO_ASSERT_ALLOC(s);
@@ -4391,6 +4392,10 @@ subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
   fio_ls_embd_push(&ch->subscriptions, &s->node);
   fio_unlock((&ch->lock));
   return s;
+error:
+  if (args.on_unsubscribe)
+    args.on_unsubscribe(args.udata1, args.udata2);
+  return NULL;
 }
 
 /** Unsubscribes from a filter, pub/sub channle or patten */

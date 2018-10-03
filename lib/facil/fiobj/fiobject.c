@@ -8,7 +8,7 @@ This facil.io core library provides wrappers around complex and (or) dynamic
 types, abstracting some complexity and making dynamic type related tasks easier.
 */
 #include <fiobject.h>
-
+#undef FIO_FORCE_MALLOC /* just in case */
 #include <fio.h>
 
 #include <fio_ary.h>
@@ -23,7 +23,7 @@ Use the facil.io allocator when available
 ***************************************************************************** */
 
 #pragma weak fio_malloc
-void *__attribute__((weak)) fio_malloc(size_t size) {
+void *fio_malloc(size_t size) {
   void *m = malloc(size);
   if (m)
     memset(m, 0, size);
