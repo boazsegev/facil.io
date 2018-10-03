@@ -10,6 +10,10 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 */
 #define H_FIOBJECT_H
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>

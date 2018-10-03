@@ -3904,7 +3904,7 @@ static void fio_listen_on_data(intptr_t uuid, fio_protocol_s *pr_) {
 }
 
 /* stub for editor - unused */
-FIO_FUNC void fio_listen_stub(void);
+void fio_listen____(void);
 /**
  * Schedule a network service on a listening socket.
  *

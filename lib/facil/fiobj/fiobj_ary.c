@@ -3,10 +3,9 @@ Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
 
-#include <fiobject.h>
-
 #define FIO_OVERRIDE_MALLOC 1
 #include <fio.h>
+#include <fiobject.h>
 
 #define FIO_ARY_TYPE FIOBJ
 #define FIO_ARY_TYPE_INVALID FIOBJ_INVALID
