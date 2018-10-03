@@ -2861,7 +2861,7 @@ typedef struct {
 static callback_collection_s callback_collection[FIO_CALL_NEVER + 1];
 
 static void fio_state_on_idle_perform(void *task, void *arg) {
-  ((void (*)(void *))task)(arg);
+  ((void (*)(void *))(uintptr_t)task)(arg);
 }
 
 static inline void fio_state_callback_ensure(callback_collection_s *c) {
