@@ -64,11 +64,10 @@ static void fio_cli_map_line2alias(char const *line) {
     }
     const char **old = fio_hash_find(&fio_aliases, FIO_CLI_HASH_VAL(n), n);
     if (old) {
-      fprintf(stderr,
-              "WARNING: CLI argument name conflict detected\n"
-              "         The following two directives conflict:\n"
-              "\t%s\n\t%s\n",
-              *old, line);
+      FIO_LOG_WARNING("CLI argument name conflict detected\n"
+                      "         The following two directives conflict:\n"
+                      "\t%s\n\t%s\n",
+                      *old, line);
     }
     fio_hash_insert(&fio_aliases, FIO_CLI_HASH_VAL(n), n, (void *)line);
     while (n.data[n.len] && (n.data[n.len] == ' ' || n.data[n.len] == ',')) {

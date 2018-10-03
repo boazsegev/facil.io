@@ -173,7 +173,7 @@ int http_set_header2(http_s *r, fio_str_info_s n, fio_str_info_s v) {
 #undef http_set_cookie
 int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
 #if DEBUG
-  HTTP_ASSERT(h, "Can't set cookie for NULL HTTP handler!");
+  FIO_ASSERT(h, "Can't set cookie for NULL HTTP handler!");
 #endif
   if (HTTP_INVALID_HANDLE(h) || cookie.name_len >= 32768 ||
       cookie.value_len >= 131072) {
@@ -194,10 +194,9 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
         if (invalid_cookie_name_char[(uint8_t)cookie.name[tmp]]) {
           if (!warn_illegal) {
             ++warn_illegal;
-            fprintf(stderr,
-                    "WARNING: illegal char 0x%.2x in cookie name (in %s)\n"
-                    "         automatic %% encoding applied\n",
-                    cookie.name[tmp], cookie.name);
+            FIO_LOG_WARNING("illegal char 0x%.2x in cookie name (in %s)\n"
+                            "         automatic %% encoding applied",
+                            cookie.name[tmp], cookie.name);
           }
           t.data[len++] = '%';
           t.data[len++] = hex_chars[(cookie.name[tmp] >> 4) & 0x0F];
@@ -218,10 +217,9 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
         if (invalid_cookie_name_char[(uint8_t)cookie.name[tmp]]) {
           if (!warn_illegal) {
             ++warn_illegal;
-            fprintf(stderr,
-                    "WARNING: illegal char 0x%.2x in cookie name (in %s)\n"
-                    "         automatic %% encoding applied\n",
-                    cookie.name[tmp], cookie.name);
+            FIO_LOG_WARNING("illegal char 0x%.2x in cookie name (in %s)\n"
+                            "         automatic %% encoding applied",
+                            cookie.name[tmp], cookie.name);
           }
           t.data[len++] = '%';
           t.data[len++] = hex_chars[(cookie.name[tmp] >> 4) & 0x0F];
@@ -246,10 +244,9 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
         if (invalid_cookie_value_char[(uint8_t)cookie.value[tmp]]) {
           if (!warn_illegal) {
             ++warn_illegal;
-            fprintf(stderr,
-                    "WARNING: illegal char 0x%.2x in cookie value (in %s)\n"
-                    "         automatic %% encoding applied\n",
-                    cookie.value[tmp], cookie.name);
+            FIO_LOG_WARNING("illegal char 0x%.2x in cookie value (in %s)\n"
+                            "         automatic %% encoding applied",
+                            cookie.value[tmp], cookie.name);
           }
           t.data[len++] = '%';
           t.data[len++] = hex_chars[(cookie.value[tmp] >> 4) & 0x0F];
@@ -270,10 +267,9 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
         if (invalid_cookie_value_char[(uint8_t)cookie.value[tmp]]) {
           if (!warn_illegal) {
             ++warn_illegal;
-            fprintf(stderr,
-                    "WARNING: illegal char 0x%.2x in cookie value (in %s)\n"
-                    "         automatic %% encoding applied\n",
-                    cookie.value[tmp], cookie.name);
+            FIO_LOG_WARNING("illegal char 0x%.2x in cookie value (in %s)\n"
+                            "         automatic %% encoding applied",
+                            cookie.value[tmp], cookie.name);
           }
           t.data[len++] = '%';
           t.data[len++] = hex_chars[(cookie.value[tmp] >> 4) & 0x0F];
@@ -591,7 +587,7 @@ open_file:
   s = fiobj_obj2cstr(filename);
   file = open(s.data, O_RDONLY);
   if (file == -1) {
-    fprintf(stderr, "ERROR: Couldn't open file %s!\n", s.data);
+    FIO_LOG_ERROR("(HTTP) couldn't open file %s!\n", s.data);
     perror("     ");
     http_send_error(h, 500);
     return 0;
@@ -704,8 +700,7 @@ int http_push_file(http_s *h, FIOBJ filename, FIOBJ mime_type) {
 #undef http_upgrade2ws
 int http_upgrade2ws(http_s *h, websocket_settings_s args) {
   if (!h) {
-    fprintf(stderr,
-            "ERROR: `http_upgrade2ws` requires a valid `http_s` handle.");
+    FIO_LOG_ERROR("`http_upgrade2ws` requires a valid `http_s` handle.");
     goto error;
   }
   if (HTTP_INVALID_HANDLE(h))
@@ -891,7 +886,7 @@ static void http_on_open(intptr_t uuid, void *set) {
   fio_timeout_set(uuid, ((http_settings_s *)set)->timeout);
   if (fio_uuid2fd(uuid) >= ((http_settings_s *)set)->max_clients) {
     if (!at_capa)
-      fprintf(stderr, "WARNING: HTTP server at capacity\n");
+      FIO_LOG_WARNING("HTTP server at capacity");
     at_capa = 1;
     http_send_error2(uuid, 503, set);
     fio_close(uuid);
@@ -924,8 +919,8 @@ static void http_on_finish(intptr_t uuid, void *set) {
 intptr_t http_listen(const char *port, const char *binding,
                      struct http_settings_s arg_settings) {
   if (arg_settings.on_request == NULL) {
-    fprintf(stderr, "ERROR: http_listen requires the .on_request parameter "
-                    "to be set\n");
+    FIO_LOG_ERROR("http_listen requires the .on_request parameter "
+                  "to be set\n");
     kill(0, SIGINT);
     exit(11);
   }
@@ -1024,8 +1019,8 @@ static void http_on_client_failed(intptr_t uuid, void *set_) {
 intptr_t http_connect(const char *address,
                       struct http_settings_s arg_settings) {
   if (!arg_settings.on_response && !arg_settings.on_upgrade) {
-    fprintf(stderr, "ERROR: http_connect requires either an on_response "
-                    " or an on_upgrade callback.\n");
+    FIO_LOG_ERROR("http_connect requires either an on_response "
+                  " or an on_upgrade callback.\n");
     errno = EINVAL;
     goto on_error;
   }
@@ -1035,7 +1030,7 @@ intptr_t http_connect(const char *address,
   uint8_t is_secure = 0;
   FIOBJ path = FIOBJ_INVALID;
   if (!address || (len = strlen(address)) <= 5) {
-    fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
+    FIO_LOG_ERROR("http_connect requires a valid address.\n");
     errno = EINVAL;
     goto on_error;
   }
@@ -1048,7 +1043,7 @@ intptr_t http_connect(const char *address,
     address += 4;
     len -= 4;
   } else {
-    fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
+    FIO_LOG_ERROR("http_connect requires a valid address.\n");
     errno = EINVAL;
     goto on_error;
   }
@@ -1056,22 +1051,19 @@ intptr_t http_connect(const char *address,
   if (address[0] == 's') {
     /* TODO: SSL/TLS */
     is_secure = 1;
-    fprintf(stderr, "ERROR: http_connect doesn't support TLS/SSL "
-                    "just yet.\n");
+    FIO_LOG_ERROR("http_connect doesn't support TLS/SSL "
+                  "just yet.\n");
     errno = EINVAL;
     goto on_error;
   } else if (len <= 3 || strncmp(address, "://", 3)) {
-    fprintf(stderr, "ERROR: http_connect requires a valid address.\n");
+    FIO_LOG_ERROR("http_connect requires a valid address.\n");
     errno = EINVAL;
     goto on_error;
   } else {
     len -= 3;
     address += 3;
     a = fio_malloc(len + 1);
-    if (!a) {
-      perror("FATAL ERROR: http_connect couldn't allocate memory "
-             "for address parsing");
-    }
+    FIO_ASSERT_ALLOC(a);
     memcpy(a, address, len + 1);
   }
   p = memchr(a, '/', len);
@@ -1111,7 +1103,7 @@ intptr_t http_connect(const char *address,
   if (!arg_settings.timeout)
     settings->timeout = 0; /* allow server to dictate timeout */
   http_s *h = fio_malloc(sizeof(*h));
-  HTTP_ASSERT(h, "HTTP Client handler allocation failed");
+  FIO_ASSERT(h, "HTTP Client handler allocation failed");
   http_s_new(h, 0, http1_vtable());
   h->udata = arg_settings.udata;
   h->status = 0;
@@ -1150,8 +1142,8 @@ static void on_websocket_http_connected(http_s *h) {
   websocket_settings_s *s = h->udata;
   h->udata = http_settings(h)->udata = NULL;
   if (!h->path) {
-    fprintf(stderr, "WARNING: (websocket client) path not specified in "
-                    "address, assuming root!\n");
+    FIO_LOG_WARNING("(websocket client) path not specified in "
+                    "address, assuming root!");
     h->path = fiobj_str_new("/", 1);
   }
   http_upgrade2ws(h, *s);
@@ -1518,8 +1510,7 @@ void http_parse_cookies(http_s *h, uint8_t is_url_encoded) {
   if (!h->headers)
     return;
   if (h->cookies && fiobj_hash_count(h->cookies)) {
-    fprintf(stderr,
-            "WARNING: (http) attempting to parse cookies more than once.\n");
+    FIO_LOG_WARNING("(http) attempting to parse cookies more than once.");
     return;
   }
   static uint64_t setcookie_header_hash;
@@ -1811,7 +1802,6 @@ static void http_mime_parser_on_data(http_mime_parser_s *parser, void *name,
   fiobj_str_resize(n, name_len);
   fiobj_str_write(n, "[name]", 6);
   tmp = fiobj_obj2cstr(n);
-  fprintf(stderr, "filename length %zu\n", filename_len);
   http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
                 filename, filename_len, 0);
   fiobj_free(n);
@@ -2657,9 +2647,9 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
     FIOBJ old = FIOBJ_INVALID;
     fio_mime_set_replace(&mime_types, hash, mime_type_str, &old);
     if (old != FIOBJ_INVALID) {
-      fprintf(stderr, "WARNING: mime-type collision: %.*s was %s, now %s\n",
-              (int)file_ext_len, file_ext, fiobj_obj2cstr(old).data,
-              fiobj_obj2cstr(mime_type_str).data);
+      FIO_LOG_WARNING("mime-type collision: %.*s was %s, now %s",
+                      (int)file_ext_len, file_ext, fiobj_obj2cstr(old).data,
+                      fiobj_obj2cstr(mime_type_str).data);
       fiobj_free(old);
     }
   }

@@ -193,10 +193,6 @@ static inline void http_sse_destroy(http_sse_internal_s *sse) {
 Helpers
 ***************************************************************************** */
 
-#define HTTP_ASSERT(x, m)                                                      \
-  if (!x)                                                                      \
-    perror("FATAL ERROR: (http)" m), exit(errno);
-
 /** sets an outgoing header only if it doesn't exist */
 static inline void set_header_if_missing(FIOBJ hash, FIOBJ name, FIOBJ value) {
   FIOBJ old = fiobj_hash_replace(hash, name, value);

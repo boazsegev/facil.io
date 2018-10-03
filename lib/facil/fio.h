@@ -16,6 +16,7 @@ Feel free to copy, use and enjoy according to the license provided.
  * Version and helper macros
  * Helper String Information Type
  * Memory pool / custom allocator for short lived objects
+ * Logging and testing helpers
  *
  * Connection Callback (Protocol) Management
  * Listening to Incoming Connections
@@ -200,42 +201,9 @@ Version and helper macros
 #define FIO_FUNC static __attribute__((unused))
 #endif
 
-#ifndef FIO_ASSERT_ALLOC
-/** Tests for an allocation failure. The behavior can be overridden. */
-#define FIO_ASSERT_ALLOC(ptr)                                                  \
-  if (!(ptr)) {                                                                \
-    fprintf(stderr,                                                            \
-            "FATAL ERROR: memory allocation error "__FILE__                    \
-            ":%d\n",                                                           \
-            __LINE__);                                                         \
-    perror("             Error details (errno)");                              \
-    kill(0, SIGINT);                                                           \
-    exit(errno);                                                               \
-  }
-#endif
-
 #if defined(__FreeBSD__)
 #include <netinet/in.h>
 #include <sys/socket.h>
-#endif
-
-#if FIO_PRINT_STATE
-#define FIO_LOG_STATE(...) fprintf(stderr, __VA_ARGS__)
-#else
-#define FIO_LOG_STATE(...)
-#endif
-
-#if DEBUG
-#define FIO_LOG_DEBUG(...) FIO_LOG_STATE("INFO [DEBUG]: " __VA_ARGS__)
-#define FIO_ASSERT(cond, ...)                                                  \
-  if (!(cond)) {                                                               \
-    fprintf(stderr, "FATAL [DEBUG] (" __FILE__                                 \
-                    ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__);            \
-    exit(-1);                                                                  \
-  }
-#else
-#define FIO_LOG_DEBUG(...)
-#define FIO_ASSERT(...)
 #endif
 
 /* *****************************************************************************
@@ -261,7 +229,31 @@ typedef struct fio_str_info_s {
 #endif
 
 /* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+
+
 Memory pool / custom allocator for short lived objects
+
+
+
+
+
+
+
+
+
+
+
+
 ***************************************************************************** */
 
 /**
@@ -324,6 +316,100 @@ void fio_malloc_after_fork(void);
 #define fio_realloc2(ptr, new_size, old_data_len) realloc((ptr), (new_size))
 #define fio_malloc_test()
 #define fio_malloc_after_fork()
+#endif
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+
+
+Logging and testing helpers
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/** Logging level of zero (no logging). */
+#define FIO_LOG_LEVEL_NONE 0
+/** Log fatal errors. */
+#define FIO_LOG_LEVEL_FATAL 1
+/** Log errors and fatal errors. */
+#define FIO_LOG_LEVEL_ERROR 2
+/** Log warnings, errors and fatal errors. */
+#define FIO_LOG_LEVEL_WARNING 3
+/** Log every message (info, warnings, errors and fatal errors). */
+#define FIO_LOG_LEVEL_INFO 4
+/** Log everything, including debug messages. */
+#define FIO_LOG_LEVEL_DEBUG 5
+
+/** The logging level */
+extern size_t FIO_LOG_LEVEL;
+
+#ifndef FIO_LOG_PRINT
+#define FIO_LOG_PRINT(level, ...)                                              \
+  do {                                                                         \
+    if (level <= FIO_LOG_LEVEL)                                                \
+      fprintf(stderr, "\n" __VA_ARGS__);                                       \
+  } while (0)
+#define FIO_LOG_DEBUG(...)                                                     \
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_DEBUG,                                           \
+                "[DEBUG ("__FILE__                                             \
+                ":" FIO_MACRO2STR(__LINE__) ")] " __VA_ARGS__)
+#define FIO_LOG_INFO(...)                                                      \
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_INFO, "[INFO] " __VA_ARGS__)
+#define FIO_LOG_WARNING(...)                                                   \
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_WARNING, "[WARNING] " __VA_ARGS__)
+#define FIO_LOG_ERROR(...)                                                     \
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_ERROR, "[ERROR] " __VA_ARGS__)
+#define FIO_LOG_FATAL(...)                                                     \
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_FATAL, "[FATAL] " __VA_ARGS__)
+#endif
+
+#if FIO_PRINT_STATE
+#define FIO_LOG_STATE(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define FIO_LOG_STATE(...)
+#endif
+
+#if DEBUG
+#define FIO_ASSERT(cond, ...)                                                  \
+  if (!(cond)) {                                                               \
+    FIO_LOG_DEBUG(__VA_ARGS__);                                                \
+    exit(-1);                                                                  \
+  }
+#else
+#define FIO_ASSERT(...)
+#endif
+
+#ifndef FIO_ASSERT_ALLOC
+/** Tests for an allocation failure. The behavior can be overridden. */
+#define FIO_ASSERT_ALLOC(ptr)                                                  \
+  if (!(ptr)) {                                                                \
+    fprintf(stderr,                                                            \
+            "FATAL ERROR: memory allocation error "__FILE__                    \
+            ":%d\n",                                                           \
+            __LINE__);                                                         \
+    perror("             Error details (errno)");                              \
+    kill(0, SIGINT);                                                           \
+    exit(errno);                                                               \
+  }
 #endif
 
 /* *****************************************************************************
@@ -2524,13 +2610,13 @@ FIO_FUNC inline void fio_lock_dbg(fio_lock_i *lock, const char *file,
   while (fio_trylock(lock)) {
     if (lock_cycle_count >= 8 &&
         (lock_cycle_count == 8 || !(lock_cycle_count & 511)))
-      fprintf(stderr, "INFO: fio-spinlock spin %s:%d round %zu\n", file, line,
+      fprintf(stderr, "[DEBUG] fio-spinlock spin %s:%d round %zu\n", file, line,
               lock_cycle_count);
     ++lock_cycle_count;
     fio_reschedule_thread();
   }
   if (lock_cycle_count >= 8)
-    fprintf(stderr, "INFO: fio-spinlock spin %s:%d total = %zu\n", file, line,
+    fprintf(stderr, "[DEBUG] fio-spinlock spin %s:%d total = %zu\n", file, line,
             lock_cycle_count);
 }
 #define fio_lock(lock) fio_lock_dbg((lock), __FILE__, __LINE__)
@@ -2546,7 +2632,7 @@ FIO_FUNC inline int fio_trylock_dbg(fio_lock_i *lock, const char *file,
   } else if (line == last_line) {
     ++count;
     if (count >= 2)
-      fprintf(stderr, "INFO: trying fio-spinlock %s:%d attempt %zu\n", file,
+      fprintf(stderr, "[DEBUG] trying fio-spinlock %s:%d attempt %zu\n", file,
               line, count);
   } else {
     count = 0;
@@ -3898,7 +3984,7 @@ finish:
   return state;
 #else
   /* TODO: consider adding non POSIX implementations. */
-  fprintf(stderr, "ERROR: File reading requires a posix system (ignored!).\n");
+  FIO_LOG_ERROR("File reading requires a posix system (ignored!).\n");
   return state;
 #endif
 }

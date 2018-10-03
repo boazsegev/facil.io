@@ -325,7 +325,7 @@ void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
                       websocket_settings_s *args, void *data, size_t length) {
   ws_s *ws = new_websocket(uuid);
   if (!ws) {
-    perror("FATAL ERROR: couldn't allocate Websocket protocol object");
+    FIO_LOG_FATAL("couldn't allocate Websocket protocol object");
     exit(errno);
   }
   // we have an active websocket connection - prep the connection buffer

@@ -610,10 +610,9 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
   FIOBJ sym;
   FIOBJ obj;
   if (!http1_pr2handle(parser2http(parser)).headers) {
-    fprintf(stderr,
-            "ERROR: (http1 parse ordering error) missing HashMap for header "
-            "%s: %s\n",
-            name, data);
+    FIO_LOG_ERROR("(http1 parse ordering error) missing HashMap for header "
+                  "%s: %s",
+                  name, data);
     http_send_error2(500, parser2http(parser)->p.uuid,
                      parser2http(parser)->p.settings);
     return -1;
@@ -624,8 +623,7 @@ static int http1_on_header(http1_parser_s *parser, char *name, size_t name_len,
       fiobj_hash_count(http1_pr2handle(parser2http(parser)).headers) >
           HTTP_MAX_HEADER_COUNT) {
     if (parser2http(parser)->p.settings->log) {
-      fprintf(stderr,
-              "WARNING: (http security alert) header flood detected.\n");
+      FIO_LOG_WARNING("(HTTP) security alert - header flood detected.");
     }
     http_send_error(&http1_pr2handle(parser2http(parser)), 413);
     return -1;
@@ -745,8 +743,7 @@ static void http1_on_data_first_time(intptr_t uuid, fio_protocol_s *protocol) {
   /* ensure future reads skip this first time HTTP/2.0 test */
   p->p.protocol.on_data = http1_on_data;
   if (i >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
-    fprintf(stderr,
-            "ERROR: unsupported HTTP/2 attempeted using prior knowledge.\n");
+    FIO_LOG_ERROR("unsupported HTTP/2 attempeted using prior knowledge.");
     fio_close(uuid);
     return;
   }
@@ -767,7 +764,7 @@ fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
   if (unread_data && unread_length > HTTP_MAX_HEADER_LENGTH)
     return NULL;
   http1pr_s *p = malloc(sizeof(*p) + HTTP_MAX_HEADER_LENGTH);
-  HTTP_ASSERT(p, "HTTP/1.1 protocol allocation failed");
+  FIO_ASSERT(p, "HTTP/1.1 protocol allocation failed");
   *p = (http1pr_s){
       .p.protocol =
           {

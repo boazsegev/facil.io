@@ -339,9 +339,8 @@ static void resp_on_pub_message(struct redis_engine_internal_s *i, FIOBJ msg) {
   fio_unlock(&r->lock);
   if (!node) {
     /* TODO: possible ping? from server?! not likely... */
-    FIO_LOG_STATE(
-        "WARNING: (redis %d) received a reply when no command was sent.\n",
-        getpid());
+    FIO_LOG_WARNING("(redis %d) received a reply when no command was sent.",
+                    getpid());
     return;
   }
   node->next = (void *)fiobj_dup(msg);
@@ -360,8 +359,8 @@ static void resp_on_sub_message(struct redis_engine_internal_s *i, FIOBJ msg) {
   if (FIOBJ_TYPE(msg) != FIOBJ_T_ARRAY) {
     if (FIOBJ_TYPE(msg) != FIOBJ_T_STRING || fiobj_obj2cstr(msg).len != 4 ||
         fiobj_obj2cstr(msg).data[0] != 'P') {
-      FIO_LOG_STATE("WARNING: (redis) unexpected data format in "
-                    "subscription stream:\n");
+      FIO_LOG_WARNING("(redis) unexpected data format in "
+                      "subscription stream:");
       fio_str_info_s tmp = fiobj_obj2cstr(msg);
       FIO_LOG_STATE("     %s\n", tmp.data);
     }
@@ -429,9 +428,9 @@ static void redis_on_close(intptr_t uuid, fio_protocol_s *pr) {
     if (r->flag) {
       /* reconnection for subscription connection. */
       if (uuid != -1) {
-        FIO_LOG_STATE("WARNING: (redis %d) subscription connection lost. "
-                      "Reconnecting...\n",
-                      (int)getpid());
+        FIO_LOG_WARNING("(redis %d) subscription connection lost. "
+                        "Reconnecting...",
+                        (int)getpid());
       }
       fio_atomic_sub(&r->ref, 1);
       fio_defer(redis_connect, r, internal);
@@ -441,9 +440,9 @@ static void redis_on_close(intptr_t uuid, fio_protocol_s *pr) {
   } else {
     r = pub2redis(pr);
     if (r->flag && uuid != -1) {
-      FIO_LOG_STATE("WARNING: (redis %d) publication connection lost. "
-                    "Reconnecting...\n",
-                    (int)getpid());
+      FIO_LOG_WARNING("(redis %d) publication connection lost. "
+                      "Reconnecting...",
+                      (int)getpid());
     }
     r->pub_send = 0;
     fio_close(r->sub_data.uuid);
@@ -471,8 +470,7 @@ static void redis_sub_ping(intptr_t uuid, fio_protocol_s *pr) {
 static void redis_pub_ping(intptr_t uuid, fio_protocol_s *pr) {
   redis_engine_s *r = pub2redis(pr);
   if (fio_ls_embd_any(&r->queue)) {
-    FIO_LOG_STATE(
-        "WARNING: (redis) Redis server unresponsive, disconnecting.\n");
+    FIO_LOG_WARNING("(redis) Redis server unresponsive, disconnecting.");
     fio_close(uuid);
     return;
   }
@@ -489,9 +487,9 @@ Connecting to Redis
 static void redis_on_auth(fio_pubsub_engine_s *e, FIOBJ reply, void *udata) {
   if (FIOBJ_TYPE_IS(reply, FIOBJ_T_TRUE)) {
     fio_str_info_s s = fiobj_obj2cstr(reply);
-    FIO_LOG_STATE("WARNING: (redis) Authentication FAILED.\n"
-                  "        %.*s\n",
-                  (int)s.len, s.data);
+    FIO_LOG_WARNING("(redis) Authentication FAILED."
+                    "        %.*s",
+                    (int)s.len, s.data);
   }
   (void)e;
   (void)udata;
@@ -512,8 +510,8 @@ static void redis_on_connect(intptr_t uuid, void *i_) {
     if (r->pub_data.uuid == -1) {
       fio_defer(redis_connect, r, &r->pub_data);
     }
-    FIO_LOG_STATE("INFO: (redis %d) subscription connection established.\n",
-                  (int)getpid());
+    FIO_LOG_INFO("(redis %d) subscription connection established.",
+                 (int)getpid());
   } else {
     r = pub2redis(i);
     if (r->auth_len) {
@@ -535,8 +533,8 @@ static void redis_on_connect(intptr_t uuid, void *i_) {
     }
     r->pub_send = 1;
     fio_unlock(&r->lock);
-    FIO_LOG_STATE("INFO: (redis %d) publication connection established.\n",
-                  (int)getpid());
+    FIO_LOG_INFO("(redis %d) publication connection established.",
+                 (int)getpid());
   }
 
   i->protocol.rsv = 0;
@@ -639,7 +637,7 @@ static void redis_on_publish_root(const fio_pubsub_engine_s *eng,
   *buf++ = '\r';
   *buf++ = '\n';
   *buf = 0;
-  FIO_LOG_DEBUG("(%d) Publishing:\n%s\n", getpid(), cmd->cmd);
+  FIO_LOG_DEBUG("(%d) Publishing:\n%s", getpid(), cmd->cmd);
   cmd->cmd_len = (uintptr_t)buf - (uintptr_t)(cmd + 1);
   redis_attach_cmd(r, cmd);
   return;
@@ -690,7 +688,7 @@ static void redis_on_internal_publish(fio_msg_s *msg) {
   msg->channel.len -= 8;
   msg->channel.data += 8;
   /* forward to publishing */
-  FIO_LOG_DEBUG("Forwarding to engine %p, on channel %s\n", msg->udata1,
+  FIO_LOG_DEBUG("Forwarding to engine %p, on channel %s", msg->udata1,
                 msg->channel.data);
   redis_on_publish_root(msg->udata1, msg->channel, msg->msg, msg->is_json);
 }
@@ -706,7 +704,7 @@ static void redis_forward_reply(fio_pubsub_engine_s *e, FIOBJ reply,
   fio_pubsub_engine_s *engine = (fio_pubsub_engine_s *)fio_str2u64(data + 0);
   void *callback = (void *)fio_str2u64(data + 8);
   if (engine != e || !callback) {
-    FIO_LOG_DEBUG("Redis reply not forwarded (callback: %p)\n", callback);
+    FIO_LOG_DEBUG("Redis reply not forwarded (callback: %p)", callback);
     return;
   }
   int32_t pid = (int32_t)fio_str2u32(data + 24);
@@ -740,7 +738,7 @@ static void redis_on_internal_reply(fio_msg_s *msg) {
   fio_pubsub_engine_s *engine =
       (fio_pubsub_engine_s *)fio_str2u64(msg->channel.data + 0);
   if (engine != msg->udata1) {
-    FIO_LOG_DEBUG("Redis reply not forwarded (engine mismatch: %p != %p)\n",
+    FIO_LOG_DEBUG("Redis reply not forwarded (engine mismatch: %p != %p)",
                   (void *)engine, msg->udata1);
     return;
   }
@@ -759,8 +757,7 @@ intptr_t redis_engine_send(fio_pubsub_engine_s *engine, FIOBJ command,
                                             void *udata),
                            void *udata) {
   if ((uintptr_t)engine < 4) {
-    fprintf(stderr, "WARNING: (redis send) trying to use one of the "
-                    "core engines\n");
+    FIO_LOG_WARNING("(redis send) trying to use one of the core engines");
     return -1;
   }
   // if(fio_is_master()) {
@@ -830,8 +827,11 @@ static void redis_on_engine_fork(void *r_) {
 fio_pubsub_engine_s *redis_engine_create
 FIO_IGNORE_MACRO(struct redis_engine_create_args args) {
   if (getpid() != fio_parent_pid()) {
-    fprintf(stderr, "FATAL ERROR: (redis) Redis engine initialization can only "
-                    "be performed in the Root process.\n");
+    FIO_LOG_FATAL("(redis) Redis engine initialization can only "
+                  "be performed in the Root process.");
+    kill(0, SIGINT);
+    fio_stop();
+    return NULL;
   }
   if (!args.address.len && args.address.data)
     args.address.len = strlen(args.address.data);
@@ -911,6 +911,7 @@ FIO_IGNORE_MACRO(struct redis_engine_create_args args) {
   /* if restarting */
   fio_state_callback_add(FIO_CALL_PRE_START, redis_on_facil_start, r);
 
+  FIO_LOG_DEBUG("Redis engine initialized %p", (void *)r);
   return &r->en;
 }
 
@@ -925,6 +926,6 @@ void redis_engine_destroy(fio_pubsub_engine_s *engine) {
   fio_state_callback_remove(FIO_CALL_IN_CHILD, redis_on_engine_fork, r);
   fio_state_callback_remove(FIO_CALL_ON_SHUTDOWN, redis_on_facil_shutdown, r);
   fio_state_callback_remove(FIO_CALL_PRE_START, redis_on_facil_start, r);
-  FIO_LOG_DEBUG("Redis engine destroyed %p\n", (void *)r);
+  FIO_LOG_DEBUG("Redis engine destroyed %p", (void *)r);
   redis_free(r);
 }
