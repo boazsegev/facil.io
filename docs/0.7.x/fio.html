@@ -667,6 +667,9 @@
 <li>
 <a href="#fio_name-remove-hash-map"><code>FIO_NAME(remove)</code> (Hash Map)</a>
 </li>
+<li>
+<a href="#fio_name-remove2-hash-map"><code>FIO_NAME(remove2)</code> (Hash Map)</a>
+</li>
 </ul>
 </li>
 <li>
@@ -933,6 +936,32 @@
 </li>
 <li>
 <a href="#fio_version_string"><code>FIO_VERSION_STRING</code></a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#logging-macros">Logging Macros</a>
+<ul>
+<li>
+<a href="#fio_log_level"><code>FIO_LOG_LEVEL</code></a>
+</li>
+<li>
+<a href="#part-597705">``</a>
+</li>
+<li>
+<a href="#fio_log_fatal"><code>FIO_LOG_FATAL</code></a>
+</li>
+<li>
+<a href="#fio_log_error"><code>FIO_LOG_ERROR</code></a>
+</li>
+<li>
+<a href="#fio_log_warning"><code>FIO_LOG_WARNING</code></a>
+</li>
+<li>
+<a href="#part-597705">``</a>
+</li>
+<li>
+<a href="#fio_log_debug"><code>FIO_LOG_DEBUG</code></a>
 </li>
 </ul>
 </li>
@@ -1747,6 +1776,7 @@ be sent over the socket.</p>
  <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">write</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
  <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">close</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
  <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">flush</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+ <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">cleanup</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 <span class="p">}</span> <span class="n">fio_rw_hook_s</span><span class="p">;</span>
 </code></pre>
 <ul>
@@ -1762,7 +1792,7 @@ be sent over the socket.</p>
 <p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
 <li><p>The <code>close</code> hook callback:</p>
 
-<p>The <code>close</code> callback should close the underlying socket / file descriptor. It should also be used to release any resources associated with the connection&#39;s read/write hooks.</p>
+<p>The <code>close</code> callback should close the underlying socket / file descriptor.</p>
 
 <p>If the function returns a non-zero value, it will be called again after an attempt to flush the socket and any pending outgoing buffer.</p>
 
@@ -1774,6 +1804,9 @@ be sent over the socket.</p>
 <p>The function should return the number of bytes remaining in the internal buffer (0 is a valid response) or -1 (on error).</p>
 
 <p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
+<li><p>The <code>cleanup</code> hook callback:</p>
+
+<p>Called when the hook is removed from the <code>uuid</code>, either because of a call to <code>fio_rw_hook_set</code> or because the connection was closed.</p></li>
 </ul>
 
 <h4 id="fio_rw_hook_set"><code>fio_rw_hook_set</code></h4>
@@ -1903,9 +1936,10 @@ will repeat forever.</p>
 <li><p><code>FIO_CALL_PRE_START</code>: Called once before starting up the IO reactor.</p></li>
 <li><p><code>FIO_CALL_BEFORE_FORK</code>: Called before each time the IO reactor forks a new worker.</p></li>
 <li><p><code>FIO_CALL_AFTER_FORK</code>: Called after each fork (both in parent and workers).</p></li>
-<li><p><code>FIO_CALL_IN_CHILD</code>: Called by a worker process right after forking.</p></li>
+<li><p><code>FIO_CALL_IN_CHILD</code>: Called by a worker process right after forking (and after <code>FIO_CALL_AFTER_FORK</code>).</p></li>
+<li><p><code>FIO_CALL_IN_MASTER</code>: Called by the root / master process after forking (and after <code>FIO_CALL_AFTER_FORK</code>).</p></li>
 <li><p><code>FIO_CALL_ON_START</code>: Called every time a <em>Worker</em> proceess starts.</p></li>
-<li><p><code>FIO_CALL_ON_IDLE</code>: Called when facil.io enters idling mode.</p></li>
+<li><p><code>FIO_CALL_ON_IDLE</code>: Called when facil.io enters idling mode (idle callbacks might be performed out of order).</p></li>
 <li><p><code>FIO_CALL_ON_SHUTDOWN</code>: Called before starting the shutdown sequence.</p></li>
 <li><p><code>FIO_CALL_ON_FINISH</code>: Called just before finishing up (both on chlid and parent processes).</p></li>
 <li><p><code>FIO_CALL_ON_PARENT_CRUSH</code>: Called by each worker the moment it detects the master process crashed.</p></li>
@@ -1913,26 +1947,34 @@ will repeat forever.</p>
 <li><p><code>FIO_CALL_AT_EXIT</code>: An alternative to the system&#39;s at_exit.</p></li>
 </ul>
 
+<p>Callbacks will be called using logical order for build-up and tear-down.</p>
+
+<p>During initialization related events, FIFO will be used (first in/scheduled, first out/executed).</p>
+
+<p>During shut-down related tasks, LIFO will be used (last in/scheduled, first out/executed).</p>
+
+<p>Idling callbacks are scheduled rather than performed during the event, so they might be performed out of order or concurrently when running in multi-threaded mode.</p>
+
 <h4 id="fio_state_callback_add"><code>fio_state_callback_add</code></h4>
 <pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_state_callback_add</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">func</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
 </code></pre>
 <p>Adds a callback to the list of callbacks to be called for the event.</p>
 
-<p>Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.</p>
+<p>Callbacks will be called using logical order for build-up and tear-down, according to the event&#39;s context.</p>
 
 <h4 id="fio_state_callback_remove"><code>fio_state_callback_remove</code></h4>
 <pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_state_callback_remove</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">,</span> <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">func</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="p">),</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
 </code></pre>
 <p>Removes a callback from the list of callbacks to be called for the event.</p>
 
-<p>Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.</p>
+<p>Callbacks will be called using logical order for build-up and tear-down, according to the event&#39;s context.</p>
 
 <h4 id="fio_state_callback_force"><code>fio_state_callback_force</code></h4>
 <pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_state_callback_force</span><span class="p">(</span><span class="n">callback_type_e</span><span class="p">);</span>
 </code></pre>
 <p>Forces all the existing callbacks to run, as if the event occurred.</p>
 
-<p>Callbacks will be called from last to first (last callback added executes first), allowing for logical layering of dependencies.</p>
+<p>Callbacks will be called using logical order for build-up and tear-down, according to the event&#39;s context.</p>
 
 <p>During an event, changes to the callback list are ignored (callbacks can&#39;t remove other callbacks for the same event).</p>
 
@@ -2971,6 +3013,20 @@ be defined. i.e.:</p>
 
 <p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
 
+<h4 id="fio_name-remove2-hash-map"><code>FIO_NAME(remove2)</code> (Hash Map)</h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">remove2</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+                     <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
+                     <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span>
+                     <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
+</code></pre>
+<p>Removes an object from the Set, rehashing if required.</p>
+
+<p>Returns 0 on success and -1 if the object wasn&#39;t found.</p>
+
+<p>If <code>old</code> isn&#39;t <code>NULL</code>, than the existing object (if any) would be copied to the location pointed to by <code>old</code>.</p>
+
+<p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
+
 <h3 id="set-find-insert">Set Find / Insert</h3>
 
 <p>These functions are defined if the Set is a pure Set (not a Hash Map).</p>
@@ -3523,6 +3579,69 @@ required.</p>
 
 <p>This macro translates to facil.io&#39;s literal string. It can be used, for example, like this:</p>
 <pre><code class='highlight'><span class="n">printf</span><span class="p">(</span><span class="s">"Running facil.io version"</span> <span class="n">FIO_VERSION_STRING</span> <span class="s">"</span><span class="se">\r\n</span><span class="s">"</span><span class="p">);</span>
+</code></pre>
+<h3 id="logging-macros">Logging Macros</h3>
+
+<p>facil.io provides a number of possible logging levels and macros for easy logging to <code>stderr</code>.</p>
+
+<h4 id="fio_log_level"><code>FIO_LOG_LEVEL</code></h4>
+<pre><code class='highlight'><span class="k">extern</span> <span class="kt">size_t</span> <span class="n">FIO_LOG_LEVEL</span><span class="p">;</span>
+</code></pre>
+<p>This variable sets / gets the logging level. Supported values include:</p>
+<pre><code class='highlight'><span class="cm">/** Logging level of zero (no logging). */</span>
+<span class="cp">#define FIO_LOG_LEVEL_NONE 0
+</span><span class="cm">/** Log fatal errors. */</span>
+<span class="cp">#define FIO_LOG_LEVEL_FATAL 1
+</span><span class="cm">/** Log errors and fatal errors. */</span>
+<span class="cp">#define FIO_LOG_LEVEL_ERROR 2
+</span><span class="cm">/** Log warnings, errors and fatal errors. */</span>
+<span class="cp">#define FIO_LOG_LEVEL_WARNING 3
+</span><span class="cm">/** Log every message (info, warnings, errors and fatal errors). */</span>
+<span class="cp">#define FIO_LOG_LEVEL_INFO 4
+</span><span class="cm">/** Log everything, including debug messages. */</span>
+<span class="cp">#define FIO_LOG_LEVEL_DEBUG 5
+</span></code></pre>
+<h4 id="part-597705">``</h4>
+<pre><code class='highlight'></code></pre>
+<h4 id="fio_log_fatal"><code>FIO_LOG_FATAL</code></h4>
+<pre><code class='highlight'><span class="cp">#define FIO_LOG_FATAL(...)
+</span></code></pre>
+<p>Logs a fatal error. Doesn&#39;t exit the program (this should be performed after the logging).</p>
+
+<p>Logging macros accept <code>printf</code> type arguments. i.e.:</p>
+<pre><code class='highlight'><span class="n">FIO_LOG_FATAL</span><span class="p">(</span><span class="s">"The meaning of life: %d"</span><span class="p">,</span> <span class="mi">42</span><span class="p">);</span>
+</code></pre>
+<h4 id="fio_log_error"><code>FIO_LOG_ERROR</code></h4>
+<pre><code class='highlight'><span class="cp">#define FIO_LOG_ERROR(...)
+</span></code></pre>
+<p>Logs an error.</p>
+
+<p>Logging macros accept <code>printf</code> type arguments. i.e.:</p>
+<pre><code class='highlight'><span class="n">FIO_LOG_ERROR</span><span class="p">(</span><span class="s">"The meaning of life: %d"</span><span class="p">,</span> <span class="mi">42</span><span class="p">);</span>
+</code></pre>
+<h4 id="fio_log_warning"><code>FIO_LOG_WARNING</code></h4>
+<pre><code class='highlight'><span class="cp">#define FIO_LOG_WARNING(...)
+</span></code></pre>
+<p>Logs a warning message.</p>
+
+<p>Logging macros accept <code>printf</code> type arguments. i.e.:</p>
+<pre><code class='highlight'><span class="n">FIO_LOG_WARNING</span><span class="p">(</span><span class="s">"The meaning of life: %d"</span><span class="p">,</span> <span class="mi">42</span><span class="p">);</span>
+</code></pre>
+<h4 id="part-597705">``</h4>
+<pre><code class='highlight'><span class="cp">#define FIO_LOG_INFO(...)
+</span></code></pre>
+<p>Logs an information level message.</p>
+
+<p>Logging macros accept <code>printf</code> type arguments. i.e.:</p>
+<pre><code class='highlight'><span class="n">FIO_LOG_INFO</span><span class="p">(</span><span class="s">"The meaning of life: %d"</span><span class="p">,</span> <span class="mi">42</span><span class="p">);</span>
+</code></pre>
+<h4 id="fio_log_debug"><code>FIO_LOG_DEBUG</code></h4>
+<pre><code class='highlight'><span class="cp">#define FIO_LOG_DEBUG(...) 
+</span></code></pre>
+<p>Logs a debug message.</p>
+
+<p>Logging macros accept <code>printf</code> type arguments. i.e.:</p>
+<pre><code class='highlight'><span class="n">FIO_LOG_DEBUG</span><span class="p">(</span><span class="s">"The meaning of life: %d"</span><span class="p">,</span> <span class="mi">42</span><span class="p">);</span>
 </code></pre>
 <h3 id="other-macros-that-effect-facil-ios-behavior-compilation">Other Macros that effect facil.io&#39;s behavior / compilation</h3>
 
