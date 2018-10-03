@@ -8415,17 +8415,18 @@ FIO_FUNC void fio_set_test(void) {
 
   for (uintptr_t i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
     fio_set_test_insert(&s, i, i);
-    fio_hash_test_insert(&h, i, i, i);
+    fio_hash_test_insert(&h, i, i, i + 1);
     FIO_ASSERT(fio_set_test_find(&s, i, i), "set find failed after insert");
     FIO_ASSERT(fio_hash_test_find(&h, i, i), "hash find failed after insert");
     FIO_ASSERT(i == *fio_set_test_find(&s, i, i), "set insertion != find");
-    FIO_ASSERT(i == *fio_hash_test_find(&h, i, i), "hash insertion != find");
+    FIO_ASSERT(i + 1 == *fio_hash_test_find(&h, i, i),
+               "hash insertion != find");
   }
   fprintf(stderr, "* Seeking %lu items\n", FIO_SET_TEXT_COUNT);
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
     FIO_ASSERT((i == *fio_set_test_find(&s, i, i)),
                "set insertion != find (seek)");
-    FIO_ASSERT((i == *fio_hash_test_find(&h, i, i)),
+    FIO_ASSERT((i + 1 == *fio_hash_test_find(&h, i, i)),
                "hash insertion != find (seek)");
   }
   {
@@ -8443,9 +8444,9 @@ FIO_FUNC void fio_set_test(void) {
             FIO_SET_TEXT_COUNT);
     uintptr_t i = 1;
     FIO_SET_FOR_LOOP(&h, pos) {
-      FIO_ASSERT(pos->obj.obj == i && pos->obj.key == i,
+      FIO_ASSERT(pos->obj.obj == i + 1 && pos->obj.key == i,
                  "object order mismatch %lu != %lu.", (unsigned long)i,
-                 (unsigned long)pos->obj.obj);
+                 (unsigned long)pos->obj.key);
       ++i;
     }
   }
@@ -8476,9 +8477,9 @@ FIO_FUNC void fio_set_test(void) {
       if (pos->hash == 0) {
         FIO_ASSERT((i & 1) == 1, "deleted object wasn't odd");
       } else {
-        FIO_ASSERT(pos->obj.obj == i,
+        FIO_ASSERT(pos->obj.key == i,
                    "deleted object value mismatch %lu != %lu", (unsigned long)i,
-                   (unsigned long)pos->obj.obj);
+                   (unsigned long)pos->obj.key);
       }
       ++i;
     }

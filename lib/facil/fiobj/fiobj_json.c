@@ -2,6 +2,7 @@
 Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
+#include <fio.h>
 #include <fiobj_json.h>
 
 #include <fio_ary.h>
@@ -12,8 +13,6 @@ License: MIT
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include <fio.h>
 
 /* *****************************************************************************
 JSON API
