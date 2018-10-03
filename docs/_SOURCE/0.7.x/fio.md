@@ -3336,6 +3336,108 @@ This macro translates to facil.io's literal string. It can be used, for example,
 printf("Running facil.io version" FIO_VERSION_STRING "\r\n");
 ```
 
+### Logging Macros
+
+facil.io provides a number of possible logging levels and macros for easy logging to `stderr`.
+
+#### `FIO_LOG_LEVEL`
+
+```c
+extern size_t FIO_LOG_LEVEL;
+```
+
+This variable sets / gets the logging level. Supported values include:
+
+```c
+/** Logging level of zero (no logging). */
+#define FIO_LOG_LEVEL_NONE 0
+/** Log fatal errors. */
+#define FIO_LOG_LEVEL_FATAL 1
+/** Log errors and fatal errors. */
+#define FIO_LOG_LEVEL_ERROR 2
+/** Log warnings, errors and fatal errors. */
+#define FIO_LOG_LEVEL_WARNING 3
+/** Log every message (info, warnings, errors and fatal errors). */
+#define FIO_LOG_LEVEL_INFO 4
+/** Log everything, including debug messages. */
+#define FIO_LOG_LEVEL_DEBUG 5
+```
+
+#### ``
+
+```c
+```
+
+#### `FIO_LOG_FATAL`
+
+```c
+#define FIO_LOG_FATAL(...)
+```
+
+Logs a fatal error. Doesn't exit the program (this should be performed after the logging).
+
+Logging macros accept `printf` type arguments. i.e.:
+
+```c
+FIO_LOG_FATAL("The meaning of life: %d", 42);
+```
+
+#### `FIO_LOG_ERROR`
+
+```c
+#define FIO_LOG_ERROR(...)
+```
+
+Logs an error.
+
+Logging macros accept `printf` type arguments. i.e.:
+
+```c
+FIO_LOG_ERROR("The meaning of life: %d", 42);
+```
+
+#### `FIO_LOG_WARNING`
+
+```c
+#define FIO_LOG_WARNING(...)
+```
+
+Logs a warning message.
+
+Logging macros accept `printf` type arguments. i.e.:
+
+```c
+FIO_LOG_WARNING("The meaning of life: %d", 42);
+```
+
+#### ``
+
+```c
+#define FIO_LOG_INFO(...)
+```
+
+Logs an information level message.
+
+Logging macros accept `printf` type arguments. i.e.:
+
+```c
+FIO_LOG_INFO("The meaning of life: %d", 42);
+```
+
+#### `FIO_LOG_DEBUG`
+
+```c
+#define FIO_LOG_DEBUG(...) 
+```
+
+Logs a debug message.
+
+Logging macros accept `printf` type arguments. i.e.:
+
+```c
+FIO_LOG_DEBUG("The meaning of life: %d", 42);
+```
+
 ### Other Macros that effect facil.io's behavior / compilation
 
 The facil.io core library has some hard coded values that can be adjusted by defining the following macros during compile time.
