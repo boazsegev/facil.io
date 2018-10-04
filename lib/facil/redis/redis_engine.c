@@ -360,8 +360,7 @@ static void resp_on_sub_message(struct redis_engine_internal_s *i, FIOBJ msg) {
         fiobj_obj2cstr(msg).data[0] != 'P') {
       FIO_LOG_WARNING("(redis) unexpected data format in "
                       "subscription stream:");
-      fio_str_info_s tmp = fiobj_obj2cstr(msg);
-      FIO_LOG_STATE("     %s\n", tmp.data);
+      FIO_LOG_STATE("     %s\n", fiobj_obj2cstr(msg).data);
     }
   } else {
     // FIOBJ *ary = fiobj_ary2ptr(msg);
