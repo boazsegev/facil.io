@@ -3327,11 +3327,6 @@ This variable sets / gets the logging level. Supported values include:
 #define FIO_LOG_LEVEL_DEBUG 5
 ```
 
-#### ``
-
-```c
-```
-
 #### `FIO_LOG_FATAL`
 
 ```c
@@ -3374,7 +3369,7 @@ Logging macros accept `printf` type arguments. i.e.:
 FIO_LOG_WARNING("The meaning of life: %d", 42);
 ```
 
-#### ``
+#### `FIO_LOG_INFO`
 
 ```c
 #define FIO_LOG_INFO(...)

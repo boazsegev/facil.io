@@ -937,9 +937,6 @@
 <a href="#fio_log_level"><code>FIO_LOG_LEVEL</code></a>
 </li>
 <li>
-<a href="#part-597705">``</a>
-</li>
-<li>
 <a href="#fio_log_fatal"><code>FIO_LOG_FATAL</code></a>
 </li>
 <li>
@@ -949,7 +946,7 @@
 <a href="#fio_log_warning"><code>FIO_LOG_WARNING</code></a>
 </li>
 <li>
-<a href="#part-597705">``</a>
+<a href="#fio_log_info"><code>FIO_LOG_INFO</code></a>
 </li>
 <li>
 <a href="#fio_log_debug"><code>FIO_LOG_DEBUG</code></a>
@@ -3561,8 +3558,6 @@ required.</p>
 </span><span class="cm">/** Log everything, including debug messages. */</span>
 <span class="cp">#define FIO_LOG_LEVEL_DEBUG 5
 </span></code></pre>
-<h4 id="part-597705">``</h4>
-<pre><code class='highlight'></code></pre>
 <h4 id="fio_log_fatal"><code>FIO_LOG_FATAL</code></h4>
 <pre><code class='highlight'><span class="cp">#define FIO_LOG_FATAL(...)
 </span></code></pre>
@@ -3587,7 +3582,7 @@ required.</p>
 <p>Logging macros accept <code>printf</code> type arguments. i.e.:</p>
 <pre><code class='highlight'><span class="n">FIO_LOG_WARNING</span><span class="p">(</span><span class="s">"The meaning of life: %d"</span><span class="p">,</span> <span class="mi">42</span><span class="p">);</span>
 </code></pre>
-<h4 id="part-597705">``</h4>
+<h4 id="fio_log_info"><code>FIO_LOG_INFO</code></h4>
 <pre><code class='highlight'><span class="cp">#define FIO_LOG_INFO(...)
 </span></code></pre>
 <p>Logs an information level message.</p>
