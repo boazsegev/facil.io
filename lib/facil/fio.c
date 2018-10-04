@@ -4780,8 +4780,7 @@ static void fio_publish2process(fio_msg_internal_s *m) {
   }
   /* exact match */
   if (ch) {
-    fio_defer(fio_publish2channel_task, fio_str_dup(&ch->id),
-              fio_msg_internal_dup(m));
+    fio_defer(fio_publish2channel_task, &ch->id, fio_msg_internal_dup(m));
   }
   if (m->filter == 0) {
     /* pattern matching match */
