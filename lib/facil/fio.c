@@ -3073,6 +3073,7 @@ static void fio_pubsub_on_fork(void);
 
 static void fio_mem_destroy(void);
 static void __attribute__((destructor)) fio_lib_destroy(void) {
+  uint8_t add_eol = fio_is_master();
   fio_data->active = 0;
   fio_state_callback_force(FIO_CALL_AT_EXIT);
   fio_state_callback_clear_all();
@@ -3083,7 +3084,8 @@ static void __attribute__((destructor)) fio_lib_destroy(void) {
   /* memory library destruction must be last */
   fio_mem_destroy();
   FIO_LOG_DEBUG("(%d) facil.io resources released, exit complete.", getpid());
-  fprintf(stderr, "\n"); /* add EOL to logs (logging adds EOL before text */
+  if (add_eol)
+    fprintf(stderr, "\n"); /* add EOL to logs (logging adds EOL before text */
 }
 
 /* Called within a child process after it starts. */
@@ -3479,6 +3481,7 @@ void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
   fio_data->workers = (uint16_t)args.workers;
   fio_data->threads = (uint16_t)args.threads;
   fio_data->active = 1;
+  fio_data->is_worker = 0;
 
   fio_state_callback_force(FIO_CALL_PRE_START);
 
