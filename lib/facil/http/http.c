@@ -2644,7 +2644,7 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
     fio_mime_set_remove(&mime_types, hash, FIOBJ_INVALID);
   } else {
     FIOBJ old = FIOBJ_INVALID;
-    fio_mime_set_replace(&mime_types, hash, mime_type_str, &old);
+    fio_mime_set_overwrite(&mime_types, hash, mime_type_str, &old);
     if (old != FIOBJ_INVALID) {
       FIO_LOG_WARNING("mime-type collision: %.*s was %s, now %s",
                       (int)file_ext_len, file_ext, fiobj_obj2cstr(old).data,
@@ -2660,10 +2660,7 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
  */
 FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
   uintptr_t hash = fio_siphash(file_ext, file_ext_len);
-  FIOBJ *result = fio_mime_set_find(&mime_types, hash, FIOBJ_INVALID);
-  if (result)
-    return fiobj_dup(*result);
-  return FIOBJ_INVALID;
+  return fiobj_dup(fio_mime_set_find(&mime_types, hash, FIOBJ_INVALID));
 }
 
 /**

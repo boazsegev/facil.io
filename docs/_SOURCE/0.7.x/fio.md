@@ -2353,10 +2353,10 @@ int main(void) {
   // Initialize a Set for String caching
   fio_str_set_s my_set = FIO_SET_INIT;
   // Insert object to Set (will make copy)
-  fio_str_s **pcpy = fio_str_set_insert(&my_set, fio_str_hash(&tmp), &tmp);
+  fio_str_s *cpy = fio_str_set_insert(&my_set, fio_str_hash(&tmp), &tmp);
   printf("Original data %p\n", (void *)&tmp);
-  printf("Stored data %p\n", (void *)*pcpy);
-  printf("Stored data content: %s\n", fio_str_data(*pcpy));
+  printf("Stored data %p\n", (void *)cpy);
+  printf("Stored data content: %s\n", fio_str_data(cpy));
   // Free set (will free copy).
   fio_str_set_free(&my_set);
 }
@@ -2517,11 +2517,11 @@ These functions are defined if the Set defined is a Hash Map (`FIO_SET_KEY_TYPE`
 #### `FIO_NAME(find)` (Hash Map)
 
 ```c
-inline FIO_SET_OBJ_TYPE *
+inline FIO_SET_OBJ_TYPE
    FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                   FIO_SET_KEY_TYPE key);
 ```
-Locates an object in the Set, if it exists.
+Locates an object in the Hash Map, if it exists.
 
 NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
@@ -2529,21 +2529,6 @@ NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
 ```c
 inline void FIO_NAME(insert)(FIO_NAME(s) * set,
-                             const FIO_SET_HASH_TYPE hash_value,
-                             FIO_SET_KEY_TYPE key,
-                             FIO_SET_OBJ_TYPE obj);
-```
-
-Inserts an object to the Hash Map, rehashing if required, returning the new object's location using a pointer.
-
-If an object already exists in the Hash Map, it will be destroyed.
-
-NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
-
-#### `FIO_NAME(insert2)` (Hash Map)
-
-```c
-inline void FIO_NAME(insert2)(FIO_NAME(s) * set,
                              const FIO_SET_HASH_TYPE hash_value,
                              FIO_SET_KEY_TYPE key,
                              FIO_SET_OBJ_TYPE obj,
@@ -2562,20 +2547,6 @@ NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
 ```c
 inline int FIO_NAME(remove)(FIO_NAME(s) * set,
-                     const FIO_SET_HASH_TYPE hash_value,
-                     FIO_SET_KEY_TYPE key);
-```
-
-Removes an object from the Set, rehashing if required.
-
-Returns 0 on success and -1 if the object wasn't found.
-
-NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
-
-#### `FIO_NAME(remove2)` (Hash Map)
-
-```c
-inline int FIO_NAME(remove2)(FIO_NAME(s) * set,
                      const FIO_SET_HASH_TYPE hash_value,
                      FIO_SET_KEY_TYPE key
                      FIO_SET_OBJ_TYPE *old);
@@ -2596,7 +2567,7 @@ These functions are defined if the Set is a pure Set (not a Hash Map).
 #### `FIO_NAME(find)` (Set)
 
 ```c
-inline FIO_SET_OBJ_TYPE *
+inline FIO_SET_OBJ_TYPE
    FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                   FIO_SET_OBJ_TYPE obj);
 ```
@@ -2607,44 +2578,29 @@ NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 #### `FIO_NAME(insert)` (Set)
 
 ```c
-inline FIO_SET_OBJ_TYPE *
+inline FIO_SET_OBJ_TYPE
    FIO_NAME(insert)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                     FIO_SET_OBJ_TYPE obj);
 ```
 
 Inserts an object to the Set only if it's missing, rehashing if required, returning the new (or old) object's pointer.
 
-
-If the object already exists in the set, than the new object will be destroyed and the old object's address will be returned.
+If the object already exists in the set, than the new object will be destroyed and the old object will be returned.
 
 NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 
 #### `FIO_NAME(overwrite)` (Set)
 
 ```c
-inline FIO_SET_OBJ_TYPE *
-   FIO_NAME(overwrite)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
-                       FIO_SET_OBJ_TYPE obj);
-```
-
-Inserts an object to the Set, rehashing if required, returning the new object's pointer.
-
-If the object already exists in the set, it will be destroyed and overwritten.
-
-NOTE: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
-
-#### `FIO_NAME(replace)` (Set)
-
-```c
-inline FIO_SET_OBJ_TYPE *FIO_NAME(replace)(FIO_NAME(s) * set,
+inline FIO_SET_OBJ_TYPE FIO_NAME(overwrite)(FIO_NAME(s) * set,
                                              const FIO_SET_HASH_TYPE hash_value,
                                              FIO_SET_OBJ_TYPE obj,
                                              FIO_SET_OBJ_TYPE *old);
 ```
 
-The same as [`overwrite`](#fio_name-overwrite-set), only it copies the old object (if any) to the location pointed to by `old`.
+Inserts an object to the Set only overwriting any existing data, rehashing if required.
 
-When setting `old` to NULL, the function behaves the same as `overwrite`.
+If `old` is set, the old object (if any) will be copied to the location pointed to by `old`.
 
 NOTE: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
 
@@ -2667,7 +2623,7 @@ NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 #### `FIO_NAME(last)`
 
 ```c
-inline FIO_SET_TYPE *FIO_NAME(last)(FIO_NAME(s) * set);
+inline FIO_SET_TYPE FIO_NAME(last)(FIO_NAME(s) * set);
 ```
 
 Allows a peak at the Set's last element.

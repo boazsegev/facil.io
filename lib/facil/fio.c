@@ -467,7 +467,8 @@ void fio_uuid_link(intptr_t uuid, void *obj, void (*on_close)(void *obj)) {
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
-  fio_uuid_links_overwrite(&uuid_data(uuid).links, (uintptr_t)obj, on_close);
+  fio_uuid_links_overwrite(&uuid_data(uuid).links, (uintptr_t)obj, on_close,
+                           NULL);
   fio_unlock(&uuid_data(uuid).sock_lock);
   return;
 locked_invalid:
@@ -3899,10 +3900,10 @@ static void fio_listen_on_startup(void *pr_) {
   fio_listen_protocol_s *pr = pr_;
   fio_attach(pr->uuid, &pr->pr);
   if (pr->port_len)
-    FIO_LOG_INFO("(%d) started listening on port %s", getpid(), pr->port);
+    FIO_LOG_DEBUG("(%d) started listening on port %s", getpid(), pr->port);
   else
-    FIO_LOG_INFO("(%d) started listening on Unix Socket at %s", getpid(),
-                 pr->addr);
+    FIO_LOG_DEBUG("(%d) started listening on Unix Socket at %s", getpid(),
+                  pr->addr);
 }
 
 static void fio_listen_on_close(intptr_t uuid, fio_protocol_s *pr_) {
@@ -4303,7 +4304,7 @@ static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
                                                       uint64_t hashed,
                                                       fio_collection_s *c) {
   fio_lock(&c->lock);
-  ch = *fio_ch_set_insert(&c->channels, hashed, ch);
+  ch = fio_ch_set_insert(&c->channels, hashed, ch);
   fio_str_dup(&ch->id);
   fio_lock(&ch->lock);
   fio_unlock(&c->lock);
@@ -4526,7 +4527,7 @@ void fio_pubsub_detach(fio_pubsub_engine_s *engine) {
 
 /** Returns true (1) if the engine is attached to the system. */
 int fio_pubsub_is_attached(fio_pubsub_engine_s *engine) {
-  fio_pubsub_engine_s **addr;
+  fio_pubsub_engine_s *addr;
   fio_lock(&fio_postoffice.engines.lock);
   addr = fio_engine_set_find(&fio_postoffice.engines.set, (uintptr_t)engine,
                              engine);
@@ -4637,12 +4638,11 @@ void *fio_message_metadata(fio_msg_s *msg, intptr_t type_id) {
 static channel_s *fio_channel_find_dup_internal(fio_str_s *s, uint64_t hashed,
                                                 fio_collection_s *c) {
   fio_lock(&c->lock);
-  channel_s **pch = fio_ch_set_find(&c->channels, hashed, (channel_s *)s);
-  if (!pch) {
+  channel_s *ch = fio_ch_set_find(&c->channels, hashed, (channel_s *)s);
+  if (!ch) {
     fio_unlock(&c->lock);
     return NULL;
   }
-  channel_s *ch = *pch;
   fio_str_dup((fio_str_s *)ch);
   fio_unlock(&c->lock);
   return ch;
@@ -5128,7 +5128,7 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
         pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_insert(&pr->pubsub, fio_str_hash(&tmp), tmp, s);
+    fio_sub_hash_insert(&pr->pubsub, fio_str_hash(&tmp), tmp, s, NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5136,7 +5136,7 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
         pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_remove(&pr->pubsub, fio_str_hash(&tmp), tmp);
+    fio_sub_hash_remove(&pr->pubsub, fio_str_hash(&tmp), tmp, NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5149,7 +5149,7 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
         pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_insert(&pr->patterns, fio_str_hash(&tmp), tmp, s);
+    fio_sub_hash_insert(&pr->patterns, fio_str_hash(&tmp), tmp, s, NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5158,7 +5158,7 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
         pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_remove(&pr->patterns, fio_str_hash(&tmp), tmp);
+    fio_sub_hash_remove(&pr->patterns, fio_str_hash(&tmp), tmp, NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5412,7 +5412,7 @@ static void fio_cluster_at_exit(void *ignore) {
   fio_pubsub_on_fork();
   /* clear subscriptions of all types */
   while (fio_ch_set_count(&fio_postoffice.patterns.channels)) {
-    channel_s *ch = *fio_ch_set_last(&fio_postoffice.patterns.channels);
+    channel_s *ch = fio_ch_set_last(&fio_postoffice.patterns.channels);
     while (fio_ls_embd_any(&ch->subscriptions)) {
       subscription_s *sub =
           FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
@@ -5422,7 +5422,7 @@ static void fio_cluster_at_exit(void *ignore) {
   }
 
   while (fio_ch_set_count(&fio_postoffice.pubsub.channels)) {
-    channel_s *ch = *fio_ch_set_last(&fio_postoffice.pubsub.channels);
+    channel_s *ch = fio_ch_set_last(&fio_postoffice.pubsub.channels);
     while (fio_ls_embd_any(&ch->subscriptions)) {
       subscription_s *sub =
           FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
@@ -5432,7 +5432,7 @@ static void fio_cluster_at_exit(void *ignore) {
   }
 
   while (fio_ch_set_count(&fio_postoffice.filters.channels)) {
-    channel_s *ch = *fio_ch_set_last(&fio_postoffice.filters.channels);
+    channel_s *ch = fio_ch_set_last(&fio_postoffice.filters.channels);
     while (fio_ls_embd_any(&ch->subscriptions)) {
       subscription_s *sub =
           FIO_LS_EMBD_OBJ(subscription_s, node, ch->subscriptions.next);
@@ -5447,7 +5447,7 @@ static void fio_cluster_at_exit(void *ignore) {
   /* clear engines */
   FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
   while (fio_engine_set_count(&fio_postoffice.engines.set)) {
-    fio_pubsub_detach(*fio_engine_set_last(&fio_postoffice.engines.set));
+    fio_pubsub_detach(fio_engine_set_last(&fio_postoffice.engines.set));
     fio_engine_set_last(&fio_postoffice.engines.set);
   }
   fio_engine_set_free(&fio_postoffice.engines.set);
@@ -8434,23 +8434,22 @@ FIO_FUNC void fio_set_test(void) {
   FIO_ASSERT(!fio_hash_test_is_fragmented(&h),
              "empty hash shouldn't be considered fragmented");
   FIO_ASSERT(!fio_set_test_last(&s), "empty set shouldn't have a last object");
-  FIO_ASSERT(!fio_hash_test_last(&h),
+  FIO_ASSERT(!fio_hash_test_last(&h).key && !fio_hash_test_last(&h).obj,
              "empty hash shouldn't have a last object");
 
   for (uintptr_t i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
     fio_set_test_insert(&s, i, i);
-    fio_hash_test_insert(&h, i, i, i + 1);
+    fio_hash_test_insert(&h, i, i, i + 1, NULL);
     FIO_ASSERT(fio_set_test_find(&s, i, i), "set find failed after insert");
     FIO_ASSERT(fio_hash_test_find(&h, i, i), "hash find failed after insert");
-    FIO_ASSERT(i == *fio_set_test_find(&s, i, i), "set insertion != find");
-    FIO_ASSERT(i + 1 == *fio_hash_test_find(&h, i, i),
-               "hash insertion != find");
+    FIO_ASSERT(i == fio_set_test_find(&s, i, i), "set insertion != find");
+    FIO_ASSERT(i + 1 == fio_hash_test_find(&h, i, i), "hash insertion != find");
   }
   fprintf(stderr, "* Seeking %lu items\n", FIO_SET_TEXT_COUNT);
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; ++i) {
-    FIO_ASSERT((i == *fio_set_test_find(&s, i, i)),
+    FIO_ASSERT((i == fio_set_test_find(&s, i, i)),
                "set insertion != find (seek)");
-    FIO_ASSERT((i + 1 == *fio_hash_test_find(&h, i, i)),
+    FIO_ASSERT((i + 1 == fio_hash_test_find(&h, i, i)),
                "hash insertion != find (seek)");
   }
   {
@@ -8478,7 +8477,7 @@ FIO_FUNC void fio_set_test(void) {
   fprintf(stderr, "* Removing odd items from %lu items\n", FIO_SET_TEXT_COUNT);
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; i += 2) {
     fio_set_test_remove(&s, i, i);
-    fio_hash_test_remove(&h, i, i);
+    fio_hash_test_remove(&h, i, i, NULL);
     FIO_ASSERT(!(fio_set_test_find(&s, i, i)),
                "Removal failed in set (still exists).");
     FIO_ASSERT(!(fio_hash_test_find(&h, i, i)),
@@ -8510,20 +8509,20 @@ FIO_FUNC void fio_set_test(void) {
     {
       fprintf(stderr, "* Poping two elements (testing pop through holes)\n");
       FIO_ASSERT(fio_set_test_last(&s), "Pop `last` 1 failed - no last object");
-      uintptr_t tmp = *fio_set_test_last(&s);
+      uintptr_t tmp = fio_set_test_last(&s);
       FIO_ASSERT(tmp, "Pop set `last` 1 failed to collect object");
       fio_set_test_pop(&s);
       FIO_ASSERT(
-          *fio_set_test_last(&s) != tmp,
+          fio_set_test_last(&s) != tmp,
           "Pop `last` 2 in set same as `last` 1 - failed to collect object");
-      tmp = fio_hash_test_last(&h)->key;
+      tmp = fio_hash_test_last(&h).key;
       FIO_ASSERT(tmp, "Pop hash `last` 1 failed to collect object");
       fio_hash_test_pop(&h);
       FIO_ASSERT(
-          fio_hash_test_last(&h)->key != tmp,
+          fio_hash_test_last(&h).key != tmp,
           "Pop `last` 2 in hash same as `last` 1 - failed to collect object");
       FIO_ASSERT(fio_set_test_last(&s), "Pop `last` 2 failed - no last object");
-      FIO_ASSERT(fio_hash_test_last(&h),
+      FIO_ASSERT(fio_hash_test_last(&h).obj,
                  "Pop `last` 2 failed in hash - no last object");
       fio_set_test_pop(&s);
       fio_hash_test_pop(&h);
@@ -8531,28 +8530,28 @@ FIO_FUNC void fio_set_test(void) {
     if (1) {
       uintptr_t tmp = 1;
       fio_set_test_remove(&s, tmp, tmp);
-      fio_hash_test_remove(&h, tmp, tmp);
+      fio_hash_test_remove(&h, tmp, tmp, NULL);
       size_t count = s.count;
-      fio_set_test_overwrite(&s, tmp, tmp);
+      fio_set_test_overwrite(&s, tmp, tmp, NULL);
       FIO_ASSERT(
           count + 1 == s.count,
           "Re-adding a removed item in set should increase count by 1 (%zu + "
           "1 != %zu).",
           count, (size_t)s.count);
       count = h.count;
-      fio_hash_test_insert(&h, tmp, tmp, tmp);
+      fio_hash_test_insert(&h, tmp, tmp, tmp, NULL);
       FIO_ASSERT(
           count + 1 == h.count,
           "Re-adding a removed item in hash should increase count by 1 (%zu + "
           "1 != %zu).",
           count, (size_t)s.count);
-      tmp = *fio_set_test_find(&s, tmp, tmp);
+      tmp = fio_set_test_find(&s, tmp, tmp);
       FIO_ASSERT(tmp == 1,
                  "Re-adding a removed item should update the item in the set "
                  "(%lu != 1)!",
-                 (unsigned long)*fio_set_test_find(&s, tmp, tmp));
+                 (unsigned long)fio_set_test_find(&s, tmp, tmp));
       fio_set_test_remove(&s, tmp, tmp);
-      fio_hash_test_remove(&h, tmp, tmp);
+      fio_hash_test_remove(&h, tmp, tmp, NULL);
       FIO_ASSERT(count == h.count,
                  "Re-removing an item should decrease count (%zu != %zu).",
                  count, (size_t)s.count);
@@ -8589,14 +8588,13 @@ FIO_FUNC void fio_set_test(void) {
     fio_set_test_insert(&s, i, i);
     FIO_ASSERT(fio_set_test_find(&s, i, i),
                "find failed after insert (2nd round)");
-    FIO_ASSERT(i == *fio_set_test_find(&s, i, i),
+    FIO_ASSERT(i == fio_set_test_find(&s, i, i),
                "insertion (2nd round) != find");
     FIO_ASSERT(i == s.count, "count error (%lu != %lu) post insertion.", i,
                s.count);
   }
   fio_set_test_free(&s);
 }
-#undef FIO_SET_NAME
 
 /* *****************************************************************************
 SipHash tests

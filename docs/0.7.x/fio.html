@@ -662,13 +662,7 @@
 <a href="#fio_name-insert-hash-map"><code>FIO_NAME(insert)</code> (Hash Map)</a>
 </li>
 <li>
-<a href="#fio_name-insert2-hash-map"><code>FIO_NAME(insert2)</code> (Hash Map)</a>
-</li>
-<li>
 <a href="#fio_name-remove-hash-map"><code>FIO_NAME(remove)</code> (Hash Map)</a>
-</li>
-<li>
-<a href="#fio_name-remove2-hash-map"><code>FIO_NAME(remove2)</code> (Hash Map)</a>
 </li>
 </ul>
 </li>
@@ -683,9 +677,6 @@
 </li>
 <li>
 <a href="#fio_name-overwrite-set"><code>FIO_NAME(overwrite)</code> (Set)</a>
-</li>
-<li>
-<a href="#fio_name-replace-set"><code>FIO_NAME(replace)</code> (Set)</a>
 </li>
 <li>
 <a href="#fio_name-remove-set"><code>FIO_NAME(remove)</code> (Set)</a>
@@ -2852,10 +2843,10 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
   <span class="c1">// Initialize a Set for String caching</span>
   <span class="n">fio_str_set_s</span> <span class="n">my_set</span> <span class="o">=</span> <span class="n">FIO_SET_INIT</span><span class="p">;</span>
   <span class="c1">// Insert object to Set (will make copy)</span>
-  <span class="n">fio_str_s</span> <span class="o">**</span><span class="n">pcpy</span> <span class="o">=</span> <span class="n">fio_str_set_insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">my_set</span><span class="p">,</span> <span class="n">fio_str_hash</span><span class="p">(</span><span class="o">&amp;</span><span class="n">tmp</span><span class="p">),</span> <span class="o">&amp;</span><span class="n">tmp</span><span class="p">);</span>
+  <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">cpy</span> <span class="o">=</span> <span class="n">fio_str_set_insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">my_set</span><span class="p">,</span> <span class="n">fio_str_hash</span><span class="p">(</span><span class="o">&amp;</span><span class="n">tmp</span><span class="p">),</span> <span class="o">&amp;</span><span class="n">tmp</span><span class="p">);</span>
   <span class="n">printf</span><span class="p">(</span><span class="s">"Original data %p</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">tmp</span><span class="p">);</span>
-  <span class="n">printf</span><span class="p">(</span><span class="s">"Stored data %p</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="o">*</span><span class="n">pcpy</span><span class="p">);</span>
-  <span class="n">printf</span><span class="p">(</span><span class="s">"Stored data content: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">fio_str_data</span><span class="p">(</span><span class="o">*</span><span class="n">pcpy</span><span class="p">));</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Stored data %p</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)</span><span class="n">cpy</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Stored data content: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">fio_str_data</span><span class="p">(</span><span class="n">cpy</span><span class="p">));</span>
   <span class="c1">// Free set (will free copy).</span>
   <span class="n">fio_str_set_free</span><span class="p">(</span><span class="o">&amp;</span><span class="n">my_set</span><span class="p">);</span>
 <span class="p">}</span>
@@ -2967,28 +2958,16 @@ be defined. i.e.:</p>
 <p>These functions are defined if the Set defined is a Hash Map (<code>FIO_SET_KEY_TYPE</code> was defined).</p>
 
 <h4 id="fio_name-find-hash-map"><code>FIO_NAME(find)</code> (Hash Map)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
    <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                   <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span><span class="p">);</span>
 </code></pre>
-<p>Locates an object in the Set, if it exists.</p>
+<p>Locates an object in the Hash Map, if it exists.</p>
 
 <p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
 
 <h4 id="fio_name-insert-hash-map"><code>FIO_NAME(insert)</code> (Hash Map)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
-                             <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
-                             <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span>
-                             <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">);</span>
-</code></pre>
-<p>Inserts an object to the Hash Map, rehashing if required, returning the new object&#39;s location using a pointer.</p>
-
-<p>If an object already exists in the Hash Map, it will be destroyed.</p>
-
-<p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
-
-<h4 id="fio_name-insert2-hash-map"><code>FIO_NAME(insert2)</code> (Hash Map)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">insert2</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                              <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                              <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span>
                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">,</span>
@@ -3004,17 +2983,6 @@ be defined. i.e.:</p>
 
 <h4 id="fio_name-remove-hash-map"><code>FIO_NAME(remove)</code> (Hash Map)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
-                     <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
-                     <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span><span class="p">);</span>
-</code></pre>
-<p>Removes an object from the Set, rehashing if required.</p>
-
-<p>Returns 0 on success and -1 if the object wasn&#39;t found.</p>
-
-<p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
-
-<h4 id="fio_name-remove2-hash-map"><code>FIO_NAME(remove2)</code> (Hash Map)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">remove2</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                      <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                      <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span>
                      <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
@@ -3032,7 +3000,7 @@ be defined. i.e.:</p>
 <p>These functions are defined if the Set is a pure Set (not a Hash Map).</p>
 
 <h4 id="fio_name-find-set"><code>FIO_NAME(find)</code> (Set)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
    <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                   <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre>
@@ -3041,36 +3009,25 @@ be defined. i.e.:</p>
 <p>NOTE: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
 
 <h4 id="fio_name-insert-set"><code>FIO_NAME(insert)</code> (Set)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
    <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                     <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre>
 <p>Inserts an object to the Set only if it&#39;s missing, rehashing if required, returning the new (or old) object&#39;s pointer.</p>
 
-<p>If the object already exists in the set, than the new object will be destroyed and the old object&#39;s address will be returned.</p>
+<p>If the object already exists in the set, than the new object will be destroyed and the old object will be returned.</p>
 
 <p>NOTE: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
 
 <h4 id="fio_name-overwrite-set"><code>FIO_NAME(overwrite)</code> (Set)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span>
-   <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">overwrite</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
-                       <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">);</span>
-</code></pre>
-<p>Inserts an object to the Set, rehashing if required, returning the new object&#39;s pointer.</p>
-
-<p>If the object already exists in the set, it will be destroyed and overwritten.</p>
-
-<p>NOTE: This function doesn&#39;t exist when <code>FIO_SET_KEY_TYPE</code> is defined.</p>
-
-<h4 id="fio_name-replace-set"><code>FIO_NAME(replace)</code> (Set)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">replace</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">overwrite</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                                              <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">,</span>
                                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
 </code></pre>
-<p>The same as <a href="#fio_name-overwrite-set"><code>overwrite</code></a>, only it copies the old object (if any) to the location pointed to by <code>old</code>.</p>
+<p>Inserts an object to the Set only overwriting any existing data, rehashing if required.</p>
 
-<p>When setting <code>old</code> to NULL, the function behaves the same as <code>overwrite</code>.</p>
+<p>If <code>old</code> is set, the old object (if any) will be copied to the location pointed to by <code>old</code>.</p>
 
 <p>NOTE: This function doesn&#39;t exist when <code>FIO_SET_KEY_TYPE</code> is defined.</p>
 
@@ -3088,7 +3045,7 @@ be defined. i.e.:</p>
 <h3 id="set-hash-map-data">Set / Hash Map Data</h3>
 
 <h4 id="fio_name-last"><code>FIO_NAME(last)</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_TYPE</span> <span class="o">*</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">last</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_TYPE</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">last</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre>
 <p>Allows a peak at the Set&#39;s last element.</p>
 

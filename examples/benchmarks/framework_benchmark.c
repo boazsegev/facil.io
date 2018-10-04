@@ -8,7 +8,6 @@ using the full HTTP framework stack (without any DB support).
 #include "http.h"
 
 #include "fio_cli.h"
-#include "fio_hashmap.h"
 
 /* *****************************************************************************
 Internal Helpers
@@ -153,15 +152,24 @@ static void cli_init(int argc, char const *argv[]) {
 Routing
 ***************************************************************************** */
 
+typedef void (*fio_router_handler_fn)(http_s *);
+#define FIO_SET_NAME fio_router
+#define FIO_SET_OBJ_TYPE fio_router_handler_fn
+#define FIO_SET_KEY_TYPE fio_str_s
+#define FIO_SET_KEY_COPY(dest, obj) fio_str_concat(&(dest), &(obj))
+#define FIO_SET_KEY_DESTROY(obj) fio_str_free(&(obj))
+#define FIO_SET_KEY_COMPARE(k1, k2) fio_str_iseq(&(k1), &k2)
+#define FIO_INCLUDE_STR
+#define FIO_STR_NO_REF
+#include <fio.h>
 /* the router is a simple hash map */
-static fio_hash_s routes;
+static fio_router_s routes;
 
 /* adds a route to our simple router */
 static void route_add(char *path, void (*handler)(http_s *)) {
   /* add handler to the hash map */
-  size_t len = strlen(path);
-  uint64_t hash = fio_siphash(path, len);
-  fio_hash_insert(&routes, hash, (void *)(uintptr_t)handler);
+  fio_str_s tmp = FIO_STR_INIT_STATIC(path);
+  fio_router_insert(&routes, fio_str_hash(&tmp), tmp, handler, NULL);
 }
 
 /* routes a request to the correct handler */
@@ -169,10 +177,10 @@ static void route_perform(http_s *h) {
   /* add required Serevr header */
   http_set_header(h, HTTP_HEADER_SERVER, fiobj_dup(HTTP_VALUE_SERVER));
   /* collect path from hash map */
-  fio_str_info_s tmp = fiobj_obj2cstr(h->path);
-  uint64_t hash = fio_siphash(tmp.data, tmp.len);
-  void (*handler)(http_s *) =
-      (void (*)(http_s *))(uintptr_t)fio_hash_find(&routes, hash);
+  fio_str_info_s tmp_i = fiobj_obj2cstr(h->path);
+  fio_str_s tmp = FIO_STR_INIT_EXISTING(tmp_i.data, tmp_i.len, 0);
+  fio_router_handler_fn handler =
+      fio_router_find(&routes, fio_str_hash(&tmp), tmp);
   /* forward request or send error */
   if (handler) {
     handler(h);
@@ -182,7 +190,7 @@ static void route_perform(http_s *h) {
 }
 
 /* cleanup for our router */
-static void route_clear(void) { fio_hash_free(&routes); }
+static void route_clear(void) { fio_router_free(&routes); }
 
 /* *****************************************************************************
 Cleanup

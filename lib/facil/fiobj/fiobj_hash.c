@@ -199,7 +199,7 @@ int fiobj_hash_set(FIOBJ hash, FIOBJ key, FIOBJ obj) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
   if (FIOBJ_TYPE_IS(key, FIOBJ_T_STRING))
     fiobj_str_freeze(key);
-  fio_hash_insert(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, obj);
+  fio_hash_insert(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, obj, NULL);
   return 0;
 }
 
@@ -216,11 +216,11 @@ int fiobj_hash_set(FIOBJ hash, FIOBJ key, FIOBJ obj) {
 FIOBJ fiobj_hash_pop(FIOBJ hash, FIOBJ *key) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
   FIOBJ old;
-  if (!fio_hash_last(&obj2hash(hash)->hash))
+  if (fio_hash_count(&obj2hash(hash)->hash))
     return FIOBJ_INVALID;
-  old = fiobj_dup(fio_hash_last(&obj2hash(hash)->hash)->obj);
+  old = fiobj_dup(fio_hash_last(&obj2hash(hash)->hash).obj);
   if (key)
-    *key = fiobj_dup(fio_hash_last(&obj2hash(hash)->hash)->key);
+    *key = fiobj_dup(fio_hash_last(&obj2hash(hash)->hash).key);
   fio_hash_pop(&obj2hash(hash)->hash);
   return old;
 }
@@ -237,7 +237,7 @@ FIOBJ fiobj_hash_pop(FIOBJ hash, FIOBJ *key) {
 FIOBJ fiobj_hash_replace(FIOBJ hash, FIOBJ key, FIOBJ obj) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
   FIOBJ old = FIOBJ_INVALID;
-  fio_hash_insert2(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, obj, &old);
+  fio_hash_insert(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, obj, &old);
   return old;
 }
 
@@ -247,7 +247,7 @@ FIOBJ fiobj_hash_replace(FIOBJ hash, FIOBJ key, FIOBJ obj) {
 FIOBJ fiobj_hash_remove(FIOBJ hash, FIOBJ key) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
   FIOBJ old = FIOBJ_INVALID;
-  fio_hash_remove2(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, &old);
+  fio_hash_remove(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, &old);
   return old;
 }
 
@@ -258,7 +258,7 @@ FIOBJ fiobj_hash_remove(FIOBJ hash, FIOBJ key) {
 FIOBJ fiobj_hash_remove2(FIOBJ hash, uint64_t hash_value) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
   FIOBJ old = FIOBJ_INVALID;
-  fio_hash_remove2(&obj2hash(hash)->hash, hash_value, -1, &old);
+  fio_hash_remove(&obj2hash(hash)->hash, hash_value, -1, &old);
   return old;
 }
 
@@ -283,7 +283,7 @@ int fiobj_hash_delete(FIOBJ hash, FIOBJ key) {
  * Returns -1 on type error or if the object never existed.
  */
 int fiobj_hash_delete2(FIOBJ hash, uint64_t key_hash) {
-  return fio_hash_remove(&obj2hash(hash)->hash, key_hash, -1);
+  return fio_hash_remove(&obj2hash(hash)->hash, key_hash, -1, NULL);
 }
 
 /**
@@ -292,10 +292,8 @@ int fiobj_hash_delete2(FIOBJ hash, uint64_t key_hash) {
  */
 FIOBJ fiobj_hash_get(const FIOBJ hash, FIOBJ key) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  FIOBJ *old = fio_hash_find(&obj2hash(hash)->hash, fiobj_obj2hash(key), key);
-  if (old)
-    return *old;
-  return FIOBJ_INVALID;
+  return fio_hash_find(&obj2hash(hash)->hash, fiobj_obj2hash(key), key);
+  ;
 }
 
 /**
@@ -308,10 +306,8 @@ FIOBJ fiobj_hash_get(const FIOBJ hash, FIOBJ key) {
  */
 FIOBJ fiobj_hash_get2(const FIOBJ hash, uint64_t key_hash) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  FIOBJ *old = fio_hash_find(&obj2hash(hash)->hash, key_hash, -1);
-  if (old)
-    return *old;
-  return FIOBJ_INVALID;
+  return fio_hash_find(&obj2hash(hash)->hash, key_hash, -1);
+  ;
 }
 
 /**
@@ -319,7 +315,8 @@ FIOBJ fiobj_hash_get2(const FIOBJ hash, uint64_t key_hash) {
  */
 int fiobj_hash_haskey(const FIOBJ hash, FIOBJ key) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
-  return fio_hash_find(&obj2hash(hash)->hash, fiobj_obj2hash(key), key) != NULL;
+  return fio_hash_find(&obj2hash(hash)->hash, fiobj_obj2hash(key), key) !=
+         FIOBJ_INVALID;
 }
 
 /**

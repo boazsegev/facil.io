@@ -45,6 +45,10 @@ static void on_open_shootout_websocket(ws_s *ws) {
                       .on_unsubscribe = on_websocket_unsubscribe);
   websocket_subscribe(ws, .channel = CHANNEL_BINARY, .force_binary = 1,
                       .on_unsubscribe = on_websocket_unsubscribe);
+  websocket_subscribe(
+      ws, .channel = (fio_str_info_s){.data = (char *)ws, .len = sizeof(ws)},
+      .force_binary = 1,
+      .on_unsubscribe = on_websocket_unsubscribe); /* for debugging */
 }
 static void on_open_shootout_websocket_sse(http_sse_s *sse) {
   http_sse_subscribe(sse, .channel = CHANNEL_TEXT);
