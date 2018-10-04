@@ -2738,11 +2738,11 @@ FIO_FUNC inline int fio_ls_embd_any(fio_ls_embd_s *list);
 Independent Linked List API
 ***************************************************************************** */
 
-/** Adds an object to the list's head. */
-FIO_FUNC inline void fio_ls_push(fio_ls_s *pos, const void *obj);
+/** Adds an object to the list's head, returnin's the object's location. */
+FIO_FUNC inline fio_ls_s *fio_ls_push(fio_ls_s *pos, const void *obj);
 
-/** Adds an object to the list's tail. */
-FIO_FUNC inline void fio_ls_unshift(fio_ls_s *pos, const void *obj);
+/** Adds an object to the list's tail, returnin's the object's location. */
+FIO_FUNC inline fio_ls_s *fio_ls_unshift(fio_ls_s *pos, const void *obj);
 
 /** Removes an object from the list's head. */
 FIO_FUNC inline void *fio_ls_pop(fio_ls_s *list);
@@ -2848,7 +2848,7 @@ FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node) {
 }
 
 /** Adds an object to the list's head. */
-FIO_FUNC inline void fio_ls_push(fio_ls_s *pos, const void *obj) {
+FIO_FUNC inline fio_ls_s *fio_ls_push(fio_ls_s *pos, const void *obj) {
   /* prepare item */
   fio_ls_s *item = (fio_ls_s *)malloc(sizeof(*item));
   if (!item) {
@@ -2859,11 +2859,12 @@ FIO_FUNC inline void fio_ls_push(fio_ls_s *pos, const void *obj) {
   /* inject item */
   pos->prev->next = item;
   pos->prev = item;
+  return item;
 }
 
 /** Adds an object to the list's tail. */
-FIO_FUNC inline void fio_ls_unshift(fio_ls_s *pos, const void *obj) {
-  fio_ls_push(pos->next, obj);
+FIO_FUNC inline fio_ls_s *fio_ls_unshift(fio_ls_s *pos, const void *obj) {
+  return fio_ls_push(pos->next, obj);
 }
 
 /** Removes an object from the list's head. */

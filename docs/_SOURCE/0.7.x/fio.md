@@ -1747,18 +1747,22 @@ fio_ls_s my_list = FIO_LS_INIT(my_list);
 #### `fio_ls_push`
 
 ```c
-inline void fio_ls_push(fio_ls_s *pos, const void *obj);
+inline fio_ls_s *fio_ls_push(fio_ls_s *pos, const void *obj);
 ```
 
 Adds an object to the list's head.
 
+Returns a pointer to the object's position (can be used in `fio_ls_remove`).
+
 #### `fio_ls_unshift`
 
 ```c
-inline void fio_ls_unshift(fio_ls_s *pos, const void *obj);
+inline fio_ls_s *fio_ls_unshift(fio_ls_s *pos, const void *obj);
 ```
 
 Adds an object to the list's tail.
+
+Returns a pointer to the object's position (can be used in `fio_ls_remove`).
 
 #### `fio_ls_pop`
 

@@ -615,7 +615,7 @@ static void websocket_on_pubsub_message(fio_msg_s *msg) {
  */
 #undef websocket_subscribe
 uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
-  if (!args.ws)
+  if (!args.ws || !fio_is_valid(args.ws->fd))
     goto error;
   websocket_sub_data_s *d = malloc(sizeof(*d));
   FIO_ASSERT_ALLOC(d);
@@ -637,14 +637,15 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
                                : websocket_on_pubsub_message_direct),
           .udata1 = (void *)args.ws->fd, .udata2 = d);
   if (!sub) {
-    /* don't free `d`, return (`d` freed by callback) */
+    /* don't free `d`, return (`d` freed by fio_subscribe) */
     return 0;
   }
+  fio_ls_s *pos;
   fio_lock(&args.ws->sub_lock);
-  fio_ls_push(&args.ws->subscriptions, sub);
+  pos = fio_ls_push(&args.ws->subscriptions, sub);
   fio_unlock(&args.ws->sub_lock);
 
-  return (uintptr_t)args.ws->subscriptions.prev;
+  return (uintptr_t)pos;
 error:
   if (args.on_unsubscribe)
     args.on_unsubscribe(args.udata);

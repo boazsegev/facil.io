@@ -1270,8 +1270,7 @@ uintptr_t http_sse_subscribe(http_sse_s *sse_,
     return 0;
 
   fio_lock(&sse->lock);
-  fio_ls_push(&sse->subscriptions, sub);
-  fio_ls_s *pos = sse->subscriptions.prev;
+  fio_ls_s *pos = fio_ls_push(&sse->subscriptions, sub);
   fio_unlock(&sse->lock);
   return (uintptr_t)pos;
 }
