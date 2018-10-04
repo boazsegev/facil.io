@@ -402,10 +402,8 @@ extern size_t FIO_LOG_LEVEL;
 /** Tests for an allocation failure. The behavior can be overridden. */
 #define FIO_ASSERT_ALLOC(ptr)                                                  \
   if (!(ptr)) {                                                                \
-    fprintf(stderr,                                                            \
-            "FATAL ERROR: memory allocation error "__FILE__                    \
-            ":%d\n",                                                           \
-            __LINE__);                                                         \
+    fprintf(stderr, "\nFATAL ERROR: memory allocation error "__FILE__          \
+                    ":" FIO_MACRO2STR(__LINE__) "\n");                         \
     perror("             Error details (errno)");                              \
     kill(0, SIGINT);                                                           \
     exit(errno);                                                               \

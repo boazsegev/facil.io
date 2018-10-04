@@ -23,6 +23,10 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 #include <dlfcn.h>
 #endif
 
+/* *****************************************************************************
+Sunscription related variables and callbacks (used also for testing)
+***************************************************************************** */
+
 fio_str_info_s CHANNEL_TEXT = {.len = 4, .data = "text"};
 fio_str_info_s CHANNEL_BINARY = {.len = 6, .data = "binary"};
 
@@ -35,9 +39,13 @@ static void on_websocket_unsubscribe(void *udata) {
 }
 
 static void print_subscription_balance(void *a) {
-  fprintf(stderr, "* subscribe / on_unsubscribe count (%s): %zu / %zu\n",
-          (char *)a, sub_count, unsub_count);
+  FIO_LOG_INFO("subscribe / on_unsubscribe count (%s): %zu / %zu", (char *)a,
+               sub_count, unsub_count);
 }
+
+/* *****************************************************************************
+WebSocket event callbacks
+***************************************************************************** */
 
 static void on_open_shootout_websocket(ws_s *ws) {
   fio_atomic_add(&sub_count, 2);
@@ -45,10 +53,6 @@ static void on_open_shootout_websocket(ws_s *ws) {
                       .on_unsubscribe = on_websocket_unsubscribe);
   websocket_subscribe(ws, .channel = CHANNEL_BINARY, .force_binary = 1,
                       .on_unsubscribe = on_websocket_unsubscribe);
-  websocket_subscribe(
-      ws, .channel = (fio_str_info_s){.data = (char *)ws, .len = sizeof(ws)},
-      .force_binary = 1,
-      .on_unsubscribe = on_websocket_unsubscribe); /* for debugging */
 }
 static void on_open_shootout_websocket_sse(http_sse_s *sse) {
   http_sse_subscribe(sse, .channel = CHANNEL_TEXT);
@@ -78,6 +82,10 @@ static void handle_websocket_messages(ws_s *ws, fio_str_info_s msg,
   }
 }
 
+/* *****************************************************************************
+HTTP events
+***************************************************************************** */
+
 static void answer_http_request(http_s *request) {
   http_set_header(request, HTTP_HEADER_CONTENT_TYPE,
                   http_mimetype_find("txt", 3));
@@ -92,6 +100,45 @@ static void answer_http_upgrade(http_s *request, char *target, size_t len) {
   } else
     http_send_error(request, 400);
 }
+
+/* *****************************************************************************
+Pub/Sub logging (for debugging)
+***************************************************************************** */
+
+/** Should subscribe channel. Failures are ignored. */
+static void logger_subscribe(const fio_pubsub_engine_s *eng,
+                             fio_str_info_s channel, fio_match_fn match) {
+  FIO_LOG_INFO("Channel subscription created: %s", channel.data);
+  (void)eng;
+  (void)match;
+}
+/** Should unsubscribe channel. Failures are ignored. */
+static void logger_unsubscribe(const fio_pubsub_engine_s *eng,
+                               fio_str_info_s channel, fio_match_fn match) {
+  FIO_LOG_INFO("Channel subscription destroyed: %s", channel.data);
+  fflush(stderr);
+  (void)eng;
+  (void)match;
+}
+/** Should publish a message through the engine. Failures are ignored. */
+static void logger_publish(const fio_pubsub_engine_s *eng,
+                           fio_str_info_s channel, fio_str_info_s msg,
+                           uint8_t is_json) {
+  (void)eng;
+  (void)channel;
+  (void)msg;
+  (void)is_json;
+}
+
+static fio_pubsub_engine_s PUBSUB_LOGGIN_ENGINE = {
+    .subscribe = logger_subscribe,
+    .unsubscribe = logger_unsubscribe,
+    .publish = logger_publish,
+};
+
+/* *****************************************************************************
+The main function
+***************************************************************************** */
 
 #include "fio_cli.h"
 /*
@@ -158,6 +205,7 @@ int main(int argc, char const *argv[]) {
 #endif
 
 #if DEBUG
+  fio_pubsub_attach(&PUBSUB_LOGGIN_ENGINE);
   fio_state_callback_add(FIO_CALL_ON_SHUTDOWN, print_subscription_balance,
                          "on shutdown");
   fio_state_callback_add(FIO_CALL_ON_FINISH, print_subscription_balance,
@@ -166,6 +214,7 @@ int main(int argc, char const *argv[]) {
                          "at exit");
 #else
   (void)print_subscription_balance;
+  (void)PUBSUB_LOGGIN_ENGINE;
 #endif
 
   fio_start(.threads = threads, .workers = workers);

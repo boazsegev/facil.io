@@ -327,10 +327,7 @@ static void destroy_ws(ws_s *ws) {
 void websocket_attach(intptr_t uuid, http_settings_s *http_settings,
                       websocket_settings_s *args, void *data, size_t length) {
   ws_s *ws = new_websocket(uuid);
-  if (!ws) {
-    FIO_LOG_FATAL("couldn't allocate Websocket protocol object");
-    exit(errno);
-  }
+  FIO_ASSERT_ALLOC(ws);
   // we have an active websocket connection - prep the connection buffer
   ws->buffer = create_ws_buffer(ws);
   // Setup ws callbacks
@@ -531,11 +528,11 @@ typedef struct {
 
 static void websocket_on_unsubscribe(void *u1, void *u2) {
   websocket_sub_data_s *d = u2;
-  (void)u1;
   if (d->on_unsubscribe) {
     d->on_unsubscribe(d->udata);
   }
   free(d);
+  (void)u1;
 }
 
 static inline void websocket_on_pubsub_message_direct_internal(fio_msg_s *msg,
