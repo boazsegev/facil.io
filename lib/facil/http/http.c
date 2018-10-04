@@ -2641,7 +2641,7 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
                             FIOBJ mime_type_str) {
   uintptr_t hash = fio_siphash(file_ext, file_ext_len);
   if (mime_type_str == FIOBJ_INVALID) {
-    fio_mime_set_remove(&mime_types, hash, FIOBJ_INVALID);
+    fio_mime_set_remove(&mime_types, hash, FIOBJ_INVALID, NULL);
   } else {
     FIOBJ old = FIOBJ_INVALID;
     fio_mime_set_overwrite(&mime_types, hash, mime_type_str, &old);

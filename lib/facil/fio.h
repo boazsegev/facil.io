@@ -4352,7 +4352,8 @@ FIO_FUNC FIO_SET_OBJ_TYPE
  */
 FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
                                      const FIO_SET_HASH_TYPE hash_value,
-                                     FIO_SET_OBJ_TYPE obj);
+                                     FIO_SET_OBJ_TYPE obj,
+                                     FIO_SET_OBJ_TYPE *old);
 
 #endif
 /**
@@ -4740,12 +4741,14 @@ FIO_NAME(overwrite)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
  */
 FIO_FUNC int FIO_NAME(remove)(FIO_NAME(s) * set,
                               const FIO_SET_HASH_TYPE hash_value,
-                              FIO_SET_OBJ_TYPE obj) {
+                              FIO_SET_OBJ_TYPE obj, FIO_SET_OBJ_TYPE *old) {
   if (FIO_SET_HASH_COMPARE(hash_value, FIO_SET_HASH_INVALID))
     return -1;
   FIO_NAME(_map_s_) *pos = FIO_NAME(_find_map_pos_)(set, hash_value, obj);
   if (!pos || !pos->pos)
     return -1;
+  if (old)
+    FIO_SET_COPY((*old), pos->pos->obj);
   FIO_SET_DESTROY(pos->pos->obj);
   --set->count;
   pos->pos->hash = FIO_SET_HASH_INVALID;

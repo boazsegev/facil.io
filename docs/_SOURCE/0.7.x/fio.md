@@ -2609,12 +2609,15 @@ NOTE: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
 ```c
 inline int FIO_NAME(remove)(FIO_NAME(s) * set,
                              const FIO_SET_HASH_TYPE hash_value,
-                             FIO_SET_OBJ_TYPE obj);
+                             FIO_SET_OBJ_TYPE obj,
+                             FIO_SET_OBJ_TYPE *old);
 ```
 
 Removes an object from the Set, rehashing if required.
 
 Returns 0 on success and -1 if the object wasn't found.
+
+If `old` is set, the old object (if any) will be copied to the location pointed to by `old`.
 
 NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 

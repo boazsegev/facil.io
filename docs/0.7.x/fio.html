@@ -3034,11 +3034,14 @@ be defined. i.e.:</p>
 <h4 id="fio_name-remove-set"><code>FIO_NAME(remove)</code> (Set)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                              <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
-                             <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">);</span>
+                             <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">,</span>
+                             <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
 </code></pre>
 <p>Removes an object from the Set, rehashing if required.</p>
 
 <p>Returns 0 on success and -1 if the object wasn&#39;t found.</p>
+
+<p>If <code>old</code> is set, the old object (if any) will be copied to the location pointed to by <code>old</code>.</p>
 
 <p>NOTE: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
 

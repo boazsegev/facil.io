@@ -486,7 +486,8 @@ int fio_uuid_unlink(intptr_t uuid, void *obj) {
   if (!uuid_is_valid(uuid))
     goto locked_invalid;
   /* default object comparison is always true */
-  int ret = fio_uuid_links_remove(&uuid_data(uuid).links, (uintptr_t)obj, NULL);
+  int ret =
+      fio_uuid_links_remove(&uuid_data(uuid).links, (uintptr_t)obj, NULL, NULL);
   if (ret)
     errno = ENOTCONN;
   fio_unlock(&uuid_data(uuid).sock_lock);
@@ -4441,7 +4442,7 @@ void fio_unsubscribe(subscription_s *s) {
     fio_lock(&c->lock);
     /* test again within lock */
     if (fio_ls_embd_is_empty(&ch->subscriptions)) {
-      fio_ch_set_remove(&c->channels, hashed, ch);
+      fio_ch_set_remove(&c->channels, hashed, ch, NULL);
       removed = 1;
     }
     fio_unlock(&c->lock);
@@ -4521,7 +4522,8 @@ void fio_pubsub_attach(fio_pubsub_engine_s *engine) {
 /** Detaches an engine, so it could be safely destroyed. */
 void fio_pubsub_detach(fio_pubsub_engine_s *engine) {
   fio_lock(&fio_postoffice.engines.lock);
-  fio_engine_set_remove(&fio_postoffice.engines.set, (uintptr_t)engine, engine);
+  fio_engine_set_remove(&fio_postoffice.engines.set, (uintptr_t)engine, engine,
+                        NULL);
   fio_unlock(&fio_postoffice.engines.lock);
 }
 
@@ -4613,8 +4615,8 @@ void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
     fio_meta_set_insert(&fio_postoffice.meta.set, (uintptr_t)callback,
                         callback);
   else
-    fio_meta_set_remove(&fio_postoffice.meta.set, (uintptr_t)callback,
-                        callback);
+    fio_meta_set_remove(&fio_postoffice.meta.set, (uintptr_t)callback, callback,
+                        NULL);
   fio_unlock(&fio_postoffice.meta.lock);
 }
 
@@ -8476,7 +8478,7 @@ FIO_FUNC void fio_set_test(void) {
 
   fprintf(stderr, "* Removing odd items from %lu items\n", FIO_SET_TEXT_COUNT);
   for (unsigned long i = 1; i < FIO_SET_TEXT_COUNT; i += 2) {
-    fio_set_test_remove(&s, i, i);
+    fio_set_test_remove(&s, i, i, NULL);
     fio_hash_test_remove(&h, i, i, NULL);
     FIO_ASSERT(!(fio_set_test_find(&s, i, i)),
                "Removal failed in set (still exists).");
@@ -8529,7 +8531,7 @@ FIO_FUNC void fio_set_test(void) {
     }
     if (1) {
       uintptr_t tmp = 1;
-      fio_set_test_remove(&s, tmp, tmp);
+      fio_set_test_remove(&s, tmp, tmp, NULL);
       fio_hash_test_remove(&h, tmp, tmp, NULL);
       size_t count = s.count;
       fio_set_test_overwrite(&s, tmp, tmp, NULL);
@@ -8550,7 +8552,7 @@ FIO_FUNC void fio_set_test(void) {
                  "Re-adding a removed item should update the item in the set "
                  "(%lu != 1)!",
                  (unsigned long)fio_set_test_find(&s, tmp, tmp));
-      fio_set_test_remove(&s, tmp, tmp);
+      fio_set_test_remove(&s, tmp, tmp, NULL);
       fio_hash_test_remove(&h, tmp, tmp, NULL);
       FIO_ASSERT(count == h.count,
                  "Re-removing an item should decrease count (%zu != %zu).",
