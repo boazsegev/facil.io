@@ -50,7 +50,7 @@ void on_request(http_s *request) {
 }
 ```
 
-*(Written on version 0.7.0)*
+*(Written using version 0.7.0)*
 
 ### Creating a Web Application Using the Latest Release
 
