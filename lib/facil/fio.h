@@ -370,16 +370,16 @@ extern size_t FIO_LOG_LEVEL;
   } while (0)
 #define FIO_LOG_DEBUG(...)                                                     \
   FIO_LOG_PRINT(FIO_LOG_LEVEL_DEBUG,                                           \
-                "[DEBUG ("__FILE__                                             \
-                ":" FIO_MACRO2STR(__LINE__) ")] " __VA_ARGS__)
+                "DEBUG ("__FILE__                                              \
+                ":" FIO_MACRO2STR(__LINE__) "): " __VA_ARGS__)
 #define FIO_LOG_INFO(...)                                                      \
-  FIO_LOG_PRINT(FIO_LOG_LEVEL_INFO, "[INFO] " __VA_ARGS__)
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_INFO, "INFO: " __VA_ARGS__)
 #define FIO_LOG_WARNING(...)                                                   \
-  FIO_LOG_PRINT(FIO_LOG_LEVEL_WARNING, "[WARNING] " __VA_ARGS__)
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_WARNING, "WARNING: " __VA_ARGS__)
 #define FIO_LOG_ERROR(...)                                                     \
-  FIO_LOG_PRINT(FIO_LOG_LEVEL_ERROR, "[ERROR] " __VA_ARGS__)
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_ERROR, "ERROR: " __VA_ARGS__)
 #define FIO_LOG_FATAL(...)                                                     \
-  FIO_LOG_PRINT(FIO_LOG_LEVEL_FATAL, "[FATAL] " __VA_ARGS__)
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_FATAL, "FATAL: " __VA_ARGS__)
 #endif
 
 #if FIO_PRINT_STATE
@@ -402,9 +402,8 @@ extern size_t FIO_LOG_LEVEL;
 /** Tests for an allocation failure. The behavior can be overridden. */
 #define FIO_ASSERT_ALLOC(ptr)                                                  \
   if (!(ptr)) {                                                                \
-    fprintf(stderr, "\nFATAL ERROR: memory allocation error "__FILE__          \
-                    ":" FIO_MACRO2STR(__LINE__) "\n");                         \
-    perror("             Error details (errno)");                              \
+    FIO_LOG_FATAL("memory allocation error "__FILE__                           \
+                  ":" FIO_MACRO2STR(__LINE__));                                \
     kill(0, SIGINT);                                                           \
     exit(errno);                                                               \
   }
