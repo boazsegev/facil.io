@@ -28,11 +28,11 @@ typedef struct {
 #define FIO_SET_KEY_COMPARE(o1, o2)                                            \
   (o1.len == o2.len &&                                                         \
    (o1.data == o2.data || !memcmp(o1.data, o2.data, o1.len)))
-#define FIO_SET_NAME fio_hash
+#define FIO_SET_NAME fio_cli_hash
 #include <fio.h>
 
-static fio_hash_s fio_aliases = FIO_SET_INIT;
-static fio_hash_s fio_values = FIO_SET_INIT;
+static fio_cli_hash_s fio_aliases = FIO_SET_INIT;
+static fio_cli_hash_s fio_values = FIO_SET_INIT;
 static size_t fio_unknown_count = 0;
 
 typedef struct {
@@ -63,7 +63,8 @@ static void fio_cli_map_line2alias(char const *line) {
       ++n.len;
     }
     const char *old = NULL;
-    fio_hash_insert(&fio_aliases, FIO_CLI_HASH_VAL(n), n, (void *)line, &old);
+    fio_cli_hash_insert(&fio_aliases, FIO_CLI_HASH_VAL(n), n, (void *)line,
+                        &old);
     if (old) {
       FIO_LOG_WARNING("CLI argument name conflict detected\n"
                       "         The following two directives conflict:\n"
@@ -122,7 +123,7 @@ static void fio_cli_set_arg(cstr_s arg, char const *value, char const *line,
       goto print_help;
     }
     cstr_s n = {.len = ++parser->unknown_count};
-    fio_hash_insert(&fio_values, n.len, n, value, NULL);
+    fio_cli_hash_insert(&fio_values, n.len, n, value, NULL);
     if (!parser->allow_unknown) {
       arg.len = 0;
       goto error;
@@ -170,7 +171,7 @@ static void fio_cli_set_arg(cstr_s arg, char const *value, char const *line,
       while (n.data[n.len] && n.data[n.len] != ' ' && n.data[n.len] != ',') {
         ++n.len;
       }
-      fio_hash_insert(&fio_values, FIO_CLI_HASH_VAL(n), n, value, NULL);
+      fio_cli_hash_insert(&fio_values, FIO_CLI_HASH_VAL(n), n, value, NULL);
       while (n.data[n.len] && (n.data[n.len] == ' ' || n.data[n.len] == ',')) {
         ++n.len;
       }
@@ -295,7 +296,7 @@ void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int allow_unknown,
       .pos = 0,
   };
 
-  if (fio_hash_count(&fio_values)) {
+  if (fio_cli_hash_count(&fio_values)) {
     fio_cli_end();
   }
 
@@ -324,7 +325,7 @@ void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int allow_unknown,
     }
     const char *l = NULL;
     while (n.len &&
-           !(l = fio_hash_find(&fio_aliases, FIO_CLI_HASH_VAL(n), n))) {
+           !(l = fio_cli_hash_find(&fio_aliases, FIO_CLI_HASH_VAL(n), n))) {
       --n.len;
       value = n.data + n.len;
     }
@@ -336,13 +337,13 @@ void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int allow_unknown,
   }
 
   /* Cleanup and save state for API */
-  fio_hash_free(&fio_aliases);
+  fio_cli_hash_free(&fio_aliases);
   fio_unknown_count = parser.unknown_count;
 }
 
 void fio_cli_end(void) {
-  fio_hash_free(&fio_values);
-  fio_hash_free(&fio_aliases);
+  fio_cli_hash_free(&fio_values);
+  fio_cli_hash_free(&fio_aliases);
   fio_unknown_count = 0;
 }
 /* *****************************************************************************
@@ -352,10 +353,10 @@ CLI Data Access
 /** Returns the argument's value as a NUL terminated C String. */
 char const *fio_cli_get(char const *name) {
   cstr_s n = {.data = name, .len = strlen(name)};
-  if (!fio_hash_count(&fio_values)) {
+  if (!fio_cli_hash_count(&fio_values)) {
     return NULL;
   }
-  return fio_hash_find(&fio_values, FIO_CLI_HASH_VAL(n), n);
+  return fio_cli_hash_find(&fio_values, FIO_CLI_HASH_VAL(n), n);
 }
 
 /** Returns the argument's value as an integer. */
@@ -388,11 +389,11 @@ unsigned int fio_cli_unknown_count(void) {
 
 /** Returns the unrecognized argument using a 0 based `index`. */
 char const *fio_cli_unknown(unsigned int index) {
-  if (!fio_hash_count(&fio_values) || !fio_unknown_count) {
+  if (!fio_cli_hash_count(&fio_values) || !fio_unknown_count) {
     return NULL;
   }
   cstr_s n = {.data = NULL, .len = index + 1};
-  return fio_hash_find(&fio_values, index + 1, n);
+  return fio_cli_hash_find(&fio_values, index + 1, n);
 }
 
 /**
@@ -403,5 +404,5 @@ char const *fio_cli_unknown(unsigned int index) {
  */
 void fio_cli_set(char const *name, char const *value) {
   cstr_s n = (cstr_s){.data = name, .len = strlen(name)};
-  fio_hash_insert(&fio_values, FIO_CLI_HASH_VAL(n), n, value, NULL);
+  fio_cli_hash_insert(&fio_values, FIO_CLI_HASH_VAL(n), n, value, NULL);
 }

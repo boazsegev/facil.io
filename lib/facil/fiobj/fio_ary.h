@@ -712,6 +712,4 @@ Done
 #undef register
 #endif
 
-#undef FIO_FUNC
-
 #endif

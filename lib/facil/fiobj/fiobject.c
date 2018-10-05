@@ -23,7 +23,7 @@ Use the facil.io allocator when available
 ***************************************************************************** */
 
 #pragma weak fio_malloc
-void *fio_malloc(size_t size) {
+void *fio_malloc FIO_IGNORE_MACRO(size_t size) {
   void *m = malloc(size);
   if (m)
     memset(m, 0, size);
@@ -31,27 +31,31 @@ void *fio_malloc(size_t size) {
 }
 
 #pragma weak fio_calloc
-void *__attribute__((weak)) fio_calloc(size_t size, size_t count) {
+void *__attribute__((weak)) fio_calloc FIO_IGNORE_MACRO(size_t size,
+                                                        size_t count) {
   return calloc(size, count);
 }
 
 #pragma weak fio_free
-void __attribute__((weak)) fio_free(void *ptr) { free(ptr); }
+void __attribute__((weak)) fio_free FIO_IGNORE_MACRO(void *ptr) { free(ptr); }
 
 #pragma weak fio_realloc
-void *__attribute__((weak)) fio_realloc(void *ptr, size_t new_size) {
+void *__attribute__((weak)) fio_realloc FIO_IGNORE_MACRO(void *ptr,
+                                                         size_t new_size) {
   return realloc(ptr, new_size);
 }
 
 #pragma weak fio_realloc2
-void *__attribute__((weak))
-fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
+void *__attribute__((weak)) fio_realloc2
+FIO_IGNORE_MACRO(void *ptr, size_t new_size, size_t valid_len) {
   return realloc(ptr, new_size);
   (void)valid_len;
 }
 
 #pragma weak fio_mmap
-void *__attribute__((weak)) fio_mmap(size_t size) { return fio_malloc(size); }
+void *__attribute__((weak)) fio_mmap FIO_IGNORE_MACRO(size_t size) {
+  return fio_malloc(size);
+}
 
 /** The logging level */
 #if DEBUG
