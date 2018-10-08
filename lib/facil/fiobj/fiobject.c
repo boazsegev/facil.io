@@ -8,10 +8,12 @@ This facil.io core library provides wrappers around complex and (or) dynamic
 types, abstracting some complexity and making dynamic type related tasks easier.
 */
 #include <fiobject.h>
-#undef FIO_FORCE_MALLOC /* just in case */
-#include <fio.h>
 
-#include <fio_ary.h>
+#define FIO_ARY_NAME fiobj_stack
+#define FIO_ARY_TYPE FIOBJ
+#define FIO_ARY_INVALID FIOBJ_INVALID
+/* don't free or compare objects, this stack shouldn't have side-effects */
+#include <fio.h>
 
 #include <stdarg.h>
 #include <stdint.h>
@@ -70,7 +72,7 @@ the `fiobj_each2` function
 struct task_packet_s {
   int (*task)(FIOBJ obj, void *arg);
   void *arg;
-  fio_ary_s *stack;
+  fiobj_stack_s *stack;
   FIOBJ next;
   uintptr_t counter;
   uint8_t stop;
@@ -120,7 +122,7 @@ size_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ obj, void *arg), void *arg) {
   if (task(o, arg) == -1)
     return 1;
   uintptr_t pos = 0;
-  fio_ary_s stack = FIO_ARY_INIT;
+  fiobj_stack_s stack = FIO_ARY_INIT;
   struct task_packet_s packet = {
       .task = task,
       .arg = arg,
@@ -135,19 +137,20 @@ size_t fiobj_each2(FIOBJ o, int (*task)(FIOBJ obj, void *arg), void *arg) {
     if (packet.stop)
       goto finish;
     if (packet.incomplete) {
-      fio_ary_push(&stack, (void *)pos);
-      fio_ary_push(&stack, (void *)o);
+      fiobj_stack_push(&stack, pos);
+      fiobj_stack_push(&stack, o);
     }
 
     if (packet.next) {
-      fio_ary_push(&stack, (void *)0);
-      fio_ary_push(&stack, (void *)packet.next);
+      fiobj_stack_push(&stack, (FIOBJ)0);
+      fiobj_stack_push(&stack, packet.next);
     }
-    o = (FIOBJ)fio_ary_pop(&stack);
-    pos = (uintptr_t)fio_ary_pop(&stack);
+    o = FIOBJ_INVALID;
+    fiobj_stack_pop(&stack, &o);
+    fiobj_stack_pop(&stack, &pos);
   } while (o);
 finish:
-  fio_ary_free(&stack);
+  fiobj_stack_free(&stack);
   return packet.counter;
 }
 
@@ -168,8 +171,8 @@ static void fiobj_dealloc_task(FIOBJ o, void *stack_) {
     FIOBJECT2VTBL(o)->dealloc(o, NULL, NULL);
     return;
   }
-  fio_ary_s *s = stack_;
-  fio_ary_push(s, (void *)o);
+  fiobj_stack_s *s = stack_;
+  fiobj_stack_push(s, o);
 }
 /**
  * Decreases an object's reference count, releasing memory and
@@ -180,11 +183,11 @@ static void fiobj_dealloc_task(FIOBJ o, void *stack_) {
  * also freed.
  */
 void fiobj_free_complex_object(FIOBJ o) {
-  fio_ary_s stack = FIO_ARY_INIT;
+  fiobj_stack_s stack = FIO_ARY_INIT;
   do {
     FIOBJECT2VTBL(o)->dealloc(o, fiobj_dealloc_task, &stack);
-  } while ((o = (FIOBJ)fio_ary_pop(&stack)));
-  fio_ary_free(&stack);
+  } while (!fiobj_stack_pop(&stack, &o));
+  fiobj_stack_free(&stack);
 }
 
 /* *****************************************************************************
@@ -207,10 +210,10 @@ static inline int fiobj_iseq_simple(const FIOBJ o, const FIOBJ o2) {
 }
 
 static int fiobj_iseq____internal_complex__task(FIOBJ o, void *ary_) {
-  fio_ary_s *ary = ary_;
-  fio_ary_push(ary, (void *)o);
+  fiobj_stack_s *ary = ary_;
+  fiobj_stack_push(ary, o);
   if (fiobj_hash_key_in_loop())
-    fio_ary_push(ary, (void *)fiobj_hash_key_in_loop());
+    fiobj_stack_push(ary, fiobj_hash_key_in_loop());
   return 0;
 }
 
@@ -219,34 +222,38 @@ int fiobj_iseq____internal_complex__(FIOBJ o, FIOBJ o2) {
   // if (FIOBJECT2VTBL(o)->each && FIOBJECT2VTBL(o)->count(o))
   //   return int fiobj_iseq____internal_complex__(const FIOBJ o, const FIOBJ
   //   o2);
-  fio_ary_s left = FIO_ARY_INIT, right = FIO_ARY_INIT, queue = FIO_ARY_INIT;
+  fiobj_stack_s left = FIO_ARY_INIT, right = FIO_ARY_INIT, queue = FIO_ARY_INIT;
   do {
     fiobj_each1(o, 0, fiobj_iseq____internal_complex__task, &left);
     fiobj_each1(o2, 0, fiobj_iseq____internal_complex__task, &right);
-    while (fio_ary_count(&left)) {
-      o = (FIOBJ)fio_ary_pop(&left);
-      o2 = (FIOBJ)fio_ary_pop(&right);
+    while (fiobj_stack_count(&left)) {
+      o = FIOBJ_INVALID;
+      o2 = FIOBJ_INVALID;
+      fiobj_stack_pop(&left, &o);
+      fiobj_stack_pop(&right, &o2);
       if (!fiobj_iseq_simple(o, o2))
         goto unequal;
       if (FIOBJ_IS_ALLOCATED(o) && FIOBJECT2VTBL(o)->each &&
           FIOBJECT2VTBL(o)->count(o)) {
-        fio_ary_push(&queue, (void *)o);
-        fio_ary_push(&queue, (void *)o2);
+        fiobj_stack_push(&queue, o);
+        fiobj_stack_push(&queue, o2);
       }
     }
-    o2 = (FIOBJ)fio_ary_pop(&queue);
-    o = (FIOBJ)fio_ary_pop(&queue);
+    o = FIOBJ_INVALID;
+    o2 = FIOBJ_INVALID;
+    fiobj_stack_pop(&queue, &o2);
+    fiobj_stack_pop(&queue, &o);
     if (!fiobj_iseq_simple(o, o2))
       goto unequal;
   } while (o);
-  fio_ary_free(&left);
-  fio_ary_free(&right);
-  fio_ary_free(&queue);
+  fiobj_stack_free(&left);
+  fiobj_stack_free(&right);
+  fiobj_stack_free(&queue);
   return 1;
 unequal:
-  fio_ary_free(&left);
-  fio_ary_free(&right);
-  fio_ary_free(&queue);
+  fiobj_stack_free(&left);
+  fiobj_stack_free(&right);
+  fiobj_stack_free(&queue);
   return 0;
 }
 

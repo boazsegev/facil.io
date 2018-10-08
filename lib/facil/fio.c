@@ -8430,6 +8430,40 @@ static void fio_defer_test(void) {
 }
 
 /* *****************************************************************************
+Array data-structure Testing
+***************************************************************************** */
+
+typedef struct {
+  int i;
+  char c;
+} fio_ary_test_type_s;
+
+#define FIO_ARY_NAME fio_i_ary
+#define FIO_ARY_TYPE uintptr_t
+#include "fio.h"
+
+static intptr_t ary_alloc_counter = 0;
+static void copy_s(fio_ary_test_type_s *d, fio_ary_test_type_s *s) {
+  ++ary_alloc_counter;
+  *d = *s;
+}
+
+#define FIO_ARY_NAME fio_s_ary
+#define FIO_ARY_TYPE fio_ary_test_type_s
+#define FIO_ARY_COPY(dest, src) copy_s(&(dest), &(src))
+#define FIO_ARY_COMPARE(dest, src) ((dest).i == (src).i && (dest).c == (src).c)
+#define FIO_ARY_DESTROY(obj) (--ary_alloc_counter)
+#include "fio.h"
+
+void fio_ary_test(void) {
+  /* code */
+  fio_i_ary__test();
+  fio_s_ary__test();
+  FIO_ASSERT(!ary_alloc_counter, "array object deallocation error, %ld != 0",
+             ary_alloc_counter);
+}
+
+/* *****************************************************************************
 Set data-structure Testing
 ***************************************************************************** */
 
@@ -9509,13 +9543,14 @@ void fio_test(void) {
   fio_atol_test();
   fio_str2u_test();
   fio_llist_test();
+  fio_ary_test();
+  fio_set_test();
   fio_defer_test();
   fio_timer_test();
   fio_poll_test();
   fio_socket_test();
   fio_uuid_link_test();
   fio_cycle_test();
-  fio_set_test();
   fio_siphash_test();
   fio_sha1_test();
   fio_sha2_test();
