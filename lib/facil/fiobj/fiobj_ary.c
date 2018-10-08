@@ -44,12 +44,7 @@ static void fiobj_ary_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
 
 static size_t fiobj_ary_each1(FIOBJ o, size_t start_at,
                               int (*task)(FIOBJ obj, void *arg), void *arg) {
-  fprintf(stderr, "FIOBJ array loop starting at %zu/%zu task: %p\n", start_at,
-          fio_ary___count(&obj2ary(o)->ary), (void *)task);
-  start_at = fio_ary___each(&obj2ary(o)->ary, start_at, task, arg);
-  fprintf(stderr, "FIOBJ array loop finished at %zu/%zu\n", start_at,
-          fio_ary___count(&obj2ary(o)->ary));
-  return start_at;
+  return fio_ary___each(&obj2ary(o)->ary, start_at, task, arg);
 }
 
 static size_t fiobj_ary_is_eq(const FIOBJ self, const FIOBJ other) {
