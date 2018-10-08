@@ -4172,13 +4172,13 @@ inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
 /* Customizable memory management */
 #ifndef FIO_SET_REALLOC /* NULL ptr indicates new allocation */
 #define FIO_SET_REALLOC(ptr, original_size, new_size, valid_data_length)       \
-  realloc((ptr), (new_size))
+  fio_realloc2((ptr), (new_size), (valid_data_length))
 #endif
 #ifndef FIO_SET_CALLOC
-#define FIO_SET_CALLOC(size, count) calloc((size), (count))
+#define FIO_SET_CALLOC(size, count) fio_calloc((size), (count))
 #endif
 #ifndef FIO_SET_FREE
-#define FIO_SET_FREE(ptr, size) free((ptr))
+#define FIO_SET_FREE(ptr, size) fio_free((ptr))
 #endif
 
 /* The maximum number of bins to rotate when partial collisions occure */
