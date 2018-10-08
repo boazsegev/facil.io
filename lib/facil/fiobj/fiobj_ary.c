@@ -15,10 +15,7 @@ License: MIT
 #include <assert.h>
 
 #ifndef FIOBJ_ARRAY_DEFAULT_CAPA
-#define FIOBJ_ARRAY_DEFAULT_CAPA 8
-#endif
-#ifndef FIOBJ_ARRAY_DEFAULT_OFFSET
-#define FIOBJ_ARRAY_DEFAULT_OFFSET (FIOBJ_ARRAY_DEFAULT_CAPA >> 2)
+#define FIOBJ_ARRAY_DEFAULT_CAPA 3
 #endif
 
 /* *****************************************************************************
@@ -85,7 +82,7 @@ const fiobj_object_vtable_s FIOBJECT_VTABLE_ARRAY = {
 Allocation
 ***************************************************************************** */
 
-static FIOBJ fiobj_ary_alloc(size_t capa, size_t start_at) {
+static FIOBJ fiobj_ary_alloc(size_t capa) {
   fiobj_ary_s *ary = fio_malloc(sizeof(*ary));
   if (!ary) {
     perror("ERROR: fiobj array couldn't allocate memory");
@@ -100,16 +97,13 @@ static FIOBJ fiobj_ary_alloc(size_t capa, size_t start_at) {
   };
   if (capa)
     fio_ary_____require_on_top(&ary->ary, capa);
-  ary->ary.start = ary->ary.end = start_at;
   return (FIOBJ)ary;
 }
 
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
-FIOBJ fiobj_ary_new(void) {
-  return fiobj_ary_alloc(FIOBJ_ARRAY_DEFAULT_CAPA, FIOBJ_ARRAY_DEFAULT_OFFSET);
-}
+FIOBJ fiobj_ary_new(void) { return fiobj_ary_alloc(FIOBJ_ARRAY_DEFAULT_CAPA); }
 /** Creates a mutable empty Array object with the requested capacity. */
-FIOBJ fiobj_ary_new2(size_t capa) { return fiobj_ary_alloc(capa, 0); }
+FIOBJ fiobj_ary_new2(size_t capa) { return fiobj_ary_alloc(capa); }
 
 /* *****************************************************************************
 Array direct entry access API
