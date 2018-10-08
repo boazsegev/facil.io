@@ -2512,7 +2512,7 @@ Initializes the Set or the Hash Map.
 void FIO_NAME(free)(FIO_NAME(s) * set);
 ```
 
-Deallocates any internal resources.
+Frees all the objects in the Hash Map / Set and deallocates any internal resources.
 
 ### Hash Map Find / Insert
 

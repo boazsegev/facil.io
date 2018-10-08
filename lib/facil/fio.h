@@ -4248,7 +4248,7 @@ typedef struct FIO_NAME(s) FIO_NAME(s);
   { .capa = 0 }
 #endif
 
-/** Deallocates any internal resources. Doesn't free any objects! */
+/** Frees all the objects in the set and deallocates any internal resources. */
 FIO_FUNC void FIO_NAME(free)(FIO_NAME(s) * set);
 
 #ifdef FIO_SET_KEY_TYPE
@@ -4590,7 +4590,7 @@ FIO_FUNC inline FIO_SET_TYPE FIO_NAME(_insert_or_overwrite_)(
 Set / Hash Map Implementation
 ***************************************************************************** */
 
-/** Deallocates any internal resources. Doesn't free any objects! */
+/** Frees all the objects in the set and deallocates any internal resources. */
 FIO_FUNC void FIO_NAME(free)(FIO_NAME(s) * s) {
   /* destroy existing valid objects */
   const FIO_NAME(_ordered_s_) *const end = s->ordered + s->pos;
