@@ -4095,8 +4095,12 @@ inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
 #define FIO_NAME_FROM_MACRO_STEP2(name, postfix) name##_##postfix
 #define FIO_NAME_FROM_MACRO_STEP1(name, postfix)                               \
   FIO_NAME_FROM_MACRO_STEP2(name, postfix)
-
 #define FIO_NAME(postfix) FIO_NAME_FROM_MACRO_STEP1(FIO_ARY_NAME, postfix)
+
+/* Used for naming the `free` function */
+#define FIO_NAME_FROM_MACRO_STEP4(name) name##_free
+#define FIO_NAME_FROM_MACRO_STEP3(name) FIO_NAME_FROM_MACRO_STEP4(name)
+#define FIO_NAME_FREE() FIO_NAME_FROM_MACRO_STEP3(FIO_ARY_NAME)
 
 /* The default Set object / value type is `void *` */
 #if !defined(FIO_ARY_TYPE)
@@ -4160,7 +4164,7 @@ typedef struct FIO_NAME(s) FIO_NAME(s);
 #endif
 
 /** Frees the array's internal data. */
-FIO_FUNC inline void FIO_NAME(free)(FIO_NAME(s) * ary);
+FIO_FUNC inline void FIO_NAME_FREE()(FIO_NAME(s) * ary);
 
 /** Returns the number of elements in the Array. */
 FIO_FUNC inline size_t FIO_NAME(count)(FIO_NAME(s) * ary);
@@ -4316,7 +4320,7 @@ struct FIO_NAME(s) {
 Array Memory Management
 ***************************************************************************** */
 
-FIO_FUNC inline void FIO_NAME(free)(FIO_NAME(s) * ary) {
+FIO_FUNC inline void FIO_NAME_FREE()(FIO_NAME(s) * ary) {
   if (ary) {
     const size_t count = ary->end;
     for (size_t i = ary->start; i < count; ++i) {
@@ -4686,7 +4690,7 @@ FIO_FUNC inline void FIO_NAME(_test)(void) {
     FIO_ARY_DESTROY(mem.obj);
   }
 
-  FIO_NAME(free)(&ary);
+  FIO_NAME_FREE()(&ary);
   FIO_ASSERT(!ary.arry, "Array not reset after fio_ary_free");
 
   for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
@@ -4706,7 +4710,7 @@ FIO_FUNC inline void FIO_NAME(_test)(void) {
     FIO_ASSERT(mem.i == TEST_LIMIT - i, "Array pop value error");
     FIO_ARY_DESTROY(mem.obj);
   }
-  FIO_NAME(free)(&ary);
+  FIO_NAME_FREE()(&ary);
   FIO_ASSERT(!ary.arry, "Array not reset after fio_ary_free");
 
   for (uintptr_t i = 0; i < TEST_LIMIT; ++i) {
@@ -4763,7 +4767,7 @@ FIO_FUNC inline void FIO_NAME(_test)(void) {
              "fio_ary_remove didn't clear holes from Array (%zu)",
              (size_t)FIO_NAME(find)(&ary, mem.obj));
 
-  FIO_NAME(free)(&ary);
+  FIO_NAME_FREE()(&ary);
 
   FIO_NAME(s) ary2 = FIO_ARY_INIT;
   for (uintptr_t i = 0; i < (TEST_LIMIT >> 1); ++i) {
@@ -4773,7 +4777,7 @@ FIO_FUNC inline void FIO_NAME(_test)(void) {
     FIO_NAME(unshift)(&ary, mem.obj);
   }
   FIO_NAME(concat)(&ary, &ary2);
-  FIO_NAME(free)(&ary2);
+  FIO_NAME_FREE()(&ary2);
   FIO_ASSERT(FIO_NAME(count)(&ary) == ((TEST_LIMIT >> 1) << 1),
              "Wrong object count after fio_ary_concat %zu",
              (size_t)FIO_NAME(count)(&ary));
@@ -4791,7 +4795,7 @@ FIO_FUNC inline void FIO_NAME(_test)(void) {
   }
   FIO_ASSERT(mem.i == ((TEST_LIMIT >> 1) << 1), "fio_ary_pop overflow (%zu)?",
              (size_t)mem.i);
-  FIO_NAME(free)(&ary);
+  FIO_NAME_FREE()(&ary);
 }
 #undef TEST_LIMIT
 #else
@@ -4805,6 +4809,9 @@ Done
 #undef FIO_NAME_FROM_MACRO_STEP2
 #undef FIO_NAME_FROM_MACRO_STEP1
 #undef FIO_NAME
+#undef FIO_NAME_FROM_MACRO_STEP4
+#undef FIO_NAME_FROM_MACRO_STEP3
+#undef FIO_NAME_FREE
 #undef FIO_ARY_NAME
 #undef FIO_ARY_TYPE
 #undef FIO_ARY_INVALID
@@ -4921,8 +4928,12 @@ Done
 #define FIO_NAME_FROM_MACRO_STEP2(name, postfix) name##_##postfix
 #define FIO_NAME_FROM_MACRO_STEP1(name, postfix)                               \
   FIO_NAME_FROM_MACRO_STEP2(name, postfix)
-
 #define FIO_NAME(postfix) FIO_NAME_FROM_MACRO_STEP1(FIO_SET_NAME, postfix)
+
+/* Used for naming the `free` function */
+#define FIO_NAME_FROM_MACRO_STEP4(name) name##_free
+#define FIO_NAME_FROM_MACRO_STEP3(name) FIO_NAME_FROM_MACRO_STEP4(name)
+#define FIO_NAME_FREE() FIO_NAME_FROM_MACRO_STEP3(FIO_SET_NAME)
 
 /* The default Set object / value type is `void *` */
 #if !defined(FIO_SET_OBJ_TYPE)
@@ -5046,7 +5057,7 @@ typedef struct FIO_NAME(s) FIO_NAME(s);
 #endif
 
 /** Frees all the objects in the set and deallocates any internal resources. */
-FIO_FUNC void FIO_NAME(free)(FIO_NAME(s) * set);
+FIO_FUNC void FIO_NAME_FREE()(FIO_NAME(s) * set);
 
 #ifdef FIO_SET_KEY_TYPE
 
@@ -5388,7 +5399,7 @@ Set / Hash Map Implementation
 ***************************************************************************** */
 
 /** Frees all the objects in the set and deallocates any internal resources. */
-FIO_FUNC void FIO_NAME(free)(FIO_NAME(s) * s) {
+FIO_FUNC void FIO_NAME_FREE()(FIO_NAME(s) * s) {
   /* destroy existing valid objects */
   const FIO_NAME(_ordered_s_) *const end = s->ordered + s->pos;
   if (s->ordered && s->ordered != end) {
@@ -5677,6 +5688,9 @@ restart:
 #undef FIO_NAME
 #undef FIO_NAME_FROM_MACRO_STEP2
 #undef FIO_NAME_FROM_MACRO_STEP1
+#undef FIO_NAME_FROM_MACRO_STEP4
+#undef FIO_NAME_FROM_MACRO_STEP3
+#undef FIO_NAME_FREE
 #undef FIO_SET_NAME
 
 #endif
