@@ -276,6 +276,30 @@ static inline int seek2eos(uint8_t **buffer,
 }
 
 /* *****************************************************************************
+JSON String to Numeral Helpers - allowing for stand-alone mode
+***************************************************************************** */
+
+#ifndef H_FACIL_IO_H
+
+/**
+ * We include this in case the parser is used outside of facil.io.
+ */
+int64_t __attribute__((weak)) fio_atol(char **pstr) {
+  return strtoll(*pstr, pstr, 0);
+}
+#pragma weak fio_atol
+
+/**
+ * We include this in case the parser is used outside of facil.io.
+ */
+double __attribute__((weak)) fio_atof(char **pstr) {
+  return strtod(*pstr, pstr);
+}
+#pragma weak fio_atof
+
+#endif
+
+/* *****************************************************************************
 JSON Consumption (astract parsing)
 ***************************************************************************** */
 
@@ -425,12 +449,13 @@ fio_json_parse(json_parser_s *parser, const char *buffer, size_t length) {
     case 'i': /* overflow */
     case 'I': /* overflow */
     numeral : {
-      uint8_t *tmp = NULL;
-      long long i = strtoll((char *)pos, (char **)&tmp, 0);
+      uint8_t *tmp = pos;
+      long long i = fio_atol((char **)&tmp);
       if (tmp > limit)
         goto stop;
       if (!tmp || JSON_NUMERAL[*tmp]) {
-        double f = strtod((char *)pos, (char **)&tmp);
+        tmp = pos;
+        double f = fio_atof((char **)&tmp);
         if (tmp > limit)
           goto stop;
         if (!tmp || JSON_NUMERAL[*tmp])
