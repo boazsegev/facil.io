@@ -29,7 +29,6 @@ License: MIT
 #include <string.h>
 #include <sys/stat.h>
 
-#define FIO_OVERRIDE_MALLOC 1
 #define FIO_INCLUDE_STR
 #define FIO_STR_NO_REF
 #include <fio.h>

@@ -29,7 +29,6 @@ License: MIT
 #include <sys/types.h>
 #include <unistd.h>
 
-#define FIO_OVERRIDE_MALLOC 1
 #include <fio.h>
 
 /* *****************************************************************************

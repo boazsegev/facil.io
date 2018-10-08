@@ -6,7 +6,6 @@ License: MIT
 #include <fiobj_numbers.h>
 #include <fiobject.h>
 
-#define FIO_OVERRIDE_MALLOC 1
 #include <fio.h>
 
 #include <assert.h>

@@ -32,7 +32,6 @@ License: MIT
     (obj) = FIOBJ_INVALID;                                                     \
   } while (0)
 
-#define FIO_OVERRIDE_MALLOC 1
 #include <fio.h>
 
 #include <errno.h>

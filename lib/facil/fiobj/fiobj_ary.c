@@ -2,8 +2,6 @@
 Copyright: Boaz Segev, 2017-2018
 License: MIT
 */
-
-#define FIO_OVERRIDE_MALLOC 1
 #include <fio.h>
 #include <fiobject.h>
 

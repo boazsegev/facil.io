@@ -22,7 +22,6 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 Use the facil.io allocator when available, but override it if it's missing.
 ***************************************************************************** */
 
-#define FIO_OVERRIDE_MALLOC 1
 #include <fio.h>
 
 #pragma weak fio_malloc
