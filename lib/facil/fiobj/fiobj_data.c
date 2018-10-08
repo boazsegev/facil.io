@@ -66,19 +66,19 @@ Object required VTable and functions
 
 static void fiobj_data_copy_buffer(FIOBJ o) {
   obj2io(o)->capa = (((obj2io(o)->len) >> 12) + 1) << 12;
-  void *tmp = malloc(obj2io(o)->capa);
+  void *tmp = fio_malloc(obj2io(o)->capa);
   REQUIRE_MEM(tmp);
   memcpy(tmp, obj2io(o)->buffer, obj2io(o)->len);
   if (obj2io(o)->source.dealloc)
     obj2io(o)->source.dealloc(obj2io(o)->buffer);
-  obj2io(o)->source.dealloc = free;
+  obj2io(o)->source.dealloc = fio_free;
   obj2io(o)->buffer = tmp;
 }
 
 static void fiobj_data_copy_parent(FIOBJ o) {
   switch (obj2io(obj2io(o)->source.parent)->fd) {
   case -1:
-    obj2io(o)->buffer = malloc(obj2io(o)->len + 1);
+    obj2io(o)->buffer = fio_malloc(obj2io(o)->len + 1);
     memcpy(obj2io(o)->buffer,
            obj2io(obj2io(o)->source.parent)->buffer + obj2io(o)->capa,
            obj2io(o)->len);
@@ -86,7 +86,7 @@ static void fiobj_data_copy_parent(FIOBJ o) {
     obj2io(o)->capa = obj2io(o)->len;
     obj2io(o)->fd = -1;
     fiobj_free(obj2io(o)->source.parent);
-    obj2io(o)->source.dealloc = free;
+    obj2io(o)->source.dealloc = fio_free;
     return;
   default:
     obj2io(o)->fd = fio_tmpfile();
@@ -125,7 +125,7 @@ static void fiobj_data_copy_parent(FIOBJ o) {
 static inline void fiobj_data_pre_write(FIOBJ o, uintptr_t length) {
   switch (obj2io(o)->fd) {
   case -1:
-    if (obj2io(o)->source.dealloc != free) {
+    if (obj2io(o)->source.dealloc != fio_free) {
       fiobj_data_copy_buffer(o);
     }
     break;
@@ -137,7 +137,7 @@ static inline void fiobj_data_pre_write(FIOBJ o, uintptr_t length) {
     return;
   /* add rounded pages (4096) to capacity */
   obj2io(o)->capa = (((obj2io(o)->len + length) >> 12) + 1) << 12;
-  obj2io(o)->buffer = realloc(obj2io(o)->buffer, obj2io(o)->capa);
+  obj2io(o)->buffer = fio_realloc(obj2io(o)->buffer, obj2io(o)->capa);
   REQUIRE_MEM(obj2io(o)->buffer);
 }
 
@@ -153,7 +153,7 @@ retry:
 }
 
 static FIOBJ fiobj_data_alloc(void *buffer, int fd) {
-  fiobj_data_s *io = malloc(sizeof(*io));
+  fiobj_data_s *io = fio_malloc(sizeof(*io));
   REQUIRE_MEM(io);
   *io = (fiobj_data_s){
       .head = {.ref = 1, .type = FIOBJ_T_DATA},
@@ -175,10 +175,10 @@ static void fiobj_data_dealloc(FIOBJ o, void (*task)(FIOBJ, void *),
     break;
   default:
     close(obj2io(o)->fd);
-    free(obj2io(o)->buffer);
+    fio_free(obj2io(o)->buffer);
     break;
   }
-  free((void *)o);
+  fio_free((void *)o);
   (void)task;
   (void)arg;
 }
@@ -325,10 +325,10 @@ Creating the IO object
 
 /** Creates a new local in-memory IO object */
 FIOBJ fiobj_data_newstr(void) {
-  FIOBJ o = fiobj_data_alloc(malloc(4096), -1);
+  FIOBJ o = fiobj_data_alloc(fio_malloc(4096), -1);
   REQUIRE_MEM(obj2io(o)->buffer);
   obj2io(o)->capa = 4096;
-  obj2io(o)->source.dealloc = free;
+  obj2io(o)->source.dealloc = fio_free;
   return o;
 }
 
@@ -348,7 +348,7 @@ FIOBJ fiobj_data_newstr2(void *buffer, uintptr_t length,
 
 /** Creates a new local file IO object */
 FIOBJ fiobj_data_newfd(int fd) {
-  FIOBJ o = fiobj_data_alloc(malloc(4096), fd);
+  FIOBJ o = fiobj_data_alloc(fio_malloc(4096), fd);
   REQUIRE_MEM(obj2io(o)->buffer);
   obj2io(o)->source.fpos = 0;
   return o;

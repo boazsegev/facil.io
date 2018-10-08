@@ -105,7 +105,7 @@ Number API
 
 /** Creates a Number object. Remember to use `fiobj_free`. */
 FIOBJ fiobj_num_new_bignum(intptr_t num) {
-  fiobj_num_s *o = malloc(sizeof(*o));
+  fiobj_num_s *o = fio_malloc(sizeof(*o));
   if (!o) {
     perror("ERROR: fiobj number couldn't allocate memory");
     exit(errno);
@@ -143,7 +143,7 @@ Float API
 
 /** Creates a Float object. Remember to use `fiobj_free`.  */
 FIOBJ fiobj_float_new(double num) {
-  fiobj_float_s *o = malloc(sizeof(*o));
+  fiobj_float_s *o = fio_malloc(sizeof(*o));
   if (!o) {
     perror("ERROR: fiobj float couldn't allocate memory");
     exit(errno);

@@ -19,11 +19,14 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 #include <stdlib.h>
 
 /* *****************************************************************************
-Use the facil.io allocator when available
+Use the facil.io allocator when available, but override it if it's missing.
 ***************************************************************************** */
 
+#define FIO_OVERRIDE_MALLOC 1
+#include <fio.h>
+
 #pragma weak fio_malloc
-void *fio_malloc FIO_IGNORE_MACRO(size_t size) {
+void *fio_malloc(size_t size) {
   void *m = malloc(size);
   if (m)
     memset(m, 0, size);
@@ -31,31 +34,27 @@ void *fio_malloc FIO_IGNORE_MACRO(size_t size) {
 }
 
 #pragma weak fio_calloc
-void *__attribute__((weak)) fio_calloc FIO_IGNORE_MACRO(size_t size,
-                                                        size_t count) {
+void *__attribute__((weak)) fio_calloc(size_t size, size_t count) {
   return calloc(size, count);
 }
 
 #pragma weak fio_free
-void __attribute__((weak)) fio_free FIO_IGNORE_MACRO(void *ptr) { free(ptr); }
+void __attribute__((weak)) fio_free(void *ptr) { free(ptr); }
 
 #pragma weak fio_realloc
-void *__attribute__((weak)) fio_realloc FIO_IGNORE_MACRO(void *ptr,
-                                                         size_t new_size) {
+void *__attribute__((weak)) fio_realloc(void *ptr, size_t new_size) {
   return realloc(ptr, new_size);
 }
 
 #pragma weak fio_realloc2
-void *__attribute__((weak)) fio_realloc2
-FIO_IGNORE_MACRO(void *ptr, size_t new_size, size_t valid_len) {
+void *__attribute__((weak))
+fio_realloc2(void *ptr, size_t new_size, size_t valid_len) {
   return realloc(ptr, new_size);
   (void)valid_len;
 }
 
 #pragma weak fio_mmap
-void *__attribute__((weak)) fio_mmap FIO_IGNORE_MACRO(size_t size) {
-  return fio_malloc(size);
-}
+void *__attribute__((weak)) fio_mmap(size_t size) { return fio_malloc(size); }
 
 /** The logging level */
 #if DEBUG
@@ -65,9 +64,6 @@ size_t __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
 #pragma weak FIO_LOG_LEVEL
 size_t __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_INFO;
 #endif
-
-#define FIO_OVERRIDE_MALLOC 1
-#include <fio.h>
 
 /* *****************************************************************************
 the `fiobj_each2` function
@@ -266,7 +262,7 @@ void fiobject___noop_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
 }
 void fiobject___simple_dealloc(FIOBJ o, void (*task)(FIOBJ, void *),
                                void *arg) {
-  free(FIOBJ2PTR(o));
+  fio_free(FIOBJ2PTR(o));
   (void)task;
   (void)arg;
 }

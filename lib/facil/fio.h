@@ -4,6 +4,7 @@ License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
+
 #ifndef H_FACIL_IO_H
 /**
 "facil.h" is the main header for the facil.io server platform.
@@ -306,17 +307,6 @@ void *fio_mmap(size_t size);
  * memory allocator's locks.
  */
 void fio_malloc_after_fork(void);
-
-#if FIO_FORCE_MALLOC
-#define fio_malloc(size) calloc(size, 1)
-#define fio_calloc calloc
-#define fio_mmap(size) calloc(size, 1)
-#define fio_free free
-#define fio_realloc realloc
-#define fio_realloc2(ptr, new_size, old_data_len) realloc((ptr), (new_size))
-#define fio_malloc_test()
-#define fio_malloc_after_fork()
-#endif
 
 /* *****************************************************************************
 

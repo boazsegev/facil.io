@@ -39,7 +39,7 @@ VTable
 static void fiobj_ary_dealloc(FIOBJ o, void (*task)(FIOBJ, void *), void *arg) {
   FIO_ARY_FOR(&obj2ary(o)->ary, i) { task(i.obj, arg); }
   fio_ary_free(&obj2ary(o)->ary);
-  free(FIOBJ2PTR(o));
+  fio_free(FIOBJ2PTR(o));
 }
 
 static size_t fiobj_ary_each1(FIOBJ o, size_t start_at,
@@ -86,7 +86,7 @@ Allocation
 ***************************************************************************** */
 
 static FIOBJ fiobj_ary_alloc(size_t capa, size_t start_at) {
-  fiobj_ary_s *ary = malloc(sizeof(*ary));
+  fiobj_ary_s *ary = fio_malloc(sizeof(*ary));
   if (!ary) {
     perror("ERROR: fiobj array couldn't allocate memory");
     exit(errno);

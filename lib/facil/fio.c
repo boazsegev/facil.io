@@ -5724,6 +5724,27 @@ Section Start Marker
 ***************************************************************************** */
 
 #if FIO_FORCE_MALLOC
+
+void *fio_malloc(size_t size) { return calloc(size, 1); }
+
+void *fio_calloc(size_t size_per_unit, size_t unit_count) {
+  return calloc(size_per_unit, unit_count);
+}
+
+void fio_free(void *ptr) { free(ptr); }
+
+void *fio_realloc(void *ptr, size_t new_size) {
+  return realloc((ptr), (new_size));
+}
+
+void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length) {
+  return realloc((ptr), (new_size));
+  (void)copy_length;
+}
+
+void *fio_mmap(size_t size) { return calloc(size, 1); }
+
+void fio_malloc_after_fork(void) {}
 void fio_mem_destroy(void) {}
 void fio_mem_init(void) {}
 
@@ -7950,10 +7971,11 @@ Testing Memory Allocator
 ***************************************************************************** */
 
 #if FIO_FORCE_MALLOC
-#define fio_malloc_test()
+#define fio_malloc_test()                                                      \
+  fprintf(stderr, "\n=== SKIPPED facil.io memory allocator (bypassed)\n");
 #else
 void fio_malloc_test(void) {
-  fprintf(stderr, "=== Testing facil.io memory allocator's system calls\n");
+  fprintf(stderr, "\n=== Testing facil.io memory allocator's system calls\n");
   char *mem = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
   FIO_ASSERT(mem, "sys_alloc failed to allocate memory!\n");
   FIO_ASSERT(!((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK),

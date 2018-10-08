@@ -7,6 +7,7 @@ License: MIT
 
 #include <assert.h>
 #include <fiobj_hash.h>
+
 #define FIO_SET_CALLOC(size, count) fio_calloc((size), (count))
 #define FIO_SET_REALLOC(ptr, original_size, size, valid_data_length)           \
   fio_realloc2((ptr), (size), (valid_data_length))
@@ -66,7 +67,7 @@ static void fiobj_hash_dealloc(FIOBJ o, void (*task)(FIOBJ, void *),
   }
   obj2hash(o)->hash.count = 0;
   fio_hash___free(&obj2hash(o)->hash);
-  free(FIOBJ2PTR(o));
+  fio_free(FIOBJ2PTR(o));
 }
 
 static __thread FIOBJ each_at_key = FIOBJ_INVALID;
@@ -158,7 +159,7 @@ Hash API
  * retain order of object insertion.
  */
 FIOBJ fiobj_hash_new(void) {
-  fiobj_hash_s *h = malloc(sizeof(*h));
+  fiobj_hash_s *h = fio_malloc(sizeof(*h));
   FIO_ASSERT_ALLOC(h);
   *h = (fiobj_hash_s){.head = {.ref = 1, .type = FIOBJ_T_HASH},
                       .hash = FIO_SET_INIT};
@@ -173,7 +174,7 @@ FIOBJ fiobj_hash_new(void) {
  * retain order of object insertion.
  */
 FIOBJ fiobj_hash_new2(size_t capa) {
-  fiobj_hash_s *h = malloc(sizeof(*h));
+  fiobj_hash_s *h = fio_malloc(sizeof(*h));
   FIO_ASSERT_ALLOC(h);
   *h = (fiobj_hash_s){.head = {.ref = 1, .type = FIOBJ_T_HASH},
                       .hash = FIO_SET_INIT};
