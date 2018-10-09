@@ -15,7 +15,7 @@ License: MIT
 #include <assert.h>
 
 #ifndef FIOBJ_ARRAY_DEFAULT_CAPA
-#define FIOBJ_ARRAY_DEFAULT_CAPA 3
+#define FIOBJ_ARRAY_DEFAULT_CAPA 4
 #endif
 
 /* *****************************************************************************
