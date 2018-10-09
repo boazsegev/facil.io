@@ -279,7 +279,7 @@ static inline int seek2eos(uint8_t **buffer,
 JSON String to Numeral Helpers - allowing for stand-alone mode
 ***************************************************************************** */
 
-#ifndef H_FACIL_IO_H
+#ifndef H_FACIL_IO_H /* defined in fio.h */
 
 /**
  * We include this in case the parser is used outside of facil.io.

@@ -100,7 +100,7 @@ static int fio_json_on_start_object(json_parser_s *p) {
     pr->top = pr->target;
     pr->target = FIOBJ_INVALID;
   } else {
-    FIOBJ hash = fiobj_hash_new2(3);
+    FIOBJ hash = fiobj_hash_new();
     fiobj_json_add2parser(pr, hash);
     fio_json_stack_push(&pr->stack, pr->top);
     pr->top = hash;
@@ -126,7 +126,7 @@ static int fio_json_on_start_array(json_parser_s *p) {
   fiobj_json_parser_s *pr = (fiobj_json_parser_s *)p;
   if (pr->target)
     return -1;
-  FIOBJ ary = fiobj_ary_new2(4);
+  FIOBJ ary = fiobj_ary_new();
   fiobj_json_add2parser(pr, ary);
   fio_json_stack_push(&pr->stack, pr->top);
   pr->top = ary;

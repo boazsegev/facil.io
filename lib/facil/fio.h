@@ -4143,6 +4143,11 @@ static FIO_ARY_TYPE const FIO_NAME(s___const_invalid_object);
 #define FIO_ARY_DEALLOC(ptr, size) fio_free((ptr))
 #endif
 
+/* padding to be assumed for future expansion. */
+#ifndef FIO_ARY_PADDING
+#define FIO_ARY_PADDING 4
+#endif
+
 /* minimizes allocation "dead space" by alligning allocated length to 16bytes */
 #undef FIO_ARY_SIZE2WORDS
 #define FIO_ARY_SIZE2WORDS(size)                                               \
@@ -4542,7 +4547,7 @@ FIO_FUNC inline int FIO_NAME(push)(FIO_NAME(s) * ary, FIO_ARY_TYPE data) {
   if (!ary)
     return -1;
   if (ary->capa <= ary->end)
-    FIO_NAME(__require_on_top)(ary, 1);
+    FIO_NAME(__require_on_top)(ary, 1 + FIO_ARY_PADDING);
   if (ary->start == ary->end) /* reset memory starting point? */
     ary->start = ary->end = 0;
   FIO_ARY_COPY(ary->arry[ary->end], data);
@@ -5354,7 +5359,7 @@ FIO_FUNC inline FIO_SET_TYPE FIO_NAME(_insert_or_overwrite_)(
   FIO_NAME(_map_s_) *pos = FIO_NAME(_find_map_pos_)(set, hash_value, obj);
 
   while (!pos) {
-    set->mask = (set->mask << 1) | 1;
+    set->mask = (set->mask << 1) | 3;
     FIO_NAME(rehash)(set);
     pos = FIO_NAME(_find_map_pos_)(set, hash_value, obj);
   }
@@ -5615,7 +5620,7 @@ FIO_FUNC inline size_t FIO_NAME(capa_require)(FIO_NAME(s) * set,
     return FIO_NAME(capa)(set);
   set->mask = 1;
   while (min_capa > set->mask) {
-    set->mask = (set->mask << 1) | 1;
+    set->mask = (set->mask << 1) | 3;
   }
   FIO_NAME(rehash)(set);
   return FIO_NAME(capa)(set);
@@ -5636,7 +5641,7 @@ FIO_FUNC inline size_t FIO_NAME(is_fragmented)(const FIO_NAME(s) * set) {
  */
 FIO_FUNC inline size_t FIO_NAME(compact)(FIO_NAME(s) * set) {
   FIO_NAME(_compact_ordered_array_)(set);
-  set->mask = 1;
+  set->mask = 3;
   while (set->count >= set->mask) {
     set->mask = (set->mask << 1) | 1;
   }
@@ -5656,7 +5661,7 @@ restart:
       FIO_NAME(_map_s_) *mp =
           FIO_NAME(_find_map_pos_)(set, pos->hash, pos->obj);
       if (!mp) {
-        set->mask = (set->mask << 1) | 1;
+        set->mask = (set->mask << 1) | 3;
         goto restart;
       }
       mp->pos = pos;

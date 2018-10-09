@@ -14,10 +14,6 @@ License: MIT
 
 #include <assert.h>
 
-#ifndef FIOBJ_ARRAY_DEFAULT_CAPA
-#define FIOBJ_ARRAY_DEFAULT_CAPA 4
-#endif
-
 /* *****************************************************************************
 Array Type
 ***************************************************************************** */
@@ -82,7 +78,7 @@ const fiobj_object_vtable_s FIOBJECT_VTABLE_ARRAY = {
 Allocation
 ***************************************************************************** */
 
-static FIOBJ fiobj_ary_alloc(size_t capa) {
+static inline FIOBJ fiobj_ary_alloc(size_t capa) {
   fiobj_ary_s *ary = fio_malloc(sizeof(*ary));
   if (!ary) {
     perror("ERROR: fiobj array couldn't allocate memory");
@@ -101,7 +97,7 @@ static FIOBJ fiobj_ary_alloc(size_t capa) {
 }
 
 /** Creates a mutable empty Array object. Use `fiobj_free` when done. */
-FIOBJ fiobj_ary_new(void) { return fiobj_ary_alloc(FIOBJ_ARRAY_DEFAULT_CAPA); }
+FIOBJ fiobj_ary_new(void) { return fiobj_ary_alloc(0); }
 /** Creates a mutable empty Array object with the requested capacity. */
 FIOBJ fiobj_ary_new2(size_t capa) { return fiobj_ary_alloc(capa); }
 
