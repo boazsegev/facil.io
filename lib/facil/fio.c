@@ -3595,28 +3595,22 @@ int64_t fio_atol(char **pstr) {
   } else if (str[0] == '0') {
     ++str;
     /* base 8 */
-    const char *end = str;
-    while (end[0] >= '0' && end[0] <= '7' && (uintptr_t)(end - str) < 22)
-      end++;
-    if ((uintptr_t)(end - str) > 21) /* TODO: fix too large for a number */
-      return 0;
-
-    while (str < end) {
+    const char *start = str;
+    while (str[0] >= '0' && str[0] <= '7' && (uintptr_t)(str - start) < 22) {
       result = (result * 8) + (str[0] - '0');
-      str++;
+      ++str;
     }
+    if ((uintptr_t)(str - start) > 22) /* too large for a number */
+      return 0;
   } else {
     /* base 10 */
-    const char *end = str;
-    while (end[0] >= '0' && end[0] <= '9' && (uintptr_t)(end - str) < 22)
-      end++;
-    if ((uintptr_t)(end - str) > 21) /* too large for a number */
-      return 0;
-
-    while (str < end) {
+    const char *start = str;
+    while (str[0] >= '0' && str[0] <= '9' && (uintptr_t)(str - start) < 22) {
       result = (result * 10) + (str[0] - '0');
-      str++;
+      ++str;
     }
+    if ((uintptr_t)(str - start) > 21) /* too large for a number */
+      return 0;
   }
 finish:
   if (invert)
