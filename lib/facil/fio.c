@@ -3620,7 +3620,138 @@ finish:
 }
 
 /** A helper function that converts between String data to a signed double. */
-double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
+double fio_atof(char **pstr) {
+  return strtold(*pstr, pstr);
+  uint8_t inv_base = 0;
+  uint8_t inv_expo = 0;
+  uint64_t top = 0;
+  uint64_t expo = 0;
+  double result = 0;
+  char *str = *pstr;
+  /* skip white-space */
+  while (isspace(*str))
+    ++(str);
+  if (*str == '-') {
+    inv_base = 1;
+    ++(str);
+  } else if (*str == '+') {
+    ++(str);
+  }
+
+  if ((*str) == '0' && (str[1] == 'x' || str[1] == 'X')) {
+    /* Hex notation */
+    str += 2;
+    uint64_t utop = 0;
+    for (;;) {
+      uint8_t tmp = 0;
+      if (str[0] >= '0' && str[0] <= '9')
+        tmp = str[0] - '0';
+      else if (str[0] >= 'A' && str[0] <= 'F')
+        tmp = str[0] - ('A' - 10);
+      else if (str[0] >= 'a' && str[0] <= 'f')
+        tmp = str[0] - ('a' - 10);
+      else
+        break;
+      utop = (utop << 4) | tmp;
+      str++;
+    }
+    top = utop;
+    if (*str == '.') {
+      ++str;
+      utop = 0;
+      for (;;) {
+        uint8_t tmp = 0;
+        if (str[0] >= '0' && str[0] <= '9')
+          tmp = str[0] - '0';
+        else if (str[0] >= 'A' && str[0] <= 'F')
+          tmp = str[0] - ('A' - 10);
+        else if (str[0] >= 'a' && str[0] <= 'f')
+          tmp = str[0] - ('a' - 10);
+        else
+          break;
+        utop = (utop << 4) | tmp;
+        str++;
+      }
+      result = utop;
+      while (utop) {
+        result = result / 16;
+        utop >>= 4;
+      }
+    }
+    result += top;
+    if (*str == 'p' || *str == 'P') {
+      ++str;
+      /* base 2 exponent */
+      if (*str == '-') {
+        inv_expo = 1;
+        ++(str);
+      } else if (*str == '+') {
+        ++(str);
+      }
+      while ((*str) >= '0' && (*str) <= '9') {
+        expo = (expo * 10) + (*str) - '0';
+        ++(str);
+      }
+      if (inv_expo) {
+        while (expo--) {
+          result = result / 2;
+        }
+      } else {
+        while (expo--) {
+          result = result * 2;
+        }
+      }
+    }
+    if (inv_base)
+      result *= -1;
+    *pstr = str;
+    return result;
+  }
+
+  /* Decimal scientific notation  */
+  while ((*str) >= '0' && (*str) <= '9') {
+    top = (top * 10) + (*str) - '0';
+    ++(str);
+  }
+  if (*str == '.') {
+    uint64_t tmp = 0;
+    double tmp_lg = 1;
+    ++(str);
+    while ((*str) >= '0' && (*str) <= '9') {
+      tmp = (tmp * 10) + (*str) - '0';
+      tmp_lg *= 10;
+      ++(str);
+    }
+    result = tmp / tmp_lg;
+  }
+  result += top;
+  if (*str == 'e' || *str == 'E') {
+    ++(str);
+    if (*str == '-') {
+      inv_expo = 1;
+      ++(str);
+    } else if (*str == '+') {
+      ++(str);
+    }
+    while ((*str) >= '0' && (*str) <= '9') {
+      expo = (expo * 10) + (*str) - '0';
+      ++(str);
+    }
+    if (inv_expo) {
+      while (expo--) {
+        result = result / 10;
+      }
+    } else {
+      while (expo--) {
+        result = result * 10;
+      }
+    }
+  }
+  if (inv_base)
+    result *= -1;
+  *pstr = str;
+  return result;
+}
 
 /* *****************************************************************************
 Numbers to Strings

@@ -285,7 +285,7 @@ JSON String to Numeral Helpers - allowing for stand-alone mode
  * We include this in case the parser is used outside of facil.io.
  */
 int64_t __attribute__((weak)) fio_atol(char **pstr) {
-  return strtoll(*pstr, pstr, 0);
+  return strtoll((char *)*pstr, (char **)pstr, 0);
 }
 #pragma weak fio_atol
 
@@ -293,7 +293,7 @@ int64_t __attribute__((weak)) fio_atol(char **pstr) {
  * We include this in case the parser is used outside of facil.io.
  */
 double __attribute__((weak)) fio_atof(char **pstr) {
-  return strtod(*pstr, pstr);
+  return strtod((char *)*pstr, (char **)pstr);
 }
 #pragma weak fio_atof
 

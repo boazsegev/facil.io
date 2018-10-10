@@ -68,92 +68,20 @@ size_t __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_INFO;
 #endif
 
 /**
- * A helper function that converts between String data to a signed int64_t.
- *
- * Numbers are assumed to be in base 10. Octal (`0###`), Hex (`0x##`/`x##`) and
- * binary (`0b##`/ `b##`) are recognized as well. For binary Most Significant
- * Bit must come first.
- *
- * The most significant differance between this function and `strtol` (aside of
- * API design), is the added support for binary representations.
+ * We include this in case the parser is used outside of facil.io.
  */
-#pragma weak fio_atol
 int64_t __attribute__((weak)) fio_atol(char **pstr) {
-  /* No binary representation in strtol */
-  char *str = *pstr;
-  uint64_t result = 0;
-  uint8_t invert = 0;
-  while (str[0] == '-') {
-    invert ^= 1;
-    ++str;
-  }
-  if (str[0] == 'B' || str[0] == 'b' ||
-      (str[0] == '0' && (str[1] == 'b' || str[1] == 'B'))) {
-    /* base 2 */
-    if (str[0] == '0')
-      str++;
-    str++;
-    while (str[0] == '0' || str[0] == '1') {
-      result = (result << 1) | (str[0] == '1');
-      str++;
-    }
-  } else if (str[0] == 'x' || str[0] == 'X' ||
-             (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
-    /* base 16 */
-    uint8_t tmp;
-    if (str[0] == '0')
-      str++;
-    str++;
-    for (;;) {
-      if (str[0] >= '0' && str[0] <= '9')
-        tmp = str[0] - '0';
-      else if (str[0] >= 'A' && str[0] <= 'F')
-        tmp = str[0] - ('A' - 10);
-      else if (str[0] >= 'a' && str[0] <= 'f')
-        tmp = str[0] - ('a' - 10);
-      else
-        goto finish;
-      result = (result << 4) | tmp;
-      str++;
-    }
-  } else if (str[0] == '0') {
-    ++str;
-    /* base 8 */
-    const char *end = str;
-    while (end[0] >= '0' && end[0] <= '7' && (uintptr_t)(end - str) < 22)
-      end++;
-    if ((uintptr_t)(end - str) > 21) /* TODO: fix too large for a number */
-      return 0;
-
-    while (str < end) {
-      result = (result * 8) + (str[0] - '0');
-      str++;
-    }
-  } else {
-    /* base 10 */
-    const char *end = str;
-    while (end[0] >= '0' && end[0] <= '9' && (uintptr_t)(end - str) < 22)
-      end++;
-    if ((uintptr_t)(end - str) > 21) /* too large for a number */
-      return 0;
-
-    while (str < end) {
-      result = (result * 10) + (str[0] - '0');
-      str++;
-    }
-  }
-finish:
-  if (invert)
-    result = 0 - result;
-  *pstr = str;
-  return (int64_t)result;
+  return strtoll(*pstr, pstr, 0);
 }
+#pragma weak fio_atol
 
-/** A helper function that converts between String data to a signed double. */
-#pragma weak fio_atof
+/**
+ * We include this in case the parser is used outside of facil.io.
+ */
 double __attribute__((weak)) fio_atof(char **pstr) {
-  return strtold(*pstr, pstr);
+  return strtod(*pstr, pstr);
 }
+#pragma weak fio_atof
 
 /**
  * A helper function that writes a signed int64_t to a string.
