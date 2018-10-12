@@ -3544,6 +3544,79 @@ Section Start Marker
 Strings to Numbers
 ***************************************************************************** */
 
+FIO_FUNC inline size_t fio_atol_skip_zero(char **pstr) {
+  char *const start = *pstr;
+  while (**pstr == '0') {
+    ++(*pstr);
+  }
+  return (size_t)(*pstr - *start);
+}
+
+/* consumes any digits in the string (base 2-10), returning their value */
+FIO_FUNC inline uint64_t fio_atol_consume(char **pstr, uint8_t base) {
+  uint64_t result = 0;
+  const uint64_t limit = UINT64_MAX - (base * base);
+  while (**pstr >= '0' && **pstr < ('0' + base) && result <= (limit)) {
+    result = (result * base) + (**pstr - '0');
+    ++(*pstr);
+  }
+  return result;
+}
+
+/* returns true if there's data to be skipped */
+FIO_FUNC inline uint8_t fio_atol_skip_test(char **pstr, uint8_t base) {
+  return (**pstr >= '0' && **pstr < ('0' + base));
+}
+
+/* consumes any digits in the string (base 2-10), returning the count skipped */
+FIO_FUNC inline uint64_t fio_atol_skip(char **pstr, uint8_t base) {
+  uint64_t result = 0;
+  while (fio_atol_skip_test(pstr, base)) {
+    ++result;
+    ++(*pstr);
+  }
+  return result;
+}
+
+/* consumes any hex data in the string, returning their value */
+FIO_FUNC inline uint64_t fio_atol_consume_hex(char **pstr) {
+  uint64_t result = 0;
+  const uint64_t limit = UINT64_MAX - (16 * 16);
+  for (; result <= limit;) {
+    uint8_t tmp;
+    if (**pstr >= '0' && **pstr <= '9')
+      tmp = **pstr - '0';
+    else if (**pstr >= 'A' && **pstr <= 'F')
+      tmp = **pstr - ('A' - 10);
+    else if (**pstr >= 'a' && **pstr <= 'f')
+      tmp = **pstr - ('a' - 10);
+    else
+      return result;
+    result = (result << 4) | tmp;
+    ++(*pstr);
+  }
+  return result;
+}
+
+/* returns true if there's data to be skipped */
+FIO_FUNC inline uint8_t fio_atol_skip_hex_test(char **pstr) {
+  return (**pstr >= '0' && **pstr <= '9') || (**pstr >= 'A' && **pstr <= 'F') ||
+         (**pstr >= 'a' && **pstr <= 'f');
+}
+
+/* consumes any digits in the string (base 2-10), returning the count skipped */
+FIO_FUNC inline uint64_t fio_atol_skip_hex(char **pstr) {
+  uint64_t result = 0;
+  while (fio_atol_skip_hex_test(pstr)) {
+    ++result;
+    ++(*pstr);
+  }
+  return result;
+}
+
+/* caches a up to 8*8 */
+// static inline fio_atol_pow_10_cache(size_t ex) {}
+
 /**
  * A helper function that converts between String data to a signed int64_t.
  *
@@ -3559,73 +3632,81 @@ int64_t fio_atol(char **pstr) {
   char *str = *pstr;
   uint64_t result = 0;
   uint8_t invert = 0;
-  while (str[0] == '-') {
+  while (isspace(*str))
+    ++(str);
+  if (str[0] == '-') {
     invert ^= 1;
     ++str;
+  } else if (*str == '+') {
+    ++(str);
   }
+
   if (str[0] == 'B' || str[0] == 'b' ||
       (str[0] == '0' && (str[1] == 'b' || str[1] == 'B'))) {
     /* base 2 */
     if (str[0] == '0')
       str++;
     str++;
+    fio_atol_skip_zero(&str);
     while (str[0] == '0' || str[0] == '1') {
-      result = (result << 1) | (str[0] == '1');
+      result = (result << 1) | (str[0] - '0');
       str++;
     }
   } else if (str[0] == 'x' || str[0] == 'X' ||
              (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
     /* base 16 */
-    uint8_t tmp;
     if (str[0] == '0')
       str++;
     str++;
-    for (;;) {
-      if (str[0] >= '0' && str[0] <= '9')
-        tmp = str[0] - '0';
-      else if (str[0] >= 'A' && str[0] <= 'F')
-        tmp = str[0] - ('A' - 10);
-      else if (str[0] >= 'a' && str[0] <= 'f')
-        tmp = str[0] - ('a' - 10);
-      else
-        goto finish;
-      result = (result << 4) | tmp;
-      str++;
-    }
+    fio_atol_skip_zero(&str);
+    result = fio_atol_consume_hex(&str);
   } else if (str[0] == '0') {
-    ++str;
+    fio_atol_skip_zero(&str);
     /* base 8 */
-    const char *start = str;
-    while (str[0] >= '0' && str[0] <= '7' && (uintptr_t)(str - start) < 22) {
-      result = (result * 8) + (str[0] - '0');
-      ++str;
-    }
-    if ((uintptr_t)(str - start) > 22) /* too large for a number */
+    result = fio_atol_consume(&str, 8);
+    if (fio_atol_skip_test(&str, 8)) /* too large for a number */
       return 0;
   } else {
     /* base 10 */
-    const char *start = str;
-    while (str[0] >= '0' && str[0] <= '9' && (uintptr_t)(str - start) < 22) {
-      result = (result * 10) + (str[0] - '0');
-      ++str;
-    }
-    if ((uintptr_t)(str - start) > 21) /* too large for a number */
+    result = fio_atol_consume(&str, 10);
+    if (fio_atol_skip_test(&str, 10)) /* too large for a number */
       return 0;
   }
-finish:
   if (invert)
     result = 0 - result;
   *pstr = str;
   return (int64_t)result;
 }
 
+FIO_FUNC double inline fio_atof_make_double(uint64_t base, int64_t expo,
+                                            uint8_t sign) {
+  union {
+    uint64_t u64;
+    double d;
+  } r;
+  r.u64 = ((uint64_t)(sign & 1) << 63);
+  if (((uint64_t)expo & (((uint64_t)1 << 63) - 1)) &
+      (~((uint64_t)(1 << 11)) - 1))
+    goto expo_too_big;
+  r.u64 |= (((uint64_t)((1023 + (expo))) & 2047) << 51) |
+           (base & (((uint64_t)1 << 51) - 1));
+  return r.d; /* return the bits as computed, don't convert. */
+expo_too_big:
+  if (expo > 0) /* too big, signed inifinity */
+    r.u64 |= ((uint64_t)((1ULL << 11) - 1) << 51);
+  return r.d; /* return the bits as computed, don't convert. */
+}
+
 /** A helper function that converts between String data to a signed double. */
 double fio_atof(char **pstr) {
   return strtold(*pstr, pstr);
+#if !__SIZEOF_INT128__
+  return strtold(*pstr, pstr);
+#else
   uint8_t inv_base = 0;
   uint8_t inv_expo = 0;
-  uint64_t top = 0;
-  uint64_t expo = 0;
+  __uint128_t top = 0;
+  __int128_t expo = 0;
   double result = 0;
   char *str = *pstr;
   /* skip white-space */
@@ -3637,41 +3718,27 @@ double fio_atof(char **pstr) {
   } else if (*str == '+') {
     ++(str);
   }
+  while (*str == '0')
+    ++(str);
 
-  if ((*str) == '0' && (str[1] == 'x' || str[1] == 'X')) {
-    /* Hex notation */
-    str += 2;
-    uint64_t utop = 0;
-    for (;;) {
-      uint8_t tmp = 0;
-      if (str[0] >= '0' && str[0] <= '9')
-        tmp = str[0] - '0';
-      else if (str[0] >= 'A' && str[0] <= 'F')
-        tmp = str[0] - ('A' - 10);
-      else if (str[0] >= 'a' && str[0] <= 'f')
-        tmp = str[0] - ('a' - 10);
-      else
-        break;
-      utop = (utop << 4) | tmp;
+  if (str[0] == 'x' || str[0] == 'X') {
+    /* base 16 */
+    if (str[0] == '0')
       str++;
-    }
-    top = utop;
+    str++; /* Hex notation */
+    top += fio_atol_consume_hex(&str);
+    expo += fio_atol_skip_hex(&str) << 4; /* each 1 byte references 4 bits */
     if (*str == '.') {
       ++str;
-      utop = 0;
-      for (;;) {
-        uint8_t tmp = 0;
-        if (str[0] >= '0' && str[0] <= '9')
-          tmp = str[0] - '0';
-        else if (str[0] >= 'A' && str[0] <= 'F')
-          tmp = str[0] - ('A' - 10);
-        else if (str[0] >= 'a' && str[0] <= 'f')
-          tmp = str[0] - ('a' - 10);
-        else
-          break;
-        utop = (utop << 4) | tmp;
-        str++;
+      if (!top) {
+        while (str[0] == '0') {
+          expo -= 4;
+          str++;
+        }
       }
+
+      uint64_t utop = fio_atol_consume_hex(&str);
+      fio_atol_skip_hex(&str);
       result = utop;
       while (utop) {
         result = result / 16;
@@ -3688,10 +3755,13 @@ double fio_atof(char **pstr) {
       } else if (*str == '+') {
         ++(str);
       }
-      while ((*str) >= '0' && (*str) <= '9') {
-        expo = (expo * 10) + (*str) - '0';
+      while (*str == '0') {
         ++(str);
       }
+      expo += fio_atol_consume(&str, 10);
+      if (fio_atol_skip_test(&str, 10))
+        return 0;
+      fio_atol_skip(&str, 10);
       if (inv_expo) {
         while (expo--) {
           result = result / 2;
@@ -3709,36 +3779,53 @@ double fio_atof(char **pstr) {
   }
 
   /* Decimal scientific notation  */
-  while ((*str) >= '0' && (*str) <= '9') {
-    top = (top * 10) + (*str) - '0';
-    ++(str);
-  }
   if (*str == '.') {
-    uint64_t tmp = 0;
-    double tmp_lg = 1;
     ++(str);
-    while ((*str) >= '0' && (*str) <= '9') {
-      tmp = (tmp * 10) + (*str) - '0';
-      tmp_lg *= 10;
+    while (*str == '0') {
       ++(str);
+      --expo;
     }
-    result = tmp / tmp_lg;
+    top = fio_atol_consume(&str, 10);
+    fio_atol_skip(&str, 10);
+  } else {
+    top = fio_atol_consume(&str, 10);
+    expo += fio_atol_skip(&str, 10);
+    if (*str == '.') {
+      uint64_t tmp = 0;
+      double tmp_lg = 1;
+      ++(str);
+      while ((*str) >= '0' && (*str) <= '9') {
+        tmp = (tmp * 10) + (*str) - '0';
+        tmp_lg *= 10;
+        ++(str);
+      }
+      result = tmp / tmp_lg;
+    }
   }
   result += top;
   if (*str == 'e' || *str == 'E') {
     ++(str);
     if (*str == '-') {
-      inv_expo = 1;
       ++(str);
-    } else if (*str == '+') {
-      ++(str);
+      while (*str == '0') {
+        ++(str);
+      }
+      expo -= fio_atol_consume(&str, 10);
+    } else {
+      if (*str == '+') {
+        ++(str);
+      }
+      while (*str == '0') {
+        ++(str);
+      }
+      expo += fio_atol_consume(&str, 10);
     }
-    while ((*str) >= '0' && (*str) <= '9') {
-      expo = (expo * 10) + (*str) - '0';
-      ++(str);
-    }
-    if (inv_expo) {
-      while (expo--) {
+    fio_atol_skip(&str, 10);
+
+    /* convert into a double */
+
+    if (expo < 0) {
+      while (expo++) {
         result = result / 10;
       }
     } else {
@@ -3751,6 +3838,7 @@ double fio_atof(char **pstr) {
     result *= -1;
   *pstr = str;
   return result;
+#endif
 }
 
 /* *****************************************************************************
@@ -9472,6 +9560,7 @@ static void fio_str2u_test(void) {
                "fio_u2str16 / fio_str2u16  mismatch %zd != %zd",
                (ssize_t)(fio_str2u16(buffer)), (ssize_t)i);
   }
+  fprintf(stderr, "* passed.\n");
 }
 
 /* *****************************************************************************
@@ -9540,6 +9629,7 @@ static void fio_pubsub_test(void) {
   fio_data->workers = 0;
   (void)fio_pubsub_test_on_message;
   (void)fio_pubsub_test_on_unsubscribe;
+  fprintf(stderr, "* passed.\n");
 }
 #else
 #define fio_pubsub_test()
@@ -9564,6 +9654,54 @@ static void fio_atol_test(void) {
           "      Test with make test/optimized for realistic results.\n");
   time_t start, end;
 
+#define TEST_ATOL(s, n)                                                        \
+  do {                                                                         \
+    char *p = (char *)(s);                                                     \
+    int64_t r = fio_atol(&p);                                                  \
+    FIO_ASSERT(r == (n), "fio_atol test error! %s => %zd (not %zd)",           \
+               ((char *)(s)), (size_t)r, (size_t)n);                           \
+    FIO_ASSERT((s) + strlen((s)) == p,                                         \
+               "fio_atol test error! %s reading position not at end (%zu)",    \
+               (s), (size_t)(p - (s)));                                        \
+    char buf[72];                                                              \
+    buf[fio_ltoa(buf, n, 2)] = 0;                                              \
+    p = buf;                                                                   \
+    FIO_ASSERT(fio_atol(&p) == (n),                                            \
+               "fio_ltoa base 2 test error! "                                  \
+               "%s != %s (%zd)",                                               \
+               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
+    buf[fio_ltoa(buf, n, 8)] = 0;                                              \
+    p = buf;                                                                   \
+    FIO_ASSERT(fio_atol(&p) == (n),                                            \
+               "fio_ltoa base 8 test error! "                                  \
+               "%s != %s (%zd)",                                               \
+               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
+    buf[fio_ltoa(buf, n, 10)] = 0;                                             \
+    p = buf;                                                                   \
+    FIO_ASSERT(fio_atol(&p) == (n),                                            \
+               "fio_ltoa base 10 test error! "                                 \
+               "%s != %s (%zd)",                                               \
+               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
+    buf[fio_ltoa(buf, n, 16)] = 0;                                             \
+    p = buf;                                                                   \
+    FIO_ASSERT(fio_atol(&p) == (n),                                            \
+               "fio_ltoa base 16 test error! "                                 \
+               "%s != %s (%zd)",                                               \
+               buf, ((char *)(s)), (size_t)((p = buf), fio_atol(&p)));         \
+  } while (0)
+  TEST_ATOL("0x1", 1);
+  TEST_ATOL("-0x1", -1);
+  TEST_ATOL("-0xa", -10);                                /* sign before hex */
+  TEST_ATOL("0xe5d4c3b2a1908770", -1885667171979196560); /* sign within hex */
+  TEST_ATOL("0b00000000000011", 3);
+  TEST_ATOL("-0b00000000000011", -3);
+  TEST_ATOL("0b0000000000000000000000000000000000000000000000000", 0);
+  TEST_ATOL("0", 0);
+  TEST_ATOL("1", 1);
+  TEST_ATOL("2", 2);
+  TEST_ATOL("-2", -2);
+  TEST_ATOL("0000000000000000000000000000000000000000000000042", 34); /* oct */
+
   char number_hex[128] = "0xe5d4c3b2a1908770"; /* hex with embedded sign */
   // char number_hex[128] = "-0x1a2b3c4d5e6f7890";
   char number[128] = "-1885667171979196560";
@@ -9580,9 +9718,6 @@ static void fio_atol_test(void) {
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
-  FIO_ASSERT(result == expect,
-             "fio_atol with base 10 returned wrong result (%ld != %ld)", expect,
-             result);
   fprintf(stderr, "fio_atol base 10 (%ld): %zd CPU cycles\n", result,
           end - start);
 
@@ -9606,9 +9741,6 @@ static void fio_atol_test(void) {
     __asm__ volatile("" ::: "memory");
   }
   end = clock();
-  FIO_ASSERT(result == expect,
-             "fio_atol with base 16 returned wrong result (%ld != %ld)", expect,
-             result);
   fprintf(stderr, "fio_atol base 16 (%ld): %zd CPU cycles\n", result,
           end - start);
 
@@ -9654,8 +9786,110 @@ static void fio_atol_test(void) {
              "base 10 zero should be single char.");
   FIO_ASSERT(memcmp(number, "0", 2) == 0, "base 10 zero should be \"0\" (%s).",
              number);
+  fprintf(stderr, "* passed.\n");
+#undef TEST_ATOL
 }
 
+/* *****************************************************************************
+String 2 Float and Float 2 String (partial) testing
+***************************************************************************** */
+
+static void fio_atof_test(void) {
+  fprintf(stderr, "=== Testing fio_ftoa and fio_ftoa (partial)\n");
+#define TEST_DOUBLE(s, d, must)                                                \
+  do {                                                                         \
+    char *p = (char *)(s);                                                     \
+    double r = fio_atof(&p);                                                   \
+    if (r != (d)) {                                                            \
+      FIO_LOG_DEBUG("Double Test Error! %s => %.19g (not %.19g)",              \
+                    ((char *)(s)), r, d);                                      \
+      if (must) {                                                              \
+        FIO_ASSERT(0, "double test failed on %s", ((char *)(s)));              \
+        exit(-1);                                                              \
+      }                                                                        \
+    }                                                                          \
+  } while (0)
+  /* The numbers were copied from https://github.com/miloyip/rapidjson */
+  TEST_DOUBLE("0.0", 0.0, 1);
+  TEST_DOUBLE("-0.0", -0.0, 1);
+  TEST_DOUBLE("1.0", 1.0, 1);
+  TEST_DOUBLE("-1.0", -1.0, 1);
+  TEST_DOUBLE("1.5", 1.5, 1);
+  TEST_DOUBLE("-1.5", -1.5, 1);
+  TEST_DOUBLE("3.1416", 3.1416, 1);
+  TEST_DOUBLE("1E10", 1E10, 1);
+  TEST_DOUBLE("1e10", 1e10, 1);
+  TEST_DOUBLE("1E+10", 1E+10, 1);
+  TEST_DOUBLE("1E-10", 1E-10, 1);
+  TEST_DOUBLE("-1E10", -1E10, 1);
+  TEST_DOUBLE("-1e10", -1e10, 1);
+  TEST_DOUBLE("-1E+10", -1E+10, 1);
+  TEST_DOUBLE("-1E-10", -1E-10, 1);
+  TEST_DOUBLE("1.234E+10", 1.234E+10, 1);
+  TEST_DOUBLE("1.234E-10", 1.234E-10, 1);
+  TEST_DOUBLE("1.79769e+308", 1.79769e+308, 1);
+  TEST_DOUBLE("2.22507e-308", 2.22507e-308, 1);
+  TEST_DOUBLE("-1.79769e+308", -1.79769e+308, 1);
+  TEST_DOUBLE("-2.22507e-308", -2.22507e-308, 1);
+  TEST_DOUBLE("4.9406564584124654e-324", 4.9406564584124654e-324, 0);
+  TEST_DOUBLE("2.2250738585072009e-308", 2.2250738585072009e-308, 0);
+  TEST_DOUBLE("2.2250738585072014e-308", 2.2250738585072014e-308, 1);
+  TEST_DOUBLE("1.7976931348623157e+308", 1.7976931348623157e+308, 1);
+  TEST_DOUBLE("1e-10000", 0.0, 0);
+  TEST_DOUBLE("18446744073709551616", 18446744073709551616.0, 0);
+
+  TEST_DOUBLE("-9223372036854775809", -9223372036854775809.0, 0);
+
+  TEST_DOUBLE("0.9868011474609375", 0.9868011474609375, 0);
+  TEST_DOUBLE("123e34", 123e34, 1);
+  TEST_DOUBLE("45913141877270640000.0", 45913141877270640000.0, 1);
+  TEST_DOUBLE("2.2250738585072011e-308", 2.2250738585072011e-308, 0);
+  TEST_DOUBLE("1e-214748363", 0.0, 1);
+  TEST_DOUBLE("1e-214748364", 0.0, 1);
+  TEST_DOUBLE("0.017976931348623157e+310, 1", 1.7976931348623157e+308, 0);
+
+  TEST_DOUBLE("2.2250738585072012e-308", 2.2250738585072014e-308, 0);
+  TEST_DOUBLE("2.22507385850720113605740979670913197593481954635164565e-308",
+              2.2250738585072014e-308, 0);
+
+  TEST_DOUBLE("0.999999999999999944488848768742172978818416595458984375", 1.0,
+              0);
+  TEST_DOUBLE("0.999999999999999944488848768742172978818416595458984376", 1.0,
+              0);
+  TEST_DOUBLE("1.00000000000000011102230246251565404236316680908203125", 1.0,
+              0);
+  TEST_DOUBLE("1.00000000000000011102230246251565404236316680908203124", 1.0,
+              0);
+
+  TEST_DOUBLE("72057594037927928.0", 72057594037927928.0, 0);
+  TEST_DOUBLE("72057594037927936.0", 72057594037927936.0, 0);
+  TEST_DOUBLE("72057594037927932.0", 72057594037927936.0, 0);
+  TEST_DOUBLE("7205759403792793200001e-5", 72057594037927936.0, 0);
+
+  TEST_DOUBLE("9223372036854774784.0", 9223372036854774784.0, 0);
+  TEST_DOUBLE("9223372036854775808.0", 9223372036854775808.0, 0);
+  TEST_DOUBLE("9223372036854775296.0", 9223372036854775808.0, 0);
+  TEST_DOUBLE("922337203685477529600001e-5", 9223372036854775808.0, 0);
+
+  TEST_DOUBLE("10141204801825834086073718800384",
+              10141204801825834086073718800384.0, 0);
+  TEST_DOUBLE("10141204801825835211973625643008",
+              10141204801825835211973625643008.0, 0);
+  TEST_DOUBLE("10141204801825834649023672221696",
+              10141204801825835211973625643008.0, 0);
+  TEST_DOUBLE("1014120480182583464902367222169600001e-5",
+              10141204801825835211973625643008.0, 0);
+
+  TEST_DOUBLE("5708990770823838890407843763683279797179383808",
+              5708990770823838890407843763683279797179383808.0, 0);
+  TEST_DOUBLE("5708990770823839524233143877797980545530986496",
+              5708990770823839524233143877797980545530986496.0, 0);
+  TEST_DOUBLE("5708990770823839207320493820740630171355185152",
+              5708990770823839524233143877797980545530986496.0, 0);
+  TEST_DOUBLE("5708990770823839207320493820740630171355185152001e-3",
+              5708990770823839524233143877797980545530986496.0, 0);
+  fprintf(stderr, "\n* passed.\n");
+}
 /* *****************************************************************************
 Run all tests
 ***************************************************************************** */
@@ -9666,6 +9900,7 @@ void fio_test(void) {
   fio_state_callback_test();
   fio_str_test();
   fio_atol_test();
+  fio_atof_test();
   fio_str2u_test();
   fio_llist_test();
   fio_ary_test();
