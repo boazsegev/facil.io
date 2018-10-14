@@ -3652,6 +3652,8 @@ int64_t fio_atol(char **pstr) {
       result = (result << 1) | (str[0] - '0');
       str++;
     }
+    goto sign; /* no overlow protection, since sign might be embedded */
+
   } else if (str[0] == 'x' || str[0] == 'X' ||
              (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
     /* base 16 */
@@ -3660,6 +3662,9 @@ int64_t fio_atol(char **pstr) {
     str++;
     fio_atol_skip_zero(&str);
     result = fio_atol_consume_hex(&str);
+    if (fio_atol_skip_hex_test(&str)) /* too large for a number */
+      return 0;
+    goto sign; /* no overlow protection, since sign might be embedded */
   } else if (str[0] == '0') {
     fio_atol_skip_zero(&str);
     /* base 8 */
@@ -3672,174 +3677,17 @@ int64_t fio_atol(char **pstr) {
     if (fio_atol_skip_test(&str, 10)) /* too large for a number */
       return 0;
   }
+  if (result & ((uint64_t)1 << 63))
+    result = INT64_MAX; /* signed overflow protection */
+sign:
   if (invert)
     result = 0 - result;
   *pstr = str;
   return (int64_t)result;
 }
 
-FIO_FUNC double inline fio_atof_make_double(uint64_t base, int64_t expo,
-                                            uint8_t sign) {
-  union {
-    uint64_t u64;
-    double d;
-  } r;
-  r.u64 = ((uint64_t)(sign & 1) << 63);
-  if (((uint64_t)expo & (((uint64_t)1 << 63) - 1)) &
-      (~((uint64_t)(1 << 11)) - 1))
-    goto expo_too_big;
-  r.u64 |= (((uint64_t)((1023 + (expo))) & 2047) << 51) |
-           (base & (((uint64_t)1 << 51) - 1));
-  return r.d; /* return the bits as computed, don't convert. */
-expo_too_big:
-  if (expo > 0) /* too big, signed inifinity */
-    r.u64 |= ((uint64_t)((1ULL << 11) - 1) << 51);
-  return r.d; /* return the bits as computed, don't convert. */
-}
-
 /** A helper function that converts between String data to a signed double. */
-double fio_atof(char **pstr) {
-  return strtold(*pstr, pstr);
-#if !__SIZEOF_INT128__
-  return strtold(*pstr, pstr);
-#else
-  uint8_t inv_base = 0;
-  uint8_t inv_expo = 0;
-  __uint128_t top = 0;
-  __int128_t expo = 0;
-  double result = 0;
-  char *str = *pstr;
-  /* skip white-space */
-  while (isspace(*str))
-    ++(str);
-  if (*str == '-') {
-    inv_base = 1;
-    ++(str);
-  } else if (*str == '+') {
-    ++(str);
-  }
-  while (*str == '0')
-    ++(str);
-
-  if (str[0] == 'x' || str[0] == 'X') {
-    /* base 16 */
-    if (str[0] == '0')
-      str++;
-    str++; /* Hex notation */
-    top += fio_atol_consume_hex(&str);
-    expo += fio_atol_skip_hex(&str) << 4; /* each 1 byte references 4 bits */
-    if (*str == '.') {
-      ++str;
-      if (!top) {
-        while (str[0] == '0') {
-          expo -= 4;
-          str++;
-        }
-      }
-
-      uint64_t utop = fio_atol_consume_hex(&str);
-      fio_atol_skip_hex(&str);
-      result = utop;
-      while (utop) {
-        result = result / 16;
-        utop >>= 4;
-      }
-    }
-    result += top;
-    if (*str == 'p' || *str == 'P') {
-      ++str;
-      /* base 2 exponent */
-      if (*str == '-') {
-        inv_expo = 1;
-        ++(str);
-      } else if (*str == '+') {
-        ++(str);
-      }
-      while (*str == '0') {
-        ++(str);
-      }
-      expo += fio_atol_consume(&str, 10);
-      if (fio_atol_skip_test(&str, 10))
-        return 0;
-      fio_atol_skip(&str, 10);
-      if (inv_expo) {
-        while (expo--) {
-          result = result / 2;
-        }
-      } else {
-        while (expo--) {
-          result = result * 2;
-        }
-      }
-    }
-    if (inv_base)
-      result *= -1;
-    *pstr = str;
-    return result;
-  }
-
-  /* Decimal scientific notation  */
-  if (*str == '.') {
-    ++(str);
-    while (*str == '0') {
-      ++(str);
-      --expo;
-    }
-    top = fio_atol_consume(&str, 10);
-    fio_atol_skip(&str, 10);
-  } else {
-    top = fio_atol_consume(&str, 10);
-    expo += fio_atol_skip(&str, 10);
-    if (*str == '.') {
-      uint64_t tmp = 0;
-      double tmp_lg = 1;
-      ++(str);
-      while ((*str) >= '0' && (*str) <= '9') {
-        tmp = (tmp * 10) + (*str) - '0';
-        tmp_lg *= 10;
-        ++(str);
-      }
-      result = tmp / tmp_lg;
-    }
-  }
-  result += top;
-  if (*str == 'e' || *str == 'E') {
-    ++(str);
-    if (*str == '-') {
-      ++(str);
-      while (*str == '0') {
-        ++(str);
-      }
-      expo -= fio_atol_consume(&str, 10);
-    } else {
-      if (*str == '+') {
-        ++(str);
-      }
-      while (*str == '0') {
-        ++(str);
-      }
-      expo += fio_atol_consume(&str, 10);
-    }
-    fio_atol_skip(&str, 10);
-
-    /* convert into a double */
-
-    if (expo < 0) {
-      while (expo++) {
-        result = result / 10;
-      }
-    } else {
-      while (expo--) {
-        result = result * 10;
-      }
-    }
-  }
-  if (inv_base)
-    result *= -1;
-  *pstr = str;
-  return result;
-#endif
-}
+double fio_atof(char **pstr) { return strtold(*pstr, pstr); }
 
 /* *****************************************************************************
 Numbers to Strings
@@ -3928,12 +3776,12 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
         n = n << 8;
         i++;
       }
-      /* make sure the Hex representation doesn't appear signed. */
+      /* make sure the Hex representation doesn't appear misleadingly signed. */
       if (i && (n & 0x8000000000000000)) {
         dest[len++] = '0';
         dest[len++] = '0';
       }
-      /* write the damn thing */
+      /* write the damn thing, high to low */
       while (i < 8) {
         uint8_t tmp = (n & 0xF000000000000000) >> 60;
         dest[len++] = notation[tmp];
@@ -3997,6 +3845,9 @@ zero:
   case 2:
     dest[len++] = '0';
     dest[len++] = 'b';
+    break;
+  case 8:
+    dest[len++] = '0';
     break;
   case 16:
     dest[len++] = '0';
@@ -9701,6 +9552,11 @@ static void fio_atol_test(void) {
   TEST_ATOL("2", 2);
   TEST_ATOL("-2", -2);
   TEST_ATOL("0000000000000000000000000000000000000000000000042", 34); /* oct */
+  TEST_ATOL("9223372036854775807", 9223372036854775807LL); /* INT64_MAX */
+  TEST_ATOL("9223372036854775808",
+            9223372036854775807LL); /* INT64_MAX overflow protection */
+  TEST_ATOL("9223372036854775999",
+            9223372036854775807LL); /* INT64_MAX overflow protection */
 
   char number_hex[128] = "0xe5d4c3b2a1908770"; /* hex with embedded sign */
   // char number_hex[128] = "-0x1a2b3c4d5e6f7890";
