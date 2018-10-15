@@ -10,6 +10,7 @@
 * [General Helpers](/0.7.x/fio#general-helpers)
 * [Linked Lists](/0.7.x/fio#linked-lists)
 * [String Helpers](/0.7.x/fio#string-helpers)
+* [Dynamic Arrays](/0.7.x/fio#dynamic-arrays)
 * [Hash Maps / Sets](/0.7.x/fio#hash-maps-sets)
 * [Compilation Macros](/0.7.x/fio#version-and-compilation-related-macros)
 * [Weak Functions](/0.7.x/fio#weak-functions)

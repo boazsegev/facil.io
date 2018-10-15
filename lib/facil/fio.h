@@ -3542,13 +3542,13 @@ String Implementation - UTF-8 State
 ***************************************************************************** */
 
 /**
- * Maps the last 5 bits in a byte (0b11111xxx) to a UTF-8 codepoint length.
+ * Maps the first 5 bits in a byte (0b11111xxx) to a UTF-8 codepoint length.
  *
  * Codepoint length 0 == error.
  *
  * The first valid length can be any value between 1 to 4.
  *
- * An intermidiate (second, third or forth) valid length must be 5.
+ * A continuation byte (second, third or forth) valid length must be 5.
  *
  * To map was populated using the following Ruby script:
  *
@@ -4069,8 +4069,8 @@ inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
  *         #define FIO_ARY_COMPARE(k1, k2) (!strcmp((k1), (k2)))
  *         #include <fio.h>
  *
- * It's possible to create a number of Set or HasMap types by reincluding the
- * fio.h header. i.e.:
+ * It's possible to create a number of Array types by reincluding the fio.h
+ * header. i.e.:
  *
  *
  *         #define FIO_INCLUDE_STR
@@ -4102,12 +4102,12 @@ inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
 #define FIO_NAME_FROM_MACRO_STEP3(name) FIO_NAME_FROM_MACRO_STEP4(name)
 #define FIO_NAME_FREE() FIO_NAME_FROM_MACRO_STEP3(FIO_ARY_NAME)
 
-/* The default Set object / value type is `void *` */
+/* The default Array object type is `void *` */
 #if !defined(FIO_ARY_TYPE)
 #define FIO_ARY_TYPE void *
 #endif
 
-/* The default Set object / value type is `void *` */
+/* An invalid object has all bytes set to 0 - a static constant will do. */
 #if !defined(FIO_ARY_INVALID)
 static FIO_ARY_TYPE const FIO_NAME(s___const_invalid_object);
 #define FIO_ARY_INVALID FIO_NAME(s___const_invalid_object)
@@ -4163,7 +4163,7 @@ Array API
 typedef struct FIO_NAME(s) FIO_NAME(s);
 
 #ifndef FIO_ARY_INIT
-/** Initializes the set */
+/** Initializes the Array */
 #define FIO_ARY_INIT                                                           \
   { .capa = 0 }
 #endif

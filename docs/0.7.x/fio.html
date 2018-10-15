@@ -12,6 +12,7 @@
 <li><a href="/0.7.x/fio#general-helpers">General Helpers</a></li>
 <li><a href="/0.7.x/fio#linked-lists">Linked Lists</a></li>
 <li><a href="/0.7.x/fio#string-helpers">String Helpers</a></li>
+<li><a href="/0.7.x/fio#dynamic-arrays">Dynamic Arrays</a></li>
 <li><a href="/0.7.x/fio#hash-maps-sets">Hash Maps / Sets</a></li>
 <li><a href="/0.7.x/fio#version-and-compilation-related-macros">Compilation Macros</a></li>
 <li><a href="/0.7.x/fio#weak-functions">Weak Functions</a></li>
@@ -595,6 +596,113 @@
 </ul>
 </li>
 <li>
+<a href="#dynamic-arrays">Dynamic Arrays</a>
+<ul>
+<li>
+<a href="#defining-the-array">Defining the Array</a>
+<ul>
+<li>
+<a href="#fio_ary_name"><code>FIO_ARY_NAME</code></a>
+</li>
+<li>
+<a href="#fio_ary_type"><code>FIO_ARY_TYPE</code></a>
+</li>
+<li>
+<a href="#fio_ary_invalid"><code>FIO_ARY_INVALID</code></a>
+</li>
+<li>
+<a href="#fio_ary_compare"><code>FIO_ARY_COMPARE</code></a>
+</li>
+<li>
+<a href="#fio_ary_copy"><code>FIO_ARY_COPY</code></a>
+</li>
+<li>
+<a href="#fio_ary_destroy"><code>FIO_ARY_DESTROY</code></a>
+</li>
+<li>
+<a href="#fio_ary_malloc"><code>FIO_ARY_MALLOC</code></a>
+</li>
+<li>
+<a href="#fio_ary_realloc"><code>FIO_ARY_REALLOC</code></a>
+</li>
+<li>
+<a href="#fio_ary_dealloc"><code>FIO_ARY_DEALLOC</code></a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#naming-the-array">Naming the Array</a>
+</li>
+<li>
+<a href="#array-initialization-and-state">Array Initialization and State</a>
+<ul>
+<li>
+<a href="#fio_ary_name-s"><code>FIO_ARY_NAME(s)</code></a>
+</li>
+<li>
+<a href="#fio_ary_init"><code>FIO_ARY_INIT</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-free"><code>FIO_ARY_NAME(free)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-count"><code>FIO_ARY_NAME(count)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-capa"><code>FIO_ARY_NAME(capa)</code></a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#array-data-management">Array data management</a>
+<ul>
+<li>
+<a href="#fio_ary_name-concat"><code>FIO_ARY_NAME(concat)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-set"><code>FIO_ARY_NAME(set)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-get"><code>FIO_ARY_NAME(get)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-find"><code>FIO_ARY_NAME(find)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-remove"><code>FIO_ARY_NAME(remove)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-remove2"><code>FIO_ARY_NAME(remove2)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-to_a"><code>FIO_ARY_NAME(to_a)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-push"><code>FIO_ARY_NAME(push)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-pop"><code>FIO_ARY_NAME(pop)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-unshift"><code>FIO_ARY_NAME(unshift)</code></a>
+</li>
+<li>
+<a href="#fio_ary_name-shift"><code>FIO_ARY_NAME(shift)</code></a>
+</li>
+<li>
+<a href="#part-597705">``</a>
+</li>
+<li>
+<a href="#fio_ary_name-compact"><code>FIO_ARY_NAME(compact)</code></a>
+</li>
+<li>
+<a href="#fio_ary_for-ary-pos"><code>FIO_ARY_FOR(ary, pos)</code></a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
 <a href="#hash-maps-sets">Hash Maps / Sets</a>
 <ul>
 <li>
@@ -642,13 +750,13 @@
 <a href="#set-hash-map-initialization">Set / Hash Map Initialization</a>
 <ul>
 <li>
-<a href="#fio_name-s"><code>FIO_NAME(s)</code></a>
+<a href="#fio_set_name-s"><code>FIO_SET_NAME(s)</code></a>
 </li>
 <li>
 <a href="#fio_set_init"><code>FIO_SET_INIT</code></a>
 </li>
 <li>
-<a href="#fio_name-free"><code>FIO_NAME(free)</code></a>
+<a href="#fio_set_name-free"><code>FIO_SET_NAME(free)</code></a>
 </li>
 </ul>
 </li>
@@ -656,13 +764,13 @@
 <a href="#hash-map-find-insert">Hash Map Find / Insert</a>
 <ul>
 <li>
-<a href="#fio_name-find-hash-map"><code>FIO_NAME(find)</code> (Hash Map)</a>
+<a href="#fio_set_name-find-hash-map"><code>FIO_SET_NAME(find)</code> (Hash Map)</a>
 </li>
 <li>
-<a href="#fio_name-insert-hash-map"><code>FIO_NAME(insert)</code> (Hash Map)</a>
+<a href="#fio_set_name-insert-hash-map"><code>FIO_SET_NAME(insert)</code> (Hash Map)</a>
 </li>
 <li>
-<a href="#fio_name-remove-hash-map"><code>FIO_NAME(remove)</code> (Hash Map)</a>
+<a href="#fio_set_name-remove-hash-map"><code>FIO_SET_NAME(remove)</code> (Hash Map)</a>
 </li>
 </ul>
 </li>
@@ -670,16 +778,16 @@
 <a href="#set-find-insert">Set Find / Insert</a>
 <ul>
 <li>
-<a href="#fio_name-find-set"><code>FIO_NAME(find)</code> (Set)</a>
+<a href="#fio_set_name-find-set"><code>FIO_SET_NAME(find)</code> (Set)</a>
 </li>
 <li>
-<a href="#fio_name-insert-set"><code>FIO_NAME(insert)</code> (Set)</a>
+<a href="#fio_set_name-insert-set"><code>FIO_SET_NAME(insert)</code> (Set)</a>
 </li>
 <li>
-<a href="#fio_name-overwrite-set"><code>FIO_NAME(overwrite)</code> (Set)</a>
+<a href="#fio_set_name-overwrite-set"><code>FIO_SET_NAME(overwrite)</code> (Set)</a>
 </li>
 <li>
-<a href="#fio_name-remove-set"><code>FIO_NAME(remove)</code> (Set)</a>
+<a href="#fio_set_name-remove-set"><code>FIO_SET_NAME(remove)</code> (Set)</a>
 </li>
 </ul>
 </li>
@@ -687,28 +795,28 @@
 <a href="#set-hash-map-data">Set / Hash Map Data</a>
 <ul>
 <li>
-<a href="#fio_name-last"><code>FIO_NAME(last)</code></a>
+<a href="#fio_set_name-last"><code>FIO_SET_NAME(last)</code></a>
 </li>
 <li>
-<a href="#fio_name-pop"><code>FIO_NAME(pop)</code></a>
+<a href="#fio_set_name-pop"><code>FIO_SET_NAME(pop)</code></a>
 </li>
 <li>
-<a href="#fio_name-count"><code>FIO_NAME(count)</code></a>
+<a href="#fio_set_name-count"><code>FIO_SET_NAME(count)</code></a>
 </li>
 <li>
-<a href="#fio_name-capa"><code>FIO_NAME(capa)</code></a>
+<a href="#fio_set_name-capa"><code>FIO_SET_NAME(capa)</code></a>
 </li>
 <li>
-<a href="#fio_name-capa_require"><code>FIO_NAME(capa_require)</code></a>
+<a href="#fio_set_name-capa_require"><code>FIO_SET_NAME(capa_require)</code></a>
 </li>
 <li>
-<a href="#fio_name-is_fragmented"><code>FIO_NAME(is_fragmented)</code></a>
+<a href="#fio_set_name-is_fragmented"><code>FIO_SET_NAME(is_fragmented)</code></a>
 </li>
 <li>
-<a href="#fio_name-compact"><code>FIO_NAME(compact)</code></a>
+<a href="#fio_set_name-compact"><code>FIO_SET_NAME(compact)</code></a>
 </li>
 <li>
-<a href="#fio_name-rehash"><code>FIO_NAME(rehash)</code></a>
+<a href="#fio_set_name-rehash"><code>FIO_SET_NAME(rehash)</code></a>
 </li>
 <li>
 <a href="#fio_set_for_loop"><code>FIO_SET_FOR_LOOP</code></a>
@@ -2407,14 +2515,18 @@ be inherently slower.</p>
 <pre><code class='highlight'><span class="n">fio_ls_s</span> <span class="n">my_list</span> <span class="o">=</span> <span class="n">FIO_LS_INIT</span><span class="p">(</span><span class="n">my_list</span><span class="p">);</span>
 </code></pre>
 <h4 id="fio_ls_push"><code>fio_ls_push</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_ls_push</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">fio_ls_push</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
 </code></pre>
 <p>Adds an object to the list&#39;s head.</p>
 
+<p>Returns a pointer to the object&#39;s position (can be used in <code>fio_ls_remove</code>).</p>
+
 <h4 id="fio_ls_unshift"><code>fio_ls_unshift</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_ls_unshift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">fio_ls_unshift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
 </code></pre>
 <p>Adds an object to the list&#39;s tail.</p>
+
+<p>Returns a pointer to the object&#39;s position (can be used in <code>fio_ls_remove</code>).</p>
 
 <h4 id="fio_ls_pop"><code>fio_ls_pop</code></h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_pop</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
@@ -2800,9 +2912,296 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
 </code></pre>
 <p>Binary comparison returns <code>1</code> if both strings are equal and <code>0</code> if not.</p>
 
+<h2 id="dynamic-arrays">Dynamic Arrays</h2>
+
+<p>The <code>fio.h</code> header includes a simple typed dynamic array with a minimal API that can be adapted to any type.</p>
+
+<p><strong>Note</strong>: <a href="fiobj_ary">The API for the <code>FIOBJ</code> Array is located here</a>. This is the documentation for the core library Array.</p>
+
+<p>To create an Array type, define the macro FIO_ARY_NAME. i.e.:</p>
+<pre><code class='highlight'><span class="cp">#define FIO_ARY_NAME fio_cstr_ary
+#define FIO_ARY_TYPE char *
+#define FIO_ARY_COMPARE(k1, k2) (!strcmp((k1), (k2)))
+#include &lt;fio.h&gt;
+</span></code></pre>
+<p>It&#39;s possible to create a number of Set or Array types by re-including the <code>fio.h</code> header. i.e.:</p>
+<pre><code class='highlight'><span class="cp">#define FIO_INCLUDE_STR
+#include &lt;fio.h&gt; // adds the fio_str_s types and functions
+</span>
+<span class="cp">#define FIO_ARY_NAME fio_int_ary
+#define FIO_ARY_TYPE int
+#include &lt;fio.h&gt; // creates the fio_int_ary_s Array and functions
+</span>
+<span class="cp">#define FIO_ARY_NAME fio_str_ary
+#define FIO_ARY_TYPE fio_str_s *
+#define FIO_ARY_COMPARE(k1, k2) (fio_str_iseq((k1), (k2)))
+#define FIO_ARY_COPY(key) fio_str_dup((key))
+#define FIO_ARY_DESTROY(key) fio_str_free2((key))
+#include &lt;fio.h&gt; // creates the fio_str_ary_s Array and functions
+</span></code></pre>
+<h3 id="defining-the-array">Defining the Array</h3>
+
+<h4 id="fio_ary_name"><code>FIO_ARY_NAME</code></h4>
+
+<p>The <code>FIO_ARY_NAME</code> is required and will be used to set a for the Array&#39;s type and functions.</p>
+
+<p>The Array type will be <code>FIO_ARY_NAME_s</code> and each function will be translated to <code>FIO_ARY_NAME_func</code>, where <code>FIO_ARY_NAME</code> is replaced by the macro set.</p>
+
+<p>For example:</p>
+<pre><code class='highlight'><span class="cp">#define FIO_ARY_NAME fio_cstr_ary
+#define FIO_ARY_TYPE char *
+#define FIO_ARY_COMPARE(k1, k2) (!strcmp((k1), (k2)))
+#include &lt;fio.h&gt;
+</span>
+<span class="n">fio_cstr_ary_s</span> <span class="n">global_array</span> <span class="o">=</span> <span class="n">FIO_ARY_INIT</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">populate_array</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span> <span class="n">data</span><span class="p">,</span> <span class="kt">int</span> <span class="n">len</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">len</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">fio_cstr_ary_push</span><span class="p">(</span><span class="o">&amp;</span><span class="n">global_array</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+<h4 id="fio_ary_type"><code>FIO_ARY_TYPE</code></h4>
+<pre><code class='highlight'><span class="cp">#if !defined(FIO_ARY_TYPE)
+#define FIO_ARY_TYPE void *
+#endif
+</span></code></pre>
+<p>The default Array object type is <code>void *</code> */</p>
+
+<h4 id="fio_ary_invalid"><code>FIO_ARY_INVALID</code></h4>
+<pre><code class='highlight'><span class="cp">#if !defined(FIO_ARY_INVALID)
+</span><span class="k">static</span> <span class="n">FIO_ARY_TYPE</span> <span class="k">const</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s___const_invalid_object</span><span class="p">);</span>
+<span class="cp">#define FIO_ARY_INVALID FIO_NAME(s___const_invalid_object)
+#endif
+</span></code></pre>
+<p>The <code>FIO_ARY_INVALID</code> value should be an object with all bytes set to 0. Since <code>FIO_ARY_TYPE</code> type is unknown, a constant static object is created. However, it is better to manually define <code>FIO_ARY_INVALID</code>.</p>
+
+<h4 id="fio_ary_compare"><code>FIO_ARY_COMPARE</code></h4>
+<pre><code class='highlight'><span class="cp">#if !defined(FIO_ARY_COMPARE)
+#define FIO_ARY_COMPARE(o1, o2) ((o1) == (o2))
+#endif
+</span></code></pre>
+<p>The default object comparison assumes a simple type.</p>
+
+<h4 id="fio_ary_copy"><code>FIO_ARY_COPY</code></h4>
+<pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_COPY
+#define FIO_ARY_COPY(dest, obj) ((dest) = (obj))
+#endif
+</span></code></pre>
+<p>The default object copy is a simple assignment.</p>
+
+<h4 id="fio_ary_destroy"><code>FIO_ARY_DESTROY</code></h4>
+<pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_DESTROY
+#define FIO_ARY_DESTROY(obj) ((void)0)
+#endif
+</span></code></pre>
+<p>The default object destruction is a no-op.</p>
+
+<p><strong>Note</strong>: Before freeing the Array, <code>FIO_ARY_DESTROY</code> will be automatically called for every existing object, including any invalid objects (if any). It is important that the <code>FIO_ARY_DESTROY</code> macro allows for invalid data (all bytes are <code>0</code>).</p>
+
+<h4 id="fio_ary_malloc"><code>FIO_ARY_MALLOC</code></h4>
+<pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_MALLOC
+#define FIO_ARY_MALLOC(size) fio_malloc((size))
+#endif
+</span></code></pre>
+<p>The default Array allocator is set to <code>fio_malloc</code>.</p>
+
+<p>It&#39;s important to note that the default allocator <strong>must</strong> set all the allocated bytes to zero, exactly as <code>fio_malloc</code> does.</p>
+
+<h4 id="fio_ary_realloc"><code>FIO_ARY_REALLOC</code></h4>
+<pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_REALLOC </span><span class="cm">/* NULL ptr indicates new allocation */</span><span class="cp">
+#define FIO_ARY_REALLOC(ptr, original_size, new_size, valid_data_length)       \
+  fio_realloc2((ptr), (new_size), (valid_data_length))
+#endif
+</span></code></pre>
+<p>The default Array re-allocator is set to <code>fio_realloc2</code>. All bytes will be set to zero except the copied data and - in some cases, where copy alignment error occurs - the last 16 bytes.</p>
+
+<h4 id="fio_ary_dealloc"><code>FIO_ARY_DEALLOC</code></h4>
+<pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_DEALLOC
+#define FIO_ARY_DEALLOC(ptr, size) fio_free((ptr))
+#endif
+</span></code></pre>
+<p>The default Array deallocator is set to <code>fio_free</code>.</p>
+
+<h3 id="naming-the-array">Naming the Array</h3>
+
+<p>Because the type and function names are dictated by the <code>FIO_ARY_NAME</code>, it&#39;s impossible to name the functions and types that will be created.</p>
+
+<p>For the purpose of this documentation, the <code>FIO_ARY_NAME(name)</code> will mark a type / function name so that it&#39;s equal to <code>FIO_ARY_NAME + &quot;_&quot; + name</code>.
+i.e., if <code>FIO_SET_NAME</code> is <code>foo</code> than <code>FIO_SET_NAME(s)</code> is <code>foo_s</code>.</p>
+
+<h3 id="array-initialization-and-state">Array Initialization and State</h3>
+
+<h4 id="fio_ary_name-s"><code>FIO_ARY_NAME(s)</code></h4>
+<pre><code class='highlight'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
+<span class="k">struct</span> <span class="nf">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="p">{</span>
+  <span class="kt">size_t</span> <span class="n">start</span><span class="p">;</span>       <span class="cm">/* first index where data was already written */</span>
+  <span class="kt">size_t</span> <span class="n">end</span><span class="p">;</span>         <span class="cm">/* next spot to write at tail */</span>
+  <span class="kt">size_t</span> <span class="n">capa</span><span class="p">;</span>        <span class="cm">/* existing capacity */</span>
+  <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">arry</span><span class="p">;</span> <span class="cm">/* the actual array's memory, if any */</span>
+<span class="p">};</span>
+</code></pre>
+<p>The Array container type. It is advised that the container be considered opaque and that the functions provided are used to access it&#39;s data (instead of direct data access).</p>
+
+<h4 id="fio_ary_init"><code>FIO_ARY_INIT</code></h4>
+<pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_INIT
+#define FIO_ARY_INIT                                                           \
+  { .capa = 0 }
+#endif
+</span></code></pre>
+<p>Initializes the Array.</p>
+
+<h4 id="fio_ary_name-free"><code>FIO_ARY_NAME(free)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">free</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+</code></pre>
+<p>Frees the array&#39;s internal data.</p>
+
+<h4 id="fio_ary_name-count"><code>FIO_ARY_NAME(count)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">count</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+</code></pre>
+<p>Returns the number of elements in the Array.</p>
+
+<h4 id="fio_ary_name-capa"><code>FIO_ARY_NAME(capa)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">capa</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+</code></pre>
+<p>Returns the current, temporary, array capacity (it&#39;s dynamic).</p>
+
+<hr>
+
+<h3 id="array-data-management">Array data management</h3>
+
+<h4 id="fio_ary_name-concat"><code>FIO_ARY_NAME(concat)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">concat</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">dest</span><span class="p">,</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">src</span><span class="p">);</span>
+</code></pre>
+<p>Adds all the items in the <code>src</code> Array to the end of the <code>dest</code> Array.</p>
+
+<p>The <code>src</code> Array remain untouched.</p>
+
+<h4 id="fio_ary_name-set"><code>FIO_ARY_NAME(set)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">set</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">index</span><span class="p">,</span>
+                                   <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
+</code></pre>
+<p>Sets <code>index</code> to the value in <code>data</code>.</p>
+
+<p>If <code>index</code> is negative, it will be counted from the end of the Array (-1 ==
+last element).</p>
+
+<p>If <code>old</code> isn&#39;t NULL, the existing data will be copied to the location pointed
+to by <code>old</code> before the copy in the Array is destroyed.</p>
+
+<h4 id="fio_ary_name-get"><code>FIO_ARY_NAME(get)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">get</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">index</span><span class="p">);</span>
+</code></pre>
+<p>Returns the value located at <code>index</code> (no copying is peformed).</p>
+
+<p>If <code>index</code> is negative, it will be counted from the end of the Array (-1 ==
+last element).</p>
+
+<h4 id="fio_ary_name-find"><code>FIO_ARY_NAME(find)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">intptr_t</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">);</span>
+</code></pre>
+<p>Returns the index of the object or -1 if the object wasn&#39;t found.</p>
+
+<h4 id="fio_ary_name-remove"><code>FIO_ARY_NAME(remove)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">index</span><span class="p">,</span>
+                                     <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
+</code></pre>
+<p>Removes an object from the array, <strong>moving</strong> all the other objects to prevent
+&quot;holes&quot; in the data.</p>
+
+<p>If <code>old</code> is set, the data is copied to the location pointed to by <code>old</code>
+before the data in the array is destroyed.</p>
+
+<p>Returns 0 on success and -1 on error.</p>
+
+<h4 id="fio_ary_name-remove2"><code>FIO_ARY_NAME(remove2)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">remove2</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">,</span>
+                                      <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
+</code></pre>
+<p>Removes an object from the array, if it exists, MOVING all the other objects
+to prevent &quot;holes&quot; in the data.</p>
+
+<p>Returns -1 if the object wasn&#39;t found or 0 if the object was successfully
+removed.</p>
+
+<h4 id="fio_ary_name-to_a"><code>FIO_ARY_NAME(to_a)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">to_a</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+</code></pre>
+<p>Returns a pointer to the C array containing the objects.</p>
+
+<h4 id="fio_ary_name-push"><code>FIO_ARY_NAME(push)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">push</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">);</span>
+</code></pre>
+<p>Pushes an object to the end of the Array. Returns -1 on error.</p>
+
+<h4 id="fio_ary_name-pop"><code>FIO_ARY_NAME(pop)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">pop</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
+</code></pre>
+<p>Removes an object from the end of the Array.</p>
+
+<p>If <code>old</code> is set, the data is copied to the location pointed to by <code>old</code>
+before the data in the array is destroyed.</p>
+
+<p>Returns -1 on error (Array is empty) and 0 on success.</p>
+
+<h4 id="fio_ary_name-unshift"><code>FIO_ARY_NAME(unshift)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">unshift</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="n">data</span><span class="p">);</span>
+</code></pre>
+<p>Unshifts an object to the beginning of the Array. Returns -1 on error.</p>
+
+<p>This could be expensive, causing <code>memmove</code>.</p>
+
+<h4 id="fio_ary_name-shift"><code>FIO_ARY_NAME(shift)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">shift</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="n">FIO_ARY_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
+</code></pre>
+<p>Removes an object from the beginning of the Array.</p>
+
+<p>If <code>old</code> is set, the data is copied to the location pointed to by <code>old</code>
+before the data in the array is destroyed.</p>
+
+<p>Returns -1 on error (Array is empty) and 0 on success.</p>
+
+<h4 id="part-597705">``</h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">each</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
+                                      <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">FIO_ARY_TYPE</span> <span class="n">pt</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">),</span>
+                                      <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
+</code></pre>
+<p>Iteration using a callback for each entry in the array.</p>
+
+<p>The callback task function must accept an the entry data as well as an opaque
+user pointer.</p>
+
+<p>If the callback returns -1, the loop is broken. Any other value is ignored.</p>
+
+<p>Returns the relative &quot;stop&quot; position, i.e., the number of items processed +
+the starting point.</p>
+
+<h4 id="fio_ary_name-compact"><code>FIO_ARY_NAME(compact)</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">compact</span><span class="p">)(</span><span class="n">FIO_ARY_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">ary</span><span class="p">);</span>
+</code></pre>
+<p>Removes any FIO_ARY_TYPE_INVALID object from an Array (NULL pointers by
+default), keeping all other data in the array.</p>
+
+<p>This action is O(n) where n in the length of the array.
+It could get expensive.</p>
+
+<h4 id="fio_ary_for-ary-pos"><code>FIO_ARY_FOR(ary, pos)</code></h4>
+<pre><code class='highlight'><span class="cp">#define FIO_ARY_FOR(ary, pos) 
+</span></code></pre>
+<p>Iterates through the list using a <code>for</code> loop.</p>
+
+<p>Access the object with the pointer <code>pos</code>. The <code>pos</code> variable can be named
+however you please.</p>
+
+<p>Avoid editing the array during a FOR loop, although I hope it&#39;s possible, I
+wouldn&#39;t count on it.</p>
+
 <h2 id="hash-maps-sets">Hash Maps / Sets</h2>
 
 <p>facil.io includes a simple ordered Hash Map / Set implementation, with a minimal API.</p>
+
+<p><strong>Note</strong>: <a href="fiobj_hash">The API for the <code>FIOBJ</code> Hash Map is located here</a>. This is the documentation for the core library Hash Map / Set.</p>
 
 <p>A Set is basically a Hash Map where the keys are also the values, it&#39;s often used for caching objects while a Hash Map is used to find one object using another.</p>
 
@@ -2930,13 +3329,13 @@ be defined. i.e.:</p>
 
 <p>Because the type and function names are dictated by the <code>FIO_SET_NAME</code>, it&#39;s impossible to name the functions and types that will be created.</p>
 
-<p>For the purpose of this documentation, the <code>FIO_NAME(name)</code> will mark a type / function name so that it&#39;s equal to <code>FIO_SET_NAME + &quot;_&quot; + name</code>.</p>
+<p>For the purpose of this documentation, the <code>FIO_SET_NAME(name)</code> will mark a type / function name so that it&#39;s equal to <code>FIO_SET_NAME + &quot;_&quot; + name</code>.</p>
 
 <p>i.e., if <code>FIO_SET_NAME == foo</code> than <code>FIO_SET_NAME(s) == foo_s</code>.</p>
 
 <h3 id="set-hash-map-initialization">Set / Hash Map Initialization</h3>
 
-<h4 id="fio_name-s"><code>FIO_NAME(s)</code></h4>
+<h4 id="fio_set_name-s"><code>FIO_SET_NAME(s)</code></h4>
 
 <p>The Set&#39;s / Hash Map&#39;s type name. It&#39;s content should be considered opaque.</p>
 
@@ -2945,26 +3344,26 @@ be defined. i.e.:</p>
 </span></code></pre>
 <p>Initializes the Set or the Hash Map.</p>
 
-<h4 id="fio_name-free"><code>FIO_NAME(free)</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">free</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<h4 id="fio_set_name-free"><code>FIO_SET_NAME(free)</code></h4>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">free</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre>
-<p>Deallocates any internal resources.</p>
+<p>Frees all the objects in the Hash Map / Set and deallocates any internal resources.</p>
 
 <h3 id="hash-map-find-insert">Hash Map Find / Insert</h3>
 
 <p>These functions are defined if the Set defined is a Hash Map (<code>FIO_SET_KEY_TYPE</code> was defined).</p>
 
-<h4 id="fio_name-find-hash-map"><code>FIO_NAME(find)</code> (Hash Map)</h4>
+<h4 id="fio_set_name-find-hash-map"><code>FIO_SET_NAME(find)</code> (Hash Map)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
-   <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
+   <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                   <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span><span class="p">);</span>
 </code></pre>
 <p>Locates an object in the Hash Map, if it exists.</p>
 
 <p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
 
-<h4 id="fio_name-insert-hash-map"><code>FIO_NAME(insert)</code> (Hash Map)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<h4 id="fio_set_name-insert-hash-map"><code>FIO_SET_NAME(insert)</code> (Hash Map)</h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                              <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                              <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span>
                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">,</span>
@@ -2978,8 +3377,8 @@ be defined. i.e.:</p>
 
 <p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
 
-<h4 id="fio_name-remove-hash-map"><code>FIO_NAME(remove)</code> (Hash Map)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<h4 id="fio_set_name-remove-hash-map"><code>FIO_SET_NAME(remove)</code> (Hash Map)</h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                      <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                      <span class="n">FIO_SET_KEY_TYPE</span> <span class="n">key</span>
                      <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
@@ -2996,18 +3395,18 @@ be defined. i.e.:</p>
 
 <p>These functions are defined if the Set is a pure Set (not a Hash Map).</p>
 
-<h4 id="fio_name-find-set"><code>FIO_NAME(find)</code> (Set)</h4>
+<h4 id="fio_set_name-find-set"><code>FIO_SET_NAME(find)</code> (Set)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
-   <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
+   <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">find</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                   <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre>
 <p>Locates an object in the Set, if it exists.</p>
 
 <p>NOTE: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
 
-<h4 id="fio_name-insert-set"><code>FIO_NAME(insert)</code> (Set)</h4>
+<h4 id="fio_set_name-insert-set"><code>FIO_SET_NAME(insert)</code> (Set)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
-   <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
+   <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span> <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                     <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">);</span>
 </code></pre>
 <p>Inserts an object to the Set only if it&#39;s missing, rehashing if required, returning the new (or old) object&#39;s pointer.</p>
@@ -3016,8 +3415,8 @@ be defined. i.e.:</p>
 
 <p>NOTE: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
 
-<h4 id="fio_name-overwrite-set"><code>FIO_NAME(overwrite)</code> (Set)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">overwrite</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<h4 id="fio_set_name-overwrite-set"><code>FIO_SET_NAME(overwrite)</code> (Set)</h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">overwrite</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                                              <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">,</span>
                                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
@@ -3028,8 +3427,8 @@ be defined. i.e.:</p>
 
 <p>NOTE: This function doesn&#39;t exist when <code>FIO_SET_KEY_TYPE</code> is defined.</p>
 
-<h4 id="fio_name-remove-set"><code>FIO_NAME(remove)</code> (Set)</h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<h4 id="fio_set_name-remove-set"><code>FIO_SET_NAME(remove)</code> (Set)</h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                              <span class="k">const</span> <span class="n">FIO_SET_HASH_TYPE</span> <span class="n">hash_value</span><span class="p">,</span>
                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">obj</span><span class="p">,</span>
                              <span class="n">FIO_SET_OBJ_TYPE</span> <span class="o">*</span><span class="n">old</span><span class="p">);</span>
@@ -3044,52 +3443,52 @@ be defined. i.e.:</p>
 
 <h3 id="set-hash-map-data">Set / Hash Map Data</h3>
 
-<h4 id="fio_name-last"><code>FIO_NAME(last)</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_TYPE</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">last</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<h4 id="fio_set_name-last"><code>FIO_SET_NAME(last)</code></h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_TYPE</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">last</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre>
 <p>Allows a peak at the Set&#39;s last element.</p>
 
 <p>Remember that objects might be destroyed if the Set is altered (<code>FIO_SET_OBJ_DESTROY</code> / <code>FIO_SET_KEY_DESTROY</code>).</p>
 
-<h4 id="fio_name-pop"><code>FIO_NAME(pop)</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">pop</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<h4 id="fio_set_name-pop"><code>FIO_SET_NAME(pop)</code></h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">pop</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre>
 <p>Allows the Hash to be momentarily used as a stack, destroying the last object added (<code>FIO_SET_OBJ_DESTROY</code> / <code>FIO_SET_KEY_DESTROY</code>).</p>
 
-<h4 id="fio_name-count"><code>FIO_NAME(count)</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">count</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<h4 id="fio_set_name-count"><code>FIO_SET_NAME(count)</code></h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">count</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre>
 <p>Returns the number of object currently in the Set.</p>
 
-<h4 id="fio_name-capa"><code>FIO_NAME(capa)</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">capa</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<h4 id="fio_set_name-capa"><code>FIO_SET_NAME(capa)</code></h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">capa</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre>
 <p>Returns a temporary theoretical Set capacity.</p>
 
 <p>This could be used for testing performance and memory consumption.</p>
 
-<h4 id="fio_name-capa_require"><code>FIO_NAME(capa_require)</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">capa_require</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
+<h4 id="fio_set_name-capa_require"><code>FIO_SET_NAME(capa_require)</code></h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">capa_require</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
                                      <span class="kt">size_t</span> <span class="n">min_capa</span><span class="p">);</span>
 </code></pre>
 <p>Requires that a Set contains the minimal requested theoretical capacity.</p>
 
 <p>Returns the actual (temporary) theoretical capacity.</p>
 
-<h4 id="fio_name-is_fragmented"><code>FIO_NAME(is_fragmented)</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">is_fragmented</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<h4 id="fio_set_name-is_fragmented"><code>FIO_SET_NAME(is_fragmented)</code></h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">is_fragmented</span><span class="p">)(</span><span class="k">const</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre>
 <p>Returns non-zero if the Set is fragmented (more than 50% holes).</p>
 
-<h4 id="fio_name-compact"><code>FIO_NAME(compact)</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">compact</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<h4 id="fio_set_name-compact"><code>FIO_SET_NAME(compact)</code></h4>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">size_t</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">compact</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre>
 <p>Attempts to minimize memory usage by removing empty spaces caused by deleted items and rehashing the Set.</p>
 
 <p>Returns the updated Set capacity.</p>
 
-<h4 id="fio_name-rehash"><code>FIO_NAME(rehash)</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">FIO_NAME</span><span class="p">(</span><span class="n">rehash</span><span class="p">)(</span><span class="n">FIO_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
+<h4 id="fio_set_name-rehash"><code>FIO_SET_NAME(rehash)</code></h4>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">rehash</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">);</span>
 </code></pre>
 <p>Forces a rehashing of the Set.</p>
 

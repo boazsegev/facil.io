@@ -2312,9 +2312,390 @@ inline int fio_str_iseq(const fio_str_s *str1, const fio_str_s *str2);
 
 Binary comparison returns `1` if both strings are equal and `0` if not.
 
+## Dynamic Arrays
+
+The `fio.h` header includes a simple typed dynamic array with a minimal API that can be adapted to any type.
+
+**Note**: [The API for the `FIOBJ` Array is located here](fiobj_ary). This is the documentation for the core library Array.
+
+To create an Array type, define the macro FIO_ARY_NAME. i.e.:
+
+```c
+#define FIO_ARY_NAME fio_cstr_ary
+#define FIO_ARY_TYPE char *
+#define FIO_ARY_COMPARE(k1, k2) (!strcmp((k1), (k2)))
+#include <fio.h>
+```
+
+It's possible to create a number of Set or Array types by re-including the `fio.h` header. i.e.:
+
+
+```c
+#define FIO_INCLUDE_STR
+#include <fio.h> // adds the fio_str_s types and functions
+
+#define FIO_ARY_NAME fio_int_ary
+#define FIO_ARY_TYPE int
+#include <fio.h> // creates the fio_int_ary_s Array and functions
+
+#define FIO_ARY_NAME fio_str_ary
+#define FIO_ARY_TYPE fio_str_s *
+#define FIO_ARY_COMPARE(k1, k2) (fio_str_iseq((k1), (k2)))
+#define FIO_ARY_COPY(key) fio_str_dup((key))
+#define FIO_ARY_DESTROY(key) fio_str_free2((key))
+#include <fio.h> // creates the fio_str_ary_s Array and functions
+```
+
+### Defining the Array
+
+#### `FIO_ARY_NAME`
+
+The `FIO_ARY_NAME` is required and will be used to set a for the Array's type and functions.
+
+The Array type will be `FIO_ARY_NAME_s` and each function will be translated to `FIO_ARY_NAME_func`, where `FIO_ARY_NAME` is replaced by the macro set.
+
+For example:
+
+```c
+#define FIO_ARY_NAME fio_cstr_ary
+#define FIO_ARY_TYPE char *
+#define FIO_ARY_COMPARE(k1, k2) (!strcmp((k1), (k2)))
+#include <fio.h>
+
+fio_cstr_ary_s global_array = FIO_ARY_INIT;
+
+void populate_array(char ** data, int len) {
+    for (int i = 0; i < len; ++i)
+    {
+        fio_cstr_ary_push(&global_array, data[i]);
+    }
+}
+```
+
+#### `FIO_ARY_TYPE`
+
+```c
+#if !defined(FIO_ARY_TYPE)
+#define FIO_ARY_TYPE void *
+#endif
+```
+
+The default Array object type is `void *` */
+
+#### `FIO_ARY_INVALID`
+
+```c
+#if !defined(FIO_ARY_INVALID)
+static FIO_ARY_TYPE const FIO_NAME(s___const_invalid_object);
+#define FIO_ARY_INVALID FIO_NAME(s___const_invalid_object)
+#endif
+```
+
+The `FIO_ARY_INVALID` value should be an object with all bytes set to 0. Since `FIO_ARY_TYPE` type is unknown, a constant static object is created. However, it is better to manually define `FIO_ARY_INVALID`.
+
+#### `FIO_ARY_COMPARE`
+
+```c
+#if !defined(FIO_ARY_COMPARE)
+#define FIO_ARY_COMPARE(o1, o2) ((o1) == (o2))
+#endif
+```
+
+The default object comparison assumes a simple type.
+
+#### `FIO_ARY_COPY`
+
+```c
+#ifndef FIO_ARY_COPY
+#define FIO_ARY_COPY(dest, obj) ((dest) = (obj))
+#endif
+```
+
+The default object copy is a simple assignment.
+
+#### `FIO_ARY_DESTROY`
+
+```c
+#ifndef FIO_ARY_DESTROY
+#define FIO_ARY_DESTROY(obj) ((void)0)
+#endif
+```
+
+The default object destruction is a no-op.
+
+**Note**: Before freeing the Array, `FIO_ARY_DESTROY` will be automatically called for every existing object, including any invalid objects (if any). It is important that the `FIO_ARY_DESTROY` macro allows for invalid data (all bytes are `0`).
+
+#### `FIO_ARY_MALLOC`
+
+```c
+#ifndef FIO_ARY_MALLOC
+#define FIO_ARY_MALLOC(size) fio_malloc((size))
+#endif
+```
+
+The default Array allocator is set to `fio_malloc`.
+
+It's important to note that the default allocator **must** set all the allocated bytes to zero, exactly as `fio_malloc` does.
+
+#### `FIO_ARY_REALLOC`
+
+```c
+#ifndef FIO_ARY_REALLOC /* NULL ptr indicates new allocation */
+#define FIO_ARY_REALLOC(ptr, original_size, new_size, valid_data_length)       \
+  fio_realloc2((ptr), (new_size), (valid_data_length))
+#endif
+```
+
+The default Array re-allocator is set to `fio_realloc2`. All bytes will be set to zero except the copied data and - in some cases, where copy alignment error occurs - the last 16 bytes.
+
+#### `FIO_ARY_DEALLOC`
+
+```c
+#ifndef FIO_ARY_DEALLOC
+#define FIO_ARY_DEALLOC(ptr, size) fio_free((ptr))
+#endif
+```
+
+The default Array deallocator is set to `fio_free`.
+
+### Naming the Array
+
+Because the type and function names are dictated by the `FIO_ARY_NAME`, it's impossible to name the functions and types that will be created.
+
+For the purpose of this documentation, the `FIO_ARY_NAME(name)` will mark a type / function name so that it's equal to `FIO_ARY_NAME + "_" + name`.
+i.e., if `FIO_SET_NAME` is `foo` than `FIO_SET_NAME(s)` is `foo_s`.
+
+
+### Array Initialization and State
+
+#### `FIO_ARY_NAME(s)`
+
+```c
+typedef struct FIO_ARY_NAME(s) FIO_ARY_NAME(s);
+struct FIO_NAME(s) {
+  size_t start;       /* first index where data was already written */
+  size_t end;         /* next spot to write at tail */
+  size_t capa;        /* existing capacity */
+  FIO_ARY_TYPE *arry; /* the actual array's memory, if any */
+};
+```
+
+The Array container type. It is advised that the container be considered opaque and that the functions provided are used to access it's data (instead of direct data access).
+
+#### `FIO_ARY_INIT`
+
+```c
+#ifndef FIO_ARY_INIT
+#define FIO_ARY_INIT                                                           \
+  { .capa = 0 }
+#endif
+```
+
+Initializes the Array.
+
+#### `FIO_ARY_NAME(free)`
+
+```c
+FIO_FUNC inline void FIO_ARY_NAME(free)(FIO_ARY_NAME(s) * ary);
+```
+
+Frees the array's internal data.
+
+#### `FIO_ARY_NAME(count)`
+
+```c
+FIO_FUNC inline size_t FIO_ARY_NAME(count)(FIO_ARY_NAME(s) * ary);
+```
+
+Returns the number of elements in the Array.
+
+#### `FIO_ARY_NAME(capa)`
+
+```c
+FIO_FUNC inline size_t FIO_ARY_NAME(capa)(FIO_ARY_NAME(s) * ary);
+```
+
+Returns the current, temporary, array capacity (it's dynamic).
+
+---
+
+### Array data management
+
+#### `FIO_ARY_NAME(concat)`
+
+```c
+FIO_FUNC inline void FIO_ARY_NAME(concat)(FIO_ARY_NAME(s) * dest, FIO_ARY_NAME(s) * src);
+```
+
+Adds all the items in the `src` Array to the end of the `dest` Array.
+
+The `src` Array remain untouched.
+
+#### `FIO_ARY_NAME(set)`
+
+```c
+FIO_FUNC inline void FIO_ARY_NAME(set)(FIO_ARY_NAME(s) * ary, intptr_t index,
+                                   FIO_ARY_TYPE data, FIO_ARY_TYPE *old);
+```
+
+Sets `index` to the value in `data`.
+
+If `index` is negative, it will be counted from the end of the Array (-1 ==
+last element).
+
+If `old` isn't NULL, the existing data will be copied to the location pointed
+to by `old` before the copy in the Array is destroyed.
+
+
+#### `FIO_ARY_NAME(get)`
+
+```c
+FIO_FUNC inline FIO_ARY_TYPE FIO_ARY_NAME(get)(FIO_ARY_NAME(s) * ary, intptr_t index);
+```
+
+Returns the value located at `index` (no copying is peformed).
+
+If `index` is negative, it will be counted from the end of the Array (-1 ==
+last element).
+
+#### `FIO_ARY_NAME(find)`
+
+```c
+FIO_FUNC inline intptr_t FIO_ARY_NAME(find)(FIO_ARY_NAME(s) * ary, FIO_ARY_TYPE data);
+```
+
+Returns the index of the object or -1 if the object wasn't found.
+
+#### `FIO_ARY_NAME(remove)`
+
+```c
+FIO_FUNC inline int FIO_ARY_NAME(remove)(FIO_ARY_NAME(s) * ary, intptr_t index,
+                                     FIO_ARY_TYPE *old);
+```
+
+Removes an object from the array, **moving** all the other objects to prevent
+"holes" in the data.
+
+If `old` is set, the data is copied to the location pointed to by `old`
+before the data in the array is destroyed.
+
+Returns 0 on success and -1 on error.
+
+#### `FIO_ARY_NAME(remove2)`
+
+```c
+FIO_FUNC inline int FIO_ARY_NAME(remove2)(FIO_ARY_NAME(s) * ary, FIO_ARY_TYPE data,
+                                      FIO_ARY_TYPE *old);
+```
+
+Removes an object from the array, if it exists, MOVING all the other objects
+to prevent "holes" in the data.
+
+Returns -1 if the object wasn't found or 0 if the object was successfully
+removed.
+
+#### `FIO_ARY_NAME(to_a)`
+
+```c
+FIO_FUNC inline FIO_ARY_TYPE *FIO_ARY_NAME(to_a)(FIO_ARY_NAME(s) * ary);
+```
+
+Returns a pointer to the C array containing the objects.
+
+#### `FIO_ARY_NAME(push)`
+
+```c
+FIO_FUNC inline int FIO_ARY_NAME(push)(FIO_ARY_NAME(s) * ary, FIO_ARY_TYPE data);
+```
+
+Pushes an object to the end of the Array. Returns -1 on error.
+
+#### `FIO_ARY_NAME(pop)`
+
+```c
+FIO_FUNC inline int FIO_ARY_NAME(pop)(FIO_ARY_NAME(s) * ary, FIO_ARY_TYPE *old);
+```
+
+Removes an object from the end of the Array.
+
+If `old` is set, the data is copied to the location pointed to by `old`
+before the data in the array is destroyed.
+
+Returns -1 on error (Array is empty) and 0 on success.
+
+#### `FIO_ARY_NAME(unshift)`
+
+```c
+FIO_FUNC inline int FIO_ARY_NAME(unshift)(FIO_ARY_NAME(s) * ary, FIO_ARY_TYPE data);
+```
+
+Unshifts an object to the beginning of the Array. Returns -1 on error.
+
+This could be expensive, causing `memmove`.
+
+
+#### `FIO_ARY_NAME(shift)`
+
+```c
+FIO_FUNC inline int FIO_ARY_NAME(shift)(FIO_ARY_NAME(s) * ary, FIO_ARY_TYPE *old);
+```
+
+Removes an object from the beginning of the Array.
+
+If `old` is set, the data is copied to the location pointed to by `old`
+before the data in the array is destroyed.
+
+Returns -1 on error (Array is empty) and 0 on success.
+
+#### ``
+
+```c
+FIO_FUNC inline size_t FIO_ARY_NAME(each)(FIO_ARY_NAME(s) * ary, size_t start_at,
+                                      int (*task)(FIO_ARY_TYPE pt, void *arg),
+                                      void *arg);
+```
+
+Iteration using a callback for each entry in the array.
+
+The callback task function must accept an the entry data as well as an opaque
+user pointer.
+
+If the callback returns -1, the loop is broken. Any other value is ignored.
+
+Returns the relative "stop" position, i.e., the number of items processed +
+the starting point.
+
+#### `FIO_ARY_NAME(compact)`
+
+```c
+FIO_FUNC inline void FIO_ARY_NAME(compact)(FIO_ARY_NAME(s) * ary);
+```
+
+Removes any FIO_ARY_TYPE_INVALID object from an Array (NULL pointers by
+default), keeping all other data in the array.
+
+This action is O(n) where n in the length of the array.
+It could get expensive.
+
+#### `FIO_ARY_FOR(ary, pos)`
+
+```c
+#define FIO_ARY_FOR(ary, pos) 
+```
+
+Iterates through the list using a `for` loop.
+
+Access the object with the pointer `pos`. The `pos` variable can be named
+however you please.
+
+Avoid editing the array during a FOR loop, although I hope it's possible, I
+wouldn't count on it.
+
 ## Hash Maps / Sets
 
 facil.io includes a simple ordered Hash Map / Set implementation, with a minimal API.
+
+**Note**: [The API for the `FIOBJ` Hash Map is located here](fiobj_hash). This is the documentation for the core library Hash Map / Set.
 
 A Set is basically a Hash Map where the keys are also the values, it's often used for caching objects while a Hash Map is used to find one object using another.
 
@@ -2488,13 +2869,13 @@ Allows for custom memory allocation / deallocation routines.
 
 Because the type and function names are dictated by the `FIO_SET_NAME`, it's impossible to name the functions and types that will be created.
 
-For the purpose of this documentation, the `FIO_NAME(name)` will mark a type / function name so that it's equal to `FIO_SET_NAME + "_" + name`.
+For the purpose of this documentation, the `FIO_SET_NAME(name)` will mark a type / function name so that it's equal to `FIO_SET_NAME + "_" + name`.
 
 i.e., if `FIO_SET_NAME == foo` than `FIO_SET_NAME(s) == foo_s`.
 
 ### Set / Hash Map Initialization
 
-#### `FIO_NAME(s)`
+#### `FIO_SET_NAME(s)`
 
 The Set's / Hash Map's type name. It's content should be considered opaque.
 
@@ -2506,10 +2887,10 @@ The Set's / Hash Map's type name. It's content should be considered opaque.
 
 Initializes the Set or the Hash Map.
 
-#### `FIO_NAME(free)`
+#### `FIO_SET_NAME(free)`
 
 ```c
-void FIO_NAME(free)(FIO_NAME(s) * set);
+void FIO_SET_NAME(free)(FIO_SET_NAME(s) * set);
 ```
 
 Frees all the objects in the Hash Map / Set and deallocates any internal resources.
@@ -2518,21 +2899,21 @@ Frees all the objects in the Hash Map / Set and deallocates any internal resourc
 
 These functions are defined if the Set defined is a Hash Map (`FIO_SET_KEY_TYPE` was defined).
 
-#### `FIO_NAME(find)` (Hash Map)
+#### `FIO_SET_NAME(find)` (Hash Map)
 
 ```c
 inline FIO_SET_OBJ_TYPE
-   FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
+   FIO_SET_NAME(find)(FIO_SET_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                   FIO_SET_KEY_TYPE key);
 ```
 Locates an object in the Hash Map, if it exists.
 
 NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
-#### `FIO_NAME(insert)` (Hash Map)
+#### `FIO_SET_NAME(insert)` (Hash Map)
 
 ```c
-inline void FIO_NAME(insert)(FIO_NAME(s) * set,
+inline void FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set,
                              const FIO_SET_HASH_TYPE hash_value,
                              FIO_SET_KEY_TYPE key,
                              FIO_SET_OBJ_TYPE obj,
@@ -2547,10 +2928,10 @@ If `old` isn't NULL, the existing object (if any) will be copied to the location
 
 NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
-#### `FIO_NAME(remove)` (Hash Map)
+#### `FIO_SET_NAME(remove)` (Hash Map)
 
 ```c
-inline int FIO_NAME(remove)(FIO_NAME(s) * set,
+inline int FIO_SET_NAME(remove)(FIO_SET_NAME(s) * set,
                      const FIO_SET_HASH_TYPE hash_value,
                      FIO_SET_KEY_TYPE key
                      FIO_SET_OBJ_TYPE *old);
@@ -2568,22 +2949,22 @@ NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
 These functions are defined if the Set is a pure Set (not a Hash Map).
 
-#### `FIO_NAME(find)` (Set)
+#### `FIO_SET_NAME(find)` (Set)
 
 ```c
 inline FIO_SET_OBJ_TYPE
-   FIO_NAME(find)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
+   FIO_SET_NAME(find)(FIO_SET_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                   FIO_SET_OBJ_TYPE obj);
 ```
 Locates an object in the Set, if it exists.
 
 NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 
-#### `FIO_NAME(insert)` (Set)
+#### `FIO_SET_NAME(insert)` (Set)
 
 ```c
 inline FIO_SET_OBJ_TYPE
-   FIO_NAME(insert)(FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
+   FIO_SET_NAME(insert)(FIO_SET_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value,
                     FIO_SET_OBJ_TYPE obj);
 ```
 
@@ -2593,10 +2974,10 @@ If the object already exists in the set, than the new object will be destroyed a
 
 NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 
-#### `FIO_NAME(overwrite)` (Set)
+#### `FIO_SET_NAME(overwrite)` (Set)
 
 ```c
-inline FIO_SET_OBJ_TYPE FIO_NAME(overwrite)(FIO_NAME(s) * set,
+inline FIO_SET_OBJ_TYPE FIO_SET_NAME(overwrite)(FIO_SET_NAME(s) * set,
                                              const FIO_SET_HASH_TYPE hash_value,
                                              FIO_SET_OBJ_TYPE obj,
                                              FIO_SET_OBJ_TYPE *old);
@@ -2608,10 +2989,10 @@ If `old` is set, the old object (if any) will be copied to the location pointed 
 
 NOTE: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
 
-#### `FIO_NAME(remove)` (Set)
+#### `FIO_SET_NAME(remove)` (Set)
 
 ```c
-inline int FIO_NAME(remove)(FIO_NAME(s) * set,
+inline int FIO_SET_NAME(remove)(FIO_SET_NAME(s) * set,
                              const FIO_SET_HASH_TYPE hash_value,
                              FIO_SET_OBJ_TYPE obj,
                              FIO_SET_OBJ_TYPE *old);
@@ -2627,46 +3008,46 @@ NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 
 ### Set / Hash Map Data
 
-#### `FIO_NAME(last)`
+#### `FIO_SET_NAME(last)`
 
 ```c
-inline FIO_SET_TYPE FIO_NAME(last)(FIO_NAME(s) * set);
+inline FIO_SET_TYPE FIO_SET_NAME(last)(FIO_SET_NAME(s) * set);
 ```
 
 Allows a peak at the Set's last element.
 
 Remember that objects might be destroyed if the Set is altered (`FIO_SET_OBJ_DESTROY` / `FIO_SET_KEY_DESTROY`).
 
-#### `FIO_NAME(pop)`
+#### `FIO_SET_NAME(pop)`
 
 ```c
-inline void FIO_NAME(pop)(FIO_NAME(s) * set);
+inline void FIO_SET_NAME(pop)(FIO_SET_NAME(s) * set);
 ```
 
 Allows the Hash to be momentarily used as a stack, destroying the last object added (`FIO_SET_OBJ_DESTROY` / `FIO_SET_KEY_DESTROY`).
 
-#### `FIO_NAME(count)`
+#### `FIO_SET_NAME(count)`
 
 ```c
-inline size_t FIO_NAME(count)(const FIO_NAME(s) * set);
+inline size_t FIO_SET_NAME(count)(const FIO_SET_NAME(s) * set);
 ```
 
 Returns the number of object currently in the Set.
 
-#### `FIO_NAME(capa)`
+#### `FIO_SET_NAME(capa)`
 
 ```c
-inline size_t FIO_NAME(capa)(const FIO_NAME(s) * set);
+inline size_t FIO_SET_NAME(capa)(const FIO_SET_NAME(s) * set);
 ```
 
 Returns a temporary theoretical Set capacity.
 
 This could be used for testing performance and memory consumption.
 
-#### `FIO_NAME(capa_require)`
+#### `FIO_SET_NAME(capa_require)`
 
 ```c
-inline size_t FIO_NAME(capa_require)(FIO_NAME(s) * set,
+inline size_t FIO_SET_NAME(capa_require)(FIO_SET_NAME(s) * set,
                                      size_t min_capa);
 ```
 
@@ -2675,28 +3056,28 @@ Requires that a Set contains the minimal requested theoretical capacity.
 Returns the actual (temporary) theoretical capacity.
 
 
-#### `FIO_NAME(is_fragmented)`
+#### `FIO_SET_NAME(is_fragmented)`
 
 ```c
-inline size_t FIO_NAME(is_fragmented)(const FIO_NAME(s) * set);
+inline size_t FIO_SET_NAME(is_fragmented)(const FIO_SET_NAME(s) * set);
 ```
 
 Returns non-zero if the Set is fragmented (more than 50% holes).
 
-#### `FIO_NAME(compact)`
+#### `FIO_SET_NAME(compact)`
 
 ```c
-inline size_t FIO_NAME(compact)(FIO_NAME(s) * set);
+inline size_t FIO_SET_NAME(compact)(FIO_SET_NAME(s) * set);
 ```
 
 Attempts to minimize memory usage by removing empty spaces caused by deleted items and rehashing the Set.
 
 Returns the updated Set capacity.
 
-#### `FIO_NAME(rehash)`
+#### `FIO_SET_NAME(rehash)`
 
 ```c
-void FIO_NAME(rehash)(FIO_NAME(s) * set);
+void FIO_SET_NAME(rehash)(FIO_SET_NAME(s) * set);
 ```
 
 Forces a rehashing of the Set.
