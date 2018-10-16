@@ -5354,16 +5354,17 @@ FIO_FUNC inline FIO_SET_TYPE FIO_NAME(_insert_or_overwrite_)(
   /* automatic fragmentation protection */
   if (FIO_NAME(is_fragmented)(set))
     FIO_NAME(rehash)(set);
+  /* automatic capacity validation (we can never be at 100% capacity) */
+  else if (set->pos >= set->capa) {
+    set->mask = (set->mask << 1) | 3;
+    FIO_NAME(rehash)(set);
+  }
 
-  /* locate future position, rehashing until a position is available */
+  /* locate future position */
   FIO_NAME(_map_s_) *pos = FIO_NAME(_find_map_pos_)(set, hash_value, obj);
+
   if (!pos) {
-    /* no pos - so we know that we are inserting an object. */
-    /* Either we are over capacity, or we have too many holes in the map. */
-    if (set->pos >= set->capa) {
-      set->mask = (set->mask << 1) | 3;
-      FIO_NAME(rehash)(set);
-    }
+    /* inserting a new object, with too many holes in the map */
     FIO_SET_COPY(set->ordered[set->pos].obj, obj);
     set->ordered[set->pos].hash = hash_value;
     ++set->pos;
@@ -5493,6 +5494,7 @@ FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
   --set->count;
   pos->pos->hash = FIO_SET_HASH_INVALID;
   if (pos->pos == set->pos + set->ordered - 1) {
+    /* removing last item inserted */
     pos->hash = FIO_SET_HASH_INVALID; /* no need for a "hole" */
     do {
       --set->pos;
@@ -5563,6 +5565,8 @@ FIO_FUNC int FIO_NAME(remove)(FIO_NAME(s) * set,
   --set->count;
   pos->pos->hash = FIO_SET_HASH_INVALID;
   if (pos->pos == set->pos + set->ordered - 1) {
+    /* removing last item inserted */
+    pos->hash = FIO_SET_HASH_INVALID; /* no need for a "hole" */
     do {
       --set->pos;
     } while (set->pos && FIO_SET_HASH_COMPARE(set->ordered[set->pos - 1].hash,
