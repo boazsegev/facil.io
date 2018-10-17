@@ -382,8 +382,18 @@ extern size_t FIO_LOG_LEVEL;
 #ifndef FIO_LOG_PRINT
 #define FIO_LOG_PRINT(level, ...)                                              \
   do {                                                                         \
-    if (level <= FIO_LOG_LEVEL)                                                \
-      fprintf(stderr, "\n" __VA_ARGS__);                                       \
+    if (level <= FIO_LOG_LEVEL) {                                              \
+      char tmp___log[512];                                                     \
+      int len___log = snprintf(tmp___log, 500, __VA_ARGS__);                   \
+      if (len___log <= 0 || len___log > 500) {                                 \
+        fwrite("ERROR: log line output too long (can't write).", 46, 1,        \
+               stderr);                                                        \
+        break;                                                                 \
+      }                                                                        \
+      tmp___log[len___log++] = '\n';                                           \
+      tmp___log[len___log] = '0';                                              \
+      fwrite(tmp___log, len___log, 1, stderr);                                 \
+    }                                                                          \
   } while (0)
 #define FIO_LOG_DEBUG(...)                                                     \
   FIO_LOG_PRINT(FIO_LOG_LEVEL_DEBUG,                                           \
@@ -400,7 +410,7 @@ extern size_t FIO_LOG_LEVEL;
 #endif
 
 #if FIO_PRINT_STATE
-#define FIO_LOG_STATE(...) fprintf(stderr, "\n" __VA_ARGS__)
+#define FIO_LOG_STATE(...) FIO_LOG_PRINT(0, __VA_ARGS__)
 #else
 #define FIO_LOG_STATE(...)
 #endif
