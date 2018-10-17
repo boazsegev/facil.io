@@ -319,6 +319,22 @@ void *fio_mmap(size_t size);
  */
 void fio_malloc_after_fork(void);
 
+#if FIO_FORCE_MALLOC
+#define FIO_MALLOC(size) malloc((size))
+#define FIO_CALLOC(size, units) calloc((size), (units))
+#define FIO_REALLOC(ptr, new_length, existing_data_length)                     \
+  realloc((ptr), (new_length))
+#define FIO_FREE free
+
+#else
+#define FIO_MALLOC(size) fio_malloc((size))
+#define FIO_CALLOC(size, units) fio_calloc((size), (units))
+#define FIO_REALLOC(ptr, new_length, existing_data_length)                     \
+  fio_realloc2((ptr), (new_length), (existing_data_length))
+#define FIO_FREE fio_free
+
+#endif
+
 /* *****************************************************************************
 
 
@@ -1022,12 +1038,12 @@ inline FIO_FUNC ssize_t fio_write(const intptr_t uuid, const void *buffer,
                                   const size_t length) {
   if (!length || !buffer)
     return 0;
-  void *cpy = fio_malloc(length);
+  void *cpy = FIO_MALLOC(length);
   if (!cpy)
     return -1;
   memcpy(cpy, buffer, length);
   return fio_write2(uuid, .data.buffer = cpy, .length = length,
-                    .after.dealloc = fio_free);
+                    .after.dealloc = FIO_FREE);
 }
 
 /**
@@ -2981,7 +2997,7 @@ typedef struct {
   ((fio_str_s){.data = (buffer),                                               \
                .len = (length),                                                \
                .capa = (capacity),                                             \
-               .dealloc = fio_free})
+               .dealloc = FIO_FREE})
 
 /**
  * This macro allows the container to be initialized with existing data, as long
@@ -3285,7 +3301,7 @@ inline FIO_FUNC fio_str_info_s fio_str_info(const fio_str_s *s) {
  * NOTE: This makes the allocation and reference counting logic more intuitive.
  */
 inline FIO_FUNC fio_str_s *fio_str_new2(void) {
-  fio_str_s *str = fio_malloc(sizeof(*str));
+  fio_str_s *str = FIO_MALLOC(sizeof(*str));
   FIO_ASSERT_ALLOC(str);
   *str = FIO_STR_INIT;
   return str;
@@ -3358,7 +3374,7 @@ FIO_FUNC void fio_str_free2(fio_str_s *s) {
   if (fio_str_free(s)) {
     return;
   }
-  fio_free(s);
+  FIO_FREE(s);
 }
 
 /** Returns the String's length in bytes. */
@@ -3457,11 +3473,11 @@ FIO_FUNC fio_str_info_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
   }
   if (needed > s->capa) {
     needed = ROUND_UP_CAPA2WORDS(needed);
-    if (s->dealloc == fio_free) {
-      tmp = (char *)fio_realloc2(s->data, needed + 1, s->len);
+    if (s->dealloc == FIO_FREE) {
+      tmp = (char *)FIO_REALLOC(s->data, needed + 1, s->len);
       FIO_ASSERT_ALLOC(tmp);
     } else {
-      tmp = (char *)fio_malloc(needed + 1);
+      tmp = (char *)FIO_MALLOC(needed + 1);
       FIO_ASSERT_ALLOC(tmp);
       memcpy(tmp, s->data, s->len);
       if (s->dealloc)
@@ -3482,7 +3498,7 @@ is_small:
                             .data = FIO_STR_SMALL_DATA(s)};
   }
   needed = ROUND_UP_CAPA2WORDS(needed);
-  tmp = (char *)fio_malloc(needed + 1);
+  tmp = (char *)FIO_MALLOC(needed + 1);
   FIO_ASSERT_ALLOC(tmp);
   const size_t existing_len = (size_t)((s->small >> 1) & 0xFF);
   if (existing_len) {
@@ -3495,7 +3511,7 @@ is_small:
       .small = 0,
       .capa = needed,
       .len = existing_len,
-      .dealloc = fio_free,
+      .dealloc = FIO_FREE,
       .data = tmp,
   };
 #else
@@ -3504,7 +3520,7 @@ is_small:
       .small = 0,
       .capa = needed,
       .len = existing_len,
-      .dealloc = fio_free,
+      .dealloc = FIO_FREE,
       .data = tmp,
   };
 #endif
@@ -3534,7 +3550,7 @@ shrink2small:
   if (len) {
     memcpy(FIO_STR_SMALL_DATA(s), tmp, len + 1);
   }
-  fio_free(tmp);
+  FIO_FREE(tmp);
 }
 
 /* *****************************************************************************
@@ -3938,7 +3954,7 @@ FIO_FUNC fio_str_info_s fio_str_readfile(fio_str_s *s, const char *filename,
       if (home[home_len - 1] == '/' || home[home_len - 1] == '\\')
         --home_len;
       path_len = home_len + filename_len - 1;
-      path = fio_malloc(path_len + 1);
+      path = FIO_MALLOC(path_len + 1);
       FIO_ASSERT_ALLOC(path);
       memcpy(path, home, home_len);
       memcpy(path + home_len, filename + 1, filename_len);
@@ -3978,7 +3994,7 @@ FIO_FUNC fio_str_info_s fio_str_readfile(fio_str_s *s, const char *filename,
   }
   close(file);
 finish:
-  fio_free(path);
+  FIO_FREE(path);
   return state;
 #else
   /* TODO: consider adding non POSIX implementations. */
@@ -4130,17 +4146,17 @@ static FIO_ARY_TYPE const FIO_NAME(s___const_invalid_object);
 
 /* Customizable memory management */
 #ifndef FIO_ARY_MALLOC /* NULL ptr indicates new allocation */
-#define FIO_ARY_MALLOC(size) fio_malloc((size))
+#define FIO_ARY_MALLOC(size) FIO_MALLOC((size))
 #endif
 
 /* Customizable memory management */
 #ifndef FIO_ARY_REALLOC /* NULL ptr indicates new allocation */
 #define FIO_ARY_REALLOC(ptr, original_size, new_size, valid_data_length)       \
-  fio_realloc2((ptr), (new_size), (valid_data_length))
+  FIO_REALLOC((ptr), (new_size), (valid_data_length))
 #endif
 
 #ifndef FIO_ARY_DEALLOC
-#define FIO_ARY_DEALLOC(ptr, size) fio_free((ptr))
+#define FIO_ARY_DEALLOC(ptr, size) FIO_FREE((ptr))
 #endif
 
 /* padding to be assumed for future expansion. */
@@ -4351,13 +4367,13 @@ FIO_FUNC inline intptr_t FIO_NAME(__rel2absolute)(FIO_NAME(s) * ary,
 FIO_FUNC void FIO_NAME(__require_on_top)(FIO_NAME(s) * ary, size_t len) {
   if (ary->end + len < ary->capa)
     return;
-  len = FIO_ARY_SIZE2WORDS(len + ary->end);
+  len = FIO_ARY_SIZE2WORDS((len + ary->end));
   /* reallocate enough memory */
   ary->arry = FIO_ARY_REALLOC(ary->arry, sizeof(*ary->arry) * ary->capa,
                               (len) * sizeof(*ary->arry),
                               ary->end * sizeof(*ary->arry));
   FIO_ASSERT_ALLOC(ary->arry);
-  ary->capa = len + 1;
+  ary->capa = len;
 }
 
 /** Makes sure that `len` positions are available at the Array's head. */
@@ -4380,7 +4396,7 @@ FIO_FUNC void FIO_NAME(__require_on_bottom)(FIO_NAME(s) * ary, size_t len) {
             len * sizeof(*ary->arry));
   ary->start = ary->end - len;
   if (tmp != ary->arry) {
-    fio_free(tmp);
+    FIO_FREE(tmp);
   }
 }
 
@@ -4985,13 +5001,15 @@ Done
 /* Customizable memory management */
 #ifndef FIO_SET_REALLOC /* NULL ptr indicates new allocation */
 #define FIO_SET_REALLOC(ptr, original_size, new_size, valid_data_length)       \
-  fio_realloc2((ptr), (new_size), (valid_data_length))
+  FIO_REALLOC((ptr), (new_size), (valid_data_length))
 #endif
+
 #ifndef FIO_SET_CALLOC
-#define FIO_SET_CALLOC(size, count) fio_calloc((size), (count))
+#define FIO_SET_CALLOC(size, count) FIO_CALLOC((size), (count))
 #endif
+
 #ifndef FIO_SET_FREE
-#define FIO_SET_FREE(ptr, size) fio_free((ptr))
+#define FIO_SET_FREE(ptr, size) FIO_FREE((ptr))
 #endif
 
 /* The maximum number of bins to rotate when partial collisions occure */
