@@ -4820,7 +4820,7 @@ FIO_FUNC inline void FIO_NAME(_test)(void) {
 }
 #undef TEST_LIMIT
 #else
-FIO_FUNC inline void FIO_NAME(_test)(void);
+FIO_FUNC inline void FIO_NAME(_test)(void) {}
 #endif
 
 /* *****************************************************************************
