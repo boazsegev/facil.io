@@ -224,9 +224,9 @@ typedef struct {
 
 /** The logging level */
 #if DEBUG
-size_t FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
+int FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
 #else
-size_t FIO_LOG_LEVEL = FIO_LOG_LEVEL_INFO;
+int FIO_LOG_LEVEL = FIO_LOG_LEVEL_INFO;
 #endif
 static fio_data_s *fio_data = NULL;
 

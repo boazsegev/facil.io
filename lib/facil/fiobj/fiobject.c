@@ -61,10 +61,10 @@ void *__attribute__((weak)) fio_mmap(size_t size) { return fio_malloc(size); }
 /** The logging level */
 #if DEBUG
 #pragma weak FIO_LOG_LEVEL
-size_t __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
+int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
 #else
 #pragma weak FIO_LOG_LEVEL
-size_t __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_INFO;
+int __attribute__((weak)) FIO_LOG_LEVEL = FIO_LOG_LEVEL_INFO;
 #endif
 
 /**

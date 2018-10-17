@@ -377,7 +377,7 @@ Logging and testing helpers
 #define FIO_LOG_LEVEL_DEBUG 5
 
 /** The logging level */
-extern size_t FIO_LOG_LEVEL;
+extern int FIO_LOG_LEVEL;
 
 #ifndef FIO_LOG_PRINT
 #define FIO_LOG_PRINT(level, ...)                                              \
