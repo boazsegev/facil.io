@@ -291,7 +291,7 @@ print_help:
 void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int unnamed_min,
                                int unnamed_max, char const *description,
                                char const **names) {
-  if (unnamed_max > 0 && unnamed_max < unnamed_min)
+  if (unnamed_max >= 0 && unnamed_max < unnamed_min)
     unnamed_max = unnamed_min;
   fio_cli_parser_data_s parser = {
       .unnamed_min = unnamed_min,
