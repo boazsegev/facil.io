@@ -410,7 +410,7 @@ extern int FIO_LOG_LEVEL;
 #endif
 
 #if FIO_PRINT_STATE
-#define FIO_LOG_STATE(...) FIO_LOG_PRINT(0, __VA_ARGS__)
+#define FIO_LOG_STATE(...) FIO_LOG_PRINT(FIO_LOG_LEVEL_INFO, __VA_ARGS__)
 #else
 #define FIO_LOG_STATE(...)
 #endif
@@ -1192,6 +1192,9 @@ typedef struct fio_rw_hook_s {
   /**
    * Implement writing to a file descriptor. Should behave like the file system
    * `write` call.
+   *
+   * If an internal buffer is implemented and it is full, errno should be set to
+   * EWOULDBLOCK and the function should return -1.
    *
    * Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
    * deadlock might occur.
