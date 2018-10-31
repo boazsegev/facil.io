@@ -12,6 +12,7 @@
 <li><a href="/0.7.x/fio#general-helpers">General Helpers</a></li>
 <li><a href="/0.7.x/fio#linked-lists">Linked Lists</a></li>
 <li><a href="/0.7.x/fio#string-helpers">String Helpers</a></li>
+<li><a href="/0.7.x/fio#dynamic-arrays">Dynamic Arrays</a></li>
 <li><a href="/0.7.x/fio#hash-maps-sets">Hash Maps / Sets</a></li>
 <li><a href="/0.7.x/fio#version-and-compilation-related-macros">Compilation Macros</a></li>
 <li><a href="/0.7.x/fio#weak-functions">Weak Functions</a></li>
@@ -94,10 +95,10 @@
 <a href="#fio_cli_get_bool"><code>fio_cli_get_bool</code></a>
 </li>
 <li>
-<a href="#fio_cli_unknown_count"><code>fio_cli_unknown_count</code></a>
+<a href="#fio_cli_unnamed_count"><code>fio_cli_unnamed_count</code></a>
 </li>
 <li>
-<a href="#fio_cli_unknown"><code>fio_cli_unknown</code></a>
+<a href="#fio_cli_unnamed"><code>fio_cli_unnamed</code></a>
 </li>
 </ul>
 </li>
@@ -133,7 +134,7 @@
 <p>Data can be accessed either as a C string or an integer using the <code>fio_cli_get</code> and <code>fio_cli_set</code> functions.</p>
 
 <h3 id="example">example</h3>
-<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"This example defines the following arguments:"</span><span class="p">,</span>
+<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"This example defines the following arguments:"</span><span class="p">,</span>
              <span class="s">"-t -thread number of threads to run."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
              <span class="s">"-w -workers number of workers to run."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
              <span class="s">"-b, -address the address to bind to."</span><span class="p">,</span>
@@ -167,17 +168,17 @@
 <h3 id="initialization-destruction">Initialization / Destruction</h3>
 
 <h4 id="fio_cli_start"><code>fio_cli_start</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_cli_start</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[],</span> <span class="kt">int</span> <span class="n">allow_unknown</span><span class="p">,</span>
-                   <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">description</span><span class="p">,</span>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_cli_start</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[],</span> <span class="kt">int</span> <span class="n">unnamed_min</span><span class="p">,</span>
+                   <span class="kt">int</span> <span class="n">unnamed_max</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">description</span><span class="p">,</span>
                    <span class="kt">char</span> <span class="k">const</span> <span class="o">**</span><span class="n">names</span><span class="p">);</span>
 <span class="cm">/* Automatically appends a NULL marker at the end of the `names` array. */</span>
-<span class="cp">#define fio_cli_start(argc, argv, allow_unknown, description, ...)             \
-  fio_cli_start((argc), (argv), (allow_unknown), (description),                \
+<span class="cp">#define fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)  \
+  fio_cli_start((argc), (argv), (unnamed_min), (unnamed_max), (description),   \
                 (char const *[]){__VA_ARGS__, NULL})
 </span></code></pre>
 <p>This function parses the Command Line Interface (CLI), creating a temporary &quot;dictionary&quot; that allows easy access to the CLI using their names or aliases.</p>
 
-<p>Command line arguments may be typed. If an optional type requirement is provided and the provided arument fails to match the required type, execution will end and an error message will be printed along with a short &quot;help&quot;.</p>
+<p>Command line arguments may be typed. If an optional type requirement is provided and the provided argument fails to match the required type, execution will end and an error message will be printed along with a short &quot;help&quot;.</p>
 
 <p>The following optional type requirements are:</p>
 
@@ -194,7 +195,7 @@ without the &#39;-&#39; character will begin the description for the CLI argumen
 unless overridden.</p>
 
 <p>Example use:</p>
-<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
+<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
              <span class="s">"-t -thread number of threads to run."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
              <span class="s">"-w -workers number of workers to run."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
              <span class="s">"-b, -address the address to bind to."</span><span class="p">,</span>
@@ -232,19 +233,19 @@ unless overridden.</p>
 </span></code></pre>
 <p>This MACRO returns the argument&#39;s value as a boolean.</p>
 
-<h4 id="fio_cli_unknown_count"><code>fio_cli_unknown_count</code></h4>
-<pre><code class='highlight'><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">fio_cli_unknown_count</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<h4 id="fio_cli_unnamed_count"><code>fio_cli_unnamed_count</code></h4>
+<pre><code class='highlight'><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">fio_cli_unnamed_count</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre>
-<p>Returns the number of unrecognized argument.</p>
+<p>Returns the number of unnamed arguments.</p>
 
-<p>Unknown arguments are only relevant if the <code>allow_unknown</code> argument in <code>fio_cli_start</code> was set to true (1).</p>
+<p>Unnamed arguments are only relevant if the <code>unnamed_min</code> argument in <code>fio_cli_start</code> was greater than 0.</p>
 
-<h4 id="fio_cli_unknown"><code>fio_cli_unknown</code></h4>
-<pre><code class='highlight'><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_unknown</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">index</span><span class="p">);</span>
+<h4 id="fio_cli_unnamed"><code>fio_cli_unnamed</code></h4>
+<pre><code class='highlight'><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_unnamed</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">index</span><span class="p">);</span>
 </code></pre>
-<p>Returns the unrecognized argument using a 0 based <code>index</code>.</p>
+<p>Returns the unnamed arguments using a 0 (zero) based <code>index</code>.</p>
 
-<p>Unknown arguments are only relevant if the <code>allow_unknown</code> argument in <code>fio_cli_start</code> was set to true (1).</p>
+<p>Unnamed arguments are only relevant if the <code>unnamed_min</code> argument in <code>fio_cli_start</code> was greater than 0.</p>
 
 <h3 id="set-cli-argument-data">Set CLI argument data</h3>
 
@@ -254,7 +255,7 @@ unless overridden.</p>
 <p>Sets the argument&#39;s value as a NUL terminated C String (no copy!).</p>
 
 <p>CAREFUL: This does not automatically detect aliases or type violations! it will only effect the specific name given, even if invalid. i.e.:</p>
-<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span>
+<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span>
              <span class="s">"this is example accepts the following options:"</span><span class="p">,</span>
              <span class="s">"-p -port the port to bind to"</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">;</span>
 

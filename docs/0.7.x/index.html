@@ -12,6 +12,7 @@
 <li><a href="/0.7.x/fio#general-helpers">General Helpers</a></li>
 <li><a href="/0.7.x/fio#linked-lists">Linked Lists</a></li>
 <li><a href="/0.7.x/fio#string-helpers">String Helpers</a></li>
+<li><a href="/0.7.x/fio#dynamic-arrays">Dynamic Arrays</a></li>
 <li><a href="/0.7.x/fio#hash-maps-sets">Hash Maps / Sets</a></li>
 <li><a href="/0.7.x/fio#version-and-compilation-related-macros">Compilation Macros</a></li>
 <li><a href="/0.7.x/fio#weak-functions">Weak Functions</a></li>
@@ -184,7 +185,7 @@ The main function
 ***************************************************************************** */</span>
 <span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
   <span class="n">fio_cli_start</span><span class="p">(</span>
-      <span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"WebSocket chat room example using facil.io"</span><span class="p">,</span>
+      <span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"WebSocket chat room example using facil.io"</span><span class="p">,</span>
       <span class="s">"-t number of threads"</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span> <span class="s">"-w number of workers"</span><span class="p">,</span>
       <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span> <span class="s">"-www a public folder from which to serve files"</span><span class="p">,</span>
       <span class="s">"-p port number to listen on (0 == unix socket)"</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>

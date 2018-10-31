@@ -153,7 +153,7 @@ int main(int argc, char const *argv[]) {
 
   /*     ****  Command line arguments ****     */
   fio_cli_start(
-      argc, argv, 0,
+      argc, argv, 0, 0,
       "This is a facil.io example application.\n"
       "\nThis example conforms to the "
       "Websocket Shootout requirements at:\n"

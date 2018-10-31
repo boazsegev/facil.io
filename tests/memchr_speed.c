@@ -139,17 +139,13 @@ static inline int seek4(register uint8_t **buffer,
 int main(int argc, char const **argv) {
 
   fio_cli_start(
-      argc, argv, 1,
+      argc, argv, 1, 0,
       "This program tests the memchr speed against a custom implementation. "
       "It's meant to be used against defferent data to test how seeking "
       "performs in different circumstances.\n use: appname <filename>",
       "-c the char to be tested against (only the fist char in the string");
-  if (fio_cli_unknown_count() > 1) {
-    fprintf(stderr, "Use: appname -? for help.\n");
-    exit(0);
-  }
-  if (fio_cli_unknown_count()) {
-    fio_cli_set_default("-f", fio_cli_unknown(0));
+  if (fio_cli_unnamed_count()) {
+    fio_cli_set_default("-f", fio_cli_unnamed(0));
   } else {
     fio_cli_set_default("-f", __FILE__);
   }

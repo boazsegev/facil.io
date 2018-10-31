@@ -155,7 +155,7 @@ The main function
 ***************************************************************************** */
 int main(int argc, char const *argv[]) {
   fio_cli_start(
-      argc, argv, 0, "WebSocket chat room example using facil.io",
+      argc, argv, 0, 0, "WebSocket chat room example using facil.io",
       "-t number of threads", FIO_CLI_TYPE_INT, "-w number of workers",
       FIO_CLI_TYPE_INT, "-www a public folder from which to serve files",
       "-p port number to listen on (0 == unix socket)", FIO_CLI_TYPE_INT,

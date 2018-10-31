@@ -255,7 +255,7 @@ CLI helpers
 static void initialize_cli(int argc, char const *argv[]) {
   /*     ****  Command line arguments ****     */
   fio_cli_start(
-      argc, argv, 0, NULL,
+      argc, argv, 0, 0, NULL,
       "-bind -b address to listen to. defaults any available.",
       "-port -p port number to listen to. defaults port 3000", FIO_CLI_TYPE_INT,
       "-workers -w number of processes to use.", FIO_CLI_TYPE_INT,

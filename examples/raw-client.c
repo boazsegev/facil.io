@@ -141,25 +141,27 @@ Main
 
 int main(int argc, char const *argv[]) {
   /* Setup CLI arguments */
-  fio_cli_start(argc, argv, 1, "use:\n\tclient <args> hostname port",
+  fio_cli_start(argc, argv, 1, 2, "use:\n\tclient <args> hostname port",
                 "-v -verbous mode.", FIO_CLI_TYPE_BOOL);
-  if (fio_cli_unknown_count() == 0 || fio_cli_unknown_count() > 2) {
+  if (fio_cli_unnamed_count() == 0 || fio_cli_unnamed_count() > 2) {
     printf("Argument error. For help type:   client -?\n");
     exit(0);
   }
   if (fio_cli_get_bool("-v")) {
-    if (fio_cli_unknown_count() == 1) {
+    if (fio_cli_unnamed_count() == 1) {
       printf("Attempting to connect to Unix socket at: %s\n",
-             fio_cli_unknown(0));
+             fio_cli_unnamed(0));
     } else {
       printf("Attempting to connect to TCP/IP socket at: %s:%s\n",
-             fio_cli_unknown(0), fio_cli_unknown(1));
+             fio_cli_unnamed(0), fio_cli_unnamed(1));
     }
+  } else {
+    FIO_LOG_LEVEL = FIO_LOG_LEVEL_ERROR;
   }
   intptr_t uuid =
-      fio_connect(.address = fio_cli_unknown(0), .port = fio_cli_unknown(1),
+      fio_connect(.address = fio_cli_unnamed(0), .port = fio_cli_unnamed(1),
                   .on_connect = on_connect, .on_fail = on_fail,
-                  .udata = (void *)fio_cli_unknown(0));
+                  .udata = (void *)fio_cli_unnamed(0));
   if (uuid == -1 && fio_cli_get_bool("-v"))
     perror("Connection can't be established");
   else

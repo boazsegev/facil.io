@@ -33,12 +33,13 @@ typedef struct {
 
 static fio_cli_hash_s fio_aliases = FIO_SET_INIT;
 static fio_cli_hash_s fio_values = FIO_SET_INIT;
-static size_t fio_unknown_count = 0;
+static size_t fio_unnamed_count = 0;
 
 typedef struct {
-  int allow_unknown;
+  int unnamed_min;
+  int unnamed_max;
   int pos;
-  int unknown_count;
+  int unnamed_count;
   char const *description;
   char const **names;
 } fio_cli_parser_data_s;
@@ -112,19 +113,19 @@ found:
 
 static void fio_cli_set_arg(cstr_s arg, char const *value, char const *line,
                             fio_cli_parser_data_s *parser) {
-  /* handle unknown argument */
+  /* handle unnamed argument */
   if (!line || !arg.len) {
     if (!value) {
-      /*wtf?*/
-      return;
+      goto print_help;
     }
     if (!strcmp(value, "-?") || !strcasecmp(value, "-h") ||
         !strcasecmp(value, "-help") || !strcasecmp(value, "--help")) {
       goto print_help;
     }
-    cstr_s n = {.len = ++parser->unknown_count};
+    cstr_s n = {.len = ++parser->unnamed_count};
     fio_cli_hash_insert(&fio_values, n.len, n, value, NULL);
-    if (!parser->allow_unknown) {
+    if (parser->unnamed_max >= 0 &&
+        parser->unnamed_count > parser->unnamed_max) {
       arg.len = 0;
       goto error;
     }
@@ -287,10 +288,14 @@ print_help:
   exit(0);
 }
 
-void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int allow_unknown,
-                               char const *description, char const **names) {
+void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int unnamed_min,
+                               int unnamed_max, char const *description,
+                               char const **names) {
+  if (unnamed_max > 0 && unnamed_max < unnamed_min)
+    unnamed_max = unnamed_min;
   fio_cli_parser_data_s parser = {
-      .allow_unknown = allow_unknown,
+      .unnamed_min = unnamed_min,
+      .unnamed_max = unnamed_max,
       .description = description,
       .names = names,
       .pos = 0,
@@ -338,13 +343,16 @@ void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int allow_unknown,
 
   /* Cleanup and save state for API */
   fio_cli_hash_free(&fio_aliases);
-  fio_unknown_count = parser.unknown_count;
+  fio_unnamed_count = parser.unnamed_count;
+  /* test for required unnamed arguments */
+  if (parser.unnamed_count < parser.unnamed_min)
+    fio_cli_set_arg((cstr_s){.len = 0}, NULL, NULL, &parser);
 }
 
 void fio_cli_end(void) {
   fio_cli_hash_free(&fio_values);
   fio_cli_hash_free(&fio_aliases);
-  fio_unknown_count = 0;
+  fio_unnamed_count = 0;
 }
 /* *****************************************************************************
 CLI Data Access
@@ -383,13 +391,13 @@ int fio_cli_get_i(char const *name) {
 }
 
 /** Returns the number of unrecognized argument. */
-unsigned int fio_cli_unknown_count(void) {
-  return (unsigned int)fio_unknown_count;
+unsigned int fio_cli_unnamed_count(void) {
+  return (unsigned int)fio_unnamed_count;
 }
 
 /** Returns the unrecognized argument using a 0 based `index`. */
-char const *fio_cli_unknown(unsigned int index) {
-  if (!fio_cli_hash_count(&fio_values) || !fio_unknown_count) {
+char const *fio_cli_unnamed(unsigned int index) {
+  if (!fio_cli_hash_count(&fio_values) || !fio_unnamed_count) {
     return NULL;
   }
   cstr_s n = {.data = NULL, .len = index + 1};

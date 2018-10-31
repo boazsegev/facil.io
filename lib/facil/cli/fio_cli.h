@@ -31,6 +31,14 @@ CLI API
  * provided and the provided arument fails to match the required type, execution
  * will end and an error message will be printed along with a short "help".
  *
+ * The function / macro accepts the following arguments:
+ * - `argc`: command line argument count.
+ * - `argv`: command line argument list (array).
+ * - `unnamed_min`: the required minimum of un-named arguments.
+ * - `unnamed_max`: the maximum limit of un-named arguments.
+ * - `description`: a C string containing the program's description.
+ * - named arguments list: a list of C strings describing named arguments.
+ *
  * The following optional type requirements are:
  *
  * * FIO_CLI_TYPE_STRING - (default) string argument.
@@ -43,9 +51,11 @@ CLI API
  * The arguments "-?", "-h", "-help" and "--help" are automatically handled
  * unless overridden.
  *
+ * Un-named arguments shouldn't be listed in the named arguments list.
+ *
  * Example use:
  *
- *    fio_cli_start(argc, argv, 0, "this example accepts the following:",
+ *    fio_cli_start(argc, argv, 0, 0, "this example accepts the following:",
  *                  "-t -thread number of threads to run.", FIO_CLI_TYPE_INT,
  *                  "-w -workers number of workers to run.", FIO_CLI_TYPE_INT,
  *                  "-b, -address the address to bind to.",
@@ -68,16 +78,16 @@ CLI API
  *
  * This function is NOT thread safe.
  */
-#define fio_cli_start(argc, argv, allow_unknown, description, ...)             \
-  fio_cli_start((argc), (argv), (allow_unknown), (description),                \
+#define fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)  \
+  fio_cli_start((argc), (argv), (unnamed_min), (unnamed_max), (description),   \
                 (char const *[]){__VA_ARGS__, NULL})
 #define FIO_CLI_IGNORE
 /**
  * Never use the function directly, always use the MACRO, because the macro
  * attaches a NULL marker at the end of the `names` argument collection.
  */
-void fio_cli_start FIO_CLI_IGNORE(int argc, char const *argv[],
-                                  int allow_unknown, char const *description,
+void fio_cli_start FIO_CLI_IGNORE(int argc, char const *argv[], int unnamed_min,
+                                  int unnamed_max, char const *description,
                                   char const **names);
 /**
  * Clears the memory used by the CLI dictionary, removing all parsed data.
@@ -95,11 +105,11 @@ int fio_cli_get_i(char const *name);
 /** This MACRO returns the argument's value as a boolean. */
 #define fio_cli_get_bool(name) (fio_cli_get((name)) != NULL)
 
-/** Returns the number of unrecognized argument. */
-unsigned int fio_cli_unknown_count(void);
+/** Returns the number of unnamed argument. */
+unsigned int fio_cli_unnamed_count(void);
 
-/** Returns the unrecognized argument using a 0 based `index`. */
-char const *fio_cli_unknown(unsigned int index);
+/** Returns the unnamed argument using a 0 based `index`. */
+char const *fio_cli_unnamed(unsigned int index);
 
 /**
  * Sets the argument's value as a NUL terminated C String (no copy!).

@@ -116,7 +116,7 @@ void light_http_on_open(intptr_t uuid, void *udata);
 /* our main function / starting point */
 int main(int argc, char const *argv[]) {
   /* A simple CLI interface. */
-  fio_cli_start(argc, argv, 0,
+  fio_cli_start(argc, argv, 0, 0,
                 "Custom HTTP example for the facil.io framework.",
                 "-port -p Port to bind to. Default: 3000", FIO_CLI_TYPE_INT,
                 "-workers -w Number of workers (processes).", FIO_CLI_TYPE_INT,

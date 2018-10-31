@@ -2647,7 +2647,7 @@ before the data in the array is destroyed.
 
 Returns -1 on error (Array is empty) and 0 on success.
 
-#### ``
+#### `FIO_ARY_NAME(each)`
 
 ```c
 FIO_FUNC inline size_t FIO_ARY_NAME(each)(FIO_ARY_NAME(s) * ary, size_t start_at,

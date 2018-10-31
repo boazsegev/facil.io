@@ -106,7 +106,7 @@ The main function (listens to the `echo` connections and handles CLI)
 // The main function starts listening to echo connections
 int main(int argc, char const *argv[]) {
   /* Setup CLI arguments */
-  fio_cli_start(argc, argv, 0, "this example accepts the following options:",
+  fio_cli_start(argc, argv, 0, 0, "this example accepts the following options:",
                 "-t -thread number of threads to run.", FIO_CLI_TYPE_INT,
                 "-w -workers number of workers to run.", FIO_CLI_TYPE_INT,
                 "-b, -address the address to bind to.",
@@ -119,8 +119,9 @@ int main(int argc, char const *argv[]) {
   fio_cli_set_default("-w", "1");
 
   /* Listen for connections */
-  if (fio_listen(.port = fio_cli_get("-p"), .on_open = chat_on_open) == -1) {
-    perror("No listening socket available on port 3000");
+  if (fio_listen(.port = fio_cli_get("-p"), .address = fio_cli_get("-b"),
+                 .on_open = chat_on_open) == -1) {
+    perror("No listening socket available.");
     exit(-1);
   }
   /* Run the server and hang until a stop signal is received */

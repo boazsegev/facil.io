@@ -117,7 +117,7 @@ CLI
 /* initialize CLI helper and manage it's default options */
 static void cli_init(int argc, char const *argv[]) {
   fio_cli_start(
-      argc, argv, 0,
+      argc, argv, 0, 0,
       "This is a facil.io framework benchmark application.\n"
       "\nFor details about the benchmarks visit:\n"
       "http://frameworkbenchmarks.readthedocs.io/en/latest/\n"

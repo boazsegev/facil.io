@@ -17,7 +17,7 @@ Data can be accessed either as a C string or an integer using the `fio_cli_get` 
 ### example
 
 ```c
-fio_cli_start(argc, argv, 0, "This example defines the following arguments:",
+fio_cli_start(argc, argv, 0, 0, "This example defines the following arguments:",
              "-t -thread number of threads to run.", FIO_CLI_TYPE_INT,
              "-w -workers number of workers to run.", FIO_CLI_TYPE_INT,
              "-b, -address the address to bind to.",
@@ -54,17 +54,18 @@ Indicates the previous CLI argument should be an Integer (numerical). */
 #### `fio_cli_start`
 
 ```c
-void fio_cli_start(int argc, char const *argv[], int allow_unknown,
-                   char const *description,
+void fio_cli_start(int argc, char const *argv[], int unnamed_min,
+                   int unnamed_max, char const *description,
                    char const **names);
 /* Automatically appends a NULL marker at the end of the `names` array. */
-#define fio_cli_start(argc, argv, allow_unknown, description, ...)             \
-  fio_cli_start((argc), (argv), (allow_unknown), (description),                \
+#define fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)  \
+  fio_cli_start((argc), (argv), (unnamed_min), (unnamed_max), (description),   \
                 (char const *[]){__VA_ARGS__, NULL})
 ```
+
 This function parses the Command Line Interface (CLI), creating a temporary "dictionary" that allows easy access to the CLI using their names or aliases.
 
-Command line arguments may be typed. If an optional type requirement is provided and the provided arument fails to match the required type, execution will end and an error message will be printed along with a short "help".
+Command line arguments may be typed. If an optional type requirement is provided and the provided argument fails to match the required type, execution will end and an error message will be printed along with a short "help".
 
 The following optional type requirements are:
 
@@ -82,7 +83,7 @@ unless overridden.
 Example use:
 
 ```c
-fio_cli_start(argc, argv, 0, "this example accepts the following:",
+fio_cli_start(argc, argv, 0, 0, "this example accepts the following:",
              "-t -thread number of threads to run.", FIO_CLI_TYPE_INT,
              "-w -workers number of workers to run.", FIO_CLI_TYPE_INT,
              "-b, -address the address to bind to.",
@@ -141,28 +142,27 @@ Returns the argument's value as an integer.
 
 This MACRO returns the argument's value as a boolean.
 
-#### `fio_cli_unknown_count`
+#### `fio_cli_unnamed_count`
 
 ```c
-unsigned int fio_cli_unknown_count(void);
+unsigned int fio_cli_unnamed_count(void);
 ```
 
-Returns the number of unrecognized argument.
+Returns the number of unnamed arguments.
 
-Unknown arguments are only relevant if the `allow_unknown` argument in `fio_cli_start` was set to true (1).
+Unnamed arguments are only relevant if the `unnamed_min` argument in `fio_cli_start` was greater than 0.
 
-#### `fio_cli_unknown`
+#### `fio_cli_unnamed`
 
 ```c
-char const *fio_cli_unknown(unsigned int index);
+char const *fio_cli_unnamed(unsigned int index);
 ```
 
-Returns the unrecognized argument using a 0 based `index`.
+Returns the unnamed arguments using a 0 (zero) based `index`.
 
-Unknown arguments are only relevant if the `allow_unknown` argument in `fio_cli_start` was set to true (1).
+Unnamed arguments are only relevant if the `unnamed_min` argument in `fio_cli_start` was greater than 0.
 
 ### Set CLI argument data
-
 
 #### `fio_cli_set`
 
@@ -175,7 +175,7 @@ Sets the argument's value as a NUL terminated C String (no copy!).
 CAREFUL: This does not automatically detect aliases or type violations! it will only effect the specific name given, even if invalid. i.e.:
 
 ```c
-fio_cli_start(argc, argv,
+fio_cli_start(argc, argv, 0, 0,
              "this is example accepts the following options:",
              "-p -port the port to bind to", FIO_CLI_TYPE_INT;
 
