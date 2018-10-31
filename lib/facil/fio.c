@@ -2629,14 +2629,6 @@ ssize_t fio_flush(intptr_t uuid) {
   if (fio_trylock(&uuid_data(uuid).sock_lock))
     goto would_block;
 
-  flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
-  if (flushed < 0) {
-    goto test_errno;
-  }
-  if (flushed) {
-    goto flushed;
-  }
-
   if (uuid_data(uuid).packet) {
     tmp = uuid_data(uuid).packet->write_func(fio_uuid2fd(uuid),
                                              uuid_data(uuid).packet);
@@ -2646,6 +2638,14 @@ ssize_t fio_flush(intptr_t uuid) {
       goto closed;
     } else if (tmp < 0) {
       goto test_errno;
+    }
+  } else {
+    flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
+    if (flushed < 0) {
+      goto test_errno;
+    }
+    if (flushed) {
+      goto flushed;
     }
   }
 
@@ -2685,7 +2685,7 @@ void fio_flush_all(void) {
   if (!fio_data)
     return;
   for (uintptr_t i = 0; i < fio_data->max_protocol_fd; ++i) {
-    if (fd_data(i).packet)
+    if (fd_data(i).open || fd_data(i).packet)
       fio_flush(fd2uuid(i));
   }
 }
