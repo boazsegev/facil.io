@@ -1939,8 +1939,8 @@ postpone:
 static void deferred_ping(void *arg, void *arg2) {
   if (!uuid_data(arg).protocol ||
       (uuid_data(arg).timeout &&
-       (uuid_data(arg).timeout >
-        (fio_data->last_cycle.tv_sec - uuid_data(arg).active)))) {
+       (uuid_data(arg).timeout + uuid_data(arg).active >
+        (fio_data->last_cycle.tv_sec)))) {
     return;
   }
   fio_protocol_s *pr = protocol_try_lock(fio_uuid2fd(arg), FIO_PR_LOCK_WRITE);
@@ -2578,6 +2578,9 @@ void fio_force_close(intptr_t uuid) {
     errno = EBADF;
     return;
   }
+  /* make sure the close marker is set */
+  if (!uuid_data(uuid).close)
+    uuid_data(uuid).close = 1;
   /* clear away any packets in case we want to cut the connection short. */
   fio_packet_s *packet;
   fio_lock(&uuid_data(uuid).sock_lock);
@@ -2592,8 +2595,9 @@ void fio_force_close(intptr_t uuid) {
     fio_packet_free(tmp);
   }
   /* check for rw-hooks termination packet */
-  if (uuid_data(uuid).open &&
-      uuid_data(uuid).rw_hooks->close(uuid, uuid_data(uuid).rw_udata)) {
+  if (uuid_data(uuid).open && (uuid_data(uuid).close & 1) &&
+      uuid_data(uuid).rw_hooks->before_close(uuid, uuid_data(uuid).rw_udata)) {
+    uuid_data(uuid).close = 2; /* don't repeat the before_close callback */
     fio_touch(uuid);
     fio_poll_add_write(fio_uuid2fd(uuid));
     return;
@@ -2635,6 +2639,7 @@ ssize_t fio_flush(intptr_t uuid) {
     if (tmp == 0) {
       errno = ECONNRESET;
       fio_unlock(&uuid_data(uuid).sock_lock);
+      uuid_data(uuid).close = 1;
       goto closed;
     } else if (tmp < 0) {
       goto test_errno;
@@ -2663,7 +2668,6 @@ would_block:
   errno = EWOULDBLOCK;
   return -1;
 closed:
-  uuid_data(uuid).close = 1;
   fio_force_close(uuid);
   return -1;
 test_errno:
@@ -2705,10 +2709,10 @@ static ssize_t fio_hooks_default_write(intptr_t uuid, void *udata,
   (void)(udata);
 }
 
-static ssize_t fio_hooks_default_close(intptr_t uuid, void *udata) {
-  close(fio_uuid2fd(uuid));
+static ssize_t fio_hooks_default_before_close(intptr_t uuid, void *udata) {
   return 0;
   (void)udata;
+  (void)uuid;
 }
 
 static ssize_t fio_hooks_default_flush(intptr_t uuid, void *udata) {
@@ -2723,7 +2727,7 @@ const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS = {
     .read = fio_hooks_default_read,
     .write = fio_hooks_default_write,
     .flush = fio_hooks_default_flush,
-    .close = fio_hooks_default_close,
+    .before_close = fio_hooks_default_before_close,
     .cleanup = fio_hooks_default_cleanup,
 };
 
@@ -2737,8 +2741,8 @@ int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
     rw_hooks->write = fio_hooks_default_write;
   if (!rw_hooks->flush)
     rw_hooks->flush = fio_hooks_default_flush;
-  if (!rw_hooks->close)
-    rw_hooks->close = fio_hooks_default_close;
+  if (!rw_hooks->before_close)
+    rw_hooks->before_close = fio_hooks_default_before_close;
   if (!rw_hooks->cleanup)
     rw_hooks->cleanup = fio_hooks_default_cleanup;
   uuid = fio_uuid2fd(uuid);
@@ -2856,6 +2860,8 @@ void fio_timeout_set(intptr_t uuid, uint8_t timeout) {
   if (uuid_is_valid(uuid)) {
     uuid_data(uuid).active = fio_data->last_cycle.tv_sec;
     uuid_data(uuid).timeout = timeout;
+  } else {
+    FIO_LOG_DEBUG("Called fio_timeout_set for invalid uuid %p", (void *)uuid);
   }
 }
 /** Gets a timeout for a specific connection. Returns 0 if there's no set
@@ -3245,7 +3251,6 @@ static void fio_review_timeout(void *arg, void *ignr) {
   uint16_t timeout = fd_data(fd).timeout;
   if (!timeout)
     timeout = 300; /* enforced timout settings */
-
   if (!fd_data(fd).protocol || (fd_data(fd).active + timeout >= review))
     goto finish;
   tmp = protocol_try_lock(fd, FIO_PR_LOCK_STATE);
@@ -3262,7 +3267,7 @@ finish:
     fd++;
   } while (!fd_data(fd).protocol && (fd <= fio_data->max_protocol_fd));
 
-  if (fio_data->max_protocol_fd <= fd) {
+  if (fio_data->max_protocol_fd < fd) {
     fio_data->need_review = 1;
     return;
   }
@@ -3346,6 +3351,9 @@ static void fio_worker_startup(void) {
     /* Root Process should run in single thread mode */
     fio_data->threads = 1;
   }
+
+  /* require timeout review */
+  fio_data->need_review = 1;
 
   /* the cycle task will loop by re-scheduling until it's time to finish */
   fio_defer(fio_cycle, NULL, NULL);

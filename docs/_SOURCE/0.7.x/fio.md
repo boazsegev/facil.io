@@ -964,13 +964,15 @@ typedef struct fio_rw_hook_s {
 
     This callback should implement the writing function to the file descriptor. It must behave like the file system's `write` call, including the setting `errno` to `EAGAIN` / `EWOULDBLOCK`.
 
+    The function is expected to call the `flush` callback (or it's logic) internally. Either `write` **or** `flush` are called, but not both.
+
     Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
 
-* The `close` hook callback:
+* The `before_close` hook callback:
 
-    The `close` callback should close the underlying socket / file descriptor.
+    The `before_close` callback is called only once before closing the `uuid`.
 
-    If the function returns a non-zero value, it will be called again after an attempt to flush the socket and any pending outgoing buffer.
+    If the function returns a non-zero value, than closure will be delayed until the `flush` returns 0 (or less). This allows a closure signal to be sent by the read/write hook when such a signal is required.
 
     Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
 
@@ -978,7 +980,7 @@ typedef struct fio_rw_hook_s {
 
     When implemented, this function will be called to flush any data remaining in the read/write hook's internal buffer.
 
-    The function should return the number of bytes remaining in the internal buffer (0 is a valid response) or -1 (on error).
+    This callback should return the number of bytes remaining in the internal buffer (0 is a valid response) or -1 (on error).
 
     Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
 
