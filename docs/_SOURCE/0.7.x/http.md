@@ -169,7 +169,6 @@ In addition to the `port` and `address` argument (explained in [`fio_listen`](fi
         intptr_t reserved1;
         intptr_t reserved2;
         intptr_t reserved3;
-        intptr_t reserved4;
 
 
 Returns -1 on error and the socket's `uuid` on success.

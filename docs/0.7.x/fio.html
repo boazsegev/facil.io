@@ -1885,19 +1885,21 @@ be sent over the socket.</p>
 
 <p>This callback should implement the writing function to the file descriptor. It must behave like the file system&#39;s <code>write</code> call, including the setting <code>errno</code> to <code>EAGAIN</code> / <code>EWOULDBLOCK</code>.</p>
 
+<p>The function is expected to call the <code>flush</code> callback (or it&#39;s logic) internally. Either <code>write</code> <strong>or</strong> <code>flush</code> are called, but not both.</p>
+
 <p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
-<li><p>The <code>close</code> hook callback:</p>
+<li><p>The <code>before_close</code> hook callback:</p>
 
-<p>The <code>close</code> callback should close the underlying socket / file descriptor.</p>
+<p>The <code>before_close</code> callback is called only once before closing the <code>uuid</code>.</p>
 
-<p>If the function returns a non-zero value, it will be called again after an attempt to flush the socket and any pending outgoing buffer.</p>
+<p>If the function returns a non-zero value, than closure will be delayed until the <code>flush</code> returns 0 (or less). This allows a closure signal to be sent by the read/write hook when such a signal is required.</p>
 
 <p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
 <li><p>The <code>flush</code> hook callback:</p>
 
 <p>When implemented, this function will be called to flush any data remaining in the read/write hook&#39;s internal buffer.</p>
 
-<p>The function should return the number of bytes remaining in the internal buffer (0 is a valid response) or -1 (on error).</p>
+<p>This callback should return the number of bytes remaining in the internal buffer (0 is a valid response) or -1 (on error).</p>
 
 <p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
 <li><p>The <code>cleanup</code> hook callback:</p>

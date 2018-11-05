@@ -40,6 +40,32 @@ static inline int patch_clock_gettime(int clk_id, struct timespec *t) {
 #endif
 
 /* *****************************************************************************
+SSL/TLS patch
+***************************************************************************** */
+void __attribute__((weak)) fio_tls_accept(intptr_t uuid, void *tls) {
+  FIO_LOG_FATAL("HTTP SSL/TLS required but unavailable!");
+  exit(-1);
+  (void)uuid;
+  (void)tls;
+}
+#pragma weak fio_tls_accept
+
+/**
+ * Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified
+ * conetext / settings object.
+ *
+ * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
+ * the result of `fio_accept`).
+ */
+void __attribute__((weak)) fio_tls_connect(intptr_t uuid, void *tls) {
+  FIO_LOG_FATAL("HTTP SSL/TLS required but unavailable!");
+  exit(-1);
+  (void)uuid;
+  (void)tls;
+}
+#pragma weak fio_tls_connect
+
+/* *****************************************************************************
 Small Helpers
 ***************************************************************************** */
 static inline int hex2byte(uint8_t *dest, const uint8_t *source);
@@ -883,6 +909,8 @@ Listening to HTTP connections
 
 static void http_on_open(intptr_t uuid, void *set) {
   static uint8_t at_capa;
+  if (((http_settings_s *)set)->tls)
+    fio_tls_accept(uuid, ((http_settings_s *)set)->tls);
   fio_timeout_set(uuid, ((http_settings_s *)set)->timeout);
   if (fio_uuid2fd(uuid) >= ((http_settings_s *)set)->max_clients) {
     if (!at_capa)
@@ -972,6 +1000,8 @@ static void http_on_open_client(intptr_t uuid, void *set_) {
   http_settings_s *set = set_;
   http_s *h = set->udata;
   set->udata = h->udata;
+  if (set->tls)
+    fio_tls_connect(uuid, set->tls);
   fio_timeout_set(uuid, set->timeout);
   fio_protocol_s *pr = http1_new(uuid, set, NULL, 0);
   if (!pr) {
