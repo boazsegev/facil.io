@@ -499,6 +499,9 @@
 <li>
 <a href="#fio_str_send_free2"><code>fio_str_send_free2</code></a>
 </li>
+<li>
+<a href="#fio_str_detach"><code>fio_str_detach</code></a>
+</li>
 </ul>
 </li>
 <li>
@@ -2714,7 +2717,7 @@ original (<code>src</code>) string into the new string.</p>
 <p>Frees the String&#39;s resources and reinitializes the container.</p>
 
 <p>Note: if the container isn&#39;t allocated on the stack, it should be freed
-separately using <code>free</code> oR <code>fio_free</code>.</p>
+separately using <code>free</code> or <code>fio_free</code>.</p>
 
 <p>Returns 0 if the data was freed and -1 if the String is NULL or has un-freed
 references (see fio_str_dup).</p>
@@ -2733,6 +2736,17 @@ references (see fio_str_dup).</p>
 <p><code>fio_str_send_free2</code> sends the fio_str_s using <code>fio_write2</code>, freeing both the String and the container once the data was sent.</p>
 
 <p>As the naming indicates, the String is assumed to have been allocated using <code>fio_str_new2</code> or <code>fio_malloc</code>.</p>
+
+<h4 id="fio_str_detach"><code>fio_str_detach</code></h4>
+<pre><code class='highlight'><span class="n">FIO_FUNC</span> <span class="kt">char</span> <span class="o">*</span><span class="n">fio_str_detach</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
+</code></pre>
+<p>Returns a C string with the existing data, clearing the <code>fio_str_s</code> object&#39;s String.</p>
+
+<p>Note: the String data is removed from the container, but the container isn&#39;t freed.</p>
+
+<p>Returns NULL if there&#39;s no String data.</p>
+
+<p>Remember to <code>fio_free</code> the returned data and - if required - <code>fio_str_free2</code> the container.</p>
 
 <h3 id="string-api-string-state-data-pointers-length-capacity-etc">String API - String state (data pointers, length, capacity, etc&#39;)</h3>
 

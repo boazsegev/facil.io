@@ -2031,7 +2031,7 @@ inline int fio_str_free(fio_str_s *s);
 Frees the String's resources and reinitializes the container.
 
 Note: if the container isn't allocated on the stack, it should be freed
-separately using `free` oR `fio_free`.
+separately using `free` or `fio_free`.
 
 Returns 0 if the data was freed and -1 if the String is NULL or has un-freed
 references (see fio_str_dup).
@@ -2056,6 +2056,20 @@ inline ssize_t fio_str_send_free2(const intptr_t uuid,
 `fio_str_send_free2` sends the fio_str_s using `fio_write2`, freeing both the String and the container once the data was sent.
 
 As the naming indicates, the String is assumed to have been allocated using `fio_str_new2` or `fio_malloc`.
+
+#### `fio_str_detach`
+
+```c
+FIO_FUNC char *fio_str_detach(fio_str_s *s);
+```
+
+Returns a C string with the existing data, clearing the `fio_str_s` object's String.
+
+Note: the String data is removed from the container, but the container isn't freed.
+
+Returns NULL if there's no String data.
+
+Remember to `fio_free` the returned data and - if required - `fio_str_free2` the container.
 
 ### String API - String state (data pointers, length, capacity, etc')
 

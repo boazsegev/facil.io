@@ -3087,9 +3087,11 @@ inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
                                            const fio_str_s *str);
 
 /**
- * Returns a C string, clearing away the existing String data.
+ * Returns a C string with the existing data, clearing the `fio_str_s` object's
+ * String.
  *
- * Note: the container isn't freed, only the String data is removed.
+ * Note: the String data is removed from the container, but the container isn't
+ * freed.
  *
  * Returns NULL if there's no String data.
  *
@@ -3407,9 +3409,11 @@ FIO_FUNC void fio_str_free2(fio_str_s *s) {
 }
 
 /**
- * Returns a C string, clearing away the existing String data.
+ * Returns a C string with the existing data, clearing the `fio_str_s` object's
+ * String.
  *
- * Note: the container isn't freed, only the String data is removed.
+ * Note: the String data is removed from the container, but the container isn't
+ * freed.
  *
  * Returns NULL if there's no String data.
  *
