@@ -3086,6 +3086,18 @@ FIO_FUNC void fio_str_free2(fio_str_s *s);
 inline FIO_FUNC ssize_t fio_str_send_free2(const intptr_t uuid,
                                            const fio_str_s *str);
 
+/**
+ * Returns a C string, clearing away the existing String data.
+ *
+ * Note: the container isn't freed, only the String data is removed.
+ *
+ * Returns NULL if there's no String data.
+ *
+ * Remember to `fio_free` the returned data and - if required - `fio_str_free2`
+ * the container.
+ */
+FIO_FUNC char *fio_str_detach(fio_str_s *s);
+
 /* *****************************************************************************
 String API - String state (data pointers, length, capacity, etc')
 ***************************************************************************** */
@@ -3394,6 +3406,56 @@ FIO_FUNC void fio_str_free2(fio_str_s *s) {
   FIO_FREE(s);
 }
 
+/**
+ * Returns a C string, clearing away the existing String data.
+ *
+ * Note: the container isn't freed, only the String data is removed.
+ *
+ * Returns NULL if there's no String data.
+ *
+ * Remember to `fio_free` the returned data and - if required - `fio_str_free2`
+ * the container.
+ */
+FIO_FUNC char *fio_str_detach(fio_str_s *s) {
+  if (!s)
+    return NULL;
+  fio_str_info_s i = fio_str_info(s);
+  if (s->small || !s->data) {
+    if (!i.len) {
+      i.data = NULL;
+      goto finish;
+    }
+    /* make a copy */
+    void *tmp = FIO_MALLOC(i.len + 1);
+    memcpy(tmp, i.data, i.len + 1);
+    i.data = tmp;
+  } else {
+    if (!i.len && s->data) {
+      if (s->dealloc)
+        s->dealloc(s->data);
+      i.data = NULL;
+    } else if (s->dealloc != FIO_FREE) {
+      /* make a copy */
+      void *tmp = FIO_MALLOC(i.len + 1);
+      memcpy(tmp, i.data, i.len + 1);
+      i.data = tmp;
+      if (s->dealloc)
+        s->dealloc(s->data);
+    }
+  }
+finish:
+#ifdef FIO_STR_NO_REF
+  *s = (fio_str_s){.small = 1};
+
+#else
+  *s = (fio_str_s){
+      .small = s->small,
+      .ref = s->ref,
+  };
+#endif
+  return i.data;
+}
+
 /** Returns the String's length in bytes. */
 inline FIO_FUNC size_t fio_str_len(fio_str_s *s) {
   return (s->small || !s->data) ? (s->small >> 1) : s->len;
@@ -3499,6 +3561,7 @@ FIO_FUNC fio_str_info_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
       memcpy(tmp, s->data, s->len);
       if (s->dealloc)
         s->dealloc(s->data);
+      s->dealloc = FIO_FREE;
     }
     s->capa = needed;
     s->data = tmp;

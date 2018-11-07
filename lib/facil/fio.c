@@ -1264,7 +1264,7 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
     }
 #endif
     *threads = *processes = (int16_t)cpu_count;
-    if (cpu_count > FIO_CPU_CORES_LIMIT) {
+    if (cpu_count > 3) {
       /* leave a core available for the kernel */
       --(*processes);
     }
@@ -1288,7 +1288,7 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
         *processes = -1 * *threads;
       *threads = tmp_threads;
       if (cpu_adjust && (*processes * tmp_threads) >= cpu_count &&
-          cpu_count > FIO_CPU_CORES_LIMIT) {
+          cpu_count > 3) {
         /* leave a core available for the kernel */
         --*processes;
       }
@@ -7975,6 +7975,7 @@ FIO_FUNC inline void fio_str_test(void) {
     }
     fprintf(stderr, "* reviewing reference counting `fio_str_free2` (2/2).\n");
     fio_str_free2(s);
+    fprintf(stderr, "* finished reference counting test.\n");
   }
   fio_str_free(&str);
   if (1) {
@@ -8032,7 +8033,18 @@ FIO_FUNC inline void fio_str_test(void) {
     str = FIO_STR_INIT_STATIC("Welcome");
     fio_str_info_s state = fio_str_write(&str, " Home", 5);
     FIO_ASSERT(state.capa > 0, "Static string not converted to non-static.");
-    fio_str_free(&str);
+    FIO_ASSERT(str.dealloc,
+               "MIssing static string deallocation function"
+               " after `fio_str_write`.");
+    
+    fprintf(stderr, "* reviewing `fio_str_detach`.\n");
+    char * cstr = fio_str_detach(&str);
+    FIO_ASSERT(cstr, "`fio_str_detach` returned NULL");
+    FIO_ASSERT(!memcmp(cstr, "Welcome Home\0", 13), "`fio_str_detach` string error");
+    fio_free(cstr);
+    FIO_ASSERT(fio_str_len(&str) == 0,
+               "`fio_str_detach` data wasn't cleared.");
+    // fio_str_free(&str);
   }
   fprintf(stderr, "* passed.\n");
 }
