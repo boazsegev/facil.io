@@ -5,6 +5,7 @@
 -Ilib/facil/http/
 -Ilib/facil/http/parsers
 -Ilib/facil/redis
+-Ilib/facil/tls
 -Ilib/bearssl
 
 -Idev/

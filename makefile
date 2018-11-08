@@ -12,7 +12,7 @@ endif
 # the .c and .cpp source files root folder - subfolders are automatically included
 LIB_ROOT=lib
 # publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=facil facil/fiobj facil/cli facil/http facil/http/parsers facil/redis
+LIB_PUBLIC_SUBFOLDERS=facil facil/tls facil/fiobj facil/cli facil/http facil/http/parsers facil/redis
 # privately used subfolders in the lib root (this distinction is for CMake)
 LIB_PRIVATE_SUBFOLDERS=
 
