@@ -48,7 +48,7 @@ void fio_tls_proto_add(fio_tls_s *, const char *protocol_name,
 
 /**
  * Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified
- * conetext / settings object.
+ * context / settings object.
  *
  * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
  * the result of `fio_accept`).
@@ -60,10 +60,10 @@ void fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata);
 
 /**
  * Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified
- * conetext / settings object.
+ * context / settings object.
  *
  * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
- * one recived by a `fio_connect` specified callback `on_connect`).
+ * one received by a `fio_connect` specified callback `on_connect`).
  *
  * The `udata` is an opaque user data pointer that is passed along to the
  * protocol selected (if any protocols were added using `fio_tls_proto_add`).

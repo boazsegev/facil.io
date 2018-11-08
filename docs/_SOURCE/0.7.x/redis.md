@@ -10,6 +10,8 @@ The extension was written to minimize Redis connections and load, allowing more 
 
 This requires that each facil.io cluster consume less resources - only two connections per cluster instead of two connections per process (as might be common on other implementations).
 
+To use the facil.io Redis extension API, include the file `redis_engine.h`
+
 ## Connecting facil.io to Redis
 
 By using the [Core Library's External Pub/Sub Services API](fio#external-pub-sub-services), it's easy to connect an application to a Redis Server. i.e.:

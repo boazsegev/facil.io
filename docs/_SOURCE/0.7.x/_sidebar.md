@@ -19,6 +19,7 @@
 
 ### [Extensions](/0.7.x/extensions)
 
+* [TLS (SSL)](/0.7.x/fio_tls)
 * [HTTP / WebSockets](/0.7.x/http)
 * [Redis (client)](/0.7.x/redis)
 * [CLI (command line)](/0.7.x/fio_cli)

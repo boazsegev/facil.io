@@ -6,7 +6,7 @@ sidebar: 0.7.x/_sidebar.md
 
 This is a simple Command Line Interface helper extension that makes it easy to handle command line arguments.
 
-**NOTE**: This documentation is incomplete. I would love your help to finish it up. Until that time, please read the documentation in [the `fio_cli.h` header file](https://github.com/boazsegev/facil.io/blob/master/lib/facil/cli/fio_cli.h).
+To use the facil.io CLI API, include the file `fio_cli.h`
 
 ## Overview
 

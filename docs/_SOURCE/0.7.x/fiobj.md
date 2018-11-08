@@ -6,6 +6,8 @@ sidebar: 0.7.x/_sidebar.md
 
 In this page you will find a general overview. For detailed API information please visit the Core or Type pages.
 
+To use the facil.io FIOBJ API, include the file `fiobj.h`
+
 ## Overview
 
 `facil.io` offers a dynamic type system that makes it a breeze to mix object types together.
@@ -54,6 +56,7 @@ All object access should be functional, or using the macros provided. Although t
 For example:
 
 ```c
+#include "fiobj.h"
 /* this will work */
 FIOBJ str = fiobj_str_buf(6); /* automatically adds room for the NUL terminator */
 fio_str_info_s raw_str = fiobj_obj2cstr(str);

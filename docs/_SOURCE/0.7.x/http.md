@@ -8,8 +8,9 @@ facil.io includes an HTTP/1.1 and WebSocket server / framework that could be use
 
 Note that, currently, only HTTP/1.1 is supported. Support for HTTP/2 is planned for future versions and could be implemented as a custom protocol until such time.
 
-## Listening to HTTP Connections
+To use the facil.io HTTP and WebSocket API, include the file `http.h`
 
+## Listening to HTTP Connections
 
 #### `http_listen`
 
