@@ -157,28 +157,28 @@ ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_
 endif
 
 # add BearSSL/OpenSSL library flags (exclusive)
-ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the BearSSL source library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
-else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -lbearssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lbearssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
+else ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) { SSL_library_init(); }" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
 endif
 
 # add ZLib library flags
-ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) -lz -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lz -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the zlib library, setting HAVE_ZLIB)
 	FLAGS:=$(FLAGS) HAVE_ZLIB
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
 endif
 
 # add PostgreSQL library flags
-ifeq ($(shell printf "\#include <libpq-fe.h>\\nint main(void) {}\n" | $(CC) $(INCLUDE_STR) -lpg -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+ifeq ($(shell printf "\#include <libpq-fe.h>\\nint main(void) {}\n" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lpg -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the PostgreSQL library, setting HAVE_POSTGRESQL)
 	FLAGS:=$(FLAGS) HAVE_POSTGRESQL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
@@ -203,7 +203,7 @@ endif
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 CPPFLAGS:= $(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
-LINKER_FLAGS=$(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
+LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFALGS_DEPENDENCY=-MT $@ -MMD -MP
 
 ########
@@ -454,6 +454,8 @@ vars:
 	@echo "CPPFLAGS: $(CPPFLAGS)"
 	@echo ""
 	@echo "LINKER_LIBS: $(LINKER_LIBS)"
+	@echo ""
+	@echo "LINKER_LIBS_EXT: $(LINKER_LIBS_EXT)"
 	@echo ""
 	@echo "LINKER_FLAGS: $(LINKER_FLAGS)"
 
