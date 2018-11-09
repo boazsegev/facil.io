@@ -1932,6 +1932,21 @@ The `fio_str_s` objects can be allocated either on the stack or on the heap.
 
 However, reference counting provided by the `fio_free2` and the `fio_str_send_free2` functions, requires that the `fio_str_s` object be allocated on the heap using `fio_malloc` or `fio_str_new2`.
 
+#### String Memory Allocation
+
+String memory is managed by facil.io's allocation / deallocation routines (`fio_malloc`, etc').
+
+To use the system's memory allocation / deallocation define `FIO_FORCE_MALLOC` as `1`. This will persist for all the types defined by `fio.h` until undefined.
+
+For example:
+
+```c
+#define FIO_INCLUDE_STR 1
+#define FIO_FORCE_MALLOC 1
+#include <fio.h>
+#undef FIO_FORCE_MALLOC
+```
+
 #### `FIO_STR_INIT`
 
 ```c
@@ -1959,7 +1974,6 @@ fio_str_free(&str);
 fio_str_free(str);
 fio_free(str);
 ```
-
 
 #### `FIO_STR_INIT_EXISTING`
 
@@ -2453,6 +2467,8 @@ The default Array allocator is set to `fio_malloc`.
 
 It's important to note that the default allocator **must** set all the allocated bytes to zero, exactly as `fio_malloc` does.
 
+To use the system's memory allocator (`calloc`), it's possible to define `FIO_FORCE_MALLOC` as `1`. This will persist whenever the `fio.h` header is included until unset.
+
 #### `FIO_ARY_REALLOC`
 
 ```c
@@ -2464,6 +2480,8 @@ It's important to note that the default allocator **must** set all the allocated
 
 The default Array re-allocator is set to `fio_realloc2`. All bytes will be set to zero except the copied data and - in some cases, where copy alignment error occurs - the last 16 bytes.
 
+To use the system's memory allocator (`realloc`), it's possible to define `FIO_FORCE_MALLOC` as `1`. This will persist whenever the `fio.h` header is included until unset.
+
 #### `FIO_ARY_DEALLOC`
 
 ```c
@@ -2473,6 +2491,8 @@ The default Array re-allocator is set to `fio_realloc2`. All bytes will be set t
 ```
 
 The default Array deallocator is set to `fio_free`.
+
+To use the system's memory deallocator (`free`), it's possible to define `FIO_FORCE_MALLOC` as `1`. This will persist whenever the `fio.h` header is included until unset.
 
 ### Naming the Array
 
@@ -2867,6 +2887,10 @@ This is only relevant if the `FIO_SET_KEY_TYPE` was defined.
 
 Allows for custom memory allocation / deallocation routines.
 
+The default allocator is facil.io's `fio_realloc`.
+
+To use the system's memory allocator (`realloc`), it's possible to define `FIO_FORCE_MALLOC` as `1`. This will persist whenever the `fio.h` header is included until unset.
+
 #### `FIO_SET_CALLOC`
 
 ```c
@@ -2875,11 +2899,22 @@ Allows for custom memory allocation / deallocation routines.
 
 Allows for custom memory allocation / deallocation routines.
 
+The default allocator is facil.io's `fio_calloc`.
+
+To use the system's memory allocator (`calloc`), it's possible to define `FIO_FORCE_MALLOC` as `1`. This will persist whenever the `fio.h` header is included until unset.
+
 #### `FIO_SET_FREE`
 
 ```c
 #define FIO_SET_FREE(ptr, size) free((ptr))
 ```
+
+Allows for custom memory allocation / deallocation routines.
+
+The default deallocator is facil.io's `fio_free`.
+
+To use the system's memory allocator (`free`), it's possible to define `FIO_FORCE_MALLOC` as `1`. This will persist whenever the `fio.h` header is included until unset.
+
 
 ### Naming the Set / Hash Map
 

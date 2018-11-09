@@ -3023,7 +3023,8 @@ typedef struct {
  * The `capacity` value should exclude the NUL character (if exists).
  */
 #define FIO_STR_INIT_STATIC(buffer)                                            \
-  ((fio_str_s){.data = (buffer), .len = strlen((buffer)), .dealloc = NULL})
+  ((fio_str_s){                                                                \
+      .data = (char *)(buffer), .len = strlen((buffer)), .dealloc = NULL})
 
 /**
  * Allocates a new fio_str_s object on the heap and initializes it.
