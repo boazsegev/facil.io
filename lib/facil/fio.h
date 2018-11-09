@@ -4252,9 +4252,14 @@ static FIO_ARY_TYPE const FIO_NAME(s___const_invalid_object);
 /* minimizes allocation "dead space" by alligning allocated length to 16bytes */
 #undef FIO_ARY_SIZE2WORDS
 #define FIO_ARY_SIZE2WORDS(size)                                               \
-  ((sizeof(FIO_ARY_TYPE) & 15) ? (((size) & ~(sizeof(FIO_ARY_TYPE) - 1)) +     \
-                                  (16 - (sizeof(FIO_ARY_TYPE) - 1)))           \
-                               : (size))
+  ((sizeof(FIO_ARY_TYPE) & 1)                                                  \
+       ? ((size & (~15)) + 16)                                                 \
+       : (sizeof(FIO_ARY_TYPE) & 2)                                            \
+             ? ((size & (~7)) + 8)                                             \
+             : (sizeof(FIO_ARY_TYPE) & 4)                                      \
+                   ? ((size & (~3)) + 4)                                       \
+                   : (sizeof(FIO_ARY_TYPE) & 8) ? ((size & (~1)) + 2)          \
+                                                : (size))
 
 /* *****************************************************************************
 Array API
