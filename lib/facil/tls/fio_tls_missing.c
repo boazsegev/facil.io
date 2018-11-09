@@ -7,16 +7,13 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <fio.h>
 
 /**
- *
  * This implementation of the facil.io SSL/TLS wrapper API is the default
  * implementation that will be used when no SSL/TLS library is available.
  *
- * The implementation includes redundant code that can be used as a template for
+ * The implementation includes redundant code that can be USED AS A TEMPLATE for
  * future implementations.
  *
- * THIS IMPLEMENTATION DOES NOTHING EXCEPT CRASHING THE PROGRAM.
- *
- *
+ * THIS TEMPLATE IMPLEMENTATION DOES NOTHING EXCEPT CRASHING THE PROGRAM.
  */
 #include "fio_tls.h"
 
@@ -29,11 +26,69 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 
 /* *****************************************************************************
-The SSL/TLS data type
+The SSL/TLS data types
 ***************************************************************************** */
+#define FIO_INCLUDE_STR 1
+#define FIO_FORCE_MALLOC 1
+#include <fio.h>
+
+typedef struct {
+  fio_str_s name; /* fio_str_s provides cache locality for small strings */
+  void (*callback)(intptr_t uuid, void *udata);
+} alpn_s;
+
+static inline int fio_alpn_cmp(const alpn_s *dest, const alpn_s *src) {
+  return fio_str_iseq(&dest->name, &src->name);
+}
+static inline void fio_alpn_copy(alpn_s *dest, alpn_s *src) {
+  *dest = (alpn_s){.name = FIO_STR_INIT, .callback = src->callback};
+  fio_str_concat(&dest->name, &src->name);
+}
+static inline void fio_alpn_destroy(alpn_s *obj) { fio_str_free(&obj->name); }
+
+#define FIO_ARY_NAME alpn_ary
+#define FIO_ARY_TYPE alpn_s
+#define FIO_ARY_COMPARE(k1, k2) fio_alpn_cmp(&(k1), &(k2))
+#define FIO_ARY_COPY(dest, obj) fio_alpn_copy(&(dest), &(obj))
+#define FIO_ARY_DESTROY(key) fio_alpn_destroy(&(key))
+#include <fio.h>
+
+typedef struct {
+  fio_str_s server_name;
+  fio_str_s private_key;
+  fio_str_s public_key;
+} cert_s;
+
+static inline int fio_tls_cert_cmp(const cert_s *dest, const cert_s *src) {
+  return fio_str_iseq(&dest->server_name, &src->server_name);
+}
+static inline void fio_tls_cert_copy(cert_s *dest, cert_s *src) {
+  *dest = (cert_s){
+      .server_name = FIO_STR_INIT,
+      .private_key = FIO_STR_INIT,
+      .public_key = FIO_STR_INIT,
+  };
+  fio_str_concat(&dest->server_name, &src->server_name);
+  fio_str_concat(&dest->private_key, &src->private_key);
+  fio_str_concat(&dest->public_key, &src->public_key);
+}
+static inline void fio_tls_cert_destroy(cert_s *obj) {
+  fio_str_free(&obj->server_name);
+  fio_str_free(&obj->private_key);
+  fio_str_free(&obj->public_key);
+}
+
+#define FIO_ARY_NAME cert_ary
+#define FIO_ARY_TYPE cert_s
+#define FIO_ARY_COMPARE(k1, k2) (fio_tls_cert_cmp(&(k1), &(k2)))
+#define FIO_ARY_COPY(dest, obj) fio_tls_cert_copy(&(dest), &(obj))
+#define FIO_ARY_DESTROY(key) fio_tls_cert_destroy(&(key))
+#include <fio.h>
+
 /** An opaque type used for the SSL/TLS functions. */
 struct fio_tls_s {
-  void (*callback)(intptr_t uuid, void *udata);
+  alpn_ary_s alpn; /* ALPN is the name of the protocol selection extension */
+  cert_ary_s sni;  /* ALPN is the name of the server name extension */
 };
 
 /* *****************************************************************************
@@ -57,7 +112,7 @@ static ssize_t fio_tls_read(intptr_t uuid, void *udata, void *buf,
                             size_t count) {
   ssize_t ret = read(fio_uuid2fd(uuid), buf, count);
   if (ret > 0) {
-    FIO_LOG_DEBUG("Read %zd bytes from %p\n", ret, (void *)uuid);
+    FIO_LOG_DEBUG("Read %zd bytes from %p", ret, (void *)uuid);
   }
   return ret;
   (void)udata;
@@ -76,7 +131,7 @@ static ssize_t fio_tls_read(intptr_t uuid, void *udata, void *buf,
 static ssize_t fio_tls_flush(intptr_t uuid, void *udata) {
   buffer_s *buffer = udata;
   if (!buffer->len) {
-    FIO_LOG_DEBUG("Flush empty for %p\n", (void *)uuid);
+    FIO_LOG_DEBUG("Flush empty for %p", (void *)uuid);
     return 0;
   }
   ssize_t r = write(fio_uuid2fd(uuid), buffer->buffer, buffer->len);
@@ -90,7 +145,7 @@ static ssize_t fio_tls_flush(intptr_t uuid, void *udata) {
   if (len)
     memmove(buffer->buffer, buffer->buffer + r, len);
   buffer->len = len;
-  FIO_LOG_DEBUG("Sent %zd bytes to %p\n", r, (void *)uuid);
+  FIO_LOG_DEBUG("Sent %zd bytes to %p", r, (void *)uuid);
   return r;
 }
 
@@ -114,7 +169,7 @@ static ssize_t fio_tls_write(intptr_t uuid, void *udata, const void *buf,
     goto would_block;
   memcpy(buffer->buffer + buffer->len, buf, can_copy);
   buffer->len += can_copy;
-  FIO_LOG_DEBUG("Copied %zu bytes to %p\n", can_copy, (void *)uuid);
+  FIO_LOG_DEBUG("Copied %zu bytes to %p", can_copy, (void *)uuid);
   fio_tls_flush(uuid, udata);
   return can_copy;
 would_block:
@@ -132,8 +187,7 @@ would_block:
  * deadlock might occur.
  * */
 static ssize_t fio_tls_before_close(intptr_t uuid, void *udata) {
-  FIO_LOG_DEBUG("The `before_close` callback was called for %p\n",
-                (void *)uuid);
+  FIO_LOG_DEBUG("The `before_close` callback was called for %p", (void *)uuid);
   return 1;
   (void)udata;
 }
@@ -162,10 +216,8 @@ fio_tls_s *__attribute__((weak))
 fio_tls_new(const char *server_name, const char *key, const char *cert) {
   REQUIRE_LIBRARY();
   fio_tls_s *tls = calloc(sizeof(*tls), 1);
+  fio_tls_cert_add(tls, server_name, key, cert);
   return tls;
-  (void)server_name;
-  (void)key;
-  (void)cert;
 }
 #pragma weak fio_tls_new
 
@@ -180,10 +232,28 @@ void __attribute__((weak))
 fio_tls_cert_add(fio_tls_s *tls, const char *server_name, const char *key,
                  const char *cert) {
   REQUIRE_LIBRARY();
-  (void)tls;
-  (void)server_name;
-  (void)key;
-  (void)cert;
+  if (!server_name)
+    server_name = "facil.io.tls";
+  cert_s c = {
+      .server_name = FIO_STR_INIT_STATIC(server_name),
+      .private_key = FIO_STR_INIT,
+      .public_key = FIO_STR_INIT,
+  };
+  if (key && cert) {
+    if (fio_str_readfile(&c.private_key, key, 0, 0).data == NULL)
+      goto file_missing;
+    if (fio_str_readfile(&c.public_key, cert, 0, 0).data == NULL)
+      goto file_missing;
+  } else {
+    /* Anonymous TLS certificates (NULL) */
+  }
+  cert_ary_push(&tls->sni, c);
+  fio_tls_cert_destroy(&c);
+  return;
+file_missing:
+  FIO_LOG_FATAL("TLS certificate file missing for either %s or %s or both.",
+                key, cert);
+  exit(-1);
 }
 #pragma weak fio_tls_cert_add
 
@@ -196,11 +266,12 @@ void __attribute__((weak))
 fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
                   void (*callback)(intptr_t uuid, void *udata)) {
   REQUIRE_LIBRARY();
-  if (!tls->callback)
-    tls->callback = callback;
-  (void)tls;
-  (void)protocol_name;
-  (void)callback;
+  alpn_s tmp = {
+      .name = FIO_STR_INIT_STATIC(protocol_name),
+      .callback = callback,
+  };
+  alpn_ary_push(&tls->alpn, tmp);
+  fio_alpn_destroy(&tmp);
 }
 #pragma weak fio_tls_proto_add
 
@@ -217,12 +288,12 @@ fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
 void __attribute__((weak))
 fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
   REQUIRE_LIBRARY();
-  (void)tls;
-  (void)udata;
+  FIO_LOG_DEBUG("Attaching TLS read/write hook for %p (server mode).",
+                (void *)uuid);
   fio_rw_hook_set(uuid, &FIO_TLS_HOOKS,
                   fio_malloc(sizeof(buffer_s))); /* 32Kb buffer */
-  if (tls->callback)
-    tls->callback(uuid, udata);
+  if (alpn_ary_count(&tls->alpn))
+    alpn_ary_get(&tls->alpn, 0).callback(uuid, udata);
 }
 #pragma weak fio_tls_accept
 
@@ -239,12 +310,12 @@ fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
 void __attribute__((weak))
 fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata) {
   REQUIRE_LIBRARY();
-  (void)tls;
-  (void)udata;
+  FIO_LOG_DEBUG("Attaching TLS read/write hook for %p (client mode).",
+                (void *)uuid);
   fio_rw_hook_set(uuid, &FIO_TLS_HOOKS,
                   fio_malloc(sizeof(buffer_s))); /* 32Kb buffer */
-  if (tls->callback)
-    tls->callback(uuid, udata);
+  if (alpn_ary_count(&tls->alpn))
+    alpn_ary_get(&tls->alpn, 0).callback(uuid, udata);
 }
 #pragma weak fio_tls_connect
 
@@ -253,7 +324,11 @@ fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata) {
  * resources / memory.
  */
 void __attribute__((weak)) fio_tls_destroy(fio_tls_s *tls) {
+  if (!tls)
+    return;
   REQUIRE_LIBRARY();
+  alpn_ary_free(&tls->alpn);
+  cert_ary_free(&tls->sni);
   free(tls);
 }
 #pragma weak fio_tls_destroy
