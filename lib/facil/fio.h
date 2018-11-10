@@ -3544,8 +3544,8 @@ String Implementation - Memory management
  * directly to `mmap` (due to their size, usually over 12KB).
  */
 #define ROUND_UP_CAPA2WORDS(num)                                               \
-  (((num + 1) & (sizeof(long double) - 1))                                     \
-       ? ((num + 1) | (sizeof(long double) - 1))                               \
+  ((((num) + 1) & (sizeof(long double) - 1))                                   \
+       ? (((num) + 1) | (sizeof(long double) - 1))                             \
        : (num))
 /**
  * Requires the String to have at least `needed` capacity. Returns the current
@@ -4256,12 +4256,12 @@ static FIO_ARY_TYPE const FIO_NAME(s___const_invalid_object);
 #undef FIO_ARY_SIZE2WORDS
 #define FIO_ARY_SIZE2WORDS(size)                                               \
   ((sizeof(FIO_ARY_TYPE) & 1)                                                  \
-       ? ((size & (~15)) + 16)                                                 \
+       ? (((size) & (~15)) + 16)                                               \
        : (sizeof(FIO_ARY_TYPE) & 2)                                            \
-             ? ((size & (~7)) + 8)                                             \
+             ? (((size) & (~7)) + 8)                                           \
              : (sizeof(FIO_ARY_TYPE) & 4)                                      \
-                   ? ((size & (~3)) + 4)                                       \
-                   : (sizeof(FIO_ARY_TYPE) & 8) ? ((size & (~1)) + 2)          \
+                   ? (((size) & (~3)) + 4)                                     \
+                   : (sizeof(FIO_ARY_TYPE) & 8) ? (((size) & (~1)) + 2)        \
                                                 : (size))
 
 /* *****************************************************************************
