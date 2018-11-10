@@ -1226,7 +1226,10 @@ typedef struct fio_rw_hook_s {
    */
   ssize_t (*flush)(intptr_t uuid, void *udata);
   /**
-   * Called to perform cleanup after the socket was closed.
+   * Called to perform cleanup after the socket was closed or a new read/write
+   * hook was set using `fio_rw_hook_set`.
+   *
+   * This callback is always called, even if `fio_rw_hook_set` fails.
    * */
   void (*cleanup)(void *udata);
 } fio_rw_hook_s;

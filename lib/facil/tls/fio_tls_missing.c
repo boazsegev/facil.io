@@ -245,7 +245,7 @@ fio_tls_cert_add(fio_tls_s *tls, const char *server_name, const char *key,
     if (fio_str_readfile(&c.public_key, cert, 0, 0).data == NULL)
       goto file_missing;
   } else {
-    /* Anonymous TLS certificates (NULL) */
+    /* Self-Signed TLS Certificates (NULL) */
   }
   cert_ary_push(&tls->sni, c);
   fio_tls_cert_destroy(&c);

@@ -988,6 +988,8 @@ typedef struct fio_rw_hook_s {
 
     Called when the hook is removed from the `uuid`, either because of a call to `fio_rw_hook_set` or because the connection was closed.
 
+    This callback is always called, even if `fio_rw_hook_set` fails.
+
 
 #### `fio_rw_hook_set`
 
@@ -999,13 +1001,15 @@ Sets a connection's hook callback object (`fio_rw_hook_s`).
 
 Returns 0 on success or -1 on error (closed / invalid `uuid`).
 
+If the function fails, than the `cleanup` callback will be called before the function returns.
+
 #### `FIO_DEFAULT_RW_HOOKS`
 
 ```c
 extern const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS;
 ```
 
-The default Read/Write hooks used for system Read/Write (`udata` == NULL).
+The default Read/Write hooks used for system Read/Write (`udata` == `NULL`).
 
 ## Event / Task scheduling
 

@@ -2734,7 +2734,7 @@ const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS = {
 /** Sets a socket hook state (a pointer to the struct). */
 int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
   if (fio_is_closed(uuid))
-    return -1;
+    goto invalid_uuid;
   if (!rw_hooks->read)
     rw_hooks->read = fio_hooks_default_read;
   if (!rw_hooks->write)
@@ -2745,18 +2745,26 @@ int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
     rw_hooks->before_close = fio_hooks_default_before_close;
   if (!rw_hooks->cleanup)
     rw_hooks->cleanup = fio_hooks_default_cleanup;
-  uuid = fio_uuid2fd(uuid);
+  intptr_t fd = fio_uuid2fd(uuid);
   fio_rw_hook_s *old_rw_hooks;
   void *old_udata;
-  fio_lock(&fd_data(uuid).sock_lock);
-  old_rw_hooks = fd_data(uuid).rw_hooks;
-  old_udata = fd_data(uuid).rw_udata;
-  fd_data(uuid).rw_hooks = rw_hooks;
-  fd_data(uuid).rw_udata = udata;
-  fio_unlock(&fd_data(uuid).sock_lock);
+  fio_lock(&fd_data(fd).sock_lock);
+  if (fd2uuid(fd) != uuid) {
+    fio_unlock(&fd_data(fd).sock_lock);
+    goto invalid_uuid;
+  }
+  old_rw_hooks = fd_data(fd).rw_hooks;
+  old_udata = fd_data(fd).rw_udata;
+  fd_data(fd).rw_hooks = rw_hooks;
+  fd_data(fd).rw_udata = udata;
+  fio_unlock(&fd_data(fd).sock_lock);
   if (old_rw_hooks && old_rw_hooks->cleanup)
     old_rw_hooks->cleanup(old_udata);
   return 0;
+invalid_uuid:
+  if (!rw_hooks->cleanup)
+    rw_hooks->cleanup(udata);
+  return -1;
 }
 
 /* *****************************************************************************
@@ -8033,17 +8041,16 @@ FIO_FUNC inline void fio_str_test(void) {
     str = FIO_STR_INIT_STATIC("Welcome");
     fio_str_info_s state = fio_str_write(&str, " Home", 5);
     FIO_ASSERT(state.capa > 0, "Static string not converted to non-static.");
-    FIO_ASSERT(str.dealloc,
-               "MIssing static string deallocation function"
-               " after `fio_str_write`.");
-    
+    FIO_ASSERT(str.dealloc, "MIssing static string deallocation function"
+                            " after `fio_str_write`.");
+
     fprintf(stderr, "* reviewing `fio_str_detach`.\n");
-    char * cstr = fio_str_detach(&str);
+    char *cstr = fio_str_detach(&str);
     FIO_ASSERT(cstr, "`fio_str_detach` returned NULL");
-    FIO_ASSERT(!memcmp(cstr, "Welcome Home\0", 13), "`fio_str_detach` string error");
+    FIO_ASSERT(!memcmp(cstr, "Welcome Home\0", 13),
+               "`fio_str_detach` string error");
     fio_free(cstr);
-    FIO_ASSERT(fio_str_len(&str) == 0,
-               "`fio_str_detach` data wasn't cleared.");
+    FIO_ASSERT(fio_str_len(&str) == 0, "`fio_str_detach` data wasn't cleared.");
     // fio_str_free(&str);
   }
   fprintf(stderr, "* passed.\n");

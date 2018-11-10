@@ -33,7 +33,7 @@ fio_tls_s * tls = fio_tls_new("www.example.com",
 `NULL` values can be used to create an anonymous (unverified) context / settings object.
 
 ```c
-fio_tls_s * tls = fio_tls_new(NULL, NULL, NULL);
+fio_tls_s * tls = fio_tls_new("www.example.com", NULL, NULL);
 ```
 
 `fio_tls_s *` is an opaque type used as a handle for the SSL/TLS functions. It shouldn't be directly accessed.
