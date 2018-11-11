@@ -201,6 +201,7 @@ int fiobj_hash_set(FIOBJ hash, FIOBJ key, FIOBJ obj) {
   if (FIOBJ_TYPE_IS(key, FIOBJ_T_STRING))
     fiobj_str_freeze(key);
   fio_hash___insert(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, obj, NULL);
+  fiobj_free(obj); /* take ownership - free the user's reference. */
   return 0;
 }
 
@@ -239,6 +240,7 @@ FIOBJ fiobj_hash_replace(FIOBJ hash, FIOBJ key, FIOBJ obj) {
   assert(hash && FIOBJ_TYPE_IS(hash, FIOBJ_T_HASH));
   FIOBJ old = FIOBJ_INVALID;
   fio_hash___insert(&obj2hash(hash)->hash, fiobj_obj2hash(key), key, obj, &old);
+  fiobj_free(obj); /* take ownership - free the user's reference. */
   return old;
 }
 
