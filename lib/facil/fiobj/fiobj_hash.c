@@ -25,7 +25,7 @@ License: MIT
   } while (0)
 #define FIO_SET_OBJ_TYPE FIOBJ
 #define FIO_SET_OBJ_COMPARE(o1, o2) fiobj_iseq((o1), (o2))
-#define FIO_SET_OBJ_COPY(dest, obj) ((dest) = (obj)) /* take ownership */
+#define FIO_SET_OBJ_COPY(dest, obj) ((dest) = fiobj_dup(obj))
 #define FIO_SET_OBJ_DESTROY(obj)                                               \
   do {                                                                         \
     fiobj_free((obj));                                                         \
@@ -270,7 +270,8 @@ FIOBJ fiobj_hash_remove2(FIOBJ hash, uint64_t hash_value) {
  * Returns -1 on type error or if the object never existed.
  */
 int fiobj_hash_delete(FIOBJ hash, FIOBJ key) {
-  return fiobj_hash_remove(hash, key);
+  return fio_hash___remove(&obj2hash(hash)->hash, fiobj_obj2hash(key), key,
+                           NULL);
 }
 
 /**

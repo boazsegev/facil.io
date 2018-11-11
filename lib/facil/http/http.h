@@ -148,8 +148,7 @@ typedef struct {
 int http_set_header(http_s *h, FIOBJ name, FIOBJ value);
 
 /**
- * Sets a response header, taking ownership of the value object, but NOT the
- * name object (so name objects could be reused in future responses).
+ * Sets a response header.
  *
  * Returns -1 on error and 0 on success.
  */

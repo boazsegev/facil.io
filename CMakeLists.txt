@@ -5,6 +5,7 @@ find_package(Threads REQUIRED)
 
 set(facil.io_SOURCES
   lib/facil/fio.c
+  lib/facil/tls/fio_tls_missing.c
   lib/facil/fiobj/fio_siphash.c
   lib/facil/fiobj/fiobj_ary.c
   lib/facil/fiobj/fiobj_data.c
@@ -32,6 +33,7 @@ target_link_libraries(facil.io
 target_include_directories(facil.io
   PUBLIC  lib
   PUBLIC  lib/facil
+  PUBLIC  lib/facil/tls
   PUBLIC  lib/facil/fiobj
   PUBLIC  lib/facil/cli
   PUBLIC  lib/facil/http
