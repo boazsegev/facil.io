@@ -217,8 +217,8 @@ static inline void set_header_add(FIOBJ hash, FIOBJ name, FIOBJ value) {
     fiobj_ary_push(tmp, old);
     old = tmp;
   }
-  fiobj_ary_push(old, value);
-  fiobj_hash_set(hash, name, old);
+  fiobj_ary_push(old, value); /* value is owned by both hash and array */
+  fiobj_hash_replace(hash, name, old); /* don't free `value` (leave in array) */
 }
 
 #endif /* H_HTTP_INTERNAL_H */
