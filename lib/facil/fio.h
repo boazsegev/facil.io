@@ -109,17 +109,24 @@ Version and helper macros
 #define FIO_VERSION_MAJOR 0
 #define FIO_VERSION_MINOR 7
 #define FIO_VERSION_PATCH 0
-#define FIO_VERSION_PRERELEASE "-beta1"
+#define FIO_VERSION_BETA 1
 
 /* Automatically convert version data to a string constant - ignore these two */
 #define FIO_MACRO2STR_STEP2(macro) #macro
 #define FIO_MACRO2STR(macro) FIO_MACRO2STR_STEP2(macro)
 
 /** The facil.io version as a String literal */
+#if FIO_VERSION_BETA
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
   "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)    \
       FIO_VERSION_PRERELEASE
+#else
+#define FIO_VERSION_STRING                                                     \
+  FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
+  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(                      \
+      FIO_VERSION_PATCH) "-beta" FIO_MACRO2STR(FIO_VERSION_PATCH)
+#endif
 
 #ifndef FIO_MAX_SOCK_CAPACITY
 /**

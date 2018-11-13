@@ -3732,6 +3732,12 @@ The patch version is usually indicative to bug fixes.
 
 However, as long as facil.io's major version is zero (0), new feature or substantial changes will cause the patch version to change.
 
+#### `FIO_VERSION_BETA`
+
+A number representing a pre-release beta version.
+
+This indicates the API might change without notice and effects the `FIO_VERSION_STRING`.
+
 #### `FIO_VERSION_STRING`
 
 This macro translates to facil.io's literal string. It can be used, for example, like this:
