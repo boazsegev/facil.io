@@ -1,6 +1,6 @@
 # Change Log
 
-### v. 0.7.0.beta1
+### v. 0.7.0.beta2
 
 **Breaking Changes**!
 
@@ -71,6 +71,11 @@ This should make the library easier to copy and use as well as minimize possible
 **Fix**: (`pubsub`) made sure that newly registered engines get the full list of existing subscriptions (no need to call `pubsub_engine_resubscribe`).
 
 **Fix**: (`facil`) possible fix for protocol attachment with `NULL` protocol.
+
+
+### v. 0.7.0.beta1
+
+**(yanked)**
 
 ### v. 0.6.3
 
