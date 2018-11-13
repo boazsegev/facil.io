@@ -119,8 +119,7 @@ Version and helper macros
 #if FIO_VERSION_BETA
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
-  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)    \
-      FIO_VERSION_PRERELEASE
+  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
 #else
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
