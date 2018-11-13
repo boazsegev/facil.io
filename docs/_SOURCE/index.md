@@ -52,27 +52,30 @@ void on_request(http_s *request) {
 
 *(Written using version 0.7.0)*
 
-### Creating a Web Application Using the Latest Release
+### Creating a Web Application Using facil.io
 
-Using the latest release is often the best / safest choice.
+Starting a new application with facil.io is as easy as [downloading a copy of facil.io from GitHub](https://github.com/boazsegev/facil.io).
 
-Either copy the source code files from the [latest release on GitHub](https://github.com/boazsegev/facil.io/releases/latest) to an existing / new project, or use the following script to create a new boiler-plate Web Application:
+To make things easier, [a script](https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) is provided.
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
 ```
 
-### Creating a Web Application Using the Edge Version
+By default, this script downloads the latest release, which may or may not be what you want.
 
-The edge version is the development version and may be broken at any given moment and it's API is unstable.
+It's possible to download a specific release or branch, (for example, the latest 0.6.x release, 0.6.4) using `FIO_RELEASE` or `FIO_BRANCH`.
 
-Having said that, it's usually richer in bug fixes and features that wait to be released as part of a stable release.
-
-Either copy the source code files from the master branch to an existing / new project, or use the following script to create a new boiler-plate Web Application:
+i.e., download the latest stable release, version 0.6.4:
 
 ```bash
-export FIO_BRANCH=master
-bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
+FIO_RELEASE=0.6.4 bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
+```
+
+i.e., or download the latest development (edge) version from the `master` branch:
+
+```bash
+FIO_BRANCH=master bash <(curl -s https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app) appname
 ```
 
 ---

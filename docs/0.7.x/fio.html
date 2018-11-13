@@ -21,6 +21,7 @@
 <h3 id="extensions"><a href="/0.7.x/extensions">Extensions</a></h3>
 
 <ul>
+<li><a href="/0.7.x/fio_tls">TLS (SSL)</a></li>
 <li><a href="/0.7.x/http">HTTP / WebSockets</a></li>
 <li><a href="/0.7.x/redis">Redis (client)</a></li>
 <li><a href="/0.7.x/fio_cli">CLI (command line)</a></li>
@@ -472,6 +473,9 @@
 <li>
 <a href="#string-api-initialization-and-destruction">String API - Initialization and Destruction</a>
 <ul>
+<li>
+<a href="#string-memory-allocation">String Memory Allocation</a>
+</li>
 <li>
 <a href="#fio_str_init"><code>FIO_STR_INIT</code></a>
 </li>
@@ -1907,7 +1911,9 @@ be sent over the socket.</p>
 <p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
 <li><p>The <code>cleanup</code> hook callback:</p>
 
-<p>Called when the hook is removed from the <code>uuid</code>, either because of a call to <code>fio_rw_hook_set</code> or because the connection was closed.</p></li>
+<p>Called when the hook is removed from the <code>uuid</code>, either because of a call to <code>fio_rw_hook_set</code> or because the connection was closed.</p>
+
+<p>This callback is always called, even if <code>fio_rw_hook_set</code> fails.</p></li>
 </ul>
 
 <h4 id="fio_rw_hook_set"><code>fio_rw_hook_set</code></h4>
@@ -1917,10 +1923,12 @@ be sent over the socket.</p>
 
 <p>Returns 0 on success or -1 on error (closed / invalid <code>uuid</code>).</p>
 
+<p>If the function fails, than the <code>cleanup</code> callback will be called before the function returns.</p>
+
 <h4 id="fio_default_rw_hooks"><code>FIO_DEFAULT_RW_HOOKS</code></h4>
 <pre><code class='highlight'><span class="k">extern</span> <span class="k">const</span> <span class="n">fio_rw_hook_s</span> <span class="n">FIO_DEFAULT_RW_HOOKS</span><span class="p">;</span>
 </code></pre>
-<p>The default Read/Write hooks used for system Read/Write (<code>udata</code> == NULL).</p>
+<p>The default Read/Write hooks used for system Read/Write (<code>udata</code> == <code>NULL</code>).</p>
 
 <h2 id="event-task-scheduling">Event / Task scheduling</h2>
 
@@ -2647,6 +2655,18 @@ be inherently slower.</p>
 
 <p>However, reference counting provided by the <code>fio_free2</code> and the <code>fio_str_send_free2</code> functions, requires that the <code>fio_str_s</code> object be allocated on the heap using <code>fio_malloc</code> or <code>fio_str_new2</code>.</p>
 
+<h4 id="string-memory-allocation">String Memory Allocation</h4>
+
+<p>String memory is managed by facil.io&#39;s allocation / deallocation routines (<code>fio_malloc</code>, etc&#39;).</p>
+
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist for all the types defined by <code>fio.h</code> until undefined.</p>
+
+<p>For example:</p>
+<pre><code class='highlight'><span class="cp">#define FIO_INCLUDE_STR 1
+#define FIO_FORCE_MALLOC 1
+#include &lt;fio.h&gt;
+#undef FIO_FORCE_MALLOC
+</span></code></pre>
 <h4 id="fio_str_init"><code>FIO_STR_INIT</code></h4>
 <pre><code class='highlight'><span class="cp">#define FIO_STR_INIT ((fio_str_s){.data = NULL, .small = 1})
 </span></code></pre>
@@ -3025,6 +3045,8 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
 
 <p>It&#39;s important to note that the default allocator <strong>must</strong> set all the allocated bytes to zero, exactly as <code>fio_malloc</code> does.</p>
 
+<p>To use the system&#39;s memory allocator (<code>calloc</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+
 <h4 id="fio_ary_realloc"><code>FIO_ARY_REALLOC</code></h4>
 <pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_REALLOC </span><span class="cm">/* NULL ptr indicates new allocation */</span><span class="cp">
 #define FIO_ARY_REALLOC(ptr, original_size, new_size, valid_data_length)       \
@@ -3033,12 +3055,16 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
 </span></code></pre>
 <p>The default Array re-allocator is set to <code>fio_realloc2</code>. All bytes will be set to zero except the copied data and - in some cases, where copy alignment error occurs - the last 16 bytes.</p>
 
+<p>To use the system&#39;s memory allocator (<code>realloc</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+
 <h4 id="fio_ary_dealloc"><code>FIO_ARY_DEALLOC</code></h4>
 <pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_DEALLOC
 #define FIO_ARY_DEALLOC(ptr, size) fio_free((ptr))
 #endif
 </span></code></pre>
 <p>The default Array deallocator is set to <code>fio_free</code>.</p>
+
+<p>To use the system&#39;s memory deallocator (<code>free</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
 
 <h3 id="naming-the-array">Naming the Array</h3>
 
@@ -3333,14 +3359,28 @@ be defined. i.e.:</p>
 </span></code></pre>
 <p>Allows for custom memory allocation / deallocation routines.</p>
 
+<p>The default allocator is facil.io&#39;s <code>fio_realloc</code>.</p>
+
+<p>To use the system&#39;s memory allocator (<code>realloc</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+
 <h4 id="fio_set_calloc"><code>FIO_SET_CALLOC</code></h4>
 <pre><code class='highlight'><span class="cp">#define FIO_SET_CALLOC(size, count) calloc((size), (count))
 </span></code></pre>
 <p>Allows for custom memory allocation / deallocation routines.</p>
 
+<p>The default allocator is facil.io&#39;s <code>fio_calloc</code>.</p>
+
+<p>To use the system&#39;s memory allocator (<code>calloc</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+
 <h4 id="fio_set_free"><code>FIO_SET_FREE</code></h4>
 <pre><code class='highlight'><span class="cp">#define FIO_SET_FREE(ptr, size) free((ptr))
 </span></code></pre>
+<p>Allows for custom memory allocation / deallocation routines.</p>
+
+<p>The default deallocator is facil.io&#39;s <code>fio_free</code>.</p>
+
+<p>To use the system&#39;s memory allocator (<code>free</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+
 <h3 id="naming-the-set-hash-map">Naming the Set / Hash Map</h3>
 
 <p>Because the type and function names are dictated by the <code>FIO_SET_NAME</code>, it&#39;s impossible to name the functions and types that will be created.</p>

@@ -30,6 +30,7 @@ http://facil.io/index
 http://facil.io/0.7.x/http
 http://facil.io/0.7.x/extensions
 http://facil.io/0.7.x/fio_cli
+http://facil.io/0.7.x/fio_tls
 http://facil.io/0.7.x/redis
 http://facil.io/0.7.x/fiobj_core
 http://facil.io/0.7.x/fiobj

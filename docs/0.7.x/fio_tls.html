@@ -1,0 +1,219 @@
+<!DOCTYPE html><html><head><meta charset="utf-8" /><meta content="IE=edge" http-equiv="X-UA-Compatible" /><meta content="width=device-width, initial-scale=1, maximum-scale=2.0, user-scalable=yes, minimal-ui=yes" name="viewport" /><title>facil.io - SSL/TLS Functions</title><meta content="facil.io - SSL/TLS Functions" name="description" /><link href="https://fonts.googleapis.com/css?family=Montserrat|Quicksand|Karla" rel="stylesheet" type="text/css" /><script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script><link href="/assets/styles/main.css" rel="stylesheet" type="text/css" /><script type="application/ld+json">{"@context":"http://schema.org","@type":"WebSite","url":"http://facil.io","name":"facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","keywords":"C, web, framework, websockets, websocket, realtime, real-time, easy","image":"http://facil.io/website/logo/facil-io.svg","author":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}],"sourceOrganization":{"@context":"http://schema.org","@type":"Organization","name":"Plezi","url":"http://facil.io","description":"facil.io - a light web application framework in C, with support for HTTP, WebSockets and Pub/Sub out of the box.","logo":"http://facil.io/website/logo/facil-io.svg","image":"http://facil.io/website/logo/facil-io.svg","email":"bo(at)facil.io","member":[{"@type":"Person","name":"Bo (Myst)","url":"http://stackoverflow.com/users/4025095/myst","email":"bo(at)facil.io"}]}}</script><meta content="facil.io" name="apple-mobile-web-app-title" /><meta content="facil.io - the C Web Application Framework" name="application-name" /><meta content="#b91d47" name="msapplication-TileColor" /><meta content="/mstile-144x144.png" name="msapplication-TileImage" /><meta content="#ffffff" name="theme-color" /></head><body><a href="/" id="logo"></a><input id="show_nav" type="checkbox" /><nav id="top_nav"><ul><li><a href="/0.7.x/index">Latest Docs</a></li><li><a href="https://github.com/boazsegev/facil.io" target="_blank">Source Code</a></li><li><a href="javascript: change_themes();" id="theme">Night Theme</a></li></ul></nav><input id="show_sidebar" type="checkbox" /><nav id="side_bar"><h2 id="version-0-7-x"><a href="/0.7.x/index">Version 0.7.x</a></h2>
+
+<h3 id="core-library"><a href="/0.7.x/fio">Core Library</a></h3>
+
+<ul>
+<li><a href="/0.7.x/fio#connection-protocol-management">Protocol Management</a></li>
+<li><a href="/0.7.x/fio#running-facil-io">Running the IO reactor</a></li>
+<li><a href="/0.7.x/fio#socket-connection-functions">Connection Functions</a></li>
+<li><a href="/0.7.x/fio#event-task-scheduling">Event / Task Scheduling</a></li>
+<li><a href="/0.7.x/fio#pub-sub-services">Pub/Sub Services</a></li>
+<li><a href="/0.7.x/fio#the-custom-memory-allocator">Memory Allocation</a></li>
+<li><a href="/0.7.x/fio#general-helpers">General Helpers</a></li>
+<li><a href="/0.7.x/fio#linked-lists">Linked Lists</a></li>
+<li><a href="/0.7.x/fio#string-helpers">String Helpers</a></li>
+<li><a href="/0.7.x/fio#dynamic-arrays">Dynamic Arrays</a></li>
+<li><a href="/0.7.x/fio#hash-maps-sets">Hash Maps / Sets</a></li>
+<li><a href="/0.7.x/fio#version-and-compilation-related-macros">Compilation Macros</a></li>
+<li><a href="/0.7.x/fio#weak-functions">Weak Functions</a></li>
+</ul>
+
+<h3 id="extensions"><a href="/0.7.x/extensions">Extensions</a></h3>
+
+<ul>
+<li><a href="/0.7.x/fio_tls">TLS (SSL)</a></li>
+<li><a href="/0.7.x/http">HTTP / WebSockets</a></li>
+<li><a href="/0.7.x/redis">Redis (client)</a></li>
+<li><a href="/0.7.x/fio_cli">CLI (command line)</a></li>
+</ul>
+
+<h3 id="the-fiobj-types"><a href="/0.7.x/fiobj">The FIOBJ types</a></h3>
+
+<ul>
+<li><a href="/0.7.x/fiobj_core">Core Functions</a></li>
+<li><a href="/0.7.x/fiobj_primitives">Primitives</a></li>
+<li><a href="/0.7.x/fiobj_numbers">Numbers</a></li>
+<li><a href="/0.7.x/fiobj_str">Strings</a></li>
+<li><a href="/0.7.x/fiobj_ary">Array</a></li>
+<li><a href="/0.7.x/fiobj_hash">HashMap</a></li>
+<li><a href="/0.7.x/fiobj_data">Data Streams</a></li>
+<li><a href="/0.7.x/fiobj_json">JSON</a></li>
+</ul>
+</nav><div id="md_container"><div class='toc'><ul>
+<li>
+<a href="#facil-io-ssl-tls-functions">facil.io - SSL/TLS Functions</a>
+<ul>
+<li>
+<ul>
+<li>
+<a href="#tls-certificates-and-settings">TLS Certificates and Settings</a>
+<ul>
+<li>
+<a href="#fio_tls_new"><code>fio_tls_new</code></a>
+</li>
+<li>
+<a href="#fio_tls_destroy"><code>fio_tls_destroy</code></a>
+</li>
+<li>
+<a href="#fio_tls_cert_add"><code>fio_tls_cert_add</code></a>
+</li>
+<li>
+<a href="#fio_tls_proto_add"><code>fio_tls_proto_add</code></a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#tls-connection-establishment">TLS Connection Establishment</a>
+<ul>
+<li>
+<a href="#fio_tls_accept"><code>fio_tls_accept</code></a>
+</li>
+<li>
+<a href="#fio_tls_connect"><code>fio_tls_connect</code></a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div><h1 id="facil-io-ssl-tls-functions">facil.io - SSL/TLS Functions</h1>
+
+<p>SSL/TLS provides Transport Layer Security (TLS) for more secure communication.</p>
+
+<p>facil.io attempts to make TLS connections easy by providing a simplified API that abstracts away the underlying TLS library and utilizes the <a href="fio#lower-level-read-write-close-hooks">Read/Write Hooks</a> to allow TLS connections and unencrypted connections to share the same API (<code>fio_write</code>, <code>fio_read</code>, etc&#39;).</p>
+
+<p>Future support for BearSSL and OpenSSL is planned.</p>
+
+<p>At the moment, TLS connections aren&#39;t supported since no libraries are supported.</p>
+
+<p>To use the facil.io TLS API, include the file <code>fio_tls.h</code></p>
+
+<h3 id="tls-certificates-and-settings">TLS Certificates and Settings</h3>
+
+<h4 id="fio_tls_new"><code>fio_tls_new</code></h4>
+<pre><code class='highlight'><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">fio_tls_new</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_file</span><span class="p">,</span>
+                       <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_cert_file</span><span class="p">);</span>
+</code></pre>
+<p>Creates a new SSL/TLS context / settings object with a default certificate (if any).</p>
+<pre><code class='highlight'><span class="n">fio_tls_s</span> <span class="o">*</span> <span class="n">tls</span> <span class="o">=</span> <span class="n">fio_tls_new</span><span class="p">(</span><span class="s">"www.example.com"</span><span class="p">,</span>
+                              <span class="s">"./ssl/private_key.key"</span><span class="p">,</span>
+                              <span class="s">"./ssl/public_key.crt"</span><span class="p">);</span>
+</code></pre>
+<p><code>NULL</code> values can be used to create an anonymous (unverified) context / settings object.</p>
+<pre><code class='highlight'><span class="n">fio_tls_s</span> <span class="o">*</span> <span class="n">tls</span> <span class="o">=</span> <span class="n">fio_tls_new</span><span class="p">(</span><span class="s">"www.example.com"</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+</code></pre>
+<p><code>fio_tls_s *</code> is an opaque type used as a handle for the SSL/TLS functions. It shouldn&#39;t be directly accessed.</p>
+
+<p>Remember to call <code>fio_tls_destroy</code> once the <code>fio_tls_s</code> object is no longer in use.</p>
+
+<h4 id="fio_tls_destroy"><code>fio_tls_destroy</code></h4>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_destroy</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
+</code></pre>
+<p>Destroys the SSL/TLS context / settings object and frees any related resources / memory.</p>
+
+<h4 id="fio_tls_cert_add"><code>fio_tls_cert_add</code></h4>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_cert_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span>
+                      <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_file</span><span class="p">,</span>
+                      <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_cert_file</span><span class="p">);</span>
+</code></pre>
+<p>Adds a certificate a new SSL/TLS context / settings object (SNI support).</p>
+<pre><code class='highlight'><span class="n">fio_tls_cert_add</span><span class="p">(</span><span class="n">tls</span><span class="p">,</span> <span class="s">"www.example.com"</span><span class="p">,</span>
+                      <span class="s">"./ssl/private_key.key"</span><span class="p">,</span>
+                      <span class="s">"./ssl/public_key.crt"</span> <span class="p">);</span>
+</code></pre>
+<h4 id="fio_tls_proto_add"><code>fio_tls_proto_add</code></h4>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_proto_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">protocol_name</span><span class="p">,</span>
+                       <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">callback</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">));</span>
+</code></pre>
+<p>Adds an ALPN protocol callback to the SSL/TLS context.</p>
+
+<p>The first protocol added will act as the default protocol to be selected when the client does not support or specify ALPN protocol selection.</p>
+
+<h3 id="tls-connection-establishment">TLS Connection Establishment</h3>
+
+<h4 id="fio_tls_accept"><code>fio_tls_accept</code></h4>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_accept</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+</code></pre>
+<p>Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified context / settings object.</p>
+
+<p>The <code>uuid</code> should be a socket UUID that is already connected to a peer (i.e., the result of <code>fio_accept</code>).</p>
+
+<p>The <code>udata</code> is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using <code>fio_tls_proto_add</code>).</p>
+
+<h4 id="fio_tls_connect"><code>fio_tls_connect</code></h4>
+<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+</code></pre>
+<p>Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified context / settings object.</p>
+
+<p>The <code>uuid</code> should be a socket UUID that is already connected to a peer (i.e., one received by a <code>fio_connect</code> specified callback <code>on_connect</code>).</p>
+
+<p>The <code>udata</code> is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using <code>fio_tls_proto_add</code>).</p>
+</div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+    if(localStorage.getItem("theme") == 'dark') {
+        localStorage.setItem("theme", "light");
+    } else {
+        localStorage.setItem("theme", "dark");
+    }
+    $('body')[0].className = localStorage.getItem("theme");
+    set_theme_link();
+    $('#show_nav').attr('checked', false);
+    return false;
+};
+function sidebar_name() { return window.location.pathname.slice(0, window.location.pathname.lastIndexOf("/")); }
+function on_sidebar_link(e) {
+    sessionStorage.setItem("sidebar.expect", sidebar_name());
+    sessionStorage.setItem("sidebar.pos", document.getElementById("side_bar").scrollTop);
+}
+function load_sidebar_pos() {
+    var e = document.getElementById("side_bar");
+    if(!e) {
+        console.warn("No sidebar detected");
+        return;
+    }
+    var expect = sidebar_name();
+    if(sessionStorage.getItem("sidebar.expect") == expect) {
+        e.scrollTo(0, parseInt(sessionStorage.getItem("sidebar.pos")));
+    } else {
+        sessionStorage.setItem("sidebar.expect", false);
+        sessionStorage.setItem("sidebar.pos", 0);
+    }
+    if(e) {
+        // add link callbacks
+        var links = document.links;
+        var count = links.length;
+        for (var i = 0; i < count; i++) {
+            var href = links[i].href;
+            if(href.startsWith(document.location.origin)) {
+                href = href.slice(document.location.origin.length);
+            }
+            if(href.startsWith(expect)) {
+                /* add link event */
+                links[i].addEventListener("click", on_sidebar_link);
+            }
+        }
+    }
+
+};
+load_sidebar_pos();
+function set_theme_link() {
+    $("#theme").html( ( (localStorage.getItem("theme") == 'dark') ? "Day" : "Night") + " Theme" );
+    }
+$('body')[0].className = (localStorage.getItem("theme") == 'dark') ? "dark" : "light";
+set_theme_link();
+function show_notice() { document.getElementById("notice").classList.remove('hidden'); };
+function hide_notice() { document.getElementById("notice").classList.add('hidden'); };
+$('#toc').on("touchstart", function (e) { return true; } );
+$('#toc').on("hover", function (e) { return true; } );
+// hljs.initHighlighting();
+// Google Analytics
+// if(location.hostname != "localhost") {
+//     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+//         (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+//         m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+//         })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+//     ga('create', 'UA-69931401-1', 'auto');
+//     ga('send', 'pageview');
+// }</script></body></html>

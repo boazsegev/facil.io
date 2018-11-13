@@ -57,22 +57,22 @@
 </code></pre>
 <p><em>(Written using version 0.7.0)</em></p>
 
-<h3 id="creating-a-web-application-using-the-latest-release">Creating a Web Application Using the Latest Release</h3>
+<h3 id="creating-a-web-application-using-facil-io">Creating a Web Application Using facil.io</h3>
 
-<p>Using the latest release is often the best / safest choice.</p>
+<p>Starting a new application with facil.io is as easy as <a href="https://github.com/boazsegev/facil.io">downloading a copy of facil.io from GitHub</a>.</p>
 
-<p>Either copy the source code files from the <a href="https://github.com/boazsegev/facil.io/releases/latest">latest release on GitHub</a> to an existing / new project, or use the following script to create a new boiler-plate Web Application:</p>
+<p>To make things easier, <a href="https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app">a script</a> is provided.</p>
 <pre><code class='highlight'>bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
 </code></pre>
-<h3 id="creating-a-web-application-using-the-edge-version">Creating a Web Application Using the Edge Version</h3>
+<p>By default, this script downloads the latest release, which may or may not be what you want.</p>
 
-<p>The edge version is the development version and may be broken at any given moment and it&#39;s API is unstable.</p>
+<p>It&#39;s possible to download a specific release or branch, (for example, the latest 0.6.x release, 0.6.4) using <code>FIO_RELEASE</code> or <code>FIO_BRANCH</code>.</p>
 
-<p>Having said that, it&#39;s usually richer in bug fixes and features that wait to be released as part of a stable release.</p>
-
-<p>Either copy the source code files from the master branch to an existing / new project, or use the following script to create a new boiler-plate Web Application:</p>
-<pre><code class='highlight'><span class="nb">export </span><span class="nv">FIO_BRANCH</span><span class="o">=</span>master
-bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
+<p>i.e., download the latest stable release, version 0.6.4:</p>
+<pre><code class='highlight'><span class="nv">FIO_RELEASE</span><span class="o">=</span>0.6.4 bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
+</code></pre>
+<p>i.e., or download the latest development (edge) version from the <code>master</code> branch:</p>
+<pre><code class='highlight'><span class="nv">FIO_BRANCH</span><span class="o">=</span>master bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
 </code></pre>
 <hr>
 

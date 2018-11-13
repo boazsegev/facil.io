@@ -21,6 +21,7 @@
 <h3 id="extensions"><a href="/0.7.x/extensions">Extensions</a></h3>
 
 <ul>
+<li><a href="/0.7.x/fio_tls">TLS (SSL)</a></li>
 <li><a href="/0.7.x/http">HTTP / WebSockets</a></li>
 <li><a href="/0.7.x/redis">Redis (client)</a></li>
 <li><a href="/0.7.x/fio_cli">CLI (command line)</a></li>
@@ -77,6 +78,8 @@
 
 <p>In this page you will find a general overview. For detailed API information please visit the Core or Type pages.</p>
 
+<p>To use the facil.io FIOBJ API, include the file <code>fiobj.h</code></p>
+
 <h2 id="overview">Overview</h2>
 
 <p><code>facil.io</code> offers a dynamic type system that makes it a breeze to mix object types together.</p>
@@ -123,7 +126,8 @@
 <p>All object access should be functional, or using the macros provided. Although this requirement can be circumvented, using the functional interface should be preferred.</p>
 
 <p>For example:</p>
-<pre><code class='highlight'><span class="cm">/* this will work */</span>
+<pre><code class='highlight'><span class="cp">#include "fiobj.h"
+</span><span class="cm">/* this will work */</span>
 <span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_buf</span><span class="p">(</span><span class="mi">6</span><span class="p">);</span> <span class="cm">/* automatically adds room for the NUL terminator */</span>
 <span class="n">fio_str_info_s</span> <span class="n">raw_str</span> <span class="o">=</span> <span class="n">fiobj_obj2cstr</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
 <span class="n">memcpy</span><span class="p">(</span><span class="n">raw_str</span><span class="p">.</span><span class="n">buffer</span><span class="p">,</span> <span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>

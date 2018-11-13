@@ -21,6 +21,7 @@
 <h3 id="extensions"><a href="/0.7.x/extensions">Extensions</a></h3>
 
 <ul>
+<li><a href="/0.7.x/fio_tls">TLS (SSL)</a></li>
 <li><a href="/0.7.x/http">HTTP / WebSockets</a></li>
 <li><a href="/0.7.x/redis">Redis (client)</a></li>
 <li><a href="/0.7.x/fio_cli">CLI (command line)</a></li>
@@ -84,6 +85,8 @@
 <p>The extension was written to minimize Redis connections and load, allowing more clusters to connect to a Redis server.</p>
 
 <p>This requires that each facil.io cluster consume less resources - only two connections per cluster instead of two connections per process (as might be common on other implementations).</p>
+
+<p>To use the facil.io Redis extension API, include the file <code>redis_engine.h</code></p>
 
 <h2 id="connecting-facil-io-to-redis">Connecting facil.io to Redis</h2>
 
