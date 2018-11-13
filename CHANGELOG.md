@@ -10,7 +10,7 @@ A lot of the code was re-written and re-organized, minimizing the name space use
 
 This translated directly to **breaking the API and ABI and bumping the version number**.
 
-This should make the library easier to copy and use as well as minimize possible name collisions (at the price of maintaining a monolithic file as the core library).
+This should make the library easier to copy and use as well as minimize possible name collisions (at the price of maintaining a couple of monolithic files as the core library).
 
 **These are the main changes**:
 
@@ -41,6 +41,10 @@ This should make the library easier to copy and use as well as minimize possible
 * The WebSocket upgrade (`http_upgrade2ws`) now matches the SSE upgrade function (starts with the handle `http_s *` and named arguments come later).
 
 * The CLI API and implementation was completely rewritten. The new code is slightly more "monolithic" (one long function does most of the work), but should waste less memory with a simpler API (also got rid of some persistent data).
+
+* The Read/Write socket hooks were redesigned.
+
+* An SSL/TLS API stub was designed for SSL/TLS library abstraction (not implemented yet). This API is experimental and might change as I author the first SSL/TLS library wrappers (roadmap includes OpenSSL and BearSSL).
 
 **Update**: (`fio_mem` => `fio.h`) updated the allocator defaults to lower the price of a longer life allocation. Reminder: the allocator was designed for short/medium allocation life-spans _or_ large allocations (as they directly map to `mmap`). Now 16Kb will be considered a larger allocation and the price of holding on to memory is lower (less fragmentation).
 
