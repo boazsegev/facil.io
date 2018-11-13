@@ -1,8 +1,6 @@
 # Change Log
 
-## Future (expected / upcoming) changes
-
-### API and ABI breaking changes expected in v. 0.7.0
+### v. 0.7.0.beta1
 
 **Breaking Changes**!
 
@@ -55,8 +53,6 @@ This should make the library easier to copy and use as well as minimize possible
 **Logo**: Logo created by @area55git ([Area55](https://github.com/area55git))
 
 **Documentation**: A new website!
-
-## Released versions
 
 ### v. 0.6.4
 

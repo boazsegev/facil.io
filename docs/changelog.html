@@ -17,16 +17,10 @@
 <a href="#change-log">Change Log</a>
 <ul>
 <li>
-<a href="#future-expected-upcoming-changes">Future (expected / upcoming) changes</a>
 <ul>
 <li>
-<a href="#api-and-abi-breaking-changes-expected-in-v-0-7-0">API and ABI breaking changes expected in v. 0.7.0</a>
+<a href="#v-0-7-0-beta1">v. 0.7.0.beta1</a>
 </li>
-</ul>
-</li>
-<li>
-<a href="#released-versions">Released versions</a>
-<ul>
 <li>
 <a href="#v-0-6-4">v. 0.6.4</a>
 </li>
@@ -243,9 +237,7 @@
 </ul>
 </div><h1 id="change-log">Change Log</h1>
 
-<h2 id="future-expected-upcoming-changes">Future (expected / upcoming) changes</h2>
-
-<h3 id="api-and-abi-breaking-changes-expected-in-v-0-7-0">API and ABI breaking changes expected in v. 0.7.0</h3>
+<h3 id="v-0-7-0-beta1">v. 0.7.0.beta1</h3>
 
 <p><strong>Breaking Changes</strong>!</p>
 
@@ -253,7 +245,7 @@
 
 <p>This translated directly to <strong>breaking the API and ABI and bumping the version number</strong>.</p>
 
-<p>This should make the library easier to copy and use as well as minimize possible name collisions (at the price of maintaining a monolithic file as the core library).</p>
+<p>This should make the library easier to copy and use as well as minimize possible name collisions (at the price of maintaining a couple of monolithic files as the core library).</p>
 
 <p><strong>These are the main changes</strong>:</p>
 
@@ -275,6 +267,8 @@
 <li><p>The Pub/Sub system&#39;s <code>use_pattern</code> was replaced with the optional callback argument <code>match</code> (a function pointer), allowing for custom pattern matching approaches (such as implementing NATs and RabbitMQ pattern matching). The previous glob matching approach (Redis compatible) is available using the provided <code>FIO_MATCH_GLOB</code> function pointer.</p></li>
 <li><p>The WebSocket upgrade (<code>http_upgrade2ws</code>) now matches the SSE upgrade function (starts with the handle <code>http_s *</code> and named arguments come later).</p></li>
 <li><p>The CLI API and implementation was completely rewritten. The new code is slightly more &quot;monolithic&quot; (one long function does most of the work), but should waste less memory with a simpler API (also got rid of some persistent data).</p></li>
+<li><p>The Read/Write socket hooks were redesigned.</p></li>
+<li><p>An SSL/TLS API stub was designed for SSL/TLS library abstraction (not implemented yet). This API is experimental and might change as I author the first SSL/TLS library wrappers (roadmap includes OpenSSL and BearSSL).</p></li>
 </ul>
 
 <p><strong>Update</strong>: (<code>fio_mem</code> =&gt; <code>fio.h</code>) updated the allocator defaults to lower the price of a longer life allocation. Reminder: the allocator was designed for short/medium allocation life-spans <u>or</u> large allocations (as they directly map to <code>mmap</code>). Now 16Kb will be considered a larger allocation and the price of holding on to memory is lower (less fragmentation).</p>
@@ -286,8 +280,6 @@
 <p><strong>Logo</strong>: Logo created by @area55git (<a href="https://github.com/area55git">Area55</a>)</p>
 
 <p><strong>Documentation</strong>: A new website!</p>
-
-<h2 id="released-versions">Released versions</h2>
 
 <h3 id="v-0-6-4">v. 0.6.4</h3>
 
