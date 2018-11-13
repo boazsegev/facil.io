@@ -3283,12 +3283,6 @@ reschedule:
   fio_defer(fio_review_timeout, (void *)fd, NULL);
 }
 
-static void fio_perform_idle(void *arg, void *ignr) {
-  fio_state_callback_force(FIO_CALL_ON_IDLE);
-  (void)arg;
-  (void)ignr;
-}
-
 /* reactor pattern cycling - common actions */
 static void fio_cycle_schedule_events(void) {
   static int idle = 0;
@@ -3309,7 +3303,7 @@ static void fio_cycle_schedule_events(void) {
   } else {
     /* events == 0 */
     if (idle) {
-      fio_defer(fio_perform_idle, NULL, NULL);
+      fio_state_callback_force(FIO_CALL_ON_IDLE);
       idle = 0;
     }
   }
