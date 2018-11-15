@@ -234,16 +234,15 @@ print_help:
     }
     switch ((size_t)type) {
     case /* FIO_CLI_TYPE_STRING */ 0x1:
-      fprintf(stderr, "\t\x1B[1m%.*s\x1B[0m\x1B[2m <val>\x1B[0m\t%s\n",
-              first_len, p, p + tmp);
+      fprintf(stderr, " \x1B[1m%.*s\x1B[0m\x1B[2m <>\x1B[0m\t%s\n", first_len,
+              p, p + tmp);
       break;
     case /* FIO_CLI_TYPE_BOOL */ 0x2:
-      fprintf(stderr, "\t\x1B[1m%.*s\x1B[0m      \t%s\n", first_len, p,
-              p + tmp);
+      fprintf(stderr, " \x1B[1m%.*s\x1B[0m   \t%s\n", first_len, p, p + tmp);
       break;
     case /* FIO_CLI_TYPE_INT */ 0x3:
-      fprintf(stderr, "\t\x1B[1m%.*s\x1B[0m\x1B[2m ###  \x1B[0m\t%s\n",
-              first_len, p, p + tmp);
+      fprintf(stderr, " \x1B[1m%.*s\x1B[0m\x1B[2m ##\x1B[0m\t%s\n", first_len,
+              p, p + tmp);
       break;
     }
     /* print aliase information */
@@ -256,23 +255,26 @@ print_help:
       while (p[tmp] && p[tmp] != ' ' && p[tmp] != ',') {
         ++tmp;
       }
+      int padding = first_len - (tmp - start);
+      if (padding < 0)
+        padding = 0;
       switch ((size_t)type) {
       case /* FIO_CLI_TYPE_STRING */ 0x1:
         fprintf(stderr,
-                "\t\x1B[1m%.*s\x1B[0m\x1B[2m <val>\x1B[0m\t(same as "
+                " \x1B[1m%.*s\x1B[0m\x1B[2m <>\x1B[0m%*s\t(same as "
                 "\x1B[1m%.*s\x1B[0m)\n",
-                (int)(tmp - start), p + start, first_len, p);
+                (int)(tmp - start), p + start, padding, "", first_len, p);
         break;
       case /* FIO_CLI_TYPE_BOOL */ 0x2:
         fprintf(stderr,
-                "\t\x1B[1m%.*s\x1B[0m      \t(same as \x1B[1m%.*s\x1B[0m)\n",
-                (int)(tmp - start), p + start, first_len, p);
+                " \x1B[1m%.*s\x1B[0m   %*s\t(same as \x1B[1m%.*s\x1B[0m)\n",
+                (int)(tmp - start), p + start, padding, "", first_len, p);
         break;
       case /* FIO_CLI_TYPE_INT */ 0x3:
         fprintf(stderr,
-                "\t\x1B[1m%.*s\x1B[0m\x1B[2m ###  \x1B[0m\t(same as "
+                " \x1B[1m%.*s\x1B[0m\x1B[2m ##\x1B[0m%*s\t(same as "
                 "\x1B[1m%.*s\x1B[0m)\n",
-                (int)(tmp - start), p + start, first_len, p);
+                (int)(tmp - start), p + start, padding, "", first_len, p);
         break;
       }
     }
