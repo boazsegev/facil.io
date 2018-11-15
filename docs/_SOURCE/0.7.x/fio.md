@@ -3240,11 +3240,12 @@ Returns the current lock's state (non 0 == Busy).
 #### `fio_unlock`
 
 ```c
-inline void fio_unlock(fio_lock_i *lock);
+inline int fio_unlock(fio_lock_i *lock);
 ```
 
-Releases a lock.
+Releases a lock. Returns non-zero if the lock was previously locked.
 
+**Note**: Releasing an un-acquired will break the lock and could cause it's protection to fail. Make sure to only release the lock if it was previously acquired by the same "owner".
 
 #### `fio_reschedule_thread`
 
