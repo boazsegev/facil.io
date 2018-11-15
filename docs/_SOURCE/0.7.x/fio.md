@@ -881,9 +881,12 @@ Blocks until all the data was flushed from the buffer.
 #### `fio_flush_all`
 
 ```c
-void fio_flush_all(void);
+size_t fio_flush_all(void);
 ```
+
 `fio_flush_all` attempts flush all the open connections.
+
+Returns the number of sockets still in need to be flushed.
 
 #### `fio_uuid2fd`
 

@@ -1110,8 +1110,12 @@ ssize_t fio_flush(intptr_t uuid);
     errno = 0;                                                                 \
   } while (fio_flush(uuid) > 0 || errno == EWOULDBLOCK)
 
-/** `fio_flush_all` attempts flush all the open connections. */
-void fio_flush_all(void);
+/**
+ * `fio_flush_all` attempts flush all the open connections.
+ *
+ * Returns the number of sockets still in need to be flushed.
+ */
+size_t fio_flush_all(void);
 
 /**
  * Convert between a facil.io connection's identifier (uuid) and system's fd.

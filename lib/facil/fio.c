@@ -2685,13 +2685,15 @@ flushed:
 }
 
 /** `fio_flush_all` attempts flush all the open connections. */
-void fio_flush_all(void) {
+size_t fio_flush_all(void) {
   if (!fio_data)
-    return;
+    return 0;
+  size_t count = 0;
   for (uintptr_t i = 0; i < fio_data->max_protocol_fd; ++i) {
-    if (fd_data(i).open || fd_data(i).packet)
-      fio_flush(fd2uuid(i));
+    if ((fd_data(i).open || fd_data(i).packet) && fio_flush(fd2uuid(i)) > 0)
+      ++count;
   }
+  return count;
 }
 
 /* *****************************************************************************
