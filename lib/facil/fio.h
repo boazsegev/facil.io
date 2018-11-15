@@ -119,12 +119,12 @@ Version and helper macros
 #if FIO_VERSION_BETA
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
-  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
+  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(                      \
+      FIO_VERSION_PATCH) ".beta" FIO_MACRO2STR(FIO_VERSION_BETA)
 #else
 #define FIO_VERSION_STRING                                                     \
   FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
-  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(                      \
-      FIO_VERSION_PATCH) ".beta" FIO_MACRO2STR(FIO_VERSION_BETA)
+  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
 #endif
 
 #ifndef FIO_MAX_SOCK_CAPACITY
