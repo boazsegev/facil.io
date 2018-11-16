@@ -2014,7 +2014,7 @@ void fio_force_event(intptr_t uuid, enum fio_io_event ev) {
     fio_defer_push_task(deferred_ping, (void *)uuid, NULL);
     break;
   case FIO_EVENT_ON_READY:
-    fio_defer_push_task(deferred_on_ready, (void *)uuid, NULL);
+    fio_defer_push_urgent(deferred_on_ready, (void *)uuid, NULL);
     break;
   }
 }
@@ -2547,10 +2547,13 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
     packet->dealloc = (options.after.dealloc ? options.after.dealloc : free);
   }
   /* add packet to outgoing list */
+  uint8_t was_empty = 1;
   fio_lock(&uuid_data(uuid).sock_lock);
   if (!uuid_is_valid(uuid)) {
     goto locked_error;
   }
+  if (uuid_data(uuid).packet)
+    was_empty = 0;
   if (options.urgent == 0) {
     *uuid_data(uuid).packet_last = packet;
     uuid_data(uuid).packet_last = &packet->next;
@@ -2564,10 +2567,12 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
       uuid_data(uuid).packet_last = &packet->next;
     }
   }
+  fio_atomic_add(&uuid_data(uuid).packet_count, 1);
   fio_unlock(&uuid_data(uuid).sock_lock);
 
-  fio_atomic_add(&uuid_data(uuid).packet_count, 1);
-  fio_poll_add_write(fio_uuid2fd(uuid));
+  if (was_empty) {
+    fio_defer_push_urgent(deferred_on_ready, (void *)uuid, NULL);
+  }
   return 0;
 locked_error:
   fio_unlock(&uuid_data(uuid).sock_lock);
