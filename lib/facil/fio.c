@@ -65,6 +65,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_POLL_TICK 1000
 #endif
 
+#ifndef FIO_USE_URGENT_QUEUE
+#define FIO_USE_URGENT_QUEUE 1
+#endif
+
 #ifndef DEBUG_SPINLOCK
 #define DEBUG_SPINLOCK 0
 #endif
@@ -510,6 +514,339 @@ Section Start Marker
 
 
 
+
+
+
+
+
+                             Task Management
+
+                  Task / Event schduling and execution
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+#ifndef DEFER_THROTTLE
+#define DEFER_THROTTLE 2097148UL
+#endif
+#ifndef FIO_DEFER_THROTTLE_LIMIT
+#define FIO_DEFER_THROTTLE_LIMIT 268434944UL
+#endif
+
+/**
+ * The progressive throttling model makes concurrency and parallelism more
+ * likely.
+ *
+ * Otherwise threads are assumed to be intended for "fallback" in case of slow
+ * user code, where a single thread should be active most of the time and other
+ * threads are activated only when that single thread is slow to perform.
+ */
+#ifndef DEFER_THROTTLE_PROGRESSIVE
+#define DEFER_THROTTLE_PROGRESSIVE 1
+#endif
+
+#ifndef DEFER_QUEUE_BLOCK_COUNT
+#if UINTPTR_MAX <= 0xFFFFFFFF
+/* Almost a page of memory on most 32 bit machines: ((4096/4)-8)/3 */
+#define DEFER_QUEUE_BLOCK_COUNT 338
+#else
+/* Almost a page of memory on most 64 bit machines: ((4096/8)-8)/3 */
+#define DEFER_QUEUE_BLOCK_COUNT 168
+#endif
+#endif
+
+/* task node data */
+typedef struct {
+  void (*func)(void *, void *);
+  void *arg1;
+  void *arg2;
+} fio_defer_task_s;
+
+/* task queue block */
+typedef struct fio_defer_queue_block_s fio_defer_queue_block_s;
+struct fio_defer_queue_block_s {
+  fio_defer_task_s tasks[DEFER_QUEUE_BLOCK_COUNT];
+  fio_defer_queue_block_s *next;
+  size_t write;
+  size_t read;
+  unsigned char state;
+};
+
+/* task queue object */
+typedef struct { /* a lock for the state machine, used for multi-threading
+                    support */
+  fio_lock_i lock;
+  /* current active block to pop tasks */
+  fio_defer_queue_block_s *reader;
+  /* current active block to push tasks */
+  fio_defer_queue_block_s *writer;
+  /* static, built-in, queue */
+  fio_defer_queue_block_s static_queue;
+} fio_task_queue_s;
+
+/* the state machine - this holds all the data about the task queue and pool */
+static fio_task_queue_s task_queue_normal = {
+    .reader = &task_queue_normal.static_queue,
+    .writer = &task_queue_normal.static_queue};
+
+static fio_task_queue_s task_queue_urgent = {
+    .reader = &task_queue_urgent.static_queue,
+    .writer = &task_queue_urgent.static_queue};
+
+/* *****************************************************************************
+Internal Task API
+***************************************************************************** */
+
+#if DEBUG
+static size_t fio_defer_count_alloc, fio_defer_count_dealloc;
+#define COUNT_ALLOC fio_atomic_add(&fio_defer_count_alloc, 1)
+#define COUNT_DEALLOC fio_atomic_add(&fio_defer_count_dealloc, 1)
+#define COUNT_RESET                                                            \
+  do {                                                                         \
+    fio_defer_count_alloc = fio_defer_count_dealloc = 0;                       \
+  } while (0)
+#else
+#define COUNT_ALLOC
+#define COUNT_DEALLOC
+#define COUNT_RESET
+#endif
+
+static inline void fio_defer_push_task_fn(fio_defer_task_s task,
+                                          fio_task_queue_s *queue) {
+  fio_lock(&queue->lock);
+
+  /* test if full */
+  if (queue->writer->state && queue->writer->write == queue->writer->read) {
+    /* return to static buffer or allocate new buffer */
+    if (queue->static_queue.state == 2) {
+      queue->writer->next = &queue->static_queue;
+    } else {
+      queue->writer->next = fio_malloc(sizeof(*queue->writer->next));
+      COUNT_ALLOC;
+      if (!queue->writer->next)
+        goto critical_error;
+    }
+    queue->writer = queue->writer->next;
+    queue->writer->write = 0;
+    queue->writer->read = 0;
+    queue->writer->state = 0;
+    queue->writer->next = NULL;
+  }
+
+  /* place task and finish */
+  queue->writer->tasks[queue->writer->write++] = task;
+  /* cycle buffer */
+  if (queue->writer->write == DEFER_QUEUE_BLOCK_COUNT) {
+    queue->writer->write = 0;
+    queue->writer->state = 1;
+  }
+  fio_unlock(&queue->lock);
+  return;
+
+critical_error:
+  fio_unlock(&queue->lock);
+  FIO_ASSERT_ALLOC(NULL)
+}
+
+#define fio_defer_push_task(func_, arg1_, arg2_)                               \
+  fio_defer_push_task_fn(                                                      \
+      (fio_defer_task_s){.func = func_, .arg1 = arg1_, .arg2 = arg2_},         \
+      &task_queue_normal)
+
+#if FIO_USE_URGENT_QUEUE
+#define fio_defer_push_urgent(func_, arg1_, arg2_)                             \
+  fio_defer_push_task_fn(                                                      \
+      (fio_defer_task_s){.func = func_, .arg1 = arg1_, .arg2 = arg2_},         \
+      &task_queue_urgent)
+#else
+#define fio_defer_push_urgent(func_, arg1_, arg2_)                             \
+  fio_defer_push_task(func_, arg1_, arg2_)
+#endif
+
+static inline fio_defer_task_s fio_defer_pop_task(fio_task_queue_s *queue) {
+  fio_defer_task_s ret = (fio_defer_task_s){.func = NULL};
+  fio_defer_queue_block_s *to_free = NULL;
+  /* lock the state machine, grab/create a task and place it at the tail */
+  fio_lock(&queue->lock);
+
+  /* empty? */
+  if (queue->reader->write == queue->reader->read && !queue->reader->state)
+    goto finish;
+  /* collect task */
+  ret = queue->reader->tasks[queue->reader->read++];
+  /* cycle */
+  if (queue->reader->read == DEFER_QUEUE_BLOCK_COUNT) {
+    queue->reader->read = 0;
+    queue->reader->state = 0;
+  }
+  /* did we finish the queue in the buffer? */
+  if (queue->reader->write == queue->reader->read) {
+    if (queue->reader->next) {
+      to_free = queue->reader;
+      queue->reader = queue->reader->next;
+    } else {
+      if (queue->reader != &queue->static_queue &&
+          queue->static_queue.state == 2) {
+        to_free = queue->reader;
+        queue->writer = &queue->static_queue;
+        queue->reader = &queue->static_queue;
+      }
+      queue->reader->write = queue->reader->read = queue->reader->state = 0;
+    }
+  }
+
+finish:
+  if (to_free == &queue->static_queue) {
+    queue->static_queue.state = 2;
+    queue->static_queue.next = NULL;
+  }
+  fio_unlock(&queue->lock);
+
+  if (to_free && to_free != &queue->static_queue) {
+    fio_free(to_free);
+    COUNT_DEALLOC;
+  }
+  return ret;
+}
+
+/* same as fio_defer_clear_queue , just inlined */
+static inline void fio_defer_clear_tasks_for_queue(fio_task_queue_s *queue) {
+  fio_lock(&queue->lock);
+  while (queue->reader) {
+    fio_defer_queue_block_s *tmp = queue->reader;
+    queue->reader = queue->reader->next;
+    if (tmp != &queue->static_queue) {
+      COUNT_DEALLOC;
+      free(tmp);
+    }
+  }
+  queue->static_queue = (fio_defer_queue_block_s){.next = NULL};
+  queue->reader = queue->writer = &queue->static_queue;
+  fio_unlock(&queue->lock);
+}
+
+static inline void fio_defer_clear_tasks(void) {
+  fio_defer_clear_tasks_for_queue(&task_queue_normal);
+  fio_defer_clear_tasks_for_queue(&task_queue_urgent);
+}
+
+static void fio_defer_on_fork(void) {
+  task_queue_normal.lock = FIO_LOCK_INIT;
+  task_queue_urgent.lock = FIO_LOCK_INIT;
+}
+
+/* *****************************************************************************
+External Task API
+***************************************************************************** */
+
+/** Defer an execution of a function for later. */
+int fio_defer(void (*func)(void *, void *), void *arg1, void *arg2) {
+  /* must have a task to defer */
+  if (!func)
+    goto call_error;
+  fio_defer_push_task(func, arg1, arg2);
+  return 0;
+
+call_error:
+  return -1;
+}
+
+/** Performs all deferred functions until the queue had been depleted. */
+void fio_defer_perform(void) {
+  for (;;) {
+#if FIO_USE_URGENT_QUEUE
+    fio_defer_task_s task = fio_defer_pop_task(&task_queue_urgent);
+    if (!task.func)
+      task = fio_defer_pop_task(&task_queue_normal);
+#else
+    fio_defer_task_s task = fio_defer_pop_task(&task_queue_normal);
+#endif
+    if (!task.func)
+      return;
+    task.func(task.arg1, task.arg2);
+  }
+}
+
+/** Returns true if there are deferred functions waiting for execution. */
+int fio_defer_has_queue(void) {
+  return task_queue_urgent.reader != task_queue_urgent.writer ||
+         task_queue_urgent.reader->write != task_queue_urgent.reader->read ||
+         task_queue_normal.reader != task_queue_normal.writer ||
+         task_queue_normal.reader->write != task_queue_normal.reader->read;
+}
+
+/** Clears the queue. */
+void fio_defer_clear_queue(void) { fio_defer_clear_tasks(); }
+
+static void fio_defer_thread_wait(void);
+static void *fio_defer_cycle(void *ignr) {
+  do {
+    fio_defer_perform();
+    fio_defer_thread_wait();
+  } while (fio_is_running());
+  return ignr;
+}
+
+/* thread pool type */
+typedef struct {
+  size_t thread_count;
+  void *threads[];
+} fio_defer_thread_pool_s;
+
+/* joins a thread pool */
+static void fio_defer_thread_pool_join(fio_defer_thread_pool_s *pool) {
+  for (size_t i = 0; i < pool->thread_count; ++i) {
+    fio_thread_join(pool->threads[i]);
+  }
+  free(pool);
+}
+
+/* creates a thread pool */
+static fio_defer_thread_pool_s *fio_defer_thread_pool_new(size_t count) {
+  if (!count)
+    count = 1;
+  fio_defer_thread_pool_s *pool =
+      malloc(sizeof(*pool) + (count * sizeof(void *)));
+  FIO_ASSERT_ALLOC(pool);
+  pool->thread_count = count;
+  for (size_t i = 0; i < count; ++i) {
+    pool->threads[i] = fio_thread_new(fio_defer_cycle, NULL);
+    if (!pool->threads[i]) {
+      pool->thread_count = i;
+      goto error;
+    }
+  }
+  return pool;
+error:
+  FIO_LOG_FATAL("couldn't spawn threads for thread pool, attempting shutdown.");
+  fio_stop();
+  fio_defer_thread_pool_join(pool);
+  return NULL;
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
                                      Timers
 
 
@@ -684,305 +1021,6 @@ int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
   return 0;
 }
 
-/* *****************************************************************************
-Section Start Marker
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                             Task Management
-
-                  Task / Event schduling and execution
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-#ifndef DEFER_THROTTLE
-#define DEFER_THROTTLE 2097148UL
-#endif
-#ifndef FIO_DEFER_THROTTLE_LIMIT
-#define FIO_DEFER_THROTTLE_LIMIT 268434944UL
-#endif
-
-/**
- * The progressive throttling model makes concurrency and parallelism more
- * likely.
- *
- * Otherwise threads are assumed to be intended for "fallback" in case of slow
- * user code, where a single thread should be active most of the time and other
- * threads are activated only when that single thread is slow to perform.
- */
-#ifndef DEFER_THROTTLE_PROGRESSIVE
-#define DEFER_THROTTLE_PROGRESSIVE 1
-#endif
-
-#ifndef DEFER_QUEUE_BLOCK_COUNT
-#if UINTPTR_MAX <= 0xFFFFFFFF
-/* Almost a page of memory on most 32 bit machines: ((4096/4)-8)/3 */
-#define DEFER_QUEUE_BLOCK_COUNT 338
-#else
-/* Almost a page of memory on most 64 bit machines: ((4096/8)-8)/3 */
-#define DEFER_QUEUE_BLOCK_COUNT 168
-#endif
-#endif
-
-/* task node data */
-typedef struct {
-  void (*func)(void *, void *);
-  void *arg1;
-  void *arg2;
-} fio_defer_task_s;
-
-/* task queue block */
-typedef struct fio_defer_queue_block_s fio_defer_queue_block_s;
-
-struct fio_defer_queue_block_s {
-  fio_defer_task_s tasks[DEFER_QUEUE_BLOCK_COUNT];
-  fio_defer_queue_block_s *next;
-  size_t write;
-  size_t read;
-  unsigned char state;
-};
-
-static fio_defer_queue_block_s fio_defer_static_queue;
-
-/* the state machine - this holds all the data about the task queue and pool */
-static struct {
-  /* a lock for the state machine, used for multi-threading support */
-  fio_lock_i lock;
-  /* current active block to pop tasks */
-  fio_defer_queue_block_s *reader;
-  /* current active block to push tasks */
-  fio_defer_queue_block_s *writer;
-} deferred = {.reader = &fio_defer_static_queue,
-              .writer = &fio_defer_static_queue};
-
-/* *****************************************************************************
-Internal Task API
-***************************************************************************** */
-
-#if DEBUG
-static size_t fio_defer_count_alloc, fio_defer_count_dealloc;
-#define COUNT_ALLOC fio_atomic_add(&fio_defer_count_alloc, 1)
-#define COUNT_DEALLOC fio_atomic_add(&fio_defer_count_dealloc, 1)
-#define COUNT_RESET                                                            \
-  do {                                                                         \
-    fio_defer_count_alloc = fio_defer_count_dealloc = 0;                       \
-  } while (0)
-#else
-#define COUNT_ALLOC
-#define COUNT_DEALLOC
-#define COUNT_RESET
-#endif
-
-static inline void fio_defer_push_task(fio_defer_task_s task) {
-  fio_lock(&deferred.lock);
-
-  /* test if full */
-  if (deferred.writer->state &&
-      deferred.writer->write == deferred.writer->read) {
-    /* return to static buffer or allocate new buffer */
-    if (fio_defer_static_queue.state == 2) {
-      deferred.writer->next = &fio_defer_static_queue;
-    } else {
-      deferred.writer->next = fio_malloc(sizeof(*deferred.writer->next));
-      COUNT_ALLOC;
-      if (!deferred.writer->next)
-        goto critical_error;
-    }
-    deferred.writer = deferred.writer->next;
-    deferred.writer->write = 0;
-    deferred.writer->read = 0;
-    deferred.writer->state = 0;
-    deferred.writer->next = NULL;
-  }
-
-  /* place task and finish */
-  deferred.writer->tasks[deferred.writer->write++] = task;
-  /* cycle buffer */
-  if (deferred.writer->write == DEFER_QUEUE_BLOCK_COUNT) {
-    deferred.writer->write = 0;
-    deferred.writer->state = 1;
-  }
-  fio_unlock(&deferred.lock);
-  return;
-
-critical_error:
-  fio_unlock(&deferred.lock);
-  FIO_ASSERT_ALLOC(NULL)
-}
-
-static inline fio_defer_task_s fio_defer_pop_task(void) {
-  fio_defer_task_s ret = (fio_defer_task_s){.func = NULL};
-  fio_defer_queue_block_s *to_free = NULL;
-  /* lock the state machine, grab/create a task and place it at the tail */
-  fio_lock(&deferred.lock);
-
-  /* empty? */
-  if (deferred.reader->write == deferred.reader->read &&
-      !deferred.reader->state)
-    goto finish;
-  /* collect task */
-  ret = deferred.reader->tasks[deferred.reader->read++];
-  /* cycle */
-  if (deferred.reader->read == DEFER_QUEUE_BLOCK_COUNT) {
-    deferred.reader->read = 0;
-    deferred.reader->state = 0;
-  }
-  /* did we finish the queue in the buffer? */
-  if (deferred.reader->write == deferred.reader->read) {
-    if (deferred.reader->next) {
-      to_free = deferred.reader;
-      deferred.reader = deferred.reader->next;
-    } else {
-      if (deferred.reader != &fio_defer_static_queue &&
-          fio_defer_static_queue.state == 2) {
-        to_free = deferred.reader;
-        deferred.writer = &fio_defer_static_queue;
-        deferred.reader = &fio_defer_static_queue;
-      }
-      deferred.reader->write = deferred.reader->read = deferred.reader->state =
-          0;
-    }
-  }
-
-finish:
-  if (to_free == &fio_defer_static_queue) {
-    fio_defer_static_queue.state = 2;
-    fio_defer_static_queue.next = NULL;
-  }
-  fio_unlock(&deferred.lock);
-
-  if (to_free && to_free != &fio_defer_static_queue) {
-    fio_free(to_free);
-    COUNT_DEALLOC;
-  }
-  return ret;
-}
-
-/* same as fio_defer_clear_queue , just inlined */
-static inline void fio_defer_clear_tasks(void) {
-  fio_lock(&deferred.lock);
-  while (deferred.reader) {
-    fio_defer_queue_block_s *tmp = deferred.reader;
-    deferred.reader = deferred.reader->next;
-    if (tmp != &fio_defer_static_queue) {
-      COUNT_DEALLOC;
-      free(tmp);
-    }
-  }
-  fio_defer_static_queue = (fio_defer_queue_block_s){.next = NULL};
-  deferred.reader = deferred.writer = &fio_defer_static_queue;
-  fio_unlock(&deferred.lock);
-}
-
-static void fio_defer_on_fork(void) { deferred.lock = FIO_LOCK_INIT; }
-
-#define fio_defer_push_task(...)                                               \
-  fio_defer_push_task((fio_defer_task_s){__VA_ARGS__})
-
-/* *****************************************************************************
-External Task API
-***************************************************************************** */
-
-/** Defer an execution of a function for later. */
-int fio_defer(void (*func)(void *, void *), void *arg1, void *arg2) {
-  /* must have a task to defer */
-  if (!func)
-    goto call_error;
-  fio_defer_push_task(.func = func, .arg1 = arg1, .arg2 = arg2);
-  return 0;
-
-call_error:
-  return -1;
-}
-
-/** Performs all deferred functions until the queue had been depleted. */
-void fio_defer_perform(void) {
-  for (;;) {
-    fio_defer_task_s task = fio_defer_pop_task();
-    if (!task.func)
-      return;
-    task.func(task.arg1, task.arg2);
-  }
-}
-
-/** Returns true if there are deferred functions waiting for execution. */
-int fio_defer_has_queue(void) {
-  return deferred.reader != deferred.writer ||
-         deferred.reader->write != deferred.reader->read;
-}
-
-/** Clears the queue. */
-void fio_defer_clear_queue(void) { fio_defer_clear_tasks(); }
-
-static void fio_defer_thread_wait(void);
-static void *fio_defer_cycle(void *ignr) {
-  do {
-    fio_defer_perform();
-    fio_defer_thread_wait();
-  } while (fio_is_running());
-  return ignr;
-}
-
-/* thread pool type */
-typedef struct {
-  size_t thread_count;
-  void *threads[];
-} fio_defer_thread_pool_s;
-
-/* joins a thread pool */
-static void fio_defer_thread_pool_join(fio_defer_thread_pool_s *pool) {
-  for (size_t i = 0; i < pool->thread_count; ++i) {
-    fio_thread_join(pool->threads[i]);
-  }
-  free(pool);
-}
-
-/* creates a thread pool */
-static fio_defer_thread_pool_s *fio_defer_thread_pool_new(size_t count) {
-  if (!count)
-    count = 1;
-  fio_defer_thread_pool_s *pool =
-      malloc(sizeof(*pool) + (count * sizeof(void *)));
-  FIO_ASSERT_ALLOC(pool);
-  pool->thread_count = count;
-  for (size_t i = 0; i < count; ++i) {
-    pool->threads[i] = fio_thread_new(fio_defer_cycle, NULL);
-    if (!pool->threads[i]) {
-      pool->thread_count = i;
-      goto error;
-    }
-  }
-  return pool;
-error:
-  FIO_LOG_FATAL("couldn't spawn threads for thread pool, attempting shutdown.");
-  fio_stop();
-  fio_defer_thread_pool_join(pool);
-  return NULL;
-}
 /* *****************************************************************************
 Section Start Marker
 
@@ -1451,12 +1489,12 @@ static size_t fio_poll(void) {
         } else {
           // no error, then it's an active event(s)
           if (events[i].events & EPOLLOUT) {
-            fio_defer(deferred_on_ready, (void *)fd2uuid(events[i].data.fd),
-                      NULL);
+            fio_defer_push_urgent(deferred_on_ready,
+                                  (void *)fd2uuid(events[i].data.fd), NULL);
           }
           if (events[i].events & EPOLLIN)
-            fio_defer(deferred_on_data, (void *)fd2uuid(events[i].data.fd),
-                      NULL);
+            fio_defer_push_task(deferred_on_data,
+                                (void *)fd2uuid(events[i].data.fd), NULL);
         }
       } // end for loop
       total += active_count;
@@ -1584,7 +1622,8 @@ static size_t fio_poll(void) {
     for (int i = 0; i < active_count; i++) {
       // test for event(s) type
       if (events[i].filter == EVFILT_READ) {
-        fio_defer(deferred_on_data, (void *)fd2uuid(events[i].udata), NULL);
+        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(events[i].udata),
+                            NULL);
       }
       // connection errors should be reported after `read` in case there's data
       // left in the buffer... not that the edge case matters.
@@ -1598,7 +1637,8 @@ static size_t fio_poll(void) {
         fio_force_close(fd2uuid(events[i].udata));
       } else if (events[i].filter == EVFILT_WRITE) {
         // we can only write if there's no error in the socket
-        fio_defer(deferred_on_ready, (void *)fd2uuid(events[i].udata), NULL);
+        fio_defer_push_urgent(deferred_on_ready,
+                              ((void *)fd2uuid(events[i].udata)), NULL);
       }
     }
   } else if (active_count < 0) {
@@ -1732,12 +1772,12 @@ static size_t fio_poll(void) {
       if (list[i].revents & FIO_POLL_READ_EVENTS) {
         // FIO_LOG_DEBUG("Poll Read %zu => %p", i, (void *)fd2uuid(i));
         fio_poll_remove_read(i);
-        fio_defer(deferred_on_data, (void *)fd2uuid(i), NULL);
+        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(i), NULL);
       }
       if (list[i].revents & FIO_POLL_WRITE_EVENTS) {
         // FIO_LOG_DEBUG("Poll Write %zu => %p", i, (void *)fd2uuid(i));
         fio_poll_remove_write(i);
-        fio_defer(deferred_on_ready, (void *)fd2uuid(i), NULL);
+        fio_defer_push_urgent(deferred_on_ready, (void *)fd2uuid(i), NULL);
       }
       if (list[i].revents & (POLLHUP | POLLERR)) {
         // FIO_LOG_DEBUG("Poll Hangup %zu => %p", i, (void *)fd2uuid(i));
@@ -1847,7 +1887,7 @@ static void deferred_on_close(void *uuid_, void *pr_) {
   pr->on_close((intptr_t)uuid_, pr);
   return;
 postpone:
-  fio_defer(deferred_on_close, uuid_, pr_);
+  fio_defer_push_task(deferred_on_close, uuid_, pr_);
 }
 
 static void deferred_on_shutdown(void *arg, void *arg2) {
@@ -1880,7 +1920,23 @@ static void deferred_on_shutdown(void *arg, void *arg2) {
   }
   return;
 postpone:
-  fio_defer(deferred_on_shutdown, arg, NULL);
+  fio_defer_push_task(deferred_on_shutdown, arg, NULL);
+  (void)arg2;
+}
+
+static void deferred_on_ready_usr(void *arg, void *arg2) {
+  errno = 0;
+  fio_protocol_s *pr = protocol_try_lock(fio_uuid2fd(arg), FIO_PR_LOCK_WRITE);
+  if (!pr) {
+    if (errno == EBADF)
+      return;
+    goto postpone;
+  }
+  pr->on_ready((intptr_t)arg, pr);
+  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
+  return;
+postpone:
+  fio_defer_push_task(deferred_on_ready, arg, NULL);
   (void)arg2;
 }
 
@@ -1893,17 +1949,7 @@ static void deferred_on_ready(void *arg, void *arg2) {
   if (!uuid_data(arg).protocol) {
     return;
   }
-  fio_protocol_s *pr = protocol_try_lock(fio_uuid2fd(arg), FIO_PR_LOCK_WRITE);
-  if (!pr) {
-    if (errno == EBADF)
-      return;
-    goto postpone;
-  }
-  pr->on_ready((intptr_t)arg, pr);
-  protocol_unlock(pr, FIO_PR_LOCK_WRITE);
-  return;
-postpone:
-  fio_defer(deferred_on_ready, arg, NULL);
+  fio_defer_push_task(deferred_on_ready_usr, arg, NULL);
   (void)arg2;
 }
 
@@ -1928,7 +1974,7 @@ static void deferred_on_data(void *uuid, void *arg2) {
 postpone:
   if (arg2) {
     /* the event is being forced, so force rescheduling */
-    fio_defer(deferred_on_data, (void *)uuid, (void *)1);
+    fio_defer_push_task(deferred_on_data, (void *)uuid, (void *)1);
   } else {
     /* the protocol was locked, so there might not be any need for the event */
     fio_poll_add_read(fio_uuid2fd((intptr_t)uuid));
@@ -1950,7 +1996,7 @@ static void deferred_ping(void *arg, void *arg2) {
   protocol_unlock(pr, FIO_PR_LOCK_WRITE);
   return;
 postpone:
-  fio_defer(deferred_ping, arg, NULL);
+  fio_defer_push_task(deferred_ping, arg, NULL);
   (void)arg2;
 }
 
@@ -1962,13 +2008,13 @@ void fio_force_event(intptr_t uuid, enum fio_io_event ev) {
   switch (ev) {
   case FIO_EVENT_ON_DATA:
     fio_trylock(&uuid_data(uuid).scheduled);
-    fio_defer(deferred_on_data, (void *)uuid, (void *)1);
+    fio_defer_push_task(deferred_on_data, (void *)uuid, (void *)1);
     break;
   case FIO_EVENT_ON_TIMEOUT:
-    fio_defer(deferred_ping, (void *)uuid, NULL);
+    fio_defer_push_task(deferred_ping, (void *)uuid, NULL);
     break;
   case FIO_EVENT_ON_READY:
-    fio_defer(deferred_on_ready, (void *)uuid, NULL);
+    fio_defer_push_task(deferred_on_ready, (void *)uuid, NULL);
     break;
   }
 }
@@ -2835,7 +2881,7 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
   uuid_data(uuid).active = fio_data->last_cycle.tv_sec;
   fio_unlock(&uuid_data(uuid).protocol_lock);
   if (old_pr) {
-    fio_defer(deferred_on_close, (void *)uuid, old_pr);
+    fio_defer_push_task(deferred_on_close, (void *)uuid, old_pr);
   } else if (protocol) {
     fio_poll_add(fio_uuid2fd(uuid));
   }
@@ -2844,7 +2890,7 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
 invalid_uuid:
   fio_unlock(&uuid_data(uuid).protocol_lock);
   if (protocol)
-    fio_defer(deferred_on_close, (void *)uuid, protocol);
+    fio_defer_push_task(deferred_on_close, (void *)uuid, protocol);
   if (uuid == -1)
     errno = EBADF;
   else
@@ -2971,8 +3017,8 @@ void fio_state_callback_force(callback_type_e c_type) {
   case FIO_CALL_ON_IDLE: /* idle callbacks are orderless and evented */
     FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
       callback_data_s *tmp = FIO_LS_EMBD_OBJ(callback_data_s, node, pos);
-      fio_defer(fio_state_on_idle_perform, (void *)(uintptr_t)tmp->func,
-                tmp->arg);
+      fio_defer_push_task(fio_state_on_idle_perform,
+                          (void *)(uintptr_t)tmp->func, tmp->arg);
     }
     break;
 
@@ -3058,7 +3104,7 @@ postpone:
     fio_free(args);
     return;
   }
-  fio_defer(fio_io_task_perform, uuid_, args_);
+  fio_defer_push_task(fio_io_task_perform, uuid_, args_);
 }
 /**
  * Schedules a protected connection task. The task will run within the
@@ -3071,14 +3117,14 @@ void fio_defer_io_task FIO_IGNORE_MACRO(intptr_t uuid,
                                         fio_defer_iotask_args_s args) {
   if (!args.task) {
     if (args.fallback)
-      fio_defer((void (*)(void *, void *))args.fallback, (void *)uuid,
-                args.udata);
+      fio_defer_push_task((void (*)(void *, void *))args.fallback, (void *)uuid,
+                          args.udata);
     return;
   }
   fio_defer_iotask_args_s *cpy = fio_malloc(sizeof(*cpy));
   FIO_ASSERT_ALLOC(cpy);
   *cpy = args;
-  fio_defer(fio_io_task_perform, (void *)uuid, cpy);
+  fio_defer_push_task(fio_io_task_perform, (void *)uuid, cpy);
 }
 
 /* *****************************************************************************
@@ -3269,7 +3315,7 @@ static void fio_review_timeout(void *arg, void *ignr) {
   if (prt_meta(tmp).locks[FIO_PR_LOCK_TASK] ||
       prt_meta(tmp).locks[FIO_PR_LOCK_WRITE])
     goto unlock;
-  fio_defer(deferred_ping, (void *)fio_fd2uuid((int)fd), NULL);
+  fio_defer_push_task(deferred_ping, (void *)fio_fd2uuid((int)fd), NULL);
 unlock:
   protocol_unlock(tmp, FIO_PR_LOCK_STATE);
 finish:
@@ -3282,7 +3328,7 @@ finish:
     return;
   }
 reschedule:
-  fio_defer(fio_review_timeout, (void *)fd, NULL);
+  fio_defer_push_task(fio_review_timeout, (void *)fd, NULL);
 }
 
 /* reactor pattern cycling - common actions */
@@ -3312,7 +3358,7 @@ static void fio_cycle_schedule_events(void) {
   if (fio_data->need_review && fio_data->last_cycle.tv_sec != last_to_review) {
     last_to_review = fio_data->last_cycle.tv_sec;
     fio_data->need_review = 0;
-    fio_defer(fio_review_timeout, (void *)0, NULL);
+    fio_defer_push_task(fio_review_timeout, (void *)0, NULL);
   }
 }
 
@@ -3320,7 +3366,7 @@ static void fio_cycle_schedule_events(void) {
 static void fio_cycle_unwind(void *ignr, void *ignr2) {
   if (fio_data->connection_count) {
     fio_cycle_schedule_events();
-    fio_defer(fio_cycle_unwind, ignr, ignr2);
+    fio_defer_push_task(fio_cycle_unwind, ignr, ignr2);
     return;
   }
   fio_stop();
@@ -3331,7 +3377,7 @@ static void fio_cycle_unwind(void *ignr, void *ignr2) {
 static void fio_cycle(void *ignr, void *ignr2) {
   fio_cycle_schedule_events();
   if (fio_data->active) {
-    fio_defer(fio_cycle, ignr, ignr2);
+    fio_defer_push_task(fio_cycle, ignr, ignr2);
     return;
   }
   return;
@@ -3360,7 +3406,7 @@ static void fio_worker_startup(void) {
   fio_data->need_review = 1;
 
   /* the cycle task will loop by re-scheduling until it's time to finish */
-  fio_defer(fio_cycle, NULL, NULL);
+  fio_defer_push_task(fio_cycle, NULL, NULL);
 
   /* A single thread doesn't need a pool. */
   if (fio_data->threads > 1) {
@@ -3380,10 +3426,10 @@ static void fio_worker_cleanup(void) {
   fio_state_callback_force(FIO_CALL_ON_SHUTDOWN);
   for (size_t i = 0; i <= fio_data->max_protocol_fd; ++i) {
     if (fd_data(i).protocol) {
-      fio_defer(deferred_on_shutdown, (void *)fd2uuid(i), NULL);
+      fio_defer_push_task(deferred_on_shutdown, (void *)fd2uuid(i), NULL);
     }
   }
-  fio_defer(fio_cycle_unwind, NULL, NULL);
+  fio_defer_push_task(fio_cycle_unwind, NULL, NULL);
   fio_defer_perform();
   for (size_t i = 0; i <= fio_data->max_protocol_fd; ++i) {
     if (fd_data(i).protocol || fd_data(i).open) {
@@ -3443,7 +3489,7 @@ static void *fio_sentinel_worker_thread(void *arg) {
         FIO_LOG_WARNING("Child worker (%d) shutdown. Respawning worker.",
                         child);
       }
-      fio_defer(fio_sentinel_task, NULL, NULL);
+      fio_defer_push_task(fio_sentinel_task, NULL, NULL);
       fio_unlock(&fio_fork_lock);
     }
 #endif
@@ -4785,7 +4831,7 @@ void fio_message_defer(fio_msg_s *msg_) {
 static void fio_perform_subscription_callback(void *s_, void *msg_) {
   subscription_s *s = s_;
   if (fio_trylock(&s->lock)) {
-    fio_defer(fio_perform_subscription_callback, s_, msg_);
+    fio_defer_push_task(fio_perform_subscription_callback, s_, msg_);
     return;
   }
   fio_msg_internal_s *msg = (fio_msg_internal_s *)msg_;
@@ -4807,7 +4853,7 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
   }
   fio_unlock(&s->lock);
   if (m.marker) {
-    fio_defer(fio_perform_subscription_callback, s_, msg_);
+    fio_defer_push_task(fio_perform_subscription_callback, s_, msg_);
     return;
   }
   fio_msg_internal_free(msg);
@@ -4823,7 +4869,7 @@ static void fio_publish2channel(channel_s *ch, fio_msg_internal_s *msg) {
     }
     fio_atomic_add(&s->ref, 1);
     fio_atomic_add(&msg->ref, 1);
-    fio_defer(fio_perform_subscription_callback, s, msg);
+    fio_defer_push_task(fio_perform_subscription_callback, s, msg);
   }
   fio_msg_internal_free(msg);
 }
@@ -4834,7 +4880,7 @@ static void fio_publish2channel_task(void *ch_, void *msg) {
   if (!msg)
     goto finish;
   if (fio_trylock(&ch->lock)) {
-    fio_defer(fio_publish2channel_task, ch, msg);
+    fio_defer_push_urgent(fio_publish2channel_task, ch, msg);
     return;
   }
   fio_publish2channel(ch, msg);
@@ -4859,7 +4905,8 @@ static void fio_publish2process(fio_msg_internal_s *m) {
   }
   /* exact match */
   if (ch) {
-    fio_defer(fio_publish2channel_task, &ch->id, fio_msg_internal_dup(m));
+    fio_defer_push_urgent(fio_publish2channel_task, &ch->id,
+                          fio_msg_internal_dup(m));
   }
   if (m->filter == 0) {
     /* pattern matching match */
@@ -4870,8 +4917,9 @@ static void fio_publish2process(fio_msg_internal_s *m) {
       }
       pattern_s *pattern = (pattern_s *)p->obj;
       if (pattern->match(fio_str_info(&pattern->ch.id), m->channel)) {
-        fio_defer(fio_publish2channel_task, fio_str_dup(&pattern->ch.id),
-                  fio_msg_internal_dup(m));
+        fio_defer_push_urgent(fio_publish2channel_task,
+                              fio_str_dup(&pattern->ch.id),
+                              fio_msg_internal_dup(m));
       }
     }
     fio_unlock(&fio_postoffice.patterns.lock);
@@ -5343,8 +5391,8 @@ static void fio_cluster_client_handler(struct cluster_pr_s *pr) {
 static void fio_cluster_client_sender(fio_str_s *data, intptr_t ignr_) {
   if (!uuid_is_valid(cluster_data.uuid) && fio_data->active) {
     /* delay message delivery until we have a vaild uuid */
-    fio_defer((void (*)(void *, void *))fio_cluster_client_sender, data,
-              (void *)ignr_);
+    fio_defer_push_task((void (*)(void *, void *))fio_cluster_client_sender,
+                        data, (void *)ignr_);
     return;
   }
   fio_str_send_free2(cluster_data.uuid, data);
@@ -8443,7 +8491,9 @@ Testing fio_defer task system
 
 #define FIO_DEFER_TOTAL_COUNT (512 * 1024)
 
+#ifndef FIO_DEFER_TEST_PRINT
 #define FIO_DEFER_TEST_PRINT 0
+#endif
 
 static void sample_task(void *i_count, void *unused2) {
   (void)(unused2);
@@ -8511,7 +8561,7 @@ static void fio_defer_test(void) {
                "defer deallocation vs. allocation error, %zu != %zu",
                fio_defer_count_dealloc, fio_defer_count_alloc);
   }
-  FIO_ASSERT(deferred.writer == &fio_defer_static_queue,
+  FIO_ASSERT(task_queue_normal.writer == &task_queue_normal.static_queue,
              "defer library didn't release dynamic queue (should be static)");
   fprintf(stderr, "\n* passed.\n");
 }
