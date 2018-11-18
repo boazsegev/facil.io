@@ -1,5 +1,10 @@
 # Change Log
 
+### v. 0.7.0.beta3
+
+**Optimization**: (`fio`) added an urgent task queue for outbound IO, possibly improving protection against non-evented / blocking user code.
+
+
 ### v. 0.7.0.beta2
 
 **Breaking Changes**!

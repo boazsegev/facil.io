@@ -167,7 +167,8 @@ Version and helper macros
 
 #ifndef FIO_PRINT_STATE
 /**
- * Prints some state massages to stderr (startup / shutdown / etc').
+ * Enables the FIO_LOG_STATE(msg,...) macro, which prints information level
+ * messages to stderr.
  */
 #define FIO_PRINT_STATE 1
 #endif
