@@ -526,15 +526,6 @@ typedef struct {
   void *udata;
 } websocket_sub_data_s;
 
-static void websocket_on_unsubscribe(void *u1, void *u2) {
-  websocket_sub_data_s *d = u2;
-  if (d->on_unsubscribe) {
-    d->on_unsubscribe(d->udata);
-  }
-  free(d);
-  (void)u1;
-}
-
 static inline void websocket_on_pubsub_message_direct_internal(fio_msg_s *msg,
                                                                uint8_t txt) {
   fio_protocol_s *pr =
@@ -563,7 +554,6 @@ static inline void websocket_on_pubsub_message_direct_internal(fio_msg_s *msg,
     break;
   }
   if (pre_wrapped) {
-    // fprintf(stderr, "INFO: WebSocket Pub/Sub optimized for broadcast\n");
     fiobj_send_free((intptr_t)msg->udata1, fiobj_dup(pre_wrapped));
     goto finish;
   }
@@ -607,6 +597,25 @@ static void websocket_on_pubsub_message(fio_msg_s *msg) {
   fio_protocol_unlock(pr, FIO_PR_LOCK_TASK);
 }
 
+static void websocket_on_unsubscribe(void *u1, void *u2) {
+  websocket_sub_data_s *d = u2;
+  if (d->on_unsubscribe) {
+    d->on_unsubscribe(d->udata);
+  }
+
+  if ((intptr_t)d->on_message == (intptr_t)WEBSOCKET_OPTIMIZE_PUBSUB) {
+    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 0);
+  } else if ((intptr_t)d->on_message ==
+             (intptr_t)WEBSOCKET_OPTIMIZE_PUBSUB_TEXT) {
+    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_TEXT, 0);
+  } else if ((intptr_t)d->on_message ==
+             (intptr_t)WEBSOCKET_OPTIMIZE_PUBSUB_BINARY) {
+    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_BINARY, 0);
+  }
+  free(d);
+  (void)u1;
+}
+
 /**
  * Returns a subscription ID on success and 0 on failure.
  */
@@ -621,18 +630,28 @@ uintptr_t websocket_subscribe(struct websocket_subscribe_s args) {
       .on_message = args.on_message,
       .on_unsubscribe = args.on_unsubscribe,
   };
-  subscription_s *sub = fio_subscribe(
-          .channel = args.channel, .match = args.match,
-          .on_unsubscribe = websocket_on_unsubscribe,
-          .on_message =
-              (args.on_message
-                   ? websocket_on_pubsub_message
-                   : args.force_binary
-                         ? websocket_on_pubsub_message_direct_bin
-                         : args.force_text
-                               ? websocket_on_pubsub_message_direct_txt
-                               : websocket_on_pubsub_message_direct),
-          .udata1 = (void *)args.ws->fd, .udata2 = d);
+  void (*handler)(fio_msg_s *) = websocket_on_pubsub_message;
+  if (!args.on_message) {
+    intptr_t br_type;
+    if (args.force_binary) {
+      br_type = WEBSOCKET_OPTIMIZE_PUBSUB_BINARY;
+      handler = websocket_on_pubsub_message_direct_bin;
+    } else if (args.force_text) {
+      br_type = WEBSOCKET_OPTIMIZE_PUBSUB_TEXT;
+      handler = websocket_on_pubsub_message_direct_txt;
+    } else {
+      br_type = WEBSOCKET_OPTIMIZE_PUBSUB;
+      handler = websocket_on_pubsub_message_direct;
+    }
+    websocket_optimize4broadcasts(br_type, 1);
+    d->on_message =
+        (void (*)(ws_s *, fio_str_info_s, fio_str_info_s, void *))br_type;
+  }
+  subscription_s *sub =
+      fio_subscribe(.channel = args.channel, .match = args.match,
+                    .on_unsubscribe = websocket_on_unsubscribe,
+                    .on_message = handler, .udata1 = (void *)args.ws->fd,
+                    .udata2 = d);
   if (!sub) {
     /* don't free `d`, return (`d` freed by fio_subscribe) */
     return 0;
