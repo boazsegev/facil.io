@@ -3315,8 +3315,11 @@ static void fio_review_timeout(void *arg, void *ignr) {
   if (!fd_data(fd).protocol || (fd_data(fd).active + timeout >= review))
     goto finish;
   tmp = protocol_try_lock(fd, FIO_PR_LOCK_STATE);
-  if (!tmp)
+  if (!tmp) {
+    if (errno == EBADF)
+      goto finish;
     goto reschedule;
+  }
   if (prt_meta(tmp).locks[FIO_PR_LOCK_TASK] ||
       prt_meta(tmp).locks[FIO_PR_LOCK_WRITE])
     goto unlock;
