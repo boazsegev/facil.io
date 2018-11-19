@@ -3847,7 +3847,7 @@ Logging macros accept `printf` type arguments. i.e.:
 FIO_LOG_DEBUG("The meaning of life: %d", 42);
 ```
 
-### Other Macros that effect facil.io's behavior / compilation
+### Compilation Macros
 
 The facil.io core library has some hard coded values that can be adjusted by defining the following macros during compile time.
 
@@ -3859,6 +3859,11 @@ To be more accurate, this number represents the highest `fd` value allowed by li
 
 If the soft coded OS limit is higher than this number, than this limit will be enforced instead.
 
+#### `FIO_ENGINE_POLL`
+
+If set, facil.io will prefer the `poll` system call over `epoll` or `kqueue`.
+
+It should be noted that for most use-cases, `epoll` and `kqueue` will perform better.
 
 #### `FIO_CPU_CORES_LIMIT`
 
@@ -3880,9 +3885,21 @@ By default, `FIO_DEFER_THROTTLE_PROGRESSIVE` is true (1).
 
 #### `FIO_PRINT_STATE`
 
-When this macro is true (1), facil.io will print some state massages to stderr (startup / shutdown messages, etc').
+When this macro is true (1), facil.io will enable the `FIO_LOG_STATE(msg, ...)` macro to print some default information level messages to stderr (startup / shutdown messages, etc').
 
 By default this macro is set to true.
+
+#### `FIO_POLL_MAX_EVENTS`
+
+This macro sets the maximum number of IO events facil.io will pre-schedule at the beginning of each cycle, when using `epoll` or `kqueue` (not when using `poll`).
+
+Since this requires stack pre-allocated memory, this number shouldn't be set too high. Reasonable values range from 8 to 160.
+
+The default value is currently 64.
+
+#### `FIO_USE_URGENT_QUEUE`
+
+This macro can be used to disable the priority queue given to outbound IO.
 
 #### `FIO_PUBSUB_SUPPORT`
 
