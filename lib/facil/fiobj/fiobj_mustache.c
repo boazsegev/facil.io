@@ -66,7 +66,7 @@ b = a.map {|s| s.length }
 puts "static char *html_escape_strs[] = {", a.to_s.slice(1..-2) ,"};",
      "static uint8_t html_escape_len[] = {", b.to_s.slice(1..-2),"};"
 */
-static char *html_escape_strs[] = {
+static const char *html_escape_strs[] = {
     "&#x00;", "&#x01;", "&#x02;", "&#x03;", "&#x04;", "&#x05;", "&#x06;",
     "&#x07;", "&#x08;", "&#x09;", "&#x0a;", "&#x0b;", "&#x0c;", "&#x0d;",
     "&#x0e;", "&#x0f;", "&#x10;", "&#x11;", "&#x12;", "&#x13;", "&#x14;",

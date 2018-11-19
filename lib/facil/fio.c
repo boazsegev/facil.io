@@ -5152,7 +5152,7 @@ static void fio_cluster_init(void) {
   uint32_t tmp_folder_len = 0;
   if (!tmp_folder || ((tmp_folder_len = (uint32_t)strlen(tmp_folder)) > 100)) {
 #ifdef P_tmpdir
-    tmp_folder = P_tmpdir;
+    tmp_folder = (char *)P_tmpdir;
     if (tmp_folder)
       tmp_folder_len = (uint32_t)strlen(tmp_folder);
 #else

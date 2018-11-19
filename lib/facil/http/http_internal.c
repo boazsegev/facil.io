@@ -68,7 +68,7 @@ upgrade:
     return;
   }
 eventsource:
-  settings->on_upgrade(h, "sse", 3);
+  settings->on_upgrade(h, (char *)"sse", 3);
   return;
 }
 
@@ -252,8 +252,8 @@ static void http_lib_init(void *ignr_) {
   fiobj_obj2hash(HTTP_HVALUE_WS_VERSION);
 
 #define REGISTER_MIME(ext, type)                                               \
-  http_mimetype_register(ext, sizeof(ext) - 1,                                 \
-                         fiobj_str_new(type, sizeof(type) - 1))
+  http_mimetype_register((char *)ext, sizeof(ext) - 1,                         \
+                         fiobj_str_new((char *)type, sizeof(type) - 1))
 
   REGISTER_MIME("123", "application/vnd.lotus-1-2-3");
   REGISTER_MIME("3dml", "text/vnd.in3d.3dml");

@@ -840,10 +840,10 @@ FIO_IGNORE_MACRO(struct redis_engine_create_args args) {
   }
 
   if (!args.address.data || !args.address.len) {
-    args.address = (fio_str_info_s){.len = 9, .data = "localhost"};
+    args.address = (fio_str_info_s){.len = 9, .data = (char *)"localhost"};
   }
   if (!args.port.data || !args.port.len) {
-    args.port = (fio_str_info_s){.len = 4, .data = "6379"};
+    args.port = (fio_str_info_s){.len = 4, .data = (char *)"6379"};
   }
   redis_engine_s *r =
       fio_malloc(sizeof(*r) + args.port.len + 1 + args.address.len + 1 +

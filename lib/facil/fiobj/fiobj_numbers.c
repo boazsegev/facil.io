@@ -53,12 +53,12 @@ static fio_str_info_s fio_i2str(const FIOBJ o) {
 }
 static fio_str_info_s fio_f2str(const FIOBJ o) {
   if (isnan(obj2float(o)->f))
-    return (fio_str_info_s){.data = "NaN", .len = 3};
+    return (fio_str_info_s){.data = (char *)"NaN", .len = 3};
   else if (isinf(obj2float(o)->f)) {
     if (obj2float(o)->f > 0)
-      return (fio_str_info_s){.data = "Infinity", .len = 8};
+      return (fio_str_info_s){.data = (char *)"Infinity", .len = 8};
     else
-      return (fio_str_info_s){.data = "-Infinity", .len = 9};
+      return (fio_str_info_s){.data = (char *)"-Infinity", .len = 9};
   }
   return (fio_str_info_s){
       .data = num_buffer,

@@ -799,7 +799,7 @@ Protocol Data
 ***************************************************************************** */
 
 // clang-format off
-#define HTTP_SET_STATUS_STR(status, str) [((status)-100)] = { .data = ("HTTP/1.1 " #status " " str "\r\n"), .len = (sizeof("HTTP/1.1 " #status " " str "\r\n") - 1) }
+#define HTTP_SET_STATUS_STR(status, str) [((status)-100)] = { .data = (char*)("HTTP/1.1 " #status " " str "\r\n"), .len = (sizeof("HTTP/1.1 " #status " " str "\r\n") - 1) }
 // #undef HTTP_SET_STATUS_STR
 // clang-format on
 

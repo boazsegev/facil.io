@@ -169,7 +169,7 @@ inline static int consume_request_line(struct http1_fio_parser_args_s *args,
       return -1;
     *tmp = ' ';
     if (!seek2ch(&host_end, tmp, '/')) {
-      if (args->on_path(args->parser, "/", 1))
+      if (args->on_path(args->parser, (char *)"/", 1))
         return -1;
       goto start_version;
     }
@@ -201,8 +201,8 @@ start_version:
   if (args->on_http_version(args->parser, (char *)start, end - start))
     return -1;
   /* */
-  if (host_start && args->on_header(args->parser, "host", 4, (char *)host_start,
-                                    host_end - host_start))
+  if (host_start && args->on_header(args->parser, (char *)"host", 4,
+                                    (char *)host_start, host_end - host_start))
     return -1;
   return 0;
 }

@@ -608,8 +608,8 @@ found_file:
   switch (s.len) {
   case 7:
     if (!strncasecmp("options", s.data, 7)) {
-      http_set_header2(h, (fio_str_info_s){.data = "allow", .len = 5},
-                       (fio_str_info_s){.data = "GET, HEAD", .len = 9});
+      http_set_header2(h, (fio_str_info_s){.data = (char *)"allow", .len = 5},
+                       (fio_str_info_s){.data = (char *)"GET, HEAD", .len = 9});
       h->status = 200;
       http_finish(h);
       return 0;
@@ -694,7 +694,8 @@ int http_send_error(http_s *r, size_t error) {
   if (http_sendfile2(r, http2protocol(r)->settings->public_folder,
                      http2protocol(r)->settings->public_folder_length, buffer,
                      pos)) {
-    http_set_header(r, HTTP_HEADER_CONTENT_TYPE, http_mimetype_find("txt", 3));
+    http_set_header(r, HTTP_HEADER_CONTENT_TYPE,
+                    http_mimetype_find((char *)"txt", 3));
     fio_str_info_s t = http_status2str(error);
     http_send_body(r, t.data, t.len);
   }
@@ -1148,15 +1149,15 @@ intptr_t http_connect(const char *address,
     } else {
       p++;
       if (!len) {
-        a = "localhost";
+        a = (char *)"localhost";
         len = 9;
       }
     }
   } else {
     if (is_secure)
-      p = "443";
+      p = (char *)"443";
     else
-      p = "80";
+      p = (char *)"80";
   }
 
   /* set settings */
@@ -1179,7 +1180,7 @@ intptr_t http_connect(const char *address,
   h->status = 0;
   h->path = path;
   settings->udata = h;
-  http_set_header2(h, (fio_str_info_s){.data = "host", .len = 4},
+  http_set_header2(h, (fio_str_info_s){.data = (char *)"host", .len = 4},
                    (fio_str_info_s){.data = a, .len = len});
   intptr_t ret;
   if (is_websocket) {
@@ -1403,15 +1404,15 @@ int http_sse_write(http_sse_s *sse, struct http_sse_write_args args) {
                          args.data.len + 2 + 7 + 10 + 4;
     buf = fiobj_str_buf(total);
   }
-  http_sse_copy2str(buf, "id: ", 4, args.id);
-  http_sse_copy2str(buf, "event: ", 7, args.event);
+  http_sse_copy2str(buf, (char *)"id: ", 4, args.id);
+  http_sse_copy2str(buf, (char *)"event: ", 7, args.event);
   if (args.retry) {
     FIOBJ i = fiobj_num_new(args.retry);
-    fiobj_str_write(buf, "retry: ", 7);
+    fiobj_str_write(buf, (char *)"retry: ", 7);
     fiobj_str_join(buf, i);
     fiobj_free(i);
   }
-  http_sse_copy2str(buf, "data: ", 6, args.data);
+  http_sse_copy2str(buf, (char *)"data: ", 6, args.data);
   fiobj_str_write(buf, "\r\n", 2);
   return FIO_LS_EMBD_OBJ(http_sse_internal_s, sse, sse)
       ->vtable->http_sse_write(sse, buf);
@@ -2819,7 +2820,7 @@ static char invalid_cookie_value_char[256] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
 // clang-format off
-#define HTTP_SET_STATUS_STR(status, str) [status-100] = { .data = (str), .len = (sizeof(str) - 1) }
+#define HTTP_SET_STATUS_STR(status, str) [status-100] = { .data = (char *)(str), .len = (sizeof(str) - 1) }
 // clang-format on
 
 /** Returns the status as a C string struct */
