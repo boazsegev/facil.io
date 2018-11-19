@@ -2903,7 +2903,8 @@ invalid_uuid:
   return -1;
 }
 
-/** Attaches (or updates) a protocol object to a socket UUID.
+/**
+ * Attaches (or updates) a protocol object to a socket UUID.
  * Returns -1 on error and 0 on success.
  */
 void fio_attach(intptr_t uuid, fio_protocol_s *protocol) {
@@ -6454,6 +6455,7 @@ void *fio_malloc(size_t size) {
   }
   if (size >= FIO_MEMORY_BLOCK_ALLOC_LIMIT) {
     /* system allocation - must be block aligned */
+    // FIO_LOG_WARNING("fio_malloc re-routed to mmap - big allocation");
     return big_alloc(size);
   }
   /* ceiling for 16 byte alignement, translated to 16 byte units */
