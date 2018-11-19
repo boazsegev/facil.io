@@ -329,7 +329,7 @@ void *fio_mmap(size_t size);
 void fio_malloc_after_fork(void);
 
 #if FIO_FORCE_MALLOC
-#define FIO_MALLOC(size) malloc((size))
+#define FIO_MALLOC(size) calloc((size), 1)
 #define FIO_CALLOC(size, units) calloc((size), (units))
 #define FIO_REALLOC(ptr, new_length, existing_data_length)                     \
   realloc((ptr), (new_length))
@@ -1714,8 +1714,6 @@ struct fio_msg_metadata_s {
   void (*on_finish)(fio_msg_s *msg, void *metadata);
   /** The pointer to be disclosed to the `fio_message_metadata` function. */
   void *metadata;
-  /** RESERVED for internal use (Metadata linked list). */
-  fio_msg_metadata_s *next;
 };
 
 /**

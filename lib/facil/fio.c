@@ -4323,21 +4323,30 @@ struct subscription_s {
   fio_lock_i unsubscribed;
 };
 
+/* pub/sub channels and core data sets have a long life, so avoid fio_malloc */
+#if !FIO_FORCE_MALLOC
+#define FIO_FORCE_MALLOC 1
+#define FIO_FORCE_MALLOC_IS_TMP 1
+#endif
+
 #define FIO_SET_NAME fio_ch_set
 #define FIO_SET_OBJ_TYPE channel_s *
 #define FIO_SET_OBJ_COMPARE(o1, o2) fio_str_iseq(&(o1)->id, &(o2)->id)
 #define FIO_SET_OBJ_DESTROY(obj) fio_str_free2(&(obj)->id)
 #include <fio.h>
 
-#define FIO_SET_NAME fio_meta_set
-#define FIO_SET_OBJ_TYPE fio_msg_metadata_fn
-#define FIO_SET_OBJ_COMPARE(k1, k2) ((k1) == (k2))
+#define FIO_ARY_NAME fio_meta_ary
+#define FIO_ARY_TYPE fio_msg_metadata_fn
 #include <fio.h>
 
 #define FIO_SET_NAME fio_engine_set
 #define FIO_SET_OBJ_TYPE fio_pubsub_engine_s *
 #define FIO_SET_OBJ_COMPARE(k1, k2) ((k1) == (k2))
 #include <fio.h>
+
+#if FIO_FORCE_MALLOC_IS_TMP
+#undef FIO_FORCE_MALLOC
+#endif
 
 struct fio_collection_s {
   fio_ch_set_s channels;
@@ -4356,7 +4365,7 @@ static struct {
     fio_lock_i lock;
   } engines;
   struct {
-    fio_meta_set_s set;
+    fio_meta_ary_s ary;
     fio_lock_i lock;
   } meta;
 } fio_postoffice = {
@@ -4370,22 +4379,168 @@ static struct {
 /** used to contain the message before it's passed to the handler */
 typedef struct {
   fio_msg_s msg;
-  fio_msg_metadata_s *meta;
   size_t marker;
+  size_t meta_len;
+  fio_msg_metadata_s *meta;
 } fio_msg_client_s;
 
 /** used to contain the message internally while publishing */
 typedef struct {
-  fio_msg_metadata_s *meta;
   fio_str_info_s channel;
   fio_str_info_s data;
   uintptr_t ref; /* internal reference counter */
   int32_t filter;
   int8_t is_json;
+  size_t meta_len;
+  fio_msg_metadata_s meta[];
 } fio_msg_internal_s;
 
 /** The default engine (settable). */
 fio_pubsub_engine_s *FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
+
+/* *****************************************************************************
+Internal message object creation
+***************************************************************************** */
+
+#if 1 /* Copy Meta-Data Array vs. lock and unlock per callback */
+
+/** returns a temporary fio_meta_ary_s with a copy of the metadata array */
+static fio_meta_ary_s fio_postoffice_meta_copy_new(void) {
+  fio_meta_ary_s t = FIO_ARY_INIT;
+  if (!fio_meta_ary_count(&fio_postoffice.meta.ary)) {
+    return t;
+  }
+  fio_lock(&fio_postoffice.meta.lock);
+  size_t len = fio_meta_ary_count(&fio_postoffice.meta.ary);
+  if (len) {
+    t.end = t.capa = len;
+    t.arry = fio_malloc(sizeof(*t.arry) * len);
+    FIO_ASSERT_ALLOC(t.arry);
+    memcpy(t.arry, fio_meta_ary_to_a(&fio_postoffice.meta.ary),
+           sizeof(*t.arry) * len);
+  }
+  fio_unlock(&fio_postoffice.meta.lock);
+  return t;
+}
+
+/** frees a temporary copy created by postoffice_meta_copy_new */
+static void fio_postoffice_meta_copy_free(fio_meta_ary_s cpy) {
+  fio_free(cpy.arry);
+}
+
+static fio_msg_internal_s *
+fio_pubsub_create_message(int32_t filter, fio_str_info_s ch,
+                          fio_str_info_s data, int8_t is_json, int8_t cpy) {
+  fio_meta_ary_s t = FIO_ARY_INIT;
+  if (!filter)
+    t = fio_postoffice_meta_copy_new();
+  fio_msg_internal_s *m = fio_malloc(sizeof(*m) + (sizeof(*m->meta) * t.end) +
+                                     (ch.len + 1) + (data.len + 1));
+  *m = (fio_msg_internal_s){
+      .filter = filter,
+      .channel =
+          (fio_str_info_s){.data = (char *)(m->meta + t.end), .len = ch.len},
+      .data = (fio_str_info_s){.data = ((char *)(m->meta + t.end) + ch.len + 1),
+                               .len = data.len},
+      .is_json = is_json,
+      .ref = 1,
+      .meta_len = t.end,
+  };
+  // m->channel.data[ch.len] = 0; /* redundant, fio_malloc is all zero */
+  // m->data.data[data.len] = 0; /* redundant, fio_malloc is all zero */
+  if (cpy) {
+    memcpy(m->channel.data, ch.data, ch.len);
+    memcpy(m->data.data, data.data, data.len);
+    while (t.end) {
+      --t.end;
+      m->meta[t.end] = t.arry[t.end](m->channel, m->data, is_json);
+    }
+  }
+  fio_postoffice_meta_copy_free(t);
+  return m;
+}
+
+static void fio_pubsub_create_message_update_meta(fio_msg_internal_s *m) {
+  if (m->filter || !m->meta_len)
+    return;
+  fio_meta_ary_s t = fio_postoffice_meta_copy_new();
+  if (t.end > m->meta_len)
+    t.end = m->meta_len;
+  m->meta_len = t.end;
+  while (t.end) {
+    --t.end;
+    m->meta[t.end] = t.arry[t.end](m->channel, m->data, m->is_json);
+  }
+  fio_postoffice_meta_copy_free(t);
+}
+
+#else
+
+/** returns the pub/sub metadata count safely (locks) */
+static size_t fio_postoffice_meta_count(void) {
+  size_t count;
+  fio_lock(&fio_postoffice.meta.lock);
+  count = fio_meta_ary_count(&fio_postoffice.meta.ary);
+  fio_unlock(&fio_postoffice.meta.lock);
+  return count;
+}
+/** collects a callback by index, from within a loop */
+static fio_msg_metadata_fn fio_postoffice_meta_index(intptr_t index) {
+  fio_msg_metadata_fn cb;
+  fio_lock(&fio_postoffice.meta.lock);
+  cb = fio_meta_ary_get(&fio_postoffice.meta.ary, index);
+  fio_unlock(&fio_postoffice.meta.lock);
+  return cb;
+}
+
+static fio_msg_internal_s *
+fio_pubsub_create_message(int32_t filter, fio_str_info_s ch,
+                          fio_str_info_s data, int8_t is_json, int8_t cpy) {
+  size_t meta_len = 0;
+  if (!filter)
+    meta_len = fio_postoffice_meta_count();
+  fio_msg_internal_s *m =
+      fio_malloc(sizeof(*m) + (sizeof(*m->meta) * meta_len) + (ch.len + 1) +
+                 (data.len + 1));
+  *m = (fio_msg_internal_s){
+      .filter = filter,
+      .channel =
+          (fio_str_info_s){.data = (char *)(m->meta + meta_len), .len = ch.len},
+      .data =
+          (fio_str_info_s){.data = ((char *)(m->meta + meta_len) + ch.len + 1),
+                           .len = data.len},
+      .is_json = is_json,
+      .ref = 1,
+      .meta_len = meta_len,
+  };
+  // m->channel.data[ch.len] = 0; /* redundant, fio_malloc is all zero */
+  // m->data.data[data.len] = 0; /* redundant, fio_malloc is all zero */
+  if (cpy) {
+    memcpy(m->channel.data, ch.data, ch.len);
+    memcpy(m->data.data, data.data, data.len);
+    while (meta_len) {
+      --meta_len;
+      fio_msg_metadata_fn cb = fio_postoffice_meta_index(meta_len);
+      if (cb)
+        m->meta[meta_len] = cb(m->channel, m->data, is_json);
+    }
+  }
+  return m;
+}
+
+static void fio_pubsub_create_message_update_meta(fio_msg_internal_s *m) {
+  if (m->filter || !m->meta_len)
+    return;
+  size_t meta_len = m->meta_len;
+  while (meta_len) {
+    --meta_len;
+    fio_msg_metadata_fn cb = fio_postoffice_meta_index(meta_len);
+    if (cb)
+      m->meta[meta_len] = cb(m->channel, m->data, m->is_json);
+  }
+}
+
+#endif
 
 /* *****************************************************************************
 Cluster forking handler
@@ -4704,60 +4859,25 @@ void fio_pubsub_reattach(fio_pubsub_engine_s *eng) {
  * Message Metadata handling
  **************************************************************************** */
 
-static inline void fio_call_meta_callbacks(fio_msg_internal_s *m,
-                                           fio_str_info_s ch,
-                                           fio_str_info_s msg,
-                                           uint8_t is_json) {
-  uintptr_t len;
-  fio_meta_set__ordered_s_ *cpy = NULL;
-  fio_lock(&fio_postoffice.meta.lock);
-  /* don't call user code within a lock - copy the array :-( */
-  len = fio_postoffice.meta.set.pos;
-  if (len && fio_meta_set_count(&fio_postoffice.meta.set)) {
-    cpy = fio_malloc(sizeof(*cpy) * len);
-    FIO_ASSERT_ALLOC(cpy);
-    memcpy(cpy, fio_postoffice.meta.set.ordered, sizeof(*cpy) * len);
-  }
-  fio_unlock(&fio_postoffice.meta.lock);
-  if (!cpy) {
-    return;
-  }
-  for (uintptr_t i = 0; i < len; ++i) {
-    if (!cpy[i].hash)
-      continue;
-    fio_msg_metadata_s *meta = fio_malloc(sizeof(*meta));
-    FIO_ASSERT_ALLOC(meta);
-    *meta = cpy[i].obj(ch, msg, is_json);
-    if (meta->metadata) {
-      meta->next = m->meta;
-      m->meta = meta;
-    } else {
-      fio_free(meta);
-    }
-  }
-  fio_free(cpy);
-}
-
 void fio_message_metadata_callback_set(fio_msg_metadata_fn callback,
                                        int enable) {
+  if (!callback)
+    return;
   fio_lock(&fio_postoffice.meta.lock);
+  fio_meta_ary_remove2(&fio_postoffice.meta.ary, callback, NULL);
   if (enable)
-    fio_meta_set_insert(&fio_postoffice.meta.set, (uintptr_t)callback,
-                        callback);
-  else
-    fio_meta_set_remove(&fio_postoffice.meta.set, (uintptr_t)callback, callback,
-                        NULL);
+    fio_meta_ary_push(&fio_postoffice.meta.ary, callback);
   fio_unlock(&fio_postoffice.meta.lock);
 }
 
 /** Finds the message's metadata by it's type ID. */
 void *fio_message_metadata(fio_msg_s *msg, intptr_t type_id) {
-  fio_msg_metadata_s *exists = ((fio_msg_client_s *)msg)->meta;
-  while (exists && exists->type_id != type_id) {
-    exists = exists->next;
-  }
-  if (exists) {
-    return exists->metadata;
+  fio_msg_metadata_s *meta = ((fio_msg_client_s *)msg)->meta;
+  size_t len = ((fio_msg_client_s *)msg)->meta_len;
+  while (len) {
+    --len;
+    if (meta[len].type_id == type_id)
+      return meta[len].metadata;
   }
   return NULL;
 }
@@ -4803,20 +4923,16 @@ static channel_s *fio_channel_find_dup(fio_str_info_s name) {
 static inline void fio_msg_internal_free(fio_msg_internal_s *msg) {
   if (fio_atomic_sub(&msg->ref, 1))
     return;
-  if (msg->meta) {
-    fio_msg_metadata_s *meta = msg->meta;
-    do {
-      fio_msg_metadata_s *tmp = meta;
-      meta = meta->next;
-      if (tmp->on_finish) {
-        fio_msg_s tmp_msg = {
-            .channel = msg->channel,
-            .msg = msg->data,
-        };
-        tmp->on_finish(&tmp_msg, tmp->metadata);
-      }
-      fio_free(tmp);
-    } while (meta);
+  while (msg->meta_len) {
+    --msg->meta_len;
+    if (msg->meta[msg->meta_len].on_finish) {
+      fio_msg_s tmp_msg = {
+          .channel = msg->channel,
+          .msg = msg->data,
+      };
+      msg->meta[msg->meta_len].on_finish(&tmp_msg,
+                                         msg->meta[msg->meta_len].metadata);
+    }
   }
   fio_free(msg);
 }
@@ -4849,6 +4965,7 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
               .udata1 = s->udata1,
               .udata2 = s->udata2,
           },
+      .meta_len = msg->meta_len,
       .meta = msg->meta,
       .marker = 0,
   };
@@ -4904,9 +5021,6 @@ static void fio_publish2process(fio_msg_internal_s *m) {
     }
   } else {
     ch = fio_channel_find_dup(m->channel);
-  }
-  if (m->filter == 0) {
-    fio_call_meta_callbacks(m, m->channel, m->data, m->is_json);
   }
   /* exact match */
   if (ch) {
@@ -5105,18 +5219,14 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
           return;
         }
       }
-      c->msg =
-          fio_malloc(sizeof(*c->msg) + c->exp_msg + 1 + c->exp_channel + 1);
-      FIO_ASSERT_ALLOC(c->msg);
-      *c->msg = (fio_msg_internal_s){
-          .filter = c->filter,
-          .channel = {.data = (char *)(c->msg + 1), .len = c->exp_channel},
-          .data = {.data = ((char *)(c->msg + 1) + c->exp_channel + 1),
-                   .len = c->exp_msg},
-          .is_json = c->type == FIO_CLUSTER_MSG_JSON ||
-                     c->type == FIO_CLUSTER_MSG_ROOT_JSON,
-          .ref = 1,
-      };
+      c->msg = fio_pubsub_create_message(
+          c->filter,
+          (fio_str_info_s){.data = (char *)(c->msg + 1), .len = c->exp_channel},
+          (fio_str_info_s){.data = ((char *)(c->msg + 1) + c->exp_channel + 1),
+                           .len = c->exp_msg},
+          (int8_t)(c->type == FIO_CLUSTER_MSG_JSON ||
+                   c->type == FIO_CLUSTER_MSG_ROOT_JSON),
+          0);
       i += 16;
     }
     if (c->exp_channel) {
@@ -5147,6 +5257,7 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
         c->exp_msg = 0;
       }
     }
+    fio_pubsub_create_message_update_meta(c->msg);
     c->handler(c);
     fio_msg_internal_free(c->msg);
     c->msg = NULL;
@@ -5586,7 +5697,7 @@ static void fio_cluster_at_exit(void *ignore) {
   fio_engine_set_free(&fio_postoffice.engines.set);
 
   /* clear meta hooks */
-  fio_meta_set_free(&fio_postoffice.meta.set);
+  fio_meta_ary_free(&fio_postoffice.meta.ary);
   /* perform newly created tasks */
   fio_defer_perform();
   (void)ignore;
@@ -5616,21 +5727,10 @@ static void fio_cluster_signal_children(void) {
       -1);
 }
 
-static void fio_publish2process2(int32_t filter, fio_str_info_s ch_name,
-                                 fio_str_info_s msg, uint8_t is_json) {
-  fio_msg_internal_s *m =
-      fio_malloc(sizeof(*m) + ch_name.len + 1 + msg.len + 1);
-  FIO_ASSERT_ALLOC(m);
-  *m = (fio_msg_internal_s){
-      .filter = filter,
-      .channel = {.data = (char *)(m + 1), .len = ch_name.len},
-      .data = {.data = ((char *)(m + 1) + ch_name.len + 1), .len = msg.len},
-      .is_json = is_json,
-      .ref = 1,
-  };
-  memcpy(m->channel.data, ch_name.data, ch_name.len);
-  memcpy(m->data.data, msg.data, msg.len);
-  fio_publish2process(m);
+static inline void fio_publish2process2(int32_t filter, fio_str_info_s ch_name,
+                                        fio_str_info_s msg, uint8_t is_json) {
+  fio_publish2process(
+      fio_pubsub_create_message(filter, ch_name, msg, is_json, 1));
 }
 
 /**
