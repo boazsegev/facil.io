@@ -4,6 +4,8 @@
 
 **Fix**: (`fio`) The `FIO_FORCE_MALLOC` flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system's `malloc` which might return junk data.
 
+**Optimization**: (`fio`) pub/sub channel names appear to be (often) objects with a long life-span. Hence, these objects now use `malloc` (instead of `fio_malloc`). Also, temporary allocations in `fio_subscribe` were removed.
+
 **Optimization**: (`fio`) pub/sub meta-data information and callbacks now use an Array (instead of link lists and a hash map). This should improve cache locality when setting and retrieving pub/sub meta-data.
 
 **Optimization**: (`fio`) added an urgent task queue for outbound IO, possibly improving protection against non-evented / blocking user code.

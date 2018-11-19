@@ -4297,17 +4297,17 @@ typedef enum fio_cluster_message_type_e {
 
 typedef struct fio_collection_s fio_collection_s;
 
+#pragma pack(1)
 typedef struct {
-  fio_str_s id; /* MUST be on top, so the *channel == *string */
+  size_t name_len;
+  char *name;
+  size_t ref;
   fio_ls_embd_s subscriptions;
   fio_collection_s *parent;
+  fio_match_fn match;
   fio_lock_i lock;
 } channel_s;
-
-typedef struct {
-  channel_s ch; /* MUST be on top, so *channel == *pattern */
-  fio_match_fn match;
-} pattern_s;
+#pragma pack()
 
 struct subscription_s {
   fio_ls_embd_s node;
@@ -4323,6 +4323,43 @@ struct subscription_s {
   fio_lock_i unsubscribed;
 };
 
+/* Use `malloc` / `free`, because channles might have a long life. */
+
+/** Used internally by the Set object to create a new channel. */
+static channel_s *fio_channel_copy(channel_s *src) {
+  channel_s *dest = malloc(sizeof(*dest) + src->name_len + 1);
+  FIO_ASSERT_ALLOC(dest);
+  dest->name_len = src->name_len;
+  dest->match = src->match;
+  dest->parent = src->parent;
+  dest->name = (char *)(dest + 1);
+  if (src->name_len)
+    memcpy(dest->name, src->name, src->name_len);
+  dest->name[src->name_len] = 0;
+  dest->subscriptions = (fio_ls_embd_s)FIO_LS_INIT(dest->subscriptions);
+  dest->ref = 1;
+  dest->lock = FIO_LOCK_INIT;
+  return dest;
+}
+/** Frees a channel (reference counting). */
+static void fio_channel_free(channel_s *ch) {
+  if (!ch)
+    return;
+  if (fio_atomic_sub(&ch->ref, 1))
+    return;
+  free(ch);
+}
+/** Increases a channel's reference count. */
+static void fio_channel_dup(channel_s *ch) {
+  if (!ch)
+    return;
+  fio_atomic_add(&ch->ref, 1);
+}
+/** Tests if two channels are equal. */
+static int fio_channel_cmp(channel_s *ch1, channel_s *ch2) {
+  return ch1->name_len == ch2->name_len && ch1->match == ch2->match &&
+         !memcmp(ch1->name, ch2->name, ch1->name_len);
+}
 /* pub/sub channels and core data sets have a long life, so avoid fio_malloc */
 #if !FIO_FORCE_MALLOC
 #define FIO_FORCE_MALLOC 1
@@ -4331,8 +4368,9 @@ struct subscription_s {
 
 #define FIO_SET_NAME fio_ch_set
 #define FIO_SET_OBJ_TYPE channel_s *
-#define FIO_SET_OBJ_COMPARE(o1, o2) fio_str_iseq(&(o1)->id, &(o2)->id)
-#define FIO_SET_OBJ_DESTROY(obj) fio_str_free2(&(obj)->id)
+#define FIO_SET_OBJ_COMPARE(o1, o2) fio_channel_cmp((o1), (o2))
+#define FIO_SET_OBJ_DESTROY(obj) fio_channel_free((obj))
+#define FIO_SET_OBJ_COPY(dest, src) ((dest) = fio_channel_copy((src)))
 #include <fio.h>
 
 #define FIO_ARY_NAME fio_meta_ary
@@ -4582,8 +4620,8 @@ static void fio_pubsub_on_fork(void) {
 Channel Subscription Management
 ***************************************************************************** */
 
-static void pubsub_on_channel_create(channel_s *ch, fio_match_fn match);
-static void pubsub_on_channel_destroy(channel_s *ch, fio_match_fn match);
+static void pubsub_on_channel_create(channel_s *ch);
+static void pubsub_on_channel_destroy(channel_s *ch);
 
 /* some comon tasks extracted */
 static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
@@ -4591,7 +4629,7 @@ static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
                                                       fio_collection_s *c) {
   fio_lock(&c->lock);
   ch = fio_ch_set_insert(&c->channels, hashed, ch);
-  fio_str_dup(&ch->id);
+  fio_channel_dup(ch);
   fio_lock(&ch->lock);
   fio_unlock(&c->lock);
   return ch;
@@ -4599,63 +4637,49 @@ static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
 
 /** Creates / finds a filter channel, adds a reference count and locks it. */
 static channel_s *fio_filter_dup_lock(uint32_t filter) {
-  channel_s *ch = fio_malloc(sizeof(*ch));
-  FIO_ASSERT_ALLOC(ch);
-  *ch = (channel_s){
-      .id = FIO_STR_INIT,
-      .subscriptions = FIO_LS_INIT(ch->subscriptions),
+  channel_s ch = (channel_s){
+      .name = (char *)&filter,
+      .name_len = (sizeof(filter)),
       .parent = &fio_postoffice.filters,
-      .lock = FIO_LOCK_INIT,
+      .ref = 8, /* avoid freeing stack memory */
   };
-  fio_str_write(&ch->id, &filter, sizeof(filter));
-  fio_str_freeze(&ch->id);
-  return fio_filter_dup_lock_internal(ch, filter, &fio_postoffice.filters);
+  return fio_filter_dup_lock_internal(&ch, filter, &fio_postoffice.filters);
 }
 
 /** Creates / finds a pubsub channel, adds a reference count and locks it. */
 static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
-  channel_s *ch = fio_malloc(sizeof(*ch));
-  FIO_ASSERT_ALLOC(ch);
-  *ch = (channel_s){
-      .id = FIO_STR_INIT,
-      .subscriptions = FIO_LS_INIT(ch->subscriptions),
+  channel_s ch = (channel_s){
+      .name = name.data,
+      .name_len = name.len,
       .parent = &fio_postoffice.pubsub,
-      .lock = FIO_LOCK_INIT,
+      .ref = 8, /* avoid freeing stack memory */
   };
-  fio_str_write(&ch->id, name.data, name.len);
-  fio_str_freeze(&ch->id);
-  uint64_t hashed_name = fio_str_hash(&ch->id);
-  ch = fio_filter_dup_lock_internal(ch, hashed_name, &fio_postoffice.pubsub);
-  if (fio_ls_embd_is_empty(&ch->subscriptions)) {
-    pubsub_on_channel_create(ch, NULL);
+  uint64_t hashed_name = fio_siphash(name.data, name.len);
+  channel_s *ch_p =
+      fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.pubsub);
+  if (fio_ls_embd_is_empty(&ch_p->subscriptions)) {
+    pubsub_on_channel_create(ch_p);
   }
-  return ch;
+  return ch_p;
 }
 
 /** Creates / finds a pattern channel, adds a reference count and locks it. */
 static channel_s *fio_channel_match_dup_lock(fio_str_info_s name,
                                              fio_match_fn match) {
-  pattern_s *ch = fio_malloc(sizeof(*ch));
-  FIO_ASSERT_ALLOC(ch);
-  *ch = (pattern_s){
-      .ch =
-          {
-              .id = FIO_STR_INIT,
-              .subscriptions = FIO_LS_INIT(ch->ch.subscriptions),
-              .parent = &fio_postoffice.patterns,
-              .lock = FIO_LOCK_INIT,
-          },
+  channel_s ch = (channel_s){
+      .name = name.data,
+      .name_len = name.len,
+      .parent = &fio_postoffice.patterns,
       .match = match,
+      .ref = 8, /* avoid freeing stack memory */
   };
-  fio_str_write(&ch->ch.id, name.data, name.len);
-  fio_str_freeze(&ch->ch.id);
-  uint64_t hashed_name = fio_str_hash(&ch->ch.id) ^ ((uintptr_t)match);
-  ch = (pattern_s *)fio_filter_dup_lock_internal(&ch->ch, hashed_name,
-                                                 &fio_postoffice.patterns);
-  if (fio_ls_embd_is_empty(&ch->ch.subscriptions)) {
-    pubsub_on_channel_create(&ch->ch, match);
+  uint64_t hashed_name = fio_siphash(name.data, name.len);
+  channel_s *ch_p =
+      fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.patterns);
+  if (fio_ls_embd_is_empty(&ch_p->subscriptions)) {
+    pubsub_on_channel_create(ch_p);
   }
-  return &ch->ch;
+  return ch_p;
 }
 
 /* to be used for reference counting (subtructing) */
@@ -4666,7 +4690,7 @@ static inline void fio_subscription_free(subscription_s *s) {
   if (s->on_unsubscribe) {
     s->on_unsubscribe(s->udata1, s->udata2);
   }
-  fio_str_free2((fio_str_s *)s->parent);
+  fio_channel_free(s->parent);
   fio_free(s);
 }
 
@@ -4710,19 +4734,13 @@ void fio_unsubscribe(subscription_s *s) {
     goto finish;
   fio_lock(&s->lock);
   channel_s *ch = s->parent;
-  fio_match_fn match = NULL;
   uint8_t removed = 0;
   fio_lock(&ch->lock);
   fio_ls_embd_remove(&s->node);
   /* check if channel is done for */
   if (fio_ls_embd_is_empty(&ch->subscriptions)) {
     fio_collection_s *c = ch->parent;
-    uint64_t hashed = fio_str_hash(&ch->id);
-    if (c == &fio_postoffice.patterns) {
-      pattern_s *pat = (pattern_s *)ch;
-      hashed ^= ((uintptr_t)pat->match);
-      match = ((pattern_s *)(ch))->match;
-    }
+    uint64_t hashed = fio_siphash(ch->name, ch->name_len);
     /* lock collection */
     fio_lock(&c->lock);
     /* test again within lock */
@@ -4734,7 +4752,7 @@ void fio_unsubscribe(subscription_s *s) {
   }
   fio_unlock(&ch->lock);
   if (removed) {
-    pubsub_on_channel_destroy(ch, match);
+    pubsub_on_channel_destroy(ch);
   }
 
   /* promise the subscription will be inactive */
@@ -4751,7 +4769,8 @@ finish:
  * To keep the string beyond the lifetime of the subscription, copy the string.
  */
 fio_str_info_s fio_subscription_channel(subscription_s *subscription) {
-  return fio_str_info(&subscription->parent->id);
+  return (fio_str_info_s){.data = subscription->parent->name,
+                          .len = subscription->parent->name_len};
 }
 
 /* *****************************************************************************
@@ -4760,31 +4779,34 @@ Engine handling and Management
 
 /* implemented later, informs root process about pub/sub subscriptions */
 static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
-                                                         fio_match_fn match,
                                                          int add);
 
 /* runs in lock(!) let'm all know */
-static void pubsub_on_channel_create(channel_s *ch, fio_match_fn match) {
+static void pubsub_on_channel_create(channel_s *ch) {
   fio_lock(&fio_postoffice.engines.lock);
   FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
     if (!pos->hash)
       continue;
-    pos->obj->subscribe(pos->obj, fio_str_info(&ch->id), match);
+    pos->obj->subscribe(pos->obj,
+                        (fio_str_info_s){.data = ch->name, .len = ch->name_len},
+                        ch->match);
   }
   fio_unlock(&fio_postoffice.engines.lock);
-  fio_cluster_inform_root_about_channel(ch, match, 1);
+  fio_cluster_inform_root_about_channel(ch, 1);
 }
 
 /* runs in lock(!) let'm all know */
-static void pubsub_on_channel_destroy(channel_s *ch, fio_match_fn match) {
+static void pubsub_on_channel_destroy(channel_s *ch) {
   fio_lock(&fio_postoffice.engines.lock);
   FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
     if (!pos->hash)
       continue;
-    pos->obj->unsubscribe(pos->obj, fio_str_info(&ch->id), match);
+    pos->obj->unsubscribe(
+        pos->obj, (fio_str_info_s){.data = ch->name, .len = ch->name_len},
+        ch->match);
   }
   fio_unlock(&fio_postoffice.engines.lock);
-  fio_cluster_inform_root_about_channel(ch, match, 0);
+  fio_cluster_inform_root_about_channel(ch, 0);
 }
 
 /**
@@ -4842,15 +4864,20 @@ void fio_pubsub_reattach(fio_pubsub_engine_s *eng) {
   FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
     if (!pos->hash)
       continue;
-    eng->subscribe(eng, fio_str_info(&pos->obj->id), NULL);
+    eng->subscribe(
+        eng,
+        (fio_str_info_s){.data = pos->obj->name, .len = pos->obj->name_len},
+        NULL);
   }
   fio_unlock(&fio_postoffice.pubsub.lock);
   fio_lock(&fio_postoffice.patterns.lock);
   FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
     if (!pos->hash)
       continue;
-    eng->subscribe(eng, fio_str_info(&pos->obj->id),
-                   ((pattern_s *)pos->obj)->match);
+    eng->subscribe(
+        eng,
+        (fio_str_info_s){.data = pos->obj->name, .len = pos->obj->name_len},
+        pos->obj->match);
   }
   fio_unlock(&fio_postoffice.patterns.lock);
 }
@@ -4887,23 +4914,23 @@ void *fio_message_metadata(fio_msg_s *msg, intptr_t type_id) {
  **************************************************************************** */
 
 /* common internal tasks */
-static channel_s *fio_channel_find_dup_internal(fio_str_s *s, uint64_t hashed,
+static channel_s *fio_channel_find_dup_internal(channel_s *ch_tmp,
+                                                uint64_t hashed,
                                                 fio_collection_s *c) {
   fio_lock(&c->lock);
-  channel_s *ch = fio_ch_set_find(&c->channels, hashed, (channel_s *)s);
+  channel_s *ch = fio_ch_set_find(&c->channels, hashed, ch_tmp);
   if (!ch) {
     fio_unlock(&c->lock);
     return NULL;
   }
-  fio_str_dup((fio_str_s *)ch);
+  fio_channel_dup(ch);
   fio_unlock(&c->lock);
   return ch;
 }
 
 /** Finds a filter channel, increasing it's reference count if it exists. */
 static channel_s *fio_filter_find_dup(uint32_t filter) {
-  fio_str_s tmp = FIO_STR_INIT_EXISTING((char *)&filter, sizeof(filter),
-                                        0); /* don't free */
+  channel_s tmp = {.name = (char *)(&filter), .name_len = sizeof(filter)};
   channel_s *ch =
       fio_channel_find_dup_internal(&tmp, filter, &fio_postoffice.filters);
   return ch;
@@ -4911,9 +4938,8 @@ static channel_s *fio_filter_find_dup(uint32_t filter) {
 
 /** Finds a pubsub channel, increasing it's reference count if it exists. */
 static channel_s *fio_channel_find_dup(fio_str_info_s name) {
-  fio_str_s tmp =
-      FIO_STR_INIT_EXISTING(name.data, name.len, 0); /* don't free */
-  uint64_t hashed_name = fio_str_hash(&tmp);
+  channel_s tmp = {.name = name.data, .name_len = name.len};
+  uint64_t hashed_name = fio_siphash(name.data, name.len);
   channel_s *ch =
       fio_channel_find_dup_internal(&tmp, hashed_name, &fio_postoffice.pubsub);
   return ch;
@@ -5008,7 +5034,7 @@ static void fio_publish2channel_task(void *ch_, void *msg) {
   fio_publish2channel(ch, msg);
   fio_unlock(&ch->lock);
 finish:
-  fio_str_free(&ch->id);
+  fio_channel_free(ch);
 }
 
 /** Publishes the message to the current process and frees the strings. */
@@ -5024,7 +5050,7 @@ static void fio_publish2process(fio_msg_internal_s *m) {
   }
   /* exact match */
   if (ch) {
-    fio_defer_push_urgent(fio_publish2channel_task, &ch->id,
+    fio_defer_push_urgent(fio_publish2channel_task, ch,
                           fio_msg_internal_dup(m));
   }
   if (m->filter == 0) {
@@ -5034,10 +5060,12 @@ static void fio_publish2process(fio_msg_internal_s *m) {
       if (!p->hash) {
         continue;
       }
-      pattern_s *pattern = (pattern_s *)p->obj;
-      if (pattern->match(fio_str_info(&pattern->ch.id), m->channel)) {
-        fio_defer_push_urgent(fio_publish2channel_task,
-                              fio_str_dup(&pattern->ch.id),
+
+      if (p->obj->match(
+              (fio_str_info_s){.data = p->obj->name, .len = p->obj->name_len},
+              m->channel)) {
+        fio_channel_dup(p->obj);
+        fio_defer_push_urgent(fio_publish2channel_task, p->obj,
                               fio_msg_internal_dup(m));
       }
     }
@@ -5534,7 +5562,7 @@ static void fio_cluster_on_connect(intptr_t uuid, void *udata) {
     if (!pos->hash) {
       continue;
     }
-    fio_cluster_inform_root_about_channel(pos->obj, NULL, 1);
+    fio_cluster_inform_root_about_channel(pos->obj, 1);
   }
   fio_unlock(&fio_postoffice.pubsub.lock);
   fio_lock(&fio_postoffice.patterns.lock);
@@ -5542,8 +5570,7 @@ static void fio_cluster_on_connect(intptr_t uuid, void *udata) {
     if (!pos->hash) {
       continue;
     }
-    fio_cluster_inform_root_about_channel(pos->obj,
-                                          ((pattern_s *)pos->obj)->match, 1);
+    fio_cluster_inform_root_about_channel(pos->obj, 1);
   }
   fio_unlock(&fio_postoffice.patterns.lock);
 
@@ -5605,34 +5632,34 @@ static void fio_send2cluster(int32_t filter, fio_str_info_s ch,
  **************************************************************************** */
 
 static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
-                                                         fio_match_fn match,
                                                          int add) {
   if (!fio_data->is_worker || fio_data->workers == 1 || !cluster_data.uuid ||
       !ch)
     return;
-  fio_str_info_s ch_name = fio_str_info(&ch->id);
+  fio_str_info_s ch_name = {.data = ch->name, .len = ch->name_len};
   fio_str_info_s msg = {.data = NULL, .len = 0};
 #if DEBUG
   FIO_LOG_DEBUG("(%d) informing root about: %s (%zu) msg type %d", getpid(),
                 ch_name.data, ch_name.len,
-                (match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
-                              : FIO_CLUSTER_MSG_PATTERN_UNSUB)
-                       : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
-                              : FIO_CLUSTER_MSG_PUBSUB_UNSUB)));
+                (ch->match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
+                                  : FIO_CLUSTER_MSG_PATTERN_UNSUB)
+                           : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
+                                  : FIO_CLUSTER_MSG_PUBSUB_UNSUB)));
 #endif
   char buf[8] = {0};
-  if (match) {
-    fio_u2str64(buf, (uint64_t)match);
+  if (ch->match) {
+    fio_u2str64(buf, (uint64_t)ch->match);
     msg.data = buf;
-    msg.len = sizeof(match);
+    msg.len = sizeof(ch->match);
   }
 
   fio_cluster_client_sender(
       fio_cluster_wrap_message(ch_name.len, msg.len,
-                               (match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
-                                             : FIO_CLUSTER_MSG_PATTERN_UNSUB)
-                                      : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
-                                             : FIO_CLUSTER_MSG_PUBSUB_UNSUB)),
+                               (ch->match
+                                    ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
+                                           : FIO_CLUSTER_MSG_PATTERN_UNSUB)
+                                    : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
+                                           : FIO_CLUSTER_MSG_PUBSUB_UNSUB)),
                                0, ch_name.data, msg.data),
       -1);
 }
