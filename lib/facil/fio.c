@@ -6401,14 +6401,16 @@ static void fio_mem_init(void) {
   if (arenas)
     return;
 
+  ssize_t cpu_count = 0;
 #ifdef _SC_NPROCESSORS_ONLN
-  ssize_t cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+  cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
 #else
 #warning Dynamic CPU core count is unavailable - assuming 8 cores for memory allocation pools.
-  ssize_t cpu_count = 8; /* fallback */
 #endif
+  if (cpu_count <= 0)
+    cpu_count = 8;
   memory.cores = cpu_count;
-  memory.count = 0 - (intptr_t)cpu_count;
+  memory.count = 0 - cpu_count;
   arenas = big_alloc(sizeof(*arenas) * cpu_count);
   FIO_ASSERT_ALLOC(arenas);
   size_t pre_pool = cpu_count > 32 ? 32 : cpu_count;
