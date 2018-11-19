@@ -1302,7 +1302,7 @@ static void http_sse_on_unsubscribe(void *sse_, void *args_) {
   struct http_sse_subscribe_args *args = args_;
   if (args->on_unsubscribe)
     args->on_unsubscribe(args->udata);
-  free(args);
+  fio_free(args);
   http_sse_try_free(sse);
 }
 
@@ -1328,7 +1328,7 @@ uintptr_t http_sse_subscribe(http_sse_s *sse_,
     return 0;
   if (!args.on_message)
     args.on_message = http_sse_on_message__direct;
-  struct http_sse_subscribe_args *udata = malloc(sizeof(*udata));
+  struct http_sse_subscribe_args *udata = fio_malloc(sizeof(*udata));
   FIO_ASSERT_ALLOC(udata);
   *udata = args;
 

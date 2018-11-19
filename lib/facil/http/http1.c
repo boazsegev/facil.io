@@ -442,7 +442,7 @@ static uint8_t http1_sse_on_shutdown(intptr_t uuid, fio_protocol_s *p_) {
 static void http1_sse_on_close(intptr_t uuid, fio_protocol_s *p_) {
   http1_sse_fio_protocol_s *p = (http1_sse_fio_protocol_s *)p_;
   http_sse_destroy(p->sse);
-  free(p);
+  fio_free(p);
   (void)uuid;
 }
 static void http1_sse_ping(intptr_t uuid, fio_protocol_s *p_) {
@@ -472,7 +472,7 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
   htt1p_finish(h); /* avoid the enforced content length in http_finish */
 
   /* switch protocol to SSE */
-  http1_sse_fio_protocol_s *sse_pr = malloc(sizeof(*sse_pr));
+  http1_sse_fio_protocol_s *sse_pr = fio_malloc(sizeof(*sse_pr));
   if (!sse_pr)
     goto failed;
   *sse_pr = (http1_sse_fio_protocol_s){
@@ -483,7 +483,7 @@ static int http1_upgrade2sse(http_s *h, http_sse_s *sse) {
               .on_close = http1_sse_on_close,
               .ping = http1_sse_ping,
           },
-      .sse = malloc(sizeof(*(sse_pr->sse))),
+      .sse = fio_malloc(sizeof(*(sse_pr->sse))),
   };
 
   if (!sse_pr->sse)
@@ -763,7 +763,7 @@ fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
                           void *unread_data, size_t unread_length) {
   if (unread_data && unread_length > HTTP_MAX_HEADER_LENGTH)
     return NULL;
-  http1pr_s *p = malloc(sizeof(*p) + HTTP_MAX_HEADER_LENGTH);
+  http1pr_s *p = fio_malloc(sizeof(*p) + HTTP_MAX_HEADER_LENGTH);
   FIO_ASSERT_ALLOC(p);
   *p = (http1pr_s){
       .p.protocol =
@@ -791,7 +791,7 @@ void http1_destroy(fio_protocol_s *pr) {
   http1pr_s *p = (http1pr_s *)pr;
   http1_pr2handle(p).status = 0;
   http_s_destroy(&http1_pr2handle(p), 0);
-  free(p);
+  fio_free(p);
 }
 
 /* *****************************************************************************

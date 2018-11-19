@@ -175,7 +175,7 @@ static inline void http_sse_init(http_sse_internal_s *sse, intptr_t uuid,
 static inline void http_sse_try_free(http_sse_internal_s *sse) {
   if (fio_atomic_sub(&sse->ref, 1))
     return;
-  free(sse);
+  fio_free(sse);
 }
 
 static inline void http_sse_destroy(http_sse_internal_s *sse) {
