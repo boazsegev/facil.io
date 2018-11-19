@@ -20,8 +20,9 @@
 
 <h3 id="extensions"><a href="/0.7.x/extensions">Extensions</a></h3>
 
+<!-- * [TLS (SSL)](/0.7.x/fio_tls) -->
+
 <ul>
-<li><a href="/0.7.x/fio_tls">TLS (SSL)</a></li>
 <li><a href="/0.7.x/http">HTTP / WebSockets</a></li>
 <li><a href="/0.7.x/redis">Redis (client)</a></li>
 <li><a href="/0.7.x/fio_cli">CLI (command line)</a></li>
@@ -1072,10 +1073,13 @@
 </ul>
 </li>
 <li>
-<a href="#other-macros-that-effect-facil-io-s-behavior-compilation">Other Macros that effect facil.io's behavior / compilation</a>
+<a href="#compilation-macros">Compilation Macros</a>
 <ul>
 <li>
 <a href="#fio_max_sock_capacity"><code>FIO_MAX_SOCK_CAPACITY</code></a>
+</li>
+<li>
+<a href="#fio_engine_poll"><code>FIO_ENGINE_POLL</code></a>
 </li>
 <li>
 <a href="#fio_cpu_cores_limit"><code>FIO_CPU_CORES_LIMIT</code></a>
@@ -1085,6 +1089,12 @@
 </li>
 <li>
 <a href="#fio_print_state"><code>FIO_PRINT_STATE</code></a>
+</li>
+<li>
+<a href="#fio_poll_max_events"><code>FIO_POLL_MAX_EVENTS</code></a>
+</li>
+<li>
+<a href="#fio_use_urgent_queue"><code>FIO_USE_URGENT_QUEUE</code></a>
 </li>
 <li>
 <a href="#fio_pubsub_support"><code>FIO_PUBSUB_SUPPORT</code></a>
@@ -1828,9 +1838,11 @@ be sent over the socket.</p>
 <p>Blocks until all the data was flushed from the buffer.</p>
 
 <h4 id="fio_flush_all"><code>fio_flush_all</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_flush_all</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_flush_all</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
 </code></pre>
 <p><code>fio_flush_all</code> attempts flush all the open connections.</p>
+
+<p>Returns the number of sockets still in need to be flushed.</p>
 
 <h4 id="fio_uuid2fd"><code>fio_uuid2fd</code></h4>
 <pre><code class='highlight'><span class="cp">#define fio_uuid2fd(uuid) ((int)((uintptr_t)uuid &gt;&gt; 8))
@@ -3627,9 +3639,11 @@ be defined. i.e.:</p>
 <p>Returns the current lock&#39;s state (non 0 == Busy).</p>
 
 <h4 id="fio_unlock"><code>fio_unlock</code></h4>
-<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_unlock</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
+<pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_unlock</span><span class="p">(</span><span class="n">fio_lock_i</span> <span class="o">*</span><span class="n">lock</span><span class="p">);</span>
 </code></pre>
-<p>Releases a lock.</p>
+<p>Releases a lock. Returns non-zero if the lock was previously locked.</p>
+
+<p><strong>Note</strong>: Releasing an un-acquired will break the lock and could cause it&#39;s protection to fail. Make sure to only release the lock if it was previously acquired by the same &quot;owner&quot;.</p>
 
 <h4 id="fio_reschedule_thread"><code>fio_reschedule_thread</code></h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">fio_reschedule_thread</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
@@ -4062,7 +4076,7 @@ required.</p>
 <p>Logging macros accept <code>printf</code> type arguments. i.e.:</p>
 <pre><code class='highlight'><span class="n">FIO_LOG_DEBUG</span><span class="p">(</span><span class="s">"The meaning of life: %d"</span><span class="p">,</span> <span class="mi">42</span><span class="p">);</span>
 </code></pre>
-<h3 id="other-macros-that-effect-facil-ios-behavior-compilation">Other Macros that effect facil.io&#39;s behavior / compilation</h3>
+<h3 id="compilation-macros">Compilation Macros</h3>
 
 <p>The facil.io core library has some hard coded values that can be adjusted by defining the following macros during compile time.</p>
 
@@ -4073,6 +4087,12 @@ required.</p>
 <p>To be more accurate, this number represents the highest <code>fd</code> value allowed by library functions.</p>
 
 <p>If the soft coded OS limit is higher than this number, than this limit will be enforced instead.</p>
+
+<h4 id="fio_engine_poll"><code>FIO_ENGINE_POLL</code></h4>
+
+<p>If set, facil.io will prefer the <code>poll</code> system call over <code>epoll</code> or <code>kqueue</code>.</p>
+
+<p>It should be noted that for most use-cases, <code>epoll</code> and <code>kqueue</code> will perform better.</p>
 
 <h4 id="fio_cpu_cores_limit"><code>FIO_CPU_CORES_LIMIT</code></h4>
 
@@ -4094,9 +4114,21 @@ required.</p>
 
 <h4 id="fio_print_state"><code>FIO_PRINT_STATE</code></h4>
 
-<p>When this macro is true (1), facil.io will print some state massages to stderr (startup / shutdown messages, etc&#39;).</p>
+<p>When this macro is true (1), facil.io will enable the <code>FIO_LOG_STATE(msg, ...)</code> macro to print some default information level messages to stderr (startup / shutdown messages, etc&#39;).</p>
 
 <p>By default this macro is set to true.</p>
+
+<h4 id="fio_poll_max_events"><code>FIO_POLL_MAX_EVENTS</code></h4>
+
+<p>This macro sets the maximum number of IO events facil.io will pre-schedule at the beginning of each cycle, when using <code>epoll</code> or <code>kqueue</code> (not when using <code>poll</code>).</p>
+
+<p>Since this requires stack pre-allocated memory, this number shouldn&#39;t be set too high. Reasonable values range from 8 to 160.</p>
+
+<p>The default value is currently 64.</p>
+
+<h4 id="fio_use_urgent_queue"><code>FIO_USE_URGENT_QUEUE</code></h4>
+
+<p>This macro can be used to disable the priority queue given to outbound IO.</p>
 
 <h4 id="fio_pubsub_support"><code>FIO_PUBSUB_SUPPORT</code></h4>
 

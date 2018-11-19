@@ -23,6 +23,9 @@
 <li>
 <ul>
 <li>
+<a href="#v-0-7-0-beta3">v. 0.7.0.beta3</a>
+</li>
+<li>
 <a href="#v-0-7-0-beta2">v. 0.7.0.beta2</a>
 </li>
 <li>
@@ -243,6 +246,18 @@
 </li>
 </ul>
 </div><h1 id="change-log">Change Log</h1>
+
+<h3 id="v-0-7-0-beta3">v. 0.7.0.beta3</h3>
+
+<p><strong>Fix</strong>: (<code>fio</code>) The <code>FIO_FORCE_MALLOC</code> flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system&#39;s <code>malloc</code> which might return junk data.</p>
+
+<p><strong>Optimization</strong>: (<code>fio</code>) pub/sub channel names appear to be (often) objects with a long life-span. Hence, these objects now use <code>malloc</code> (instead of <code>fio_malloc</code>). Also, temporary allocations in <code>fio_subscribe</code> were removed.</p>
+
+<p><strong>Optimization</strong>: (<code>fio</code>) pub/sub meta-data information and callbacks now use an Array (instead of link lists and a hash map). This should improve cache locality when setting and retrieving pub/sub meta-data.</p>
+
+<p><strong>Optimization</strong>: (<code>fio</code>) added an urgent task queue for outbound IO, possibly improving protection against non-evented / blocking user code.</p>
+
+<p><strong>Optimization</strong>: (<code>http</code>) WebSocket broadcasting optimizations are now automated.</p>
 
 <h3 id="v-0-7-0-beta2">v. 0.7.0.beta2</h3>
 

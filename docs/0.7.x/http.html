@@ -20,8 +20,9 @@
 
 <h3 id="extensions"><a href="/0.7.x/extensions">Extensions</a></h3>
 
+<!-- * [TLS (SSL)](/0.7.x/fio_tls) -->
+
 <ul>
-<li><a href="/0.7.x/fio_tls">TLS (SSL)</a></li>
 <li><a href="/0.7.x/http">HTTP / WebSockets</a></li>
 <li><a href="/0.7.x/redis">Redis (client)</a></li>
 <li><a href="/0.7.x/fio_cli">CLI (command line)</a></li>
@@ -1323,10 +1324,13 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 </span></code></pre></li>
 </ul>
 
-<p>When using WebSocket pub/sub system is originally optimized for either non-direct transmission (messages are handled by callbacks) or direct transmission to 1-3 clients per channel (on average), meaning that the majority of the messages are meant for a single recipient (or multiple callback recipients) and only some are expected to be directly transmitted to a group.</p>
+<p>This is normally performed automatically by the <code>websocket_subscribe</code> function. However, this function is provided for enabling the pub/sub meta-data based optimizations for external connections / subscriptions.</p>
 
-<p>However, when most messages are intended for direct transmission to more than 3 clients (on average), certain optimizations can be made to improve memory consumption (minimize duplication or WebSocket network data).</p>
-
+<p>The pub/sub metadata type ID will match the optimnization type requested (i.e., <code>WEBSOCKET_OPTIMIZE_PUBSUB</code>) and the optimized data is a FIOBJ String containing a pre-encoded WebSocket packet ready to be sent. i.e.:</p>
+<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">pre_wrapped</span> <span class="o">=</span> <span class="p">(</span><span class="n">FIOBJ</span><span class="p">)</span><span class="n">fio_message_metadata</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span>
+                          <span class="n">WEBSOCKET_OPTIMIZE_PUBSUB</span><span class="p">);</span>
+<span class="n">fiobj_send_free</span><span class="p">((</span><span class="kt">intptr_t</span><span class="p">)</span><span class="n">msg</span><span class="o">-&gt;</span><span class="n">udata1</span><span class="p">,</span> <span class="n">fiobj_dup</span><span class="p">(</span><span class="n">pre_wrapped</span><span class="p">));</span>
+</code></pre>
 <p><strong>Note</strong>: to disable an optimization it should be disabled the same amount of times it was enabled - multiple optimization enablements for the same type are merged, but reference counted (disabled when reference is zero).</p>
 
 <h3 id="websocket-data">WebSocket Data</h3>
