@@ -1040,10 +1040,15 @@ Enables (or disables) any of the following broadcast optimizations:
 
         #define WEBSOCKET_OPTIMIZE_PUBSUB_BINARY (-34)
 
+This is normally performed automatically by the `websocket_subscribe` function. However, this function is provided for enabling the pub/sub meta-data based optimizations for external connections / subscriptions.
 
-When using WebSocket pub/sub system is originally optimized for either non-direct transmission (messages are handled by callbacks) or direct transmission to 1-3 clients per channel (on average), meaning that the majority of the messages are meant for a single recipient (or multiple callback recipients) and only some are expected to be directly transmitted to a group.
-
-However, when most messages are intended for direct transmission to more than 3 clients (on average), certain optimizations can be made to improve memory consumption (minimize duplication or WebSocket network data).
+The pub/sub metadata type ID will match the optimnization type requested (i.e., `WEBSOCKET_OPTIMIZE_PUBSUB`) and the optimized data is a FIOBJ String containing a pre-encoded WebSocket packet ready to be sent. i.e.:
+ 
+```c
+FIOBJ pre_wrapped = (FIOBJ)fio_message_metadata(msg,
+                          WEBSOCKET_OPTIMIZE_PUBSUB);
+fiobj_send_free((intptr_t)msg->udata1, fiobj_dup(pre_wrapped));
+```
 
 **Note**: to disable an optimization it should be disabled the same amount of times it was enabled - multiple optimization enablements for the same type are merged, but reference counted (disabled when reference is zero).
 

@@ -2,8 +2,13 @@
 
 ### v. 0.7.0.beta3
 
+**Fix**: (`fio`) The `FIO_FORCE_MALLOC` flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system's `malloc` which might return junk data.
+
+**Optimization**: (`fio`) pub/sub meta-data information and callbacks now use an Array (instead of link lists and a hash map). This should improve cache locality when setting and retrieving pub/sub meta-data.
+
 **Optimization**: (`fio`) added an urgent task queue for outbound IO, possibly improving protection against non-evented / blocking user code.
 
+**Optimization**: (`http`) WebSocket broadcasting optimizations are now automated.
 
 ### v. 0.7.0.beta2
 
