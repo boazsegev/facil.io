@@ -3905,6 +3905,18 @@ This macro can be used to disable the priority queue given to outbound IO.
 
 If true (1), compiles the facil.io pub/sub API .
 
+#### `FIO_MEMORY_MAX_BLOCKS_RESERVED`
+
+The maximum number of available memory blocks that will be pooled by `fio_malloc`/`fio_free` before memory is returned to the system.
+
+This is in addition to the per-CPU core pool (an extra single block per CPU core).
+
+Each memory block is, by default, 32Kb in size (including about 48 bytes of overhead per block).
+
+`FIO_MEMORY_MAX_BLOCKS_RESERVED` defaults to 256 blocks, which is roughly 8Mb of memory that will be reused instead of returned to the system.
+
+**Note**: The actual number of reserved blocks will be `FIO_MEMORY_MAX_BLOCKS_RESERVED` in addition to 1 block per CPU core. For example, on an 8 core CPU with the default `FIO_MEMORY_MAX_BLOCKS_RESERVED` value, the actual pool size will be 264 blocks.
+
 ## Weak functions
 
 Weak functions are functions that can be over-ridden during the compilation / linking stage.

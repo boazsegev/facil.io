@@ -6211,6 +6211,31 @@ static arena_s *arenas;
 /* The per-CPU arena array. */
 static long double on_malloc_zero;
 
+#if 1 || DEBUG
+/* The per-CPU arena array. */
+static size_t fio_mem_block_count_max;
+/* The per-CPU arena array. */
+static size_t fio_mem_block_count;
+#define FIO_MEM_ON_BLOCK_ALLOC()                                               \
+  do {                                                                         \
+    fio_atomic_add(&fio_mem_block_count, 1);                                   \
+    if (fio_mem_block_count > fio_mem_block_count_max)                         \
+      fio_mem_block_count_max = fio_mem_block_count;                           \
+  } while (0)
+#define FIO_MEM_ON_BLOCK_FREE()                                                \
+  do {                                                                         \
+    fio_atomic_sub(&fio_mem_block_count, 1);                                   \
+  } while (0)
+#define FIO_MEM_PRINT_BLOCK_STAT()                                             \
+  FIO_LOG_INFO(                                                                \
+      "(fio) Total memory blocks allocated before cleanup %zu\n"               \
+      "       Maximum memory blocks allocated at a single time %zu\n",         \
+      fio_mem_block_count, fio_mem_block_count_max)
+#else
+#define FIO_MEM_ON_BLOCK_ALLOC()
+#define FIO_MEM_ON_BLOCK_FREE()
+#define FIO_MEM_PRINT_BLOCK_STAT()
+#endif
 /* *****************************************************************************
 Per-CPU Arena management
 ***************************************************************************** */
@@ -6280,10 +6305,11 @@ static inline void block_free(block_s *blk) {
     return;
 
   if (fio_atomic_add(&memory.count, 1) >
-      (intptr_t)(FIO_MEM_MAX_BLOCKS_PER_CORE * memory.cores)) {
+      (intptr_t)(FIO_MEMORY_MAX_BLOCKS_RESERVED)) {
     /* return memory to the system */
     fio_atomic_sub(&memory.count, 1);
     sys_free(blk, FIO_MEMORY_BLOCK_SIZE);
+    FIO_MEM_ON_BLOCK_FREE();
     return;
   }
   memset(blk, 0, FIO_MEMORY_BLOCK_SIZE);
@@ -6317,6 +6343,7 @@ static inline block_s *block_new(void) {
   blk = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
   if (!blk)
     return NULL;
+  FIO_MEM_ON_BLOCK_ALLOC();
   return block_init(blk);
   ;
 }
@@ -6427,6 +6454,8 @@ static void fio_mem_init(void) {
 static void fio_mem_destroy(void) {
   if (!arenas)
     return;
+
+  FIO_MEM_PRINT_BLOCK_STAT();
 
   for (size_t i = 0; i < memory.cores; ++i) {
     if (arenas[i].block)

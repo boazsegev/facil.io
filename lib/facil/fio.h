@@ -2581,13 +2581,12 @@ C++ extern end
   ((FIO_MEMORY_BLOCK_SIZE >> 2) + (FIO_MEMORY_BLOCK_SIZE >> 3))
 #endif
 
-#ifndef FIO_MEM_MAX_BLOCKS_PER_CORE
+#ifndef FIO_MEMORY_MAX_BLOCKS_RESERVED
 /**
  * The maximum number of available memory blocks that will be pooled before
  * memory is returned to the system.
  */
-#define FIO_MEM_MAX_BLOCKS_PER_CORE                                            \
-  (1 << (22 - FIO_MEMORY_BLOCK_SIZE_LOG)) /* 22 == 4Mb per CPU core (1<<22) */
+#define FIO_MEMORY_MAX_BLOCKS_RESERVED 512 /* 512 * 32Kb per block ~= 16Mb  */
 #endif
 
 /* *****************************************************************************
