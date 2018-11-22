@@ -6545,7 +6545,8 @@ static void fio_mem_destroy(void) {
     arenas[i].block = NULL;
   }
   if (fio_ls_embd_any(&memory.available)) {
-    FIO_LOG_DEBUG("Memory pool wasn't automatically emptied - memory leak?");
+    FIO_LOG_WARNING("facil.io detected memory traces remaining after cleanup"
+                    " - memory leak?");
     FIO_MEMORY_PRINT_BLOCK_STAT();
     size_t count = 0;
     FIO_LS_EMBD_FOR(&memory.available, node) { ++count; }

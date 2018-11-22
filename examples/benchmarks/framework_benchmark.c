@@ -9,6 +9,18 @@ using the full HTTP framework stack (without any DB support).
 
 #include "fio_cli.h"
 
+#ifdef __APPLE__
+#include <dlfcn.h>
+#define PATCH_ENV()                                                            \
+  do {                                                                         \
+    void *obj_c_runtime =                                                      \
+        dlopen("Foundation.framework/Foundation", RTLD_LAZY);                  \
+    (void)obj_c_runtime;                                                       \
+  } while (0)
+#else
+#define PATCH_ENV()
+#endif
+
 /* *****************************************************************************
 Internal Helpers
 ***************************************************************************** */
@@ -77,6 +89,9 @@ int main(int argc, char const *argv[]) {
   http_listen(fio_cli_get("-port"), fio_cli_get("-address"),
               .on_request = route_perform, .public_folder = public_folder,
               .log = fio_cli_get_bool("-log"));
+
+  /* patch for dealing with the High Sierra `fork` limitations */
+  PATCH_ENV();
 
   /* Start the facil.io reactor */
   fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));

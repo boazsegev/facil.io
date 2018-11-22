@@ -21,6 +21,14 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 
 #ifdef __APPLE__
 #include <dlfcn.h>
+#define PATCH_ENV()                                                            \
+  do {                                                                         \
+    void *obj_c_runtime =                                                      \
+        dlopen("Foundation.framework/Foundation", RTLD_LAZY);                  \
+    (void)obj_c_runtime;                                                       \
+  } while (0)
+#else
+#define PATCH_ENV()
 #endif
 
 /* *****************************************************************************
@@ -166,8 +174,7 @@ int main(int argc, char const *argv[]) {
       FIO_CLI_TYPE_INT,
       "-public -www A public folder for serve an HTTP static file service.",
       "-log -v Turns logging on.", FIO_CLI_TYPE_BOOL,
-      "-optimize -o Turns WebSocket broadcast optimizations on.",
-      FIO_CLI_TYPE_BOOL);
+      "-debug Turns debug notifications on.", FIO_CLI_TYPE_BOOL);
 
   if (fio_cli_get("-p"))
     port = fio_cli_get("-p");
@@ -181,13 +188,9 @@ int main(int argc, char const *argv[]) {
     workers = fio_cli_get_i("-w");
   print_log = fio_cli_get_i("-v");
 
-  /* optimize websocket pub/sub for multi-client broadcasts */
-  if (fio_cli_get_i("-o")) {
-    fprintf(stderr, "* Turning on WebSocket broadcast optimizations.\n");
-    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
-    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_TEXT, 1);
-    websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB_BINARY, 1);
-  }
+  if (fio_cli_get_bool("-debug"))
+    FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
+
   fio_cli_end();
 
   /*     ****  actual code ****     */
@@ -198,11 +201,8 @@ int main(int argc, char const *argv[]) {
     exit(1);
   }
 
-#ifdef __APPLE__
   /* patch for dealing with the High Sierra `fork` limitations */
-  void *obj_c_runtime = dlopen("Foundation.framework/Foundation", RTLD_LAZY);
-  (void)obj_c_runtime;
-#endif
+  PATCH_ENV();
 
 #if DEBUG
   fio_pubsub_attach(&PUBSUB_LOGGIN_ENGINE);
