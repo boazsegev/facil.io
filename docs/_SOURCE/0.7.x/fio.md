@@ -1606,27 +1606,41 @@ Returns true (1) if the engine is attached to the system.
 
 facil.io includes a custom memory allocator designed for network application use.
 
+The allocator is very fast (tested with `tests/malloc_speed.c`) and protects against fragmentation issues when used correctly (when abused, fragmentation will increase).
+
 Allocated memory is always zeroed out and aligned on a 16 byte boundary.
 
 Reallocated memory is always aligned on a 16 byte boundary but it might be filled with junk data after the valid data (this can be minimized by using [`fio_realloc2`](#fio_realloc2)).
 
-The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations (anything over 12Kb is forwarded to `mmap`).
+Memory allocation overhead is ~ 0.1% (1/1000 per byte, or 32 bytes per 32Kb). In addition there's a small per-process overhead for the allocator's state-machine (1 page / 4Kb per process). 
+
+The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations (anything over 16Kb is forwarded to `mmap`).
 
 This allocator should prevent memory fragmentation when allocating memory for shot / medium object life-spans (classic network use).
+
+The memory allocator can be used in conjuncture with the system's `malloc` to minimize heap fragmentation (long-life objects use `malloc`, short life objects use `fio_malloc`).
+
+Long term allocation can use `fio_mmap` to directly allocate memory from the system. The overhead for `fio_mmap` is 16 bytes per allocation (freed with `fio_free`).
 
 **Note**: this custom allocator could increase memory fragmentation if long-life allocations are performed periodically (rather than performed during startup). Use [`fio_mmap`](#fio_mmap) or the system's `malloc` for long-term allocations.
 
 ### Memory Allocator Overview
 
-The easiest and fastest allocator that can be written will simply claim memory at top of the stack (using the historic `sbrk` instruction) and never free the memory.
+The memory allocator uses `mmap` to collect memory from the system.
 
-This memory allocator works using a similar design using rotating blocks of 32Kb which are only freed once all the references to the block are freed.
+Each allocation collects ~8Mb from the system, aligned on a 32Kb alignment boundary (except direct `mmap` allocation for large `fio_malloc` or `fio_mmap` calls). This memory is divided into 32Kb blocks which are added to a doubly linked "free" list.
 
-The allocator utilizes memory pools and per-CPU bins to allow for concurrent memory allocations across threads and to minimize lock contention.
+The allocator utilizes per-CPU arenas / bins to allow for concurrent memory allocations across threads and to minimize lock contention.
+
+Each arena / bin collects a 32Kb block and allocates "slices" as required by `fio_malloc`/`fio_realloc`.
+
+The `fio_free` function will free the whole 32Kb block as a single unit once the whole of the allocations for that block were freed (no small-allocation "free list" and no per-slice meta-data).
+
+The memory collected from the system (the 8Mb) will be returned to the system once all the memory was both allocated and freed (or during cleanup).
 
 To replace the system's `malloc` function family compile with the `FIO_OVERRIDE_MALLOC` defined (`-DFIO_OVERRIDE_MALLOC`).
 
-When using tcmalloc or jemalloc, consider defining `FIO_FORCE_MALLOC` to prevent facil.io's custom allocator from compiling (`-DFIO_FORCE_MALLOC`).
+It should be possible to use tcmalloc or jemalloc alongside facil.io's allocator.It's also possible to prevent facil.io's custom allocator from compiling by defining `FIO_FORCE_MALLOC` (`-DFIO_FORCE_MALLOC`).
 
 More details in the `fio.h` header.
 

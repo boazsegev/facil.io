@@ -249,7 +249,11 @@
 
 <h3 id="v-0-7-0-beta3">v. 0.7.0.beta3</h3>
 
+<p><strong>Fix</strong>: (<code>fio</code>) Replaced <code>fio_malloc</code> existing memory allocation / free-list implementation. This also fixes an issue with large memory pools being retained on multi-core systems with many reported CPU cores.</p>
+
 <p><strong>Fix</strong>: (<code>fio</code>) The <code>FIO_FORCE_MALLOC</code> flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system&#39;s <code>malloc</code> which might return junk data.</p>
+
+<p><strong>Fix</strong>: (<code>http</code>) fixes a possible memory leak in <code>http_mimetype_register</code>, where clearing the registry wouldn&#39;t free the FIOBJ Strings.</p>
 
 <p><strong>Optimization</strong>: (<code>fio</code>) pub/sub channel names appear to be (often) objects with a long life-span. Hence, these objects now use <code>malloc</code> (instead of <code>fio_malloc</code>). Also, temporary allocations in <code>fio_subscribe</code> were removed.</p>
 

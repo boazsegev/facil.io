@@ -1592,7 +1592,7 @@ only use this function to unsubscribe while the WebSocket is open.</p>
 <pre><code class='highlight'><span class="kt">void</span> <span class="n">http_mimetype_register</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">file_ext</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">file_ext_len</span><span class="p">,</span>
                             <span class="n">FIOBJ</span> <span class="n">mime_type_str</span><span class="p">);</span>
 </code></pre>
-<p>Registers a Mime-Type to be associated with a file extension.</p>
+<p>Registers a Mime-Type to be associated with a file extension, taking ownership of the <code>mime_type_str</code> String (use <code>fiobj_dup</code> to keep a copy).</p>
 
 <p>File extension names should exclude the dot (<code>&#39;.&#39;</code>) marking the beginning of the extension. i.e., use <code>&quot;jpg&quot;</code>, <code>&quot;html&quot;</code>, etc&#39; (<strong>not</strong> <code>&quot;.jpg&quot;</code>).</p>
 

@@ -2427,27 +2427,41 @@ performance in large network based broadcasting.</p>
 
 <p>facil.io includes a custom memory allocator designed for network application use.</p>
 
+<p>The allocator is very fast (tested with <code>tests/malloc_speed.c</code>) and protects against fragmentation issues when used correctly (when abused, fragmentation will increase).</p>
+
 <p>Allocated memory is always zeroed out and aligned on a 16 byte boundary.</p>
 
 <p>Reallocated memory is always aligned on a 16 byte boundary but it might be filled with junk data after the valid data (this can be minimized by using <a href="#fio_realloc2"><code>fio_realloc2</code></a>).</p>
 
-<p>The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations (anything over 12Kb is forwarded to <code>mmap</code>).</p>
+<p>Memory allocation overhead is ~ 0.1% (1/1000 per byte, or 32 bytes per 32Kb). In addition there&#39;s a small per-process overhead for the allocator&#39;s state-machine (1 page / 4Kb per process). </p>
+
+<p>The memory allocator assumes multiple concurrent allocation/deallocation, short to medium life spans (memory is freed shortly, but not immediately, after it was allocated) and relatively small allocations (anything over 16Kb is forwarded to <code>mmap</code>).</p>
 
 <p>This allocator should prevent memory fragmentation when allocating memory for shot / medium object life-spans (classic network use).</p>
+
+<p>The memory allocator can be used in conjuncture with the system&#39;s <code>malloc</code> to minimize heap fragmentation (long-life objects use <code>malloc</code>, short life objects use <code>fio_malloc</code>).</p>
+
+<p>Long term allocation can use <code>fio_mmap</code> to directly allocate memory from the system. The overhead for <code>fio_mmap</code> is 16 bytes per allocation (freed with <code>fio_free</code>).</p>
 
 <p><strong>Note</strong>: this custom allocator could increase memory fragmentation if long-life allocations are performed periodically (rather than performed during startup). Use <a href="#fio_mmap"><code>fio_mmap</code></a> or the system&#39;s <code>malloc</code> for long-term allocations.</p>
 
 <h3 id="memory-allocator-overview">Memory Allocator Overview</h3>
 
-<p>The easiest and fastest allocator that can be written will simply claim memory at top of the stack (using the historic <code>sbrk</code> instruction) and never free the memory.</p>
+<p>The memory allocator uses <code>mmap</code> to collect memory from the system.</p>
 
-<p>This memory allocator works using a similar design using rotating blocks of 32Kb which are only freed once all the references to the block are freed.</p>
+<p>Each allocation collects ~8Mb from the system, aligned on a 32Kb alignment boundary (except direct <code>mmap</code> allocation for large <code>fio_malloc</code> or <code>fio_mmap</code> calls). This memory is divided into 32Kb blocks which are added to a doubly linked &quot;free&quot; list.</p>
 
-<p>The allocator utilizes memory pools and per-CPU bins to allow for concurrent memory allocations across threads and to minimize lock contention.</p>
+<p>The allocator utilizes per-CPU arenas / bins to allow for concurrent memory allocations across threads and to minimize lock contention.</p>
+
+<p>Each arena / bin collects a 32Kb block and allocates &quot;slices&quot; as required by <code>fio_malloc</code>/<code>fio_realloc</code>.</p>
+
+<p>The <code>fio_free</code> function will free the whole 32Kb block as a single unit once the whole of the allocations for that block were freed (no small-allocation &quot;free list&quot; and no per-slice meta-data).</p>
+
+<p>The memory collected from the system (the 8Mb) will be returned to the system once all the memory was both allocated and freed (or during cleanup).</p>
 
 <p>To replace the system&#39;s <code>malloc</code> function family compile with the <code>FIO_OVERRIDE_MALLOC</code> defined (<code>-DFIO_OVERRIDE_MALLOC</code>).</p>
 
-<p>When using tcmalloc or jemalloc, consider defining <code>FIO_FORCE_MALLOC</code> to prevent facil.io&#39;s custom allocator from compiling (<code>-DFIO_FORCE_MALLOC</code>).</p>
+<p>It should be possible to use tcmalloc or jemalloc alongside facil.io&#39;s allocator.It&#39;s also possible to prevent facil.io&#39;s custom allocator from compiling by defining <code>FIO_FORCE_MALLOC</code> (<code>-DFIO_FORCE_MALLOC</code>).</p>
 
 <p>More details in the <code>fio.h</code> header.</p>
 
