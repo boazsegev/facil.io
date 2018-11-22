@@ -42,6 +42,22 @@ Compile Time Settings
 #define HTTP_MAX_HEADER_LENGTH 8192
 #endif
 
+#ifndef FIO_HTTP_EXACT_LOGGING
+/**
+ * By default, facil.io logs the HTTP request cycle using a fuzzy starting point
+ * (a close enough timestamp).
+ *
+ * The fuzzy timestamp includes delays that aren't related to the HTTP request,
+ * sometimes including time that was spent waiting on the client. On the other
+ * hand, `FIO_HTTP_EXACT_LOGGING` excludes time that the client might have been
+ * waiting for facil.io to read data from the network.
+ *
+ * Due to the preference to err on the side of causion, fuzzy time-stamping is
+ * the default.
+ */
+#define FIO_HTTP_EXACT_LOGGING 0
+#endif
+
 /** the `http_listen settings, see details in the struct definition. */
 typedef struct http_settings_s http_settings_s;
 

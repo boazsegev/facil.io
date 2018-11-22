@@ -603,10 +603,13 @@ static int http1_on_http_version(http1_parser_s *parser, char *version,
                                  size_t len) {
   http1_pr2handle(parser2http(parser)).version = fiobj_str_new(version, len);
   parser2http(parser)->header_size += len;
-  /* start counting - occurs on the first line of both requests and responses */
+/* start counting - occurs on the first line of both requests and responses */
+#if FIO_HTTP_EXACT_LOGGING
   clock_gettime(CLOCK_REALTIME,
                 &http1_pr2handle(parser2http(parser)).received_at);
-  // http1_pr2handle(parser2http(parser)).received_at = fio_last_tick();
+#else
+  http1_pr2handle(parser2http(parser)).received_at = fio_last_tick();
+#endif
   return 0;
 }
 /** called when a header is parsed. */
