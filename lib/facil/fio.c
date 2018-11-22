@@ -10107,7 +10107,4 @@ void fio_test(void) {
   (void)fio_poll;
 }
 
-#undef FIO_ASSERT
-#else
-#define fio_test()
-#endif
+#endif /* DEBUG */
