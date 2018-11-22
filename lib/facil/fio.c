@@ -6511,7 +6511,7 @@ void fio_memory_dump_missing(void) {
   }
 }
 #else
-#define fio_mem_dump_missing()
+#define fio_memory_dump_missing()
 #endif
 
 static void fio_mem_init(void) {
