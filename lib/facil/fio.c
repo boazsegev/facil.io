@@ -6552,7 +6552,6 @@ static void fio_mem_destroy(void) {
     FIO_LOG_DEBUG("Memory pool size: %zu/%zu (leaked %zu blocks).", count,
                   (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION,
                   (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION - count);
-    (void)fio_memory_dump_missing;
   }
   big_free(arenas);
   arenas = NULL;
