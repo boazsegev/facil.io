@@ -29,8 +29,8 @@ Seeking for characters in a string
  *
  * On newer systems, `memchr` should be faster.
  */
-static inline int seek2ch(uint8_t **buffer, register uint8_t *const limit,
-                          const uint8_t c) {
+static int seek2ch(uint8_t **buffer, register uint8_t *const limit,
+                   const uint8_t c) {
   if (**buffer == c) {
 #if HTTP1_PARSER_CONVERT_EOL2NUL
     **buffer = 0;
@@ -72,7 +72,7 @@ static inline int seek2ch(uint8_t **buffer, register uint8_t *const limit,
       break;
     }
   }
-#if !defined(__x86_64__)
+#if !ALLOW_UNALIGNED_MEMORY_ACCESS || !defined(__x86_64__)
 finish:
 #endif
   while (*buffer < limit) {

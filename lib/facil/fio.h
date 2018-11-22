@@ -3559,48 +3559,51 @@ String Implementation - Memory management
  * since it uses 16 byte alignment right up until allocations are routed
  * directly to `mmap` (due to their size, usually over 12KB).
  */
-#define ROUND_UP_CAPA2WORDS(num)                                               \
-  ((((num) + 1) & (sizeof(long double) - 1))                                   \
-       ? (((num) + 1) | (sizeof(long double) - 1))                             \
-       : (num))
+#define ROUND_UP_CAPA2WORDS(num) (((num) + 1) | (sizeof(long double) - 1))
+// Smaller might be:
+//   ((((num) + 1) & (sizeof(long double) - 1))
+//        ? (((num) + 1) | (sizeof(long double) - 1))
+//        : (num))
+
 /**
  * Requires the String to have at least `needed` capacity. Returns the current
  * state of the String.
  */
 FIO_FUNC fio_str_info_s fio_str_capa_assert(fio_str_s *s, size_t needed) {
-  if (!s)
-    return (fio_str_info_s){.capa = 0};
+  if (!s || s->frozen) {
+    return fio_str_info(s);
+  }
   char *tmp;
   if (s->small || !s->data) {
+    if (needed < FIO_STR_SMALL_CAPA) {
+      return (fio_str_info_s){.capa = (FIO_STR_SMALL_CAPA - 1),
+                              .len = (size_t)(s->small >> 1),
+                              .data = FIO_STR_SMALL_DATA(s)};
+    }
     goto is_small;
   }
-  if (needed > s->capa) {
-    needed = ROUND_UP_CAPA2WORDS(needed);
-    if (s->dealloc == FIO_FREE) {
-      tmp = (char *)FIO_REALLOC(s->data, needed + 1, s->len);
-      FIO_ASSERT_ALLOC(tmp);
-    } else {
-      tmp = (char *)FIO_MALLOC(needed + 1);
-      FIO_ASSERT_ALLOC(tmp);
-      memcpy(tmp, s->data, s->len);
-      if (s->dealloc)
-        s->dealloc(s->data);
-      s->dealloc = FIO_FREE;
-    }
-    s->capa = needed;
-    s->data = tmp;
-    s->data[needed] = 0;
+  if (needed < s->capa) {
+    return (fio_str_info_s){.capa = s->capa, .len = s->len, .data = s->data};
   }
-  return (fio_str_info_s){
-      .capa = (s->frozen ? 0 : s->capa), .len = s->len, .data = s->data};
+  needed = ROUND_UP_CAPA2WORDS(needed);
+  if (s->dealloc == FIO_FREE) {
+    tmp = (char *)FIO_REALLOC(s->data, needed + 1, s->len + 1);
+    FIO_ASSERT_ALLOC(tmp);
+  } else {
+    tmp = (char *)FIO_MALLOC(needed + 1);
+    FIO_ASSERT_ALLOC(tmp);
+    memcpy(tmp, s->data, s->len + 1);
+    if (s->dealloc)
+      s->dealloc(s->data);
+    s->dealloc = FIO_FREE;
+  }
+  s->capa = needed;
+  s->data = tmp;
+  s->data[needed] = 0;
+  return (fio_str_info_s){.capa = s->capa, .len = s->len, .data = s->data};
 
 is_small:
   /* small string (string data is within the container) */
-  if (needed < FIO_STR_SMALL_CAPA) {
-    return (fio_str_info_s){.capa = (s->frozen ? 0 : (FIO_STR_SMALL_CAPA - 1)),
-                            .len = (size_t)(s->small >> 1),
-                            .data = FIO_STR_SMALL_DATA(s)};
-  }
   needed = ROUND_UP_CAPA2WORDS(needed);
   tmp = (char *)FIO_MALLOC(needed + 1);
   FIO_ASSERT_ALLOC(tmp);
@@ -3628,8 +3631,7 @@ is_small:
       .data = tmp,
   };
 #endif
-  return (fio_str_info_s){
-      .capa = (s->frozen ? 0 : needed), .len = existing_len, .data = s->data};
+  return (fio_str_info_s){.capa = needed, .len = existing_len, .data = s->data};
 }
 
 /** Performs a best attempt at minimizing memory consumption. */

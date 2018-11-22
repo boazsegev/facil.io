@@ -85,8 +85,9 @@ static int write_header(FIOBJ o, void *w_) {
   fio_str_info_s str = fiobj_obj2cstr(o);
   if (!str.data)
     return 0;
-  fiobj_str_capa_assert(w->dest,
-                        fiobj_obj2cstr(w->dest).len + name.len + str.len + 5);
+  // fiobj_str_capa_assert(w->dest,
+  //                       fiobj_obj2cstr(w->dest).len + name.len + str.len +
+  //                       5);
   fiobj_str_write(w->dest, name.data, name.len);
   fiobj_str_write(w->dest, ":", 1);
   fiobj_str_write(w->dest, str.data, str.len);
@@ -105,7 +106,7 @@ static FIOBJ headers2str(http_s *h, uintptr_t padding) {
   struct header_writer_s w;
   {
     const uintptr_t header_length_guess =
-        fiobj_hash_count(h->private_data.out_headers) * 48;
+        fiobj_hash_count(h->private_data.out_headers) * 64;
     w.dest = fiobj_str_buf(header_length_guess + padding);
   }
   http1pr_s *p = handle2pr(h);

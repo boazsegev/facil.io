@@ -287,7 +287,7 @@ static inline int swallow_ch(uint8_t **buffer, register uint8_t *const limit,
       break;
     }
   }
-#if !defined(__x86_64__)
+#if !ALLOW_UNALIGNED_MEMORY_ACCESS || !defined(__x86_64__)
 finish:
 #endif
   while (*buffer < limit) {
