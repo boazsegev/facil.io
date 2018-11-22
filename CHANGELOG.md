@@ -2,6 +2,8 @@
 
 ### v. 0.7.0.beta3
 
+**Fix**: (`http`) Fixes the request time value for HTTP requests/responses by starting the count once the first HTTP line arrives from a client.
+
 **Fix**: (`fio`) Deletes Unix sockets once done listening. Fixes an issue where the files would remain intact.
 
 **Fix**: (`fio`) Replaced `fio_malloc` existing memory allocation / free-list implementation. This also fixes an issue with large memory pools being retained on multi-core systems with many reported CPU cores.

@@ -2065,7 +2065,7 @@ void http_write_log(http_s *h) {
 
   struct timespec start, end;
   clock_gettime(CLOCK_REALTIME, &end);
-  start = fio_last_tick();
+  start = h->received_at;
 
   {
     // TODO Guess IP address from headers (forwarded) where possible
