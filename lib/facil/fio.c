@@ -6162,7 +6162,8 @@ static inline void *sys_alloc(size_t len, uint8_t is_indi) {
     }
     munmap((void *)((uintptr_t)result + len), FIO_MEMORY_BLOCK_SIZE - offset);
   }
-  if (is_indi) /* advance by a block's allocation size for next allocation */
+  if (is_indi ==
+      0) /* advance by a block's allocation size for next allocation */
     next_alloc =
         (void *)((uintptr_t)result +
                  (FIO_MEMORY_BLOCK_SIZE * (FIO_MEMORY_BLOCKS_PER_ALLOCATION)));
@@ -6176,14 +6177,14 @@ static inline void sys_free(void *mem, size_t len) { munmap(mem, len); }
 
 static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
   if (new_len > prev_len) {
-#if defined(__linux__) && defined(MREMAP_MAYMOVE)
-    void *result = mremap(mem, prev_len, new_len, MREMAP_MAYMOVE);
-    if (result == MAP_FAILED)
-      return NULL;
-#else
-    void *result =
-        mmap((void *)((uintptr_t)mem + prev_len), new_len - prev_len,
-             PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void *result;
+#if defined(__linux__)
+    result = mremap(mem, prev_len, new_len, 0);
+    if (result != MAP_FAILED)
+      return result;
+#endif
+    result = mmap((void *)((uintptr_t)mem + prev_len), new_len - prev_len,
+                  PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (result == (void *)((uintptr_t)mem + prev_len)) {
       result = mem;
     } else {
@@ -6197,7 +6198,6 @@ static void *sys_realloc(void *mem, size_t prev_len, size_t new_len) {
       // memcpy(result, mem, prev_len);
       munmap(mem, prev_len); /* free original memory */
     }
-#endif
     return result;
   }
   if (new_len + 4096 < prev_len) /* more than a single dangling page */
@@ -6375,6 +6375,7 @@ static inline void block_free(block_s *blk) {
 
   fio_unlock(&memory.lock);
   sys_free(blk, FIO_MEMORY_BLOCK_SIZE * FIO_MEMORY_BLOCKS_PER_ALLOCATION);
+  FIO_LOG_DEBUG("memory allocator returned %p to the system", (void *)blk);
   FIO_MEMORY_ON_BLOCK_FREE();
 }
 
@@ -6396,6 +6397,7 @@ static inline block_s *block_new(void) {
   blk = sys_alloc(FIO_MEMORY_BLOCK_SIZE * FIO_MEMORY_BLOCKS_PER_ALLOCATION, 0);
   if (!blk)
     return NULL;
+  FIO_LOG_DEBUG("memory allocator allocated %p from the system", (void *)blk);
   FIO_MEMORY_ON_BLOCK_ALLOC();
   block_init_root(blk, blk);
   /* the extra memory goes into the memory pool. initialize + linke-list. */
@@ -6550,9 +6552,8 @@ static void fio_mem_destroy(void) {
     FIO_MEMORY_PRINT_BLOCK_STAT();
     size_t count = 0;
     FIO_LS_EMBD_FOR(&memory.available, node) { ++count; }
-    FIO_LOG_DEBUG("Memory pool size: %zu/%zu (leaked %zu blocks).", count,
-                  (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION,
-                  (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION - count);
+    FIO_LOG_DEBUG("Memory pool size: %zu (%zu blocks per allocation).", count,
+                  (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION);
   }
   big_free(arenas);
   arenas = NULL;
