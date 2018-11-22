@@ -8085,11 +8085,11 @@ FIO_FUNC inline void fio_str_test(void) {
   fio_str_capa_assert(&str, sizeof(fio_str_s) - 1);
   FIO_ASSERT(!str.small,
              "Long String reporting as small after capacity update!");
-  FIO_ASSERT(fio_str_capa(&str) == sizeof(fio_str_s) - 1,
+  FIO_ASSERT(fio_str_capa(&str) >= sizeof(fio_str_s) - 1,
              "Long String capacity update error (%zu != %zu)!",
              fio_str_capa(&str), sizeof(fio_str_s));
   FIO_ASSERT(fio_str_data(&str) == fio_str_info(&str).data,
-             "Long String `fio_str_data` != `fio_str_info(s).data` (%p != %p)",
+             "Long String `fio_str_data` !>= `fio_str_info(s).data` (%p != %p)",
              (void *)fio_str_data(&str), (void *)fio_str_info(&str).data);
 
   FIO_ASSERT(
