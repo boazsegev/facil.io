@@ -2558,35 +2558,30 @@ C++ extern end
  * When using tcmalloc or jemalloc, it's possible to define `FIO_FORCE_MALLOC`
  * to prevent the facil.io allocator from compiling (`-DFIO_FORCE_MALLOC`).
  */
-#define H_FIO_MEM_H /* prevent fiobj conflicts */
 
-/** Allocator default settings. */
-
-/** The logarithmic value for a memory block, 15 == 32Kb, 16 == 64Kb, etc' */
 #ifndef FIO_MEMORY_BLOCK_SIZE_LOG
+/**
+ * The logarithmic value for a memory block, 15 == 32Kb, 16 == 64Kb, etc'
+ *
+ * By default, a block of memory is 32Kb silce from an 8Mb allocation.
+ *
+ * A value of 16 will make this a 64Kb silce from a 16Mb allocation.
+ */
 #define FIO_MEMORY_BLOCK_SIZE_LOG (15)
 #endif
 
-/* dounb't change these - they are derived from FIO_MEMORY_BLOCK_SIZE_LOG */
 #undef FIO_MEMORY_BLOCK_SIZE
-#undef FIO_MEMORY_BLOCK_MASK
-#undef FIO_MEMORY_BLOCK_SLICES
+/** The resulting memoru block size, depends on `FIO_MEMORY_BLOCK_SIZE_LOG` */
 #define FIO_MEMORY_BLOCK_SIZE ((uintptr_t)1 << FIO_MEMORY_BLOCK_SIZE_LOG)
-#define FIO_MEMORY_BLOCK_MASK (FIO_MEMORY_BLOCK_SIZE - 1)    /* 0b0...1... */
-#define FIO_MEMORY_BLOCK_SLICES (FIO_MEMORY_BLOCK_SIZE >> 4) /* 16B slices */
 
-#ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
-/* defaults to 37.5% of the block, after which `mmap` is used instead */
-#define FIO_MEMORY_BLOCK_ALLOC_LIMIT                                           \
-  ((FIO_MEMORY_BLOCK_SIZE >> 2) + (FIO_MEMORY_BLOCK_SIZE >> 3))
-#endif
-
-#ifndef FIO_MEMORY_MAX_BLOCKS_RESERVED
 /**
- * The maximum number of available memory blocks that will be pooled before
- * memory is returned to the system.
+ * The maximum allocation size, after which `mmap` will be called instead of the
+ * facil.io allocator.
+ *
+ * Defaults to 50% of the block (16Kb), after which `mmap` is used instead
  */
-#define FIO_MEMORY_MAX_BLOCKS_RESERVED 512 /* 512 * 32Kb per block ~= 16Mb  */
+#ifndef FIO_MEMORY_BLOCK_ALLOC_LIMIT
+#define FIO_MEMORY_BLOCK_ALLOC_LIMIT (FIO_MEMORY_BLOCK_SIZE >> 1)
 #endif
 
 /* *****************************************************************************

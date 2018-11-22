@@ -154,17 +154,17 @@ int main(void) {
   void *thrd_result;
 
   /* test system allocations */
-  fprintf(stderr,
-          "===== Performance Testing system memory allocator (please wait):\n");
+  fprintf(stderr, "===== Performance Testing system memory allocator "
+                  "(please wait):\n ");
   pthread_create(&thread2, NULL, test_system_malloc, NULL);
   size_t system = test_mem_functions(malloc, calloc, realloc, free);
   pthread_join(thread2, &thrd_result);
   system += (uintptr_t)thrd_result;
   fprintf(stderr, "Total Cycles: %zu\n", system);
 
-  fprintf(
-      stderr,
-      "\n===== Performance Testing facil.io memory allocator (please wait):\n");
+  /* test facil.io allocations */
+  fprintf(stderr, "\n===== Performance Testing facil.io memory allocator "
+                  "(please wait):\n");
   pthread_create(&thread2, NULL, test_facil_malloc, NULL);
   size_t fio =
       test_mem_functions(fio_malloc, fio_calloc, fio_realloc, fio_free);
