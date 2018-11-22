@@ -1371,7 +1371,7 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
                             FIOBJ mime_type_str);
 ```
 
-Registers a Mime-Type to be associated with a file extension.
+Registers a Mime-Type to be associated with a file extension, taking ownership of the `mime_type_str` String (use `fiobj_dup` to keep a copy).
 
 File extension names should exclude the dot (`'.'`) marking the beginning of the extension. i.e., use `"jpg"`, `"html"`, etc' (**not** `".jpg"`).
 

@@ -2693,12 +2693,9 @@ parse_path:
 Lookup Tables / functions
 ***************************************************************************** */
 
-static FIOBJ tmp_cpy_obj(FIOBJ o) { return fiobj_dup(o); }
-
 #define FIO_SET_NAME fio_mime_set
 #define FIO_SET_OBJ_TYPE FIOBJ
 #define FIO_SET_OBJ_COMPARE(o1, o2) (1)
-#define FIO_SET_OBJ_COPY(dest, o) (dest) = tmp_cpy_obj((o))
 #define FIO_SET_OBJ_DESTROY(o) fiobj_free((o))
 
 #include <fio.h>
