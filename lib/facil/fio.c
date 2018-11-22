@@ -4027,6 +4027,13 @@ static void fio_listen_cleanup_task(void *pr_) {
     pr->on_finish(pr->uuid, pr->udata);
   }
   fio_force_close(pr->uuid);
+  if (pr->addr &&
+      (!pr->port || *pr->port == 0 ||
+       (pr->port[0] == '0' && pr->port[1] == 0)) &&
+      fio_is_master()) {
+    /* delete Unix sockets */
+    unlink(pr->addr);
+  }
   free(pr_);
 }
 

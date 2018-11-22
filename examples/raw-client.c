@@ -80,7 +80,8 @@ static void on_data(intptr_t uuid, fio_protocol_s *protocol) {
   ret = fio_read(uuid, buffer, MAX_BYTES_READ_PER_CYCLE);
   while (ret > 0) {
     buffer[ret] = 0;
-    printf("%s", buffer); /* NUL bytes on binary streams are normal */
+    fwrite(buffer, ret, 1, stdout); /* NUL bytes on binary streams are normal */
+    fflush(stdout);
     ret = fio_read(uuid, buffer, MAX_BYTES_READ_PER_CYCLE);
   }
 

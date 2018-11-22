@@ -2,6 +2,8 @@
 
 ### v. 0.7.0.beta3
 
+**Fix**: (`fio`) Deletes Unix sockets once done listening. Fixes an issue where the files would remain intact.
+
 **Fix**: (`fio`) Replaced `fio_malloc` existing memory allocation / free-list implementation. This also fixes an issue with large memory pools being retained on multi-core systems with many reported CPU cores.
 
 **Fix**: (`fio`) The `FIO_FORCE_MALLOC` flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system's `malloc` which might return junk data.
