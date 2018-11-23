@@ -301,8 +301,10 @@ Memory pool / custom allocator for short lived objects
 /* inform the compiler that the returned value is aligned on 16 byte marker */
 #if FIO_FORCE_MALLOC
 #define FIO_ALIGN
+#define FIO_ALIGN_NEW
 #else
-#define FIO_ALIGN __attribute__((aligned(16)))
+#define FIO_ALIGN __attribute__((assume_aligned(16)))
+#define FIO_ALIGN_NEW __attribute__((malloc, assume_aligned(16)))
 #endif
 
 /**
@@ -312,7 +314,7 @@ Memory pool / custom allocator for short lived objects
  * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (12,288 bytes when using 32Kb
  * blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
  */
-void *FIO_ALIGN fio_malloc(size_t size);
+void *FIO_ALIGN_NEW fio_malloc(size_t size);
 
 /**
  * same as calling `fio_malloc(size_per_unit * unit_count)`;
@@ -320,7 +322,7 @@ void *FIO_ALIGN fio_malloc(size_t size);
  * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (12,288 bytes when using 32Kb
  * blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
  */
-void *FIO_ALIGN fio_calloc(size_t size_per_unit, size_t unit_count);
+void *FIO_ALIGN_NEW fio_calloc(size_t size_per_unit, size_t unit_count);
 
 /** Frees memory that was allocated using this library. */
 void fio_free(void *ptr);
@@ -348,7 +350,7 @@ void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
  *
  * `fio_free` can be used for deallocating the memory.
  */
-void *FIO_ALIGN fio_mmap(size_t size);
+void *FIO_ALIGN_NEW fio_mmap(size_t size);
 
 /**
  * When forking is called manually, call this function to reset the facil.io
