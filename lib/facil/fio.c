@@ -6230,6 +6230,7 @@ static struct {
   // intptr_t count;          /* free list counter */
   size_t cores;    /* the number of detected CPU cores*/
   fio_lock_i lock; /* a global lock */
+  uint8_t forked; /* a forked collection indicator. */
 } memory = {
     .cores = 1,
     .lock = FIO_LOCK_INIT,
@@ -6304,6 +6305,7 @@ void fio_malloc_after_fork(void) {
     return;
   }
   memory.lock = FIO_LOCK_INIT;
+  memory.forked = 1;
   for (size_t i = 0; i < memory.cores; ++i) {
     arenas[i].lock = FIO_LOCK_INIT;
   }
@@ -6532,7 +6534,7 @@ static void fio_mem_destroy(void) {
       block_free(arenas[i].block);
     arenas[i].block = NULL;
   }
-  if (fio_ls_embd_any(&memory.available)) {
+  if (!memroy.forked && fio_ls_embd_any(&memory.available)) {
     FIO_LOG_WARNING("facil.io detected memory traces remaining after cleanup"
                     " - memory leak?");
     FIO_MEMORY_PRINT_BLOCK_STAT();
