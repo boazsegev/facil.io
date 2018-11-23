@@ -356,6 +356,8 @@ void *FIO_ALIGN fio_mmap(size_t size);
  */
 void fio_malloc_after_fork(void);
 
+#undef FIO_ALIGN
+
 #if FIO_FORCE_MALLOC
 #define FIO_MALLOC(size) calloc((size), 1)
 #define FIO_CALLOC(size, units) calloc((size), (units))
