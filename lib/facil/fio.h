@@ -298,6 +298,13 @@ Memory pool / custom allocator for short lived objects
 
 ***************************************************************************** */
 
+/* inform the compiler that the returned value is aligned on 16 byte marker */
+#if FIO_FORCE_MALLOC
+#define FIO_ALIGN
+#else
+#define FIO_ALIGN __attribute__((aligned(16)))
+#endif
+
 /**
  * Allocates memory using a per-CPU core block memory pool.
  * Memory is zeroed out.
@@ -305,7 +312,7 @@ Memory pool / custom allocator for short lived objects
  * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (12,288 bytes when using 32Kb
  * blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
  */
-void *fio_malloc(size_t size);
+void *FIO_ALIGN fio_malloc(size_t size);
 
 /**
  * same as calling `fio_malloc(size_per_unit * unit_count)`;
@@ -313,7 +320,7 @@ void *fio_malloc(size_t size);
  * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (12,288 bytes when using 32Kb
  * blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
  */
-void *fio_calloc(size_t size_per_unit, size_t unit_count);
+void *FIO_ALIGN fio_calloc(size_t size_per_unit, size_t unit_count);
 
 /** Frees memory that was allocated using this library. */
 void fio_free(void *ptr);
@@ -322,7 +329,7 @@ void fio_free(void *ptr);
  * Re-allocates memory. An attempt to avoid copying the data is made only for
  * big memory allocations (larger than FIO_MEMORY_BLOCK_ALLOC_LIMIT).
  */
-void *fio_realloc(void *ptr, size_t new_size);
+void *FIO_ALIGN fio_realloc(void *ptr, size_t new_size);
 
 /**
  * Re-allocates memory. An attempt to avoid copying the data is made only for
@@ -330,7 +337,7 @@ void *fio_realloc(void *ptr, size_t new_size);
  *
  * This variation is slightly faster as it might copy less data.
  */
-void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
+void *FIO_ALIGN fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
 
 /**
  * Allocates memory directly using `mmap`, this is prefered for objects that
@@ -341,7 +348,7 @@ void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length);
  *
  * `fio_free` can be used for deallocating the memory.
  */
-void *fio_mmap(size_t size);
+void *FIO_ALIGN fio_mmap(size_t size);
 
 /**
  * When forking is called manually, call this function to reset the facil.io
