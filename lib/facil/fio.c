@@ -6534,7 +6534,7 @@ static void fio_mem_destroy(void) {
       block_free(arenas[i].block);
     arenas[i].block = NULL;
   }
-  if (!memroy.forked && fio_ls_embd_any(&memory.available)) {
+  if (!memory.forked && fio_ls_embd_any(&memory.available)) {
     FIO_LOG_WARNING("facil.io detected memory traces remaining after cleanup"
                     " - memory leak?");
     FIO_MEMORY_PRINT_BLOCK_STAT();
