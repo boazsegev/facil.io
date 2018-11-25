@@ -1336,6 +1336,8 @@ static void sig_int_handler(int sig) {
 static void fio_signal_handler_setup(void) {
   /* setup signal handling */
   struct sigaction act, old;
+  memset(&act, 0, sizeof(old));
+  memset(&old, 0, sizeof(old));
 
   act.sa_handler = sig_int_handler;
   sigemptyset(&act.sa_mask);
@@ -1366,6 +1368,8 @@ static void fio_signal_handler_setup(void) {
 static void fio_signal_handler_reset(void) {
   struct sigaction act, old;
 
+  memset(&act, 0, sizeof(old));
+  memset(&old, 0, sizeof(old));
   act.sa_handler = SIG_DFL;
   sigemptyset(&act.sa_mask);
   sigaction(SIGINT, &act, &old);
