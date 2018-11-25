@@ -21,6 +21,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -52,8 +53,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #elif FIO_ENGINE_KQUEUE
 
 #include <sys/event.h>
-#elif FIO_ENGINE_POLL
-#include <poll.h>
 #endif
 
 /* for kqueue and epoll only */
@@ -327,6 +326,11 @@ static inline int fio_clear_fd(intptr_t fd, uint8_t is_open) {
   return 0;
 }
 
+static inline void fio_force_close_in_poll(intptr_t uuid) {
+  uuid_data(uuid).close = 2;
+  fio_force_close(uuid);
+}
+
 /* *****************************************************************************
 Protocol Locking and UUID validation
 ***************************************************************************** */
@@ -495,6 +499,243 @@ Section Start Marker
 
 
 
+                         Default Thread / Fork handler
+
+                           And Concurrency Helpers
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/**
+OVERRIDE THIS to replace the default `fork` implementation.
+
+Behaves like the system's `fork`.
+*/
+#pragma weak fio_fork
+int __attribute__((weak)) fio_fork(void) { return fork(); }
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Accepts a pointer to a function and a single argument that should be executed
+ * within a new thread.
+ *
+ * The function should allocate memory for the thread object and return a
+ * pointer to the allocated memory that identifies the thread.
+ *
+ * On error NULL should be returned.
+ */
+#pragma weak fio_thread_new
+void *__attribute__((weak))
+fio_thread_new(void *(*thread_func)(void *), void *arg) {
+  pthread_t *thread = malloc(sizeof(*thread));
+  FIO_ASSERT_ALLOC(thread);
+  if (pthread_create(thread, NULL, thread_func, arg))
+    goto error;
+  return thread;
+error:
+  free(thread);
+  return NULL;
+}
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Frees the memory associated with a thread identifier (allows the thread to
+ * run it's course, just the identifier is freed).
+ */
+#pragma weak fio_thread_free
+void __attribute__((weak)) fio_thread_free(void *p_thr) {
+  if (*((pthread_t *)p_thr)) {
+    pthread_detach(*((pthread_t *)p_thr));
+  }
+  free(p_thr);
+}
+
+/**
+ * OVERRIDE THIS to replace the default pthread implementation.
+ *
+ * Accepts a pointer returned from `fio_thread_new` (should also free any
+ * allocated memory) and joins the associated thread.
+ *
+ * Return value is ignored.
+ */
+#pragma weak fio_thread_join
+int __attribute__((weak)) fio_thread_join(void *p_thr) {
+  if (!p_thr || !(*((pthread_t *)p_thr)))
+    return -1;
+  pthread_join(*((pthread_t *)p_thr), NULL);
+  *((pthread_t *)p_thr) = (pthread_t)NULL;
+  free(p_thr);
+  return 0;
+}
+
+/* *****************************************************************************
+Suspending and renewing thread execution (signaling events)
+***************************************************************************** */
+
+#ifndef DEFER_THROTTLE
+#define DEFER_THROTTLE 2097148UL
+#endif
+#ifndef FIO_DEFER_THROTTLE_LIMIT
+#define FIO_DEFER_THROTTLE_LIMIT 134217472UL
+#endif
+
+/**
+ * The polling throttling model will use pipes to suspend and resume threads.
+ *
+ * If polling is disabled, the progressive throttling model will be used.
+ *
+ * The progressive throttling makes concurrency and parallelism likely, but uses
+ * progressive nano-sleep throttling system that is less exact.
+ */
+#ifndef FIO_DEFER_THROTTLE_POLL
+#define FIO_DEFER_THROTTLE_POLL 0
+#endif
+
+typedef struct fio_thread_queue_s {
+  fio_ls_embd_s node;
+  int fd_wait;   /* used for weaiting (read signal) */
+  int fd_signal; /* used for signalling (write) */
+} fio_thread_queue_s;
+
+fio_ls_embd_s fio_thread_queue = FIO_LS_INIT(fio_thread_queue);
+fio_lock_i fio_thread_lock = FIO_LOCK_INIT;
+static __thread fio_thread_queue_s fio_thread_data;
+
+FIO_FUNC inline void fio_thread_make_suspendable(void) {
+  if (fio_thread_data.fd_signal)
+    return;
+  int fd[2] = {0, 0};
+  int ret = pipe(fd);
+  FIO_ASSERT(ret == 0, "`pipe` failed.");
+  int flags;
+  flags = fcntl(fd[0], F_GETFL, 0);
+  FIO_ASSERT(flags != -1, "couldn't aquire fd flags.");
+  FIO_ASSERT(!fcntl(fd[0], F_SETFL, flags | O_CLOEXEC | O_NONBLOCK),
+             "`pipe` couldn't be set to non-blocking mode");
+  flags = fcntl(fd[1], F_GETFL, 0);
+  FIO_ASSERT(flags != -1, "couldn't aquire fd flags.");
+  FIO_ASSERT(!fcntl(fd[1], F_SETFL, flags | O_CLOEXEC | O_NONBLOCK),
+             "`pipe` couldn't be set to non-blocking mode");
+  fio_thread_data.fd_wait = fd[0];
+  fio_thread_data.fd_signal = fd[1];
+}
+
+FIO_FUNC inline void fio_thread_cleanup(void) {
+  if (!fio_thread_data.fd_signal)
+    return;
+  close(fio_thread_data.fd_wait);
+  close(fio_thread_data.fd_signal);
+  fio_thread_data.fd_wait = 0;
+  fio_thread_data.fd_signal = 0;
+}
+
+/* suspend thread execution (might be resumed unexpectedly) */
+FIO_FUNC void fio_thread_suspend(void) {
+  fio_lock(&fio_thread_lock);
+  fio_ls_embd_push(&fio_thread_queue, &fio_thread_data.node);
+  fio_unlock(&fio_thread_lock);
+  struct pollfd list = {
+      .events = (POLLPRI | POLLIN),
+      .fd = fio_thread_data.fd_wait,
+  };
+  if (poll(&list, 1, 5000) > 0) {
+    /* thread was removed from the list through signal */
+    uint64_t data;
+    int r = read(fio_thread_data.fd_wait, &data, sizeof(data));
+    (void)r;
+  } else {
+    /* remove self from list */
+    fio_lock(&fio_thread_lock);
+    fio_ls_embd_remove(&fio_thread_data.node);
+    fio_unlock(&fio_thread_lock);
+  }
+}
+
+/* wake up a single thread */
+FIO_FUNC void fio_thread_signal(void) {
+  fio_thread_queue_s *t;
+  int fd = 0;
+  fio_lock(&fio_thread_lock);
+  t = (fio_thread_queue_s *)fio_ls_embd_shift(&fio_thread_queue);
+  if (t)
+    fd = t->fd_signal;
+  fio_unlock(&fio_thread_lock);
+  if (fd) {
+    uint64_t data = 1;
+    int r = write(fd, (void *)&data, sizeof(data));
+    (void)r;
+  }
+}
+
+/* wake up all threads */
+FIO_FUNC void fio_thread_broadcast(void) {
+  while (fio_ls_embd_any(&fio_thread_queue)) {
+    fio_thread_signal();
+  }
+}
+
+static size_t fio_poll(void);
+/**
+ * A thread entering this function should wait for new evennts.
+ */
+static void fio_defer_thread_wait(void) {
+#if FIO_ENGINE_POLL
+  fio_poll();
+  return;
+#endif
+  if (FIO_DEFER_THROTTLE_POLL) {
+    fio_thread_suspend();
+  } else {
+    /* keeps threads active (concurrent), but reduces performance */
+    static __thread size_t static_throttle = 262143UL;
+    fio_throttle_thread(static_throttle);
+    if (fio_defer_has_queue())
+      static_throttle = 1;
+    else if (static_throttle < FIO_DEFER_THROTTLE_LIMIT)
+      static_throttle = (static_throttle << 1);
+  }
+}
+
+static inline void fio_defer_on_thread_start(void) {
+  if (FIO_DEFER_THROTTLE_POLL)
+    fio_thread_make_suspendable();
+}
+static inline void fio_defer_thread_signal(void) {
+  if (FIO_DEFER_THROTTLE_POLL)
+    fio_thread_signal();
+}
+static inline void fio_defer_on_thread_end(void) {
+  if (FIO_DEFER_THROTTLE_POLL) {
+    fio_thread_broadcast();
+    fio_thread_cleanup();
+  }
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -517,24 +758,6 @@ Section Start Marker
 
 
 ***************************************************************************** */
-#ifndef DEFER_THROTTLE
-#define DEFER_THROTTLE 2097148UL
-#endif
-#ifndef FIO_DEFER_THROTTLE_LIMIT
-#define FIO_DEFER_THROTTLE_LIMIT 268434944UL
-#endif
-
-/**
- * The progressive throttling model makes concurrency and parallelism more
- * likely.
- *
- * Otherwise threads are assumed to be intended for "fallback" in case of slow
- * user code, where a single thread should be active most of the time and other
- * threads are activated only when that single thread is slow to perform.
- */
-#ifndef DEFER_THROTTLE_PROGRESSIVE
-#define DEFER_THROTTLE_PROGRESSIVE 1
-#endif
 
 #ifndef DEFER_QUEUE_BLOCK_COUNT
 #if UINTPTR_MAX <= 0xFFFFFFFF
@@ -640,9 +863,12 @@ critical_error:
 }
 
 #define fio_defer_push_task(func_, arg1_, arg2_)                               \
-  fio_defer_push_task_fn(                                                      \
-      (fio_defer_task_s){.func = func_, .arg1 = arg1_, .arg2 = arg2_},         \
-      &task_queue_normal)
+  do {                                                                         \
+    fio_defer_push_task_fn(                                                    \
+        (fio_defer_task_s){.func = func_, .arg1 = arg1_, .arg2 = arg2_},       \
+        &task_queue_normal);                                                   \
+    fio_defer_thread_signal();                                                 \
+  } while (0)
 
 #if FIO_USE_URGENT_QUEUE
 #define fio_defer_push_urgent(func_, arg1_, arg2_)                             \
@@ -716,14 +942,30 @@ static inline void fio_defer_clear_tasks_for_queue(fio_task_queue_s *queue) {
   fio_unlock(&queue->lock);
 }
 
+/**
+ * Performs a single task from the queue, returning -1 if the queue was empty.
+ */
+static inline int
+fio_defer_perform_single_task_for_queue(fio_task_queue_s *queue) {
+  fio_defer_task_s task = fio_defer_pop_task(queue);
+  if (!task.func)
+    return -1;
+  task.func(task.arg1, task.arg2);
+  return 0;
+}
+
 static inline void fio_defer_clear_tasks(void) {
   fio_defer_clear_tasks_for_queue(&task_queue_normal);
+#if FIO_USE_URGENT_QUEUE
   fio_defer_clear_tasks_for_queue(&task_queue_urgent);
+#endif
 }
 
 static void fio_defer_on_fork(void) {
   task_queue_normal.lock = FIO_LOCK_INIT;
+#if FIO_USE_URGENT_QUEUE
   task_queue_urgent.lock = FIO_LOCK_INIT;
+#endif
 }
 
 /* *****************************************************************************
@@ -744,37 +986,54 @@ call_error:
 
 /** Performs all deferred functions until the queue had been depleted. */
 void fio_defer_perform(void) {
-  for (;;) {
 #if FIO_USE_URGENT_QUEUE
-    fio_defer_task_s task = fio_defer_pop_task(&task_queue_urgent);
-    if (!task.func)
-      task = fio_defer_pop_task(&task_queue_normal);
+  while (fio_defer_perform_single_task_for_queue(&task_queue_urgent) == 0 ||
+         fio_defer_perform_single_task_for_queue(&task_queue_normal) == 0)
+    ;
 #else
-    fio_defer_task_s task = fio_defer_pop_task(&task_queue_normal);
+  while (fio_defer_perform_single_task_for_queue(&task_queue_normal) == 0)
+    ;
 #endif
-    if (!task.func)
-      return;
-    task.func(task.arg1, task.arg2);
-  }
+  //   for (;;) {
+  // #if FIO_USE_URGENT_QUEUE
+  //     fio_defer_task_s task = fio_defer_pop_task(&task_queue_urgent);
+  //     if (!task.func)
+  //       task = fio_defer_pop_task(&task_queue_normal);
+  // #else
+  //     fio_defer_task_s task = fio_defer_pop_task(&task_queue_normal);
+  // #endif
+  //     if (!task.func)
+  //       return;
+  //     task.func(task.arg1, task.arg2);
+  //   }
 }
 
 /** Returns true if there are deferred functions waiting for execution. */
 int fio_defer_has_queue(void) {
+#if FIO_USE_URGENT_QUEUE
   return task_queue_urgent.reader != task_queue_urgent.writer ||
          task_queue_urgent.reader->write != task_queue_urgent.reader->read ||
          task_queue_normal.reader != task_queue_normal.writer ||
          task_queue_normal.reader->write != task_queue_normal.reader->read;
+#else
+  return task_queue_normal.reader != task_queue_normal.writer ||
+         task_queue_normal.reader->write != task_queue_normal.reader->read;
+#endif
 }
 
 /** Clears the queue. */
 void fio_defer_clear_queue(void) { fio_defer_clear_tasks(); }
 
-static void fio_defer_thread_wait(void);
+/* Thread pool task */
 static void *fio_defer_cycle(void *ignr) {
-  do {
+  fio_defer_on_thread_start();
+  for (;;) {
     fio_defer_perform();
+    if (!fio_is_running())
+      break;
     fio_defer_thread_wait();
-  } while (fio_is_running());
+  }
+  fio_defer_on_thread_end();
   return ignr;
 }
 
@@ -1013,9 +1272,7 @@ Section Start Marker
 
 
 
-                         Default Thread / Fork handler
-
-                           And Concurrency Helpers
+                               Concurrency Helpers
 
 
 
@@ -1028,101 +1285,6 @@ Section Start Marker
 
 
 
-***************************************************************************** */
-
-/**
-OVERRIDE THIS to replace the default `fork` implementation.
-
-Behaves like the system's `fork`.
-*/
-#pragma weak fio_fork
-int __attribute__((weak)) fio_fork(void) { return fork(); }
-
-/**
- * OVERRIDE THIS to replace the default pthread implementation.
- *
- * Accepts a pointer to a function and a single argument that should be executed
- * within a new thread.
- *
- * The function should allocate memory for the thread object and return a
- * pointer to the allocated memory that identifies the thread.
- *
- * On error NULL should be returned.
- */
-#pragma weak fio_thread_new
-void *__attribute__((weak))
-fio_thread_new(void *(*thread_func)(void *), void *arg) {
-  pthread_t *thread = malloc(sizeof(*thread));
-  FIO_ASSERT_ALLOC(thread);
-  if (pthread_create(thread, NULL, thread_func, arg))
-    goto error;
-  return thread;
-error:
-  free(thread);
-  return NULL;
-}
-
-/**
- * OVERRIDE THIS to replace the default pthread implementation.
- *
- * Frees the memory associated with a thread identifier (allows the thread to
- * run it's course, just the identifier is freed).
- */
-#pragma weak fio_thread_free
-void __attribute__((weak)) fio_thread_free(void *p_thr) {
-  if (*((pthread_t *)p_thr)) {
-    pthread_detach(*((pthread_t *)p_thr));
-  }
-  free(p_thr);
-}
-
-/**
- * OVERRIDE THIS to replace the default pthread implementation.
- *
- * Accepts a pointer returned from `fio_thread_new` (should also free any
- * allocated memory) and joins the associated thread.
- *
- * Return value is ignored.
- */
-#pragma weak fio_thread_join
-int __attribute__((weak)) fio_thread_join(void *p_thr) {
-  if (!p_thr || !(*((pthread_t *)p_thr)))
-    return -1;
-  pthread_join(*((pthread_t *)p_thr), NULL);
-  *((pthread_t *)p_thr) = (pthread_t)NULL;
-  free(p_thr);
-  return 0;
-}
-
-static size_t fio_poll(void);
-/**
- * A thread entering this function should wait for new evennts.
- */
-static void fio_defer_thread_wait(void) {
-#if FIO_ENGINE_POLL
-  fio_poll();
-  return;
-#endif
-  if (FIO_DEFER_THROTTLE_PROGRESSIVE) {
-    /* keeps threads active (concurrent), but reduces performance */
-    static __thread size_t static_throttle = 262143UL;
-    if (static_throttle < FIO_DEFER_THROTTLE_LIMIT)
-      static_throttle = (static_throttle << 1);
-    fio_throttle_thread(static_throttle);
-    if (fio_defer_has_queue())
-      static_throttle = 1;
-  } else {
-    /* Protects against slow user code, but mostly a single active thread */
-    size_t throttle = fio_data->threads ? ((fio_data->threads) * DEFER_THROTTLE)
-                                        : FIO_DEFER_THROTTLE_LIMIT;
-    if (throttle > FIO_DEFER_THROTTLE_LIMIT)
-      throttle = FIO_DEFER_THROTTLE_LIMIT;
-    fio_throttle_thread(throttle);
-  }
-}
-
-/* *****************************************************************************
-Concurrency Helpers
 ***************************************************************************** */
 
 volatile uint8_t fio_signal_children_flag = 0;
@@ -1464,7 +1626,7 @@ static size_t fio_poll(void) {
       for (int i = 0; i < active_count; i++) {
         if (events[i].events & (~(EPOLLIN | EPOLLOUT))) {
           // errors are hendled as disconnections (on_close)
-          fio_force_close(fd2uuid(events[i].data.fd));
+          fio_force_close_in_poll(fd2uuid(events[i].data.fd));
         } else {
           // no error, then it's an active event(s)
           if (events[i].events & EPOLLOUT) {
@@ -1600,7 +1762,11 @@ static size_t fio_poll(void) {
   if (active_count > 0) {
     for (int i = 0; i < active_count; i++) {
       // test for event(s) type
-      if (events[i].filter == EVFILT_READ) {
+      if (events[i].filter == EVFILT_WRITE) {
+        // we can only write if there's no error in the socket
+        fio_defer_push_urgent(deferred_on_ready,
+                              ((void *)fd2uuid(events[i].udata)), NULL);
+      } else if (events[i].filter == EVFILT_READ) {
         fio_defer_push_task(deferred_on_data, (void *)fd2uuid(events[i].udata),
                             NULL);
       }
@@ -1613,11 +1779,7 @@ static size_t fio_poll(void) {
         //             ? "EV_EOF"
         //             : (events[i].flags & EV_ERROR) ? "EV_ERROR" : "WTF?");
         // uuid_data(events[i].udata).open = 0;
-        fio_force_close(fd2uuid(events[i].udata));
-      } else if (events[i].filter == EVFILT_WRITE) {
-        // we can only write if there's no error in the socket
-        fio_defer_push_urgent(deferred_on_ready,
-                              ((void *)fd2uuid(events[i].udata)), NULL);
+        fio_force_close_in_poll(fd2uuid(events[i].udata));
       }
     }
   } else if (active_count < 0) {
@@ -1748,20 +1910,20 @@ static size_t fio_poll(void) {
     if (list[i].revents) {
       touchfd(i);
       ++count;
-      if (list[i].revents & FIO_POLL_READ_EVENTS) {
-        // FIO_LOG_DEBUG("Poll Read %zu => %p", i, (void *)fd2uuid(i));
-        fio_poll_remove_read(i);
-        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(i), NULL);
-      }
       if (list[i].revents & FIO_POLL_WRITE_EVENTS) {
         // FIO_LOG_DEBUG("Poll Write %zu => %p", i, (void *)fd2uuid(i));
         fio_poll_remove_write(i);
         fio_defer_push_urgent(deferred_on_ready, (void *)fd2uuid(i), NULL);
       }
+      if (list[i].revents & FIO_POLL_READ_EVENTS) {
+        // FIO_LOG_DEBUG("Poll Read %zu => %p", i, (void *)fd2uuid(i));
+        fio_poll_remove_read(i);
+        fio_defer_push_task(deferred_on_data, (void *)fd2uuid(i), NULL);
+      }
       if (list[i].revents & (POLLHUP | POLLERR)) {
         // FIO_LOG_DEBUG("Poll Hangup %zu => %p", i, (void *)fd2uuid(i));
         fio_poll_remove_fd(i);
-        fio_force_close(fd2uuid(i));
+        fio_force_close_in_poll(fd2uuid(i));
       }
       if (list[i].revents & POLLNVAL) {
         // FIO_LOG_DEBUG("Poll Invalid %zu => %p", i, (void *)fd2uuid(i));
@@ -2635,7 +2797,7 @@ void fio_force_close(intptr_t uuid) {
   fio_lock(&uuid_data(uuid).protocol_lock);
   fio_clear_fd(fio_uuid2fd(uuid), 0);
   fio_unlock(&uuid_data(uuid).protocol_lock);
-  close(fio_uuid2fd(uuid)); /* again? yes, the hooks might be unreliable */
+  close(fio_uuid2fd(uuid));
 #if FIO_ENGINE_POLL
   fio_poll_remove_fd(fio_uuid2fd(uuid));
 #endif
@@ -3327,6 +3489,7 @@ static void fio_cycle_schedule_events(void) {
   fio_timer_schedule();
   fio_max_fd_shrink();
   if (fio_signal_children_flag) {
+    /* hot restart support */
     fio_signal_children_flag = 0;
     fio_cluster_signal_children();
   }
@@ -6230,7 +6393,7 @@ static struct {
   // intptr_t count;          /* free list counter */
   size_t cores;    /* the number of detected CPU cores*/
   fio_lock_i lock; /* a global lock */
-  uint8_t forked; /* a forked collection indicator. */
+  uint8_t forked;  /* a forked collection indicator. */
 } memory = {
     .cores = 1,
     .lock = FIO_LOCK_INIT,

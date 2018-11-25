@@ -2,6 +2,8 @@
 
 ### v. 0.7.0.beta3
 
+**Fix**: (`fio`) Prevent Read/Write Hooks from delaying `fio_force_close` when an error occures while polling a connection.
+
 **Fix**: (`fio`) Deletes Unix sockets once done listening. Fixes an issue where the files would remain intact.
 
 **Fix**: (`fio`) Replaced `fio_malloc` existing memory allocation / free-list implementation. This also fixes an issue with large memory pools being retained on multi-core systems with many reported CPU cores.

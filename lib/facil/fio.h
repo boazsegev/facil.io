@@ -302,9 +302,12 @@ Memory pool / custom allocator for short lived objects
 #if FIO_FORCE_MALLOC
 #define FIO_ALIGN
 #define FIO_ALIGN_NEW
-#else
+#elif __clang__ || __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 8)
 #define FIO_ALIGN __attribute__((assume_aligned(16)))
 #define FIO_ALIGN_NEW __attribute__((malloc, assume_aligned(16)))
+#else
+#define FIO_ALIGN
+#define FIO_ALIGN_NEW
 #endif
 
 /**
@@ -456,15 +459,12 @@ extern int FIO_LOG_LEVEL;
 #define FIO_LOG_STATE(...)
 #endif
 
-#if DEBUG
 #define FIO_ASSERT(cond, ...)                                                  \
   if (!(cond)) {                                                               \
-    FIO_LOG_DEBUG(__VA_ARGS__);                                                \
+    FIO_LOG_FATAL(__VA_ARGS__);                                                \
+    perror("     errno");                                                      \
     exit(-1);                                                                  \
   }
-#else
-#define FIO_ASSERT(...)
-#endif
 
 #ifndef FIO_ASSERT_ALLOC
 /** Tests for an allocation failure. The behavior can be overridden. */
@@ -475,6 +475,17 @@ extern int FIO_LOG_LEVEL;
     kill(0, SIGINT);                                                           \
     exit(errno);                                                               \
   }
+#endif
+
+#if DEBUG
+#define FIO_ASSERT_DEBUG(cond, ...)                                            \
+  if (!(cond)) {                                                               \
+    FIO_LOG_DEBUG(__VA_ARGS__);                                                \
+    perror("     errno");                                                      \
+    exit(-1);                                                                  \
+  }
+#else
+#define FIO_ASSERT_DEBUG(...)
 #endif
 
 /* *****************************************************************************
@@ -2864,18 +2875,21 @@ Embeded Linked List Implementation
 
 /** Removes a node from the containing node. */
 FIO_FUNC inline fio_ls_embd_s *fio_ls_embd_remove(fio_ls_embd_s *node) {
-  if (node->next == node) {
+  if (!node->next || node->next == node) {
     /* never remove the list's head */
     return NULL;
   }
   node->next->prev = node->prev;
   node->prev->next = node->next;
+  node->prev = node->next = node;
   return node;
 }
 
 /** Adds a node to the list's head. */
 FIO_FUNC inline void fio_ls_embd_push(fio_ls_embd_s *dest,
                                       fio_ls_embd_s *node) {
+  if (!dest || !node)
+    return;
   node->prev = dest->prev;
   node->next = dest;
   dest->prev->next = node;
@@ -2918,7 +2932,7 @@ Independent Linked List Implementation
 
 /** Removes an object from the containing node. */
 FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node) {
-  if (node->next == node) {
+  if (!node || node->next == node) {
     /* never remove the list's head */
     return NULL;
   }
@@ -2931,6 +2945,8 @@ FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node) {
 
 /** Adds an object to the list's head. */
 FIO_FUNC inline fio_ls_s *fio_ls_push(fio_ls_s *pos, const void *obj) {
+  if (!pos)
+    return NULL;
   /* prepare item */
   fio_ls_s *item = (fio_ls_s *)malloc(sizeof(*item));
   if (!item) {
