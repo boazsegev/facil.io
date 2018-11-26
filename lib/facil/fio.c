@@ -592,7 +592,10 @@ Suspending and renewing thread execution (signaling events)
 #endif
 
 /**
- * The polling throttling model will use pipes to suspend and resume threads.
+ * The polling throttling model will use pipes to suspend and resume threads...
+ *
+ * However, it seems the approach is currently broken, at least on macOS.
+ * I don't know why.
  *
  * If polling is disabled, the progressive throttling model will be used.
  *
@@ -611,34 +614,30 @@ typedef struct fio_thread_queue_s {
 
 fio_ls_embd_s fio_thread_queue = FIO_LS_INIT(fio_thread_queue);
 fio_lock_i fio_thread_lock = FIO_LOCK_INIT;
-static __thread fio_thread_queue_s fio_thread_data;
+static __thread fio_thread_queue_s fio_thread_data = {.fd_wait = -1,
+                                                      .fd_signal = -1};
 
 FIO_FUNC inline void fio_thread_make_suspendable(void) {
-  if (fio_thread_data.fd_signal)
+  if (fio_thread_data.fd_signal >= 0)
     return;
   int fd[2] = {0, 0};
   int ret = pipe(fd);
   FIO_ASSERT(ret == 0, "`pipe` failed.");
-  int flags;
-  flags = fcntl(fd[0], F_GETFL, 0);
-  FIO_ASSERT(flags != -1, "couldn't aquire fd flags.");
-  FIO_ASSERT(!fcntl(fd[0], F_SETFL, flags | O_CLOEXEC | O_NONBLOCK),
-             "`pipe` couldn't be set to non-blocking mode");
-  flags = fcntl(fd[1], F_GETFL, 0);
-  FIO_ASSERT(flags != -1, "couldn't aquire fd flags.");
-  FIO_ASSERT(!fcntl(fd[1], F_SETFL, flags | O_CLOEXEC | O_NONBLOCK),
-             "`pipe` couldn't be set to non-blocking mode");
+  FIO_ASSERT(fio_set_non_block(fd[0]) == 0,
+             "(fio) couldn't set internal pipe to non-blocking mode.");
+  FIO_ASSERT(fio_set_non_block(fd[1]) == 0,
+             "(fio) couldn't set internal pipe to non-blocking mode.");
   fio_thread_data.fd_wait = fd[0];
   fio_thread_data.fd_signal = fd[1];
 }
 
 FIO_FUNC inline void fio_thread_cleanup(void) {
-  if (!fio_thread_data.fd_signal)
+  if (fio_thread_data.fd_signal < 0)
     return;
   close(fio_thread_data.fd_wait);
   close(fio_thread_data.fd_signal);
-  fio_thread_data.fd_wait = 0;
-  fio_thread_data.fd_signal = 0;
+  fio_thread_data.fd_wait = -1;
+  fio_thread_data.fd_signal = -1;
 }
 
 /* suspend thread execution (might be resumed unexpectedly) */
@@ -666,16 +665,19 @@ FIO_FUNC void fio_thread_suspend(void) {
 /* wake up a single thread */
 FIO_FUNC void fio_thread_signal(void) {
   fio_thread_queue_s *t;
-  int fd = 0;
+  int fd = -2;
   fio_lock(&fio_thread_lock);
   t = (fio_thread_queue_s *)fio_ls_embd_shift(&fio_thread_queue);
   if (t)
     fd = t->fd_signal;
   fio_unlock(&fio_thread_lock);
-  if (fd) {
+  if (fd >= 0) {
     uint64_t data = 1;
     int r = write(fd, (void *)&data, sizeof(data));
     (void)r;
+  } else if (fd == -1) {
+    /* hardly the best way, but there's a thread sleeping on air */
+    kill(getpid(), SIGCONT);
   }
 }
 
@@ -1367,7 +1369,6 @@ static void fio_signal_handler_setup(void) {
 }
 static void fio_signal_handler_reset(void) {
   struct sigaction act, old;
-
   memset(&act, 0, sizeof(old));
   memset(&old, 0, sizeof(old));
   act.sa_handler = SIG_DFL;
@@ -2219,7 +2220,7 @@ int fio_set_non_block(int fd) {
   if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
     flags = 0;
   // printf("flags initial value was %d\n", flags);
-  return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK | O_CLOEXEC);
 #elif defined(FIONBIO)
   /* Otherwise, use the old way of doing it */
   static int flags = 1;
@@ -2257,7 +2258,7 @@ intptr_t fio_accept(intptr_t srv_uuid) {
   int client;
 #ifdef SOCK_NONBLOCK
   client = accept4(fio_uuid2fd(srv_uuid), (struct sockaddr *)addrinfo, &addrlen,
-                   SOCK_NONBLOCK);
+                   SOCK_NONBLOCK | SOCK_CLOEXEC);
   if (client <= 0)
     return -1;
 #else
@@ -2308,17 +2309,11 @@ intptr_t fio_accept(intptr_t srv_uuid) {
 /* Creates a Unix socket - returning it's uuid (or -1) */
 static intptr_t fio_unix_socket(const char *address, uint8_t server) {
   /* Unix socket */
-  if (!address) {
-    errno = EINVAL;
-    FIO_LOG_ERROR(
-        "(fio) a Unix socket requires a valid address.\n"
-        "             Specify port for TCP/IP socket or change address.");
-    return -1;
-  }
   struct sockaddr_un addr = {0};
   size_t addr_len = strlen(address);
   if (addr_len >= sizeof(addr.sun_path)) {
-    FIO_LOG_ERROR("(fio) a Unix socket address too long.");
+    FIO_LOG_ERROR("(fio_unix_socket) address too long (%zu bytes > %zu bytes).",
+                  addr_len, sizeof(addr.sun_path) - 1);
     errno = ENAMETOOLONG;
     return -1;
   }
@@ -2449,7 +2444,29 @@ socket_okay:
 /* PUBLIC API: opens a server or client socket */
 intptr_t fio_socket(const char *address, const char *port, uint8_t server) {
   intptr_t uuid;
-  if (!port || *port == 0 || (port[0] == '0' && port[1] == 0)) {
+  if (port) {
+    char *pos = (char *)port;
+    int64_t n = fio_atol(&pos);
+    /* make sure port is only numerical */
+    if (*pos) {
+      FIO_LOG_ERROR("(fio_socket) port %s is not a number.", port);
+      errno = EINVAL;
+      return -1;
+    }
+    /* a negative port number will revert to a Unix socket. */
+    if (n <= 0) {
+      if (n < -1)
+        FIO_LOG_WARNING("(fio_socket) negative port number %s is ignored.",
+                        port);
+      port = NULL;
+    }
+  }
+  if (!address && !port) {
+    FIO_LOG_ERROR("(fio_socket) both address and port are missing or invalid.");
+    errno = EINVAL;
+    return -1;
+  }
+  if (!port) {
     do {
       errno = 0;
       uuid = fio_unix_socket(address, server);
@@ -4222,6 +4239,7 @@ intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
     errno = EINVAL;
     goto error;
   }
+
   size_t addr_len = 0;
   size_t port_len = 0;
   if (args.address)
