@@ -12,6 +12,8 @@
 
 **Fix**: (`http`) fixes a possible memory leak in `http_mimetype_register`, where clearing the registry wouldn't free the FIOBJ Strings.
 
+**Update**: (`cli`) updated handling of empty strings in CLI values by ignoring the argument rather than printing an error or experiencing an undefined value.
+
 **Optimization**: (`fio`) pub/sub channel names appear to be (often) objects with a long life-span. Hence, these objects now use `malloc` (instead of `fio_malloc`). Also, temporary allocations in `fio_subscribe` were removed.
 
 **Optimization**: (`fio`) pub/sub meta-data information and callbacks now use an Array (instead of link lists and a hash map). This should improve cache locality when setting and retrieving pub/sub meta-data.

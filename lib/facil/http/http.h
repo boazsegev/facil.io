@@ -978,8 +978,12 @@ typedef struct {
  *   i.e.:
  *      example.com
  *      example.com/index.html
- *      user:1234@example.com:8080
  *      example.com:8080/index.html
+ *      example.com:8080/index.html?key=val#target
+ *
+ * * `user:password@host:port/path?query#target`
+ *
+ *   i.e.: user:1234@example.com:8080/index.html
  *
  * * `schema://user:password@host:port/path?query#target`
  *
