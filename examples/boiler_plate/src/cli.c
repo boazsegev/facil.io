@@ -26,21 +26,21 @@ void initialize_cli(int argc, char const *argv[]) {
       "redis://user:password@localhost:6379/");
 
   /* Test and set any default options */
-  if (!fio_cli_get("-p")) {
-    /* Test environment as well */
-    char *tmp = getenv("PORT");
-    if (!tmp)
-      tmp = "3000";
-    /* Set default (unlike cmd line arguments, aliases are manually set) */
-    fio_cli_set("-p", tmp);
-    fio_cli_set("-port", tmp);
-  }
   if (!fio_cli_get("-b")) {
     char *tmp = getenv("ADDRESS");
     if (tmp) {
       fio_cli_set("-b", tmp);
       fio_cli_set("-bind", tmp);
     }
+  }
+  if (!fio_cli_get("-p")) {
+    /* Test environment as well and make sure address is missing */
+    char *tmp = getenv("PORT");
+    if (!tmp && !fio_cli_get("-b"))
+      tmp = "3000";
+    /* Set default (unlike cmd line arguments, aliases are manually set) */
+    fio_cli_set("-p", tmp);
+    fio_cli_set("-port", tmp);
   }
   if (!fio_cli_get("-public")) {
     char *tmp = getenv("HTTP_PUBLIC_FOLDER");
