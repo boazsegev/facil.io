@@ -40,6 +40,8 @@ typedef struct {
   int unnamed_max;
   int pos;
   int unnamed_count;
+  int argc;
+  char const **argv;
   char const *description;
   char const **names;
 } fio_cli_parser_data_s;
@@ -138,32 +140,29 @@ static void fio_cli_set_arg(cstr_s arg, char const *value, char const *line,
   char const *type = fio_cli_get_line_type(parser, line);
   switch ((size_t)type) {
   case /* FIO_CLI_TYPE_BOOL */ 0x2:
-    if (value &&
-        (value == arg.data + arg.len ||
-         (value == arg.data + arg.len + 1 && arg.data[arg.len] == '='))) {
+    if (value && value != parser->argv[parser->pos + 1]) {
       goto error;
     }
     value = "1";
     break;
   case /* FIO_CLI_TYPE_INT */ 0x3: /* fallthrough */
-  {
+    if (value) {
+      char const *tmp = value;
+      if (*tmp == '-' || *tmp == '+') {
+        ++tmp;
+      }
+      while (*tmp && *tmp >= '0' && *tmp <= '9') {
+        ++tmp;
+      }
+      if (*tmp) {
+        goto error;
+      }
+    }
+  case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
     if (!value)
       goto error;
-    char const *tmp = value;
-    if (*tmp == '-' || *tmp == '+') {
-      ++tmp;
-    }
-    if (!*tmp) {
-      goto error;
-    }
-    while (*tmp && *tmp >= '0' && *tmp <= '9') {
-      ++tmp;
-    }
-    if (*tmp) {
-      goto error;
-    }
-  }
-  case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
+    if (!value[0])
+      goto finish;
     break;
   }
 
@@ -183,19 +182,19 @@ static void fio_cli_set_arg(cstr_s arg, char const *value, char const *line,
     }
   }
 
+finish:
+
   /* handle additional argv progress (if value is on separate argv) */
-  if (type != FIO_CLI_TYPE_BOOL && value && value != arg.data + arg.len &&
-      !arg.data[arg.len]) {
-    /* advance the position marker more than once? */
+  if (value && parser->pos < parser->argc &&
+      value == parser->argv[parser->pos + 1])
     ++parser->pos;
-  }
   return;
 
 error: /* handle errors*/
   /* TODO! */
   fprintf(stderr, "\n\r\x1B[31mError:\x1B[0m unknown argument %.*s %s %s\n\n",
           (int)arg.len, arg.data, arg.len ? "with value" : "",
-          value ? value : "(null)");
+          value ? (value[0] ? value : "(empty)") : "(null)");
 print_help:
   fprintf(stderr, "\n%s\n\n",
           parser->description ? parser->description
@@ -307,6 +306,8 @@ void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int unnamed_min,
       .unnamed_min = unnamed_min,
       .unnamed_max = unnamed_max,
       .description = description,
+      .argc = argc,
+      .argv = argv,
       .names = names,
       .pos = 0,
   };
