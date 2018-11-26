@@ -124,6 +124,8 @@ The old protocol's `on_close` (if any) will be scheduled.
 
 On error, the new protocol's `on_close` callback will be called immediately.
 
+**Note**: before attaching a file descriptor that was created outside of facil.io's library, make sure it is set to non-blocking mode (see [`fio_set_non_block`](#fio_set_non_block)). facil.io file descriptors are all non-blocking and it will assumes this is the case for the attached fd.
+
 
 #### `fio_attach_fd`
 
@@ -544,7 +546,7 @@ Returns 1 if the current process is a worker process or a single process.
 
 Otherwise returns 0.
 
-NOTE: When cluster mode is off, the root process is also the worker process. This means that single process instances don't automatically re-spawn after critical errors.
+**Note**: When cluster mode is off, the root process is also the worker process. This means that single process instances don't automatically re-spawn after critical errors.
 
 
 #### `fio_parent_pid`
@@ -594,6 +596,8 @@ intptr_t fio_socket(const char *address, const char *port, uint8_t is_server);
 
 Creates a TCP/IP or Unix socket and returns it's unique identifier.
 
+The socket is non-blocking and the `O_CLOEXEC` flag will be set.
+
 For TCP/IP server sockets (`is_server` is `1`), a NULL `address` variable is recommended. Use "localhost" or "127.0.0.1" to limit access to the server application.
 
 For TCP/IP client sockets (`is_server` is `0`), a remote `address` and `port` combination will be required
@@ -602,7 +606,7 @@ For Unix server or client sockets, set the `port` variable to NULL or `0` (and t
 
 Returns -1 on error. Any other value is a valid unique identifier.
 
-Note: facil.io uses unique identifiers to protect sockets from collisions. However these identifiers can be converted to the underlying file descriptor using the [`fio_uuid2fd`](#fio_uuid2fd) macro.
+**Note**: facil.io uses unique identifiers to protect sockets from collisions. However these identifiers can be converted to the underlying file descriptor using the [`fio_uuid2fd`](#fio_uuid2fd) macro.
 
 
 #### `fio_accept`
@@ -613,7 +617,9 @@ intptr_t fio_accept(intptr_t srv_uuid);
 
 `fio_accept` accepts a new socket connection from a server socket - see the server flag on [`fio_socket`](#fio_socket).
 
-NOTE: this function does NOT attach the socket to the IO reactor - see [`fio_attach`](#fio_attach).
+Accepted connection are automatically set to non-blocking mode and the `O_CLOEXEC` flag is set.
+
+**Note**: this function does NOT attach the socket to the IO reactor - see [`fio_attach`](#fio_attach).
 
 #### `fio_is_valid`
 
@@ -660,6 +666,8 @@ int fio_set_non_block(int fd);
 ```
 
 Sets a socket to non blocking state.
+
+This will also set the `O_CLOEXEC` flag for the file descriptor.
 
 This function is called automatically for the new socket, when using
 `fio_socket`, `fio_accept`, `fio_listen` or `fio_connect`.
@@ -723,7 +731,7 @@ Schedules data to be written to the socket.
 
 `fio_write2` is similar to `fio_write`, except that it allows far more flexibility.
 
-NOTE: The data is "moved" to the ownership of the socket, not copied. By default, `free` (not `fio_free` will be called to deallocate the data. This can be controlled by the `.after.dealloc` function pointer argument.
+**Note**: The data is "moved" to the ownership of the socket, not copied. By default, `free` (not `fio_free` will be called to deallocate the data. This can be controlled by the `.after.dealloc` function pointer argument.
 
 
 The following arguments are supported (in addition to the `uuid` argument):
@@ -929,7 +937,7 @@ Links an object to a connection's lifetime, calling the `on_close` callback once
 
 If the `uuid` is invalid, the `on_close` callback will be called immediately.
 
-*NOTE*: the `on_close` callback will be called with high priority. Long tasks should be deferred using [`fio_defer`](#fio_defer).
+**Note**: the `on_close` callback will be called with high priority. Long tasks should be deferred using [`fio_defer`](#fio_defer).
 
 #### `fio_uuid_unlink`
 
@@ -1252,7 +1260,7 @@ The function accepts the following named arguments:
 
     Subscriptions can either require a match by filter or match by channel. This will match the subscription by filter.
 
-    **NOTE**: filter based messages are considered internal. They aren't shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks (both subjects are covered later on).
+    **Note**: filter based messages are considered internal. They aren't shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks (both subjects are covered later on).
 
         // type:
         int32_t filter;
@@ -1457,7 +1465,7 @@ This allows, for example, messages to be encoded as network packets for
 outgoing protocols (i.e., encoding for WebSocket transmissions), improving
 performance in large network based broadcasting.
 
-**NOTE**: filter based messages are considered internal. They aren't shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.
+**Note**: filter based messages are considered internal. They aren't shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.
 
 #### `fio_message_metadata`
 
@@ -1517,7 +1525,7 @@ A [Redis engine](redis) is bundled as part of the facio.io extensions but isn't 
 
 The default engine can be set using the `FIO_PUBSUB_DEFAULT` global variable. It's initial default is `FIO_PUBSUB_CLUSTER` (see [`fio_publish`](#fio_publish)).
 
-**NOTE**: filter based messages are considered internal. They aren't shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.
+**Note**: filter based messages are considered internal. They aren't shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.
 
 Engines MUST provide the listed function pointers and should be attached using the `fio_pubsub_attach` function.
 
@@ -1563,7 +1571,7 @@ The engine type defines the following callback:
                     fio_str_info_s channel,
                     fio_str_info_s msg, uint8_t is_json);
 
-**NOTE**: the root (master) process will call `subscribe` for any channel **in any process**, while all the other processes will call `subscribe` only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.
+**Note**: the root (master) process will call `subscribe` for any channel **in any process**, while all the other processes will call `subscribe` only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.
 
 
 **IMPORTANT**: The `subscribe` and `unsubscribe` callbacks are called from within an internal lock. They MUST NEVER call pub/sub functions except by exiting the lock using `fio_defer`.
@@ -1588,7 +1596,7 @@ This allows engines that lost their connection to their Pub/Sub service to resub
 
 CAUTION: This is an evented task... try not to free the engine's memory while re-subscriptions are under way...
 
-**NOTE**: the root (master) process will call `subscribe` for any channel **in any process**, while all the other processes will call `subscribe` only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.
+**Note**: the root (master) process will call `subscribe` for any channel **in any process**, while all the other processes will call `subscribe` only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.
 
 
 **IMPORTANT**: The `subscribe` and `unsubscribe` callbacks are called from within an internal lock. They MUST NEVER call pub/sub functions except by exiting the lock using `fio_defer`.
@@ -2031,7 +2039,7 @@ Allocates a new fio_str_s object on the heap and initializes it.
 
 Use `fio_str_free2` to free both the String data and the container.
 
-NOTE: This makes the allocation and reference counting logic more intuitive.
+**Note**: This makes the allocation and reference counting logic more intuitive.
 
 
 #### `fio_str_new_copy2`
@@ -2053,9 +2061,9 @@ inline fio_str_s *fio_str_dup(fio_str_s *s);
 
 Adds a references to the current String object and returns itself.
 
-NOTE: Nothing is copied, reference Strings are referencing the same String. Editing one reference will effect the other.
+**Note**: Nothing is copied, reference Strings are referencing the same String. Editing one reference will effect the other.
 
-The original's String's container should remain in scope (if on the stack) or remain allocated (if on the heap) until all the references were freed using `fio_str_free` / `fio_str_free2` or discarded.
+The originals' String container should remain in scope (if on the stack) or remain allocated (if on the heap) until all the references were freed using `fio_str_free` / `fio_str_free2` or discarded.
 
 #### `fio_str_free`
 
@@ -2980,7 +2988,7 @@ inline FIO_SET_OBJ_TYPE
 ```
 Locates an object in the Hash Map, if it exists.
 
-NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
+**Note**: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
 #### `FIO_SET_NAME(insert)` (Hash Map)
 
@@ -2998,7 +3006,7 @@ If an object already exists in the Hash Map, it will be destroyed.
 
 If `old` isn't NULL, the existing object (if any) will be copied to the location pointed to by `old` before it is destroyed.
 
-NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
+**Note**: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
 #### `FIO_SET_NAME(remove)` (Hash Map)
 
@@ -3015,7 +3023,7 @@ Returns 0 on success and -1 if the object wasn't found.
 
 If `old` isn't `NULL`, than the existing object (if any) would be copied to the location pointed to by `old`.
 
-NOTE: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
+**Note**: This is the function's Hash Map variant. See `FIO_SET_KEY_TYPE`.
 
 ### Set Find / Insert
 
@@ -3030,7 +3038,7 @@ inline FIO_SET_OBJ_TYPE
 ```
 Locates an object in the Set, if it exists.
 
-NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
+**Note**: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 
 #### `FIO_SET_NAME(insert)` (Set)
 
@@ -3044,7 +3052,7 @@ Inserts an object to the Set only if it's missing, rehashing if required, return
 
 If the object already exists in the set, than the new object will be destroyed and the old object will be returned.
 
-NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
+**Note**: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 
 #### `FIO_SET_NAME(overwrite)` (Set)
 
@@ -3059,7 +3067,7 @@ Inserts an object to the Set only overwriting any existing data, rehashing if re
 
 If `old` is set, the old object (if any) will be copied to the location pointed to by `old`.
 
-NOTE: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
+**Note**: This function doesn't exist when `FIO_SET_KEY_TYPE` is defined.
 
 #### `FIO_SET_NAME(remove)` (Set)
 
@@ -3076,7 +3084,7 @@ Returns 0 on success and -1 if the object wasn't found.
 
 If `old` is set, the old object (if any) will be copied to the location pointed to by `old`.
 
-NOTE: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
+**Note**: This is the function's pure Set variant (no `FIO_SET_KEY_TYPE`).
 
 ### Set / Hash Map Data
 
@@ -3545,7 +3553,7 @@ Base64 encoding always requires 4 bytes for each 3 bytes. Padding is added if th
 
 Returns the number of bytes actually written to the target buffer (excluding the NUL terminator byte).
 
-**NOTE**:
+**Note**:
 
 The decoder is variation agnostic (will decode Base64, Base64 URL and Base64 XML variations) and will attempt it's best to ignore invalid data, (in order to support the MIME Base64 variation in RFC 2045).
 

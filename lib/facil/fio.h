@@ -461,7 +461,7 @@ extern int FIO_LOG_LEVEL;
 
 #define FIO_ASSERT(cond, ...)                                                  \
   if (!(cond)) {                                                               \
-    FIO_LOG_FATAL(__VA_ARGS__);                                                \
+    FIO_LOG_FATAL(__FILE__ ":" FIO_MACRO2STR(__LINE__) __VA_ARGS__);           \
     perror("     errno");                                                      \
     exit(-1);                                                                  \
   }
@@ -586,8 +586,23 @@ void fio_attach(intptr_t uuid, fio_protocol_s *protocol);
  * The old protocol's `on_close` (if any) will be scheduled.
  *
  * On error, the new protocol's `on_close` callback will be called immediately.
+ *
+ * NOTE: before attaching a file descriptor that was created outside of
+ * facil.io's library, make sure it is set to non-blocking mode (see
+ * `fio_set_non_block`). facil.io file descriptors are all non-blocking and it
+ * will assumes this is the case for the attached fd.
  */
 void fio_attach_fd(int fd, fio_protocol_s *protocol);
+
+/**
+ * Sets a socket to non blocking state.
+ *
+ * This will also set the O_CLOEXEC flag for the file descriptor.
+ *
+ * This function is called automatically for the new socket, when using
+ * `fio_accept` or `fio_connect`.
+ */
+int fio_set_non_block(int fd);
 
 /**
  * Returns the maximum number of open files facil.io can handle per worker
@@ -947,6 +962,9 @@ intptr_t fio_socket(const char *address, const char *port, uint8_t is_server);
 /**
  * `fio_accept` accepts a new socket connection from a server socket - see the
  * server flag on `fio_socket`.
+ *
+ * Accepted connection are automatically set to non-blocking mode and the
+ * O_CLOEXEC flag is set.
  *
  * NOTE: this function does NOT attach the socket to the IO reactor - see
  * `fio_attach`.
@@ -1520,14 +1538,6 @@ fio_protocol_s *fio_protocol_try_lock(intptr_t uuid, enum fio_protocol_lock_e);
 /** Don't unlock what you don't own... see `fio_protocol_try_lock` for
  * details. */
 void fio_protocol_unlock(fio_protocol_s *pr, enum fio_protocol_lock_e);
-
-/**
-Sets a socket to non blocking state.
-
-This function is called automatically for the new socket, when using
-`fio_accept` or `fio_connect`.
-*/
-int fio_set_non_block(int fd);
 
 /* *****************************************************************************
  * Pub/Sub / Cluster Messages API
