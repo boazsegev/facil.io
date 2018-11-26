@@ -2665,6 +2665,25 @@ parse_path:
   ++url;
   result.target.data = (char *)url;
   result.target.len = end - result.target.data;
+
+  /* set any empty values to NULL */
+  if (!result.scheme.len)
+    result.scheme.data = NULL;
+  if (!result.user.len)
+    result.user.data = NULL;
+  if (!result.password.len)
+    result.password.data = NULL;
+  if (!result.host.len)
+    result.host.data = NULL;
+  if (!result.port.len)
+    result.port.data = NULL;
+  if (!result.path.len)
+    result.path.data = NULL;
+  if (!result.query.len)
+    result.query.data = NULL;
+  if (!result.target.len)
+    result.target.data = NULL;
+
   return result;
 }
 
