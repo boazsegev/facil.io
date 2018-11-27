@@ -161,7 +161,7 @@
 <h4 id="fiobj_mustache_free"><code>fiobj_mustache_free</code></h4>
 <pre><code class='highlight'><span class="kt">void</span> <span class="n">fiobj_mustache_free</span><span class="p">(</span><span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">);</span>
 </code></pre>
-<p>Frees the mustache template pointer.</p>
+<p>Frees the mustache template pointer immediately (careful when using the template concurrently).</p>
 
 <h3 id="mustache-template-rendering-api">Mustache Template Rendering API</h3>
 
