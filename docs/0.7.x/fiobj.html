@@ -39,6 +39,7 @@
 <li><a href="/0.7.x/fiobj_hash">HashMap</a></li>
 <li><a href="/0.7.x/fiobj_data">Data Streams</a></li>
 <li><a href="/0.7.x/fiobj_json">JSON</a></li>
+<li><a href="/0.7.x/fiobj_mustache">Mustache</a></li>
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
 <li>
@@ -98,6 +99,7 @@
 <li><a href="fiobj_hash">Hash</a></li>
 <li><a href="fiobj_data">Data</a></li>
 <li><a href="fiobj_json">JSON</a></li>
+<li><a href="fiobj_mustache">Mustache</a></li>
 </ul>
 
 <h3 id="why-we-need-dynamic-types">Why we need dynamic types?</h3>
@@ -222,7 +224,7 @@
 
 <p>Cyclic protection is unsupported mostly because of performance concerns, but also because cyclic nesting is impractical for network applications (for example, how would a cyclic object be formatted into JSON?).  </p>
 
-<p>Cyclic nesting should be avoided. For example, the following code will crash:</p>
+<p>Cyclic nesting should be avoided. For example, the following code will (at best case scenario) crash:</p>
 <pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
 <span class="n">FIOBJ</span> <span class="n">ary2</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
 <span class="c1">// cyclic nesting</span>

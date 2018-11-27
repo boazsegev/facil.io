@@ -11,7 +11,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <fio.h>
 
 #include <fiobj.h>
-#include <fiobj4sock.h>
 
 #include <redis_engine.h>
 #include <resp_parser.h>

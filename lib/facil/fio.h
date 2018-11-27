@@ -182,8 +182,8 @@ Version and helper macros
 
 #ifndef FIO_IGNORE_MACRO
 /**
- * This is used internally to ignor macros that shadow functions (avoiding named
- * arguments when required.
+ * This is used internally to ignore macros that shadow functions (avoiding
+ * named arguments when required).
  */
 #define FIO_IGNORE_MACRO
 #endif

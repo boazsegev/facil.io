@@ -35,3 +35,4 @@
 * [HashMap](/0.7.x/fiobj_hash)
 * [Data Streams](/0.7.x/fiobj_data)
 * [JSON](/0.7.x/fiobj_json)
+* [Mustache](/0.7.x/fiobj_mustache)

@@ -35,6 +35,31 @@ This function affects nested objects, meaning that when an Array or a Hash objec
 
 For Hash objects, only the value objects are deallocated. The `keys` aren't "owned" by the Hash Map and therefore they aren't automatically allocated.
 
+#### `fiobj_send_free`
+
+```c
+ssize_t fiobj_send_free(intptr_t uuid, FIOBJ o) {
+  fio_str_info_s s = fiobj_obj2cstr(o);
+  return fio_write2(uuid, .data.buffer = (void *)(o),
+                    .offset = (((intptr_t)s.data) - ((intptr_t)(o))),
+                    .length = s.len, .after.dealloc = fiobj4sock_dealloc);
+}
+
+```
+
+Sends a FIOBJ String object through a facil.io `uuid` socket and than frees the FIOBJ object.
+
+This allows the same String object to be send multiple times to different clients by leveraging `fiobj_dup` and the FIOBJ's internal reference counting mechanism. i.e:
+
+```c
+/* for each client... */
+fiobj_send_free(client_uuid, fiobj_dup(fiobj_string));
+/* and than use fiobj_free, which will decrease the reference count. */
+fiobj_free(fiobj_string);
+```
+
+**Note**: Using this function with FIOBJ objects that aren't a String (`FIOBJ_T_STRING`) might result in undefined behavior due to the way the String data is rendered by `fiobj_obj2cstr`.
+
 ### FIOBJ Soft Type Recognition
 
 #### `fiobj_type`

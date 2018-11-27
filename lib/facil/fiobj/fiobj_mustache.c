@@ -6,6 +6,14 @@
 #include <fiobj_mustache.h>
 #include <fiobj_str.h>
 
+#ifndef FIO_IGNORE_MACRO
+/**
+ * This is used internally to ignore macros that shadow functions (avoiding
+ * named arguments when required).
+ */
+#define FIO_IGNORE_MACRO
+#endif
+
 /**
  * Loads a mustache template, converting it into an opaque instruction array.
  *
@@ -18,6 +26,20 @@
  */
 mustache_s *fiobj_mustache_load(fio_str_info_s filename) {
   return mustache_load(.filename = filename.data, .filename_len = filename.len);
+}
+
+/**
+ * Loads a mustache template, converting it into an opaque instruction array.
+ *
+ * Returns a pointer to the instruction array.
+ *
+ * The `folder` argument should contain the template's root folder which would
+ * also be used to search for any required partial templates.
+ *
+ * The `filename` argument should contain the template's file name.
+ */
+mustache_s *fiobj_mustache_new FIO_IGNORE_MACRO(mustache_load_args_s args) {
+  return mustache_load FIO_IGNORE_MACRO(args);
 }
 
 /** Free the mustache template */

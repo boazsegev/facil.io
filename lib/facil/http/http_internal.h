@@ -12,8 +12,6 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <http.h>
 
-#include <fiobj4sock.h>
-
 #include <arpa/inet.h>
 #include <errno.h>
 

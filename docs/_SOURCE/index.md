@@ -4,11 +4,17 @@ toc: false
 ---
 # {{{ title }}}
 
-* [facil.io](http://facil.io) is an evented Network library written in C. It provides high performance TCP/IP network services by using an evented design that was tested to provide an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
+* [facil.io](http://facil.io) is an evented Network library written in C.
 
-* [facil.io](http://facil.io) includes a mini-framework for Web Applications, with a fast HTTP / WebSocket server, integrated Pub/Sub, optional Redis connectivity, easy JSON handling and more nifty tidbits.
+   [facil.io](http://facil.io) provides high performance TCP/IP network services by using an evented design that was tested to provide an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
+
+* [facil.io](http://facil.io) includes a mini-framework for Web Applications, with a fast HTTP / WebSocket server, integrated Pub/Sub, optional Redis connectivity, easy JSON handling, [Mustache](http://mustache.github.io) template rendering and more nifty tidbits.
 
 * [facil.io](http://facil.io) powers the [HTTP/Websockets Ruby Iodine server](https://github.com/boazsegev/iodine) and it can easily power your application as well.
+
+* [facil.io](http://facil.io) is easy to code with and aims at minimizing the developer's learning curve.
+
+    In addition to detailed documentation and examples, the API is unified in style and the same types and API used for HTTP requests is used for JSON and Mustache rendering - so there's less to learn.
 
 * [facil.io](http://facil.io) should work on Linux / BSD / macOS (and possibly CYGWIN) and is continuously tested on both Linux and macOS.
 

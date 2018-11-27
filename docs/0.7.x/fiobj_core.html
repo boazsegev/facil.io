@@ -39,6 +39,7 @@
 <li><a href="/0.7.x/fiobj_hash">HashMap</a></li>
 <li><a href="/0.7.x/fiobj_data">Data Streams</a></li>
 <li><a href="/0.7.x/fiobj_json">JSON</a></li>
+<li><a href="/0.7.x/fiobj_mustache">Mustache</a></li>
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
 <li>
@@ -54,6 +55,9 @@
 </li>
 <li>
 <a href="#fiobj_free"><code>fiobj_free</code></a>
+</li>
+<li>
+<a href="#fiobj_send_free"><code>fiobj_send_free</code></a>
 </li>
 </ul>
 </li>
@@ -143,6 +147,25 @@
 <p>This function affects nested objects, meaning that when an Array or a Hash object is passed along, it&#39;s children (the nested objects) are also freed.</p>
 
 <p>For Hash objects, only the value objects are deallocated. The <code>keys</code> aren&#39;t &quot;owned&quot; by the Hash Map and therefore they aren&#39;t automatically allocated.</p>
+
+<h4 id="fiobj_send_free"><code>fiobj_send_free</code></h4>
+<pre><code class='highlight'><span class="kt">ssize_t</span> <span class="nf">fiobj_send_free</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">o</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">fio_str_info_s</span> <span class="n">s</span> <span class="o">=</span> <span class="n">fiobj_obj2cstr</span><span class="p">(</span><span class="n">o</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">fio_write2</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="n">buffer</span> <span class="o">=</span> <span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">)(</span><span class="n">o</span><span class="p">),</span>
+                    <span class="p">.</span><span class="n">offset</span> <span class="o">=</span> <span class="p">(((</span><span class="kt">intptr_t</span><span class="p">)</span><span class="n">s</span><span class="p">.</span><span class="n">data</span><span class="p">)</span> <span class="o">-</span> <span class="p">((</span><span class="kt">intptr_t</span><span class="p">)(</span><span class="n">o</span><span class="p">))),</span>
+                    <span class="p">.</span><span class="n">length</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">len</span><span class="p">,</span> <span class="p">.</span><span class="n">after</span><span class="p">.</span><span class="n">dealloc</span> <span class="o">=</span> <span class="n">fiobj4sock_dealloc</span><span class="p">);</span>
+<span class="p">}</span>
+
+</code></pre>
+<p>Sends a FIOBJ String object through a facil.io <code>uuid</code> socket and than frees the FIOBJ object.</p>
+
+<p>This allows the same String object to be send multiple times to different clients by leveraging <code>fiobj_dup</code> and the FIOBJ&#39;s internal reference counting mechanism. i.e:</p>
+<pre><code class='highlight'><span class="cm">/* for each client... */</span>
+<span class="n">fiobj_send_free</span><span class="p">(</span><span class="n">client_uuid</span><span class="p">,</span> <span class="n">fiobj_dup</span><span class="p">(</span><span class="n">fiobj_string</span><span class="p">));</span>
+<span class="cm">/* and than use fiobj_free, which will decrease the reference count. */</span>
+<span class="n">fiobj_free</span><span class="p">(</span><span class="n">fiobj_string</span><span class="p">);</span>
+</code></pre>
+<p><strong>Note</strong>: Using this function with FIOBJ objects that aren&#39;t a String (<code>FIOBJ_T_STRING</code>) might result in undefined behavior due to the way the String data is rendered by <code>fiobj_obj2cstr</code>.</p>
 
 <h3 id="fiobj-soft-type-recognition">FIOBJ Soft Type Recognition</h3>
 

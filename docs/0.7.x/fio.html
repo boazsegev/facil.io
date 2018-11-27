@@ -39,6 +39,7 @@
 <li><a href="/0.7.x/fiobj_hash">HashMap</a></li>
 <li><a href="/0.7.x/fiobj_data">Data Streams</a></li>
 <li><a href="/0.7.x/fiobj_json">JSON</a></li>
+<li><a href="/0.7.x/fiobj_mustache">Mustache</a></li>
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
 <li>
@@ -1232,6 +1233,8 @@ to new connections after a file descriptor is &quot;recycled&quot; by the OS.</p
 
 <p>On error, the new protocol&#39;s <code>on_close</code> callback will be called immediately.</p>
 
+<p><strong>Note</strong>: before attaching a file descriptor that was created outside of facil.io&#39;s library, make sure it is set to non-blocking mode (see <a href="#fio_set_non_block"><code>fio_set_non_block</code></a>). facil.io file descriptors are all non-blocking and it will assumes this is the case for the attached fd.</p>
+
 <h4 id="fio_attach_fd"><code>fio_attach_fd</code></h4>
 <pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_attach_fd</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="n">fio_protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>
 </code></pre>
@@ -1582,7 +1585,7 @@ processes values passed to <code>fio_start</code>.</p>
 
 <p>Otherwise returns 0.</p>
 
-<p>NOTE: When cluster mode is off, the root process is also the worker process. This means that single process instances don&#39;t automatically re-spawn after critical errors.</p>
+<p><strong>Note</strong>: When cluster mode is off, the root process is also the worker process. This means that single process instances don&#39;t automatically re-spawn after critical errors.</p>
 
 <h4 id="fio_parent_pid"><code>fio_parent_pid</code></h4>
 <pre><code class='highlight'><span class="n">pid_t</span> <span class="n">fio_parent_pid</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
@@ -1616,6 +1619,8 @@ global zombie reaping.</p>
 </code></pre>
 <p>Creates a TCP/IP or Unix socket and returns it&#39;s unique identifier.</p>
 
+<p>The socket is non-blocking and the <code>O_CLOEXEC</code> flag will be set.</p>
+
 <p>For TCP/IP server sockets (<code>is_server</code> is <code>1</code>), a NULL <code>address</code> variable is recommended. Use &quot;localhost&quot; or &quot;127.0.0.1&quot; to limit access to the server application.</p>
 
 <p>For TCP/IP client sockets (<code>is_server</code> is <code>0</code>), a remote <code>address</code> and <code>port</code> combination will be required</p>
@@ -1624,14 +1629,16 @@ global zombie reaping.</p>
 
 <p>Returns -1 on error. Any other value is a valid unique identifier.</p>
 
-<p>Note: facil.io uses unique identifiers to protect sockets from collisions. However these identifiers can be converted to the underlying file descriptor using the <a href="#fio_uuid2fd"><code>fio_uuid2fd</code></a> macro.</p>
+<p><strong>Note</strong>: facil.io uses unique identifiers to protect sockets from collisions. However these identifiers can be converted to the underlying file descriptor using the <a href="#fio_uuid2fd"><code>fio_uuid2fd</code></a> macro.</p>
 
 <h4 id="fio_accept"><code>fio_accept</code></h4>
 <pre><code class='highlight'><span class="kt">intptr_t</span> <span class="n">fio_accept</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">srv_uuid</span><span class="p">);</span>
 </code></pre>
 <p><code>fio_accept</code> accepts a new socket connection from a server socket - see the server flag on <a href="#fio_socket"><code>fio_socket</code></a>.</p>
 
-<p>NOTE: this function does NOT attach the socket to the IO reactor - see <a href="#fio_attach"><code>fio_attach</code></a>.</p>
+<p>Accepted connection are automatically set to non-blocking mode and the <code>O_CLOEXEC</code> flag is set.</p>
+
+<p><strong>Note</strong>: this function does NOT attach the socket to the IO reactor - see <a href="#fio_attach"><code>fio_attach</code></a>.</p>
 
 <h4 id="fio_is_valid"><code>fio_is_valid</code></h4>
 <pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_is_valid</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">);</span>
@@ -1663,6 +1670,8 @@ global zombie reaping.</p>
 <pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_set_non_block</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">);</span>
 </code></pre>
 <p>Sets a socket to non blocking state.</p>
+
+<p>This will also set the <code>O_CLOEXEC</code> flag for the file descriptor.</p>
 
 <p>This function is called automatically for the new socket, when using
 <code>fio_socket</code>, <code>fio_accept</code>, <code>fio_listen</code> or <code>fio_connect</code>.</p>
@@ -1713,7 +1722,7 @@ global zombie reaping.</p>
 
 <p><code>fio_write2</code> is similar to <code>fio_write</code>, except that it allows far more flexibility.</p>
 
-<p>NOTE: The data is &quot;moved&quot; to the ownership of the socket, not copied. By default, <code>free</code> (not <code>fio_free</code> will be called to deallocate the data. This can be controlled by the <code>.after.dealloc</code> function pointer argument.</p>
+<p><strong>Note</strong>: The data is &quot;moved&quot; to the ownership of the socket, not copied. By default, <code>free</code> (not <code>fio_free</code> will be called to deallocate the data. This can be controlled by the <code>.after.dealloc</code> function pointer argument.</p>
 
 <p>The following arguments are supported (in addition to the <code>uuid</code> argument):</p>
 
@@ -1875,7 +1884,7 @@ be sent over the socket.</p>
 
 <p>If the <code>uuid</code> is invalid, the <code>on_close</code> callback will be called immediately.</p>
 
-<p><em>NOTE</em>: the <code>on_close</code> callback will be called with high priority. Long tasks should be deferred using <a href="#fio_defer"><code>fio_defer</code></a>.</p>
+<p><strong>Note</strong>: the <code>on_close</code> callback will be called with high priority. Long tasks should be deferred using <a href="#fio_defer"><code>fio_defer</code></a>.</p>
 
 <h4 id="fio_uuid_unlink"><code>fio_uuid_unlink</code></h4>
 <pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_uuid_unlink</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">);</span>
@@ -2134,7 +2143,7 @@ will repeat forever.</p>
 
 <p>Subscriptions can either require a match by filter or match by channel. This will match the subscription by filter.</p>
 
-<p><strong>NOTE</strong>: filter based messages are considered internal. They aren&#39;t shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks (both subjects are covered later on).</p>
+<p><strong>Note</strong>: filter based messages are considered internal. They aren&#39;t shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks (both subjects are covered later on).</p>
 <pre><code class='highlight'><span class="c1">// type:</span>
 <span class="kt">int32_t</span> <span class="n">filter</span><span class="p">;</span>
 </code></pre></li>
@@ -2306,7 +2315,7 @@ string representing the filter).</p>
 outgoing protocols (i.e., encoding for WebSocket transmissions), improving
 performance in large network based broadcasting.</p>
 
-<p><strong>NOTE</strong>: filter based messages are considered internal. They aren&#39;t shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.</p>
+<p><strong>Note</strong>: filter based messages are considered internal. They aren&#39;t shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.</p>
 
 <h4 id="fio_message_metadata"><code>fio_message_metadata</code></h4>
 <pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_message_metadata</span><span class="p">(</span><span class="n">fio_msg_s</span> <span class="o">*</span><span class="n">msg</span><span class="p">,</span> <span class="kt">intptr_t</span> <span class="n">type_id</span><span class="p">);</span>
@@ -2357,7 +2366,7 @@ performance in large network based broadcasting.</p>
 
 <p>The default engine can be set using the <code>FIO_PUBSUB_DEFAULT</code> global variable. It&#39;s initial default is <code>FIO_PUBSUB_CLUSTER</code> (see <a href="#fio_publish"><code>fio_publish</code></a>).</p>
 
-<p><strong>NOTE</strong>: filter based messages are considered internal. They aren&#39;t shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.</p>
+<p><strong>Note</strong>: filter based messages are considered internal. They aren&#39;t shared with external pub/sub services (such as Redis) and they are ignored by meta-data callbacks.</p>
 
 <p>Engines MUST provide the listed function pointers and should be attached using the <code>fio_pubsub_attach</code> function.</p>
 
@@ -2396,7 +2405,7 @@ performance in large network based broadcasting.</p>
 </code></pre></li>
 </ul>
 
-<p><strong>NOTE</strong>: the root (master) process will call <code>subscribe</code> for any channel <strong>in any process</strong>, while all the other processes will call <code>subscribe</code> only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.</p>
+<p><strong>Note</strong>: the root (master) process will call <code>subscribe</code> for any channel <strong>in any process</strong>, while all the other processes will call <code>subscribe</code> only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.</p>
 
 <p><strong>IMPORTANT</strong>: The <code>subscribe</code> and <code>unsubscribe</code> callbacks are called from within an internal lock. They MUST NEVER call pub/sub functions except by exiting the lock using <code>fio_defer</code>.</p>
 
@@ -2414,7 +2423,7 @@ performance in large network based broadcasting.</p>
 
 <p>CAUTION: This is an evented task... try not to free the engine&#39;s memory while re-subscriptions are under way...</p>
 
-<p><strong>NOTE</strong>: the root (master) process will call <code>subscribe</code> for any channel <strong>in any process</strong>, while all the other processes will call <code>subscribe</code> only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.</p>
+<p><strong>Note</strong>: the root (master) process will call <code>subscribe</code> for any channel <strong>in any process</strong>, while all the other processes will call <code>subscribe</code> only for their own channels. This allows engines to use the root (master) process as an exclusive subscription process.</p>
 
 <p><strong>IMPORTANT</strong>: The <code>subscribe</code> and <code>unsubscribe</code> callbacks are called from within an internal lock. They MUST NEVER call pub/sub functions except by exiting the lock using <code>fio_defer</code>.</p>
 
@@ -2741,7 +2750,7 @@ be inherently slower.</p>
 
 <p>Use <code>fio_str_free2</code> to free both the String data and the container.</p>
 
-<p>NOTE: This makes the allocation and reference counting logic more intuitive.</p>
+<p><strong>Note</strong>: This makes the allocation and reference counting logic more intuitive.</p>
 
 <h4 id="fio_str_new_copy2"><code>fio_str_new_copy2</code></h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">fio_str_new_copy2</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">src</span><span class="p">);</span>
@@ -2756,9 +2765,9 @@ original (<code>src</code>) string into the new string.</p>
 </code></pre>
 <p>Adds a references to the current String object and returns itself.</p>
 
-<p>NOTE: Nothing is copied, reference Strings are referencing the same String. Editing one reference will effect the other.</p>
+<p><strong>Note</strong>: Nothing is copied, reference Strings are referencing the same String. Editing one reference will effect the other.</p>
 
-<p>The original&#39;s String&#39;s container should remain in scope (if on the stack) or remain allocated (if on the heap) until all the references were freed using <code>fio_str_free</code> / <code>fio_str_free2</code> or discarded.</p>
+<p>The originals&#39; String container should remain in scope (if on the stack) or remain allocated (if on the heap) until all the references were freed using <code>fio_str_free</code> / <code>fio_str_free2</code> or discarded.</p>
 
 <h4 id="fio_str_free"><code>fio_str_free</code></h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">fio_str_free</span><span class="p">(</span><span class="n">fio_str_s</span> <span class="o">*</span><span class="n">s</span><span class="p">);</span>
@@ -3445,7 +3454,7 @@ be defined. i.e.:</p>
 </code></pre>
 <p>Locates an object in the Hash Map, if it exists.</p>
 
-<p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
+<p><strong>Note</strong>: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
 
 <h4 id="fio_set_name-insert-hash-map"><code>FIO_SET_NAME(insert)</code> (Hash Map)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">insert</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
@@ -3460,7 +3469,7 @@ be defined. i.e.:</p>
 
 <p>If <code>old</code> isn&#39;t NULL, the existing object (if any) will be copied to the location pointed to by <code>old</code> before it is destroyed.</p>
 
-<p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
+<p><strong>Note</strong>: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
 
 <h4 id="fio_set_name-remove-hash-map"><code>FIO_SET_NAME(remove)</code> (Hash Map)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
@@ -3474,7 +3483,7 @@ be defined. i.e.:</p>
 
 <p>If <code>old</code> isn&#39;t <code>NULL</code>, than the existing object (if any) would be copied to the location pointed to by <code>old</code>.</p>
 
-<p>NOTE: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
+<p><strong>Note</strong>: This is the function&#39;s Hash Map variant. See <code>FIO_SET_KEY_TYPE</code>.</p>
 
 <h3 id="set-find-insert">Set Find / Insert</h3>
 
@@ -3487,7 +3496,7 @@ be defined. i.e.:</p>
 </code></pre>
 <p>Locates an object in the Set, if it exists.</p>
 
-<p>NOTE: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
+<p><strong>Note</strong>: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
 
 <h4 id="fio_set_name-insert-set"><code>FIO_SET_NAME(insert)</code> (Set)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span>
@@ -3498,7 +3507,7 @@ be defined. i.e.:</p>
 
 <p>If the object already exists in the set, than the new object will be destroyed and the old object will be returned.</p>
 
-<p>NOTE: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
+<p><strong>Note</strong>: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
 
 <h4 id="fio_set_name-overwrite-set"><code>FIO_SET_NAME(overwrite)</code> (Set)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="n">FIO_SET_OBJ_TYPE</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">overwrite</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
@@ -3510,7 +3519,7 @@ be defined. i.e.:</p>
 
 <p>If <code>old</code> is set, the old object (if any) will be copied to the location pointed to by <code>old</code>.</p>
 
-<p>NOTE: This function doesn&#39;t exist when <code>FIO_SET_KEY_TYPE</code> is defined.</p>
+<p><strong>Note</strong>: This function doesn&#39;t exist when <code>FIO_SET_KEY_TYPE</code> is defined.</p>
 
 <h4 id="fio_set_name-remove-set"><code>FIO_SET_NAME(remove)</code> (Set)</h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="kt">int</span> <span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">remove</span><span class="p">)(</span><span class="n">FIO_SET_NAME</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">set</span><span class="p">,</span>
@@ -3524,7 +3533,7 @@ be defined. i.e.:</p>
 
 <p>If <code>old</code> is set, the old object (if any) will be copied to the location pointed to by <code>old</code>.</p>
 
-<p>NOTE: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
+<p><strong>Note</strong>: This is the function&#39;s pure Set variant (no <code>FIO_SET_KEY_TYPE</code>).</p>
 
 <h3 id="set-hash-map-data">Set / Hash Map Data</h3>
 
@@ -3863,7 +3872,7 @@ terminator).</p>
 
 <p>Returns the number of bytes actually written to the target buffer (excluding the NUL terminator byte).</p>
 
-<p><strong>NOTE</strong>:</p>
+<p><strong>Note</strong>:</p>
 
 <p>The decoder is variation agnostic (will decode Base64, Base64 URL and Base64 XML variations) and will attempt it&#39;s best to ignore invalid data, (in order to support the MIME Base64 variation in RFC 2045).</p>
 

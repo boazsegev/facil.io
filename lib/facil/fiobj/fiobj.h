@@ -16,6 +16,10 @@ License: MIT
 
 #include <fio_siphash.h>
 
+#ifdef H_FACIL_IO_H
+#include <fiobj4fio.h>
+#endif
+
 #if DEBUG
 FIO_INLINE void fiobj_test(void) {
   fprintf(stderr, "\n=== FIOBJ Tests ===\n\n");

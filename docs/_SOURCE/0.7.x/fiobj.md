@@ -24,6 +24,7 @@ The `FIOBJ` type API is divided by it's inner types (tested using `FIOBJ_TYPE(ob
 * [Hash](fiobj_hash)
 * [Data](fiobj_data)
 * [JSON](fiobj_json)
+* [Mustache](fiobj_mustache)
 
 ### Why we need dynamic types?
 
@@ -166,7 +167,7 @@ fiobj_free(ary_copy);
 
 Cyclic protection is unsupported mostly because of performance concerns, but also because cyclic nesting is impractical for network applications (for example, how would a cyclic object be formatted into JSON?).  
 
-Cyclic nesting should be avoided. For example, the following code will crash:
+Cyclic nesting should be avoided. For example, the following code will (at best case scenario) crash:
 
 ```c
 FIOBJ ary = fiobj_ary_new();
