@@ -54,26 +54,22 @@ static inline void fio_alpn_destroy(alpn_s *obj) { fio_str_free(&obj->name); }
 #include <fio.h>
 
 typedef struct {
-  fio_str_s server_name;
   fio_str_s private_key;
   fio_str_s public_key;
 } cert_s;
 
 static inline int fio_tls_cert_cmp(const cert_s *dest, const cert_s *src) {
-  return fio_str_iseq(&dest->server_name, &src->server_name);
+  return fio_str_iseq(&dest->private_key, &src->private_key);
 }
 static inline void fio_tls_cert_copy(cert_s *dest, cert_s *src) {
   *dest = (cert_s){
-      .server_name = FIO_STR_INIT,
       .private_key = FIO_STR_INIT,
       .public_key = FIO_STR_INIT,
   };
-  fio_str_concat(&dest->server_name, &src->server_name);
   fio_str_concat(&dest->private_key, &src->private_key);
   fio_str_concat(&dest->public_key, &src->public_key);
 }
 static inline void fio_tls_cert_destroy(cert_s *obj) {
-  fio_str_free(&obj->server_name);
   fio_str_free(&obj->private_key);
   fio_str_free(&obj->public_key);
 }
@@ -232,10 +228,7 @@ void __attribute__((weak))
 fio_tls_cert_add(fio_tls_s *tls, const char *server_name, const char *key,
                  const char *cert) {
   REQUIRE_LIBRARY();
-  if (!server_name)
-    server_name = "facil.io.tls";
   cert_s c = {
-      .server_name = FIO_STR_INIT_STATIC(server_name),
       .private_key = FIO_STR_INIT,
       .public_key = FIO_STR_INIT,
   };
@@ -246,6 +239,9 @@ fio_tls_cert_add(fio_tls_s *tls, const char *server_name, const char *key,
       goto file_missing;
   } else {
     /* Self-Signed TLS Certificates (NULL) */
+    if (!server_name)
+      server_name = "facil.io.tls";
+    c.private_key = FIO_STR_INIT_STATIC(server_name);
   }
   cert_ary_push(&tls->sni, c);
   fio_tls_cert_destroy(&c);
