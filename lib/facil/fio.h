@@ -1278,17 +1278,6 @@ typedef struct fio_rw_hook_s {
    */
   ssize_t (*write)(intptr_t uuid, void *udata, const void *buf, size_t count);
   /**
-   * The `before_close` callback is called only once before closing the `uuid`.
-   *
-   * If the function returns a non-zero value, than closure will be delayed
-   * until the `flush` returns 0 (or less). This allows a closure signal to be
-   * sent by the read/write hook when such a signal is required.
-   *
-   * Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
-   * deadlock might occur.
-   * */
-  ssize_t (*before_close)(intptr_t uuid, void *udata);
-  /**
    * When implemented, this function will be called to flush any data remaining
    * in the internal buffer.
    *
@@ -1299,6 +1288,18 @@ typedef struct fio_rw_hook_s {
    * deadlock might occur.
    */
   ssize_t (*flush)(intptr_t uuid, void *udata);
+  /**
+   * The `before_close` callback is called only once before closing the `uuid`
+   * and it might not get called at all if an abnormal closure is detected.
+   *
+   * If the function returns a non-zero value, than closure will be delayed
+   * until the `flush` returns 0 (or less). This allows a closure signal to be
+   * sent by the read/write hook when such a signal is required.
+   *
+   * Note: facil.io library functions MUST NEVER be called by any r/w hook, or a
+   * deadlock might occur.
+   * */
+  ssize_t (*before_close)(intptr_t uuid, void *udata);
   /**
    * Called to perform cleanup after the socket was closed or a new read/write
    * hook was set using `fio_rw_hook_set`.

@@ -957,11 +957,11 @@ To do so, a `fio_rw_hook_s` object must be created (a static object can be used 
 
 ```c
 typedef struct fio_rw_hook_s {
- ssize_t (*read)(intptr_t uuid, void *udata, void *buf, size_t count);
- ssize_t (*write)(intptr_t uuid, void *udata, const void *buf, size_t count);
- ssize_t (*close)(intptr_t uuid, void *udata);
- ssize_t (*flush)(intptr_t uuid, void *udata);
- void (*cleanup)(void *udata);
+  ssize_t (*read)(intptr_t uuid, void *udata, void *buf, size_t count);
+  ssize_t (*write)(intptr_t uuid, void *udata, const void *buf, size_t count);
+  ssize_t (*flush)(intptr_t uuid, void *udata);
+  ssize_t (*before_close)(intptr_t uuid, void *udata);
+  void (*cleanup)(void *udata);
 } fio_rw_hook_s;
 ```
 
@@ -979,19 +979,19 @@ typedef struct fio_rw_hook_s {
 
     Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
 
-* The `before_close` hook callback:
-
-    The `before_close` callback is called only once before closing the `uuid`.
-
-    If the function returns a non-zero value, than closure will be delayed until the `flush` returns 0 (or less). This allows a closure signal to be sent by the read/write hook when such a signal is required.
-
-    Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
-
 * The `flush` hook callback:
 
     When implemented, this function will be called to flush any data remaining in the read/write hook's internal buffer.
 
     This callback should return the number of bytes remaining in the internal buffer (0 is a valid response) or -1 (on error).
+
+    Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
+
+* The `before_close` hook callback:
+
+    The `before_close` callback is called only once before closing the `uuid` and it might not get called if an abnormal closure is detected.
+
+    If the function returns a non-zero value, than closure will be delayed until the `flush` returns 0 (or less). This allows a closure signal to be sent by the read/write hook when such a signal is required.
 
     Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.
 

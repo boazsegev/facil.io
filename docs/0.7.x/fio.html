@@ -1899,11 +1899,11 @@ be sent over the socket.</p>
 
 <p>To do so, a <code>fio_rw_hook_s</code> object must be created (a static object can be used as well).</p>
 <pre><code class='highlight'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">fio_rw_hook_s</span> <span class="p">{</span>
- <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">read</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
- <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">write</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
- <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">close</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
- <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">flush</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
- <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">cleanup</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+  <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">read</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
+  <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">write</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
+  <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">flush</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+  <span class="kt">ssize_t</span> <span class="p">(</span><span class="o">*</span><span class="n">before_close</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+  <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">cleanup</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
 <span class="p">}</span> <span class="n">fio_rw_hook_s</span><span class="p">;</span>
 </code></pre>
 <ul>
@@ -1919,18 +1919,18 @@ be sent over the socket.</p>
 <p>The function is expected to call the <code>flush</code> callback (or it&#39;s logic) internally. Either <code>write</code> <strong>or</strong> <code>flush</code> are called, but not both.</p>
 
 <p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
-<li><p>The <code>before_close</code> hook callback:</p>
-
-<p>The <code>before_close</code> callback is called only once before closing the <code>uuid</code>.</p>
-
-<p>If the function returns a non-zero value, than closure will be delayed until the <code>flush</code> returns 0 (or less). This allows a closure signal to be sent by the read/write hook when such a signal is required.</p>
-
-<p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
 <li><p>The <code>flush</code> hook callback:</p>
 
 <p>When implemented, this function will be called to flush any data remaining in the read/write hook&#39;s internal buffer.</p>
 
 <p>This callback should return the number of bytes remaining in the internal buffer (0 is a valid response) or -1 (on error).</p>
+
+<p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
+<li><p>The <code>before_close</code> hook callback:</p>
+
+<p>The <code>before_close</code> callback is called only once before closing the <code>uuid</code> and it might not get called if an abnormal closure is detected.</p>
+
+<p>If the function returns a non-zero value, than closure will be delayed until the <code>flush</code> returns 0 (or less). This allows a closure signal to be sent by the read/write hook when such a signal is required.</p>
 
 <p>Note: facil.io library functions MUST NEVER be called by any r/w hook, or a deadlock might occur.</p></li>
 <li><p>The <code>cleanup</code> hook callback:</p>
