@@ -423,7 +423,7 @@ mustache_section_parent(mustache_section_s *section) {
       (mustache__section_stack_frame_s *)section;
   while (f->frame) {
     --f;
-    if (tmp.udata1 != f->sec.udata1 && tmp.udata2 != f->sec.udata2)
+    if (tmp.udata1 != f->sec.udata1 || tmp.udata2 != f->sec.udata2)
       return &f->sec;
   }
   return NULL;
