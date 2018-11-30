@@ -568,8 +568,10 @@ static inline int mustache__load_data(mustache__loader_stack_s *s,
   size_t path_len = name_len;
   while (path_len) {
     --path_len;
-    if (name[path_len] == '/' || name[path_len] == '\\')
+    if (name[path_len] == '/' || name[path_len] == '\\') {
+      ++path_len;
       break;
+    }
   }
   mustache__data_segment_write(
       (uint8_t *)s->data + old_len,
