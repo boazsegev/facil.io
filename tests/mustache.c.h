@@ -30,6 +30,35 @@ static const size_t callback_max =
 
 static void mustache_test_callback(mustache_section_s *section,
                                    enum cb_type_e expected) {
+  switch (expected) {
+  case CB_ON_TEXT:
+    fprintf(stderr, "* mustache callback for text detected.\n");
+    break;
+  case CB_ON_ARG:
+    fprintf(stderr, "* mustache callback for argument detected.\n");
+    break;
+  case CB_ON_ARG_UNESCAPE:
+    fprintf(stderr, "* mustache callback for unescaped argument detected.\n");
+    break;
+  case CB_ON_TEST: {
+    size_t len;
+    const char *txt = mustache_section_text(section, &len);
+    if (txt)
+      fprintf(stderr,
+              "* mustache callback for section testing detected. section "
+              "string:\n%.*s\n",
+              (int)len, txt);
+    else
+      fprintf(stderr, "* mustache callback for section testing detected (no "
+                      "string data available)\n");
+  } break;
+  case CB_ON_START:
+    fprintf(stderr, "* mustache callback for section start detected.\n");
+    break;
+  case CB_ERROR:
+    fprintf(stderr, "* mustache callback for ERROR detected.\n");
+    break;
+  }
   if (callback_expected[callback_count].cb_type == CB_ERROR) {
     fprintf(stderr, "FAILED: mustache callback count overflow\n");
     exit(-1);
@@ -71,17 +100,28 @@ static int mustache_on_text(mustache_section_s *section, const char *data,
 }
 
 static int32_t mustache_on_section_test(mustache_section_s *section,
-                                        const char *name, uint32_t name_len) {
+                                        const char *name, uint32_t name_len,
+                                        uint8_t callable) {
+  fprintf(stderr, "* mustache testing section %.*s\n", (int)name_len, name);
   mustache_test_callback(section, CB_ON_TEST);
   (void)name;
   (void)name_len;
-  static int ret = 1;
-  return (ret-- == 1 ? 2 : (ret + 1));
+  static size_t ret = 0;
+  switch (ret++) {
+  case 0:
+    return 2;
+  case 1:
+    return 0;
+  default:
+    return 1;
+  }
+  (void)callable;
 }
 
 static int mustache_on_section_start(mustache_section_s *section,
                                      char const *name, uint32_t name_len,
                                      uint32_t index) {
+  fprintf(stderr, "* mustache entering section %.*s\n", (int)name_len, name);
   mustache_test_callback(section, CB_ON_START);
   section->udata1 = (void *)((uintptr_t)section->udata1 + 1);
   (void)index;
@@ -91,6 +131,7 @@ static int mustache_on_section_start(mustache_section_s *section,
 }
 
 static void mustache_on_formatting_error(void *udata1, void *udata2) {
+  FIO_LOG_ERROR("mustache formatting error.");
   (void)udata1;
   (void)udata2;
 }
@@ -140,8 +181,8 @@ static inline void mustache_print_instructions(mustache_s *m) {
       name = "UNKNOWN!!!";
       break;
     }
-    fprintf(stderr, "[%u] %s, start: %u, len %u\n", i, name, ary[i].data.start,
-            ary[i].data.len);
+    fprintf(stderr, "[%u] %s, start: %u, len %u\n", i, name,
+            ary[i].data.name_pos, ary[i].data.name_len);
   }
 }
 
@@ -206,7 +247,11 @@ void mustache_test(void) {
                "Mustache instraction[%u] error, type %u != %u\n", i,
                ary[0].instruction, expected[i]);
   }
-  mustache_build(m, .udata1 = NULL);
+  fprintf(stderr,
+          "* template loaded, testing template build callbacks for data.\n");
+  mustache_build(m, .udata1 = NULL, .err = &err);
+  FIO_ASSERT(!err, "Mustache template building template failed with error %u\n",
+             err);
   FIO_ASSERT(callback_count + 1 == callback_max,
              "Callback count error %zu != %zu", callback_count + 1,
              callback_max);

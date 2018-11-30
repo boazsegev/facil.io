@@ -71,7 +71,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #if !defined(MUSTACHE_NESTING_LIMIT) || !MUSTACHE_NESTING_LIMIT
 #undef MUSTACHE_NESTING_LIMIT
-#define MUSTACHE_NESTING_LIMIT 64
+#define MUSTACHE_NESTING_LIMIT 96
 #endif
 
 #if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
@@ -103,7 +103,10 @@ typedef enum mustache_error_en {
   MUSTACHE_ERR_FILE_NOT_FOUND,
   MUSTACHE_ERR_FILE_TOO_BIG,
   MUSTACHE_ERR_FILE_NAME_TOO_LONG,
+  MUSTACHE_ERR_FILE_NAME_TOO_SHORT,
   MUSTACHE_ERR_EMPTY_TEMPLATE,
+  MUSTACHE_ERR_DELIMITER_TOO_LONG,
+  MUSTACHE_ERR_NAME_TOO_LONG,
   MUSTACHE_ERR_UNKNOWN,
   MUSTACHE_ERR_USER_ERROR,
 } mustache_error_en;
@@ -164,7 +167,7 @@ MUSTACHE_FUNC int mustache_build(mustache_build_args_s args);
       (mustache_build_args_s){.mustache = (mustache_s_ptr), __VA_ARGS__})
 
 /* *****************************************************************************
-Client Callbacks - MUST be implemented by the including file
+Callbacks Types - types used by the template builder callbacks
 ***************************************************************************** */
 
 /**
@@ -174,15 +177,6 @@ Client Callbacks - MUST be implemented by the including file
  * Note that every section is allowed a separate udata value.
  */
 typedef struct mustache_section_s {
-  /**
-   * READ ONLY. The parent section (when nesting), if any.
-   *
-   * This is important for accessing the parent's `udata` values when searching
-   * for an argument's value.
-   *
-   * The root's parent is NULL.
-   */
-  struct mustache_section_s *parent;
   /** Opaque user data (recommended for input review) - children will inherit
    * the parent's udata value. Updated values will propegate to child sections
    * but won't effect parent sections.
@@ -195,6 +189,36 @@ typedef struct mustache_section_s {
   void *udata2;
 } mustache_section_s;
 
+/* *****************************************************************************
+Callbacks Helpers - These functions can be called from within callbacks
+***************************************************************************** */
+
+/**
+ * Returns the section's parent for nested sections, or NULL (for root section).
+ *
+ * This allows the `udata` values in the parent to be accessed and can be used,
+ * for example, when seeking a value (argument / keyword) within a nested data
+ * structure such as a Hash.
+ */
+static inline mustache_section_s *
+mustache_section_parent(mustache_section_s *section);
+
+/**
+ * Returns the section's unparsed content as a non-NUL terminated byte array.
+ *
+ * The length of the data will be placed in the `size_t` variable pointed to by
+ * `p_len`. Do NOT use `strlen`, since the data isn't NUL terminated.
+ *
+ * This allows text to be accessed when a section's content is, in fact, meant
+ * to be passed along to a function / lambda.
+ */
+static inline const char *mustache_section_text(mustache_section_s *section,
+                                                size_t *p_len);
+
+/* *****************************************************************************
+Client Callbacks - MUST be implemented by the including file
+***************************************************************************** */
+
 /**
  * Called when an argument name was detected in the current section.
  *
@@ -206,6 +230,9 @@ typedef struct mustache_section_s {
  *
  * A conforming implementation will output the named argument's value (either
  * HTML escaped or not, depending on the `escape` flag) as a string.
+ *
+ * NOTE: the `name` data is **not** NUL terminated. Use the `name_len` data to
+ * determine the actual string length.
  */
 static int mustache_on_arg(mustache_section_s *section, const char *name,
                            uint32_t name_len, unsigned char escape);
@@ -214,6 +241,9 @@ static int mustache_on_arg(mustache_section_s *section, const char *name,
  * Called when simple template text (string) is detected.
  *
  * A conforming implementation will output data as a string (no escaping).
+ *
+ * NOTE: the `data` is **not** NUL terminated. Use the `data_len` data to
+ * determine the actual data length.
  */
 static int mustache_on_text(mustache_section_s *section, const char *data,
                             uint32_t data_len);
@@ -231,9 +261,18 @@ static int mustache_on_text(mustache_section_s *section, const char *data,
  * A return value of -1 will stop processing with an error.
  *
  * Please note, this will handle both normal and inverted sections.
+ *
+ * The `callable` value is true if the section is allowed to be a function /
+ * callback. If the section object represent a function / callback (lambda), the
+ * lambda should be called and the `mustache_on_section_test` callback should
+ * return 0.
+ *
+ * NOTE: the `name` data is **not** NUL terminated. Use the `name_len` data to
+ * determine the actual string length.
  */
 static int32_t mustache_on_section_test(mustache_section_s *section,
-                                        const char *name, uint32_t name_len);
+                                        const char *name, uint32_t name_len,
+                                        uint8_t callable);
 
 /**
  * Called when entering a nested section.
@@ -246,6 +285,9 @@ static int32_t mustache_on_section_test(mustache_section_s *section,
  * Note: this is a good time to update the subsection's `udata` with the value
  * of the array index. The `udata` will always contain the value or the parent's
  * `udata`.
+ *
+ * NOTE: the `name` data is **not** NUL terminated. Use the `name_len` data to
+ * determine the actual string length.
  */
 static int mustache_on_section_start(mustache_section_s *section,
                                      char const *name, uint32_t name_len,
@@ -289,12 +331,424 @@ typedef struct mustache__instruction_s {
   } instruction;
   /** the data the instruction acts upon */
   struct {
-    /** The offset from the beginning of the data segment. */
-    uint32_t start;
-    /** The length of the data. */
+    /** The length instruction block in the instruction array (for sections). */
+    uint32_t end;
+    /** The length of the (string) data. */
     uint32_t len;
+    /** The offset from the beginning of the data segment. */
+    uint32_t name_pos;
+    /** The offset between the name (start) and content (for sections). */
+    uint16_t name_len;
+    /** The offset between the name and the content (left / right by type). */
+    uint16_t offset;
   } data;
 } mustache__instruction_s;
+
+typedef struct {
+  mustache_section_s sec; /* client visible section data */
+  uint32_t start;         /* section start instruction position */
+  uint32_t end;           /* instruction to jump to after completion */
+  uint32_t index;         /* zero based index for section loops */
+  uint32_t count; /* the number of times the section should be performed */
+  uint16_t frame; /* the stack frame's index (zero based) */
+} mustache__section_stack_frame_s;
+
+typedef struct {
+  mustache_s *data; /* the mustache template being built */
+  uint32_t pos;     /* the instruction postision index */
+  uint16_t index;   /* the stack postision index */
+  mustache__section_stack_frame_s stack[MUSTACHE_NESTING_LIMIT];
+} mustache__builder_stack_s;
+
+#define MUSTACHE_DELIMITER_LENGTH_LIMIT 11
+
+typedef struct {
+  mustache_s *m;
+  mustache__instruction_s *i;
+  mustache_error_en *err;
+  char *data;
+  char *path;
+  uint32_t i_capa;
+  uint32_t data_len;
+  uint16_t path_len;
+  uint16_t path_capa;
+  uint16_t index; /* stack index */
+  struct {
+    uint32_t data_start;    /* template starting position (with header) */
+    uint32_t data_pos;      /* data reading position (how much was consumed) */
+    uint32_t data_end;      /* data ending position (for this template) */
+    uint16_t open_sections; /* counts open sections waiting for closure */
+    char del_start[MUSTACHE_DELIMITER_LENGTH_LIMIT]; /* currunt instruction
+                                                        start delimiter */
+    char del_end[MUSTACHE_DELIMITER_LENGTH_LIMIT];   /* currunt instruction end
+                                                        delimiter */
+    uint8_t del_start_len; /* currunt start delimiter length */
+    uint8_t del_end_len;   /* currunt end delimiter length */
+  } stack[MUSTACHE_NESTING_LIMIT];
+} mustache__loader_stack_s;
+
+/* *****************************************************************************
+Callbacks Helper Implementation
+***************************************************************************** */
+
+#define MUSTACH2INSTRUCTIONS(mustache)                                         \
+  ((mustache__instruction_s *)((mustache) + 1))
+#define MUSTACH2DATA(mustache)                                                 \
+  (char *)(MUSTACH2INSTRUCTIONS((mustache)) +                                  \
+           (mustache)->u.read_only.intruction_count)
+#define MUSTACHE_OBJECT_OFFSET(type, member, ptr)                              \
+  ((type *)((uintptr_t)(ptr) - (uintptr_t)(&(((type *)0)->member))))
+
+#define MUSTACHE_ASSERT(cond, msg)                                             \
+  if (!(cond)) {                                                               \
+    perror("FATAL ERROR: " msg);                                               \
+    exit(errno);                                                               \
+  }
+#define MUSTACHE_IGNORE_WHITESPACE(str, step)                                  \
+  while (isspace(*(str))) {                                                    \
+    (str) += (step);                                                           \
+  }
+
+/**
+ * Returns the section's parent for nested sections, or NULL (for root section).
+ *
+ * This allows the `udata` values in the parent to be accessed and can be used,
+ * for example, when seeking a value (argument / keyword) within a nested data
+ * structure such as a Hash.
+ */
+static inline mustache_section_s *
+mustache_section_parent(mustache_section_s *section) {
+  mustache_section_s tmp = *section;
+  mustache__section_stack_frame_s *f =
+      (mustache__section_stack_frame_s *)section;
+  while (f->frame) {
+    --f;
+    if (tmp.udata1 != f->sec.udata1 && tmp.udata2 != f->sec.udata2)
+      return &f->sec;
+  }
+  return NULL;
+  return (mustache_section_s *)(f - 1);
+}
+
+/**
+ * Returns the section's unparsed content as a non-NUL terminated byte array.
+ *
+ * The length of the data will be placed in the `size_t` variable pointed to by
+ * `p_len`. Do NOT use `strlen`, since the data isn't NUL terminated.
+ *
+ * This allows text to be accessed when a section's content is, in fact, meant
+ * to be passed along to a function / lambda.
+ */
+static inline const char *mustache_section_text(mustache_section_s *section,
+                                                size_t *p_len) {
+  if (!section || !p_len)
+    goto error;
+  mustache__section_stack_frame_s *f =
+      (mustache__section_stack_frame_s *)section;
+  mustache__builder_stack_s *s =
+      MUSTACHE_OBJECT_OFFSET(mustache__builder_stack_s, stack, (f - f->frame));
+  mustache__instruction_s *inst =
+      MUSTACH2INSTRUCTIONS(s->data) + s->pos; /* current instruction*/
+  if (inst->instruction != MUSTACHE_SECTION_START)
+    goto error;
+  const char *start =
+      MUSTACH2DATA(s->data) + inst->data.name_pos + inst->data.offset;
+  *p_len = inst->data.len;
+  return start;
+error:
+  *p_len = 0;
+  return NULL;
+}
+
+/* *****************************************************************************
+Internal Helpers
+***************************************************************************** */
+
+/* the data segment's new length after loading the the template */
+/* The data segments includes a template header: */
+/*  | 4 bytes template start instruction position | */
+/*  | 2 bytes template name | 4 bytes next template position | */
+/*  | template name (filename) | ...[template data]... */
+/* this allows template data to be reused when repeating a template */
+
+/** a template file data segment header */
+typedef struct {
+  const char *filename;  /* template file name */
+  uint32_t inst_start;   /* start position for instructions */
+  uint32_t next;         /* next template position (absolute) */
+  uint16_t filename_len; /* file name length */
+  uint16_t path_len;     /* if the file is in a folder, this marks the '/' */
+} mustache__data_segment_s;
+
+/* writes the data to dest, returns the number of bytes written. */
+static inline size_t
+mustache__data_segment_write(uint8_t *dest, mustache__data_segment_s data) {
+  dest[0] = 0xFF & data.inst_start;
+  dest[1] = 0xFF & (data.inst_start >> 1);
+  dest[2] = 0xFF & (data.inst_start >> 2);
+  dest[3] = 0xFF & (data.inst_start >> 3);
+  dest[4] = 0xFF & data.next;
+  dest[5] = 0xFF & (data.next >> 1);
+  dest[6] = 0xFF & (data.next >> 2);
+  dest[7] = 0xFF & (data.next >> 3);
+  dest[8] = 0xFF & data.filename_len;
+  dest[9] = 0xFF & (data.filename_len >> 1);
+  dest[10] = 0xFF & data.path_len;
+  dest[11] = 0xFF & (data.path_len >> 1);
+  if (data.filename_len)
+    memcpy(dest + 12, data.filename, data.filename_len);
+  (dest + 12)[data.filename_len] = 0;
+  return 13 + data.filename_len;
+}
+
+static inline size_t mustache__data_segment_length(size_t filename_len) {
+  return 13 + filename_len;
+}
+static inline mustache__data_segment_s
+mustache__data_segment_read(uint8_t *data) {
+  mustache__data_segment_s s = {
+      .filename = (char *)(data + 12),
+      .inst_start = ((uint32_t)data[0] | ((uint32_t)data[1] << 1) |
+                     ((uint32_t)data[2] << 2) | ((uint32_t)data[3] << 3)),
+      .next = ((uint32_t)data[4] | ((uint32_t)data[5] << 1) |
+               ((uint32_t)data[6] << 2) | ((uint32_t)data[7] << 3)),
+      .filename_len = ((uint16_t)data[8] | ((uint16_t)data[9] << 1)),
+      .path_len = ((uint16_t)data[10] | ((uint16_t)data[11] << 1)),
+  };
+  return s;
+}
+
+/* pushes an instruction to the instruction array */
+static inline int mustache__instruction_push(mustache__loader_stack_s *s,
+                                             mustache__instruction_s inst) {
+  if (s->m->u.read_only.intruction_count >= INT32_MAX)
+    goto instructions_too_long;
+  if (s->i_capa <= s->m->u.read_only.intruction_count) {
+    s->m = realloc(s->m, sizeof(*s->m) + (sizeof(*s->i) * (s->i_capa + 32)));
+    MUSTACHE_ASSERT(s->m, "Mustache memory allocation failed");
+    s->i_capa += 32;
+    s->i = MUSTACH2INSTRUCTIONS(s->m);
+  }
+  s->i[s->m->u.read_only.intruction_count] = inst;
+  ++s->m->u.read_only.intruction_count;
+  return 0;
+instructions_too_long:
+  *s->err = MUSTACHE_ERR_TOO_DEEP;
+  return -1;
+}
+
+/*
+ * Returns the instruction's position if the template is already existing.
+ *
+ * Returns `(uint32_t)-1` if the template is missing (not loaded, yet).
+ */
+static inline uint32_t mustache__file_is_loaded(mustache__loader_stack_s *s,
+                                                char *name, size_t name_len) {
+  char *data = s->data;
+  const char *end = data + s->m->u.read_only.data_length;
+  while (data < end) {
+    mustache__data_segment_s seg = mustache__data_segment_read((uint8_t *)data);
+    if (seg.filename_len == name_len && !memcmp(seg.filename, name, name_len))
+      return seg.inst_start;
+    data += seg.next;
+  }
+  return (uint32_t)-1;
+}
+
+static inline int mustache__load_data(mustache__loader_stack_s *s,
+                                      const char *name, size_t name_len,
+                                      const char *data, size_t data_len) {
+  const size_t old_len = s->data_len;
+  if (old_len + data_len > UINT32_MAX)
+    goto too_long;
+  s->data = realloc(s->data, old_len + data_len +
+                                 mustache__data_segment_length(name_len) + 1);
+  MUSTACHE_ASSERT(s->data,
+                  "failed to allocate memory for mustache template data");
+  size_t path_len = name_len;
+  while (path_len) {
+    --path_len;
+    if (name[path_len] == '/' || name[path_len] == '\\')
+      break;
+  }
+  mustache__data_segment_write(
+      (uint8_t *)s->data + old_len,
+      (mustache__data_segment_s){
+          .filename = name,
+          .filename_len = name_len,
+          .inst_start = s->m->u.read_only.intruction_count,
+          .next =
+              s->data_len + data_len + mustache__data_segment_length(name_len),
+          .path_len = path_len,
+      });
+  if (data) {
+    memcpy(s->data + old_len + mustache__data_segment_length(name_len), data,
+           data_len);
+  }
+  s->data_len += data_len + mustache__data_segment_length(name_len);
+  s->data[s->data_len] = 0;
+  s->m->u.read_only.data_length = s->data_len;
+
+  mustache__instruction_push(
+      s, (mustache__instruction_s){.instruction = MUSTACHE_SECTION_START});
+  /* advance stack frame */
+  ++s->index;
+  if (s->index >= MUSTACHE_NESTING_LIMIT)
+    goto too_long;
+  s->stack[s->index].data_pos =
+      old_len + mustache__data_segment_length(name_len);
+  s->stack[s->index].data_start = old_len;
+  s->stack[s->index].data_end = s->data_len;
+  /* reset delimiters */
+  s->stack[s->index].del_start_len = 2;
+  s->stack[s->index].del_end_len = 2;
+  s->stack[s->index].del_start[0] = s->stack[s->index].del_start[1] = '{';
+  s->stack[s->index].del_start[2] = 0;
+  s->stack[s->index].del_end[0] = s->stack[s->index].del_end[1] = '}';
+  s->stack[s->index].del_end[2] = 0;
+  s->stack[s->index].open_sections = 0;
+  return 0;
+too_long:
+  *s->err = MUSTACHE_ERR_TOO_DEEP;
+  return -1;
+}
+
+static inline int mustache__load_file(mustache__loader_stack_s *s,
+                                      const char *name, size_t name_len) {
+  struct stat f_data;
+  uint16_t i = s->index;
+  uint32_t old_path_len = 0;
+  if (!name_len) {
+    if (name)
+      name_len = strlen(name);
+    else
+      goto name_missing_error;
+  }
+  if (name_len >= 8192)
+    goto name_length_error;
+  /* test file names by walking the stack backwards and matching paths */
+  do {
+    mustache__data_segment_s seg;
+    if (s->data)
+      seg = mustache__data_segment_read((uint8_t *)s->data +
+                                        s->stack[i].data_start);
+    else
+      seg = (mustache__data_segment_s){
+          .path_len = 0,
+      };
+    /* did we test this path for the file? */
+    if (old_path_len && (old_path_len == seg.path_len &&
+                         !memcmp(s->path, seg.filename, old_path_len))) {
+      continue;
+    }
+    old_path_len = seg.path_len;
+    /* make sure s->path capacity is enough. */
+    if (s->path_capa < seg.path_len + name_len + 10) {
+      s->path = realloc(s->path, seg.path_len + name_len + 10);
+      MUSTACHE_ASSERT(s->path,
+                      "failed to allocate memory for mustache template data");
+      s->path_capa = seg.path_len + name_len + 10;
+    }
+    if (!seg.path_len) {
+      /* if testing local folder, there's no need to keep looping */
+      i = 0;
+    } else {
+      memcpy(s->path, seg.filename, seg.path_len);
+    }
+    /* copy name to path */
+    memcpy(s->path + seg.path_len, name, name_len);
+    s->path[name_len + seg.path_len] = 0;
+    /* test if file exists */
+    if (!stat(s->path, &f_data) && S_ISREG(f_data.st_mode)) {
+      old_path_len = name_len + seg.path_len;
+      goto file_found;
+    }
+    /* add default extension  */
+    memcpy(s->path + seg.path_len + name_len, ".mustache", 9);
+    s->path[name_len + seg.path_len + 9] = 0;
+    /* test if new filename file exists */
+    if (!stat(s->path, &f_data) && S_ISREG(f_data.st_mode)) {
+      old_path_len = name_len + seg.path_len + 9;
+      goto file_found;
+    }
+  } while (--i);
+
+  /* test if the file is "virtual" (only true for the first template loaded) */
+  if (s->data) {
+    mustache__data_segment_s seg =
+        mustache__data_segment_read((uint8_t *)s->data);
+    if (seg.filename_len == name_len && !memcmp(seg.filename, name, name_len)) {
+      /* this name points to the original (root) template, and it's virtual */
+      if (mustache__instruction_push(
+              s, (mustache__instruction_s){
+                     .instruction = MUSTACHE_SECTION_GOTO,
+                     .data =
+                         {
+                             .len = 0,
+                             .end = s->m->u.read_only.intruction_count,
+                         },
+                 }))
+        goto unknown_error;
+      return 0;
+    }
+  }
+
+  *s->err = MUSTACHE_ERR_FILE_NOT_FOUND;
+  return -1;
+
+file_found:
+  if (f_data.st_size >= INT32_MAX)
+    goto file_too_big;
+  {
+    /* test if the file was previously loaded */
+    uint32_t pre_existing = mustache__file_is_loaded(s, s->path, old_path_len);
+    if (pre_existing != (uint32_t)-1) {
+      if (mustache__instruction_push(
+              s, (mustache__instruction_s){
+                     .instruction = MUSTACHE_SECTION_GOTO,
+                     .data =
+                         {
+                             .len = pre_existing,
+                             .end = s->m->u.read_only.intruction_count,
+                         },
+                 }))
+        goto unknown_error;
+      return 0;
+    }
+  }
+  const size_t old_data_len = s->data_len;
+  if (mustache__load_data(s, s->path, old_path_len, NULL, f_data.st_size))
+    goto unknown_error;
+  int fd = open(s->path, O_RDONLY);
+  if (fd == -1)
+    goto file_err;
+  if (pread(fd,
+            s->data + old_data_len +
+                mustache__data_segment_length(old_path_len),
+            f_data.st_size, 0) != f_data.st_size)
+    goto file_err;
+  close(fd);
+  return 0;
+
+name_missing_error:
+  *s->err = MUSTACHE_ERR_FILE_NAME_TOO_SHORT;
+  return -1;
+
+name_length_error:
+  *s->err = MUSTACHE_ERR_FILE_NAME_TOO_LONG;
+  return -1;
+
+file_too_big:
+  *s->err = MUSTACHE_ERR_FILE_TOO_BIG;
+  return -1;
+
+file_err:
+  *s->err = MUSTACHE_ERR_UNKNOWN;
+  return -1;
+
+unknown_error:
+  return -1;
+}
 
 /* *****************************************************************************
 Calling the instrustion list (using the template engine)
@@ -313,215 +767,112 @@ Calling the instrustion list (using the template engine)
  *  - Data segment: text and data related to the instructions.
  *
  * The instructions, much like machine code, might loop or jump. This is why the
- * functions keep a stack of sorts. This allows the code to avoid recursion and
+ * function keeps a stack of sorts. This allows the code to avoid recursion and
  * minimize any risk of stack overflow caused by recursive templates.
- *
- * Note:
- *
- * For text and argument instructions, the mustache__instruction_s.data.start
- * and mustache__instruction_s.data.len mark the beginning of the text/argument
- * and it's name.
- *
- * However, for MUSTACHE_SECTION_START instructions, data.len marks position for
- * the complementing MUSTACHE_SECTION_END instruction, allowing for easy jumps
- * in cases where a section is skipped or in cases of a recursive template.
  */
 MUSTACHE_FUNC int(mustache_build)(mustache_build_args_s args) {
+  mustache_error_en err_if_missing;
+  if (!args.err)
+    args.err = &err_if_missing;
+  if (!args.mustache) {
+    goto user_error;
+  }
   /* extract the instruction array and data segment from the mustache_s */
-  mustache__instruction_s *pos =
-      (mustache__instruction_s *)(sizeof(*args.mustache) +
-                                  (uintptr_t)args.mustache);
-  mustache__instruction_s *const start = pos;
-  mustache__instruction_s *const end =
-      pos + args.mustache->u.read_only.intruction_count;
-  char *const data = (char *const)end;
-
-  /* prepare a pre-allocated stack space to flatten recursion needs */
-  struct {
-    mustache_section_s sec; /* client visible section data */
-    uint32_t start;         /* section start instruction position */
-    uint32_t end;           /* instruction to jump to after completion */
-    uint32_t index;         /* zero based index forr section loops */
-    uint32_t count; /* the number of times the section should be performed */
-  } section_stack[MUSTACHE_NESTING_LIMIT];
-
-  /* first section (section 0) data */
-  section_stack[0].sec = (mustache_section_s){
-      .udata1 = args.udata1,
-      .udata2 = args.udata2,
+  mustache__instruction_s *instructions = MUSTACH2INSTRUCTIONS(args.mustache);
+  char *const data = MUSTACH2DATA(args.mustache);
+  mustache__builder_stack_s s;
+  s.data = args.mustache;
+  s.pos = 0;
+  s.index = 0;
+  s.stack[0] = (mustache__section_stack_frame_s){
+      .sec =
+          {
+              .udata1 = args.udata1,
+              .udata2 = args.udata2,
+          },
+      .start = 0,
+      .end = instructions[0].data.end,
+      .index = 0,
+      .count = 0,
+      .frame = 0,
   };
-  section_stack[0].end = 0;
-  uint32_t nesting_pos = 0;
-
-  /* run through the instruction list and persorm each instruction */
-  while (pos < end) {
-    switch (pos->instruction) {
-
+  while ((uintptr_t)(instructions + s.pos) < (uintptr_t)data) {
+    switch (instructions[s.pos].instruction) {
     case MUSTACHE_WRITE_TEXT:
-      if (mustache_on_text(&section_stack[nesting_pos].sec,
-                           data + pos->data.start, pos->data.len) == -1) {
-        if (args.err) {
-          *args.err = MUSTACHE_ERR_USER_ERROR;
-        }
-        goto error;
-      }
+      if (mustache_on_text(&s.stack[s.index].sec,
+                           data + instructions[s.pos].data.name_pos,
+                           instructions[s.pos].data.name_len))
+        goto user_error;
       break;
-
-    case MUSTACHE_WRITE_ARG:
-      if (mustache_on_arg(&section_stack[nesting_pos].sec,
-                          data + pos->data.start, pos->data.len, 1) == -1) {
-        if (args.err) {
-          *args.err = MUSTACHE_ERR_USER_ERROR;
-        }
-        goto error;
-      }
+    case MUSTACHE_WRITE_ARG: /* overflow */
+      if (mustache_on_arg(&s.stack[s.index].sec,
+                          data + instructions[s.pos].data.name_pos,
+                          instructions[s.pos].data.name_len, 1))
+        goto user_error;
       break;
-
     case MUSTACHE_WRITE_ARG_UNESCAPED:
-      if (mustache_on_arg(&section_stack[nesting_pos].sec,
-                          data + pos->data.start, pos->data.len, 0) == -1) {
-        if (args.err) {
-          *args.err = MUSTACHE_ERR_USER_ERROR;
-        }
-        goto error;
-      }
+      if (mustache_on_arg(&s.stack[s.index].sec,
+                          data + instructions[s.pos].data.name_pos,
+                          instructions[s.pos].data.name_len, 0))
+        goto user_error;
       break;
-    case MUSTACHE_SECTION_START_INV: /* overfloaw*/
-    case MUSTACHE_SECTION_START: {
-      /* starting a new section, increased nesting & review */
-      if (nesting_pos + 1 == MUSTACHE_NESTING_LIMIT) {
-        if (args.err) {
+    case MUSTACHE_SECTION_GOTO:  /* overflow */
+    case MUSTACHE_SECTION_START: /* overflow */
+    case MUSTACHE_SECTION_START_INV:
+      /* advance stack*/
+      if (s.index + 1 >= MUSTACHE_NESTING_LIMIT) {
+        if (args.err)
           *args.err = MUSTACHE_ERR_TOO_DEEP;
-        }
         goto error;
       }
-      section_stack[nesting_pos + 1].sec = section_stack[nesting_pos].sec;
-      ++nesting_pos;
+      s.stack[s.index + 1].sec = s.stack[s.index].sec;
+      ++s.index;
+      s.stack[s.index].start =
+          (instructions[s.pos].instruction == MUSTACHE_SECTION_GOTO
+               ? instructions[s.pos].data.len
+               : s.pos);
+      s.stack[s.index].end = instructions[s.pos].data.end;
+      s.stack[s.index].frame = s.index;
+      s.stack[s.index].index = 0;
+      s.stack[s.index].count = 1;
 
-      /* find the end of the section */
-      mustache__instruction_s *section_end = start + pos->data.len;
-
-      /* test for template (partial) section (nameless) */
-      if (pos->data.start == 0) {
-        section_stack[nesting_pos].end = section_end - start;
-        section_stack[nesting_pos].start = pos - start;
-        section_stack[nesting_pos].index = 1;
-        section_stack[nesting_pos].count = 0;
-        break;
-      }
-
-      /* test for user abort signal and cycle value */
-      int32_t val = mustache_on_section_test(&section_stack[nesting_pos].sec,
-                                             data + pos->data.start,
-                                             strlen(data + pos->data.start));
-      if (val == -1) {
-        if (args.err) {
-          *args.err = MUSTACHE_ERR_USER_ERROR;
+      /* test section count */
+      if (instructions[s.pos].data.name_pos) {
+        /* this is a named section, it should be tested against user data */
+        int32_t val = mustache_on_section_test(
+            &s.stack[s.index].sec, data + instructions[s.pos].data.name_pos,
+            instructions[s.pos].data.name_len,
+            instructions[s.pos].instruction == MUSTACHE_SECTION_START);
+        if (val == -1) {
+          goto user_error;
         }
-        goto error;
-      }
-      if (pos->instruction == MUSTACHE_SECTION_START_INV) {
-        if (val == 0) {
-          /* perform once for inverted sections */
-          val = 1;
-        } else {
-          /* or don't perform */
-          val = 0;
+        if (instructions[s.pos].instruction == MUSTACHE_SECTION_START_INV) {
+          /* invert test */
+          val = (val == 0);
         }
+        s.stack[s.index].count = (uint32_t)val;
       }
 
-      if (val == 0) {
-        --nesting_pos;
-        pos = section_end;
-      } else {
-        /* save start/end positions and index counter */
-        section_stack[nesting_pos].end = section_end - start;
-        section_stack[nesting_pos].start = pos - start;
-        section_stack[nesting_pos].index = val;
-        section_stack[nesting_pos].count = 0;
-        if (mustache_on_section_start(&section_stack[nesting_pos].sec,
-                                      data + pos->data.start,
-                                      strlen(data + pos->data.start),
-                                      section_stack[nesting_pos].count) == -1) {
-          if (args.err) {
-            *args.err = MUSTACHE_ERR_USER_ERROR;
-          }
-          goto error;
-        }
-      }
-      break;
-    }
-
+    /* overflow  */
     case MUSTACHE_SECTION_END:
-      ++section_stack[nesting_pos].count;
-      if (section_stack[nesting_pos].index > section_stack[nesting_pos].count) {
-        pos = start + section_stack[nesting_pos].start;
-        if (nesting_pos) { /* revert to old udata values */
-          section_stack[nesting_pos].sec = section_stack[nesting_pos - 1].sec;
-        }
-        if (mustache_on_section_start(&section_stack[nesting_pos].sec,
-                                      data + pos->data.start,
-                                      strlen(data + pos->data.start),
-                                      section_stack[nesting_pos].count)) {
-          if (args.err) {
-            *args.err = MUSTACHE_ERR_USER_ERROR;
-          }
-          goto error;
-        }
-      } else {
-        pos = start + section_stack[nesting_pos].end; /* in case of recursion */
-        --nesting_pos;
-      }
-      break;
-
-    case MUSTACHE_SECTION_GOTO: {
-      /* used to handle recursive sections and re-occuring partials. */
-      if (nesting_pos + 1 == MUSTACHE_NESTING_LIMIT) {
-        if (args.err) {
-          *args.err = MUSTACHE_ERR_TOO_DEEP;
-        }
-        goto error;
-      }
-      section_stack[nesting_pos + 1].sec = section_stack[nesting_pos].sec;
-      ++nesting_pos;
-      if (start[pos->data.len].data.start == 0) {
-        section_stack[nesting_pos].end = pos - start;
-        section_stack[nesting_pos].index = 1;
-        section_stack[nesting_pos].count = 0;
-        section_stack[nesting_pos].start = pos->data.len;
-        pos = start + pos->data.len;
+      /* loop section or continue */
+      if (s.stack[s.index].index < s.stack[s.index].count) {
+        /* repeat / start section */
+        s.pos = s.stack[s.index].start;
+        s.stack[s.index].sec = s.stack[s.index - 1].sec;
+        /* review user callback (if it's a named section) */
+        if (instructions[s.pos].data.name_pos &&
+            mustache_on_section_start(&s.stack[s.index].sec,
+                                      data + instructions[s.pos].data.name_pos,
+                                      instructions[s.pos].data.name_len,
+                                      s.stack[s.index].index) == -1)
+          goto user_error;
+        ++s.stack[s.index].index;
         break;
       }
-      int32_t val = mustache_on_section_test(
-          &section_stack[nesting_pos].sec,
-          data + start[pos->data.len].data.start,
-          strlen(data + start[pos->data.len].data.start));
-      if (val == -1) {
-        if (args.err) {
-          *args.err = MUSTACHE_ERR_USER_ERROR;
-        }
-        goto error;
-      }
-      if (val == 0) {
-        --nesting_pos;
-      } else {
-        /* save start/end positions and index counter */
-        section_stack[nesting_pos].end = pos - start;
-        section_stack[nesting_pos].index = val;
-        section_stack[nesting_pos].count = 0;
-        section_stack[nesting_pos].start = pos->data.len;
-        pos = start + pos->data.len;
-        if (mustache_on_section_start(&section_stack[nesting_pos].sec,
-                                      data + pos->data.start,
-                                      strlen(data + pos->data.start),
-                                      section_stack[nesting_pos].count) == -1) {
-          if (args.err) {
-            *args.err = MUSTACHE_ERR_USER_ERROR;
-          }
-          goto error;
-        }
-      }
-    } break;
+      s.pos = s.stack[s.index].end;
+      --s.index;
+      break;
     default:
       /* not a valid engine */
       fprintf(stderr, "ERROR: invalid mustache instruction set detected (wrong "
@@ -531,10 +882,12 @@ MUSTACHE_FUNC int(mustache_build)(mustache_build_args_s args) {
       }
       goto error;
     }
-    ++pos;
+    ++s.pos;
   }
-
+  *args.err = MUSTACHE_OK;
   return 0;
+user_error:
+  *args.err = MUSTACHE_ERR_USER_ERROR;
 error:
   mustache_on_formatting_error(args.udata1, args.udata2);
   return -1;
@@ -546,360 +899,88 @@ Building the instrustion list (parsing the template)
 
 /* The parsing implementation, converts a template to an instruction array */
 MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
-  /* Make sure the args string length is set and prepare the path name */
-  char *path = NULL;
-  uint32_t path_capa = 0;
-  uint32_t path_len = 0;
-  if (args.filename && !args.filename_len) {
-    args.filename_len = strlen(args.filename);
-  }
+  mustache_error_en err_if_missing;
+  mustache__loader_stack_s s;
 
-  /* copy the path data (and resolve) into writable memory  */
-  if (args.filename && args.filename[0] == '~' && args.filename[1] == '/' &&
-      getenv("HOME")) {
-    const char *home = getenv("HOME");
-    path_len = strlen(home);
-    path_capa =
-        path_len + 1 + args.filename_len + 1 + 9 + 1; /* + file extension */
-    path = malloc(path_capa);
-    if (!path) {
-      perror("FATAL ERROR: couldn't allocate memory for path resolution");
-      exit(errno);
+  if (!args.err)
+    args.err = &err_if_missing;
+  s.path_capa = 0;
+  s.path = NULL;
+  s.data = NULL;
+  s.data_len = 0;
+  s.i = NULL;
+  s.i_capa = 32;
+  s.index = 0;
+  s.m = malloc(sizeof(*s.m) + (sizeof(*s.i) * 32));
+  MUSTACHE_ASSERT(s.m, "failed to allocate memory for mustache data");
+  s.m->u.read_only_pt = 0;
+  s.m->u.read_only.data_length = 0;
+  s.m->u.read_only.intruction_count = 0;
+  s.i = MUSTACH2INSTRUCTIONS(s.m);
+  s.err = args.err;
+
+  if (args.data) {
+    if (mustache__load_data(&s, args.filename, args.filename_len, args.data,
+                            args.data_len)) {
+      goto error;
     }
-    memcpy(path, home, path_len);
-    if (path[path_len - 1] != '/') {
-      path[path_len++] = '/';
-    }
-    memcpy(path + path_len, args.filename + 2, args.filename_len);
-    args.filename_len += path_len;
-    args.filename = path;
-  }
-
-  /*
-   * We need a dynamic array to hold the list of instructions...
-   * We might as well use the same memory structure as the final product, saving
-   * us an allocation and a copy at the end.
-   *
-   * Allocation starts with 32 instructions.
-   */
-  struct {
-    mustache_s head;               /* instruction array capacity and length */
-    mustache__instruction_s ary[]; /* the instruction array */
-  } *instructions =
-      malloc(sizeof(*instructions) + (32 * sizeof(mustache__instruction_s)));
-  if (!instructions) {
-    perror(
-        "FATAL ERROR: couldn't allocate memory for mustache template parsing");
-    exit(errno);
-  }
-  /* initialize dynamic array */
-  instructions->head.u.read_only.intruction_count = 0;
-  instructions->head.u.read_only.data_length = 32;
-  uint32_t data_len = 0;
-  uint8_t *data = NULL;
-
-/* We define a dynamic array handling macro, using 32 instruction chunks  */
-#define PUSH_INSTRUCTION(...)                                                  \
-  do {                                                                         \
-    if (instructions->head.u.read_only.intruction_count ==                     \
-        instructions->head.u.read_only.data_length) {                          \
-      instructions->head.u.read_only.data_length += 32;                        \
-      instructions = realloc(instructions,                                     \
-                             sizeof(*instructions) +                           \
-                                 (instructions->head.u.read_only.data_length * \
-                                  sizeof(mustache__instruction_s)));           \
-      if (!instructions) {                                                     \
-        perror("FATAL ERROR: couldn't reallocate memory for mustache "         \
-               "template path");                                               \
-        exit(errno);                                                           \
-      }                                                                        \
-    }                                                                          \
-    instructions->ary[instructions->head.u.read_only.intruction_count++] =     \
-        (mustache__instruction_s){__VA_ARGS__};                                \
-  } while (0);
-
-  /* a limited local template stack to manage template data "jumps" */
-  /* Note: templates can be recursive. */
-  int32_t stack_pos = 0;
-  struct {
-    uint8_t *delimiter_start; /* currunt instruction start delimiter */
-    uint8_t *delimiter_end;   /* currunt instruction end delimiter */
-    uint32_t data_start;      /* template starting position (with header) */
-    uint32_t data_pos;      /* data reading position (how much was consumed) */
-    uint32_t data_end;      /* data ending position (for this template) */
-    uint16_t del_start_len; /* delimiter length (start) */
-    uint16_t del_end_len;   /* delimiter length (end) */
-  } template_stack[MUSTACHE_NESTING_LIMIT];
-  template_stack[0].data_start = 0;
-  template_stack[0].data_pos = 0;
-  template_stack[0].data_end = 0;
-  template_stack[0].delimiter_start = (uint8_t *)"{{";
-  template_stack[0].delimiter_end = (uint8_t *)"}}";
-  template_stack[0].del_start_len = 2;
-  template_stack[0].del_end_len = 2;
-
-  /* a section data stack, allowing us to safely mark section closures */
-  int32_t section_depth = 0;
-  struct {
-    /* section name, for closure validation */
-    struct {
-      uint32_t start;
-      uint32_t len;
-    } name;
-    /* position for the section start instruction */
-    uint32_t instruction_pos;
-  } section_stack[MUSTACHE_NESTING_LIMIT];
-
-#define SECTION2FILENAME() (data + template_stack[stack_pos].data_start + 10)
-#define SECTION2FLEN()                                                         \
-  ((((uint8_t *)data + template_stack[stack_pos].data_start + 4)[0] << 1) |    \
-   (((uint8_t *)data + template_stack[stack_pos].data_start + 4)[1]))
-
-  /* append a filename to the path, managing the C string memory and length */
-#define PATH2FULL(folder, folder_len, filename, filename_len)                  \
-  do {                                                                         \
-    if (path_capa < (filename_len) + (folder_len) + 9 + 1) {                   \
-      path_capa = (filename_len) + (folder_len) + 9 + 1;                       \
-      path = realloc(path, path_capa);                                         \
-      if (!path) {                                                             \
-        perror("FATAL ERROR: couldn't allocate memory for path resolution");   \
-        exit(errno);                                                           \
-      }                                                                        \
-    }                                                                          \
-    if (path != (char *)(folder) && (folder_len) && (filename)[0] != '/') {    \
-      memcpy(path, (folder), (folder_len));                                    \
-      path_len = (folder_len);                                                 \
-    } else {                                                                   \
-      path_len = 0;                                                            \
-    }                                                                          \
-    if (path != (char *)(filename))                                            \
-      memcpy(path + path_len, (filename), (filename_len));                     \
-    path_len += (filename_len);                                                \
-    path[path_len] = 0;                                                        \
-  } while (0);
-
-  /* append a filename to the path, managing the C string memory and length */
-#define PATH_WITH_EXT()                                                        \
-  do {                                                                         \
-    memcpy(path + path_len, ".mustache", 9);                                   \
-    path[path_len + 9] = 0; /* keep path_len the same */                       \
-  } while (0);
-
-/* We define a dynamic template loading macro to manage memory details */
-#define LOAD_TEMPLATE(root, root_len, filename, filname_len)                   \
-  do {                                                                         \
-    /* find root filename's path start */                                      \
-    int32_t root_len_tmp = (root_len);                                         \
-    while (root_len_tmp && (((char *)(root))[root_len_tmp - 1] != '/' ||       \
-                            (root_len_tmp > 1 &&                               \
-                             ((char *)(root))[root_len_tmp - 2] == '\\'))) {   \
-      --root_len_tmp;                                                          \
-    }                                                                          \
-    if ((filname_len) + root_len_tmp >= ((uint32_t)1 << 16)) {                 \
-      *args.err = MUSTACHE_ERR_FILE_NAME_TOO_LONG;                             \
-      goto error;                                                              \
-    }                                                                          \
-    PATH2FULL((root), root_len_tmp, (filename), (filname_len));                \
-    struct stat f_data;                                                        \
-    {                                                                          \
-      /* test file name with and without the .mustache extension */            \
-      int stat_result = stat(path, &f_data);                                   \
-      if (stat_result == -1) {                                                 \
-        PATH_WITH_EXT();                                                       \
-        stat_result = stat(path, &f_data);                                     \
-      }                                                                        \
-      if (stat_result == -1) {                                                 \
-        if (args.err) {                                                        \
-          *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                             \
-        }                                                                      \
-        goto error;                                                            \
-      }                                                                        \
-    }                                                                          \
-    if (f_data.st_size >= ((uint32_t)1 << 24)) {                               \
-      *args.err = MUSTACHE_ERR_FILE_TOO_BIG;                                   \
-      goto error;                                                              \
-    }                                                                          \
-    /* the data segment's new length after loading the the template */         \
-    /* The data segments includes a template header: */                        \
-    /*  | 4 bytes template start instruction position | */                     \
-    /*  | 2 bytes template name | 4 bytes next template position | */          \
-    /*  | template name (filename) | ...[template data]... */                  \
-    /* this allows template data to be reused when repeating a template */     \
-    const uint32_t new_len =                                                   \
-        data_len + 4 + 2 + 4 + path_len + f_data.st_size + 1;                  \
-    /* reallocate memory */                                                    \
-    data = realloc(data, new_len);                                             \
-    if (!data) {                                                               \
-      perror("FATAL ERROR: couldn't reallocate memory for mustache "           \
-             "data segment");                                                  \
-      exit(errno);                                                             \
-    }                                                                          \
-    /* save instruction position length into template header */                \
-    data[data_len + 0] =                                                       \
-        (instructions->head.u.read_only.intruction_count >> 3) & 0xFF;         \
-    data[data_len + 1] =                                                       \
-        (instructions->head.u.read_only.intruction_count >> 2) & 0xFF;         \
-    data[data_len + 2] =                                                       \
-        (instructions->head.u.read_only.intruction_count >> 1) & 0xFF;         \
-    data[data_len + 3] =                                                       \
-        (instructions->head.u.read_only.intruction_count) & 0xFF;              \
-    /* Add section start marker (to support recursion or repeated partials) */ \
-    PUSH_INSTRUCTION(.instruction = MUSTACHE_SECTION_START);                   \
-    /* save filename length */                                                 \
-    data[data_len + 4 + 0] = (path_len >> 1) & 0xFF;                           \
-    data[data_len + 4 + 1] = path_len & 0xFF;                                  \
-    /* save data length ("next" pointer) */                                    \
-    data[data_len + 4 + 2 + 0] = ((uint32_t)new_len >> 3) & 0xFF;              \
-    data[data_len + 4 + 2 + 1] = ((uint32_t)new_len >> 2) & 0xFF;              \
-    data[data_len + 4 + 2 + 2] = ((uint32_t)new_len >> 1) & 0xFF;              \
-    data[data_len + 4 + 2 + 3] = ((uint32_t)new_len) & 0xFF;                   \
-    /* copy filename */                                                        \
-    memcpy(data + data_len + 4 + 2 + 4, path, path_len);                       \
-    /* open file and dump it into the data segment after the new header */     \
-    int fd = open(path, O_RDONLY);                                             \
-    if (fd == -1) {                                                            \
-      if (args.err) {                                                          \
-        *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                               \
-      }                                                                        \
-      goto error;                                                              \
-    }                                                                          \
-    if (pread(fd, (data + data_len + 4 + 2 + 4 + path_len), f_data.st_size,    \
-              0) != (ssize_t)f_data.st_size) {                                 \
-      if (args.err) {                                                          \
-        *args.err = MUSTACHE_ERR_FILE_NOT_FOUND;                               \
-      }                                                                        \
-      close(fd);                                                               \
-      goto error;                                                              \
-    }                                                                          \
-    if (stack_pos + 1 == MUSTACHE_NESTING_LIMIT) {                             \
-      if (args.err) {                                                          \
-        *args.err = MUSTACHE_ERR_TOO_DEEP;                                     \
-      }                                                                        \
-      close(fd);                                                               \
-      goto error;                                                              \
-    }                                                                          \
-    close(fd);                                                                 \
-    /* increase the data stack pointer and setup new stack frame */            \
-    ++stack_pos;                                                               \
-    template_stack[stack_pos].data_start = data_len;                           \
-    template_stack[stack_pos].data_pos = data_len + 4 + 3 + 3 + path_len;      \
-    template_stack[stack_pos].data_end = new_len - 1;                          \
-    template_stack[stack_pos].delimiter_start = (uint8_t *)"{{";               \
-    template_stack[stack_pos].delimiter_end = (uint8_t *)"}}";                 \
-    template_stack[stack_pos].del_start_len = 2;                               \
-    template_stack[stack_pos].del_end_len = 2;                                 \
-    /* update new data segment length and add NUL marker */                    \
-    data_len = new_len;                                                        \
-    data[new_len - 1] = 0;                                                     \
-  } while (0);
-
-#define IGNORE_WHITESPACE(str, step)                                           \
-  while (isspace(*(str))) {                                                    \
-    (str) += (step);                                                           \
-  }
-
-  if (args.data_len) {
-    /* allocate data segment */
-    data_len = 4 + 2 + 4 + args.data_len + args.filename_len + 1;
-    data = malloc(data_len);
-    if (!data) {
-      perror("FATAL ERROR: couldn't reallocate memory for mustache "
-             "data segment");
-      exit(errno);
-    }
-    /* save instruction position length into template header */
-    data[0] = (instructions->head.u.read_only.intruction_count >> 3) & 0xFF;
-    data[1] = (instructions->head.u.read_only.intruction_count >> 2) & 0xFF;
-    data[2] = (instructions->head.u.read_only.intruction_count >> 1) & 0xFF;
-    data[3] = (instructions->head.u.read_only.intruction_count) & 0xFF;
-    /* Add section start marker (to support recursion or repeated partials) */
-    PUSH_INSTRUCTION(.instruction = MUSTACHE_SECTION_START);
-    /* save filename length */
-    data[4 + 0] = (args.filename_len >> 1) & 0xFF;
-    data[4 + 1] = args.filename_len & 0xFF;
-    /* save data length ("next" pointer) */
-    data[4 + 2 + 0] = ((uint32_t)data_len >> 3) & 0xFF;
-    data[4 + 2 + 1] = ((uint32_t)data_len >> 2) & 0xFF;
-    data[4 + 2 + 2] = ((uint32_t)data_len >> 1) & 0xFF;
-    data[4 + 2 + 3] = ((uint32_t)data_len) & 0xFF;
-    /* copy filename */
-    if (args.filename && args.filename_len)
-      memcpy(data + 4 + 2 + 4, args.filename, args.filename_len);
-    /* copy data */
-    memcpy(data + 4 + 2 + 4 + args.filename_len, args.data, args.data_len);
-    ++stack_pos;
-    template_stack[stack_pos].data_start = 0;
-    template_stack[stack_pos].data_pos = 4 + 3 + 3 + args.filename_len;
-    template_stack[stack_pos].data_end = data_len - 1;
-    template_stack[stack_pos].delimiter_start = (uint8_t *)"{{";
-    template_stack[stack_pos].delimiter_end = (uint8_t *)"}}";
-    template_stack[stack_pos].del_start_len = 2;
-    template_stack[stack_pos].del_end_len = 2;
-    data[data_len - 1] = 0;
   } else {
-    /* Our first template to load is the root template */
-    LOAD_TEMPLATE(path, 0, args.filename, args.filename_len);
+    if (mustache__load_file(&s, args.filename, args.filename_len)) {
+      goto error;
+    }
   }
 
-  /*** As long as the stack has templated to parse - parse the template ***/
-  while (stack_pos) {
-    /* test reading position against template ending and parse */
-    while (template_stack[stack_pos].data_pos <
-           template_stack[stack_pos].data_end) {
+  /* loop while there are templates to be parsed on the stack */
+  while (s.index) {
+    /* parsing loop */
+    while (s.stack[s.index].data_pos < s.stack[s.index].data_end) {
       /* start parsing at current position */
-      uint8_t *const start = data + template_stack[stack_pos].data_pos;
+      const char *start = s.data + s.stack[s.index].data_pos;
       /* find the next instruction (beg == beginning) */
-      uint8_t *beg = (uint8_t *)strstr(
-          (char *)start, (char *)template_stack[stack_pos].delimiter_start);
-      if (!beg || beg >= data + template_stack[stack_pos].data_end) {
+      char *beg = strstr(start, s.stack[s.index].del_start);
+      const char *org_beg = beg;
+      if (!beg || beg >= s.data + s.stack[s.index].data_end) {
         /* no instructions left, only text */
-        PUSH_INSTRUCTION(.instruction = MUSTACHE_WRITE_TEXT,
-                         .data = {
-                             .start = template_stack[stack_pos].data_pos,
-                             .len = template_stack[stack_pos].data_end -
-                                    template_stack[stack_pos].data_pos,
-                         });
-        template_stack[stack_pos].data_pos = template_stack[stack_pos].data_end;
+        mustache__instruction_push(
+            &s, (mustache__instruction_s){
+                    .instruction = MUSTACHE_WRITE_TEXT,
+                    .data =
+                        {
+                            .name_pos = s.stack[s.index].data_pos,
+                            .name_len = s.stack[s.index].data_end -
+                                        s.stack[s.index].data_pos,
+                        },
+                });
+        s.stack[s.index].data_pos = s.stack[s.index].data_end;
         continue;
       }
-      if (beg + template_stack[stack_pos].del_start_len >=
-          data + template_stack[stack_pos].data_end) {
-        /* overshot... ending the template with a delimiter...*/
-        if (args.err) {
-          *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
-        }
-        goto error;
+      if (beg != start) {
+        /* there's text before the instruction */
+        mustache__instruction_push(
+            &s, (mustache__instruction_s){
+                    .instruction = MUSTACHE_WRITE_TEXT,
+                    .data =
+                        {
+                            .name_pos = s.stack[s.index].data_pos,
+                            .name_len = beg - start,
+                        },
+                });
       }
-      beg[0] = 0; /* mark the end of any text segment or string, just in case */
-      /* find the ending of the instruction */
-      uint8_t *end = (uint8_t *)strstr(
-          (char *)beg + template_stack[stack_pos].del_start_len,
-          (char *)template_stack[stack_pos].delimiter_end);
-      if (!end || end >= data + template_stack[stack_pos].data_end) {
+      /* move beg (reading position) after the delimiter */
+      beg += s.stack[s.index].del_start_len;
+      /* seek the end of the instruction delimiter */
+      char *end = strstr(beg, s.stack[s.index].del_end);
+      if (!end || end >= s.data + s.stack[s.index].data_end) {
         /* delimiter not closed */
-        if (args.err) {
-          *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
-        }
+        *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
         goto error;
-      }
-      /* text before instruction? add text instruction */
-      if (beg != data + template_stack[stack_pos].data_pos) {
-        PUSH_INSTRUCTION(.instruction = MUSTACHE_WRITE_TEXT,
-                         .data = {
-                             .start = template_stack[stack_pos].data_pos,
-                             .len = beg -
-                                    (data + template_stack[stack_pos].data_pos),
-                         });
       }
       /* update reading position in the stack */
-      template_stack[stack_pos].data_pos =
-          (end - data) + template_stack[stack_pos].del_end_len;
+      s.stack[s.index].data_pos = (end - s.data) + s.stack[s.index].del_end_len;
 
-      /* move the beginning marker the the instruction's content */
-      beg += template_stack[stack_pos].del_start_len;
-
-      /* review template instruction (the {{tag}}) */
+      /* parse instruction content */
       uint8_t escape_str = 1;
+
       switch (beg[0]) {
       case '!':
         /* comment, do nothing */
@@ -910,130 +991,146 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         ++beg;
         --end;
         if (end[0] != '=') {
-          if (args.err) {
-            *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
-          }
+          *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
           goto error;
         }
         {
-          uint8_t *div = beg;
-          while (div < end && !isspace(*(char *)div)) {
+          char *div = beg;
+          while (div < end && !isspace(*div)) {
             ++div;
           }
-          if (div == end) {
-            if (args.err) {
-              *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
-            }
+          if (div == end || div == beg) {
+            *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
             goto error;
           }
-          template_stack[stack_pos].delimiter_start = beg;
-          template_stack[stack_pos].del_start_len = div - beg;
-          div[0] = 0;
+          if (div - beg >= MUSTACHE_DELIMITER_LENGTH_LIMIT) {
+            *args.err = MUSTACHE_ERR_DELIMITER_TOO_LONG;
+            goto error;
+          }
+          /* copy starting delimiter */
+          s.stack[s.index].del_start_len = div - beg;
+          for (size_t i = 0; i < s.stack[s.index].del_start_len; ++i) {
+            s.stack[s.index].del_start[i] = beg[i];
+          }
+          s.stack[s.index].del_start[s.stack[s.index].del_start_len] = 0;
+
           ++div;
-          IGNORE_WHITESPACE(div, 1);
-          template_stack[stack_pos].delimiter_end = div;
-          template_stack[stack_pos].del_end_len = end - div;
-          end[0] = 0;
+          MUSTACHE_IGNORE_WHITESPACE(div, 1);
+          if (div == end) {
+            *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
+            goto error;
+          }
+          if (end - div >= MUSTACHE_DELIMITER_LENGTH_LIMIT) {
+            *args.err = MUSTACHE_ERR_DELIMITER_TOO_LONG;
+            goto error;
+          }
+          /* copy ending delimiter */
+          s.stack[s.index].del_end_len = end - div;
+          for (size_t i = 0; i < s.stack[s.index].del_end_len; ++i) {
+            s.stack[s.index].del_end[i] = div[i];
+          }
+          s.stack[s.index].del_end[s.stack[s.index].del_end_len] = 0;
         }
         break;
 
       case '^': /*overflow*/
+        /* start inverted section */
         escape_str = 0;
       case '#':
         /* start section (or inverted section) */
         ++beg;
         --end;
-        IGNORE_WHITESPACE(beg, 1);
-        IGNORE_WHITESPACE(end, -1);
-        end[1] = 0;
-        if (section_depth >= MUSTACHE_NESTING_LIMIT) {
-          if (args.err) {
-            *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
-          }
-          goto error;
+        MUSTACHE_IGNORE_WHITESPACE(beg, 1);
+        MUSTACHE_IGNORE_WHITESPACE(end, -1);
+        ++end;
+
+        ++s.stack[s.index].open_sections;
+        if (s.stack[s.index].open_sections >= MUSTACHE_NESTING_LIMIT) {
+          *args.err = MUSTACHE_ERR_TOO_DEEP;
         }
-        section_stack[section_depth].instruction_pos =
-            instructions->head.u.read_only.intruction_count;
-        section_stack[section_depth].name.start = beg - data;
-        section_stack[section_depth].name.len = (end - beg) + 1;
-        ++section_depth;
-        PUSH_INSTRUCTION(.instruction =
-                             (escape_str ? MUSTACHE_SECTION_START
-                                         : MUSTACHE_SECTION_START_INV),
-                         .data = {
-                             .start = beg - data,
-                             .len = (end - beg) + 1,
-                         });
+        if (beg - s.data >= UINT16_MAX) {
+          *args.err = MUSTACHE_ERR_NAME_TOO_LONG;
+        }
+        mustache__instruction_push(
+            &s, (mustache__instruction_s){
+                    .instruction = (escape_str ? MUSTACHE_SECTION_START
+                                               : MUSTACHE_SECTION_START_INV),
+                    .data = {
+                        .name_pos = beg - s.data,
+                        .name_len = end - beg,
+                        .offset = s.stack[s.index].data_pos - (beg - s.data),
+                    }});
         break;
 
       case '>':
         /* partial template - search data for loaded template or load new */
         ++beg;
         --end;
-        IGNORE_WHITESPACE(beg, 1);
-        IGNORE_WHITESPACE(end, -1);
+        MUSTACHE_IGNORE_WHITESPACE(beg, 1);
+        MUSTACHE_IGNORE_WHITESPACE(end, -1);
         ++end;
-        end[0] = 0;
-        {
-          uint8_t *loaded = data;
-          uint8_t *const data_end = data + data_len;
-          while (loaded < data_end) {
-            uint32_t const fn_len =
-                ((loaded[4] & 0xFF) << 1) | (loaded[5] & 0xFF);
-            if (fn_len != end - beg || memcmp(beg, loaded + 10, end - beg)) {
-              uint32_t const next_offset =
-                  ((loaded[6] & 0xFF) << 3) | ((loaded[7] & 0xFF) << 2) |
-                  ((loaded[8] & 0xFF) << 1) | (loaded[9] & 0xFF);
-              loaded = data + next_offset;
-              continue;
-            }
-            uint32_t const section_start =
-                ((loaded[0] & 0xFF) << 3) | ((loaded[1] & 0xFF) << 2) |
-                ((loaded[2] & 0xFF) << 1) | (loaded[3] & 0xFF);
-            PUSH_INSTRUCTION(.instruction = MUSTACHE_SECTION_GOTO,
-                             .data = {
-                                 .len = section_start,
-                             });
-            break;
-          }
-          if (loaded >= data_end) {
-            LOAD_TEMPLATE(SECTION2FILENAME(), SECTION2FLEN(), beg, (end - beg));
-          }
-        }
+        mustache__load_file(&s, beg, end - beg);
         break;
 
       case '/':
         /* section end */
         ++beg;
         --end;
-        IGNORE_WHITESPACE(beg, 1);
-        IGNORE_WHITESPACE(end, -1);
-        end[1] = 0;
-        --section_depth;
-        if (!(section_depth + 1) ||
-            (end - beg) + 1 != section_stack[section_depth].name.len ||
-            memcmp(beg, data + section_stack[section_depth].name.start,
-                   section_stack[section_depth].name.len)) {
-          if (args.err) {
-            *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
-          }
+        MUSTACHE_IGNORE_WHITESPACE(beg, 1);
+        MUSTACHE_IGNORE_WHITESPACE(end, -1);
+        ++end;
+        if (!s.stack[s.index].open_sections) {
+          *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
           goto error;
+        } else {
+          uint32_t pos = s.m->u.read_only.intruction_count;
+          uint32_t nested = 0;
+          do {
+            --pos;
+            if (s.i[pos].instruction == MUSTACHE_SECTION_END)
+              ++nested;
+            else if (s.i[pos].instruction == MUSTACHE_SECTION_START ||
+                     s.i[pos].instruction == MUSTACHE_SECTION_START_INV) {
+              if (nested) {
+                --nested;
+              } else {
+                /* test instruction closure */
+                if (s.i[pos].data.name_len != end - beg ||
+                    memcmp(beg, s.data + s.i[pos].data.name_pos,
+                           s.i[pos].data.name_len)) {
+                  *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
+                  goto error;
+                }
+                /* update initial instruction (do this before adding closure) */
+                s.i[pos].data.end = s.m->u.read_only.intruction_count;
+                s.i[pos].data.len = org_beg - (s.data + s.i[pos].data.name_pos +
+                                               s.i[pos].data.offset);
+                /* add closure instruction */
+                mustache__instruction_push(
+                    &s, (mustache__instruction_s){.instruction =
+                                                      MUSTACHE_SECTION_END,
+                                                  .data = s.i[pos].data});
+                /* update closure count */
+                --s.stack[s.index].open_sections;
+                /* stop loop */
+                pos = 0;
+                beg = NULL;
+              }
+            }
+          } while (pos);
+          if (beg) {
+            *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
+            goto error;
+          }
         }
-        /* update the section_start instruction with the ending's location */
-        instructions->ary[section_stack[section_depth].instruction_pos]
-            .data.len = instructions->head.u.read_only.intruction_count;
-        /* push sction end instruction */
-        PUSH_INSTRUCTION(.instruction = MUSTACHE_SECTION_END,
-                         .data = {
-                             .len =
-                                 section_stack[section_depth].instruction_pos,
-                         });
         break;
 
       case '{':
         /* step the read position forward if the ending was '}}}' */
-        if ((data + template_stack[stack_pos].data_pos)[0] == '}') {
-          ++template_stack[stack_pos].data_pos;
+        if (s.data[s.stack[s.index].data_pos] == '}' &&
+            s.stack[s.index].del_end[0] == '}' &&
+            s.stack[s.index].del_end[s.stack[s.index].del_end_len - 1] == '}') {
+          ++s.stack[s.index].data_pos;
         }
         /*overflow*/
       case '&': /*overflow*/
@@ -1045,85 +1142,57 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         ++beg;  /*overflow*/
       default:
         --end;
-        IGNORE_WHITESPACE(beg, 1);
-        IGNORE_WHITESPACE(end, -1);
-        end[1] = 0;
-        PUSH_INSTRUCTION(.instruction =
-                             (escape_str ? MUSTACHE_WRITE_ARG
-                                         : MUSTACHE_WRITE_ARG_UNESCAPED),
-                         .data = {
-                             .start = beg - data,
-                             .len = (end - beg) + 1,
-                         });
+        MUSTACHE_IGNORE_WHITESPACE(beg, 1);
+        MUSTACHE_IGNORE_WHITESPACE(end, -1);
+        ++end;
+        mustache__instruction_push(
+            &s, (mustache__instruction_s){
+                    .instruction = (escape_str ? MUSTACHE_WRITE_ARG
+                                               : MUSTACHE_WRITE_ARG_UNESCAPED),
+                    .data = {.name_pos = beg - s.data, .name_len = end - beg}});
         break;
       }
     }
-    /* templates are treated as sections, allowing for recursion using "goto" */
-    /* update the template's section_start instruction with the end position */
-    uint32_t const section_start =
-        ((data[template_stack[stack_pos].data_start + 0] & 0xFF) << 3) |
-        ((data[template_stack[stack_pos].data_start + 1] & 0xFF) << 2) |
-        ((data[template_stack[stack_pos].data_start + 2] & 0xFF) << 1) |
-        (data[template_stack[stack_pos].data_start + 3] & 0xFF);
-    instructions->ary[section_start].data.len =
-        instructions->head.u.read_only.intruction_count;
-    /* add section end instructiomn for the template section */
-    PUSH_INSTRUCTION(.instruction = MUSTACHE_SECTION_END,
-                     .data.len = section_start);
-    /* pop the stack frame */
-    --stack_pos;
-  }
-  /*** done parsing ***/
-
-  /* is the template empty?*/
-  if (!instructions->head.u.read_only.intruction_count) {
-    if (args.err) {
-      *args.err = MUSTACHE_ERR_EMPTY_TEMPLATE;
+    /* make sure all sections were closed */
+    if (s.stack[s.index].open_sections) {
+      *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
+      goto error;
     }
-    goto error;
+    /* add instruction closure */
+    mustache__data_segment_s seg = mustache__data_segment_read(
+        (uint8_t *)s.data + s.stack[s.index].data_start);
+    s.i[seg.inst_start].data.end = s.m->u.read_only.intruction_count;
+    mustache__instruction_push(
+        &s, (mustache__instruction_s){.instruction = MUSTACHE_SECTION_END});
+    /* pop stack */
+    --s.index;
   }
 
-  /* We're done making up the instruction list, time to finalize the product */
-  /* Make room for the String data at the end of the instruction array */
-  instructions = realloc(instructions,
-                         sizeof(*instructions) +
-                             (instructions->head.u.read_only.intruction_count *
-                              sizeof(mustache__instruction_s)) +
-                             data_len);
-  if (!instructions) {
-    perror("FATAL ERROR: couldn't reallocate memory for mustache "
-           "template finalization");
-    exit(errno);
-  }
-  /* Copy the data segment to the end of the instruction array */
-  instructions->head.u.read_only.data_length = data_len;
-  memcpy((void *)((uintptr_t)(instructions + 1) +
-                  (instructions->head.u.read_only.intruction_count *
-                   sizeof(mustache__instruction_s))),
-         data, data_len);
-  /* Cleanup, set error code and return. */
-  free(data);
-  free(path);
-  if (args.err) {
-    *args.err = MUSTACHE_OK;
-  }
-  return &instructions->head;
+  s.m = realloc(s.m, sizeof(*s.m) +
+                         (sizeof(*s.i) * s.m->u.read_only.intruction_count) +
+                         s.data_len);
+  MUSTACHE_ASSERT(s.m,
+                  "failed to allocate memory for consolidated mustache data");
+  memcpy(MUSTACH2DATA(s.m), s.data, s.data_len);
+  free(s.data);
+  free(s.path);
+
+  *args.err = MUSTACHE_OK;
+  return s.m;
+
 error:
-  free(instructions);
-  free(data);
-  free(path);
+  free(s.data);
+  free(s.path);
+  free(s.m);
   return NULL;
-
-#undef PATH2FULL
-#undef PATH_WITH_EXT
-#undef SECTION2FILENAME
-#undef SECTION2FLEN
-#undef LOAD_TEMPLATE
-#undef PUSH_INSTRUCTION
-#undef IGNORE_WHITESPACE
 }
 
 #endif /* INCLUDE_MUSTACHE_IMPLEMENTATION */
 
 #undef MUSTACHE_FUNC
+#undef MUSTACH2INSTRUCTIONS
+#undef MUSTACH2DATA
+#undef MUSTACHE_OBJECT_OFFSET
+#undef MUSTACHE_IGNORE_WHITESPACE
+
 #endif /* H_MUSTACHE_LOADR_H */
