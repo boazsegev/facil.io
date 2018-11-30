@@ -994,6 +994,10 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
           *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
           goto error;
         }
+        --end;
+        MUSTACHE_IGNORE_WHITESPACE(beg, 1);
+        MUSTACHE_IGNORE_WHITESPACE(end, -1);
+        ++end;
         {
           char *div = beg;
           while (div < end && !isspace(*div)) {
