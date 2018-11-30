@@ -225,7 +225,7 @@ static int32_t mustache_on_section_test(mustache_section_s *section,
                                         const char *name, uint32_t name_len,
                                         uint8_t callable) {
   FIOBJ o = fiobj_mustache_find_obj(section, name, name_len);
-  if (!o)
+  if (!o || FIOBJ_TYPE_IS(o, FIOBJ_T_FALSE))
     return 0;
   if (FIOBJ_TYPE_IS(o, FIOBJ_T_ARRAY))
     return fiobj_ary_count(o);
