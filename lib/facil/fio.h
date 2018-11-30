@@ -461,7 +461,7 @@ extern int FIO_LOG_LEVEL;
 
 #define FIO_ASSERT(cond, ...)                                                  \
   if (!(cond)) {                                                               \
-    FIO_LOG_FATAL(__FILE__ ":" FIO_MACRO2STR(__LINE__) __VA_ARGS__);           \
+    FIO_LOG_FATAL("(" __FILE__ ":" FIO_MACRO2STR(__LINE__) ") "__VA_ARGS__);   \
     perror("     errno");                                                      \
     exit(-1);                                                                  \
   }
