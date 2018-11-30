@@ -427,7 +427,6 @@ mustache_section_parent(mustache_section_s *section) {
       return &f->sec;
   }
   return NULL;
-  return (mustache_section_s *)(f - 1);
 }
 
 /**
@@ -621,10 +620,7 @@ static inline int mustache__load_file(mustache__loader_stack_s *s,
   uint16_t i = s->index;
   uint32_t old_path_len = 0;
   if (!name_len) {
-    if (name)
-      name_len = strlen(name);
-    else
-      goto name_missing_error;
+    goto name_missing_error;
   }
   if (name_len >= 8192)
     goto name_length_error;
@@ -651,8 +647,8 @@ static inline int mustache__load_file(mustache__loader_stack_s *s,
                       "failed to allocate memory for mustache template data");
       s->path_capa = seg.path_len + name_len + 10;
     }
+    /* if testing local folder, there's no need to keep looping */
     if (!seg.path_len) {
-      /* if testing local folder, there's no need to keep looping */
       i = 1;
     } else {
       memcpy(s->path, seg.filename, seg.path_len);
@@ -699,9 +695,9 @@ static inline int mustache__load_file(mustache__loader_stack_s *s,
   return -1;
 
 file_found:
-  if (f_data.st_size >= INT32_MAX)
+  if (f_data.st_size >= INT32_MAX) {
     goto file_too_big;
-  {
+  } else {
     /* test if the file was previously loaded */
     uint32_t pre_existing = mustache__file_is_loaded(s, s->path, old_path_len);
     if (pre_existing != (uint32_t)-1) {
@@ -713,21 +709,19 @@ file_found:
                              .len = pre_existing,
                              .end = s->m->u.read_only.intruction_count,
                          },
-                 }))
+                 })) {
         goto unknown_error;
+      }
       return 0;
     }
   }
-  const size_t old_data_len = s->data_len;
   if (mustache__load_data(s, s->path, old_path_len, NULL, f_data.st_size))
     goto unknown_error;
   int fd = open(s->path, O_RDONLY);
   if (fd == -1)
     goto file_err;
-  if (pread(fd,
-            s->data + old_data_len +
-                mustache__data_segment_length(old_path_len),
-            f_data.st_size, 0) != f_data.st_size)
+  if (pread(fd, s->data + s->data_len - f_data.st_size, f_data.st_size, 0) !=
+      f_data.st_size)
     goto file_err;
   close(fd);
   return 0;
@@ -921,6 +915,9 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   s.i = MUSTACH2INSTRUCTIONS(s.m);
   s.err = args.err;
 
+  if (!args.filename_len && args.filename)
+    args.filename_len = strlen(args.filename);
+
   if (args.data) {
     if (mustache__load_data(&s, args.filename, args.filename_len, args.data,
                             args.data_len)) {
@@ -1053,19 +1050,23 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         ++s.stack[s.index].open_sections;
         if (s.stack[s.index].open_sections >= MUSTACHE_NESTING_LIMIT) {
           *args.err = MUSTACHE_ERR_TOO_DEEP;
+          goto error;
         }
         if (beg - s.data >= UINT16_MAX) {
           *args.err = MUSTACHE_ERR_NAME_TOO_LONG;
         }
-        mustache__instruction_push(
-            &s, (mustache__instruction_s){
+        if (mustache__instruction_push(
+                &s,
+                (mustache__instruction_s){
                     .instruction = (escape_str ? MUSTACHE_SECTION_START
                                                : MUSTACHE_SECTION_START_INV),
                     .data = {
                         .name_pos = beg - s.data,
                         .name_len = end - beg,
                         .offset = s.stack[s.index].data_pos - (beg - s.data),
-                    }});
+                    }})) {
+          goto error;
+        }
         break;
 
       case '>':
