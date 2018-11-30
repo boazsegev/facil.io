@@ -197,9 +197,19 @@ void mustache_test(void) {
   char const *template_name = "mustache_test_template.mustache";
   char const *partial_name = "mustache_test_partial.mustache";
   save2file(template_name, template, strlen(template));
-  save2file(partial_name, partial, strlen(partial));
   mustache_error_en err = MUSTACHE_OK;
-  mustache_s *m = mustache_load(.filename = template_name, .err = &err);
+  mustache_s *m;
+  m = mustache_load(.filename = template_name, .err = &err);
+  if (m) {
+    unlink(template_name);
+    FIO_ASSERT(!m,
+               "Mustache template loading should have failed without partial "
+               "(err = %u)\n",
+               err);
+  }
+  save2file(partial_name, partial, strlen(partial));
+
+  m = mustache_load(.filename = template_name, .err = &err);
   if (!m) {
     unlink(template_name);
     unlink(partial_name);

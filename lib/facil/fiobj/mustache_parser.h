@@ -651,7 +651,7 @@ static inline int mustache__load_file(mustache__loader_stack_s *s,
     }
     if (!seg.path_len) {
       /* if testing local folder, there's no need to keep looping */
-      i = 0;
+      i = 1;
     } else {
       memcpy(s->path, seg.filename, seg.path_len);
     }
@@ -1073,7 +1073,8 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         MUSTACHE_IGNORE_WHITESPACE(beg, 1);
         MUSTACHE_IGNORE_WHITESPACE(end, -1);
         ++end;
-        mustache__load_file(&s, beg, end - beg);
+        if (mustache__load_file(&s, beg, end - beg))
+          goto error;
         break;
 
       case '/':
