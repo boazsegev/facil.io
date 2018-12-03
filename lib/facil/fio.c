@@ -6448,10 +6448,15 @@ static size_t fio_mem_block_count;
       "(fio) Total memory blocks allocated before cleanup %zu\n"               \
       "       Maximum memory blocks allocated at a single time %zu\n",         \
       fio_mem_block_count, fio_mem_block_count_max)
+#define FIO_MEMORY_PRINT_BLOCK_STAT_END()                                      \
+  FIO_LOG_INFO("(fio) Total memory blocks allocated "                          \
+               "after cleanup (possible leak) %zu\n",                          \
+               fio_mem_block_count)
 #else
 #define FIO_MEMORY_ON_BLOCK_ALLOC()
 #define FIO_MEMORY_ON_BLOCK_FREE()
 #define FIO_MEMORY_PRINT_BLOCK_STAT()
+#define FIO_MEMORY_PRINT_BLOCK_STAT_END()
 #endif
 /* *****************************************************************************
 Per-CPU Arena management
@@ -6722,7 +6727,7 @@ static void fio_mem_destroy(void) {
   if (!memory.forked && fio_ls_embd_any(&memory.available)) {
     FIO_LOG_WARNING("facil.io detected memory traces remaining after cleanup"
                     " - memory leak?");
-    FIO_MEMORY_PRINT_BLOCK_STAT();
+    FIO_MEMORY_PRINT_BLOCK_STAT_END();
     size_t count = 0;
     FIO_LS_EMBD_FOR(&memory.available, node) { ++count; }
     FIO_LOG_DEBUG("Memory pool size: %zu (%zu blocks per allocation).", count,
