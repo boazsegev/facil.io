@@ -71,7 +71,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #if !defined(MUSTACHE_NESTING_LIMIT) || !MUSTACHE_NESTING_LIMIT
 #undef MUSTACHE_NESTING_LIMIT
-#define MUSTACHE_NESTING_LIMIT 96
+#define MUSTACHE_NESTING_LIMIT 82
 #endif
 
 #if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
@@ -89,7 +89,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 
 /* *****************************************************************************
-Mustache API Functions and Arguments
+Mustache API Argument types
 ***************************************************************************** */
 
 /** an opaque type for mustache template data (when caching). */
@@ -125,14 +125,26 @@ typedef struct {
   mustache_error_en *err;
 } mustache_load_args_s;
 
+/* *****************************************************************************
+REQUIRED: Define INCLUDE_MUSTACHE_IMPLEMENTATION only in the implementation file
+***************************************************************************** */
+
 /**
- * Allows this header to be included within another header while limiting
- * exposure.
+ * In non-implementation files, don't define the INCLUDE_MUSTACHE_IMPLEMENTATION
+ * macro.
  *
- * before including the header within an implementation faile, define
+ * Before including the header within an implementation faile, define
  * INCLUDE_MUSTACHE_IMPLEMENTATION as 1.
+ *
+ * When unset (or zero), this will expose the return error reporting and
+ * function argument types, allowing them to be exposed in a public facing API.
+ * exposure to the function return and argument types.
  */
 #if INCLUDE_MUSTACHE_IMPLEMENTATION
+
+/* *****************************************************************************
+Mustache API Functions and Arguments
+***************************************************************************** */
 
 MUSTACHE_FUNC mustache_s *mustache_load(mustache_load_args_s args);
 
@@ -360,7 +372,7 @@ typedef struct {
   mustache__section_stack_frame_s stack[MUSTACHE_NESTING_LIMIT];
 } mustache__builder_stack_s;
 
-#define MUSTACHE_DELIMITER_LENGTH_LIMIT 11
+#define MUSTACHE_DELIMITER_LENGTH_LIMIT 5
 
 typedef struct {
   mustache_s *m;
@@ -515,6 +527,30 @@ mustache__data_segment_read(uint8_t *data) {
       .path_len = ((uint16_t)data[10] | ((uint16_t)data[11] << 1)),
   };
   return s;
+}
+
+static inline void mustache__stand_alone_adjust(mustache__loader_stack_s *s,
+                                                uint32_t stand_alone,
+                                                uint8_t clear_start) {
+  if (!stand_alone)
+    return;
+  /* adjust reading position */
+  s->stack[s->index].data_pos +=
+      1 + (s->data[s->stack[s->index].data_pos] == '\r');
+  /* remove any padding from the beginning of the line */
+  if (clear_start && s->m->u.read_only.intruction_count &&
+      s->i[s->m->u.read_only.intruction_count - 1].instruction ==
+          MUSTACHE_WRITE_TEXT) {
+    /* TODO */
+    mustache__instruction_s *ins =
+        s->i + s->m->u.read_only.intruction_count - 1;
+    while (ins->data.name_len &&
+           (s->data[ins->data.name_pos + ins->data.name_len - 1] == ' ' ||
+            s->data[ins->data.name_pos + ins->data.name_len - 1] == '\t'))
+      --ins->data.name_len;
+    if (!ins->data.name_len)
+      --s->m->u.read_only.intruction_count;
+  }
 }
 
 /* pushes an instruction to the instruction array */
@@ -933,6 +969,8 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
   while (s.index) {
     /* parsing loop */
     while (s.stack[s.index].data_pos < s.stack[s.index].data_end) {
+      /* stand-alone tag flag, also containes padding length after bit 1 */
+      uint32_t stand_alone = 0;
       /* start parsing at current position */
       const char *start = s.data + s.stack[s.index].data_pos;
       /* find the next instruction (beg == beginning) */
@@ -974,19 +1012,37 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         *args.err = MUSTACHE_ERR_CLOSURE_MISMATCH;
         goto error;
       }
+
       /* update reading position in the stack */
       s.stack[s.index].data_pos = (end - s.data) + s.stack[s.index].del_end_len;
+
+      /* Test for stand-alone tags */
+      if (!end[s.stack[s.index].del_end_len] ||
+          end[s.stack[s.index].del_end_len] == '\n' ||
+          (end[s.stack[s.index].del_end_len] == '\r' &&
+           end[1 + s.stack[s.index].del_end_len] == '\n')) {
+        char *pad = beg - (s.stack[s.index].del_start_len + 1);
+        while (pad >= start && (pad[0] == ' ' || pad[0] == '\t'))
+          --pad;
+        if (pad[0] == '\n' || pad[0] == 0) {
+          /* Yes, this a stand-alone tag, store padding length + flag  */
+          stand_alone =
+              ((beg - (pad + s.stack[s.index].del_start_len)) << 1) | 1;
+        }
+      }
 
       /* parse instruction content */
       uint8_t escape_str = 1;
 
       switch (beg[0]) {
       case '!':
-        /* comment, do nothing */
+        /* comment, do nothing... almost */
+        mustache__stand_alone_adjust(&s, stand_alone, 1);
         break;
 
       case '=':
         /* define new seperators */
+        mustache__stand_alone_adjust(&s, stand_alone, 1);
         ++beg;
         --end;
         if (end[0] != '=') {
@@ -1041,6 +1097,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         escape_str = 0;
       case '#':
         /* start section (or inverted section) */
+        mustache__stand_alone_adjust(&s, stand_alone, 0);
         ++beg;
         --end;
         MUSTACHE_IGNORE_WHITESPACE(beg, 1);
@@ -1082,6 +1139,7 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
 
       case '/':
         /* section end */
+        mustache__stand_alone_adjust(&s, stand_alone, 1);
         ++beg;
         --end;
         MUSTACHE_IGNORE_WHITESPACE(beg, 1);
