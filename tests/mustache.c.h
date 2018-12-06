@@ -177,6 +177,15 @@ static inline void mustache_print_instructions(mustache_s *m) {
     case MUSTACHE_SECTION_GOTO:
       name = "MUSTACHE_SECTION_GOTO";
       break;
+    case MUSTACHE_PADDING_PUSH:
+      name = "MUSTACHE_PADDING_PUSH";
+      break;
+    case MUSTACHE_PADDING_POP:
+      name = "MUSTACHE_PADDING_POP";
+      break;
+    case MUSTACHE_PADDING_WRITE:
+      name = "MUSTACHE_PADDING_WRITE";
+      break;
     default:
       name = "UNKNOWN!!!";
       break;
