@@ -216,6 +216,18 @@ static inline mustache_section_s *
 mustache_section_parent(mustache_section_s *section);
 
 /**
+ * This helper function should be used to write text to the output
+ * stream form within `mustache_on_arg` or `mustache_on_section_test`.
+ *
+ * This function will call the `mustache_on_text` callback for each slice of
+ * text that requires padding and for escaped data.
+ *
+ * `mustache_on_text` must NEVER call this function.
+ */
+static inline int mustache_write_text(mustache_section_s *section, char *text,
+                                      uint32_t len, uint8_t escape);
+
+/**
  * Returns the section's unparsed content as a non-NUL terminated byte array.
  *
  * The length of the data will be placed in the `size_t` variable pointed to by
@@ -434,6 +446,18 @@ Callbacks Helper Implementation
     (str) += (step);                                                           \
   }
 
+/*
+ * used internally by some of the helpers to find convert a section pointer to
+ * the full builder stack data.
+ */
+static inline mustache__builder_stack_s *
+mustache___section2stack(mustache_section_s *section) {
+  mustache__section_stack_frame_s *f =
+      (mustache__section_stack_frame_s *)section;
+  return MUSTACHE_OBJECT_OFFSET(mustache__builder_stack_s, stack,
+                                (f - f->frame));
+}
+
 /**
  * Returns the section's parent for nested sections, or NULL (for root section).
  *
@@ -467,10 +491,7 @@ static inline const char *mustache_section_text(mustache_section_s *section,
                                                 size_t *p_len) {
   if (!section || !p_len)
     goto error;
-  mustache__section_stack_frame_s *f =
-      (mustache__section_stack_frame_s *)section;
-  mustache__builder_stack_s *s =
-      MUSTACHE_OBJECT_OFFSET(mustache__builder_stack_s, stack, (f - f->frame));
+  mustache__builder_stack_s *s = mustache___section2stack(section);
   mustache__instruction_s *inst =
       MUSTACH2INSTRUCTIONS(s->data) + s->pos; /* current instruction*/
   if (inst->instruction != MUSTACHE_SECTION_START)
@@ -482,6 +503,148 @@ static inline const char *mustache_section_text(mustache_section_s *section,
 error:
   *p_len = 0;
   return NULL;
+}
+
+/**
+ * used internally to write escaped text rather than clear text.
+ */
+static inline int mustache__write_padding(mustache__builder_stack_s *s) {
+  mustache__instruction_s *const inst = MUSTACH2INSTRUCTIONS(s->data);
+  char *const data = MUSTACH2DATA(s->data);
+  for (uint32_t i = s->padding; i; i = inst[i].data.end) {
+    if (mustache_on_text(&s->stack[s->index].sec, data + inst[i].data.name_pos,
+                         inst[i].data.name_len) == -1)
+      return -1;
+  }
+  return 0;
+}
+
+/**
+ * used internally to write escaped text rather than clear text.
+ */
+static int mustache__write_escaped(mustache__builder_stack_s *s, char *text,
+                                   uint32_t len) {
+  /** HTML ecape table, created using the following Ruby Script:
+
+a = (0..255).to_a.map {|i| i.chr }
+# 100.times {|i| a[i] = "&\#x#{ i < 16 ? "0#{i.to_s(16)}" : i.to_s(16)};"}
+100.times {|i| a[i] = "&\##{i.to_s(10)};"}
+('a'.ord..'z'.ord).each {|i| a[i] = i.chr }
+('A'.ord..'Z'.ord).each {|i| a[i] = i.chr }
+('0'.ord..'9'.ord).each {|i| a[i] = i.chr }
+a['<'.ord] = "&lt;"
+a['>'.ord] = "&gt;"
+a['&'.ord] = "&amp;"
+a['"'.ord] = "&quot;"
+a["\'".ord] = "&apos;"
+a['|'.ord] = "&\##{'|'.ord.to_s(10)};"
+
+b = a.map {|s| s.length }
+puts "static char *html_escape_strs[] = {", a.to_s.slice(1..-2) ,"};",
+     "static uint8_t html_escape_len[] = {", b.to_s.slice(1..-2),"};"
+*/
+  static char *html_escape_strs[] = {
+      "&#0;",  "&#1;",  "&#2;",   "&#3;",  "&#4;",   "&#5;",  "&#6;",  "&#7;",
+      "&#8;",  "&#9;",  "&#10;",  "&#11;", "&#12;",  "&#13;", "&#14;", "&#15;",
+      "&#16;", "&#17;", "&#18;",  "&#19;", "&#20;",  "&#21;", "&#22;", "&#23;",
+      "&#24;", "&#25;", "&#26;",  "&#27;", "&#28;",  "&#29;", "&#30;", "&#31;",
+      "&#32;", "&#33;", "&quot;", "&#35;", "&#36;",  "&#37;", "&amp;", "&apos;",
+      "&#40;", "&#41;", "&#42;",  "&#43;", "&#44;",  "&#45;", "&#46;", "&#47;",
+      "0",     "1",     "2",      "3",     "4",      "5",     "6",     "7",
+      "8",     "9",     "&#58;",  "&#59;", "&lt;",   "&#61;", "&gt;",  "&#63;",
+      "&#64;", "A",     "B",      "C",     "D",      "E",     "F",     "G",
+      "H",     "I",     "J",      "K",     "L",      "M",     "N",     "O",
+      "P",     "Q",     "R",      "S",     "T",      "U",     "V",     "W",
+      "X",     "Y",     "Z",      "&#91;", "&#92;",  "&#93;", "&#94;", "&#95;",
+      "&#96;", "a",     "b",      "c",     "d",      "e",     "f",     "g",
+      "h",     "i",     "j",      "k",     "l",      "m",     "n",     "o",
+      "p",     "q",     "r",      "s",     "t",      "u",     "v",     "w",
+      "x",     "y",     "z",      "{",     "&#124;", "}",     "~",     "\x7F",
+      "\x80",  "\x81",  "\x82",   "\x83",  "\x84",   "\x85",  "\x86",  "\x87",
+      "\x88",  "\x89",  "\x8A",   "\x8B",  "\x8C",   "\x8D",  "\x8E",  "\x8F",
+      "\x90",  "\x91",  "\x92",   "\x93",  "\x94",   "\x95",  "\x96",  "\x97",
+      "\x98",  "\x99",  "\x9A",   "\x9B",  "\x9C",   "\x9D",  "\x9E",  "\x9F",
+      "\xA0",  "\xA1",  "\xA2",   "\xA3",  "\xA4",   "\xA5",  "\xA6",  "\xA7",
+      "\xA8",  "\xA9",  "\xAA",   "\xAB",  "\xAC",   "\xAD",  "\xAE",  "\xAF",
+      "\xB0",  "\xB1",  "\xB2",   "\xB3",  "\xB4",   "\xB5",  "\xB6",  "\xB7",
+      "\xB8",  "\xB9",  "\xBA",   "\xBB",  "\xBC",   "\xBD",  "\xBE",  "\xBF",
+      "\xC0",  "\xC1",  "\xC2",   "\xC3",  "\xC4",   "\xC5",  "\xC6",  "\xC7",
+      "\xC8",  "\xC9",  "\xCA",   "\xCB",  "\xCC",   "\xCD",  "\xCE",  "\xCF",
+      "\xD0",  "\xD1",  "\xD2",   "\xD3",  "\xD4",   "\xD5",  "\xD6",  "\xD7",
+      "\xD8",  "\xD9",  "\xDA",   "\xDB",  "\xDC",   "\xDD",  "\xDE",  "\xDF",
+      "\xE0",  "\xE1",  "\xE2",   "\xE3",  "\xE4",   "\xE5",  "\xE6",  "\xE7",
+      "\xE8",  "\xE9",  "\xEA",   "\xEB",  "\xEC",   "\xED",  "\xEE",  "\xEF",
+      "\xF0",  "\xF1",  "\xF2",   "\xF3",  "\xF4",   "\xF5",  "\xF6",  "\xF7",
+      "\xF8",  "\xF9",  "\xFA",   "\xFB",  "\xFC",   "\xFD",  "\xFE",  "\xFF"};
+  static uint8_t html_escape_len[] = {
+      4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+      5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 5, 5, 5,
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 5, 4, 5, 4, 5, 5, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 5, 5, 5, 5,
+      5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+  char buffer[4096];
+  size_t pos = 0;
+  const char *end = text + len;
+  while (text < end) {
+    if (*text == '\n' && s->padding) {
+      buffer[pos++] = '\n';
+      buffer[pos] = 0;
+      if (mustache_on_text(&s->stack[s->index].sec, buffer, pos) == -1)
+        return -1;
+      pos = 0;
+      if (mustache__write_padding(s) == -1)
+        return -1;
+    } else {
+      memcpy(buffer + pos, html_escape_strs[(uint8_t)text[0]],
+             html_escape_len[(uint8_t)text[0]]);
+      pos += html_escape_len[(uint8_t)text[0]];
+      if (pos >= 4090) {
+        buffer[pos] = 0;
+        if (mustache_on_text(&s->stack[s->index].sec, buffer, pos) == -1)
+          return -1;
+        pos = 0;
+      }
+    }
+    ++text;
+  }
+  if (pos) {
+    buffer[pos] = 0;
+    if (mustache_on_text(&s->stack[s->index].sec, buffer, pos) == -1)
+      return -1;
+  }
+  return 0;
+}
+/**
+ * This helper function should be used to write text to the output
+ * stream (often used within the `mustache_on_arg` callback).
+ */
+static inline int mustache_write_text(mustache_section_s *section, char *text,
+                                      uint32_t len, uint8_t escape) {
+  mustache__builder_stack_s *s = mustache___section2stack(section);
+  if (escape)
+    return mustache__write_escaped(s, text, len);
+  /* TODO */
+  char *end = memchr(text, '\n', len);
+  while (len && end) {
+    ++end;
+    const uint32_t slice_len = end - text;
+    if (mustache_on_text(&s->stack[s->index].sec, text, slice_len) == -1)
+      return -1;
+    text = end;
+    len -= slice_len;
+    end = memchr(text, '\n', len);
+    if (mustache__write_padding(s) == -1)
+      return -1;
+  }
+  if (len && mustache_on_text(&s->stack[s->index].sec, text, len) == -1)
+    return -1;
+  return 0;
 }
 
 /* *****************************************************************************

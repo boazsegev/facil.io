@@ -73,71 +73,6 @@ FIOBJ fiobj_mustache_build(mustache_s *mustache, FIOBJ data) {
 Mustache Callbacks
 ***************************************************************************** */
 
-/** HTML ecape table, created using the following Ruby Script:
-
-a = (0..255).to_a.map {|i| i.chr }
-# 100.times {|i| a[i] = "&\#x#{ i < 16 ? "0#{i.to_s(16)}" : i.to_s(16)};"}
-100.times {|i| a[i] = "&\##{i.to_s(10)};"}
-('a'.ord..'z'.ord).each {|i| a[i] = i.chr }
-('A'.ord..'Z'.ord).each {|i| a[i] = i.chr }
-('0'.ord..'9'.ord).each {|i| a[i] = i.chr }
-a['<'.ord] = "&lt;"
-a['>'.ord] = "&gt;"
-a['&'.ord] = "&amp;"
-a['"'.ord] = "&quot;"
-a["\'".ord] = "&apos;"
-a['|'.ord] = "&\##{'|'.ord.to_s(10)};"
-
-b = a.map {|s| s.length }
-puts "static char *html_escape_strs[] = {", a.to_s.slice(1..-2) ,"};",
-     "static uint8_t html_escape_len[] = {", b.to_s.slice(1..-2),"};"
-*/
-static char *html_escape_strs[] = {
-    "&#0;",  "&#1;",  "&#2;",   "&#3;",  "&#4;",   "&#5;",  "&#6;",  "&#7;",
-    "&#8;",  "&#9;",  "&#10;",  "&#11;", "&#12;",  "&#13;", "&#14;", "&#15;",
-    "&#16;", "&#17;", "&#18;",  "&#19;", "&#20;",  "&#21;", "&#22;", "&#23;",
-    "&#24;", "&#25;", "&#26;",  "&#27;", "&#28;",  "&#29;", "&#30;", "&#31;",
-    "&#32;", "&#33;", "&quot;", "&#35;", "&#36;",  "&#37;", "&amp;", "&apos;",
-    "&#40;", "&#41;", "&#42;",  "&#43;", "&#44;",  "&#45;", "&#46;", "&#47;",
-    "0",     "1",     "2",      "3",     "4",      "5",     "6",     "7",
-    "8",     "9",     "&#58;",  "&#59;", "&lt;",   "&#61;", "&gt;",  "&#63;",
-    "&#64;", "A",     "B",      "C",     "D",      "E",     "F",     "G",
-    "H",     "I",     "J",      "K",     "L",      "M",     "N",     "O",
-    "P",     "Q",     "R",      "S",     "T",      "U",     "V",     "W",
-    "X",     "Y",     "Z",      "&#91;", "&#92;",  "&#93;", "&#94;", "&#95;",
-    "&#96;", "a",     "b",      "c",     "d",      "e",     "f",     "g",
-    "h",     "i",     "j",      "k",     "l",      "m",     "n",     "o",
-    "p",     "q",     "r",      "s",     "t",      "u",     "v",     "w",
-    "x",     "y",     "z",      "{",     "&#124;", "}",     "~",     "\x7F",
-    "\x80",  "\x81",  "\x82",   "\x83",  "\x84",   "\x85",  "\x86",  "\x87",
-    "\x88",  "\x89",  "\x8A",   "\x8B",  "\x8C",   "\x8D",  "\x8E",  "\x8F",
-    "\x90",  "\x91",  "\x92",   "\x93",  "\x94",   "\x95",  "\x96",  "\x97",
-    "\x98",  "\x99",  "\x9A",   "\x9B",  "\x9C",   "\x9D",  "\x9E",  "\x9F",
-    "\xA0",  "\xA1",  "\xA2",   "\xA3",  "\xA4",   "\xA5",  "\xA6",  "\xA7",
-    "\xA8",  "\xA9",  "\xAA",   "\xAB",  "\xAC",   "\xAD",  "\xAE",  "\xAF",
-    "\xB0",  "\xB1",  "\xB2",   "\xB3",  "\xB4",   "\xB5",  "\xB6",  "\xB7",
-    "\xB8",  "\xB9",  "\xBA",   "\xBB",  "\xBC",   "\xBD",  "\xBE",  "\xBF",
-    "\xC0",  "\xC1",  "\xC2",   "\xC3",  "\xC4",   "\xC5",  "\xC6",  "\xC7",
-    "\xC8",  "\xC9",  "\xCA",   "\xCB",  "\xCC",   "\xCD",  "\xCE",  "\xCF",
-    "\xD0",  "\xD1",  "\xD2",   "\xD3",  "\xD4",   "\xD5",  "\xD6",  "\xD7",
-    "\xD8",  "\xD9",  "\xDA",   "\xDB",  "\xDC",   "\xDD",  "\xDE",  "\xDF",
-    "\xE0",  "\xE1",  "\xE2",   "\xE3",  "\xE4",   "\xE5",  "\xE6",  "\xE7",
-    "\xE8",  "\xE9",  "\xEA",   "\xEB",  "\xEC",   "\xED",  "\xEE",  "\xEF",
-    "\xF0",  "\xF1",  "\xF2",   "\xF3",  "\xF4",   "\xF5",  "\xF6",  "\xF7",
-    "\xF8",  "\xF9",  "\xFA",   "\xFB",  "\xFC",   "\xFD",  "\xFE",  "\xFF"};
-static uint8_t html_escape_len[] = {
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 5, 5, 5,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 5, 4, 5, 4, 5, 5, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 5, 5, 5, 5,
-    5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-
 static inline FIOBJ fiobj_mustache_find_obj(mustache_section_s *section,
                                             const char *name,
                                             uint32_t name_len) {
@@ -169,30 +104,10 @@ static int mustache_on_arg(mustache_section_s *section, const char *name,
   FIOBJ o = fiobj_mustache_find_obj(section, name, name_len);
   if (!o)
     return 0;
-  if (!escape || !FIOBJ_TYPE_IS(o, FIOBJ_T_STRING)) {
-    fiobj_str_join((FIOBJ)section->udata1, o);
-    return 0;
-  }
-  /* TODO: html escape */
-  fio_str_info_s str = fiobj_obj2cstr(o);
-  if (!str.len)
-    return 0;
   fio_str_info_s i = fiobj_obj2cstr(o);
-  i.capa = fiobj_str_capa_assert((FIOBJ)section->udata1, i.len + str.len + 64);
-  do {
-    if (i.len + 6 >= i.capa)
-      i.capa = fiobj_str_capa_assert((FIOBJ)section->udata1, i.capa + 64);
-    i.len = fiobj_str_write((FIOBJ)section->udata1,
-                            html_escape_strs[(uint8_t)str.data[0]],
-                            html_escape_len[(uint8_t)str.data[0]]);
-    --str.len;
-    ++str.data;
-  } while (str.len);
-  (void)section;
-  (void)name;
-  (void)name_len;
-  (void)escape;
-  return 0;
+  if (!i.len)
+    return 0;
+  return mustache_write_text(section, i.data, i.len, escape);
 }
 
 /**
@@ -230,7 +145,7 @@ static int32_t mustache_on_section_test(mustache_section_s *section,
   if (FIOBJ_TYPE_IS(o, FIOBJ_T_ARRAY))
     return fiobj_ary_count(o);
   return 1;
-  (void)callable;
+  (void)callable; /* FIOBJ doesn't support lambdas */
 }
 
 /**
