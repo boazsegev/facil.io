@@ -3869,6 +3869,18 @@ Logging macros accept `printf` type arguments. i.e.:
 FIO_LOG_DEBUG("The meaning of life: %d", 42);
 ```
 
+#### `FIO_LOG_LENGTH_LIMIT`
+
+```c
+#define FIO_LOG_LENGTH_LIMIT 2048
+```
+
+(since 0.7.0.beta3)
+
+Since logging uses stack memory rather than dynamic allocation, it's memory usage must be limited to avoid exploding the stack. The following sets the maximum stack memory used when logging events.
+
+Log messages that exceed this length will result in the message *ERROR: log line output too long (can't write)*.
+
 ### Compilation Macros
 
 The facil.io core library has some hard coded values that can be adjusted by defining the following macros during compile time.

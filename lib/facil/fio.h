@@ -180,6 +180,15 @@ Version and helper macros
 #define FIO_PUBSUB_SUPPORT 1
 #endif
 
+#ifndef FIO_LOG_LENGTH_LIMIT
+/**
+ * Since logging uses stack memory rather than dynamic allocation, it's memory
+ * usage must be limited to avoid exploding the stack. The following sets the
+ * memory used for a logging event.
+ */
+#define FIO_LOG_LENGTH_LIMIT 2048
+#endif
+
 #ifndef FIO_IGNORE_MACRO
 /**
  * This is used internally to ignore macros that shadow functions (avoiding
@@ -427,9 +436,10 @@ extern int FIO_LOG_LEVEL;
 #define FIO_LOG_PRINT(level, ...)                                              \
   do {                                                                         \
     if (level <= FIO_LOG_LEVEL) {                                              \
-      char tmp___log[1024];                                                    \
-      int len___log = snprintf(tmp___log, 1000, __VA_ARGS__);                  \
-      if (len___log <= 0 || len___log > 1000) {                                \
+      char tmp___log[FIO_LOG_LENGTH_LIMIT];                                    \
+      int len___log =                                                          \
+          snprintf(tmp___log, FIO_LOG_LENGTH_LIMIT - 2, __VA_ARGS__);          \
+      if (len___log <= 0 || len___log >= FIO_LOG_LENGTH_LIMIT - 2) {           \
         fwrite("ERROR: log line output too long (can't write).", 46, 1,        \
                stderr);                                                        \
         break;                                                                 \
