@@ -8,47 +8,6 @@ Feel free to copy, use and enjoy according to the license provided.
 /**
  * A mustache parser using a callback systems that allows this implementation to
  * be framework agnostic (i.e., can be used with any JSON library).
- *
- * When including the mustache parser within an iumplementation file,
- * `INCLUDE_MUSTACHE_IMPLEMENTATION` must be defined as 1. This allows the
- * header's types to be exposed within a containing header.
- *
- * The API has three functions:
- *
- * 1. `mustache_load` loads a template file, converting it to instruction data.
- * 2. `mustache_build` calls any callbacks according to the loaded instructions.
- * 3. `mustache_free` frees the instruction and data memory (the template).
- *
- * The template is loaded and converted to an instruction array using
- * `mustache_load`. This loads any nested templates / partials as well.
- *
- * The resulting instruction array (`mustache_s *`) is composed of three memory
- * segments: header segment, instruction array segment and data segment.
- *
- * The instruction array (`mustache_s *`) can be used to build actual output
- * data using the `mustache_build` function.
- *
- * The `mustache_build` function accepts two opaque pointers for user data
- * (`udata1` and `udata2`) that can be used by the callbacks for data input and
- * data output.
- *
- * The `mustache_build` function is thread safe and many threads can build
- * content based on the same template.
- *
- * While the build function is performed, the following callback might be
- * called:
- *
- * * `mustache_on_arg` - called to output an argument's value .
- * * `mustache_on_text` - called to output raw text.
- * * `mustache_on_section_test` - called when a section is tested for validity.
- * * `mustache_on_section_start` - called when entering a named section.
- * * `mustache_on_formatting_error` - called when a formatting error occurred.
- *
- * Once the template is no longer needed, it's easy to free the template using
- * the `mustache_free` function (which, at the moment, simply calls `free`).
- *
- * For details about mustache templating scheme, see: https://mustache.github.io
- *
  */
 #define H_MUSTACHE_LOADR_H
 
@@ -524,26 +483,28 @@ static inline int mustache__write_padding(mustache__builder_stack_s *s) {
  */
 static int mustache__write_escaped(mustache__builder_stack_s *s, char *text,
                                    uint32_t len) {
+#define MUSTACHE_ESCAPE_BUFFER_SIZE 4096
   /** HTML ecape table, created using the following Ruby Script:
 
-a = (0..255).to_a.map {|i| i.chr }
-# 100.times {|i| a[i] = "&\#x#{ i < 16 ? "0#{i.to_s(16)}" : i.to_s(16)};"}
-100.times {|i| a[i] = "&\##{i.to_s(10)};"}
-('a'.ord..'z'.ord).each {|i| a[i] = i.chr }
-('A'.ord..'Z'.ord).each {|i| a[i] = i.chr }
-('0'.ord..'9'.ord).each {|i| a[i] = i.chr }
-a['<'.ord] = "&lt;"
-a['>'.ord] = "&gt;"
-a['&'.ord] = "&amp;"
-a['"'.ord] = "&quot;"
-a["\'".ord] = "&apos;"
-a['|'.ord] = "&\##{'|'.ord.to_s(10)};"
+        a = (0..255).to_a.map {|i| i.chr }
+        100.times {|i| a[i] = "&\##{i.to_s(10)};"}
+        ('a'.ord..'z'.ord).each {|i| a[i] = i.chr }
+        ('A'.ord..'Z'.ord).each {|i| a[i] = i.chr }
+        ('0'.ord..'9'.ord).each {|i| a[i] = i.chr }
+        a['<'.ord] = "&lt;"
+        a['>'.ord] = "&gt;"
+        a['&'.ord] = "&amp;"
+        a['"'.ord] = "&quot;"
+        a["\'".ord] = "&apos;"
+        a['|'.ord] = "&\##{'|'.ord.to_s(10)};"
 
-b = a.map {|s| s.length }
-puts "static char *html_escape_strs[] = {", a.to_s.slice(1..-2) ,"};",
-     "static uint8_t html_escape_len[] = {", b.to_s.slice(1..-2),"};"
+        b = a.map {|s| s.length }
+        puts "static char *html_escape_strs[] = {",
+             a.to_s.slice(1..-2) ,"};",
+             "static uint8_t html_escape_len[] = {",
+             b.to_s.slice(1..-2),"};"
 */
-  static char *html_escape_strs[] = {
+  static const char *html_escape_strs[] = {
       "&#0;",  "&#1;",  "&#2;",   "&#3;",  "&#4;",   "&#5;",  "&#6;",  "&#7;",
       "&#8;",  "&#9;",  "&#10;",  "&#11;", "&#12;",  "&#13;", "&#14;", "&#15;",
       "&#16;", "&#17;", "&#18;",  "&#19;", "&#20;",  "&#21;", "&#22;", "&#23;",
@@ -576,7 +537,7 @@ puts "static char *html_escape_strs[] = {", a.to_s.slice(1..-2) ,"};",
       "\xE8",  "\xE9",  "\xEA",   "\xEB",  "\xEC",   "\xED",  "\xEE",  "\xEF",
       "\xF0",  "\xF1",  "\xF2",   "\xF3",  "\xF4",   "\xF5",  "\xF6",  "\xF7",
       "\xF8",  "\xF9",  "\xFA",   "\xFB",  "\xFC",   "\xFD",  "\xFE",  "\xFF"};
-  static uint8_t html_escape_len[] = {
+  static const uint8_t html_escape_len[] = {
       4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
       5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 5, 5, 5,
       1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 5, 4, 5, 4, 5, 5, 1, 1, 1, 1, 1, 1, 1,
@@ -588,7 +549,7 @@ puts "static char *html_escape_strs[] = {", a.to_s.slice(1..-2) ,"};",
       1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
       1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
       1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-  char buffer[4096];
+  char buffer[MUSTACHE_ESCAPE_BUFFER_SIZE];
   size_t pos = 0;
   const char *end = text + len;
   while (text < end) {
@@ -604,7 +565,7 @@ puts "static char *html_escape_strs[] = {", a.to_s.slice(1..-2) ,"};",
       memcpy(buffer + pos, html_escape_strs[(uint8_t)text[0]],
              html_escape_len[(uint8_t)text[0]]);
       pos += html_escape_len[(uint8_t)text[0]];
-      if (pos >= 4090) {
+      if (pos >= (MUSTACHE_ESCAPE_BUFFER_SIZE - 6)) {
         buffer[pos] = 0;
         if (mustache_on_text(&s->stack[s->index].sec, buffer, pos) == -1)
           return -1;
@@ -619,6 +580,7 @@ puts "static char *html_escape_strs[] = {", a.to_s.slice(1..-2) ,"};",
       return -1;
   }
   return 0;
+#undef MUSTACHE_ESCAPE_BUFFER_SIZE
 }
 /**
  * This helper function should be used to write text to the output
