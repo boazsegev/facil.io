@@ -2009,7 +2009,7 @@ static void mock_ping(intptr_t uuid, fio_protocol_s *protocol) {
 static void mock_ping2(intptr_t uuid, fio_protocol_s *protocol) {
   (void)protocol;
 
-  touchfd(fd2uuid(uuid));
+  touchfd(fio_uuid2fd(uuid));
   if (uuid_data(uuid).timeout == 255)
     return;
   protocol->ping = mock_ping;
@@ -2046,7 +2046,7 @@ static void deferred_on_shutdown(void *arg, void *arg2) {
       return;
     goto postpone;
   }
-  touchfd(fd2uuid(arg));
+  touchfd(fio_uuid2fd(arg));
   uint8_t r = pr->on_shutdown ? pr->on_shutdown((intptr_t)arg, pr) : 0;
   if (r) {
     if (r == 255) {
@@ -2733,7 +2733,7 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
   fio_unlock(&uuid_data(uuid).sock_lock);
 
   if (was_empty) {
-    touchfd(fd2uuid(uuid));
+    touchfd(fio_uuid2fd(uuid));
     fio_defer_push_urgent(deferred_on_ready, (void *)uuid, NULL);
   }
   return 0;
@@ -2894,7 +2894,7 @@ test_errno:
 
   return -1;
 flushed:
-  touchfd(fd2uuid(uuid));
+  touchfd(fio_uuid2fd(uuid));
   fio_unlock(&uuid_data(uuid).sock_lock);
   return 1;
 }
@@ -3047,7 +3047,7 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
   fio_protocol_s *old_pr = uuid_data(uuid).protocol;
   uuid_data(uuid).open = 1;
   uuid_data(uuid).protocol = protocol;
-  touchfd(fd2uuid(uuid));
+  touchfd(fio_uuid2fd(uuid));
   fio_unlock(&uuid_data(uuid).protocol_lock);
   if (old_pr) {
     fio_defer_push_task(deferred_on_close, (void *)uuid, old_pr);
@@ -3084,7 +3084,7 @@ void fio_attach_fd(int fd, fio_protocol_s *protocol) {
 /** Sets a timeout for a specific connection (only when running and valid). */
 void fio_timeout_set(intptr_t uuid, uint8_t timeout) {
   if (uuid_is_valid(uuid)) {
-    touchfd(fd2uuid(uuid));
+    touchfd(fio_uuid2fd(uuid));
     uuid_data(uuid).timeout = timeout;
   } else {
     FIO_LOG_DEBUG("Called fio_timeout_set for invalid uuid %p", (void *)uuid);
