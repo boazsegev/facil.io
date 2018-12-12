@@ -28,11 +28,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#if !defined(MUSTACHE_NESTING_LIMIT) || !MUSTACHE_NESTING_LIMIT
-#undef MUSTACHE_NESTING_LIMIT
-#define MUSTACHE_NESTING_LIMIT 82
-#endif
-
 #if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
 #define __attribute__(...)
 #define __has_include(...) 0
@@ -45,6 +40,23 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #ifndef MUSTACHE_FUNC
 #define MUSTACHE_FUNC static __attribute__((unused))
+#endif
+
+/* *****************************************************************************
+Compile Time Behavior Flags
+***************************************************************************** */
+
+#ifndef MUSTACHE_USE_DYNAMIC_PADDING
+#define MUSTACHE_USE_DYNAMIC_PADDING 1
+#endif
+
+#ifndef MUSTACHE_FAIL_ON_MISSING_TEMPLATE
+#define MUSTACHE_FAIL_ON_MISSING_TEMPLATE 1
+#endif
+
+#if !defined(MUSTACHE_NESTING_LIMIT) || !MUSTACHE_NESTING_LIMIT
+#undef MUSTACHE_NESTING_LIMIT
+#define MUSTACHE_NESTING_LIMIT 82
 #endif
 
 /* *****************************************************************************
@@ -553,7 +565,7 @@ static int mustache__write_escaped(mustache__builder_stack_s *s, char *text,
   size_t pos = 0;
   const char *end = text + len;
   while (text < end) {
-    if (*text == '\n' && s->padding) {
+    if (MUSTACHE_USE_DYNAMIC_PADDING && *text == '\n' && s->padding) {
       buffer[pos++] = '\n';
       buffer[pos] = 0;
       if (mustache_on_text(&s->stack[s->index].sec, buffer, pos) == -1)
@@ -591,7 +603,8 @@ static inline int mustache_write_text(mustache_section_s *section, char *text,
   mustache__builder_stack_s *s = mustache___section2stack(section);
   if (escape)
     return mustache__write_escaped(s, text, len);
-  /* TODO */
+    /* TODO */
+#if MUSTACHE_USE_DYNAMIC_PADDING
   char *end = memchr(text, '\n', len);
   while (len && end) {
     ++end;
@@ -606,6 +619,11 @@ static inline int mustache_write_text(mustache_section_s *section, char *text,
   }
   if (len && mustache_on_text(&s->stack[s->index].sec, text, len) == -1)
     return -1;
+#else
+  if (mustache_on_text(&s->stack[s->index].sec, text, len) == -1)
+    return -1;
+
+#endif
   return 0;
 }
 
@@ -907,8 +925,12 @@ static inline ssize_t mustache__load_file(mustache__loader_stack_s *s,
     }
   }
 
+#if MUSTACHE_FAIL_ON_MISSING_TEMPLATE
   *s->err = MUSTACHE_ERR_FILE_NOT_FOUND;
   return -1;
+#else
+  return 0;
+#endif
 
 file_found:
   if (f_data.st_size >= INT32_MAX) {
