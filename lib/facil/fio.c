@@ -2733,6 +2733,7 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
   fio_unlock(&uuid_data(uuid).sock_lock);
 
   if (was_empty) {
+    uuid_data(uuid).active = fio_data->last_cycle.tv_sec;
     fio_defer_push_urgent(deferred_on_ready, (void *)uuid, NULL);
   }
   return 0;
