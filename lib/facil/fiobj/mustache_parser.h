@@ -66,7 +66,7 @@ Mustache API Argument types
 /** an opaque type for mustache template data (when caching). */
 typedef struct mustache_s mustache_s;
 
-/** Error reporting (in case of errors). */
+/** Error reporting type. */
 typedef enum mustache_error_en {
   MUSTACHE_OK,
   MUSTACHE_ERR_TOO_DEEP,
@@ -82,7 +82,7 @@ typedef enum mustache_error_en {
   MUSTACHE_ERR_USER_ERROR,
 } mustache_error_en;
 
-/** Arguments for the `mustache_load` function. */
+/** Arguments for the `mustache_load` function, used by the mustache parser. */
 typedef struct {
   /** The root template's file name. */
   char const *filename;
@@ -106,10 +106,6 @@ REQUIRED: Define INCLUDE_MUSTACHE_IMPLEMENTATION only in the implementation file
  *
  * Before including the header within an implementation faile, define
  * INCLUDE_MUSTACHE_IMPLEMENTATION as 1.
- *
- * When unset (or zero), this will expose the return error reporting and
- * function argument types, allowing them to be exposed in a public facing API.
- * exposure to the function return and argument types.
  */
 #if INCLUDE_MUSTACHE_IMPLEMENTATION
 
@@ -647,7 +643,7 @@ typedef struct {
   uint16_t path_len;     /* if the file is in a folder, this marks the '/' */
 } mustache__data_segment_s;
 
-/* writes the data to dest, returns the number of bytes written. */
+/* data segment serialization, returns the number of bytes written. */
 static inline size_t
 mustache__data_segment_write(uint8_t *dest, mustache__data_segment_s data) {
   dest[0] = 0xFF & data.inst_start;
@@ -671,6 +667,8 @@ mustache__data_segment_write(uint8_t *dest, mustache__data_segment_s data) {
 static inline size_t mustache__data_segment_length(size_t filename_len) {
   return 13 + filename_len;
 }
+
+/* data segment serialization, reads data from raw stream. */
 static inline mustache__data_segment_s
 mustache__data_segment_read(uint8_t *data) {
   mustache__data_segment_s s = {

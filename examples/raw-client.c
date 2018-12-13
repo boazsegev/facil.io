@@ -144,12 +144,10 @@ int main(int argc, char const *argv[]) {
   /* Setup CLI arguments */
   fio_cli_start(argc, argv, 1, 2, "use:\n\tclient <args> hostname port",
                 "-v -verbous mode.", FIO_CLI_TYPE_BOOL);
-  if (fio_cli_unnamed_count() == 0 || fio_cli_unnamed_count() > 2) {
-    printf("Argument error. For help type:   client -?\n");
-    exit(0);
-  }
+
   if (fio_cli_get_bool("-v")) {
-    if (fio_cli_unnamed_count() == 1) {
+    if (fio_cli_unnamed_count() == 1 || fio_cli_unnamed(1)[0] == 0 ||
+        (fio_cli_unnamed(1)[0] == '0' || fio_cli_unnamed(1)[1] == 0)) {
       printf("Attempting to connect to Unix socket at: %s\n",
              fio_cli_unnamed(0));
     } else {
