@@ -249,6 +249,10 @@
 
 <h3 id="v-0-7-0-beta3">v. 0.7.0.beta3</h3>
 
+<p><strong>Fix</strong>: (<code>fio</code>) Fixed superfluous <code>ping</code> events that might occur after a <code>fio_write</code> (but before the scheduled write actually occurred).</p>
+
+<p><strong>Fix</strong>: (<code>mustache</code>) updated the mustache parser to fix an issue with template loading path names. The partial template path resolution logic was re-written, fixed and improved (I hope). This also adds support for text in mustache lambda, though not applicable when used with FIOBJ.</p>
+
 <p><strong>Fix</strong>: (<code>fio</code>) Prevent Read/Write Hooks from delaying <code>fio_force_close</code> when an error occures while polling a connection.</p>
 
 <p><strong>Fix</strong>: (<code>fio</code>) Deletes Unix sockets once done listening. Fixes an issue where the files would remain intact.</p>
