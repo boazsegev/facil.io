@@ -1456,25 +1456,34 @@ void fio_expected_concurrency(int16_t *threads, int16_t *processes) {
     /* Set any option that is less than 0 be equal to cores/value */
     /* Set any option equal to 0 be equal to the other option in value */
     ssize_t cpu_count = fio_detect_cpu_cores();
-    size_t cpu_adjust = (*processes <= 0 ? 1 : 0);
+    size_t thread_cpu_adjust = (*threads <= 0 ? 1 : 0);
+    size_t worker_cpu_adjust = (*processes <= 0 ? 1 : 0);
 
     if (cpu_count > 0) {
-      int16_t tmp_threads = 0;
+      int16_t tmp = 0;
       if (*threads < 0)
-        tmp_threads = (int16_t)(cpu_count / (*threads * -1));
-      else if (*threads == 0)
-        tmp_threads = -1 * *processes;
-      else
-        tmp_threads = *threads;
+        tmp = (int16_t)(cpu_count / (*threads * -1));
+      else if (*threads == 0) {
+        tmp = -1 * *processes;
+        thread_cpu_adjust = 0;
+      } else
+        tmp = *threads;
       if (*processes < 0)
         *processes = (int16_t)(cpu_count / (*processes * -1));
-      else if (*processes == 0)
+      else if (*processes == 0) {
         *processes = -1 * *threads;
-      *threads = tmp_threads;
-      if (cpu_adjust && (*processes * tmp_threads) >= cpu_count &&
+        worker_cpu_adjust = 0;
+      }
+      *threads = tmp;
+      tmp = *processes;
+      if (worker_cpu_adjust && (*processes * *threads) >= cpu_count &&
           cpu_count > 3) {
-        /* leave a core available for the kernel */
+        /* leave a resources available for the kernel */
         --*processes;
+      }
+      if (thread_cpu_adjust && (*threads * tmp) >= cpu_count && cpu_count > 3) {
+        /* leave a resources available for the kernel */
+        --*threads;
       }
     }
   }

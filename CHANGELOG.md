@@ -16,6 +16,8 @@
 
 **Fix**: (`http`) fixes a possible memory leak in `http_mimetype_register`, where clearing the registry wouldn't free the FIOBJ Strings.
 
+**Update**: (`fio`) Updated the automatic concurrency calculations to leave resources for the system when a negative value is provided (was only available for worker count calculations, now available for thread count as well).
+
 **Update**: (`cli`) updated handling of empty strings in CLI values by ignoring the argument rather than printing an error or experiencing an undefined value.
 
 **Optimization**: (`fio`) pub/sub channel names appear to be (often) objects with a long life-span. Hence, these objects now use `malloc` (instead of `fio_malloc`). Also, temporary allocations in `fio_subscribe` were removed.
