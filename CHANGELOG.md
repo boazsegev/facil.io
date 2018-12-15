@@ -1,5 +1,9 @@
 # Change Log
 
+### v. 0.7.0.beta4
+
+**Update**: (`fio`) Updated the automatic concurrency calculations to leave resources for the system when a negative value is provided (was only available for worker count calculations, now available for thread count as well).
+
 ### v. 0.7.0.beta3
 
 **Fix**: (`fio`) Fixed superfluous `ping` events that might occur after a `fio_write` (but before the scheduled write actually occurred).
@@ -15,8 +19,6 @@
 **Fix**: (`fio`) The `FIO_FORCE_MALLOC` flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system's `malloc` which might return junk data.
 
 **Fix**: (`http`) fixes a possible memory leak in `http_mimetype_register`, where clearing the registry wouldn't free the FIOBJ Strings.
-
-**Update**: (`fio`) Updated the automatic concurrency calculations to leave resources for the system when a negative value is provided (was only available for worker count calculations, now available for thread count as well).
 
 **Update**: (`cli`) updated handling of empty strings in CLI values by ignoring the argument rather than printing an error or experiencing an undefined value.
 
