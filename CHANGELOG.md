@@ -2,6 +2,8 @@
 
 ### v. 0.7.0.beta4
 
+**Fix**: (`http/1.1`) Avoid processing further requests if the connection was closed.
+
 **Update**: (`fio`) Updated the automatic concurrency calculations to leave resources for the system when a negative value is provided (was only available for worker count calculations, now available for thread count as well).
 
 ### v. 0.7.0.beta3

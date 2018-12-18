@@ -554,7 +554,7 @@ static int http1_on_request(http1_parser_s *parser) {
   if (p->request.method && !p->stop)
     http_finish(&p->request);
   h1_reset(p);
-  return 0;
+  return fio_is_closed(p->p.uuid);
 }
 /** called when a response was received. */
 static int http1_on_response(http1_parser_s *parser) {
@@ -563,7 +563,7 @@ static int http1_on_response(http1_parser_s *parser) {
   if (p->request.status_str && !p->stop)
     http_finish(&p->request);
   h1_reset(p);
-  return 0;
+  return fio_is_closed(p->p.uuid);
 }
 /** called when a request method is parsed. */
 static int http1_on_method(http1_parser_s *parser, char *method,
@@ -751,7 +751,7 @@ static void http1_on_data_first_time(intptr_t uuid, fio_protocol_s *protocol) {
   /* ensure future reads skip this first time HTTP/2.0 test */
   p->p.protocol.on_data = http1_on_data;
   if (i >= 24 && !memcmp(p->buf, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
-    FIO_LOG_ERROR("unsupported HTTP/2 attempeted using prior knowledge.");
+    FIO_LOG_WARNING("client claimed unsupported HTTP/2 prior knowledge.");
     fio_close(uuid);
     return;
   }
