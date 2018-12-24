@@ -196,7 +196,7 @@ error: /* handle errors*/
           (int)arg.len, arg.data, arg.len ? "with value" : "",
           value ? (value[0] ? value : "(empty)") : "(null)");
 print_help:
-  fprintf(stderr, "\n%s\n\n",
+  fprintf(stderr, "\n%s\n",
           parser->description ? parser->description
                               : "This application accepts any of the following "
                                 "possible arguments:");
