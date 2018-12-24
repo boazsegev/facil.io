@@ -3,27 +3,38 @@
 
 #include "cli.h"
 
+#include "fio.h"
 #include "fio_cli.h"
+#include "http.h"
+#include "redis_engine.h"
+
+static void redis_cleanup(void *e_) {
+  redis_engine_destroy(e_);
+  FIO_LOG_DEBUG("Cleaned up redis engine object.");
+  FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
+}
 
 void initialize_cli(int argc, char const *argv[]) {
   /*     ****  Command line arguments ****     */
   fio_cli_start(
-      argc, argv, 0, 0, NULL,
-      "-bind -b address to listen to. defaults any available.",
+      argc, argv, 0, 0, NULL, "Address binding:", FIO_CLI_TYPE_PRINT_HEADER,
       "-port -p port number to listen to. defaults port 3000", FIO_CLI_TYPE_INT,
+      "-bind -b address to listen to. defaults any available.",
+      "Concurrency:", FIO_CLI_TYPE_PRINT_HEADER,
       "-workers -w number of processes to use.", FIO_CLI_TYPE_INT,
       "-threads -t number of threads per process.", FIO_CLI_TYPE_INT,
-      "-log -v request verbosity (logging).", FIO_CLI_TYPE_BOOL,
+      "HTTP Server:", FIO_CLI_TYPE_PRINT_HEADER,
       "-public -www public folder, for static file service.",
       "-keep-alive -k HTTP keep-alive timeout (0..255). default: ~5s",
-      FIO_CLI_TYPE_INT, "-ping websocket ping interval (0..255). default: ~40s",
       FIO_CLI_TYPE_INT, "-max-body -maxbd HTTP upload limit. default: ~50Mb",
-      FIO_CLI_TYPE_INT,
-      "-max-message -maxms incoming websocket message size limit. default: "
+      FIO_CLI_TYPE_INT, "-log -v request verbosity (logging).",
+      FIO_CLI_TYPE_BOOL, "WebSocket Server:", FIO_CLI_TYPE_PRINT_HEADER,
+      "-ping websocket ping interval (0..255). default: ~40s", FIO_CLI_TYPE_INT,
+      "-max-msg -maxms incoming websocket message size limit. default: "
       "~250Kb",
-      FIO_CLI_TYPE_INT,
-      "-redis-url -ru an optional Redis URL server address. i.e.: "
-      "redis://user:password@localhost:6379/");
+      FIO_CLI_TYPE_INT, "Redis support:", FIO_CLI_TYPE_PRINT_HEADER,
+      "-redis -r an optional Redis URL server address.",
+      "\t\ti.e.: redis://user:password@localhost:6379/", FIO_CLI_TYPE_PRINT);
 
   /* Test and set any default options */
   if (!fio_cli_get("-b")) {
@@ -50,11 +61,27 @@ void initialize_cli(int argc, char const *argv[]) {
     }
   }
 
-  if (!fio_cli_get("-public")) {
+  if (!fio_cli_get("-redis")) {
     char *tmp = getenv("REDIS_URL");
     if (tmp) {
-      fio_cli_set("-redis-url", tmp);
-      fio_cli_set("-ru", tmp);
+      fio_cli_set("-redis", tmp);
+      fio_cli_set("-r", tmp);
+    }
+  }
+
+  if (fio_cli_get("-redis") && strlen(fio_cli_get("-redis"))) {
+    FIO_LOG_INFO("* Initializing Redis connection to %s\n",
+                 fio_cli_get("-redis"));
+    http_url_s info =
+        http_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
+    fio_pubsub_engine_s *e =
+        redis_engine_create(.address = info.host, .port = info.port,
+                            .auth = info.password);
+    if (e) {
+      fio_state_callback_add(FIO_CALL_ON_FINISH, redis_cleanup, e);
+      FIO_PUBSUB_DEFAULT = e;
+    } else {
+      FIO_LOG_ERROR("Failed to create redis engine object.");
     }
   }
 }
