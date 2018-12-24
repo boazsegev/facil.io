@@ -101,16 +101,15 @@ These are the features that have been requested so far. Even if any of them are 
 
 |      Feature      |      assigned      |      remarks               |
 |-------------------|--------------------|----------------------------|
-|   Documentation   |     🙏 Help 🙏    | Place in the `docs` folder |
-|       Tests       |    Never enough    | run through [`shorts.c`](shorts.c) but implement in source files. |
+|   Documentation   |     🙏 Help 🙏    | Placed at [`docs/_SOURCE`](docs/_SOURCE) |
+|       Tests       |    Never enough    | run through [`tests.c`](tests/tests.c) but implement in source files. |
 | Early Hints HTTP/1.1 |               |                            |
-|      SSL/TLS      |                    | Use `sock` R/W hooks       |
+|      SSL/TLS      |     🙏 Help 🙏    | See [`fio_tls_missing.c`](lib/facil/tls/fio_tls_missing.c) for example. |
 |  Websocket Client |                    | Missing cookie retention.  |
 |    HTTP Client    |                    | Missing SSL/TLS, cookie retention and auto-redirect(?)  |
 |      HTTP/2       | Bo (me), help me?  |                            |
 |    HTTP Router    |                    | No RegEx. Example: `/users/(:id)` |
 |     PostgreSQL    |                    | Wrap `libpq.h` for events + pub/sub engine (?) |
-|   Shutdown Delay  |                    | Per connection, set the delay for closing the connection (`pre_shutdown`?) |
 |     Gossip (?)    |                    | For Pub/Sub engine scaling |
 
 
