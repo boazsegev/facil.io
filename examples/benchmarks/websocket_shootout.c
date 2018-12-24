@@ -198,16 +198,16 @@ int main(int argc, char const *argv[]) {
       "Websocket Shootout requirements at:\n"
       "https://github.com/hashrocket/websocket-shootout\n"
       "\nThe following arguments are supported:",
-      "Concurrency", FIO_CLI_TYPE_PRINT,
+      "Concurrency", FIO_CLI_TYPE_PRINT_HEADER,
       "-threads -t The number of threads to use. System dependent default.",
       FIO_CLI_TYPE_INT,
       "-workers -w The number of processes to use. System dependent default.",
-      "Connectivity", FIO_CLI_TYPE_PRINT, FIO_CLI_TYPE_INT,
+      "Connectivity", FIO_CLI_TYPE_PRINT_HEADER, FIO_CLI_TYPE_INT,
       "-port -p The port number to listen to.", FIO_CLI_TYPE_INT,
-      "HTTP settings", FIO_CLI_TYPE_PRINT,
+      "HTTP settings", FIO_CLI_TYPE_PRINT_HEADER,
       "-public -www A public folder for serve an HTTP static file service.",
       "-log -v Turns logging on.", FIO_CLI_TYPE_BOOL, "Misc",
-      FIO_CLI_TYPE_PRINT, "-redis -r add a Redis pub/sub round-trip.",
+      FIO_CLI_TYPE_PRINT_HEADER, "-redis -r add a Redis pub/sub round-trip.",
       "-debug Turns debug notifications on.", FIO_CLI_TYPE_BOOL);
 
   if (fio_cli_get_bool("-debug"))

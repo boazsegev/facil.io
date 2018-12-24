@@ -22,8 +22,10 @@ CLI API
 #define FIO_CLI_TYPE_BOOL ((char *)0x2)
 /** Indicates the previous CLI argument should be an Integer (numerical). */
 #define FIO_CLI_TYPE_INT ((char *)0x3)
-/** Indicates the previous CLI argument should be an Integer (numerical). */
+/** Indicates the previous CLI string should be printed as is. */
 #define FIO_CLI_TYPE_PRINT ((char *)0x4)
+/** Indicates the previous CLI string should be printed as a header. */
+#define FIO_CLI_TYPE_PRINT_HEADER ((char *)0x5)
 
 /**
  * This function parses the Command Line Interface (CLI), creating a temporary

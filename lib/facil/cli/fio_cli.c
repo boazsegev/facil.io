@@ -91,10 +91,11 @@ char const *fio_cli_get_line_type(fio_cli_parser_data_s *parser,
   char const **pos = parser->names;
   while (*pos) {
     switch ((intptr_t)*pos) {
-    case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
-    case /* FIO_CLI_TYPE_BOOL */ 0x2:   /* fallthrough */
-    case /* FIO_CLI_TYPE_INT */ 0x3:    /* fallthrough */
-    case /* FIO_CLI_TYPE_PRINT */ 0x4:  /* fallthrough */
+    case /* FIO_CLI_TYPE_STRING */ 0x1:       /* fallthrough */
+    case /* FIO_CLI_TYPE_BOOL */ 0x2:         /* fallthrough */
+    case /* FIO_CLI_TYPE_INT */ 0x3:          /* fallthrough */
+    case /* FIO_CLI_TYPE_PRINT */ 0x4:        /* fallthrough */
+    case /* FIO_CLI_TYPE_PRINT_HEADER */ 0x5: /* fallthrough */
       ++pos;
       continue;
     }
@@ -106,10 +107,11 @@ char const *fio_cli_get_line_type(fio_cli_parser_data_s *parser,
   return NULL;
 found:
   switch ((size_t)pos[1]) {
-  case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
-  case /* FIO_CLI_TYPE_BOOL */ 0x2:   /* fallthrough */
-  case /* FIO_CLI_TYPE_INT */ 0x3:    /* fallthrough */
-  case /* FIO_CLI_TYPE_PRINT */ 0x4:  /* fallthrough */
+  case /* FIO_CLI_TYPE_STRING */ 0x1:       /* fallthrough */
+  case /* FIO_CLI_TYPE_BOOL */ 0x2:         /* fallthrough */
+  case /* FIO_CLI_TYPE_INT */ 0x3:          /* fallthrough */
+  case /* FIO_CLI_TYPE_PRINT */ 0x4:        /* fallthrough */
+  case /* FIO_CLI_TYPE_PRINT_HEADER */ 0x5: /* fallthrough */
     return pos[1];
   }
   return NULL;
@@ -204,16 +206,21 @@ print_help:
   char const **pos = parser->names;
   while (*pos) {
     switch ((intptr_t)*pos) {
-    case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
-    case /* FIO_CLI_TYPE_BOOL */ 0x2:   /* fallthrough */
-    case /* FIO_CLI_TYPE_INT */ 0x3:    /* fallthrough */
-    case /* FIO_CLI_TYPE_PRINT */ 0x4:  /* fallthrough */
+    case /* FIO_CLI_TYPE_STRING */ 0x1:       /* fallthrough */
+    case /* FIO_CLI_TYPE_BOOL */ 0x2:         /* fallthrough */
+    case /* FIO_CLI_TYPE_INT */ 0x3:          /* fallthrough */
+    case /* FIO_CLI_TYPE_PRINT */ 0x4:        /* fallthrough */
+    case /* FIO_CLI_TYPE_PRINT_HEADER */ 0x5: /* fallthrough */
       ++pos;
       continue;
     }
     type = FIO_CLI_TYPE_STRING;
     switch ((intptr_t)pos[1]) {
     case /* FIO_CLI_TYPE_PRINT */ 0x4:
+      fprintf(stderr, "%s\n", pos[0]);
+      pos += 2;
+      continue;
+    case /* FIO_CLI_TYPE_PRINT_HEADER */ 0x5:
       fprintf(stderr, "\n\x1B[4m%s\x1B[0m\n", pos[0]);
       pos += 2;
       continue;
@@ -321,14 +328,15 @@ void fio_cli_start AVOID_MACRO(int argc, char const *argv[], int unnamed_min,
   char const **line = names;
   while (*line) {
     switch ((intptr_t)*line) {
-    case /* FIO_CLI_TYPE_STRING */ 0x1: /* fallthrough */
-    case /* FIO_CLI_TYPE_BOOL */ 0x2:   /* fallthrough */
-    case /* FIO_CLI_TYPE_INT */ 0x3:    /* fallthrough */
-    case /* FIO_CLI_TYPE_PRINT */ 0x4:  /* fallthrough */
+    case /* FIO_CLI_TYPE_STRING */ 0x1:       /* fallthrough */
+    case /* FIO_CLI_TYPE_BOOL */ 0x2:         /* fallthrough */
+    case /* FIO_CLI_TYPE_INT */ 0x3:          /* fallthrough */
+    case /* FIO_CLI_TYPE_PRINT */ 0x4:        /* fallthrough */
+    case /* FIO_CLI_TYPE_PRINT_HEADER */ 0x5: /* fallthrough */
       ++line;
       continue;
     }
-    if (line[1] != FIO_CLI_TYPE_PRINT)
+    if (line[1] != FIO_CLI_TYPE_PRINT && line[1] != FIO_CLI_TYPE_PRINT_HEADER)
       fio_cli_map_line2alias(*line);
     ++line;
   }
