@@ -2917,5 +2917,6 @@ void http_tests(void) {
   FIOBJ html_mime = http_mimetype_find("html", 4);
   FIO_ASSERT(html_mime,
              "HTML mime-type not found! Mime-Type registry invalid!\n");
+  fiobj_free(html_mime);
 }
 #endif

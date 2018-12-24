@@ -19,6 +19,9 @@ websocket-bench broadcast ws://127.0.0.1:3000/ --concurrent 10 \
 
 #include "http.h"
 
+#include "fio_cli.h"
+#include "redis_engine.h"
+
 #ifdef __APPLE__
 #include <dlfcn.h>
 #define PATCH_ENV()                                                            \
@@ -47,8 +50,8 @@ static void on_websocket_unsubscribe(void *udata) {
 }
 
 static void print_subscription_balance(void *a) {
-  FIO_LOG_INFO("subscribe / on_unsubscribe count (%s): %zu / %zu", (char *)a,
-               sub_count, unsub_count);
+  FIO_LOG_INFO("(%d) subscribe / on_unsubscribe count (%s): %zu / %zu",
+               getpid(), (char *)a, sub_count, unsub_count);
 }
 
 /* *****************************************************************************
@@ -116,14 +119,15 @@ Pub/Sub logging (for debugging)
 /** Should subscribe channel. Failures are ignored. */
 static void logger_subscribe(const fio_pubsub_engine_s *eng,
                              fio_str_info_s channel, fio_match_fn match) {
-  FIO_LOG_INFO("Channel subscription created: %s", channel.data);
+  FIO_LOG_INFO("(%d) Channel subscription created: %s", getpid(), channel.data);
   (void)eng;
   (void)match;
 }
 /** Should unsubscribe channel. Failures are ignored. */
 static void logger_unsubscribe(const fio_pubsub_engine_s *eng,
                                fio_str_info_s channel, fio_match_fn match) {
-  FIO_LOG_INFO("Channel subscription destroyed: %s", channel.data);
+  FIO_LOG_INFO("(%d) Channel subscription destroyed: %s", getpid(),
+               channel.data);
   fflush(stderr);
   (void)eng;
   (void)match;
@@ -145,10 +149,37 @@ static fio_pubsub_engine_s PUBSUB_LOGGIN_ENGINE = {
 };
 
 /* *****************************************************************************
+Redis cleanup helpers
+***************************************************************************** */
+
+static void redis_cleanup(void *e_) {
+  redis_engine_destroy(e_);
+  FIO_LOG_DEBUG("Cleaned up redis engine object.");
+  FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
+}
+
+static void redis_initialize(void) {
+  if (fio_cli_get("-redis") && strlen(fio_cli_get("-redis"))) {
+    FIO_LOG_INFO("* Initializing Redis connection to %s\n",
+                 fio_cli_get("-redis"));
+    http_url_s info =
+        http_url_parse(fio_cli_get("-redis"), strlen(fio_cli_get("-redis")));
+    fio_pubsub_engine_s *e =
+        redis_engine_create(.address = info.host, .port = info.port,
+                            .auth = info.password);
+    if (e) {
+      fio_state_callback_add(FIO_CALL_ON_FINISH, redis_cleanup, e);
+      FIO_PUBSUB_DEFAULT = e;
+    } else {
+      FIO_LOG_ERROR("Failed to create redis engine object.");
+    }
+  }
+}
+
+/* *****************************************************************************
 The main function
 ***************************************************************************** */
 
-#include "fio_cli.h"
 /*
 Read available command line details using "-?".
 */
@@ -167,14 +198,20 @@ int main(int argc, char const *argv[]) {
       "Websocket Shootout requirements at:\n"
       "https://github.com/hashrocket/websocket-shootout\n"
       "\nThe following arguments are supported:",
+      "Concurrency", FIO_CLI_TYPE_PRINT,
       "-threads -t The number of threads to use. System dependent default.",
       FIO_CLI_TYPE_INT,
       "-workers -w The number of processes to use. System dependent default.",
-      FIO_CLI_TYPE_INT, "-port -p The port number to listen to.",
-      FIO_CLI_TYPE_INT,
+      "Connectivity", FIO_CLI_TYPE_PRINT, FIO_CLI_TYPE_INT,
+      "-port -p The port number to listen to.", FIO_CLI_TYPE_INT,
+      "HTTP settings", FIO_CLI_TYPE_PRINT,
       "-public -www A public folder for serve an HTTP static file service.",
-      "-log -v Turns logging on.", FIO_CLI_TYPE_BOOL,
+      "-log -v Turns logging on.", FIO_CLI_TYPE_BOOL, "Misc",
+      FIO_CLI_TYPE_PRINT, "-redis -r add a Redis pub/sub round-trip.",
       "-debug Turns debug notifications on.", FIO_CLI_TYPE_BOOL);
+
+  if (fio_cli_get_bool("-debug"))
+    FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
 
   if (fio_cli_get("-p"))
     port = fio_cli_get("-p");
@@ -188,8 +225,7 @@ int main(int argc, char const *argv[]) {
     workers = fio_cli_get_i("-w");
   print_log = fio_cli_get_i("-v");
 
-  if (fio_cli_get_bool("-debug"))
-    FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
+  redis_initialize();
 
   fio_cli_end();
 
@@ -204,18 +240,15 @@ int main(int argc, char const *argv[]) {
   /* patch for dealing with the High Sierra `fork` limitations */
   PATCH_ENV();
 
-#if DEBUG
-  fio_pubsub_attach(&PUBSUB_LOGGIN_ENGINE);
-  fio_state_callback_add(FIO_CALL_ON_SHUTDOWN, print_subscription_balance,
-                         "on shutdown");
-  fio_state_callback_add(FIO_CALL_ON_FINISH, print_subscription_balance,
-                         "on finish");
-  fio_state_callback_add(FIO_CALL_AT_EXIT, print_subscription_balance,
-                         "at exit");
-#else
-  (void)print_subscription_balance;
-  (void)PUBSUB_LOGGIN_ENGINE;
-#endif
+  if (FIO_LOG_LEVEL == FIO_LOG_LEVEL_DEBUG) {
+    fio_pubsub_attach(&PUBSUB_LOGGIN_ENGINE);
+    fio_state_callback_add(FIO_CALL_ON_SHUTDOWN, print_subscription_balance,
+                           "on shutdown");
+    fio_state_callback_add(FIO_CALL_ON_FINISH, print_subscription_balance,
+                           "on finish");
+    fio_state_callback_add(FIO_CALL_AT_EXIT, print_subscription_balance,
+                           "at exit");
+  }
 
   fio_start(.threads = threads, .workers = workers);
 }

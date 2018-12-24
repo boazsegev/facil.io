@@ -2,23 +2,33 @@
 
 ### v. 0.7.0.beta4
 
-**Fix**: (`http/1.1`) Avoid processing further requests if the connection was closed.
+**Fix**: (`fio`) fixed a minor memory leak in cluster mode, caused by the root process not freeing the hash map used for child process subscription monitoring.
 
-**Update**: (`fio`) Updated the automatic concurrency calculations to leave resources for the system when a negative value is provided (was only available for worker count calculations, now available for thread count as well).
+**Fix**: (`fio`) fixed superfluous and potentially erroneous pub/sub engine callback calls to `unsubscribe`, caused by (mistakingly) reporting filter channel closure.
+
+**Fix**: (`mustache`, `FIOBJ`) added support for dot notation in mustache templates.
+
+**Fix**: (`http/1.1`) avoid processing further requests if the connection was closed.
+
+**Fix**: (`fio_test`) fixed some memory leaks in the testing functions.
+
+**Update**: (`fio_cli`) stylize and beautify `FIO_CLI_TYPE_PRINT` lines.
+
+**Update**: (`fio`) updated the automatic concurrency calculations to leave resources for the system when a negative value is provided (was only available for worker count calculations, now available for thread count as well).
 
 ### v. 0.7.0.beta3
 
-**Fix**: (`fio`) Fixed superfluous `ping` events that might occur after a `fio_write` (but before the scheduled write actually occurred).
+**Fix**: (`fio`) fixed superfluous `ping` events that might occur after a `fio_write` (but before the scheduled write actually occurred).
 
 **Fix**: (`mustache`) updated the mustache parser to fix an issue with template loading path names. The partial template path resolution logic was re-written, fixed and improved (I hope). This also adds support for text in mustache lambda, though not applicable when used with FIOBJ.
 
-**Fix**: (`fio`) Prevent Read/Write Hooks from delaying `fio_force_close` when an error occures while polling a connection.
+**Fix**: (`fio`) prevent Read/Write Hooks from delaying `fio_force_close` when an error occures while polling a connection.
 
-**Fix**: (`fio`) Deletes Unix sockets once done listening. Fixes an issue where the files would remain intact.
+**Fix**: (`fio`) deletes Unix sockets once done listening. Fixes an issue where the files would remain intact.
 
-**Fix**: (`fio`) Replaced `fio_malloc` existing memory allocation / free-list implementation. This also fixes an issue with large memory pools being retained on multi-core systems with many reported CPU cores.
+**Fix**: (`fio`) replaced `fio_malloc` existing memory allocation / free-list implementation. This also fixes an issue with large memory pools being retained on multi-core systems with many reported CPU cores.
 
-**Fix**: (`fio`) The `FIO_FORCE_MALLOC` flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system's `malloc` which might return junk data.
+**Fix**: (`fio`) the `FIO_FORCE_MALLOC` flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system's `malloc` which might return junk data.
 
 **Fix**: (`http`) fixes a possible memory leak in `http_mimetype_register`, where clearing the registry wouldn't free the FIOBJ Strings.
 

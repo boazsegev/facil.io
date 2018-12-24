@@ -222,6 +222,8 @@ Client Callbacks - MUST be implemented by the including file
  * A conforming implementation will output the named argument's value (either
  * HTML escaped or not, depending on the `escape` flag) as a string.
  *
+ * A conforming implementation will test for dot notation in the name.
+ *
  * NOTE: the `name` data is **not** NUL terminated. Use the `name_len` data to
  * determine the actual string length.
  */
@@ -260,6 +262,8 @@ static int mustache_on_text(mustache_section_s *section, const char *data,
  *
  * NOTE: the `name` data is **not** NUL terminated. Use the `name_len` data to
  * determine the actual string length.
+ *
+ * A conforming implementation will test for dot notation in the name.
  */
 static int32_t mustache_on_section_test(mustache_section_s *section,
                                         const char *name, uint32_t name_len,
@@ -279,6 +283,8 @@ static int32_t mustache_on_section_test(mustache_section_s *section,
  *
  * NOTE: the `name` data is **not** NUL terminated. Use the `name_len` data to
  * determine the actual string length.
+ *
+ * A conforming implementation will test for dot notation in the name.
  */
 static int mustache_on_section_start(mustache_section_s *section,
                                      char const *name, uint32_t name_len,

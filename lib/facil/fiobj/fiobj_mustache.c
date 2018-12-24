@@ -73,20 +73,68 @@ FIOBJ fiobj_mustache_build(mustache_s *mustache, FIOBJ data) {
 Mustache Callbacks
 ***************************************************************************** */
 
+static inline FIOBJ fiobj_mustache_find_obj_absolute(FIOBJ parent, FIOBJ key) {
+  if (!FIOBJ_TYPE_IS(parent, FIOBJ_T_HASH))
+    return FIOBJ_INVALID;
+  FIOBJ o = FIOBJ_INVALID;
+  o = fiobj_hash_get(parent, key);
+  return o;
+}
+
+static inline FIOBJ fiobj_mustache_find_obj_tree(mustache_section_s *section,
+                                                 const char *name,
+                                                 uint32_t name_len) {
+  FIOBJ key = fiobj_str_tmp();
+  fiobj_str_write(key, name, name_len);
+  do {
+    FIOBJ tmp = fiobj_mustache_find_obj_absolute((FIOBJ)section->udata2, key);
+    if (tmp != FIOBJ_INVALID) {
+      return tmp;
+    }
+  } while ((section = mustache_section_parent(section)));
+  return FIOBJ_INVALID;
+}
+
 static inline FIOBJ fiobj_mustache_find_obj(mustache_section_s *section,
                                             const char *name,
                                             uint32_t name_len) {
-  FIOBJ key = fiobj_str_tmp();
-  fiobj_str_write(key, name, name_len);
-  FIOBJ o = FIOBJ_INVALID;
-  do {
-    if (!FIOBJ_TYPE_IS((FIOBJ)section->udata2, FIOBJ_T_HASH))
-      continue;
-    o = fiobj_hash_get((FIOBJ)section->udata2, key);
-    section = mustache_section_parent(section);
-  } while (o == FIOBJ_INVALID && section);
-  return o;
+  FIOBJ tmp = fiobj_mustache_find_obj_tree(section, name, name_len);
+  if (tmp != FIOBJ_INVALID)
+    return tmp;
+  /* interpolate sections... */
+  uint32_t dot = 0;
+  while (dot < name_len && name[dot] != '.')
+    ++dot;
+  if (dot == name_len)
+    return FIOBJ_INVALID;
+  tmp = fiobj_mustache_find_obj_tree(section, name, dot);
+  if (!tmp) {
+    return FIOBJ_INVALID;
+  }
+  ++dot;
+  for (;;) {
+    FIOBJ key = fiobj_str_tmp();
+    fiobj_str_write(key, name + dot, name_len - dot);
+    FIOBJ obj = fiobj_mustache_find_obj_absolute(tmp, key);
+    if (obj != FIOBJ_INVALID)
+      return obj;
+    name += dot;
+    name_len -= dot;
+    dot = 0;
+    while (dot < name_len && name[dot] != '.')
+      ++dot;
+    if (dot == name_len) {
+      return FIOBJ_INVALID;
+    }
+    key = fiobj_str_tmp();
+    fiobj_str_write(key, name, dot);
+    tmp = fiobj_mustache_find_obj_absolute(tmp, key);
+    if (tmp == FIOBJ_INVALID)
+      return FIOBJ_INVALID;
+    ++dot;
+  }
 }
+
 /**
  * Called when an argument name was detected in the current section.
  *
@@ -209,11 +257,11 @@ void fiobj_mustache_test(void) {
     exit(-1);                                                                  \
   }
 
-  char const *template = "{{=<< >>=}}* Users:\r\n<<#users>><<id>>. <<& name>> "
-                         "(<<name>>)\r\n<</users>>";
+  char const *template =
+      "{{=<< >>=}}* Users:\r\n<<#users>><<id>>. <<& name>> "
+      "(<<name>>)\r\n<</users>>\r\nNested: <<& nested.item >>.";
   char const *template_name = "mustache_test_template.mustache";
   mustache_save2file(template_name, template, strlen(template));
-  // mustache_error_en err = MUSTACHE_OK;
   mustache_s *m =
       fiobj_mustache_load((fio_str_info_s){.data = (char *)template_name});
   unlink(template_name);
@@ -238,11 +286,19 @@ void fiobj_mustache_test(void) {
     fiobj_free(key);
     fiobj_ary_push(ary, usr);
   }
+  key = fiobj_str_new("nested", 6);
+  ary = fiobj_hash_new2(2);
+  fiobj_hash_set(data, key, ary);
+  fiobj_free(key);
+  key = fiobj_str_new("item", 4);
+  fiobj_hash_set(ary, key, fiobj_str_new("dot notation success", 20));
+  fiobj_free(key);
   key = fiobj_mustache_build(m, data);
   fiobj_free(data);
   TEST_ASSERT(key, "fiobj_mustache_build failed!\n");
   fprintf(stderr, "%s\n", fiobj_obj2cstr(key).data);
   fiobj_free(key);
+  fiobj_mustache_free(m);
 }
 
 #endif

@@ -4932,7 +4932,7 @@ void fio_unsubscribe(subscription_s *s) {
     /* test again within lock */
     if (fio_ls_embd_is_empty(&ch->subscriptions)) {
       fio_ch_set_remove(&c->channels, hashed, ch, NULL);
-      removed = 1;
+      removed = (c != &fio_postoffice.filters);
     }
     fio_unlock(&c->lock);
   }
@@ -5229,7 +5229,7 @@ static void fio_publish2process(fio_msg_internal_s *m) {
   if (m->filter) {
     ch = fio_filter_find_dup(m->filter);
     if (!ch) {
-      return;
+      goto finish;
     }
   } else {
     ch = fio_channel_find_dup(m->channel);
@@ -5257,6 +5257,7 @@ static void fio_publish2process(fio_msg_internal_s *m) {
     }
     fio_unlock(&fio_postoffice.patterns.lock);
   }
+finish:
   fio_msg_internal_free(m);
 }
 
@@ -5514,6 +5515,7 @@ static void fio_cluster_on_close(intptr_t uuid, fio_protocol_s *pr_) {
   if (c->msg)
     fio_msg_internal_free(c->msg);
   c->msg = NULL;
+  fio_sub_hash_free(&c->pubsub);
   fio_cluster_protocol_free(c);
   (void)uuid;
 }
@@ -5668,7 +5670,6 @@ static void fio_cluster_listen_on_close(intptr_t uuid,
 static void fio_listen2cluster(void *ignore) {
   /* this is called for each `fork`, but we only need this to run once. */
   fio_lock(&cluster_data.lock);
-  fio_cluster_init();
   cluster_data.uuid = fio_socket(cluster_data.name, NULL, 1);
   fio_unlock(&cluster_data.lock);
   if (cluster_data.uuid < 0) {
@@ -6680,8 +6681,10 @@ Allocator Initialization (initialize arenas and allocate a block for each CPU)
 #if DEBUG
 void fio_memory_dump_missing(void) {
   fprintf(stderr, "\n ==== Attempting Memory Dump (will crash) ====\n");
-  if (fio_ls_embd_any(&memory.available))
+  if (fio_ls_embd_is_empty(&memory.available)) {
+    fprintf(stderr, "- Memory dump attempt canceled\n");
     return;
+  }
   block_node_s *smallest =
       FIO_LS_EMBD_OBJ(block_node_s, node, memory.available.next);
   FIO_LS_EMBD_FOR(&memory.available, node) {
@@ -6741,8 +6744,11 @@ static void fio_mem_destroy(void) {
     FIO_MEMORY_PRINT_BLOCK_STAT_END();
     size_t count = 0;
     FIO_LS_EMBD_FOR(&memory.available, node) { ++count; }
-    FIO_LOG_DEBUG("Memory pool size: %zu (%zu blocks per allocation).", count,
-                  (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION);
+    FIO_LOG_DEBUG("Memory blocks in pool: %zu (%zu blocks per allocation).",
+                  count, (size_t)FIO_MEMORY_BLOCKS_PER_ALLOCATION);
+#if FIO_MEM_DUMP
+    fio_memory_dump_missing();
+#endif
   }
   big_free(arenas);
   arenas = NULL;
@@ -8554,7 +8560,7 @@ Testing Memory Allocator
 #define fio_malloc_test()                                                      \
   fprintf(stderr, "\n=== SKIPPED facil.io memory allocator (bypassed)\n");
 #else
-void fio_malloc_test(void) {
+FIO_FUNC void fio_malloc_test(void) {
   fprintf(stderr, "\n=== Testing facil.io memory allocator's system calls\n");
   char *mem = sys_alloc(FIO_MEMORY_BLOCK_SIZE, 0);
   FIO_ASSERT(mem, "sys_alloc failed to allocate memory!\n");
@@ -8567,7 +8573,7 @@ void fio_malloc_test(void) {
       sys_realloc(mem, FIO_MEMORY_BLOCK_SIZE, FIO_MEMORY_BLOCK_SIZE * 2);
   if (mem == mem2)
     fprintf(stderr, "* Performed system realloc without copy :-)\n");
-  FIO_ASSERT(mem2[0] = 'a' && mem2[FIO_MEMORY_BLOCK_SIZE - 1] == 'z',
+  FIO_ASSERT(mem2[0] == 'a' && mem2[FIO_MEMORY_BLOCK_SIZE - 1] == 'z',
              "Reaclloc data was lost!");
   sys_free(mem2, FIO_MEMORY_BLOCK_SIZE * 2);
   fprintf(stderr, "=== Testing facil.io memory allocator's internal data.\n");
@@ -8581,8 +8587,10 @@ void fio_malloc_test(void) {
   mem[0] = 'a';
   FIO_ASSERT(mem[0] == 'a', "allocate memory wasn't written to!\n");
   mem = fio_realloc(mem, 1);
+  FIO_ASSERT(mem, "fio_realloc failed!\n");
   FIO_ASSERT(mem[0] == 'a', "fio_realloc memory wasn't copied!\n");
   FIO_ASSERT(arena_last_used, "arena_last_used wasn't initialized!\n");
+  fio_free(mem);
   block_s *b = arena_last_used->block;
 
   /* move arena to block's start */
@@ -8648,7 +8656,9 @@ void fio_malloc_test(void) {
     ++count;
   } while (arena_last_used->block == b);
 
+  mem2 = mem;
   mem = fio_calloc(FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64, 1);
+  fio_free(mem2);
   FIO_ASSERT(mem,
              "failed to allocate FIO_MEMORY_BLOCK_ALLOC_LIMIT - 64 bytes!\n");
   FIO_ASSERT(((uintptr_t)mem & FIO_MEMORY_BLOCK_MASK) != 16,
@@ -8678,11 +8688,18 @@ void fio_malloc_test(void) {
     void *m0 = fio_malloc(0);
     void *rm0 = fio_realloc(m0, 16);
     FIO_ASSERT(m0 != rm0, "fio_realloc(fio_malloc(0), 16) failed!\n");
+    fio_free(rm0);
   }
   {
+    size_t pool_size = 0;
+    FIO_LS_EMBD_FOR(&memory.available, node) { ++pool_size; }
     mem = fio_mmap(512);
     FIO_ASSERT(mem, "fio_mmap allocation failed!\n");
     fio_free(mem);
+    size_t new_pool_size = 0;
+    FIO_LS_EMBD_FOR(&memory.available, node) { ++new_pool_size; }
+    FIO_ASSERT(new_pool_size == pool_size,
+               "fio_free of fio_mmap went to memory pool!\n");
   }
 
   fprintf(stderr, "* passed.\n");
@@ -8693,12 +8710,12 @@ void fio_malloc_test(void) {
 Testing Core Callback add / remove / ensure
 ***************************************************************************** */
 
-static void fio_state_callback_test_task(void *pi) {
+FIO_FUNC void fio_state_callback_test_task(void *pi) {
   ((uintptr_t *)pi)[0] += 1;
 }
 
 #define FIO_STATE_TEST_COUNT 10
-static void fio_state_callback_order_test_task(void *pi) {
+FIO_FUNC void fio_state_callback_order_test_task(void *pi) {
   static uintptr_t start = FIO_STATE_TEST_COUNT;
   --start;
   FIO_ASSERT((uintptr_t)pi == start,
@@ -8706,7 +8723,7 @@ static void fio_state_callback_order_test_task(void *pi) {
              (size_t)pi);
 }
 
-static void fio_state_callback_test(void) {
+FIO_FUNC void fio_state_callback_test(void) {
   fprintf(stderr, "=== Testing facil.io workflow state callback system\n");
   uintptr_t result = 0;
   uintptr_t other = 0;
@@ -8739,9 +8756,9 @@ static void fio_state_callback_test(void) {
 Testing fio_timers
 ***************************************************************************** */
 
-static void fio_timer_test_task(void *arg) { ++(((size_t *)arg)[0]); }
+FIO_FUNC void fio_timer_test_task(void *arg) { ++(((size_t *)arg)[0]); }
 
-static void fio_timer_test(void) {
+FIO_FUNC void fio_timer_test(void) {
   fprintf(stderr, "=== Testing facil.io timer system\n");
   size_t result = 0;
   const size_t total = 5;
@@ -8805,7 +8822,7 @@ static void fio_timer_test(void) {
 Testing listening socket
 ***************************************************************************** */
 
-static void fio_socket_test(void) {
+FIO_FUNC void fio_socket_test(void) {
   /* initialize unix socket name */
   fio_str_s sock_name = FIO_STR_INIT;
 #ifdef P_tmpdir
@@ -8905,17 +8922,17 @@ static void fio_socket_test(void) {
 Testing listening socket
 ***************************************************************************** */
 
-static void fio_cycle_test_task(void *arg) {
+FIO_FUNC void fio_cycle_test_task(void *arg) {
   fio_stop();
   (void)arg;
 }
-static void fio_cycle_test_task2(void *arg) {
+FIO_FUNC void fio_cycle_test_task2(void *arg) {
   fprintf(stderr, "* facil.io cycling test fatal error!\n");
   exit(-1);
   (void)arg;
 }
 
-static void fio_cycle_test(void) {
+FIO_FUNC void fio_cycle_test(void) {
   fprintf(stderr,
           "=== Testing facil.io cycling logic (partial - only tests timers)\n");
   fio_mark_time();
@@ -8940,18 +8957,18 @@ Testing fio_defer task system
 #define FIO_DEFER_TEST_PRINT 0
 #endif
 
-static void sample_task(void *i_count, void *unused2) {
+FIO_FUNC void sample_task(void *i_count, void *unused2) {
   (void)(unused2);
   fio_atomic_add((uintptr_t *)i_count, 1);
 }
 
-static void sched_sample_task(void *count, void *i_count) {
+FIO_FUNC void sched_sample_task(void *count, void *i_count) {
   for (size_t i = 0; i < (uintptr_t)count; i++) {
     fio_defer(sample_task, i_count, NULL);
   }
 }
 
-static void fio_defer_test(void) {
+FIO_FUNC void fio_defer_test(void) {
   const size_t cpu_cores = fio_detect_cpu_cores();
   FIO_ASSERT(cpu_cores, "couldn't detect CPU cores!");
   uintptr_t i_count;
@@ -9024,8 +9041,8 @@ typedef struct {
 #define FIO_ARY_TYPE uintptr_t
 #include "fio.h"
 
-static intptr_t ary_alloc_counter = 0;
-static void copy_s(fio_ary_test_type_s *d, fio_ary_test_type_s *s) {
+FIO_FUNC intptr_t ary_alloc_counter = 0;
+FIO_FUNC void copy_s(fio_ary_test_type_s *d, fio_ary_test_type_s *s) {
   ++ary_alloc_counter;
   *d = *s;
 }
@@ -9037,7 +9054,7 @@ static void copy_s(fio_ary_test_type_s *d, fio_ary_test_type_s *s) {
 #define FIO_ARY_DESTROY(obj) (--ary_alloc_counter)
 #include "fio.h"
 
-void fio_ary_test(void) {
+FIO_FUNC void fio_ary_test(void) {
   /* code */
   fio_i_ary__test();
   fio_s_ary__test();
@@ -9242,7 +9259,7 @@ FIO_FUNC void fio_set_test(void) {
 SipHash tests
 ***************************************************************************** */
 
-static void fio_siphash_speed_test(void) {
+FIO_FUNC void fio_siphash_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
   memset(buffer, 'T', sizeof(buffer));
@@ -9292,7 +9309,7 @@ static void fio_siphash_speed_test(void) {
   }
 }
 
-void fio_siphash_test(void) {
+FIO_FUNC void fio_siphash_test(void) {
   fprintf(stderr, "===================================\n");
 #if NODEBUG
   fio_siphash_speed_test();
@@ -9306,7 +9323,7 @@ void fio_siphash_test(void) {
 SHA-1 tests
 ***************************************************************************** */
 
-static void fio_sha1_speed_test(void) {
+FIO_FUNC void fio_sha1_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
   uint8_t result[21];
@@ -9340,7 +9357,7 @@ static void fio_sha1_speed_test(void) {
 }
 
 #ifdef HAVE_OPENSSL
-static void fio_sha1_open_ssl_speed_test(void) {
+FIO_FUNC void fio_sha1_open_ssl_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
   uint8_t result[21];
@@ -9374,7 +9391,7 @@ static void fio_sha1_open_ssl_speed_test(void) {
 }
 #endif
 
-void fio_sha1_test(void) {
+FIO_FUNC void fio_sha1_test(void) {
   // clang-format off
   struct {
     char *str;
@@ -9445,12 +9462,13 @@ void fio_sha1_test(void) {
 SHA-2 tests
 ***************************************************************************** */
 
-static char *sha2_variant_names[] = {
+FIO_FUNC char *sha2_variant_names[] = {
     "unknown", "SHA_512",     "SHA_256", "SHA_512_256",
     "SHA_224", "SHA_512_224", "none",    "SHA_384",
 };
 
-static void fio_sha2_speed_test(fio_sha2_variant_e var, const char *var_name) {
+FIO_FUNC void fio_sha2_speed_test(fio_sha2_variant_e var,
+                                  const char *var_name) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   uint8_t buffer[8192];
   uint8_t result[65];
@@ -9483,9 +9501,9 @@ static void fio_sha2_speed_test(fio_sha2_variant_e var, const char *var_name) {
   }
 }
 
-static void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
-                                        int (*update)(), int (*final)(),
-                                        void *sha) {
+FIO_FUNC void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
+                                          int (*update)(), int (*final)(),
+                                          void *sha) {
   /* test adapted from BearSSL code with credit to Thomas Pornin */
   uint8_t buffer[8192];
   uint8_t result[1024];
@@ -9516,7 +9534,7 @@ static void fio_sha2_openssl_speed_test(const char *var_name, int (*init)(),
     cycles <<= 1;
   }
 }
-void fio_sha2_test(void) {
+FIO_FUNC void fio_sha2_test(void) {
   fio_sha2_s s;
   char *expect;
   char *got;
@@ -9660,7 +9678,7 @@ error:
 Base64 tests
 ***************************************************************************** */
 
-static void fio_base64_speed_test(void) {
+FIO_FUNC void fio_base64_speed_test(void) {
   /* test based on code from BearSSL with credit to Thomas Pornin */
   char buffer[8192];
   char result[8192 * 2];
@@ -9715,7 +9733,7 @@ static void fio_base64_speed_test(void) {
   }
 }
 
-void fio_base64_test(void) {
+FIO_FUNC void fio_base64_test(void) {
   struct {
     char *str;
     char *base64;
@@ -9789,7 +9807,7 @@ void fio_base64_test(void) {
 Random Testing
 ***************************************************************************** */
 
-void fio_test_random(void) {
+FIO_FUNC void fio_test_random(void) {
   fprintf(stderr, "=== Testing random generator\n");
   uint64_t rnd = fio_rand64();
   FIO_ASSERT((rnd != fio_rand64() && rnd != fio_rand64()),
@@ -9827,7 +9845,7 @@ void fio_test_random(void) {
 Poll (not kqueue or epoll) tests
 ***************************************************************************** */
 #if FIO_ENGINE_POLL
-static void fio_poll_test(void) {
+FIO_FUNC void fio_poll_test(void) {
   fprintf(stderr, "=== Testing poll add / remove fd\n");
   fio_poll_add(5);
   FIO_ASSERT(fio_data->start == 5,
@@ -9878,11 +9896,11 @@ static void fio_poll_test(void) {
 Test UUID Linking
 ***************************************************************************** */
 
-static void fio_uuid_link_test_on_close(void *obj) {
+FIO_FUNC void fio_uuid_link_test_on_close(void *obj) {
   fio_atomic_add((uintptr_t *)obj, 1);
 }
 
-static void fio_uuid_link_test(void) {
+FIO_FUNC void fio_uuid_link_test(void) {
   fprintf(stderr, "=== Testing fio_uuid_link\n");
   uintptr_t called = 0;
   uintptr_t removed = 0;
@@ -9905,7 +9923,7 @@ static void fio_uuid_link_test(void) {
 Byte Order Testing
 ***************************************************************************** */
 
-static void fio_str2u_test(void) {
+FIO_FUNC void fio_str2u_test(void) {
   fprintf(stderr, "=== Testing fio_u2strX and fio_u2strX functions.\n");
   char buffer[32];
   for (int64_t i = -1024; i < 1024; ++i) {
@@ -9938,15 +9956,15 @@ Pub/Sub partial tests
 
 #if FIO_PUBSUB_SUPPORT
 
-static void fio_pubsub_test_on_message(fio_msg_s *msg) {
+FIO_FUNC void fio_pubsub_test_on_message(fio_msg_s *msg) {
   fio_atomic_add((uintptr_t *)msg->udata1, 1);
 }
-static void fio_pubsub_test_on_unsubscribe(void *udata1, void *udata2) {
+FIO_FUNC void fio_pubsub_test_on_unsubscribe(void *udata1, void *udata2) {
   fio_atomic_add((uintptr_t *)udata1, 1);
   (void)udata2;
 }
 
-static void fio_pubsub_test(void) {
+FIO_FUNC void fio_pubsub_test(void) {
   fprintf(stderr, "=== Testing pub/sub (partial)\n");
   fio_data->active = 1;
   fio_data->is_worker = 1;
@@ -9962,10 +9980,11 @@ static void fio_pubsub_test(void) {
   fio_u2str32((uint8_t *)buffer, 4);
   FIO_ASSERT(fio_str2u32((uint8_t *)buffer) == 4,
              "fio_u2str32 / fio_str2u32 not reversible (4)!");
-  s = fio_subscribe(.filter = 1, .udata1 = &counter,
+  subscription_s *s2 =
+      fio_subscribe(.filter = 1, .udata1 = &counter,
                     .on_message = fio_pubsub_test_on_message,
                     .on_unsubscribe = fio_pubsub_test_on_unsubscribe);
-  FIO_ASSERT(s, "fio_subscribe FAILED on filtered subscription.");
+  FIO_ASSERT(s2, "fio_subscribe FAILED on filtered subscription.");
   fio_publish(.filter = 1);
   ++expect;
   fio_defer_perform();
@@ -9974,6 +9993,7 @@ static void fio_pubsub_test(void) {
   fio_defer_perform();
   FIO_ASSERT(counter == expect, "publishing to filter 2 arrived at filter 1!");
   fio_unsubscribe(s);
+  fio_unsubscribe(s2);
   ++expect;
   fio_defer_perform();
   FIO_ASSERT(counter == expect, "unsubscribe wasn't called for filter 1!");
@@ -9996,6 +10016,7 @@ static void fio_pubsub_test(void) {
   fio_data->is_worker = 0;
   fio_data->active = 0;
   fio_data->workers = 0;
+  fio_defer_perform();
   (void)fio_pubsub_test_on_message;
   (void)fio_pubsub_test_on_unsubscribe;
   fprintf(stderr, "* passed.\n");
@@ -10013,7 +10034,7 @@ String 2 Number and Number 2 String (partial) testing
 #else
 #define FIO_ATOL_TEST_MAX_CYCLES 4096
 #endif
-static void fio_atol_test(void) {
+FIO_FUNC void fio_atol_test(void) {
   fprintf(stderr, "=== Testing fio_ltoa and fio_atol (partial)\n");
 #ifndef NODEBUG
   fprintf(stderr,
@@ -10168,7 +10189,7 @@ static void fio_atol_test(void) {
 String 2 Float and Float 2 String (partial) testing
 ***************************************************************************** */
 
-static void fio_atof_test(void) {
+FIO_FUNC void fio_atof_test(void) {
   fprintf(stderr, "=== Testing fio_ftoa and fio_ftoa (partial)\n");
 #define TEST_DOUBLE(s, d, must)                                                \
   do {                                                                         \
