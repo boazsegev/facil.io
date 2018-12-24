@@ -2343,11 +2343,12 @@ static intptr_t fio_unix_socket(const char *address, uint8_t server) {
   if (server) {
     unlink(addr.sun_path);
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+      // perror("couldn't bind unix socket");
       close(fd);
       return -1;
     }
     if (listen(fd, SOMAXCONN) < 0) {
-      // perror("couldn't start listening");
+      // perror("couldn't start listening to unix socket");
       close(fd);
       return -1;
     }
@@ -5278,6 +5279,8 @@ finish:
 #define FIO_SET_OBJ_DESTROY(obj) fio_unsubscribe(obj)
 #include <fio.h>
 
+#define FIO_CLUSTER_NAME_LIMIT 255
+
 typedef struct cluster_pr_s {
   fio_protocol_s protocol;
   fio_msg_internal_s *msg;
@@ -5299,7 +5302,7 @@ static struct cluster_data_s {
   intptr_t uuid;
   fio_ls_s clients;
   fio_lock_i lock;
-  char name[128];
+  char name[FIO_CLUSTER_NAME_LIMIT + 1];
 } cluster_data = {.clients = FIO_LS_INIT(cluster_data.clients),
                   .lock = FIO_LOCK_INIT};
 
@@ -5316,10 +5319,9 @@ static void fio_cluster_data_cleanup(int delete_file) {
       fio_close(uuid);
     }
   }
-  cluster_data = (struct cluster_data_s){
-      .lock = FIO_LOCK_INIT,
-      .clients = (fio_ls_s)FIO_LS_INIT(cluster_data.clients),
-  };
+  cluster_data.uuid = 0;
+  cluster_data.lock = FIO_LOCK_INIT;
+  cluster_data.clients = (fio_ls_s)FIO_LS_INIT(cluster_data.clients);
 }
 
 static void fio_cluster_cleanup(void *ignore) {
@@ -5333,7 +5335,8 @@ static void fio_cluster_init(void) {
   /* create a unique socket name */
   char *tmp_folder = getenv("TMPDIR");
   uint32_t tmp_folder_len = 0;
-  if (!tmp_folder || ((tmp_folder_len = (uint32_t)strlen(tmp_folder)) > 100)) {
+  if (!tmp_folder || ((tmp_folder_len = (uint32_t)strlen(tmp_folder)) >
+                      (FIO_CLUSTER_NAME_LIMIT - 28))) {
 #ifdef P_tmpdir
     tmp_folder = (char *)P_tmpdir;
     if (tmp_folder)
@@ -5343,7 +5346,7 @@ static void fio_cluster_init(void) {
     tmp_folder_len = 5;
 #endif
   }
-  if (tmp_folder_len >= 100) {
+  if (tmp_folder_len >= (FIO_CLUSTER_NAME_LIMIT - 28)) {
     tmp_folder_len = 0;
   }
   if (tmp_folder_len) {
@@ -5353,8 +5356,9 @@ static void fio_cluster_init(void) {
   }
   memcpy(cluster_data.name + tmp_folder_len, "facil-io-sock-", 14);
   tmp_folder_len += 14;
-  tmp_folder_len += snprintf(cluster_data.name + tmp_folder_len,
-                             127 - tmp_folder_len, "%d", getpid());
+  tmp_folder_len +=
+      snprintf(cluster_data.name + tmp_folder_len,
+               FIO_CLUSTER_NAME_LIMIT - tmp_folder_len, "%d", getpid());
   cluster_data.name[tmp_folder_len] = 0;
 
   /* remove if existing */
