@@ -1833,7 +1833,7 @@ static void http_mime_parser_on_data(http_mime_parser_s *parser, void *name,
                                      size_t filename_len, void *mimetype,
                                      size_t mimetype_len, void *value,
                                      size_t value_len) {
-  if (!filename) {
+  if (!filename_len) {
     http_add2hash(http_mime_parser2fio(parser)->h->params, name, name_len,
                   value, value_len, 0);
     return;
@@ -1844,15 +1844,17 @@ static void http_mime_parser_on_data(http_mime_parser_s *parser, void *name,
   http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
                 value, value_len, 0);
   fiobj_str_resize(n, name_len);
-  fiobj_str_write(n, "[type]", 6);
-  tmp = fiobj_obj2cstr(n);
-  http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
-                mimetype, mimetype_len, 0);
-  fiobj_str_resize(n, name_len);
   fiobj_str_write(n, "[name]", 6);
   tmp = fiobj_obj2cstr(n);
   http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
                 filename, filename_len, 0);
+  if (mimetype_len) {
+    fiobj_str_resize(n, name_len);
+    fiobj_str_write(n, "[type]", 6);
+    tmp = fiobj_obj2cstr(n);
+    http_add2hash(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
+                  mimetype, mimetype_len, 0);
+  }
   fiobj_free(n);
 }
 
@@ -1900,13 +1902,25 @@ static void http_mime_parser_on_partial_end(http_mime_parser_s *parser) {
 
   fio_str_info_s tmp =
       fiobj_obj2cstr(http_mime_parser2fio(parser)->partial_name);
-  http_add2hash2(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len,
-                 fiobj_data_slice(http_mime_parser2fio(parser)->h->body,
-                                  http_mime_parser2fio(parser)->partial_offset,
-                                  http_mime_parser2fio(parser)->partial_length),
+  FIOBJ o = FIOBJ_INVALID;
+  if (!http_mime_parser2fio(parser)->partial_length)
+    return;
+  if (http_mime_parser2fio(parser)->partial_length < 42) {
+    /* short data gets a new object */
+    o = fiobj_str_new(http_mime_parser2fio(parser)->buffer.data +
+                          http_mime_parser2fio(parser)->partial_offset,
+                      http_mime_parser2fio(parser)->partial_length);
+  } else {
+    /* longer data gets a reference object (memory collision concerns) */
+    o = fiobj_data_slice(http_mime_parser2fio(parser)->h->body,
+                         http_mime_parser2fio(parser)->partial_offset,
+                         http_mime_parser2fio(parser)->partial_length);
+  }
+  http_add2hash2(http_mime_parser2fio(parser)->h->params, tmp.data, tmp.len, o,
                  0);
   fiobj_free(http_mime_parser2fio(parser)->partial_name);
   http_mime_parser2fio(parser)->partial_name = FIOBJ_INVALID;
+  http_mime_parser2fio(parser)->partial_offset = 0;
 }
 
 /**
@@ -1976,7 +1990,7 @@ int http_parse_body(http_s *h) {
   do {
     size_t cons = http_mime_parse(&p.p, p.buffer.data, p.buffer.len);
     p.pos += cons;
-    p.buffer = fiobj_data_pread(h->body, p.pos, 256);
+    p.buffer = fiobj_data_pread(h->body, p.pos, 4096);
   } while (p.buffer.data && !p.p.done && !p.p.error);
   fiobj_free(p.partial_name);
   p.partial_name = FIOBJ_INVALID;

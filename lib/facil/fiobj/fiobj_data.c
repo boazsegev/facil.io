@@ -867,11 +867,16 @@ static fio_str_info_s fiobj_data_pread_file(FIOBJ io, intptr_t start_at,
     start_at = 0;
   if (length + start_at > (uint64_t)size)
     length = size - start_at;
-  if (length == 0)
+  if (length == 0) {
+    /* free memory once there's no more data to read */
+    obj2io(io)->capa = 0;
+    fio_free(obj2io(io)->buffer);
+    obj2io(io)->buffer = NULL;
     return (fio_str_info_s){
         .data = NULL,
         .len = 0,
     };
+  }
   obj2io(io)->len = 0;
   obj2io(io)->pos = 0;
   fiobj_data_pre_write(io, length + 1);

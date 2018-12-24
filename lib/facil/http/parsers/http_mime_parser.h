@@ -11,6 +11,15 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <string.h>
 
 /* *****************************************************************************
+Known Limitations:
+
+- Doesn't support nested multipart form structures (i.e., multi-file selection).
+  See: https://www.w3.org/TR/html401/interact/forms.html#h-17.13.4.2
+
+To circumvent limitation, initialize a new parser to parse nested multiparts.
+***************************************************************************** */
+
+/* *****************************************************************************
 The HTTP MIME Multipart Form Parser Type
 ***************************************************************************** */
 
