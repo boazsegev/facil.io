@@ -1,5 +1,9 @@
 # Change Log
 
+### v. 0.7.0.beta5
+
+**Fix**: (`fio_cli`) fixed an issue introduced in version 0.7.0.beta4, where `fio_cli_get_i` would dereference NULL if the value wasn't set. Now `fio_cli_get_i` returns zero (0) for missing values, as expected. Note: this related to the new hex and binary base support in command line numerals.
+
 ### v. 0.7.0.beta4
 
 **BREAK**: (`fio_cli`) breaking API changes make this extension easier than ever to use... *I do apologize for this, but part of the reason 0.7.0 is still in beta is to test the API itself for ease of use and readability*.
