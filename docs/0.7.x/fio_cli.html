@@ -59,13 +59,19 @@
 <li>
 <ul>
 <li>
-<a href="#fio_cli_type_string"><code>FIO_CLI_TYPE_STRING</code></a>
+<a href="#fio_cli_string-argument"><code>FIO_CLI_STRING(argument)</code></a>
 </li>
 <li>
-<a href="#fio_cli_type_bool"><code>FIO_CLI_TYPE_BOOL</code></a>
+<a href="#fio_cli_bool-argument"><code>FIO_CLI_BOOL(argument)</code></a>
 </li>
 <li>
-<a href="#fio_cli_type_int"><code>FIO_CLI_TYPE_INT</code></a>
+<a href="#fio_cli_int-argument"><code>FIO_CLI_INT(argument)</code></a>
+</li>
+<li>
+<a href="#fio_cli_print_header-string"><code>FIO_CLI_PRINT_HEADER(string)</code></a>
+</li>
+<li>
+<a href="#fio_cli_print-string"><code>FIO_CLI_PRINT(string)</code></a>
 </li>
 </ul>
 </li>
@@ -137,12 +143,19 @@
 <p>Data can be accessed either as a C string or an integer using the <code>fio_cli_get</code> and <code>fio_cli_set</code> functions.</p>
 
 <h3 id="example">example</h3>
-<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"This example defines the following arguments:"</span><span class="p">,</span>
-             <span class="s">"-t -thread number of threads to run."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
-             <span class="s">"-w -workers number of workers to run."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
-             <span class="s">"-b, -address the address to bind to."</span><span class="p">,</span>
-             <span class="s">"-p,-port the port to bind to."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
-             <span class="s">"-v -log enable logging."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_BOOL</span><span class="p">);</span>
+<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Concurrency:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-t -thread number of threads to run."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-w -workers number of workers to run."</span><span class="p">),</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Address Binding:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_STRING</span><span class="p">(</span><span class="s">"-b, -address the address to bind to."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-p,-port the port to bind to."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_PRINT</span><span class="p">(</span><span class="s">"</span><span class="se">\t\t</span><span class="s">set port to zero (0) for Unix s."</span><span class="p">),</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Logging:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_BOOL</span><span class="p">(</span><span class="s">"-v -log enable logging."</span><span class="p">));</span>
 
 <span class="k">if</span> <span class="p">(</span><span class="n">fio_cli_get_bool</span><span class="p">(</span><span class="s">"-v"</span><span class="p">))</span> <span class="p">{</span>
     <span class="n">printf</span><span class="p">(</span><span class="s">"Logging is enabled</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
@@ -154,17 +167,29 @@
 
 <p>The following constants are defined by the CLI extension.</p>
 
-<h4 id="fio_cli_type_string"><code>FIO_CLI_TYPE_STRING</code></h4>
+<h4 id="fio_cli_string-argument"><code>FIO_CLI_STRING(argument)</code></h4>
 
-<p>Indicates the previous CLI argument should be a String (default).</p>
+<p>Indicates the CLI argument should be a String (default).</p>
 
-<h4 id="fio_cli_type_bool"><code>FIO_CLI_TYPE_BOOL</code></h4>
+<h4 id="fio_cli_bool-argument"><code>FIO_CLI_BOOL(argument)</code></h4>
 
-<p>Indicates the previous CLI argument is a Boolean value.</p>
+<p>Indicates the CLI argument is a Boolean value.</p>
 
-<h4 id="fio_cli_type_int"><code>FIO_CLI_TYPE_INT</code></h4>
+<h4 id="fio_cli_int-argument"><code>FIO_CLI_INT(argument)</code></h4>
 
-<p>Indicates the previous CLI argument should be an Integer (numerical). */</p>
+<p>Indicates the CLI argument should be an Integer (numerical). </p>
+
+<h4 id="fio_cli_print_header-string"><code>FIO_CLI_PRINT_HEADER(string)</code></h4>
+
+<p>Indicates the CLI argument should only be used when printing the help output. </p>
+
+<p>Text will be printed underlined, in a new line, with an extra line break preceding it.</p>
+
+<h4 id="fio_cli_print-string"><code>FIO_CLI_PRINT(string)</code></h4>
+
+<p>Indicates the CLI argument should only be used when printing the help output. </p>
+
+<p>Text will be printed as normal text in a new line.</p>
 
 <h2 id="functions">Functions</h2>
 
@@ -186,9 +211,10 @@
 <p>The following optional type requirements are:</p>
 
 <ul>
-<li>FIO_CLI_TYPE_STRING - (default) string argument.</li>
-<li>FIO_CLI_TYPE_BOOL   - boolean argument (no value).</li>
-<li>FIO_CLI_TYPE_INT    - integer argument (&#39;-&#39;, &#39;+&#39;, &#39;0&#39;-&#39;9&#39; chars accepted).</li>
+<li>FIO_CLI_STRING        - (default) string argument.</li>
+<li>FIO_CLI_BOOL          - boolean argument (no value).</li>
+<li>FIO_CLI_PRINT_HEADER  - header text.</li>
+<li>FIO_CLI_PRINT         - normal text.</li>
 </ul>
 
 <p>Argument names MUST start with the &#39;-&#39; character. The first word starting
@@ -199,11 +225,18 @@ unless overridden.</p>
 
 <p>Example use:</p>
 <pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
-             <span class="s">"-t -thread number of threads to run."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
-             <span class="s">"-w -workers number of workers to run."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
-             <span class="s">"-b, -address the address to bind to."</span><span class="p">,</span>
-             <span class="s">"-p,-port the port to bind to."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">,</span>
-             <span class="s">"-v -log enable logging."</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_BOOL</span><span class="p">);</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Concurrency:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-t -thread number of threads to run."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-w -workers number of workers to run."</span><span class="p">),</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Address Binding:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_STRING</span><span class="p">(</span><span class="s">"-b, -address the address to bind to."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-p,-port the port to bind to."</span><span class="p">),</span>
+              <span class="n">FIO_CLI_PRINT</span><span class="p">(</span><span class="s">"</span><span class="se">\t\t</span><span class="s">set port to zero (0) for Unix s."</span><span class="p">),</span>
+
+              <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Logging:"</span><span class="p">),</span>
+              <span class="n">FIO_CLI_BOOL</span><span class="p">(</span><span class="s">"-v -log enable logging."</span><span class="p">));</span>
 </code></pre>
 <p>This would allow access to the named arguments:</p>
 <pre><code class='highlight'><span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-b"</span><span class="p">)</span> <span class="o">==</span> <span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-address"</span><span class="p">);</span>
@@ -260,7 +293,7 @@ unless overridden.</p>
 <p>CAREFUL: This does not automatically detect aliases or type violations! it will only effect the specific name given, even if invalid. i.e.:</p>
 <pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span>
              <span class="s">"this is example accepts the following options:"</span><span class="p">,</span>
-             <span class="s">"-p -port the port to bind to"</span><span class="p">,</span> <span class="n">FIO_CLI_TYPE_INT</span><span class="p">;</span>
+             <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-p -port the port to bind to"</span><span class="p">));</span>
 
 <span class="n">fio_cli_set</span><span class="p">(</span><span class="s">"-p"</span><span class="p">,</span> <span class="s">"hello"</span><span class="p">);</span> <span class="c1">// fio_cli_get("-p") != fio_cli_get("-port");</span>
 </code></pre>

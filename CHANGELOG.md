@@ -14,7 +14,7 @@
 
 **Fix**: (`fio_test`) fixed some memory leaks in the testing functions.
 
-**Update**: (`fio_cli`) stylize and beautify `FIO_CLI_TYPE_PRINT` lines.
+**Update**: (`fio_cli`) stylize and beautify `FIO_CLI_PRINT_HEADER` lines.
 
 **Update**: (`fio`) updated the automatic concurrency calculations to leave resources for the system when a negative value is provided (was only available for worker count calculations, now available for thread count as well).
 

@@ -13,7 +13,7 @@
 
 <ul>
 <li><p><a href="changelog">Change Log</a></p></li>
-<li><p><strong>Latest (beta)</strong>: 0.7.0.beta3</p></li>
+<li><p><strong>Latest (beta)</strong>: 0.7.0.beta4</p></li>
 <li><p><strong>Latest stable</strong>: 0.6.4</p></li>
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
@@ -22,6 +22,9 @@
 <ul>
 <li>
 <ul>
+<li>
+<a href="#v-0-7-0-beta4">v. 0.7.0.beta4</a>
+</li>
 <li>
 <a href="#v-0-7-0-beta3">v. 0.7.0.beta3</a>
 </li>
@@ -247,19 +250,37 @@
 </ul>
 </div><h1 id="change-log">Change Log</h1>
 
+<h3 id="v-0-7-0-beta4">v. 0.7.0.beta4</h3>
+
+<p><strong>BREAK</strong>: (<code>fio_cli</code>) breaking API changes make this extension easier than ever to use... <em>I do apologize for this, but part of the reason 0.7.0 is still in beta is to test the API itself for ease of use and readability</em>.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixed a minor memory leak in cluster mode, caused by the root process not freeing the hash map used for child process subscription monitoring.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixed superfluous and potentially erroneous pub/sub engine callback calls to <code>unsubscribe</code>, caused by (mistakingly) reporting filter channel closure.</p>
+
+<p><strong>Fix</strong>: (<code>mustache</code>, <code>FIOBJ</code>) added support for dot notation in mustache templates.</p>
+
+<p><strong>Fix</strong>: (<code>http/1.1</code>) avoid processing further requests if the connection was closed.</p>
+
+<p><strong>Fix</strong>: (<code>fio_test</code>) fixed some memory leaks in the testing functions.</p>
+
+<p><strong>Update</strong>: (<code>fio_cli</code>) stylize and beautify <code>FIO_CLI_PRINT_HEADER</code> lines.</p>
+
+<p><strong>Update</strong>: (<code>fio</code>) updated the automatic concurrency calculations to leave resources for the system when a negative value is provided (was only available for worker count calculations, now available for thread count as well).</p>
+
 <h3 id="v-0-7-0-beta3">v. 0.7.0.beta3</h3>
 
-<p><strong>Fix</strong>: (<code>fio</code>) Fixed superfluous <code>ping</code> events that might occur after a <code>fio_write</code> (but before the scheduled write actually occurred).</p>
+<p><strong>Fix</strong>: (<code>fio</code>) fixed superfluous <code>ping</code> events that might occur after a <code>fio_write</code> (but before the scheduled write actually occurred).</p>
 
 <p><strong>Fix</strong>: (<code>mustache</code>) updated the mustache parser to fix an issue with template loading path names. The partial template path resolution logic was re-written, fixed and improved (I hope). This also adds support for text in mustache lambda, though not applicable when used with FIOBJ.</p>
 
-<p><strong>Fix</strong>: (<code>fio</code>) Prevent Read/Write Hooks from delaying <code>fio_force_close</code> when an error occures while polling a connection.</p>
+<p><strong>Fix</strong>: (<code>fio</code>) prevent Read/Write Hooks from delaying <code>fio_force_close</code> when an error occures while polling a connection.</p>
 
-<p><strong>Fix</strong>: (<code>fio</code>) Deletes Unix sockets once done listening. Fixes an issue where the files would remain intact.</p>
+<p><strong>Fix</strong>: (<code>fio</code>) deletes Unix sockets once done listening. Fixes an issue where the files would remain intact.</p>
 
-<p><strong>Fix</strong>: (<code>fio</code>) Replaced <code>fio_malloc</code> existing memory allocation / free-list implementation. This also fixes an issue with large memory pools being retained on multi-core systems with many reported CPU cores.</p>
+<p><strong>Fix</strong>: (<code>fio</code>) replaced <code>fio_malloc</code> existing memory allocation / free-list implementation. This also fixes an issue with large memory pools being retained on multi-core systems with many reported CPU cores.</p>
 
-<p><strong>Fix</strong>: (<code>fio</code>) The <code>FIO_FORCE_MALLOC</code> flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system&#39;s <code>malloc</code> which might return junk data.</p>
+<p><strong>Fix</strong>: (<code>fio</code>) the <code>FIO_FORCE_MALLOC</code> flag was fixed to accommodate for the fact that fio_malloc returns zeroed data (all bytes are set to zero) vs. the system&#39;s <code>malloc</code> which might return junk data.</p>
 
 <p><strong>Fix</strong>: (<code>http</code>) fixes a possible memory leak in <code>http_mimetype_register</code>, where clearing the registry wouldn&#39;t free the FIOBJ Strings.</p>
 
