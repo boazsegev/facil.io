@@ -156,10 +156,12 @@ The main function
 int main(int argc, char const *argv[]) {
   fio_cli_start(
       argc, argv, 0, 0, "WebSocket chat room example using facil.io",
-      "-t number of threads", FIO_CLI_TYPE_INT, "-w number of workers",
-      FIO_CLI_TYPE_INT, "-www a public folder from which to serve files",
-      "-p port number to listen on (0 == unix socket)", FIO_CLI_TYPE_INT,
-      "-b address binding", "-v logs requests to STDERR", FIO_CLI_TYPE_BOOL);
+      FIO_CLI_INT("-t number of threads"),
+      FIO_CLI_INT("-w number of workers"),
+      FIO_CLI_STRING("-www a public folder from which to serve files"),
+      FIO_CLI_INT("-p port number to listen on (0 == unix socket)"),
+      FIO_CLI_BOOL("-b address binding", "-v logs requests to STDERR")
+      );
   fio_cli_set_default("-p", "3000");
 
   if (http_listen(fio_cli_get("-p"), fio_cli_get("-b"),
