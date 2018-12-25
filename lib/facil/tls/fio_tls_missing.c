@@ -17,16 +17,18 @@ Feel free to copy, use and enjoy according to the license provided.
  */
 #include "fio_tls.h"
 
+#define REQUIRE_LIBRARY()
+
+/* TODO: delete me! */
 #if !FIO_IGNORE_TLS_IF_MISSING
+#undef REQUIRE_LIBRARY
 #define REQUIRE_LIBRARY()                                                      \
   FIO_LOG_FATAL("No supported SSL/TLS library available.");                    \
   exit(-1);
-#else
-#define REQUIRE_LIBRARY()
 #endif
 
 /* *****************************************************************************
-The SSL/TLS data types
+The SSL/TLS helper data types
 ***************************************************************************** */
 #define FIO_INCLUDE_STR 1
 #define FIO_FORCE_MALLOC 1
@@ -81,15 +83,38 @@ static inline void fio_tls_cert_destroy(cert_s *obj) {
 #define FIO_ARY_DESTROY(key) fio_tls_cert_destroy(&(key))
 #include <fio.h>
 
+/* *****************************************************************************
+The SSL/TLS type
+***************************************************************************** */
+
 /** An opaque type used for the SSL/TLS functions. */
 struct fio_tls_s {
-  alpn_ary_s alpn; /* ALPN is the name of the protocol selection extension */
-  cert_ary_s sni;  /* ALPN is the name of the server name extension */
+  alpn_ary_s alpn; /* ALPN is the name for the protocol selection extension */
+  cert_ary_s sni;  /* SNI is the name for the server name extension */
+  /* TODO: implementation data fields go here */
 };
+
+/* *****************************************************************************
+SSL/TLS Context (re)-building
+***************************************************************************** */
+
+/** Called when the library specific data for the context should be destroyed */
+static void fio_tls_destroy_context(fio_tls_s *tls) {
+  /* TODO: Library specific implementation */
+  (void)tls;
+}
+
+/** Called when the library specific data for the context should be built */
+static void fio_tls_build_context(fio_tls_s *tls) {
+  fio_tls_destroy_context(tls);
+  /* TODO: Library specific implementation */
+}
 
 /* *****************************************************************************
 SSL/TLS RW Hooks
 ***************************************************************************** */
+
+/* TODO: this is an example implementation - fix for specific library. */
 
 #define TLS_BUFFER_LENGTH (1 << 15)
 typedef struct {
@@ -200,8 +225,27 @@ static fio_rw_hook_s FIO_TLS_HOOKS = {
     .cleanup = fio_tls_cleanup,
 };
 
+static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
+                                       void *udata, uint8_t is_server) {
+  /* TODO: this is only an example implementation - fox for specific library */
+  if (is_server) {
+    /* Server mode (accept) */
+    FIO_LOG_DEBUG("Attaching TLS read/write hook for %p (server mode).",
+                  (void *)uuid);
+  } else {
+    /* Client mode (connect) */
+    FIO_LOG_DEBUG("Attaching TLS read/write hook for %p (client mode).",
+                  (void *)uuid);
+  }
+  /* common implementation */
+  fio_rw_hook_set(uuid, &FIO_TLS_HOOKS,
+                  fio_malloc(sizeof(buffer_s))); /* 32Kb buffer */
+  if (alpn_ary_count(&tls->alpn))
+    alpn_ary_get(&tls->alpn, 0).callback(uuid, udata);
+}
+
 /* *****************************************************************************
-SSL/TLS API implementation
+SSL/TLS API implementation - this can be pretty much used as is...
 ***************************************************************************** */
 
 /**
@@ -245,6 +289,7 @@ fio_tls_cert_add(fio_tls_s *tls, const char *server_name, const char *key,
   }
   cert_ary_push(&tls->sni, c);
   fio_tls_cert_destroy(&c);
+  fio_tls_build_context(tls);
   return;
 file_missing:
   FIO_LOG_FATAL("TLS certificate file missing for either %s or %s or both.",
@@ -268,6 +313,7 @@ fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
   };
   alpn_ary_push(&tls->alpn, tmp);
   fio_alpn_destroy(&tmp);
+  fio_tls_build_context(tls);
 }
 #pragma weak fio_tls_proto_add
 
@@ -284,12 +330,7 @@ fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
 void __attribute__((weak))
 fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
   REQUIRE_LIBRARY();
-  FIO_LOG_DEBUG("Attaching TLS read/write hook for %p (server mode).",
-                (void *)uuid);
-  fio_rw_hook_set(uuid, &FIO_TLS_HOOKS,
-                  fio_malloc(sizeof(buffer_s))); /* 32Kb buffer */
-  if (alpn_ary_count(&tls->alpn))
-    alpn_ary_get(&tls->alpn, 0).callback(uuid, udata);
+  fio_tls_attach2uuid(uuid, tls, udata, 1);
 }
 #pragma weak fio_tls_accept
 
@@ -306,12 +347,7 @@ fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
 void __attribute__((weak))
 fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata) {
   REQUIRE_LIBRARY();
-  FIO_LOG_DEBUG("Attaching TLS read/write hook for %p (client mode).",
-                (void *)uuid);
-  fio_rw_hook_set(uuid, &FIO_TLS_HOOKS,
-                  fio_malloc(sizeof(buffer_s))); /* 32Kb buffer */
-  if (alpn_ary_count(&tls->alpn))
-    alpn_ary_get(&tls->alpn, 0).callback(uuid, udata);
+  fio_tls_attach2uuid(uuid, tls, udata, 0);
 }
 #pragma weak fio_tls_connect
 
@@ -323,6 +359,7 @@ void __attribute__((weak)) fio_tls_destroy(fio_tls_s *tls) {
   if (!tls)
     return;
   REQUIRE_LIBRARY();
+  fio_tls_destroy_context(tls);
   alpn_ary_free(&tls->alpn);
   cert_ary_free(&tls->sni);
   free(tls);
