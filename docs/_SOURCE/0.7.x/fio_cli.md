@@ -17,12 +17,19 @@ Data can be accessed either as a C string or an integer using the `fio_cli_get` 
 ### example
 
 ```c
-fio_cli_start(argc, argv, 0, 0, "This example defines the following arguments:",
-             "-t -thread number of threads to run.", FIO_CLI_TYPE_INT,
-             "-w -workers number of workers to run.", FIO_CLI_TYPE_INT,
-             "-b, -address the address to bind to.",
-             "-p,-port the port to bind to.", FIO_CLI_TYPE_INT,
-             "-v -log enable logging.", FIO_CLI_TYPE_BOOL);
+fio_cli_start(argc, argv, 0, 0, "this example accepts the following:",
+
+              FIO_CLI_PRINT_HREADER("Concurrency:"),
+              FIO_CLI_INT("-t -thread number of threads to run."),
+              FIO_CLI_INT("-w -workers number of workers to run."),
+
+              FIO_CLI_PRINT_HREADER("Address Binding:"),
+              FIO_CLI_STRING("-b, -address the address to bind to."),
+              FIO_CLI_INT("-p,-port the port to bind to."),
+              FIO_CLI_PRINT("\t\tset port to zero (0) for Unix s."),
+
+              FIO_CLI_PRINT_HREADER("Logging:"),
+              FIO_CLI_BOOL("-v -log enable logging."));
 
 if (fio_cli_get_bool("-v")) {
     printf("Logging is enabled\n");
@@ -35,17 +42,29 @@ fio_cli_end();
 
 The following constants are defined by the CLI extension.
 
-#### `FIO_CLI_TYPE_STRING`
+#### `FIO_CLI_STRING(argument)`
 
-Indicates the previous CLI argument should be a String (default).
+Indicates the CLI argument should be a String (default).
 
-#### `FIO_CLI_TYPE_BOOL`
+#### `FIO_CLI_BOOL(argument)`
 
-Indicates the previous CLI argument is a Boolean value.
+Indicates the CLI argument is a Boolean value.
 
-#### `FIO_CLI_TYPE_INT`
+#### `FIO_CLI_INT(argument)`
 
-Indicates the previous CLI argument should be an Integer (numerical). */
+Indicates the CLI argument should be an Integer (numerical). 
+
+#### `FIO_CLI_PRINT_HEADER(string)`
+
+Indicates the CLI argument should only be used when printing the help output. 
+
+Text will be printed underlined, in a new line, with an extra line break preceding it.
+
+#### `FIO_CLI_PRINT(string)`
+
+Indicates the CLI argument should only be used when printing the help output. 
+
+Text will be printed as normal text in a new line.
 
 ## Functions
 
@@ -69,9 +88,10 @@ Command line arguments may be typed. If an optional type requirement is provided
 
 The following optional type requirements are:
 
-* FIO_CLI_TYPE_STRING - (default) string argument.
-* FIO_CLI_TYPE_BOOL   - boolean argument (no value).
-* FIO_CLI_TYPE_INT    - integer argument ('-', '+', '0'-'9' chars accepted).
+* FIO_CLI_STRING        - (default) string argument.
+* FIO_CLI_BOOL          - boolean argument (no value).
+* FIO_CLI_PRINT_HEADER  - header text.
+* FIO_CLI_PRINT         - normal text.
 
 
 Argument names MUST start with the '-' character. The first word starting
@@ -84,11 +104,18 @@ Example use:
 
 ```c
 fio_cli_start(argc, argv, 0, 0, "this example accepts the following:",
-             "-t -thread number of threads to run.", FIO_CLI_TYPE_INT,
-             "-w -workers number of workers to run.", FIO_CLI_TYPE_INT,
-             "-b, -address the address to bind to.",
-             "-p,-port the port to bind to.", FIO_CLI_TYPE_INT,
-             "-v -log enable logging.", FIO_CLI_TYPE_BOOL);
+
+              FIO_CLI_PRINT_HREADER("Concurrency:"),
+              FIO_CLI_INT("-t -thread number of threads to run."),
+              FIO_CLI_INT("-w -workers number of workers to run."),
+
+              FIO_CLI_PRINT_HREADER("Address Binding:"),
+              FIO_CLI_STRING("-b, -address the address to bind to."),
+              FIO_CLI_INT("-p,-port the port to bind to."),
+              FIO_CLI_PRINT("\t\tset port to zero (0) for Unix s."),
+
+              FIO_CLI_PRINT_HREADER("Logging:"),
+              FIO_CLI_BOOL("-v -log enable logging."));
  ```
 
 This would allow access to the named arguments:
@@ -177,7 +204,7 @@ CAREFUL: This does not automatically detect aliases or type violations! it will 
 ```c
 fio_cli_start(argc, argv, 0, 0,
              "this is example accepts the following options:",
-             "-p -port the port to bind to", FIO_CLI_TYPE_INT;
+             FIO_CLI_INT("-p -port the port to bind to"));
 
 fio_cli_set("-p", "hello"); // fio_cli_get("-p") != fio_cli_get("-port");
 ```

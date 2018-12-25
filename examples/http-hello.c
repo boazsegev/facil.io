@@ -71,21 +71,30 @@ void initialize_cli(int argc, char const *argv[]) {
   /*     ****  Command line arguments ****     */
   fio_cli_start(
       argc, argv, 0, 0, NULL,
+      // Address Binding arguments
+      FIO_CLI_PRINT_HEADER("Address Binding:"),
+      FIO_CLI_INT("-port -p port number to listen to. defaults port 3000"),
       "-bind -b address to listen to. defaults any available.",
-      "-port -p port number to listen to. defaults port 3000", FIO_CLI_TYPE_INT,
-      "-workers -w number of processes to use.", FIO_CLI_TYPE_INT,
-      "-threads -t number of threads per process.", FIO_CLI_TYPE_INT,
-      "-log -v request verbosity (logging).", FIO_CLI_TYPE_BOOL,
+      // Concurrency arguments
+      FIO_CLI_PRINT_HEADER("Concurrency:"),
+      FIO_CLI_INT("-workers -w number of processes to use."),
+      FIO_CLI_INT("-threads -t number of threads per process."),
+      // HTTP Settings arguments
+      FIO_CLI_PRINT_HEADER("HTTP Settings:"),
       "-public -www public folder, for static file service.",
-      "-keep-alive -k HTTP keep-alive timeout (0..255). default: ~5s",
-      FIO_CLI_TYPE_INT, "-ping websocket ping interval (0..255). default: ~40s",
-      FIO_CLI_TYPE_INT, "-max-body -maxbd HTTP upload limit. default: ~50Mb",
-      FIO_CLI_TYPE_INT,
-      "-max-message -maxms incoming websocket message size limit. default: "
-      "~250Kb",
-      FIO_CLI_TYPE_INT,
-      "-redis-url -ru an optional Redis URL server address. i.e.: "
-      "redis://user:password@localhost:6379/");
+      FIO_CLI_INT(
+          "-keep-alive -k HTTP keep-alive timeout (0..255). default: 10s"),
+      FIO_CLI_INT(
+          "-max-body -maxbd HTTP upload limit in Mega Bytes. default: 50Mb"),
+      FIO_CLI_BOOL("-log -v request verbosity (logging)."),
+      // WebSocket Settings arguments
+      FIO_CLI_PRINT_HEADER("WebSocket Settings:"),
+      FIO_CLI_INT("-ping websocket ping interval (0..255). default: 40s"),
+      FIO_CLI_INT("-max-msg -maxms incoming websocket message "
+                  "size limit in Kb. default: 250Kb"),
+      "-redis -r an optional Redis URL server address.",
+      FIO_CLI_PRINT("\t\ta valid Redis URL would follow the pattern:"),
+      FIO_CLI_PRINT("\t\t\tredis://user:password@localhost:6379/"));
 
   /* Test and set any default options */
   if (!fio_cli_get("-p")) {

@@ -198,17 +198,18 @@ int main(int argc, char const *argv[]) {
       "Websocket Shootout requirements at:\n"
       "https://github.com/hashrocket/websocket-shootout\n"
       "\nThe following arguments are supported:",
-      "Concurrency", FIO_CLI_TYPE_PRINT_HEADER,
-      "-threads -t The number of threads to use. System dependent default.",
-      FIO_CLI_TYPE_INT,
-      "-workers -w The number of processes to use. System dependent default.",
-      "Connectivity", FIO_CLI_TYPE_PRINT_HEADER, FIO_CLI_TYPE_INT,
-      "-port -p The port number to listen to.", FIO_CLI_TYPE_INT,
-      "HTTP settings", FIO_CLI_TYPE_PRINT_HEADER,
+      FIO_CLI_PRINT_HEADER("Concurrency"),
+      FIO_CLI_INT("-threads -t The number of threads to use. "
+                  "System dependent default."),
+      FIO_CLI_INT("-workers -w The number of processes to use. "
+                  "System dependent default."),
+      FIO_CLI_PRINT_HEADER("Connectivity"),
+      FIO_CLI_INT("-port -p The port number to listen to."),
+      FIO_CLI_PRINT_HEADER("HTTP settings"),
       "-public -www A public folder for serve an HTTP static file service.",
-      "-log -v Turns logging on.", FIO_CLI_TYPE_BOOL, "Misc",
-      FIO_CLI_TYPE_PRINT_HEADER, "-redis -r add a Redis pub/sub round-trip.",
-      "-debug Turns debug notifications on.", FIO_CLI_TYPE_BOOL);
+      FIO_CLI_BOOL("-log -v Turns logging on."), FIO_CLI_PRINT_HEADER("Misc"),
+      "-redis -r add a Redis pub/sub round-trip.",
+      FIO_CLI_BOOL("-debug Turns debug notifications on."));
 
   if (fio_cli_get_bool("-debug"))
     FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;

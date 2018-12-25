@@ -16,16 +16,16 @@ extern "C" {
 CLI API
 ***************************************************************************** */
 
-/** Indicates the previous CLI argument should be a String (default). */
-#define FIO_CLI_TYPE_STRING ((char *)0x1)
-/** Indicates the previous CLI argument is a Boolean value. */
-#define FIO_CLI_TYPE_BOOL ((char *)0x2)
-/** Indicates the previous CLI argument should be an Integer (numerical). */
-#define FIO_CLI_TYPE_INT ((char *)0x3)
-/** Indicates the previous CLI string should be printed as is. */
-#define FIO_CLI_TYPE_PRINT ((char *)0x4)
-/** Indicates the previous CLI string should be printed as a header. */
-#define FIO_CLI_TYPE_PRINT_HEADER ((char *)0x5)
+/** Indicates the CLI argument should be a String (default). */
+#define FIO_CLI_STRING(line)
+/** Indicates the CLI argument is a Boolean value. */
+#define FIO_CLI_BOOL(line)
+/** Indicates the CLI argument should be an Integer (numerical). */
+#define FIO_CLI_INT(line)
+/** Indicates the CLI string should be printed as is. */
+#define FIO_CLI_PRINT(line)
+/** Indicates the CLI string should be printed as a header. */
+#define FIO_CLI_PRINT_HEADER(line)
 
 /**
  * This function parses the Command Line Interface (CLI), creating a temporary
@@ -45,9 +45,11 @@ CLI API
  *
  * The following optional type requirements are:
  *
- * * FIO_CLI_TYPE_STRING - (default) string argument.
- * * FIO_CLI_TYPE_BOOL   - boolean argument (no value).
- * * FIO_CLI_TYPE_INT    - integer argument ('-', '+', '0'-'9' chars accepted).
+ * * FIO_CLI_STRING(desc_line)       - (default) string argument.
+ * * FIO_CLI_BOOL(desc_line)         - boolean argument (no value).
+ * * FIO_CLI_INT(desc_line)          - integer argument.
+ * * FIO_CLI_PRINT_HEADER(desc_line) - extra header for output.
+ * * FIO_CLI_PRINT(desc_line)        - extra information for output.
  *
  * Argument names MUST start with the '-' character. The first word starting
  * without the '-' character will begin the description for the CLI argument.
@@ -60,11 +62,15 @@ CLI API
  * Example use:
  *
  *    fio_cli_start(argc, argv, 0, 0, "this example accepts the following:",
- *                  "-t -thread number of threads to run.", FIO_CLI_TYPE_INT,
- *                  "-w -workers number of workers to run.", FIO_CLI_TYPE_INT,
+ *                  FIO_CLI_PRINT_HREADER("Concurrency:"),
+ *                  FIO_CLI_INT("-t -thread number of threads to run."),
+ *                  FIO_CLI_INT("-w -workers number of workers to run."),
+ *                  FIO_CLI_PRINT_HREADER("Address Binding:"),
  *                  "-b, -address the address to bind to.",
- *                  "-p,-port the port to bind to.", FIO_CLI_TYPE_INT,
- *                  "-v -log enable logging.", FIO_CLI_TYPE_BOOL);
+ *                  FIO_CLI_INT("-p,-port the port to bind to."),
+ *                  FIO_CLI_PRINT("\t\tset port to zero (0) for Unix s."),
+ *                  FIO_CLI_PRINT_HREADER("Logging:"),
+ *                  FIO_CLI_BOOL("-v -log enable logging."));
  *
  *
  * This would allow access to the named arguments:
@@ -123,12 +129,14 @@ char const *fio_cli_unnamed(unsigned int index);
  *
  *     fio_cli_start(argc, argv,
  *                  "this is example accepts the following options:",
- *                  "-p -port the port to bind to", FIO_CLI_TYPE_INT;
+ *                  "-p -port the port to bind to", FIO_CLI_INT;
  *
  *     fio_cli_set("-p", "hello"); // fio_cli_get("-p") != fio_cli_get("-port");
  *
  * Note: this does NOT copy the C strings to memory. Memory should be kept alive
- * until `fio_cli_end` is called.
+ *       until `fio_cli_end` is called.
+ *
+ * This function is NOT thread safe.
  */
 void fio_cli_set(char const *name, char const *value);
 
@@ -138,6 +146,8 @@ void fio_cli_set(char const *name, char const *value);
  *     if(!fio_cli_get(name)) {
  *       fio_cli_set(name, value)
  *     }
+ *
+ * See fio_cli_set for notes and restrictions.
  */
 #define fio_cli_set_default(name, value)                                       \
   if (!fio_cli_get((name)))                                                    \
@@ -146,5 +156,34 @@ void fio_cli_set(char const *name, char const *value);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
+
+/* *****************************************************************************
+Internal Macro Implementation
+***************************************************************************** */
+
+/** Used internally. */
+#define FIO_CLI_STRING__TYPE_I 0x1
+#define FIO_CLI_BOOL__TYPE_I 0x2
+#define FIO_CLI_INT__TYPE_I 0x3
+#define FIO_CLI_PRINT__TYPE_I 0x4
+#define FIO_CLI_PRINT_HEADER__TYPE_I 0x5
+
+#undef FIO_CLI_STRING
+#undef FIO_CLI_BOOL
+#undef FIO_CLI_INT
+#undef FIO_CLI_PRINT
+#undef FIO_CLI_PRINT_HEADER
+
+/** Indicates the CLI argument should be a String (default). */
+#define FIO_CLI_STRING(line) (line), ((char *)FIO_CLI_STRING__TYPE_I)
+/** Indicates the CLI argument is a Boolean value. */
+#define FIO_CLI_BOOL(line) (line), ((char *)FIO_CLI_BOOL__TYPE_I)
+/** Indicates the CLI argument should be an Integer (numerical). */
+#define FIO_CLI_INT(line) (line), ((char *)FIO_CLI_INT__TYPE_I)
+/** Indicates the CLI string should be printed as is. */
+#define FIO_CLI_PRINT(line) (line), ((char *)FIO_CLI_PRINT__TYPE_I)
+/** Indicates the CLI string should be printed as a header. */
+#define FIO_CLI_PRINT_HEADER(line)                                             \
+  (line), ((char *)FIO_CLI_PRINT_HEADER__TYPE_I)
 
 #endif

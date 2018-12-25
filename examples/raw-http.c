@@ -118,9 +118,9 @@ int main(int argc, char const *argv[]) {
   /* A simple CLI interface. */
   fio_cli_start(argc, argv, 0, 0,
                 "Custom HTTP example for the facil.io framework.",
-                "-port -p Port to bind to. Default: 3000", FIO_CLI_TYPE_INT,
-                "-workers -w Number of workers (processes).", FIO_CLI_TYPE_INT,
-                "-threads -t Number of threads.", FIO_CLI_TYPE_INT);
+                FIO_CLI_INT("-port -p Port to bind to. Default: 3000"),
+                FIO_CLI_INT("-workers -w Number of workers (processes)."),
+                FIO_CLI_INT("-threads -t Number of threads."));
   /* Default to port 3000. */
   fio_cli_set_default("-p", "3000");
   /* Default to single thread. */

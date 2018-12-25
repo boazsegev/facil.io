@@ -2,6 +2,8 @@
 
 ### v. 0.7.0.beta4
 
+**BREAK**: (`fio_cli`) breaking API changes make this extension easier than ever to use... *I do apologize for this, but part of the reason 0.7.0 is still in beta is to test the API itself for ease of use and readability*.
+
 **Fix**: (`fio`) fixed a minor memory leak in cluster mode, caused by the root process not freeing the hash map used for child process subscription monitoring.
 
 **Fix**: (`fio`) fixed superfluous and potentially erroneous pub/sub engine callback calls to `unsubscribe`, caused by (mistakingly) reporting filter channel closure.

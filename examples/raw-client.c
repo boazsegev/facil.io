@@ -142,8 +142,8 @@ Main
 
 int main(int argc, char const *argv[]) {
   /* Setup CLI arguments */
-  fio_cli_start(argc, argv, 1, 2, "use:\n\tclient <args> hostname port",
-                "-v -verbous mode.", FIO_CLI_TYPE_BOOL);
+  fio_cli_start(argc, argv, 1, 2, "use:\n\tclient <args> hostname port\n",
+                FIO_CLI_BOOL("-v -verbous mode."));
 
   if (fio_cli_get_bool("-v")) {
     if (fio_cli_unnamed_count() == 1 || fio_cli_unnamed(1)[0] == 0 ||

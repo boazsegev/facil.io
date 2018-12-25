@@ -96,11 +96,11 @@ The main function (listens to the `echo` connections and handles CLI)
 int main(int argc, char const *argv[]) {
   /* Setup CLI arguments */
   fio_cli_start(argc, argv, 0, 0, "this example accepts the following options:",
-                "-t -thread number of threads to run.", FIO_CLI_TYPE_INT,
-                "-w -workers number of workers to run.", FIO_CLI_TYPE_INT,
+                FIO_CLI_INT("-t -thread number of threads to run."),
+                FIO_CLI_INT("-w -workers number of workers to run."),
                 "-b, -address the address to bind to.",
-                "-p,-port the port to bind to.", FIO_CLI_TYPE_INT,
-                "-v -log enable logging.", FIO_CLI_TYPE_BOOL);
+                FIO_CLI_INT("-p,-port the port to bind to."),
+                FIO_CLI_BOOL("-v -log enable logging."));
 
   /* Setup default values */
   fio_cli_set_default("-p", "3000");

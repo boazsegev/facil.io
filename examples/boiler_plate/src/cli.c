@@ -17,24 +17,25 @@ static void redis_cleanup(void *e_) {
 void initialize_cli(int argc, char const *argv[]) {
   /*     ****  Command line arguments ****     */
   fio_cli_start(
-      argc, argv, 0, 0, NULL, "Address binding:", FIO_CLI_TYPE_PRINT_HEADER,
-      "-port -p port number to listen to. defaults port 3000", FIO_CLI_TYPE_INT,
-      "-bind -b address to listen to. defaults any available.",
-      "Concurrency:", FIO_CLI_TYPE_PRINT_HEADER,
-      "-workers -w number of processes to use.", FIO_CLI_TYPE_INT,
-      "-threads -t number of threads per process.", FIO_CLI_TYPE_INT,
-      "HTTP Server:", FIO_CLI_TYPE_PRINT_HEADER,
-      "-public -www public folder, for static file service.",
-      "-keep-alive -k HTTP keep-alive timeout (0..255). default: ~5s",
-      FIO_CLI_TYPE_INT, "-max-body -maxbd HTTP upload limit. default: ~50Mb",
-      FIO_CLI_TYPE_INT, "-log -v request verbosity (logging).",
-      FIO_CLI_TYPE_BOOL, "WebSocket Server:", FIO_CLI_TYPE_PRINT_HEADER,
-      "-ping websocket ping interval (0..255). default: ~40s", FIO_CLI_TYPE_INT,
-      "-max-msg -maxms incoming websocket message size limit. default: "
-      "~250Kb",
-      FIO_CLI_TYPE_INT, "Redis support:", FIO_CLI_TYPE_PRINT_HEADER,
-      "-redis -r an optional Redis URL server address.",
-      "\t\ti.e.: redis://user:password@localhost:6379/", FIO_CLI_TYPE_PRINT);
+      argc, argv, 0, 0, NULL, FIO_CLI_PRINT_HEADER("Address binding:"),
+      FIO_CLI_INT("-port -p port number to listen to. defaults port 3000"),
+      FIO_CLI_STRING("-bind -b address to listen to. defaults any available."),
+      FIO_CLI_PRINT_HEADER("Concurrency:"),
+      FIO_CLI_INT("-workers -w number of processes to use."),
+      FIO_CLI_INT("-threads -t number of threads per process."),
+      FIO_CLI_PRINT_HEADER("HTTP Server:"),
+      FIO_CLI_STRING("-public -www public folder, for static file service."),
+      FIO_CLI_INT(
+          "-keep-alive -k HTTP keep-alive timeout (0..255). default: ~5s"),
+      FIO_CLI_INT("-max-body -maxbd HTTP upload limit. default: ~50Mb"),
+      FIO_CLI_BOOL("-log -v request verbosity (logging)."),
+      FIO_CLI_PRINT_HEADER("WebSocket Server:"),
+      FIO_CLI_INT("-ping websocket ping interval (0..255). default: ~40s"),
+      FIO_CLI_INT("-max-msg -maxms incoming websocket message size limit. "
+                  "default: ~250Kb"),
+      FIO_CLI_PRINT_HEADER("Redis support:"),
+      FIO_CLI_STRING("-redis -r an optional Redis URL server address."),
+      FIO_CLI_PRINT("\t\ti.e.: redis://user:password@localhost:6379/"));
 
   /* Test and set any default options */
   if (!fio_cli_get("-b")) {

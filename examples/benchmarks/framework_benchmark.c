@@ -137,14 +137,19 @@ static void cli_init(int argc, char const *argv[]) {
       "\nFor details about the benchmarks visit:\n"
       "http://frameworkbenchmarks.readthedocs.io/en/latest/\n"
       "\nThe following arguments are supported:",
-      "-threads -t The number of threads to use. System dependent default.",
-      FIO_CLI_TYPE_INT,
-      "-workers -w The number of processes to use. System dependent default.",
-      FIO_CLI_TYPE_INT,
-      "-port -p The port number to listen to (set to 0 for Unix Sockets.",
-      FIO_CLI_TYPE_INT, "-address -b The address to bind to.",
+      FIO_CLI_PRINT_HEADER("Concurrency:"),
+      FIO_CLI_INT("-threads -t The number of threads to use. "
+                  "System dependent default."),
+      FIO_CLI_INT("-workers -w The number of processes to use. "
+                  "System dependent default."),
+      FIO_CLI_PRINT_HEADER("Address Binding:"),
+      FIO_CLI_INT("-port -p The port number to listen to "
+                  "(set to 0 for Unix Sockets."),
+      "-address -b The address to bind to.",
+      FIO_CLI_PRINT_HEADER("HTTP Settings:"),
       "-public -www A public folder for serve an HTTP static file service.",
-      "-log -v Turns logging on (logs to terminal).", FIO_CLI_TYPE_BOOL,
+      FIO_CLI_BOOL("-log -v Turns logging on (logs to terminal)."),
+      FIO_CLI_PRINT_HEADER("Misc:"),
       "-database -db The database adrress (URL).");
 
   /* setup default port */
