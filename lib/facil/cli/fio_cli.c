@@ -388,6 +388,8 @@ char const *fio_cli_get(char const *name) {
 /** Returns the argument's value as an integer. */
 int fio_cli_get_i(char const *name) {
   char const *val = fio_cli_get(name);
+  if (!val)
+    return 0;
   int i = (int)fio_atol((char **)&val);
   return i;
 }
