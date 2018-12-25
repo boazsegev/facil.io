@@ -191,10 +191,11 @@ The main function
       <span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"WebSocket chat room example using facil.io"</span><span class="p">,</span>
       <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-t number of threads"</span><span class="p">),</span>
       <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-w number of workers"</span><span class="p">),</span>
-      <span class="n">FIO_CLI_STRING</span><span class="p">(</span><span class="s">"-www a public folder from which to serve files"</span><span class="p">),</span>
       <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-p port number to listen on (0 == unix socket)"</span><span class="p">),</span>
-      <span class="n">FIO_CLI_BOOL</span><span class="p">(</span><span class="s">"-b address binding"</span><span class="p">,</span> <span class="s">"-v logs requests to STDERR"</span><span class="p">)</span>
-      <span class="p">);</span>
+      <span class="n">FIO_CLI_STRING</span><span class="p">(</span><span class="s">"-b address binding"</span><span class="p">),</span>
+      <span class="n">FIO_CLI_STRING</span><span class="p">(</span><span class="s">"-www a public folder from which to serve files"</span><span class="p">),</span>
+      <span class="n">FIO_CLI_BOOL</span><span class="p">(</span><span class="s">"-v logs requests to STDERR"</span><span class="p">));</span>
+
   <span class="n">fio_cli_set_default</span><span class="p">(</span><span class="s">"-p"</span><span class="p">,</span> <span class="s">"3000"</span><span class="p">);</span>
 
   <span class="k">if</span> <span class="p">(</span><span class="n">http_listen</span><span class="p">(</span><span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-p"</span><span class="p">),</span> <span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-b"</span><span class="p">),</span>

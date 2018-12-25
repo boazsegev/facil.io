@@ -162,6 +162,7 @@ int main(int argc, char const *argv[]) {
       FIO_CLI_STRING("-b address binding"),
       FIO_CLI_STRING("-www a public folder from which to serve files"),
       FIO_CLI_BOOL("-v logs requests to STDERR"));
+
   fio_cli_set_default("-p", "3000");
 
   if (http_listen(fio_cli_get("-p"), fio_cli_get("-b"),
