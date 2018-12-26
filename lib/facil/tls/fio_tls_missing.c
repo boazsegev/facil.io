@@ -122,9 +122,10 @@ static void fio_tls_build_context(fio_tls_s *tls) {
     }
   }
 
-  /* Protocols */
+  /* ALPN Protocols */
   FIO_ARY_FOR(&tls->alpn, pos) {
     fio_str_info_s name = fio_str_info(&pos->name);
+    (void)name;
     // map to pos->callback;
   }
 }

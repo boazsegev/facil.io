@@ -13,7 +13,7 @@
 
 <ul>
 <li><p><a href="changelog">Change Log</a></p></li>
-<li><p><strong>Latest (beta)</strong>: 0.7.0.beta4</p></li>
+<li><p><strong>Latest (beta)</strong>: 0.7.0.beta5</p></li>
 <li><p><strong>Latest stable</strong>: 0.6.4</p></li>
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
@@ -22,6 +22,9 @@
 <ul>
 <li>
 <ul>
+<li>
+<a href="#v-0-7-0-beta5">v. 0.7.0.beta5</a>
+</li>
 <li>
 <a href="#v-0-7-0-beta4">v. 0.7.0.beta4</a>
 </li>
@@ -249,6 +252,10 @@
 </li>
 </ul>
 </div><h1 id="change-log">Change Log</h1>
+
+<h3 id="v-0-7-0-beta5">v. 0.7.0.beta5</h3>
+
+<p><strong>Fix</strong>: (<code>fio_cli</code>) fixed an issue introduced in version 0.7.0.beta4, where <code>fio_cli_get_i</code> would dereference NULL if the value wasn&#39;t set. Now <code>fio_cli_get_i</code> returns zero (0) for missing values, as expected. Note: this related to the new hex and binary base support in command line numerals.</p>
 
 <h3 id="v-0-7-0-beta4">v. 0.7.0.beta4</h3>
 
