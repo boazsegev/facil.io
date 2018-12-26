@@ -17,6 +17,8 @@ Feel free to copy, use and enjoy according to the license provided.
  */
 #include "fio_tls.h"
 
+#if 1 /* TODO: place library compiler flags here */
+
 #define REQUIRE_LIBRARY()
 
 /* TODO: delete me! */
@@ -108,6 +110,23 @@ static void fio_tls_destroy_context(fio_tls_s *tls) {
 static void fio_tls_build_context(fio_tls_s *tls) {
   fio_tls_destroy_context(tls);
   /* TODO: Library specific implementation */
+
+  /* Certificates */
+  FIO_ARY_FOR(&tls->sni, pos) {
+    fio_str_info_s k = fio_str_info(&pos->private_key);
+    fio_str_info_s p = fio_str_info(&pos->public_key);
+    if (p.len && k.len) {
+      /* TODO: attache certificate */
+    } else {
+      /* TODO: self signed certificate */
+    }
+  }
+
+  /* Protocols */
+  FIO_ARY_FOR(&tls->alpn, pos) {
+    fio_str_info_s name = fio_str_info(&pos->name);
+    // map to pos->callback;
+  }
 }
 
 /* *****************************************************************************
@@ -365,3 +384,5 @@ void __attribute__((weak)) fio_tls_destroy(fio_tls_s *tls) {
   free(tls);
 }
 #pragma weak fio_tls_destroy
+
+#endif /* Library compiler flags */
