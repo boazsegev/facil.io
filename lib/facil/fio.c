@@ -2958,6 +2958,41 @@ const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS = {
     .cleanup = fio_hooks_default_cleanup,
 };
 
+/**
+ * Replaces an existing read/write hook with another from within a read/write
+ * hook callback.
+ *
+ * Does NOT call any cleanup callbacks.
+ *
+ * Returns -1 on error, 0 on success.
+ */
+int fio_rw_hook_replace_unsafe(intptr_t uuid, fio_rw_hook_s *rw_hooks,
+                               void *udata) {
+  int replaced = -1;
+  uint8_t was_locked;
+  intptr_t fd = fio_uuid2fd(uuid);
+  if (!rw_hooks->read)
+    rw_hooks->read = fio_hooks_default_read;
+  if (!rw_hooks->write)
+    rw_hooks->write = fio_hooks_default_write;
+  if (!rw_hooks->flush)
+    rw_hooks->flush = fio_hooks_default_flush;
+  if (!rw_hooks->before_close)
+    rw_hooks->before_close = fio_hooks_default_before_close;
+  if (!rw_hooks->cleanup)
+    rw_hooks->cleanup = fio_hooks_default_cleanup;
+  /* protect against some fulishness... but not all of it. */
+  was_locked = fio_trylock(&fd_data(fd).sock_lock);
+  if (fd2uuid(fd) == uuid) {
+    fd_data(fd).rw_hooks = rw_hooks;
+    fd_data(fd).rw_udata = udata;
+    replaced = 0;
+  }
+  if (!was_locked)
+    fio_unlock(&fd_data(fd).sock_lock);
+  return replaced;
+}
+
 /** Sets a socket hook state (a pointer to the struct). */
 int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata) {
   if (fio_is_closed(uuid))

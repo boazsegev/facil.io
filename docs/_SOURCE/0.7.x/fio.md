@@ -1014,6 +1014,23 @@ Returns 0 on success or -1 on error (closed / invalid `uuid`).
 
 If the function fails, than the `cleanup` callback will be called before the function returns.
 
+
+#### `fio_rw_hook_replace_unsafe`
+
+```c
+int fio_rw_hook_replace_unsafe(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata);
+```
+
+Replaces an existing read/write hook with another from within a read/write hook callback.
+
+Returns 0 on success or -1 on error (closed / invalid `uuid`).
+
+Does NOT call any cleanup callbacks.
+
+Replaces existing `udata`. Call with the existing `udata` to keep it.
+
+**Note**: this function is marked as unsafe, since it should only be called from within an existing read/write hook callback. Otherwise, data corruption might occur.
+
 #### `FIO_DEFAULT_RW_HOOKS`
 
 ```c
@@ -1668,8 +1685,7 @@ Allocates memory using a per-CPU core block memory pool.
 
 Memory is always zeroed out.
 
-Allocations above `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (12,288 bytes when using the default 32Kb
-blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
+Allocations above `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (16Kb bytes when using the default 32Kb blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
 
 #### `fio_calloc`
 
@@ -1679,8 +1695,7 @@ void *fio_calloc(size_t size_per_unit, size_t unit_count)
 
 Same as calling `fio_malloc(size_per_unit * unit_count)`;
 
-Allocations above `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (12,288 bytes when using 32Kb
-blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
+Allocations above `FIO_MEMORY_BLOCK_ALLOC_LIMIT` (16Kb bytes when using the default 32Kb blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
 
 #### `fio_free`
 
@@ -2025,9 +2040,16 @@ The `capacity` value should exclude the NUL character (if exists).
  ((fio_str_s){.data = (buffer), .len = strlen((buffer)), .dealloc = NULL})
 ```
 
-This macro allows the container to be initialized with existing data, as long as it's memory was allocated using `fio_malloc`.
+This macro allows the container to be initialized with existing static data, that shouldn't be freed.
 
-The `capacity` value should exclude the NUL character (if exists).
+#### `FIO_STR_INIT_STATIC2`
+
+```c
+#define FIO_STR_INIT_STATIC2(buffer, length)                                            \
+ ((fio_str_s){.data = (buffer), .len = (length), .dealloc = NULL})
+```
+
+This macro allows the container to be initialized with existing static data, that shouldn't be freed.
 
 #### `fio_str_new2`
 

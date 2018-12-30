@@ -109,7 +109,7 @@ Version and helper macros
 #define FIO_VERSION_MAJOR 0
 #define FIO_VERSION_MINOR 7
 #define FIO_VERSION_PATCH 0
-#define FIO_VERSION_BETA 5
+#define FIO_VERSION_BETA 6
 
 /* Automatically convert version data to a string constant - ignore these two */
 #define FIO_MACRO2STR_STEP2(macro) #macro
@@ -323,16 +323,16 @@ Memory pool / custom allocator for short lived objects
  * Allocates memory using a per-CPU core block memory pool.
  * Memory is zeroed out.
  *
- * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (12,288 bytes when using 32Kb
- * blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
+ * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+ * will be redirected to `mmap`, as if `fio_mmap` was called.
  */
 void *FIO_ALIGN_NEW fio_malloc(size_t size);
 
 /**
  * same as calling `fio_malloc(size_per_unit * unit_count)`;
  *
- * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (12,288 bytes when using 32Kb
- * blocks) will be redirected to `mmap`, as if `fio_mmap` was called.
+ * Allocations above FIO_MEMORY_BLOCK_ALLOC_LIMIT (16Kb when using 32Kb blocks)
+ * will be redirected to `mmap`, as if `fio_mmap` was called.
  */
 void *FIO_ALIGN_NEW fio_calloc(size_t size_per_unit, size_t unit_count);
 
@@ -1321,6 +1321,23 @@ typedef struct fio_rw_hook_s {
 
 /** Sets a socket hook state (a pointer to the struct). */
 int fio_rw_hook_set(intptr_t uuid, fio_rw_hook_s *rw_hooks, void *udata);
+
+/**
+ * Replaces an existing read/write hook with another from within a read/write
+ * hook callback.
+ *
+ * Does NOT call any cleanup callbacks.
+ *
+ * Replaces existing udata. Call with the existing udata to keep it.
+ *
+ * Returns -1 on error, 0 on success.
+ *
+ * Note: this function is marked as unsafe, since it should only be called from
+ *       within an existing read/write hook callback. Otherwise, data corruption
+ *       might occur.
+ */
+int fio_rw_hook_replace_unsafe(intptr_t uuid, fio_rw_hook_s *rw_hooks,
+                               void *udata);
 
 /** The default Read/Write hooks used for system Read/Write (udata == NULL). */
 extern const fio_rw_hook_s FIO_DEFAULT_RW_HOOKS;
@@ -3105,14 +3122,19 @@ typedef struct {
                .dealloc = FIO_FREE})
 
 /**
- * This macro allows the container to be initialized with existing data, as long
- * as it's memory was allocated using `fio_malloc`.
- *
- * The `capacity` value should exclude the NUL character (if exists).
+ * This macro allows the container to be initialized with existing static data,
+ * that shouldn't be freed.
  */
 #define FIO_STR_INIT_STATIC(buffer)                                            \
   ((fio_str_s){                                                                \
       .data = (char *)(buffer), .len = strlen((buffer)), .dealloc = NULL})
+
+/**
+ * This macro allows the container to be initialized with existing static data,
+ * that shouldn't be freed.
+ */
+#define FIO_STR_INIT_STATIC2(buffer, length)                                   \
+  ((fio_str_s){.data = (char *)(buffer), .len = (length), .dealloc = NULL})
 
 /**
  * Allocates a new fio_str_s object on the heap and initializes it.

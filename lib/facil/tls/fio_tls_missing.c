@@ -60,6 +60,7 @@ static inline void fio_alpn_destroy(alpn_s *obj) { fio_str_free(&obj->name); }
 typedef struct {
   fio_str_s private_key;
   fio_str_s public_key;
+  fio_str_s password;
 } cert_s;
 
 static inline int fio_tls_cert_cmp(const cert_s *dest, const cert_s *src) {
@@ -69,13 +70,16 @@ static inline void fio_tls_cert_copy(cert_s *dest, cert_s *src) {
   *dest = (cert_s){
       .private_key = FIO_STR_INIT,
       .public_key = FIO_STR_INIT,
+      .password = FIO_STR_INIT,
   };
   fio_str_concat(&dest->private_key, &src->private_key);
   fio_str_concat(&dest->public_key, &src->public_key);
+  fio_str_concat(&dest->password, &src->password);
 }
 static inline void fio_tls_cert_destroy(cert_s *obj) {
   fio_str_free(&obj->private_key);
   fio_str_free(&obj->public_key);
+  fio_str_free(&obj->password);
 }
 
 #define FIO_ARY_NAME cert_ary
@@ -103,7 +107,7 @@ SSL/TLS Context (re)-building
 /** Called when the library specific data for the context should be destroyed */
 static void fio_tls_destroy_context(fio_tls_s *tls) {
   /* TODO: Library specific implementation */
-  (void)tls;
+  FIO_LOG_DEBUG("destroyed TLS context %p", (void *)tls);
 }
 
 /** Called when the library specific data for the context should be built */
@@ -115,8 +119,10 @@ static void fio_tls_build_context(fio_tls_s *tls) {
   FIO_ARY_FOR(&tls->sni, pos) {
     fio_str_info_s k = fio_str_info(&pos->private_key);
     fio_str_info_s p = fio_str_info(&pos->public_key);
+    fio_str_info_s pw = fio_str_info(&pos->password);
     if (p.len && k.len) {
       /* TODO: attache certificate */
+      (void)pw;
     } else {
       /* TODO: self signed certificate */
     }
@@ -128,6 +134,7 @@ static void fio_tls_build_context(fio_tls_s *tls) {
     (void)name;
     // map to pos->callback;
   }
+  FIO_LOG_DEBUG("(re)built TLS context %p", (void *)tls);
 }
 
 /* *****************************************************************************
@@ -245,6 +252,49 @@ static fio_rw_hook_s FIO_TLS_HOOKS = {
     .cleanup = fio_tls_cleanup,
 };
 
+static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
+  /*TODO: test for handshake completion */
+  if (0 /*handshake didn't complete */)
+    return 0;
+  if (fio_rw_hook_replace_unsafe(uuid, &FIO_TLS_HOOKS, udata) == 0) {
+    FIO_LOG_DEBUG("Completed TLS handshake for %p", (void *)uuid);
+  } else {
+    FIO_LOG_DEBUG("Something went wrong during TLS handshake for %p",
+                  (void *)uuid);
+  }
+  return 1;
+}
+
+static ssize_t fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf,
+                                      size_t count) {
+  if (fio_tls_handshake(uuid, udata))
+    return fio_tls_read(uuid, udata, buf, count);
+  errno = EWOULDBLOCK;
+  return -1;
+}
+
+static ssize_t fio_tls_write4handshake(intptr_t uuid, void *udata,
+                                       const void *buf, size_t count) {
+  if (fio_tls_handshake(uuid, udata))
+    return fio_tls_write(uuid, udata, buf, count);
+  errno = EWOULDBLOCK;
+  return -1;
+}
+
+static ssize_t fio_tls_flush4handshake(intptr_t uuid, void *udata) {
+  if (fio_tls_handshake(uuid, udata))
+    return fio_tls_flush(uuid, udata);
+  /* TODO: return a positive value only if handshake requires a write */
+  return 1;
+}
+static fio_rw_hook_s FIO_TLS_HANDSHAKE_HOOKS = {
+    .read = fio_tls_read4handshake,
+    .write = fio_tls_write4handshake,
+    .before_close = fio_tls_before_close,
+    .flush = fio_tls_flush4handshake,
+    .cleanup = fio_tls_cleanup,
+};
+
 static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
                                        void *udata, uint8_t is_server) {
   /* TODO: this is only an example implementation - fox for specific library */
@@ -258,7 +308,7 @@ static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
                   (void *)uuid);
   }
   /* common implementation */
-  fio_rw_hook_set(uuid, &FIO_TLS_HOOKS,
+  fio_rw_hook_set(uuid, &FIO_TLS_HANDSHAKE_HOOKS,
                   fio_malloc(sizeof(buffer_s))); /* 32Kb buffer */
   if (alpn_ary_count(&tls->alpn))
     alpn_ary_get(&tls->alpn, 0).callback(uuid, udata);
@@ -273,10 +323,11 @@ SSL/TLS API implementation - this can be pretty much used as is...
  * (if any).
  */
 fio_tls_s *__attribute__((weak))
-fio_tls_new(const char *server_name, const char *key, const char *cert) {
+fio_tls_new(const char *server_name, const char *key, const char *cert,
+            const char *pk_password) {
   REQUIRE_LIBRARY();
   fio_tls_s *tls = calloc(sizeof(*tls), 1);
-  fio_tls_cert_add(tls, server_name, key, cert);
+  fio_tls_cert_add(tls, server_name, key, cert, pk_password);
   return tls;
 }
 #pragma weak fio_tls_new
@@ -290,11 +341,13 @@ fio_tls_new(const char *server_name, const char *key, const char *cert) {
  */
 void __attribute__((weak))
 fio_tls_cert_add(fio_tls_s *tls, const char *server_name, const char *key,
-                 const char *cert) {
+                 const char *cert, const char *pk_password) {
   REQUIRE_LIBRARY();
   cert_s c = {
       .private_key = FIO_STR_INIT,
       .public_key = FIO_STR_INIT,
+      .password = FIO_STR_INIT_STATIC2(pk_password,
+                                       (pk_password ? strlen(pk_password) : 0)),
   };
   if (key && cert) {
     if (fio_str_readfile(&c.private_key, key, 0, 0).data == NULL)
@@ -331,6 +384,11 @@ fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
       .name = FIO_STR_INIT_STATIC(protocol_name),
       .callback = callback,
   };
+  if (fio_str_len(&tmp.name) > 255) {
+    FIO_LOG_ERROR(
+        "fio_tls_proto_add called with a protocol name exceeding 255 bytes.");
+    return;
+  }
   alpn_ary_push(&tls->alpn, tmp);
   fio_alpn_destroy(&tmp);
   fio_tls_build_context(tls);

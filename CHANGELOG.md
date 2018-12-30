@@ -1,5 +1,13 @@
 # Change Log
 
+### v. 0.7.0.beta6
+
+**BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API, adding support for password protected private key files. *Note*: The TLS API is still fragile and should only be considered stable once version 0.7.0 is released with SSL/TLS support.
+
+**Update**: (`fio`) added, the `fio_rw_hook_replace_unsafe` to allow r/w hook switching from within a r/w hook callback.
+
+**Update**: (`fio_cli`) a common user-error is a a missing `fio_cli_end`, resulting in a memory leak notification. Now facil.io protects against this common error by automatically calling  `fio_cli_end` during the exit stage, if `fio_cli_start` was called.
+
 ### v. 0.7.0.beta5
 
 **Fix**: (`fio_cli`) fixed an issue introduced in version 0.7.0.beta4, where `fio_cli_get_i` would dereference NULL if the value wasn't set. Now `fio_cli_get_i` returns zero (0) for missing values, as expected. Note: this related to the new hex and binary base support in command line numerals.
