@@ -200,7 +200,7 @@ static void fio_tls_alpn_fallback(fio_tls_connection_s *c) {
     return;
   /* set protocol to default protocol */
   if (alpn_ary_get(&tls->alpn, 0).callback) {
-    FIO_LOG_DEBUG("TLS ALPN handshake failed, falling back on %s for %p",
+    FIO_LOG_DEBUG("TLS ALPN handshake missing, falling back on %s for %p",
                   fio_str_info(&alpn_ary_to_a(&tls->alpn)->name).data,
                   (void *)c->uuid);
     alpn_ary_get(&tls->alpn, 0).callback(c->uuid, c->alpn_arg);
@@ -492,45 +492,57 @@ static fio_rw_hook_s FIO_TLS_HOOKS = {
 
 static size_t fio_tls_handshake(intptr_t uuid, void *udata, int *r) {
   fio_tls_connection_s *c = udata;
+  int ri;
   *r = 0;
   if (c->is_server) {
-    *r = SSL_accept(c->ssl);
+    ri = SSL_accept(c->ssl);
   } else {
-    *r = SSL_connect(c->ssl);
+    ri = SSL_connect(c->ssl);
   }
-  if (*r != 1) {
-    *r = SSL_get_error(c->ssl, *r);
-    switch (*r) {
+  if (ri != 1) {
+    *r = ri = SSL_get_error(c->ssl, ri);
+    switch (ri) {
     case SSL_ERROR_SSL:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: SSL_ERROR_SSL");
+      FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_SSL",
+                    (void *)uuid);
       fio_defer(fio_tls_delayed_close, (void *)uuid, NULL);
       break;
     case SSL_ERROR_ZERO_RETURN:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: SSL_ERROR_ZERO_RETURN");
+      FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_ZERO_RETURN",
+                    (void *)uuid);
+      fio_defer(fio_tls_delayed_close, (void *)uuid, NULL);
       break;
     case SSL_ERROR_NONE:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: SSL_ERROR_NONE");
+      FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_NONE",
+                    (void *)uuid);
       break;
     case SSL_ERROR_WANT_CONNECT:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: SSL_ERROR_WANT_CONNECT");
+      FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_WANT_CONNECT",
+                    (void *)uuid);
       break;
     case SSL_ERROR_WANT_ACCEPT:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: SSL_ERROR_WANT_ACCEPT");
+      FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_WANT_ACCEPT",
+                    (void *)uuid);
       break;
     case SSL_ERROR_WANT_X509_LOOKUP:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: SSL_ERROR_WANT_X509_LOOKUP");
+      FIO_LOG_DEBUG(
+          "SSL_accept/SSL_connect %p error: SSL_ERROR_WANT_X509_LOOKUP",
+          (void *)uuid);
       break;
     case SSL_ERROR_WANT_ASYNC:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: SSL_ERROR_WANT_ASYNC");
+      FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_WANT_ASYNC",
+                    (void *)uuid);
       break;
     case SSL_ERROR_WANT_WRITE:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: SSL_ERROR_WANT_WRITE");
+      // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_WANT_WRITE",
+      //               (void *)uuid);
       break;
     case SSL_ERROR_WANT_READ:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: SSL_ERROR_WANT_READ");
+      // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_WANT_READ",
+      //               (void *)uuid);
       break;
     default:
-      FIO_LOG_DEBUG("SSL_accept/SSL_connect error: unknown.");
+      FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: unknown.", (void *)uuid);
       fio_defer(fio_tls_delayed_close, (void *)uuid, NULL);
       break;
     }
@@ -538,7 +550,6 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata, int *r) {
   }
   if (!c->alpn_ok)
     fio_tls_alpn_fallback(c);
-
   if (fio_rw_hook_replace_unsafe(uuid, &FIO_TLS_HOOKS, udata) == 0) {
     FIO_LOG_DEBUG("Completed TLS handshake for %p", (void *)uuid);
   } else {
@@ -551,9 +562,9 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata, int *r) {
 
 static ssize_t fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf,
                                       size_t count) {
-  int r = 0;
-  FIO_LOG_DEBUG("TLS handshake from read %p", (void *)uuid);
-  if (fio_tls_handshake(uuid, udata, &r))
+  volatile int r = 0;
+  // FIO_LOG_DEBUG("TLS handshake from read %p", (void *)uuid);
+  if (fio_tls_handshake(uuid, udata, (int *)&r))
     return fio_tls_read(uuid, udata, buf, count);
   if (r == SSL_ERROR_WANT_WRITE) {
     fio_force_event(uuid, FIO_EVENT_ON_READY);
@@ -565,7 +576,7 @@ static ssize_t fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf,
 static ssize_t fio_tls_write4handshake(intptr_t uuid, void *udata,
                                        const void *buf, size_t count) {
   int r = 0;
-  FIO_LOG_DEBUG("TLS handshake from write %p", (void *)uuid);
+  // FIO_LOG_DEBUG("TLS handshake from write %p", (void *)uuid);
   if (fio_tls_handshake(uuid, udata, &r))
     return fio_tls_write(uuid, udata, buf, count);
   errno = EWOULDBLOCK;
@@ -574,7 +585,7 @@ static ssize_t fio_tls_write4handshake(intptr_t uuid, void *udata,
 
 static ssize_t fio_tls_flush4handshake(intptr_t uuid, void *udata) {
   int r = 0;
-  FIO_LOG_DEBUG("TLS handshake from flush %p", (void *)uuid);
+  // FIO_LOG_DEBUG("TLS handshake from flush %p", (void *)uuid);
   if (fio_tls_handshake(uuid, udata, &r))
     return fio_tls_flush(uuid, udata);
   if (r == SSL_ERROR_WANT_READ) {

@@ -772,7 +772,7 @@ fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
   if (unread_data && unread_length > HTTP_MAX_HEADER_LENGTH)
     return NULL;
   http1pr_s *p = fio_malloc(sizeof(*p) + HTTP_MAX_HEADER_LENGTH);
-  FIO_LOG_DEBUG("Allocated HTTP/1.1 protocol at. %p", (void *)p);
+  // FIO_LOG_DEBUG("Allocated HTTP/1.1 protocol at. %p", (void *)p);
   FIO_ASSERT_ALLOC(p);
   *p = (http1pr_s){
       .p.protocol =
@@ -803,7 +803,7 @@ void http1_destroy(fio_protocol_s *pr) {
   http1_pr2handle(p).status = 0;
   http_s_destroy(&http1_pr2handle(p), 0);
   fio_free(p);
-  FIO_LOG_DEBUG("Deallocated HTTP/1.1 protocol at. %p", (void *)p);
+  // FIO_LOG_DEBUG("Deallocated HTTP/1.1 protocol at. %p", (void *)p);
 }
 
 /* *****************************************************************************
