@@ -2784,7 +2784,7 @@ void fio_close(intptr_t uuid) {
     errno = EBADF;
     return;
   }
-  if (uuid_data(uuid).packet) {
+  if (uuid_data(uuid).packet || uuid_data(uuid).sock_lock) {
     uuid_data(uuid).close = 1;
     fio_poll_add_write(fio_uuid2fd(uuid));
     return;

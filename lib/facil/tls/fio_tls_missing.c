@@ -20,8 +20,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #if 1 /* TODO: place library compiler flags here */
 
 #define REQUIRE_LIBRARY()
+#define FIO_TLS_WEAK
 
 /* TODO: delete me! */
+#undef FIO_TLS_WEAK
+#define FIO_TLS_WEAK __attribute__((weak))
 #if !FIO_IGNORE_TLS_IF_MISSING
 #undef REQUIRE_LIBRARY
 #define REQUIRE_LIBRARY()                                                      \
@@ -267,6 +270,7 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
 
 static ssize_t fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf,
                                       size_t count) {
+  FIO_LOG_DEBUG("TLS handshake from read %p", (void *)uuid);
   if (fio_tls_handshake(uuid, udata))
     return fio_tls_read(uuid, udata, buf, count);
   errno = EWOULDBLOCK;
@@ -275,6 +279,7 @@ static ssize_t fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf,
 
 static ssize_t fio_tls_write4handshake(intptr_t uuid, void *udata,
                                        const void *buf, size_t count) {
+  FIO_LOG_DEBUG("TLS handshake from write %p", (void *)uuid);
   if (fio_tls_handshake(uuid, udata))
     return fio_tls_write(uuid, udata, buf, count);
   errno = EWOULDBLOCK;
@@ -282,6 +287,7 @@ static ssize_t fio_tls_write4handshake(intptr_t uuid, void *udata,
 }
 
 static ssize_t fio_tls_flush4handshake(intptr_t uuid, void *udata) {
+  FIO_LOG_DEBUG("TLS handshake from flush %p", (void *)uuid);
   if (fio_tls_handshake(uuid, udata))
     return fio_tls_flush(uuid, udata);
   /* TODO: return a positive value only if handshake requires a write */
@@ -307,9 +313,11 @@ static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
     FIO_LOG_DEBUG("Attaching TLS read/write hook for %p (client mode).",
                   (void *)uuid);
   }
-  /* common implementation */
+  /* common implementation (TODO) */
+  buffer_s *connection_data = fio_malloc(sizeof(*connection_data));
+  FIO_ASSERT_ALLOC(connection_data);
   fio_rw_hook_set(uuid, &FIO_TLS_HANDSHAKE_HOOKS,
-                  fio_malloc(sizeof(buffer_s))); /* 32Kb buffer */
+                  connection_data); /* 32Kb buffer */
   if (alpn_ary_count(&tls->alpn))
     alpn_ary_get(&tls->alpn, 0).callback(uuid, udata);
 }
@@ -322,15 +330,13 @@ SSL/TLS API implementation - this can be pretty much used as is...
  * Creates a new SSL/TLS context / settings object with a default certificate
  * (if any).
  */
-fio_tls_s *__attribute__((weak))
-fio_tls_new(const char *server_name, const char *key, const char *cert,
-            const char *pk_password) {
+fio_tls_s *FIO_TLS_WEAK fio_tls_new(const char *server_name, const char *key,
+                                    const char *cert, const char *pk_password) {
   REQUIRE_LIBRARY();
   fio_tls_s *tls = calloc(sizeof(*tls), 1);
   fio_tls_cert_add(tls, server_name, key, cert, pk_password);
   return tls;
 }
-#pragma weak fio_tls_new
 
 /**
  * Adds a certificate  a new SSL/TLS context / settings object.
@@ -339,9 +345,9 @@ fio_tls_new(const char *server_name, const char *key, const char *cert,
  *                            "private_key.key",
  *                            "public_key.crt" ));
  */
-void __attribute__((weak))
-fio_tls_cert_add(fio_tls_s *tls, const char *server_name, const char *key,
-                 const char *cert, const char *pk_password) {
+void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls, const char *server_name,
+                                   const char *key, const char *cert,
+                                   const char *pk_password) {
   REQUIRE_LIBRARY();
   cert_s c = {
       .private_key = FIO_STR_INIT,
@@ -369,16 +375,15 @@ file_missing:
                 key, cert);
   exit(-1);
 }
-#pragma weak fio_tls_cert_add
 
 /**
  * Adds an ALPN protocol callback to the SSL/TLS context.
  *
  * The first protocol added will act as the default protocol to be selected.
  */
-void __attribute__((weak))
-fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
-                  void (*callback)(intptr_t uuid, void *udata)) {
+void FIO_TLS_WEAK fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
+                                    void (*callback)(intptr_t uuid,
+                                                     void *udata)) {
   REQUIRE_LIBRARY();
   alpn_s tmp = {
       .name = FIO_STR_INIT_STATIC(protocol_name),
@@ -393,7 +398,6 @@ fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
   fio_alpn_destroy(&tmp);
   fio_tls_build_context(tls);
 }
-#pragma weak fio_tls_proto_add
 
 /**
  * Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified
@@ -405,12 +409,10 @@ fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
  * The `udata` is an opaque user data pointer that is passed along to the
  * protocol selected (if any protocols were added using `fio_tls_proto_add`).
  */
-void __attribute__((weak))
-fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
+void FIO_TLS_WEAK fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
   REQUIRE_LIBRARY();
   fio_tls_attach2uuid(uuid, tls, udata, 1);
 }
-#pragma weak fio_tls_accept
 
 /**
  * Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified
@@ -422,18 +424,16 @@ fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
  * The `udata` is an opaque user data pointer that is passed along to the
  * protocol selected (if any protocols were added using `fio_tls_proto_add`).
  */
-void __attribute__((weak))
-fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata) {
+void FIO_TLS_WEAK fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata) {
   REQUIRE_LIBRARY();
   fio_tls_attach2uuid(uuid, tls, udata, 0);
 }
-#pragma weak fio_tls_connect
 
 /**
  * Destroys the SSL/TLS context / settings object and frees any related
  * resources / memory.
  */
-void __attribute__((weak)) fio_tls_destroy(fio_tls_s *tls) {
+void FIO_TLS_WEAK fio_tls_destroy(fio_tls_s *tls) {
   if (!tls)
     return;
   REQUIRE_LIBRARY();
@@ -442,6 +442,5 @@ void __attribute__((weak)) fio_tls_destroy(fio_tls_s *tls) {
   cert_ary_free(&tls->sni);
   free(tls);
 }
-#pragma weak fio_tls_destroy
 
 #endif /* Library compiler flags */

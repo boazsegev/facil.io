@@ -4,6 +4,8 @@
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API, adding support for password protected private key files. *Note*: The TLS API is still fragile and should only be considered stable once version 0.7.0 is released with SSL/TLS support.
 
+**Update**: (`fio_tls`) added experimental support for OpenSSL. This was only partially tested and should be considered experimental.
+
 **Update**: (`fio`) added, the `fio_rw_hook_replace_unsafe` to allow r/w hook switching from within a r/w hook callback.
 
 **Update**: (`fio_cli`) a common user-error is a a missing `fio_cli_end`, resulting in a memory leak notification. Now facil.io protects against this common error by automatically calling  `fio_cli_end` during the exit stage, if `fio_cli_start` was called.
