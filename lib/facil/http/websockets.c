@@ -4,8 +4,12 @@ license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.
 */
-#define FIO_INCLUDE_LINKED_LIST
 #define FIO_INCLUDE_STR
+#include <fio.h>
+
+/* subscription lists have a long lifetime */
+#define FIO_FORCE_MALLOC_TMP 1
+#define FIO_INCLUDE_LINKED_LIST
 #include <fio.h>
 
 #include <fiobj.h>

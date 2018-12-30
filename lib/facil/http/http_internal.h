@@ -7,6 +7,9 @@ Feel free to copy, use and enjoy according to the license provided.
 #ifndef H_HTTP_INTERNAL_H
 #define H_HTTP_INTERNAL_H
 
+#include <fio.h>
+/* subscription lists have a long lifetime */
+#define FIO_FORCE_MALLOC_TMP 1
 #define FIO_INCLUDE_LINKED_LIST
 #include <fio.h>
 
