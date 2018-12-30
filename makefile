@@ -164,7 +164,7 @@ else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else ifeq ($(shell printf "\#include <openssl/ssl.h>\\nint main(void) { SSL_library_init(); }" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
+else ifeq ($(shell printf "\#include <openssl/ssl.h>\\n\#if OPENSSL_VERSION_AT_LEAST(1, 0)\\n\#error \"OpenSSL version too small\"\\n\#endif\\nint main(void) { SSL_library_init(); }" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
