@@ -5,9 +5,13 @@ License: MIT
 Feel free to copy, use and enjoy according to the license provided.
 ***************************************************************************** */
 
-#define FIO_INCLUDE_STR
-#define FIO_INCLUDE_LINKED_LIST
+#include <fio.h>
 
+#define FIO_INCLUDE_STR
+#include <fio.h>
+
+#define FIO_FORCE_MALLOC_TMP 1
+#define FIO_INCLUDE_LINKED_LIST
 #include <fio.h>
 
 #include <ctype.h>
@@ -2537,8 +2541,9 @@ static int fio_sock_write_buffer(int fd, fio_packet_s *packet) {
   if (written > 0) {
     packet->length -= written;
     packet->offset += written;
-    if (!packet->length)
+    if (!packet->length) {
       fio_sock_packet_rotate_unsafe(fd);
+    }
   }
   return written;
 }
@@ -4583,11 +4588,7 @@ static int fio_channel_cmp(channel_s *ch1, channel_s *ch2) {
          !memcmp(ch1->name, ch2->name, ch1->name_len);
 }
 /* pub/sub channels and core data sets have a long life, so avoid fio_malloc */
-#if !FIO_FORCE_MALLOC
-#define FIO_FORCE_MALLOC 1
-#define FIO_FORCE_MALLOC_IS_TMP 1
-#endif
-
+#define FIO_FORCE_MALLOC_TMP 1
 #define FIO_SET_NAME fio_ch_set
 #define FIO_SET_OBJ_TYPE channel_s *
 #define FIO_SET_OBJ_COMPARE(o1, o2) fio_channel_cmp((o1), (o2))
@@ -4595,18 +4596,16 @@ static int fio_channel_cmp(channel_s *ch1, channel_s *ch2) {
 #define FIO_SET_OBJ_COPY(dest, src) ((dest) = fio_channel_copy((src)))
 #include <fio.h>
 
+#define FIO_FORCE_MALLOC_TMP 1
 #define FIO_ARY_NAME fio_meta_ary
 #define FIO_ARY_TYPE fio_msg_metadata_fn
 #include <fio.h>
 
+#define FIO_FORCE_MALLOC_TMP 1
 #define FIO_SET_NAME fio_engine_set
 #define FIO_SET_OBJ_TYPE fio_pubsub_engine_s *
 #define FIO_SET_OBJ_COMPARE(k1, k2) ((k1) == (k2))
 #include <fio.h>
-
-#if FIO_FORCE_MALLOC_IS_TMP
-#undef FIO_FORCE_MALLOC
-#endif
 
 struct fio_collection_s {
   fio_ch_set_s channels;

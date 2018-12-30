@@ -36,7 +36,7 @@ Feel free to copy, use and enjoy according to the license provided.
 The SSL/TLS helper data types
 ***************************************************************************** */
 #define FIO_INCLUDE_STR 1
-#define FIO_FORCE_MALLOC 1
+#define FIO_FORCE_MALLOC_TMP 1
 #include <fio.h>
 
 typedef struct {
@@ -58,6 +58,7 @@ static inline void fio_alpn_destroy(alpn_s *obj) { fio_str_free(&obj->name); }
 #define FIO_ARY_COMPARE(k1, k2) fio_alpn_cmp(&(k1), &(k2))
 #define FIO_ARY_COPY(dest, obj) fio_alpn_copy(&(dest), &(obj))
 #define FIO_ARY_DESTROY(key) fio_alpn_destroy(&(key))
+#define FIO_FORCE_MALLOC_TMP 1
 #include <fio.h>
 
 typedef struct {
@@ -90,6 +91,7 @@ static inline void fio_tls_cert_destroy(cert_s *obj) {
 #define FIO_ARY_COMPARE(k1, k2) (fio_tls_cert_cmp(&(k1), &(k2)))
 #define FIO_ARY_COPY(dest, obj) fio_tls_cert_copy(&(dest), &(obj))
 #define FIO_ARY_DESTROY(key) fio_tls_cert_destroy(&(key))
+#define FIO_FORCE_MALLOC_TMP 1
 #include <fio.h>
 
 /* *****************************************************************************

@@ -372,22 +372,6 @@ void fio_malloc_after_fork(void);
 
 #undef FIO_ALIGN
 
-#if FIO_FORCE_MALLOC
-#define FIO_MALLOC(size) calloc((size), 1)
-#define FIO_CALLOC(size, units) calloc((size), (units))
-#define FIO_REALLOC(ptr, new_length, existing_data_length)                     \
-  realloc((ptr), (new_length))
-#define FIO_FREE free
-
-#else
-#define FIO_MALLOC(size) fio_malloc((size))
-#define FIO_CALLOC(size, units) fio_calloc((size), (units))
-#define FIO_REALLOC(ptr, new_length, existing_data_length)                     \
-  fio_realloc2((ptr), (new_length), (existing_data_length))
-#define FIO_FREE fio_free
-
-#endif
-
 /* *****************************************************************************
 
 
@@ -1128,12 +1112,12 @@ inline FIO_FUNC ssize_t fio_write(const intptr_t uuid, const void *buffer,
                                   const size_t length) {
   if (!length || !buffer)
     return 0;
-  void *cpy = FIO_MALLOC(length);
+  void *cpy = fio_malloc(length);
   if (!cpy)
     return -1;
   memcpy(cpy, buffer, length);
   return fio_write2(uuid, .data.buffer = cpy, .length = length,
-                    .after.dealloc = FIO_FREE);
+                    .after.dealloc = fio_free);
 }
 
 /**
@@ -2785,6 +2769,42 @@ FIO_FUNC inline int fio_trylock_dbg(fio_lock_i *lock, const char *file,
 
 
 
+                    Memory allocation macros for helper types
+
+
+
+
+
+
+***************************************************************************** */
+
+#undef FIO_MALLOC
+#undef FIO_CALLOC
+#undef FIO_REALLOC
+#undef FIO_FREE
+
+#if FIO_FORCE_MALLOC || FIO_FORCE_MALLOC_TMP
+#define FIO_MALLOC(size) calloc((size), 1)
+#define FIO_CALLOC(size, units) calloc((size), (units))
+#define FIO_REALLOC(ptr, new_length, existing_data_length)                     \
+  realloc((ptr), (new_length))
+#define FIO_FREE free
+
+#else
+#define FIO_MALLOC(size) fio_malloc((size))
+#define FIO_CALLOC(size, units) fio_calloc((size), (units))
+#define FIO_REALLOC(ptr, new_length, existing_data_length)                     \
+  fio_realloc2((ptr), (new_length), (existing_data_length))
+#define FIO_FREE fio_free
+#endif /* FIO_FORCE_MALLOC || FIO_FORCE_MALLOC_TMP */
+
+/* *****************************************************************************
+
+
+
+
+
+
                            Linked List Helpers
 
         exposes internally used inline helpers for linked lists
@@ -2977,7 +2997,7 @@ FIO_FUNC inline void *fio_ls_remove(fio_ls_s *node) {
   const void *ret = node->obj;
   node->next->prev = node->prev;
   node->prev->next = node->next;
-  free(node);
+  FIO_FREE(node);
   return (void *)ret;
 }
 
@@ -2986,11 +3006,8 @@ FIO_FUNC inline fio_ls_s *fio_ls_push(fio_ls_s *pos, const void *obj) {
   if (!pos)
     return NULL;
   /* prepare item */
-  fio_ls_s *item = (fio_ls_s *)malloc(sizeof(*item));
-  if (!item) {
-    perror("ERROR: simple list couldn't allocate memory");
-    exit(errno);
-  }
+  fio_ls_s *item = (fio_ls_s *)FIO_MALLOC(sizeof(*item));
+  FIO_ASSERT_ALLOC(item);
   *item = (fio_ls_s){.prev = pos->prev, .next = pos, .obj = obj};
   /* inject item */
   pos->prev->next = item;
@@ -5930,5 +5947,6 @@ restart:
 #undef FIO_NAME_FROM_MACRO_STEP3
 #undef FIO_NAME_FREE
 #undef FIO_SET_NAME
+#undef FIO_FORCE_MALLOC_TMP
 
 #endif
