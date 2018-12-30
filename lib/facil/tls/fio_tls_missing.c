@@ -297,7 +297,7 @@ static fio_rw_hook_s FIO_TLS_HANDSHAKE_HOOKS = {
 
 static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
                                        void *udata, uint8_t is_server) {
-  /* TODO: this is only an example implementation - fox for specific library */
+  /* TODO: this is only an example implementation - fix for specific library */
   if (is_server) {
     /* Server mode (accept) */
     FIO_LOG_DEBUG("Attaching TLS read/write hook for %p (server mode).",
