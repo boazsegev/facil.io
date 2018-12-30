@@ -4,6 +4,8 @@
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API, adding support for password protected private key files. *Note*: The TLS API is still fragile and should only be considered stable once version 0.7.0 is released with SSL/TLS support.
 
+**Fix**: (`fio`) fixed an issue exposed by implementing the TLS layer, where the highet `fd` for a connection that wasn't assigned a `protocol_s` object immediately after the connection was opened, might avoid timeout review or avoid cleanup during shutdown (which will be marked as a memory leak).
+
 **Update**: (`fio_tls`) added experimental support for OpenSSL. This was only partially tested and should be considered experimental.
 
 **Update**: (`fio`) added, the `fio_rw_hook_replace_unsafe` to allow r/w hook switching from within a r/w hook callback.

@@ -2919,7 +2919,7 @@ size_t fio_flush_all(void) {
   if (!fio_data)
     return 0;
   size_t count = 0;
-  for (uintptr_t i = 0; i < fio_data->max_protocol_fd; ++i) {
+  for (uintptr_t i = 0; i <= fio_data->max_protocol_fd; ++i) {
     if ((fd_data(i).open || fd_data(i).packet) && fio_flush(fd2uuid(i)) > 0)
       ++count;
   }
@@ -3104,6 +3104,7 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
   } else if (protocol) {
     fio_poll_add(fio_uuid2fd(uuid));
   }
+  fio_max_fd_min(fio_uuid2fd(uuid));
   return 0;
 
 invalid_uuid:
