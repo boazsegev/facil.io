@@ -110,7 +110,7 @@ Version and helper macros
 #define FIO_VERSION_MAJOR 0
 #define FIO_VERSION_MINOR 7
 #define FIO_VERSION_PATCH 0
-#define FIO_VERSION_BETA 6
+#define FIO_VERSION_BETA 7
 
 /* Automatically convert version data to a string constant - ignore these two */
 #define FIO_MACRO2STR_STEP2(macro) #macro
