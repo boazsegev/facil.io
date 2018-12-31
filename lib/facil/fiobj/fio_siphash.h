@@ -25,7 +25,7 @@ uint64_t fio_siphash13(const void *data, size_t len);
  */
 #define fio_siphash(data, length) fio_siphash13((data), (length))
 
-#if defined(DEBUG) && DEBUG
+#if DEBUG
 void fiobj_siphash_test(void);
 #else
 #define fiobj_siphash_test()

@@ -133,63 +133,10 @@ uint64_t __attribute__((weak)) fio_siphash13(const void *data, size_t len) {
   return fio_siphash_xy(data, len, 1, 3);
 }
 
-#if defined(DEBUG) && DEBUG == 1
+#if DEBUG
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
-
-#if 0
-static void fio_siphash_speed_test(void) {
-  /* test based on code from BearSSL with credit to Thomas Pornin */
-  uint8_t buffer[8192];
-  memset(buffer, 'T', sizeof(buffer));
-  /* warmup */
-  uint64_t hash = 0;
-  for (size_t i = 0; i < 4; i++) {
-    hash += fio_siphash(buffer, sizeof(buffer));
-    memcpy(buffer, &hash, sizeof(hash));
-  }
-  /* loop until test runs for more than 2 seconds */
-  for (uint64_t cycles = 8192;;) {
-    clock_t start, end;
-    start = clock();
-    for (size_t i = cycles; i > 0; i--) {
-      hash += fio_siphash(buffer, sizeof(buffer));
-      __asm__ volatile("" ::: "memory");
-    }
-    end = clock();
-    memcpy(buffer, &hash, sizeof(hash));
-    if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
-        cycles >= ((uint64_t)1 << 62)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SipHash24",
-              (double)(sizeof(buffer) * cycles) /
-                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
-      break;
-    }
-    cycles <<= 2;
-  }
-  /* loop until test runs for more than 2 seconds */
-  for (uint64_t cycles = 8192;;) {
-    clock_t start, end;
-    start = clock();
-    for (size_t i = cycles; i > 0; i--) {
-      hash += fio_siphash13(buffer, sizeof(buffer));
-      __asm__ volatile("" ::: "memory");
-    }
-    end = clock();
-    memcpy(buffer, &hash, sizeof(hash));
-    if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
-        cycles >= ((uint64_t)1 << 62)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio SipHash13",
-              (double)(sizeof(buffer) * cycles) /
-                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
-      break;
-    }
-    cycles <<= 2;
-  }
-}
-
-#endif
 
 void fiobj_siphash_test(void) {
   fprintf(stderr, "===================================\n");
