@@ -2565,10 +2565,11 @@ static int fio_sock_write_from_fd(int fd, fio_packet_s *packet) {
     packet->offset += sent;
     packet->length -= sent;
   retry:
-    asked = (packet->length < BUFFER_FILE_READ_SIZE)
-                ? pread(packet->data.fd, buff, packet->length, packet->offset)
-                : pread(packet->data.fd, buff, BUFFER_FILE_READ_SIZE,
-                        packet->offset);
+    asked = pread(packet->data.fd, buff,
+                  ((packet->length < BUFFER_FILE_READ_SIZE)
+                       ? packet->length
+                       : BUFFER_FILE_READ_SIZE),
+                  packet->offset);
     if (asked <= 0)
       goto read_error;
     sent = fd_data(fd).rw_hooks->write(fd2uuid(fd), fd_data(fd).rw_udata, buff,
@@ -6873,9 +6874,8 @@ void *fio_realloc2(void *ptr, size_t new_size, size_t copy_length) {
     return NULL;
   new_size = ((new_size >> 4) + (!!(new_size & 15)));
   copy_length = ((copy_length >> 4) + (!!(copy_length & 15)));
-  // memcpy(new_mem, ptr, (copy_length > new_size ? new_size : copy_length) <<
-  // 4);
-  fio_memcpy(new_mem, ptr, (copy_length > new_size ? new_size : copy_length));
+  fio_memcpy(new_mem, ptr, copy_length > new_size ? new_size : copy_length);
+
   block_slice_free(ptr);
   return new_mem;
 zero_size:

@@ -147,12 +147,13 @@ static void fio_tls_make_root_key(void) {
   fio_tls_pkey = EVP_PKEY_new();
   FIO_ASSERT(fio_tls_pkey, "OpenSSL failed to create private key.");
 
+  /* TODO: replace RSA with something else? is there something else? */
   RSA *rsa = RSA_new();
   BIGNUM *e = BN_new();
   BN_clear(e);
   BN_add_word(e, 65537);
   FIO_ASSERT_ALLOC(e);
-  FIO_ASSERT(RSA_generate_key_ex(rsa, 2048, e, NULL),
+  FIO_ASSERT(RSA_generate_key_ex(rsa, 8192, e, NULL),
              "OpenSSL failed to create RSA key.");
   BN_free(e);
   EVP_PKEY_assign_RSA(fio_tls_pkey, rsa);

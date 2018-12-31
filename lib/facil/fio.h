@@ -36,6 +36,7 @@ Feel free to copy, use and enjoy according to the license provided.
  * Cluster / Pub/Sub Middleware and Extensions ("Engines")
  *
  * Atomic Operations and Spin Locking Helper Functions
+ * Simple Constant Time Operations
  * Byte Swapping and Network Order
  *
  * Converting Numbers to Strings (and back)
@@ -1984,6 +1985,56 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
 
 
 
+                         Simple Constant Time Operations
+                         ( boolean true / false and if )
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/** Returns 1 if the expression is true (input isn't zero). */
+FIO_FUNC inline uintptr_t fio_ct_true(uintptr_t cond) {
+  // promise that the highest bit is set if any bits are set, than shift.
+  return ((cond | (0 - cond)) >> ((sizeof(cond) << 3) - 1));
+}
+
+/** Returns 1 if the expression is false (input is zero). */
+FIO_FUNC inline uintptr_t fio_ct_false(uintptr_t cond) {
+  // fio_ct_true returns only one bit, XOR will inverse that bit.
+  return fio_ct_true(cond) ^ 1;
+}
+
+/** Returns `a` if `cond` is boolean and true, returns b otherwise. */
+FIO_FUNC inline uintptr_t fio_ct_if(uint8_t cond, uintptr_t a, uintptr_t b) {
+  // b^(a^b) cancels b out. 0-1 => sets all bits.
+  return (b ^ ((0 - (cond & 1)) & (a ^ b)));
+}
+
+/** Returns `a` if `cond` isn't zero (uses fio_ct_true), returns b otherwise. */
+FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
+  // b^(a^b) cancels b out. 0-1 => sets all bits.
+  return fio_ct_if(fio_ct_true(cond), a, b);
+}
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
                          Byte Swapping and Network Order
                        (Big Endian v.s Little Endian etc')
 
@@ -3668,10 +3719,6 @@ String Implementation - Memory management
  * directly to `mmap` (due to their size, usually over 12KB).
  */
 #define ROUND_UP_CAPA2WORDS(num) (((num) + 1) | (sizeof(long double) - 1))
-// Smaller might be:
-//   ((((num) + 1) & (sizeof(long double) - 1))
-//        ? (((num) + 1) | (sizeof(long double) - 1))
-//        : (num))
 
 /**
  * Requires the String to have at least `needed` capacity. Returns the current
