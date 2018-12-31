@@ -390,6 +390,12 @@ Connection Callbacks (fio_protocol_s) and Engine
 /** defined later - connects to Redis */
 static void redis_connect(void *r, void *i);
 
+#define defer_redis_connect(r, i)                                              \
+  do {                                                                         \
+    fio_atomic_add(&(r)->ref, 1);                                              \
+    fio_defer(redis_connect, (r), (i));                                        \
+  } while (0);
+
 /** Called when a data is available, but will not run concurrently */
 static void redis_on_data(intptr_t uuid, fio_protocol_s *pr) {
   struct redis_engine_internal_s *internal =
@@ -430,7 +436,7 @@ static void redis_on_close(intptr_t uuid, fio_protocol_s *pr) {
                         (int)getpid());
       }
       fio_atomic_sub(&r->ref, 1);
-      fio_defer(redis_connect, r, internal);
+      defer_redis_connect(r, internal);
     } else {
       redis_free(r);
     }
@@ -505,7 +511,7 @@ static void redis_on_connect(intptr_t uuid, void *i_) {
     }
     fio_pubsub_reattach(&r->en);
     if (r->pub_data.uuid == -1) {
-      fio_defer(redis_connect, r, &r->pub_data);
+      defer_redis_connect(r, &r->pub_data);
     }
     FIO_LOG_INFO("(redis %d) subscription connection established.",
                  (int)getpid());
@@ -551,9 +557,11 @@ static void redis_on_connect_failed(intptr_t uuid, void *i_) {
 static void redis_connect(void *r_, void *i_) {
   redis_engine_s *r = r_;
   struct redis_engine_internal_s *i = i_;
-  if (r->flag == 0 || i->uuid != -1 || !fio_is_running())
+  if (r->flag == 0 || i->uuid != -1 || !fio_is_running()) {
+    redis_free(r);
     return;
-  fio_atomic_add(&r->ref, 1);
+  }
+  // fio_atomic_add(&r->ref, 1);
   i->uuid = fio_connect(.address = r->address, .port = r->port,
                         .on_connect = redis_on_connect, .udata = i,
                         .on_fail = redis_on_connect_failed);
@@ -785,7 +793,7 @@ static void redis_on_facil_start(void *r_) {
   redis_engine_s *r = r_;
   r->flag = 1;
   if (!fio_is_valid(r->sub_data.uuid)) {
-    fio_defer(redis_connect, r, &r->sub_data);
+    defer_redis_connect(r, &r->sub_data);
   }
 }
 static void redis_on_facil_shutdown(void *r_) {
