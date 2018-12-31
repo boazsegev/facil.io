@@ -2113,9 +2113,11 @@ static void deferred_on_ready(void *arg, void *arg2) {
 }
 
 static void deferred_on_data(void *uuid, void *arg2) {
-  if (!uuid_data(uuid).protocol || fio_is_closed((intptr_t)uuid)) {
+  if (fio_is_closed((intptr_t)uuid)) {
     return;
   }
+  if (!uuid_data(uuid).protocol)
+    goto no_protocol;
   fio_protocol_s *pr = protocol_try_lock(fio_uuid2fd(uuid), FIO_PR_LOCK_TASK);
   if (!pr) {
     if (errno == EBADF) {
@@ -2130,6 +2132,7 @@ static void deferred_on_data(void *uuid, void *arg2) {
     fio_poll_add_read(fio_uuid2fd((intptr_t)uuid));
   }
   return;
+
 postpone:
   if (arg2) {
     /* the event is being forced, so force rescheduling */
@@ -2138,6 +2141,11 @@ postpone:
     /* the protocol was locked, so there might not be any need for the event */
     fio_poll_add_read(fio_uuid2fd((intptr_t)uuid));
   }
+  return;
+
+no_protocol:
+  /* a missing protocol might still want to invoke the RW hook flush */
+  deferred_on_ready(uuid, arg2);
   return;
 }
 
@@ -3100,8 +3108,15 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
   touchfd(fio_uuid2fd(uuid));
   fio_unlock(&uuid_data(uuid).protocol_lock);
   if (old_pr) {
+    /* protocol replacement */
     fio_defer_push_task(deferred_on_close, (void *)uuid, old_pr);
+    if (!protocol) {
+      /* hijacking */
+      fio_poll_remove_fd(fio_uuid2fd(uuid));
+      fio_poll_add_write(fio_uuid2fd(uuid));
+    }
   } else if (protocol) {
+    /* adding a new uuid to the reactor */
     fio_poll_add(fio_uuid2fd(uuid));
   }
   fio_max_fd_min(fio_uuid2fd(uuid));
