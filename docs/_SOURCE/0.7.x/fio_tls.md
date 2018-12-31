@@ -21,8 +21,10 @@ To use the facil.io TLS API, include the file `fio_tls.h`
 #### `fio_tls_new`
 
 ```c
-fio_tls_s *fio_tls_new(const char *server_name, const char *private_key_file,
-                       const char *public_cert_file);
+fio_tls_s *fio_tls_new(const char *server_name,
+                       const char *private_key_file,
+                       const char *public_certificate_file,
+                       const char *private_key_password);
 ```
 
 Creates a new SSL/TLS context / settings object with a default certificate (if any).
@@ -30,12 +32,21 @@ Creates a new SSL/TLS context / settings object with a default certificate (if a
 ```c
 fio_tls_s * tls = fio_tls_new("www.example.com",
                               "./ssl/private_key.pem",
-                              "./ssl/public_key.pem");
+                              "./ssl/public_key.pem",
+                              NULL);
 ```
-`NULL` values can be used to create an anonymous (unverified) context / settings object.
+
+If a server name is provided, than `NULL` values can be used to create an anonymous (unverified) context / settings object.
 
 ```c
-fio_tls_s * tls = fio_tls_new("www.example.com", NULL, NULL);
+fio_tls_s * tls = fio_tls_new("www.example.com", NULL, NULL, NULL);
+```
+
+If all values are `NULL`, a TLS object will be created without a certificate. This could be used for clients together with `fio_tls_trust`
+
+```c
+fio_tls_s * tls = fio_tls_new(NULL, NULL, NULL, NULL);
+fio_tls_trust(tls, "google-ca.pem" );
 ```
 
 `fio_tls_s *` is an opaque type used as a handle for the SSL/TLS functions. It shouldn't be directly accessed.
@@ -56,7 +67,8 @@ Destroys the SSL/TLS context / settings object and frees any related resources /
 ```c
 void fio_tls_cert_add(fio_tls_s *, const char *server_name,
                       const char *private_key_file,
-                      const char *public_cert_file);
+                      const char *public_cert_file,
+                      const char *private_key_password);
 ```
 
 Adds a certificate a new SSL/TLS context / settings object (SNI support).

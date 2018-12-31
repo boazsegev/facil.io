@@ -20,6 +20,9 @@ typedef struct fio_tls_s fio_tls_s;
  * Creates a new SSL/TLS context / settings object with a default certificate
  * (if any).
  *
+ * If no server name is provided and no private key and public certificate are
+ * provided, an empty TLS object will be created, (maybe okay for clients).
+ *
  *      fio_tls_s * tls = fio_tls_new("www.example.com",
  *                                    "private_key.pem",
  *                                    "public_key.pem", NULL );

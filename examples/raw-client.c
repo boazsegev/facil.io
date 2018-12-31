@@ -15,6 +15,7 @@ Than run:
 */
 #include "fio.h"
 #include "fio_cli.h"
+#include "fio_tls.h"
 
 /* add the fio_str_s helpers */
 #define FIO_INCLUDE_STR
@@ -27,6 +28,7 @@ REPL
 #define MAX_BYTES_READ_PER_CYCLE 16
 
 void *repl_thread(void *uuid_) {
+  fprintf(stderr, "Connected, start typing.\n");
   /* collect the uuid variable */
   intptr_t uuid = (intptr_t)uuid_;
   /* We'll use a dynamic string for the buffer cache */
@@ -42,7 +44,7 @@ void *repl_thread(void *uuid_) {
     int act =
         read(fileno(stdin), info.data + info.len, MAX_BYTES_READ_PER_CYCLE);
     if (act <= 0) {
-      fprintf(stderr, "REPL read error, disconnecting.\n");
+      FIO_LOG_ERROR("REPL read error, disconnecting.\n");
       fio_close(uuid);
       break;
     }
@@ -65,8 +67,7 @@ void *repl_thread(void *uuid_) {
     }
   }
   fio_str_free(&buffer);
-  if (fio_cli_get_bool("-v"))
-    printf("stopping REPL\n");
+  FIO_LOG_INFO("stopping REPL\n");
   return NULL;
 }
 
@@ -90,7 +91,7 @@ static void on_data(intptr_t uuid, fio_protocol_s *protocol) {
 
 /* Called during server shutdown */
 static uint8_t on_shutdown(intptr_t uuid, fio_protocol_s *protocol) {
-  printf("Disconnecting.\n");
+  FIO_LOG_INFO("Disconnecting.\n");
   /* don't print a message on protocol closure */
   protocol->on_close = NULL;
   return 0;   /* close immediately, don't wait */
@@ -99,7 +100,7 @@ static uint8_t on_shutdown(intptr_t uuid, fio_protocol_s *protocol) {
 
 /** Called when the connection was closed, but will not run concurrently */
 static void on_close(intptr_t uuid, fio_protocol_s *protocol) {
-  printf("Remote connection lost.\n");
+  FIO_LOG_INFO("Remote connection lost.\n");
   kill(0, SIGINT); /* signal facil.io to stop */
   (void)protocol;  /* we ignore the protocol object, we don't use it */
   (void)uuid;      /* we ignore the uuid object, we don't use it */
@@ -123,6 +124,9 @@ static fio_protocol_s client_protocol = {
 };
 
 static void on_connect(intptr_t uuid, void *udata) {
+  if (udata) // TLS support, udata is the TLS context.
+    fio_tls_connect(uuid, udata, NULL);
+
   fio_attach(uuid, &client_protocol);
   /* start REPL */
   fio_thread_free(fio_thread_new(repl_thread, (void *)uuid));
@@ -130,10 +134,10 @@ static void on_connect(intptr_t uuid, void *udata) {
 }
 
 static void on_fail(intptr_t uuid, void *udata) {
-  if (fio_cli_get_bool("-v"))
-    printf("Connection failed to %s\n", (char *)udata);
+  FIO_LOG_ERROR("Connection failed\n");
   kill(0, SIGINT); /* signal facil.io to stop */
   (void)uuid;      /* we ignore the uuid object, we don't use it */
+  (void)udata;     /* we ignore the udata object, we don't use it */
 }
 
 /* *****************************************************************************
@@ -143,27 +147,60 @@ Main
 int main(int argc, char const *argv[]) {
   /* Setup CLI arguments */
   fio_cli_start(argc, argv, 1, 2, "use:\n\tclient <args> hostname port\n",
-                FIO_CLI_BOOL("-v -verbous mode."));
+                FIO_CLI_BOOL("-tls use TLS to establish a secure connection."),
+                FIO_CLI_STRING("-tls-alpn set the ALPN extension for TLS."),
+                FIO_CLI_STRING("-trust comma separated list of PEM "
+                               "certification files for TLS verification."),
+                FIO_CLI_INT("-v -verbousity sets the verbosity level 0..5 (5 "
+                            "== debug, 0 == quite)."));
 
-  if (fio_cli_get_bool("-v")) {
-    if (fio_cli_unnamed_count() == 1 || fio_cli_unnamed(1)[0] == 0 ||
-        (fio_cli_unnamed(1)[0] == '0' || fio_cli_unnamed(1)[1] == 0)) {
-      printf("Attempting to connect to Unix socket at: %s\n",
-             fio_cli_unnamed(0));
-    } else {
-      printf("Attempting to connect to TCP/IP socket at: %s:%s\n",
-             fio_cli_unnamed(0), fio_cli_unnamed(1));
+  /* set logging level */
+  FIO_LOG_LEVEL = FIO_LOG_LEVEL_ERROR;
+  if (fio_cli_get("-v") && fio_cli_get_i("-v") >= 0)
+    FIO_LOG_LEVEL = fio_cli_get_i("-v");
+
+  /* Manage TLS */
+  fio_tls_s *tls = NULL;
+  if (fio_cli_get_bool("-tls")) {
+    tls = fio_tls_new(NULL, NULL, NULL, NULL);
+    if (fio_cli_get("-trust")) {
+      const char *trust = fio_cli_get("-trust");
+      size_t len = strlen(trust);
+      const char *end = memchr(trust, ',', len);
+      while (end) {
+        /* copy partial string to attach NUL char at end of file name */
+        fio_str_s tmp = FIO_STR_INIT;
+        fio_str_info_s t = fio_str_write(&tmp, trust, end - trust);
+        fio_tls_trust(tls, t.data);
+        fio_str_free(&tmp);
+        len -= (end - trust) + 1;
+        trust = end + 1;
+        end = memchr(trust, ',', len);
+      }
+      fio_tls_trust(tls, trust);
     }
-  } else {
-    FIO_LOG_LEVEL = FIO_LOG_LEVEL_ERROR;
+    if (fio_cli_get("-tls-alpn")) {
+      fio_tls_proto_add(tls, fio_cli_get("-tls-alpn"), NULL);
+    }
   }
+
+  /* Log connection attempt */
+  if (fio_cli_unnamed_count() == 1 || fio_cli_unnamed(1)[0] == 0 ||
+      (fio_cli_unnamed(1)[0] == '0' || fio_cli_unnamed(1)[1] == 0)) {
+    FIO_LOG_INFO("Attempting to connect to Unix socket at: %s\n",
+                 fio_cli_unnamed(0));
+  } else {
+    FIO_LOG_INFO("Attempting to connect to TCP/IP socket at: %s:%s\n",
+                 fio_cli_unnamed(0), fio_cli_unnamed(1));
+  }
+
   intptr_t uuid =
       fio_connect(.address = fio_cli_unnamed(0), .port = fio_cli_unnamed(1),
-                  .on_connect = on_connect, .on_fail = on_fail,
-                  .udata = (void *)fio_cli_unnamed(0));
+                  .on_connect = on_connect, .on_fail = on_fail, .udata = tls);
   if (uuid == -1 && fio_cli_get_bool("-v"))
-    perror("Connection can't be established");
+    FIO_LOG_ERROR("Connection can't be established");
   else
     fio_start(.threads = 1);
+  fio_tls_destroy(tls);
   fio_cli_end();
 }

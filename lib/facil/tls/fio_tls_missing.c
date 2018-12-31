@@ -404,13 +404,12 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls, const char *server_name,
       goto file_missing;
     if (fio_str_readfile(&c.public_key, cert, 0, 0).data == NULL)
       goto file_missing;
-  } else {
-    /* Self-Signed TLS Certificates (NULL) */
-    if (!server_name)
-      server_name = "facil.io.tls";
+    cert_ary_push(&tls->sni, c);
+  } else if (server_name) {
+    /* Self-Signed TLS Certificates */
     c.private_key = FIO_STR_INIT_STATIC(server_name);
+    cert_ary_push(&tls->sni, c);
   }
-  cert_ary_push(&tls->sni, c);
   fio_tls_cert_destroy(&c);
   fio_tls_build_context(tls);
   return;

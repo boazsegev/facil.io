@@ -143,6 +143,7 @@ static void fio_tls_make_root_key(void) {
   if (fio_tls_pkey)
     goto finish;
   /* create private key, free it at exit */
+  FIO_LOG_DEBUG("calculating a new TLS private key... might take a while.");
 
   fio_tls_pkey = EVP_PKEY_new();
   FIO_ASSERT(fio_tls_pkey, "OpenSSL failed to create private key.");
@@ -357,8 +358,8 @@ static void fio_tls_build_context(fio_tls_s *tls) {
         }
         BIO_free(bio);
       }
-    } else {
-      /* Self Signed Certificates */
+    } else if (keys[0].len) {
+      /* Self Signed Certificates, only if server name is provided. */
       SSL_CTX_use_certificate(tls->ctx,
                               fio_tls_create_self_signed(keys[0].data));
       SSL_CTX_use_PrivateKey(tls->ctx, fio_tls_pkey);
@@ -726,13 +727,12 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls, const char *server_name,
       goto file_missing;
     if (fio_str_readfile(&c.public_key, cert, 0, 0).data == NULL)
       goto file_missing;
-  } else {
-    /* Self-Signed TLS Certificates (NULL) */
-    if (!server_name)
-      server_name = "facil.io.tls";
+    cert_ary_push(&tls->sni, c);
+  } else if (server_name) {
+    /* Self-Signed TLS Certificates */
     c.private_key = FIO_STR_INIT_STATIC(server_name);
+    cert_ary_push(&tls->sni, c);
   }
-  cert_ary_push(&tls->sni, c);
   fio_tls_cert_destroy(&c);
   fio_tls_build_context(tls);
   return;
