@@ -3370,23 +3370,6 @@ Initialize the library
 
 static void fio_pubsub_on_fork(void);
 
-static void fio_mem_destroy(void);
-static void __attribute__((destructor)) fio_lib_destroy(void) {
-  uint8_t add_eol = fio_is_master();
-  fio_data->active = 0;
-  fio_state_callback_force(FIO_CALL_AT_EXIT);
-  fio_state_callback_clear_all();
-  fio_defer_perform();
-  fio_poll_close();
-  fio_timer_clear_all();
-  fio_free(fio_data);
-  /* memory library destruction must be last */
-  fio_mem_destroy();
-  FIO_LOG_DEBUG("(%d) facil.io resources released, exit complete.", getpid());
-  if (add_eol)
-    fprintf(stderr, "\n"); /* add EOL to logs (logging adds EOL before text */
-}
-
 /* Called within a child process after it starts. */
 static void fio_on_fork(void) {
   fio_data->lock = FIO_LOCK_INIT;
@@ -3411,6 +3394,25 @@ static void fio_on_fork(void) {
   fio_defer_perform();
   fio_data->active = old_active;
   fio_data->is_worker = 1;
+}
+
+static void fio_mem_destroy(void);
+static void __attribute__((destructor)) fio_lib_destroy(void) {
+  uint8_t add_eol = fio_is_master();
+  fio_data->active = 0;
+  fio_on_fork();
+  fio_defer_perform();
+  fio_state_callback_force(FIO_CALL_AT_EXIT);
+  fio_state_callback_clear_all();
+  fio_defer_perform();
+  fio_poll_close();
+  fio_timer_clear_all();
+  fio_free(fio_data);
+  /* memory library destruction must be last */
+  fio_mem_destroy();
+  FIO_LOG_DEBUG("(%d) facil.io resources released, exit complete.", getpid());
+  if (add_eol)
+    fprintf(stderr, "\n"); /* add EOL to logs (logging adds EOL before text */
 }
 
 static void fio_mem_init(void);
