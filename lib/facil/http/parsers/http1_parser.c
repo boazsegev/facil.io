@@ -382,8 +382,9 @@ re_eval:
   /* request / response line */
   case 0:
     /* clear out any leadinng white space */
-    while (*start == '\r' || *start == '\n' || *start == ' ' || *start == 0) {
-      start++;
+    while ((start < stop) &&
+           (*start == '\r' || *start == '\n' || *start == ' ' || *start == 0)) {
+      ++start;
     }
     end = start;
     /* make sure the whole line is available*/

@@ -679,6 +679,8 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
   ssize_t i = 0;
   size_t org_len = p->buf_len;
   int pipeline_limit = 8;
+  if (!p->buf_len)
+    return;
   do {
     i = http1_fio_parser(.parser = &p->parser,
                          .buffer = p->buf + (org_len - p->buf_len),
