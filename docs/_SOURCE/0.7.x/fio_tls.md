@@ -6,11 +6,13 @@ sidebar: 0.7.x/_sidebar.md
 
 SSL/TLS provides Transport Layer Security (TLS) for more secure communication.
 
-facil.io attempts to make TLS connections easy by providing a simplified API that abstracts away the underlying TLS library and utilizes the [Read/Write Hooks](fio#lower-level-read-write-close-hooks) to allow TLS connections and unencrypted connections to share the same API (`fio_write`, `fio_read`, etc').
+facil.io attempts to make TLS connections easy by providing a simplified API that abstracts away the underlying TLS library.
 
-Future support for BearSSL and OpenSSL is planned.
+OpenSSL support is included starting with facil.io version 0.7.0.beta6.
 
-At the moment, TLS connections aren't supported since no libraries are supported.
+Future support for BearSSL is planned and an example/template is provided under `fio_tls_missing.c`, making it easy to use your own SSL/TLS library.
+
+The implementation leverages the [Read/Write Hooks](fio#lower-level-read-write-close-hooks) to allow TLS connections and unencrypted connections to share the same code-base and API (`fio_write`, `fio_read`, etc').
 
 To use the facil.io TLS API, include the file `fio_tls.h`
 
@@ -27,8 +29,8 @@ Creates a new SSL/TLS context / settings object with a default certificate (if a
 
 ```c
 fio_tls_s * tls = fio_tls_new("www.example.com",
-                              "./ssl/private_key.key",
-                              "./ssl/public_key.crt");
+                              "./ssl/private_key.pem",
+                              "./ssl/public_key.pem");
 ```
 `NULL` values can be used to create an anonymous (unverified) context / settings object.
 
@@ -61,8 +63,8 @@ Adds a certificate a new SSL/TLS context / settings object (SNI support).
 
 ```c
 fio_tls_cert_add(tls, "www.example.com",
-                      "./ssl/private_key.key",
-                      "./ssl/public_key.crt" );
+                      "./ssl/private_key.pem",
+                      "./ssl/public_key.pem" );
 ```
 
 #### `fio_tls_proto_add`
@@ -75,6 +77,20 @@ void fio_tls_proto_add(fio_tls_s *, const char *protocol_name,
 Adds an ALPN protocol callback to the SSL/TLS context.
 
 The first protocol added will act as the default protocol to be selected when the client does not support or specify ALPN protocol selection.
+
+#### `fio_tls_trust`
+
+```c
+void fio_tls_trust(fio_tls_s *, const char *public_cert_file);
+```
+
+Adds a certificate to the "trust" list, which automatically adds a peer verification requirement.
+
+Note, when the fio_tls_s object is used for server connections, this will limit connections to clients that connect using a trusted certificate.
+
+```c
+fio_tls_trust(tls, "google-ca.pem" );
+```
 
 ### TLS Connection Establishment
 

@@ -25,9 +25,6 @@ Feel free to copy, use and enjoy according to the license provided.
 /* *****************************************************************************
 The SSL/TLS helper data types
 ***************************************************************************** */
-/* *****************************************************************************
-The SSL/TLS helper data types
-***************************************************************************** */
 #define FIO_INCLUDE_STR 1
 #define FIO_FORCE_MALLOC_TMP 1
 #include <fio.h>
@@ -74,8 +71,6 @@ static inline void fio_tls_cert_copy(cert_s *dest, cert_s *src) {
   fio_str_concat(&dest->password, &src->password);
 }
 static inline void fio_tls_cert_destroy(cert_s *obj) {
-  fio_str_info_s tmp = fio_str_info(&obj->private_key);
-  memset(tmp.data, 0, tmp.len); /* make sure the key isn't in recycled memory */
   fio_str_free(&obj->private_key);
   fio_str_free(&obj->public_key);
   fio_str_free(&obj->password);
@@ -89,15 +84,43 @@ static inline void fio_tls_cert_destroy(cert_s *obj) {
 #define FIO_FORCE_MALLOC_TMP 1
 #include <fio.h>
 
+typedef struct {
+  fio_str_s pem;
+} trust_s;
+
+static inline int fio_tls_trust_cmp(const trust_s *dest, const trust_s *src) {
+  return fio_str_iseq(&dest->pem, &src->pem);
+}
+static inline void fio_tls_trust_copy(trust_s *dest, trust_s *src) {
+  *dest = (trust_s){
+      .pem = FIO_STR_INIT,
+  };
+  fio_str_concat(&dest->pem, &src->pem);
+}
+static inline void fio_tls_trust_destroy(trust_s *obj) {
+  fio_str_free(&obj->pem);
+}
+
+#define FIO_ARY_NAME trust_ary
+#define FIO_ARY_TYPE trust_s
+#define FIO_ARY_COMPARE(k1, k2) (fio_tls_trust_cmp(&(k1), &(k2)))
+#define FIO_ARY_COPY(dest, obj) fio_tls_trust_copy(&(dest), &(obj))
+#define FIO_ARY_DESTROY(key) fio_tls_trust_destroy(&(key))
+#define FIO_FORCE_MALLOC_TMP 1
+#include <fio.h>
+
 /* *****************************************************************************
 The SSL/TLS type
 ***************************************************************************** */
 
 /** An opaque type used for the SSL/TLS functions. */
 struct fio_tls_s {
-  alpn_ary_s alpn; /* ALPN is the name for the protocol selection extension */
-  cert_ary_s sni;  /* SNI is the name for the server name extension */
-  /* TODO: implementation data fields go here */
+  alpn_ary_s alpn;   /* ALPN is the name for the protocol selection extension */
+  cert_ary_s sni;    /* SNI is the name for the server name extension */
+  trust_ary_s trust; /* SNI is the name for the server name extension */
+
+  /************ TODO: implementation data fields go here ******************/
+
   SSL_CTX *ctx;            /* The Open SSL context (updated each time). */
   unsigned char *alpn_str; /* the computed server-format ALPN string */
   int alpn_len;
@@ -283,8 +306,10 @@ static void fio_tls_build_context(fio_tls_s *tls) {
 
   /* create new context */
   tls->ctx = SSL_CTX_new(TLS_method());
-  SSL_CTX_set_min_proto_version(tls->ctx, TLS1_2_VERSION);
   SSL_CTX_set_mode(tls->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
+  /* see: https://caniuse.com/#search=tls */
+  SSL_CTX_set_min_proto_version(tls->ctx, TLS1_2_VERSION);
+  SSL_CTX_set_options(tls->ctx, SSL_OP_NO_COMPRESSION);
 
   /* attach certificates */
   FIO_ARY_FOR(&tls->sni, pos) {
@@ -312,7 +337,6 @@ static void fio_tls_build_context(fio_tls_s *tls) {
         /* Extract as much data as possible from each file */
         BIO *bio = BIO_new_mem_buf(keys[ki].data, keys[ki].len);
         FIO_ASSERT(bio, "OpenSSL error allocating BIO.");
-        pem_password_cb cb;
         STACK_OF(X509_INFO) *inf = PEM_X509_INFO_read_bio(
             bio, NULL, fio_tls_pem_passwd_cb, keys + ki + 2);
         if (inf) {
@@ -358,6 +382,37 @@ static void fio_tls_build_context(fio_tls_s *tls) {
     SSL_CTX_set_alpn_select_cb(tls->ctx, fio_tls_alpn_selector_cb, tls);
     SSL_CTX_set_alpn_protos(tls->ctx, tls->alpn_str, tls->alpn_len);
   }
+
+  /* Peer Verification / Trust */
+  if (trust_ary_count(&tls->trust)) {
+    /* TODO: enable peer verification */
+    X509_STORE *store = X509_STORE_new();
+    SSL_CTX_set_cert_store(tls->ctx, store);
+    SSL_CTX_set_verify(tls->ctx, SSL_VERIFY_PEER, NULL);
+    /* TODO: Add each ceriticate in the PEM to the trust "store" */
+    FIO_ARY_FOR(&tls->trust, pos) {
+      fio_str_info_s pem = fio_str_info(&pos->pem);
+      BIO *bio = BIO_new_mem_buf(pem.data, pem.len);
+      FIO_ASSERT(bio, "OpenSSL error allocating BIO.");
+      STACK_OF(X509_INFO) *inf = PEM_X509_INFO_read_bio(bio, NULL, NULL, NULL);
+      if (inf) {
+        for (int i = 0; i < sk_X509_INFO_num(inf); ++i) {
+          /* for each element in PEM */
+          X509_INFO *tmp = sk_X509_INFO_value(inf, i);
+          if (tmp->x509) {
+            FIO_LOG_DEBUG("TLS trusting certificate from PEM file.");
+            X509_STORE_add_cert(store, tmp->x509);
+          }
+          if (tmp->crl) {
+            X509_STORE_add_crl(store, tmp->crl);
+          }
+        }
+        sk_X509_INFO_pop_free(inf, X509_INFO_free);
+      }
+      BIO_free(bio);
+    }
+  }
+
   FIO_LOG_DEBUG("(re)built TLS context for OpenSSL %p", (void *)tls);
 }
 
@@ -707,6 +762,30 @@ void FIO_TLS_WEAK fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
   alpn_ary_push(&tls->alpn, tmp);
   fio_alpn_destroy(&tmp);
   fio_tls_build_context(tls);
+}
+
+/**
+ * Adds a certificate to the "trust" list, which automatically adds a peer
+ * verification requirement.
+ *
+ *      fio_tls_trust(tls, "google-ca.pem" );
+ */
+void FIO_TLS_WEAK fio_tls_trust(fio_tls_s *tls, const char *public_cert_file) {
+  REQUIRE_LIBRARY();
+  trust_s c = {
+      .pem = FIO_STR_INIT,
+  };
+  if (!public_cert_file)
+    return;
+  if (fio_str_readfile(&c.pem, public_cert_file, 0, 0).data == NULL)
+    goto file_missing;
+  trust_ary_push(&tls->trust, c);
+  fio_tls_trust_destroy(&c);
+  fio_tls_build_context(tls);
+  return;
+file_missing:
+  FIO_LOG_FATAL("TLS certificate file missing for %s ", public_cert_file);
+  exit(-1);
 }
 
 /**

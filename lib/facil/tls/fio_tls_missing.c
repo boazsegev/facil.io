@@ -8,12 +8,14 @@ Feel free to copy, use and enjoy according to the license provided.
 
 /**
  * This implementation of the facil.io SSL/TLS wrapper API is the default
- * implementation that will be used when no SSL/TLS library is available.
+ * implementation that will be used when no SSL/TLS library is available...
  *
- * The implementation includes redundant code that can be USED AS A TEMPLATE for
- * future implementations.
+ * ... without modification, this implementation crashes the program.
  *
- * THIS TEMPLATE IMPLEMENTATION DOES NOTHING EXCEPT CRASHING THE PROGRAM.
+ * The implementation can be USED AS A TEMPLATE for future implementations.
+ *
+ * This implementation is optimized for ease of development rather than memory
+ * consumption.
  */
 #include "fio_tls.h"
 
@@ -31,9 +33,10 @@ Feel free to copy, use and enjoy according to the license provided.
   FIO_LOG_FATAL("No supported SSL/TLS library available.");                    \
   exit(-1);
 #endif
+/* STOP deleting after this line */
 
 /* *****************************************************************************
-The SSL/TLS helper data types
+The SSL/TLS helper data types (can be left as is)
 ***************************************************************************** */
 #define FIO_INCLUDE_STR 1
 #define FIO_FORCE_MALLOC_TMP 1
@@ -94,19 +97,46 @@ static inline void fio_tls_cert_destroy(cert_s *obj) {
 #define FIO_FORCE_MALLOC_TMP 1
 #include <fio.h>
 
+typedef struct {
+  fio_str_s pem;
+} trust_s;
+
+static inline int fio_tls_trust_cmp(const trust_s *dest, const trust_s *src) {
+  return fio_str_iseq(&dest->pem, &src->pem);
+}
+static inline void fio_tls_trust_copy(trust_s *dest, trust_s *src) {
+  *dest = (trust_s){
+      .pem = FIO_STR_INIT,
+  };
+  fio_str_concat(&dest->pem, &src->pem);
+}
+static inline void fio_tls_trust_destroy(trust_s *obj) {
+  fio_str_free(&obj->pem);
+}
+
+#define FIO_ARY_NAME trust_ary
+#define FIO_ARY_TYPE trust_s
+#define FIO_ARY_COMPARE(k1, k2) (fio_tls_trust_cmp(&(k1), &(k2)))
+#define FIO_ARY_COPY(dest, obj) fio_tls_trust_copy(&(dest), &(obj))
+#define FIO_ARY_DESTROY(key) fio_tls_trust_destroy(&(key))
+#define FIO_FORCE_MALLOC_TMP 1
+#include <fio.h>
+
 /* *****************************************************************************
 The SSL/TLS type
 ***************************************************************************** */
 
 /** An opaque type used for the SSL/TLS functions. */
 struct fio_tls_s {
-  alpn_ary_s alpn; /* ALPN is the name for the protocol selection extension */
-  cert_ary_s sni;  /* SNI is the name for the server name extension */
-  /* TODO: implementation data fields go here */
+  alpn_ary_s alpn;   /* ALPN is the name for the protocol selection extension */
+  cert_ary_s sni;    /* SNI is the name for the server name extension */
+  trust_ary_s trust; /* SNI is the name for the server name extension */
+
+  /************ TODO: implementation data fields go here ******************/
 };
 
 /* *****************************************************************************
-SSL/TLS Context (re)-building
+SSL/TLS Context (re)-building - TODO: add implementation details
 ***************************************************************************** */
 
 /** Called when the library specific data for the context should be destroyed */
@@ -139,11 +169,23 @@ static void fio_tls_build_context(fio_tls_s *tls) {
     (void)name;
     // map to pos->callback;
   }
+
+  /* Peer Verification / Trust */
+  if (trust_ary_count(&tls->trust)) {
+    /* TODO: enable peer verification */
+
+    /* TODO: Add each ceriticate in the PEM to the trust "store" */
+    FIO_ARY_FOR(&tls->trust, pos) {
+      fio_str_info_s pem = fio_str_info(&pos->pem);
+      (void)pem;
+    }
+  }
+
   FIO_LOG_DEBUG("(re)built TLS context %p", (void *)tls);
 }
 
 /* *****************************************************************************
-SSL/TLS RW Hooks
+SSL/TLS RW Hooks - TODO: add implementation details
 ***************************************************************************** */
 
 /* TODO: this is an example implementation - fix for specific library. */
@@ -399,6 +441,30 @@ void FIO_TLS_WEAK fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
   alpn_ary_push(&tls->alpn, tmp);
   fio_alpn_destroy(&tmp);
   fio_tls_build_context(tls);
+}
+
+/**
+ * Adds a certificate to the "trust" list, which automatically adds a peer
+ * verification requirement.
+ *
+ *      fio_tls_trust(tls, "google-ca.pem" );
+ */
+void FIO_TLS_WEAK fio_tls_trust(fio_tls_s *tls, const char *public_cert_file) {
+  REQUIRE_LIBRARY();
+  trust_s c = {
+      .pem = FIO_STR_INIT,
+  };
+  if (!public_cert_file)
+    return;
+  if (fio_str_readfile(&c.pem, public_cert_file, 0, 0).data == NULL)
+    goto file_missing;
+  trust_ary_push(&tls->trust, c);
+  fio_tls_trust_destroy(&c);
+  fio_tls_build_context(tls);
+  return;
+file_missing:
+  FIO_LOG_FATAL("TLS certificate file missing for %s ", public_cert_file);
+  exit(-1);
 }
 
 /**
