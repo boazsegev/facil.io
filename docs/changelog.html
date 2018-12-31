@@ -23,6 +23,9 @@
 <li>
 <ul>
 <li>
+<a href="#v-0-7-0-beta6">v. 0.7.0.beta6</a>
+</li>
+<li>
 <a href="#v-0-7-0-beta5">v. 0.7.0.beta5</a>
 </li>
 <li>
@@ -252,6 +255,20 @@
 </li>
 </ul>
 </div><h1 id="change-log">Change Log</h1>
+
+<h3 id="v-0-7-0-beta6">v. 0.7.0.beta6</h3>
+
+<p><strong>BREAK</strong>: (<code>fio_tls</code>) breaking API changes to the SSL/TLS API, adding support for password protected private key files. <em>Note</em>: The TLS API is still fragile and should only be considered stable once version 0.7.0 is released with SSL/TLS support.</p>
+
+<p><strong>Security</strong> / <strong>Fix</strong>: (<code>http</code>) fixed an issue with the HTTP/1.1 parser, where maliciously crafted white-space data could cause a segmentation fault, resulting in a potential DoS.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixed an issue exposed by implementing the TLS layer, where the highet <code>fd</code> for a connection that wasn&#39;t assigned a <code>protocol_s</code> object immediately after the connection was opened, might avoid timeout review or avoid cleanup during shutdown (which will be marked as a memory leak).</p>
+
+<p><strong>Update</strong>: (<code>fio_tls</code>) added experimental support for OpenSSL. This was only partially tested and should be considered experimental.</p>
+
+<p><strong>Update</strong>: (<code>fio</code>) added, the <code>fio_rw_hook_replace_unsafe</code> to allow r/w hook switching from within a r/w hook callback.</p>
+
+<p><strong>Update</strong>: (<code>fio_cli</code>) a common user-error is a a missing <code>fio_cli_end</code>, resulting in a memory leak notification. Now facil.io protects against this common error by automatically calling  <code>fio_cli_end</code> during the exit stage, if <code>fio_cli_start</code> was called.</p>
 
 <h3 id="v-0-7-0-beta5">v. 0.7.0.beta5</h3>
 

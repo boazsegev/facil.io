@@ -253,6 +253,9 @@
 <a href="#fio_rw_hook_set"><code>fio_rw_hook_set</code></a>
 </li>
 <li>
+<a href="#fio_rw_hook_replace_unsafe"><code>fio_rw_hook_replace_unsafe</code></a>
+</li>
+<li>
 <a href="#fio_default_rw_hooks"><code>FIO_DEFAULT_RW_HOOKS</code></a>
 </li>
 </ul>
@@ -488,6 +491,9 @@
 <a href="#fio_str_init_static"><code>FIO_STR_INIT_STATIC</code></a>
 </li>
 <li>
+<a href="#fio_str_init_static2"><code>FIO_STR_INIT_STATIC2</code></a>
+</li>
+<li>
 <a href="#fio_str_new2"><code>fio_str_new2</code></a>
 </li>
 <li>
@@ -608,6 +614,9 @@
 <a href="#dynamic-arrays">Dynamic Arrays</a>
 <ul>
 <li>
+<a href="#array-memory-allocation">Array Memory allocation</a>
+</li>
+<li>
 <a href="#defining-the-array">Defining the Array</a>
 <ul>
 <li>
@@ -714,6 +723,9 @@
 <li>
 <a href="#hash-maps-sets">Hash Maps / Sets</a>
 <ul>
+<li>
+<a href="#hash-map-set-memory-allocation">Hash Map / Set Memory allocation</a>
+</li>
 <li>
 <a href="#defining-the-set-hash-map">Defining the Set / Hash Map</a>
 <ul>
@@ -1952,6 +1964,19 @@ be sent over the socket.</p>
 
 <p>If the function fails, than the <code>cleanup</code> callback will be called before the function returns.</p>
 
+<h4 id="fio_rw_hook_replace_unsafe"><code>fio_rw_hook_replace_unsafe</code></h4>
+<pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_rw_hook_replace_unsafe</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_rw_hook_s</span> <span class="o">*</span><span class="n">rw_hooks</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+</code></pre>
+<p>Replaces an existing read/write hook with another from within a read/write hook callback.</p>
+
+<p>Returns 0 on success or -1 on error (closed / invalid <code>uuid</code>).</p>
+
+<p>Does NOT call any cleanup callbacks.</p>
+
+<p>Replaces existing <code>udata</code>. Call with the existing <code>udata</code> to keep it.</p>
+
+<p><strong>Note</strong>: this function is marked as unsafe, since it should only be called from within an existing read/write hook callback. Otherwise, data corruption might occur.</p>
+
 <h4 id="fio_default_rw_hooks"><code>FIO_DEFAULT_RW_HOOKS</code></h4>
 <pre><code class='highlight'><span class="k">extern</span> <span class="k">const</span> <span class="n">fio_rw_hook_s</span> <span class="n">FIO_DEFAULT_RW_HOOKS</span><span class="p">;</span>
 </code></pre>
@@ -2490,16 +2515,14 @@ performance in large network based broadcasting.</p>
 
 <p>Memory is always zeroed out.</p>
 
-<p>Allocations above <code>FIO_MEMORY_BLOCK_ALLOC_LIMIT</code> (12,288 bytes when using the default 32Kb
-blocks) will be redirected to <code>mmap</code>, as if <code>fio_mmap</code> was called.</p>
+<p>Allocations above <code>FIO_MEMORY_BLOCK_ALLOC_LIMIT</code> (16Kb bytes when using the default 32Kb blocks) will be redirected to <code>mmap</code>, as if <code>fio_mmap</code> was called.</p>
 
 <h4 id="fio_calloc"><code>fio_calloc</code></h4>
 <pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_calloc</span><span class="p">(</span><span class="kt">size_t</span> <span class="n">size_per_unit</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">unit_count</span><span class="p">)</span>
 </code></pre>
 <p>Same as calling <code>fio_malloc(size_per_unit * unit_count)</code>;</p>
 
-<p>Allocations above <code>FIO_MEMORY_BLOCK_ALLOC_LIMIT</code> (12,288 bytes when using 32Kb
-blocks) will be redirected to <code>mmap</code>, as if <code>fio_mmap</code> was called.</p>
+<p>Allocations above <code>FIO_MEMORY_BLOCK_ALLOC_LIMIT</code> (16Kb bytes when using the default 32Kb blocks) will be redirected to <code>mmap</code>, as if <code>fio_mmap</code> was called.</p>
 
 <h4 id="fio_free"><code>fio_free</code></h4>
 <pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_free</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">ptr</span><span class="p">);</span>
@@ -2700,13 +2723,19 @@ be inherently slower.</p>
 
 <p>String memory is managed by facil.io&#39;s allocation / deallocation routines (<code>fio_malloc</code>, etc&#39;).</p>
 
-<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist for all the types defined by <code>fio.h</code> until undefined.</p>
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC_TMP</code> as <code>1</code> before including <code>fio.h</code>.</p>
+
+<p>A definition of <code>FIO_FORCE_MALLOC_TMP</code> doesn&#39;t persist, it will be cleared away once <code>fio.h</code> was included.</p>
+
+<p>A definition of <code>FIO_FORCE_MALLOC</code> will persist for all the types defined by <code>fio.h</code> until undefined but might be defined during compilation and shouldn&#39;t be manually unset.</p>
 
 <p>For example:</p>
 <pre><code class='highlight'><span class="cp">#define FIO_INCLUDE_STR 1
-#define FIO_FORCE_MALLOC 1
+#define FIO_FORCE_MALLOC_TMP 1
 #include &lt;fio.h&gt;
-#undef FIO_FORCE_MALLOC
+#ifdef FIO_FORCE_MALLOC_TMP
+#error "FIO_FORCE_MALLOC_TMP is removed after it's used."
+#undef
 </span></code></pre>
 <h4 id="fio_str_init"><code>FIO_STR_INIT</code></h4>
 <pre><code class='highlight'><span class="cp">#define FIO_STR_INIT ((fio_str_s){.data = NULL, .small = 1})
@@ -2742,9 +2771,13 @@ be inherently slower.</p>
 <pre><code class='highlight'><span class="cp">#define FIO_STR_INIT_STATIC(buffer)                                            \
  ((fio_str_s){.data = (buffer), .len = strlen((buffer)), .dealloc = NULL})
 </span></code></pre>
-<p>This macro allows the container to be initialized with existing data, as long as it&#39;s memory was allocated using <code>fio_malloc</code>.</p>
+<p>This macro allows the container to be initialized with existing static data, that shouldn&#39;t be freed.</p>
 
-<p>The <code>capacity</code> value should exclude the NUL character (if exists).</p>
+<h4 id="fio_str_init_static2"><code>FIO_STR_INIT_STATIC2</code></h4>
+<pre><code class='highlight'><span class="cp">#define FIO_STR_INIT_STATIC2(buffer, length)                                            \
+ ((fio_str_s){.data = (buffer), .len = (length), .dealloc = NULL})
+</span></code></pre>
+<p>This macro allows the container to be initialized with existing static data, that shouldn&#39;t be freed.</p>
 
 <h4 id="fio_str_new2"><code>fio_str_new2</code></h4>
 <pre><code class='highlight'><span class="kr">inline</span> <span class="n">fio_str_s</span> <span class="o">*</span><span class="n">fio_str_new2</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
@@ -3016,6 +3049,27 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
 #define FIO_ARY_DESTROY(key) fio_str_free2((key))
 #include &lt;fio.h&gt; // creates the fio_str_ary_s Array and functions
 </span></code></pre>
+<h3 id="array-memory-allocation">Array Memory allocation</h3>
+
+<p>The Array&#39;s memory is managed by facil.io&#39;s allocation / deallocation routines (<code>fio_malloc</code>, etc&#39;).</p>
+
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC_TMP</code> as <code>1</code> before including <code>fio.h</code>.</p>
+
+<p>A definition of <code>FIO_FORCE_MALLOC_TMP</code> doesn&#39;t persist, it will be cleared away once <code>fio.h</code> was included.</p>
+
+<p>A definition of <code>FIO_FORCE_MALLOC</code> will persist for all the types defined by <code>fio.h</code> until undefined but might be defined during compilation and shouldn&#39;t be manually unset.</p>
+
+<p>For example:</p>
+<pre><code class='highlight'><span class="cp">#define FIO_FORCE_MALLOC_TMP 1
+#define FIO_ARY_NAME fio_int_ary
+#define FIO_ARY_TYPE int
+#include &lt;fio.h&gt; // creates the fio_int_ary_s Array and functions
+#ifdef FIO_FORCE_MALLOC_TMP
+#error "FIO_FORCE_MALLOC_TMP is removed after it's used."
+#undef
+</span></code></pre>
+<p>More flexibility (such as using a third memory allocation scheme) can be achieved using the <code>FIO_ARRAY_MALLOC</code> type macros, as detailed below.</p>
+
 <h3 id="defining-the-array">Defining the Array</h3>
 
 <h4 id="fio_ary_name"><code>FIO_ARY_NAME</code></h4>
@@ -3086,7 +3140,7 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
 
 <p>It&#39;s important to note that the default allocator <strong>must</strong> set all the allocated bytes to zero, exactly as <code>fio_malloc</code> does.</p>
 
-<p>To use the system&#39;s memory allocator (<code>calloc</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC_TMP</code> as <code>1</code> before including <code>fio.h</code>.</p>
 
 <h4 id="fio_ary_realloc"><code>FIO_ARY_REALLOC</code></h4>
 <pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_REALLOC </span><span class="cm">/* NULL ptr indicates new allocation */</span><span class="cp">
@@ -3096,7 +3150,7 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
 </span></code></pre>
 <p>The default Array re-allocator is set to <code>fio_realloc2</code>. All bytes will be set to zero except the copied data and - in some cases, where copy alignment error occurs - the last 16 bytes.</p>
 
-<p>To use the system&#39;s memory allocator (<code>realloc</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC_TMP</code> as <code>1</code> before including <code>fio.h</code>.</p>
 
 <h4 id="fio_ary_dealloc"><code>FIO_ARY_DEALLOC</code></h4>
 <pre><code class='highlight'><span class="cp">#ifndef FIO_ARY_DEALLOC
@@ -3105,7 +3159,7 @@ the EOF position, NULL is returned in the state&#39;s <code>data</code> field.</
 </span></code></pre>
 <p>The default Array deallocator is set to <code>fio_free</code>.</p>
 
-<p>To use the system&#39;s memory deallocator (<code>free</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC_TMP</code> as <code>1</code> before including <code>fio.h</code>.</p>
 
 <h3 id="naming-the-array">Naming the Array</h3>
 
@@ -3304,6 +3358,28 @@ wouldn&#39;t count on it.</p>
 </code></pre>
 <p>This can be performed a number of times, defining a different Set / Hash Map each time.</p>
 
+<h3 id="hash-map-set-memory-allocation">Hash Map / Set Memory allocation</h3>
+
+<p>The Hash Map&#39;s memory is managed by facil.io&#39;s allocation / deallocation routines (<code>fio_malloc</code>, etc&#39;).</p>
+
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC_TMP</code> as <code>1</code> before including <code>fio.h</code>.</p>
+
+<p>A definition of <code>FIO_FORCE_MALLOC_TMP</code> doesn&#39;t persist, it will be cleared away once <code>fio.h</code> was included.</p>
+
+<p>A definition of <code>FIO_FORCE_MALLOC</code> will persist for all the types defined by <code>fio.h</code> until undefined but might be defined during compilation and shouldn&#39;t be manually unset.</p>
+
+<p>For example:</p>
+<pre><code class='highlight'><span class="cp">#define FIO_FORCE_MALLOC_TMP 1
+#define FIO_SET_NAME fio_str_info_set
+#define FIO_SET_OBJ_TYPE char *
+#define FIO_SET_OBJ_COMPARE(k1, k2) (!strcmp((k1), (k2)))
+#include &lt;fio.h&gt; // created the fio_str_info_set_s and functions
+#ifdef FIO_FORCE_MALLOC_TMP
+#error "FIO_FORCE_MALLOC_TMP is removed after it's used."
+#undef
+</span></code></pre>
+<p>More flexibility (such as using a third memory allocation scheme) can be achieved using the <code>FIO_SET_MALLOC</code> type macros, as detailed below.</p>
+
 <h3 id="defining-the-set-hash-map">Defining the Set / Hash Map</h3>
 
 <p>The Set&#39;s object type and behavior is controlled by the FIO_SET_OBJ_* marcos: <code>FIO_SET_OBJ_TYPE</code>, <code>FIO_SET_OBJ_COMPARE</code>, <code>FIO_SET_OBJ_COPY</code>, <code>FIO_SET_OBJ_DESTROY</code>. i.e.:</p>
@@ -3402,7 +3478,7 @@ be defined. i.e.:</p>
 
 <p>The default allocator is facil.io&#39;s <code>fio_realloc</code>.</p>
 
-<p>To use the system&#39;s memory allocator (<code>realloc</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC_TMP</code> as <code>1</code> before including <code>fio.h</code>.</p>
 
 <h4 id="fio_set_calloc"><code>FIO_SET_CALLOC</code></h4>
 <pre><code class='highlight'><span class="cp">#define FIO_SET_CALLOC(size, count) calloc((size), (count))
@@ -3411,7 +3487,7 @@ be defined. i.e.:</p>
 
 <p>The default allocator is facil.io&#39;s <code>fio_calloc</code>.</p>
 
-<p>To use the system&#39;s memory allocator (<code>calloc</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC_TMP</code> as <code>1</code> before including <code>fio.h</code>.</p>
 
 <h4 id="fio_set_free"><code>FIO_SET_FREE</code></h4>
 <pre><code class='highlight'><span class="cp">#define FIO_SET_FREE(ptr, size) free((ptr))
@@ -3420,7 +3496,7 @@ be defined. i.e.:</p>
 
 <p>The default deallocator is facil.io&#39;s <code>fio_free</code>.</p>
 
-<p>To use the system&#39;s memory allocator (<code>free</code>), it&#39;s possible to define <code>FIO_FORCE_MALLOC</code> as <code>1</code>. This will persist whenever the <code>fio.h</code> header is included until unset.</p>
+<p>To use the system&#39;s memory allocation / deallocation define <code>FIO_FORCE_MALLOC_TMP</code> as <code>1</code> before including <code>fio.h</code>.</p>
 
 <h3 id="naming-the-set-hash-map">Naming the Set / Hash Map</h3>
 

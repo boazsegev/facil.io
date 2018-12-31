@@ -4,7 +4,7 @@
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API, adding support for password protected private key files. *Note*: The TLS API is still fragile and should only be considered stable once version 0.7.0 is released with SSL/TLS support.
 
-**Security** / **Fix**: (`http`) fixed an issue with the HTTP/1.1 parser, where maliciously crafted white-space data could cause a segmentation fault, resulting an DoS.
+**Security** / **Fix**: (`http`) fixed an issue with the HTTP/1.1 parser, where maliciously crafted white-space data could cause a segmentation fault, resulting in a potential DoS.
 
 **Fix**: (`fio`) fixed an issue exposed by implementing the TLS layer, where the highet `fd` for a connection that wasn't assigned a `protocol_s` object immediately after the connection was opened, might avoid timeout review or avoid cleanup during shutdown (which will be marked as a memory leak).
 
