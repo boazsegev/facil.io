@@ -6,6 +6,7 @@ find_package(Threads REQUIRED)
 set(facil.io_SOURCES
   lib/facil/fio.c
   lib/facil/tls/fio_tls_missing.c
+  lib/facil/tls/fio_tls_openssl.c
   lib/facil/fiobj/fio_siphash.c
   lib/facil/fiobj/fiobj_ary.c
   lib/facil/fiobj/fiobj_data.c
