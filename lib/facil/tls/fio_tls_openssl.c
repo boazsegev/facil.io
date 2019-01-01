@@ -23,7 +23,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_TLS_WEAK
 
 /* *****************************************************************************
-The SSL/TLS helper data types
+The SSL/TLS helper data types (can be left as is)
 ***************************************************************************** */
 #define FIO_INCLUDE_STR 1
 #define FIO_FORCE_MALLOC_TMP 1
@@ -115,9 +115,10 @@ The SSL/TLS type
 
 /** An opaque type used for the SSL/TLS functions. */
 struct fio_tls_s {
+  size_t ref;        /* Reference counter, to guards the ALPN registry */
   alpn_ary_s alpn;   /* ALPN is the name for the protocol selection extension */
-  cert_ary_s sni;    /* SNI is the name for the server name extension */
-  trust_ary_s trust; /* SNI is the name for the server name extension */
+  cert_ary_s sni;    /* SNI (server name extension) stores ID certificates */
+  trust_ary_s trust; /* Trusted certificate registry (peer verification) */
 
   /************ TODO: implementation data fields go here ******************/
 
@@ -536,6 +537,7 @@ static void fio_tls_cleanup(void *udata) {
   fio_tls_connection_s *c = udata;
   SSL_free(c->ssl);
   FIO_LOG_DEBUG("TLS cleanup for %p", (void *)c->uuid);
+  fio_tls_destroy(c->tls); /* manage reference count */
   free(udata);
 }
 
@@ -654,6 +656,7 @@ static fio_rw_hook_s FIO_TLS_HANDSHAKE_HOOKS = {
 };
 static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
                                        void *udata, uint8_t is_server) {
+  fio_atomic_add(&tls->ref, 1);
   /* create SSL connection context from global context */
   fio_tls_connection_s *c = malloc(sizeof(*c));
   FIO_ASSERT_ALLOC(c);
@@ -697,23 +700,20 @@ SSL/TLS API implementation - this can be pretty much used as is...
  * Creates a new SSL/TLS context / settings object with a default certificate
  * (if any).
  */
-fio_tls_s *FIO_TLS_WEAK fio_tls_new(const char *server_name, const char *key,
-                                    const char *cert, const char *pk_password) {
+fio_tls_s *FIO_TLS_WEAK fio_tls_new(const char *server_name, const char *cert,
+                                    const char *key, const char *pk_password) {
   REQUIRE_LIBRARY();
   fio_tls_s *tls = calloc(sizeof(*tls), 1);
+  tls->ref = 1;
   fio_tls_cert_add(tls, server_name, key, cert, pk_password);
   return tls;
 }
 
 /**
  * Adds a certificate  a new SSL/TLS context / settings object.
- *
- *      fio_tls_cert_add(tls, FIO_TLS_CERT("www.example.com",
- *                            "private_key.key",
- *                            "public_key.crt" ));
  */
 void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls, const char *server_name,
-                                   const char *key, const char *cert,
+                                   const char *cert, const char *key,
                                    const char *pk_password) {
   REQUIRE_LIBRARY();
   cert_s c = {
@@ -827,6 +827,8 @@ void FIO_TLS_WEAK fio_tls_destroy(fio_tls_s *tls) {
   if (!tls)
     return;
   REQUIRE_LIBRARY();
+  if (fio_atomic_sub(&tls->ref, 1))
+    return;
   fio_tls_destroy_context(tls);
   alpn_ary_free(&tls->alpn);
   cert_ary_free(&tls->sni);

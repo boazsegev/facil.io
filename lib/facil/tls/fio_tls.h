@@ -24,22 +24,22 @@ typedef struct fio_tls_s fio_tls_s;
  * provided, an empty TLS object will be created, (maybe okay for clients).
  *
  *      fio_tls_s * tls = fio_tls_new("www.example.com",
- *                                    "private_key.pem",
- *                                    "public_key.pem", NULL );
+ *                                    "public_key.pem",
+ *                                    "private_key.pem", NULL );
  */
-fio_tls_s *fio_tls_new(const char *server_name, const char *private_key_file,
-                       const char *public_cert_file, const char *pk_password);
+fio_tls_s *fio_tls_new(const char *server_name, const char *public_cert_file,
+                       const char *private_key_file, const char *pk_password);
 
 /**
  * Adds a certificate a new SSL/TLS context / settings object (SNI support).
  *
  *      fio_tls_cert_add(tls, "www.example.com",
- *                            "private_key.pem",
- *                            "public_key.pem", NULL );
+ *                            "public_key.pem",
+ *                            "private_key.pem", NULL );
  */
 void fio_tls_cert_add(fio_tls_s *, const char *server_name,
-                      const char *private_key_file,
-                      const char *public_cert_file, const char *pk_password);
+                      const char *public_cert_file,
+                      const char *private_key_file, const char *pk_password);
 
 /**
  * Adds an ALPN protocol callback to the SSL/TLS context.

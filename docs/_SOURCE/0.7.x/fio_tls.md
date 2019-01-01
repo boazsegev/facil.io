@@ -22,8 +22,8 @@ To use the facil.io TLS API, include the file `fio_tls.h`
 
 ```c
 fio_tls_s *fio_tls_new(const char *server_name,
-                       const char *private_key_file,
                        const char *public_certificate_file,
+                       const char *private_key_file,
                        const char *private_key_password);
 ```
 
@@ -31,8 +31,8 @@ Creates a new SSL/TLS context / settings object with a default certificate (if a
 
 ```c
 fio_tls_s * tls = fio_tls_new("www.example.com",
-                              "./ssl/private_key.pem",
                               "./ssl/public_key.pem",
+                              "./ssl/private_key.pem",
                               NULL);
 ```
 
@@ -66,17 +66,20 @@ Destroys the SSL/TLS context / settings object and frees any related resources /
 
 ```c
 void fio_tls_cert_add(fio_tls_s *, const char *server_name,
-                      const char *private_key_file,
                       const char *public_cert_file,
+                      const char *private_key_file,
                       const char *private_key_password);
 ```
 
 Adds a certificate a new SSL/TLS context / settings object (SNI support).
 
+The `private_key_password` can be NULL if the private key PEM file isn't password protected. 
+
 ```c
 fio_tls_cert_add(tls, "www.example.com",
+                      "./ssl/public_key.pem",
                       "./ssl/private_key.pem",
-                      "./ssl/public_key.pem" );
+                      NULL);
 ```
 
 #### `fio_tls_proto_add`

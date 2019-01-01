@@ -4,6 +4,8 @@
 
 **Fix**: (`redis`) fixed an issue where destroying the Redis engine and exiting pre-maturely, before running facio.io (`fio_start`), will cause a segmentation fault during cleanup.
 
+**BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API... I know, I'm sorry, especially since it's a small and misleading change in argument ordering... but if we don't fix the API now, before the 0.7.0 release, bad design might haunt us every Wednesday.
+
 ### v. 0.7.0.beta6
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API, adding support for password protected private key files. *Note*: The TLS API is still fragile and should only be considered stable once version 0.7.0 is released with SSL/TLS support.
