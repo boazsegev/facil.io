@@ -46,20 +46,22 @@ void fio_tls_cert_add(fio_tls_s *, const char *server_name,
  *
  * The first protocol added will act as the default protocol to be selected.
  *
- * The callback should accept the `uuid`, the user data pointer passed to either
- * `fio_tls_accept` or `fio_tls_connect` (here: `udata_connetcion`) and the user
- * data pointer passed to the `fio_tls_proto_add` function (`udata_tls`).
+ * The `on_selected` callback should accept the `uuid`, the user data pointer
+ * passed to either `fio_tls_accept` or `fio_tls_connect` (here:
+ * `udata_connetcion`) and the user data pointer passed to the
+ * `fio_tls_proto_add` function (`udata_tls`).
  *
  * The `on_cleanup` callback will be called when the TLS object is destroyed (or
  * `fio_tls_proto_add` is called again with the same protocol name). The
- * `udata_tls` argumrnt will be passed along, as is, to the callback (if set).
+ * `udata_tls` argument will be passed along, as is, to the callback (if set).
  *
  * Except for the `tls` and `protocol_name` arguments, all arguments can be
  * NULL.
  */
 void fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
-                       void (*callback)(intptr_t uuid, void *udata_connection,
-                                        void *udata_tls),
+                       void (*on_selected)(intptr_t uuid,
+                                           void *udata_connection,
+                                           void *udata_tls),
                        void *udata_tls, void (*on_cleanup)(void *udata_tls));
 /**
  * Adds a certificate to the "trust" list, which automatically adds a peer

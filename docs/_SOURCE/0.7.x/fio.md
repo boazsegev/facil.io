@@ -2224,6 +2224,16 @@ inline uint64_t fio_str_hash(const fio_str_s *s);
 
 Returns the string's SipHash value (Uses SipHash 1-3).
 
+#### `fio_str_hash_risky`
+
+```c
+inline uintptr_t fio_str_hash_risky(const fio_str_s *s);
+```
+
+Returns an unsafe, quick and dirty, hash value that is very likely to collide.
+
+Basically the string's bytes and length are all XOR'ed together ... not for cryptographic use, but okay for very small hash maps, especially where the String length is guaranteed to be 8 bytes or less.
+
 ### String API - Memory management
 
 #### `fio_str_compact`

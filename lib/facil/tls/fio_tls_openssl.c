@@ -89,7 +89,7 @@ static inline void fio_tls_trust_destroy(trust_s *obj) {
 
 typedef struct {
   fio_str_s name; /* fio_str_s provides cache locality for small strings */
-  void (*callback)(intptr_t uuid, void *udata_connection, void *udata_tls);
+  void (*on_selected)(intptr_t uuid, void *udata_connection, void *udata_tls);
   void *udata_tls;
   void (*on_cleanup)(void *udata_tls);
 } alpn_s;
@@ -100,7 +100,7 @@ static inline int fio_alpn_cmp(const alpn_s *dest, const alpn_s *src) {
 static inline void fio_alpn_copy(alpn_s *dest, alpn_s *src) {
   *dest = (alpn_s){
       .name = FIO_STR_INIT,
-      .callback = src->callback,
+      .on_selected = src->on_selected,
       .udata_tls = src->udata_tls,
       .on_cleanup = src->on_cleanup,
   };
@@ -158,11 +158,11 @@ FIO_FUNC inline alpn_s *alpn_find(fio_tls_s *tls, char *name, size_t len) {
 /** Adds an ALPN data object to the ALPN "list" (set) */
 FIO_FUNC inline void fio_tls_alpn_add(
     fio_tls_s *tls, const char *protocol_name,
-    void (*callback)(intptr_t uuid, void *udata_connection, void *udata_tls),
+    void (*on_selected)(intptr_t uuid, void *udata_connection, void *udata_tls),
     void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
   alpn_s tmp = {
       .name = FIO_STR_INIT_STATIC(protocol_name),
-      .callback = callback,
+      .on_selected = on_selected,
       .udata_tls = udata_tls,
       .on_cleanup = on_cleanup,
   };
@@ -277,12 +277,12 @@ typedef struct {
 
 static void fio_tls_alpn_fallback(fio_tls_connection_s *c) {
   alpn_s *alpn = alpn_default(c->tls);
-  if (!alpn || !alpn->callback)
+  if (!alpn || !alpn->on_selected)
     return;
   /* set protocol to default protocol */
   FIO_LOG_DEBUG("TLS ALPN handshake missing, falling back on %s for %p",
                 fio_str_info(&alpn->name).data, (void *)c->uuid);
-  alpn->callback(c->uuid, c->alpn_arg, alpn->udata_tls);
+  alpn->on_selected(c->uuid, c->alpn_arg, alpn->udata_tls);
   c->alpn_ok = 1;
 }
 static int fio_tls_alpn_selector_cb(SSL *ssl, const unsigned char **out,
@@ -291,7 +291,7 @@ static int fio_tls_alpn_selector_cb(SSL *ssl, const unsigned char **out,
                                     void *tls_) {
   fio_tls_s *tls = tls_;
   alpn_s *alpn;
-  /* TODO: select ALPN and call callback */
+  /* TODO: select ALPN and call on_selected */
   fio_tls_connection_s *c = SSL_get_ex_data(ssl, 0);
 
   if (alpn_list_count(&tls->alpn) == 0)
@@ -308,14 +308,14 @@ static int fio_tls_alpn_selector_cb(SSL *ssl, const unsigned char **out,
     *outlen = (unsigned char)info.len;
     FIO_LOG_DEBUG("TLS ALPN set to: %s for %p", info.data, (void *)c->uuid);
     c->alpn_ok = 1;
-    if (alpn->callback)
-      alpn->callback(c->uuid, c->alpn_arg, alpn->udata_tls);
+    if (alpn->on_selected)
+      alpn->on_selected(c->uuid, c->alpn_arg, alpn->udata_tls);
     return SSL_TLSEXT_ERR_OK;
   }
   /* set protocol to default protocol */
   alpn = alpn_default(c->tls);
-  if (alpn->callback)
-    alpn->callback(c->uuid, c->alpn_arg, alpn->udata_tls);
+  if (alpn->on_selected)
+    alpn->on_selected(c->uuid, c->alpn_arg, alpn->udata_tls);
   FIO_LOG_DEBUG(
       "TLS ALPN handshake failed, falling back on default (%s) for %p",
       fio_str_data(&alpn->name), (void *)c->uuid);
@@ -808,10 +808,10 @@ file_missing:
  */
 void FIO_TLS_WEAK fio_tls_proto_add(
     fio_tls_s *tls, const char *protocol_name,
-    void (*callback)(intptr_t uuid, void *udata_connection, void *udata_tls),
+    void (*on_selected)(intptr_t uuid, void *udata_connection, void *udata_tls),
     void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
   REQUIRE_LIBRARY();
-  fio_tls_alpn_add(tls, protocol_name, callback, udata_tls, on_cleanup);
+  fio_tls_alpn_add(tls, protocol_name, on_selected, udata_tls, on_cleanup);
   fio_tls_build_context(tls);
 }
 

@@ -102,7 +102,7 @@ static inline void fio_tls_trust_destroy(trust_s *obj) {
 
 typedef struct {
   fio_str_s name; /* fio_str_s provides cache locality for small strings */
-  void (*callback)(intptr_t uuid, void *udata_connection, void *udata_tls);
+  void (*on_selected)(intptr_t uuid, void *udata_connection, void *udata_tls);
   void *udata_tls;
   void (*on_cleanup)(void *udata_tls);
 } alpn_s;
@@ -113,7 +113,7 @@ static inline int fio_alpn_cmp(const alpn_s *dest, const alpn_s *src) {
 static inline void fio_alpn_copy(alpn_s *dest, alpn_s *src) {
   *dest = (alpn_s){
       .name = FIO_STR_INIT,
-      .callback = src->callback,
+      .on_selected = src->on_selected,
       .udata_tls = src->udata_tls,
       .on_cleanup = src->on_cleanup,
   };
@@ -167,11 +167,11 @@ FIO_FUNC inline alpn_s *alpn_find(fio_tls_s *tls, char *name, size_t len) {
 /** Adds an ALPN data object to the ALPN "list" (set) */
 FIO_FUNC inline void fio_tls_alpn_add(
     fio_tls_s *tls, const char *protocol_name,
-    void (*callback)(intptr_t uuid, void *udata_connection, void *udata_tls),
+    void (*on_selected)(intptr_t uuid, void *udata_connection, void *udata_tls),
     void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
   alpn_s tmp = {
       .name = FIO_STR_INIT_STATIC(protocol_name),
-      .callback = callback,
+      .on_selected = on_selected,
       .udata_tls = udata_tls,
       .on_cleanup = on_cleanup,
   };
@@ -425,8 +425,8 @@ static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
   fio_rw_hook_set(uuid, &FIO_TLS_HANDSHAKE_HOOKS,
                   connection_data); /* 32Kb buffer */
   alpn_s *a = alpn_default(tls);
-  if (a && a->callback)
-    a->callback(uuid, udata, a->udata_tls);
+  if (a && a->on_selected)
+    a->on_selected(uuid, udata, a->udata_tls);
 }
 
 /* *****************************************************************************
@@ -497,10 +497,10 @@ file_missing:
  */
 void FIO_TLS_WEAK fio_tls_proto_add(
     fio_tls_s *tls, const char *protocol_name,
-    void (*callback)(intptr_t uuid, void *udata_connection, void *udata_tls),
+    void (*on_selected)(intptr_t uuid, void *udata_connection, void *udata_tls),
     void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
   REQUIRE_LIBRARY();
-  fio_tls_alpn_add(tls, protocol_name, callback, udata_tls, on_cleanup);
+  fio_tls_alpn_add(tls, protocol_name, on_selected, udata_tls, on_cleanup);
   fio_tls_build_context(tls);
 }
 

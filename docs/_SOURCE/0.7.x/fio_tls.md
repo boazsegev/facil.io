@@ -82,17 +82,6 @@ fio_tls_cert_add(tls, "www.example.com",
                       NULL);
 ```
 
-#### `fio_tls_proto_add`
-
-```c
-void fio_tls_proto_add(fio_tls_s *, const char *protocol_name,
-                       void (*callback)(intptr_t uuid, void *udata));
-```
-
-Adds an ALPN protocol callback to the SSL/TLS context.
-
-The first protocol added will act as the default protocol to be selected when the client does not support or specify ALPN protocol selection.
-
 #### `fio_tls_trust`
 
 ```c
@@ -106,6 +95,29 @@ Note, when the fio_tls_s object is used for server connections, this will limit 
 ```c
 fio_tls_trust(tls, "google-ca.pem" );
 ```
+
+#### `fio_tls_proto_add`
+
+```c
+void fio_tls_proto_add(fio_tls_s *tls,
+                       const char *protocol_name,
+                       void (*on_selected)(intptr_t uuid,
+                                        void *udata_connection,
+                                        void *udata_tls),
+                       void *udata_tls,
+                       void (*on_cleanup)(void *udata_tls));
+```
+
+
+Adds an ALPN protocol callback to the SSL/TLS context.
+
+The first protocol added will act as the default protocol to be selected.
+
+The `on_selected` callback should accept the connection's `uuid`, the user data pointer passed to either `fio_tls_accept` or `fio_tls_connect` (here: `udata_connetcion`) and the user data pointer passed to the `fio_tls_proto_add` function (`udata_tls`).
+
+The `on_cleanup` callback will be called when the TLS object is destroyed (or `fio_tls_proto_add` is called again with the same protocol name). The `udata_tls` argument will be passed along, as is, to the callback (if set).
+
+Except for the `tls` and `protocol_name` arguments, all arguments can be NULL.
 
 ### TLS Connection Establishment
 
