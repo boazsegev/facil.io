@@ -3711,7 +3711,7 @@ inline FIO_FUNC uintptr_t fio_str_hash_risky(const fio_str_s *s) {
   uintptr_t hash = state.len;
   uintptr_t tmp;
   while (state.len >= sizeof(uintptr_t)) {
-    uintptr_t register t = fio_str2u64(state.data);
+    uintptr_t t = fio_str2u64(state.data);
     hash ^= fio_str_hash_risky_shuffle(t);
     state.len -= sizeof(uintptr_t);
     state.data += sizeof(uintptr_t);

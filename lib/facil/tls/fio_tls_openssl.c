@@ -431,6 +431,14 @@ static void fio_tls_build_context(fio_tls_s *tls) {
             }
           }
           sk_X509_INFO_pop_free(inf, X509_INFO_free);
+        } else {
+          /* TODO: attempt DER format? */
+          // X509 *c;
+          // EVP_PKEY *k;
+          // const uint8_t *pdata = (uint8_t *)&keys[ki].data;
+          // d2i_X509(&c, &pdata, keys[ki].len);
+          // pdata = (uint8_t *)&keys[ki].data;
+          // d2i_AutoPrivateKey(&k, &pdata, keys[ki].len);
         }
         BIO_free(bio);
       }
