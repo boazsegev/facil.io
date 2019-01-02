@@ -216,6 +216,7 @@ FIO_FUNC inline void alpn_select(alpn_s *alpn, intptr_t uuid,
       .uuid = uuid,
       .udata_connection = udata_connection,
   };
+  /* move task out of the socket's lock */
   fio_defer(alpn_select___task, t, NULL);
 }
 
@@ -399,6 +400,11 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
     return 0;
   if (fio_rw_hook_replace_unsafe(uuid, &FIO_TLS_HOOKS, udata) == 0) {
     FIO_LOG_DEBUG("Completed TLS handshake for %p", (void *)uuid);
+    /*
+     * make sure the connection is re-added to the reactor...
+     * in case, while waiting for ALPN, it was suspended for missing a protocol.
+     */
+    fio_force_event(uuid, FIO_EVENT_ON_DATA);
   } else {
     FIO_LOG_DEBUG("Something went wrong during TLS handshake for %p",
                   (void *)uuid);

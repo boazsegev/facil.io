@@ -311,7 +311,6 @@ static void fio_tls_alpn_fallback(fio_tls_connection_s *c) {
   FIO_LOG_DEBUG("TLS ALPN handshake missing, falling back on %s for %p",
                 fio_str_info(&alpn->name).data, (void *)c->uuid);
   alpn_select(alpn, c->uuid, c->alpn_arg);
-  c->alpn_ok = 1;
 }
 static int fio_tls_alpn_selector_cb(SSL *ssl, const unsigned char **out,
                                     unsigned char *outlen,
@@ -634,7 +633,7 @@ static fio_rw_hook_s FIO_TLS_HOOKS = {
     .cleanup = fio_tls_cleanup,
 };
 
-static size_t fio_tls_handshake(intptr_t uuid, void *udata, uint8_t schedule) {
+static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
   fio_tls_connection_s *c = udata;
   int ri;
   if (c->is_server) {
@@ -687,20 +686,17 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata, uint8_t schedule) {
       FIO_LOG_DEBUG(
           "SSL_accept/SSL_connect %p error: SSL_ERROR_SYSCALL, errno: %s",
           (void *)uuid, strerror(errno));
-      // if (schedule)
-      //   fio_force_event(uuid, FIO_EVENT_ON_DATA);
+      // fio_force_event(uuid, FIO_EVENT_ON_DATA);
       break;
     case SSL_ERROR_WANT_WRITE:
       // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_WANT_WRITE",
       //               (void *)uuid);
-      // if (schedule)
       //   fio_force_event(uuid, FIO_EVENT_ON_READY);
       break;
     case SSL_ERROR_WANT_READ:
       // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_WANT_READ",
       //               (void *)uuid);
-      if (schedule)
-        fio_force_event(uuid, FIO_EVENT_ON_DATA);
+      // fio_force_event(uuid, FIO_EVENT_ON_DATA);
       break;
     default:
       FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: unknown (%d).",
@@ -711,6 +707,7 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata, uint8_t schedule) {
     return 0;
   }
   if (!c->alpn_ok) {
+    c->alpn_ok = 1;
     if (c->is_server) {
       fio_tls_alpn_fallback(c);
     } else {
@@ -721,8 +718,13 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata, uint8_t schedule) {
       if (proto_len > 0) {
         alpn = alpn_find(c->tls, (char *)proto, proto_len);
       }
-      if (!alpn)
+      if (!alpn) {
         alpn = alpn_default(c->tls);
+        FIO_LOG_DEBUG("ALPN missing for TLS client %p", (void *)uuid);
+      }
+      if (alpn)
+        FIO_LOG_DEBUG("setting ALPN %s for TLS client %p",
+                      fio_str_data(&alpn->name), (void *)uuid);
       alpn_select(alpn, c->uuid, c->alpn_arg);
     }
   }
@@ -733,13 +735,15 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata, uint8_t schedule) {
                   (void *)uuid);
     return 0;
   }
+  /* make sure the connection is re-added to the reactor */
+  fio_force_event(uuid, FIO_EVENT_ON_DATA);
   return 1;
 }
 
 static ssize_t fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf,
                                       size_t count) {
   // FIO_LOG_DEBUG("TLS handshake from read %p", (void *)uuid);
-  if (fio_tls_handshake(uuid, udata, 0))
+  if (fio_tls_handshake(uuid, udata))
     return fio_tls_read(uuid, udata, buf, count);
   errno = EWOULDBLOCK;
   return -1;
@@ -748,7 +752,7 @@ static ssize_t fio_tls_read4handshake(intptr_t uuid, void *udata, void *buf,
 static ssize_t fio_tls_write4handshake(intptr_t uuid, void *udata,
                                        const void *buf, size_t count) {
   // FIO_LOG_DEBUG("TLS handshake from write %p", (void *)uuid);
-  if (fio_tls_handshake(uuid, udata, 0))
+  if (fio_tls_handshake(uuid, udata))
     return fio_tls_write(uuid, udata, buf, count);
   errno = EWOULDBLOCK;
   return -1;
@@ -756,10 +760,11 @@ static ssize_t fio_tls_write4handshake(intptr_t uuid, void *udata,
 
 static ssize_t fio_tls_flush4handshake(intptr_t uuid, void *udata) {
   // FIO_LOG_DEBUG("TLS handshake from flush %p", (void *)uuid);
-  if (fio_tls_handshake(uuid, udata, 1))
+  if (fio_tls_handshake(uuid, udata)) {
     return fio_tls_flush(uuid, udata);
+  }
   errno = 0;
-  return 0;
+  return 1;
 }
 static fio_rw_hook_s FIO_TLS_HANDSHAKE_HOOKS = {
     .read = fio_tls_read4handshake,

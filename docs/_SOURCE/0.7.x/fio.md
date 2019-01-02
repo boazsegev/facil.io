@@ -207,6 +207,8 @@ void fio_suspend(intptr_t uuid);
 
 Temporarily prevents `on_data` events from firing.
 
+Resume listening to `on_data` events by calling the `fio_force_event(uuid, FIO_EVENT_ON_DATA`.
+
 Note: the function will work as expected when called within the protocol's `on_data` callback and the `uuid` refers to a valid socket. Otherwise the function might quietly fail.
 
 ### Listening to incoming connections
