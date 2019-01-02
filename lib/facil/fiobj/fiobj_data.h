@@ -1,5 +1,5 @@
 /*
-Copyright: Boaz Segev, 2017-2018
+Copyright: Boaz Segev, 2017-2019
 License: MIT
 */
 #if !defined(H_FIOBJ_IO_H) && (defined(__unix__) || defined(__APPLE__) ||      \

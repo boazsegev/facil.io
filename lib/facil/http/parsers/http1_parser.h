@@ -1,6 +1,6 @@
 #ifndef H_HTTP1_PARSER_H
 /*
-Copyright: Boaz Segev, 2017-2018
+Copyright: Boaz Segev, 2017-2019
 License: MIT
 
 Feel free to copy, use and enjoy according to the license provided.

@@ -1,3 +1,7 @@
+/*
+Copyright: Boaz Segev, 2018-2019
+License: MIT
+*/
 #ifndef H_FIOBJ_MUSTACHE_H
 #define H_FIOBJ_MUSTACHE_H
 

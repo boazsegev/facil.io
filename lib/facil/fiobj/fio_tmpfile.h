@@ -1,5 +1,5 @@
 /*
-Copyright: Boaz Segev, 2018
+Copyright: Boaz Segev, 2018-2019
 License: MIT
 */
 #ifndef H_FIO_TMPFILE_H

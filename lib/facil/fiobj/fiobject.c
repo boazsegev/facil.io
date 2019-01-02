@@ -1,5 +1,5 @@
 /*
-Copyright: Boaz Segev, 2017-2018
+Copyright: Boaz Segev, 2017-2019
 License: MIT
 */
 

@@ -1,6 +1,6 @@
 #ifndef H_FIOBJ_STR_H
 /*
-Copyright: Boaz Segev, 2017-2018
+Copyright: Boaz Segev, 2017-2019
 License: MIT
 */
 #define H_FIOBJ_STR_H

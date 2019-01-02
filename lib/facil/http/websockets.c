@@ -1,5 +1,5 @@
 /*
-copyright: Boaz Segev, 2016-2018
+copyright: Boaz Segev, 2016-2019
 license: MIT
 
 Feel free to copy, use and enjoy according to the license provided.

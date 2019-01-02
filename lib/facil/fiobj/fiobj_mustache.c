@@ -1,3 +1,7 @@
+/*
+Copyright: Boaz Segev, 2018-2019
+License: MIT
+*/
 #define INCLUDE_MUSTACHE_IMPLEMENTATION 1
 #include <mustache_parser.h>
 

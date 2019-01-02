@@ -1,6 +1,6 @@
 #ifndef H_FIO_JSON_H
 /* *****************************************************************************
- * Copyright: Boaz Segev, 2017-2018
+ * Copyright: Boaz Segev, 2017-2019
  * License: MIT
  *
  * This header file is a single-file JSON naive parse.
