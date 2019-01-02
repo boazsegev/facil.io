@@ -3327,6 +3327,14 @@ inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size);
  */
 inline FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s);
 
+/**
+ * Returns an unsafe, quick and dirty, hash value that is very likely to
+ * collide.
+ *
+ * (basically the first few bytes XOR'ed with the length)
+ */
+inline FIO_FUNC uintptr_t fio_str_hash_risky(const fio_str_s *s);
+
 /* *****************************************************************************
 String API - Memory management
 ***************************************************************************** */
@@ -3688,6 +3696,51 @@ inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size) {
 inline FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s) {
   fio_str_info_s state = fio_str_info(s);
   return fio_siphash(state.data, state.len);
+}
+
+/**
+ * Returns an unsafe, quick and dirty, hash value that is very likely to
+ * collide... basically the first few bytes XOR'ed with the length.
+ *
+ * This is okay for very small hash maps that prefer fast lookups.
+ */
+inline FIO_FUNC uintptr_t fio_str_hash_risky(const fio_str_s *s) {
+
+/* adds a minor amount of bit shuffling, signed bytes effect neighbor */
+#define fio_str_hash_risky_shuffle(data_i)                                     \
+  ((data_i) ^ (((data_i) & (uint64_t)0x8080808008080808ULL) << 1))
+
+  fio_str_info_s state = fio_str_info(s);
+  uintptr_t hash = state.len;
+  uintptr_t tmp;
+  while (state.len >= sizeof(uintptr_t)) {
+    uintptr_t register t = fio_str2u64(state.data);
+    hash ^= fio_str_hash_risky_shuffle(t);
+    state.len -= sizeof(uintptr_t);
+    state.data += sizeof(uintptr_t);
+  }
+  tmp = 0;
+  /* assumes sizeof(uintptr_t) <= 8 */
+  switch (state.len) {
+  case 7: /* overflow */
+    ((char *)(&tmp))[6] = state.data[6];
+  case 6: /* overflow */
+    ((char *)(&tmp))[5] = state.data[5];
+  case 5: /* overflow */
+    ((char *)(&tmp))[4] = state.data[4];
+  case 4: /* overflow */
+    ((char *)(&tmp))[3] = state.data[3];
+  case 3: /* overflow */
+    ((char *)(&tmp))[2] = state.data[2];
+  case 2: /* overflow */
+    ((char *)(&tmp))[1] = state.data[1];
+  case 1: /* overflow */
+    ((char *)(&tmp))[0] = state.data[0];
+  }
+  hash ^= fio_str_hash_risky_shuffle(tmp);
+  return hash;
+
+#undef fio_str_hash_risky_shuffle
 }
 
 /* *****************************************************************************
@@ -5715,6 +5768,8 @@ FIO_FUNC void FIO_NAME_FREE()(FIO_NAME(s) * s) {
 
 #ifdef FIO_SET_KEY_TYPE
 
+/* Hash Map unique implementation */
+
 /**
  * Locates an object in the Set, if it exists.
  *
@@ -5789,7 +5844,9 @@ FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
   return 0;
 }
 
-#else
+#else /* FIO_SET_KEY_TYPE */
+
+/* Set unique implementation */
 
 /** Locates an object in the Set, if it exists. */
 FIO_FUNC FIO_SET_OBJ_TYPE FIO_NAME(find)(FIO_NAME(s) * set,

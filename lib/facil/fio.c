@@ -9312,6 +9312,62 @@ FIO_FUNC void fio_set_test(void) {
 }
 
 /* *****************************************************************************
+Bad Hash (risky hash) tests
+***************************************************************************** */
+
+FIO_FUNC void fio_riskyhash_speed_test(void) {
+  /* test based on code from BearSSL with credit to Thomas Pornin */
+  uint8_t buffer[8192];
+  memset(buffer, 'T', sizeof(buffer));
+  fio_str_s str = FIO_STR_INIT_STATIC2(buffer, 8192);
+  /* warmup */
+  uint64_t hash = 0;
+  for (size_t i = 0; i < 4; i++) {
+    hash += fio_str_hash_risky(&str);
+    memcpy(buffer, &hash, sizeof(hash));
+  }
+  /* loop until test runs for more than 2 seconds */
+  for (uint64_t cycles = 8192;;) {
+    clock_t start, end;
+    start = clock();
+    for (size_t i = cycles; i > 0; i--) {
+      hash += fio_str_hash_risky(&str);
+      __asm__ volatile("" ::: "memory");
+    }
+    end = clock();
+    memcpy(buffer, &hash, sizeof(hash));
+    if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
+        cycles >= ((uint64_t)1 << 62)) {
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio_str_hash_risky",
+              (double)(sizeof(buffer) * cycles) /
+                  (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
+      break;
+    }
+    cycles <<= 2;
+  }
+}
+
+FIO_FUNC void fio_riskyhash_test(void) {
+  fprintf(stderr, "===================================\n");
+#if NODEBUG
+  fio_riskyhash_speed_test();
+#else
+  fprintf(stderr,
+          "fio_str_hash_risky speed test skipped (debug mode is slow)\n");
+  fio_str_s str1 = FIO_STR_INIT_STATIC("nothing_is_really_here1");
+  fio_str_s str2 = FIO_STR_INIT_STATIC("nothing_is_really_here2");
+  fio_str_s copy = FIO_STR_INIT;
+  FIO_ASSERT(fio_str_hash_risky(&str1) != fio_str_hash_risky(&str2),
+             "Different strings should have a different risky hash");
+  fio_str_concat(&copy, &str1);
+  FIO_ASSERT(fio_str_hash_risky(&str1) == fio_str_hash_risky(&copy),
+             "Same string values should have the same risky hash");
+  fio_str_free(&copy);
+  (void)fio_riskyhash_speed_test;
+#endif
+}
+
+/* *****************************************************************************
 SipHash tests
 ***************************************************************************** */
 
@@ -9374,7 +9430,6 @@ FIO_FUNC void fio_siphash_test(void) {
   (void)fio_siphash_speed_test;
 #endif
 }
-
 /* *****************************************************************************
 SHA-1 tests
 ***************************************************************************** */
@@ -10362,6 +10417,7 @@ void fio_test(void) {
   fio_socket_test();
   fio_uuid_link_test();
   fio_cycle_test();
+  fio_riskyhash_test();
   fio_siphash_test();
   fio_sha1_test();
   fio_sha2_test();
