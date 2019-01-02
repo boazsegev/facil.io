@@ -788,10 +788,7 @@ struct fio_connect_args {
   /** The port on the server we are connecting to. */
   const char *port;
   /**
-   * The `on_connect` callback should return a pointer to a protocol object
-   * that will handle any connection related events.
-   *
-   * Should either call `fio_attach` or close the connection.
+   * The `on_connect` callback either call `fio_attach` or close the connection.
    */
   void (*on_connect)(intptr_t uuid, void *udata);
   /**

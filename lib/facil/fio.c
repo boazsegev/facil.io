@@ -3101,8 +3101,8 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
     }
     prt_meta(protocol) = (protocol_metadata_s){.rsv = 0};
   }
-  if ((intptr_t)uuid == -1)
-    goto negative_uuid;
+  if (!uuid_is_valid(uuid))
+    goto invalid_uuid_unlocked;
   fio_lock(&uuid_data(uuid).protocol_lock);
   if (!uuid_is_valid(uuid)) {
     goto invalid_uuid;
@@ -3129,7 +3129,7 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
 
 invalid_uuid:
   fio_unlock(&uuid_data(uuid).protocol_lock);
-negative_uuid:
+invalid_uuid_unlocked:
   if (protocol)
     fio_defer_push_task(deferred_on_close, (void *)uuid, protocol);
   if (uuid == -1)
@@ -4430,6 +4430,8 @@ static void fio_connect_on_close(intptr_t uuid, fio_protocol_s *pr_) {
 
 static void fio_connect_on_ready(intptr_t uuid, fio_protocol_s *pr_) {
   fio_connect_protocol_s *pr = (fio_connect_protocol_s *)pr_;
+  if (pr->pr.on_ready == mock_on_ev)
+    return; /* Don't call on_connect more than once */
   pr->pr.on_ready = mock_on_ev;
   pr->on_fail = NULL;
   pr->on_connect(uuid, pr->udata);

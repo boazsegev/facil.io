@@ -676,6 +676,20 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata, uint8_t schedule) {
       FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_WANT_ASYNC",
                     (void *)uuid);
       break;
+#ifdef SSL_ERROR_WANT_CLIENT_HELLO_CB
+    case SSL_ERROR_WANT_CLIENT_HELLO_CB:
+      FIO_LOG_DEBUG(
+          "SSL_accept/SSL_connect %p error: SSL_ERROR_WANT_CLIENT_HELLO_CB",
+          (void *)uuid);
+      break;
+#endif
+    case SSL_ERROR_SYSCALL:
+      FIO_LOG_DEBUG(
+          "SSL_accept/SSL_connect %p error: SSL_ERROR_SYSCALL, errno: %s",
+          (void *)uuid, strerror(errno));
+      // if (schedule)
+      //   fio_force_event(uuid, FIO_EVENT_ON_DATA);
+      break;
     case SSL_ERROR_WANT_WRITE:
       // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_WANT_WRITE",
       //               (void *)uuid);
@@ -696,8 +710,22 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata, uint8_t schedule) {
     }
     return 0;
   }
-  if (!c->alpn_ok)
-    fio_tls_alpn_fallback(c);
+  if (!c->alpn_ok) {
+    if (c->is_server) {
+      fio_tls_alpn_fallback(c);
+    } else {
+      const unsigned char *proto;
+      unsigned int proto_len;
+      SSL_get0_alpn_selected(c->ssl, &proto, &proto_len);
+      alpn_s *alpn = NULL;
+      if (proto_len > 0) {
+        alpn = alpn_find(c->tls, (char *)proto, proto_len);
+      }
+      if (!alpn)
+        alpn = alpn_default(c->tls);
+      alpn_select(alpn, c->uuid, c->alpn_arg);
+    }
+  }
   if (fio_rw_hook_replace_unsafe(uuid, &FIO_TLS_HOOKS, udata) == 0) {
     FIO_LOG_DEBUG("Completed TLS handshake for %p", (void *)uuid);
   } else {
@@ -833,12 +861,13 @@ file_missing:
  *
  * The first protocol added will act as the default protocol to be selected.
  *
- * The callback should accept the `uuid`, the user data pointer passed to either
- * `fio_tls_accept` or `fio_tls_connect` (here: `udata_connetcion`) and the user
- * data pointer passed to the `fio_tls_alpn_add` function (`udata_tls`).
+ * The callback should accept the `uuid`, the user data pointer passed to
+ * either `fio_tls_accept` or `fio_tls_connect` (here: `udata_connetcion`) and
+ * the user data pointer passed to the `fio_tls_alpn_add` function
+ * (`udata_tls`).
  *
- * The `on_cleanup` callback will be called when the TLS object is destroyed (or
- * `fio_tls_alpn_add` is called again with the same protocol name). The
+ * The `on_cleanup` callback will be called when the TLS object is destroyed
+ * (or `fio_tls_alpn_add` is called again with the same protocol name). The
  * `udata_tls` argumrnt will be passed along, as is, to the callback (if set).
  *
  * Except for the `tls` and `protocol_name` arguments, all arguments can be
@@ -856,8 +885,9 @@ void FIO_TLS_WEAK fio_tls_alpn_add(
 /**
  * Returns the number of registered ALPN protocol names.
  *
- * This could be used when deciding if protocol selection should be delegated to
- * the ALPN mechanism, or whether a protocol should be immediately assigned.
+ * This could be used when deciding if protocol selection should be delegated
+ * to the ALPN mechanism, or whether a protocol should be immediately
+ * assigned.
  *
  * If no ALPN protocols are registered, zero (0) is returned.
  */
@@ -893,8 +923,8 @@ file_missing:
  * Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified
  * context / settings object.
  *
- * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
- * the result of `fio_accept`).
+ * The `uuid` should be a socket UUID that is already connected to a peer
+ * (i.e., the result of `fio_accept`).
  *
  * The `udata` is an opaque user data pointer that is passed along to the
  * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
@@ -908,8 +938,8 @@ void FIO_TLS_WEAK fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata) {
  * Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified
  * context / settings object.
  *
- * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
- * one received by a `fio_connect` specified callback `on_connect`).
+ * The `uuid` should be a socket UUID that is already connected to a peer
+ * (i.e., one received by a `fio_connect` specified callback `on_connect`).
  *
  * The `udata` is an opaque user data pointer that is passed along to the
  * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
