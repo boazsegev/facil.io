@@ -29,12 +29,16 @@ SSL/TLS patch
  */
 void __attribute__((weak))
 fio_tls_proto_add(void *tls, const char *protocol_name,
-                  void (*callback)(intptr_t uuid, void *udata)) {
+                  void (*callback)(intptr_t uuid, void *udata_connection,
+                                   void *udata_tls),
+                  void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
   FIO_LOG_FATAL("HTTP SSL/TLS required but unavailable!");
   exit(-1);
   (void)tls;
   (void)protocol_name;
   (void)callback;
+  (void)on_cleanup;
+  (void)udata_tls;
 }
 #pragma weak fio_tls_proto_add
 
@@ -907,10 +911,12 @@ static void http_settings_free(http_settings_s *s) {
 Listening to HTTP connections
 ***************************************************************************** */
 
-static void http_on_server_protocol_http1(intptr_t uuid, void *set) {
+static void http_on_server_protocol_http1(intptr_t uuid, void *set,
+                                          void *ignr_) {
   fio_protocol_s *pr = http1_new(uuid, set, NULL, 0);
   if (!pr)
     fio_close(uuid);
+  (void)ignr_;
 }
 
 static void http_on_open(intptr_t uuid, void *set) {
@@ -928,7 +934,7 @@ static void http_on_open(intptr_t uuid, void *set) {
   if (((http_settings_s *)set)->tls)
     fio_tls_accept(uuid, ((http_settings_s *)set)->tls, set);
   else
-    http_on_server_protocol_http1(uuid, set);
+    http_on_server_protocol_http1(uuid, set, NULL);
 }
 
 static void http_on_finish(intptr_t uuid, void *set) {
@@ -961,7 +967,8 @@ intptr_t http_listen(const char *port, const char *binding,
   http_settings_s *settings = http_settings_new(arg_settings);
   settings->is_client = 0;
   if (settings->tls) {
-    fio_tls_proto_add(settings->tls, "http/1.1", http_on_server_protocol_http1);
+    fio_tls_proto_add(settings->tls, "http/1.1", http_on_server_protocol_http1,
+                      NULL, NULL);
   }
 
   return fio_listen(.port = port, .address = binding,
@@ -1008,7 +1015,8 @@ static void http_on_open_client_perform(http_settings_s *set) {
   http_s *h = set->udata;
   set->on_response(h);
 }
-static void http_on_open_client_http1(intptr_t uuid, void *set_) {
+static void http_on_open_client_http1(intptr_t uuid, void *set_,
+                                      void *ignore_) {
   http_settings_s *set = set_;
   http_s *h = set->udata;
   fio_protocol_s *pr = http1_new(uuid, set, NULL, 0);
@@ -1025,6 +1033,7 @@ static void http_on_open_client_http1(intptr_t uuid, void *set_) {
   h->private_data.flag = (uintptr_t)pr;
   h->private_data.vtbl = http1_vtable();
   http_on_open_client_perform(set);
+  (void)ignore_;
 }
 
 static void http_on_open_client(intptr_t uuid, void *set_) {
@@ -1032,8 +1041,8 @@ static void http_on_open_client(intptr_t uuid, void *set_) {
   fio_timeout_set(uuid, set->timeout);
   if (set->tls)
     fio_tls_connect(uuid, set->tls, set_);
-  else
-    http_on_open_client_http1(uuid, set);
+  // else
+  http_on_open_client_http1(uuid, set, NULL);
 }
 
 static void http_on_client_failed(intptr_t uuid, void *set_) {
@@ -1144,9 +1153,10 @@ intptr_t http_connect(const char *address,
     arg_settings.timeout = 30;
   http_settings_s *settings = http_settings_new(arg_settings);
   settings->is_client = 1;
-  if (settings->tls) {
-    fio_tls_proto_add(settings->tls, "http/1.1", http_on_open_client_http1);
-  }
+  // if (settings->tls) {
+  //   fio_tls_proto_add(settings->tls, "http/1.1", http_on_open_client_http1,
+  //                     NULL, NULL);
+  // }
 
   if (!arg_settings.ws_timeout)
     settings->ws_timeout = 0; /* allow server to dictate timeout */

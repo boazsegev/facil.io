@@ -43,28 +43,6 @@ The SSL/TLS helper data types (can be left as is)
 #include <fio.h>
 
 typedef struct {
-  fio_str_s name; /* fio_str_s provides cache locality for small strings */
-  void (*callback)(intptr_t uuid, void *udata);
-} alpn_s;
-
-static inline int fio_alpn_cmp(const alpn_s *dest, const alpn_s *src) {
-  return fio_str_iseq(&dest->name, &src->name);
-}
-static inline void fio_alpn_copy(alpn_s *dest, alpn_s *src) {
-  *dest = (alpn_s){.name = FIO_STR_INIT, .callback = src->callback};
-  fio_str_concat(&dest->name, &src->name);
-}
-static inline void fio_alpn_destroy(alpn_s *obj) { fio_str_free(&obj->name); }
-
-#define FIO_ARY_NAME alpn_ary
-#define FIO_ARY_TYPE alpn_s
-#define FIO_ARY_COMPARE(k1, k2) fio_alpn_cmp(&(k1), &(k2))
-#define FIO_ARY_COPY(dest, obj) fio_alpn_copy(&(dest), &(obj))
-#define FIO_ARY_DESTROY(key) fio_alpn_destroy(&(key))
-#define FIO_FORCE_MALLOC_TMP 1
-#include <fio.h>
-
-typedef struct {
   fio_str_s private_key;
   fio_str_s public_key;
   fio_str_s password;
@@ -122,19 +100,96 @@ static inline void fio_tls_trust_destroy(trust_s *obj) {
 #define FIO_FORCE_MALLOC_TMP 1
 #include <fio.h>
 
+typedef struct {
+  fio_str_s name; /* fio_str_s provides cache locality for small strings */
+  void (*callback)(intptr_t uuid, void *udata_connection, void *udata_tls);
+  void *udata_tls;
+  void (*on_cleanup)(void *udata_tls);
+} alpn_s;
+
+static inline int fio_alpn_cmp(const alpn_s *dest, const alpn_s *src) {
+  return fio_str_iseq(&dest->name, &src->name);
+}
+static inline void fio_alpn_copy(alpn_s *dest, alpn_s *src) {
+  *dest = (alpn_s){
+      .name = FIO_STR_INIT,
+      .callback = src->callback,
+      .udata_tls = src->udata_tls,
+      .on_cleanup = src->on_cleanup,
+  };
+  fio_str_concat(&dest->name, &src->name);
+}
+static inline void fio_alpn_destroy(alpn_s *obj) {
+  if (obj->on_cleanup)
+    obj->on_cleanup(obj->udata_tls);
+  fio_str_free(&obj->name);
+}
+
+#define FIO_SET_NAME alpn_list
+#define FIO_SET_OBJ_TYPE alpn_s
+#define FIO_SET_OBJ_COMPARE(k1, k2) fio_alpn_cmp(&(k1), &(k2))
+#define FIO_SET_OBJ_COPY(dest, obj) fio_alpn_copy(&(dest), &(obj))
+#define FIO_SET_OBJ_DESTROY(key) fio_alpn_destroy(&(key))
+#define FIO_FORCE_MALLOC_TMP 1
+#include <fio.h>
+
 /* *****************************************************************************
 The SSL/TLS type
 ***************************************************************************** */
 
 /** An opaque type used for the SSL/TLS functions. */
 struct fio_tls_s {
-  size_t ref;        /* Reference counter, to guards the ALPN registry */
-  alpn_ary_s alpn;   /* ALPN is the name for the protocol selection extension */
+  size_t ref;       /* Reference counter, to guards the ALPN registry */
+  alpn_list_s alpn; /* ALPN is the name for the protocol selection extension */
+
+  /*** the next two components could be optimized away with tweaking stuff ***/
+
   cert_ary_s sni;    /* SNI (server name extension) stores ID certificates */
   trust_ary_s trust; /* Trusted certificate registry (peer verification) */
 
   /************ TODO: implementation data fields go here ******************/
 };
+
+/* *****************************************************************************
+ALPN Helpers
+***************************************************************************** */
+
+/** Returns a pointer to the ALPN data (callback, etc') IF exists in the TLS. */
+FIO_FUNC inline alpn_s *alpn_find(fio_tls_s *tls, char *name, size_t len) {
+  alpn_s tmp = {.name = FIO_STR_INIT_STATIC2(name, len)};
+  alpn_list__map_s_ *pos =
+      alpn_list__find_map_pos_(&tls->alpn, fio_str_hash_risky(&tmp.name), tmp);
+  if (!pos || !pos->pos)
+    return NULL;
+  return &pos->pos->obj;
+}
+
+/** Adds an ALPN data object to the ALPN "list" (set) */
+FIO_FUNC inline void fio_tls_alpn_add(
+    fio_tls_s *tls, const char *protocol_name,
+    void (*callback)(intptr_t uuid, void *udata_connection, void *udata_tls),
+    void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
+  alpn_s tmp = {
+      .name = FIO_STR_INIT_STATIC(protocol_name),
+      .callback = callback,
+      .udata_tls = udata_tls,
+      .on_cleanup = on_cleanup,
+  };
+  if (fio_str_len(&tmp.name) > 255) {
+    FIO_LOG_ERROR("ALPN protocol names are limited to 255 bytes.");
+    return;
+  }
+  alpn_list_overwrite(&tls->alpn, fio_str_hash_risky(&tmp.name), tmp, NULL);
+  tmp.on_cleanup = NULL;
+  fio_alpn_destroy(&tmp);
+}
+
+/** Returns a pointer to the default (first) ALPN object in the TLS (if any). */
+FIO_FUNC inline alpn_s *alpn_default(fio_tls_s *tls) {
+  if (!tls || !alpn_list_count(&tls->alpn) || !tls->alpn.ordered)
+    return NULL;
+  return &tls->alpn.ordered[0].obj;
+}
 
 /* *****************************************************************************
 SSL/TLS Context (re)-building - TODO: add implementation details
@@ -165,8 +220,8 @@ static void fio_tls_build_context(fio_tls_s *tls) {
   }
 
   /* ALPN Protocols */
-  FIO_ARY_FOR(&tls->alpn, pos) {
-    fio_str_info_s name = fio_str_info(&pos->name);
+  FIO_SET_FOR_LOOP(&tls->alpn, pos) {
+    fio_str_info_s name = fio_str_info(&pos->obj.name);
     (void)name;
     // map to pos->callback;
   }
@@ -369,8 +424,9 @@ static inline void fio_tls_attach2uuid(intptr_t uuid, fio_tls_s *tls,
   FIO_ASSERT_ALLOC(connection_data);
   fio_rw_hook_set(uuid, &FIO_TLS_HANDSHAKE_HOOKS,
                   connection_data); /* 32Kb buffer */
-  if (alpn_ary_count(&tls->alpn))
-    alpn_ary_get(&tls->alpn, 0).callback(uuid, udata);
+  alpn_s *a = alpn_default(tls);
+  if (a && a->callback)
+    a->callback(uuid, udata, a->udata_tls);
 }
 
 /* *****************************************************************************
@@ -427,22 +483,24 @@ file_missing:
  * Adds an ALPN protocol callback to the SSL/TLS context.
  *
  * The first protocol added will act as the default protocol to be selected.
+ *
+ * The callback should accept the `uuid`, the user data pointer passed to either
+ * `fio_tls_accept` or `fio_tls_connect` (here: `udata_connetcion`) and the user
+ * data pointer passed to the `fio_tls_proto_add` function (`udata_tls`).
+ *
+ * The `on_cleanup` callback will be called when the TLS object is destroyed (or
+ * `fio_tls_proto_add` is called again with the same protocol name). The
+ * `udata_tls` argumrnt will be passed along, as is, to the callback (if set).
+ *
+ * Except for the `tls` and `protocol_name` arguments, all arguments can be
+ * NULL.
  */
-void FIO_TLS_WEAK fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
-                                    void (*callback)(intptr_t uuid,
-                                                     void *udata)) {
+void FIO_TLS_WEAK fio_tls_proto_add(
+    fio_tls_s *tls, const char *protocol_name,
+    void (*callback)(intptr_t uuid, void *udata_connection, void *udata_tls),
+    void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
   REQUIRE_LIBRARY();
-  alpn_s tmp = {
-      .name = FIO_STR_INIT_STATIC(protocol_name),
-      .callback = callback,
-  };
-  if (fio_str_len(&tmp.name) > 255) {
-    FIO_LOG_ERROR(
-        "fio_tls_proto_add called with a protocol name exceeding 255 bytes.");
-    return;
-  }
-  alpn_ary_push(&tls->alpn, tmp);
-  fio_alpn_destroy(&tmp);
+  fio_tls_alpn_add(tls, protocol_name, callback, udata_tls, on_cleanup);
   fio_tls_build_context(tls);
 }
 
@@ -511,7 +569,7 @@ void FIO_TLS_WEAK fio_tls_destroy(fio_tls_s *tls) {
   if (fio_atomic_sub(&tls->ref, 1))
     return;
   fio_tls_destroy_context(tls);
-  alpn_ary_free(&tls->alpn);
+  alpn_list_free(&tls->alpn);
   cert_ary_free(&tls->sni);
   free(tls);
 }
