@@ -2172,6 +2172,8 @@ Forcing / Suspending IO events
 ***************************************************************************** */
 
 void fio_force_event(intptr_t uuid, enum fio_io_event ev) {
+  if (!uuid_is_valid(uuid))
+    return;
   switch (ev) {
   case FIO_EVENT_ON_DATA:
     fio_trylock(&uuid_data(uuid).scheduled);
@@ -3099,6 +3101,8 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
     }
     prt_meta(protocol) = (protocol_metadata_s){.rsv = 0};
   }
+  if ((intptr_t)uuid == -1)
+    goto negative_uuid;
   fio_lock(&uuid_data(uuid).protocol_lock);
   if (!uuid_is_valid(uuid)) {
     goto invalid_uuid;
@@ -3125,6 +3129,7 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
 
 invalid_uuid:
   fio_unlock(&uuid_data(uuid).protocol_lock);
+negative_uuid:
   if (protocol)
     fio_defer_push_task(deferred_on_close, (void *)uuid, protocol);
   if (uuid == -1)

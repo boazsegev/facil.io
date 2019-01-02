@@ -28,10 +28,10 @@ SSL/TLS patch
  * The first protocol added will act as the default protocol to be selected.
  */
 void __attribute__((weak))
-fio_tls_proto_add(void *tls, const char *protocol_name,
-                  void (*callback)(intptr_t uuid, void *udata_connection,
-                                   void *udata_tls),
-                  void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
+fio_tls_alpn_add(void *tls, const char *protocol_name,
+                 void (*callback)(intptr_t uuid, void *udata_connection,
+                                  void *udata_tls),
+                 void *udata_tls, void (*on_cleanup)(void *udata_tls)) {
   FIO_LOG_FATAL("HTTP SSL/TLS required but unavailable!");
   exit(-1);
   (void)tls;
@@ -40,7 +40,7 @@ fio_tls_proto_add(void *tls, const char *protocol_name,
   (void)on_cleanup;
   (void)udata_tls;
 }
-#pragma weak fio_tls_proto_add
+#pragma weak fio_tls_alpn_add
 
 void __attribute__((weak))
 fio_tls_accept(intptr_t uuid, void *tls, void *udata) {
@@ -967,8 +967,8 @@ intptr_t http_listen(const char *port, const char *binding,
   http_settings_s *settings = http_settings_new(arg_settings);
   settings->is_client = 0;
   if (settings->tls) {
-    fio_tls_proto_add(settings->tls, "http/1.1", http_on_server_protocol_http1,
-                      NULL, NULL);
+    fio_tls_alpn_add(settings->tls, "http/1.1", http_on_server_protocol_http1,
+                     NULL, NULL);
   }
 
   return fio_listen(.port = port, .address = binding,
@@ -1154,7 +1154,7 @@ intptr_t http_connect(const char *address,
   http_settings_s *settings = http_settings_new(arg_settings);
   settings->is_client = 1;
   // if (settings->tls) {
-  //   fio_tls_proto_add(settings->tls, "http/1.1", http_on_open_client_http1,
+  //   fio_tls_alpn_add(settings->tls, "http/1.1", http_on_open_client_http1,
   //                     NULL, NULL);
   // }
 

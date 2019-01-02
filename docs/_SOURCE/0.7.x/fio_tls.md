@@ -96,10 +96,10 @@ Note, when the fio_tls_s object is used for server connections, this will limit 
 fio_tls_trust(tls, "google-ca.pem" );
 ```
 
-#### `fio_tls_proto_add`
+#### `fio_tls_alpn_add`
 
 ```c
-void fio_tls_proto_add(fio_tls_s *tls,
+void fio_tls_alpn_add(fio_tls_s *tls,
                        const char *protocol_name,
                        void (*on_selected)(intptr_t uuid,
                                         void *udata_connection,
@@ -113,9 +113,9 @@ Adds an ALPN protocol callback to the SSL/TLS context.
 
 The first protocol added will act as the default protocol to be selected.
 
-The `on_selected` callback should accept the connection's `uuid`, the user data pointer passed to either `fio_tls_accept` or `fio_tls_connect` (here: `udata_connetcion`) and the user data pointer passed to the `fio_tls_proto_add` function (`udata_tls`).
+The `on_selected` callback should accept the connection's `uuid`, the user data pointer passed to either `fio_tls_accept` or `fio_tls_connect` (here: `udata_connetcion`) and the user data pointer passed to the `fio_tls_alpn_add` function (`udata_tls`).
 
-The `on_cleanup` callback will be called when the TLS object is destroyed (or `fio_tls_proto_add` is called again with the same protocol name). The `udata_tls` argument will be passed along, as is, to the callback (if set).
+The `on_cleanup` callback will be called when the TLS object is destroyed (or `fio_tls_alpn_add` is called again with the same protocol name). The `udata_tls` argument will be passed along, as is, to the callback (if set).
 
 Except for the `tls` and `protocol_name` arguments, all arguments can be NULL.
 
@@ -131,7 +131,7 @@ Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified cont
 
 The `uuid` should be a socket UUID that is already connected to a peer (i.e., the result of `fio_accept`).
 
-The `udata` is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using `fio_tls_proto_add`).
+The `udata` is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using `fio_tls_alpn_add`).
 
 
 #### `fio_tls_connect`
@@ -145,6 +145,6 @@ Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified cont
 
 The `uuid` should be a socket UUID that is already connected to a peer (i.e., one received by a `fio_connect` specified callback `on_connect`).
 
-The `udata` is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using `fio_tls_proto_add`).
+The `udata` is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using `fio_tls_alpn_add`).
 
 

@@ -49,20 +49,30 @@ void fio_tls_cert_add(fio_tls_s *, const char *server_name,
  * The `on_selected` callback should accept the `uuid`, the user data pointer
  * passed to either `fio_tls_accept` or `fio_tls_connect` (here:
  * `udata_connetcion`) and the user data pointer passed to the
- * `fio_tls_proto_add` function (`udata_tls`).
+ * `fio_tls_alpn_add` function (`udata_tls`).
  *
  * The `on_cleanup` callback will be called when the TLS object is destroyed (or
- * `fio_tls_proto_add` is called again with the same protocol name). The
+ * `fio_tls_alpn_add` is called again with the same protocol name). The
  * `udata_tls` argument will be passed along, as is, to the callback (if set).
  *
  * Except for the `tls` and `protocol_name` arguments, all arguments can be
  * NULL.
  */
-void fio_tls_proto_add(fio_tls_s *tls, const char *protocol_name,
-                       void (*on_selected)(intptr_t uuid,
-                                           void *udata_connection,
-                                           void *udata_tls),
-                       void *udata_tls, void (*on_cleanup)(void *udata_tls));
+void fio_tls_alpn_add(fio_tls_s *tls, const char *protocol_name,
+                      void (*on_selected)(intptr_t uuid, void *udata_connection,
+                                          void *udata_tls),
+                      void *udata_tls, void (*on_cleanup)(void *udata_tls));
+
+/**
+ * Returns the number of registered ALPN protocol names.
+ *
+ * This could be used when deciding if protocol selection should be delegated to
+ * the ALPN mechanism, or whether a protocol should be immediately assigned.
+ *
+ * If no ALPN protocols are registered, zero (0) is returned.
+ */
+uintptr_t fio_tls_alpn_count(fio_tls_s *tls);
+
 /**
  * Adds a certificate to the "trust" list, which automatically adds a peer
  * verification requirement.
@@ -82,7 +92,7 @@ void fio_tls_trust(fio_tls_s *, const char *public_cert_file);
  * the result of `fio_accept`).
  *
  * The `udata` is an opaque user data pointer that is passed along to the
- * protocol selected (if any protocols were added using `fio_tls_proto_add`).
+ * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
  */
 void fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata);
 
@@ -94,7 +104,7 @@ void fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata);
  * one received by a `fio_connect` specified callback `on_connect`).
  *
  * The `udata` is an opaque user data pointer that is passed along to the
- * protocol selected (if any protocols were added using `fio_tls_proto_add`).
+ * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
  */
 void fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata);
 
