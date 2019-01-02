@@ -1792,10 +1792,11 @@ static size_t fio_poll(void) {
       // left in the buffer... not that the edge case matters.
       if (events[i].flags & (EV_EOF | EV_ERROR)) {
         // errors are hendled as disconnections (on_close)
-        // fprintf(stderr, "%p: %s\n", events[i].udata,
-        //         (events[i].flags & EV_EOF)
-        //             ? "EV_EOF"
-        //             : (events[i].flags & EV_ERROR) ? "EV_ERROR" : "WTF?");
+        // FIO_LOG_DEBUG("%p: %s\n", events[i].udata,
+        //               (events[i].flags & EV_EOF)
+        //                   ? "EV_EOF"
+        //                   : (events[i].flags & EV_ERROR) ? "EV_ERROR" :
+        //                   "WTF?");
         // uuid_data(events[i].udata).open = 0;
         fio_force_close_in_poll(fd2uuid(events[i].udata));
       }
@@ -2021,7 +2022,6 @@ static void mock_ping(intptr_t uuid, fio_protocol_s *protocol) {
 }
 static void mock_ping2(intptr_t uuid, fio_protocol_s *protocol) {
   (void)protocol;
-
   touchfd(fio_uuid2fd(uuid));
   if (uuid_data(uuid).timeout == 255)
     return;
@@ -2818,6 +2818,7 @@ void fio_force_close(intptr_t uuid) {
     errno = EBADF;
     return;
   }
+  // FIO_LOG_DEBUG("fio_force_close called for uuid %p", (void *)uuid);
   /* make sure the close marker is set */
   if (!uuid_data(uuid).close)
     uuid_data(uuid).close = 1;
@@ -3130,6 +3131,7 @@ static int fio_attach__internal(void *uuid_, void *protocol_) {
 invalid_uuid:
   fio_unlock(&uuid_data(uuid).protocol_lock);
 invalid_uuid_unlocked:
+  // FIO_LOG_DEBUG("fio_attach failed for invalid uuid %p", (void *)uuid);
   if (protocol)
     fio_defer_push_task(deferred_on_close, (void *)uuid, protocol);
   if (uuid == -1)
@@ -3496,6 +3498,7 @@ static void __attribute__((constructor)) fio_lib_init(void) {
 #endif
   fio_data->parent = getpid();
   fio_data->connection_count = 0;
+  fio_mark_time();
 
   for (ssize_t i = 0; i < capa; ++i) {
     fio_clear_fd(i, 0);

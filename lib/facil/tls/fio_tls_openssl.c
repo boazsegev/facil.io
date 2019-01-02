@@ -321,6 +321,7 @@ static int fio_tls_alpn_selector_cb(SSL *ssl, const unsigned char **out,
   alpn_s *alpn;
   /* TODO: select ALPN and call on_selected */
   fio_tls_connection_s *c = SSL_get_ex_data(ssl, 0);
+  c->alpn_ok = 1;
 
   if (alpn_list_count(&tls->alpn) == 0)
     return SSL_TLSEXT_ERR_NOACK;
@@ -335,7 +336,6 @@ static int fio_tls_alpn_selector_cb(SSL *ssl, const unsigned char **out,
     *out = (unsigned char *)info.data;
     *outlen = (unsigned char)info.len;
     FIO_LOG_DEBUG("TLS ALPN set to: %s for %p", info.data, (void *)c->uuid);
-    c->alpn_ok = 1;
     alpn_select(alpn, c->uuid, c->alpn_arg);
     return SSL_TLSEXT_ERR_OK;
   }

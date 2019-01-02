@@ -21,54 +21,45 @@ Than run:
 #define FIO_INCLUDE_STR
 #include "fio.h"
 
+#define MAX_BYTES_RAPEL_PER_CYCLE 256
+#define MAX_BYTES_READ_PER_CYCLE 4096
+
 /* *****************************************************************************
 REPL
 ***************************************************************************** */
 
-#define MAX_BYTES_READ_PER_CYCLE 16
-
-void *repl_thread(void *uuid_) {
-  fprintf(stderr, "Connected, start typing.\n");
-  /* collect the uuid variable */
-  intptr_t uuid = (intptr_t)uuid_;
-  /* We'll use a dynamic string for the buffer cache */
-  fio_str_s buffer = FIO_STR_INIT;
-  fio_str_info_s info = fio_str_info(&buffer);
-  while (fio_is_valid(uuid)) {
-    char *marker = NULL;
-    /* require at least 256 free characters */
-    if (info.capa - info.len < MAX_BYTES_READ_PER_CYCLE) {
-      info = fio_str_capa_assert(&buffer, info.len + MAX_BYTES_READ_PER_CYCLE);
-    }
-    /* read from STDIN */
-    int act =
-        read(fileno(stdin), info.data + info.len, MAX_BYTES_READ_PER_CYCLE);
-    if (act <= 0) {
-      FIO_LOG_ERROR("REPL read error, disconnecting.\n");
-      fio_close(uuid);
-      break;
-    }
-    /* update the buffer data */
-    info = fio_str_resize(&buffer, info.len + act);
-  seek_eol:
-    marker = memchr(info.data, '\n', info.len);
-    if (marker) {
-      /* send data to uuid */
-      ++marker;
-      fio_write(uuid, info.data, marker - info.data);
-      /* test for leftover data and handle it */
-      if (info.data + info.len == marker) {
-        info = fio_str_resize(&buffer, 0);
-      } else {
-        memmove(info.data, marker, (info.data + info.len) - marker);
-        info = fio_str_resize(&buffer, (info.data + info.len) - marker);
-        goto seek_eol;
-      }
-    }
+static void repl_on_data(intptr_t uuid, fio_protocol_s *protocol) {
+  ssize_t ret = 0;
+  char buffer[MAX_BYTES_RAPEL_PER_CYCLE];
+  ret = fio_read(uuid, buffer, MAX_BYTES_RAPEL_PER_CYCLE);
+  if (ret > 0) {
+    fio_publish(.channel = {.data = "repl", .len = 4},
+                .message = {.data = buffer, .len = ret});
   }
-  fio_str_free(&buffer);
-  FIO_LOG_INFO("stopping REPL\n");
-  return NULL;
+  (void)protocol; /* we ignore the protocol object, we don't use it */
+}
+
+static void repl_on_close(intptr_t uuid, fio_protocol_s *protocol) {
+  FIO_LOG_DEBUG("REPL stopped");
+  (void)uuid;     /* we ignore the uuid object, we don't use it */
+  (void)protocol; /* we ignore the protocol object, we don't use it */
+}
+
+static void repl_ping_never(intptr_t uuid, fio_protocol_s *protocol) {
+  fio_touch(uuid);
+  (void)protocol; /* we ignore the protocol object, we don't use it */
+}
+
+static fio_protocol_s repel_protocol = {
+    .on_data = repl_on_data,
+    .on_close = repl_on_close,
+    .ping = repl_ping_never,
+};
+
+static void repl_attach(void) {
+  /* Attach REPL */
+  fio_set_non_block(fileno(stdin));
+  fio_attach_fd(fileno(stdin), &repel_protocol);
 }
 
 /* *****************************************************************************
@@ -80,6 +71,7 @@ static void on_data(intptr_t uuid, fio_protocol_s *protocol) {
   char buffer[MAX_BYTES_READ_PER_CYCLE + 1];
   ret = fio_read(uuid, buffer, MAX_BYTES_READ_PER_CYCLE);
   while (ret > 0) {
+    FIO_LOG_DEBUG("Recieved %zu bytes", ret);
     buffer[ret] = 0;
     fwrite(buffer, ret, 1, stdout); /* NUL bytes on binary streams are normal */
     fflush(stdout);
@@ -123,13 +115,28 @@ static fio_protocol_s client_protocol = {
     .ping = ping,
 };
 
+/* Forward REPL messages to the socket - pub/sub callback */
+static void on_repl_message(fio_msg_s *msg) {
+  fio_write((intptr_t)msg->udata1, msg->msg.data, msg->msg.len);
+}
+
 static void on_connect(intptr_t uuid, void *udata) {
   if (udata) // TLS support, udata is the TLS context.
     fio_tls_connect(uuid, udata, NULL);
 
   fio_attach(uuid, &client_protocol);
+
+  /* subscribe to REPL */
+  subscription_s *sub =
+      fio_subscribe(.channel = {.data = "repl", .len = 4},
+                    .on_message = on_repl_message, .udata1 = (void *)uuid);
+
+  /* link subscription lifetime to the connection's UUID */
+  fio_uuid_link(uuid, sub, (void (*)(void *))fio_unsubscribe);
+
   /* start REPL */
-  fio_thread_free(fio_thread_new(repl_thread, (void *)uuid));
+  // void *repl = fio_thread_new(repl_thread, (void *)uuid);
+  // fio_state_callback_add(FIO_CALL_AT_EXIT, repl_thread_cleanup, repl);
   (void)udata; /* we ignore the udata pointer, we don't use it here */
 }
 
@@ -180,9 +187,12 @@ int main(int argc, char const *argv[]) {
       fio_tls_trust(tls, trust);
     }
     if (fio_cli_get("-tls-alpn")) {
-      fio_tls_proto_add(tls, fio_cli_get("-tls-alpn"), NULL);
+      fio_tls_alpn_add(tls, fio_cli_get("-tls-alpn"), NULL, NULL, NULL);
     }
   }
+
+  /* Attach REPL */
+  repl_attach();
 
   /* Log connection attempt */
   if (fio_cli_unnamed_count() == 1 || fio_cli_unnamed(1)[0] == 0 ||
