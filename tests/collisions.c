@@ -165,7 +165,7 @@ static void cleanup(void) {
 }
 
 /* *****************************************************************************
-Hashing and testing...
+Hash functions
 ***************************************************************************** */
 
 static uintptr_t siphash13(char *data, size_t len) {
@@ -219,10 +219,102 @@ static uintptr_t risky(char *data, size_t len) {
   return fio_str_hash_risky(&t);
 }
 
+/**
+Working version.
+*/
 inline FIO_FUNC uintptr_t risky2(char *data, size_t len) {
   /* primes make sure unique value multiplication produces unique results */
   /* selected from https://asecuritysite.com/encryption/random3?val=64 */
+  const uint64_t primes[] = {
+      5948729071956823223ULL,
+      871375739782306879UL,
+      28859ULL,
+  };
+  struct risky_state_s {
+    uint64_t mem[4];
+    uint64_t v[4];
+    uint64_t result;
+  } s = {{0}, {0xA0A0A0A0A0A0A0A0ULL, 0x0505050505050505ULL}, 0};
+/* A single data-mangling round, n is the data in big-endian 64 bit */
+/* with enough bits set (n ^ primes[0]), n will avalanch using overflow */
+#define risky_round()                                                          \
+  do {                                                                         \
+    s.v[0] += (s.mem[0] * primes[1]);                                          \
+    s.v[1] += (s.mem[1] * primes[1]);                                          \
+    s.v[2] += (s.mem[2] * primes[1]);                                          \
+    s.v[3] += (s.mem[3] * primes[1]);                                          \
+                                                                               \
+    s.v[0] = primes[2] * fio_lrot64(s.v[0], 29);                               \
+    s.v[1] = primes[2] * fio_lrot64(s.v[1], 29);                               \
+    s.v[2] = primes[2] * fio_lrot64(s.v[2], 29);                               \
+    s.v[3] = primes[2] * fio_lrot64(s.v[3], 29);                               \
+  } while (0)
 
+  /* loop over 256 bit "blocks" */
+  const size_t len_256 = len & (((size_t)-1) << 5);
+  for (size_t i = 0; i < len_256; i += 32) {
+    s.mem[0] = fio_str2u64(data);
+    s.mem[1] = fio_str2u64(data + 8);
+    s.mem[2] = fio_str2u64(data + 16);
+    s.mem[3] = fio_str2u64(data + 24);
+    data += 32;
+    /* perform round for block */
+    risky_round();
+  }
+
+  /* copy last 256 bit block */
+  s.mem[0] = 0;
+  s.mem[1] = 0;
+  s.mem[2] = 0;
+  s.mem[3] = 0;
+  uint64_t *tmp = s.mem;
+  len -= len_256;
+  while (len >= 8) {
+    *tmp = fio_str2u64(data);
+    ++tmp;
+    data += 8;
+    len -= 8;
+  }
+  switch (len) {
+  case 7: /* overflow */
+    ((char *)(tmp))[6] = data[6];
+  case 6: /* overflow */
+    ((char *)(tmp))[5] = data[5];
+  case 5: /* overflow */
+    ((char *)(tmp))[4] = data[4];
+  case 4: /* overflow */
+    ((char *)(tmp))[3] = data[3];
+  case 3: /* overflow */
+    ((char *)(tmp))[2] = data[2];
+  case 2: /* overflow */
+    ((char *)(tmp))[1] = data[1];
+  case 1: /* overflow */
+    ((char *)(tmp))[0] = data[0];
+  }
+
+  /* perform round for block */
+  risky_round();
+
+  s.result = fio_lrot64(s.v[0], 1) + fio_lrot64(s.v[1], 7) +
+             fio_lrot64(s.v[2], 11) + fio_lrot64(s.v[3], 13) + len;
+
+  s.result ^= (s.result >> 33) * primes[0];
+  s.result ^= (s.result >> 29) * primes[1];
+  s.result ^= (s.result >> 37) * primes[2];
+
+  /* finalize data, merging all vectors and adding length */
+  return s.result;
+
+#undef risky_round
+}
+
+/**
+This version was okay. There were some collisions when testing with SMHasher,
+but not horribly risky... still, far from ideal.
+*/
+inline FIO_FUNC uintptr_t risky_okay(char *data, size_t len) {
+  /* primes make sure unique value multiplication produces unique results */
+  /* selected from https://asecuritysite.com/encryption/random3?val=64 */
   struct risky_state_s {
     uint64_t mem[4];
     uint64_t v[2];
@@ -242,10 +334,10 @@ inline FIO_FUNC uintptr_t risky2(char *data, size_t len) {
   /* with enough bits set (n ^ primes[0]), n will avalanch using overflow */
 #define risky_round()                                                          \
   do {                                                                         \
-    s.v[0] ^=                                                                  \
-        (((s.mem[0] * 12527) - (s.mem[1] * 9973)) + fio_lrot64(s.v[1], 37));   \
-    s.v[1] ^=                                                                  \
-        (((s.mem[2] * 2647) + (s.mem[3] * 37717)) + fio_lrot64(s.v[0], 31));   \
+    s.v[0] ^= (((s.mem[0] * 12527ULL) ^ (s.mem[1] * 9973ULL)) +                \
+               (fio_lrot64(s.v[1], 59)) * 12421ULL);                           \
+    s.v[1] ^= (((s.mem[2] * 2647ULL) ^ (s.mem[3] * 37717ULL)) +                \
+               (fio_lrot64(s.v[0], 19) * 60887ULL));                           \
   } while (0)
 
   /* loop over 256 bit "blocks" */
@@ -297,38 +389,9 @@ inline FIO_FUNC uintptr_t risky2(char *data, size_t len) {
 
 #undef risky_round
 }
-
-FIO_FUNC uintptr_t xorhash(char *data, size_t len) {
-  fio_str_info_s state = {.data = data, .len = len};
-  uintptr_t hash = state.len;
-  uintptr_t tmp;
-  while (state.len >= sizeof(uintptr_t)) {
-    uintptr_t t = fio_str2u64(state.data);
-    hash ^= t;
-    state.len -= sizeof(uintptr_t);
-    state.data += sizeof(uintptr_t);
-  }
-  tmp = 0;
-  /* assumes sizeof(uintptr_t) <= 8 */
-  switch (state.len) {
-  case 7: /* overflow */
-    ((char *)(&tmp))[6] = state.data[6];
-  case 6: /* overflow */
-    ((char *)(&tmp))[5] = state.data[5];
-  case 5: /* overflow */
-    ((char *)(&tmp))[4] = state.data[4];
-  case 4: /* overflow */
-    ((char *)(&tmp))[3] = state.data[3];
-  case 3: /* overflow */
-    ((char *)(&tmp))[2] = state.data[2];
-  case 2: /* overflow */
-    ((char *)(&tmp))[1] = state.data[1];
-  case 1: /* overflow */
-    ((char *)(&tmp))[0] = state.data[0];
-  }
-  hash ^= tmp;
-  return hash;
-}
+/* *****************************************************************************
+Hash setup and testing...
+***************************************************************************** */
 
 struct hash_fn_names_s {
   char *name;
@@ -340,6 +403,7 @@ struct hash_fn_names_s {
     {"sha1", sha1},
     {"risky", risky},
     {"risky2", risky2},
+    {"risky_ok", risky_okay},
     // {"xor", xorhash},
     {NULL, NULL},
 };

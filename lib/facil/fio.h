@@ -3715,30 +3715,29 @@ inline FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s) {
 inline FIO_FUNC uint64_t fio_risky_hash(char *data, size_t len) {
   /* primes make sure unique value multiplication produces unique results */
   /* selected from https://asecuritysite.com/encryption/random3?val=64 */
-
+  const uint64_t primes[] = {
+      5948729071956823223ULL,
+      871375739782306879UL,
+      28859ULL,
+  };
   struct risky_state_s {
     uint64_t mem[4];
-    uint64_t v[2];
-  } s = {
-      {
-          0,
-          0,
-          0,
-          0,
-      },
-      {
-          11990872034566666523ULL,
-          3787851299UL,
-      },
-  };
-  /* A single data-mangling round, n is the data in big-endian 64 bit */
-  /* with enough bits set (n ^ primes[0]), n will avalanch using overflow */
+    uint64_t v[4];
+    uint64_t result;
+  } s = {{0}, {0xA0A0A0A0A0A0A0A0ULL, 0x0505050505050505ULL}, 0};
+/* A single data-mangling round, n is the data in big-endian 64 bit */
+/* with enough bits set (n ^ primes[0]), n will avalanch using overflow */
 #define risky_round()                                                          \
   do {                                                                         \
-    s.v[0] ^=                                                                  \
-        (((s.mem[0] * 12527) - (s.mem[1] * 9973)) + fio_lrot64(s.v[1], 37));   \
-    s.v[1] ^=                                                                  \
-        (((s.mem[2] * 2647) + (s.mem[3] * 37717)) + fio_lrot64(s.v[0], 31));   \
+    s.v[0] += (s.mem[0] * primes[1]);                                          \
+    s.v[1] += (s.mem[1] * primes[1]);                                          \
+    s.v[2] += (s.mem[2] * primes[1]);                                          \
+    s.v[3] += (s.mem[3] * primes[1]);                                          \
+                                                                               \
+    s.v[0] = primes[2] * fio_lrot64(s.v[0], 29);                               \
+    s.v[1] = primes[2] * fio_lrot64(s.v[1], 29);                               \
+    s.v[2] = primes[2] * fio_lrot64(s.v[2], 29);                               \
+    s.v[3] = primes[2] * fio_lrot64(s.v[3], 29);                               \
   } while (0)
 
   /* loop over 256 bit "blocks" */
@@ -3752,6 +3751,7 @@ inline FIO_FUNC uint64_t fio_risky_hash(char *data, size_t len) {
     /* perform round for block */
     risky_round();
   }
+
   /* copy last 256 bit block */
   s.mem[0] = 0;
   s.mem[1] = 0;
@@ -3785,8 +3785,15 @@ inline FIO_FUNC uint64_t fio_risky_hash(char *data, size_t len) {
   /* perform round for block */
   risky_round();
 
+  s.result = fio_lrot64(s.v[0], 1) + fio_lrot64(s.v[1], 7) +
+             fio_lrot64(s.v[2], 11) + fio_lrot64(s.v[3], 13) + len;
+
+  s.result ^= (s.result >> 33) * primes[0];
+  s.result ^= (s.result >> 29) * primes[1];
+  s.result ^= (s.result >> 37) * primes[2];
+
   /* finalize data, merging all vectors and adding length */
-  return ((s.v[0] ^ s.v[1]) ^ (fio_lton64(len) * 151));
+  return s.result;
 
 #undef risky_round
 }
