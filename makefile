@@ -247,11 +247,11 @@ $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 endif
 
