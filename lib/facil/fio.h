@@ -2055,7 +2055,7 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 #endif
 /** inplace byte swap 32 bit integer */
 #if __has_builtin(__builtin_bswap32)
-#define fio_bswap32(i) __builtin_bswap32((uint32_t)(i));
+#define fio_bswap32(i) __builtin_bswap32((uint32_t)(i))
 #else
 #define fio_bswap32(i)                                                         \
   ((((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) | (((i)&0xFF0000UL) >> 8) |    \
@@ -2063,7 +2063,7 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 #endif
 /** inplace byte swap 64 bit integer */
 #if __has_builtin(__builtin_bswap64)
-#define fio_bswap64(i) __builtin_bswap64((uint64_t)(i));
+#define fio_bswap64(i) __builtin_bswap64((uint64_t)(i))
 #else
 #define fio_bswap64(i)                                                         \
   ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                           \
@@ -3325,10 +3325,8 @@ inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size);
 inline FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s);
 
 /**
- * Returns an unsafe, quick and dirty, hash value that is very likely to
- * collide.
- *
- * (basically the first few bytes XOR'ed with the length)
+ * Performs a faster hashing, but it isn't as safe and should be limited to
+ * small Hash Maps or Sets.
  */
 inline FIO_FUNC uintptr_t fio_str_hash_risky(const fio_str_s *s);
 
@@ -3695,49 +3693,66 @@ inline FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s) {
   return fio_siphash(state.data, state.len);
 }
 
-/**
- * Returns an unsafe, quick and dirty, hash value that is very likely to
- * collide... basically the first few bytes XOR'ed with the length.
- *
- * This is okay for very small hash maps that prefer fast lookups.
- */
-inline FIO_FUNC uintptr_t fio_str_hash_risky(const fio_str_s *s) {
+inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len) {
+  /* primes make sure unique value multiplication produces unique results */
+  const uint64_t primes[] = {
+      /* from https://asecuritysite.com/encryption/random3?val=8 */
+      17979112031178709441ULL,
+      12512906565395922677ULL,
+      15738541462601278943ULL,
+      8866828348860302251ULL,
+  };
+/* bit-byte shuffle using multiplication overflow and nonesense */
+#define risky_round(n)                                                         \
+  hash ^= (((n ^ (n >> 41)) * primes[1]) ^ ((n ^ (n >> 29)) + primes[2]))
 
-/* adds a minor amount of bit shuffling, signed bytes effect neighbor */
-#define fio_str_hash_risky_shuffle(data_i)                                     \
-  ((data_i) ^ (((data_i) & (uint64_t)0x8080808008080808ULL) << 1))
+  // hash ^= ((n ^ (n >> 41)) + primes[1]) ^ ((n ^ (n >> 29)) * primes[2])
+  // hash ^= ((n ^ (n >> 41)) * primes[1]) ^ ((n ^ (n >> 29)) + primes[2])
 
-  fio_str_info_s state = fio_str_info(s);
-  uintptr_t hash = state.len;
-  uintptr_t tmp;
-  while (state.len >= sizeof(uintptr_t)) {
-    uintptr_t t = fio_str2u64(state.data);
-    hash ^= fio_str_hash_risky_shuffle(t);
-    state.len -= sizeof(uintptr_t);
-    state.data += sizeof(uintptr_t);
+  uintptr_t hash = (len * primes[0]); // ^ ((len >> 17) * primes[3]);
+  const size_t len_8 = len & (((size_t)-1) << 3);
+
+  for (size_t i = 0; i < len_8; i += 8) {
+    uint64_t t = fio_str2u64(data);
+    risky_round(t);
+    (void)t;
+    data += 8;
   }
-  tmp = 0;
-  /* assumes sizeof(uintptr_t) <= 8 */
-  switch (state.len) {
-  case 7: /* overflow */
-    ((char *)(&tmp))[6] = state.data[6];
-  case 6: /* overflow */
-    ((char *)(&tmp))[5] = state.data[5];
-  case 5: /* overflow */
-    ((char *)(&tmp))[4] = state.data[4];
-  case 4: /* overflow */
-    ((char *)(&tmp))[3] = state.data[3];
-  case 3: /* overflow */
-    ((char *)(&tmp))[2] = state.data[2];
-  case 2: /* overflow */
-    ((char *)(&tmp))[1] = state.data[1];
-  case 1: /* overflow */
-    ((char *)(&tmp))[0] = state.data[0];
+  if (len & 7) {
+    uintptr_t tmp = 0;
+    /* assumes sizeof(uintptr_t) <= 8 */
+    switch ((len & 7)) {
+    case 7: /* overflow */
+      ((char *)(&tmp))[6] = data[6];
+    case 6: /* overflow */
+      ((char *)(&tmp))[5] = data[5];
+    case 5: /* overflow */
+      ((char *)(&tmp))[4] = data[4];
+    case 4: /* overflow */
+      ((char *)(&tmp))[3] = data[3];
+    case 3: /* overflow */
+      ((char *)(&tmp))[2] = data[2];
+    case 2: /* overflow */
+      ((char *)(&tmp))[1] = data[1];
+    case 1: /* overflow */
+      ((char *)(&tmp))[0] = data[0];
+    }
+    risky_round(tmp);
   }
-  hash ^= fio_str_hash_risky_shuffle(tmp);
+  /* finalize by adding the last prime into the mix */
+  hash ^= (hash >> 51) * primes[3];
   return hash;
 
-#undef fio_str_hash_risky_shuffle
+#undef risky_round
+}
+
+/**
+ * Performs a faster hashing, but it isn't as safe and should be limited to
+ * small Hash Maps or Sets.
+ */
+inline FIO_FUNC uintptr_t fio_str_hash_risky(const fio_str_s *s) {
+  fio_str_info_s state = fio_str_info(s);
+  return fio_risky_hash(state.data, state.len);
 }
 
 /* *****************************************************************************
@@ -6004,7 +6019,12 @@ FIO_FUNC inline size_t FIO_NAME(compact)(FIO_NAME(s) * set) {
 FIO_FUNC void FIO_NAME(rehash)(FIO_NAME(s) * set) {
   FIO_NAME(_compact_ordered_array_)(set);
   set->has_collisions = 0;
+  uint8_t attempts = 0;
 restart:
+  if (++attempts >= 3 && set->has_collisions) {
+    FIO_LOG_FATAL("facil.io Set / Hash Map has too many collisions.");
+    exit(-1);
+  }
   FIO_NAME(_reallocate_set_mem_)(set);
   {
     FIO_NAME(_ordered_s_) const *const end = set->ordered + set->pos;

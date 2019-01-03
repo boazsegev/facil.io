@@ -2232,9 +2232,9 @@ Returns the string's SipHash value (Uses SipHash 1-3).
 inline uintptr_t fio_str_hash_risky(const fio_str_s *s);
 ```
 
-Returns an unsafe, quick and dirty, hash value that is very likely to collide.
+Performs a faster hashing, but it isn't as safe and should be limited to small Hash Maps or Sets...
 
-Basically the string's bytes and length are all XOR'ed together ... not for cryptographic use, but okay for very small hash maps, especially where the String length is guaranteed to be 8 bytes or less.
+In other words, I wrote this and my tests were very limited.
 
 ### String API - Memory management
 
