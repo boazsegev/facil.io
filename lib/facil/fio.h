@@ -3693,7 +3693,7 @@ inline FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s) {
   return fio_siphash(state.data, state.len);
 }
 
-inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len) {
+inline FIO_FUNC uint64_t fio_risky_hash(char *data, size_t len) {
   /* primes make sure unique value multiplication produces unique results */
   const uint64_t primes[] = {
       /* from https://asecuritysite.com/encryption/random3?val=8 */
@@ -3702,25 +3702,23 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len) {
       15738541462601278943ULL,
       8866828348860302251ULL,
   };
-/* bit-byte shuffle using multiplication overflow and nonesense */
-#define risky_round(n)                                                         \
-  hash ^= (((n ^ (n >> 41)) * primes[1]) ^ ((n ^ (n >> 29)) + primes[2]))
 
-  // hash ^= ((n ^ (n >> 41)) + primes[1]) ^ ((n ^ (n >> 29)) * primes[2])
-  // hash ^= ((n ^ (n >> 41)) * primes[1]) ^ ((n ^ (n >> 29)) + primes[2])
+/* A single data-mangling round, n was read from the stream using big-endian */
+#define risky_round64bit(n)                                                    \
+  hash ^= (((n ^ (n >> 41)) * primes[0]) ^ ((n ^ (n >> 29)) + primes[1]))
 
-  uintptr_t hash = (len * primes[0]); // ^ ((len >> 17) * primes[3]);
+  uint64_t hash = 0;
   const size_t len_8 = len & (((size_t)-1) << 3);
 
   for (size_t i = 0; i < len_8; i += 8) {
     uint64_t t = fio_str2u64(data);
-    risky_round(t);
+    risky_round64bit(t);
     (void)t;
     data += 8;
   }
+
   if (len & 7) {
-    uintptr_t tmp = 0;
-    /* assumes sizeof(uintptr_t) <= 8 */
+    uint64_t tmp = 0;
     switch ((len & 7)) {
     case 7: /* overflow */
       ((char *)(&tmp))[6] = data[6];
@@ -3737,13 +3735,14 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len) {
     case 1: /* overflow */
       ((char *)(&tmp))[0] = data[0];
     }
-    risky_round(tmp);
+    risky_round64bit(tmp);
   }
-  /* finalize by adding the last prime into the mix */
-  hash ^= (hash >> 51) * primes[3];
+  /* finalize by adding the data length and the last two primes into the mix */
+  /* note that length is in network order (big-endian) */
+  hash ^= (fio_lton64(len) * primes[2]) ^ ((hash >> 51) * primes[3]);
   return hash;
 
-#undef risky_round
+#undef risky_round64bit
 }
 
 /**

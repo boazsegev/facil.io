@@ -231,18 +231,18 @@ static uintptr_t risky2(char *data, size_t len) {
 #define risky_round(n)                                                         \
   hash ^= (((n ^ (n >> 41)) * primes[1]) ^ ((n ^ (n >> 29)) + primes[2]))
 
-  // hash ^= ((n ^ (n >> 41)) + primes[1]) ^ ((n ^ (n >> 29)) * primes[2])
-  // hash ^= ((n ^ (n >> 41)) * primes[1]) ^ ((n ^ (n >> 29)) + primes[2])
-
-  uintptr_t hash = (len * primes[0]); // ^ ((len >> 17) * primes[3]);
+  uintptr_t hash =
+      (fio_lton64(len) * primes[0]); // ^ ((len >> 17) * primes[3]);
   const size_t len_8 = len & (((size_t)-1) << 3);
 
   for (size_t i = 0; i < len_8; i += 8) {
+    /* reads data in network order, placimg it into the number */
     uint64_t t = fio_str2u64(data);
     risky_round(t);
     (void)t;
     data += 8;
   }
+  /* reads what's left, in network order, placimg it into the number */
   if (len & 7) {
     uintptr_t tmp = 0;
     /* assumes sizeof(uintptr_t) <= 8 */
@@ -310,7 +310,6 @@ struct hash_fn_names_s {
     {"siphash24", siphash24},
     {"sha1", sha1},
     {"risky", risky},
-    {"risky (direct)", fio_risky_hash},
     {"risky2", risky2},
     // {"xor", xorhash},
     {NULL, NULL},
