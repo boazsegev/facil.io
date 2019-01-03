@@ -7015,23 +7015,6 @@ Section Start Marker
 
 ***************************************************************************** */
 
-/** 32Bit left rotation, inlined. */
-#define fio_lrot32(i, bits)                                                    \
-  (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> (32 - (bits))))
-/** 32Bit right rotation, inlined. */
-#define fio_rrot32(i, bits)                                                    \
-  (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << (32 - (bits))))
-/** 64Bit left rotation, inlined. */
-#define fio_lrot64(i, bits)                                                    \
-  (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
-/** 64Bit right rotation, inlined. */
-#define fio_rrot64(i, bits)                                                    \
-  (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << (64 - (bits))))
-/** unknown size element - left rotation, inlined. */
-#define fio_lrot(i, bits) (((i) << (bits)) | ((i) >> (sizeof((i)) - (bits))))
-/** unknown size element - right rotation, inlined. */
-#define fio_rrot(i, bits) (((i) >> (bits)) | ((i) << (sizeof((i)) - (bits))))
-
 /* *****************************************************************************
 SipHash
 ***************************************************************************** */

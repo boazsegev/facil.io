@@ -219,54 +219,83 @@ static uintptr_t risky(char *data, size_t len) {
   return fio_str_hash_risky(&t);
 }
 
-static uintptr_t risky2(char *data, size_t len) {
-  const uint64_t primes[] = {
-      /* from https://asecuritysite.com/encryption/random3?val=8 */
-      17979112031178709441ULL,
-      12512906565395922677ULL,
-      15738541462601278943ULL,
-      8866828348860302251ULL,
+inline FIO_FUNC uintptr_t risky2(char *data, size_t len) {
+  /* primes make sure unique value multiplication produces unique results */
+  /* selected from https://asecuritysite.com/encryption/random3?val=64 */
+
+  struct risky_state_s {
+    uint64_t mem[4];
+    uint64_t v[2];
+  } s = {
+      {
+          0,
+          0,
+          0,
+          0,
+      },
+      {
+          11990872034566666523ULL,
+          3787851299UL,
+      },
   };
-/* bit-byte shuffle using multiplication overflow and nonesense */
-#define risky_round(n)                                                         \
-  hash ^= (((n ^ (n >> 41)) * primes[1]) ^ ((n ^ (n >> 29)) + primes[2]))
+  /* A single data-mangling round, n is the data in big-endian 64 bit */
+  /* with enough bits set (n ^ primes[0]), n will avalanch using overflow */
+#define risky_round()                                                          \
+  do {                                                                         \
+    s.v[0] ^=                                                                  \
+        (((s.mem[0] * 12527) - (s.mem[1] * 9973)) + fio_lrot64(s.v[1], 37));   \
+    s.v[1] ^=                                                                  \
+        (((s.mem[2] * 2647) + (s.mem[3] * 37717)) + fio_lrot64(s.v[0], 31));   \
+  } while (0)
 
-  uintptr_t hash =
-      (fio_lton64(len) * primes[0]); // ^ ((len >> 17) * primes[3]);
-  const size_t len_8 = len & (((size_t)-1) << 3);
-
-  for (size_t i = 0; i < len_8; i += 8) {
-    /* reads data in network order, placimg it into the number */
-    uint64_t t = fio_str2u64(data);
-    risky_round(t);
-    (void)t;
+  /* loop over 256 bit "blocks" */
+  const size_t len_256 = len & (((size_t)-1) << 5);
+  for (size_t i = 0; i < len_256; i += 32) {
+    s.mem[0] = fio_str2u64(data);
+    s.mem[1] = fio_str2u64(data + 8);
+    s.mem[2] = fio_str2u64(data + 16);
+    s.mem[3] = fio_str2u64(data + 24);
+    data += 32;
+    /* perform round for block */
+    risky_round();
+  }
+  /* copy last 256 bit block */
+  s.mem[0] = 0;
+  s.mem[1] = 0;
+  s.mem[2] = 0;
+  s.mem[3] = 0;
+  uint64_t *tmp = s.mem;
+  len -= len_256;
+  while (len >= 8) {
+    *tmp = fio_str2u64(data);
+    ++tmp;
     data += 8;
+    len -= 8;
   }
-  /* reads what's left, in network order, placimg it into the number */
-  if (len & 7) {
-    uintptr_t tmp = 0;
-    /* assumes sizeof(uintptr_t) <= 8 */
-    switch ((len & 7)) {
-    case 7: /* overflow */
-      ((char *)(&tmp))[6] = data[6];
-    case 6: /* overflow */
-      ((char *)(&tmp))[5] = data[5];
-    case 5: /* overflow */
-      ((char *)(&tmp))[4] = data[4];
-    case 4: /* overflow */
-      ((char *)(&tmp))[3] = data[3];
-    case 3: /* overflow */
-      ((char *)(&tmp))[2] = data[2];
-    case 2: /* overflow */
-      ((char *)(&tmp))[1] = data[1];
-    case 1: /* overflow */
-      ((char *)(&tmp))[0] = data[0];
-    }
-    risky_round(tmp);
+  switch (len) {
+  case 7: /* overflow */
+    ((char *)(tmp))[6] = data[6];
+  case 6: /* overflow */
+    ((char *)(tmp))[5] = data[5];
+  case 5: /* overflow */
+    ((char *)(tmp))[4] = data[4];
+  case 4: /* overflow */
+    ((char *)(tmp))[3] = data[3];
+  case 3: /* overflow */
+    ((char *)(tmp))[2] = data[2];
+  case 2: /* overflow */
+    ((char *)(tmp))[1] = data[1];
+  case 1: /* overflow */
+    ((char *)(tmp))[0] = data[0];
   }
-  /* finalize by adding the last prime into the mix */
-  hash ^= (hash >> 51) * primes[3];
-  return hash;
+
+  /* perform round for block */
+  risky_round();
+
+  /* finalize data, merging all vectors and adding length */
+  return ((s.v[0] ^ s.v[1]) ^ (fio_lton64(len) * 151));
+
+#undef risky_round
 }
 
 FIO_FUNC uintptr_t xorhash(char *data, size_t len) {

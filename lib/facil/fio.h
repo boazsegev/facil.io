@@ -2082,6 +2082,25 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 #error Could not detect byte order on this system.
 #endif
 
+/** 32Bit left rotation, inlined. */
+#define fio_lrot32(i, bits)                                                    \
+  (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> (32 - (bits))))
+/** 32Bit right rotation, inlined. */
+#define fio_rrot32(i, bits)                                                    \
+  (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << (32 - (bits))))
+/** 64Bit left rotation, inlined. */
+#define fio_lrot64(i, bits)                                                    \
+  (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
+/** 64Bit right rotation, inlined. */
+#define fio_rrot64(i, bits)                                                    \
+  (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << (64 - (bits))))
+/** unknown size element - left rotation, inlined. */
+#define fio_lrot(i, bits)                                                      \
+  (((i) << (bits)) | ((i) >> ((sizeof((i)) << 3) - (bits))))
+/** unknown size element - right rotation, inlined. */
+#define fio_rrot(i, bits)                                                      \
+  (((i) >> (bits)) | ((i) << ((sizeof((i)) << 3) - (bits))))
+
 #if __BIG_ENDIAN__
 
 /** Local byte order to Network byte order, 16 bit integer */
@@ -3695,54 +3714,81 @@ inline FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s) {
 
 inline FIO_FUNC uint64_t fio_risky_hash(char *data, size_t len) {
   /* primes make sure unique value multiplication produces unique results */
-  const uint64_t primes[] = {
-      /* from https://asecuritysite.com/encryption/random3?val=8 */
-      17979112031178709441ULL,
-      12512906565395922677ULL,
-      15738541462601278943ULL,
-      8866828348860302251ULL,
+  /* selected from https://asecuritysite.com/encryption/random3?val=64 */
+
+  struct risky_state_s {
+    uint64_t mem[4];
+    uint64_t v[2];
+  } s = {
+      {
+          0,
+          0,
+          0,
+          0,
+      },
+      {
+          11990872034566666523ULL,
+          3787851299UL,
+      },
   };
+  /* A single data-mangling round, n is the data in big-endian 64 bit */
+  /* with enough bits set (n ^ primes[0]), n will avalanch using overflow */
+#define risky_round()                                                          \
+  do {                                                                         \
+    s.v[0] ^=                                                                  \
+        (((s.mem[0] * 12527) - (s.mem[1] * 9973)) + fio_lrot64(s.v[1], 37));   \
+    s.v[1] ^=                                                                  \
+        (((s.mem[2] * 2647) + (s.mem[3] * 37717)) + fio_lrot64(s.v[0], 31));   \
+  } while (0)
 
-/* A single data-mangling round, n was read from the stream using big-endian */
-#define risky_round64bit(n)                                                    \
-  hash ^= (((n ^ (n >> 41)) * primes[0]) ^ ((n ^ (n >> 29)) + primes[1]))
-
-  uint64_t hash = 0;
-  const size_t len_8 = len & (((size_t)-1) << 3);
-
-  for (size_t i = 0; i < len_8; i += 8) {
-    uint64_t t = fio_str2u64(data);
-    risky_round64bit(t);
-    (void)t;
+  /* loop over 256 bit "blocks" */
+  const size_t len_256 = len & (((size_t)-1) << 5);
+  for (size_t i = 0; i < len_256; i += 32) {
+    s.mem[0] = fio_str2u64(data);
+    s.mem[1] = fio_str2u64(data + 8);
+    s.mem[2] = fio_str2u64(data + 16);
+    s.mem[3] = fio_str2u64(data + 24);
+    data += 32;
+    /* perform round for block */
+    risky_round();
+  }
+  /* copy last 256 bit block */
+  s.mem[0] = 0;
+  s.mem[1] = 0;
+  s.mem[2] = 0;
+  s.mem[3] = 0;
+  uint64_t *tmp = s.mem;
+  len -= len_256;
+  while (len >= 8) {
+    *tmp = fio_str2u64(data);
+    ++tmp;
     data += 8;
+    len -= 8;
+  }
+  switch (len) {
+  case 7: /* overflow */
+    ((char *)(tmp))[6] = data[6];
+  case 6: /* overflow */
+    ((char *)(tmp))[5] = data[5];
+  case 5: /* overflow */
+    ((char *)(tmp))[4] = data[4];
+  case 4: /* overflow */
+    ((char *)(tmp))[3] = data[3];
+  case 3: /* overflow */
+    ((char *)(tmp))[2] = data[2];
+  case 2: /* overflow */
+    ((char *)(tmp))[1] = data[1];
+  case 1: /* overflow */
+    ((char *)(tmp))[0] = data[0];
   }
 
-  if (len & 7) {
-    uint64_t tmp = 0;
-    switch ((len & 7)) {
-    case 7: /* overflow */
-      ((char *)(&tmp))[6] = data[6];
-    case 6: /* overflow */
-      ((char *)(&tmp))[5] = data[5];
-    case 5: /* overflow */
-      ((char *)(&tmp))[4] = data[4];
-    case 4: /* overflow */
-      ((char *)(&tmp))[3] = data[3];
-    case 3: /* overflow */
-      ((char *)(&tmp))[2] = data[2];
-    case 2: /* overflow */
-      ((char *)(&tmp))[1] = data[1];
-    case 1: /* overflow */
-      ((char *)(&tmp))[0] = data[0];
-    }
-    risky_round64bit(tmp);
-  }
-  /* finalize by adding the data length and the last two primes into the mix */
-  /* note that length is in network order (big-endian) */
-  hash ^= (fio_lton64(len) * primes[2]) ^ ((hash >> 51) * primes[3]);
-  return hash;
+  /* perform round for block */
+  risky_round();
 
-#undef risky_round64bit
+  /* finalize data, merging all vectors and adding length */
+  return ((s.v[0] ^ s.v[1]) ^ (fio_lton64(len) * 151));
+
+#undef risky_round
 }
 
 /**
