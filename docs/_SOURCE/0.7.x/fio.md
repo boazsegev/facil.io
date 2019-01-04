@@ -2224,17 +2224,19 @@ Clears the string (retaining the existing capacity).
 inline uint64_t fio_str_hash(const fio_str_s *s);
 ```
 
-Returns the string's SipHash value (Uses SipHash 1-3).
+Returns the String's Risky Hash (see [`fio_risky_hash`]()).
+
+**Note**: the hashing function might be changed at any time without notice.
 
 #### `fio_str_hash_risky`
 
 ```c
-inline uintptr_t fio_str_hash_risky(const fio_str_s *s);
+static uintptr_t fio_risky_hash(char *data, size_t len, uint64_t seed);
 ```
 
-Performs a faster hashing, but it isn't as safe and should be limited to small Hash Maps or Sets...
+Computes a facil.io Risky Hash - modeled after the amazing [xxHash](https://github.com/Cyan4973/xxHash) (which has a BSD license) and named "Risky Hash" because writing your own hashing function is a risky business, full of pitfalls and hours of testing...
 
-In other words, I wrote this and my tests were very limited.
+Risky Hash isn't as battle tested as SipHash, but it did pass the [SMHasher](https://github.com/rurban/smhasher) tests with wonderful results and is used internally by facio.io's engine.
 
 ### String API - Memory management
 

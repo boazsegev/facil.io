@@ -158,7 +158,7 @@ ALPN Helpers
 FIO_FUNC inline alpn_s *alpn_find(fio_tls_s *tls, char *name, size_t len) {
   alpn_s tmp = {.name = FIO_STR_INIT_STATIC2(name, len)};
   alpn_list__map_s_ *pos =
-      alpn_list__find_map_pos_(&tls->alpn, fio_str_hash_risky(&tmp.name), tmp);
+      alpn_list__find_map_pos_(&tls->alpn, fio_str_hash(&tmp.name), tmp);
   if (!pos || !pos->pos)
     return NULL;
   return &pos->pos->obj;
@@ -179,7 +179,7 @@ FIO_FUNC inline void alpn_add(
     FIO_LOG_ERROR("ALPN protocol names are limited to 255 bytes.");
     return;
   }
-  alpn_list_overwrite(&tls->alpn, fio_str_hash_risky(&tmp.name), tmp, NULL);
+  alpn_list_overwrite(&tls->alpn, fio_str_hash(&tmp.name), tmp, NULL);
   tmp.on_cleanup = NULL;
   fio_alpn_destroy(&tmp);
 }

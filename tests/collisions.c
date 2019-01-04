@@ -222,7 +222,129 @@ static uintptr_t risky(char *data, size_t len) {
 /**
 Working version.
 */
+inline FIO_FUNC uintptr_t fio_risky_hash2(char *data, size_t len,
+                                          uint64_t salt) {
+  /* inspired by xxHash, (Yann Collet, Maciej Adamczyk)... */
+  /* so I took their primes ;-) */
+  /* more primes at: https://asecuritysite.com/encryption/random3?val=64 */
+  const uint64_t primes[] = {
+      /* xx Hash Primes */
+      14029467366897019727ULL,
+      11400714785074694791ULL,
+      1609587929392839161ULL,
+      9650029242287828579ULL,
+      2870177450012600261ULL,
+      /* X-Risky Primes */
+      13969002540889903909ULL,
+      3533ULL,
+  };
+  const uint64_t comb = 0x5A5A5A5AA5A5A5A5ULL;
+  struct risky_state_s {
+    uint64_t mem[4];
+    uint64_t v[4];
+    uint64_t result;
+  } s = {{0},
+         {(salt + primes[0] + primes[1]), (salt + primes[0]), salt,
+          (salt - primes[1])},
+         0};
+/* A single data-mangling round, n is the data in big-endian 64 bit */
+/* the design follows the xxHash basic round scheme and is easy to vectorize */
+#define risky_round()                                                          \
+  do {                                                                         \
+    s.v[0] += (comb ^ (s.mem[0]) * primes[0]);                                 \
+    s.v[1] += (comb ^ (s.mem[1]) * primes[0]);                                 \
+    s.v[2] += (comb ^ (s.mem[2]) * primes[0]);                                 \
+    s.v[3] += (comb ^ (s.mem[3]) * primes[0]);                                 \
+                                                                               \
+    s.v[0] += fio_lrot64(s.v[1], 27);                                          \
+    s.v[1] += fio_lrot64(s.v[2], 33);                                          \
+    s.v[2] += fio_lrot64(s.v[3], 19);                                          \
+    s.v[3] += fio_lrot64(s.v[0], 53);                                          \
+                                                                               \
+    s.v[0] *= primes[1];                                                       \
+    s.v[1] *= primes[1];                                                       \
+    s.v[2] *= primes[1];                                                       \
+    s.v[3] *= primes[1];                                                       \
+  } while (0)
+
+  /* loop over 256 bit "blocks" */
+  const size_t len_256 = len & (((size_t)-1) << 5);
+  for (size_t i = 0; i < len_256; i += 32) {
+    s.mem[0] = fio_str2u64(data);
+    s.mem[1] = fio_str2u64(data + 8);
+    s.mem[2] = fio_str2u64(data + 16);
+    s.mem[3] = fio_str2u64(data + 24);
+    data += 32;
+    /* perform round for block */
+    risky_round();
+  }
+
+  /* copy last 256 bit block, padding with existing vectors rolled 31 bits */
+  /* at this point we also know the final length... */
+  s.mem[0] = s.v[0] + (len * primes[2]);
+  s.mem[1] = s.v[1] + (len * primes[3]);
+  s.mem[2] = s.v[2] + (len * primes[2]);
+  s.mem[3] = s.v[3] + (len * primes[3]);
+
+  uint64_t *tmp = s.mem;
+  len -= len_256;
+  while (len >= 8) {
+    *tmp = fio_str2u64(data);
+    ++tmp;
+    data += 8;
+    len -= 8;
+  }
+  switch (len) {
+  case 7: /* overflow */
+    ((char *)(tmp))[6] = data[6];
+  case 6: /* overflow */
+    ((char *)(tmp))[5] = data[5];
+  case 5: /* overflow */
+    ((char *)(tmp))[4] = data[4];
+  case 4: /* overflow */
+    ((char *)(tmp))[3] = data[3];
+  case 3: /* overflow */
+    ((char *)(tmp))[2] = data[2];
+  case 2: /* overflow */
+    ((char *)(tmp))[1] = data[1];
+  case 1: /* overflow */
+    ((char *)(tmp))[0] = data[0];
+  }
+
+  /* perform round for block */
+  risky_round();
+
+  /* perform a extra round against a rotated variations */
+  s.mem[0] = fio_lrot64(s.v[3], 63);
+  s.mem[1] = fio_lrot64(s.v[2], 57);
+  s.mem[2] = fio_lrot64(s.v[1], 52);
+  s.mem[3] = fio_lrot64(s.v[0], 46);
+  s.result = (s.mem[0] + s.mem[1] + s.mem[2] + s.mem[3]);
+  /* merge and avalanch... */
+  s.result = ((s.result ^ s.v[0]) * primes[3]) + primes[2];
+  s.result = ((s.result ^ s.v[1]) * primes[3]) + primes[2];
+  s.result = ((s.result ^ s.v[2]) * primes[3]) + primes[2];
+  s.result = ((s.result ^ s.v[3]) * primes[3]) + primes[2];
+  s.result ^= (s.result >> 33);
+  s.result *= primes[1];
+  s.result ^= (s.result >> 29);
+  s.result *= primes[2];
+
+  /* finalize data, merging all vectors and adding length */
+  return s.result;
+
+#undef risky_round
+}
+
 inline FIO_FUNC uintptr_t risky2(char *data, size_t len) {
+  return fio_risky_hash2(data, len, 0);
+}
+
+/**
+This version was okay. There were some collisions when testing with SMHasher,
+but not horribly risky... still, far from ideal.
+*/
+inline FIO_FUNC uintptr_t risky_okay(char *data, size_t len) {
   /* primes make sure unique value multiplication produces unique results */
   /* selected from https://asecuritysite.com/encryption/random3?val=64 */
   const uint64_t primes[] = {
@@ -311,96 +433,6 @@ inline FIO_FUNC uintptr_t risky2(char *data, size_t len) {
   s.result = ((s.result ^ s.v[1]) * primes[3]) + primes[2];
   s.result = ((s.result ^ s.v[2]) * primes[3]) + primes[2];
   s.result = ((s.result ^ s.v[3]) * primes[3]) + primes[2];
-
-  s.result ^= (s.result >> 33) * primes[0];
-  s.result ^= (s.result >> 29) * primes[1];
-  s.result ^= (s.result >> 37) * primes[2];
-
-  /* finalize data, merging all vectors and adding length */
-  return s.result;
-
-#undef risky_round
-}
-
-/**
-This version was okay. There were some collisions when testing with SMHasher,
-but not horribly risky... still, far from ideal.
-*/
-inline FIO_FUNC uintptr_t risky_okay(char *data, size_t len) {
-  /* primes make sure unique value multiplication produces unique results */
-  /* selected from https://asecuritysite.com/encryption/random3?val=64 */
-  const uint64_t primes[] = {
-      5948729071956823223ULL,
-      871375739782306879UL,
-      28859ULL,
-  };
-  struct risky_state_s {
-    uint64_t mem[4];
-    uint64_t v[4];
-    uint64_t result;
-  } s = {{0}, {0xA0A0A0A0A0A0A0A0ULL, 0x0505050505050505ULL}, 0};
-/* A single data-mangling round, n is the data in big-endian 64 bit */
-/* with enough bits set (n ^ primes[0]), n will avalanch using overflow */
-#define risky_round()                                                          \
-  do {                                                                         \
-    s.v[0] += (s.mem[0] * primes[1]);                                          \
-    s.v[1] += (s.mem[1] * primes[1]);                                          \
-    s.v[2] += (s.mem[2] * primes[1]);                                          \
-    s.v[3] += (s.mem[3] * primes[1]);                                          \
-                                                                               \
-    s.v[0] = primes[2] * fio_lrot64(s.v[0], 29);                               \
-    s.v[1] = primes[2] * fio_lrot64(s.v[1], 29);                               \
-    s.v[2] = primes[2] * fio_lrot64(s.v[2], 29);                               \
-    s.v[3] = primes[2] * fio_lrot64(s.v[3], 29);                               \
-  } while (0)
-
-  /* loop over 256 bit "blocks" */
-  const size_t len_256 = len & (((size_t)-1) << 5);
-  for (size_t i = 0; i < len_256; i += 32) {
-    s.mem[0] = fio_str2u64(data);
-    s.mem[1] = fio_str2u64(data + 8);
-    s.mem[2] = fio_str2u64(data + 16);
-    s.mem[3] = fio_str2u64(data + 24);
-    data += 32;
-    /* perform round for block */
-    risky_round();
-  }
-
-  /* copy last 256 bit block */
-  s.mem[0] = 0;
-  s.mem[1] = 0;
-  s.mem[2] = 0;
-  s.mem[3] = 0;
-  uint64_t *tmp = s.mem;
-  len -= len_256;
-  while (len >= 8) {
-    *tmp = fio_str2u64(data);
-    ++tmp;
-    data += 8;
-    len -= 8;
-  }
-  switch (len) {
-  case 7: /* overflow */
-    ((char *)(tmp))[6] = data[6];
-  case 6: /* overflow */
-    ((char *)(tmp))[5] = data[5];
-  case 5: /* overflow */
-    ((char *)(tmp))[4] = data[4];
-  case 4: /* overflow */
-    ((char *)(tmp))[3] = data[3];
-  case 3: /* overflow */
-    ((char *)(tmp))[2] = data[2];
-  case 2: /* overflow */
-    ((char *)(tmp))[1] = data[1];
-  case 1: /* overflow */
-    ((char *)(tmp))[0] = data[0];
-  }
-
-  /* perform round for block */
-  risky_round();
-
-  s.result = fio_lrot64(s.v[0], 1) + fio_lrot64(s.v[1], 7) +
-             fio_lrot64(s.v[2], 11) + fio_lrot64(s.v[3], 13) + len;
 
   s.result ^= (s.result >> 33) * primes[0];
   s.result ^= (s.result >> 29) * primes[1];
