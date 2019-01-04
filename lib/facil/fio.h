@@ -3785,34 +3785,31 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
     data += 8;
     break;
   }
+  uint64_t last_byte = 0;
+  switch (len & 7) {
+  case 7:
+    last_byte |= ((uint64_t)data[6] & 0xFF) << 56;
+  case 6: /* overflow */
+    last_byte |= ((uint64_t)data[5] & 0xFF) << 48;
+  case 5: /* overflow */
+    last_byte |= ((uint64_t)data[4] & 0xFF) << 40;
+  case 4: /* overflow */
+    last_byte |= ((uint64_t)data[3] & 0xFF) << 32;
+  case 3: /* overflow */
+    last_byte |= ((uint64_t)data[2] & 0xFF) << 24;
+  case 2: /* overflow */
+    last_byte |= ((uint64_t)data[1] & 0xFF) << 16;
+  case 1: /* overflow */
+    last_byte |= ((uint64_t)data[0] & 0xFF) << 8;
+    fio_risky_round_single(last_byte, 3);
+  }
 
   /* at this point we know the length and the last of the data*/
   uint64_t result = (fio_lrot64(s.v[3], 63) + fio_lrot64(s.v[2], 57) +
                      fio_lrot64(s.v[1], 52) + fio_lrot64(s.v[0], 46));
-  result += len * primes[4];
-  /* we handle the last of the data a bit differently, to ignore vector index */
-  if (len & 4) {
-    /* use 32 bit word */
-    result += fio_str2u32(data) * primes[0];
-    result = fio_lrot64(result, 33);
-    result *= primes[1];
-    data += 4;
-  }
-  if (len & 2) {
-    /* use 16 bit word */
-    result += fio_str2u16(data) * primes[0];
-    result = fio_lrot64(result, 33);
-    result *= primes[1];
-    data += 2;
-  }
-  if (len & 1) {
-    /* single byte */
-    result += data[0] * primes[0];
-    result = fio_lrot64(result, 33);
-    result *= primes[1];
-  }
 
   /* merge and avalanch... */
+  result += len * primes[4];
   result = ((result ^ s.v[0]) * primes[3]) + primes[2];
   result = ((result ^ s.v[1]) * primes[3]) + primes[2];
   result = ((result ^ s.v[2]) * primes[3]) + primes[2];
