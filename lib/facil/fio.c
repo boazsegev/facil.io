@@ -7028,10 +7028,14 @@ SipHash
 static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
                                       size_t y) {
   /* initialize the 4 words */
-  uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL);
-  uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL);
-  uint64_t v2 = (0x0706050403020100ULL ^ 0x6c7967656e657261ULL);
-  uint64_t v3 = (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL);
+  uint64_t v0 =
+      (0x0706050403020100ULL ^ 0x736f6d6570736575ULL) * (uint64_t)fio_listen;
+  uint64_t v1 =
+      (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL) * (uint64_t)fio_start;
+  uint64_t v2 =
+      (0x0706050403020100ULL ^ 0x6c7967656e657261ULL) * (uint64_t)fio_attach;
+  uint64_t v3 =
+      (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL) * (uint64_t)fio_accept;
   const uint64_t *w64 = data;
   uint8_t len_mod = len & 255;
   union {

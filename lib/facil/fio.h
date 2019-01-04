@@ -3738,8 +3738,8 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
   struct risky_state_s {
     uint64_t v[4]; /* 256bit vector hash used before collapsing to 64bit */
   } s = {
-      {(seed + primes[0] + primes[1]), (seed + primes[0]), seed,
-       (seed - primes[1])},
+      {(seed + primes[0] + primes[1]), ((~seed) + primes[0]), (seed ^ 0x005aUL),
+       ((seed ^ 0xa5UL) - primes[1])},
   };
 /* A single data-mangling round, n is the data in big-endian 64 bit */
 /* the design follows the xxHash basic round scheme and is easy to vectorize */
@@ -3829,11 +3829,13 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
 /**
  * Return's the String's Risky Hash (see fio_risky_hash).
  *
+ * This value is machine/instance specific (hash seed is a memory address).
+ *
  * NOTE: the hashing function might be changed at any time without notice.
  */
 FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s) {
   fio_str_info_s state = fio_str_info(s);
-  return fio_risky_hash(state.data, state.len, 0);
+  return fio_risky_hash(state.data, state.len, (uint64_t)&fio_str_hash);
 }
 
 /* *****************************************************************************
