@@ -27,6 +27,8 @@ types, abstracting some complexity and making dynamic type related tasks easier.
 
 #include <fio_siphash.h>
 
+#include <fio.h>
+
 #if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
 #define __attribute__(...)
 #define __has_include(...) 0
@@ -552,7 +554,7 @@ FIO_INLINE uint64_t fiobj_obj2hash(const FIOBJ o) {
   if (!FIOBJ_IS_ALLOCATED(o))
     return (uint64_t)o;
   fio_str_info_s s = fiobj_obj2cstr(o);
-  return fio_siphash(s.data, s.len);
+  return FIO_HASH_FN(s.data, s.len);
 }
 
 /**

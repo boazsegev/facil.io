@@ -2318,6 +2318,139 @@ void fio_rand_bytes(void *target, size_t length);
 
 ***************************************************************************** */
 
+/* defines the secret seed to be used by keyd hashing functions*/
+#ifndef FIO_HASH_SECRET_SEED64
+extern int main();
+#define FIO_HASH_SECRET_SEED64 ((uintptr_t)main)
+#endif
+
+#if FIO_USE_RISKY_HASH
+#define FIO_HASH_FN(data, length)                                              \
+  fio_risky_hash((data), (length), FIO_HASH_SECRET_SEED64)
+#else
+#define FIO_HASH_FN(data, length) fio_siphash13((data), (length))
+#endif
+
+/* *****************************************************************************
+Risky Hash (always available, even if using only the fio.h header)
+***************************************************************************** */
+
+/**
+ * Computes a facil.io Risky Hash, modeled after the amazing
+ * [xxHash](https://github.com/Cyan4973/xxHash) (which has a BSD license)
+ * and named "Risky Hash" because writing your own hashing function is a risky
+ * business, full of pitfalls, hours of testing and security risks...
+ *
+ * Risky Hash isn't as battle tested as SipHash, but it did pass the
+ * [SMHasher](https://github.com/rurban/smhasher) tests with wonderful results,
+ * can be used for processing safe data and is easy (and short) to implement.
+ */
+inline FIO_FUNC uintptr_t fio_risky_hash(void *data_, size_t len,
+                                         uint64_t seed) {
+  /* inspired by xxHash: Yann Collet, Maciej Adamczyk... */
+  /* so I borrowed their primes as homage ;-) */
+  /* more primes at: https://asecuritysite.com/encryption/random3?val=64 */
+  const uint64_t primes[] = {
+      /* xxHash Primes */
+      14029467366897019727ULL, 11400714785074694791ULL, 1609587929392839161ULL,
+      9650029242287828579ULL,  2870177450012600261ULL,
+  };
+
+  /*
+   * 256bit vector hash used before collapsing to 64bit
+   * When implementing a streaming variation, more fields might be required.
+   */
+  struct risky_state_s {
+    uint64_t v[4];
+  } s = {
+      {(seed + primes[0] + primes[1]), ((~seed) + primes[0]),
+       ((seed << 9) ^ primes[3]), ((seed >> 17) ^ primes[2])},
+  };
+
+/* A single data-mangling round, d0 is the data in big-endian 64 bit */
+/* the design follows the xxHash basic round scheme and is easy to vectorize */
+#define fio_risky_round_single(d0, i)                                          \
+  s.v[(i)] += (d0)*primes[0];                                                  \
+  s.v[(i)] = fio_lrot64(s.v[(i)], 33);                                         \
+  s.v[(i)] *= primes[1];
+
+/* an unrolled (vectorizable) 256bit round */
+#define fio_risky_round_256(d0, d1, d2, d3)                                    \
+  fio_risky_round_single(d0, 0);                                               \
+  fio_risky_round_single(d1, 1);                                               \
+  fio_risky_round_single(d2, 2);                                               \
+  fio_risky_round_single(d3, 3);
+
+  uint8_t *data = (uint8_t *)data_;
+
+  /* loop over 256 bit "blocks" */
+  const size_t len_256 = len & (((size_t)-1) << 5);
+  for (size_t i = 0; i < len_256; i += 32) {
+    /* perform round for block */
+    fio_risky_round_256(fio_str2u64(data), fio_str2u64(data + 8),
+                        fio_str2u64(data + 16), fio_str2u64(data + 24));
+    data += 32;
+  }
+
+  /* process last 64bit blocks in their regular verctor */
+  switch (len & 24UL) {
+  case 24:
+    fio_risky_round_single(fio_str2u64(data), 0);
+    fio_risky_round_single(fio_str2u64(data + 8), 1);
+    fio_risky_round_single(fio_str2u64(data + 16), 2);
+    data += 24;
+    break;
+  case 16:
+    fio_risky_round_single(fio_str2u64(data), 0);
+    fio_risky_round_single(fio_str2u64(data + 8), 1);
+    data += 16;
+    break;
+  case 8:
+    fio_risky_round_single(fio_str2u64(data), 0);
+    data += 8;
+    break;
+  }
+
+  /* always process the last 64bits, if any, in the 4th vector */
+  uint64_t last_bytes = 0;
+  switch (len & 7) {
+  case 7:
+    last_bytes |= ((uint64_t)data[6] & 0xFF) << 56;
+  case 6: /* overflow */
+    last_bytes |= ((uint64_t)data[5] & 0xFF) << 48;
+  case 5: /* overflow */
+    last_bytes |= ((uint64_t)data[4] & 0xFF) << 40;
+  case 4: /* overflow */
+    last_bytes |= ((uint64_t)data[3] & 0xFF) << 32;
+  case 3: /* overflow */
+    last_bytes |= ((uint64_t)data[2] & 0xFF) << 24;
+  case 2: /* overflow */
+    last_bytes |= ((uint64_t)data[1] & 0xFF) << 16;
+  case 1: /* overflow */
+    last_bytes |= ((uint64_t)data[0] & 0xFF) << 8;
+    fio_risky_round_single(last_bytes, 3);
+  }
+
+  /* merge, add length and avalanch... */
+  uint64_t result = (fio_lrot64(s.v[3], 63) + fio_lrot64(s.v[2], 57) +
+                     fio_lrot64(s.v[1], 52) + fio_lrot64(s.v[0], 46));
+  result += len * primes[4];
+  result = ((result ^ s.v[0]) * primes[3]) + primes[2];
+  result = ((result ^ s.v[1]) * primes[3]) + primes[2];
+  result = ((result ^ s.v[2]) * primes[3]) + primes[2];
+  result = ((result ^ s.v[3]) * primes[3]) + primes[2];
+  result ^= (result >> 33);
+  result *= primes[1];
+  result ^= (result >> 29);
+  result *= primes[2];
+
+  /* finalize data, merging all vectors and adding length */
+  return result;
+
+#undef fio_risky_round_single
+#undef fio_risky_round_256
+}
+
 /* *****************************************************************************
 SipHash
 ***************************************************************************** */
@@ -3707,122 +3840,6 @@ String Implementation - Hashing
 ***************************************************************************** */
 
 /**
- * Computes a facil.io Risky Hash, modeled after the amazing
- * [xxHash](https://github.com/Cyan4973/xxHash) (which has a BSD license)
- * and named "Risky Hash" because writing your own hashing function is a risky
- * business, full of pitfalls, hours of testing and security risks...
- *
- * Risky Hash isn't as battle tested as SipHash, but it did pass the
- * [SMHasher](https://github.com/rurban/smhasher) tests with wonderful results
- * and can be used for processing safe data.
- */
-inline FIO_FUNC uintptr_t fio_risky_hash(void *data_, size_t len,
-                                         uint64_t seed) {
-  /* inspired by xxHash: Yann Collet, Maciej Adamczyk... */
-  /* so I borrowed their primes as homage ;-) */
-  /* more primes at: https://asecuritysite.com/encryption/random3?val=64 */
-  const uint64_t primes[] = {
-      /* xxHash Primes */
-      14029467366897019727ULL, 11400714785074694791ULL, 1609587929392839161ULL,
-      9650029242287828579ULL,  2870177450012600261ULL,
-  };
-
-  /*
-   * 256bit vector hash used before collapsing to 64bit
-   * When implementing a streaming variation, more fields might be required.
-   */
-  struct risky_state_s {
-    uint64_t v[4];
-  } s = {
-      {(seed + primes[0] + primes[1]), ((~seed) + primes[0]),
-       ((seed << 9) ^ primes[3]), ((seed >> 17) ^ primes[2])},
-  };
-
-/* A single data-mangling round, n is the data in big-endian 64 bit */
-/* the design follows the xxHash basic round scheme and is easy to vectorize */
-#define fio_risky_round_single(d0, i)                                          \
-  s.v[(i)] += (d0)*primes[0];                                                  \
-  s.v[(i)] = fio_lrot64(s.v[(i)], 33);                                         \
-  s.v[(i)] *= primes[1];
-
-/* an unrolled (vectorizable) 256bit round */
-#define fio_risky_round_256(d0, d1, d2, d3)                                    \
-  fio_risky_round_single(d0, 0);                                               \
-  fio_risky_round_single(d1, 1);                                               \
-  fio_risky_round_single(d2, 2);                                               \
-  fio_risky_round_single(d3, 3);
-
-  uint8_t *data = (uint8_t *)data_;
-
-  /* loop over 256 bit "blocks" */
-  const size_t len_256 = len & (((size_t)-1) << 5);
-  for (size_t i = 0; i < len_256; i += 32) {
-    /* perform round for block */
-    fio_risky_round_256(fio_str2u64(data), fio_str2u64(data + 8),
-                        fio_str2u64(data + 16), fio_str2u64(data + 24));
-    data += 32;
-  }
-
-  /* process last 64bit blocks in their regular verctor */
-  switch (len & 24UL) {
-  case 24:
-    fio_risky_round_single(fio_str2u64(data), 0);
-    fio_risky_round_single(fio_str2u64(data + 8), 1);
-    fio_risky_round_single(fio_str2u64(data + 16), 2);
-    data += 24;
-    break;
-  case 16:
-    fio_risky_round_single(fio_str2u64(data), 0);
-    fio_risky_round_single(fio_str2u64(data + 8), 1);
-    data += 16;
-    break;
-  case 8:
-    fio_risky_round_single(fio_str2u64(data), 0);
-    data += 8;
-    break;
-  }
-
-  /* always process the last 64bits, if any, in the 4th vector */
-  uint64_t last_byte = 0;
-  switch (len & 7) {
-  case 7:
-    last_byte |= ((uint64_t)data[6] & 0xFF) << 56;
-  case 6: /* overflow */
-    last_byte |= ((uint64_t)data[5] & 0xFF) << 48;
-  case 5: /* overflow */
-    last_byte |= ((uint64_t)data[4] & 0xFF) << 40;
-  case 4: /* overflow */
-    last_byte |= ((uint64_t)data[3] & 0xFF) << 32;
-  case 3: /* overflow */
-    last_byte |= ((uint64_t)data[2] & 0xFF) << 24;
-  case 2: /* overflow */
-    last_byte |= ((uint64_t)data[1] & 0xFF) << 16;
-  case 1: /* overflow */
-    last_byte |= ((uint64_t)data[0] & 0xFF) << 8;
-    fio_risky_round_single(last_byte, 3);
-  }
-
-  /* merge, add length and avalanch... */
-  uint64_t result = (fio_lrot64(s.v[3], 63) + fio_lrot64(s.v[2], 57) +
-                     fio_lrot64(s.v[1], 52) + fio_lrot64(s.v[0], 46));
-  result += len * primes[4];
-  result = ((result ^ s.v[0]) * primes[3]) + primes[2];
-  result = ((result ^ s.v[1]) * primes[3]) + primes[2];
-  result = ((result ^ s.v[2]) * primes[3]) + primes[2];
-  result = ((result ^ s.v[3]) * primes[3]) + primes[2];
-  result ^= (result >> 33);
-  result *= primes[1];
-  result ^= (result >> 29);
-  result *= primes[2];
-
-  /* finalize data, merging all vectors and adding length */
-  return result;
-
-#undef fio_risky_round_single
-#undef fio_risky_round_256
-}
-
-/**
  * Return's the String's Risky Hash (see fio_risky_hash).
  *
  * This value is machine/instance specific (hash seed is a memory address).
@@ -3834,7 +3851,7 @@ inline FIO_FUNC uintptr_t fio_risky_hash(void *data_, size_t len,
  */
 FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s) {
   fio_str_info_s state = fio_str_info(s);
-  return fio_risky_hash(state.data, state.len, (uint64_t)&fio_str_hash);
+  return fio_risky_hash(state.data, state.len, FIO_HASH_SECRET_SEED64);
 }
 
 /* *****************************************************************************

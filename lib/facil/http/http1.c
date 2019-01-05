@@ -101,7 +101,7 @@ static FIOBJ headers2str(http_s *h, uintptr_t padding) {
 
   static uintptr_t connection_hash;
   if (!connection_hash)
-    connection_hash = fio_siphash("connection", 10);
+    connection_hash = FIO_HASH_FN("connection", 10);
 
   struct header_writer_s w;
   {
@@ -156,7 +156,7 @@ static FIOBJ headers2str(http_s *h, uintptr_t padding) {
     /* make sure we have a host header? */
     static uint64_t host_hash;
     if (!host_hash)
-      host_hash = fio_siphash("host", 4);
+      host_hash = FIO_HASH_FN("host", 4);
     FIOBJ tmp;
     if (!fiobj_hash_get2(h->private_data.out_headers, host_hash) &&
         (tmp = fiobj_hash_get2(h->headers, host_hash))) {
@@ -326,9 +326,9 @@ static int http1_http2websocket_server(http_s *h, websocket_settings_s *args) {
   static uintptr_t sec_version = 0;
   static uintptr_t sec_key = 0;
   if (!sec_version)
-    sec_version = fio_siphash("sec-websocket-version", 21);
+    sec_version = FIO_HASH_FN("sec-websocket-version", 21);
   if (!sec_key)
-    sec_key = fio_siphash("sec-websocket-key", 17);
+    sec_key = FIO_HASH_FN("sec-websocket-key", 17);
 
   FIOBJ tmp = fiobj_hash_get2(h->headers, sec_version);
   if (!tmp)

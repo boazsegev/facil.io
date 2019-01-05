@@ -69,6 +69,7 @@ static void cleanup(void);
 
 int main(int argc, char const *argv[]) {
   // FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
+  fprintf(stderr, " the function is located at: %p\n", (void *)fio_siphash13);
   initialize_cli(argc, argv);
   load_words();
   initialize_hash_names();
@@ -662,7 +663,7 @@ inline FIO_FUNC uintptr_t fio_risky_hash2(void *data_, size_t len,
        ((seed << 9) ^ primes[3]), ((seed >> 17) ^ primes[2])},
   };
 
-/* A single data-mangling round, n is the data in big-endian 64 bit */
+/* A single data-mangling round, d0 is the data in big-endian 64 bit */
 /* the design follows the xxHash basic round scheme and is easy to vectorize */
 #define fio_risky_round_single(d0, i)                                          \
   s.v[(i)] += (d0)*primes[0];                                                  \
@@ -707,23 +708,23 @@ inline FIO_FUNC uintptr_t fio_risky_hash2(void *data_, size_t len,
   }
 
   /* always process the last 64bits, if any, in the 4th vector */
-  uint64_t last_byte = 0;
+  uint64_t last_bytes = 0;
   switch (len & 7) {
   case 7:
-    last_byte |= ((uint64_t)data[6] & 0xFF) << 56;
+    last_bytes |= ((uint64_t)data[6] & 0xFF) << 56;
   case 6: /* overflow */
-    last_byte |= ((uint64_t)data[5] & 0xFF) << 48;
+    last_bytes |= ((uint64_t)data[5] & 0xFF) << 48;
   case 5: /* overflow */
-    last_byte |= ((uint64_t)data[4] & 0xFF) << 40;
+    last_bytes |= ((uint64_t)data[4] & 0xFF) << 40;
   case 4: /* overflow */
-    last_byte |= ((uint64_t)data[3] & 0xFF) << 32;
+    last_bytes |= ((uint64_t)data[3] & 0xFF) << 32;
   case 3: /* overflow */
-    last_byte |= ((uint64_t)data[2] & 0xFF) << 24;
+    last_bytes |= ((uint64_t)data[2] & 0xFF) << 24;
   case 2: /* overflow */
-    last_byte |= ((uint64_t)data[1] & 0xFF) << 16;
+    last_bytes |= ((uint64_t)data[1] & 0xFF) << 16;
   case 1: /* overflow */
-    last_byte |= ((uint64_t)data[0] & 0xFF) << 8;
-    fio_risky_round_single(last_byte, 3);
+    last_bytes |= ((uint64_t)data[0] & 0xFF) << 8;
+    fio_risky_round_single(last_bytes, 3);
   }
 
   /* merge, add length and avalanch... */

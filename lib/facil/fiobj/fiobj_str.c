@@ -324,13 +324,13 @@ size_t fiobj_str_concat(FIOBJ dest, FIOBJ obj) {
 uint64_t fiobj_str_hash(FIOBJ o) {
   assert(FIOBJ_TYPE_IS(o, FIOBJ_T_STRING));
   // if (obj2str(o)->is_small) {
-  //   return fio_siphash(STR_INTENAL_STR(o), STR_INTENAL_LEN(o));
+  //   return FIO_HASH_FN(STR_INTENAL_STR(o), STR_INTENAL_LEN(o));
   // } else
   if (obj2str(o)->hash) {
     return obj2str(o)->hash;
   }
   fio_str_info_s state = fio_str_info(&obj2str(o)->str);
-  obj2str(o)->hash = fio_siphash(state.data, state.len);
+  obj2str(o)->hash = FIO_HASH_FN(state.data, state.len);
   return obj2str(o)->hash;
 }
 

@@ -49,7 +49,7 @@ typedef struct {
 /** this will allow the function definition fio_cli_start to avoid the MACRO */
 #define AVOID_MACRO
 
-#define FIO_CLI_HASH_VAL(s) fio_siphash13((s).data, (s).len)
+#define FIO_CLI_HASH_VAL(s) FIO_HASH_FN((s).data, (s).len)
 
 /* *****************************************************************************
 CLI Parsing
