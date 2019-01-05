@@ -15,8 +15,6 @@
 * [Compilation Macros](/0.7.x/fio#version-and-compilation-related-macros)
 * [Weak Functions](/0.7.x/fio#weak-functions)
 
-
-
 ### [Extensions](/0.7.x/extensions)
 
 <!-- * [TLS (SSL)](/0.7.x/fio_tls) -->
@@ -36,3 +34,7 @@
 * [Data Streams](/0.7.x/fiobj_data)
 * [JSON](/0.7.x/fiobj_json)
 * [Mustache](/0.7.x/fiobj_mustache)
+
+### Miscellaneous
+
+* [Risk Hash](/0.7.x/riskyhash)

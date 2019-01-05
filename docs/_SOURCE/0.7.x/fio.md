@@ -2236,7 +2236,7 @@ NOTE: the hashing function might be changed at any time without notice. It wasn'
 static inline uintptr_t fio_risky_hash(char *data, size_t len, uint64_t seed);
 ```
 
-Computes a facil.io Risky Hash - modeled after the amazing [xxHash](https://github.com/Cyan4973/xxHash) (which has a BSD license) and named "Risky Hash" because writing your own hashing function is a risky business, full of pitfalls and hours of testing...
+Computes a facil.io [Risky Hash](riskyhash) - modeled after the amazing [xxHash](https://github.com/Cyan4973/xxHash) (which has a BSD license) and named "Risky Hash" because writing your own hashing function is a risky business, full of pitfalls and hours of testing...
 
 Risky Hash passed the [SMHasher](https://github.com/rurban/smhasher) tests with wonderful results and can be safely used for hash maps when hashing safe data.
 
