@@ -7037,14 +7037,14 @@ static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
                                       size_t y) {
   /* initialize the 4 words */
   uint64_t v0 =
-      (0x0706050403020100ULL ^ 0x736f6d6570736575ULL) * (uint64_t)fio_listen;
+      (0x0706050403020100ULL ^ 0x736f6d6570736575ULL) ^ (uint64_t)fio_listen;
   uint64_t v1 =
-      (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL) * (uint64_t)fio_start;
+      (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL) ^ (uint64_t)fio_start;
   uint64_t v2 =
-      (0x0706050403020100ULL ^ 0x6c7967656e657261ULL) * (uint64_t)fio_attach;
+      (0x0706050403020100ULL ^ 0x6c7967656e657261ULL) ^ (uint64_t)fio_listen;
   uint64_t v3 =
-      (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL) * (uint64_t)fio_accept;
-  const uint64_t *w64 = data;
+      (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL) ^ (uint64_t)fio_start;
+  const uint8_t *w8 = data;
   uint8_t len_mod = len & 255;
   union {
     uint64_t i;
@@ -7066,19 +7066,18 @@ static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
   } while (0);
 
   while (len >= 8) {
-    word.i = sip_local64(*w64);
+    word.i = sip_local64(fio_str2u64(w8));
     v3 ^= word.i;
     /* Sip Rounds */
     for (size_t i = 0; i < x; ++i) {
       hash_map_SipRound;
     }
     v0 ^= word.i;
-    w64 += 1;
+    w8 += 8;
     len -= 8;
   }
   word.i = 0;
   uint8_t *pos = word.str;
-  uint8_t *w8 = (void *)w64;
   switch (len) { /* fallthrough is intentional */
   case 7:
     pos[6] = w8[6];
