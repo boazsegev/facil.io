@@ -4579,6 +4579,8 @@ struct subscription_s {
   fio_lock_i unsubscribed;
 };
 
+#define FIO_PUBSUB_HASH(data, len) fio_siphash13(data, len)
+
 /* Use `malloc` / `free`, because channles might have a long life. */
 
 /** Used internally by the Set object to create a new channel. */
@@ -4904,7 +4906,7 @@ static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
       .parent = &fio_postoffice.pubsub,
       .ref = 8, /* avoid freeing stack memory */
   };
-  uint64_t hashed_name = fio_siphash(name.data, name.len);
+  uint64_t hashed_name = FIO_PUBSUB_HASH(name.data, name.len);
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.pubsub);
   if (fio_ls_embd_is_empty(&ch_p->subscriptions)) {
@@ -4923,7 +4925,7 @@ static channel_s *fio_channel_match_dup_lock(fio_str_info_s name,
       .match = match,
       .ref = 8, /* avoid freeing stack memory */
   };
-  uint64_t hashed_name = fio_siphash(name.data, name.len);
+  uint64_t hashed_name = FIO_PUBSUB_HASH(name.data, name.len);
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.patterns);
   if (fio_ls_embd_is_empty(&ch_p->subscriptions)) {
@@ -4990,7 +4992,7 @@ void fio_unsubscribe(subscription_s *s) {
   /* check if channel is done for */
   if (fio_ls_embd_is_empty(&ch->subscriptions)) {
     fio_collection_s *c = ch->parent;
-    uint64_t hashed = fio_siphash(ch->name, ch->name_len);
+    uint64_t hashed = FIO_PUBSUB_HASH(ch->name, ch->name_len);
     /* lock collection */
     fio_lock(&c->lock);
     /* test again within lock */
@@ -5189,7 +5191,7 @@ static channel_s *fio_filter_find_dup(uint32_t filter) {
 /** Finds a pubsub channel, increasing it's reference count if it exists. */
 static channel_s *fio_channel_find_dup(fio_str_info_s name) {
   channel_s tmp = {.name = name.data, .name_len = name.len};
-  uint64_t hashed_name = fio_siphash(name.data, name.len);
+  uint64_t hashed_name = FIO_PUBSUB_HASH(name.data, name.len);
   channel_s *ch =
       fio_channel_find_dup_internal(&tmp, hashed_name, &fio_postoffice.pubsub);
   return ch;
@@ -5655,7 +5657,10 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
         pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_insert(&pr->pubsub, fio_str_hash(&tmp), tmp, s, NULL);
+    fio_sub_hash_insert(
+        &pr->pubsub,
+        FIO_PUBSUB_HASH(pr->msg->channel.data, pr->msg->channel.len), tmp, s,
+        NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5663,7 +5668,10 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
         pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_remove(&pr->pubsub, fio_str_hash(&tmp), tmp, NULL);
+    fio_sub_hash_remove(
+        &pr->pubsub,
+        FIO_PUBSUB_HASH(pr->msg->channel.data, pr->msg->channel.len), tmp,
+        NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5676,7 +5684,10 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
         pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_insert(&pr->patterns, fio_str_hash(&tmp), tmp, s, NULL);
+    fio_sub_hash_insert(
+        &pr->patterns,
+        FIO_PUBSUB_HASH(pr->msg->channel.data, pr->msg->channel.len), tmp, s,
+        NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -5685,7 +5696,10 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
         pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
     fio_lock(&pr->lock);
-    fio_sub_hash_remove(&pr->patterns, fio_str_hash(&tmp), tmp, NULL);
+    fio_sub_hash_remove(
+        &pr->patterns,
+        FIO_PUBSUB_HASH(pr->msg->channel.data, pr->msg->channel.len), tmp,
+        NULL);
     fio_unlock(&pr->lock);
     break;
   }
@@ -9320,7 +9334,7 @@ FIO_FUNC void fio_riskyhash_speed_test(void) {
   uint64_t hash = 0;
   fio_str_s str = FIO_STR_INIT_STATIC2(buffer, 8192);
   for (size_t i = 0; i < 4; i++) {
-    hash += fio_str_hash(&str);
+    hash += fio_risky_hash(buffer, 8192, 1);
     memcpy(buffer, &hash, sizeof(hash));
   }
   /* loop until test runs for more than 2 seconds */
@@ -9328,14 +9342,14 @@ FIO_FUNC void fio_riskyhash_speed_test(void) {
     clock_t start, end;
     start = clock();
     for (size_t i = cycles; i > 0; i--) {
-      hash += fio_str_hash(&str);
+      hash += fio_risky_hash(buffer, 8192, 1);
       __asm__ volatile("" ::: "memory");
     }
     end = clock();
     memcpy(buffer, &hash, sizeof(hash));
     if ((end - start) >= (2 * CLOCKS_PER_SEC) ||
         cycles >= ((uint64_t)1 << 62)) {
-      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio_str_hash",
+      fprintf(stderr, "%-20s %8.2f MB/s\n", "fio_risky_hash",
               (double)(sizeof(buffer) * cycles) /
                   (((end - start) * 1000000.0 / CLOCKS_PER_SEC)));
       break;
@@ -9349,14 +9363,18 @@ FIO_FUNC void fio_riskyhash_test(void) {
 #if NODEBUG
   fio_riskyhash_speed_test();
 #else
-  fprintf(stderr, "fio_str_hash speed test skipped (debug mode is slow)\n");
-  fio_str_s str1 = FIO_STR_INIT_STATIC("nothing_is_really_here1");
-  fio_str_s str2 = FIO_STR_INIT_STATIC("nothing_is_really_here2");
-  fio_str_s copy = FIO_STR_INIT;
-  FIO_ASSERT(fio_str_hash(&str1) != fio_str_hash(&str2),
+  fprintf(stderr, "fio_risky_hash speed test skipped (debug mode is slow)\n");
+  fio_str_info_s str1 =
+      (fio_str_info_s){.data = "nothing_is_really_here1", .len = 23};
+  fio_str_info_s str2 =
+      (fio_str_info_s){.data = "nothing_is_really_here2", .len = 23};
+  fio_str_info_s copy = FIO_STR_INIT;
+  FIO_ASSERT(fio_risky_hash(str1.data, str1.len, 1) !=
+                 fio_risky_hash(str2.data, str2.len, 1),
              "Different strings should have a different risky hash");
   fio_str_concat(&copy, &str1);
-  FIO_ASSERT(fio_str_hash(&str1) == fio_str_hash(&copy),
+  FIO_ASSERT(fio_risky_hash(str1.data, str1.len, 1) !=
+                 fio_risky_hash(fio_str_data(&copy), fio_str_len(&copy), 1),
              "Same string values should have the same risky hash");
   fio_str_free(&copy);
   (void)fio_riskyhash_speed_test;

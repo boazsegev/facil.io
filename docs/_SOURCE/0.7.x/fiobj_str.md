@@ -223,4 +223,10 @@ NOTE: Requires a POSIX system, or might silently fail.
 uint64_t fiobj_str_hash(FIOBJ o);
 ```
 
-Calculates a String's SipHash value for possible use as a Hash Map key.
+Calculates a String's SipHash1-3 value for possible use as a Hash Map key.
+
+**Note**:
+
+Since FIOBJ objects often contain network (external) information, it is important to use a safe hashing function to prevent [hash flooding attacks](https://medium.freecodecamp.org/hash-table-attack-8e4371fc5261).
+
+At the moment, facil.io uses the SipHash1-3 for FIOBJ hash maps and hashing String data. This choice might change at any time, especially if a vulnerability would be discovered but also if a faster (presumably safe) choice presents itself.

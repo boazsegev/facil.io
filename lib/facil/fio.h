@@ -2082,25 +2082,6 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 #error Could not detect byte order on this system.
 #endif
 
-/** 32Bit left rotation, inlined. */
-#define fio_lrot32(i, bits)                                                    \
-  (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> ((-(bits)) & 31)))
-/** 32Bit right rotation, inlined. */
-#define fio_rrot32(i, bits)                                                    \
-  (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << ((-(bits)) & 31)))
-/** 64Bit left rotation, inlined. */
-#define fio_lrot64(i, bits)                                                    \
-  (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> ((-(bits)) & 63)))
-/** 64Bit right rotation, inlined. */
-#define fio_rrot64(i, bits)                                                    \
-  (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << ((-(bits)) & 63)))
-/** unknown size element - left rotation, inlined. */
-#define fio_lrot(i, bits)                                                      \
-  (((i) << (bits)) | ((i) >> ((-(bits)) & ((sizeof((i)) << 3) - 1))))
-/** unknown size element - right rotation, inlined. */
-#define fio_rrot(i, bits)                                                      \
-  (((i) >> (bits)) | ((i) << ((-(bits)) & ((sizeof((i)) << 3) - 1))))
-
 #if __BIG_ENDIAN__
 
 /** Local byte order to Network byte order, 16 bit integer */
@@ -2127,17 +2108,6 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
               (((uint32_t)0 + ((uint8_t *)(c))[2]) << 16) |                    \
               (((uint32_t)0 + ((uint8_t *)(c))[1]) << 8) |                     \
               ((uint32_t)0 + ((uint8_t *)(c))[0])))
-/** Converts an unaligned network ordered byte stream to a 64 bit number. */
-#define fio_str2u64(c)                                                         \
-  ((uint64_t)((((uint64_t)0 + ((uint8_t *)(c))[7]) << 56) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[6]) << 48) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[5]) << 40) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[4]) << 32) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[3]) << 24) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[2]) << 16) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[1]) << 8) |                     \
-              ((uint64_t)0 + ((uint8_t *)(c))[0])))
-
 #else /* Little Endian */
 
 /** Local byte order to Network byte order, 16 bit integer */
@@ -2154,27 +2124,48 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 /** Network byte order to Local byte order, 62 bit integer */
 #define fio_ntol64(i) fio_bswap64((i))
 
+#endif
+
+/** 32Bit left rotation, inlined. */
+#define fio_lrot32(i, bits)                                                    \
+  (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> ((-(bits)) & 31UL)))
+/** 32Bit right rotation, inlined. */
+#define fio_rrot32(i, bits)                                                    \
+  (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << ((-(bits)) & 31UL)))
+/** 64Bit left rotation, inlined. */
+#define fio_lrot64(i, bits)                                                    \
+  (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
+/** 64Bit right rotation, inlined. */
+#define fio_rrot64(i, bits)                                                    \
+  (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << ((-(bits)) & 63UL)))
+/** unknown size element - left rotation, inlined. */
+#define fio_lrot(i, bits)                                                      \
+  (((i) << (bits)) | ((i) >> ((-(bits)) & ((sizeof((i)) << 3) - 1))))
+/** unknown size element - right rotation, inlined. */
+#define fio_rrot(i, bits)                                                      \
+  (((i) >> (bits)) | ((i) << ((-(bits)) & ((sizeof((i)) << 3) - 1))))
+
 /** Converts an unaligned network ordered byte stream to a 16 bit number. */
 #define fio_str2u16(c)                                                         \
-  ((uint16_t)((((uint16_t)0 + ((uint8_t *)(c))[0]) << 8) |                     \
-              ((uint16_t)0 + ((uint8_t *)(c))[1])))
+  ((uint16_t)(((uint16_t)(((uint8_t *)(c))[0]) << 8) |                         \
+              (uint16_t)(((uint8_t *)(c))[1])))
 /** Converts an unaligned network ordered byte stream to a 32 bit number. */
 #define fio_str2u32(c)                                                         \
-  ((uint32_t)((((uint32_t)0 + ((uint8_t *)(c))[0]) << 24) |                    \
-              (((uint32_t)0 + ((uint8_t *)(c))[1]) << 16) |                    \
-              (((uint32_t)0 + ((uint8_t *)(c))[2]) << 8) |                     \
-              ((uint32_t)0 + ((uint8_t *)(c))[3])))
+  ((uint32_t)(((uint32_t)(((uint8_t *)(c))[0]) << 24) |                        \
+              ((uint32_t)(((uint8_t *)(c))[1]) << 16) |                        \
+              ((uint32_t)(((uint8_t *)(c))[2]) << 8) |                         \
+              (uint32_t)(((uint8_t *)(c))[3])))
+
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
 #define fio_str2u64(c)                                                         \
-  ((uint64_t)((((uint64_t)0 + ((uint8_t *)(c))[0]) << 56) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[1]) << 48) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[2]) << 40) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[3]) << 32) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[4]) << 24) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[5]) << 16) |                    \
-              (((uint64_t)0 + ((uint8_t *)(c))[6]) << 8) |                     \
+  ((uint64_t)((((uint64_t)((uint8_t *)(c))[0]) << 56) |                        \
+              (((uint64_t)((uint8_t *)(c))[1]) << 48) |                        \
+              (((uint64_t)((uint8_t *)(c))[2]) << 40) |                        \
+              (((uint64_t)((uint8_t *)(c))[3]) << 32) |                        \
+              (((uint64_t)((uint8_t *)(c))[4]) << 24) |                        \
+              (((uint64_t)((uint8_t *)(c))[5]) << 16) |                        \
+              (((uint64_t)((uint8_t *)(c))[6]) << 8) |                         \
               ((uint64_t)0 + ((uint8_t *)(c))[7])))
-#endif
 
 /** Writes a local 16 bit number to an unaligned buffer in network order. */
 #define fio_u2str16(buffer, i)                                                 \
@@ -3355,7 +3346,7 @@ FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s);
  * [SMHasher](https://github.com/rurban/smhasher) tests with wonderful results
  * and is used internally by facio.io's engine.
  */
-inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len, uint64_t seed);
+inline FIO_FUNC uintptr_t fio_risky_hash(void *data, size_t len, uint64_t seed);
 
 /* *****************************************************************************
 String API - Memory management
@@ -3719,15 +3710,15 @@ String Implementation - Hashing
  * Computes a facil.io Risky Hash, modeled after the amazing
  * [xxHash](https://github.com/Cyan4973/xxHash) (which has a BSD license)
  * and named "Risky Hash" because writing your own hashing function is a risky
- * business, full of pitfalls and hours of testing...
+ * business, full of pitfalls, hours of testing and security risks...
  *
  * Risky Hash isn't as battle tested as SipHash, but it did pass the
  * [SMHasher](https://github.com/rurban/smhasher) tests with wonderful results
- * and is used internally by facio.io's engine.
+ * and can be used for processing safe data.
  */
-inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
+inline FIO_FUNC uintptr_t fio_risky_hash(void *data_, size_t len,
                                          uint64_t seed) {
-  /* inspired by xxHash, (Yann Collet, Maciej Adamczyk)... */
+  /* inspired by xxHash: Yann Collet, Maciej Adamczyk... */
   /* so I borrowed their primes as homage ;-) */
   /* more primes at: https://asecuritysite.com/encryption/random3?val=64 */
   const uint64_t primes[] = {
@@ -3735,12 +3726,18 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
       14029467366897019727ULL, 11400714785074694791ULL, 1609587929392839161ULL,
       9650029242287828579ULL,  2870177450012600261ULL,
   };
+
+  /*
+   * 256bit vector hash used before collapsing to 64bit
+   * When implementing a streaming variation, more fields might be required.
+   */
   struct risky_state_s {
-    uint64_t v[4]; /* 256bit vector hash used before collapsing to 64bit */
+    uint64_t v[4];
   } s = {
-      {(seed + primes[0] + primes[1]), ((~seed) + primes[0]), (seed ^ 0x005aUL),
-       ((seed ^ 0xa5UL) - primes[1])},
+      {(seed + primes[0] + primes[1]), ((~seed) + primes[0]),
+       ((seed << 9) ^ primes[3]), ((seed >> 17) ^ primes[2])},
   };
+
 /* A single data-mangling round, n is the data in big-endian 64 bit */
 /* the design follows the xxHash basic round scheme and is easy to vectorize */
 #define fio_risky_round_single(d0, i)                                          \
@@ -3755,6 +3752,8 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
   fio_risky_round_single(d2, 2);                                               \
   fio_risky_round_single(d3, 3);
 
+  uint8_t *data = (uint8_t *)data_;
+
   /* loop over 256 bit "blocks" */
   const size_t len_256 = len & (((size_t)-1) << 5);
   for (size_t i = 0; i < len_256; i += 32) {
@@ -3764,10 +3763,7 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
     data += 32;
   }
 
-  /* copy last 256 bit block, padding with existing vectors */
-  /* at this point we also know the final length... so we add that */
-
-  /* test if we have 24 bytes, 16 bytes or 8 bytes rounds left */
+  /* process last 64bit blocks in their regular verctor */
   switch (len & 24UL) {
   case 24:
     fio_risky_round_single(fio_str2u64(data), 0);
@@ -3785,6 +3781,8 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
     data += 8;
     break;
   }
+
+  /* always process the last 64bits, if any, in the 4th vector */
   uint64_t last_byte = 0;
   switch (len & 7) {
   case 7:
@@ -3804,11 +3802,9 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
     fio_risky_round_single(last_byte, 3);
   }
 
-  /* at this point we know the length and the last of the data*/
+  /* merge, add length and avalanch... */
   uint64_t result = (fio_lrot64(s.v[3], 63) + fio_lrot64(s.v[2], 57) +
                      fio_lrot64(s.v[1], 52) + fio_lrot64(s.v[0], 46));
-
-  /* merge and avalanch... */
   result += len * primes[4];
   result = ((result ^ s.v[0]) * primes[3]) + primes[2];
   result = ((result ^ s.v[1]) * primes[3]) + primes[2];
@@ -3831,7 +3827,10 @@ inline FIO_FUNC uintptr_t fio_risky_hash(char *data, size_t len,
  *
  * This value is machine/instance specific (hash seed is a memory address).
  *
- * NOTE: the hashing function might be changed at any time without notice.
+ * NOTE: the hashing function might be changed at any time without notice. It
+ * wasn't cryptographically analyzed and safety against malicious data can't be
+ * guaranteed. Use fio_siphash13 or fio_siphash24 when hashing data from
+ * external sources.
  */
 FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s) {
   fio_str_info_s state = fio_str_info(s);
