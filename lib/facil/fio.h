@@ -2319,14 +2319,16 @@ void fio_rand_bytes(void *target, size_t length);
 ***************************************************************************** */
 
 /* defines the secret seed to be used by keyd hashing functions*/
-#ifndef FIO_HASH_SECRET_SEED64
-extern int main();
-#define FIO_HASH_SECRET_SEED64 ((uintptr_t)main)
+#ifndef FIO_HASH_SECRET_SEED64_1
+uint8_t __attribute__((weak)) fio_hash_secret_marker1;
+uint8_t __attribute__((weak)) fio_hash_secret_marker2;
+#define FIO_HASH_SECRET_SEED64_1 ((uintptr_t)&fio_hash_secret_marker1)
+#define FIO_HASH_SECRET_SEED64_2 ((uintptr_t)&fio_hash_secret_marker2)
 #endif
 
 #if FIO_USE_RISKY_HASH
 #define FIO_HASH_FN(data, length)                                              \
-  fio_risky_hash((data), (length), FIO_HASH_SECRET_SEED64)
+  fio_risky_hash((data), (length), FIO_HASH_SECRET_SEED64_1)
 #else
 #define FIO_HASH_FN(data, length) fio_siphash13((data), (length))
 #endif
@@ -3852,7 +3854,7 @@ String Implementation - Hashing
  */
 FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s) {
   fio_str_info_s state = fio_str_info(s);
-  return fio_risky_hash(state.data, state.len, FIO_HASH_SECRET_SEED64);
+  return fio_risky_hash(state.data, state.len, FIO_HASH_SECRET_SEED64_1);
 }
 
 /* *****************************************************************************
