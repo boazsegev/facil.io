@@ -14,3 +14,6 @@ lib/bearssl/
 
 callgrind*
 docs/assets/styles/main.css.map
+tests/xxhash.h
+tests/xxhash.c
+tests/words.txt
