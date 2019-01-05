@@ -8,6 +8,8 @@
 
 **Fix**: (`redis`) fixed an issue where destroying the Redis engine and exiting pre-maturely, before running facio.io (`fio_start`), will cause a segmentation fault during cleanup.
 
+**Update**: (`fio`) added Risky Hash, for fast hashing of safe data. This is a fast hashing function (about twice as fast as the default SipHash1-3 secure function) that wasn't tested for security. For this reason it should be limited to internal / safe data, such as CLI argument names.
+
 ### v. 0.7.0.beta6
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API, adding support for password protected private key files. *Note*: The TLS API is still fragile and should only be considered stable once version 0.7.0 is released with SSL/TLS support.

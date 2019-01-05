@@ -49,7 +49,8 @@ typedef struct {
 /** this will allow the function definition fio_cli_start to avoid the MACRO */
 #define AVOID_MACRO
 
-#define FIO_CLI_HASH_VAL(s) FIO_HASH_FN((s).data, (s).len)
+#define FIO_CLI_HASH_VAL(s)                                                    \
+  fio_risky_hash((s).data, (s).len, (uint64_t)fio_cli_start)
 
 /* *****************************************************************************
 CLI Parsing
@@ -83,8 +84,8 @@ static void fio_cli_map_line2alias(char const *line) {
   }
 }
 
-char const *fio_cli_get_line_type(fio_cli_parser_data_s *parser,
-                                  const char *line) {
+static char const *fio_cli_get_line_type(fio_cli_parser_data_s *parser,
+                                         const char *line) {
   if (!line) {
     return NULL;
   }

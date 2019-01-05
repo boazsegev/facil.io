@@ -2345,7 +2345,7 @@ Risky Hash (always available, even if using only the fio.h header)
  * [SMHasher](https://github.com/rurban/smhasher) tests with wonderful results,
  * can be used for processing safe data and is easy (and short) to implement.
  */
-inline FIO_FUNC uintptr_t fio_risky_hash(void *data_, size_t len,
+inline FIO_FUNC uintptr_t fio_risky_hash(const void *data_, size_t len,
                                          uint64_t seed) {
   /* inspired by xxHash: Yann Collet, Maciej Adamczyk... */
   /* so I borrowed their primes as homage ;-) */
@@ -3479,7 +3479,8 @@ FIO_FUNC uint64_t fio_str_hash(const fio_str_s *s);
  * [SMHasher](https://github.com/rurban/smhasher) tests with wonderful results
  * and is used internally by facio.io's engine.
  */
-inline FIO_FUNC uintptr_t fio_risky_hash(void *data, size_t len, uint64_t seed);
+inline FIO_FUNC uintptr_t fio_risky_hash(const void *data, size_t len,
+                                         uint64_t seed);
 
 /* *****************************************************************************
 String API - Memory management
