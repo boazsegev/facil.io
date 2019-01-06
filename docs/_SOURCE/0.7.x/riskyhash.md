@@ -14,9 +14,9 @@ Risky Hash was tested with `SMHasher` ([see results](#SMHasher_results)) (passed
 
 ## Purpose
 
-Risky Hash is designed for fast Hash Map key calculation for both big and small keys.
+Risky Hash is designed for fast Hash Map key calculation for both big and small keys. It attempts to act as a 64bit PRF.
 
-My hope is for Risky Hash to be secure enough to allow external (unsafe) data to be used. However, this requires time and exposure.
+My hope is for Risky Hash to be secure enough to allow external (unsafe) data to be used. However, this requires time, exposure and analysis by actual cryptographers.
 
 Currently facio.io's default hashing function is (the slower) SipHash1-3 hash function, which was reviewed by the cryptographic community and found to be resistant to multi-collision / hash flooding attacks.
 
