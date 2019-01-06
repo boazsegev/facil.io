@@ -10,7 +10,7 @@ It provides a fast alternative to SipHash when hashing safe data and a streaming
 
 Risky Hash wasn't tested for attack resistance and shouldn't be used with any data that might be malicious, since it's unknown if this could result in [hash flooding attacks](http://emboss.github.io/blog/2012/12/14/breaking-murmur-hash-flooding-dos-reloaded/) (see [here](https://medium.freecodecamp.org/hash-table-attack-8e4371fc5261)).
 
-Risky Hash was tested with `SMHasher` ([see results](#SMHasher_results)) (passed).
+Risky Hash was tested with [`SMHasher`](https://github.com/rurban/smhasher) ([see results](#SMHasher_results)) (passed).
 
 ## Purpose
 
