@@ -2855,6 +2855,46 @@ fio_str_info_set_insert(&my_set, hash, "foo"); // note function name
 
 This can be performed a number of times, defining a different Set / Hash Map each time.
 
+### Security Concerns
+
+Since the facio.io hash map implementation allows any hash function to be used, there are a number of important safety considerations developers should be aware of.
+
+Hash Maps and Sets could be attacked using "hash flooding" attacks.
+
+The weaker the hashing function, the more likely it is to achieve a hash flooding attack.
+
+To avoid these attacks, there are three requirements:
+
+1. The hashing function, used to produce the digest (hash value) **should** allow resistance to hash flooding attacks. This means:
+
+    1. The function should require a "seed" / "secret".
+    
+    1. Malicious data can't be authored to circumvent the "secret".
+    
+1. The implementation uses the secret to randomize digest values.
+
+   A bad secret will be a function pointer or a value set during startup.
+
+   A good secret will be hash table specific, so different hash tables have different random secrets. For example, hashing the table's memory address with a good hash function would be a good secret (assuming the address remains the same while the table is in use).
+
+1. The hash map implementation **must** use as many bits from the hashed value, or rotate the bits that are in use.
+
+    In general, hash maps / sets are either prime number based (use more bits from the hash value but take longer for lookups) or modulus 2 based (faster lookup times).
+
+    Modulus 2 based hash map implementations are very common, but they could be exposed to lower bit collision attacks, where a partial collision is enough to attack the hash table.
+
+    This risk should be mitigated by utilizing as many bits from the digest as possible.
+
+    For example, facil.io is modulus 2 based, but it uses different bits every time it grows, protecting against lower bit collision attacks.   
+
+1. The implementation **must** react to attacks that circumvent the hash functions.
+
+   A good hash function should be considered the first line of defense for a hash map implementation, but it should **not** be the main line of defense.
+
+   A hash map implementation should, in addition to mitigating partial and full collisions using cuckoo steps / round robin, bit mangling, etc', recognize (full) collision attacks and prevent hash table growth when too many full collisions occur.
+
+   For example, facil.io hash maps and sets will recognize an attack when 96 full collisions are detected (defined as `FIO_SET_MAX_MAP_FULL_COLLISIONS` in `fio.h`). After this point, new colliding data will overwrite old colliding data.
+
 ### Hash Map / Set Memory allocation
 
 The Hash Map's memory is managed by facil.io's allocation / deallocation routines (`fio_malloc`, etc').

@@ -2318,10 +2318,12 @@ uint8_t __attribute__((weak)) fio_hash_secret_marker2;
 #endif
 
 #if FIO_USE_RISKY_HASH
-#define FIO_HASH_FN(data, length)                                              \
-  fio_risky_hash((data), (length), FIO_HASH_SECRET_SEED64_1)
+#define FIO_HASH_FN(data, length, key1, key2)                                  \
+  fio_risky_hash((data), (length),                                             \
+                 ((uint64_t)(key1) >> 19) | ((uint64_t)(key2) << 27))
 #else
-#define FIO_HASH_FN(data, length) fio_siphash13((data), (length))
+#define FIO_HASH_FN(data, length, key1, key2)                                  \
+  fio_siphash13((data), (length), (uint64_t)(key1), (uint64_t)(key2))
 #endif
 
 /* *****************************************************************************
@@ -2434,19 +2436,22 @@ SipHash
 /**
  * A SipHash variation (2-4).
  */
-uint64_t fio_siphash24(const void *data, size_t len);
+uint64_t fio_siphash24(const void *data, size_t len, uint64_t key1,
+                       uint64_t key2);
 
 /**
  * A SipHash 1-3 variation.
  */
-uint64_t fio_siphash13(const void *data, size_t len);
+uint64_t fio_siphash13(const void *data, size_t len, uint64_t key1,
+                       uint64_t key2);
 
 /**
  * The Hashing function used by dynamic facil.io objects.
  *
  * Currently implemented using SipHash 1-3.
  */
-#define fio_siphash(data, length) fio_siphash13((data), (length))
+#define fio_siphash(data, length, k1, k2)                                      \
+  fio_siphash13((data), (length), (k1), (k2))
 
 /* *****************************************************************************
 SHA-1
@@ -5696,7 +5701,6 @@ FIO_FUNC inline FIO_NAME(_map_s_) *
     const uintptr_t hash_value_i = FIO_SET_HASH2UINTPTR(hash_value, 0);
     uintptr_t hash_alt = FIO_SET_HASH2UINTPTR(hash_value, set->used_bits);
 
-  restart_after_full_collision:
     /* O(1) access to object */
     pos = set->map + (hash_alt & mask);
     if (FIO_SET_HASH_COMPARE(FIO_SET_HASH_INVALID, pos->hash))
@@ -5704,6 +5708,7 @@ FIO_FUNC inline FIO_NAME(_map_s_) *
     if (FIO_SET_HASH_COMPARE(pos->hash, hash_value_i)) {
       if (!pos->pos || FIO_SET_COMPARE(pos->pos->obj, obj))
         return pos;
+      /* full hash value collision detected */
       set->has_collisions = 1;
       ++full_collisions_counter;
     }
@@ -5721,18 +5726,17 @@ FIO_FUNC inline FIO_NAME(_map_s_) *
       if (FIO_SET_HASH_COMPARE(pos->hash, hash_value_i)) {
         if (!pos->pos || FIO_SET_COMPARE(pos->pos->obj, obj))
           return pos;
+        /* full hash value collision detected */
         set->has_collisions = 1;
         if (++full_collisions_counter >= FIO_SET_MAX_MAP_FULL_COLLISIONS) {
           /* is the hash under attack? */
           FIO_LOG_WARNING(
               "(fio hash map) too many full collisions - under attack?");
-          FIO_LOG_WARNING(
-              "(fio hash map) auto-self destruct, data corruption.");
           set->under_attack = 1;
+        }
+        if (set->under_attack) {
           return pos;
         }
-        hash_alt = fio_lrot64(hash_alt, 31);
-        goto restart_after_full_collision;
       }
       i += FIO_SET_CUCKOO_STEPS;
     }
@@ -6113,8 +6117,14 @@ FIO_FUNC void FIO_NAME(rehash)(FIO_NAME(s) * set) {
   set->has_collisions = 0;
   uint8_t attempts = 0;
 restart:
-  if (++attempts >= 3 && set->has_collisions) {
-    FIO_LOG_FATAL("facil.io Set / Hash Map has too many collisions.");
+  if (set->used_bits >= 16 && ++attempts >= 3 && set->has_collisions) {
+    FIO_LOG_FATAL(
+        "facil.io Set / Hash Map has too many collisions (%zu/%zu)."
+        "\n\t\tthis is a fatal implementation error,"
+        "please report this issue at facio.io's open source project"
+        "\n\t\tNote: hash maps and sets should never reach this point."
+        "\n\t\tThey should be guarded against collision attacks.",
+        set->pos, set->capa);
     exit(-1);
   }
   FIO_NAME(_reallocate_set_mem_)(set);
@@ -6150,6 +6160,7 @@ restart:
 #undef FIO_SET_COPY
 #undef FIO_SET_DESTROY
 #undef FIO_SET_MAX_MAP_SEEK
+#undef FIO_SET_MAX_MAP_FULL_COLLISIONS
 #undef FIO_SET_REALLOC
 #undef FIO_SET_CALLOC
 #undef FIO_SET_FREE
