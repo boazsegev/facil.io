@@ -2118,19 +2118,20 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 
 /** 32Bit left rotation, inlined. */
 #define fio_lrot32(i, bits)                                                    \
-  (((uint32_t)(i) << (bits)) | ((uint32_t)(i) >> ((-(bits)) & 31UL)))
+  (((uint32_t)(i) << ((bits)&31UL)) | ((uint32_t)(i) >> ((-(bits)) & 31UL)))
 /** 32Bit right rotation, inlined. */
 #define fio_rrot32(i, bits)                                                    \
-  (((uint32_t)(i) >> (bits)) | ((uint32_t)(i) << ((-(bits)) & 31UL)))
+  (((uint32_t)(i) >> ((bits)&31UL)) | ((uint32_t)(i) << ((-(bits)) & 31UL)))
 /** 64Bit left rotation, inlined. */
 #define fio_lrot64(i, bits)                                                    \
-  (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
+  (((uint64_t)(i) << ((bits)&63UL)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
 /** 64Bit right rotation, inlined. */
 #define fio_rrot64(i, bits)                                                    \
-  (((uint64_t)(i) >> (bits)) | ((uint64_t)(i) << ((-(bits)) & 63UL)))
+  (((uint64_t)(i) >> ((bits)&63UL)) | ((uint64_t)(i) << ((-(bits)) & 63UL)))
 /** unknown size element - left rotation, inlined. */
 #define fio_lrot(i, bits)                                                      \
-  (((i) << (bits)) | ((i) >> ((-(bits)) & ((sizeof((i)) << 3) - 1))))
+  (((i) << ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
+   ((i) >> ((-(bits)) & ((sizeof((i)) << 3) - 1))))
 /** unknown size element - right rotation, inlined. */
 #define fio_rrot(i, bits)                                                      \
   (((i) >> (bits)) | ((i) << ((-(bits)) & ((sizeof((i)) << 3) - 1))))
@@ -5321,7 +5322,7 @@ Done
  * The default integer Hash used is a pointer length type (uintptr_t). This can
  * be changed by defining ALL of the following macros:
  * * FIO_SET_HASH_TYPE              - the type of the hash value.
- * * FIO_SET_HASH2UINTPTR(hash)     - converts the hash value to a uintptr_t.
+ * * FIO_SET_HASH2UINTPTR(hash, i)  - converts the hash value to a uintptr_t.
  * * FIO_SET_HASH_COMPARE(h1, h2)   - compares two hash values (1 == equal).
  * * FIO_SET_HASH_INVALID           - an invalid Hash value, all bytes are 0.
  *
@@ -5378,7 +5379,8 @@ Done
 
 /** test for a pre-defined hash to integer conversion */
 #ifndef FIO_SET_HASH2UINTPTR
-#define FIO_SET_HASH2UINTPTR(hash) ((uintptr_t)(hash))
+#define FIO_SET_HASH2UINTPTR(hash, bits_used)                                  \
+  (fio_rrot(hash, bits_used) + fio_ct_if2(bits_used, hash, 0))
 #endif
 
 /** test for a pre-defined invalid hash value (all bytes are 0) */
@@ -5412,7 +5414,7 @@ Done
 
 /* The maximum number of full hash collisions that can be consumed */
 #ifndef FIO_SET_MAX_MAP_FULL_COLLISIONS
-#define FIO_SET_MAX_MAP_FULL_COLLISIONS (16)
+#define FIO_SET_MAX_MAP_FULL_COLLISIONS (96)
 #endif
 
 /* Prime numbers are better */
@@ -5656,10 +5658,11 @@ struct FIO_NAME(s) {
   uintptr_t count;
   uintptr_t capa;
   uintptr_t pos;
-  uintptr_t mask;
   FIO_NAME(_ordered_s_) * ordered;
   FIO_NAME(_map_s_) * map;
   uint8_t has_collisions;
+  uint8_t used_bits;
+  uint8_t under_attack;
 };
 
 #undef FIO_SET_FOR_LOOP
@@ -5683,15 +5686,22 @@ FIO_FUNC inline FIO_NAME(_map_s_) *
     }
     size_t full_collisions_counter = 0;
     FIO_NAME(_map_s_) * pos;
-    uintptr_t hash_i = FIO_SET_HASH2UINTPTR(hash_value);
+    /*
+     * Commonly, the hash is rotated, depending on it's state.
+     * Different bits are used for each mapping, instead of a single new bit.
+     */
+    const uintptr_t mask = (1ULL << set->used_bits) - 1;
+
     uintptr_t i;
+    const uintptr_t hash_value_i = FIO_SET_HASH2UINTPTR(hash_value, 0);
+    uintptr_t hash_alt = FIO_SET_HASH2UINTPTR(hash_value, set->used_bits);
 
   restart_after_full_collision:
     /* O(1) access to object */
-    pos = set->map + (hash_i & set->mask);
+    pos = set->map + (hash_alt & mask);
     if (FIO_SET_HASH_COMPARE(FIO_SET_HASH_INVALID, pos->hash))
       return pos;
-    if (FIO_SET_HASH_COMPARE(pos->hash, hash_value)) {
+    if (FIO_SET_HASH_COMPARE(pos->hash, hash_value_i)) {
       if (!pos->pos || FIO_SET_COMPARE(pos->pos->obj, obj))
         return pos;
       set->has_collisions = 1;
@@ -5705,10 +5715,10 @@ FIO_FUNC inline FIO_NAME(_map_s_) *
                                     ? FIO_SET_MAX_MAP_SEEK
                                     : (set->capa >> 2));
     while (i < limit) {
-      pos = set->map + ((hash_i + i) & set->mask);
+      pos = set->map + ((hash_alt + i) & mask);
       if (FIO_SET_HASH_COMPARE(FIO_SET_HASH_INVALID, pos->hash))
         return pos;
-      if (FIO_SET_HASH_COMPARE(pos->hash, hash_value)) {
+      if (FIO_SET_HASH_COMPARE(pos->hash, hash_value_i)) {
         if (!pos->pos || FIO_SET_COMPARE(pos->pos->obj, obj))
           return pos;
         set->has_collisions = 1;
@@ -5718,9 +5728,10 @@ FIO_FUNC inline FIO_NAME(_map_s_) *
               "(fio hash map) too many full collisions - under attack?");
           FIO_LOG_WARNING(
               "(fio hash map) auto-self destruct, data corruption.");
+          set->under_attack = 1;
           return pos;
         }
-        hash_i = fio_lrot64(hash_i, 31);
+        hash_alt = fio_lrot64(hash_alt, 31);
         goto restart_after_full_collision;
       }
       i += FIO_SET_CUCKOO_STEPS;
@@ -5752,18 +5763,17 @@ FIO_FUNC inline void FIO_NAME(_compact_ordered_array_)(FIO_NAME(s) * set) {
 
 /** (Re)allocates the set's internal, invalidatint the mapping (must rehash) */
 FIO_FUNC inline void FIO_NAME(_reallocate_set_mem_)(FIO_NAME(s) * set) {
+  const uintptr_t new_capa = 1ULL << set->used_bits;
   FIO_SET_FREE(set->map, set->capa * sizeof(*set->map));
-  set->map =
-      (FIO_NAME(_map_s_) *)FIO_SET_CALLOC(sizeof(*set->map), (set->mask + 1));
+  set->map = (FIO_NAME(_map_s_) *)FIO_SET_CALLOC(sizeof(*set->map), new_capa);
   set->ordered = (FIO_NAME(_ordered_s_) *)FIO_SET_REALLOC(
       set->ordered, (set->capa * sizeof(*set->ordered)),
-      ((set->mask + 1) * sizeof(*set->ordered)),
-      (set->pos * sizeof(*set->ordered)));
+      (new_capa * sizeof(*set->ordered)), (set->pos * sizeof(*set->ordered)));
   if (!set->map || !set->ordered) {
     perror("FATAL ERROR: couldn't allocate memory for Set data");
     exit(errno);
   }
-  set->capa = set->mask + 1;
+  set->capa = new_capa;
 }
 
 /**
@@ -5787,7 +5797,7 @@ FIO_FUNC inline FIO_SET_TYPE FIO_NAME(_insert_or_overwrite_)(
     FIO_NAME(rehash)(set);
   /* automatic capacity validation (we can never be at 100% capacity) */
   else if (set->pos >= set->capa) {
-    set->mask = (set->mask << 1) | 3;
+    ++set->used_bits;
     FIO_NAME(rehash)(set);
   }
 
@@ -6066,9 +6076,9 @@ FIO_FUNC inline size_t FIO_NAME(capa_require)(FIO_NAME(s) * set,
                                               size_t min_capa) {
   if (min_capa <= FIO_NAME(capa)(set))
     return FIO_NAME(capa)(set);
-  set->mask = 1;
-  while (min_capa > set->mask) {
-    set->mask = (set->mask << 1) | 3;
+  set->used_bits = 2;
+  while (min_capa > (1ULL << set->used_bits)) {
+    ++set->used_bits;
   }
   FIO_NAME(rehash)(set);
   return FIO_NAME(capa)(set);
@@ -6089,9 +6099,9 @@ FIO_FUNC inline size_t FIO_NAME(is_fragmented)(const FIO_NAME(s) * set) {
  */
 FIO_FUNC inline size_t FIO_NAME(compact)(FIO_NAME(s) * set) {
   FIO_NAME(_compact_ordered_array_)(set);
-  set->mask = 3;
-  while (set->count >= set->mask) {
-    set->mask = (set->mask << 1) | 1;
+  set->used_bits = 2;
+  while (set->count >= (1ULL << set->used_bits)) {
+    ++set->used_bits;
   }
   FIO_NAME(rehash)(set);
   return FIO_NAME(capa)(set);
@@ -6114,7 +6124,7 @@ restart:
       FIO_NAME(_map_s_) *mp =
           FIO_NAME(_find_map_pos_)(set, pos->hash, pos->obj);
       if (!mp) {
-        set->mask = (set->mask << 1) | 3;
+        ++set->used_bits;
         goto restart;
       }
       mp->pos = pos;
