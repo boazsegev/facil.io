@@ -415,7 +415,7 @@ Logging and testing helpers
 #define FIO_LOG_LEVEL_DEBUG 5
 
 /** The logging level */
-extern int FIO_LOG_LEVEL;
+int __attribute__((weak)) FIO_LOG_LEVEL;
 
 #ifndef FIO_LOG_PRINT
 #define FIO_LOG_PRINT(level, ...)                                              \
@@ -5371,7 +5371,7 @@ Done
 #define FIO_SET_OBJ_DESTROY(obj) ((void)0)
 #endif
 
-/** test for a pre-defined hash value type */
+/** test for a pre-defined hash type, must be numerical (i.e. __int128_t)*/
 #ifndef FIO_SET_HASH_TYPE
 #define FIO_SET_HASH_TYPE uintptr_t
 #endif
@@ -5405,9 +5405,14 @@ Done
 #define FIO_SET_FREE(ptr, size) FIO_FREE((ptr))
 #endif
 
-/* The maximum number of bins to rotate when partial collisions occure */
+/* The maximum number of bins to rotate when (partial/full) collisions occure */
 #ifndef FIO_SET_MAX_MAP_SEEK
 #define FIO_SET_MAX_MAP_SEEK (96)
+#endif
+
+/* The maximum number of full hash collisions that can be consumed */
+#ifndef FIO_SET_MAX_MAP_FULL_COLLISIONS
+#define FIO_SET_MAX_MAP_FULL_COLLISIONS (16)
 #endif
 
 /* Prime numbers are better */
@@ -5676,32 +5681,47 @@ FIO_FUNC inline FIO_NAME(_map_s_) *
     if (set->has_collisions && set->pos != set->count) {
       FIO_NAME(rehash)(set);
     }
+    size_t full_collisions_counter = 0;
+    FIO_NAME(_map_s_) * pos;
+    uintptr_t hash_i = FIO_SET_HASH2UINTPTR(hash_value);
+    uintptr_t i;
 
+  restart_after_full_collision:
     /* O(1) access to object */
-    FIO_NAME(_map_s_) *pos =
-        set->map + (FIO_SET_HASH2UINTPTR(hash_value) & set->mask);
+    pos = set->map + (hash_i & set->mask);
     if (FIO_SET_HASH_COMPARE(FIO_SET_HASH_INVALID, pos->hash))
       return pos;
     if (FIO_SET_HASH_COMPARE(pos->hash, hash_value)) {
       if (!pos->pos || FIO_SET_COMPARE(pos->pos->obj, obj))
         return pos;
       set->has_collisions = 1;
+      ++full_collisions_counter;
     }
 
     /* Handle partial / full collisions with cuckoo steps O(x) access time */
-    uintptr_t i = FIO_SET_CUCKOO_STEPS;
+    i = FIO_SET_CUCKOO_STEPS;
     const uintptr_t limit =
         FIO_SET_CUCKOO_STEPS * (set->capa > (FIO_SET_MAX_MAP_SEEK << 2)
                                     ? FIO_SET_MAX_MAP_SEEK
                                     : (set->capa >> 2));
     while (i < limit) {
-      pos = set->map + ((FIO_SET_HASH2UINTPTR(hash_value) + i) & set->mask);
+      pos = set->map + ((hash_i + i) & set->mask);
       if (FIO_SET_HASH_COMPARE(FIO_SET_HASH_INVALID, pos->hash))
         return pos;
       if (FIO_SET_HASH_COMPARE(pos->hash, hash_value)) {
         if (!pos->pos || FIO_SET_COMPARE(pos->pos->obj, obj))
           return pos;
         set->has_collisions = 1;
+        if (++full_collisions_counter >= FIO_SET_MAX_MAP_FULL_COLLISIONS) {
+          /* is the hash under attack? */
+          FIO_LOG_WARNING(
+              "(fio hash map) too many full collisions - under attack?");
+          FIO_LOG_WARNING(
+              "(fio hash map) auto-self destruct, data corruption.");
+          return pos;
+        }
+        hash_i = fio_lrot64(hash_i, 31);
+        goto restart_after_full_collision;
       }
       i += FIO_SET_CUCKOO_STEPS;
     }
