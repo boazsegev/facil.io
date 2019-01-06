@@ -2339,108 +2339,91 @@ Risky Hash (always available, even if using only the fio.h header)
  */
 inline FIO_FUNC uintptr_t fio_risky_hash(const void *data_, size_t len,
                                          uint64_t seed) {
-  /* inspired by xxHash: Yann Collet, Maciej Adamczyk... */
-  /* so I borrowed their primes as homage ;-) */
-  /* more primes at: https://asecuritysite.com/encryption/random3?val=64 */
+  /* The primes used by Risky Hash */
   const uint64_t primes[] = {
-      /* xxHash Primes */
-      14029467366897019727ULL, 11400714785074694791ULL, 1609587929392839161ULL,
-      9650029242287828579ULL,  2870177450012600261ULL,
+      0xFBBA3FA15B22113B, // 1111101110111010001111111010000101011011001000100001000100111011
+      0xAB137439982B86C9, // 1010101100010011011101000011100110011000001010111000011011001001
   };
-  /*
-   * 4 x 64 bit vectors for 256bit block consumption.
-   * When implementing a streaming variation, more fields might be required.
-   */
-  struct risky_state_s {
-    uint64_t v[4];
-  } s = {{
-      (seed + primes[0] + primes[1]),
-      ((~seed) + primes[0]),
-      ((seed << 9) ^ primes[3]),
-      ((seed >> 17) ^ primes[2]),
-  }};
+  /* The consumption vectors initialized state */
+  uint64_t v[4] = {
+      seed ^ primes[1],
+      ~seed + primes[1],
+      fio_lrot64(seed, 17) ^ primes[1],
+      fio_lrot64(seed, 33) + primes[1],
+  };
 
-/* A single data-consuming round, wrd is the data in big-endian 64 bit */
-/* the design follows the xxHash basic round scheme and is easy to vectorize */
-#define fio_risky_round_single(wrd, i)                                         \
-  s.v[(i)] += (wrd)*primes[0];                                                 \
-  s.v[(i)] = fio_lrot64(s.v[(i)], 33);                                         \
-  s.v[(i)] *= primes[1];
+/* Risky Hash consumption round */
+#define fio_risky_consume(w, i)                                                \
+  v[i] ^= (w);                                                                 \
+  v[i] = fio_lrot64(v[i], 33) + (w);                                           \
+  v[i] *= primes[0];
 
-/* an unrolled (vectorizable) 256bit round */
-#define fio_risky_round_256(w0, w1, w2, w3)                                    \
-  fio_risky_round_single(w0, 0);                                               \
-  fio_risky_round_single(w1, 1);                                               \
-  fio_risky_round_single(w2, 2);                                               \
-  fio_risky_round_single(w3, 3);
+/* compilers are likely to optimize this code for SIMD */
+#define fio_risky_consume256(w0, w1, w2, w3)                                   \
+  fio_risky_consume(w0, 0);                                                    \
+  fio_risky_consume(w1, 1);                                                    \
+  fio_risky_consume(w2, 2);                                                    \
+  fio_risky_consume(w3, 3);
 
-  uint8_t *data = (uint8_t *)data_;
+  /* reading position */
+  const uint8_t *data = (uint8_t *)data_;
 
-  /* loop over 256 bit "blocks" */
-  const size_t len_256 = len & (((size_t)-1) << 5);
-  for (size_t i = 0; i < len_256; i += 32) {
-    /* perform round for block */
-    fio_risky_round_256(fio_str2u64(data), fio_str2u64(data + 8),
-                        fio_str2u64(data + 16), fio_str2u64(data + 24));
+  /* consume 256bit blocks */
+  for (size_t i = len >> 5; i; --i) {
+    fio_risky_consume256(fio_str2u64(data), fio_str2u64(data + 8),
+                         fio_str2u64(data + 16), fio_str2u64(data + 24));
     data += 32;
   }
-
-  /* process last 64bit words in each vector */
-  switch (len & 24UL) {
+  /* Consume any remaining 64 bit words. */
+  switch (len & 24) {
   case 24:
-    fio_risky_round_single(fio_str2u64(data), 0);
-    fio_risky_round_single(fio_str2u64(data + 8), 1);
-    fio_risky_round_single(fio_str2u64(data + 16), 2);
-    data += 24;
-    break;
-  case 16:
-    fio_risky_round_single(fio_str2u64(data), 0);
-    fio_risky_round_single(fio_str2u64(data + 8), 1);
-    data += 16;
-    break;
-  case 8:
-    fio_risky_round_single(fio_str2u64(data), 0);
-    data += 8;
-    break;
+    fio_risky_consume(fio_str2u64(data + 16), 2);
+  case 16: /* overflow */
+    fio_risky_consume(fio_str2u64(data + 8), 1);
+  case 8: /* overflow */
+    fio_risky_consume(fio_str2u64(data), 0);
+    data += len & 24;
   }
 
-  /* always process the last 64bits, if any, in the 4th vector */
-  uint64_t last_bytes = 0;
-  switch (len & 7) {
-  case 7:
-    last_bytes |= ((uint64_t)data[6] & 0xFF) << 56;
+  uintptr_t tmp = 0;
+  /* consume leftover bytes, if any */
+  switch ((len & 7)) {
+  case 7: /* overflow */
+    tmp |= ((uint64_t)data[6]) << 56;
   case 6: /* overflow */
-    last_bytes |= ((uint64_t)data[5] & 0xFF) << 48;
+    tmp |= ((uint64_t)data[5]) << 48;
   case 5: /* overflow */
-    last_bytes |= ((uint64_t)data[4] & 0xFF) << 40;
+    tmp |= ((uint64_t)data[4]) << 40;
   case 4: /* overflow */
-    last_bytes |= ((uint64_t)data[3] & 0xFF) << 32;
+    tmp |= ((uint64_t)data[3]) << 32;
   case 3: /* overflow */
-    last_bytes |= ((uint64_t)data[2] & 0xFF) << 24;
+    tmp |= ((uint64_t)data[2]) << 24;
   case 2: /* overflow */
-    last_bytes |= ((uint64_t)data[1] & 0xFF) << 16;
+    tmp |= ((uint64_t)data[1]) << 16;
   case 1: /* overflow */
-    last_bytes |= ((uint64_t)data[0] & 0xFF) << 8;
-    fio_risky_round_single(last_bytes, 3);
+    tmp |= ((uint64_t)data[0]) << 8;
+    fio_risky_consume(tmp, 3);
   }
 
-  /* mix stage */
-  uint64_t result = (fio_lrot64(s.v[3], 63) + fio_lrot64(s.v[2], 57) +
-                     fio_lrot64(s.v[1], 52) + fio_lrot64(s.v[0], 46));
-  result += len * primes[4];
-  result = ((result ^ s.v[0]) * primes[3]) + primes[2];
-  result = ((result ^ s.v[1]) * primes[3]) + primes[2];
-  result = ((result ^ s.v[2]) * primes[3]) + primes[2];
-  result = ((result ^ s.v[3]) * primes[3]) + primes[2];
-  /* avalanche */
-  result ^= (result >> 33);
-  result *= primes[1];
-  result ^= (result >> 29);
-  result *= primes[2];
+  /* merge and mix */
+  uint64_t result = fio_lrot64(v[0], 17) + fio_lrot64(v[1], 13) +
+                    fio_lrot64(v[2], 47) + fio_lrot64(v[3], 57);
+  result += len;
+  result += v[0] * primes[1];
+  result ^= fio_lrot64(result, 13);
+  result += v[1] * primes[1];
+  result ^= fio_lrot64(result, 29);
+  result += v[2] * primes[1];
+  result ^= fio_lrot64(result, 33);
+  result += v[3] * primes[1];
+  result ^= fio_lrot64(result, 51);
+
+  /* irreversible avalanche... I think */
+  result ^= (result >> 29) * primes[0];
   return result;
 
-#undef fio_risky_round_single
-#undef fio_risky_round_256
+#undef fio_risky_consume256
+#undef fio_risky_consume
 }
 
 /* *****************************************************************************
