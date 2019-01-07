@@ -511,7 +511,7 @@ void fiobj_test_json(void) {
   TEST_ASSERT(o, "JSON object missing!\n");
   TEST_ASSERT(FIOBJ_TYPE_IS(o, FIOBJ_T_HASH),
               "JSON root not a dictionary (not a hash)!\n");
-  FIOBJ tmp = fiobj_hash_get2(o, FIO_HASH_FN("array", 5));
+  FIOBJ tmp = fiobj_hash_get2(o, fiobj_hash_string("array", 5));
   TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY),
               "JSON 'array' not an Array!\n");
   TEST_ASSERT(fiobj_obj2num(fiobj_ary_index(tmp, 0)) == 1,
@@ -524,24 +524,26 @@ void fiobj_test_json(void) {
               "JSON 'array' index 3 type error!\n");
   TEST_ASSERT(!memcmp("boom", fiobj_obj2cstr(fiobj_ary_index(tmp, 3)).data, 4),
               "JSON 'array' index 3 error!\n");
-  tmp = fiobj_hash_get2(o, FIO_HASH_FN("my", 2));
+  tmp = fiobj_hash_get2(o, fiobj_hash_string("my", 2));
   TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_HASH),
               "JSON 'my:secret' not a Hash!\n");
-  TEST_ASSERT(FIOBJ_TYPE_IS(fiobj_hash_get2(tmp, FIO_HASH_FN("secret", 6)),
-                            FIOBJ_T_NUMBER),
-              "JSON 'my:secret' doesn't hold a number!\n");
-  TEST_ASSERT(fiobj_obj2num(fiobj_hash_get2(tmp, FIO_HASH_FN("secret", 6))) ==
-                  42,
-              "JSON 'my:secret' not 42!\n");
-  TEST_ASSERT(fiobj_hash_get2(o, FIO_HASH_FN("true", 4)) == fiobj_true(),
+  TEST_ASSERT(
+      FIOBJ_TYPE_IS(fiobj_hash_get2(tmp, fiobj_hash_string("secret", 6)),
+                    FIOBJ_T_NUMBER),
+      "JSON 'my:secret' doesn't hold a number!\n");
+  TEST_ASSERT(
+      fiobj_obj2num(fiobj_hash_get2(tmp, fiobj_hash_string("secret", 6))) == 42,
+      "JSON 'my:secret' not 42!\n");
+  TEST_ASSERT(fiobj_hash_get2(o, fiobj_hash_string("true", 4)) == fiobj_true(),
               "JSON 'true' not true!\n");
-  TEST_ASSERT(fiobj_hash_get2(o, FIO_HASH_FN("false", 5)) == fiobj_false(),
+  TEST_ASSERT(fiobj_hash_get2(o, fiobj_hash_string("false", 5)) ==
+                  fiobj_false(),
               "JSON 'false' not false!\n");
-  TEST_ASSERT(fiobj_hash_get2(o, FIO_HASH_FN("null", 4)) == fiobj_null(),
+  TEST_ASSERT(fiobj_hash_get2(o, fiobj_hash_string("null", 4)) == fiobj_null(),
               "JSON 'null' not null!\n");
-  tmp = fiobj_hash_get2(o, FIO_HASH_FN("float", 5));
+  tmp = fiobj_hash_get2(o, fiobj_hash_string("float", 5));
   TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_FLOAT), "JSON 'float' not a float!\n");
-  tmp = fiobj_hash_get2(o, FIO_HASH_FN("string", 6));
+  tmp = fiobj_hash_get2(o, fiobj_hash_string("string", 6));
   TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_STRING),
               "JSON 'string' not a string!\n");
   TEST_ASSERT(!strcmp(fiobj_obj2cstr(tmp).data, "I \"wrote\" this."),
@@ -558,11 +560,11 @@ void fiobj_test_json(void) {
       "JSON update failed to parse data.");
   fiobj_free(tmp);
 
-  tmp = fiobj_hash_get2(o, FIO_HASH_FN("array", 5));
+  tmp = fiobj_hash_get2(o, fiobj_hash_string("array", 5));
   TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY),
               "JSON updated 'array' not an Array!\n");
   TEST_ASSERT(fiobj_ary_count(tmp) == 3, "JSON updated 'array' not updated?");
-  tmp = fiobj_hash_get2(o, FIO_HASH_FN("float", 5));
+  tmp = fiobj_hash_get2(o, fiobj_hash_string("float", 5));
   TEST_ASSERT(FIOBJ_TYPE_IS(tmp, FIOBJ_T_FLOAT),
               "JSON updated (old) 'float' missing!\n");
   fiobj_free(o);

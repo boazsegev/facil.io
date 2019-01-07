@@ -37,12 +37,12 @@ Hashing (SipHash implementation)
   (((uint64_t)(i) << (bits)) | ((uint64_t)(i) >> (64 - (bits))))
 
 static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
-                                      size_t y) {
+                                      size_t y, uint64_t key1, uint64_t key2) {
   /* initialize the 4 words */
-  uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL);
-  uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL);
-  uint64_t v2 = (0x0706050403020100ULL ^ 0x6c7967656e657261ULL);
-  uint64_t v3 = (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL);
+  uint64_t v0 = (0x0706050403020100ULL ^ 0x736f6d6570736575ULL) ^ key1;
+  uint64_t v1 = (0x0f0e0d0c0b0a0908ULL ^ 0x646f72616e646f6dULL) ^ key2;
+  uint64_t v2 = (0x0706050403020100ULL ^ 0x6c7967656e657261ULL) ^ key1;
+  uint64_t v3 = (0x0f0e0d0c0b0a0908ULL ^ 0x7465646279746573ULL) ^ key2;
   const uint64_t *w64 = data;
   uint8_t len_mod = len & 255;
   union {
@@ -124,13 +124,15 @@ static inline uint64_t fio_siphash_xy(const void *data, size_t len, size_t x,
 }
 
 #pragma weak fio_siphash24
-uint64_t __attribute__((weak)) fio_siphash24(const void *data, size_t len) {
-  return fio_siphash_xy(data, len, 2, 4);
+uint64_t __attribute__((weak))
+fio_siphash24(const void *data, size_t len, uint64_t key1, uint64_t key2) {
+  return fio_siphash_xy(data, len, 2, 4, key1, key2);
 }
 
 #pragma weak fio_siphash13
-uint64_t __attribute__((weak)) fio_siphash13(const void *data, size_t len) {
-  return fio_siphash_xy(data, len, 1, 3);
+uint64_t __attribute__((weak))
+fio_siphash13(const void *data, size_t len, uint64_t key1, uint64_t key2) {
+  return fio_siphash_xy(data, len, 1, 3, key1, key2);
 }
 
 #if DEBUG
@@ -147,7 +149,7 @@ void fiobj_siphash_test(void) {
   for (size_t i = 0; i < 100000; i++) {
     char *data = "The quick brown fox jumps over the lazy dog ";
     __asm__ volatile("" ::: "memory");
-    result += fio_siphash_xy(data, 43, 1, 3);
+    result += fio_siphash_xy(data, 43, 1, 3, 0, 0);
   }
   fprintf(stderr, "fio 100K SipHash: %lf\n",
           (double)(clock() - start) / CLOCKS_PER_SEC);

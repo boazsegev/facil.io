@@ -17,12 +17,12 @@ static uint64_t http_upgrade_hash = 0;
 void http_on_request_handler______internal(http_s *h,
                                            http_settings_s *settings) {
   if (!http_upgrade_hash)
-    http_upgrade_hash = FIO_HASH_FN("upgrade", 7);
+    http_upgrade_hash = fiobj_hash_string("upgrade", 7);
   h->udata = settings->udata;
 
   static uint64_t host_hash = 0;
   if (!host_hash)
-    host_hash = FIO_HASH_FN("host", 4);
+    host_hash = fiobj_hash_string("host", 4);
 
   if (1) {
     /* test for Host header and avoid duplicates */
@@ -75,7 +75,7 @@ eventsource:
 void http_on_response_handler______internal(http_s *h,
                                             http_settings_s *settings) {
   if (!http_upgrade_hash)
-    http_upgrade_hash = FIO_HASH_FN("upgrade", 7);
+    http_upgrade_hash = fiobj_hash_string("upgrade", 7);
   h->udata = settings->udata;
   FIOBJ t = fiobj_hash_get2(h->headers, http_upgrade_hash);
   if (t == FIOBJ_INVALID) {
