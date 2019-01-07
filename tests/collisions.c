@@ -65,11 +65,11 @@ static void initialize_cli(int argc, char const *argv[]);
 static void load_words(void);
 static void initialize_hash_names(void);
 static void print_hash_names(void);
+static char *hash_name(hashing_func_fn fn);
 static void cleanup(void);
 
 int main(int argc, char const *argv[]) {
   // FIO_LOG_LEVEL = FIO_LOG_LEVEL_DEBUG;
-  fprintf(stderr, " the function is located at: %p\n", (void *)fio_siphash13);
   initialize_cli(argc, argv);
   load_words();
   initialize_hash_names();
@@ -182,11 +182,11 @@ Hash functions
 ***************************************************************************** */
 
 static uintptr_t siphash13(char *data, size_t len) {
-  return fio_siphash13(data, len);
+  return fio_siphash13(data, len, 0, 0);
 }
 
 static uintptr_t siphash24(char *data, size_t len) {
-  return fio_siphash24(data, len);
+  return fio_siphash24(data, len, 0, 0);
 }
 static uintptr_t sha1(char *data, size_t len) {
   fio_sha1_s s = fio_sha1_init();
@@ -295,6 +295,14 @@ static void initialize_hash_names(void) {
     FIO_LOG_DEBUG("Registered %s hashing function.\n\t\t(%zu registered)",
                   hash_fn_list[i].name, hash_name_count(&hash_names));
   }
+}
+
+static char *hash_name(hashing_func_fn fn) {
+  for (size_t i = 0; hash_fn_list[i].name; ++i) {
+    if (hash_fn_list[i].fn == fn)
+      return hash_fn_list[i].name;
+  }
+  return NULL;
 }
 
 static void print_hash_names(void) {
@@ -633,7 +641,37 @@ FIO_FUNC void add_bad4xxhash(void) {
 
 FIO_FUNC void add_bad4risky(void) {}
 
+FIO_FUNC void find_bit_collisions(hashing_func_fn fn, size_t collision_count,
+                                  uint8_t bit_count) {
+  words_s c = FIO_ARY_INIT;
+  const uint64_t mask = (1ULL << bit_count) - 1;
+  time_t start = clock();
+  while (words_count(&c) < collision_count) {
+    uint64_t rnd = fio_rand64();
+    if ((fn((char *)&rnd, 8) & mask) == mask) {
+      words_push(&c, FIO_STR_INIT_STATIC2((char *)&rnd, 8));
+    }
+  }
+  time_t end = clock();
+  char *name = hash_name(fn);
+  if (!name)
+    name = "unknown";
+  fprintf(stderr,
+          "* It took %zu cycles to find %zu (%u bit) collisions for %s (brute "
+          "fource):\n",
+          end - start, words_count(&c), bit_count, name);
+  FIO_ARY_FOR(&c, pos) {
+    uint64_t tmp = fio_str2u64(fio_str_data(pos));
+    fprintf(stderr, "* %p => %p\n", (void *)tmp,
+            (void *)fn(fio_str_data(pos), 8));
+  }
+  words_free(&c);
+}
+
 static void add_bad_words(void) {
+  find_bit_collisions(risky, 16, 16);
+  find_bit_collisions(xxhash_test, 16, 16);
+  find_bit_collisions(siphash13, 16, 16);
   add_bad4xxhash();
   add_bad4risky();
 }
@@ -663,7 +701,7 @@ inline FIO_FUNC uintptr_t fio_risky_hash2(const void *data_, size_t len,
   v[i] = fio_lrot64(v[i], 33) + (w);                                           \
   v[i] *= primes[0];
 
-/* compilers are likely to optimize this code for SIMD */
+/* compilers could, hopefully, optimize this code for SIMD */
 #define fio_risky_consume256(w0, w1, w2, w3)                                   \
   fio_risky_consume(w0, 0);                                                    \
   fio_risky_consume(w1, 1);                                                    \

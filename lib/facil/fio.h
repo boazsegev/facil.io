@@ -2155,8 +2155,7 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
               (((uint64_t)((uint8_t *)(c))[3]) << 32) |                        \
               (((uint64_t)((uint8_t *)(c))[4]) << 24) |                        \
               (((uint64_t)((uint8_t *)(c))[5]) << 16) |                        \
-              (((uint64_t)((uint8_t *)(c))[6]) << 8) |                         \
-              ((uint64_t)0 + ((uint8_t *)(c))[7])))
+              (((uint64_t)((uint8_t *)(c))[6]) << 8) | (((uint8_t *)(c))[7])))
 
 /** Writes a local 16 bit number to an unaligned buffer in network order. */
 #define fio_u2str16(buffer, i)                                                 \
@@ -2361,7 +2360,7 @@ inline FIO_FUNC uintptr_t fio_risky_hash(const void *data_, size_t len,
   v[i] = fio_lrot64(v[i], 33) + (w);                                           \
   v[i] *= primes[0];
 
-/* compilers are likely to optimize this code for SIMD */
+/* compilers could, hopefully, optimize this code for SIMD */
 #define fio_risky_consume256(w0, w1, w2, w3)                                   \
   fio_risky_consume(w0, 0);                                                    \
   fio_risky_consume(w1, 1);                                                    \

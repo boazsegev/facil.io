@@ -233,7 +233,7 @@ uintptr_t risky_hash(const void *data_, size_t len, uint64_t seed) {
   v[i] = fio_lrot64(v[i], 33) + (w);                                           \
   v[i] *= primes[0];
 
-/* compilers are likely to optimize this code for SIMD */
+/* compilers could, hopefully, optimize this code for SIMD */
 #define fio_risky_consume256(w0, w1, w2, w3)                                   \
   fio_risky_consume(w0, 0);                                                    \
   fio_risky_consume(w1, 1);                                                    \
