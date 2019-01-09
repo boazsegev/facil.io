@@ -658,6 +658,8 @@ struct fio_listen_args {
   const char *port;
   /** The socket binding address. Defaults to the recommended NULL. */
   const char *address;
+  /** a pointer to a `fio_tls_s` object, for SSL/TLS support (fio_tls.h). */
+  void *tls;
   /** Opaque user data. */
   void *udata;
   /**
@@ -796,6 +798,8 @@ struct fio_connect_args {
    * is passed along.
    */
   void (*on_fail)(intptr_t uuid, void *udata);
+  /** a pointer to a `fio_tls_s` object, for SSL/TLS support (fio_tls.h). */
+  void *tls;
   /** Opaque user data. */
   void *udata;
   /** A non-system timeout after which connection is assumed to have failed. */

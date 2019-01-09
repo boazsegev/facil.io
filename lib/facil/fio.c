@@ -80,6 +80,10 @@ Feel free to copy, use and enjoy according to the license provided.
 #define __thread _Thread_value
 #endif
 
+#ifndef FIO_TLS_WEAK
+#define FIO_TLS_WEAK __attribute__((weak))
+#endif
+
 /* *****************************************************************************
 Event deferring (declarations)
 ***************************************************************************** */
@@ -4219,6 +4223,100 @@ Section Start Marker
 
 
 
+                       SSL/TLS Weak Symbols for TLS Support
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+/**
+ * Returns the number of registered ALPN protocol names.
+ *
+ * This could be used when deciding if protocol selection should be delegated to
+ * the ALPN mechanism, or whether a protocol should be immediately assigned.
+ *
+ * If no ALPN protocols are registered, zero (0) is returned.
+ */
+uintptr_t FIO_TLS_WEAK fio_tls_alpn_count(void *tls) {
+  return 0;
+  (void)tls;
+}
+
+/**
+ * Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified
+ * context / settings object.
+ *
+ * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
+ * the result of `fio_accept`).
+ *
+ * The `udata` is an opaque user data pointer that is passed along to the
+ * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
+ */
+void FIO_TLS_WEAK fio_tls_accept(intptr_t uuid, void *tls, void *udata) {
+  FIO_LOG_FATAL("No supported SSL/TLS library available.");
+  exit(-1);
+  return;
+  (void)uuid;
+  (void)tls;
+  (void)udata;
+}
+
+/**
+ * Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified
+ * context / settings object.
+ *
+ * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
+ * one received by a `fio_connect` specified callback `on_connect`).
+ *
+ * The `udata` is an opaque user data pointer that is passed along to the
+ * protocol selected (if any protocols were added using `fio_tls_alpn_add`).
+ */
+void FIO_TLS_WEAK fio_tls_connect(intptr_t uuid, void *tls, void *udata) {
+  FIO_LOG_FATAL("No supported SSL/TLS library available.");
+  exit(-1);
+  return;
+  (void)uuid;
+  (void)tls;
+  (void)udata;
+}
+
+/**
+ * Increase the reference count for the TLS object.
+ *
+ * Decrease with `fio_tls_destroy`.
+ */
+void FIO_TLS_WEAK fio_tls_dup(void *tls) {
+  FIO_LOG_FATAL("No supported SSL/TLS library available.");
+  exit(-1);
+  return;
+  (void)tls;
+}
+
+/**
+ * Destroys the SSL/TLS context / settings object and frees any related
+ * resources / memory.
+ */
+void FIO_TLS_WEAK fio_tls_destroy(void *tls) {
+  FIO_LOG_FATAL("No supported SSL/TLS library available.");
+  exit(-1);
+  return;
+  (void)tls;
+}
+
+/* *****************************************************************************
+Section Start Marker
+
+
+
+
+
+
+
 
 
 
@@ -4261,6 +4359,7 @@ typedef struct {
   char *addr;
   size_t port_len;
   size_t addr_len;
+  void *tls;
 } fio_listen_protocol_s;
 
 static void fio_listen_cleanup_task(void *pr_) {
@@ -4305,6 +4404,27 @@ static void fio_listen_on_data(intptr_t uuid, fio_protocol_s *pr_) {
   }
 }
 
+static void fio_listen_on_data_tls(intptr_t uuid, fio_protocol_s *pr_) {
+  fio_listen_protocol_s *pr = (fio_listen_protocol_s *)pr_;
+  for (int i = 0; i < 4; ++i) {
+    intptr_t client = fio_accept(uuid);
+    if (client == -1)
+      return;
+    fio_tls_accept(client, pr->tls, pr->udata);
+    pr->on_open(client, pr->udata);
+  }
+}
+
+static void fio_listen_on_data_tls_alpn(intptr_t uuid, fio_protocol_s *pr_) {
+  fio_listen_protocol_s *pr = (fio_listen_protocol_s *)pr_;
+  for (int i = 0; i < 4; ++i) {
+    intptr_t client = fio_accept(uuid);
+    if (client == -1)
+      return;
+    fio_tls_accept(client, pr->tls, pr->udata);
+  }
+}
+
 /* stub for editor - unused */
 void fio_listen____(void);
 /**
@@ -4337,13 +4457,17 @@ intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
           {
               .on_close = fio_listen_on_close,
               .ping = mock_ping_eternal,
-              .on_data = fio_listen_on_data,
+              .on_data = (args.tls ? (fio_tls_alpn_count(args.tls)
+                                          ? fio_listen_on_data_tls_alpn
+                                          : fio_listen_on_data_tls)
+                                   : fio_listen_on_data),
           },
       .uuid = uuid,
       .udata = args.udata,
       .on_open = args.on_open,
       .on_start = args.on_start,
       .on_finish = args.on_finish,
+      .tls = args.tls,
       .addr_len = addr_len,
       .port_len = port_len,
       .addr = (char *)(pr + 1),
@@ -4419,6 +4543,7 @@ typedef struct {
   fio_protocol_s pr;
   intptr_t uuid;
   void *udata;
+  void *tls;
   void (*on_connect)(intptr_t uuid, void *udata);
   void (*on_fail)(intptr_t uuid, void *udata);
 } fio_connect_protocol_s;
@@ -4442,6 +4567,29 @@ static void fio_connect_on_ready(intptr_t uuid, fio_protocol_s *pr_) {
   (void)uuid;
 }
 
+static void fio_connect_on_ready_tls(intptr_t uuid, fio_protocol_s *pr_) {
+  fio_connect_protocol_s *pr = (fio_connect_protocol_s *)pr_;
+  if (pr->pr.on_ready == mock_on_ev)
+    return; /* Don't call on_connect more than once */
+  pr->pr.on_ready = mock_on_ev;
+  pr->on_fail = NULL;
+  fio_tls_connect(uuid, pr->tls, pr->udata);
+  pr->on_connect(uuid, pr->udata);
+  fio_poll_add(fio_uuid2fd(uuid));
+  (void)uuid;
+}
+
+static void fio_connect_on_ready_tls_alpn(intptr_t uuid, fio_protocol_s *pr_) {
+  fio_connect_protocol_s *pr = (fio_connect_protocol_s *)pr_;
+  if (pr->pr.on_ready == mock_on_ev)
+    return; /* Don't call on_connect more than once */
+  pr->pr.on_ready = mock_on_ev;
+  pr->on_fail = NULL;
+  fio_tls_connect(uuid, pr->tls, pr->udata);
+  fio_poll_add(fio_uuid2fd(uuid));
+  (void)uuid;
+}
+
 intptr_t fio_connect FIO_IGNORE_MACRO(struct fio_connect_args args) {
   if (!args.on_connect || (!args.address && !args.port)) {
     errno = EINVAL;
@@ -4457,10 +4605,14 @@ intptr_t fio_connect FIO_IGNORE_MACRO(struct fio_connect_args args) {
   *pr = (fio_connect_protocol_s){
       .pr =
           {
-              .on_ready = fio_connect_on_ready,
+              .on_ready = (args.tls ? (fio_tls_alpn_count(args.tls)
+                                           ? fio_connect_on_ready_tls_alpn
+                                           : fio_connect_on_ready_tls)
+                                    : fio_connect_on_ready),
               .on_close = fio_connect_on_close,
           },
       .uuid = uuid,
+      .tls = args.tls,
       .udata = args.udata,
       .on_connect = args.on_connect,
       .on_fail = args.on_fail,
