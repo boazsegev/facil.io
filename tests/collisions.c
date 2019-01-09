@@ -669,9 +669,12 @@ FIO_FUNC void find_bit_collisions(hashing_func_fn fn, size_t collision_count,
 }
 
 static void add_bad_words(void) {
-  find_bit_collisions(risky, 16, 16);
-  find_bit_collisions(xxhash_test, 16, 16);
-  find_bit_collisions(siphash13, 16, 16);
+  if(!fio_cli_get("-t")) {
+    find_bit_collisions(risky, 16, 16);
+    find_bit_collisions(xxhash_test, 16, 16);
+    find_bit_collisions(siphash13, 16, 16);
+    find_bit_collisions(sha1, 16, 16);
+  }
   add_bad4xxhash();
   add_bad4risky();
 }
@@ -878,3 +881,4 @@ inline FIO_FUNC uintptr_t fio_risky_hash_old(void *data_, size_t len,
 #if TEST_XXHASH
 #include "xxhash.c"
 #endif
+
