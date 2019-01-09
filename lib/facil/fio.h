@@ -5384,7 +5384,7 @@ Done
 /** test for a pre-defined hash to integer conversion */
 #ifndef FIO_SET_HASH2UINTPTR
 #define FIO_SET_HASH2UINTPTR(hash, bits_used)                                  \
-  (fio_rrot(hash, bits_used) + fio_ct_if2(bits_used, hash, 0))
+  (fio_rrot(hash, bits_used) ^ fio_ct_if2(bits_used, hash, 0))
 #endif
 
 /** test for a pre-defined invalid hash value (all bytes are 0) */
