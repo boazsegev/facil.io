@@ -109,6 +109,13 @@ void fio_tls_accept(intptr_t uuid, fio_tls_s *tls, void *udata);
 void fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata);
 
 /**
+ * Increase the reference count for the TLS object.
+ *
+ * Decrease with `fio_tls_destroy`.
+ */
+void fio_tls_dup(fio_tls_s *tls);
+
+/**
  * Destroys the SSL/TLS context / settings object and frees any related
  * resources / memory.
  */

@@ -963,6 +963,13 @@ void FIO_TLS_WEAK fio_tls_connect(intptr_t uuid, fio_tls_s *tls, void *udata) {
 }
 
 /**
+ * Increase the reference count for the TLS object.
+ *
+ * Decrease with `fio_tls_destroy`.
+ */
+void FIO_TLS_WEAK fio_tls_dup(fio_tls_s *tls) { fio_atomic_add(&tls->ref, 1); }
+
+/**
  * Destroys the SSL/TLS context / settings object and frees any related
  * resources / memory.
  */

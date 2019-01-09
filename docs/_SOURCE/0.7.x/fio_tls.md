@@ -53,6 +53,16 @@ fio_tls_trust(tls, "google-ca.pem" );
 
 Remember to call `fio_tls_destroy` once the `fio_tls_s` object is no longer in use.
 
+#### `fio_tls_dup`
+
+```c
+void fio_tls_dup(fio_tls_s *tls);
+```
+
+Increase the reference count for the TLS object.
+
+Decrease / free with `fio_tls_destroy`.
+
 #### `fio_tls_destroy`
 
 ```c
