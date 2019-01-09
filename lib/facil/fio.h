@@ -5284,18 +5284,19 @@ Done
  *
  * To create a Set or a Hash Map, the macro FIO_SET_NAME must be defined. i.e.:
  *
- *         #define FIO_SET_NAME fio_cstr_set
+ *         #define FIO_SET_NAME cstr_set
  *         #define FIO_SET_OBJ_TYPE char *
  *         #define FIO_SET_OBJ_COMPARE(k1, k2) (!strcmp((k1), (k2)))
  *         #include <fio.h>
  *
- * To create a Hash Map, rather than a pure Set, the macro FIO_SET_KET_TYPE must
+ * To create a Hash Map, rather than a pure Set, the macro FIO_SET_KEY_TYPE must
  * be defined. i.e.:
  *
  *         #define FIO_SET_KEY_TYPE char *
  *
  * This allows the FIO_SET_KEY_* macros to be defined as well. For example:
  *
+ *         #define FIO_SET_NAME cstr_hashmap
  *         #define FIO_SET_KEY_TYPE char *
  *         #define FIO_SET_KEY_COMPARE(k1, k2) (!strcmp((k1), (k2)))
  *         #define FIO_SET_OBJ_TYPE char *
@@ -5309,7 +5310,10 @@ Done
  *         #include <fio.h> // adds the fio_str_s types and functions
  *
  *         #define FIO_SET_NAME fio_str_set
- *         #define FIO_SET_KEY_TYPE fio_str_s *
+ *         #define FIO_SET_OBJ_TYPE fio_str_s *
+ *         #define FIO_SET_OBJ_COMPARE(k1, k2) (fio_str_iseq((k1), (k2)))
+ *         #define FIO_SET_OBJ_COPY(key) fio_str_dup((key))
+ *         #define FIO_SET_OBJ_DESTROY(key) fio_str_free2((key))
  *         #include <fio.h> // creates the fio_str_set_s Set and functions
  *
  *         #define FIO_SET_NAME fio_str_hash
@@ -5329,6 +5333,7 @@ Done
  * * FIO_SET_HASH2UINTPTR(hash, i)  - converts the hash value to a uintptr_t.
  * * FIO_SET_HASH_COMPARE(h1, h2)   - compares two hash values (1 == equal).
  * * FIO_SET_HASH_INVALID           - an invalid Hash value, all bytes are 0.
+ * * FIO_SET_HASH_FORCE             - an always valid Hash value, all bytes 0xFF
  *
  *
  * Note: FIO_SET_HASH_TYPE should, normaly be left alone (uintptr_t is
@@ -5385,6 +5390,11 @@ Done
 #ifndef FIO_SET_HASH2UINTPTR
 #define FIO_SET_HASH2UINTPTR(hash, bits_used)                                  \
   (fio_rrot(hash, bits_used) ^ fio_ct_if2(bits_used, hash, 0))
+#endif
+
+/** test for a pre-defined hash to integer conversion */
+#ifndef FIO_SET_HASH_FORCE
+#define FIO_SET_HASH_FORCE (~(uintptr_t)0)
 #endif
 
 /** test for a pre-defined invalid hash value (all bytes are 0) */
@@ -5680,9 +5690,10 @@ Set / Hash Map Internal Helpers
 
 /** Locates an object's map position in the Set, if it exists. */
 FIO_FUNC inline FIO_NAME(_map_s_) *
-    FIO_NAME(_find_map_pos_)(FIO_NAME(s) * set,
-                             const FIO_SET_HASH_TYPE hash_value,
+    FIO_NAME(_find_map_pos_)(FIO_NAME(s) * set, FIO_SET_HASH_TYPE hash_value,
                              FIO_SET_TYPE obj) {
+  if (FIO_SET_HASH_COMPARE(hash_value, FIO_SET_HASH_INVALID))
+    hash_value = FIO_SET_HASH_FORCE;
   if (set->map) {
     /* make sure collisions don't effect seeking */
     if (set->has_collisions && set->pos != set->count) {
@@ -5786,14 +5797,12 @@ FIO_FUNC inline void FIO_NAME(_reallocate_set_mem_)(FIO_NAME(s) * set) {
  * If the object already exists in the set, it will be destroyed and
  * overwritten.
  */
-FIO_FUNC inline FIO_SET_TYPE FIO_NAME(_insert_or_overwrite_)(
-    FIO_NAME(s) * set, const FIO_SET_HASH_TYPE hash_value, FIO_SET_TYPE obj,
-    int overwrite, FIO_SET_OBJ_TYPE *old) {
-  if (FIO_SET_HASH_COMPARE(hash_value, FIO_SET_HASH_INVALID)) {
-    FIO_SET_TYPE empty;
-    memset(&empty, 0, sizeof(empty));
-    return empty;
-  }
+FIO_FUNC inline FIO_SET_TYPE
+FIO_NAME(_insert_or_overwrite_)(FIO_NAME(s) * set, FIO_SET_HASH_TYPE hash_value,
+                                FIO_SET_TYPE obj, int overwrite,
+                                FIO_SET_OBJ_TYPE *old) {
+  if (FIO_SET_HASH_COMPARE(hash_value, FIO_SET_HASH_INVALID))
+    hash_value = FIO_SET_HASH_FORCE;
 
   /* automatic fragmentation protection */
   if (FIO_NAME(is_fragmented)(set))
@@ -5928,8 +5937,6 @@ FIO_FUNC inline int FIO_NAME(remove)(FIO_NAME(s) * set,
                                      const FIO_SET_HASH_TYPE hash_value,
                                      FIO_SET_KEY_TYPE key,
                                      FIO_SET_OBJ_TYPE *old) {
-  if (FIO_SET_HASH_COMPARE(hash_value, FIO_SET_HASH_INVALID))
-    return -1;
   FIO_NAME(_map_s_) *pos =
       FIO_NAME(_find_map_pos_)(set, hash_value, (FIO_SET_TYPE){.key = key});
   if (!pos || !pos->pos)

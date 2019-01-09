@@ -9332,16 +9332,19 @@ FIO_FUNC void fio_set_test(void) {
   if (1) {
     fio_set_attack_s as = FIO_SET_INIT;
     time_t start_ok = clock();
-    for (uintptr_t i = 1; i < FIO_SET_TEST_COUNT + 1; ++i) {
-      fio_set_attack_insert(&as, i, i);
+    for (uintptr_t i = 0; i < FIO_SET_TEST_COUNT; ++i) {
+      fio_set_attack_insert(&as, i, i + 1);
+      FIO_ASSERT(fio_set_attack_find(&as, i, i + 1) == i + 1,
+                 "set attack verctor failed sanity test (seek != insert)");
     }
     time_t end_ok = clock();
     FIO_ASSERT(fio_set_attack_count(&as) == FIO_SET_TEST_COUNT,
-               "set attack verctor failed sanity test");
+               "set attack verctor failed sanity test (count error %zu != %zu)",
+               fio_set_attack_count(&as), FIO_SET_TEST_COUNT);
     fio_set_attack_free(&as);
     time_t start_bad = clock();
-    for (uintptr_t i = 1; i < FIO_SET_TEST_COUNT + 1; ++i) {
-      fio_set_attack_insert(&as, 1, i);
+    for (uintptr_t i = 0; i < FIO_SET_TEST_COUNT; ++i) {
+      fio_set_attack_insert(&as, 1, i + 1);
     }
     time_t end_bad = clock();
     FIO_ASSERT(fio_set_attack_count(&as) != FIO_SET_TEST_COUNT,
