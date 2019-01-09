@@ -8,9 +8,11 @@ Risky Hash is a keyed hashing function which was inspired by both xxHash and Sip
 
 It provides a fast alternative to SipHash when hashing safe data and a streaming variation can be easily implemented.
 
-Risky Hash wasn't tested for attack resistance and shouldn't be used with any data that might be malicious, since it's unknown if this could result in [hash flooding attacks](http://emboss.github.io/blog/2012/12/14/breaking-murmur-hash-flooding-dos-reloaded/) (see [here](https://medium.freecodecamp.org/hash-table-attack-8e4371fc5261)).
+Risky Hash wasn't properly tested for attack resistance and shouldn't be used with any data that might be malicious, since it's unknown if this could result in [hash flooding attacks](http://emboss.github.io/blog/2012/12/14/breaking-murmur-hash-flooding-dos-reloaded/) (see [here](https://medium.freecodecamp.org/hash-table-attack-8e4371fc5261)).
 
-Risky Hash was tested with [`SMHasher`](https://github.com/rurban/smhasher) ([see results](#SMHasher_results)) (passed).
+Risky Hash was tested with [`SMHasher`](https://github.com/rurban/smhasher) ([see results](#smhasher-results)) (passed).
+
+A non-streaming [reference implementation is attached](#in-code).
 
 ## Purpose
 
@@ -26,7 +28,7 @@ Risky Hash should be limited to testing and safe environments until it's fully a
 
 ## Overview
 
-Risky Hash has four stages:
+Risky Hash has three stages:
 
 * Initialization stage.
 
@@ -34,7 +36,9 @@ Risky Hash has four stages:
 
 * Mixing stage.
 
-* Avalanche stage.
+The hashing algorithm uses an internal 256 bit state for a 64 bit output and the input data is mixed twice into the state, using different operations (XOR, addition) on different bit positions (left rotation).
+
+This approach **should** minimize the risk of malicious data weakening the hash function.
 
 ### Overview: Initialization
 
@@ -177,6 +181,13 @@ Finally, the result is mixed with itself to improve bit entropy distribution and
 result = result XOR MUL(P[0], (result >> 29) ) 
 ```
 
+## Performance
+
+Risky Hash attempts to balance performance with security concerns, since hash functions are often use by insecure hash table implementations.
+
+However, the design should allow for fairly high performance, for example, by using SIMD instructions or a multi-threaded approach (up to 4 threads).
+
+In fact, even the simple reference implementation at the end of this document offers fairly high performance, averaging 17% faster than xxHash for short keys (up to 31 bytes) and 9% slower on long keys (262,144 bytes).
 
 ## Attacks, Reports and Security
 
