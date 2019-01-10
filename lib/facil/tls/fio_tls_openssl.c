@@ -652,19 +652,33 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
   if (ri != 1) {
     ri = SSL_get_error(c->ssl, ri);
     switch (ri) {
+    case SSL_ERROR_NONE:
+      // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_NONE",
+      //               (void *)uuid);
+      return 0;
+    case SSL_ERROR_WANT_WRITE:
+      // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_WANT_WRITE",
+      //               (void *)uuid);
+      //   fio_force_event(uuid, FIO_EVENT_ON_READY);
+      return 0;
+    case SSL_ERROR_WANT_READ:
+      // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_WANT_READ",
+      //               (void *)uuid);
+      // fio_force_event(uuid, FIO_EVENT_ON_DATA);
+      return 0;
+    case SSL_ERROR_SYSCALL:
+      FIO_LOG_DEBUG(
+          "SSL_accept/SSL_connect %p error: SSL_ERROR_SYSCALL, errno: %s",
+          (void *)uuid, strerror(errno));
+      // fio_force_event(uuid, FIO_EVENT_ON_DATA);
+      return 0;
     case SSL_ERROR_SSL:
       FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_SSL",
                     (void *)uuid);
-      fio_defer(fio_tls_delayed_close, (void *)uuid, NULL);
       break;
     case SSL_ERROR_ZERO_RETURN:
       FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_ZERO_RETURN",
                     (void *)uuid);
-      fio_defer(fio_tls_delayed_close, (void *)uuid, NULL);
-      break;
-    case SSL_ERROR_NONE:
-      // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_NONE",
-      //               (void *)uuid);
       break;
     case SSL_ERROR_WANT_CONNECT:
       FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_WANT_CONNECT",
@@ -690,28 +704,12 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
           (void *)uuid);
       break;
 #endif
-    case SSL_ERROR_SYSCALL:
-      FIO_LOG_DEBUG(
-          "SSL_accept/SSL_connect %p error: SSL_ERROR_SYSCALL, errno: %s",
-          (void *)uuid, strerror(errno));
-      // fio_force_event(uuid, FIO_EVENT_ON_DATA);
-      break;
-    case SSL_ERROR_WANT_WRITE:
-      // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_WANT_WRITE",
-      //               (void *)uuid);
-      //   fio_force_event(uuid, FIO_EVENT_ON_READY);
-      break;
-    case SSL_ERROR_WANT_READ:
-      // FIO_LOG_DEBUG("SSL_accept/SSL_connect %p state: SSL_ERROR_WANT_READ",
-      //               (void *)uuid);
-      // fio_force_event(uuid, FIO_EVENT_ON_DATA);
-      break;
     default:
       FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: unknown (%d).",
                     (void *)uuid, ri);
-      fio_defer(fio_tls_delayed_close, (void *)uuid, NULL);
       break;
     }
+    fio_defer(fio_tls_delayed_close, (void *)uuid, NULL);
     return 0;
   }
   if (!c->alpn_ok) {

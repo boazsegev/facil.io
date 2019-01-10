@@ -42,33 +42,6 @@ fio_tls_alpn_add(void *tls, const char *protocol_name,
 }
 #pragma weak fio_tls_alpn_add
 
-void __attribute__((weak))
-fio_tls_accept(intptr_t uuid, void *tls, void *udata) {
-  FIO_LOG_FATAL("HTTP SSL/TLS required but unavailable!");
-  exit(-1);
-  (void)uuid;
-  (void)tls;
-  (void)udata;
-}
-#pragma weak fio_tls_accept
-
-/**
- * Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified
- * conetext / settings object.
- *
- * The `uuid` should be a socket UUID that is already connected to a peer (i.e.,
- * the result of `fio_accept`).
- */
-void __attribute__((weak))
-fio_tls_connect(intptr_t uuid, void *tls, void *udata) {
-  FIO_LOG_FATAL("HTTP SSL/TLS required but unavailable!");
-  exit(-1);
-  (void)uuid;
-  (void)tls;
-  (void)udata;
-}
-#pragma weak fio_tls_connect
-
 /* *****************************************************************************
 Small Helpers
 ***************************************************************************** */
@@ -1017,6 +990,7 @@ static void http_on_open_client_http1(intptr_t uuid, void *set_,
                                       void *ignore_) {
   http_settings_s *set = set_;
   http_s *h = set->udata;
+  fio_timeout_set(uuid, set->timeout);
   fio_protocol_s *pr = http1_new(uuid, set, NULL, 0);
   if (!pr) {
     fio_close(uuid);
@@ -1035,12 +1009,7 @@ static void http_on_open_client_http1(intptr_t uuid, void *set_,
 }
 
 static void http_on_open_client(intptr_t uuid, void *set_) {
-  http_settings_s *set = set_;
-  fio_timeout_set(uuid, set->timeout);
-  if (set->tls)
-    fio_tls_connect(uuid, set->tls, set_);
-  // else
-  http_on_open_client_http1(uuid, set, NULL);
+  http_on_open_client_http1(uuid, set_, NULL);
 }
 
 static void http_on_client_failed(intptr_t uuid, void *set_) {
@@ -1167,18 +1136,21 @@ intptr_t http_connect(const char *address,
   h->status = 0;
   h->path = path;
   settings->udata = h;
+  settings->tls = arg_settings.tls;
   http_set_header2(h, (fio_str_info_s){.data = (char *)"host", .len = 4},
                    (fio_str_info_s){.data = a, .len = len});
   intptr_t ret;
   if (is_websocket) {
     /* force HTTP/1.1 */
     ret = fio_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
-                      .on_connect = http_on_open_client, .udata = settings);
+                      .on_connect = http_on_open_client, .udata = settings,
+                      .tls = arg_settings.tls);
     (void)0;
   } else {
     /* Allow for any HTTP version */
     ret = fio_connect(.address = a, .port = p, .on_fail = http_on_client_failed,
-                      .on_connect = http_on_open_client, .udata = settings);
+                      .on_connect = http_on_open_client, .udata = settings,
+                      .tls = arg_settings.tls);
     (void)0;
   }
   fio_free(a);

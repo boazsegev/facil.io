@@ -4364,6 +4364,8 @@ typedef struct {
 
 static void fio_listen_cleanup_task(void *pr_) {
   fio_listen_protocol_s *pr = pr_;
+  if (pr->tls)
+    fio_tls_destroy(pr->tls);
   if (pr->on_finish) {
     pr->on_finish(pr->uuid, pr->udata);
   }
@@ -4434,7 +4436,8 @@ void fio_listen____(void);
  */
 intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
   // ...
-  if (!args.on_open || (!args.address && !args.port)) {
+  if ((!args.on_open && (!args.tls || !fio_tls_alpn_count(args.tls))) ||
+      (!args.address && !args.port)) {
     errno = EINVAL;
     goto error;
   }
@@ -4452,6 +4455,10 @@ intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
   fio_listen_protocol_s *pr = malloc(sizeof(*pr) + addr_len + port_len +
                                      ((addr_len + port_len) ? 2 : 0));
   FIO_ASSERT_ALLOC(pr);
+
+  if (args.tls)
+    fio_tls_dup(args.tls);
+
   *pr = (fio_listen_protocol_s){
       .pr =
           {
@@ -4552,6 +4559,8 @@ static void fio_connect_on_close(intptr_t uuid, fio_protocol_s *pr_) {
   fio_connect_protocol_s *pr = (fio_connect_protocol_s *)pr_;
   if (pr->on_fail)
     pr->on_fail(uuid, pr->udata);
+  if (pr->tls)
+    fio_tls_destroy(pr->tls);
   fio_free(pr);
   (void)uuid;
 }
@@ -4590,8 +4599,12 @@ static void fio_connect_on_ready_tls_alpn(intptr_t uuid, fio_protocol_s *pr_) {
   (void)uuid;
 }
 
+/* stub for sublime text function navigation */
+intptr_t fio_connect___(struct fio_connect_args args);
+
 intptr_t fio_connect FIO_IGNORE_MACRO(struct fio_connect_args args) {
-  if (!args.on_connect || (!args.address && !args.port)) {
+  if ((!args.on_connect && (!args.tls || !fio_tls_alpn_count(args.tls))) ||
+      (!args.address && !args.port)) {
     errno = EINVAL;
     goto error;
   }
@@ -4602,6 +4615,10 @@ intptr_t fio_connect FIO_IGNORE_MACRO(struct fio_connect_args args) {
 
   fio_connect_protocol_s *pr = fio_malloc(sizeof(*pr));
   FIO_ASSERT_ALLOC(pr);
+
+  if (args.tls)
+    fio_tls_dup(args.tls);
+
   *pr = (fio_connect_protocol_s){
       .pr =
           {
