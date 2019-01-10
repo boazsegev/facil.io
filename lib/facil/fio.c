@@ -451,6 +451,47 @@ fio_str_info_s fio_peer_addr(intptr_t uuid) {
                           .capa = 0};
 }
 
+/**
+ * Writes the local machine address (qualified host name) to the buffer.
+ *
+ * Returns the amount of data written (excluding the NUL byte).
+ *
+ * `limit` is the maximum number of bytes in the buffer, including the NUL byte.
+ *
+ * If the returned value == limit - 1, the result might have been truncated.
+ *
+ * If 0 is returned, an erro might have occured (see `errno`) and the contents
+ * of `dest` is undefined.
+ */
+size_t fio_local_addr(char *dest, size_t limit) {
+  if (gethostname(dest, limit))
+    return 0;
+
+  struct addrinfo hints, *info;
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
+  hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+  hints.ai_flags = AI_CANONNAME;   // get cannonical name
+
+  if (getaddrinfo(dest, "http", &hints, &info) != 0)
+    return 0;
+
+  for (struct addrinfo *pos = info; pos; pos = pos->ai_next) {
+    if (pos->ai_canonname) {
+      size_t len = strlen(pos->ai_canonname);
+      if (len >= limit)
+        len = limit - 1;
+      memcpy(dest, pos->ai_canonname, len);
+      dest[len] = 0;
+      freeaddrinfo(info);
+      return len;
+    }
+  }
+
+  freeaddrinfo(info);
+  return 0;
+}
+
 /* *****************************************************************************
 UUID attachments (linking objects to the UUID's lifetime)
 ***************************************************************************** */

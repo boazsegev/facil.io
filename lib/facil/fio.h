@@ -1007,6 +1007,20 @@ void fio_force_close(intptr_t uuid);
 fio_str_info_s fio_peer_addr(intptr_t uuid);
 
 /**
+ * Writes the local machine address (qualified host name) to the buffer.
+ *
+ * Returns the amount of data written (excluding the NUL byte).
+ *
+ * `limit` is the maximum number of bytes in the buffer, including the NUL byte.
+ *
+ * If the returned value == limit - 1, the result might have been truncated.
+ *
+ * If 0 is returned, an erro might have occured (see `errno`) and the contents
+ * of `dest` is undefined.
+ */
+size_t fio_local_addr(char *dest, size_t limit);
+
+/**
  * `fio_read` attempts to read up to count bytes from the socket into the
  * buffer starting at `buffer`.
  *
