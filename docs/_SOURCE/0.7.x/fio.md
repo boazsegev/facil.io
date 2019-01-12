@@ -425,6 +425,68 @@ The following arguments are supported:
         uint8_t timeout;
 
 
+### URL Parsing
+
+#### `fio_url_parse`
+
+```c
+fio_url_s fio_url_parse(const char *url, size_t length);
+```
+
+Parses the URI returning it's components and their lengths - no decoding
+performed, doesn't accept decoded URIs.
+
+the result returned by `fio_url_parse` is a `fio_url_s` structure:
+
+```c
+typedef struct {
+  fio_str_info_s scheme;
+  fio_str_info_s user;
+  fio_str_info_s password;
+  fio_str_info_s host;
+  fio_str_info_s port;
+  fio_str_info_s path;
+  fio_str_info_s query;
+  fio_str_info_s target;
+} fio_url_s;
+```
+
+The returned string are NOT NUL terminated, they are merely locations within the original string.
+
+This function attempts to accept different formats, including any of the following formats:
+
+* `/complete_path?query#target`
+
+    i.e.:
+
+    * /index.html?page=1#list
+
+* `host:port/complete_path?query#target`
+
+    i.e.:
+
+    * example.com
+    * example.com:8080
+    * example.com/index.html
+    * example.com:8080/index.html
+
+* `user:password@host:port[/path?query#target]`
+
+      i.e.:
+
+      * user:1234@example.com:8080/index.html
+      * user:1234@example.com?query=1
+      * john:1234@example.com
+
+* `scheme://user:password@host:port/path?query#target`
+
+     i.e.:
+
+     * http://example.com/index.html?page=1#list
+     * tcp://example.com
+
+Invalid formats might produce unexpected results. No error testing is performed.
+
 ### Manual Protocol Locking
 
 #### `fio_protocol_try_lock`

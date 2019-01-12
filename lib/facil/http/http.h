@@ -949,16 +949,7 @@ HTTP URL parsing
 ***************************************************************************** */
 
 /** the result returned by `http_url_parse` */
-typedef struct {
-  fio_str_info_s scheme;
-  fio_str_info_s user;
-  fio_str_info_s password;
-  fio_str_info_s host;
-  fio_str_info_s port;
-  fio_str_info_s path;
-  fio_str_info_s query;
-  fio_str_info_s target;
-} http_url_s;
+typedef fio_url_s http_url_s;
 
 /**
  * Parses the URI returning it's components and their lengths (no decoding
@@ -991,7 +982,8 @@ typedef struct {
  *
  * Invalid formats might produce unexpected results. No error testing performed.
  */
-http_url_s http_url_parse(const char *url, size_t length);
+http_url_s __attribute__((deprecated("use fio_url_parse instead")))
+http_url_parse(const char *url, size_t length);
 
 #if DEBUG
 void http_tests(void);

@@ -4684,6 +4684,253 @@ error:
 }
 
 /* *****************************************************************************
+URL address parsing
+***************************************************************************** */
+
+/**
+ * Parses the URI returning it's components and their lengths (no decoding
+ * performed, doesn't accept decoded URIs).
+ *
+ * The returned string are NOT NUL terminated, they are merely locations within
+ * the original string.
+ *
+ * This function expects any of the following formats:
+ *
+ * * `/complete_path?query#target`
+ *
+ *   i.e.: /index.html?page=1#list
+ *
+ * * `host:port/complete_path?query#target`
+ *
+ *   i.e.:
+ *      example.com/index.html
+ *      example.com:8080/index.html
+ *
+ * * `schema://user:password@host:port/path?query#target`
+ *
+ *   i.e.: http://example.com/index.html?page=1#list
+ *
+ * Invalid formats might produce unexpected results. No error testing performed.
+ */
+fio_url_s fio_url_parse(const char *url, size_t length) {
+  /*
+  Intention:
+  [schema://][user[:]][password[@]][host.com[:/]][:port/][/path][?quary][#target]
+  */
+  const char *end = url + length;
+  const char *pos = url;
+  fio_url_s r = {.scheme = {.data = (char *)url}};
+  if (length == 0) {
+    goto finish;
+  }
+
+  if (pos[0] == '/') {
+    /* start at path */
+    goto start_path;
+  }
+
+  while (pos < end && pos[0] != ':' && pos[0] != '/' && pos[0] != '@' &&
+         pos[0] != '#' && pos[0] != '?')
+    ++pos;
+
+  if (pos == end) {
+    /* was only host (path starts with '/') */
+    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    goto finish;
+  }
+  switch (pos[0]) {
+  case '@':
+    /* username@[host] */
+    r.user = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    ++pos;
+    goto start_host;
+  case '/':
+    /* host[/path] */
+    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    goto start_path;
+  case '?':
+    /* host?[query] */
+    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    ++pos;
+    goto start_query;
+  case '#':
+    /* host#[target] */
+    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    ++pos;
+    goto start_target;
+  case ':':
+    if (pos + 2 <= end && pos[1] == '/' && pos[2] == '/') {
+      /* scheme:// */
+      r.scheme.len = pos - url;
+      pos += 3;
+    } else {
+      /* username:[password] OR */
+      /* host:[port] */
+      r.user = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+      ++pos;
+      goto start_password;
+    }
+    break;
+  }
+
+  // start_username:
+  url = pos;
+  while (pos < end && pos[0] != ':' && pos[0] != '/' && pos[0] != '@'
+         /* && pos[0] != '#' && pos[0] != '?' */)
+    ++pos;
+
+  if (pos >= end) { /* scheme://host */
+    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    goto finish;
+  }
+
+  switch (pos[0]) {
+  case '/':
+    /* scheme://host[/path] */
+    r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    goto start_path;
+  case '@':
+    /* scheme://username@[host]... */
+    r.user = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    ++pos;
+    goto start_host;
+  case ':':
+    /* scheme://username:[password]@[host]... OR */
+    /* scheme://host:[port][/...] */
+    r.user = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    ++pos;
+    break;
+  }
+
+start_password:
+  url = pos;
+  while (pos < end && pos[0] != '/' && pos[0] != '@')
+    ++pos;
+
+  if (pos >= end) {
+    /* was host:port */
+    r.port = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.host = r.user;
+    r.user.len = 0;
+    goto finish;
+    ;
+  }
+
+  switch (pos[0]) {
+  case '/':
+    r.port = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    r.host = r.user;
+    r.user.len = 0;
+    goto start_path;
+  case '@':
+    r.password = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+    ++pos;
+    break;
+  }
+
+start_host:
+  url = pos;
+  while (pos < end && pos[0] != '/' && pos[0] != ':' && pos[0] != '#' &&
+         pos[0] != '?')
+    ++pos;
+
+  r.host = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+  if (pos >= end) {
+    goto finish;
+  }
+  switch (pos[0]) {
+  case '/':
+    /* scheme://[...@]host[/path] */
+    goto start_path;
+  case '?':
+    /* scheme://[...@]host?[query] (bad)*/
+    ++pos;
+    goto start_query;
+  case '#':
+    /* scheme://[...@]host#[target] (bad)*/
+    ++pos;
+    goto start_target;
+    // case ':':
+    /* scheme://[...@]host:[port] */
+  }
+  ++pos;
+
+  // start_port:
+  url = pos;
+  while (pos < end && pos[0] != '/' && pos[0] != '#' && pos[0] != '?')
+    ++pos;
+
+  r.port = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+
+  if (pos >= end) {
+    /* scheme://[...@]host:port */
+    goto finish;
+  }
+  switch (pos[0]) {
+  case '?':
+    /* scheme://[...@]host:port?[query] (bad)*/
+    ++pos;
+    goto start_query;
+  case '#':
+    /* scheme://[...@]host:port#[target] (bad)*/
+    ++pos;
+    goto start_target;
+    // case '/':
+    /* scheme://[...@]host:port[/path] */
+  }
+
+start_path:
+  url = pos;
+  while (pos < end && pos[0] != '#' && pos[0] != '?')
+    ++pos;
+
+  r.path = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+
+  if (pos >= end) {
+    goto finish;
+  }
+  ++pos;
+  if (pos[-1] == '#')
+    goto start_target;
+
+start_query:
+  url = pos;
+  while (pos < end && pos[0] != '#')
+    ++pos;
+
+  r.query = (fio_str_info_s){.data = (char *)url, .len = pos - url};
+  ++pos;
+
+  if (pos >= end)
+    goto finish;
+
+start_target:
+  r.target = (fio_str_info_s){.data = (char *)pos, .len = end - pos};
+
+finish:
+
+  /* set any empty values to NULL */
+  if (!r.scheme.len)
+    r.scheme.data = NULL;
+  if (!r.user.len)
+    r.user.data = NULL;
+  if (!r.password.len)
+    r.password.data = NULL;
+  if (!r.host.len)
+    r.host.data = NULL;
+  if (!r.port.len)
+    r.port.data = NULL;
+  if (!r.path.len)
+    r.path.data = NULL;
+  if (!r.query.len)
+    r.query.data = NULL;
+  if (!r.target.len)
+    r.target.data = NULL;
+
+  return r;
+}
+
+/* *****************************************************************************
 Section Start Marker
 
 

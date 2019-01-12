@@ -830,6 +830,60 @@ intptr_t fio_connect(struct fio_connect_args);
 #define fio_connect(...) fio_connect((struct fio_connect_args){__VA_ARGS__})
 
 /* *****************************************************************************
+URL address parsing
+***************************************************************************** */
+
+/** the result returned by `fio_url_parse` */
+typedef struct {
+  fio_str_info_s scheme;
+  fio_str_info_s user;
+  fio_str_info_s password;
+  fio_str_info_s host;
+  fio_str_info_s port;
+  fio_str_info_s path;
+  fio_str_info_s query;
+  fio_str_info_s target;
+} fio_url_s;
+
+/**
+ * Parses the URI returning it's components and their lengths (no decoding
+ * performed, doesn't accept decoded URIs).
+ *
+ * The returned string are NOT NUL terminated, they are merely locations within
+ * the original string.
+ *
+ * This function attempts to accept many different formats, including any of the
+ * following:
+ *
+ * * `/complete_path?query#target`
+ *
+ *   i.e.: /index.html?page=1#list
+ *
+ * * `host:port/complete_path?query#target`
+ *
+ *   i.e.:
+ *      example.com
+ *      example.com:8080
+ *      example.com/index.html
+ *      example.com:8080/index.html
+ *      example.com:8080/index.html?key=val#target
+ *
+ * * `user:password@host:port/path?query#target`
+ *
+ *   i.e.: user:1234@example.com:8080/index.html
+ *
+ * * `username[:password]@host[:port][...]`
+ *
+ *   i.e.: john:1234@example.com
+ *
+ * * `schema://user:password@host:port/path?query#target`
+ *
+ *   i.e.: http://example.com/index.html?page=1#list
+ *
+ * Invalid formats might produce unexpected results. No error testing performed.
+ */
+fio_url_s fio_url_parse(const char *url, size_t length);
+/* *****************************************************************************
 Starting the IO reactor and reviewing it's state
 ***************************************************************************** */
 

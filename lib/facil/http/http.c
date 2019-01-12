@@ -1057,7 +1057,7 @@ intptr_t http_connect(const char *address,
     errno = EINVAL;
     goto on_error;
   }
-  // TODO: use http_url_parse
+  // TODO: use fio_url_parse
   if (!strncasecmp(address, "ws", 2)) {
     is_websocket = 1;
     address += 2;
@@ -2483,7 +2483,7 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data) {
   return pos - dest;
 }
 /* *****************************************************************************
-HTTP URL parsing
+HTTP URL parsing (moved to facil.io core library)
 ***************************************************************************** */
 
 /**
@@ -2512,175 +2512,7 @@ HTTP URL parsing
  * Invalid formats might produce unexpected results. No error testing performed.
  */
 http_url_s http_url_parse(const char *url, size_t length) {
-  const char *end = url + length;
-  http_url_s result = {.scheme = {.data = (char *)url, .len = 0}};
-  if (length == 0) {
-    return result;
-  }
-  if (url[0] == '/') {
-    result.scheme.data = NULL;
-    goto parse_path;
-  }
-  /* test for scheme */
-  while (url < end && *url != ':' && *url != '/' && *url != '@') {
-    ++url;
-  }
-  result.scheme.len = url - result.scheme.data;
-  if (url + 3 >= end || url[1] != '/' || url[2] != '/') { /* host only? */
-    url = result.scheme.data;
-    result.scheme = (fio_str_info_s){.data = NULL};
-    goto after_scheme;
-  }
-
-  url += 3;
-
-after_scheme:
-  result.user.data = (char *)url;
-  while (url < end) {
-    switch (*url) {
-    case '/':
-      /* no user name or password (or port) */
-      result.host.data = result.user.data;
-      result.user.data = NULL;
-      result.host.len = url - result.host.data;
-      goto parse_path;
-      break;
-    case '@':
-      /* user name only, no password */
-      result.user.len = url - result.user.data;
-      ++url;
-      goto parse_host;
-      break;
-    case ':':
-      /* user name and password (or host:port...) */
-      result.user.len = url - result.user.data;
-      ++url;
-      goto parse_password;
-      break;
-    default:
-      ++url;
-      break;
-    }
-  }
-  if (url == end) { /* possibily: http://example.com  */
-    result.host.data = result.user.data;
-    result.user.data = NULL;
-    result.host.len = url - result.host.data;
-    return result;
-  }
-
-parse_password:
-  result.password.data = (char *)url;
-  while (url < end) {
-    switch (*url) {
-    case '/':
-      /* this wasn't a user:password, but host:port */
-      result.host = result.user;
-      result.port = result.password;
-      result.port.len = url - result.port.data;
-      result.user = result.password = (fio_str_info_s){.data = NULL};
-      goto parse_path;
-      break;
-    case '@':
-      /* done */
-      result.password.len = url - result.password.data;
-      ++url;
-      goto after_pass;
-    default:
-      ++url;
-      break;
-    }
-  }
-after_pass:
-  if (url == end) { /* possibily: http://example.com:port  */
-    result.host = result.user;
-    result.port = result.password;
-    result.port.len = url - result.port.data;
-    result.user = result.password = (fio_str_info_s){.data = NULL};
-    return result;
-  }
-parse_host:
-  /* host:port parsing */
-  result.host.data = (char *)url;
-  while (url < end) {
-    switch (*url) {
-    case '/':
-      /* host only */
-      result.host.len = url - result.host.data;
-      goto parse_path;
-      break;
-    case ':':
-      /* done */
-      result.host.len = url - result.host.data;
-      ++url;
-      goto after_host;
-      break;
-    default:
-      ++url;
-      break;
-    }
-  }
-after_host:
-
-  if (url == end) { /* scheme://host only? */
-    result.host.len = end - result.host.data;
-    return result;
-  }
-  result.port.data = (char *)url;
-  while (url < end && *url != '/') {
-    ++url;
-  }
-  result.port.len = url - result.port.data;
-
-  if (url == end) { /* scheme://host:port only? */
-    return result;
-  }
-
-  if (url == end) { /* scheme://host only? */
-    return result;
-  }
-/* path, query and target parsing */
-parse_path:
-  result.path.data = (char *)url;
-  while (url < end && *url != '?') {
-    ++url;
-  }
-  result.path.len = url - result.path.data;
-  if (url == end) {
-    return result;
-  }
-  ++url;
-  result.query.data = (char *)url;
-  while (url < end && *url != '#') {
-    ++url;
-  }
-  result.query.len = url - result.query.data;
-  if (url == end) {
-    return result;
-  }
-  ++url;
-  result.target.data = (char *)url;
-  result.target.len = end - result.target.data;
-
-  /* set any empty values to NULL */
-  if (!result.scheme.len)
-    result.scheme.data = NULL;
-  if (!result.user.len)
-    result.user.data = NULL;
-  if (!result.password.len)
-    result.password.data = NULL;
-  if (!result.host.len)
-    result.host.data = NULL;
-  if (!result.port.len)
-    result.port.data = NULL;
-  if (!result.path.len)
-    result.path.data = NULL;
-  if (!result.query.len)
-    result.query.data = NULL;
-  if (!result.target.len)
-    result.target.data = NULL;
-
-  return result;
+  return fio_url_parse(url, length);
 }
 
 /* *****************************************************************************

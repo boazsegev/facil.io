@@ -1457,59 +1457,6 @@ Prints Unix time to a HTTP time formatted string.
 
 This variation implements cached results for faster processing, at the price of a less accurate string.
 
-### URL Parsing
-
-#### `http_url_parse`
-
-```c
-http_url_s http_url_parse(const char *url, size_t length);
-```
-
-Parses the URI returning it's components and their lengths - no decoding
-performed, doesn't accept decoded URIs.
-
-the result returned by `http_url_parse` is a `http_url_s` structure:
-
-```c
-typedef struct {
-  fio_str_info_s scheme;
-  fio_str_info_s user;
-  fio_str_info_s password;
-  fio_str_info_s host;
-  fio_str_info_s port;
-  fio_str_info_s path;
-  fio_str_info_s query;
-  fio_str_info_s target;
-} http_url_s;
-```
-
-The returned string are NOT NUL terminated, they are merely locations within the original string.
-
-This function expects any of the following formats:
-
-* `/complete_path?query#target`
-
-    i.e.:
-
-    * /index.html?page=1#list
-
-* `host:port/complete_path?query#target`
-
-    i.e.:
-
-    * example.com
-    * example.com/index.html
-    * user:1234@example.com:8080
-    * example.com:8080/index.html
-
-* `schema://user:password@host:port/path?query#target`
-
-     i.e.:
-
-     * http://example.com/index.html?page=1#list
-
-Invalid formats might produce unexpected results. No error testing is performed.
- 
 ### URL String Decoding
 
 #### `http_decode_url_unsafe`
