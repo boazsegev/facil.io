@@ -18,6 +18,8 @@ toc: false
 
 * [facil.io](http://facil.io) should work on Linux / BSD / macOS (and possibly CYGWIN) and is continuously tested on both Linux and macOS.
 
+* [facil.io](http://facil.io) supports both single-threaded and multi-threaded operation modes as well as a hybrid mode (multi-process with either a single-threaded or multi-threaded workers).
+
 * [facil.io](http://facil.io) is a source code library, making it easy to incorporate into any project. The API was designed for simplicity and extendability, which means writing new extensions and custom network protocols is easy.
 
 I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).

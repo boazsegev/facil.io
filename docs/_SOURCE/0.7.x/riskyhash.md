@@ -12,19 +12,19 @@ Risky Hash wasn't properly tested for attack resistance and shouldn't be used wi
 
 Risky Hash was tested with [`SMHasher`](https://github.com/rurban/smhasher) ([see results](#smhasher-results)) (passed).
 
-A non-streaming [reference implementation is attached](#in-code).
-
-## Purpose
-
-Risky Hash is designed for fast Hash Map key calculation for both big and small keys. It attempts to act as a 64bit PRF.
-
-It's possible to compile facil.io with Risk Hash as the default hashing function (the current default is SipHash1-3) by defining the `FIO_USE_RISKY_HASH` during compilation (`-DFIO_USE_RISKY_HASH`).
+A non-streaming [reference implementation in C is attached](#in-code) The code is easy to read and should be considered as the actual specification.
 
 ## Status
 
 Risky Hash is still under development and review. This specification should be considered a working draft.
 
 Risky Hash should be limited to testing and safe environments until it's fully analyzed and reviewed.
+
+## Purpose
+
+Risky Hash is designed for fast Hash Map key calculation for both big and small keys. It attempts to act as a 64 bit keyed PRF.
+
+It's possible to compile facil.io with Risk Hash as the default hashing function (the current default is SipHash1-3) by defining the `FIO_USE_RISKY_HASH` during compilation (`-DFIO_USE_RISKY_HASH`).
 
 ## Overview
 
@@ -44,11 +44,11 @@ This approach **should** minimize the risk of malicious data weakening the hash 
 
 In the initialization stage, Risky Hash attempts to achieves three goals:
 
-* Initialize the hash state using a "secret" (key / salt / seed) in a way that will result in the "secret" having a meaningful effect on the hashing.
+* Initialize the hash state using a "secret" (key / salt / seed) in a way that will result in the "secret" having a meaningful impact on the final result.
 
 * Initialize the state in a way that can't be reversed/controlled by a maliciously crafted message.
 
-* Initialize the hash state with minimal bias (bits have a fairly even chance at being set or unset).
+* Initialize the state with minimal bias (bits have a fairly even chance at being set or unset).
 
 ### Overview: Consumption (reading)
 
@@ -66,17 +66,17 @@ In the consumption stage, Risky Hash attempts to achieves three goals:
 
    This is achieved by using a number of distinct and separated reading "vectors".
 
-   This also imposes a constraint about the number of registers, or "hidden variables", each vector can use. At the moment, Risky Hash uses 2 registers per vector.
+   This also imposes a constraint about the number of registers, or "hidden variables", each vector should use.
 
    (for example `a += a + b` requires two registers, while `a += b` requires one)
 
-It should be noted that Risky Hash consumes data in 64bit chunks/blocks.
+It should be noted that Risky Hash consumes data in 64 bit chunks/words.
 
-Any data that doesn't fit in a 64bit block is padded with zeros and consumed by a specific consumption vector (rather than consumed in order). 
+Any trailing data that doesn't fit in a 64 bit word is padded with zeros and consumed by a specific consumption vector (rather than consumed in order). 
 
 ### Overview: Mixing
 
-In the consumption stage, Risky Hash attempts to achieves three goals:
+In the mixing stage, Risky Hash attempts to achieves three goals:
 
 * Be irreversible.
 
@@ -86,7 +86,7 @@ In the consumption stage, Risky Hash attempts to achieves three goals:
 
 * Allow all consumption vectors an equal but different effect on the final hash value.
 
-Until this point, Risky Hash is contains four 64 bit hashes, each hashing a quarter of the input data.
+Until this point, Risky Hash is contained in four 64 bit hash vectors, each hashing a quarter of the input data.
 
 At this stage, the 256 bits of data are reduced to a 64 bit result.
 
@@ -111,9 +111,9 @@ The following operations are used:
 * `+` marks a mod 2^64 addition..
 * `XOR` marks an XOR operation.
 * `MUL(x,y)` a mod 2^64 multiplication.
-* `LROT(x,bits)` is a left rotation.
-* `<<` is a left shift (not rotate).
-* `>>` is a right shift (not rotate).
+* `LROT(x,bits)` is a left rotation of a 64 bit word.
+* `<<` is a left shift (not rotate, some bits are lost).
+* `>>` is a right shift (not rotate, some bits are lost).
 
 ### Initialization
 
@@ -121,18 +121,18 @@ The four consumption vectors are initialized using the seed ("secret") like so:
 
 ```txt
 V1 = seed XOR P[1],
-V2 = ~seed + P[1],
-V3 = LROT(seed, 17) XOR primes[1],
-V4 = LROT(seed, 33) + primes[1],
+V2 = (~seed) + P[1],
+V3 = LROT(seed, 17) XOR P[1],
+V4 = LROT(seed, 33) + P[1],
 ```
 
 ### Consumption
 
-Each vector reads a single 64bit word within a 256bit block, allowing the vectors to be parallelized though any message length of 256bits or longer.
+Each vector reads a single 64 bit word within a 256 bit block, allowing the vectors to be parallelized though any message length of 256 bits or longer.
 
 `V1` reads the first 64 bits, `V2` reads bits 65-128, and so forth...
 
-The 64bits are read in network byte order (Big-Endian) and treated as a numerical value.
+The 64 bits are read in network byte order (Big-Endian) and treated as a numerical value.
 
 Each vector performs the following operations in each of it's consumption rounds (`V` is the vector, `word` is the input data for that vector):
 
@@ -142,15 +142,15 @@ V = LROT(V, 33) + word
 V = MUL(P[0], V)
 ```
 
-If the data fits evenly in 64bit words, than it will be read with no padding, even if some vectors perform more consumption rounds than others.
+If the data fits evenly in 64 bit words, than it will be read with no padding, even if some vectors perform more consumption rounds than others.
 
-If the last 64 bit word is incomplete, it will be padded with zeros (0) and consumed by the last vector (`V4`), regardless of it's position within a 256bit block.
+If the last 64 bit word is incomplete, it will be padded with zeros (0) and consumed by the last vector (`V4`), regardless of it's position within a 256 bit block.
 
 ### Hash Mixing
 
 At this point the length of the data is finalized an can be added to the calculation.
 
-The following intermediate 64bit result is calculated:
+The following intermediate 64 bit result is calculated:
 
 ```txt
 result = LROT(V1,17) + LROT(V2,13) + LROT(V3,47) + LROT(V4,57)

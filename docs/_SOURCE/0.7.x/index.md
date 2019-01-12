@@ -55,6 +55,8 @@ void on_request(http_s *request) {
 
 [facil.io](http://facil.io)'s core library is a two-file library (`fio.h` and `fio.c`), making it easy to incorporate networking solutions into any project.
 
+[facil.io](http://facil.io) supports both single-threaded and multi-threaded operation modes as well as a hybrid mode (multi-process with either a single-threaded or multi-threaded workers).
+
 I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the `makefile` for each environment).
 
 ## An easy chat-room example
