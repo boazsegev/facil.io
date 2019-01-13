@@ -9785,7 +9785,7 @@ FIO_FUNC void fio_set_test(void) {
                s.count);
   }
   fio_set_test_free(&s);
-  /* attack set and test response */
+  /* full/partial collision attack against set and test response */
   if (1) {
     fio_set_attack_s as = FIO_SET_INIT;
     time_t start_ok = clock();
@@ -9799,15 +9799,34 @@ FIO_FUNC void fio_set_test(void) {
                "set attack verctor failed sanity test (count error %zu != %zu)",
                fio_set_attack_count(&as), FIO_SET_TEST_COUNT);
     fio_set_attack_free(&as);
+
+    /* full collision attack */
     time_t start_bad = clock();
     for (uintptr_t i = 0; i < FIO_SET_TEST_COUNT; ++i) {
       fio_set_attack_insert(&as, 1, i + 1);
     }
     time_t end_bad = clock();
     FIO_ASSERT(fio_set_attack_count(&as) != FIO_SET_TEST_COUNT,
-               "set attack success! full inserts!");
-    FIO_LOG_DEBUG("set attack final count = %zu", fio_set_attack_count(&as));
-    FIO_LOG_DEBUG("set attack timing impact (attack vs. normal) %zu vs. %zu",
+               "set attack success! too many full-collisions inserts!");
+    FIO_LOG_DEBUG("set full-collision attack final count/capa = %zu / %zu",
+                  fio_set_attack_count(&as), fio_set_attack_capa(&as));
+    FIO_LOG_DEBUG("set full-collision attack timing impact (attack vs. normal) "
+                  "%zu vs. %zu",
+                  end_bad - start_bad, end_ok - start_ok);
+    fio_set_attack_free(&as);
+
+    /* partial collision attack */
+    start_bad = clock();
+    for (uintptr_t i = 0; i < FIO_SET_TEST_COUNT; ++i) {
+      fio_set_attack_insert(&as, ((i << 20) | 1), i + 1);
+    }
+    end_bad = clock();
+    FIO_ASSERT(fio_set_attack_count(&as) == FIO_SET_TEST_COUNT,
+               "partial collision resolusion failed, not enough inserts!");
+    FIO_LOG_DEBUG("set partial collision attack final count/capa = %zu / %zu",
+                  fio_set_attack_count(&as), fio_set_attack_capa(&as));
+    FIO_LOG_DEBUG("set partial collision attack timing impact (attack vs. "
+                  "normal) %zu vs. %zu",
                   end_bad - start_bad, end_ok - start_ok);
     fio_set_attack_free(&as);
   }

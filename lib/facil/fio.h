@@ -5796,12 +5796,13 @@ FIO_FUNC inline FIO_NAME(_map_s_) *
     }
 
     /* Handle partial / full collisions with cuckoo steps O(x) access time */
-    i = FIO_SET_CUCKOO_STEPS;
+    i = 0;
     const uintptr_t limit =
         FIO_SET_CUCKOO_STEPS * (set->capa > (FIO_SET_MAX_MAP_SEEK << 2)
                                     ? FIO_SET_MAX_MAP_SEEK
                                     : (set->capa >> 2));
     while (i < limit) {
+      i += FIO_SET_CUCKOO_STEPS;
       pos = set->map + ((hash_alt + i) & mask);
       if (FIO_SET_HASH_COMPARE(FIO_SET_HASH_INVALID, pos->hash))
         return pos;
@@ -5820,7 +5821,6 @@ FIO_FUNC inline FIO_NAME(_map_s_) *
           return pos;
         }
       }
-      i += FIO_SET_CUCKOO_STEPS;
     }
   }
   return NULL;
