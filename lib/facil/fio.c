@@ -4487,8 +4487,19 @@ intptr_t fio_listen FIO_IGNORE_MACRO(struct fio_listen_args args) {
   size_t port_len = 0;
   if (args.address)
     addr_len = strlen(args.address);
-  if (args.port)
+  if (args.port) {
     port_len = strlen(args.port);
+    char *tmp = (char *)args.port;
+    if (!fio_atol(&tmp)) {
+      port_len = 0;
+      args.port = NULL;
+    }
+    if (*tmp) {
+      /* port format was invalid, should be only numerals */
+      errno = EINVAL;
+      goto error;
+    }
+  }
   const intptr_t uuid = fio_socket(args.address, args.port, 1);
   if (uuid == -1)
     goto error;

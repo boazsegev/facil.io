@@ -447,9 +447,10 @@ intptr_t http_listen(const char *port, const char *binding,
  *
  * The `on_finish` callback is always called.
  */
-intptr_t http_connect(const char *address, struct http_settings_s);
-#define http_connect(address, ...)                                             \
-  http_connect((address), (struct http_settings_s){__VA_ARGS__})
+intptr_t http_connect(const char *url, const char *unix_address,
+                      struct http_settings_s);
+#define http_connect(url, unix_address, ...)                                   \
+  http_connect((url), (unix_address), (struct http_settings_s){__VA_ARGS__})
 
 /**
  * Returns the settings used to setup the connection or NULL on error.
@@ -586,9 +587,9 @@ int http_upgrade2ws(http_s *http, websocket_settings_s);
  *
  * Returns -1 on error;
  */
-int websocket_connect(const char *address, websocket_settings_s settings);
-#define websocket_connect(address, ...)                                        \
-  websocket_connect((address), (websocket_settings_s){__VA_ARGS__})
+int websocket_connect(const char *url, websocket_settings_s settings);
+#define websocket_connect(url, ...)                                            \
+  websocket_connect((url), (websocket_settings_s){__VA_ARGS__})
 
 #include <websockets.h>
 

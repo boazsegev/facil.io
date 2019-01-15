@@ -1024,6 +1024,7 @@ static void http_on_client_failed(intptr_t uuid, void *set_) {
   (void)uuid;
 }
 
+intptr_t http_connect__(void); /* sublime text marker */
 /**
  * Connects to an HTTP server as a client.
  *
@@ -1038,9 +1039,9 @@ static void http_on_client_failed(intptr_t uuid, void *set_) {
  * Returns -1 on error and 0 on success. the `on_finish` callback is always
  * called.
  */
-#undef http_connect
-intptr_t http_connect(const char *address,
-                      struct http_settings_s arg_settings) {
+intptr_t http_connect FIO_IGNORE_MACRO(const char *url,
+                                       const char *unix_address,
+                                       struct http_settings_s arg_settings) {
   if (!arg_settings.on_response && !arg_settings.on_upgrade) {
     FIO_LOG_ERROR("http_connect requires either an on_response "
                   " or an on_upgrade callback.\n");
@@ -1048,71 +1049,69 @@ intptr_t http_connect(const char *address,
     goto on_error;
   }
   size_t len;
-  char *a, *p;
+  char *a = NULL, *p = NULL;
   uint8_t is_websocket = 0;
   uint8_t is_secure = 0;
   FIOBJ path = FIOBJ_INVALID;
-  if (!address || (len = strlen(address)) <= 5) {
+  if (!url && !unix_address) {
     FIO_LOG_ERROR("http_connect requires a valid address.");
     errno = EINVAL;
     goto on_error;
   }
-  // TODO: use fio_url_parse
-  if (!strncasecmp(address, "ws", 2)) {
-    is_websocket = 1;
-    address += 2;
-    len -= 2;
-  } else if (len >= 7 && !strncasecmp(address, "http", 4)) {
-    address += 4;
-    len -= 4;
-  } else {
-    FIO_LOG_ERROR("http_connect requires a valid address.");
-    errno = EINVAL;
-    goto on_error;
-  }
-  /* parse address */
-  if (address[0] == 's') {
-    /* TODO: SSL/TLS */
-    is_secure = 1;
-    FIO_LOG_ERROR("http_connect doesn't support TLS/SSL just yet.");
-    errno = EINVAL;
-    goto on_error;
-  } else if (len <= 3 || strncmp(address, "://", 3)) {
-    FIO_LOG_ERROR("http_connect requires a valid address.");
-    errno = EINVAL;
-    goto on_error;
-  } else {
-    len -= 3;
-    address += 3;
-    a = fio_malloc(len + 1);
-    FIO_ASSERT_ALLOC(a);
-    memcpy(a, address, len + 1);
-  }
-  p = memchr(a, '/', len);
-  if (p) {
-    if (len - (p - a))
-      path = fiobj_str_new(p, len - (p - a));
-    len = p - a;
-    *p = 0;
-  }
-  p = memchr(a, ':', len);
-  if (p) {
-    len = p - a;
-    *p = 0;
-    if (a + len == p + 1) {
-      p = NULL;
+  if (url) {
+    fio_url_s u = fio_url_parse(url, strlen(url));
+    if (u.scheme.data &&
+        (u.scheme.len == 2 || (u.scheme.len == 3 && u.scheme.data[2] == 's')) &&
+        u.scheme.data[0] == 'w' && u.scheme.data[1] == 's') {
+      is_websocket = 1;
+      is_secure = (u.scheme.len == 3);
+    } else if (u.scheme.data &&
+               (u.scheme.len == 4 ||
+                (u.scheme.len == 5 && u.scheme.data[4] == 's')) &&
+               u.scheme.data[0] == 'h' && u.scheme.data[1] == 't' &&
+               u.scheme.data[2] == 't' && u.scheme.data[3] == 'p') {
+      is_secure = (u.scheme.len == 5);
+    }
+    if (is_secure && !arg_settings.tls) {
+      FIO_LOG_ERROR("Secure connections (%.*s) require a TLS object.",
+                    (int)u.scheme.len, u.scheme.data);
+      errno = EINVAL;
+      goto on_error;
+    }
+    if (u.path.data) {
+      path = fiobj_str_new(
+          u.path.data, strlen(u.path.data)); /* copy query and target as well */
+    }
+    if (unix_address) {
+      a = (char *)unix_address;
+      len = strlen(a);
     } else {
-      p++;
-      if (!len) {
-        a = (char *)"localhost";
-        len = 9;
+      if (!u.host.data) {
+        FIO_LOG_ERROR("http_connect requires a valid address.");
+        errno = EINVAL;
+        goto on_error;
+      }
+      /***** no more error handling, since memory is allocated *****/
+      /* copy address */
+      a = fio_malloc(u.host.len + 1);
+      memcpy(a, u.host.data, u.host.len);
+      a[u.host.len] = 0;
+      len = u.host.len;
+      /* copy port */
+      if (u.port.data) {
+        p = fio_malloc(u.port.len + 1);
+        memcpy(p, u.port.data, u.port.len);
+        p[u.port.len] = 0;
+      } else if (is_secure) {
+        p = fio_malloc(3 + 1);
+        memcpy(p, "443", 3);
+        p[3] = 0;
+      } else {
+        p = fio_malloc(2 + 1);
+        memcpy(p, "80", 2);
+        p[2] = 0;
       }
     }
-  } else {
-    if (is_secure)
-      p = (char *)"443";
-    else
-      p = (char *)"80";
   }
 
   /* set settings */
@@ -1153,15 +1152,15 @@ intptr_t http_connect(const char *address,
                       .tls = arg_settings.tls);
     (void)0;
   }
-  fio_free(a);
+  if (a != unix_address)
+    fio_free(a);
+  fio_free(p);
   return ret;
 on_error:
   if (arg_settings.on_finish)
     arg_settings.on_finish(&arg_settings);
   return -1;
 }
-#define http_connect(address, ...)                                             \
-  http_connect((address), (struct http_settings_s){__VA_ARGS__})
 
 /* *****************************************************************************
 HTTP Websocket Connect
@@ -1193,7 +1192,7 @@ static void on_websocket_http_connection_finished(http_settings_s *settings) {
 int websocket_connect(const char *address, websocket_settings_s settings) {
   websocket_settings_s *s = fio_malloc(sizeof(*s));
   *s = settings;
-  return http_connect(address, .on_request = on_websocket_http_connected,
+  return http_connect(address, NULL, .on_request = on_websocket_http_connected,
                       .on_response = on_websocket_http_connected,
                       .on_finish = on_websocket_http_connection_finished,
                       .udata = s);

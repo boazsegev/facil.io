@@ -4,9 +4,13 @@
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API... I know, I'm sorry, especially since there's a small and misleading change in argument ordering for `fio_tls_cert_add` and `fio_tls_new`... but if we don't fix the API now, before the 0.7.0 release, bad design might ruin our Wednesday meditation for all eternity.
 
+**BREAK**: (`http`) breaking API changes to `http_connect` were required in order to support Unix Socket connections in client mode.
+
 **Deprecation**: (`http`) deprecating the `http_url_parse` in favor of `fio_url_parse` (moved the function to the core library and rewrote it in part).
 
 **Security**: facil.io hash maps now limit the number of full-collisions allowed in a hash map. This mitigates the effects of hash flooding attacks. As a side effect, hash maps that are under attack might return false results for collision objects.
+
+**Fix**: (`fio`) logging message when listening to a Unix Socket.
 
 **Fix**: (`fio`) numerous minor design fixes, such as Big-Endian string memory access, allowing `fio.h` to be used as a header only library (requires `FIO_FORCE_MALLOC`) and other adjustments.
 
