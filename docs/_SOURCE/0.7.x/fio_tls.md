@@ -8,7 +8,7 @@ SSL/TLS provides Transport Layer Security (TLS) for more secure communication.
 
 facil.io attempts to make TLS connections easy by providing a simplified API that abstracts away the underlying TLS library.
 
-OpenSSL support is included starting with facil.io version 0.7.0.beta6.
+Support for OpenSSL >= `1.1.0` is included starting with facil.io version 0.7.0.beta6.
 
 Future support for BearSSL is planned and an example/template is provided under `fio_tls_missing.c`, making it easy to use your own SSL/TLS library.
 

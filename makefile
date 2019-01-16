@@ -148,7 +148,6 @@ MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix 
 LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
 
-
 # S2N TLS/SSL library: https://github.com/awslabs/s2n
 ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -ls2n -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null ), 0)
   $(info * Detected the s2n library, setting HAVE_S2N)
@@ -164,7 +163,7 @@ else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else ifeq ($(shell printf "\#include <openssl/ssl.h>\\n\#if OPENSSL_VERSION_AT_LEAST(1, 0)\\n\#error \"OpenSSL version too small\"\\n\#endif\\nint main(void) { SSL_library_init(); }" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
+else ifeq ($(shell printf "\#include <openssl/opensslv.h>\\n\#include <openssl/ssl.h>\\n\#if OPENSSL_MAKE_VERSION(1, 1, 0, 0) > OPENSSL_VERSION_NUMBER\\n\#error \"OpenSSL version too small\"\\n\#endif\\nint main(void) { SSL_library_init(); }" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl

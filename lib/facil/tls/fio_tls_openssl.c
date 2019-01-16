@@ -541,8 +541,10 @@ static ssize_t fio_tls_read(intptr_t uuid, void *udata, void *buf,
   case SSL_ERROR_WANT_CONNECT:     /* overflow */
   case SSL_ERROR_WANT_ACCEPT:      /* overflow */
   case SSL_ERROR_WANT_X509_LOOKUP: /* overflow */
-  case SSL_ERROR_WANT_ASYNC:       /* overflow */
-  case SSL_ERROR_WANT_WRITE:       /* overflow */
+#ifdef SSL_ERROR_WANT_ASYNC
+  case SSL_ERROR_WANT_ASYNC: /* overflow */
+#endif
+  case SSL_ERROR_WANT_WRITE: /* overflow */
   case SSL_ERROR_WANT_READ:
   default:
     break;
@@ -593,8 +595,10 @@ static ssize_t fio_tls_write(intptr_t uuid, void *udata, const void *buf,
   case SSL_ERROR_WANT_CONNECT:     /* overflow */
   case SSL_ERROR_WANT_ACCEPT:      /* overflow */
   case SSL_ERROR_WANT_X509_LOOKUP: /* overflow */
-  case SSL_ERROR_WANT_ASYNC:       /* overflow */
-  case SSL_ERROR_WANT_WRITE:       /* overflow */
+#ifdef SSL_ERROR_WANT_ASYNC
+  case SSL_ERROR_WANT_ASYNC: /* overflow */
+#endif
+  case SSL_ERROR_WANT_WRITE: /* overflow */
   case SSL_ERROR_WANT_READ:
   default:
     break;
@@ -693,10 +697,12 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
           "SSL_accept/SSL_connect %p error: SSL_ERROR_WANT_X509_LOOKUP",
           (void *)uuid);
       break;
+#ifdef SSL_ERROR_WANT_ASYNC
     case SSL_ERROR_WANT_ASYNC:
       FIO_LOG_DEBUG("SSL_accept/SSL_connect %p error: SSL_ERROR_WANT_ASYNC",
                     (void *)uuid);
       break;
+#endif
 #ifdef SSL_ERROR_WANT_CLIENT_HELLO_CB
     case SSL_ERROR_WANT_CLIENT_HELLO_CB:
       FIO_LOG_DEBUG(
