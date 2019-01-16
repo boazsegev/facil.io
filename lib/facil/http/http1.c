@@ -314,7 +314,7 @@ static void http1_websocket_client_on_hangup(http_settings_s *settings) {
   websocket_settings_s *s = settings->udata;
   if (s) {
     if (s->on_close)
-      s->on_close(0, settings->udata);
+      s->on_close(0, s->udata);
     fio_free(settings->udata);
     settings->udata = NULL;
   }
