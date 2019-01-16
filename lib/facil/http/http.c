@@ -2491,38 +2491,6 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data) {
   *pos = 0;
   return pos - dest;
 }
-/* *****************************************************************************
-HTTP URL parsing (moved to facil.io core library)
-***************************************************************************** */
-
-/**
- * Parses the URI returning it's components and their lengths (no decoding
- * performed, doesn't accept decoded URIs).
- *
- * The returned string are NOT NUL terminated, they are merely locations within
- * the original string.
- *
- * This function expects any of the following formats:
- *
- * * `/complete_path?query#target`
- *
- *   i.e.: /index.html?page=1#list
- *
- * * `host:port/complete_path?query#target`
- *
- *   i.e.:
- *      example.com/index.html
- *      example.com:8080/index.html
- *
- * * `schema://user:password@host:port/path?query#target`
- *
- *   i.e.: http://example.com/index.html?page=1#list
- *
- * Invalid formats might produce unexpected results. No error testing performed.
- */
-http_url_s http_url_parse(const char *url, size_t length) {
-  return fio_url_parse(url, length);
-}
 
 /* *****************************************************************************
 Lookup Tables / functions

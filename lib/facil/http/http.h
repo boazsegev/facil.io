@@ -984,8 +984,7 @@ typedef fio_url_s http_url_s
  *
  * Invalid formats might produce unexpected results. No error testing performed.
  */
-http_url_s __attribute__((deprecated("use fio_url_parse instead")))
-http_url_parse(const char *url, size_t length);
+#define http_url_parse(url, len) fio_url_parse((url), (len))
 
 #if DEBUG
 void http_tests(void);
