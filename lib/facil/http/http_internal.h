@@ -218,8 +218,18 @@ static inline void set_header_add(FIOBJ hash, FIOBJ name, FIOBJ value) {
     fiobj_ary_push(tmp, old);
     old = tmp;
   }
-  fiobj_ary_push(old, value); /* value is owned by both hash and array */
-  fiobj_hash_replace(hash, name, old); /* don't free `value` (leave in array) */
+  if (FIOBJ_TYPE_IS(value, FIOBJ_T_ARRAY)) {
+    for (size_t i = 0; i < fiobj_ary_count(value); ++i) {
+      fiobj_ary_push(old, fiobj_dup(fiobj_ary_index(value, i)));
+    }
+    /* frees `value` */
+    fiobj_hash_set(hash, name, old);
+    return;
+  }
+  /* value will be owned by both hash and array */
+  fiobj_ary_push(old, value);
+  /* don't free `value` (leave in array) */
+  fiobj_hash_replace(hash, name, old);
 }
 
 #endif /* H_HTTP_INTERNAL_H */

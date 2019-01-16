@@ -27,10 +27,8 @@ void http_on_request_handler______internal(http_s *h,
   if (1) {
     /* test for Host header and avoid duplicates */
     FIOBJ tmp = fiobj_hash_get2(h->headers, host_hash);
-    if (!tmp) {
-      http_send_error(h, 400);
-      return;
-    }
+    if (!tmp)
+      goto missing_host;
     if (FIOBJ_TYPE_IS(tmp, FIOBJ_T_ARRAY)) {
       fiobj_hash_set(h->headers, HTTP_HEADER_HOST, fiobj_ary_pop(tmp));
     }
@@ -69,6 +67,10 @@ upgrade:
   }
 eventsource:
   settings->on_upgrade(h, (char *)"sse", 3);
+  return;
+missing_host:
+  FIO_LOG_DEBUG("missing Host header");
+  http_send_error(h, 400);
   return;
 }
 
