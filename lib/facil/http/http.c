@@ -289,6 +289,16 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
     }
   } else
     cookie.max_age = -1;
+
+  if (http_settings(h) && http_settings(h)->is_client) {
+    if (!cookie.value) {
+      fiobj_free(c);
+      return -1;
+    }
+    set_header_add(h->private_data.out_headers, HTTP_HEADER_COOKIE, c);
+    return 0;
+  }
+
   t.data[len++] = ';';
   t.data[len++] = ' ';
 
