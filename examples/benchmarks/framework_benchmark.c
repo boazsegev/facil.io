@@ -198,7 +198,7 @@ static void route_perform(http_s *h) {
   http_set_header(h, HTTP_HEADER_SERVER, fiobj_dup(HTTP_VALUE_SERVER));
   /* collect path from hash map */
   fio_str_info_s tmp_i = fiobj_obj2cstr(h->path);
-  fio_str_s tmp = FIO_STR_INIT_EXISTING(tmp_i.data, tmp_i.len, 0);
+  fio_str_s tmp = FIO_STR_INIT_STATIC2(tmp_i.data, tmp_i.len);
   fio_router_handler_fn handler =
       fio_router_find(&routes, fio_str_hash(&tmp), tmp);
   /* forward request or send error */

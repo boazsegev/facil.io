@@ -13,6 +13,11 @@ Feel free to copy, use and enjoy according to the license provided.
 
 #include <stdint.h>
 
+#ifndef FIO_TLS_PRINT_SECRET
+/* if true, the master key secret should be printed using FIO_LOG_DEBUG */
+#define FIO_TLS_PRINT_SECRET 0
+#endif
+
 /** An opaque type used for the SSL/TLS functions. */
 typedef struct fio_tls_s fio_tls_s;
 

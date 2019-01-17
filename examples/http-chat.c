@@ -56,8 +56,9 @@ two different browser windows.
 /* Include the core library */
 #include <fio.h>
 
-/* Include the CLI and HTTP / WebSockets extensions (and the FIOBJ library) */
+/* Include the TLS, CLI, FIOBJ and HTTP / WebSockets extensions */
 #include <fio_cli.h>
+#include <fio_tls.h>
 #include <http.h>
 #include <redis_engine.h>
 
@@ -77,6 +78,13 @@ static void initialize_redis(void);
 int main(int argc, char const *argv[]) {
   initialize_cli(argc, argv);
   initialize_redis();
+  /* TLS support */
+  fio_tls_s *tls = NULL;
+  if (fio_cli_get_bool("-tls")) {
+    char local_addr[1024];
+    local_addr[fio_local_addr(local_addr, 1023)] = 0;
+    tls = fio_tls_new(local_addr, NULL, NULL, NULL);
+  }
   /* optimize WebSocket pub/sub for multi-connection broadcasting */
   websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
   /* listen for inncoming connections */
@@ -86,7 +94,7 @@ int main(int argc, char const *argv[]) {
                   .ws_max_msg_size = (fio_cli_get_i("-maxms") * 1024),
                   .public_folder = fio_cli_get("-public"),
                   .log = fio_cli_get_bool("-log"),
-                  .timeout = fio_cli_get_i("-keep-alive"),
+                  .timeout = fio_cli_get_i("-keep-alive"), .tls = tls,
                   .ws_timeout = fio_cli_get_i("-ping")) == -1) {
     /* listen failed ?*/
     perror(
@@ -95,6 +103,7 @@ int main(int argc, char const *argv[]) {
   }
   fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));
   fio_cli_end();
+  fio_tls_destroy(tls);
   return 0;
 }
 
@@ -260,6 +269,7 @@ static void initialize_cli(int argc, char const *argv[]) {
       FIO_CLI_PRINT_HEADER("Address Binding:"),
       FIO_CLI_INT("-port -p port number to listen to. defaults port 3000"),
       "-bind -b address to listen to. defaults any available.",
+      FIO_CLI_BOOL("-tls use a self signed certificate for TLS."),
       // Concurrency
       FIO_CLI_PRINT_HEADER("Concurrency:"),
       FIO_CLI_INT("-workers -w number of processes to use."),
@@ -277,9 +287,12 @@ static void initialize_cli(int argc, char const *argv[]) {
       FIO_CLI_INT("-ping websocket ping interval (0..255). default: 40s"),
       FIO_CLI_INT("-max-msg -maxms incoming websocket message "
                   "size limit in Kb. default: 250Kb"),
-      "-redis -r an optional Redis URL server address.",
+      // Misc Settings
+      FIO_CLI_PRINT_HEADER("Misc:"),
+      FIO_CLI_STRING("-redis -r an optional Redis URL server address."),
       FIO_CLI_PRINT("\t\ta valid Redis URL would follow the pattern:"),
-      FIO_CLI_PRINT("\t\t\tredis://user:password@localhost:6379/"));
+      FIO_CLI_PRINT("\t\t\tredis://user:password@localhost:6379/"),
+      FIO_CLI_INT("-verbosity -V facil.io verbocity 0..5 (logging level)."));
 
   /* Test and set any default options */
   if (!fio_cli_get("-p")) {
@@ -312,6 +325,9 @@ static void initialize_cli(int argc, char const *argv[]) {
       fio_cli_set("-redis", tmp);
       fio_cli_set("-r", tmp);
     }
+  }
+  if (fio_cli_get("-V")) {
+    FIO_LOG_LEVEL = fio_cli_get_i("-V");
   }
 
   fio_cli_set_default("-ping", "40");

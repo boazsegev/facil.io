@@ -158,3 +158,16 @@ The `uuid` should be a socket UUID that is already connected to a peer (i.e., on
 The `udata` is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using `fio_tls_alpn_add`).
 
 
+
+### TLS Compile-Time Options
+
+#### `FIO_TLS_PRINT_SECRET`
+
+```c
+#ifndef FIO_TLS_PRINT_SECRET
+/* if true, the master key secret should be printed using FIO_LOG_DEBUG */
+#define FIO_TLS_PRINT_SECRET 0
+#endif
+```
+
+By setting `FIO_TLS_PRINT_SECRET` to a true value (1), facil.io will compile in a way that prints out the master key / secret to the debugging log, for use with WireShark or similar network debugging tools.

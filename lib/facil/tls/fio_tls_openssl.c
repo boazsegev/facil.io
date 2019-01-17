@@ -749,6 +749,25 @@ static size_t fio_tls_handshake(intptr_t uuid, void *udata) {
   }
   /* make sure the connection is re-added to the reactor */
   fio_force_event(uuid, FIO_EVENT_ON_DATA);
+  /* log session ID for WireShark */
+#if FIO_TLS_PRINT_SECRET
+  if (FIO_LOG_LEVEL >= FIO_LOG_LEVEL_DEBUG) {
+    unsigned char buff[SSL_MAX_MASTER_KEY_LENGTH + 2];
+    size_t ret = SSL_SESSION_get_master_key(SSL_get_session(c->ssl), buff,
+                                            SSL_MAX_MASTER_KEY_LENGTH + 1);
+    buff[ret] = 0;
+    unsigned char buff2[(SSL_MAX_MASTER_KEY_LENGTH + 2) << 1];
+    for (size_t i = 0; i < ret; ++i) {
+      buff2[i] = ((buff[i] >> 4) >= 10) ? ('A' + (buff[i] >> 4) - 10)
+                                        : ('0' + (buff[i] >> 4));
+      buff2[i + 1] = ((buff[i] & 15) >= 10) ? ('A' + (buff[i] & 15) - 10)
+                                            : ('0' + (buff[i] & 15));
+    }
+    buff2[(ret << 1)] = 0;
+    FIO_LOG_DEBUG("OpenSSL Master Key for uuid %p:\n\t\t%s", (void *)uuid,
+                  buff2);
+  }
+#endif
   return 1;
 }
 
