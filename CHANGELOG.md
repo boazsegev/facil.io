@@ -12,7 +12,7 @@
 
 **Fix**: (`websocket`) fixed an issue with the WebSocket parser where network byte order for long message lengths wasn't always respected and integer bit size was wrong for larger payloads. Credit to Marouane Elmidaoui (@moxgeek) for exposing the issue.
 
-**Fix**: (`http`) fixed `udata` in WebSocket client callback for failed WebSOcket client connections.
+**Fix**: (`http`) fixed `udata` in WebSocket client callback for failed WebSocket client connections.
 
 **Fix**: (`fio`) logging message when listening to a Unix Socket.
 

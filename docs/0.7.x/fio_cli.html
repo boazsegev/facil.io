@@ -41,6 +41,12 @@
 <li><a href="/0.7.x/fiobj_json">JSON</a></li>
 <li><a href="/0.7.x/fiobj_mustache">Mustache</a></li>
 </ul>
+
+<h3 id="miscellaneous">Miscellaneous</h3>
+
+<ul>
+<li><a href="/0.7.x/riskyhash">Risk Hash</a></li>
+</ul>
 </nav><div id="md_container"><div class='toc'><ul>
 <li>
 <a href="#command-line-helper">Command Line Helper</a>
@@ -143,7 +149,7 @@
 <p>Data can be accessed either as a C string or an integer using the <code>fio_cli_get</code> and <code>fio_cli_set</code> functions.</p>
 
 <h3 id="example">example</h3>
-<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
 
               <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Concurrency:"</span><span class="p">),</span>
               <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-t -thread number of threads to run."</span><span class="p">),</span>
@@ -162,7 +168,7 @@
 <span class="p">}</span>
 
 <span class="n">fio_cli_end</span><span class="p">();</span>
-</code></pre>
+</code></pre></div>
 <h2 id="constants">Constants</h2>
 
 <p>The following constants are defined by the CLI extension.</p>
@@ -196,14 +202,14 @@
 <h3 id="initialization-destruction">Initialization / Destruction</h3>
 
 <h4 id="fio_cli_start"><code>fio_cli_start</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_cli_start</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[],</span> <span class="kt">int</span> <span class="n">unnamed_min</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_cli_start</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[],</span> <span class="kt">int</span> <span class="n">unnamed_min</span><span class="p">,</span>
                    <span class="kt">int</span> <span class="n">unnamed_max</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">description</span><span class="p">,</span>
                    <span class="kt">char</span> <span class="k">const</span> <span class="o">**</span><span class="n">names</span><span class="p">);</span>
 <span class="cm">/* Automatically appends a NULL marker at the end of the `names` array. */</span>
 <span class="cp">#define fio_cli_start(argc, argv, unnamed_min, unnamed_max, description, ...)  \
   fio_cli_start((argc), (argv), (unnamed_min), (unnamed_max), (description),   \
                 (char const *[]){__VA_ARGS__, NULL})
-</span></code></pre>
+</span></code></pre></div>
 <p>This function parses the Command Line Interface (CLI), creating a temporary &quot;dictionary&quot; that allows easy access to the CLI using their names or aliases.</p>
 
 <p>Command line arguments may be typed. If an optional type requirement is provided and the provided argument fails to match the required type, execution will end and an error message will be printed along with a short &quot;help&quot;.</p>
@@ -224,7 +230,7 @@ without the &#39;-&#39; character will begin the description for the CLI argumen
 unless overridden.</p>
 
 <p>Example use:</p>
-<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"this example accepts the following:"</span><span class="p">,</span>
 
               <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Concurrency:"</span><span class="p">),</span>
               <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-t -thread number of threads to run."</span><span class="p">),</span>
@@ -237,48 +243,48 @@ unless overridden.</p>
 
               <span class="n">FIO_CLI_PRINT_HREADER</span><span class="p">(</span><span class="s">"Logging:"</span><span class="p">),</span>
               <span class="n">FIO_CLI_BOOL</span><span class="p">(</span><span class="s">"-v -log enable logging."</span><span class="p">));</span>
-</code></pre>
+</code></pre></div>
 <p>This would allow access to the named arguments:</p>
-<pre><code class='highlight'><span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-b"</span><span class="p">)</span> <span class="o">==</span> <span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-address"</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-b"</span><span class="p">)</span> <span class="o">==</span> <span class="n">fio_cli_get</span><span class="p">(</span><span class="s">"-address"</span><span class="p">);</span>
+</code></pre></div>
 <p>Once all the data was accessed, free the parsed data dictionary using:</p>
-<pre><code class='highlight'><span class="n">fio_cli_end</span><span class="p">();</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_end</span><span class="p">();</span>
+</code></pre></div>
 <p>It should be noted, arguments will be recognized in a number of forms, i.e.:</p>
-<pre><code class='highlight'>app <span class="nt">-t</span><span class="o">=</span>1 <span class="nt">-p3000</span> <span class="nt">-a</span> localhost
-</code></pre>
+<div class="highlight"><pre class="highlight shell"><code>app <span class="nt">-t</span><span class="o">=</span>1 <span class="nt">-p3000</span> <span class="nt">-a</span> localhost
+</code></pre></div>
 <h4 id="fio_cli_end"><code>fio_cli_end</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_cli_end</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_cli_end</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</code></pre></div>
 <p>Clears the memory used by the CLI dictionary, removing all parsed data.</p>
 
 <h3 id="access-cli-arguments">Access CLI arguments</h3>
 
 <h4 id="fio_cli_get"><code>fio_cli_get</code></h4>
-<pre><code class='highlight'><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_get</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_get</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
+</code></pre></div>
 <p>Returns the argument&#39;s value as a NUL terminated C String.</p>
 
 <h4 id="fio_cli_get_i"><code>fio_cli_get_i</code></h4>
-<pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_cli_get_i</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_cli_get_i</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">);</span>
+</code></pre></div>
 <p>Returns the argument&#39;s value as an integer.</p>
 
 <h4 id="fio_cli_get_bool"><code>fio_cli_get_bool</code></h4>
-<pre><code class='highlight'><span class="cp">#define fio_cli_get_bool(name) (fio_cli_get((name)) != NULL)
-</span></code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#define fio_cli_get_bool(name) (fio_cli_get((name)) != NULL)
+</span></code></pre></div>
 <p>This MACRO returns the argument&#39;s value as a boolean.</p>
 
 <h4 id="fio_cli_unnamed_count"><code>fio_cli_unnamed_count</code></h4>
-<pre><code class='highlight'><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">fio_cli_unnamed_count</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">fio_cli_unnamed_count</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</code></pre></div>
 <p>Returns the number of unnamed arguments.</p>
 
 <p>Unnamed arguments are only relevant if the <code>unnamed_min</code> argument in <code>fio_cli_start</code> was greater than 0.</p>
 
 <h4 id="fio_cli_unnamed"><code>fio_cli_unnamed</code></h4>
-<pre><code class='highlight'><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_unnamed</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">index</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">fio_cli_unnamed</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">index</span><span class="p">);</span>
+</code></pre></div>
 <p>Returns the unnamed arguments using a 0 (zero) based <code>index</code>.</p>
 
 <p>Unnamed arguments are only relevant if the <code>unnamed_min</code> argument in <code>fio_cli_start</code> was greater than 0.</p>
@@ -286,24 +292,24 @@ unless overridden.</p>
 <h3 id="set-cli-argument-data">Set CLI argument data</h3>
 
 <h4 id="fio_cli_set"><code>fio_cli_set</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_cli_set</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">value</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_cli_set</span><span class="p">(</span><span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">value</span><span class="p">);</span>
+</code></pre></div>
 <p>Sets the argument&#39;s value as a NUL terminated C String (no copy!).</p>
 
 <p>CAREFUL: This does not automatically detect aliases or type violations! it will only effect the specific name given, even if invalid. i.e.:</p>
-<pre><code class='highlight'><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_cli_start</span><span class="p">(</span><span class="n">argc</span><span class="p">,</span> <span class="n">argv</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span>
              <span class="s">"this is example accepts the following options:"</span><span class="p">,</span>
              <span class="n">FIO_CLI_INT</span><span class="p">(</span><span class="s">"-p -port the port to bind to"</span><span class="p">));</span>
 
 <span class="n">fio_cli_set</span><span class="p">(</span><span class="s">"-p"</span><span class="p">,</span> <span class="s">"hello"</span><span class="p">);</span> <span class="c1">// fio_cli_get("-p") != fio_cli_get("-port");</span>
-</code></pre>
+</code></pre></div>
 <p>Note: this does NOT copy the C strings to memory. Memory should be kept alive until <code>fio_cli_end</code> is called.</p>
 
 <h4 id="fio_cli_set_default"><code>fio_cli_set_default</code></h4>
-<pre><code class='highlight'><span class="cp">#define fio_cli_set_default(name, value)                                       \
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#define fio_cli_set_default(name, value)                                       \
   if (!fio_cli_get((name)))                                                    \
     fio_cli_set(name, value);
-</span></code></pre>
+</span></code></pre></div>
 <p>This MACRO sets the argument&#39;s value only if the argument has no existing value.</p>
 
 <p>CAREFUL: This does not automatically detect aliases or type violations! it will only effect the specific name given, even if invalid. See <a href="#fio_cli_set">fio_cli_set</a>.</p>

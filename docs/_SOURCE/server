@@ -338,7 +338,7 @@ FileUtils.rm(File.join(SOURCE_ROOT, 'changelog.md')) rescue nil
 
 
 # Setup iodine to serve static files and to run the Rack application `APP`
-Iodine.listen2http app: APP, log: true, public: ((ENV['RACK_ENV'] == 'production') ? STATIC_ROOT : SOURCE_ROOT)
+Iodine.listen service: :http, handler: APP, log: true, public: ((ENV['RACK_ENV'] == 'production') ? STATIC_ROOT : SOURCE_ROOT)
 # If no threads / processes were setup, use half the cores for multi-threading and a single process
 if(Iodine.threads == 0 && Iodine.workers == 0)
   Iodine.threads =-2;

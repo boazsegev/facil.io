@@ -41,6 +41,12 @@
 <li><a href="/0.7.x/fiobj_json">JSON</a></li>
 <li><a href="/0.7.x/fiobj_mustache">Mustache</a></li>
 </ul>
+
+<h3 id="miscellaneous">Miscellaneous</h3>
+
+<ul>
+<li><a href="/0.7.x/riskyhash">Risk Hash</a></li>
+</ul>
 </nav><div id="md_container"><div class='toc'><ul>
 <li>
 <a href="#facil-io-ssl-tls-functions">facil.io - SSL/TLS Functions</a>
@@ -54,16 +60,19 @@
 <a href="#fio_tls_new"><code>fio_tls_new</code></a>
 </li>
 <li>
+<a href="#fio_tls_dup"><code>fio_tls_dup</code></a>
+</li>
+<li>
 <a href="#fio_tls_destroy"><code>fio_tls_destroy</code></a>
 </li>
 <li>
 <a href="#fio_tls_cert_add"><code>fio_tls_cert_add</code></a>
 </li>
 <li>
-<a href="#fio_tls_proto_add"><code>fio_tls_proto_add</code></a>
+<a href="#fio_tls_trust"><code>fio_tls_trust</code></a>
 </li>
 <li>
-<a href="#fio_tls_trust"><code>fio_tls_trust</code></a>
+<a href="#fio_tls_alpn_add"><code>fio_tls_alpn_add</code></a>
 </li>
 </ul>
 </li>
@@ -78,6 +87,14 @@
 </li>
 </ul>
 </li>
+<li>
+<a href="#tls-compile-time-options">TLS Compile-Time Options</a>
+<ul>
+<li>
+<a href="#fio_tls_print_secret"><code>FIO_TLS_PRINT_SECRET</code></a>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -89,7 +106,7 @@
 
 <p>facil.io attempts to make TLS connections easy by providing a simplified API that abstracts away the underlying TLS library.</p>
 
-<p>OpenSSL support is included starting with facil.io version 0.7.0.beta6.</p>
+<p>Support for OpenSSL &gt;= <code>1.1.0</code> is included starting with facil.io version 0.7.0.beta6.</p>
 
 <p>Future support for BearSSL is planned and an example/template is provided under <code>fio_tls_missing.c</code>, making it easy to use your own SSL/TLS library.</p>
 
@@ -100,79 +117,110 @@
 <h3 id="tls-certificates-and-settings">TLS Certificates and Settings</h3>
 
 <h4 id="fio_tls_new"><code>fio_tls_new</code></h4>
-<pre><code class='highlight'><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">fio_tls_new</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span>
-                       <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_file</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">fio_tls_new</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span>
                        <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_certificate_file</span><span class="p">,</span>
+                       <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_file</span><span class="p">,</span>
                        <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_password</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <p>Creates a new SSL/TLS context / settings object with a default certificate (if any).</p>
-<pre><code class='highlight'><span class="n">fio_tls_s</span> <span class="o">*</span> <span class="n">tls</span> <span class="o">=</span> <span class="n">fio_tls_new</span><span class="p">(</span><span class="s">"www.example.com"</span><span class="p">,</span>
-                              <span class="s">"./ssl/private_key.pem"</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_tls_s</span> <span class="o">*</span> <span class="n">tls</span> <span class="o">=</span> <span class="n">fio_tls_new</span><span class="p">(</span><span class="s">"www.example.com"</span><span class="p">,</span>
                               <span class="s">"./ssl/public_key.pem"</span><span class="p">,</span>
+                              <span class="s">"./ssl/private_key.pem"</span><span class="p">,</span>
                               <span class="nb">NULL</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <p>If a server name is provided, than <code>NULL</code> values can be used to create an anonymous (unverified) context / settings object.</p>
-<pre><code class='highlight'><span class="n">fio_tls_s</span> <span class="o">*</span> <span class="n">tls</span> <span class="o">=</span> <span class="n">fio_tls_new</span><span class="p">(</span><span class="s">"www.example.com"</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_tls_s</span> <span class="o">*</span> <span class="n">tls</span> <span class="o">=</span> <span class="n">fio_tls_new</span><span class="p">(</span><span class="s">"www.example.com"</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+</code></pre></div>
 <p>If all values are <code>NULL</code>, a TLS object will be created without a certificate. This could be used for clients together with <code>fio_tls_trust</code></p>
-<pre><code class='highlight'><span class="n">fio_tls_s</span> <span class="o">*</span> <span class="n">tls</span> <span class="o">=</span> <span class="n">fio_tls_new</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_tls_s</span> <span class="o">*</span> <span class="n">tls</span> <span class="o">=</span> <span class="n">fio_tls_new</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
 <span class="n">fio_tls_trust</span><span class="p">(</span><span class="n">tls</span><span class="p">,</span> <span class="s">"google-ca.pem"</span> <span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <p><code>fio_tls_s *</code> is an opaque type used as a handle for the SSL/TLS functions. It shouldn&#39;t be directly accessed.</p>
 
 <p>Remember to call <code>fio_tls_destroy</code> once the <code>fio_tls_s</code> object is no longer in use.</p>
 
+<h4 id="fio_tls_dup"><code>fio_tls_dup</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_dup</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
+</code></pre></div>
+<p>Increase the reference count for the TLS object.</p>
+
+<p>Decrease / free with <code>fio_tls_destroy</code>.</p>
+
 <h4 id="fio_tls_destroy"><code>fio_tls_destroy</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_destroy</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_destroy</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">);</span>
+</code></pre></div>
 <p>Destroys the SSL/TLS context / settings object and frees any related resources / memory.</p>
 
 <h4 id="fio_tls_cert_add"><code>fio_tls_cert_add</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_cert_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span>
-                      <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_file</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_cert_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">server_name</span><span class="p">,</span>
                       <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_cert_file</span><span class="p">,</span>
+                      <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_file</span><span class="p">,</span>
                       <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">private_key_password</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <p>Adds a certificate a new SSL/TLS context / settings object (SNI support).</p>
-<pre><code class='highlight'><span class="n">fio_tls_cert_add</span><span class="p">(</span><span class="n">tls</span><span class="p">,</span> <span class="s">"www.example.com"</span><span class="p">,</span>
+
+<p>The <code>private_key_password</code> can be NULL if the private key PEM file isn&#39;t password protected. </p>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_tls_cert_add</span><span class="p">(</span><span class="n">tls</span><span class="p">,</span> <span class="s">"www.example.com"</span><span class="p">,</span>
+                      <span class="s">"./ssl/public_key.pem"</span><span class="p">,</span>
                       <span class="s">"./ssl/private_key.pem"</span><span class="p">,</span>
-                      <span class="s">"./ssl/public_key.pem"</span> <span class="p">);</span>
-</code></pre>
-<h4 id="fio_tls_proto_add"><code>fio_tls_proto_add</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_proto_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">protocol_name</span><span class="p">,</span>
-                       <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">callback</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">));</span>
-</code></pre>
-<p>Adds an ALPN protocol callback to the SSL/TLS context.</p>
-
-<p>The first protocol added will act as the default protocol to be selected when the client does not support or specify ALPN protocol selection.</p>
-
+                      <span class="nb">NULL</span><span class="p">);</span>
+</code></pre></div>
 <h4 id="fio_tls_trust"><code>fio_tls_trust</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_trust</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_cert_file</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_trust</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">public_cert_file</span><span class="p">);</span>
+</code></pre></div>
 <p>Adds a certificate to the &quot;trust&quot; list, which automatically adds a peer verification requirement.</p>
 
 <p>Note, when the fio_tls_s object is used for server connections, this will limit connections to clients that connect using a trusted certificate.</p>
-<pre><code class='highlight'><span class="n">fio_tls_trust</span><span class="p">(</span><span class="n">tls</span><span class="p">,</span> <span class="s">"google-ca.pem"</span> <span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_tls_trust</span><span class="p">(</span><span class="n">tls</span><span class="p">,</span> <span class="s">"google-ca.pem"</span> <span class="p">);</span>
+</code></pre></div>
+<h4 id="fio_tls_alpn_add"><code>fio_tls_alpn_add</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_alpn_add</span><span class="p">(</span><span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span>
+                       <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">protocol_name</span><span class="p">,</span>
+                       <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">on_selected</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span>
+                                        <span class="kt">void</span> <span class="o">*</span><span class="n">udata_connection</span><span class="p">,</span>
+                                        <span class="kt">void</span> <span class="o">*</span><span class="n">udata_tls</span><span class="p">),</span>
+                       <span class="kt">void</span> <span class="o">*</span><span class="n">udata_tls</span><span class="p">,</span>
+                       <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">on_cleanup</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">udata_tls</span><span class="p">));</span>
+</code></pre></div>
+<p>Adds an ALPN protocol callback to the SSL/TLS context.</p>
+
+<p>The first protocol added will act as the default protocol to be selected.</p>
+
+<p>The <code>on_selected</code> callback should accept the connection&#39;s <code>uuid</code>, the user data pointer passed to either <code>fio_tls_accept</code> or <code>fio_tls_connect</code> (here: <code>udata_connetcion</code>) and the user data pointer passed to the <code>fio_tls_alpn_add</code> function (<code>udata_tls</code>).</p>
+
+<p>The <code>on_cleanup</code> callback will be called when the TLS object is destroyed (or <code>fio_tls_alpn_add</code> is called again with the same protocol name). The <code>udata_tls</code> argument will be passed along, as is, to the callback (if set).</p>
+
+<p>Except for the <code>tls</code> and <code>protocol_name</code> arguments, all arguments can be NULL.</p>
+
 <h3 id="tls-connection-establishment">TLS Connection Establishment</h3>
 
 <h4 id="fio_tls_accept"><code>fio_tls_accept</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_accept</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_accept</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+</code></pre></div>
 <p>Establishes an SSL/TLS connection as an SSL/TLS Server, using the specified context / settings object.</p>
 
 <p>The <code>uuid</code> should be a socket UUID that is already connected to a peer (i.e., the result of <code>fio_accept</code>).</p>
 
-<p>The <code>udata</code> is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using <code>fio_tls_proto_add</code>).</p>
+<p>The <code>udata</code> is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using <code>fio_tls_alpn_add</code>).</p>
 
 <h4 id="fio_tls_connect"><code>fio_tls_connect</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_tls_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_tls_connect</span><span class="p">(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">fio_tls_s</span> <span class="o">*</span><span class="n">tls</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">udata</span><span class="p">);</span>
+</code></pre></div>
 <p>Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified context / settings object.</p>
 
 <p>The <code>uuid</code> should be a socket UUID that is already connected to a peer (i.e., one received by a <code>fio_connect</code> specified callback <code>on_connect</code>).</p>
 
-<p>The <code>udata</code> is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using <code>fio_tls_proto_add</code>).</p>
+<p>The <code>udata</code> is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using <code>fio_tls_alpn_add</code>).</p>
+
+<h3 id="tls-compile-time-options">TLS Compile-Time Options</h3>
+
+<h4 id="fio_tls_print_secret"><code>FIO_TLS_PRINT_SECRET</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#ifndef FIO_TLS_PRINT_SECRET
+</span><span class="cm">/* if true, the master key secret should be printed using FIO_LOG_DEBUG */</span>
+<span class="cp">#define FIO_TLS_PRINT_SECRET 0
+#endif
+</span></code></pre></div>
+<p>By setting <code>FIO_TLS_PRINT_SECRET</code> to a true value (1), facil.io will compile in a way that prints out the master key / secret to the debugging log, for use with WireShark or similar network debugging tools.</p>
 </div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
     if(localStorage.getItem("theme") == 'dark') {
         localStorage.setItem("theme", "light");

@@ -109,8 +109,8 @@
 <h2 id="the-evio-api">The <code>evio</code> API</h2>
 
 <h3 id="evio_create"><code>evio_create</code></h3>
-<pre><code class='highlight'><span class="kt">intptr_t</span> <span class="n">evio_create</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">evio_create</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+</code></pre></div>
 <p>Creates the <code>epoll</code> or <code>kqueue</code> object.</p>
 
 <p>It&#39;s impossible to add or remove file descriptors from the polling system before
@@ -124,8 +124,8 @@ since ALL the events will be shared among the forked processes (while not ALL
 the file descriptors are expected to be shared).</p>
 
 <h3 id="evio_review"><code>evio_review</code></h3>
-<pre><code class='highlight'><span class="kt">int</span> <span class="n">evio_review</span><span class="p">(</span><span class="k">const</span> <span class="kt">int</span> <span class="n">timeout_millisec</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">evio_review</span><span class="p">(</span><span class="k">const</span> <span class="kt">int</span> <span class="n">timeout_millisec</span><span class="p">)</span>
+</code></pre></div>
 <p>Reviews any pending events (up to <code>EVIO_MAX_EVENTS</code>) and calls any callbacks.</p>
 
 <p>Waits up to <code>timeout_millisec</code> for events to occur.</p>
@@ -133,27 +133,27 @@ the file descriptors are expected to be shared).</p>
 <p>Returns -1 on error, otherwise returns the number of events handled.</p>
 
 <h3 id="evio_close"><code>evio_close</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">evio_close</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">evio_close</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</code></pre></div>
 <p>Closes the <code>epoll</code> / <code>kqueue</code> object, releasing it&#39;s resources (important if
 forking!).</p>
 
 <h3 id="evio_isactive"><code>evio_isactive</code></h3>
-<pre><code class='highlight'><span class="kt">int</span> <span class="n">evio_isactive</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">evio_isactive</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+</code></pre></div>
 <p>Returns true if the evio is available for adding or removing file descriptors.</p>
 
 <h3 id="evio_add"><code>evio_add</code></h3>
-<pre><code class='highlight'><span class="kt">int</span> <span class="n">evio_add</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">callback_arg</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">evio_add</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">callback_arg</span><span class="p">)</span>
+</code></pre></div>
 <p>Adds a file descriptor to the polling object (ONE SHOT).</p>
 
 <p>Returns -1 on error, otherwise return value is system dependent and can be
 safely ignored.</p>
 
 <h3 id="evio_open_timer"><code>evio_open_timer</code></h3>
-<pre><code class='highlight'><span class="kt">intptr_t</span> <span class="n">evio_open_timer</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">evio_open_timer</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+</code></pre></div>
 <p>Creates a timer file descriptor, system dependent.</p>
 
 <p>Returns -1 on error, or a valid fd on success.</p>
@@ -161,8 +161,8 @@ safely ignored.</p>
 <p>NOTE: Systems have a limit on the number of timers that can be opened.</p>
 
 <h3 id="evio_set_timer"><code>evio_set_timer</code></h3>
-<pre><code class='highlight'><span class="kt">intptr_t</span> <span class="n">evio_set_timer</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">callback_arg</span><span class="p">,</span> <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">milliseconds</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">intptr_t</span> <span class="n">evio_set_timer</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">callback_arg</span><span class="p">,</span> <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">milliseconds</span><span class="p">)</span>
+</code></pre></div>
 <p>Adds a timer file descriptor, so that callbacks will be called for it&#39;s events.</p>
 
 <p>Returns -1 on error, otherwise return value is system dependent.</p>

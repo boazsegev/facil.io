@@ -106,7 +106,7 @@
 <p>The container could be placed on the stack as well as allocated on the heap.</p>
 
 <p>For example, here&#39;s an array with a container placed on the stack:</p>
-<pre><code class='highlight'><span class="cp">#include "fio_ary.h"
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "fio_ary.h"
 </span>
 <span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
   <span class="c1">// The array container.</span>
@@ -121,9 +121,9 @@
   <span class="c1">// free the internal data to avoid memory leaks</span>
   <span class="n">fio_ary_free</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ary</span><span class="p">);</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <p>Here&#39;s the same example, with the array container dynamically allocated:</p>
-<pre><code class='highlight'><span class="cp">#include "fio_ary.h"
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "fio_ary.h"
 </span>
 <span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
   <span class="c1">// The array container.</span>
@@ -141,7 +141,7 @@
   <span class="n">fio_ary_free</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
   <span class="n">free</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <h3 id="core-types-api">Core Types API</h3>
 
 <p>The API for the core types is documented within the source files. To read more about each type click the links here:</p>

@@ -57,7 +57,7 @@
 <p>The library is conveniently documented inside it&#39;s <code>defer.h</code> file.</p>
 
 <p><code>defer</code> can run in a single thread mode, without using a thread pool:</p>
-<pre><code class='highlight'><span class="cp">#include "defer.h"
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "defer.h"
 #include &lt;stdio.h&gt;
 </span><span class="c1">// an example task</span>
 <span class="kt">void</span> <span class="nf">say_hi</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span> <span class="n">arg1</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span> <span class="n">arg2</span><span class="p">)</span> <span class="p">{</span>
@@ -72,9 +72,9 @@
   <span class="n">defer_perform</span><span class="p">();</span>
   <span class="n">printf</span><span class="p">(</span><span class="s">"Done.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <p>Or using a thread pool:</p>
-<pre><code class='highlight'><span class="cp">#include "defer.h"
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "defer.h"
 #include &lt;stdint.h&gt;
 #include &lt;stdio.h&gt;
 </span><span class="c1">// an example task</span>
@@ -95,7 +95,7 @@
   <span class="n">defer_pool_wait</span><span class="p">(</span><span class="n">pool</span><span class="p">);</span>
   <span class="n">printf</span><span class="p">(</span><span class="s">"Done.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <p>This is actually most of the API right there, but if you need more details you can find them in the <a href="https://github.com/boazsegev/facil.io/blob/master/lib/facil/core/defer.h"><code>defer.h</code> header file</a>.</p>
 </div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
     if(localStorage.getItem("theme") == 'dark') {

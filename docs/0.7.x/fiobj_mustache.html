@@ -41,6 +41,12 @@
 <li><a href="/0.7.x/fiobj_json">JSON</a></li>
 <li><a href="/0.7.x/fiobj_mustache">Mustache</a></li>
 </ul>
+
+<h3 id="miscellaneous">Miscellaneous</h3>
+
+<ul>
+<li><a href="/0.7.x/riskyhash">Risk Hash</a></li>
+</ul>
 </nav><div id="md_container"><div class='toc'><ul>
 <li>
 <a href="#facil-io-fiobj-mustache-api">facil.io - FIOBJ Mustache API</a>
@@ -90,13 +96,13 @@
 <p>By loading the data from a file, or by providing a file name when loading the template from memory, partial templates are automatically resolved, loaded and parsed.</p>
 
 <h4 id="fiobj_mustache_load"><code>fiobj_mustache_load</code></h4>
-<pre><code class='highlight'><span class="n">mustache_s</span> <span class="o">*</span><span class="n">fiobj_mustache_load</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">filename</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">mustache_s</span> <span class="o">*</span><span class="n">fiobj_mustache_load</span><span class="p">(</span><span class="n">fio_str_info_s</span> <span class="n">filename</span><span class="p">);</span>
+</code></pre></div>
 <p>Loads a mustache template from a file, converting it into an opaque instruction array.</p>
 
 <p>This is the same as calling:</p>
-<pre><code class='highlight'><span class="n">fiobj_mustache_new</span><span class="p">(.</span><span class="n">filename</span> <span class="o">=</span> <span class="n">filename</span><span class="p">.</span><span class="n">data</span><span class="p">,</span> <span class="p">.</span><span class="n">filename_len</span> <span class="o">=</span> <span class="n">filename</span><span class="p">.</span><span class="n">len</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fiobj_mustache_new</span><span class="p">(.</span><span class="n">filename</span> <span class="o">=</span> <span class="n">filename</span><span class="p">.</span><span class="n">data</span><span class="p">,</span> <span class="p">.</span><span class="n">filename_len</span> <span class="o">=</span> <span class="n">filename</span><span class="p">.</span><span class="n">len</span><span class="p">);</span>
+</code></pre></div>
 <p>Returns an opaque <code>mustache_s</code> pointer to the instruction array or NULL (on error).</p>
 
 <p>The <code>filename</code> argument should contain the template&#39;s file name.</p>
@@ -104,10 +110,10 @@
 <p>Remember to call <code>fiobj_mustache_free</code> when done with the template.</p>
 
 <h4 id="fiobj_mustache_new"><code>fiobj_mustache_new</code></h4>
-<pre><code class='highlight'><span class="n">mustache_s</span> <span class="o">*</span><span class="n">fiobj_mustache_new</span><span class="p">(</span><span class="n">mustache_load_args_s</span> <span class="n">args</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">mustache_s</span> <span class="o">*</span><span class="n">fiobj_mustache_new</span><span class="p">(</span><span class="n">mustache_load_args_s</span> <span class="n">args</span><span class="p">);</span>
 <span class="cp">#define fiobj_mustache_new(...)                                                \
   fiobj_mustache_new((mustache_load_args_s){__VA_ARGS__})
-</span></code></pre>
+</span></code></pre></div>
 <p>Loads a mustache template, either from memory or a file, converting it into an opaque instruction array.</p>
 
 <p>Returns an opaque <code>mustache_s</code> pointer to the instruction array or NULL (on error).</p>
@@ -118,25 +124,25 @@
 
 <ul>
 <li><p><strong><code>filename</code></strong>  the root template&#39;s file name.</p>
-<pre><code class='highlight'><span class="c1">// argument type:</span>
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// argument type:</span>
 <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">filename</span>
-</code></pre></li>
+</code></pre></div></li>
 <li><p><strong><code>filename_len</code></strong>  the file name&#39;s length.</p>
-<pre><code class='highlight'><span class="c1">// argument type:</span>
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// argument type:</span>
 <span class="kt">size_t</span> <span class="n">filename_len</span>
-</code></pre></li>
+</code></pre></div></li>
 <li><p><strong><code>data</code></strong>  if both <code>data</code> and <code>data_len</code> are set, <code>data</code> will be used as the file&#39;s contents (instead of reading the file).</p>
-<pre><code class='highlight'><span class="c1">// argument type:</span>
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// argument type:</span>
 <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">data</span>
-</code></pre></li>
+</code></pre></div></li>
 <li><p><strong><code>data_len</code></strong>  if set, <code>data</code> will be used as the file&#39;s contents.</p>
-<pre><code class='highlight'><span class="c1">// argument type:</span>
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// argument type:</span>
 <span class="kt">size_t</span> <span class="n">data_len</span>
-</code></pre></li>
+</code></pre></div></li>
 <li><p><strong><code>err</code></strong>  a container for any template load errors.</p>
-<pre><code class='highlight'><span class="c1">// argument type:</span>
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// argument type:</span>
 <span class="n">mustache_error_en</span> <span class="o">*</span><span class="n">err</span>
-</code></pre></li>
+</code></pre></div></li>
 </ul>
 
 <p>Remember to call <code>fiobj_mustache_free</code> when done with the template.</p>
@@ -146,7 +152,7 @@
 <p>By setting the <code>filename</code> argument even when the <code>data</code> argument exists, it will allow path resolution for partial templates. Otherwise, there is no way to know where to find the partial templates.</p>
 
 <p>The <code>mustache_error_en</code> type is an <code>enum</code> which, if set, will contain any of the following:</p>
-<pre><code class='highlight'><span class="k">typedef</span> <span class="k">enum</span> <span class="n">mustache_error_en</span> <span class="p">{</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">typedef</span> <span class="k">enum</span> <span class="n">mustache_error_en</span> <span class="p">{</span>
   <span class="n">MUSTACHE_OK</span><span class="p">,</span>
   <span class="n">MUSTACHE_ERR_TOO_DEEP</span><span class="p">,</span>
   <span class="n">MUSTACHE_ERR_CLOSURE_MISMATCH</span><span class="p">,</span>
@@ -157,17 +163,17 @@
   <span class="n">MUSTACHE_ERR_UNKNOWN</span><span class="p">,</span>
   <span class="n">MUSTACHE_ERR_USER_ERROR</span><span class="p">,</span>
 <span class="p">}</span> <span class="n">mustache_error_en</span><span class="p">;</span>
-</code></pre>
+</code></pre></div>
 <h4 id="fiobj_mustache_free"><code>fiobj_mustache_free</code></h4>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fiobj_mustache_free</span><span class="p">(</span><span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fiobj_mustache_free</span><span class="p">(</span><span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">);</span>
+</code></pre></div>
 <p>Frees the mustache template pointer immediately (careful when using the template concurrently).</p>
 
 <h3 id="mustache-template-rendering-api">Mustache Template Rendering API</h3>
 
 <h4 id="fiobj_mustache_build"><code>fiobj_mustache_build</code></h4>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">fiobj_mustache_build</span><span class="p">(</span><span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_mustache_build</span><span class="p">(</span><span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
+</code></pre></div>
 <p>Creates a FIOBJ String containing the rendered template using the information in the FIOBJ <code>data</code> object (which should be a <code>FIOBJ_T_HASH</code> or data access might fail).</p>
 
 <p>Returns FIOBJ_INVALID if an error occurred and a FIOBJ String on success.</p>
@@ -177,8 +183,8 @@
 <p><strong>Note</strong>: The <code>mustache_s *</code> object can be used to render the same template multiple times concurrently.</p>
 
 <h4 id="fiobj_mustache_build2"><code>fiobj_mustache_build2</code></h4>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">fiobj_mustache_build2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_mustache_build2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">mustache_s</span> <span class="o">*</span><span class="n">mustache</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">data</span><span class="p">);</span>
+</code></pre></div>
 <p>Renders a template into an existing FIOBJ String (<code>dest</code>&#39;s end), using the information in the <code>data</code> object.</p>
 
 <p>Returns FIOBJ_INVALID if an error occurred and a FIOBJ String on success.</p>

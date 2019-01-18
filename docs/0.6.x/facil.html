@@ -88,7 +88,7 @@
 <p>The base type to handle the demands of protocols is <code>protocol_s</code>. This is no more then a struct with information about the callbacks that should be invoked on network events (incoming data, disconnection etc&#39;).</p>
 
 <p>Protocol object instances must be unique per connection, and so they are usually dynamically allocated.</p>
-<pre><code class='highlight'><span class="k">typedef</span> <span class="k">struct</span> <span class="p">{</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="p">{</span>
   <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">service</span><span class="p">;</span> <span class="cm">/** A pointer / string to identify the protocol (i.e. "http"). */</span>
   <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">on_data</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span> <span class="cm">/** called when a data is available */</span>
   <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">on_ready</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span>  <span class="cm">/** called when the socket is ready to be written to. */</span>
@@ -97,7 +97,7 @@
   <span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">ping</span><span class="p">)(</span><span class="kt">intptr_t</span> <span class="n">uuid</span><span class="p">,</span> <span class="n">protocol_s</span> <span class="o">*</span><span class="n">protocol</span><span class="p">);</span> <span class="cm">/** called when a connection's timeout was reached */</span>
   <span class="kt">size_t</span> <span class="n">rsv</span><span class="p">;</span> <span class="cm">/** private metadata used by facil. */</span>
 <span class="p">}</span> <span class="n">protocol_s</span><span class="p">;</span> <span class="c1">///*</span>
-</code></pre>
+</code></pre></div>
 <p>Protocol object instances should be initiated per connection, since <code>facil.io</code> uses a locking mechanism that prevents the same protocol object from running it&#39;s callbacks concurrently.</p>
 
 <p>By reviewing the HTTP and Websocket examples in the facil.io codebase, it&#39;s easy to see that the <code>protocol_s</code> &quot;class&quot; can be easily extended to add more data / features that might be required. &quot;C&quot; objects can use a typecasting style of inheritance which comes very handy when implementing network protocols.</p>

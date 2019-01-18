@@ -132,10 +132,10 @@
 <h2 id="data-structure-and-initialization">Data Structure and Initialization.</h2>
 
 <p>The container for a list is the same as a node, however, it must be initialized so that it links to itself (see <code>FIO_LS_INIT</code>). i.e.:</p>
-<pre><code class='highlight'><span class="n">fio_ls_s</span> <span class="n">my_list</span> <span class="o">=</span> <span class="n">FIO_LS_INIT</span><span class="p">(</span><span class="n">my_list</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_ls_s</span> <span class="n">my_list</span> <span class="o">=</span> <span class="n">FIO_LS_INIT</span><span class="p">(</span><span class="n">my_list</span><span class="p">);</span>
+</code></pre></div>
 <p>The linked list container is a simple data structure shown here... however, it is best to <strong>access the data using the API and avoid accessing the data directly</strong>. This will both protect the program from future changes to the data structures and minimize possible errors. </p>
-<pre><code class='highlight'><span class="cm">/** an embeded linked list. */</span>
+<div class="highlight"><pre class="highlight c"><code><span class="cm">/** an embeded linked list. */</span>
 <span class="k">typedef</span> <span class="k">struct</span> <span class="n">fio_ls_embd_s</span> <span class="p">{</span>
   <span class="k">struct</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">prev</span><span class="p">;</span>
   <span class="k">struct</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">next</span><span class="p">;</span>
@@ -149,7 +149,7 @@
 <span class="p">}</span> <span class="n">fio_ls_s</span><span class="p">;</span>
 
 <span class="cp">#define FIO_LS_INIT(name)  { .next = &amp;(name), .prev = &amp;(name) }
-</span></code></pre>
+</span></code></pre></div>
 <p>The container can be dynamically allocated, placed of the stack or embedded in a dynamic object.</p>
 
 <h2 id="generic-linked-list-api">Generic Linked List API</h2>
@@ -157,43 +157,43 @@
 <p>Note that the API is comprised of <strong>inline static functions that act like macros</strong>, so there is no performance to be gained by accessing the data structure directly (only integrity to be lost).</p>
 
 <h3 id="fio_ls_push"><code>fio_ls_push</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_ls_push</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_ls_push</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">)</span>
+</code></pre></div>
 <p>Adds an object to the list&#39;s head.</p>
 
 <h3 id="fio_ls_unshift"><code>fio_ls_unshift</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_ls_unshift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_ls_unshift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">pos</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">)</span>
+</code></pre></div>
 <p>Adds an object to the list&#39;s tail. </p>
 
 <h3 id="fio_ls_pop"><code>fio_ls_pop</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_pop</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_pop</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
+</code></pre></div>
 <p>Removes an object from the list&#39;s head.</p>
 
 <h3 id="fio_ls_shift"><code>fio_ls_shift</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_shift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_shift</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
+</code></pre></div>
 <p>Removes an object from the list&#39;s tail.</p>
 
 <h3 id="fio_ls_remove"><code>fio_ls_remove</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_remove</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">node</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ls_remove</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">node</span><span class="p">)</span>
+</code></pre></div>
 <p>Removes a node from the list, returning the contained object.</p>
 
 <h3 id="fio_ls_is_empty"><code>fio_ls_is_empty</code></h3>
-<pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_ls_is_empty</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_ls_is_empty</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
+</code></pre></div>
 <p>Tests if the list is empty.</p>
 
 <h3 id="fio_ls_any"><code>fio_ls_any</code></h3>
-<pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_ls_any</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_ls_any</span><span class="p">(</span><span class="n">fio_ls_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
+</code></pre></div>
 <p>Tests if the list is NOT empty (contains any nodes).</p>
 
 <h3 id="fio_ls_for"><code>FIO_LS_FOR</code></h3>
-<pre><code class='highlight'><span class="n">FIO_LS_FOR</span><span class="p">(</span><span class="n">list</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_LS_FOR</span><span class="p">(</span><span class="n">list</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+</code></pre></div>
 <p>Iterates through the list using a <code>for</code> loop.</p>
 
 <p>Access the data with <code>pos-&gt;obj</code> (<code>pos</code> can be named however you please).</p>
@@ -201,51 +201,51 @@
 <h2 id="embedded-list-api">Embedded List API</h2>
 
 <h3 id="fio_ls_embd_push"><code>fio_ls_embd_push</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_ls_embd_push</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_ls_embd_push</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">)</span>
+</code></pre></div>
 <p>Adds a node to the list&#39;s head.</p>
 
 <h3 id="fio_ls_embd_unshift"><code>fio_ls_embd_unshift</code></h3>
-<pre><code class='highlight'><span class="n">fio_ls_embd_unshift</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_ls_embd_unshift</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span> <span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">)</span>
+</code></pre></div>
 <p>Adds a node to the list&#39;s tail.</p>
 
 <h3 id="fio_ls_embd_pop"><code>fio_ls_embd_pop</code></h3>
-<pre><code class='highlight'><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">fio_ls_embd_pop</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">fio_ls_embd_pop</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
+</code></pre></div>
 <p>Removes a node from the list&#39;s head.</p>
 
 <h3 id="fio_ls_embd_shift"><code>fio_ls_embd_shift</code></h3>
-<pre><code class='highlight'><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">fio_ls_embd_shift</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">fio_ls_embd_shift</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
+</code></pre></div>
 <p>Removes a node from the list&#39;s tail.</p>
 
 <h3 id="fio_ls_embd_remove"><code>fio_ls_embd_remove</code></h3>
-<pre><code class='highlight'><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">fio_ls_embd_remove</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">fio_ls_embd_remove</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">node</span><span class="p">)</span>
+</code></pre></div>
 <p>Removes a node from it&#39;s container list.</p>
 
 <h3 id="fio_ls_embd_is_empty"><code>fio_ls_embd_is_empty</code></h3>
-<pre><code class='highlight'><span class="n">fio_ls_embd_is_empty</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">fio_ls_embd_is_empty</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
+</code></pre></div>
 <p>Tests if the list is empty.</p>
 
 <h3 id="fio_ls_embd_any"><code>fio_ls_embd_any</code></h3>
-<pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_ls_embd_any</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_ls_embd_any</span><span class="p">(</span><span class="n">fio_ls_embd_s</span> <span class="o">*</span><span class="n">list</span><span class="p">)</span>
+</code></pre></div>
 <p>Tests if the list is NOT empty (contains any nodes).</p>
 
 <h3 id="fio_ls_embd_for"><code>FIO_LS_EMBD_FOR</code></h3>
-<pre><code class='highlight'><span class="n">FIO_LS_EMBD_FOR</span><span class="p">(</span><span class="n">list</span><span class="p">,</span> <span class="n">node</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_LS_EMBD_FOR</span><span class="p">(</span><span class="n">list</span><span class="p">,</span> <span class="n">node</span><span class="p">)</span>
+</code></pre></div>
 <p>Iterates through the list using a <code>for</code> loop.</p>
 
 <p>Access the data with <code>pos-&gt;obj</code> (<code>pos</code> can be named however you pleas..</p>
 
 <h3 id="fio_ls_embd_obj"><code>FIO_LS_EMBD_OBJ</code></h3>
-<pre><code class='highlight'><span class="n">FIO_LS_EMBD_OBJ</span><span class="p">(</span><span class="n">type</span><span class="p">,</span> <span class="n">member</span><span class="p">,</span> <span class="n">plist</span><span class="p">)</span> \
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_LS_EMBD_OBJ</span><span class="p">(</span><span class="n">type</span><span class="p">,</span> <span class="n">member</span><span class="p">,</span> <span class="n">plist</span><span class="p">)</span> \
         <span class="p">((</span><span class="n">type</span> <span class="o">*</span><span class="p">)((</span><span class="kt">uintptr_t</span><span class="p">)(</span><span class="n">plist</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="kt">uintptr_t</span><span class="p">)(</span><span class="o">&amp;</span><span class="p">(((</span><span class="n">type</span> <span class="o">*</span><span class="p">)</span><span class="mi">0</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">member</span><span class="p">))))</span>
-</code></pre>
+</code></pre></div>
 <p>Takes a list pointer <code>plist</code> and returns a pointer to it&#39;s container.</p>
 
 <p>This uses pointer offset calculations and can be used to calculate any struct&#39;s pointer (not just list containers) as an offset from a pointer of one of it&#39;s members.</p>

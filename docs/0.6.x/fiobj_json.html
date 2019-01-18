@@ -104,7 +104,7 @@
 <p>The <code>facil.io</code> parser will parse any C string until it either consumes the whole string or completes parsing of a JSON object.</p>
 
 <p>For example, the following program will minify (or prettify) JSON data:</p>
-<pre><code class='highlight'><span class="c1">// include the `fiobj` module from `facil.io`</span>
+<div class="highlight"><pre class="highlight c"><code><span class="c1">// include the `fiobj` module from `facil.io`</span>
 <span class="cp">#include "fiobj.h"
 #include &lt;string.h&gt;
 </span><span class="c1">// this is passed as an argument to `fiobj_obj2json`</span>
@@ -157,7 +157,7 @@
   <span class="n">fiobj_free</span><span class="p">(</span><span class="n">obj</span><span class="p">);</span>
   <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <h2 id="constants">Constants</h2>
 
 <p><code>JSON_MAX_DEPTH</code> is the maximum depth for nesting. The default value is 32 (should be set during compile time).</p>
@@ -181,15 +181,15 @@
 <h2 id="functions">Functions</h2>
 
 <h3 id="fiobj_json2obj"><code>fiobj_json2obj</code></h3>
-<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fiobj_json2obj</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="o">*</span><span class="n">pobj</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fiobj_json2obj</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="o">*</span><span class="n">pobj</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">);</span>
+</code></pre></div>
 <p>Parses JSON, setting <code>pobj</code> to point to the new Object.</p>
 
 <p>Returns the number of bytes consumed. On Error, 0 is returned and no data is consumed.</p>
 
 <h3 id="fiobj_obj2json"><code>fiobj_obj2json</code></h3>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">fiobj_obj2json</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">pretty</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_obj2json</span><span class="p">(</span><span class="n">FIOBJ</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">pretty</span><span class="p">);</span>
+</code></pre></div>
 <p>Stringify an object into a JSON string. Remember to <code>fiobj_free</code>.</p>
 
 <p>Note that only the following basic fiobj types are supported: Primitives (True / False / NULL), Numbers (Number / Float), Strings, Hashes and Arrays.</p>
@@ -197,8 +197,8 @@
 <p>Some objects (such as the POSIX specific IO type) are unsupported and may be formatted incorrectly.</p>
 
 <h3 id="fiobj_obj2json2"><code>fiobj_obj2json2</code></h3>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">fiobj_obj2json2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">object</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">pretty</span><span class="p">);</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">fiobj_obj2json2</span><span class="p">(</span><span class="n">FIOBJ</span> <span class="n">dest</span><span class="p">,</span> <span class="n">FIOBJ</span> <span class="n">object</span><span class="p">,</span> <span class="kt">uint8_t</span> <span class="n">pretty</span><span class="p">);</span>
+</code></pre></div>
 <p>Formats an object into a JSON string, appending the JSON string to an existing String. Remember to <code>fiobj_free</code> as usual.</p>
 
 <p>Note that only the foloowing basic fiobj types are supported: Primitives (True / False / NULL), Numbers (Number / Float), Strings, Hashes and Arrays.</p>

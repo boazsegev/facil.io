@@ -13,7 +13,7 @@
 
 <ul>
 <li><p><a href="changelog">Change Log</a></p></li>
-<li><p><strong>Latest (beta)</strong>: 0.7.0.beta5</p></li>
+<li><p><strong>Latest (beta)</strong>: 0.7.0.beta7</p></li>
 <li><p><strong>Latest stable</strong>: 0.6.4</p></li>
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
@@ -22,6 +22,9 @@
 <ul>
 <li>
 <ul>
+<li>
+<a href="#v-0-7-0-beta7">v. 0.7.0.beta7</a>
+</li>
 <li>
 <a href="#v-0-7-0-beta6">v. 0.7.0.beta6</a>
 </li>
@@ -255,6 +258,30 @@
 </li>
 </ul>
 </div><h1 id="change-log">Change Log</h1>
+
+<h3 id="v-0-7-0-beta7">v. 0.7.0.beta7</h3>
+
+<p><strong>BREAK</strong>: (<code>fio_tls</code>) breaking API changes to the SSL/TLS API... I know, I&#39;m sorry, especially since there&#39;s a small and misleading change in argument ordering for <code>fio_tls_cert_add</code> and <code>fio_tls_new</code>... but if we don&#39;t fix the API now, before the 0.7.0 release, bad design might ruin our Wednesday meditation for all eternity.</p>
+
+<p><strong>BREAK</strong>: (<code>http</code>) breaking API changes to <code>http_connect</code> were required in order to support Unix Socket connections in client mode.</p>
+
+<p><strong>Deprecation</strong>: (<code>http</code>) deprecating the <code>http_url_parse</code> in favor of <code>fio_url_parse</code> (moved the function to the core library and rewrote it in part).</p>
+
+<p><strong>Security</strong>: facil.io hash maps now limit the number of full-collisions allowed in a hash map. This mitigates the effects of hash flooding attacks. As a side effect, hash maps that are under attack might return false results for collision objects.</p>
+
+<p><strong>Fix</strong>: (<code>websocket</code>) fixed an issue with the WebSocket parser where network byte order for long message lengths wasn&#39;t always respected and integer bit size was wrong for larger payloads. Credit to Marouane Elmidaoui (@moxgeek) for exposing the issue.</p>
+
+<p><strong>Fix</strong>: (<code>http</code>) fixed <code>udata</code> in WebSocket client callback for failed WebSocket client connections.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) logging message when listening to a Unix Socket.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) numerous minor design fixes, such as Big-Endian string memory access, allowing <code>fio.h</code> to be used as a header only library (requires <code>FIO_FORCE_MALLOC</code>) and other adjustments.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixed unaligned memory access in SipHash implementation and added secret randomization for each application restart.</p>
+
+<p><strong>Fix</strong>: (<code>redis</code>) fixed an issue where destroying the Redis engine and exiting pre-maturely, before running facio.io (<code>fio_start</code>), will cause a segmentation fault during cleanup.</p>
+
+<p><strong>Update</strong>: (<code>fio</code>) added Risky Hash, for fast hashing of safe data. This is a fast hashing function (about twice as fast as the default SipHash1-3 secure function) that wasn&#39;t tested for security. For this reason it should be limited to internal / safe data, such as CLI argument names.</p>
 
 <h3 id="v-0-7-0-beta6">v. 0.7.0.beta6</h3>
 
@@ -857,11 +884,11 @@
 
 <blockquote>
 <p>To use facil.io in a CMake build you may add it as a submodule to the project&#39;s repository.</p>
-<pre><code class='highlight'>  <span class="n">git</span> <span class="n">submodule</span> <span class="n">add</span> <span class="n">https</span><span class="o">:</span><span class="c1">//github.com/boazsegev/facil.io.git</span>
-</code></pre>
+<div class="highlight"><pre class="highlight plaintext"><code>  git submodule add https://github.com/boazsegev/facil.io.git
+</code></pre></div>
 <p>Then add the following line the project&#39;s <code>CMakeLists.txt</code></p>
-<pre><code class='highlight'>  <span class="n">add_subdirectory</span><span class="p">(</span><span class="n">facil</span><span class="p">.</span><span class="n">io</span><span class="p">)</span>
-</code></pre></blockquote>
+<div class="highlight"><pre class="highlight plaintext"><code>  add_subdirectory(facil.io)
+</code></pre></div></blockquote>
 
 <p><strong>Optimize</strong>: (<code>fio_hash_table</code>) optimize <code>fio_ht_s</code> bin memory allocations.</p>
 

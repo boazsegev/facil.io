@@ -148,7 +148,7 @@
 <p>The data in in the <code>fio_hash_s</code> type should be considered <em>opaque</em> and shouldn&#39;t be accessed directly. Functional access should be preferred.</p>
 
 <p>The <code>fio_hash_s</code> utilizes two arrays using internal data types that contain duplicates of the Hash key data, maximizing memory locality for Hash Map operations and minimizing cache misses to increase performance.</p>
-<pre><code class='highlight'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">fio_hash_data_ordered_s</span> <span class="p">{</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">fio_hash_data_ordered_s</span> <span class="p">{</span>
   <span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">;</span> <span class="cm">/* another copy for memory cache locality */</span>
   <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">;</span>
 <span class="p">}</span> <span class="n">fio_hash_data_ordered_s</span><span class="p">;</span>
@@ -167,12 +167,12 @@
   <span class="n">fio_hash_data_ordered_s</span> <span class="o">*</span><span class="n">ordered</span><span class="p">;</span>
   <span class="n">fio_hash_data_s</span> <span class="o">*</span><span class="n">map</span><span class="p">;</span>
 <span class="p">};</span>
-</code></pre>
+</code></pre></div>
 <h2 id="functions">Functions</h2>
 
 <h3 id="fio_hash_new"><code>fio_hash_new</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_hash_new</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_hash_new</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre></div>
 <p>Allocates and initializes internal data and resources.</p>
 
 <p>It&#39;s important to call this function before using the Hash Map.</p>
@@ -180,17 +180,17 @@
 <p>Lazy initialization of the Hash Map is possible by initializing the <code>fio_hash_s</code> to 0 (the default for static variables).</p>
 
 <h3 id="fio_hash_free"><code>fio_hash_free</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_hash_free</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_hash_free</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre></div>
 <p>Deallocates any internal resources.</p>
 
 <p>It is critical that this function is called to prevent memory leaks. <strong>However</strong>, this function is not enough to prevent memory leaks - custom keys (if any) and object data should also be deallocated (see also <code>FIO_HASH_FOR_FREE</code>).</p>
 
 <h3 id="fio_hash_insert"><code>fio_hash_insert</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_hash_insert</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_hash_insert</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span>
                       <span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span>
                       <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">)</span><span class="err">`</span>
-</code></pre>
+</code></pre></div>
 <p>Inserts an object to the Hash Map Table, rehashing if required, returning the old object if it exists.</p>
 
 <p>Set <code>obj</code> to NULL to remove an existing object (the existing object will be returned).</p>
@@ -198,59 +198,59 @@
 <p>The <code>FIO_HASH_KEY_TYPE</code> defaults to <code>uint64_t</code>, <a href="#collision-protection">this could be changed by defining macros <strong>before</strong> including the library file for increased collision protection</a>.</p>
 
 <h3 id="fio_hash_find"><code>fio_hash_find</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_hash_find</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span> <span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_hash_find</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span> <span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">)</span>
+</code></pre></div>
 <p>Locates an object in the Hash Map Table according to the hash key value.</p>
 
 <h3 id="fio_hash_count"><code>fio_hash_count</code></h3>
-<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_hash_count</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_hash_count</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre></div>
 <p>Returns the number of elements currently in the Hash Table.</p>
 
 <h3 id="fio_hash_capa"><code>fio_hash_capa</code></h3>
-<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_hash_capa</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_hash_capa</span><span class="p">(</span><span class="k">const</span> <span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre></div>
 <p>Returns a temporary theoretical Hash map capacity.</p>
 
 <p>This could be used for testing performance and memory consumption.</p>
 
 <h3 id="fio_hash_compact"><code>fio_hash_compact</code></h3>
-<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_hash_compact</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_hash_compact</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre></div>
 <p>Attempts to minimize memory usage by removing empty spaces caused by deleted
 items (freeing their custom keys, if any) and rehashing the Hash Map.</p>
 
 <p>Returns the updated hash map capacity.</p>
 
 <h3 id="fio_hash_rehash"><code>fio_hash_rehash</code></h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_hash_rehash</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_hash_rehash</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">)</span>
+</code></pre></div>
 <p>Forces a rehashing of the hash, increasing memory consumption as well as minimizing internal collisions (possibly improving seek times).</p>
 
 <p>This function is called automatically when needed, it&#39;s unlikely that you should want to call the function yourself.</p>
 
 <h3 id="fio_hash_each"><code>fio_hash_each</code></h3>
-<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_hash_each</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_hash_each</span><span class="p">(</span><span class="n">fio_hash_s</span> <span class="o">*</span><span class="n">hash</span><span class="p">,</span>
                      <span class="k">const</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
                      <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span>
                                  <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">,</span>
                                  <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">),</span>
                      <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <p>Iteration using a callback for each entry in the Hash Table.</p>
 
 <p>The callback task function must accept the hash key, the entry data and an
 opaque user pointer:</p>
-<pre><code class='highlight'><span class="kt">int</span> <span class="nf">example_task</span><span class="p">(</span><span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">)</span> <span class="p">{</span><span class="k">return</span> <span class="mi">0</span><span class="p">;}</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="nf">example_task</span><span class="p">(</span><span class="n">FIO_HASH_KEY_TYPE</span> <span class="n">key</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">obj</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">)</span> <span class="p">{</span><span class="k">return</span> <span class="mi">0</span><span class="p">;}</span>
+</code></pre></div>
 <p>If the callback returns -1, the loop is broken. Any other value is ignored.</p>
 
 <p>Returns the relative &quot;stop&quot; position, i.e., the number of items processed +
 the starting point.</p>
 
 <h3 id="fio_hash_for_loop"><code>FIO_HASH_FOR_LOOP</code></h3>
-<pre><code class='highlight'><span class="n">FIO_HASH_FOR_LOOP</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_HASH_FOR_LOOP</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+</code></pre></div>
 <p>A macro for a <code>for</code> loop that iterates over all the hashed objects (in
 order).</p>
 
@@ -262,8 +262,8 @@ name to be created for iteration.</p>
 <p>The <code>i</code> variable can be names differently (i.e. <code>FIO_HASH_FOR_LOOP(hash, pos)</code> for <code>pos-&gt;key</code> and <code>pos-&gt;obj</code>).</p>
 
 <h3 id="fio_hash_for_free"><code>FIO_HASH_FOR_FREE</code></h3>
-<pre><code class='highlight'><span class="n">FIO_HASH_FOR_FREE</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_HASH_FOR_FREE</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+</code></pre></div>
 <p>A macro for a <code>for</code> loop that will iterate over all the hashed objects (in
 order) and empties the hash, later calling <code>fio_hash_free</code> to free the hash.</p>
 
@@ -275,8 +275,8 @@ name to be created for iteration.</p>
 <p>Free the objects and the Hash Map container manually (if required). Custom keys will be freed automatically when using this macro.</p>
 
 <h3 id="fio_hash_for_empty"><code>FIO_HASH_FOR_EMPTY</code></h3>
-<pre><code class='highlight'><span class="n">FIO_HASH_FOR_EMPTY</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_HASH_FOR_EMPTY</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+</code></pre></div>
 <p>A macro for a <code>for</code> loop that iterates over all the hashed objects (in
 order) and empties the hash.</p>
 
@@ -347,7 +347,7 @@ name to be created for iteration.</p>
 <p>In this example collisions are forced by setting the <code>hash</code> and string length to be equal for all keys, this demonstrates how defining these macros can secure the hash against String key collisions.</p>
 
 <p>(another example can be found in the <code>pubsub.c</code> source code) </p>
-<pre><code class='highlight'><span class="cp">#define _GNU_SOURCE
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#define _GNU_SOURCE
 #include &lt;stdint.h&gt;
 #include &lt;stdlib.h&gt;
 #include &lt;string.h&gt;
@@ -430,7 +430,7 @@ name to be created for iteration.</p>
   <span class="n">fio_hash_insert</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">key3</span><span class="p">,</span> <span class="n">key3</span><span class="p">.</span><span class="n">str</span><span class="p">);</span>
   <span class="n">FIO_HASH_FOR_FREE</span><span class="p">(</span><span class="o">&amp;</span><span class="n">hash</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="p">{</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">i</span><span class="o">-&gt;</span><span class="n">obj</span><span class="p">;</span> <span class="p">}</span>
 <span class="p">}</span>
-</code></pre></div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+</code></pre></div></div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
     if(localStorage.getItem("theme") == 'dark') {
         localStorage.setItem("theme", "light");
     } else {

@@ -63,7 +63,7 @@
 </div><h1 id="facil-io-a-mini-framework-for-c-web-applications">facil.io - a mini-framework for C web applications</h1>
 
 <p>A Web application in C? It&#39;s as easy as:</p>
-<pre><code class='highlight'><span class="cp">#include "http.h" </span><span class="cm">/* the HTTP facil.io extension */</span><span class="cp">
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "http.h" </span><span class="cm">/* the HTTP facil.io extension */</span><span class="cp">
 </span>
 <span class="c1">// We'll use this callback in `http_listen`, to handles HTTP requests</span>
 <span class="kt">void</span> <span class="n">on_request</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">request</span><span class="p">);</span>
@@ -92,7 +92,7 @@
   <span class="n">http_set_header</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">HTTP_HEADER_X_DATA</span><span class="p">,</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"my data"</span><span class="p">,</span> <span class="mi">7</span><span class="p">));</span>
   <span class="n">http_send_body</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s">"Hello World!</span><span class="se">\r\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">14</span><span class="p">);</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <h2 id="facil-io-more-than-a-powerful-http-websockets-server-library">facil.io - more than a powerful HTTP/Websockets server library.</h2>
 
 <p><a href="http://facil.io">facil.io</a> is a C mini-framework for web applications and includes a fast HTTP and Websocket server, a <a href="pubsub.md">native Pub/Sub solution</a>, an optional Redis pub/sub engine, support for custom protocols and some nifty tidbits.</p>
@@ -110,7 +110,7 @@
 <h2 id="an-easy-chatroom-example">An easy chatroom example</h2>
 
 <p>Here&#39;s a simple Websocket chatroom example:</p>
-<pre><code class='highlight'><span class="cp">#include "http.h"
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "http.h"
 #include "pubsub.h"
 #include &lt;string.h&gt;
 </span>
@@ -231,7 +231,7 @@ HTTP Handling (Upgrading to Websocket)
 
   <span class="n">fiobj_free</span><span class="p">(</span><span class="n">CHAT_CHANNEL</span><span class="p">);</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <h2 id="further-reading">Further reading</h2>
 
 <p>The code in this project is heavily commented and the header files could (and probably should) be used as the actual documentation.</p>

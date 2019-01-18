@@ -116,7 +116,7 @@
 <h2 id="example">Example</h2>
 
 <p>Here&#39;s a short example from <a href="types.md">the introduction to the simple core types</a>:</p>
-<pre><code class='highlight'><span class="cp">#include "fio_ary.h"
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "fio_ary.h"
 </span>
 <span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
   <span class="c1">// The array container.</span>
@@ -131,7 +131,7 @@
   <span class="c1">// free the array's data to avoid memory leaks (doesn't free the objects)</span>
   <span class="n">fio_ary_free</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ary</span><span class="p">);</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <p>Note that the Array container can be placed on the stack (as well as allocated using <code>malloc</code>), but the internal data must be allocated and deallocated using <code>fio_ary_new</code> and <code>fio_ary_free</code>.</p>
 
 <h2 id="types">Types</h2>
@@ -139,18 +139,18 @@
 <p>The Core Array uses the <code>fio_ary_s</code> type.</p>
 
 <p>The data in in the <code>fio_ary_s</code> type shouldn&#39;t be accessed directly. Functional access should be preferred.</p>
-<pre><code class='highlight'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">fio_ary_s</span> <span class="p">{</span>
+<div class="highlight"><pre class="highlight c"><code><span class="k">typedef</span> <span class="k">struct</span> <span class="n">fio_ary_s</span> <span class="p">{</span>
   <span class="kt">size_t</span> <span class="n">start</span><span class="p">;</span>
   <span class="kt">size_t</span> <span class="n">end</span><span class="p">;</span>
   <span class="kt">size_t</span> <span class="n">capa</span><span class="p">;</span>
   <span class="kt">void</span> <span class="o">**</span><span class="n">arry</span><span class="p">;</span>
 <span class="p">}</span> <span class="n">fio_ary_s</span><span class="p">;</span>
-</code></pre>
+</code></pre></div>
 <h2 id="functions">Functions</h2>
 
 <h3 id="the-fio_ary_new-function">The <code>fio_ary_new</code> function</h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_ary_new</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">capa</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_ary_new</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">capa</span><span class="p">)</span>
+</code></pre></div>
 <p>Initializes the array and allocates memory for it&#39;s internal data.</p>
 
 <p>Note that <code>capa</code> indicates the <strong>initial</strong> (or <em>minimal</em>) capacity for the array, but the array can grow as long as memory allows.</p>
@@ -158,25 +158,25 @@
 <p>This will assume that <code>ary</code> is uninitialized and overwrite any existing data.</p>
 
 <h3 id="the-fio_ary_free-function">the <code>fio_ary_free</code> function</h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_ary_free</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_ary_free</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
+</code></pre></div>
 <p>Frees the array&#39;s internal data.</p>
 
 <p>If the <code>ary</code>&#39;s container (the <code>fio_ary_s</code> object) was allocated using <code>malloc</code>, a subsequent call to <code>free(ary)</code> must be made.</p>
 
 <h3 id="the-fio_ary_count-function">the <code>fio_ary_count</code> function</h3>
-<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_ary_count</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_ary_count</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
+</code></pre></div>
 <p>Returns the number of elements in the Array.</p>
 
 <h3 id="the-fio_ary_capa-function">the <code>fio_ary_capa</code> function</h3>
-<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_ary_capa</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_ary_capa</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
+</code></pre></div>
 <p>Returns the current, temporary, array capacity (it&#39;s dynamic).</p>
 
 <h3 id="the-fio_ary_index-function">the <code>fio_ary_index</code> function</h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ary_index</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ary_index</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">)</span>
+</code></pre></div>
 <p>Returns the object placed in the Array, if any. Returns NULL if no data or if
 the index is out of bounds.</p>
 
@@ -186,8 +186,8 @@ is the last item.</p>
 <p><code>fio_ary_entry</code> is an alias for <code>fiobj_ary_index</code>.</p>
 
 <h3 id="the-fio_ary_set-function">the <code>fio_ary_set</code> function</h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ary_set</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ary_set</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="kt">int64_t</span> <span class="n">pos</span><span class="p">)</span>
+</code></pre></div>
 <p>Sets an object at the requested position.</p>
 
 <p>Returns the old value, if any.</p>
@@ -195,42 +195,42 @@ is the last item.</p>
 <p>If an error occurs, the same data passed to the function is returned (test using <code>fiobj_ary_index</code>).</p>
 
 <h3 id="the-fio_ary_push-function">the <code>fio_ary_push</code> function</h3>
-<pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_ary_push</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_ary_push</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">)</span>
+</code></pre></div>
 <p>Pushes an object to the end of the Array. Returns -1 on error.</p>
 
 <h3 id="the-fio_ary_pop-function">the <code>fio_ary_pop</code> function</h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ary_pop</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ary_pop</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
+</code></pre></div>
 <p>Pops an object from the end of the Array</p>
 
 <p>Returns NULL if the object was NULL or the Array was empty.</p>
 
 <h3 id="the-fio_ary_unshift-function">the <code>fio_ary_unshift</code> function</h3>
-<pre><code class='highlight'><span class="kt">int</span> <span class="n">fio_ary_unshift</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">int</span> <span class="n">fio_ary_unshift</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">)</span>
+</code></pre></div>
 <p>Unshifts an object to the beginning of the Array. Returns -1 on error.</p>
 
 <p>This could be expensive, causing <code>memmove</code>.</p>
 
 <h3 id="the-fio_ary_shift-function">the <code>fio_ary_shift</code> function</h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ary_shift</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="o">*</span><span class="n">fio_ary_shift</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
+</code></pre></div>
 <p>Shifts an object from the beginning of the Array.</p>
 
 <p>Returns NULL if the object was NULL or the Array was empty.</p>
 
 <h3 id="the-fio_ary_compact-function">the <code>fio_ary_compact</code> function</h3>
-<pre><code class='highlight'><span class="kt">void</span> <span class="n">fio_ary_compact</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_ary_compact</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">)</span>
+</code></pre></div>
 <p>Removes any NULL <em>pointers</em> from an Array, keeping all other data in the
 array.</p>
 
 <p>This action is O(n) where n in the length of the array.</p>
 
 <h3 id="the-fio_ary_for-macro">the <code>FIO_ARY_FOR</code> macro</h3>
-<pre><code class='highlight'><span class="n">FIO_ARY_FOR</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
-</code></pre>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIO_ARY_FOR</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+</code></pre></div>
 <p>Iterates through the list using a <code>for</code> loop.</p>
 
 <p>Access the data with <code>pos.obj</code> and it&#39;s index with <code>pos.i</code>.</p>
@@ -238,10 +238,10 @@ array.</p>
 <p>The <code>pos</code> variable can be named however you please (i.e. <code>FIO_ARY_FOR(&amp;bar, foo)</code> for <code>foo.i</code> and <code>foo.obj</code>).</p>
 
 <h3 id="the-fio_ary_each-function">the <code>fio_ary_each</code> function</h3>
-<pre><code class='highlight'><span class="kt">size_t</span> <span class="n">fio_ary_each</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">size_t</span> <span class="n">fio_ary_each</span><span class="p">(</span><span class="n">fio_ary_s</span> <span class="o">*</span><span class="n">ary</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">start_at</span><span class="p">,</span>
                                     <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">task</span><span class="p">)(</span><span class="kt">void</span> <span class="o">*</span><span class="n">pt</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">),</span>
                                     <span class="kt">void</span> <span class="o">*</span><span class="n">arg</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <p>Iteration using a callback for each entry in the array.</p>
 
 <p>The callback task function must accept an the entry data as well as an opaque

@@ -41,10 +41,16 @@
 <li><a href="/0.7.x/fiobj_json">JSON</a></li>
 <li><a href="/0.7.x/fiobj_mustache">Mustache</a></li>
 </ul>
+
+<h3 id="miscellaneous">Miscellaneous</h3>
+
+<ul>
+<li><a href="/0.7.x/riskyhash">Risk Hash</a></li>
+</ul>
 </nav><div id="md_container"><h1 id="facil-io-a-mini-framework-for-c-web-applications">facil.io - a mini-framework for C web applications</h1>
 
 <p>A Web application in C? It&#39;s as easy as:</p>
-<pre><code class='highlight'><span class="cp">#include "http.h" </span><span class="cm">/* the HTTP facil.io extension */</span><span class="cp">
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "http.h" </span><span class="cm">/* the HTTP facil.io extension */</span><span class="cp">
 </span>
 <span class="c1">// We'll use this callback in `http_listen`, to handles HTTP requests</span>
 <span class="kt">void</span> <span class="n">on_request</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">request</span><span class="p">);</span>
@@ -75,7 +81,7 @@
   <span class="n">http_set_header</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">HTTP_HEADER_X_DATA</span><span class="p">,</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"my data"</span><span class="p">,</span> <span class="mi">7</span><span class="p">));</span>
   <span class="n">http_send_body</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s">"Hello World!</span><span class="se">\r\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">14</span><span class="p">);</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <h2 id="facil-io-more-than-a-powerful-http-websockets-server-library">facil.io - more than a powerful HTTP/Websockets server library.</h2>
 
 <p><a href="http://facil.io">facil.io</a> is an evented Network library written in C. It provides high performance TCP/IP network services by using an evented design that was tested to provide an easy solution to <a href="http://www.kegel.com/c10k.html">the C10K problem</a>.</p>
@@ -90,12 +96,14 @@
 
 <p><a href="http://facil.io">facil.io</a>&#39;s core library is a two-file library (<code>fio.h</code> and <code>fio.c</code>), making it easy to incorporate networking solutions into any project.</p>
 
+<p><a href="http://facil.io">facil.io</a> supports both single-threaded and multi-threaded operation modes as well as a hybrid mode (multi-process with either a single-threaded or multi-threaded workers).</p>
+
 <p>I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the <code>makefile</code> for each environment).</p>
 
 <h2 id="an-easy-chat-room-example">An easy chat-room example</h2>
 
 <p>Here&#39;s a simple WebSocket chat-room example:</p>
-<pre><code class='highlight'><span class="cp">#include "fio_cli.h"
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "fio_cli.h"
 #include "http.h"
 </span>
 <span class="cm">/* Chat-room channel name */</span>
@@ -209,7 +217,7 @@ The main function
   <span class="n">fio_start</span><span class="p">(.</span><span class="n">threads</span> <span class="o">=</span> <span class="n">fio_cli_get_i</span><span class="p">(</span><span class="s">"-t"</span><span class="p">),</span> <span class="p">.</span><span class="n">workers</span> <span class="o">=</span> <span class="n">fio_cli_get_i</span><span class="p">(</span><span class="s">"-w"</span><span class="p">));</span>
   <span class="n">fio_cli_end</span><span class="p">();</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <h2 id="further-reading">Further reading</h2>
 
 <p>The code in this project is heavily commented and the header files could (and probably should) be used as the actual documentation.</p>

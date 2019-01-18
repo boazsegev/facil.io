@@ -41,6 +41,12 @@
 <li><a href="/0.7.x/fiobj_json">JSON</a></li>
 <li><a href="/0.7.x/fiobj_mustache">Mustache</a></li>
 </ul>
+
+<h3 id="miscellaneous">Miscellaneous</h3>
+
+<ul>
+<li><a href="/0.7.x/riskyhash">Risk Hash</a></li>
+</ul>
 </nav><div id="md_container"><div class='toc'><ul>
 <li>
 <a href="#dynamic-type-system-facil-io-objects-fiobj">Dynamic Type System: facil.io objects (<code>FIOBJ</code>)</a>
@@ -129,7 +135,7 @@
 <p>All object access should be functional, or using the macros provided. Although this requirement can be circumvented, using the functional interface should be preferred.</p>
 
 <p>For example:</p>
-<pre><code class='highlight'><span class="cp">#include "fiobj.h"
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "fiobj.h"
 </span><span class="cm">/* this will work */</span>
 <span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_buf</span><span class="p">(</span><span class="mi">6</span><span class="p">);</span> <span class="cm">/* automatically adds room for the NUL terminator */</span>
 <span class="n">fio_str_info_s</span> <span class="n">raw_str</span> <span class="o">=</span> <span class="n">fiobj_obj2cstr</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
@@ -154,7 +160,7 @@
 <span class="n">fiobj_str_printf</span><span class="p">(</span><span class="s">"%s %d"</span> <span class="p">,</span> <span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">42</span><span class="p">)</span>
 <span class="c1">// ...</span>
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <h3 id="ownership-follows-nesting">Ownership Follows Nesting</h3>
 
 <p>An object&#39;s memory should <em>always</em> be managed by it&#39;s &quot;owner&quot;. This usually means the calling function.</p>
@@ -162,18 +168,18 @@
 <p><em>However</em>, when an object is nested within another object (i.e., placed in an Array or set as the <em>value</em> for a Hash or an HTTP header), <strong>the ownership of the object is transferred</strong>.</p>
 
 <p>In the following example, the String nested within the Array is freed when the Array is freed:</p>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
 <span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
 <span class="n">fiobj_ary_push</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="n">str</span><span class="p">);</span>
 <span class="c1">// ...</span>
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <p>Hashes follow the same rule. However...</p>
 
 <p>It&#39;s important to note that <strong>Hash keys ownership isn&#39;t transferred to the Hash</strong> (keys are used to access and store data, but they are not the data itself).</p>
 
 <p>When calling <code>fiobj_hash_set</code>, we are storing a <em>value</em> in the Hash, the <em>key</em> is what we use to access that value. This is why <strong>the key&#39;s ownership remains with the calling function</strong>. i.e.:</p>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">h</span> <span class="o">=</span> <span class="n">fiobj_hash_new</span><span class="p">();</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">h</span> <span class="o">=</span> <span class="n">fiobj_hash_new</span><span class="p">();</span>
 <span class="n">FIOBJ</span> <span class="n">key</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"life"</span><span class="p">,</span> <span class="mi">4</span><span class="p">);</span>
 <span class="cm">/* By placing the Number in the Hash, it will be deallocated together with the Hash */</span>
 <span class="n">fiobj_hash_set</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">fiobj_num_new</span><span class="p">(</span><span class="mi">42</span><span class="p">));</span>
@@ -182,13 +188,13 @@
 <span class="c1">// ...</span>
 <span class="cm">/* eventually we need to free the key */</span>
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">key</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <h3 id="passing-by-reference">Passing By Reference</h3>
 
 <p>All objects are passed along by reference. The <code>dup</code> (duplication) process simply increases the reference count.</p>
 
 <p>This is a very powerful tool. In the following example, <code>str2</code> is a &quot;copy&quot; <strong>by reference</strong> of <code>str</code>. By editing <code>str2</code> we&#39;re also editing <code>str</code>:</p>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
 <span class="n">FIOBJ</span> <span class="n">str2</span> <span class="o">=</span> <span class="n">fiobj_dup</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
 <span class="cm">/* We'll edit str2 to say "Hello There!" instead of "Hello!" */</span>
 <span class="n">fiobj_str_resize</span><span class="p">(</span><span class="n">str2</span><span class="p">,</span> <span class="mi">5</span><span class="p">);</span>
@@ -198,9 +204,9 @@
 <span class="cm">/* we need to free both references to free the memory */</span>
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">str2</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <p>An independent copy can be created using an object&#39;s specific copy function. This example  create a new, independent, object instead of referencing the old one:</p>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">str</span> <span class="o">=</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
 <span class="cm">/* create a copy instead of a reference */</span>
 <span class="n">FIOBJ</span> <span class="n">str2</span> <span class="o">=</span> <span class="n">fiobj_str_copy</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
 <span class="cm">/* this is the same as */</span>
@@ -209,9 +215,9 @@
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">str</span><span class="p">);</span>
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">str2</span><span class="p">);</span>
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">str3</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <p>Copy by reference produces a deep reference adjustment, so Arrays and Hashes can be safely copied by reference.</p>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
 <span class="n">fiobj_ary_push</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"Hello!"</span><span class="p">,</span> <span class="mi">6</span><span class="p">));</span>
 <span class="n">FIOBJ</span> <span class="n">ary_copy</span> <span class="o">=</span> <span class="n">fiobj_dup</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
 <span class="c1">// ...</span>
@@ -219,13 +225,13 @@
 <span class="c1">// all the items in ary2 are still accessible.</span>
 <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"%s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">fiobj_obj2cstr</span><span class="p">(</span> <span class="n">fiobj_ary_index</span><span class="p">(</span><span class="n">ary_copy</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">).</span><span class="n">buffer</span> <span class="p">);</span>
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">ary_copy</span><span class="p">);</span>
-</code></pre>
+</code></pre></div>
 <h3 id="cyclic-nesting-errors">Cyclic Nesting Errors</h3>
 
 <p>Cyclic protection is unsupported mostly because of performance concerns, but also because cyclic nesting is impractical for network applications (for example, how would a cyclic object be formatted into JSON?).  </p>
 
 <p>Cyclic nesting should be avoided. For example, the following code will (at best case scenario) crash:</p>
-<pre><code class='highlight'><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
+<div class="highlight"><pre class="highlight c"><code><span class="n">FIOBJ</span> <span class="n">ary</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
 <span class="n">FIOBJ</span> <span class="n">ary2</span> <span class="o">=</span> <span class="n">fiobj_ary_new</span><span class="p">();</span>
 <span class="c1">// cyclic nesting</span>
 <span class="n">fiobj_ary_push</span><span class="p">(</span><span class="n">ary</span><span class="p">,</span> <span class="n">ary2</span><span class="p">);</span>
@@ -234,7 +240,7 @@
 <span class="n">fiobj_free</span><span class="p">(</span><span class="n">ary</span><span class="p">);</span>
 <span class="c1">// each2 will cycle forever</span>
 <span class="n">fiobj_each2</span><span class="p">(</span><span class="n">ary2</span><span class="p">,</span> <span class="p">...);</span>
-</code></pre>
+</code></pre></div>
 <h2 id="independence">Independence</h2>
 
 <p>The <code>FIOBJ</code> module is independent and can be extracted from <code>facil.io</code> by copying the <code>fiobj.h</code> file (under <code>lib/facil/core/types</code>) and all the files in the <code>lib/facil/core/types/fiobj</code> folder.</p>

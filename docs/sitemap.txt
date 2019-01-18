@@ -43,6 +43,7 @@ http://facil.io/0.7.x/fiobj_hash
 http://facil.io/0.7.x/fiobj_mustache
 http://facil.io/0.7.x/fiobj_data
 http://facil.io/0.7.x/fiobj_json
+http://facil.io/0.7.x/riskyhash
 http://facil.io/0.7.x/fiobj_primitives
 http://facil.io/404
 

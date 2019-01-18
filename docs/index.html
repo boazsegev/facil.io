@@ -13,7 +13,7 @@
 
 <ul>
 <li><p><a href="changelog">Change Log</a></p></li>
-<li><p><strong>Latest (beta)</strong>: 0.7.0.beta5</p></li>
+<li><p><strong>Latest (beta)</strong>: 0.7.0.beta7</p></li>
 <li><p><strong>Latest stable</strong>: 0.6.4</p></li>
 </ul>
 </nav><div id="md_container"><h1 id="facil-io-the-c-web-application-framework">facil.io - The C Web Application Framework</h1>
@@ -31,13 +31,14 @@
 
 <p>In addition to detailed documentation and examples, the API is unified in style and the same types and API used for HTTP requests is used for JSON and Mustache rendering - so there&#39;s less to learn.</p></li>
 <li><p><a href="http://facil.io">facil.io</a> should work on Linux / BSD / macOS (and possibly CYGWIN) and is continuously tested on both Linux and macOS.</p></li>
+<li><p><a href="http://facil.io">facil.io</a> supports both single-threaded and multi-threaded operation modes as well as a hybrid mode (multi-process with either a single-threaded or multi-threaded workers).</p></li>
 <li><p><a href="http://facil.io">facil.io</a> is a source code library, making it easy to incorporate into any project. The API was designed for simplicity and extendability, which means writing new extensions and custom network protocols is easy.</p></li>
 </ul>
 
 <p>I used this library (including the HTTP server) on Linux, Mac OS X and FreeBSD (I had to edit the <code>makefile</code> for each environment).</p>
 
 <h3 id="a-web-application-in-c-its-as-easy-as">A Web application in C? It&#39;s as easy as...</h3>
-<pre><code class='highlight'><span class="cp">#include "http.h" </span><span class="cm">/* the HTTP facil.io extension */</span><span class="cp">
+<div class="highlight"><pre class="highlight c"><code><span class="cp">#include "http.h" </span><span class="cm">/* the HTTP facil.io extension */</span><span class="cp">
 </span>
 <span class="c1">// We'll use this callback in `http_listen`, to handles HTTP requests</span>
 <span class="kt">void</span> <span class="n">on_request</span><span class="p">(</span><span class="n">http_s</span> <span class="o">*</span><span class="n">request</span><span class="p">);</span>
@@ -66,7 +67,7 @@
   <span class="n">http_set_header</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">HTTP_HEADER_X_DATA</span><span class="p">,</span> <span class="n">fiobj_str_new</span><span class="p">(</span><span class="s">"my data"</span><span class="p">,</span> <span class="mi">7</span><span class="p">));</span>
   <span class="n">http_send_body</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s">"Hello World!</span><span class="se">\r\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">14</span><span class="p">);</span>
 <span class="p">}</span>
-</code></pre>
+</code></pre></div>
 <p><em>(Written using version 0.7.0)</em></p>
 
 <h3 id="creating-a-web-application-using-facil-io">Creating a Web Application Using facil.io</h3>
@@ -74,18 +75,18 @@
 <p>Starting a new application with facil.io is as easy as <a href="https://github.com/boazsegev/facil.io">downloading a copy of facil.io from GitHub</a>.</p>
 
 <p>To make things easier, <a href="https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app">a script</a> is provided.</p>
-<pre><code class='highlight'>bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
-</code></pre>
+<div class="highlight"><pre class="highlight shell"><code>bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
+</code></pre></div>
 <p>By default, this script downloads the latest release, which may or may not be what you want.</p>
 
 <p>It&#39;s possible to download a specific release or branch, (for example, the latest 0.6.x release, 0.6.4) using <code>FIO_RELEASE</code> or <code>FIO_BRANCH</code>.</p>
 
 <p>i.e., download the latest <strong>stable</strong> release, version 0.6.4:</p>
-<pre><code class='highlight'><span class="nv">FIO_RELEASE</span><span class="o">=</span>0.6.4 bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
-</code></pre>
+<div class="highlight"><pre class="highlight shell"><code><span class="nv">FIO_RELEASE</span><span class="o">=</span>0.6.4 bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
+</code></pre></div>
 <p>i.e., or download the latest development (edge) version from the <code>master</code> branch:</p>
-<pre><code class='highlight'><span class="nv">FIO_BRANCH</span><span class="o">=</span>master bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
-</code></pre>
+<div class="highlight"><pre class="highlight shell"><code><span class="nv">FIO_BRANCH</span><span class="o">=</span>master bash &lt;<span class="o">(</span>curl <span class="nt">-s</span> https://raw.githubusercontent.com/boazsegev/facil.io/master/scripts/new/app<span class="o">)</span> appname
+</code></pre></div>
 <hr>
 
 <h2 id="forking-contributing-and-all-that-jazz">Forking, Contributing and all that Jazz</h2>
