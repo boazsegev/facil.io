@@ -542,29 +542,34 @@ static inline void websocket_on_pubsub_message_direct_internal(fio_msg_s *msg,
   }
   FIOBJ message = FIOBJ_INVALID;
   FIOBJ pre_wrapped = FIOBJ_INVALID;
-  switch (txt) {
-  case 0:
-    pre_wrapped =
-        (FIOBJ)fio_message_metadata(msg, WEBSOCKET_OPTIMIZE_PUBSUB_BINARY);
-    break;
-  case 1:
-    pre_wrapped =
-        (FIOBJ)fio_message_metadata(msg, WEBSOCKET_OPTIMIZE_PUBSUB_TEXT);
-    break;
-  case 2:
-    pre_wrapped = (FIOBJ)fio_message_metadata(msg, WEBSOCKET_OPTIMIZE_PUBSUB);
-    break;
-  default:
-    break;
-  }
-  if (pre_wrapped) {
-    fiobj_send_free((intptr_t)msg->udata1, fiobj_dup(pre_wrapped));
-    goto finish;
+  if (!((ws_s *)pr)->is_client) {
+    /* pre-wrapping is only for client data */
+    switch (txt) {
+    case 0:
+      pre_wrapped =
+          (FIOBJ)fio_message_metadata(msg, WEBSOCKET_OPTIMIZE_PUBSUB_BINARY);
+      break;
+    case 1:
+      pre_wrapped =
+          (FIOBJ)fio_message_metadata(msg, WEBSOCKET_OPTIMIZE_PUBSUB_TEXT);
+      break;
+    case 2:
+      pre_wrapped = (FIOBJ)fio_message_metadata(msg, WEBSOCKET_OPTIMIZE_PUBSUB);
+      break;
+    default:
+      break;
+    }
+    if (pre_wrapped) {
+      FIO_LOG_DEBUG(
+          "pub/sub WebSocket optimization route for pre-wrapped message.");
+      fiobj_send_free((intptr_t)msg->udata1, fiobj_dup(pre_wrapped));
+      goto finish;
+    }
   }
   if (txt == 2) {
     /* unknown text state */
     fio_str_s tmp =
-        FIO_STR_INIT_EXISTING(msg->msg.data, msg->msg.len, 0); // don't free
+        FIO_STR_INIT_STATIC2(msg->msg.data, msg->msg.len); // don't free
     txt = (tmp.len >= (2 << 14) ? 0 : fio_str_utf8_valid(&tmp));
   }
   websocket_write((ws_s *)pr, msg->msg, txt & 1);
