@@ -560,8 +560,8 @@ static inline void websocket_on_pubsub_message_direct_internal(fio_msg_s *msg,
       break;
     }
     if (pre_wrapped) {
-      FIO_LOG_DEBUG(
-          "pub/sub WebSocket optimization route for pre-wrapped message.");
+      // FIO_LOG_DEBUG(
+      //     "pub/sub WebSocket optimization route for pre-wrapped message.");
       fiobj_send_free((intptr_t)msg->udata1, fiobj_dup(pre_wrapped));
       goto finish;
     }
