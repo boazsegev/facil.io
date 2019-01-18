@@ -10,6 +10,8 @@
 
 **Security**: facil.io hash maps now limit the number of full-collisions allowed in a hash map. This mitigates the effects of hash flooding attacks. As a side effect, hash maps that are under attack might return false results for collision objects.
 
+**Fix**: (`websocket`) fixed an issue with the WebSocket parser where network byte order for long message lengths wasn't always respected.
+
 **Fix**: (`http`) fixed `udata` in WebSocket client callback for failed WebSOcket client connections.
 
 **Fix**: (`fio`) logging message when listening to a Unix Socket.
