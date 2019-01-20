@@ -6,7 +6,7 @@ toc: false
 
 * [facil.io](http://facil.io) is an evented Network library written in C.
 
-   [facil.io](http://facil.io) provides high performance TCP/IP network services by using an evented design that was tested to provide an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
+    [facil.io](http://facil.io) provides high performance TCP/IP network services by using an evented design that was tested to provide an easy solution to [the C10K problem](http://www.kegel.com/c10k.html).
 
 * [facil.io](http://facil.io) includes a mini-framework for Web Applications, with a fast HTTP / WebSocket server, integrated Pub/Sub, optional Redis connectivity, easy JSON handling, [Mustache](http://mustache.github.io) template rendering and more nifty tidbits.
 

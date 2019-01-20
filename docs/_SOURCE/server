@@ -10,11 +10,6 @@
 # I wouldn't recommend trying to read the code, it will only give you a headache...
 #
 # ...even I'm not sure what it does or how. I just threw it together to have something that works.
-#
-#    P.S.
-#   =====
-#
-#  I'm using an unreleased version of the 'iodine' gem. Install the gem from GitHub to use the script
 
 
 # Gems and stuff we use in this script
@@ -22,15 +17,13 @@ require 'redcarpet'
 require 'erb'
 require 'slim'
 require 'sass'
-require 'iodine'  # edge version from GitHub!
+require 'iodine'
 require 'fileutils'
 require 'yaml'
 require 'set'
 require 'json'
 require 'rouge'
 require 'rouge/plugins/redcarpet'
-
-# require 'ostruct'
 
 # The folder for source files
 SOURCE_ROOT = File.dirname(__FILE__)
