@@ -6785,6 +6785,7 @@ void fio_mem_init(void) {}
 Memory Copying by 16 byte units
 ***************************************************************************** */
 
+/** used internally, only when memory addresses are known to be aligned */
 static inline void fio_memcpy(void *__restrict dest_, void *__restrict src_,
                               size_t units) {
 #if __SIZEOF_INT128__ == 9 /* a 128bit type exists... but tests favor 64bit */
