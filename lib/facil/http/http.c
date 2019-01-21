@@ -1058,8 +1058,8 @@ intptr_t http_connect FIO_IGNORE_MACRO(const char *url,
     errno = EINVAL;
     goto on_error;
   }
-  size_t len;
-  char *a = NULL, *p = NULL;
+  size_t len = 0, h_len = 0;
+  char *a = NULL, *p = NULL, *host = NULL;
   uint8_t is_websocket = 0;
   uint8_t is_secure = 0;
   FIOBJ path = FIOBJ_INVALID;
@@ -1094,7 +1094,8 @@ intptr_t http_connect FIO_IGNORE_MACRO(const char *url,
     }
     if (unix_address) {
       a = (char *)unix_address;
-      len = strlen(a);
+      h_len = len = strlen(a);
+      host = a;
     } else {
       if (!u.host.data) {
         FIO_LOG_ERROR("http_connect requires a valid address.");
@@ -1122,6 +1123,10 @@ intptr_t http_connect FIO_IGNORE_MACRO(const char *url,
         p[2] = 0;
       }
     }
+    if (u.host.data) {
+      host = u.host.data;
+      h_len = u.host.len;
+    }
   }
 
   /* set settings */
@@ -1146,8 +1151,9 @@ intptr_t http_connect FIO_IGNORE_MACRO(const char *url,
   h->path = path;
   settings->udata = h;
   settings->tls = arg_settings.tls;
-  http_set_header2(h, (fio_str_info_s){.data = (char *)"host", .len = 4},
-                   (fio_str_info_s){.data = a, .len = len});
+  if (host)
+    http_set_header2(h, (fio_str_info_s){.data = (char *)"host", .len = 4},
+                     (fio_str_info_s){.data = host, .len = h_len});
   intptr_t ret;
   if (is_websocket) {
     /* force HTTP/1.1 */
