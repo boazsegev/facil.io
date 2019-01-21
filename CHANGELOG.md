@@ -1,5 +1,9 @@
 # Change Log
 
+### v. 0.7.0
+
+**Fix**: (`http`) possible fix for `http_connect`, where `host` header length might have been left uninitialized, resulting in possible errors.
+
 ### v. 0.7.0.beta7
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API... I know, I'm sorry, especially since there's a small and misleading change in argument ordering for `fio_tls_cert_add` and `fio_tls_new`... but if we don't fix the API now, before the 0.7.0 release, bad design might ruin our Wednesday meditation for all eternity.
