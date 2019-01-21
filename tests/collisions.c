@@ -229,19 +229,19 @@ static uintptr_t counter(char *data, size_t len) {
   /* leftover bytes */
   switch ((len & 7)) {
   case 7: /* overflow */
-    tmp |= ((uint64_t)data[6]) << 56;
+    tmp |= ((uint64_t)data[6]) << 8;
   case 6: /* overflow */
-    tmp |= ((uint64_t)data[5]) << 48;
+    tmp |= ((uint64_t)data[5]) << 16;
   case 5: /* overflow */
-    tmp |= ((uint64_t)data[4]) << 40;
+    tmp |= ((uint64_t)data[4]) << 24;
   case 4: /* overflow */
     tmp |= ((uint64_t)data[3]) << 32;
   case 3: /* overflow */
-    tmp |= ((uint64_t)data[2]) << 24;
+    tmp |= ((uint64_t)data[2]) << 40;
   case 2: /* overflow */
-    tmp |= ((uint64_t)data[1]) << 16;
+    tmp |= ((uint64_t)data[1]) << 48;
   case 1: /* overflow */
-    tmp |= ((uint64_t)data[0]) << 8;
+    tmp |= ((uint64_t)data[0]) << 56;
   }
   __asm__ volatile("" ::: "memory");
   return ++counter;
@@ -669,7 +669,7 @@ FIO_FUNC void find_bit_collisions(hashing_func_fn fn, size_t collision_count,
 }
 
 static void add_bad_words(void) {
-  if(!fio_cli_get("-t")) {
+  if (!fio_cli_get("-t")) {
     find_bit_collisions(risky, 16, 16);
     find_bit_collisions(xxhash_test, 16, 16);
     find_bit_collisions(siphash13, 16, 16);
@@ -881,4 +881,3 @@ inline FIO_FUNC uintptr_t fio_risky_hash_old(void *data_, size_t len,
 #if TEST_XXHASH
 #include "xxhash.c"
 #endif
-
