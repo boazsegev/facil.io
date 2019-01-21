@@ -22,7 +22,7 @@ Risky Hash should be limited to testing and safe environments until it's fully a
 
 ## Credits
 
-Florian Weber (@Florianjw) [exposed coding errors (last 8 byte ordering) and took time challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the initialization stage was updated in response.
+Florian Weber (@Florianjw) [exposed coding errors (last 8 byte ordering) and took a bit of time to challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the initialization stage was updated in response.
 
 ## Purpose
 
