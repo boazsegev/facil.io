@@ -121,7 +121,7 @@ The four consumption vectors are initialized using the seed ("secret") like so:
 ```txt
 V1 = seed XOR P[1],
 V2 = (~seed) + P[1],
-V3 = LROT(seed, 17) XOR P[1],
+V3 = LROT(seed, 17) XOR (P[0] + P[1]),
 V4 = LROT(seed, 33) + (~P[1]),
 ```
 

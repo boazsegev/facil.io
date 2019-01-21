@@ -225,7 +225,7 @@ P[1] = 0xAB137439982B86C9
 <p>The four consumption vectors are initialized using the seed (&quot;secret&quot;) like so:</p>
 <div class="highlight"><pre class="highlight plaintext"><code>V1 = seed XOR P[1],
 V2 = (~seed) + P[1],
-V3 = LROT(seed, 17) XOR P[1],
+V3 = LROT(seed, 17) XOR (P[0] + P[1]),
 V4 = LROT(seed, 33) + (~P[1]),
 </code></pre></div>
 <h3 id="consumption">Consumption</h3>
