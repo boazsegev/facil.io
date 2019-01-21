@@ -20,10 +20,6 @@ Risky Hash is still under development and review. This specification should be c
 
 Risky Hash should be limited to testing and safe environments until it's fully analyzed and reviewed.
 
-## Credits
-
-Florian Weber (@Florianjw) [exposed coding errors (last 8 byte ordering) and took a bit of time to challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the initialization stage was updated in response.
-
 ## Purpose
 
 Risky Hash is designed for fast Hash Map key calculation for both big and small keys. It attempts to act as a 64 bit keyed PRF.
@@ -688,3 +684,7 @@ Input vcode 0x00000001, Output vcode 0x00000001, Result vcode 0x00000001
 Verification value is 0x00000001 - Testing took 698.326758 seconds
 -------------------------------------------------------------------------------
 ```
+
+## Extra Credits
+
+Florian Weber (@Florianjw) [exposed coding errors (last 8 byte ordering) and took a bit of time to challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the initialization stage was updated in response.

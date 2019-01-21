@@ -55,9 +55,6 @@
 <a href="#status">Status</a>
 </li>
 <li>
-<a href="#credits">Credits</a>
-</li>
-<li>
 <a href="#purpose">Purpose</a>
 </li>
 <li>
@@ -100,6 +97,9 @@
 <li>
 <a href="#smhasher-results">SMHasher results</a>
 </li>
+<li>
+<a href="#extra-credits">Extra Credits</a>
+</li>
 </ul>
 </li>
 </ul>
@@ -120,10 +120,6 @@
 <p>Risky Hash is still under development and review. This specification should be considered a working draft.</p>
 
 <p>Risky Hash should be limited to testing and safe environments until it&#39;s fully analyzed and reviewed.</p>
-
-<h2 id="credits">Credits</h2>
-
-<p>Florian Weber (@Florianjw) <a href="https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3">exposed coding errors (last 8 byte ordering) and took a bit of time to challenge the algorithm</a>. The exposed errors were fixed and the initialization stage was updated in response.</p>
 
 <h2 id="purpose">Purpose</h2>
 
@@ -770,7 +766,11 @@ Testing distribution - Worst bias is the  17-bit window at bit  28 - 0.138%
 Input vcode 0x00000001, Output vcode 0x00000001, Result vcode 0x00000001
 Verification value is 0x00000001 - Testing took 698.326758 seconds
 -------------------------------------------------------------------------------
-</code></pre></div></div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
+</code></pre></div>
+<h2 id="extra-credits">Extra Credits</h2>
+
+<p>Florian Weber (@Florianjw) <a href="https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3">exposed coding errors (last 8 byte ordering) and took a bit of time to challenge the algorithm</a>. The exposed errors were fixed and the initialization stage was updated in response.</p>
+</div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
     if(localStorage.getItem("theme") == 'dark') {
         localStorage.setItem("theme", "light");
     } else {
