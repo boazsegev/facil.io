@@ -155,8 +155,8 @@
 <ul>
 <li><p>Maliciously crafted data won&#39;t be able to weaken the hash function or expose the &quot;secret&quot;.</p>
 
-<p>This is achieved by reading the data twice and using a different operation each time. This minimized the possibility of finding a malicious value that could break both operations.</p></li>
-<li><p>Repeated data blocks should produce different results according to it&#39;s position.</p></li>
+<p>This is achieved by reading the data twice and using a different operation each time. This minimizes the possibility of finding a malicious value that could break both operations.</p></li>
+<li><p>Repeated data blocks should produce different results according to their position.</p></li>
 </ul>
 
 <p>This is achieved by performing left-rotation and prime multiplication in a way that causes different positions to have different side effects.</p>
@@ -169,7 +169,7 @@
 
 <p>This also imposes a constraint about the number of registers, or &quot;hidden variables&quot;, each vector should use.</p>
 
-<p>(for example <code>a += a + b</code> requires two registers, while <code>a += b</code> requires one)</p>
+<p>(for example <code>a += a + b</code> could require two registers, while <code>a = (a * 2) + b</code> requires one)</p>
 
 <p>It should be noted that Risky Hash consumes data in 64 bit chunks/words.</p>
 
@@ -196,7 +196,7 @@
 
 <h2 id="specifics">Specifics</h2>
 
-<p>A non-streaming implementation can be found at the <code>fio.h</code> header, in the static function: <code>fio_risky_hash</code>.</p>
+<p>A non-streaming C implementation can be found at the <code>fio.h</code> header, in the static function: <code>fio_risky_hash</code> and later on in this document.</p>
 
 <p>Risky Hash uses 4 reading vectors, each containing 64 bits.</p>
 
@@ -210,11 +210,10 @@ P[1] = 0xAB137439982B86C9
 
 <ul>
 <li><code>~</code> marks a bit inversion.</li>
-<li><code>+</code> marks a mod 2^64 addition..</li>
+<li><code>+</code> marks a mod 2^64 addition.</li>
 <li><code>XOR</code> marks an XOR operation.</li>
 <li><code>MUL(x,y)</code> a mod 2^64 multiplication.</li>
 <li><code>LROT(x,bits)</code> is a left rotation of a 64 bit word.</li>
-<li><code>&lt;&lt;</code> is a left shift (not rotate, some bits are lost).</li>
 <li><code>&gt;&gt;</code> is a right shift (not rotate, some bits are lost).</li>
 </ul>
 
@@ -254,13 +253,13 @@ V = MUL(P[0], V)
 <div class="highlight"><pre class="highlight plaintext"><code>result = result + length
 </code></pre></div>
 <p>The vectors are mixed in with the word using prime number multiplication to minimize any bias:</p>
-<div class="highlight"><pre class="highlight plaintext"><code>result = result + (V1 * P[1])
+<div class="highlight"><pre class="highlight plaintext"><code>result = result + MUL(V1, P[1])
 result = result XOR LROT(result, 13);
-result = result + (V2 * P[1])
+result = result + MUL(V2, P[1])
 result = result XOR LROT(result, 29);
-result = result + (V3 * P[1])
+result = result + MUL(V3, P[1])
 result = result XOR LROT(result, 33);
-result = result + (V4 * P[1])
+result = result + MUL(V4, P[1])
 result = result XOR LROT(result, 51);
 </code></pre></div>
 <p>Finally, the result is mixed with itself to improve bit entropy distribution and hinder reversibility.</p>

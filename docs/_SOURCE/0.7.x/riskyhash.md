@@ -56,9 +56,9 @@ In the consumption stage, Risky Hash attempts to achieves three goals:
 
 * Maliciously crafted data won't be able to weaken the hash function or expose the "secret".
 
-    This is achieved by reading the data twice and using a different operation each time. This minimized the possibility of finding a malicious value that could break both operations.
+    This is achieved by reading the data twice and using a different operation each time. This minimizes the possibility of finding a malicious value that could break both operations.
 
-* Repeated data blocks should produce different results according to it's position.
+* Repeated data blocks should produce different results according to their position.
 
    This is achieved by performing left-rotation and prime multiplication in a way that causes different positions to have different side effects.
 
@@ -68,7 +68,7 @@ In the consumption stage, Risky Hash attempts to achieves three goals:
 
    This also imposes a constraint about the number of registers, or "hidden variables", each vector should use.
 
-   (for example `a += a + b` requires two registers, while `a += b` requires one)
+   (for example `a += a + b` could require two registers, while `a = (a * 2) + b` requires one)
 
 It should be noted that Risky Hash consumes data in 64 bit chunks/words.
 
@@ -92,7 +92,7 @@ At this stage, the 256 bits of data are reduced to a 64 bit result.
 
 ## Specifics
 
-A non-streaming implementation can be found at the `fio.h` header, in the static function: `fio_risky_hash`.
+A non-streaming C implementation can be found at the `fio.h` header, in the static function: `fio_risky_hash` and later on in this document.
 
 Risky Hash uses 4 reading vectors, each containing 64 bits.
 
@@ -108,11 +108,10 @@ P[1] = 0xAB137439982B86C9
 The following operations are used:
 
 * `~` marks a bit inversion.
-* `+` marks a mod 2^64 addition..
+* `+` marks a mod 2^64 addition.
 * `XOR` marks an XOR operation.
 * `MUL(x,y)` a mod 2^64 multiplication.
 * `LROT(x,bits)` is a left rotation of a 64 bit word.
-* `<<` is a left shift (not rotate, some bits are lost).
 * `>>` is a right shift (not rotate, some bits are lost).
 
 ### Initialization
@@ -165,13 +164,13 @@ result = result + length
 The vectors are mixed in with the word using prime number multiplication to minimize any bias:
 
 ```txt
-result = result + (V1 * P[1])
+result = result + MUL(V1, P[1])
 result = result XOR LROT(result, 13);
-result = result + (V2 * P[1])
+result = result + MUL(V2, P[1])
 result = result XOR LROT(result, 29);
-result = result + (V3 * P[1])
+result = result + MUL(V3, P[1])
 result = result XOR LROT(result, 33);
-result = result + (V4 * P[1])
+result = result + MUL(V4, P[1])
 result = result XOR LROT(result, 51);
 ```
 
