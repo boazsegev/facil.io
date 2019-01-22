@@ -7436,8 +7436,8 @@ void *realloc(void *ptr, size_t new_size) { return fio_realloc(ptr, new_size); }
 /* tested for randomness using code from: http://xoshiro.di.unimi.it/hwd.php */
 uint64_t fio_rand64(void) {
   /* modeled after xoroshiro128+, by David Blackman and Sebastiano Vigna */
-  static uint64_t s[2]; /* random state */
-  static uint16_t c;    /* seed counter */
+  static __thread uint64_t s[2]; /* random state */
+  static __thread uint16_t c;    /* seed counter */
   const uint64_t P[] = {0x37701261ED6C16C7ULL, 0x764DBBB75F3B3E0DULL};
   if (c++ == 0) {
     /* re-seed state every 65,536 requests */
