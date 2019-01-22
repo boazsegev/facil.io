@@ -72,7 +72,9 @@ In the consumption stage, Risky Hash attempts to achieves three goals:
 
 It should be noted that Risky Hash consumes data in 64 bit chunks/words.
 
-Any trailing data that doesn't fit in a 64 bit word is padded with zeros and consumed by a specific consumption vector (rather than consumed in order). 
+Any trailing data that doesn't fit in a 64 bit word is padded with zeros and **consumed by a specific consumption vector** (rather than consumed in order)\*. 
+
+\* Using a pre-determined consumption vector for the trailing data can improve performance significantly, especially for very short data. It makes it easier for the compiler to optimize the state vector variables away (using only CPU registers) and/or to minimize branching (depending on coding approach).
 
 ### Overview: Mixing
 
@@ -143,7 +145,7 @@ V = MUL(P[0], V)
 
 If the data fits evenly in 64 bit words, than it will be read with no padding, even if some vectors perform more consumption rounds than others.
 
-If the last 64 bit word is incomplete, it will be padded with zeros (0) and consumed by the last vector (`V4`), regardless of it's position within a 256 bit block.
+If the last 64 bit word is incomplete, it will be padded with zeros (0) and consumed by the last vector (`V4`), **regardless of it's position within a 256 bit block**.
 
 ### Hash Mixing
 
@@ -267,7 +269,7 @@ uintptr_t risky_hash(const void *data_, size_t len, uint64_t seed) {
   }
 
   uint64_t tmp = 0;
-  /* consume leftover bytes, if any */
+  /* consume leftover bytes, if any, always using the 4th vector */
   switch ((len & 7)) {
   case 7: /* overflow */
     tmp |= ((uint64_t)data[6]) << 8;

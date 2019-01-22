@@ -176,7 +176,9 @@
 
 <p>It should be noted that Risky Hash consumes data in 64 bit chunks/words.</p>
 
-<p>Any trailing data that doesn&#39;t fit in a 64 bit word is padded with zeros and consumed by a specific consumption vector (rather than consumed in order). </p>
+<p>Any trailing data that doesn&#39;t fit in a 64 bit word is padded with zeros and <strong>consumed by a specific consumption vector</strong> (rather than consumed in order)*. </p>
+
+<p>* Using a pre-determined consumption vector for the trailing data can improve performance significantly, especially for very short data. It makes it easier for the compiler to optimize the state vector variables away (using only CPU registers) and/or to minimize branching (depending on coding approach).</p>
 
 <h3 id="overview-mixing">Overview: Mixing</h3>
 
@@ -243,7 +245,7 @@ V = MUL(P[0], V)
 </code></pre></div>
 <p>If the data fits evenly in 64 bit words, than it will be read with no padding, even if some vectors perform more consumption rounds than others.</p>
 
-<p>If the last 64 bit word is incomplete, it will be padded with zeros (0) and consumed by the last vector (<code>V4</code>), regardless of it&#39;s position within a 256 bit block.</p>
+<p>If the last 64 bit word is incomplete, it will be padded with zeros (0) and consumed by the last vector (<code>V4</code>), <strong>regardless of it&#39;s position within a 256 bit block</strong>.</p>
 
 <h3 id="hash-mixing">Hash Mixing</h3>
 
@@ -296,7 +298,7 @@ License: MIT
 
 <span class="cm">/** 64 bit left rotation, inlined. */</span>
 <span class="cp">#define fio_lrot64(i, bits)                                                    \
-  (((uint64_t)(i) &lt;&lt; ((bits)&amp;63UL)) | ((uint64_t)(i) &gt;&gt; ((-(bits)) &amp; 63UL)))
+  (((uint64_t)(i) &lt;&lt; ((bits) &amp; 63UL)) | ((uint64_t)(i) &gt;&gt; ((-(bits)) &amp; 63UL)))
 </span>
 <span class="cm">/** Converts an unaligned network ordered byte stream to a 64 bit number. */</span>
 <span class="cp">#define fio_str2u64(c)                                                         \
@@ -309,7 +311,7 @@ License: MIT
               (((uint64_t)((uint8_t *)(c))[6]) &lt;&lt; 8) |                         \
               ((uint64_t)0 + ((uint8_t *)(c))[7])))
 </span>
-<span class="cm">/* Risky Hash consumption round, accepts a state word s and an input word w */</span>
+<span class="cm">/* Risky Hash consumption round, updates state word `s` with input word `w` */</span>
 <span class="cp">#define fio_risky_consume(s, w)                                                \
   (s) ^= (w);                                                                  \
   (s) = fio_lrot64((s), 33) + (w);                                             \
@@ -333,7 +335,7 @@ License: MIT
   <span class="cm">/* reading position */</span>
   <span class="k">const</span> <span class="kt">uint8_t</span> <span class="o">*</span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint8_t</span> <span class="o">*</span><span class="p">)</span><span class="n">data_</span><span class="p">;</span>
 
-  <span class="cm">/* consume 256bit blocks */</span>
+  <span class="cm">/* consume 256 bit blocks */</span>
   <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">len</span> <span class="o">&gt;&gt;</span> <span class="mi">5</span><span class="p">;</span> <span class="n">i</span><span class="p">;</span> <span class="o">--</span><span class="n">i</span><span class="p">)</span> <span class="p">{</span>
     <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span><span class="p">));</span>
     <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">8</span><span class="p">));</span>
@@ -352,8 +354,8 @@ License: MIT
     <span class="n">data</span> <span class="o">+=</span> <span class="n">len</span> <span class="o">&amp;</span> <span class="mi">24</span><span class="p">;</span>
   <span class="p">}</span>
 
-  <span class="kt">uintptr_t</span> <span class="n">tmp</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
-  <span class="cm">/* consume leftover bytes, if any */</span>
+  <span class="kt">uint64_t</span> <span class="n">tmp</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="cm">/* consume leftover bytes, if any, always using the 4th vector */</span>
   <span class="k">switch</span> <span class="p">((</span><span class="n">len</span> <span class="o">&amp;</span> <span class="mi">7</span><span class="p">))</span> <span class="p">{</span>
   <span class="k">case</span> <span class="mi">7</span><span class="p">:</span> <span class="cm">/* overflow */</span>
     <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">6</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">8</span><span class="p">;</span>
