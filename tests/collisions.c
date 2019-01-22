@@ -682,9 +682,15 @@ static void add_bad_words(void) {
 /* *****************************************************************************
 Hash experimentation workspace
 ***************************************************************************** */
+/* Risky Hash consumption round, accepts a state word s and an input word w */
+#define fio_risky_consume(s, w)                                                \
+  (s) ^= (w);                                                                  \
+  (s) = fio_lrot64((s), 33) + (w);                                             \
+  (s) *= primes[0];
 
-inline FIO_FUNC uintptr_t fio_risky_hash2(const void *data_, size_t len,
-                                          uint64_t seed) {
+/*  Computes a facil.io Risky Hash. */
+static inline uintptr_t fio_risky_hash2(const void *data_, size_t len,
+                                        uint64_t seed) {
   /* The primes used by Risky Hash */
   const uint64_t primes[] = {
       0xFBBA3FA15B22113B, // 1111101110111010001111111010000101011011001000100001000100111011
@@ -694,40 +700,29 @@ inline FIO_FUNC uintptr_t fio_risky_hash2(const void *data_, size_t len,
   uint64_t v[4] = {
       seed ^ primes[1],
       ~seed + primes[1],
-      fio_lrot64(seed, 17) ^ primes[1],
-      fio_lrot64(seed, 33) + primes[1],
+      fio_lrot64(seed, 17) ^ (primes[1] + primes[0]),
+      fio_lrot64(seed, 33) + (~primes[1]),
   };
-
-/* Risky Hash consumption round */
-#define fio_risky_consume(w, i)                                                \
-  v[i] ^= (w);                                                                 \
-  v[i] = fio_lrot64(v[i], 33) + (w);                                           \
-  v[i] *= primes[0];
-
-/* compilers could, hopefully, optimize this code for SIMD */
-#define fio_risky_consume256(w0, w1, w2, w3)                                   \
-  fio_risky_consume(w0, 0);                                                    \
-  fio_risky_consume(w1, 1);                                                    \
-  fio_risky_consume(w2, 2);                                                    \
-  fio_risky_consume(w3, 3);
 
   /* reading position */
   const uint8_t *data = (uint8_t *)data_;
 
   /* consume 256bit blocks */
   for (size_t i = len >> 5; i; --i) {
-    fio_risky_consume256(fio_str2u64(data), fio_str2u64(data + 8),
-                         fio_str2u64(data + 16), fio_str2u64(data + 24));
+    fio_risky_consume(v[0], fio_str2u64(data));
+    fio_risky_consume(v[1], fio_str2u64(data + 8));
+    fio_risky_consume(v[2], fio_str2u64(data + 16));
+    fio_risky_consume(v[3], fio_str2u64(data + 24));
     data += 32;
   }
   /* Consume any remaining 64 bit words. */
   switch (len & 24) {
   case 24:
-    fio_risky_consume(fio_str2u64(data + 16), 2);
+    fio_risky_consume(v[2], fio_str2u64(data + 16));
   case 16: /* overflow */
-    fio_risky_consume(fio_str2u64(data + 8), 1);
+    fio_risky_consume(v[1], fio_str2u64(data + 8));
   case 8: /* overflow */
-    fio_risky_consume(fio_str2u64(data), 0);
+    fio_risky_consume(v[0], fio_str2u64(data));
     data += len & 24;
   }
 
@@ -735,20 +730,36 @@ inline FIO_FUNC uintptr_t fio_risky_hash2(const void *data_, size_t len,
   /* consume leftover bytes, if any */
   switch ((len & 7)) {
   case 7: /* overflow */
-    tmp |= ((uint64_t)data[6]) << 56;
+    tmp |= ((uint64_t)data[6]) << 8;
   case 6: /* overflow */
-    tmp |= ((uint64_t)data[5]) << 48;
+    tmp |= ((uint64_t)data[5]) << 16;
   case 5: /* overflow */
-    tmp |= ((uint64_t)data[4]) << 40;
+    tmp |= ((uint64_t)data[4]) << 24;
   case 4: /* overflow */
     tmp |= ((uint64_t)data[3]) << 32;
   case 3: /* overflow */
-    tmp |= ((uint64_t)data[2]) << 24;
+    tmp |= ((uint64_t)data[2]) << 40;
   case 2: /* overflow */
-    tmp |= ((uint64_t)data[1]) << 16;
+    tmp |= ((uint64_t)data[1]) << 48;
   case 1: /* overflow */
-    tmp |= ((uint64_t)data[0]) << 8;
-    fio_risky_consume(tmp, 3);
+    tmp |= ((uint64_t)data[0]) << 56;
+    /* ((len & 24) >> 3) is a 0-3 value representing the next state vector */
+    /* `switch` allows v[i] to be a register without a memory address */
+    /* using v[(len & 24) >> 3] forces implementation to use memory */
+    switch ((len & 24) >> 3) {
+    case 3:
+      fio_risky_consume(v[3], tmp);
+      break;
+    case 2:
+      fio_risky_consume(v[2], tmp);
+      break;
+    case 1:
+      fio_risky_consume(v[1], tmp);
+      break;
+    case 0:
+      fio_risky_consume(v[0], tmp);
+      break;
+    }
   }
 
   /* merge and mix */
@@ -767,10 +778,9 @@ inline FIO_FUNC uintptr_t fio_risky_hash2(const void *data_, size_t len,
   /* irreversible avalanche... I think */
   result ^= (result >> 29) * primes[0];
   return result;
-
-#undef fio_risky_consume256
-#undef fio_risky_consume
 }
+
+#undef fio_risky_consume
 
 inline FIO_FUNC uintptr_t fio_risky_hash_old(void *data_, size_t len,
                                              uint64_t seed) {
