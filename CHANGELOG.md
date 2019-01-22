@@ -6,6 +6,8 @@
 
 **Fix**: (`http`) possible fix for `http_connect`, where `host` header length might have been left uninitialized, resulting in possible errors.
 
+**Update**: (`fio`) updated the non-cryptographic PRG algorithm for performance and speed. Now the `fio_rand` functions are loosely based on the `xoroshiro128+` algorithm, with an automated re-seeding counter. This should improve performance for non cryptographic random requirements.
+
 ### v. 0.7.0.beta7
 
 **BREAK**: (`fio_tls`) breaking API changes to the SSL/TLS API... I know, I'm sorry, especially since there's a small and misleading change in argument ordering for `fio_tls_cert_add` and `fio_tls_new`... but if we don't fix the API now, before the 0.7.0 release, bad design might ruin our Wednesday meditation for all eternity.

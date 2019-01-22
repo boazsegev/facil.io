@@ -7433,42 +7433,81 @@ void *realloc(void *ptr, size_t new_size) { return fio_realloc(ptr, new_size); }
 
 ***************************************************************************** */
 
-static inline void fio_random_data(fio_sha2_s *sha2) {
-  struct {
+/* tested for randomness using code from: http://xoshiro.di.unimi.it/hwd.php */
+uint64_t fio_rand64(void) {
+  /* modeled after xoroshiro128+, by David Blackman and Sebastiano Vigna */
+  static uint64_t s[2]; /* random state */
+  static uint16_t c;    /* seed counter */
+  const uint64_t P[] = {0x37701261ED6C16C7ULL, 0x764DBBB75F3B3E0DULL};
+  if (c++ == 0) {
+    /* re-seed state every 65,536 requests */
 #ifdef RUSAGE_SELF
     struct rusage rusage;
-#endif
+    getrusage(RUSAGE_SELF, &rusage);
+    s[0] = fio_risky_hash(&rusage, sizeof(rusage), s[0]);
+    s[1] = fio_risky_hash(&rusage, sizeof(rusage), s[0]);
+#else
     struct timespec clk;
-    time_t the_time;
-    uint64_t more[8];
-  } junk_data;
-#ifdef RUSAGE_SELF
-  getrusage(RUSAGE_SELF, &junk_data.rusage);
+    clock_gettime(CLOCK_REALTIME, &clk);
+    s[0] = fio_risky_hash(&clk, sizeof(clk), s[0]);
+    s[1] = fio_risky_hash(&clk, sizeof(clk), s[0]);
 #endif
-  clock_gettime(CLOCK_REALTIME, &junk_data.clk);
-  time(&junk_data.the_time);
-  fio_sha2_write(sha2, &junk_data, sizeof(junk_data));
-  fio_sha2_result(sha2);
-}
-
-uint64_t fio_rand64(void) {
-  fio_sha2_s sha2 = fio_sha2_init(SHA_512);
-  fio_random_data(&sha2);
-  return sha2.digest.i64[0];
-}
-
-void fio_rand_bytes(void *target, size_t length) {
-  fio_sha2_s sha2 = fio_sha2_init(SHA_512);
-  fio_random_data(&sha2);
-
-  while (length >= 64) {
-    memcpy(target, sha2.digest.str, 64);
-    length -= 64;
-    target = (void *)((uintptr_t)target + 64);
-    fio_random_data(&sha2);
   }
-  if (length) {
-    memcpy(target, sha2.digest.str, length);
+  s[0] += fio_lrot64(s[0], 33) * P[0];
+  s[1] += fio_lrot64(s[1], 33) * P[1];
+  return fio_lrot64(s[0], 31) + fio_lrot64(s[1], 29);
+}
+
+/* copies 64 bits of randomness (8 bytes) repeatedly... */
+void fio_rand_bytes(void *data_, size_t len) {
+  if (!data_ || !len)
+    return;
+  uint8_t *data = data_;
+  /* unroll 32 bytes / 256 bit writes */
+  for (size_t i = (len >> 5); i; --i) {
+    const uint64_t t0 = fio_rand64();
+    const uint64_t t1 = fio_rand64();
+    const uint64_t t2 = fio_rand64();
+    const uint64_t t3 = fio_rand64();
+    fio_u2str64(data, t0);
+    fio_u2str64(data + 8, t1);
+    fio_u2str64(data + 16, t2);
+    fio_u2str64(data + 24, t3);
+    data += 32;
+  }
+  uint64_t tmp;
+  /* 64 bit steps  */
+  switch (len & 24) {
+  case 24:
+    tmp = fio_rand64();
+    fio_u2str64(data + 16, tmp);
+  case 16: /* overflow */
+    tmp = fio_rand64();
+    fio_u2str64(data + 8, tmp);
+  case 8: /* overflow */
+    tmp = fio_rand64();
+    fio_u2str64(data, tmp);
+    data += len & 24;
+  }
+  if ((len & 7)) {
+    tmp = fio_rand64();
+    /* leftover bytes */
+    switch ((len & 7)) {
+    case 7: /* overflow */
+      data[6] = (tmp >> 8) & 0xFF;
+    case 6: /* overflow */
+      data[5] = (tmp >> 16) & 0xFF;
+    case 5: /* overflow */
+      data[4] = (tmp >> 24) & 0xFF;
+    case 4: /* overflow */
+      data[3] = (tmp >> 32) & 0xFF;
+    case 3: /* overflow */
+      data[2] = (tmp >> 40) & 0xFF;
+    case 2: /* overflow */
+      data[1] = (tmp >> 48) & 0xFF;
+    case 1: /* overflow */
+      data[0] = (tmp >> 56) & 0xFF;
+    }
   }
 }
 
