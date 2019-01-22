@@ -210,6 +210,11 @@ Copyright: Boaz Segev, 2019
 License: MIT
 */
 
+#ifdef __cplusplus
+/* C++ keyword register was deprecated */
+#define register
+#endif
+
 /** 64 bit left rotation, inlined. */
 #define fio_lrot64(i, bits)                                                    \
   (((uint64_t)(i) << ((bits) & 63UL)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
@@ -239,32 +244,30 @@ uintptr_t risky_hash(const void *data_, size_t len, uint64_t seed) {
       0xAB137439982B86C9, // 1010101100010011011101000011100110011000001010111000011011001001
   };
   /* The consumption vectors initialized state */
-  uint64_t v[4] = {
-      seed ^ primes[1],
-      ~seed + primes[1],
-      fio_lrot64(seed, 17) ^ (primes[1] + primes[0]),
-      fio_lrot64(seed, 33) + (~primes[1]),
-  };
+  register uint64_t v0 = seed ^ primes[1];
+  register uint64_t v1 = ~seed + primes[1];
+  register uint64_t v2 = fio_lrot64(seed, 17) ^ (primes[1] + primes[0]);
+  register uint64_t v3 = fio_lrot64(seed, 33) + (~primes[1]);
 
   /* reading position */
   const uint8_t *data = (uint8_t *)data_;
 
   /* consume 256 bit blocks */
   for (size_t i = len >> 5; i; --i) {
-    fio_risky_consume(v[0], fio_str2u64(data));
-    fio_risky_consume(v[1], fio_str2u64(data + 8));
-    fio_risky_consume(v[2], fio_str2u64(data + 16));
-    fio_risky_consume(v[3], fio_str2u64(data + 24));
+    fio_risky_consume(v0, fio_str2u64(data));
+    fio_risky_consume(v1, fio_str2u64(data + 8));
+    fio_risky_consume(v2, fio_str2u64(data + 16));
+    fio_risky_consume(v3, fio_str2u64(data + 24));
     data += 32;
   }
   /* Consume any remaining 64 bit words. */
   switch (len & 24) {
   case 24:
-    fio_risky_consume(v[2], fio_str2u64(data + 16));
+    fio_risky_consume(v2, fio_str2u64(data + 16));
   case 16: /* overflow */
-    fio_risky_consume(v[1], fio_str2u64(data + 8));
+    fio_risky_consume(v1, fio_str2u64(data + 8));
   case 8: /* overflow */
-    fio_risky_consume(v[0], fio_str2u64(data));
+    fio_risky_consume(v0, fio_str2u64(data));
     data += len & 24;
   }
 
@@ -285,20 +288,20 @@ uintptr_t risky_hash(const void *data_, size_t len, uint64_t seed) {
     tmp |= ((uint64_t)data[1]) << 48;
   case 1: /* overflow */
     tmp |= ((uint64_t)data[0]) << 56;
-    fio_risky_consume(v[3], tmp);
+    fio_risky_consume(v3, tmp);
   }
 
   /* merge and mix */
-  uint64_t result = fio_lrot64(v[0], 17) + fio_lrot64(v[1], 13) +
-                    fio_lrot64(v[2], 47) + fio_lrot64(v[3], 57);
+  uint64_t result = fio_lrot64(v0, 17) + fio_lrot64(v1, 13) +
+                    fio_lrot64(v2, 47) + fio_lrot64(v3, 57);
   result += len;
-  result += v[0] * primes[1];
+  result += v0 * primes[1];
   result ^= fio_lrot64(result, 13);
-  result += v[1] * primes[1];
+  result += v1 * primes[1];
   result ^= fio_lrot64(result, 29);
-  result += v[2] * primes[1];
+  result += v2 * primes[1];
   result ^= fio_lrot64(result, 33);
-  result += v[3] * primes[1];
+  result += v3 * primes[1];
   result ^= fio_lrot64(result, 51);
 
   /* irreversible avalanche... I think */
