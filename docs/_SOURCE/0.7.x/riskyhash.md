@@ -266,7 +266,7 @@ uintptr_t risky_hash(const void *data_, size_t len, uint64_t seed) {
     data += len & 24;
   }
 
-  uintptr_t tmp = 0;
+  uint64_t tmp = 0;
   /* consume leftover bytes, if any */
   switch ((len & 7)) {
   case 7: /* overflow */

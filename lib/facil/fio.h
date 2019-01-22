@@ -2455,7 +2455,7 @@ inline static uintptr_t fio_risky_hash(const void *data_, size_t len,
     data += len & 24;
   }
 
-  uintptr_t tmp = 0;
+  uint64_t tmp = 0;
   /* consume leftover bytes, if any */
   switch ((len & 7)) {
   case 7: /* overflow */

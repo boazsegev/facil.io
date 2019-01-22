@@ -210,7 +210,7 @@ static uintptr_t counter(char *data, size_t len) {
     (void)t3;
     data += 32;
   }
-  uintptr_t tmp;
+  uint64_t tmp;
   /* 64 bit words  */
   switch (len & 24) {
   case 24:
@@ -726,7 +726,7 @@ static inline uintptr_t fio_risky_hash2(const void *data_, size_t len,
     data += len & 24;
   }
 
-  uintptr_t tmp = 0;
+  uint64_t tmp = 0;
   /* consume leftover bytes, if any */
   switch ((len & 7)) {
   case 7: /* overflow */
