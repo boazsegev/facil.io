@@ -2472,27 +2472,7 @@ inline static uintptr_t fio_risky_hash(const void *data_, size_t len,
     tmp |= ((uint64_t)data[1]) << 48;
   case 1: /* overflow */
     tmp |= ((uint64_t)data[0]) << 56;
-#if FIO_RISKY_CONSUME_LEFTOVER_IN_ORDER
-    /* ((len & 24) >> 3) is a 0-3 value representing the next state vector */
-    /* `switch` allows v[i] to be a register without a memory address */
-    /* using v[(len & 24) >> 3] forces implementation to use memory (bad) */
-    switch ((len & 24) >> 3) {
-    case 3:
-      fio_risky_consume(v[3], tmp);
-      break;
-    case 2:
-      fio_risky_consume(v[2], tmp);
-      break;
-    case 1:
-      fio_risky_consume(v[1], tmp);
-      break;
-    case 0:
-      fio_risky_consume(v[0], tmp);
-      break;
-    }
-#else
     fio_risky_consume(v[3], tmp);
-#endif
   }
 
   /* merge and mix */
