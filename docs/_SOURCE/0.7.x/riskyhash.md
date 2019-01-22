@@ -210,7 +210,7 @@ License: MIT
 
 /** 64 bit left rotation, inlined. */
 #define fio_lrot64(i, bits)                                                    \
-  (((uint64_t)(i) << ((bits)&63UL)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
+  (((uint64_t)(i) << ((bits) & 63UL)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
 
 /** Converts an unaligned network ordered byte stream to a 64 bit number. */
 #define fio_str2u64(c)                                                         \
@@ -223,7 +223,7 @@ License: MIT
               (((uint64_t)((uint8_t *)(c))[6]) << 8) |                         \
               ((uint64_t)0 + ((uint8_t *)(c))[7])))
 
-/* Risky Hash consumption round, accepts a state word s and an input word w */
+/* Risky Hash consumption round, updates state word `s` with input word `w` */
 #define fio_risky_consume(s, w)                                                \
   (s) ^= (w);                                                                  \
   (s) = fio_lrot64((s), 33) + (w);                                             \
@@ -247,7 +247,7 @@ uintptr_t risky_hash(const void *data_, size_t len, uint64_t seed) {
   /* reading position */
   const uint8_t *data = (uint8_t *)data_;
 
-  /* consume 256bit blocks */
+  /* consume 256 bit blocks */
   for (size_t i = len >> 5; i; --i) {
     fio_risky_consume(v[0], fio_str2u64(data));
     fio_risky_consume(v[1], fio_str2u64(data + 8));
