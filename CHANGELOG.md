@@ -2,11 +2,11 @@
 
 ### v. 0.7.0.beta8 (next)
 
-**Fix**: (`fio`, `fio_risky_hash`) Florian Weber (@Florianjw) [exposed coding errors (last 7 byte reading order) and took time challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the initialization stage was updated in response.
+**Fix**: (`fio`, `fio_risky_hash`) Florian Weber (@Florianjw) [exposed a byte ordering error (last 7 byte reading order) and took time challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the initialization stage was updated in response.
 
 **Fix**: (`http`) possible fix for `http_connect`, where `host` header length might have been left uninitialized, resulting in possible errors.
 
-**Update**: (`fio`) updated the non-cryptographic PRG algorithm for performance and speed. Now the `fio_rand` functions are loosely based on the `xoroshiro128+` algorithm, with an automated re-seeding counter. This should improve performance for non cryptographic random requirements.
+**Update**: (`fio`) updated the non-cryptographic PRG algorithm for performance and speed. Now the `fio_rand` functions are modeled after the `xoroshiro128+` algorithm, with an automated re-seeding counter based on RiskyHash. This should improve performance for non cryptographic random requirements.
 
 ### v. 0.7.0.beta7
 

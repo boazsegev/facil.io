@@ -3698,14 +3698,13 @@ uint64_t fio_rand64(void);
 
 Returns 64 psedo-random bits. Probably not cryptographically safe.
 
-
 #### `fio_rand_bytes`
 
 ```c
 void fio_rand_bytes(void *target, size_t length);
 ```
 
-Writes `length` bytes of psedo-random bits to the target buffer.
+Writes `length` bytes of psedo-random bits to the target buffer. Probably not cryptographically safe.
 
 ### Base64
 
