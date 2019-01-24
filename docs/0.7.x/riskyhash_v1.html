@@ -58,7 +58,21 @@
 <a href="#purpose">Purpose</a>
 </li>
 <li>
-<a href="#algorithm">Algorithm</a>
+<a href="#overview">Overview</a>
+<ul>
+<li>
+<a href="#overview-initialization">Overview: Initialization</a>
+</li>
+<li>
+<a href="#overview-consumption-reading">Overview: Consumption (reading)</a>
+</li>
+<li>
+<a href="#overview-mixing">Overview: Mixing</a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#specifics">Specifics</a>
 <ul>
 <li>
 <a href="#initialization">Initialization</a>
@@ -90,34 +104,19 @@
 
 <p>Risky Hash is a keyed hashing function which was inspired by both xxHash and SipHash.</p>
 
-<p>It&#39;s meant to provide a fast alternative to SipHash.</p>
+<p>It provides a fast alternative to SipHash when hashing safe data and a streaming variation can be easily implemented.</p>
 
 <p>Risky Hash wasn&#39;t properly tested for attack resistance and shouldn&#39;t be used with any data that might be malicious, since it&#39;s unknown if this could result in <a href="http://emboss.github.io/blog/2012/12/14/breaking-murmur-hash-flooding-dos-reloaded/">hash flooding attacks</a> (see <a href="https://medium.freecodecamp.org/hash-table-attack-8e4371fc5261">here</a>).</p>
 
 <p>Risky Hash was tested with <a href="https://github.com/rurban/smhasher"><code>SMHasher</code></a> (<a href="#smhasher-results">see results</a>) (passed).</p>
 
-<p>A non-streaming <a href="#in-code">reference implementation in C is attached</a> The code is easy to read and should be considered an integral part of this specification.</p>
+<p>A non-streaming <a href="#in-code">reference implementation in C is attached</a> The code is easy to read and should be considered as the actual specification.</p>
 
 <h2 id="status">Status</h2>
 
-<blockquote>
 <p>Risky Hash is still under development and review. This specification should be considered a working draft.</p>
 
 <p>Risky Hash should be limited to testing and safe environments until it&#39;s fully analyzed and reviewed.</p>
-</blockquote>
-
-<p>This is the second draft of the RiskyHash algorithm and it incorporates updates from community driven feedback.</p>
-
-<ul>
-<li><p>Florian Weber (@Florianjw) <a href="https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3">exposed coding errors (last 8 byte ordering) and took a bit of time to challenge the algorithm</a> and make a few suggestions.</p>
-
-<p>Following this feedback, the error in the code was fixed, the initialization state was updated and the left-over bytes are now read in order with padding (rather than consumed by the 4th state-word).</p></li>
-<li><p>Chris Anderson (@injinj) did amazing work exploring a 128 bit variation and attacking RiskyHash using a variation on a Meet-In-The-Middle attack, written by Hening Makholm (@hmakholm), that discovers hash collisions with a small Hamming distance (<a href="https://github.com/hmakholm/smhasher">SMHasher fork</a>).</p>
-
-<p>Following this input, RiskyHash updated the way the message length is incorporated into the final hash and updated the consumption stage to replace the initial XOR with ADD.</p></li>
-</ul>
-
-<p>The <a href="riskyhash_v1">previous version can be accessed here</a>.</p>
 
 <h2 id="purpose">Purpose</h2>
 
@@ -125,18 +124,8 @@
 
 <p>It&#39;s possible to compile facil.io with Risk Hash as the default hashing function (the current default is SipHash1-3) by defining the <code>FIO_USE_RISKY_HASH</code> during compilation (<code>-DFIO_USE_RISKY_HASH</code>).</p>
 
-<h2 id="algorithm">Algorithm</h2>
+<h2 id="overview">Overview</h2>
 
-<p>A non-streaming C implementation can be found at the <code>fio.h</code> header, in the static function: <code>fio_risky_hash</code> <a href="#in-code">and later on in this document</a>.</p>
-
-<p>Risky Hash uses 4 reading vectors (state-words), each containing 64 bits.</p>
-
-<p>Risky Hash requires a 64 bit &quot;secret&quot;. Zero is a valid secret.</p>
-
-<p>Risky Hash uses the following prime numbers:</p>
-<div class="highlight"><pre class="highlight plaintext"><code>P[0] = 0xFBBA3FA15B22113B
-P[1] = 0xAB137439982B86C9
-</code></pre></div>
 <p>Risky Hash has three stages:</p>
 
 <ul>
@@ -145,23 +134,11 @@ P[1] = 0xAB137439982B86C9
 <li><p>Mixing stage.</p></li>
 </ul>
 
-<p>The hashing algorithm uses an internal 256 bit state for a 64 bit output and the input data is mixed twice into the state on different bit positions (left rotation).</p>
+<p>The hashing algorithm uses an internal 256 bit state for a 64 bit output and the input data is mixed twice into the state, using different operations (XOR, addition) on different bit positions (left rotation).</p>
 
 <p>This approach <strong>should</strong> minimize the risk of malicious data weakening the hash function.</p>
 
-<p>The following operations are used:</p>
-
-<ul>
-<li><code>~</code> marks a bit inversion.</li>
-<li><code>+</code> marks a mod 2^64 addition.</li>
-<li><code>XOR</code> marks an XOR operation.</li>
-<li><code>MUL(x,y)</code> a mod 2^64 multiplication.</li>
-<li><code>LROT(x,bits)</code> is a left rotation of a 64 bit word.</li>
-<li><code>&gt;&gt;</code> is a right shift (not rotate, some bits are lost).</li>
-<li><code>&lt;&lt;</code> is a left shift (not rotate, some bits are lost).</li>
-</ul>
-
-<h3 id="initialization">Initialization</h3>
+<h3 id="overview-initialization">Overview: Initialization</h3>
 
 <p>In the initialization stage, Risky Hash attempts to achieves three goals:</p>
 
@@ -171,53 +148,34 @@ P[1] = 0xAB137439982B86C9
 <li><p>Initialize the state with minimal bias (bits have a fairly even chance at being set or unset).</p></li>
 </ul>
 
-<p>The four consumption vectors are initialized using the seed (&quot;secret&quot;) like so:</p>
-<div class="highlight"><pre class="highlight plaintext"><code>V1 = seed XOR P[1]
-V2 = (~seed) + P[1]
-V3 = LROT(seed, 17) XOR ((~P[0]) + P[1])
-V4 = LROT(seed, 33) + (~P[1])
-</code></pre></div>
-<h3 id="consumption">Consumption</h3>
+<h3 id="overview-consumption-reading">Overview: Consumption (reading)</h3>
 
 <p>In the consumption stage, Risky Hash attempts to achieves three goals:</p>
+
+<ul>
+<li><p>Maliciously crafted data won&#39;t be able to weaken the hash function or expose the &quot;secret&quot;.</p>
+
+<p>This is achieved by reading the data twice and using a different operation each time. This minimizes the possibility of finding a malicious value that could break both operations.</p></li>
+<li><p>Repeated data blocks should produce different results according to their position.</p></li>
+</ul>
+
+<p>This is achieved by performing left-rotation and prime multiplication in a way that causes different positions to have different side effects.</p>
 
 <ul>
 <li>Allow parallelism.</li>
 </ul>
 
-<p>This is achieved by using a number of distinct and separated reading &quot;vectors&quot; (independent state-words).</p>
+<p>This is achieved by using a number of distinct and separated reading &quot;vectors&quot;.</p>
 
-<ul>
-<li>Repeated data blocks should produce different results according to their position.</li>
-</ul>
+<p>This also imposes a constraint about the number of registers, or &quot;hidden variables&quot;, each vector should use.</p>
 
-<p>This is achieved by performing left-rotation and prime multiplication during each round, so the vector is mutated every step (regardless of the input data).</p>
+<p>(for example <code>a += a + b</code> could require two registers, while <code>a = (a * 2) + b</code> requires one)</p>
 
-<ul>
-<li><p>Maliciously crafted data won&#39;t be able to weaken the hash function or expose the &quot;secret&quot;.</p>
+<p>It should be noted that Risky Hash consumes data in 64 bit chunks/words.</p>
 
-<p>This is achieved by reading the data twice into different positions in the consumption vector. This minimizes the possibility of finding a malicious value that could break the state vector.</p></li>
-</ul>
+<p>Any trailing data that doesn&#39;t fit in a 64 bit word is padded with zeros and consumed by a specific consumption vector (rather than consumed in order). </p>
 
-<p>Risky Hash consumes data in 64 bit chunks/words.</p>
-
-<p>Each vector reads a single 64 bit word within a 256 bit block, allowing the vectors to be parallelized though any message length of 256 bits or longer.</p>
-
-<p><code>V1</code> reads the first 64 bits, <code>V2</code> reads bits 65-128, and so forth...</p>
-
-<p>The 64 bits are read in network byte order (Big-Endian) and treated as a numerical value.</p>
-
-<p>Any trailing data that doesn&#39;t fit in a 64 bit word is padded with zeros and consumed <strong>in order</strong> (by the next available vector). </p>
-
-<p>Each vector performs the following operations in each of it&#39;s consumption rounds (<code>V</code> is the vector, <code>word</code> is the input data for that vector as a 64 bit word):</p>
-<div class="highlight"><pre class="highlight plaintext"><code>V = V + word
-V = LROT(V, 33)
-V = V + word
-V = MUL(V, P[0])
-</code></pre></div>
-<p>It is normal for some vectors to perform more consumption rounds than others when the data isn&#39;t divisible into 256 bit blocks.</p>
-
-<h3 id="hash-mixing">Hash Mixing</h3>
+<h3 id="overview-mixing">Overview: Mixing</h3>
 
 <p>In the mixing stage, Risky Hash attempts to achieves three goals:</p>
 
@@ -232,16 +190,69 @@ V = MUL(V, P[0])
 <li><p>Allow all consumption vectors an equal but different effect on the final hash value.</p></li>
 </ul>
 
+<p>Until this point, Risky Hash is contained in four 64 bit hash vectors, each hashing a quarter of the input data.</p>
+
+<p>At this stage, the 256 bits of data are reduced to a 64 bit result.</p>
+
+<h2 id="specifics">Specifics</h2>
+
+<p>A non-streaming C implementation can be found at the <code>fio.h</code> header, in the static function: <code>fio_risky_hash</code> and later on in this document.</p>
+
+<p>Risky Hash uses 4 reading vectors, each containing 64 bits.</p>
+
+<p>Risky Hash requires a 64 bit &quot;secret&quot;. Zero is a valid secret, but is highly discouraged. A rotating random number, even if exposed, is much more likely to mitigate any risks than no secret at all.</p>
+
+<p>Risky Hash uses the following prime numbers:</p>
+<div class="highlight"><pre class="highlight plaintext"><code>P[0] = 0xFBBA3FA15B22113B
+P[1] = 0xAB137439982B86C9
+</code></pre></div>
+<p>The following operations are used:</p>
+
+<ul>
+<li><code>~</code> marks a bit inversion.</li>
+<li><code>+</code> marks a mod 2^64 addition.</li>
+<li><code>XOR</code> marks an XOR operation.</li>
+<li><code>MUL(x,y)</code> a mod 2^64 multiplication.</li>
+<li><code>LROT(x,bits)</code> is a left rotation of a 64 bit word.</li>
+<li><code>&gt;&gt;</code> is a right shift (not rotate, some bits are lost).</li>
+</ul>
+
+<h3 id="initialization">Initialization</h3>
+
+<p>The four consumption vectors are initialized using the seed (&quot;secret&quot;) like so:</p>
+<div class="highlight"><pre class="highlight plaintext"><code>V1 = seed XOR P[1],
+V2 = (~seed) + P[1],
+V3 = LROT(seed, 17) XOR P[1],
+V4 = LROT(seed, 33) + P[1],
+</code></pre></div>
+<h3 id="consumption">Consumption</h3>
+
+<p>Each vector reads a single 64 bit word within a 256 bit block, allowing the vectors to be parallelized though any message length of 256 bits or longer.</p>
+
+<p><code>V1</code> reads the first 64 bits, <code>V2</code> reads bits 65-128, and so forth...</p>
+
+<p>The 64 bits are read in network byte order (Big-Endian) and treated as a numerical value.</p>
+
+<p>Each vector performs the following operations in each of it&#39;s consumption rounds (<code>V</code> is the vector, <code>word</code> is the input data for that vector):</p>
+<div class="highlight"><pre class="highlight plaintext"><code>V = V XOR word
+V = LROT(V, 33) + word
+V = MUL(P[0], V)
+</code></pre></div>
+<p>If the data fits evenly in 64 bit words, than it will be read with no padding, even if some vectors perform more consumption rounds than others.</p>
+
+<p>If the last 64 bit word is incomplete, it will be padded with zeros (0) and consumed by the last vector (<code>V4</code>), regardless of it&#39;s position within a 256 bit block.</p>
+
+<h3 id="hash-mixing">Hash Mixing</h3>
+
+<p>At this point the length of the data is finalized an can be added to the calculation.</p>
+
 <p>The following intermediate 64 bit result is calculated:</p>
 <div class="highlight"><pre class="highlight plaintext"><code>result = LROT(V1,17) + LROT(V2,13) + LROT(V3,47) + LROT(V4,57)
 </code></pre></div>
-<p>At this point the length of the input data is finalized an can be added to the calculation.</p>
-
-<p>The consumed (unpadded) message length is treated as a 64 bit word. It is shifted left by 33 bits and XORed with itself. Then, the updated length value is added to the intermediate result:</p>
-<div class="highlight"><pre class="highlight plaintext"><code>length = length XOR (length &lt;&lt; 33);
-result = result + length
+<p>The consumed (unpadded) message length is added to this word:</p>
+<div class="highlight"><pre class="highlight plaintext"><code>result = result + length
 </code></pre></div>
-<p>The vectors are mixed in with the intermediate result using prime number multiplication to minimize any bias:</p>
+<p>The vectors are mixed in with the word using prime number multiplication to minimize any bias:</p>
 <div class="highlight"><pre class="highlight plaintext"><code>result = result + MUL(V1, P[1])
 result = result XOR LROT(result, 13);
 result = result + MUL(V2, P[1])
@@ -251,7 +262,7 @@ result = result XOR LROT(result, 33);
 result = result + MUL(V4, P[1])
 result = result XOR LROT(result, 51);
 </code></pre></div>
-<p>Finally, the intermediate result is mixed with itself to improve bit entropy distribution and hinder reversibility.</p>
+<p>Finally, the result is mixed with itself to improve bit entropy distribution and hinder reversibility.</p>
 <div class="highlight"><pre class="highlight plaintext"><code>result = result XOR MUL(P[0], (result &gt;&gt; 29) ) 
 </code></pre></div>
 <h2 id="performance">Performance</h2>
@@ -260,13 +271,11 @@ result = result XOR LROT(result, 51);
 
 <p>However, the design should allow for fairly high performance, for example, by using SIMD instructions or a multi-threaded approach (up to 4 threads).</p>
 
-<p>In fact, even the simple reference implementation at the end of this document offers fairly high performance.</p>
+<p>In fact, even the simple reference implementation at the end of this document offers fairly high performance, averaging 17% faster than xxHash for short keys (up to 31 bytes) and 9% slower on long keys (262,144 bytes).</p>
 
 <h2 id="attacks-reports-and-security">Attacks, Reports and Security</h2>
 
-<p>No known attacks exist for this draft of the Risky Hash algorithm and no known collisions have been found...</p>
-
-<p>...However, it&#39;s too early to tell.</p>
+<p>This (previous) draft of Risky Hash can be attacked using a <a href="https://github.com/hmakholm/smhasher/blob/master/src/LongNeighborTest.md">meet-in-the-middle / Long-Neighbor attack</a> which was developed by Henning Makholm in January 2019.</p>
 
 <p>At this early stage, please feel free to attack the Risky Hash algorithm and report any security concerns in the <a href="https://github.com/boazsegev/facil.io/issues">GitHub issue tracker</a>.</p>
 
@@ -280,9 +289,9 @@ Copyright: Boaz Segev, 2019
 License: MIT
 */</span>
 
-<span class="cm">/** 64 bit left rotation, inlined. */</span>
+<span class="cm">/** 64Bit left rotation, inlined. */</span>
 <span class="cp">#define fio_lrot64(i, bits)                                                    \
-  (((uint64_t)(i) &lt;&lt; ((bits)&amp;63UL)) | ((uint64_t)(i) &gt;&gt; ((-(bits)) &amp; 63UL)))
+  (((uint64_t)(i) &lt;&lt; (bits)) | ((uint64_t)(i) &gt;&gt; ((-(bits)) &amp; 63UL)))
 </span>
 <span class="cm">/** Converts an unaligned network ordered byte stream to a 64 bit number. */</span>
 <span class="cp">#define fio_str2u64(c)                                                         \
@@ -295,114 +304,94 @@ License: MIT
               (((uint64_t)((uint8_t *)(c))[6]) &lt;&lt; 8) |                         \
               ((uint64_t)0 + ((uint8_t *)(c))[7])))
 </span>
-<span class="cp">#ifdef __cplusplus
-</span><span class="cm">/* the register keyword was deprecated for C++ but is semi-meaningful in C */</span>
-<span class="cp">#define register
-#endif
+<span class="kt">uintptr_t</span> <span class="nf">risky_hash</span><span class="p">(</span><span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data_</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">,</span> <span class="kt">uint64_t</span> <span class="n">seed</span><span class="p">)</span> <span class="p">{</span>
+  <span class="cm">/* The primes used by Risky Hash */</span>
+  <span class="k">const</span> <span class="kt">uint64_t</span> <span class="n">primes</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+      <span class="mh">0xFBBA3FA15B22113B</span><span class="p">,</span> <span class="c1">// 1111101110111010001111111010000101011011001000100001000100111011</span>
+      <span class="mh">0xAB137439982B86C9</span><span class="p">,</span> <span class="c1">// 1010101100010011011101000011100110011000001010111000011011001001</span>
+  <span class="p">};</span>
+  <span class="cm">/* The consumption vectors initialized state */</span>
+  <span class="kt">uint64_t</span> <span class="n">v</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+      <span class="n">seed</span> <span class="o">^</span> <span class="n">primes</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+      <span class="o">~</span><span class="n">seed</span> <span class="o">+</span> <span class="n">primes</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+      <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">seed</span><span class="p">,</span> <span class="mi">17</span><span class="p">)</span> <span class="o">^</span> <span class="n">primes</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+      <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">seed</span><span class="p">,</span> <span class="mi">33</span><span class="p">)</span> <span class="o">+</span> <span class="n">primes</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+  <span class="p">};</span>
+
+<span class="cm">/* Risky Hash consumption round */</span>
+<span class="cp">#define fio_risky_consume(w, i)                                                \
+  v[i] ^= (w);                                                                 \
+  v[i] = fio_lrot64(v[i], 33) + (w);                                           \
+  v[i] *= primes[0];
 </span>
-<span class="cm">/* Risky Hash primes */</span>
-<span class="cp">#define RISKY_PRIME_0 0xFBBA3FA15B22113B
-#define RISKY_PRIME_1 0xAB137439982B86C9
+<span class="cm">/* compilers could, hopefully, optimize this code for SIMD */</span>
+<span class="cp">#define fio_risky_consume256(w0, w1, w2, w3)                                   \
+  fio_risky_consume(w0, 0);                                                    \
+  fio_risky_consume(w1, 1);                                                    \
+  fio_risky_consume(w2, 2);                                                    \
+  fio_risky_consume(w3, 3);
 </span>
-<span class="cm">/* Risky Hash consumption round, accepts a state word s and an input word w */</span>
-<span class="cp">#define fio_risky_consume(v, w)                                                \
-  (v) += (w);                                                                  \
-  (v) = fio_lrot64((v), 33);                                                   \
-  (v) += (w);                                                                  \
-  (v) *= RISKY_PRIME_0;
-</span>
-<span class="cm">/*  Computes a facil.io Risky Hash. */</span>
-<span class="kt">uint64_t</span> <span class="nf">fio_risky_hash</span><span class="p">(</span><span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data_</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">len</span><span class="p">,</span>
-                                         <span class="kt">uint64_t</span> <span class="n">seed</span><span class="p">)</span> <span class="p">{</span>
   <span class="cm">/* reading position */</span>
   <span class="k">const</span> <span class="kt">uint8_t</span> <span class="o">*</span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint8_t</span> <span class="o">*</span><span class="p">)</span><span class="n">data_</span><span class="p">;</span>
 
-  <span class="cm">/* The consumption vectors initialized state */</span>
-  <span class="k">register</span> <span class="kt">uint64_t</span> <span class="n">v0</span> <span class="o">=</span> <span class="n">seed</span> <span class="o">^</span> <span class="n">RISKY_PRIME_1</span><span class="p">;</span>
-  <span class="k">register</span> <span class="kt">uint64_t</span> <span class="n">v1</span> <span class="o">=</span> <span class="o">~</span><span class="n">seed</span> <span class="o">+</span> <span class="n">RISKY_PRIME_1</span><span class="p">;</span>
-  <span class="k">register</span> <span class="kt">uint64_t</span> <span class="n">v2</span> <span class="o">=</span>
-      <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">seed</span><span class="p">,</span> <span class="mi">17</span><span class="p">)</span> <span class="o">^</span> <span class="p">((</span><span class="o">~</span><span class="n">RISKY_PRIME_1</span><span class="p">)</span> <span class="o">+</span> <span class="n">RISKY_PRIME_0</span><span class="p">);</span>
-  <span class="k">register</span> <span class="kt">uint64_t</span> <span class="n">v3</span> <span class="o">=</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">seed</span><span class="p">,</span> <span class="mi">33</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="o">~</span><span class="n">RISKY_PRIME_1</span><span class="p">);</span>
-
-  <span class="cm">/* consume 256 bit blocks */</span>
+  <span class="cm">/* consume 256bit blocks */</span>
   <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="n">len</span> <span class="o">&gt;&gt;</span> <span class="mi">5</span><span class="p">;</span> <span class="n">i</span><span class="p">;</span> <span class="o">--</span><span class="n">i</span><span class="p">)</span> <span class="p">{</span>
-    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v0</span><span class="p">,</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span><span class="p">));</span>
-    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v1</span><span class="p">,</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">8</span><span class="p">));</span>
-    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v2</span><span class="p">,</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">16</span><span class="p">));</span>
-    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v3</span><span class="p">,</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">24</span><span class="p">));</span>
+    <span class="n">fio_risky_consume256</span><span class="p">(</span><span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">8</span><span class="p">),</span>
+                         <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">16</span><span class="p">),</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">24</span><span class="p">));</span>
     <span class="n">data</span> <span class="o">+=</span> <span class="mi">32</span><span class="p">;</span>
   <span class="p">}</span>
-
   <span class="cm">/* Consume any remaining 64 bit words. */</span>
   <span class="k">switch</span> <span class="p">(</span><span class="n">len</span> <span class="o">&amp;</span> <span class="mi">24</span><span class="p">)</span> <span class="p">{</span>
   <span class="k">case</span> <span class="mi">24</span><span class="p">:</span>
-    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v2</span><span class="p">,</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">16</span><span class="p">));</span>
+    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">16</span><span class="p">),</span> <span class="mi">2</span><span class="p">);</span>
   <span class="k">case</span> <span class="mi">16</span><span class="p">:</span> <span class="cm">/* overflow */</span>
-    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v1</span><span class="p">,</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">8</span><span class="p">));</span>
+    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span> <span class="o">+</span> <span class="mi">8</span><span class="p">),</span> <span class="mi">1</span><span class="p">);</span>
   <span class="k">case</span> <span class="mi">8</span><span class="p">:</span> <span class="cm">/* overflow */</span>
-    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v0</span><span class="p">,</span> <span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span><span class="p">));</span>
+    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">fio_str2u64</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="mi">0</span><span class="p">);</span>
     <span class="n">data</span> <span class="o">+=</span> <span class="n">len</span> <span class="o">&amp;</span> <span class="mi">24</span><span class="p">;</span>
   <span class="p">}</span>
 
-  <span class="kt">uint64_t</span> <span class="n">tmp</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="kt">uintptr_t</span> <span class="n">tmp</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
   <span class="cm">/* consume leftover bytes, if any */</span>
   <span class="k">switch</span> <span class="p">((</span><span class="n">len</span> <span class="o">&amp;</span> <span class="mi">7</span><span class="p">))</span> <span class="p">{</span>
   <span class="k">case</span> <span class="mi">7</span><span class="p">:</span> <span class="cm">/* overflow */</span>
-    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">6</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">8</span><span class="p">;</span>
+    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">6</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">56</span><span class="p">;</span>
   <span class="k">case</span> <span class="mi">6</span><span class="p">:</span> <span class="cm">/* overflow */</span>
-    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">5</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">16</span><span class="p">;</span>
+    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">5</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">48</span><span class="p">;</span>
   <span class="k">case</span> <span class="mi">5</span><span class="p">:</span> <span class="cm">/* overflow */</span>
-    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">24</span><span class="p">;</span>
+    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">40</span><span class="p">;</span>
   <span class="k">case</span> <span class="mi">4</span><span class="p">:</span> <span class="cm">/* overflow */</span>
     <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">32</span><span class="p">;</span>
   <span class="k">case</span> <span class="mi">3</span><span class="p">:</span> <span class="cm">/* overflow */</span>
-    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">40</span><span class="p">;</span>
+    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">24</span><span class="p">;</span>
   <span class="k">case</span> <span class="mi">2</span><span class="p">:</span> <span class="cm">/* overflow */</span>
-    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">48</span><span class="p">;</span>
+    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">16</span><span class="p">;</span>
   <span class="k">case</span> <span class="mi">1</span><span class="p">:</span> <span class="cm">/* overflow */</span>
-    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">56</span><span class="p">;</span>
-    <span class="cm">/* ((len &gt;&gt; 3) &amp; 3) is a 0...3 value indicating consumption vector */</span>
-    <span class="k">switch</span> <span class="p">((</span><span class="n">len</span> <span class="o">&gt;&gt;</span> <span class="mi">3</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mi">3</span><span class="p">)</span> <span class="p">{</span>
-    <span class="k">case</span> <span class="mi">3</span><span class="p">:</span>
-      <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v3</span><span class="p">,</span> <span class="n">tmp</span><span class="p">);</span>
-      <span class="k">break</span><span class="p">;</span>
-    <span class="k">case</span> <span class="mi">2</span><span class="p">:</span>
-      <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v2</span><span class="p">,</span> <span class="n">tmp</span><span class="p">);</span>
-      <span class="k">break</span><span class="p">;</span>
-    <span class="k">case</span> <span class="mi">1</span><span class="p">:</span>
-      <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v1</span><span class="p">,</span> <span class="n">tmp</span><span class="p">);</span>
-      <span class="k">break</span><span class="p">;</span>
-    <span class="k">case</span> <span class="mi">0</span><span class="p">:</span>
-      <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">v0</span><span class="p">,</span> <span class="n">tmp</span><span class="p">);</span>
-      <span class="k">break</span><span class="p">;</span>
-    <span class="p">}</span>
+    <span class="n">tmp</span> <span class="o">|=</span> <span class="p">((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&lt;&lt;</span> <span class="mi">8</span><span class="p">;</span>
+    <span class="n">fio_risky_consume</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="mi">3</span><span class="p">);</span>
   <span class="p">}</span>
 
   <span class="cm">/* merge and mix */</span>
-  <span class="kt">uint64_t</span> <span class="n">result</span> <span class="o">=</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">v0</span><span class="p">,</span> <span class="mi">17</span><span class="p">)</span> <span class="o">+</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">v1</span><span class="p">,</span> <span class="mi">13</span><span class="p">)</span> <span class="o">+</span>
-                    <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">v2</span><span class="p">,</span> <span class="mi">47</span><span class="p">)</span> <span class="o">+</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">v3</span><span class="p">,</span> <span class="mi">57</span><span class="p">);</span>
-
-  <span class="n">len</span> <span class="o">^=</span> <span class="p">(</span><span class="n">len</span> <span class="o">&lt;&lt;</span> <span class="mi">33</span><span class="p">);</span>
+  <span class="kt">uint64_t</span> <span class="n">result</span> <span class="o">=</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">17</span><span class="p">)</span> <span class="o">+</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">13</span><span class="p">)</span> <span class="o">+</span>
+                    <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="mi">47</span><span class="p">)</span> <span class="o">+</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="mi">57</span><span class="p">);</span>
   <span class="n">result</span> <span class="o">+=</span> <span class="n">len</span><span class="p">;</span>
-
-  <span class="n">result</span> <span class="o">+=</span> <span class="n">v0</span> <span class="o">*</span> <span class="n">RISKY_PRIME_1</span><span class="p">;</span>
+  <span class="n">result</span> <span class="o">+=</span> <span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">primes</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
   <span class="n">result</span> <span class="o">^=</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="mi">13</span><span class="p">);</span>
-  <span class="n">result</span> <span class="o">+=</span> <span class="n">v1</span> <span class="o">*</span> <span class="n">RISKY_PRIME_1</span><span class="p">;</span>
+  <span class="n">result</span> <span class="o">+=</span> <span class="n">v</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">primes</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
   <span class="n">result</span> <span class="o">^=</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="mi">29</span><span class="p">);</span>
-  <span class="n">result</span> <span class="o">+=</span> <span class="n">v2</span> <span class="o">*</span> <span class="n">RISKY_PRIME_1</span><span class="p">;</span>
+  <span class="n">result</span> <span class="o">+=</span> <span class="n">v</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="n">primes</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
   <span class="n">result</span> <span class="o">^=</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="mi">33</span><span class="p">);</span>
-  <span class="n">result</span> <span class="o">+=</span> <span class="n">v3</span> <span class="o">*</span> <span class="n">RISKY_PRIME_1</span><span class="p">;</span>
+  <span class="n">result</span> <span class="o">+=</span> <span class="n">v</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">*</span> <span class="n">primes</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
   <span class="n">result</span> <span class="o">^=</span> <span class="n">fio_lrot64</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="mi">51</span><span class="p">);</span>
 
   <span class="cm">/* irreversible avalanche... I think */</span>
-  <span class="n">result</span> <span class="o">^=</span> <span class="p">(</span><span class="n">result</span> <span class="o">&gt;&gt;</span> <span class="mi">29</span><span class="p">)</span> <span class="o">*</span> <span class="n">RISKY_PRIME_0</span><span class="p">;</span>
+  <span class="n">result</span> <span class="o">^=</span> <span class="p">(</span><span class="n">result</span> <span class="o">&gt;&gt;</span> <span class="mi">29</span><span class="p">)</span> <span class="o">*</span> <span class="n">primes</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
   <span class="k">return</span> <span class="n">result</span><span class="p">;</span>
-<span class="p">}</span>
 
-<span class="cp">#undef fio_risky_consume
-#undef FIO_RISKY_PRIME_0
-#undef FIO_RISKY_PRIME_1
-</span></code></pre></div>
+<span class="cp">#undef fio_risky_consume256
+#undef fio_risky_consume
+</span><span class="p">}</span>
+</code></pre></div>
 <h2 id="smhasher-results">SMHasher results</h2>
 
 <p>The following results were produced on a 2.9 GHz Intel Core i9 machine and won&#39;t be updated every time.</p>
@@ -411,55 +400,55 @@ License: MIT
 
 [[[ Sanity Tests ]]]
 
-Verification value 0x13AA4AB6 : PASS
+Verification value 0x1A4E494A : PASS
 Running sanity check 1    ..........PASS
 Running AppendedZeroesTest..........PASS
 
 [[[ Speed Tests ]]]
 
 Bulk speed test - 262144-byte keys
-Alignment  7 -  5.838 bytes/cycle - 16702.48 MiB/sec @ 3 ghz
-Alignment  6 -  5.838 bytes/cycle - 16702.90 MiB/sec @ 3 ghz
-Alignment  5 -  5.838 bytes/cycle - 16703.48 MiB/sec @ 3 ghz
-Alignment  4 -  5.830 bytes/cycle - 16680.17 MiB/sec @ 3 ghz
-Alignment  3 -  5.840 bytes/cycle - 16707.69 MiB/sec @ 3 ghz
-Alignment  2 -  5.840 bytes/cycle - 16708.61 MiB/sec @ 3 ghz
-Alignment  1 -  5.842 bytes/cycle - 16714.10 MiB/sec @ 3 ghz
-Alignment  0 -  5.828 bytes/cycle - 16673.79 MiB/sec @ 3 ghz
-Average      -  5.837 bytes/cycle - 16699.15 MiB/sec @ 3 ghz
+Alignment  7 -  5.838 bytes/cycle - 16701.84 MiB/sec @ 3 ghz
+Alignment  6 -  5.852 bytes/cycle - 16742.05 MiB/sec @ 3 ghz
+Alignment  5 -  5.835 bytes/cycle - 16692.73 MiB/sec @ 3 ghz
+Alignment  4 -  5.447 bytes/cycle - 15585.04 MiB/sec @ 3 ghz
+Alignment  3 -  5.834 bytes/cycle - 16690.14 MiB/sec @ 3 ghz
+Alignment  2 -  5.837 bytes/cycle - 16699.70 MiB/sec @ 3 ghz
+Alignment  1 -  5.141 bytes/cycle - 14708.75 MiB/sec @ 3 ghz
+Alignment  0 -  5.465 bytes/cycle - 15635.34 MiB/sec @ 3 ghz
+Average      -  5.656 bytes/cycle - 16181.95 MiB/sec @ 3 ghz
 
-Small key speed test -    1-byte keys -    25.00 cycles/hash
-Small key speed test -    2-byte keys -    27.00 cycles/hash
-Small key speed test -    3-byte keys -    28.00 cycles/hash
-Small key speed test -    4-byte keys -    28.89 cycles/hash
-Small key speed test -    5-byte keys -    28.98 cycles/hash
-Small key speed test -    6-byte keys -    28.49 cycles/hash
-Small key speed test -    7-byte keys -    28.95 cycles/hash
-Small key speed test -    8-byte keys -    32.24 cycles/hash
-Small key speed test -    9-byte keys -    32.00 cycles/hash
-Small key speed test -   10-byte keys -    32.21 cycles/hash
-Small key speed test -   11-byte keys -    32.12 cycles/hash
-Small key speed test -   12-byte keys -    32.00 cycles/hash
-Small key speed test -   13-byte keys -    32.00 cycles/hash
-Small key speed test -   14-byte keys -    32.00 cycles/hash
-Small key speed test -   15-byte keys -    32.17 cycles/hash
-Small key speed test -   16-byte keys -    32.00 cycles/hash
-Small key speed test -   17-byte keys -    32.85 cycles/hash
-Small key speed test -   18-byte keys -    32.41 cycles/hash
-Small key speed test -   19-byte keys -    32.29 cycles/hash
-Small key speed test -   20-byte keys -    32.28 cycles/hash
-Small key speed test -   21-byte keys -    32.50 cycles/hash
-Small key speed test -   22-byte keys -    33.21 cycles/hash
-Small key speed test -   23-byte keys -    32.00 cycles/hash
-Small key speed test -   24-byte keys -    32.00 cycles/hash
-Small key speed test -   25-byte keys -    32.42 cycles/hash
-Small key speed test -   26-byte keys -    32.90 cycles/hash
-Small key speed test -   27-byte keys -    32.42 cycles/hash
-Small key speed test -   28-byte keys -    33.08 cycles/hash
-Small key speed test -   29-byte keys -    32.31 cycles/hash
-Small key speed test -   30-byte keys -    32.58 cycles/hash
-Small key speed test -   31-byte keys -    32.68 cycles/hash
-Average                                    31.355 cycles/hash
+Small key speed test -    1-byte keys -    22.31 cycles/hash
+Small key speed test -    2-byte keys -    23.00 cycles/hash
+Small key speed test -    3-byte keys -    24.00 cycles/hash
+Small key speed test -    4-byte keys -    25.00 cycles/hash
+Small key speed test -    5-byte keys -    25.00 cycles/hash
+Small key speed test -    6-byte keys -    25.00 cycles/hash
+Small key speed test -    7-byte keys -    25.00 cycles/hash
+Small key speed test -    8-byte keys -    31.00 cycles/hash
+Small key speed test -    9-byte keys -    31.00 cycles/hash
+Small key speed test -   10-byte keys -    31.00 cycles/hash
+Small key speed test -   11-byte keys -    31.00 cycles/hash
+Small key speed test -   12-byte keys -    31.00 cycles/hash
+Small key speed test -   13-byte keys -    31.00 cycles/hash
+Small key speed test -   14-byte keys -    31.00 cycles/hash
+Small key speed test -   15-byte keys -    31.00 cycles/hash
+Small key speed test -   16-byte keys -    31.00 cycles/hash
+Small key speed test -   17-byte keys -    31.00 cycles/hash
+Small key speed test -   18-byte keys -    31.00 cycles/hash
+Small key speed test -   19-byte keys -    31.00 cycles/hash
+Small key speed test -   20-byte keys -    31.00 cycles/hash
+Small key speed test -   21-byte keys -    31.00 cycles/hash
+Small key speed test -   22-byte keys -    31.00 cycles/hash
+Small key speed test -   23-byte keys -    31.41 cycles/hash
+Small key speed test -   24-byte keys -    31.00 cycles/hash
+Small key speed test -   25-byte keys -    31.00 cycles/hash
+Small key speed test -   26-byte keys -    31.44 cycles/hash
+Small key speed test -   27-byte keys -    31.00 cycles/hash
+Small key speed test -   28-byte keys -    31.48 cycles/hash
+Small key speed test -   29-byte keys -    31.00 cycles/hash
+Small key speed test -   30-byte keys -    31.00 cycles/hash
+Small key speed test -   31-byte keys -    31.00 cycles/hash
+Average                                    29.505 cycles/hash
 
 [[[ Differential Tests ]]]
 
@@ -478,137 +467,137 @@ Testing 2796416 up-to-3-bit differentials in 256-bit keys -&gt; 64 bit hashes.
 
 [[[ Avalanche Tests ]]]
 
-Testing  32-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.655333%
-Testing  40-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.728000%
-Testing  48-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.738000%
-Testing  56-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.690667%
-Testing  64-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.675333%
-Testing  72-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.698000%
-Testing  80-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.667333%
-Testing  88-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.691333%
-Testing  96-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.692000%
-Testing 104-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.684000%
-Testing 112-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.709333%
-Testing 120-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.754000%
-Testing 128-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.714667%
-Testing 136-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.790667%
-Testing 144-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.672000%
-Testing 152-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.702667%
+Testing  32-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.575333%
+Testing  40-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.660667%
+Testing  48-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.632667%
+Testing  56-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.696667%
+Testing  64-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.734667%
+Testing  72-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.766667%
+Testing  80-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.762667%
+Testing  88-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.806000%
+Testing  96-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.756000%
+Testing 104-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.723333%
+Testing 112-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.693333%
+Testing 120-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.654000%
+Testing 128-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.799333%
+Testing 136-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.824667%
+Testing 144-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.715333%
+Testing 152-bit keys -&gt;  64-bit hashes,   300000 reps.......... worst bias is 0.664000%
 
 [[[ Keyset 'Cyclic' Tests ]]]
 
 Keyset 'Cyclic' - 8 cycles of 8 bytes - 10000000 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  12 - 0.044%
+Testing distribution - Worst bias is the  20-bit window at bit  46 - 0.036%
 
 Keyset 'Cyclic' - 8 cycles of 9 bytes - 10000000 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit   6 - 0.028%
+Testing distribution - Worst bias is the  20-bit window at bit  29 - 0.048%
 
 Keyset 'Cyclic' - 8 cycles of 10 bytes - 10000000 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  59 - 0.034%
+Testing distribution - Worst bias is the  20-bit window at bit  17 - 0.029%
 
 Keyset 'Cyclic' - 8 cycles of 11 bytes - 10000000 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit   1 - 0.044%
+Testing distribution - Worst bias is the  20-bit window at bit  59 - 0.048%
 
 Keyset 'Cyclic' - 8 cycles of 12 bytes - 10000000 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit   2 - 0.029%
+Testing distribution - Worst bias is the  20-bit window at bit  14 - 0.030%
 
 
 [[[ Keyset 'TwoBytes' Tests ]]]
 
 Keyset 'TwoBytes' - up-to-4-byte keys, 652545 total keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  16-bit window at bit   4 - 0.129%
+Testing distribution - Worst bias is the  16-bit window at bit   1 - 0.151%
 
 Keyset 'TwoBytes' - up-to-8-byte keys, 5471025 total keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  42 - 0.058%
+Testing distribution - Worst bias is the  20-bit window at bit  48 - 0.059%
 
 Keyset 'TwoBytes' - up-to-12-byte keys, 18616785 total keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit   5 - 0.014%
+Testing distribution - Worst bias is the  20-bit window at bit   6 - 0.020%
 
 Keyset 'TwoBytes' - up-to-16-byte keys, 44251425 total keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  32 - 0.008%
+Testing distribution - Worst bias is the  20-bit window at bit  48 - 0.008%
 
 Keyset 'TwoBytes' - up-to-20-byte keys, 86536545 total keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  32 - 0.003%
+Testing distribution - Worst bias is the  20-bit window at bit  40 - 0.005%
 
 
 [[[ Keyset 'Sparse' Tests ]]]
 
 Keyset 'Sparse' - 32-bit keys with up to 6 bits set - 1149017 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  17-bit window at bit  57 - 0.112%
+Testing distribution - Worst bias is the  17-bit window at bit  20 - 0.178%
 
 Keyset 'Sparse' - 40-bit keys with up to 6 bits set - 4598479 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  19-bit window at bit  42 - 0.048%
+Testing distribution - Worst bias is the  19-bit window at bit  51 - 0.063%
 
 Keyset 'Sparse' - 48-bit keys with up to 5 bits set - 1925357 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  18-bit window at bit  18 - 0.104%
+Testing distribution - Worst bias is the  18-bit window at bit  27 - 0.101%
 
 Keyset 'Sparse' - 56-bit keys with up to 5 bits set - 4216423 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  19-bit window at bit  45 - 0.045%
+Testing distribution - Worst bias is the  19-bit window at bit  21 - 0.057%
 
 Keyset 'Sparse' - 64-bit keys with up to 5 bits set - 8303633 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit   3 - 0.041%
+Testing distribution - Worst bias is the  20-bit window at bit  62 - 0.037%
 
 Keyset 'Sparse' - 96-bit keys with up to 4 bits set - 3469497 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  19-bit window at bit  54 - 0.069%
+Testing distribution - Worst bias is the  19-bit window at bit  23 - 0.087%
 
 Keyset 'Sparse' - 256-bit keys with up to 3 bits set - 2796417 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  19-bit window at bit  56 - 0.131%
+Testing distribution - Worst bias is the  18-bit window at bit  28 - 0.056%
 
 Keyset 'Sparse' - 2048-bit keys with up to 2 bits set - 2098177 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  18-bit window at bit  34 - 0.067%
+Testing distribution - Worst bias is the  18-bit window at bit  51 - 0.080%
 
 
 [[[ Keyset 'Combination Lowbits' Tests ]]]
 
 Keyset 'Combination' - up to 8 blocks from a set of 8 - 19173960 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  31 - 0.012%
+Testing distribution - Worst bias is the  20-bit window at bit  26 - 0.017%
 
 
 [[[ Keyset 'Combination Highbits' Tests ]]]
 
 Keyset 'Combination' - up to 8 blocks from a set of 8 - 19173960 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  12 - 0.017%
+Testing distribution - Worst bias is the  20-bit window at bit   5 - 0.017%
 
 
 [[[ Keyset 'Combination 0x8000000' Tests ]]]
 
 Keyset 'Combination' - up to 20 blocks from a set of 2 - 2097150 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  18-bit window at bit  23 - 0.102%
+Testing distribution - Worst bias is the  18-bit window at bit   0 - 0.085%
 
 
 [[[ Keyset 'Combination 0x0000001' Tests ]]]
 
 Keyset 'Combination' - up to 20 blocks from a set of 2 - 2097150 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  18-bit window at bit  54 - 0.092%
+Testing distribution - Worst bias is the  18-bit window at bit  51 - 0.056%
 
 
 [[[ Keyset 'Combination Hi-Lo' Tests ]]]
 
 Keyset 'Combination' - up to 6 blocks from a set of 15 - 12204240 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit   2 - 0.040%
+Testing distribution - Worst bias is the  20-bit window at bit   1 - 0.021%
 
 
 [[[ Keyset 'Window' Tests ]]]
@@ -748,34 +737,34 @@ Window at 128 - Testing collisions   - Expected     0.00, actual     0.00 ( 0.00
 
 Keyset 'Text' - keys of form "Foo[XXXX]Bar" - 14776336 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  62 - 0.020%
+Testing distribution - Worst bias is the  20-bit window at bit  40 - 0.022%
 
 Keyset 'Text' - keys of form "FooBar[XXXX]" - 14776336 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  15 - 0.024%
+Testing distribution - Worst bias is the  20-bit window at bit   5 - 0.023%
 
 Keyset 'Text' - keys of form "[XXXX]FooBar" - 14776336 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  20-bit window at bit  59 - 0.022%
+Testing distribution - Worst bias is the  20-bit window at bit  44 - 0.022%
 
 
 [[[ Keyset 'Zeroes' Tests ]]]
 
 Keyset 'Zeroes' - 65536 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  13-bit window at bit  40 - 0.442%
+Testing distribution - Worst bias is the  13-bit window at bit  63 - 0.477%
 
 
 [[[ Keyset 'Seed' Tests ]]]
 
 Keyset 'Seed' - 1000000 keys
 Testing collisions   - Expected     0.00, actual     0.00 ( 0.00x)
-Testing distribution - Worst bias is the  17-bit window at bit  53 - 0.162%
+Testing distribution - Worst bias is the  17-bit window at bit  37 - 0.064%
 
 
 
 Input vcode 0x00000001, Output vcode 0x00000001, Result vcode 0x00000001
-Verification value is 0x00000001 - Testing took 684.013358 seconds
+Verification value is 0x00000001 - Testing took 806.795982 seconds
 -------------------------------------------------------------------------------
 </code></pre></div></div><a href="/" id="sign"></a><div class="hidden" id="notice"><a class="notice_close" onclick="hide_notice()">X</a><div id="notice_text"></div></div><script>function change_themes() {
     if(localStorage.getItem("theme") == 'dark') {

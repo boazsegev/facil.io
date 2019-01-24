@@ -2404,37 +2404,29 @@ uint8_t __attribute__((weak)) fio_hash_secret_marker2;
 Risky Hash (always available, even if using only the fio.h header)
 ***************************************************************************** */
 
-/* Risky Hash consumption round, updates state word `s` with input word `w` */
-#define fio_risky_consume(s, w)                                                \
-  (s) ^= (w);                                                                  \
-  (s) = fio_lrot64((s), 33) + (w);                                             \
-  (s) *= primes[0];
+/* Risky Hash primes */
+#define RISKY_PRIME_0 0xFBBA3FA15B22113B
+#define RISKY_PRIME_1 0xAB137439982B86C9
 
-/**
- * Computes a facil.io Risky Hash, modeled after the amazing
- * [xxHash](https://github.com/Cyan4973/xxHash) (which has a BSD license)
- * and named "Risky Hash" because writing your own hashing function is a risky
- * business, full of pitfalls, hours of testing and security risks...
- *
- * Risky Hash isn't as battle tested as SipHash, but it did pass the
- * [SMHasher](https://github.com/rurban/smhasher) tests with wonderful results,
- * can be used for processing safe data and is easy (and short) to implement.
- */
-inline static uintptr_t fio_risky_hash(const void *data_, size_t len,
-                                       uint64_t seed) {
-  /* The primes used by Risky Hash */
-  const uint64_t primes[] = {
-      0xFBBA3FA15B22113B, // 1111101110111010001111111010000101011011001000100001000100111011
-      0xAB137439982B86C9, // 1010101100010011011101000011100110011000001010111000011011001001
-  };
-  /* The consumption vectors initialized state */
-  register uint64_t v0 = seed ^ primes[1];
-  register uint64_t v1 = ~seed + primes[1];
-  register uint64_t v2 = fio_lrot64(seed, 17) ^ (primes[1] + primes[0]);
-  register uint64_t v3 = fio_lrot64(seed, 33) + (~primes[1]);
+/* Risky Hash consumption round, accepts a state word s and an input word w */
+#define fio_risky_consume(v, w)                                                \
+  (v) += (w);                                                                  \
+  (v) = fio_lrot64((v), 33);                                                   \
+  (v) += (w);                                                                  \
+  (v) *= RISKY_PRIME_0;
 
+/*  Computes a facil.io Risky Hash. */
+FIO_FUNC inline uint64_t fio_risky_hash(const void *data_, size_t len,
+                                        uint64_t seed) {
   /* reading position */
   const uint8_t *data = (uint8_t *)data_;
+
+  /* The consumption vectors initialized state */
+  register uint64_t v0 = seed ^ RISKY_PRIME_1;
+  register uint64_t v1 = ~seed + RISKY_PRIME_1;
+  register uint64_t v2 =
+      fio_lrot64(seed, 17) ^ ((~RISKY_PRIME_1) + RISKY_PRIME_0);
+  register uint64_t v3 = fio_lrot64(seed, 33) + (~RISKY_PRIME_1);
 
   /* consume 256 bit blocks */
   for (size_t i = len >> 5; i; --i) {
@@ -2444,6 +2436,7 @@ inline static uintptr_t fio_risky_hash(const void *data_, size_t len,
     fio_risky_consume(v3, fio_str2u64(data + 24));
     data += 32;
   }
+
   /* Consume any remaining 64 bit words. */
   switch (len & 24) {
   case 24:
@@ -2456,7 +2449,7 @@ inline static uintptr_t fio_risky_hash(const void *data_, size_t len,
   }
 
   uint64_t tmp = 0;
-  /* consume leftover bytes, if any, always using the 4th vector */
+  /* consume leftover bytes, if any */
   switch ((len & 7)) {
   case 7: /* overflow */
     tmp |= ((uint64_t)data[6]) << 8;
@@ -2472,28 +2465,47 @@ inline static uintptr_t fio_risky_hash(const void *data_, size_t len,
     tmp |= ((uint64_t)data[1]) << 48;
   case 1: /* overflow */
     tmp |= ((uint64_t)data[0]) << 56;
-    fio_risky_consume(v3, tmp);
+    /* ((len >> 3) & 3) is a 0...3 value indicating consumption vector */
+    switch ((len >> 3) & 3) {
+    case 3:
+      fio_risky_consume(v3, tmp);
+      break;
+    case 2:
+      fio_risky_consume(v2, tmp);
+      break;
+    case 1:
+      fio_risky_consume(v1, tmp);
+      break;
+    case 0:
+      fio_risky_consume(v0, tmp);
+      break;
+    }
   }
 
   /* merge and mix */
   uint64_t result = fio_lrot64(v0, 17) + fio_lrot64(v1, 13) +
                     fio_lrot64(v2, 47) + fio_lrot64(v3, 57);
+
+  len ^= (len << 33);
   result += len;
-  result += v0 * primes[1];
+
+  result += v0 * RISKY_PRIME_1;
   result ^= fio_lrot64(result, 13);
-  result += v1 * primes[1];
+  result += v1 * RISKY_PRIME_1;
   result ^= fio_lrot64(result, 29);
-  result += v2 * primes[1];
+  result += v2 * RISKY_PRIME_1;
   result ^= fio_lrot64(result, 33);
-  result += v3 * primes[1];
+  result += v3 * RISKY_PRIME_1;
   result ^= fio_lrot64(result, 51);
 
   /* irreversible avalanche... I think */
-  result ^= (result >> 29) * primes[0];
+  result ^= (result >> 29) * RISKY_PRIME_0;
   return result;
 }
 
 #undef fio_risky_consume
+#undef FIO_RISKY_PRIME_0
+#undef FIO_RISKY_PRIME_1
 
 /* *****************************************************************************
 SipHash
