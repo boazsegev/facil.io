@@ -166,6 +166,7 @@ int http_set_header2(http_s *r, fio_str_info_s n, fio_str_info_s v) {
   fiobj_free(tmp);
   return ret;
 }
+
 /**
  * Sets a response cookie, taking ownership of the value object, but NOT the
  * name object (so name objects could be reused in future responses).
@@ -189,102 +190,50 @@ int http_set_cookie(http_s *h, http_cookie_args_s cookie) {
   size_t len = 0;
   FIOBJ c = fiobj_str_buf(capa);
   fio_str_info_s t = fiobj_obj2cstr(c);
+
+#define copy_cookie_ch(ch_var)                                                 \
+  if (invalid_cookie_##ch_var##_char[(uint8_t)cookie.ch_var[tmp]]) {           \
+    if (!warn_illegal) {                                                       \
+      ++warn_illegal;                                                          \
+      FIO_LOG_WARNING("illegal char 0x%.2x in cookie " #ch_var " (in %s)\n"    \
+                      "         automatic %% encoding applied",                \
+                      cookie.ch_var[tmp], cookie.ch_var);                      \
+    }                                                                          \
+    t.data[len++] = '%';                                                       \
+    t.data[len++] = hex_chars[((uint8_t)cookie.ch_var[tmp] >> 4) & 0x0F];      \
+    t.data[len++] = hex_chars[(uint8_t)cookie.ch_var[tmp] & 0x0F];             \
+  } else {                                                                     \
+    t.data[len++] = cookie.ch_var[tmp];                                        \
+  }                                                                            \
+  tmp += 1;                                                                    \
+  if (capa <= len + 3) {                                                       \
+    capa += 32;                                                                \
+    fiobj_str_capa_assert(c, capa);                                            \
+    t = fiobj_obj2cstr(c);                                                     \
+  }
+
   if (cookie.name) {
+    size_t tmp = 0;
     if (cookie.name_len) {
-      size_t tmp = 0;
       while (tmp < cookie.name_len) {
-        if (invalid_cookie_name_char[(uint8_t)cookie.name[tmp]]) {
-          if (!warn_illegal) {
-            ++warn_illegal;
-            FIO_LOG_WARNING("illegal char 0x%.2x in cookie name (in %s)\n"
-                            "         automatic %% encoding applied",
-                            cookie.name[tmp], cookie.name);
-          }
-          t.data[len++] = '%';
-          t.data[len++] = hex_chars[(cookie.name[tmp] >> 4) & 0x0F];
-          t.data[len++] = hex_chars[cookie.name[tmp] & 0x0F];
-        } else {
-          t.data[len++] = cookie.name[tmp];
-        }
-        tmp += 1;
-        if (capa <= len + 3) {
-          capa += 32;
-          fiobj_str_capa_assert(c, capa);
-          t = fiobj_obj2cstr(c);
-        }
+        copy_cookie_ch(name);
       }
     } else {
-      size_t tmp = 0;
       while (cookie.name[tmp]) {
-        if (invalid_cookie_name_char[(uint8_t)cookie.name[tmp]]) {
-          if (!warn_illegal) {
-            ++warn_illegal;
-            FIO_LOG_WARNING("illegal char 0x%.2x in cookie name (in %s)\n"
-                            "         automatic %% encoding applied",
-                            cookie.name[tmp], cookie.name);
-          }
-          t.data[len++] = '%';
-          t.data[len++] = hex_chars[(cookie.name[tmp] >> 4) & 0x0F];
-          t.data[len++] = hex_chars[cookie.name[tmp] & 0x0F];
-        } else {
-          t.data[len++] = cookie.name[tmp];
-        }
-        tmp += 1;
-        if (capa <= len + 4) {
-          capa += 32;
-          fiobj_str_capa_assert(c, capa);
-          t = fiobj_obj2cstr(c);
-        }
+        copy_cookie_ch(name);
       }
     }
   }
   t.data[len++] = '=';
   if (cookie.value) {
+    size_t tmp = 0;
     if (cookie.value_len) {
-      size_t tmp = 0;
       while (tmp < cookie.value_len) {
-        if (invalid_cookie_value_char[(uint8_t)cookie.value[tmp]]) {
-          if (!warn_illegal) {
-            ++warn_illegal;
-            FIO_LOG_WARNING("illegal char 0x%.2x in cookie value (in %s)\n"
-                            "         automatic %% encoding applied",
-                            cookie.value[tmp], cookie.name);
-          }
-          t.data[len++] = '%';
-          t.data[len++] = hex_chars[(cookie.value[tmp] >> 4) & 0x0F];
-          t.data[len++] = hex_chars[cookie.value[tmp] & 0x0F];
-        } else {
-          t.data[len++] = cookie.value[tmp];
-        }
-        tmp += 1;
-        if (capa <= len + 3) {
-          capa += 32;
-          fiobj_str_capa_assert(c, capa);
-          t = fiobj_obj2cstr(c);
-        }
+        copy_cookie_ch(value);
       }
     } else {
-      size_t tmp = 0;
       while (cookie.value[tmp]) {
-        if (invalid_cookie_value_char[(uint8_t)cookie.value[tmp]]) {
-          if (!warn_illegal) {
-            ++warn_illegal;
-            FIO_LOG_WARNING("illegal char 0x%.2x in cookie value (in %s)\n"
-                            "         automatic %% encoding applied",
-                            cookie.value[tmp], cookie.name);
-          }
-          t.data[len++] = '%';
-          t.data[len++] = hex_chars[(cookie.value[tmp] >> 4) & 0x0F];
-          t.data[len++] = hex_chars[cookie.value[tmp] & 0x0F];
-        } else {
-          t.data[len++] = cookie.value[tmp];
-        }
-        tmp += 1;
-        if (capa <= len + 3) {
-          capa += 32;
-          fiobj_str_capa_assert(c, capa);
-          t = fiobj_obj2cstr(c);
-        }
+        copy_cookie_ch(value);
       }
     }
   } else
