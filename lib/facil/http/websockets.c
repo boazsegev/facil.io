@@ -87,8 +87,7 @@ struct buffer_s resize_ws_buffer(ws_s *owner, struct buffer_s buff) {
 }
 void free_ws_buffer(ws_s *owner, struct buffer_s buff) {
   (void)(owner);
-  if (buff.data)
-    free(buff.data);
+  free(buff.data);
 }
 
 #undef round_up_buffer_size
