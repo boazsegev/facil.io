@@ -147,6 +147,8 @@ static __attribute__((constructor)) void http_lib_constructor(void) {
   fio_state_callback_add(FIO_CALL_AT_EXIT, http_lib_cleanup, NULL);
 }
 
+void http_mimetype_stats(void);
+
 static void http_lib_cleanup(void *ignr_) {
   (void)ignr_;
   http_mimetype_clear();
@@ -185,7 +187,10 @@ static void http_lib_cleanup(void *ignr_) {
   HTTPLIB_RESET(HTTP_HVALUE_WS_VERSION);
 
 #undef HTTPLIB_RESET
+  http_mimetype_stats();
 }
+
+void http_mimetype_stats(void);
 
 static void http_lib_init(void *ignr_) {
   (void)ignr_;
@@ -1268,4 +1273,5 @@ static void http_lib_init(void *ignr_) {
   REGISTER_MIME("zirz", "application/vnd.zul");
   REGISTER_MIME("zmm", "application/vnd.handheld-entertainment+xml");
 #undef REGISTER_MIME
+  http_mimetype_stats();
 }

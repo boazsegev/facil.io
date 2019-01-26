@@ -2502,33 +2502,43 @@ ssize_t http_decode_path_unsafe(char *dest, const char *url_data) {
 Lookup Tables / functions
 ***************************************************************************** */
 
+#define FIO_FORCE_MALLOC_TMP 1 /* use malloc for the mime registry */
 #define FIO_SET_NAME fio_mime_set
 #define FIO_SET_OBJ_TYPE FIOBJ
 #define FIO_SET_OBJ_COMPARE(o1, o2) (1)
+#define FIO_SET_OBJ_COPY(dest, o) (dest) = fiobj_dup((o))
 #define FIO_SET_OBJ_DESTROY(o) fiobj_free((o))
 
 #include <fio.h>
 
-static fio_mime_set_s mime_types = FIO_SET_INIT;
+static fio_mime_set_s fio_http_mime_types = FIO_SET_INIT;
 
 #define LONGEST_FILE_EXTENSION_LENGTH 15
 
 /** Registers a Mime-Type to be associated with the file extension. */
 void http_mimetype_register(char *file_ext, size_t file_ext_len,
                             FIOBJ mime_type_str) {
-  uintptr_t hash = fiobj_hash_string(file_ext, file_ext_len);
+  uintptr_t hash = FIO_HASH_FN(file_ext, file_ext_len, 0, 0);
   if (mime_type_str == FIOBJ_INVALID) {
-    fio_mime_set_remove(&mime_types, hash, FIOBJ_INVALID, NULL);
+    fio_mime_set_remove(&fio_http_mime_types, hash, FIOBJ_INVALID, NULL);
   } else {
     FIOBJ old = FIOBJ_INVALID;
-    fio_mime_set_overwrite(&mime_types, hash, mime_type_str, &old);
+    fio_mime_set_overwrite(&fio_http_mime_types, hash, mime_type_str, &old);
     if (old != FIOBJ_INVALID) {
       FIO_LOG_WARNING("mime-type collision: %.*s was %s, now %s",
                       (int)file_ext_len, file_ext, fiobj_obj2cstr(old).data,
                       fiobj_obj2cstr(mime_type_str).data);
       fiobj_free(old);
     }
+    fiobj_free(mime_type_str); /* move ownership to the registry */
   }
+}
+
+/** Registers a Mime-Type to be associated with the file extension. */
+void http_mimetype_stats(void) {
+  FIO_LOG_DEBUG("HTTP MIME hash storage count/capa: %zu / %zu",
+                fio_mime_set_count(&fio_http_mime_types),
+                fio_mime_set_capa(&fio_http_mime_types));
 }
 
 /**
@@ -2536,8 +2546,9 @@ void http_mimetype_register(char *file_ext, size_t file_ext_len,
  *  Remember to call `fiobj_free`.
  */
 FIOBJ http_mimetype_find(char *file_ext, size_t file_ext_len) {
-  uintptr_t hash = fiobj_hash_string(file_ext, file_ext_len);
-  return fiobj_dup(fio_mime_set_find(&mime_types, hash, FIOBJ_INVALID));
+  uintptr_t hash = FIO_HASH_FN(file_ext, file_ext_len, 0, 0);
+  return fiobj_dup(
+      fio_mime_set_find(&fio_http_mime_types, hash, FIOBJ_INVALID));
 }
 
 /**
@@ -2580,7 +2591,7 @@ finish:
 
 /** Clears the Mime-Type registry (it will be empty afterthis call). */
 void http_mimetype_clear(void) {
-  fio_mime_set_free(&mime_types);
+  fio_mime_set_free(&fio_http_mime_types);
   fiobj_free(current_date);
   current_date = FIOBJ_INVALID;
   last_date_added = 0;
