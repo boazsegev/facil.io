@@ -132,7 +132,7 @@ Hit me up if you want to:
 
 * If you want to help me write a new SSL/TLS library or have an SSL/TLS solution we can fit into `facil` (as source code)... Note: SSL/TLS solutions should fit both client and server modes.
 
-* If you want to help promote the library, that would be great as well. Perhaps publish [benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks)) or share your story.
+* If you want to help promote the library, that would be great as well. Perhaps publish [benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks) or share your story.
 
 * Writing documentation into the `facil.io` website would be great. I keep the source code documentation fairly updated, but the documentation should be copied to the `docs` folder to get the documentation website up and running.
 
