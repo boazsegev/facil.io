@@ -156,7 +156,8 @@ ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_
 endif
 
 # add BearSSL/OpenSSL library flags (exclusive)
-ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+ifdef FIO_NO_TLS
+else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the BearSSL source library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lbearssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
