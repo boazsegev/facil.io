@@ -156,19 +156,21 @@ int main(void) {
   /* test system allocations */
   fprintf(stderr, "===== Performance Testing system memory allocator "
                   "(please wait):\n ");
-  pthread_create(&thread2, NULL, test_system_malloc, NULL);
+  FIO_ASSERT(pthread_create(&thread2, NULL, test_system_malloc, NULL) == 0,
+             "Couldn't spawn thread.");
   size_t system = test_mem_functions(malloc, calloc, realloc, free);
-  pthread_join(thread2, &thrd_result);
+  FIO_ASSERT(pthread_join(thread2, &thrd_result) == 0, "Couldn't join thread");
   system += (uintptr_t)thrd_result;
   fprintf(stderr, "Total Cycles: %zu\n", system);
 
   /* test facil.io allocations */
   fprintf(stderr, "\n===== Performance Testing facil.io memory allocator "
                   "(please wait):\n");
-  pthread_create(&thread2, NULL, test_facil_malloc, NULL);
+  FIO_ASSERT(pthread_create(&thread2, NULL, test_facil_malloc, NULL) == 0,
+             "Couldn't spawn thread.");
   size_t fio =
       test_mem_functions(fio_malloc, fio_calloc, fio_realloc, fio_free);
-  pthread_join(thread2, &thrd_result);
+  FIO_ASSERT(pthread_join(thread2, &thrd_result) == 0, "Couldn't join thread");
   fio += (uintptr_t)thrd_result;
   fprintf(stderr, "Total Cycles: %zu\n", fio);
 
