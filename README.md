@@ -98,7 +98,7 @@ It's also possible to compile the facil.io library separately using the `make li
 
 [facil.io](http://facil.io) also supports both `git` and CMake submodules. Credit to @OwenDelahoy (PR#8).
 
-First, add the repository as a submudule using `git`:
+First, add the repository as a submodule using `git`:
 
     git submodule add https://github.com/boazsegev/facil.io.git
 
