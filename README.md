@@ -116,7 +116,7 @@ You can find more information on the [facil.io](http://facil.io) website
 
 ## Forking, Contributing and all that Jazz
 
-[The contribution guide can be found here](CONTRIBUTING).
+[The contribution guide can be found here](CONTRIBUTING.md).
 
 Sure, why not. If you can add Solaris or Windows support to `evio` and `sock`, that could mean `facil` would become available for use on these platforms as well.
 
