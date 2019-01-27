@@ -2,6 +2,8 @@
 
 ### v. 0.7.0.beta8 (next)
 
+**Security**: (`fio`) Slowloris mitigation is now part of the core library, where `FIO_SLOWLORIS_LIMIT` pending calls to `write` (currently 4,096 backlogged calls) will flag the connection as an attacker and close the connection. This protocol independent approach improves security.
+
 **Fix**: (`fio`, `fio_risky_hash`) Florian Weber (@Florianjw) [exposed a byte ordering error (last 7 byte reading order) and took time challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the exposed a possible attack on RiskyHash using a variation on a Meet-In-The-Middle attack, written by Hening Makholm (@hmakholm). This prompted an update and fixes to the function.
 
 **Fix**: (`http`) possible fix for `http_connect`, where `host` header length might have been left uninitialized, resulting in possible errors.

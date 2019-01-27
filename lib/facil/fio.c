@@ -76,6 +76,11 @@ Feel free to copy, use and enjoy according to the license provided.
 #define DEBUG_SPINLOCK 0
 #endif
 
+/* Slowloris mitigation  (must be less than 1<<16) */
+#ifndef FIO_SLOWLORIS_LIMIT
+#define FIO_SLOWLORIS_LIMIT (1 << 12)
+#endif
+
 #if !defined(__clang__) && !defined(__GNUC__)
 #define __thread _Thread_value
 #endif
@@ -148,14 +153,14 @@ typedef struct {
   fio_packet_s *packet;
   /** the last packet in the queue. */
   fio_packet_s **packet_last;
-  /** The number of pending packets that are in the queue. */
-  size_t packet_count;
   /* Data sent so far */
   size_t sent;
   /* fd protocol */
   fio_protocol_s *protocol;
   /* timer handler */
   time_t active;
+  /** The number of pending packets that are in the queue. */
+  uint16_t packet_count;
   /* timeout settings */
   uint8_t timeout;
   /* indicates that the fd should be considered scheduled (added to poll) */
@@ -2919,6 +2924,12 @@ ssize_t fio_flush(intptr_t uuid) {
   if (fio_trylock(&uuid_data(uuid).sock_lock))
     goto would_block;
 
+  if (uuid_data(uuid).packet_count >= FIO_SLOWLORIS_LIMIT) {
+    /* Slowloris attack assumed */
+    fio_unlock(&uuid_data(uuid).sock_lock);
+    uuid_data(uuid).close = 1;
+    goto closed;
+  }
   if (uuid_data(uuid).packet) {
     tmp = uuid_data(uuid).packet->write_func(fio_uuid2fd(uuid),
                                              uuid_data(uuid).packet);
