@@ -274,10 +274,10 @@ int main(int argc, char const *argv[]) {
   time_t end = 0;
   time(&end);
 
-  if (test_server(5) != SERVER_OK || total_failures) {
+  if (total_failures || test_server(5) != SERVER_OK) {
     /* finished sending all requests, no errors detected. */
     fprintf(stderr,
-            "DANGER: server DoS achieved sending %zu bytes, reading %zu "
+            "\n* FAILED: server DoS achieved sending %zu bytes, reading %zu "
             "bytes and using %zu attackers... experienced %zu access "
             "failures the target is likely "
             "suseptible to an attack.\n",
@@ -288,7 +288,7 @@ int main(int argc, char const *argv[]) {
     /* connections remained open. */
     fprintf(
         stderr,
-        "UNKNOWN...: slowloris attackers sent %zu bytes, read %zu "
+        "\n* UNKNOWN...: slowloris attackers sent %zu bytes, read %zu "
         "bytes and used %zu attackers... the target never forced an early "
         "disconnection (%zu total disconnections), it's unknown if target is "
         "effected, might need "
@@ -299,7 +299,7 @@ int main(int argc, char const *argv[]) {
   } else {
     /* couldn't send all requests, connection interrupted. */
     fprintf(stderr,
-            "PASS: sent %zu bytes, read %zu "
+            "\n* PASS: sent %zu bytes, read %zu "
             "bytes and used %zu attackers... but experienced %zu "
             "disconnections.\n",
             (total_requests * MSG_LEN * REQ_PER_MSG), total_reads, ATTACKERS,
