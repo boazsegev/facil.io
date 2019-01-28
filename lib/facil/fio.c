@@ -2928,6 +2928,8 @@ ssize_t fio_flush(intptr_t uuid) {
     /* Slowloris attack assumed */
     fio_unlock(&uuid_data(uuid).sock_lock);
     uuid_data(uuid).close = 1;
+    FIO_LOG_WARNING("(facil.io) possible Slowloris attack from uuid: %p",
+                    (void *)uuid);
     goto closed;
   }
   if (uuid_data(uuid).packet) {
