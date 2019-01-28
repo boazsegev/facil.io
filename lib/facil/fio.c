@@ -2926,11 +2926,7 @@ ssize_t fio_flush(intptr_t uuid) {
 
   if (uuid_data(uuid).packet_count >= FIO_SLOWLORIS_LIMIT) {
     /* Slowloris attack assumed */
-    fio_unlock(&uuid_data(uuid).sock_lock);
-    uuid_data(uuid).close = 1;
-    FIO_LOG_WARNING("(facil.io) possible Slowloris attack from uuid: %p",
-                    (void *)uuid);
-    goto closed;
+    goto attacked;
   }
   if (uuid_data(uuid).packet) {
     tmp = uuid_data(uuid).packet->write_func(fio_uuid2fd(uuid),
@@ -2982,6 +2978,13 @@ flushed:
   touchfd(fio_uuid2fd(uuid));
   fio_unlock(&uuid_data(uuid).sock_lock);
   return 1;
+attacked:
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  uuid_data(uuid).close = 1;
+  FIO_LOG_WARNING("(facil.io) possible Slowloris attack from uuid: %p",
+                  (void *)uuid);
+  fio_force_close(uuid);
+  return -1;
 }
 
 /** `fio_flush_all` attempts flush all the open connections. */
