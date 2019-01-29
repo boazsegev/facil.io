@@ -78,7 +78,7 @@ Feel free to copy, use and enjoy according to the license provided.
 
 /* Slowloris mitigation  (must be less than 1<<16) */
 #ifndef FIO_SLOWLORIS_LIMIT
-#define FIO_SLOWLORIS_LIMIT (1 << 12)
+#define FIO_SLOWLORIS_LIMIT (1 << 10)
 #endif
 
 #if !defined(__clang__) && !defined(__GNUC__)
@@ -2969,10 +2969,15 @@ attacked:
 
   FIO_LOG_WARNING("(facil.io) possible Slowloris attack from %.*s",
                   (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).data);
-  /* don't close, just detach from facil.io and mark uuid as invalid */
+#if defined(__APPLE__) && FIO_ENGINE_KQUEUE
+  /* kqueue for some reason can't handle dangling sockets on macOS...
+   * so we close the socket instead, ay least until it's fixed */
   uuid_data(uuid).close = 1;
   fio_force_close(uuid);
-  // fio_clear_fd(fio_uuid2fd(uuid), 0);
+#else
+  /* don't close, just detach from facil.io and mark uuid as invalid */
+  fio_clear_fd(fio_uuid2fd(uuid), 0);
+#endif
   return -1;
 }
 
