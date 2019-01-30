@@ -158,6 +158,7 @@ static void prep_msg(void) {
 
 /* handles the SIGUSR1, SIGINT and SIGTERM signals. */
 static void sig_int_handler(int sig) {
+  signal(SIGINT, SIG_DFL);
   switch (sig) {
   case SIGINT:  /* fallthrough */
   case SIGTERM: /* fallthrough */
@@ -175,6 +176,7 @@ Tester functions
 /* error reporting for server test */
 typedef enum {
   SERVER_OK,
+  OPENFILE_LIMIT,
   CONNECTION_FAILED,
   REQUEST_FAILED,
   RESPONSE_TIMEOUT,
@@ -206,6 +208,10 @@ static void *test_server_task(void *ignr_) {
     case SERVER_OK:
       if (flag)
         fprintf(stderr, "* Server online.\n");
+      atomic_add(&total_success, 1);
+      break;
+    case OPENFILE_LIMIT:
+      fprintf(stderr, "* No available sockets.\n");
       atomic_add(&total_success, 1);
       break;
     case CONNECTION_FAILED: /* overflow*/
@@ -247,6 +253,10 @@ int main(int argc, char const *argv[]) {
   case SERVER_OK:
     fprintf(stderr, "* PASSED sanity test.\n");
     break;
+  case OPENFILE_LIMIT:
+    ASSERT_COND(0, "FAILED to connect to %s:%s - no open files available?",
+                address, port);
+    break;
   case CONNECTION_FAILED:
     ASSERT_COND(0, "FAILED to connect to %s:%s", address, port);
     break;
@@ -277,9 +287,12 @@ int main(int argc, char const *argv[]) {
     attack_server();
     test_server_task(NULL);
   } else if (TEST_TIME) {
-    const struct timespec tm = {.tv_sec = TEST_TIME};
-    nanosleep(&tm, NULL);
+    for (int i = 0; i < TEST_TIME && flag; ++i) {
+      const struct timespec tm = {.tv_sec = 1};
+      nanosleep(&tm, NULL);
+    }
     flag = 0;
+    fprintf(stderr, "* Stopping test...\n");
   }
   while (thread_count) {
     --thread_count;
@@ -422,18 +435,22 @@ Testing the target
 static test_err_en test_server(size_t timeout) {
   int fd = connect2tcp(address, port);
 
-  if (fd == -1)
+  if (fd == -1) {
+    if (errno == EMFILE || errno == ENFILE || errno == ENOMEM)
+      return OPENFILE_LIMIT;
     return CONNECTION_FAILED;
+  }
 
   time_t start = 0;
   time(&start);
 
   size_t blocks = 0;
   while (wait4write(fd) < 0) {
-    if (errno != EWOULDBLOCK || ++blocks >= timeout) {
-      /* wait up to 5 seconds */
+    if (errno != EWOULDBLOCK || ++blocks >= timeout || !flag) {
+      /* timeout / error / stop */
       close(fd);
-      // fprintf(stderr, "* TEST: can't connect to %s:%s\n", address, port);
+      if (!flag)
+        return SERVER_OK;
       return CONNECTION_FAILED;
     }
   }
@@ -450,9 +467,11 @@ static test_err_en test_server(size_t timeout) {
 
   blocks = 0;
   while (wait4read(fd) < 0) {
-    if (errno != EWOULDBLOCK || ++blocks >= timeout) {
+    if (errno != EWOULDBLOCK || ++blocks >= timeout || !flag) {
       /* timeout / error */
       close(fd);
+      if (!flag)
+        return SERVER_OK;
       return RESPONSE_TIMEOUT;
     }
   }
