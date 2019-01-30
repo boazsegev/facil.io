@@ -477,7 +477,6 @@ static test_err_en test_server(size_t timeout) {
 static void attack_server(void) {
   int fd = connect2tcp(address, port);
   size_t offset = 0;
-  size_t counter = 0;
   uint8_t read_once = 0;
   while (flag) {
     if (wait4write(fd) == 0) {
