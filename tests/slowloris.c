@@ -97,6 +97,10 @@ Aomic operation helpers
 Global State and Settings
 ***************************************************************************** */
 
+#define RESULT_FAILED 2
+#define RESULT_UNKNOWN 1
+#define RESULT_PASSED 0
+
 #define TEST_TIME 20 /* test time in seconds 0 == inifinity */
 #define USE_PIPELINING 1
 #define PRINT_PAGE_OF_DATA 1
@@ -109,9 +113,12 @@ static const char *port;
 
 static size_t total_requests;
 static size_t total_reads;
+static size_t total_eof;
 static size_t total_disconnections;
+static size_t total_attempts;
 static size_t total_failures;
 static size_t total_success;
+static size_t max_wait;
 
 static const char HTTP_REQUEST_HEAD[] =
     "GET / HTTP/1.1\r\nConnection: keep-alive\r\nHost: ";
@@ -192,6 +199,9 @@ static void *test_server_task(void *ignr_) {
   while (flag) {
     const struct timespec tm = {.tv_sec = 1};
     nanosleep(&tm, NULL);
+    if (!flag)
+      break;
+    atomic_add(&total_attempts, 1);
     switch (test_server(15)) {
     case SERVER_OK:
       if (flag)
@@ -263,9 +273,10 @@ int main(int argc, char const *argv[]) {
   }
   if (pthread_create(threads + thread_count, NULL, test_server_task, NULL) == 0)
     ++thread_count;
-  if (!thread_count)
+  if (!thread_count) {
     attack_server();
-  else if (TEST_TIME) {
+    test_server_task(NULL);
+  } else if (TEST_TIME) {
     const struct timespec tm = {.tv_sec = TEST_TIME};
     nanosleep(&tm, NULL);
     flag = 0;
@@ -277,43 +288,33 @@ int main(int argc, char const *argv[]) {
   time_t end = 0;
   time(&end);
 
-  if (total_failures || test_server(5) != SERVER_OK) {
-    /* finished sending all requests, no errors detected. */
-    result = 2;
-    fprintf(stderr,
-            "\n* FAILED: server DoS achieved sending %zu bytes, reading %zu "
-            "bytes and using %zu attackers... experienced %zu access "
-            "failures the target is likely "
-            "susceptible to an attack.\n",
-            (total_requests * MSG_LEN * REQ_PER_MSG), total_reads, ATTACKERS,
-            total_failures);
-  } else if ((end > start &&
-              (end - start < 10 ||
-               (total_success >> 1) != ((size_t)(end - start) >> 1)) &&
-              (total_disconnections / 2) / (end - start) == 0) ||
-             (end == start && total_disconnections)) {
-    result = 1;
-    /* connections remained open. */
-    fprintf(
-        stderr,
-        "\n* UNKNOWN...: slowloris attackers sent %zu bytes, read %zu "
-        "bytes and used %zu attackers... the target never forced an early "
-        "disconnection (%zu total disconnections), it's unknown if target is "
-        "effected, might need "
-        "more time or attackers.\n",
-        (total_requests * MSG_LEN * REQ_PER_MSG), total_reads, ATTACKERS,
-        total_disconnections);
+  fprintf(stderr,
+          "Stats:\n"
+          "\tConcurrent attackers: %zu\n"
+          "\tRequests sent: %zu\n"
+          "\tBytes sent: %zu\n"
+          "\tBytes received: %zu\n"
+          "\tSucceful requests: %zu / %zu\n"
+          "\tDisconnections: %zu\n"
+          "\tEOF on attempted read: %zu\n"
+          "\tSlowest test cycle: %zu\n",
+          ATTACKERS, total_requests, (total_requests * (MSG_LEN / REQ_PER_MSG)),
+          total_reads, total_success, total_attempts, total_disconnections,
+          total_eof, max_wait);
 
+  if (max_wait > 10 || total_attempts != total_success) {
+    result = RESULT_FAILED;
+    fprintf(stderr, "FAILED! the server experienced DoS at least once or "
+                    "took more than 10 seconds to respond.\n");
+  } else if ((max_wait > 5 ||
+              ((total_disconnections / 2) / (end - start) == 0)) &&
+             !total_eof) {
+    result = RESULT_UNKNOWN;
+    fprintf(stderr, "Unknown. Server may have been partially effected.\n");
   } else {
-    /* couldn't send all requests, connection interrupted. */
-    fprintf(stderr,
-            "\n* PASS: sent %zu bytes, read %zu "
-            "bytes and used %zu attackers... experienced %zu "
-            "disconnections or %zu/%zu responses.\n",
-            (total_requests * MSG_LEN * REQ_PER_MSG), total_reads, ATTACKERS,
-            total_disconnections, total_success, (size_t)(end - start));
+    result = RESULT_PASSED;
+    fprintf(stderr, "PASSED.\n");
   }
-  fprintf(stderr, "Attack ran for %zu seconds.\n", (size_t)(end - start));
   return result;
 }
 
@@ -424,6 +425,9 @@ static test_err_en test_server(size_t timeout) {
   if (fd == -1)
     return CONNECTION_FAILED;
 
+  time_t start = 0;
+  time(&start);
+
   size_t blocks = 0;
   while (wait4write(fd) < 0) {
     if (errno != EWOULDBLOCK || ++blocks >= timeout) {
@@ -447,9 +451,8 @@ static test_err_en test_server(size_t timeout) {
   blocks = 0;
   while (wait4read(fd) < 0) {
     if (errno != EWOULDBLOCK || ++blocks >= timeout) {
-      /* wait up to 5 seconds */
+      /* timeout / error */
       close(fd);
-      // fprintf(stderr, "* TEST: response timeout %s:%s\n", address, port);
       return RESPONSE_TIMEOUT;
     }
   }
@@ -461,6 +464,12 @@ static test_err_en test_server(size_t timeout) {
   }
   close(fd);
   // fprintf(stderr, "* TEST: received response from %s:%s\n", address, port);
+  time_t end = 0;
+  time(&end);
+  if (max_wait < (size_t)(end - start)) {
+    /* non-atomic... but who cares. */
+    max_wait = end - start;
+  }
   return SERVER_OK;
 }
 
@@ -468,6 +477,8 @@ static test_err_en test_server(size_t timeout) {
 static void attack_server(void) {
   int fd = connect2tcp(address, port);
   size_t offset = 0;
+  size_t counter = 0;
+  uint8_t read_once = 0;
   while (flag) {
     if (wait4write(fd) == 0) {
       ssize_t w = write(fd, MSG_OUTPUT + offset, MSG_LEN - offset);
@@ -489,9 +500,23 @@ static void attack_server(void) {
     }
     if (wait4read(fd) == 0) {
       size_t buf;
-      if (read(fd, &buf, sizeof(buf)) != sizeof(buf))
+      ssize_t r = read(fd, &buf, sizeof(buf));
+      if (r < 0)
         break; /* read a few bytes at a time */
-      atomic_add(&total_reads, sizeof(buf));
+      if (!r) {
+        atomic_add(&total_eof, 1);
+      } else {
+        atomic_add(&total_reads, r);
+        read_once = 1;
+      }
+    } else if (errno == EWOULDBLOCK || errno == EAGAIN) {
+      if (read_once) {
+        atomic_add(&total_eof, 1);
+        break;
+      }
+    } else {
+      if (read_once)
+        break;
     }
   }
   if (flag)
