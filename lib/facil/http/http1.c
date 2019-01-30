@@ -676,6 +676,11 @@ Connection Callbacks
 */
 
 static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
+  if (fio_pending(uuid)) {
+    /* send a response at a time - throttle slow clients */
+    fio_suspend(uuid);
+    return;
+  }
   ssize_t i = 0;
   size_t org_len = p->buf_len;
   int pipeline_limit = 8;
@@ -739,6 +744,13 @@ static void http1_on_close(intptr_t uuid, fio_protocol_s *protocol) {
   (void)uuid;
 }
 
+/** called when the connection was closed, but will not run concurrently */
+static void http1_on_ready(intptr_t uuid, fio_protocol_s *protocol) {
+  /* resume slow clients from suspension */
+  fio_force_event(uuid, FIO_EVENT_ON_DATA);
+  (void)protocol;
+}
+
 /** called when a data is available for the first time */
 static void http1_on_data_first_time(intptr_t uuid, fio_protocol_s *protocol) {
   http1pr_s *p = (http1pr_s *)protocol;
@@ -781,6 +793,7 @@ fio_protocol_s *http1_new(uintptr_t uuid, http_settings_s *settings,
           {
               .on_data = http1_on_data_first_time,
               .on_close = http1_on_close,
+              .on_ready = http1_on_ready,
           },
       .p.uuid = uuid,
       .p.settings = settings,
