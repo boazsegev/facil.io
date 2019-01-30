@@ -1814,7 +1814,7 @@ static size_t fio_poll(void) {
   if (evio_fd < 0)
     return -1;
   int timeout_millisec = fio_timer_calc_first_interval();
-  struct kevent events[FIO_POLL_MAX_EVENTS];
+  struct kevent events[FIO_POLL_MAX_EVENTS] = {{0}};
 
   const struct timespec timeout = {
       .tv_sec = (timeout_millisec / 1000),
@@ -2969,7 +2969,7 @@ attacked:
 
   FIO_LOG_WARNING("(facil.io) possible Slowloris attack from %.*s",
                   (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).data);
-#if defined(__APPLE__) && FIO_ENGINE_KQUEUE
+#if 0 && defined(__APPLE__) && FIO_ENGINE_KQUEUE
   /* kqueue for some reason can't handle dangling sockets on macOS...
    * so we close the socket instead, ay least until it's fixed */
   uuid_data(uuid).close = 1;
