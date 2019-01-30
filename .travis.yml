@@ -3,6 +3,7 @@ script:
   - make vars
   - DEBUG=1 make vars
   - make test/optimized
+  - ASAN_OPTIONS=detect_leaks=0 make test/poll
   - ASAN_OPTIONS=detect_leaks=0 make test/ci
 os:
   - linux

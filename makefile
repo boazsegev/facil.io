@@ -259,23 +259,17 @@ $(TMP_ROOT)/%.d: ;
 
 -include $(OBJS_DEPENDENCY)
 
-.PHONY : test/speed
-test/speed: | test_add_speed_flags $(LIB_OBJS)
-	@$(CC) -c ./tests/speeds.c -o $(TMP_ROOT)/speeds.o $(CFALGS_DEPENDENCY) $(CFLAGS)
-	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/speeds.o $(OPTIMIZATION) $(LINKER_FLAGS)
-	@$(BIN)
-
-.PHONY : test_add_speed_flags
-test_add_speed_flags:
-	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1)
-	$(eval LINKER_FLAGS:=-DDEBUG=1 $(LINKER_FLAGS))
-
-
 .PHONY : test
 test: | clean
 	@DEBUG=1 $(MAKE) test_build_and_run
 	-@rm $(BIN) 2> /dev/null
 	-@rm -R $(TMP_ROOT) 2> /dev/null
+
+.PHONY : test/speed
+test/speed: | test_add_speed_flags $(LIB_OBJS)
+	@$(CC) -c ./tests/speeds.c -o $(TMP_ROOT)/speeds.o $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/speeds.o $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(BIN)
 
 .PHONY : test/optimized
 test/optimized: | clean test_add_speed_flags create_tree $(LIB_OBJS)
@@ -293,6 +287,10 @@ test/ci:| clean
 test/c99:| clean
 	@CSTD=c99 DEBUG=1 $(MAKE) test_build_and_run
 
+.PHONY : test/poll
+test/poll:| clean
+	@CSTD=c99 DEBUG=1 CFLAGS="-DFIO_ENGINE_POLL" $(MAKE) test_build_and_run
+
 .PHONY : test_build_and_run
 test_build_and_run: | create_tree test_add_flags test/build
 	@$(BIN)
@@ -301,6 +299,12 @@ test_build_and_run: | create_tree test_add_flags test/build
 test_add_flags:
 	$(eval CFLAGS:=-coverage $(CFLAGS) -DDEBUG=1 -Werror)
 	$(eval LINKER_FLAGS:=-coverage -DDEBUG=1 $(LINKER_FLAGS))
+
+.PHONY : test_add_speed_flags
+test_add_speed_flags:
+	$(eval CFLAGS:=$(CFLAGS) -DDEBUG=1)
+	$(eval LINKER_FLAGS:=-DDEBUG=1 $(LINKER_FLAGS))
+
 
 .PHONY : test/build
 test/build: $(LIB_OBJS)
