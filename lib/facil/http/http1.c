@@ -672,12 +672,10 @@ static int http1_on_error(http1_parser_s *parser) {
 
 /* *****************************************************************************
 Connection Callbacks
-*****************************************************************************
-*/
+***************************************************************************** */
 
 static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
-  if (fio_pending(uuid)) {
-    /* send a response at a time - throttle slow clients */
+  if (fio_pending(uuid)) { /* send one response at a time (slowloris) */
     fio_suspend(uuid);
     return;
   }
@@ -776,8 +774,7 @@ static void http1_on_data_first_time(intptr_t uuid, fio_protocol_s *protocol) {
 
 /* *****************************************************************************
 Public API
-*****************************************************************************
-*/
+***************************************************************************** */
 
 /** Creates an HTTP1 protocol object and handles any unread data in the buffer
  * (if any). */

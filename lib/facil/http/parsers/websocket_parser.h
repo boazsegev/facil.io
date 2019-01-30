@@ -373,8 +373,7 @@ static uint64_t websocket_client_wrap(void *target, void *msg, uint64_t len,
 
 /* *****************************************************************************
 Message unwrapping
-*****************************************************************************
-*/
+***************************************************************************** */
 
 /**
  * Returns all known information regarding the upcoming message.
