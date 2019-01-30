@@ -1801,12 +1801,12 @@ static inline void fio_poll_add(intptr_t fd) {
 FIO_FUNC inline void fio_poll_remove_fd(intptr_t fd) {
   if (evio_fd < 0)
     return;
-  struct kevent chevent[3];
+  struct kevent chevent[2];
   EV_SET(chevent, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
   EV_SET(chevent + 1, fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
   do {
     errno = 0;
-    kevent(evio_fd, chevent, 3, NULL, 0, NULL);
+    kevent(evio_fd, chevent, 2, NULL, 0, NULL);
   } while (errno == EINTR);
 }
 

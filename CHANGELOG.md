@@ -6,6 +6,8 @@
 
 **Fix**: (`fio`, `fio_risky_hash`) Florian Weber (@Florianjw) [exposed a byte ordering error (last 7 byte reading order) and took time challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the exposed a possible attack on RiskyHash using a variation on a Meet-In-The-Middle attack, written by Hening Makholm (@hmakholm). This prompted an update and fixes to the function.
 
+**Fix**: (`fio`) fix uninitialized `kqueue` message in `fio_poll_remove_fd`.
+
 **Fix**: (`http`) possible fix for `http_connect`, where `host` header length might have been left uninitialized, resulting in possible errors.
 
 **Update**: (`fio`) updated the non-cryptographic PRG algorithm for performance and speed. Now the `fio_rand` functions are modeled after the `xoroshiro128+` algorithm, with an automated re-seeding counter based on RiskyHash. This should improve performance for non cryptographic random requirements.
