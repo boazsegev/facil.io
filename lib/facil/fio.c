@@ -383,7 +383,8 @@ inline static void protocol_unlock(fio_protocol_s *pr,
 
 /** returns 1 if the UUID is valid and 0 if it isn't. */
 #define uuid_is_valid(uuid)                                                    \
-  ((intptr_t)(uuid) > 0 && ((uint32_t)fio_uuid2fd((uuid))) < fio_data->capa && \
+  ((intptr_t)(uuid) >= 0 &&                                                    \
+   ((uint32_t)fio_uuid2fd((uuid))) < fio_data->capa &&                         \
    ((uintptr_t)(uuid)&0xFF) == uuid_data((uuid)).counter)
 
 /* public API. */
@@ -2906,11 +2907,6 @@ ssize_t fio_flush(intptr_t uuid) {
   }
   ssize_t flushed;
   int tmp;
-
-  if (uuid_data(uuid).packet_count >= FIO_SLOWLORIS_LIMIT) {
-    /* Slowloris attack assumed */
-    goto attacked;
-  }
   /* start critical section */
   if (fio_trylock(&uuid_data(uuid).sock_lock))
     goto would_block;
@@ -2918,6 +2914,7 @@ ssize_t fio_flush(intptr_t uuid) {
   if (uuid_data(uuid).packet) {
     tmp = uuid_data(uuid).packet->write_func(fio_uuid2fd(uuid),
                                              uuid_data(uuid).packet);
+    const size_t old_count = uuid_data(uuid).packet_count;
     if (tmp == 0) {
       errno = ECONNRESET;
       fio_unlock(&uuid_data(uuid).sock_lock);
@@ -2926,6 +2923,12 @@ ssize_t fio_flush(intptr_t uuid) {
     } else if (tmp < 0) {
       goto test_errno;
     }
+
+    if (old_count >= 1024 && uuid_data(uuid).packet_count == old_count) {
+      /* Slowloris attack assumed */
+      goto attacked;
+    }
+
   } else {
     flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
     if (flushed < 0) {
@@ -2965,19 +2968,13 @@ flushed:
   touchfd(fio_uuid2fd(uuid));
   fio_unlock(&uuid_data(uuid).sock_lock);
   return 1;
-attacked:
 
+attacked:
+  /* don't close, just detach from facil.io and mark uuid as invalid */
   FIO_LOG_WARNING("(facil.io) possible Slowloris attack from %.*s",
                   (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).data);
-#if 0 && defined(__APPLE__) && FIO_ENGINE_KQUEUE
-  /* kqueue for some reason can't handle dangling sockets on macOS...
-   * so we close the socket instead, ay least until it's fixed */
-  uuid_data(uuid).close = 1;
-  fio_force_close(uuid);
-#else
-  /* don't close, just detach from facil.io and mark uuid as invalid */
+  fio_unlock(&uuid_data(uuid).sock_lock);
   fio_clear_fd(fio_uuid2fd(uuid), 0);
-#endif
   return -1;
 }
 
@@ -3481,13 +3478,7 @@ static void fio_mem_init(void);
 static void fio_cluster_init(void);
 static void fio_pubsub_initialize(void);
 static void __attribute__((constructor)) fio_lib_init(void) {
-  /* initialize memory allocator */
-  fio_mem_init();
-  /* initialize polling engine */
-  fio_poll_init();
-  /* initialize the cluster engine */
-  fio_pubsub_initialize();
-  /* detect socket capacity */
+  /* detect socket capacity - MUST be first...*/
   ssize_t capa = 0;
   {
 #ifdef _SC_OPEN_MAX
@@ -3498,22 +3489,25 @@ static void __attribute__((constructor)) fio_lib_init(void) {
     // try to maximize limits - collect max and set to max
     struct rlimit rlim = {.rlim_max = 0};
     if (getrlimit(RLIMIT_NOFILE, &rlim) == -1) {
-      FIO_LOG_WARNING("`getrlimit` failed in `sock_max_capacity`.");
+      FIO_LOG_WARNING("`getrlimit` failed in `fio_lib_init`.");
+      perror("\terrno:");
     } else {
-      // #if defined(__APPLE__) /* Apple's getrlimit is broken. */
-      //     rlim.rlim_cur = rlim.rlim_max >= FOPEN_MAX ? FOPEN_MAX :
-      //     rlim.rlim_max;
-      // #else
+      rlim_t original = rlim.rlim_cur;
       rlim.rlim_cur = rlim.rlim_max;
-      // #endif
-
-      if (rlim.rlim_cur > FIO_MAX_SOCK_CAPACITY)
-        rlim.rlim_cur = FIO_MAX_SOCK_CAPACITY;
-
-      if (!setrlimit(RLIMIT_NOFILE, &rlim))
-        getrlimit(RLIMIT_NOFILE, &rlim);
+      if (rlim.rlim_cur > FIO_MAX_SOCK_CAPACITY) {
+        rlim.rlim_cur = rlim.rlim_max = FIO_MAX_SOCK_CAPACITY;
+      }
+      while (setrlimit(RLIMIT_NOFILE, &rlim) == -1 && rlim.rlim_cur > original)
+        --rlim.rlim_cur;
+      getrlimit(RLIMIT_NOFILE, &rlim);
       capa = rlim.rlim_cur;
     }
+    /* initialize memory allocator */
+    fio_mem_init();
+    /* initialize polling engine */
+    fio_poll_init();
+    /* initialize the cluster engine */
+    fio_pubsub_initialize();
 #if DEBUG
 #if FIO_ENGINE_POLL
     FIO_LOG_STATE("facil.io " FIO_VERSION_STRING " capacity initialization:\n"

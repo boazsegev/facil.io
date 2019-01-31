@@ -666,6 +666,7 @@ static int http1_on_body_chunk(http1_parser_s *parser, char *data,
 
 /** called when a protocol error occurred. */
 static int http1_on_error(http1_parser_s *parser) {
+  FIO_LOG_DEBUG("HTTP parser error.");
   fio_close(parser2http(parser)->p.uuid);
   return -1;
 }
@@ -675,8 +676,10 @@ Connection Callbacks
 ***************************************************************************** */
 
 static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
-  if (fio_pending(uuid)) { /* send one response at a time (slowloris) */
+  if (fio_pending(uuid) > 4) { /* throttle busy clients (slowloris) */
     fio_suspend(uuid);
+    FIO_LOG_DEBUG("(HTTP/1,1) throttling client at %.*s",
+                  (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).data);
     return;
   }
   ssize_t i = 0;
