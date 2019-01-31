@@ -676,11 +676,8 @@ Connection Callbacks
 ***************************************************************************** */
 
 static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
-  if (fio_pending(uuid) > 4) { /* throttle busy clients (slowloris) */
-    fio_suspend(uuid);
-    FIO_LOG_DEBUG("(HTTP/1,1) throttling client at %.*s",
-                  (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).data);
-    return;
+  if (fio_pending(uuid) > 4) {
+    goto throttle;
   }
   ssize_t i = 0;
   size_t org_len = p->buf_len;
@@ -720,6 +717,13 @@ static inline void http1_consume_data(intptr_t uuid, http1pr_s *p) {
   if (!pipeline_limit) {
     fio_force_event(uuid, FIO_EVENT_ON_DATA);
   }
+  return;
+
+throttle:
+  /* throttle busy clients (slowloris) */
+  fio_suspend(uuid);
+  FIO_LOG_DEBUG("(HTTP/1,1) throttling client at %.*s",
+                (int)fio_peer_addr(uuid).len, fio_peer_addr(uuid).data);
 }
 
 /** called when a data is available, but will not run concurrently */
