@@ -3501,6 +3501,8 @@ static void __attribute__((constructor)) fio_lib_init(void) {
         --rlim.rlim_cur;
       getrlimit(RLIMIT_NOFILE, &rlim);
       capa = rlim.rlim_cur;
+      if (capa > 1024) /* leave a slice of room */
+        capa -= 16;
     }
     /* initialize memory allocator */
     fio_mem_init();
