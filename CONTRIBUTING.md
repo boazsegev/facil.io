@@ -47,6 +47,18 @@ However, I promise to do my best to be a respectful communicator and I ask that 
 
 No matter if discussing a PR (where we might find ourselves entering a heated discussion) or answering an Issue (where sometime we find ourselves wondering why people think we work for them)... we should all remember that a little compassion and respect goes a long way.
 
+## Style Guide and Guidelines
+
+A few pointers about code styling (pun intended).
+
+* Use `clang-format` with the `LLVM` style.
+
+* Initialize all variables during declaration - even if it's redundant.
+
+* Use `goto` to move code branches to the end of a function's body.
+
+    It makes the main body of the function more readable (IMHO) and should help with branch prediction (similar to how `unlikely` might help, but using a different approach)
+
 ## A quick run-down
 
 `facil.io` is comprised of the following module "families":

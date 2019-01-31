@@ -2901,45 +2901,32 @@ void fio_force_close(intptr_t uuid) {
  * error or when the connection is closed.
  */
 ssize_t fio_flush(intptr_t uuid) {
-  if (!uuid_is_valid(uuid)) {
-    errno = EBADF;
-    return -1;
-  }
-  ssize_t flushed;
+  if (!uuid_is_valid(uuid))
+    goto invalid;
+  errno = 0;
+  ssize_t flushed = 0;
   int tmp;
   /* start critical section */
   if (fio_trylock(&uuid_data(uuid).sock_lock))
     goto would_block;
 
-  if (uuid_data(uuid).packet) {
-    tmp = uuid_data(uuid).packet->write_func(fio_uuid2fd(uuid),
-                                             uuid_data(uuid).packet);
-    const size_t old_count = uuid_data(uuid).packet_count;
-    const size_t old_sent = uuid_data(uuid).sent;
-    if (tmp == 0) {
-      errno = ECONNRESET;
-      fio_unlock(&uuid_data(uuid).sock_lock);
-      uuid_data(uuid).close = 1;
-      goto closed;
-    } else if (tmp < 0) {
-      goto test_errno;
-    }
+  if (!uuid_data(uuid).packet)
+    goto flush_rw_hook;
 
-    if (old_count >= 1024 && uuid_data(uuid).packet_count == old_count &&
-        uuid_data(uuid).sent >= old_sent &&
-        (uuid_data(uuid).sent - old_sent) < 32768) {
-      /* Slowloris attack assumed */
-      goto attacked;
-    }
+  const size_t old_count = uuid_data(uuid).packet_count;
+  const size_t old_sent = uuid_data(uuid).sent;
 
-  } else {
-    flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
-    if (flushed < 0) {
-      goto test_errno;
-    }
-    if (flushed) {
-      goto flushed;
-    }
+  tmp = uuid_data(uuid).packet->write_func(fio_uuid2fd(uuid),
+                                           uuid_data(uuid).packet);
+  if (tmp <= 0) {
+    goto test_errno;
+  }
+
+  if (old_count >= 1024 && uuid_data(uuid).packet_count == old_count &&
+      uuid_data(uuid).sent >= old_sent &&
+      (uuid_data(uuid).sent - old_sent) < 32768) {
+    /* Slowloris attack assumed */
+    goto attacked;
   }
 
   /* end critical section */
@@ -2955,22 +2942,48 @@ ssize_t fio_flush(intptr_t uuid) {
 would_block:
   errno = EWOULDBLOCK;
   return -1;
+
 closed:
   fio_force_close(uuid);
   return -1;
+
+flush_rw_hook:
+  flushed = uuid_data(uuid).rw_hooks->flush(uuid, uuid_data(uuid).rw_udata);
+  fio_unlock(&uuid_data(uuid).sock_lock);
+  if (!flushed)
+    return 0;
+  if (flushed < 0) {
+    goto test_errno;
+  }
+  touchfd(fio_uuid2fd(uuid));
+  return 1;
+
 test_errno:
   fio_unlock(&uuid_data(uuid).sock_lock);
-  if (errno == EWOULDBLOCK || errno == EAGAIN || errno == ENOTCONN ||
-      errno == EINPROGRESS || errno == ENOSPC || errno == EINTR) {
+  switch (errno) {
+  case EWOULDBLOCK: /* ovreflow */
+#if EWOULDBLOCK != EAGAIN
+  case EAGAIN: /* ovreflow */
+#endif
+  case ENOTCONN:    /* ovreflow */
+  case EINPROGRESS: /* ovreflow */
+  case ENOSPC:      /* ovreflow */
+  case EINTR:
     return 1;
+  case EPIPE:  /* ovreflow */
+  case EIO:    /* ovreflow */
+  case EINVAL: /* ovreflow */
+  case EBADF:
+    uuid_data(uuid).close = 1;
+    fio_force_close(uuid);
+    return -1;
   }
   return 0;
 
+invalid:
+  /* bad UUID */
+  errno = EBADF;
   return -1;
-flushed:
-  touchfd(fio_uuid2fd(uuid));
-  fio_unlock(&uuid_data(uuid).sock_lock);
-  return 1;
 
 attacked:
   /* don't close, just detach from facil.io and mark uuid as invalid */
