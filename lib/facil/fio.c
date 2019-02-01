@@ -6524,6 +6524,8 @@ static inline void fio_publish2process2(int32_t filter, fio_str_info_s ch_name,
       fio_pubsub_create_message(filter, ch_name, msg, is_json, 1));
 }
 
+/* Sublime Text marker */
+void fio_publish___(fio_publish_args_s args);
 /**
  * Publishes a message to the relevant subscribers (if any).
  *
@@ -8779,6 +8781,8 @@ FIO_FUNC inline void fio_llist_test(void) {
     FIO_ASSERT_ALLOC(n);
     n->i = i;
     fio_ls_embd_push(&emlist, &n->node);
+    FIO_ASSERT(FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, emlist.next)->i == 0,
+               "fio_ls_embd_push should push to the end.");
   }
   FIO_ASSERT(fio_ls_embd_any(&emlist),
              "List should be populated after fio_ls_embd_push");
@@ -8810,6 +8814,8 @@ FIO_FUNC inline void fio_llist_test(void) {
     FIO_ASSERT_ALLOC(n)
     n->i = i;
     fio_ls_embd_unshift(&emlist, &n->node);
+    FIO_ASSERT(FIO_LS_EMBD_OBJ(struct fio_ls_test_s, node, emlist.next)->i == i,
+               "fio_ls_embd_unshift should push to the start.");
   }
   FIO_ASSERT(fio_ls_embd_any(&emlist),
              "List should be populated after fio_ls_embd_unshift");
