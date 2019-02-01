@@ -44,6 +44,7 @@ typedef struct {
   size_t ref;
   fio_ls_embd_s queue;
   fio_lock_i lock;
+  fio_lock_i lock_connection;
   uint8_t ping_int;
   volatile uint8_t pub_sent;
   volatile uint8_t flag;
@@ -371,8 +372,8 @@ static void resp_on_sub_message(struct redis_engine_internal_s *i, FIOBJ msg) {
     if (FIOBJ_TYPE(msg) != FIOBJ_T_STRING || fiobj_obj2cstr(msg).len != 4 ||
         fiobj_obj2cstr(msg).data[0] != 'P') {
       FIO_LOG_WARNING("(redis) unexpected data format in "
-                      "subscription stream:\n     %s",
-                      fiobj_obj2cstr(msg).data);
+                      "subscription stream (%zu bytes):\n     %s\n",
+                      fiobj_obj2cstr(msg).len, fiobj_obj2cstr(msg).data);
     }
   } else {
     // FIOBJ *ary = fiobj_ary2ptr(msg);
@@ -568,9 +569,9 @@ static void redis_on_connect_failed(intptr_t uuid, void *i_) {
 static void redis_connect(void *r_, void *i_) {
   redis_engine_s *r = r_;
   struct redis_engine_internal_s *i = i_;
-  fio_lock(&r->lock);
+  fio_lock(&r->lock_connection);
   if (r->flag == 0 || i->uuid != -1 || !fio_is_running()) {
-    fio_unlock(&r->lock);
+    fio_unlock(&r->lock_connection);
     redis_free(r);
     return;
   }
@@ -578,7 +579,7 @@ static void redis_connect(void *r_, void *i_) {
   i->uuid = fio_connect(.address = r->address, .port = r->port,
                         .on_connect = redis_on_connect, .udata = i,
                         .on_fail = redis_on_connect_failed);
-  fio_unlock(&r->lock);
+  fio_unlock(&r->lock_connection);
 }
 
 /* *****************************************************************************
@@ -918,6 +919,7 @@ FIO_IGNORE_MACRO(struct redis_engine_create_args args) {
       .ref = 1,
       .queue = FIO_LS_INIT(r->queue),
       .lock = FIO_LOCK_INIT,
+      .lock_connection = FIO_LOCK_INIT,
       .ping_int = args.ping_interval,
       .flag = 1,
   };
