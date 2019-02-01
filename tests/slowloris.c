@@ -303,6 +303,7 @@ int main(int argc, char const *argv[]) {
 
   fprintf(stderr,
           "Stats:\n"
+          "\tTest length: %zu seconds\n"
           "\tConcurrent attackers: %zu\n"
           "\tRequests sent: %zu\n"
           "\tBytes sent: %zu\n"
@@ -311,15 +312,16 @@ int main(int argc, char const *argv[]) {
           "\tDisconnections: %zu\n"
           "\tEOF on attempted read: %zu\n"
           "\tSlowest test cycle: %zu\n",
-          ATTACKERS, total_requests, (total_requests * (MSG_LEN / REQ_PER_MSG)),
-          total_reads, total_success, total_attempts, total_disconnections,
-          total_eof, max_wait);
+          end - start, ATTACKERS, total_requests,
+          (total_requests * (MSG_LEN / REQ_PER_MSG)), total_reads,
+          total_success, total_attempts, total_disconnections, total_eof,
+          max_wait);
 
-  if (max_wait > 10 || total_attempts != total_success) {
+  if (max_wait > 5 || total_attempts != total_success) {
     result = RESULT_FAILED;
     fprintf(stderr, "FAILED! the server experienced DoS at least once or "
                     "took more than 10 seconds to respond.\n");
-  } else if ((max_wait > 5 ||
+  } else if ((max_wait > 1 ||
               ((total_disconnections / 2) / (end - start) == 0)) &&
              !total_eof) {
     result = RESULT_UNKNOWN;
@@ -394,15 +396,14 @@ socket_okay:
 static inline int wait__internal(int fd, uint16_t events) {
   errno = 0;
   int i = 0;
-  struct pollfd ls[1] = {{.fd = fd, .events = events}};
-  i = poll(ls, 1, 1000);
+  if (fd == -1)
+    goto badfd;
+  struct pollfd ls = {.fd = fd, .events = events};
+  i = poll(&ls, 1, 1000);
   if (i > 0) {
-    if ((ls[0].revents & POLLHUP) || (ls[0].revents & POLLERR) ||
-        (ls[0].revents & POLLNVAL)) {
-      // close(ls[0].fd);
-      errno = EBADF;
-      return -1;
-    }
+    if ((ls.revents & POLLHUP) || (ls.revents & POLLERR) ||
+        (ls.revents & POLLNVAL))
+      goto badfd;
     return 0;
   }
   switch (errno) {
@@ -412,6 +413,9 @@ static inline int wait__internal(int fd, uint16_t events) {
     return -1;
   }
   errno = EWOULDBLOCK;
+  return -1;
+badfd:
+  errno = EBADF;
   return -1;
 }
 
