@@ -427,9 +427,16 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
       int len___log =                                                          \
           snprintf(tmp___log, FIO_LOG_LENGTH_LIMIT - 2, __VA_ARGS__);          \
       if (len___log <= 0 || len___log >= FIO_LOG_LENGTH_LIMIT - 2) {           \
-        fwrite("ERROR: log line output too long (can't write).", 46, 1,        \
-               stderr);                                                        \
-        break;                                                                 \
+        if (len___log >= (FIO_LOG_LENGTH_LIMIT >> 2) &&                        \
+            (FIO_LOG_LENGTH_LIMIT >> 2) + 52 < FIO_LOG_LENGTH_LIMIT) {         \
+          fwrite(tmp___log, (FIO_LOG_LENGTH_LIMIT >> 2), 1, stderr);           \
+          memcpy(tmp___log + (FIO_LOG_LENGTH_LIMIT >> 2),                      \
+                 "...\nERROR: log line output too long (can't write).\n", 52); \
+          len___log = (FIO_LOG_LENGTH_LIMIT >> 2) + 52;                        \
+        } else {                                                               \
+          fwrite("ERROR: log output error (can't write).\n", 39, 1, stderr);   \
+          break;                                                               \
+        }                                                                      \
       }                                                                        \
       tmp___log[len___log++] = '\n';                                           \
       tmp___log[len___log] = '0';                                              \
