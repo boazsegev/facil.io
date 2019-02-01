@@ -55,45 +55,6 @@ of target device.
   } while (0)
 
 /* *****************************************************************************
-IO Helper functions
-***************************************************************************** */
-
-/** Sets a socket to non-blocking mode */
-static int set_non_block(int fd);
-
-/** Opens a TCP/IP connection using a blocking IO socket */
-static int connect2tcp(const char *a, const char *p);
-
-/** Waits for socket to become available for either reading or writing */
-static int wait4fd(int fd);
-
-/** Waits for socket to become available for reading */
-static int wait4read(int fd);
-
-/** Waits for socket to become available for reading */
-static int wait4write(int fd);
-
-/* *****************************************************************************
-Aomic operation helpers
-***************************************************************************** */
-
-/* C11 Atomics are defined? */
-#if defined(__ATOMIC_RELAXED)
-/** An atomic addition operation */
-#define atomic_add(p_obj, value)                                               \
-  __atomic_add_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
-/** An atomic subtraction operation */
-/* Select the correct compiler builtin method. */
-#elif __has_builtin(__sync_add_and_fetch)
-#define atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
-#elif __GNUC__ > 3
-/** An atomic addition operation */
-#define atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
-#else
-#error Required builtin "__sync_add_and_fetch" not found.
-#endif
-
-/* *****************************************************************************
 Global State and Settings
 ***************************************************************************** */
 
@@ -126,8 +87,8 @@ static char MSG_OUTPUT[1024]; /* pipelined requests in MTU */
 static size_t MSG_LEN;
 static size_t REQ_PER_MSG;
 
+/* copies an HTTP request to the internal buffer */
 static void prep_msg(void) {
-  /* copies an HTTP request to the internal buffer */
   ASSERT_COND(strlen(address) < 512, "host name too long");
   if (USE_PIPELINING) {
     MSG_LEN = strlen(HTTP_REQUEST_HEAD) + strlen(address) + 4;
@@ -188,43 +149,14 @@ static test_err_en test_server(size_t timeout);
 /* a single attack connection */
 static void attack_server(void);
 
-/* a single attacker thread */
-static void *attack_server_task(void *ignr_) {
-  while (flag)
-    attack_server();
-  return NULL;
-  (void)ignr_;
-}
+/* *****************************************************************************
+Multi-Threaded Testing / Attacking
+***************************************************************************** */
 
+/* a single attacker thread */
+static void *attack_server_task(void *ignr_);
 /* a single tester thread */
-static void *test_server_task(void *ignr_) {
-  while (flag) {
-    const struct timespec tm = {.tv_sec = 1};
-    nanosleep(&tm, NULL);
-    if (!flag)
-      break;
-    atomic_add(&total_attempts, 1);
-    switch (test_server(15)) {
-    case SERVER_OK:
-      if (flag)
-        fprintf(stderr, "* Server online.\n");
-      atomic_add(&total_success, 1);
-      break;
-    case OPENFILE_LIMIT:
-      fprintf(stderr, "* No available sockets.\n");
-      atomic_add(&total_success, 1);
-      break;
-    case CONNECTION_FAILED: /* overflow*/
-    case REQUEST_FAILED:    /* overflow*/
-    case RESPONSE_TIMEOUT:
-      atomic_add(&total_failures, 1);
-      fprintf(stderr, "* Failure detected.\n");
-      break;
-    }
-  }
-  return NULL;
-  (void)ignr_;
-}
+static void *test_server_task(void *ignr_);
 
 /* *****************************************************************************
 Main attack function
@@ -334,7 +266,27 @@ int main(int argc, char const *argv[]) {
 }
 
 /* *****************************************************************************
-IO Helper functions - implementation
+Aomic operation helpers
+***************************************************************************** */
+
+/* C11 Atomics are defined? */
+#if defined(__ATOMIC_RELAXED)
+/** An atomic addition operation */
+#define atomic_add(p_obj, value)                                               \
+  __atomic_add_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
+/** An atomic subtraction operation */
+/* Select the correct compiler builtin method. */
+#elif __has_builtin(__sync_add_and_fetch)
+#define atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
+#elif __GNUC__ > 3
+/** An atomic addition operation */
+#define atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
+#else
+#error Required builtin "__sync_add_and_fetch" not found.
+#endif
+
+/* *****************************************************************************
+IO Helpers
 ***************************************************************************** */
 
 static int set_non_block(int fd) {
@@ -392,6 +344,10 @@ socket_okay:
   return fd;
 }
 
+/* *****************************************************************************
+Polling Helpers
+***************************************************************************** */
+
 /** Waits for socket to become available for either reading or writing */
 static inline int wait__internal(int fd, uint16_t events) {
   errno = 0;
@@ -433,7 +389,7 @@ static __attribute__((unused)) int wait4write(int fd) {
 }
 
 /* *****************************************************************************
-Testing the target
+Test
 ***************************************************************************** */
 
 static test_err_en test_server(size_t timeout) {
@@ -496,7 +452,10 @@ static test_err_en test_server(size_t timeout) {
   return SERVER_OK;
 }
 
-/* Attack */
+/* *****************************************************************************
+Attack
+***************************************************************************** */
+
 static void attack_server(void) {
   int fd = connect2tcp(address, port);
   size_t offset = 0;
@@ -545,4 +504,46 @@ static void attack_server(void) {
     atomic_add(&total_disconnections, 1);
   close(fd);
   return;
+}
+
+/* *****************************************************************************
+Multi-Threaded Testing / Attacking
+***************************************************************************** */
+
+/* a single attacker thread */
+static void *attack_server_task(void *ignr_) {
+  while (flag)
+    attack_server();
+  return NULL;
+  (void)ignr_;
+}
+
+/* a single tester thread */
+static void *test_server_task(void *ignr_) {
+  while (flag) {
+    const struct timespec tm = {.tv_sec = 1};
+    nanosleep(&tm, NULL);
+    if (!flag)
+      break;
+    atomic_add(&total_attempts, 1);
+    switch (test_server(15)) {
+    case SERVER_OK:
+      if (flag)
+        fprintf(stderr, "* Server online.\n");
+      atomic_add(&total_success, 1);
+      break;
+    case OPENFILE_LIMIT:
+      fprintf(stderr, "* No available sockets.\n");
+      atomic_add(&total_success, 1);
+      break;
+    case CONNECTION_FAILED: /* overflow*/
+    case REQUEST_FAILED:    /* overflow*/
+    case RESPONSE_TIMEOUT:
+      atomic_add(&total_failures, 1);
+      fprintf(stderr, "* Failure detected.\n");
+      break;
+    }
+  }
+  return NULL;
+  (void)ignr_;
 }
