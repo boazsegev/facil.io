@@ -150,12 +150,9 @@ static test_err_en test_server(size_t timeout);
 /* a single attack connection */
 static void attack_server(void);
 
-/* *****************************************************************************
-Multi-Threaded Testing / Attacking
-***************************************************************************** */
-
 /* a single attacker thread */
 static void *attack_server_task(void *ignr_);
+
 /* a single tester thread */
 static void *test_server_task(void *ignr_);
 
