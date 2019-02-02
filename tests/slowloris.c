@@ -10,6 +10,7 @@ of target device.
 #define _GNU_SOURCE
 #endif
 
+/* I can't seem to remember which onse I actually use... */
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
