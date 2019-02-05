@@ -8,6 +8,8 @@
 
 **Fix**: (`fio`, `fio_risky_hash`) Florian Weber (@Florianjw) [exposed a byte ordering error (last 7 byte reading order) and took time challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the exposed a possible attack on RiskyHash using a variation on a Meet-In-The-Middle attack, written by Hening Makholm (@hmakholm). This prompted an update and fixes to the function.
 
+**Fix**: (`redis`) fixed a recursive endless loop when converting nested Hash Tables to Redis objects (which normally wouldn't happen anyway, since they would be processed as JSON).
+
 **Fix**: (`redis`) fixed Redis reconnection. Address and port data was mistakingly written at the wrong address, causing it to be overwritten by incoming (non-pub/sub) data.
 
 **Fix**: (`redis`) fixed a race condition in the Redis reconnection logic which might have caused more then a single pub/sub connection to be established and the first pending command to be sent again.
