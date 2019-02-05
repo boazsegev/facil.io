@@ -106,9 +106,7 @@ static inline void redis_free(redis_engine_s *r) {
 Simple RESP formatting
 ***************************************************************************** */
 
-inline static void fiobj2resp2(FIOBJ dest, FIOBJ obj) {
-  if (fiobj_hash_key_in_loop())
-    fiobj2resp2(dest, fiobj_hash_key_in_loop());
+inline static void fiobj2resp2___internal(FIOBJ dest, FIOBJ obj) {
   fio_str_info_s s;
   switch (FIOBJ_TYPE(obj)) {
   case FIOBJ_T_NULL:
@@ -152,6 +150,12 @@ inline static void fiobj2resp2(FIOBJ dest, FIOBJ obj) {
     fiobj_str_write(dest, "\r\n", 2);
     break;
   }
+}
+
+inline static void fiobj2resp2(FIOBJ dest, FIOBJ obj) {
+  if (fiobj_hash_key_in_loop())
+    fiobj2resp2___internal(dest, fiobj_hash_key_in_loop());
+  fiobj2resp2___internal(dest, obj);
 }
 
 static int fiobj2resp_task(FIOBJ o, void *dest_) {
