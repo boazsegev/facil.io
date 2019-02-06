@@ -3876,14 +3876,23 @@ inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size) {
   if (!s || s->frozen) {
     return fio_str_info(s);
   }
-  fio_str_capa_assert(s, size);
   if (s->small || !s->data) {
+    if (size >= FIO_STR_SMALL_CAPA) {
+      s->small = (uint8_t)(((FIO_STR_SMALL_CAPA << 1) | 1) & 0xFF);
+      fio_str_capa_assert(s, size);
+      goto big;
+    }
     s->small = (uint8_t)(((size << 1) | 1) & 0xFF);
     FIO_STR_SMALL_DATA(s)[size] = 0;
     return (fio_str_info_s){.capa = (FIO_STR_SMALL_CAPA - 1),
                             .len = size,
                             .data = FIO_STR_SMALL_DATA(s)};
   }
+  if (size >= s->capa) {
+    s->len = s->capa;
+    fio_str_capa_assert(s, size);
+  }
+big:
   s->len = size;
   s->data[size] = 0;
   return (fio_str_info_s){.capa = s->capa, .len = size, .data = s->data};

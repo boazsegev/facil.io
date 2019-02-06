@@ -8,6 +8,8 @@
 
 **Fix**: (`fio`, `fio_risky_hash`) Florian Weber (@Florianjw) [exposed a byte ordering error (last 7 byte reading order) and took time challenge the algorithm](https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3). The exposed errors were fixed and the exposed a possible attack on RiskyHash using a variation on a Meet-In-The-Middle attack, written by Hening Makholm (@hmakholm). This prompted an update and fixes to the function.
 
+**Fix**: (`fio`) fixed `fio_str_resize` where data might be lost if data was written beyond the current size and the requested size is larger then the String's capacity (i.e., when `fio_str_resize` is used instead of `fio_str_capa_assert`).
+
 **Fix**: (`json` / `redis`) fixed JSON formatting error caused by buffer reallocation when multiple (more then 48) escape sequences were detected. This issue also effected the Redis command callback handler (which was using JSON for IPC).
 
 **Fix**: (`redis`) fixed a potential double `free` call.
