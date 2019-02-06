@@ -72,9 +72,9 @@ typedef struct {
 static inline void redis_internal_reset(struct redis_engine_internal_s *i) {
   i->buf_pos = 0;
   i->parser = (resp_parser_s){.obj_countdown = 0, .expecting = 0};
-  fiobj_free(i->str);
+  fiobj_free((FIOBJ)fio_ct_if(i->ary == FIOBJ_INVALID, (uintptr_t)i->str,
+                              (uintptr_t)i->ary));
   i->str = FIOBJ_INVALID;
-  fiobj_free(i->ary);
   i->ary = FIOBJ_INVALID;
   i->ary_count = 0;
   i->nesting = 0;

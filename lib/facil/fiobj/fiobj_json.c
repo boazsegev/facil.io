@@ -189,7 +189,7 @@ static void write_safe_str(FIOBJ dest, const FIOBJ str) {
   }
   while (len) {
     char *restrict writer = (char *)t.data;
-    while (len && (src[0] > 32 && src[0] != '"' && src[0] != '\\')) {
+    while (len && src[0] > 32 && src[0] != '"' && src[0] != '\\') {
       len--;
       writer[end++] = *(src++);
     }
@@ -245,13 +245,11 @@ static void write_safe_str(FIOBJ dest, const FIOBJ str) {
     src++;
     len--;
     if (added >= 48 && capa <= end + len + 64) {
-      if (0) {
-        capa = (((capa >> 12) + 1) << 12) - 1;
-        capa = fiobj_str_capa_assert(dest, capa);
-      } else {
-        capa = fiobj_str_capa_assert(dest, (end + len + 64));
-      }
+      writer[end] = 0;
+      fiobj_str_resize(dest, end);
+      capa = fiobj_str_capa_assert(dest, (end + len + 64));
       t = fiobj_obj2cstr(dest);
+      writer = (char *)t.data;
       added = 0;
     }
   }
