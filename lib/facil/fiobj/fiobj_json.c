@@ -246,7 +246,8 @@ static void write_safe_str(FIOBJ dest, const FIOBJ str) {
     len--;
     if (added >= 48 && capa <= end + len + 64) {
       writer[end] = 0;
-      fiobj_str_resize(dest, (end + len + 64));
+      fiobj_str_resize(dest, end);
+      fiobj_str_capa_assert(dest, (end + len + 64));
       t = fiobj_obj2cstr(dest);
       writer = (char *)t.data;
       capa = t.capa;

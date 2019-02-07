@@ -9142,14 +9142,14 @@ FIO_FUNC inline void fio_str_test(void) {
     str = FIO_STR_INIT_STATIC("Welcome");
     fio_str_info_s state = fio_str_write(&str, " Home", 5);
     FIO_ASSERT(state.capa > 0, "Static string not converted to non-static.");
-    FIO_ASSERT(str.dealloc, "MIssing static string deallocation function"
+    FIO_ASSERT(str.dealloc, "Missing static string deallocation function"
                             " after `fio_str_write`.");
 
     fprintf(stderr, "* reviewing `fio_str_detach`.\n");
     char *cstr = fio_str_detach(&str);
     FIO_ASSERT(cstr, "`fio_str_detach` returned NULL");
     FIO_ASSERT(!memcmp(cstr, "Welcome Home\0", 13),
-               "`fio_str_detach` string error");
+               "`fio_str_detach` string error: %s", cstr);
     fio_free(cstr);
     FIO_ASSERT(fio_str_len(&str) == 0, "`fio_str_detach` data wasn't cleared.");
     // fio_str_free(&str);
