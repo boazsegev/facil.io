@@ -4312,11 +4312,7 @@ inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num) {
   if (neg) {
     buf[l++] = '-';
   }
-
-  {
-    size_t tmp = fio_str_len(s) + l;
-    i = fio_str_resize(s, tmp);
-  }
+  i = fio_str_resize(s, fio_str_len(s) + l);
 
   while (l) {
     --l;
