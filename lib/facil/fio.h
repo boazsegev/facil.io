@@ -4283,7 +4283,6 @@ inline FIO_FUNC fio_str_info_s fio_str_write(fio_str_s *s, const void *src,
                                              size_t src_len) {
   if (!s || !src_len || !src || s->frozen)
     return fio_str_info(s);
-  // fio_str_capa_assert(s, src_len + fio_str_len(s));
   fio_str_info_s state = fio_str_resize(s, src_len + fio_str_len(s));
   memcpy(state.data + (state.len - src_len), src, src_len);
   return state;
@@ -4316,7 +4315,6 @@ inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num) {
 
   {
     size_t tmp = fio_str_len(s) + l;
-    fio_str_capa_assert(s, tmp);
     i = fio_str_resize(s, tmp);
   }
 
