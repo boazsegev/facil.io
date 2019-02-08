@@ -9145,7 +9145,7 @@ FIO_FUNC inline void fio_str_test(void) {
     FIO_ASSERT(str.dealloc, "Missing static string deallocation function"
                             " after `fio_str_write`.");
 
-    fprintf(stderr, "* reviewing `fio_str_detach`.\n");
+    fprintf(stderr, "* reviewing `fio_str_detach`.\n   (%zu): %s\n", fio_str_info(&str).len, fio_str_info(&str).data);
     char *cstr = fio_str_detach(&str);
     FIO_ASSERT(cstr, "`fio_str_detach` returned NULL");
     FIO_ASSERT(!memcmp(cstr, "Welcome Home\0", 13),

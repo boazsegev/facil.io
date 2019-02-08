@@ -416,6 +416,13 @@ Logging and testing helpers
 /** Log everything, including debug messages. */
 #define FIO_LOG_LEVEL_DEBUG 5
 
+#if FIO_LOG_LENGTH_LIMIT > 128
+#define FIO_LOG_LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
+#define FIO_LOG_LENGTH_BORDER (FIO_LOG_LENGTH_LIMIT - 32)
+#else
+#define FIO_LOG_LENGTH_ON_STACK (FIO_LOG_LENGTH_LIMIT + 32)
+#define FIO_LOG_LENGTH_BORDER FIO_LOG_LENGTH_LIMIT
+#endif
 /** The logging level */
 int __attribute__((weak)) FIO_LOG_LEVEL;
 
@@ -423,16 +430,14 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
 #define FIO_LOG_PRINT(level, ...)                                              \
   do {                                                                         \
     if (level <= FIO_LOG_LEVEL) {                                              \
-      char tmp___log[FIO_LOG_LENGTH_LIMIT];                                    \
+      char tmp___log[FIO_LOG_LENGTH_ON_STACK];                                 \
       int len___log =                                                          \
           snprintf(tmp___log, FIO_LOG_LENGTH_LIMIT - 2, __VA_ARGS__);          \
       if (len___log <= 0 || len___log >= FIO_LOG_LENGTH_LIMIT - 2) {           \
-        if (len___log >= (FIO_LOG_LENGTH_LIMIT >> 2) &&                        \
-            (FIO_LOG_LENGTH_LIMIT >> 2) + 52 < FIO_LOG_LENGTH_LIMIT) {         \
-          fwrite(tmp___log, (FIO_LOG_LENGTH_LIMIT >> 2), 1, stderr);           \
-          memcpy(tmp___log + (FIO_LOG_LENGTH_LIMIT >> 2),                      \
-                 "...\nERROR: log line output too long (can't write).\n", 52); \
-          len___log = (FIO_LOG_LENGTH_LIMIT >> 2) + 52;                        \
+        if (len___log >= FIO_LOG_LENGTH_LIMIT - 2) {                           \
+          memcpy(tmp___log + FIO_LOG_LENGTH_BORDER,                            \
+                 "... (warning: truncated).", 25);                             \
+          len___log = FIO_LOG_LENGTH_BORDER + 25;                              \
         } else {                                                               \
           fwrite("ERROR: log output error (can't write).\n", 39, 1, stderr);   \
           break;                                                               \
@@ -3880,14 +3885,24 @@ inline FIO_FUNC fio_str_info_s fio_str_resize(fio_str_s *s, size_t size) {
   if (!s || s->frozen) {
     return fio_str_info(s);
   }
-  fio_str_capa_assert(s, size);
   if (s->small || !s->data) {
-    s->small = (uint8_t)(((size << 1) | 1) & 0xFF);
-    FIO_STR_SMALL_DATA(s)[size] = 0;
-    return (fio_str_info_s){.capa = (FIO_STR_SMALL_CAPA - 1),
-                            .len = size,
-                            .data = FIO_STR_SMALL_DATA(s)};
+    if (size < FIO_STR_SMALL_CAPA) {
+      s->small = (uint8_t)(((size << 1) | 1) & 0xFF);
+      FIO_STR_SMALL_DATA(s)[size] = 0;
+      return (fio_str_info_s){.capa = (FIO_STR_SMALL_CAPA - 1),
+                              .len = size,
+                              .data = FIO_STR_SMALL_DATA(s)};
+    }
+    s->small = (uint8_t)((((FIO_STR_SMALL_CAPA - 1) << 1) | 1) & 0xFF);
+    fio_str_capa_assert(s, size);
+    goto big;
   }
+  if (size >= s->capa) {
+    s->len = fio_ct_if2((uintptr_t)s->dealloc, s->capa, s->len);
+    fio_str_capa_assert(s, size);
+  }
+
+big:
   s->len = size;
   s->data[size] = 0;
   return (fio_str_info_s){.capa = s->capa, .len = size, .data = s->data};
@@ -4268,6 +4283,7 @@ inline FIO_FUNC fio_str_info_s fio_str_write(fio_str_s *s, const void *src,
                                              size_t src_len) {
   if (!s || !src_len || !src || s->frozen)
     return fio_str_info(s);
+  // fio_str_capa_assert(s, src_len + fio_str_len(s));
   fio_str_info_s state = fio_str_resize(s, src_len + fio_str_len(s));
   memcpy(state.data + (state.len - src_len), src, src_len);
   return state;
@@ -4297,7 +4313,12 @@ inline FIO_FUNC fio_str_info_s fio_str_write_i(fio_str_s *s, int64_t num) {
   if (neg) {
     buf[l++] = '-';
   }
-  i = fio_str_resize(s, fio_str_len(s) + l);
+
+  {
+    size_t tmp = fio_str_len(s) + l;
+    fio_str_capa_assert(s, tmp);
+    i = fio_str_resize(s, tmp);
+  }
 
   while (l) {
     --l;
