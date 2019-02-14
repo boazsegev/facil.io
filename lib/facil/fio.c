@@ -2913,7 +2913,7 @@ ssize_t fio_flush(intptr_t uuid) {
   if (!uuid_data(uuid).packet)
     goto flush_rw_hook;
 
-  const size_t old_count = uuid_data(uuid).packet_count;
+  const fio_packet_s *old_packet = uuid_data(uuid).packet;
   const size_t old_sent = uuid_data(uuid).sent;
 
   tmp = uuid_data(uuid).packet->write_func(fio_uuid2fd(uuid),
@@ -2922,7 +2922,6 @@ ssize_t fio_flush(intptr_t uuid) {
     goto test_errno;
   }
 
-  if (old_count >= 1024 && uuid_data(uuid).packet_count == old_count &&
       uuid_data(uuid).sent >= old_sent &&
       (uuid_data(uuid).sent - old_sent) < 32768) {
     /* Slowloris attack assumed */
