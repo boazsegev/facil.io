@@ -2571,12 +2571,12 @@ static void fio_sock_perform_close_fd(intptr_t fd) { close(fd); }
 static inline void fio_sock_packet_rotate_unsafe(uintptr_t fd) {
   fio_packet_s *packet = fd_data(fd).packet;
   fd_data(fd).packet = packet->next;
+  fio_atomic_sub(&fd_data(fd).packet_count, 1);
   if (!packet->next) {
     fd_data(fd).packet_last = &fd_data(fd).packet;
     fd_data(fd).packet_count = 0;
   } else if (&packet->next == fd_data(fd).packet_last) {
     fd_data(fd).packet_last = &fd_data(fd).packet;
-    fio_atomic_sub(&fd_data(fd).packet_count, 1);
   }
   fio_packet_free(packet);
 }
