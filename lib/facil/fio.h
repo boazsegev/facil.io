@@ -4634,6 +4634,7 @@ static FIO_ARY_TYPE const FIO_NAME(s___const_invalid_object);
 
 /** object copy required? */
 #ifndef FIO_ARY_COPY
+#define FIO_ARY_COPY_IS_SIMPLE 1
 #define FIO_ARY_COPY(dest, obj) ((dest) = (obj))
 #endif
 
@@ -4930,14 +4931,21 @@ FIO_FUNC inline FIO_ARY_TYPE *FIO_NAME(to_a)(FIO_NAME(s) * ary) {
  * The `src` Array remain untouched.
  */
 FIO_FUNC inline void FIO_NAME(concat)(FIO_NAME(s) * dest, FIO_NAME(s) * src) {
+  if (!src)
+    return;
   const size_t added = FIO_NAME(count)(src);
   if (!added || !dest)
     return;
   FIO_NAME(__require_on_top)(dest, added);
+#if FIO_ARY_COPY_IS_SIMPLE
+  memcpy(dest->arry + dest->end, src->arry + src->start,
+         added * sizeof(*dest->arry));
+#else
   /* don't use memcpy, in case copying has side-effects (see macro) */
   for (size_t i = 0; i < added; ++i) {
     FIO_ARY_COPY(((dest->arry + dest->end)[i]), ((src->arry + src->start)[i]));
   }
+#endif
   dest->end += added;
 }
 
@@ -5341,6 +5349,7 @@ Done
 #undef FIO_ARY_INVALID
 #undef FIO_ARY_COMPARE
 #undef FIO_ARY_COPY
+#undef FIO_ARY_COPY_IS_SIMPLE
 #undef FIO_ARY_DESTROY
 #undef FIO_ARY_REALLOC
 #undef FIO_ARY_DEALLOC
