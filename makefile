@@ -1,36 +1,66 @@
-### Output
+#################################################
+# This makefile was composed for facil.io
+#
+# Copyright (c) 2016-2019 Boaz Segev
+# License MIT or ISC
+#
+# This makefile should be easilty portable on
+# X-nix systems for different projects.
+#
+#################################################
+
+#################################################
+# Compliation Output Settings
+#################################################
+
 # binary name and location
 ifndef NAME
 NAME=fioapp
 endif
 
-ifndef DESTDIR
-DESTDIR=tmp
-endif
-
-### Library folders
-# the .c and .cpp source files root folder - subfolders are automatically included
-LIB_ROOT=lib
-# publicly used subfolders in the lib root
-LIB_PUBLIC_SUBFOLDERS=facil facil/tls facil/fiobj facil/cli facil/http facil/http/parsers facil/redis
-# privately used subfolders in the lib root (this distinction is for CMake)
-LIB_PRIVATE_SUBFOLDERS=
-
-### Development folders
-# The development, non-library .c file(s) (i.e., the one with `int main(void)`.
-MAIN_ROOT=src
-# Development subfolders in the main root
-MAIN_SUBFOLDERS=
-
-### Build Root
-# temporary folder will be cleared out and deleted between fresh builds
+# a temporary folder that will be cleared out and deleted between fresh builds
 # All object files will be placed in this folder
 TMP_ROOT=tmp
 
-### Compiler & Linker flags
+# destination folder for the final compiled output
+ifndef DEST
+DEST=$(TMP_ROOT)
+endif
+
+# output folder for `make libdump` - dumps all library files (not source files) in one place.
+DUMP_LIB=libdump
+
+# The library details for CMake incorporation. Can be safely removed.
+CMAKE_LIBFILE_NAME=CMakeLists.txt
+
+#################################################
+# Source Code Folder Settings
+#################################################
+
+# The development, non-library .c file(s) (i.e., the one with `int main(void)`).
+MAIN_ROOT=src
+# Development subfolders under the main development root
+MAIN_SUBFOLDERS=
+
+#################################################
+# Library Folder Settings
+#################################################
+
+# the .c and .cpp source files root folder
+LIB_ROOT=lib
+
+# publicly used subfolders in the lib root
+LIB_PUBLIC_SUBFOLDERS=facil facil/tls facil/fiobj facil/cli facil/http facil/http/parsers facil/redis
+
+# privately used subfolders in the lib root (this distinction is only relevant for CMake)
+LIB_PRIVATE_SUBFOLDERS=
+
+#################################################
+# Compiler / Linker Settings
+#################################################
+
 # any librries required (only names, ommit the "-l" at the begining)
 LINKER_LIBS=pthread m
-LINKER_LIBS_EXT=
 # optimization level.
 OPTIMIZATION=-O2 -march=native
 # Warnings... i.e. -Wpedantic -Weverything -Wno-format-pedantic
@@ -39,41 +69,6 @@ WARNINGS= -Wshadow -Wall -Wextra -Wno-missing-field-initializers -Wpedantic
 INCLUDE= ./
 # any preprocessosr defined flags we want, space seperated list (i.e. DEBUG )
 FLAGS:=
-
-### Helpers
-# The library details for CMake incorporation. Can be safely removed.
-CMAKE_LIBFILE_NAME=CMakeLists.txt
-# dumps all library files in one place
-DUMP_LIB=libdump
-
-# add DEBUG flag if requested
-ifdef DEBUG
-  $(info * Detected DEBUG environment flag, enforcing debug mode compilation)
-	FLAGS:=$(FLAGS) DEBUG
-	# # comment the following line if you want to use a different address sanitizer or a profiling tool.
-	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
-	# possibly useful:  -Wconversion -Wcomma -fsanitize=undefined -Wshadow
-	# go crazy with clang: -Weverything -Wno-cast-qual -Wno-used-but-marked-unused -Wno-reserved-id-macro -Wno-padded -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-bad-function-cast -Wno-missing-prototypes
-else
-	FLAGS:=$(FLAGS) NODEBUG
-endif
-
-# add FIO_PRINT_STATE flag if requested
-ifdef FIO_PRINT
-	FLAGS:=$(FLAGS) FIO_PRINT_STATE=$(FIO_PRINT)
-endif
-
-# add FIO_ENGINE_POLL flag if requested
-ifdef FIO_POLL
-	FLAGS:=$(FLAGS) FIO_ENGINE_POLL=$(FIO_POLL)
-endif
-
-# add FIO_PUBSUB_SUPPORT flag if requested
-ifdef FIO_PUBSUB_SUPPORT
-	FLAGS:=$(FLAGS) FIO_PUBSUB_SUPPORT=$(FIO_PUBSUB_SUPPORT)
-endif
-
-
 
 # c compiler
 ifndef CC
@@ -93,14 +88,53 @@ ifndef CPPSTD
 	CPPSTD:=gnu++11
 endif
 
+# for internal use - don't change
+LINKER_LIBS_EXT:=
 
-##############
-## OS specific data - compiler, assembler etc.
+#################################################
+# Debug Settings
+#################################################
+
+# add DEBUG flag if requested
+ifdef DEBUG
+  $(info * Detected DEBUG environment flag, enforcing debug mode compilation)
+	FLAGS:=$(FLAGS) DEBUG
+	# # comment the following line if you want to use a different address sanitizer or a profiling tool.
+	OPTIMIZATION:=-O0 -march=native -fsanitize=address -fno-omit-frame-pointer
+	# possibly useful:  -Wconversion -Wcomma -fsanitize=undefined -Wshadow
+	# go crazy with clang: -Weverything -Wno-cast-qual -Wno-used-but-marked-unused -Wno-reserved-id-macro -Wno-padded -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-bad-function-cast -Wno-missing-prototypes
+else
+	FLAGS:=$(FLAGS) NDEBUG NODEBUG
+endif
+
+#################################################
+# facil.io compilation flag helpers
+#################################################
+
+# add FIO_PRINT_STATE flag if requested
+ifdef FIO_PRINT
+	FLAGS:=$(FLAGS) FIO_PRINT_STATE=$(FIO_PRINT)
+endif
+
+# add FIO_ENGINE_POLL flag if requested
+ifdef FIO_POLL
+	FLAGS:=$(FLAGS) FIO_ENGINE_POLL=$(FIO_POLL)
+endif
+
+# add FIO_PUBSUB_SUPPORT flag if requested
+ifdef FIO_PUBSUB_SUPPORT
+	FLAGS:=$(FLAGS) FIO_PUBSUB_SUPPORT=$(FIO_PUBSUB_SUPPORT)
+endif
+
+#################################################
+# OS Specific Settings (debugger, disassembler, etc')
+#################################################
+
 
 ifneq ($(OS),Windows_NT)
 	OS := $(shell uname)
 else
-	$(error *** Windows systems aren\'t supported by this makefile / library.)
+	$(warning *** Windows systems might not work with this makefile / library.)
 endif
 ifeq ($(OS),Darwin) # Run MacOS commands
 	# debugger
@@ -117,14 +151,12 @@ else
 	DOCUMENTATION=
 endif
 
-#####################
-# automatic library adjustments for addon libraries
-LIB_PRIVATE_SUBFOLDERS:=$(LIB_PRIVATE_SUBFOLDERS) $(if $(wildcard lib/bearssl),bearssl)
+#################################################
+#       Automatic Setting Expansion
+#               (don't edit)
+#################################################
 
-
-#####################
-# Auto computed values
-BIN = $(DESTDIR)/$(NAME)
+BIN = $(DEST)/$(NAME)
 
 LIBDIR_PUB = $(LIB_ROOT) $(foreach dir, $(LIB_PUBLIC_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
 LIBDIR_PRIV = $(foreach dir, $(LIB_PRIVATE_SUBFOLDERS), $(addsuffix /,$(basename $(LIB_ROOT)))$(dir))
@@ -146,7 +178,69 @@ INCLUDE_STR = $(foreach dir,$(INCLUDE),$(addprefix -I, $(dir))) $(foreach dir,$(
 
 MAIN_OBJS = $(foreach source, $(MAINSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
 LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o, $(basename $(source)))))
+
 OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
+
+#################################################
+#           SSL/ TLS Library Detection
+#               (no need to edit)
+#################################################
+
+# BearSSL requirement C application code
+# (source code variation)
+FIO_TLS_TEST_BEARSSL_SOURCE := "\\n\
+\#include <bearssl.h>\\n\
+int main(void) {\\n\
+}\\n\
+"
+
+# BearSSL requirement C application code
+# (linked library variation)
+FIO_TLS_TEST_BEARSSL_EXT := "\\n\
+\#include <bearssl.h>\\n\
+int main(void) {\\n\
+}\\n\
+"
+
+# OpenSSL requirement C application code
+FIO_TLS_TEST_OPENSSL := "\\n\
+\#include <openssl/bio.h> \\n\
+\#include <openssl/err.h> \\n\
+\#include <openssl/ssl.h> \\n\
+\#if OPENSSL_VERSION_NUMBER < 0x10100000L \\n\
+\#error \"OpenSSL version too small\" \\n\
+\#endif \\n\
+int main(void) { \\n\
+  SSL_library_init(); \\n\
+  SSL_CTX *ctx = SSL_CTX_new(TLS_method()); \\n\
+  SSL *ssl = SSL_new(ctx); \\n\
+  BIO *bio = BIO_new_socket(3, 0); \\n\
+  BIO_up_ref(bio); \\n\
+  SSL_set0_rbio(ssl, bio); \\n\
+  SSL_set0_wbio(ssl, bio); \\n\
+}\\n\
+"
+
+
+# automatic library adjustments for possible BearSSL library
+LIB_PRIVATE_SUBFOLDERS:=$(LIB_PRIVATE_SUBFOLDERS) $(if $(wildcard lib/bearssl),bearssl)
+
+# add BearSSL/OpenSSL library flags (exclusive)
+ifdef FIO_NO_TLS
+else ifeq ($(shell printf $(FIO_TLS_TEST_BEARSSL_SOURCE) | $(CC) $(INCLUDE_STR) $(LDFLAGS) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+  $(info * Detected the BearSSL source code library, setting HAVE_BEARSSL)
+	FLAGS:=$(FLAGS) HAVE_BEARSSL
+else ifeq ($(shell printf $(FIO_TLS_TEST_BEARSSL_EXT) | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lbearssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+  $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
+	FLAGS:=$(FLAGS) HAVE_BEARSSL
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
+else ifeq ($(shell printf $(FIO_TLS_TEST_OPENSSL) | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+  $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
+	FLAGS:=$(FLAGS) HAVE_OPENSSL
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
+else
+  $(info * No compatible SSL/TLS library detected.)
+endif
 
 # S2N TLS/SSL library: https://github.com/awslabs/s2n
 ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -ls2n -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null ), 0)
@@ -155,37 +249,33 @@ ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
 
-# add BearSSL/OpenSSL library flags (exclusive)
-ifdef FIO_NO_TLS
-else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
-  $(info * Detected the BearSSL source library, setting HAVE_BEARSSL)
-	FLAGS:=$(FLAGS) HAVE_BEARSSL
-else ifeq ($(shell printf "\#include <bearssl.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lbearssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
-  $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
-	FLAGS:=$(FLAGS) HAVE_BEARSSL
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else ifeq ($(shell printf "\#include <openssl/opensslv.h>\\n\#include <openssl/ssl.h>\\n\#if OPENSSL_VERSION_NUMBER < 0x10100000L \\n\#error \"OpenSSL version too small\"\\n\#endif\\nint main(void) { SSL_library_init(); }" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null), 0)
-  $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
-	FLAGS:=$(FLAGS) HAVE_OPENSSL
-	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
-endif
+#################################################
+#           ZLib Library Detection
+#              (no need to edit)
+#################################################
 
-# add ZLib library flags
 ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lz -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the zlib library, setting HAVE_ZLIB)
 	FLAGS:=$(FLAGS) HAVE_ZLIB
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
 endif
 
-# add PostgreSQL library flags
+#################################################
+#         PostgreSQL Library Detection
+#               (no need to edit)
+#################################################
+
 ifeq ($(shell printf "\#include <libpq-fe.h>\\nint main(void) {}\n" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lpg -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
   $(info * Detected the PostgreSQL library, setting HAVE_POSTGRESQL)
 	FLAGS:=$(FLAGS) HAVE_POSTGRESQL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
 endif
 
+#################################################
+#               Endian  Detection
+#               (no need to edit)
+#################################################
 
-# Set Endian Flag
 ifeq ($(shell printf "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[sizeof(i)-1]);}\n" | $(CC) -xc -o _fio___endian_test - >> /dev/null 2> /dev/null ; ./_fio___endian_test >> /dev/null 2> /dev/null; echo $$?; rm _fio___endian_test 2> /dev/null), 1)
   $(info * Detected Big Endian byte order.)
 	FLAGS:=$(FLAGS) __BIG_ENDIAN__
@@ -197,8 +287,10 @@ else
 endif
 
 
-#####################
-# Updated flags and final values
+#################################################
+#       Updated flags and final values
+#                 (don't edit)
+#################################################
 
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
@@ -206,8 +298,10 @@ CPPFLAGS:= $(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZA
 LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
 CFALGS_DEPENDENCY=-MT $@ -MMD -MP
 
-########
-## Main Tasks
+
+#################################################
+#        Tasks - Building
+#################################################
 
 $(NAME): build
 
@@ -220,44 +314,50 @@ build_objects: $(LIB_OBJS) $(MAIN_OBJS)
 lib: | create_tree lib_build
 
 lib_build: $(LIB_OBJS)
-	@$(CCL) -shared -o $(DESTDIR)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
+	@$(CCL) -shared -o $(DEST)/libfacil.so $^ $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(DOCUMENTATION)
 
 
 %.o : %.c
 
-ifdef DISAMS
+#### no disassembler (normal / expected state)
+ifndef DISAMS
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
-	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
-	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
-	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
-	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
-	@$(DISAMS) $@ > $@.s
 
-
+#### add diassembling stage (testing / slower)
 else
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
 	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
+	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
+	@$(DISAMS) $@ > $@.s
 endif
 
 $(TMP_ROOT)/%.d: ;
 
 -include $(OBJS_DEPENDENCY)
+
+#################################################
+#        Tasks - Testing
+#################################################
+
 
 .PHONY : test
 test: | clean
@@ -332,8 +432,9 @@ create_tree:
 	-@mkdir -p $(BUILDTREE) 2> /dev/null
 
 
-########
-## Installer Tasks
+#################################################
+#        Tasks - Installers
+#################################################
 
 .PHONY : add/bearssl
 add/bearssl: | remove/bearssl
@@ -353,8 +454,9 @@ remove/bearssl:
 	-@make clean
 
 
-########
-## Helper Tasks
+#################################################
+#        Tasks - library code dumping & CMake
+#################################################
 
 ifndef DUMP_LIB
 .PHONY : libdump
@@ -425,6 +527,10 @@ cmake:
 	@echo '' >> $(CMAKE_LIBFILE_NAME)
 
 endif
+
+#################################################
+#        Tasks - make variable printout (test)
+#################################################
 
 # Prints the make variables, used for debugging the makefile
 .PHONY : vars
