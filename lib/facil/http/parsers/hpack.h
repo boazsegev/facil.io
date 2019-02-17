@@ -27,32 +27,22 @@
 #define HPACK_MAX_TABLE_SIZE 65535
 
 /* *****************************************************************************
-Types
+Required Callbacks
 ***************************************************************************** */
 
-/** A Short String (SString) struct, up to 65,535 bytes long */
-typedef struct sstring_s {
-  uint16_t len;
-  uint8_t data[];
-} sstring_s;
-
-/** An HTTP/2 Header */
-typedef struct http2_header_s {
-  sstring_s *name;
-  sstring_s *value;
-} http2_header_s;
-
-/** An HTTP/2 Header Collection */
-typedef struct http2_header_array_s {
-  size_t len;
-  http2_header_s headers[];
-} http2_header_array_s;
+/* *****************************************************************************
+Types
+***************************************************************************** */
 
 /** The HPACK context. */
 typedef struct hpack_context_s hpack_context_s;
 
 /* *****************************************************************************
-API
+Context API
+***************************************************************************** */
+
+/* *****************************************************************************
+Primitive Types API
 ***************************************************************************** */
 
 /**
@@ -97,6 +87,70 @@ static inline int hpack_string_pack(void *dest, size_t limit, void *data,
  */
 static inline int hpack_string_unpack(void *dest, size_t limit, void *encoded,
                                       size_t len, size_t *pos);
+
+/* *****************************************************************************
+Static table API
+***************************************************************************** */
+
+/**
+ * Sets the provided pointers with the information in the static header table.
+ *
+ * The `index` is 1..61 (not zero based).
+ *
+ * Set `get_value` to 1 to collect the value data rather then the header name.
+ *
+ * Returns -1 if request is out of bounds.
+ */
+static int hpack_header_static_find(uint8_t index, uint8_t get_value,
+                                    const char **name, size_t *len);
+
+/* *****************************************************************************
+Huffman API (internal)
+***************************************************************************** */
+
+/* the huffman encoding map */
+typedef const struct {
+  const uint32_t code;
+  const uint8_t bits;
+} huffman_encode_s;
+static const huffman_encode_s huffman_encode_table[];
+
+/* the huffman decoding binary tree type */
+typedef struct {
+  const int16_t value;     // value, -1 == none.
+  const uint8_t offset[2]; // offset for 0 and one. 0 == leaf node.
+} huffman_decode_s;
+static const huffman_decode_s huffman_decode_tree[];
+
+/**
+ * Unpack (de-compress) using HPACK huffman - returns the number of bytes
+ * written and advances the position marker.
+ */
+static MAYBE_UNUSED int hpack_huffman_unpack(void *dest, size_t limit,
+                                             void *encoded, size_t len,
+                                             size_t *pos);
+
+/**
+ *  Pack (compress) using HPACK huffman - returns the number of bytes written or
+ * required.
+ */
+static MAYBE_UNUSED int hpack_huffman_pack(void *dest, const int limit,
+                                           void *data, size_t len);
+
+/* *****************************************************************************
+
+
+
+
+
+                                  Implementation
+
+
+
+
+
+
+***************************************************************************** */
 
 /* *****************************************************************************
 Integer encoding
@@ -184,39 +238,6 @@ static inline int64_t hpack_int_unpack(void *data_, size_t len, uint8_t prefix,
   ++(*pos);
   return (int64_t)result;
 }
-
-/* *****************************************************************************
-Huffman (internal API)
-***************************************************************************** */
-
-/* the huffman encoding map */
-typedef const struct {
-  const uint32_t code;
-  const uint8_t bits;
-} huffman_encode_s;
-static const huffman_encode_s huffman_encode_table[];
-
-/* the huffman decoding binary tree type */
-typedef struct {
-  const int16_t value;     // value, -1 == none.
-  const uint8_t offset[2]; // offset for 0 and one. 0 == leaf node.
-} huffman_decode_s;
-static const huffman_decode_s huffman_decode_tree[];
-
-/**
- * Unpack (de-compress) using HPACK huffman - returns the number of bytes
- * written and advances the position marker.
- */
-static MAYBE_UNUSED int hpack_huffman_unpack(void *dest, size_t limit,
-                                             void *encoded, size_t len,
-                                             size_t *pos);
-
-/**
- *  Pack (compress) using HPACK huffman - returns the number of bytes written or
- * required.
- */
-static MAYBE_UNUSED int hpack_huffman_pack(void *dest, const int limit,
-                                           void *data, size_t len);
 
 /* *****************************************************************************
 String encoding
@@ -402,9 +423,111 @@ calc_final_length:
 }
 
 /* *****************************************************************************
+Header static table lookup
+***************************************************************************** */
+
+const static struct {
+  struct hpack_static_data_s {
+    const char *val;
+    const size_t len;
+  } data[2];
+} MAYBE_UNUSED hpack_static_table[] = {
+    /* [0] */ {.data = {{.len = 0}, {.len = 0}}},
+    {.data = {{.val = ":authority", .len = 10}, {.len = 0}}},
+    {.data = {{.val = ":method", .len = 7}, {.val = "GET", .len = 3}}},
+    {.data = {{.val = ":method", .len = 7}, {.val = "POST", .len = 4}}},
+    {.data = {{.val = ":path", .len = 5}, {.val = "/", .len = 1}}},
+    {.data = {{.val = ":path", .len = 5}, {.val = "/index.html", .len = 11}}},
+    {.data = {{.val = ":scheme", .len = 7}, {.val = "http", .len = 0}}},
+    {.data = {{.val = ":scheme", .len = 7}, {.val = "https", .len = 0}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "200", .len = 0}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "204", .len = 0}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "206", .len = 0}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "304", .len = 0}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "400", .len = 0}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "404", .len = 0}}},
+    {.data = {{.val = ":status", .len = 7}, {.val = "500", .len = 0}}},
+    {.data = {{.val = "accept-charset", .len = 14}, {.len = 0}}},
+    {.data = {{.val = "accept-encoding", .len = 15},
+              {.val = "gzip, deflate", .len = 13}}},
+    {.data = {{.val = "accept-language", .len = 15}, {.len = 0}}},
+    {.data = {{.val = "accept-ranges", .len = 13}, {.len = 0}}},
+    {.data = {{.val = "accept", .len = 6}, {.len = 0}}},
+    {.data = {{.val = "access-control-allow-origin", .len = 27}, {.len = 0}}},
+    {.data = {{.val = "age", .len = 3}, {.len = 0}}},
+    {.data = {{.val = "allow", .len = 5}, {.len = 0}}},
+    {.data = {{.val = "authorization", .len = 13}, {.len = 0}}},
+    {.data = {{.val = "cache-control", .len = 13}, {.len = 0}}},
+    {.data = {{.val = "content-disposition", .len = 0}, {.len = 0}}},
+    {.data = {{.val = "content-encoding", .len = 16}, {.len = 0}}},
+    {.data = {{.val = "content-language", .len = 16}, {.len = 0}}},
+    {.data = {{.val = "content-length", .len = 14}, {.len = 0}}},
+    {.data = {{.val = "content-location", .len = 16}, {.len = 0}}},
+    {.data = {{.val = "content-range", .len = 13}, {.len = 0}}},
+    {.data = {{.val = "content-type", .len = 12}, {.len = 0}}},
+    {.data = {{.val = "cookie", .len = 6}, {.len = 0}}},
+    {.data = {{.val = "date", .len = 4}, {.len = 0}}},
+    {.data = {{.val = "etag", .len = 4}, {.len = 0}}},
+    {.data = {{.val = "expect", .len = 6}, {.len = 0}}},
+    {.data = {{.val = "expires", .len = 7}, {.len = 0}}},
+    {.data = {{.val = "from", .len = 4}, {.len = 0}}},
+    {.data = {{.val = "host", .len = 4}, {.len = 0}}},
+    {.data = {{.val = "if-match", .len = 8}, {.len = 0}}},
+    {.data = {{.val = "if-modified-since", .len = 17}, {.len = 0}}},
+    {.data = {{.val = "if-none-match", .len = 13}, {.len = 0}}},
+    {.data = {{.val = "if-range", .len = 8}, {.len = 0}}},
+    {.data = {{.val = "if-unmodified-since", .len = 19}, {.len = 0}}},
+    {.data = {{.val = "last-modified", .len = 13}, {.len = 0}}},
+    {.data = {{.val = "link", .len = 4}, {.len = 0}}},
+    {.data = {{.val = "location", .len = 8}, {.len = 0}}},
+    {.data = {{.val = "max-forwards", .len = 12}, {.len = 0}}},
+    {.data = {{.val = "proxy-authenticate", .len = 18}, {.len = 0}}},
+    {.data = {{.val = "proxy-authorization", .len = 19}, {.len = 0}}},
+    {.data = {{.val = "range", .len = 5}, {.len = 0}}},
+    {.data = {{.val = "referer", .len = 7}, {.len = 0}}},
+    {.data = {{.val = "refresh", .len = 7}, {.len = 0}}},
+    {.data = {{.val = "retry-after", .len = 11}, {.len = 0}}},
+    {.data = {{.val = "server", .len = 6}, {.len = 0}}},
+    {.data = {{.val = "set-cookie", .len = 10}, {.len = 0}}},
+    {.data = {{.val = "strict-transport-security", .len = 25}, {.len = 0}}},
+    {.data = {{.val = "transfer-encoding", .len = 17}, {.len = 0}}},
+    {.data = {{.val = "user-agent", .len = 10}, {.len = 0}}},
+    {.data = {{.val = "vary", .len = 4}, {.len = 0}}},
+    {.data = {{.val = "via", .len = 3}, {.len = 0}}},
+    {.data = {{.val = "www-authenticate", .len = 16}, {.len = 0}}},
+};
+
+static MAYBE_UNUSED int hpack_header_static_find(uint8_t index,
+                                                 uint8_t requested_type,
+                                                 const char **name,
+                                                 size_t *len) {
+  if (requested_type > 1 ||
+      index >= (sizeof(hpack_static_table) / sizeof(hpack_static_table[0])))
+    goto err;
+  struct hpack_static_data_s d = hpack_static_table[index].data[requested_type];
+  *name = d.val;
+  *len = d.len;
+  return 0;
+err:
+
+  *name = NULL;
+  *len = 0;
+  return -1;
+}
+
+/* *****************************************************************************
 
 
-                                    Testing
+
+
+
+
+                                  Testing
+
+
+
+
+
 
 
 ***************************************************************************** */
@@ -712,7 +835,9 @@ void hpack_test(void) {
 
 
 
+
                   Auto-generate binary tree from table data
+
 
 
 
@@ -953,7 +1078,7 @@ void huffman__print_tree(void) {
         (tree[i].value == -1) ? 0 : encode_table[tree[i].value].code,
         (tree[i].value == -1) ? 0 : encode_table[tree[i].value].bits);
   }
-  fprintf(stderr, "};\n\n\n******************************************\n\n");
+  fprintf(stderr, "};\n\n\n**************( stop copying )**************\n\n");
   for (int i = 0; i < 256; ++i) {
     uint8_t data[4] = {0};
     uint8_t result = 0;
@@ -985,9 +1110,21 @@ int main(void) {
 #endif
 
 /* *****************************************************************************
-Paste auto-generated b-tree here:
-*****************************************************************************
-*/
+
+
+
+
+
+
+                      Paste auto-generated data here
+
+
+
+
+
+
+
+***************************************************************************** */
 
 /** Static Huffman encoding map, left aligned */
 static const huffman_encode_s huffman_encode_table[] = {
@@ -1768,8 +1905,17 @@ static const huffman_decode_s huffman_decode_tree[] = {
 };
 
 /* *****************************************************************************
-Don't overwrite after this
-*****************************************************************************
-*/
+
+
+
+
+
+                              Don't overwrite this
+
+
+
+
+
+***************************************************************************** */
 
 #endif /* H_HPACK_H */
