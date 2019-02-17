@@ -2138,15 +2138,18 @@ postpone:
 
 static void deferred_on_ready(void *arg, void *arg2) {
   errno = 0;
-  if (fio_flush((intptr_t)arg) > 0 || errno == EWOULDBLOCK) {
-    fio_poll_add_write(fio_uuid2fd(arg));
+  if (fio_flush((intptr_t)arg) > 0 || errno == EWOULDBLOCK || errno == EAGAIN) {
+    if (arg2)
+      fio_defer_push_urgent(deferred_on_ready, arg, NULL);
+    else
+      fio_poll_add_write(fio_uuid2fd(arg));
     return;
   }
   if (!uuid_data(arg).protocol) {
     return;
   }
+
   fio_defer_push_task(deferred_on_ready_usr, arg, NULL);
-  (void)arg2;
 }
 
 static void deferred_on_data(void *uuid, void *arg2) {
@@ -2797,7 +2800,7 @@ ssize_t fio_write2_fn(intptr_t uuid, fio_write_args_s options) {
 
   if (was_empty) {
     touchfd(fio_uuid2fd(uuid));
-    fio_defer_push_urgent(deferred_on_ready, (void *)uuid, NULL);
+    deferred_on_ready((void *)uuid, (void *)1);
   }
   return 0;
 locked_error:
@@ -2860,7 +2863,7 @@ void fio_force_close(intptr_t uuid) {
   if (!uuid_data(uuid).close)
     uuid_data(uuid).close = 1;
   /* clear away any packets in case we want to cut the connection short. */
-  fio_packet_s *packet;
+  fio_packet_s *packet = NULL;
   fio_lock(&uuid_data(uuid).sock_lock);
   packet = uuid_data(uuid).packet;
   uuid_data(uuid).packet = NULL;
@@ -2922,6 +2925,8 @@ ssize_t fio_flush(intptr_t uuid) {
     goto test_errno;
   }
 
+  if (uuid_data(uuid).packet_count >= 1024 &&
+      uuid_data(uuid).packet == old_packet &&
       uuid_data(uuid).sent >= old_sent &&
       (uuid_data(uuid).sent - old_sent) < 32768) {
     /* Slowloris attack assumed */
@@ -2964,11 +2969,16 @@ test_errno:
 #if EWOULDBLOCK != EAGAIN
   case EAGAIN: /* ovreflow */
 #endif
-  case ENOTCONN:    /* ovreflow */
-  case EINPROGRESS: /* ovreflow */
-  case ENOSPC:      /* ovreflow */
+  case ENOTCONN:      /* ovreflow */
+  case EINPROGRESS:   /* ovreflow */
+  case ENOSPC:        /* ovreflow */
+  case EADDRNOTAVAIL: /* ovreflow */
   case EINTR:
     return 1;
+  case EFAULT:
+    FIO_LOG_ERROR("fio_flush EFAULT - possible memory address error sent to "
+                  "Unix socket.");
+    /* ovreflow */
   case EPIPE:  /* ovreflow */
   case EIO:    /* ovreflow */
   case EINVAL: /* ovreflow */
@@ -2977,6 +2987,8 @@ test_errno:
     fio_force_close(uuid);
     return -1;
   }
+  fprintf(stderr, "UUID error: %p (%d)\n", (void *)uuid, errno);
+  perror("No errno handler");
   return 0;
 
 invalid:
@@ -3446,14 +3458,13 @@ static void fio_pubsub_on_fork(void);
 
 /* Called within a child process after it starts. */
 static void fio_on_fork(void) {
+  fio_timer_lock = FIO_LOCK_INIT;
   fio_data->lock = FIO_LOCK_INIT;
   fio_defer_on_fork();
   fio_malloc_after_fork();
   fio_poll_init();
   fio_state_callback_on_fork();
-  fio_pubsub_on_fork();
-  fio_timer_lock = FIO_LOCK_INIT;
-  fio_max_fd_shrink();
+
   const size_t limit = fio_data->capa;
   for (size_t i = 0; i < limit; ++i) {
     fd_data(i).sock_lock = FIO_LOCK_INIT;
@@ -3463,6 +3474,9 @@ static void fio_on_fork(void) {
       fio_force_close(fd2uuid(i));
     }
   }
+
+  fio_pubsub_on_fork();
+  fio_max_fd_shrink();
   uint16_t old_active = fio_data->active;
   fio_data->active = 0;
   fio_defer_perform();
@@ -5179,8 +5193,6 @@ fio_pubsub_engine_s *FIO_PUBSUB_DEFAULT = FIO_PUBSUB_CLUSTER;
 Internal message object creation
 ***************************************************************************** */
 
-#if 1 /* Copy Meta-Data Array vs. lock and unlock per callback */
-
 /** returns a temporary fio_meta_ary_s with a copy of the metadata array */
 static fio_meta_ary_s fio_postoffice_meta_copy_new(void) {
   fio_meta_ary_s t = FIO_ARY_INIT;
@@ -5188,56 +5200,17 @@ static fio_meta_ary_s fio_postoffice_meta_copy_new(void) {
     return t;
   }
   fio_lock(&fio_postoffice.meta.lock);
-  size_t len = fio_meta_ary_count(&fio_postoffice.meta.ary);
-  if (len) {
-    t.end = t.capa = len;
-    t.arry = fio_malloc(sizeof(*t.arry) * len);
-    FIO_ASSERT_ALLOC(t.arry);
-    memcpy(t.arry, fio_meta_ary_to_a(&fio_postoffice.meta.ary),
-           sizeof(*t.arry) * len);
-  }
+  fio_meta_ary_concat(&t, &fio_postoffice.meta.ary);
   fio_unlock(&fio_postoffice.meta.lock);
   return t;
 }
 
 /** frees a temporary copy created by postoffice_meta_copy_new */
-static void fio_postoffice_meta_copy_free(fio_meta_ary_s cpy) {
-  fio_free(cpy.arry);
+static inline void fio_postoffice_meta_copy_free(fio_meta_ary_s *cpy) {
+  fio_meta_ary_free(cpy);
 }
 
-static fio_msg_internal_s *
-fio_pubsub_create_message(int32_t filter, fio_str_info_s ch,
-                          fio_str_info_s data, int8_t is_json, int8_t cpy) {
-  fio_meta_ary_s t = FIO_ARY_INIT;
-  if (!filter)
-    t = fio_postoffice_meta_copy_new();
-  fio_msg_internal_s *m = fio_malloc(sizeof(*m) + (sizeof(*m->meta) * t.end) +
-                                     (ch.len + 1) + (data.len + 1));
-  *m = (fio_msg_internal_s){
-      .filter = filter,
-      .channel =
-          (fio_str_info_s){.data = (char *)(m->meta + t.end), .len = ch.len},
-      .data = (fio_str_info_s){.data = ((char *)(m->meta + t.end) + ch.len + 1),
-                               .len = data.len},
-      .is_json = is_json,
-      .ref = 1,
-      .meta_len = t.end,
-  };
-  // m->channel.data[ch.len] = 0; /* redundant, fio_malloc is all zero */
-  // m->data.data[data.len] = 0; /* redundant, fio_malloc is all zero */
-  if (cpy) {
-    memcpy(m->channel.data, ch.data, ch.len);
-    memcpy(m->data.data, data.data, data.len);
-    while (t.end) {
-      --t.end;
-      m->meta[t.end] = t.arry[t.end](m->channel, m->data, is_json);
-    }
-  }
-  fio_postoffice_meta_copy_free(t);
-  return m;
-}
-
-static void fio_pubsub_create_message_update_meta(fio_msg_internal_s *m) {
+static void fio_postoffice_meta_update(fio_msg_internal_s *m) {
   if (m->filter || !m->meta_len)
     return;
   fio_meta_ary_s t = fio_postoffice_meta_copy_new();
@@ -5248,119 +5221,102 @@ static void fio_pubsub_create_message_update_meta(fio_msg_internal_s *m) {
     --t.end;
     m->meta[t.end] = t.arry[t.end](m->channel, m->data, m->is_json);
   }
-  fio_postoffice_meta_copy_free(t);
-}
-
-#else
-
-/** returns the pub/sub metadata count safely (locks) */
-static size_t fio_postoffice_meta_count(void) {
-  size_t count;
-  fio_lock(&fio_postoffice.meta.lock);
-  count = fio_meta_ary_count(&fio_postoffice.meta.ary);
-  fio_unlock(&fio_postoffice.meta.lock);
-  return count;
-}
-/** collects a callback by index, from within a loop */
-static fio_msg_metadata_fn fio_postoffice_meta_index(intptr_t index) {
-  fio_msg_metadata_fn cb;
-  fio_lock(&fio_postoffice.meta.lock);
-  cb = fio_meta_ary_get(&fio_postoffice.meta.ary, index);
-  fio_unlock(&fio_postoffice.meta.lock);
-  return cb;
+  fio_postoffice_meta_copy_free(&t);
 }
 
 static fio_msg_internal_s *
-fio_pubsub_create_message(int32_t filter, fio_str_info_s ch,
-                          fio_str_info_s data, int8_t is_json, int8_t cpy) {
-  size_t meta_len = 0;
+fio_msg_internal_create(int32_t filter, uint32_t type, fio_str_info_s ch,
+                        fio_str_info_s data, int8_t is_json, int8_t cpy) {
+  fio_meta_ary_s t = FIO_ARY_INIT;
   if (!filter)
-    meta_len = fio_postoffice_meta_count();
-  fio_msg_internal_s *m =
-      fio_malloc(sizeof(*m) + (sizeof(*m->meta) * meta_len) + (ch.len + 1) +
-                 (data.len + 1));
+    t = fio_postoffice_meta_copy_new();
+  fio_msg_internal_s *m = fio_malloc(sizeof(*m) + (sizeof(*m->meta) * t.end) +
+                                     (ch.len) + (data.len) + 16 + 2);
+  FIO_ASSERT_ALLOC(m);
   *m = (fio_msg_internal_s){
       .filter = filter,
-      .channel =
-          (fio_str_info_s){.data = (char *)(m->meta + meta_len), .len = ch.len},
-      .data =
-          (fio_str_info_s){.data = ((char *)(m->meta + meta_len) + ch.len + 1),
-                           .len = data.len},
+      .channel = (fio_str_info_s){.data = (char *)(m->meta + t.end) + 16,
+                                  .len = ch.len},
+      .data = (fio_str_info_s){.data = ((char *)(m->meta + t.end) + ch.len +
+                                        16 + 1),
+                               .len = data.len},
       .is_json = is_json,
       .ref = 1,
-      .meta_len = meta_len,
+      .meta_len = t.end,
   };
+  fio_u2str32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end), ch.len);
+  fio_u2str32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end) + 4, data.len);
+  fio_u2str32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end) + 8, type);
+  fio_u2str32((uint8_t *)(m + 1) + (sizeof(*m->meta) * t.end) + 12,
+              (uint32_t)filter);
   // m->channel.data[ch.len] = 0; /* redundant, fio_malloc is all zero */
   // m->data.data[data.len] = 0; /* redundant, fio_malloc is all zero */
   if (cpy) {
     memcpy(m->channel.data, ch.data, ch.len);
     memcpy(m->data.data, data.data, data.len);
-    while (meta_len) {
-      --meta_len;
-      fio_msg_metadata_fn cb = fio_postoffice_meta_index(meta_len);
-      if (cb)
-        m->meta[meta_len] = cb(m->channel, m->data, is_json);
+    while (t.end) {
+      --t.end;
+      m->meta[t.end] = t.arry[t.end](m->channel, m->data, is_json);
     }
   }
+  fio_postoffice_meta_copy_free(&t);
   return m;
 }
 
-static void fio_pubsub_create_message_update_meta(fio_msg_internal_s *m) {
-  if (m->filter || !m->meta_len)
+/** frees the internal message data */
+static inline void fio_msg_internal_finalize(fio_msg_internal_s *m) {
+  if (!m->channel.len)
+    m->channel.data = NULL;
+  if (!m->data.len)
+    m->data.data = NULL;
+}
+
+/** frees the internal message data */
+static inline void fio_msg_internal_free(fio_msg_internal_s *m) {
+  if (fio_atomic_sub(&m->ref, 1))
     return;
-  size_t meta_len = m->meta_len;
-  while (meta_len) {
-    --meta_len;
-    fio_msg_metadata_fn cb = fio_postoffice_meta_index(meta_len);
-    if (cb)
-      m->meta[meta_len] = cb(m->channel, m->data, m->is_json);
+  while (m->meta_len) {
+    --m->meta_len;
+    if (m->meta[m->meta_len].on_finish) {
+      fio_msg_s tmp_msg = {
+          .channel = m->channel,
+          .msg = m->data,
+      };
+      m->meta[m->meta_len].on_finish(&tmp_msg, m->meta[m->meta_len].metadata);
+    }
   }
+  fio_free(m);
 }
 
-#endif
+static void fio_msg_internal_free2(void *m) { fio_msg_internal_free(m); }
 
-/* *****************************************************************************
-Cluster forking handler
-***************************************************************************** */
-
-static void fio_pubsub_on_fork(void) {
-  fio_postoffice.filters.lock = FIO_LOCK_INIT;
-  fio_postoffice.pubsub.lock = FIO_LOCK_INIT;
-  fio_postoffice.patterns.lock = FIO_LOCK_INIT;
-  fio_postoffice.engines.lock = FIO_LOCK_INIT;
-  fio_postoffice.meta.lock = FIO_LOCK_INIT;
-  FIO_SET_FOR_LOOP(&fio_postoffice.filters.channels, pos) {
-    if (!pos->hash)
-      continue;
-    pos->obj->lock = FIO_LOCK_INIT;
-    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
-      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
-    }
-  }
-  FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
-    if (!pos->hash)
-      continue;
-    pos->obj->lock = FIO_LOCK_INIT;
-    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
-      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
-    }
-  }
-  FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
-    if (!pos->hash)
-      continue;
-    pos->obj->lock = FIO_LOCK_INIT;
-    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
-      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
-    }
-  }
+/* add reference count to fio_msg_internal_s */
+static inline fio_msg_internal_s *fio_msg_internal_dup(fio_msg_internal_s *m) {
+  fio_atomic_add(&m->ref, 1);
+  return m;
 }
+
+/** internal helper */
+
+static inline ssize_t fio_msg_internal_send_dup(intptr_t uuid,
+                                                fio_msg_internal_s *m) {
+  return fio_write2(uuid, .data.buffer = fio_msg_internal_dup(m),
+                    .offset = (sizeof(*m) + (m->meta_len * sizeof(*m->meta))),
+                    .length = 16 + m->data.len + m->channel.len + 2,
+                    .after.dealloc = fio_msg_internal_free2);
+}
+
+/**
+ * A mock pub/sub callback for external subscriptions.
+ */
+static void fio_mock_on_message(fio_msg_s *msg) { (void)msg; }
 
 /* *****************************************************************************
 Channel Subscription Management
 ***************************************************************************** */
 
-static void pubsub_on_channel_create(channel_s *ch);
-static void pubsub_on_channel_destroy(channel_s *ch);
+static void fio_pubsub_on_channel_create(channel_s *ch);
+static void fio_pubsub_on_channel_destroy(channel_s *ch);
 
 /* some comon tasks extracted */
 static inline channel_s *fio_filter_dup_lock_internal(channel_s *ch,
@@ -5398,7 +5354,7 @@ static channel_s *fio_channel_dup_lock(fio_str_info_s name) {
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.pubsub);
   if (fio_ls_embd_is_empty(&ch_p->subscriptions)) {
-    pubsub_on_channel_create(ch_p);
+    fio_pubsub_on_channel_create(ch_p);
   }
   return ch_p;
 }
@@ -5418,7 +5374,7 @@ static channel_s *fio_channel_match_dup_lock(fio_str_info_s name,
   channel_s *ch_p =
       fio_filter_dup_lock_internal(&ch, hashed_name, &fio_postoffice.patterns);
   if (fio_ls_embd_is_empty(&ch_p->subscriptions)) {
-    pubsub_on_channel_create(ch_p);
+    fio_pubsub_on_channel_create(ch_p);
   }
   return ch_p;
 }
@@ -5434,6 +5390,9 @@ static inline void fio_subscription_free(subscription_s *s) {
   fio_channel_free(s->parent);
   fio_free(s);
 }
+
+/** SublimeText 3 marker */
+subscription_s *fio_subscribe___(subscribe_args_s args);
 
 /** Subscribes to a filter, pub/sub channle or patten */
 subscription_s *fio_subscribe FIO_IGNORE_MACRO(subscribe_args_s args) {
@@ -5494,7 +5453,7 @@ void fio_unsubscribe(subscription_s *s) {
   }
   fio_unlock(&ch->lock);
   if (removed) {
-    pubsub_on_channel_destroy(ch);
+    fio_pubsub_on_channel_destroy(ch);
   }
 
   /* promise the subscription will be inactive */
@@ -5524,7 +5483,7 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
                                                          int add);
 
 /* runs in lock(!) let'm all know */
-static void pubsub_on_channel_create(channel_s *ch) {
+static void fio_pubsub_on_channel_create(channel_s *ch) {
   fio_lock(&fio_postoffice.engines.lock);
   FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
     if (!pos->hash)
@@ -5538,7 +5497,7 @@ static void pubsub_on_channel_create(channel_s *ch) {
 }
 
 /* runs in lock(!) let'm all know */
-static void pubsub_on_channel_destroy(channel_s *ch) {
+static void fio_pubsub_on_channel_destroy(channel_s *ch) {
   fio_lock(&fio_postoffice.engines.lock);
   FIO_SET_FOR_LOOP(&fio_postoffice.engines.set, pos) {
     if (!pos->hash)
@@ -5688,29 +5647,6 @@ static channel_s *fio_channel_find_dup(fio_str_info_s name) {
   return ch;
 }
 
-/** frees the internal message data */
-static inline void fio_msg_internal_free(fio_msg_internal_s *msg) {
-  if (fio_atomic_sub(&msg->ref, 1))
-    return;
-  while (msg->meta_len) {
-    --msg->meta_len;
-    if (msg->meta[msg->meta_len].on_finish) {
-      fio_msg_s tmp_msg = {
-          .channel = msg->channel,
-          .msg = msg->data,
-      };
-      msg->meta[msg->meta_len].on_finish(&tmp_msg,
-                                         msg->meta[msg->meta_len].metadata);
-    }
-  }
-  fio_free(msg);
-}
-/* add reference count to fio_msg_internal_s */
-static inline fio_msg_internal_s *fio_msg_internal_dup(fio_msg_internal_s *m) {
-  fio_atomic_add(&m->ref, 1);
-  return m;
-}
-
 /* defers the callback (mark only) */
 void fio_message_defer(fio_msg_s *msg_) {
   fio_msg_client_s *cl = (fio_msg_client_s *)msg_;
@@ -5755,7 +5691,7 @@ static void fio_perform_subscription_callback(void *s_, void *msg_) {
 static void fio_publish2channel(channel_s *ch, fio_msg_internal_s *msg) {
   FIO_LS_EMBD_FOR(&ch->subscriptions, pos) {
     subscription_s *s = FIO_LS_EMBD_OBJ(subscription_s, node, pos);
-    if (!s) {
+    if (!s || s->on_message == fio_mock_on_message) {
       continue;
     }
     fio_atomic_add(&s->ref, 1);
@@ -5782,6 +5718,7 @@ finish:
 
 /** Publishes the message to the current process and frees the strings. */
 static void fio_publish2process(fio_msg_internal_s *m) {
+  fio_msg_internal_finalize(m);
   channel_s *ch;
   if (m->filter) {
     ch = fio_filter_find_dup(m->filter);
@@ -5841,7 +5778,7 @@ typedef struct cluster_pr_s {
   fio_protocol_s protocol;
   fio_msg_internal_s *msg;
   void (*handler)(struct cluster_pr_s *pr);
-  void (*sender)(fio_str_s *data, intptr_t avoid_uuid);
+  void (*sender)(void *data, intptr_t avoid_uuid);
   fio_sub_hash_s pubsub;
   fio_sub_hash_s patterns;
   intptr_t uuid;
@@ -5927,36 +5864,14 @@ static void fio_cluster_init(void) {
  * Cluster Protocol callbacks
  **************************************************************************** */
 
-typedef struct cluster_msg_s {
-  fio_msg_s message;
-  size_t ref;
-} cluster_msg_s;
-
-static inline fio_str_s *
-fio_cluster_wrap_message(uint32_t ch_len, uint32_t msg_len, uint32_t type,
-                         int32_t filter, void *ch_data, void *msg_data) {
-  fio_str_s *buf = fio_str_new2();
-  fio_str_info_s i = fio_str_resize(buf, ch_len + msg_len + 16);
-  fio_u2str32((uint8_t *)i.data, ch_len);
-  fio_u2str32((uint8_t *)(i.data + 4), msg_len);
-  fio_u2str32((uint8_t *)(i.data + 8), type);
-  fio_u2str32((uint8_t *)(i.data + 12), (uint32_t)filter);
-  if (ch_len && ch_data) {
-    memcpy((i.data + 16), ch_data, ch_len);
-  }
-  if (msg_len && msg_data) {
-    memcpy((i.data + 16 + ch_len), msg_data, msg_len);
-  }
-  return buf;
-}
-
 static inline void fio_cluster_protocol_free(void *pr) { fio_free(pr); }
 
 static uint8_t fio_cluster_on_shutdown(intptr_t uuid, fio_protocol_s *pr_) {
   cluster_pr_s *p = (cluster_pr_s *)pr_;
-  p->sender(
-      fio_cluster_wrap_message(0, 0, FIO_CLUSTER_MSG_SHUTDOWN, 0, NULL, NULL),
-      -1);
+  p->sender(fio_msg_internal_create(0, FIO_CLUSTER_MSG_SHUTDOWN,
+                                    (fio_str_info_s){.len = 0},
+                                    (fio_str_info_s){.len = 0}, 0, 1),
+            -1);
   return 255;
   (void)pr_;
   (void)uuid;
@@ -5974,12 +5889,12 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
     if (!c->exp_channel && !c->exp_msg) {
       if (c->length - i < 16)
         break;
-      c->exp_channel = fio_str2u32(c->buffer + i);
-      c->exp_msg = fio_str2u32(c->buffer + i + 4);
+      c->exp_channel = fio_str2u32(c->buffer + i) + 1;
+      c->exp_msg = fio_str2u32(c->buffer + i + 4) + 1;
       c->type = fio_str2u32(c->buffer + i + 8);
       c->filter = (int32_t)fio_str2u32(c->buffer + i + 12);
       if (c->exp_channel) {
-        if (c->exp_channel >= (1024 * 1024 * 16)) {
+        if (c->exp_channel >= (1024 * 1024 * 16) + 1) {
           FIO_LOG_FATAL("(%d) cluster message name too long (16Mb limit): %u\n",
                         getpid(), (unsigned int)c->exp_channel);
           exit(1);
@@ -5987,18 +5902,19 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
         }
       }
       if (c->exp_msg) {
-        if (c->exp_msg >= (1024 * 1024 * 64)) {
+        if (c->exp_msg >= (1024 * 1024 * 64) + 1) {
           FIO_LOG_FATAL("(%d) cluster message data too long (64Mb limit): %u\n",
                         getpid(), (unsigned int)c->exp_msg);
           exit(1);
           return;
         }
       }
-      c->msg = fio_pubsub_create_message(
-          c->filter,
-          (fio_str_info_s){.data = (char *)(c->msg + 1), .len = c->exp_channel},
+      c->msg = fio_msg_internal_create(
+          c->filter, c->type,
+          (fio_str_info_s){.data = (char *)(c->msg + 1),
+                           .len = c->exp_channel - 1},
           (fio_str_info_s){.data = ((char *)(c->msg + 1) + c->exp_channel + 1),
-                           .len = c->exp_msg},
+                           .len = c->exp_msg - 1},
           (int8_t)(c->type == FIO_CLUSTER_MSG_JSON ||
                    c->type == FIO_CLUSTER_MSG_ROOT_JSON),
           0);
@@ -6006,13 +5922,15 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
     }
     if (c->exp_channel) {
       if (c->exp_channel + i > c->length) {
-        memcpy(c->msg->channel.data + (c->msg->channel.len - c->exp_channel),
+        memcpy(c->msg->channel.data +
+                   ((c->msg->channel.len + 1) - c->exp_channel),
                (char *)c->buffer + i, (size_t)(c->length - i));
         c->exp_channel -= (c->length - i);
         i = c->length;
         break;
       } else {
-        memcpy(c->msg->channel.data + (c->msg->channel.len - c->exp_channel),
+        memcpy(c->msg->channel.data +
+                   ((c->msg->channel.len + 1) - c->exp_channel),
                (char *)c->buffer + i, (size_t)(c->exp_channel));
         i += c->exp_channel;
         c->exp_channel = 0;
@@ -6020,19 +5938,19 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
     }
     if (c->exp_msg) {
       if (c->exp_msg + i > c->length) {
-        memcpy(c->msg->data.data + (c->msg->data.len - c->exp_msg),
+        memcpy(c->msg->data.data + ((c->msg->data.len + 1) - c->exp_msg),
                (char *)c->buffer + i, (size_t)(c->length - i));
         c->exp_msg -= (c->length - i);
         i = c->length;
         break;
       } else {
-        memcpy(c->msg->data.data + (c->msg->data.len - c->exp_msg),
+        memcpy(c->msg->data.data + ((c->msg->data.len + 1) - c->exp_msg),
                (char *)c->buffer + i, (size_t)(c->exp_msg));
         i += c->exp_msg;
         c->exp_msg = 0;
       }
     }
-    fio_pubsub_create_message_update_meta(c->msg);
+    fio_postoffice_meta_update(c->msg);
     c->handler(c);
     fio_msg_internal_free(c->msg);
     c->msg = NULL;
@@ -6045,8 +5963,11 @@ static void fio_cluster_on_data(intptr_t uuid, fio_protocol_s *pr_) {
 }
 
 static void fio_cluster_ping(intptr_t uuid, fio_protocol_s *pr_) {
-  fio_str_send_free2(uuid, fio_cluster_wrap_message(0, 0, FIO_CLUSTER_MSG_PING,
-                                                    0, NULL, NULL));
+  fio_msg_internal_s *m = fio_msg_internal_create(
+      0, FIO_CLUSTER_MSG_PING, (fio_str_info_s){.len = 0},
+      (fio_str_info_s){.len = 0}, 0, 1);
+  fio_msg_internal_send_dup(uuid, m);
+  fio_msg_internal_free(m);
   (void)pr_;
 }
 
@@ -6083,7 +6004,7 @@ static void fio_cluster_on_close(intptr_t uuid, fio_protocol_s *pr_) {
 static inline fio_protocol_s *
 fio_cluster_protocol_alloc(intptr_t uuid,
                            void (*handler)(struct cluster_pr_s *pr),
-                           void (*sender)(fio_str_s *data, intptr_t auuid)) {
+                           void (*sender)(void *data, intptr_t auuid)) {
   cluster_pr_s *p = fio_mmap(sizeof(*p));
   if (!p) {
     FIO_LOG_FATAL("Cluster protocol allocation failed.");
@@ -6108,35 +6029,28 @@ fio_cluster_protocol_alloc(intptr_t uuid,
  * Master (server) IPC Connections
  **************************************************************************** */
 
-/**
- * A mock pub/sub callback for external subscriptions.
- */
-static void fio_mock_on_message(fio_msg_s *msg) { (void)msg; }
-
-static void fio_cluster_server_sender(fio_str_s *data, intptr_t avoid_uuid) {
+static void fio_cluster_server_sender(void *m_, intptr_t avoid_uuid) {
+  fio_msg_internal_s *m = m_;
   fio_lock(&cluster_data.lock);
   FIO_LS_FOR(&cluster_data.clients, pos) {
     if ((intptr_t)pos->obj != -1) {
       if ((intptr_t)pos->obj != avoid_uuid) {
-        fio_str_send_free2((intptr_t)pos->obj, fio_str_dup(data));
+        fio_msg_internal_send_dup((intptr_t)pos->obj, m);
       }
     }
   }
   fio_unlock(&cluster_data.lock);
-  fio_str_free2(data);
+  fio_msg_internal_free(m);
 }
 
 static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
   /* what to do? */
+  // fprintf(stderr, "-");
   switch ((fio_cluster_message_type_e)pr->type) {
 
   case FIO_CLUSTER_MSG_FORWARD: /* fallthrough */
   case FIO_CLUSTER_MSG_JSON: {
-    fio_cluster_server_sender(
-        fio_cluster_wrap_message(pr->msg->channel.len, pr->msg->data.len,
-                                 pr->type, pr->msg->filter,
-                                 pr->msg->channel.data, pr->msg->data.data),
-        pr->uuid);
+    fio_cluster_server_sender(fio_msg_internal_dup(pr->msg), pr->uuid);
     fio_publish2process(fio_msg_internal_dup(pr->msg));
     break;
   }
@@ -6261,9 +6175,7 @@ static void fio_listen2cluster(void *ignore) {
       .ping = mock_ping_eternal,
       .on_close = fio_cluster_listen_on_close,
   };
-#if DEBUG
   FIO_LOG_DEBUG("(%d) Listening to cluster: %s", getpid(), cluster_data.name);
-#endif
   fio_attach(cluster_data.uuid, p);
   (void)ignore;
 }
@@ -6295,15 +6207,16 @@ static void fio_cluster_client_handler(struct cluster_pr_s *pr) {
     break;
   }
 }
-static void fio_cluster_client_sender(fio_str_s *data, intptr_t ignr_) {
+static void fio_cluster_client_sender(void *m_, intptr_t ignr_) {
+  fio_msg_internal_s *m = m_;
   if (!uuid_is_valid(cluster_data.uuid) && fio_data->active) {
     /* delay message delivery until we have a vaild uuid */
-    fio_defer_push_task((void (*)(void *, void *))fio_cluster_client_sender,
-                        data, (void *)ignr_);
+    fio_defer_push_task((void (*)(void *, void *))fio_cluster_client_sender, m_,
+                        (void *)ignr_);
     return;
   }
-  fio_str_send_free2(cluster_data.uuid, data);
-  (void)ignr_;
+  fio_msg_internal_send_dup(cluster_data.uuid, m);
+  fio_msg_internal_free(m);
 }
 
 /** The address of the server we are connecting to. */
@@ -6356,15 +6269,17 @@ static void fio_cluster_on_fail(intptr_t uuid, void *udata) {
 }
 
 static void fio_connect2cluster(void *ignore) {
+  if (cluster_data.uuid)
+    fio_force_close(cluster_data.uuid);
+  cluster_data.uuid = 0;
   /* this is called for each child, but not for single a process worker. */
-  cluster_data.uuid = fio_connect(.address = cluster_data.name, .port = NULL,
-                                  .on_connect = fio_cluster_on_connect,
-                                  .on_fail = fio_cluster_on_fail);
+  fio_connect(.address = cluster_data.name, .port = NULL,
+              .on_connect = fio_cluster_on_connect,
+              .on_fail = fio_cluster_on_fail);
   (void)ignore;
 }
 
-static void fio_send2cluster(int32_t filter, fio_str_info_s ch,
-                             fio_str_info_s msg, uint8_t is_json) {
+static void fio_send2cluster(fio_msg_internal_s *m) {
   if (!fio_is_running()) {
     FIO_LOG_ERROR("facio.io cluster inactive, can't send message.");
     return;
@@ -6374,19 +6289,9 @@ static void fio_send2cluster(int32_t filter, fio_str_info_s ch,
     return;
   }
   if (fio_is_master()) {
-    fio_cluster_server_sender(
-        fio_cluster_wrap_message(
-            ch.len, msg.len,
-            (is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD), filter,
-            ch.data, msg.data),
-        -1);
+    fio_cluster_server_sender(fio_msg_internal_dup(m), -1);
   } else {
-    fio_cluster_client_sender(
-        fio_cluster_wrap_message(
-            ch.len, msg.len,
-            (is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD), filter,
-            ch.data, msg.data),
-        -1);
+    fio_cluster_client_sender(fio_msg_internal_dup(m), -1);
   }
 }
 
@@ -6417,13 +6322,13 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
   }
 
   fio_cluster_client_sender(
-      fio_cluster_wrap_message(ch_name.len, msg.len,
-                               (ch->match
-                                    ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
-                                           : FIO_CLUSTER_MSG_PATTERN_UNSUB)
-                                    : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
-                                           : FIO_CLUSTER_MSG_PUBSUB_UNSUB)),
-                               0, ch_name.data, msg.data),
+      fio_msg_internal_create(0,
+                              (ch->match
+                                   ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
+                                          : FIO_CLUSTER_MSG_PATTERN_UNSUB)
+                                   : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
+                                          : FIO_CLUSTER_MSG_PUBSUB_UNSUB)),
+                              ch_name, msg, 0, 1),
       -1);
 }
 
@@ -6431,13 +6336,9 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
  * Initialization
  **************************************************************************** */
 
-static void fio_connect_after_fork(void *ignore) {
-  if (fio_parent_pid() == getpid()) {
-    /* prevent `accept` backlog in parent */
-    fio_cluster_listen_accept(cluster_data.uuid, NULL);
-  } else {
-    /* this is called for each child. */
-  }
+static void fio_accept_after_fork(void *ignore) {
+  /* prevent `accept` backlog in parent */
+  fio_cluster_listen_accept(cluster_data.uuid, NULL);
   (void)ignore;
 }
 
@@ -6496,10 +6397,48 @@ static void fio_cluster_at_exit(void *ignore) {
 static void fio_pubsub_initialize(void) {
   fio_cluster_init();
   fio_state_callback_add(FIO_CALL_PRE_START, fio_listen2cluster, NULL);
-  fio_state_callback_add(FIO_CALL_AFTER_FORK, fio_connect_after_fork, NULL);
+  fio_state_callback_add(FIO_CALL_IN_MASTER, fio_accept_after_fork, NULL);
   fio_state_callback_add(FIO_CALL_IN_CHILD, fio_connect2cluster, NULL);
   fio_state_callback_add(FIO_CALL_ON_FINISH, fio_cluster_cleanup, NULL);
   fio_state_callback_add(FIO_CALL_AT_EXIT, fio_cluster_at_exit, NULL);
+}
+
+/* *****************************************************************************
+Cluster forking handler
+***************************************************************************** */
+
+static void fio_pubsub_on_fork(void) {
+  fio_postoffice.filters.lock = FIO_LOCK_INIT;
+  fio_postoffice.pubsub.lock = FIO_LOCK_INIT;
+  fio_postoffice.patterns.lock = FIO_LOCK_INIT;
+  fio_postoffice.engines.lock = FIO_LOCK_INIT;
+  fio_postoffice.meta.lock = FIO_LOCK_INIT;
+  cluster_data.lock = FIO_LOCK_INIT;
+  cluster_data.uuid = 0;
+  FIO_SET_FOR_LOOP(&fio_postoffice.filters.channels, pos) {
+    if (!pos->hash)
+      continue;
+    pos->obj->lock = FIO_LOCK_INIT;
+    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
+      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
+    }
+  }
+  FIO_SET_FOR_LOOP(&fio_postoffice.pubsub.channels, pos) {
+    if (!pos->hash)
+      continue;
+    pos->obj->lock = FIO_LOCK_INIT;
+    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
+      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
+    }
+  }
+  FIO_SET_FOR_LOOP(&fio_postoffice.patterns.channels, pos) {
+    if (!pos->hash)
+      continue;
+    pos->obj->lock = FIO_LOCK_INIT;
+    FIO_LS_EMBD_FOR(&pos->obj->subscriptions, n) {
+      FIO_LS_EMBD_OBJ(subscription_s, node, n)->lock = FIO_LOCK_INIT;
+    }
+  }
 }
 
 /* *****************************************************************************
@@ -6512,15 +6451,11 @@ static void fio_cluster_signal_children(void) {
     kill(getpid(), SIGINT);
     return;
   }
-  fio_cluster_server_sender(
-      fio_cluster_wrap_message(0, 0, FIO_CLUSTER_MSG_SHUTDOWN, 0, NULL, NULL),
-      -1);
-}
-
-static inline void fio_publish2process2(int32_t filter, fio_str_info_s ch_name,
-                                        fio_str_info_s msg, uint8_t is_json) {
-  fio_publish2process(
-      fio_pubsub_create_message(filter, ch_name, msg, is_json, 1));
+  fio_cluster_server_sender(fio_msg_internal_create(0, FIO_CLUSTER_MSG_SHUTDOWN,
+                                                    (fio_str_info_s){.len = 0},
+                                                    (fio_str_info_s){.len = 0},
+                                                    0, 1),
+                            -1);
 }
 
 /* Sublime Text marker */
@@ -6548,29 +6483,40 @@ void fio_publish FIO_IGNORE_MACRO(fio_publish_args_s args) {
   } else if (!args.engine) {
     args.engine = FIO_PUBSUB_DEFAULT;
   }
+  fio_msg_internal_s *m = NULL;
   switch ((uintptr_t)args.engine) {
   case 0UL: /* fallthrough (missing default) */
   case 1UL: // ((uintptr_t)FIO_PUBSUB_CLUSTER):
-    fio_send2cluster(args.filter, args.channel, args.message, args.is_json);
-    fio_publish2process2(args.filter, args.channel, args.message, args.is_json);
+    m = fio_msg_internal_create(
+        args.filter,
+        (args.is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD),
+        args.channel, args.message, args.is_json, 1);
+    fio_send2cluster(m);
+    fio_publish2process(m);
     break;
   case 2UL: // ((uintptr_t)FIO_PUBSUB_PROCESS):
-    fio_publish2process2(args.filter, args.channel, args.message, args.is_json);
+    m = fio_msg_internal_create(args.filter, 0, args.channel, args.message,
+                                args.is_json, 1);
+    fio_publish2process(m);
     break;
   case 3UL: // ((uintptr_t)FIO_PUBSUB_SIBLINGS):
-    fio_send2cluster(args.filter, args.channel, args.message, args.is_json);
+    m = fio_msg_internal_create(
+        args.filter,
+        (args.is_json ? FIO_CLUSTER_MSG_JSON : FIO_CLUSTER_MSG_FORWARD),
+        args.channel, args.message, args.is_json, 1);
+    fio_send2cluster(m);
+    fio_msg_internal_free(m);
+    m = NULL;
     break;
   case 4UL: // ((uintptr_t)FIO_PUBSUB_ROOT):
+    m = fio_msg_internal_create(
+        args.filter,
+        (args.is_json ? FIO_CLUSTER_MSG_ROOT_JSON : FIO_CLUSTER_MSG_ROOT),
+        args.channel, args.message, args.is_json, 1);
     if (fio_data->is_worker == 0 || fio_data->workers == 1) {
-      fio_publish2process2(args.filter, args.channel, args.message,
-                           args.is_json);
+      fio_publish2process(m);
     } else {
-      fio_cluster_client_sender(
-          fio_cluster_wrap_message(
-              args.channel.len, args.message.len,
-              (args.is_json ? FIO_CLUSTER_MSG_ROOT_JSON : FIO_CLUSTER_MSG_ROOT),
-              args.filter, args.channel.data, args.message.data),
-          -1);
+      fio_cluster_client_sender(m, -1);
     }
     break;
   default:
@@ -6581,8 +6527,6 @@ void fio_publish FIO_IGNORE_MACRO(fio_publish_args_s args) {
     }
     args.engine->publish(args.engine, args.channel, args.message, args.is_json);
   }
-  // fio_str_free2(ch);
-  // fio_str_free2(msg);
   return;
 }
 
@@ -9144,7 +9088,8 @@ FIO_FUNC inline void fio_str_test(void) {
     FIO_ASSERT(str.dealloc, "Missing static string deallocation function"
                             " after `fio_str_write`.");
 
-    fprintf(stderr, "* reviewing `fio_str_detach`.\n   (%zu): %s\n", fio_str_info(&str).len, fio_str_info(&str).data);
+    fprintf(stderr, "* reviewing `fio_str_detach`.\n   (%zu): %s\n",
+            fio_str_info(&str).len, fio_str_info(&str).data);
     char *cstr = fio_str_detach(&str);
     FIO_ASSERT(cstr, "`fio_str_detach` returned NULL");
     FIO_ASSERT(!memcmp(cstr, "Welcome Home\0", 13),
@@ -9459,9 +9404,12 @@ FIO_FUNC void fio_socket_test(void) {
     ssize_t r = -1;
     ssize_t timer_junk;
     fio_write(client1, "Hello World", 11);
-    if (!uuid_data(client1).packet)
-      unlink(__FILE__ ".sock");
-    FIO_ASSERT(uuid_data(client1).packet, "fio_write error, no packet!")
+    if (0) {
+      /* packet may have been sent synchronously, don't test */
+      if (!uuid_data(client1).packet)
+        unlink(__FILE__ ".sock");
+      FIO_ASSERT(uuid_data(client1).packet, "fio_write error, no packet!")
+    }
     /* prevent poll from hanging */
     fio_run_every(5, 1, fio_timer_test_task, &timer_junk, fio_timer_test_task);
     errno = EAGAIN;
