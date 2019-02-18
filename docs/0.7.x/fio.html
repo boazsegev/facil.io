@@ -170,6 +170,9 @@
 <a href="#fio_reap_children"><code>fio_reap_children</code></a>
 </li>
 <li>
+<a href="#fio_signal_handler_reset"><code>fio_signal_handler_reset</code></a>
+</li>
+<li>
 <a href="#fio_last_tick"><code>fio_last_tick</code></a>
 </li>
 <li>
@@ -1697,6 +1700,15 @@ processes values passed to <code>fio_start</code>.</p>
 </code></pre></div>
 <p>Initializes zombie reaping for the process. Call before <code>fio_start</code> to enable
 global zombie reaping.</p>
+
+<h4 id="fio_signal_handler_reset"><code>fio_signal_handler_reset</code></h4>
+<div class="highlight"><pre class="highlight c"><code><span class="kt">void</span> <span class="n">fio_signal_handler_reset</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</code></pre></div>
+<p>Resets any existing signal handlers, restoring their state to before they were set by facil.io.</p>
+
+<p>This stops both child reaping (<code>fio_reap_children</code>) and the default facil.io signal handlers (i.e., CTRL-C).</p>
+
+<p>This function will be called automatically by facil.io whenever facil.io stops.</p>
 
 <h4 id="fio_last_tick"><code>fio_last_tick</code></h4>
 <div class="highlight"><pre class="highlight c"><code><span class="k">struct</span> <span class="n">timespec</span> <span class="n">fio_last_tick</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>

@@ -988,6 +988,18 @@ pid_t fio_parent_pid(void);
 void fio_reap_children(void);
 
 /**
+ * Resets any existing signal handlers, restoring their state to before they
+ * were set by facil.io.
+ *
+ * This stops both child reaping (`fio_reap_children`) and the default facil.io
+ * signal handlers (i.e., CTRL-C).
+ *
+ * This function will be called automatically by facil.io whenever facil.io
+ * stops.
+ */
+void fio_signal_handler_reset(void);
+
+/**
  * Returns the last time the server reviewed any pending IO events.
  */
 struct timespec fio_last_tick(void);

@@ -630,6 +630,18 @@ void fio_reap_children(void);
 Initializes zombie reaping for the process. Call before `fio_start` to enable
 global zombie reaping.
 
+#### `fio_signal_handler_reset`
+
+```c
+void fio_signal_handler_reset(void);
+```
+
+Resets any existing signal handlers, restoring their state to before they were set by facil.io.
+
+This stops both child reaping (`fio_reap_children`) and the default facil.io signal handlers (i.e., CTRL-C).
+
+This function will be called automatically by facil.io whenever facil.io stops.
+
 #### `fio_last_tick`
 
 ```c

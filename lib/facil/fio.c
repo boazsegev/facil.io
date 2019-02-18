@@ -1449,7 +1449,8 @@ static void fio_signal_handler_setup(void) {
     return;
   };
 }
-static void fio_signal_handler_reset(void) {
+
+void fio_signal_handler_reset(void) {
   struct sigaction old;
   if (!fio_old_sig_int.sa_handler)
     return;

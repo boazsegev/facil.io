@@ -23,6 +23,9 @@
 <li>
 <ul>
 <li>
+<a href="#v-0-7-0-beta8-next">v. 0.7.0.beta8 (next)</a>
+</li>
+<li>
 <a href="#v-0-7-0-beta7">v. 0.7.0.beta7</a>
 </li>
 <li>
@@ -258,6 +261,42 @@
 </li>
 </ul>
 </div><h1 id="change-log">Change Log</h1>
+
+<h3 id="v-0-7-0-beta8-next">v. 0.7.0.beta8 (next)</h3>
+
+<p><strong>Security</strong>: (<code>fio</code>) Slowloris mitigation is now part of the core library, where <code>FIO_SLOWLORIS_LIMIT</code> pending calls to <code>write</code> (currently 1,024 backlogged calls) will flag the connection as an attacker and either close the connection or ignore it. This protocol independent approach improves security.</p>
+
+<p><strong>Security</strong>: (<code>http</code>) HTTP/1.1 client throttling - new requests will not be consumed until pending responses were sent. Since HTTP/1.1 is a response-request protocol, this protocol specific approach should protect the HTTP application against slow clients.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>): fixed <code>fio_pending</code> not decrementing packet count before reaching zero.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>): fixed logging message for overflowing log messages. Credit to @weskerfoot (Wesley Kerfoot) and @adam12 (Adam Daniels) for exposing the issue (issue iodine/#56).</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>, <code>fio_risky_hash</code>) Florian Weber (@Florianjw) <a href="https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3">exposed a byte ordering error (last 7 byte reading order) and took time challenge the algorithm</a>. The exposed errors were fixed and the exposed a possible attack on RiskyHash using a variation on a Meet-In-The-Middle attack, written by Hening Makholm (@hmakholm). This prompted an update and fixes to the function.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixed <code>fio_str_resize</code> where data might be lost if data was written beyond the current size and the requested size is larger then the String&#39;s capacity (i.e., when <code>fio_str_resize</code> is (mis)used as an alternative to <code>fio_str_capa_assert</code>).</p>
+
+<p><strong>Fix</strong>: (<code>json</code> / <code>redis</code>) fixed JSON formatting error caused by buffer reallocation when multiple (more then 48) escape sequences were detected. This issue also effected the Redis command callback handler (which was using JSON for IPC).</p>
+
+<p><strong>Fix</strong>: (<code>redis</code>) fixed a potential double <code>free</code> call.</p>
+
+<p><strong>Fix</strong>: (<code>redis</code>) fixed a recursive endless loop when converting nested Hash Tables to Redis objects (which normally wouldn&#39;t happen anyway, since they would be processed as JSON).</p>
+
+<p><strong>Fix</strong>: (<code>redis</code>) fixed Redis reconnection. Address and port data was mistakingly written at the wrong address, causing it to be overwritten by incoming (non-pub/sub) data.</p>
+
+<p><strong>Fix</strong>: (<code>redis</code>) fixed a race condition in the Redis reconnection logic which might have caused more then a single pub/sub connection to be established and the first pending command to be sent again.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fix capacity maximization log to accommodate issues where <code>getrlimit</code> would return a <code>rlim_max</code> that&#39;s too high for <code>rlim_cur</code> (macOS).</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fix uninitialized <code>kqueue</code> message in <code>fio_poll_remove_fd</code>.</p>
+
+<p><strong>Fix</strong>: (<code>http</code>) possible fix for <code>http_connect</code>, where <code>host</code> header length might have been left uninitialized, resulting in possible errors.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixed logging error message for long error messages.</p>
+
+<p><strong>Update</strong>: (<code>fio</code>) improved pub/sub memory usage to minimize message copying in cluster mode (same memory is used for IPC and local-process message publishing).</p>
+
+<p><strong>Update</strong>: (<code>fio</code>) updated the non-cryptographic PRG algorithm for performance and speed. Now the <code>fio_rand</code> functions are modeled after the <code>xoroshiro128+</code> algorithm, with an automated re-seeding counter based on RiskyHash. This should improve performance for non cryptographic random requirements.</p>
 
 <h3 id="v-0-7-0-beta7">v. 0.7.0.beta7</h3>
 
