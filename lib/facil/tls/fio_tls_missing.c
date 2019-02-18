@@ -134,7 +134,7 @@ static inline void fio_alpn_destroy(alpn_s *obj) {
 #include <fio.h>
 
 /* *****************************************************************************
-The SSL/TLS type
+The SSL/TLS Context type
 ***************************************************************************** */
 
 /** An opaque type used for the SSL/TLS functions. */

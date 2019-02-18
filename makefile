@@ -296,7 +296,7 @@ FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 CPPFLAGS:= $(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
-CFALGS_DEPENDENCY=-MT $@ -MMD -MP
+CFLAGS_DEPENDENCY:=-MT $@ -MMD -MP
 
 
 #################################################
@@ -323,29 +323,29 @@ lib_build: $(LIB_OBJS)
 #### no disassembler (normal / expected state)
 ifndef DISAMS
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS)
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 
 #### add diassembling stage (testing / slower)
 else
 $(TMP_ROOT)/%.o: %.c $(TMP_ROOT)/%.d
-	@$(CC) -c $< -o $@ $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c $< -o $@ $(CFLAGS_DEPENDENCY) $(CFLAGS)
 	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.cpp $(TMP_ROOT)/%.d
-	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 	@$(DISAMS) $@ > $@.s
 
 $(TMP_ROOT)/%.o: %.c++ $(TMP_ROOT)/%.d
-	@$(CPP) -o $@ -c $< $(CFALGS_DEPENDENCY) $(CPPFLAGS)
+	@$(CPP) -o $@ -c $< $(CFLAGS_DEPENDENCY) $(CPPFLAGS)
 	$(eval CCL = $(CPP))
 	@$(DISAMS) $@ > $@.s
 endif
@@ -367,13 +367,13 @@ test: | clean
 
 .PHONY : test/speed
 test/speed: | test_add_speed_flags $(LIB_OBJS)
-	@$(CC) -c ./tests/speeds.c -o $(TMP_ROOT)/speeds.o $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c ./tests/speeds.c -o $(TMP_ROOT)/speeds.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
 	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/speeds.o $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(BIN)
 
 .PHONY : test/optimized
 test/optimized: | clean test_add_speed_flags create_tree $(LIB_OBJS)
-	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
 	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
 	@$(BIN)
 	-@rm $(BIN) 2> /dev/null
@@ -408,7 +408,7 @@ test_add_speed_flags:
 
 .PHONY : test/build
 test/build: $(LIB_OBJS)
-	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFALGS_DEPENDENCY) $(CFLAGS)
+	@$(CC) -c ./tests/tests.c -o $(TMP_ROOT)/tests.o $(CFLAGS_DEPENDENCY) $(CFLAGS)
 	@$(CCL) -o $(BIN) $(LIB_OBJS) $(TMP_ROOT)/tests.o $(OPTIMIZATION) $(LINKER_FLAGS)
 
 .PHONY : clean
@@ -435,6 +435,9 @@ create_tree:
 #################################################
 #        Tasks - Installers
 #################################################
+
+.PHONY : install/bearssl
+install/bearssl: | remove/bearssl add/bearssl ;
 
 .PHONY : add/bearssl
 add/bearssl: | remove/bearssl
