@@ -32,6 +32,8 @@
 
 **Fix**: (`fio`) fixed logging error message for long error messages.
 
+**Update**: (`fio`) improved signal handling. Signal handling now propagates to pre-existing signal handlers. In addition, the `fio_signal_handler_reset` function was made public, allowing facil.io signal handlers to be removed immediately following startup (using `fio_state_callback_add` with `FIO_CALL_PRE_START` to call `fio_signal_handler_reset`).
+
 **Update**: (`fio`) improved pub/sub memory usage to minimize message copying in cluster mode (same memory is used for IPC and local-process message publishing).
 
 **Update**: (`fio`) updated the non-cryptographic PRG algorithm for performance and speed. Now the `fio_rand` functions are modeled after the `xoroshiro128+` algorithm, with an automated re-seeding counter based on RiskyHash. This should improve performance for non cryptographic random requirements.
