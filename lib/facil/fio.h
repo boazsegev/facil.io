@@ -2171,8 +2171,9 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 #endif
 
 /* Note: using BIG_ENDIAN invokes false positives on some systems */
-#if (defined(__BIG_ENDIAN__) && __BIG_ENDIAN__) ||                             \
-    (defined(__LITTLE_ENDIAN__) && !__LITTLE_ENDIAN__) ||                      \
+#if !defined(__BIG_ENDIAN__)
+/* nothing to do */
+#elif (defined(__LITTLE_ENDIAN__) && !__LITTLE_ENDIAN__) ||                    \
     (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__))
 #define __BIG_ENDIAN__ 1
 #elif !defined(__BIG_ENDIAN__) && !defined(__BYTE_ORDER__) &&                  \
@@ -2220,12 +2221,14 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 /** 32Bit right rotation, inlined. */
 #define fio_rrot32(i, bits)                                                    \
   (((uint32_t)(i) >> ((bits)&31UL)) | ((uint32_t)(i) << ((-(bits)) & 31UL)))
+
 /** 64Bit left rotation, inlined. */
 #define fio_lrot64(i, bits)                                                    \
   (((uint64_t)(i) << ((bits)&63UL)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
 /** 64Bit right rotation, inlined. */
 #define fio_rrot64(i, bits)                                                    \
   (((uint64_t)(i) >> ((bits)&63UL)) | ((uint64_t)(i) << ((-(bits)) & 63UL)))
+
 /** unknown size element - left rotation, inlined. */
 #define fio_lrot(i, bits)                                                      \
   (((i) << ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
