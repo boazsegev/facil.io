@@ -296,7 +296,7 @@ FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 CPPFLAGS:= $(CPPFLAGS) -std=$(CPPSTD) -fpic  $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
 LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(foreach lib,$(LINKER_LIBS_EXT),$(addprefix -l,$(lib)))
-CFLAGS_DEPENDENCY:=-MT $@ -MMD -MP
+CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 
 
 #################################################
