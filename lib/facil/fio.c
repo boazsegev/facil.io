@@ -14,6 +14,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_INCLUDE_LINKED_LIST
 #include <fio.h>
 
+#include <sys/param.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -44,7 +45,7 @@ Feel free to copy, use and enjoy according to the license provided.
 #if !FIO_ENGINE_POLL && !FIO_ENGINE_EPOLL && !FIO_ENGINE_KQUEUE
 #if defined(__linux__)
 #define FIO_ENGINE_EPOLL 1
-#elif defined(__APPLE__) || defined(__unix__)
+#elif defined(__APPLE__) || defined(BSD)
 #define FIO_ENGINE_KQUEUE 1
 #else
 #define FIO_ENGINE_POLL 1
