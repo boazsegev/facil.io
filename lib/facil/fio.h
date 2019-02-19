@@ -168,10 +168,10 @@ Version and helper macros
 
 #ifndef FIO_PRINT_STATE
 /**
- * Enables the FIO_LOG_STATE(msg,...) macro, which prints information level
- * messages to stderr.
+ * Enables the depraceted FIO_LOG_STATE(msg,...) macro, which prints information
+ * level messages to stderr.
  */
-#define FIO_PRINT_STATE 1
+#define FIO_PRINT_STATE 0
 #endif
 
 #ifndef FIO_PUBSUB_SUPPORT
@@ -463,7 +463,9 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
 #endif
 
 #if FIO_PRINT_STATE
-#define FIO_LOG_STATE(...) FIO_LOG_PRINT(FIO_LOG_LEVEL_INFO, __VA_ARGS__)
+#define FIO_LOG_STATE(...)                                                     \
+  FIO_LOG_PRINT(FIO_LOG_LEVEL_INFO,                                            \
+                "WARNING: FIO_LOG_STATE is deprecated\n" __VA_ARGS__)
 #else
 #define FIO_LOG_STATE(...)
 #endif

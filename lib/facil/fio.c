@@ -3576,23 +3576,23 @@ static void __attribute__((constructor)) fio_lib_init(void) {
     fio_pubsub_initialize();
 #if DEBUG
 #if FIO_ENGINE_POLL
-    FIO_LOG_STATE("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
-                  "*    Meximum open files %zu out of %zu\n"
-                  "*    Allocating %zu bytes for state handling.\n"
-                  "*    %zu bytes per connection + %zu for state handling.",
-                  capa, (size_t)rlim.rlim_max,
-                  (sizeof(*fio_data) + (capa * (sizeof(*fio_data->poll))) +
-                   (capa * (sizeof(*fio_data->info)))),
-                  (sizeof(*fio_data->poll) + sizeof(*fio_data->info)),
-                  sizeof(*fio_data));
+    FIO_LOG_INFO("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
+                 "*    Meximum open files %zu out of %zu\n"
+                 "*    Allocating %zu bytes for state handling.\n"
+                 "*    %zu bytes per connection + %zu for state handling.",
+                 capa, (size_t)rlim.rlim_max,
+                 (sizeof(*fio_data) + (capa * (sizeof(*fio_data->poll))) +
+                  (capa * (sizeof(*fio_data->info)))),
+                 (sizeof(*fio_data->poll) + sizeof(*fio_data->info)),
+                 sizeof(*fio_data));
 #else
-    FIO_LOG_STATE("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
-                  "*    Meximum open files %zu out of %zu\n"
-                  "*    Allocating %zu bytes for state handling.\n"
-                  "*    %zu bytes per connection + %zu for state handling.",
-                  capa, (size_t)rlim.rlim_max,
-                  (sizeof(*fio_data) + (capa * (sizeof(*fio_data->info)))),
-                  (sizeof(*fio_data->info)), sizeof(*fio_data));
+    FIO_LOG_INFO("facil.io " FIO_VERSION_STRING " capacity initialization:\n"
+                 "*    Meximum open files %zu out of %zu\n"
+                 "*    Allocating %zu bytes for state handling.\n"
+                 "*    %zu bytes per connection + %zu for state handling.",
+                 capa, (size_t)rlim.rlim_max,
+                 (sizeof(*fio_data) + (capa * (sizeof(*fio_data->info)))),
+                 (sizeof(*fio_data->info)), sizeof(*fio_data));
 #endif
 #endif
   }

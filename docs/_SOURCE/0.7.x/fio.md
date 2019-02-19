@@ -4102,9 +4102,11 @@ To be more accurate, this number represents the highest `fd` value allowed by li
 
 If the soft coded OS limit is higher than this number, than this limit will be enforced instead.
 
-#### `FIO_ENGINE_POLL`
+#### `FIO_ENGINE_POLL`, `FIO_ENGINE_EPOLL`, `FIO_ENGINE_KQUEUE`
 
-If set, facil.io will prefer the `poll` system call over `epoll` or `kqueue`.
+To set this flag set the `FIO_FORCE_POLL` / `FIO_FORCE_EPOLL` / `FIO_FORCE_KQUEUE` environment variable to true.
+
+If set, facil.io will prefer the specified polling system call (`poll`, `epoll` or `kqueue`) rather then attempting to auto-detect the correct system call.
 
 It should be noted that for most use-cases, `epoll` and `kqueue` will perform better.
 
@@ -4125,12 +4127,6 @@ The progressive throttling model makes concurrency and parallelism more likely.
 Otherwise threads are assumed to be intended for "fallback" in case of slow user code, where a single thread should be active most of the time and other threads are activated only when that single thread is slow to perform. 
 
 By default, `FIO_DEFER_THROTTLE_PROGRESSIVE` is true (1).
-
-#### `FIO_PRINT_STATE`
-
-When this macro is true (1), facil.io will enable the `FIO_LOG_STATE(msg, ...)` macro to print some default information level messages to stderr (startup / shutdown messages, etc').
-
-By default this macro is set to true.
 
 #### `FIO_POLL_MAX_EVENTS`
 
