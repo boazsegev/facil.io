@@ -4104,9 +4104,13 @@ If the soft coded OS limit is higher than this number, than this limit will be e
 
 #### `FIO_ENGINE_POLL`, `FIO_ENGINE_EPOLL`, `FIO_ENGINE_KQUEUE`
 
-To set this flag set the `FIO_FORCE_POLL` / `FIO_FORCE_EPOLL` / `FIO_FORCE_KQUEUE` environment variable to true.
-
 If set, facil.io will prefer the specified polling system call (`poll`, `epoll` or `kqueue`) rather then attempting to auto-detect the correct system call.
+
+To set any of these flag while using the facil.io `makefile`, set the `FIO_FORCE_POLL` / `FIO_FORCE_EPOLL` / `FIO_FORCE_KQUEUE` environment variable to true. i.e.:
+
+```bash
+FIO_FORCE_POLL=1 make
+```
 
 It should be noted that for most use-cases, `epoll` and `kqueue` will perform better.
 
@@ -4142,11 +4146,11 @@ This macro can be used to disable the priority queue given to outbound IO.
 
 #### `FIO_PUBSUB_SUPPORT`
 
-If true (1), compiles the facil.io pub/sub API .
+If true (1), compiles the facil.io pub/sub API. By default, this is true.
 
 ## Weak functions
 
-Weak functions are functions that can be over-ridden during the compilation / linking stage.
+Weak functions are functions that can be overridden during the compilation / linking stage.
 
 This provides control over some operations such as thread creation and process forking, which could be important when integrating facil.io into a VM engine such as Ruby or JavaScript.
 

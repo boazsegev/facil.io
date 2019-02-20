@@ -1,4 +1,4 @@
-#################################################
+#############################################################################
 # This makefile was composed for facil.io
 #
 # Copyright (c) 2016-2019 Boaz Segev
@@ -7,11 +7,11 @@
 # This makefile should be easilty portable on
 # X-nix systems for different projects.
 #
-#################################################
+#############################################################################
 
-#################################################
+#############################################################################
 # Compliation Output Settings
-#################################################
+#############################################################################
 
 # binary name and location
 ifndef NAME
@@ -33,18 +33,18 @@ DUMP_LIB=libdump
 # The library details for CMake incorporation. Can be safely removed.
 CMAKE_LIBFILE_NAME=CMakeLists.txt
 
-#################################################
+#############################################################################
 # Source Code Folder Settings
-#################################################
+#############################################################################
 
 # The development, non-library .c file(s) (i.e., the one with `int main(void)`).
 MAIN_ROOT=src
 # Development subfolders under the main development root
 MAIN_SUBFOLDERS=
 
-#################################################
+#############################################################################
 # Library Folder Settings
-#################################################
+#############################################################################
 
 # the .c and .cpp source files root folder
 LIB_ROOT=lib
@@ -55,11 +55,11 @@ LIB_PUBLIC_SUBFOLDERS=facil facil/tls facil/fiobj facil/cli facil/http facil/htt
 # privately used subfolders in the lib root (this distinction is only relevant for CMake)
 LIB_PRIVATE_SUBFOLDERS=
 
-#################################################
+#############################################################################
 # Compiler / Linker Settings
-#################################################
+#############################################################################
 
-# any librries required (only names, ommit the "-l" at the begining)
+# any libraries required (only names, ommit the "-l" at the begining)
 LINKER_LIBS=pthread m
 # optimization level.
 OPTIMIZATION=-O2 -march=native
@@ -91,9 +91,9 @@ endif
 # for internal use - don't change
 LINKER_LIBS_EXT:=
 
-#################################################
+#############################################################################
 # Debug Settings
-#################################################
+#############################################################################
 
 # add DEBUG flag if requested
 ifdef DEBUG
@@ -107,18 +107,14 @@ else
 	FLAGS:=$(FLAGS) NDEBUG NODEBUG
 endif
 
-#################################################
+#############################################################################
 # facil.io compilation flag helpers
-#################################################
+#############################################################################
 
 # add FIO_PRINT_STATE flag if requested
 ifdef FIO_PRINT
+  $(warning FIO_PRINT_STATE is deprecated. FIO_PRINT support will be removed soon.)
 	FLAGS:=$(FLAGS) FIO_PRINT_STATE=$(FIO_PRINT)
-endif
-
-# add FIO_ENGINE_POLL flag if requested
-ifdef FIO_POLL
-	FLAGS:=$(FLAGS) FIO_ENGINE_POLL=$(FIO_POLL)
 endif
 
 # add FIO_PUBSUB_SUPPORT flag if requested
@@ -126,9 +122,9 @@ ifdef FIO_PUBSUB_SUPPORT
 	FLAGS:=$(FLAGS) FIO_PUBSUB_SUPPORT=$(FIO_PUBSUB_SUPPORT)
 endif
 
-#################################################
+#############################################################################
 # OS Specific Settings (debugger, disassembler, etc')
-#################################################
+#############################################################################
 
 
 ifneq ($(OS),Windows_NT)
@@ -151,10 +147,10 @@ else
 	DOCUMENTATION=
 endif
 
-#################################################
-#       Automatic Setting Expansion
-#               (don't edit)
-#################################################
+#############################################################################
+# Automatic Setting Expansion
+# (don't edit)
+#############################################################################
 
 BIN = $(DEST)/$(NAME)
 
@@ -181,14 +177,97 @@ LIB_OBJS = $(foreach source, $(LIBSRC), $(addprefix $(TMP_ROOT)/, $(addsuffix .o
 
 OBJS_DEPENDENCY:=$(LIB_OBJS:.o=.d) $(MAIN_OBJS:.o=.d)
 
-#################################################
-#           SSL/ TLS Library Detection
-#               (no need to edit)
-#################################################
+#############################################################################
+# TRY_COMPILE and TRY_COMPILE_AND_RUN functions
+#
+# Call using $(call TRY_COMPILE, code, compiler_flags)
+#
+# Returns shell code as string: "0" (success) or non-0 (failure)
+#
+# TRY_COMPILE_AND_RUN returns the program's shell code as string.
+#############################################################################
+
+TRY_COMPILE=$(shell printf $(1) | $(CC) $(INCLUDE_STR) $(LDFLAGS) $(2) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null)
+TRY_COMPILE_AND_RUN=$(shell printf $(1) | $(CC) $(2) -xc -o ./___fio_tmp_test_ - 2> /dev/null ; ./___fio_tmp_test_ >> /dev/null 2> /dev/null; echo $$?; rm ./___fio_tmp_test_ 2> /dev/null)
+EMPTY:=
+
+#############################################################################
+# kqueue / epoll / poll Selection / Detection
+# (no need to edit)
+#############################################################################
+
+FIO_POLL_TEST_KQUEUE := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <stdlib.h>\\n\
+\#include <sys/event.h>\\n\
+int main(void) {\\n\
+	int fd = kqueue();\\n\
+}\\n\
+"
+
+FIO_POLL_TEST_EPOLL := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <stdlib.h>\\n\
+\#include <stdio.h>\\n\
+\#include <sys/types.h>\\n\
+\#include <sys/stat.h>\\n\
+\#include <fcntl.h>\\n\
+\#include <sys/epoll.h>\\n\
+int main(void) {\\n\
+	int fd = epoll_create1(EPOLL_CLOEXEC);\\n\
+}\\n\
+"
+
+FIO_POLL_TEST_POLL := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <stdlib.h>\\n\
+\#include <poll.h>\\n\
+int main(void) {\\n\
+  struct pollfd plist[18];\\n\
+  memset(plist, 0, sizeof(plist[0]) * 18);\\n\
+  poll(plist, 1, 1);\\n\
+}\\n\
+"
+
+# Test for manual selection and then TRY_COMPILE with each polling engine
+ifdef FIO_POLL
+  $(info * Skipping polling tests, enforcing manual selection of: poll)
+	FLAGS:=$(FLAGS) FIO_ENGINE_POLL
+else ifdef FIO_FORCE_POLL
+  $(info * Skipping polling tests, enforcing manual selection of: poll)
+	FLAGS:=$(FLAGS) FIO_ENGINE_POLL
+else ifdef FIO_FORCE_EPOLL
+  $(info * Skipping polling tests, enforcing manual selection of: epoll)
+	FLAGS:=$(FLAGS) FIO_ENGINE_EPOLL
+else ifdef FIO_FORCE_KQUEUE
+  $(info * Skipping polling tests, enforcing manual selection of: kqueue)
+	FLAGS:=$(FLAGS) FIO_ENGINE_KQUEUE
+else ifdef FIO_POLL
+  $(info * Skipping kqueue and epoll tests, forcing polling with poll)
+	FLAGS:=$(FLAGS) FIO_ENGINE_POLL=$(FIO_POLL)
+else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_EPOLL), $(EMPTY)), 0)
+  $(info * Detected `epoll`)
+	FLAGS:=$(FLAGS) FIO_ENGINE_EPOLL
+else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_KQUEUE), $(EMPTY)), 0)
+  $(info * Detected `kqueue`)
+	FLAGS:=$(FLAGS) FIO_ENGINE_KQUEUE
+else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_POLL), $(EMPTY)), 0)
+  $(info * Detected `poll` - this is suboptimal fallback!)
+	FLAGS:=$(FLAGS) FIO_ENGINE_POLL
+else
+	$(warning No supported polling engine! won't be able to compile facil.io)
+endif
+
+#############################################################################
+# SSL/ TLS Library Detection
+# (no need to edit)
+#############################################################################
 
 # BearSSL requirement C application code
 # (source code variation)
 FIO_TLS_TEST_BEARSSL_SOURCE := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <stdlib.h>\\n\
 \#include <bearssl.h>\\n\
 int main(void) {\\n\
 }\\n\
@@ -197,6 +276,8 @@ int main(void) {\\n\
 # BearSSL requirement C application code
 # (linked library variation)
 FIO_TLS_TEST_BEARSSL_EXT := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <stdlib.h>\\n\
 \#include <bearssl.h>\\n\
 int main(void) {\\n\
 }\\n\
@@ -204,6 +285,8 @@ int main(void) {\\n\
 
 # OpenSSL requirement C application code
 FIO_TLS_TEST_OPENSSL := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <stdlib.h>\\n\
 \#include <openssl/bio.h> \\n\
 \#include <openssl/err.h> \\n\
 \#include <openssl/ssl.h> \\n\
@@ -227,14 +310,14 @@ LIB_PRIVATE_SUBFOLDERS:=$(LIB_PRIVATE_SUBFOLDERS) $(if $(wildcard lib/bearssl),b
 
 # add BearSSL/OpenSSL library flags (exclusive)
 ifdef FIO_NO_TLS
-else ifeq ($(shell printf $(FIO_TLS_TEST_BEARSSL_SOURCE) | $(CC) $(INCLUDE_STR) $(LDFLAGS) -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_SOURCE), $(EMPTY)), 0)
   $(info * Detected the BearSSL source code library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
-else ifeq ($(shell printf $(FIO_TLS_TEST_BEARSSL_EXT) | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lbearssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_BEARSSL_EXT), "-lbearssl"), 0)
   $(info * Detected the BearSSL library, setting HAVE_BEARSSL)
 	FLAGS:=$(FLAGS) HAVE_BEARSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) bearssl
-else ifeq ($(shell printf $(FIO_TLS_TEST_OPENSSL) | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lcrypto -lssl -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+else ifeq ($(call TRY_COMPILE, $(FIO_TLS_TEST_OPENSSL), "-lcrypto" "-lssl"), 0)
   $(info * Detected the OpenSSL library, setting HAVE_OPENSSL)
 	FLAGS:=$(FLAGS) HAVE_OPENSSL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) crypto ssl
@@ -243,54 +326,58 @@ else
 endif
 
 # S2N TLS/SSL library: https://github.com/awslabs/s2n
-ifeq ($(shell printf "\#include <s2n.h>\\n int main(void) {}" | $(CC) $(INCLUDE_STR) -ls2n -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? 2> /dev/null ), 0)
+ifeq ($(call TRY_COMPILE, "\#include <s2n.h>\\n int main(void) {}", "-ls2n") , 0)
   $(info * Detected the s2n library, setting HAVE_S2N)
 	FLAGS:=$(FLAGS) HAVE_S2N
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) s2n
 endif
 
-#################################################
-#           ZLib Library Detection
-#              (no need to edit)
-#################################################
+#############################################################################
+# ZLib Library Detection
+# (no need to edit)
+#############################################################################
 
-ifeq ($(shell printf "\#include <zlib.h>\\nint main(void) {}" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lz -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+ifeq ($(call TRY_COMPILE, "\#include <zlib.h>\\nint main(void) {}", "-lz") , 0)
   $(info * Detected the zlib library, setting HAVE_ZLIB)
 	FLAGS:=$(FLAGS) HAVE_ZLIB
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) z
 endif
 
-#################################################
-#         PostgreSQL Library Detection
-#               (no need to edit)
-#################################################
+#############################################################################
+# PostgreSQL Library Detection
+# (no need to edit)
+#############################################################################
 
-ifeq ($(shell printf "\#include <libpq-fe.h>\\nint main(void) {}\n" | $(CC) $(INCLUDE_STR) $(LDFLAGS) -lpg -xc -o /dev/null - >> /dev/null 2> /dev/null ; echo $$? ), 0)
+ifeq ($(call TRY_COMPILE, "\#include <libpq-fe.h>\\n int main(void) {}", "-lpg") , 0)
   $(info * Detected the PostgreSQL library, setting HAVE_POSTGRESQL)
 	FLAGS:=$(FLAGS) HAVE_POSTGRESQL
 	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
+else ifeq ($(call TRY_COMPILE, "\#include </usr/include/postgresql/libpq-fe.h>\\nint main(void) {}", "-lpg") , 0)
+  $(info * Detected the PostgreSQL library, setting HAVE_POSTGRESQL)
+	FLAGS:=$(FLAGS) HAVE_POSTGRESQL
+	INCLUDE_STR:=$(INCLUDE_STR) -I/usr/include/postgresql
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) pg
 endif
 
-#################################################
-#               Endian  Detection
-#               (no need to edit)
-#################################################
+#############################################################################
+# Endian  Detection
+# (no need to edit)
+#############################################################################
 
-ifeq ($(shell printf "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[sizeof(i)-1]);}\n" | $(CC) -xc -o _fio___endian_test - >> /dev/null 2> /dev/null ; ./_fio___endian_test >> /dev/null 2> /dev/null; echo $$?; rm _fio___endian_test 2> /dev/null), 1)
+ifeq ($(call TRY_COMPILE_AND_RUN, "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[sizeof(i)-1]);}\n",$(EMPTY)), 1)
   $(info * Detected Big Endian byte order.)
 	FLAGS:=$(FLAGS) __BIG_ENDIAN__
-else ifeq ($(shell printf "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[0]);}\n" | $(CC) -xc -o _fio___endian_test - >> /dev/null 2> /dev/null ; ./_fio___endian_test >> /dev/null 2> /dev/null; echo $$?; rm _fio___endian_test 2> /dev/null), 1)
+else ifeq ($(call TRY_COMPILE_AND_RUN, "int main(void) {int i = 1; return (int)(i & ((unsigned char *)&i)[0]);}\n",$(EMPTY)), 1)
   $(info * Detected Little Endian byte order.)
 	FLAGS:=$(FLAGS) __BIG_ENDIAN__=0
 else
   $(info * Byte ordering (endianness) detection failed)
 endif
 
-
-#################################################
-#       Updated flags and final values
-#                 (don't edit)
-#################################################
+#############################################################################
+# Updated flags and final values
+# (don't edit)
+#############################################################################
 
 FLAGS_STR = $(foreach flag,$(FLAGS),$(addprefix -D, $(flag)))
 CFLAGS:= $(CFLAGS) -g -std=$(CSTD) -fpic $(FLAGS_STR) $(WARNINGS) $(OPTIMIZATION) $(INCLUDE_STR)
@@ -299,9 +386,9 @@ LINKER_FLAGS= $(LDFLAGS) $(foreach lib,$(LINKER_LIBS),$(addprefix -l,$(lib))) $(
 CFLAGS_DEPENDENCY=-MT $@ -MMD -MP
 
 
-#################################################
-#        Tasks - Building
-#################################################
+#############################################################################
+# Tasks - Building
+#############################################################################
 
 $(NAME): build
 
@@ -354,9 +441,9 @@ $(TMP_ROOT)/%.d: ;
 
 -include $(OBJS_DEPENDENCY)
 
-#################################################
-#        Tasks - Testing
-#################################################
+#############################################################################
+# Tasks - Testing
+#############################################################################
 
 
 .PHONY : test
@@ -432,9 +519,9 @@ create_tree:
 	-@mkdir -p $(BUILDTREE) 2> /dev/null
 
 
-#################################################
-#        Tasks - Installers
-#################################################
+#############################################################################
+# Tasks - Installers
+#############################################################################
 
 .PHONY : install/bearssl
 install/bearssl: | remove/bearssl add/bearssl ;
@@ -457,9 +544,9 @@ remove/bearssl:
 	-@make clean
 
 
-#################################################
-#        Tasks - library code dumping & CMake
-#################################################
+#############################################################################
+# Tasks - library code dumping & CMake
+#############################################################################
 
 ifndef DUMP_LIB
 .PHONY : libdump
@@ -531,9 +618,9 @@ cmake:
 
 endif
 
-#################################################
-#        Tasks - make variable printout (test)
-#################################################
+#############################################################################
+# Tasks - make variable printout (test)
+#############################################################################
 
 # Prints the make variables, used for debugging the makefile
 .PHONY : vars
