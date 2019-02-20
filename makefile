@@ -242,9 +242,6 @@ else ifdef FIO_FORCE_EPOLL
 else ifdef FIO_FORCE_KQUEUE
   $(info * Skipping polling tests, enforcing manual selection of: kqueue)
 	FLAGS:=$(FLAGS) FIO_ENGINE_KQUEUE
-else ifdef FIO_POLL
-  $(info * Skipping kqueue and epoll tests, forcing polling with poll)
-	FLAGS:=$(FLAGS) FIO_ENGINE_POLL=$(FIO_POLL)
 else ifeq ($(call TRY_COMPILE, $(FIO_POLL_TEST_EPOLL), $(EMPTY)), 0)
   $(info * Detected `epoll`)
 	FLAGS:=$(FLAGS) FIO_ENGINE_EPOLL
@@ -476,7 +473,7 @@ test/c99:| clean
 
 .PHONY : test/poll
 test/poll:| clean
-	@CSTD=c99 DEBUG=1 CFLAGS="-DFIO_ENGINE_POLL" $(MAKE) test_build_and_run
+	@CSTD=c99 DEBUG=1 FIO_FORCE_POLL=1 $(MAKE) test_build_and_run
 
 .PHONY : test_build_and_run
 test_build_and_run: | create_tree test_add_flags test/build
