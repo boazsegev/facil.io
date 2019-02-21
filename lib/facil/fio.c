@@ -2718,8 +2718,8 @@ error:
 }
 
 #else
-static int (*sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
-    sock_write_from_fd;
+static int (*fio_sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
+    fio_sock_write_from_fd;
 
 #endif
 
