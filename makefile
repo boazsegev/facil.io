@@ -256,6 +256,67 @@ else
 endif
 
 #############################################################################
+# Detecting The `sendfile` System Call
+# (no need to edit)
+#############################################################################
+
+# Linux variation
+FIO_SENDFILE_TEST_LINUX := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <stdlib.h>\\n\
+\#include <stdio.h>\\n\
+\#include <sys/sendfile.h>\\n\
+int main(void) {\\n\
+	off_t offset = 0;\\n\
+	ssize_t result = sendfile(2, 1, (off_t *)&offset, 300);\\n\
+}\\n\
+"
+
+# BSD variation
+FIO_SENDFILE_TEST_BSD := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <stdlib.h>\\n\
+\#include <stdio.h>\\n\
+\#include <sys/types.h>\\n\
+\#include <sys/socket.h>\\n\
+\#include <sys/uio.h>\\n\
+int main(void) {\\n\
+	off_t sent = 0;\\n\
+	off_t offset = 0;\\n\
+	ssize_t result = sendfile(2, 1, offset, (size_t)sent, NULL, &sent, 0);\\n\
+}\\n\
+"
+
+# Apple variation
+FIO_SENDFILE_TEST_APPLE := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <stdlib.h>\\n\
+\#include <stdio.h>\\n\
+\#include <sys/types.h>\\n\
+\#include <sys/socket.h>\\n\
+\#include <sys/uio.h>\\n\
+int main(void) {\\n\
+	off_t sent = 0;\\n\
+	off_t offset = 0;\\n\
+	ssize_t result = sendfile(2, 1, offset, &sent, NULL, 0);\\n\
+}\\n\
+"
+
+ifeq ($(call TRY_COMPILE, $(FIO_SENDFILE_TEST_LINUX), $(EMPTY)), 0)
+  $(info * Detected `sendfile` (Linux))
+	FLAGS:=$(FLAGS) USE_SENDFILE_LINUX
+else ifeq ($(call TRY_COMPILE, $(FIO_SENDFILE_TEST_BSD), $(EMPTY)), 0)
+  $(info * Detected `sendfile` (BSD))
+	FLAGS:=$(FLAGS) USE_SENDFILE_BSD
+else ifeq ($(call TRY_COMPILE, $(FIO_SENDFILE_TEST_APPLE), $(EMPTY)), 0)
+  $(info * Detected `sendfile` (Apple))
+	FLAGS:=$(FLAGS) USE_SENDFILE_APPLE
+else
+  $(info * No `sendfile` support detected.)
+	FLAGS:=$(FLAGS) USE_SENDFILE=0
+endif
+
+#############################################################################
 # SSL/ TLS Library Detection
 # (no need to edit)
 #############################################################################
