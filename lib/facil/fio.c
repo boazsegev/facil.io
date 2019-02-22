@@ -3910,7 +3910,7 @@ void fio_start FIO_IGNORE_MACRO(struct fio_start_args args) {
 
   fio_state_callback_force(FIO_CALL_PRE_START);
 
-  FIO_LOG_STATE(
+  FIO_LOG_INFO(
       "Server is running %u %s X %u %s with facil.io " FIO_VERSION_STRING
       " (%s)\n"
       "* Detected capacity: %d open file limit\n"
