@@ -2593,7 +2593,7 @@ Internal socket flushing related functions
 #if defined(__linux__) /* linux sendfile works  */
 #include <sys/sendfile.h>
 #define USE_SENDFILE 1
-#elif defined(__unix__) /* BSD sendfile should work, but isn't tested */
+#elif defined(__FreeBSD__) /* BSD sendfile should work, but isn't tested */
 #include <sys/uio.h>
 #define USE_SENDFILE 1
 #elif defined(__APPLE__) /* Is the apple sendfile still broken? */
@@ -2689,7 +2689,7 @@ static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
 }
 
 #elif USE_SENDFILE &&                                                          \
-    (defined(__APPLE__) || defined(__unix__)) /* BSD / Apple API */
+    (defined(__APPLE__) || defined(__FreeBSD__)) /* FreeBSD / Apple API */
 
 static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
   off_t act_sent = 0;
@@ -2718,8 +2718,8 @@ error:
 }
 
 #else
-static int (*sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
-    sock_write_from_fd;
+static int (*fio_sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
+    fio_sock_write_from_fd;
 
 #endif
 
