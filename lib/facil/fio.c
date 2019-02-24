@@ -2591,13 +2591,10 @@ Internal socket flushing related functions
 #if !defined(USE_SENDFILE) && !defined(USE_SENDFILE_LINUX) &&                  \
     !defined(USE_SENDFILE_BSD) && !defined(USE_SENDFILE_APPLE)
 #if defined(__linux__) /* linux sendfile works  */
-#include <sys/sendfile.h>
 #define USE_SENDFILE_LINUX 1
 #elif defined(__FreeBSD__) /* FreeBSD sendfile should work - not tested */
-#include <sys/uio.h>
 #define USE_SENDFILE_BSD 1
 #elif defined(__APPLE__) /* Is the apple sendfile still broken? */
-#include <sys/uio.h>
 #define USE_SENDFILE_APPLE 2
 #else /* sendfile might not be available - always set to 0 */
 #define USE_SENDFILE 0
@@ -2675,6 +2672,7 @@ read_error:
 }
 
 #if USE_SENDFILE_LINUX /* linux sendfile API */
+#include <sys/sendfile.h>
 
 static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
   ssize_t sent;
@@ -2688,7 +2686,8 @@ static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
   return sent;
 }
 
-#elif USE_SENDFILE_LINUX_BSD || USE_SENDFILE_APPLE /* FreeBSD / Apple API */
+#elif USE_SENDFILE_BSD || USE_SENDFILE_APPLE /* FreeBSD / Apple API */
+#include <sys/uio.h>
 
 static int fio_sock_sendfile_from_fd(int fd, fio_packet_s *packet) {
   off_t act_sent = 0;
