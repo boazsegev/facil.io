@@ -378,17 +378,11 @@ Atomic reference counting
   __atomic_sub_fetch(&FIOBJECT2HEAD(o)->ref, 1, __ATOMIC_SEQ_CST)
 
 /* Select the correct compiler builtin method. */
-#elif defined(__has_builtin)
-
-#if __has_builtin(__sync_fetch_and_or)
+#elif defined(__has_builtin) && __has_builtin(__sync_add_and_fetch)
 /** An atomic addition operation */
 #define fiobj_ref_inc(o) __sync_add_and_fetch(&FIOBJECT2HEAD(o)->ref, 1)
 /** An atomic subtraction operation */
 #define fiobj_ref_dec(o) __sync_sub_and_fetch(&FIOBJECT2HEAD(o)->ref, 1)
-
-#else
-#error missing required atomic options.
-#endif /* defined(__has_builtin) */
 
 #elif __GNUC__ > 3
 /** An atomic addition operation */
