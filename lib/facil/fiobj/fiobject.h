@@ -378,7 +378,7 @@ Atomic reference counting
   __atomic_sub_fetch(&FIOBJECT2HEAD(o)->ref, 1, __ATOMIC_SEQ_CST)
 
 /* Select the correct compiler builtin method. */
-#elif defined(__has_builtin)
+#elif defined(__has_builtin) && !FIO_GNUC_BYPASS
 
 #if __has_builtin(__sync_fetch_and_or)
 /** An atomic addition operation */
