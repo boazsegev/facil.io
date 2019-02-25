@@ -52,14 +52,6 @@ Feel free to copy, use and enjoy according to the license provided.
 #endif
 #endif
 
-#if FIO_ENGINE_EPOLL
-#include <sys/epoll.h>
-
-#elif FIO_ENGINE_KQUEUE
-
-#include <sys/event.h>
-#endif
-
 /* for kqueue and epoll only */
 #ifndef FIO_POLL_MAX_EVENTS
 #define FIO_POLL_MAX_EVENTS 64
@@ -1619,6 +1611,7 @@ Section Start Marker
 
 ***************************************************************************** */
 #if FIO_ENGINE_EPOLL
+#include <sys/epoll.h>
 
 /**
  * Returns a C string detailing the IO engine selected during compilation.
@@ -1779,6 +1772,7 @@ Section Start Marker
 
 ***************************************************************************** */
 #if FIO_ENGINE_KQUEUE
+#include <sys/event.h>
 
 /**
  * Returns a C string detailing the IO engine selected during compilation.
