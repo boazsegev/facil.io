@@ -317,6 +317,69 @@ else
 endif
 
 #############################################################################
+# Detecting 'struct tm' fields
+# (no need to edit)
+#############################################################################
+
+FIO_TEST_STRUCT_TM_TM_ZONE := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <time.h>\\n\
+int main(void) {\\n\
+	struct tm tm;\\n\
+	tm.tm_zone = \"UTC\";\\n\
+	return 0;\\n\
+}\\n\
+"
+
+FIO_TEST_STRUCT_TM_TM_GMTOFF := "\\n\
+\#define _GNU_SOURCE\\n\
+\#include <time.h>\\n\
+int main(void) {\\n\
+	struct tm tm;\\n\
+	tm.tm_gmtoff = 0;\\n\
+	return 0;\\n\
+}\\n\
+"
+
+ifeq ($(call TRY_COMPILE, $(FIO_TEST_STRUCT_TM_TM_ZONE), $(EMPTY)), 0)
+  $(info * Detected 'tm_zone' field in 'struct tm')
+	FLAGS:=$(FLAGS) HAVE_TM_TM_ZONE
+endif
+
+ifeq ($(call TRY_COMPILE, $(FIO_TEST_STRUCT_TM_TM_GMTOFF), $(EMPTY)), 0)
+  $(info * Detected 'tm_gmtoff' field in 'struct tm')
+	FLAGS:=$(FLAGS) HAVE_TM_TM_GMTOFF
+endif
+
+#############################################################################
+# Detecting SystemV socket libraries
+# (no need to edit)
+#############################################################################
+
+FIO_TEST_SOCKET_AND_NETWORK_SERVICE := "\\n\
+\#include <sys/types.h>\\n\
+\#include <sys/socket.h>\\n\
+\#include <netinet/in.h>\\n\
+\#include <arpa/inet.h>\\n\
+int main(void) {\\n\
+	struct sockaddr_in addr = { .sin_port = 0 };\\n\
+	int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);\\n\
+	if(fd == -1) return 1;\\n\
+	if(inet_pton(AF_INET, \"127.0.0.1\", &addr.sin_addr) < 1) return 1;\\n\
+	return connect(fd, (struct sockaddr *)&addr, sizeof addr) < 0 ? 1 : 0;\\n\
+}\\n\
+"
+
+ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), $(EMPTY)), 0)
+  $(info * Detected socket API without additional libraries)
+else ifeq ($(call TRY_COMPILE, $(FIO_TEST_SOCKET_AND_NETWORK_SERVICE), "-lsocket" "-lnsl"), 0)
+  $(info * Detected socket API from libsocket and libnsl)
+	LINKER_LIBS_EXT:=$(LINKER_LIBS_EXT) socket nsl
+else
+  $(error No socket API available)
+endif
+
+#############################################################################
 # SSL/ TLS Library Detection
 # (no need to edit)
 #############################################################################

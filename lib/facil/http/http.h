@@ -7,6 +7,12 @@ Feel free to copy, use and enjoy according to the license provided.
 */
 #define H_HTTP_H
 
+#ifdef __GNUC__
+#if __GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 5)
+#define deprecated(reason) deprecated
+#endif
+#endif
+
 #include <fio.h>
 
 #include <fiobj.h>

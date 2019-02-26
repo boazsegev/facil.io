@@ -2313,7 +2313,11 @@ int fio_set_non_block(int fd) {
   if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
     flags = 0;
   // printf("flags initial value was %d\n", flags);
-  return fcntl(fd, F_SETFL, flags | O_NONBLOCK | O_CLOEXEC);
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK
+#ifdef O_CLOEXEC
+                             | O_CLOEXEC
+#endif
+    );
 #elif defined(FIONBIO)
   /* Otherwise, use the old way of doing it */
   static int flags = 1;
@@ -2710,7 +2714,7 @@ error:
 }
 
 #else
-static int (*fio_sock_sendfile_from_fd)(int fd, struct packet_s *packet) =
+static int (*fio_sock_sendfile_from_fd)(int fd, fio_packet_s *packet) =
     fio_sock_write_from_fd;
 
 #endif
