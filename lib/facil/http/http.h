@@ -11,6 +11,8 @@ Feel free to copy, use and enjoy according to the license provided.
 #if __GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 5)
 #define deprecated(reason) deprecated
 #endif
+#elif !defined(__clang__)
+#define __attribute__(...)
 #endif
 
 #include <fio.h>
