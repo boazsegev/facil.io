@@ -7136,8 +7136,10 @@ static inline block_s *block_new(void) {
   }
   /* collect memory from the system */
   blk = sys_alloc(FIO_MEMORY_BLOCK_SIZE * FIO_MEMORY_BLOCKS_PER_ALLOCATION, 0);
-  if (!blk)
+  if (!blk) {
+    fio_unlock(&memory.lock);
     return NULL;
+  }
   FIO_LOG_DEBUG("memory allocator allocated %p from the system", (void *)blk);
   FIO_MEMORY_ON_BLOCK_ALLOC();
   block_init_root(blk, blk);
