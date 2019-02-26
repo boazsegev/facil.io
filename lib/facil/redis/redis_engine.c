@@ -320,7 +320,7 @@ static void redis_send_next_command_unsafe(redis_engine_s *r) {
         FIO_LS_EMBD_OBJ(redis_commands_s, node, r->queue.next);
     fio_write2(r->pub_data.uuid, .data.buffer = cmd->cmd,
                .length = cmd->cmd_len, .after.dealloc = FIO_DEALLOC_NOOP);
-    FIO_LOG_DEBUG("(redis %d) Sending (%zu bytes):\n%s\n", getpid(),
+    FIO_LOG_DEBUG("(redis %d) Sending (%zu bytes):\n%s\n", (int)getpid(),
                   cmd->cmd_len, cmd->cmd);
   }
 }
@@ -352,7 +352,7 @@ static void resp_on_pub_message(struct redis_engine_internal_s *i, FIOBJ msg) {
   if (!node) {
     /* TODO: possible ping? from server?! not likely... */
     FIO_LOG_WARNING("(redis %d) received a reply when no command was sent.",
-                    getpid());
+                    (int)getpid());
     return;
   }
   node->next = (void *)fiobj_dup(msg);
@@ -657,7 +657,7 @@ static void redis_on_publish_root(const fio_pubsub_engine_s *eng,
   *buf++ = '\r';
   *buf++ = '\n';
   *buf = 0;
-  FIO_LOG_DEBUG("(%d) Publishing:\n%s", getpid(), cmd->cmd);
+  FIO_LOG_DEBUG("(%d) Publishing:\n%s", (int)getpid(), cmd->cmd);
   cmd->cmd_len = (uintptr_t)buf - (uintptr_t)(cmd + 1);
   redis_attach_cmd(r, cmd);
   return;
