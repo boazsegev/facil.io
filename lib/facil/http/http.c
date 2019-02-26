@@ -18,6 +18,34 @@ Feel free to copy, use and enjoy according to the license provided.
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifndef HAVE_TM_TM_ZONE
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || \
+    defined(__DragonFly__) || defined(__bsdi__) || defined(__ultrix) ||	\
+    (defined(__APPLE__) && defined(__MACH__)) || \
+    (defined(__sun) && !defined(__SVR4))
+/* Known BSD systems */
+#define HAVE_TM_TM_ZONE 1
+#elif defined(__GLIBC__) && defined(_BSD_SOURCE)
+/* GNU systems with _BSD_SOURCE */
+#define HAVE_TM_TM_ZONE 1
+#else
+#define HAVE_TM_TM_ZONE 0
+#endif
+#endif
+
+#ifndef HAVE_TM_TM_GMTOFF
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || \
+    defined(__DragonFly__) || defined(__bsdi__) || defined(__ultrix) ||	\
+    (defined(__APPLE__) && defined(__MACH__)) || \
+    (defined(__sun) && !defined(__SVR4))
+#define HAVE_TM_TM_GMTOFF 1
+#elif defined(__GLIBC__) && defined(_BSD_SOURCE)
+#define HAVE_TM_TM_GMTOFF 1
+#else
+#define HAVE_TM_TM_GMTOFF 0
+#endif
+#endif
+
 /* *****************************************************************************
 SSL/TLS patch
 ***************************************************************************** */
@@ -2073,10 +2101,10 @@ struct tm *http_gmtime(time_t timer, struct tm *tmbuf) {
   if (timer < 0)
     return gmtime_r(&timer, tmbuf);
   ssize_t a, b;
-#ifdef HAVE_TM_TM_GMTOFF
+#if HAVE_TM_TM_GMTOFF
   tmbuf->tm_gmtoff = 0;
 #endif
-#ifdef HAVE_TM_TM_ZONE
+#if HAVE_TM_TM_ZONE
   tmbuf->tm_zone = "UTC";
 #endif
   tmbuf->tm_isdst = 0;
