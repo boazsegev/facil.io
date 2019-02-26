@@ -68,9 +68,7 @@ void on_request(http_s *request) {
 
 It's possible to either start a new project with `facil.io` or simply add it to an existing one. GNU `make` is the default build system and CMake is also supported.
 
-Notice that `facil.io` requires some C11 support from the compiler since it uses Anonymous Unions as part of the API.
-
-Some compilers support Anonymous Unions as a C99 extension (i.e. `gnu99`) and might not require C11 (in which case, editing the makefile to update the C standard requirement should suffice).
+`facil.io` should be C99 compatible.
 
 ### Starting a new project with `facil.io`
 

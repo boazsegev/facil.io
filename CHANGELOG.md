@@ -6,6 +6,10 @@
 
 **Security**: (`http`) HTTP/1.1 client throttling - new requests will not be consumed until pending responses were sent. Since HTTP/1.1 is a response-request protocol, this protocol specific approach should protect the HTTP application against slow clients.
 
+**Fix**: (`fio`) fixed fallback implementation for `fio_atomic_xchange` when missing atomic primitives in compiler (older compilers). Credit to @Low-power for identifying and fixing the issue (PR #55).
+
+**Fix**: (`fio`) fixed a possible unreleased lock when a memory allocation failed (no memory in the system). Credit to @Low-power for identifying and fixing the issue (PR #54).
+
 **Fix**: (`fio`) fixed the `fio_sock_sendfile_from_fd` fall-back for a missing `sendfile`. Credit to @Low-power for identifying and fixing the typo (PR #49).
 
 **Fix**: (`fio`) fixed `fio_pending` not decrementing packet count before reaching zero.
@@ -41,6 +45,8 @@
 **Update**: (`fio`) improved pub/sub memory usage to minimize message copying in cluster mode (same memory is used for IPC and local-process message publishing).
 
 **Update**: (`fio`) updated the non-cryptographic PRG algorithm for performance and speed. Now the `fio_rand` functions are modeled after the `xoroshiro128+` algorithm, with an automated re-seeding counter based on RiskyHash. This should improve performance for non cryptographic random requirements.
+
+**Compatibility**: (`fio`) various Solaris OS compatibility patches, courtesy of @Low-power (PR #52, #53).
 
 ### v. 0.7.0.beta7
 
