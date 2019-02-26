@@ -2022,7 +2022,7 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 /* Select the correct compiler builtin method. */
 #elif __has_builtin(__sync_add_and_fetch)
 /** An atomic exchange operation, ruturns previous value */
-#define fio_atomic_xchange(p_obj, value) __sync_fetch_and_or((p_obj), (value))
+#define fio_atomic_xchange(p_obj, value) __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
 /** An atomic addition operation */
 #define fio_atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
 /** An atomic subtraction operation */
@@ -2030,7 +2030,7 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 
 #elif __GNUC__ > 3
 /** An atomic exchange operation, ruturns previous value */
-#define fio_atomic_xchange(p_obj, value) __sync_fetch_and_or((p_obj), (value))
+#define fio_atomic_xchange(p_obj, value) __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
 /** An atomic addition operation */
 #define fio_atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
 /** An atomic subtraction operation */
