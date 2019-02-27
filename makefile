@@ -343,12 +343,12 @@ int main(void) {\\n\
 
 ifeq ($(call TRY_COMPILE, $(FIO_TEST_STRUCT_TM_TM_ZONE), $(EMPTY)), 0)
   $(info * Detected 'tm_zone' field in 'struct tm')
-	FLAGS:=$(FLAGS) HAVE_TM_TM_ZONE
+	FLAGS:=$(FLAGS) HAVE_TM_TM_ZONE=1
 endif
 
 ifeq ($(call TRY_COMPILE, $(FIO_TEST_STRUCT_TM_TM_GMTOFF), $(EMPTY)), 0)
   $(info * Detected 'tm_gmtoff' field in 'struct tm')
-	FLAGS:=$(FLAGS) HAVE_TM_TM_GMTOFF
+	FLAGS:=$(FLAGS) HAVE_TM_TM_GMTOFF=1
 endif
 
 #############################################################################
