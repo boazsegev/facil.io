@@ -223,9 +223,16 @@ Version and helper macros
 #define __has_include(...) 0
 #define __has_builtin(...) 0
 #define FIO_GNUC_BYPASS 1
-#elif !defined(__clang__) && !defined(__has_builtin)
+#else
+#if defined(__GNUC__) && (__GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 5))
+/* GCC < 4.5 doesn't support deprecation reason string */
+#define deprecated(reason) deprecated
+#endif
+#if !defined(__clang__) && !defined(__has_builtin)
+/* E.g: GCC < 6.0 doesn't support __has_builtin */
 #define __has_builtin(...) 0
 #define FIO_GNUC_BYPASS 1
+#endif
 #endif
 
 #ifndef FIO_FUNC
