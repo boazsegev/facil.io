@@ -82,6 +82,15 @@ Feel free to copy, use and enjoy according to the license provided.
 #define FIO_TLS_WEAK __attribute__((weak))
 #endif
 
+/* Mitigates MAP_ANONYMOUS not being defined on older versions of MacOS */
+#if !defined(MAP_ANONYMOUS)
+#if defined(MAP_ANON)
+#define MAP_ANONYMOUS MAP_ANON
+#else
+#define MAP_ANONYMOUS 0
+#endif
+#endif
+
 /* *****************************************************************************
 Event deferring (declarations)
 ***************************************************************************** */
@@ -2312,7 +2321,6 @@ int fio_set_non_block(int fd) {
   int flags;
   if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
     flags = 0;
-  // printf("flags initial value was %d\n", flags);
 #ifdef O_CLOEXEC
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK | O_CLOEXEC);
 #else
@@ -3530,7 +3538,8 @@ static void __attribute__((destructor)) fio_lib_destroy(void) {
   fio_free(fio_data);
   /* memory library destruction must be last */
   fio_mem_destroy();
-  FIO_LOG_DEBUG("(%d) facil.io resources released, exit complete.", (int)getpid());
+  FIO_LOG_DEBUG("(%d) facil.io resources released, exit complete.",
+                (int)getpid());
   if (add_eol)
     fprintf(stderr, "\n"); /* add EOL to logs (logging adds EOL before text */
 }
@@ -3846,7 +3855,8 @@ static void *fio_sentinel_worker_thread(void *arg) {
       /* don't call any functions while forking. */
       fio_lock(&fio_fork_lock);
       if (!WIFEXITED(status) || WEXITSTATUS(status)) {
-        FIO_LOG_ERROR("Child worker (%d) crashed. Respawning worker.", (int)child);
+        FIO_LOG_ERROR("Child worker (%d) crashed. Respawning worker.",
+                      (int)child);
         fio_state_callback_force(FIO_CALL_ON_CHILD_CRUSH);
       } else {
         FIO_LOG_WARNING("Child worker (%d) shutdown. Respawning worker.",
@@ -6181,7 +6191,8 @@ static void fio_cluster_listen_on_close(intptr_t uuid,
   cluster_data.uuid = -1;
   if (fio_parent_pid() == getpid()) {
 #if DEBUG
-    FIO_LOG_DEBUG("(%d) stopped listening for cluster connections", (int)getpid());
+    FIO_LOG_DEBUG("(%d) stopped listening for cluster connections",
+                  (int)getpid());
 #endif
     if (fio_data->active)
       kill(0, SIGINT);
@@ -6207,7 +6218,8 @@ static void fio_listen2cluster(void *ignore) {
       .ping = mock_ping_eternal,
       .on_close = fio_cluster_listen_on_close,
   };
-  FIO_LOG_DEBUG("(%d) Listening to cluster: %s", (int)getpid(), cluster_data.name);
+  FIO_LOG_DEBUG("(%d) Listening to cluster: %s", (int)getpid(),
+                cluster_data.name);
   fio_attach(cluster_data.uuid, p);
   (void)ignore;
 }
@@ -6339,8 +6351,8 @@ static inline void fio_cluster_inform_root_about_channel(channel_s *ch,
   fio_str_info_s ch_name = {.data = ch->name, .len = ch->name_len};
   fio_str_info_s msg = {.data = NULL, .len = 0};
 #if DEBUG
-  FIO_LOG_DEBUG("(%d) informing root about: %s (%zu) msg type %d", (int)getpid(),
-                ch_name.data, ch_name.len,
+  FIO_LOG_DEBUG("(%d) informing root about: %s (%zu) msg type %d",
+                (int)getpid(), ch_name.data, ch_name.len,
                 (ch->match ? (add ? FIO_CLUSTER_MSG_PATTERN_SUB
                                   : FIO_CLUSTER_MSG_PATTERN_UNSUB)
                            : (add ? FIO_CLUSTER_MSG_PUBSUB_SUB
