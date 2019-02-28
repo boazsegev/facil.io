@@ -46,6 +46,8 @@
 
 **Update**: (`fio`) updated the non-cryptographic PRG algorithm for performance and speed. Now the `fio_rand` functions are modeled after the `xoroshiro128+` algorithm, with an automated re-seeding counter based on RiskyHash. This should improve performance for non cryptographic random requirements.
 
+**Compatibility**: (`fio`) mitigate undefined MAP_ANONYMOUS on MacOS <= 10.10. Credit to @xicreative (Evan Pavlica) for iodine/PR#61.
+
 **Compatibility**: (`fio`) various Solaris OS compatibility patches, courtesy of @Low-power (PR #52, #53).
 
 ### v. 0.7.0.beta7
