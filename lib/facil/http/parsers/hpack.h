@@ -786,7 +786,7 @@ void hpack_test(void) {
         tmp = hpack_string_pack(buffer + buf_pos, limit - buf_pos, str1, 56,
                                 (i & 1) == 1);
         if (tmp == -1)
-          fprintf(stderr, "* HPACK STRING PACKING FAIL AT %lu\n", i);
+          fprintf(stderr, "* HPACK STRING PACKING FAIL AT %zu\n", i);
         else if ((size_t)tmp > limit - buf_pos)
           break;
         buf_pos += tmp;
@@ -799,7 +799,7 @@ void hpack_test(void) {
         --i;
         tmp = hpack_string_unpack(result, 56, buffer, limit, &buf_pos);
         if (tmp == -1) {
-          fprintf(stderr, "* HPACK STRING UNPACKING FAIL AT %lu\n",
+          fprintf(stderr, "* HPACK STRING UNPACKING FAIL AT %zu\n",
                   (repeats - 1) - i);
           exit(-1);
         } else if (tmp != 56) {
@@ -811,13 +811,13 @@ void hpack_test(void) {
         }
         if (memcmp(str1, result, 56)) {
           fprintf(stderr,
-                  "* HPACK STRING UNPACKING ERROR AT %lu. Got (%u) %.*s\n",
+                  "* HPACK STRING UNPACKING ERROR AT %zu. Got (%u) %.*s\n",
                   (repeats - 1) - i, tmp, tmp, result);
           exit(-1);
         }
       }
       fprintf(stderr,
-              "* HPACK string primitive test complete (buffer used %u/%zu "
+              "* HPACK string primitive test complete (buffer used %d/%zu "
               "strings)\n",
               count, repeats);
     }
