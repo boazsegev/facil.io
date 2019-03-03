@@ -1118,16 +1118,13 @@
 <a href="#fio_max_sock_capacity"><code>FIO_MAX_SOCK_CAPACITY</code></a>
 </li>
 <li>
-<a href="#fio_engine_poll"><code>FIO_ENGINE_POLL</code></a>
+<a href="#fio_engine_poll-fio_engine_epoll-fio_engine_kqueue"><code>FIO_ENGINE_POLL</code>, <code>FIO_ENGINE_EPOLL</code>, <code>FIO_ENGINE_KQUEUE</code></a>
 </li>
 <li>
 <a href="#fio_cpu_cores_limit"><code>FIO_CPU_CORES_LIMIT</code></a>
 </li>
 <li>
 <a href="#fio_defer_throttle_progressive"><code>FIO_DEFER_THROTTLE_PROGRESSIVE</code></a>
-</li>
-<li>
-<a href="#fio_print_state"><code>FIO_PRINT_STATE</code></a>
 </li>
 <li>
 <a href="#fio_poll_max_events"><code>FIO_POLL_MAX_EVENTS</code></a>
@@ -4354,10 +4351,13 @@ required.</p>
 
 <p>If the soft coded OS limit is higher than this number, than this limit will be enforced instead.</p>
 
-<h4 id="fio_engine_poll"><code>FIO_ENGINE_POLL</code></h4>
+<h4 id="fio_engine_poll-fio_engine_epoll-fio_engine_kqueue"><code>FIO_ENGINE_POLL</code>, <code>FIO_ENGINE_EPOLL</code>, <code>FIO_ENGINE_KQUEUE</code></h4>
 
-<p>If set, facil.io will prefer the <code>poll</code> system call over <code>epoll</code> or <code>kqueue</code>.</p>
+<p>If set, facil.io will prefer the specified polling system call (<code>poll</code>, <code>epoll</code> or <code>kqueue</code>) rather then attempting to auto-detect the correct system call.</p>
 
+<p>To set any of these flag while using the facil.io <code>makefile</code>, set the <code>FIO_FORCE_POLL</code> / <code>FIO_FORCE_EPOLL</code> / <code>FIO_FORCE_KQUEUE</code> environment variable to true. i.e.:</p>
+<div class="highlight"><pre class="highlight shell"><code><span class="nv">FIO_FORCE_POLL</span><span class="o">=</span>1 make
+</code></pre></div>
 <p>It should be noted that for most use-cases, <code>epoll</code> and <code>kqueue</code> will perform better.</p>
 
 <h4 id="fio_cpu_cores_limit"><code>FIO_CPU_CORES_LIMIT</code></h4>
@@ -4378,12 +4378,6 @@ required.</p>
 
 <p>By default, <code>FIO_DEFER_THROTTLE_PROGRESSIVE</code> is true (1).</p>
 
-<h4 id="fio_print_state"><code>FIO_PRINT_STATE</code></h4>
-
-<p>When this macro is true (1), facil.io will enable the <code>FIO_LOG_STATE(msg, ...)</code> macro to print some default information level messages to stderr (startup / shutdown messages, etc&#39;).</p>
-
-<p>By default this macro is set to true.</p>
-
 <h4 id="fio_poll_max_events"><code>FIO_POLL_MAX_EVENTS</code></h4>
 
 <p>This macro sets the maximum number of IO events facil.io will pre-schedule at the beginning of each cycle, when using <code>epoll</code> or <code>kqueue</code> (not when using <code>poll</code>).</p>
@@ -4398,11 +4392,11 @@ required.</p>
 
 <h4 id="fio_pubsub_support"><code>FIO_PUBSUB_SUPPORT</code></h4>
 
-<p>If true (1), compiles the facil.io pub/sub API .</p>
+<p>If true (1), compiles the facil.io pub/sub API. By default, this is true.</p>
 
 <h2 id="weak-functions">Weak functions</h2>
 
-<p>Weak functions are functions that can be over-ridden during the compilation / linking stage.</p>
+<p>Weak functions are functions that can be overridden during the compilation / linking stage.</p>
 
 <p>This provides control over some operations such as thread creation and process forking, which could be important when integrating facil.io into a VM engine such as Ruby or JavaScript.</p>
 

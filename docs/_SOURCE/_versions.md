@@ -12,7 +12,7 @@ Review the [change-log](changelog) when migrating between versions.
 
 * [Change Log](changelog)
 
-* **Latest (beta)**: 0.7.0.beta7
+* **Latest (beta)**: 0.7.0.beta8
 
 * **Latest stable**: 0.6.4
 

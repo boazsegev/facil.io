@@ -13,7 +13,7 @@
 
 <ul>
 <li><p><a href="changelog">Change Log</a></p></li>
-<li><p><strong>Latest (beta)</strong>: 0.7.0.beta7</p></li>
+<li><p><strong>Latest (beta)</strong>: 0.7.0.beta8</p></li>
 <li><p><strong>Latest stable</strong>: 0.6.4</p></li>
 </ul>
 </nav><div id="md_container"><div class='toc'><ul>
@@ -23,7 +23,7 @@
 <li>
 <ul>
 <li>
-<a href="#v-0-7-0-beta8-next">v. 0.7.0.beta8 (next)</a>
+<a href="#v-0-7-0-beta8">v. 0.7.0.beta8</a>
 </li>
 <li>
 <a href="#v-0-7-0-beta7">v. 0.7.0.beta7</a>
@@ -262,15 +262,21 @@
 </ul>
 </div><h1 id="change-log">Change Log</h1>
 
-<h3 id="v-0-7-0-beta8-next">v. 0.7.0.beta8 (next)</h3>
+<h3 id="v-0-7-0-beta8">v. 0.7.0.beta8</h3>
 
 <p><strong>Security</strong>: (<code>fio</code>) Slowloris mitigation is now part of the core library, where <code>FIO_SLOWLORIS_LIMIT</code> pending calls to <code>write</code> (currently 1,024 backlogged calls) will flag the connection as an attacker and either close the connection or ignore it. This protocol independent approach improves security.</p>
 
 <p><strong>Security</strong>: (<code>http</code>) HTTP/1.1 client throttling - new requests will not be consumed until pending responses were sent. Since HTTP/1.1 is a response-request protocol, this protocol specific approach should protect the HTTP application against slow clients.</p>
 
-<p><strong>Fix</strong>: (<code>fio</code>): fixed <code>fio_pending</code> not decrementing packet count before reaching zero.</p>
+<p><strong>Fix</strong>: (<code>fio</code>) fixed fallback implementation for <code>fio_atomic_xchange</code> when missing atomic primitives in compiler (older compilers). Credit to @Low-power for identifying and fixing the issue (PR #55).</p>
 
-<p><strong>Fix</strong>: (<code>fio</code>): fixed logging message for overflowing log messages. Credit to @weskerfoot (Wesley Kerfoot) and @adam12 (Adam Daniels) for exposing the issue (issue iodine/#56).</p>
+<p><strong>Fix</strong>: (<code>fio</code>) fixed a possible unreleased lock when a memory allocation failed (no memory in the system). Credit to @Low-power for identifying and fixing the issue (PR #54).</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixed the <code>fio_sock_sendfile_from_fd</code> fall-back for a missing <code>sendfile</code>. Credit to @Low-power for identifying and fixing the typo (PR #49).</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixed <code>fio_pending</code> not decrementing packet count before reaching zero.</p>
+
+<p><strong>Fix</strong>: (<code>fio</code>) fixed logging message for overflowing log messages. Credit to @weskerfoot (Wesley Kerfoot) and @adam12 (Adam Daniels) for exposing the issue (issue iodine/#56).</p>
 
 <p><strong>Fix</strong>: (<code>fio</code>, <code>fio_risky_hash</code>) Florian Weber (@Florianjw) <a href="https://www.reddit.com/r/crypto/comments/9kk5gl/break_my_ciphercollectionpost/eekxw2f/?context=3">exposed a byte ordering error (last 7 byte reading order) and took time challenge the algorithm</a>. The exposed errors were fixed and the exposed a possible attack on RiskyHash using a variation on a Meet-In-The-Middle attack, written by Hening Makholm (@hmakholm). This prompted an update and fixes to the function.</p>
 
@@ -294,9 +300,17 @@
 
 <p><strong>Fix</strong>: (<code>fio</code>) fixed logging error message for long error messages.</p>
 
+<p><strong>Update</strong>: (<code>fio</code> / <code>makefile</code>) improved detection for polling system call, <code>sendfile</code>, etc&#39;.</p>
+
+<p><strong>Update</strong>: (<code>fio</code>) improved signal handling. Signal handling now propagates to pre-existing signal handlers. In addition, the <code>fio_signal_handler_reset</code> function was made public, allowing facil.io signal handlers to be removed immediately following startup (using <code>fio_state_callback_add</code> with <code>FIO_CALL_PRE_START</code> to call <code>fio_signal_handler_reset</code>).</p>
+
 <p><strong>Update</strong>: (<code>fio</code>) improved pub/sub memory usage to minimize message copying in cluster mode (same memory is used for IPC and local-process message publishing).</p>
 
 <p><strong>Update</strong>: (<code>fio</code>) updated the non-cryptographic PRG algorithm for performance and speed. Now the <code>fio_rand</code> functions are modeled after the <code>xoroshiro128+</code> algorithm, with an automated re-seeding counter based on RiskyHash. This should improve performance for non cryptographic random requirements.</p>
+
+<p><strong>Compatibility</strong>: (<code>fio</code>) mitigate undefined MAP_ANONYMOUS on MacOS &lt;= 10.10. Credit to @xicreative (Evan Pavlica) for iodine/PR#61.</p>
+
+<p><strong>Compatibility</strong>: (<code>fio</code>) various Solaris OS compatibility patches, courtesy of @Low-power (PR #52, #53).</p>
 
 <h3 id="v-0-7-0-beta7">v. 0.7.0.beta7</h3>
 
