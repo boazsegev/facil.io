@@ -331,24 +331,9 @@ int main(void) {\\n\
 }\\n\
 "
 
-FIO_TEST_STRUCT_TM_TM_GMTOFF := "\\n\
-\#define _GNU_SOURCE\\n\
-\#include <time.h>\\n\
-int main(void) {\\n\
-	struct tm tm;\\n\
-	tm.tm_gmtoff = 0;\\n\
-	return 0;\\n\
-}\\n\
-"
-
 ifeq ($(call TRY_COMPILE, $(FIO_TEST_STRUCT_TM_TM_ZONE), $(EMPTY)), 0)
   $(info * Detected 'tm_zone' field in 'struct tm')
 	FLAGS:=$(FLAGS) HAVE_TM_TM_ZONE=1
-endif
-
-ifeq ($(call TRY_COMPILE, $(FIO_TEST_STRUCT_TM_TM_GMTOFF), $(EMPTY)), 0)
-  $(info * Detected 'tm_gmtoff' field in 'struct tm')
-	FLAGS:=$(FLAGS) HAVE_TM_TM_GMTOFF=1
 endif
 
 #############################################################################
