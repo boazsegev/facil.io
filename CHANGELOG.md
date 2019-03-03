@@ -1,5 +1,9 @@
 # Change Log
 
+### v. 0.7.0.beta9
+
+**Compatibility**: (`http`) updated time-zone compile-time tests with a safer fall-back.
+
 ### v. 0.7.0.beta8
 
 **Security**: (`fio`) Slowloris mitigation is now part of the core library, where `FIO_SLOWLORIS_LIMIT` pending calls to `write` (currently 1,024 backlogged calls) will flag the connection as an attacker and either close the connection or ignore it. This protocol independent approach improves security.
