@@ -2192,6 +2192,7 @@ static const char *MONTH_NAMES[] = {"Jan ", "Feb ", "Mar ", "Apr ",
 static const char *GMT_STR = "GMT";
 
 size_t http_date2str(char *target, struct tm *tmbuf) {
+  /* note: day of month is always 2 digits */
   char *pos = target;
   uint16_t tmp;
   pos[0] = DAY_NAMES[tmbuf->tm_wday][0];
@@ -2201,8 +2202,9 @@ size_t http_date2str(char *target, struct tm *tmbuf) {
   pos[4] = ' ';
   pos += 5;
   if (tmbuf->tm_mday < 10) {
-    *pos = '0' + tmbuf->tm_mday;
-    ++pos;
+    pos[0] = '0';
+    pos[1] = '0' + +tmbuf->tm_mday;
+    pos += 2;
   } else {
     tmp = tmbuf->tm_mday / 10;
     pos[0] = '0' + tmp;
@@ -2240,6 +2242,7 @@ size_t http_date2str(char *target, struct tm *tmbuf) {
 }
 
 size_t http_date2rfc2822(char *target, struct tm *tmbuf) {
+  /* note: day of month is either 1 or 2 digits */
   char *pos = target;
   uint16_t tmp;
   pos[0] = DAY_NAMES[tmbuf->tm_wday][0];
@@ -2287,7 +2290,9 @@ size_t http_date2rfc2822(char *target, struct tm *tmbuf) {
   return pos - target;
 }
 
+/* HTTP header format for Cookie ages */
 size_t http_date2rfc2109(char *target, struct tm *tmbuf) {
+  /* note: day of month is always 2 digits */
   char *pos = target;
   uint16_t tmp;
   pos[0] = DAY_NAMES[tmbuf->tm_wday][0];
@@ -2297,8 +2302,9 @@ size_t http_date2rfc2109(char *target, struct tm *tmbuf) {
   pos[4] = ' ';
   pos += 5;
   if (tmbuf->tm_mday < 10) {
-    *pos = '0' + tmbuf->tm_mday;
-    ++pos;
+    pos[0] = '0';
+    pos[1] = '0' + +tmbuf->tm_mday;
+    pos += 2;
   } else {
     tmp = tmbuf->tm_mday / 10;
     pos[0] = '0' + tmp;
