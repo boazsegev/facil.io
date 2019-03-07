@@ -1418,18 +1418,22 @@ See the libc `gmtime_r` documentation for details.
 
 Falls back to `gmtime_r` for dates before epoch.
 
-#### `http_date2str`
+### `http_date2rfc7231`
 
 ```c
-size_t http_date2str(char *target, struct tm *tmbuf);
+size_t http_date2rfc7231(char *target, struct tm *tmbuf);
 ```
 
-Writes an HTTP date string to the `target` buffer.
+Writes an RFC 7231 date representation (HTTP date format) to the `target` buffer.
 
 This requires ~32 bytes of space to be available at the target buffer (unless
 it's a super funky year, 32 bytes is about 3 more than you need).
 
 Returns the number of bytes actually written.
+
+#### `http_date2str`
+
+Alias for [`http_date2rfc7231`](#http_date2rfc7231).
 
 #### `http_date2rfc2109`
 
@@ -1437,7 +1441,7 @@ Returns the number of bytes actually written.
 size_t http_date2rfc2109(char *target, struct tm *tmbuf);
 ```
 
-An alternative, RFC 2109 date representation. Requires 
+Writes an RFC 2109 date representation to the `target` buffer. See [`http_date2rfc7231`](#http_date2rfc7231).
 
 #### `http_date2rfc2822`
 
@@ -1445,7 +1449,7 @@ An alternative, RFC 2109 date representation. Requires
 size_t http_date2rfc2822(char *target, struct tm *tmbuf);
 ```
 
-An alternative, RFC 2822 date representation. 
+Writes an RFC 2822 date representation to the `target` buffer. See [`http_date2rfc7231`](#http_date2rfc7231).
 
 #### `http_time2str`
 

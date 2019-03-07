@@ -905,6 +905,12 @@ Falls back to `gmtime_r` for dates before epoch.
 */
 struct tm *http_gmtime(time_t timer, struct tm *tmbuf);
 
+/** Writes an RFC 7231 date representation (HTTP date format) to target. */
+size_t http_date2rfc7231(char *target, struct tm *tmbuf);
+/** Writes an RFC 2109 date representation to target. */
+size_t http_date2rfc2109(char *target, struct tm *tmbuf);
+/** Writes an RFC 2822 date representation to target. */
+size_t http_date2rfc2822(char *target, struct tm *tmbuf);
 /**
 Writes an HTTP date string to the `target` buffer.
 
@@ -913,11 +919,9 @@ it's a super funky year, 32 bytes is about 3 more than you need).
 
 Returns the number of bytes actually written.
 */
-size_t http_date2str(char *target, struct tm *tmbuf);
-/** An alternative, RFC 2109 date representation. Requires */
-size_t http_date2rfc2109(char *target, struct tm *tmbuf);
-/** An alternative, RFC 2822 date representation. */
-size_t http_date2rfc2822(char *target, struct tm *tmbuf);
+static inline size_t http_date2str(char *target, struct tm *tmbuf) {
+  return http_date2rfc7231(target, tmbuf);
+}
 
 /**
  * Prints Unix time to a HTTP time formatted string.
