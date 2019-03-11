@@ -108,7 +108,7 @@ size_t __attribute__((weak)) fio_ltoa(char *dest, int64_t num, uint8_t base) {
     goto zero;
 
   switch (base) {
-  case 1:
+  case 1: /* fallthrough */
   case 2:
     /* Base 2 */
     {
@@ -184,12 +184,12 @@ size_t __attribute__((weak)) fio_ltoa(char *dest, int64_t num, uint8_t base) {
       dest[len] = 0;
       return len;
     }
-  case 3:
-  case 4:
-  case 5:
-  case 6:
-  case 7:
-  case 9:
+  case 3: /* fallthrough */
+  case 4: /* fallthrough */
+  case 5: /* fallthrough */
+  case 6: /* fallthrough */
+  case 7: /* fallthrough */
+  case 9: /* fallthrough */
     /* rare bases */
     if (num < 0) {
       dest[len++] = '-';
@@ -232,10 +232,11 @@ size_t __attribute__((weak)) fio_ltoa(char *dest, int64_t num, uint8_t base) {
 
 zero:
   switch (base) {
-  case 1:
+  case 1: /* fallthrough */
   case 2:
     dest[len++] = '0';
     dest[len++] = 'b';
+    /* fallthrough */
   case 16:
     dest[len++] = '0';
     dest[len++] = 'x';

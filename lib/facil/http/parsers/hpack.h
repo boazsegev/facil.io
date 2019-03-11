@@ -113,14 +113,14 @@ typedef const struct {
   const uint32_t code;
   const uint8_t bits;
 } huffman_encode_s;
-static const huffman_encode_s huffman_encode_table[];
+static const huffman_encode_s huffman_encode_table[257];
 
 /* the huffman decoding binary tree type */
 typedef struct {
   const int16_t value;     // value, -1 == none.
   const uint8_t offset[2]; // offset for 0 and one. 0 == leaf node.
 } huffman_decode_s;
-static const huffman_decode_s huffman_decode_tree[];
+static const huffman_decode_s huffman_decode_tree[513];
 
 /**
  * Unpack (de-compress) using HPACK huffman - returns the number of bytes
@@ -388,11 +388,11 @@ static MAYBE_UNUSED int hpack_huffman_pack(void *dest_, const int limit,
     switch (bits >> 3) {
     case 3:
       dest[comp_len + 2] = (uint8_t)(code >> 8) & 0xFF;
-    /* overflow */
+    /* fallthrough */
     case 2:
       dest[comp_len + 1] = (uint8_t)(code >> 16) & 0xFF;
-    /* overflow */
-    case 1: /* overflow */
+    /* fallthrough */
+    case 1:
       dest[comp_len + 0] = (uint8_t)(code >> 24) & 0xFF;
       comp_len += (bits >> 3);
       code <<= (bits & (~7));
@@ -426,7 +426,7 @@ calc_final_length:
 Header static table lookup
 ***************************************************************************** */
 
-const static struct {
+static const struct {
   struct hpack_static_data_s {
     const char *val;
     const size_t len;
@@ -1058,10 +1058,11 @@ void huffman__print_tree(void) {
       }
     }
   }
-  fprintf(stderr, "***** Copy after this line ****\n\n"
-                  "/** Static Huffman encoding map, left aligned */\n"
+  fprintf(stderr,
+          "***** Copy after this line ****\n\n"
+          "/** Static Huffman encoding map, left aligned */\n"
 
-                  "static const huffman_encode_s huffman_encode_table[] = {\n");
+          "static const huffman_encode_s huffman_encode_table[257] = {\n");
   for (size_t i = 0; i < 257; ++i) {
     /* print huffman code left align */
     fprintf(stderr, " {.code = 0x%.08X, .bits = %u}, // [%zu] \n",
@@ -1071,7 +1072,8 @@ void huffman__print_tree(void) {
   fprintf(stderr,
           "};\n\n/** Static Huffman decoding tree, flattened as an array */\n"
 
-          "static const huffman_decode_s huffman_decode_tree[] = {\n");
+          "static const huffman_decode_s huffman_decode_tree[%zu] = {\n",
+          tree_len);
   for (size_t i = 0; i < tree_len; ++i) {
     huffman__print_unit(
         tree[i], i,
@@ -1127,7 +1129,7 @@ int main(void) {
 ***************************************************************************** */
 
 /** Static Huffman encoding map, left aligned */
-static const huffman_encode_s huffman_encode_table[] = {
+static const huffman_encode_s huffman_encode_table[257] = {
     {.code = 0xFFC00000, .bits = 13}, // [0]
     {.code = 0xFFFFB000, .bits = 23}, // [1]
     {.code = 0xFFFFFE20, .bits = 28}, // [2]
@@ -1388,7 +1390,7 @@ static const huffman_encode_s huffman_encode_table[] = {
 };
 
 /** Static Huffman decoding tree, flattened as an array */
-static const huffman_decode_s huffman_decode_tree[] = {
+static const huffman_decode_s huffman_decode_tree[513] = {
     {.value = -1, .offset = {1, 44}}, // [0]
     {.value = -1, .offset = {1, 16}}, // [1]
     {.value = -1, .offset = {1, 8}},  // [2]

@@ -156,7 +156,8 @@ static void fio_cli_set_arg(cstr_s arg, char const *value, char const *line,
         goto error;
       }
     }
-  case FIO_CLI_STRING__TYPE_I: /* fallthrough */
+    /* fallthrough */
+  case FIO_CLI_STRING__TYPE_I:
     if (!value)
       goto error;
     if (!value[0])
@@ -202,11 +203,11 @@ print_help:
   char const **pos = parser->names;
   while (*pos) {
     switch ((intptr_t)*pos) {
-    case FIO_CLI_STRING__TYPE_I:       /* fallthrough */
-    case FIO_CLI_BOOL__TYPE_I:         /* fallthrough */
-    case FIO_CLI_INT__TYPE_I:          /* fallthrough */
-    case FIO_CLI_PRINT__TYPE_I:        /* fallthrough */
-    case FIO_CLI_PRINT_HEADER__TYPE_I: /* fallthrough */
+    case FIO_CLI_STRING__TYPE_I: /* fallthrough */
+    case FIO_CLI_BOOL__TYPE_I:   /* fallthrough */
+    case FIO_CLI_INT__TYPE_I:    /* fallthrough */
+    case FIO_CLI_PRINT__TYPE_I:  /* fallthrough */
+    case FIO_CLI_PRINT_HEADER__TYPE_I:
       ++pos;
       continue;
     }

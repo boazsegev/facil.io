@@ -1397,17 +1397,20 @@ static void sig_int_handler(int sig) {
     old = &fio_old_sig_usr1;
     break;
 #endif
-  case SIGINT: /* fallthrough */
+    /* fallthrough */
+  case SIGINT:
     if (!old)
       old = &fio_old_sig_int;
-  case SIGTERM: /* fallthrough */
+    /* fallthrough */
+  case SIGTERM:
     if (!old)
       old = &fio_old_sig_term;
     fio_stop();
     break;
-  case SIGPIPE: /* fallthrough */
+  case SIGPIPE:
     if (!old)
       old = &fio_old_sig_pipe;
+  /* fallthrough */
   default:
     break;
   }
@@ -3005,23 +3008,23 @@ flush_rw_hook:
 test_errno:
   fio_unlock(&uuid_data(uuid).sock_lock);
   switch (errno) {
-  case EWOULDBLOCK: /* ovreflow */
+  case EWOULDBLOCK: /* fallthrough */
 #if EWOULDBLOCK != EAGAIN
-  case EAGAIN: /* ovreflow */
+  case EAGAIN: /* fallthrough */
 #endif
-  case ENOTCONN:      /* ovreflow */
-  case EINPROGRESS:   /* ovreflow */
-  case ENOSPC:        /* ovreflow */
-  case EADDRNOTAVAIL: /* ovreflow */
+  case ENOTCONN:      /* fallthrough */
+  case EINPROGRESS:   /* fallthrough */
+  case ENOSPC:        /* fallthrough */
+  case EADDRNOTAVAIL: /* fallthrough */
   case EINTR:
     return 1;
   case EFAULT:
     FIO_LOG_ERROR("fio_flush EFAULT - possible memory address error sent to "
                   "Unix socket.");
-    /* ovreflow */
-  case EPIPE:  /* ovreflow */
-  case EIO:    /* ovreflow */
-  case EINVAL: /* ovreflow */
+    /* fallthrough */
+  case EPIPE:  /* fallthrough */
+  case EIO:    /* fallthrough */
+  case EINVAL: /* fallthrough */
   case EBADF:
     uuid_data(uuid).close = 1;
     fio_force_close(uuid);
@@ -3362,13 +3365,13 @@ void fio_state_callback_force(callback_type_e c_type) {
   fio_lock(&callback_collection[c_type].lock);
   fio_state_callback_ensure(&callback_collection[c_type]);
   switch (c_type) {            /* the difference between `unshift` and `push` */
-  case FIO_CALL_ON_INITIALIZE: /* overflow */
-  case FIO_CALL_PRE_START:     /* overflow */
-  case FIO_CALL_BEFORE_FORK:   /* overflow */
-  case FIO_CALL_AFTER_FORK:    /* overflow */
-  case FIO_CALL_IN_CHILD:      /* overflow */
-  case FIO_CALL_IN_MASTER:     /* overflow */
-  case FIO_CALL_ON_START:      /* overflow */
+  case FIO_CALL_ON_INITIALIZE: /* fallthrough */
+  case FIO_CALL_PRE_START:     /* fallthrough */
+  case FIO_CALL_BEFORE_FORK:   /* fallthrough */
+  case FIO_CALL_AFTER_FORK:    /* fallthrough */
+  case FIO_CALL_IN_CHILD:      /* fallthrough */
+  case FIO_CALL_IN_MASTER:     /* fallthrough */
+  case FIO_CALL_ON_START:      /* fallthrough */
     FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
       callback_data_s *tmp = fio_malloc(sizeof(*tmp));
       FIO_ASSERT_ALLOC(tmp);
@@ -3385,12 +3388,12 @@ void fio_state_callback_force(callback_type_e c_type) {
     }
     break;
 
-  case FIO_CALL_ON_SHUTDOWN:     /* overflow */
-  case FIO_CALL_ON_FINISH:       /* overflow */
-  case FIO_CALL_ON_PARENT_CRUSH: /* overflow */
-  case FIO_CALL_ON_CHILD_CRUSH:  /* overflow */
-  case FIO_CALL_AT_EXIT:         /* overflow */
-  case FIO_CALL_NEVER:           /* overflow */
+  case FIO_CALL_ON_SHUTDOWN:     /* fallthrough */
+  case FIO_CALL_ON_FINISH:       /* fallthrough */
+  case FIO_CALL_ON_PARENT_CRUSH: /* fallthrough */
+  case FIO_CALL_ON_CHILD_CRUSH:  /* fallthrough */
+  case FIO_CALL_AT_EXIT:         /* fallthrough */
+  case FIO_CALL_NEVER:           /* fallthrough */
   default:
     FIO_LS_EMBD_FOR(&callback_collection[c_type].callbacks, pos) {
       callback_data_s *tmp = fio_malloc(sizeof(*tmp));
@@ -4148,7 +4151,7 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
     goto zero;
 
   switch (base) {
-  case 1:
+  case 1: /* fallthrough */
   case 2:
     /* Base 2 */
     {
@@ -4224,12 +4227,12 @@ size_t fio_ltoa(char *dest, int64_t num, uint8_t base) {
       dest[len] = 0;
       return len;
     }
-  case 3:
-  case 4:
-  case 5:
-  case 6:
-  case 7:
-  case 9:
+  case 3: /* fallthrough */
+  case 4: /* fallthrough */
+  case 5: /* fallthrough */
+  case 6: /* fallthrough */
+  case 7: /* fallthrough */
+  case 9: /* fallthrough */
     /* rare bases */
     if (num < 0) {
       dest[len++] = '-';
@@ -6655,7 +6658,7 @@ static int fio_glob_match(fio_str_info_s pat, fio_str_info_s ch) {
     case '\\':
       d = *(uint8_t *)pat.data++;
       pat.len--;
-    /* FALLTHROUGH */
+    /* fallthrough */
     default: /* Literal character */
       if (c == d)
         break;
@@ -7494,10 +7497,12 @@ void fio_rand_bytes(void *data_, size_t len) {
   case 24:
     tmp = fio_rand64();
     fio_u2str64(data + 16, tmp);
-  case 16: /* overflow */
+    /* fallthrough */
+  case 16:
     tmp = fio_rand64();
     fio_u2str64(data + 8, tmp);
-  case 8: /* overflow */
+    /* fallthrough */
+  case 8:
     tmp = fio_rand64();
     fio_u2str64(data, tmp);
     data += len & 24;
@@ -7506,19 +7511,25 @@ void fio_rand_bytes(void *data_, size_t len) {
     tmp = fio_rand64();
     /* leftover bytes */
     switch ((len & 7)) {
-    case 7: /* overflow */
+    case 7:
       data[6] = (tmp >> 8) & 0xFF;
-    case 6: /* overflow */
+      /* fallthrough */
+    case 6:
       data[5] = (tmp >> 16) & 0xFF;
-    case 5: /* overflow */
+      /* fallthrough */
+    case 5:
       data[4] = (tmp >> 24) & 0xFF;
-    case 4: /* overflow */
+      /* fallthrough */
+    case 4:
       data[3] = (tmp >> 32) & 0xFF;
-    case 3: /* overflow */
+      /* fallthrough */
+    case 3:
       data[2] = (tmp >> 40) & 0xFF;
-    case 2: /* overflow */
+      /* fallthrough */
+    case 2:
       data[1] = (tmp >> 48) & 0xFF;
-    case 1: /* overflow */
+      /* fallthrough */
+    case 1:
       data[0] = (tmp >> 56) & 0xFF;
     }
   }

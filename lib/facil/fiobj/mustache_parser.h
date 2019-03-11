@@ -1046,7 +1046,8 @@ MUSTACHE_FUNC int(mustache_build)(mustache_build_args_s args) {
                            instructions[s.pos].data.name_len))
         goto user_error;
       break;
-    case MUSTACHE_WRITE_ARG: /* overflow */
+      /* fallthrough */
+    case MUSTACHE_WRITE_ARG:
       if (mustache_on_arg(&s.stack[s.index].sec,
                           data + instructions[s.pos].data.name_pos,
                           instructions[s.pos].data.name_len, 1))
@@ -1058,8 +1059,10 @@ MUSTACHE_FUNC int(mustache_build)(mustache_build_args_s args) {
                           instructions[s.pos].data.name_len, 0))
         goto user_error;
       break;
-    case MUSTACHE_SECTION_GOTO:  /* overflow */
-    case MUSTACHE_SECTION_START: /* overflow */
+      /* fallthrough */
+    case MUSTACHE_SECTION_GOTO:
+    /* fallthrough */
+    case MUSTACHE_SECTION_START:
     case MUSTACHE_SECTION_START_INV:
       /* advance stack*/
       if (s.index + 1 >= MUSTACHE_NESTING_LIMIT) {
@@ -1094,8 +1097,7 @@ MUSTACHE_FUNC int(mustache_build)(mustache_build_args_s args) {
         }
         s.stack[s.index].count = (uint32_t)val;
       }
-
-    /* overflow  */
+      /* fallthrough  */
     case MUSTACHE_SECTION_END:
       /* loop section or continue */
       if (s.stack[s.index].index < s.stack[s.index].count) {
@@ -1310,9 +1312,10 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
         }
         break;
 
-      case '^': /*overflow*/
+      case '^':
         /* start inverted section */
         flag = 0;
+        /* fallthrough */
       case '#':
         /* start section (or inverted section) */
         mustache__stand_alone_adjust(&s, stand_alone);
@@ -1449,14 +1452,14 @@ MUSTACHE_FUNC mustache_s *(mustache_load)(mustache_load_args_s args) {
             s.stack[s.index].del_end[s.stack[s.index].del_end_len - 1] == '}') {
           ++s.stack[s.index].data_pos;
         }
-        /*overflow*/
-      case '&': /*overflow*/
+        /* fallthrough */
+      case '&':
         /* unescaped variable data */
         flag = 0;
-        /* overflow to default */
-      case ':': /*overflow*/
-      case '<': /*overflow*/
-        ++beg;  /*overflow*/
+        /* fallthrough */
+      case ':': /*fallthrough*/
+      case '<': /*fallthrough*/
+        ++beg;  /*fallthrough*/
       default:
         --end;
         MUSTACHE_IGNORE_WHITESPACE(beg, 1);

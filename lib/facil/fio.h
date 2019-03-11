@@ -2288,14 +2288,14 @@ FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
 /** Writes a local 64 bit number to an unaligned buffer in network order. */
 #define fio_u2str64(buffer, i)                                                 \
   do {                                                                         \
-    ((uint8_t *)(buffer))[0] = ((uint64_t)(i) >> 56) & 0xFF;                   \
-    ((uint8_t *)(buffer))[1] = ((uint64_t)(i) >> 48) & 0xFF;                   \
-    ((uint8_t *)(buffer))[2] = ((uint64_t)(i) >> 40) & 0xFF;                   \
-    ((uint8_t *)(buffer))[3] = ((uint64_t)(i) >> 32) & 0xFF;                   \
-    ((uint8_t *)(buffer))[4] = ((uint64_t)(i) >> 24) & 0xFF;                   \
-    ((uint8_t *)(buffer))[5] = ((uint64_t)(i) >> 16) & 0xFF;                   \
-    ((uint8_t *)(buffer))[6] = ((uint64_t)(i) >> 8) & 0xFF;                    \
-    ((uint8_t *)(buffer))[7] = ((uint64_t)(i)) & 0xFF;                         \
+    ((uint8_t *)(buffer))[0] = (((uint64_t)(i) >> 56) & 0xFF);                 \
+    ((uint8_t *)(buffer))[1] = (((uint64_t)(i) >> 48) & 0xFF);                 \
+    ((uint8_t *)(buffer))[2] = (((uint64_t)(i) >> 40) & 0xFF);                 \
+    ((uint8_t *)(buffer))[3] = (((uint64_t)(i) >> 32) & 0xFF);                 \
+    ((uint8_t *)(buffer))[4] = (((uint64_t)(i) >> 24) & 0xFF);                 \
+    ((uint8_t *)(buffer))[5] = (((uint64_t)(i) >> 16) & 0xFF);                 \
+    ((uint8_t *)(buffer))[6] = (((uint64_t)(i) >> 8) & 0xFF);                  \
+    ((uint8_t *)(buffer))[7] = (((uint64_t)(i)) & 0xFF);                       \
   } while (0);
 
 /* *****************************************************************************
@@ -2478,9 +2478,11 @@ FIO_FUNC inline uint64_t fio_risky_hash(const void *data_, size_t len,
   switch (len & 24) {
   case 24:
     fio_risky_consume(v2, fio_str2u64(data + 16));
-  case 16: /* overflow */
+    /* fallthrough */
+  case 16:
     fio_risky_consume(v1, fio_str2u64(data + 8));
-  case 8: /* overflow */
+    /* fallthrough */
+  case 8:
     fio_risky_consume(v0, fio_str2u64(data));
     data += len & 24;
   }
@@ -2488,19 +2490,25 @@ FIO_FUNC inline uint64_t fio_risky_hash(const void *data_, size_t len,
   uint64_t tmp = 0;
   /* consume leftover bytes, if any */
   switch ((len & 7)) {
-  case 7: /* overflow */
+  case 7:
     tmp |= ((uint64_t)data[6]) << 8;
-  case 6: /* overflow */
+    /* fallthrough */
+  case 6:
     tmp |= ((uint64_t)data[5]) << 16;
-  case 5: /* overflow */
+    /* fallthrough */
+  case 5:
     tmp |= ((uint64_t)data[4]) << 24;
-  case 4: /* overflow */
+    /* fallthrough */
+  case 4:
     tmp |= ((uint64_t)data[3]) << 32;
-  case 3: /* overflow */
+    /* fallthrough */
+  case 3:
     tmp |= ((uint64_t)data[2]) << 40;
-  case 2: /* overflow */
+    /* fallthrough */
+  case 2:
     tmp |= ((uint64_t)data[1]) << 48;
-  case 1: /* overflow */
+    /* fallthrough */
+  case 1:
     tmp |= ((uint64_t)data[0]) << 56;
     /* ((len >> 3) & 3) is a 0...3 value indicating consumption vector */
     switch ((len >> 3) & 3) {
