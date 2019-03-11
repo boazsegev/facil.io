@@ -2,9 +2,11 @@
 
 ### v. 0.7.0.beta9
 
-**Compatibility**: (`http`) updated time-zone compile-time tests with a safer fall-back.
+**Fix**: (`fio`, `fiobj`) fixed some `gcc` compatibility issues and warnings.
 
 **Fix**: (`http`) fixed HTTP date format to force the day of the month to use two digits. Credit to @ianks (Ian Ker-Seymer) for exposing this issue (iodine#64).
+
+**Compatibility**: (`http`) updated time-zone compile-time tests with a safer fall-back.
 
 ### v. 0.7.0.beta8
 
