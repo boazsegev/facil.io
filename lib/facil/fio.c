@@ -5101,17 +5101,21 @@ typedef enum fio_cluster_message_type_e {
 
 typedef struct fio_collection_s fio_collection_s;
 
-#pragma pack(1)
+#ifndef __clang__ /* clang might misbehave by assumming non-alignment */
+#pragma pack(1)   /* https://gitter.im/halide/Halide/archives/2018/07/24 */
+#endif
 typedef struct {
   size_t name_len;
   char *name;
-  size_t ref;
+  volatile size_t ref;
   fio_ls_embd_s subscriptions;
   fio_collection_s *parent;
   fio_match_fn match;
   fio_lock_i lock;
 } channel_s;
+#ifndef __clang__
 #pragma pack()
+#endif
 
 struct subscription_s {
   fio_ls_embd_s node;
@@ -5121,7 +5125,7 @@ struct subscription_s {
   void *udata1;
   void *udata2;
   /** reference counter. */
-  uintptr_t ref;
+  volatile uintptr_t ref;
   /** prevents the callback from running concurrently for multiple messages. */
   fio_lock_i lock;
   fio_lock_i unsubscribed;
