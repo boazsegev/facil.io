@@ -2,7 +2,7 @@
 
 ### v. 0.7.0.beta9
 
-**Fix**: (`fio`, `fiobj`) fixed some `gcc` compatibility issues and warnings.
+**Fix**: (`fio`, `fiobj`) fixed some `gcc` and `clang` compatibility issues and warnings.
 
 **Fix**: (`http`) fixed HTTP date format to force the day of the month to use two digits. Credit to @ianks (Ian Ker-Seymer) for exposing this issue (iodine#64).
 
