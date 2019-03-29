@@ -1061,65 +1061,71 @@ Risky Hash - Cleanup
 
 
 ***************************************************************************** */
+
+/* *****************************************************************************
+Linked Lists Persistent Macros and Types
+***************************************************************************** */
+#if (defined(FIO_LIST) || defined(FIO_LIST_NAME)) && !defined(H___FIO_LIST_H)
+
+typedef struct fio_list_node_s {
+  struct fio_list_node_s *next;
+  struct fio_list_node_s *prev;
+} fio_list_node_s;
+
+#define FIO_LIST_NODE fio_list_node_s
+#define FIO_LIST_HEAD fio_list_node_s
+
+#endif /* H___FIO_LIST_H */
+
+/* *****************************************************************************
+Linked Lists (embeded) - Type
+***************************************************************************** */
+
 #ifdef FIO_LIST_NAME
 
-#ifndef FIO_LIST_TYPE
-#define FIO_LIST_TYPE void *
+#ifndef FIO_LIST_NODE_NAME
+#define FIO_LIST_NODE_NAME node
 #endif
 
-typedef struct FIO_NAME(FIO_LIST_NAME, s__node_internal) {
-  struct FIO_NAME(FIO_LIST_NAME, s__node_internal) * next;
-  struct FIO_NAME(FIO_LIST_NAME, s__node_internal) * prev;
-  FIO_LIST_TYPE data;
-} FIO_NAME(FIO_LIST_NAME, s);
+#ifndef FIO_LIST_TYPE
+#define FIO_LIST_TYPE FIO_NAME(FIO_LIST_NAME, s)
+#endif
 
-#define FIO_LIST_INIT(name)                                                    \
-  { .next = &(name), .prev = &(name) }
+#define FIO_LIST_INIT(ptr, node_name)                                          \
+  ((ptr)->node_name.next = (ptr)->node_name.prev = &(ptr)->node_name)
 
 /* *****************************************************************************
 Linked Lists (embeded) - API
 ***************************************************************************** */
 
 /** Initializes an uninitialized node (assumes the data in the node is junk). */
-IFUNC void FIO_NAME(FIO_LIST_NAME, init)(FIO_NAME(FIO_LIST_NAME, s) * head);
-
-/** Allocates a new node in the list. Returns NULL if no memory is available. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) * FIO_NAME(FIO_LIST_NAME, new)(void);
-
-/** Deallocates a node, removing it from the cirrent list (if any). */
-IFUNC void FIO_NAME(FIO_LIST_NAME, free)(FIO_NAME(FIO_LIST_NAME, s) * node);
+IFUNC void FIO_NAME(FIO_LIST_NAME, init)(FIO_LIST_HEAD *head);
 
 /** Returns a non-zero value if there are any linked nodes in the list. */
-IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_NAME(FIO_LIST_NAME, s) * head);
+IFUNC int FIO_NAME(FIO_LIST_NAME, any)(FIO_LIST_HEAD *head);
 
 /** Returns a non-zero value if the list is empty. */
-IFUNC int FIO_NAME(FIO_LIST_NAME, is_empty)(FIO_NAME(FIO_LIST_NAME, s) * head);
+IFUNC int FIO_NAME(FIO_LIST_NAME, is_empty)(FIO_LIST_HEAD *head);
 
 /** Removes a node from the list and returns the same node (or NULL if empty) */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, remove)(FIO_NAME(FIO_LIST_NAME, s) * node);
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, remove)(FIO_LIST_TYPE *node);
 
 /** Pushes an existing node to the end of the list. Returns node. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, push)(FIO_NAME(FIO_LIST_NAME, s) * head,
-                                  FIO_NAME(FIO_LIST_NAME, s) * node);
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, push)(FIO_LIST_HEAD *head,
+                                                   FIO_LIST_TYPE *node);
 
 /** Pops a node from the end of the list. Returns NULL if list is empty. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, pop)(FIO_NAME(FIO_LIST_NAME, s) * head);
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, pop)(FIO_LIST_HEAD *head);
 
 /** Adds an existing node to the beginning of the list. Returns node. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, unshift)(FIO_NAME(FIO_LIST_NAME, s) * head,
-                                     FIO_NAME(FIO_LIST_NAME, s) * node);
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, unshift)(FIO_LIST_HEAD *head,
+                                                      FIO_LIST_TYPE *node);
 
 /** Removed a node from the start of the list. Returns NULL if list is empty. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, shift)(FIO_NAME(FIO_LIST_NAME, s) * head);
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, shift)(FIO_LIST_HEAD *head);
 
 /** Returns the linked list node from a pointer to it's data field. */
-IFUNC FIO_NAME(FIO_LIST_NAME, s) *
-    FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_TYPE *data);
+IFUNC FIO_LIST_TYPE *FIO_NAME(FIO_LIST_NAME, root)(FIO_LIST_NODE *node);
 
 #ifndef FIO_LIST_EACH
 /** Loops through every node in the linked list except the head. */
