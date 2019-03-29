@@ -880,7 +880,7 @@ void FIO_TLS_WEAK fio_tls_cert_add(fio_tls_s *tls, const char *server_name,
     cert_ary_push(&tls->sni, c);
   } else if (server_name) {
     /* Self-Signed TLS Certificates */
-    c.private_key = FIO_STR_INIT_STATIC(server_name);
+    c.private_key = (fio_str_s)FIO_STR_INIT_STATIC(server_name);
     cert_ary_push(&tls->sni, c);
   }
   fio_tls_cert_destroy(&c);

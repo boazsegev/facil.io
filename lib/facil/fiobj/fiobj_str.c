@@ -171,7 +171,7 @@ FIOBJ fiobj_str_move(char *str, size_t len, size_t capacity) {
               .ref = 1,
               .type = FIOBJ_T_STRING,
           },
-      .str = FIO_STR_INIT_EXISTING(str, len, capacity),
+      .str = (fio_str_s)FIO_STR_INIT_EXISTING(str, len, capacity, fio_free),
   };
   return ((uintptr_t)s | FIOBJECT_STRING_FLAG);
 }

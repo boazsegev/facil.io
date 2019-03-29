@@ -426,7 +426,8 @@ static inline fio_msg_metadata_s websocket_optimize(fio_str_info_s msg,
 static fio_msg_metadata_s websocket_optimize_generic(fio_str_info_s ch,
                                                      fio_str_info_s msg,
                                                      uint8_t is_json) {
-  fio_str_s tmp = FIO_STR_INIT_EXISTING(ch.data, ch.len, 0); // don't free
+  fio_str_s tmp =
+      (fio_str_s)FIO_STR_INIT_EXISTING(ch.data, ch.len, 0, NULL); // don't free
   tmp.dealloc = NULL;
   unsigned char opcode = 2;
   if (tmp.len <= (2 << 19) && fio_str_utf8_valid(&tmp)) {

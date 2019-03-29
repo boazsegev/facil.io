@@ -1,6 +1,9 @@
 
 #include "tests/mustache.c.h"
 
+#define FIO_TEST_CSTL 1
+#include "fio_stl.h"
+
 #include <fio.h>
 #include <fiobj.h>
 #include <http.h>
@@ -10,6 +13,7 @@
 void resp_test(void);
 
 int main(void) {
+  fio_test_dynamic_types();
   fio_test();
   mustache_test();
   fiobj_test();

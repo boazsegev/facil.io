@@ -100,33 +100,39 @@ Feel free to copy, use and enjoy according to the license provided.
  * Set / Hash Map Internal Helpers
  * Set / Hash Map Implementation
  *
- *****************************************************************************
- */
+ **************************************************************************** */
 
 /* *****************************************************************************
-Version and helper macros
+Import STL
 ***************************************************************************** */
 
-#define FIO_VERSION_MAJOR 0
-#define FIO_VERSION_MINOR 7
-#define FIO_VERSION_PATCH 0
-#define FIO_VERSION_BETA 0
+#define FIO_ATOMIC 1
+#define FIO_BITWISE 1
+#ifndef FIO_LOG_LENGTH_LIMIT
 
-/* Automatically convert version data to a string constant - ignore these two */
-#define FIO_MACRO2STR_STEP2(macro) #macro
-#define FIO_MACRO2STR(macro) FIO_MACRO2STR_STEP2(macro)
-
-/** The facil.io version as a String literal */
-#if FIO_VERSION_BETA
-#define FIO_VERSION_STRING                                                     \
-  FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
-  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(                      \
-      FIO_VERSION_PATCH) ".beta" FIO_MACRO2STR(FIO_VERSION_BETA)
-#else
-#define FIO_VERSION_STRING                                                     \
-  FIO_MACRO2STR(FIO_VERSION_MAJOR)                                             \
-  "." FIO_MACRO2STR(FIO_VERSION_MINOR) "." FIO_MACRO2STR(FIO_VERSION_PATCH)
+/**
+ * Since logging uses stack memory rather than dynamic allocation, it's memory
+ * usage must be limited to avoid exploding the stack. The following sets the
+ * memory used for a logging event.
+ */
+#define FIO_LOG_LENGTH_LIMIT 2048
 #endif
+
+#include "fio_stl.h"
+
+/* *****************************************************************************
+C++ extern start
+***************************************************************************** */
+/* support C++ */
+#ifdef __cplusplus
+extern "C" {
+/* C++ keyword was deprecated */
+#define register
+#endif
+
+/* *****************************************************************************
+Compilation Macros
+***************************************************************************** */
 
 #ifndef FIO_MAX_SOCK_CAPACITY
 /**
@@ -166,28 +172,11 @@ Version and helper macros
 #define FIO_DEFER_THROTTLE_PROGRESSIVE 1
 #endif
 
-#ifndef FIO_PRINT_STATE
-/**
- * Enables the depraceted FIO_LOG_STATE(msg,...) macro, which prints information
- * level messages to stderr.
- */
-#define FIO_PRINT_STATE 0
-#endif
-
 #ifndef FIO_PUBSUB_SUPPORT
 /**
  * If true (1), compiles the facil.io pub/sub API.
  */
 #define FIO_PUBSUB_SUPPORT 1
-#endif
-
-#ifndef FIO_LOG_LENGTH_LIMIT
-/**
- * Since logging uses stack memory rather than dynamic allocation, it's memory
- * usage must be limited to avoid exploding the stack. The following sets the
- * memory used for a logging event.
- */
-#define FIO_LOG_LENGTH_LIMIT 2048
 #endif
 
 #ifndef FIO_IGNORE_MACRO
@@ -198,41 +187,15 @@ Version and helper macros
 #define FIO_IGNORE_MACRO
 #endif
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
 #include <errno.h>
 #include <limits.h>
 #include <signal.h>
-#include <stdarg.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <strings.h>
-#include <time.h>
 
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
-
-#if !defined(__GNUC__) && !defined(__clang__) && !defined(FIO_GNUC_BYPASS)
-#define __attribute__(...)
-#define __has_include(...) 0
-#define __has_builtin(...) 0
-#define FIO_GNUC_BYPASS 1
-#elif !defined(__clang__) && !defined(__has_builtin)
-/* E.g: GCC < 6.0 doesn't support __has_builtin */
-#define __has_builtin(...) 0
-#define FIO_GNUC_BYPASS 1
-#endif
-
-#if defined(__GNUC__) && (__GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 5))
-/* GCC < 4.5 doesn't support deprecation reason string */
-#define deprecated(reason) deprecated
-#endif
 
 #ifndef FIO_FUNC
 #define FIO_FUNC static __attribute__((unused))
@@ -252,7 +215,7 @@ Patch for OSX version < 10.12 from https://stackoverflow.com/a/9781275/4025095
 #define clock_gettime patch_clock_gettime
 // clock_gettime is not implemented on older versions of OS X (< 10.12).
 // If implemented, CLOCK_REALTIME will have already been defined.
-static inline int patch_clock_gettime(int clk_id, struct timespec *t) {
+FIO_FUNC inline int patch_clock_gettime(int clk_id, struct timespec *t) {
   struct timeval now;
   int rv = gettimeofday(&now, NULL);
   if (rv)
@@ -265,55 +228,7 @@ static inline int patch_clock_gettime(int clk_id, struct timespec *t) {
 #endif
 
 /* *****************************************************************************
-C++ extern start
-***************************************************************************** */
-/* support C++ */
-#ifdef __cplusplus
-extern "C" {
-/* C++ keyword was deprecated */
-#define register
-#endif
-
-/* *****************************************************************************
-Helper String Information Type
-***************************************************************************** */
-
-#ifndef FIO_STR_INFO_TYPE
-/** A string information type, reports information about a C string. */
-typedef struct fio_str_info_s {
-  size_t capa; /* Buffer capacity, if the string is writable. */
-  size_t len;  /* String length. */
-  char *data;  /* String's first byte. */
-} fio_str_info_s;
-#define FIO_STR_INFO_TYPE
-#endif
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-
-
-Memory pool / custom allocator for short lived objects
-
-
-
-
-
-
-
-
-
-
-
-
+Memory allocator for short lived objects
 ***************************************************************************** */
 
 /* inform the compiler that the returned value is aligned on 16 byte marker */
@@ -380,6 +295,18 @@ void *FIO_ALIGN_NEW fio_mmap(size_t size);
 void fio_malloc_after_fork(void);
 
 #undef FIO_ALIGN
+#undef FIO_ALIGN_NEW
+
+/* Update STL default memory allocator */
+#if !FIO_FORCE_MALLOC
+#undef FIO_MEM_CALLOC
+#undef FIO_MEM_REALLOC
+#undef FIO_MEM_FREE
+#define FIO_MEM_CALLOC(size, units) fio_calloc((size), (units))
+#define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
+  fio_realloc2((ptr), (new_size), (copy_len))
+#define FIO_MEM_FREE(ptr, size) fio_free((ptr))
+#endif /* FIO_FORCE_MALLOC */
 
 /* *****************************************************************************
 
@@ -435,24 +362,8 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
 #ifndef FIO_LOG_PRINT
 #define FIO_LOG_PRINT(level, ...)                                              \
   do {                                                                         \
-    if (level <= FIO_LOG_LEVEL) {                                              \
-      char tmp___log[FIO_LOG_LENGTH_ON_STACK];                                 \
-      int len___log =                                                          \
-          snprintf(tmp___log, FIO_LOG_LENGTH_LIMIT - 2, __VA_ARGS__);          \
-      if (len___log <= 0 || len___log >= FIO_LOG_LENGTH_LIMIT - 2) {           \
-        if (len___log >= FIO_LOG_LENGTH_LIMIT - 2) {                           \
-          memcpy(tmp___log + FIO_LOG_LENGTH_BORDER,                            \
-                 "... (warning: truncated).", 25);                             \
-          len___log = FIO_LOG_LENGTH_BORDER + 25;                              \
-        } else {                                                               \
-          fwrite("ERROR: log output error (can't write).\n", 39, 1, stderr);   \
-          break;                                                               \
-        }                                                                      \
-      }                                                                        \
-      tmp___log[len___log++] = '\n';                                           \
-      tmp___log[len___log] = '0';                                              \
-      fwrite(tmp___log, len___log, 1, stderr);                                 \
-    }                                                                          \
+    if (level <= FIO_LOG_LEVEL)                                                \
+      FIO_LOG2STDERR(__VA_ARGS__);                                             \
   } while (0)
 #define FIO_LOG_DEBUG(...)                                                     \
   FIO_LOG_PRINT(FIO_LOG_LEVEL_DEBUG,                                           \
@@ -503,6 +414,78 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
   }
 #else
 #define FIO_ASSERT_DEBUG(...)
+#endif
+
+/* *****************************************************************************
+
+
+
+
+
+
+
+
+
+
+
+
+Network Byte Ordering
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************************************** */
+
+#if !defined(__BIG_ENDIAN__)
+/* nothing to do */
+#elif (defined(__LITTLE_ENDIAN__) && !__LITTLE_ENDIAN__) ||                    \
+    (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__))
+#define __BIG_ENDIAN__ 1
+#elif !defined(__BIG_ENDIAN__) && !defined(__BYTE_ORDER__) &&                  \
+    !defined(__LITTLE_ENDIAN__)
+#error Could not detect byte order on this system.
+#endif
+
+#if __BIG_ENDIAN__
+
+/** Local byte order to Network byte order, 16 bit integer */
+#define fio_lton16(i) (i)
+/** Local byte order to Network byte order, 32 bit integer */
+#define fio_lton32(i) (i)
+/** Local byte order to Network byte order, 62 bit integer */
+#define fio_lton64(i) (i)
+
+/** Network byte order to Local byte order, 16 bit integer */
+#define fio_ntol16(i) (i)
+/** Network byte order to Local byte order, 32 bit integer */
+#define fio_ntol32(i) (i)
+/** Network byte order to Local byte order, 62 bit integer */
+#define fio_ntol64(i) (i)
+
+#else /* Little Endian */
+
+/** Local byte order to Network byte order, 16 bit integer */
+#define fio_lton16(i) fio_bswap16((i))
+/** Local byte order to Network byte order, 32 bit integer */
+#define fio_lton32(i) fio_bswap32((i))
+/** Local byte order to Network byte order, 62 bit integer */
+#define fio_lton64(i) fio_bswap64((i))
+
+/** Network byte order to Local byte order, 16 bit integer */
+#define fio_ntol16(i) fio_bswap16((i))
+/** Network byte order to Local byte order, 32 bit integer */
+#define fio_ntol32(i) fio_bswap32((i))
+/** Network byte order to Local byte order, 62 bit integer */
+#define fio_ntol64(i) fio_bswap64((i))
+
 #endif
 
 /* *****************************************************************************
@@ -2011,66 +1994,6 @@ int fio_pubsub_is_attached(fio_pubsub_engine_s *engine);
 
 ***************************************************************************** */
 
-/* C11 Atomics are defined? */
-#if defined(__ATOMIC_RELAXED)
-/** An atomic exchange operation, returns previous value */
-#define fio_atomic_xchange(p_obj, value)                                       \
-  __atomic_exchange_n((p_obj), (value), __ATOMIC_SEQ_CST)
-/** An atomic addition operation */
-#define fio_atomic_add(p_obj, value)                                           \
-  __atomic_add_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
-/** An atomic subtraction operation */
-#define fio_atomic_sub(p_obj, value)                                           \
-  __atomic_sub_fetch((p_obj), (value), __ATOMIC_SEQ_CST)
-/* Note: __ATOMIC_SEQ_CST is probably safer and __ATOMIC_ACQ_REL may be faster
- */
-
-/* Select the correct compiler builtin method. */
-#elif __has_builtin(__sync_add_and_fetch)
-/** An atomic exchange operation, ruturns previous value */
-#define fio_atomic_xchange(p_obj, value)                                       \
-  __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
-/** An atomic addition operation */
-#define fio_atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
-/** An atomic subtraction operation */
-#define fio_atomic_sub(p_obj, value) __sync_sub_and_fetch((p_obj), (value))
-
-#elif __GNUC__ > 3
-/** An atomic exchange operation, ruturns previous value */
-#define fio_atomic_xchange(p_obj, value)                                       \
-  __sync_val_compare_and_swap((p_obj), *(p_obj), (value))
-/** An atomic addition operation */
-#define fio_atomic_add(p_obj, value) __sync_add_and_fetch((p_obj), (value))
-/** An atomic subtraction operation */
-#define fio_atomic_sub(p_obj, value) __sync_sub_and_fetch((p_obj), (value))
-
-#else
-#error Required builtin "__sync_add_and_fetch" not found.
-#endif
-
-/** An atomic based spinlock. */
-typedef uint8_t volatile fio_lock_i;
-
-/** The initail value of an unlocked spinlock. */
-#define FIO_LOCK_INIT 0
-
-/** returns 0 if the lock was acquired and a non-zero value on failure. */
-FIO_FUNC inline int fio_trylock(fio_lock_i *lock);
-
-/**
- * Releases a spinlock. Releasing an unacquired lock will break it.
- *
- * Returns a non-zero value on success, or 0 if the lock was in an unloacked
- * state.
- */
-FIO_FUNC inline int fio_unlock(fio_lock_i *lock);
-
-/** Returns a spinlock's state (non 0 == Busy). */
-FIO_FUNC inline int fio_is_locked(fio_lock_i *lock);
-
-/** Busy waits for the spinlock (CAREFUL). */
-FIO_FUNC inline void fio_lock(fio_lock_i *lock);
-
 /**
  * Nanosleep seems to be the most effective and efficient thread rescheduler.
  */
@@ -2078,225 +2001,6 @@ FIO_FUNC inline void fio_reschedule_thread(void);
 
 /** Nanosleep the thread - a blocking throttle. */
 FIO_FUNC inline void fio_throttle_thread(size_t nano_sec);
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-                         Simple Constant Time Operations
-                         ( boolean true / false and if )
-
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/** Returns 1 if the expression is true (input isn't zero). */
-FIO_FUNC inline uintptr_t fio_ct_true(uintptr_t cond) {
-  // promise that the highest bit is set if any bits are set, than shift.
-  return ((cond | (0 - cond)) >> ((sizeof(cond) << 3) - 1));
-}
-
-/** Returns 1 if the expression is false (input is zero). */
-FIO_FUNC inline uintptr_t fio_ct_false(uintptr_t cond) {
-  // fio_ct_true returns only one bit, XOR will inverse that bit.
-  return fio_ct_true(cond) ^ 1;
-}
-
-/** Returns `a` if `cond` is boolean and true, returns b otherwise. */
-FIO_FUNC inline uintptr_t fio_ct_if(uint8_t cond, uintptr_t a, uintptr_t b) {
-  // b^(a^b) cancels b out. 0-1 => sets all bits.
-  return (b ^ ((0 - (cond & 1)) & (a ^ b)));
-}
-
-/** Returns `a` if `cond` isn't zero (uses fio_ct_true), returns b otherwise. */
-FIO_FUNC inline uintptr_t fio_ct_if2(uintptr_t cond, uintptr_t a, uintptr_t b) {
-  // b^(a^b) cancels b out. 0-1 => sets all bits.
-  return fio_ct_if(fio_ct_true(cond), a, b);
-}
-
-/* *****************************************************************************
-
-
-
-
-
-
-
-
-
-
-                         Byte Swapping and Network Order
-                       (Big Endian v.s Little Endian etc')
-
-
-
-
-
-
-
-
-
-
-
-***************************************************************************** */
-
-/** inplace byte swap 16 bit integer */
-#if __has_builtin(__builtin_bswap16)
-#define fio_bswap16(i) __builtin_bswap16((uint16_t)(i))
-#else
-#define fio_bswap16(i) ((((i)&0xFFU) << 8) | (((i)&0xFF00U) >> 8))
-#endif
-/** inplace byte swap 32 bit integer */
-#if __has_builtin(__builtin_bswap32)
-#define fio_bswap32(i) __builtin_bswap32((uint32_t)(i))
-#else
-#define fio_bswap32(i)                                                         \
-  ((((i)&0xFFUL) << 24) | (((i)&0xFF00UL) << 8) | (((i)&0xFF0000UL) >> 8) |    \
-   (((i)&0xFF000000UL) >> 24))
-#endif
-/** inplace byte swap 64 bit integer */
-#if __has_builtin(__builtin_bswap64)
-#define fio_bswap64(i) __builtin_bswap64((uint64_t)(i))
-#else
-#define fio_bswap64(i)                                                         \
-  ((((i)&0xFFULL) << 56) | (((i)&0xFF00ULL) << 40) |                           \
-   (((i)&0xFF0000ULL) << 24) | (((i)&0xFF000000ULL) << 8) |                    \
-   (((i)&0xFF00000000ULL) >> 8) | (((i)&0xFF0000000000ULL) >> 24) |            \
-   (((i)&0xFF000000000000ULL) >> 40) | (((i)&0xFF00000000000000ULL) >> 56))
-#endif
-
-/* Note: using BIG_ENDIAN invokes false positives on some systems */
-#if !defined(__BIG_ENDIAN__)
-/* nothing to do */
-#elif (defined(__LITTLE_ENDIAN__) && !__LITTLE_ENDIAN__) ||                    \
-    (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__))
-#define __BIG_ENDIAN__ 1
-#elif !defined(__BIG_ENDIAN__) && !defined(__BYTE_ORDER__) &&                  \
-    !defined(__LITTLE_ENDIAN__)
-#error Could not detect byte order on this system.
-#endif
-
-#if __BIG_ENDIAN__
-
-/** Local byte order to Network byte order, 16 bit integer */
-#define fio_lton16(i) (i)
-/** Local byte order to Network byte order, 32 bit integer */
-#define fio_lton32(i) (i)
-/** Local byte order to Network byte order, 62 bit integer */
-#define fio_lton64(i) (i)
-
-/** Network byte order to Local byte order, 16 bit integer */
-#define fio_ntol16(i) (i)
-/** Network byte order to Local byte order, 32 bit integer */
-#define fio_ntol32(i) (i)
-/** Network byte order to Local byte order, 62 bit integer */
-#define fio_ntol64(i) (i)
-
-#else /* Little Endian */
-
-/** Local byte order to Network byte order, 16 bit integer */
-#define fio_lton16(i) fio_bswap16((i))
-/** Local byte order to Network byte order, 32 bit integer */
-#define fio_lton32(i) fio_bswap32((i))
-/** Local byte order to Network byte order, 62 bit integer */
-#define fio_lton64(i) fio_bswap64((i))
-
-/** Network byte order to Local byte order, 16 bit integer */
-#define fio_ntol16(i) fio_bswap16((i))
-/** Network byte order to Local byte order, 32 bit integer */
-#define fio_ntol32(i) fio_bswap32((i))
-/** Network byte order to Local byte order, 62 bit integer */
-#define fio_ntol64(i) fio_bswap64((i))
-
-#endif
-
-/** 32Bit left rotation, inlined. */
-#define fio_lrot32(i, bits)                                                    \
-  (((uint32_t)(i) << ((bits)&31UL)) | ((uint32_t)(i) >> ((-(bits)) & 31UL)))
-/** 32Bit right rotation, inlined. */
-#define fio_rrot32(i, bits)                                                    \
-  (((uint32_t)(i) >> ((bits)&31UL)) | ((uint32_t)(i) << ((-(bits)) & 31UL)))
-
-/** 64Bit left rotation, inlined. */
-#define fio_lrot64(i, bits)                                                    \
-  (((uint64_t)(i) << ((bits)&63UL)) | ((uint64_t)(i) >> ((-(bits)) & 63UL)))
-/** 64Bit right rotation, inlined. */
-#define fio_rrot64(i, bits)                                                    \
-  (((uint64_t)(i) >> ((bits)&63UL)) | ((uint64_t)(i) << ((-(bits)) & 63UL)))
-
-/** unknown size element - left rotation, inlined. */
-#define fio_lrot(i, bits)                                                      \
-  (((i) << ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
-   ((i) >> ((-(bits)) & ((sizeof((i)) << 3) - 1))))
-/** unknown size element - right rotation, inlined. */
-#define fio_rrot(i, bits)                                                      \
-  (((i) >> ((bits) & ((sizeof((i)) << 3) - 1))) |                              \
-   ((i) << ((-(bits)) & ((sizeof((i)) << 3) - 1))))
-
-/** Converts an unaligned network ordered byte stream to a 16 bit number. */
-#define fio_str2u16(c)                                                         \
-  ((uint16_t)(((uint16_t)(((uint8_t *)(c))[0]) << 8) |                         \
-              (uint16_t)(((uint8_t *)(c))[1])))
-/** Converts an unaligned network ordered byte stream to a 32 bit number. */
-#define fio_str2u32(c)                                                         \
-  ((uint32_t)(((uint32_t)(((uint8_t *)(c))[0]) << 24) |                        \
-              ((uint32_t)(((uint8_t *)(c))[1]) << 16) |                        \
-              ((uint32_t)(((uint8_t *)(c))[2]) << 8) |                         \
-              (uint32_t)(((uint8_t *)(c))[3])))
-
-/** Converts an unaligned network ordered byte stream to a 64 bit number. */
-#define fio_str2u64(c)                                                         \
-  ((uint64_t)((((uint64_t)((uint8_t *)(c))[0]) << 56) |                        \
-              (((uint64_t)((uint8_t *)(c))[1]) << 48) |                        \
-              (((uint64_t)((uint8_t *)(c))[2]) << 40) |                        \
-              (((uint64_t)((uint8_t *)(c))[3]) << 32) |                        \
-              (((uint64_t)((uint8_t *)(c))[4]) << 24) |                        \
-              (((uint64_t)((uint8_t *)(c))[5]) << 16) |                        \
-              (((uint64_t)((uint8_t *)(c))[6]) << 8) | (((uint8_t *)(c))[7])))
-
-/** Writes a local 16 bit number to an unaligned buffer in network order. */
-#define fio_u2str16(buffer, i)                                                 \
-  do {                                                                         \
-    ((uint8_t *)(buffer))[0] = ((uint16_t)(i) >> 8) & 0xFF;                    \
-    ((uint8_t *)(buffer))[1] = ((uint16_t)(i)) & 0xFF;                         \
-  } while (0);
-
-/** Writes a local 32 bit number to an unaligned buffer in network order. */
-#define fio_u2str32(buffer, i)                                                 \
-  do {                                                                         \
-    ((uint8_t *)(buffer))[0] = ((uint32_t)(i) >> 24) & 0xFF;                   \
-    ((uint8_t *)(buffer))[1] = ((uint32_t)(i) >> 16) & 0xFF;                   \
-    ((uint8_t *)(buffer))[2] = ((uint32_t)(i) >> 8) & 0xFF;                    \
-    ((uint8_t *)(buffer))[3] = ((uint32_t)(i)) & 0xFF;                         \
-  } while (0);
-
-/** Writes a local 64 bit number to an unaligned buffer in network order. */
-#define fio_u2str64(buffer, i)                                                 \
-  do {                                                                         \
-    ((uint8_t *)(buffer))[0] = (((uint64_t)(i) >> 56) & 0xFF);                 \
-    ((uint8_t *)(buffer))[1] = (((uint64_t)(i) >> 48) & 0xFF);                 \
-    ((uint8_t *)(buffer))[2] = (((uint64_t)(i) >> 40) & 0xFF);                 \
-    ((uint8_t *)(buffer))[3] = (((uint64_t)(i) >> 32) & 0xFF);                 \
-    ((uint8_t *)(buffer))[4] = (((uint64_t)(i) >> 24) & 0xFF);                 \
-    ((uint8_t *)(buffer))[5] = (((uint64_t)(i) >> 16) & 0xFF);                 \
-    ((uint8_t *)(buffer))[6] = (((uint64_t)(i) >> 8) & 0xFF);                  \
-    ((uint8_t *)(buffer))[7] = (((uint64_t)(i)) & 0xFF);                       \
-  } while (0);
 
 /* *****************************************************************************
 
@@ -2436,121 +2140,6 @@ uint8_t __attribute__((weak)) fio_hash_secret_marker2;
 #define FIO_HASH_FN(data, length, key1, key2)                                  \
   fio_siphash13((data), (length), (uint64_t)(key1), (uint64_t)(key2))
 #endif
-
-/* *****************************************************************************
-Risky Hash (always available, even if using only the fio.h header)
-***************************************************************************** */
-
-/* Risky Hash primes */
-#define RISKY_PRIME_0 0xFBBA3FA15B22113B
-#define RISKY_PRIME_1 0xAB137439982B86C9
-
-/* Risky Hash consumption round, accepts a state word s and an input word w */
-#define fio_risky_consume(v, w)                                                \
-  (v) += (w);                                                                  \
-  (v) = fio_lrot64((v), 33);                                                   \
-  (v) += (w);                                                                  \
-  (v) *= RISKY_PRIME_0;
-
-/*  Computes a facil.io Risky Hash. */
-FIO_FUNC inline uint64_t fio_risky_hash(const void *data_, size_t len,
-                                        uint64_t seed) {
-  /* reading position */
-  const uint8_t *data = (uint8_t *)data_;
-
-  /* The consumption vectors initialized state */
-  register uint64_t v0 = seed ^ RISKY_PRIME_1;
-  register uint64_t v1 = ~seed + RISKY_PRIME_1;
-  register uint64_t v2 =
-      fio_lrot64(seed, 17) ^ ((~RISKY_PRIME_1) + RISKY_PRIME_0);
-  register uint64_t v3 = fio_lrot64(seed, 33) + (~RISKY_PRIME_1);
-
-  /* consume 256 bit blocks */
-  for (size_t i = len >> 5; i; --i) {
-    fio_risky_consume(v0, fio_str2u64(data));
-    fio_risky_consume(v1, fio_str2u64(data + 8));
-    fio_risky_consume(v2, fio_str2u64(data + 16));
-    fio_risky_consume(v3, fio_str2u64(data + 24));
-    data += 32;
-  }
-
-  /* Consume any remaining 64 bit words. */
-  switch (len & 24) {
-  case 24:
-    fio_risky_consume(v2, fio_str2u64(data + 16));
-    /* fallthrough */
-  case 16:
-    fio_risky_consume(v1, fio_str2u64(data + 8));
-    /* fallthrough */
-  case 8:
-    fio_risky_consume(v0, fio_str2u64(data));
-    data += len & 24;
-  }
-
-  uint64_t tmp = 0;
-  /* consume leftover bytes, if any */
-  switch ((len & 7)) {
-  case 7:
-    tmp |= ((uint64_t)data[6]) << 8;
-    /* fallthrough */
-  case 6:
-    tmp |= ((uint64_t)data[5]) << 16;
-    /* fallthrough */
-  case 5:
-    tmp |= ((uint64_t)data[4]) << 24;
-    /* fallthrough */
-  case 4:
-    tmp |= ((uint64_t)data[3]) << 32;
-    /* fallthrough */
-  case 3:
-    tmp |= ((uint64_t)data[2]) << 40;
-    /* fallthrough */
-  case 2:
-    tmp |= ((uint64_t)data[1]) << 48;
-    /* fallthrough */
-  case 1:
-    tmp |= ((uint64_t)data[0]) << 56;
-    /* ((len >> 3) & 3) is a 0...3 value indicating consumption vector */
-    switch ((len >> 3) & 3) {
-    case 3:
-      fio_risky_consume(v3, tmp);
-      break;
-    case 2:
-      fio_risky_consume(v2, tmp);
-      break;
-    case 1:
-      fio_risky_consume(v1, tmp);
-      break;
-    case 0:
-      fio_risky_consume(v0, tmp);
-      break;
-    }
-  }
-
-  /* merge and mix */
-  uint64_t result = fio_lrot64(v0, 17) + fio_lrot64(v1, 13) +
-                    fio_lrot64(v2, 47) + fio_lrot64(v3, 57);
-
-  len ^= (len << 33);
-  result += len;
-
-  result += v0 * RISKY_PRIME_1;
-  result ^= fio_lrot64(result, 13);
-  result += v1 * RISKY_PRIME_1;
-  result ^= fio_lrot64(result, 29);
-  result += v2 * RISKY_PRIME_1;
-  result ^= fio_lrot64(result, 33);
-  result += v3 * RISKY_PRIME_1;
-  result ^= fio_lrot64(result, 51);
-
-  /* irreversible avalanche... I think */
-  result ^= (result >> 29) * RISKY_PRIME_0;
-  return result;
-}
-
-#undef fio_risky_consume
-#undef FIO_RISKY_PRIME_0
-#undef FIO_RISKY_PRIME_1
 
 /* *****************************************************************************
 SipHash
@@ -2981,39 +2570,6 @@ FIO_FUNC inline void fio_throttle_thread(size_t nano_sec) {
   nanosleep(&tm, NULL);
 }
 
-/** returns 0 if the lock was acquired and another value on failure. */
-FIO_FUNC inline int fio_trylock(fio_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
-  fio_lock_i ret = fio_atomic_xchange(lock, 1);
-  __asm__ volatile("" ::: "memory");
-  return ret;
-}
-
-/**
- * Releases a spinlock. Releasing an unacquired lock will break it.
- *
- * Returns a non-zero value on success, or 0 if the lock was in an unloacked
- * state.
- */
-FIO_FUNC inline int fio_unlock(fio_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
-  fio_lock_i ret = fio_atomic_xchange(lock, 0);
-  return ret;
-}
-
-/** Returns a spinlock's state (non 0 == Busy). */
-FIO_FUNC inline int fio_is_locked(fio_lock_i *lock) {
-  __asm__ volatile("" ::: "memory");
-  return *lock;
-}
-
-/** Busy waits for the spinlock (CAREFUL). */
-FIO_FUNC inline void fio_lock(fio_lock_i *lock) {
-  while (fio_trylock(lock)) {
-    fio_reschedule_thread();
-  }
-}
-
 #if DEBUG_SPINLOCK
 /** Busy waits for a lock, reports contention. */
 FIO_FUNC inline void fio_lock_dbg(fio_lock_i *lock, const char *file,
@@ -3383,7 +2939,10 @@ typedef struct {
 #ifndef FIO_STR_NO_REF
   volatile uint32_t ref; /* reference counter for fio_str_dup */
 #endif
-  uint8_t small;  /* Flag indicating the String is small and self-contained */
+  union {
+    uint8_t small; /* Flag indicating the String is small and self-contained */
+    uint8_t special;
+  };
   uint8_t frozen; /* Flag indicating the String is frozen (don't edit) */
 #ifdef FIO_STR_NO_REF
   uint8_t reserved[14]; /* Align struct on 16 byte allocator boundary */
@@ -3419,8 +2978,8 @@ typedef struct {
  *      fio_str_free(str);
  *      free(str);
  */
+#ifndef FIO_STR_INIT
 #define FIO_STR_INIT ((fio_str_s){.data = NULL, .small = 1})
-
 /**
  * This macro allows the container to be initialized with existing data, as long
  * as it's memory was allocated using `fio_malloc`.
@@ -3447,6 +3006,8 @@ typedef struct {
  */
 #define FIO_STR_INIT_STATIC2(buffer, length)                                   \
   ((fio_str_s){.data = (char *)(buffer), .len = (length), .dealloc = NULL})
+
+#endif
 
 /**
  * Allocates a new fio_str_s object on the heap and initializes it.
@@ -3626,7 +3187,10 @@ FIO_FUNC int fio_str_utf8_select(fio_str_s *s, intptr_t *pos, size_t *len);
  *
  * This helper macro is used internally but left exposed for external use.
  */
+#ifndef FIO_STR_UTF8_CODE_POINT
 #define FIO_STR_UTF8_CODE_POINT(ptr, end, i32)
+#undef FIO_STR_UTF8_CODE_POINT
+#endif
 
 /* *****************************************************************************
 String API - Content Manipulation and Review
@@ -3759,7 +3323,7 @@ inline FIO_FUNC fio_str_info_s fio_str_info(const fio_str_s *s) {
 inline FIO_FUNC fio_str_s *fio_str_new2(void) {
   fio_str_s *str = FIO_MALLOC(sizeof(*str));
   FIO_ASSERT_ALLOC(str);
-  *str = FIO_STR_INIT;
+  *str = (fio_str_s)FIO_STR_INIT;
   return str;
 }
 
@@ -3816,7 +3380,7 @@ inline FIO_FUNC int fio_str_free(fio_str_s *s) {
 #endif
   if (!s->small && s->dealloc)
     s->dealloc(s->data);
-  *s = FIO_STR_INIT;
+  *s = (fio_str_s)FIO_STR_INIT;
   return 0;
 }
 
@@ -4109,7 +3673,7 @@ static uint8_t fio_str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                                      1, 1, 1, 1, 1, 5, 5, 5, 5, 5, 5,
                                      5, 5, 2, 2, 2, 2, 3, 3, 4, 0};
 
-#undef FIO_STR_UTF8_CODE_POINT
+#ifndef FIO_STR_UTF8_CODE_POINT
 /**
  * Advances the `ptr` by one utf-8 character, placing the value of the UTF-8
  * character into the i32 variable (which must be a signed integer with 32bits
@@ -4166,7 +3730,7 @@ static uint8_t fio_str_utf8_map[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
       break;                                                                   \
     }                                                                          \
   } while (0);
-
+#endif
 /** Returns 1 if the String is UTF-8 valid and 0 if not. */
 FIO_FUNC size_t fio_str_utf8_valid(fio_str_s *s) {
   if (!s)

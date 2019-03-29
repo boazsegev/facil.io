@@ -5814,7 +5814,7 @@ finish:
 #define FIO_SET_OBJ_TYPE subscription_s *
 #define FIO_SET_KEY_TYPE fio_str_s
 #define FIO_SET_KEY_COPY(k1, k2)                                               \
-  (k1) = FIO_STR_INIT;                                                         \
+  (k1) = (fio_str_s)FIO_STR_INIT;                                              \
   fio_str_concat(&(k1), &(k2))
 #define FIO_SET_KEY_COMPARE(k1, k2) fio_str_iseq(&(k1), &(k2))
 #define FIO_SET_KEY_DESTROY(key) fio_str_free(&(key))
@@ -6108,8 +6108,8 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
     subscription_s *s =
         fio_subscribe(.on_message = fio_mock_on_message, .match = NULL,
                       .channel = pr->msg->channel);
-    fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
+    fio_str_s tmp = (fio_str_s)FIO_STR_INIT_EXISTING(
+        pr->msg->channel.data, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_insert(&pr->pubsub,
                         FIO_HASH_FN(pr->msg->channel.data, pr->msg->channel.len,
@@ -6121,7 +6121,7 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
   }
   case FIO_CLUSTER_MSG_PUBSUB_UNSUB: {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
+        pr->msg->channel.data, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->pubsub,
                         FIO_HASH_FN(pr->msg->channel.data, pr->msg->channel.len,
@@ -6138,7 +6138,7 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
                                       .match = (fio_match_fn)match,
                                       .channel = pr->msg->channel);
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
+        pr->msg->channel.data, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_insert(&pr->patterns,
                         FIO_HASH_FN(pr->msg->channel.data, pr->msg->channel.len,
@@ -6151,7 +6151,7 @@ static void fio_cluster_server_handler(struct cluster_pr_s *pr) {
 
   case FIO_CLUSTER_MSG_PATTERN_UNSUB: {
     fio_str_s tmp = FIO_STR_INIT_EXISTING(
-        pr->msg->channel.data, pr->msg->channel.len, 0); // don't free
+        pr->msg->channel.data, pr->msg->channel.len, 0, NULL); // don't free
     fio_lock(&pr->lock);
     fio_sub_hash_remove(&pr->patterns,
                         FIO_HASH_FN(pr->msg->channel.data, pr->msg->channel.len,
@@ -9136,14 +9136,14 @@ FIO_FUNC inline void fio_str_test(void) {
   }
   fio_str_free(&str);
   if (1) {
-    str = FIO_STR_INIT_STATIC("Welcome");
+    str = (fio_str_s)FIO_STR_INIT_STATIC("Welcome");
     FIO_ASSERT(fio_str_capa(&str) == 0, "Static string capacity non-zero.");
     FIO_ASSERT(fio_str_len(&str) > 0,
                "Static string length should be automatically calculated.");
     FIO_ASSERT(str.dealloc == NULL,
                "Static string deallocation function should be NULL.");
     fio_str_free(&str);
-    str = FIO_STR_INIT_STATIC("Welcome");
+    str = (fio_str_s)FIO_STR_INIT_STATIC("Welcome");
     fio_str_info_s state = fio_str_write(&str, " Home", 5);
     FIO_ASSERT(state.capa > 0, "Static string not converted to non-static.");
     FIO_ASSERT(str.dealloc, "Missing static string deallocation function"
