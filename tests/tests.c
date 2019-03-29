@@ -2,7 +2,7 @@
 #include "tests/mustache.c.h"
 
 #define FIO_TEST_CSTL 1
-#include "fio_stl.h"
+#include "fio-stl.h"
 
 #include <fio.h>
 #include <fiobj.h>

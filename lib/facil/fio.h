@@ -118,7 +118,7 @@ Import STL
 #define FIO_LOG_LENGTH_LIMIT 2048
 #endif
 
-#include "fio_stl.h"
+#include "fio-stl.h"
 
 /* *****************************************************************************
 C++ extern start
