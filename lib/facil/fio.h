@@ -349,13 +349,6 @@ Logging and testing helpers
 /** Log everything, including debug messages. */
 #define FIO_LOG_LEVEL_DEBUG 5
 
-#if FIO_LOG_LENGTH_LIMIT > 128
-#define FIO_LOG_LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
-#define FIO_LOG_LENGTH_BORDER (FIO_LOG_LENGTH_LIMIT - 32)
-#else
-#define FIO_LOG_LENGTH_ON_STACK (FIO_LOG_LENGTH_LIMIT + 32)
-#define FIO_LOG_LENGTH_BORDER FIO_LOG_LENGTH_LIMIT
-#endif
 /** The logging level */
 int __attribute__((weak)) FIO_LOG_LEVEL;
 
@@ -377,14 +370,6 @@ int __attribute__((weak)) FIO_LOG_LEVEL;
   FIO_LOG_PRINT(FIO_LOG_LEVEL_ERROR, "ERROR: " __VA_ARGS__)
 #define FIO_LOG_FATAL(...)                                                     \
   FIO_LOG_PRINT(FIO_LOG_LEVEL_FATAL, "FATAL: " __VA_ARGS__)
-#endif
-
-#if FIO_PRINT_STATE
-#define FIO_LOG_STATE(...)                                                     \
-  FIO_LOG_PRINT(FIO_LOG_LEVEL_INFO,                                            \
-                "WARNING: FIO_LOG_STATE is deprecated\n" __VA_ARGS__)
-#else
-#define FIO_LOG_STATE(...)
 #endif
 
 #define FIO_ASSERT(cond, ...)                                                  \
