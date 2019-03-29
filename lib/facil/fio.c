@@ -662,27 +662,24 @@ Suspending and renewing thread execution (signaling events)
 #define FIO_DEFER_THROTTLE_POLL 0
 #endif
 
-typedef struct fio_thread_queue2_s {
+typedef struct fio_thread_queue_data_s {
   int fd_wait;   /* used for weaiting (read signal) */
   int fd_signal; /* used for signalling (write) */
-} fio_thread_queue2_s;
+} fio_thread_queue_data_s;
 
-#define FIO_LIST_NAME fio_tqueue
+#define FIO_LIST_NAME fio_thread_queue
+#define FIO_LIST_TYPE fio_thread_queue_data_s
 #include "fio-stl.h"
 
-typedef struct fio_thread_queue_s {
-  fio_ls_embd_s node;
-  int fd_wait;   /* used for weaiting (read signal) */
-  int fd_signal; /* used for signalling (write) */
-} fio_thread_queue_s;
+static fio_thread_queue_s fio_thread_queue = FIO_LIST_INIT(fio_thread_queue);
+static __thread fio_thread_queue_s fio_thread_data = {
+    .data = {.fd_wait = -1, .fd_signal = -1},
+};
 
-fio_ls_embd_s fio_thread_queue = FIO_LS_INIT(fio_thread_queue);
-fio_lock_i fio_thread_lock = FIO_LOCK_INIT;
-static __thread fio_thread_queue_s fio_thread_data = {.fd_wait = -1,
-                                                      .fd_signal = -1};
+static fio_lock_i fio_thread_lock = FIO_LOCK_INIT;
 
 FIO_FUNC inline void fio_thread_make_suspendable(void) {
-  if (fio_thread_data.fd_signal >= 0)
+  if (fio_thread_data.data.fd_signal >= 0)
     return;
   int fd[2] = {0, 0};
   int ret = pipe(fd);
@@ -691,37 +688,37 @@ FIO_FUNC inline void fio_thread_make_suspendable(void) {
              "(fio) couldn't set internal pipe to non-blocking mode.");
   FIO_ASSERT(fio_set_non_block(fd[1]) == 0,
              "(fio) couldn't set internal pipe to non-blocking mode.");
-  fio_thread_data.fd_wait = fd[0];
-  fio_thread_data.fd_signal = fd[1];
+  fio_thread_data.data.fd_wait = fd[0];
+  fio_thread_data.data.fd_signal = fd[1];
 }
 
 FIO_FUNC inline void fio_thread_cleanup(void) {
-  if (fio_thread_data.fd_signal < 0)
+  if (fio_thread_data.data.fd_signal < 0)
     return;
-  close(fio_thread_data.fd_wait);
-  close(fio_thread_data.fd_signal);
-  fio_thread_data.fd_wait = -1;
-  fio_thread_data.fd_signal = -1;
+  close(fio_thread_data.data.fd_wait);
+  close(fio_thread_data.data.fd_signal);
+  fio_thread_data.data.fd_wait = -1;
+  fio_thread_data.data.fd_signal = -1;
 }
 
 /* suspend thread execution (might be resumed unexpectedly) */
 FIO_FUNC void fio_thread_suspend(void) {
   fio_lock(&fio_thread_lock);
-  fio_ls_embd_push(&fio_thread_queue, &fio_thread_data.node);
+  fio_thread_queue_push(&fio_thread_queue, &fio_thread_data);
   fio_unlock(&fio_thread_lock);
   struct pollfd list = {
       .events = (POLLPRI | POLLIN),
-      .fd = fio_thread_data.fd_wait,
+      .fd = fio_thread_data.data.fd_wait,
   };
   if (poll(&list, 1, 5000) > 0) {
     /* thread was removed from the list through signal */
     uint64_t data;
-    int r = read(fio_thread_data.fd_wait, &data, sizeof(data));
+    int r = read(fio_thread_data.data.fd_wait, &data, sizeof(data));
     (void)r;
   } else {
     /* remove self from list */
     fio_lock(&fio_thread_lock);
-    fio_ls_embd_remove(&fio_thread_data.node);
+    fio_thread_queue_remove(&fio_thread_data);
     fio_unlock(&fio_thread_lock);
   }
 }
@@ -731,9 +728,9 @@ FIO_FUNC void fio_thread_signal(void) {
   fio_thread_queue_s *t;
   int fd = -2;
   fio_lock(&fio_thread_lock);
-  t = (fio_thread_queue_s *)fio_ls_embd_shift(&fio_thread_queue);
+  t = (fio_thread_queue_s *)fio_thread_queue_shift(&fio_thread_queue);
   if (t)
-    fd = t->fd_signal;
+    fd = t->data.fd_signal;
   fio_unlock(&fio_thread_lock);
   if (fd >= 0) {
     uint64_t data = 1;
@@ -747,7 +744,7 @@ FIO_FUNC void fio_thread_signal(void) {
 
 /* wake up all threads */
 FIO_FUNC void fio_thread_broadcast(void) {
-  while (fio_ls_embd_any(&fio_thread_queue)) {
+  while (fio_thread_queue_any(&fio_thread_queue)) {
     fio_thread_signal();
   }
 }
@@ -1165,7 +1162,6 @@ Section Start Marker
 ***************************************************************************** */
 
 typedef struct {
-  fio_ls_embd_s node;
   struct timespec due;
   size_t interval; /*in ms */
   size_t repetitions;
@@ -1174,7 +1170,12 @@ typedef struct {
   void (*on_finish)(void *);
 } fio_timer_s;
 
-static fio_ls_embd_s fio_timers = FIO_LS_INIT(fio_timers);
+#define FIO_FORCE_MALLOC_TMP 1
+#define FIO_LIST_NAME fio_timer_list
+#define FIO_LIST_TYPE fio_timer_s
+#include "fio-stl.h"
+
+static fio_timer_list_s fio_timers = FIO_LIST_INIT(fio_timers);
 
 static fio_lock_i fio_timer_lock = FIO_LOCK_INIT;
 
@@ -1203,12 +1204,11 @@ static struct timespec fio_timer_calc_due(size_t interval) {
 static size_t fio_timer_calc_first_interval(void) {
   if (fio_defer_has_queue())
     return 0;
-  if (fio_ls_embd_is_empty(&fio_timers)) {
+  if (fio_timer_list_is_empty(&fio_timers)) {
     return FIO_POLL_TICK;
   }
   struct timespec now = fio_last_tick();
-  struct timespec due =
-      FIO_LS_EMBD_OBJ(fio_timer_s, node, fio_timers.next)->due;
+  struct timespec due = fio_timers.next->data.due;
   if (due.tv_sec < now.tv_sec ||
       (due.tv_sec == now.tv_sec && due.tv_nsec <= now.tv_nsec))
     return 0;
@@ -1238,31 +1238,30 @@ static int fio_timer_compare(struct timespec a, struct timespec b) {
 }
 
 /** Places a timer in an ordered linked list. */
-static void fio_timer_add_order(fio_timer_s *timer) {
-  timer->due = fio_timer_calc_due(timer->interval);
+static void fio_timer_add_order(fio_timer_list_s *timer) {
+  timer->data.due = fio_timer_calc_due(timer->data.interval);
   // fio_ls_embd_s *pos = &fio_timers;
   fio_lock(&fio_timer_lock);
-  FIO_LS_EMBD_FOR(&fio_timers, node) {
-    fio_timer_s *t2 = FIO_LS_EMBD_OBJ(fio_timer_s, node, node);
-    if (fio_timer_compare(timer->due, t2->due) >= 0) {
-      fio_ls_embd_push(node, &timer->node);
+  FIO_LIST_EACH(&fio_timers, node) {
+    if (fio_timer_compare(timer->data.due, node->data.due) >= 0) {
+      fio_timer_list_push(node, timer);
       goto finish;
     }
   }
-  fio_ls_embd_push(&fio_timers, &timer->node);
+  fio_timer_list_push(&fio_timers, timer);
 finish:
   fio_unlock(&fio_timer_lock);
 }
 
 /** Performs a timer task and re-adds it to the queue (or cleans it up) */
 static void fio_timer_perform_single(void *timer_, void *ignr) {
-  fio_timer_s *timer = timer_;
-  timer->task(timer->arg);
-  if (!timer->repetitions || fio_atomic_sub(&timer->repetitions, 1))
+  fio_timer_list_s *timer = timer_;
+  timer->data.task(timer->data.arg);
+  if (!timer->data.repetitions || fio_atomic_sub(&timer->data.repetitions, 1))
     goto reschedule;
-  if (timer->on_finish)
-    timer->on_finish(timer->arg);
-  free(timer);
+  if (timer->data.on_finish)
+    timer->data.on_finish(timer->data.arg);
+  fio_timer_list_free(timer);
   return;
   (void)ignr;
 reschedule:
@@ -1273,25 +1272,21 @@ reschedule:
 static void fio_timer_schedule(void) {
   struct timespec now = fio_last_tick();
   fio_lock(&fio_timer_lock);
-  while (fio_ls_embd_any(&fio_timers) &&
-         fio_timer_compare(
-             FIO_LS_EMBD_OBJ(fio_timer_s, node, fio_timers.next)->due, now) >=
-             0) {
-    fio_ls_embd_s *tmp = fio_ls_embd_remove(fio_timers.next);
-    fio_defer(fio_timer_perform_single, FIO_LS_EMBD_OBJ(fio_timer_s, node, tmp),
-              NULL);
+  while (fio_timer_list_any(&fio_timers) &&
+         fio_timer_compare(fio_timers.next->data.due, now) >= 0) {
+    fio_timer_list_s *tmp = fio_timer_list_remove(fio_timers.next);
+    fio_defer(fio_timer_perform_single, tmp, NULL);
   }
   fio_unlock(&fio_timer_lock);
 }
 
 static void fio_timer_clear_all(void) {
   fio_lock(&fio_timer_lock);
-  while (fio_ls_embd_any(&fio_timers)) {
-    fio_timer_s *timer =
-        FIO_LS_EMBD_OBJ(fio_timer_s, node, fio_ls_embd_pop(&fio_timers));
-    if (timer->on_finish)
-      timer->on_finish(timer->arg);
-    free(timer);
+  while (fio_timer_list_any(&fio_timers)) {
+    fio_timer_list_s *timer = fio_timer_list_pop(&fio_timers);
+    if (timer->data.on_finish)
+      timer->data.on_finish(timer->data.arg);
+    fio_timer_list_free(timer);
   }
   fio_unlock(&fio_timer_lock);
 }
@@ -1310,16 +1305,19 @@ int fio_run_every(size_t milliseconds, size_t repetitions, void (*task)(void *),
                   void *arg, void (*on_finish)(void *)) {
   if (!task || (milliseconds == 0 && !repetitions))
     return -1;
-  fio_timer_s *timer = malloc(sizeof(*timer));
+  fio_timer_list_s *timer = fio_timer_list_new();
   FIO_ASSERT_ALLOC(timer);
   fio_mark_time();
-  *timer = (fio_timer_s){
-      .due = fio_timer_calc_due(milliseconds),
-      .interval = milliseconds,
-      .repetitions = repetitions,
-      .task = task,
-      .arg = arg,
-      .on_finish = on_finish,
+  *timer = (fio_timer_list_s){
+      .data =
+          {
+              .due = fio_timer_calc_due(milliseconds),
+              .interval = milliseconds,
+              .repetitions = repetitions,
+              .task = task,
+              .arg = arg,
+              .on_finish = on_finish,
+          },
   };
   fio_timer_add_order(timer);
   return 0;
@@ -8935,14 +8933,14 @@ FIO_FUNC void fio_timer_test(void) {
   FIO_ASSERT(fio_run_every(900, total, fio_timer_test_task, &result,
                            fio_timer_test_task) == 0,
              "Timer creation failure.");
-  FIO_ASSERT(fio_ls_embd_any(&fio_timers),
+  FIO_ASSERT(fio_timer_list_any(&fio_timers),
              "Timer scheduling failure - no timer in list.");
   FIO_ASSERT(fio_timer_calc_first_interval() >= 898 &&
                  fio_timer_calc_first_interval() <= 902,
              "next timer calculation error %zu",
              fio_timer_calc_first_interval());
 
-  fio_ls_embd_s *first = fio_timers.next;
+  fio_timer_list_s *first = fio_timers.next;
   FIO_ASSERT(fio_run_every(10000, total, fio_timer_test_task, &result,
                            fio_timer_test_task) == 0,
              "Timer creation failure (second timer).");

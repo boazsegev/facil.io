@@ -460,13 +460,13 @@ Memory management macros
 #define FIO_MEM_REALLOC(ptr, old_size, new_size, copy_len)                     \
   realloc((ptr), (new_size))
 #define FIO_MEM_FREE(ptr, size) free((ptr))
-#endif
+#endif /* FIO_MEM_CALLOC */
 
 #if FIO_FORCE_MALLOC_TMP /* force malloc */
 #define FIO_MEM_CALLOC_(size, units) calloc((size), (units))
-#define FIO_MEM_REALLOC__(ptr, old_size, new_size, copy_len)                   \
+#define FIO_MEM_REALLOC_(ptr, old_size, new_size, copy_len)                    \
   realloc((ptr), (new_size))
-#define FIO_MEM_FREE__(ptr, size) free((ptr))
+#define FIO_MEM_FREE_(ptr, size) free((ptr))
 #else
 #define FIO_MEM_CALLOC_ FIO_MEM_CALLOC
 #define FIO_MEM_REALLOC_ FIO_MEM_REALLOC
@@ -1072,6 +1072,9 @@ typedef struct FIO_NAME(FIO_LIST_NAME, s__node_internal) {
   struct FIO_NAME(FIO_LIST_NAME, s__node_internal) * prev;
   FIO_LIST_TYPE data;
 } FIO_NAME(FIO_LIST_NAME, s);
+
+#define FIO_LIST_INIT(name)                                                    \
+  { .next = &(name), .prev = &(name) }
 
 /* *****************************************************************************
 Linked Lists (embeded) - API
