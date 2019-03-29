@@ -109,7 +109,7 @@ Version and helper macros
 
 #define FIO_VERSION_MAJOR 0
 #define FIO_VERSION_MINOR 7
-#define FIO_VERSION_PATCH 0
+#define FIO_VERSION_PATCH 1
 #define FIO_VERSION_BETA 0
 
 /* Automatically convert version data to a string constant - ignore these two */
@@ -423,35 +423,43 @@ Logging and testing helpers
 #define FIO_LOG_LEVEL_DEBUG 5
 
 #if FIO_LOG_LENGTH_LIMIT > 128
-#define FIO_LOG_LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
-#define FIO_LOG_LENGTH_BORDER (FIO_LOG_LENGTH_LIMIT - 32)
+#define FIO_LOG____LENGTH_ON_STACK FIO_LOG_LENGTH_LIMIT
+#define FIO_LOG____LENGTH_BORDER (FIO_LOG_LENGTH_LIMIT - 32)
 #else
-#define FIO_LOG_LENGTH_ON_STACK (FIO_LOG_LENGTH_LIMIT + 32)
-#define FIO_LOG_LENGTH_BORDER FIO_LOG_LENGTH_LIMIT
+#define FIO_LOG____LENGTH_ON_STACK (FIO_LOG_LENGTH_LIMIT + 32)
+#define FIO_LOG____LENGTH_BORDER FIO_LOG_LENGTH_LIMIT
 #endif
 /** The logging level */
 int __attribute__((weak)) FIO_LOG_LEVEL;
+
+#pragma weak FIO_LOG2STDERR
+void __attribute__((format(printf, 1, 0), weak))
+FIO_LOG2STDERR(const char *format, ...) {
+  char tmp___log[FIO_LOG____LENGTH_ON_STACK];
+  va_list argv;
+  va_start(argv, format);
+  int len___log = vsnprintf(tmp___log, FIO_LOG_LENGTH_LIMIT - 2, format, argv);
+  va_end(argv);
+  if (len___log <= 0 || len___log >= FIO_LOG_LENGTH_LIMIT - 2) {
+    if (len___log >= FIO_LOG_LENGTH_LIMIT - 2) {
+      memcpy(tmp___log + FIO_LOG____LENGTH_BORDER, "... (warning: truncated).",
+             25);
+      len___log = FIO_LOG____LENGTH_BORDER + 25;
+    } else {
+      fwrite("ERROR: log output error (can't write).\n", 39, 1, stderr);
+      return;
+    }
+  }
+  tmp___log[len___log++] = '\n';
+  tmp___log[len___log] = '0';
+  fwrite(tmp___log, len___log, 1, stderr);
+}
 
 #ifndef FIO_LOG_PRINT
 #define FIO_LOG_PRINT(level, ...)                                              \
   do {                                                                         \
     if (level <= FIO_LOG_LEVEL) {                                              \
-      char tmp___log[FIO_LOG_LENGTH_ON_STACK];                                 \
-      int len___log =                                                          \
-          snprintf(tmp___log, FIO_LOG_LENGTH_LIMIT - 2, __VA_ARGS__);          \
-      if (len___log <= 0 || len___log >= FIO_LOG_LENGTH_LIMIT - 2) {           \
-        if (len___log >= FIO_LOG_LENGTH_LIMIT - 2) {                           \
-          memcpy(tmp___log + FIO_LOG_LENGTH_BORDER,                            \
-                 "... (warning: truncated).", 25);                             \
-          len___log = FIO_LOG_LENGTH_BORDER + 25;                              \
-        } else {                                                               \
-          fwrite("ERROR: log output error (can't write).\n", 39, 1, stderr);   \
-          break;                                                               \
-        }                                                                      \
-      }                                                                        \
-      tmp___log[len___log++] = '\n';                                           \
-      tmp___log[len___log] = '0';                                              \
-      fwrite(tmp___log, len___log, 1, stderr);                                 \
+      FIO_LOG2STDERR(__VA_ARGS__);                                             \
     }                                                                          \
   } while (0)
 #define FIO_LOG_DEBUG(...)                                                     \
