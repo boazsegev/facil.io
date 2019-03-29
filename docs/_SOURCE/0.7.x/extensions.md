@@ -12,7 +12,7 @@ These bundled extensions to the core library provide common functionality. They 
 
 The following extensions come bundled along with facio.io:
 
-* The [`TLS`](fio_tls) extension adds seamless SSL/TLS support to the network layer (requires 3rd party libraries).
+* The [TLS (`fio_tls`)](fio_tls) extension for adding SSL/TLS support (requires 3rd party libraries).
 
 * The [CLI (`fio_cli`)](fio_cli) extension for handling command line arguments.
 

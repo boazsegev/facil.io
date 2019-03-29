@@ -129,6 +129,18 @@ The `on_cleanup` callback will be called when the TLS object is destroyed (or `f
 
 Except for the `tls` and `protocol_name` arguments, all arguments can be NULL.
 
+#### `fio_tls_alpn_count`
+
+```c
+uintptr_t fio_tls_alpn_count(fio_tls_s *tls);
+```
+
+Returns the number of registered ALPN protocol names.
+
+This could be used when deciding if protocol selection should be delegated to the ALPN mechanism, or whether a protocol should be immediately assigned.
+
+If no ALPN protocols are registered, zero (0) is returned.
+
 ### TLS Connection Establishment
 
 #### `fio_tls_accept`
@@ -156,7 +168,6 @@ Establishes an SSL/TLS connection as an SSL/TLS Client, using the specified cont
 The `uuid` should be a socket UUID that is already connected to a peer (i.e., one received by a `fio_connect` specified callback `on_connect`).
 
 The `udata` is an opaque user data pointer that is passed along to the protocol selected (if any protocols were added using `fio_tls_alpn_add`).
-
 
 
 ### TLS Compile-Time Options
